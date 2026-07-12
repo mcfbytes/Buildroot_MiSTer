@@ -154,7 +154,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** a reviewer can verify any single claim from the cited evidence without
   re-deriving it; doc cross-links P0.4 for kernel-side items.
 
-- [ ] **P0.6 — Downloader `LinuxUpdater` contract (A8)** — [SONNET] — Size S — Depends: P0.2
+- [x] **P0.6 — Downloader `LinuxUpdater` contract (A8)** — [SONNET] — Size S — Depends: P0.2
   Formalize the already-verified contract (`docs/verification/stock-release-20250402.md`)
   into `docs/downloader-contract.md`: exact db.json `linux` schema; MD5 hash scope;
   last-6-chars inequality version compare against the rootfs-root `/MiSTer.version`; the

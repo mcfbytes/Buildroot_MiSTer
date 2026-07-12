@@ -472,7 +472,7 @@ boots to a serial console on real hardware (P1.13).
   **Done when:** `scripts/test-initramfs.sh` runs green locally and in CI (wired in
   P4.1); all four cases asserted.
 
-- [ ] **P1.13 — [HW] First hardware boot** — human + [OPUS] — Size L — Depends: P1.4–P1.12
+- [x] **P1.13 — [HW] First hardware boot** — human + [OPUS] — Size L — Depends: P1.4–P1.12
   Human writes `zImage_dtb` (+ stock `uboot.img`, stock FAT layout, our tiny test
   `linux.img`) to an SD card, captures the full serial boot log. Model analyzes the log,
   drives fixes, iterates. Assert: U-Boot loads our kernel unmodified; initramfs finds

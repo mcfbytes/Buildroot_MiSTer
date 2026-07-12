@@ -3,7 +3,7 @@
 **A reproducible, drop-in `linux.img` built from a modern Buildroot, with all kernel
 patches carried in-tree as Buildroot patch files.**
 
-Status: proposal / RFC
+Status: revised proposal v2 (2026-07-11) — review amendments folded in; task-level execution plan in `TASKS.md`
 Target board: Terasic DE10-Nano (Cyclone V SoC, `armv7-a` Cortex-A9)
 
 ---
@@ -85,12 +85,23 @@ bootargs = console=ttyS0,115200 $v loop.max_part=8 mem=511M memmap=513M$511M \\
 * Root filesystem is mounted **read-only**. This is a good design — an immutable root with
 writable state on `/media/fat` and tmpfs. **Preserve it.**
 * `linux.img` is a file on the FAT partition, loop-mounted as root.
+* The kernel is booted as a **concatenated `zImage_dtb`** (zImage + appended DTB); stock
+U-Boot passes bootargs via ATAGs and **never loads a separate initrd**. The kernel therefore
+needs `CONFIG_ARM_APPENDED_DTB=y` (plus `CONFIG_ARM_ATAG_DTB_COMPAT`, to be confirmed against
+U-Boot source), and anything added at boot time — the initramfs of §5 — must be embedded in
+the zImage.
+* The data partition may be **FAT32 or exFAT**, and existing `u-boot.txt` setups may point
+`root=` at other devices (USB boot). Both filesystems, plus NLS codepages, must be built-in.
 
 ### Kernel ABI surface
 
 * `MiSTer_fb` ioctl ABI (`drivers/video/fbdev/MiSTer_fb.c`)
 * `MiSTer-audio-spi` (`sound/drivers/MiSTer-audio-spi.c`)
 * `fpga_io.cpp` pokes the HPS↔FPGA bridges via `/dev/mem` at hardcoded Cyclone V addresses
+
+  → requires `CONFIG_DEVMEM=y` with `CONFIG_STRICT_DEVMEM=n` and `CONFIG_IO_STRICT_DEVMEM=n`.
+Modern defconfigs enable STRICT_DEVMEM by default; leaving it on silently kills the entire
+FPGA path.
 * Cyclone V cpufreq/overclock driver
 
 ### Filesystem / runtime conventions
@@ -99,6 +110,12 @@ writable state on `/media/fat` and tmpfs. **Preserve it.**
 * `/media/fat/linux/MiSTer.version` — 6-char `YYMMDD`, compared by Downloader
 * BusyBox init with `S01syslogd … S99user` script names
 * ext4, volume label `rootfs`
+* **On-device Python is an ABI surface**: `Downloader_MiSTer` and many community scripts run
+with the target's interpreter. Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.13+.
+Compatibility must be tested, not assumed.
+* Stock ships **zero kernel modules** — everything is built in. Any module-based driver we
+introduce (§4.1 classes D/E) obligates us to ship `kmod`, run `depmod` at image build, provide
+hotplug autoload (mdev/udev), and curate `/lib/firmware`.
 
 ---
 
@@ -120,6 +137,11 @@ The MiSTer 5.15 fork carries \~60 commits. Triaged:
 **Class B is the one that will bite.** `init/do_mounts.c` was substantially refactored in the
 6.x series (`mount_block_root` and friends are gone). Forward-porting that patch is both hard
 *and unnecessary* — see §5.
+
+**Classes D and E introduce kernel modules into an image that today ships none.** That pulls
+in module infrastructure — `kmod`, `depmod` at image build, hotplug autoload — plus a curated
+`/lib/firmware` (xone's firmware additionally has redistribution constraints). Small, but it
+is machinery the stock image never needed, and it must be planned, not discovered.
 
 ### 4.1a The device tree: mainline's DE10-Nano DTS is *not* sufficient
 
@@ -179,14 +201,31 @@ shrink. Budget for a 512 MiB `linux.img` and audit what assumes 400 MB.
 Today the kernel is patched to loop-mount `linux/linux.img` from within `init/do_mounts.c`.
 This is a patch to a core kernel file that upstream has since rewritten.
 
-**Replace it with a \~200 KB Buildroot-built initramfs** embedded in the kernel
-(`BR2_TARGET_ROOTFS_INITRAMFS`) whose `/init` does:
+**Replace it with a \~200 KB embedded initramfs.** Two build mechanics matter and are easy
+to get wrong:
+
+* **Not `BR2_TARGET_ROOTFS_INITRAMFS`** — that option embeds the *entire target rootfs*
+(\~300 MB) into the kernel image. Instead, a **second, minimal Buildroot config**
+(`configs/mister_initramfs_defconfig`: static BusyBox, `BR2_TARGET_ROOTFS_CPIO`) produces a
+tiny cpio that the main build's kernel consumes via `CONFIG_INITRAMFS_SOURCE`. CI sequences
+the two builds.
+* The initramfs **must be embedded in the zImage**: the stock U-Boot boot command (kept
+byte-identical, §8) never loads a separate initrd.
+
+And `/init` must be **cmdline-driven, not hardcoded**. U-Boot is unchanged, so the cmdline
+still carries `root=$mmcroot loop=linux/linux.img ro rootwait` — and existing `u-boot.txt`
+setups override `$mmcroot` (USB boot). `/init` parses `root=` (the data partition, FAT32
+**or exFAT**) and `loop=` (image path) from `/proc/cmdline`, implements `rootwait` as a
+retry loop, and on any failure prints a diagnostic banner and drops to a serial rescue
+shell. In sketch:
 
 ```sh
-mount -t vfat /dev/mmcblk0p1 /mnt/fat
-losetup -r /dev/loop8 /mnt/fat/linux/linux.img
+# real script parses root=/loop= from /proc/cmdline, retries until the
+# device appears (rootwait), tries vfat then exfat, rescue shell on failure
+mount -t vfat "$rootdev" /mnt/fat || mount -t exfat "$rootdev" /mnt/fat
+losetup -r /dev/loop8 "/mnt/fat/$looppath"
 mount -o ro /dev/loop8 /newroot
-# move the FAT mount into the new root so /media/fat is already there
+# move the data-partition mount so /media/fat is already there
 mount --move /mnt/fat /newroot/media/fat
 exec switch_root /newroot /sbin/init
 ```
@@ -195,9 +234,12 @@ Benefits:
 
 * **Eliminates an out-of-tree patch to a hot, frequently-refactored core file.** This is the
 single biggest reduction in long-term maintenance burden in the whole plan.
-* Boot semantics become debuggable and testable in userspace.
-* The `loop=` and `root=` cmdline args go away; `mem=511M` and `memmap=` stay.
-* Buildroot builds it natively. No new tooling.
+* Boot semantics become debuggable and testable in userspace — the same cpio boots under a
+generic QEMU ARM machine in CI against synthetic FAT/exFAT disks (§11).
+* The `loop=` and `root=` args keep their exact stock semantics, so every existing
+`u-boot.txt` keeps working; `mem=511M` and `memmap=` stay untouched.
+* Buildroot builds it natively as a second minimal config. The only new machinery is
+sequencing two builds.
 
 Cost: the kernel `zImage` grows slightly; boot gains a few hundred milliseconds.
 Worth it several times over.
@@ -214,7 +256,8 @@ mister-linux/
 ├── external.mk
 ├── Config.in
 ├── configs/
-│   └── mister_de10nano_defconfig
+│   ├── mister_de10nano_defconfig
+│   └── mister_initramfs_defconfig     # stage-1 tiny static-BusyBox cpio (§5)
 ├── board/mister/de10nano/
 │   ├── linux.config                   # full kernel config (make savedefconfig)
 │   ├── linux-patches/                 # → BR2_LINUX_KERNEL_PATCH
@@ -246,12 +289,17 @@ mister-linux/
 │   ├── rtl8188eu/
 │   ├── rtl8188fu/
 │   └── xone/
+├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/
 │   ├── build.yml                      # build + upload Release assets
 │   └── publish-db.yml                 # regenerate and publish db.json
+├── renovate.json                      # dependency automation — §9, final hardening step
 └── docs/
     ├── abi-contract.md                # §3, expanded — the thing we must not break
-    └── patch-provenance.md            # every patch: origin, upstream status, owner
+    ├── patch-provenance.md            # every patch: origin, upstream status, owner
+    ├── boot-chain.md                  # U-Boot contract: zImage_dtb, ATAGs, u-boot.txt env
+    ├── downloader-contract.md         # LinuxUpdater: 7z layout, MD5, version semantics
+    └── decisions/                     # ADRs: toolchain, initramfs, xone firmware, HIL rig
 ```
 
 ### How kernel patches work without a kernel repo (G4)
@@ -265,7 +313,9 @@ BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"
-BR2_TARGET_ROOTFS_INITRAMFS=y
+# NOT BR2_TARGET_ROOTFS_INITRAMFS — that would embed the whole rootfs (§5).
+# The stage-1 cpio from mister_initramfs_defconfig is wired in via
+# CONFIG_INITRAMFS_SOURCE in linux.config.
 ```
 
 Buildroot downloads a **signed, hash-verified kernel.org tarball** and applies our patch
@@ -365,6 +415,8 @@ Change one variable at a time.
 * Cache Buildroot `dl/` and `ccache` between runs.
 * `make legal-info` on every build → SBOM + license manifest as a release artifact.
 *(Note: the current image ships no manifest, no `.config`, and no legal-info at all.)*
+* GitHub artifact attestations (`actions/attest-build-provenance`) on the image assets, so
+anyone can verify a downloaded `linux.img` came from this repo's CI at a given commit.
 
 ### Artifacts — **GitHub Release assets, never committed**
 
@@ -388,7 +440,26 @@ binaries (67 MB) with no CI at all**.
 * \[x] Kernel version + upstream hash pinned; patches in-tree
 * \[x] `BR2_DOWNLOAD_DIR` populated from upstream; no vendored tarballs
 * \[x] `buildroot.config` and `linux.config` published with every release
-* \[x] Two independent builders should get identical `linux.img` hashes (stretch: bit-for-bit)
+* \[x] ext4 generation pinned: fixed UUID, pinned filesystem feature set, `SOURCE_DATE_EPOCH`,
+`BR2_REPRODUCIBLE=y` — 2026-era `mke2fs` defaults (random UUID/hash seed, new features) break
+determinism unless pinned
+* \[x] Two independent builders get identical `linux.img` hashes — enforced by a CI job that
+builds twice and compares
+
+### Dependency automation — the final hardening step
+
+Once the pipeline is stable and trusted, **Renovate** keeps every moving part current
+automatically. This mechanizes the sustainability commitment of §13:
+
+* Buildroot 2026.02.x tarball version + SHA-256 (custom/regex manager over the pin file)
+* Kernel 6.18.y version + hash (custom datasource over kernel.org's `releases.json`)
+* morrownr driver packages and other commit pins (git datasource)
+* CI container image digests and GitHub Actions versions
+
+Every Renovate PR gets the full CI treatment — build, patch-apply, ABI checks, double-build
+reproducibility — so a stable bump that breaks a carried patch is caught in the PR, never on
+user hardware. Deliberately sequenced last: automate a pipeline only after it has earned
+trust.
 
 ---
 
@@ -410,6 +481,11 @@ archive if they differ. The official entry looks like this:
 Note it is **commit-pinned and MD5-verified** — the Downloader does supply-chain hygiene
 properly. We publish an identically-shaped entry pointing at our GitHub Release asset.
 
+The full updater contract — the 7z's internal layout, the extraction tooling available on the
+*old* image (which is what applies the update), version-*inequality* comparison semantics, and
+the reboot flow — is verified from `Downloader_MiSTer` source and captured in
+`docs/downloader-contract.md` before anything ships.
+
 Users add one database to `downloader.ini` and opt in.
 
 **Known wrinkle:** `LinuxUpdater` warns `"Too many databases try to update linux. Only 1 can be processed"` — if both our db and the official Distribution db provide `linux`, only the
@@ -426,8 +502,15 @@ Downloader, get the official `linux.img` back.
 ### ABI smoke test (the gate for everything)
 
 Boot the new image and run the **unmodified, stock `MiSTer` binary from `Distribution_MiSTer`**.
-If it does not reach the menu, nothing else matters. This test comes first and runs on every CI
-build against a hardware runner.
+If it does not reach the menu, nothing else matters. This test comes first.
+
+**CI vs hardware split.** QEMU has no Cyclone V machine model, so per-commit CI cannot boot
+the real image. CI instead runs: (a) static SONAME/ABI checks of the built rootfs against the
+contract; (b) the stock `MiSTer` binary under a `qemu-arm` chroot of the new rootfs — it must
+get past dynamic linking and early init, failing only at the whitelisted FPGA-access point;
+(c) the initramfs cpio booted on a generic QEMU ARM machine against synthetic FAT/exFAT
+disks. **Real hardware gates each release** — manually at first, optionally automated later
+with a HIL rig (USB-SD-mux, power control, serial capture) as a self-hosted runner.
 
 ### Hardware matrix
 
@@ -458,10 +541,13 @@ build against a hardware runner.
 |**P1 — Kernel**|Buildroot builds 6.18 LTS from kernel.org + `linux-patches/`. Forward-port `MiSTer_fb`, audio-spi, cpufreq. Replace `loop=` with the initramfs (§5).|Boots to a serial console on real hardware|
 |**P2 — Rootfs**|Buildroot 2026.02 rootfs, glibc, SONAME parity. Read-only root preserved.|**Stock `MiSTer` binary reaches the menu.**|
 |**P3 — Parity**|WiFi, Bluetooth, Samba, FTP, SSH, MIDI. CI + release artifacts + SBOM.|Hardware matrix (§11) green|
-|**P4 — Beta**|Publish `db.json`. Recruit testers. Document rollback.|Sustained opt-in use, no P1 bugs|
+|**P4 — Beta**|Publish `db.json`. Recruit testers. Document rollback. Final pipeline hardening: Renovate dependency automation (§9).|Sustained opt-in use, no P1 bugs|
 |**P5 — U-Boot**|*Optional.* Mainline U-Boot via Buildroot (§8).|Separate opt-in; recovery procedure documented|
 
 Sequential. Each phase's exit criterion is a hardware test, not a code review.
+
+The task-level breakdown — per-task model assignments, dependencies, and acceptance
+criteria — lives in `TASKS.md`.
 
 ---
 
@@ -480,9 +566,10 @@ Sequential. Each phase's exit criterion is a hardware test, not a code review.
 
 That last one is not a joke. A stale fork is worse than no fork, because it splits the
 "which `linux.img` are you on?" support surface across a volunteer community. The entire
-value proposition of this project is *sustained* maintenance. If that is not on offer,
-the honest move is to publish the patch triage and the ABI contract as documentation and
-stop there — that alone would be a real contribution.
+value proposition of this project is *sustained* maintenance — which is why §9 ends by
+handing routine bumps to Renovate + CI, reducing the steady-state cost to reviewing green
+PRs. If even that is not on offer, the honest move is to publish the patch triage and the
+ABI contract as documentation and stop there — that alone would be a real contribution.
 
 ---
 

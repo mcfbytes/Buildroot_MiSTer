@@ -1,6 +1,8 @@
 # MiSTer Linux Modernization — Ultracode Task List
 
-Companion to `PLAN.md` (reviewed at commit `c41fd4e`, 2026-07-11). This file is the
+Companion to `PLAN.md` v2 (amendments A1–A9 folded into the plan; post-cutoff facts —
+6.18 LTS status/EOL, Buildroot 2026.02, mainline DE10-Nano DTS — confirmed by the
+maintainer, 2026-07-11). This file is the
 execution contract: every task is self-contained, has explicit acceptance criteria, and
 names the AI model sized to it. Work through phases in order; within a phase, tasks with
 satisfied dependencies may run in parallel.
@@ -46,10 +48,10 @@ escalate one tier (Haiku → Sonnet → Opus) and note why in the commit message
 
 ---
 
-## A. Plan amendments (corrections discovered in review — these override PLAN.md)
+## A. Plan amendments (corrections discovered in review)
 
-These are binding on the tasks below. Each is cross-referenced from the task that
-implements it.
+These have been folded into `PLAN.md` v2; they are retained here as the rationale record.
+Each is cross-referenced from the task that implements it.
 
 - **A1 — The initramfs mechanism in §5 is wrong as specified.**
   `BR2_TARGET_ROOTFS_INITRAMFS` embeds the *entire target rootfs* (~300 MB) into the
@@ -517,17 +519,24 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
   **Done when:** published db.json passes the Downloader's own validation (run it in
   CI); URL is stable across releases.
 
-- [ ] **P4.6 — Kernel stable-bump automation** — [SONNET] — Size M — Depends: P4.1
-  Scheduled workflow: poll kernel.org releases JSON for new 6.18.y; open a PR bumping
-  `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` + hash; CI proves patches still apply and
-  build is green. This is the §13 sustainability mitigation — the point of the whole
-  architecture.
-  **Done when:** a synthetic bump PR (forced run) opens correctly with passing CI and a
-  changelog snippet of upstream fixes.
+- [ ] **P4.6 — Renovate onboarding (final pipeline-hardening step)** — [SONNET] — Size M — Depends: P4.1, P4.4
+  **Sequence after P4.8/P4.9, immediately before beta launch** — automate a pipeline
+  only once it is stable and trusted (PLAN.md §9). Onboard Renovate and configure
+  `renovate.json` to manage: the Buildroot 2026.02.x tarball version + SHA-256
+  (custom/regex manager over the pin file from P1.1), morrownr package commit pins (git
+  datasource), CI container image digests, and GitHub Actions versions. Every Renovate
+  PR must trigger the full CI suite (build, patch-apply, ABI checks, reproducibility).
+  Automerge stays OFF — a human reviews green PRs.
+  **Done when:** a real or synthetic Renovate PR for a Buildroot point release opens
+  with passing CI; the pin file's regex manager is covered by a Renovate config test.
 
-- [ ] **P4.7 — Buildroot LTS bump automation** — [HAIKU] — Size S — Depends: P4.6
-  Same pattern for Buildroot 2026.02.x point releases (tarball hash + version pin).
-  **Done when:** synthetic bump PR opens and passes, mirroring P4.6.
+- [ ] **P4.7 — Kernel 6.18.y bumps via Renovate** — [SONNET] — Size M — Depends: P4.6
+  Add a Renovate custom datasource over kernel.org's `releases.json` that bumps
+  `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` and the tarball hash together in one PR. CI
+  proving the carried patches still apply is the whole point — this is the §13
+  sustainability mitigation, mechanized.
+  **Done when:** a synthetic 6.18.y bump PR opens correctly with passing CI and a
+  changelog snippet of upstream fixes in the PR body.
 
 - [ ] **P4.8 — User documentation** — [SONNET] — Size M — Depends: P0.6, P4.5
   `docs/user/`: onboarding (the exact `downloader.ini` edit **including the multi-db
@@ -597,6 +606,6 @@ findable even if nothing else ships.
 ## C. Sustainability gate (plan §13, final risk)
 
 Before P4.10 (beta launch), a named human maintainer must commit in writing (in the
-README) to tracking 6.18.y stable through its EOL (Dec 2028), with P4.6's automation as
-the mechanism. **If no one signs, stop at the §14 deliverables and publish those** — a
-stale fork is worse than no fork.
+README) to tracking 6.18.y stable through its EOL (Dec 2028), with the Renovate
+automation (P4.6/P4.7) as the mechanism. **If no one signs, stop at the §14 deliverables
+and publish those** — a stale fork is worse than no fork.

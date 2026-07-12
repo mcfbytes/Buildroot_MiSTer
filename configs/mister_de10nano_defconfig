@@ -1,0 +1,64 @@
+# mister_de10nano_defconfig — P1.2: toolchain & arch/ABI + minimal BusyBox rootfs
+#
+# Supersedes the P1.1 placeholder (which deliberately set nothing). This is the
+# canonical output of `make savedefconfig` — it only lists lines that diverge
+# from Buildroot's kconfig defaults, so it is intentionally short (and, per the
+# P1.1 placeholder's own warning, this header will be silently dropped the next
+# time `make savedefconfig` runs — hand-restore it, same as this commit did).
+# See docs/decisions/0001-toolchain.md for the full toolchain evaluation
+# (internal vs Bootlin external) and PLAN.md §3 / docs/abi-contract.md §1 for
+# where the arch/ABI requirements below come from.
+#
+# What this pins, and why:
+#   - arm / cortex-a9 / NEON / VFPv3 / EABIhf: reproduces the stock `MiSTer`
+#     binary's own readelf -A tags (abi-contract.md §1.1, T1-T4).
+#     BR2_ARM_FPU_NEON is the Buildroot FPU choice that reproduces
+#     "Tag_FP_arch: VFPv3" + "Tag_Advanced_SIMD_arch: NEONv1" together (gcc
+#     -mfpu=neon — NEON mandates the 32-register VFPv3 variant; cortex-a9 only
+#     select BR2_ARM_CPU_MAYBE_HAS_{NEON,VFPV3}, so ENABLE_NEON/ENABLE_VFP are
+#     both required or Buildroot silently falls back to a narrower FPU).
+#     EABIhf itself is NOT a line below because it is already Buildroot's
+#     default the moment a CPU with an FPU is selected (arch/Config.in.arm:
+#     `default BR2_ARM_EABIHF if BR2_ARM_CPU_HAS_FPU`) — savedefconfig
+#     correctly drops it as non-divergent; verified present via readelf in
+#     the P1.2 acceptance run.
+#   - glibc via the Buildroot-internal toolchain (not Bootlin, not
+#     musl/uClibc): see the ADR. Also not a line below — glibc is already the
+#     default C library for the internal toolchain (toolchain-buildroot's own
+#     `default BR2_TOOLCHAIN_BUILDROOT_GLIBC`) — musl is a non-goal (PLAN §3)
+#     and would not even start the stock binary (abi-contract.md §1.3).
+#   - BR2_KERNEL_HEADERS_6_18: matches the 6.18.y kernel P1.3 targets. Left
+#     explicit (rather than trusting the BR2_LINUX_KERNEL-linked default)
+#     since this defconfig does not build a kernel itself.
+#   - BR2_TOOLCHAIN_BUILDROOT_CXX: libstdc++.so.6 is a *toolchain*-provided
+#     library, not a package (docs/abi-contract.md §2.2 rows L5/L6 say so
+#     explicitly), and T8 requires it to export GLIBCXX_3.4.21 + CXXABI_1.3.9.
+#     Main_MiSTer is C++, so this is non-optional for the project — and since
+#     it is a toolchain knob rather than a package it belongs here in P1.2
+#     rather than in P2.1's package set. GCC 14.3 satisfies T8 with enormous
+#     margin (T8 needs only GCC >= 5.1); verified by readelf in the P1.2
+#     acceptance run.
+#   - No rootfs *packages* beyond Buildroot's own defaults: this is
+#     deliberately BusyBox + the toolchain's own runtime libraries (libc, the
+#     post-2.34 libpthread/librt compat stubs, libstdc++ — installed by the
+#     toolchain, not by package selection). The ten DT_NEEDED *packages*
+#     (zlib, bzip2, libpng, freetype, imlib2, bluez — L7-L12) are P2.1's job,
+#     not this task's.
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+BR2_KERNEL_HEADERS_6_18=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# P1.11 (A3): assemble zImage_dtb (plain `cat zImage dtb`) and assert its
+# U-Boot contract (scripts/check-zimage-dtb.sh) after every image build. Post-
+# image scripts run with $(BR_DIR) (work/buildroot/) as CWD (system/Config.in:
+# "executed from the main Buildroot source directory"), so this path is
+# relative to THAT directory, not BR2_EXTERNAL -- verified against the working
+# reference wrapper at /mnt/source/sb-enema (`../../sb_enema/board/sb-enema/
+# post-image.sh` from a BR_DIR one level deeper than ours). A build-time
+# checker failure here fails `make all` (Buildroot's Makefile runs post-image
+# scripts as plain recipe lines; a nonzero exit stops make).
+BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"

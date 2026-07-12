@@ -1,0 +1,334 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Sun, 12 Jul 2026 00:00:00 +0000
+Subject: [PATCH] ARM: dts: socfpga: de10nano: MiSTer board support
+
+Mainline's socfpga_cyclone5_de10nano.dts (144616a80889, v6.14) describes a
+bare Terasic DE10-Nano: ethernet, the three GPIO banks, i2c0 + the on-board
+accelerometer, mmc0 and uart0. MiSTer needs considerably more of the SoC
+switched on. This adds, all of it diffed value-by-value against the DTB
+decompiled from a running stock MiSTer (docs/stock-inventory/stock.dts):
+
+  - usb1                 dr_mode = "host", disable-over-current
+  - fpga_bridge0/1/2     lwhps2fpga, hps2fpga, fpga2hps (fpga2sdram stays off)
+  - spi0 + spiusb@0      "MiSTer,spi-audio" @10 MHz, cpha/cpol  -> patch 0002
+  - spi1 + spidev@0      "rohm,dh2228fv" @25 MHz -> /dev/spidev1.0  (see below)
+  - i2c2                 the third of exactly three i2c adapters (see A14)
+  - uart1                enabled; DMA deleted from BOTH uarts (DW UART DMA is
+                         unreliable on this SoC; stock deletes it too)
+  - MiSTer_fb@22000000   reg = <0x22000000 0x800000>, GIC SPI 40 -> patch 0001
+  - gmac1                phy-mode "rgmii" + all 12 KSZ9031 *-skew-ps values +
+                         max-frame-size = <3800>
+  - i2c_gpio             bit-banged RTC bus on portb 22/23, three candidate
+                         RTCs (only one is populated on any given add-on board)
+  - gpio-leds hps0       label "hps_led0" (ABI: Main_MiSTer polls
+                         /sys/class/leds/hps_led0/brightness_hw_changed)
+  - regulator_3_3v       + mmc0 vmmc-supply/vqmmc-supply
+  - aliases/ethernet0    U-Boot's fdt_fixup_ethernet() needs it to inject $ethaddr
+
+A14 -- THE CONSTRAINT THIS PATCH MUST NOT BREAK
+-----------------------------------------------
+Main_MiSTer refuses to scan past /dev/i2c-2 (Main:smbus.cpp:214,
+"if (force_bus > 2) return -1") and finds the ADV7513 HDMI transmitter by
+probing 0x39 on each of /dev/i2c-0..2 (Main:video.cpp:1448). If this DTB ever
+enables a FOURTH i2c adapter, the transmitter can land on /dev/i2c-3 and HDMI
+dies with no error message at all.
+
+This DTB enables exactly three i2c adapters -- i2c0 (0xffc04000), i2c2
+(0xffc06000) and the bit-banged i2c_gpio -- the same three, on the same pins,
+as stock. i2c1 and i2c3 stay disabled. There are no "i2c" aliases, so
+i2c_add_adapter() takes the dynamic path (i2c-core-base.c:1662-1677) and
+idr_alloc()s from __i2c_first_dynamic_bus_num, which is 0: nothing here calls
+i2c_register_board_info(), and i2c_init()'s of_alias_get_highest_id("i2c")
+finds no alias to raise it. Three adapters numbered from zero can only be
+{0,1,2}. See docs/dts-comparison.md ("A14") for the full argument.
+
+/dev/spidev1.0 WITHOUT A KERNEL PATCH
+-------------------------------------
+Stock's spi1 child used compatible = "altspi", which is not a mainline binding
+-- it worked only because the fork added that one string to spidev_dt_ids[]
+(fork commit 246984fce). Since we author our own DTS we instead use
+"rohm,dh2228fv", which mainline's spidev already accepts (6.18
+drivers/spi/spidev.c, spidev_dt_ids[]), so the fork's spidev hunk (planned as
+0005-spidev-accept-altspi-compatible.patch) is DROPPED, not carried. The node
+still lands on SPI bus 1 CS 0 -> /dev/spidev1.0, which is what
+Main_MiSTer/brightness.cpp opens. spidev_of_check() only rejects the literal
+string "spidev" in DT and is satisfied by this compatible.
+
+Provenance
+----------
+Origin:       aa8afe109 "de10-nano dts" plus 12 follow-ups (e40563ae1,
+              2548c2978, 6827e7644, 6c2d53934, 246984fce, 1337de1fd,
+              c4d12c768, 7d2df2d2d, c5066763c, 071d9092e, f52690120,
+              077c2c317) in MiSTer-devel/Linux-Kernel_MiSTer, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer
+Author:       Sorgelig <pour.garbage@gmail.com>; 6827e7644 by antoniovillena.
+Upstream:     No. Mainline gained a minimal de10nano DTS in 144616a80889
+              (v6.14) which is insufficient (PLAN.md 4.1a). The MiSTer nodes
+              (MiSTer_fb, MiSTer,spi-audio) reference out-of-tree drivers and
+              are not upstreamable as-is. Disposition "carry"
+              (docs/patch-provenance.md 3.1, 5).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.7.
+              Re-authored on top of mainline's board DTS rather than replayed:
+              the fork's file was a full board DTS at the old path
+              arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts (note the
+              underscores), and 6.18 moved the tree into vendor subdirs. Node
+              labels are unchanged, so every &node override applies as-is.
+              The fork also carried a hunk in the SHARED socfpga.dtsi
+              (i2c1 clock-frequency). It is NOT carried: i2c1 is disabled on
+              this board in stock and here, so the property is never read, and
+              dropping it keeps this patch off a file shared by every socfpga
+              board.
+Divergences from stock, each with its justification, are tabulated in
+docs/dts-comparison.md. Verified: dtbs builds with zero new dtc warnings
+(default flags AND W=1); the built DTB was decompiled and compared node-by-node
+against docs/stock-inventory/stock.dts.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 227 ++++++++++++++--
+ 1 file changed, 213 insertions(+), 14 deletions(-)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -3,6 +3,11 @@
+  * Copyright (C) 2017, Intel Corporation
+  *
+  * based on socfpga_cyclone5_de0_nano_soc.dts
++ *
++ * MiSTer additions (2026): the DE10-Nano as used by the MiSTer project.
++ * Every value here was diffed against the DTB decompiled from a running stock
++ * MiSTer (docs/stock-inventory/stock.dts); the node-by-node comparison and the
++ * reason for every divergence live in docs/dts-comparison.md.
+  */
+ /dts-v1/;
+ 
+@@ -14,7 +19,20 @@
+ 	model = "Terasic DE10-Nano";
+ 	compatible = "terasic,de10-nano", "altr,socfpga-cyclone5", "altr,socfpga";
+ 
++	aliases {
++		/*
++		 * Load-bearing: U-Boot's fdt_fixup_ethernet() walks /aliases
++		 * looking for "ethernetN" and writes $ethaddr into the node it
++		 * points at (u-boot common/fdt_support.c:470, called from
++		 * image_setup_libfdt() common/image-fdt.c:497).  Without this
++		 * alias the MAC address is never injected.
++		 */
++		ethernet0 = &gmac1;
++	};
++
+ 	chosen {
++		/* Overwritten by U-Boot's fdt_chosen() from $bootargs. */
++		bootargs = "earlyprintk";
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
+@@ -39,18 +57,107 @@
+ 			 */
+ 		};
+ 	};
++
++	regulator_3_3v: 3-3-v-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "3.3V";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		/*
++		 * ABI: the LED must be named "hps_led0" (the class device name
++		 * comes from "label").  Main_MiSTer polls
++		 * /sys/class/leds/hps_led0/brightness_hw_changed.
++		 */
++		hps0 {
++			label = "hps_led0";
++			gpios = <&portb 24 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "mmc0";
++		};
++	};
++
++	/*
++	 * Bit-banged I2C for the (optional) MiSTer RTC add-on board.
++	 * This is the THIRD and LAST i2c adapter: with i2c0 and i2c2 it gives
++	 * exactly three adapters -> /dev/i2c-0, /dev/i2c-1, /dev/i2c-2.
++	 * Main_MiSTer never scans past /dev/i2c-2 (smbus.cpp:214), so no
++	 * fourth adapter may ever be added here.  See docs/abi-contract.md.
++	 */
++	i2c_gpio {
++		compatible = "i2c-gpio";
++		#address-cells = <1>;
++		#size-cells = <0>;
++		gpios = <&portb 22 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>, /* SDA */
++			<&portb 23 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>; /* SCL */
++		i2c-gpio,delay-us = <2>;
++
++		/* Only one of these is populated on any given add-on board. */
++		rtc@51 {
++			compatible = "nxp,pcf8563";
++			reg = <0x51>;
++		};
++
++		rtc@68 {
++			compatible = "st,m41t81";
++			reg = <0x68>;
++		};
++
++		rtc@6f {
++			compatible = "microchip,mcp7941x";
++			reg = <0x6f>;
++		};
++	};
++
++	/*
++	 * MiSTer framebuffer: a window into FPGA-side memory.  The driver
++	 * (drivers/video/fbdev/MiSTer_fb.c, patch 0001) matches on the
++	 * compatible string, not on the node name.  Stock names this node
++	 * "MiSTer_fb" with no unit address; we add "@22000000" to silence
++	 * dtc's unit_address_vs_reg check.  The platform device is named
++	 * "22000000.MiSTer_fb" either way -- of_device_make_bus_id() builds
++	 * it from the translated reg plus %pOFn, which strips the unit
++	 * address (drivers/of/device.c:298-305).
++	 * IRQ 40 is GIC SPI 40 == FPGA-to-HPS interrupt f2h_irq0.
++	 */
++	MiSTer_fb@22000000 {
++		compatible = "MiSTer_fb";
++		reg = <0x22000000 0x800000>;
++		interrupt-parent = <&intc>;
++		interrupts = <0 40 IRQ_TYPE_EDGE_RISING>;
++	};
+ };
+ 
+ &gmac1 {
+ 	/* Uses a KSZ9031RNX phy */
+-	phy-mode = "rgmii-id";
+-	rxd0-skew-ps = <420>;
+-	rxd1-skew-ps = <420>;
+-	rxd2-skew-ps = <420>;
+-	rxd3-skew-ps = <420>;
+-	txen-skew-ps = <0>;
+-	rxdv-skew-ps = <420>;
+ 	status = "okay";
++
++	/*
++	 * "rgmii" (not mainline's "rgmii-id"): the delay is produced by the
++	 * explicit skew values below, exactly as stock does.  There is no
++	 * mdio/phy child node, so micrel's ksz9031_config_init() walks up the
++	 * device parents to find an of_node and reads the skews from THIS node
++	 * (drivers/net/phy/micrel.c).
++	 */
++	phy-mode = "rgmii";
++
++	txd0-skew-ps = <0>;	/* -420ps */
++	txd1-skew-ps = <0>;	/* -420ps */
++	txd2-skew-ps = <0>;	/* -420ps */
++	txd3-skew-ps = <0>;	/* -420ps */
++	rxd0-skew-ps = <420>;	/* 0ps */
++	rxd1-skew-ps = <420>;	/* 0ps */
++	rxd2-skew-ps = <420>;	/* 0ps */
++	rxd3-skew-ps = <420>;	/* 0ps */
++	txen-skew-ps = <0>;	/* -420ps */
++	txc-skew-ps = <1860>;	/* 960ps */
++	rxdv-skew-ps = <420>;	/* 0ps */
++	rxc-skew-ps = <1680>;	/* 780ps */
++
++	max-frame-size = <3800>;
+ };
+ 
+ &gpio0 {
+@@ -65,6 +172,7 @@
+ 	status = "okay";
+ };
+ 
++/* i2c adapter #1 of 3 (see i2c_gpio above). */
+ &i2c0 {
+ 	clock-frequency = <100000>;
+ 	status = "okay";
+@@ -79,9 +187,49 @@
+ 	};
+ };
+ 
++/* i2c adapter #2 of 3.  Carries the ADV7513 HDMI transmitter on some boards;
++ * Main_MiSTer probes 0x39 across /dev/i2c-0..2 at runtime (video.cpp:1448).
++ */
++&i2c2 {
++	clock-frequency = <100000>;
++	status = "okay";
++};
++
+ &mmc0 {
+ 	/* micro SD card socket J11 */
++	vmmc-supply = <&regulator_3_3v>;
++	vqmmc-supply = <&regulator_3_3v>;
++	status = "okay";
++};
++
++/* SPI bus 0 -> the MiSTer audio link (sound/drivers/MiSTer-audio-spi.c). */
++&spi0 {
+ 	status = "okay";
++
++	spiusb@0 {
++		compatible = "MiSTer,spi-audio";
++		reg = <0>;
++		spi-max-frequency = <10000000>;
++		spi-cpha;
++		spi-cpol;
++	};
++};
++
++/*
++ * SPI bus 1 -> userspace via spidev.  Main_MiSTer opens /dev/spidev1.0
++ * (brightness.cpp) to talk to the add-on hub.  Stock used compatible =
++ * "altspi", which only worked because the fork added that string to
++ * spidev_dt_ids[].  We use "rohm,dh2228fv", which mainline's spidev already
++ * accepts (drivers/spi/spidev.c), so no kernel patch is needed.
++ */
++&spi1 {
++	status = "okay";
++
++	spidev@0 {
++		compatible = "rohm,dh2228fv";
++		reg = <0>;
++		spi-max-frequency = <25000000>;
++	};
+ };
+ 
+ &uart0 {
+@@ -92,4 +240,31 @@
+ 	 * no handshaking lines
+ 	 */
+ 	clock-frequency = <100000000>;
++
++	/* DW UART DMA is unreliable on this SoC; stock deletes it too. */
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++};
++
++&uart1 {
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++};
++
++&usb1 {
++	dr_mode = "host";
++	disable-over-current;
++	status = "okay";
++};
++
++&fpga_bridge0 {
++	status = "okay";
++};
++
++&fpga_bridge1 {
++	status = "okay";
++};
++
++&fpga_bridge2 {
++	status = "okay";
+ };
+-- 
+2.51.0
+

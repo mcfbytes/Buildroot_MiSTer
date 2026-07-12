@@ -1,0 +1,44 @@
+From f0982bf2c31d5d691492b80ad7e540f138944add Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Wed, 20 Nov 2019 19:00:48 +0800
+Subject: [PATCH 1/1] usbhid: apply the jspoll interval override to gamepads too
+
+usbhid's `jspoll` module parameter (override the USB interrupt
+polling interval) only matched HID_GD_JOYSTICK in usbhid_start()'s
+application-collection switch. Devices whose top-level usage is
+HID_GD_GAMEPAD instead (increasingly common) were silently left at
+their hardware-default interval. Add HID_GD_GAMEPAD to the same case.
+
+Provenance
+----------
+Origin:       f0982bf2c31d5d691492b80ad7e540f138944add
+              "usbhid: apply jspoll for gamepad usage as well."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2019-11-20, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/f0982bf2c31d5d691492b80ad7e540f138944add
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No (verified: drivers/hid/usbhid/hid-core.c's usbhid_start()
+              switch still has only `case HID_GD_JOYSTICK:` for
+              hid_jspoll_interval). Disposition "carry"
+              (docs/patch-provenance.md class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Dropped the fork's 3 added pr_info() debug lines (would
+              print on every single HID endpoint of every USB HID device
+              at every attach -- unconditional dmesg spam unrelated to
+              the actual fix); kept the functional
+              `case HID_GD_GAMEPAD:` fallthrough addition.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/usbhid/hid-core.c b/drivers/hid/usbhid/hid-core.c
+index 4a493b46d..088552d82 100644
+--- a/drivers/hid/usbhid/hid-core.c
++++ b/drivers/hid/usbhid/hid-core.c
+@@ -1137,6 +1137,7 @@ static int usbhid_start(struct hid_device *hid)
+ 				interval = hid_mousepoll_interval;
+ 			break;
+ 		case HID_GD_JOYSTICK:
++		case HID_GD_GAMEPAD:
+ 			if (hid_jspoll_interval > 0)
+ 				interval = hid_jspoll_interval;
+ 			break;

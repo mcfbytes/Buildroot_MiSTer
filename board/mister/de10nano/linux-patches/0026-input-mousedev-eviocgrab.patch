@@ -1,0 +1,518 @@
+From 2ac0aa1e833a808d94c53a086e8317cd0258e983 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sun, 26 May 2019 08:26:42 +0800
+Subject: [PATCH 1/1] input: keep mousedev alive under an evdev EVIOCGRAB, and
+ add EVIOCGRAB to mousedev itself
+
+Main_MiSTer reads a USB mouse through *two* nodes at once: it opens
+/dev/input/eventN (evdev) for identification and button/axis events, and
+/dev/input/mouseN (mousedev) for the actual pointer data -- it switches
+the mouse into ImPS/2 mode and parses the 4-byte PS/2 packets
+(Main_MiSTer input.cpp:5177 opens every "event*" *and* "mouse*" node;
+:5237 writes the ImPS/2 magic sequence; :6144 reads the 4-byte packets).
+Whenever a core is running or the OSD is up it also grabs every fd in
+that pool for exclusive use -- including the evdev node of the very mouse
+whose mousedev node it is reading (input.cpp:6463, input_switch(), and
+:5528 on hotplug).
+
+Those two facts are in direct conflict on a stock kernel, and that is what
+this patch resolves. Two independent changes:
+
+1. drivers/input/input.c + include/linux/input.h -- THE LOAD-BEARING HALF.
+
+   input_pass_values() short-circuits on dev->grab: when a handle holds an
+   exclusive grab (only evdev ever takes one -- input_grab_device() has no
+   other caller in the tree), the event batch is delivered to that handle
+   *and to nobody else*. Every other handle attached to the device --
+   mousedev, joydev, sysrq -- is starved for the duration of the grab.
+
+   So on an unpatched kernel, the moment Main_MiSTer issues
+   EVIOCGRAB on the mouse's evdev node, /dev/input/mouseN goes silent, and
+   with it the pointer in *every* core. The mouse works in the file browser
+   (not grabbed) and dies the moment you launch something. This is not a
+   peripheral quirk; it affects every MiSTer user who plugs in a mouse.
+
+   The fix: a new opt-in flag on struct input_handler, ->ignore_grab.
+   input_pass_values() still delivers to the grabbing handle first, and
+   then makes a second pass over the device's open handles delivering the
+   same batch to any handler that set the flag. mousedev sets it; nothing
+   else does. Semantics are deliberately narrow:
+     - exempt handlers see the batch *after* the grabbing handle has seen
+       it (an evdev grab still wins, and a filter that ate an event still
+       hides it);
+     - their return value is discarded -- an exempt handler observes the
+       stream, it does not get to shorten it for the autorepeat pass;
+     - an unopened exempt handle is skipped, as before;
+     - with no grab in force, nothing changes at all: the flag is only
+       read on the dev->grab path.
+
+   The original does this by string-matching handle->name against "mouse"
+   inside the input core. That works only because mousedev happens to name
+   its handles "mouse%d", couples the core to a naming convention, and puts
+   a strncmp() in the event hot path. The flag says the same thing exactly
+   (mousedev is the only handler with handles named mouse*), says it where
+   the policy belongs -- in the handler that wants the exemption -- and
+   costs a byte and a predictable branch.
+
+2. drivers/input/mousedev.c -- EVIOCGRAB support on mousedev itself.
+
+   Main_MiSTer issues EVIOCGRAB on *every* descriptor in its pool, mouseN
+   nodes included. mousedev has no ->unlocked_ioctl at all in mainline, so
+   that ioctl returns -ENOTTY; Main_MiSTer ignores the error, and the
+   result is that the mouse node is not actually exclusive. This half gives
+   mousedev the same grab semantics evdev has, at the mousedev-client level:
+
+     ioctl(fd, EVIOCGRAB, 1) -> this client becomes the sole recipient of
+                               packets from that mousedev; -EBUSY if
+                               another client already holds the grab.
+     ioctl(fd, EVIOCGRAB, 0) -> release; -EINVAL if this client is not the
+                               holder.
+
+   A grab is per-mousedev, not global: grabbing /dev/input/mouse0 does not
+   silence /dev/input/mice, because mousedev_event() feeds the mixdev
+   through a separate mousedev_notify_readers() call. The grab is dropped
+   automatically on close (mousedev_release()), so a crashed client cannot
+   wedge the node. Any other ioctl returns -ENOTTY, exactly as before this
+   patch -- the original returned -EINVAL for unknown commands, which would
+   have been a gratuitous ABI change for anything that probes the node.
+
+   Implementation mirrors evdev's grab/ungrab verbatim (RCU-protected
+   ->grab pointer, mutex-serialised, synchronize_rcu() on release);
+   mousedev_notify_readers() is split so the per-client body can be reused
+   for the single grabbed client and for the client-list walk.
+   ->compat_ioctl is wired to the native handler because EVIOCGRAB's
+   argument is a truth value, not a pointer, so no compat_ptr() translation
+   is needed. (CONFIG_COMPAT is off on 32-bit ARM, so this path is not
+   compiled for the DE10-Nano; it is kept correct for other arches.)
+
+3. drivers/input/mousedev.c -- tap-to-click suppression for DS4/DualSense.
+
+   mousedev's touchpad emulation synthesises a left-click when a touch is
+   released inside tap_time. A DualShock 4 / DualSense touchpad is used as
+   a plain pointing device on MiSTer (Main_MiSTer QUIRK_DS4TOUCH reads it
+   through the same mouseN node), where that synthetic click is a misfire:
+   every time you lift a finger you get a spurious button-1 press. Suppress
+   it for the four Sony controller IDs the original names, via a per-device
+   dis_t2c flag set at mousedev_create() time.
+
+   Known gap, carried deliberately: the DualSense Edge (054c:0df2) is *not*
+   in the list, because it is not in the original either (it postdates it).
+   An Edge used as a touchpad-mouse will still tap-to-click. Fixing that is
+   a one-line table addition, but it is a behaviour change relative to
+   stock MiSTer, not a forward-port, so it is left out of this patch.
+
+Provenance
+----------
+Origin:       2ac0aa1e833a808d94c53a086e8317cd0258e983
+              "input: support for mouseX and mice in EVIOCGRAB mode."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2019-05-26.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/2ac0aa1e833a808d94c53a086e8317cd0258e983
+              52a56ae3dc7f82ff6339c1be1de05d8b2d997ef9
+              "mousedev: disable touch to click on DualShock4 and DualSense."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-20.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/52a56ae3dc7f82ff6339c1be1de05d8b2d997ef9
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, and not plausibly upstreamable as-is. Verified against
+              6.18.38: input_pass_values() (drivers/input/input.c:111)
+              still delivers to dev->grab exclusively, and mousedev's
+              file_operations (drivers/input/mousedev.c:773) still has no
+              ->unlocked_ioctl. Mainline's position is that a process which
+              grabs a device gets it all; an application wanting both evdev
+              and mousedev views of one mouse is a MiSTer-specific shape.
+              Disposition "carry" (docs/patch-provenance.md class D,
+              constraint A12).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9
+              (escalated to [OPUS] per TASKS.md P1.9: core input subsystem,
+              not a HID quirk).
+              * input_to_handler() no longer exists. Upstream commit
+                d469647bafd9 ("Input: simplify event handling logic",
+                Dmitry Torokhov, 2024-07-03, v6.11) replaced it with a
+                per-handle ->handle_events() method, bound once at
+                registration by input_handle_setup_event_handler()
+                (drivers/input/input.c:2583) to one of
+                input_handle_events_{default,filter,null} or the handler's
+                own ->events; 071b24b54d2d (v6.12) then fixed where that
+                binding happens. And 21d8dd0daf4c ("Input: use guard
+                notation in input core", 2024-11-06, v6.14) turned the RCU
+                read section into a scoped_guard(rcu) block, so the grab
+                fast path now exits with `break`, not an explicit
+                rcu_read_unlock() + return. Both hunks were rewritten
+                against that structure; the 5.15 diff does not apply in
+                any form.
+              * struct input_handler already has an unrelated field named
+                ->passive_observer (do not power the device up just for
+                this handler); the new flag is ->ignore_grab to avoid any
+                confusion with it.
+              * mousedev.c itself is structurally unchanged since 5.15, so
+                the mousedev hunks are near-mechanical -- but the ioctl,
+                the -ENOTTY default, and the RCU annotations were rewritten
+                to evdev's idiom (rcu_dereference_protected() with an
+                explicit lockdep_is_held() rather than a bare __rcu
+                dereference).
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index a500e1e27..a62ebfe71 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -120,6 +120,26 @@ static void input_pass_values(struct input_dev *dev,
+ 		handle = rcu_dereference(dev->grab);
+ 		if (handle) {
+ 			count = handle->handle_events(handle, vals, count);
++
++			/*
++			 * An exclusive grab silences every other handle on the
++			 * device -- except handlers that asked to be exempt
++			 * (->ignore_grab, i.e. mousedev). They see the batch
++			 * the grabbing handle accepted, after it has seen it.
++			 * Their return value is deliberately discarded: an
++			 * exempt handler observes the stream, it does not get
++			 * to shorten it for the autorepeat pass below.
++			 */
++			if (count) {
++				list_for_each_entry_rcu(handle, &dev->h_list,
++							d_node) {
++					if (handle->open &&
++					    handle->handler->ignore_grab)
++						handle->handle_events(handle,
++								      vals,
++								      count);
++				}
++			}
+ 			break;
+ 		}
+ 
+diff --git a/drivers/input/mousedev.c b/drivers/input/mousedev.c
+index 505c562a5..f1ec681d5 100644
+--- a/drivers/input/mousedev.c
++++ b/drivers/input/mousedev.c
+@@ -48,6 +48,18 @@ static unsigned tap_time = 200;
+ module_param(tap_time, uint, 0644);
+ MODULE_PARM_DESC(tap_time, "Tap time for touchpads in absolute mode (msecs)");
+ 
++/*
++ * Game-controller touchpads for which tap-to-click emulation is suppressed.
++ * Values mirror drivers/hid/hid-ids.h (USB_VENDOR_ID_SONY and the DualShock 4 /
++ * DualSense product IDs); that header is private to drivers/hid, so the ids are
++ * repeated here rather than included across subsystems.
++ */
++#define MOUSEDEV_VENDOR_ID_SONY			0x054c
++#define MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER	0x05c4
++#define MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER_2	0x09cc
++#define MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER_DONGLE	0x0ba0
++#define MOUSEDEV_DEVICE_ID_SONY_PS5_CONTROLLER	0x0ce6
++
+ struct mousedev_hw_data {
+ 	int dx, dy, dz;
+ 	int x, y;
+@@ -59,6 +71,7 @@ struct mousedev {
+ 	int open;
+ 	struct input_handle handle;
+ 	wait_queue_head_t wait;
++	struct mousedev_client __rcu *grab;
+ 	struct list_head client_list;
+ 	spinlock_t client_lock; /* protects client_list */
+ 	struct mutex mutex;
+@@ -75,6 +88,9 @@ struct mousedev {
+ 	int frac_dx, frac_dy;
+ 	unsigned long touch;
+ 
++	/* suppress tap-to-click emulation (game-controller touchpads) */
++	bool dis_t2c;
++
+ 	int (*open_device)(struct mousedev *mousedev);
+ 	void (*close_device)(struct mousedev *mousedev);
+ };
+@@ -258,64 +274,108 @@ static void mousedev_key_event(struct mousedev *mousedev,
+ 	}
+ }
+ 
+-static void mousedev_notify_readers(struct mousedev *mousedev,
+-				    struct mousedev_hw_data *packet)
++/* Returns true if the client has data pending and its readers must be woken. */
++static bool mousedev_notify_client(struct mousedev *mousedev,
++				   struct mousedev_client *client,
++				   struct mousedev_hw_data *packet)
+ {
+-	struct mousedev_client *client;
+ 	struct mousedev_motion *p;
+ 	unsigned int new_head;
+-	int wake_readers = 0;
+ 
+-	rcu_read_lock();
+-	list_for_each_entry_rcu(client, &mousedev->client_list, node) {
++	/* Just acquire the lock, interrupts already disabled */
++	spin_lock(&client->packet_lock);
+ 
+-		/* Just acquire the lock, interrupts already disabled */
+-		spin_lock(&client->packet_lock);
+-
+-		p = &client->packets[client->head];
+-		if (client->ready && p->buttons != mousedev->packet.buttons) {
+-			new_head = (client->head + 1) % PACKET_QUEUE_LEN;
+-			if (new_head != client->tail) {
+-				p = &client->packets[client->head = new_head];
+-				memset(p, 0, sizeof(struct mousedev_motion));
+-			}
++	p = &client->packets[client->head];
++	if (client->ready && p->buttons != mousedev->packet.buttons) {
++		new_head = (client->head + 1) % PACKET_QUEUE_LEN;
++		if (new_head != client->tail) {
++			p = &client->packets[client->head = new_head];
++			memset(p, 0, sizeof(struct mousedev_motion));
+ 		}
++	}
+ 
+-		if (packet->abs_event) {
+-			p->dx += packet->x - client->pos_x;
+-			p->dy += packet->y - client->pos_y;
+-			client->pos_x = packet->x;
+-			client->pos_y = packet->y;
+-		}
++	if (packet->abs_event) {
++		p->dx += packet->x - client->pos_x;
++		p->dy += packet->y - client->pos_y;
++		client->pos_x = packet->x;
++		client->pos_y = packet->y;
++	}
+ 
+-		client->pos_x += packet->dx;
+-		client->pos_x = clamp_val(client->pos_x, 0, xres);
++	client->pos_x += packet->dx;
++	client->pos_x = clamp_val(client->pos_x, 0, xres);
+ 
+-		client->pos_y += packet->dy;
+-		client->pos_y = clamp_val(client->pos_y, 0, yres);
++	client->pos_y += packet->dy;
++	client->pos_y = clamp_val(client->pos_y, 0, yres);
+ 
+-		p->dx += packet->dx;
+-		p->dy += packet->dy;
+-		p->dz += packet->dz;
+-		p->buttons = mousedev->packet.buttons;
++	p->dx += packet->dx;
++	p->dy += packet->dy;
++	p->dz += packet->dz;
++	p->buttons = mousedev->packet.buttons;
+ 
+-		if (p->dx || p->dy || p->dz ||
+-		    p->buttons != client->last_buttons)
+-			client->ready = 1;
++	if (p->dx || p->dy || p->dz ||
++	    p->buttons != client->last_buttons)
++		client->ready = 1;
+ 
+-		spin_unlock(&client->packet_lock);
++	spin_unlock(&client->packet_lock);
+ 
+-		if (client->ready) {
+-			kill_fasync(&client->fasync, SIGIO, POLL_IN);
+-			wake_readers = 1;
+-		}
++	if (!client->ready)
++		return false;
++
++	kill_fasync(&client->fasync, SIGIO, POLL_IN);
++	return true;
++}
++
++static void mousedev_notify_readers(struct mousedev *mousedev,
++				    struct mousedev_hw_data *packet)
++{
++	struct mousedev_client *client;
++	bool wake_readers = false;
++
++	rcu_read_lock();
++
++	client = rcu_dereference(mousedev->grab);
++	if (client) {
++		wake_readers = mousedev_notify_client(mousedev, client, packet);
++	} else {
++		list_for_each_entry_rcu(client, &mousedev->client_list, node)
++			if (mousedev_notify_client(mousedev, client, packet))
++				wake_readers = true;
+ 	}
++
+ 	rcu_read_unlock();
+ 
+ 	if (wake_readers)
+ 		wake_up_interruptible(&mousedev->wait);
+ }
+ 
++static int mousedev_grab(struct mousedev *mousedev,
++			 struct mousedev_client *client)
++{
++	if (rcu_dereference_protected(mousedev->grab,
++				      lockdep_is_held(&mousedev->mutex)))
++		return -EBUSY;
++
++	rcu_assign_pointer(mousedev->grab, client);
++
++	return 0;
++}
++
++static int mousedev_ungrab(struct mousedev *mousedev,
++			   struct mousedev_client *client)
++{
++	struct mousedev_client *grab =
++		rcu_dereference_protected(mousedev->grab,
++					  lockdep_is_held(&mousedev->mutex));
++
++	if (grab != client)
++		return -EINVAL;
++
++	rcu_assign_pointer(mousedev->grab, NULL);
++	synchronize_rcu();
++
++	return 0;
++}
++
+ static void mousedev_touchpad_touch(struct mousedev *mousedev, int value)
+ {
+ 	if (!value) {
+@@ -326,14 +386,24 @@ static void mousedev_touchpad_touch(struct mousedev *mousedev, int value)
+ 			 * Toggle left button to emulate tap.
+ 			 * We rely on the fact that mousedev_mix always has 0
+ 			 * motion packet so we won't mess current position.
++			 *
++			 * Game-controller touchpads (DS4/DualSense) opt out:
++			 * they are used as a plain pointing device and the
++			 * synthetic click is a misfire, not a feature.
+ 			 */
+-			set_bit(0, &mousedev->packet.buttons);
+-			set_bit(0, &mousedev_mix->packet.buttons);
++			if (!mousedev->dis_t2c) {
++				set_bit(0, &mousedev->packet.buttons);
++				set_bit(0, &mousedev_mix->packet.buttons);
++			}
++
+ 			mousedev_notify_readers(mousedev, &mousedev_mix->packet);
+ 			mousedev_notify_readers(mousedev_mix,
+ 						&mousedev_mix->packet);
+-			clear_bit(0, &mousedev->packet.buttons);
+-			clear_bit(0, &mousedev_mix->packet.buttons);
++
++			if (!mousedev->dis_t2c) {
++				clear_bit(0, &mousedev->packet.buttons);
++				clear_bit(0, &mousedev_mix->packet.buttons);
++			}
+ 		}
+ 		mousedev->touch = mousedev->pkt_count = 0;
+ 		mousedev->frac_dx = 0;
+@@ -522,6 +592,10 @@ static int mousedev_release(struct inode *inode, struct file *file)
+ 	struct mousedev_client *client = file->private_data;
+ 	struct mousedev *mousedev = client->mousedev;
+ 
++	mutex_lock(&mousedev->mutex);
++	mousedev_ungrab(mousedev, client);
++	mutex_unlock(&mousedev->mutex);
++
+ 	mousedev_detach_client(mousedev, client);
+ 	kfree(client);
+ 
+@@ -770,6 +844,40 @@ static __poll_t mousedev_poll(struct file *file, poll_table *wait)
+ 	return mask;
+ }
+ 
++static long mousedev_ioctl(struct file *file, unsigned int cmd,
++			   unsigned long arg)
++{
++	struct mousedev_client *client = file->private_data;
++	struct mousedev *mousedev = client->mousedev;
++	int retval;
++
++	retval = mutex_lock_interruptible(&mousedev->mutex);
++	if (retval)
++		return retval;
++
++	if (!mousedev->exist) {
++		retval = -ENODEV;
++		goto out;
++	}
++
++	switch (cmd) {
++	case EVIOCGRAB:
++		if (arg)
++			retval = mousedev_grab(mousedev, client);
++		else
++			retval = mousedev_ungrab(mousedev, client);
++		break;
++
++	default:
++		retval = -ENOTTY;
++		break;
++	}
++
++ out:
++	mutex_unlock(&mousedev->mutex);
++	return retval;
++}
++
+ static const struct file_operations mousedev_fops = {
+ 	.owner		= THIS_MODULE,
+ 	.read		= mousedev_read,
+@@ -777,6 +885,15 @@ static const struct file_operations mousedev_fops = {
+ 	.poll		= mousedev_poll,
+ 	.open		= mousedev_open,
+ 	.release	= mousedev_release,
++	.unlocked_ioctl	= mousedev_ioctl,
++#ifdef CONFIG_COMPAT
++	/*
++	 * EVIOCGRAB's argument is a truth value, not a pointer, so the
++	 * compat entry point needs no compat_ptr() translation and the
++	 * native handler can be used verbatim.
++	 */
++	.compat_ioctl	= mousedev_ioctl,
++#endif
+ 	.fasync		= mousedev_fasync,
+ 	.llseek		= noop_llseek,
+ };
+@@ -867,6 +984,12 @@ static struct mousedev *mousedev_create(struct input_dev *dev,
+ 			     mixdev ? SINGLE_DEPTH_NESTING : 0);
+ 	init_waitqueue_head(&mousedev->wait);
+ 
++	mousedev->dis_t2c = dev && dev->id.vendor == MOUSEDEV_VENDOR_ID_SONY &&
++		(dev->id.product == MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER ||
++		 dev->id.product == MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER_2 ||
++		 dev->id.product == MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER_DONGLE ||
++		 dev->id.product == MOUSEDEV_DEVICE_ID_SONY_PS5_CONTROLLER);
++
+ 	if (mixdev) {
+ 		dev_set_name(&mousedev->dev, "mice");
+ 
+@@ -1054,6 +1177,7 @@ static struct input_handler mousedev_handler = {
+ 	.event		= mousedev_event,
+ 	.connect	= mousedev_connect,
+ 	.disconnect	= mousedev_disconnect,
++	.ignore_grab	= true,
+ 	.legacy_minors	= true,
+ 	.minor		= MOUSEDEV_MINOR_BASE,
+ 	.name		= "mousedev",
+diff --git a/include/linux/input.h b/include/linux/input.h
+index 7d7cb0593..95b40b12f 100644
+--- a/include/linux/input.h
++++ b/include/linux/input.h
+@@ -290,6 +290,13 @@ struct input_handle;
+  *	data stream from devices if there are other users present. Such
+  *	drivers will not result in starting underlying hardware device
+  *	when input_open_device() is called for their handles
++ * @ignore_grab: set to %true by handlers that must keep receiving events even
++ *	while another handler holds an exclusive grab (EVIOCGRAB) on the
++ *	device. Events are delivered to such a handler *after* the grabbing
++ *	handle has seen them, and its return value is ignored: it observes the
++ *	stream, it does not get to shorten it. Used by mousedev, because
++ *	userspace that grabs a mouse's evdev node may still be reading that
++ *	same mouse's /dev/input/mouseX node. See input_pass_values().
+  * @legacy_minors: set to %true by drivers using legacy minor ranges
+  * @minor: beginning of range of 32 legacy minors for devices this driver
+  *	can provide
+@@ -326,6 +333,7 @@ struct input_handler {
+ 	void (*start)(struct input_handle *handle);
+ 
+ 	bool passive_observer;
++	bool ignore_grab;
+ 	bool legacy_minors;
+ 	int minor;
+ 	const char *name;

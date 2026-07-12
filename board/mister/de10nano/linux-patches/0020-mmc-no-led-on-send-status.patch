@@ -1,0 +1,51 @@
+From 2d39e76d1bc91d7d90f678538ba442c6ccd500a8 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Thu, 26 Aug 2021 22:11:38 +0800
+Subject: [PATCH 1/1] mmc: don't flash the activity LED on plain status polls
+
+mmc_start_request() unconditionally flashes host->led on every
+command, including MMC_SEND_STATUS polls the core issues continuously
+while idle-polling card presence/state. On the DE10-Nano this drives
+hps_led0 (the on-screen SD activity indicator, see 0029), so the LED
+never settles -- it flickers even when nothing is actually being
+read or written. Skip the trigger for MMC_SEND_STATUS specifically.
+
+Provenance
+----------
+Origin:       2d39e76d1bc91d7d90f678538ba442c6ccd500a8
+              "mmc: don't activate LED on status command."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-26, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/2d39e76d1bc91d7d90f678538ba442c6ccd500a8
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No (verified: drivers/mmc/core/core.c has no
+              MMC_SEND_STATUS check around the led_trigger_event() call).
+              Disposition "carry" (docs/patch-provenance.md class F-1).
+              Renumbered from PLAN §6's original 0020 slot, which was the
+              usb-storage Realtek CD-ROM blacklist -- see report/
+              patch-provenance.md: that hunk is dropped, already upstream
+              via a3dc32c635ba.
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Reformatted the fork's single-line
+              `if (...) led_trigger_event(...)` to kernel multi-line
+              style; otherwise unchanged (context around the call site
+              picked up an unrelated uhs2_sd_tran hunk upstream, but the
+              call site itself is byte-identical to 5.15).
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/mmc/core/core.c b/drivers/mmc/core/core.c
+index 860378bea..816aa5390 100644
+--- a/drivers/mmc/core/core.c
++++ b/drivers/mmc/core/core.c
+@@ -356,7 +356,9 @@ int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
+ 	if (host->uhs2_sd_tran)
+ 		mmc_uhs2_prepare_cmd(host, mrq);
+ 
+-	led_trigger_event(host->led, LED_FULL);
++	/* MiSTer: don't flash the activity LED for plain status polls */
++	if (!mrq->cmd || mrq->cmd->opcode != MMC_SEND_STATUS)
++		led_trigger_event(host->led, LED_FULL);
+ 	__mmc_start_request(host, mrq);
+ 
+ 	return 0;

@@ -1,0 +1,102 @@
+From d7adb20b4ca595838289406c083fff78f004a8c3 Mon Sep 17 00:00:00 2001
+From: Martin Donlon <wickerwaka@users.noreply.github.com>
+Date: Mon, 13 Jan 2025 05:37:39 -0800
+Subject: [PATCH 1/1] usb: dwc2: fix unaligned IN data on split transfers
+
+When an endpoint's wMaxPacketSize is not a multiple of 4, dwc2 sets
+up a DMA bounce buffer (chan->align_buf) for unaligned destinations --
+but only copied data back out of that buffer for isochronous
+split-IN transfers (dwc2_xfercomp_isoc_split_in()). Every other
+split-IN transfer type (interrupt, bulk, control) with an unaligned
+destination silently dropped its received data: the bounce buffer was
+filled by the controller but never copied to the URB. Moves the copy
+into the shared dwc2_hc_xfercomp_intr() completion path, gated on
+`chan->align_buf && chan->ep_is_in && qtd->complete_split`, using
+dwc2_get_actual_xfer_length() for the real byte count instead of the
+isochronous-only `len`.
+
+Provenance
+----------
+Origin:       d7adb20b4ca595838289406c083fff78f004a8c3
+              "Fix for unaligned IN data. (#57)"
+              MiSTer-devel/Linux-Kernel_MiSTer, 2025-01-13, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/d7adb20b4ca595838289406c083fff78f004a8c3
+Author:       Martin Donlon <wickerwaka@users.noreply.github.com>
+Upstream:     No (verified: drivers/usb/dwc2/hcd_intr.c:922-928 still has
+              the old unconditional align_buf copy confined to
+              dwc2_xfercomp_isoc_split_in()). This is a real, general
+              dwc2 host-controller bug affecting any split-IN transfer
+              with an unaligned wMaxPacketSize, not a MiSTer-specific
+              quirk -- Martin Donlon's PR description explicitly frames
+              it as a fix worth sending upstream. Recommend submitting it
+              to the dwc2 maintainers independently of this fork.
+              Disposition "carry" (docs/patch-provenance.md class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              docs/patch-provenance.md originally flagged this patch for
+              [OPUS] escalation on the theory that a "real bug fix, not a
+              quirk" needed more careful handling than a mechanical quirk
+              port. On inspection, dwc2_hc_xfercomp_intr() and
+              dwc2_xfercomp_isoc_split_in() are structurally unchanged
+              since 5.15 (same helper dwc2_get_actual_xfer_length(),
+              same call sites) -- no upstream reorganization to navigate
+              -- so it was carried here rather than escalated; see the
+              P1.9 report for the full reasoning.
+
+Signed-off-by: Martin Donlon <wickerwaka@users.noreply.github.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index 5c7538d49..4340efcaf 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -919,14 +919,6 @@ static int dwc2_xfercomp_isoc_split_in(struct dwc2_hsotg *hsotg,
+ 
+ 	frame_desc->actual_length += len;
+ 
+-	if (chan->align_buf) {
+-		dev_vdbg(hsotg->dev, "non-aligned buffer\n");
+-		dma_unmap_single(hsotg->dev, chan->qh->dw_align_buf_dma,
+-				 DWC2_KMEM_UNALIGNED_BUF_SIZE, DMA_FROM_DEVICE);
+-		memcpy(qtd->urb->buf + (chan->xfer_dma - qtd->urb->dma),
+-		       chan->qh->dw_align_buf, len);
+-	}
+-
+ 	qtd->isoc_split_offset += len;
+ 
+ 	hctsiz = dwc2_readl(hsotg, HCTSIZ(chnum));
+@@ -963,6 +955,7 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
+ 	enum dwc2_halt_status halt_status = DWC2_HC_XFER_COMPLETE;
+ 	int pipe_type;
+ 	int urb_xfer_done;
++	u32 xfer_len;
+ 
+ 	if (dbg_hc(chan))
+ 		dev_vdbg(hsotg->dev,
+@@ -984,6 +977,27 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
+ 
+ 	/* Handle xfer complete on CSPLIT */
+ 	if (chan->qh->do_split) {
++		/*
++		 * Handle possible un-aligned transfer. Upstream only copied
++		 * out of the DMA bounce buffer for isochronous split-IN
++		 * transfers; every other split-IN transfer with an unaligned
++		 * destination (wMaxPacketSize not a multiple of 4) silently
++		 * dropped its data. Martin Donlon, MiSTer fork PR #57.
++		 */
++		if (chan->align_buf && chan->ep_is_in && qtd->complete_split) {
++			dev_vdbg(hsotg->dev, "non-aligned buffer\n");
++			xfer_len = dwc2_get_actual_xfer_length(hsotg, chan,
++							chnum, qtd,
++							DWC2_HC_XFER_COMPLETE,
++							NULL);
++			dma_unmap_single(hsotg->dev,
++					 chan->qh->dw_align_buf_dma,
++					 DWC2_KMEM_UNALIGNED_BUF_SIZE,
++					 DMA_FROM_DEVICE);
++			memcpy(urb->buf + (chan->xfer_dma - urb->dma),
++			       chan->qh->dw_align_buf, xfer_len);
++		}
++
+ 		if (chan->ep_type == USB_ENDPOINT_XFER_ISOC && chan->ep_is_in &&
+ 		    hsotg->params.host_dma) {
+ 			if (qtd->complete_split &&

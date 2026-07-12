@@ -1,0 +1,199 @@
+#!/bin/sh
+#
+# MiSTer stage-1 initramfs /init  (TASKS.md P1.10; PLAN.md §5; ADR 0002)
+#
+# This script exists to DELETE a kernel patch. Stock MiSTer patches
+# init/do_mounts.c (fork lines 655-685) to mount the SD data partition, loop-mount
+# linux/linux.img off it, and bind-mount the partition to /media/fat -- all inside
+# the kernel. That is an out-of-tree patch to a hot core file. Everything it did,
+# this script does in userspace instead. Read ADR 0002 before changing any of it.
+#
+# U-Boot's `bootz $loadaddr - $fdt_addr` NEVER loads an initrd (docs/boot-chain.md), so
+# this cpio is embedded in the zImage (CONFIG_INITRAMFS_SOURCE). Real cmdline, verified
+# on hardware:
+#   console=ttyS0,115200 loglevel=4 loop.max_part=8 mem=511M memmap=513M$511M \
+#   root=/dev/mmcblk0p1 loop=linux/linux.img ro rootwait
+#
+# Five things are load-bearing, not stylistic; each is explained at its use site:
+# (1) exfat FIRST then vfat -- exfat cannot mount FAT32, so getting this wrong does not
+# lose a feature, it fails to boot; (2) the vfat fallback passes utf8=1, NOT
+# iocharset=utf8; (3) sync,dirsync are mandatory (A13); (4) the data partition is
+# mounted rw and the loop device is never `losetup -r` (A15); (5) /media/fat is created
+# here or nowhere at all.
+#
+set -u
+
+ROOTWAIT_DEFAULT=30                 # seconds, when the cmdline says bare `rootwait`
+FAT_OPTS="rw,sync,dirsync,noatime,nodiratime,fmask=0022,dmask=0022,errors=remount-ro"
+
+cmdline=""
+root_arg=""
+loop_arg=""
+rootflags="ro"
+rootwait=0
+rootdev=""
+loopdev=""
+fat_type=""
+
+log() { printf '[init] %s\n' "$*"; }
+
+# Any failure lands here. Never panic silently: print everything a serial-console
+# user (or P1.12's QEMU harness, which greps for the banner) needs, then hand them
+# a shell. The system is NOT booted at this point.
+rescue() {
+	printf '\n'
+	printf '########################################################\n'
+	printf '#  MiSTer initramfs: BOOT FAILED\n'
+	printf '#  %s\n' "$*"
+	printf '########################################################\n'
+	printf '  cmdline : %s\n' "$cmdline"
+	printf '  root=   : %s -> %s\n' "$root_arg" "$rootdev"
+	printf '  loop=   : %s\n' "$loop_arg"
+	printf '  loopdev : %s\n' "$loopdev"
+	printf '  fat type: %s\n' "$fat_type"
+	printf -- '--- /proc/partitions ---\n'
+	cat /proc/partitions 2>/dev/null
+	printf -- '--- /proc/filesystems ---\n'
+	cat /proc/filesystems 2>/dev/null
+	printf -- '--- /proc/mounts ---\n'
+	cat /proc/mounts 2>/dev/null
+	printf -- '--- last kernel messages ---\n'
+	dmesg 2>/dev/null | tail -n 25
+	printf '\nDropping to a rescue shell on the console. Nothing is booted.\n'
+	printf 'Useful: ls /dev, cat /proc/partitions, mount -t vfat /dev/... /mnt/fat\n\n'
+	# PID 1 must never exit: that is an instant kernel panic. Respawn forever.
+	while :; do
+		setsid cttyhack /bin/sh || /bin/sh || sleep 5
+	done
+}
+
+# ---------------------------------------------------------------- early mounts
+# devtmpfs is NOT auto-mounted for an initramfs, whatever CONFIG_DEVTMPFS_MOUNT
+# says -- the kernel only does that from prepare_namespace(), which an initramfs
+# skips entirely. Everything below needs /dev, so this is step one.
+mkdir -p /proc /sys /dev /mnt/fat /newroot
+mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount /proc"
+mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
+mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
+
+# ------------------------------------------------------------- parse /proc/cmdline
+# Cmdline-driven, never hardcoded (A2): u-boot.txt is applied with `env import -t`
+# and can override ANY U-Boot variable, and USB-boot setups exist in the wild. Parse
+# defensively and never positionally -- $v injects arbitrary extra tokens.
+cmdline="$(cat /proc/cmdline)"
+set -f                              # a stray '*' in u-boot.txt must not glob
+# shellcheck disable=SC2086          # deliberate word splitting: that IS the parse
+set -- $cmdline
+for tok in "$@"; do
+	case "$tok" in
+	root=*)     root_arg="${tok#root=}" ;;
+	loop=*)     loop_arg="${tok#loop=}" ;;
+	rootwait)   rootwait="$ROOTWAIT_DEFAULT" ;;
+	rootwait=*) rootwait="${tok#rootwait=}" ;;
+	ro)         rootflags="ro" ;;
+	rw)         rootflags="rw" ;;
+	esac
+done
+[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
+# A junk rootwait= would make `[ N -ge junk ]` error out on every pass of the wait
+# loop below, which spins forever instead of failing. Don't trust the command line.
+case "$rootwait" in *[!0-9]*|'') rootwait="$ROOTWAIT_DEFAULT" ;; esac
+
+# ------------------------------------------------------------------ find root=
+# The kernel's own name_to_dev_t() understood UUID=/LABEL=; with an initramfs it
+# never sees root= at all, so we must. BusyBox findfs covers UUID= and LABEL=.
+# It does NOT cover PARTUUID= -- see ADR 0002, "Known gaps".
+resolve_root() {
+	case "$root_arg" in
+	UUID=*|LABEL=*) findfs "$root_arg" 2>/dev/null ;;
+	*)              [ -b "$root_arg" ] && printf '%s' "$root_arg" ;;
+	esac
+}
+
+# `rootwait` as a retry loop (A2). The kernel's rootwait is not in play any more.
+# Slow USB/SD enumeration is exactly what this guards against.
+waited=0
+while :; do
+	rootdev="$(resolve_root)"
+	[ -n "$rootdev" ] && [ -b "$rootdev" ] && break
+	[ "$waited" -ge "$rootwait" ] && \
+		rescue "root device '$root_arg' did not appear after ${waited}s"
+	[ "$waited" = 0 ] && log "waiting up to ${rootwait}s for $root_arg ..."
+	sleep 1
+	waited=$((waited + 1))
+done
+log "root device $rootdev ready (after ${waited}s)"
+
+# -------------------------------------------------- no loop= : root= IS the rootfs
+# Stock's do_mounts.c takes this branch too (the `else` at fork line 681).
+if [ -z "$loop_arg" ]; then
+	log "no loop= given; mounting $rootdev directly as the root filesystem"
+	mount -o "$rootflags" "$rootdev" /newroot || rescue "cannot mount $rootdev on /newroot"
+	fat_type="(none)"
+else
+
+# ------------------------------------------------------- mount the data partition
+# READ-WRITE on purpose (A15): losetup opens the backing file O_RDWR, and if that
+# fails BusyBox silently retries O_RDONLY and the kernel then marks the loop device
+# read-only -- which is precisely the state A15 forbids. exfat first, vfat second.
+log "mounting data partition $rootdev (exfat, then vfat)"
+if mount -t exfat -o "$FAT_OPTS" "$rootdev" /mnt/fat 2>/dev/null; then
+	fat_type="exfat"
+elif mount -t vfat -o "$FAT_OPTS,utf8=1" "$rootdev" /mnt/fat; then
+	fat_type="vfat"
+else
+	rescue "cannot mount $rootdev as exfat or vfat"
+fi
+log "data partition mounted as $fat_type"
+
+# ------------------------------------------------------------ loop-mount the image
+[ -f "/mnt/fat/$loop_arg" ] || rescue "loop image '$loop_arg' not found on $rootdev"
+
+# `losetup -f`, never a hardcoded /dev/loop8: loop8 is an artifact of the stock patch
+# (LOOP_MIN_COUNT=8 pre-creates loop0-7 only) and nothing references it by name.
+loopdev="$(losetup -f 2>/dev/null)"
+[ -n "$loopdev" ] || rescue "no free loop device (is CONFIG_BLK_DEV_LOOP=y built in?)"
+# NO -r. Read-only-ness goes on the mount below, not on the device. (A15)
+losetup "$loopdev" "/mnt/fat/$loop_arg" || rescue "losetup $loopdev /mnt/fat/$loop_arg failed"
+log "loop device $loopdev -> /mnt/fat/$loop_arg (writable device, $rootflags mount)"
+
+# ext4 in practice (stock, and P2.5's image); fall back to autodetection rather than
+# hard-failing if someone ever ships something else.
+mount -t ext4 -o "$rootflags" "$loopdev" /newroot 2>/dev/null ||
+	mount -o "$rootflags" "$loopdev" /newroot ||
+	rescue "cannot mount $loopdev on /newroot ($rootflags)"
+
+# ------------------------------------------------------------------- /media/fat
+# THE mount that does not exist anywhere in /etc. Stock's kernel bind-mounts the data
+# partition here (fork do_mounts.c:677) and fstab/inittab/Main_MiSTer never do. Without
+# it, /etc/inittab's `::sysinit:/media/fat/MiSTer &` fails instantly. `/` is mounted ro,
+# so we cannot mkdir it -- the rootfs image MUST already contain /media/fat (P2.3).
+[ -d /newroot/media/fat ] || rescue "/media/fat is missing from the root filesystem image"
+mount -o move /mnt/fat /newroot/media/fat || rescue "cannot move data partition to /media/fat"
+log "/media/fat = $rootdev ($fat_type)"
+
+fi
+
+# ------------------------------------------------------------------- switch_root
+# Hand /dev, /proc and /sys over rather than leaving them behind: stock's rootfs gets a
+# kernel-mounted devtmpfs on /dev (via prepare_namespace(), which we skipped) and its
+# /etc/fstab has no /dev line at all -- so if we do not move it, /dev on the new root is
+# an empty directory and eudev, getty and MiSTer all die. The rootfs re-mounts /proc
+# (inittab) and /sys (fstab) over the top; stacking is harmless.
+#
+# /dev goes LAST on purpose: if /newroot is missing one of these directories we land in
+# rescue(), and a rescue shell with no /dev is a rescue shell you cannot use (no
+# cttyhack, no `ls /dev`). Losing /proc there only costs two lines of the banner.
+for d in proc sys dev; do
+	mount -o move "/$d" "/newroot/$d" ||
+		rescue "cannot move /$d to /newroot/$d (does /$d exist in the rootfs image?)"
+done
+
+# switch_root's own checks, pre-flighted. It is the one call whose failure we cannot
+# recover from: it must run AS pid 1 (it refuses otherwise), so it must be exec'd, and a
+# failed exec terminates pid 1 -> kernel panic. Checking first is what keeps that from
+# being how this script usually fails.
+[ -x /newroot/sbin/init ] || rescue "/sbin/init is missing or not executable on the new root"
+[ -f /init ] || rescue "/init is not a regular file (switch_root would refuse)"
+log "switching root"
+exec switch_root /newroot /sbin/init

@@ -287,7 +287,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
 Exit criterion: 6.18 LTS kernel built by Buildroot from a pristine kernel.org tarball
 boots to a serial console on real hardware (P1.13).
 
-- [ ] **P1.1 — BR2_EXTERNAL skeleton** — [SONNET] — Size S — Depends: P0.9
+- [x] **P1.1 — BR2_EXTERNAL skeleton** — [SONNET] — Size S — Depends: P0.9
   `external.desc`, `external.mk`, `Config.in`, `configs/mister_de10nano_defconfig`
   (minimal, builds nothing yet), plus a top-level `Makefile`/script that downloads the
   pinned Buildroot 2026.02.x tarball, verifies its SHA-256, unpacks to `work/buildroot/`,
@@ -298,7 +298,7 @@ boots to a serial console on real hardware (P1.13).
   **Done when:** `make menuconfig`-equivalent runs against the external tree from a
   clean checkout with only `work/` populated by the script.
 
-- [ ] **P1.2 — Toolchain & base defconfig** — [SONNET] [NET] — Size M — Depends: P1.1
+- [x] **P1.2 — Toolchain & base defconfig** — [SONNET] [NET] — Size M — Depends: P1.1
   Set `armv7-a`/Cortex-A9/NEON-VFPv3/EABIhf/glibc. Evaluate internal toolchain vs a
   Bootlin external toolchain (build time vs reproducibility vs glibc version control);
   document the choice in `docs/decisions/0001-toolchain.md`. Produce a minimal booting
@@ -306,7 +306,7 @@ boots to a serial console on real hardware (P1.13).
   **Done when:** `make` completes producing `rootfs.tar`; a hello-world cross-compiled
   binary runs under `qemu-arm`; decision doc explains the trade-off.
 
-- [ ] **P1.3 — Kernel config derivation (A3, A4)** — [OPUS] — Size L — Depends: P0.8, P1.1
+- [x] **P1.3 — Kernel config derivation (A3, A4)** — [OPUS] — Size L — Depends: P0.8, P1.1
   Port the **exact extracted stock config** (`docs/stock-inventory/stock-linux.config`,
   4,246 lines from IKCONFIG) to 6.18 via `olddefconfig`, then audit every dropped/renamed
   symbol.
@@ -319,16 +319,24 @@ boots to a serial console on real hardware (P1.13).
   `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 —
   U-Boot passes the DTB pointer); stock-parity items: `IKCONFIG=y`+`IKCONFIG_PROC=y`,
   `KERNEL_LZ4`, `MODULE_COMPRESS_XZ=y`, `BLK_DEV_LOOP=y` (`LOOP_MIN_COUNT=8`); built-in
-  (not module): ext4, vfat, exfat, loop, NLS codepages, dwc2, usb-storage, HID core;
-  cifs + nfs built-in per stock (stock has **no** NTFS support — adding ntfs3 is an
-  opt-in improvement, decide explicitly); module support ON, signing OFF (A5); cpufreq
+  (not module): ext4, vfat, exfat, loop, NLS codepages (**incl. `CONFIG_NLS_UTF8`**), dwc2,
+  usb-storage, HID core; cifs + nfs built-in per stock.
+  **[ADR 0010] `CONFIG_VFAT_FS=y` is now load-bearing, not parity trivia** — it is the FAT32
+  fallback for the initramfs, without which FAT32 cards fail to boot. Also set
+  **`CONFIG_FAT_DEFAULT_UTF8=y`** (stock: not set) — an intentional divergence; leave
+  `CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"` and `CONFIG_FAT_DEFAULT_CODEPAGE=437` unchanged.
+  **[ADR 0013] NTFS: decided — build `ntfs3` as a MODULE (`=m`), and leave it disabled by
+  default until stock parity is demonstrated.** Not built-in: it must not consume `zImage`
+  budget (P1.11), and enabling features before parity is proven confounds "we broke it" with
+  "we added it".
+  Module support ON, signing OFF (A5); cpufreq
   governors matching stock. Deliver `board/mister/de10nano/linux.config`
   (savedefconfig) + `docs/kernel-config-deltas.md`.
   **Done when:** kernel builds from a pristine kernel.org 6.18.y tarball with this
   config; delta doc explains every intentional divergence from both the stock config and
   the 6.18 `multi_v7_defconfig` baseline.
 
-- [ ] **P1.4 — Forward-port `MiSTer_fb`** — [OPUS] — Size L — Depends: P0.4, P1.3
+- [x] **P1.4 — Forward-port `MiSTer_fb`** — [OPUS] — Size L — Depends: P0.4, P1.3
   Port `drivers/video/fbdev/MiSTer_fb.c` from 5.15 to 6.18 as
   `0001-fbdev-add-MiSTer_fb-driver.patch`. The **ioctl ABI and `/dev/fb0` semantics must
   be bit-identical** (P0.5 contract). Expect fbdev API churn (fb_ops changes, aperture
@@ -337,7 +345,7 @@ boots to a serial console on real hardware (P1.13).
   warnings; a provenance header cites the origin commit; ioctl numbers verified
   unchanged against the contract doc.
 
-- [ ] **P1.5 — Forward-port `MiSTer-audio-spi`** — [OPUS] — Size M — Depends: P0.4, P1.3
+- [x] **P1.5 — Forward-port `MiSTer-audio-spi`** — [OPUS] — Size M — Depends: P0.4, P1.3
   Port `sound/drivers/MiSTer-audio-spi.c` to 6.18 as `0002-…`. ALSA API churn expected.
   **[P0 CORRECTION — this task's original premise was false.]** It previously read *"Card/
   device name exposed to userland must match stock (Main_MiSTer opens it by name)."*
@@ -351,12 +359,22 @@ boots to a serial console on real hardware (P1.13).
   node is created with stock's name/permissions, the patched `snd-dummy` card 0 accepts
   S16_LE/48000/2ch, and stock's `/etc/asound.conf` opens the default PCM unmodified.
 
-- [ ] **P1.6 — Forward-port Cyclone V cpufreq/overclock** — [OPUS] — Size M — Depends: P0.4, P1.3
+- [x] **P1.6 — Forward-port Cyclone V cpufreq/overclock** — [OPUS] — Size M — Depends: P0.4, P1.3
   Port the overclock/cpufreq driver as `0003-…`. Preserve the sysfs interface stock
   scripts/Main use (verify against P0.5).
   **Done when:** applies clean, compiles clean, sysfs paths documented and matching.
 
-- [ ] **P1.7 — MiSTer DTS patch (§4.1a)** — [OPUS] — Size L — Depends: P0.4, P1.3
+- [x] **P1.7 — MiSTer DTS patch (§4.1a)** — [OPUS] — Size L — Depends: P0.4, P1.3
+  **Done 2026-07-12.** `board/mister/de10nano/linux-patches/0004-dts-de10nano-MiSTer.patch`;
+  evidence in **`docs/dts-comparison.md`**. `dtbs` builds with **zero new `dtc` warnings**
+  (default flags *and* `W=1`); the built DTB was decompiled and diffed node-by-node against
+  `docs/stock-inventory/stock.dts` with every divergence justified. **A14 proven**: exactly
+  three i²C adapters (`i2c0`, `i2c2`, `i2c_gpio` — stock's, byte-identical), **no `i2c`
+  aliases** ⇒ `i2c_add_adapter()` allocates dynamically from `__i2c_first_dynamic_bus_num == 0`
+  ⇒ the numbers can only be **{0,1,2}**; no adapter can be ≥ 3. The fork's shared
+  `socfpga.dtsi` hunk is **not** carried (i2c1 is `disabled`; the property is never read).
+  P1.6's request for an `&osc1` rate was **checked and retracted** — mainline's
+  `socfpga_cyclone5.dtsi:13-18` already sets it, and the built DTB matches stock exactly.
   Author `0004-dts-de10nano-MiSTer.patch` on top of mainline
   `socfpga_cyclone5_de10nano.dts`: enable `usb1`, `fpga_bridge0/1/2`, `spi0`
   (MiSTer,spi-audio), `spi1` (spidev node, coordinated with P1.8), `i2c2`, `uart1`
@@ -369,7 +387,17 @@ boots to a serial console on real hardware (P1.13).
   comparison table (stock DTS vs mainline vs ours) is committed to
   `docs/dts-comparison.md`.
 
-- [ ] **P1.8 — spidev binding fix (§13 hazard)** — [SONNET] — Size S — Depends: P1.7
+- [x] **P1.8 — spidev binding fix (§13 hazard)** — [SONNET] — Size S — Depends: P1.7
+  **Done 2026-07-12, inside P1.7 — there is no `0005` patch and no code change at all.**
+  `0004`'s `spi1` child uses **`compatible = "rohm,dh2228fv"`**, which is already in 6.18's
+  `spidev_dt_ids[]` *and* `spidev_spi_ids[]`, so mainline spidev binds it unpatched. It still
+  lands on SPI bus 1 / CS 0 (no `spi` aliases ⇒ `spi_register_controller()` numbers
+  controllers dynamically in probe order, `spi@fff00000` → 0, `spi@fff01000` → 1) ⇒
+  **`/dev/spidev1.0`**, which is what `Main_MiSTer/brightness.cpp` opens. `spidev_of_check()`
+  rejects only the literal string `"spidev"` in DT and is satisfied. Rationale and the full
+  creation path: `docs/dts-comparison.md` §5; `docs/patch-provenance.md` §5.
+  **The `0005` numbering slot stays empty — do not renumber `0010`+.**
+  Remaining: the P1.13 boot-log assertion that `/dev/spidev1.0` exists.
   **[P0: `altspi` is NOT a catch-all binding.]** It is an explicit one-line entry in
   `spidev_dt_ids[]` (`drivers/spi/spidev.c:699`, fork commit `246984fce`). Since we author
   our own DTS, **retarget the compatible to one mainline spidev already accepts and drop
@@ -379,7 +407,7 @@ boots to a serial console on real hardware (P1.13).
   message; no `spidev: probed from DT without matching compatible` style warning
   expected (assert in P1.13 boot log).
 
-- [ ] **P1.9 — Residual HID & quirk patches (classes D, F)** — [SONNET] — Size M — Depends: P0.4, P1.3
+- [x] **P1.9 — Residual HID & quirk patches (classes D, F)** — [SONNET] — Size M — Depends: P0.4, P1.3
   Port the carried set: GunCon 2/3, Fanatec, Flydigi Vader, remaining xpad IDs,
   usb-storage Realtek CD-ROM blacklist, mmc LED, btusb VID/PIDs — *only* those P0.4
   confirmed absent from 6.18. Number them `0010+`/`0020+` per §6. Escalate any
@@ -393,18 +421,31 @@ boots to a serial console on real hardware (P1.13).
   **Done when:** all patches apply and compile clean; each has a provenance header;
   P0.4's table updated with final patch filenames.
 
-- [ ] **P1.10 — Initramfs: design & implement (A1, A2)** — [OPUS] — Size L — Depends: P0.8, P1.2
+- [x] **P1.10 — Initramfs: design & implement (A1, A2)** — [OPUS] — Size L — Depends: P0.8, P1.2
   Implement the two-stage build (A1): `configs/mister_initramfs_defconfig` (static
   BusyBox, cpio output, ~hundreds of KB) consumed by the main kernel via
   `CONFIG_INITRAMFS_SOURCE`. Write `/init` per A2: parse `root=`/`loop=` from
-  `/proc/cmdline`, rootwait retry loop, vfat/exfat mount **with `sync,dirsync` (A13 — stock
-  mounts `/media/fat` sync and fstab never re-mounts it; async is a power-off-corruption
-  regression)**, `losetup -r` **on `losetup -f`, NOT a hardcoded `/dev/loop8` (A13/P0: loop8
-  is an artifact — `LOOP_MIN_COUNT=8` pre-creates loop0-7 only and nothing references loop8
-  by name)**, ro mount of the loop device, `mount --move` of the data partition to
-  `/newroot/media/fat`,
-  `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
-  shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
+  `/proc/cmdline`, rootwait retry loop, then:
+
+  * **Mount the data partition trying `exfat` FIRST, then falling back to `vfat` (A2/ADR
+    0010).** Mainline exfat **cannot mount FAT32**, and the rootfs is a file *on* this
+    partition — so a hardcoded `-t exfat` does not lose a feature, it **fails to boot**.
+  * **`sync,dirsync` (A13)** — stock mounts `/media/fat` sync and fstab never re-mounts it;
+    async is a power-off-corruption regression. Plus `fmask=0022,dmask=0022`.
+  * **The vfat fallback must set `utf8=1` — NOT `iocharset=utf8` (A2/ADR 0010).**
+    `Documentation/filesystems/vfat.rst:72` deprecates the latter. exfat needs nothing.
+  * **`losetup -f` to pick the device, and NEVER `losetup -r` (A15).** loop8 is an artifact
+    (`LOOP_MIN_COUNT=8` pre-creates loop0-7 only; nothing references loop8 by name), so
+    allocate with `-f`. But the loop **device must stay writable**: stock's
+    `/sys/block/loop8/ro == 0`, and `/etc/profile:23` runs `mount -o remount,rw /` on every
+    login shell — a read-only loop *device* makes that remount fail, leaving a logged-in
+    user with a permanently read-only rootfs, which stock is not. **Read-only-ness belongs
+    on the `mount -o ro`, not on the device.**
+  * `mount --move` the data partition to `/newroot/media/fat` — stock's kernel creates this
+    as a **bind-mount** (`init/do_mounts.c:677`) and *nothing in `/etc` mounts it*, so if
+    the initramfs does not recreate it, `/media/fat` simply will not exist.
+  * `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
+    shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
   **Reference:** `/mnt/source/sb-enema` builds a `BR2_TARGET_ROOTFS_CPIO` image on
   Buildroot 2026.02 (x86_64, busybox init, kernel+busybox config fragments) — the same
   output mechanism as stage 1 here.
@@ -412,7 +453,7 @@ boots to a serial console on real hardware (P1.13).
   shell-checked (`shellcheck`) and under 200 lines; design recorded in
   `docs/decisions/0002-initramfs.md`.
 
-- [ ] **P1.11 — `zImage_dtb` assembly (A3)** — [SONNET] — Size S — Depends: P1.3, P1.7
+- [x] **P1.11 — `zImage_dtb` assembly (A3)** — [SONNET] — Size S — Depends: P1.3, P1.7
   `post-image.sh` step: concatenate zImage + our DTB into `zImage_dtb` with plain `cat`
   (verified correct: U-Boot computes the DTB address as `loadaddr + *(loadaddr+0x2C)`,
   i.e. exactly the zImage's declared end). Sanity-check size against U-Boot's load
@@ -422,7 +463,7 @@ boots to a serial console on real hardware (P1.13).
   header's declared size equals the zImage file length, the DTB magic sits exactly
   there, and total size is within budget.
 
-- [ ] **P1.12 — QEMU initramfs logic test (A7)** — [SONNET] — Size M — Depends: P1.10
+- [x] **P1.12 — QEMU initramfs logic test (A7)** — [SONNET] — Size M — Depends: P1.10
   CI-runnable test: build the same initramfs cpio into a generic ARM kernel
   (`qemu-system-arm -M virt` or similar), attach a crafted disk image containing a
   FAT partition with `linux/linux.img` (a tiny ext4 with a marker `/sbin/init`), boot

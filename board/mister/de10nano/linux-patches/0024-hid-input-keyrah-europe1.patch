@@ -1,0 +1,40 @@
+From 70e391b81fe7d3f1948246a5e73b32aaa07a38f8 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Mon, 17 Jul 2017 15:38:57 +0800
+Subject: [PATCH 1/1] HID: map key Europe 1 (0x32) to KEY_F24 for Keyrah
+
+The Keyrah C64/Amiga USB keyboard adapter reports its extra
+"Europe 1" scancode (HID usage 0x32) as USB HID keycode 0x32, which
+hid_keyboard[] maps to Linux keycode 43 (KEY_BACKSLASH) by default --
+colliding with the adapter's real backslash key. Remaps it to
+KEY_F24 (194), an otherwise-unused code Main_MiSTer can bind freely.
+
+Provenance
+----------
+Origin:       70e391b81fe7d3f1948246a5e73b32aaa07a38f8
+              "HID: map key Europe 1(0x32) to F24 code (for Keyrah)."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2017-07-17, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/70e391b81fe7d3f1948246a5e73b32aaa07a38f8
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No (verified: drivers/hid/hid-input.c's hid_keyboard[]
+              table entry for USB keycode 0x32 is still 43, not 194).
+              Disposition "carry" (docs/patch-provenance.md class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Byte-identical hunk; hid_keyboard[] is unchanged since 5.15.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-input.c b/drivers/hid/hid-input.c
+index 32a96ae29..fd2ea82f3 100644
+--- a/drivers/hid/hid-input.c
++++ b/drivers/hid/hid-input.c
+@@ -28,7 +28,7 @@ static const unsigned char hid_keyboard[256] = {
+ 	  0,  0,  0,  0, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38,
+ 	 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44,  2,  3,
+ 	  4,  5,  6,  7,  8,  9, 10, 11, 28,  1, 14, 15, 57, 12, 13, 26,
+-	 27, 43, 43, 39, 40, 41, 51, 52, 53, 58, 59, 60, 61, 62, 63, 64,
++	 27, 43,194, 39, 40, 41, 51, 52, 53, 58, 59, 60, 61, 62, 63, 64,
+ 	 65, 66, 67, 68, 87, 88, 99, 70,119,110,102,104,111,107,109,106,
+ 	105,108,103, 69, 98, 55, 74, 78, 96, 79, 80, 81, 75, 76, 77, 71,
+ 	 72, 73, 82, 83, 86,127,116,117,183,184,185,186,187,188,189,190,

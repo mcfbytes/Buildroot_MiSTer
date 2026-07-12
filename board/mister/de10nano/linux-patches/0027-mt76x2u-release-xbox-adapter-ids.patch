@@ -1,0 +1,49 @@
+From 817ace70b4e9facb68a00553c00d485087379f39 Mon Sep 17 00:00:00 2001
+From: sofakng <jklimek@gmail.com>
+Date: Wed, 21 Oct 2020 08:02:29 -0400
+Subject: [PATCH 1/1] mt76x2u: release Xbox One Wireless Adapter USB IDs
+
+mt76x2u_device_table[] claims 045e:02e6 and 045e:02fe (the Xbox
+One Wireless Adapter's Wi-Fi-radio-alike USB IDs, from an early silicon
+run that shared IDs with a MediaTek Wi-Fi chipset). Left in place, mt76
+wins the driver-matching race against xone (package/xone), which is
+the driver that actually understands the adapter's Xbox GIP wireless
+protocol. Remove both entries so xone can bind.
+
+Provenance
+----------
+Origin:       817ace70b4e9facb68a00553c00d485087379f39
+              "Remove XBox One Wireless Adapter USB IDs from mt76 driver
+              to allow 'xow' driver compatibility."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2020-10-21, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/817ace70b4e9facb68a00553c00d485087379f39
+Author:       sofakng <jklimek@gmail.com>
+Upstream:     No (verified: drivers/net/wireless/mediatek/mt76/mt76x2/
+              usb.c still claims 0x045e,0x02e6 and 0x045e,0x02fe).
+              Disposition "carry" (docs/patch-provenance.md class D/E).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Byte-identical removal; replaced the deleted lines with an
+              explanatory comment (the original left none) so a future
+              mt76 sync doesn't silently reintroduce them.
+
+Signed-off-by: sofakng <jklimek@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/net/wireless/mediatek/mt76/mt76x2/usb.c b/drivers/net/wireless/mediatek/mt76/mt76x2/usb.c
+index 427b29442..4aae90773 100644
+--- a/drivers/net/wireless/mediatek/mt76/mt76x2/usb.c
++++ b/drivers/net/wireless/mediatek/mt76/mt76x2/usb.c
+@@ -23,8 +23,11 @@ static const struct usb_device_id mt76x2u_device_table[] = {
+ 	{ USB_DEVICE(0x2c4e, 0x0103) },	/* Mercury UD13 */
+ 	{ USB_DEVICE(0x0846, 0x9014) },	/* Netgear WNDA3100v3 */
+ 	{ USB_DEVICE(0x0846, 0x9053) },	/* Netgear A6210 */
+-	{ USB_DEVICE(0x045e, 0x02e6) },	/* XBox One Wireless Adapter */
+-	{ USB_DEVICE(0x045e, 0x02fe) },	/* XBox One Wireless Adapter */
++	/*
++	 * MiSTer: XBox One Wireless Adapter (045e:02e6, 045e:02fe) intentionally
++	 * NOT claimed here -- leave them for the xone driver (package/xone),
++	 * which implements the actual Xbox GIP wireless-adapter protocol.
++	 */
+ 	{ USB_DEVICE(0x2357, 0x0137) },	/* TP-Link TL-WDN6200 */
+ 	{ },
+ };

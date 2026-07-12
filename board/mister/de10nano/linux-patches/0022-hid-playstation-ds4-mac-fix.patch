@@ -1,0 +1,80 @@
+From 5c410e935d4f9743d9d71a0d0d796258544eba91 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Thu, 6 Nov 2025 13:35:31 +0800
+Subject: [PATCH 1/1] hid-playstation: don't hard-fail DS4 probe on unreadable pairing-info report
+
+Some 3rd-party wired DualShock4 clones don't implement Sony's
+vendor DS4_FEATURE_REPORT_PAIRING_INFO report (used only to read the
+controller's own MAC address for hdev->uniq and device-list dedup).
+Treat a failed read as non-fatal -- log and continue with whatever
+(possibly zeroed) buffer came back -- rather than refusing to bind
+the controller at all.
+
+Provenance
+----------
+Origin:       5c410e935d4f9743d9d71a0d0d796258544eba91
+              "hid-sony: fix for 3rd party DS4 failing to connect by wire."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2025-11-06, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/5c410e935d4f9743d9d71a0d0d796258544eba91
+              NOT ported: 1412bd7075d24db01785f0749f8efe498f24181d
+                "hid-sony: fix divide by 0 exception.", Sorgelig,
+                2019-03-20 -- already superseded upstream. Both DualSense
+                and DualShock4 calibration setup in hid-playstation.c
+                (added by 8e5198a12d64 et al.) sanity-check every
+                sens_denom for zero at calibration-parse time and
+                substitute a safe default (DS_GYRO_RANGE/S16_MAX etc.),
+                which is a more thorough fix than the fork's per-report-
+                parse `calib->sens_denom ? mult_frac(...) : 0` guard.
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No -- but the file moved. The fork's fix targets
+              hid-sony.c's sony_check_add(); DualShock4 support
+              (including MAC-address retrieval) was split out to the new
+              upstream hid-playstation.c
+              (8c0ab553b072/8e5198a12d64 et al.), whose
+              dualshock4_get_mac_address() has the identical hard-fail-
+              on-read-error bug in its new home. Disposition "carry",
+              retargeted (docs/patch-provenance.md class D --
+              renamed from "0022-hid-sony-fixes.patch").
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Applied the same non-fatal-on-read-failure change to
+              dualshock4_get_mac_address() in hid-playstation.c (the
+              function ps_get_report() failure path), instead of
+              hid-sony.c's sony_check_add() (which no longer handles DS4
+              at all). Removed the resulting unreferenced `err_free:`
+              label (-Wunused-label) now that nothing gotos it.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
+index 12fad45ac..8029b239e 100644
+--- a/drivers/hid/hid-playstation.c
++++ b/drivers/hid/hid-playstation.c
+@@ -2128,8 +2128,17 @@ static int dualshock4_get_mac_address(struct dualshock4 *ds4)
+ 		ret = ps_get_report(hdev, DS4_FEATURE_REPORT_PAIRING_INFO, buf,
+ 				    DS4_FEATURE_REPORT_PAIRING_INFO_SIZE, false);
+ 		if (ret) {
+-			hid_err(hdev, "Failed to retrieve DualShock4 pairing info: %d\n", ret);
+-			goto err_free;
++			/*
++			 * MiSTer: some 3rd-party wired DS4 clones don't implement
++			 * this vendor feature report at all. Treat it as
++			 * non-fatal -- proceed with whatever (possibly zeroed)
++			 * data came back rather than refusing to bind the
++			 * device entirely.
++			 */
++			hid_warn(hdev,
++				 "Failed to retrieve DualShock4 pairing info: %d; continuing without it\n",
++				 ret);
++			ret = 0;
+ 		}
+ 
+ 		memcpy(ds4->base.mac_address, &buf[1], sizeof(ds4->base.mac_address));
+@@ -2149,7 +2158,6 @@ static int dualshock4_get_mac_address(struct dualshock4 *ds4)
+ 		return 0;
+ 	}
+ 
+-err_free:
+ 	kfree(buf);
+ 	return ret;
+ }

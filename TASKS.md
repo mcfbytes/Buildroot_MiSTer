@@ -174,7 +174,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** zero unmapped SONAMEs from the ABI contract; every gap has a
   disposition; the resulting `BR2_PACKAGE_*` list is included ready to paste.
 
-- [ ] **P0.8 — Boot chain analysis (A3)** — [OPUS] — Size M — Depends: P0.2
+- [x] **P0.8 — Boot chain analysis (A3)** — [OPUS] — Size M — Depends: P0.2
   The embedded environment has already been recovered from `uboot.img` (bootcmd /
   mmcload / mmcboot / scrtest / fpgaload / fpgacheck, `mmcroot=/dev/mmcblk0p1`, the
   DTB-address computation, `env import -t`, the warm-reboot RAM handshake — see the

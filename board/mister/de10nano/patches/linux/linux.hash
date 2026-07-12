@@ -1,0 +1,30 @@
+# Kernel tarball hash for the pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE.
+#
+# WHY THIS FILE EXISTS
+# Buildroot 2026.02.3 resolves the kernel's hash file to `linux/linux.hash`
+# (see LINUX_HASH_FILES / pkg-patch-hash-dirs in package/pkg-utils.mk:163) --
+# a path that DOES NOT EXIST in the release. Its actual hashes live in
+# linux/from-6.17/linux.hash, which that lookup never consults. The result is
+# that a pinned custom kernel version downloads with only
+#   "WARNING: no hash file for linux-<ver>.tar.xz"
+# and is NEVER VERIFIED -- and BR2_DOWNLOAD_FORCE_CHECK_HASHES does not save
+# you, because it can only force the checking of hashes that exist.
+#
+# That silently defeats G5 (pinned kernel + hash). pkg-patch-hash-dirs also
+# searches $(BR2_GLOBAL_PATCH_DIR)/<pkg>/, which is why this file is here and
+# why the defconfig sets BR2_GLOBAL_PATCH_DIR.
+#
+# WHERE THIS HASH COMES FROM -- read before changing it.
+# Transcribed from kernel.org's PGP-signed release manifest:
+#
+#     https://cdn.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
+#
+# That signed file is the ONLY source of truth. Do NOT produce this value by
+# downloading the tarball and running sha256sum on it -- that is circular and
+# certifies nothing. Independently corroborated against Buildroot's own
+# linux/from-6.17/linux.hash, which agrees byte-for-byte.
+#
+# A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
+# signed manifest for the new version, or the build will fail closed -- which is
+# the intended behaviour.
+sha256  6f16ff302599f6fe34742890322cf0775703105fbd8767449682fca6af0fb782  linux-6.18.33.tar.xz

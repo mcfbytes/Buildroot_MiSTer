@@ -112,7 +112,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   generated path can be accidentally committed (verify with a dry-run `git add` of a
   dummy `work/test.img`).
 
-- [ ] **P0.2 — Acquire reference materials** — [SONNET] [NET] — Size S — Depends: P0.1
+- [x] **P0.2 — Acquire reference materials** — [SONNET] [NET] — Size S — Depends: P0.1
   Into untracked `work/`: clone `MiSTer-devel/Linux-Kernel_MiSTer` (the 5.15 fork),
   `MiSTer-devel/Main_MiSTer` (need `fpga_io.cpp`, `brightness.cpp`, ioctl users),
   `MiSTer-devel/Downloader_MiSTer`, `MiSTer-devel/U-Boot_MiSTer`; download the current

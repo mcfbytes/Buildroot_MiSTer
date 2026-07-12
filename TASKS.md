@@ -165,7 +165,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** doc quotes the relevant source lines (file:line at a pinned commit) for
   every claim; includes a worked example db.json entry.
 
-- [ ] **P0.7 — Package mapping** — [SONNET] — Size M — Depends: P0.3
+- [x] **P0.7 — Package mapping** — [SONNET] — Size M — Depends: P0.3
   Map every stock SONAME and every user-facing binary to a Buildroot 2026.02 package
   (name + version). Flag: packages Buildroot lacks (candidates for `package/` in our
   tree), version jumps with known breaking changes (Samba 4.14→4.2x config syntax,

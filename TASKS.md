@@ -103,7 +103,7 @@ release (`docs/verification/stock-release-20250402.md`).
 
 Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9).
 
-- [ ] **P0.1 — Repository scaffolding** — [HAIKU] — Size S — Depends: —
+- [x] **P0.1 — Repository scaffolding** — [HAIKU] — Size S — Depends: —
   Create the §6 directory skeleton (empty dirs with `.gitkeep`), `.gitignore` (must
   exclude `work/`, `dl/`, `output*/`, `*.img`, `*.7z`), `.editorconfig`, and a README
   stub stating goals, license layering (GPLv3 repo / GPLv2 kernel patches / upstream

@@ -1,6 +1,6 @@
 # Reference materials, downloads, build output — never committed (PLAN.md G6)
 work/
-output/
+output*/
 dl/
 dist/
 *.img

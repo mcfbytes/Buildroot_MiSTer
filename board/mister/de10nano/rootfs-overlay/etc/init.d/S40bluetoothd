@@ -1,0 +1,17 @@
+#!/bin/sh
+#
+# P2.3: this filename is the bluez5_utils PACKAGE's own default init
+# script, installed unconditionally by BR2_PACKAGE_BLUEZ5_UTILS. It starts
+# bluetoothd directly with no persistent-storage step, which on this
+# image's read-only "/" means /var/lib/bluetooth (not in fstab, so it is
+# NOT tmpfs) is unwritable -- pairings would fail to save, possibly taking
+# bluetoothd down with them.
+#
+# Stock's real mechanism -- an ext4 image on /media/fat, loop-mounted onto
+# /var/lib/bluetooth before bluetoothd starts -- is reproduced verbatim at
+# S45bluetooth (a symlink to /bin/bluetoothd, exactly as on stock; see
+# work/imgroot/bin/bluetoothd, the verified stock original). This script
+# is intentionally a no-op so bluetoothd is started exactly once, by
+# S45bluetooth, with the storage mounted first. See docs/init-parity.md.
+#
+exit 0

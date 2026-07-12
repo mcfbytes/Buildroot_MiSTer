@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+# sshd        Starts sshd.
+#
+# P2.3 / ADR 0015: SSH host keys are NOT shipped in this image. Every stock
+# MiSTer bakes the SAME ssh_host_* private keys into a read-only rootfs (all
+# dated 2016-12-31) -- a real vulnerability: trivial host impersonation,
+# and no host-key-mismatch warning to tip a user off, since every box's key
+# "matches". We generate a unique key set per device, on first boot, and
+# persist it to a small ext4 image on the FAT data partition -- mirroring
+# stock's OWN mechanism for exactly this shape of problem (Bluetooth
+# pairing keys also need real Unix permissions on a permission-less FAT
+# card): see bin/bluetoothd and docs/decisions/0015-per-device-ssh-host-keys.md.
+#
+
+KEYIMG=/media/fat/linux/ssh.ext4
+KEYDIR=/etc/ssh_keys
+
+# Make sure the ssh-keygen program exists
+[ -f /usr/bin/ssh-keygen ] || exit 0
+
+umask 077
+
+start() {
+	echo 'Checking for SSH host key storage'
+
+	if [ ! -f "$KEYIMG" ]; then
+		dd if=/dev/zero of="$KEYIMG" bs=64k count=32
+		mkfs.ext4 "$KEYIMG"
+	fi
+	mkdir -p "$KEYDIR"
+	mount -o sync,dirsync,noatime,nodiratime "$KEYIMG" "$KEYDIR"
+
+	# Create any missing keys -- first boot only, each type generated
+	# individually so it lands FLAT in $KEYDIR (ssh-keygen -A -f instead
+	# uses its argument as a prefix ahead of the whole compiled-in
+	# /etc/ssh/... path, not a replacement for it, which would not match
+	# the flat HostKey paths below in sshd_config).
+	for kt in rsa ecdsa ed25519; do
+		key="$KEYDIR/ssh_host_${kt}_key"
+		[ -f "$key" ] || ssh-keygen -q -t "$kt" -N '' -f "$key"
+	done
+
+	printf "Starting sshd: "
+	/usr/sbin/sshd
+	touch /var/lock/sshd
+	echo "OK"
+}
+stop() {
+	printf "Stopping sshd: "
+	killall sshd
+	rm -f /var/lock/sshd
+	echo "OK"
+}
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

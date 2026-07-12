@@ -1,0 +1,31 @@
+# P2.3 adaptation: stock's rootfs is usr-merged (/bin -> usr/bin, /sbin ->
+# usr/sbin -- work/imgroot verified), so its literal PATH of
+# "/usr/bin:/usr/sbin" already covered /bin and /sbin for free. Ours is a
+# plain (non-merged) Buildroot skeleton layout (a toolchain/skeleton-level
+# choice, out of P2.3's scope to change), so /bin and /sbin are added
+# explicitly -- otherwise most BusyBox applets vanish from an interactive
+# shell's PATH. See docs/init-parity.md.
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/media/fat/linux:/media/fat/Scripts:."
+
+if [ "$PS1" ]; then
+	if [ "`id -u`" -eq 0 ]; then
+		export PS1='$(pwd)# '
+	else
+		export PS1='$(pwd)$ '
+	fi
+fi
+
+export EDITOR='/bin/vi'
+
+# Source configuration files from /etc/profile.d
+for i in /etc/profile.d/*.sh ; do
+	if [ -r "$i" ]; then
+		. $i
+	fi
+done
+unset i
+
+export LC_ALL=en_US.UTF-8
+resize >/dev/null
+mount -o remount,rw /
+

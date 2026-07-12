@@ -63,6 +63,14 @@ BR2_TOOLCHAIN_BUILDROOT_CXX=y
 # scripts as plain recipe lines; a nonzero exit stops make).
 BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
+
+# P2.3 — init & config parity overlay (docs/init-parity.md). Copied onto
+# TARGET_DIR after every package installs, before the permission table and
+# filesystem image are built (system/system.mk) — same
+# BR2_EXTERNAL_MISTER_PATH-relative form as mister_initramfs_defconfig's own
+# BR2_ROOTFS_OVERLAY, just pointed at the full-rootfs overlay tree instead of
+# the initramfs one.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.33"

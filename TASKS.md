@@ -1,9 +1,11 @@
 # MiSTer Linux Modernization — Ultracode Task List
 
-Companion to `PLAN.md` v2. **The plan is authoritative and current** — it already
-reflects all review findings and everything verified against the shipped stock release
-(`docs/verification/stock-release-20250402.md`); do not "re-correct" it. This file is the
-execution contract: every task is self-contained, has explicit acceptance criteria, and
+Companion to `PLAN.md` **v3**, which has been **amended by the Phase 0 recon findings**
+(`docs/phase0-review.md`). v2 said "the plan is authoritative and current — do not
+'re-correct' it"; Phase 0 then checked it against the *source* and a number of its claims
+did not survive. Corrections are marked **[P0]** inline in both files and each carries its
+evidence. **Phase 1 is blocked until a human signs off on `docs/phase0-review.md` — five
+open questions there need a human decision.** This file is the execution contract: every task is self-contained, has explicit acceptance criteria, and
 names the AI model sized to it. Work through phases in order; within a phase, tasks with
 satisfied dependencies may run in parallel.
 
@@ -48,13 +50,12 @@ escalate one tier (Haiku → Sonnet → Opus) and note why in the commit message
 
 ---
 
-## A. Key constraints index (A1–A9)
+## A. Key constraints index (A1–A14)
 
-`PLAN.md` is authoritative and **already incorporates everything below** — nothing here
-is a pending correction, and no task should "fix" the plan against this list. Tasks cite
-these IDs as shorthand for load-bearing constraints that are easy to get wrong; each
-entry points to where the full text lives. All were verified against the shipped stock
-release (`docs/verification/stock-release-20250402.md`).
+Tasks cite these IDs as shorthand for load-bearing constraints that are easy to get wrong;
+each entry points to where the full text lives. A1–A9 were verified against the shipped
+stock release; **A10–A14 were added by Phase 0** after verifying against the source, and
+several of them correct A1–A9.
 
 - **A1 — Two-stage initramfs build.** A second, minimal Buildroot config (static
   BusyBox, `BR2_TARGET_ROOTFS_CPIO`) produces a tiny cpio the main build's kernel
@@ -72,16 +73,23 @@ release (`docs/verification/stock-release-20250402.md`).
   `CONFIG_ARM_APPENDED_DTB`, no ATAGs, no initrd. [PLAN §3] → P0.8, P1.3, P1.11
 - **A4 — `/dev/mem` must stay unrestricted.** `CONFIG_DEVMEM=y`,
   `CONFIG_STRICT_DEVMEM=n`, `CONFIG_IO_STRICT_DEVMEM=n` — otherwise `fpga_io.cpp`'s
-  mmap of the bridge addresses fails and the entire FPGA path dies. Modern defconfigs
-  enable STRICT_DEVMEM by default; stock has it off. [PLAN §3] → P1.3
+  mmap of the bridge addresses fails and the entire FPGA path dies. Stock has it off.
+  **[P0: `STRICT_DEVMEM` is NOT default-y on 32-bit ARM (`default y if PPC || X86 ||
+  ARM64 || S390`), and `multi_v7_defconfig` has no DEVMEM line — the assertion stands, but
+  it is not a fight against a default.]** [PLAN §3] → P1.3
 - **A5 — Module infrastructure is a parity requirement.** Stock ships 52 `.ko.xz`
   modules (WiFi, Bluetooth USB, xone; `CONFIG_MODULE_COMPRESS_XZ=y`) with
-  `kmod`/`depmod`/`modprobe`, **eudev** hotplug, and 72 firmware files. Class D/E module
-  packages reproduce that existing layout; xone firmware redistribution needs a
-  decision. [PLAN §3, §4.1] → P3.3, P0.3
+  `kmod`/`depmod`/`modprobe`, **eudev** hotplug, and **66** firmware files **[P0: not 72 —
+  that figure counted 6 directories as files]**. Class D/E module packages reproduce that
+  existing layout. **[P0: stock BUNDLES `xow_dongle.bin`** — there is no on-device fetch to
+  reproduce; the only open question is whether *we* may redistribute it.**]**
+  [PLAN §3, §4.1] → P3.3, P0.3
 - **A6 — On-device Python is an ABI surface.** `Downloader_MiSTer` and many community
-  scripts run on the target's interpreter (stock: 3.9; Buildroot 2026.02: 3.13+).
-  Compatibility must be tested, not assumed. [PLAN §3] → P3.9
+  scripts run on the target's interpreter (stock: 3.9; Buildroot 2026.02: **3.14**).
+  Compatibility must be tested, not assumed. **[P0: now evidenced, not suspected —
+  `Downloader_MiSTer` pins Python **3.9** in its own CI and builds against `python3.9-dev`.
+  The updater that delivers our image has never been tested on any interpreter we would
+  ship.]** [PLAN §3] → P3.9
 - **A7 — CI cannot boot the real image.** QEMU has no Cyclone V SoC machine model.
   CI runs static ABI checks, the stock `MiSTer` binary under a qemu-user chroot, and
   the initramfs logic on a generic QEMU ARM machine; real hardware gates each
@@ -89,13 +97,45 @@ release (`docs/verification/stock-release-20250402.md`).
 - **A8 — `LinuxUpdater` contract.** Version check: the running system's
   `/MiSTer.version` (rootfs root) vs the db entry's **last 6 chars**, inequality.
   A pinned on-demand `7za` extracts only `files/linux/*`; six user files are copied
-  into the offline-mounted new image (must remain regular files under `/etc`);
-  `files/linux/` is rsynced over `/media/fat/linux/`; `updateboot` flashes `uboot.img`
-  and wipes U-Boot's saved env **on every update**. [PLAN §10, §8, §3] → P0.6
+  into the offline-mounted new image; `files/linux/` is rsynced over `/media/fat/linux/`;
+  `updateboot` flashes `uboot.img` and wipes U-Boot's saved env **on every update**.
+  **[P0: only FIVE of the six destinations are regular files. `/etc/resolv.conf` is a
+  symlink into tmpfs, the Downloader's `copy()` follows it, and so that restore has never
+  actually worked — see Q2.]** **[P0: the flash phase runs without `set -e` and ends in
+  `touch`, so a failed `mv`/`rsync`/`updateboot` still reports success and still raises the
+  reboot flag. The update is not atomic and its success signal cannot be trusted.]**
+  [PLAN §10, §8, §3] → P0.6
 - **A9 — ext4 generation must be pinned.** Fixed UUID, pinned feature set (stock:
   `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`, `FLEX_BG`), `SOURCE_DATE_EPOCH`,
   `BR2_REPRODUCIBLE=y`; verified by a double-build comparison in CI. [PLAN §9]
   → P2.5, P4.3
+
+### Added by Phase 0 (see `docs/phase0-review.md`)
+
+- **A10 — `/MiSTer.version` is exactly 6 bytes, no trailing newline.** The Downloader
+  compares it with a bare `f.read()` and **no `.strip()`**. A single trailing `\n` never
+  matches any db `version`, so the box **re-flashes on every Downloader run, forever.**
+  Stock is exactly 6 bytes. [PLAN §3; `docs/downloader-contract.md`] → **P2.6**
+- **A11 — `CONFIG_BLK_DEV_INITRD=y` is required, and stock has it OFF.**
+  `CONFIG_INITRAMFS_SOURCE` depends on it, so porting the stock config via `olddefconfig`
+  (as P1.3 literally instructs) yields a kernel with **no initramfs slot at all** — silently
+  deleting the mechanism §5 uses to kill the `loop=` patch. This is the one intentional
+  divergence from stock that P1.3 must make loudly. [PLAN §5; `docs/boot-chain.md`] → **P1.3, P1.10**
+- **A12 — The audio ABI is `/dev/MrAudio` + `/etc/asound.conf` + a patched `snd-dummy`,
+  not a card name.** Main_MiSTer contains **zero ALSA code**. `asound.conf` routes the
+  default PCM through `type file → /dev/MrAudio` (created by `MiSTer-audio-spi.c`) with
+  `slave.pcm { type hw card 0 }`, card 0 being a patched `snd-dummy`. Patch `0002-…` **must
+  carry the `sound/drivers/dummy.c` hunks** or the system is silent.
+  [PLAN §3; `docs/abi-contract.md`] → **P1.5**
+- **A13 — `/media/fat` semantics are an ABI surface.** Mounted **`sync,dirsync`** (fstab
+  never re-mounts it) — mounting async is a power-off-corruption regression. Stock's
+  out-of-tree exfat driver also gives it **symlinks** (via the FAT `ATTR_SYSTEM` bit, so
+  they work on FAT32 too) and **UTF-8** FAT32 names; Main_MiSTer resolves those symlinks
+  (`file_io.cpp:1592`). Mainline exfat/vfat provide neither. [PLAN §4.1 class G] → **P1.10, Q1**
+- **A14 — Main_MiSTer never scans past `/dev/i2c-2`** (`smbus.cpp:214`). The ADV7513 HDMI
+  transmitter must remain on `i2c-0..2`. **A fourth I²C adapter, or a bus reordering in the
+  DTS we author, puts it out of reach and HDMI silently dies.**
+  [`docs/abi-contract.md`] → **P1.7**
 
 ---
 
@@ -136,6 +176,9 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   in `scripts/inventory/` so it can be re-run against any image.
 
 - [x] **P0.4 — Kernel commit triage (classes A–F)** — [OPUS] — Size L — Depends: P0.2
+  **[P0: there is no `v5.15.1` tag — the fork has zero tags and no upstream ancestry,
+  only squashed whole-tree imports. Baseline by content-diffing commit `aba1ef4c1` against
+  a real kernel.org tarball; it is pristine, so the 109 commits after it are the delta.]**
   Enumerate every commit in the 5.15 fork not in upstream `v5.15.1`. For each: class
   (A–F per §4.1), files touched, original author/origin, upstream status in v6.18
   (cite the upstream commit if merged), and disposition (carry / drop / re-source).
@@ -186,11 +229,18 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** the boot command is quoted verbatim and matched to source; every
   kernel-config implication is stated as a testable assertion.
 
-- [ ] **P0.9 — Phase 0 review gate** — [HAIKU] + human — Size S — Depends: P0.3–P0.8
+- [x] **P0.9 — Phase 0 review gate** — [HAIKU] + human — Size S — Depends: P0.3–P0.8
   Assemble a one-page summary of Phase 0 findings, open questions, and any newly
   discovered constraints beyond A1–A9 (fold those into `PLAN.md` and the section A index
   in the same PR). Human reviews and approves before Phase 1 starts.
   **Done when:** summary committed as `docs/phase0-review.md` with human sign-off noted.
+  **Status:** summary committed; `PLAN.md` amended to v3; A-index extended to A14; the
+  task texts Phase 0 proved wrong (P1.3, P1.5, P1.8, P1.9, P1.10, P2.6, P3.2) corrected.
+  **The human sign-off is still OUTSTANDING** — the box above is checked for the *authoring*
+  work only. **Phase 1 (P1.1) must not start until `docs/phase0-review.md`'s sign-off block
+  is filled in and its five open questions (Q1–Q5) are decided.** Q1 (exFAT symlinks) is the
+  biggest: it decides whether we carry an out-of-tree filesystem driver forward to 6.18 —
+  a permanent maintenance burden the plan never budgeted for.
 
 ---
 
@@ -221,7 +271,13 @@ boots to a serial console on real hardware (P1.13).
 - [ ] **P1.3 — Kernel config derivation (A3, A4)** — [OPUS] — Size L — Depends: P0.8, P1.1
   Port the **exact extracted stock config** (`docs/stock-inventory/stock-linux.config`,
   4,246 lines from IKCONFIG) to 6.18 via `olddefconfig`, then audit every dropped/renamed
-  symbol. Explicitly assert and document: `DEVMEM=y`, `STRICT_DEVMEM=n`,
+  symbol.
+  **[P0 — A11, READ FIRST: `olddefconfig` of the stock config is a trap.]** Stock has
+  `# CONFIG_BLK_DEV_INITRD is not set`, and `CONFIG_INITRAMFS_SOURCE` **depends on it** —
+  so a faithful port hands P1.10 a kernel with **no initramfs slot at all**, silently
+  removing the mechanism §5 uses to delete the `loop=` patch. **`BLK_DEV_INITRD=y` is a
+  required, intentional divergence from stock.** Document it as such.
+  Explicitly assert and document: `DEVMEM=y`, `STRICT_DEVMEM=n`,
   `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 —
   U-Boot passes the DTB pointer); stock-parity items: `IKCONFIG=y`+`IKCONFIG_PROC=y`,
   `KERNEL_LZ4`, `MODULE_COMPRESS_XZ=y`, `BLK_DEV_LOOP=y` (`LOOP_MIN_COUNT=8`); built-in
@@ -245,9 +301,17 @@ boots to a serial console on real hardware (P1.13).
 
 - [ ] **P1.5 — Forward-port `MiSTer-audio-spi`** — [OPUS] — Size M — Depends: P0.4, P1.3
   Port `sound/drivers/MiSTer-audio-spi.c` to 6.18 as `0002-…`. ALSA API churn expected.
-  Card/device name exposed to userland must match stock (Main_MiSTer opens it by name).
-  **Done when:** applies clean, compiles clean, provenance header present, ALSA card
-  name verified against stock inventory.
+  **[P0 CORRECTION — this task's original premise was false.]** It previously read *"Card/
+  device name exposed to userland must match stock (Main_MiSTer opens it by name)."*
+  **Main_MiSTer contains zero ALSA code and never opens a card by name.** The real contract
+  (A12, `docs/abi-contract.md`) is: `/etc/asound.conf` routes the default PCM through
+  `type file → /dev/MrAudio` (the chrdev this driver creates) with
+  `slave.pcm { type hw card 0 }`, where card 0 is a **patched `snd-dummy`**. So `0002-…`
+  **must also carry the `sound/drivers/dummy.c` hunks** (fork commit `333d49b95`) — omit
+  them and the system is silent.
+  **Done when:** applies clean, compiles clean, provenance header present, the `/dev/MrAudio`
+  node is created with stock's name/permissions, the patched `snd-dummy` card 0 accepts
+  S16_LE/48000/2ch, and stock's `/etc/asound.conf` opens the default PCM unmodified.
 
 - [ ] **P1.6 — Forward-port Cyclone V cpufreq/overclock** — [OPUS] — Size M — Depends: P0.4, P1.3
   Port the overclock/cpufreq driver as `0003-…`. Preserve the sysfs interface stock
@@ -268,9 +332,11 @@ boots to a serial console on real hardware (P1.13).
   `docs/dts-comparison.md`.
 
 - [ ] **P1.8 — spidev binding fix (§13 hazard)** — [SONNET] — Size S — Depends: P1.7
-  Resolve the `altspi` catch-all binding: prefer changing the DTS compatible to one
-  modern spidev accepts; only patch spidev's match table (`0005-…`) if no acceptable
-  compatible exists. Document the choice.
+  **[P0: `altspi` is NOT a catch-all binding.]** It is an explicit one-line entry in
+  `spidev_dt_ids[]` (`drivers/spi/spidev.c:699`, fork commit `246984fce`). Since we author
+  our own DTS, **retarget the compatible to one mainline spidev already accepts and drop
+  patch `0005` entirely.** Note it drives a **pi-top hub** (brightness/lid), not MiSTer's
+  own I/O board. Document the choice.
   **Done when:** `/dev/spidev1.0` creation path is explained in the patch/DTS commit
   message; no `spidev: probed from DT without matching compatible` style warning
   expected (assert in P1.13 boot log).
@@ -280,6 +346,12 @@ boots to a serial console on real hardware (P1.13).
   usb-storage Realtek CD-ROM blacklist, mmc LED, btusb VID/PIDs — *only* those P0.4
   confirmed absent from 6.18. Number them `0010+`/`0020+` per §6. Escalate any
   individual port to [OPUS] if the upstream driver was restructured.
+  **[P0] `0026-input-mousedev-eviocgrab` is a core input-subsystem patch, not a HID quirk
+  — assign it to [OPUS].** Main_MiSTer both `EVIOCGRAB`s evdev and reads mousedev.
+  **[P0] Two carried patches are dead weight — drop them:** the `dwc2/core.c` hunk is a
+  provable no-op, and the `vt.h MAX_NR_CONSOLES` edit buys a few KB (only 3 consoles are
+  used). **[P0] Keep the `leds-gpio` patch** — Main_MiSTer polls `brightness_hw_changed`
+  to drive the on-screen disk LED.
   **Done when:** all patches apply and compile clean; each has a provenance header;
   P0.4's table updated with final patch filenames.
 
@@ -287,8 +359,12 @@ boots to a serial console on real hardware (P1.13).
   Implement the two-stage build (A1): `configs/mister_initramfs_defconfig` (static
   BusyBox, cpio output, ~hundreds of KB) consumed by the main kernel via
   `CONFIG_INITRAMFS_SOURCE`. Write `/init` per A2: parse `root=`/`loop=` from
-  `/proc/cmdline`, rootwait retry loop, vfat/exfat mount, `losetup -r`, ro mount of the
-  loop device, `mount --move` of the data partition to `/newroot/media/fat`,
+  `/proc/cmdline`, rootwait retry loop, vfat/exfat mount **with `sync,dirsync` (A13 — stock
+  mounts `/media/fat` sync and fstab never re-mounts it; async is a power-off-corruption
+  regression)**, `losetup -r` **on `losetup -f`, NOT a hardcoded `/dev/loop8` (A13/P0: loop8
+  is an artifact — `LOOP_MIN_COUNT=8` pre-creates loop0-7 only and nothing references loop8
+  by name)**, ro mount of the loop device, `mount --move` of the data partition to
+  `/newroot/media/fat`,
   `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
   shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
   **Reference:** `/mnt/source/sb-enema` builds a `BR2_TARGET_ROOTFS_CPIO` image on
@@ -383,8 +459,13 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   Write `MiSTer.version` (6-char `YYMMDD`) **at the rootfs root of the image**
   (`/MiSTer.version` — verified location; the Downloader reads the running system's own
   copy), and an `/etc/os-release` identifying this distribution + build commit.
-  **Done when:** both files present in the image with correct format and location;
-  asserted by a test in `scripts/`.
+  **[P0 — A10: exactly 6 bytes, NO trailing newline.]** The Downloader compares this file
+  with a bare `f.read()` and **no `.strip()`**. A single `\n` — which `echo` adds by
+  default — never matches any db `version`, so the box **re-flashes on every Downloader
+  run, forever.** Use `printf '%s'`, not `echo`.
+  **Done when:** both files present in the image with correct format and location; the
+  test in `scripts/` asserts `/MiSTer.version` is **exactly 6 bytes** and that its last
+  byte is not `\n`.
 
 - [ ] **P2.7 — Size budget report** — [HAIKU] — Size S — Depends: P2.1
   Report rootfs usage by package (Buildroot's `make graph-size` + a markdown summary).
@@ -424,8 +505,10 @@ Exit criterion: hardware matrix (§11) green (P3.13).
 
 - [ ] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
   Package `xone` similarly. Handle its firmware requirement explicitly: document the
-  redistribution status; if not redistributable, implement the same on-device fetch
-  mechanism stock uses (check P0.3 inventory for how stock handles it today).
+  redistribution status. **[P0: stock BUNDLES it.** `xow_dongle.bin` is present in stock's
+  66-file firmware set (`docs/stock-inventory/firmware.md`) — there is no on-device fetch
+  to reproduce. Parity means shipping it; the open question is only whether *we* may
+  redistribute it.**]**
   **Done when:** module builds; firmware path documented in
   `docs/decisions/0003-xone-firmware.md`; behavior matches stock.
 

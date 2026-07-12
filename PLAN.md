@@ -3,8 +3,17 @@
 **A reproducible, drop-in `linux.img` built from a modern Buildroot, with all kernel
 patches carried in-tree as Buildroot patch files.**
 
-Status: v2 (2026-07-11) — verified against the shipped stock release (`docs/verification/stock-release-20250402.md`); task-level execution plan in `TASKS.md`
+Status: v3 (2026-07-12) — **amended by the Phase 0 recon findings** (`docs/phase0-review.md`).
+v2's claims were verified against the shipped stock release; Phase 0 then verified them
+against the *source*, and a number did not survive. Every correction is marked
+**[P0]** inline and carries its evidence. Task-level execution plan in `TASKS.md`.
 Target board: Terasic DE10-Nano (Cyclone V SoC, `armv7-a` Cortex-A9)
+
+> **Phase 0 headline:** the central bet holds. All 12 SONAMEs the stock `MiSTer` binary
+> needs survive at the same major version in Buildroot 2026.02 (`docs/package-manifest.md`),
+> so §1's "nothing needs rebuilding" premise is now *confirmed* rather than assumed.
+> **Five questions still need a human decision before Phase 1 starts — see
+> `docs/phase0-review.md`.**
 
 ---
 
@@ -65,7 +74,15 @@ Captured by inspecting `release_20250402.7z`. Anything below is load-bearing.
 ### Toolchain / ABI
 
 * `arm`, `cortex-a9`, NEON, VFPv3, **EABIhf**
-* **glibc** (any version ≥ 2.31; newer is fine and is the point)
+* **glibc** — **[P0: the floor is 2.28, not 2.31.]** The binary's highest versioned
+requirement is `fcntl64@GLIBC_2.28` (`scripts/abi/needed-symbols.py`). Newer is fine and is
+the point. **The real hazard the plan originally missed:** glibc **2.34 merged libpthread
+and librt into libc**, yet the stock binary still `DT_NEEDED`s `libpthread.so.0` and
+`librt.so.1`. Buildroot still installs the compat stubs (`glibc.mk:188`), so this resolves
+— but the five symbols that must come through the merge (`pthread_create`, `pthread_join`,
+`pthread_attr_setaffinity_np`, `shm_open`, `shm_unlink`) are named in
+`docs/abi-contract.md`, and **P2.2 asserts them against a real built rootfs** rather than
+trusting the reasoning.
 * Stock `MiSTer` binary `NEEDED`: `libc.so.6`, `libstdc++.so.6`, `libm.so.6`, `librt.so.1`,
 `libpthread.so.0`, `libgcc_s.so.1`, `libfreetype.so.6`, `libbz2.so.1.0`, `libpng16.so.16`,
 `libz.so.1`, `libImlib2.so.1`, `libbluetooth.so.3`
@@ -80,8 +97,14 @@ bootargs = console=ttyS0,115200 $v loop.max_part=8 mem=511M memmap=513M$511M \\
            root=$mmcroot loop=linux/linux.img ro rootwait
 ```
 
-* `mem=511M` is **load-bearing**: the top \~513 MB of DDR is reserved for the FPGA fabric
-(core framebuffers, scaler, emulated RAM). Do not change.
+* `mem=511M` is **load-bearing**: the top of DDR is reserved for the FPGA fabric (core
+framebuffers, scaler, emulated RAM) and for the warm-reboot mailbox at `0x1FFFF000`
+(= 511.996 MiB, i.e. *above* the 511 MiB the kernel is told about). Do not change.
+**[P0: `memmap=513M$511M` is inert on ARM.** `early_param("memmap")` is defined only in
+`arch/x86`, `arch/mips` and `arch/xtensa` — **there is no parser under `arch/arm/`**.
+`mem=511M` alone does 100% of the reservation. Both args still must not be touched (they
+are U-Boot's, and we do not modify U-Boot in v1), but the reservation is attributable to
+`mem=`, not to `memmap=`.**]**
 * Root filesystem is mounted **read-only**. This is a good design — an immutable root with
 writable state on `/media/fat` and tmpfs. **Preserve it.**
 * `linux.img` is a file on the FAT partition, loop-mounted as root.
@@ -105,14 +128,30 @@ one more reason `mem=511M`/`memmap=513M$511M` are untouchable.
 
 ### Kernel ABI surface
 
-* `MiSTer_fb` ioctl ABI (`drivers/video/fbdev/MiSTer_fb.c`)
-* `MiSTer-audio-spi` (`sound/drivers/MiSTer-audio-spi.c`)
-* `fpga_io.cpp` pokes the HPS↔FPGA bridges via `/dev/mem` at hardcoded Cyclone V addresses
+Full detail with evidence in `docs/abi-contract.md` (P0.5).
+
+* **`MiSTer_fb`** — **[P0: there is no custom ioctl.]** The driver exposes exactly one
+ioctl, `FBIO_WAITFORVSYNC`, which is **standard mainline UAPI, byte-identical in 5.15 and
+6.18**. This plan previously treated the "MiSTer_fb ioctl ABI" as a bit-level contract to
+preserve; there is no custom number to preserve, and **P1.4 carries no ioctl-drift risk.**
+The actual custom surface is the sysfs parameter `/sys/module/MiSTer_fb/parameters/mode`.
+`/dev/fb0` is **never mmap'd**.
+* **Audio** — **[P0: the ABI is not a card name.]** Main_MiSTer contains **zero ALSA
+code**. Audio reaches hardware via `/etc/asound.conf`, which routes the default PCM through
+`type file → /dev/MrAudio` (created by `MiSTer-audio-spi.c`) with `slave.pcm { type hw
+card 0 }` — card 0 being a **patched `snd-dummy`**. The `sound/drivers/dummy.c` hunks are
+therefore load-bearing: omit them and the system is silent.
+* `fpga_io.cpp` pokes the HPS↔FPGA bridges via `/dev/mem` at hardcoded Cyclone V addresses.
+The single `mmap` in the entire program is `/dev/mem` (`shmem.cpp:22`).
 
   → requires `CONFIG_DEVMEM=y` with `CONFIG_STRICT_DEVMEM=n` and `CONFIG_IO_STRICT_DEVMEM=n`.
-Modern defconfigs enable STRICT_DEVMEM by default; leaving it on silently kills the entire
-FPGA path. *(Verified: stock has `CONFIG_DEVMEM=y` and `# CONFIG_STRICT_DEVMEM is not set` —
-extracted from the zImage's embedded IKCONFIG.)*
+*(Verified: stock has `CONFIG_DEVMEM=y` and `# CONFIG_STRICT_DEVMEM is not set`.)*
+**[P0: the rationale here was wrong — `STRICT_DEVMEM` is *not* default-y on 32-bit ARM
+(`default y if PPC || X86 || ARM64 || S390`), and `multi_v7_defconfig` has no DEVMEM line at
+all. The assertion still must be checked; it just isn't a fight against a default.]**
+* **[P0, new MUST] Main_MiSTer refuses to scan past `/dev/i2c-2`** (`smbus.cpp:214`). The
+ADV7513 HDMI transmitter lives on one of `i2c-0..2`. **A fourth I²C adapter, or a bus
+reordering in the DTS we author in P1.7, puts it out of reach and HDMI silently dies.**
 * Cyclone V cpufreq/overclock driver
 
 ### Filesystem / runtime conventions
@@ -125,9 +164,19 @@ last 6 characters of the db entry's `version`. *(Note: it is **not**
 `/media/fat/linux/MiSTer.version` — a common misconception.)*
 * **User-file restore contract:** on every linux update the Downloader mounts the *new*
 `linux.img` read-write and copies `/media/fat/linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`
-over the corresponding files under `/etc` inside the image. These six destinations must
-remain **regular files** at their stock paths — no symlink-into-tmpfs schemes. Networking is
-ifupdown-style `/etc/network/interfaces` + `dhcpcd`.
+over the corresponding files under `/etc` inside the image. Networking is ifupdown-style
+`/etc/network/interfaces` + `dhcpcd`.
+
+  **[P0: "all six must remain regular files — no symlink-into-tmpfs schemes" was wrong.
+  Stock is itself a symlink-into-tmpfs scheme for one of them.]** Five are regular files.
+  **`/etc/resolv.conf` is a symlink to `../tmp/resolv.conf`** (verified on the raw ext4
+  image: inode 112, `Type: symlink`). Because the Downloader's `copy()` **follows** the
+  symlink, a user's custom `resolv.conf` is written to `/tmp/resolv.conf` *inside the
+  offline image* — which the tmpfs mount over `/tmp` then shadows at boot. **That restore
+  step has therefore never worked, on any MiSTer, ever.**
+  ⇒ Open question **Q2** (`docs/phase0-review.md`): reproduce the bug for bug-for-bug
+  parity, or make it a regular file and thereby *fix* a feature that has silently never
+  worked? Fixing it is a real behavior change. **Needs a human decision.**
 * BusyBox init with `S01syslogd … S99user` script names (verified set: syslogd, klogd,
 **udev**, dbus, network, dhcpcd, bluetooth, ntp, **proftpd**, sshd, smb, user). The stock
 `MiSTer` binary is launched from **`/etc/inittab` `::sysinit`** (backgrounded), not from an
@@ -138,7 +187,7 @@ with the target's interpreter. Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.
 Compatibility must be tested, not assumed.
 * Stock ships **52 xz-compressed kernel modules** (`CONFIG_MODULE_COMPRESS_XZ=y`) under
 `/usr/lib/modules/5.15.1-MiSTer/` — every WiFi driver, Bluetooth USB, and `xone` — plus
-**72 firmware files** and the full module toolchain (`kmod`, `depmod`, `modprobe`, `udevd`).
+**66 firmware files** *(P0: the "72" figure counted 6 directories as files)* and the full module toolchain (`kmod`, `depmod`, `modprobe`, `udevd`).
 Module infrastructure is an existing convention to keep at parity; shipping classes D/E as
 Buildroot module packages reproduces the stock runtime layout exactly.
 
@@ -148,7 +197,13 @@ Buildroot module packages reproduces the stock runtime layout exactly.
 
 ### 4.1 The kernel: smaller than it looks
 
-The MiSTer 5.15 fork carries \~60 commits. Triaged:
+**[P0: the fork carries 109 commits, not ~60.]** And the baseline is now *proven*: the
+fork has no upstream git ancestry at all (zero tags; its history is squashed whole-tree
+imports), but content-diffing its version-bump commit `aba1ef4c1` against a hash-verified
+kernel.org `linux-5.15.1` shows **0 files differing and 0 added** — so the 109 commits
+after it are provably the complete MiSTer delta. Excluding the two vendored WiFi trees,
+**the entire kernel problem is 143 files.** Full triage with per-commit provenance:
+`docs/patch-provenance.md` (P0.4). Triaged:
 
 |Class|Content|Disposition|
 |-|-|-|
@@ -158,6 +213,27 @@ The MiSTer 5.15 fork carries \~60 commits. Triaged:
 |**D. HID, still out-of-tree**|`xone`, GunCon 2/3, Fanatec, Flydigi Vader, remaining `xpad` IDs|**Carry** as patches, or as Buildroot kernel-module packages where an upstream exists.|
 |**E. Realtek USB WiFi**|`rtl8188eu`, `rtl8188fu`, `rtl8812au`, `rtl8821au`, `rtl8821cu`, `rtl88x2bu`|**Re-source from morrownr upstream as Buildroot `kernel-module` packages.** Do not vendor.|
 |**F. Misc quirks**|mmc LED, btusb VID/PIDs, usb-storage CD-ROM blacklist|Check upstream first; carry the remainder.|
+|**G. exfat replacement** **[P0 — new class, not in the original taxonomy]**|The fork **replaces mainline exfat with the out-of-tree Samsung driver**|**DECISION REQUIRED — see below.**|
+
+**[P0] Class G is the largest unbudgeted finding in Phase 0.** Stock's `fs/exfat` is not
+mainline's. The Samsung out-of-tree driver:
+
+* supports **symlinks**, stored in the FAT `ATTR_SYSTEM` bit — so they work on **FAT32 as
+well as exFAT**;
+* mounts FAT12/16/32 *and* exFAT under a single `-t exfat` (which is why the `loop=` patch
+gets away with one mount call);
+* decodes FAT32 filenames as **UTF-8** (mainline `vfat` defaults to iso8859-1 ⇒ mojibake).
+
+**Mainline exfat and vfat have no symlink support whatsoever — and Main_MiSTer actively
+resolves symlinks on `/media/fat`** (`file_io.cpp:1592`, `de->d_type == DT_LNK`, since Jan
+2019). Dropping this driver silently breaks a live, user-facing feature that nothing in
+this plan budgeted for.
+
+⇒ Open question **Q1** (`docs/phase0-review.md`): **does the community actually rely on
+symlinks on `/media/fat`?** That answer decides whether we carry a large out-of-tree
+filesystem driver forward to 6.18 (a substantial, permanent maintenance burden that would
+materially change this project's cost) or drop it and ship a known regression.
+**This is the single most important human decision in Phase 0.**
 
 **Class B is the one that will bite.** `init/do_mounts.c` was substantially refactored in the
 6.x series (`mount_block_root` and friends are gone). Forward-porting that patch is both hard
@@ -165,7 +241,9 @@ The MiSTer 5.15 fork carries \~60 commits. Triaged:
 
 **Classes D and E are already modules in the stock image** — the 5.15 fork builds them `=m`
 (52 `.ko.xz` under `/usr/lib/modules`, `CONFIG_MODULE_COMPRESS_XZ=y`) with
-`kmod`/`depmod`/`udevd` and 72 firmware files shipped. Re-sourcing them as Buildroot
+`kmod`/`depmod`/`udevd` and **66** firmware files shipped *(P0: not 72)* — including
+`xow_dongle.bin`, so **stock already bundles xone's firmware rather than fetching it**,
+which settles P3.2's redistribution question. Re-sourcing them as Buildroot
 `kernel-module` packages reproduces the existing runtime layout; what must be kept at parity
 is the module toolchain, udev-driven autoload, and the firmware inventory (xone's firmware
 additionally has redistribution constraints).
@@ -251,9 +329,20 @@ shell. In sketch:
 ```sh
 # real script parses root=/loop= from /proc/cmdline, retries until the
 # device appears (rootwait), tries vfat then exfat, rescue shell on failure
-mount -t vfat "$rootdev" /mnt/fat || mount -t exfat "$rootdev" /mnt/fat
-losetup -r /dev/loop8 "/mnt/fat/$looppath"
-mount -o ro /dev/loop8 /newroot
+#
+# [P0] -o sync,dirsync is NOT optional: stock mounts /media/fat sync,dirsync
+# from the kernel and /etc/fstab never re-mounts it. Mounting async here would
+# be a real power-off-corruption regression, not a tuning choice.
+mount -t vfat -o sync,dirsync "$rootdev" /mnt/fat || \
+  mount -t exfat -o sync,dirsync "$rootdev" /mnt/fat
+
+# [P0] Use losetup -f, NOT a hardcoded /dev/loop8. loop8 is an artifact, not a
+# contract: LOOP_MIN_COUNT=8 pre-creates loop0-7 only (loop8 is instantiated on
+# demand), and nothing in the stock rootfs or Main_MiSTer references it by name.
+loopdev="$(losetup -f)"
+losetup -r "$loopdev" "/mnt/fat/$looppath"
+mount -o ro "$loopdev" /newroot
+
 # move the data-partition mount so /media/fat is already there
 mount --move /mnt/fat /newroot/media/fat
 exec switch_root /newroot /sbin/init
@@ -538,12 +627,39 @@ flag is raised.
 
 Users add one database to `downloader.ini` and opt in.
 
-**Known wrinkle:** `LinuxUpdater` warns `"Too many databases try to update linux. Only 1 can be processed"` — if both our db and the official Distribution db provide `linux`, only the
-first wins. Document the exact `downloader.ini` ordering. This determines whether onboarding
-is one line or a support thread.
+**Known wrinkle — [P0: worse than "document the ordering". There IS no ordering.]**
+`LinuxUpdater` warns `"Too many databases try to update linux. Only 1 can be processed"`
+and takes `_linux_descriptions[0]`. v2 of this plan said "document the exact
+`downloader.ini` ordering". **No such ordering exists, and the user cannot control it:**
+
+* `sorted_db_sections()` forces `default_db_id` — i.e. **`distribution_mister`** — to the
+**front** of the push queue;
+* `installed_dbs` is appended in **job-completion order** across six concurrent workers,
+not in `downloader.ini` order;
+* a db's job completes as soon as *its own* `db.json` is fetched and parsed.
+
+⇒ **The winner is whichever `db.json` parses first.** Ours wins only because it is tiny
+against Distribution's multi-megabyte catalog. That is an **emergent property of relative
+payload size, not a guarantee** — and it could flip if Distribution's db shrinks or the
+Downloader's threading changes.
+
+Two consequences, both load-bearing:
+1. **Keeping our `db.json` minimal (empty `files`/`folders`) is a design rule, not an
+aesthetic preference.** It is the only thing that wins us the race.
+2. **Onboarding uses the Downloader's drop-in ini mechanism** (`/media/fat/downloader_*.ini`
+or `/media/fat/downloader/*.ini`) rather than an edit to the user's `downloader.ini`.
+
+Full source citations: `docs/downloader-contract.md` (P0.6). See also open question **Q3**.
+
+**[P0] The update is not atomic, and its success signal cannot be trusted.** The flash-phase
+shell script (`linux_updater.py:157-168`) runs **without `set -e`** and ends in `touch`, so
+its exit status is `touch`'s. **A failed `mv`, `rsync`, or `updateboot` still reports
+success and still raises the reboot flag.** P4.8's rollback runbook must assume a "successful"
+update may have half-failed.
 
 **Rollback is trivial and must be documented prominently:** remove the db line, re-run the
-Downloader, get the official `linux.img` back.
+Downloader, get the official `linux.img` back. (It works precisely *because* the version
+check is an inequality, not an ordering — a "downgrade" is just a different string.)
 
 ---
 
@@ -579,7 +695,9 @@ with a HIL rig (USB-SD-mux, power control, serial capture) as a self-hosted runn
 
 * Boot-to-menu time: ≤ current
 * Free RAM at menu: ≤ current
-* Rootfs free space: ≥ 15%
+* Rootfs free space: ≥ 15% **of the 512 MiB image we build** — **[P0: state the budget
+against our image, not stock's. Stock's 375 MiB rootfs is only 13.56% free, so "≥ 15%"
+measured against stock would fail on stock itself.]**
 
 ---
 
@@ -607,7 +725,11 @@ criteria — lives in `TASKS.md`.
 |-|-|-|
 |`MiSTer_fb` / `/dev/mem` FPGA ABI breaks on 6.x|**High**|P2's exit criterion *is* this test. Fail fast.|
 |Realtek USB WiFi drivers don't build on 6.18|High|Source from morrownr upstream, who track modern kernels. Do not vendor 2021 copies.|
-|**`spidev` binding hazard** — `brightness.cpp` opens `/dev/spidev1.0`, which comes from a `spibri@0 { compatible = "altspi"; }` node. **There is no `altspi` driver anywhere in MiSTer's kernel** — `spidev` is binding it as a catch-all. Modern kernels restrict spidev's DT matching.|Medium|Change the compatible to one spidev accepts, or patch spidev's match table (`0005-…`). Trivial to fix, easy to miss — presents as silent loss of I/O-board brightness control.|
+|**`spidev` binding hazard** — **[P0: mis-described.]** `altspi` is **not** a catch-all bind: it is an explicit one-line entry in `spidev_dt_ids[]` (`drivers/spi/spidev.c:699`, added by fork commit `246984fce`). The hazard is still real on 6.18 — an unlisted compatible means spidev never probes ⇒ no `/dev/spidev1.0` — but the fix is cleaner than feared.|Low **[P0: was Medium]**|**Since we author our own DTS (§4.1a), retarget the compatible to one mainline spidev already accepts and delete patch `0005` entirely.** Also **[P0]**: this drives a **pi-top hub** (brightness/lid), *not* MiSTer's own I/O board — the original "silent loss of I/O-board brightness control" was the wrong peripheral, which lowers the blast radius considerably.|
+|**[P0] exFAT symlinks (class G, §4.1)** — stock's out-of-tree exfat driver supports symlinks on `/media/fat`; Main_MiSTer resolves them; mainline exfat/vfat cannot.|**High**|**Unbudgeted.** Open question **Q1** — needs a human answer on whether the community relies on it. Carrying the driver forward to 6.18 is a large, permanent maintenance burden; dropping it ships a user-visible regression.|
+|**[P0] `CONFIG_BLK_DEV_INITRD` is OFF in stock** — and `CONFIG_INITRAMFS_SOURCE` depends on it.|**High**|P1.3's own instruction ("port the stock config via `olddefconfig`") would produce a kernel with **no initramfs slot at all**, silently removing the mechanism §5 depends on to delete the `loop=` patch. Now constraint **A11**; P1.3 must turn it on as an explicit divergence.|
+|**[P0] The Downloader's flash phase cannot report its own failure** (no `set -e`; script ends in `touch`).|Medium|Not fixable by us — it is in the shipped updater. P4.8's rollback runbook must assume a reported-successful update may have half-failed. Argues for a serial-console recovery guide.|
+|**[P0] Python 3.9 → 3.14** — `Downloader_MiSTer` pins **3.9** in its own CI and builds against `python3.9-dev`. It has never been tested on any interpreter we would ship.|Medium **[P0: was a suspicion (A6), now evidenced]**|P3.9 is a real gate, not a formality. Report incompatibilities upstream rather than pinning an EOL Python.|
 |DTS gaps (§4.1a) — missing USB, FPGA bridges, RTC bus|High|Carried as `0004-dts-de10nano-MiSTer.patch`. Drivers all exist mainline; this is config, not code.|
 |Rootfs exceeds the image budget|Medium|Grow `linux.img` to 512 MiB; audit assumptions about 400 MB.|
 |Boot regression from the initramfs|Low|Measurable; budget in §11.|

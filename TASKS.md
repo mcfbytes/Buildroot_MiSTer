@@ -706,12 +706,30 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
 
 - [ ] **P4.1 — CI build workflow** — [SONNET] — Size L — Depends: P1.10, P2.5
   `.github/workflows/build.yml`: pinned container image (digest, not tag); two-stage
-  build (initramfs config, then main); cache `dl/` and ccache (mind the 10 GB GitHub
-  cache ceiling — evict policy or external mirror documented); run
-  `scripts/ci-tests.sh` (P3.12) and the ABI checker (P2.2); upload build artifacts on
-  every push; hard timeout budget documented.
-  **Done when:** clean-cache and warm-cache runs both green; warm run < 60 min or the
-  budget is re-documented with rationale.
+  build (initramfs config, then main); run `scripts/ci-tests.sh` (P3.12) and the ABI
+  checker (P2.2); upload build artifacts on every push; hard timeout budget documented.
+
+  **⚠ CACHING IS NON-OPTIONAL — a cold Buildroot build is 30–60 min; a warm one must be
+  minutes.** Cache FOUR things with `actions/cache` (pin the action by commit SHA):
+  1. **The Buildroot release tarball** — key on `BUILDROOT_VERSION` (it changes rarely).
+  2. **The `dl/` download cache** — key on `BUILDROOT_VERSION` + `hashFiles(defconfig)`,
+     with a `restore-keys` prefix on just `BUILDROOT_VERSION` so a partial cache still
+     hydrates. **Our `dl/` is already at the repo root (not under `output/`)**, so it
+     survives `make clean` — do NOT move it under `output/`, which CI/clean wipes.
+  3. **The Buildroot host toolchain** (`output/host` + the per-build stamps) — key on
+     `BUILDROOT_VERSION` + `hashFiles(defconfig, linux.config, linux-patches/**)` so a
+     kernel-config or patch change correctly busts it. This is the big win: it skips the
+     cross-compiler bootstrap.
+  4. **ccache** — use a ccache GitHub action, and pass Buildroot the flags to actually
+     use it: `make … BR2_CCACHE=y BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
+     BR2_CCACHE_USE_BASEDIR=y`. (`USE_BASEDIR` rewrites absolute paths so the cache is
+     relocatable across runners — without it the cache mostly misses.)
+
+  Mind the **10 GB GitHub cache ceiling** — document an evict policy or an external
+  mirror if the four caches together approach it.
+  **Done when:** clean-cache and warm-cache runs both green; warm run < 60 min (target:
+  minutes, given the toolchain + ccache caches) or the budget is re-documented with
+  rationale.
 
 - [ ] **P4.2 — SBOM / legal-info** — [HAIKU] — Size S — Depends: P4.1
   `make legal-info` on every build; archive as an artifact; include in releases.

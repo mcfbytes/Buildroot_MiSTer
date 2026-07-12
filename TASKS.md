@@ -135,7 +135,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** each list is a checked-in text/markdown file with a generation script
   in `scripts/inventory/` so it can be re-run against any image.
 
-- [ ] **P0.4 — Kernel commit triage (classes A–F)** — [OPUS] — Size L — Depends: P0.2
+- [x] **P0.4 — Kernel commit triage (classes A–F)** — [OPUS] — Size L — Depends: P0.2
   Enumerate every commit in the 5.15 fork not in upstream `v5.15.1`. For each: class
   (A–F per §4.1), files touched, original author/origin, upstream status in v6.18
   (cite the upstream commit if merged), and disposition (carry / drop / re-source).

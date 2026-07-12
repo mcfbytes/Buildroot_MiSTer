@@ -1,0 +1,54 @@
+From 5bdbf2f7e65510acf8c4e2bf484c0be3b72c06d2 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Wed, 8 Sep 2021 00:23:54 +0800
+Subject: [PATCH 1/1] hid: add quirk for ControllaBLE (1209:FACA)
+
+Routes the ControllaBLE Bluetooth gamepad (a Twin-USB-Joystick-
+protocol clone, VID:PID 1209:FACA -- a pid.codes shared/test ID) through
+hid-pl.c's existing PANTHERLORD dual-PSX-adapter quirk instead of
+falling back to generic HID-input mapping.
+
+Provenance
+----------
+Origin:       5bdbf2f7e65510acf8c4e2bf484c0be3b72c06d2
+              "hid: add quirk for ControllaBLE."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-09-08, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/5bdbf2f7e65510acf8c4e2bf484c0be3b72c06d2
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No (verified: no 0x1209/0xFACA entry in hid-pl.c or
+              hid-quirks.c). Disposition "carry" (docs/patch-provenance.md
+              class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Compiles unmodified. Fixed a copy-paste artifact in the
+              original: the new hid-pl.c device-table entry carried the
+              comment "/* Twin USB Joystick */" left over from the
+              adjacent GAMERON entry; changed to "/* ControllaBLE */".
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-pl.c b/drivers/hid/hid-pl.c
+index dc11d5322..8b1cd55f3 100644
+--- a/drivers/hid/hid-pl.c
++++ b/drivers/hid/hid-pl.c
+@@ -213,6 +213,8 @@ static const struct hid_device_id pl_devices[] = {
+ 		.driver_data = 1 }, /* Twin USB Joystick */
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_GREENASIA, 0x0003), },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_JESS2, USB_DEVICE_ID_JESS2_COLOR_RUMBLE_PAD), },
++	{ HID_BLUETOOTH_DEVICE(0x1209, 0xFACA),
++		.driver_data = 1 }, /* ControllaBLE */
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(hid, pl_devices);
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index ebf865c2d..a0601fa49 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -611,6 +611,7 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_GAMERON, USB_DEVICE_ID_GAMERON_DUAL_PCS_ADAPTOR) },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_GREENASIA, 0x0003) },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_JESS2, USB_DEVICE_ID_JESS2_COLOR_RUMBLE_PAD) },
++	{ HID_BLUETOOTH_DEVICE(0x1209, 0xFACA) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_PENMOUNT)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_PENMOUNT, USB_DEVICE_ID_PENMOUNT_6000) },

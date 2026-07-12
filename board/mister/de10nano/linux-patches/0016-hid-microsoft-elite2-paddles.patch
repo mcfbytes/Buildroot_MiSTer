@@ -1,0 +1,107 @@
+From c784a6856d73d78cfd37e4bd0011b186523e31c5 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Wed, 8 Apr 2026 20:13:41 +0800
+Subject: [PATCH 1/1] hid-microsoft: support Xbox Elite 2 paddle buttons over Bluetooth
+
+The Elite 2 controller reports its 4 back paddles as a vendor
+"consumer" usage (HID_UP_CONSUMER | 0x0081) that generic hid-input
+mapping ignores; a second usage (0x0099) is a trigger-scale switch
+that should be dropped entirely rather than exposed as an axis. Adds
+MS_QUIRK_ELITE2_PADDLES: ms_input_mapping() claims and registers
+BTN_GRIPL/L2/R/R2 for the paddle usage and discards the trigger-scale
+usage; ms_event() decodes the paddle bitmask and reports the 4 keys.
+
+Provenance
+----------
+Origin:       c784a6856d73d78cfd37e4bd0011b186523e31c5
+              "hid-microsoft: support for XBox Elite 2 paddles."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2026-04-08, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/c784a6856d73d78cfd37e4bd0011b186523e31c5
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     Partially. 6.18 already binds the Elite 2 controller
+              (USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE, a rename
+              of the fork's USB_DEVICE_ID_MS_XBOX_ELITE2_CONTROLLER --
+              same ID, 0x0b22) with MS_QUIRK_FF, and BTN_GRIPL/R/L2/R2 are
+              mainline UAPI (97c01e65ef4c). The paddle-usage remapping
+              logic itself (MS_QUIRK_ELITE2_PADDLES) is not upstream.
+              Disposition "carry" (docs/patch-provenance.md class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              Device-table edit retargeted from the fork's
+              USB_DEVICE_ID_MS_XBOX_ELITE2_CONTROLLER to 6.18's renamed
+              USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE (same
+              numeric ID, 0x0b22). Dropped the fork's
+              "#ifndef BTN_GRIPL / #define BTN_GRIPL 0x224 ... #endif"
+              guard block: those macros are unconditionally provided by
+              6.18's <linux/input-event-codes.h> now, so the guard was
+              always false and the block dead code.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-microsoft.c b/drivers/hid/hid-microsoft.c
+index 18ac21c0b..23d37a057 100644
+--- a/drivers/hid/hid-microsoft.c
++++ b/drivers/hid/hid-microsoft.c
+@@ -27,6 +27,10 @@
+ #define MS_DUPLICATE_USAGES	BIT(5)
+ #define MS_SURFACE_DIAL		BIT(6)
+ #define MS_QUIRK_FF		BIT(7)
++#define MS_QUIRK_ELITE2_PADDLES	BIT(8)
++
++#define MS_XBE2_TRIGSCALE_USAGE  (HID_UP_CONSUMER | 0x0099)
++#define MS_XBE2_PADDLE_USAGE     (HID_UP_CONSUMER | 0x0081)
+ 
+ struct ms_data {
+ 	unsigned long quirks;
+@@ -203,6 +207,21 @@ static int ms_input_mapping(struct hid_device *hdev, struct hid_input *hi,
+ 			return ret;
+ 	}
+ 
++	if (quirks & MS_QUIRK_ELITE2_PADDLES) {
++		/* Ignore the trigger scale switch entirely */
++		if (usage->hid == MS_XBE2_TRIGSCALE_USAGE)
++			return -1;
++
++		if (usage->hid == MS_XBE2_PADDLE_USAGE) {
++			set_bit(EV_KEY, hi->input->evbit);
++			set_bit(BTN_GRIPL,  hi->input->keybit);
++			set_bit(BTN_GRIPL2, hi->input->keybit);
++			set_bit(BTN_GRIPR,  hi->input->keybit);
++			set_bit(BTN_GRIPR2, hi->input->keybit);
++			return -1;
++		}
++	}
++
+ 	return 0;
+ }
+ 
+@@ -226,6 +245,20 @@ static int ms_event(struct hid_device *hdev, struct hid_field *field,
+ 	unsigned long quirks = ms->quirks;
+ 	struct input_dev *input;
+ 
++	if ((quirks & MS_QUIRK_ELITE2_PADDLES) &&
++	    usage->hid == MS_XBE2_PADDLE_USAGE) {
++		if (!(hdev->claimed & HID_CLAIMED_INPUT) || !field->hidinput)
++			return 0;
++		input = field->hidinput->input;
++		input_report_key(input, BTN_GRIPL,  value & BIT(2));
++		input_report_key(input, BTN_GRIPL2, value & BIT(3));
++		input_report_key(input, BTN_GRIPR,  value & BIT(0));
++		input_report_key(input, BTN_GRIPR2, value & BIT(1));
++		input_sync(input);
++		return 1;
++	}
++
++	/* All other handlers require a valid usage->type */
+ 	if (!(hdev->claimed & HID_CLAIMED_INPUT) || !field->hidinput ||
+ 			!usage->type)
+ 		return 0;
+@@ -456,7 +489,7 @@ static const struct hid_device_id ms_devices[] = {
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797),
+ 		.driver_data = MS_QUIRK_FF },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE),
+-		.driver_data = MS_QUIRK_FF },
++		.driver_data = MS_QUIRK_FF | MS_QUIRK_ELITE2_PADDLES },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_8BITDO_SN30_PRO_PLUS),
+ 		.driver_data = MS_QUIRK_FF },
+ 	{ }

@@ -398,10 +398,18 @@ shell. In sketch:
 # vfat.rst:72 explicitly deprecates iocharset=utf8. exfat needs nothing -- utf8
 # is already its default. Without this, non-ASCII filenames mojibake and
 # Main_MiSTer's stored paths (recents/favorites/MGL) stop resolving.
-mount -t exfat -o sync,dirsync,fmask=0022,dmask=0022,errors=remount-ro \
-        "$rootdev" /mnt/fat || \
-  mount -t vfat -o sync,dirsync,fmask=0022,dmask=0022,utf8=1 \
-        "$rootdev" /mnt/fat
+# [P1.10] Mounted **rw**, deliberately. This looks like it contradicts A15; it is
+# what A15 actually requires. losetup opens the backing file O_RDWR, and if that
+# fails BusyBox's set_loop() SILENTLY retries O_RDONLY -- whereupon the kernel
+# marks the loop DEVICE read-only, which is precisely the state A15 forbids,
+# reached through the back door. Read-only-ness belongs on the loop *mount*
+# (`mount -o ro`, below), never on the partition or the device.
+#
+# [P1.10] noatime,nodiratime are stock's, not decoration: do_mounts.c:667 passes
+# MS_NOATIME|MS_NODIRATIME. An earlier version of this sketch omitted them.
+FAT_OPTS="rw,sync,dirsync,noatime,nodiratime,fmask=0022,dmask=0022,errors=remount-ro"
+mount -t exfat -o "$FAT_OPTS"          "$rootdev" /mnt/fat || \
+  mount -t vfat  -o "$FAT_OPTS,utf8=1" "$rootdev" /mnt/fat
 
 # [P0] Use losetup -f, NOT a hardcoded /dev/loop8. loop8 is an artifact, not a
 # contract: LOOP_MIN_COUNT=8 pre-creates loop0-7 only (loop8 is instantiated on
@@ -417,8 +425,13 @@ loopdev="$(losetup -f)"
 losetup "$loopdev" "/mnt/fat/$looppath"
 mount -o ro "$loopdev" /newroot
 
-# move the data-partition mount so /media/fat is already there
-mount --move /mnt/fat /newroot/media/fat
+# Move the data-partition mount so /media/fat is already there. Stock's kernel
+# creates /media/fat as a BIND mount (do_mounts.c:677) and NOTHING in /etc mounts
+# it -- so if the initramfs does not recreate it, /media/fat simply does not exist.
+#
+# [P1.10] `mount -o move`, NOT `mount --move`. BusyBox mount has no long options;
+# an earlier version of this sketch said `--move` and would have failed at boot.
+mount -o move /mnt/fat /newroot/media/fat
 exec switch_root /newroot /sbin/init
 ```
 

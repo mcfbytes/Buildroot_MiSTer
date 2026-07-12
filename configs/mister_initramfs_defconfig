@@ -1,0 +1,73 @@
+# mister_initramfs_defconfig — STAGE 1 of the two-stage build (TASKS.md P1.10 / A1,
+# PLAN.md §5, docs/decisions/0002-initramfs.md).
+#
+# This config builds ONE artifact: output-initramfs/images/rootfs.cpio, a few hundred
+# KB of static BusyBox plus our /init. The main build (mister_de10nano_defconfig) then
+# embeds that cpio into the kernel via CONFIG_INITRAMFS_SOURCE — see external.mk, where
+# the path is injected into the kernel .config, and the top-level Makefile, which
+# sequences stage 1 before stage 2.
+#
+# ############################################################################
+# #  NEVER set BR2_TARGET_ROOTFS_INITRAMFS in the MAIN config to do this.    #
+# #  That option embeds the entire ~300 MB target rootfs into the kernel     #
+# #  image. It is the trap A1 exists to name. Two configs, one cpio.         #
+# ############################################################################
+#
+# Why this is a whole second Buildroot config and not a flag on the first one: the two
+# rootfses have opposite requirements. The target rootfs must be glibc/shared, because
+# the stock MiSTer binary is linked against it (ADR 0001, abi-contract §1.3). This one
+# must be static, because it lives inside the zImage and every byte is a byte of kernel.
+# BR2_STATIC_LIBS is not even offered with glibc ("static only needs a toolchain w/
+# uclibc or musl" — Buildroot Config.in:684), so the C library choice differs too. None
+# of that is a conflict: nothing in the initramfs is an ABI surface. It runs BusyBox,
+# calls mount(2)/losetup, and is deleted from RAM by switch_root before /sbin/init
+# starts. It never meets Main_MiSTer.
+
+# --- Arch/ABI: same silicon as the main build (ADR 0001). Not an ABI requirement here
+#     — it just has to run on a Cortex-A9.
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+
+# --- Toolchain: musl, static-only.
+# musl is chosen *because* it permits BR2_STATIC_LIBS (glibc does not) and because a
+# static musl BusyBox is roughly half the size of a static glibc one. The main build
+# stays on glibc; see the note above on why that is not an inconsistency.
+BR2_TOOLCHAIN_BUILDROOT_MUSL=y
+BR2_KERNEL_HEADERS_6_18=y
+BR2_STATIC_LIBS=y
+
+# --- No init system. The kernel execs /init from the cpio directly; there is no
+#     /sbin/init, no inittab and no S-scripts in stage 1.
+BR2_INIT_NONE=y
+
+# --- Device nodes: dynamic/devtmpfs. This is not cosmetic. Buildroot's fs/cpio/cpio.mk
+#     only mknod's /dev/console (c 5 1) in the NON-static branch, and the kernel needs
+#     that node to exist *before* /init runs or /init has no stdin/stdout/stderr and the
+#     rescue shell is unreachable. Choosing STATIC device creation here would also make
+#     cpio.mk symlink /init -> sbin/init instead of leaving ours alone.
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y
+
+# --- BusyBox: our own minimal config (see the header of that file for how it was
+#     generated and which symbols are load-bearing — CONFIG_FEATURE_MOUNT_FLAGS above
+#     all). BR2_STATIC_LIBS makes busybox.mk force CONFIG_STATIC on top of it.
+BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/initramfs-busybox.config"
+
+# --- /init itself.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/initramfs-overlay"
+
+# --- Output: a cpio, uncompressed.
+# Uncompressed is deliberate (docs/boot-chain.md I3). The cpio ends up inside the
+# zImage, which is itself LZ4-compressed (CONFIG_KERNEL_LZ4, stock parity), so
+# compressing it here would just be compressing it twice — and it would additionally
+# require a matching CONFIG_RD_* decompressor in the kernel. `copy` is the default in
+# the kernel's usr/Makefile for a plain .cpio, so this needs nothing on the kernel side.
+BR2_TARGET_ROOTFS_CPIO=y
+# BR2_TARGET_ROOTFS_TAR is not set
+
+# --- Reproducibility (A9). The cpio is embedded in the zImage, so if the cpio is not
+#     byte-reproducible then zImage_dtb is not either, and P4.3's double-build job fails
+#     for a reason that has nothing to do with the kernel.
+BR2_REPRODUCIBLE=y

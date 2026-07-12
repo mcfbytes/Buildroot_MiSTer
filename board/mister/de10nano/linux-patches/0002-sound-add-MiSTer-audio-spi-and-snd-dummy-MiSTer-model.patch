@@ -1,0 +1,472 @@
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Fri, 20 Aug 2021 01:37:53 +0800
+Subject: [PATCH] sound: add MiSTer-audio-spi driver and MiSTer snd-dummy model
+
+The MiSTer audio path is two kernel-side pieces that only work together.
+
+1. sound/drivers/MiSTer-audio-spi.c -- an SPI driver, and NOT an ALSA driver:
+   no card, no PCM, no substream.  It creates the /dev/MrAudio character
+   device.  write()s of raw PCM are copied into a 512 KiB dma_alloc_coherent()
+   ring (~2.6 s of audio) and a 16-byte {addr,len,ptr,reserved} descriptor is
+   spi_write()n to the FPGA, which plays it.  The write length is truncated to
+   a multiple of 4 ("userBufLen & ~3"), i.e. to whole S16_LE *stereo* frames.
+
+2. sound/drivers/dummy.c -- two edits, and they are load-bearing.
+
+   MiSTer's /etc/asound.conf makes the ALSA default PCM:
+
+       plug -> rate(format S16_LE, rate 48000) -> file("/dev/MrAudio") -> hw:0
+
+   ALSA's "file" plugin *tees*: it writes the raw PCM to /dev/MrAudio and also
+   passes it to its slave, hw:0.  Card 0 is snd-dummy, acting as the sink that
+   ALSA needs in order to have a real device to hang timing off.
+
+   Note what asound.conf pins and what it does not: it pins the *format* and
+   the *rate*, but it says nothing about the *channel count*.  Channels are
+   negotiated against hw:0.  Stock snd-dummy advertises channels 1..2, so a
+   mono client would negotiate 1ch the whole way down and tee MONO into
+   /dev/MrAudio -- which the driver above feeds to the FPGA as 4-byte stereo
+   frames.  So snd-dummy is given a "MiSTer" model (S16_LE, 48 kHz, 2 ch,
+   32 KiB buffer) and it is force-selected as the default, which pins the chain
+   to stereo and makes the top-level "plug" convert everything into it.
+   /dev/MrAudio therefore always sees exactly S16_LE / 48000 / 2ch.
+
+   fake_buffer is also defaulted to 0, as stock ships it, so that the card
+   presents a real (if discarded) ring buffer rather than ops_no_buf's single
+   shared page.
+
+   *** Omit the dummy.c hunks and audio is wrong or silent, even though
+   /dev/MrAudio itself is perfectly healthy.  They ship together. ***
+
+Origin:          https://github.com/MiSTer-devel/Linux-Kernel_MiSTer
+                 commit 333d49b95b34fdac9835248ba046b9a4f74e2f98
+                 ("Implement MiSTer audio driver."), branch MiSTer-v5.15
+Original author: Sorgelig <pour.garbage@gmail.com>
+Upstream status: Not upstream, and not upstreamable as-is (a hardware-specific
+                 chrdev with no ALSA PCM; the dummy.c hunks change a generic
+                 driver's defaults for one board).  Carried indefinitely.
+ABI contract:    docs/abi-contract.md A12 / section 8 -- /dev/MrAudio, the
+                 patched snd-dummy as card 0, and the verbatim /etc/asound.conf.
+Rebased-from:    v5.15.1 to v6.18.38 by Michael C. Ferguson (task P1.5).
+
+Forward-port notes (5.15 -> 6.18).  Behaviour-preserving; no userland-visible
+change.  See docs/patch-provenance.md section 5 for the full write-up.
+
+  * class_create() lost its leading "struct module *" argument in v6.4-rc1:
+    1aaba11da9aa ("driver core: class: remove module * from class_create()").
+  * struct spi_driver::remove became void in v5.18-rc1:
+    a0386bba7093 ("spi: make remove callback a void function"), Uwe Kleine-Koenig.
+    (This is an SPI driver, so v6.11's platform_driver::remove change does not
+    apply to it.)
+  * class_create() and device_create() return ERR_PTR() on failure, never NULL.
+    The 5.15 code tested "== NULL", so both error paths were dead code and a
+    failed device_create() was treated as success.  Both now use IS_ERR().
+    The success path is bit-for-bit unchanged.
+  * "major" is now dev_t rather than int -- it always held a dev_t, since
+    alloc_chrdev_region() writes MKDEV(major, 0) into it.  ARM_LPAE is off on
+    Cyclone V, so dev_t and dma_addr_t are both u32 and every printk format
+    (and the value printed) is unchanged.
+  * cleanup() resets major/myclass, so a re-probe after a failed probe does not
+    act on stale values.
+  * Kconfig gained "depends on SPI" (the driver cannot link without it) and
+    kernel-standard tab indentation.  The symbol CONFIG_SND_MISTER_AUDIO and
+    its "default n" are unchanged.
+  * dummy.c's model_MiSTer is const, like every other model in the file
+    (struct snd_dummy::model is already a const pointer).  5.15's was non-const.
+
+Everything that is ABI is carried verbatim: DRIVER_NAME "MrAudio", the
+"MrAudio_proc" chrdev region, the "MrAudio_sys" class, the dynamic major, the
+512 KiB ring, the 4-byte write alignment, the "> BUFFER_LEN => -EFAULT" rule,
+the Info_t descriptor, and the read() status string.
+
+NOT included here, on purpose: the fork's 13-line socfpga_cyclone5_de10_nano.dts
+hunk adding &spi0/spiusb (compatible = "MiSTer,spi-audio", spi-cpha, spi-cpol,
+spi-max-frequency = <10000000>).  Without an SPI device that matches, this
+driver never probes and /dev/MrAudio never appears.  The DTS is authored from
+scratch against mainline in task P1.7 (0004-dts-de10nano-MiSTer.patch), which
+owns that node.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/sound/drivers/Kconfig b/sound/drivers/Kconfig
+index 6debd8e..f4f6288 100644
+--- a/sound/drivers/Kconfig
++++ b/sound/drivers/Kconfig
+@@ -38,6 +38,16 @@ config SND_AC97_CODEC
+ 	select AC97_BUS
+ 	select SND_VMASTER
+ 
++config SND_MISTER_AUDIO
++	tristate "MiSTer Audio (SPI)"
++	depends on SPI
++	default n
++	help
++	  Support for MiSTer audio through SPI.
++
++	  This creates the /dev/MrAudio character device that MiSTer's
++	  /etc/asound.conf routes the ALSA default PCM into.
++
+ menuconfig SND_DRIVERS
+ 	bool "Generic sound devices"
+ 	default y
+diff --git a/sound/drivers/Makefile b/sound/drivers/Makefile
+index a08bdd7..abe0f91 100644
+--- a/sound/drivers/Makefile
++++ b/sound/drivers/Makefile
+@@ -24,5 +24,6 @@ obj-$(CONFIG_SND_SERIAL_GENERIC) += snd-serial-generic.o
+ obj-$(CONFIG_SND_MTPAV) += snd-mtpav.o
+ obj-$(CONFIG_SND_MTS64) += snd-mts64.o
+ obj-$(CONFIG_SND_PORTMAN2X4) += snd-portman2x4.o
++obj-$(CONFIG_SND_MISTER_AUDIO) += MiSTer-audio-spi.o
+ 
+ obj-$(CONFIG_SND) += opl3/ opl4/ mpu401/ vx/ pcsp/
+diff --git a/sound/drivers/MiSTer-audio-spi.c b/sound/drivers/MiSTer-audio-spi.c
+new file mode 100644
+index 0000000..b18e8e5
+--- /dev/null
++++ b/sound/drivers/MiSTer-audio-spi.c
+@@ -0,0 +1,280 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/jiffies.h>
++#include <linux/module.h>
++#include <linux/spi/spi.h>
++#include <linux/of.h>
++#include <linux/seq_file.h>
++#include <linux/uaccess.h>
++#include <linux/cdev.h>
++#include <linux/fs.h>
++#include <linux/device.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/err.h>
++#include <linux/io.h>
++
++#define DRIVER_DESC	"MiSTer Audio (SPI)"
++#define DRIVER_VERSION	"1.0"
++#define DRIVER_NAME     "MrAudio"
++
++#define BUFFER_LEN       512*1024 // Holds about 2.6 seconds of audio.
++
++static dev_t major = -1;
++static struct cdev mycdev;
++static struct class *myclass = NULL;
++
++static char msg[1024];          // The msg the device will give when asked */
++static char *msg_Ptr;
++static int  MrBufferWriteCount  = 0;
++static int  MrBufferMaxWriteLen = 0;
++
++static char *MrBuffer = 0;
++
++typedef struct Info
++{
++    unsigned int addr;
++    unsigned int len;
++    unsigned int ptr;
++    unsigned int reserved; //IRQ rate may be.
++} Info_t;
++
++static Info_t MrBufferInfo;
++
++static struct spi_device *g_spi;
++
++////////////////////////////////////////////////////////////////////////////////////////////////
++
++static int show(struct seq_file *m, void *v)
++{
++	seq_printf(m, "TEST-->");
++	return 0;
++}
++
++static int device_open(struct inode *inode, struct file *file)
++{
++	int len;
++	int comp = 0;
++	int rptr = -1;
++
++	if(spi_read(g_spi, &rptr, 4)) rptr = -1;
++	rptr >>= 8;
++
++	if(rptr >= 0)
++	{
++		comp = rptr & 7;
++		rptr &= ~7;
++	}
++
++	len = (MrBufferInfo.ptr < (unsigned int)rptr) ? (MrBufferInfo.ptr + MrBufferInfo.len - rptr) : (MrBufferInfo.ptr - rptr);
++
++	sprintf(msg, "rptr: %6d, wptr: %6d, len: %6d, comp: %1d\n", rptr, MrBufferInfo.ptr, len, comp);
++
++	msg_Ptr = msg;
++	return single_open(file, show, NULL);
++}
++
++static ssize_t device_read(struct file *filp,
++                           char *buffer,
++                           size_t length,
++                           loff_t * offset)
++{
++	int bytes_read = 0; // <-- Number of bytes actually written to the buffer
++
++	if (*msg_Ptr == 0)  // If we're at the end of the message,
++		return 0;       // return 0 signifying end of file
++
++	while (length && *msg_Ptr) // Actually put the data into the buffer
++	{
++		// The buffer is in the user data segment, not the kernel
++		// segment so "*" assignment won't work.  We have to use
++		// put_user which copies data from the kernel data segment to
++		// the user data segment.
++		put_user(*(msg_Ptr++), buffer++);
++		length--;
++		bytes_read++;
++	}
++
++	return bytes_read;  // Most read functions return the number of bytes put into the buffer
++}
++
++static ssize_t device_write(struct file *filp,
++                            const char *userBuf,
++                            size_t userBufLen,
++                            loff_t * off)
++{
++	size_t count,i;
++	unsigned int buf[64];
++
++	userBufLen = userBufLen & ~3; // assume the length aligned to 32bits (2x16 samples) for faster access
++
++	MrBufferWriteCount++;
++	if(userBufLen > MrBufferMaxWriteLen) MrBufferMaxWriteLen = userBufLen;
++
++	if(!userBufLen || userBufLen > BUFFER_LEN) return -EFAULT;
++
++	count = userBufLen;
++	while (count)
++	{
++		size_t c = count;
++		if (c > sizeof(buf)) c = sizeof(buf);
++		if (copy_from_user(buf, userBuf, c)) return -EFAULT;
++		userBuf += c;
++		count -= c;
++		c >>= 2;
++		for(i=0; i < c; i++)
++		{
++			// align to 64bit access
++			writel(buf[i], &MrBuffer[MrBufferInfo.ptr]);
++			MrBufferInfo.ptr +=4;
++			if(MrBufferInfo.ptr>=BUFFER_LEN) MrBufferInfo.ptr = 0;
++		}
++	}
++
++	spi_write(g_spi, &MrBufferInfo, sizeof(MrBufferInfo));
++	return userBufLen;
++}
++
++static const struct file_operations fops =
++{
++	.open = device_open,
++	.owner = THIS_MODULE,
++	.read = device_read,
++	.write = device_write,
++	.release = single_release,
++};
++
++
++////////////////////////////////////////////////////////////////////////////////////////////////
++
++static void cleanup(int device_created)
++{
++	if (device_created)
++	{
++		device_destroy(myclass, major);
++		cdev_del(&mycdev);
++	}
++
++	if (myclass) class_destroy(myclass);
++	myclass = NULL;
++	if (major != (dev_t)-1) unregister_chrdev_region(major, 1);
++	major = -1;
++
++	if(MrBuffer) dma_free_coherent(&g_spi->dev, BUFFER_LEN, MrBuffer, MrBufferInfo.addr);
++	MrBuffer = 0;
++}
++
++static int device_init(void)
++{
++	int device_created = 0;
++	int i;
++
++	if (dma_set_coherent_mask(&g_spi->dev, DMA_BIT_MASK(32)))
++	{
++		printk(KERN_INFO "Bad mask.\n");
++		goto error;
++	}
++
++	memset(&MrBufferInfo, 0, sizeof(MrBufferInfo));
++	MrBufferInfo.len = BUFFER_LEN;
++	MrBuffer = dma_alloc_coherent(&g_spi->dev, BUFFER_LEN, &MrBufferInfo.addr, GFP_KERNEL);
++	if(!MrBuffer)
++	{
++		printk(KERN_INFO "MrAudio ERROR:--> dma_alloc_coherent(0x%X)\n", BUFFER_LEN);
++		goto error;
++	}
++
++	printk(KERN_INFO "MrAudio: CMA addr = 0x%X\n", MrBufferInfo.addr);
++
++	for(i=0; i<BUFFER_LEN; i+=4) writel(0, &MrBuffer[i]);
++
++	// cat /proc/devices
++	if (alloc_chrdev_region(&major, 0, 1, DRIVER_NAME "_proc") < 0)
++	{
++		printk(KERN_INFO "MrAudio ERROR:--> alloc_chrdev_region(%d, '%s')\n", major, DRIVER_NAME "_proc");
++		major = -1;
++		goto error;
++	}
++	// ls /sys/class
++	myclass = class_create(DRIVER_NAME "_sys");
++	if (IS_ERR(myclass))
++	{
++		printk(KERN_INFO "MrAudio ERROR:--> class_create('%s')\n", DRIVER_NAME "_SYS");
++		myclass = NULL;
++		goto error;
++	}
++	// ls /dev/
++	if (IS_ERR(device_create(myclass, NULL, major, NULL, DRIVER_NAME)))
++	{
++		printk(KERN_INFO "MrAudio ERROR:--> device_create('%s', %d, '%s')\n",
++		       myclass->name,
++		       major,
++		       DRIVER_NAME);
++		goto error;
++	}
++	device_created = 1;
++	cdev_init(&mycdev, &fops);
++	if (cdev_add(&mycdev, major, 1) == -1)
++	{
++		printk(KERN_INFO "MrAudio ERROR:--> cdev_add(%d)\n", major);
++		goto error;
++	}
++
++	printk(KERN_INFO "MrAudio Audio buffer '/dev/%s' created.\n"
++                     "Class --> '%s'\n"
++                     "Major --> %d\n",
++                     DRIVER_NAME,
++                     myclass->name,
++                     major);
++	return 0;
++
++error:
++	cleanup(device_created);
++	return -1;
++}
++
++////////////////////////////////////////////////////////////////////////////////////////////////
++
++static int device_probe(struct spi_device *spi)
++{
++	g_spi = spi;
++
++	if (spi_setup(spi) < 0)
++	{
++		dev_err(&spi->dev, "Unable to setup SPI bus");
++		return -EFAULT;
++	}
++
++	if (device_init())
++	{
++		dev_err(&spi->dev, "device_init() failed\n");
++		return -EFAULT;
++	}
++	return 0;
++}
++
++static void device_remove(struct spi_device *spi)
++{
++	cleanup(1);
++}
++
++static const struct of_device_id device_of_match_table[] = {
++	{ .compatible = "MiSTer,spi-audio", },
++	{},
++};
++MODULE_DEVICE_TABLE(of, device_of_match_table);
++
++static struct spi_driver MiSTer_audio_spi_driver = {
++	.probe		= device_probe,
++	.remove		= device_remove,
++	.driver		=
++	{
++		.name		= "MiSTer-audio-spi",
++		.of_match_table = of_match_ptr(device_of_match_table),
++	},
++};
++
++module_spi_driver(MiSTer_audio_spi_driver);
++
++MODULE_DESCRIPTION(DRIVER_DESC);
++MODULE_AUTHOR("Sorgelig");
++MODULE_LICENSE("GPL");
+diff --git a/sound/drivers/dummy.c b/sound/drivers/dummy.c
+index 1860ff7..829aa42 100644
+--- a/sound/drivers/dummy.c
++++ b/sound/drivers/dummy.c
+@@ -58,7 +58,13 @@ static int mixer_volume_level_max = USE_MIXER_VOLUME_LEVEL_MAX;
+ #ifdef CONFIG_HIGH_RES_TIMERS
+ static bool hrtimer = 1;
+ #endif
+-static bool fake_buffer = 1;
++/*
++ * MiSTer: stock ships this as 0 (fork commit 333d49b95); keep it 0 for parity.
++ * With fake_buffer=1 snd-dummy allocates no real ring: it uses
++ * dummy_pcm_ops_no_buf, whose .copy discards and whose .page hands out one
++ * shared page for every offset.  With 0 it gets a real (if discarded) buffer.
++ */
++static bool fake_buffer = 0;
+ 
+ module_param_array(index, int, NULL, 0444);
+ MODULE_PARM_DESC(index, "Index value for dummy soundcard.");
+@@ -212,6 +218,33 @@ static const struct dummy_model model_ca0106 = {
+ 	.rate_max = 192000,
+ };
+ 
++/*
++ * MiSTer: force-selected as the default model in snd_dummy_probe() below.
++ *
++ * /etc/asound.conf makes the ALSA default PCM
++ *     plug -> rate(S16_LE, 48000) -> file("/dev/MrAudio") -> hw:0
++ * where hw:0 is this card.  The "file" plugin tees the raw stream into
++ * /dev/MrAudio, and MiSTer-audio-spi.c hands those bytes to the FPGA as
++ * 4-byte S16_LE *stereo* frames (see its "userBufLen & ~3").
++ *
++ * asound.conf pins the format and the rate, but it does NOT pin the channel
++ * count -- that is negotiated against hw:0.  Stock snd-dummy advertises
++ * channels 1..2, so a mono client would negotiate 1ch all the way down and tee
++ * MONO into /dev/MrAudio, which the FPGA would misinterpret.  Pinning
++ * channels_min = channels_max = 2 here forces the top-level "plug" to convert
++ * everything to stereo, so /dev/MrAudio always sees S16_LE/48000/2ch.
++ */
++static const struct dummy_model model_MiSTer = {
++	.name = "MiSTer",
++	.buffer_bytes_max = 32768,
++	.formats = SNDRV_PCM_FMTBIT_S16_LE,
++	.channels_min = 2,
++	.channels_max = 2,
++	.rates = SNDRV_PCM_RATE_48000,
++	.rate_min = 48000,
++	.rate_max = 48000,
++};
++
+ static const struct dummy_model *dummy_models[] = {
+ 	&model_emu10k1,
+ 	&model_rme9652,
+@@ -1023,6 +1056,10 @@ static int snd_dummy_probe(struct platform_device *devptr)
+ 		return err;
+ 	dummy = card->private_data;
+ 	dummy->card = card;
++
++	/* MiSTer: default to the MiSTer model; an explicit model= param still wins. */
++	dummy->model = m = &model_MiSTer;
++
+ 	for (mdl = dummy_models; *mdl && model[dev]; mdl++) {
+ 		if (strcmp(model[dev], (*mdl)->name) == 0) {
+ 			pr_info("snd-dummy: Using model '%s' for card %i\n",

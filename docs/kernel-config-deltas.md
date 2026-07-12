@@ -268,14 +268,14 @@ set them** — kconfig would discard them.
 
 | Symbols | Returns via |
 |---|---|
-| `FB_MISTER` | **P1.4** patch `0001-fbdev-add-MiSTer_fb-driver.patch` |
+| `FB_MISTER` | **P1.4** patch `0001-fbdev-add-MiSTer_fb-driver.patch` — **landed.** `CONFIG_FB_MISTER=y` is now in `linux.config` (P1.4 added it, as this table instructed); `savedefconfig` round-trips with that one line as the only delta. |
 | `SND_MISTER_AUDIO` | **P1.5** patch `0002-…` |
 | `ARM_SOCFPGA_CPUFREQ` | **P1.6** patch `0003-…` — confirmed **not in mainline 6.18** (`grep -rn SOCFPGA_CPUFREQ --include=Kconfig` → no match) |
 | `HID_GUNCON2`, `HID_GUNCON3`, `HID_FTEC`, `HID_GAMECUBE_ADAPTER`, `HID_GAMECUBE_ADAPTER_FF` | **P1.9** |
 | `JOYSTICK_XONE` | **P3.2** (Buildroot `kernel-module` package) |
 | `RTL8188EU`, `RTL8188FU`, `RTL8812AU`, `RTL8821AU`, `RTL8821CU`, `RTL8822BU` | **P3.1** (morrownr Buildroot packages) |
 | `EXFAT_DISCARD`, `EXFAT_DELAYED_SYNC`, `EXFAT_DEFAULT_CODEPAGE` | **never** — sub-options of the out-of-tree Samsung driver, **dropped by ADR 0010**. Mainline `EXFAT_FS=y` replaces it. |
-| `FB_CMDLINE`, `FB_SYS_COPYAREA`, `FB_SYS_FILLRECT`, `FB_SYS_IMAGEBLIT` | **P1.4** — these are non-prompt symbols `select`ed *by* `FB_MISTER`. They vanished because the driver did, not because fbdev lost them. `FB_SYS_FILLRECT`/`FB_SYS_COPYAREA` still exist (`drivers/video/fbdev/core/Kconfig:61,69`); the modern aggregate is `FB_SYSMEM_HELPERS` (`:164`). **P1.4 should select `FB_SYSMEM_HELPERS`.** |
+| `FB_CMDLINE`, `FB_SYS_COPYAREA`, `FB_SYS_FILLRECT`, `FB_SYS_IMAGEBLIT` | **P1.4 — landed.** These are non-prompt symbols `select`ed *by* `FB_MISTER`. They vanished because the driver did, not because fbdev lost them; all three `FB_SYS_*` still exist and are back. ⚠️ **The advice this row used to give — "P1.4 should select `FB_SYSMEM_HELPERS`" — was wrong and was not followed.** `FB_SYSMEM_HELPERS` pulls in `FB_SYSMEM_FOPS` (`fb_sys_read`/`fb_sys_write`) and *still leaves the driver with no `mmap`*, because 6.18 ships **no sysmem mmap helper** — only `__FB_DEFAULT_SYSMEM_OPS_{RDWR,DRAW}`. The framebuffer is FPGA memory above the `mem=511M` line with no `struct page`s, so it can only be mapped by `vm_iomap_memory()` on the physical `fix.smem_start`, i.e. the **iomem** fops. Shipped: `select FB_SYS_{FILLRECT,COPYAREA,IMAGEBLIT}` (drawing, unchanged from 5.15) **+ `FB_IOMEM_FOPS`** (read/write/mmap). See `docs/patch-provenance.md` §5. |
 
 ⚠ **Handoff to P1.4:** `CONFIG_FB_DEVICE=y` is a **new 6.18 symbol** (§5) and is what creates
 the `/dev/fbN` nodes. It defaulted **on**, so `/dev/fb0` will exist — but it is now an

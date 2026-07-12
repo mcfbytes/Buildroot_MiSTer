@@ -1629,7 +1629,7 @@ Every kernel-side item this contract depends on, and who owns it:
 |---|---|---|---|
 | `/dev/fb0`, `FBIO_WAITFORVSYNC`, `/sys/module/MiSTer_fb/parameters/*` | `0001-fbdev-add-MiSTer_fb-driver.patch` | **P1.4** | §5 |
 | `/dev/MrAudio` + the **patched `dummy.c`** | `0002-sound-add-MiSTer-audio-spi.patch` | **P1.5** | §5, N4 |
-| cpufreq/overclock sysfs (community scripts) | `0003-cpufreq-cyclone5-overclock.patch` | **P1.6** | §5 |
+| cpufreq/overclock sysfs (community scripts) — OC is via **`scaling_max_freq`** up to `cpuinfo_max_freq` = `1200000`; there is **no** `…/cpu/cpufreq/boost` file (see the P1.6 correction in `patch-provenance.md` §5) | `0003-cpufreq-cyclone5-de10nano-overclock.patch` | **P1.6** | §5 |
 | `MiSTer_fb` DT node @ `0x22000000`/IRQ 40; `spi0` → `MiSTer,spi-audio`; `spi1` → spidev; `i2c0`/`i2c2`; `usb1`; bridges; `hps_led0` | `0004-dts-de10nano-MiSTer.patch` | **P1.7** | §5 |
 | `/dev/spidev1.0` | retarget the DTS `compatible` (preferred) **or** `0005-spidev-accept-altspi-compatible.patch` | **P1.8** | N2, §5 |
 | `EVIOCGRAB` + mousedev coexistence | `0026-input-mousedev-eviocgrab.patch` | **P1.9** [OPUS] | §6 |

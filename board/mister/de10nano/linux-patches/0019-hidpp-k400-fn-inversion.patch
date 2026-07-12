@@ -1,0 +1,124 @@
+From fc8f3c2c69dc64da15d5546e3af0780e0218d7e0 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Thu, 19 Aug 2021 03:52:11 +0800
+Subject: [PATCH 1/1] hid-logitech-hidpp: disable Fn-key inversion on K400r / K400 Plus
+
+K400r/K400 Plus keyboards ship with "Fn Lock" (aka FEATURE_NEW_FN_
+INVERSION, HID++ feature 0x40A2) enabled by default, swapping media
+keys and F-keys. Main_MiSTer's UI expects bare media keys. Sends a
+HID++ SetFeature(0x10, enable=0) against that feature once, on every
+connect event, disabling the swap.
+
+Provenance
+----------
+Origin:       fc8f3c2c69dc64da15d5546e3af0780e0218d7e0
+              "Logitech K400r: disable Fn swap."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-19, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/fc8f3c2c69dc64da15d5546e3af0780e0218d7e0
+              + b745ce6d9f24bea7024bd364d4b16f484f9997ab
+                "fix Logitech K400 Plus FN problem (#15)", HGD73,
+                2021-12-24 (folded in: K400 Plus device-table entry).
+Author:       Sorgelig <pour.garbage@gmail.com>; HGD73.
+Upstream:     No. Disposition "carry" (docs/patch-provenance.md class D).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+                - hidpp_root_get_feature() dropped its `feature_type`
+                  output parameter upstream (3 args now, was 4); the new
+                  k400_enable_fn() helper is written against the current
+                  signature.
+                - k400_connect() lost its `bool connected` parameter
+                  upstream (hidpp_connect_event() now calls it with just
+                  `hdev`); the Fn-disable call is added to the 1-arg form.
+                - Fixed a latent bug in the fork's own patch: it reused
+                  k400->feature_index (k400_disable_tap_to_click()'s
+                  cache for the HIDPP_PAGE_TOUCHPAD_FW_ITEMS feature) to
+                  also cache the unrelated FEATURE_NEW_FN_INVERSION
+                  index. Since k400_connect() calls the Fn-disable helper
+                  first, tap-to-click's own lookup would see a non-zero
+                  cached index left behind by the Fn lookup and skip
+                  resolving its own feature, sending the tap-to-click
+                  SetFeature at the wrong feature index. Added a
+                  dedicated `fn_feature_index` field instead of sharing.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-logitech-hidpp.c b/drivers/hid/hid-logitech-hidpp.c
+index 2eb67d0ca..68f9b552b 100644
+--- a/drivers/hid/hid-logitech-hidpp.c
++++ b/drivers/hid/hid-logitech-hidpp.c
+@@ -3337,6 +3337,7 @@ static int m560_input_mapping(struct hid_device *hdev, struct hid_input *hi,
+ 
+ struct k400_private_data {
+ 	u8 feature_index;
++	u8 fn_feature_index;
+ };
+ 
+ static int k400_disable_tap_to_click(struct hidpp_device *hidpp)
+@@ -3361,6 +3362,49 @@ static int k400_disable_tap_to_click(struct hidpp_device *hidpp)
+ 	return 0;
+ }
+ 
++#define FEATURE_FN_INVERSION     0x40A0
++#define FEATURE_NEW_FN_INVERSION 0x40A2
++
++static int hidpp_fn_set(struct hidpp_device *hidpp, u8 feature_index, u8 enable)
++{
++	struct hidpp_report response;
++	int ret;
++
++	ret = hidpp_send_fap_command_sync(hidpp, feature_index, 0x10, &enable, 1, &response);
++	if (ret > 0) {
++		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++			__func__, ret);
++		return -EPROTO;
++	}
++
++	return ret;
++}
++
++/*
++ * MiSTer: disable the Fn-key swap on Logitech K400r / K400 Plus keyboards,
++ * so media keys work without holding Fn. Uses its own cached feature index
++ * (fn_feature_index) -- NOT k400->feature_index, which is
++ * k400_disable_tap_to_click()'s cache for a different HID++ feature page.
++ * Sharing one cache field between the two would make whichever call runs
++ * second skip its own feature lookup and reuse the wrong index.
++ */
++static int k400_enable_fn(struct hidpp_device *hidpp)
++{
++	struct k400_private_data *k400 = hidpp->private_data;
++	int ret;
++
++	if (!k400->fn_feature_index) {
++		ret = hidpp_root_get_feature(hidpp,
++			FEATURE_NEW_FN_INVERSION,
++			&k400->fn_feature_index);
++		if (ret)
++			/* means that the device is not powered up */
++			return ret;
++	}
++
++	return hidpp_fn_set(hidpp, k400->fn_feature_index, 0);
++}
++
+ static int k400_allocate(struct hid_device *hdev)
+ {
+ 	struct hidpp_device *hidpp = hid_get_drvdata(hdev);
+@@ -3380,6 +3424,8 @@ static int k400_connect(struct hid_device *hdev)
+ {
+ 	struct hidpp_device *hidpp = hid_get_drvdata(hdev);
+ 
++	k400_enable_fn(hidpp);
++
+ 	if (!disable_tap_to_click)
+ 		return 0;
+ 
+@@ -4559,6 +4605,8 @@ static const struct hid_device_id hidpp_devices[] = {
+ 	{ /* Keyboard logitech K400 */
+ 	  LDJ_DEVICE(0x4024),
+ 	  .driver_data = HIDPP_QUIRK_CLASS_K400 },
++	{ /* Keyboard logitech K400 plus */
++	  LDJ_DEVICE(0x404D), .driver_data = HIDPP_QUIRK_CLASS_K400 },
+ 	{ /* Solar Keyboard Logitech K750 */
+ 	  LDJ_DEVICE(0x4002),
+ 	  .driver_data = HIDPP_QUIRK_CLASS_K750 },

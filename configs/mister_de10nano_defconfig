@@ -51,3 +51,14 @@ BR2_ARM_ENABLE_VFP=y
 BR2_ARM_FPU_NEON=y
 BR2_KERNEL_HEADERS_6_18=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# P1.11 (A3): assemble zImage_dtb (plain `cat zImage dtb`) and assert its
+# U-Boot contract (scripts/check-zimage-dtb.sh) after every image build. Post-
+# image scripts run with $(BR_DIR) (work/buildroot/) as CWD (system/Config.in:
+# "executed from the main Buildroot source directory"), so this path is
+# relative to THAT directory, not BR2_EXTERNAL -- verified against the working
+# reference wrapper at /mnt/source/sb-enema (`../../sb_enema/board/sb-enema/
+# post-image.sh` from a BR_DIR one level deeper than ours). A build-time
+# checker failure here fails `make all` (Buildroot's Makefile runs post-image
+# scripts as plain recipe lines; a nonzero exit stops make).
+BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"

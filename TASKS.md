@@ -319,9 +319,17 @@ boots to a serial console on real hardware (P1.13).
   `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 —
   U-Boot passes the DTB pointer); stock-parity items: `IKCONFIG=y`+`IKCONFIG_PROC=y`,
   `KERNEL_LZ4`, `MODULE_COMPRESS_XZ=y`, `BLK_DEV_LOOP=y` (`LOOP_MIN_COUNT=8`); built-in
-  (not module): ext4, vfat, exfat, loop, NLS codepages, dwc2, usb-storage, HID core;
-  cifs + nfs built-in per stock (stock has **no** NTFS support — adding ntfs3 is an
-  opt-in improvement, decide explicitly); module support ON, signing OFF (A5); cpufreq
+  (not module): ext4, vfat, exfat, loop, NLS codepages (**incl. `CONFIG_NLS_UTF8`**), dwc2,
+  usb-storage, HID core; cifs + nfs built-in per stock.
+  **[ADR 0010] `CONFIG_VFAT_FS=y` is now load-bearing, not parity trivia** — it is the FAT32
+  fallback for the initramfs, without which FAT32 cards fail to boot. Also set
+  **`CONFIG_FAT_DEFAULT_UTF8=y`** (stock: not set) — an intentional divergence; leave
+  `CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"` and `CONFIG_FAT_DEFAULT_CODEPAGE=437` unchanged.
+  **[ADR 0013] NTFS: decided — build `ntfs3` as a MODULE (`=m`), and leave it disabled by
+  default until stock parity is demonstrated.** Not built-in: it must not consume `zImage`
+  budget (P1.11), and enabling features before parity is proven confounds "we broke it" with
+  "we added it".
+  Module support ON, signing OFF (A5); cpufreq
   governors matching stock. Deliver `board/mister/de10nano/linux.config`
   (savedefconfig) + `docs/kernel-config-deltas.md`.
   **Done when:** kernel builds from a pristine kernel.org 6.18.y tarball with this
@@ -397,14 +405,27 @@ boots to a serial console on real hardware (P1.13).
   Implement the two-stage build (A1): `configs/mister_initramfs_defconfig` (static
   BusyBox, cpio output, ~hundreds of KB) consumed by the main kernel via
   `CONFIG_INITRAMFS_SOURCE`. Write `/init` per A2: parse `root=`/`loop=` from
-  `/proc/cmdline`, rootwait retry loop, vfat/exfat mount **with `sync,dirsync` (A13 — stock
-  mounts `/media/fat` sync and fstab never re-mounts it; async is a power-off-corruption
-  regression)**, `losetup -r` **on `losetup -f`, NOT a hardcoded `/dev/loop8` (A13/P0: loop8
-  is an artifact — `LOOP_MIN_COUNT=8` pre-creates loop0-7 only and nothing references loop8
-  by name)**, ro mount of the loop device, `mount --move` of the data partition to
-  `/newroot/media/fat`,
-  `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
-  shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
+  `/proc/cmdline`, rootwait retry loop, then:
+
+  * **Mount the data partition trying `exfat` FIRST, then falling back to `vfat` (A2/ADR
+    0010).** Mainline exfat **cannot mount FAT32**, and the rootfs is a file *on* this
+    partition — so a hardcoded `-t exfat` does not lose a feature, it **fails to boot**.
+  * **`sync,dirsync` (A13)** — stock mounts `/media/fat` sync and fstab never re-mounts it;
+    async is a power-off-corruption regression. Plus `fmask=0022,dmask=0022`.
+  * **The vfat fallback must set `utf8=1` — NOT `iocharset=utf8` (A2/ADR 0010).**
+    `Documentation/filesystems/vfat.rst:72` deprecates the latter. exfat needs nothing.
+  * **`losetup -f` to pick the device, and NEVER `losetup -r` (A15).** loop8 is an artifact
+    (`LOOP_MIN_COUNT=8` pre-creates loop0-7 only; nothing references loop8 by name), so
+    allocate with `-f`. But the loop **device must stay writable**: stock's
+    `/sys/block/loop8/ro == 0`, and `/etc/profile:23` runs `mount -o remount,rw /` on every
+    login shell — a read-only loop *device* makes that remount fail, leaving a logged-in
+    user with a permanently read-only rootfs, which stock is not. **Read-only-ness belongs
+    on the `mount -o ro`, not on the device.**
+  * `mount --move` the data partition to `/newroot/media/fat` — stock's kernel creates this
+    as a **bind-mount** (`init/do_mounts.c:677`) and *nothing in `/etc` mounts it*, so if
+    the initramfs does not recreate it, `/media/fat` simply will not exist.
+  * `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
+    shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
   **Reference:** `/mnt/source/sb-enema` builds a `BR2_TARGET_ROOTFS_CPIO` image on
   Buildroot 2026.02 (x86_64, busybox init, kernel+busybox config fragments) — the same
   output mechanism as stage 1 here.

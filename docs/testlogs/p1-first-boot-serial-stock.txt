@@ -1,0 +1,67 @@
+# STOCK MiSTer boot (Linux 5.15.1-MiSTer), captured 2026-07-12 for comparison.
+# Same board, same SD card, same Main_MiSTer (Version 260707). Baseline for P1.13.
+U-Boot SPL 2017.03+ (Apr 02 2025 - 20:16:03)
+Trying to boot from MMC1
+
+U-Boot 2017.03+ (Apr 02 2025 - 20:16:03 +0800)
+
+       Watchdog enabled
+DRAM:  1 GiB
+MMC:   dwmmc0@ff704000: 0
+*** Warning - bad CRC, using default environment
+
+In:    serial
+Out:   serial
+Err:   serial
+Autoboot in 0 seconds
+reading menu.rbf
+2452588 bytes read in 168 ms (13.9 MiB/s)
+reading /linux/u-boot.txt
+26 bytes read in 4 ms (5.9 KiB/s)
+## Info: input data size = 1005 = 0x3ED
+reading /linux/zImage_dtb
+7380857 bytes read in 498 ms (14.1 MiB/s)
+## Flattened Device Tree blob at 01705148
+   Booting using the fdt blob at 0x1705148
+   reserving fdt memory region: addr=0 size=1000
+   Loading Device Tree to 03ff8000, end 03fffe30 ... OK
+
+Starting kernel ...
+
+[    1.211192] rtc-pcf8563 2-0051: pcf8563_write_block_data: err=-6 addr=0e, data=03
+[    1.218739] rtc-pcf8563 2-0051: pcf8563_probe: write error
+Starting syslogd: OK
+Starting klogd: OK
+Populating /dev using udev:
+Minimig by Dennis van Weeren
+ARM Controller by Jakub Bednarski
+MiSTer code by Sorgelig
+
+Version 260707
+
+Looking for root device...
+FileOpenEx(open) File:/media/fat/config/device.bin, error: No such file or directory.
+Using SD card as a root device
+I/O Board type: digital
+Identified 8BIT core*** Found SDRAM config: 3
+Core name is "MENU"
+** altcfg: no cfg
+ttyS1: 31250
+ttyS1: 31250
+done
+Starting system message bus: done
+Starting network: Failed to bring up wlan1.
+FAIL
+Starting dhcpcd...
+dhcpcd-9.4.0 starting
+sandbox unavailable: seccomp
+dev: loaded udev
+sandbox unavailable: seccomp
+forked to background, child pid 666
+Checking for Bluetooth storage
+Starting bluetoothd: OK
+Starting ntpd: OK
+Starting ProFTPD: done
+Starting sshd: OK
+
+Welcome to MiSTer (www.MiSTerFPGA.org)

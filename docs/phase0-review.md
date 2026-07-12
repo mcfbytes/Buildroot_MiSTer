@@ -141,14 +141,14 @@ Insert into `TASKS.md` section A after A9:
 >
 > | Q | Decision | ADR |
 > |---|---|---|
-> | Q1 | **Drop** the out-of-tree exfat driver (0 symlinks found on a live MiSTer, across `/media/fat` *and* all `/media/usb*`) | [0001](decisions/0001-drop-out-of-tree-exfat.md) |
-> | Q2 | Keep the symlink; adopt **Buildroot's own** `/etc/resolv.conf -> ../run/resolv.conf` default | [0002](decisions/0002-resolv-conf-buildroot-default.md) |
-> | Q3 | **Defer** to Phase 4; test by direct SD copy, roll back by restoring files | [0003](decisions/0003-multi-db-defer-test-by-sd-copy.md) |
-> | Q4 | **Add `ntfs3`** (module, default-off until parity proven); **park** the all-ext4 variant | [0004](decisions/0004-ntfs3-and-all-ext4-variant.md) |
-> | Q5 | **Deferred, not waived.** Unsigned ⇒ personal use only; blocks P4.10, not Phase 1 | [0005](decisions/0005-sustainability-deferred-not-waived.md) |
+> | Q1 | **Drop** the out-of-tree exfat driver (0 symlinks found on a live MiSTer, across `/media/fat` *and* all `/media/usb*`) | [0010](decisions/0010-drop-out-of-tree-exfat.md) |
+> | Q2 | Keep the symlink; adopt **Buildroot's own** `/etc/resolv.conf -> ../run/resolv.conf` default | [0011](decisions/0011-resolv-conf-buildroot-default.md) |
+> | Q3 | **Defer** to Phase 4; test by direct SD copy, roll back by restoring files | [0012](decisions/0012-multi-db-defer-test-by-sd-copy.md) |
+> | Q4 | **Add `ntfs3`** (module, default-off until parity proven); **park** the all-ext4 variant | [0013](decisions/0013-ntfs3-and-all-ext4-variant.md) |
+> | Q5 | **Deferred, not waived.** Unsigned ⇒ personal use only; blocks P4.10, not Phase 1 | [0014](decisions/0014-sustainability-deferred-not-waived.md) |
 >
 > Q1 is the only one that changes Phase 1 scope, and it is **not a no-op**: see
-> ADR 0001's consequences (a)–(e), in particular the FAT32 mount fallback, which
+> ADR 0010's consequences (a)–(e), in particular the FAT32 mount fallback, which
 > is a **fail-to-boot** regression rather than a lost feature.
 
 The following block or shape Phase 1 and require a human judgment call. **Do not proceed with P1 without answers.**
@@ -267,16 +267,16 @@ _________________________________________________________________
 The decisions are made and recorded (ADRs 0001–0005), so the *substance* of the
 Phase 0 gate is met. Two follow-ons remain before P1.1 opens:
 
-1. **Fold the corrections into PLAN.md / TASKS.md.** ADR 0002 in particular
+1. **Fold the corrections into PLAN.md / TASKS.md.** ADR 0011 in particular
    invalidates invariant **A8** ("all six user-file-restore destinations are
    regular files") and PLAN §3's "no symlink-into-tmpfs schemes" rule. These are
    now *factually wrong*, not merely imprecise, and the design we adopted
    deliberately contradicts them.
-2. **Carry ADR 0001's consequences into the P1 task list** — the FAT32 → vfat
+2. **Carry ADR 0010's consequences into the P1 task list** — the FAT32 → vfat
    mount fallback and `iocharset=utf8` are new P1.10 (initramfs) requirements that
    did not exist when TASKS.md was written, and neither will ever reproduce on the
    maintainer's own hardware (238.7 GB exFAT card, 0 non-ASCII filenames — both
    verified live).
 
-The sign-off block below remains unsigned by design: per ADR 0005 it now gates
+The sign-off block below remains unsigned by design: per ADR 0014 it now gates
 **publication**, not Phase 1 development.

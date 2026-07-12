@@ -1,4 +1,4 @@
-# ADR 0002 — Keep `/etc/resolv.conf` a symlink, using Buildroot's default (answers Q2)
+# ADR 0011 — Keep `/etc/resolv.conf` a symlink, using Buildroot's default (answers Q2)
 
 **Status:** Accepted (2026-07-12) — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q2; PLAN.md ledger #3a, invariant A8
@@ -29,18 +29,45 @@ Verified safe to retarget `/tmp` → `/run`:
   `('/media/fat/linux/resolv.conf', '/etc/resolv.conf')`).
 - Both `/tmp` and `/run` are tmpfs in stock `fstab`.
 
-## Correction to an earlier hypothesis — do not repeat it
+## The symlink is REQUIRED, not stylistic — and the obvious observation lies
 
-It is tempting to argue the symlink is *forced* by a read-only rootfs (bootargs
-say `ro`). **That is false.** The live device mounts root read-**write**:
+**Making `/etc/resolv.conf` a regular file would break DNS at boot.**
+
+The root filesystem is mounted **read-only** at boot — `ro` is in the cmdline, and
+`mount_block_root(..., root_mountflags)` honours it. Straight from the live box's
+`dmesg`, timestamped before any userspace login:
+
+```
+[    1.452200] EXT4-fs (loop8): INFO: recovery required on readonly filesystem
+```
+
+`S41dhcpcd` runs during boot, and its hook `/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf`
+generates `/etc/resolv.conf` **while `/` is still read-only**. A regular file there
+is unwritable at exactly the moment it needs to be written. The symlink into a
+tmpfs is the *mechanism that makes DHCP-supplied DNS work at all.*
+
+### The trap: logging in to look at the system changes it
+
+`/etc/profile:23` is:
+
+```sh
+mount -o remount,rw /
+```
+
+That runs for every **login shell**. So the moment you SSH in to inspect the box,
+*your own session* remounts `/` read-write, and `mount` then reports:
 
 ```
 /dev/loop8 on / type ext4 (rw,noatime,nodiratime)
 ```
 
-The symlink is a design choice, not a necessity. Recorded because the false
-version of this reasoning is load-bearing if believed — it would imply a regular
-file breaks DNS, which it would not.
+This is an observation artifact. It says nothing about the state during boot, and
+reading it as "the rootfs is read-write, so the symlink is merely a style choice"
+inverts the actual constraint. **Use `dmesg`, not `mount`, to reason about
+boot-time filesystem state on this device.**
+
+*(Recorded because this project got it wrong in both directions before the `dmesg`
+check settled it.)*
 
 ## Consequences
 
@@ -54,7 +81,7 @@ This is stock behaviour and has never worked on any MiSTer. We are keeping parit
 **deliberately** — not because the bug is absent.
 
 Note this is not really *our* bug: the defect is in Downloader following a symlink
-during restore. Worth reporting upstream (see ADR 0003 for the general "engage
+during restore. Worth reporting upstream (see ADR 0012 for the general "engage
 upstream at publish time" posture).
 
 **PLAN.md must be corrected.** Invariant A8 — "all six user-file-restore

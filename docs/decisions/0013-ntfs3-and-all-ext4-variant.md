@@ -1,4 +1,4 @@
-# ADR 0004 — Add `ntfs3`; park the all-ext4 image variant (answers Q4)
+# ADR 0013 — Add `ntfs3`; park the all-ext4 image variant (answers Q4)
 
 **Status:** Accepted (2026-07-12) — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q4
@@ -40,7 +40,7 @@ mmcload = mmc rescan; run fpgacheck; run scrtest;
 
 (`docs/boot-chain.md:255-260`.) Generic `load` autodetects the filesystem, so it
 can read `zImage_dtb` from ext4 provided U-Boot is built with ext4 support. And
-under the §5 design we author the initramfs mount anyway (see ADR 0001(c)), so the
+under the §5 design we author the initramfs mount anyway (see ADR 0010(c)), so the
 root side is ours to change. The `0xA2` U-Boot partition is raw and unaffected.
 
 The real blockers are **ecosystem, not technical**:

@@ -1,4 +1,4 @@
-# ADR 0003 — Defer the multi-db race; test by direct SD copy (answers Q3)
+# ADR 0012 — Defer the multi-db race; test by direct SD copy (answers Q3)
 
 **Status:** Accepted (2026-07-12) — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q3; PLAN.md ledger #4

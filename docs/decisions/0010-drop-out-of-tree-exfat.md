@@ -1,4 +1,4 @@
-# ADR 0001 — Drop the out-of-tree exfat driver (answers Q1)
+# ADR 0010 — Drop the out-of-tree exfat driver (answers Q1)
 
 **Status:** Accepted (2026-07-12) — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q1; PLAN.md ledger #17, #12
@@ -56,15 +56,48 @@ Kernel side is already free: stock has `CONFIG_VFAT_FS=y` and `CONFIG_NLS_UTF8=y
 verified live — so this failure mode will never appear in local testing. That is
 exactly why it is written down.)*
 
-### (b) The vfat fallback must pass `iocharset=utf8` explicitly
+### (b) The vfat fallback needs UTF-8 — via `utf8=1`, **not** `iocharset=utf8`
 
 Stock FAT32 media decodes as **UTF-8**, because the out-of-tree exfat driver
 handles FAT32 and its default is utf8 (`CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"`).
 
 Mainline vfat's default is **iso8859-1** (`CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"`,
-verified in the stock config). Falling back to vfat without `iocharset=utf8`
-silently mojibakes every non-ASCII filename — and because Main_MiSTer stores
-*paths* in recents/favorites/MGL, those entries stop resolving. Games "disappear."
+verified in the stock config). Falling back to vfat without fixing this silently
+mojibakes every non-ASCII filename — and because Main_MiSTer stores *paths* in
+recents/favorites/MGL, those entries stop resolving. Games "disappear."
+
+**The right knob is `utf8`, not `iocharset`.** The kernel documentation is explicit
+(`Documentation/filesystems/vfat.rst:72`):
+
+> **note:** ``iocharset=utf8`` is not recommended. If unsure, you should consider
+> the utf8 option instead.
+
+The reason is in `fs/fat/namei_vfat.c:517` — `utf8` takes a dedicated
+`utf8s_to_utf16s()` path, whereas `iocharset` goes through the NLS layer's
+byte-at-a-time `char2uni()` loop, which is not the right shape for a multi-byte
+encoding.
+
+So, for the vfat fallback:
+
+- **Do NOT change `CONFIG_FAT_DEFAULT_IOCHARSET`** — leave it `"iso8859-1"`.
+- **Set `CONFIG_FAT_DEFAULT_UTF8=y`** (stock: `# CONFIG_FAT_DEFAULT_UTF8 is not set`),
+  or pass `utf8=1` as a mount option. Either sets the same flag.
+- **Leave `codepage=437` alone.** That is a *different* knob — the OEM codepage for
+  legacy 8.3 short names. It is unrelated to long-filename encoding.
+
+**exfat needs nothing.** For exfat, `iocharset=utf8` *is* the blessed spelling —
+`fs/exfat/super.c:38` maps it straight onto the same internal `opts->utf8 = 1`
+flag — and it is already the stock default. The two filesystems simply spell the
+same intent differently.
+
+**This does not affect Windows interop, in either direction.** FAT and exFAT store
+long filenames on disk as **UTF-16, always**, regardless of mount options.
+`iocharset`/`utf8` govern only how the kernel translates those UTF-16 names into
+the byte strings Linux userspace sees. Windows reads UTF-16 natively and never
+observes the setting. If anything, `iso8859-1` is the option that *creates* a
+Windows/Linux discrepancy: a filename Windows stores happily (CJK, `ō`, `★`) has
+no Latin-1 representation, so Linux renders it `?` and the file becomes
+inaccessible from the MiSTer while remaining perfectly fine on the PC.
 
 The test card has **0 non-ASCII filenames** (verified live), so this will not
 surface in local testing either.

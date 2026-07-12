@@ -12,8 +12,14 @@ Target board: Terasic DE10-Nano (Cyclone V SoC, `armv7-a` Cortex-A9)
 > **Phase 0 headline:** the central bet holds. All 12 SONAMEs the stock `MiSTer` binary
 > needs survive at the same major version in Buildroot 2026.02 (`docs/package-manifest.md`),
 > so §1's "nothing needs rebuilding" premise is now *confirmed* rather than assumed.
-> **Five questions still need a human decision before Phase 1 starts — see
-> `docs/phase0-review.md`.**
+>
+> **All five Phase 0 open questions were decided on 2026-07-12** — see
+> `docs/decisions/` (ADRs **0010–0014**) and the summary table in `docs/phase0-review.md`.
+> The headline decision: **drop the out-of-tree exfat driver** (ADR 0010). That is *not* a
+> no-op — it makes the P1.10 vfat fallback a **fail-to-boot** requirement rather than a
+> nicety. The sustainability gate (ADR 0014) is **deferred, not waived**: it now blocks
+> **P4.10 (publication)**, not Phase 1. Until it is signed, this is a **personal-use**
+> project.
 
 ---
 
@@ -174,9 +180,30 @@ over the corresponding files under `/etc` inside the image. Networking is ifupdo
   symlink, a user's custom `resolv.conf` is written to `/tmp/resolv.conf` *inside the
   offline image* — which the tmpfs mount over `/tmp` then shadows at boot. **That restore
   step has therefore never worked, on any MiSTer, ever.**
-  ⇒ Open question **Q2** (`docs/phase0-review.md`): reproduce the bug for bug-for-bug
-  parity, or make it a regular file and thereby *fix* a feature that has silently never
-  worked? Fixing it is a real behavior change. **Needs a human decision.**
+
+  **⇒ RESOLVED — Q2, [ADR 0011](docs/decisions/0011-resolv-conf-buildroot-default.md).
+  Invariant A8 is withdrawn; the "no symlink-into-tmpfs schemes" rule above is deleted.**
+  We keep the symlink and adopt **Buildroot's own skeleton default**,
+  `/etc/resolv.conf -> ../run/resolv.conf` — preferring an upstream default over code we
+  would have to maintain. Verified safe: nothing in the stock rootfs or Main_MiSTer
+  references `/tmp/resolv.conf` by path, `dhcpcd` follows the symlink wherever it points,
+  and the Downloader's restore target is `/etc/resolv.conf` itself
+  (`Downloader_MiSTer/src/downloader/constants.py:101`), not the destination.
+  The restore therefore **remains a silent no-op — deliberately, as parity.** The defect is
+  upstream (Downloader following a symlink during restore) and is worth reporting there.
+
+  **Do NOT "fix" this by making it a regular file — that would break DNS at boot.** `/` is
+  mounted **read-only** at boot (`ro` in the cmdline; live `dmesg` at t=1.45s:
+  `EXT4-fs (loop8): INFO: recovery required on readonly filesystem`), and `S41dhcpcd`'s
+  hook `20-resolv.conf` writes `/etc/resolv.conf` *during* boot, while `/` is still
+  read-only. The symlink into a tmpfs is the mechanism that makes DHCP-supplied DNS work
+  at all. **[A15]**
+
+  ⚠ **Observation trap, recorded because this project fell into it twice:** `/etc/profile:23`
+  runs `mount -o remount,rw /` for every **login shell**. SSH into a MiSTer and *your own
+  session* makes `/` writable, after which `mount` reports `rw` and you will conclude the
+  read-only constraint does not exist. **Use `dmesg`, not `mount`, to reason about boot-time
+  filesystem state on this device.**
 * BusyBox init with `S01syslogd … S99user` script names (verified set: syslogd, klogd,
 **udev**, dbus, network, dhcpcd, bluetooth, ntp, **proftpd**, sshd, smb, user). The stock
 `MiSTer` binary is launched from **`/etc/inittab` `::sysinit`** (backgrounded), not from an
@@ -213,9 +240,9 @@ after it are provably the complete MiSTer delta. Excluding the two vendored WiFi
 |**D. HID, still out-of-tree**|`xone`, GunCon 2/3, Fanatec, Flydigi Vader, remaining `xpad` IDs|**Carry** as patches, or as Buildroot kernel-module packages where an upstream exists.|
 |**E. Realtek USB WiFi**|`rtl8188eu`, `rtl8188fu`, `rtl8812au`, `rtl8821au`, `rtl8821cu`, `rtl88x2bu`|**Re-source from morrownr upstream as Buildroot `kernel-module` packages.** Do not vendor.|
 |**F. Misc quirks**|mmc LED, btusb VID/PIDs, usb-storage CD-ROM blacklist|Check upstream first; carry the remainder.|
-|**G. exfat replacement** **[P0 — new class, not in the original taxonomy]**|The fork **replaces mainline exfat with the out-of-tree Samsung driver**|**DECISION REQUIRED — see below.**|
+|**G. exfat replacement** **[P0 — new class, not in the original taxonomy]**|The fork **replaces mainline exfat with the out-of-tree Samsung driver**|**DROP — mainline exfat + vfat. [ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md). Carries three mandatory P1.10 requirements — see below.**|
 
-**[P0] Class G is the largest unbudgeted finding in Phase 0.** Stock's `fs/exfat` is not
+**[P0] Class G was the largest unbudgeted finding in Phase 0.** Stock's `fs/exfat` is not
 mainline's. The Samsung out-of-tree driver:
 
 * supports **symlinks**, stored in the FAT `ATTR_SYSTEM` bit — so they work on **FAT32 as
@@ -226,14 +253,41 @@ gets away with one mount call);
 
 **Mainline exfat and vfat have no symlink support whatsoever — and Main_MiSTer actively
 resolves symlinks on `/media/fat`** (`file_io.cpp:1592`, `de->d_type == DT_LNK`, since Jan
-2019). Dropping this driver silently breaks a live, user-facing feature that nothing in
-this plan budgeted for.
+2019).
 
-⇒ Open question **Q1** (`docs/phase0-review.md`): **does the community actually rely on
-symlinks on `/media/fat`?** That answer decides whether we carry a large out-of-tree
-filesystem driver forward to 6.18 (a substantial, permanent maintenance burden that would
-materially change this project's cost) or drop it and ship a known regression.
-**This is the single most important human decision in Phase 0.**
+**⇒ RESOLVED — Q1, [ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md): DROP the
+driver.** Evidence: a live stock MiSTer has **0 symlinks** across `/media/fat` *and* every
+`/media/usb0..7`. Carrying an out-of-tree filesystem driver to 6.18 and then tracking it to
+Dec 2028 is exactly the open-ended burden §13 identifies as fatal to this project.
+*(Evidence is n=1. Sufficient for personal use; widen it, or ship the detection one-liner in
+ADR 0010(d), before any public release.)*
+
+**Dropping the driver is not a no-op. Three requirements land on P1.10 (A2):**
+
+1. **FAT32 must still mount, or the device does not boot.** Mainline exfat cannot mount
+   FAT32 at all, and the rootfs *is a file on that partition* (`root=/dev/mmcblk0p1
+   loop=linux/linux.img`). A hardcoded `-t exfat` turns every FAT32 card into a brick, not
+   into a card that merely lost symlinks. The initramfs must try `exfat`, then fall back to
+   `vfat`. Both are already `=y` in the stock config.
+2. **The vfat fallback needs UTF-8 — spelled `utf8=1`, NOT `iocharset=utf8`.** Set
+   `CONFIG_FAT_DEFAULT_UTF8=y` (stock: not set) or pass `utf8=1` at mount. **Leave
+   `CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"` and `codepage=437` alone** —
+   `Documentation/filesystems/vfat.rst:72` says `iocharset=utf8` is *not recommended*
+   (it routes through the NLS byte-at-a-time `char2uni()` path instead of
+   `utf8s_to_utf16s()`, `fs/fat/namei_vfat.c:517`). **exfat needs nothing** — there,
+   `iocharset=utf8` *is* the correct spelling (`fs/exfat/super.c:38` maps it onto the same
+   internal flag) and it is already the default. This does **not** affect Windows interop
+   in either direction: FAT/exFAT store long filenames on disk as UTF-16 regardless, and
+   the setting governs only the kernel↔userspace byte encoding on the Linux side.
+3. **Preserve the behaviourally meaningful mount options:** `sync,dirsync` (write-through —
+   users power the board off by pulling the plug), `fmask=0022,dmask=0022`,
+   `errors=remount-ro`. *(`namecase=0`, visible in stock's `/proc/mounts`, is a
+   `show_options()` echo of a driver default, not a passed option. Mainline exfat is
+   case-insensitive/preserving per spec. Nothing to do — do not re-raise it.)*
+
+**Neither (1) nor (2) can reproduce on the maintainer's own hardware** (238.7 GB exFAT
+card, 0 non-ASCII filenames — both verified live). They will only ever be caught by the
+P1.10 test matrix, which must therefore include a **FAT32 card with a non-ASCII filename**.
 
 **Class B is the one that will bite.** `init/do_mounts.c` was substantially refactored in the
 6.x series (`mount_block_root` and friends are gone). Forward-porting that patch is both hard
@@ -333,14 +387,34 @@ shell. In sketch:
 # [P0] -o sync,dirsync is NOT optional: stock mounts /media/fat sync,dirsync
 # from the kernel and /etc/fstab never re-mounts it. Mounting async here would
 # be a real power-off-corruption regression, not a tuning choice.
-mount -t vfat -o sync,dirsync "$rootdev" /mnt/fat || \
-  mount -t exfat -o sync,dirsync "$rootdev" /mnt/fat
+#
+# [P0/ADR-0010] BOTH types must be tried, and exfat must NOT be assumed. Stock's
+# kernel does a single init_mount(..., "exfat", ...) that works for FAT32 only
+# because the out-of-tree driver handles FAT12/16/32 too. Mainline exfat cannot.
+# The rootfs is a file ON this partition, so getting this wrong does not lose a
+# feature -- it fails to boot.
+#
+# utf8=1 (NOT iocharset=utf8) is the vfat spelling: Documentation/filesystems/
+# vfat.rst:72 explicitly deprecates iocharset=utf8. exfat needs nothing -- utf8
+# is already its default. Without this, non-ASCII filenames mojibake and
+# Main_MiSTer's stored paths (recents/favorites/MGL) stop resolving.
+mount -t exfat -o sync,dirsync,fmask=0022,dmask=0022,errors=remount-ro \
+        "$rootdev" /mnt/fat || \
+  mount -t vfat -o sync,dirsync,fmask=0022,dmask=0022,utf8=1 \
+        "$rootdev" /mnt/fat
 
 # [P0] Use losetup -f, NOT a hardcoded /dev/loop8. loop8 is an artifact, not a
 # contract: LOOP_MIN_COUNT=8 pre-creates loop0-7 only (loop8 is instantiated on
 # demand), and nothing in the stock rootfs or Main_MiSTer references it by name.
+#
+# [P0/A15] NO `losetup -r`. The loop DEVICE must stay writable even though the
+# rootfs is MOUNTED read-only (cmdline `ro`). Stock: /sys/block/loop8/ro == 0.
+# /etc/profile:23 runs `mount -o remount,rw /` on every login shell, and a
+# read-only loop device makes that remount fail -- so `losetup -r` would leave a
+# logged-in user with a permanently read-only rootfs, which stock is not.
+# Read-only-ness belongs on the MOUNT, not on the device.
 loopdev="$(losetup -f)"
-losetup -r "$loopdev" "/mnt/fat/$looppath"
+losetup "$loopdev" "/mnt/fat/$looppath"
 mount -o ro "$loopdev" /newroot
 
 # move the data-partition mount so /media/fat is already there
@@ -726,7 +800,8 @@ criteria — lives in `TASKS.md`.
 |`MiSTer_fb` / `/dev/mem` FPGA ABI breaks on 6.x|**High**|P2's exit criterion *is* this test. Fail fast.|
 |Realtek USB WiFi drivers don't build on 6.18|High|Source from morrownr upstream, who track modern kernels. Do not vendor 2021 copies.|
 |**`spidev` binding hazard** — **[P0: mis-described.]** `altspi` is **not** a catch-all bind: it is an explicit one-line entry in `spidev_dt_ids[]` (`drivers/spi/spidev.c:699`, added by fork commit `246984fce`). The hazard is still real on 6.18 — an unlisted compatible means spidev never probes ⇒ no `/dev/spidev1.0` — but the fix is cleaner than feared.|Low **[P0: was Medium]**|**Since we author our own DTS (§4.1a), retarget the compatible to one mainline spidev already accepts and delete patch `0005` entirely.** Also **[P0]**: this drives a **pi-top hub** (brightness/lid), *not* MiSTer's own I/O board — the original "silent loss of I/O-board brightness control" was the wrong peripheral, which lowers the blast radius considerably.|
-|**[P0] exFAT symlinks (class G, §4.1)** — stock's out-of-tree exfat driver supports symlinks on `/media/fat`; Main_MiSTer resolves them; mainline exfat/vfat cannot.|**High**|**Unbudgeted.** Open question **Q1** — needs a human answer on whether the community relies on it. Carrying the driver forward to 6.18 is a large, permanent maintenance burden; dropping it ships a user-visible regression.|
+|**[P0] exFAT symlinks (class G, §4.1)** — stock's out-of-tree exfat driver supports symlinks on `/media/fat`; Main_MiSTer resolves them; mainline exfat/vfat cannot.|~~High~~ → **Retired**|**RESOLVED — Q1, [ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md): drop the driver.** 0 symlinks across `/media/fat` and every `/media/usb0..7` on a live stock MiSTer. Risk **replaced** by a smaller, concrete one below.|
+|**[P0] FAT32 media fail to boot after dropping the exfat driver** — mainline exfat cannot mount FAT32, and the rootfs is a file *on* that partition.|**High**|**New, and invisible to local testing** (maintainer's card is 238.7 GB exFAT). The P1.10 initramfs must try `exfat` then fall back to `vfat` (**A2**), and the vfat mount must set `utf8=1` or non-ASCII filenames mojibake and Main_MiSTer's stored paths stop resolving. **The P1.10 test matrix must include a FAT32 card carrying a non-ASCII filename**, or neither defect can ever be caught.|
 |**[P0] `CONFIG_BLK_DEV_INITRD` is OFF in stock** — and `CONFIG_INITRAMFS_SOURCE` depends on it.|**High**|P1.3's own instruction ("port the stock config via `olddefconfig`") would produce a kernel with **no initramfs slot at all**, silently removing the mechanism §5 depends on to delete the `loop=` patch. Now constraint **A11**; P1.3 must turn it on as an explicit divergence.|
 |**[P0] The Downloader's flash phase cannot report its own failure** (no `set -e`; script ends in `touch`).|Medium|Not fixable by us — it is in the shipped updater. P4.8's rollback runbook must assume a reported-successful update may have half-failed. Argues for a serial-console recovery guide.|
 |**[P0] Python 3.9 → 3.14** — `Downloader_MiSTer` pins **3.9** in its own CI and builds against `python3.9-dev`. It has never been tested on any interpreter we would ship.|Medium **[P0: was a suspicion (A6), now evidenced]**|P3.9 is a real gate, not a formality. Report incompatibilities upstream rather than pinning an EOL Python.|

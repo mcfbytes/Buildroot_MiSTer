@@ -1,4 +1,4 @@
-# ADR 0005 — Sustainability gate: deferred, **not waived** (answers Q5)
+# ADR 0014 — Sustainability gate: deferred, **not waived** (answers Q5)
 
 **Status:** Deferred (2026-07-12) — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q5; TASKS.md §C; PLAN §13

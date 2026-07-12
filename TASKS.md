@@ -4,8 +4,13 @@ Companion to `PLAN.md` **v3**, which has been **amended by the Phase 0 recon fin
 (`docs/phase0-review.md`). v2 said "the plan is authoritative and current — do not
 're-correct' it"; Phase 0 then checked it against the *source* and a number of its claims
 did not survive. Corrections are marked **[P0]** inline in both files and each carries its
-evidence. **Phase 1 is blocked until a human signs off on `docs/phase0-review.md` — five
-open questions there need a human decision.** This file is the execution contract: every task is self-contained, has explicit acceptance criteria, and
+evidence. **All five Phase 0 open questions were decided on 2026-07-12** — see
+`docs/decisions/` (ADRs **0010–0014**). **Phase 1 is unblocked for development.** Two
+consequences carry into it: ADR 0010 (drop the out-of-tree exfat driver) makes the P1.10
+**vfat fallback a fail-to-boot requirement**, not a nicety (see **A2**, **A15**); and ADR
+0014 leaves the sustainability gate **deferred, not waived** — it now blocks **P4.10
+(publication)**, so until it is signed this is a **personal-use** project (§C).
+This file is the execution contract: every task is self-contained, has explicit acceptance criteria, and
 names the AI model sized to it. Work through phases in order; within a phase, tasks with
 satisfied dependencies may run in parallel.
 
@@ -50,11 +55,11 @@ escalate one tier (Haiku → Sonnet → Opus) and note why in the commit message
 
 ---
 
-## A. Key constraints index (A1–A14)
+## A. Key constraints index (A1–A15)
 
 Tasks cite these IDs as shorthand for load-bearing constraints that are easy to get wrong;
 each entry points to where the full text lives. A1–A9 were verified against the shipped
-stock release; **A10–A14 were added by Phase 0** after verifying against the source, and
+stock release; **A10–A15 were added by Phase 0** after verifying against the source, and
 several of them correct A1–A9.
 
 - **A1 — Two-stage initramfs build.** A second, minimal Buildroot config (static
@@ -67,6 +72,18 @@ several of them correct A1–A9.
   setups exist); implement `rootwait` as a retry loop; mount the data partition as vfat
   **or** exfat (both built-in, plus NLS codepages); on failure, diagnostic banner and
   serial rescue shell. [PLAN §5, §3] → P1.10
+
+  **[ADR 0010] The vfat fallback is now load-bearing, not a nicety.** Stock's kernel does a
+  single `init_mount(..., "exfat", ...)` (`init/do_mounts.c:667`) that mounts FAT32 *only*
+  because the out-of-tree driver handles FAT12/16/32. **Mainline exfat cannot mount FAT32 at
+  all** — and the rootfs is a file *on that partition*, so a hardcoded `-t exfat` does not
+  lose a feature, it **fails to boot**. Try `exfat`, then fall back to `vfat`.
+  The vfat mount **must** set UTF-8, spelled **`utf8=1`** — *not* `iocharset=utf8`, which
+  `Documentation/filesystems/vfat.rst:72` explicitly deprecates. Equivalently set
+  `CONFIG_FAT_DEFAULT_UTF8=y` (stock: not set). Leave `CONFIG_FAT_DEFAULT_IOCHARSET` and
+  `codepage=437` **unchanged**. exfat needs nothing (utf8 is already its default).
+  Without this, non-ASCII filenames mojibake and Main_MiSTer's stored paths
+  (recents/favorites/MGL) stop resolving.
 - **A3 — `zImage_dtb` boot chain.** Plain `cat zImage dtb`. U-Boot computes the DTB
   address from the zImage header's declared-size field at `+0x2C` and passes it to
   `bootz $loadaddr - $fdt_addr`, injecting bootargs via `/chosen` FDT fixup. No
@@ -131,11 +148,32 @@ several of them correct A1–A9.
   never re-mounts it) — mounting async is a power-off-corruption regression. Stock's
   out-of-tree exfat driver also gives it **symlinks** (via the FAT `ATTR_SYSTEM` bit, so
   they work on FAT32 too) and **UTF-8** FAT32 names; Main_MiSTer resolves those symlinks
-  (`file_io.cpp:1592`). Mainline exfat/vfat provide neither. [PLAN §4.1 class G] → **P1.10, Q1**
+  (`file_io.cpp:1592`). Mainline exfat/vfat provide neither.
+  **[Q1 RESOLVED — ADR 0010: drop the driver.]** 0 symlinks found across `/media/fat` and
+  every `/media/usb0..7` on a live stock MiSTer. Symlink support is therefore *not*
+  carried; the **`sync,dirsync`** and **UTF-8** halves of this constraint still bind — see
+  **A2**. `/media/fat` itself is a kernel **bind-mount** created by the very patch §5
+  deletes (`init/do_mounts.c:677`), so the initramfs must recreate it.
+  [PLAN §4.1 class G] → **P1.10**
 - **A14 — Main_MiSTer never scans past `/dev/i2c-2`** (`smbus.cpp:214`). The ADV7513 HDMI
   transmitter must remain on `i2c-0..2`. **A fourth I²C adapter, or a bus reordering in the
   DTS we author, puts it out of reach and HDMI silently dies.**
   [`docs/abi-contract.md`] → **P1.7**
+- **A15 — The rootfs is mounted read-only at boot; the loop DEVICE stays writable.**
+  `ro` is in the cmdline and the kernel honours it (live `dmesg`, t=1.45s:
+  `EXT4-fs (loop8): INFO: recovery required on readonly filesystem`). Two consequences the
+  initramfs must preserve exactly:
+  1. **Never `losetup -r`.** Stock's `/sys/block/loop8/ro == 0`. `/etc/profile:23` runs
+     `mount -o remount,rw /` on **every login shell**, and a read-only loop *device* makes
+     that remount fail — leaving a logged-in user with a permanently read-only rootfs, which
+     stock is not. Read-only-ness belongs on the **mount**, not the device.
+  2. **`/etc/resolv.conf` must stay a symlink into a tmpfs.** `S41dhcpcd`'s hook
+     `20-resolv.conf` writes it *during boot, while `/` is read-only*. A regular file there
+     is unwritable at exactly the moment it must be written. [ADR 0011]
+
+  ⚠ **Observation trap:** because `/etc/profile` remounts `/` rw on login, SSHing in to
+  check makes `mount` report `rw` and hides this entire constraint. **Use `dmesg`, not
+  `mount`.** [PLAN §5, §3] → **P1.10, P2.3**
 
 ---
 
@@ -726,3 +764,27 @@ Before P4.10 (beta launch), a named human maintainer must commit in writing (in 
 README) to tracking 6.18.y stable through its EOL (Dec 2028), with the Renovate
 automation (P4.6/P4.7) as the mechanism. **If no one signs, stop at the §14 deliverables
 and publish those** — a stale fork is worse than no fork.
+
+**Status: DEFERRED, NOT WAIVED — [ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md)
+(2026-07-12).** Phase 1+ proceeds **for personal use**. The gate now blocks **P4.10
+(publication)**, not Phase 1 development.
+
+> **Unsigned ⇒ personal use only.** Do not publish an image, a `db.json`, or a Downloader
+> entry that other people's devices consume until a named human has signed.
+
+Two things this gate is **not**, recorded because both are easy to assume:
+
+* It is **not discharged by `git commit -s`.** That adds a `Signed-off-by:` trailer — a
+  Developer Certificate of Origin attestation about the provenance of *one patch*. (`-S`,
+  separately, is a GPG signature proving *who authored* a commit.) Neither says anything
+  about who will still be tracking 6.18.y in 2028. What §C asks for is one sentence in the
+  README naming a person. Sign off on commits if you like; it does not move this gate.
+* It is **not something Claude can hold.** Claude can do the authoring, and that genuinely
+  changes the labour estimate — but it has no continuity between sessions (it cannot watch
+  6.18.y or notice a CVE), no hardware (verifying a stable bump means booting a DE10-Nano),
+  and cannot be paged. Renovate is a *mechanism*, not an owner: a bot whose PRs nobody
+  merges or tests is a stale fork with extra steps. The gate asks for **accountability and
+  continuity**, which is precisely the part a model cannot supply.
+
+The failure mode this guards against is not a decision — it is **drift**: reaching a working
+image, sharing it because it works, and never revisiting. **P4.10 must re-read ADR 0014.**

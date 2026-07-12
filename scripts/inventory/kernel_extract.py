@@ -62,6 +62,19 @@ def find_dtb_offset(data: bytes) -> int:
 			f"is {start:#x}, expected 0 (assumption behind treating 'end' "
 			f"as an absolute file offset would need revisiting)"
 		)
+	# `end` is read out of the file's own header, so a corrupt or truncated
+	# image can point it past EOF. Check before reading: struct.unpack_from
+	# would raise struct.error, which is NOT a ValueError, so main()'s handler
+	# would miss it and the script would die with a traceback instead of a
+	# clean diagnostic. 8 bytes = the DTB magic plus the totalsize field that
+	# extract_dtb() reads immediately after.
+	if end + 8 > len(data):
+		raise ValueError(
+			f"zImage header 'end' field at {ZIMAGE_HDR_END_OFFSET:#x} is "
+			f"{end} (0x{end:x}), which does not leave room for a DTB header "
+			f"in this {len(data)}-byte file -- the header is corrupt, or the "
+			f"file is truncated / has no DTB appended"
+		)
 	dtb_magic = struct.unpack_from(">I", data, end)[0]
 	if dtb_magic != DTB_MAGIC:
 		raise ValueError(

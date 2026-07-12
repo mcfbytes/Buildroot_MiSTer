@@ -38,7 +38,7 @@ def run_elf_scan(root: Path, extra: list[Path]) -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-	if len(argv) < 4:
+	if len(argv) < 5:
 		print(f"usage: {argv[0]} <rootfs-dir> <out-md> <out-txt> <out-union-txt> [extra-elf ...]", file=sys.stderr)
 		return 2
 	root = Path(argv[1]).resolve()
@@ -121,9 +121,12 @@ def main(argv: list[str]) -> int:
 
 	if mister:
 		md.append("### The stock `MiSTer` binary (THE ABI contract, PLAN §3 / P0.5)\n")
-		# basename only: these docs are diffed across images and must not carry
-		# the invoking host's directory layout.
-		md.append(f"- Source: `{os.path.basename(argv[5]) if len(argv) > 5 else '(see extra-elf argument)'}`")
+		# Name the record we actually matched, not argv[5]: with several
+		# extra-elf arguments the MiSTer record need not be the first one, and
+		# reading argv[5] would then attribute the ABI contract to the wrong
+		# file. Basename only -- these docs are diffed across images and must
+		# not carry the invoking host's directory layout.
+		md.append(f"- Source: `{os.path.basename(mister['path'].removeprefix('EXTRA:'))}`")
 		md.append(f"- ELF type: {mister['elf_type']}")
 		md.append(f"- Interpreter: `{mister['interp']}`")
 		md.append(f"- `DT_NEEDED` ({len(mister['needed'])}): " + ", ".join(f"`{n}`" for n in mister["needed"]))

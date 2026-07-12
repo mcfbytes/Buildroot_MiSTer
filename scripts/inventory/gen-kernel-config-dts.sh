@@ -75,8 +75,20 @@ mrl_diff_stable() {
 	diff -u --label "committed/$(basename "$1")" --label "generated/$(basename "$2")" "$1" "$2"
 }
 
+# compare_one <label> <generated> <committed> [normalizer]
+#
+# A <normalizer> canonicalizes a file for content-equivalence comparison, and
+# is only meaningful for a format whose *text* rendering is not part of any
+# contract -- i.e. the DTS (see normalize-dts.py). Passed nothing, the only
+# outcomes are byte-identical or DIFFERS.
+#
+# The kernel .config is deliberately compared byte-for-byte. It has no
+# cosmetic-rendering problem to solve, and putting it through the DTS
+# normalizer (whitespace collapse + hex-literal folding) could equate configs
+# that genuinely differ -- CONFIG_FOO=0x0010 vs CONFIG_FOO=0x10 fold together
+# -- and report a real difference as a "cosmetic-only diff".
 compare_one() {
-	local label="$1" generated="$2" committed="$3"
+	local label="$1" generated="$2" committed="$3" normalizer="${4:-}"
 	if [ ! -f "$committed" ]; then
 		echo "[$label] no committed file at docs/stock-inventory/$label to compare against"
 		return 0
@@ -85,16 +97,21 @@ compare_one() {
 		echo "[$label] byte-identical to the committed docs/stock-inventory/$label"
 		return 0
 	fi
-	# Try a formatting-insensitive compare for DTS: dtc's cosmetic
-	# rendering (tabs vs spaces, hex zero-padding, "// version:" header
-	# comments) varies across dtc releases even when the tree content is
-	# identical. Strip comments/blank lines, collapse whitespace, and
-	# normalize hex literal padding before the final content diff.
+	if [ -z "$normalizer" ]; then
+		echo "[$label] DIFFERS from the committed docs/stock-inventory/$label (real content difference):"
+		mrl_diff_stable "$committed" "$generated" | head -60 || true
+		return 1
+	fi
+	# Formatting-insensitive compare for DTS: dtc's cosmetic rendering (tabs
+	# vs spaces, hex zero-padding, "// version:" header comments) varies
+	# across dtc releases even when the tree content is identical. Strip
+	# comments/blank lines, collapse whitespace, and normalize hex literal
+	# padding before the final content diff.
 	local norm_a norm_b
 	norm_a="$(mktemp)"
 	norm_b="$(mktemp)"
-	python3 "$here/normalize-dts.py" "$generated" "$norm_a"
-	python3 "$here/normalize-dts.py" "$committed" "$norm_b"
+	python3 "$normalizer" "$generated" "$norm_a"
+	python3 "$normalizer" "$committed" "$norm_b"
 	if cmp -s "$norm_a" "$norm_b"; then
 		echo "[$label] content-identical to the committed docs/stock-inventory/$label (cosmetic-only diff -- see below)"
 		mrl_diff_stable "$committed" "$generated" | head -20 || true
@@ -111,7 +128,7 @@ compare_one() {
 status=0
 config_result="$(compare_one "stock-linux.config" "$out_config" "$committed_config")" || status=1
 echo "$config_result"
-dts_result="$(compare_one "stock.dts" "$out_dts" "$committed_dts")" || status=1
+dts_result="$(compare_one "stock.dts" "$out_dts" "$committed_dts" "$here/normalize-dts.py")" || status=1
 echo "$dts_result"
 
 # Emit the item (f) summary doc alongside the two data files (which this

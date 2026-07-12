@@ -1,0 +1,9 @@
+# Reference materials, downloads, build output — never committed (PLAN.md G6)
+work/
+output/
+dl/
+dist/
+*.img
+*.7z
+venv/
+__pycache__/

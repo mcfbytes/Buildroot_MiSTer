@@ -85,13 +85,23 @@ bootargs = console=ttyS0,115200 $v loop.max_part=8 mem=511M memmap=513M$511M \\
 * Root filesystem is mounted **read-only**. This is a good design — an immutable root with
 writable state on `/media/fat` and tmpfs. **Preserve it.**
 * `linux.img` is a file on the FAT partition, loop-mounted as root.
-* The kernel is booted as a **concatenated `zImage_dtb`** (zImage + appended DTB); stock
-U-Boot passes bootargs via ATAGs and **never loads a separate initrd**. The kernel therefore
-needs `CONFIG_ARM_APPENDED_DTB=y` (plus `CONFIG_ARM_ATAG_DTB_COMPAT`, to be confirmed against
-U-Boot source), and anything added at boot time — the initramfs of §5 — must be embedded in
-the zImage.
+* The kernel is booted as a **concatenated `zImage_dtb`** (zImage + appended DTB). *Verified
+from the extracted U-Boot environment* (see `docs/verification/stock-release-20250402.md`):
+U-Boot loads the whole file, computes the DTB address from the zImage header's declared-size
+field (`setexpr.l fdt_addr $loadaddr + 0x2C; setexpr.l fdt_addr *$fdt_addr + $loadaddr`),
+injects `bootargs` into the DTB's `/chosen` node via standard FDT fixup, and runs
+`bootz $loadaddr - $fdt_addr` — **no initrd, ever**. Consequences: plain `cat zImage dtb`
+is the correct assembly (the DTB must sit exactly at the declared zImage end, which `cat`
+guarantees); `CONFIG_ARM_APPENDED_DTB` is **not needed** (stock does not set it); and
+anything added at boot time — the initramfs of §5 — must be embedded in the zImage.
 * The data partition may be **FAT32 or exFAT**, and existing `u-boot.txt` setups may point
-`root=` at other devices (USB boot). Both filesystems, plus NLS codepages, must be built-in.
+`root=` at other devices (USB boot) — `u-boot.txt` is applied with `env import -t`, so it can
+override **any** U-Boot variable (default `mmcroot=/dev/mmcblk0p1`), not just `$v`. Both
+filesystems, plus NLS codepages, must be built-in (stock: `CONFIG_VFAT_FS=y`,
+`CONFIG_EXFAT_FS=y`).
+* U-Boot also pre-loads the FPGA (`core=menu.rbf`) before Linux, and supports a warm-reboot
+handshake with Main_MiSTer through reserved RAM at `0x1FFFF000` (`env import -t` from RAM) —
+one more reason `mem=511M`/`memmap=513M$511M` are untouchable.
 
 ### Kernel ABI surface
 
@@ -101,21 +111,36 @@ the zImage.
 
   → requires `CONFIG_DEVMEM=y` with `CONFIG_STRICT_DEVMEM=n` and `CONFIG_IO_STRICT_DEVMEM=n`.
 Modern defconfigs enable STRICT_DEVMEM by default; leaving it on silently kills the entire
-FPGA path.
+FPGA path. *(Verified: stock has `CONFIG_DEVMEM=y` and `# CONFIG_STRICT_DEVMEM is not set` —
+extracted from the zImage's embedded IKCONFIG.)*
 * Cyclone V cpufreq/overclock driver
 
 ### Filesystem / runtime conventions
 
 * `/media/fat` mount point
-* `/media/fat/linux/MiSTer.version` — 6-char `YYMMDD`, compared by Downloader
-* BusyBox init with `S01syslogd … S99user` script names
+* **`/MiSTer.version` at the rootfs root** — 6-char `YYMMDD` (e.g. `250402`), **baked into
+`linux.img` at build time**. Because `linux.img` *is* the running root filesystem, the
+Downloader reads the live system's own `/MiSTer.version` and updates when it differs from the
+last 6 characters of the db entry's `version`. *(Corrected: not
+`/media/fat/linux/MiSTer.version` as previously assumed.)*
+* **User-file restore contract:** on every linux update the Downloader mounts the *new*
+`linux.img` read-write and copies `/media/fat/linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`
+over the corresponding files under `/etc` inside the image. These six destinations must
+remain **regular files** at their stock paths — no symlink-into-tmpfs schemes. Networking is
+ifupdown-style `/etc/network/interfaces` + `dhcpcd`.
+* BusyBox init with `S01syslogd … S99user` script names (verified set: syslogd, klogd,
+**udev**, dbus, network, dhcpcd, bluetooth, ntp, **proftpd**, sshd, smb, user). The stock
+`MiSTer` binary is launched from **`/etc/inittab` `::sysinit`** (backgrounded), not from an
+init script. Hotplug is **eudev**, not mdev.
 * ext4, volume label `rootfs`
 * **On-device Python is an ABI surface**: `Downloader_MiSTer` and many community scripts run
 with the target's interpreter. Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.13+.
 Compatibility must be tested, not assumed.
-* Stock ships **zero kernel modules** — everything is built in. Any module-based driver we
-introduce (§4.1 classes D/E) obligates us to ship `kmod`, run `depmod` at image build, provide
-hotplug autoload (mdev/udev), and curate `/lib/firmware`.
+* Stock ships **52 xz-compressed kernel modules** (`CONFIG_MODULE_COMPRESS_XZ=y`) under
+`/usr/lib/modules/5.15.1-MiSTer/` — every WiFi driver, Bluetooth USB, and `xone` — plus
+**72 firmware files** and the full module toolchain (`kmod`, `depmod`, `modprobe`, `udevd`).
+Module infrastructure is an existing convention to keep at parity; shipping classes D/E as
+Buildroot module packages reproduces the stock runtime layout exactly.
 
 ---
 
@@ -138,10 +163,12 @@ The MiSTer 5.15 fork carries \~60 commits. Triaged:
 6.x series (`mount_block_root` and friends are gone). Forward-porting that patch is both hard
 *and unnecessary* — see §5.
 
-**Classes D and E introduce kernel modules into an image that today ships none.** That pulls
-in module infrastructure — `kmod`, `depmod` at image build, hotplug autoload — plus a curated
-`/lib/firmware` (xone's firmware additionally has redistribution constraints). Small, but it
-is machinery the stock image never needed, and it must be planned, not discovered.
+**Classes D and E are already modules in the stock image** — the 5.15 fork builds them `=m`
+(52 `.ko.xz` under `/usr/lib/modules`, `CONFIG_MODULE_COMPRESS_XZ=y`) with
+`kmod`/`depmod`/`udevd` and 72 firmware files shipped. Re-sourcing them as Buildroot
+`kernel-module` packages reproduces the existing runtime layout; what must be kept at parity
+is the module toolchain, udev-driven autoload, and the firmware inventory (xone's firmware
+additionally has redistribution constraints).
 
 ### 4.1a The device tree: mainline's DE10-Nano DTS is *not* sufficient
 
@@ -172,9 +199,11 @@ adding the nodes above. Same mechanism as the driver patches. No extra machinery
 
 ### 4.2 The rootfs: recoverable by inspection
 
-The shipped image is fully legible: **626 shared libraries, 1,885 binaries, zero `.ko` files**
-(everything is built into the kernel today). The SONAME list reads directly as a Buildroot
-package list. We do not need Sorg's `.config`; we need the *requirements*, which we can derive.
+The shipped image is fully legible: **626 shared libraries, 1,885 binaries, and 52 `.ko.xz`
+kernel modules** (WiFi, Bluetooth USB, xone — everything else is built in). The SONAME list
+reads directly as a Buildroot package list. Better still, the kernel carries
+`CONFIG_IKCONFIG=y`, so **the exact stock kernel config is extractable from the shipped
+zImage** — we have it, along with the exact stock DTB (`docs/stock-inventory/`).
 
 Shipped versions today — the reason this project exists:
 
@@ -392,6 +421,17 @@ coupling them is a self-inflicted wound.
 at minimum the `u-boot.txt` environment-from-FAT mechanism (this is how the per-board
 `ethaddr` gets set; `mr-fusion` writes it during install).
 
+*Verified from the shipped artifacts* (`docs/verification/stock-release-20250402.md`):
+`uboot.img` is four identical 64 KiB SPL copies plus a `U-Boot 2017.03+ for de10-nano`
+uImage at offset 256 KiB. The environment is baked in (`bootcmd`/`mmcload`/`mmcboot`, plus
+`fpgaload`/`fpgacheck` — U-Boot pre-loads `menu.rbf` into the FPGA and supports a
+warm-reboot core handoff via reserved RAM), and `u-boot.txt` is applied with
+`env import -t`. Critically, **the Downloader runs `updateboot` on every linux update**,
+which `dd`-writes the shipped `uboot.img` over the raw boot partition and **erases U-Boot's
+saved environment at sector 1**. Two consequences: shipping the stock `uboot.img`
+byte-identical is load-bearing (whatever we ship gets flashed), and no state survives in the
+saved environment — the effective env is always built-in defaults + `u-boot.txt`.
+
 **Phase 5 path**, once everything else is stable and hardware-tested:
 
 * Mainline U-Boot has `socfpga_de10_nano_defconfig` and `board/terasic/de10-nano/` with QTS
@@ -442,7 +482,8 @@ binaries (67 MB) with no CI at all**.
 * \[x] `buildroot.config` and `linux.config` published with every release
 * \[x] ext4 generation pinned: fixed UUID, pinned filesystem feature set, `SOURCE_DATE_EPOCH`,
 `BR2_REPRODUCIBLE=y` — 2026-era `mke2fs` defaults (random UUID/hash seed, new features) break
-determinism unless pinned
+determinism unless pinned *(stock reference: `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`,
+`FLEX_BG`, fixed UUID)*
 * \[x] Two independent builders get identical `linux.img` hashes — enforced by a CI job that
 builds twice and compares
 
@@ -466,8 +507,9 @@ trust.
 ## 10\. Distribution: the opt-in `db.json`
 
 `Downloader_MiSTer`'s `LinuxUpdater` reads a top-level `linux` key from **any configured
-database**, compares `version` against `/media/fat/linux/MiSTer.version`, and applies the
-archive if they differ. The official entry looks like this:
+database**, compares `version` (last 6 characters) against the running system's
+`/MiSTer.version`, and applies the archive if they differ. The official entry looks like
+this:
 
 ```json
 "linux": {
@@ -481,10 +523,18 @@ archive if they differ. The official entry looks like this:
 Note it is **commit-pinned and MD5-verified** — the Downloader does supply-chain hygiene
 properly. We publish an identically-shaped entry pointing at our GitHub Release asset.
 
-The full updater contract — the 7z's internal layout, the extraction tooling available on the
-*old* image (which is what applies the update), version-*inequality* comparison semantics, and
-the reboot flow — is verified from `Downloader_MiSTer` source and captured in
-`docs/downloader-contract.md` before anything ships.
+The full updater contract has been **verified from `Downloader_MiSTer` source and the shipped
+artifacts** (`docs/verification/stock-release-20250402.md`):
+
+* Version check: the running system's `/MiSTer.version` vs the **last 6 characters** of the
+db entry's `version` — *inequality*, not ordering.
+* Extraction: a **pinned ARM `7za`** the Downloader fetches on demand from the SD-Installer
+repo (MD5-verified) — nothing in the installed image performs it. Only `files/linux/*` is
+extracted; the rest of the archive serves the Windows SD installer.
+* Apply: user files are copied *into* the new image (§3 contract), `files/linux/` is rsynced
+over `/media/fat/linux/` (so `updateboot` and the config templates ship with us),
+**`updateboot` flashes `uboot.img`**, then `linux.img` is swapped into place and a reboot
+flag is raised.
 
 Users add one database to `downloader.ini` and opt in.
 

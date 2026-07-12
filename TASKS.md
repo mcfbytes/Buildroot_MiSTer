@@ -68,20 +68,22 @@ Each is cross-referenced from the task that implements it.
   mount the data partition as **vfat or exfat** (MiSTer supports exFAT SD cards — both
   filesystems plus NLS codepages must be built-in, not modules). Failure path: drop to a
   serial rescue shell with a diagnostic banner. → P1.10
-- **A3 — The appended-DTB boot chain is unstated in the plan.** Stock U-Boot loads a
-  concatenated `zImage_dtb` (zImage + DTB) and passes bootargs via ATAGs. The kernel
-  config needs `CONFIG_ARM_APPENDED_DTB=y` and (pending P0.8 confirmation)
-  `CONFIG_ARM_ATAG_DTB_COMPAT=y`, and post-image must produce the concatenation. → P0.8,
-  P1.3, P1.11
+- **A3 (verified & corrected) — The `zImage_dtb` boot chain.** Stock U-Boot loads the
+  concatenated file, computes the DTB address from the zImage header's declared-size
+  field at offset `0x2C`, injects `bootargs` into `/chosen` via FDT fixup, and boots
+  `bootz $loadaddr - $fdt_addr` — no initrd, no ATAGs. `CONFIG_ARM_APPENDED_DTB` is
+  **not** needed (stock doesn't set it); plain `cat zImage dtb` is the correct assembly.
+  See `docs/verification/stock-release-20250402.md`. → P0.8, P1.3, P1.11
 - **A4 — `/dev/mem` restrictions will silently break the FPGA path.** `fpga_io.cpp`
   mmaps hardcoded physical addresses. The kernel config must set `CONFIG_DEVMEM=y`,
   `CONFIG_STRICT_DEVMEM=n`, `CONFIG_IO_STRICT_DEVMEM=n`. Modern defconfigs enable
   STRICT_DEVMEM by default. → P1.3
-- **A5 — Moving Realtek/xone to module packages breaks the stock zero-module
-  convention.** The image then needs `kmod`, `depmod` at build time, a hotplug/module
-  autoload mechanism (mdev or udev rules), and a firmware inventory (`/lib/firmware`
-  selections; xone additionally requires a proprietary firmware blob with redistribution
-  constraints). None of this is in the plan. → P3.3, P0.3
+- **A5 (verified & corrected) — Stock already ships modules; keep the infra at parity.**
+  The plan's "zero `.ko`" claim was wrong: stock ships 52 `.ko.xz` modules (WiFi, BT,
+  xone; `CONFIG_MODULE_COMPRESS_XZ=y`) plus `kmod`/`depmod`/`modprobe`, **eudev**
+  hotplug, and 72 firmware files. Module packages for classes D/E reproduce the existing
+  layout; P3.3 is a parity task, not new machinery (xone firmware redistribution still
+  needs a decision). → P3.3, P0.3
 - **A6 — The Python major-version jump is a userland ABI risk the plan ignores.**
   `Downloader_MiSTer` and many community scripts execute with the *on-device* Python.
   Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.13+. Compatibility must be tested,
@@ -92,10 +94,13 @@ Each is cross-referenced from the task that implements it.
   rootfs + qemu-system tests of the initramfs logic on a generic ARM machine; (b) real
   hardware gates each *release*, manually at first, automated later via an optional HIL
   rig (USB-SD-mux + power relay + serial capture). → P2.8, P1.12, P4.11
-- **A8 — The `LinuxUpdater` contract must be verified from source, not assumed.** The
-  update is applied by the *currently installed* (old) system: 7z layout, extraction
-  tooling present on the stock image, MD5 verification, version comparison semantics
-  (inequality, not ordering), and the reboot flow all constrain our artifact. → P0.6
+- **A8 (verified) — The `LinuxUpdater` contract.** Confirmed from source and artifacts:
+  only `files/linux/*` is extracted, by a pinned ARM `7za` the Downloader fetches on
+  demand; version compare is the running system's `/MiSTer.version` (**rootfs root**, not
+  `/media/fat/linux/`) vs the db entry's last 6 chars, inequality; `files/linux/` is
+  rsynced over `/media/fat/linux/`; **`updateboot` flashes `uboot.img` and wipes U-Boot's
+  saved env on every update**; six user files are copied into the new image and must stay
+  regular files at their `/etc` paths. P0.6 writes this up formally. → P0.6
 - **A9 — Reproducible ext4 needs explicit pinning.** 2026-era `mke2fs` defaults enable
   features and random seeds (UUID, hash_seed, timestamps) that break bit-for-bit
   reproducibility and could interact with older tooling. Pin filesystem features, UUID,
@@ -121,17 +126,21 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   `MiSTer-devel/Main_MiSTer` (need `fpga_io.cpp`, `brightness.cpp`, ioctl users),
   `MiSTer-devel/Downloader_MiSTer`, `MiSTer-devel/U-Boot_MiSTer`; download the current
   `release_YYYYMMDD.7z` from `MiSTer-devel/SD-Installer-Win64_MiSTer` (commit-pinned
-  URL); extract it and loop-mount `linux.img` read-only at `work/stockroot/`.
+  URL); extract it and inspect `linux.img` (note: `7z l/x` reads the ext4 image directly —
+  no mount needed). *(Pre-seeded during plan verification: `work/` already holds the
+  extracted release, and the stock kernel config, DTS, and U-Boot env are derived — see
+  `docs/verification/stock-release-20250402.md`.)*
   **Done when:** `work/manifest.txt` lists every acquired artifact with URL, commit/tag,
-  and SHA-256; stock rootfs is browsable at `work/stockroot/`.
+  and SHA-256; stock rootfs content is browsable.
 
 - [ ] **P0.3 — Stock image inventory** — [SONNET] — Size M — Depends: P0.2
   Produce `docs/stock-inventory/`: (a) all shared libs with SONAMEs and versions;
   (b) all binaries with their `NEEDED` sets; (c) `/etc` configs verbatim-listed
   (init scripts S01–S99, inittab, fstab, smb.conf, wpa_supplicant, sshd_config, …);
-  (d) `/lib/firmware` contents (per A5); (e) BusyBox applet list; (f) kernel config via
-  `extract-ikconfig` on the stock zImage (fall back to the fork repo's
-  `MiSTer_defconfig` if not embedded); (g) disk usage by top-level dir.
+  (d) `/lib/firmware` contents (72 files, per A5); (e) BusyBox applet list; (f) kernel
+  config and DTS — **already extracted** to `docs/stock-inventory/stock-linux.config`
+  (via IKCONFIG) and `docs/stock-inventory/stock.dts`; script the regeneration;
+  (g) disk usage by top-level dir; (h) the 52 `.ko.xz` module list with dependencies.
   **Done when:** each list is a checked-in text/markdown file with a generation script
   in `scripts/inventory/` so it can be re-run against any image.
 
@@ -155,12 +164,13 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   re-deriving it; doc cross-links P0.4 for kernel-side items.
 
 - [ ] **P0.6 — Downloader `LinuxUpdater` contract (A8)** — [SONNET] — Size S — Depends: P0.2
-  Read `Downloader_MiSTer` source. Document in `docs/downloader-contract.md`: exact
-  db.json `linux` schema; hash algorithm (MD5) and what it covers; version comparison
-  semantics; where the 7z is downloaded, what extracts it (tool must exist on the *old*
-  image), expected internal layout (`files/linux/…`), the apply/reboot flow, failure
-  handling, and the multi-db "only 1 can be processed" ordering rule with the exact
-  `downloader.ini` incantation for users.
+  Formalize the already-verified contract (`docs/verification/stock-release-20250402.md`)
+  into `docs/downloader-contract.md`: exact db.json `linux` schema; MD5 hash scope;
+  last-6-chars inequality version compare against the rootfs-root `/MiSTer.version`; the
+  on-demand pinned `7za` fetch; `files/linux/*`-only extraction; the user-file restore
+  into the mounted new image; the rsync + `updateboot` + swap + reboot-flag apply flow;
+  failure handling; and the multi-db "only 1 can be processed" ordering rule with the
+  exact `downloader.ini` incantation for users.
   **Done when:** doc quotes the relevant source lines (file:line at a pinned commit) for
   every claim; includes a worked example db.json entry.
 
@@ -174,15 +184,16 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   disposition; the resulting `BR2_PACKAGE_*` list is included ready to paste.
 
 - [ ] **P0.8 — Boot chain analysis (A3)** — [OPUS] — Size M — Depends: P0.2
-  From `U-Boot_MiSTer` source (and `strings` on the stock `uboot.img`): extract the
-  embedded boot command and environment; confirm how `zImage_dtb` is loaded and booted
-  (`bootz` args), whether bootargs travel via ATAGs or a DT chosen node, the
-  `u-boot.txt` env-from-FAT mechanism, and the `$mmcroot`/`$v` variable defaults.
-  Deliver `docs/boot-chain.md` with the exact kernel-config implications
-  (`ARM_APPENDED_DTB`, `ARM_ATAG_DTB_COMPAT`, cmdline handling) as a checklist P1.3
+  The embedded environment has already been recovered from `uboot.img` (bootcmd /
+  mmcload / mmcboot / scrtest / fpgaload / fpgacheck, `mmcroot=/dev/mmcblk0p1`, the
+  DTB-address computation, `env import -t`, the warm-reboot RAM handshake — see the
+  verification doc). Remaining: cross-check against `U-Boot_MiSTer` source; document the
+  SPL layout (4 copies + uImage at 256 KiB), the sector-1 saved-env wipe by `updateboot`,
+  and the FPGA preload path. Deliver `docs/boot-chain.md` with kernel-config implications
+  (**no** `ARM_APPENDED_DTB` needed; bootargs via `/chosen` fixup) as a checklist P1.3
   consumes.
-  **Done when:** the boot command is quoted verbatim from source; every kernel-config
-  implication is stated as a testable assertion.
+  **Done when:** the boot command is quoted verbatim and matched to source; every
+  kernel-config implication is stated as a testable assertion.
 
 - [ ] **P0.9 — Phase 0 review gate** — [HAIKU] + human — Size S — Depends: P0.3–P0.8
   Assemble a one-page summary of Phase 0 findings, open questions, and any plan
@@ -201,6 +212,9 @@ boots to a serial console on real hardware (P1.13).
   (minimal, builds nothing yet), plus a top-level `Makefile`/script that downloads the
   pinned Buildroot 2026.02.x tarball, verifies its SHA-256, unpacks to `work/buildroot/`,
   and invokes it with `BR2_EXTERNAL` set. Buildroot is never vendored (G4/§6).
+  **Reference:** `/mnt/source/sb-enema/Makefile` — a working 2026.02.3 pinned-tarball
+  wrapper with `BR2_EXTERNAL`, `O=`, `BR2_DL_DIR`, and a `%:` target forwarding rule
+  (add SHA-256 verification, which it lacks).
   **Done when:** `make menuconfig`-equivalent runs against the external tree from a
   clean checkout with only `work/` populated by the script.
 
@@ -213,12 +227,15 @@ boots to a serial console on real hardware (P1.13).
   binary runs under `qemu-arm`; decision doc explains the trade-off.
 
 - [ ] **P1.3 — Kernel config derivation (A3, A4)** — [OPUS] — Size L — Depends: P0.8, P1.1
-  Port the stock `MiSTer_defconfig` (5.15) to 6.18 via `olddefconfig`, then audit every
-  dropped/renamed symbol. Explicitly assert and document: `DEVMEM=y`,
-  `STRICT_DEVMEM=n`, `IO_STRICT_DEVMEM=n` (A4); `ARM_APPENDED_DTB` (+`ATAG_DTB_COMPAT`
-  per P0.8) (A3); built-in (not module): ext4, vfat, exfat, loop
-  (`BLK_DEV_LOOP`), NLS codepages, dwc2, usb-storage, HID core; module support ON with
-  module signing OFF (A5); cifs, ntfs3, iso9660/udf per stock inventory; cpufreq
+  Port the **exact extracted stock config** (`docs/stock-inventory/stock-linux.config`,
+  4,246 lines from IKCONFIG) to 6.18 via `olddefconfig`, then audit every dropped/renamed
+  symbol. Explicitly assert and document: `DEVMEM=y`, `STRICT_DEVMEM=n`,
+  `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 as corrected —
+  U-Boot passes the DTB pointer); stock-parity items: `IKCONFIG=y`+`IKCONFIG_PROC=y`,
+  `KERNEL_LZ4`, `MODULE_COMPRESS_XZ=y`, `BLK_DEV_LOOP=y` (`LOOP_MIN_COUNT=8`); built-in
+  (not module): ext4, vfat, exfat, loop, NLS codepages, dwc2, usb-storage, HID core;
+  cifs + nfs built-in per stock (stock has **no** NTFS support — adding ntfs3 is an
+  opt-in improvement, decide explicitly); module support ON, signing OFF (A5); cpufreq
   governors matching stock. Deliver `board/mister/de10nano/linux.config`
   (savedefconfig) + `docs/kernel-config-deltas.md`.
   **Done when:** kernel builds from a pristine kernel.org 6.18.y tarball with this
@@ -282,15 +299,22 @@ boots to a serial console on real hardware (P1.13).
   loop device, `mount --move` of the data partition to `/newroot/media/fat`,
   `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
   shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
+  **Reference:** `/mnt/source/sb-enema` builds a `BR2_TARGET_ROOTFS_CPIO` image on
+  Buildroot 2026.02 (x86_64, busybox init, kernel+busybox config fragments) — the same
+  output mechanism as stage 1 here.
   **Done when:** kernel image embeds the cpio; P1.12's QEMU test passes; `/init` is
   shell-checked (`shellcheck`) and under 200 lines; design recorded in
   `docs/decisions/0002-initramfs.md`.
 
 - [ ] **P1.11 — `zImage_dtb` assembly (A3)** — [SONNET] — Size S — Depends: P1.3, P1.7
-  `post-image.sh` step: concatenate zImage + our DTB into `zImage_dtb` exactly as stock
-  U-Boot expects (per P0.8). Sanity-check size against U-Boot's load regions.
-  **Done when:** artifact produced on every build; a scripted check confirms the DTB
-  magic at the expected offset and total size within the documented budget.
+  `post-image.sh` step: concatenate zImage + our DTB into `zImage_dtb` with plain `cat`
+  (verified correct: U-Boot computes the DTB address as `loadaddr + *(loadaddr+0x2C)`,
+  i.e. exactly the zImage's declared end). Sanity-check size against U-Boot's load
+  regions (`loadaddr=0x01000000`, `fpgadata=0x02000000` — the kernel blob must stay
+  under 16 MiB or the FPGA load address needs revisiting).
+  **Done when:** artifact produced on every build; a scripted check asserts the zImage
+  header's declared size equals the zImage file length, the DTB magic sits exactly
+  there, and total size is within budget.
 
 - [ ] **P1.12 — QEMU initramfs logic test (A7)** — [SONNET] — Size M — Depends: P1.10
   CI-runnable test: build the same initramfs cpio into a generic ARM kernel
@@ -332,11 +356,17 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   zero on the real one; wired into CI later (P4.1).
 
 - [ ] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
-  Recreate stock init behavior in `rootfs-overlay/`: S01–S99 scripts (same names, same
-  ordering contract), inittab (getty on ttyS0 115200), fstab (ro root, tmpfs for
-  /tmp,/var,/run, `/media/fat` mountpoint), hostname `MiSTer`, profile, network config,
-  and the USB-storage automount mechanism found in P0.3 (mdev/usbmount — match stock
-  behavior of `/media/usb0-7`). Diverge from stock only with a documented reason.
+  Recreate stock init behavior in `rootfs-overlay/`: the verified S-script set
+  (S01syslogd, S02klogd, S10udev, S30dbus, S40network, S41dhcpcd, S45bluetooth, S49ntp,
+  S50proftpd, S50sshd, S91smb, S99user); inittab (**launches `/media/fat/MiSTer` from
+  `::sysinit`, backgrounded**, plus `/etc/resync` and getty on ttyS0 115200);
+  stock-parity fstab (root `rw,noauto` — the `ro` comes from the cmdline; tmpfs on /tmp,
+  /run, /dev/shm, /var/lib/samba, /var/db/dhcpcd); hostname `MiSTer`; profile; ifupdown
+  `/etc/network/interfaces` + dhcpcd; **eudev** (stock uses udev, not mdev); and the
+  USB-storage automount mechanism found in P0.3. The six user-file destinations
+  (`/etc/hostname`, `/etc/hosts`, `/etc/network/interfaces`, `/etc/resolv.conf`,
+  `/etc/dhcpcd.conf`, `/etc/fstab`) must be **regular files** — the updater copies over
+  them inside the offline image (A8). Diverge from stock only with a documented reason.
   **Done when:** a diff report `docs/init-parity.md` lists every stock init script with
   status: identical / adapted (why) / dropped (why).
 
@@ -350,16 +380,19 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
 
 - [ ] **P2.5 — Image generation, reproducible (A9)** — [SONNET] — Size M — Depends: P2.1
   `genimage.cfg` + mke2fs config: 512 MiB ext4, volume label `rootfs`, **pinned**
-  filesystem feature set, fixed UUID, `SOURCE_DATE_EPOCH` honored, deterministic
-  file ordering. Enable `BR2_REPRODUCIBLE`.
+  filesystem feature set (stock reference: `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`,
+  `FLEX_BG`), fixed UUID (stock ships one), `SOURCE_DATE_EPOCH` honored, deterministic
+  file ordering. Enable `BR2_REPRODUCIBLE`. Must remain mountable rw by the updater's
+  user-file restore (A8).
   **Done when:** two clean builds from the same commit produce byte-identical
   `linux.img` (verify locally; CI job in P4.3); image mounts ro on the 6.18 kernel.
 
 - [ ] **P2.6 — `post-build.sh`: version stamping** — [HAIKU] — Size S — Depends: P2.5
-  Write `MiSTer.version` (6-char `YYMMDD`) into the release file tree per the P0.6
-  contract, and an `/etc/os-release` identifying this distribution + build commit.
-  **Done when:** both files present in output with correct format; format asserted by a
-  test in `scripts/`.
+  Write `MiSTer.version` (6-char `YYMMDD`) **at the rootfs root of the image**
+  (`/MiSTer.version` — verified location; the Downloader reads the running system's own
+  copy), and an `/etc/os-release` identifying this distribution + build commit.
+  **Done when:** both files present in the image with correct format and location;
+  asserted by a test in `scripts/`.
 
 - [ ] **P2.7 — Size budget report** — [HAIKU] — Size S — Depends: P2.1
   Report rootfs usage by package (Buildroot's `make graph-size` + a markdown summary).
@@ -404,10 +437,11 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Done when:** module builds; firmware path documented in
   `docs/decisions/0003-xone-firmware.md`; behavior matches stock.
 
-- [ ] **P3.3 — Module loading & firmware infra (A5)** — [SONNET] — Size M — Depends: P3.1
-  Add `kmod`, run `depmod` at image build, hotplug autoload via mdev (or udev if stock
-  parity demands — per P0.3), and populate `/lib/firmware` from the linux-firmware
-  package filtered to the P0.3 inventory plus new module needs.
+- [ ] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
+  Reproduce the verified stock layout: `kmod` + `depmod` at image build, **eudev**
+  hotplug autoload (modules.alias-driven), xz-compressed module install
+  (`CONFIG_MODULE_COMPRESS_XZ=y` parity), and `/lib/firmware` populated from
+  linux-firmware filtered to the stock 72-file inventory plus new module needs.
   **Done when:** plugging a supported dongle (verified on HW in P3.13) autoloads the
   right module; firmware list documented; image size impact recorded in P2.7's report.
 
@@ -431,7 +465,8 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   ro root; share is browsable from Windows/macOS ([HW]/LAN check in P3.13).
 
 - [ ] **P3.7 — SSH & FTP parity** — [SONNET] — Size S — Depends: P2.3
-  Match stock daemon choices (per P0.3 inventory), host-key persistence per P2.4, and
+  Match stock daemon choices (verified: OpenSSH `sshd` + **proftpd**), host-key
+  persistence per P2.4, and
   stock auth behavior (document the default-credential posture; keep parity, note the
   risk in the FAQ rather than silently hardening).
   **Done when:** both daemons start on ro root; keys persist; behavior documented.
@@ -507,9 +542,13 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
   `release_YYYYMMDD.7z` (internal layout per P0.6 contract), `linux.img`, `zImage_dtb`,
   `SHA256SUMS`, `buildroot.config`, `linux.config`, `legal-info.tar.gz`. Attach GitHub
   artifact attestations (`actions/attest-build-provenance`) for the image assets.
-  Verify the 7z extracts with the stock image's extraction tool (P0.6).
+  Verify the 7z extracts with the Downloader's **pinned `7za`** (P0.6), and that
+  `files/linux/` carries the full stock auxiliary payload (`updateboot`, config
+  templates, `u-boot.txt_example`, …) — the updater rsyncs it over `/media/fat/linux/`,
+  and `updateboot` flashes whatever `uboot.img` we ship (must be byte-identical stock).
   **Done when:** a draft release from a test tag contains all assets; attestation
-  verifies with `gh attestation verify`; 7z layout byte-compared against the contract.
+  verifies with `gh attestation verify`; 7z layout byte-compared against the contract;
+  shipped `uboot.img` hash equals the stock release's.
 
 - [ ] **P4.5 — db.json generation & publishing** — [SONNET] — Size M — Depends: P0.6, P4.4
   `publish-db.yml`: on release, regenerate `db.json` with the `linux` entry (MD5, size,
@@ -526,7 +565,10 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
   (custom/regex manager over the pin file from P1.1), morrownr package commit pins (git
   datasource), CI container image digests, and GitHub Actions versions. Every Renovate
   PR must trigger the full CI suite (build, patch-apply, ABI checks, reproducibility).
-  Automerge stays OFF — a human reviews green PRs.
+  Automerge stays OFF — a human reviews green PRs. **Reference:**
+  `/mnt/source/sb-enema/renovate.json` — a working custom regex manager for
+  `BUILDROOT_VERSION` (github-tags datasource, `allowedVersions` pinned to `2026.02.x`);
+  use it as the template.
   **Done when:** a real or synthetic Renovate PR for a Buildroot point release opens
   with passing CI; the pin file's regex manager is covered by a Renovate config test.
 

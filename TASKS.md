@@ -569,6 +569,23 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** `docs/size-budget.md` committed; CI-runnable check script asserts the
   15 % floor.
 
+- [ ] **P2.10 — Version-delta doc: five years of upstream fixes** — [SONNET] — Size S — Depends: P2.1
+  Produce `docs/version-delta.md`: stock (Buildroot **2021.02.4**) vs ours (**2026.02.3**)
+  for every package, the version jump, and the security/maintenance value. This is a
+  headline win — stock froze the whole userland ~5 years ago — and it directly serves
+  **G2/G3** (a real security-update path) and the release notes (P4.9).
+  Data: `docs/package-manifest.md` already carries a stock→ours version column; exact
+  built point-versions come from `output/build/<pkg>-<ver>/` after P2.1. Known headliners:
+  glibc 2.31→2.42, kernel 5.15.1→6.18.33 (both hardware-verified), OpenSSL 1.1→3, plus
+  ALSA, BlueZ, Samba, SSH/FTP, Python 3.9→3.14.
+  **⚠ Do NOT fabricate CVE numbers.** State version deltas (factual) and the general
+  "~5 years of upstream maintenance" framing (true). Cite a specific CVE only if actually
+  looked up and confirmed applicable. A verifiable "N major jumps, ~5 years of fixes"
+  beats an unverifiable "fixes 47 CVEs" — overclaiming destroys the credibility this doc
+  exists to build.
+  **Done when:** `docs/version-delta.md` committed — headline table + full per-package
+  stock→ours table sorted by biggest jump + a call-out of the security-relevant movers.
+
 - [ ] **P2.8 — qemu-user smoke of the stock binary (A7)** — [SONNET] — Size M — Depends: P2.2
   In CI-runnable form: chroot into the built rootfs under `qemu-arm`, execute the stock
   `MiSTer` binary, and assert it advances past dynamic linking and early init (it will

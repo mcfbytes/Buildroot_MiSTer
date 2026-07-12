@@ -145,7 +145,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   the mainline commit or subsystem; the carried set maps 1:1 to the planned
   `linux-patches/` filenames in §6.
 
-- [ ] **P0.5 — ABI contract document** — [OPUS] — Size M — Depends: P0.2, P0.3
+- [x] **P0.5 — ABI contract document** — [OPUS] — Size M — Depends: P0.2, P0.3
   Expand §3 into `docs/abi-contract.md` with evidence: `readelf -d` output for the stock
   `MiSTer` binary; the `MiSTer_fb` ioctl numbers/structs extracted from source; the
   physical addresses and access patterns from `fpga_io.cpp`; every `/dev` node

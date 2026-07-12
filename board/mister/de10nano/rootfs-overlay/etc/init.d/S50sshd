@@ -31,6 +31,22 @@ start() {
 	mkdir -p "$KEYDIR"
 	mount -o sync,dirsync,noatime,nodiratime "$KEYIMG" "$KEYDIR"
 
+	# Persistence is best-effort; sshd starting is NOT. If the ext4 mount did
+	# not take (missing /media/fat, corrupt image, no free loop device), then
+	# $KEYDIR is the READ-ONLY rootfs and ssh-keygen below cannot write there
+	# -- sshd would then come up with no host key and refuse every connection.
+	# That is the one outcome we must never ship, because serial is then the
+	# only way back in. Fall back to a tmpfs keydir so sshd ALWAYS starts;
+	# keys are non-persistent in that mode (regenerated each boot), which is a
+	# tolerable degradation, and we say so loudly on the console so it is
+	# diagnosable rather than silent.
+	if ! mountpoint -q "$KEYDIR"; then
+		echo "WARNING: could not mount $KEYIMG at $KEYDIR -- SSH host keys" >&2
+		echo "WARNING: will be EPHEMERAL this boot (regenerated, not persisted)." >&2
+		KEYDIR=/run/ssh_keys
+		mkdir -p "$KEYDIR"
+	fi
+
 	# Create any missing keys -- first boot only, each type generated
 	# individually so it lands FLAT in $KEYDIR (ssh-keygen -A -f instead
 	# uses its argument as a prefix ahead of the whole compiled-in
@@ -42,7 +58,13 @@ start() {
 	done
 
 	printf "Starting sshd: "
-	/usr/sbin/sshd
+	# -o HostKey overrides sshd_config's compiled paths, so the tmpfs
+	# fallback above is actually honoured (otherwise sshd would read the
+	# persistent /etc/ssh_keys paths from the config and find nothing).
+	/usr/sbin/sshd \
+		-o "HostKey=$KEYDIR/ssh_host_rsa_key" \
+		-o "HostKey=$KEYDIR/ssh_host_ecdsa_key" \
+		-o "HostKey=$KEYDIR/ssh_host_ed25519_key"
 	touch /var/lock/sshd
 	echo "OK"
 }

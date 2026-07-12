@@ -84,6 +84,115 @@ BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"
 BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
 
 ################################################################################
+# P2.5 — Image generation, reproducible (A9).
+#
+# Mechanism: BR2_TARGET_ROOTFS_EXT2 (ext4 variant), NOT genimage. The stock
+# artifact (linux/linux.img) is a single loop-mounted ext4 filesystem with NO
+# partition table -- our /init losetup's + mounts it directly (docs/boot-
+# chain.md; confirmed on hardware in P1.13). genimage exists to assemble
+# MULTI-PARTITION disk images (MBR/GPT, bootloader + several filesystems);
+# here there is exactly one filesystem and nothing else to lay out, so it
+# would add a whole config layer to produce byte-for-byte what
+# BR2_TARGET_ROOTFS_EXT2 already produces directly -- Buildroot's own manual
+# recommends going straight to the fs/ target when no partition table is
+# needed, which is this case. post-image.sh (extended, not forked) hard-links
+# the resulting output/images/rootfs.ext2 to output/images/linux.img (see
+# that script for why rootfs.ext2, not the rootfs.ext4 convenience symlink
+# Buildroot also creates, is the canonical name here).
+#
+# Size: 512 MiB (task text), not stock's 375 MiB. P2.1's full rootfs, once
+# actually built into this ext4 image (with journal/inode-table/GDT
+# overhead), uses ~198 MiB of the 512 -> measured 61.4% free
+# (dumpe2fs -h: 80433 free / 131072 total blocks), comfortably above P2.7's
+# 15% floor, with headroom for A8 (the updater mounts the NEW image rw and
+# copies 5 user-files into /etc before flashing) and for future package
+# growth without another resize.
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"          # stock parity -- some tooling
+                                                # keys on the volume label.
+                                                # Kconfig's own default is
+                                                # already "rootfs"; explicit
+                                                # here so a future Buildroot
+                                                # default change can't
+                                                # silently change it under us.
+BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+# Buildroot's own default (256). DELIBERATE divergence from stock's 128: a
+# 128-byte inode hits the Y2K38 timestamp problem (mke2fs(8) says so
+# explicitly). Costs us nothing -- inode_size is invisible to the mount/ABI
+# contract. (An int-type Kconfig symbol can't carry a trailing same-line
+# comment the way the bool/string ones above do -- conf --defconfig treats
+# anything after the digits as part of the value and rejects it; verified
+# via the "invalid for BR2_TARGET_ROOTFS_EXT2_INODE_SIZE" warning this
+# produced before being moved here.)
+BR2_TARGET_ROOTFS_EXT2_INODE_SIZE=256
+#
+# BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS -- pinned explicitly, not left to
+# mke2fs defaults. Three independent reasons, each checked against the real
+# stock artifact (work/extracted/files/linux/linux.img) and this Buildroot's
+# actual e2fsprogs 1.47.3, not assumed:
+#
+#  1. FEATURE SET. `dumpe2fs -h` on the real stock linux.img gives exactly:
+#       has_journal ext_attr resize_inode dir_index filetype extent 64bit
+#       flex_bg sparse_super large_file huge_file dir_nlink extra_isize
+#       metadata_csum
+#     This build's e2fsprogs 1.47.3 default `ext4` fs_type
+#     (output/host/etc/mke2fs.conf) gives that SAME 14 features PLUS
+#     metadata_csum_seed and orphan_file -- two features e2fsprogs added to
+#     its own defaults some time after stock's image was built. That is
+#     the "drift across e2fsprogs versions" this task warns about, caught
+#     in the act: left to defaults, THIS build already diverges from
+#     stock's feature set, and a future e2fsprogs bump could add more. So
+#     every feature below is forced on or off explicitly (^), not
+#     inherited from mke2fs.conf.
+#     This also overrides fs/ext2/Config.in's own default of "-O ^64bit"
+#     (chosen upstream for pre-2017.02 U-Boot bootloaders that can't read a
+#     64bit ext4). Irrelevant here: U-Boot never reads linux.img at all
+#     (only uboot.img/zImage_dtb off the FAT partition -- docs/boot-
+#     chain.md); linux.img is loop-mounted by the KERNEL, which has
+#     supported the 64bit feature since 3.18. Stock itself ships 64bit ON,
+#     confirming the kernel side is fine with it.
+#  2. UUID (-U) and directory-hash-seed (-E hash_seed=) are BOTH
+#     `uuid_generate()` -- i.e. /dev/urandom-backed and RANDOM -- when not
+#     given explicitly (this e2fsprogs's misc/mke2fs.c:3325 and :3348), and
+#     the hash seed is written into the superblock at creation time
+#     regardless of whether any directory actually becomes htree-indexed.
+#     Leaving either implicit makes the image's own superblock bytes
+#     non-reproducible even with BR2_REPRODUCIBLE=y and an identical
+#     TARGET_DIR -- BR2_REPRODUCIBLE only pins SOURCE_DATE_EPOCH
+#     (timestamps, see below); it does not touch mke2fs's own UUID/seed
+#     generation. The two fixed values below are two separate
+#     /proc/sys/kernel/random/uuid draws, pinned once and never
+#     regenerated -- deliberately DIFFERENT from stock's own UUID
+#     (50ef310c-47b9-4c1c-a2fe-d0202d02b6b4) so a user who still has a
+#     stock SD-card backup lying around never has two filesystems with the
+#     identical UUID visible to the same host at once.
+#  3. -b 4096: already what mke2fs.conf's [defaults] section would pick for
+#     an image this size, made explicit for the same "don't trust the
+#     defaults to hold across an e2fsprogs bump" reason as (1).
+#
+# SOURCE_DATE_EPOCH (below, via BR2_REPRODUCIBLE) covers the remaining
+# source of mke2fs non-determinism: this e2fsprogs (lib/ext2fs/
+# initialize.c) reads SOURCE_DATE_EPOCH for the filesystem's own
+# created/last-write superblock timestamps, and fs/common.mk's
+# ROOTFS_REPRODUCIBLE hook touches every file under TARGET_DIR to that same
+# timestamp before ANY rootfs image (tar or ext2) is generated -- so file
+# mtimes inside the image are pinned too, and so is file ORDERING to the
+# extent it's driven by TARGET_DIR's own (stable, un-mutated-between-builds)
+# directory order -- see the P2.5 acceptance run for the actual two-build
+# byte-identical proof.
+BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS="-U 71916572-439f-448e-b8d8-12b0a032fa56 -E hash_seed=9afc615c-c310-4e03-ada9-613522e83ae6 -b 4096 -O has_journal,ext_attr,resize_inode,dir_index,filetype,extent,64bit,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize,metadata_csum,^metadata_csum_seed,^orphan_file"
+
+# Byte-identical builds from the same commit (P2.5's "done when"). Exports
+# SOURCE_DATE_EPOCH (pinned to work/buildroot's OWN last commit date --
+# top-level buildroot Makefile:538-540 -- constant as long as that pinned
+# tree doesn't change) and, via fs/common.mk's ROOTFS_REPRODUCIBLE hook,
+# touches every TARGET_DIR file to it before any rootfs image is built.
+# Does NOT, by itself, pin mke2fs's UUID/hash-seed -- see the
+# MKFS_OPTIONS comment above for why those are pinned separately.
+BR2_REPRODUCIBLE=y
+
+################################################################################
 # P2.1 — Full package set.
 #
 # Source of truth: docs/package-manifest.md §6 "Ready-to-paste BR2_PACKAGE_*

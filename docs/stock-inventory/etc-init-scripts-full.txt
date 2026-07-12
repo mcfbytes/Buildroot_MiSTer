@@ -1,0 +1,684 @@
+===== /etc/init.d/S01syslogd =====
+#!/bin/sh
+
+DAEMON="syslogd"
+PIDFILE="/var/run/$DAEMON.pid"
+
+SYSLOGD_ARGS=""
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+# BusyBox' syslogd does not create a pidfile, so pass "-n" in the command line
+# and use "-m" to instruct start-stop-daemon to create one.
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	# shellcheck disable=SC2086 # we need the word splitting
+	start-stop-daemon -b -m -S -q -p "$PIDFILE" -x "/sbin/$DAEMON" \
+		-- -n $SYSLOGD_ARGS
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		rm -f "$PIDFILE"
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		restart;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac
+
+===== /etc/init.d/S02klogd =====
+#!/bin/sh
+
+DAEMON="klogd"
+PIDFILE="/var/run/$DAEMON.pid"
+
+KLOGD_ARGS=""
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+# BusyBox' klogd does not create a pidfile, so pass "-n" in the command line
+# and use "-m" to instruct start-stop-daemon to create one.
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	# shellcheck disable=SC2086 # we need the word splitting
+	start-stop-daemon -b -m -S -q -p "$PIDFILE" -x "/sbin/$DAEMON" \
+		-- -n $KLOGD_ARGS
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		rm -f "$PIDFILE"
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		restart;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac
+
+===== /etc/init.d/S10udev =====
+#!/bin/sh
+#
+# udev	This is a minimal non-LSB version of a UDEV startup script.  It
+#	was derived by stripping down the udev-058 LSB version for use
+#	with buildroot on embedded hardware using Linux 2.6.34+ kernels.
+#
+#	You may need to customize this for your system's resource limits
+#	(including startup time!) and administration.  For example, if
+#	your early userspace has a custom initramfs or initrd you might
+#	need /dev much earlier; or without hotpluggable busses (like USB,
+#	PCMCIA, MMC/SD, and so on) your /dev might be static after boot.
+#
+#	This script assumes your system boots right into the eventual root
+#	filesystem, and that init runs this udev script before any programs
+#	needing more device nodes than the bare-bones set -- /dev/console,
+#	/dev/zero, /dev/null -- that's needed to boot and run this script.
+#
+
+# Check for config file and read it
+UDEV_CONFIG=/etc/udev/udev.conf
+test -r $UDEV_CONFIG || exit 6
+. $UDEV_CONFIG
+
+case "$1" in
+    start)
+        printf "Populating %s using udev: " "${udev_root:-/dev}"
+        [ -e /proc/sys/kernel/hotplug ] && printf '\000\000\000\000' > /proc/sys/kernel/hotplug
+        /sbin/udevd -d || { echo "FAIL"; exit 1; }
+        udevadm trigger --type=subsystems --action=add
+        udevadm trigger --type=devices --action=add
+        udevadm settle --timeout=30 || echo "udevadm settle failed"
+        echo "done"
+        ;;
+    stop)
+        # Stop execution of events
+        udevadm control --stop-exec-queue
+        killall udevd
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
+
+
+exit 0
+
+===== /etc/init.d/S30dbus =====
+#!/bin/sh
+#
+# messagebus:   The D-BUS systemwide message bus
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon which broadcasts notifications of system events \
+#               and other messages. See http://www.freedesktop.org/software/dbus/
+#
+# processname: dbus-daemon
+# pidfile: /run/messagebus.pid
+#
+
+# Create needed directories.
+[ -d /run/dbus ] || mkdir -p /run/dbus
+[ -d /var/lock/subsys ] || mkdir -p /var/lock/subsys
+[ -d /tmp/dbus ] || mkdir -p /tmp/dbus
+
+RETVAL=0
+
+start() {
+    printf "Starting system message bus: "
+
+    dbus-uuidgen --ensure
+    dbus-daemon --system
+    RETVAL=$?
+    echo "done"
+    [ $RETVAL -eq 0 ] && touch /var/lock/subsys/dbus-daemon
+}
+
+stop() {
+    printf "Stopping system message bus: "
+
+    ## we don't want to kill all the per-user $processname, we want
+    ## to use the pid file *only*; because we use the fake nonexistent 
+    ## program name "$servicename" that should be safe-ish
+    killall dbus-daemon
+    RETVAL=$?
+    echo "done"
+    if [ $RETVAL -eq 0 ]; then
+        rm -f /var/lock/subsys/dbus-daemon
+        rm -f /run/messagebus.pid
+    fi
+}
+
+# See how we were called.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    condrestart)
+        if [ -f /var/lock/subsys/$servicename ]; then
+            stop
+            start
+        fi
+        ;;
+    reload)
+        echo "Message bus can't reload its configuration, you have to restart it"
+        RETVAL=$?
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|condrestart|reload}"
+        ;;
+esac
+exit $RETVAL
+
+===== /etc/init.d/S40network =====
+#!/bin/sh
+#
+# Start the network....
+#
+
+# Debian ifupdown needs the /run/network lock directory
+mkdir -p /run/network
+
+case "$1" in
+  start)
+	printf "Starting network: "
+	/sbin/ifup -a
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  stop)
+	printf "Stopping network: "
+	/sbin/ifdown -a
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+
+===== /etc/init.d/S41dhcpcd =====
+#!/bin/sh
+#
+# Start/stop dhcpcd
+#
+
+DAEMON=/sbin/dhcpcd
+CONFIG=/etc/dhcpcd.conf
+PIDFILE=/var/run/dhcpcd.pid
+
+[ -f $CONFIG ] || exit 0
+
+case "$1" in
+  start)
+	echo "Starting dhcpcd..."
+	start-stop-daemon -S -x "$DAEMON" -p "$PIDFILE" -- -f "$CONFIG"
+	;;
+  stop)
+	echo "Stopping dhcpcd..."
+	start-stop-daemon -K -x "$DAEMON" -p "$PIDFILE" -o
+	;;
+  reload|force-reload)
+	echo "Reloading dhcpcd configuration..."
+	"$DAEMON" -s reload
+	;;
+  restart)
+	"$0" stop
+	sleep 1 # Prevent race condition: ensure dhcpcd stops before start.
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart|reload|force-reload}"
+	exit 1
+esac
+
+===== /etc/init.d/S45bluetooth ===== (symlink -> /bin/bluetoothd)
+#!/bin/sh
+
+DAEMON="bluetoothd"
+PIDFILE="/var/run/$DAEMON.pid"
+EXEC=/usr/libexec/bluetooth/$DAEMON
+
+BTIMG=/media/fat/linux/bluetooth
+MNTPATH=/var/lib/bluetooth
+
+BLUETOOTHD_ARGS="-n -E -C"
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+start() {
+	echo 'Checking for Bluetooth storage'
+	
+	if [ ! -f $BTIMG ]; then
+		dd if=/dev/zero of=$BTIMG bs=64k count=32
+		mkfs.ext4 $BTIMG
+	fi
+	mkdir -p $MNTPATH
+	mount -o sync,dirsync,nodiratime,noatime $BTIMG $MNTPATH
+
+	printf 'Starting %s: ' "$DAEMON"
+	# shellcheck disable=SC2086 # we need the word splitting
+	start-stop-daemon -S -q -m -b -p "$PIDFILE" -x "$EXEC" -- $BLUETOOTHD_ARGS
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	umount $MNTPATH
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+renew() {
+	stop
+	sleep 2
+	echo removing $BTIMG to delete all pairings
+	rm $BTIMG
+	start
+}
+
+reload() {
+	printf 'Reloading %s: ' "$DAEMON"
+	start-stop-daemon -K -s HUP -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+hcireset() {
+	for X in /sys/bus/usb/devices/*; do 
+		for Y in $X/*; do 
+			if [ -d $Y/bluetooth/hci0 ]; then
+				echo resetting $X
+				echo 0 > $X/authorized
+				echo 1 > $X/authorized
+			fi
+		done
+	done 
+}
+
+case "$1" in
+	start|stop|restart|reload|renew|hcireset)
+		"$1";;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload|renew|hcireset}"
+		exit 1
+esac
+
+===== /etc/init.d/S49ntp =====
+#!/bin/sh
+#
+# Starts Network Time Protocol daemon
+#
+
+DAEMON="ntpd"
+PIDFILE="/var/run/$DAEMON.pid"
+
+NTPD_ARGS="-g"
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	# shellcheck disable=SC2086 # we need the word splitting
+	start-stop-daemon -S -q -p "$PIDFILE" -x "/usr/sbin/$DAEMON" \
+		-- $NTPD_ARGS -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		rm -f "$PIDFILE"
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		restart;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac
+
+===== /etc/init.d/S50proftpd =====
+#!/bin/sh
+
+trap "" HUP
+trap "" TERM
+[ ! -d /var/run/proftpd ] && mkdir /var/run/proftpd
+[ ! -f /var/log/wtmp ] && touch /var/log/wtmp
+
+start() {
+	printf "Starting ProFTPD: "
+	/usr/sbin/proftpd
+	if [ $? != 0 ]; then
+		echo "FAILED"
+		exit 1
+	else
+		echo "done"
+	fi
+}
+
+stop() {
+	printf "Stopping ProFTPD: "
+	killall proftpd
+        echo "done"
+}
+
+case "$1" in
+    start)
+	start
+	;;
+
+    stop)
+	stop
+	;;
+
+    restart)
+    	stop
+    	start
+	;;
+
+    *)
+	echo "Usage: /etc/init.d/S50proftpd {start|stop|restart}"
+	exit 1
+	;;
+esac
+
+exit 0
+
+===== /etc/init.d/S50sshd =====
+#!/bin/sh
+#
+# sshd        Starts sshd.
+#
+
+# Make sure the ssh-keygen progam exists
+[ -f /usr/bin/ssh-keygen ] || exit 0
+
+umask 077
+
+start() {
+	# Create any missing keys
+	/usr/bin/ssh-keygen -A
+
+	printf "Starting sshd: "
+	/usr/sbin/sshd
+	touch /var/lock/sshd
+	echo "OK"
+}
+stop() {
+	printf "Stopping sshd: "
+	killall sshd
+	rm -f /var/lock/sshd
+	echo "OK"
+}
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+
+===== /etc/init.d/S91smb =====
+#!/bin/sh
+
+[ -f /etc/samba/smb.conf ] || exit 0
+[ -f /media/fat/linux/samba.sh ] || exit 0
+
+mkdir -p /var/log/samba
+mkdir -p /tmp/samba
+mkdir -p /tmp/cache
+mkdir -p /tmp/cache/samba
+mkdir -p /var/lib/samba/private
+
+start() {
+	printf "Starting SMB services: "
+	smbd -D
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+
+	printf "Starting NMB services: "
+	nmbd -D
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	
+	/media/fat/linux/samba.sh
+}
+
+stop() {
+	printf "Shutting down SMB services: "
+	kill -9 `pidof smbd`
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+
+	printf "Shutting down NMB services: "
+	kill -9 `pidof nmbd`
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+}
+
+restart() {
+	stop
+	start
+}
+
+reload() {
+        printf "Reloading smb.conf file: "
+	kill -HUP `pidof smbd`
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+}
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart)
+  	restart
+	;;
+  reload)
+  	reload
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart|reload}"
+	exit 1
+esac
+
+exit $?
+
+===== /etc/init.d/S99user =====
+#!/bin/sh
+
+USER_SCRIPT="/media/fat/linux/user-startup.sh"
+
+case "$1" in
+	start|stop|restart)
+		[ -f $USER_SCRIPT ] && $USER_SCRIPT "$1";;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+
+===== /etc/init.d/rcK =====
+#!/bin/sh
+
+
+# Stop all init scripts in /etc/init.d
+# executing them in reversed numerical order.
+#
+for i in $(ls -r /etc/init.d/S??*) ;do
+
+     # Ignore dangling symlinks (if any).
+     [ ! -f "$i" ] && continue
+
+     case "$i" in
+	*.sh)
+	    # Source shell script for speed.
+	    (
+		trap - INT QUIT TSTP
+		set stop
+		. $i
+	    )
+	    ;;
+	*)
+	    # No sh extension, so fork subprocess.
+	    $i stop
+	    ;;
+    esac
+done
+
+===== /etc/init.d/rcS =====
+#!/bin/sh
+
+
+# Start all init scripts in /etc/init.d
+# executing them in numerical order.
+#
+for i in /etc/init.d/S??* ;do
+
+     # Ignore dangling symlinks (if any).
+     [ ! -f "$i" ] && continue
+
+     case "$i" in
+	*.sh)
+	    # Source shell script for speed.
+	    (
+		trap - INT QUIT TSTP
+		set start
+		. $i
+	    )
+	    ;;
+	*)
+	    # No sh extension, so fork subprocess.
+	    $i start
+	    ;;
+    esac
+done
+

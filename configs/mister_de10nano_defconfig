@@ -1,0 +1,17 @@
+# mister_de10nano_defconfig — P1.1 placeholder
+#
+# Deliberately minimal. This exists only to prove the BR2_EXTERNAL wiring
+# (P1.1 acceptance: `make mister_de10nano_defconfig` + `make olddefconfig`
+# succeed against this external tree from a clean checkout). It intentionally
+# sets NO toolchain, architecture, kernel, or rootfs options — with nothing
+# overridden here, Buildroot falls back to its own defaults (BR2_i386 +
+# internal toolchain), which is a valid config that builds essentially
+# nothing of interest. Real target settings (armv7-a/Cortex-A9/NEON-VFPv3/
+# EABIhf/glibc, kernel, initramfs, package set) land in P1.2 onward — do not
+# add them here without updating that task's plan.
+#
+# NOTE: `make savedefconfig` writes back to whatever BR2_DEFCONFIG was last
+# loaded (standard Buildroot behavior) and only emits lines that diverge from
+# kconfig defaults — since this config *is* the defaults, that will silently
+# empty this file, including this comment block. That's expected; P1.2 is
+# what gives this file real, savedefconfig-durable content.

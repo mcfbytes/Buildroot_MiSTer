@@ -1,0 +1,9 @@
+menu "MiSTer external options"
+
+comment "No MiSTer packages configured yet"
+
+# Future MiSTer-specific packages (Realtek Wi-Fi, xone — see package/, P3.1-P3.3)
+# add their own "source" lines here, e.g.:
+#   source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
+
+endmenu

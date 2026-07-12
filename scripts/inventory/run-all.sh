@@ -21,6 +21,8 @@
 # real problem (e.g. a genuine kernel-config/DTS content diff, or a
 # dangling NEEDED dependency) -- see each generator's own exit-code
 # contract in its header comment.
+# SC1091: common.sh is sourced via $here and cannot be resolved statically.
+# shellcheck disable=SC1091
 set -uo pipefail  # deliberately not -e: run every generator, then report
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,8 +39,7 @@ mister_binary="${3:-}"
 # Each gen-*.sh accepts either an image or an already-extracted root, so
 # passing "$image" through to all seven would re-run the same ~300 MB
 # debugfs rdump seven times over.
-# shellcheck source=scripts/inventory/common.sh
-. "$here/common.sh"
+source "$here/common.sh"
 root="$(mrl_extract_root "$image")"
 
 # The generators would otherwise header themselves with $root -- a mktemp path

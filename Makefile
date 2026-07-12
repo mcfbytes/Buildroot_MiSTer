@@ -74,11 +74,57 @@ BR_DIR     := $(WORK_DIR)/buildroot
 #     which is missing, which forces the re-fetch.
 BR_STAMP   := $(BR_DIR)/.mister-br2-stamp-$(BUILDROOT_VERSION)
 
+# --- Host `install` must be GNU install ---------------------------------------
+# Buildroot REFUSES to build if /usr/bin/install is uutils coreutils 0.8.0 —
+# see work/buildroot/support/dependencies/dependencies.sh:193-200, which pins
+# that exact version and links the upstream bug:
+#     https://github.com/uutils/coreutils/issues/12166
+# Debian/Ubuntu's `coreutils-from-uutils` package installs exactly that as the
+# default `install`, and ships GNU's as `gnuinstall`.
+#
+# Buildroot's own advice is `update-alternatives --install ... gnuinstall 100`,
+# which needs root and mutates the developer's system. We do NOT do that. We
+# instead build a tiny shim directory containing a single `install` symlink to
+# whatever GNU install we can find, and prepend it to PATH for Buildroot only.
+# That is self-contained, needs no root, is identical for every developer and
+# for CI, and touches nothing outside this repo. It is a no-op on a host whose
+# `install` is already GNU.
+HOSTSHIM_DIR := $(OUTPUT_DIR)/.hostshim
+GNU_INSTALL  := $(shell if install --version 2>/dev/null | grep -q 'GNU coreutils'; then \
+                            command -v install; \
+                        else \
+                            command -v gnuinstall 2>/dev/null; \
+                        fi)
+
+.PHONY: hostshim
+hostshim:
+	@if install --version 2>/dev/null | grep -q 'GNU coreutils'; then \
+		exit 0; \
+	fi; \
+	if [ -z "$(GNU_INSTALL)" ]; then \
+		echo "FATAL: your 'install' is not GNU coreutils:" >&2; \
+		install --version 2>&1 | head -1 | sed 's/^/    /' >&2; \
+		echo "" >&2; \
+		echo "Buildroot refuses to build with it (dependencies.sh:193; upstream bug" >&2; \
+		echo "https://github.com/uutils/coreutils/issues/12166), and no GNU 'install'" >&2; \
+		echo "was found to substitute. Install GNU coreutils, e.g.:" >&2; \
+		echo "    sudo apt-get install gnu-coreutils   # provides /usr/bin/gnuinstall" >&2; \
+		exit 1; \
+	fi; \
+	mkdir -p $(HOSTSHIM_DIR); \
+	ln -sf $(GNU_INSTALL) $(HOSTSHIM_DIR)/install; \
+	echo "==> host 'install' is not GNU; shimming $(GNU_INSTALL) into PATH for Buildroot"
+
 # Buildroot invocation shared by every forwarded target. BR2_EXTERNAL is passed
 # explicitly here rather than exported: a command-line assignment overrides the
 # environment anyway, so an export would just be a redundant second source of
 # truth that can drift out of sync with this one.
-BR_MAKE = $(MAKE) -C $(BR_DIR) O=$(OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+#
+# $(HOSTSHIM_DIR) goes FIRST in PATH so the GNU `install` shim (see above) wins
+# over a uutils one. On a host with GNU install the directory is never created
+# and this prefix is inert.
+BR_MAKE = PATH="$(HOSTSHIM_DIR):$$PATH" \
+          $(MAKE) -C $(BR_DIR) O=$(OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
 # Bare `make` must NOT be `all`. The P1.1 defconfig deliberately sets no arch or
 # toolchain, so Buildroot would fall back to its own defaults (BR2_i386 +
@@ -102,7 +148,7 @@ BR_MAKE = $(MAKE) -C $(BR_DIR) O=$(OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_D
 Makefile: ;
 
 # `make` with no target builds the full image, same as bare Buildroot.
-all: $(BR_STAMP)
+all: $(BR_STAMP) hostshim
 	$(BR_MAKE) all
 
 # Deliberately does NOT depend on $(BR_STAMP): `make help` on a fresh clone (or
@@ -128,7 +174,7 @@ help:
 	@echo "Pinned Buildroot: $(BUILDROOT_VERSION) (BR2_EXTERNAL=$(ROOT_DIR))"
 	@echo "Any other target is forwarded verbatim into Buildroot's own Makefile."
 
-br-help: $(BR_STAMP)
+br-help: $(BR_STAMP) hostshim
 	$(BR_MAKE) help
 
 # Print upstream's clearsigned release manifest, which carries the authoritative
@@ -208,5 +254,5 @@ buildroot-unpack: $(BR_STAMP)
 # make menuconfig, make linux-menuconfig, make savedefconfig, make
 # mister_de10nano_defconfig (Buildroot's own %_defconfig rule finds it under
 # this tree's configs/, since BR2_EXTERNAL is set above), etc.
-%: $(BR_STAMP)
+%: $(BR_STAMP) hostshim
 	$(BR_MAKE) $@

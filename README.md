@@ -44,6 +44,45 @@ MiSTer's operating system is currently distributed as an opaque archive containi
 
 ---
 
+## Building (Phase 1, in progress)
+
+Buildroot is **never vendored** into this repo (G4/G6). The top-level `Makefile`
+downloads the pinned Buildroot release, verifies its SHA-256 against upstream's
+GPG-signed release manifest, unpacks it under `work/`, and forwards every target
+into it.
+
+```sh
+make                            # help (deliberately NOT a build — see below)
+make mister_de10nano_defconfig  # load our config
+make -j$(nproc)                 # build (first run bootstraps a cross-toolchain)
+make buildroot-showsig          # print upstream's signed hash for the pinned release
+```
+
+`make` on its own prints help rather than building. Until the defconfig is
+complete, a reflexive bare `make` would otherwise start a full **x86** toolchain
+build that nothing in this project wants.
+
+### Host requirements
+
+Standard build tools (`gcc`, `make`, `bc`, `flex`, `bison`, `cpio`, `rsync`,
+`unzip`, `wget`/`curl`, `python3`), plus `dtc`, `qemu-user`/`qemu-system-arm`,
+and `shellcheck` for the test and inventory scripts.
+
+**One sharp edge:** Buildroot refuses to build if `/usr/bin/install` is **uutils
+coreutils 0.8.0** — it detects that exact version and rejects it
+(`support/dependencies/dependencies.sh:193`, upstream bug
+[uutils/coreutils#12166](https://github.com/uutils/coreutils/issues/12166)).
+Debian/Ubuntu's `coreutils-from-uutils` package installs precisely that as the
+default `install` and ships GNU's as `gnuinstall`.
+
+You do **not** need to fix this yourself, and you should not need `sudo`: the
+Makefile detects it and transparently shims a GNU `install` into `PATH` for
+Buildroot only (`output/.hostshim/`), touching nothing outside this repo. It is
+inert on a host whose `install` is already GNU. If no GNU `install` exists at
+all, the build fails fast and tells you what to install.
+
+---
+
 ## Key Files
 
 - `PLAN.md` — Authoritative project plan, constraints, and design decisions

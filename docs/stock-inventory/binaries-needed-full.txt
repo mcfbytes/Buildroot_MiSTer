@@ -1,0 +1,537 @@
+# path	elf_type	interp	needed (comma-separated)
+EXTRA:work/extracted/files/MiSTer	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libImlib2.so.1,libbluetooth.so.3,libbz2.so.1.0,libc.so.6,libfreetype.so.6,libgcc_s.so.1,libm.so.6,libpng16.so.16,libpthread.so.0,librt.so.1,libstdc++.so.6,libz.so.1
+libexec/rmt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/7zr	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgcc_s.so.1,libm.so.6,libpthread.so.0,libstdc++.so.6
+usr/bin/aconnect	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/adplay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libadplug.so,libao.so.4,libasound.so.2,libbinio.so,libc.so.6,libdl.so.2,libgcc_s.so.1,libm.so.6,libstdc++.so.6
+usr/bin/alsabat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/alsaloop	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/alsamixer	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libformw.so.6,libm.so.6,libmenuw.so.6,libncursesw.so.6,libpanelw.so.6,libpthread.so.0
+usr/bin/alsatplg	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libatopology.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/alsaucm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/amidi	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/amixer	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/aplay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0,librt.so.1
+usr/bin/aplaymidi	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/archivemount	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libarchive.so.13,libc.so.6,libfuse.so.2,libpthread.so.0
+usr/bin/arecord	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0,librt.so.1
+usr/bin/arecordmidi	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/aseqdump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/aseqnet	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/aserver	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0,librt.so.1
+usr/bin/asn1Coding	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libtasn1.so.6
+usr/bin/asn1Decoding	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libtasn1.so.6
+usr/bin/asn1Parser	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libtasn1.so.6
+usr/bin/bash	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libhistory.so.8,libncursesw.so.6,libreadline.so.8
+usr/bin/bluemoon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/bluetoothctl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libglib-2.0.so.0,libpthread.so.0,libreadline.so.8
+usr/bin/bt-adapter	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/bt-agent	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/bt-device	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/bt-network	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/bt-obex	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0,libreadline.so.8
+usr/bin/btattach	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/btmgmt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libreadline.so.8
+usr/bin/btmon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libudev.so.1
+usr/bin/bunzip2	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/busybox	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpam.so.0,libpam_misc.so.0,libresolv.so.2
+usr/bin/bzcat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/bzip2	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/bzip2recover	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/captest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap-ng.so.0
+usr/bin/chattr	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libe2p.so.2
+usr/bin/choom	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/chrt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/chvt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/cifsdd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-cldap-samba4.so,libcli-ldap-samba4.so,libcli-smb-common-samba4.so,libcliauth-samba4.so,libcmdline-credentials-samba4.so,libevents-samba4.so,libgensec-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsmbclient-raw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/bin/ciptool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/clear	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/clockdiff	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2
+usr/bin/col	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/colcrt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/colrm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/column	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/convert-dtsv0	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/coreutils	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libcrypto.so.1.1,libgmp.so.10,libpthread.so.0,librt.so.1
+usr/bin/cpuload	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ctdb	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb-wrap-samba4.so,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/bin/curl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libcurl.so.4,libpthread.so.0,libssl.so.1.1,libz.so.1
+usr/bin/cvtsudoers	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0
+usr/bin/dash	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/dbus-binding-tool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libdbus-glib-1.so.2,libexpat.so.1,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0,libpthread.so.0
+usr/bin/dbus-cleanup-sockets	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/dbus-daemon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libexpat.so.1,libpthread.so.0
+usr/bin/dbus-launch	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-monitor	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-run-session	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-send	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-test-tool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-triggerd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-update-activation-environment	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbus-uuidgen	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3
+usr/bin/dbusxx-introspect	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libdbus-c++-1.so.0,libgcc_s.so.1,libm.so.6,libpthread.so.0,libstdc++.so.6
+usr/bin/dbusxx-xml2cpp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libexpat.so.1,libgcc_s.so.1,libm.so.6,libstdc++.so.6
+usr/bin/dbwrap_tool	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdbwrap-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-util.so.0,libsmbconf.so.0,libtalloc.so.2,libutil-tdb-samba4.so
+usr/bin/deallocvt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/dialog	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libncursesw.so.6
+usr/bin/disable-paste	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgpm.so.2
+usr/bin/dmesg	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6,librt.so.1
+usr/bin/dos2unix	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/dtc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/dumpkeys	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/dumpsexp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/e2cp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2,libpthread.so.0
+usr/bin/ed	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/edid-decode	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgcc_s.so.1,libm.so.6,libstdc++.so.6
+usr/bin/em	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/evdev-joystick	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/fbgrab	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libpng16.so.16,libz.so.1
+usr/bin/fbv	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgif.so.7,libjpeg.so.8,libpng16.so.16
+usr/bin/fdtdump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/fdtget	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libfdt.so.1
+usr/bin/fdtoverlay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libfdt.so.1
+usr/bin/fdtput	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libfdt.so.1
+usr/bin/ffcfstress	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/bin/ffmvforce	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libSDL2-2.0.so.0,libc.so.6,libm.so.6
+usr/bin/ffset	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/fftest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/fgconsole	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/filan	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,librt.so.1,libssl.so.1.1,libutil.so.1
+usr/bin/file	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6,liblzma.so.5,libmagic.so.1,libz.so.1
+usr/bin/filecap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap-ng.so.0
+usr/bin/fincore	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/find	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/bin/findmnt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1,libsmartcols.so.1,libudev.so.1
+usr/bin/flock	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/fpga	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ftop	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/g-ir-compiler	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libffi.so.7,libgio-2.0.so.0,libgirepository-1.0.so.1,libglib-2.0.so.0,libm.so.6,libpthread.so.0
+usr/bin/g-ir-generate	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgirepository-1.0.so.1,libglib-2.0.so.0,libpthread.so.0
+usr/bin/g-ir-inspect	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgirepository-1.0.so.1,libglib-2.0.so.0
+usr/bin/gapplication	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/gatttool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libglib-2.0.so.0,libreadline.so.8
+usr/bin/gdb	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libexpat.so.1,libgcc_s.so.1,liblzma.so.5,libm.so.6,libncursesw.so.6,libpthread.so.0,libpython3.9.so.1.0,libstdc++.so.6,libutil.so.1
+usr/bin/gdbserver	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libgcc_s.so.1,libm.so.6,libpthread.so.0,libstdc++.so.6
+usr/bin/gdbus	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/gentest	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-cldap-samba4.so,libcli-ldap-samba4.so,libcli-smb-common-samba4.so,libcliauth-samba4.so,libcmdline-credentials-samba4.so,libevents-samba4.so,libgensec-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsmbclient-raw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/bin/get-edid	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/getkeycodes	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/getopt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/gio	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/gio-querymodules	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libglib-2.0.so.0,libgmodule-2.0.so.0,libgobject-2.0.so.0
+usr/bin/gpg-error	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgpg-error.so.0
+usr/bin/gpm-root	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgpm.so.2
+usr/bin/gresource	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0
+usr/bin/gsettings	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgio-2.0.so.0,libglib-2.0.so.0,libgobject-2.0.so.0
+usr/bin/gzip	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hciattach	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hciconfig	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hcidump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hcitool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libudev.so.1
+usr/bin/hex2hcd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hexdump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/hmac256	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/hostname	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/htop	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libm.so.6,libncursesw.so.6
+usr/bin/iecset	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/imlib2_conv	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libImlib2.so.1,libbz2.so.1.0,libc.so.6,libdl.so.2,libfreetype.so.6,libm.so.6,libpng16.so.16,libz.so.1
+usr/bin/imlib2_load	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libImlib2.so.1,libbz2.so.1.0,libc.so.6,libdl.so.2,libfreetype.so.6,libm.so.6,libpng16.so.16,libz.so.1
+usr/bin/infocmp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/inotifywait	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libinotifytools.so.0
+usr/bin/inotifywatch	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libinotifytools.so.0
+usr/bin/inputattach	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/bin/ionice	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/iostat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ipcmk	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/irqtop	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6,librt.so.1,libsmartcols.so.1
+usr/bin/isosize	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/jimsh	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libjim.so.0.79
+usr/bin/joe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libncursesw.so.6,libutil.so.1
+usr/bin/jq	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libjq.so.1,libm.so.6,libpthread.so.0
+usr/bin/jscal	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/bin/jstest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/kbd_mode	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/kbdinfo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/kbdrate	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/kill	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/kmod	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/bin/l2ping	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/l2test	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ldbadd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libtalloc.so.2
+usr/bin/ldbdel	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libtalloc.so.2
+usr/bin/ldbedit	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libpthread.so.0,libtalloc.so.2
+usr/bin/ldbmodify	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libtalloc.so.2
+usr/bin/ldbrename	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libtalloc.so.2
+usr/bin/ldbsearch	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libldb-cmdline-samba4.so,libldb.so.2,libtalloc.so.2
+usr/bin/less	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/lftp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libdl.so.2,libgcc_s.so.1,liblftp-jobs.so.0,liblftp-tasks.so.0,libm.so.6,libncursesw.so.6,libreadline.so.8,libstdc++.so.6,libutil.so.1
+usr/bin/libevdev-tweak-device	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2
+usr/bin/libhid-detach-device	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libhid.so.0,libusb-0.1.so.4
+usr/bin/libinput	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/bin/loadkeys	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/loadunimap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/locate	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/lockfile-check	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/lockfile-create	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/lockfile-remove	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/lockfile-touch	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/locktest	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-cldap-samba4.so,libcli-ldap-samba4.so,libcli-smb-common-samba4.so,libcliauth-samba4.so,libcmdline-credentials-samba4.so,libevents-samba4.so,libgensec-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsmbclient-raw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/bin/look	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/lowntfs-3g	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libntfs-3g.so.88,libpthread.so.0
+usr/bin/lsattr	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libe2p.so.2
+usr/bin/lsblk	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1,libsmartcols.so.1,libudev.so.1
+usr/bin/lscpu	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/lsipc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/lsirq	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/lslocks	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1,libsmartcols.so.1
+usr/bin/lsns	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1,libsmartcols.so.1
+usr/bin/lsusb	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libudev.so.1,libusb-1.0.so.0
+usr/bin/ltdbtool	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpthread.so.0,libtdb.so.1
+usr/bin/lzmadec	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzma.so.5,libpthread.so.0
+usr/bin/lzmainfo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzma.so.5,libpthread.so.0
+usr/bin/lzop	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzo2.so.2
+usr/bin/mail-lock	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/mail-touchlock	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/mail-unlock	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblockfile.so.1
+usr/bin/mapscrn	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/masktest	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-cldap-samba4.so,libcli-ldap-samba4.so,libcli-smb-common-samba4.so,libcliauth-samba4.so,libcmdline-credentials-samba4.so,libevents-samba4.so,libgensec-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsmbclient-raw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/bin/mc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libe2p.so.2,libglib-2.0.so.0,libgpm.so.2,libslang.so.2,libssh2.so.1,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/mcookie	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/mdfind	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-contexts-samba4.so,libdcerpc-binding.so.0,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-samba-samba4.so,libndr.so.1,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-util.so.0,libsmbconf.so.0,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0,libutil-cmdline-samba4.so
+usr/bin/memstat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/memtool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/mkpasswd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1
+usr/bin/mksh	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/modplug123	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libao.so.4,libc.so.6,libdl.so.2,libmodplug.so.1,libpthread.so.0
+usr/bin/more	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6,liblzma.so.5,libmagic.so.1,libncursesw.so.6,libpthread.so.0,libz.so.1
+usr/bin/mount	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/bin/mountpoint	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/bin/mouse-dpi-tool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2
+usr/bin/mpg123	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libmpg123.so.0,libout123.so.0,libpthread.so.0,librt.so.1
+usr/bin/mpg123-id3dump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libmpg123.so.0,libpthread.so.0,librt.so.1
+usr/bin/mpg123-strip	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libmpg123.so.0,libpthread.so.0,librt.so.1
+usr/bin/mpicalc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgcrypt.so.20,libgpg-error.so.0
+usr/bin/mpris-proxy	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libglib-2.0.so.0,libpthread.so.0
+usr/bin/mtdev-test	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libmtdev.so.1
+usr/bin/mvxattr	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libsamba-util.so.0,libtalloc.so.2
+usr/bin/namei	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/nano	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/ndrdump	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libndr-samba4.so,libndr.so.1,libpopt.so.0,libpthread.so.0,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-util.so.0,libtalloc.so.2
+usr/bin/net	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libCHARSET3-samba4.so,libaddns-samba4.so,libads-samba4.so,libauth-samba4.so,libc.so.6,libcli-smb-common-samba4.so,libcli-spoolss-samba4.so,libcliauth-samba4.so,libcmdline-contexts-samba4.so,libcom_err-samba4.so.0,libdbwrap-samba4.so,libdcerpc-binding.so.0,libdcerpc-samba-samba4.so,libflag-mapping-samba4.so,libgenrand-samba4.so,libgensec-samba4.so,libgnutls.so.30,libgse-samba4.so,libgssapi-samba4.so.2,libkrb5-samba4.so.26,libkrb5samba-samba4.so,liblibcli-lsa3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-samba-samba4.so,libndr-standard.so.0,libndr.so.1,libnetapi.so.0,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libprinting-migrate-samba4.so,libpthread.so.0,libreadline.so.8,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-passdb.so.0,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsamdb.so.0,libsecrets3-samba4.so,libserver-id-db-samba4.so,libsmbconf.so.0,libsmbd-base-samba4.so,libsmbd-shim-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtrusts-util-samba4.so,libutil-reg-samba4.so,libutil-tdb-samba4.so,libwbclient.so.0
+usr/bin/netcap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap-ng.so.0
+usr/bin/netcat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/netstat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/netstat-nat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/nettle-hash	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libnettle.so.8
+usr/bin/nettle-lfib-stream	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgmp.so.10,libnettle.so.8
+usr/bin/nettle-pbkdf2	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libnettle.so.8
+usr/bin/newgrp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1
+usr/bin/nmblookup	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libCHARSET3-samba4.so,libaddns-samba4.so,libc.so.6,libgenrand-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-sockets-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libsocket-blocking-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/bin/ntfs-3g	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libntfs-3g.so.88,libpthread.so.0
+usr/bin/ntfs-3g.probe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfscat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfscluster	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfscmp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfsfix	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfsinfo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntfsls	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/bin/ntlm_auth	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libauthkrb5-samba4.so,libc.so.6,libcliauth-samba4.so,libgenrand-samba4.so,libgensec-samba4.so,libgnutls.so.30,libgse-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0,libwbclient.so.0,libwinbind-client-samba4.so
+usr/bin/ntp-keygen	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libatomic.so.1,libc.so.6,libcap.so.2,libcrypto.so.1.1,libdl.so.2,libevent_core-2.1.so.7,libm.so.6,libpthread.so.0,libssl.so.1.1
+usr/bin/ntpdate	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libatomic.so.1,libc.so.6,libcap.so.2,libcrypto.so.1.1,libdl.so.2,libm.so.6,libpthread.so.0,libssl.so.1.1
+usr/bin/ntpdc	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libatomic.so.1,libc.so.6,libcap.so.2,libcrypto.so.1.1,libdl.so.2,libm.so.6,libpthread.so.0,libssl.so.1.1
+usr/bin/ntpq	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libatomic.so.1,libc.so.6,libcap.so.2,libcrypto.so.1.1,libdl.so.2,libm.so.6,libpthread.so.0,libssl.so.1.1
+usr/bin/ntptime	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcap.so.2,libm.so.6,libpthread.so.0
+usr/bin/oLschema2ldif	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libgnutls.so.30,libldb.so.2,libldbsamba-samba4.so,libpopt.so.0,libsamba-debug-samba4.so,libsamba-hostconfig.so.0,libsamba-util.so.0,libsamdb-common-samba4.so,libtalloc.so.2
+usr/bin/ogg123	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libao.so.4,libc.so.6,libcrypto.so.1.1,libcurl.so.4,libm.so.6,libogg.so.0,libpthread.so.0,libssl.so.1.1,libvorbis.so.0,libvorbisfile.so.3
+usr/bin/oggdec	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libogg.so.0,libvorbis.so.0,libvorbisfile.so.3
+usr/bin/oggenc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libogg.so.0,libvorbis.so.0,libvorbisenc.so.2
+usr/bin/ogginfo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libogg.so.0,libvorbis.so.0
+usr/bin/openssl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libatomic.so.1,libc.so.6,libcrypto.so.1.1,libdl.so.2,libpthread.so.0,libssl.so.1.1
+usr/bin/openvt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/out123	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libout123.so.0,libpthread.so.0,librt.so.1
+usr/bin/parse-edid	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/pcregrep	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpcre.so.1,libpcreposix.so.0
+usr/bin/pcretest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpcre.so.1,libpcreposix.so.0
+usr/bin/pdbedit	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-passdb.so.0,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libtalloc.so.2
+usr/bin/perl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1,libdl.so.2,libm.so.6
+usr/bin/picocom	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ping	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libresolv.so.2
+usr/bin/ping_pong	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/pkcs1-conv	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgmp.so.10,libhogweed.so.6,libnettle.so.8
+usr/bin/prlimit	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1
+usr/bin/procan	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,librt.so.1,libssl.so.1.1,libutil.so.1
+usr/bin/profiles	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-security-samba4.so,libsamba-util.so.0,libsmbconf.so.0,libtalloc.so.2
+usr/bin/pscap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap-ng.so.0
+usr/bin/psfxtable	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/python3.9	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1,libdl.so.2,libm.so.6,libpthread.so.0,libpython3.9.so.1.0,libutil.so.1
+usr/bin/rctest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/regdiff	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-credentials-samba4.so,libevents-samba4.so,libpopt.so.0,libregistry-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-util.so.0,libtalloc.so.2
+usr/bin/regpatch	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-credentials-samba4.so,libevents-samba4.so,libpopt.so.0,libregistry-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-util.so.0,libtalloc.so.2
+usr/bin/regshell	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-credentials-samba4.so,libevents-samba4.so,libndr.so.1,libpopt.so.0,libreadline.so.8,libregistry-samba4.so,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-security-samba4.so,libsamba-util.so.0,libtalloc.so.2,libutil-reg-samba4.so
+usr/bin/regtree	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-credentials-samba4.so,libevents-samba4.so,libpopt.so.0,libregistry-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-util.so.0,libtalloc.so.2
+usr/bin/rename	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/renice	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/rev	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/rfcomm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/rpcclient	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-smb-common-samba4.so,libcli-spoolss-samba4.so,libcliauth-samba4.so,libcmdline-contexts-samba4.so,libdcerpc-binding.so.0,libdcerpc-samba-samba4.so,libgensec-samba4.so,libgnutls.so.30,liblibcli-lsa3-samba4.so,liblibcli-netlogon3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-samba-samba4.so,libndr-samba4.so,libndr-standard.so.0,libndr.so.1,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreadline.so.8,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-passdb.so.0,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libserver-role-samba4.so,libsmbconf.so.0,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0,libtrusts-util-samba4.so,libutil-cmdline-samba4.so,libutil-reg-samba4.so
+usr/bin/rsync	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpopt.so.0,libz.so.1
+usr/bin/rtorrent	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libcurl.so.4,libgcc_s.so.1,libm.so.6,libncursesw.so.6,libpthread.so.0,libssh2.so.1,libssl.so.1.1,libstdc++.so.6,libtorrent.so.21,libz.so.1
+usr/bin/rz	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/samba-regedit	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libformw.so.6,libncursesw.so.6,libpanelw.so.6,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libregistry-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-util.so.0,libsmbconf.so.0,libtalloc.so.2,libutil-reg-samba4.so
+usr/bin/scp	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/screen	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1,libncursesw.so.6,libpam.so.0,libutil.so.1
+usr/bin/script	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1,libutil.so.1
+usr/bin/scriptlive	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1,libutil.so.1
+usr/bin/scriptreplay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/sdptool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libglib-2.0.so.0
+usr/bin/setarch	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/setfont	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/setkeycodes	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/setleds	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/setmetamode	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/setsid	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/setterm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/setvtrgb	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/sexp-conv	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgmp.so.10,libnettle.so.8
+usr/bin/sftp	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/sharesec	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,liblibcli-lsa3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-standard.so.0,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libtalloc.so.2
+usr/bin/showconsolefont	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/showkey	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,librt.so.1
+usr/bin/slsh	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libm.so.6,libreadline.so.8,libslang.so.2
+usr/bin/smbcacls	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdcerpc-samba-samba4.so,liblibcli-lsa3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-standard.so.0,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libtalloc.so.2,libutil-cmdline-samba4.so
+usr/bin/smbclient	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-smb-common-samba4.so,libdcerpc-samba-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-standard.so.0,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreadline.so.8,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libtalloc.so.2,libutil-cmdline-samba4.so
+usr/bin/smbcontrol	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libCHARSET3-samba4.so,libc.so.6,libcmdline-contexts-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libsmbd-shim-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent.so.0,libtime-basic-samba4.so,libutil-tdb-samba4.so
+usr/bin/smbcquotas	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,liblibcli-lsa3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-standard.so.0,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libtalloc.so.2,libutil-cmdline-samba4.so
+usr/bin/smbget	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt-samba3-cmdline-samba4.so,libpopt.so.0,libpthread.so.0,libsamba-util.so.0,libsmbclient.so.0,libtalloc.so.2
+usr/bin/smbpasswd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcli-smb-common-samba4.so,libcliauth-samba4.so,libdcerpc-samba-samba4.so,libgnutls.so.30,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-samba4.so,libndr-standard.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-passdb.so.0,libsamba-util.so.0,libsamba3-util-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libtalloc.so.2
+usr/bin/smbspool	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcom_err-samba4.so.0,libkrb5-samba4.so.26,libkrb5samba-samba4.so,liblibsmb-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-util.so.0,libsmbconf.so.0,libtalloc.so.2
+usr/bin/smbstatus	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcmdline-contexts-samba4.so,libdbwrap-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-util.so.0,libsamba3-util-samba4.so,libserver-id-db-samba4.so,libsmbconf.so.0,libsmbd-base-samba4.so,libtalloc.so.2,libtdb.so.1,libutil-tdb-samba4.so
+usr/bin/smbtree	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt-samba3-cmdline-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsmbclient.so.0,libtalloc.so.2,libutil-cmdline-samba4.so
+usr/bin/socat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,librt.so.1,libssl.so.1.1,libutil.so.1
+usr/bin/speaker-test	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/bin/spi-config	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/spi-pipe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/ssh	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/ssh-add	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/ssh-agent	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/ssh-keygen	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/ssh-keyscan	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/bin/sudo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0,libutil.so.1
+usr/bin/sudoreplay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0,libz.so.1
+usr/bin/sz	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6
+usr/bin/tabs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/tar	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/taskset	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/tdbbackup	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libtdb.so.1
+usr/bin/tdbdump	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libtdb.so.1
+usr/bin/tdbrestore	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libtdb.so.1
+usr/bin/tdbtool	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpthread.so.0,libtdb.so.1
+usr/bin/testparm	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libsamba-debug-samba4.so,libsamba-hostconfig.so.0,libsamba-sockets-samba4.so,libsamba-util.so.0,libserver-role-samba4.so,libsmbconf.so.0,libtalloc.so.2
+usr/bin/tic	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/tickadj	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcap.so.2,libm.so.6,libpthread.so.0
+usr/bin/tmux	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevent-2.1.so.7,libncursesw.so.6,libresolv.so.2,libutil.so.1
+usr/bin/toe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/touchpad-edge-detector	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libm.so.6
+usr/bin/tput	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/tracepath	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/tset	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6
+usr/bin/udevadm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/bin/umount	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/bin/unix2dos	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/unrar	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgcc_s.so.1,libm.so.6,libpthread.so.0,libstdc++.so.6
+usr/bin/unzip	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/usbhid-dump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libusb-1.0.so.0
+usr/bin/uuidgen	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libuuid.so.1
+usr/bin/uuidparse	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libsmartcols.so.1,libuuid.so.1
+usr/bin/vcut	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libogg.so.0,libvorbis.so.0
+usr/bin/vgmplay	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libao.so.4,libc.so.6,libm.so.6,libpthread.so.0,librt.so.1,libz.so.1
+usr/bin/vim	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,libgpm.so.2,libm.so.6,libncursesw.so.6
+usr/bin/vorbiscomment	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,libogg.so.0,libvorbis.so.0
+usr/bin/wbinfo	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcliauth-samba4.so,libgenrand-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-hostconfig.so.0,libsamba-util.so.0,libtalloc.so.2,libwbclient.so.0,libwinbind-client-samba4.so
+usr/bin/wget	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgnutls.so.30,libnettle.so.8,libpcre.so.1,libuuid.so.1,libz.so.1
+usr/bin/whereis	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/which	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/whiptail	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libnewt.so.0.52,libpopt.so.0,libslang.so.2
+usr/bin/whois	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/xargs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/xkbcli	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libxkbcommon.so.0
+usr/bin/xmlcatalog	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,liblzma.so.5,libm.so.6,libpthread.so.0,libxml2.so.2,libz.so.1
+usr/bin/xmllint	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2,liblzma.so.5,libm.so.6,libpthread.so.0,libxml2.so.2,libz.so.1
+usr/bin/xmlwf	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libexpat.so.1,libgcc_s.so.1
+usr/bin/xxd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/bin/xz	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzma.so.5,libpthread.so.0
+usr/bin/xzdec	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzma.so.5,libpthread.so.0
+usr/bin/zip	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6
+usr/bin/zipcloak	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6
+usr/bin/zipnote	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6
+usr/bin/zipsplit	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libbz2.so.1.0,libc.so.6
+usr/bin/zsh	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libdl.so.2,libm.so.6,libncursesw.so.6,libpcre.so.1,librt.so.1
+usr/lib/security/pam_filter/upperLOWER	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpam.so.0
+usr/lib/udev/ata_id	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/lib/udev/cdrom_id	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/lib/udev/collect	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/lib/udev/hid2hci	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libudev.so.1
+usr/lib/udev/libinput-device-group	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libudev.so.1
+usr/lib/udev/libinput-fuzz-extract	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libudev.so.1
+usr/lib/udev/libinput-fuzz-to-zero	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libudev.so.1
+usr/lib/udev/mtd_probe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/lib/udev/scsi_id	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/lib/udev/v4l_id	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/libexec/bluetooth/bluetoothd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libdl.so.2,libglib-2.0.so.0,libpthread.so.0,librt.so.1
+usr/libexec/ctdb/ctdb-config	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/ctdb-event	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libctdb-event-client-samba4.so,libpthread.so.0,libsamba-debug-samba4.so,libtalloc.so.2,libtevent.so.0
+usr/libexec/ctdb/ctdb-eventd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libiov-buf-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/ctdb-path	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/ctdb_killtcp	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/ctdb_lock_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0
+usr/libexec/ctdb/ctdb_mutex_fcntl_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0
+usr/libexec/ctdb/ctdb_recovery_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb-wrap-samba4.so,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/ctdb_takeover_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb-wrap-samba4.so,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/libexec/ctdb/smnotify	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0
+usr/libexec/dbus-daemon-launch-helper	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdbus-1.so.3,libexpat.so.1,libpthread.so.0
+usr/libexec/frcode	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/libexec/libinput/libinput-analyze	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-debug-events	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-debug-tablet	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-list-devices	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-measure	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-quirks	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/libinput/libinput-record	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libevdev.so.2,libinput.so.10,libudev.so.1
+usr/libexec/lzo/examples/lzopack	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzo2.so.2
+usr/libexec/lzo/examples/lzotest	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzo2.so.2
+usr/libexec/lzo/examples/simple	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,liblzo2.so.2
+usr/libexec/lzo/examples/testmini	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/libexec/mc/cons.saver	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libutil.so.1
+usr/libexec/sftp-server	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/libexec/ssh-keysign	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/libexec/ssh-pkcs11-helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/libexec/xkbcommon/xkbcli-compile-keymap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libxkbcommon.so.0
+usr/libexec/xkbcommon/xkbcli-how-to-type	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libxkbcommon.so.0
+usr/libexec/xkbcommon/xkbcli-interactive-evdev	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libxkbcommon.so.0
+usr/sbin/addpart	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/agetty	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/alsactl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libdl.so.2,libm.so.6,libpthread.so.0
+usr/sbin/arp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/arping	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2
+usr/sbin/badblocks	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2
+usr/sbin/blkdiscard	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,librt.so.1
+usr/sbin/blkid	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6
+usr/sbin/blkzone	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/blockdev	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/bridge	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2
+usr/sbin/cfdisk	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libfdisk.so.1,libmount.so.1,libncursesw.so.6,librt.so.1,libsmartcols.so.1,libuuid.so.1
+usr/sbin/chat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/chcpu	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/ctdbd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-util.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc-report-samba4.so,libtalloc.so.2,libtdb-wrap-samba4.so,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so
+usr/sbin/ctrlaltdel	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/delpart	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/dhcpcd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libdl.so.2
+usr/sbin/dumpe2fs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libcom_err.so.2,libdl.so.2,libe2p.so.2,libext2fs.so.2,libuuid.so.1
+usr/sbin/e2freefrag	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2
+usr/sbin/e2fsck	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libcom_err.so.2,libdl.so.2,libe2p.so.2,libext2fs.so.2,libuuid.so.1
+usr/sbin/e2undo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2
+usr/sbin/e4crypt	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2,libuuid.so.1
+usr/sbin/e4defrag	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcom_err.so.2,libext2fs.so.2
+usr/sbin/eeprog	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/ethtool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/sbin/eventlogadm	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libCHARSET3-samba4.so,libc.so.6,libndr.so.1,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-security-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libtalloc.so.2,libtdb.so.1,libutil-reg-samba4.so,libutil-tdb-samba4.so
+usr/sbin/faillock	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpam.so.0
+usr/sbin/fatlabel	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/fdisk	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libfdisk.so.1,libncursesw.so.6,libreadline.so.8,libsmartcols.so.1,libuuid.so.1
+usr/sbin/filefrag	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/findfs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6
+usr/sbin/fluidsynth	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libfluidsynth.so.3,libpthread.so.0
+usr/sbin/fping	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/fsck	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/sbin/fsck.exfat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/fsck.fat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/fsfreeze	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/fstrim	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/sbin/genl	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libdl.so.2,libm.so.6
+usr/sbin/gpm	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/sbin/hwclock	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6,librt.so.1
+usr/sbin/i2cdetect	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/i2cdump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/i2cget	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/i2cset	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/i2ctransfer	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libi2c.so.0
+usr/sbin/ifconfig	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/ifstat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libm.so.6
+usr/sbin/ifup	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/ip	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libdl.so.2
+usr/sbin/ipmaddr	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/iptunnel	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/iw	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libnl-3.so.200,libnl-genl-3.so.200
+usr/sbin/iwconfig	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libm.so.6
+usr/sbin/ldattach	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/lnstat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2
+usr/sbin/logsave	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/lshw	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libgcc_s.so.1,libresolv.so.2,libstdc++.so.6
+usr/sbin/midilink	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libasound.so.2,libc.so.6,libm.so.6,libpthread.so.0
+usr/sbin/mii-tool	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/mke2fs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libcom_err.so.2,libdl.so.2,libe2p.so.2,libext2fs.so.2,libuuid.so.1
+usr/sbin/mkfs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/mkfs.exfat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/mkfs.fat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libudev.so.1
+usr/sbin/mkhomedir_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpam.so.0
+usr/sbin/mklost+found	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/mkntfs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88,libuuid.so.1
+usr/sbin/mkswap	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libuuid.so.1
+usr/sbin/mlinkutil	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/mt32d	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libasound.so.2,libc.so.6,libgcc_s.so.1,libm.so.6,libpthread.so.0,libstdc++.so.6
+usr/sbin/nameif	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/nmbd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libCHARSET3-samba4.so,libc.so.6,libcli-cldap-samba4.so,libcli-nbt-samba4.so,libcli-smb-common-samba4.so,libgse-samba4.so,liblibsmb-samba4.so,libndr-nbt.so.0,libndr.so.1,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsmbconf.so.0,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent.so.0,libutil-tdb-samba4.so
+usr/sbin/nologin	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/nstat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libm.so.6
+usr/sbin/ntfsclone	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/sbin/ntfscp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/sbin/ntfslabel	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/sbin/ntfsresize	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/sbin/ntfsundelete	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libntfs-3g.so.88
+usr/sbin/ntpd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libatomic.so.1,libc.so.6,libcap.so.2,libcrypto.so.1.1,libdl.so.2,libm.so.6,libpthread.so.0,libssl.so.1.1
+usr/sbin/pam_timestamp_check	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libpam.so.0
+usr/sbin/parted	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libncursesw.so.6,libparted.so.2,libreadline.so.8
+usr/sbin/partprobe	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libncursesw.so.6,libparted.so.2,libreadline.so.8,libuuid.so.1
+usr/sbin/partx	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libsmartcols.so.1
+usr/sbin/plipconfig	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/pppd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libutil.so.1
+usr/sbin/pppdump	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/pppoe-discovery	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/pppstats	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/proftpd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0
+usr/sbin/pwhistory_helper	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1
+usr/sbin/rarp	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/raw	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/rdisc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/readprofile	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/resizepart	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/route	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/rtacct	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libm.so.6
+usr/sbin/rtcwake	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/rtmon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libdl.so.2
+usr/sbin/sfdisk	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libfdisk.so.1,libncursesw.so.6,libreadline.so.8,libsmartcols.so.1,libuuid.so.1
+usr/sbin/slattach	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/smbd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libauth-samba4.so,libc.so.6,libcliauth-samba4.so,libdcerpc-binding.so.0,libdcerpc-server-core.so.0,libgenrand-samba4.so,libglib-2.0.so.0,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libsamba-cluster-support-samba4.so,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-passdb.so.0,libsamba-util.so.0,libsamba3-util-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libsmbd-base-samba4.so,libsmbd-shim-samba4.so,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtevent-util.so.0,libtevent.so.0,libutil-tdb-samba4.so
+usr/sbin/ss	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2
+usr/sbin/sshd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libcrypt.so.1,libcrypto.so.1.1,libdl.so.2,libpam.so.0,libresolv.so.2,libssl.so.1.1,libutil.so.1,libz.so.1
+usr/sbin/start-stop-daemon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/sudo_logsrvd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0,libz.so.1
+usr/sbin/sudo_sendlog	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0,libz.so.1
+usr/sbin/swaplabel	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libuuid.so.1
+usr/sbin/swapoff	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1
+usr/sbin/swapon	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libmount.so.1,librt.so.1,libsmartcols.so.1
+usr/sbin/switch_root	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/tc	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcap.so.2,libdl.so.2,libm.so.6,libxtables.so.12
+usr/sbin/tune.exfat	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6
+usr/sbin/tune2fs	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libblkid.so.1,libc.so.6,libcom_err.so.2,libdl.so.2,libe2p.so.2,libext2fs.so.2,libuuid.so.1
+usr/sbin/udevd	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libblkid.so.1,libc.so.6,libcrypto.so.1.1,libkmod.so.2,liblzma.so.5,libpthread.so.0,libz.so.1
+usr/sbin/unix_chkpwd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1
+usr/sbin/unix_update	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypt.so.1
+usr/sbin/usb_modeswitch	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libusb-1.0.so.0
+usr/sbin/usb_modeswitch_dispatcher	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libjim.so.0.79
+usr/sbin/visudo	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libc.so.6,libdl.so.2,libpthread.so.0,libsudo_util.so.0
+usr/sbin/winbindd	DYN (Position-Independent Executable file)	/lib/ld-linux-armhf.so.3	ld-linux-armhf.so.3,libMESSAGING-samba4.so,libads-samba4.so,libauth-samba4.so,libauthkrb5-samba4.so,libc.so.6,libcli-smb-common-samba4.so,libcliauth-samba4.so,libcom_err-samba4.so.0,libcommon-auth-samba4.so,libdbwrap-samba4.so,libdcerpc-binding.so.0,libdcerpc-samba-samba4.so,libdcerpc-samba4.so,libdcerpc-server-core.so.0,libgenrand-samba4.so,libgensec-samba4.so,libgnutls.so.30,libgse-samba4.so,libidmap-samba4.so,libkrb5-samba4.so.26,libkrb5samba-samba4.so,liblibcli-lsa3-samba4.so,liblibcli-netlogon3-samba4.so,liblibsmb-samba4.so,libmsrpc3-samba4.so,libndr-samba-samba4.so,libndr-samba4.so,libndr-standard.so.0,libndr.so.1,libnpa-tstream-samba4.so,libnss-info-samba4.so,libpopt-samba3-samba4.so,libpopt.so.0,libpthread.so.0,libreplace-samba4.so,libsamba-credentials.so.1,libsamba-debug-samba4.so,libsamba-errors.so.1,libsamba-hostconfig.so.0,libsamba-modules-samba4.so,libsamba-passdb.so.0,libsamba-security-samba4.so,libsamba-sockets-samba4.so,libsamba-util.so.0,libsamba3-util-samba4.so,libsamdb-common-samba4.so,libsecrets3-samba4.so,libsmbconf.so.0,libsmbd-shim-samba4.so,libsocket-blocking-samba4.so,libsys-rw-samba4.so,libtalloc.so.2,libtdb.so.1,libtevent-util.so.0,libtevent.so.0,libtime-basic-samba4.so,libtrusts-util-samba4.so,libutil-tdb-samba4.so
+usr/sbin/wpa_cli	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libncursesw.so.6,libreadline.so.8,librt.so.1,libssl.so.1.1
+usr/sbin/wpa_passphrase	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libdbus-1.so.3,libdl.so.2,libnl-3.so.200,libnl-genl-3.so.200,librt.so.1,libssl.so.1.1
+usr/sbin/wpa_supplicant	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libcrypto.so.1.1,libdbus-1.so.3,libdl.so.2,libnl-3.so.200,libnl-genl-3.so.200,librt.so.1,libssl.so.1.1
+usr/sbin/xtables-legacy-multi	EXEC (Executable file)	/lib/ld-linux-armhf.so.3	libc.so.6,libip4tc.so.2,libip6tc.so.2,libm.so.6,libxtables.so.12

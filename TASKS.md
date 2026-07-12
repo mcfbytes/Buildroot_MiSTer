@@ -124,7 +124,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   **Done when:** `work/manifest.txt` lists every acquired artifact with URL, commit/tag,
   and SHA-256; stock rootfs content is browsable.
 
-- [ ] **P0.3 — Stock image inventory** — [SONNET] — Size M — Depends: P0.2
+- [x] **P0.3 — Stock image inventory** — [SONNET] — Size M — Depends: P0.2
   Produce `docs/stock-inventory/`: (a) all shared libs with SONAMEs and versions;
   (b) all binaries with their `NEEDED` sets; (c) `/etc` configs verbatim-listed
   (init scripts S01–S99, inittab, fstab, smb.conf, wpa_supplicant, sshd_config, …);

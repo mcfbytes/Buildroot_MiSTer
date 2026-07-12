@@ -1,0 +1,1374 @@
+# path	class	soname	elf_type
+usr/lib/ao/plugins-4/libalsa.so	library	libalsa.so	DYN (Shared object file)
+usr/lib/bash/basename	library	basename	DYN (Shared object file)
+usr/lib/bash/dirname	library	dirname	DYN (Shared object file)
+usr/lib/bash/fdflags	library	fdflags	DYN (Shared object file)
+usr/lib/bash/finfo	library	finfo	DYN (Shared object file)
+usr/lib/bash/head	library	head	DYN (Shared object file)
+usr/lib/bash/id	library	id	DYN (Shared object file)
+usr/lib/bash/ln	library	ln	DYN (Shared object file)
+usr/lib/bash/logname	library	logname	DYN (Shared object file)
+usr/lib/bash/mkdir	library	mkdir	DYN (Shared object file)
+usr/lib/bash/mypid	library	mypid	DYN (Shared object file)
+usr/lib/bash/pathchk	library	pathchk	DYN (Shared object file)
+usr/lib/bash/print	library	print	DYN (Shared object file)
+usr/lib/bash/printenv	library	printenv	DYN (Shared object file)
+usr/lib/bash/push	library	push	DYN (Shared object file)
+usr/lib/bash/realpath	library	realpath	DYN (Shared object file)
+usr/lib/bash/rmdir	library	rmdir	DYN (Shared object file)
+usr/lib/bash/seq	library	seq	DYN (Shared object file)
+usr/lib/bash/setpgid	library	setpgid	DYN (Shared object file)
+usr/lib/bash/sleep	library	sleep	DYN (Shared object file)
+usr/lib/bash/strftime	library	strftime	DYN (Shared object file)
+usr/lib/bash/sync	library	sync	DYN (Shared object file)
+usr/lib/bash/tee	library	tee	DYN (Shared object file)
+usr/lib/bash/truefalse	library	truefalse	DYN (Shared object file)
+usr/lib/bash/tty	library	tty	DYN (Shared object file)
+usr/lib/bash/uname	library	uname	DYN (Shared object file)
+usr/lib/bash/unlink	library	unlink	DYN (Shared object file)
+usr/lib/bash/whoami	library	whoami	DYN (Shared object file)
+usr/lib/bluetooth/plugins/sixaxis.so	library	sixaxis.so	DYN (Shared object file)
+usr/lib/dhcpcd/dev/udev.so	library	udev.so	DYN (Shared object file)
+usr/lib/gconv/ANSI_X3.110.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ARMSCII-8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ASMO_449.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/BIG5.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/BIG5HKSCS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/BRF.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP10007.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1125.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1250.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1251.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1252.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1253.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1254.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1255.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1256.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1257.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP1258.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP737.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP770.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP771.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP772.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP773.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP774.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP775.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CP932.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CSN_369103.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/CWI.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/DEC-MCS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-AT-DE-A.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-AT-DE.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-CA-FR.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-DK-NO-A.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-DK-NO.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-ES-A.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-ES-S.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-ES.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-FI-SE-A.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-FI-SE.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-FR.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-IS-FRISS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-IT.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-PT.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-UK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EBCDIC-US.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ECMA-CYRILLIC.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-CN.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-JISX0213.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-JP-MS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-JP.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-KR.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/EUC-TW.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GB18030.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GBBIG5.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GBGBK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GBK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GEORGIAN-ACADEMY.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GEORGIAN-PS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GOST_19768-74.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GREEK-CCITT.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GREEK7-OLD.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/GREEK7.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/HP-GREEK8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/HP-ROMAN8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/HP-ROMAN9.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/HP-THAI8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/HP-TURKISH8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM037.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM038.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1004.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1008.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1008_420.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1025.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1026.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1046.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1047.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1097.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1112.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1122.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1123.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1124.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1129.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1130.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1132.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1133.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1137.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1140.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1141.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1142.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1143.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1144.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1145.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1146.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1147.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1148.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1149.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1153.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1154.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1155.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1156.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1157.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1158.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1160.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1161.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1162.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1163.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1164.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1166.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1167.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM12712.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1364.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1371.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1388.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1390.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM1399.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM16804.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM256.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM273.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM274.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM275.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM277.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM278.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM280.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM281.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM284.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM285.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM290.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM297.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM420.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM423.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM424.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM437.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM4517.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM4899.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM4909.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM4971.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM500.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM5347.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM803.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM850.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM851.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM852.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM855.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM856.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM857.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM858.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM860.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM861.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM862.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM863.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM864.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM865.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM866.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM866NAV.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM868.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM869.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM870.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM871.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM874.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM875.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM880.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM891.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM901.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM902.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM903.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM9030.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM904.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM905.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM9066.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM918.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM921.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM922.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM930.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM932.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM933.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM935.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM937.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM939.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM943.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IBM9448.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/IEC_P27-1.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/INIS-8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/INIS-CYRILLIC.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/INIS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISIRI-3342.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-2022-CN-EXT.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-2022-CN.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-2022-JP-3.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-2022-JP.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-2022-KR.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-IR-197.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO-IR-209.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO646.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-1.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-10.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-11.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-13.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-14.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-15.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-16.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-2.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-3.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-4.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-5.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-6.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-7.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-9.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO8859-9E.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_10367-BOX.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_11548-1.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_2033.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_5427-EXT.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_5427.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_5428.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_6937-2.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/ISO_6937.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/JOHAB.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/KOI-8.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/KOI8-R.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/KOI8-RU.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/KOI8-T.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/KOI8-U.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/LATIN-GREEK-1.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/LATIN-GREEK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MAC-CENTRALEUROPE.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MAC-IS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MAC-SAMI.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MAC-UK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MACINTOSH.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/MIK.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/NATS-DANO.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/NATS-SEFI.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/PT154.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/RK1048.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/SAMI-WS2.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/SHIFT_JISX0213.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/SJIS.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/T.61.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/TCVN5712-1.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/TIS-620.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/TSCII.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/UHC.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/UNICODE.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/UTF-16.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/UTF-32.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/UTF-7.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/VISCII.so	plugin	-	DYN (Shared object file)
+usr/lib/gconv/libCNS.so	library	libCNS.so	DYN (Shared object file)
+usr/lib/gconv/libGB.so	library	libGB.so	DYN (Shared object file)
+usr/lib/gconv/libISOIR165.so	library	libISOIR165.so	DYN (Shared object file)
+usr/lib/gconv/libJIS.so	library	libJIS.so	DYN (Shared object file)
+usr/lib/gconv/libJISX0213.so	library	libJISX0213.so	DYN (Shared object file)
+usr/lib/gconv/libKSC.so	library	libKSC.so	DYN (Shared object file)
+usr/lib/gobject-introspection/giscanner/_giscanner.cpython-39-x86_64-linux-gnu.so	library	_giscanner.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/imlib2/filters/bumpmap.so	library	bumpmap.so	DYN (Shared object file)
+usr/lib/imlib2/filters/colormod.so	library	colormod.so	DYN (Shared object file)
+usr/lib/imlib2/filters/testfilter.so	library	testfilter.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/argb.so	library	argb.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/bmp.so	library	bmp.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/bz2.so	library	bz2.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/ff.so	library	ff.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/gif.so	library	gif.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/ico.so	library	ico.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/id3.so	library	id3.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/jpeg.so	library	jpeg.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/lbm.so	library	lbm.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/png.so	library	png.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/pnm.so	library	pnm.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/tga.so	library	tga.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/tiff.so	library	tiff.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/xpm.so	library	xpm.so	DYN (Shared object file)
+usr/lib/imlib2/loaders/zlib.so	library	zlib.so	DYN (Shared object file)
+usr/lib/ld-2.31.so	library	ld-linux-armhf.so.3	DYN (Shared object file)
+usr/lib/lftp/4.9.2/cmd-mirror.so	library	cmd-mirror.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/cmd-sleep.so	library	cmd-sleep.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/cmd-torrent.so	library	cmd-torrent.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/liblftp-network.so	library	liblftp-network.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/liblftp-pty.so	library	liblftp-pty.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/proto-file.so	library	proto-file.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/proto-fish.so	library	proto-fish.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/proto-ftp.so	library	proto-ftp.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/proto-http.so	library	proto-http.so	DYN (Shared object file)
+usr/lib/lftp/4.9.2/proto-sftp.so	library	proto-sftp.so	DYN (Shared object file)
+usr/lib/libImlib2.so.1.6.1	library	libImlib2.so.1	DYN (Shared object file)
+usr/lib/libSDL2-2.0.so.0.14.0	library	libSDL2-2.0.so.0	DYN (Shared object file)
+usr/lib/libadplug.so	plugin	-	DYN (Shared object file)
+usr/lib/libanl-2.31.so	library	libanl.so.1	DYN (Shared object file)
+usr/lib/libao.so.4.1.0	library	libao.so.4	DYN (Shared object file)
+usr/lib/libasound.so.2.0.0	library	libasound.so.2	DYN (Shared object file)
+usr/lib/libatomic.so.1.2.0	library	libatomic.so.1	DYN (Shared object file)
+usr/lib/libatopology.so.2.0.0	library	libatopology.so.2	DYN (Shared object file)
+usr/lib/libbinio.so	plugin	-	DYN (Shared object file)
+usr/lib/libblkid.so.1.1.0	library	libblkid.so.1	DYN (Shared object file)
+usr/lib/libbluetooth.so.3.19.5	library	libbluetooth.so.3	DYN (Shared object file)
+usr/lib/libbz2.so.1.0.8	library	libbz2.so.1.0	DYN (Shared object file)
+usr/lib/libc-2.31.so	library	libc.so.6	DYN (Shared object file)
+usr/lib/libcap-ng.so.0.0.0	library	libcap-ng.so.0	DYN (Shared object file)
+usr/lib/libcap.so.2.48	library	libcap.so.2	DYN (Shared object file)
+usr/lib/libcmocka.so.0.7.0	library	libcmocka.so.0	DYN (Shared object file)
+usr/lib/libcom_err.so.2.1	library	libcom_err.so.2	DYN (Shared object file)
+usr/lib/libcrypt-2.31.so	library	libcrypt.so.1	DYN (Shared object file)
+usr/lib/libcrypto.so.1.1	library	libcrypto.so.1.1	DYN (Shared object file)
+usr/lib/libcurl.so.4.7.0	library	libcurl.so.4	DYN (Shared object file)
+usr/lib/libdaemon.so.0.5.0	library	libdaemon.so.0	DYN (Shared object file)
+usr/lib/libdbus-1.so.3.19.13	library	libdbus-1.so.3	DYN (Shared object file)
+usr/lib/libdbus-c++-1.so.0.0.0	library	libdbus-c++-1.so.0	DYN (Shared object file)
+usr/lib/libdbus-c++-glib-1.so.0.0.0	library	libdbus-c++-glib-1.so.0	DYN (Shared object file)
+usr/lib/libdbus-glib-1.so.2.3.4	library	libdbus-glib-1.so.2	DYN (Shared object file)
+usr/lib/libdcerpc-binding.so.0.0.1	library	libdcerpc-binding.so.0	DYN (Shared object file)
+usr/lib/libdcerpc-samr.so.0.0.1	library	libdcerpc-samr.so.0	DYN (Shared object file)
+usr/lib/libdcerpc-server-core.so.0.0.1	library	libdcerpc-server-core.so.0	DYN (Shared object file)
+usr/lib/libdcerpc.so.0.0.1	library	libdcerpc.so.0	DYN (Shared object file)
+usr/lib/libdl-2.31.so	library	libdl.so.2	DYN (Shared object file)
+usr/lib/libdrop_ambient.so.0.0.0	library	libdrop_ambient.so.0	DYN (Shared object file)
+usr/lib/libe2p.so.2.3	library	libe2p.so.2	DYN (Shared object file)
+usr/lib/libev.so.4.0.0	library	libev.so.4	DYN (Shared object file)
+usr/lib/libevdev.so.2.3.0	library	libevdev.so.2	DYN (Shared object file)
+usr/lib/libevent-2.1.so.7.0.1	library	libevent-2.1.so.7	DYN (Shared object file)
+usr/lib/libevent_core-2.1.so.7.0.1	library	libevent_core-2.1.so.7	DYN (Shared object file)
+usr/lib/libevent_extra-2.1.so.7.0.1	library	libevent_extra-2.1.so.7	DYN (Shared object file)
+usr/lib/libevent_openssl-2.1.so.7.0.1	library	libevent_openssl-2.1.so.7	DYN (Shared object file)
+usr/lib/libevent_pthreads-2.1.so.7.0.1	library	libevent_pthreads-2.1.so.7	DYN (Shared object file)
+usr/lib/libexpat.so.1.8.1	library	libexpat.so.1	DYN (Shared object file)
+usr/lib/libext2fs.so.2.4	library	libext2fs.so.2	DYN (Shared object file)
+usr/lib/libfdisk.so.1.1.0	library	libfdisk.so.1	DYN (Shared object file)
+usr/lib/libfdt-1.6.0.so	library	libfdt.so.1	DYN (Shared object file)
+usr/lib/libffi.so.7.1.0	library	libffi.so.7	DYN (Shared object file)
+usr/lib/libfl.so.2.0.0	library	libfl.so.2	DYN (Shared object file)
+usr/lib/libfluidsynth.so.3.0.0	library	libfluidsynth.so.3	DYN (Shared object file)
+usr/lib/libformw.so.6.1	library	libformw.so.6	DYN (Shared object file)
+usr/lib/libfreetype.so.6.17.4	library	libfreetype.so.6	DYN (Shared object file)
+usr/lib/libgcc_s.so.1	library	libgcc_s.so.1	DYN (Shared object file)
+usr/lib/libgcrypt.so.20.3.3	library	libgcrypt.so.20	DYN (Shared object file)
+usr/lib/libgfortran.so.5.0.0	library	libgfortran.so.5	DYN (Shared object file)
+usr/lib/libgif.so.7.2.0	library	libgif.so.7	DYN (Shared object file)
+usr/lib/libgio-2.0.so.0.6600.8	library	libgio-2.0.so.0	DYN (Shared object file)
+usr/lib/libgirepository-1.0.so.1.0.0	library	libgirepository-1.0.so.1	DYN (Shared object file)
+usr/lib/libglib-2.0.so.0.6600.8	library	libglib-2.0.so.0	DYN (Shared object file)
+usr/lib/libgmodule-2.0.so.0.6600.8	library	libgmodule-2.0.so.0	DYN (Shared object file)
+usr/lib/libgmp.so.10.4.1	library	libgmp.so.10	DYN (Shared object file)
+usr/lib/libgmpxx.so.4.6.1	library	libgmpxx.so.4	DYN (Shared object file)
+usr/lib/libgnutls.so.30.29.1	library	libgnutls.so.30	DYN (Shared object file)
+usr/lib/libgnutlsxx.so.28.1.0	library	libgnutlsxx.so.28	DYN (Shared object file)
+usr/lib/libgobject-2.0.so.0.6600.8	library	libgobject-2.0.so.0	DYN (Shared object file)
+usr/lib/libgomp.so.1.0.0	library	libgomp.so.1	DYN (Shared object file)
+usr/lib/libgpg-error.so.0.31.1	library	libgpg-error.so.0	DYN (Shared object file)
+usr/lib/libgpm.so.2.1.0	library	libgpm.so.2	DYN (Shared object file)
+usr/lib/libgthread-2.0.so.0.6600.8	library	libgthread-2.0.so.0	DYN (Shared object file)
+usr/lib/libgudev-1.0.so.0.2.0	library	libgudev-1.0.so.0	DYN (Shared object file)
+usr/lib/libhid.so.0.0.0	library	libhid.so.0	DYN (Shared object file)
+usr/lib/libhidapi-hidraw.so.0.0.0	library	libhidapi-hidraw.so.0	DYN (Shared object file)
+usr/lib/libhidapi-libusb.so.0.0.0	library	libhidapi-libusb.so.0	DYN (Shared object file)
+usr/lib/libhistory.so.8.1	library	libhistory.so.8	DYN (Shared object file)
+usr/lib/libhogweed.so.6.4	library	libhogweed.so.6	DYN (Shared object file)
+usr/lib/libi2c.so.0.1.1	library	libi2c.so.0	DYN (Shared object file)
+usr/lib/libid3tag.so.0.3.0	library	libid3tag.so.0	DYN (Shared object file)
+usr/lib/libinotifytools.so.0.4.1	library	libinotifytools.so.0	DYN (Shared object file)
+usr/lib/libinput.so.10.13.0	library	libinput.so.10	DYN (Shared object file)
+usr/lib/libip4tc.so.2.0.0	library	libip4tc.so.2	DYN (Shared object file)
+usr/lib/libip6tc.so.2.0.0	library	libip6tc.so.2	DYN (Shared object file)
+usr/lib/libiw.so.30	library	libiw.so.30	DYN (Shared object file)
+usr/lib/libjack.so.0.0.28	library	libjack.so.0	DYN (Shared object file)
+usr/lib/libjim.so.0.79	library	libjim.so.0.79	DYN (Shared object file)
+usr/lib/libjpeg.so.8.2.2	library	libjpeg.so.8	DYN (Shared object file)
+usr/lib/libjq.so.1.0.4	library	libjq.so.1	DYN (Shared object file)
+usr/lib/libkmod.so.2.3.6	library	libkmod.so.2	DYN (Shared object file)
+usr/lib/liblftp-jobs.so.0.0.0	library	liblftp-jobs.so.0	DYN (Shared object file)
+usr/lib/liblftp-tasks.so.0.0.0	library	liblftp-tasks.so.0	DYN (Shared object file)
+usr/lib/liblockfile.so.1.0	library	liblockfile.so.1	DYN (Shared object file)
+usr/lib/liblzma.so.5.2.5	library	liblzma.so.5	DYN (Shared object file)
+usr/lib/liblzo2.so.2.0.0	library	liblzo2.so.2	DYN (Shared object file)
+usr/lib/libm-2.31.so	library	libm.so.6	DYN (Shared object file)
+usr/lib/libmagic.so.1.0.0	library	libmagic.so.1	DYN (Shared object file)
+usr/lib/libmenuw.so.6.1	library	libmenuw.so.6	DYN (Shared object file)
+usr/lib/libmodplug.so.1.0.0	library	libmodplug.so.1	DYN (Shared object file)
+usr/lib/libmount.so.1.1.0	library	libmount.so.1	DYN (Shared object file)
+usr/lib/libmpg123.so.0.44.12	library	libmpg123.so.0	DYN (Shared object file)
+usr/lib/libmtdev.so.1.0.0	library	libmtdev.so.1	DYN (Shared object file)
+usr/lib/libncursesw.so.6.1	library	libncursesw.so.6	DYN (Shared object file)
+usr/lib/libndr-krb5pac.so.0.0.1	library	libndr-krb5pac.so.0	DYN (Shared object file)
+usr/lib/libndr-nbt.so.0.0.1	library	libndr-nbt.so.0	DYN (Shared object file)
+usr/lib/libndr-standard.so.0.0.1	library	libndr-standard.so.0	DYN (Shared object file)
+usr/lib/libndr.so.1.0.1	library	libndr.so.1	DYN (Shared object file)
+usr/lib/libnetapi.so.0	library	libnetapi.so.0	DYN (Shared object file)
+usr/lib/libnettle.so.8.4	library	libnettle.so.8	DYN (Shared object file)
+usr/lib/libnewt.so.0.52.21	library	libnewt.so.0.52	DYN (Shared object file)
+usr/lib/libnl-3.so.200.26.0	library	libnl-3.so.200	DYN (Shared object file)
+usr/lib/libnl-genl-3.so.200.26.0	library	libnl-genl-3.so.200	DYN (Shared object file)
+usr/lib/libnl-idiag-3.so.200.26.0	library	libnl-idiag-3.so.200	DYN (Shared object file)
+usr/lib/libnl-nf-3.so.200.26.0	library	libnl-nf-3.so.200	DYN (Shared object file)
+usr/lib/libnl-route-3.so.200.26.0	library	libnl-route-3.so.200	DYN (Shared object file)
+usr/lib/libnl-xfrm-3.so.200.26.0	library	libnl-xfrm-3.so.200	DYN (Shared object file)
+usr/lib/libnsl-2.31.so	library	libnsl.so.1	DYN (Shared object file)
+usr/lib/libnss_dns-2.31.so	library	libnss_dns.so.2	DYN (Shared object file)
+usr/lib/libnss_files-2.31.so	library	libnss_files.so.2	DYN (Shared object file)
+usr/lib/libnss_winbind.so.2	library	libnss_winbind.so.2	DYN (Shared object file)
+usr/lib/libnss_wins.so.2	library	libnss_wins.so.2	DYN (Shared object file)
+usr/lib/libntfs-3g.so.88.0.0	library	libntfs-3g.so.88	DYN (Shared object file)
+usr/lib/libogg.so.0.8.4	library	libogg.so.0	DYN (Shared object file)
+usr/lib/libout123.so.0.2.2	library	libout123.so.0	DYN (Shared object file)
+usr/lib/libpam.so.0.85.1	library	libpam.so.0	DYN (Shared object file)
+usr/lib/libpam_misc.so.0.82.1	library	libpam_misc.so.0	DYN (Shared object file)
+usr/lib/libpamc.so.0.82.1	library	libpamc.so.0	DYN (Shared object file)
+usr/lib/libpanelw.so.6.1	library	libpanelw.so.6	DYN (Shared object file)
+usr/lib/libparted-fs-resize.so.0.0.2	library	libparted-fs-resize.so.0	DYN (Shared object file)
+usr/lib/libparted.so.2.0.2	library	libparted.so.2	DYN (Shared object file)
+usr/lib/libpcre.so.1.2.12	library	libpcre.so.1	DYN (Shared object file)
+usr/lib/libpcrecpp.so.0.0.2	library	libpcrecpp.so.0	DYN (Shared object file)
+usr/lib/libpcreposix.so.0.0.7	library	libpcreposix.so.0	DYN (Shared object file)
+usr/lib/libpng16.so.16.37.0	library	libpng16.so.16	DYN (Shared object file)
+usr/lib/libpopt.so.0.0.1	library	libpopt.so.0	DYN (Shared object file)
+usr/lib/libpsx.so.2.48	library	libpsx.so.2	DYN (Shared object file)
+usr/lib/libpthread-2.31.so	library	libpthread.so.0	DYN (Shared object file)
+usr/lib/libpthsem.so.20.0.28	library	libpthsem.so.20	DYN (Shared object file)
+usr/lib/libpython3.9.so.1.0	library	libpython3.9.so.1.0	DYN (Shared object file)
+usr/lib/libpython3.so	library	libpython3.so	DYN (Shared object file)
+usr/lib/libreadline.so.8.1	library	libreadline.so.8	DYN (Shared object file)
+usr/lib/libresolv-2.31.so	library	libresolv.so.2	DYN (Shared object file)
+usr/lib/librt-2.31.so	library	librt.so.1	DYN (Shared object file)
+usr/lib/libsamba-credentials.so.1.0.0	library	libsamba-credentials.so.1	DYN (Shared object file)
+usr/lib/libsamba-errors.so.1	library	libsamba-errors.so.1	DYN (Shared object file)
+usr/lib/libsamba-hostconfig.so.0.0.1	library	libsamba-hostconfig.so.0	DYN (Shared object file)
+usr/lib/libsamba-passdb.so.0.28.0	library	libsamba-passdb.so.0	DYN (Shared object file)
+usr/lib/libsamba-policy.cpython-39-x86-64-linux-gnu.so.0.0.1	library	libsamba-policy.cpython-39-x86-64-linux-gnu.so.0	DYN (Shared object file)
+usr/lib/libsamba-util.so.0.0.1	library	libsamba-util.so.0	DYN (Shared object file)
+usr/lib/libsamdb.so.0.0.1	library	libsamdb.so.0	DYN (Shared object file)
+usr/lib/libslang.so.2.3.2	library	libslang.so.2	DYN (Shared object file)
+usr/lib/libsmartcols.so.1.1.0	library	libsmartcols.so.1	DYN (Shared object file)
+usr/lib/libsmbclient.so.0.7.0	library	libsmbclient.so.0	DYN (Shared object file)
+usr/lib/libsmbconf.so.0	library	libsmbconf.so.0	DYN (Shared object file)
+usr/lib/libss.so.2.0	library	libss.so.2	DYN (Shared object file)
+usr/lib/libssh.so.4.8.6	library	libssh.so.4	DYN (Shared object file)
+usr/lib/libssh2.so.1.0.1	library	libssh2.so.1	DYN (Shared object file)
+usr/lib/libssl.so.1.1	library	libssl.so.1.1	DYN (Shared object file)
+usr/lib/libstdc++.so.6.0.28	library	libstdc++.so.6	DYN (Shared object file)
+usr/lib/libtasn1.so.6.6.1	library	libtasn1.so.6	DYN (Shared object file)
+usr/lib/libtevent-util.so.0.0.1	library	libtevent-util.so.0	DYN (Shared object file)
+usr/lib/libthread_db-1.0.so	library	libthread_db.so.1	DYN (Shared object file)
+usr/lib/libtiff.so.5.6.0	library	libtiff.so.5	DYN (Shared object file)
+usr/lib/libtorrent.so.21.0.0	library	libtorrent.so.21	DYN (Shared object file)
+usr/lib/libturbojpeg.so.0.2.0	library	libturbojpeg.so.0	DYN (Shared object file)
+usr/lib/libudev.so.1.6.3	library	libudev.so.1	DYN (Shared object file)
+usr/lib/libusb-0.1.so.4.4.4	library	libusb-0.1.so.4	DYN (Shared object file)
+usr/lib/libusb-1.0.so.0.3.0	library	libusb-1.0.so.0	DYN (Shared object file)
+usr/lib/libutil-2.31.so	library	libutil.so.1	DYN (Shared object file)
+usr/lib/libuuid.so.1.3.0	library	libuuid.so.1	DYN (Shared object file)
+usr/lib/libvorbis.so.0.4.9	library	libvorbis.so.0	DYN (Shared object file)
+usr/lib/libvorbisenc.so.2.0.12	library	libvorbisenc.so.2	DYN (Shared object file)
+usr/lib/libvorbisfile.so.3.3.8	library	libvorbisfile.so.3	DYN (Shared object file)
+usr/lib/libwbclient.so.0.15	library	libwbclient.so.0	DYN (Shared object file)
+usr/lib/libwpa_client.so	plugin	-	DYN (Shared object file)
+usr/lib/libxkbcommon.so.0.0.0	library	libxkbcommon.so.0	DYN (Shared object file)
+usr/lib/libxml2.so.2.9.12	library	libxml2.so.2	DYN (Shared object file)
+usr/lib/libxtables.so.12.3.0	library	libxtables.so.12	DYN (Shared object file)
+usr/lib/libz.so.1.2.11	library	libz.so.1	DYN (Shared object file)
+usr/lib/mpg123/output_alsa.so	library	output_alsa.so	DYN (Shared object file)
+usr/lib/mpg123/output_dummy.so	library	output_dummy.so	DYN (Shared object file)
+usr/lib/mpg123/output_oss.so	library	output_oss.so	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/B/B.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Compress/Raw/Bzip2/Bzip2.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Compress/Raw/Zlib/Zlib.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Cwd/Cwd.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Data/Dumper/Dumper.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Devel/Peek/Peek.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Digest/MD5/MD5.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Digest/SHA/SHA.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/Byte/Byte.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/CN/CN.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/EBCDIC/EBCDIC.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/Encode.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/JP/JP.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/KR/KR.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/Symbol/Symbol.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/TW/TW.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Encode/Unicode/Unicode.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Fcntl/Fcntl.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/File/DosGlob/DosGlob.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/File/Glob/Glob.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Filter/Util/Call/Call.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Hash/Util/FieldHash/FieldHash.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Hash/Util/Util.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/I18N/Langinfo/Langinfo.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/IO/IO.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/IPC/SysV/SysV.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/List/Util/Util.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/MIME/Base64/Base64.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Math/BigInt/FastCalc/FastCalc.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Opcode/Opcode.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/POSIX/POSIX.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/PerlIO/encoding/encoding.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/PerlIO/mmap/mmap.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/PerlIO/scalar/scalar.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/PerlIO/via/via.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/SDBM_File/SDBM_File.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Socket/Socket.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Storable/Storable.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Sys/Hostname/Hostname.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Sys/Syslog/Syslog.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Time/HiRes/HiRes.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Time/Piece/Piece.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Unicode/Collate/Collate.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/Unicode/Normalize/Normalize.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/attributes/attributes.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/mro/mro.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/re/re.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/threads/shared/shared.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/5.32.1/arm-linux/auto/threads/threads.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/site_perl/5.32.1/arm-linux/auto/Crypt/OpenSSL/RSA/RSA.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/site_perl/5.32.1/arm-linux/auto/Crypt/OpenSSL/Random/Random.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/site_perl/5.32.1/arm-linux/auto/Digest/SHA1/SHA1.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/site_perl/5.32.1/arm-linux/auto/Encode/Detect/Detector/Detector.so	plugin	-	DYN (Shared object file)
+usr/lib/perl5/site_perl/5.32.1/arm-linux/auto/XML/LibXML/LibXML.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/minconn.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/openl2tp.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/passprompt.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/passwordfd.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/pppoatm.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/pppol2tp.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/rp-pppoe.so	plugin	-	DYN (Shared object file)
+usr/lib/pppd/2.4.8/winbind.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_asyncio.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_bisect.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_blake2.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_bz2.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_contextvars.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_crypt.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_csv.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_ctypes.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_ctypes_test.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_curses.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_curses_panel.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_datetime.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_elementtree.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_hashlib.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_heapq.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_json.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_lsprof.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_lzma.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_md5.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_multibytecodec.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_multiprocessing.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_opcode.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_pickle.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_posixshmem.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_posixsubprocess.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_queue.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_random.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_sha1.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_sha256.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_sha3.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_sha512.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_socket.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_ssl.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_statistics.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_struct.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_testbuffer.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_testcapi.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_testimportmultiple.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_testinternalcapi.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_testmultiphase.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_xxsubinterpreters.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_xxtestfuzz.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/_zoneinfo.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/array.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/audioop.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/binascii.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/cmath.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/fcntl.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/grp.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/math.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/mmap.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/parser.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/pyexpat.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/readline.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/resource.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/select.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/spwd.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/syslog.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/termios.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/unicodedata.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/xxlimited.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/lib-dynload/zlib.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/site-packages/_cffi_backend.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/site-packages/_dbus_bindings.so	library	_dbus_bindings.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/_dbus_glib_bindings.so	library	_dbus_glib_bindings.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/_tevent.cpython-39-x86_64-linux-gnu.so	library	_tevent.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/cryptography/hazmat/bindings/_openssl.abi3.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/site-packages/cryptography/hazmat/bindings/_padding.abi3.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/site-packages/gi/_gi.cpython-39-arm-linux-gnueabihf.so	library	_gi.cpython-39-arm-linux-gnueabihf.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/kmod/_util.so	library	_util.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/kmod/kmod.so	library	kmod.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/kmod/list.so	library	list.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/kmod/module.so	library	module.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/ldb.cpython-39-x86_64-linux-gnu.so	library	ldb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/libmount/pylibmount.so	library	pylibmount.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/_glue.cpython-39-x86_64-linux-gnu.so	library	samba/_glue.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/_ldb.cpython-39-x86_64-linux-gnu.so	library	samba/_ldb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/auth.cpython-39-x86_64-linux-gnu.so	library	samba/auth.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/credentials.cpython-39-x86_64-linux-gnu.so	library	samba/credentials.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/crypto.cpython-39-x86_64-linux-gnu.so	library	samba/crypto.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/atsvc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/atsvc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/auth.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/auth.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/base.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/base.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/dcerpc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/dcerpc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/dfs.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/dfs.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/dns.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/dns.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/dnsp.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/dnsp.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/dnsserver.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/dnsserver.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/drsblobs.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/drsblobs.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/drsuapi.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/drsuapi.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/echo.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/echo.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/epmapper.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/epmapper.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/idmap.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/idmap.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/initshutdown.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/initshutdown.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/irpc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/irpc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/krb5pac.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/krb5pac.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/lsa.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/lsa.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/mdssvc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/mdssvc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/messaging.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/messaging.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/mgmt.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/mgmt.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/misc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/misc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/nbt.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/nbt.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/netlogon.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/netlogon.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/ntlmssp.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/ntlmssp.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/preg.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/preg.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/samr.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/samr.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/security.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/security.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/server_id.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/server_id.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/smb_acl.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/smb_acl.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/spoolss.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/spoolss.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/srvsvc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/srvsvc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/svcctl.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/svcctl.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/unixinfo.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/unixinfo.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/winbind.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/winbind.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/windows_event_ids.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/windows_event_ids.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/winreg.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/winreg.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/winspool.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/winspool.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/witness.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/witness.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/wkssvc.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/wkssvc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/dcerpc/xattr.cpython-39-x86_64-linux-gnu.so	library	samba/dcerpc/xattr.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/gensec.cpython-39-x86_64-linux-gnu.so	library	samba/gensec.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/gpo.cpython-39-x86_64-linux-gnu.so	library	samba/gpo.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/messaging.cpython-39-x86_64-linux-gnu.so	library	samba/messaging.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/net.cpython-39-x86_64-linux-gnu.so	library	samba/net.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/netbios.cpython-39-x86_64-linux-gnu.so	library	samba/netbios.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/ntstatus.cpython-39-x86_64-linux-gnu.so	library	samba/ntstatus.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/param.cpython-39-x86_64-linux-gnu.so	library	samba/param.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/policy.cpython-39-x86_64-linux-gnu.so	library	samba/policy.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/posix_eadb.cpython-39-x86_64-linux-gnu.so	library	samba/posix_eadb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/registry.cpython-39-x86_64-linux-gnu.so	library	samba/registry.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/samba3/libsmb_samba_cwrapper.cpython-39-x86_64-linux-gnu.so	library	samba/samba3/libsmb_samba_cwrapper.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/samba3/mdscli.cpython-39-x86_64-linux-gnu.so	library	samba/samba3/mdscli.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/samba3/param.cpython-39-x86_64-linux-gnu.so	library	samba/samba3/param.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/samba3/passdb.cpython-39-x86_64-linux-gnu.so	library	samba/samba3/passdb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/samba3/smbd.cpython-39-x86_64-linux-gnu.so	library	samba/samba3/smbd.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/security.cpython-39-x86_64-linux-gnu.so	library	samba/security.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/werror.cpython-39-x86_64-linux-gnu.so	library	samba/werror.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/xattr_native.cpython-39-x86_64-linux-gnu.so	library	samba/xattr_native.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/samba/xattr_tdb.cpython-39-x86_64-linux-gnu.so	library	samba/xattr_tdb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/smbus.cpython-39-arm-linux-gnueabihf.so	plugin	-	DYN (Shared object file)
+usr/lib/python3.9/site-packages/talloc.cpython-39-x86_64-linux-gnu.so	library	talloc.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/python3.9/site-packages/tdb.cpython-39-x86_64-linux-gnu.so	library	tdb.cpython-39-x86_64-linux-gnu.so	DYN (Shared object file)
+usr/lib/samba/idmap/autorid.so	library	autorid.so	DYN (Shared object file)
+usr/lib/samba/idmap/hash.so	library	hash.so	DYN (Shared object file)
+usr/lib/samba/idmap/rid.so	library	rid.so	DYN (Shared object file)
+usr/lib/samba/idmap/script.so	library	script.so	DYN (Shared object file)
+usr/lib/samba/idmap/tdb2.so	library	tdb2.so	DYN (Shared object file)
+usr/lib/samba/krb5/async_dns_krb5_locator.so	library	async_dns_krb5_locator.so	DYN (Shared object file)
+usr/lib/samba/krb5/winbind_krb5_locator.so	library	winbind_krb5_locator.so	DYN (Shared object file)
+usr/lib/samba/ldb/asq.so	library	asq.so	DYN (Shared object file)
+usr/lib/samba/ldb/ildap.so	library	ildap.so	DYN (Shared object file)
+usr/lib/samba/ldb/ldb.so	library	ldb.so	DYN (Shared object file)
+usr/lib/samba/ldb/ldbsamba_extensions.so	library	ldbsamba_extensions.so	DYN (Shared object file)
+usr/lib/samba/ldb/paged_searches.so	library	paged_searches.so	DYN (Shared object file)
+usr/lib/samba/ldb/rdn_name.so	library	rdn_name.so	DYN (Shared object file)
+usr/lib/samba/ldb/sample.so	library	sample.so	DYN (Shared object file)
+usr/lib/samba/ldb/server_sort.so	library	server_sort.so	DYN (Shared object file)
+usr/lib/samba/ldb/skel.so	library	skel.so	DYN (Shared object file)
+usr/lib/samba/ldb/tdb.so	library	tdb.so	DYN (Shared object file)
+usr/lib/samba/libCHARSET3-samba4.so	library	libCHARSET3-samba4.so	DYN (Shared object file)
+usr/lib/samba/libLIBWBCLIENT-OLD-samba4.so	library	libLIBWBCLIENT-OLD-samba4.so	DYN (Shared object file)
+usr/lib/samba/libMESSAGING-SEND-samba4.so	library	libMESSAGING-SEND-samba4.so	DYN (Shared object file)
+usr/lib/samba/libMESSAGING-samba4.so	library	libMESSAGING-samba4.so	DYN (Shared object file)
+usr/lib/samba/libaddns-samba4.so	library	libaddns-samba4.so	DYN (Shared object file)
+usr/lib/samba/libads-samba4.so	library	libads-samba4.so	DYN (Shared object file)
+usr/lib/samba/libasn1-samba4.so.8.0.0	library	libasn1-samba4.so.8	DYN (Shared object file)
+usr/lib/samba/libasn1util-samba4.so	library	libasn1util-samba4.so	DYN (Shared object file)
+usr/lib/samba/libauth-samba4.so	library	libauth-samba4.so	DYN (Shared object file)
+usr/lib/samba/libauth-unix-token-samba4.so	library	libauth-unix-token-samba4.so	DYN (Shared object file)
+usr/lib/samba/libauth4-samba4.so	library	libauth4-samba4.so	DYN (Shared object file)
+usr/lib/samba/libauthkrb5-samba4.so	library	libauthkrb5-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-cldap-samba4.so	library	libcli-cldap-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-ldap-common-samba4.so	library	libcli-ldap-common-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-ldap-samba4.so	library	libcli-ldap-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-nbt-samba4.so	library	libcli-nbt-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-smb-common-samba4.so	library	libcli-smb-common-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcli-spoolss-samba4.so	library	libcli-spoolss-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcliauth-samba4.so	library	libcliauth-samba4.so	DYN (Shared object file)
+usr/lib/samba/libclidns-samba4.so	library	libclidns-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcluster-samba4.so	library	libcluster-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcmdline-contexts-samba4.so	library	libcmdline-contexts-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcmdline-credentials-samba4.so	library	libcmdline-credentials-samba4.so	DYN (Shared object file)
+usr/lib/samba/libcom_err-samba4.so.0.25	library	libcom_err-samba4.so.0	DYN (Shared object file)
+usr/lib/samba/libcommon-auth-samba4.so	library	libcommon-auth-samba4.so	DYN (Shared object file)
+usr/lib/samba/libctdb-event-client-samba4.so	library	libctdb-event-client-samba4.so	DYN (Shared object file)
+usr/lib/samba/libdbwrap-samba4.so	library	libdbwrap-samba4.so	DYN (Shared object file)
+usr/lib/samba/libdcerpc-samba-samba4.so	library	libdcerpc-samba-samba4.so	DYN (Shared object file)
+usr/lib/samba/libdcerpc-samba4.so	library	libdcerpc-samba4.so	DYN (Shared object file)
+usr/lib/samba/libdsdb-module-samba4.so	library	libdsdb-module-samba4.so	DYN (Shared object file)
+usr/lib/samba/libevents-samba4.so	library	libevents-samba4.so	DYN (Shared object file)
+usr/lib/samba/libflag-mapping-samba4.so	library	libflag-mapping-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgenrand-samba4.so	library	libgenrand-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgensec-samba4.so	library	libgensec-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgpext-samba4.so	library	libgpext-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgpo-samba4.so	library	libgpo-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgse-samba4.so	library	libgse-samba4.so	DYN (Shared object file)
+usr/lib/samba/libgssapi-samba4.so.2.0.0	library	libgssapi-samba4.so.2	DYN (Shared object file)
+usr/lib/samba/libhcrypto-samba4.so.5.0.1	library	libhcrypto-samba4.so.5	DYN (Shared object file)
+usr/lib/samba/libhdb-samba4.so.11.0.2	library	libhdb-samba4.so.11	DYN (Shared object file)
+usr/lib/samba/libheimbase-samba4.so.1.0.0	library	libheimbase-samba4.so.1	DYN (Shared object file)
+usr/lib/samba/libheimntlm-samba4.so.1.0.1	library	libheimntlm-samba4.so.1	DYN (Shared object file)
+usr/lib/samba/libhttp-samba4.so	library	libhttp-samba4.so	DYN (Shared object file)
+usr/lib/samba/libhx509-samba4.so.5.0.0	library	libhx509-samba4.so.5	DYN (Shared object file)
+usr/lib/samba/libidmap-samba4.so	library	libidmap-samba4.so	DYN (Shared object file)
+usr/lib/samba/libinterfaces-samba4.so	library	libinterfaces-samba4.so	DYN (Shared object file)
+usr/lib/samba/libiov-buf-samba4.so	library	libiov-buf-samba4.so	DYN (Shared object file)
+usr/lib/samba/libkdc-samba4.so.2.0.0	library	libkdc-samba4.so.2	DYN (Shared object file)
+usr/lib/samba/libkrb5-samba4.so.26.0.0	library	libkrb5-samba4.so.26	DYN (Shared object file)
+usr/lib/samba/libkrb5samba-samba4.so	library	libkrb5samba-samba4.so	DYN (Shared object file)
+usr/lib/samba/libldb-cmdline-samba4.so	library	libldb-cmdline-samba4.so	DYN (Shared object file)
+usr/lib/samba/libldb-key-value-samba4.so	library	libldb-key-value-samba4.so	DYN (Shared object file)
+usr/lib/samba/libldb-tdb-err-map-samba4.so	library	libldb-tdb-err-map-samba4.so	DYN (Shared object file)
+usr/lib/samba/libldb-tdb-int-samba4.so	library	libldb-tdb-int-samba4.so	DYN (Shared object file)
+usr/lib/samba/libldb.so.2.3.0	library	libldb.so.2	DYN (Shared object file)
+usr/lib/samba/libldbsamba-samba4.so	library	libldbsamba-samba4.so	DYN (Shared object file)
+usr/lib/samba/liblibcli-lsa3-samba4.so	library	liblibcli-lsa3-samba4.so	DYN (Shared object file)
+usr/lib/samba/liblibcli-netlogon3-samba4.so	library	liblibcli-netlogon3-samba4.so	DYN (Shared object file)
+usr/lib/samba/liblibsmb-samba4.so	library	liblibsmb-samba4.so	DYN (Shared object file)
+usr/lib/samba/libmessages-dgm-samba4.so	library	libmessages-dgm-samba4.so	DYN (Shared object file)
+usr/lib/samba/libmessages-util-samba4.so	library	libmessages-util-samba4.so	DYN (Shared object file)
+usr/lib/samba/libmsghdr-samba4.so	library	libmsghdr-samba4.so	DYN (Shared object file)
+usr/lib/samba/libmsrpc3-samba4.so	library	libmsrpc3-samba4.so	DYN (Shared object file)
+usr/lib/samba/libndr-samba-samba4.so	library	libndr-samba-samba4.so	DYN (Shared object file)
+usr/lib/samba/libndr-samba4.so	library	libndr-samba4.so	DYN (Shared object file)
+usr/lib/samba/libnet-keytab-samba4.so	library	libnet-keytab-samba4.so	DYN (Shared object file)
+usr/lib/samba/libnetif-samba4.so	library	libnetif-samba4.so	DYN (Shared object file)
+usr/lib/samba/libnpa-tstream-samba4.so	library	libnpa-tstream-samba4.so	DYN (Shared object file)
+usr/lib/samba/libnss-info-samba4.so	library	libnss-info-samba4.so	DYN (Shared object file)
+usr/lib/samba/libpopt-samba3-cmdline-samba4.so	library	libpopt-samba3-cmdline-samba4.so	DYN (Shared object file)
+usr/lib/samba/libpopt-samba3-samba4.so	library	libpopt-samba3-samba4.so	DYN (Shared object file)
+usr/lib/samba/libposix-eadb-samba4.so	library	libposix-eadb-samba4.so	DYN (Shared object file)
+usr/lib/samba/libprinter-driver-samba4.so	library	libprinter-driver-samba4.so	DYN (Shared object file)
+usr/lib/samba/libprinting-migrate-samba4.so	library	libprinting-migrate-samba4.so	DYN (Shared object file)
+usr/lib/samba/libpyldb-util.cpython-39-x86-64-linux-gnu.so.2.3.0	library	libpyldb-util.cpython-39-x86-64-linux-gnu.so.2	DYN (Shared object file)
+usr/lib/samba/libpytalloc-util.cpython-39-x86-64-linux-gnu.so.2.3.2	library	libpytalloc-util.cpython-39-x86-64-linux-gnu.so.2	DYN (Shared object file)
+usr/lib/samba/libregistry-samba4.so	library	libregistry-samba4.so	DYN (Shared object file)
+usr/lib/samba/libreplace-samba4.so	library	libreplace-samba4.so	DYN (Shared object file)
+usr/lib/samba/libroken-samba4.so.19.0.1	library	libroken-samba4.so.19	DYN (Shared object file)
+usr/lib/samba/libsamba-cluster-support-samba4.so	library	libsamba-cluster-support-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-debug-samba4.so	library	libsamba-debug-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-modules-samba4.so	library	libsamba-modules-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-net.cpython-39-x86-64-linux-gnu-samba4.so	library	libsamba-net.cpython-39-x86-64-linux-gnu-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-python.cpython-39-x86-64-linux-gnu-samba4.so	library	libsamba-python.cpython-39-x86-64-linux-gnu-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-security-samba4.so	library	libsamba-security-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba-sockets-samba4.so	library	libsamba-sockets-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamba3-util-samba4.so	library	libsamba3-util-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsamdb-common-samba4.so	library	libsamdb-common-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsecrets3-samba4.so	library	libsecrets3-samba4.so	DYN (Shared object file)
+usr/lib/samba/libserver-id-db-samba4.so	library	libserver-id-db-samba4.so	DYN (Shared object file)
+usr/lib/samba/libserver-role-samba4.so	library	libserver-role-samba4.so	DYN (Shared object file)
+usr/lib/samba/libshares-samba4.so	library	libshares-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsmb-transport-samba4.so	library	libsmb-transport-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsmbclient-raw-samba4.so	library	libsmbclient-raw-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsmbd-base-samba4.so	library	libsmbd-base-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsmbd-shim-samba4.so	library	libsmbd-shim-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsmbpasswdparser-samba4.so	library	libsmbpasswdparser-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsocket-blocking-samba4.so	library	libsocket-blocking-samba4.so	DYN (Shared object file)
+usr/lib/samba/libsys-rw-samba4.so	library	libsys-rw-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtalloc-report-printf-samba4.so	library	libtalloc-report-printf-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtalloc-report-samba4.so	library	libtalloc-report-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtalloc.so.2.3.2	library	libtalloc.so.2	DYN (Shared object file)
+usr/lib/samba/libtdb-wrap-samba4.so	library	libtdb-wrap-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtdb.so.1.4.3	library	libtdb.so.1	DYN (Shared object file)
+usr/lib/samba/libtevent.so.0.10.2	library	libtevent.so.0	DYN (Shared object file)
+usr/lib/samba/libtime-basic-samba4.so	library	libtime-basic-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtorture-samba4.so	library	libtorture-samba4.so	DYN (Shared object file)
+usr/lib/samba/libtrusts-util-samba4.so	library	libtrusts-util-samba4.so	DYN (Shared object file)
+usr/lib/samba/libutil-cmdline-samba4.so	library	libutil-cmdline-samba4.so	DYN (Shared object file)
+usr/lib/samba/libutil-reg-samba4.so	library	libutil-reg-samba4.so	DYN (Shared object file)
+usr/lib/samba/libutil-setid-samba4.so	library	libutil-setid-samba4.so	DYN (Shared object file)
+usr/lib/samba/libutil-tdb-samba4.so	library	libutil-tdb-samba4.so	DYN (Shared object file)
+usr/lib/samba/libwinbind-client-samba4.so	library	libwinbind-client-samba4.so	DYN (Shared object file)
+usr/lib/samba/libwind-samba4.so.0.0.0	library	libwind-samba4.so.0	DYN (Shared object file)
+usr/lib/samba/libxattr-tdb-samba4.so	library	libxattr-tdb-samba4.so	DYN (Shared object file)
+usr/lib/samba/nss_info/hash.so	library	hash.so	DYN (Shared object file)
+usr/lib/samba/vfs/acl_tdb.so	library	acl_tdb.so	DYN (Shared object file)
+usr/lib/samba/vfs/acl_xattr.so	library	acl_xattr.so	DYN (Shared object file)
+usr/lib/samba/vfs/aio_fork.so	library	aio_fork.so	DYN (Shared object file)
+usr/lib/samba/vfs/aio_pthread.so	library	aio_pthread.so	DYN (Shared object file)
+usr/lib/samba/vfs/audit.so	library	audit.so	DYN (Shared object file)
+usr/lib/samba/vfs/btrfs.so	library	btrfs.so	DYN (Shared object file)
+usr/lib/samba/vfs/cap.so	library	cap.so	DYN (Shared object file)
+usr/lib/samba/vfs/catia.so	library	catia.so	DYN (Shared object file)
+usr/lib/samba/vfs/commit.so	library	commit.so	DYN (Shared object file)
+usr/lib/samba/vfs/crossrename.so	library	crossrename.so	DYN (Shared object file)
+usr/lib/samba/vfs/default_quota.so	library	default_quota.so	DYN (Shared object file)
+usr/lib/samba/vfs/dirsort.so	library	dirsort.so	DYN (Shared object file)
+usr/lib/samba/vfs/expand_msdfs.so	library	expand_msdfs.so	DYN (Shared object file)
+usr/lib/samba/vfs/extd_audit.so	library	extd_audit.so	DYN (Shared object file)
+usr/lib/samba/vfs/fake_perms.so	library	fake_perms.so	DYN (Shared object file)
+usr/lib/samba/vfs/fileid.so	library	fileid.so	DYN (Shared object file)
+usr/lib/samba/vfs/fruit.so	library	fruit.so	DYN (Shared object file)
+usr/lib/samba/vfs/full_audit.so	library	full_audit.so	DYN (Shared object file)
+usr/lib/samba/vfs/glusterfs_fuse.so	library	glusterfs_fuse.so	DYN (Shared object file)
+usr/lib/samba/vfs/gpfs.so	library	gpfs.so	DYN (Shared object file)
+usr/lib/samba/vfs/linux_xfs_sgid.so	library	linux_xfs_sgid.so	DYN (Shared object file)
+usr/lib/samba/vfs/media_harmony.so	library	media_harmony.so	DYN (Shared object file)
+usr/lib/samba/vfs/offline.so	library	offline.so	DYN (Shared object file)
+usr/lib/samba/vfs/preopen.so	library	preopen.so	DYN (Shared object file)
+usr/lib/samba/vfs/readahead.so	library	readahead.so	DYN (Shared object file)
+usr/lib/samba/vfs/readonly.so	library	readonly.so	DYN (Shared object file)
+usr/lib/samba/vfs/recycle.so	library	recycle.so	DYN (Shared object file)
+usr/lib/samba/vfs/shadow_copy.so	library	shadow_copy.so	DYN (Shared object file)
+usr/lib/samba/vfs/shadow_copy2.so	library	shadow_copy2.so	DYN (Shared object file)
+usr/lib/samba/vfs/shell_snap.so	library	shell_snap.so	DYN (Shared object file)
+usr/lib/samba/vfs/snapper.so	library	snapper.so	DYN (Shared object file)
+usr/lib/samba/vfs/streams_depot.so	library	streams_depot.so	DYN (Shared object file)
+usr/lib/samba/vfs/streams_xattr.so	library	streams_xattr.so	DYN (Shared object file)
+usr/lib/samba/vfs/syncops.so	library	syncops.so	DYN (Shared object file)
+usr/lib/samba/vfs/time_audit.so	library	time_audit.so	DYN (Shared object file)
+usr/lib/samba/vfs/unityed_media.so	library	unityed_media.so	DYN (Shared object file)
+usr/lib/samba/vfs/virusfilter.so	library	virusfilter.so	DYN (Shared object file)
+usr/lib/samba/vfs/widelinks.so	library	widelinks.so	DYN (Shared object file)
+usr/lib/samba/vfs/worm.so	library	worm.so	DYN (Shared object file)
+usr/lib/samba/vfs/xattr_tdb.so	library	xattr_tdb.so	DYN (Shared object file)
+usr/lib/security/pam_access.so	library	pam_access.so	DYN (Shared object file)
+usr/lib/security/pam_debug.so	library	pam_debug.so	DYN (Shared object file)
+usr/lib/security/pam_deny.so	library	pam_deny.so	DYN (Shared object file)
+usr/lib/security/pam_echo.so	library	pam_echo.so	DYN (Shared object file)
+usr/lib/security/pam_env.so	library	pam_env.so	DYN (Shared object file)
+usr/lib/security/pam_exec.so	library	pam_exec.so	DYN (Shared object file)
+usr/lib/security/pam_faildelay.so	library	pam_faildelay.so	DYN (Shared object file)
+usr/lib/security/pam_faillock.so	library	pam_faillock.so	DYN (Shared object file)
+usr/lib/security/pam_filter.so	library	pam_filter.so	DYN (Shared object file)
+usr/lib/security/pam_ftp.so	library	pam_ftp.so	DYN (Shared object file)
+usr/lib/security/pam_group.so	library	pam_group.so	DYN (Shared object file)
+usr/lib/security/pam_issue.so	library	pam_issue.so	DYN (Shared object file)
+usr/lib/security/pam_keyinit.so	library	pam_keyinit.so	DYN (Shared object file)
+usr/lib/security/pam_lastlog.so	library	pam_lastlog.so	DYN (Shared object file)
+usr/lib/security/pam_limits.so	library	pam_limits.so	DYN (Shared object file)
+usr/lib/security/pam_listfile.so	library	pam_listfile.so	DYN (Shared object file)
+usr/lib/security/pam_localuser.so	library	pam_localuser.so	DYN (Shared object file)
+usr/lib/security/pam_loginuid.so	library	pam_loginuid.so	DYN (Shared object file)
+usr/lib/security/pam_mail.so	library	pam_mail.so	DYN (Shared object file)
+usr/lib/security/pam_mkhomedir.so	library	pam_mkhomedir.so	DYN (Shared object file)
+usr/lib/security/pam_motd.so	library	pam_motd.so	DYN (Shared object file)
+usr/lib/security/pam_namespace.so	library	pam_namespace.so	DYN (Shared object file)
+usr/lib/security/pam_nologin.so	library	pam_nologin.so	DYN (Shared object file)
+usr/lib/security/pam_permit.so	library	pam_permit.so	DYN (Shared object file)
+usr/lib/security/pam_pwhistory.so	library	pam_pwhistory.so	DYN (Shared object file)
+usr/lib/security/pam_rhosts.so	library	pam_rhosts.so	DYN (Shared object file)
+usr/lib/security/pam_rootok.so	library	pam_rootok.so	DYN (Shared object file)
+usr/lib/security/pam_securetty.so	library	pam_securetty.so	DYN (Shared object file)
+usr/lib/security/pam_setquota.so	library	pam_setquota.so	DYN (Shared object file)
+usr/lib/security/pam_shells.so	library	pam_shells.so	DYN (Shared object file)
+usr/lib/security/pam_stress.so	library	pam_stress.so	DYN (Shared object file)
+usr/lib/security/pam_succeed_if.so	library	pam_succeed_if.so	DYN (Shared object file)
+usr/lib/security/pam_time.so	library	pam_time.so	DYN (Shared object file)
+usr/lib/security/pam_timestamp.so	library	pam_timestamp.so	DYN (Shared object file)
+usr/lib/security/pam_umask.so	library	pam_umask.so	DYN (Shared object file)
+usr/lib/security/pam_unix.so	library	pam_unix.so	DYN (Shared object file)
+usr/lib/security/pam_usertype.so	library	pam_usertype.so	DYN (Shared object file)
+usr/lib/security/pam_warn.so	library	pam_warn.so	DYN (Shared object file)
+usr/lib/security/pam_wheel.so	library	pam_wheel.so	DYN (Shared object file)
+usr/lib/security/pam_xauth.so	library	pam_xauth.so	DYN (Shared object file)
+usr/lib/slang/v2/modules/base64-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/chksum-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/csv-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/fcntl-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/fork-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/histogram-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/iconv-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/json-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/pcre-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/png-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/rand-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/select-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/slsmg-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/socket-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/stats-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/sysconf-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/termios-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/varray-module.so	plugin	-	DYN (Shared object file)
+usr/lib/slang/v2/modules/zlib-module.so	plugin	-	DYN (Shared object file)
+usr/lib/tc/m_xt.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_DNAT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_DNPT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_HL.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_LOG.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_MASQUERADE.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_NETMAP.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_REDIRECT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_REJECT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_SNAT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_SNPT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_ah.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_dst.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_eui64.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_frag.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_hbh.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_hl.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_icmp6.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_ipv6header.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_mh.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_rt.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libip6t_srh.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_CLUSTERIP.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_DNAT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_ECN.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_LOG.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_MASQUERADE.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_NETMAP.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_REDIRECT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_REJECT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_SNAT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_TTL.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_ULOG.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_ah.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_icmp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_realm.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libipt_ttl.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_AUDIT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_CHECKSUM.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_CLASSIFY.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_CONNMARK.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_CONNSECMARK.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_CT.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_DSCP.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_HMARK.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_IDLETIMER.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_LED.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_MARK.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_NFLOG.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_NFQUEUE.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_RATEEST.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_SECMARK.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_SET.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_SYNPROXY.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TCPMSS.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TCPOPTSTRIP.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TEE.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TOS.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TPROXY.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_TRACE.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_addrtype.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_bpf.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_cgroup.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_cluster.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_comment.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_connbytes.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_connlimit.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_connmark.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_conntrack.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_cpu.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_dccp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_devgroup.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_dscp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_ecn.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_esp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_hashlimit.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_helper.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_ipcomp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_iprange.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_ipvs.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_length.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_limit.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_mac.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_mark.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_multiport.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_nfacct.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_osf.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_owner.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_physdev.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_pkttype.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_policy.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_quota.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_rateest.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_recent.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_rpfilter.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_sctp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_set.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_socket.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_standard.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_statistic.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_string.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_tcp.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_tcpmss.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_time.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_tos.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_u32.so	plugin	-	DYN (Shared object file)
+usr/lib/xtables/libxt_udp.so	plugin	-	DYN (Shared object file)
+usr/libexec/coreutils/libstdbuf.so	plugin	-	DYN (Shared object file)
+usr/libexec/sudo/audit_json.so	library	audit_json.so	DYN (Shared object file)
+usr/libexec/sudo/group_file.so	library	group_file.so	DYN (Shared object file)
+usr/libexec/sudo/libsudo_util.so.0.0.0	library	libsudo_util.so.0	DYN (Shared object file)
+usr/libexec/sudo/sample_approval.so	library	sample_approval.so	DYN (Shared object file)
+usr/libexec/sudo/sudo_noexec.so	library	libsudo_noexec.so	DYN (Shared object file)
+usr/libexec/sudo/sudoers.so	library	sudoers.so	DYN (Shared object file)
+usr/libexec/sudo/system_group.so	library	system_group.so	DYN (Shared object file)
+
+# symlink chains (symlink -> ... -> real file), sorted by symlink path
+usr/lib/ld-linux-armhf.so.3 -> usr/lib/ld-2.31.so
+usr/lib/libImlib2.so -> usr/lib/libImlib2.so.1.6.1
+usr/lib/libImlib2.so.1 -> usr/lib/libImlib2.so.1.6.1
+usr/lib/libSDL2-2.0.so.0 -> usr/lib/libSDL2-2.0.so.0.14.0
+usr/lib/libSDL2.so -> usr/lib/libSDL2-2.0.so.0.14.0
+usr/lib/libanl.so.1 -> usr/lib/libanl-2.31.so
+usr/lib/libao.so -> usr/lib/libao.so.4.1.0
+usr/lib/libao.so.4 -> usr/lib/libao.so.4.1.0
+usr/lib/libasound.so -> usr/lib/libasound.so.2.0.0
+usr/lib/libasound.so.2 -> usr/lib/libasound.so.2.0.0
+usr/lib/libatomic.so.1 -> usr/lib/libatomic.so.1.2.0
+usr/lib/libatopology.so -> usr/lib/libatopology.so.2.0.0
+usr/lib/libatopology.so.2 -> usr/lib/libatopology.so.2.0.0
+usr/lib/libblkid.so -> usr/lib/libblkid.so.1.1.0
+usr/lib/libblkid.so.1 -> usr/lib/libblkid.so.1.1.0
+usr/lib/libbluetooth.so -> usr/lib/libbluetooth.so.3.19.5
+usr/lib/libbluetooth.so.3 -> usr/lib/libbluetooth.so.3.19.5
+usr/lib/libbz2.so -> usr/lib/libbz2.so.1.0.8
+usr/lib/libbz2.so.1.0 -> usr/lib/libbz2.so.1.0.8
+usr/lib/libc.so.6 -> usr/lib/libc-2.31.so
+usr/lib/libcap-ng.so -> usr/lib/libcap-ng.so.0.0.0
+usr/lib/libcap-ng.so.0 -> usr/lib/libcap-ng.so.0.0.0
+usr/lib/libcap.so -> usr/lib/libcap.so.2 -> usr/lib/libcap.so.2.48
+usr/lib/libcap.so.2 -> usr/lib/libcap.so.2.48
+usr/lib/libcmocka.so -> usr/lib/libcmocka.so.0 -> usr/lib/libcmocka.so.0.7.0
+usr/lib/libcmocka.so.0 -> usr/lib/libcmocka.so.0.7.0
+usr/lib/libcom_err.so -> usr/lib/libcom_err.so.2 -> usr/lib/libcom_err.so.2.1
+usr/lib/libcom_err.so.2 -> usr/lib/libcom_err.so.2.1
+usr/lib/libcrypt.so.1 -> usr/lib/libcrypt-2.31.so
+usr/lib/libcrypto.so -> usr/lib/libcrypto.so.1.1
+usr/lib/libcurl.so -> usr/lib/libcurl.so.4.7.0
+usr/lib/libcurl.so.4 -> usr/lib/libcurl.so.4.7.0
+usr/lib/libdaemon.so -> usr/lib/libdaemon.so.0.5.0
+usr/lib/libdaemon.so.0 -> usr/lib/libdaemon.so.0.5.0
+usr/lib/libdbus-1.so -> usr/lib/libdbus-1.so.3.19.13
+usr/lib/libdbus-1.so.3 -> usr/lib/libdbus-1.so.3.19.13
+usr/lib/libdbus-c++-1.so -> usr/lib/libdbus-c++-1.so.0.0.0
+usr/lib/libdbus-c++-1.so.0 -> usr/lib/libdbus-c++-1.so.0.0.0
+usr/lib/libdbus-c++-glib-1.so -> usr/lib/libdbus-c++-glib-1.so.0.0.0
+usr/lib/libdbus-c++-glib-1.so.0 -> usr/lib/libdbus-c++-glib-1.so.0.0.0
+usr/lib/libdbus-glib-1.so -> usr/lib/libdbus-glib-1.so.2.3.4
+usr/lib/libdbus-glib-1.so.2 -> usr/lib/libdbus-glib-1.so.2.3.4
+usr/lib/libdcerpc-binding.so -> usr/lib/libdcerpc-binding.so.0.0.1
+usr/lib/libdcerpc-binding.so.0 -> usr/lib/libdcerpc-binding.so.0.0.1
+usr/lib/libdcerpc-samr.so -> usr/lib/libdcerpc-samr.so.0.0.1
+usr/lib/libdcerpc-samr.so.0 -> usr/lib/libdcerpc-samr.so.0.0.1
+usr/lib/libdcerpc-server-core.so -> usr/lib/libdcerpc-server-core.so.0.0.1
+usr/lib/libdcerpc-server-core.so.0 -> usr/lib/libdcerpc-server-core.so.0.0.1
+usr/lib/libdcerpc.so -> usr/lib/libdcerpc.so.0.0.1
+usr/lib/libdcerpc.so.0 -> usr/lib/libdcerpc.so.0.0.1
+usr/lib/libdl.so.2 -> usr/lib/libdl-2.31.so
+usr/lib/libdrop_ambient.so -> usr/lib/libdrop_ambient.so.0.0.0
+usr/lib/libdrop_ambient.so.0 -> usr/lib/libdrop_ambient.so.0.0.0
+usr/lib/libe2p.so -> usr/lib/libe2p.so.2 -> usr/lib/libe2p.so.2.3
+usr/lib/libe2p.so.2 -> usr/lib/libe2p.so.2.3
+usr/lib/libev.so -> usr/lib/libev.so.4.0.0
+usr/lib/libev.so.4 -> usr/lib/libev.so.4.0.0
+usr/lib/libevdev.so -> usr/lib/libevdev.so.2 -> usr/lib/libevdev.so.2.3.0
+usr/lib/libevdev.so.2 -> usr/lib/libevdev.so.2.3.0
+usr/lib/libevent-2.1.so.7 -> usr/lib/libevent-2.1.so.7.0.1
+usr/lib/libevent.so -> usr/lib/libevent-2.1.so.7.0.1
+usr/lib/libevent_core-2.1.so.7 -> usr/lib/libevent_core-2.1.so.7.0.1
+usr/lib/libevent_core.so -> usr/lib/libevent_core-2.1.so.7.0.1
+usr/lib/libevent_extra-2.1.so.7 -> usr/lib/libevent_extra-2.1.so.7.0.1
+usr/lib/libevent_extra.so -> usr/lib/libevent_extra-2.1.so.7.0.1
+usr/lib/libevent_openssl-2.1.so.7 -> usr/lib/libevent_openssl-2.1.so.7.0.1
+usr/lib/libevent_openssl.so -> usr/lib/libevent_openssl-2.1.so.7.0.1
+usr/lib/libevent_pthreads-2.1.so.7 -> usr/lib/libevent_pthreads-2.1.so.7.0.1
+usr/lib/libevent_pthreads.so -> usr/lib/libevent_pthreads-2.1.so.7.0.1
+usr/lib/libexpat.so -> usr/lib/libexpat.so.1.8.1
+usr/lib/libexpat.so.1 -> usr/lib/libexpat.so.1.8.1
+usr/lib/libext2fs.so -> usr/lib/libext2fs.so.2 -> usr/lib/libext2fs.so.2.4
+usr/lib/libext2fs.so.2 -> usr/lib/libext2fs.so.2.4
+usr/lib/libfdisk.so -> usr/lib/libfdisk.so.1.1.0
+usr/lib/libfdisk.so.1 -> usr/lib/libfdisk.so.1.1.0
+usr/lib/libfdt.so -> usr/lib/libfdt.so.1 -> usr/lib/libfdt-1.6.0.so
+usr/lib/libfdt.so.1 -> usr/lib/libfdt-1.6.0.so
+usr/lib/libffi.so -> usr/lib/libffi.so.7.1.0
+usr/lib/libffi.so.7 -> usr/lib/libffi.so.7.1.0
+usr/lib/libfl.so -> usr/lib/libfl.so.2.0.0
+usr/lib/libfl.so.2 -> usr/lib/libfl.so.2.0.0
+usr/lib/libfluidsynth.so -> usr/lib/libfluidsynth.so.3 -> usr/lib/libfluidsynth.so.3.0.0
+usr/lib/libfluidsynth.so.3 -> usr/lib/libfluidsynth.so.3.0.0
+usr/lib/libformw.so -> usr/lib/libformw.so.6 -> usr/lib/libformw.so.6.1
+usr/lib/libformw.so.6 -> usr/lib/libformw.so.6.1
+usr/lib/libfreetype.so -> usr/lib/libfreetype.so.6.17.4
+usr/lib/libfreetype.so.6 -> usr/lib/libfreetype.so.6.17.4
+usr/lib/libgcrypt.so -> usr/lib/libgcrypt.so.20.3.3
+usr/lib/libgcrypt.so.20 -> usr/lib/libgcrypt.so.20.3.3
+usr/lib/libgfortran.so.5 -> usr/lib/libgfortran.so.5.0.0
+usr/lib/libgif.so -> usr/lib/libgif.so.7 -> usr/lib/libgif.so.7.2.0
+usr/lib/libgif.so.7 -> usr/lib/libgif.so.7.2.0
+usr/lib/libgio-2.0.so -> usr/lib/libgio-2.0.so.0 -> usr/lib/libgio-2.0.so.0.6600.8
+usr/lib/libgio-2.0.so.0 -> usr/lib/libgio-2.0.so.0.6600.8
+usr/lib/libgirepository-1.0.so -> usr/lib/libgirepository-1.0.so.1 -> usr/lib/libgirepository-1.0.so.1.0.0
+usr/lib/libgirepository-1.0.so.1 -> usr/lib/libgirepository-1.0.so.1.0.0
+usr/lib/libglib-2.0.so -> usr/lib/libglib-2.0.so.0 -> usr/lib/libglib-2.0.so.0.6600.8
+usr/lib/libglib-2.0.so.0 -> usr/lib/libglib-2.0.so.0.6600.8
+usr/lib/libgmodule-2.0.so -> usr/lib/libgmodule-2.0.so.0 -> usr/lib/libgmodule-2.0.so.0.6600.8
+usr/lib/libgmodule-2.0.so.0 -> usr/lib/libgmodule-2.0.so.0.6600.8
+usr/lib/libgmp.so -> usr/lib/libgmp.so.10.4.1
+usr/lib/libgmp.so.10 -> usr/lib/libgmp.so.10.4.1
+usr/lib/libgmpxx.so -> usr/lib/libgmpxx.so.4.6.1
+usr/lib/libgmpxx.so.4 -> usr/lib/libgmpxx.so.4.6.1
+usr/lib/libgnutls.so -> usr/lib/libgnutls.so.30.29.1
+usr/lib/libgnutls.so.30 -> usr/lib/libgnutls.so.30.29.1
+usr/lib/libgnutlsxx.so -> usr/lib/libgnutlsxx.so.28.1.0
+usr/lib/libgnutlsxx.so.28 -> usr/lib/libgnutlsxx.so.28.1.0
+usr/lib/libgobject-2.0.so -> usr/lib/libgobject-2.0.so.0 -> usr/lib/libgobject-2.0.so.0.6600.8
+usr/lib/libgobject-2.0.so.0 -> usr/lib/libgobject-2.0.so.0.6600.8
+usr/lib/libgomp.so.1 -> usr/lib/libgomp.so.1.0.0
+usr/lib/libgpg-error.so -> usr/lib/libgpg-error.so.0.31.1
+usr/lib/libgpg-error.so.0 -> usr/lib/libgpg-error.so.0.31.1
+usr/lib/libgpm.so -> usr/lib/libgpm.so.2.1.0
+usr/lib/libgpm.so.2 -> usr/lib/libgpm.so.2.1.0
+usr/lib/libgthread-2.0.so -> usr/lib/libgthread-2.0.so.0 -> usr/lib/libgthread-2.0.so.0.6600.8
+usr/lib/libgthread-2.0.so.0 -> usr/lib/libgthread-2.0.so.0.6600.8
+usr/lib/libgudev-1.0.so -> usr/lib/libgudev-1.0.so.0.2.0
+usr/lib/libgudev-1.0.so.0 -> usr/lib/libgudev-1.0.so.0.2.0
+usr/lib/libhid.so -> usr/lib/libhid.so.0.0.0
+usr/lib/libhid.so.0 -> usr/lib/libhid.so.0.0.0
+usr/lib/libhidapi-hidraw.so -> usr/lib/libhidapi-hidraw.so.0.0.0
+usr/lib/libhidapi-hidraw.so.0 -> usr/lib/libhidapi-hidraw.so.0.0.0
+usr/lib/libhidapi-libusb.so -> usr/lib/libhidapi-libusb.so.0.0.0
+usr/lib/libhidapi-libusb.so.0 -> usr/lib/libhidapi-libusb.so.0.0.0
+usr/lib/libhistory.so -> usr/lib/libhistory.so.8 -> usr/lib/libhistory.so.8.1
+usr/lib/libhistory.so.8 -> usr/lib/libhistory.so.8.1
+usr/lib/libhogweed.so -> usr/lib/libhogweed.so.6.4
+usr/lib/libhogweed.so.6 -> usr/lib/libhogweed.so.6.4
+usr/lib/libi2c.so -> usr/lib/libi2c.so.0 -> usr/lib/libi2c.so.0.1.1
+usr/lib/libi2c.so.0 -> usr/lib/libi2c.so.0.1.1
+usr/lib/libid3tag.so -> usr/lib/libid3tag.so.0.3.0
+usr/lib/libid3tag.so.0 -> usr/lib/libid3tag.so.0.3.0
+usr/lib/libinotifytools.so -> usr/lib/libinotifytools.so.0.4.1
+usr/lib/libinotifytools.so.0 -> usr/lib/libinotifytools.so.0.4.1
+usr/lib/libinput.so -> usr/lib/libinput.so.10 -> usr/lib/libinput.so.10.13.0
+usr/lib/libinput.so.10 -> usr/lib/libinput.so.10.13.0
+usr/lib/libip4tc.so -> usr/lib/libip4tc.so.2.0.0
+usr/lib/libip4tc.so.2 -> usr/lib/libip4tc.so.2.0.0
+usr/lib/libip6tc.so -> usr/lib/libip6tc.so.2.0.0
+usr/lib/libip6tc.so.2 -> usr/lib/libip6tc.so.2.0.0
+usr/lib/libiw.so -> usr/lib/libiw.so.30
+usr/lib/libjack.so -> usr/lib/libjack.so.0.0.28
+usr/lib/libjack.so.0 -> usr/lib/libjack.so.0.0.28
+usr/lib/libjim.so -> usr/lib/libjim.so.0.79
+usr/lib/libjpeg.so -> usr/lib/libjpeg.so.8 -> usr/lib/libjpeg.so.8.2.2
+usr/lib/libjpeg.so.8 -> usr/lib/libjpeg.so.8.2.2
+usr/lib/libjq.so -> usr/lib/libjq.so.1.0.4
+usr/lib/libjq.so.1 -> usr/lib/libjq.so.1.0.4
+usr/lib/libkmod.so -> usr/lib/libkmod.so.2.3.6
+usr/lib/libkmod.so.2 -> usr/lib/libkmod.so.2.3.6
+usr/lib/liblftp-jobs.so -> usr/lib/liblftp-jobs.so.0.0.0
+usr/lib/liblftp-jobs.so.0 -> usr/lib/liblftp-jobs.so.0.0.0
+usr/lib/liblftp-tasks.so -> usr/lib/liblftp-tasks.so.0.0.0
+usr/lib/liblftp-tasks.so.0 -> usr/lib/liblftp-tasks.so.0.0.0
+usr/lib/liblockfile.so -> usr/lib/liblockfile.so.1.0
+usr/lib/liblockfile.so.1 -> usr/lib/liblockfile.so -> usr/lib/liblockfile.so.1.0
+usr/lib/liblzma.so -> usr/lib/liblzma.so.5.2.5
+usr/lib/liblzma.so.5 -> usr/lib/liblzma.so.5.2.5
+usr/lib/liblzo2.so -> usr/lib/liblzo2.so.2 -> usr/lib/liblzo2.so.2.0.0
+usr/lib/liblzo2.so.2 -> usr/lib/liblzo2.so.2.0.0
+usr/lib/libm.so.6 -> usr/lib/libm-2.31.so
+usr/lib/libmagic.so -> usr/lib/libmagic.so.1.0.0
+usr/lib/libmagic.so.1 -> usr/lib/libmagic.so.1.0.0
+usr/lib/libmenuw.so -> usr/lib/libmenuw.so.6 -> usr/lib/libmenuw.so.6.1
+usr/lib/libmenuw.so.6 -> usr/lib/libmenuw.so.6.1
+usr/lib/libmodplug.so -> usr/lib/libmodplug.so.1.0.0
+usr/lib/libmodplug.so.1 -> usr/lib/libmodplug.so.1.0.0
+usr/lib/libmount.so -> usr/lib/libmount.so.1.1.0
+usr/lib/libmount.so.1 -> usr/lib/libmount.so.1.1.0
+usr/lib/libmpg123.so -> usr/lib/libmpg123.so.0.44.12
+usr/lib/libmpg123.so.0 -> usr/lib/libmpg123.so.0.44.12
+usr/lib/libmtdev.so -> usr/lib/libmtdev.so.1.0.0
+usr/lib/libmtdev.so.1 -> usr/lib/libmtdev.so.1.0.0
+usr/lib/libncursesw.so -> usr/lib/libncursesw.so.6 -> usr/lib/libncursesw.so.6.1
+usr/lib/libncursesw.so.6 -> usr/lib/libncursesw.so.6.1
+usr/lib/libndr-krb5pac.so -> usr/lib/libndr-krb5pac.so.0.0.1
+usr/lib/libndr-krb5pac.so.0 -> usr/lib/libndr-krb5pac.so.0.0.1
+usr/lib/libndr-nbt.so -> usr/lib/libndr-nbt.so.0.0.1
+usr/lib/libndr-nbt.so.0 -> usr/lib/libndr-nbt.so.0.0.1
+usr/lib/libndr-standard.so -> usr/lib/libndr-standard.so.0.0.1
+usr/lib/libndr-standard.so.0 -> usr/lib/libndr-standard.so.0.0.1
+usr/lib/libndr.so -> usr/lib/libndr.so.1.0.1
+usr/lib/libndr.so.1 -> usr/lib/libndr.so.1.0.1
+usr/lib/libnetapi.so -> usr/lib/libnetapi.so.0
+usr/lib/libnettle.so -> usr/lib/libnettle.so.8.4
+usr/lib/libnettle.so.8 -> usr/lib/libnettle.so.8.4
+usr/lib/libnewt.so -> usr/lib/libnewt.so.0.52 -> usr/lib/libnewt.so.0.52.21
+usr/lib/libnewt.so.0.52 -> usr/lib/libnewt.so.0.52.21
+usr/lib/libnl-3.so -> usr/lib/libnl-3.so.200.26.0
+usr/lib/libnl-3.so.200 -> usr/lib/libnl-3.so.200.26.0
+usr/lib/libnl-genl-3.so -> usr/lib/libnl-genl-3.so.200.26.0
+usr/lib/libnl-genl-3.so.200 -> usr/lib/libnl-genl-3.so.200.26.0
+usr/lib/libnl-idiag-3.so -> usr/lib/libnl-idiag-3.so.200.26.0
+usr/lib/libnl-idiag-3.so.200 -> usr/lib/libnl-idiag-3.so.200.26.0
+usr/lib/libnl-nf-3.so -> usr/lib/libnl-nf-3.so.200.26.0
+usr/lib/libnl-nf-3.so.200 -> usr/lib/libnl-nf-3.so.200.26.0
+usr/lib/libnl-route-3.so -> usr/lib/libnl-route-3.so.200.26.0
+usr/lib/libnl-route-3.so.200 -> usr/lib/libnl-route-3.so.200.26.0
+usr/lib/libnl-xfrm-3.so -> usr/lib/libnl-xfrm-3.so.200.26.0
+usr/lib/libnl-xfrm-3.so.200 -> usr/lib/libnl-xfrm-3.so.200.26.0
+usr/lib/libnsl.so.1 -> usr/lib/libnsl-2.31.so
+usr/lib/libnss_dns.so.2 -> usr/lib/libnss_dns-2.31.so
+usr/lib/libnss_files.so.2 -> usr/lib/libnss_files-2.31.so
+usr/lib/libnss_winbind.so -> usr/lib/libnss_winbind.so.2
+usr/lib/libnss_wins.so -> usr/lib/libnss_wins.so.2
+usr/lib/libntfs-3g.so -> usr/lib/libntfs-3g.so.88.0.0
+usr/lib/libntfs-3g.so.88 -> usr/lib/libntfs-3g.so.88.0.0
+usr/lib/libogg.so -> usr/lib/libogg.so.0.8.4
+usr/lib/libogg.so.0 -> usr/lib/libogg.so.0.8.4
+usr/lib/libout123.so -> usr/lib/libout123.so.0.2.2
+usr/lib/libout123.so.0 -> usr/lib/libout123.so.0.2.2
+usr/lib/libpam.so -> usr/lib/libpam.so.0.85.1
+usr/lib/libpam.so.0 -> usr/lib/libpam.so.0.85.1
+usr/lib/libpam_misc.so -> usr/lib/libpam_misc.so.0.82.1
+usr/lib/libpam_misc.so.0 -> usr/lib/libpam_misc.so.0.82.1
+usr/lib/libpamc.so -> usr/lib/libpamc.so.0.82.1
+usr/lib/libpamc.so.0 -> usr/lib/libpamc.so.0.82.1
+usr/lib/libpanelw.so -> usr/lib/libpanelw.so.6 -> usr/lib/libpanelw.so.6.1
+usr/lib/libpanelw.so.6 -> usr/lib/libpanelw.so.6.1
+usr/lib/libparted-fs-resize.so -> usr/lib/libparted-fs-resize.so.0.0.2
+usr/lib/libparted-fs-resize.so.0 -> usr/lib/libparted-fs-resize.so.0.0.2
+usr/lib/libparted.so -> usr/lib/libparted.so.2.0.2
+usr/lib/libparted.so.2 -> usr/lib/libparted.so.2.0.2
+usr/lib/libpcre.so -> usr/lib/libpcre.so.1.2.12
+usr/lib/libpcre.so.1 -> usr/lib/libpcre.so.1.2.12
+usr/lib/libpcrecpp.so -> usr/lib/libpcrecpp.so.0.0.2
+usr/lib/libpcrecpp.so.0 -> usr/lib/libpcrecpp.so.0.0.2
+usr/lib/libpcreposix.so -> usr/lib/libpcreposix.so.0.0.7
+usr/lib/libpcreposix.so.0 -> usr/lib/libpcreposix.so.0.0.7
+usr/lib/libpng.so -> usr/lib/libpng16.so -> usr/lib/libpng16.so.16.37.0
+usr/lib/libpng16.so -> usr/lib/libpng16.so.16.37.0
+usr/lib/libpng16.so.16 -> usr/lib/libpng16.so.16.37.0
+usr/lib/libpopt.so -> usr/lib/libpopt.so.0.0.1
+usr/lib/libpopt.so.0 -> usr/lib/libpopt.so.0.0.1
+usr/lib/libpsx.so -> usr/lib/libpsx.so.2 -> usr/lib/libpsx.so.2.48
+usr/lib/libpsx.so.2 -> usr/lib/libpsx.so.2.48
+usr/lib/libpthread.so.0 -> usr/lib/libpthread-2.31.so
+usr/lib/libpthsem.so -> usr/lib/libpthsem.so.20.0.28
+usr/lib/libpthsem.so.20 -> usr/lib/libpthsem.so.20.0.28
+usr/lib/libpython3.9.so -> usr/lib/libpython3.9.so.1.0
+usr/lib/libreadline.so -> usr/lib/libreadline.so.8 -> usr/lib/libreadline.so.8.1
+usr/lib/libreadline.so.8 -> usr/lib/libreadline.so.8.1
+usr/lib/libresolv.so.2 -> usr/lib/libresolv-2.31.so
+usr/lib/librt.so.1 -> usr/lib/librt-2.31.so
+usr/lib/libsamba-credentials.so -> usr/lib/libsamba-credentials.so.1.0.0
+usr/lib/libsamba-credentials.so.1 -> usr/lib/libsamba-credentials.so.1.0.0
+usr/lib/libsamba-errors.so -> usr/lib/libsamba-errors.so.1
+usr/lib/libsamba-hostconfig.so -> usr/lib/libsamba-hostconfig.so.0.0.1
+usr/lib/libsamba-hostconfig.so.0 -> usr/lib/libsamba-hostconfig.so.0.0.1
+usr/lib/libsamba-passdb.so -> usr/lib/libsamba-passdb.so.0.28.0
+usr/lib/libsamba-passdb.so.0 -> usr/lib/libsamba-passdb.so.0.28.0
+usr/lib/libsamba-policy.cpython-39-x86-64-linux-gnu.so -> usr/lib/libsamba-policy.cpython-39-x86-64-linux-gnu.so.0.0.1
+usr/lib/libsamba-policy.cpython-39-x86-64-linux-gnu.so.0 -> usr/lib/libsamba-policy.cpython-39-x86-64-linux-gnu.so.0.0.1
+usr/lib/libsamba-util.so -> usr/lib/libsamba-util.so.0.0.1
+usr/lib/libsamba-util.so.0 -> usr/lib/libsamba-util.so.0.0.1
+usr/lib/libsamdb.so -> usr/lib/libsamdb.so.0.0.1
+usr/lib/libsamdb.so.0 -> usr/lib/libsamdb.so.0.0.1
+usr/lib/libslang.so -> usr/lib/libslang.so.2 -> usr/lib/libslang.so.2.3.2
+usr/lib/libslang.so.2 -> usr/lib/libslang.so.2.3.2
+usr/lib/libsmartcols.so -> usr/lib/libsmartcols.so.1.1.0
+usr/lib/libsmartcols.so.1 -> usr/lib/libsmartcols.so.1.1.0
+usr/lib/libsmbclient.so -> usr/lib/libsmbclient.so.0.7.0
+usr/lib/libsmbclient.so.0 -> usr/lib/libsmbclient.so.0.7.0
+usr/lib/libsmbconf.so -> usr/lib/libsmbconf.so.0
+usr/lib/libss.so -> usr/lib/libss.so.2 -> usr/lib/libss.so.2.0
+usr/lib/libss.so.2 -> usr/lib/libss.so.2.0
+usr/lib/libssh.so -> usr/lib/libssh.so.4 -> usr/lib/libssh.so.4.8.6
+usr/lib/libssh.so.4 -> usr/lib/libssh.so.4.8.6
+usr/lib/libssh2.so -> usr/lib/libssh2.so.1.0.1
+usr/lib/libssh2.so.1 -> usr/lib/libssh2.so.1.0.1
+usr/lib/libssl.so -> usr/lib/libssl.so.1.1
+usr/lib/libstdc++.so.6 -> usr/lib/libstdc++.so.6.0.28
+usr/lib/libtasn1.so -> usr/lib/libtasn1.so.6.6.1
+usr/lib/libtasn1.so.6 -> usr/lib/libtasn1.so.6.6.1
+usr/lib/libtevent-util.so -> usr/lib/libtevent-util.so.0.0.1
+usr/lib/libtevent-util.so.0 -> usr/lib/libtevent-util.so.0.0.1
+usr/lib/libthread_db.so.1 -> usr/lib/libthread_db-1.0.so
+usr/lib/libtiff.so -> usr/lib/libtiff.so.5.6.0
+usr/lib/libtiff.so.5 -> usr/lib/libtiff.so.5.6.0
+usr/lib/libtorrent.so -> usr/lib/libtorrent.so.21.0.0
+usr/lib/libtorrent.so.21 -> usr/lib/libtorrent.so.21.0.0
+usr/lib/libturbojpeg.so -> usr/lib/libturbojpeg.so.0 -> usr/lib/libturbojpeg.so.0.2.0
+usr/lib/libturbojpeg.so.0 -> usr/lib/libturbojpeg.so.0.2.0
+usr/lib/libudev.so -> usr/lib/libudev.so.1.6.3
+usr/lib/libudev.so.1 -> usr/lib/libudev.so.1.6.3
+usr/lib/libusb-0.1.so.4 -> usr/lib/libusb-0.1.so.4.4.4
+usr/lib/libusb-1.0.so -> usr/lib/libusb-1.0.so.0.3.0
+usr/lib/libusb-1.0.so.0 -> usr/lib/libusb-1.0.so.0.3.0
+usr/lib/libusb.so -> usr/lib/libusb-0.1.so.4.4.4
+usr/lib/libutil.so.1 -> usr/lib/libutil-2.31.so
+usr/lib/libuuid.so -> usr/lib/libuuid.so.1.3.0
+usr/lib/libuuid.so.1 -> usr/lib/libuuid.so.1.3.0
+usr/lib/libvorbis.so -> usr/lib/libvorbis.so.0.4.9
+usr/lib/libvorbis.so.0 -> usr/lib/libvorbis.so.0.4.9
+usr/lib/libvorbisenc.so -> usr/lib/libvorbisenc.so.2.0.12
+usr/lib/libvorbisenc.so.2 -> usr/lib/libvorbisenc.so.2.0.12
+usr/lib/libvorbisfile.so -> usr/lib/libvorbisfile.so.3.3.8
+usr/lib/libvorbisfile.so.3 -> usr/lib/libvorbisfile.so.3.3.8
+usr/lib/libwbclient.so -> usr/lib/libwbclient.so.0.15
+usr/lib/libwbclient.so.0 -> usr/lib/libwbclient.so.0.15
+usr/lib/libxkbcommon.so -> usr/lib/libxkbcommon.so.0 -> usr/lib/libxkbcommon.so.0.0.0
+usr/lib/libxkbcommon.so.0 -> usr/lib/libxkbcommon.so.0.0.0
+usr/lib/libxml2.so -> usr/lib/libxml2.so.2.9.12
+usr/lib/libxml2.so.2 -> usr/lib/libxml2.so.2.9.12
+usr/lib/libxtables.so -> usr/lib/libxtables.so.12.3.0
+usr/lib/libxtables.so.12 -> usr/lib/libxtables.so.12.3.0
+usr/lib/libz.so -> usr/lib/libz.so.1.2.11
+usr/lib/libz.so.1 -> usr/lib/libz.so.1.2.11
+usr/lib/samba/libasn1-samba4.so.8 -> usr/lib/samba/libasn1-samba4.so.8.0.0
+usr/lib/samba/libcom_err-samba4.so.0 -> usr/lib/samba/libcom_err-samba4.so.0.25
+usr/lib/samba/libgssapi-samba4.so.2 -> usr/lib/samba/libgssapi-samba4.so.2.0.0
+usr/lib/samba/libhcrypto-samba4.so.5 -> usr/lib/samba/libhcrypto-samba4.so.5.0.1
+usr/lib/samba/libhdb-samba4.so.11 -> usr/lib/samba/libhdb-samba4.so.11.0.2
+usr/lib/samba/libheimbase-samba4.so.1 -> usr/lib/samba/libheimbase-samba4.so.1.0.0
+usr/lib/samba/libheimntlm-samba4.so.1 -> usr/lib/samba/libheimntlm-samba4.so.1.0.1
+usr/lib/samba/libhx509-samba4.so.5 -> usr/lib/samba/libhx509-samba4.so.5.0.0
+usr/lib/samba/libkdc-samba4.so.2 -> usr/lib/samba/libkdc-samba4.so.2.0.0
+usr/lib/samba/libkrb5-samba4.so.26 -> usr/lib/samba/libkrb5-samba4.so.26.0.0
+usr/lib/samba/libldb.so.2 -> usr/lib/samba/libldb.so.2.3.0
+usr/lib/samba/libpyldb-util.cpython-39-x86-64-linux-gnu.so.2 -> usr/lib/samba/libpyldb-util.cpython-39-x86-64-linux-gnu.so.2.3.0
+usr/lib/samba/libpytalloc-util.cpython-39-x86-64-linux-gnu.so.2 -> usr/lib/samba/libpytalloc-util.cpython-39-x86-64-linux-gnu.so.2.3.2
+usr/lib/samba/libroken-samba4.so.19 -> usr/lib/samba/libroken-samba4.so.19.0.1
+usr/lib/samba/libtalloc.so.2 -> usr/lib/samba/libtalloc.so.2.3.2
+usr/lib/samba/libtdb.so.1 -> usr/lib/samba/libtdb.so.1.4.3
+usr/lib/samba/libtevent.so.0 -> usr/lib/samba/libtevent.so.0.10.2
+usr/lib/samba/libwind-samba4.so.0 -> usr/lib/samba/libwind-samba4.so.0.0.0
+usr/lib/tc/m_ipt.so -> usr/lib/tc/m_xt.so
+usr/lib/xtables/libxt_NOTRACK.so -> usr/lib/xtables/libxt_CT.so
+usr/lib/xtables/libxt_state.so -> usr/lib/xtables/libxt_conntrack.so
+usr/libexec/sudo/libsudo_util.so -> usr/libexec/sudo/libsudo_util.so.0.0.0
+usr/libexec/sudo/libsudo_util.so.0 -> usr/libexec/sudo/libsudo_util.so.0.0.0

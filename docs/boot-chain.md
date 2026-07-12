@@ -761,7 +761,7 @@ Shorthand: `have() { grep -qx "CONFIG_$1" "$CFG"; }` / `notset() { grep -qx "# C
 | F1 | `CONFIG_EXT4_FS` | `y` | Stock `=y`. `linux.img` is ext4. Built-in — the initramfs mounts it. |
 | F2 | `CONFIG_VFAT_FS` | `y` | Stock `=y` (`CONFIG_FAT_FS=y`, `# CONFIG_MSDOS_FS is not set`). |
 | F3 | `CONFIG_EXFAT_FS` | `y` | Stock `=y`. |
-| F4 | `CONFIG_NLS` + codepages | `NLS_CODEPAGE_437=y`, `NLS_ISO8859_1=y`, `NLS_UTF8=y`, `NLS_ASCII=y` | Stock exactly these (`# CONFIG_NLS_CODEPAGE_850 is not set`). Also `FAT_DEFAULT_CODEPAGE=437`, `FAT_DEFAULT_IOCHARSET="iso8859-1"`. Built-in: a missing codepage makes the vfat mount fail *inside the initramfs*, before any module could be loaded. |
+| F4 | `CONFIG_NLS` + codepages | **14** symbols — see below | **[P1.3 CORRECTION: this row previously said "Stock exactly these" and listed only four (437, ISO8859-1, UTF8, ASCII). That was wrong.]** Stock actually carries **14** `CONFIG_NLS_*` symbols: `NLS_DEFAULT="iso8859-1"`, codepages **437, 855, 866, 936, 950, 1251**, `ISO8859_1`, `ISO8859_5`, `ISO8859_15`, `KOI8_R`, `KOI8_U`, `MAC_CYRILLIC`, `ASCII`, `UTF8` — i.e. full **Cyrillic** and **CJK** (936 = GBK, 950 = Big5) coverage. **Carry all 14.** Also `FAT_DEFAULT_CODEPAGE=437`, `FAT_DEFAULT_IOCHARSET="iso8859-1"` (do **not** change IOCHARSET — see ADR 0010; the UTF-8 knob is `FAT_DEFAULT_UTF8`). Built-in, not modules: a missing codepage makes the vfat mount fail *inside the initramfs*, before any module could be loaded. <br><br>Worth noting for ADR 0010: stock shipping GBK/Big5/Cyrillic codepages is evidence the upstream project **did** anticipate non-ASCII filenames on `/media/fat`, even though the maintainer's own card has none. It strengthens, not weakens, the case for `FAT_DEFAULT_UTF8=y` on the vfat fallback. |
 
 > ### New constraint discovered — not in A1–A9. Route to P0.9 / P0.4.
 >
@@ -831,8 +831,13 @@ grep -q '^CONFIG_INITRAMFS_SOURCE=".\+"' "$CFG" || { echo "FAIL: INITRAMFS_SOURC
 req    'CONFIG_BLK_DEV_LOOP=y'                  # L1
 req    'CONFIG_BLK_DEV_LOOP_MIN_COUNT=8'        # L2
 req    'CONFIG_EXT4_FS=y'; req 'CONFIG_VFAT_FS=y'; req 'CONFIG_EXFAT_FS=y'   # F1-F3
-req    'CONFIG_NLS_CODEPAGE_437=y'; req 'CONFIG_NLS_ISO8859_1=y'
-req    'CONFIG_NLS_UTF8=y';         req 'CONFIG_NLS_ASCII=y'                 # F4
+# F4 -- all 14 stock NLS symbols, not the 4 this checker used to assert.
+for _nls in NLS_CODEPAGE_437 NLS_CODEPAGE_855 NLS_CODEPAGE_866 NLS_CODEPAGE_936 \
+            NLS_CODEPAGE_950 NLS_CODEPAGE_1251 NLS_ISO8859_1 NLS_ISO8859_5 \
+            NLS_ISO8859_15 NLS_KOI8_R NLS_KOI8_U NLS_MAC_CYRILLIC NLS_ASCII NLS_UTF8; do
+	req "CONFIG_${_nls}=y"
+done
+req    'CONFIG_FAT_DEFAULT_UTF8=y'   # ADR 0010: the vfat FAT32 fallback must decode UTF-8
 req    'CONFIG_SERIAL_8250_CONSOLE=y'; req 'CONFIG_SERIAL_8250_DW=y'
 req    'CONFIG_SERIAL_OF_PLATFORM=y'                                          # C1
 req    'CONFIG_DEVMEM=y'                                                      # P1 (A4)

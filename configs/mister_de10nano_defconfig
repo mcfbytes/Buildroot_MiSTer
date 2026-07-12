@@ -61,6 +61,7 @@ BR2_TOOLCHAIN_BUILDROOT_CXX=y
 # post-image.sh` from a BR_DIR one level deeper than ours). A build-time
 # checker failure here fails `make all` (Buildroot's Makefile runs post-image
 # scripts as plain recipe lines; a nonzero exit stops make).
+BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/post-build.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 
@@ -419,3 +420,4 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 #   libhid / libhid-detach-device    -- no Buildroot package, superseded API
 #   jack1/jack2 (libjack)            -- dangling in stock, unused by MiSTer
 #   rtorrent / libtorrent            -- unused BitTorrent client, SONAME already drifted
+BR2_TARGET_GENERIC_ROOT_PASSWD=""

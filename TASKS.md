@@ -510,10 +510,26 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   stock-parity fstab (root `rw,noauto` — the `ro` comes from the cmdline; tmpfs on /tmp,
   /run, /dev/shm, /var/lib/samba, /var/db/dhcpcd); hostname `MiSTer`; profile; ifupdown
   `/etc/network/interfaces` + dhcpcd; **eudev** (stock uses udev, not mdev); and the
-  USB-storage automount mechanism found in P0.3. The six user-file destinations
-  (`/etc/hostname`, `/etc/hosts`, `/etc/network/interfaces`, `/etc/resolv.conf`,
-  `/etc/dhcpcd.conf`, `/etc/fstab`) must be **regular files** — the updater copies over
-  them inside the offline image (A8). Diverge from stock only with a documented reason.
+  USB-storage automount mechanism found in P0.3.
+
+  **⚠ [CORRECTED — the original text here was WRONG and would break DNS.]** It said all
+  six user-file destinations *"must be regular files (A8)"*. **Invariant A8 is WITHDRAWN**
+  (PLAN §3). **Five** are regular files — `/etc/hostname`, `/etc/hosts`,
+  `/etc/network/interfaces`, `/etc/dhcpcd.conf`, `/etc/fstab`.
+  **`/etc/resolv.conf` MUST be a SYMLINK into a tmpfs** ([ADR 0011](docs/decisions/0011-resolv-conf-buildroot-default.md)).
+  Not for parity — for correctness: `/` is mounted **read-only** at boot (confirmed on
+  hardware, P1.13), and `S41dhcpcd`'s `20-resolv.conf` hook writes `/etc/resolv.conf`
+  *during* boot. A regular file there is **unwritable at exactly the moment it must be
+  written.** Ship **Buildroot's own skeleton default** (`/etc/resolv.conf ->
+  ../run/resolv.conf`) — prefer the upstream default over code we maintain. The Downloader's
+  restore of that one file stays a silent no-op, exactly as on stock; that is *deliberate*
+  parity, not an oversight.
+
+  **⚠ HARD REQUIREMENT from P1.10:** the image **must contain `/media/fat`, `/dev`, `/proc`
+  and `/sys` as empty directories.** `/` is read-only, so `/init` **cannot create its own
+  mount points** — it rescues to a serial shell if they are missing. Stock has all four.
+
+  Diverge from stock only with a documented reason.
   **Done when:** a diff report `docs/init-parity.md` lists every stock init script with
   status: identical / adapted (why) / dropped (why).
 

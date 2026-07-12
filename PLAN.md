@@ -3,7 +3,7 @@
 **A reproducible, drop-in `linux.img` built from a modern Buildroot, with all kernel
 patches carried in-tree as Buildroot patch files.**
 
-Status: revised proposal v2 (2026-07-11) — review amendments folded in; task-level execution plan in `TASKS.md`
+Status: v2 (2026-07-11) — verified against the shipped stock release (`docs/verification/stock-release-20250402.md`); task-level execution plan in `TASKS.md`
 Target board: Terasic DE10-Nano (Cyclone V SoC, `armv7-a` Cortex-A9)
 
 ---
@@ -121,8 +121,8 @@ extracted from the zImage's embedded IKCONFIG.)*
 * **`/MiSTer.version` at the rootfs root** — 6-char `YYMMDD` (e.g. `250402`), **baked into
 `linux.img` at build time**. Because `linux.img` *is* the running root filesystem, the
 Downloader reads the live system's own `/MiSTer.version` and updates when it differs from the
-last 6 characters of the db entry's `version`. *(Corrected: not
-`/media/fat/linux/MiSTer.version` as previously assumed.)*
+last 6 characters of the db entry's `version`. *(Note: it is **not**
+`/media/fat/linux/MiSTer.version` — a common misconception.)*
 * **User-file restore contract:** on every linux update the Downloader mounts the *new*
 `linux.img` read-write and copies `/media/fat/linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`
 over the corresponding files under `/etc` inside the image. These six destinations must

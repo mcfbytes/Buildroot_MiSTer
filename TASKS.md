@@ -1,8 +1,8 @@
 # MiSTer Linux Modernization — Ultracode Task List
 
-Companion to `PLAN.md` v2 (amendments A1–A9 folded into the plan; post-cutoff facts —
-6.18 LTS status/EOL, Buildroot 2026.02, mainline DE10-Nano DTS — confirmed by the
-maintainer, 2026-07-11). This file is the
+Companion to `PLAN.md` v2. **The plan is authoritative and current** — it already
+reflects all review findings and everything verified against the shipped stock release
+(`docs/verification/stock-release-20250402.md`); do not "re-correct" it. This file is the
 execution contract: every task is self-contained, has explicit acceptance criteria, and
 names the AI model sized to it. Work through phases in order; within a phase, tasks with
 satisfied dependencies may run in parallel.
@@ -48,63 +48,54 @@ escalate one tier (Haiku → Sonnet → Opus) and note why in the commit message
 
 ---
 
-## A. Plan amendments (corrections discovered in review)
+## A. Key constraints index (A1–A9)
 
-These have been folded into `PLAN.md` v2; they are retained here as the rationale record.
-Each is cross-referenced from the task that implements it.
+`PLAN.md` is authoritative and **already incorporates everything below** — nothing here
+is a pending correction, and no task should "fix" the plan against this list. Tasks cite
+these IDs as shorthand for load-bearing constraints that are easy to get wrong; each
+entry points to where the full text lives. All were verified against the shipped stock
+release (`docs/verification/stock-release-20250402.md`).
 
-- **A1 — The initramfs mechanism in §5 is wrong as specified.**
-  `BR2_TARGET_ROOTFS_INITRAMFS` embeds the *entire target rootfs* (~300 MB) into the
-  kernel image — it cannot produce a ~200 KB shim. Use a **two-stage build**: a second,
-  minimal Buildroot config (static BusyBox, `BR2_TARGET_ROOTFS_CPIO`) produces a tiny
-  `rootfs.cpio`; the main build's kernel consumes it via `CONFIG_INITRAMFS_SOURCE`.
-  The initramfs **must** be embedded in the zImage because the stock U-Boot boot command
-  (kept byte-identical per §8) does not load a separate initrd. → P1.10
-- **A2 — The initramfs `/init` must parse the kernel cmdline, not hardcode devices.**
-  Since U-Boot is unchanged, the cmdline will still contain `root=$mmcroot
-  loop=linux/linux.img ro rootwait`. `/init` must parse `root=` (the FAT/exFAT data
-  partition — which existing `u-boot.txt` files may override, e.g. USB boot) and `loop=`
-  (image path) from `/proc/cmdline`, implement `rootwait` semantics as a retry loop, and
-  mount the data partition as **vfat or exfat** (MiSTer supports exFAT SD cards — both
-  filesystems plus NLS codepages must be built-in, not modules). Failure path: drop to a
-  serial rescue shell with a diagnostic banner. → P1.10
-- **A3 (verified & corrected) — The `zImage_dtb` boot chain.** Stock U-Boot loads the
-  concatenated file, computes the DTB address from the zImage header's declared-size
-  field at offset `0x2C`, injects `bootargs` into `/chosen` via FDT fixup, and boots
-  `bootz $loadaddr - $fdt_addr` — no initrd, no ATAGs. `CONFIG_ARM_APPENDED_DTB` is
-  **not** needed (stock doesn't set it); plain `cat zImage dtb` is the correct assembly.
-  See `docs/verification/stock-release-20250402.md`. → P0.8, P1.3, P1.11
-- **A4 — `/dev/mem` restrictions will silently break the FPGA path.** `fpga_io.cpp`
-  mmaps hardcoded physical addresses. The kernel config must set `CONFIG_DEVMEM=y`,
-  `CONFIG_STRICT_DEVMEM=n`, `CONFIG_IO_STRICT_DEVMEM=n`. Modern defconfigs enable
-  STRICT_DEVMEM by default. → P1.3
-- **A5 (verified & corrected) — Stock already ships modules; keep the infra at parity.**
-  The plan's "zero `.ko`" claim was wrong: stock ships 52 `.ko.xz` modules (WiFi, BT,
-  xone; `CONFIG_MODULE_COMPRESS_XZ=y`) plus `kmod`/`depmod`/`modprobe`, **eudev**
-  hotplug, and 72 firmware files. Module packages for classes D/E reproduce the existing
-  layout; P3.3 is a parity task, not new machinery (xone firmware redistribution still
-  needs a decision). → P3.3, P0.3
-- **A6 — The Python major-version jump is a userland ABI risk the plan ignores.**
-  `Downloader_MiSTer` and many community scripts execute with the *on-device* Python.
-  Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.13+. Compatibility must be tested,
-  not assumed. → P3.9
-- **A7 — "ABI smoke test on a hardware runner on every CI build" is not realistic at
-  P0.** QEMU has no Cyclone V SoC machine model. Split validation: (a) CI runs static
-  ABI checks + qemu-user dynamic-link tests of the stock `MiSTer` binary against the new
-  rootfs + qemu-system tests of the initramfs logic on a generic ARM machine; (b) real
-  hardware gates each *release*, manually at first, automated later via an optional HIL
-  rig (USB-SD-mux + power relay + serial capture). → P2.8, P1.12, P4.11
-- **A8 (verified) — The `LinuxUpdater` contract.** Confirmed from source and artifacts:
-  only `files/linux/*` is extracted, by a pinned ARM `7za` the Downloader fetches on
-  demand; version compare is the running system's `/MiSTer.version` (**rootfs root**, not
-  `/media/fat/linux/`) vs the db entry's last 6 chars, inequality; `files/linux/` is
-  rsynced over `/media/fat/linux/`; **`updateboot` flashes `uboot.img` and wipes U-Boot's
-  saved env on every update**; six user files are copied into the new image and must stay
-  regular files at their `/etc` paths. P0.6 writes this up formally. → P0.6
-- **A9 — Reproducible ext4 needs explicit pinning.** 2026-era `mke2fs` defaults enable
-  features and random seeds (UUID, hash_seed, timestamps) that break bit-for-bit
-  reproducibility and could interact with older tooling. Pin filesystem features, UUID,
-  and `SOURCE_DATE_EPOCH`; verify with a double-build comparison in CI. → P2.5, P4.3
+- **A1 — Two-stage initramfs build.** A second, minimal Buildroot config (static
+  BusyBox, `BR2_TARGET_ROOTFS_CPIO`) produces a tiny cpio the main build's kernel
+  consumes via `CONFIG_INITRAMFS_SOURCE`. Never `BR2_TARGET_ROOTFS_INITRAMFS` — it
+  embeds the entire ~300 MB rootfs. The initramfs must be embedded in the zImage;
+  U-Boot never loads an initrd. [PLAN §5] → P1.10
+- **A2 — Cmdline-driven `/init`.** Parse `root=` and `loop=` from `/proc/cmdline`
+  (`u-boot.txt` is `env import -t` and can override any U-Boot variable — USB boot
+  setups exist); implement `rootwait` as a retry loop; mount the data partition as vfat
+  **or** exfat (both built-in, plus NLS codepages); on failure, diagnostic banner and
+  serial rescue shell. [PLAN §5, §3] → P1.10
+- **A3 — `zImage_dtb` boot chain.** Plain `cat zImage dtb`. U-Boot computes the DTB
+  address from the zImage header's declared-size field at `+0x2C` and passes it to
+  `bootz $loadaddr - $fdt_addr`, injecting bootargs via `/chosen` FDT fixup. No
+  `CONFIG_ARM_APPENDED_DTB`, no ATAGs, no initrd. [PLAN §3] → P0.8, P1.3, P1.11
+- **A4 — `/dev/mem` must stay unrestricted.** `CONFIG_DEVMEM=y`,
+  `CONFIG_STRICT_DEVMEM=n`, `CONFIG_IO_STRICT_DEVMEM=n` — otherwise `fpga_io.cpp`'s
+  mmap of the bridge addresses fails and the entire FPGA path dies. Modern defconfigs
+  enable STRICT_DEVMEM by default; stock has it off. [PLAN §3] → P1.3
+- **A5 — Module infrastructure is a parity requirement.** Stock ships 52 `.ko.xz`
+  modules (WiFi, Bluetooth USB, xone; `CONFIG_MODULE_COMPRESS_XZ=y`) with
+  `kmod`/`depmod`/`modprobe`, **eudev** hotplug, and 72 firmware files. Class D/E module
+  packages reproduce that existing layout; xone firmware redistribution needs a
+  decision. [PLAN §3, §4.1] → P3.3, P0.3
+- **A6 — On-device Python is an ABI surface.** `Downloader_MiSTer` and many community
+  scripts run on the target's interpreter (stock: 3.9; Buildroot 2026.02: 3.13+).
+  Compatibility must be tested, not assumed. [PLAN §3] → P3.9
+- **A7 — CI cannot boot the real image.** QEMU has no Cyclone V SoC machine model.
+  CI runs static ABI checks, the stock `MiSTer` binary under a qemu-user chroot, and
+  the initramfs logic on a generic QEMU ARM machine; real hardware gates each
+  *release* (optional HIL rig later). [PLAN §11] → P2.8, P1.12, P4.11
+- **A8 — `LinuxUpdater` contract.** Version check: the running system's
+  `/MiSTer.version` (rootfs root) vs the db entry's **last 6 chars**, inequality.
+  A pinned on-demand `7za` extracts only `files/linux/*`; six user files are copied
+  into the offline-mounted new image (must remain regular files under `/etc`);
+  `files/linux/` is rsynced over `/media/fat/linux/`; `updateboot` flashes `uboot.img`
+  and wipes U-Boot's saved env **on every update**. [PLAN §10, §8, §3] → P0.6
+- **A9 — ext4 generation must be pinned.** Fixed UUID, pinned feature set (stock:
+  `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`, `FLEX_BG`), `SOURCE_DATE_EPOCH`,
+  `BR2_REPRODUCIBLE=y`; verified by a double-build comparison in CI. [PLAN §9]
+  → P2.5, P4.3
 
 ---
 
@@ -196,8 +187,9 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   kernel-config implication is stated as a testable assertion.
 
 - [ ] **P0.9 — Phase 0 review gate** — [HAIKU] + human — Size S — Depends: P0.3–P0.8
-  Assemble a one-page summary of Phase 0 findings, open questions, and any plan
-  amendments beyond A1–A9. Human reviews and approves before Phase 1 starts.
+  Assemble a one-page summary of Phase 0 findings, open questions, and any newly
+  discovered constraints beyond A1–A9 (fold those into `PLAN.md` and the section A index
+  in the same PR). Human reviews and approves before Phase 1 starts.
   **Done when:** summary committed as `docs/phase0-review.md` with human sign-off noted.
 
 ---
@@ -230,7 +222,7 @@ boots to a serial console on real hardware (P1.13).
   Port the **exact extracted stock config** (`docs/stock-inventory/stock-linux.config`,
   4,246 lines from IKCONFIG) to 6.18 via `olddefconfig`, then audit every dropped/renamed
   symbol. Explicitly assert and document: `DEVMEM=y`, `STRICT_DEVMEM=n`,
-  `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 as corrected —
+  `IO_STRICT_DEVMEM=n` (A4 — stock verified); **no** `ARM_APPENDED_DTB` (A3 —
   U-Boot passes the DTB pointer); stock-parity items: `IKCONFIG=y`+`IKCONFIG_PROC=y`,
   `KERNEL_LZ4`, `MODULE_COMPRESS_XZ=y`, `BLK_DEV_LOOP=y` (`LOOP_MIN_COUNT=8`); built-in
   (not module): ext4, vfat, exfat, loop, NLS codepages, dwc2, usb-storage, HID core;

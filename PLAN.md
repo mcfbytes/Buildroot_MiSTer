@@ -293,6 +293,73 @@ P1.10 test matrix, which must therefore include a **FAT32 card with a non-ASCII 
 6.x series (`mount_block_root` and friends are gone). Forward-porting that patch is both hard
 *and unnecessary* — see §5.
 
+### **[P1] The forward-port fixes six latent bugs that are live in every shipped MiSTer image**
+
+Forward-porting forces you to *read* code that has otherwise been copied forward untouched
+since 2021, and that turned up **six real defects in the stock 5.15 kernel** — none of them
+regressions we introduced. Two are memory-safety bugs. **Full table with evidence:
+[`docs/patch-provenance.md` §10](docs/patch-provenance.md).**
+
+| | Bug in stock | Consequence on a stock MiSTer |
+|---|---|---|
+| **B1** | `hid-gamecube-adapter` never cancels the per-port `work_connect` before `kfree()`ing the adapter | **Use-after-free.** Plugging a controller into the GameCube adapter while the adapter is being unplugged can corrupt kernel memory. |
+| **B2** | `MiSTer_fb` tests `IS_ERR()` on `memremap()`, which returns **NULL** on failure | Oops on first fbcon draw if the framebuffer window ever fails to map. |
+| **B3** | `MiSTer-audio-spi` tests `== NULL` on `device_create()`, which returns an **`ERR_PTR`** | A *failed* `/dev/MrAudio` creation was treated as success. |
+| **B4** | `MiSTer-audio-spi`'s `device_open()` computes the ring length even when `spi_read()` failed | The diagnostic you read to debug a broken SPI link is itself wrong. |
+| **B5** | The fork's own K400 patch reuses `SetFeature` at the wrong feature index | Wrong HID++ feature written to a Logitech K400. |
+| **B6** | `socfpga-cpufreq`'s `wait_for_fsm()` passes a **mask** where `wait_on_bit()` wants a **bit number** — it polls bit 1, not bit 0 | Harmless *today* only because the call returns immediately. |
+
+**B1–B5 are fixed. B6 is deliberately NOT fixed** and is carried verbatim: correcting it
+changes the timing of a live PLL reprogramming sequence on silicon we have not yet booted,
+and a forward-port is the wrong place to smuggle in an unvalidated change to clock
+sequencing. It is tracked for **P1.13** hardware bring-up.
+
+*(B1 and B4 were found by automated static review on PR #2 — after the ports were already
+building warning-free and passing every acceptance check. Worth remembering when judging how
+much a clean build proves.)*
+
+#### What the bug distribution actually tells us — and why it settles the strategy
+
+**Every one of the six is in MiSTer-original or fork-modified code. None is in mainline
+code.** That is not a coincidence and it is the single strongest argument for this project's
+central posture:
+
+> **Carry the smallest possible delta against a pristine kernel.org tree, and hand every
+> subsystem back to mainline the moment mainline can hold it.**
+
+Out-of-tree code accumulates defects for a structural reason, not because its authors are
+careless: it never faces `linux-kernel` review, it is never touched by upstream's tree-wide
+refactors and cleanups, it never gets the free bug-fixes that come from someone else
+refactoring a subsystem underneath you, and — as B1 and B4 show — nobody re-reads it, because
+"it already works." B5 is the sharpest illustration: it is a bug in a MiSTer patch layered
+*on top of* an upstream driver, i.e. introduced by the act of forking.
+
+The corollary is that **the delta is itself the risk surface**, so shrinking it is a safety
+measure, not just hygiene. What Phase 0/1 already handed back:
+
+| Handed back to mainline | Was |
+|---|---|
+| exfat + vfat (**ADR 0010**) | an out-of-tree Samsung driver, a permanent maintenance burden |
+| the `loop=` root mount (**§5**) | a patch to `init/do_mounts.c`, a hot core file upstream has since rewritten |
+| spidev binding (**P1.8**) | a bespoke `altspi` entry in `spidev_dt_ids[]` |
+| usb-storage / btusb device IDs (**P1.9**) | fork patches; **landed upstream since 5.15** |
+| `dwc2/core.c`, `vt.h MAX_NR_CONSOLES` | dead weight — a provable no-op and a few KB |
+| G923 force feedback (**§9.3**) | a ~2000-line out-of-tree FF rewrite that never landed upstream |
+
+**109 fork commits → 24 carried patches.** What remains is, with one exception, genuinely
+MiSTer-specific hardware that mainline has no reason to know about: the FPGA framebuffer, the
+SPI audio ring, the Cyclone V clock-manager overclock. That is the irreducible core, and it
+is where the remaining risk lives — so it is exactly what deserves upstreaming, review, and
+tests, rather than another decade of being copied forward untouched.
+
+**The one exception worth acting on: `0014-hid-gamecube-adapter`.** It is not
+MiSTer-specific at all — it is a generic USB HID driver for a mass-market adapter, carried
+out-of-tree, and it turned out to contain a use-after-free. That is precisely the class of
+code that should be upstream. **P4 should attempt to upstream it** (with B1 fixed), or
+replace it with an in-tree driver if one has since appeared. Same reasoning applies to most
+of the `0010`–`0030` HID quirks: device IDs and quirks are the easiest thing in the kernel to
+get merged, and every one that lands upstream is one we stop owning.
+
 **Classes D and E are already modules in the stock image** — the 5.15 fork builds them `=m`
 (52 `.ko.xz` under `/usr/lib/modules`, `CONFIG_MODULE_COMPRESS_XZ=y`) with
 `kmod`/`depmod`/`udevd` and **66** firmware files shipped *(P0: not 72)* — including

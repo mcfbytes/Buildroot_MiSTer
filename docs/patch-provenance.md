@@ -1444,3 +1444,41 @@ correctly absent from it — verified against the generated `.config` that
 (`default LOGITECH_FF`), so `hid-logitech-hidpp.o` and `hid-lg4ff.o` **are** built. That matters
 for §9.3: the upstream G923-Xbox and G29-family wheel support is compiled in, not merely
 available.
+
+---
+
+## 10. Latent bugs in the **stock** MiSTer kernel that this image fixes
+
+These are **not** forward-porting regressions. Every one is present verbatim in the
+5.15 fork and therefore in **every MiSTer image shipped to date**. They surfaced only
+because forward-porting forces you to read code that has otherwise been copied
+forward untouched since 2021.
+
+They are listed here because they are **user-visible behavioural differences between
+the stock 5.15 image and ours**, and belong in the release notes (P4.8/P4.9) as much
+as in this triage.
+
+| # | Patch | Bug in stock | Effect on a stock MiSTer | Status |
+|---|---|---|---|---|
+| **B1** | `0014-hid-gamecube-adapter` | **Use-after-free on unplug.** Teardown cancels only `adpt->work_rumble`; the four per-port `ctrl->work_connect` items are never cancelled, then `kfree(adpt)` runs. `work_connect` is embedded in `adpt->ctrls[]` and its handler `container_of()`s back and dereferences `ctrl->adpt->hdev` — and can even `input_register_device()` against the freed adapter. Same defect on the probe error path. | Plugging a controller into the GameCube adapter while the adapter itself is being unplugged can corrupt kernel memory. Silent; may present as an unrelated later crash. | **FIXED** (PR #2 review) |
+| **B2** | `0001-fbdev-add-MiSTer_fb` | **`memremap()` returns `NULL` on failure, not an `ERR_PTR`** — the code tests `IS_ERR()`, which is *false* for NULL. A failed mapping therefore falls straight through with `screen_base` unset. | Oops on the first fbcon draw if the framebuffer window ever fails to map. Unreachable with a correct DT node, which is why it has never been seen. | **FIXED** (P1.4) |
+| **B3** | `0002-sound-add-MiSTer-audio-spi` | **`class_create()`/`device_create()` return `ERR_PTR`, never `NULL`** — the `== NULL` checks are dead code, so a *failed* `device_create()` was treated as success. | Driver would continue as if `/dev/MrAudio` existed when it did not. | **FIXED** (P1.5) |
+| **B4** | `0002-sound-add-MiSTer-audio-spi` | **Bogus diagnostics on SPI failure.** `device_open()` computes the ring `len` even when `spi_read()` failed: `rptr` stays `-1`, `-1 >> 8` is still `-1`, and the `(unsigned int)` cast makes it compare as `0xffffffff`, so the wraparound branch is *always* taken → `len = ptr + buffer_len + 1`, a length larger than the whole ring. | The status string you read to diagnose a broken SPI link is itself wrong — precisely when you need it. No memory-safety issue (`msg[]` is 1024 B; nothing in userland parses it). | **FIXED** (PR #2 review) |
+| **B5** | `0019-hidpp-k400-fn-inversion` | The fork's own patch **reuses `SetFeature` at the wrong feature index** (shares a feature-index cache it should not). | Wrong HID++ feature written on a Logitech K400. | **FIXED** (P1.9) |
+| **B6** | `0003-cpufreq-cyclone5-de10nano` | **`wait_for_fsm()` passes a *mask* where a *bit number* is expected.** `wait_on_bit(word, bit, mode)` is given `CLKMGR_STAT_BUSY` (`BIT(0)` == 1), so it polls **bit 1**, not bit 0. It also does a plain `test_bit()` on `__iomem` rather than `readl()`, and would sleep on a wait queue no hardware can wake if the bit were ever seen set. | Harmless *today* only because the call returns immediately. | **NOT FIXED — carried verbatim, deliberately.** Correcting it changes PLL transition timing, which cannot be validated without a bench. A forward-port is the wrong place to smuggle that in. **Tracked for P1.13 hardware bring-up.** |
+
+### Why B6 is not fixed
+
+The other five are fixes whose correctness can be established by reading the code.
+B6 is not: making `wait_for_fsm()` actually *wait* changes the timing of a live PLL
+reprogramming sequence on silicon we have not yet booted. Shipping an untested change
+to clock sequencing — inside a patch whose stated job is "carry this forward" — is
+exactly the kind of quiet scope creep that makes a forward-port unreviewable. It is
+recorded, not hidden, and P1.13 has it on the checklist.
+
+### Provenance note
+
+B1 and B4 were **found by automated static review on PR #2**, not by the porting
+agents. Both were confirmed against the 5.15 source before being fixed. This is worth
+recording as evidence for the review discipline itself: the ports were already
+building warning-free and passing every acceptance check when these were caught.

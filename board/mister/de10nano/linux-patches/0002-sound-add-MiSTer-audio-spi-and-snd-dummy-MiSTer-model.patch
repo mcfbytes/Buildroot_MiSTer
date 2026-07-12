@@ -86,10 +86,38 @@ driver never probes and /dev/MrAudio never appears.  The DTS is authored from
 scratch against mainline in task P1.7 (0004-dts-de10nano-MiSTer.patch), which
 owns that node.
 
+BUG FIX (behaviour change vs. the 5.15 original -- bogus diagnostics on SPI
+failure):
+
+  device_open() computed the reported ring-buffer `len` even when spi_read()
+  had failed, producing a nonsense value exactly when SPI was broken -- i.e.
+  precisely when someone is reading this diagnostic to find out why.
+
+  On failure rptr stays -1. `-1 >> 8` is still -1 (arithmetic shift), so the
+  `rptr >= 0` guard is skipped; but the `(unsigned int)rptr` cast in the len
+  expression then compares it as 0xffffffff, so `MrBufferInfo.ptr < (unsigned)
+  rptr` is ALWAYS true and the ring-wraparound branch is always taken:
+
+      len = MrBufferInfo.ptr + MrBufferInfo.len - (-1)
+          = ptr + len + 1
+
+  i.e. a reported "length" larger than the entire ring buffer.
+
+  There is NO memory-safety issue: msg[] is 1024 bytes and that format cannot
+  overflow it. Nothing in userland parses the string either -- /etc/asound.conf
+  only *writes* to /dev/MrAudio (type file), and Main_MiSTer contains no ALSA
+  code at all -- so the text is free to change. device_open() now reports the
+  SPI failure explicitly instead of inventing a number. The wptr conversion is
+  also corrected to %u (MrBufferInfo.ptr is unsigned int, printed with %d).
+
+  Reported by static review on PR #2. PRE-EXISTING in the MiSTer fork, not a
+  forward-porting regression -- present verbatim in the 5.15 source
+  (sound/drivers/MiSTer-audio-spi.c, device_open()).
+
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 diff --git a/sound/drivers/Kconfig b/sound/drivers/Kconfig
-index 6debd8e..f4f6288 100644
+index 6debd8e95..f4f628853 100644
 --- a/sound/drivers/Kconfig
 +++ b/sound/drivers/Kconfig
 @@ -38,6 +38,16 @@ config SND_AC97_CODEC
@@ -110,7 +138,7 @@ index 6debd8e..f4f6288 100644
  	bool "Generic sound devices"
  	default y
 diff --git a/sound/drivers/Makefile b/sound/drivers/Makefile
-index a08bdd7..abe0f91 100644
+index a08bdd70e..abe0f912d 100644
 --- a/sound/drivers/Makefile
 +++ b/sound/drivers/Makefile
 @@ -24,5 +24,6 @@ obj-$(CONFIG_SND_SERIAL_GENERIC) += snd-serial-generic.o
@@ -122,10 +150,10 @@ index a08bdd7..abe0f91 100644
  obj-$(CONFIG_SND) += opl3/ opl4/ mpu401/ vx/ pcsp/
 diff --git a/sound/drivers/MiSTer-audio-spi.c b/sound/drivers/MiSTer-audio-spi.c
 new file mode 100644
-index 0000000..b18e8e5
+index 000000000..7b157416d
 --- /dev/null
 +++ b/sound/drivers/MiSTer-audio-spi.c
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,305 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/jiffies.h>
 +#include <linux/module.h>
@@ -184,7 +212,32 @@ index 0000000..b18e8e5
 +	int comp = 0;
 +	int rptr = -1;
 +
-+	if(spi_read(g_spi, &rptr, 4)) rptr = -1;
++	/*
++	 * BUG FIX (not present in the 5.15 MiSTer fork; see the patch header).
++	 *
++	 * The original fell through on SPI failure and computed `len` anyway.
++	 * That is wrong in a way that only bites when SPI is broken -- i.e.
++	 * exactly when you are reading this diagnostic to find out why:
++	 *
++	 *   rptr stays -1;  -1 >> 8 is still -1 (arithmetic shift);
++	 *   the `(unsigned int)rptr` cast below then compares it as 0xffffffff,
++	 *   so `MrBufferInfo.ptr < (unsigned)rptr` is always true and the
++	 *   ring-wraparound branch is always taken, yielding
++	 *       len = ptr + MrBufferInfo.len + 1
++	 *   -- a "length" larger than the entire ring buffer.
++	 *
++	 * There is no memory-safety issue (msg[] is 1024 bytes and the format
++	 * cannot overflow it), and nothing in userland parses this string --
++	 * asound.conf only *writes* to /dev/MrAudio, and Main_MiSTer contains no
++	 * ALSA code at all -- so the text is free to change. Report the failure
++	 * instead of inventing a number.
++	 */
++	if (spi_read(g_spi, &rptr, 4)) {
++		sprintf(msg, "rptr: <SPI read failed>, wptr: %6u, len: <unknown>, comp: -\n",
++			MrBufferInfo.ptr);
++		msg_Ptr = msg;
++		return single_open(file, show, NULL);
++	}
 +	rptr >>= 8;
 +
 +	if(rptr >= 0)
@@ -195,7 +248,7 @@ index 0000000..b18e8e5
 +
 +	len = (MrBufferInfo.ptr < (unsigned int)rptr) ? (MrBufferInfo.ptr + MrBufferInfo.len - rptr) : (MrBufferInfo.ptr - rptr);
 +
-+	sprintf(msg, "rptr: %6d, wptr: %6d, len: %6d, comp: %1d\n", rptr, MrBufferInfo.ptr, len, comp);
++	sprintf(msg, "rptr: %6d, wptr: %6u, len: %6d, comp: %1d\n", rptr, MrBufferInfo.ptr, len, comp);
 +
 +	msg_Ptr = msg;
 +	return single_open(file, show, NULL);
@@ -407,7 +460,7 @@ index 0000000..b18e8e5
 +MODULE_AUTHOR("Sorgelig");
 +MODULE_LICENSE("GPL");
 diff --git a/sound/drivers/dummy.c b/sound/drivers/dummy.c
-index 1860ff7..829aa42 100644
+index 1860ff75f..829aa4276 100644
 --- a/sound/drivers/dummy.c
 +++ b/sound/drivers/dummy.c
 @@ -58,7 +58,13 @@ static int mixer_volume_level_max = USE_MIXER_VOLUME_LEVEL_MAX;

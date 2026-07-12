@@ -2,7 +2,7 @@
 
 **A reproducible, drop-in `linux.img` built from a modern Buildroot, with all kernel patches carried in-tree as Buildroot patch files.**
 
-*This is a stub README for Phase 0 recon. The full community and user documentation is in progress (P4.9). Start with `PLAN.md` and `TASKS.md` for project context.*
+*Developer-facing README. Full community/user documentation is still to come (P4.9). Start with `PLAN.md` and `TASKS.md` for project context.*
 
 ---
 
@@ -10,7 +10,7 @@
 
 MiSTer's operating system is currently distributed as an opaque archive containing a 375 MiB ext4 image built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux 5.15.1** — a kernel forked in November 2021 that has never merged a single 5.15.y stable release. This project replaces that image with one built from **Buildroot 2026.02 LTS** and a **mainline 6.18 LTS kernel**, in a public repository, with CI and reproducible builds.
 
-**Status: Phase 0 — Recon. Nothing builds yet.** We are triaging the kernel patch set, inventorying the stock image, and establishing the ABI contract.
+**Status: Phase 1 complete — the kernel builds.** 24 patches apply to a pristine linux-6.18.38 and produce a warning-free `zImage_dtb`; the initramfs boots under QEMU. **It has not yet booted on real hardware** — that is P1.13, the Phase 1 exit gate, and it needs a serial console.
 
 ---
 
@@ -25,6 +25,27 @@ MiSTer's operating system is currently distributed as an opaque archive containi
 | G5 | Fully reproducible: pinned Buildroot, pinned kernel + hash, checked-in `.config`, published SBOM |
 | G6 | Release artifacts published as **GitHub Release assets**. No binaries in git. Ever. |
 | G7 | Opt-in distribution via a community `db.json` — zero cooperation required |
+
+---
+
+## What's different from the stock image
+
+Beyond the kernel (5.15.1 → 6.18 LTS) and userland (Buildroot 2021.02 → 2026.02, glibc
+2.31 → 2.42), the forward-port surfaced **six latent bugs that are live in every MiSTer
+image shipped to date** — two of them memory-safety bugs. Five are fixed here; one is
+deliberately carried unchanged pending hardware validation.
+
+Notably, **all six live in MiSTer-original or fork-modified code. None is in mainline
+code.** That is the clearest argument for this project's core posture: carry the smallest
+possible delta against a pristine kernel.org tree, and hand each subsystem back to mainline
+as soon as mainline can hold it. The fork's 109 commits are down to 24 carried patches.
+
+Full detail, with evidence: [`docs/patch-provenance.md` §10](docs/patch-provenance.md) and
+[`PLAN.md` §4](PLAN.md).
+
+There is also one **known regression**: the Logitech G923 *PlayStation* variant loses force
+feedback (steering, pedals and buttons still work). The Xbox variant and all G29/G27/G25
+wheels are fully supported. See `docs/patch-provenance.md` §9.3.
 
 ---
 
@@ -104,6 +125,7 @@ For the eventual contribution model, see `CONTRIBUTING.md` (P4.9).
 
 ## Current State
 
-- Phase 0 exit criterion: Patch triage complete and human-reviewed (P0.9)
-- Nothing is built; this is pure planning and inventory work
-- Hardware testing gates each phase (see `PLAN.md` §12)
+- **Phase 0 — complete.** Patch triage, ABI contract, and the five open questions decided (ADRs 0010–0014).
+- **Phase 1 — complete except the hardware gate.** Buildroot external tree, armv7/Cortex-A9/NEON glibc toolchain, 6.18.38 kernel config, 24 kernel patches, DTS, two-stage initramfs, `zImage_dtb` assembly, and a QEMU test harness. Full kernel builds with zero warnings.
+- **P1.13 (first hardware boot) is the Phase 1 exit gate and is NOT met.** Nothing here has run on a DE10-Nano.
+- **Not for anyone else's device yet.** The sustainability gate (ADR 0014) is unsigned, so this is a personal-use project until a named maintainer commits to tracking 6.18.y — see `PLAN.md` §13.

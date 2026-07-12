@@ -32,6 +32,41 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
               Everything else (usbhid_device.urbin, hid->driver_data cast)
               is unchanged.
 
+BUG FIX (behaviour change vs. the 5.15 original -- use-after-free on unplug):
+
+  The original teardown cancelled only adpt->work_rumble. The four per-port
+  ctrl->work_connect items were never cancelled, and gamecube_adpt_destroy()
+  then kfree()'d the adapter. work_connect is embedded in adpt->ctrls[], and
+  its handler container_of()s back to the ctrl and dereferences
+  ctrl->adpt->hdev -- so an item still pending at the kfree() ran against
+  freed memory. It can also call gamecube_ctrl_create(), i.e. register an
+  input_dev bound to the freed adapter.
+
+  work_connect is scheduled from gamecube_ctrl_update_flags(), which runs from
+  the HID report path -- so a controller being plugged into the adapter while
+  the adapter itself is unplugged is enough to hit it. The same defect exists
+  on the probe error path (err_close is reachable only after hid_hw_open() has
+  succeeded, so reports are already flowing).
+
+  Fixed in both places. The ordering in gamecube_adpt_destroy() is deliberate:
+    1. hid_hw_close()/hid_hw_stop() FIRST -- the report path is the only thing
+       that can schedule work_connect, so cancelling before the stop would
+       race (a report arriving between the cancel and the stop re-arms it).
+    2. cancel_work_sync(work_connect) x4 -- drained BEFORE the inputs are
+       unregistered, because a pending item may still call
+       gamecube_ctrl_create(); any input_dev it registers is then torn down by
+       step 3. Draining after step 3 would leak that device and leave it
+       pointing at an adapter about to be freed.
+    3. gamecube_ctrl_destroy() x4 -- unregistering the inputs closes the
+       userspace force-feedback path, the only thing that schedules
+       work_rumble. (A rumble slipping through between step 1 and here is
+       harmless: hid_hw_output_report() on a stopped device returns -ENOSYS.)
+    4. cancel_work_sync(work_rumble), then kfree().
+
+  Reported by static review on PR #2. This is a PRE-EXISTING bug in the MiSTer
+  fork, not a forward-porting regression -- it is present verbatim in the 5.15
+  source (drivers/hid/hid-gamecube-adapter.c, gamecube_adpt_destroy()).
+
 Signed-off-by: James McCarthy <clockworkjb@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
@@ -78,10 +113,10 @@ index 3ea9451d1..ac8c0e20e 100644
  obj-$(CONFIG_HID_GLORIOUS)  += hid-glorious.o
 diff --git a/drivers/hid/hid-gamecube-adapter.c b/drivers/hid/hid-gamecube-adapter.c
 new file mode 100644
-index 000000000..faaa2d1b2
+index 000000000..98bf55f15
 --- /dev/null
 +++ b/drivers/hid/hid-gamecube-adapter.c
-@@ -0,0 +1,500 @@
+@@ -0,0 +1,554 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * HID driver for Nintendo Gamecube Controller Adapters
@@ -455,13 +490,51 @@ index 000000000..faaa2d1b2
 +{
 +	unsigned int i;
 +
++	/*
++	 * BUG FIX (not present in the 5.15 MiSTer fork; see the patch header).
++	 *
++	 * The original teardown cancelled only work_rumble and left the four
++	 * per-port work_connect items dangling, then kfree()d the adapter.
++	 * work_connect is embedded in adpt->ctrls[], and its handler
++	 * container_of()s back to the ctrl and dereferences ctrl->adpt->hdev --
++	 * so an item still pending when the kfree() below ran was a
++	 * use-after-free on unplug.
++	 *
++	 * The ordering here is load-bearing, not cosmetic:
++	 *
++	 * 1. Stop the transport FIRST. gamecube_ctrl_update_flags() runs from
++	 *    the HID report callback and is the only thing that schedules
++	 *    work_connect; once hid_hw_stop() has returned, no further report --
++	 *    and therefore no further work_connect -- can be scheduled.
++	 *    Cancelling before the stop would race: a report arriving between
++	 *    the cancel and the stop simply re-arms the work.
++	 */
++	hid_hw_close(adpt->hdev);
++	hid_hw_stop(adpt->hdev);
++
++	/*
++	 * 2. Drain work_connect BEFORE unregistering the inputs, deliberately.
++	 *    A still-pending work_connect may call gamecube_ctrl_create(), and
++	 *    any input device it registers must then be torn down by the loop
++	 *    below. Draining after the loop would leak that device -- and leave
++	 *    it pointing at an adapter we are about to free.
++	 */
++	for (i = 0; i < 4; i++)
++		cancel_work_sync(&adpt->ctrls[i].work_connect);
++
++	/*
++	 * 3. Unregistering the inputs closes the userspace force-feedback path,
++	 *    which is the only thing that schedules work_rumble. (A rumble that
++	 *    slips through between the hid_hw_stop() above and here is harmless:
++	 *    hid_hw_output_report() on a stopped device returns -ENOSYS.)
++	 */
 +	for (i = 0; i < 4; i++)
 +		gamecube_ctrl_destroy(adpt->ctrls + i);
++
 +#ifdef CONFIG_HID_GAMECUBE_ADAPTER_FF
 +	cancel_work_sync(&adpt->work_rumble);
 +#endif
-+	hid_hw_close(adpt->hdev);
-+	hid_hw_stop(adpt->hdev);
++
 +	kfree(adpt);
 +}
 +
@@ -494,6 +567,7 @@ index 000000000..faaa2d1b2
 +				const struct hid_device_id *id)
 +{
 +	struct gamecube_adpt *adpt;
++	unsigned int i;
 +	int ret;
 +
 +	adpt = gamecube_adpt_create(hdev);
@@ -540,6 +614,21 @@ index 000000000..faaa2d1b2
 +err_stop:
 +	hid_hw_stop(hdev);
 +err:
++	/*
++	 * BUG FIX (same defect as in gamecube_adpt_destroy(), and equally
++	 * absent from the 5.15 fork). The err_close path is only reachable
++	 * AFTER hid_hw_open() has succeeded, so reports are already flowing and
++	 * may have scheduled work_connect -- which is embedded in *adpt and
++	 * would then run against freed memory.
++	 *
++	 * hid_hw_stop() above has already guaranteed no further report can
++	 * schedule it, so this drain is final. cancel_work_sync() on a work
++	 * item that was INIT_WORK()'d but never scheduled is a no-op, and
++	 * gamecube_adpt_create() initialises all four unconditionally, so this
++	 * is safe on every path into this label.
++	 */
++	for (i = 0; i < 4; i++)
++		cancel_work_sync(&adpt->ctrls[i].work_connect);
 +	kfree(adpt);
 +	return ret;
 +}

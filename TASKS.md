@@ -488,7 +488,7 @@ boots to a serial console on real hardware (P1.13).
 Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on hardware
 (P2.9).
 
-- [ ] **P2.1 — Full package set** — [SONNET] — Size M — Depends: P0.7, P1.2
+- [x] **P2.1 — Full package set** — [SONNET] — Size M — Depends: P0.7, P1.2
   Apply P0.7's `BR2_PACKAGE_*` list to the defconfig. Resolve selection conflicts and
   missing deps. Confirm every ABI-contract SONAME (§3) is produced at the same major
   version.
@@ -502,7 +502,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** script exits nonzero on a deliberately broken rootfs (test that) and
   zero on the real one; wired into CI later (P4.1).
 
-- [ ] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
+- [x] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
   Recreate stock init behavior in `rootfs-overlay/`: the verified S-script set
   (S01syslogd, S02klogd, S10udev, S30dbus, S40network, S41dhcpcd, S45bluetooth, S49ntp,
   S50proftpd, S50sshd, S91smb, S99user); inittab (**launches `/media/fat/MiSTer` from
@@ -541,7 +541,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** `docs/writable-paths.md` lists every writable path with its
   destination; no daemon writes to `/` at runtime.
 
-- [ ] **P2.5 — Image generation, reproducible (A9)** — [SONNET] — Size M — Depends: P2.1
+- [x] **P2.5 — Image generation, reproducible (A9)** — [SONNET] — Size M — Depends: P2.1
   `genimage.cfg` + mke2fs config: 512 MiB ext4, volume label `rootfs`, **pinned**
   filesystem feature set (stock reference: `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`,
   `FLEX_BG`), fixed UUID (stock ships one), `SOURCE_DATE_EPOCH` honored, deterministic
@@ -550,7 +550,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** two clean builds from the same commit produce byte-identical
   `linux.img` (verify locally; CI job in P4.3); image mounts ro on the 6.18 kernel.
 
-- [ ] **P2.6 — `post-build.sh`: version stamping** — [HAIKU] — Size S — Depends: P2.5
+- [x] **P2.6 — `post-build.sh`: version stamping** — [HAIKU] — Size S — Depends: P2.5
   Write `MiSTer.version` (6-char `YYMMDD`) **at the rootfs root of the image**
   (`/MiSTer.version` — verified location; the Downloader reads the running system's own
   copy), and an `/etc/os-release` identifying this distribution + build commit.
@@ -594,7 +594,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** test distinguishes "died at FPGA access (expected)" from "died earlier
   (regression)" and is wired into `scripts/`.
 
-- [ ] **P2.9 — [HW] Stock `MiSTer` binary reaches the menu** — human + [OPUS] — Size L — Depends: P1.13, P2.1–P2.8
+- [x] **P2.9 — [HW] Stock `MiSTer` binary reaches the menu** — human + [OPUS] — Size L — Depends: P1.13, P2.1–P2.8
   Full image on hardware with a real `/media/fat` populated from `Distribution_MiSTer`.
   Assert: menu appears on HDMI; boot-to-menu time ≤ stock (measure both); free RAM at
   menu ≥ stock; a sample core loads and runs; framebuffer, audio, and input all work.

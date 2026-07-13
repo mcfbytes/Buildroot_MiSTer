@@ -50,3 +50,25 @@ if ! grep -q "^root:${ROOT_HASH}:" "$SHADOW"; then
 	exit 1
 fi
 echo "post-build.sh: pinned root password (stock-parity '1', fixed salt)"
+
+# --- /MiSTer.version (P2.6 / A10) ---------------------------------------------
+# At the rootfs ROOT (/MiSTer.version), a 6-char YYMMDD stamp. This is what the
+# Downloader reads from the RUNNING system to decide whether to apply a linux
+# update. It reads it with a bare f.read() and NO .strip(), comparing against
+# the last 6 chars of the db entry's version -- so it must be EXACTLY 6 bytes
+# with NO trailing newline. `echo` would append \n, which never matches any db
+# version and makes the box re-flash on every Downloader run, forever. Use
+# printf '%s'. Derive the date from SOURCE_DATE_EPOCH so the stamp is
+# reproducible (P2.5/A9); fall back to now only outside a reproducible build.
+VERSION_DATE="$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
+	|| date -u -r "${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
+	|| date -u +%y%m%d)"
+printf '%s' "$VERSION_DATE" > "$TARGET_DIR/MiSTer.version"
+
+# Self-check A10: exactly 6 bytes, and the last byte is not a newline.
+_n=$(wc -c < "$TARGET_DIR/MiSTer.version")
+if [ "$_n" -ne 6 ] || [ "$(tail -c1 "$TARGET_DIR/MiSTer.version" | od -An -tx1 | tr -d ' ')" = "0a" ]; then
+	echo "post-build.sh: ERROR: /MiSTer.version must be exactly 6 bytes, no newline (got $_n bytes)" >&2
+	exit 1
+fi
+echo "post-build.sh: wrote /MiSTer.version = $VERSION_DATE (6 bytes, no newline)"

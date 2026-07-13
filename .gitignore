@@ -7,3 +7,7 @@ dist/
 *.7z
 venv/
 __pycache__/
+
+# Transient subagent git worktrees (isolation: "worktree") — never commit these;
+# they are separate checkouts and were once accidentally captured as a gitlink.
+.claude/worktrees/

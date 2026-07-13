@@ -411,6 +411,19 @@ BR2_PACKAGE_LFTP=y                            # provides all 4 bundled liblftp-*
 # --- Python (A6) ---
 BR2_PACKAGE_PYTHON3=y                         # 3.14.5 -- no legacy-version toggle exists in
                                               # Buildroot 2026.02; see P3.9 risk entry
+# Python extension modules (P3.9) -- match stock's 3.9 lib-dynload set exactly.
+# SSL + ZLIB are HARD BLOCKERS: without them Downloader_MiSTer crashes on
+# `import ssl` and cannot read its own db.json.zip (proven under qemu-user,
+# docs/python-compat.md). openssl/zlib target libs are already built. BZIP2/XZ/
+# PYEXPAT/READLINE/CURSES round out stock parity. (SQLITE/DECIMAL deliberately
+# omitted -- stock's Python 3.9 shipped neither.)
+BR2_PACKAGE_PYTHON3_SSL=y
+BR2_PACKAGE_PYTHON3_ZLIB=y
+BR2_PACKAGE_PYTHON3_BZIP2=y
+BR2_PACKAGE_PYTHON3_XZ=y                       # _lzma
+BR2_PACKAGE_PYTHON3_PYEXPAT=y
+BR2_PACKAGE_PYTHON3_READLINE=y
+BR2_PACKAGE_PYTHON3_CURSES=y
 
 # --- Samba (single package covers ~125 of the 251 SONAMEs, see manifest §1) ---
 BR2_PACKAGE_SAMBA4=y
@@ -426,6 +439,16 @@ BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y          # default y already, listed for clarity
 BR2_PACKAGE_WPA_SUPPLICANT_WEXT=y             # stock's interfaces file passes
                                               # "-D nl80211,wext" -- both drivers needed
+# WiFi userland parity (P3.4) -- the community wifi.sh (Scripts_MiSTer) and the
+# stock WiFi stack need these; all four are in stock's rootfs. See docs/wifi-parity.md.
+# (CONFIG_CFG80211_WEXT=y is already resolved in our kernel, so iwlist/iwgetid's
+# legacy WEXT ioctls work against the cfg80211-only Realtek drivers.)
+BR2_PACKAGE_BASH=y                            # wifi.sh shebang
+BR2_PACKAGE_DIALOG=y                          # wifi.sh interactive menus
+BR2_PACKAGE_WIRELESS_TOOLS=y                  # iwmulticall: iwconfig + iwlist/iwgetid symlinks
+BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG=y
+BR2_PACKAGE_IW=y                              # stock ships usr/sbin/iw (nl80211 CLI) -- parity
+BR2_PACKAGE_IPROUTE2=y                        # stock's /usr/sbin/ip -- wifi.sh's link up/down fallback
 BR2_PACKAGE_DHCPCD=y
 BR2_PACKAGE_NTP=y                             # classic ntpd, matches stock -- NOT chrony/openntpd
 BR2_PACKAGE_CIFS_UTILS=y

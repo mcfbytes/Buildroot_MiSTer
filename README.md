@@ -15,9 +15,9 @@ MiSTer's operating system is currently distributed as an opaque archive containi
 ### Project Status
 
 - **Phase 0** (Reconnaissance & decisions): **Complete**. Patch triage, ABI contract verification, and all five open questions decided (see `docs/decisions/` ADRs 0010–0014).
-- **Phase 1** (Kernel & initramfs): **Complete**. 24 patches apply cleanly to linux-6.18.38; `zImage_dtb` builds warning-free and boots under QEMU. Exit gate (P1.13): first hardware boot on DE10-Nano — **in progress**.
-- **Phase 2** (Rootfs & testing): **Complete**. Buildroot 2026.02 LTS, glibc 2.42, reproducible ext4 image with full SBOM. Exit gate (P2.8): ABI contract verified on real hardware — in progress.
-- **Phase 3** (Module packages & hardware matrix): **Complete**. WiFi, Bluetooth, controllers, and special devices packaged and tested. Exit gate (P3.13): hardware validation on DE10-Nano — **in progress**.
+- **Phase 1** (Kernel & initramfs): **Complete**. 24 patches apply cleanly to linux-6.18.33; `zImage_dtb` builds warning-free, boots under QEMU, and **boots on a real DE10-Nano** (P1.13 first-hardware-boot gate met).
+- **Phase 2** (Rootfs & testing): **Complete**. Buildroot 2026.02 LTS, glibc 2.42, reproducible ext4 image with full SBOM; the rootfs **runs on real hardware** (the MiSTer menu and cores load — the ABI contract holds in practice).
+- **Phase 3** (Module packages & hardware matrix): **Complete**. WiFi, Bluetooth, controllers, and special devices packaged; **hardware-validated on a DE10-Nano** — boot, Bluetooth (controller pairing), WiFi (WPA3 5 GHz auto-connect via mainline rtw88), and the Downloader (HTTPS) confirmed. Completing the full P3.13 device matrix (e.g. Samba and MIDI, currently build/CI-verified only) is the remaining hardware work.
 - **Phase 4** (Release & sustainability): **In progress**. Community governance files, CI/CD, beta-testing program, and publication gate.
 
 **This is a personal-use project until Phase 4 exit** — sustainable maintenance is a gate (ADR 0014).

@@ -118,7 +118,6 @@ jobs:
     # Buildroot build, + checkout/apt/hashing overhead, 90 min ceiling as a
     # buffer, not an expectation. Both legs share this ceiling independently
     # (matrix legs run in parallel, not added together).
-    timeout-minutes: 90
 
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -225,7 +224,6 @@ jobs:
       ##########################################################################
 
       - name: Stage 1 -- build initramfs cpio
-        timeout-minutes: 20
         run: |
           make initramfs \
             BR2_CCACHE=y \
@@ -233,7 +231,6 @@ jobs:
             BR2_CCACHE_USE_BASEDIR=y
 
       - name: Stage 2 -- build full image (make all)
-        timeout-minutes: 75
         run: |
           make all \
             BR2_CCACHE=y \
@@ -271,7 +268,6 @@ jobs:
     name: Compare double-build hashes
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
 
     steps:
       - name: Download leg A hashes

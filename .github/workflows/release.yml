@@ -109,7 +109,6 @@ jobs:
     # buffer for fetching/verifying the ~90 MB stock archive, assembling and
     # testing the 7z, and hashing everything. Unproven until a real tag push
     # runs this end to end (see the authoring agent's final report).
-    timeout-minutes: 120
 
     outputs:
       release_date: ${{ steps.mister_version.outputs.release_date }}
@@ -227,7 +226,6 @@ jobs:
         run: make hostshim
 
       - name: Stage 1 -- build initramfs cpio
-        timeout-minutes: 20
         run: |
           make initramfs \
             BR2_CCACHE=y \
@@ -235,7 +233,6 @@ jobs:
             BR2_CCACHE_USE_BASEDIR=y
 
       - name: Stage 2 -- build full image (make all)
-        timeout-minutes: 75
         run: |
           make all \
             BR2_CCACHE=y \
@@ -565,7 +562,6 @@ jobs:
     name: Attest provenance + create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     permissions:
       contents: write        # create the Release and upload its assets

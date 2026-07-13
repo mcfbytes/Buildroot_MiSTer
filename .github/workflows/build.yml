@@ -59,14 +59,13 @@ jobs:
     container:
       image: ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
 
-    # --- Timeout budget (TASKS.md P4.1) -------------------------------------
-    # Cold build (empty caches): documented 30-60 min for Buildroot itself.
-    # Add checkout/apt/test-suite overhead on top -> 90 min ceiling here is a
-    # buffer above the documented cold-build range, not the expected runtime.
-    # Warm build (all four caches hit, ccache warm): TARGET is a few minutes
-    # for the rebuild steps, per P4.1's "Done when" -- UNPROVEN until a real
-    # warm-cache CI run confirms it (see the file header caveats).
-    timeout-minutes: 90
+    # --- No explicit timeout-minutes (deliberate, for now) ------------------
+    # The real cold-build duration on GitHub's 2-core runners is unknown, and
+    # guessed step/job timeouts were killing legitimately-long cold builds
+    # before they could finish OR seed the caches. Left OFF so the first full
+    # run reveals the true duration; GitHub's 6-hour job default is the backstop.
+    # Set informed per-step/job timeout-minutes here once we have a real
+    # cold + warm number.
 
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -243,11 +242,9 @@ jobs:
         # cross-toolchain, overran the old 20-min timeout. ccache buys ~nothing
         # for a build this small. 45 min covers a cold musl-toolchain build; the
         # initramfs-host cache above makes warm runs a couple of minutes.
-        timeout-minutes: 45
         run: make initramfs
 
       - name: Stage 2 -- build full image (make all)
-        timeout-minutes: 75
         run: |
           make all \
             BR2_CCACHE=y \

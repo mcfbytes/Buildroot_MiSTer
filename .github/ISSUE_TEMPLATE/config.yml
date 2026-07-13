@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project Status & Questions
+    url: https://github.com/mister-devel/Buildroot_MiSTer/discussions
+    about: Use Discussions for questions about the project, contributions, or general feedback
+  - name: Phase Status
+    url: https://github.com/mister-devel/Buildroot_MiSTer/blob/master/TASKS.md
+    about: Check TASKS.md for current phase status and what's being worked on
+  - name: Documentation
+    url: https://github.com/mister-devel/Buildroot_MiSTer/blob/master/PLAN.md
+    about: Read PLAN.md and TASKS.md for project context and constraints

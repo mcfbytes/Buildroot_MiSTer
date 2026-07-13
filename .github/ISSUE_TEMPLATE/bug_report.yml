@@ -1,0 +1,130 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please provide as much detail as possible.
+
+        To help us diagnose the issue:
+        - Check your MiSTer.version (see instructions below)
+        - Capture kernel output (dmesg)
+        - If possible, capture serial console output from boot
+
+  - type: input
+    id: version
+    attributes:
+      label: MiSTer.version
+      description: |
+        The version of the MiSTer Linux image you're running.
+        Check the rootfs: read the first 6 bytes of /MiSTer.version on the SD card.
+        Example: "202607" for July 2026 release.
+      placeholder: "YYYYMM"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What went wrong?
+      description: |
+        Describe the bug clearly and concisely.
+        - What did you expect to happen?
+        - What actually happened?
+        - When did this first occur? (e.g., on boot, after N minutes, after a specific action?)
+      placeholder: |
+        On boot, the kernel fails to mount the /media/fat partition.
+        The system drops to a rescue shell with the error message:
+        "Failed to mount /dev/loop8: -ENODEV"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dmesg
+    attributes:
+      label: Kernel output (dmesg)
+      description: |
+        Full kernel output showing the error. Capture this via serial console or by mounting
+        the SD card on another machine and checking /proc/cmdline and any kernel logs.
+        Include timestamps and the full context around the error (not just the error line).
+      placeholder: |
+        [    0.000000] Linux version 6.18.38 on a ARM ...
+        [    0.000000] Command line: root=/dev/loop8 loop=linux.img console=ttyS0,115200n8 ...
+        ...
+        [   10.123456] Failed to mount /dev/loop8: -ENODEV
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial_log
+    attributes:
+      label: Serial console output (optional but helpful)
+      description: |
+        If you have access to a serial console connection to the DE10-Nano,
+        capture the full boot log and any error messages. This may show details
+        that dmesg cannot capture, especially during early boot.
+      render: text
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to reproduce
+      description: |
+        How do we reproduce this bug?
+        List exact steps, such as:
+        1. Flash the image to SD card
+        2. Boot with specific U-Boot settings (if applicable)
+        3. Launch a specific core or action
+        4. Observe the error
+      placeholder: |
+        1. Flash image to SD card
+        2. Insert into DE10-Nano and power on
+        3. Observe kernel hanging at "Waiting for root device..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware_setup
+    attributes:
+      label: Hardware & adapter info
+      description: |
+        Help us reproduce by knowing your exact setup:
+        - Board revision (DE10-Nano is the only supported board currently)
+        - SD card model and capacity
+        - Any USB adapters or peripherals attached
+        - Power supply (official or third-party)
+      placeholder: |
+        - DE10-Nano rev C
+        - SanDisk Ultra 32GB SD card
+        - USB Bluetooth adapter (Edimax BT-8500)
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What changed? (difference from stock)
+      description: |
+        How do you know this is a regression? Describe what you were running before.
+        - Stock MiSTer (which release date?)
+        - Another version of this modernized image (which version?)
+        - A modified config
+      placeholder: |
+        Was working fine on stock release_20250402. Issue appeared immediately
+        after flashing the modernized image built 2026-07-12.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Additional logs or details
+      description: Optional. Attach any other relevant information — system logs, config excerpts, etc.
+      render: text
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note:** This is an alpha/personal-use image. Expect rough edges and limited support until Phase 4 publication.
+        If you have a serial connection, that output is the most valuable diagnostic tool available right now.

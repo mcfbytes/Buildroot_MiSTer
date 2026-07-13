@@ -71,8 +71,14 @@
 name: Reproducibility
 
 on:
-  push:
-  pull_request:
+  # MANUAL-ONLY (workflow_dispatch), deliberately NOT push/pull_request.
+  # This is a double build -- 2x the cost of a normal one -- and its shared
+  # INPUT caches (dl/, host toolchain, ccache; same keys as build.yml) are only
+  # warm AFTER build.yml has run. Wiring it to push would burn two *cold*
+  # builds on every commit, in parallel with build.yml (3 cold Buildroot builds
+  # at once). Instead: let build.yml seed the caches, then run this on demand:
+  #   gh workflow run reproducibility.yml --ref <branch>
+  # (Add a `schedule:` here later if a periodic warm-cache check is wanted.)
   workflow_dispatch:
 
 # Cancel a superseded run for the same ref, same as build.yml — a double

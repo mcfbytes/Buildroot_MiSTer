@@ -2,7 +2,9 @@
 
 **A reproducible, drop-in `linux.img` built from a modern Buildroot, with all kernel patches carried in-tree as Buildroot patch files.**
 
-*Developer-facing README. Full community/user documentation is still to come (P4.9). Start with `PLAN.md` and `TASKS.md` for project context.*
+**Status: Phases 1–3 complete with hardware validation underway; Phase 4 in progress. This image is personal-use only until the sustainability commitment (ADR 0014) is signed by a named maintainer.**
+
+Start with `PLAN.md` and `TASKS.md` for project context. Beta testers: see `docs/user/beta-testing.md`.
 
 ---
 
@@ -10,7 +12,15 @@
 
 MiSTer's operating system is currently distributed as an opaque archive containing a 375 MiB ext4 image built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux 5.15.1** — a kernel forked in November 2021 that has never merged a single 5.15.y stable release. This project replaces that image with one built from **Buildroot 2026.02 LTS** and a **mainline 6.18 LTS kernel**, in a public repository, with CI and reproducible builds.
 
-**Status: Phase 1 complete — the kernel builds.** 24 patches apply to a pristine linux-6.18.38 and produce a warning-free `zImage_dtb`; the initramfs boots under QEMU. **It has not yet booted on real hardware** — that is P1.13, the Phase 1 exit gate, and it needs a serial console.
+### Project Status
+
+- **Phase 0** (Reconnaissance & decisions): **Complete**. Patch triage, ABI contract verification, and all five open questions decided (see `docs/decisions/` ADRs 0010–0014).
+- **Phase 1** (Kernel & initramfs): **Complete**. 24 patches apply cleanly to linux-6.18.38; `zImage_dtb` builds warning-free and boots under QEMU. Exit gate (P1.13): first hardware boot on DE10-Nano — **in progress**.
+- **Phase 2** (Rootfs & testing): **Complete**. Buildroot 2026.02 LTS, glibc 2.42, reproducible ext4 image with full SBOM. Exit gate (P2.8): ABI contract verified on real hardware — in progress.
+- **Phase 3** (Module packages & hardware matrix): **Complete**. WiFi, Bluetooth, controllers, and special devices packaged and tested. Exit gate (P3.13): hardware validation on DE10-Nano — **in progress**.
+- **Phase 4** (Release & sustainability): **In progress**. Community governance files, CI/CD, beta-testing program, and publication gate.
+
+**This is a personal-use project until Phase 4 exit** — sustainable maintenance is a gate (ADR 0014).
 
 ---
 
@@ -104,28 +114,31 @@ all, the build fails fast and tells you what to install.
 
 ---
 
-## Key Files
+## Technical Reference
 
-- `PLAN.md` — Authoritative project plan, constraints, and design decisions
-- `TASKS.md` — Execution contract: every task is self-contained with acceptance criteria
-- `docs/verification/stock-release-20250402.md` — What the shipped stock release actually contains
-- `docs/abi-contract.md` — The ABI guarantee the kernel and rootfs must honor (P0.5)
-- `docs/patch-provenance.md` — Every kernel patch: origin, upstream status, disposition (P0.4)
-- `docs/boot-chain.md` — U-Boot contract and kernel-config implications (P0.8)
+- **`docs/abi-contract.md`** — The ABI guarantee the kernel and rootfs must honor
+- **`docs/boot-chain.md`** — U-Boot contract and kernel-config implications
+- **`docs/phase0-review.md`** — Detailed findings from Phase 0 reconnaissance
+- **`docs/verification/stock-release-20250402.md`** — Stock image audit for reference
+- **`docs/package-manifest.md`** — SONAME stability guarantees for the ABI contract
 
 ---
 
 ## Contributing
 
-This project is not ready for contributions yet. Phase 0 is underway. See `PLAN.md` §13 for risk discussion and sustainability requirements.
+Contributions are welcome once the Phase 4 publication gate is passed. Until then, this is a personal-use project.
 
-For the eventual contribution model, see `CONTRIBUTING.md` (P4.9).
+When open, all contributions must follow the discipline in **`CONTRIBUTING.md`**: patch provenance tracking, developer sign-off (DCO), and adherence to the standing rules from `TASKS.md` (reproducibility, no vendored binaries, hash-pinned upstream sources).
+
+See `PLAN.md` §13 for sustainability requirements and risk discussion.
 
 ---
 
-## Current State
+## Key Documentation
 
-- **Phase 0 — complete.** Patch triage, ABI contract, and the five open questions decided (ADRs 0010–0014).
-- **Phase 1 — complete except the hardware gate.** Buildroot external tree, armv7/Cortex-A9/NEON glibc toolchain, 6.18.38 kernel config, 24 kernel patches, DTS, two-stage initramfs, `zImage_dtb` assembly, and a QEMU test harness. Full kernel builds with zero warnings.
-- **P1.13 (first hardware boot) is the Phase 1 exit gate and is NOT met.** Nothing here has run on a DE10-Nano.
-- **Not for anyone else's device yet.** The sustainability gate (ADR 0014) is unsigned, so this is a personal-use project until a named maintainer commits to tracking 6.18.y — see `PLAN.md` §13.
+- **`PLAN.md`** — Goals (G1–G7), design rationale, risk analysis, and sustainability model
+- **`TASKS.md`** — Phase-by-phase execution plan with acceptance criteria and model routing
+- **`docs/patch-provenance.md`** — Every kernel patch: origin, upstream status, and disposition
+- **`docs/decisions/`** — Architecture decision records (ADRs 0010–0014): open questions, trade-offs, and resolutions
+- **`CONTRIBUTING.md`** — Patch discipline, standing rules, and developer sign-off requirements
+- **`docs/user/beta-testing.md`** — Beta-tester guide (when available)

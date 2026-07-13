@@ -34,6 +34,11 @@
 #::sysinit:/bin/mount -o remount,rw /
 ::sysinit:/bin/mkdir -p /dev/pts /dev/shm
 ::sysinit:/bin/mount -a
+# / is read-only, so /run (tmpfs) starts empty each boot. /var/lock -> /run/lock
+# and /var/run -> /run, but nothing creates /run/lock, so daemons that take a
+# lock (sshd, crond, ...) fail their `touch /var/lock/<name>`. Create it here,
+# after `mount -a` has mounted the /run tmpfs.
+::sysinit:/bin/mkdir -p /run/lock /run/lock/subsys
 ::sysinit:/media/fat/MiSTer &
 ::sysinit:/etc/resync &
 ::sysinit:/sbin/swapon -a

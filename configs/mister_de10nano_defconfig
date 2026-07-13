@@ -1,3 +1,4 @@
+BR2_ROOTFS_MERGED_USR=y
 # mister_de10nano_defconfig — P1.2: toolchain & arch/ABI + minimal BusyBox rootfs
 #
 # Supersedes the P1.1 placeholder (which deliberately set nothing). This is the
@@ -408,7 +409,6 @@ BR2_PACKAGE_WPA_SUPPLICANT_WEXT=y             # stock's interfaces file passes
 BR2_PACKAGE_DHCPCD=y
 BR2_PACKAGE_NTP=y                             # classic ntpd, matches stock -- NOT chrony/openntpd
 BR2_PACKAGE_CIFS_UTILS=y
-BR2_PACKAGE_NFS_UTILS=y
 BR2_PACKAGE_RSYNC=y
 BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity for the
                                               # 274-applet set is a P2.3 config concern, not

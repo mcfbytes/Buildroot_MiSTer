@@ -500,29 +500,44 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
                                               # 274-applet set is a P2.3 config concern, not
                                               # a package-selection one
 
-# --- P3.1: Realtek USB WiFi kernel-module packages (PLAN.md §4.1 class E) ---
-# Commit-pinned, hash-verified, sourced from morrownr upstream (rtl8188eu and
-# rtl8188fu deviate -- morrownr carries neither; see each package/<name>/<name>.mk
-# for the documented substitute and the per-driver CONFIG_WIRELESS_EXT finding,
-# none of which need it for wpa_supplicant -D nl80211). All six build against
-# the pinned 6.18.y kernel; .ko lands under output/target/usr/lib/modules/6.18.33/
-# and is picked up by depmod/eudev autoload (P3.3).
+# --- P3.1/v9: Realtek USB WiFi -- MAINLINE-FIRST out-of-tree driver policy ---
+# Commit-pinned, hash-verified morrownr forks, kept ONLY for the 802.11ac chips
+# mainline still cannot drive: RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU.
+# Their .ko lands under output/target/usr/lib/modules/6.18.33/ and is autoloaded
+# by depmod/eudev on dongle insertion (P3.3). None need CONFIG_WIRELESS_EXT for
+# wpa_supplicant -D nl80211 (per-package .mk documents the finding).
 #
-# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are named
-# with a fork suffix, NOT plain rtl8188eu/rtl8821au/rtl8821cu -- Buildroot
-# 2026.02.3 upstream already ships its own same-named packages (different
-# forks); same name would collide on the Kconfig symbol and Make namespace.
-# See package/rtl8188eu-aircrack-ng/Config.in for the detail. This project's
-# OWN packages are enabled below; Buildroot's upstream rtl8188eu/rtl8821au/
-# rtl8821cu/rtl8812au-aircrack-ng/etc. packages are NOT enabled (left at
-# Buildroot's default "n") -- keeping our own pins in control, not
-# Buildroot's release cadence (A9 reproducibility).
-BR2_PACKAGE_RTL8188EU_AIRCRACK_NG=y
-BR2_PACKAGE_RTL8188FU=y
-BR2_PACKAGE_RTL8812AU=y
-BR2_PACKAGE_RTL8821AU_MORROWNR=y
-BR2_PACKAGE_RTL8821CU_MORROWNR=y
-BR2_PACKAGE_RTL88X2BU=y
+# The other Realtek USB chips MiSTer's 5.15 stock drove out-of-tree are now
+# handled by IN-KERNEL drivers (board/mister/de10nano/linux.config), so their
+# out-of-tree packages are DISABLED here -- enabling both would bind-fight on
+# the same USB IDs:
+#   8188eu, 8188fu, 8710bu  -> rtl8xxxu       (CONFIG_RTL8XXXU=m, already on)
+#   8811cu, 8821cu          -> rtw88_8821cu   (CONFIG_RTW88_8821CU=m)
+#   8822bu                  -> rtw88_8822bu   (CONFIG_RTW88_8822BU=m, HW-verified WPA3)
+# The disabled packages stay sourced (Config.in) as a selectable fallback.
+#
+# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr / rtl8814au-
+# morrownr carry a fork suffix, NOT plain rtl8188eu/rtl8821au/rtl8821cu -- so as
+# not to collide with Buildroot 2026.02.3's own same-named upstream packages
+# (different forks) on the Kconfig symbol and Make namespace. Buildroot's own
+# rtl8188eu/rtl8821au/rtl8821cu/rtl8812au-aircrack-ng packages are left OFF --
+# our pins stay in control, not Buildroot's release cadence (A9 reproducibility).
+BR2_PACKAGE_RTL8812AU=y                          # RTL8812AU 11ac -- no mainline USB driver
+BR2_PACKAGE_RTL8814AU_MORROWNR=y                 # RTL8814AU 4x4 11ac -- no mainline USB driver
+BR2_PACKAGE_RTL8821AU_MORROWNR=y                 # RTL8811AU/RTL8821AU 11ac -- no mainline USB driver
+# BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set   # -> mainline rtl8xxxu (8188eu)
+# BR2_PACKAGE_RTL8188FU is not set               # -> mainline rtl8xxxu (8188fu)
+# BR2_PACKAGE_RTL8821CU_MORROWNR is not set      # -> mainline rtw88_8821cu (8811cu/8821cu)
+# RTL8822BU (0bda:b812): SWITCHED to the MAINLINE rtw88 driver (kernel
+# CONFIG_RTW88_8822BU=m, see board/.../linux.config) instead of the out-of-tree
+# 88x2bu. Mainline goes through mac80211, so WPA3/SAE/PMF work correctly (the
+# out-of-tree 88x2bu advertised SAE+CMAC but failed WPA3-only association,
+# status_code=1 -- verified on hardware). rtw88 USB support for this chip landed
+# in mainline ~6.2, AFTER stock's 5.15 froze -- which is why the out-of-tree
+# driver was needed then and isn't now. The out-of-tree package is left OFF to
+# avoid a bind conflict on the same USB ID; re-enable it (and drop RTW88_8822BU)
+# to fall back. See docs/wifi-parity.md.
+# BR2_PACKAGE_RTL88X2BU is not set
 
 # --- P3.2: xone (Xbox One/Series accessory driver, PLAN.md §4.1 class D/E) ---
 # Commit-pinned, hash-verified, sourced from dlundqvist/xone -- the actively
@@ -582,6 +597,11 @@ BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT76X2E=y   # mediatek/mt7662.bin +
                                                 # mt7662u_rom_patch.bin are
                                                 # the OLD out-of-tree name,
                                                 # superseded, not reproduced)
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921=y    # WIFI_RAM_CODE_MT7961*.bin --
+                                                # MT7921U (mt7921u.ko, WiFi6 USB;
+                                                # the USB part reports as MT7961)
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925=y    # WIFI_RAM_CODE_MT7925*.bin --
+                                                # MT7925U (mt7925u.ko, WiFi6E USB)
 BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y       # rt2870.bin (rt2800usb,
                                                 # FIRMWARE_RT2870) + siblings
 BR2_PACKAGE_LINUX_FIRMWARE_RTL_81XX=y           # rtlwifi 8188e/8192c/8192d/
@@ -593,6 +613,19 @@ BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT=y        # rtl_bt 8723a/8723b/8723bs/
 BR2_PACKAGE_LINUX_FIRMWARE_RTL_88XX_BT=y        # rtl_bt/rtl88*.bin glob --
                                                 # covers 8812ae/8821a/8821c/
                                                 # 8822b/8822cu in one option
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88=y          # rtw88/rtw8822b_fw.bin etc. --
+                                                # firmware for the MAINLINE rtw88
+                                                # driver we now use for RTL8822BU
+                                                # (replacing out-of-tree 88x2bu);
+                                                # also covers 8821cu/8822cu rtw88
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW89=y          # rtw89/*.bin -- mainline rtw89
+                                                # (RTL8851BU/RTL8852BU WiFi6/6E USB)
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9271=y       # ar9271.fw + htc_9271* -- ath9k_htc
+                                                # (AR9271 802.11n USB)
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y       # ar7010*.fw + htc_7010* -- ath9k_htc
+                                                # (AR7010-based 802.11n USB)
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y       # carl9170-1.fw -- carl9170
+                                                # (AR9170 802.11n USB)
 BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
                                                 # regulatory.db.p7s (separate
                                                 # from linux-firmware, see

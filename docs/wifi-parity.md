@@ -10,6 +10,18 @@
 > the real `ip` (iproute2) it falls back to were not in the package set at
 > all.
 
+> **Update (v9 — [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md)):**
+> two facts this doc records have since changed. (1) The P3.1 driver set is no
+> longer six out-of-tree forks: 8188eu/8188fu (→ in-kernel `rtl8xxxu`), 8821cu
+> (→ `rtw88_8821cu`) and 8822bu (→ `rtw88_8822bu`, hardware-verified WPA3) moved
+> to mainline; only the 11ac chips with no mainline USB driver — 8812au, 8814au
+> (new), 8821au — remain out-of-tree morrownr packages. (2) The §1 claim that
+> `/etc/network/interfaces` is **byte-identical** to stock is no longer true:
+> each `wlan` stanza gained a `pre-up` wait-for-`wlan0` loop (deliberate — the
+> mainline `rtw88`/`rtw89` USB drivers register `nl80211` asynchronously). The
+> userland-parity findings below (bash/dialog/wireless-tools/iproute2, the
+> nl80211-first path) are unaffected.
+
 ## 0. Correction to the task premise — there is no `wifi.sh` in the base image
 
 The task brief (and `TASKS.md` P3.4/P3.13) describe `wifi.sh` as "a MiSTer

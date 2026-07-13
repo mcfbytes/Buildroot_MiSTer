@@ -47,13 +47,16 @@ GROUPS: dict[str, tuple[str, str, str, str]] = {
 	"rtl_usb": ("rtlwifi (in-tree Realtek)", "in-tree, upstream", "P3.1/P3.3", "rtlwifi USB transport"),
 	"rtl8187": ("rtlwifi (in-tree Realtek)", "in-tree, upstream", "P3.1/P3.3", "RTL8187 USB dongle (older rtl_usb-independent driver)"),
 	"rtl8xxxu": ("rtl8xxxu (in-tree Realtek, alt. driver)", "in-tree, upstream", "P3.1/P3.3", "newer single-module Realtek USB driver (alternative to rtlwifi for some chips)"),
-	# Out-of-tree Realtek set (class E, morrownr re-source, PLAN.md §4.1)
-	"8188eu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188EU"),
-	"rtl8188fu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188FU"),
-	"8812au": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8812AU"),
-	"8821au": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8821AU"),
-	"8821cu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8821CU"),
-	"88x2bu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL88x2BU"),
+	# Stock's out-of-tree Realtek set. v9 (ADR 0016) moved most to in-kernel
+	# 6.18 drivers; only the 11ac chips with no mainline USB driver stay
+	# out-of-tree (morrownr). "handling" reflects the v9 decision; "category"
+	# still records what STOCK shipped (out-of-tree class E).
+	"8188eu": ("Out-of-tree Realtek (class E)", "v9: mainline rtl8xxxu (ADR 0016); out-of-tree fork retired", "P3.1/v9", "RTL8188EU"),
+	"rtl8188fu": ("Out-of-tree Realtek (class E)", "v9: mainline rtl8xxxu (ADR 0016); out-of-tree fork retired", "P3.1/v9", "RTL8188FU"),
+	"8812au": ("Out-of-tree Realtek (class E)", "class E -- out-of-tree morrownr, KEPT (no mainline USB driver)", "P3.1", "RTL8812AU"),
+	"8821au": ("Out-of-tree Realtek (class E)", "class E -- out-of-tree morrownr, KEPT (no mainline USB driver)", "P3.1", "RTL8821AU"),
+	"8821cu": ("Out-of-tree Realtek (class E)", "v9: mainline rtw88_8821cu (ADR 0016); out-of-tree fork retired", "P3.1/v9", "RTL8821CU"),
+	"88x2bu": ("Out-of-tree Realtek (class E)", "v9: mainline rtw88_8822bu (ADR 0016); out-of-tree fork retired", "P3.1/v9", "RTL88x2BU"),
 	# Marvell (in-tree, not called out explicitly in the task list but present)
 	"libertas": ("Marvell (in-tree, upstream)", "in-tree, upstream", "P3.1/P3.3", "Marvell Libertas core"),
 	"libertas_tf": ("Marvell (in-tree, upstream)", "in-tree, upstream", "P3.1/P3.3", "Libertas \"thinfirm\" variant"),

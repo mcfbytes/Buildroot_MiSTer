@@ -453,6 +453,74 @@ BR2_PACKAGE_RTL88X2BU=y
 BR2_PACKAGE_XONE=y
 BR2_PACKAGE_XOW_FIRMWARE=y
 
+# --- P3.3: /lib/firmware population (PLAN.md §3/§4.1, module loading &
+# firmware infra -- the module-autoload/depmod/kmod/xz-compress half is
+# already done, see BR2_PACKAGE_HOST_KMOD_XZ/BR2_PACKAGE_KMOD_TOOLS below).
+# Source of truth: docs/firmware-parity.md (the inventory -> sub-option
+# mapping + the built-vs-stock diff). Target: docs/stock-inventory/
+# firmware.md's 66-file inventory (xow_dongle.bin, the 67th stock file, is
+# P3.2's xow-firmware above, not repeated here).
+#
+# linux-firmware itself (BR2_PACKAGE_LINUX_FIRMWARE) is a meta-option with no
+# files of its own -- every actual file comes from a sub-option below, each
+# picked because it is the SMALLEST upstream grouping that contains an
+# inventory file (Buildroot's own file lists are coarse per sub-option, so
+# some non-inventory sibling files ride along -- a documented superset, not a
+# problem; see the parity doc). regulatory.db/.p7s come from a SEPARATE
+# package (wireless-regdb, not linux-firmware -- upstream split them out
+# after the kernel gained direct .db-loading support in 4.15).
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U=y   # mt7601u.bin (top-level, via
+                                                # WHENCE-driven symlink -- see
+                                                # parity doc for the build-
+                                                # verified proof)
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7610E=y   # mediatek/mt7610e.bin
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7650=y    # mt7650.bin -- filed under
+                                                # Buildroot's "Bluetooth
+                                                # firmware" menu (MT7650 is a
+                                                # WiFi+BT combo chip) but is
+                                                # the ONLY toggle that
+                                                # installs this WiFi file;
+                                                # stock's own inventory
+                                                # attributes it to
+                                                # rt2800usb, not to Bluetooth
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT76X2E=y   # mediatek/mt7662.bin +
+                                                # mediatek/mt7662_rom_patch.bin
+                                                # (top-level via symlink) --
+                                                # also what the in-tree
+                                                # mt76x2u USB driver requests
+                                                # (mt76x2/usb_mcu.c), not a
+                                                # separate mt7662u.bin (see
+                                                # parity doc: stock's own
+                                                # mediatek/mt7662u.bin /
+                                                # mt7662u_rom_patch.bin are
+                                                # the OLD out-of-tree name,
+                                                # superseded, not reproduced)
+BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y       # rt2870.bin (rt2800usb,
+                                                # FIRMWARE_RT2870) + siblings
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_81XX=y           # rtlwifi 8188e/8192c/8192d/
+                                                # 8192s/8192eu family
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX=y           # rtlwifi 8712u/8723a/8723b
+                                                # family
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT=y        # rtl_bt 8723a/8723b/8723bs/
+                                                # 8761a/8761bu family
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_88XX_BT=y        # rtl_bt/rtl88*.bin glob --
+                                                # covers 8812ae/8821a/8821c/
+                                                # 8822b/8822cu in one option
+BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
+                                                # regulatory.db.p7s (separate
+                                                # from linux-firmware, see
+                                                # above)
+
+# Seven files stock ships that NO linux-firmware sub-option covers, even
+# though upstream linux-firmware carries them and this project's pinned
+# 6.18.33 kernel still has an in-tree consumer for each (verified by grep
+# against the actual built kernel source, not assumed -- see
+# package/linux-firmware-extra/linux-firmware-extra.mk and
+# docs/firmware-parity.md for the per-file citation). Same upstream tarball
+# and hash-pin as linux-firmware itself, just a different subset kept.
+BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
+
 # --- explicitly NOT carried forward (manifest §5 Drop list) ---
 #   archivemount (broken in stock; its deps libarchive/libfuse ARE kept above for others)
 #   adplay / adplug / binio          -- no Buildroot package, no known MiSTer use

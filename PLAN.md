@@ -565,7 +565,10 @@ mister-linux/
 │   │                                   # unambiguously GPL-2.0-or-later
 │   ├── xow-firmware/                   # Xbox Wireless Dongle firmware, fetched from
 │   │                                   # Microsoft at build time (ADR 0003) -- never in git
-│   └── cabextract/                     # host-only build tool xow-firmware depends on
+│   ├── cabextract/                     # host-only build tool xow-firmware depends on
+│   └── linux-firmware-extra/           # P3.3 -- gap-fill for stock firmware.md files no
+│                                       # linux-firmware Config.in sub-option covers; same
+│                                       # tarball/hash as the sibling linux-firmware package
 ├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/
 │   ├── build.yml                      # build + upload Release assets

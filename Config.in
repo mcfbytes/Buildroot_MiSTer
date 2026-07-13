@@ -24,4 +24,11 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
+menu "Firmware infra gap-fill (P3.3)"
+	# Fills the handful of stock firmware.md entries that Buildroot's own
+	# linux-firmware package Config.in has no sub-option for, even though
+	# upstream linux-firmware ships them. See docs/firmware-parity.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/linux-firmware-extra/Config.in"
+endmenu
+
 endmenu

@@ -1,0 +1,40 @@
+config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
+	bool "linux-firmware-extra (stock-parity gap fill)"
+	default y
+	help
+	  Four firmware files that stock ships (docs/stock-inventory/
+	  firmware.md) and that a currently in-tree 6.18 kernel driver
+	  genuinely still requests, but that Buildroot's own linux-firmware
+	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
+	  has NO sub-option for -- upstream linux-firmware ships every one of
+	  these four (verified: this package downloads the exact same
+	  tarball, at the exact same pinned version, as the sibling
+	  linux-firmware package, and the four paths below were confirmed
+	  present via `tar tf` on the actual downloaded file), Buildroot's
+	  curated Config.in list just never grew a toggle for them.
+
+	  Covers: mediatek/mt7610u.bin (MT7610U -- only the "e" PCIe sibling
+	  mt7610e.bin has a toggle), mediatek/mt7622pr2h.bin and
+	  mediatek/mt7668pr2h.bin (MediaTek Bluetooth companion firmware,
+	  requested by drivers/bluetooth/btmtk.h, no toggle), and rtlwifi/
+	  rtl8723befw_36.bin (requested by the in-tree rtl8723be sub-driver,
+	  not listed under RTL_87XX alongside the un-suffixed
+	  rtl8723befw.bin).
+
+	  THREE further stock files with a plausible in-tree consumer --
+	  brcm/BCM20702A1-0b05-17cb.hcd, rtl_bt/rtl8723d_config.bin,
+	  rtlwifi/rtl8192eefw.bin -- were tried here and dropped: none of
+	  the three actually exist in the pinned linux-firmware-20251011
+	  tarball (confirmed via its own file listing, not assumed from the
+	  driver side), so no source is available without stepping outside
+	  the pinned, hash-verified upstream. Flagged in
+	  docs/firmware-parity.md for review rather than sourced from an
+	  unpinned mirror (project rule: do not fabricate a source).
+
+	  See docs/firmware-parity.md for the full inventory-vs-built diff:
+	  every file's in-tree consumer was checked against THIS project's
+	  pinned 6.18.33 kernel source (not assumed), and the files
+	  deliberately NOT reproduced (obsolete driver, no upstream source,
+	  or no in-tree consumer at all -- would need a new out-of-tree
+	  driver package, out of P3.3's scope) are documented there, not
+	  silently dropped.

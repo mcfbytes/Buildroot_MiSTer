@@ -686,13 +686,56 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   wired-controller input, force feedback, LED/battery/audio sysfs paths — the build/link/
   depmod/vermagic/autoload/firmware-delivery chain is fully verified; device *function* is not.
 
-- [ ] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
+- [x] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
   Reproduce the verified stock layout: `kmod` + `depmod` at image build, **eudev**
   hotplug autoload (modules.alias-driven), xz-compressed module install
   (`CONFIG_MODULE_COMPRESS_XZ=y` parity), and `/lib/firmware` populated from
   linux-firmware filtered to the stock 72-file inventory plus new module needs.
   **Done when:** plugging a supported dongle (verified on HW in P3.13) autoloads the
   right module; firmware list documented; image size impact recorded in P2.7's report.
+
+  **Result: module-autoload half already done pre-task (kmod+depmod xz support,
+  modules.dep/modules.alias populated — see the P3.3 (core) commit). This pass covers only
+  `/lib/firmware` population.** `configs/mister_de10nano_defconfig` gained
+  `BR2_PACKAGE_LINUX_FIRMWARE` + 9 sub-options (`MEDIATEK_MT7601U/MT7610E/MT7650/MT76X2E`,
+  `RALINK_RT2XX`, `RTL_81XX/RTL_87XX/RTL_87XX_BT/RTL_88XX_BT`), `BR2_PACKAGE_WIRELESS_REGDB`
+  (a separate package from linux-firmware for `regulatory.db`/`.p7s`), and
+  `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA` (new `package/linux-firmware-extra`, a small satellite
+  package covering 4 files — `mediatek/mt7610u.bin`, `mediatek/mt7622pr2h.bin`,
+  `mediatek/mt7668pr2h.bin`, `rtlwifi/rtl8723befw_36.bin` — that no Buildroot sub-option
+  installs despite a confirmed in-tree 6.18.33 driver consumer; hash-pinned against the
+  *same* linux-firmware tarball/hash the sibling package already uses, not a new source).
+
+  **Build-verified against `output/images/rootfs.tar`** (not just `output/target`): **56 of
+  the 66 stock inventory files present** — several via linux-firmware's own WHENCE-driven
+  symlink pass (not obvious from Config.in alone; e.g. `rtl_bt/rtl8723d_config.bin` →
+  `rtl8821c_config.bin`, `rtlwifi/rtl8192eefw.bin` → `rtl8192eu_nic.bin`), corrected mid-task
+  after the first build attempt revealed it. **10 not reproduced**, each individually
+  justified in `docs/firmware-parity.md`: 3 (`RTL8192E/*`) obsolete — the consuming driver
+  (`drivers/staging/rtl8192e`) was deleted from the kernel in 6.13, and upstream
+  linux-firmware has since dropped the firmware too (confirmed via `tar tf` on the actual
+  pinned tarball, not assumed); 2 (`mediatek/mt7662u*.bin`) superseded — the in-tree
+  `mt76x2u` driver requests the already-shipped top-level `mt7662*.bin` names instead; 2
+  (`rtl_bt/rtl8192ee_fw.bin`/`rtl8192eu_fw.bin`) exist upstream but have zero in-tree
+  consumer (BT chip-ID table entry removed); 1 (`rtlwifi/rtl8723defw.bin`) has no in-tree
+  driver at all (would need a new out-of-tree package, out of scope); 2
+  (`brcm/BCM20702A1-0b05-17cb.hcd`, `rt2870_sw_ch_offload.bin`) flagged for review — **not
+  fabricated a source** — neither exists in the pinned upstream linux-firmware tarball nor is
+  requested by any in-tree driver by that literal name.
+
+  First `make all` attempt failed (`tar: ... Not found in archive`) — `linux-firmware-extra`'s
+  custom `EXTRACT_CMDS` didn't account for the tarball's `linux-firmware-<version>/` wrapper
+  directory; fixed (member paths wrapper-prefixed + `--strip-components=1`, matching the
+  sibling package's own pattern) and rebuilt clean (`make linux-firmware-extra-dirclean &&
+  make all`, exit 0). Both `check-zimage-dtb.sh` and `check-linux-img.sh` pass, all
+  assertions green. Module-autoload machinery re-verified with no regression:
+  `modules.dep`/`modules.alias` grew (57/977 lines) vs. pre-P3.3, not shrank. `/lib/firmware`
+  totals 3.1 MiB in the built image (68 regular files + 23 symlinks); P3.3's own addition is
+  ≈2.9 MiB against a 512 MiB image — `linux.img` still 60.6% free (well above the 15% floor).
+  `docs/size-budget.md` regenerated with current post-P3.1/P3.2/P3.3 figures.
+  **Unverified without hardware (P3.13):** actual dongle-plug autoload behavior — the
+  build/depmod/vermagic/firmware-delivery chain is fully verified in the image; device
+  *function* is not.
 
 - [ ] **P3.4 — WiFi userland parity** — [SONNET] — Size S — Depends: P3.3
   `wpa_supplicant` config/paths matching stock so `wifi.sh` and existing user configs

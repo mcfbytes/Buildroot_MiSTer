@@ -569,7 +569,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** `docs/size-budget.md` committed; CI-runnable check script asserts the
   15 % floor.
 
-- [ ] **P2.10 — Version-delta doc: five years of upstream fixes** — [SONNET] — Size S — Depends: P2.1
+- [x] **P2.10 — Version-delta doc: five years of upstream fixes** — [SONNET] — Size S — Depends: P2.1
   Produce `docs/version-delta.md`: stock (Buildroot **2021.02.4**) vs ours (**2026.02.3**)
   for every package, the version jump, and the security/maintenance value. This is a
   headline win — stock froze the whole userland ~5 years ago — and it directly serves

@@ -82,9 +82,9 @@ still requires mr-fusion or the Windows SD installer.
   and the mailbox handshake are not upstream and never will be). The real cost of
   choosing the fork instead: U-Boot 2017.03 forever forgoes upstream fixes. Accepted,
   because the exposure is a boot-once code path with no persistent attack surface —
-  `updateboot` wipes the saved env on every update (boot-chain §5b), the effective env
-  is always defaults + `u-boot.txt`, and stock has shipped this exact binary for
-  years. If a mainline port ever becomes worthwhile, this ADR does not preclude it —
+  `updateboot` wipes the saved env on every update (boot-chain §5, Consequence (b)),
+  the effective env is always defaults + `u-boot.txt`, and stock has shipped this
+  exact binary for years. If a mainline port ever becomes worthwhile, this ADR does not preclude it —
   it just stops it from being the *first* step.
 - **`BR2_TARGET_UBOOT_CUSTOM_GIT` pointing at GitHub.** Pins the same commit, but the
   pin lives only in a Buildroot config string and the source stays outside our tree —

@@ -689,14 +689,13 @@ saved environment at sector 1**. Two consequences: shipping the stock `uboot.img
 byte-identical is load-bearing (whatever we ship gets flashed), and no state survives in the
 saved environment — the effective env is always built-in defaults + `u-boot.txt`.
 
-**Phase 5 path — REVISED 2026-07-13
-([ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md)): build the
-existing fork from source; do not port to mainline.** The original Phase 5 plan was a
-mainline U-Boot port (`socfpga_de10_nano_defconfig` + re-implementing `u-boot.txt`
-env-from-FAT, `fpgaload`/`fpgacheck`, the MiSTer-only `mt` command, the warm-reboot
-mailbox). Every one of those re-implementations is new code in the one component whose
-failure mode is a bricked board — reinventing a wheel that already exists and is proven on
-every shipped MiSTer. Instead, once everything else is stable and hardware-tested:
+**Phase 5 path — REVISED 2026-07-13 ([ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md)): build the existing fork from source; do not port to mainline.**
+The original Phase 5 plan was a mainline U-Boot port (`socfpga_de10_nano_defconfig` +
+re-implementing `u-boot.txt` env-from-FAT, `fpgaload`/`fpgacheck`, the MiSTer-only `mt`
+command, the warm-reboot mailbox). Every one of those re-implementations is new code in
+the one component whose failure mode is a bricked board — reinventing a wheel that
+already exists and is proven on every shipped MiSTer. Instead, once everything else is
+stable and hardware-tested:
 
 * **Source:** [`MiSTer-devel/u-boot_MiSTer`](https://github.com/MiSTer-devel/u-boot_MiSTer)
 (U-Boot 2017.03 fork), pinned as a **git submodule** at `u-boot/`, commit `8dcc3484` —

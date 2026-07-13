@@ -994,7 +994,7 @@ drilled recovery procedure. **The default channel keeps shipping the stock
   with per-item explanations and a PASS verdict; the comparison script lives in
   `scripts/` and runs in CI.
 
-- [ ] **P5.3 — [NET] Full SD-card image (`sdcard.img`)** — [SONNET] — Size L — Depends: P1.10, P2.5, P4.4 (P5.2 for the built-U-Boot variant)
+- [ ] **P5.3 — [NET] Full SD-card image (`sdcard.img`)** — [SONNET] — Size L — Depends: P1.10, P2.5, P4.4 (P5.1 + P5.2 for the built-U-Boot variant)
   genimage post-image step producing a complete, dd-able card image: MBR; **p1** =
   FAT32 data partition; **p2** = type **`0xA2`**, ≥ 1 MiB, with `uboot.img` written
   raw at its start (SPL contract, boot-chain §2.1). **p1 payload parity target: "a
@@ -1023,7 +1023,7 @@ drilled recovery procedure. **The default channel keeps shipping the stock
   of p2's head against `uboot.img`; the image's FAT + `linux.img` pass the P1.12
   QEMU initramfs harness; flashing instructions documented.
 
-- [ ] **P5.4 — [HW] SD image + built U-Boot hardware matrix & recovery drill** — human + [OPUS] — Size L — Depends: P5.3
+- [ ] **P5.4 — [HW] SD image + built U-Boot hardware matrix & recovery drill** — human + [OPUS] — Size L — Depends: P5.2, P5.3
   (a) Flash `sdcard.img` (stock-blob variant) to a fresh card → boots to menu;
   first-boot `ethaddr` provisioning verified (unique MAC, survives reboot);
   `update_all.sh` completes a run. (b) The built-U-Boot variant → boots to menu;

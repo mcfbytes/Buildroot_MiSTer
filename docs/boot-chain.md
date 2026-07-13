@@ -182,8 +182,10 @@ Notes on three entries that matter:
   `v=loglevel=4 usbhid.jspoll=1 xpad.cpoll=1`).
 * **`ethaddr=02:03:04:05:06:07`** — a fixed *fallback* MAC compiled in. Every board would
   present the same MAC unless `u-boot.txt` overrides `ethaddr`, which is precisely what
-  `mr-fusion` writes at install time (PLAN §8). This is the mechanism Phase 5 must
-  reproduce.
+  `mr-fusion` writes at install time (PLAN §8). Under ADR 0017 the `u-boot.txt`
+  machinery itself comes with the fork source; what Phase 5 must still reproduce is
+  mr-fusion's per-board `ethaddr` *provisioning* — a first-boot write of
+  `linux/u-boot.txt` with a unique MAC (P5.3).
 * **Entry 15 has no `=`.** `"bootm $loadaddr - $fdt_addr\0"` in `CONFIG_EXTRA_ENV_SETTINGS`
   is a source bug — an orphaned string with no variable name, left over from an earlier edit
   of the file. It is present in the shipped binary's default-env blob. It is harmless: the
@@ -224,7 +226,11 @@ the stock blob as a release input (fetched by hash from the pinned SD-Installer 
 never as a build output. Because it is a binary, it cannot be committed (standing rule 1) —
 CI must fetch it and verify sha256 `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64`.
 
-### 3.3 `mt` is a MiSTer-only U-Boot command (Phase 5 blocker)
+*(ADR 0017 does not change this: the default channel keeps the stock blob. Phase 5's
+from-source build — same commit, `8dcc3484` — ships opt-in only and is validated by
+behavioural parity (P5.2), not byte identity.)*
+
+### 3.3 `mt` is a MiSTer-only U-Boot command (was a Phase-5 blocker; moot under ADR 0017)
 
 `fpgacheck` uses `mt`, which is **not** an upstream U-Boot command. It was added by this fork
 (`u-boot` commit `c0ed23f52e` "Implement simple memory test against value"):
@@ -239,8 +245,10 @@ CI must fetch it and verify sha256 `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e57
 > ```
 
 So `if mt <addr> <val>; then …` means *"if the word at `addr` equals `val`"*. **Any mainline
-U-Boot port (P5.1) must re-implement `mt` or rewrite `fpgacheck` without it** (e.g.
-`setexpr` + `test`). Add this to P5.1's port-disposition list.
+U-Boot port must re-implement `mt` or rewrite `fpgacheck` without it** (e.g.
+`setexpr` + `test`). *(ADR 0017 dissolved this blocker: Phase 5 now builds this fork
+itself, so `mt` ships with it. The paragraph stands as part of the record of why the
+mainline port was the more expensive path.)*
 
 ---
 
@@ -910,11 +918,13 @@ Also preserved by construction, and worth stating so P1.10 does not "improve" th
   explicit decision in P0.4/P3.13. (§8.4)
 * **N3 — `/dev/loop8` is a kernel-patch artifact with a `part_shift`-dependent minor.** Nothing
   in userland depends on it. P1.10 must use `losetup -f`, not a hardcoded node. (§8.3)
-* **N4 — `mt` is a MiSTer-only U-Boot command.** Any mainline U-Boot port (P5.1) must
-  re-implement it or rewrite `fpgacheck`. (§3.3)
+* **N4 — `mt` is a MiSTer-only U-Boot command.** Any mainline U-Boot port must
+  re-implement it or rewrite `fpgacheck`. (§3.3) *(Moot since ADR 0017: Phase 5 builds
+  the fork, `mt` included.)*
 * **N5 — `uboot.img` cannot be rebuilt byte-identically** (compiled-in `+0800` timestamp, no
   `SOURCE_DATE_EPOCH`, pinned 2020 Arm toolchain). It must be *fetched by hash*, never built.
-  (§3.2)
+  (§3.2) *(Under ADR 0017 this holds for the default channel; the Phase-5 from-source
+  build is a separate opt-in artifact validated by behavioural parity, not byte identity.)*
 
 **Not verified (open):**
 

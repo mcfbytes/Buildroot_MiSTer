@@ -69,7 +69,9 @@ hash-verified update channel. **No permission, no fork of the cores, no fork of 
 * Not switching to musl/Alpine. **This would break every prebuilt binary in the ecosystem.**
 * Not switching to a mutable package manager (apt/apk). The image-based update model is
 *correct* and should be preserved; the problem is the unpublished config, not the paradigm.
-* Not replacing U-Boot in v1. See §8.
+* Not replacing U-Boot in v1 — and, as of 2026-07-13, **not porting it to mainline at
+all**: Phase 5 builds the existing `u-boot_MiSTer` fork from source instead (§8,
+[ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md)).
 
 ---
 
@@ -543,7 +545,8 @@ mister-linux/
 │   │   ├── 0012-hid-fanatec.patch
 │   │   ├── 0013-hid-flydigi-vader.patch
 │   │   └── 0020-usb-storage-blacklist-realtek-cdrom.patch
-│   ├── uboot-patches/                 # empty in v1
+│   ├── uboot-patches/                 # empty in v1; P5: build fixes ONLY, never
+│   │                                  # behaviour changes (ADR 0017)
 │   ├── rootfs-overlay/
 │   │   ├── etc/init.d/S??…            # BusyBox init scripts (parity with stock)
 │   │   ├── etc/fstab
@@ -569,6 +572,9 @@ mister-linux/
 │   └── linux-firmware-extra/           # P3.3 -- gap-fill for stock firmware.md files no
 │                                       # linux-firmware Config.in sub-option covers; same
 │                                       # tarball/hash as the sibling linux-firmware package
+├── u-boot/                            # P5.1+: git submodule → MiSTer-devel/u-boot_MiSTer
+│                                      # @ 8dcc3484 (ADR 0017). Added in P5.1, not before —
+│                                      # no reason to make every clone/CI fetch it earlier.
 ├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/
 │   ├── build.yml                      # build + upload Release assets
@@ -683,16 +689,57 @@ saved environment at sector 1**. Two consequences: shipping the stock `uboot.img
 byte-identical is load-bearing (whatever we ship gets flashed), and no state survives in the
 saved environment — the effective env is always built-in defaults + `u-boot.txt`.
 
-**Phase 5 path**, once everything else is stable and hardware-tested:
+**Phase 5 path — REVISED 2026-07-13
+([ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md)): build the
+existing fork from source; do not port to mainline.** The original Phase 5 plan was a
+mainline U-Boot port (`socfpga_de10_nano_defconfig` + re-implementing `u-boot.txt`
+env-from-FAT, `fpgaload`/`fpgacheck`, the MiSTer-only `mt` command, the warm-reboot
+mailbox). Every one of those re-implementations is new code in the one component whose
+failure mode is a bricked board — reinventing a wheel that already exists and is proven on
+every shipped MiSTer. Instead, once everything else is stable and hardware-tested:
 
-* Mainline U-Boot has `socfpga_de10_nano_defconfig` and `board/terasic/de10-nano/` with QTS
-handoff headers for DDR/pinmux/PLL.
-* Buildroot builds it: `BR2_TARGET_UBOOT` + `BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME="u-boot-with-spl.sfp"`
-
-  * a `uboot-patches/` directory, exactly mirroring the kernel model.
-* Must port: `u-boot.txt` env loading, the FPGA/bridge init, and the boot script.
-* **Gate on:** a hardware test matrix and a documented recovery procedure. Ship behind an
-explicit opt-in flag, separate from the `linux.img` update.
+* **Source:** [`MiSTer-devel/u-boot_MiSTer`](https://github.com/MiSTer-devel/u-boot_MiSTer)
+(U-Boot 2017.03 fork), pinned as a **git submodule** at `u-boot/`, commit `8dcc3484` —
+which is simultaneously the `MiSTer` branch HEAD (verified 2026-07-13; the branch has not
+moved since 2021) and **the exact commit the shipped `uboot.img` was proven to be built
+from** (`docs/boot-chain.md` §3.1, the malformed-env-entry fingerprint). The pin therefore
+covers precisely the behaviours P0.8 verified. Nothing needs porting. A submodule is a
+pointer, not a binary (standing rule 1 holds), and it records the source pin in *our* tree
+so the full-image build stays reproducible even if the upstream branch moves or vanishes.
+* Buildroot builds it from the submodule: `BR2_TARGET_UBOOT` + `UBOOT_OVERRIDE_SRCDIR`
+pointing at `u-boot/` (via `BR2_PACKAGE_OVERRIDE_FILE`), starting from the fork's own
+`MiSTer_defconfig`; output `u-boot-with-spl.sfp`, renamed `uboot.img`. The
+`uboot-patches/` directory mirrors the kernel model but is reserved for **build fixes
+only** — a 2017 codebase may need coaxing under a 2026 toolchain — never behaviour changes.
+* **A byte-identical rebuild is impossible and is not the goal** (`docs/boot-chain.md`
+§3.2: compiled-in non-UTC timestamp, exact 2020 Arm toolchain). The default Downloader
+channel keeps shipping the stock blob byte-identical (P4.4). The from-source build is
+validated by **behavioural parity**: identical default-environment blob (all 20 entries of
+`docs/boot-chain.md` §3.1), identical SPL/uImage layout and header fields, `mt` present —
+every remaining diff enumerated and individually explained.
+* **New deliverable — full SD-card image.** Phase 5 also produces a flashable
+`sdcard.img`: MBR with **p1** = FAT32 data partition and **p2** = type `0xA2` boot
+partition with `uboot.img` written raw at its start (the SPL contract,
+`docs/boot-chain.md` §2.1). **The payload parity target for p1 is "a card as
+[mr-fusion](https://github.com/MiSTer-devel/mr-fusion) leaves it"**, inventoried from the
+mr-fusion source at a pinned release: the P0.6 `files/linux/` payload (`linux.img`,
+`zImage_dtb`, `uboot.img`, `updateboot`, config templates), `menu.rbf` and the stock
+`MiSTer` binary, the standard folder tree, and the base `Scripts/` set mr-fusion installs
+(the Downloader script, the WiFi setup script) — **plus a recent
+[`Scripts/update_all.sh`](https://github.com/theypsilon/Update_All_MiSTer)**, which is
+deliberately cheap to include: it is a single self-updating file that runs the Downloader
+under the hood, so pinning "recent" is sufficient and it brings no further on-card
+dependencies. Everything is fetched at build time, pinned by commit/release + hash, never
+committed (standing rule 1). Built with genimage as a post-image step; published as a
+**separate release asset**, never part of `release_*.7z` or the db.json channel. This
+gives the project a from-scratch install path that does not depend on mr-fusion or the
+Windows SD installer. It must reproduce mr-fusion's per-board `ethaddr` provisioning (a
+first-boot write of `linux/u-boot.txt` with a unique MAC) — or every board would share
+the compiled-in fallback `02:03:04:05:06:07` — and should mirror mr-fusion's optional
+pre-seeding hooks (`wpa_supplicant.conf`, `samba.sh`, user `Scripts/`).
+* **Gate on:** a hardware test matrix and a documented, *drilled* recovery procedure. The
+built U-Boot ships behind an explicit opt-in flag, separate from the `linux.img` update;
+the SD image defaults to embedding the stock blob.
 
 Change one variable at a time.
 
@@ -719,6 +766,8 @@ SHA256SUMS
 buildroot.config            # exact, reproducible
 linux.config
 legal-info.tar.gz           # SBOM
+sdcard.img.xz               # Phase 5 only (§8, ADR 0017): full flashable SD image —
+                            # separate asset, never referenced by db.json
 ```
 
 The repo stays under \~10 MB. For contrast, `SD-Installer-Win64_MiSTer` is **5.8 GB** of
@@ -872,7 +921,7 @@ measured against stock would fail on stock itself.]**
 |**P2 — Rootfs**|Buildroot 2026.02 rootfs, glibc, SONAME parity. Read-only root preserved.|**Stock `MiSTer` binary reaches the menu.**|
 |**P3 — Parity**|WiFi, Bluetooth, Samba, FTP, SSH, MIDI. CI + release artifacts + SBOM.|Hardware matrix (§11) green|
 |**P4 — Beta**|Publish `db.json`. Recruit testers. Document rollback. Final pipeline hardening: Renovate dependency automation (§9).|Sustained opt-in use, no P1 bugs|
-|**P5 — U-Boot**|*Optional.* Mainline U-Boot via Buildroot (§8).|Separate opt-in; recovery procedure documented|
+|**P5 — Full SD image + U-Boot from source**|*Optional.* Build `uboot.img` from the pinned `u-boot_MiSTer` submodule; produce a flashable `sdcard.img` — kernel, `linux.img`, bootloader, mr-fusion-parity payload + `update_all.sh` (§8, ADR 0017).|Fresh card flashed from `sdcard.img` boots to menu; built U-Boot passes behavioural parity + hardware matrix; recovery procedure drilled|
 
 Sequential. Each phase's exit criterion is a hardware test, not a code review.
 
@@ -896,7 +945,8 @@ criteria — lives in `TASKS.md`.
 |DTS gaps (§4.1a) — missing USB, FPGA bridges, RTC bus|High|Carried as `0004-dts-de10nano-MiSTer.patch`. Drivers all exist mainline; this is config, not code.|
 |Rootfs exceeds the image budget|Medium|Grow `linux.img` to 512 MiB; audit assumptions about 400 MB.|
 |Boot regression from the initramfs|Low|Measurable; budget in §11.|
-|Bricking via U-Boot|**Critical**|Deferred to P5, opt-in, recovery documented.|
+|Bricking via U-Boot|**Critical**|Deferred to P5, opt-in, recovery documented **and drilled**. ADR 0017 shrinks the exposure: P5 builds the same source commit stock already runs, not a mainline port.|
+|**[ADR 0017] 2017-era U-Boot fails to build under a 2026 toolchain**|Medium|Expected and contained: build fixes only in `uboot-patches/` (provenance-documented, never behaviour changes); worst case, pin the Arm GNU 10.2-2020.11 toolchain the stock binary used (`docs/boot-chain.md` §3.2).|
 |Community fragmentation / abandonment|**High**|Be strictly drop-in. Ship a working artifact before making an argument. **If nobody will commit to tracking 6.18.y stable for years, do not start.**|
 
 That last one is not a joke. A stale fork is worse than no fork, because it splits the

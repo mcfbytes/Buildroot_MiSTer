@@ -951,27 +951,86 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
 
 ---
 
-## Phase 5 — U-Boot (deferred; do not start before Phase 4 exit)
+## Phase 5 — Full SD-card image + U-Boot from source (deferred; do not start before Phase 4 exit)
 
-Per §8: highest blast radius, lowest user benefit. Opt-in, separate from `linux.img`
-updates, gated on recovery documentation.
+**Rewritten 2026-07-13 per [ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md).**
+The mainline U-Boot port is abandoned: Phase 5 builds the proven fork
+(`MiSTer-devel/u-boot_MiSTer`, U-Boot 2017.03) from source, pinned as a **git
+submodule**, and adds a **full flashable SD-card image** (kernel + `linux.img` +
+bootloader + mr-fusion-parity payload) so a fresh card can be written without
+mr-fusion or the Windows SD installer. §8's posture is unchanged: highest blast
+radius, everything here is opt-in, separate from `linux.img` updates, gated on a
+drilled recovery procedure. **The default channel keeps shipping the stock
+`uboot.img` byte-identical (P4.4) — nothing in this phase changes that.**
 
-- [ ] **P5.1 — Mainline U-Boot port design** — [OPUS] — Size L — Depends: P4.10
-  Port plan for `socfpga_de10_nano_defconfig` + `u-boot.txt` env-from-FAT (the
-  `ethaddr` mechanism `mr-fusion` depends on), FPGA/bridge init, boot script parity —
-  all against the P0.8 boot-chain doc. `uboot-patches/` mirrors the kernel model.
-  **Done when:** design doc enumerates every stock U-Boot behavior with a port
-  disposition, and defines the brick-recovery procedure.
+- [ ] **P5.1 — [NET] U-Boot submodule + from-source build** — [SONNET] — Size M — Depends: P4.10
+  Add the `u-boot/` git submodule → `MiSTer-devel/u-boot_MiSTer` pinned at
+  **`8dcc3484aac6f07314538e82530d446083085e12`** — simultaneously the `MiSTer` branch
+  HEAD (verified 2026-07-13; unmoved since 2021) and the exact commit the shipped
+  `uboot.img` was proven built from (boot-chain §3.1). Set `shallow = true` in
+  `.gitmodules`; CI checkouts gain `submodules: true`. Wire into Buildroot:
+  `BR2_TARGET_UBOOT` + `UBOOT_OVERRIDE_SRCDIR` pointing at the submodule (via
+  `BR2_PACKAGE_OVERRIDE_FILE`; fall back to `BR2_TARGET_UBOOT_CUSTOM_TARBALL`
+  generated from the submodule if the override rsync misbehaves). Start from the
+  fork's own `MiSTer_defconfig` (boot-chain §10: both defconfigs share the env
+  header, but `MiSTer_defconfig` is the likelier shipped one). Output
+  `u-boot-with-spl.sfp`, renamed `uboot.img`. A 2017.03 tree may not compile under
+  2026 toolchains: carry **build fixes only** in `uboot-patches/` (each with a
+  provenance header per standing rule 2 — never behaviour changes); worst case, pin
+  the Arm GNU 10.2-2020.11 toolchain stock used (boot-chain §3.2). The artifact is a
+  build output only at this point — shipped nowhere.
+  **Done when:** CI builds `uboot.img` from the submodule; the SPL socfpga header
+  validates (validation word, length, checksum per boot-chain §2); layout is
+  4×64 KiB SPL copies + uImage at `0x40000`; size fits the `0xA2` partition.
 
-- [ ] **P5.2 — U-Boot build + opt-in packaging** — [SONNET] — Size L — Depends: P5.1
-  `BR2_TARGET_UBOOT` + `u-boot-with-spl.sfp`; shipped as a separate, explicitly opt-in
-  artifact never included in the default `release_*.7z`.
-  **Done when:** artifact builds reproducibly; release plumbing keeps it out of the
-  default update path (test the Downloader flow to prove it).
+- [ ] **P5.2 — Behavioural-parity validation of the built U-Boot** — [OPUS] — Size M — Depends: P5.1
+  Byte identity is impossible (boot-chain §3.2) — prove behavioural parity instead.
+  Script the stock-vs-built comparison: the default-environment blob **must match
+  boot-chain §3.1's 20 entries verbatim** (including the malformed entry-15
+  fingerprint); uImage header fields (load/entry `0x01000040`, os/arch/type); `mt`
+  present in the command table; version-string and timestamp diffs enumerated and
+  individually explained. Any *unexplained* delta fails the task.
+  **Done when:** `docs/verification/uboot-from-source.md` records the full diff list
+  with per-item explanations and a PASS verdict; the comparison script lives in
+  `scripts/` and runs in CI.
 
-- [ ] **P5.3 — [HW] U-Boot hardware matrix & recovery drill** — human + [OPUS] — Size L — Depends: P5.2
-  Boot matrix across board revisions and SD cards; execute the documented recovery
-  procedure from an actually-bricked state at least once before any user sees this.
+- [ ] **P5.3 — [NET] Full SD-card image (`sdcard.img`)** — [SONNET] — Size L — Depends: P1.10, P2.5, P4.4 (P5.2 for the built-U-Boot variant)
+  genimage post-image step producing a complete, dd-able card image: MBR; **p1** =
+  FAT32 data partition; **p2** = type **`0xA2`**, ≥ 1 MiB, with `uboot.img` written
+  raw at its start (SPL contract, boot-chain §2.1). **p1 payload parity target: "a
+  card as mr-fusion leaves it, plus Update_All."** First inventory what
+  [`MiSTer-devel/mr-fusion`](https://github.com/MiSTer-devel/mr-fusion) installs (at
+  a pinned release) into `docs/verification/sdcard-payload.md`, then reproduce it:
+  the P0.6 `files/linux/` payload (`linux.img`, `zImage_dtb`, `uboot.img`,
+  `updateboot`, config templates, `u-boot.txt_example`), `menu.rbf` + the stock
+  `MiSTer` binary + the standard folder tree, the base `Scripts/` set mr-fusion
+  ships (Downloader script, WiFi setup script), **plus a recent
+  [`Scripts/update_all.sh`](https://github.com/theypsilon/Update_All_MiSTer)** —
+  a single self-updating file that runs the Downloader under the hood; no further
+  on-card dependencies (verified against its README; re-verify at implementation).
+  All payload files fetched at build time, pinned by commit/release + hash, never
+  committed (standing rule 1). Reproduce mr-fusion's per-board `ethaddr`
+  provisioning: a first-boot mechanism writes `linux/u-boot.txt` with a unique
+  locally-administered MAC (else every board shares the compiled-in fallback
+  `02:03:04:05:06:07`, boot-chain §3.1 entry 14); mirror mr-fusion's optional
+  pre-seeding hooks (`wpa_supplicant.conf`, `samba.sh`, user `Scripts/`). Default
+  the embedded `uboot.img` to the **stock blob** (fetched by hash per P4.4); the
+  P5.1 build goes in only behind an explicit build flag — change one variable at a
+  time. Published as a separate release asset (`sdcard.img.xz`), **never** part of
+  `release_*.7z` and never referenced by db.json.
+  **Done when:** CI loop-mounts the image and asserts partition types/offsets
+  (`sfdisk -d`), the FAT payload inventory against `sdcard-payload.md`, and `cmp`
+  of p2's head against `uboot.img`; the image's FAT + `linux.img` pass the P1.12
+  QEMU initramfs harness; flashing instructions documented.
+
+- [ ] **P5.4 — [HW] SD image + built U-Boot hardware matrix & recovery drill** — human + [OPUS] — Size L — Depends: P5.3
+  (a) Flash `sdcard.img` (stock-blob variant) to a fresh card → boots to menu;
+  first-boot `ethaddr` provisioning verified (unique MAC, survives reboot);
+  `update_all.sh` completes a run. (b) The built-U-Boot variant → boots to menu;
+  `u-boot.txt` override honored; warm-reboot core handoff works; an `updateboot`
+  flash + env-wipe cycle leaves the board bootable. (c) Execute the documented
+  brick-recovery procedure from an actually-bricked state at least once before any
+  user sees either artifact.
   **Done when:** matrix + a successful real recovery drill logged in
   `docs/testlogs/p5-uboot.md`.
 

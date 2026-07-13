@@ -311,6 +311,15 @@ BR2_PACKAGE_LIBGCRYPT=y
 BR2_PACKAGE_LIBSSH2=y
 # nettle, gmp, libtasn1, libgpg-error, libffi are all pulled in transitively as
 # dependencies of gnutls/gcrypt/samba4/python3 -- do not set separately.
+# CA trust store (found missing on hardware): without it, curl's default CA path
+# /etc/ssl/certs/ca-certificates.crt is absent and every HTTPS verify fails
+# ("error adding trust anchors"), which also breaks Downloader_MiSTer's HTTPS
+# fetches. Installs the Mozilla bundle as ca-certificates.crt + OpenSSL hashed
+# symlinks (curl + python default context). The cacert.pem/cert.pem aliases the
+# Downloader (DEFAULT_CACERT_FILE=/etc/ssl/certs/cacert.pem) and stock expect are
+# added as overlay symlinks -> ca-certificates.crt. Functional parity with stock's
+# cacert.pem CA story.
+BR2_PACKAGE_CA_CERTIFICATES=y
 
 # --- networking / D-Bus / GLib ---
 BR2_PACKAGE_LIBCURL=y
@@ -461,6 +470,11 @@ BR2_PACKAGE_WPA_SUPPLICANT_DEBUG_SYSLOG=y     # compiles in the "-s" (log-to-sys
                                               # (once per wlanN stanza). Enabling it makes -s valid so
                                               # the pre-up starts cleanly and logs to syslog, not the
                                               # console -- exact stock parity. (P3.4 hardware fix.)
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y             # SAE/OWE/DPP -- WPA3-Personal support. BEYOND
+                                              # stock (stock's wpa_supplicant 2.9 had no WPA3, so
+                                              # WPA3 networks were unjoinable). Our 2.11 + the
+                                              # morrownr 88x2bu driver do SAE over nl80211. Requested
+                                              # for hardware testing on a real WPA3 network.
 # WiFi userland parity (P3.4) -- the community wifi.sh (Scripts_MiSTer) and the
 # stock WiFi stack need these; all four are in stock's rootfs. See docs/wifi-parity.md.
 # (CONFIG_CFG80211_WEXT=y is already resolved in our kernel, so iwlist/iwgetid's

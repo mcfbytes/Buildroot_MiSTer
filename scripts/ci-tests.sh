@@ -60,7 +60,7 @@ HOST_SBIN="$BUILD_DIR/host/sbin"
 ROOTFS_TAR="$IMAGES/rootfs.tar"
 ZIMAGE_DTB="$IMAGES/zImage_dtb"
 LINUX_IMG="$IMAGES/linux.img"
-KVER=6.18.33
+KVER=6.18.38
 
 # ---------------------------------------------------------------- reporting
 PASS_COUNT=0

@@ -51,13 +51,13 @@ jobs:
     runs-on: ubuntu-latest
 
     # --- Pinned container image, BY DIGEST, not by floating tag -------------
-    # ubuntu:24.04's multi-arch manifest-list digest, resolved 2026-07-13 via:
-    #   docker buildx imagetools inspect ubuntu:24.04
-    # (equivalently: `docker manifest inspect ubuntu:24.04` and take the index
+    # ubuntu:26.04's multi-arch manifest-list digest, resolved 2026-07-13 via:
+    #   docker buildx imagetools inspect ubuntu:26.04
+    # (equivalently: `docker manifest inspect ubuntu:26.04` and take the index
     # digest, not one of the per-platform manifest digests inside it). Re-run
     # that command and update both the digest and this date when bumping.
     container:
-      image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
+      image: ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
 
     # --- Timeout budget (TASKS.md P4.1) -------------------------------------
     # Cold build (empty caches): documented 30-60 min for Buildroot itself.
@@ -171,7 +171,7 @@ jobs:
           max-size: 2G
 
       # --- Host build dependencies -------------------------------------------
-      # ubuntu:24.04 is a minimal base; none of this is preinstalled. List is
+      # ubuntu:26.04 is a minimal base; none of this is preinstalled. List is
       # Buildroot's own documented mandatory set (which, sed, make, binutils,
       # build-essential, diffutils, bash, patch, gzip, bzip2, perl, tar, cpio,
       # unzip, rsync, file, bc, findutils, wget) plus project-specific extras:

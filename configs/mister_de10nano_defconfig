@@ -75,7 +75,7 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.33"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
@@ -503,7 +503,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 # --- P3.1/v9: Realtek USB WiFi -- MAINLINE-FIRST out-of-tree driver policy ---
 # Commit-pinned, hash-verified morrownr forks, kept ONLY for the 802.11ac chips
 # mainline still cannot drive: RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU.
-# Their .ko lands under output/target/usr/lib/modules/6.18.33/ and is autoloaded
+# Their .ko lands under output/target/usr/lib/modules/6.18.38/ and is autoloaded
 # by depmod/eudev on dongle insertion (P3.3). None need CONFIG_WIRELESS_EXT for
 # wpa_supplicant -D nl80211 (per-package .mk documents the finding).
 #
@@ -633,7 +633,7 @@ BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
 
 # Seven files stock ships that NO linux-firmware sub-option covers, even
 # though upstream linux-firmware carries them and this project's pinned
-# 6.18.33 kernel still has an in-tree consumer for each (verified by grep
+# 6.18.38 kernel still has an in-tree consumer for each (verified by grep
 # against the actual built kernel source, not assumed -- see
 # package/linux-firmware-extra/linux-firmware-extra.mk and
 # docs/firmware-parity.md for the per-file citation). Same upstream tarball

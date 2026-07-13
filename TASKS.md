@@ -562,7 +562,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   test in `scripts/` asserts `/MiSTer.version` is **exactly 6 bytes** and that its last
   byte is not `\n`.
 
-- [ ] **P2.7 — Size budget report** — [HAIKU] — Size S — Depends: P2.1
+- [x] **P2.7 — Size budget report** — [HAIKU] — Size S — Depends: P2.1
   Report rootfs usage by package (Buildroot's `make graph-size` + a markdown summary).
   Assert ≥ 15 % free in the 512 MiB image (§11 budget); flag the top 10 growth items vs
   stock.

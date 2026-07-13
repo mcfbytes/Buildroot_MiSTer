@@ -196,12 +196,14 @@ jobs:
           # db.json's version must equal the image's /MiSTer.version. Since ADR
           # 0018's durable fix, BOTH trace to the tagged-commit date that
           # release.yml baked in and encoded in this filename (release_YYYYMMDD.7z).
-          # So derive the db version from the filename -- NOT from publishedAt,
-          # which can differ from the build/commit date and would break the
-          # Downloader's version-equality check (re-flash on every run).
-          archive_version=$(printf '%s' "$name" | sed -n 's/^release_\([0-9]\{8\}\)\.7z$/\1/p')
+          # Stock's own db.json uses a 6-char YYMMDD version (verified: e.g.
+          # "250402" for release_20250402.7z), so strip the century -> db version
+          # = YYMMDD = /MiSTer.version, byte-for-byte, exactly matching stock's
+          # format. Derive from the filename, NOT publishedAt (which can differ
+          # from the build/commit date and break the version-equality check).
+          archive_version=$(printf '%s' "$name" | sed -n 's/^release_[0-9][0-9]\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.7z$/\1/p')
           if [ -z "$archive_version" ]; then
-            echo "::error::could not parse YYYYMMDD from asset name '$name'" >&2; exit 1
+            echo "::error::could not parse YYMMDD from asset name '$name' (expected release_YYYYMMDD.7z)" >&2; exit 1
           fi
           {
             echo "name=$name"

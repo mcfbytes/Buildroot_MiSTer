@@ -1,0 +1,94 @@
+#!/bin/sh
+
+DAEMON="bluetoothd"
+PIDFILE="/var/run/$DAEMON.pid"
+EXEC=/usr/libexec/bluetooth/$DAEMON
+
+BTIMG=/media/fat/linux/bluetooth
+MNTPATH=/var/lib/bluetooth
+
+BLUETOOTHD_ARGS="-n -E -C"
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+start() {
+	echo 'Checking for Bluetooth storage'
+	
+	if [ ! -f $BTIMG ]; then
+		dd if=/dev/zero of=$BTIMG bs=64k count=32
+		mkfs.ext4 $BTIMG
+	fi
+	mkdir -p $MNTPATH
+	mount -o sync,dirsync,nodiratime,noatime $BTIMG $MNTPATH
+
+	printf 'Starting %s: ' "$DAEMON"
+	# shellcheck disable=SC2086 # we need the word splitting
+	start-stop-daemon -S -q -m -b -p "$PIDFILE" -x "$EXEC" -- $BLUETOOTHD_ARGS
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	umount $MNTPATH
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+renew() {
+	stop
+	sleep 2
+	echo removing $BTIMG to delete all pairings
+	rm $BTIMG
+	start
+}
+
+reload() {
+	printf 'Reloading %s: ' "$DAEMON"
+	start-stop-daemon -K -s HUP -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+hcireset() {
+	for X in /sys/bus/usb/devices/*; do 
+		for Y in $X/*; do 
+			if [ -d $Y/bluetooth/hci0 ]; then
+				echo resetting $X
+				echo 0 > $X/authorized
+				echo 1 > $X/authorized
+			fi
+		done
+	done 
+}
+
+case "$1" in
+	start|stop|restart|reload|renew|hcireset)
+		"$1";;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload|renew|hcireset}"
+		exit 1
+esac

@@ -488,7 +488,7 @@ boots to a serial console on real hardware (P1.13).
 Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on hardware
 (P2.9).
 
-- [ ] **P2.1 — Full package set** — [SONNET] — Size M — Depends: P0.7, P1.2
+- [x] **P2.1 — Full package set** — [SONNET] — Size M — Depends: P0.7, P1.2
   Apply P0.7's `BR2_PACKAGE_*` list to the defconfig. Resolve selection conflicts and
   missing deps. Confirm every ABI-contract SONAME (§3) is produced at the same major
   version.
@@ -502,7 +502,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** script exits nonzero on a deliberately broken rootfs (test that) and
   zero on the real one; wired into CI later (P4.1).
 
-- [ ] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
+- [x] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
   Recreate stock init behavior in `rootfs-overlay/`: the verified S-script set
   (S01syslogd, S02klogd, S10udev, S30dbus, S40network, S41dhcpcd, S45bluetooth, S49ntp,
   S50proftpd, S50sshd, S91smb, S99user); inittab (**launches `/media/fat/MiSTer` from
@@ -510,10 +510,26 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   stock-parity fstab (root `rw,noauto` — the `ro` comes from the cmdline; tmpfs on /tmp,
   /run, /dev/shm, /var/lib/samba, /var/db/dhcpcd); hostname `MiSTer`; profile; ifupdown
   `/etc/network/interfaces` + dhcpcd; **eudev** (stock uses udev, not mdev); and the
-  USB-storage automount mechanism found in P0.3. The six user-file destinations
-  (`/etc/hostname`, `/etc/hosts`, `/etc/network/interfaces`, `/etc/resolv.conf`,
-  `/etc/dhcpcd.conf`, `/etc/fstab`) must be **regular files** — the updater copies over
-  them inside the offline image (A8). Diverge from stock only with a documented reason.
+  USB-storage automount mechanism found in P0.3.
+
+  **⚠ [CORRECTED — the original text here was WRONG and would break DNS.]** It said all
+  six user-file destinations *"must be regular files (A8)"*. **Invariant A8 is WITHDRAWN**
+  (PLAN §3). **Five** are regular files — `/etc/hostname`, `/etc/hosts`,
+  `/etc/network/interfaces`, `/etc/dhcpcd.conf`, `/etc/fstab`.
+  **`/etc/resolv.conf` MUST be a SYMLINK into a tmpfs** ([ADR 0011](docs/decisions/0011-resolv-conf-buildroot-default.md)).
+  Not for parity — for correctness: `/` is mounted **read-only** at boot (confirmed on
+  hardware, P1.13), and `S41dhcpcd`'s `20-resolv.conf` hook writes `/etc/resolv.conf`
+  *during* boot. A regular file there is **unwritable at exactly the moment it must be
+  written.** Ship **Buildroot's own skeleton default** (`/etc/resolv.conf ->
+  ../run/resolv.conf`) — prefer the upstream default over code we maintain. The Downloader's
+  restore of that one file stays a silent no-op, exactly as on stock; that is *deliberate*
+  parity, not an oversight.
+
+  **⚠ HARD REQUIREMENT from P1.10:** the image **must contain `/media/fat`, `/dev`, `/proc`
+  and `/sys` as empty directories.** `/` is read-only, so `/init` **cannot create its own
+  mount points** — it rescues to a serial shell if they are missing. Stock has all four.
+
+  Diverge from stock only with a documented reason.
   **Done when:** a diff report `docs/init-parity.md` lists every stock init script with
   status: identical / adapted (why) / dropped (why).
 
@@ -525,7 +541,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** `docs/writable-paths.md` lists every writable path with its
   destination; no daemon writes to `/` at runtime.
 
-- [ ] **P2.5 — Image generation, reproducible (A9)** — [SONNET] — Size M — Depends: P2.1
+- [x] **P2.5 — Image generation, reproducible (A9)** — [SONNET] — Size M — Depends: P2.1
   `genimage.cfg` + mke2fs config: 512 MiB ext4, volume label `rootfs`, **pinned**
   filesystem feature set (stock reference: `HAS_JOURNAL`, `METADATA_CSUM`, `64BIT`,
   `FLEX_BG`), fixed UUID (stock ships one), `SOURCE_DATE_EPOCH` honored, deterministic
@@ -534,7 +550,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** two clean builds from the same commit produce byte-identical
   `linux.img` (verify locally; CI job in P4.3); image mounts ro on the 6.18 kernel.
 
-- [ ] **P2.6 — `post-build.sh`: version stamping** — [HAIKU] — Size S — Depends: P2.5
+- [x] **P2.6 — `post-build.sh`: version stamping** — [HAIKU] — Size S — Depends: P2.5
   Write `MiSTer.version` (6-char `YYMMDD`) **at the rootfs root of the image**
   (`/MiSTer.version` — verified location; the Downloader reads the running system's own
   copy), and an `/etc/os-release` identifying this distribution + build commit.
@@ -553,6 +569,23 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** `docs/size-budget.md` committed; CI-runnable check script asserts the
   15 % floor.
 
+- [ ] **P2.10 — Version-delta doc: five years of upstream fixes** — [SONNET] — Size S — Depends: P2.1
+  Produce `docs/version-delta.md`: stock (Buildroot **2021.02.4**) vs ours (**2026.02.3**)
+  for every package, the version jump, and the security/maintenance value. This is a
+  headline win — stock froze the whole userland ~5 years ago — and it directly serves
+  **G2/G3** (a real security-update path) and the release notes (P4.9).
+  Data: `docs/package-manifest.md` already carries a stock→ours version column; exact
+  built point-versions come from `output/build/<pkg>-<ver>/` after P2.1. Known headliners:
+  glibc 2.31→2.42, kernel 5.15.1→6.18.33 (both hardware-verified), OpenSSL 1.1→3, plus
+  ALSA, BlueZ, Samba, SSH/FTP, Python 3.9→3.14.
+  **⚠ Do NOT fabricate CVE numbers.** State version deltas (factual) and the general
+  "~5 years of upstream maintenance" framing (true). Cite a specific CVE only if actually
+  looked up and confirmed applicable. A verifiable "N major jumps, ~5 years of fixes"
+  beats an unverifiable "fixes 47 CVEs" — overclaiming destroys the credibility this doc
+  exists to build.
+  **Done when:** `docs/version-delta.md` committed — headline table + full per-package
+  stock→ours table sorted by biggest jump + a call-out of the security-relevant movers.
+
 - [ ] **P2.8 — qemu-user smoke of the stock binary (A7)** — [SONNET] — Size M — Depends: P2.2
   In CI-runnable form: chroot into the built rootfs under `qemu-arm`, execute the stock
   `MiSTer` binary, and assert it advances past dynamic linking and early init (it will
@@ -561,7 +594,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   **Done when:** test distinguishes "died at FPGA access (expected)" from "died earlier
   (regression)" and is wired into `scripts/`.
 
-- [ ] **P2.9 — [HW] Stock `MiSTer` binary reaches the menu** — human + [OPUS] — Size L — Depends: P1.13, P2.1–P2.8
+- [x] **P2.9 — [HW] Stock `MiSTer` binary reaches the menu** — human + [OPUS] — Size L — Depends: P1.13, P2.1–P2.8
   Full image on hardware with a real `/media/fat` populated from `Distribution_MiSTer`.
   Assert: menu appears on HDMI; boot-to-menu time ≤ stock (measure both); free RAM at
   menu ≥ stock; a sample core loads and runs; framebuffer, audio, and input all work.
@@ -673,12 +706,30 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
 
 - [ ] **P4.1 — CI build workflow** — [SONNET] — Size L — Depends: P1.10, P2.5
   `.github/workflows/build.yml`: pinned container image (digest, not tag); two-stage
-  build (initramfs config, then main); cache `dl/` and ccache (mind the 10 GB GitHub
-  cache ceiling — evict policy or external mirror documented); run
-  `scripts/ci-tests.sh` (P3.12) and the ABI checker (P2.2); upload build artifacts on
-  every push; hard timeout budget documented.
-  **Done when:** clean-cache and warm-cache runs both green; warm run < 60 min or the
-  budget is re-documented with rationale.
+  build (initramfs config, then main); run `scripts/ci-tests.sh` (P3.12) and the ABI
+  checker (P2.2); upload build artifacts on every push; hard timeout budget documented.
+
+  **⚠ CACHING IS NON-OPTIONAL — a cold Buildroot build is 30–60 min; a warm one must be
+  minutes.** Cache FOUR things with `actions/cache` (pin the action by commit SHA):
+  1. **The Buildroot release tarball** — key on `BUILDROOT_VERSION` (it changes rarely).
+  2. **The `dl/` download cache** — key on `BUILDROOT_VERSION` + `hashFiles(defconfig)`,
+     with a `restore-keys` prefix on just `BUILDROOT_VERSION` so a partial cache still
+     hydrates. **Our `dl/` is already at the repo root (not under `output/`)**, so it
+     survives `make clean` — do NOT move it under `output/`, which CI/clean wipes.
+  3. **The Buildroot host toolchain** (`output/host` + the per-build stamps) — key on
+     `BUILDROOT_VERSION` + `hashFiles(defconfig, linux.config, linux-patches/**)` so a
+     kernel-config or patch change correctly busts it. This is the big win: it skips the
+     cross-compiler bootstrap.
+  4. **ccache** — use a ccache GitHub action, and pass Buildroot the flags to actually
+     use it: `make … BR2_CCACHE=y BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
+     BR2_CCACHE_USE_BASEDIR=y`. (`USE_BASEDIR` rewrites absolute paths so the cache is
+     relocatable across runners — without it the cache mostly misses.)
+
+  Mind the **10 GB GitHub cache ceiling** — document an evict policy or an external
+  mirror if the four caches together approach it.
+  **Done when:** clean-cache and warm-cache runs both green; warm run < 60 min (target:
+  minutes, given the toolchain + ccache caches) or the budget is re-documented with
+  rationale.
 
 - [ ] **P4.2 — SBOM / legal-info** — [HAIKU] — Size S — Depends: P4.1
   `make legal-info` on every build; archive as an artifact; include in releases.

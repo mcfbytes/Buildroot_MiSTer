@@ -81,3 +81,35 @@ echo "$prog: wrote $out ($(wc -c <"$out") bytes)"
 
 # --- the one and only contract check --------------------------------------------
 "$checker" "$out"
+
+################################################################################
+# P2.5 (A9) — linux.img: the flashable, loop-mounted rootfs image.
+#
+# BR2_TARGET_ROOTFS_EXT2 (ext4 variant, see configs/mister_de10nano_defconfig
+# for why that mechanism and not genimage) writes the actual filesystem to
+# BINARIES_DIR/rootfs.ext2 -- that name is fixed by fs/ext2/ext2.mk
+# regardless of the ext2/3/4 GEN choice; Buildroot additionally symlinks
+# rootfs.ext4 -> rootfs.ext2 as a convenience, but rootfs.ext2 is the file
+# that actually exists. Our /init and stock's U-Boot bootargs both expect a
+# real file at linux/linux.img (docs/boot-chain.md) -- a plain regular file,
+# not a symlink, so a release archive that ships linux.img alone (without
+# also shipping rootfs.ext2) still works. `ln` (hard link, same filesystem,
+# BINARIES_DIR to itself) gets that for free, instantly, without doubling
+# the ~190 MB actually-used footprint of a sparse 512 MiB image the way a
+# plain `cp` would risk if sparseness weren't preserved. Removed and
+# recreated on every run so a stale linux.img from a previous mkfs options
+# change can never survive under a fresh name.
+img_checker="$repo_root/scripts/check-linux-img.sh"
+[ -x "$img_checker" ] || die "linux.img checker not found or not executable: $img_checker"
+
+rootfs_ext2="$binaries_dir/rootfs.ext2"
+[ -f "$rootfs_ext2" ] || die "no rootfs.ext2 found at '$rootfs_ext2' -- did BR2_TARGET_ROOTFS_EXT2 run?"
+
+linux_img="$binaries_dir/linux.img"
+rm -f "$linux_img"
+ln "$rootfs_ext2" "$linux_img"
+
+echo "$prog: wrote $linux_img ($(wc -c <"$linux_img") bytes, hardlink of $rootfs_ext2)"
+
+# --- the ext4 feature-set / label / UUID / no-secrets contract check -----------
+"$img_checker" "$linux_img" "$binaries_dir/../host/sbin"

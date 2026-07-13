@@ -1,0 +1,32 @@
+# Matches stock's PATH shape. Both stock and this build (since P2.9 v2, which set
+# BR2_ROOTFS_MERGED_USR=y) are usr-merged: /bin -> usr/bin and /sbin -> usr/sbin,
+# so "/usr/bin:/usr/sbin" alone would already cover /bin and /sbin. The explicit
+# "/bin:/sbin:" prefix is therefore redundant now -- it is kept because it is
+# harmless (they resolve to the same directories) and matches Buildroot's own
+# skeleton default profile. It was originally added when this build was NOT
+# usr-merged, which was the real cause of the /lib/security/pam_unix.so SSH
+# lockout that P2.9 v2 fixed. See docs/init-parity.md.
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/media/fat/linux:/media/fat/Scripts:."
+
+if [ "$PS1" ]; then
+	if [ "`id -u`" -eq 0 ]; then
+		export PS1='$(pwd)# '
+	else
+		export PS1='$(pwd)$ '
+	fi
+fi
+
+export EDITOR='/bin/vi'
+
+# Source configuration files from /etc/profile.d
+for i in /etc/profile.d/*.sh ; do
+	if [ -r "$i" ]; then
+		. $i
+	fi
+done
+unset i
+
+export LC_ALL=en_US.UTF-8
+resize >/dev/null
+mount -o remount,rw /
+

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+USER_SCRIPT="/media/fat/linux/user-startup.sh"
+
+case "$1" in
+	start|stop|restart)
+		[ -f $USER_SCRIPT ] && $USER_SCRIPT "$1";;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac

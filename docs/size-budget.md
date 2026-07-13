@@ -35,31 +35,45 @@ The rootfs uses a merged-usr layout (symbolic links: `bin→usr/bin`, `lib→usr
 
 ## Top 10 Packages by Installed Size
 
-Calculated from `output/build/packages-file-list.txt` + actual file sizes in extracted rootfs:
+Attributed from `output/build/packages-file-list.txt` by summing the **real byte
+size of each file** in the extracted rootfs with `lstat` — i.e. **symlinks are NOT
+followed** (a symlink is ~10–20 bytes, not the size of its target). This matters: a
+naive `du` that follows links counts BusyBox's ~200 applet symlinks as ~200 copies
+of the BusyBox binary and reports it as "215 MiB", which is larger than the whole
+image and obviously wrong. The corrected figures:
 
-| Rank | Package             | Size        | Notes                                          |
-|------|---------------------|-------------|------------------------------------------------|
-| 1    | **busybox**         | 215.64 MiB  | Combined symlinks for coreutils, net tools     |
-| 2    | **samba4**          | 62.51 MiB   | SMB/CIFS server (largest single library: 37 MiB) |
-| 3    | **python3**         | 13.18 MiB   | Runtime + standard library                     |
-| 4    | **libglib2**        | 11.31 MiB   | Core GLib library (used by many packages)      |
-| 5    | **libglib2-bootstrap** | 10.66 MiB  | Intermediate build artifact (libtool bloat)    |
-| 6    | **file**            | 10.33 MiB   | `libmagic` library + `file` command             |
-| 7    | **libopenssl**      | 9.03 MiB    | OpenSSL 3.x (crypto for SSH, HTTPS, etc.)      |
-| 8    | **openssh**         | 6.80 MiB    | SSH server and utilities                       |
-| 9    | **gcc-final**       | 6.09 MiB    | GCC libraries (unused in runtime, P3.x item)   |
-| 10   | **libunistring**    | 5.44 MiB    | Unicode support library                        |
+| Rank | Package | Size | Notes |
+|------|---------|------|-------|
+| 1 | **samba4** | 48.8 MiB | SMB/CIFS server + client — by far the largest, intentional (P3.6) |
+| 2 | **file** | 10.0 MiB | `libmagic` + its compiled magic database |
+| 3 | **python3** | 8.7 MiB | interpreter + stdlib (A6 — runs the Downloader) |
+| 4 | **openssh** | 6.8 MiB | sshd + utilities |
+| 5 | **libopenssl** | 4.6 MiB | OpenSSL 3.x (vs stock's EOL 1.1.1) |
+| 6 | **libglib2** | 4.5 MiB | core GLib, pulled by dbus/bluez/etc. |
+| 7 | **libglib2-bootstrap** | 3.8 MiB | ⚠ build intermediate — see below |
+| 8 | **bluez5_utils** | 2.8 MiB | Bluetooth stack |
+| 9 | **sudo** | 2.2 MiB | |
+| 10 | **gcc-final** | 2.1 MiB | ⚠ toolchain runtime libs — see below |
 
-**Total measured packages:** 100  
-**Total size of top 10:** 350.99 MiB (which includes overlaps and shared dependencies)
+For scale: **BusyBox's real footprint is ~1 MiB** (one binary; its applets are
+symlinks). Total attributed across all packages ≈ **140 MiB**, consistent with the
+~171 MiB extracted rootfs (the remainder is directories, symlinks, and a few files
+not attributed to a package in the file list).
 
-### Major Contributors Analysis
+### Analysis
 
-- **BusyBox (215.6 MiB):** The single largest entry is actually the result of how Buildroot accounts for symlinked commands. Each symlink appears as a file referencing the single busybox binary, inflating its footprint in the file list.
-  
-- **Samba4 (62.5 MiB):** Necessary for SMB/CIFS protocol support; includes full server and client libraries. This is a substantial but intentional dependency for MiSTer's network file access.
-
-- **Python3 (13.2 MiB):** Required for many userland utilities and extensibility. Modern Python stdlib is non-negotiable for the system.
+- **samba4 (48.8 MiB)** is the single dominant cost and an intentional parity
+  dependency (P3.6). It is the obvious first lever if the image ever needs to
+  shrink (e.g. dropping the AD/DC and printing components, which P2.1 already
+  excluded — the remainder is the file-server core MiSTer users expect).
+- **⚠ `libglib2-bootstrap` (3.8 MiB) and `gcc-final` (2.1 MiB) appear in the
+  target.** `libglib2-bootstrap` is the bootstrap variant Buildroot builds to break
+  a circular dependency; its files landing in the image alongside the real
+  `libglib2` is worth confirming is not duplication. `gcc-final` here is the
+  toolchain's *runtime* libraries (`libstdc++`, `libgcc_s`) that the stock `MiSTer`
+  binary genuinely NEEDs — so most of it is legitimate, not removable — but the
+  exact file set is worth an audit. Both are small (~6 MiB combined) and non-urgent;
+  flagged for a future size pass, not a blocker.
 
 - **GLib2 (11.3 MiB + 10.7 MiB bootstrap):** Core dependency for many packages (file, samba4, etc.). The bootstrap artifact (10.7 MiB) is a build-time intermediate that should not appear in runtime but does due to how Buildroot's file list is constructed.
 
@@ -93,7 +107,8 @@ This growth is **intentional and justified** — we trade image size for modern 
 
 3. **Per-package sizes:** `output/build/packages-file-list.txt` (Buildroot's internal file → package mapping).  
    Parsed format: `package_name,path_to_file`.  
-   For each file in extracted rootfs, summed bytes and attributed to the installing package.  
+   For each file, its **`lstat` size** (symlinks NOT followed — a symlink is its own
+   ~10–20 bytes, not its target) was summed and attributed to the installing package.
    Ranked by total size.
 
 ### Reproducibility
@@ -121,10 +136,21 @@ dumpe2fs -h output/images/linux.img
 
 ### Limitations and Caveats
 
-- **Symlink accounting:** BusyBox's inflated size (215 MiB) is an artifact of how file-list mapping works — many symlinked commands are attributed to busybox. The actual binary is ~1 MiB; the rest is double-counting.
-- **Build artifacts:** Some entries (e.g., `libglib2-bootstrap`, `gcc-final`) are intermediate build outputs that appear in file lists but should ideally be stripped from runtime. These are P3 optimization opportunities.
-- **Hardlink deduplication:** The file-list approach counts hardlinks separately; `du` de-duplicates. For this report, we trust the file-list for per-package accuracy and `du` for total size verification.
-- **No binutils/build tools:** Our image strips build toolchain (gcc, binutils, headers) after the build; they do not ship to the device. `gcc-final` listed above is residual (P3 cleanup).
+- **Symlink accounting (corrected):** per-package sizes above use `lstat`, so a
+  symlink counts as the ~10–20 bytes of the link, not the size of its target.
+  Without this, BusyBox's ~200 applet symlinks each count as a full copy of the
+  BusyBox binary and it reports as ~215 MiB — larger than the entire image. Its
+  real footprint is ~1 MiB. The regeneration script above and the table both use
+  the corrected method.
+- **Build intermediates in the target:** `libglib2-bootstrap` (~3.8 MiB) and
+  `gcc-final` (~2.1 MiB) appear in the file list. `gcc-final` here is mostly the
+  toolchain *runtime* libraries (`libstdc++`, `libgcc_s`) that the stock `MiSTer`
+  binary genuinely NEEDs, so it is not simply removable; `libglib2-bootstrap` is
+  worth confirming is not duplicated against the real `libglib2`. Combined ~6 MiB,
+  non-urgent — flagged for a future size pass.
+- **Hardlinks:** the file-list attributes each path independently; a hardlinked
+  file is counted once per path. Total-size figures use `dumpe2fs` (the filesystem's
+  own accounting), which is authoritative for the budget check.
 
 ---
 

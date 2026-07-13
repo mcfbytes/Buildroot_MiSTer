@@ -8,3 +8,4 @@ tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
 sysfs		/sys		sysfs	defaults	0	0
 tmpfs		/var/lib/samba	tmpfs	mode=1777	0	0
 tmpfs		/var/db/dhcpcd	tmpfs	mode=0750	0	0
+tmpfs		/var/cache/samba	tmpfs	mode=0755	0	0

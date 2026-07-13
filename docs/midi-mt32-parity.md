@@ -3,12 +3,16 @@
 Task: **P3.8**. Depends on P2.1 (full package set). Consumed by P3.13 ([HW]
 confirmation of the ALSA MIDI device list).
 
-**Status: authored, not build-verified.** This task's worktree ships no
-`output/` tree (author-only constraint) — every package below was written
-against upstream source read directly from GitHub and cross-checked against
-`docs/stock-inventory/`, but has not itself been run through `make`. The
-"Verify-in-build checklist" section at the end lists exactly what the
-orchestrator's shared build + P3.13's hardware pass need to confirm.
+**Status: build-verified; hardware MIDI-device pass still pending.** Originally
+authored against upstream source only (author-only worktree, no `output/`). Since
+integrated into the shared build: the munt/MidiLink packages compile, and
+`scripts/ci-tests.sh` confirms the expected binaries ship in the image (`mt32d`,
+`midilink`, `mlinkutil`, `libmt32emu.so*`, and the ALSA MIDI tools). The **[HW]
+step — exercising an actual MIDI device / the ALSA MIDI device list on real
+hardware — was NOT part of the 2026-07-13 Phase 3 hardware validation** (which
+covered boot, Bluetooth, WiFi/WPA3, and the Downloader) and remains open. The
+"Verify-in-build checklist" at the end lists what that hardware pass should
+confirm.
 
 ## 1. Stock's MIDI/MT-32 stack, traced to source
 

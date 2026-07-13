@@ -22,6 +22,15 @@
 # (the common "Xbox Wireless Adapter for Windows" dongle, "S" revision) --
 # same URL, same expected extracted-file hash, cross-checked against that
 # script's own hardcoded manifest before pinning here.
+#
+# HTTP (not HTTPS) is deliberate and required, not an oversight:
+# download.windowsupdate.com serves these WHQL driver .cabs over plain HTTP
+# only and actively refuses TLS (`curl https://...` -> curl (35) "tlsv1 alert
+# internal error"), so an HTTPS URL would break the fetch outright. Integrity
+# does not rely on the transport: BOTH the outer .cab (xow-firmware.hash) AND
+# the inner extracted FW_ACC_00U.bin (sha256sum -c in the extract step below)
+# are hash-pinned, so a tampered/MITM'd download fails the build. The same
+# applies to the 0x02e6 EXTRA_DOWNLOADS URL further down.
 XOW_FIRMWARE_VERSION = 1cd6a87c-623f-4407-a52d-c31be49e925c_e19f60808bdcbfbd3c3df6be3e71ffc52e43261e
 XOW_FIRMWARE_SOURCE = $(XOW_FIRMWARE_VERSION).cab
 XOW_FIRMWARE_SITE = http://download.windowsupdate.com/c/msdownload/update/driver/drvs/2017/07

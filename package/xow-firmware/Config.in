@@ -24,9 +24,17 @@ config BR2_PACKAGE_XOW_FIRMWARE
 	  fork (dlundqvist, see package/xone/xone.mk) requests firmware by
 	  that newer per-PID name, not the older shared name stock's fork
 	  used -- both names must resolve to the same bytes for the driver
-	  to actually find it at runtime. Covers the common 0x02fe (Xbox
-	  Wireless Adapter for Windows, "S" revision) dongle PID only, same
-	  scope stock's single-file scheme covered.
+	  to actually find it at runtime.
+
+	  Covers BOTH external USB dongles a MiSTer can use: the common
+	  0x02fe (Xbox Wireless Adapter for Windows, "S" revision) and the
+	  older 0x02e6 (original "Xbox One Wireless Adapter", model 1713).
+	  These use genuinely different firmware, so 0x02e6 is fetched and
+	  installed as its own distinct blob (xone_dongle_02e6.bin), not a
+	  symlink -- see xow-firmware.mk. (Stock's single-file scheme covered
+	  only 0x02fe; this is a deliberate improvement.) The two internal
+	  laptop-soldered PIDs the driver also binds are not shipped -- they
+	  cannot attach to a DE10-Nano.
 
 comment "xow-firmware needs xone to be enabled"
 	depends on !BR2_PACKAGE_XONE

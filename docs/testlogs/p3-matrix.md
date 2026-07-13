@@ -1,6 +1,13 @@
 # P3.13 — Full hardware matrix (run sheet)
 
-**Status:** run sheet prepared; **awaiting hardware execution by the maintainer.**
+**Status:** run sheet prepared; hardware validation since **performed (2026-07-13)**
+on the integrated build (evolved through `_v9`, not the literal `_v2`→`_v3` flow
+below). Confirmed working on a real DE10-Nano: **boot**, **Bluetooth** (DualSense
+pairing), **WiFi** (RTL8822BU WPA3 5 GHz auto-connect at boot, via mainline rtw88
+— see [ADR 0016](../decisions/0016-mainline-first-wifi-drivers.md)), and the
+**Downloader** (HTTPS). **Samba and MIDI remain build/CI-verified only** (binaries
++ configs present per `ci-tests.sh`) — not yet exercised on a live device; those
+rows below are still open.
 **Phase 3 exit gate:** every row below is PASS or accepted-with-issue.
 **Build under test:** `phase3-parity` @ latest (all of P3.1–P3.15). CI suite
 `scripts/ci-tests.sh` = **40/40 PASS** on this build; that proves the software is
@@ -52,9 +59,12 @@ $SSH reboot ; sleep 45 ; $SSH 'uname -sr; cat /MiSTer.version'
 **Rollback:** `cp /media/fat/linux/u-boot.txt.pre-p3 /media/fat/linux/u-boot.txt`
 then reboot — returns to the working v2 stack. The v3 files can be deleted later.
 
-> ⚠ The Phase 3 image has **never been booted on hardware** (CI can't boot a
-> Cyclone V). If it fails to boot or SSH doesn't return, recover physically:
-> pull the SD, restore `u-boot.txt` from `.pre-p3`, reboot. Be at the device.
+> ⚠ The Phase 3 image **has now been booted and validated on real hardware**
+> (DE10-Nano, 2026-07-13, integrated `_v9` build: boot + Bluetooth + WiFi/WPA3 +
+> Downloader confirmed). It still boots from a parallel `_vN` file with the prior
+> image left intact, so recovery is a one-line `u-boot.txt` rollback: pull the SD,
+> restore the previous `u-boot.txt`, reboot. Be at the device for the first flash
+> of any new build.
 
 ---
 

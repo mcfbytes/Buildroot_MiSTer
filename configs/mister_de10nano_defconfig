@@ -453,6 +453,14 @@ BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y          # default y already, listed for clarity
 BR2_PACKAGE_WPA_SUPPLICANT_WEXT=y             # stock's interfaces file passes
                                               # "-D nl80211,wext" -- both drivers needed
+BR2_PACKAGE_WPA_SUPPLICANT_DEBUG_SYSLOG=y     # compiles in the "-s" (log-to-syslog) flag.
+                                              # Stock's /etc/network/interfaces invokes
+                                              # "wpa_supplicant -s ..."; without CONFIG_DEBUG_SYSLOG
+                                              # the -s is unknown -> wpa_supplicant rejects the args
+                                              # and dumps its usage text to the console at every boot
+                                              # (once per wlanN stanza). Enabling it makes -s valid so
+                                              # the pre-up starts cleanly and logs to syslog, not the
+                                              # console -- exact stock parity. (P3.4 hardware fix.)
 # WiFi userland parity (P3.4) -- the community wifi.sh (Scripts_MiSTer) and the
 # stock WiFi stack need these; all four are in stock's rootfs. See docs/wifi-parity.md.
 # (CONFIG_CFG80211_WEXT=y is already resolved in our kernel, so iwlist/iwgetid's
@@ -463,6 +471,13 @@ BR2_PACKAGE_WIRELESS_TOOLS=y                  # iwmulticall: iwconfig + iwlist/i
 BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG=y
 BR2_PACKAGE_IW=y                              # stock ships usr/sbin/iw (nl80211 CLI) -- parity
 BR2_PACKAGE_IPROUTE2=y                        # stock's /usr/sbin/ip -- wifi.sh's link up/down fallback
+# ifupdown package (stock parity): stock ships the real ifupdown, not busybox's
+# ifup applet. busybox ifup mangles the interfaces file's pre-up "$IFACE", so
+# wpa_supplicant is called with bad args and dumps its usage text twice at every
+# boot. The busybox.fragment disables busybox's IFUP/IFDOWN so ifupdown's
+# /sbin/ifup wins (== usr/sbin/ifup under usr-merge, stock's exact path). P3.4.
+BR2_PACKAGE_IFUPDOWN=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/busybox.fragment"
 BR2_PACKAGE_DHCPCD=y
 BR2_PACKAGE_NTP=y                             # classic ntpd, matches stock -- NOT chrony/openntpd
 BR2_PACKAGE_CIFS_UTILS=y

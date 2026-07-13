@@ -1,0 +1,9 @@
+# P3.4 fix — use the ifupdown PACKAGE's /sbin/ifup{,down} (stock parity) instead
+# of busybox's applets. Stock ships the real ifupdown package (usr/sbin/ifup is a
+# libc-linked ELF); busybox's ifup applet mishandles the /etc/network/interfaces
+# pre-up "$IFACE" substitution, so wpa_supplicant is invoked with malformed args
+# and dumps its full usage text (twice, once per wlanN stanza) at every boot.
+# Disabling the busybox applets lets BR2_PACKAGE_IFUPDOWN's binaries win (with
+# BR2_ROOTFS_MERGED_USR, /sbin/ifup == usr/sbin/ifup, exactly stock's path).
+# CONFIG_IFUP is not set
+# CONFIG_IFDOWN is not set

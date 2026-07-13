@@ -147,12 +147,22 @@ trap 'rm -rf "$dump_dir"' EXIT
 # and the dumped tree's contents are load-bearing here.
 "$debugfs_bin" -R "rdump / $dump_dir" "$img" >/dev/null 2>"$dump_dir.rdump.log" || true
 
-found=$(find "$dump_dir" -iname 'ssh_host_*' 2>/dev/null || true)
-if [ -z "$found" ]; then
-	ok "no ssh_host_* files anywhere in the image (ADR 0015)"
+# A silent debugfs failure must NOT read as "no keys found". If the dump did not
+# actually produce the image's tree, the ssh_host_* scan below would trivially
+# find nothing and pass -- a false all-clear on a SECURITY invariant. Require
+# proof the dump is real (every ext4 rootfs has these) before trusting it.
+if [ ! -d "$dump_dir/etc" ] || [ ! -d "$dump_dir/usr" ]; then
+	bad "debugfs rdump did not produce a readable rootfs tree from $img"
+	note "(no $dump_dir/etc or /usr) -- cannot verify the no-private-keys invariant"
+	note "debugfs stderr:"; sed 's/^/    /' "$dump_dir.rdump.log" 2>/dev/null | head -5
 else
-	bad "ssh_host_* file(s) found IN THE IMAGE -- this ships a private key:"
-	printf '%s\n' "$found" | while IFS= read -r f; do note "$f"; done
+	found=$(find "$dump_dir" -iname 'ssh_host_*' 2>/dev/null || true)
+	if [ -z "$found" ]; then
+		ok "no ssh_host_* files anywhere in the image (ADR 0015)"
+	else
+		bad "ssh_host_* file(s) found IN THE IMAGE -- this ships a private key:"
+		printf '%s\n' "$found" | while IFS= read -r f; do note "$f"; done
+	fi
 fi
 rm -f "$dump_dir.rdump.log"
 
@@ -163,12 +173,23 @@ keys_dir_listing=$("$debugfs_bin" -R "ls -p /etc/ssh_keys" "$img" 2>/dev/null ||
 # debugfs -p output is one dir-entry-record per line: /ino/mode/uid/gid/name/len/
 # "." and ".." are the only allowed entries; a hidden .gitkeep is tolerated
 # (it is what makes the empty dir exist in a git-managed overlay -- P2.3).
-extra_entries=$(printf '%s\n' "$keys_dir_listing" | grep -Ev '/\.//$|/\.\.//$|/\.gitkeep/' | grep -c '/' || true)
-if [ "${extra_entries:-0}" -eq 0 ]; then
-	ok "/etc/ssh_keys is present and empty in the image (keys are runtime state, not build output)"
+#
+# The mount point MUST exist: if /etc/ssh_keys is absent, first-boot key
+# persistence has nowhere to mount and SSH degrades (S50sshd falls back to
+# ephemeral keys). A missing dir makes `debugfs ls` fail -> empty output, which
+# must read as a FAILURE, not as "empty and fine". Every real directory listing
+# contains at least "." and "..", so require them as proof of existence.
+if ! printf '%s\n' "$keys_dir_listing" | grep -Eq '/\.//$'; then
+	bad "/etc/ssh_keys is MISSING from the image (mount point absent -- ADR 0015 key persistence would fail at boot)"
+	note "debugfs ls output was: ${keys_dir_listing:-<empty>}"
 else
-	bad "/etc/ssh_keys is not empty in the image:"
-	note "$keys_dir_listing"
+	extra_entries=$(printf '%s\n' "$keys_dir_listing" | grep -Ev '/\.//$|/\.\.//$|/\.gitkeep/' | grep -c '/' || true)
+	if [ "${extra_entries:-0}" -eq 0 ]; then
+		ok "/etc/ssh_keys is present and empty in the image (keys are runtime state, not build output)"
+	else
+		bad "/etc/ssh_keys is not empty in the image:"
+		note "$keys_dir_listing"
+	fi
 fi
 
 if [ "$fail" -eq 0 ]; then

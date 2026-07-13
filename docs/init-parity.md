@@ -3,6 +3,19 @@
 Task: **P2.3**. Depends on P0.3 (`docs/stock-inventory/etc-configs.md`) and P2.1 (full
 package set). Consumed by P2.4 (read-only-root audit) and P2.9 (hardware boot).
 
+> **⚠ UPDATE (P2.9 v2, 2026-07-12): this build is now usr-merged.** This document
+> was written at P2.3 time, when the rootfs was **not** usr-merged, and several
+> notes below justify adaptations (the `gpm` path, the `/etc/profile` `PATH`
+> prefix) by that fact. **P2.9 v2 set `BR2_ROOTFS_MERGED_USR=y`** — because a
+> non-usr-merged rootfs was the root cause of the SSH lockout on the first
+> hardware boot (`/etc/pam.d/sshd` references `/lib/security/pam_unix.so`, which
+> only exists via the `/lib -> /usr/lib` symlink). So `/lib`, `/bin`, `/sbin` are
+> now symlinks into `/usr`, exactly like stock. **Consequence for this doc:** the
+> `gpm`-path and `PATH`-prefix adaptations described below are now *redundant but
+> harmless* (`/sbin/gpm` and `/usr/sbin/gpm` resolve to the same file), and are
+> retained rather than reverted. The history is left intact below because it is
+> how the usr-merge decision was reached.
+
 **Method.** Every stock file cited below was read from `work/imgroot/` (the extracted
 stock `linux.img`, P0.3's ground truth). Every "current" / "package default" file was
 read from `output/target/` **after** P2.1's full package-set build but **before**

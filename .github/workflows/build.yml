@@ -169,6 +169,12 @@ jobs:
         with:
           key: ccache-${{ env.BUILDROOT_VERSION }}
           max-size: 2G
+          # The ubuntu:26.04 container starts with an EMPTY apt index. The
+          # "Install build dependencies" step below is what runs `apt-get
+          # update`, but it runs AFTER this step -- so without this flag the
+          # action's own `apt-get install ccache` fails ("Unable to locate
+          # package ccache"). Have the action refresh the index itself first.
+          update-package-index: true
 
       # --- Host build dependencies -------------------------------------------
       # ubuntu:26.04 is a minimal base; none of this is preinstalled. List is
@@ -233,6 +239,16 @@ jobs:
             BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
             BR2_CCACHE_USE_BASEDIR=y
 
+      # --- SBOM / legal-info generation (P4.2) --------------------------------
+      # Generate Software Bill of Materials (SBOM) via Buildroot's legal-info
+      # target. Reuses the same cached toolchain from the main build above.
+      - name: Generate legal-info (SBOM)
+        run: |
+          make legal-info \
+            BR2_CCACHE=y \
+            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
+            BR2_CCACHE_USE_BASEDIR=y
+
       # --- Non-hardware parity suite (P3.12) ---------------------------------
       # CI_TESTS_SKIP_QEMU_SYSTEM=1: skips scripts/test-initramfs.sh, the one
       # sub-check that boots a QEMU *system* kernel six times and can itself
@@ -281,5 +297,26 @@ jobs:
           path: |
             output/images/linux.img
             output/images/zImage_dtb
+          if-no-files-found: error
+          retention-days: 14
+
+      # --- Upload SBOM / legal-info artifact (P4.2) ---------------------------
+      # Package Buildroot's legal-info output (SBOM manifest, licenses, sources)
+      # into a tarball and upload as a build artifact, on every push (same
+      # retention policy as the main image artifacts).
+      - name: Package legal-info for upload
+        if: github.event_name == 'push'
+        run: |
+          cd output
+          tar -czf legal-info.tar.gz legal-info/
+          cd ..
+          mv output/legal-info.tar.gz .
+
+      - name: Upload SBOM artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: legal-info-${{ github.sha }}
+          path: legal-info.tar.gz
           if-no-files-found: error
           retention-days: 14

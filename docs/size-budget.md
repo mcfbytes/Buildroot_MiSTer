@@ -12,7 +12,7 @@
 - **Free blocks:** 81,179 (317 MiB)
 - **% Free:** **61%** ✅ **PASS** (threshold: ≥15%)
 
-**Headroom interpretation:** The image has 317 MiB free, comfortably exceeding the 15% minimum (77.6 MiB). This provides buffer for future package additions, firmware updates, and runtime files.
+**Headroom interpretation:** The image has 317 MiB free, comfortably exceeding the 15% minimum (76.8 MiB). This provides buffer for future package additions, firmware updates, and runtime files.
 
 ---
 

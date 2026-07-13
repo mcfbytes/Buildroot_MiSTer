@@ -267,6 +267,26 @@ BR2_PACKAGE_FLUIDSYNTH=y
 BR2_PACKAGE_FLUIDSYNTH_ALSA_LIB=y         # ALSA-seq MIDI backend -- needed for stock's
                                           # ALSA MIDI device list to match (P3.8)
 
+# --- MIDI / MT-32 (P3.8) ---
+# munt (mt32d) + MidiLink reproduce stock's MIDI/MT-32 stack: MidiLink
+# (usr/sbin/midilink, usr/sbin/mlinkutil) is the ALSA-seq client that shells
+# out to mt32d (munt) or fluidsynth on demand. Neither has an upstream
+# Buildroot package -- both authored under package/. See docs/midi-mt32-parity.md.
+BR2_PACKAGE_MUNT=y
+BR2_PACKAGE_MIDILINK=y
+# alsa-utils MIDI tools -- stock ships amidi/aplaymidi/arecordmidi/aseqdump/
+# aseqnet/aconnect (docs/stock-inventory/binaries-needed-full.txt), the tooling
+# that exercises the ALSA-seq MIDI graph. NOTE: stock's GENERAL (non-MIDI) ALSA
+# tools (alsactl/alsamixer/aplay/arecord/amixer/...) are a separate parity gap,
+# tracked outside P3.8 -- see docs/midi-mt32-parity.md.
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_ACONNECT=y
+BR2_PACKAGE_ALSA_UTILS_AMIDI=y
+BR2_PACKAGE_ALSA_UTILS_APLAYMIDI=y
+BR2_PACKAGE_ALSA_UTILS_ARECORDMIDI=y
+BR2_PACKAGE_ALSA_UTILS_ASEQDUMP=y
+BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
+
 # --- crypto / TLS ---
 BR2_PACKAGE_OPENSSL=y                     # meta-prompt
 BR2_PACKAGE_LIBOPENSSL=y                  # NOT "BR2_PACKAGE_OPENSSL" alone -- concrete

@@ -1,0 +1,46 @@
+config BR2_PACKAGE_MUNT
+	bool "munt"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_ALSA_LIB
+	help
+	  Munt: a multi-platform software synthesiser emulating Roland's
+	  pre-GM MIDI devices (MT-32, CM-32L, CM-64, LAPC-I). Stock ships
+	  its console ALSA-sequencer daemon as /usr/sbin/mt32d (P0.3
+	  inventory: docs/stock-inventory/binaries-needed-full.txt) --
+	  spawned on demand by MidiLink (package/midilink) whenever a core
+	  requests MT-32/CM-32 emulation instead of a real MT-32 or a
+	  FluidSynth soundfont. Buildroot has no upstream "munt" package,
+	  so this builds it from the project's own source (P3.8).
+
+	  This package builds:
+	    - libmt32emu (the emulation library, LGPL-2.1+) via munt's own
+	      CMake project, restricted to the mt32emu/ subdirectory so
+	      the Qt-based mt32emu_qt GUI and the win32 driver are never
+	      even configured.
+	    - mt32d (the headless console ALSA daemon, also LGPL-2.1+ per
+	      its own file header) from mt32emu_alsadrv/src/{console,
+	      alsadrv,wav}.cpp, linked against the freshly staged
+	      libmt32emu + this system's alsa-lib -- NOT against any
+	      vendored ALSA bits (there are none here to vendor; unlike
+	      MidiLink upstream, mt32emu_alsadrv already expects a system
+	      alsa-lib). xmt32 (the X11 GUI counterpart in the same source
+	      directory) is deliberately never built: it needs
+	      libX11/libXt/libXpm, none of which this headless image
+	      ships, and mt32d alone is everything MidiLink's "MUNT"
+	      uartmode shells out to.
+
+	  ROM NOTE: the actual Roland MT32_CONTROL.ROM / MT32_PCM.ROM (and
+	  CM-32L equivalents) are Roland's copyrighted firmware. Stock does
+	  NOT bundle them -- this package does not fetch, extract, or embed
+	  them either (G6). mt32d takes the ROM directory as a `-f <path>`
+	  command-line argument at runtime (MidiLink passes stock's default
+	  of /media/fat/linux/mt32-rom-data via MidiLink.INI's
+	  MUNT_ROM_PATH); users who own real MT-32/CM-32 hardware supply
+	  their own dumped ROM files at that path, exactly as in stock. See
+	  docs/midi-mt32-parity.md.
+
+	  https://github.com/munt/munt
+
+comment "munt needs a toolchain w/ C++ and threads"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

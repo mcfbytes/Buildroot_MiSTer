@@ -1,0 +1,44 @@
+config BR2_PACKAGE_MIDILINK
+	bool "midilink"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_ALSA_LIB_SEQ
+	help
+	  MidiLink: the MiSTer-devel daemon that bridges ALSA-sequencer USB
+	  MIDI adapters (Minimig, ao486, and other cores) to a real MIDI
+	  port, a software synth (MUNT/mt32d -- package/munt -- or
+	  FluidSynth), or a network peer (UDP/TCP, incl. a small Hayes "AT"
+	  command subset). Stock ships it as /usr/sbin/midilink plus a
+	  small companion tool /usr/sbin/mlinkutil (P0.3 inventory:
+	  docs/stock-inventory/binaries-needed-full.txt lines 470/480).
+	  This is the actual ALSA-sequencer client that makes cores' MIDI
+	  ports appear at all -- see docs/midi-mt32-parity.md for why
+	  package-manifest.md's "driven directly by the MiSTer binary, not
+	  a daemon" note (written before this P0.3 binary was traced to its
+	  upstream source) undersold this.
+
+	  Sourced from MiSTer-devel/MidiLink_MiSTer (GPL-3.0+), the
+	  project's own official repo (an actively-mirrored community fork,
+	  bbond007/MiSTer_MidiLink, exists but was not used -- no evidence
+	  it diverges in ways relevant here, and the official repo is
+	  simpler to justify as the pin). No release tags exist upstream,
+	  so this pins an exact commit (see midilink.mk).
+
+	  Rebuilt against THIS system's alsa-lib (BR2_PACKAGE_ALSA_LIB_SEQ)
+	  rather than the arm-linux-gnueabihf-prebuilt alsa headers/libs
+	  upstream's own Makefile vendors under alsa/ (G4: do not vendor).
+
+	  Runtime companions, both optional and independently toggled:
+	    - BR2_PACKAGE_MUNT (mt32d) for the "MUNT" uartmode.
+	    - BR2_PACKAGE_FLUIDSYNTH (+_ALSA_LIB, already enabled) for the
+	      "FSYNTH" uartmode -- MidiLink shells out to a bare
+	      "fluidsynth" and relies on $PATH, so it does not matter that
+	      Buildroot's fluidsynth.mk installs to usr/bin while stock's
+	      shipped usr/sbin; both are on this image's PATH.
+	  Neither is a hard dependency: MidiLink's default uartmode
+	  (USBMIDI, a real USB MIDI adapter) needs neither.
+
+	  https://github.com/MiSTer-devel/MidiLink_MiSTer
+
+comment "midilink needs a toolchain w/ threads"
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

@@ -31,4 +31,13 @@ menu "Firmware infra gap-fill (P3.3)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/linux-firmware-extra/Config.in"
 endmenu
 
+menu "MIDI / MT-32 (P3.8)"
+	# munt (mt32d) + MidiLink reproduce stock's MIDI/MT-32 softsynth stack;
+	# neither exists in upstream Buildroot. munt sourced first only for menu
+	# readability (midilink's help references it); both toggle independently.
+	# See docs/midi-mt32-parity.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/munt/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/midilink/Config.in"
+endmenu
+
 endmenu

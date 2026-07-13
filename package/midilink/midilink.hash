@@ -1,0 +1,10 @@
+# Locally computed (GitHub does not publish signed hashes for commit
+# tarballs -- standard practice for git/github-sourced Buildroot packages,
+# per pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# (2026-07-13) against:
+#   https://github.com/MiSTer-devel/MidiLink_MiSTer/archive/d6b337383d10dc5048b22eb5d27baf61826f6bb1.tar.gz
+#
+#   sha256sum midilink-d6b337383d10dc5048b22eb5d27baf61826f6bb1.tar.gz
+sha256  2ada66a92f6b1e93a863557d179381294548b49305d405caa3f21ea48af2d110  midilink-d6b337383d10dc5048b22eb5d27baf61826f6bb1.tar.gz
+# LICENSE -- see MIDILINK_LICENSE_FILES comment in the .mk
+sha256  d92fc21ada2350096a3a34671c180265b48fa73941e4c9967e1cac9480a84509  LICENSE

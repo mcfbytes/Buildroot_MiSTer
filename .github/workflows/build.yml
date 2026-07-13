@@ -1,0 +1,285 @@
+################################################################################
+#
+# build.yml — CI build workflow (TASKS.md P4.1, PLAN.md §9 "Build").
+#
+# Builds the full MiSTer image (two-stage: initramfs, then the main rootfs +
+# kernel + linux.img) exactly the way a developer would locally — by calling
+# this repo's own wrapper Makefile targets (`make initramfs`, `make all`) —
+# then runs the non-hardware parity suite (scripts/ci-tests.sh, P3.12) and the
+# ABI/SONAME checker (P2.2) against the result, and uploads the two shipped
+# image artifacts.
+#
+# WHY CACHING IS THE HEART OF THIS FILE: a cold Buildroot build (fresh
+# toolchain, fresh package sources, fresh object files) is 30-60 minutes
+# (TASKS.md P4.1). Four independent `actions/cache` entries below exist so a
+# warm run only has to recompile what actually changed — see the "Caching"
+# section further down for the size/eviction story.
+#
+# CAVEATS (cannot be resolved from this authoring pass — see the authoring
+# agent's final report for the full list):
+#   * scripts/check-abi.sh (P2.2) does not exist yet as of this writing (P2.2
+#     is still an open task) — the ABI-checker step below runs it only if
+#     present, and emits a ::notice:: otherwise. ci-tests.sh's own "ABI /
+#     stock-binary smoke" section already covers the same P2.2/P2.8 core
+#     assertions as a lightweight interim (see that script's header).
+#   * This workflow has never actually been run — a clean-cache AND a
+#     warm-cache CI run are both still needed to confirm the "warm run <
+#     60 min, target: minutes" budget from TASKS.md's P4.1 "Done when".
+#
+################################################################################
+
+name: Build
+
+on:
+  push:
+  pull_request:
+
+# Cancel a superseded run for the same ref (e.g. a new push to an open PR)
+# rather than burning CI minutes finishing a build nobody wants anymore.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: this workflow only reads the repo and uploads artifacts,
+# both covered by the default `contents: read` — no token write scope needed.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build image (two-stage Buildroot)
+    runs-on: ubuntu-latest
+
+    # --- Pinned container image, BY DIGEST, not by floating tag -------------
+    # ubuntu:24.04's multi-arch manifest-list digest, resolved 2026-07-13 via:
+    #   docker buildx imagetools inspect ubuntu:24.04
+    # (equivalently: `docker manifest inspect ubuntu:24.04` and take the index
+    # digest, not one of the per-platform manifest digests inside it). Re-run
+    # that command and update both the digest and this date when bumping.
+    container:
+      image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
+
+    # --- Timeout budget (TASKS.md P4.1) -------------------------------------
+    # Cold build (empty caches): documented 30-60 min for Buildroot itself.
+    # Add checkout/apt/test-suite overhead on top -> 90 min ceiling here is a
+    # buffer above the documented cold-build range, not the expected runtime.
+    # Warm build (all four caches hit, ccache warm): TARGET is a few minutes
+    # for the rebuild steps, per P4.1's "Done when" -- UNPROVEN until a real
+    # warm-cache CI run confirms it (see the file header caveats).
+    timeout-minutes: 90
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # BUILDROOT_VERSION lives in the Makefile (P4.6 will point Renovate's
+      # custom regex manager at that same line), not in this workflow, so it
+      # cannot drift out of sync with what `make` actually fetches. Every
+      # cache key below keys off this one extracted value.
+      - name: Read Buildroot version pin from Makefile
+        run: |
+          set -eu
+          ver=$(sed -n 's/^BUILDROOT_VERSION ?= //p' Makefile | head -1)
+          if [ -z "$ver" ]; then
+            echo "::error::could not extract BUILDROOT_VERSION from Makefile (format changed?)" >&2
+            exit 1
+          fi
+          echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
+          echo "Resolved BUILDROOT_VERSION=$ver"
+
+      ##########################################################################
+      # Caching -- FOUR entries (TASKS.md P4.1, non-optional). Mind the 10 GB
+      # per-repo GitHub Actions cache ceiling: GitHub evicts least-recently-used
+      # cache entries automatically once the repo's total crosses it, so these
+      # four are sized to comfortably coexist:
+      #   1. Buildroot tarball  -- ~20-30 MB, changes only on a BUILDROOT_VERSION
+      #      bump (rare). Kept SEPARATE from #2 (below) specifically so a mere
+      #      defconfig change (common) can never evict this tiny, cheap entry --
+      #      it is redundant with the tarball also living inside #2, on purpose.
+      #   2. dl/ (all package source tarballs) -- the biggest of the four,
+      #      likely several hundred MB to low GB for this project's full
+      #      package set (P2.1). The one most likely to approach the ceiling.
+      #   3. output/host (+ build stamps) -- the cross-toolchain; typically
+      #      1-3 GB compressed. THE big win: this is what skips rebuilding
+      #      gcc/binutils/glibc for the target from scratch.
+      #   4. ccache -- capped explicitly (max-size below) so it can never grow
+      #      unbounded across many merges.
+      # If the four together approach 10 GB in practice: lower ccache's
+      # max-size first (cheapest to shrink, least impact on warm-build time),
+      # then consider an external mirror for dl/ (e.g. a self-hosted or S3
+      # package-source cache) rather than losing the toolchain cache (#3),
+      # which is the one most worth keeping.
+      ##########################################################################
+
+      # 1. Buildroot release tarball -- key on BUILDROOT_VERSION alone.
+      - name: Cache Buildroot release tarball
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
+          key: buildroot-tarball-${{ env.BUILDROOT_VERSION }}
+
+      # 2. dl/ download cache -- key on BUILDROOT_VERSION + the main
+      # defconfig's contents (a package added/removed there needs new source
+      # tarballs); restore-keys falls back to just BUILDROOT_VERSION so an
+      # imperfect match still hydrates everything that HASN'T changed instead
+      # of re-downloading the whole package set. dl/ lives at the repo root
+      # (survives `make clean`) -- never move it under output/, which does not.
+      - name: Cache Buildroot dl/ download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dl/
+          key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
+          restore-keys: |
+            br-dl-${{ env.BUILDROOT_VERSION }}-
+
+      # 3. Buildroot host toolchain -- output/host (the built cross-toolchain
+      # and other host-side tools) plus the per-package build stamps under
+      # output/build/host-*/ that tell Buildroot's own incremental make those
+      # host packages are already built (without the stamps, restoring
+      # output/host alone would not stop Buildroot from trying to rebuild
+      # into it). Busts on a defconfig, kernel-config, OR kernel-patch change,
+      # since any of those can change what the toolchain/host tools need to
+      # produce. NOTE: this covers only the MAIN build's toolchain
+      # (output/host) -- the initramfs stage's separate musl toolchain
+      # (output-initramfs/host) is deliberately NOT one of the four caches
+      # named in TASKS.md P4.1 and is rebuilt every run (small/fast: a static
+      # BusyBox-only config). See the authoring agent's final report.
+      - name: Cache Buildroot host toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            output/host
+            output/build/host-*
+          key: br-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
+
+      # 4. ccache. CCACHE_DIR is exported here (matching the BR2_CCACHE_DIR
+      # passed to `make` below) so hendrikmuhs/ccache-action caches the exact
+      # directory Buildroot's compiler wrapper actually writes to.
+      # BR2_CCACHE_USE_BASEDIR (passed to `make`, not here) rewrites absolute
+      # paths in cached objects so this cache is relocatable across runners --
+      # without it, a ccache hit here would mostly miss anyway.
+      - name: Configure ccache directory
+        run: echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+
+      - name: Cache ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ccache-${{ env.BUILDROOT_VERSION }}
+          max-size: 2G
+
+      # --- Host build dependencies -------------------------------------------
+      # ubuntu:24.04 is a minimal base; none of this is preinstalled. List is
+      # Buildroot's own documented mandatory set (which, sed, make, binutils,
+      # build-essential, diffutils, bash, patch, gzip, bzip2, perl, tar, cpio,
+      # unzip, rsync, file, bc, findutils, wget) plus project-specific extras:
+      # git (several packages -- xone, munt, midilink, the morrownr Realtek
+      # forks -- are fetched via pinned git commits, see package/*/*.mk),
+      # bison/flex/gawk (kernel Kbuild's own documented minimum requirements),
+      # ca-certificates (without it, curl/wget TLS verification to
+      # buildroot.org and every HTTPS package mirror fails outright),
+      # python3 (scripts/abi/needed-symbols.py, misc Buildroot infra),
+      # libssl-dev/libncurses-dev/pkg-config/texinfo (commonly probed by
+      # third-party package configure scripts even when cross-compiling),
+      # qemu-user (ci-tests.sh's qemu-arm-based checks), e2fsprogs (dumpe2fs
+      # fallback for check-size-budget.sh / check-linux-img.sh if Buildroot's
+      # own host/sbin/dumpe2fs is for any reason not where they expect it).
+      - name: Install build dependencies
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential bash bc bison flex gawk \
+            git patch gzip bzip2 xz-utils cpio unzip rsync \
+            file wget curl ca-certificates perl \
+            python3 python3-dev \
+            libssl-dev libncurses-dev pkg-config texinfo \
+            qemu-user e2fsprogs
+          rm -rf /var/lib/apt/lists/*
+
+      # Fails fast and loud if this container image's `install` is ever not
+      # GNU coreutils (see the Makefile's own `hostshim` target/comment) --
+      # cheap to check explicitly before spending build time.
+      - name: Verify host `install` is GNU coreutils
+        run: make hostshim
+
+      ##########################################################################
+      # Two-stage build -- mirrors the wrapper Makefile's own `all: initramfs
+      # ... ` dependency (Makefile, P1.10/A1): stage 1 builds the tiny static
+      # cpio that gets embedded in the kernel; stage 2 is the main glibc
+      # rootfs + kernel + linux.img build, which itself depends on stage 1's
+      # cpio (external.mk refuses to configure the kernel without it). Run as
+      # two explicit CI steps (rather than relying on `make all` alone, which
+      # would still run both) purely for separate logs/timing/step-timeouts --
+      # `initramfs` is phony so `make all` re-entering it here is a fast no-op
+      # on anything already built by the first step.
+      ##########################################################################
+
+      - name: Stage 1 -- build initramfs cpio
+        timeout-minutes: 20
+        run: |
+          make initramfs \
+            BR2_CCACHE=y \
+            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
+            BR2_CCACHE_USE_BASEDIR=y
+
+      - name: Stage 2 -- build full image (make all)
+        timeout-minutes: 75
+        run: |
+          make all \
+            BR2_CCACHE=y \
+            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
+            BR2_CCACHE_USE_BASEDIR=y
+
+      # --- Non-hardware parity suite (P3.12) ---------------------------------
+      # CI_TESTS_SKIP_QEMU_SYSTEM=1: skips scripts/test-initramfs.sh, the one
+      # sub-check that boots a QEMU *system* kernel six times and can itself
+      # take several minutes (see ci-tests.sh's own header) -- left off here
+      # to protect the timeout budget above. Flip to unset/0 to run the full
+      # suite (e.g. in a manually-triggered or nightly run) at the cost of
+      # several extra minutes.
+      - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
+        env:
+          CI_TESTS_SKIP_QEMU_SYSTEM: "1"
+        run: scripts/ci-tests.sh
+
+      # --- ABI / SONAME parity checker (P2.2) --------------------------------
+      # scripts/check-abi.sh does not exist yet as of this writing -- P2.2 is
+      # still an open TASKS.md item. Run it if/when it lands (no workflow
+      # change needed then); until it does, note that ci-tests.sh's own "ABI /
+      # stock-binary smoke" section already runs the same two headline P2.2/
+      # P2.8 checks (dynamic-link resolution + FPGA-access whitelist) as a
+      # documented lightweight interim -- see that script's header comment.
+      - name: ABI / SONAME parity checker (P2.2)
+        run: |
+          if [ -x scripts/check-abi.sh ]; then
+            scripts/check-abi.sh output
+          else
+            echo "::notice title=P2.2 not yet implemented::scripts/check-abi.sh does not exist yet (TASKS.md P2.2 is still open). ci-tests.sh's 'ABI / stock-binary smoke' section already covers the equivalent P2.2/P2.8 core checks as an interim -- see scripts/ci-tests.sh's header comment. This step will pick up scripts/check-abi.sh automatically once P2.2 lands."
+          fi
+
+      - name: Report disk & cache usage
+        if: always()
+        run: |
+          echo "--- disk free ---"; df -h .
+          echo "--- dl/ ---"; du -sh dl 2>/dev/null || true
+          echo "--- output/host ---"; du -sh output/host 2>/dev/null || true
+          echo "--- output (total) ---"; du -sh output 2>/dev/null || true
+          echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true
+
+      # --- Upload build artifacts, on every push -----------------------------
+      # (Not on pull_request runs, to avoid doubling artifact storage for
+      # every PR revision on top of its eventual push to the target branch --
+      # revisit if PR-visible artifacts turn out to be wanted too.)
+      - name: Upload build artifacts
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mister-images-${{ github.sha }}
+          path: |
+            output/images/linux.img
+            output/images/zImage_dtb
+          if-no-files-found: error
+          retention-days: 14

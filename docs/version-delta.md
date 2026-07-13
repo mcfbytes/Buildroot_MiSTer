@@ -14,7 +14,7 @@ security-update path), and it belongs in the release notes.
 > defensible. It deliberately does **not** enumerate specific CVE numbers or claim a
 > count of "N CVEs fixed" — those are not verified here, and an unverifiable count
 > would undermine the very credibility this document exists to build. One
-> end-of-life fact *is* cited because it is public and load-bearing (OpenSSL 1.1.1).
+> end-of-life fact *is* cited because it is public and load-bearing (OpenSSL 1.1.1: <https://openssl-library.org/news/timeline/index.html>).
 
 ## The stack
 
@@ -25,8 +25,7 @@ security-update path), and it belongs in the release notes.
 | glibc | **2.31** | **2.42** | backward-compatible; every stock binary still runs (proven on hardware) |
 | gcc (toolchain) | 10.x era | **14.3.0** | |
 
-The kernel jump is the sharpest: stock forked 5.15.1 and **never took one of the
-~180 subsequent 5.15.y stable releases**, and 5.15 itself reaches EOL in Dec 2026.
+The kernel jump is the sharpest: stock forked 5.15.1 and **never took any of the subsequent 5.15.y stable releases**, and 5.15 itself reaches EOL in **Oct 2026** (per kernel.org).
 
 ## Security-relevant userland movers
 
@@ -68,7 +67,7 @@ unchanged (confirmed on hardware, `docs/testlogs/p2-menu.md`).
 The point is not just "newer once." Stock has **no** mechanism to move — the
 Buildroot config that builds it is unpublished and the kernel fork takes no stable
 updates. This project pins every input by hash, builds reproducibly, and wires
-**Renovate** over the kernel (`board/.../patches/linux/linux.hash`) and Buildroot
+**Renovate** over the kernel (`board/mister/de10nano/patches/linux/linux.hash`) and Buildroot
 (`BUILDROOT_VERSION`/`BUILDROOT_SHA256`) version stanzas (P4.6/P4.7), so `.y`
 security bumps become a reviewed, testable PR rather than a manual re-fork. That
 maintainability — not any single version number — is the deliverable.

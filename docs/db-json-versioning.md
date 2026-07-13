@@ -5,6 +5,16 @@
 "derive RELEASE_DATE" step (P4.4, `phase4-release-eng` branch). **Consumed by:**
 `scripts/gen-db-json.py`, `.github/workflows/publish-db.yml`.
 
+> **UPDATE ([ADR 0018](decisions/0018-db-json-version-is-release-date-driven.md),
+> Accepted):** the durable fix has landed. `/MiSTer.version` is now itself set from
+> the tagged commit date (a `MISTER_VERSION` override in `post-build.sh`, injected by
+> `release.yml`), so it is distinct per release. Both `db.json`'s `linux.version` and
+> the on-device `/MiSTer.version` now trace to that same date, and `gen-db-json.py` /
+> `publish-db.yml` derive the version from the release archive's `YYYYMMDD`
+> (== `/MiSTer.version`), **not** `publishedAt` — so the residual re-flash trade-off
+> analyzed below **no longer applies**. The analysis is retained as the record of why
+> the interim `publishedAt` approach existed.
+
 ## The problem
 
 The Downloader decides whether to apply a Linux update with a **strict string

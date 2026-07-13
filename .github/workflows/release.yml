@@ -225,6 +225,25 @@ jobs:
       - name: Verify host `install` is GNU coreutils
         run: make hostshim
 
+      # Durable fix (ADR 0018): the image's /MiSTer.version must be DISTINCT per
+      # release and EQUAL to the db.json version, or the Downloader re-flashes on
+      # every run. Derive a 6-digit YYMMDD from the tagged commit's UTC date
+      # (fixed per commit -> reproducible) and hand it to the build via
+      # MISTER_VERSION (exported to $GITHUB_ENV, so every later step incl. the
+      # make steps below inherit it). post-build.sh bakes it into /MiSTer.version
+      # instead of the constant SOURCE_DATE_EPOCH date. Override: pre-set
+      # MISTER_VERSION in the workflow env to force a specific value.
+      - name: Derive release version (YYMMDD) from the tagged commit
+        run: |
+          set -eu
+          v="${MISTER_VERSION:-$(TZ=UTC git show -s --format=%cd --date=format-local:%y%m%d HEAD)}"
+          case "$v" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+            *) echo "::error::derived MISTER_VERSION '$v' is not 6 digits YYMMDD" >&2; exit 1 ;;
+          esac
+          echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
+          echo "Release version (YYMMDD) = $v  ->  /MiSTer.version, release_20${v}.7z, db.json"
+
       - name: Stage 1 -- build initramfs cpio
         run: |
           make initramfs \
@@ -288,28 +307,20 @@ jobs:
       # baked into linux.img. This job does not publish db.json (P4.5's job),
       # but it DOES name this release's archive `release_YYYYMMDD.7z`, and
       # that filename has always (see docs/verification/stock-release-*.md)
-      # matched the version the archive carries -- so RELEASE_DATE is derived
-      # from the ACTUAL BAKED-IN VERSION, never from `date -u +%Y%m%d` (today's
-      # wall-clock date), and never from the git tag. Read directly off the
-      # just-built image via debugfs (same tool/idiom as scripts/check-linux-img.sh),
-      # not re-derived from SOURCE_DATE_EPOCH by shelling out to `date` a
-      # second time, so this step catches a real image/tooling mismatch
-      # instead of trusting the two computations agree.
+      # matched the version the archive carries. Per ADR 0018 that version is now
+      # SET from the tagged commit (the "Derive release version" step above
+      # exported MISTER_VERSION, and post-build.sh baked it into /MiSTer.version),
+      # NOT derived from the constant SOURCE_DATE_EPOCH date. So this step now
+      # VERIFIES the built image carries exactly the version we requested -- a
+      # real image/tooling-mismatch guard -- and republishes it as RELEASE_DATE
+      # for the archive name / SHA256SUMS / db.json, which must all agree.
       #
-      # OPEN QUESTION (flagged in the authoring agent's final report, not
-      # papered over here): configs/mister_de10nano_defconfig pins
-      # SOURCE_DATE_EPOCH to Buildroot's OWN last-commit date (fixed as long
-      # as BUILDROOT_VERSION doesn't change) -- so EVERY release built from
-      # the same BUILDROOT_VERSION bakes the IDENTICAL /MiSTer.version, and
-      # therefore the identical release_YYYYMMDD.7z filename. Two tag
-      # pushes in a row, same BUILDROOT_VERSION, will try to produce the
-      # SAME archive filename and (per P4.5, not this file) the same
-      # db.json version string -- which the Downloader's pure-inequality
-      # version check would then treat as "no update available" for anyone
-      # already on the first one. This file cannot fix that (it is a
-      # property of P2.5/P2.6's reproducibility design, not of release.yml),
-      # but P4.5 and/or P2.6 need an explicit answer before two real
-      # releases ever ship back to back.
+      # This RESOLVES the old constant-version hazard: distinct tags -> distinct
+      # commit dates -> distinct /MiSTer.version + release_YYYYMMDD.7z + db.json
+      # version, so the Downloader offers the update and then sees the box as up
+      # to date. (Two tags on the SAME commit still map to one YYMMDD -- same
+      # granularity as stock; fine unless back-to-back same-day releases are
+      # ever needed.)
       ##########################################################################
       - name: Extract and validate /MiSTer.version from the built image
         id: mister_version
@@ -341,6 +352,12 @@ jobs:
               exit 1
               ;;
           esac
+          # Verify the build honored the MISTER_VERSION override (ADR 0018):
+          # /MiSTer.version must equal what we asked post-build.sh to bake.
+          if [ "$yymmdd" != "${MISTER_VERSION:-}" ]; then
+            echo "::error::built /MiSTer.version '$yymmdd' != requested MISTER_VERSION '${MISTER_VERSION:-<unset>}' -- post-build.sh did not honor the override" >&2
+            exit 1
+          fi
           # Assumption, flagged: century is hardcoded "20" (valid until the
           # year 2100). /MiSTer.version itself only ever carries YYMMDD, same
           # as stock's own convention (e.g. "250402" for release_20250402.7z).

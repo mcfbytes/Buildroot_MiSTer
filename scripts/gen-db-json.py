@@ -35,6 +35,13 @@ that makes it win.
 
 ## THE VERSIONING PROBLEM (flagged by P4.4; see docs/db-json-versioning.md)
 
+NOTE (ADR 0018): the durable fix has landed -- /MiSTer.version is now set from
+the release tag date, so it is distinct per release. publish-db.yml calls this
+script with --version = the release archive's YYYYMMDD (== /MiSTer.version), NOT
+--published-at. The --published-at path remains supported but is no longer how
+releases are versioned; the analysis below is kept as the record of why the
+interim publishedAt approach existed.
+
 `linux.version`'s last 6 characters are compared, by strict string
 inequality, against the RUNNING system's `/MiSTer.version`
 (linux_updater.py#L73-76). `configs/mister_de10nano_defconfig` pins

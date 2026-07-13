@@ -193,13 +193,24 @@ jobs:
           url=$(jq -r '.assets[] | select(.name | test("^release_[0-9]+\\.7z$")) | .url' release.json)
           size=$(jq -r '.assets[] | select(.name | test("^release_[0-9]+\\.7z$")) | .size' release.json)
           published_at=$(jq -r '.publishedAt' release.json)
+          # db.json's version must equal the image's /MiSTer.version. Since ADR
+          # 0018's durable fix, BOTH trace to the tagged-commit date that
+          # release.yml baked in and encoded in this filename (release_YYYYMMDD.7z).
+          # So derive the db version from the filename -- NOT from publishedAt,
+          # which can differ from the build/commit date and would break the
+          # Downloader's version-equality check (re-flash on every run).
+          archive_version=$(printf '%s' "$name" | sed -n 's/^release_\([0-9]\{8\}\)\.7z$/\1/p')
+          if [ -z "$archive_version" ]; then
+            echo "::error::could not parse YYYYMMDD from asset name '$name'" >&2; exit 1
+          fi
           {
             echo "name=$name"
             echo "url=$url"
             echo "size=$size"
             echo "published_at=$published_at"
+            echo "archive_version=$archive_version"
           } >> "$GITHUB_OUTPUT"
-          echo "Asset: $name ($size bytes), published_at=$published_at"
+          echo "Asset: $name ($size bytes), version=$archive_version (from filename)"
           echo "URL: $url"
 
       # docs/downloader-contract.md §12 item 3: linux.hash/linux.size must
@@ -230,20 +241,21 @@ jobs:
           echo "Downloaded release.7z size confirmed: $actual_size bytes."
 
       # scripts/gen-db-json.py (P4.5) -- computes linux.hash/linux.size from
-      # the just-downloaded, just-size-verified asset; derives linux.version
-      # from the release's own publish date, NOT from /MiSTer.version or the
-      # archive filename (docs/db-json-versioning.md, ADR 0018) -- and runs
-      # its own internal schema self-check before writing anything.
+      # the just-downloaded, just-size-verified asset. linux.version is the
+      # archive's YYYYMMDD, whose last 6 chars == the image's /MiSTer.version
+      # (both fixed from the tagged commit -- ADR 0018), so the Downloader's
+      # version-equality check holds. Runs its own schema self-check before
+      # writing anything.
       - name: Generate db.json
         env:
           ASSET_URL: ${{ steps.asset.outputs.url }}
-          PUBLISHED_AT: ${{ steps.asset.outputs.published_at }}
+          ARCHIVE_VERSION: ${{ steps.asset.outputs.archive_version }}
         run: |
           set -eu
           python3 scripts/gen-db-json.py \
             --db-id "$DB_ID" \
             --url "$ASSET_URL" \
-            --published-at "$PUBLISHED_AT" \
+            --version "$ARCHIVE_VERSION" \
             --asset-file release.7z \
             --out db.json
           cat db.json

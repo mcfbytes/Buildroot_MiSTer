@@ -1,66 +1,53 @@
-# ADR 0018 — `db.json`'s `linux.version` is derived from the release's publish date, not from `/MiSTer.version`
+# ADR 0018 — `/MiSTer.version` (and thus `db.json`'s `linux.version`) is derived from the release tag, not the constant `SOURCE_DATE_EPOCH`
 
-**Status:** Proposed (2026-07-13) — authored by the P4.5 agent; **needs human ratification
-before two real releases ship back to back** (see "Open question" below).
-**Impact:** `scripts/gen-db-json.py`, `.github/workflows/publish-db.yml` (this task, P4.5);
-longer-term, a candidate follow-up to `board/mister/de10nano/post-build.sh` /
-`configs/mister_de10nano_defconfig` (P2.6, out of scope here).
-**Supersedes:** nothing formal — this is the first ADR to address db.json's version
-field. It resolves the "OPEN QUESTION" `.github/workflows/release.yml` (P4.4,
-`phase4-release-eng` branch) explicitly left for "P4.5 and/or P2.6."
-**Full rationale:** `docs/db-json-versioning.md` (this task) — this ADR is the short,
-decision-record form of that document; read the longer doc for the mechanism and the
-residual trade-off in detail.
+**Status:** Accepted (2026-07-13) — decided by @mcfbytes; durable fix implemented.
+**Impact:** `board/mister/de10nano/post-build.sh` (the `MISTER_VERSION` override),
+`.github/workflows/release.yml` (derives + injects it, then verifies the built image),
+`.github/workflows/publish-db.yml` + `scripts/gen-db-json.py` (db version from the
+archive date). Resolves the "OPEN QUESTION" P4.4's `release.yml` left for P4.5/P2.6.
+**Supersedes:** the P4.5 interim (db version from the GitHub Release `publishedAt` date),
+which was a workaround for the problem this ADR now fixes at the source.
+**Full rationale:** `docs/db-json-versioning.md`.
 
-## The problem, stated plainly
+## The problem
 
-`configs/mister_de10nano_defconfig` pins `SOURCE_DATE_EPOCH` to Buildroot's own
-last-commit date — a deliberate, valuable choice (P2.5/A9: it's what makes two
-independent builds of the same commit produce byte-identical images). One side effect:
-`board/mister/de10nano/post-build.sh` derives `/MiSTer.version`'s 6-byte `YYMMDD` stamp
-from that same pinned epoch, so **every release built from the same `BUILDROOT_VERSION`
-bakes an identical `/MiSTer.version`** — regardless of how different the kernel, patches,
-or packages inside it actually are.
+The Downloader decides "is there a linux update?" by a strict string comparison of the
+running system's `/MiSTer.version` against `db.json`'s `linux.version[-6:]`
+(`docs/downloader-contract.md` §3). `/MiSTer.version` was baked from `SOURCE_DATE_EPOCH`,
+which `configs/mister_de10nano_defconfig` pins to Buildroot's own commit date (P2.5/A9,
+for reproducibility). So **every release built from the same `BUILDROOT_VERSION` baked an
+identical `/MiSTer.version`** — two back-to-back releases would look identical to the
+Downloader and the second would never be offered.
 
-The Downloader's entire update-detection mechanism (`docs/downloader-contract.md` §3) is
-a **strict string inequality** between the running system's `/MiSTer.version` and
-`db.json`'s `linux.version[-6:]`. If `db.json`'s version tracked the baked-in value, two
-back-to-back releases from the same Buildroot pin would publish the same version string,
-and a user already on the first release would never be offered the second.
+P4.5 first worked around this by deriving `db.json`'s version from the GitHub Release's
+`publishedAt` date instead. That made new releases *detectable*, but introduced the
+inverse bug: the on-device `/MiSTer.version` never advanced to match, so the box looked
+"outdated" on *every* Downloader run and re-flashed — re-running `updateboot`, which wipes
+U-Boot's saved environment — forever.
 
-## Decision
+## Decision (the durable fix)
 
-`scripts/gen-db-json.py` derives `linux.version` from the **GitHub Release's own real
-publish date** (`publishedAt`), independent of `/MiSTer.version` and independent of the
-`release_YYYYMMDD.7z` filename (which itself traces back to the baked-in value — see
-`release.yml`'s "derive RELEASE_DATE" step). `linux.hash`/`linux.size` come from the
-actual uploaded release asset, which does vary release-to-release by content, regardless
-of what `/MiSTer.version` says.
+Make `/MiSTer.version` itself distinct per release, at the source:
 
-This makes `db.json`'s advertised version **distinct per release** (barring two releases
-published the same UTC calendar day), which is sufficient to make the Downloader's
-inequality check fire and offer every real release to already-subscribed devices. This is
-the problem this ADR is scoped to fix.
+- **`post-build.sh`** bakes `/MiSTer.version` from an optional **`MISTER_VERSION`** env var
+  (6-digit `YYMMDD`) when set, falling back to the `SOURCE_DATE_EPOCH` date otherwise.
+- **`release.yml`** derives `MISTER_VERSION` from the **tagged commit's UTC date** (fixed
+  per commit ⇒ still reproducible), exports it into the build, then *verifies* the built
+  image carries exactly that value.
+- **`publish-db.yml` / `gen-db-json.py`** set `db.json`'s `linux.version` from the release
+  **archive's `YYYYMMDD`** (whose last 6 chars are that same date), not `publishedAt`.
 
-## Open question — NOT resolved by this ADR, flagged for a human decision
+Result: `/MiSTer.version` == `release_YYYYMMDD.7z` date == `db.json` version — all distinct
+per release and all reproducible for a given tag. The Downloader offers each real release
+once and then correctly sees the box as up to date; no re-flash loop.
 
-Decoupling `db.json`'s version from `/MiSTer.version` trades one failure mode for
-another: after a device installs a release, its on-device `/MiSTer.version` does **not**
-advance to match whatever `db.json` said — it stays at the Buildroot-pinned constant.
-Until the *next* real release changes `db.json` again, the same inequality that
-correctly triggered the last update **remains true**, so every intervening Downloader run
-sees "update available" again — re-downloading the archive and re-running `updateboot`
-(which unconditionally erases U-Boot's saved environment and re-flashes `uboot.img`,
-`docs/downloader-contract.md` §8) even though nothing has actually changed.
+## Consequences
 
-This is not silently accepted as fine: `docs/db-json-versioning.md` names it explicitly
-and proposes the durable fix — have `post-build.sh` accept a build-time override for
-`/MiSTer.version` specifically (e.g. an env var the release workflow sets to that
-release's real date), leaving `SOURCE_DATE_EPOCH` itself untouched for every other
-reproducibility guarantee it protects (file mtimes, ext4 superblock timestamps). That
-change touches P2.6/P4.4-owned files and was out of scope for this task (P4.5: no
-Buildroot build, author YAML/scripts/docs only). **A human must decide whether to accept
-the residual re-flash-on-every-run behavior as an interim beta-phase cost, or land the
-P2.6 override before the first two real releases ship back to back** — this ADR's
-"Proposed" status, rather than "Accepted," reflects that this half of the decision is
-still open.
+- **Reproducibility preserved.** A release pins `MISTER_VERSION` to a fixed tag date;
+  non-release builds (CI push, local, the P4.3 reproducibility double-build) leave it
+  unset and keep the constant `SOURCE_DATE_EPOCH` date, so their byte-identical-build
+  guarantee is untouched. `SOURCE_DATE_EPOCH` still governs every other timestamp (file
+  mtimes, ext4 superblock) — only the `/MiSTer.version` *string* is overridden.
+- **Residual granularity limit (same as stock):** two releases tagged on the **same UTC
+  day** map to one `YYMMDD` and collide. Acceptable; if same-day back-to-back releases are
+  ever needed, set an explicit `MISTER_VERSION` in the release workflow env for the second.

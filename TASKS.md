@@ -737,38 +737,38 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   build/depmod/vermagic/firmware-delivery chain is fully verified in the image; device
   *function* is not.
 
-- [ ] **P3.4 — WiFi userland parity** — [SONNET] — Size S — Depends: P3.3
+- [x] **P3.4 — WiFi userland parity** — [SONNET] — Size S — Depends: P3.3
   `wpa_supplicant` config/paths matching stock so `wifi.sh` and existing user configs
   work unchanged.
   **Done when:** `wifi.sh` from the current Distribution runs unmodified against the
   new rootfs (static analysis + [HW] confirmation in P3.13).
 
-- [ ] **P3.5 — Bluetooth parity** — [SONNET] — Size M — Depends: P2.1
+- [x] **P3.5 — Bluetooth parity** — [SONNET] — Size M — Depends: P2.1
   bluez package (library must provide `libbluetooth.so.3`), init script, pairing-state
   persistence per P2.4.
   **Done when:** SONAME check passes; `bluetoothd` starts on ro root; pairing DB
   persists across reboot ([HW] in P3.13).
 
-- [ ] **P3.6 — Samba parity** — [SONNET] — Size M — Depends: P2.3
+- [x] **P3.6 — Samba parity** — [SONNET] — Size M — Depends: P2.3
   Modern Samba with stock-equivalent `smb.conf` (audit 4.14 → current syntax/behavior
   changes: SMB1 defaults, guest access, unix extensions). Preserve share layout and
   discoverability behavior users expect.
   **Done when:** config diff documented; `smbd`/`nmbd` (or modern equivalents) start on
   ro root; share is browsable from Windows/macOS ([HW]/LAN check in P3.13).
 
-- [ ] **P3.7 — SSH & FTP parity** — [SONNET] — Size S — Depends: P2.3
+- [x] **P3.7 — SSH & FTP parity** — [SONNET] — Size S — Depends: P2.3
   Match stock daemon choices (verified: OpenSSH `sshd` + **proftpd**), host-key
   persistence per P2.4, and
   stock auth behavior (document the default-credential posture; keep parity, note the
   risk in the FAQ rather than silently hardening).
   **Done when:** both daemons start on ro root; keys persist; behavior documented.
 
-- [ ] **P3.8 — MIDI / MT-32 parity** — [SONNET] — Size S — Depends: P2.1
+- [x] **P3.8 — MIDI / MT-32 parity** — [SONNET] — Size S — Depends: P2.1
   fluidsynth/mt32 userland per P0.3 inventory; ALSA seq config as stock.
   **Done when:** packages present at compatible versions; ALSA MIDI device list matches
   stock ([HW] confirmation in P3.13).
 
-- [ ] **P3.9 — Python & Downloader compatibility (A6)** — [SONNET] — Size M — Depends: P2.1
+- [x] **P3.9 — Python & Downloader compatibility (A6)** — [SONNET] — Size M — Depends: P2.1
   Run `Downloader_MiSTer`'s test suite (it has one) under the target Python via
   qemu-user chroot. Smoke-test a sample of popular community scripts (update_all, etc.)
   for 3.9→3.13 breakage (removed stdlib modules, syntax). Report incompatibilities
@@ -776,19 +776,19 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Done when:** Downloader suite green on-target-Python; findings in
   `docs/python-compat.md`.
 
-- [ ] **P3.10 — Network filesystem client parity** — [HAIKU] — Size S — Depends: P1.3, P2.1
+- [x] **P3.10 — Network filesystem client parity** — [HAIKU] — Size S — Depends: P1.3, P2.1
   `mount.cifs` (cifs-utils) + NFS client utils per stock inventory, so community
   cifs/NFS mount scripts run unchanged. Kernel side was asserted in P1.3.
   **Done when:** a cifs and an nfs mount succeed from the running image (loop-back test
   acceptable pre-hardware).
 
-- [ ] **P3.11 — RTC parity** — [SONNET] — Size S — Depends: P1.7, P2.3
+- [x] **P3.11 — RTC parity** — [SONNET] — Size S — Depends: P1.7, P2.3
   hctosys/init integration for the i2c-gpio RTC add-on; graceful no-op without the
   board.
   **Done when:** boot with no RTC shows no errors; with RTC ([HW] in P3.13) system time
   is set from it.
 
-- [ ] **P3.12 — CI-runnable parity test suite** — [SONNET] — Size M — Depends: P3.1–P3.11
+- [x] **P3.12 — CI-runnable parity test suite** — [SONNET] — Size M — Depends: P3.1–P3.11
   Consolidate P2.2/P2.8/P1.12 and per-service start checks into one
   `scripts/ci-tests.sh` (chroot + qemu-user + qemu-system where applicable) so
   regressions are caught without hardware.
@@ -802,6 +802,35 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   the run sheet, human executes, model compiles results and files defects.
   **Done when:** `docs/testlogs/p3-matrix.md` shows every row pass/fail with notes;
   all fails triaged into tasks. **Phase 3 exit gate: all green or accepted-with-issue.**
+
+### Phase 3 follow-ups (discovered during P3.3–P3.12 review)
+
+- [ ] **P3.14 — BCM20702 Bluetooth dongle firmware** — [SONNET] [NET] — Size S — Depends: P3.3, P3.5
+  Stock ships `brcm/BCM20702A1-0b05-17cb.hcd` (patch RAM for BCM20702-based BT dongles —
+  common ASUS USB-BT400 & generics; `CONFIG_BT_HCIBTUSB_BCM=y`), but it is **not** in
+  mainline linux-firmware, so P3.3 left it as a flagged gap. Source it via the **same
+  vendor-firmware pattern approved for xow** (ADR 0003): a hash-pinned build-time fetch
+  (e.g. `winterheart/broadcom-bt-firmware`), never a committed blob. **Needs maintainer OK
+  to redistribute a second vendor firmware** (flagged, not yet approved).
+
+- [ ] **P3.15 — General ALSA userland parity** — [SONNET] — Size S — Depends: P2.1
+  Stock ships the full ALSA CLI suite (`alsactl`, `alsamixer`, `amixer`, `aplay`,
+  `arecord`, `alsabat`, `alsaloop`, `alsatplg`, `alsaucm`); our image has only the MIDI
+  subset (P3.8 correctly stayed in scope). `alsactl` in particular is mixer save/restore.
+  Enable the matching `BR2_PACKAGE_ALSA_UTILS_*` options. (`aserver` has no Buildroot
+  sub-option — document as an accepted gap.) See `docs/midi-mt32-parity.md` §5.
+
+- [ ] **Downloader `downloader.sh` python3.9 path** — note, no action in this tree — Depends: —
+  `downloader.sh` hardcodes `/usr/bin/python3.9` to select its Nuitka fast-path; on our
+  `python3.14` it falls back to pure-Python (functional after the P3.9 ssl/zlib fix, just
+  slower first run). Lives on `/media/fat`, delivered by the Downloader system — not our
+  rootfs to patch; resolves when the Downloader updates its launcher. See
+  `docs/python-compat.md`.
+
+- [ ] **Branch/PR reconciliation before master merge** — housekeeping — Depends: —
+  `phase3-parity` carries P2.10 (duplicated with PR #5) and P2.7 (superseded by
+  cf36ce7, was PR #6). Close PRs #5/#6 as superseded when `phase3-parity` merges to
+  `master`, or reconcile history first.
 
 ---
 

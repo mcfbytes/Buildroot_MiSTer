@@ -142,11 +142,11 @@ jobs:
       # output/host alone would not stop Buildroot from trying to rebuild
       # into it). Busts on a defconfig, kernel-config, OR kernel-patch change,
       # since any of those can change what the toolchain/host tools need to
-      # produce. NOTE: this covers only the MAIN build's toolchain
-      # (output/host) -- the initramfs stage's separate musl toolchain
-      # (output-initramfs/host) is deliberately NOT one of the four caches
-      # named in TASKS.md P4.1 and is rebuilt every run (small/fast: a static
-      # BusyBox-only config). See the authoring agent's final report.
+      # produce. NOTE: this covers the MAIN build's toolchain (output/host).
+      # The initramfs stage's SEPARATE musl cross-toolchain (output-initramfs/
+      # host) is cached separately below (cache 5). It was originally left
+      # uncached (P4.1), but a cold build of that toolchain overran the Stage 1
+      # step timeout, so it is now cached like the main one.
       - name: Cache Buildroot host toolchain
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -154,6 +154,18 @@ jobs:
             output/host
             output/build/host-*
           key: br-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
+
+      # 5. Initramfs-stage host toolchain -- output-initramfs/host + its host
+      # build stamps. `make initramfs` builds its own small musl cross-toolchain;
+      # caching it turns a ~10-15 min cold Stage 1 into a couple of minutes warm.
+      # Busts only on an initramfs-defconfig change.
+      - name: Cache initramfs host toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            output-initramfs/host
+            output-initramfs/build/host-*
+          key: br-initramfs-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_initramfs_defconfig') }}
 
       # 4. ccache. CCACHE_DIR is exported here (matching the BR2_CCACHE_DIR
       # passed to `make` below) so hendrikmuhs/ccache-action caches the exact
@@ -224,12 +236,15 @@ jobs:
       ##########################################################################
 
       - name: Stage 1 -- build initramfs cpio
-        timeout-minutes: 20
-        run: |
-          make initramfs \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
+        # NO BR2_CCACHE here (unlike Stage 2): the initramfs is a tiny static
+        # BusyBox rootfs, but enabling ccache makes Buildroot build host-ccache
+        # 4.12.3 (a large C++ build, with redis/http backends) into
+        # output-initramfs/host -- which, on top of the stage's own musl
+        # cross-toolchain, overran the old 20-min timeout. ccache buys ~nothing
+        # for a build this small. 45 min covers a cold musl-toolchain build; the
+        # initramfs-host cache above makes warm runs a couple of minutes.
+        timeout-minutes: 45
+        run: make initramfs
 
       - name: Stage 2 -- build full image (make all)
         timeout-minutes: 75

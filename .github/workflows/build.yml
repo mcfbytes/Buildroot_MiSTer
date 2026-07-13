@@ -69,6 +69,12 @@ jobs:
 
     env:
       DEBIAN_FRONTEND: noninteractive
+      # GitHub-hosted container jobs run as root, and some host packages' gnulib
+      # configure (host-tar etc.) refuse to run as root without this (build run
+      # 29291137834 failed exactly there). It only bypasses that safety check;
+      # it does not change build output, so reproducibility is unaffected, and a
+      # throwaway CI container is precisely where running as root is fine.
+      FORCE_UNSAFE_CONFIGURE: "1"
 
     steps:
       - name: Checkout
@@ -179,7 +185,13 @@ jobs:
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
         with:
           key: ccache-${{ env.BUILDROOT_VERSION }}
-          max-size: 2G
+          # 4G: holds the kernel (~1.1 GB raw .o locally) + the full package set's
+          # compiler outputs (zstd-compressed ~2x) with headroom, now that ccache
+          # covers BOTH the musl and glibc builds. The cross-toolchains themselves
+          # are covered by the separate host-toolchain caches, so ccache need not
+          # hold them. Refine once a full green build reports the real .ccache size;
+          # trim this first if the four caches approach the 10 GB repo ceiling.
+          max-size: 4G
           # The ubuntu:26.04 container starts with an EMPTY apt index. The
           # "Install build dependencies" step below is what runs `apt-get
           # update`, but it runs AFTER this step -- so without this flag the
@@ -223,28 +235,18 @@ jobs:
         run: make hostshim
 
       ##########################################################################
-      # Two-stage build -- mirrors the wrapper Makefile's own `all: initramfs
-      # ... ` dependency (Makefile, P1.10/A1): stage 1 builds the tiny static
-      # cpio that gets embedded in the kernel; stage 2 is the main glibc
-      # rootfs + kernel + linux.img build, which itself depends on stage 1's
-      # cpio (external.mk refuses to configure the kernel without it). Run as
-      # two explicit CI steps (rather than relying on `make all` alone, which
-      # would still run both) purely for separate logs/timing/step-timeouts --
-      # `initramfs` is phony so `make all` re-entering it here is a fast no-op
-      # on anything already built by the first step.
+      # Single-command build. `make all`'s recipe is `all: initramfs ...`, so
+      # ONE invocation builds BOTH the static-musl initramfs (stage 1) and the
+      # main glibc rootfs + kernel + linux.img (stage 2) -- no need for two
+      # explicit steps now that per-step timeouts are gone. BR2_CCACHE passed
+      # here propagates through MAKEFLAGS to BOTH sub-builds, so the musl
+      # initramfs toolchain gets ccache too: on the 2-core runner a cold cross-
+      # toolchain build is ~30 min PER stage, so every cached object matters
+      # (measured: run 29291137834 spent ~30 min in stage 1 alone). The one-time
+      # host-ccache build cost is captured by the toolchain caches above. musl
+      # and glibc objects have distinct ccache keys, so they coexist.
       ##########################################################################
-
-      - name: Stage 1 -- build initramfs cpio
-        # NO BR2_CCACHE here (unlike Stage 2): the initramfs is a tiny static
-        # BusyBox rootfs, but enabling ccache makes Buildroot build host-ccache
-        # 4.12.3 (a large C++ build, with redis/http backends) into
-        # output-initramfs/host -- which, on top of the stage's own musl
-        # cross-toolchain, overran the old 20-min timeout. ccache buys ~nothing
-        # for a build this small. 45 min covers a cold musl-toolchain build; the
-        # initramfs-host cache above makes warm runs a couple of minutes.
-        run: make initramfs
-
-      - name: Stage 2 -- build full image (make all)
+      - name: Build image (make all -- initramfs + main rootfs, ccache both)
         run: |
           make all \
             BR2_CCACHE=y \

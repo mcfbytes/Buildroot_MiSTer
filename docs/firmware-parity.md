@@ -42,7 +42,7 @@ Config.in reasoning:
 | **Present in the built image** (`output/images/rootfs.tar`) | **56 / 66** |
 | Justified omission — driver (or the firmware itself) removed from/absent in the current kernel/upstream (obsolete) | 6 |
 | Justified omission — no in-tree consumer at all, would need a new out-of-tree driver package (out of P3.3 scope) | 1 |
-| Flagged — no confirmed upstream source, not fabricated | 3 |
+| Flagged — no confirmed upstream source, not fabricated | 2 |
 | **Total not reproduced** | **10 / 66** |
 
 A **superset** beyond the 66 files is expected and fine (Buildroot's
@@ -177,24 +177,26 @@ package at all (present via WHENCE symlink, see above). The first —
 `brcm/BCM20702A1-0b05-17cb.hcd` — is a genuine gap with **no available
 source**: see "Flagged" below.
 
-## Flagged: no confirmed source (3 files, not fabricated)
+## Flagged: no confirmed source (2 files, not fabricated)
 
 Per the task's explicit rule — do not fabricate a source — these are
 documented, not sourced from an unpinned/unverified mirror:
 
-- **`brcm/BCM20702A1-0b05-17cb.hcd`** (Broadcom BT patch for an ASUS-branded
-  BCM20702A1 adapter, VID:PID `0b05:17cb`). `drivers/bluetooth/btbcm.c` (in
-  kernel 6.18.33) constructs firmware paths as `brcm/BCM%s%s.hcd` from a
-  chip's VID:PID, so the driver *could* use this file if present — but the
-  pinned `linux-firmware-20251011.tar.xz` was checked directly
-  (`tar tf ... | grep '\.hcd'`) and contains **exactly one** `.hcd` file in
-  the entire tarball: `brcm/BCM-0bb4-0306.hcd` (HTC's VID, an unrelated
-  device). No Broadcom-Bluetooth Config.in menu exists in Buildroot's
-  `linux-firmware` at all (only Broadcom *WiFi* — `BRCM_BCM43XX` etc. — has
-  toggles), and upstream itself does not carry this VID:PID's blob in the
-  pinned snapshot. Broadcom BT patches are vendor/device-specific and
-  linux-firmware only carries contributed subsets — this one was
-  apparently never contributed upstream.
+- **`brcm/BCM20702A1-0b05-17cb.hcd`** — **RESOLVED in P3.14**, no longer a gap.
+  (Broadcom BT patch for an ASUS-branded BCM20702A1 adapter, VID:PID
+  `0b05:17cb`; `drivers/bluetooth/btbcm.c` constructs `brcm/BCM%s%s.hcd` from
+  the chip's VID:PID and uploads it at power-up. `CONFIG_BT_HCIBTUSB_BCM=y`.)
+  It is genuinely absent from the pinned `linux-firmware` snapshot (checked:
+  the whole tarball has exactly one `.hcd`, `brcm/BCM-0bb4-0306.hcd`, an
+  unrelated HTC device; no Broadcom-*Bluetooth* Config.in menu exists in
+  Buildroot's linux-firmware — only Broadcom *WiFi* has toggles). Because
+  BCM20702 dongles (the common ASUS USB-BT400 and generics) are real MiSTer
+  hardware, this is now sourced by **`package/bcm20702-firmware`** — a
+  hash-pinned build-time fetch from `winterheart/broadcom-bt-firmware`,
+  installing the byte-size-identical (35000 B) stock file to
+  `/lib/firmware/brcm/`, never a committed blob. Same maintainer-approved
+  vendor-firmware posture as xow (ADR 0003). So the current firmware parity is
+  **57 of 66** stock files reproduced; only the two below remain flagged.
 
 - **`rt2870_sw_ch_offload.bin`** — not in upstream linux-firmware's
   `WHENCE` (fetched and searched; only the ordinary `rt2870.bin` entry

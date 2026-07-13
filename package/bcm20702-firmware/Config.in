@@ -1,0 +1,15 @@
+config BR2_PACKAGE_BCM20702_FIRMWARE
+	bool "bcm20702-firmware (Broadcom BT dongle firmware)"
+	help
+	  Broadcom BCM20702 Bluetooth adapter patch-RAM firmware
+	  (brcm/BCM20702A1-0b05-17cb.hcd), which btbcm uploads to
+	  BCM20702-based USB Bluetooth dongles at power-up -- the common
+	  ASUS USB-BT400 (0b05:17cb) and compatible generics. Without it
+	  those dongles enumerate but never initialise.
+
+	  Stock-parity firmware (35000 bytes, matching stock exactly),
+	  fetched hash-pinned at BUILD TIME from
+	  winterheart/broadcom-bt-firmware and NEVER committed to git.
+	  This is Broadcom's proprietary firmware, redistributed the same
+	  way as xow_dongle.bin -- see docs/decisions/0003-xone-firmware.md
+	  and docs/firmware-parity.md.

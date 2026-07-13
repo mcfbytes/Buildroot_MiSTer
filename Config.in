@@ -24,11 +24,15 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
-menu "Firmware infra gap-fill (P3.3)"
+menu "Firmware infra gap-fill (P3.3, P3.14)"
 	# Fills the handful of stock firmware.md entries that Buildroot's own
 	# linux-firmware package Config.in has no sub-option for, even though
 	# upstream linux-firmware ships them. See docs/firmware-parity.md.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/linux-firmware-extra/Config.in"
+	# P3.14: Broadcom BCM20702 BT dongle firmware -- not in mainline
+	# linux-firmware; hash-pinned vendor firmware, same posture as xow
+	# (ADR 0003). See docs/firmware-parity.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/bcm20702-firmware/Config.in"
 endmenu
 
 menu "MIDI / MT-32 (P3.8)"

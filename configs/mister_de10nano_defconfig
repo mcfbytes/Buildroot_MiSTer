@@ -286,6 +286,20 @@ BR2_PACKAGE_ALSA_UTILS_APLAYMIDI=y
 BR2_PACKAGE_ALSA_UTILS_ARECORDMIDI=y
 BR2_PACKAGE_ALSA_UTILS_ASEQDUMP=y
 BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
+# General (non-MIDI) ALSA CLI tools (P3.15) -- stock ships all of these
+# (docs/stock-inventory/binaries-needed-full.txt); the P3.8 MIDI pass
+# deliberately left them for this separate general-ALSA-parity pass.
+# alsactl (mixer save/restore), alsamixer/amixer (volume), aplay/arecord
+# (APLAY provides both), alsabat (BAT), alsaloop, alsatplg, alsaucm.
+# (iecset/speaker-test/alsaconf NOT enabled -- stock shipped none of them.)
+BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
+BR2_PACKAGE_ALSA_UTILS_ALSALOOP=y
+BR2_PACKAGE_ALSA_UTILS_ALSAMIXER=y
+BR2_PACKAGE_ALSA_UTILS_ALSATPLG=y
+BR2_PACKAGE_ALSA_UTILS_ALSAUCM=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_BAT=y
 
 # --- crypto / TLS ---
 BR2_PACKAGE_OPENSSL=y                     # meta-prompt
@@ -563,6 +577,12 @@ BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
 # docs/firmware-parity.md for the per-file citation). Same upstream tarball
 # and hash-pin as linux-firmware itself, just a different subset kept.
 BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
+
+# Broadcom BCM20702 BT dongle firmware (P3.14) -- brcm/BCM20702A1-0b05-17cb.hcd,
+# the one brcm .hcd stock ships (35000 bytes) but mainline linux-firmware lacks.
+# Hash-pinned build-time fetch, never a committed blob -- same maintainer-
+# approved vendor-firmware posture as xow (ADR 0003). See package/bcm20702-firmware/.
+BR2_PACKAGE_BCM20702_FIRMWARE=y
 
 # --- explicitly NOT carried forward (manifest §5 Drop list) ---
 #   archivemount (broken in stock; its deps libarchive/libfuse ARE kept above for others)

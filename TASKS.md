@@ -805,7 +805,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
 
 ### Phase 3 follow-ups (discovered during P3.3–P3.12 review)
 
-- [ ] **P3.14 — BCM20702 Bluetooth dongle firmware** — [SONNET] [NET] — Size S — Depends: P3.3, P3.5
+- [x] **P3.14 — BCM20702 Bluetooth dongle firmware** — [SONNET] [NET] — Size S — Depends: P3.3, P3.5
   Stock ships `brcm/BCM20702A1-0b05-17cb.hcd` (patch RAM for BCM20702-based BT dongles —
   common ASUS USB-BT400 & generics; `CONFIG_BT_HCIBTUSB_BCM=y`), but it is **not** in
   mainline linux-firmware, so P3.3 left it as a flagged gap. Source it via the **same
@@ -813,7 +813,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   (e.g. `winterheart/broadcom-bt-firmware`), never a committed blob. **Needs maintainer OK
   to redistribute a second vendor firmware** (flagged, not yet approved).
 
-- [ ] **P3.15 — General ALSA userland parity** — [SONNET] — Size S — Depends: P2.1
+- [x] **P3.15 — General ALSA userland parity** — [SONNET] — Size S — Depends: P2.1
   Stock ships the full ALSA CLI suite (`alsactl`, `alsamixer`, `amixer`, `aplay`,
   `arecord`, `alsabat`, `alsaloop`, `alsatplg`, `alsaucm`); our image has only the MIDI
   subset (P3.8 correctly stayed in scope). `alsactl` in particular is mixer save/restore.

@@ -1,0 +1,7 @@
+# Locally computed (GitHub does not publish signed hashes for commit
+# tarballs — this is the standard practice for git/github-sourced Buildroot
+# packages, per pkg-download.mk / the Buildroot manual §18.5.2).
+#
+#   sha256sum rtl8188fu-c8c95708b3756c67139c456a2a6576c1e6491d82.tar.gz
+sha256  c960a881de261aa8065ac1a4277664d2e9f31187c6050c2c75d386e7832bb2df  rtl8188fu-c8c95708b3756c67139c456a2a6576c1e6491d82.tar.gz
+sha256  8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643  LICENSE

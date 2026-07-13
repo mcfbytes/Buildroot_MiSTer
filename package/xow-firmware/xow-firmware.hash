@@ -1,0 +1,27 @@
+# Locally computed. Microsoft does not publish a standalone signed manifest
+# for this driver .cab outside the .cat catalog embedded IN it (a WHQL
+# Authenticode catalog, not a plain sha256 list) -- this is the same
+# "compute it ourselves from a first trusted fetch" situation as every
+# other git/tarball source in this tree (see e.g. package/xone/xone.hash).
+#
+#   sha256sum 1cd6a87c-623f-4407-a52d-c31be49e925c_e19f60808bdcbfbd3c3df6be3e71ffc52e43261e.cab
+sha256  65736a84ff4036645b8f8ec602bed91ab6353019c9cb3233decab9feec0f6f04  1cd6a87c-623f-4407-a52d-c31be49e925c_e19f60808bdcbfbd3c3df6be3e71ffc52e43261e.cab
+
+# The OLD external adapter's (USB PID 0x02e6) driver .cab -- pulled via
+# XOW_FIRMWARE_EXTRA_DOWNLOADS, hash-checked here by basename like the SOURCE
+# above. Also locally computed (Microsoft publishes no standalone manifest):
+#   sha256sum 2ea9591b-f751-442c-80ce-8f4692cdc67b_6b555a3a288153cf04aec6e03cba360afe2fce34.cab
+sha256  d89a72e8dc10b7c4f16d5c887fe7f54c34c22005ac1f360704d5d9462258ef32  2ea9591b-f751-442c-80ce-8f4692cdc67b_6b555a3a288153cf04aec6e03cba360afe2fce34.cab
+
+# The firmware blobs EXTRACTED from each .cab (both members are literally
+# named FW_ACC_00U.bin, different bytes) are hash-checked separately, inline in
+# XOW_FIRMWARE_EXTRACT_CMDS in the .mk (Buildroot's .hash file mechanism only
+# verifies the downloaded SOURCE/EXTRA_DOWNLOADS above, not a derived file) --
+# for the record, those expected values are:
+#   48084d9fa53b9bb04358f3bb127b7495dc8f7bb0b3ca1437bd24ef2b6eabdf66  FW_ACC_00U.bin (0x02fe cab)
+#     -> installed as xow_dongle.bin, 70620 bytes; matches docs/stock-inventory/
+#        firmware.md's documented stock xow_dongle.bin size exactly.
+#   080ce4091e53a4ef3e5fe29939f51fd91f46d6a88be6d67eb6e99a5723b3a223  FW_ACC_00U.bin (0x02e6 cab)
+#     -> installed as xone_dongle_02e6.bin, 70008 bytes (the OLD external
+#        adapter's own distinct firmware; matches dlundqvist/xone's
+#        install/firmware.sh manifest for PID 0x02e6).

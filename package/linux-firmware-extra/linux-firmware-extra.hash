@@ -1,0 +1,14 @@
+# Same upstream tarball as work/buildroot/package/linux-firmware -- hash
+# copied verbatim from that package's own .hash file (itself sourced from
+# https://mirrors.edge.kernel.org/pub/linux/kernel/firmware/sha256sums.asc),
+# not recomputed independently, since it is deliberately the identical
+# download (see linux-firmware-extra.mk for why: this package keeps a
+# different subset of the same verified tarball, not a new source).
+sha256  b6c9a9c112b88417d985b87d6521b677fa2fa0d5d7ee5219c76dc8ca66945ad3  linux-firmware-20251011.tar.xz
+
+# License file hashes -- also copied verbatim from linux-firmware.hash for
+# the same reason (identical files, extracted from the identical tarball).
+sha256  a90d3f66704d85889945fec5525ea77622549da83aced1aac99828383f8f1805  LICENCE.mediatek
+sha256  8568352b57f3574f9d5b2753cdb7c6e5eb2b79e82fbb9c9ba6566947467ef508  LICENCE.ralink_a_mediatek_company_firmware
+sha256  a61351665b4f264f6c631364f85b907d8f8f41f8b369533ef4021765f9f3b62e  LICENCE.rtlwifi_firmware.txt
+sha256  fc3825c3807cf5028aa9c60a4f5936a8265e3e00fcbc85b5c016bdfc136e045f  WHENCE

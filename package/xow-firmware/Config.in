@@ -1,0 +1,40 @@
+config BR2_PACKAGE_XOW_FIRMWARE
+	bool "xow-firmware (Xbox Wireless Dongle)"
+	depends on BR2_PACKAGE_XONE
+	default y
+	help
+	  Firmware for the Xbox Wireless Dongle (transport/mt76.c in the
+	  xone package), fetched and extracted at BUILD TIME from Microsoft's
+	  own, officially published Xbox Wireless Adapter driver package --
+	  never committed to git (G6), hash-pinned at every step (the
+	  downloaded .cab, and the firmware blob extracted from it).
+
+	  This is a maintainer decision (ACCEPTED, 2026-07-13), not a
+	  default this package invented: stock bundles this exact firmware
+	  (docs/stock-inventory/firmware.md), so redistributing it is
+	  what parity requires. The firmware is covered by Microsoft's
+	  Terms of Use (https://www.microsoft.com/en-us/legal/terms-of-use),
+	  not GPL -- see docs/decisions/0003-xone-firmware.md for the full
+	  analysis, provenance, and the options that were weighed before
+	  this was decided.
+
+	  Installs as /lib/firmware/xow_dongle.bin (byte-identical name and
+	  content to what stock ships) plus a same-content symlink under the
+	  filename xone_dongle_02fe.bin, because this project's chosen xone
+	  fork (dlundqvist, see package/xone/xone.mk) requests firmware by
+	  that newer per-PID name, not the older shared name stock's fork
+	  used -- both names must resolve to the same bytes for the driver
+	  to actually find it at runtime.
+
+	  Covers BOTH external USB dongles a MiSTer can use: the common
+	  0x02fe (Xbox Wireless Adapter for Windows, "S" revision) and the
+	  older 0x02e6 (original "Xbox One Wireless Adapter", model 1713).
+	  These use genuinely different firmware, so 0x02e6 is fetched and
+	  installed as its own distinct blob (xone_dongle_02e6.bin), not a
+	  symlink -- see xow-firmware.mk. (Stock's single-file scheme covered
+	  only 0x02fe; this is a deliberate improvement.) The two internal
+	  laptop-soldered PIDs the driver also binds are not shipped -- they
+	  cannot attach to a DE10-Nano.
+
+comment "xow-firmware needs xone to be enabled"
+	depends on !BR2_PACKAGE_XONE

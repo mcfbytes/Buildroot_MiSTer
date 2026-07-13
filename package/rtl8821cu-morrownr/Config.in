@@ -1,0 +1,20 @@
+config BR2_PACKAGE_RTL8821CU_MORROWNR
+	bool "rtl8821cu-morrownr"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree Realtek RTL8811CU/RTL8821CU USB WiFi driver, sourced
+	  from the morrownr fork (kernel-module package, P3.1). Not required
+	  for wpa_supplicant -D nl80211 (see rtl8821cu-morrownr.mk for the
+	  CONFIG_WIRELESS_EXT analysis).
+
+	  Named "-morrownr" rather than plain "rtl8821cu" because Buildroot
+	  upstream already ships its own package/rtl8821cu (also morrownr-
+	  sourced, coincidentally the same pinned commit) — same name would
+	  collide on both the Kconfig symbol and the Make namespace, and
+	  would hand version control to Buildroot's release cadence instead
+	  of this project's own pin.
+
+	  https://github.com/morrownr/8821cu-20210916
+
+comment "rtl8821cu-morrownr needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

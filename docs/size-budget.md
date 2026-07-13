@@ -4,15 +4,22 @@
 
 **512 MiB** is the standard for the MiSTer environment (double the stock 256 MiB, accounting for U-Boot reserved space). This report validates that the image has sufficient headroom and documents major size contributors.
 
+Figures below were regenerated as part of **P3.3** (module loading & firmware
+infra — the `/lib/firmware` population half) to capture that task's size
+impact; they now reflect P3.1 (Realtek WiFi kernel modules), P3.2 (xone +
+xow-firmware), and P3.3 (linux-firmware + wireless-regdb +
+linux-firmware-extra) combined, not just P2.7's original baseline. See
+"P3.3 firmware addition" below for the isolated delta.
+
 ### Filesystem Allocation (via `dumpe2fs`)
 
 - **Total image size:** 536,870,912 bytes = **512 MiB**
 - **Block count:** 131,072 blocks × 4,096 bytes/block
-- **Used blocks:** 49,893 (194 MiB)
-- **Free blocks:** 81,179 (317 MiB)
-- **% Free:** **61%** ✅ **PASS** (threshold: ≥15%)
+- **Used blocks:** 51,524 (201.3 MiB)
+- **Free blocks:** 79,548 (310.7 MiB)
+- **% Free:** **60.6%** ✅ **PASS** (threshold: ≥15%, via `scripts/check-size-budget.sh output/images/linux.img`)
 
-**Headroom interpretation:** The image has 317 MiB free, comfortably exceeding the 15% minimum (76.8 MiB). This provides buffer for future package additions, firmware updates, and runtime files.
+**Headroom interpretation:** The image has 310.7 MiB free, comfortably exceeding the 15% minimum (76.8 MiB). This provides buffer for future package additions, firmware updates, and runtime files.
 
 ---
 
@@ -22,14 +29,42 @@ The rootfs uses a merged-usr layout (symbolic links: `bin→usr/bin`, `lib→usr
 
 | Directory     | Size       | Notes                                  |
 |---------------|------------|----------------------------------------|
-| `usr/lib`     | 125 MiB    | Libraries, Python modules, Samba data  |
-| `usr/bin`     | 16 MiB     | Executables and symlinks               |
-| `usr/share`   | 12 MiB     | Locale, man pages, documentation       |
-| `usr/libexec` | 11 MiB     | Helper binaries and scripts            |
-| `usr/sbin`    | 7.2 MiB    | System binaries                        |
+| `usr/lib`     | 126.2 MiB  | Libraries, Python modules, Samba data, `/lib/firmware` (`usr/lib/firmware`, see below) |
+| `usr/bin`     | 14.6 MiB   | Executables and symlinks               |
+| `usr/share`   | 10.7 MiB   | Locale, man pages, documentation       |
+| `usr/libexec` | 10.2 MiB   | Helper binaries and scripts            |
+| `usr/sbin`    | 7.0 MiB    | System binaries                        |
 | `etc`         | 0.7 MiB    | Configuration files                    |
 | Others        | ~0.1 MiB   | Empty dirs, device nodes, etc.         |
-| **Total**     | **171 MiB** | Installed rootfs (du accounting)       |
+| **Total**     | **169.5 MiB** | Installed rootfs (`du -sb`, extracted `output/images/rootfs.tar`) |
+
+---
+
+## P3.3 firmware addition
+
+`/lib/firmware` (`usr/lib/firmware` in the merged-usr layout) is entirely
+P3.1–P3.3 content — stock parity, not present before this project's own
+package additions. Measured directly from the built
+`output/images/rootfs.tar` (not `output/target/`, per the project's build
+lessons):
+
+- **`/lib/firmware` total: 3.1 MiB** (3,064,880 bytes) — **68 regular files +
+  23 symlinks** (91 entries, plus 4 directory entries).
+- Of that, **P3.2's `xow-firmware`** (already-committed, xow/xone Xbox
+  dongle firmware) accounts for ~140 KiB (`xow_dongle.bin` 70,620 bytes +
+  `xone_dongle_02e6.bin` 70,008 bytes + a symlink).
+- **P3.3's own addition (`linux-firmware` + `wireless-regdb` +
+  `linux-firmware-extra`): ≈ 2.9 MiB** — the 56-of-66 stock inventory files
+  reproduced (see `docs/firmware-parity.md` for the full per-file mapping
+  and the built-vs-stock diff), plus a documented superset of sibling
+  firmware Buildroot's coarse-grained sub-options pull in alongside them
+  (e.g. `RTL_87XX_BT` also installs `rtl_bt/rtl8723cs_cg_fw.bin`, which
+  stock never shipped).
+
+**Impact on the overall budget:** negligible. 2.9 MiB against a 512 MiB
+image with 310.7 MiB free is under 1% of total image size and about 0.9% of
+the free margin — the budget check still passes with over 4x the required
+headroom (60.6% free vs. the 15% floor).
 
 ---
 
@@ -156,7 +191,7 @@ dumpe2fs -h output/images/linux.img
 
 ## Budget Status
 
-✅ **PASS**: 61% free (317 MiB / 512 MiB) — well above 15% threshold.
+✅ **PASS**: 60.6% free (310.7 MiB / 512 MiB) — well above 15% threshold, after P3.1 (Realtek WiFi modules), P3.2 (xone/xow-firmware), and P3.3 (`/lib/firmware` population) combined.
 
 The image has substantial headroom for:
 - Emergency space during runtime

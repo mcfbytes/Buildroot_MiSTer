@@ -1,0 +1,21 @@
+config BR2_PACKAGE_RTL8814AU_MORROWNR
+	bool "rtl8814au-morrownr"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree Realtek RTL8814AU 4x4 802.11ac USB WiFi driver from
+	  the morrownr fork (kernel-module package). RTL8814AU powers the
+	  high-power 4-antenna adapters (Alfa AWUS1900, Netgear A7000,
+	  etc.) and has NO mainline USB driver in 6.18 -- rtl8xxxu is
+	  802.11n only, and neither rtw88 nor rtw89 cover it -- so an
+	  out-of-tree driver is the only option. Same nl80211-only
+	  CONFIG_WIRELESS_EXT analysis as the sibling morrownr packages
+	  (see rtl8814au-morrownr.mk).
+
+	  Sibling of package/rtl8812au and package/rtl8821au-morrownr: the
+	  three morrownr forks together cover the 802.11ac Realtek USB chips
+	  mainline still omits (RTL8812AU, RTL8811AU/RTL8821AU, RTL8814AU).
+
+	  https://github.com/morrownr/8814au
+
+comment "rtl8814au-morrownr needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

@@ -1,0 +1,19 @@
+config BR2_PACKAGE_RTL8188EU_AIRCRACK_NG
+	bool "rtl8188eu-aircrack-ng"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree Realtek RTL8188EU USB WiFi driver (kernel-module
+	  package, P3.1), sourced from aircrack-ng/rtl8188eus. NOT sourced
+	  from morrownr — morrownr carries no RTL8188EU repo (see
+	  rtl8188eu-aircrack-ng.mk for the documented deviation and the
+	  CONFIG_WIRELESS_EXT analysis).
+
+	  Named "-aircrack-ng" rather than plain "rtl8188eu" because
+	  Buildroot upstream already ships its own package/rtl8188eu, sourced
+	  from a different fork (benetti-engineering/rtl8188eu) — same name
+	  would collide on both the Kconfig symbol and the Make namespace.
+
+	  https://github.com/aircrack-ng/rtl8188eus
+
+comment "rtl8188eu-aircrack-ng needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

@@ -1,0 +1,13 @@
+# Locally computed (GitHub does not publish signed hashes for tag-archive
+# tarballs -- standard practice for git/github-sourced Buildroot packages,
+# per pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# (2026-07-13) against:
+#   https://github.com/munt/munt/archive/munt_2_8_2.tar.gz
+#
+#   sha256sum munt-munt_2_8_2.tar.gz
+sha256  ca0a2b881207a88d10c511c441bcf4f7a9fd591bea630032662f02bcb51b1b5d  munt-munt_2_8_2.tar.gz
+# mt32emu/COPYING.LESSER.txt -- see MUNT_LICENSE_FILES comment in the .mk
+sha256  36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89  mt32emu/COPYING.LESSER.txt
+# mt32emu_alsadrv/COPYING.LESSER.txt -- byte-identical to the file above
+# (both are the same project-wide LGPL-2.1 text, just duplicated per module)
+sha256  36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89  mt32emu_alsadrv/COPYING.LESSER.txt

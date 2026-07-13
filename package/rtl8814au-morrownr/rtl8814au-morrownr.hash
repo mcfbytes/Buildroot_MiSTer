@@ -1,0 +1,7 @@
+# Locally computed (GitHub does not publish signed hashes for commit tarballs --
+# standard practice for git/github-sourced Buildroot packages, per
+# pkg-download.mk / the Buildroot manual).
+#
+#   sha256sum rtl8814au-morrownr-b1866ce2b857a8dfe2e147e19eb8eca0a842ce18.tar.gz
+sha256  f6b8ea4866391666ebbf62a12dbb729771059848156b41a4fc774d1a38de9dfb  rtl8814au-morrownr-b1866ce2b857a8dfe2e147e19eb8eca0a842ce18.tar.gz
+sha256  22cdb0a9cf492dbf05c5b27381a5c0e73ae0d4622427b522b0ba92b7495e5fb0  LICENSE

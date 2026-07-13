@@ -1,0 +1,8 @@
+# Locally computed (GitHub does not publish signed hashes for commit
+# tarballs — this is the standard practice for git/github-sourced Buildroot
+# packages, per pkg-download.mk / the Buildroot manual §18.5.2).
+#
+#   sha256sum rtl8188eu-aircrack-ng-af3bf004458f76b7aec33e9ba552cd382ed1f5c3.tar.gz
+sha256  7789a8d6e5f212e31a92bee1c9da41ceab1173e910503591d02762a0e95e7349  rtl8188eu-aircrack-ng-af3bf004458f76b7aec33e9ba552cd382ed1f5c3.tar.gz
+# core/rtw_cmd.c -- see RTL8188EU_AIRCRACK_NG_LICENSE_FILES comment in the .mk
+sha256  46276b39acf4398dd7e83a8b75e97bca3b8bc237e2ddfb100b92a1fe876523b3  core/rtw_cmd.c

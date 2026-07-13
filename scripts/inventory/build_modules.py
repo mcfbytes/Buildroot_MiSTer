@@ -47,7 +47,16 @@ GROUPS: dict[str, tuple[str, str, str, str]] = {
 	"rtl_usb": ("rtlwifi (in-tree Realtek)", "in-tree, upstream", "P3.1/P3.3", "rtlwifi USB transport"),
 	"rtl8187": ("rtlwifi (in-tree Realtek)", "in-tree, upstream", "P3.1/P3.3", "RTL8187 USB dongle (older rtl_usb-independent driver)"),
 	"rtl8xxxu": ("rtl8xxxu (in-tree Realtek, alt. driver)", "in-tree, upstream", "P3.1/P3.3", "newer single-module Realtek USB driver (alternative to rtlwifi for some chips)"),
-	# Out-of-tree Realtek set (class E, morrownr re-source, PLAN.md §4.1)
+	# Out-of-tree Realtek set (class E, morrownr re-source, PLAN.md §4.1).
+	# This is a STOCK inventory (gen-modules.sh runs it against work/imgroot, i.e.
+	# stock's linux.img), so these rows record stock's ORIGINAL P0.4 disposition
+	# and are uniform per group -- the grouped table below relies on that
+	# (`sample = next(...)`). v9 (ADR 0016) later moved 8188eu/8188fu -> in-kernel
+	# rtl8xxxu and 8821cu/88x2bu -> rtw88, keeping only 8812au/8821au (plus a new
+	# 8814au) out-of-tree in OUR image -- but that is a decision about our build,
+	# not about what stock shipped, so it lives in ADR 0016 + the current-state
+	# docs (wifi-parity / kernel-config-deltas / package-manifest), not in this
+	# stock snapshot. 8814au is intentionally absent here: it is not a stock module.
 	"8188eu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188EU"),
 	"rtl8188fu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188FU"),
 	"8812au": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8812AU"),

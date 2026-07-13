@@ -2,11 +2,15 @@
 #
 # external.mk for the MISTER BR2_EXTERNAL tree
 #
-# Pulls in every package .mk under package/*/*.mk. Nothing lives there yet —
-# P3.1-P3.3 add the Realtek Wi-Fi (rtl8188eu, rtl8188fu, rtl8812au, rtl8821au,
-# rtl8821cu, rtl88x2bu) and xone kernel-module packages (see PLAN.md §6,
-# TASKS.md class E). This is the standard Buildroot br2-external idiom, so new
-# packages need no change here — just add package/<name>/<name>.mk.
+# Pulls in every package .mk under package/*/*.mk. P3.1 added the Realtek
+# Wi-Fi kernel-module packages; v9 narrowed the SELECTED set (defconfig) to the
+# three 802.11ac chips with no mainline USB driver -- rtl8812au, rtl8814au-morrownr
+# and rtl8821au-morrownr -- and moved 8188eu/8188fu/8821cu/8822bu onto in-kernel
+# drivers (rtl8xxxu/rtw88; the now-deselected packages stay in the tree as a
+# selectable fallback). P3.2 added xone (Xbox One/Series accessory driver) the
+# same way (see PLAN.md §6, TASKS.md class D/E). This is the standard Buildroot
+# br2-external idiom, so new packages need no change here — just add
+# package/<name>/<name>.mk.
 #
 ################################################################################
 

@@ -608,14 +608,36 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
 
 Exit criterion: hardware matrix (§11) green (P3.13).
 
-- [ ] **P3.1 — Realtek WiFi module packages** — [SONNET] [NET] — Size L — Depends: P2.1
+- [x] **P3.1 — Realtek WiFi module packages** — [SONNET] [NET] — Size L — Depends: P2.1
   Buildroot `kernel-module` packages under `package/` for `rtl8188eu`, `rtl8188fu`,
   `rtl8812au`, `rtl8821au`, `rtl8821cu`, `rtl88x2bu`, each sourced from the morrownr
   upstream (commit-pinned, hash-verified). Do not vendor code (§4.1 class E).
   **Done when:** all six build against the pinned 6.18.y; `.ko`s land in
   `/lib/modules/$(uname -r)/`; each package has a hash file and license entry.
 
-- [ ] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
+  **Result:** all six build clean and `depmod`-index (`modules.dep`/`modules.alias`,
+  confirmed autoload-ready). **[P0: two deviate from morrownr, documented per this
+  task's own allowance]** — morrownr carries neither RTL8188EU nor RTL8188FU;
+  `rtl8188eu` is sourced from `aircrack-ng/rtl8188eus` and `rtl8188fu` from
+  `kelebek333/rtl8188fu`, the most actively maintained forks available. **[P0:
+  package names deviate for 3 of 6]** — Buildroot 2026.02.3 upstream now ships its
+  own same-named `rtl8188eu`/`rtl8821au`/`rtl8821cu` packages (different forks, not
+  discovered until this task actually loaded the defconfig) — ours are
+  `rtl8188eu-aircrack-ng`/`rtl8821au-morrownr`/`rtl8821cu-morrownr` to avoid a
+  Kconfig-symbol/Make-namespace collision; `rtl8812au`/`rtl8821au`(→`-morrownr`)/
+  `rtl8821cu`(→`-morrownr`)/`rtl88x2bu` are unmodified morrownr sources.
+  `rtl8188eu-aircrack-ng` needed 3 small local patches (ccflags-y/EXTRA_CFLAGS
+  kbuild compat, a cfg80211_ops multi-radio API signature update, and a
+  from_timer/del_timer_sync rename) beyond what morrownr-family drivers needed —
+  its pin predates an open, unmerged upstream PR (#319) covering the same 6.18/6.19
+  drift; documented in the patch files and the package .mk. All six: `#ifdef
+  CONFIG_WIRELESS_EXT` gates only legacy iwconfig/iwpriv paths, never the
+  cfg80211/nl80211 registration path `wpa_supplicant -D nl80211` uses — confirmed
+  by reading the source, not assumed; no wext wrapper/kernel `select` hack needed
+  or added. **Unverified without hardware (P3.13/P3.4):** association, throughput,
+  and monitor-mode behavior against a real dongle of each chip.
+
+- [x] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
   Package `xone` similarly. Handle its firmware requirement explicitly: document the
   redistribution status. **[P0: stock BUNDLES it.** `xow_dongle.bin` is present in stock's
   66-file firmware set (`docs/stock-inventory/firmware.md`) — there is no on-device fetch
@@ -624,7 +646,47 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Done when:** module builds; firmware path documented in
   `docs/decisions/0003-xone-firmware.md`; behavior matches stock.
 
-- [ ] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
+  **Result:** `package/xone` builds 9 `.ko` clean against 6.18.33 with **zero compat
+  patches needed** — sourced from `dlundqvist/xone` (the actively-maintained fork;
+  `medusalix/xone`, what stock vendored, is explicitly "in maintenance mode" per its own
+  README, one commit in 19 months before this pin), which already carries
+  `LINUX_VERSION_CODE`-gated shims through 6.16 (`from_timer`→`timer_container_of`,
+  `del_timer_sync`→`timer_delete_sync`, `device_driver`/`shutdown`/`bus_match` signature
+  churn) that turned out to cover 6.18 too — verified empirically by an actual build, not
+  assumed. **The P3.1 `obj-$(CONFIG_...)` gotcha does NOT apply here**: this Kbuild uses
+  unconditional `obj-m := ...`, never gated behind a CONFIG symbol, so no
+  `XONE_MODULE_MAKE_OPTS` shim was needed (checked, not assumed — see `package/xone/xone.mk`).
+  Vermagic `6.18.33 SMP mod_unload ARMv7 p2v8` confirmed on the module **extracted from
+  `output/images/rootfs.tar`** (not just `output/target`), matching target exactly; `xone_dongle`
+  correctly resolves `cfg80211`+`xone_gip` deps via `modules.dep`; 33 xone-related entries in
+  `modules.alias` (4 dongle USB PIDs, 5 wired-controller USB VIDs, GIP class-match aliases).
+
+  **Firmware (the ADR 0003 question): DECIDED by the maintainer, not left open by this
+  task.** Redistribute `xow_dongle.bin` for stock parity, sourced fresh from Microsoft's own
+  official driver `.cab` (Windows Update CDN) at **build time**, hash-pinned at both the
+  `.cab` and the extracted-firmware-blob layer, **never committed to git** (G6). New packages:
+  `package/cabextract` (host-only, from cabextract.org.uk upstream, same author/site as this
+  tree's existing `libmspack`) and `package/xow-firmware` (fetches, extracts, double-hash-
+  verifies, installs). Installed under **two names**: `xow_dongle.bin` (stock's literal
+  filename, byte-for-byte parity — 70,620 bytes, matches `docs/stock-inventory/firmware.md`
+  exactly) **and** a symlinked `xone_dongle_02fe.bin` (what the *actual driver packaged here*
+  requests at runtime — `dlundqvist/xone` moved to a per-PID firmware-naming scheme stock's
+  older fork never used; shipping only the stock name would satisfy a filename diff but leave
+  the real driver unable to find its firmware). Both hash gates independently proven to hard-fail
+  on tampering (wrong `.cab` hash → Buildroot's standard MITM-style abort; wrong extracted-blob
+  hash → `sha256sum -c` failure), then restored and reverified clean. Full analysis, the
+  rejected alternatives, and the residual-risk framing: `docs/decisions/0003-xone-firmware.md`
+  (**Status: Accepted**, not the originally-anticipated Proposed — the maintainer ruled on
+  this mid-task rather than leaving it for later review).
+
+  Full `make all` run (not a targeted rebuild): both `check-zimage-dtb.sh` and
+  `check-linux-img.sh` pass, all assertions green, no regressions. `rootfs.tar` grew by
+  ~140 KiB (9 small `.ko.xz` + one 70,620-byte firmware blob); `linux.img` still 61.3% free
+  (well above the 15% floor). **Unverified without hardware (P3.13):** dongle pairing,
+  wired-controller input, force feedback, LED/battery/audio sysfs paths — the build/link/
+  depmod/vermagic/autoload/firmware-delivery chain is fully verified; device *function* is not.
+
+- [x] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
   Reproduce the verified stock layout: `kmod` + `depmod` at image build, **eudev**
   hotplug autoload (modules.alias-driven), xz-compressed module install
   (`CONFIG_MODULE_COMPRESS_XZ=y` parity), and `/lib/firmware` populated from
@@ -632,38 +694,81 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Done when:** plugging a supported dongle (verified on HW in P3.13) autoloads the
   right module; firmware list documented; image size impact recorded in P2.7's report.
 
-- [ ] **P3.4 — WiFi userland parity** — [SONNET] — Size S — Depends: P3.3
+  **Result: module-autoload half already done pre-task (kmod+depmod xz support,
+  modules.dep/modules.alias populated — see the P3.3 (core) commit). This pass covers only
+  `/lib/firmware` population.** `configs/mister_de10nano_defconfig` gained
+  `BR2_PACKAGE_LINUX_FIRMWARE` + 9 sub-options (`MEDIATEK_MT7601U/MT7610E/MT7650/MT76X2E`,
+  `RALINK_RT2XX`, `RTL_81XX/RTL_87XX/RTL_87XX_BT/RTL_88XX_BT`), `BR2_PACKAGE_WIRELESS_REGDB`
+  (a separate package from linux-firmware for `regulatory.db`/`.p7s`), and
+  `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA` (new `package/linux-firmware-extra`, a small satellite
+  package covering 4 files — `mediatek/mt7610u.bin`, `mediatek/mt7622pr2h.bin`,
+  `mediatek/mt7668pr2h.bin`, `rtlwifi/rtl8723befw_36.bin` — that no Buildroot sub-option
+  installs despite a confirmed in-tree 6.18.33 driver consumer; hash-pinned against the
+  *same* linux-firmware tarball/hash the sibling package already uses, not a new source).
+
+  **Build-verified against `output/images/rootfs.tar`** (not just `output/target`): **56 of
+  the 66 stock inventory files present** — several via linux-firmware's own WHENCE-driven
+  symlink pass (not obvious from Config.in alone; e.g. `rtl_bt/rtl8723d_config.bin` →
+  `rtl8821c_config.bin`, `rtlwifi/rtl8192eefw.bin` → `rtl8192eu_nic.bin`), corrected mid-task
+  after the first build attempt revealed it. **10 not reproduced**, each individually
+  justified in `docs/firmware-parity.md`: 3 (`RTL8192E/*`) obsolete — the consuming driver
+  (`drivers/staging/rtl8192e`) was deleted from the kernel in 6.13, and upstream
+  linux-firmware has since dropped the firmware too (confirmed via `tar tf` on the actual
+  pinned tarball, not assumed); 2 (`mediatek/mt7662u*.bin`) superseded — the in-tree
+  `mt76x2u` driver requests the already-shipped top-level `mt7662*.bin` names instead; 2
+  (`rtl_bt/rtl8192ee_fw.bin`/`rtl8192eu_fw.bin`) exist upstream but have zero in-tree
+  consumer (BT chip-ID table entry removed); 1 (`rtlwifi/rtl8723defw.bin`) has no in-tree
+  driver at all (would need a new out-of-tree package, out of scope); 2
+  (`brcm/BCM20702A1-0b05-17cb.hcd`, `rt2870_sw_ch_offload.bin`) flagged for review — **not
+  fabricated a source** — neither exists in the pinned upstream linux-firmware tarball nor is
+  requested by any in-tree driver by that literal name.
+
+  First `make all` attempt failed (`tar: ... Not found in archive`) — `linux-firmware-extra`'s
+  custom `EXTRACT_CMDS` didn't account for the tarball's `linux-firmware-<version>/` wrapper
+  directory; fixed (member paths wrapper-prefixed + `--strip-components=1`, matching the
+  sibling package's own pattern) and rebuilt clean (`make linux-firmware-extra-dirclean &&
+  make all`, exit 0). Both `check-zimage-dtb.sh` and `check-linux-img.sh` pass, all
+  assertions green. Module-autoload machinery re-verified with no regression:
+  `modules.dep`/`modules.alias` grew (57/977 lines) vs. pre-P3.3, not shrank. `/lib/firmware`
+  totals 3.1 MiB in the built image (68 regular files + 23 symlinks); P3.3's own addition is
+  ≈2.9 MiB against a 512 MiB image — `linux.img` still 60.6% free (well above the 15% floor).
+  `docs/size-budget.md` regenerated with current post-P3.1/P3.2/P3.3 figures.
+  **Unverified without hardware (P3.13):** actual dongle-plug autoload behavior — the
+  build/depmod/vermagic/firmware-delivery chain is fully verified in the image; device
+  *function* is not.
+
+- [x] **P3.4 — WiFi userland parity** — [SONNET] — Size S — Depends: P3.3
   `wpa_supplicant` config/paths matching stock so `wifi.sh` and existing user configs
   work unchanged.
   **Done when:** `wifi.sh` from the current Distribution runs unmodified against the
   new rootfs (static analysis + [HW] confirmation in P3.13).
 
-- [ ] **P3.5 — Bluetooth parity** — [SONNET] — Size M — Depends: P2.1
+- [x] **P3.5 — Bluetooth parity** — [SONNET] — Size M — Depends: P2.1
   bluez package (library must provide `libbluetooth.so.3`), init script, pairing-state
   persistence per P2.4.
   **Done when:** SONAME check passes; `bluetoothd` starts on ro root; pairing DB
   persists across reboot ([HW] in P3.13).
 
-- [ ] **P3.6 — Samba parity** — [SONNET] — Size M — Depends: P2.3
+- [x] **P3.6 — Samba parity** — [SONNET] — Size M — Depends: P2.3
   Modern Samba with stock-equivalent `smb.conf` (audit 4.14 → current syntax/behavior
   changes: SMB1 defaults, guest access, unix extensions). Preserve share layout and
   discoverability behavior users expect.
   **Done when:** config diff documented; `smbd`/`nmbd` (or modern equivalents) start on
   ro root; share is browsable from Windows/macOS ([HW]/LAN check in P3.13).
 
-- [ ] **P3.7 — SSH & FTP parity** — [SONNET] — Size S — Depends: P2.3
+- [x] **P3.7 — SSH & FTP parity** — [SONNET] — Size S — Depends: P2.3
   Match stock daemon choices (verified: OpenSSH `sshd` + **proftpd**), host-key
   persistence per P2.4, and
   stock auth behavior (document the default-credential posture; keep parity, note the
   risk in the FAQ rather than silently hardening).
   **Done when:** both daemons start on ro root; keys persist; behavior documented.
 
-- [ ] **P3.8 — MIDI / MT-32 parity** — [SONNET] — Size S — Depends: P2.1
+- [x] **P3.8 — MIDI / MT-32 parity** — [SONNET] — Size S — Depends: P2.1
   fluidsynth/mt32 userland per P0.3 inventory; ALSA seq config as stock.
   **Done when:** packages present at compatible versions; ALSA MIDI device list matches
   stock ([HW] confirmation in P3.13).
 
-- [ ] **P3.9 — Python & Downloader compatibility (A6)** — [SONNET] — Size M — Depends: P2.1
+- [x] **P3.9 — Python & Downloader compatibility (A6)** — [SONNET] — Size M — Depends: P2.1
   Run `Downloader_MiSTer`'s test suite (it has one) under the target Python via
   qemu-user chroot. Smoke-test a sample of popular community scripts (update_all, etc.)
   for 3.9→3.13 breakage (removed stdlib modules, syntax). Report incompatibilities
@@ -671,19 +776,19 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Done when:** Downloader suite green on-target-Python; findings in
   `docs/python-compat.md`.
 
-- [ ] **P3.10 — Network filesystem client parity** — [HAIKU] — Size S — Depends: P1.3, P2.1
+- [x] **P3.10 — Network filesystem client parity** — [HAIKU] — Size S — Depends: P1.3, P2.1
   `mount.cifs` (cifs-utils) + NFS client utils per stock inventory, so community
   cifs/NFS mount scripts run unchanged. Kernel side was asserted in P1.3.
   **Done when:** a cifs and an nfs mount succeed from the running image (loop-back test
   acceptable pre-hardware).
 
-- [ ] **P3.11 — RTC parity** — [SONNET] — Size S — Depends: P1.7, P2.3
+- [x] **P3.11 — RTC parity** — [SONNET] — Size S — Depends: P1.7, P2.3
   hctosys/init integration for the i2c-gpio RTC add-on; graceful no-op without the
   board.
   **Done when:** boot with no RTC shows no errors; with RTC ([HW] in P3.13) system time
   is set from it.
 
-- [ ] **P3.12 — CI-runnable parity test suite** — [SONNET] — Size M — Depends: P3.1–P3.11
+- [x] **P3.12 — CI-runnable parity test suite** — [SONNET] — Size M — Depends: P3.1–P3.11
   Consolidate P2.2/P2.8/P1.12 and per-service start checks into one
   `scripts/ci-tests.sh` (chroot + qemu-user + qemu-system where applicable) so
   regressions are caught without hardware.
@@ -697,6 +802,35 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   the run sheet, human executes, model compiles results and files defects.
   **Done when:** `docs/testlogs/p3-matrix.md` shows every row pass/fail with notes;
   all fails triaged into tasks. **Phase 3 exit gate: all green or accepted-with-issue.**
+
+### Phase 3 follow-ups (discovered during P3.3–P3.12 review)
+
+- [x] **P3.14 — BCM20702 Bluetooth dongle firmware** — [SONNET] [NET] — Size S — Depends: P3.3, P3.5
+  Stock ships `brcm/BCM20702A1-0b05-17cb.hcd` (patch RAM for BCM20702-based BT dongles —
+  common ASUS USB-BT400 & generics; `CONFIG_BT_HCIBTUSB_BCM=y`), but it is **not** in
+  mainline linux-firmware, so P3.3 left it as a flagged gap. Source it via the **same
+  vendor-firmware pattern approved for xow** (ADR 0003): a hash-pinned build-time fetch
+  (e.g. `winterheart/broadcom-bt-firmware`), never a committed blob. **Needs maintainer OK
+  to redistribute a second vendor firmware** (flagged, not yet approved).
+
+- [x] **P3.15 — General ALSA userland parity** — [SONNET] — Size S — Depends: P2.1
+  Stock ships the full ALSA CLI suite (`alsactl`, `alsamixer`, `amixer`, `aplay`,
+  `arecord`, `alsabat`, `alsaloop`, `alsatplg`, `alsaucm`); our image has only the MIDI
+  subset (P3.8 correctly stayed in scope). `alsactl` in particular is mixer save/restore.
+  Enable the matching `BR2_PACKAGE_ALSA_UTILS_*` options. (`aserver` has no Buildroot
+  sub-option — document as an accepted gap.) See `docs/midi-mt32-parity.md` §5.
+
+- [ ] **Downloader `downloader.sh` python3.9 path** — note, no action in this tree — Depends: —
+  `downloader.sh` hardcodes `/usr/bin/python3.9` to select its Nuitka fast-path; on our
+  `python3.14` it falls back to pure-Python (functional after the P3.9 ssl/zlib fix, just
+  slower first run). Lives on `/media/fat`, delivered by the Downloader system — not our
+  rootfs to patch; resolves when the Downloader updates its launcher. See
+  `docs/python-compat.md`.
+
+- [ ] **Branch/PR reconciliation before master merge** — housekeeping — Depends: —
+  `phase3-parity` carries P2.10 (duplicated with PR #5) and P2.7 (superseded by
+  cf36ce7, was PR #6). Close PRs #5/#6 as superseded when `phase3-parity` merges to
+  `master`, or reconcile history first.
 
 ---
 

@@ -9,3 +9,10 @@ sysfs		/sys		sysfs	defaults	0	0
 tmpfs		/var/lib/samba	tmpfs	mode=1777	0	0
 tmpfs		/var/db/dhcpcd	tmpfs	mode=0750	0	0
 tmpfs		/var/cache/samba	tmpfs	mode=0755	0	0
+# busybox S01seedrng persists its RNG seed under /var/lib/seedrng; the ro root
+# can't create it (harmless boot error). A tmpfs makes it writable so seedrng
+# runs cleanly. mount -a (inittab sysinit) runs before rcS/S01seedrng, so this
+# is mounted in time. mode=0700: the seed dir is private (seedrng's own default).
+# NB: seed is non-persistent across reboots (tmpfs) -- fine here; the 6.18 kernel
+# RNG self-initialises early regardless, so first-boot sshd key gen is unaffected.
+tmpfs		/var/lib/seedrng	tmpfs	mode=0700	0	0

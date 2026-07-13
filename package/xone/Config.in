@@ -1,0 +1,31 @@
+config BR2_PACKAGE_XONE
+	bool "xone"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree GIP (Game Input Protocol) driver for Xbox One and
+	  Xbox Series X|S accessories (kernel-module package, P3.2):
+	  wired USB controllers/headsets/chatpad, and the Xbox Wireless
+	  Dongle (transport/mt76.c talks the dongle's onboard radio
+	  directly; it is NOT a Wi-Fi NIC and registers no wiphy).
+
+	  Sourced from dlundqvist/xone, NOT medusalix/xone (the original
+	  project) -- medusalix is explicitly in "maintenance mode" (its own
+	  README: "will receive only occasional minor fixes", one commit in
+	  the 19 months before this pin) and dlundqvist is the README's own
+	  named successor, in continuous active development (see xone.mk for
+	  the full comparison this project made before picking a fork).
+
+	  FIRMWARE NOTE: the Xbox Wireless Dongle needs
+	  /lib/firmware/xow_dongle.bin (and, for this driver, a same-content
+	  xone_dongle_<pid>.bin). This package builds and installs the
+	  DRIVER MODULES ONLY (unambiguously GPL-2.0-or-later) -- it does
+	  NOT fetch, extract, or bundle that firmware itself; see
+	  BR2_PACKAGE_XOW_FIRMWARE (package/xow-firmware/) for that, and
+	  docs/decisions/0003-xone-firmware.md (Status: Accepted) for the
+	  full redistribution analysis this project's maintainer decided.
+	  Wired controllers/headsets/chatpad need no firmware at all.
+
+	  https://github.com/dlundqvist/xone
+
+comment "xone needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

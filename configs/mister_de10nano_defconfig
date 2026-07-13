@@ -438,6 +438,21 @@ BR2_PACKAGE_RTL8821AU_MORROWNR=y
 BR2_PACKAGE_RTL8821CU_MORROWNR=y
 BR2_PACKAGE_RTL88X2BU=y
 
+# --- P3.2: xone (Xbox One/Series accessory driver, PLAN.md §4.1 class D/E) ---
+# Commit-pinned, hash-verified, sourced from dlundqvist/xone -- the actively
+# maintained fork; medusalix/xone (the original, and what stock's fork
+# vendored) is explicitly in "maintenance mode" per its own README. See
+# package/xone/xone.mk for the full fork-choice comparison.
+#
+# xow-firmware fetches and extracts the Xbox Wireless Dongle firmware from
+# Microsoft's own driver package at BUILD TIME (never committed to git, G6)
+# and installs it under both stock's literal filename (xow_dongle.bin, for
+# parity -- docs/stock-inventory/firmware.md) and the name this driver fork
+# actually requests (xone_dongle_02fe.bin, a symlink to the same bytes).
+# ACCEPTED maintainer decision, 2026-07-13 -- docs/decisions/0003-xone-firmware.md.
+BR2_PACKAGE_XONE=y
+BR2_PACKAGE_XOW_FIRMWARE=y
+
 # --- explicitly NOT carried forward (manifest §5 Drop list) ---
 #   archivemount (broken in stock; its deps libarchive/libfuse ARE kept above for others)
 #   adplay / adplug / binio          -- no Buildroot package, no known MiSTer use

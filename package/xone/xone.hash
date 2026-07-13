@@ -1,0 +1,12 @@
+# Locally computed (GitHub does not publish signed hashes for commit
+# tarballs -- standard practice for git/github-sourced Buildroot packages,
+# per pkg-download.mk / the Buildroot manual §18.5.2). Verified the tarball
+# is byte-identical regardless of the trailing filename GitHub's archive
+# endpoint is given (both queried at pin time):
+#   https://github.com/dlundqvist/xone/archive/f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
+#   https://github.com/dlundqvist/xone/archive/f2aa9fe01103d7600553b505b298ff0bd47ff280/xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
+#
+#   sha256sum xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
+sha256  a41601d1c4eb974fe5f9edd8e5ed45ef738e73b8f478e5e605cc59cd9a9960fc  xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
+# LICENSE -- see XONE_LICENSE_FILES comment in the .mk
+sha256  8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643  LICENSE

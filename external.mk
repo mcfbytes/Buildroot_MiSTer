@@ -4,9 +4,10 @@
 #
 # Pulls in every package .mk under package/*/*.mk. P3.1 added the six Realtek
 # Wi-Fi kernel-module packages (rtl8188eu, rtl8188fu, rtl8812au, rtl8821au,
-# rtl8821cu, rtl88x2bu); P3.2 will add xone the same way (see PLAN.md §6,
-# TASKS.md class E). This is the standard Buildroot br2-external idiom, so new
-# packages need no change here — just add package/<name>/<name>.mk.
+# rtl8821cu, rtl88x2bu); P3.2 added xone (Xbox One/Series accessory driver)
+# the same way (see PLAN.md §6, TASKS.md class D/E). This is the standard
+# Buildroot br2-external idiom, so new packages need no change here — just
+# add package/<name>/<name>.mk.
 #
 ################################################################################
 

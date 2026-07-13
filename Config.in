@@ -15,8 +15,13 @@ menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl88x2bu/Config.in"
 endmenu
 
-# Future MiSTer-specific packages (xone — see package/, P3.2) add their own
-# "source" line here, e.g.:
-#   source "$BR2_EXTERNAL_MISTER_PATH/package/xone/Config.in"
+menu "USB controller drivers (out-of-tree, P3.2)"
+	# xow-firmware has its own "depends on BR2_PACKAGE_XONE", so it must be
+	# sourced after xone or menuconfig shows it (correctly) greyed out with
+	# no visible reason until xone is toggled on first -- order matters here
+	# only for menu readability, not for correctness.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/xone/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
+endmenu
 
 endmenu

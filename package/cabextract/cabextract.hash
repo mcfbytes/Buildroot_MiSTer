@@ -1,0 +1,6 @@
+# Locally computed (cabextract.org.uk does not publish a signed manifest
+# alongside releases -- checked the release page directly at pin time).
+#   sha256sum cabextract-1.11.tar.gz
+sha256  b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6  cabextract-1.11.tar.gz
+# COPYING -- see CABEXTRACT_LICENSE_FILES comment in the .mk
+sha256  3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  COPYING

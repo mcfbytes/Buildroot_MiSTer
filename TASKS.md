@@ -637,7 +637,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   or added. **Unverified without hardware (P3.13/P3.4):** association, throughput,
   and monitor-mode behavior against a real dongle of each chip.
 
-- [ ] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
+- [x] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
   Package `xone` similarly. Handle its firmware requirement explicitly: document the
   redistribution status. **[P0: stock BUNDLES it.** `xow_dongle.bin` is present in stock's
   66-file firmware set (`docs/stock-inventory/firmware.md`) — there is no on-device fetch
@@ -645,6 +645,46 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   redistribute it.**]**
   **Done when:** module builds; firmware path documented in
   `docs/decisions/0003-xone-firmware.md`; behavior matches stock.
+
+  **Result:** `package/xone` builds 9 `.ko` clean against 6.18.33 with **zero compat
+  patches needed** — sourced from `dlundqvist/xone` (the actively-maintained fork;
+  `medusalix/xone`, what stock vendored, is explicitly "in maintenance mode" per its own
+  README, one commit in 19 months before this pin), which already carries
+  `LINUX_VERSION_CODE`-gated shims through 6.16 (`from_timer`→`timer_container_of`,
+  `del_timer_sync`→`timer_delete_sync`, `device_driver`/`shutdown`/`bus_match` signature
+  churn) that turned out to cover 6.18 too — verified empirically by an actual build, not
+  assumed. **The P3.1 `obj-$(CONFIG_...)` gotcha does NOT apply here**: this Kbuild uses
+  unconditional `obj-m := ...`, never gated behind a CONFIG symbol, so no
+  `XONE_MODULE_MAKE_OPTS` shim was needed (checked, not assumed — see `package/xone/xone.mk`).
+  Vermagic `6.18.33 SMP mod_unload ARMv7 p2v8` confirmed on the module **extracted from
+  `output/images/rootfs.tar`** (not just `output/target`), matching target exactly; `xone_dongle`
+  correctly resolves `cfg80211`+`xone_gip` deps via `modules.dep`; 33 xone-related entries in
+  `modules.alias` (4 dongle USB PIDs, 5 wired-controller USB VIDs, GIP class-match aliases).
+
+  **Firmware (the ADR 0003 question): DECIDED by the maintainer, not left open by this
+  task.** Redistribute `xow_dongle.bin` for stock parity, sourced fresh from Microsoft's own
+  official driver `.cab` (Windows Update CDN) at **build time**, hash-pinned at both the
+  `.cab` and the extracted-firmware-blob layer, **never committed to git** (G6). New packages:
+  `package/cabextract` (host-only, from cabextract.org.uk upstream, same author/site as this
+  tree's existing `libmspack`) and `package/xow-firmware` (fetches, extracts, double-hash-
+  verifies, installs). Installed under **two names**: `xow_dongle.bin` (stock's literal
+  filename, byte-for-byte parity — 70,620 bytes, matches `docs/stock-inventory/firmware.md`
+  exactly) **and** a symlinked `xone_dongle_02fe.bin` (what the *actual driver packaged here*
+  requests at runtime — `dlundqvist/xone` moved to a per-PID firmware-naming scheme stock's
+  older fork never used; shipping only the stock name would satisfy a filename diff but leave
+  the real driver unable to find its firmware). Both hash gates independently proven to hard-fail
+  on tampering (wrong `.cab` hash → Buildroot's standard MITM-style abort; wrong extracted-blob
+  hash → `sha256sum -c` failure), then restored and reverified clean. Full analysis, the
+  rejected alternatives, and the residual-risk framing: `docs/decisions/0003-xone-firmware.md`
+  (**Status: Accepted**, not the originally-anticipated Proposed — the maintainer ruled on
+  this mid-task rather than leaving it for later review).
+
+  Full `make all` run (not a targeted rebuild): both `check-zimage-dtb.sh` and
+  `check-linux-img.sh` pass, all assertions green, no regressions. `rootfs.tar` grew by
+  ~140 KiB (9 small `.ko.xz` + one 70,620-byte firmware blob); `linux.img` still 61.3% free
+  (well above the 15% floor). **Unverified without hardware (P3.13):** dongle pairing,
+  wired-controller input, force feedback, LED/battery/audio sysfs paths — the build/link/
+  depmod/vermagic/autoload/firmware-delivery chain is fully verified; device *function* is not.
 
 - [ ] **P3.3 — Module loading & firmware infra (A5, parity)** — [SONNET] — Size M — Depends: P3.1
   Reproduce the verified stock layout: `kmod` + `depmod` at image build, **eudev**

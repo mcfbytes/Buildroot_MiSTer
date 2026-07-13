@@ -554,14 +554,18 @@ mister-linux/
 │   ├── post-build.sh                  # writes MiSTer.version
 │   ├── post-image.sh                  # assembles release_YYYYMMDD.7z
 │   └── readme.md
-├── package/                            # Buildroot kernel-module packages (P3.1)
+├── package/                            # Buildroot kernel-module packages (P3.1/P3.2)
 │   ├── rtl8812au/
 │   ├── rtl8821au-morrownr/             # "-morrownr": Buildroot upstream now ships
 │   ├── rtl8821cu-morrownr/             # its own same-named rtl8821au/rtl8821cu
 │   ├── rtl88x2bu/                      # (different forks) -- renamed to avoid
 │   ├── rtl8188eu-aircrack-ng/          # the Kconfig/Make collision; see each
 │   ├── rtl8188fu/                      # package's Config.in for the detail.
-│   └── xone/
+│   ├── xone/                           # dlundqvist/xone fork (P3.2) -- driver only,
+│   │                                   # unambiguously GPL-2.0-or-later
+│   ├── xow-firmware/                   # Xbox Wireless Dongle firmware, fetched from
+│   │                                   # Microsoft at build time (ADR 0003) -- never in git
+│   └── cabextract/                     # host-only build tool xow-firmware depends on
 ├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/
 │   ├── build.yml                      # build + upload Release assets

@@ -554,12 +554,13 @@ mister-linux/
 │   ├── post-build.sh                  # writes MiSTer.version
 │   ├── post-image.sh                  # assembles release_YYYYMMDD.7z
 │   └── readme.md
-├── package/
-│   ├── rtl8812au/                     # Buildroot kernel-module packages
-│   ├── rtl8821cu/
-│   ├── rtl88x2bu/
-│   ├── rtl8188eu/
-│   ├── rtl8188fu/
+├── package/                            # Buildroot kernel-module packages (P3.1)
+│   ├── rtl8812au/
+│   ├── rtl8821au-morrownr/             # "-morrownr": Buildroot upstream now ships
+│   ├── rtl8821cu-morrownr/             # its own same-named rtl8821au/rtl8821cu
+│   ├── rtl88x2bu/                      # (different forks) -- renamed to avoid
+│   ├── rtl8188eu-aircrack-ng/          # the Kconfig/Make collision; see each
+│   ├── rtl8188fu/                      # package's Config.in for the detail.
 │   └── xone/
 ├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/

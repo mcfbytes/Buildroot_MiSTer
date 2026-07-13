@@ -1,0 +1,44 @@
+include/osdep_service_linux.h: follow the timer API renames
+
+Our kernel (6.18.33) has fully removed the old `from_timer()` macro and
+`del_timer_sync()` function -- they were renamed to `timer_container_of()`
+and `timer_delete_sync()` respectively as part of the kernel's timer
+subsystem cleanup, with the old names dropped entirely by this point
+(include/linux/timer.h in our tree defines only the new names). Without
+this, both call sites in this driver's OS-abstraction header fail:
+
+    osdep_service_linux.h:359:26: error: implicit declaration of function
+    'from_timer'; did you mean 'mod_timer'?
+    osdep_service_linux.h:388:23: error: implicit declaration of function
+    'del_timer_sync'; did you mean 'dev_mc_sync'?
+
+Pure rename, no behavior change. (Note: the identifier `from_timer` also
+appears, unrelated, as a plain boolean parameter/variable name throughout
+core/rtw_mlme_ext.c -- those are NOT this macro and are untouched by this
+patch; grep confirms the macro is invoked, as a function-like call, at
+exactly this one call site in the whole driver tree.)
+
+P3.1, PLAN.md §4.1 class E. Not sent upstream (no CI/maintainer contact
+established for this pin).
+
+diff --git a/include/osdep_service_linux.h b/include/osdep_service_linux.h
+--- a/include/osdep_service_linux.h
++++ b/include/osdep_service_linux.h
+@@ -356,7 +356,7 @@
+ #endif
+ {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+-	_timer *ptimer = from_timer(ptimer, in_timer, timer);
++	_timer *ptimer = timer_container_of(ptimer, in_timer, timer);
+ #else
+ 	_timer *ptimer = (_timer *)cntx;
+ #endif
+@@ -385,7 +385,7 @@
+
+ __inline static void _cancel_timer(_timer *ptimer, u8 *bcancelled)
+ {
+-	*bcancelled = del_timer_sync(&ptimer->timer) == 1 ? 1 : 0;
++	*bcancelled = timer_delete_sync(&ptimer->timer) == 1 ? 1 : 0;
+ }
+
+ static inline void _init_workitem(_workitem *pwork, void *pfunc, void *cntx)

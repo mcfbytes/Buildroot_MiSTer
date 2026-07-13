@@ -1,0 +1,18 @@
+config BR2_PACKAGE_RTL8821AU_MORROWNR
+	bool "rtl8821au-morrownr"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree Realtek RTL8811AU/RTL8821AU USB WiFi driver, sourced
+	  from the morrownr fork (kernel-module package, P3.1). Not required
+	  for wpa_supplicant -D nl80211 (see rtl8821au-morrownr.mk for the
+	  CONFIG_WIRELESS_EXT analysis).
+
+	  Named "-morrownr" rather than plain "rtl8821au" because Buildroot
+	  upstream already ships its own package/rtl8821au, sourced from a
+	  different fork (benetti-engineering/rtl8821au) — same name would
+	  collide on both the Kconfig symbol and the Make namespace.
+
+	  https://github.com/morrownr/8821au-20210708
+
+comment "rtl8821au-morrownr needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

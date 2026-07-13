@@ -1,0 +1,64 @@
+os_dep/linux/ioctl_cfg80211.c: update cfg80211_ops for the multi-radio wiphy API
+
+Our kernel (6.18.33) added a `radio_idx` (and, for get_tx_power, a
+`link_id`) parameter to several `struct cfg80211_ops` members as part of
+the multi-radio wiphy support, and `set_monitor_channel` gained a
+`struct net_device *`. This driver's assigned callbacks
+(cfg80211_rtw_set_wiphy_params/set_txpower/get_txpower/
+set_monitor_channel) still have the pre-multi-radio signatures, so the
+`.set_wiphy_params = cfg80211_rtw_set_wiphy_params` style initializers in
+the `rtw_cfg80211_ops` struct literal fail with
+"-Wincompatible-pointer-types" (promoted to a hard error by -Werror
+implied elsewhere in kbuild's own flags for struct-literal function
+pointer mismatches):
+
+    os_dep/linux/ioctl_cfg80211.c:9401:29: error: initialization of
+    'int (*)(struct wiphy *, int,  u32)' ... from incompatible pointer
+    type 'int (*)(struct wiphy *, u32)'
+
+This driver is a single-radio USB dongle, so `radio_idx`/`link_id` are
+simply accepted and ignored (matches what every other radio_idx-aware
+driver does for a single-radio device) -- no behavior change, this is a
+pure signature/ABI fix to match our kernel's struct cfg80211_ops.
+
+P3.1, PLAN.md §4.1 class E. Not sent upstream (no CI/maintainer contact
+established for this pin); aircrack-ng/rtl8188eus PR #319 independently
+attempts a broader Linux 6.19 compatibility pass covering this same API
+drift among other things.
+
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -3113,7 +3113,7 @@
+
+ }
+
+-static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
++static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
+ {
+ #if 0
+ 	struct iwm_priv *iwm = wiphy_to_iwm(wiphy);
+@@ -3957,6 +3957,7 @@
+ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	struct wireless_dev *wdev,
++	int radio_idx,
+ #endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || defined(COMPAT_KERNEL_RELEASE)
+ 	enum nl80211_tx_power_setting type, int mbm)
+@@ -4017,6 +4018,7 @@
+ static int cfg80211_rtw_get_txpower(struct wiphy *wiphy,
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	struct wireless_dev *wdev,
++	int radio_idx, unsigned int link_id,
+ #endif
+ 	int *dbm)
+ {
+@@ -5660,6 +5662,7 @@
+
+ static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
++	, struct net_device *dev
+ 	, struct cfg80211_chan_def *chandef
+ #else
+ 	, struct ieee80211_channel *chan

@@ -1,9 +1,22 @@
 menu "MiSTer external options"
 
-comment "No MiSTer packages configured yet"
+menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
+	# rtl8188eu-aircrack-ng and rtl8821au-morrownr/rtl8821cu-morrownr are NOT
+	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot 2026.02.3 upstream
+	# already ships its own same-named packages (different forks). Same name
+	# here would collide on both the Kconfig symbol and the Make namespace;
+	# see each package's Config.in for the detail. rtl8188fu/rtl8812au/rtl88x2bu
+	# have no such collision and keep the plain names.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188eu-aircrack-ng/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188fu/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821au-morrownr/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821cu-morrownr/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl88x2bu/Config.in"
+endmenu
 
-# Future MiSTer-specific packages (Realtek Wi-Fi, xone — see package/, P3.1-P3.3)
-# add their own "source" lines here, e.g.:
-#   source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
+# Future MiSTer-specific packages (xone — see package/, P3.2) add their own
+# "source" line here, e.g.:
+#   source "$BR2_EXTERNAL_MISTER_PATH/package/xone/Config.in"
 
 endmenu

@@ -1,0 +1,40 @@
+Makefile: translate EXTRA_CFLAGS to ccflags-y for modern kbuild
+
+Linux 6.18's kbuild (scripts/Makefile.build) has no compatibility shim for
+the legacy EXTRA_CFLAGS mechanism at all -- only ccflags-y is honored. This
+Makefile routes every -I include path and every -D define it needs (all of
+CONFIG_IOCTL_CFG80211, the endianness define, the include-path list for
+drv_types.h/hal_data.h/etc., -O1, warning suppressions...) through
+EXTRA_CFLAGS and never translates it, so under our kernel the whole set is
+silently discarded. The build then fails immediately:
+
+    core/rtw_security.c:17:10: fatal error: drv_types.h: No such file or directory
+
+The fix is the same one-line shim upstream's own sibling driver already
+carries (kelebek333/rtl8188fu's Makefile, `ccflags-y += $(EXTRA_CFLAGS)`,
+inside its own `ifneq ($(KERNELRELEASE),)` block) -- this repo just never
+picked it up. P3.1, PLAN.md §4.1 class E.
+
+Not sent upstream (no CI/maintainer contact established for this pin), but
+trivially reproducible: aircrack-ng/rtl8188eus PR #319 independently
+attempts a broader Linux 6.19 compatibility pass covering the same root
+cause among others.
+
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -1982,6 +1982,15 @@
+
+ ifneq ($(KERNELRELEASE),)
+
++# Modern kbuild (this is built against Linux 6.18) does not honor the
++# legacy EXTRA_CFLAGS mechanism at all -- only ccflags-y. Every -I path and
++# -D define this Makefile sets above (all of it goes through EXTRA_CFLAGS)
++# was silently discarded without this line, which breaks the build
++# ("fatal error: drv_types.h: No such file or directory" and friends).
++# Mirrors the equivalent shim already present upstream in the sibling
++# kelebek333/rtl8188fu driver's Makefile.
++ccflags-y += $(EXTRA_CFLAGS)
++
+ ########### this part for *.mk ############################
+ include $(src)/hal/phydm/phydm.mk

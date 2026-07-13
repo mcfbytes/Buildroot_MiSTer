@@ -608,12 +608,34 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
 
 Exit criterion: hardware matrix (§11) green (P3.13).
 
-- [ ] **P3.1 — Realtek WiFi module packages** — [SONNET] [NET] — Size L — Depends: P2.1
+- [x] **P3.1 — Realtek WiFi module packages** — [SONNET] [NET] — Size L — Depends: P2.1
   Buildroot `kernel-module` packages under `package/` for `rtl8188eu`, `rtl8188fu`,
   `rtl8812au`, `rtl8821au`, `rtl8821cu`, `rtl88x2bu`, each sourced from the morrownr
   upstream (commit-pinned, hash-verified). Do not vendor code (§4.1 class E).
   **Done when:** all six build against the pinned 6.18.y; `.ko`s land in
   `/lib/modules/$(uname -r)/`; each package has a hash file and license entry.
+
+  **Result:** all six build clean and `depmod`-index (`modules.dep`/`modules.alias`,
+  confirmed autoload-ready). **[P0: two deviate from morrownr, documented per this
+  task's own allowance]** — morrownr carries neither RTL8188EU nor RTL8188FU;
+  `rtl8188eu` is sourced from `aircrack-ng/rtl8188eus` and `rtl8188fu` from
+  `kelebek333/rtl8188fu`, the most actively maintained forks available. **[P0:
+  package names deviate for 3 of 6]** — Buildroot 2026.02.3 upstream now ships its
+  own same-named `rtl8188eu`/`rtl8821au`/`rtl8821cu` packages (different forks, not
+  discovered until this task actually loaded the defconfig) — ours are
+  `rtl8188eu-aircrack-ng`/`rtl8821au-morrownr`/`rtl8821cu-morrownr` to avoid a
+  Kconfig-symbol/Make-namespace collision; `rtl8812au`/`rtl8821au`(→`-morrownr`)/
+  `rtl8821cu`(→`-morrownr`)/`rtl88x2bu` are unmodified morrownr sources.
+  `rtl8188eu-aircrack-ng` needed 3 small local patches (ccflags-y/EXTRA_CFLAGS
+  kbuild compat, a cfg80211_ops multi-radio API signature update, and a
+  from_timer/del_timer_sync rename) beyond what morrownr-family drivers needed —
+  its pin predates an open, unmerged upstream PR (#319) covering the same 6.18/6.19
+  drift; documented in the patch files and the package .mk. All six: `#ifdef
+  CONFIG_WIRELESS_EXT` gates only legacy iwconfig/iwpriv paths, never the
+  cfg80211/nl80211 registration path `wpa_supplicant -D nl80211` uses — confirmed
+  by reading the source, not assumed; no wext wrapper/kernel `select` hack needed
+  or added. **Unverified without hardware (P3.13/P3.4):** association, throughput,
+  and monitor-mode behavior against a real dongle of each chip.
 
 - [ ] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
   Package `xone` similarly. Handle its firmware requirement explicitly: document the

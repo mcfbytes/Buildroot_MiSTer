@@ -414,6 +414,30 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
                                               # 274-applet set is a P2.3 config concern, not
                                               # a package-selection one
 
+# --- P3.1: Realtek USB WiFi kernel-module packages (PLAN.md §4.1 class E) ---
+# Commit-pinned, hash-verified, sourced from morrownr upstream (rtl8188eu and
+# rtl8188fu deviate -- morrownr carries neither; see each package/<name>/<name>.mk
+# for the documented substitute and the per-driver CONFIG_WIRELESS_EXT finding,
+# none of which need it for wpa_supplicant -D nl80211). All six build against
+# the pinned 6.18.y kernel; .ko lands under output/target/usr/lib/modules/6.18.33/
+# and is picked up by depmod/eudev autoload (P3.3).
+#
+# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are named
+# with a fork suffix, NOT plain rtl8188eu/rtl8821au/rtl8821cu -- Buildroot
+# 2026.02.3 upstream already ships its own same-named packages (different
+# forks); same name would collide on the Kconfig symbol and Make namespace.
+# See package/rtl8188eu-aircrack-ng/Config.in for the detail. This project's
+# OWN packages are enabled below; Buildroot's upstream rtl8188eu/rtl8821au/
+# rtl8821cu/rtl8812au-aircrack-ng/etc. packages are NOT enabled (left at
+# Buildroot's default "n") -- keeping our own pins in control, not
+# Buildroot's release cadence (A9 reproducibility).
+BR2_PACKAGE_RTL8188EU_AIRCRACK_NG=y
+BR2_PACKAGE_RTL8188FU=y
+BR2_PACKAGE_RTL8812AU=y
+BR2_PACKAGE_RTL8821AU_MORROWNR=y
+BR2_PACKAGE_RTL8821CU_MORROWNR=y
+BR2_PACKAGE_RTL88X2BU=y
+
 # --- explicitly NOT carried forward (manifest §5 Drop list) ---
 #   archivemount (broken in stock; its deps libarchive/libfuse ARE kept above for others)
 #   adplay / adplug / binio          -- no Buildroot package, no known MiSTer use

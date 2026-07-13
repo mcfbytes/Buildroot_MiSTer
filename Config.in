@@ -1,15 +1,28 @@
 menu "MiSTer external options"
 
 menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
-	# rtl8188eu-aircrack-ng and rtl8821au-morrownr/rtl8821cu-morrownr are NOT
+	# MAINLINE-FIRST policy: out-of-tree drivers are ENABLED in the defconfig
+	# ONLY for the 802.11ac Realtek USB chips mainline still cannot drive --
+	# RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU (the three morrownr forks).
+	# The chips mainline now covers -- 8188eu/8188fu/8710bu (rtl8xxxu), 8821cu
+	# (rtw88_8821cu), 8822bu (rtw88_8822bu) -- use the in-kernel driver instead
+	# (board/mister/de10nano/linux.config); their out-of-tree packages are left
+	# DISABLED in the defconfig (enabling them would bind-fight the in-kernel
+	# driver on the same USB IDs) but remain sourced here, selectable, as a
+	# fallback.
+	#
+	# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are NOT
 	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot 2026.02.3 upstream
 	# already ships its own same-named packages (different forks). Same name
 	# here would collide on both the Kconfig symbol and the Make namespace;
 	# see each package's Config.in for the detail. rtl8188fu/rtl8812au/rtl88x2bu
-	# have no such collision and keep the plain names.
+	# have no such collision and keep the plain names; rtl8814au-morrownr takes
+	# the suffix purely for a uniform morrownr naming scheme (no upstream
+	# rtl8814au package exists to collide with).
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188eu-aircrack-ng/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188fu/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8814au-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821au-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821cu-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl88x2bu/Config.in"

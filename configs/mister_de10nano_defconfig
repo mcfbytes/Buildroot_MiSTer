@@ -421,3 +421,5 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 #   jack1/jack2 (libjack)            -- dangling in stock, unused by MiSTer
 #   rtorrent / libtorrent            -- unused BitTorrent client, SONAME already drifted
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
+BR2_PACKAGE_HOST_KMOD_XZ=y
+BR2_PACKAGE_KMOD_TOOLS=y

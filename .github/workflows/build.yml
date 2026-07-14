@@ -98,13 +98,29 @@ jobs:
           retention-days: 14
 
       # --- Upload SBOM / legal-info artifact (P4.2) --------------------------
-      - name: Package legal-info for upload
+      # WITHOUT sources/ and host-sources/. `make legal-info` copies every
+      # package's upstream source TARBALL into those two directories -- the whole
+      # target package set, plus gcc/glibc/binutils for the host. That made this
+      # artifact 2109 MB, TWENTY-FOUR TIMES the size of the images it accompanies
+      # (87 MB), uploaded on every single push.
+      #
+      # Those tarballs are the GPL "accompanying source" payload. They are needed
+      # when we DISTRIBUTE the image (release.yml attaches them, sized and guarded
+      # there) -- but a CI push distributes nothing, so there is no obligation to
+      # carry them here, and nobody reviewing a push wants a 2 GB download.
+      #
+      # What remains is the part that is actually an SBOM and actually gets read:
+      # manifest.csv (every package, version, license, upstream URL), the license
+      # texts, buildroot.config, and the source hashes. ~4 MB.
+      - name: Package legal-info for upload (SBOM, without the source tarballs)
         if: github.event_name == 'push'
         run: |
-          cd output
-          tar -czf legal-info.tar.gz legal-info/
-          cd ..
-          mv output/legal-info.tar.gz .
+          set -eu
+          tar -czf legal-info.tar.gz \
+            --exclude='legal-info/sources' \
+            --exclude='legal-info/host-sources' \
+            -C output legal-info
+          echo "SBOM artifact: $(du -h legal-info.tar.gz | cut -f1) (source tarballs excluded -- see release.yml for those)"
 
       - name: Upload SBOM artifact
         if: github.event_name == 'push'

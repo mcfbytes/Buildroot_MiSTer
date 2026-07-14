@@ -201,6 +201,24 @@ jobs:
           fi
           cp -f "${kernel_cfg_dir}.config" dist/linux.config
 
+      # A RELEASE distributes the image, so this one DOES carry the GPL
+      # "accompanying source": legal-info/sources/ holds the upstream tarball of
+      # every package we ship, alongside manifest.csv (package, version, license,
+      # upstream URL) and the license texts.
+      #
+      # host-sources/ is excluded, deliberately. That is the source for the
+      # BUILD-TIME toolchain (host-gcc, host-binutils, host-glibc, ...) -- none of
+      # which is distributed in linux.img or zImage_dtb. The GPL obligation
+      # attaches to the binaries we convey, not to the compiler that produced them
+      # (which is itself freely available upstream, pinned by version+hash in
+      # host-manifest.csv, which we DO ship). Buildroot emits host-sources/ for
+      # completeness, not because distribution requires it.
+      #
+      # This is not merely a size optimisation, though it is that too: with
+      # host-sources/ included the archive was 2109 MiB, and GitHub rejects any
+      # single release asset over 2 GiB -- so the first real tag push would have
+      # failed right here, at the upload. The guard below makes that failure mode
+      # loud and early instead of a mysterious 500 from the API.
       - name: Archive legal-info as legal-info.tar.gz
         run: |
           set -eu
@@ -208,7 +226,17 @@ jobs:
             echo "::error::output/legal-info does not exist -- did 'make legal-info' run?" >&2
             exit 1
           fi
-          tar czf dist/legal-info.tar.gz -C output legal-info
+          tar czf dist/legal-info.tar.gz --exclude='legal-info/host-sources' -C output legal-info
+
+          # GitHub's hard per-asset ceiling is 2 GiB. Fail here, with a clear
+          # message, rather than at the upload.
+          limit=$((2 * 1024 * 1024 * 1024))
+          size=$(stat -c %s dist/legal-info.tar.gz)
+          echo "legal-info.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
+          if [ "$size" -ge "$limit" ]; then
+            echo "::error::legal-info.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit. The package set has outgrown a single source bundle -- split it (e.g. sources/ as its own asset, or publish sources to a separate host and reference them from manifest.csv)." >&2
+            exit 1
+          fi
 
       ##########################################################################
       # /MiSTer.version -> RELEASE_DATE. LOAD-BEARING, read the comment.

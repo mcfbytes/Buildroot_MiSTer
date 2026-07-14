@@ -187,7 +187,13 @@ jobs:
           path: |
             output/host
             output/build/host-*
-          key: br-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
+          # `nc1` = "no-container gen 1". A Buildroot cross-toolchain bakes its
+          # prefix/sysroot in as an ABSOLUTE path, so it is NOT relocatable. The
+          # earlier caches were built inside the container, where the workspace is
+          # /__w/...; on the host it is /home/runner/work/.... Restoring those here
+          # would hand us a subtly broken compiler. Bump this suffix whenever the
+          # workspace path or the build environment moves.
+          key: br-host-nc1-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
 
       # 5. Initramfs-stage host toolchain -- output-initramfs/host + its host
       # build stamps. `make initramfs` builds its own small musl cross-toolchain;
@@ -199,7 +205,10 @@ jobs:
           path: |
             output-initramfs/host
             output-initramfs/build/host-*
-          key: br-initramfs-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_initramfs_defconfig') }}
+          # `nc1`: same non-relocatable-toolchain reason as the main host cache
+          # above -- the container-era copy has /__w/... baked in and must not be
+          # restored into a host build.
+          key: br-initramfs-host-nc1-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_initramfs_defconfig') }}
 
       # 4. ccache. CCACHE_DIR is exported here (matching the BR2_CCACHE_DIR
       # passed to `make` below) so hendrikmuhs/ccache-action caches the exact

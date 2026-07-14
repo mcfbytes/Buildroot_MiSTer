@@ -50,17 +50,14 @@
 # THAT investigation are the ones worth keeping, not a permanently-retained
 # copy from every green run.
 #
-# KNOWN OVERLAP WITH build.yml (P4.1): the checkout / cache / apt-install /
-# two-stage `make initramfs && make all` steps below are close to verbatim
-# copies of build.yml's own steps, because both files are building the same
-# thing the same way on purpose (this workflow's whole premise is "the same
-# build, run twice"). A future refactor could extract a composite action
-# (e.g. `.github/actions/build-image/action.yml`) shared by both workflows
-# once build.yml (P4.1, still settling as of this writing) stabilizes — not
-# done here to avoid touching build.yml (another task is actively editing
-# it) or inventing a shared-action contract before its second caller (this
-# file) had a chance to show what actually needs to be parameterized (here:
-# just a cache-key/artifact-name suffix per leg).
+# SHARED BUILD RECIPE: the build itself lives in
+# .github/actions/buildroot-build, which build.yml and release.yml also call.
+# It used to be a near-verbatim copy in each of the three files; that overlap was
+# not benign. The fixes build.yml needed to go green (no container, disk reclaim,
+# defconfig step, non-root, workspace-keyed toolchain caches) never propagated
+# here, so this workflow would have failed the next time it ran. Sharing the code
+# is also what makes this workflow's claim honest: "same commit -> same bytes" is
+# only meaningful if both legs really do run the same build, and now they demonstrably do.
 #
 # This workflow has never actually been run — see docs/reproducibility.md
 # for the honest, as-yet-unproven status of the "no residual nondeterminism"
@@ -107,135 +104,40 @@ jobs:
       matrix:
         build-id: [a, b]
 
-    # Same pinned container as build.yml (P4.1) — the whole point of this
-    # workflow is holding the build ENVIRONMENT constant and varying only
-    # "which runner, which fresh checkout", so this digest must track
-    # build.yml's exactly. Re-resolve both together when bumping either.
-    container:
-      image: ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
+    # NO `container:` — see .github/actions/buildroot-build. The build does not fit
+    # on a hosted runner without reclaiming the host's preinstalled software, and
+    # a container job cannot reach the host to do that. This does NOT weaken the
+    # comparison: the environment is still held constant across both legs (same
+    # runner image, same shared action), and Buildroot bootstraps its own host
+    # toolchain from pinned sources anyway, so the distro does not leak into the
+    # target output.
 
-    # Same budget reasoning as build.yml (P4.1): 30-60 min documented cold
-    # Buildroot build, + checkout/apt/hashing overhead, 90 min ceiling as a
-    # buffer, not an expectation. Both legs share this ceiling independently
-    # (matrix legs run in parallel, not added together).
-
-    env:
-      DEBIAN_FRONTEND: noninteractive
+    # 300 min, matching build.yml — same measured 3h19m cold build (run
+    # 29300460591). The two legs run in parallel, so this is per-leg, not summed.
+    timeout-minutes: 300
 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # Same extraction as build.yml, same reasoning: BUILDROOT_VERSION lives
-      # in the Makefile, not duplicated here, so it cannot drift out of sync
-      # with what `make` actually fetches.
-      - name: Read Buildroot version pin from Makefile
-        run: |
-          set -eu
-          ver=$(sed -n 's/^BUILDROOT_VERSION ?= //p' Makefile | head -1)
-          if [ -z "$ver" ]; then
-            echo "::error::could not extract BUILDROOT_VERSION from Makefile (format changed?)" >&2
-            exit 1
-          fi
-          echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
-          echo "Resolved BUILDROOT_VERSION=$ver"
-
-      ##########################################################################
-      # Caching — the same FOUR input caches as build.yml (P4.1), shared
-      # across both matrix legs on purpose (see file header: these are
-      # inputs, not the outputs under test). Both legs use identical cache
-      # keys; on a cold cache, both legs populate it independently in
-      # parallel (a harmless, if slightly wasteful, race — actions/cache
-      # silently skips a save if the key already exists by the time a leg
-      # finishes) and every subsequent run restores a warm hit for both.
-      ##########################################################################
-
-      # 1. Buildroot release tarball.
-      - name: Cache Buildroot release tarball
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
-          key: buildroot-tarball-${{ env.BUILDROOT_VERSION }}
-
-      # 2. dl/ download cache (all package source tarballs).
-      - name: Cache Buildroot dl/ download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dl/
-          key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
-          restore-keys: |
-            br-dl-${{ env.BUILDROOT_VERSION }}-
-
-      # 3. Buildroot host toolchain (output/host + host build stamps) — an
-      # INPUT to the build under test, not the output being compared. See
-      # file header: sharing a compiled cross-toolchain across the two legs
-      # does not weaken the comparison, since a toolchain difference is not
-      # what BR2_REPRODUCIBLE / A9 is asserting against here (build.yml's
-      # own single-build correctness checks are what would catch a genuinely
-      # bad toolchain; this workflow only asserts "same commit -> same
-      # image bytes").
-      - name: Cache Buildroot host toolchain
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            output/host
-            output/build/host-*
-          key: br-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
-
-      # 4. ccache — compiled-object reuse hints, also an input.
-      - name: Configure ccache directory
-        run: echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
-
-      - name: Cache ccache
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
-        with:
-          key: ccache-${{ env.BUILDROOT_VERSION }}
-          max-size: 2G
-          # Same fix as build.yml: the ubuntu:26.04 container's apt index is
-          # empty until the deps step below runs `apt-get update`, which is
-          # AFTER this step -- so the action must refresh the index itself
-          # before its `apt-get install ccache`.
-          update-package-index: true
-
-      # --- Host build dependencies (identical list to build.yml/P4.1) -------
-      - name: Install build dependencies
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential bash bc bison flex gawk \
-            git patch gzip bzip2 xz-utils cpio unzip rsync \
-            file wget curl ca-certificates perl \
-            python3 python3-dev \
-            libssl-dev libncurses-dev pkg-config texinfo \
-            qemu-user e2fsprogs
-          rm -rf /var/lib/apt/lists/*
-
-      - name: Verify host `install` is GNU coreutils
-        run: make hostshim
-
-      ##########################################################################
-      # Two-stage build — same recipe as build.yml (P4.1): stage 1 (musl
-      # initramfs cpio) must complete before stage 2 (main glibc rootfs +
-      # kernel + images), matching the Makefile's own `all: initramfs ...`
-      # dependency. output/target and output/images are NOT restored from
-      # any cache (see file header) — this leg's rootfs and images are
-      # built from scratch every time, which is the entire point.
-      ##########################################################################
-
-      - name: Stage 1 -- build initramfs cpio
-        run: |
-          make initramfs \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
-
-      - name: Stage 2 -- build full image (make all)
-        run: |
-          make all \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
+      # The shared build recipe (disk reclaim, the five input caches, apt deps,
+      # defconfig, `make all`) — the SAME code build.yml and release.yml run, which
+      # is what makes "same commit -> same bytes" a claim about the source rather
+      # than about three hand-synchronised copies of a workflow.
+      #
+      # The caches it restores are INPUTS to the build under test, not the outputs
+      # being compared: sharing a compiled cross-toolchain and ccache across the
+      # two legs does not weaken the comparison (a bad toolchain is build.yml's
+      # correctness checks to catch, not this workflow's). output/target and
+      # output/images are never cached — this leg builds them from scratch every
+      # time, which is the entire point.
+      #
+      # MISTER_VERSION is deliberately left UNSET here, so post-build.sh falls back
+      # to the constant SOURCE_DATE_EPOCH date (ADR 0018). A release build overrides
+      # it; a reproducibility build must not, or the two legs would disagree the
+      # moment they straddle midnight UTC.
+      - name: Build the image
+        uses: ./.github/actions/buildroot-build
 
       # --- The whole point of this job: hash the two shipped images ---------
       # Hashed from INSIDE output/images/ (not `sha256sum output/images/...`)

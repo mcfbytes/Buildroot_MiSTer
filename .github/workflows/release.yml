@@ -3,10 +3,9 @@
 # release.yml — tag-triggered release workflow + build provenance (TASKS.md
 # P4.4, PLAN.md §9 "Build", docs/downloader-contract.md P0.6).
 #
-# Builds the image using the SAME recipe as build.yml (P4.1) — checkout, the
-# four input caches, apt deps, the two-stage `make initramfs` / `make all` —
-# then assembles a GitHub Release whose assets are consumable by two
-# completely different downstream actors:
+# Builds the image using the SAME recipe as build.yml (P4.1) — literally the
+# same code: .github/actions/buildroot-build — then assembles a GitHub Release
+# whose assets are consumable by two completely different downstream actors:
 #
 #   1. A HUMAN downloading `linux.img` / `zImage_dtb` / configs / SBOM
 #      directly from the Release page.
@@ -19,12 +18,14 @@
 #      actor #2, because nothing else in the pipeline will catch a mistake
 #      there — see docs/downloader-contract.md §4-§8, §12.
 #
-# WHY THIS DUPLICATES build.yml'S BUILD STEPS INSTEAD OF DEPENDING ON ITS RUN:
-# same reasoning reproducibility.yml (P4.3) already documents for itself —
-# both files build the same thing the same way on purpose, and a shared
-# composite action was deliberately deferred until build.yml stabilizes and
-# has more than one caller shape to generalize from. Revisit together if/when
-# that refactor happens.
+# WHY THIS REBUILDS INSTEAD OF DEPENDING ON build.yml'S RUN: a release must be
+# built from the tagged commit by a job whose provenance we attest, not adopted
+# from some earlier run's artifacts. But the BUILD ITSELF is no longer duplicated
+# — it was, and that was a latent bug: the five fixes build.yml needed to go
+# green (no container, disk reclaim, defconfig step, non-root, workspace-keyed
+# toolchain caches) never reached this file, so the first real tag push would
+# have failed here. The recipe now lives once, in
+# .github/actions/buildroot-build; read its header before touching the build.
 #
 # THE ONE THING THIS FILE CANNOT DO ITSELF: vendor the stock `uboot.img` /
 # `files/linux/` auxiliary payload (updateboot, config templates,
@@ -59,11 +60,13 @@
 # suggested it as a default — it is NOT derived from any existing project
 # decision and should be revisited/ratified by a human. Separately, and
 # DELIBERATELY DECOUPLED from the git tag: the internal `release_YYYYMMDD.7z`
-# filename and the eventual db.json `linux.version` (P4.5) are driven by
-# `/MiSTer.version`, which is baked into the image at build time by
-# `board/mister/de10nano/post-build.sh` from `SOURCE_DATE_EPOCH` — see the
-# "derive RELEASE_DATE" step below for why this is load-bearing and the
-# non-obvious trap it implies for repeated releases.
+# filename and the db.json `linux.version` (P4.5) are driven by
+# `/MiSTer.version`, which `board/mister/de10nano/post-build.sh` bakes into the
+# image from the `MISTER_VERSION` this workflow derives from the TAGGED COMMIT's
+# date (ADR 0018). It deliberately does NOT come from SOURCE_DATE_EPOCH: that is
+# pinned to a constant for reproducibility, so every release would have claimed
+# the same version and the Downloader — which compares db.json's `version` to
+# the on-device `/MiSTer.version` — would have re-flashed on every single run.
 #
 ################################################################################
 
@@ -90,25 +93,21 @@ permissions:
 jobs:
   # ============================================================================
   # build — produces every release asset and the pinned-7za-verified archive,
-  # then hands a single artifact bundle to `publish`. Runs in the SAME
-  # container as build.yml (P4.1) for an identical build environment; the
-  # `publish` job below deliberately does NOT use this container (it needs
-  # `gh` + the attestation action's own runtime, both already present on a
-  # bare `ubuntu-latest` runner with no extra apt work).
+  # then hands a single artifact bundle to `publish`.
+  #
+  # NO `container:` — see .github/actions/buildroot-build. A container job cannot
+  # reclaim the host's ~30 GB of preinstalled software, and without that reclaim
+  # a Buildroot build does not fit on a hosted runner at all (output/ is 24 GB).
   # ============================================================================
   build:
     name: Build image + assemble release_YYYYMMDD.7z
     runs-on: ubuntu-latest
 
-    # Same pinned container as build.yml/reproducibility.yml — re-resolve
-    # together with those files when bumping any of the three.
-    container:
-      image: ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
-
-    # 90 min for the build itself (build.yml's own documented budget) + a
-    # buffer for fetching/verifying the ~90 MB stock archive, assembling and
-    # testing the 7z, and hashing everything. Unproven until a real tag push
-    # runs this end to end (see the authoring agent's final report).
+    # 330 min: the measured cold build is 3h19m (run 29300460591), and this job
+    # does strictly more than build.yml — fetch + verify the ~90 MB stock archive,
+    # assemble the 7z, round-trip it through the pinned ARM 7za, hash everything.
+    # 30 min on top of build.yml's 300 covers that tail.
+    timeout-minutes: 330
 
     outputs:
       release_date: ${{ steps.mister_version.outputs.release_date }}
@@ -148,91 +147,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # Verbatim from build.yml (P4.1) — see that file for the full
-      # rationale. Duplicated, not shared, per the file-header note above.
-      - name: Read Buildroot version pin from Makefile
-        run: |
-          set -eu
-          ver=$(sed -n 's/^BUILDROOT_VERSION ?= //p' Makefile | head -1)
-          if [ -z "$ver" ]; then
-            echo "::error::could not extract BUILDROOT_VERSION from Makefile (format changed?)" >&2
-            exit 1
-          fi
-          echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
-          echo "Resolved BUILDROOT_VERSION=$ver"
-
-      # --- The same four input caches as build.yml (P4.1) -- verbatim keys,
-      # so a release build can reuse whatever build.yml already warmed on
-      # this ref, instead of every tagged release cold-building from
-      # scratch. See build.yml for the full per-cache rationale.
-      - name: Cache Buildroot release tarball
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
-          key: buildroot-tarball-${{ env.BUILDROOT_VERSION }}
-
-      - name: Cache Buildroot dl/ download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dl/
-          key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
-          restore-keys: |
-            br-dl-${{ env.BUILDROOT_VERSION }}-
-
-      - name: Cache Buildroot host toolchain
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            output/host
-            output/build/host-*
-          key: br-host-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'board/mister/de10nano/linux.config', 'board/mister/de10nano/linux-patches/**') }}
-
-      - name: Configure ccache directory
-        run: echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
-
-      - name: Cache ccache
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
-        with:
-          key: ccache-${{ env.BUILDROOT_VERSION }}
-          max-size: 2G
-          # See build.yml: the container's apt index is empty until the
-          # next step runs, but this action tries to `apt-get install
-          # ccache` before that — refresh the index itself first.
-          update-package-index: true
-
-      # Same mandatory Buildroot + project deps as build.yml, PLUS
-      # `p7zip-full` (this job's own addition — needed to CREATE
-      # release_YYYYMMDD.7z; on Ubuntu 24.04+/26.04 this is a transitional
-      # package pulling in `7zip`, which still installs /usr/bin/7z and
-      # /usr/bin/7za, verified against Ubuntu's package file lists). Note
-      # this is a DIFFERENT 7za than the pinned ARM static one fetched
-      # below — this one only ever creates/inspects the archive on the
-      # x86_64 runner; the pinned ARM binary is what actually proves
-      # on-device compatibility.
-      - name: Install build dependencies
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential bash bc bison flex gawk \
-            git patch gzip bzip2 xz-utils cpio unzip rsync \
-            file wget curl ca-certificates perl \
-            python3 python3-dev \
-            libssl-dev libncurses-dev pkg-config texinfo \
-            qemu-user e2fsprogs p7zip-full
-          rm -rf /var/lib/apt/lists/*
-
-      - name: Verify host `install` is GNU coreutils
-        run: make hostshim
-
-      # Durable fix (ADR 0018): the image's /MiSTer.version must be DISTINCT per
-      # release and EQUAL to the db.json version, or the Downloader re-flashes on
-      # every run. Derive a 6-digit YYMMDD from the tagged commit's UTC date
-      # (fixed per commit -> reproducible) and hand it to the build via
-      # MISTER_VERSION (exported to $GITHUB_ENV, so every later step incl. the
-      # make steps below inherit it). post-build.sh bakes it into /MiSTer.version
-      # instead of the constant SOURCE_DATE_EPOCH date. Override: pre-set
-      # MISTER_VERSION in the workflow env to force a specific value.
+      # Must run BEFORE the build: post-build.sh reads MISTER_VERSION to bake
+      # /MiSTer.version into the image (ADR 0018). Derive a 6-digit YYMMDD from
+      # the TAGGED COMMIT's UTC date -- fixed per commit, so re-running a tag
+      # reproduces the same version rather than silently minting a new one.
+      # $GITHUB_ENV so every later step (including the build action) inherits it.
+      # Override by pre-setting MISTER_VERSION in this job's env.
       - name: Derive release version (YYMMDD) from the tagged commit
         run: |
           set -eu
@@ -244,27 +164,18 @@ jobs:
           echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
           echo "Release version (YYMMDD) = $v  ->  /MiSTer.version, release_20${v}.7z, db.json"
 
-      - name: Stage 1 -- build initramfs cpio
-        run: |
-          make initramfs \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
-
-      - name: Stage 2 -- build full image (make all)
-        run: |
-          make all \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
-
-      # --- SBOM / legal-info (P4.2) -------------------------------------------
-      - name: Generate legal-info (SBOM)
-        run: |
-          make legal-info \
-            BR2_CCACHE=y \
-            BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
-            BR2_CCACHE_USE_BASEDIR=y
+      # The shared recipe (disk reclaim, caches, apt, defconfig, `make all`).
+      # p7zip-full is this job's own addition -- needed to CREATE
+      # release_YYYYMMDD.7z. On Ubuntu 24.04+ it is a transitional package pulling
+      # in `7zip`, which still ships /usr/bin/7z and /usr/bin/7za. NOTE this is a
+      # DIFFERENT 7za than the pinned ARM static one fetched below: this one only
+      # creates/inspects the archive on the x86_64 runner, while the pinned ARM
+      # binary is what actually proves on-device compatibility.
+      - name: Build the image
+        uses: ./.github/actions/buildroot-build
+        with:
+          extra-apt-packages: p7zip-full
+          run-legal-info: "true"
 
       ##########################################################################
       # Assemble the flat `dist/` directory -- these seven filenames are
@@ -570,10 +481,11 @@ jobs:
 
   # ============================================================================
   # publish — attests provenance for the two image assets and creates the
-  # GitHub Release. Deliberately NOT run inside the ubuntu:26.04 container:
-  # both `gh` and actions/attest-build-provenance's own OIDC/Sigstore flow
-  # just work on a bare GitHub-hosted `ubuntu-latest` runner, with none of
-  # build.yml's apt setup needed for this job's own steps.
+  # GitHub Release. A separate job on purpose: it needs write scopes (contents,
+  # id-token, attestations) that the build job must NOT have, and it needs none
+  # of the build job's disk reclaim or apt setup — `gh` and
+  # actions/attest-build-provenance's OIDC/Sigstore flow just work on a bare
+  # GitHub-hosted `ubuntu-latest` runner.
   # ============================================================================
   publish:
     name: Attest provenance + create GitHub Release

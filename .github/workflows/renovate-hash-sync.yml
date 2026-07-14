@@ -1,0 +1,273 @@
+################################################################################
+#
+# renovate-hash-sync.yml -- refresh companion tarball/kernel hashes on a
+# Renovate PR (TASKS.md P4.6).
+#
+# THE PROBLEM THIS SOLVES: renovate.json's custom managers can bump a version
+# string or a commit SHA, but Renovate itself has no way to recompute a
+# tarball's sha256 -- that requires actually fetching the artifact. Every pin
+# this repo tracks has a companion `.hash` file that must move in lockstep,
+# or Buildroot's own hash check fails the build CLOSED (safe, but the PR is
+# red and useless without a human manually redoing the hash by hand).
+#
+# WHAT THIS WORKFLOW HANDLES, AND WHY EACH CASE IS SAFE TO AUTOMATE:
+#
+#   1. The 11 github-sourced driver/firmware packages (package/*/*.mk +
+#      their .hash). Their own .hash file headers already say the hash is
+#      "locally computed" -- GitHub publishes no signed manifest for a
+#      commit/tag archive tarball, so `sha256sum` of a freshly-fetched
+#      tarball from the ACTUAL pinned owner/repo/ref IS the legitimate,
+#      standard-practice source for these (see e.g. package/xone/xone.hash's
+#      own comment, and pkg-download.mk / the Buildroot manual). Automating
+#      exactly what a human would otherwise type by hand is safe here.
+#
+#   2. The kernel tarball hash (board/mister/de10nano/patches/linux/
+#      linux.hash), refreshed from kernel.org's own PGP-clearsigned
+#      sha256sums.asc for the matching v6.x series -- the same URL and same
+#      trust model docs/renovate.md and the .hash file's own header already
+#      document as the ONLY legitimate source. This step does NOT verify the
+#      PGP signature (no keyring management here yet) -- it fetches the
+#      manifest over HTTPS and greps the matching line, which is exactly the
+#      same trust level as today's manual transcription process, not a
+#      regression. Verifying the clearsign signature is a worthwhile future
+#      hardening step, not implemented here (see docs/renovate.md).
+#
+# WHAT THIS WORKFLOW DELIBERATELY DOES NOT HANDLE:
+#
+#   * BUILDROOT_SHA256 (root Makefile). Per the Makefile's own header
+#     comment, this value is ONLY legitimate when transcribed from
+#     Buildroot's GPG-signed release manifest
+#     (https://buildroot.org/downloads/buildroot-<ver>.tar.gz.sign) -- a
+#     locally-computed sha256sum of the downloaded tarball is explicitly
+#     forbidden there (circular; certifies nothing; would bless a
+#     tampered/truncated tarball). This workflow will NOT invent that value.
+#     A Buildroot-version-bump PR from Renovate is EXPECTED to stay red at
+#     `make buildroot-verify` until a human runs
+#     `make buildroot-showsig BUILDROOT_VERSION=<new>` and pastes the signed
+#     hash into the Makefile by hand -- see docs/renovate.md.
+#
+#   * cabextract, linux-firmware-extra, xow-firmware -- not tracked by
+#     renovate.json at all (no machine-readable upstream release feed for
+#     the first two; xow-firmware pins opaque Microsoft Update .cab GUIDs,
+#     not a version). See docs/renovate.md.
+#
+# TRIGGER: only for PRs opened by Renovate itself (github.actor check below),
+# only on branches in THIS repo (never a fork -- pushing back requires
+# write access the default token does not get on a fork-originated PR), and
+# only when a file this workflow actually knows how to fix has changed.
+# Idempotent by design: it always recomputes from the PR's current file
+# content and only commits if the recomputed hash differs from what's
+# already there, so re-runs (e.g. a second Renovate push to the same PR)
+# are harmless no-ops once the hash is already correct.
+#
+# UNVERIFIED: like renovate.json itself, this workflow has never been
+# exercised against a real Renovate PR (the repo is still private and
+# Renovate is not yet installed -- see docs/renovate.md). Treat the exact
+# regexes/URLs below as reviewed-by-hand, not proven.
+#
+################################################################################
+
+name: Renovate hash sync
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "configs/mister_de10nano_defconfig"
+      - "package/rtl8812au/rtl8812au.mk"
+      - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
+      - "package/rtl8821au-morrownr/rtl8821au-morrownr.mk"
+      - "package/rtl8821cu-morrownr/rtl8821cu-morrownr.mk"
+      - "package/rtl8188fu/rtl8188fu.mk"
+      - "package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.mk"
+      - "package/rtl88x2bu/rtl88x2bu.mk"
+      - "package/xone/xone.mk"
+      - "package/midilink/midilink.mk"
+      - "package/munt/munt.mk"
+      - "package/bcm20702-firmware/bcm20702-firmware.mk"
+
+concurrency:
+  group: renovate-hash-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  hash-sync:
+    name: Refresh companion hashes for this PR's version bump(s)
+    runs-on: ubuntu-latest
+    # Only Renovate's own PRs, and never a fork (pushing back needs write
+    # access to the head branch, which a fork PR's default token never has).
+    if: >
+      github.actor == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 10
+
+    steps:
+      # Same pin as every other workflow in this repo (build.yml et al.) --
+      # kept in sync so Renovate's own github-actions manager (renovate.json)
+      # tracks exactly one actions/checkout dependency, not two drifting
+      # copies.
+      - name: Checkout PR head branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      # --- 1. Github-sourced driver/firmware packages ------------------------
+      # Generic loop, not one step per package: every one of these .mk files
+      # follows the identical Buildroot convention
+      #   <PKG>_VERSION = <commit-sha-or-tag>
+      #   <PKG>_SITE    = $(call github,<owner>,<repo>,$(<PKG>_VERSION))
+      # and the resulting downloaded/hashed tarball is always named
+      # "<package-dir-name>-<VERSION>.tar.gz" by Buildroot's own github
+      # helper (NOT "<repo-name>-<VERSION>.tar.gz" -- checked against every
+      # existing .hash file in this tree before writing this loop). Only the
+      # FIRST `sha256` line (the tarball itself) is ever rewritten; any
+      # further lines (LICENSE, individual source files hashed for
+      # provenance) are left untouched -- if one of those legitimately
+      # changed too, the build's own hash check will fail closed and a human
+      # will need to re-derive that specific line by hand.
+      - name: Refresh driver/firmware package tarball hashes
+        run: |
+          set -euo pipefail
+          changed=0
+          for pkg in rtl8812au rtl8814au-morrownr rtl8821au-morrownr \
+                     rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng \
+                     rtl88x2bu xone midilink munt bcm20702-firmware; do
+            mk="package/$pkg/$pkg.mk"
+            hashfile="package/$pkg/$pkg.hash"
+            if [ ! -f "$mk" ] || [ ! -f "$hashfile" ]; then
+              continue
+            fi
+
+            version=$(grep -E '^[A-Z0-9_]+_VERSION[[:space:]]*=' "$mk" | head -1 \
+                       | sed -E 's/^[A-Z0-9_]+_VERSION[[:space:]]*=[[:space:]]*//')
+            owner=$(grep -E '_SITE[[:space:]]*=[[:space:]]*\$\(call github,' "$mk" | head -1 \
+                     | sed -E 's/.*\$\(call github,([^,]+),([^,]+),.*/\1/')
+            repo=$(grep -E '_SITE[[:space:]]*=[[:space:]]*\$\(call github,' "$mk" | head -1 \
+                    | sed -E 's/.*\$\(call github,([^,]+),([^,]+),.*/\2/')
+
+            if [ -z "$version" ] || [ -z "$owner" ] || [ -z "$repo" ]; then
+              echo "::warning::could not parse $mk (version='$version' owner='$owner' repo='$repo') -- skipping, build will fail closed on a stale hash instead"
+              continue
+            fi
+
+            url="https://github.com/$owner/$repo/archive/$version.tar.gz"
+            echo "==> $pkg: fetching $url"
+            tmpfile=$(mktemp)
+            if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
+              echo "::warning::could not download $url for $pkg -- skipping, build will fail closed on a stale hash instead"
+              rm -f "$tmpfile"
+              continue
+            fi
+            newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
+            rm -f "$tmpfile"
+
+            newname="${pkg}-${version}.tar.gz"
+            newline="sha256  ${newhash}  ${newname}"
+            oldline=$(grep -m1 '^sha256' "$hashfile" || true)
+
+            if [ "$oldline" != "$newline" ]; then
+              awk -v newline="$newline" '
+                BEGIN { done = 0 }
+                /^sha256/ && !done { print newline; done = 1; next }
+                { print }
+              ' "$hashfile" > "$hashfile.tmp"
+              mv "$hashfile.tmp" "$hashfile"
+              echo "Updated $hashfile:"
+              echo "  old: $oldline"
+              echo "  new: $newline"
+              changed=1
+            else
+              echo "$hashfile already up to date."
+            fi
+          done
+          echo "PKG_HASH_CHANGED=$changed" >> "$GITHUB_ENV"
+
+      # --- 2. Kernel tarball hash --------------------------------------------
+      # Only touches board/mister/de10nano/patches/linux/linux.hash's own
+      # sha256 data line; the header comment block above it is preserved
+      # verbatim by only ever replacing the FIRST line starting "sha256".
+      - name: Refresh kernel tarball hash from kernel.org's signed manifest
+        run: |
+          set -euo pipefail
+          defconfig="configs/mister_de10nano_defconfig"
+          linuxhash="board/mister/de10nano/patches/linux/linux.hash"
+
+          if [ ! -f "$defconfig" ] || [ ! -f "$linuxhash" ]; then
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          kver=$(grep -oE 'BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="[^"]+"' "$defconfig" \
+                  | sed -E 's/.*"([^"]+)"/\1/')
+          if [ -z "$kver" ]; then
+            echo "::error::could not extract BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from $defconfig" >&2
+            exit 1
+          fi
+
+          series="v$(echo "$kver" | cut -d. -f1).x"
+          manifest_url="https://cdn.kernel.org/pub/linux/kernel/${series}/sha256sums.asc"
+          echo "==> kernel $kver: fetching $manifest_url"
+
+          manifest=$(curl -fsSL --retry 3 "$manifest_url") || {
+            echo "::warning::could not fetch $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          }
+
+          # kernel.org's manifest lines look like:
+          #   <sha256hash>  linux-6.18.38.tar.xz
+          matchline=$(echo "$manifest" | grep -E "  linux-${kver//./\\.}\.tar\.xz\$" | head -1 || true)
+          if [ -z "$matchline" ]; then
+            echo "::warning::no entry for linux-${kver}.tar.xz in $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          newhash=$(echo "$matchline" | awk '{print $1}')
+          newline="sha256  ${newhash}  linux-${kver}.tar.xz"
+          oldline=$(grep -m1 '^sha256' "$linuxhash" || true)
+
+          if [ "$oldline" != "$newline" ]; then
+            awk -v newline="$newline" '
+              BEGIN { done = 0 }
+              /^sha256/ && !done { print newline; done = 1; next }
+              { print }
+            ' "$linuxhash" > "$linuxhash.tmp"
+            mv "$linuxhash.tmp" "$linuxhash"
+            echo "Updated $linuxhash:"
+            echo "  old: $oldline"
+            echo "  new: $newline"
+            echo "PATCH_HASH_CHANGED=1" >> "$GITHUB_ENV"
+          else
+            echo "$linuxhash already up to date."
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Commit and push hash refresh, if anything changed
+        if: env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1'
+        run: |
+          set -euo pipefail
+          git config user.name "renovate-hash-sync[bot]"
+          git config user.email "renovate-hash-sync@users.noreply.github.com"
+          git add package/*/*.hash board/mister/de10nano/patches/linux/linux.hash
+          git commit -F - <<'COMMITMSG'
+          renovate-hash-sync: refresh companion hash(es) for this PR
+
+          Recomputed from a freshly-fetched artifact:
+            - driver/firmware package pins: sha256sum of the github archive
+              tarball at the new pinned owner/repo/ref (same "locally
+              computed" practice this tree's own .hash file headers already
+              document)
+            - kernel pin: kernel.org's signed sha256sums.asc for the
+              matching v6.x series
+
+          BUILDROOT_SHA256 (root Makefile) is NEVER touched by this
+          workflow -- see docs/renovate.md and the Makefile's own header
+          comment. That value must come from Buildroot's GPG-signed .sign
+          manifest and is a manual step.
+          COMMITMSG
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"

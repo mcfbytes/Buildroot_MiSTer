@@ -614,6 +614,54 @@ else
 fi
 
 # =============================================================================
+section "Wide-char ncurses (BR2_PACKAGE_NCURSES_WCHAR)"
+# =============================================================================
+# The ABI contract (docs/package-manifest.md, ncurses row) requires the SONAME
+# libncursesw.so.6 -- the WIDE build. Plain BR2_PACKAGE_NCURSES ships the narrow
+# libncurses.so.6 instead, which is invisible to a "does it link" check (the whole
+# stack is then self-consistently narrow) yet:
+#   - breaks any libncursesw.so.6-linked ARM binary dropped on the device -- 35
+#     stock binaries DT_NEEDED that exact SONAME; and
+#   - strips the wide key-read API (get_wch/unget_wch) out of Python's _curses, so
+#     a TUI reading the UP arrow via window.get_wch() fails and falls back to
+#     echoing ^[[A instead of navigating.
+# Assert the artifact: the wide SONAME is shipped, the narrow one is not, and the
+# wide API is actually present.
+
+require_present "usr/lib/libncursesw.so.6" "libncursesw.so.6 (wide, ABI-contract SONAME)"
+
+if tar_has "usr/lib/libncurses.so.6"; then
+	fail "narrow libncurses.so.6 NOT shipped (wide-only, stock parity)" \
+		"libncurses.so.6 is present -- BR2_PACKAGE_NCURSES_WCHAR is off, or something re-introduced the narrow lib. Stock ships only libncursesw.so.6."
+else
+	pass "narrow libncurses.so.6 absent (wide-only build, stock parity)"
+fi
+
+# Functional proof, not just a filename. The discriminator is the MODULE-LEVEL
+# _curses.unget_wch: it is compiled in only when _curses is built against the wide
+# lib, so it is present on ncursesw and absent on narrow ncurses (verified both
+# ways on this tree). Note we do NOT test get_wch here even though get_wch() is the
+# call a TUI actually uses to read the UP arrow: get_wch is a *window method*, not
+# a module attribute, so probing it needs a live initscr()'d terminal, which does
+# not exist under qemu-user. unget_wch is its module-level companion from the same
+# --enable-widec build and is the reliable, tty-free signal for the same thing.
+if [ -z "$QEMU_ARM" ]; then
+	skip "python3 curses wide-char API (unget_wch)" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/python3" ]; then
+	skip "python3 curses wide-char API (unget_wch)" "$TARGET/usr/bin/python3 not present"
+else
+	wch_out="$WORKDIR/curses-wch.out"
+	if qemu_target "$TARGET/usr/bin/python3" -c \
+		'import _curses; assert hasattr(_curses, "unget_wch"), "_curses has no unget_wch -> built against NARROW ncurses; window.get_wch() (arrow-key read) will not work"' \
+		>"$wch_out" 2>&1; then
+		pass "python3 _curses is wide-char (unget_wch present -> get_wch key reads work)"
+	else
+		fail "python3 _curses is wide-char (unget_wch present)" \
+			"$(cat "$wch_out") -- is BR2_PACKAGE_NCURSES_WCHAR=y?"
+	fi
+fi
+
+# =============================================================================
 section "Locale data (BR2_GENERATE_LOCALE)"
 # =============================================================================
 # BR2_ENABLE_LOCALE=y only compiles locale *support* into glibc. Generating the

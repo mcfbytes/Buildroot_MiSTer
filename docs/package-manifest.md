@@ -190,10 +190,10 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 | `libpopt.so.0` | `libpopt.so.0.0.1` | `BR2_PACKAGE_POPT` | 1.19 | no |  |
 | `libreadline.so.8` | `libreadline.so.8.1` | `BR2_PACKAGE_READLINE` | 8.3 | no |  |
 | `libhistory.so.8` | `libhistory.so.8.1` | `BR2_PACKAGE_READLINE` | 8.3 | no |  |
-| `libncursesw.so.6` | `libncursesw.so.6.1` | `BR2_PACKAGE_NCURSES` | 6.6 | no |  |
-| `libformw.so.6` | `libformw.so.6.1` | `BR2_PACKAGE_NCURSES` | 6.6 | no |  |
-| `libmenuw.so.6` | `libmenuw.so.6.1` | `BR2_PACKAGE_NCURSES` | 6.6 | no |  |
-| `libpanelw.so.6` | `libpanelw.so.6.1` | `BR2_PACKAGE_NCURSES` | 6.6 | no |  |
+| `libncursesw.so.6` | `libncursesw.so.6.1` | `BR2_PACKAGE_NCURSES` **+ `_NCURSES_WCHAR`** | 6.6 | no | the **`w`** = wide-char build; needs `BR2_PACKAGE_NCURSES_WCHAR=y`. Bare `BR2_PACKAGE_NCURSES` ships the NARROW `libncurses.so.6`, NOT this SONAME. Was shipped narrow by omission and restored (see defconfig comment at `BR2_PACKAGE_NCURSES_WCHAR`). |
+| `libformw.so.6` | `libformw.so.6.1` | `BR2_PACKAGE_NCURSES` **+ `_NCURSES_WCHAR`** | 6.6 | no | wide-char; same `BR2_PACKAGE_NCURSES_WCHAR` requirement as `libncursesw.so.6` |
+| `libmenuw.so.6` | `libmenuw.so.6.1` | `BR2_PACKAGE_NCURSES` **+ `_NCURSES_WCHAR`** | 6.6 | no | wide-char; same `BR2_PACKAGE_NCURSES_WCHAR` requirement as `libncursesw.so.6` |
+| `libpanelw.so.6` | `libpanelw.so.6.1` | `BR2_PACKAGE_NCURSES` **+ `_NCURSES_WCHAR`** | 6.6 | no | wide-char; same `BR2_PACKAGE_NCURSES_WCHAR` requirement as `libncursesw.so.6` |
 | `libslang.so.2` | `libslang.so.2.3.2` | `BR2_PACKAGE_SLANG` | 2.3.3 | no |  |
 | `libnewt.so.0.52` | `libnewt.so.0.52.21` | `BR2_PACKAGE_NEWT` | 0.52.23 | no |  |
 | `libgpm.so.2` | `libgpm.so.2.1.0` | `BR2_PACKAGE_GPM` | 1.20.7 | no |  |

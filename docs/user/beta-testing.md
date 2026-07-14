@@ -1,6 +1,6 @@
 # Beta-Tester Guide (STUB — P4.10)
 
-**Status:** This is a placeholder stub for P4.9. The full beta-testing documentation will be completed in **P4.10 (Beta launch)**.
+**Status:** Placeholder. This stub was created by P4.9 (community & governance files); the full beta-testing guide lands with **P4.10 (Beta launch)**, which is gated on the ADR 0014 sustainability sign-off.
 
 ---
 

@@ -33,39 +33,31 @@ parsing wins" race against `Distribution_MiSTer`'s multi-megabyte catalog, is
 dominated by how small this document is. Growing it defeats the one property
 that makes it win.
 
-## THE VERSIONING PROBLEM (flagged by P4.4; see docs/db-json-versioning.md)
+## VERSIONING (ADR 0018 -- Accepted; see docs/db-json-versioning.md)
 
-NOTE (ADR 0018): the durable fix has landed -- /MiSTer.version is now set from
-the release tag date, so it is distinct per release. publish-db.yml calls this
-script with --version = the release archive's YYYYMMDD (== /MiSTer.version), NOT
---published-at. The --published-at path remains supported but is no longer how
-releases are versioned; the analysis below is kept as the record of why the
-interim publishedAt approach existed.
+`linux.version`'s last 6 characters are compared, by strict string inequality,
+against the RUNNING system's `/MiSTer.version` (linux_updater.py#L73-76). So the
+two must be EQUAL for a device that is already up to date, and DIFFERENT for one
+that is not. Both halves matter, and getting either wrong produces a bad failure:
 
-`linux.version`'s last 6 characters are compared, by strict string
-inequality, against the RUNNING system's `/MiSTer.version`
-(linux_updater.py#L73-76). `configs/mister_de10nano_defconfig` pins
-`SOURCE_DATE_EPOCH` to Buildroot's own last-commit date (constant as long as
-`BUILDROOT_VERSION` doesn't change), so `board/mister/de10nano/post-build.sh`
-bakes the IDENTICAL `/MiSTer.version` into every image built from the same
-Buildroot pin -- i.e. into every one of our releases that doesn't itself bump
-`BUILDROOT_VERSION`. If this script derived `version` from that same baked-in
-value (or from the `release_YYYYMMDD.7z` filename, which traces back to it --
-see release.yml's own "derive RELEASE_DATE" step), two such releases would
-publish an IDENTICAL `version`, and the Downloader's pure-inequality check
-would report "no update" to anyone already on the first one.
+  * same version for two different releases -> the new one is never offered;
+  * a version that never equals what the image bakes in -> the device looks
+    outdated on EVERY Downloader run, and re-flashes forever.
 
-This script therefore derives `version` from the RELEASE's own real-world
-date (`--published-at`, the GitHub Release's `publishedAt` timestamp, or an
-explicit `--version` override) -- NOT from `/MiSTer.version` and NOT from the
-archive filename. This is deliberately decoupled from the image's internal
-version stamp. See docs/db-json-versioning.md for the full rationale AND the
-residual trade-off this decoupling accepts (short version: it fixes "a new
-release never gets offered", at the cost of "an already-updated device may
-see an update as available on every Downloader run between releases, since
-its own baked-in version never advances to match whatever we published last"
--- flagged there as an open question for a human / a future P2.6 revisit, not
-silently resolved here).
+ADR 0018 makes both hold by giving the two values a single source of truth: the
+TAGGED COMMIT's date. `release.yml` derives MISTER_VERSION from it, post-build.sh
+bakes exactly that into `/MiSTer.version`, and it also names the archive
+`release_YYYYMMDD.7z`. publish-db.yml then recovers the same 6-digit YYMMDD from
+that filename and passes it here as `--version`. Archive name, `/MiSTer.version`,
+and `db.json`'s `version` are therefore the same value by construction.
+
+This deliberately does NOT come from SOURCE_DATE_EPOCH, which the defconfig pins
+to a constant for reproducibility -- every release would otherwise claim the same
+version. Nor from `publishedAt`: that is the moment a human clicked "publish",
+which can differ from the build date and would break the equality above.
+
+`--published-at` remains supported for ad-hoc/manual use and is how this was done
+before ADR 0018, but it is NOT how releases are versioned. Prefer `--version`.
 
 `linux.hash`/`linux.size` are computed from the actual downloaded release
 asset (`--asset-file`), never from a pre-upload local build copy

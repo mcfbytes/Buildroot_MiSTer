@@ -20,8 +20,8 @@ body:
       description: |
         The version of the MiSTer Linux image you're running.
         Check the rootfs: read the first 6 bytes of /MiSTer.version on the SD card.
-        Example: "202607" for July 2026 release.
-      placeholder: "YYYYMM"
+        It is a 6-digit YYMMDD stamp. Example: "260616" = 2026-06-16.
+      placeholder: "YYMMDD"
     validations:
       required: true
 

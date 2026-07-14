@@ -15,8 +15,8 @@ body:
     id: image_version
     attributes:
       label: Image version tested
-      description: "The version of the modernized image. Example: 202607 or built-2026-07-12"
-      placeholder: "202607"
+      description: "The image version -- the 6-digit YYMMDD in /MiSTer.version. Example: 260616 (= 2026-06-16), or built-2026-07-12 for a local build."
+      placeholder: "260616"
     validations:
       required: true
 

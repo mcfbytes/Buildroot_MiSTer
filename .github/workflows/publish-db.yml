@@ -51,22 +51,25 @@
 # successfully deploy. `actions/deploy-pages` fails clearly if this hasn't
 # been done; it is not something a workflow file can flip on its own.
 #
-# THE VERSIONING PROBLEM THIS WORKFLOW WORKS AROUND (flagged by P4.4, resolved
-# — with a documented, NOT fully closed, trade-off — by ADR 0018 / docs/
-# db-json-versioning.md): `/MiSTer.version`, baked into every image by
-# `post-build.sh` from `SOURCE_DATE_EPOCH`, is CONSTANT across every release
-# built from the same `BUILDROOT_VERSION` pin. If `db.json`'s `linux.version`
-# tracked that same baked-in value, two such releases would publish an
-# identical version string and the Downloader's pure-inequality update check
-# (docs/downloader-contract.md §3) would report "no update" for the second
-# one to anyone already on the first. `scripts/gen-db-json.py` therefore
-# derives `linux.version` from the RELEASE's own real publish date instead —
-# see docs/db-json-versioning.md for the full mechanism and the residual cost
-# it knowingly accepts (an already-updated device's `/MiSTer.version` never
-# advances to match what we published, so it can appear "outdated" again on
-# every Downloader run until the NEXT real release, not just once). That
-# residual is an open question for a human / a future P2.6 change — not
-# silently resolved here.
+# VERSIONING (ADR 0018 — Accepted; docs/db-json-versioning.md): the Downloader
+# compares `db.json`'s `linux.version` (last 6 chars) against the running
+# system's `/MiSTer.version` by strict string inequality
+# (docs/downloader-contract.md §3). The two must be EQUAL on an up-to-date
+# device and DIFFERENT otherwise — and both halves bite if you get them wrong:
+# an identical version for two releases means the second is never offered, while
+# a version that can never equal the image's own stamp means every device
+# re-flashes on every Downloader run, forever.
+#
+# ADR 0018 gives both values ONE source of truth — the tagged commit's date.
+# release.yml derives MISTER_VERSION from it, post-build.sh bakes exactly that
+# into `/MiSTer.version`, and it names the archive `release_YYYYMMDD.7z`. The
+# "Derive db version" step below recovers the same 6-digit YYMMDD from that
+# filename and passes it to gen-db-json.py as `--version`. Archive name, image
+# stamp, and published version are the same value by construction.
+#
+# Deliberately NOT from SOURCE_DATE_EPOCH (pinned constant, for reproducibility —
+# every release would claim the same version) and NOT from `publishedAt` (the
+# moment a human clicked publish, which can differ from the build date).
 #
 ################################################################################
 
@@ -329,8 +332,9 @@ jobs:
                not a stale cached copy.
             3. Run scripts/check-db-json-schema.py against the DEPLOYED file too (not just
                the pre-deploy local copy) as a final end-to-end confirmation.
-            4. Read docs/db-json-versioning.md's "residual trade-off" section and decide
-               whether the re-flash-on-every-Downloader-run behavior it describes is
-               acceptable for the beta, or whether the P2.6 override it recommends should
-               land first (ADR 0018 is "Proposed", not "Accepted", for exactly this reason).
+            4. Confirm db.json's "version" equals the /MiSTer.version baked into the image
+               this release ships. ADR 0018 (Accepted) makes them the same value by
+               construction -- both derive from the tagged commit's date -- so they should
+               already agree; this is the end-to-end check that they actually do. If they
+               ever diverge, every device re-flashes on every Downloader run, forever.
           EOF

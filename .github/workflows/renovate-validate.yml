@@ -1,0 +1,58 @@
+################################################################################
+#
+# renovate-validate.yml — fail loudly on an invalid renovate.json.
+#
+# WHY THIS EXISTS: an invalid Renovate config does NOT produce an error anywhere
+# you would see it. Renovate simply **skips the repository**. There is no failed
+# check, no PR comment, no email — the only symptom is that dependency PRs
+# quietly stop appearing, which is precisely the kind of failure nobody notices
+# for months. Given that this repo hand-pins a kernel, Buildroot, nine
+# out-of-tree driver commits and a pile of firmware, "Renovate silently stopped
+# telling us about security updates" is a genuinely bad outcome.
+#
+# So: run Renovate's own official validator, in CI, on every change to the config.
+# Cheap (a Node install and a few seconds) and scoped by `paths:` so it never
+# fires on the 3-hour image build's pushes.
+#
+# Run the same check locally before pushing:
+#   npx --package renovate -- renovate-config-validator renovate.json
+#
+################################################################################
+
+name: Validate renovate.json
+
+on:
+  push:
+    paths:
+      - 'renovate.json'
+      - '.github/workflows/renovate-validate.yml'
+  pull_request:
+    paths:
+      - 'renovate.json'
+      - '.github/workflows/renovate-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: renovate-config-validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+
+      # `--strict` makes warnings (e.g. a deprecated or unknown option that
+      # Renovate would otherwise tolerate and ignore) fail the run too. We want
+      # to hear about a manager that has quietly stopped doing anything, not just
+      # about outright-malformed JSON.
+      - name: Validate renovate.json
+        run: npx --yes --package renovate -- renovate-config-validator --strict renovate.json

@@ -1,0 +1,132 @@
+################################################################################
+#
+# build.yml — CI build workflow (TASKS.md P4.1, PLAN.md §9 "Build").
+#
+# Builds the full MiSTer image the way a developer would locally — by calling
+# this repo's own wrapper Makefile (`make all`) — then runs the non-hardware
+# parity suite (scripts/ci-tests.sh, P3.12) and the ABI/SONAME checker (P2.2)
+# against the result, and uploads the two shipped images plus the SBOM.
+#
+# The build recipe itself — disk reclaim, the five input caches, apt deps,
+# defconfig, `make all` — lives in .github/actions/buildroot-build, SHARED with
+# release.yml and reproducibility.yml. It is deliberately not inlined here: the
+# three workflows used to each carry their own copy, and the fixes that took
+# build.yml five failed runs to find never reached the other two. Read that
+# action's header before changing anything about how the build runs.
+#
+# CAVEAT: scripts/check-abi.sh (P2.2) does not exist yet — the ABI step below
+# runs it only if present and emits a ::notice:: otherwise. ci-tests.sh's own
+# "ABI / stock-binary smoke" section covers the same P2.2/P2.8 core assertions
+# as a lightweight interim (see that script's header).
+#
+################################################################################
+
+name: Build
+
+on:
+  push:
+  pull_request:
+
+# Cancel a superseded run for the same ref (e.g. a new push to an open PR)
+# rather than burning CI minutes finishing a build nobody wants anymore.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: this workflow only reads the repo and uploads artifacts,
+# both covered by the default `contents: read` — no token write scope needed.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build image (two-stage Buildroot)
+    runs-on: ubuntu-latest
+
+    # 300 min, from a real measurement rather than a guess: the first green cold
+    # build (run 29300460591 — empty caches, 4-vCPU runner) took 3h19m47s. This
+    # is ~1.5x that, so a legitimately slow cold build still finishes while a
+    # genuinely hung one is killed ahead of GitHub's silent 6-hour default.
+    #
+    # A cold build is NOT the rare case: any change to the toolchain fingerprint
+    # busts the cross-toolchain cache. Ordinary package adds do NOT (see the
+    # composite action) — those stay warm and are far quicker.
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Everything from "prepare the runner" to "linux.img + zImage_dtb exist".
+      - name: Build the image
+        uses: ./.github/actions/buildroot-build
+        with:
+          run-legal-info: "true"
+
+      # --- Non-hardware parity suite (P3.12) ---------------------------------
+      # CI_TESTS_SKIP_QEMU_SYSTEM=1 skips scripts/test-initramfs.sh, the one
+      # sub-check that boots a QEMU *system* kernel six times and can take
+      # several minutes on its own (see ci-tests.sh's header). Unset it in a
+      # manual/nightly run to get the full suite.
+      - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
+        env:
+          CI_TESTS_SKIP_QEMU_SYSTEM: "1"
+        run: scripts/ci-tests.sh
+
+      # --- ABI / SONAME parity checker (P2.2) --------------------------------
+      # Runs if/when P2.2 lands — no workflow change needed then.
+      - name: ABI / SONAME parity checker (P2.2)
+        run: |
+          if [ -x scripts/check-abi.sh ]; then
+            scripts/check-abi.sh output
+          else
+            echo "::notice title=P2.2 not yet implemented::scripts/check-abi.sh does not exist yet (TASKS.md P2.2 is still open). ci-tests.sh's 'ABI / stock-binary smoke' section already covers the equivalent P2.2/P2.8 core checks as an interim -- see scripts/ci-tests.sh's header comment. This step will pick up scripts/check-abi.sh automatically once P2.2 lands."
+          fi
+
+      # --- Upload build artifacts, on every push -----------------------------
+      # (Not on pull_request runs, to avoid doubling artifact storage for every
+      # PR revision on top of its eventual push to the target branch.)
+      - name: Upload build artifacts
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mister-images-${{ github.sha }}
+          path: |
+            output/images/linux.img
+            output/images/zImage_dtb
+          if-no-files-found: error
+          retention-days: 14
+
+      # --- Upload SBOM / legal-info artifact (P4.2) --------------------------
+      # WITHOUT sources/ and host-sources/. `make legal-info` copies every
+      # package's upstream source TARBALL into those two directories -- the whole
+      # target package set, plus gcc/glibc/binutils for the host. That made this
+      # artifact 2109 MB, TWENTY-FOUR TIMES the size of the images it accompanies
+      # (87 MB), uploaded on every single push.
+      #
+      # Those tarballs are the GPL "accompanying source" payload. They are needed
+      # when we DISTRIBUTE the image (release.yml attaches them, sized and guarded
+      # there) -- but a CI push distributes nothing, so there is no obligation to
+      # carry them here, and nobody reviewing a push wants a 2 GB download.
+      #
+      # What remains is the part that is actually an SBOM and actually gets read:
+      # manifest.csv (every package, version, license, upstream URL), the license
+      # texts, buildroot.config, and the source hashes. ~4 MB.
+      - name: Package legal-info for upload (SBOM, without the source tarballs)
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          tar -czf legal-info.tar.gz \
+            --exclude='legal-info/sources' \
+            --exclude='legal-info/host-sources' \
+            -C output legal-info
+          echo "SBOM artifact: $(du -h legal-info.tar.gz | cut -f1) (source tarballs excluded -- see release.yml for those)"
+
+      - name: Upload SBOM artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: legal-info-${{ github.sha }}
+          path: legal-info.tar.gz
+          if-no-files-found: error
+          retention-days: 14

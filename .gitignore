@@ -11,3 +11,8 @@ __pycache__/
 # Transient subagent git worktrees (isolation: "worktree") — never commit these;
 # they are separate checkouts and were once accidentally captured as a gitlink.
 .claude/worktrees/
+
+# Generated in CI by .github/actions/buildroot-build to key the toolchain cache
+# on ONLY the toolchain-relevant defconfig options (so a package add does not
+# evict the cross-toolchain and force a 3h cold rebuild). Never committed.
+.br-toolchain-fingerprint

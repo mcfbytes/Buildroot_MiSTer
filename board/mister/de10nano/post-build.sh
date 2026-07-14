@@ -58,11 +58,32 @@ echo "post-build.sh: pinned root password (stock-parity '1', fixed salt)"
 # the last 6 chars of the db entry's version -- so it must be EXACTLY 6 bytes
 # with NO trailing newline. `echo` would append \n, which never matches any db
 # version and makes the box re-flash on every Downloader run, forever. Use
-# printf '%s'. Derive the date from SOURCE_DATE_EPOCH so the stamp is
-# reproducible (P2.5/A9); fall back to now only outside a reproducible build.
-VERSION_DATE="$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
-	|| date -u -r "${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
-	|| date -u +%y%m%d)"
+# printf '%s'. Version source, in priority order:
+#   1. MISTER_VERSION (6-digit YYMMDD) exported by the RELEASE workflow from the
+#      release tag. This makes /MiSTer.version DISTINCT per release AND equal to
+#      the db.json entry's version, so the Downloader -- which compares this
+#      against the db version's last 6 chars -- sees the box as up to date after
+#      applying an update and does NOT re-flash on every run. This is the durable
+#      fix for the constant-/MiSTer.version problem (P4.5 / ADR 0018): the stamp
+#      used to come only from SOURCE_DATE_EPOCH, which is pinned to Buildroot's
+#      commit and therefore identical across releases.
+#   2. Otherwise, SOURCE_DATE_EPOCH's date -- constant per Buildroot pin, which is
+#      exactly what keeps NON-release builds (CI push, local, the P4.3
+#      reproducibility double-build) byte-reproducible (P2.5/A9). A release
+#      pins MISTER_VERSION to a fixed tag date, so releases stay reproducible too.
+if [ -n "${MISTER_VERSION:-}" ]; then
+	VERSION_DATE="$MISTER_VERSION"
+else
+	VERSION_DATE="$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
+		|| date -u -r "${SOURCE_DATE_EPOCH:-$(date +%s)}" +%y%m%d 2>/dev/null \
+		|| date -u +%y%m%d)"
+fi
+# Guard the (external) override: exactly 6 digits YYMMDD, else fail the build
+# rather than ship a version the Downloader could never match.
+case "$VERSION_DATE" in
+	[0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+	*) echo "post-build.sh: ERROR: version must be 6 digits YYMMDD (got '$VERSION_DATE'; check MISTER_VERSION)" >&2; exit 1 ;;
+esac
 printf '%s' "$VERSION_DATE" > "$TARGET_DIR/MiSTer.version"
 
 # Self-check A10: exactly 6 bytes, and the last byte is not a newline.

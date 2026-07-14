@@ -1,0 +1,221 @@
+################################################################################
+#
+# reproducibility.yml — double-build reproducibility CI (TASKS.md P4.3, A9).
+#
+# A9 requires: pinned ext4 feature set, fixed UUID/hash-seed, SOURCE_DATE_EPOCH,
+# BR2_REPRODUCIBLE=y (all landed in P2.5 — configs/mister_de10nano_defconfig)
+# combine to make `linux.img` and `zImage_dtb` byte-identical across two
+# independent builds of the same commit. P2.5 proved that ONCE, locally, for
+# two image-generation passes over the SAME already-built output/ tree (see
+# that task's commit message) — it deliberately did not prove it across two
+# genuinely independent builds (fresh checkout, fresh runner, fresh
+# output/target), because "build discipline forbids make clean on the shared
+# tree" in an interactive session. That is exactly the gap this workflow
+# closes: two SEPARATE GitHub-hosted runners, each doing a full two-stage
+# build from a clean checkout of the same commit, comparing the two
+# resulting image hashes and failing loudly on any mismatch.
+#
+# Structure: a `build` job with a 2-leg matrix (`build-id: [a, b]`) so the
+# build recipe is written ONCE but actually executed twice, on two
+# independent runners assigned by GitHub Actions (no guarantee of — and no
+# attempt to force — the same physical host, which is the point: this is
+# what stands in for "two different developers' machines" in CI). Each leg
+# uploads a small SHA256SUMS-style artifact (NOT the multi-hundred-MB images
+# themselves — see the "why no image upload" note below). A dependent
+# `compare` job downloads both and diffs them.
+#
+# INPUT caches vs OUTPUT caches — the one rule this file must not violate:
+# the four caches below (Buildroot tarball, dl/, host toolchain, ccache) are
+# all INPUTS (source tarballs, a compiled cross-toolchain, compiled-object
+# reuse hints) that a real independent build is entitled to share (a
+# real-world reproducibility bug in, say, package source content or compiler
+# version would still need to be caught, but caching the *toolchain build*
+# is caching an input, not the artifact under test). output/target and
+# output/images — the actual rootfs assembly and the two files being
+# compared — are DELIBERATELY never cached here (build.yml's own four
+# caches don't touch those two paths either), so both legs assemble the
+# target rootfs and generate both images completely fresh, every run.
+# Caching either would make the "two independent builds" comparison
+# compare a cache against itself — passing even when the underlying build
+# is not actually reproducible.
+#
+# WHY NO IMAGE UPLOAD: uploading linux.img (hundreds of MB) from both legs
+# just to diff two 64-byte sha256 lines would roughly double this
+# workflow's artifact storage and transfer time for zero benefit — the
+# per-leg SHA256SUMS-style file is authoritative for the compare job's one
+# job (detect a mismatch), and build.yml (P4.1) already uploads the actual
+# images from its own `push` runs for anyone who needs the bytes. If a
+# mismatch is ever caught here, the fix is to re-run locally with the exact
+# same recipe (this file's build steps) and bisect — the images produced by
+# THAT investigation are the ones worth keeping, not a permanently-retained
+# copy from every green run.
+#
+# SHARED BUILD RECIPE: the build itself lives in
+# .github/actions/buildroot-build, which build.yml and release.yml also call.
+# It used to be a near-verbatim copy in each of the three files; that overlap was
+# not benign. The fixes build.yml needed to go green (no container, disk reclaim,
+# defconfig step, non-root, workspace-keyed toolchain caches) never propagated
+# here, so this workflow would have failed the next time it ran. Sharing the code
+# is also what makes this workflow's claim honest: "same commit -> same bytes" is
+# only meaningful if both legs really do run the same build, and now they demonstrably do.
+#
+# This workflow has never actually been run — see docs/reproducibility.md
+# for the honest, as-yet-unproven status of the "no residual nondeterminism"
+# claim and what would populate that section once CI runs it for real.
+#
+################################################################################
+
+name: Reproducibility
+
+on:
+  # MANUAL-ONLY (workflow_dispatch), deliberately NOT push/pull_request.
+  # This is a double build -- 2x the cost of a normal one -- and its shared
+  # INPUT caches (dl/, host toolchain, ccache; same keys as build.yml) are only
+  # warm AFTER build.yml has run. Wiring it to push would burn two *cold*
+  # builds on every commit, in parallel with build.yml (3 cold Buildroot builds
+  # at once). Instead: let build.yml seed the caches, then run this on demand:
+  #   gh workflow run reproducibility.yml --ref <branch>
+  # (Add a `schedule:` here later if a periodic warm-cache check is wanted.)
+  workflow_dispatch:
+
+# Cancel a superseded run for the same ref, same as build.yml — a double
+# build is twice the cost of a single one, so this matters even more here.
+concurrency:
+  group: reproducibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read the repo, upload/download this workflow's own
+# artifacts — both covered by the default contents: read (artifact up/download
+# does not need an elevated token scope; it's scoped to the run itself).
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================================================
+  # build — the 2-leg matrix. Each leg is a complete, independent two-stage
+  # Buildroot build from a fresh checkout, ending in a small hash-manifest
+  # artifact instead of the images themselves (see file header).
+  # ==========================================================================
+  build:
+    name: Build image (leg ${{ matrix.build-id }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build-id: [a, b]
+
+    # NO `container:` — see .github/actions/buildroot-build. The build does not fit
+    # on a hosted runner without reclaiming the host's preinstalled software, and
+    # a container job cannot reach the host to do that. This does NOT weaken the
+    # comparison: the environment is still held constant across both legs (same
+    # runner image, same shared action), and Buildroot bootstraps its own host
+    # toolchain from pinned sources anyway, so the distro does not leak into the
+    # target output.
+
+    # 300 min, matching build.yml — same measured 3h19m cold build (run
+    # 29300460591). The two legs run in parallel, so this is per-leg, not summed.
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # The shared build recipe (disk reclaim, the five input caches, apt deps,
+      # defconfig, `make all`) — the SAME code build.yml and release.yml run, which
+      # is what makes "same commit -> same bytes" a claim about the source rather
+      # than about three hand-synchronised copies of a workflow.
+      #
+      # The caches it restores are INPUTS to the build under test, not the outputs
+      # being compared: sharing a compiled cross-toolchain and ccache across the
+      # two legs does not weaken the comparison (a bad toolchain is build.yml's
+      # correctness checks to catch, not this workflow's). output/target and
+      # output/images are never cached — this leg builds them from scratch every
+      # time, which is the entire point.
+      #
+      # MISTER_VERSION is deliberately left UNSET here, so post-build.sh falls back
+      # to the constant SOURCE_DATE_EPOCH date (ADR 0018). A release build overrides
+      # it; a reproducibility build must not, or the two legs would disagree the
+      # moment they straddle midnight UTC.
+      - name: Build the image
+        uses: ./.github/actions/buildroot-build
+
+      # --- The whole point of this job: hash the two shipped images ---------
+      # Hashed from INSIDE output/images/ (not `sha256sum output/images/...`)
+      # so the recorded filenames are bare (`linux.img`, `zImage_dtb`), not
+      # full paths — the two legs' GITHUB_WORKSPACE paths happen to match
+      # today (both github-hosted ubuntu-latest runners under the same
+      # container image), but bare filenames make the later `diff` correct
+      # by construction instead of by coincidence.
+      - name: Compute image hashes
+        run: |
+          set -eu
+          cd output/images
+          sha256sum linux.img zImage_dtb | tee "$GITHUB_WORKSPACE/SHA256SUMS-${{ matrix.build-id }}"
+
+      - name: Upload hash manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repro-hashes-${{ matrix.build-id }}
+          path: SHA256SUMS-${{ matrix.build-id }}
+          if-no-files-found: error
+          retention-days: 14
+
+  # ==========================================================================
+  # compare — downloads both legs' hash manifests and diffs them. This job
+  # needs no container, no Buildroot, no caches: it exists purely to fail
+  # loudly (with both hashes printed) on any mismatch, and to print the
+  # single agreed hash on success.
+  # ==========================================================================
+  compare:
+    name: Compare double-build hashes
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download leg A hashes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: repro-hashes-a
+          path: hashes-a
+
+      - name: Download leg B hashes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: repro-hashes-b
+          path: hashes-b
+
+      - name: Diff the two builds' image hashes
+        run: |
+          set -eu
+          a="hashes-a/SHA256SUMS-a"
+          b="hashes-b/SHA256SUMS-b"
+
+          echo "--- leg a (${a}) ---"
+          cat "$a"
+          echo "--- leg b (${b}) ---"
+          cat "$b"
+
+          # Compare hash+filename pairs only (ignore the a/b manifest
+          # filenames themselves, which legitimately differ).
+          norm_a=$(awk '{print $1, $2}' "$a" | sort)
+          norm_b=$(awk '{print $1, $2}' "$b" | sort)
+
+          if [ "$norm_a" = "$norm_b" ]; then
+            echo ""
+            echo "==> REPRODUCIBLE: both builds of ${{ github.sha }} produced identical images:"
+            echo "$norm_a"
+            exit 0
+          fi
+
+          echo "" >&2
+          echo "::error::Reproducibility FAILURE — the two independent builds of ${{ github.sha }} produced DIFFERENT images (A9 violated)." >&2
+          echo "" >&2
+          echo "leg a:" >&2
+          echo "$norm_a" >&2
+          echo "leg b:" >&2
+          echo "$norm_b" >&2
+          echo "" >&2
+          echo "See docs/reproducibility.md for what BR2_REPRODUCIBLE / P2.5 already" >&2
+          echo "pin, and start bisecting from whichever of linux.img / zImage_dtb" >&2
+          echo "actually differs above." >&2
+          exit 1

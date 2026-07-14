@@ -27,4 +27,4 @@
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
-sha256  6f16ff302599f6fe34742890322cf0775703105fbd8767449682fca6af0fb782  linux-6.18.33.tar.xz
+sha256  ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045  linux-6.18.38.tar.xz

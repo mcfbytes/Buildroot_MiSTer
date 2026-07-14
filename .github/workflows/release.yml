@@ -1,0 +1,593 @@
+################################################################################
+#
+# release.yml — tag-triggered release workflow + build provenance (TASKS.md
+# P4.4, PLAN.md §9 "Build", docs/downloader-contract.md P0.6).
+#
+# Builds the image using the SAME recipe as build.yml (P4.1) — literally the
+# same code: .github/actions/buildroot-build — then assembles a GitHub Release
+# whose assets are consumable by two completely different downstream actors:
+#
+#   1. A HUMAN downloading `linux.img` / `zImage_dtb` / configs / SBOM
+#      directly from the Release page.
+#   2. The on-device `Downloader_MiSTer` (`LinuxUpdater`), which NEVER talks
+#      to GitHub Releases directly — it fetches whatever URL a db.json's
+#      `linux.url` field names (P4.5, a separate task) and feeds it straight
+#      to a PINNED, OLD, STATIC ARM `7za` binary it already has on the SD
+#      card. That binary only ever sees `release_YYYYMMDD.7z`. Every
+#      assertion in this file about extraction/layout exists to protect
+#      actor #2, because nothing else in the pipeline will catch a mistake
+#      there — see docs/downloader-contract.md §4-§8, §12.
+#
+# WHY THIS REBUILDS INSTEAD OF DEPENDING ON build.yml'S RUN: a release must be
+# built from the tagged commit by a job whose provenance we attest, not adopted
+# from some earlier run's artifacts. But the BUILD ITSELF is no longer duplicated
+# — it was, and that was a latent bug: the five fixes build.yml needed to go
+# green (no container, disk reclaim, defconfig step, non-root, workspace-keyed
+# toolchain caches) never reached this file, so the first real tag push would
+# have failed here. The recipe now lives once, in
+# .github/actions/buildroot-build; read its header before touching the build.
+#
+# THE ONE THING THIS FILE CANNOT DO ITSELF: vendor the stock `uboot.img` /
+# `files/linux/` auxiliary payload (updateboot, config templates,
+# u-boot.txt_example, MidiLink.INI, ppp_options, the samba/user-startup/
+# wpa_supplicant templates, gamecontrollerdb/, mt32-rom-data/, soundfonts/).
+# G6 forbids committing binaries to git, and several of those files ARE
+# binary (uboot.img; arguably the ROM/soundfont payloads). So this workflow
+# FETCHES them, at release time, from the exact same commit-pinned stock
+# archive `docs/reference-materials.md` / `docs/downloader-contract.md`
+# already verified byte-for-byte in this repo:
+#
+#   https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/
+#     b8531c7848526d9a8227841923cc4a493cb6e631/release_20250402.7z
+#   MD5 8dc3acae7d758a80a363fbd7ad31d95d, SHA-256
+#   5d087d9c501b2bc50aaf918146e7bf30e5981c08268d5a0e67a3233a4da642ba,
+#   93,727,644 bytes — all three checked below BEFORE anything is extracted
+#   from it. Individual `uboot.img`/`updateboot` hashes are re-checked too
+#   (docs/downloader-contract.md §8, §12.1) as belt-and-suspenders.
+#
+# TODO(open decision, flagged per task brief — see the authoring agent's
+# final report for the full writeup): this is a real, working, hash-pinned
+# source for the stock payload, not a fabrication — but it is still a
+# dependency on a THIRD-PARTY repo's git blob outside this project's control,
+# and `mt32-rom-data/`/`soundfonts/` carry content this project did not
+# author. Both are pre-existing facts of every MiSTer distribution (this
+# workflow does not introduce them), but a human should sanity-check this
+# sourcing choice before the first real tag push, not just this comment.
+#
+# TAG CONVENTION: no tag convention exists anywhere in this repo as of this
+# writing (`git tag -l` is empty; TASKS.md never specifies one). This file
+# picks `v*` (e.g. `v1.0.0`, `v2026.07.13-1`) purely because the task brief
+# suggested it as a default — it is NOT derived from any existing project
+# decision and should be revisited/ratified by a human. Separately, and
+# DELIBERATELY DECOUPLED from the git tag: the internal `release_YYYYMMDD.7z`
+# filename and the db.json `linux.version` (P4.5) are driven by
+# `/MiSTer.version`, which `board/mister/de10nano/post-build.sh` bakes into the
+# image from the `MISTER_VERSION` this workflow derives from the TAGGED COMMIT's
+# date (ADR 0018). It deliberately does NOT come from SOURCE_DATE_EPOCH: that is
+# pinned to a constant for reproducibility, so every release would have claimed
+# the same version and the Downloader — which compares db.json's `version` to
+# the on-device `/MiSTer.version` — would have re-flashed on every single run.
+#
+################################################################################
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# A re-pushed (corrected) tag should supersede an in-flight run for the same
+# tag; distinct tags already get distinct concurrency groups via github.ref,
+# so this never cancels a run for a DIFFERENT release.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege at the workflow level; the `publish` job elevates its own
+# permissions block (contents: write, id-token: write, attestations: write)
+# only for the steps that actually need them (attest + create the release).
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # build — produces every release asset and the pinned-7za-verified archive,
+  # then hands a single artifact bundle to `publish`.
+  #
+  # NO `container:` — see .github/actions/buildroot-build. A container job cannot
+  # reclaim the host's ~30 GB of preinstalled software, and without that reclaim
+  # a Buildroot build does not fit on a hosted runner at all (output/ is 24 GB).
+  # ============================================================================
+  build:
+    name: Build image + assemble release_YYYYMMDD.7z
+    runs-on: ubuntu-latest
+
+    # 330 min: the measured cold build is 3h19m (run 29300460591), and this job
+    # does strictly more than build.yml — fetch + verify the ~90 MB stock archive,
+    # assemble the 7z, round-trip it through the pinned ARM 7za, hash everything.
+    # 30 min on top of build.yml's 300 covers that tail.
+    timeout-minutes: 330
+
+    outputs:
+      release_date: ${{ steps.mister_version.outputs.release_date }}
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+      # --- Pinned stock reference archive --------------------------------
+      # docs/reference-materials.md §1, docs/downloader-contract.md §2/§8,
+      # docs/verification/stock-release-20250402.md. This is the ONLY
+      # source, anywhere in this pipeline, for uboot.img and the
+      # files/linux/ auxiliary payload we do not (and per G6 must not)
+      # vendor in git.
+      STOCK_RELEASE_URL: https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/b8531c7848526d9a8227841923cc4a493cb6e631/release_20250402.7z
+      STOCK_RELEASE_MD5: 8dc3acae7d758a80a363fbd7ad31d95d
+      STOCK_RELEASE_SHA256: 5d087d9c501b2bc50aaf918146e7bf30e5981c08268d5a0e67a3233a4da642ba
+      STOCK_RELEASE_SIZE: "93727644"
+      STOCK_UBOOT_SHA256: e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64
+      STOCK_UBOOT_SIZE: "515141"
+      STOCK_UPDATEBOOT_SHA256: 6ff2d50a080e26d7173b61c52083e9cc42ca658db0c5031b4da1c45c74a562f2
+      STOCK_UPDATEBOOT_SIZE: "407"
+
+      # --- Pinned ARM static 7za --------------------------------------------
+      # The EXACT binary the real on-device Downloader fetches once and
+      # reuses forever (docs/downloader-contract.md §4). Its own upstream
+      # URL is a floating branch ref (`raw/master/7za.gz`), not a commit pin
+      # — that is a pre-existing fact of the Downloader's own source
+      # (constants.py), not something this workflow can fix without
+      # deviating from what real devices actually fetch. The MD5 check
+      # below is the actual security control: any substituted content fails
+      # the build loudly instead of silently.
+      STOCK_7ZA_GZ_URL: https://github.com/MiSTer-devel/SD-Installer-Win64_MiSTer/raw/master/7za.gz
+      STOCK_7ZA_GZ_MD5: ed1ad5185fbede55cd7fd506b3c6c699
+      STOCK_7ZA_GZ_SIZE: "465600"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Must run BEFORE the build: post-build.sh reads MISTER_VERSION to bake
+      # /MiSTer.version into the image (ADR 0018). Derive a 6-digit YYMMDD from
+      # the TAGGED COMMIT's UTC date -- fixed per commit, so re-running a tag
+      # reproduces the same version rather than silently minting a new one.
+      # $GITHUB_ENV so every later step (including the build action) inherits it.
+      # Override by pre-setting MISTER_VERSION in this job's env.
+      - name: Derive release version (YYMMDD) from the tagged commit
+        run: |
+          set -eu
+          v="${MISTER_VERSION:-$(TZ=UTC git show -s --format=%cd --date=format-local:%y%m%d HEAD)}"
+          case "$v" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+            *) echo "::error::derived MISTER_VERSION '$v' is not 6 digits YYMMDD" >&2; exit 1 ;;
+          esac
+          echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
+          echo "Release version (YYMMDD) = $v  ->  /MiSTer.version, release_20${v}.7z, db.json"
+
+      # The shared recipe (disk reclaim, caches, apt, defconfig, `make all`).
+      # p7zip-full is this job's own addition -- needed to CREATE
+      # release_YYYYMMDD.7z. On Ubuntu 24.04+ it is a transitional package pulling
+      # in `7zip`, which still ships /usr/bin/7z and /usr/bin/7za. NOTE this is a
+      # DIFFERENT 7za than the pinned ARM static one fetched below: this one only
+      # creates/inspects the archive on the x86_64 runner, while the pinned ARM
+      # binary is what actually proves on-device compatibility.
+      - name: Build the image
+        uses: ./.github/actions/buildroot-build
+        with:
+          extra-apt-packages: p7zip-full
+          run-legal-info: "true"
+
+      ##########################################################################
+      # Assemble the flat `dist/` directory -- these seven filenames are
+      # EXACTLY the seven release assets TASKS.md P4.4 names, no more, no
+      # less. Everything from here on writes into dist/ or reads from it.
+      ##########################################################################
+
+      - name: Stage dist/ and copy the two image assets
+        run: |
+          set -eu
+          mkdir -p dist
+          cp -f output/images/linux.img dist/linux.img
+          cp -f output/images/zImage_dtb dist/zImage_dtb
+
+      - name: Copy buildroot.config and linux.config
+        run: |
+          set -eu
+          cp -f output/.config dist/buildroot.config
+          kernel_cfg_dir=$(ls -d output/build/linux-*/ 2>/dev/null | head -1)
+          if [ -z "$kernel_cfg_dir" ]; then
+            echo "::error::could not locate output/build/linux-*/ for linux.config" >&2
+            exit 1
+          fi
+          cp -f "${kernel_cfg_dir}.config" dist/linux.config
+
+      # A RELEASE distributes the image, so this one DOES carry the GPL
+      # "accompanying source": legal-info/sources/ holds the upstream tarball of
+      # every package we ship, alongside manifest.csv (package, version, license,
+      # upstream URL) and the license texts.
+      #
+      # host-sources/ is excluded, deliberately. That is the source for the
+      # BUILD-TIME toolchain (host-gcc, host-binutils, host-glibc, ...) -- none of
+      # which is distributed in linux.img or zImage_dtb. The GPL obligation
+      # attaches to the binaries we convey, not to the compiler that produced them
+      # (which is itself freely available upstream, pinned by version+hash in
+      # host-manifest.csv, which we DO ship). Buildroot emits host-sources/ for
+      # completeness, not because distribution requires it.
+      #
+      # This is not merely a size optimisation, though it is that too: with
+      # host-sources/ included the archive was 2109 MiB, and GitHub rejects any
+      # single release asset over 2 GiB -- so the first real tag push would have
+      # failed right here, at the upload. The guard below makes that failure mode
+      # loud and early instead of a mysterious 500 from the API.
+      - name: Archive legal-info as legal-info.tar.gz
+        run: |
+          set -eu
+          if [ ! -d output/legal-info ]; then
+            echo "::error::output/legal-info does not exist -- did 'make legal-info' run?" >&2
+            exit 1
+          fi
+          tar czf dist/legal-info.tar.gz --exclude='legal-info/host-sources' -C output legal-info
+
+          # GitHub's hard per-asset ceiling is 2 GiB. Fail here, with a clear
+          # message, rather than at the upload.
+          limit=$((2 * 1024 * 1024 * 1024))
+          size=$(stat -c %s dist/legal-info.tar.gz)
+          echo "legal-info.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
+          if [ "$size" -ge "$limit" ]; then
+            echo "::error::legal-info.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit. The package set has outgrown a single source bundle -- split it (e.g. sources/ as its own asset, or publish sources to a separate host and reference them from manifest.csv)." >&2
+            exit 1
+          fi
+
+      ##########################################################################
+      # /MiSTer.version -> RELEASE_DATE. LOAD-BEARING, read the comment.
+      #
+      # docs/downloader-contract.md §3/§12 requires the db.json `linux.version`
+      # field's last 6 characters to equal, byte-for-byte, the /MiSTer.version
+      # baked into linux.img. This job does not publish db.json (P4.5's job),
+      # but it DOES name this release's archive `release_YYYYMMDD.7z`, and
+      # that filename has always (see docs/verification/stock-release-*.md)
+      # matched the version the archive carries. Per ADR 0018 that version is now
+      # SET from the tagged commit (the "Derive release version" step above
+      # exported MISTER_VERSION, and post-build.sh baked it into /MiSTer.version),
+      # NOT derived from the constant SOURCE_DATE_EPOCH date. So this step now
+      # VERIFIES the built image carries exactly the version we requested -- a
+      # real image/tooling-mismatch guard -- and republishes it as RELEASE_DATE
+      # for the archive name / SHA256SUMS / db.json, which must all agree.
+      #
+      # This RESOLVES the old constant-version hazard: distinct tags -> distinct
+      # commit dates -> distinct /MiSTer.version + release_YYYYMMDD.7z + db.json
+      # version, so the Downloader offers the update and then sees the box as up
+      # to date. (Two tags on the SAME commit still map to one YYMMDD -- same
+      # granularity as stock; fine unless back-to-back same-day releases are
+      # ever needed.)
+      ##########################################################################
+      - name: Extract and validate /MiSTer.version from the built image
+        id: mister_version
+        run: |
+          set -eu
+          workdir=$(mktemp -d ./mister-version.XXXXXX)
+          debugfs -R "rdump /MiSTer.version ${workdir}" output/images/linux.img >/dev/null 2>"${workdir}.debugfs.log" || true
+          verfile="${workdir}/MiSTer.version"
+          if [ ! -f "$verfile" ]; then
+            echo "::error::debugfs could not extract /MiSTer.version from output/images/linux.img" >&2
+            sed 's/^/    /' "${workdir}.debugfs.log" >&2 || true
+            exit 1
+          fi
+          n=$(wc -c < "$verfile")
+          if [ "$n" -ne 6 ]; then
+            echo "::error::/MiSTer.version is ${n} bytes, expected exactly 6 (docs/downloader-contract.md §3/§12)" >&2
+            exit 1
+          fi
+          last_byte_hex=$(tail -c1 "$verfile" | od -An -tx1 | tr -d ' ')
+          if [ "$last_byte_hex" = "0a" ]; then
+            echo "::error::/MiSTer.version ends in a newline -- this permanently breaks the Downloader's version-equality check (docs/downloader-contract.md §3)" >&2
+            exit 1
+          fi
+          yymmdd=$(cat "$verfile")
+          case "$yymmdd" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+            *)
+              echo "::error::/MiSTer.version content '$yymmdd' is not 6 ASCII digits" >&2
+              exit 1
+              ;;
+          esac
+          # Verify the build honored the MISTER_VERSION override (ADR 0018):
+          # /MiSTer.version must equal what we asked post-build.sh to bake.
+          if [ "$yymmdd" != "${MISTER_VERSION:-}" ]; then
+            echo "::error::built /MiSTer.version '$yymmdd' != requested MISTER_VERSION '${MISTER_VERSION:-<unset>}' -- post-build.sh did not honor the override" >&2
+            exit 1
+          fi
+          # Assumption, flagged: century is hardcoded "20" (valid until the
+          # year 2100). /MiSTer.version itself only ever carries YYMMDD, same
+          # as stock's own convention (e.g. "250402" for release_20250402.7z).
+          release_date="20${yymmdd}"
+          echo "release_date=${release_date}" >> "$GITHUB_OUTPUT"
+          echo "Resolved /MiSTer.version='${yymmdd}' -> RELEASE_DATE=${release_date}"
+
+      ##########################################################################
+      # Fetch + whole-archive-verify the pinned stock release archive. This
+      # MUST pass before a single byte is extracted from it (docs/downloader-
+      # contract.md §2's own ordering: MD5+size check, then a SEPARATE 7z
+      # internal-CRC test, mirrored here for the same reason the real
+      # Downloader does both).
+      ##########################################################################
+      - name: Fetch pinned stock release archive
+        run: |
+          set -eu
+          curl -fL --retry 3 -o stock_release.7z "$STOCK_RELEASE_URL"
+
+      - name: Verify stock archive integrity (MD5, SHA-256, size)
+        run: |
+          set -eu
+          actual_size=$(stat -c %s stock_release.7z)
+          if [ "$actual_size" != "$STOCK_RELEASE_SIZE" ]; then
+            echo "::error::stock_release.7z size ${actual_size} != expected ${STOCK_RELEASE_SIZE}" >&2
+            exit 1
+          fi
+          actual_md5=$(md5sum stock_release.7z | cut -d' ' -f1)
+          if [ "$actual_md5" != "$STOCK_RELEASE_MD5" ]; then
+            echo "::error::stock_release.7z MD5 ${actual_md5} != expected ${STOCK_RELEASE_MD5}" >&2
+            exit 1
+          fi
+          actual_sha256=$(sha256sum stock_release.7z | cut -d' ' -f1)
+          if [ "$actual_sha256" != "$STOCK_RELEASE_SHA256" ]; then
+            echo "::error::stock_release.7z SHA-256 ${actual_sha256} != expected ${STOCK_RELEASE_SHA256}" >&2
+            exit 1
+          fi
+          # Second, independent check: 7z's own internal CRCs, same as the
+          # real Downloader's `7za t` step (docs/downloader-contract.md §5).
+          7z t stock_release.7z >stock-7z-test.log 2>&1 || {
+            echo "::error::7z t stock_release.7z failed (corrupt archive despite matching hash)" >&2
+            cat stock-7z-test.log >&2
+            exit 1
+          }
+          echo "Stock archive verified: size/MD5/SHA-256/internal-CRC all match."
+
+      - name: Extract files/linux/* from the verified stock archive
+        run: |
+          set -eu
+          mkdir -p stock-extract
+          # Exactly the pattern+destination the real Downloader uses
+          # (docs/downloader-contract.md §5) -- only files/linux/* exists
+          # afterwards; the Windows-installer-only members (files/MiSTer,
+          # files/menu.rbf, files/MiSTer_example.ini, files/Scripts/,
+          # the .exe) are never extracted and never shipped by us: they
+          # come from separate MiSTer-devel projects, not from this
+          # Buildroot tree, and the Downloader never reads them either.
+          7z x -y stock_release.7z "files/linux/*" -o"stock-extract"
+
+      - name: Re-verify stock uboot.img and updateboot hashes (defense in depth)
+        run: |
+          set -eu
+          uboot="stock-extract/files/linux/uboot.img"
+          updateboot="stock-extract/files/linux/updateboot"
+          for f in "$uboot" "$updateboot"; do
+            [ -f "$f" ] || { echo "::error::missing $f after extraction" >&2; exit 1; }
+          done
+          u_size=$(stat -c %s "$uboot"); u_sha=$(sha256sum "$uboot" | cut -d' ' -f1)
+          b_size=$(stat -c %s "$updateboot"); b_sha=$(sha256sum "$updateboot" | cut -d' ' -f1)
+          [ "$u_size" = "$STOCK_UBOOT_SIZE" ] || { echo "::error::uboot.img size $u_size != $STOCK_UBOOT_SIZE" >&2; exit 1; }
+          [ "$u_sha" = "$STOCK_UBOOT_SHA256" ] || { echo "::error::uboot.img sha256 $u_sha != $STOCK_UBOOT_SHA256 -- NOT byte-identical to stock, release-blocking (docs/downloader-contract.md §8/§12)" >&2; exit 1; }
+          [ "$b_size" = "$STOCK_UPDATEBOOT_SIZE" ] || { echo "::error::updateboot size $b_size != $STOCK_UPDATEBOOT_SIZE" >&2; exit 1; }
+          [ "$b_sha" = "$STOCK_UPDATEBOOT_SHA256" ] || { echo "::error::updateboot sha256 $b_sha != $STOCK_UPDATEBOOT_SHA256" >&2; exit 1; }
+          echo "uboot.img and updateboot confirmed byte-identical to stock."
+
+      ##########################################################################
+      # Assemble our release tree: the ENTIRE verified stock files/linux/
+      # payload, with linux.img/zImage_dtb overwritten by our own freshly
+      # built ones -- the same overlay semantics the real Downloader's own
+      # `rsync` performs on-device (docs/downloader-contract.md §7 step 4.2),
+      # done here instead so the archive we SHIP already reflects the
+      # post-update result.
+      ##########################################################################
+      - name: Assemble release tree (files/linux/*)
+        run: |
+          set -eu
+          mkdir -p release-stage
+          cp -a stock-extract/files release-stage/files
+          cp -f output/images/linux.img release-stage/files/linux/linux.img
+          cp -f output/images/zImage_dtb release-stage/files/linux/zImage_dtb
+          echo "release-stage/files/linux/ contents:"
+          find release-stage/files/linux -maxdepth 1 -printf '%f\n' | sort
+
+      - name: Create release_${RELEASE_DATE}.7z (plain solid LZMA2, no BCJ2)
+        env:
+          RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
+        run: |
+          set -eu
+          # docs/downloader-contract.md §4's explicit recommendation: don't
+          # reproduce stock's BCJ2 filter (an artifact of the Windows 7-Zip
+          # GUI auto-detecting x86 executables in ITS archive, irrelevant to
+          # ours) -- plain solid LZMA2 is well within what the pinned ARM
+          # 7za understands, and is what gets verified below.
+          ( cd release-stage && 7z a -mx=9 -m0=lzma2 -ms=on "../dist/release_${RELEASE_DATE}.7z" files/ )
+          echo "Created dist/release_${RELEASE_DATE}.7z"
+
+      ##########################################################################
+      # Verify OUR archive with the EXACT pinned ARM static 7za the real
+      # Downloader uses -- not a modern host 7z (docs/downloader-contract.md
+      # §4's explicit "testing anything less specific doesn't prove the
+      # constraint"). Runs under qemu-arm since it's a static ARM binary.
+      ##########################################################################
+      - name: Fetch and verify the pinned ARM 7za
+        run: |
+          set -eu
+          curl -fL --retry 3 -o 7za.gz "$STOCK_7ZA_GZ_URL"
+          actual_size=$(stat -c %s 7za.gz)
+          [ "$actual_size" = "$STOCK_7ZA_GZ_SIZE" ] || { echo "::error::7za.gz size $actual_size != $STOCK_7ZA_GZ_SIZE" >&2; exit 1; }
+          actual_md5=$(md5sum 7za.gz | cut -d' ' -f1)
+          [ "$actual_md5" = "$STOCK_7ZA_GZ_MD5" ] || { echo "::error::7za.gz MD5 $actual_md5 != $STOCK_7ZA_GZ_MD5" >&2; exit 1; }
+          gunzip -k 7za.gz
+          chmod +x 7za
+          echo "Pinned ARM 7za fetched and verified."
+
+      - name: Verify our archive extracts under the pinned ARM 7za (qemu-arm)
+        env:
+          RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
+        run: |
+          set -eu
+          archive="dist/release_${RELEASE_DATE}.7z"
+          # 1. Integrity test -- exactly the Downloader's first 7za invocation.
+          qemu-arm ./7za t "$archive"
+          # 2. Extraction -- exactly the Downloader's second invocation
+          #    (docs/downloader-contract.md §5): files/linux/* only, into a
+          #    fresh directory.
+          mkdir -p downloader-extract
+          qemu-arm ./7za x -y "$archive" "files/linux/*" -o"downloader-extract"
+          echo "Pinned ARM 7za: both 't' and 'x -y ... files/linux/*' succeeded."
+
+      - name: Re-verify uboot.img/updateboot after the ARM-7za round trip
+        run: |
+          set -eu
+          uboot="downloader-extract/files/linux/uboot.img"
+          updateboot="downloader-extract/files/linux/updateboot"
+          u_sha=$(sha256sum "$uboot" | cut -d' ' -f1)
+          b_sha=$(sha256sum "$updateboot" | cut -d' ' -f1)
+          [ "$u_sha" = "$STOCK_UBOOT_SHA256" ] || { echo "::error::post-roundtrip uboot.img sha256 mismatch: $u_sha" >&2; exit 1; }
+          [ "$b_sha" = "$STOCK_UPDATEBOOT_SHA256" ] || { echo "::error::post-roundtrip updateboot sha256 mismatch: $b_sha" >&2; exit 1; }
+          echo "uboot.img/updateboot survive our archive's create+pinned-7za-extract round trip unchanged."
+
+      - name: Verify archive layout matches the assembled contract tree
+        env:
+          RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
+        run: |
+          set -eu
+          archive="dist/release_${RELEASE_DATE}.7z"
+          expected=$(cd release-stage && find files -type f -o -type d | sort)
+          # `7z l -slt` prints a "Path = " line for the ARCHIVE ITSELF in its
+          # header block, before a "----------" separator and the per-member
+          # list -- skip everything up to and including that separator, or
+          # the archive's own filename corrupts this comparison as a phantom
+          # extra member.
+          actual=$(7z l -slt "$archive" | awk '/^----------$/{f=1; next} f' | sed -n 's/^Path = //p' | sort)
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::archive member list does not match the assembled release tree" >&2
+            echo "--- expected (from release-stage/) ---" >&2
+            echo "$expected" >&2
+            echo "--- actual (from the .7z) ---" >&2
+            echo "$actual" >&2
+            exit 1
+          fi
+          # Explicit, human-readable cross-check against the documented
+          # canonical set (docs/reference-materials.md §2,
+          # docs/verification/stock-release-20250402.md) -- catches a
+          # silently-empty stock archive passing the (vacuous) diff above.
+          for must in files/linux/linux.img files/linux/zImage_dtb \
+                      files/linux/uboot.img files/linux/updateboot \
+                      files/linux/MidiLink.INI files/linux/ppp_options \
+                      files/linux/u-boot.txt_example files/linux/_samba.sh \
+                      files/linux/_user-startup.sh files/linux/_wpa_supplicant.conf; do
+            echo "$actual" | grep -qx "$must" || { echo "::error::archive is missing required member: $must" >&2; exit 1; }
+          done
+          echo "Archive layout matches docs/downloader-contract.md / docs/reference-materials.md."
+
+      - name: Generate SHA256SUMS
+        env:
+          RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
+        run: |
+          set -eu
+          ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz > SHA256SUMS )
+          cat dist/SHA256SUMS
+
+      - name: Report disk & cache usage
+        if: always()
+        run: |
+          echo "--- disk free ---"; df -h .
+          echo "--- dl/ ---"; du -sh dl 2>/dev/null || true
+          echo "--- output/host ---"; du -sh output/host 2>/dev/null || true
+          echo "--- output (total) ---"; du -sh output 2>/dev/null || true
+          echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true
+          echo "--- dist/ ---"; ls -la dist/ 2>/dev/null || true
+
+      - name: Upload release asset bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-${{ github.ref_name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  # ============================================================================
+  # publish — attests provenance for the two image assets and creates the
+  # GitHub Release. A separate job on purpose: it needs write scopes (contents,
+  # id-token, attestations) that the build job must NOT have, and it needs none
+  # of the build job's disk reclaim or apt setup — `gh` and
+  # actions/attest-build-provenance's OIDC/Sigstore flow just work on a bare
+  # GitHub-hosted `ubuntu-latest` runner.
+  # ============================================================================
+  publish:
+    name: Attest provenance + create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write        # create the Release and upload its assets
+      id-token: write         # attest-build-provenance's OIDC token exchange
+      attestations: write     # publish the attestation to this repo
+
+    steps:
+      - name: Download release asset bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-${{ github.ref_name }}
+          path: dist
+
+      - name: List downloaded assets
+        run: ls -la dist/
+
+      # Attests ONLY the two image assets, per TASKS.md P4.4's explicit
+      # scope -- not the whole dist/ directory (SHA256SUMS/legal-info.tar.gz/
+      # the two .config files are build metadata, not the shipped image).
+      - name: Attest build provenance for linux.img and zImage_dtb
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            dist/linux.img
+            dist/zImage_dtb
+
+      # Created as a DRAFT, deliberately: this project's stated posture
+      # elsewhere (TASKS.md P4.6, "Automerge stays OFF -- a human reviews
+      # green PRs") is that automation proposes and a human approves before
+      # anything user-facing goes live. A draft here also means P4.5's
+      # `publish-db.yml` (triggered "on release", i.e. the `released`
+      # webhook event, which a draft does not fire) cannot regenerate/publish
+      # db.json until a human clicks "Publish release" -- a deliberate gate
+      # between "CI built and verified an image" and "every subscribed
+      # MiSTer in the field is offered this update". Flagged as a decision a
+      # human should confirm, not silently assumed correct forever.
+      - name: Create draft GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_DATE: ${{ needs.build.outputs.release_date }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          gh release create "$TAG" \
+            --draft \
+            --title "$TAG" \
+            --notes "Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`)." \
+            dist/"release_${RELEASE_DATE}.7z" \
+            dist/linux.img \
+            dist/zImage_dtb \
+            dist/SHA256SUMS \
+            dist/buildroot.config \
+            dist/linux.config \
+            dist/legal-info.tar.gz
+
+      - name: Follow-up checklist (cannot be verified by this authoring pass)
+        env:
+          RELEASE_DATE: ${{ needs.build.outputs.release_date }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat <<EOF
+          ::notice::This workflow has never been run end-to-end. Before trusting it:
+            1. gh release view "$TAG" --json isDraft,assets -- confirm all 7 assets present.
+            2. gh attestation verify dist/linux.img --owner ${{ github.repository_owner }} (and zImage_dtb).
+            3. Byte-compare the draft release's release_${RELEASE_DATE}.7z member list against
+               docs/downloader-contract.md / docs/reference-materials.md by hand once, independent
+               of this workflow's own self-check above.
+            4. Confirm the shipped uboot.img sha256 in SHA256SUMS still reads
+               e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64.
+            5. Delete the test tag/release afterward (git tag -d / git push --delete, gh release delete)
+               so it doesn't linger as a confusing real-looking draft.
+          EOF

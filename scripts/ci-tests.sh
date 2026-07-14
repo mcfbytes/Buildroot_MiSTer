@@ -60,7 +60,7 @@ HOST_SBIN="$BUILD_DIR/host/sbin"
 ROOTFS_TAR="$IMAGES/rootfs.tar"
 ZIMAGE_DTB="$IMAGES/zImage_dtb"
 LINUX_IMG="$IMAGES/linux.img"
-KVER=6.18.33
+KVER=6.18.38
 
 # ---------------------------------------------------------------- reporting
 PASS_COUNT=0
@@ -379,6 +379,27 @@ if [ -z "$xone_missing" ]; then
 	pass "xone: all 9 .ko.xz modules present"
 else
 	fail "xone: all 9 .ko.xz modules present" "missing:$xone_missing"
+fi
+
+# Out-of-tree WiFi drivers (ADR 0016): the three 802.11ac Realtek chips mainline
+# still cannot drive. These are kernel-module PACKAGES, and Buildroot STAMPS
+# those -- a kernel *version* bump (e.g. 6.18.33 -> 6.18.38) rebuilds the in-tree
+# modules but silently leaves these built against the OLD kernel, so they land in
+# a stale lib/modules/<old>/ tree and vanish from the shipped one. That really
+# happened (local 6.18.38 build) and the xone check above is the only reason it
+# was caught -- these three had no assertion at all and would have gone missing
+# silently, taking every RTL8812AU/8814AU/8821AU adapter with them. Hence this.
+# Fix when it fires: `make <pkg>-dirclean` for each, then rebuild.
+ootwifi_mods="8812au 8814au 8821au"
+ootwifi_missing=""
+for m in $ootwifi_mods; do
+	tar_has "usr/lib/modules/$KVER/updates/$m.ko.xz" || ootwifi_missing="$ootwifi_missing $m"
+done
+if [ -z "$ootwifi_missing" ]; then
+	pass "out-of-tree WiFi: 8812au + 8814au + 8821au .ko.xz present (ADR 0016)"
+else
+	fail "out-of-tree WiFi: 8812au + 8814au + 8821au .ko.xz present (ADR 0016)" \
+		"missing:$ootwifi_missing -- kernel-module packages are stamped; a kernel bump needs 'make <pkg>-dirclean' + rebuild"
 fi
 
 xow_size=$(tar_size "usr/lib/firmware/xow_dongle.bin")

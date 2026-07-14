@@ -1,0 +1,133 @@
+name: Hardware Test Report
+description: Report hardware compatibility test results
+title: "[HW] "
+labels: ["hardware-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report hardware compatibility test results.
+        This helps us build a matrix of tested configurations and identify driver/firmware gaps.
+
+        Currently, only **DE10-Nano** (Cyclone V SoC) is supported.
+
+  - type: input
+    id: image_version
+    attributes:
+      label: Image version tested
+      description: "The 6-digit YYMMDD in /MiSTer.version (it is always exactly 6 digits -- the build fails otherwise). Example: 260616 = 2026-06-16. If you built the image yourself, add the commit SHA in the notes below."
+      placeholder: "260616"
+    validations:
+      required: true
+
+  - type: input
+    id: board_revision
+    attributes:
+      label: Board revision
+      description: "DE10-Nano revision (check the silkscreen or documentation)"
+      placeholder: "Rev C"
+    validations:
+      required: true
+
+  - type: textarea
+    id: sd_card
+    attributes:
+      label: SD card details
+      description: |
+        Model, capacity, and any specific details about the SD card.
+        Some cards have known compatibility issues with the FPGA boot process.
+      placeholder: |
+        SanDisk Ultra 32GB
+        Kingston Canvas Select 64GB
+      validations:
+        required: true
+
+  - type: textarea
+    id: boot_status
+    attributes:
+      label: Boot status
+      description: |
+        Did the image boot successfully?
+        - ✅ Boot complete: kernel reached menu (confirm MiSTer binary launched)
+        - ⚠️ Partial boot: kernel booted but system hung or loop
+        - ❌ No boot: failed at U-Boot, kernel panic, or no serial output
+      placeholder: |
+        ✅ Boot complete - MiSTer menu appeared after ~30 seconds
+      validations:
+        required: true
+
+  - type: textarea
+    id: devices_tested
+    attributes:
+      label: Devices & peripherals tested
+      description: |
+        List what was plugged in and tested:
+        - USB peripherals (Bluetooth adapter, USB hub, WiFi dongle, etc.)
+        - Controller adapters
+        - Any other add-ons
+
+        Format each line as: Device | Chip/Model | Driver | Result (✅/⚠️/❌)
+      placeholder: |
+        Edimax BT-8500 Bluetooth adapter | RTL8761BUV | btusb | ✅ Paired controller
+        8BitDo Ultimate Controller | (via Bluetooth) | hid-nintendo | ✅ Fully functional
+        Logitech K400r keyboard | — | hid-logitech-hidpp | ⚠️ Fn key issues
+      validations:
+        required: true
+
+  - type: textarea
+    id: wifi_modules
+    attributes:
+      label: WiFi modules tested (if any)
+      description: |
+        List WiFi adapter models and results.
+        Format: Adapter Model | Chip | Driver | SSID | Throughput/Notes
+      placeholder: |
+        TP-Link Archer T2U | Realtek RTL8811AU | rtl8821au | MyNetwork | ~50 Mbps download
+    validations:
+      required: false
+
+  - type: textarea
+    id: audio_test
+    attributes:
+      label: Audio system test (if applicable)
+      description: |
+        Did audio work? Any glitches, latency, or missing functionality?
+      placeholder: |
+        ✅ Audio working - /dev/MrAudio present, SPI bridge responsive
+        ⚠️ No audio - /dev/MrAudio not created, asound.conf present
+    validations:
+      required: false
+
+  - type: textarea
+    id: issues_found
+    attributes:
+      label: Issues found
+      description: |
+        List any problems, regressions, or unexpected behavior.
+        Reference bug tracker issue numbers if applicable.
+      placeholder: |
+        - Controller detection intermittent on second boot
+        - USB hub causes kernel USB errors
+        - See issue #42 for full details
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_notes
+    attributes:
+      label: Additional notes
+      description: |
+        - Kernel messages or warnings during boot?
+        - Performance observations?
+        - Comparison to stock image?
+        - Any workarounds needed?
+      placeholder: |
+        Stock image boots faster (~5s), this image takes ~30s. Both reach menu.
+        No kernel panics observed. All controllers responsive.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing! This data helps us understand which hardware combinations work and identify missing driver support.

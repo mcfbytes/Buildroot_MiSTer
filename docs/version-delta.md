@@ -21,7 +21,7 @@ security-update path), and it belongs in the release notes.
 | Component | Stock (2021.02.4) | Ours (2026.02.3) | Note |
 |---|---|---|---|
 | Buildroot | **2021.02.4** | **2026.02.3** | ~5 years of the whole distro |
-| Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18.33** LTS | on a stable `.y` line with security backports |
+| Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18.38** LTS (hardware-validated on 6.18.33, the prior patch release) | on a stable `.y` line with security backports |
 | glibc | **2.31** | **2.42** | backward-compatible; every stock binary still runs (proven on hardware) |
 | gcc (toolchain) | 10.x era | **14.3.0** | |
 

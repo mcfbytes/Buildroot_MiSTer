@@ -563,6 +563,109 @@ else
 fi
 
 # =============================================================================
+section "Locale data (BR2_GENERATE_LOCALE)"
+# =============================================================================
+# BR2_ENABLE_LOCALE=y only compiles locale *support* into glibc. Generating the
+# locale *data* is a separate knob (BR2_GENERATE_LOCALE), and it defaulted to
+# "". An image built that way has NO /usr/lib/locale at all, which is invisible
+# in every other check here -- nothing fails to link, no SONAME is missing, the
+# rootfs looks perfectly healthy. It only bites at runtime, because our own
+# rootfs-overlay /etc/profile exports LC_ALL=en_US.UTF-8: every login shell
+# printed "setlocale: LC_ALL: cannot change locale (en_US.UTF-8)", and
+# update_all.sh died outright on setlocale(LC_CTYPE, "") ->
+#     locale.Error: unsupported locale setting
+# before doing any work. Stock's /usr/lib/locale is a single ~2.9 MB
+# locale-archive (docs/stock-inventory/disk-usage.md); so is ours.
+#
+# Assert the artifact, not the intent -- same rule as initramfs-verify.
+
+require_present "usr/lib/locale/locale-archive" "glibc locale-archive"
+
+# The locale /etc/profile actually asks for must be IN that archive. A present
+# but wrong-locale archive would sail past the check above.
+PROFILE="$ROOT/board/mister/de10nano/rootfs-overlay/etc/profile"
+PROFILE_LOCALE="$(sed -n 's/^export LC_ALL=//p' "$PROFILE" | head -1)"
+if [ -z "$PROFILE_LOCALE" ]; then
+	skip "profile locale is generated" "no 'export LC_ALL=' in $PROFILE"
+elif [ -z "$QEMU_ARM" ]; then
+	skip "profile locale ($PROFILE_LOCALE) is generated" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/python3" ]; then
+	skip "profile locale ($PROFILE_LOCALE) is generated" "$TARGET/usr/bin/python3 not present"
+else
+	# Reproduce update_all.sh's exact failing call (update_all/main.py:16) against
+	# the rootfs we just built, with the same LC_ALL /etc/profile will export.
+	loc_out="$WORKDIR/locale-setlocale.out"
+	# `env`, not a "LC_ALL=x qemu_target ..." prefix: a var prefix on a shell
+	# *function* lands in this script's own environment, and the host bash then
+	# warns "setlocale: LC_ALL: cannot change locale" if the HOST lacks the
+	# locale -- noise whose text is identical to the very bug this checks for.
+	if env LC_ALL="$PROFILE_LOCALE" "$QEMU_ARM" -L "$TARGET" "$TARGET/usr/bin/python3" -c \
+		'import locale; locale.setlocale(locale.LC_CTYPE, "")' >"$loc_out" 2>&1; then
+		pass "setlocale(LC_CTYPE, \"\") under LC_ALL=$PROFILE_LOCALE (the update_all.sh call)"
+	else
+		fail "setlocale(LC_CTYPE, \"\") under LC_ALL=$PROFILE_LOCALE (the update_all.sh call)" \
+			"$(cat "$loc_out") -- is BR2_GENERATE_LOCALE set, and does it include $PROFILE_LOCALE?"
+	fi
+fi
+
+# =============================================================================
+section "Timezone parity (tzdata + persistent /etc/localtime)"
+# =============================================================================
+# Two independent things, both of which were missing and each of which alone
+# breaks the timezone:
+#
+#   1. tzdata itself. We shipped no /usr/share/zoneinfo at all, so no TZ= value
+#      could resolve. (BR2_TARGET_TZ_INFO was simply never enabled.)
+#   2. The persistence mechanism. Stock makes /etc/localtime a symlink to
+#      /media/fat/linux/timezone -- a file on the FAT *data* partition. That is
+#      the whole trick: the rootfs is reflashed wholesale on every update, so a
+#      timezone stored anywhere inside it is lost. Buildroot's own
+#      BR2_TARGET_LOCALTIME instead points /etc/localtime at
+#      ../usr/share/zoneinfo/Etc/UTC, which is IN the rootfs and therefore does
+#      NOT persist -- so getting (1) right while leaving Buildroot's default
+#      symlink in place would still be broken, just less obviously.
+#
+# Hence: assert the symlink TARGET, not merely that /etc/localtime exists.
+
+STOCK_LOCALTIME_TARGET="/media/fat/linux/timezone"
+
+# NB: assert the *posix/* path. Top-level zoneinfo/Etc is a SYMLINK to posix/Etc
+# (tzdata.mk relinks every top-level zone that way, and stock has the identical
+# shape), so "usr/share/zoneinfo/Etc/UTC" resolves on a live filesystem but is
+# never a tar *entry* -- tar stores the symlink, not the path through it.
+require_present "usr/share/zoneinfo/posix/Etc/UTC" "tzdata (usr/share/zoneinfo)"
+
+lt_line="$(tar tvf "$ROOTFS_TAR" 2>/dev/null | grep -E '(^|[[:space:]])\./etc/localtime( |$|[[:space:]]*->)')"
+lt_target="${lt_line##*-> }"
+if [ -z "$lt_line" ]; then
+	fail "/etc/localtime -> $STOCK_LOCALTIME_TARGET" "no ./etc/localtime entry in rootfs.tar"
+elif [ "$lt_target" = "$STOCK_LOCALTIME_TARGET" ]; then
+	pass "/etc/localtime -> $STOCK_LOCALTIME_TARGET (persists across reflash, stock parity)"
+else
+	fail "/etc/localtime -> $STOCK_LOCALTIME_TARGET" \
+		"it points at '$lt_target' instead. If that is ../usr/share/zoneinfo/..., the rootfs-overlay symlink was lost and Buildroot's BR2_TARGET_LOCALTIME default won -- the timezone will NOT survive a reflash."
+fi
+
+# tzdata is only useful if a TZ= value actually resolves against it. Prove it
+# with a zone that has a non-UTC offset and DST, so a stub/empty zoneinfo can't
+# accidentally pass.
+if [ -z "$QEMU_ARM" ]; then
+	skip "TZ=America/New_York resolves against shipped zoneinfo" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/python3" ]; then
+	skip "TZ=America/New_York resolves against shipped zoneinfo" "$TARGET/usr/bin/python3 not present"
+else
+	tz_out="$WORKDIR/tz-resolve.out"
+	if env TZ=America/New_York "$QEMU_ARM" -L "$TARGET" "$TARGET/usr/bin/python3" -c \
+		'import time; assert time.tzname == ("EST","EDT"), time.tzname; print(time.tzname)' \
+		>"$tz_out" 2>&1; then
+		pass "TZ=America/New_York resolves against shipped zoneinfo -> $(cat "$tz_out")"
+	else
+		fail "TZ=America/New_York resolves against shipped zoneinfo" \
+			"$(cat "$tz_out") -- is BR2_TARGET_TZ_INFO=y?"
+	fi
+fi
+
+# =============================================================================
 section "P3.10 — Network filesystem client parity"
 # =============================================================================
 

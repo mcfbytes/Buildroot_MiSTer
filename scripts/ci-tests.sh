@@ -622,9 +622,10 @@ section "Wide-char ncurses (BR2_PACKAGE_NCURSES_WCHAR)"
 # stack is then self-consistently narrow) yet:
 #   - breaks any libncursesw.so.6-linked ARM binary dropped on the device -- 35
 #     stock binaries DT_NEEDED that exact SONAME; and
-#   - strips the wide key-read API (get_wch/unget_wch) out of Python's _curses, so
-#     a TUI reading the UP arrow via window.get_wch() fails and falls back to
-#     echoing ^[[A instead of navigating.
+#   - strips the wide-char curses API from Python -- the window.get_wch() method
+#     and its module-level companion _curses.unget_wch -- both compiled in only
+#     against ncursesw. A TUI reading the UP arrow via window.get_wch() then fails
+#     and falls back to echoing ^[[A instead of navigating.
 # Assert the artifact: the wide SONAME is shipped, the narrow one is not, and the
 # wide API is actually present.
 

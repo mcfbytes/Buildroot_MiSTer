@@ -18,11 +18,11 @@ DE10-Nano board.** Samba and MIDI are currently build- and CI-verified only — 
 not yet been exercised on real hardware. Treat anything not listed above as unverified in
 practice until proven otherwise on your own hardware.
 
-The kernel is pinned to **6.18.38**. The hardware validation above ran on **6.18.33**, the
-immediately prior 6.18.y patch release, via an earlier build — the jump to 6.18.38 is a
-patch-level bump within the same stable series and is expected to behave identically, but
-it has not itself been re-confirmed on real hardware as of this writing (CI builds and
-tests it; a hardware re-boot on 6.18.38 is pending).
+The kernel is pinned to **6.18.38**, and it **has booted on real hardware** — from the
+CI-built artifact rather than a local build, with every out-of-tree module present,
+Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi (WPA3 auto-connect) was
+confirmed on **6.18.33**, the immediately prior patch release in the same stable series,
+and has not yet been re-confirmed on 6.18.38.
 
 ---
 

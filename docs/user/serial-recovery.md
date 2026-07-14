@@ -110,6 +110,23 @@ This fixes the large majority of real-world "update went wrong" cases, because m
 failure modes land in the kernel image or a bad boot-argument override, not in the
 bootloader itself.
 
+> **If you landed at the `=>` prompt, try this first — no card reader needed.**
+> Reaching `=>` means U-Boot is *healthy*; it just wasn't told to boot anything (the usual
+> cause is a wrapped `mmcboot` line — see the editor warning in
+> [`rollback.md`](rollback.md)). You can boot any image on the card by hand. Substitute the
+> filenames you want (`zImage_dtb`/`linux.img`, or a `_vN` variant you kept):
+>
+> ```
+> setenv bootargs console=ttyS0,115200 loglevel=7 usbhid.jspoll=1 xpad.cpoll=1 panic=15 loop.max_part=8 mem=511M memmap=513M$511M root=${mmcroot} loop=linux/linux.img ro rootwait
+> load mmc 0:1 ${loadaddr} /linux/zImage_dtb
+> bootz ${loadaddr} - ${fdt_addr}
+> ```
+>
+> This changes nothing on the card — it's a one-shot boot. Once you're back in Linux, fix
+> `u-boot.txt` properly (again, see [`rollback.md`](rollback.md)) so the next boot works on
+> its own. `printenv mmcboot` at the `=>` prompt will show you a truncated line if that was
+> the problem.
+
 1. Power off. Remove the SD card and connect it to another computer via a USB card
    reader.
 2. Mount the card's **first partition** (FAT32 — this is the `/media/fat` partition you

@@ -125,6 +125,49 @@ message. If the box doesn't come back up at all, go to
 
 ---
 
+## If you hand-edit `u-boot.txt`: never open it in a text editor
+
+This one has already bitten us, so it is worth stating bluntly. `u-boot.txt` is parsed by
+U-Boot's `env import -t`, which reads **one variable per line**. The `mmcboot=` line is
+long — around 160 characters — and it ends with the only thing that actually starts the
+kernel:
+
+```
+mmcboot=setenv bootargs ... root=$mmcroot loop=linux/linux.img ro rootwait; bootz $loadaddr - $fdt_addr
+```
+
+Most terminal editors (**`joe` and `nano` included** — both of which we ship) word-wrap at
+a right margin. If your editor wraps that line, it inserts a newline, and U-Boot then reads
+a **truncated `mmcboot` with no `bootz` in it**, plus a bogus extra variable made from the
+tail. The board loads the kernel, reaches the end of `mmcboot`, and drops to the `=>`
+prompt — **with no error message at all**, because nothing failed; there was simply nothing
+left to run.
+
+The corruption is invisible to every obvious check: the wrap replaces a space with a
+newline, so the file is the **same size**, byte for byte. Size, timestamp, and `ls` all
+look fine.
+
+**Edit it with `sed`, which cannot wrap:**
+
+```sh
+sed -i 's|linux/linux\.img|linux/linux_v1.img|; s|/linux/zImage_dtb|/linux/zImage_dtb_v1|' \
+  /media/fat/linux/u-boot.txt
+```
+
+**Then verify the two things that matter** — that it is still four lines, and that `bootz`
+survived:
+
+```sh
+awk 'END{exit NR!=4}' /media/fat/linux/u-boot.txt \
+  && grep -q 'bootz .loadaddr' /media/fat/linux/u-boot.txt \
+  && echo "u-boot.txt OK" || echo "u-boot.txt IS BROKEN -- do not reboot"
+```
+
+If you do get stranded at the `=>` prompt, you are not bricked — the bootloader is fine and
+you can boot any image by hand. See [`serial-recovery.md`](serial-recovery.md).
+
+---
+
 ## One more thing you'll notice: your SSH host key changes again
 
 This image generates a unique SSH host key per device on first boot (unlike stock, which

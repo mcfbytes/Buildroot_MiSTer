@@ -31,12 +31,31 @@
 # detail from called scripts shown inline, then a summary. SKIP never fails the
 # suite; any FAIL does.
 #
+# The run is long (thousands of lines once the called scripts' own output is in
+# there), so the LAST thing printed is a self-contained digest, in this order:
+#
+#     SKIPPED (n)   -- checks that did NOT run, with why. A skip is not a pass.
+#     FAILURES (n)  -- every failure, with its reason. Omitted when there are none.
+#     RESULT: PASS|FAIL
+#
+# So `scripts/ci-tests.sh | tail -n 30` tells you what broke and why, without
+# scrolling or grepping -- which is the whole point: the previous version printed
+# the failure ONLY at the moment it happened (on stderr, buried mid-run) and the
+# end-of-run summary was a flat 46-line PASS/FAIL list, so a `tail` showed the
+# counts and named nothing. An intermittent failure was seen but not identifiable.
+# Under GitHub Actions each failure is additionally emitted as a ::error::
+# annotation, so it shows up in the run UI rather than only in the raw log.
+#
 # Exit: 0 = every check PASSed or SKIPped. 1 = at least one FAIL. 2 = usage error.
 #
 # Env overrides (all optional):
 #   CI_TESTS_SKIP_QEMU_SYSTEM=1   skip scripts/test-initramfs.sh (the slow one --
 #                                 builds/reuses a whole QEMU test kernel and boots
 #                                 it 6 times; everything else in this suite is fast)
+#   CI_TESTS_LOG=<path>           where to write the machine-readable result list
+#                                 (default: <build-dir>/ci-tests-results.txt). Best
+#                                 -effort: if the path is not writable the run still
+#                                 passes. Upload this as a CI artifact.
 
 set -u
 # Deliberately not -e: this script's entire job is "run every check, keep going,
@@ -68,6 +87,15 @@ FAIL_COUNT=0
 SKIP_COUNT=0
 declare -a SUMMARY=()
 
+# Why these two exist, and not just SUMMARY: a failing run buries its one FAIL
+# line among ~45 PASS lines, and the end-of-run summary reprinted the same flat
+# list -- so `tail` landed on the counts and showed WHICH checks failed nowhere.
+# (That is not hypothetical; it is exactly how an intermittent failure was seen
+# but not identified.) These hold the failures and skips, with their reason text,
+# so the end of the run can reprint just those. Element format: "name<TAB>reason".
+declare -a FAILED=()
+declare -a SKIPPED=()
+
 section() {
 	printf '\n=== %s ===\n' "$*"
 }
@@ -79,15 +107,20 @@ pass() {
 }
 
 fail() {
+	# stderr, so a failure is still visible when stdout is redirected away --
+	# but it is ALSO recorded in FAILED and reprinted to stdout at the end, so
+	# that a plain `... | tail` (stdout only) can never miss it.
 	printf 'FAIL  %s\n' "$1" >&2
 	[ -n "${2:-}" ] && printf '      %s\n' "$2" >&2
 	SUMMARY+=("FAIL  $1")
+	FAILED+=("$1"$'\t'"${2:-}")
 	FAIL_COUNT=$((FAIL_COUNT + 1))
 }
 
 skip() {
 	printf 'SKIP  %s -- %s\n' "$1" "$2"
 	SUMMARY+=("SKIP  $1 -- $2")
+	SKIPPED+=("$1"$'\t'"$2")
 	SKIP_COUNT=$((SKIP_COUNT + 1))
 }
 
@@ -237,14 +270,32 @@ else
 	printf -- '--- FPGA-access whitelist: qemu-arm -strace, expect openat(.../dev/mem) EACCES then SIGSEGV, nothing earlier ---\n'
 	strace_out="$WORKDIR/strace.out"
 	timeout -k 5 20 "$QEMU_ARM" -L "$TARGET" -strace "$MX" >"$strace_out" 2>&1
+	# The entry and the return are matched SEPARATELY, and the return is allowed to
+	# be one line late. That is not sloppiness -- qemu-user's -strace is not
+	# line-atomic. It emits the syscall entry and its return as two separate
+	# writes, so with a threaded guest (the stock MiSTer binary is threaded)
+	# another thread's line can land BETWEEN them and split the return off:
+	#
+	#   openat(AT_FDCWD,"/dev/mem",O_RDWR|...|O_CLOEXEC)852734 futex(...) = 0
+	#    = -1 errno=13 (Permission denied)
+	#
+	# The old single-line regex (entry .* return) therefore missed roughly 1 run in
+	# 40 -- measured, not guessed -- and reported it as "never reached /dev/mem",
+	# i.e. announced a REGRESSION on what was really trace interleaving. That was
+	# the suite's intermittent failure.
+	devmem_entry='openat\(.*"/dev/mem"'
+	devmem_denied='= *-1 .*(errno=13|EACCES)'
 	if grep -q 'error while loading shared libraries' "$strace_out"; then
 		fail "FPGA-access whitelist (P2.8/A-22)" "dynamic linker itself failed -- regression before any real syscall; see $strace_out"
-	elif grep -qE 'openat.*"/dev/mem".*=.*-1.*(EACCES|errno=13)' "$strace_out"; then
-		devmem_line=$(grep -nE 'openat.*"/dev/mem"' "$strace_out" | head -1 | cut -d: -f1)
+	elif ! grep -qE "$devmem_entry" "$strace_out"; then
+		fail "FPGA-access whitelist (P2.8/A-22)" "never reached openat(\"/dev/mem\") -- died earlier (regression) or ran past it; see $strace_out"
+	elif grep -A1 -E "$devmem_entry" "$strace_out" | grep -qE "$devmem_denied"; then
+		devmem_line=$(grep -nE "$devmem_entry" "$strace_out" | head -1 | cut -d: -f1)
 		note "reached openat(\"/dev/mem\") at line $devmem_line of the trace (permission denied, as expected -- no FPGA bridge under qemu-user)"
 		pass "FPGA-access whitelist (P2.8/A-22): dies at /dev/mem access, not earlier"
 	else
-		fail "FPGA-access whitelist (P2.8/A-22)" "never reached the expected openat(\"/dev/mem\") -- died earlier (regression) or ran past it; see $strace_out"
+		fail "FPGA-access whitelist (P2.8/A-22)" \
+			"reached openat(\"/dev/mem\") but its return was not the expected -1 EACCES. If the trace shows it SUCCEEDING, whoever ran this has /dev/mem access (running as root?) and the check's premise no longer holds; see $strace_out"
 	fi
 fi
 
@@ -697,6 +748,59 @@ echo ""
 printf '%s: %d passed, %d failed, %d skipped (%d total)\n' \
 	"$prog" "$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT" "$((PASS_COUNT + FAIL_COUNT + SKIP_COUNT))"
 
+# The full transcript above is long and the interesting part is at the top of it.
+# Everything from here down is the digest: skips, then failures, then the verdict
+# -- newest-reader-first, so `tail -n 30` answers "what broke and why" on its own.
+
+# A SKIP is NOT a pass: the check did not run. Easy to miss in a green-looking
+# wall of text (a missing qemu-arm silently skips the locale, timezone, ABI and
+# Python gates), so name them rather than leaving them as a bare count.
+if [ "$SKIP_COUNT" -gt 0 ]; then
+	echo ""
+	printf -- '---- SKIPPED (%d) -- these checks did NOT run ----\n' "$SKIP_COUNT"
+	for _e in "${SKIPPED[@]}"; do
+		printf '  SKIP  %s\n' "${_e%%$'\t'*}"
+		printf '%s\n' "${_e#*$'\t'}" | sed 's/^/          /'
+	done
+fi
+
+if [ "$FAIL_COUNT" -gt 0 ]; then
+	echo ""
+	printf -- '==== FAILURES (%d) ====\n' "$FAIL_COUNT"
+	for _e in "${FAILED[@]}"; do
+		_name="${_e%%$'\t'*}"
+		_why="${_e#*$'\t'}"
+		printf '  FAIL  %s\n' "$_name"
+		# sed, not printf: a reason is often multi-line (a Python traceback, a
+		# diff). printf would indent only the first line and let the rest ragged
+		# out of the block, which is precisely when you most want it readable.
+		[ -n "$_why" ] && printf '%s\n' "$_why" | sed 's/^/          /'
+		# Surface each failure in the PR's Files-changed / run UI, not just in a
+		# 3000-line log nobody opens. %0A is how a GitHub annotation carries a
+		# newline; a raw one would truncate the message at the first line.
+		if [ -n "${GITHUB_ACTIONS:-}" ]; then
+			printf '::error title=ci-tests: %s::%s\n' "$_name" "${_why//$'\n'/%0A}"
+		fi
+	done
+fi
+
+# Machine-readable, and the thing to upload as a CI artifact / paste into a bug.
+# Never fatal: a read-only or missing build dir must not turn a green run red.
+CI_TESTS_LOG="${CI_TESTS_LOG:-$BUILD_DIR/ci-tests-results.txt}"
+if { : > "$CI_TESTS_LOG"; } 2>/dev/null; then
+	{
+		printf '# %s -- %s\n' "$prog" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		printf '# build-dir: %s\n' "$BUILD_DIR"
+		printf '%s\n' "${SUMMARY[@]}"
+		printf '# %d passed, %d failed, %d skipped (%d total)\n' \
+			"$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT" \
+			"$((PASS_COUNT + FAIL_COUNT + SKIP_COUNT))"
+	} > "$CI_TESTS_LOG"
+	echo ""
+	printf 'results written to %s\n' "$CI_TESTS_LOG"
+fi
+
+echo ""
 if [ "$FAIL_COUNT" -gt 0 ]; then
 	echo "==== RESULT: FAIL ===="
 	exit 1

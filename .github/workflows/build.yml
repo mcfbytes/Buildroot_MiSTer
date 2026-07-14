@@ -246,6 +246,18 @@ jobs:
       # host-ccache build cost is captured by the toolchain caches above. musl
       # and glibc objects have distinct ccache keys, so they coexist.
       ##########################################################################
+      # Buildroot needs output/.config to exist before `make all`. On a fresh
+      # checkout it does NOT (only the tracked defconfig does), and the main
+      # build dies immediately with "Please configure Buildroot first" -- run
+      # 29293209070 failed exactly there, *after* a 52-minute stage 1. (The
+      # initramfs stage doesn't hit this: its Makefile rule generates its own
+      # .config from configs/mister_initramfs_defconfig.)
+      # Regenerate it from the tracked defconfig on EVERY run: that file is the
+      # reproducible source of truth, and doing it unconditionally also stops a
+      # stale cached output/.config from silently overriding a defconfig change.
+      - name: Configure Buildroot (generate output/.config from the defconfig)
+        run: make mister_de10nano_defconfig
+
       - name: Build image (make all -- initramfs + main rootfs, ccache both)
         run: |
           make all \

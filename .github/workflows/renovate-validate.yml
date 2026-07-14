@@ -48,7 +48,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: '22'
+          node-version: '24'
 
       # `--strict` makes warnings (e.g. a deprecated or unknown option that
       # Renovate would otherwise tolerate and ignore) fail the run too. We want

@@ -1,4 +1,3 @@
-BR2_ROOTFS_MERGED_USR=y
 # mister_de10nano_defconfig — P1.2: toolchain & arch/ABI + minimal BusyBox rootfs
 #
 # Supersedes the P1.1 placeholder (which deliberately set nothing). This is the
@@ -229,6 +228,11 @@ BR2_REPRODUCIBLE=y
 # touching that menu at all is a make-clean-and-rebuild-from-scratch
 # decision. Since the effective value doesn't change (y -> y), adding it
 # buys nothing and only invites that risk for zero benefit.
+#
+# BR2_ENABLE_LOCALE only compiles locale *support* into glibc; it does not
+# generate any locale *data*. That is a separate knob -- see the locale
+# section further down -- and leaving it empty is what shipped an image with
+# no /usr/lib/locale/locale-archive at all.
 ################################################################################
 
 # --- compression ---
@@ -668,6 +672,87 @@ BR2_PACKAGE_BCM20702_FIRMWARE=y
 #   libhid / libhid-detach-device    -- no Buildroot package, superseded API
 #   jack1/jack2 (libjack)            -- dangling in stock, unused by MiSTer
 #   rtorrent / libtorrent            -- unused BitTorrent client, SONAME already drifted
+#
+# (Nothing is set by this block -- it is a note, not config. Settings resume below.)
+
+# --- kmod ---------------------------------------------------------------------
+# Two different things, despite the shared prefix:
+BR2_PACKAGE_HOST_KMOD_XZ=y               # HOST kmod: "support xz-compressed modules",
+                                          # so the host depmod that runs at build time
+                                          # can read the .ko.xz we ship
+BR2_PACKAGE_KMOD_TOOLS=y                  # TARGET kmod: installs depmod/insmod/lsmod/
+                                          # modinfo/modprobe/rmmod on the device
+
+################################################################################
+# System configuration
+#
+# Everything below lives in Buildroot's *System configuration* menu. They were
+# previously scattered -- BR2_ROOTFS_MERGED_USR sat on line 1, ABOVE this file's
+# own header comment, and BR2_TARGET_GENERIC_ROOT_PASSWD was stranded directly
+# under the "explicitly NOT carried forward" note above, where it read as part of
+# the drop list. Grouped here instead; no values were changed by that move.
+#
+# NOTE this menu is NOT the toolchain menu, so the P1.2 "incremental builds
+# silently ignore toolchain menu changes" hazard (see the block near the top of
+# the package list) does not apply to anything in this section.
+################################################################################
+
+# Merged /usr (/bin, /sbin, /lib are symlinks into /usr). Stock parity, and
+# load-bearing: Buildroot's own `support/scripts/check-merged -t overlay -u`
+# validates BR2_ROOTFS_OVERLAY's shape against this at target-finalize, so
+# flipping it off would start rejecting our rootfs-overlay tree.
+BR2_ROOTFS_MERGED_USR=y
+
+# Empty = passwordless root, matching stock. Per-device SSH host keys are
+# generated on first boot instead (ADR 0015).
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
-BR2_PACKAGE_HOST_KMOD_XZ=y
-BR2_PACKAGE_KMOD_TOOLS=y
+
+# --- locale data (stock parity; fixes update_all.sh) --------------------------
+# Distinct from BR2_ENABLE_LOCALE (=y, toolchain menu, see the block above):
+# that one compiles locale *support* into glibc, this one actually *generates*
+# the locale data. With it empty -- the Buildroot default -- the Makefile never
+# registers its GENERATE_GLIBC_LOCALES target-finalize hook and never builds
+# host-localedef, so the image shipped with no /usr/lib/locale at all. Our own
+# rootfs-overlay /etc/profile exports LC_ALL=en_US.UTF-8, so *every* login shell
+# printed "setlocale: LC_ALL: cannot change locale (en_US.UTF-8)", and anything
+# calling setlocale(LC_CTYPE, "") hard-failed -- notably update_all.sh, which
+# died on locale.Error: unsupported locale setting before doing any work.
+#
+# Stock's /usr/lib/locale is a single 2.9 MB locale-archive (docs/stock-
+# inventory/disk-usage.md), which is exactly the artifact support/misc/gen-glibc-
+# locales.mk produces. en_US.UTF-8 is what /etc/profile asks for and is already
+# in BR2_ENABLE_LOCALE_WHITELIST ("C en_US"), so locale-purge keeps it.
+#
+# This lives in the *System configuration* menu (work/buildroot/system/Config.in
+# :575), NOT the toolchain menu -- it only adds a host package and a finalize
+# hook, so it does not trigger the from-scratch-rebuild hazard described above.
+BR2_GENERATE_LOCALE="en_US.UTF-8"
+
+# --- timezone / tzdata (stock parity) -----------------------------------------
+# We shipped NO tzdata at all: no /usr/share/zoneinfo, no /etc/localtime. So the
+# timezone did not survive a reboot and TZ=America/New_York could not resolve.
+# package-manifest.md §5's Drop list floated trimming zoneinfo and hedged --
+# "international users likely rely on the full zoneinfo set for TZ=" -- and that
+# caveat is exactly what bit. Not dropped on purpose; just never enabled.
+#
+# Stock's /usr/share/zoneinfo contains BOTH posix/ and right/ subtrees (verified
+# against the extracted stock rootfs), which is precisely what Buildroot's tzdata
+# installs with the "default" zonelist -- so stock *was* plain Buildroot tzdata,
+# and this reproduces it 1:1. No zone present in stock is missing from ours.
+# BR2_TARGET_LOCALTIME="Etc/UTC" also reproduces stock's /etc/timezone
+# byte-for-byte ("Etc/UTC").
+#
+# Costs ~4.9 MB of ext4 *blocks* (1,191 mostly-tiny zone files, each rounding up
+# to a 4 KiB block) -- NOT the 1.57 MiB that disk-usage.md's byte column implies.
+# Into a 512 MiB image with ~290 MB free, either way: not a size concern.
+#
+# NOTE: BR2_TARGET_LOCALTIME makes tzdata install /etc/localtime as a symlink to
+# ../usr/share/zoneinfo/Etc/UTC. That is NOT what stock does and NOT what makes
+# the setting persist. Stock points /etc/localtime at a file on the FAT data
+# partition, which is the only thing that survives reflashing the rootfs -- our
+# rootfs-overlay ships that symlink and overwrites tzdata's, because Buildroot
+# rsyncs BR2_ROOTFS_OVERLAY *after* package install (Makefile:816). See
+# board/mister/de10nano/rootfs-overlay/etc/localtime.
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_TZ_ZONELIST="default"
+BR2_TARGET_LOCALTIME="Etc/UTC"

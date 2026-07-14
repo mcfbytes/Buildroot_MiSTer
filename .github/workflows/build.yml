@@ -73,6 +73,22 @@ jobs:
           CI_TESTS_SKIP_QEMU_SYSTEM: "1"
         run: scripts/ci-tests.sh
 
+      # `if: always()` is the whole point: this artifact is worth having precisely
+      # when the step above FAILED, and a failed step would otherwise abort the job
+      # before we ever upload it. ci-tests.sh also emits a ::error:: annotation per
+      # failure (so the run UI names the broken check without opening the log) and
+      # prints a FAILURES digest as its last output — this file is the same list,
+      # machine-readable, for pasting into a bug or diffing across runs.
+      # A ~2 KB text file; negligible next to the image artifacts below.
+      - name: Upload parity-suite results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-tests-results-${{ github.sha }}
+          path: output/ci-tests-results.txt
+          if-no-files-found: warn
+          retention-days: 14
+
       # --- ABI / SONAME parity checker (P2.2) --------------------------------
       # Runs if/when P2.2 lands — no workflow change needed then.
       - name: ABI / SONAME parity checker (P2.2)

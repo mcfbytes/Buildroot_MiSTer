@@ -20,9 +20,9 @@ practice until proven otherwise on your own hardware.
 
 The kernel is pinned to **6.18.38**, and it **has booted on real hardware** — from the
 CI-built artifact rather than a local build, with every out-of-tree module present,
-Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi (WPA3 auto-connect) was
-confirmed on **6.18.33**, the immediately prior patch release in the same stable series,
-and has not yet been re-confirmed on 6.18.38.
+Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi is confirmed on 6.18.38 as well: the
+RTL8822BU auto-connects at boot to a **WPA3/SAE** network (PMF required), driven by
+**mainline `rtw88`** rather than an out-of-tree driver.
 
 ---
 

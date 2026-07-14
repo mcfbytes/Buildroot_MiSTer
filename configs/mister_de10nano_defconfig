@@ -485,6 +485,22 @@ BR2_PACKAGE_WIRELESS_TOOLS=y                  # iwmulticall: iwconfig + iwlist/i
 BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG=y
 BR2_PACKAGE_IW=y                              # stock ships usr/sbin/iw (nl80211 CLI) -- parity
 BR2_PACKAGE_IPROUTE2=y                        # stock's /usr/sbin/ip -- wifi.sh's link up/down fallback
+
+# --- On-device text editors (stock parity) ------------------------------------
+# Stock ships usr/bin/joe, usr/bin/nano AND usr/bin/vim (P0.3 inventory,
+# docs/stock-inventory/binaries-needed-full.txt:149/218/348). We shipped none of
+# them -- only BusyBox's built-in `vi`. docs/package-manifest.md:665 had flagged
+# this as a deliberate P2.7 size-budget call ("keep the light ones... if the
+# community expects them"), left unresolved. Resolving it now: people SSH into a
+# MiSTer to edit wpa_supplicant.conf / MiSTer.ini, and BusyBox vi is a hostile
+# way to do that for most users.
+#
+# joe: ~0.65 MiB (docs/stock-inventory/disk-usage.md). Needs MMU only.
+# nano: small; needs wchar + ncurses (both already on).
+# vim is NOT enabled here -- it is the heavy one, and its libgpm dependency is
+# already satisfied (BR2_PACKAGE_GPM=y above) if we ever want full parity.
+BR2_PACKAGE_JOE=y                             # stock usr/bin/joe
+BR2_PACKAGE_NANO=y                            # stock usr/bin/nano
 # ifupdown package (stock parity): stock ships the real ifupdown, not busybox's
 # ifup applet. busybox ifup mangles the interfaces file's pre-up "$IFACE", so
 # wpa_supplicant is called with bad args and dumps its usage text twice at every

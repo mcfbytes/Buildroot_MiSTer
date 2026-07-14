@@ -145,7 +145,7 @@ histogram. **Recommendation for P0.9: change "~60" to "109" in PLAN.md §4.1, §
 | **D** — xone | 7 | **re-source** as `package/xone` (medusalix) |
 | **E** — Realtek USB WiFi | 9 | **re-source** as `package/rtl*` (morrownr) |
 | **F** — misc quirks | 5 | 1 drop, 1 no-op, 3 carry |
-| **G** — exfat replacement *(new class — not in PLAN §4.1)* | 6 | **decision required** — see §5 |
+| **G** — exfat replacement *(new class — not in PLAN §4.1)* | 6 | ADR 0010: drop driver; ADR 0019: restore symlinks as patch `0031` (option (c)) |
 | noise | 1 | dismissed |
 | **Total** | **109** | |
 
@@ -209,7 +209,12 @@ Three consequences, all user-visible:
   `ATTR_SYSTEM` encoding, so on-disk links stay compatible. Smallest patch that preserves the
   ABI. Plausibly upstreamable.
 
-This is the largest single unknown left in the plan and it is not currently budgeted anywhere.
+**Resolved:** ADR 0010 (2026-07-12) chose (a); ADR 0019 (2026-07-14) amended it to (c) after
+the arcade organizer's symlink dependency surfaced — see ADR 0019 §1.1 for why the "0
+symlinks" evidence was a d_type false negative. Implemented as
+`board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch` (~140 lines,
+`page_symlink()`/`page_get_link()` based; "plausibly upstreamable" was optimistic — see the
+patch's Upstream field). FAT12/16/32 symlinks remain unrestored (vfat is untouched).
 
 ### N2 — PLAN §13 mis-describes the `altspi`/spidev hazard (mechanism, not severity)
 
@@ -393,11 +398,11 @@ Vendored wholesale: **3,428 files**. Triaged as whole trees, not line-by-line.
 | F-4 | `7436e2d6e` | mt7601u "possible fix?" — comments out DPD calibration | `drivers/net/wireless/mediatek/mt7601u/phy.c` | **no** — 6.18 `mt7601u/phy.c:592` still calls `mt76 01u_mcu_calibrate(dev, MCU_CAL_DPD, …)` | **DROPPED (P1.9, confirmed).** Author **bbond007**; commit message is literally *"mt7601u possible fix?"*; the diff comments out a calibration call and leaves stray `/* remove this for testing--> spark2k06 */` markers. Unprincipled, and not in P1.9's task scope. Not carried; re-add only if a real mt7601u regression appears at P3.13. |
 | F-5 | `71c583074` *(i2c half)* | Disable RTC error messages | `drivers/i2c/busses/i2c-designware-master.c` (`dev_err`→`dev_dbg` on "controller timed out") | **no** — 6.18 `i2c-designware-master.c:857` still `dev_err` | **carry** → `0030-i2c-designware-quiet-timeout.patch`. Cosmetic: silences boot spam when no RTC add-on board is fitted. *(The m41t80 half of this commit **is** upstream — see class C.)* |
 
-### 3.8 Class G — exfat replacement (NEW class; decision required)
+### 3.8 Class G — exfat replacement (NEW class; resolved by ADR 0010 + ADR 0019)
 
 | Commits | Subject | Files | Origin | Upstream | Disposition |
 |---|---|---|---|---|---|
-| `8b6b8c2f5`, `df35bdb27`, `858322ce6`, `5220d6686`, `7f7148c1f`, `99a2c80d0` | Remove mainline exFAT; add out-of-tree exFAT **with symlink support**; cleanups | −12 mainline `fs/exfat/*`, +20 files (`exfat_core.c`, `exfat_super.c`, …), `Kconfig`, `Makefile` | Samsung / `exfat-nofuse` lineage, re-integrated by Sorgelig | mainline exfat exists but has **no symlinks** and **no FAT12/16/32** | **DECISION REQUIRED — see N1.** Not currently in PLAN §4.1's taxonomy. |
+| `8b6b8c2f5`, `df35bdb27`, `858322ce6`, `5220d6686`, `7f7148c1f`, `99a2c80d0` | Remove mainline exFAT; add out-of-tree exFAT **with symlink support**; cleanups | −12 mainline `fs/exfat/*`, +20 files (`exfat_core.c`, `exfat_super.c`, …), `Kconfig`, `Makefile` | Samsung / `exfat-nofuse` lineage, re-integrated by Sorgelig | mainline exfat exists but has **no symlinks** and **no FAT12/16/32** | **Resolved — see N1.** ADR 0010 drops the driver; ADR 0019 restores the symlink format via carried patch `0031` (N1 option (c)). |
 
 ### 3.9 Noise
 

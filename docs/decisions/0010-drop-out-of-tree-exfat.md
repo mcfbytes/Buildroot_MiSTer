@@ -1,6 +1,11 @@
 # ADR 0010 — Drop the out-of-tree exfat driver (answers Q1)
 
-**Status:** Accepted (2026-07-12) — decided by @mcfbytes
+**Status:** Accepted (2026-07-12), **amended by ADR 0019 (2026-07-14)** —
+the "symlinks appear unused" finding below was wrong (the arcade organizer
+depends on them), and the `find -type l` evidence was mechanically blind:
+GNU find trusts readdir d_type, and the stock driver reports DT_REG for
+symlinks (ADR 0019 §1.1). The driver stays dropped; symlink support is
+restored as carried patch 0031 on mainline exfat. — decided by @mcfbytes
 **Supersedes:** `docs/phase0-review.md` Q1; PLAN.md ledger #17, #12
 **Impact:** P1.7 (DTS), P1.9 (patches), P1.3 (kernel config), **P1.10 (initramfs) — new**
 
@@ -129,6 +134,11 @@ contents are the target path string**. Main_MiSTer will load that as if it were 
 ROM and get garbage rather than a clean error. If we ever publish, ship a release
 note plus a one-liner users can run before upgrading:
 `find /media/fat /media/usb* -type l`.
+
+*[Amended by ADR 0019: that one-liner is unreliable on a stock kernel — GNU
+find trusts readdir d_type and the stock driver reports DT_REG for symlinks.
+Use `busybox find /media/fat /media/usb* -type l` instead. Moot for exFAT
+cards now that patch 0031 restores symlinks; still relevant for FAT32 cards.]*
 
 ### (e) Non-issue, recorded so nobody re-raises it
 

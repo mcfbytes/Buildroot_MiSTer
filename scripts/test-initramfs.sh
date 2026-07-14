@@ -10,10 +10,13 @@
 # virt` kernel, attach a synthetic MBR disk shaped like a real MiSTer SD card
 # (a FAT/exFAT data partition containing linux/linux.img), and assert -- from
 # INSIDE the switched-root system -- every invariant /init is supposed to
-# have established. Six cases:
+# have established. Seven cases:
 #
 #   fat32      FAT32 card:  exfat probe fails, falls back to vfat (utf8=1)
 #   exfat      exFAT card:  mounts on the first try
+#   symlink    exFAT card:  Samsung-format symlinks work end-to-end on the
+#              mainline exfat driver + board patch 0031 (ADR 0019), including
+#              the create+unlink cluster-leak regression fsck cannot see
 #   label      root=LABEL=MISTERDATA, resolved via BusyBox findfs
 #   nonascii   FAT32 card with a non-ASCII long filename -- byte-for-byte
 #              round trip through the vfat utf8=1 path (ADR 0010)
@@ -28,7 +31,7 @@
 # ever be caught (see the case function below for the full argument).
 #
 # Usage: scripts/test-initramfs.sh [case ...]
-#   With no arguments, runs all six cases. Exit 0 iff every requested case
+#   With no arguments, runs all seven cases. Exit 0 iff every requested case
 #   passed; nonzero otherwise (wired for P4.1's CI job).
 #
 # Prerequisites (all checked explicitly, with an actionable message, before
@@ -53,7 +56,9 @@ CPIO="$ROOT/output-initramfs/images/rootfs.cpio"
 INIT_SRC="$ROOT/board/mister/de10nano/initramfs-overlay/init"
 MTOOLS_BIN="$ROOT/output-initramfs/host/bin"
 MARKER_C="$SUPPORT/marker-init.c"
+TEST_SYMLINK_C="$SUPPORT/test-symlink.c"
 KERNEL_FRAGMENT="$SUPPORT/qemu-test-kernel.config"
+EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
 
 CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
 export PATH="$ROOT/output/host/bin:$MTOOLS_BIN:$PATH"
@@ -71,6 +76,7 @@ QEMU_ZIMAGE="$KBUILD/arch/arm/boot/zImage"
 BUILD="$WORK/run"
 MARKER_INIT="$WORK/marker-init"
 MARKER_INIT_NONASCII="$WORK/marker-init-nonascii"
+TEST_SYMLINK_BIN="$WORK/test-symlink"
 
 # Guest boot budget. Every case here either reaches switch_root or a rescue
 # shell within a couple of seconds of real 6.18 kernel + qemu virt boot time;
@@ -127,9 +133,11 @@ check_prereqs() {
 	need qemu-system-arm       "install qemu-system-arm"
 	need mkfs.vfat             "install dosfstools"
 	need mkfs.exfat            "install exfatprogs (or exfat-utils)"
+	need fsck.exfat            "install exfatprogs (or exfat-utils)"
 	need sfdisk                "install util-linux"
 	need mke2fs                "install e2fsprogs"
 	need cpio                  "install cpio"
+	need patch                 "install patch"
 	need "${CROSS_COMPILE}gcc" "expected the Buildroot host toolchain on PATH (output/host/bin)"
 	need mcopy                 "run 'make initramfs' first (builds host mtools under output-initramfs/host/bin)"
 	need mmd                   "run 'make initramfs' first (builds host mtools under output-initramfs/host/bin)"
@@ -137,7 +145,9 @@ check_prereqs() {
 	[ -f "$CPIO" ] || die "no $CPIO -- run 'make initramfs' first."
 	[ -f "$INIT_SRC" ] || die "missing $INIT_SRC"
 	[ -f "$MARKER_C" ] || die "missing $MARKER_C"
+	[ -f "$TEST_SYMLINK_C" ] || die "missing $TEST_SYMLINK_C"
 	[ -f "$KERNEL_FRAGMENT" ] || die "missing $KERNEL_FRAGMENT"
+	[ -f "$EXFAT_SYMLINK_PATCH" ] || die "missing $EXFAT_SYMLINK_PATCH"
 }
 
 # ---------------------------------------------------------- the QEMU test kernel
@@ -167,6 +177,18 @@ ensure_qemu_kernel() {
 			"Remove $KBUILD (or set TEST_INITRAMFS_KBUILD to a fresh path) and re-run."
 	fi
 
+	# The product kernel carries fs/exfat symlink support as board patch 0031
+	# (ADR 0019), and the `symlink` case asserts exactly that behaviour, so
+	# the QEMU test kernel source must carry the same patch. Idempotent (the
+	# marker macro only exists once the patch is in), and applied to a cached
+	# source tree too, so caches created before this patch existed upgrade in
+	# place -- the O= build's dependency tracking then rebuilds fs/exfat only.
+	if ! grep -q EXFAT_ATTR_SYMLINK "$KERNEL_SRC/fs/exfat/exfat_raw.h"; then
+		log "applying $(basename "$EXFAT_SYMLINK_PATCH") to $KERNEL_SRC"
+		patch -p1 -s -d "$KERNEL_SRC" < "$EXFAT_SYMLINK_PATCH" \
+			|| die "board patch 0031 failed to apply to the QEMU test kernel source"
+	fi
+
 	# Always re-point CONFIG_INITRAMFS_SOURCE at the CURRENT cpio and rebuild:
 	# cheap if /init did not change (the kernel's own dependency tracking skips
 	# straight to nothing-to-do), silently testing a STALE /init if skipped.
@@ -192,6 +214,10 @@ build_marker_inits() {
 	"${CROSS_COMPILE}gcc" -O2 -static -Wall -Wextra -DCHECK_NONASCII \
 		-o "$MARKER_INIT_NONASCII" "$MARKER_C" \
 		|| die "marker-init-nonascii compile failed"
+	log "compiling test-symlink (guest-side exfat symlink assertions)"
+	"${CROSS_COMPILE}gcc" -O2 -static -Wall -Wextra \
+		-o "$TEST_SYMLINK_BIN" "$TEST_SYMLINK_C" \
+		|| die "test-symlink compile failed"
 }
 
 # ---------------------------------------------------------------- disk builders
@@ -511,6 +537,79 @@ case_exfat() {
 	pass_case "$name (exFAT: mounts on the first try -> switch_root)"
 }
 
+# --- symlink: Samsung-format symlinks on exFAT (board patch 0031, ADR 0019) ---
+#
+# Asserts, from inside the guest, on the same kernel the other cases boot:
+# symlink create (relative/absolute/dangling/EEXIST), readlink, lstat ->
+# S_IFLNK, open-through-link content, getdents d_type=DT_LNK, unlink (link
+# dies, target survives) -- hot, and again cold after a umount/remount --
+# plus the create+unlink cluster-leak regression as a statvfs free-space
+# round-trip, which fsck.exfat (1.3.2) provably does NOT catch (verified by
+# leaking a cluster on an unfixed kernel: fsck stays silent). The assertions
+# live in scripts/test-initramfs/test-symlink.c and ride into the guest on a
+# host-written vfat tool image, because mtools cannot write exFAT -- the
+# same reason case_exfat populates in-guest.
+case_symlink() {
+	local name=symlink b="$BUILD/symlink"
+	rm -rf "$b"; mkdir -p "$b"
+
+	local part="$b/part1.img"
+	truncate -s 96M "$part"
+	mkfs.exfat -n MISTERDATA "$part" >/dev/null
+	local disk="$b/sd.img"
+	wrap_mbr "$part" "$disk" 07   # 07 = exFAT/NTFS
+
+	# The second drive carries the test binary instead of a linux.img: a
+	# whole-disk vfat image (which host mcopy CAN write), so
+	# populate_in_guest's $DATADEV/$IMGDEV detection works unchanged -- only
+	# the MBR-wrapped disk has a partition node.
+	local tool="$b/tool.img"
+	truncate -s 16M "$tool"
+	mkfs.vfat -n TOOLS "$tool" >/dev/null
+	mcopy -i "$tool" "$TEST_SYMLINK_BIN" ::/test-symlink
+
+	local poplog="$b/populate.log"
+	# shellcheck disable=SC2016 # GUEST ash text: $DATADEV/$IMGDEV/$? must
+	# reach the guest unexpanded (see populate_in_guest's header).
+	populate_in_guest "$disk" "$tool" "$poplog" \
+		'mkdir -p /mnt/tool' \
+		'mount -t vfat "$IMGDEV" /mnt/tool; echo "GUEST-TOOL-MOUNT-RC=$?"' \
+		'mount -t exfat -o rw,sync,dirsync "$DATADEV" /mnt/fat; echo "GUEST-EXFAT-MOUNT-RC=$?"' \
+		'/mnt/tool/test-symlink /mnt/fat create; echo "GUEST-SYMLINK-CREATE-RC=$?"' \
+		'umount /mnt/fat; echo "GUEST-UMOUNT1-RC=$?"' \
+		'mount -t exfat -o rw "$DATADEV" /mnt/fat; echo "GUEST-REMOUNT-RC=$?"' \
+		'/mnt/tool/test-symlink /mnt/fat verify; echo "GUEST-SYMLINK-VERIFY-RC=$?"' \
+		'umount /mnt/fat; echo "GUEST-UMOUNT2-RC=$?"'
+
+	local m
+	for m in TOOL-MOUNT EXFAT-MOUNT SYMLINK-CREATE UMOUNT1 REMOUNT \
+			SYMLINK-VERIFY UMOUNT2; do
+		grep -q "GUEST-$m-RC=0" "$poplog" || {
+			fail_case "$name" "GUEST-$m-RC=0 not found (see $poplog)"
+			return
+		}
+	done
+	# Belt and braces: RC=0 already implies no assertion fired (test-symlink
+	# exits 1 on the first failure), but a FAIL: line names the exact broken
+	# assertion in the failure report, so check for it explicitly too.
+	if grep -q 'FAIL:' "$poplog"; then
+		fail_case "$name" "a test-symlink assertion failed (see $poplog)"
+		return
+	fi
+
+	# Host-side: the driver's writes must leave a checksum-valid filesystem.
+	# This does NOT catch cluster leaks (fsck.exfat 1.3.2 ignores orphaned
+	# bitmap bits -- the statvfs check above is the leak tripwire); it
+	# catches dentry-set/checksum corruption instead.
+	dd if="$disk" of="$b/part1.after" bs=512 skip=2048 count=196608 status=none
+	if ! fsck.exfat -n "$b/part1.after" >"$b/fsck.log" 2>&1; then
+		fail_case "$name" "fsck.exfat found problems after symlink I/O (see $b/fsck.log)"
+		return
+	fi
+
+	pass_case "$name (exFAT Samsung-format symlinks: hot+cold round-trip, DT_LNK, unlink leak tripwire, fsck-clean -- ADR 0019)"
+}
+
 # --- label: root=LABEL=... resolved via BusyBox findfs ---
 case_label() {
 	local name=label b="$BUILD/label"
@@ -640,12 +739,13 @@ case_rootwait() {
 # Driver
 # =========================================================================
 
-ALL_CASES=(fat32 exfat label nonascii missing-image rootwait)
+ALL_CASES=(fat32 exfat symlink label nonascii missing-image rootwait)
 
 run_case() {
 	case "$1" in
 	fat32)          case_fat32 ;;
 	exfat)          case_exfat ;;
+	symlink)        case_symlink ;;
 	label)          case_label ;;
 	nonascii)       case_nonascii ;;
 	missing-image)  case_missing_image ;;

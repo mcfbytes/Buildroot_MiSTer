@@ -4,17 +4,20 @@
     "config:recommended"
   ],
   "description": [
-    "P4.6 (TASKS.md): onboard Renovate to track every version/commit/digest pin",
-    "this repo maintains by hand. See docs/renovate.md for the full inventory",
-    "of what is managed here, what is deliberately excluded, and why.",
+    "P4.6 (TASKS.md): track every version/commit/digest pin this repo maintains by",
+    "hand. See docs/renovate.md for the full inventory of what is managed here,",
+    "what is deliberately excluded, and why.",
     "",
-    "STATUS AS OF AUTHORING (2026-07-13): this repository is still PRIVATE and",
-    "Renovate has not been installed on it yet. This file is prep work -- it",
-    "has never been evaluated by a live Renovate run, so nothing below has",
-    "been proven against the real bot. Treat every custom manager/datasource",
-    "here as reviewed-by-hand, not battle-tested; see docs/renovate.md's",
-    "'Unverified / what to check on first run' section for the specific",
-    "pieces most likely to need a config fix once Renovate actually runs."
+    "STATUS (2026-07-14): Renovate is INSTALLED on this repository and this config",
+    "is live. It validates clean against the official tool:",
+    "  npx --package renovate -- renovate-config-validator renovate.json",
+    "Run that before pushing any change to this file -- an invalid config makes",
+    "Renovate skip the repo silently rather than fail loudly.",
+    "",
+    "automerge is OFF everywhere, deliberately: every pin here is a supply-chain",
+    "trust decision (kernel, Buildroot, out-of-tree driver commits, firmware), and",
+    "several need a companion hash refreshed by .github/workflows/renovate-hash-sync.yml",
+    "before the PR is even buildable. A human reviews each one."
   ],
   "labels": [
     "renovate"
@@ -27,11 +30,9 @@
   "schedule": [
     "before 6am on monday"
   ],
-
   "git-submodules": {
     "enabled": true
   },
-
   "customDatasources": {
     "kernelLongterm618": {
       "description": "kernel.org's machine-readable releases.json, filtered down to the current 6.18.y longterm point release. Deliberately constrained by moniker+prefix here (not just by allowedVersions below) so a schema hiccup upstream can't silently hand back mainline/other-branch versions.",
@@ -42,12 +43,13 @@
       ]
     }
   },
-
   "customManagers": [
     {
       "customType": "regex",
       "description": "Bump the pinned Buildroot release (BUILDROOT_VERSION) in the wrapper Makefile. Deliberately does NOT try to also update the companion BUILDROOT_SHA256 on the next line -- that hash is only legitimate when transcribed from Buildroot's own GPG-signed release manifest (the Makefile's own header comment forbids a locally-computed sha256sum, since that would be circular and would bless a tampered/truncated tarball). A human runs `make buildroot-showsig BUILDROOT_VERSION=<new>` and pastes the signed hash in by hand -- see docs/renovate.md. Until then this PR is RED (buildroot-verify fails closed), which is the intended, safe failure mode.",
-      "fileMatch": ["^Makefile$"],
+      "managerFilePatterns": [
+        "^Makefile$"
+      ],
       "matchStrings": [
         "BUILDROOT_VERSION\\s*\\?=\\s*(?<currentValue>\\S+)"
       ],
@@ -57,8 +59,10 @@
     },
     {
       "customType": "regex",
-      "description": "Bump the pinned kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) in the DE10-Nano defconfig, constrained to the current 6.18.y longterm line by the custom datasource above. The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml, which handles this specific case automatically (unlike Buildroot's hash, above, kernel.org's manifest IS fetchable and parseable without a GPG keyring step beyond what the project's own manual process already does). CI (build.yml, pull_request-triggered) then proves the 24 carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md §13.",
-      "fileMatch": ["^configs/mister_de10nano_defconfig$"],
+      "description": "Bump the pinned kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) in the DE10-Nano defconfig, constrained to the current 6.18.y longterm line by the custom datasource above. The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml, which handles this specific case automatically (unlike Buildroot's hash, above, kernel.org's manifest IS fetchable and parseable without a GPG keyring step beyond what the project's own manual process already does). CI (build.yml, pull_request-triggered) then proves the 24 carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713.",
+      "managerFilePatterns": [
+        "^configs/mister_de10nano_defconfig$"
+      ],
       "matchStrings": [
         "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>[\\d.]+)\""
       ],
@@ -66,83 +70,138 @@
       "datasourceTemplate": "custom.kernelLongterm618",
       "versioningTemplate": "loose"
     },
-
-    { "customType": "regex", "description": "RTL8812AU driver commit pin (morrownr/8812au-20210820, main branch). Hash: package/rtl8812au/rtl8812au.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8812au/rtl8812au\\.mk$"],
-      "matchStrings": ["RTL8812AU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+    {
+      "customType": "regex",
+      "description": "RTL8812AU driver commit pin (morrownr/8812au-20210820, main branch). Hash: package/rtl8812au/rtl8812au.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8812au/rtl8812au\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8812AU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/8812au-20210820",
       "packageNameTemplate": "https://github.com/morrownr/8812au-20210820",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL8814AU driver commit pin (morrownr/8814au, main branch). Hash: package/rtl8814au-morrownr/rtl8814au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8814au-morrownr/rtl8814au-morrownr\\.mk$"],
-      "matchStrings": ["RTL8814AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL8814AU driver commit pin (morrownr/8814au, main branch). Hash: package/rtl8814au-morrownr/rtl8814au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8814au-morrownr/rtl8814au-morrownr\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8814AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/8814au",
       "packageNameTemplate": "https://github.com/morrownr/8814au",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL8821AU driver commit pin (morrownr/8821au-20210708, main branch). Hash: package/rtl8821au-morrownr/rtl8821au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8821au-morrownr/rtl8821au-morrownr\\.mk$"],
-      "matchStrings": ["RTL8821AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL8821AU driver commit pin (morrownr/8821au-20210708, main branch). Hash: package/rtl8821au-morrownr/rtl8821au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8821au-morrownr/rtl8821au-morrownr\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8821AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/8821au-20210708",
       "packageNameTemplate": "https://github.com/morrownr/8821au-20210708",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL8821CU driver commit pin (morrownr/8821cu-20210916, main branch). Hash: package/rtl8821cu-morrownr/rtl8821cu-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8821cu-morrownr/rtl8821cu-morrownr\\.mk$"],
-      "matchStrings": ["RTL8821CU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL8821CU driver commit pin (morrownr/8821cu-20210916, main branch). Hash: package/rtl8821cu-morrownr/rtl8821cu-morrownr.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8821cu-morrownr/rtl8821cu-morrownr\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8821CU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/8821cu-20210916",
       "packageNameTemplate": "https://github.com/morrownr/8821cu-20210916",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL8188FU driver commit pin (kelebek333/rtl8188fu, master branch). Hash: package/rtl8188fu/rtl8188fu.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8188fu/rtl8188fu\\.mk$"],
-      "matchStrings": ["RTL8188FU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL8188FU driver commit pin (kelebek333/rtl8188fu, master branch). Hash: package/rtl8188fu/rtl8188fu.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8188fu/rtl8188fu\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8188FU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "master",
       "depNameTemplate": "kelebek333/rtl8188fu",
       "packageNameTemplate": "https://github.com/kelebek333/rtl8188fu",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL8188EU driver commit pin (aircrack-ng/rtl8188eus). NOTE: this repo's default branch is literally named 'v5.3.9' (verified via git ls-remote --symref at authoring time, not assumed) -- update currentValueTemplate if aircrack-ng ever renames it, or this manager will quietly stop finding new commits. Hash: package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng\\.mk$"],
-      "matchStrings": ["RTL8188EU_AIRCRACK_NG_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL8188EU driver commit pin (aircrack-ng/rtl8188eus). NOTE: this repo's default branch is literally named 'v5.3.9' (verified via git ls-remote --symref at authoring time, not assumed) -- update currentValueTemplate if aircrack-ng ever renames it, or this manager will quietly stop finding new commits. Hash: package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL8188EU_AIRCRACK_NG_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "v5.3.9",
       "depNameTemplate": "aircrack-ng/rtl8188eus",
       "packageNameTemplate": "https://github.com/aircrack-ng/rtl8188eus",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "RTL88X2BU driver commit pin (morrownr/88x2bu-20210702, main branch). Hash: package/rtl88x2bu/rtl88x2bu.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/rtl88x2bu/rtl88x2bu\\.mk$"],
-      "matchStrings": ["RTL88X2BU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "RTL88X2BU driver commit pin (morrownr/88x2bu-20210702, main branch). Hash: package/rtl88x2bu/rtl88x2bu.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/rtl88x2bu/rtl88x2bu\\.mk$"
+      ],
+      "matchStrings": [
+        "RTL88X2BU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/88x2bu-20210702",
       "packageNameTemplate": "https://github.com/morrownr/88x2bu-20210702",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "xone (Xbox GIP) driver commit pin (dlundqvist/xone, master branch). Hash: package/xone/xone.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/xone/xone\\.mk$"],
-      "matchStrings": ["XONE_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "xone (Xbox GIP) driver commit pin (dlundqvist/xone, master branch). Hash: package/xone/xone.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/xone/xone\\.mk$"
+      ],
+      "matchStrings": [
+        "XONE_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "master",
       "depNameTemplate": "dlundqvist/xone",
       "packageNameTemplate": "https://github.com/dlundqvist/xone",
-      "datasourceTemplate": "git-refs" },
-
-    { "customType": "regex", "description": "MidiLink_MiSTer commit pin (MiSTer-devel/MidiLink_MiSTer, master branch). Hash: package/midilink/midilink.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/midilink/midilink\\.mk$"],
-      "matchStrings": ["MIDILINK_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"],
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "MidiLink_MiSTer commit pin (MiSTer-devel/MidiLink_MiSTer, master branch). Hash: package/midilink/midilink.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^package/midilink/midilink\\.mk$"
+      ],
+      "matchStrings": [
+        "MIDILINK_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
       "currentValueTemplate": "master",
       "depNameTemplate": "MiSTer-devel/MidiLink_MiSTer",
       "packageNameTemplate": "https://github.com/MiSTer-devel/MidiLink_MiSTer",
-      "datasourceTemplate": "git-refs" },
-
+      "datasourceTemplate": "git-refs"
+    },
     {
       "customType": "regex",
       "description": "munt MT-32 emulator tag pin. Non-standard tag format (munt_MAJOR_MINOR_PATCH) needs a regex versioning scheme so Renovate orders releases correctly instead of treating the whole string as an opaque blob. Hash: package/munt/munt.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/munt/munt\\.mk$"],
+      "managerFilePatterns": [
+        "^package/munt/munt\\.mk$"
+      ],
       "matchStrings": [
         "MUNT_VERSION\\s*=\\s*(?<currentValue>munt_\\d+_\\d+_\\d+)"
       ],
@@ -153,7 +212,9 @@
     {
       "customType": "regex",
       "description": "BCM20702 Bluetooth firmware tag pin (winterheart/broadcom-bt-firmware). Tag format vMAJOR.MINOR.PATCH.BUILD_pN is nonstandard for 'loose' versioning's ordering of the trailing _pN -- flagged via the needs-manual-version-check label below; automerge is already off everywhere, so worst case is a human rejects a wrongly-ordered proposal. Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml.",
-      "fileMatch": ["^package/bcm20702-firmware/bcm20702-firmware\\.mk$"],
+      "managerFilePatterns": [
+        "^package/bcm20702-firmware/bcm20702-firmware\\.mk$"
+      ],
       "matchStrings": [
         "BCM20702_FIRMWARE_VERSION\\s*=\\s*(?<currentValue>v[\\d.]+_p\\d+)"
       ],
@@ -162,25 +223,38 @@
       "versioningTemplate": "loose"
     }
   ],
-
   "packageRules": [
     {
       "description": "Constrain the Buildroot pin to the 2026.02.x LTS line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes 2026.02.",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["buildroot/buildroot"],
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "buildroot/buildroot"
+      ],
       "allowedVersions": "/^2026\\.02(\\.\\d+)?$/",
-      "addLabels": ["buildroot-pin"]
+      "addLabels": [
+        "buildroot-pin"
+      ]
     },
     {
       "description": "Constrain the kernel pin to the 6.18.y longterm line (defense in depth -- the custom datasource above already filters to moniker=longterm and 6.18.*). A kernel MINOR bump is out of scope for routine automation and must not be silently allowed here.",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["kernel-longterm-6.18"],
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "kernel-longterm-6.18"
+      ],
       "allowedVersions": "/^6\\.18(\\.\\d+)?$/",
-      "addLabels": ["kernel-pin"]
+      "addLabels": [
+        "kernel-pin"
+      ]
     },
     {
       "description": "Driver/firmware commit and tag pins -- label distinctly so a reviewer knows these change out-of-tree kernel-module source, not just a build tool version.",
-      "matchManagers": ["custom.regex"],
+      "matchManagers": [
+        "custom.regex"
+      ],
       "matchDepNames": [
         "morrownr/8812au-20210820",
         "morrownr/8814au",
@@ -194,25 +268,46 @@
         "munt/munt",
         "winterheart/broadcom-bt-firmware"
       ],
-      "addLabels": ["driver-pin"]
+      "addLabels": [
+        "driver-pin"
+      ]
     },
     {
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["winterheart/broadcom-bt-firmware"],
-      "addLabels": ["needs-manual-version-check"]
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "winterheart/broadcom-bt-firmware"
+      ],
+      "addLabels": [
+        "needs-manual-version-check"
+      ]
     },
     {
       "description": "Keep CI container image digests (ubuntu:26.04@sha256:... in build.yml/release.yml/reproducibility.yml's `container:` blocks) pinned and updated in place.",
-      "matchManagers": ["github-actions"],
-      "matchDatasources": ["docker"],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
       "pinDigests": true,
-      "addLabels": ["ci-container"]
+      "addLabels": [
+        "ci-container"
+      ]
     },
     {
       "description": "GitHub Actions SHA-pinned `uses:` lines (with a trailing # vX.Y.Z comment) across build/release/reproducibility/publish-db workflows -- handled by Renovate's built-in github-actions manager (digest update, comment kept in sync). No custom manager needed; this rule just labels the PRs.",
-      "matchManagers": ["github-actions"],
-      "matchDatasources": ["github-tags", "github-releases"],
-      "addLabels": ["gh-actions"]
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDatasources": [
+        "github-tags",
+        "github-releases"
+      ],
+      "addLabels": [
+        "gh-actions"
+      ]
     }
   ]
 }

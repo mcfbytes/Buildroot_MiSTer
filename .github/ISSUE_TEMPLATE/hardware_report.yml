@@ -15,7 +15,7 @@ body:
     id: image_version
     attributes:
       label: Image version tested
-      description: "The image version -- the 6-digit YYMMDD in /MiSTer.version. Example: 260616 (= 2026-06-16), or built-2026-07-12 for a local build."
+      description: "The 6-digit YYMMDD in /MiSTer.version (it is always exactly 6 digits -- the build fails otherwise). Example: 260616 = 2026-06-16. If you built the image yourself, add the commit SHA in the notes below."
       placeholder: "260616"
     validations:
       required: true

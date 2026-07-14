@@ -5,25 +5,34 @@ companion `.github/workflows/renovate-hash-sync.yml`) manages, what is
 deliberately excluded, the automerge policy, and the hash-provenance rules
 a human must follow for the pins Renovate cannot safely finish on its own.
 
-## Status: prep work, not yet running
+## Status: live
 
-This repository is currently **private**, and Renovate has not been
-installed on it (no GitHub App, no Mend/hosted Renovate config exists
-against this repo yet). `renovate.json` and `renovate-hash-sync.yml` are
-authored ahead of that step so onboarding is a config-review, not a
-config-writing, exercise once the repo goes public or Renovate is granted
-access to a private repo.
+Renovate is **installed on this repository** and this config is active.
 
-Concretely, this means TASKS.md P4.6's own "Done when" —
+`renovate.json` validates clean against the official tool — run this before
+pushing any change to it:
+
+```sh
+npx --package renovate -- renovate-config-validator renovate.json
+```
+
+That check is not optional busywork: an **invalid Renovate config makes Renovate
+skip the repository silently**. It does not fail loudly, and there is no CI
+signal for it — the only symptom is that dependency PRs quietly stop appearing,
+which is exactly the failure you would not notice for months.
+
+What is still unproven is the *behavior* of the custom managers below, as opposed
+to their syntax. Renovate reads its config from the **default branch**, so the
+managers only start producing PRs once this file is on `master`. TASKS.md P4.6's
+"Done when" —
 
 > a real or synthetic Renovate PR for a Buildroot point release opens with
-> passing CI; the pin file's regex manager is covered by a Renovate config
-> test
+> passing CI; the pin file's regex manager is covered by a Renovate config test
 
-— **is not achievable yet** and is not claimed here. Nothing in this file
-has been exercised against a live Renovate run. Treat every custom
-manager/datasource below as reviewed-by-hand, not proven; see
-["Unverified / what to check on first run"](#unverified--what-to-check-on-first-run).
+— is therefore **not yet met**: no custom manager here has produced a real PR.
+Treat each one as reviewed-and-schema-valid, not battle-tested, and see
+["Unverified / what to check on first run"](#unverified--what-to-check-on-first-run)
+for the specific pieces most likely to need a fix on the first live run.
 
 ## What is managed
 

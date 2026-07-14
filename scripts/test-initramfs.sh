@@ -133,6 +133,7 @@ check_prereqs() {
 	need qemu-system-arm       "install qemu-system-arm"
 	need mkfs.vfat             "install dosfstools"
 	need mkfs.exfat            "install exfatprogs (or exfat-utils)"
+	need fsck.exfat            "install exfatprogs (or exfat-utils)"
 	need sfdisk                "install util-linux"
 	need mke2fs                "install e2fsprogs"
 	need cpio                  "install cpio"
@@ -214,9 +215,7 @@ build_marker_inits() {
 		-o "$MARKER_INIT_NONASCII" "$MARKER_C" \
 		|| die "marker-init-nonascii compile failed"
 	log "compiling test-symlink (guest-side exfat symlink assertions)"
-	# -Wno-format-truncation: its path() helper deliberately snprintf-caps
-	# guest paths at 4096 and dies at runtime on truncation instead.
-	"${CROSS_COMPILE}gcc" -O2 -static -Wall -Wextra -Wno-format-truncation \
+	"${CROSS_COMPILE}gcc" -O2 -static -Wall -Wextra \
 		-o "$TEST_SYMLINK_BIN" "$TEST_SYMLINK_C" \
 		|| die "test-symlink compile failed"
 }

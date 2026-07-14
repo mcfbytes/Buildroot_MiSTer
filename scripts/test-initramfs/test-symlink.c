@@ -20,7 +20,13 @@ static char base[4096];
 static void die(const char *tag) { printf("FAIL:%s errno=%d (%s)\n", tag, errno, strerror(errno)); exit(1); }
 static void pass(const char *tag) { printf("PASS:%s\n", tag); }
 
-static void path(char *out, const char *rel) { snprintf(out, 4096, "%s/%s", base, rel); }
+static void path(char *out, const char *rel)
+{
+	if (snprintf(out, 4096, "%s/%s", base, rel) >= 4096) {
+		errno = ENAMETOOLONG;
+		die("path-truncated");
+	}
+}
 
 static void check_readlink(const char *rel, const char *want, const char *tag)
 {
@@ -93,7 +99,11 @@ int main(int argc, char **argv)
 		if (symlink("../_Arcade/Galaga.mra", p)) die("symlink-rel");
 		pass("symlink-rel");
 		path(p, "abslink");
-		snprintf(p2, sizeof(p2), "%s/_Arcade/Galaga.mra", base);
+		if (snprintf(p2, sizeof(p2), "%s/_Arcade/Galaga.mra", base) >=
+		    (int)sizeof(p2)) {
+			errno = ENAMETOOLONG;
+			die("abs-path-truncated");
+		}
 		if (symlink(p2, p)) die("symlink-abs");
 		pass("symlink-abs");
 		path(p, "dangle");
@@ -143,7 +153,13 @@ int main(int argc, char **argv)
 		check_dtype("_Organized", "Galaga.mra", DT_LNK, "cold-readdir-dtype");
 		check_readlink("dangle", "no/such/file", "cold-readlink-dangle");
 		path(p, "dangle");
-		if (open(p, O_RDONLY) >= 0 || errno != ENOENT) die("dangle-enoent");
+		fd = open(p, O_RDONLY);
+		if (fd >= 0) {
+			close(fd);
+			printf("FAIL:dangle-enoent open unexpectedly succeeded\n");
+			exit(1);
+		}
+		if (errno != ENOENT) die("dangle-enoent");
 		pass("dangle-enoent");
 		if (unlink(p)) die("unlink-link");
 		pass("unlink-link");

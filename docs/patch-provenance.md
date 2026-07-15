@@ -10,6 +10,12 @@ cited commit SHA, `file:line`, or upstream commit.
 
 **Status:** complete. All 109 fork commits accounted for; content diff reconciles exactly.
 
+> **2026-07-15 reconciliation.** Every row was independently re-derived by the full
+> per-commit reconciliation in `docs/kernel-recon/` (123 records incl. old-branch residue,
+> each tier-2 verified; see `reconciliation.md`, `silent-regressions.md`,
+> `disagreements-with-provenance.md`). Corrections are applied inline below and summarized
+> in §11. The per-commit records are the authoritative evidence; this doc is the narrative map.
+
 ---
 
 ## 1. Method — how the baseline was established
@@ -331,10 +337,16 @@ Every row verified against 6.18.38 source; upstream commit recovered with `git l
 
 | Commit(s) | Subject | Upstream in 6.18 — citation | Evidence |
 |---|---|---|---|
-| `c4ec5cb40`, `9bdab534b`, `60821059c`, `45283785a` | Switch Pro/Joy-Con backport + fixes | **`2af16c1f846b`** *HID: nintendo: add nintendo switch controller driver* (2021-09-11, v5.16) | `drivers/hid/hid-nintendo.c` present |
-| `e155f6a2f`, `2799f8b94`, `b00a72159` | NSO NES/SNES, N64, Mega Drive | **`94f18bb19945`** *HID: nintendo: add support for nso controllers* (2023-12-04) | 6.18 `hid-ids.h:1066-1068`: `SNESCON 0x2017`, `GENCON 0x201e`, `N64CON 0x2019`. **Device-ID table is identical to the fork's.** |
+| `c4ec5cb40` | Switch Pro/Joy-Con backport | **`2af16c1f846b`** *HID: nintendo: add nintendo switch controller driver* (2021-09-11, v5.16) | `drivers/hid/hid-nintendo.c` present |
+| `9bdab534b` | hid-nintendo: default calibration if empty | **`50503e360eeb`** (2022-09-21) — plausibility check is a proven strict superset of the fork's `max==min` guard (kernel-recon, sonnet-verified) | 6.18 `hid-nintendo.c:1089-1092` |
+| ~~`60821059c`~~ | ~~home LED non-fatal~~ **CORRECTED 2026-07-15: only partial upstream** — `8b30fb40f8f2` made the *set*-failure non-fatal; *registration* failure still fails probe in 6.18 | → **carried**, `0035-hid-nintendo-home-led-nonfatal.patch` | Pro-Controller-clone tolerance |
+| ~~`45283785a`~~ | ~~combo LED~~ **CORRECTED 2026-07-15: NOT upstream** — `:combo` LED is fork-only; Main_MiSTer's ONLY Joy-Con pairing path reads/writes it (`input.cpp:4704/4715/4822-23`) | → **carried**, `0032-hid-nintendo-joycon-combo-led.patch` | grouping error hid a coupled silent regression |
+| `e155f6a2f`, `2799f8b94`, `b00a72159` | NSO NES/SNES, N64, Mega Drive | **`94f18bb19945`** *HID: nintendo: add support for nso controllers* (2023-12-04) | 6.18 `hid-ids.h:1066-1068`: `SNESCON 0x2017`, `GENCON 0x201e`, `N64CON 0x2019`. **Device-ID table is identical to the fork's.** **2026-07-15:** two behavioral divergences found (kernel-recon): NES/Famicom **A/B are swapped** vs stock → restored via `0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch`; `b00a72159`'s BT product-ID forcing (MD pad reports SNES PID) is not upstream — known low-impact limitation (SDL gamecontrollerdb keys off raw VID:PID), not carried. |
 | `f9c64d8cd` | hid-nintendo: fix possible division by 0 | **`6eb04ca8c52e`** *HID: nintendo: Prevent divide-by-zero on code* (2023-12-05) | 6.18 `hid-nintendo.c:1196,1201` — same `imu_cal_*_divisor[i] == 0` guards |
-| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *…add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. ⚠ verify controller LED behaviour on HW (P3.13) |
+| ~~`f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a`~~ | **ROW CORRECTED 2026-07-15 — this grouping contained 3 misclassifications** (kernel-recon, all sonnet-verified). None of these were "pre-upstream backports"; they are independent implementations: | | |
+| `0d60c3482` | lightbar control | dropped-upstream / **superseded-better** by **`fc97b4d6a1a6`** (multicolor classdev; the previously cited `8e5198a12d64` only sets a default color) | zero Main_MiSTer coupling; our config already has `LEDS_CLASS_MULTICOLOR=y` |
+| `f84543926` + `b76b4bc6a` | single `:player_id` LED (0-6) | **NOT upstream** (vanilla: five auto-assigned `:white:player-N`); Main_MiSTer co-designed against `:player_id` (`input.cpp:2642-2726`) | → **carried**, `0033-hid-playstation-dualsense-player-id-led.patch` |
+| `60e08955f` | mute → BTN_Z + `:mute` LED | **NOT upstream** (6.18 still toggles mic in-kernel, `hid-playstation.c:1496-1506`; the two SHAs cited above contain zero mute content) | no shipped consumer → cosmetic; **carry decision open** |
 | `9a8cb6a93` | hid-microsoft: Xbox Series X/S | **`f5554725f304`** *HID: microsoft: Add rumble support to latest xbox controllers* (2023-04-25) | 6.18 `hid-microsoft.c:454` binds `MODEL_1914` (=0x0b13) |
 | `adbaaea91` | hid-microsoft: XOne Elite 2 ID | same as above | 6.18 `hid-microsoft.c:458` binds `MODEL_1797_BLE` (=0x0b22) |
 | `409f81077` | xpad: Elite 2 ID | **`e23c69e33248`** *Input: xpad - add support for XBOX One Elite paddles* (2022-08-18) | 6.18 `xpad.c:166` `{ 0x045e, 0x0b00, …, MAP_PADDLES, XTYPE_XBOXONE }` |
@@ -362,11 +374,11 @@ All confirmed **absent** from 6.18.38.
 | `77862a67f` | Official Nintendo GameCube adapter (057e:0337) | `drivers/hid/hid-gamecube-adapter.c` | **James McCarthy** (PR #48) | **`0014-hid-gamecube-adapter.patch`** *(new — not in PLAN §6)* |
 | `484f68172` | **NSO Famicom controllers** | `drivers/hid/hid-nintendo.c` | **Aurora** (PR #62) | **`0015-hid-nintendo-nso-famicom.patch`** ✅ **landed (P1.9-esc)** — re-implemented, not rebased (§9) |
 | `c784a6856` | hid-microsoft: Xbox Elite 2 paddles | `drivers/hid/hid-microsoft.c` | Sorgelig | **`0016-hid-microsoft-elite2-paddles.patch`** *(new)* |
-| `af27afc4c`, `f3c75eb02`, `a2242dd85`, `c035c21c0` | xpad deltas | `drivers/input/joystick/xpad.c` | **zakk4223** (PR #63), **eniva**, Sorgelig | **`0017-xpad-mister-deltas.patch`** *(new)* |
+| `f3c75eb02`, `a2242dd85`, `c035c21c0` | xpad deltas (cpoll+Qanba, GIP exclusion, Flydigi Vader) | `drivers/input/joystick/xpad.c` | **eniva**, Sorgelig | **`0017-xpad-mister-deltas.patch`** — **corrected 2026-07-15:** `af27afc4c` (zakk4223, PR #63) is **NOT carried** (patch header: "NOT ported") — it was a wholesale resync superseded by 6.18's own xpad.c; UAPI codes it added are mainline |
 | `5bdbf2f7e` | ControllaBLE quirk (1209:FACA) | `drivers/hid/hid-quirks.c`, `hid-pl.c` | Sorgelig | `0018-hid-controllable-quirk.patch` |
 | `fc8f3c2c6`, `b745ce6d9` | Logitech K400r / K400 Plus: disable Fn swap | `drivers/hid/hid-logitech-hidpp.c` | Sorgelig; **HGD73** (PR #15) | `0019-hidpp-k400-fn-inversion.patch` |
 | `8a100f2ed`, `43c52e9ef` | Logitech G923 wheels + 32-bit rumble/FF fix | `drivers/hid/hid-lg.c`, `hid-lg4ff.c`, `hid-ids.h` | **atrac17** (PR #32), **zakk4223** (PR #54) | ❌ **NOT CARRIED (P1.9-esc)** — reclassified: the fork's file is a vendored copy of the out-of-tree **berarma/new-lg4ff** rewrite; there is no `0021` (§9) |
-| `1412bd707`, `5c410e935` | hid-sony: div-by-0; 3rd-party DS4 wired connect | `drivers/hid/hid-sony.c` | Sorgelig | `0022-hid-sony-fixes.patch` |
+| `5c410e935` | hid-sony: 3rd-party DS4 wired connect | `drivers/hid/hid-sony.c` → re-targeted to 6.18's `hid-playstation.c` | Sorgelig | `0022-hid-playstation-ds4-mac-fix.patch` — **corrected 2026-07-15:** `1412bd707` (div-by-0) is NOT carried: superseded-better upstream by `74cb485f68eb` (init-time calibration sanitizing) |
 | `0d7778d1f`, `47dc53a22`, `15968bc26` | wiimote: `uniq`, button codes, analog ranges | `drivers/hid/hid-wiimote-{core,modules}.c` | Sorgelig | `0023-hid-wiimote-fixes.patch` |
 | `70e391b81` | Map HID Europe-1 (0x32) → `KEY_F24` (**Keyrah**) | `drivers/hid/hid-input.c` (1 line) | Sorgelig | `0024-hid-input-keyrah-europe1.patch` |
 | `f0982bf2c` | usbhid: apply `jspoll` to gamepads too | `drivers/hid/usbhid/hid-core.c` | Sorgelig | `0025-usbhid-jspoll-gamepad.patch` |
@@ -386,7 +398,7 @@ Vendored wholesale: **3,428 files**. Triaged as whole trees, not line-by-line.
 
 | Commits | Subject | Origin | Disposition |
 |---|---|---|---|
-| `33ff5146a` (2,548 files / 2.56M+), `3740d5b88` (1,687 files / 942K+), `2371fb1aa`, `143ce187e`, `4e98a68d1` (merge), `43fbb63ae`, `993b82e31`, `115b1d1ae`, `fc09a292a` | Vendor + resync rtl8188eu, rtl8188fu, rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu | **morrownr** (explicitly: `3740d5b88` = *"Backport … from morrownr"*, **gkrzystek**, PR #40); local fixes: EDUP EP-AC1661 efuse (`fc09a292a`), Edimax EW-7822ULC (`115b1d1ae`) | **re-source** → `package/rtl8188eu`, `rtl8188fu`, `rtl8812au`, `rtl8821au`, `rtl8821cu`, `rtl88x2bu` (P3.1), commit-pinned + hash-verified. **Do not vendor.** Kconfig symbols: `RTL8188EU`, `RTL8188FU`, `RTL8812AU`, `RTL8821AU`, `RTL8821CU`, **`RTL8822BU`** (note: the 88x2bu symbol is `RTL8822BU`, not `RTL88X2BU`) — all `=m`; 6 `.ko.xz` shipped. Verify the two local device fixes are present upstream or re-apply as package patches. |
+| `33ff5146a` (2,548 files / 2.56M+), `3740d5b88` (1,687 files / 942K+), `2371fb1aa`, `143ce187e`, `4e98a68d1` (merge), `43fbb63ae`, `993b82e31`, `115b1d1ae`, `fc09a292a` | Vendor + resync rtl8188eu, rtl8188fu, rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu | **morrownr** (explicitly: `3740d5b88` = *"Backport … from morrownr"*, **gkrzystek**, PR #40); local fixes: EDUP EP-AC1661 efuse (`fc09a292a`), Edimax EW-7822ULC (`115b1d1ae`) | **re-source / mainline-first** — **updated 2026-07-15** (kernel-recon; the earlier all-packages plan was superseded): active coverage is `package/rtl8812au` + `package/rtl8821au-morrownr` (enabled) for RTL8812A/8811A/8821A; **mainline** `rtl8xxxu` for RTL8188E/F, `rtw88_8821cu` for RTL8821C, `rtw88_8822bu` for RTL8822B (the `rtl8188eu-aircrack-ng`, `rtl8188fu`, `rtl8821cu-morrownr`, `rtl88x2bu` packages exist but are **deliberately disabled** — 88x2bu failed WPA3 on hardware). Local-fix action item **resolved**: `115b1d1ae` superseded (morrownr source never had the mis-bound ID; 7392:B822 is claimed by mainline `rtw8822bu.c:18`); `fc09a292a` EDUP efuse fallback exists in **neither** mainline nor morrownr — **deliberate drop** (user decision 2026-07-15), known limitation for corrupt-EFUSE EP-AC1661 units. |
 
 ### 3.7 Class F — misc quirks
 
@@ -1177,12 +1189,12 @@ incomplete. Proposed final set (P1.9 confirms):
 | **Q2** | Does anything in the community actually *use* symlinks on `/media/fat`? If a survey says no, Q1 collapses to (a) + a release note. **Needs a human/community answer — I cannot determine it from the repos.** | **HIGH** | human |
 | **Q3** | `/media/fat` mount options (N3): replicate `sync,dirsync`, or deliberately switch to async and document the power-off-corruption trade-off? | MEDIUM | P1.10 |
 | **Q4** | FAT32 `iocharset`: stock is effectively `utf8`; mainline vfat defaults to `iso8859-1`. Set `-o iocharset=utf8` (and/or `CONFIG_FAT_DEFAULT_UTF8=y`)? | MEDIUM | P1.3/P1.10 |
-| **Q5** | btusb CSR clones (`b02a4a011`): 6.18's detector is a superset but does **not** cover `lmp_subver == 0x2512`. Do we drop and risk one fake-dongle model, or carry a 1-line addition? | MEDIUM | P3.13 (HW) |
+| **Q5** | ~~btusb CSR clones (`b02a4a011`)~~ **DECIDED (2026-07-15):** detection half **carried** as `0036-btusb-csr-clone-lmp-subver-2512.patch` (match-stock decision); the fork's Barrot pm_runtime narrowing is superseded by 6.18's reworked CSR handling. HW confirmation on a real 0x2512 clone still welcome. | ~~MEDIUM~~ done | ~~P3.13~~ |
 | **Q6** | ~~`leds-gpio` `brightness_hw_changed` (F-2): no consumer found in Main_MiSTer. Confirm at P0.5, then drop if truly unused.~~ **DECIDED (P1.9):** consumer confirmed (Main_MiSTer polls it for the disk-activity LED per TASKS.md P1.9's explicit ruling) — kept, carried as `0029-leds-gpio-brightness-hw-changed.patch`. | LOW | ~~P0.5~~ done |
 | **Q7** | ~~`mt7601u` DPD hack (F-4) and `vt.h` (F-3): recommend dropping both. Confirm.~~ **DECIDED (P1.9):** both confirmed dropped per TASKS.md P1.9's explicit ruling (`vt.h`) and P1.9's own judgment, out of task scope (`mt7601u`, F-4's "unprincipled" assessment stands). | LOW | ~~P0.9~~ done |
 | **Q8** | `socfpga.dtsi` `i2c1 clock-frequency` hunk: move into the board DTS instead of patching the shared SoC dtsi? | LOW | P1.7 |
-| **Q9** | DualSense (4 class-C commits): upstream `hid-playstation` has all the features, but MiSTer's LED/mute *semantics* may differ. Verify controller behaviour on hardware. | LOW | P3.13 |
-| **Q10** | Stock config is 15 months older than fork HEAD (missing `HID_VADER4`, `MACVLAN`). P1.3 must reconcile `stock-linux.config` **and** HEAD's `MiSTer_defconfig`. | LOW | P1.3 |
+| **Q9** | ~~DualSense (4 class-C commits)~~ **RESOLVED (2026-07-15)** at source level, no HW needed: the grouping was wrong (see corrected §3.4 rows) — `:player_id` carried (`0033`), lightbar superseded-better upstream, mute open (cosmetic). On-device sanity check of `0033` still advisable at P3.13. | ~~LOW~~ done | ~~P3.13~~ |
+| **Q10** | ~~Stock config 15 months older than fork HEAD~~ **RESOLVED (2026-07-15):** `CONFIG_MACVLAN=y` added and `CONFIG_JOYSTICK_XPAD` switched to `=m` in `linux.config` (both drifts closed); `HID_VADER4=m` was already carried via `0013`. Kernel-recon config axis now diffs against fork-HEAD `MiSTer_defconfig`. | ~~LOW~~ done | ~~P1.3~~ |
 
 ### Proposed additions to PLAN.md's A1–A9 index (for P0.9)
 
@@ -1480,6 +1492,31 @@ reprogramming sequence on silicon we have not yet booted. Shipping an untested c
 to clock sequencing — inside a patch whose stated job is "carry this forward" — is
 exactly the kind of quiet scope creep that makes a forward-port unreviewable. It is
 recorded, not hidden, and P1.13 has it on the checklist.
+
+## 11. 2026-07-15 reconciliation corrections (summary)
+
+The full per-commit reconciliation (`docs/kernel-recon/`, 123 records, 100%% tier-2 verified)
+found **15 rows in this doc that failed independent re-derivation**; all are corrected inline
+above (search "CORRECTED 2026-07-15" / "updated 2026-07-15"). The systemic failure mode was
+**grouped rows**: a genuinely-upstream feature set absorbing fork-specific commits that then
+got stamped with the group's disposition. Confirmed misclassifications, all now resolved:
+
+| Commit | Was | Actually | Resolution |
+|---|---|---|---|
+| `45283785a` combo LED | Class C drop | fork-only, Main_MiSTer-coupled | carried `0032` |
+| `f84543926`+`b76b4bc6a` player_id LED | Class C drop | fork-only, Main_MiSTer-coupled | carried `0033` |
+| `e155f6a2f` (partial) | clean upstream | NES/Famicom A/B swapped vs stock | carried `0034` |
+| `60821059c` home LED | Class C drop | partial (registration still fatal) | carried `0035` |
+| `b02a4a011` CSR 0x2512 | open Q5 | vanilla structurally misses 0x2512 | carried `0036` (detection half) |
+| `60e08955f` mute BTN_Z | Class C drop | fork-only, no shipped consumer | **open** (cosmetic) |
+| `af27afc4c` xpad resync | carried in 0017 | superseded by 6.18 xpad | not carried (row fixed) |
+| `1412bd707` sony div-0 | carried in 0022 | superseded-better `74cb485f68eb` | not carried (row fixed) |
+| `0d60c3482` lightbar | pre-upstream backport | independent impl., superseded-better | row fixed |
+| realtek coverage (§3.6) | 6 packages =m | mainline-first, 2 packages enabled | row fixed |
+
+New carried patches from these decisions: `0032`–`0036` (see `board/mister/de10nano/
+linux-patches/`), each with full provenance headers. Config parity: `CONFIG_MACVLAN=y`,
+`CONFIG_JOYSTICK_XPAD=m`. All verified via full `linux-dirclean` rebuild.
 
 ### Provenance note
 

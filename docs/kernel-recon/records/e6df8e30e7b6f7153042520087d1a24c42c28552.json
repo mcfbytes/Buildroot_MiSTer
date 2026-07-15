@@ -1,0 +1,59 @@
+{
+  "sha": "e6df8e30e7b6f7153042520087d1a24c42c28552",
+  "subject": "Improve clock transition stability and get OSC1 freq from DT (#35)",
+  "author": "Michael Huang",
+  "author_is_pr_contributor": true,
+  "date": "2022-10-29",
+  "subsystem": "cpufreq",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/cpufreq/socfpga-cpufreq.c"
+  ],
+  "added": 20,
+  "removed": 7,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0003-cpufreq-cyclone5-de10nano-overclock.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:719-874 (section 0003-cpufreq-cyclone5-de10nano-overclock.patch)",
+  "impact": {
+    "effect_if_absent": "CPU frequency scaling (cpufreq) subsystem would be non-functional; users cannot scale CPU frequency from 400 MHz to 1.2 GHz; no build or boot error would result—the feature silently fails to register",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "standard /sys/devices/system/cpu/cpu[01]/cpufreq/ sysfs (scaling_max_freq, scaling_cur_freq, cpuinfo_max_freq, etc.); consumers are community overclock scripts on /media/fat, not Main_MiSTer",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [
+      "3d72b9db7650bc27b0c4a9931adfb144e3b2850b"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (SPDX-License-Identifier: GPL-2.0 in socfpga-cpufreq.c); author: Michael Huang <coolbho3000@gmail.com>",
+  "notes": "This commit (#35) is squashed together with commit #34 (Add cpufreq/overclock driver) in carried patch 0003. It improves the initial cpufreq driver by (1) removing the hardcoded 25 MHz OSC1 constant and reading it from the device tree via of_get_property() instead, and (2) adding PLL bypass/unbypass sequencing in set_dividers() for more stable clock transitions. The commit modifies calculate_vco_clock_hz() to use a static variable socfpga_cpufreq_osc1_hz instead of the hardcoded #define. At init time (socfpga_cpufreq_init()), it traverses /clkmgr@ffd04000/clocks/osc1 and reads the clock-frequency property from DT, converting it from big-endian. Verified against vanilla 6.18.38: no socfpga-cpufreq.c exists in vanilla (grep -rin 'socfpga|altera|altr' drivers/cpufreq/ returns no matches). Not upstream; never submitted to linux-pm. Forward-ported successfully from 5.15 to 6.18 as part of patch 0003. Known latent bug deliberately preserved for hardware safety: wait_for_fsm() calls wait_on_bit() with CLKMGR_STAT_BUSY (a mask, BIT(0)==1) where a bit *number* is expected, so it polls bit 1 instead of bit 0. This is intentional to avoid changing PLL transition timing without DE10-Nano hardware validation. In practice the bug is benign because PLL settling is covered by register-write latency. **CRITICAL: Silent failure mode.** Dropping this commit causes no build/boot error; cpufreq simply fails to register and users lose frequency-scaling capability. Userspace consumers: community overclock scripts on /media/fat that write to scaling_max_freq. Main_MiSTer itself does not reference cpufreq (verified in provenance-doc). Configuration: CONFIG_ARM_SOCFPGA_CPUFREQ=y in linux.config. Fully agrees with provenance-doc sections 719-874. sonnet-verified: corrected — OSC1-from-DT read (clkmgr@ffd04000/clocks/osc1, clock-frequency=<25000000>) confirmed against /mnt/source/linux/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5.dtsi:13-18; wait_on_bit(word,bit,mode) signature (bit is a bit NUMBER, not a mask) confirmed against /mnt/source/linux/include/linux/wait_bit.h, so the CLKMGR_STAT_BUSY=BIT(0) latent-bug claim holds. Two corrections made: (1) carried_mode changed clean-apply -> re-implemented — the carried patch 0003 hardens this commit's own osc1-DT-lookup hunk with NULL-checked goto error paths (out_unmap/out_put_clocks/out_put_osc1, pr_err diagnostic) that do not exist in the 5.15 original, which just chained of_get_child_by_name()/of_get_property()/be32_to_cpup() with no NULL checks and would have oopsed on a missing property — not a byte-identical carry. (2) userspace_coupling.coupled changed true -> false to match record 3d72b9db7's own record and the patch 0003 header itself (\"Main_MiSTer does NOT read cpufreq (verified: no 'cpufreq' and no 'scaling_' anywhere in its sources)\"); the prior coupled=true asserted userspace coupling with no Main_MiSTer path:line citation, an escalation-triggering violation per the grounding contract. Standard cpufreq sysfs is real but its only consumers are external community overclock scripts, not Main_MiSTer or any cited userspace path."
+}

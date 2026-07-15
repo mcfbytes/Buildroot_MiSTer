@@ -1,0 +1,57 @@
+{
+  "sha": "c5066763cfb0074ac10658ad0a52738083b9baf8",
+  "subject": "Enable i2c2 device.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-03-14",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 6,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3, row grouping c5066763c with 13 other DTS commits (aa8afe109..077c2c317)",
+  "impact": {
+    "effect_if_absent": "i2c2 bus remains disabled; ADV7513 HDMI transmitter at address 0x39 cannot be probed; HDMI output silently fails to initialize with no error message",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "i2c bus /dev/i2c-2 enumeration; ADV7513 HDMI transmitter I2C probing at address 0x39",
+    "main_mister_ref": "Main_MiSTer/smbus.cpp:212-219 (i2c_open(), corrected from 214-222) — hardcoded scan limit enforces exactly 3 i2c adapters (buses 0-2); `if (force_bus > 2)` at line 216 returns -1 at line 219; Main_MiSTer/video.cpp:1448 probes 0x39 across /dev/i2c-0..2 at runtime to locate HDMI transmitter"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CRITICAL: i2c2 enables the third and final i2c adapter required for Main_MiSTer HDMI support. The original commit adds &i2c2 { status=\"okay\"; clock-frequency=<100000>; speed-mode=<0>; }. The carried patch 0004-dts-de10nano-MiSTer.patch includes this node but DROPS the speed-mode property (line reads &i2c2 { clock-frequency=<100000>; status=\"okay\"; }), a re-implementation choice because: (1) speed-mode is not a recognized i2c property in 6.18 i2c bindings (Documentation/devicetree/bindings/i2c/), (2) no i2c driver reads it, and (3) would be silently ignored anyway. File path changed during 6.18 forward-port from fork's old location arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts (no vendor subdir) to 6.18 canonical path arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts. Grouped with 13 other DTS commits in provenance.md (one row, SHA range aa8afe109..077c2c317), but this analysis is commit-specific per Phase 1 protocol. sonnet-verified: corrected — fork diff (+6 lines: &i2c2 { status=\"okay\"; clock-frequency=<100000>; speed-mode=<0>; }) confirmed via `git show c5066763c`; carried patch 0004's &i2c2 node (clock-frequency=<100000>; status=\"okay\";, speed-mode dropped) confirmed at line ~190-193 of 0004-dts-de10nano-MiSTer.patch; grep of vanilla i2c bindings docs found zero occurrences of \"speed-mode\", supporting the drop rationale. One citation-precision fix: smbus.cpp:214-222 corrected to smbus.cpp:212-219 — i2c_open() actually starts at line 212 (not 214), the force_bus>2 guard is at line 216, and the return -1 is at line 219; the patch's own inline comment (0004-dts-de10nano-MiSTer.patch line ~157) independently cites \"smbus.cpp:214\" which is also imprecise (line 214 is `char str[16];`, not the guard) but within the same function body. video.cpp:1448 (i2c_open(0x39,...) call in hdmi_config_init()) confirmed exact."
+}

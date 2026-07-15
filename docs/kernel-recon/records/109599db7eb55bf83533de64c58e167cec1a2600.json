@@ -1,0 +1,72 @@
+{
+  "sha": "109599db7eb55bf83533de64c58e167cec1a2600",
+  "subject": "Update rtl8188eu driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "net-wireless",
+  "change_type": "vendored-driver-update",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8188eu/..."
+  ],
+  "added": 168367,
+  "removed": 273055,
+  "is_backport_of_vanilla": false,
+  "source_branch": "MiSTer-v5.13.12",
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "MISTER-KERNEL-PATCH-RECON.md:3.6 (patch-provenance.md line 389)",
+
+  "impact": {
+    "effect_if_absent": "None in our build: the RTL8188EU/RTL8188FU device IDs this driver update touches (0BDA:8179, 0BDA:0179) are natively claimed by mainline in-kernel CONFIG_RTL8XXXU=m (board/mister/de10nano/linux.config:215), which our build ships as a module. The matching Buildroot package (rtl8188eu-aircrack-ng) exists in the tree but is explicitly DISABLED (configs/mister_de10nano_defconfig:568, '# BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set -> mainline rtl8xxxu (8188eu)') specifically so it does not bind-fight rtl8xxxu on the same USB IDs — it is not the active coverage path.",
+    "affected_hardware": [
+      "Realtek RTL8188EU USB adapters"
+    ],
+    "device_ids": [
+      "0BDA:8179",
+      "0BDA:0179"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "CONFIG_RTL8XXXU=m (mainline in-kernel driver, board/mister/de10nano/linux.config:215) -- ACTIVE coverage for 0BDA:8179 and 0BDA:0179 (RTL8188EU), confirmed at /mnt/source/linux/drivers/net/wireless/realtek/rtl8xxxu/core.c:8060-8067",
+      "package/rtl8188eu-aircrack-ng -- present in tree (commit-pinned, hash-verified) but explicitly DISABLED (configs/mister_de10nano_defconfig:568, '# ... is not set'); documented inert fallback, NOT the active coverage path (per 0d8641a2b9c9524f83b0d32cd8ef6332a2a324c3.json, which established this for the sibling v5.14 rtl8188eu/rtl8188fu-add commit)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "source_project": "Realtek (original vendor driver)",
+    "header": "Realtek GPL-2.0 boilerplate: 'Copyright(c) 2007 - 2017 Realtek Corporation. This program is free software; you can redistribute it and/or modify it under the terms of version 2 of the GNU General Public License...'"
+  },
+  "notes": "Huge vendored driver update (695 files, 168K insertions, 273K deletions — confirmed exactly via `git show --stat` against the live fork checkout). v5.13.12 kernel branch only (confirmed via `git branch --contains`, remotes/origin/MiSTer-v5.13.12 exclusively). Per patch-provenance.md §3.6: rtl8188eu and related Realtek drivers were re-sourced from kernel vendor to Buildroot out-of-tree packages. Directive: 'Do not vendor.' This commit's kernel changes are NOT carried forward to 6.18. Disposition: obsolete in current build context (unchanged).\n\nsonnet-verified: corrected. The original record's superseded_by/effect_if_absent claimed our 6.18 build 'ships rtl8188eu-aircrack-ng package instead' — that is stale/wrong. The sibling record 0d8641a2b9c9524f83b0d32cd8ef6332a2a324c3.json (a later Sonnet-corrected record for the closely-related v5.14 'Add rtl8188eu, rtl8188fu WiFi drivers' commit) already established, by direct grep of configs/mister_de10nano_defconfig:568, that BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is explicitly DISABLED ('# ... is not set', with an inline comment '-> mainline rtl8xxxu (8188eu)'), and that the actual active coverage is mainline CONFIG_RTL8XXXU=m (board/mister/de10nano/linux.config:215), which unconditionally claims 0BDA:8179 and 0BDA:0179 in /mnt/source/linux/drivers/net/wireless/realtek/rtl8xxxu/core.c:8060-8067. Re-verified that finding independently for this record (same defconfig line, same linux.config line, same core.c citation) and aligned superseded_by/effect_if_absent/severity accordingly: severity changed feature-loss -> none (nothing is actually absent from the build), superseded_by now leads with CONFIG_RTL8XXXU=m and demotes the aircrack-ng package to an inert, present-but-disabled fallback. change_type normalized from 'Driver update' to 'vendored-driver-update' to match this batch's kebab-case convention (vendored-driver-tree / vendored-driver-add / driver-port / compiler-flags / removal-of-wholesale-replacement). Disposition (dropped-obsolete) unchanged — this was a coverage-claim correction, not a disposition change."
+}

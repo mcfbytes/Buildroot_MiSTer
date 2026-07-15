@@ -1,0 +1,58 @@
+{
+  "sha": "2efa211a2c6c5d72f15c2f1dc469960981e718c8",
+  "subject": "btrtl: add RTL8761B ROMs to list.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-19",
+  "subsystem": "bt",
+  "change_type": "device-support",
+  "files": ["drivers/bluetooth/btrtl.c"],
+  "added": 2,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "source_branch": "MiSTer-v5.13.12",
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["bb23f07cb63975968bbabe314486e2b087234fc5"],
+    "vanilla_file_line": "drivers/bluetooth/btrtl.c:1523-1524",
+    "vanilla_quote": "+MODULE_FIRMWARE(\"rtl_bt/rtl8761b_fw.bin\");\n+MODULE_FIRMWARE(\"rtl_bt/rtl8761b_config.bin\");",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "None (functional) / cosmetic (metadata) — MODULE_FIRMWARE(_firmware) expands to MODULE_INFO(firmware, _firmware) (/mnt/source/linux/include/linux/module.h:305), which only embeds a modinfo tag readable via `modinfo`/depmod/initramfs-building tools (dracut, mkinitramfs); it is NOT consulted by the runtime firmware loader. The kernel's actual request_firmware() call (drivers/bluetooth/btrtl.c:883, `request_firmware(&fw, name, &hdev->dev)`) resolves the RTL8761B firmware by the `.fw_name`/`.cfg_name` strings hardcoded in the `ic_id_table[]` id_table entry, which the fork already had BEFORE this commit (`.fw_name = \"rtl_bt/rtl8761b_fw.bin\"`, present since the v5.13.12 base-import commit e12ed6c19, confirmed via `git log -S` in Linux-Kernel_MiSTer). So RTL8761B firmware loading works identically with or without these two MODULE_FIRMWARE lines. MiSTer's target build has no initramfs (BR2_TARGET_ROOTFS_EXT2 direct ext4 rootfs, not cpio-based) and Buildroot's linux-firmware package does not derive its file list from kernel-module modinfo — firmware inclusion is driven entirely by explicit BR2_PACKAGE_LINUX_FIRMWARE_* options in the defconfig. Confirmed our built image already ships rtl_bt/rtl8761b_fw.bin, rtl_bt/rtl8761b_config.bin (and the rtl8761bu variants) directly at output/target/usr/lib/firmware/rtl_bt/, via BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT=y (configs/mister_de10nano_defconfig:651), independent of any MODULE_FIRMWARE declaration. Net effect of dropping this commit: `modinfo btrtl` would omit two lines; zero effect on device function.",
+    "affected_hardware": ["RTL8761B Bluetooth modules"],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["bb23f07cb63975968bbabe314486e2b087234fc5"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MiSTer v5.13.12 backport (Aug 2021) of functionality later added to vanilla upstream (May 2023, bb23f07cb639). Not carried forward to MiSTer-v5.15 branch. Upstream patch is more comprehensive (also adds rtl8761bu, rtl8723d, rtl8723cs_vf, rtl8821c, rtl8821cs, rtl8822cs, rtl8822cu, rtl8851bu variants), but the rtl8761b_fw.bin and rtl8761b_config.bin declaration lines this fork commit added are byte-identical to bb23f07cb639's hunk (verified: `git show bb23f07cb63975968bbabe314486e2b087234fc5 -- drivers/bluetooth/btrtl.c` in /mnt/source/linux; SHA confirmed to exist and is an ancestor of v6.18.38 via `git merge-base --is-ancestor`). Line numbers re-verified against current HEAD checkout: both fork and vanilla now sit at btrtl.c:1523-1524. Commit existed only on old v5.13 branch, not on stock v5.15 branch, so was not carried forward during version bump. CORRECTION (sonnet re-verification): the original record's impact claim (\"devices won't function without the declarations\") was WRONG. MODULE_FIRMWARE() is a MODULE_INFO() modinfo-only macro (include/linux/module.h:305) with no effect on the request_firmware() runtime path — the actual firmware filename used at runtime comes from the `.fw_name`/`.cfg_name` fields in btrtl.c's id_table, which predate this commit. Verified our build ships the rtl8761b firmware files directly (output/target/usr/lib/firmware/rtl_bt/rtl8761b_fw.bin, rtl8761b_config.bin exist, dated Oct 10 2025, via BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT). Severity downgraded feature-loss -> cosmetic and effect_if_absent rewritten to reflect that this is a metadata-only gap (modinfo output), not a functional regression. Equivalence upgraded partial -> equivalent since the specific 2-line delta this commit introduces is byte-identical upstream (upstream's commit is broader in scope, covering unrelated chips, but that doesn't diminish equivalence of what THIS commit changed). Disposition (dropped-upstream) and vanilla_shas/vanilla_quote/vanilla_file_line were already correct and unchanged. sonnet-verified: corrected — impact/severity was overstated (MODULE_FIRMWARE is modinfo metadata, not required for request_firmware() at runtime; our .fw_name id_table entry and shipped firmware files predate/are independent of this commit), downgraded feature-loss -> cosmetic; equivalence sharpened partial -> equivalent; SHA/quote/line-number grounding re-confirmed against live /mnt/source/linux checkout."
+}

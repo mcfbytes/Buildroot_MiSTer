@@ -1,0 +1,69 @@
+{
+  "sha": "0d60c3482c707a1128d638d194eeb0cc5cefe784",
+  "subject": "dualsense: add lightbar color control.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-07-10",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-playstation.c"
+  ],
+  "added": 53,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "fc97b4d6a1a6d418fd4053fd7716eca746fdd163"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-playstation.c:200, 862-899, 1197-1211, 1841-1848 (v6.18.38, /mnt/source/linux)",
+    "vanilla_quote": "L200: `struct led_classdev_mc lightbar;` — one multicolor LED classdev, not three separate ones. L862-899 `ps_lightbar_register()`: allocates a 3-entry `mc_subled` array (`LED_COLOR_ID_RED/GREEN/BLUE`), sets `lightbar_mc_dev->subled_info`/`num_colors = 3`, names the single node `led_cdev->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, \"%s:rgb:indicator\", ps_dev->input_dev_name)`, and registers it with `devm_led_classdev_multicolor_register(&hdev->dev, lightbar_mc_dev)`. L1197-1211 `dualsense_lightbar_set_brightness()`: calls `led_mc_calc_color_components(mc_cdev, brightness)` then reads `mc_cdev->subled_info[0/1/2].brightness` for red/green/blue and forwards to `dualsense_set_lightbar()`. L1841-1848 in `dualsense_create()`: `ret = ps_lightbar_register(ps_dev, &ds->lightbar, dualsense_lightbar_set_brightness);` followed by `dualsense_set_lightbar(ds, 0, 0, 128); /* blue */` — vanilla's out-of-the-box default color is blue, identical to the fork's default.",
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md:337",
+
+  "impact": {
+    "effect_if_absent": "No functional loss: dropping this fork commit and taking vanilla 6.18.38 as-is gives DualSense lightbar RGB control back, just through a different sysfs shape. Fork: three independent led_classdev nodes /sys/class/leds/<hid-devname>:red/, :green/, :blue/ (each plain 0-255 brightness, no color semantics). Vanilla: one led_classdev_mc node /sys/class/leds/<input-devname>:rgb:indicator/ using the standard multicolor LED ABI (multi_intensity for the R:G:B ratio, brightness for overall level). Userspace that wants to set a lightbar color must target a different set of sysfs paths, but the capability itself (arbitrary RGB lightbar color from userspace) is fully preserved and the default color on boot (blue, 0,0,128) is identical in both.",
+    "affected_hardware": [
+      "Sony DualSense controller (PS5)",
+      "Sony DualSense Edge controller"
+    ],
+    "device_ids": [
+      "054C:0CE6",
+      "054C:0DF2"
+    ],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "LED sysfs. Fork exposes three separate classdevs (…:red, …:green, …:blue); vanilla exposes one multicolor classdev (…:rgb:indicator). Confirmed by exhaustive grep of /mnt/source/Main_MiSTer for lightbar/RGB-LED/multicolor/dualsense sysfs usage: the ONLY /sys/class/leds/ reference in the entire tree is `input.cpp:4052: #define LED_MONITOR \"/sys/class/leds/hps_led0/brightness_hw_changed\"`, which is the unrelated HPS status LED (board LED, not a controller lightbar). Main_MiSTer never reads or writes any DualSense/dualshock/lightbar LED path in either the fork's or vanilla's naming scheme.",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "Do not carry this commit forward. Vanilla 6.18.38 already ships a complete, standard-API lightbar implementation (led_classdev_mc, drivers/hid/hid-playstation.c:200/862-899/1197-1211/1841-1848) that supersedes it. Our own board/mister/de10nano/linux.config already sets CONFIG_LEDS_CLASS_MULTICOLOR=y (line 387), so the kconfig prerequisite for vanilla's approach is already satisfied on our side — no config gap to close. (Note: stock's config, docs/stock-inventory/stock-linux.config:2969, has `# CONFIG_LEDS_CLASS_MULTICOLOR is not set`, i.e. stock's older kernel predates/omits this — irrelevant to us since we already carry it.)",
+    "effort": "none — take vanilla's file as-is; nothing to port, no interface shim needed since no consumer targets the fork's :red/:green/:blue paths"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "fc97b4d6a1a6 (HID: playstation: expose DualSense lightbar through a multi-color LED, 2021-09-08, upstream in v5.16)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "PROVENANCE DOC IS WRONG for this row. Verbatim, patch-provenance.md:337: '| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *…add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. ⚠ verify controller LED behaviour on HW (P3.13) |'. Two errors: (1) it GROUPS four textually-and-functionally distinct fork commits (player-id LED, lightbar RGB, mute button/LED, player-6 LED config) into one row cited against only two upstream SHAs — this is exactly the grouping failure mode this recon project exists to eliminate; each of the four needs its own record (0d60c3482 is this one). (2) For 0d60c3482 specifically, neither cited SHA is the actual match. `8e5198a12d64` (2021-02-16, confirmed ancestor of v6.18.38 via `git merge-base --is-ancestor`) only sets a hardcoded default lightbar color at probe time — it provides NO userspace-adjustable control, so it cannot be what 0d60c3482 (July 2021, adds a full 3-LED userspace-writable interface) 'backports'. The commit that actually gives userspace lightbar control is `fc97b4d6a1a6` (2021-09-08, also confirmed ancestor of v6.18.38), which lands upstream TWO MONTHS AFTER the fork commit and uses a materially different mechanism (one led_classdev_mc vs. three led_classdev). So 0d60c3482 is not a backport of anything — it is Sorgelig's own independent pre-upstream implementation of the same feature, which vanilla then solved differently and later. Given (a) vanilla provides the same user-facing capability (arbitrary RGB lightbar color from userspace, same blue default), (b) via a different but not inferior interface (led_classdev_mc is the standard kernel ABI for multicolor LEDs, arguably cleaner than three independent classdevs), and (c) confirmed zero Main_MiSTer coupling to the fork's :red/:green/:blue paths — this is graded `dropped-upstream`/`superseded-better`, not `misclassified`. Reserving `misclassified` for cases where the doc's error conceals a genuine regression (e.g. the DualSense mute→BTN_Z commit 60e08955f, part of this same grouped row, which IS a real uncarried regression per prior analysis) keeps that flag meaningful; using it here for a same-capability interface swap would dilute it. sonnet-verified: dropped-upstream/superseded-better, doc disagreement confirmed and re-derived independently — vanilla_shas corrected to fc97b4d6a1a6 only (8e5198a12d64 removed, it is not the matching commit), device_ids corrected to 054C:0CE6/054C:0DF2 (prior record had non-existent IDs 054C:CE6E/054C:DF11), fork LED registration and vanilla multicolor registration both quoted with file:line, Main_MiSTer grep re-run and confirmed zero coupling."
+}

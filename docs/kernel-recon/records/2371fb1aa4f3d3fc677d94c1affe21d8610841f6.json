@@ -1,0 +1,95 @@
+{
+  "sha": "2371fb1aa4f3d3fc677d94c1affe21d8610841f6",
+  "subject": "Sync rtl8821au with upstream",
+  "author": "Grzegorz {NineX} Krzystek",
+  "author_is_pr_contributor": true,
+  "date": "2023-02-14",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8812au/...",
+    "drivers/net/wireless/realtek/rtl8821au/...",
+    "drivers/net/wireless/realtek/rtl8821cu/..."
+  ],
+  "added": 1228,
+  "removed": 187,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "line 389",
+  "impact": {
+    "effect_if_absent": "RTL8821AU/RTL8811AU USB WiFi adapters will not be recognized without the BR2 package providing the driver module",
+    "affected_hardware": [
+      "RTL8821AU",
+      "RTL8811AU",
+      "Edimax EW-7811U series",
+      "D-Link Cameo",
+      "TP-Link T2U Nano",
+      "Netgear A6100"
+    ],
+    "device_ids": [
+      "0BDA:0811",
+      "0BDA:0821",
+      "0BDA:8822",
+      "0BDA:A811",
+      "0BDA:0820",
+      "0BDA:0823",
+      "7392:A811",
+      "7392:A812",
+      "7392:A813",
+      "7392:B611",
+      "04BB:0953",
+      "2001:3314",
+      "2001:3318",
+      "0E66:0023",
+      "056E:400E",
+      "056E:400F",
+      "0411:0242",
+      "2019:AB32",
+      "0846:9052",
+      "0411:029B",
+      "056E:4007",
+      "3823:6249",
+      "2357:011E",
+      "2357:011F",
+      "2357:0120",
+      "20F4:804B"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "cfg80211/nl80211 (standard, no MiSTer-specific coupling; WIRELESS_EXT only gates legacy iwconfig ioctl, not primary wpa_supplicant nl80211 path)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/rtl8812au (BR2_PACKAGE_RTL8812AU=y; morrownr/8812au-20210820, sourced there despite the package directory itself not carrying a '-morrownr' suffix)",
+      "package/rtl8821au-morrownr (BR2_PACKAGE_RTL8821AU_MORROWNR=y)",
+      "CONFIG_RTW88_8821CU=m (mainline rtw88, in-kernel — board/mister/de10nano/linux.config:488; package/rtl8821cu-morrownr exists but is explicitly disabled, '# BR2_PACKAGE_RTL8821CU_MORROWNR is not set', in favor of mainline)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0; Realtek vendor driver, redistributable under GPL-2.0",
+  "notes": "CRITICAL: Provenance doc entry is a GROUPED row (line 389) listing multiple commits together (`2371fb1aa`, `143ce187e`, `4e98a68d1`, etc.). Per pilot lessons, GROUPED rows must be escalated and analyzed individually. This commit syncs the rtl8821au USB WiFi driver from morrownr upstream. The code is NOT carried in the kernel tree; the fork removed these vendored drivers and now sources them via Buildroot packages (rtl8821au-morrownr et al) pinned to more recent morrownr commits. Disposition is `dropped-obsolete`: deliberately removed from kernel, replaced by BR2 package sourced from morrownr/8821au-20210708 at commit 3a7cdb5 (kernel-7.0 build-fixes era, much newer than this 2023-02-14 fork sync). The commit added `select WIRELESS_EXT` to Kconfig; WIRELESS_EXT only gates legacy iwconfig ioctl interface (os_dep/linux/ioctl_linux.c, os_dep/linux/os_intfs.c), not the primary cfg80211/nl80211 path that wpa_supplicant uses. No userspace coupling detected. Failure mode is silent: a build without this commit does not error, but WiFi adapters matching these device IDs will not probe.\n\nsonnet-verified CORRECTIONS to dependencies.superseded_by: (1) `git show --stat` on this commit confirms it touches ONLY rtl8812au/, rtl8821au/, rtl8821cu/ (37 files, 1228+/187-) — it never touches rtl88x2bu/ at all, so the original record's inclusion of 'package/rtl88x2bu-morrownr' as a supersession target was spurious (wrong driver family entirely) and has been removed. (2) The actual BR2 package directory for the RTL8812AU chip is `package/rtl8812au` (no '-morrownr' suffix), not 'rtl8812au-morrownr' as originally written — confirmed via `ls package/ | grep rtl` and package/rtl8812au/rtl8812au.mk (RTL8812AU_SITE = github morrownr/8812au-20210820); the morrownr origin claim itself was correct, just not the package name. (3) 'package/rtl8821cu-morrownr' as a live supersession target was wrong: that BR2 package exists but is explicitly disabled in configs/mister_de10nano_defconfig ('# BR2_PACKAGE_RTL8821CU_MORROWNR is not set ... -> mainline rtw88_8821cu'); the actual active supersession for the RTL8821CU portion of this commit is mainline CONFIG_RTW88_8821CU=m (board/mister/de10nano/linux.config:488), consistent with sibling records 33ff5146a and 3740d5b88's citations of the same mainline symbol. package/rtl8821au-morrownr (BR2_PACKAGE_RTL8821AU_MORROWNR=y) was correctly named and remains active. WIRELESS_EXT claim re-verified via `git show` of this commit's rtl8821au/Kconfig hunk — confirmed exact ('+select WIRELESS_EXT')."
+}

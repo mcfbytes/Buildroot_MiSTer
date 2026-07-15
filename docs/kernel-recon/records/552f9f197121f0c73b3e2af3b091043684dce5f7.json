@@ -1,0 +1,61 @@
+{
+  "sha": "552f9f197121f0c73b3e2af3b091043684dce5f7",
+  "subject": "hci_conn: prevent call with NULL pointer.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-31",
+  "subsystem": "bt",
+  "change_type": "in-tree-code",
+  "files": [
+    "net/bluetooth/hci_conn.c"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "f7cbce60a38a6589f0dade720d4c2544959ecc0e",
+      "881559af5f5c545f6828e7c74d79813eb886d523"
+    ],
+    "vanilla_file_line": "net/bluetooth/hci_sync.c:6953",
+    "vanilla_quote": "if (!hci_conn_valid(hdev, conn))\n\t\tgoto done;",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "line 346",
+  "impact": {
+    "effect_if_absent": "NULL pointer dereference in hci_connect_le_scan_cleanup() when a LE connection attempt fails and races with connection cleanup. Kernel crash / NULL deref in older kernels (pre-6.8).",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "boot-critical",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "f7cbce60a38a (Bluetooth: hci_sync: Fix UAF on create_le_conn_complete)",
+      "881559af5f5c (Bluetooth: hci_sync: Attempt to dequeue connection attempt)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Sorgelig's patch adds a simple NULL check: `if(conn) hci_connect_le_scan_cleanup(conn);` to guard against NULL returned by hci_lookup_le_connect() (confirmed via `git show 552f9f197121f0c73b3e2af3b091043684dce5f7` in fork repo: net/bluetooth/hci_conn.c, +1/-1, old function signature `create_le_conn_complete(struct hci_dev *hdev, u8 status, u16 opcode)`). Vanilla 6.18.38 fixes this through: (1) architectural refactoring moving create_le_conn_complete() from hci_conn.c to hci_sync.c with different signature `(struct hci_dev *hdev, void *data, int err)`; (2) conn now passed as parameter via data, never looked up; (3) hci_conn_valid() check added at hci_sync.c:6953 after hci_dev_lock() acquisition (commit f7cbce60a38a). This upstream fix is SUPERIOR to Sorgelig's NULL guard because hci_conn_valid() validates the connection object is still alive in the hash, not just non-NULL — protecting against use-after-free, not just NULL deref. The vulnerable code path is structurally absent from 6.18.38 (`grep create_le_conn_complete net/bluetooth/hci_conn.c` returns nothing). Provenance doc (line 346) already correctly categorizes as 'patch site gone; NULL path structurally absent', exact match including the hci_sync.c:6942 line citation for the function definition.\n\nsonnet-verified: independently re-ran every grounding step given this record's dropped-upstream disposition did not self-escalate per the worker's own escalation rule (any dropped-upstream disposition should set ESCALATE:yes) -- treated with extra suspicion accordingly. Re-confirmed both vanilla_shas (f7cbce60a38a, 881559af5f5c) exist and are ancestors of v6.18.38 via `git merge-base --is-ancestor`. Re-derived hci_sync.c:6942 (`static void create_le_conn_complete(struct hci_dev *hdev, void *data, int err)`) and hci_sync.c:6953 (`if (!hci_conn_valid(hdev, conn)) goto done;`) by direct line count against the live checkout -- both exact. Read f7cbce60a38a's own diff: it adds precisely the `hci_conn_valid` check at this location and its commit message tags `Fixes: 881559af5f5c (\"Bluetooth: hci_sync: Attempt to dequeue connection attempt\")`, substantiating both cited SHAs and the refactor narrative. Confirmed `create_le_conn_complete` is absent from hci_conn.c in vanilla (structural absence, not just a rewritten guard). No factual errors found in the refactor claim; content is sound despite the missing self-escalation. The missing ESCALATE:yes is a process-compliance gap in the original worker's final message, not a defect in the record's content.\n\nsonnet-verified: confirmed"
+}

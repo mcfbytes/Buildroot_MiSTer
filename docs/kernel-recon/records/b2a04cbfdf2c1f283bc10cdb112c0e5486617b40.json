@@ -1,0 +1,55 @@
+{
+  "sha": "b2a04cbfdf2c1f283bc10cdb112c0e5486617b40",
+  "subject": "vt: reduce from 63 to 9 ttys.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-05-23",
+  "subsystem": "kconfig",
+  "change_type": "uapi-header",
+  "files": [
+    "include/uapi/linux/vt.h"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "include/uapi/linux/vt.h:13",
+    "vanilla_quote": "#define MAX_NR_CONSOLES\t63\t/* serial lines start at 64 */",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:397 (§3.7 F-3; summary also at :292)",
+  "impact": {
+    "effect_if_absent": "Vanilla MAX_NR_CONSOLES=63 keeps a handful of MAX_NR_CONSOLES-sized arrays at their full compile-time size instead of the fork's 9: vt.c's static `vc_cons[MAX_NR_CONSOLES]` (struct vc = 1 ptr + 1 work_struct, ~40B/entry, ~2.2KB delta), fbcon's static `fb_display[MAX_NR_CONSOLES]` (struct fbcon_display, ~120B/entry, ~6.5KB delta, relevant here since our linux.config sets CONFIG_FRAMEBUFFER_CONSOLE=y) plus two 1-byte con2fb_map[] arrays (negligible), and — the dominant term — tty_io.c's __tty_alloc_driver(), which for the console driver (registered with TTY_DRIVER_REAL_RAW|TTY_DRIVER_RESET_TERMIOS, no TTY_DRIVER_DYNAMIC_ALLOC) unconditionally kcalloc()s a struct tty_port[MAX_NR_CONSOLES] array at boot (con_init(), drivers/tty/vt/vt.c:3893-3894); struct tty_port is a few hundred bytes (tty_bufhead, 2 wait_queue_head_t, 2 mutex, a kfifo, etc.), so 63 vs 9 entries is roughly a 15-20KB delta. Notably that ports[] array is dead weight for vt regardless of MAX_NR_CONSOLES: con_install() (drivers/tty/vt/vt.c) calls tty_port_install(&vc->port, ...) which sets tty->port before tty_init_dev()'s `if (!tty->port) tty->port = driver->ports[idx];` fallback (drivers/tty/tty_io.c:1411-1412) ever runs, so driver->ports[idx] is allocated but never read for consoles. Total eager/static delta across all these arrays is on the order of 25-30KB of permanently-resident kernel RAM from boot, regardless of how many VTs are ever opened — i.e. this is NOT purely a lazy-allocation non-issue. The genuinely lazy part is the big per-console payload: vc_allocate() in drivers/tty/vt/vt.c kzalloc()s struct vc_data (screen buffer, unicode tables, etc.) only for a VT index the first time it's actually opened, so raising the ceiling from 9 to 63 costs nothing there unless something actually opens tty10+. Net: dropping this commit (keeping vanilla's 63) has a real but tiny, boot-time, non-catastrophic memory cost (tens of KB on a board with ~1GB RAM), not zero and not lazy-therefore-free — but still far below any threshold that would change the severity rating.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "Virtual terminal device nodes and VT ioctls, not the MAX_NR_CONSOLES constant itself",
+    "main_mister_ref": "video.cpp:8,4251 (#include <linux/vt.h>; opens /dev/tty0 as the VT_ACTIVATE/VT_WAITACTIVE control device only — tty0 is the \"current VT\" alias, not itself a console index); menu.cpp:1353 video_chvt(1), menu.cpp:3372/7011 video_chvt(2) (only VT indices 1 and 2 are ever activated); menu.cpp:3402,7022 (agetty -L tty2). audio.cpp:7 also #includes <linux/vt.h>. No file in Main_MiSTer references the MAX_NR_CONSOLES symbol or opens any VT index >2, so both 9 and 63 satisfy actual usage with wide headroom; the coupling is to the VT ioctl ABI (stable across both values), not to the ceiling."
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Commit reduces MAX_NR_CONSOLES from 63 to 9 in the uapi header (include/uapi/linux/vt.h:13, confirmed via `git show` on the fork). Vanilla 6.18.38 retains 63 (include/uapi/linux/vt.h:13, quoted above, confirmed via grep in /mnt/source/linux) — vanilla was never patched to 9 and there is no vanilla_sha to cite; this is purely a fork-local embedded-system trade-off, not a claim of upstream equivalence. Not carried: `grep -rl 'MAX_NR_CONSOLES\\|vt\\.h'` over board/mister/de10nano/linux-patches/*.patch returns nothing — no 00xx patch touches vt.h. Provenance doc explicitly rules DROPPED at patch-provenance.md:397 (§3.7, row F-3: \"a UAPI header edit for a few KB, only 3 consoles used... Not carried; no 00xx file\") and again in the summary at line 292; TASKS.md P1.9 is the cited authority. Independently re-derived and AGREE with the drop: Main_MiSTer only ever activates VT 1 and VT 2 (video_chvt() call sites above) and never references MAX_NR_CONSOLES, so 9 vs 63 makes no functional difference to MiSTer; keeping vanilla's 63 is the deliberately conservative, zero-risk choice (matches stock, smaller header diff surface) at the cost of a genuine-but-tiny ~25-30KB of eager/static kernel RAM (see impact.effect_if_absent for the breakdown of vc_cons[]/fb_display[]/tty_port[] — the vc_data screen-buffer payload itself IS lazily allocated per open VT via vc_allocate(), so the ceiling alone doesn't scale with real usage the way the record originally implied it might, but it isn't fully cost-free either). failure_mode=silent is correct: no build break, no boot error, no userspace-visible change either way (verified no `#if MAX_NR_CONSOLES > 63` style build guard is tripped by either value in vc_screen.c). CORRECTION FROM FIRST PASS: the prior version of this record set verification.contradiction=true, but that flag (per worker-instructions.md §1/§2) is reserved for a dropped-upstream claim where vanilla turns out to do something different than asserted — it does not apply here, because disposition is dropped-deliberate (not dropped-upstream) and the provenance doc never claimed this was already upstream (its own table marks the \"in vanilla?\" column \"no\"). Vanilla keeping MAX_NR_CONSOLES=63 is the expected, intended baseline, not a contradiction of any upstream claim this record makes. Fixed to contradiction=false; disposition, severity, and failure_mode were already correct and are unchanged; effect_if_absent and userspace_coupling.main_mister_ref were expanded with the lazy-vs-eager allocation analysis and precise Main_MiSTer citations. sonnet-verified: corrected (contradiction flag was misapplied to a deliberate-drop record; disposition/severity/failure_mode were already right, impact analysis sharpened with eager-vs-lazy allocation detail)."
+}

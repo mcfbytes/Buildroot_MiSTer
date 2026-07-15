@@ -1,0 +1,60 @@
+{
+  "sha": "60e08955fe23c2a1d57834f7dc31860395542e4a",
+  "subject": "dualsense: give mute button and led to system.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-07-10",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-playstation.c"
+  ],
+  "added": 52,
+  "removed": 27,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0037-hid-playstation-dualsense-mute-btn-z.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-playstation.c:1496-1506",
+    "vanilla_quote": "btn_mic_state = !!(ds_report->buttons[2] & DS_BUTTONS2_MIC_MUTE);\nif (btn_mic_state && !ds->last_btn_mic_state) {\n\tscoped_guard(spinlock_irqsave, &ps_dev->lock) {\n\t\tds->update_mic_mute = true;\n\t\tds->mic_muted = !ds->mic_muted; /* toggle */\n\t}\n\n\t/* Schedule updating of microphone state at hardware level. */\n\tdualsense_schedule_work(ds);\n}\nds->last_btn_mic_state = btn_mic_state;",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md:337",
+  "impact": {
+    "effect_if_absent": "No functional change for any current MiSTer user (see userspace_coupling \u2014 no shipped consumer exists either way). At the kernel-capability level: the DualSense mute button no longer surfaces as a distinguishable BTN_Z evdev event (it becomes fully invisible to userspace, same as vanilla), and the mute LED is no longer exposed as a writable /sys/class/leds/*:mute node. Both remain latent/opt-in capabilities that nothing in Main_MiSTer currently reads or writes.",
+    "affected_hardware": [
+      "Sony DualSense (PS5 controller)"
+    ],
+    "device_ids": [
+      "054C:0CE6",
+      "054C:0DF2"
+    ],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "BTN_Z evdev key event (gamepad range) + led_classdev sysfs node named \"<hdev>:mute\"; NEITHER has a dedicated Main_MiSTer consumer",
+    "main_mister_ref": "Exhaustively grepped /mnt/source/Main_MiSTer for BTN_Z, mute, 0ce6/0df2 (DualSense PIDs), and led sysfs writes. The only BTN_Z hit repo-wide is input.cpp:5867 `case KEY_RECORD: ev.code = BTN_Z; break;` inside a block gated on `input[dev].vid == 0x45E` (Microsoft/Xbox X-Input devices, input.cpp:5861) -- unrelated to Sony/DualSense; it remaps an Xbox-pad keyboard-mode key INTO the generic BTN_Z slot, it does not consume BTN_Z coming FROM a DualSense. The only LED sysfs writer is update_num_hw() (input.cpp:2692-2770), which hardcodes writes to \":player_id\"/\":blue\"/\":green\"/\":red\" (DS4/DualSense lightbar+player-LED, quirk==QUIRK_DS4), \"::sonyN\" (DS3), \":playerN\"/\":home\" (Switch) -- there is no \":mute\" reference anywhere in the tree, and no generic LED-enumeration mechanism exists (LED writes are all hardcoded per-VID/PID paths). No default .map/.cfg/.json ships any 'mute' binding either (grep -rli mute --include=*.map --include=*.cfg --include=*.json => empty). CAVEAT: Main_MiSTer's joystick input DOES have a fully generic evdev button-capability sweep -- gamecontroller_db.cpp:207-217 `for (i = BTN_JOYSTICK; i < KEY_MAX; i++) if (test_bit(i, keybits)) btn_map[btn_cnt++] = i;`, used by input.cpp:6740-6789 get_button_name_for_code() for the OSD's 'define joystick buttons' screen. If the kernel driver advertised BTN_Z (i.e. if this commit were forward-ported), a user could manually bind the DualSense mute button to any core function via that generic OSD remap UI, exactly as any other 'extra' pad button is handled (this same BTN_Z slot is independently reused by fork patches for GameCube-adapter, Flydigi Vader and Xbox-360 'Z' buttons -- 0013/0014/0017 patches -- confirming it's a shared generic slot, not mute-specific). That is generic infrastructure noticing an unclaimed button, not a dedicated mute consumer -- it does not change the coupled=false verdict for THIS commit's specific (mute) semantics."
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": true,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MISCLASSIFIED in patch-provenance.md:337 (verbatim): '| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *...add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. verify controller LED behaviour on HW (P3.13)'. Both cited vanilla SHAs verified to exist in /mnt/source/linux and are ancestors of v6.18.38 (`git merge-base --is-ancestor <sha> v6.18.38` => true for both). Their content was independently confirmed by reading each diff: 8c0ab553b072 (85 lines, hid-playstation.c) adds per-player LED class devices ('inputX:white:player-N'); 8e5198a12d64 (65 lines) adds lightbar support with a default PS-blue color. `git show <sha> | grep -i mute` on both returns nothing except an unrelated comment ('Reset the LEDs (lightbar, mute, player leds)...') in 8e5198a12d64 -- neither commit implements any mic-mute-to-userspace or mute-LED functionality. So the doc's grouping is a genuine mismatch: it cites two real, real-and-upstream commits for player-LEDs/lightbar (which DO cover f84543926/0d60c3482/b76b4bc6a) but folds in 60e08955f (mute) under the same citation even though neither cited SHA touches mute. Vanilla 6.18.38 still contains the OLD kernel-managed mute approach verbatim at hid-playstation.c:1496-1506 (line numbers reconfirmed exact against the live file, byte-for-byte match with the record's quote) -- last_btn_mic_state toggling ds->mic_muted internally and writing it back to the controller's own hardware mute LED via the output report's mute_button_led field (hid-playstation.c:1404-1405), never exposed to userspace. The MiSTer commit deletes last_btn_mic_state and the internal-toggle block, adds BTN_Z to ps_gamepad_buttons[] and reports it via input_report_key (confirmed in `git show` diff), and adds a new writable led_classdev named '%s:mute' via ds_muteled_create()/devm_led_classdev_register() with brightness_set_blocking=dualsense_muteled_brightness_set -- both quotes reconfirmed directly from `git show 60e08955f` in this pass. This is not carried in current Buildroot (only 0022-hid-playstation-ds4-mac-fix.patch touches hid-playstation.c, and it is a completely unrelated DS4-clone MAC-probe fix, confirmed by reading the patch's provenance header and diff -- no mute/BTN_Z content). SILENT REGRESSION (still true): whether carried or not, dropping/never-porting this produces no build/boot error, it just silently doesn't exist. CORRECTIONS MADE THIS PASS (Sonnet escalation verifier): (1) device_ids were WRONG in the prior pass -- '054C:05C5' (not a real ID) and '054C:09CC' (USB_DEVICE_ID_SONY_PS4_CONTROLLER_2, i.e. DualShock 4, NOT DualSense) were cited; the actual DualSense IDs per hid-ids.h are USB_DEVICE_ID_SONY_PS5_CONTROLLER=0x0ce6 and PS5_CONTROLLER_2=0x0df2 (054C:0CE6 / 054C:0DF2), confirmed against both hid-ids.h and the ps_devices match table (hid-playstation.c:2907-2915). Fixed. (2) userspace_coupling.coupled was asserted true with main_mister_ref=null (i.e. unevidenced) in the prior pass. This pass did an exhaustive grep of Main_MiSTer for BTN_Z, mute-related identifiers, DualSense PIDs, and LED-sysfs writes and found ZERO dedicated consumer of either BTN_Z-as-mute or the mute LED classdev -- corrected to coupled=false, with the generic (non-mute-specific) evdev button-sweep mechanism documented as a caveat in main_mister_ref. Severity downgraded from 'feature-loss' to 'cosmetic' accordingly: as of today, carrying or dropping this commit produces literally no observable behavior difference for any MiSTer user, since nothing consumes either interface it exposes. This remains a legitimate carry-decision item for the auditor (it's real kernel-level capability the fork deliberately added and the community may want restored/finished with an actual userspace consumer some day), but the framing is 'fork feature with no shipped consumer' rather than 'silently dropped working feature.' The core misclassification thesis (doc groups a mute-architecture commit under two upstream SHAs that only cover player-LEDs/lightbar) is CONFIRMED and now airtight with direct quotes/line numbers on both sides plus verified vanilla-SHA ancestry. sonnet-verified: corrected \u2014 misclassification confirmed and now fully grounded with quotes on both sides and verified vanilla-SHA ancestry; device_ids were wrong (DS4 IDs, not DualSense) and userspace_coupling was asserted without evidence \u2014 both fixed after exhaustive Main_MiSTer grep found no dedicated consumer, severity downgraded feature-loss -> cosmetic accordingly. | RESOLVED (user carry decision 2026-07-15): carried as 0037 for stock behavioral parity \u2014 mic-mute button reported as BTN_Z (extra OSD-mappable input), mute LED exposed as writable :mute classdev; in-kernel mic toggle removed. Forward-port declares BTN_Z per-device (6.18 shares ps_gamepad_buttons[] with DS4)."
+}

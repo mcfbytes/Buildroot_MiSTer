@@ -1,0 +1,103 @@
+{
+  "sha": "c4ec5cb40e980df17cb4b8a88b413cecdde62d5f",
+  "subject": "Support for Nintendo Switch controller (pro, nes, snes, joycon)",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-ids.h",
+    "drivers/hid/hid-nintendo.c",
+    "drivers/input/joydev.c"
+  ],
+  "added": 2355,
+  "removed": 0,
+  "is_backport_of_vanilla": true,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "2af16c1f846b",
+      "294a828759d0",
+      "94f18bb19945"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c (6.18.38 present, 2853 lines)",
+    "vanilla_quote": "Upstream equivalent: 2af16c1f846b 'HID: nintendo: add nintendo switch controller driver' (2021-09-11, v5.16, 869 lines initial) + 294a828759d0 'HID: nintendo: add support for charging grip' (2021-09-11, v5.16) + 94f18bb19945 'HID: nintendo: add support for nso controllers' (2023-12-04, v6.8, 2564->2853 lines). Vanilla 6.18.38 has complete integration of all features.",
+    "equivalence": "partial"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md table row: 'c4ec5cb40 + 9bdab534b + 60821059c + 45283785a | Switch Pro/Joy-Con backport + fixes | 2af16c1f846b'",
+
+  "impact": {
+    "effect_if_absent": "Nintendo Switch Joy-Con and Pro Controllers will not be recognized or will be mishandled by the HID layer. Charging Grip and NSO controllers (NES, SNES, N64, Genesis) will also not function.",
+    "affected_hardware": [
+      "Nintendo Switch Pro Controller",
+      "Nintendo Switch Joy-Con (Left)",
+      "Nintendo Switch Joy-Con (Right)",
+      "Nintendo Joy-Con Charging Grip",
+      "NSO Famicom Controller I",
+      "NSO Famicom Controller II",
+      "NSO NES Controller",
+      "NSO SNES Controller",
+      "NSO N64 Controller",
+      "NSO Genesis Controller"
+    ],
+    "device_ids": [
+      "057e:2006",
+      "057e:2007",
+      "057e:2009",
+      "057e:200e",
+      "057e:2017",
+      "057e:201e",
+      "057e:2019"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "HID input events via /dev/input/eventX and /dev/hidraw*; controller type detection via device info subcommands; calibration via SPI flash read/write subcommands; force feedback via input_ff_memless",
+    "main_mister_ref": "Main_MiSTer controller input handling relies on HID input event codes from hid-nintendo driver for all Nintendo Switch-based controllers. The driver provides button mappings, stick axes, IMU data, and rumble/force-feedback functionality."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "not-needed"
+  },
+  "dependencies": {
+    "depends_on": [
+      "NEW_LEDS",
+      "LEDS_CLASS",
+      "POWER_SUPPLY",
+      "INPUT_FF_MEMLESS (for CONFIG_NINTENDO_FF)"
+    ],
+    "superseded_by": [
+      "2af16c1f846b (v5.16, basic driver)",
+      "294a828759d0 (v5.16, charging grip)",
+      "94f18bb19945 (v6.3, NSO controller support)",
+      "vanilla 6.18.38 hid-nintendo.c (complete, 2853 lines with all features integrated)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "license": "GPL-2.0+",
+    "author": "Daniel J. Ogorchock (djogorchock@gmail.com)",
+    "origin": "Linux kernel upstream; commit authored by Ogorchock, submitted to linux-hid for v5.16 (kernel.org)",
+    "attribution": "Copyright (c) 2019-2021 Daniel J. Ogorchock; acknowledges multiple reverse-engineering projects (dekuNukem, Peter Rankin, etc.)"
+  },
+
+  "notes": "DISPOSITION RATIONALE: The MiSTer commit (2021-08-20) predates the upstream equivalent (2021-09-11, v5.16) by 3 weeks. The MiSTer version appears to be an enhanced backport: it includes charging grip in the device binding table (which vanilla's 2af16c1f846b did not), but lacks support for NSO controllers (NES, SNES, N64, Genesis) which were added later in upstream (94f18bb19945, v6.3). Vanilla 6.18.38 has the complete driver (2853 lines) with all features integrated, making this commit superseded and safely dropped. EQUIVALENCE IS PARTIAL: Vanilla 6.18.38 has more complete NSO controller support (via enum expansion and type-specific button mappings) than the MiSTer commit, which only adds device IDs without corresponding controller type support. CONFIG_HID_NINTENDO=y and CONFIG_NINTENDO_FF=y are both enabled in our linux.config; Kconfig dependencies (NEW_LEDS, LEDS_CLASS, POWER_SUPPLY) are satisfied. joydev.c changes correctly blacklist Nintendo controllers (PROCON, CHRGGRIP, JOYCONL, JOYCONR) to prevent them appearing as joystick devices -- verified byte-identical against vanilla 6.18's joydev_blacklist[] (drivers/input/joydev.c:797-800), which lists exactly these four and no others (SNESCON/GENCON/N64CON are never in the accelerometer blacklist, upstream or fork, since only the JCL/JCR/PROCON/CHRGGRIP family carries an IMU that would confuse the legacy joydev ABI). UNUSED SNESCON ID (verified, correcting prior-pass note): this commit defines USB_DEVICE_ID_NINTENDO_SNESCON (0x2017) in hid-ids.h but does NOT wire it into nintendo_hid_devices id_table -- confirmed by `git show c4ec5cb40 -- drivers/hid/hid-nintendo.c`, whose id_table has only PROCON/CHRGGRIP/JOYCONL/JOYCONR. The define is dead code as of this commit; a SNESCON device would not even bind to this driver yet (hid-generic would claim it instead) -- it is NOT the 'probes successfully with no buttons' failure mode. Full SNES support, including the SNESCON id_table entries and the JOYCON_CTLR_TYPE_SNES dispatch case, was added complete-in-one-shot by the later fork commit e155f6a2f5fe088527f7c01e637e7c51b18a5695 ('hid-nintendo: support for Switch NES and SNES controllers', 2021-09-04) -- SNESCON was never left in a half-wired, silently-dead state in the fork. CORRECTION to prior pass: the earlier version of this note cited '0015-hid-nintendo-nso-famicom.patch' as evidence that unrecognized SNESCON devices 'probe successfully but create an input device with no buttons/axes.' That citation is wrong -- 0015 documents fork commit 484f681720ca5037042a8d3b89158e6d3af09563 (NSO Famicom controllers, type bytes 0x07/0x08), a completely different, much later commit and device family, not SNESCON (type 0x0B) and not this commit. The Famicom pads hit that silent-dead-gamepad failure mode because they report themselves over Bluetooth under the *existing* JOYCONR product ID (0x2007, already in this commit's id_table) with an unrecognized ctlr_type the driver had no case for -- a structurally different bug than an unbound PID. No misclassification with provenance doc (docs/patch-provenance.md line 334 correctly identifies this as upstream-equivalent, class C drop).",
+  "sonnet-verified": "corrected -- disposition/equivalence/SHAs/joydev-blacklist all confirmed accurate, but the notes' SNESCON failure-mode citation was wrong (borrowed the Famicom-controller 'silent dead gamepad' evidence from an unrelated later commit/patch); rewrote to state the real, verified fact: SNESCON id is defined-but-unused by this commit and was fully wired up (not left half-broken) by the later fork commit e155f6a2f."
+}

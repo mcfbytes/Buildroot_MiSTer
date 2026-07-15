@@ -1,0 +1,59 @@
+{
+  "sha": "b62efee23db4aa09a64327b81241218363004c09",
+  "subject": "hps_led: enable brightness change notification.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-06-09",
+  "subsystem": "leds",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/leds/leds-gpio.c"
+  ],
+  "added": 6,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0029-leds-gpio-brightness-hw-changed.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/leds/leds-gpio.c:38-59 (gpio_led_set function)",
+    "vanilla_quote": "static void gpio_led_set(struct led_classdev *led_cdev, enum led_brightness value) { ... gpiod_set_value(led_dat->gpiod, level); } /* vanilla contains NO led_classdev_notify_brightness_hw_changed() call, NO prev_value tracking, and NO LED_BRIGHT_HW_CHANGED flag set in create_gpio_led */",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md F-2 (class F-2 carry); explicit P1.9 ruling: 'Consumer confirmed: Main_MiSTer polls brightness_hw_changed to drive the on-screen disk-activity LED. Do not drop.'",
+  "impact": {
+    "effect_if_absent": "On-screen disk-activity LED indicator (driven by polling /sys/class/leds/hps_led0/brightness_hw_changed) becomes non-functional; mmc activity no longer visible to user.",
+    "affected_hardware": [
+      "DE10-Nano (hps_led0 is the on-board LED wired to mmc0 activity trigger by 0004-dts-de10nano-MiSTer.patch)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "sysfs /sys/class/leds/hps_led0/brightness_hw_changed (read-only attribute, POLLPRI event signaling)",
+    "main_mister_ref": "input.cpp:4052 (#define LED_MONITOR \"/sys/class/leds/hps_led0/brightness_hw_changed\"); input.cpp:5146-5147 (open(LED_MONITOR, O_RDONLY | O_CLOEXEC), pool[NUMDEV+2].events = POLLPRI — corrected: flag is O_CLOEXEC, not O_NONBLOCK); input.cpp:6270-6275 (poll checks pool[NUMDEV+2].revents & POLLPRI, reads status, calls DISKLED_ON at line 6275 if sysled_is_enabled or video_fb_state())"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial (byte-identical hunks; struct gpio_led_data, gpio_led_set(), and create_gpio_led() unchanged since 5.15 in 6.18.38)"
+  },
+  "dependencies": {
+    "depends_on": [
+      "0004-dts-de10nano-MiSTer.patch (defines hps_led0 device in device tree; explicit comment 'ABI: Main_MiSTer polls /sys/class/leds/hps_led0/brightness_hw_changed')"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CRITICAL: Silent failure mode — dropping this patch silently breaks a load-bearing user-visible feature (disk-activity indicator). The patch is explicitly required by Main_MiSTer's input polling loop (input.cpp:6270-6274) to signal mmc activity. Vanilla 6.18.38 has the led_classdev_notify_brightness_hw_changed infrastructure (led-class.c:158-166) but gpio_led driver does NOT call it; the infrastructure exists because other drivers (e.g., hid-lg-g15, hid-playstation) use it elsewhere. This is a justified carry: feature needed by MiSTer's userspace that vanilla's gpio_led doesn't implement. Patch-provenance.md F-2 explicitly documents the consumer and affirms the P1.9 ruling 'Do not drop.' The carried patch includes detailed provenance header citing the origin SHA, forward-port verification (byte-identical hunks), and the Main_MiSTer coupling. sonnet-verified: corrected — fork diff (prev_value tracking, led_classdev_notify_brightness_hw_changed() call, LED_BRIGHT_HW_CHANGED flag) confirmed byte-identical against carried patch 0029; vanilla gpio_led_set() at drivers/leds/leds-gpio.c:38-59 confirmed to lack all three (exact line range verified via grep -n); led_classdev_notify_brightness_hw_changed() infrastructure confirmed at led-class.c:158-166 exactly as cited. Main_MiSTer citations input.cpp:4052 (LED_MONITOR define) and input.cpp:6270 (POLLPRI poll check) confirmed exact. One citation error fixed: input.cpp:5146-5147 was described as opening with 'O_RDONLY | O_NONBLOCK'; the actual flag in the source is O_RDONLY | O_CLOEXEC — corrected. DISKLED_ON call itself is at input.cpp:6275 (inside the block starting at the 6270 poll check), now noted as a range."
+}

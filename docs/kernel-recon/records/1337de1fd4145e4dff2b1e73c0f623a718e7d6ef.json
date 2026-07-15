@@ -1,0 +1,61 @@
+{
+  "sha": "1337de1fd4145e4dff2b1e73c0f623a718e7d6ef",
+  "subject": "Switch to i2c-gpio driver for smbus compatibility.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2018-02-10",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 21,
+  "removed": 13,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:310 (grouped row)",
+  "impact": {
+    "effect_if_absent": "RTC devices (m41t81@0x68, mcp7941x@0x6F, optional pcf8563@0x51) would not be enumerated on i2c bus; time/date functionality via add-on RTC board would fail silently.",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [
+      "0x68",
+      "0x6F",
+      "0x51"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CRITICAL ESCALATION TRIGGER: This commit is classified in patch-provenance.md:310 as part of a GROUPED row containing 13 commits (aa8afe109 through 077c2c317). The worker instructions §4 explicitly flag grouped rows as a failure mode this project exists to fix. The commit must be analyzed individually, not as part of the group. The i2c-gpio driver is upstreamed in vanilla 6.18.38 (drivers/i2c/busses/i2c-gpio.c present, CONFIG_I2C_GPIO=y enabled in our config). However, vanilla 6.18.38's socfpga_cyclone5_de10nano.dts is minimal (only i2c0+adxl345 accelerometer, mmc0, uart0, gmac1, gpio banks 0-1-2) and does NOT include the RTC bus configuration. The commit transforms the DTS from a previous &i2c1-based approach to i2c-gpio bit-banging on portb 22/23, adding an #include for gpio bindings and removing the ltcmode gpio-leds node. This is MiSTer-specific board support, not upstreamable as-is (mainline has no MiSTer_fb, no MiSTer,spi-audio, no overclock driver). Carried forward by Michael C. Ferguson as 0004-dts-de10nano-MiSTer.patch (P1.7, 2026-07-12) on top of mainline's 6.18 de10nano DTS, re-implemented due to path change (arch/arm/boot/dts/intel/socfpga/ in 6.18 vs arch/arm/boot/dts/ in 5.15). Stock MiSTer DTB decompiles (docs/stock-inventory/stock.dts) to show identical i2c_gpio configuration with three RTC candidates (pcf8563@0x51, m41t81@0x68, mcp7941x@0x6F), confirming this was stock's actual runtime behavior. No userspace coupling detected: Main_MiSTer's RTC code (user_io.cpp:send_rtc) sends time via FPGA SPI, not Linux i2c; the i2c RTCs are accessed only by kernel drivers, not by userspace. No user-visible effect if RTC add-on board is not present (silent failure). ESCALATION REQUIRED: (1) Commit is in a grouped provenance row; (2) patch-provenance.md claims this group 'landed (P1.7)' but grouping violates the reconciliation contract.\n\nsonnet-verified: carry-mapping CONFIRMED. Re-read the original fork commit diff (`git show 1337de1fd`) and confirmed it matches the record's description exactly: adds #include <dt-bindings/gpio/gpio.h>, comments out the ltcmode gpio-leds node, adds a new i2c_gpio node (compatible=\"i2c-gpio\", gpios on portb 22/23, i2c-gpio,delay-us=<2>) containing the two RTC children moved from the deleted &i2c1 override. 0004's i2c_gpio node (patch lines 161-184) matches this shape exactly, same portb 22/23 gpios, same delay-us=2, plus the pcf8563 child added by a later commit (6827e764). CONFIG_I2C_GPIO=y confirmed set in board/mister/de10nano/linux.config:260, and drivers/i2c/busses/i2c-gpio.c exists in vanilla 6.18. Main_MiSTer citation spot-checked: user_io.cpp:1062 `static void send_rtc(int type)` exists as claimed. No corrections needed."
+}

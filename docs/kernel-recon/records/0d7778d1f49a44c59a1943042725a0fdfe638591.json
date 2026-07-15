@@ -1,0 +1,60 @@
+{
+  "sha": "0d7778d1f49a44c59a1943042725a0fdfe638591",
+  "subject": "wiimote: set uniq field.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-05-05",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-wiimote-core.c",
+    "drivers/hid/hid-wiimote-modules.c"
+  ],
+  "added": 10,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0023-hid-wiimote-fixes.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "line 370",
+  "impact": {
+    "effect_if_absent": "Multiple paired Wiimotes cannot be distinguished by userspace; applications like Main_MiSTer cannot uniquely identify each device via the input uniq field (read through /proc/bus/input/devices parsing and the EVIOCGUNIQ ioctl), preventing per-device controller remapping",
+    "affected_hardware": [],
+    "device_ids": [
+      "057E:0306",
+      "057E:0330"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "hdev->uniq surfaced to userspace via /proc/bus/input/devices 'U: Uniq=' line and the EVIOCGUNIQ ioctl (not sysfs, corrected during sonnet review)",
+    "main_mister_ref": "input.cpp:4151 (strcpy(input[i].mac, uniq) \u2014 uniq parsed from /proc/bus/input/devices 'U: Uniq=' at input.cpp:4124); also input.cpp:5202 (ioctl(fd, EVIOCGUNIQ(...), uniq))"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Commit 0d7778d1f sets input->uniq field for core wiimote device in hid-wiimote-core.c (1 line) and for 7 wiimote extension modules in hid-wiimote-modules.c (9 lines total). Propagates hdev->uniq to allow userspace to distinguish multiple paired Wiimotes. Carried in 0023-hid-wiimote-fixes.patch which squashes this commit with two others (button code remapping, analog range fixes) and adds one additional hunk for wiimod_turntable_probe(). Forward-ported cleanly to 6.18.38 by MCF on 2026-07-12. NOT in vanilla 6.18.38 \u2014 verified grep for wdata->input->uniq in /mnt/source/linux/drivers/hid/hid-wiimote-core.c returns no results. ESCALATION NOTE: patch-provenance.md line 370 groups three commits together (0d7778d1f, 47dc53a22, 15968bc26), violating the no-grouping requirement for Phase 1 analysis. CORRECTION (sonnet review): the interface field previously said 'sysfs /sys/class/input/eventX/device/uniq' \u2014 Main_MiSTer does not actually read that sysfs path; it parses the 'U: Uniq=' line out of /proc/bus/input/devices (input.cpp:4107-4131, copied to input[i].mac at :4151 and folded into unique_hash) and separately calls EVIOCGUNIQ (input.cpp:5202). Same underlying kernel field (input_dev->uniq), different userspace access path than claimed; file:line citation at 4151 was itself accurate.",
+  "sonnet-verified": "carry-mapping into 0023 confirmed exact (uniq-field hunks match fork commit verbatim in both hid-wiimote-core.c and hid-wiimote-modules.c); main_mister_ref file:line (input.cpp:4151) was accurate but the interface description wrongly said sysfs \u2014 corrected to /proc/bus/input/devices + EVIOCGUNIQ"
+}

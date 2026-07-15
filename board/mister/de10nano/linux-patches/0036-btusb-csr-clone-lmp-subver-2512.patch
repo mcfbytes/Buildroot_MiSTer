@@ -1,0 +1,49 @@
+From b02a4a011aa1a9d414061ecb7af59c46528d4df3 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Thu, 19 Aug 2021 06:19:29 +0800
+Subject: [PATCH 1/1] btusb: detect fake CSR clones reporting lmp_subver 0x2512
+
+Barrot 8041a02-based fake CSR dongles self-report a consistent
+manufacturer/hci_rev/lmp_subver of 0x2512 -- above every legitimate CSR
+build number -- so they pass vanilla's consistency check and exceed every
+ranged lmp_subver check (top tier 0x22bb), escaping all six is_fake
+branches and missing the clone quirks entirely (broken stored link keys,
+broken err-data-reporting, suspend workarounds). Adds an exact-match
+branch at the end of the chain. Stock has shipped this detection since
+2021; upstream still patches around the same clone family by other means
+(2c1dda2acc41, 2024).
+
+Provenance
+----------
+Origin:       b02a4a011aa1a9d414061ecb7af59c46528d4df3
+              "btusb: support for more CSR clones."
+              (partial: the 0x2512 detection half; the fork's Barrot
+              pm_runtime-workaround narrowing is superseded by 6.18's own
+              reworked CSR handling)
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-19, against v5.15.
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No. Verified structurally absent from v6.18.38
+              btusb_setup_csr (git grep/log -S 0x2512 empty over the file's
+              history; docs/kernel-recon record, sonnet-verified,
+              confidence medium pending clone-hardware test).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
+              reconciliation carry decision #3 (match stock behavior).
+---
+diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
+index 25236fd97aed..8ad3be96d7ba 100644
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -2522,6 +2522,13 @@ static int btusb_setup_csr(struct hci_dev *hdev)
+ 		 rp->hci_ver == BLUETOOTH_VER_2_0)
+ 		is_fake = true;
+ 
++	/* Barrot 8041a02-based clones self-report a consistent LMP
++	 * subversion of 0x2512 -- above every legitimate CSR build
++	 * number -- so the ranged checks above never catch them.
++	 */
++	else if (le16_to_cpu(rp->lmp_subver) == 0x2512)
++		is_fake = true;
++
+ 	if (is_fake) {
+ 		bt_dev_warn(hdev, "CSR: Unbranded CSR clone detected; adding workarounds and force-suspending once...");
+ 

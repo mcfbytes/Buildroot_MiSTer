@@ -1,0 +1,57 @@
+{
+  "sha": "f0982bf2c31d5d691492b80ad7e540f138944add",
+  "subject": "usbhid: apply jspoll for gamepad usage as well.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-11-20",
+  "subsystem": "usbhid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/usbhid/hid-core.c"
+  ],
+  "added": 5,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0025-usbhid-jspoll-gamepad.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [
+      "933bfe4d271ef5931bc7513a1239751ed251db04"
+    ],
+    "vanilla_file_line": "drivers/hid/usbhid/hid-core.c:1139-1142",
+    "vanilla_quote": "case HID_GD_JOYSTICK:\n\t\t\tif (hid_jspoll_interval > 0)\n\t\t\t\tinterval = hid_jspoll_interval;\n\t\t\tbreak;",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:372",
+  "impact": {
+    "effect_if_absent": "USB HID devices with top-level usage HID_GD_GAMEPAD would not be covered by the hid_jspoll_interval module parameter override; they would use their hardware-default USB interrupt polling interval rather than the MiSTer-configured jspoll value.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "kernel module parameter (usbhid.jspoll)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Original fork commit (f0982bf2c) included 3 pr_info() debug statements that were dropped in the carried patch (0025-usbhid-jspoll-gamepad.patch). The carried patch keeps only the functional change: adding `case HID_GD_GAMEPAD:` to fall through to the same jspoll interval override as HID_GD_JOYSTICK. Vanilla 6.18.38 still lacks this case and thus does not apply jspoll overrides to gamepad devices. The feature is a straightforward enhancement: HID_GD_GAMEPAD has existed in the kernel since 2005 (include/linux/hid.h) and is used in other HID subsystems (hid-input.c), but was omitted from the usbhid jspoll override logic when that feature was added in 2017 (commit 933bfe4d271ef). The carried patch correctly forward-ports this fix from v5.15 to v6.18.38. No userspace coupling detected; this is a kernel-level USB polling optimization.\n\nsonnet-verified: carry-mapping to 0025-usbhid-jspoll-gamepad.patch confirmed exact -- `git show f0982bf2c31d5d691492b80ad7e540f138944add` shows the fork's diff adds `case HID_GD_GAMEPAD:` plus 3 pr_info() lines; the carried patch's own header states the debug lines were deliberately dropped, and diffing the two confirms only the functional `case HID_GD_GAMEPAD:` fallthrough survives -- matches the record's claim exactly. Both cited SHAs independently re-derived and confirmed real via `git log` in /mnt/source/linux: 933bfe4d271ef5931bc7513a1239751ed251db04 ('HID: usbhid: extend polling interval configuration to joysticks', 2017-02-25) introduced the hid_jspoll_interval mechanism this commit extends; HID_GD_GAMEPAD (0x00010005) confirmed present in include/linux/hid.h since the original 2005 'Generic HID layer - code split' import. VOCABULARY FIX: upstream.equivalence was null despite a live vanilla-vs-fork comparison being made (vanilla's switch retains only HID_GD_JOYSTICK, confirmed at hid-core.c:1139-1142 exact match to the quoted hunk) -- corrected to 'contradicted' for consistency with the schema and with sibling records in this batch (e.g. c784a6856, the Elite2-paddles record) that use 'contradicted' for the same 'vanilla lacks this specific case entirely' pattern; disposition remains 'carried' with no misclassification (provenance doc never claimed upstream coverage for this specific gamepad case, so the contradicted/carried pairing is correctly grounded, not a forbidden contradicted+dropped-upstream pairing). Also added the previously-uncited vanilla_sha to upstream.vanilla_shas (933bfe4d271ef5931bc7513a1239751ed251db04) since it was quoted in prose but missing from the array, and tightened vanilla_file_line from the single line ':1140' to the full quoted range ':1139-1142' to match the four-line quote precisely. No device IDs apply (generic kernel-level fix, not gated to any VID/PID) -- empty device_ids/affected_hardware arrays are correct as-is."
+}

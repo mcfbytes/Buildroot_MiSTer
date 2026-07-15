@@ -1,0 +1,64 @@
+{
+  "sha": "f84543926371d7911bff2d3a12daa5d325e4c2d9",
+  "subject": "dualsense: add player id led control.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-07-10",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-playstation.c"
+  ],
+  "added": 53,
+  "removed": 35,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0033-hid-playstation-dualsense-player-id-led.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [
+      "949aaccda019723050a2cd98d7b4492b06423f27",
+      "8c0ab553b072025530308f74b2c0223ec50dffe5"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-playstation.c:826-841 (ps_led_register name format), :1723-1733 (player_leds_info[] using LED_FUNCTION_PLAYER1..5), :1850-1865 (registration loop + auto-assign at connect); include/dt-bindings/leds/common.h:70-74 (LED_FUNCTION_PLAYERn strings)",
+    "vanilla_quote": "ps_led_register() line 831-834: `led->name = devm_kasprintf(&ps_dev->hdev->dev, GFP_KERNEL, \"%s:%s:%s\", ps_dev->input_dev_name, led_info->color, led_info->name);` -- dualsense_create() line 1850-1865: `for (i = 0; i < ARRAY_SIZE(player_leds_info); i++) { ... ret = ps_led_register(ps_dev, &ds->player_leds[i], led_info); ... } ret = ps_device_set_player_id(ps_dev); ... /* Set player LEDs to our player id. */ dualsense_set_player_leds(ds);` -- dt-bindings/leds/common.h:70-74: `#define LED_FUNCTION_PLAYER1 \"player-1\"` ... `PLAYER5 \"player-5\"`. player_leds_info[] (1723-1733) pairs each with color=\"white\", giving names like `<gamepad-input-dev>:white:player-1`.",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md:337",
+  "impact": {
+    "effect_if_absent": "On vanilla 6.18.38, DualSense (054c:0ce6) exposes five separate LED classdevs named `<gamepad-input-dev>:white:player-N` (N=1-5), keyed off the gamepad's INPUT device name, instead of the fork's single `<hid-device-id>:player_id` brightness classdev (0-5) keyed off the HID device. Main_MiSTer/input.cpp:2702 writes only `<led_path>:player_id/brightness` (led_path derived from the HID device id, matching the fork's naming exactly); that open fails with ENOENT on vanilla, so update_num_hw() silently falls into its pre-existing DualShock4 branch (input.cpp:2709-2726) and paints the lightbar's :red/:green/:blue sub-LEDs with the DS4 color_code[] per-player palette instead of the intended blue/green player_id-brightness cue. Simultaneously, vanilla's own driver auto-lights the 5-LED row once at connect via dualsense_set_player_leds(ds) (hid-playstation.c:1865) using an IDA connection-order id -- not a MiSTer-assigned player slot -- and nothing in Main_MiSTer ever touches those 5 LEDs afterward, so the row shows a static, assignment-independent pattern for the life of the connection. Net effect: player identity is still visually conveyed (lightbar color, same mechanism used for plain DualShock4), but the specific PS5-style white player-LED indicator the fork commit and Main_MiSTer were co-designed around is wrong/stale and unreachable from userspace.",
+    "affected_hardware": [
+      "DualSense (PlayStation 5 controller)"
+    ],
+    "device_ids": [
+      "054c:0ce6"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "LED class device `<hid-device-id>:player_id` brightness (0-5). The fork's naming -- devm_kasprintf(dev, \"%s:player_id\", dev_name(dev)) with dev=&hdev->dev -- exactly matches how Main_MiSTer's get_led_path() constructs its base path (truncates the input device's sysfs path at '/input/', appends '/leds/<hid-device-id>'), i.e. this commit and Main_MiSTer were co-designed around the same naming convention.",
+    "main_mister_ref": "Main_MiSTer/input.cpp:2642 get_led_path(), :2661 set_led(), :2692-2729 update_num_hw() -- line 2702 `set_led(led_path, \":player_id\", (num > 5) ? 0 : num)`; on failure falls through to the :2709-2726 DualShock4 color_code[] fallback branch. QUIRK_DS4 (which routes DualSense through this code) is assigned at input.cpp:5277-5279 for VID 0x054c, PID in {0x05c4, 0x09cc, 0x0ba0, 0x0ce6}."
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "Raw diff does not clean-apply: vanilla's `struct dualsense` gained `player_leds[5]`/`update_player_leds`/`player_leds_state` fields and kept the IDA-based `ps_device_set_player_id()` machinery (949aaccda019) that this fork commit deleted, then layered 8c0ab553b072's five-LED registration on top -- both of which this commit's target lines no longer resemble. Re-implementing requires either (a) kernel-side: add a 6th MiSTer-specific ':player_id' LED classdev alongside vanilla's 5, re-derived against current struct layout, or (b) userspace-side: teach Main_MiSTer's update_num_hw()/get_led_path() to resolve the gamepad input device name and drive the 5 vanilla '<input-dev>:white:player-N' LEDs directly.",
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [
+      "949aaccda019723050a2cd98d7b4492b06423f27"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "SONNET ESCALATION VERIFICATION -- every link re-derived from scratch, all confirmed:\n\n1. FORK (f84543926, `git show` in /mnt/source/Linux-Kernel_MiSTer): replaces the IDA-based `ps_device_set_player_id()`/`player_id` field with a single `struct led_classdev ds->led`, name `devm_kasprintf(dev, GFP_KERNEL, \"%s:player_id\", dev_name(dev))` where dev=&hdev->dev (the HID device, e.g. '0003:054C:0CE6.0001:player_id'), max_brightness=5, brightness_set_blocking=dualsense_player_led_brightness_set -> dualsense_set_player_leds(ds, brightness) (clamped >5 -> 0), registered in ds_leds_create() called from dualsense_create(). One writable knob: 0=off, 1-5=player LED pattern.\n\n2. VANILLA (/mnt/source/linux checked out at v6.18.38, HEAD detached, confirmed clean via `git status`/`git log -1`): keeps the fork-deleted IDA machinery (949aaccda019723050a2cd98d7b4492b06423f27, 'HID: playstation: add DualSense player LED support', 2021-02-16) AND additionally registers 5 separate led_classdevs (8c0ab553b072025530308f74b2c0223ec50dffe5, 'HID: playstation: expose DualSense player LEDs through LED class', 2021-09-08) -- both full SHAs independently re-obtained via `git log --format=%H -1 <short-sha> -- drivers/hid/hid-playstation.c` in this task, matching what the prior record already had. Naming comes from ps_led_register() (hid-playstation.c:826-841): `\"%s:%s:%s\"` % (ps_dev->input_dev_name, color='white', LED_FUNCTION_PLAYERn ('player-1'..'player-5', dt-bindings/leds/common.h:70-74)). Critically, `input_dev_name` = dev_name(&ds->gamepad->dev) -- the GAMEPAD INPUT device's name, NOT the HID device's -- so even the parent-name component differs from what Main_MiSTer constructs. dualsense_create() (hid-playstation.c:1850-1865) registers all 5 LEDs AND unconditionally calls ps_device_set_player_id()+dualsense_set_player_leds(ds) at connect time, so vanilla DOES auto-light a player-number pattern by default with zero userspace interaction -- using an IDA connection-order id, not a MiSTer-assigned player slot.\n\n3. USERSPACE (Main_MiSTer/input.cpp): get_led_path() (2642-2659) derives a base path ending in '.../<hid-device-id>/leds/<hid-device-id>' -- matches the FORK's naming scheme exactly (same hid-device-id used twice, no color/function suffix), confirming this commit and Main_MiSTer were co-designed. update_num_hw() (2692-2729) is shared by DS4 and DualSense (both funnel through QUIRK_DS4, assigned at input.cpp:5277-5279 for PID 0x05c4/0x09cc/0x0ba0/0x0ce6 under VID 0x054c). Line 2702: `set_led(led_path, \":player_id\", (num > 5) ? 0 : num)`. If that fopen SUCCEEDS (true on the fork kernel) it takes the 'dualsense' branch (2705-2707) and sets a blue/green/red intensity pair on the existing lightbar LEDs. If it FAILS -- true on vanilla 6.18.38, since no LED named exactly '<hid-device-id>:player_id' exists there -- it silently falls into the pre-existing 'dualshock4' branch (2709-2726) and paints the lightbar with color_code[num] (a per-player RGB palette). No error surfaces; the fallback path already works fine (it's DS4's normal path), so nothing crashes or logs.\n\n4. VERDICT: equivalence=contradicted stands -- vanilla implements player-LED indication via a genuinely different interface (5 named LEDs keyed off the gamepad input device, auto-lit at connect from IDA order) that Main_MiSTer cannot address with the single write it knows how to make. Real, silent, user-visible behavior change on DualSense under 6.18: (a) the white player-count LED row shows a static, MiSTer-assignment-independent number and is never updated by userspace; (b) the intended blue/green player_id-brightness cue is replaced by the DS4 RGB color-coding scheme. This is feature-loss/interface-drift, not a crash, and not 'no indication at all' (a substitute cue exists) -- so severity stays 'feature-loss' rather than escalating further, but it is emphatically NOT 'cosmetic-or-none': the specific interface Main_MiSTer targets is genuinely gone and the visible cue changes character.\n\n5. DISPOSITION FIX (the core defect in the prior record): it already set equivalence='contradicted' and agrees_with_provenance_doc=false but left disposition='dropped-upstream' -- contradicting the grounding contract's own rule (worker-instructions.md item 2): a contradicted equivalence where the provenance doc claimed upstream-drop must be disposition='misclassified' (carry candidate), not 'dropped-upstream'. Corrected here. patch-provenance.md:337 (Class C table) batches f84543926/0d60c3482/60e08955f/b76b4bc6a together, citing 8c0ab553b072 + 'hid-playstation.c:217 update_player_leds' as justification, with only a hedge ('verify controller LED behaviour on HW, P3.13') -- no mention of the naming/interface incompatibility documented above.\n\n6. Also fixed two independent errors inherited/introduced in the prior record: (a) vanilla_file_line cited 'hid-playstation.c:217', copied verbatim from the provenance doc without re-derivation -- line 217 is just the `bool update_player_leds;` struct-field declaration, not registration/naming logic (the real logic is at ps_led_register/player_leds_info/dualsense_create, cited above); this is itself a case of trusting prior art over grepping vanilla directly, which the grounding contract explicitly warns against. (b) device_ids was '054c:ce6e', a digit-transposed non-existent Sony USB PID -- corrected to '054c:0ce6' (USB_DEVICE_ID_SONY_PS5_CONTROLLER, /mnt/source/linux/drivers/hid/hid-ids.h:1280), matching the QUIRK_DS4 PID list at Main_MiSTer/input.cpp:5277.\n\n7. No existing carried_patch reimplements this -- grepped board/mister/de10nano/linux-patches/*.patch; only 0022-hid-playstation-ds4-mac-fix.patch touches this file, for an unrelated MAC-address fix. The raw fork diff will not clean-apply to 6.18.38 (struct/IDA drift, see forward_port.conflicts). Two remediation paths for whoever picks up the carry candidate: kernel-side (add a 6th MiSTer-specific LED) or userspace-side (make Main_MiSTer drive vanilla's 5 LEDs, which requires resolving the gamepad input device name that get_led_path() doesn't currently compute). Recorded as effort=medium since either path is design work, not a mechanical patch reapply.\n\nsonnet-verified: contradicted -- vanilla's DualSense player-LED interface (5 auto-lit LEDs keyed to the gamepad input device) is a genuinely different, incompatible interface from the fork's single hid-device-keyed :player_id brightness knob that Main_MiSTer specifically targets; dropping this commit is a real, silent, user-visible player-LED regression on DualSense, correctly a carry candidate (disposition=misclassified, not dropped-upstream) against the provenance doc's Class-C drop claim at patch-provenance.md:337. | RESOLVED (user carry decision 2026-07-14/15 (see silent-regressions.md + git d2f2791 follow-ups)): carried as 0033 \u2014 single :player_id classdev (0-6) replaces vanilla's five auto-assigned player LEDs; IDA kept for DS4 teardown symmetry."
+}

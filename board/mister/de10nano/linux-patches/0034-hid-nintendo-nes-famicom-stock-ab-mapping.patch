@@ -1,0 +1,61 @@
+From e155f6a2f5fe088527f7c01e637e7c51b18a5695 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 4 Sep 2021 21:38:47 +0800
+Subject: [PATCH 1/1] hid-nintendo: NES/Famicom A/B buttons follow stock MiSTer mapping
+
+Vanilla 6.18's nescon table maps A->BTN_SOUTH/B->BTN_EAST; stock MiSTer
+maps A->BTN_EAST/B->BTN_SOUTH (the same assignment vanilla itself uses
+for snescon). User .map files created on stock kernels encode the stock
+codes, so keeping vanilla's assignment silently breaks existing NES/
+Famicom mappings. Swaps A/B in nescon_button_mappings and
+famicom_r_button_mappings (patch 0015) to the stock assignment.
+
+Provenance
+----------
+Origin:       e155f6a2f5fe088527f7c01e637e7c51b18a5695
+              "hid-nintendo: support for Switch NES and SNES controllers."
+              (partial: only the A/B assignment; the controllers themselves
+              are supported upstream via 94f18bb19945)
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-09-04, against v5.15.
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     Divergent. Upstream supports NES/SNES controllers but with
+              A/B swapped relative to stock on the NES pads (SNES already
+              matches). Verified byte-for-byte in docs/kernel-recon
+              records (sonnet-verified, corroborates patch-provenance §9.2).
+Forward-port: 6.18.38 mapping-table edit, Michael C. Ferguson, 2026-07-15,
+              kernel patch reconciliation carry decision #5. Also aligns
+              the Famicom tables introduced by 0015 with stock.
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index dc92b817377d..c39799e253f8 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -436,8 +436,8 @@ static const struct joycon_ctlr_button_mapping procon_button_mappings[] = {
+ };
+ 
+ static const struct joycon_ctlr_button_mapping nescon_button_mappings[] = {
+-	{ BTN_SOUTH,	JC_BTN_A,	},
+-	{ BTN_EAST,	JC_BTN_B,	},
++	{ BTN_EAST,	JC_BTN_A,	},
++	{ BTN_SOUTH,	JC_BTN_B,	},
+ 	{ BTN_TL,	JC_BTN_L,	},
+ 	{ BTN_TR,	JC_BTN_R,	},
+ 	{ BTN_SELECT,	JC_BTN_MINUS,	},
+@@ -454,12 +454,13 @@ static const struct joycon_ctlr_button_mapping nescon_button_mappings[] = {
+  * declares the buttons it actually has: without an entry here, the bit is never
+  * reported, and a phantom SELECT/START would be a lie about the hardware.
+  *
+- * A/B follow the positional convention the rest of this driver uses, matching
+- * nescon: "A" -> BTN_SOUTH, "B" -> BTN_EAST.
++ * A/B use the stock-MiSTer assignment ("A" -> BTN_EAST, "B" -> BTN_SOUTH,
++ * same as snescon): user .map files created on stock kernels encode these
++ * codes, so changing them silently breaks existing mappings.
+  */
+ static const struct joycon_ctlr_button_mapping famicom_r_button_mappings[] = {
+-	{ BTN_SOUTH,	JC_BTN_A,	},
+-	{ BTN_EAST,	JC_BTN_B,	},
++	{ BTN_EAST,	JC_BTN_A,	},
++	{ BTN_SOUTH,	JC_BTN_B,	},
+ 	{ BTN_TL,	JC_BTN_L,	},
+ 	{ BTN_TR,	JC_BTN_R,	},
+ 	{ /* sentinel */ },

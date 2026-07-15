@@ -1,0 +1,72 @@
+{
+  "sha": "d776ddb4ec87b2699e9c553a1a552b04cc5c704b",
+  "subject": "xone: use firmware according to PID.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-09",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/transport/dongle.c"
+  ],
+  "added": 8,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:381 — listed as one of 7 xone commits in §3.5, status ✅ re-sourced",
+
+  "impact": {
+    "effect_if_absent": "Xbox Wireless Dongle would load incorrect firmware file (hardcoded single name), resulting in wrong radio calibration or firmware load failure on older PID 0x02e6 dongles",
+    "affected_hardware": [
+      "Xbox Wireless Dongle (0x02fe — new/common)",
+      "Xbox Wireless Dongle (0x02e6 — old/original 2015)"
+    ],
+    "device_ids": [
+      "045e:02e6",
+      "045e:02fe"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "loud"
+  },
+
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist/xone fork, commit f2aa9fe01103d7600553b505b298ff0bd47ff280 and later)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": null,
+
+  "notes": "MiSTer's 5.15 fork vendored the original medusalix/xone driver and patched in per-PID firmware support (this commit). However, the actively-maintained dlundqvist/xone fork — which we now package as BR2_PACKAGE_XONE — already natively includes identical per-PID firmware logic (sprintf(fwname, \"xone_dongle_%04x.bin\", fw_product) in transport/dongle.c:1117). This commit is therefore NOT a carry: it's functionality already present in our packaged source tree. Documentation of both PIDs' firmware is handled by package/xow-firmware/, which ships xone_dongle_02fe.bin (new adapter, also aliased to xow_dongle.bin for stock parity) and xone_dongle_02e6.bin (old adapter, a distinct 70008-byte blob from a different Microsoft .cab). Both external-USB PIDs are covered; PIDs 0x02f9 and 0x091e are soldered-in laptop modules and deliberately omitted (docs/decisions/0003-xone-firmware.md). Verified independently: dlundqvist source f2aa9fe01103d7600553b505b298ff0bd47ff280 (package/xone/xone.mk XONE_VERSION) contains transport/dongle.c:1110-1118 (fw_product logic) and :1307-1308 (id assignment), matching the MiSTer commit's intent byte-for-byte. CORRECTION (sonnet audit): forward_port.applies_to_6_18 changed from true/effort:none to false/effort:null for consistency — 'applies_to_6_18' describes whether this literal kernel-tree patch would forward-port onto the 6.18 source (compare a genuinely carried record, e.g. 2d39e76d1, which correctly uses true+trivial for a patch that DOES still apply to the tree). Since xone left the kernel tree entirely for BR2_PACKAGE_XONE, there is no patch to apply to 6.18 at all — 'true' was conflating 'the functionality exists in 6.18's build' (correct) with 'the patch applies to 6.18' (not applicable), and was inconsistent with sibling xone records (4ddd8ec3d, 8270e78f4, e2eb39e6f, d5beb5aa6), which all correctly use false. sonnet-verified: corrected — sprintf/fw_product logic and firmware package split confirmed byte-for-byte at packaged dongle.c:1108-1118, xow-firmware.mk 02fe/02e6 split matches ADR 0003 scope claims exactly; forward_port vocabulary normalized."
+}

@@ -1,0 +1,87 @@
+{
+  "sha": "0d8641a2b9c9524f83b0d32cd8ef6332a2a324c3",
+  "source_branch": "MiSTer-v5.14",
+  "subject": "Add rtl8188eu, rtl8188fu WiFi drivers.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "net-wireless",
+  "change_type": "vendored-driver-add",
+  "files": [
+    "drivers/net/wireless/realtek/Kconfig",
+    "drivers/net/wireless/realtek/Makefile",
+    "drivers/net/wireless/realtek/rtl8188eu/*",
+    "drivers/net/wireless/realtek/rtl8188fu/*"
+  ],
+  "added": 746634,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "3dfb8e844fa30cceb4b810613e2c35f628eb3e70",
+      "c888183b21f36a247bb166ca9365705611bea847"
+    ],
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtl8xxxu/core.c:8061-8064",
+    "vanilla_quote": "/* RTL8188FU */\n{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0xf179, 0xff, 0xff, 0xff),\n\t.driver_info = (unsigned long)&rtl8188fu_fops},\n{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0x8179, 0xff, 0xff, 0xff),\n\t.driver_info = (unsigned long)&rtl8188eu_fops},",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md line 389 (Class E table: plan is 'package/rtl8188eu, rtl8188fu, ... Do not vendor' -- that plan is itself superseded a second time in our actual defconfig, where both packages are sourced but left disabled in favor of mainline CONFIG_RTL8XXXU=m; the provenance doc predates and does not mention that later decision)",
+  "impact": {
+    "effect_if_absent": "None in our image. Dropping this v5.14 vendored-driver commit has zero user-visible effect: RTL8188EU (0bda:8179) and RTL8188FU (0bda:f179) -- plus every OEM VID:PID variant the vendored driver targeted -- are natively claimed by the mainline in-kernel rtl8xxxu driver (CONFIG_RTL8XXXU=m, board/mister/de10nano/linux.config:212), which our build already ships as a module. The two matching Buildroot packages (rtl8188eu-aircrack-ng, rtl8188fu) exist in the tree but are explicitly disabled (configs/mister_de10nano_defconfig:568-569, '# ... is not set') specifically so they do not bind-fight rtl8xxxu on the same USB IDs (defconfig:550-557 explains the reasoning). Coverage is real and active via the standard mac80211/cfg80211/nl80211 stack (MODULE_DESCRIPTION \"RTL8XXXu USB mac80211 Wireless LAN Driver\", core.c:29), not a hypothetical fallback.",
+    "affected_hardware": [
+      "Realtek RTL8188EU USB WiFi adapters",
+      "Realtek RTL8188FU USB WiFi adapters"
+    ],
+    "device_ids": [
+      "0BDA:8179",
+      "0BDA:0179",
+      "07B8:8179",
+      "2357:010C",
+      "0DF6:0076",
+      "2001:330F",
+      "2001:3310",
+      "2001:3311",
+      "2001:331B",
+      "056E:4008",
+      "7392:B811",
+      "0BDA:F179"
+    ],
+    "severity": "none",
+    "failure_mode": null
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "standard nl80211/cfg80211/mac80211 WiFi driver interface",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": "N/A -- the vendored v5.14 driver itself was never forward-ported; its device coverage is provided natively by mainline rtl8xxxu, already present in the 6.18.38 baseline we build from"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "CONFIG_RTL8XXXU=m (mainline in-kernel driver, board/mister/de10nano/linux.config:212) -- ACTIVE coverage. drivers/net/wireless/realtek/rtl8xxxu/core.c:8061-8064 claims 0bda:f179->rtl8188fu_fops and 0bda:8179->rtl8188eu_fops unconditionally, plus every other VID:PID this record lists (0x0179 core.c:8066-8067, 07b8:8179 core.c:8084-8085, 0df6:0076 core.c:8069-8070, 2001:330f/3310/3311/331b core.c:8072-8082, 056e:4008 core.c:8087-8088, 2357:010c core.c:8090-8091, 7392:b811 core.c:8102-8103) -- none gated behind CONFIG_RTL8XXXU_UNTESTED (that #ifdef starts at core.c:8130, after all these entries). Native support landed upstream via 3dfb8e844fa3 (RTL8188EU, 2022-12-17, Jes Sorensen) and c888183b21f3 (RTL8188FU, 2022-09-29, Bitterblue Smith).",
+      "33ff5146a (MiSTer-v5.15 fork commit, combined re-add of rtl8188eu + rtl8188fu + 4 other Realtek drivers) -- fork-internal history only, not what our 6.18 build ships",
+      "package/rtl8188eu-aircrack-ng and package/rtl8188fu -- present in tree (commit-pinned, hash-verified) as a documented, currently-DISABLED fallback (BR2_PACKAGE_RTL8188EU_AIRCRACK_NG / BR2_PACKAGE_RTL8188FU 'is not set' in configs/mister_de10nano_defconfig:568-569), NOT the active coverage path"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "author": "Realtek",
+    "license": "GPL-2.0",
+    "origin_project": "Realtek RTL8188EU/RTL8188FU vendor driver",
+    "notes": "Vendored third-party driver. Both .c/.h files carry GPL-2.0 boilerplate headers from Realtek. The superseding mainline rtl8xxxu code (core.c author Jes Sorensen; RTL8188FU chip support by Bitterblue Smith) is independently authored, upstream GPL-2.0 kernel code -- not derived from this vendored tree."
+  },
+  "notes": "CORRECTED (Sonnet escalation, orchestrator-flagged internal contradiction). The prior version of this record was self-contradictory: its notes asserted 'ZERO in-kernel coverage ... adapter transparently unavailable ... regression vs stock' while its own dependencies.superseded_by simultaneously named package/rtl8188eu-aircrack-ng and package/rtl8188fu as the coverage. Both halves were wrong. Re-derived from the live checkouts: (1) configs/mister_de10nano_defconfig:568-569 explicitly disables BOTH packages ('# BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set' / '# BR2_PACKAGE_RTL8188FU is not set'), each with an inline comment '-> mainline rtl8xxxu (8188eu)' / '-> mainline rtl8xxxu (8188fu)', and a block comment at defconfig:550-557 stating they are left OFF specifically to avoid bind-fighting the in-kernel driver on the same USB IDs -- so the packages were never the active coverage mechanism; the prior record's own superseded_by list was mistaken. (2) board/mister/de10nano/linux.config:212-213 has CONFIG_RTL8XXXU=m and CONFIG_RTL8XXXU_UNTESTED=y. (3) /mnt/source/linux drivers/net/wireless/realtek/rtl8xxxu/core.c dev_table[] unconditionally claims every VID:PID this record lists, bound to rtl8188eu_fops/rtl8188fu_fops (see dependencies.superseded_by for exact line numbers), none gated behind the CONFIG_RTL8XXXU_UNTESTED #ifdef (core.c:8130, after these entries). (4) Only rtl8xxxu.ko is actually built into our image for these IDs -- the two BR2 packages are not built at all (not set), so there is no real bind race, only a documented hypothetical one the defconfig comment preempts. Conclusion: this is full, active, verified in-kernel coverage via the standard upstream mac80211 rtl8xxxu driver -- not a regression, not silent, not a coverage gap. Corrections applied: impact.severity feature-loss -> none; impact.failure_mode silent -> null (nothing is absent, so nothing fails); dependencies.superseded_by rewritten to name CONFIG_RTL8XXXU=m as the primary/active supersession and demote the two BR2 packages to inert documented fallback, not coverage; upstream.* populated with real vanilla SHAs/quote (previously null) since the coverage genuinely traces to vanilla mainline, strengthening rather than reclassifying the dropped-deliberate disposition (kept as instructed -- we deliberately chose not to carry/vendor the original driver, in favor of already-upstream mainline). Secondary finding for the auditor: patch-provenance.md:389 (Class E table) is itself stale on this point -- it still states the plan as 'package/rtl8188eu, rtl8188fu ... Do not vendor', predating the later, defconfig-only-documented decision to prefer mainline rtl8xxxu for these two chips specifically (and to rename the aircrack-ng fork package to avoid a Buildroot-upstream Kconfig/Make namespace collision). That is a provenance-doc staleness issue, tracked separately from this record's now-corrected coverage claim. sonnet-verified: corrected -- replaced a self-contradictory 'silent regression' narrative with confirmed, fully-cited mainline rtl8xxxu in-kernel coverage (severity none, disposition dropped-deliberate with an accurate superseded_by)."
+}

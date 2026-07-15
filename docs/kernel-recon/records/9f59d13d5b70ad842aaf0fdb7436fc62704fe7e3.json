@@ -1,0 +1,58 @@
+{
+  "sha": "9f59d13d5b70ad842aaf0fdb7436fc62704fe7e3",
+  "subject": "Enable force feedback on PS adapter (#56)",
+  "author": "Fabio DL",
+  "author_is_pr_contributor": true,
+  "date": "2024-09-24",
+  "subsystem": "hid",
+  "change_type": "kconfig",
+  "files": ["arch/arm/configs/MiSTer_defconfig"],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/drivers/hid/Kconfig:1188-1193 (config SMARTJOYPLUS_FF)",
+    "vanilla_quote": "config SMARTJOYPLUS_FF\n\tbool \"SmartJoy PLUS PS2/USB adapter force feedback support\"\n\tdepends on HID_SMARTJOYPLUS\n\tselect INPUT_FF_MEMLESS",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:312 -- GROUPED ROW 'defconfig (11 commits)' including `9f59d13d5`, disposition='config — feeds P1.3', carried_patch='(none)'; consistent with dropped-deliberate/config-axis framing, though the row itself groups 11 unrelated commits together (a violation of the per-instructions no-grouping rule, flagged here for escalation)",
+
+  "impact": {
+    "effect_if_absent": "Force feedback (rumble) support for SmartJoy PLUS PS2/USB adapter would be unavailable; userspace input layer would not detect FF_RUMBLE capability",
+    "affected_hardware": ["0925:0005"],
+    "device_ids": ["0925:0005"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE via input event layer; EVIOCGBIT(EV_FF) probe",
+    "main_mister_ref": "input.cpp:4881 (FF_RUMBLE type), input.cpp:5029 (FF_SPRING type), input.cpp:5228 (FF_RUMBLE feature test via EVIOCGBIT)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": ["CONFIG_HID_SMARTJOYPLUS"],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "VOCABULARY CORRECTION (per instructions' kconfig rule, grounding-contract item 5): this was previously marked disposition='dropped-upstream', which implies vanilla-source development superseded the fork's change -- wrong frame for a pure kconfig toggle. CONFIG_SMARTJOYPLUS_FF is not something that 'arrived upstream' after the fork's 5.15 base; it's a static Kconfig bool that has existed unchanged for years (confirmed present, unchanged wording, at vanilla Kconfig:1188-1193) and was never absent from either tree's *source*. The fork commit itself is nothing more than flipping one line in the fork's own arch/arm/configs/MiSTer_defconfig (`# CONFIG_SMARTJOYPLUS_FF is not set` -> `CONFIG_SMARTJOYPLUS_FF=y`, confirmed via `git show 9f59d13d5`) -- a file we do not carry or track commit-by-commit at all; we maintain our own board/mister/de10nano/linux.config directly. Re-derived per the kconfig rule: does the symbol still exist in 6.18? Yes (Kconfig:1188). Is it set in OUR linux.config? Yes -- confirmed `CONFIG_SMARTJOYPLUS_FF=y` at board/mister/de10nano/linux.config:343 (immediately following CONFIG_HID_SMARTJOYPLUS=y at :342). Stock also ships it `=y` (stock-linux.config:2705). So the desired end-state this commit wanted is already present in our build, achieved independently by our own maintained config rather than by carrying this specific commit -- correct disposition is 'dropped-deliberate' (we deliberately don't carry per-commit defconfig deltas; our linux.config is hand-maintained against stock+fork intent) with equivalence 'equivalent' (same effective setting, not a byte-identical artifact since there's no vanilla commit to diff against -- vanilla_shas is correctly empty, this was never an upstream source change). No linux-patches/*.patch touches SMARTJOYPLUS (grepped all 25 patch files, no hits) -- confirms carried_patch=null is correct; the setting lives purely in our maintained linux.config, not in any patch artifact. Userspace coupling confirmed: Main_MiSTer's input.cpp uses FF_RUMBLE (input.cpp:4881) and FF_SPRING (input.cpp:5029) effects and probes for FF_RUMBLE capability via EVIOCGBIT (input.cpp:5226-5228) -- generic, not SmartJoy-specific. If CONFIG_SMARTJOYPLUS_FF were ever unset, rumble would silently not work but would not cause build/boot failure. NOTE: patch-provenance.md:312 groups this commit with 10 others (including ae9313e22, NFS_FS) under one 'defconfig (11 commits)' row -- a grouped row that should itself be escalated per the instructions (never analyze/report on grouped commits as one unit), even though this record analyzes 9f59d13d5 alone as required.",
+  "sonnet-verified": "corrected -- config-grep facts (symbol exists at Kconfig:1188, set at linux.config:343, stock also =y, no carrying patch) were all already accurate, but disposition vocabulary was wrong: 'dropped-upstream' implies vanilla-source supersession that never happened here (this is a static, ever-present Kconfig bool, not something that arrived via upstream kernel development). Reclassified to 'dropped-deliberate' with equivalence 'equivalent', per the instructions' kconfig-axis rule, and filled in provenance_doc_ref/agrees_with_provenance_doc (both previously null)."
+}

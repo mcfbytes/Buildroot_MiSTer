@@ -1,0 +1,64 @@
+{
+  "sha": "8179ac736bda58801cd0fdf177f3f905e2c53635",
+  "subject": "Add driver for Namco Guncon 3 (#20)",
+  "author": "Nolan Nicholson",
+  "author_is_pr_contributor": true,
+  "date": "2022-03-05",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-guncon3.c",
+    "drivers/hid/hid-ids.h"
+  ],
+  "added": 579,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0011-hid-guncon3.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:359, Class D (carry) \u2014 confirmed absent from 6.18.38",
+  "impact": {
+    "effect_if_absent": "Namco GunCon3 lightgun (VID:PID 0x0b9a:0x0800) would not be recognized by the kernel; no input device created. Userspace lightgun support code in Main_MiSTer (input.cpp:5373-5383) would never activate.",
+    "affected_hardware": [
+      "Namco GunCon 3 IR gun controller"
+    ],
+    "device_ids": [
+      "0b9a:0800"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "USB HID device detection and calibration via kernel input device; Main_MiSTer recognizes VID/PID 0x0b9a:0x0800 and applies calibration guncal[0-3] values; input events (ABS_X, ABS_Y, button codes BTN_A through BTN_TL2) are consumed by lightgun frame-counting logic",
+    "main_mister_ref": "Main_MiSTer/input.cpp:5373-5383 (explicit VID/PID match for guncon3 with hardcoded calibration); input.cpp:6000-6010, 6012-6024 (lightgun coordinate mapping and grace-period logic for off-screen coordinates)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "minimal \u2014 carried patch 0011-hid-guncon3.patch documents forward-port from 5.15 to 6.18.38: usb_maxpacket() lost 3rd (direction) parameter; sprintf\u2192strscpy; printk(KERN_*)\u2192pr_*(); removed uninitialized path buffer; added input_register_device() return value check. Changes are mechanical and low-risk."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (declared in driver header; SPDX in carried patch). Author: Beardypig <guncon@beardypig.com>; note includes decode fixes from pcnimdock (https://github.com/pcnimdock/guncon3).",
+  "notes": "CARRIED with high confidence. Device is NOT in vanilla 6.18.38 (verified: no hid-guncon3.c, no USB_PRODUCT_ID_NAMCO_GUNCON3 in hid-ids.h). Carried patch 0011-hid-guncon3.patch is a clean 5.15\u21926.18.38 forward-port documented in the patch header. Userspace coupling is explicit and strong: Main_MiSTer/input.cpp:5373-5383 hardcodes VID/PID detection and applies per-device calibration guncal values (initial range -32768..32767 for both X and Y). Failure mode is SILENT: device quietly becomes unavailable if driver is dropped; no build/boot error. Disposition agrees with patch-provenance.md Class D (carry). Author Nolan Nicholson is confirmed PR contributor (PR #20 in fork). Also folded in: commit 9b9aebfac (warning fix by Sorgelig, 2022-04-13) \u2014 carried patch header notes this as merged.",
+  "sonnet-verified": "amended \u2014 device_ids format fixed ('0x0b9a:0x0800' -> '0b9a:0800' to match the VVVV:PPPP schema convention used elsewhere in the corpus). All substantive claims verified: USB_PRODUCT_ID_NAMCO_GUNCON3 0x0800 confirmed in fork's hid-ids.h hunk; patch-provenance.md:359 citation correct; carried patch 0011 header explicitly documents the 9b9aebfac fold (lines 19-20) and matches the described usb_maxpacket() 2-arg forward-port (vanilla include/linux/usb.h:2060 confirmed 2-arg signature); Main_MiSTer input.cpp:5373-5383 and :6000-6024 citations verified verbatim; license/author (Beardypig, pcnimdock decode-fix credit) verified against fork source and carried patch."
+}

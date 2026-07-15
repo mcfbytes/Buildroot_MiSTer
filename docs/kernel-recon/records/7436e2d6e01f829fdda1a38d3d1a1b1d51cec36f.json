@@ -1,0 +1,75 @@
+{
+  "sha": "7436e2d6e01f829fdda1a38d3d1a1b1d51cec36f",
+  "subject": "mt7601u possible fix?",
+  "author": "bbond007",
+  "author_is_pr_contributor": false,
+  "date": "2019-02-23",
+  "subsystem": "net-wireless",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/net/wireless/mediatek/mt7601u/phy.c"
+  ],
+  "added": 5,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/drivers/net/wireless/mediatek/mt7601u/phy.c:592, :1159-1167",
+    "vanilla_quote": "Line 592: mt7601u_mcu_calibrate(dev, MCU_CAL_DPD, dev->curr_temp); Lines 1159-1167: ret = mt7601u_mcu_calibrate(dev, MCU_CAL_TXIQ, 0); ... ret = mt7601u_mcu_calibrate(dev, MCU_CAL_RXIQ, 0); ... ret = mt7601u_mcu_calibrate(dev, MCU_CAL_DPD, dev->dpd_temp);",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.1 F-4",
+  "impact": {
+    "effect_if_absent": "Device performs full PHY calibration at initialization and post-association (stock behavior). Applying this patch would disable MCU_CAL_DPD and MCU_CAL_RXIQ calibrations, potentially degrading wireless stability or performance.",
+    "affected_hardware": [
+      "Mediatek MT7601U USB wireless dongle"
+    ],
+    "device_ids": [
+      "148f:7601",
+      "148f:760a",
+      "148f:760b",
+      "148f:760c",
+      "148f:760d",
+      "0b05:17d3",
+      "0e8d:760a",
+      "0e8d:760b",
+      "13d3:3431",
+      "13d3:3434",
+      "2001:3d04",
+      "2717:4106",
+      "2955:0001",
+      "2955:1001",
+      "2955:1003",
+      "2a5f:1000",
+      "7392:7710"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Unprincipled experimental/debugging change with vague commit message ('mt7601u possible fix?') and stray test markers in the diff ('remove this for testing--> spark2k06'). The commit comments out three PHY calibration MCU calls: (1) MCU_CAL_DPD in mt7601u_phy_recalibrate_after_assoc (line 592), and (2) MCU_CAL_TXIQ, MCU_CAL_RXIQ, MCU_CAL_DPD in mt7601u_init_cal (lines 1159-1167). Vanilla 6.18.38 retains all these calibrations enabled, contradicting the patch's intent. Not carried in buildroot linux-patches/. Patch-provenance.md F-4 explicitly addresses this as a deliberate drop decision, assessing the change as 'unprincipled' and 'not in P1.9's task scope'. Re-add only if a documented mt7601u regression appears at P3.13 with hardware verification. CONFIG_MT7601U=m is enabled in our kernel config; firmware BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U=y is included.\n\nsonnet-verified: PASS, no amendment. Re-derived both citations against /mnt/source/linux directly: line 592 is exactly `mt7601u_mcu_calibrate(dev, MCU_CAL_DPD, dev->curr_temp);` inside mt7601u_phy_recalibrate_after_assoc(), and lines 1159/1162/1165 are exactly the MCU_CAL_TXIQ/MCU_CAL_RXIQ/MCU_CAL_DPD calls inside mt7601u_init_cal() -- all uncommented and unconditional in vanilla 6.18, confirming the fork's commenting-out is contradicted by vanilla. Also confirmed against the fork repo directly (git show) that the diff's stray marker '/* remove this for testing--> spark2k06 */' is real, not a paraphrase. CONFIG_MT7601U=m (output/build/linux-6.18.38/.config:1643) and BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U=y (mister_de10nano_defconfig:614) both confirmed present. patch-provenance.md F-4 (line 398) confirmed to match the record's characterization verbatim ('unprincipled', 'not in P1.9's task scope', 'DROPPED (P1.9, confirmed)'). Disposition dropped-deliberate + equivalence contradicted is correctly paired per pilot-lesson rules (contradicted is not paired with dropped-upstream here, and the reasoning for not treating this as a carry candidate -- the change is untrustworthy debug code, not a principled fix -- is explicit in notes)."
+}

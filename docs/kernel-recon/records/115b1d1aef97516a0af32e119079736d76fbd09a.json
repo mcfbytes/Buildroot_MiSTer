@@ -1,0 +1,80 @@
+{
+  "sha": "115b1d1aef97516a0af32e119079736d76fbd09a",
+  "subject": "Fix for edimax EW-7822ULC BUG #769  (#47)",
+  "author": "gkrzystek",
+  "author_is_pr_contributor": true,
+  "date": "2023-04-25",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8812au/Makefile",
+    "drivers/net/wireless/realtek/rtl8812au/os_dep/linux/ioctl_cfg80211.c",
+    "drivers/net/wireless/realtek/rtl8812au/os_dep/linux/usb_intf.c",
+    "drivers/net/wireless/realtek/rtl8821au/hal/phydm/phydm_debug.h",
+    "drivers/net/wireless/realtek/rtl8821au/os_dep/linux/ioctl_cfg80211.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_mlme_ext.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_odm.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_recv.c",
+    "drivers/net/wireless/realtek/rtl8821cu/hal/hal_com.c",
+    "drivers/net/wireless/realtek/rtl8821cu/hal/phydm/phydm_debug.h",
+    "drivers/net/wireless/realtek/rtl8821cu/include/rtw_mlme.h",
+    "drivers/net/wireless/realtek/rtl8821cu/os_dep/linux/ioctl_cfg80211.c",
+    "drivers/net/wireless/realtek/rtl8821cu/os_dep/linux/os_intfs.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/hal/phydm/phydm_debug.h",
+    "drivers/net/wireless/realtek/rtl88x2bu/os_dep/linux/ioctl_cfg80211.c"
+  ],
+  "added": 172,
+  "removed": 140,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["45794099f5e1d7abc5eb07e6eec7e1e5c6cb540d"],
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtw88/rtw8822bu.c:18-19",
+    "vanilla_quote": "{ USB_DEVICE_AND_INTERFACE_INFO(0x7392, 0xb822, 0xff, 0xff, 0xff),\n\t  .driver_info = (kernel_ulong_t)&(rtw8822b_hw_spec) }, /* Edimax EW-7822ULC */",
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md line 389 (Class E table row for 115b1d1ae): the doc's actual disposition for this row is 're-source' -> package/rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu (P3.1), with an open action item: 'Verify the two local device fixes are present upstream or re-apply as package patches.' It does NOT say 'carried'. The first-pass record's disposition='carried' + agrees_with_provenance_doc=true both misread this row; this task performs the verification the doc's action item asked for.",
+
+  "impact": {
+    "effect_if_absent": "None. Dropping this commit has zero effect on our build: (1) our BR2 rtl8812au package is sourced from a different, newer upstream line (morrownr/8812au-20210820 @ 8cac6f4) whose usb_intf.c device table never contained 7392:B822 in the first place (only 7392:A822/A811/A834 - verified in the built tree), so the mis-binding bug this commit fixes cannot occur; (2) the rtl88x2bu package that the original fix routes the device TO is present in our tree but explicitly disabled (BR2_PACKAGE_RTL88X2BU is not set); (3) the actual driver that claims 7392:B822 in our build is the mainline in-tree rtw88 driver (CONFIG_RTW88_8822BU=m), which owns this exact USB ID with an explicit '/* Edimax EW-7822ULC */' comment and goes through mac80211/cfg80211 with verified-on-hardware WPA3/SAE/PMF support -- functionally superior to the out-of-tree 88x2bu path this commit was steering the device toward. The commit's secondary cfg80211_ch_switch_* Linux-6.3+ compat shims are also moot: the newer morrownr rtl8812au source we pin already carries its own multi-version compat handling for cfg80211_ch_switch_started_notify (3 ifdef'd call signatures, verified in os_dep/linux/ioctl_cfg80211.c:459-474 of the built package).",
+    "affected_hardware": [
+      "Edimax EW-7822ULC"
+    ],
+    "device_ids": [
+      "7392:B822"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "vanilla rtw88_8822bu (drivers/net/wireless/realtek/rtw88/rtw8822bu.c, CONFIG_RTW88_8822BU=m, board/mister/de10nano/linux.config:481) -- claims 7392:B822 in-tree",
+      "package/rtl8812au (BR2_PACKAGE_RTL8812AU=y, morrownr/8812au-20210820@8cac6f43316a56cc89cc8cb532cd6c6ae14c4805) -- its device table never included 7392:B822, so the ID-routing bug is absent by construction"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "Realtek proprietary driver (GPL-2.0 header in source); not applicable to disposition since none of the touched vendored trees (fork rtl8812au/rtl8821au/rtl8821cu/rtl88x2bu) ship in our build -- they were replaced wholesale by independently re-sourced BR2 packages per patch-provenance.md line 389 (P3.1).",
+  "notes": "CORRECTED from first-pass 'carried'. 'carried' has a precise meaning in this schema: shipped as a 00xx patch file in board/mister/de10nano/linux-patches/. There is no such patch (grep of the 25 files in linux-patches/ confirms no realtek-wifi entry), and there could not sensibly be one: our build does not vendor the fork's rtl8812au/rtl8821au/rtl8821cu/rtl88x2bu source trees at all. It re-sources RTL8812AU/RTL8821AU/RTL8814AU from independently-pinned, newer morrownr forks (package/rtl8812au, rtl8821au-morrownr, rtl8814au-morrownr) that already build cleanly against 6.18 and already lack the specific bug this commit fixes, and it moved RTL8822B (this commit's actual subject, 7392:B822 Edimax EW-7822ULC) off the out-of-tree Realtek family entirely onto the mainline rtw88 driver (CONFIG_RTW88_8822BU=m) -- rtl88x2bu ships as a BR2 package but is deliberately disabled (BR2_PACKAGE_RTL88X2BU is not set), documented in the defconfig as a fallback only, with the mainline path preferred because the out-of-tree 88x2bu 'advertised SAE+CMAC but failed WPA3-only association, status_code=1 -- verified on hardware' (configs/mister_de10nano_defconfig:571-579, see also docs/wifi-parity.md). Net effect: the commit's own fix target (rtl88x2bu / rtl8812au ID table) is either absent-by-construction or inactive in our build, and the device it's about is served by a better upstream mechanism. This is 'dropped-obsolete', not 'carried', and not 'dropped-upstream' either (vanilla doesn't backport this commit's specific diff -- it independently and more completely solves the same real-world problem via a different architecture, hence equivalence='superseded-better' rather than 'equivalent'). No silent regression: nothing in our build depends on this commit's diff. sonnet-verified: disposition corrected from carried to dropped-obsolete; superseded_by mainline rtw88_8822bu (drivers/net/wireless/realtek/rtw88/rtw8822bu.c:18-19, upstream commit 45794099f5e1 'wifi: rtw88: Add rtw8822bu chipset support') and package/rtl8812au (morrownr fork, ID table already excludes 7392:B822); confirmed via built source tree at output/build/rtl8812au-8cac6f43316a56cc89cc8cb532cd6c6ae14c4805/os_dep/linux/usb_intf.c (no 0x7392,0xb822 entry) and vanilla /mnt/source/linux checkout (rtw8822bu.c has it, comment-tagged for this exact device); BR2_PACKAGE_RTL88X2BU is not set confirmed in configs/mister_de10nano_defconfig:580."
+}

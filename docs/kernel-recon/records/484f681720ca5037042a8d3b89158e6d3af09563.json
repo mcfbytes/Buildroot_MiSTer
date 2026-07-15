@@ -1,0 +1,60 @@
+{
+  "sha": "484f681720ca5037042a8d3b89158e6d3af09563",
+  "subject": "input: Add support for the NSO Famicom controllers (no mic for Famicom R) (#62)",
+  "author": "Aurora",
+  "author_is_pr_contributor": true,
+  "date": "2025-06-16",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 17,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0015-hid-nintendo-nso-famicom.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:315-324",
+    "vanilla_quote": "enum joycon_ctlr_type {\n\tJOYCON_CTLR_TYPE_JCL  = 0x01,\n\tJOYCON_CTLR_TYPE_JCR  = 0x02,\n\tJOYCON_CTLR_TYPE_PRO  = 0x03,\n\tJOYCON_CTLR_TYPE_NESL = 0x09,\n\tJOYCON_CTLR_TYPE_NESR = 0x0A,\n\tJOYCON_CTLR_TYPE_SNES = 0x0B,\n\tJOYCON_CTLR_TYPE_GEN  = 0x0D,\n\tJOYCON_CTLR_TYPE_N64  = 0x0C,\n};",
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:9.2",
+  "impact": {
+    "effect_if_absent": "NSO Famicom controllers probe successfully but register no buttons or axes—completely dead gamepad with nothing in kernel logs (silent feature loss)",
+    "affected_hardware": [
+      "Nintendo Switch Online Famicom controller I (type 0x07)",
+      "Nintendo Switch Online Famicom controller II (type 0x08)"
+    ],
+    "device_ids": [
+      "057e:2007"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "Generic input event codes: BTN_SOUTH/BTN_EAST/BTN_TL/BTN_TR for D-pad and four face buttons (Famicom II uses dedicated 4-button set; Famicom I reuses NES layout). No Main_MiSTer direct dependency identified.",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CARRIED: patch 0015-hid-nintendo-nso-famicom.patch landed as P1.9-esc (re-implementation, not rebase). The original 5.15 commit was written against a macro-based type-detection idiom (#define jc_type_is_nescon, jc_type_is_joycon, jc_type_is_nso, jc_has_rumble). Upstream 6.18.38 completely reorganized hid-nintendo.c, replacing all these macros with typed static inline bool helper functions (joycon_type_is_*). The carried patch re-implements the feature against the new helper scheme, with additional refinements: (1) joycon_ctlr_button_mapping tables replace flat BTN_* arrays; (2) Famicom controller I reuses nescon_button_mappings (same buttons/bits as NES pad); (3) Famicom controller II gets its own famicom_r_button_mappings for A/B/L/R only (no SELECT/START, microphone not exposed). SILENT FAILURE MODE: Without this patch, Famicom pads report controller type 0x07/0x08 which every capability helper (joycon_has_imu, joycon_has_joysticks, joycon_has_rumble) treats as unknown—pads probe but create completely dead input devices with no buttons or axes. HISTORICAL NOTE (superseded, do not treat as current behavior): as originally landed, patch 0015's famicom_r_button_mappings (and nescon_button_mappings) followed the positional convention A=BTN_SOUTH/B=BTN_EAST, matching upstream NSO NES/SNES/N64/Genesis pads but not stock MiSTer's A=BTN_EAST/B=BTN_SOUTH convention. SUPERSEDED: patch 0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch (carrying e155f6a2f5fe088527f7c01e637e7c51b18a5695's A/B intent per its own record, RESOLVED 2026-07-14/15) subsequently swapped BOTH nescon_button_mappings and this patch's famicom_r_button_mappings to the stock assignment (A=BTN_EAST, B=BTN_SOUTH). As currently applied (0015+0034 together), the Famicom controllers' A/B buttons DO match stock MiSTer; the paragraph above describing 'not stock MiSTer' is the pre-0034 state only and must not be read as current behavior.\n\nsonnet-verified: carry-mapping to 0015 confirmed exact (patch diff matches fork commit's enum/macro/table additions verbatim: JOYCON_CTLR_TYPE_FAML=0x07/FAMR=0x08 in the fork become FAML/FAMR unchanged in the carried patch too; famicom_r_button_mappings A/B/L/R-only table, joycon_type_is_left_famicom()/right_famicom() helper idiom all verified against the live patch file). Device ID re-derived: 057e:2007 confirmed against /mnt/source/linux/drivers/hid/hid-ids.h (USB_DEVICE_ID_NINTENDO_JOYCONR=0x2007) and the fork commit's own message ('report themselves... with the Joy-Con (R) product ID, 057e:2007'). vanilla_file_line drivers/hid/hid-nintendo.c:315-324 spot-checked against live 6.18.38 checkout: line 315 is the enum opening brace, 316-323 the eight type values, 324 the closing brace -- exact match, no correction needed. MAIN FINDING (per task instruction to check for staleness against patch 0034): the record's A/B mapping note was accurate for 0015 as originally landed but had gone stale/self-contradictory once 0034 (dated 2026-07-15, present in linux-patches/) swapped both nescon_button_mappings and 0015's famicom_r_button_mappings to the stock A=BTN_EAST/B=BTN_SOUTH convention -- confirmed by reading 0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch directly and cross-checked against sibling record e155f6a2f5fe088527f7c01e637e7c51b18a5695.json's RESOLVED note ('the A/B assignment divergence is restored to stock via 0034 (also aligns 0015's Famicom tables)'). Corrected in this record's notes above; no other field required amendment (disposition/carried_patch/carried_mode/device_ids/userspace_coupling=false all confirmed correct as generic BTN_* codes with no Main_MiSTer-specific dependency)."
+}

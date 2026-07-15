@@ -1,0 +1,65 @@
+{
+  "sha": "9a8cb6a93e592344654095ef236a8a711daa04d7",
+  "subject": "hid-microsoft: support for XBox Series X/S controller.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-04",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-ids.h",
+    "drivers/hid/hid-microsoft.c"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "f5554725f30475b05b5178b998366f11ecb50c7f"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-ids.h:1011, drivers/hid/hid-microsoft.c:454-455",
+    "vanilla_quote": "#define USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1914\t0x0b13 ... { HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1914), .driver_data = MS_QUIRK_FF },",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.3 Class C, line 338; disposition: drop",
+  "impact": {
+    "effect_if_absent": "Xbox Series X/S controllers (BT, PID 0x0b13) will not bind to hid-microsoft driver; force feedback (rumble) will be unavailable on these devices",
+    "affected_hardware": [
+      "Xbox Series X",
+      "Xbox Series S"
+    ],
+    "device_ids": [
+      "045e:0b13"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "f5554725f30475b05b5178b998366f11ecb50c7f"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MiSTer commit predates upstream (2021-09-04 vs 2023-04-25) — this is a targeted prototype of the upstream solution, not a backport. Upstream commit f5554725f30475b05b5178b998366f11ecb50c7f adds the same device ID (0x0b13) to hid-ids.h with symbol USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1914 (vs MiSTer's USB_DEVICE_ID_MS_XBOX_SERIES_CONTROLLER) and binds it in the SAME ms_devices[] table shape: HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, <id>) with .driver_data = MS_QUIRK_FF — identical match tuple and identical quirk flag, differing only in the cosmetic #define name. For the specific device this fork commit targets (0x0b13), coverage is functionally EQUIVALENT, not partial: re-graded from \"partial\" to \"equivalent\" on sonnet-verify (grep of drivers/hid/hid-microsoft.c confirms USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1914 is used nowhere else in the file — no other quirk/special-case logic keyed off this specific ID that could differ). Upstream's SAME commit additionally covers other devices (1708 firmware-update fix, 1797, 1797_BLE) that are NOT part of what this fork commit introduced — those belong to other records (1797_BLE = record adbaaea9130610effa761f958a67d82cc73422aa). CONFIG_HID_MICROSOFT=y is enabled in linux.config. No userspace-level coupling: Main_MiSTer does not reference USB_DEVICE_ID_MS_XBOX_SERIES_CONTROLLER, MODEL_1914, or the raw ID 0x045e:0x0b13 anywhere (grep of Main_MiSTer/*.cpp,*.h for \"0b13\"/\"0B13\" returns nothing). Effect if dropped: silent — feature (rumble on Series X/S BT controllers) disappears but no build/boot error occurs. sonnet-verified: confirmed disposition/upstream-existence/device-ID/userspace-coupling; corrected equivalence grade partial→equivalent (same PID, same quirk flag, no partial-coverage gap for the ID this commit added) and normalized the vanilla SHA to its full 40-character form (f5554725f30475b05b5178b998366f11ecb50c7f), confirmed an ancestor of v6.18.38 via `git merge-base --is-ancestor`."
+}

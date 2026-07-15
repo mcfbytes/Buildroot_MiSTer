@@ -1,0 +1,65 @@
+{
+  "sha": "333d49b95b34fdac9835248ba046b9a4f74e2f98",
+  "subject": "Implement MiSTer audio driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "sound",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts",
+    "sound/drivers/Kconfig",
+    "sound/drivers/Makefile",
+    "sound/drivers/MiSTer-audio-spi.c",
+    "sound/drivers/dummy.c"
+  ],
+  "added": 308,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:259-279 (N4 section)",
+  "impact": {
+    "effect_if_absent": "Audio subsystem non-functional; /dev/MrAudio device will not exist; no sound output through MiSTer's audio path. ALSA dummy card would still exist but the FPGA audio routing via /dev/MrAudio would be missing. /etc/asound.conf routing pipeline would fail silently.",
+    "affected_hardware": [
+      "Terasic DE10-Nano (MiSTer)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/MrAudio (character device); CONFIG_SND_DUMMY model_MiSTer forcing (S16_LE, 48000 Hz, 2 channels); /etc/asound.conf routing",
+    "main_mister_ref": "Main_MiSTer does not directly open ALSA or /dev/MrAudio; the routing is done by /etc/asound.conf which tees PCM into /dev/MrAudio via the ALSA 'file' plugin"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [
+      "CONFIG_SND_DUMMY=y (snd-dummy.c patch is load-bearing; dummy.c modifications MUST ship with this driver)",
+      "Device tree SPI0 node with MiSTer audio compatible (from commit implementing DTS, now in patch 0004)",
+      "/etc/asound.conf with specific routing configuration"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0; authored by Sorgelig; added SPDX header in the carried patch (0002)",
+  "notes": "LOAD-BEARING COMMIT with critical dependencies. The dummy.c hunks (fake_buffer=0 and model_MiSTer) are NOT optional — omitting them yields a silent system where audio does not work even though /dev/MrAudio and the audio driver module are healthy. Patch 0002 forward-ports this from v5.15 to v6.18 with multiple API changes: class_create() no longer takes struct module* (v6.4-rc1); spi_driver::remove became void (v5.18-rc1); class_create/device_create return ERR_PTR instead of NULL (v6.4+); major changed from int to dev_t; Kconfig gained 'depends on SPI'; bug fix in device_open() error path (pre-existing bug in the fork, fixed in carried patch). MiSTer audio is a two-part contract: (1) patched snd-dummy providing card 0 with forced MiSTer model, and (2) MiSTer-audio-spi.c providing /dev/MrAudio character device. They are glued by /etc/asound.conf, which is the real userspace ABI. Not upstreamable as-is (hardware-specific character driver + forced dummy model defaults for one board). Disposition per provenance doc: Class A (MiSTer core), carry indefinitely. Agrees fully with provenance.md N4 section. sonnet-verified: confirmed — DRIVER_NAME \"MrAudio\", model_MiSTer (S16_LE/48000/2ch/32KiB), fake_buffer 1->0, and all forward-port API-churn claims (class_create() module-arg drop, spi_driver::remove void, ERR_PTR vs NULL, dev_t major) verified against the fork diff and carried patch 0002 header; /etc/asound.conf routing (plug -> rate -> file(/dev/MrAudio) -> hw:0) confirmed at /mnt/source/Buildroot_MiSTer/work/imgroot/etc/asound.conf; grep of Main_MiSTer/*.cpp,*.h for MrAudio/asound found zero hits, confirming the record's claim of no direct Main_MiSTer coupling to this interface; &spi0/spiusb DT dependency confirmed present in 0004-dts-de10nano-MiSTer.patch."
+}

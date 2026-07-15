@@ -1,0 +1,62 @@
+{
+  "sha": "b745ce6d9f24bea7024bd364d4b16f484f9997ab",
+  "subject": "fix Logitech K400 Plus FN problem (#15)",
+  "author": "HGD73",
+  "author_is_pr_contributor": true,
+  "date": "2021-12-24",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-logitech-hidpp.c"
+  ],
+  "added": 3,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0019-hidpp-k400-fn-inversion.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "line 367, row 6 (GROUPED with fc8f3c2c6)",
+  "impact": {
+    "effect_if_absent": "Logitech K400 Plus keyboards (046d:404D) would not be recognized as HIDPP_QUIRK_CLASS_K400 devices. They would function as basic HID mice but would silently lose K400-specific features: Fn key inversion disable (causing media keys to require Fn hold), and tap-to-click disable module parameter support.",
+    "affected_hardware": [
+      "Logitech K400 Plus"
+    ],
+    "device_ids": [
+      "046d:404D"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "HID++ feature 0x40A2 (FEATURE_NEW_FN_INVERSION); device recognized via hidpp_devices[] table entry with HIDPP_QUIRK_CLASS_K400 flag; downstream media-key events (KEY_MUTE/KEY_VOLUMEDOWN/KEY_VOLUMEUP) consumed by Main_MiSTer",
+    "main_mister_ref": "Main_MiSTer/user_io.cpp:4201-4213 (user_io_kbd(): KEY_MUTE/KEY_VOLUMEDOWN/KEY_VOLUMEUP -> set_volume()) — corrected during sonnet review; the prior citation pointed at docs/kernel-recon/worker-instructions.md, which is not Main_MiSTer and does not contain the quoted text"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [
+      "fc8f3c2c6 (Logitech K400r: disable Fn swap — initial FN inversion disable logic)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ALERT: This commit appears in a GROUPED row of patch-provenance.md (line 367) alongside fc8f3c2c6. The grouped row contains two logically related but distinct commits: fc8f3c2c6 (adds FN inversion disable feature) + b745ce6d9 (adds K400 Plus device ID to enable that feature). My assigned commit (b745ce6d9) is the device-table entry addition only; it contains no actual FN disable code — that code comes from fc8f3c2c6. This is a pure 3-line device entry addition: reformats existing K400 entry to single line, then adds K400 Plus entry with same quirk. If fc8f3c2c6 is dropped, this device entry alone provides no FN disable functionality (silent regression). Carried in patch 0019 with clean apply — forward-port applied to 6.18.38 as part of P1.9 by Michael C. Ferguson. Not in vanilla 6.18.38 (grep devices/hid/hid-logitech-hidpp.c line 4559-4561 shows only 0x4024 K400 entry, no 0x404D). CORRECTION (sonnet review): patch 0019's header explicitly documents both origin SHAs (fc8f3c2c69dc64da15d5546e3af0780e0218d7e0 and b745ce6d9f24bea7024bd364d4b16f484f9997ab); confirmed by reading the applied patch file directly. Note also that the carried patch keeps the original K400 entry in its 2-line form (does not collapse it to one line as the fork's own combined diff does) — a cosmetic difference only, not b745ce6d9's own hunk, and not semantically significant.",
+  "sonnet-verified": "carry-mapping into 0019 confirmed exact (hunk matches fork commit verbatim); header documents both origin SHAs; main_mister_ref was not actually a Main_MiSTer citation (pointed at worker-instructions.md, which doesn't even contain the quoted text) — amended to user_io.cpp:4201-4213, verified accurate"
+}

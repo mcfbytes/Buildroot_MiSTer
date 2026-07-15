@@ -1,0 +1,67 @@
+{
+  "sha": "77862a67f4bba402e3106bd157dbf93de1e8ce28",
+  "subject": "Add support for official gamecube-adapter (#48)",
+  "author": "James McCarthy",
+  "author_is_pr_contributor": true,
+  "date": "2023-07-23",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-gamecube-adapter.c",
+    "drivers/hid/hid-ids.h"
+  ],
+  "added": 514,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0014-hid-gamecube-adapter.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md: row 77862a67f; class D; bug B1; P1.9 landed status",
+
+  "impact": {
+    "effect_if_absent": "Official Nintendo GameCube Controller Adapter (057e:0337) will not be recognized or functional; controllers connected via this adapter cannot provide input",
+    "affected_hardware": [
+      "Nintendo WUP-028 GameCube Controller Adapter"
+    ],
+    "device_ids": [
+      "057e:0337"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "standard Linux input event subsystem (BTN_* and ABS_* codes)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0+; original author François-Xavier Carton (fx.carton91@gmail.com, copyright 2020); based on ToadKing/wii-u-gc-adapter, hid-wiimote-core.c, and hid-steam.c",
+  "notes": "ORIGINAL MISTER CONTRIBUTION (not upstream). Created for v5.15 kernel by James McCarthy (PR #48); forward-ported to 6.18.38 by Michael C. Ferguson with single change: replaced hid_is_using_ll_driver(hdev, &usb_hid_driver) with hid_is_usb(hdev) because usb_hid_driver became static in v5.2. INCLUDES BUG FIX for use-after-free on unplug (B1 in patch-provenance.md): original 5.15 version cancelled only work_rumble, leaving four work_connect items dangling; with kfree(adpt), those items' handlers would dereference freed memory. Fixed teardown now stops HW transport first, then cancels all work_connect items before unregistering inputs, then cancels work_rumble. Same defect fixed on probe error path (err_close). Verified absent from vanilla 6.18.38 (no hid-gamecube-adapter.c, no USB_DEVICE_ID_NINTENDO_GAMECUBE_ADAPTER). Config enabled in linux.config (CONFIG_HID_GAMECUBE_ADAPTER=y, CONFIG_HID_GAMECUBE_ADAPTER_FF=y). Uses standard input event codes (BTN_START, BTN_TR2, BTN_TR, BTN_TL, BTN_SOUTH/WEST/EAST/NORTH, dpad, ABS_X/Y/RX/RY/Z/RZ) and optional memless force feedback (FF_RUMBLE). No userspace coupling in Main_MiSTer detected.\n\nsonnet-verified: carry-mapping to 0014-hid-gamecube-adapter.patch confirmed exact (patch header cites this SHA verbatim, hunks match). Device ID re-derived independently: fork commit adds `#define USB_DEVICE_ID_NINTENDO_GAMECUBE_ADAPTER 0x0337` to hid-ids.h (USB_VENDOR_ID_NINTENDO=0x057e elsewhere in the same file) — 057e:0337 confirmed correct, and confirmed absent from vanilla /mnt/source/linux/drivers/hid/hid-ids.h (zero grep hits for NINTENDO_GAMECUBE_ADAPTER or 0337 in that context). Use-after-free fix claim independently verified against both the fork's original gamecube_adpt_destroy() (git show 77862a67f -- drivers/hid/hid-gamecube-adapter.c: cancels only `adpt->work_rumble` under #ifdef CONFIG_HID_GAMECUBE_ADAPTER_FF, then hid_hw_close/stop, then kfree(adpt) — the four ctrl->work_connect items are never cancelled) and the carried patch's rewritten teardown (0014-hid-gamecube-adapter.patch: hid_hw_close/stop first, then `for (i=0;i<4;i++) cancel_work_sync(&adpt->ctrls[i].work_connect)`, then gamecube_ctrl_destroy() x4, then cancel_work_sync(work_rumble), then kfree) — ordering and defect description match exactly, and the same fix is applied on the probe err_close path. patch-provenance.md:1468 (bug B1) independently corroborates. No vocabulary violations found (carried_mode=clean-apply is consistent with sibling record c784a6856's precedent for patches requiring a small mechanical rename alongside the applied hunk). disposition/severity/failure_mode/userspace_coupling all confirmed correct as-is."
+}

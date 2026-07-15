@@ -1,0 +1,86 @@
+{
+  "sha": "e2eb39e6f61fb1c99c01a4e3b426caf98c828d51",
+  "subject": "xone: update driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-17",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/Makefile",
+    "drivers/hid/xone/auth/auth.c",
+    "drivers/hid/xone/auth/auth.h",
+    "drivers/hid/xone/auth/crypto.c",
+    "drivers/hid/xone/auth/crypto.h",
+    "drivers/hid/xone/bus/bus.c",
+    "drivers/hid/xone/bus/bus.h",
+    "drivers/hid/xone/bus/protocol.c",
+    "drivers/hid/xone/bus/protocol.h",
+    "drivers/hid/xone/driver/chatpad.c",
+    "drivers/hid/xone/driver/common.c",
+    "drivers/hid/xone/driver/common.h",
+    "drivers/hid/xone/driver/gamepad.c",
+    "drivers/hid/xone/driver/headset.c",
+    "drivers/hid/xone/driver/madcatz_glam.c",
+    "drivers/hid/xone/driver/madcatz_strat.c",
+    "drivers/hid/xone/driver/pdp_jaguar.c",
+    "drivers/hid/xone/transport/dongle.c",
+    "drivers/hid/xone/transport/mt76.c",
+    "drivers/hid/xone/transport/mt76.h",
+    "drivers/hid/xone/transport/mt76_defs.h",
+    "drivers/hid/xone/transport/wired.c"
+  ],
+  "added": 2670,
+  "removed": 670,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.5 — re-sourced class D; all MiSTer xone commits (4ddd8ec3d, 5a7965488, c708f2222, e2eb39e6f, 8270e78f4, d776ddb4e, d5beb5aa6) migrated from kernel tree to BR2_PACKAGE_XONE",
+  "impact": {
+    "effect_if_absent": "GIP authentication subsystem (auth/ and crypto/) would be missing from xone driver; newer firmware dongles and Xbox Series X|S controllers requiring authentication would fail to authenticate",
+    "affected_hardware": [
+      "Xbox Series X|S controllers",
+      "Xbox Wireless Dongle (newer firmware revisions)",
+      "MadCatz Rock Band 4 Drum Kit",
+      "MadCatz Stratocaster",
+      "PDP Jaguar Controller"
+    ],
+    "device_ids": [
+      "045e:0b00"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "BR2_PACKAGE_XONE (dlundqvist/xone@f2aa9fe01103d7600553b505b298ff0bd47ff280)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "SPDX-License-Identifier: GPL-2.0-or-later per auth.c, crypto.c (Copyright (C) 2023 Severin von Wnuck-Lipinski <severinvonw@outlook.de>). Verified in package source via xone.mk license-header audit (all source files including auth.c, crypto.c checked at pin time 2026-07-13).",
+  "notes": "CRITICAL: This is NOT a silent regression. The commit adds GIP auth v1 and v2 protocols to the xone driver via auth/auth.c (665 lines) and auth/crypto.c (290 lines), plus three new device drivers (madcatz_glam, madcatz_strat, pdp_jaguar). The kernel-tree copy of xone has been superseded by BR2_PACKAGE_XONE (dlundqvist/xone fork), which is pinned to commit f2aa9fe01103d7600553b505b298ff0bd47ff280. This pinned commit includes the auth subsystem — verified by xone.mk explicitly checking auth.c and crypto.c for GPL-2.0-or-later headers at package pin time (2026-07-13). The actively-maintained dlundqvist fork independently developed equivalent auth support to what Sorgelig added to the kernel tree on 2026-04-17; dlundqvist's fork is explicitly the successor per the original medusalix/xone README ('in maintenance mode'). Architectural change (P3.2, re-source class D): no kernel patch carried; feature provided entirely by BR2_PACKAGE_XONE. No compat patches needed for 6.18 either (see xone.mk notes). Zero device IDs are *added* in this commit (new drivers use kernel input event codes, not new hardcoded IDs); verify new hardware support via the added driver bindings if needed. CORRECTIONS (sonnet audit): (1) device_ids previously listed '045e:02ea', which does not appear anywhere in this commit's diff or in the packaged dlundqvist source (grep for '02ea' in both returns zero hits) — removed as fabricated/ungrounded. The wired transport (transport/wired.c:544 XONE_WIRED_VENDOR macro, id table at line 545 `{ XONE_WIRED_VENDOR(0x045e) }`) matches Xbox Series X|S and other wired controllers by USB vendor ID + interface class/subclass/protocol only, not by product ID — the specific controller model is negotiated at the GIP protocol level, not via USB PID. Mad Catz (vendor 0x0738) and PDP (vendor 0x0e6f) — the vendors behind the three new drivers added in this commit — are likewise matched by vendor ID only in the same table, confirming no per-model PID exists to cite for any of the three new drivers. Retained 045e:0b00 (Elite Series 2) as the one grounded, still-relevant ID (its GIP client code in bus/protocol.c and driver/gamepad.c is rewritten by this commit). (2) license_provenance date range '2023-2024' corrected to '2023' — both auth.c and crypto.c headers (in this commit's own diff, and in the packaged tarball) read 'Copyright (C) 2023', no 2024 date appears in either file. sonnet-verified: corrected — auth.c/crypto.c line counts and new driver files (madcatz_glam.c, madcatz_strat.c, pdp_jaguar.c) confirmed present in package/xone extract; device_ids and license date range fixed as above."
+}

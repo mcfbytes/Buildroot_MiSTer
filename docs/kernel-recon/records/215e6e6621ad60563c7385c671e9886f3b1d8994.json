@@ -1,0 +1,59 @@
+{
+  "sha": "215e6e6621ad60563c7385c671e9886f3b1d8994",
+  "subject": "Add defconfig.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-11-08",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 4187,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md § Class A row: defconfig commits grouped (215e6e662 + 10 others)",
+  "impact": {
+    "effect_if_absent": "MiSTer defconfig baseline not available in fork; no impact on 6.18 build as our linux.config supersedes it",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config (6.18.38 successor artifact)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Initial 4187-line defconfig snapshot for fork's 5.15.1 kernel baseline (2021-11-08). This commit creates the MiSTer_defconfig file in arch/arm/configs/. The config includes MiSTer-critical symbols: CONFIG_FB_MISTER=y, CONFIG_SND_DUMMY=y, CONFIG_EXFAT_FS=y, CONFIG_MAC80211=y (later changed to =m in later defconfig commits). Notably absent: CONFIG_CPU_FREQ not set initially, though it appears in stock config and our 6.18 linux.config (configured via CONFIG_ARM_SOCFPGA_CPUFREQ=y from carried patch 0003). SPOT-CHECK: (1) CONFIG_FB_MISTER=y: present in defconfig, stock, and our config — defined by patch 0001; (2) CONFIG_SND_DUMMY=y: present in all three — used by patch 0002; (3) CONFIG_CPU_FREQ: absent from defconfig but =y in stock and our config — core option exists in vanilla 6.18; (4) CONFIG_EXFAT_FS=y: present in all three — exists in vanilla 6.18 fs/exfat/Kconfig; (5) CONFIG_MAC80211: defconfig has =y (builtin), stock/ours have =m (module) — shows evolution from builtin to module. Disposition: DROPPED-DELIBERATE because (a) this is a configuration baseline for 5.15.1 fork, not a code patch; (b) we're on 6.18.38 with our own linux.config fragment system; (c) the defconfig file was never carried as a .patch file in linux-patches/; (d) our linux.config is the successor artifact for configuration management. ESCALATION FLAG: This commit is part of a GROUPED row in patch-provenance.md (215e6e662 + 10 other defconfig commits lumped into one row), which per worker instructions §4.4.7 requires escalation for auditor review. | sonnet-verified: all 5 spot-check rows independently re-derived and CONFIRMED byte-for-byte. Original commit (`git show 215e6e662:arch/arm/configs/MiSTer_defconfig`): CONFIG_FB_MISTER=y (line 2481), CONFIG_SND_DUMMY=y (line 2542), '# CONFIG_CPU_FREQ is not set' (line 478 — explicitly disabled, not merely absent; minor wording precision only, no factual change), CONFIG_EXFAT_FS=y (line 3478), CONFIG_MAC80211=y (line 1042). docs/stock-inventory/stock-linux.config: CPU_FREQ=y(479), MAC80211=m(1065), FB_MISTER=y(2505), SND_DUMMY=y(2566), EXFAT_FS=y(3509). board/mister/de10nano/linux.config: CPU_FREQ=y(29), MAC80211=m(111), FB_MISTER=y(275), SND_DUMMY=y(286), EXFAT_FS=y(414). Vanilla 6.18 existence confirmed: `config CPU_FREQ` at drivers/cpufreq/Kconfig:4, `config EXFAT_FS` at fs/exfat/Kconfig:3. Patch attributions confirmed: FB_MISTER referenced in 0001-fbdev-add-MiSTer_fb-driver.patch; SND_DUMMY referenced in 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch; ARM_SOCFPGA_CPUFREQ referenced in 0003-cpufreq-cyclone5-de10nano-overclock.patch (also confirmed CONFIG_ARM_SOCFPGA_CPUFREQ=y at linux.config:40). Disposition dropped-deliberate is correct and distinct from the macvlan precedent: this commit is the whole-file baseline artifact itself (not a single config-enable line), fully superseded by board/mister/de10nano/linux.config as the successor artifact — there is no 'ours lacks the symbol' open question here since the successor artifact concept applies file-wide, not symbol-by-symbol. VERDICT: confirmed accurate, no corrections required."
+}

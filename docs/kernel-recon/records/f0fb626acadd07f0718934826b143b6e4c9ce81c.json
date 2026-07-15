@@ -1,0 +1,57 @@
+{
+  "sha": "f0fb626acadd07f0718934826b143b6e4c9ce81c",
+  "subject": "defconfig: enable macvlan support (#71)",
+  "author": "Nigel Shearman",
+  "author_is_pr_contributor": false,
+  "date": "2026-07-08",
+  "subsystem": "net",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "b863ceb7ddce"
+    ],
+    "vanilla_file_line": "drivers/net/Kconfig:config MACVLAN",
+    "vanilla_quote": "config MACVLAN\n\ttristate \"MAC-VLAN support\"\n\thelp\n\t  This allows one to create virtual interfaces that map packets to\n\t  or from specific MAC addresses to a particular interface.",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md: defconfig (11 commits) group, classified as 'config \u2014 feeds P1.3'; P1.3 note flags stock-linux.config as 15 months old and lacking CONFIG_MACVLAN=y",
+  "impact": {
+    "effect_if_absent": "No MACVLAN virtual network interface support; container networking tools like Docker cannot create multiple virtual MACs on a single interface; network namespace isolation via macvlan is unavailable.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "socket/ioctl (SIOCADDRT, netlink RTM_* messages via libnl); Docker and container runtimes call ip link add type macvlan or use netlink directly",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CONFIG_MACVLAN has been upstream since Linux 2.6.23 (2007, commit b863ceb7ddce [NET]: Add macvlan driver). The fork deliberately enables it in MiSTer_defconfig to support Docker container networking and multi-MAC scenarios. However, CRITICAL CAVEAT: Buildroot (the actual build system) does not use the fork's arch/arm/configs/MiSTer_defconfig. Instead, Buildroot is configured (board/mister/de10nano/linux.config) to build 6.18.38 vanilla and uses a separate custom linux.config file (board/mister/de10nano/linux.config in Buildroot) \u2014 which DOES NOT include CONFIG_MACVLAN. Therefore, this fork-repository change has NO effect on the actual MiSTer images built by Buildroot. The MiSTer_defconfig appears to be maintained as a reference or for standalone kernel builds from the fork, but not for Buildroot. If MACVLAN support is desired in Buildroot-built images, it must be added to board/mister/de10nano/linux.config, not relying on MiSTer_defconfig. This is a config-level forward-port opportunity (add to linux.config if Docker support is desired) but requires a separate decision outside this commit's scope. Failure mode is silent: if the feature is wanted and not enabled, container networking simply fails without a loud error. Author co-authored with Claude Opus 4.6. | orchestrator-verified (Fable, 2026-07-15): confirmed by direct grep \u2014 fork HEAD MiSTer_defconfig:1302 has CONFIG_MACVLAN=y (commit dated 2026-07-08); our stock inventory docs/stock-inventory/stock-linux.config:1302 still has '# CONFIG_MACVLAN is not set' (snapshot PREDATES this stock commit); our board/mister/de10nano/linux.config has NO MACVLAN line (disabled). Disposition corrected carried->not-evaluated: the functionality is NOT in our build and no deliberate drop decision exists. ACTION REQUIRED: config-parity decision \u2014 add CONFIG_MACVLAN (=y or =m) to linux.config to match stock-next, or document a deliberate drop. Also a process finding: stock defconfig commits newer than our stock-inventory snapshot are a live drift channel; Phase 2 config reconciliation must diff against fork HEAD defconfig, not only the aged stock-linux.config snapshot. | RESOLVED (user carry decision 2026-07-14/15 (see silent-regressions.md + git d2f2791 follow-ups)): CONFIG_MACVLAN=y added to board/mister/de10nano/linux.config \u2014 stock-next parity restored; config drift closed."
+}

@@ -1,0 +1,64 @@
+{
+  "sha": "fc8f3c2c69dc64da15d5546e3af0780e0218d7e0",
+  "subject": "Logitech K400r: disable Fn swap.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-19",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-logitech-hidpp.c"
+  ],
+  "added": 40,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0019-hidpp-k400-fn-inversion.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.4, line: `fc8f3c2c6`, `b745ce6d9` | Logitech K400r / K400 Plus: disable Fn swap | ... | `0019-hidpp-k400-fn-inversion.patch`",
+  "impact": {
+    "effect_if_absent": "Logitech K400r and K400 Plus keyboards default to Fn-locked mode, requiring users to hold Fn to access media keys (play, volume, etc). Main_MiSTer UI expects bare media keys for normal operation.",
+    "affected_hardware": [
+      "Logitech K400r",
+      "Logitech K400 Plus"
+    ],
+    "device_ids": [
+      "046d:4024",
+      "046d:404d"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "HID media key events (KEY_MUTE, KEY_VOLUMEDOWN, KEY_VOLUMEUP)",
+    "main_mister_ref": "Main_MiSTer/user_io.cpp:4201-4213 (user_io_kbd(): dispatches KEY_MUTE/KEY_VOLUMEDOWN/KEY_VOLUMEUP directly to set_volume() when hasAPI1_5()) — the patch header's 'bare media keys' claim was not previously backed by an actual Main_MiSTer citation; verified during sonnet review"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": [
+      "b745ce6d9f24bea7024bd364d4b16f484f9997ab"
+    ]
+  },
+  "license_provenance": null,
+  "notes": "GROUPED ENTRY: provenance.md lists fc8f3c2c6 and b745ce6d9 together in one row. This commit (fc8f3c2c) adds the Fn inversion logic (defines FEATURE_FN_INVERSION 0x40A0 and FEATURE_NEW_FN_INVERSION 0x40A2, hidpp_fn_set() helper, k400_enable_Fn() function). The related later commit b745ce6d9 (HGD73, 2021-12-24) adds the K400 Plus device ID 0x404D to the device table. The carried patch 0019-hidpp-k400-fn-inversion.patch combines both commits and has been forward-ported to 6.18.38 with modifications: (1) dedicated fn_feature_index field added to struct k400_private_data instead of reusing the shared feature_index; (2) hidpp_root_get_feature() signature changed from 4 args to 3 (dropped feature_type output); (3) k400_connect() signature changed from 2 args to 1 (dropped bool connected). Grep of vanilla 6.18.38: drivers/hid/hid-logitech-hidpp.c has no FEATURE_FN_INVERSION, no k400_enable_Fn(), confirms not upstream. Device IDs: 0x4024 (K400) is upstream (K400 support via tap-to-click feature was added by commit 90cdd986335eddb7cac6e456f7c48c1ce76fd095, verified: `git -C /mnt/source/linux show 90cdd986335e --stat` = 'HID: logitech-hidpp: add support to disable tap-to-click on the K400', Benjamin Tissoires, 2015-09-03); 0x404D (K400 Plus) is new from b745ce6d9. SILENT FAILURE MODE: dropping this commit silently leaves keyboards in default Fn-locked state, breaking media key access without user-visible error. sonnet-verify fix: original main_mister_ref only quoted the patch's own commit message ('Main_MiSTer's UI expects bare media keys'), which is circular, not a Main_MiSTer citation. Verified independently: Main_MiSTer/user_io.cpp:4201-4213 (user_io_kbd()) dispatches raw KEY_MUTE/KEY_VOLUMEDOWN/KEY_VOLUMEUP events straight to set_volume(), gated only on hasAPI1_5() — confirming the coupling claim is substantively true, just previously uncited.",
+  "sonnet-verified": "carry-mapping into 0019 confirmed exact (both fc8f3c2c6 and b745ce6d9 hunks present, header documents both origin SHAs); main_mister_ref was a self-referential citation (quoted the patch header, not Main_MiSTer) — amended to user_io.cpp:4201-4213, verified accurate"
+}

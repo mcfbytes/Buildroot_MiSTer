@@ -1,0 +1,77 @@
+{
+  "sha": "7f7148c1f0c335fed3dc1bc93c837b4bfd651051",
+  "subject": "exfat: remove exfat_config.h messing kernel config.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-14",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/exfat_api.c",
+    "fs/exfat/exfat_api.h",
+    "fs/exfat/exfat_bitmap.c",
+    "fs/exfat/exfat_blkdev.c",
+    "fs/exfat/exfat_blkdev.h",
+    "fs/exfat/exfat_cache.c",
+    "fs/exfat/exfat_cache.h",
+    "fs/exfat/exfat_config.h",
+    "fs/exfat/exfat_core.c",
+    "fs/exfat/exfat_core.h",
+    "fs/exfat/exfat_data.c",
+    "fs/exfat/exfat_data.h",
+    "fs/exfat/exfat_nls.c",
+    "fs/exfat/exfat_nls.h",
+    "fs/exfat/exfat_oal.c",
+    "fs/exfat/exfat_oal.h",
+    "fs/exfat/exfat_super.c",
+    "fs/exfat/exfat_super.h",
+    "fs/exfat/exfat_upcase.c"
+  ],
+  "added": 1,
+  "removed": 90,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.8, §N1, ADR 0010/0019",
+
+  "impact": {
+    "effect_if_absent": "No effect on current 6.18 build; commit applies only to fork's Samsung exfat driver which is not used in 6.18. Vanilla exfat (used by current build) has different structure and never had exfat_config.h.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": ["df35bdb27", "8b6b8c2f5"],
+    "superseded_by": ["0031-exfat-samsung-symlinks.patch"],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0+, Copyright (C) 2012-2013 Samsung Electronics Co., Ltd. (from exfat_config.h header)",
+  "notes": "This commit is part of the fork's Samsung exfat driver development (one of 6 commits in patch-provenance.md §3.8/§N1 that replace mainline exfat with out-of-tree Samsung driver). The commit removes exfat_config.h (69 lines of compile-time defaults) and updates 18 source files to remove includes of it, plus changes one preprocessor directive from '#if CONFIG_EXFAT_DEBUG_MSG' to '#ifdef CONFIG_EXFAT_DEBUG_MSG' in exfat_core.h. Since CONFIG_* symbols are properly defined in fs/exfat/Kconfig, the driver still compiles. HOWEVER: Our 6.18 build uses vanilla exfat (ADR 0010 decision, amended by ADR 0019), not the Samsung driver. Vanilla exfat has completely different file structure (balloc.c, cache.c, dir.c, etc. vs exfat_core.c, exfat_super.c, etc.) and never had exfat_config.h. This commit is dropped via architecture decision (ADR 0010/0019 chose vanilla exfat + carried patch 0031 for Samsung-compatible symlink support), not via technical incompatibility. Patch-provenance.md groups this with 5 sibling commits (8b6b8c2f5, df35bdb27, 858322ce6, 5220d6686, 99a2c80d0) but worker instructions require analyzing this commit in isolation. All 6 commits are part of the Samsung driver replacement sequence, all 6 are dropped together by ADR decision. sonnet-verified: disposition=dropped-deliberate and severity=none confirmed correct; equivalence=null appropriately left unset."
+}

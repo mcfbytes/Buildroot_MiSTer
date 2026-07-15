@@ -1,0 +1,65 @@
+{
+  "sha": "38a039bab6616db43bafff29aee621e6af054aa4",
+  "subject": "rtl8821au: disable warnings.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "net-wireless",
+  "change_type": "compiler-flags",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8821au/Makefile"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "3.6 Class E — Realtek USB WiFi (groups rtl8821au vendors/resyncs but does not list this commit)",
+
+  "impact": {
+    "effect_if_absent": "compiler warnings (-Wcast-function-type, -Wenum-conversion) during rtl8821au build — cosmetic, no functional effect",
+    "affected_hardware": [
+      "Realtek RTL8812AU",
+      "Realtek RTL8821AU"
+    ],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "rtl8821au-morrownr (out-of-tree BR2 package, commit-pinned to 3a7cdb5, includes identical warning suppressions in current Makefile)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "rtl8821au was vendored in the Linux-Kernel_MiSTer fork but is NOT present in vanilla 6.18.38. It has been extracted to an out-of-tree Buildroot package (rtl8821au-morrownr, sourced from morrownr's actively-maintained fork) in P3.1. The warning suppressions (-Wno-cast-function-type, -Wno-enum-conversion) added here are already present in the current morrownr upstream Makefile (confirmed by reading /mnt/source/Buildroot_MiSTer/output/build/rtl8821au-morrownr-3a7cdb591b64d99d2670e455bde67c8ab338525b/Makefile — has ccflags-y += -Wno-cast-function-type at one line and -Wno-enum-conversion at another, plus an extra -Wno-enum-int-mismatch not present in this old commit). This commit is a follow-up compiler-flag fix applied during the kernel fork's active development but is not carried as a separate patch since the driver is no longer vendored. The disposition is dropped-obsolete: the code path no longer exists in our build, having been superseded by the re-sourced out-of-tree driver which independently maintains equivalent warning suppressions. No functional regression from dropping this: the out-of-tree driver handles its own build warnings.\n\nsonnet-verified: corrected (minor) + morrownr-equivalence claim confirmed. Branch containment confirmed (remotes/origin/MiSTer-v5.13.12 only); date/subject/diff (1 file, +1/-1, EXTRA_CFLAGS line) match `git show` exactly; provenance_doc_ref claim independently confirmed — patch-provenance.md:389's Class E 'do not vendor' table lists 9 specific commits and this SHA is not among them, so agrees_with_provenance_doc=false is correct. Fixed one label error: affected_hardware said 'RTL8811AU', but this commit's own driver tree (rtl8821au, same payload as sibling commits 3d587b6a/c70a3fc27) is the COMBINED RTL8812A+RTL8821A HAL per its own Kconfig text 'Realtek 8812A/8821A USB WiFi' (confirmed by reading Kconfig at this commit's parent revision) — there is no RTL8811A support in this tree at all, so RTL8811AU -> RTL8812AU. Note for completeness: the warning-suppressed Makefile in this v5.13.12 commit covers the pre-split combined tree; post-split, RTL8812A's coverage moved to the separate package/rtl8812au (morrownr/8812au-20210820), whose current Makefile does NOT carry an equivalent -Wno-cast-function-type/-Wno-enum-conversion pair (it ships -Wall/-Wextra commented out instead) — a different but equally adequate warning-suppression strategy for that package, not a gap, since it is out-of-tree and not held to in-tree W=1 build discipline.",
+  "source_branch": "MiSTer-v5.13.12"
+}

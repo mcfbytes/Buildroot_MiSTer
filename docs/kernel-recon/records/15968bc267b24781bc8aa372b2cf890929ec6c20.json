@@ -1,0 +1,65 @@
+{
+  "sha": "15968bc267b24781bc8aa372b2cf890929ec6c20",
+  "subject": "wiimote: fix analog ranges.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-05-05",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-wiimote-modules.c"
+  ],
+  "added": 4,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0023-hid-wiimote-fixes.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "Line grouping 3 commits: `0d7778d1f`, `47dc53a22`, `15968bc26` | wiimote: uniq, button codes, analog ranges | 0023-hid-wiimote-fixes.patch",
+  "impact": {
+    "effect_if_absent": "Nunchuk analog stick reports values in -120..120 range instead of correct -100..100; Classic Controller analog triggers report as signed -30..30 instead of correct unsigned 0..62. Causes incorrect joystick calibration and input mapping in games.",
+    "affected_hardware": [
+      "wiimote",
+      "nunchuk extension",
+      "classic controller extension"
+    ],
+    "device_ids": [
+      "057e:0306",
+      "057e:0330"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "ABS_HAT0X, ABS_HAT0Y (nunchuk stick); ABS_HAT3X, ABS_HAT3Y (classic controller triggers)",
+    "main_mister_ref": "Main_MiSTer/input.cpp:5769 — checks for absinfo.maximum == 62 to identify and handle LT/RT analog triggers"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "0d7778d1f (wiimote: set uniq field)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ESCALATE: This commit is in a GROUPED row in patch-provenance.md with two other commits (0d7778d1f and 47dc53a22), violating the grounding contract requirement to analyze each commit independently. The commit is successfully carried in 0023-hid-wiimote-fixes.patch (confirmed via grepped hunks lines 102-110 and 142-150). Verified vanilla 6.18.38 still has OLD values (-120/120 for nunchuk, -30/30 for classic triggers), confirming this fix is NOT upstream. Failure mode is SILENT—without this fix, analog ranges are incorrect but no build error occurs, causing games to receive wrong joystick input values. Userspace coupling is CONFIRMED: Main_MiSTer/input.cpp:5769 explicitly checks for maximum == 62 to identify the trigger range, which only works if this fix is applied."
+  ,"sonnet-verified": "carry-mapping into 0023 confirmed exact (analog-range hunks — nunchuk ABS_HAT0X/Y -120..120 to -100..100, classic controller ABS_HAT3X/Y -30..30 to 0..62 — match fork commit verbatim); input.cpp:5769 citation verified byte-for-byte: `else if (absinfo.maximum == 62)` with comment '//LT/RT analog' and `continue;`"
+}

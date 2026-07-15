@@ -1,0 +1,63 @@
+{
+  "sha": "c035c21c0b07bd3a1d066733c65b5748fdb33331",
+  "subject": "xpad: support for extra buttons on Flydigi Vader 3/4/5 Pro in wired and RF dongle modes.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-15",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/joystick/xpad.c"
+  ],
+  "added": 305,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0017-xpad-mister-deltas.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:365 (grouped row: `af27afc4c`, `f3c75eb02`, `a2242dd85`, `c035c21c0`)",
+  "impact": {
+    "effect_if_absent": "Flydigi Vader 3/4/5 Pro extra buttons (C/Z/M1-M4/Circle/Turbo) will not be reported to userspace; controller falls back to basic XInput functionality.",
+    "affected_hardware": [
+      "Flydigi Vader 3 Pro",
+      "Flydigi Vader 4 Pro",
+      "Flydigi Vader 5 Pro"
+    ],
+    "device_ids": [
+      "37d7:2401",
+      "37d7:xxxx (Vader 3/4 detected by USB product string)"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "input event codes (EV_KEY events for BTN_C, BTN_Z, BTN_GRIPL, BTN_GRIPL2, BTN_GRIPR, BTN_GRIPR2, BTN_TRIGGER_HAPPY1-4; abs events for analog sticks/triggers via Flydigi V2 protocol) reach userspace through Main_MiSTer's generic per-device button-mapping loop, not any Flydigi-specific code",
+    "main_mister_ref": "input.cpp:3673-3680 (generic loop: `for (int i = 0; i < SYS_BTN_A; i++) if (ev->code == input[dev].mmap[i]) joy_digital(...)` — dispatches any EV_KEY code the mmap[] table recognizes, populated from def_mmap[] defaults / user .map files; no Flydigi-, Vader-, or 37d7-specific code exists in Main_MiSTer, verified by grep with no hits)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Carried as delta 4 of patch 0017-xpad-mister-deltas.patch. Vanilla 6.18.38 has only Flydigi Apex 5 (0x37d7:0x2501) with no special button mapping and no Vader support. The commit is re-implemented (not clean-apply) in the carried patch: forward-port added NULL check on udev->product before strstr() to prevent crashes on devices without product descriptor, changed kmalloc failure return from -1 to -ENOMEM, and nulled flydigi_idata after URB allocation failure. Flydigi V2 protocol toggles extended mode via Circle+Turbo chord, exposing C/Z/M1-M4/LM/RM and Turbo button events. Hardware verification pending per patch-provenance.md line 1148. CORRECTION (sonnet review): main_mister_ref was previously null despite userspace_coupling.coupled=true — this is exactly the escalation trigger worker-instructions.md warns about ('you assert userspace coupling without a Main_MiSTer path:line citation'). Filled in with the generic mechanism that actually carries these events: input.cpp:3673-3680 compares every incoming EV_KEY code against the per-device mmap[] table and forwards matches to joy_digital(), with no Flydigi-specific code anywhere in Main_MiSTer (grep for Flydigi/Vader/37d7 across Main_MiSTer/*.cpp and *.h returns no hits).",
+  "sonnet-verified": "carry-mapping into 0017 confirmed (0x37d7:0x2401 Vader 5 Pro entry, MAP_VADER4/MAP_VADER5 flags, VADER3/VADER4 product-string detection all match the fork commit); AMENDED a grounding-contract violation: userspace_coupling.coupled=true had main_mister_ref=null (an explicit escalation trigger) — added input.cpp:3673-3680 as the actual (generic, non-Flydigi-specific) citation"
+}

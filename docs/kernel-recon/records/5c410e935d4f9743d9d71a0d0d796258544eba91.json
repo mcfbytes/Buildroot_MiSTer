@@ -1,0 +1,61 @@
+{
+  "sha": "5c410e935d4f9743d9d71a0d0d796258544eba91",
+  "subject": "hid-sony: fix for 3rd party DS4 failing to connect by wire.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2025-11-06",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-sony.c"
+  ],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0022-hid-playstation-ds4-mac-fix.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:369 (Class D summary table, grouped row '1412bd707, 5c410e935'), :1029-1034 (dedicated note: '5c410e935 ... is NOT superseded, but its target moved ... Re-targeted; carried as 0022-hid-playstation-ds4-mac-fix.patch'), :1153 (0022 patch landed-status row)",
+  "impact": {
+    "effect_if_absent": "3rd-party wired DualShock4 clones that don't implement the vendor-specific DS4_FEATURE_REPORT_0x81 (MAC address retrieval) will fail to connect when wired via USB. The device probe will abort with an error return, preventing the device from binding to the driver and becoming unusable.",
+    "affected_hardware": [
+      "3rd-party wired DualShock4 controllers"
+    ],
+    "device_ids": [
+      "054c:05c4",
+      "054c:09cc",
+      "054c:0ba0"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "carried via 0022-hid-playstation-ds4-mac-fix.patch; re-targeted to dualshock4_get_mac_address() in hid-playstation.c instead of sony_check_add() in hid-sony.c"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "The fork commit targets hid-sony.c's sony_check_add() function (5.15 kernel). In vanilla 6.18, DualShock4 support was split into a new hid-playstation.c driver (commit 8c0ab553b072 et al.). The carried patch 0022-hid-playstation-ds4-mac-fix.patch applies the same semantic fix (making MAC address retrieval failure non-fatal) to dualshock4_get_mac_address() in hid-playstation.c. Verified: vanilla v6.18.38 hid-playstation.c still has hard-fail-on-read-error behavior at lines 2130-2132 (goto err_free on ps_get_report failure). The carried patch remediates this for 3rd-party DS4 clones that lack vendor feature report support. Re-implementation confirmed: both changes comment-out/skip error handling to allow continued operation with zeroed/uninitialized MAC address data. Classification matches patch-provenance.md: 'Re-targeted; carried as 0022-hid-playstation-ds4-mac-fix.patch'.\n\nsonnet-verified: PASS. Re-ran `git show` on fork commit 5c410e935 (drivers/hid/hid-sony.c sony_check_add(), comments out the `goto out_free` hard-fail) and read /mnt/source/linux/drivers/hid/hid-playstation.c:2117-2155 directly -- vanilla 6.18.38's dualshock4_get_mac_address() still does `hid_err(...); goto err_free;` at exactly lines 2130-2132 on ps_get_report() failure, confirming the cited lines and hard-fail claim verbatim. Re-derived device IDs independently from /mnt/source/linux/drivers/hid/hid-ids.h:1277-1279 (USB_DEVICE_ID_SONY_PS4_CONTROLLER=0x05c4, _2=0x09cc, _DONGLE=0x0ba0) and hid-playstation.c's hid_device_id table (lines ~2896-2914, all under USB_VENDOR_ID_SONY=0x054c) -- 054c:05c4/09cc/0ba0 are correct, not transposed. Carried patch 0022-hid-playstation-ds4-mac-fix.patch exists and matches the described re-targeting exactly (same non-fatal-continue semantics, plus removal of the now-unreferenced err_free label). Confirmed the companion commit 1412bd7075d24db01785f0749f8efe498f24181d (grouped with this one in patch-provenance.md:369's row) has its own separate record file (1412bd7075d24db01785f0749f8efe498f24181d.json) and is correctly NOT folded into this record -- the grouped provenance-doc row does not indicate a grouping error in the recon records themselves. Tightened provenance_doc_ref with precise line citations. No disposition or vocabulary errors found."
+}

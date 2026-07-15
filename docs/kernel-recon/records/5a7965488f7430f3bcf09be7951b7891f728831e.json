@@ -1,0 +1,88 @@
+{
+  "sha": "5a7965488f7430f3bcf09be7951b7891f728831e",
+  "subject": "xone: fixed rumble.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-03-17",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/driver/gamepad.c"
+  ],
+  "added": 1,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.5 (line 381)",
+
+  "impact": {
+    "effect_if_absent": "Rumble timer delay calculations use uninitialized jiffies value, potentially causing incorrect rumble timing on first activation",
+    "affected_hardware": [
+      "Microsoft",
+      "Mad Catz",
+      "PDP",
+      "Hori",
+      "Razer",
+      "PowerA",
+      "BDA",
+      "Thrustmaster",
+      "Turtle Beach",
+      "Hyperkin"
+    ],
+    "device_ids": [
+      "045e:*",
+      "0738:*",
+      "0e6f:*",
+      "0f0d:*",
+      "1532:*",
+      "24c6:*",
+      "20d6:*",
+      "044f:*",
+      "10f5:*",
+      "2e24:*"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE (force feedback) via /dev/input/event*",
+    "main_mister_ref": "input.cpp:rumble_input_device() uses EVIOCRMFF ioctl and ff_effect.u.rumble"
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist/xone fork, commit f2aa9fe01103d7600553b505b298ff0bd47ff280)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": "GPL-2.0-or-later (vendored medusalix/xone; now sourced from dlundqvist/xone which carries same license)",
+
+  "notes": "This commit was part of MiSTer's vendored xone driver (medusalix/xone base). MiSTer's kernel no longer vendors xone—it's now a Buildroot package sourced from dlundqvist/xone (P3.2, re-sourced deliberate). The dlundqvist fork contains functionally equivalent rumble handling: it initializes rumble->last=jiffies in the gip_gamepad_send_rumble function (line 167) which is called during gip_gamepad_init_rumble initialization, achieving the same effect as this commit's upfront initialization but via a different code path. xone.mk:42-49 explicitly confirms: 'All FOUR of MiSTer's local deltas turned out to be unnecessary as separate patches...driver/gamepad.c already carries rumble handling'. Disposition is dropped-deliberate because: (1) xone is no longer vendored, (2) the packaged dlundqvist/xone includes equivalent functionality, (3) no separate patch needed. Silent-regression risk is low since dlundqvist's init-time send_rumble call sets the baseline correctly.\n\nsonnet-verified: the 'line 167' supersession claim was RE-DERIVED against the authoritative local extract of the exact pinned source (Buildroot hash-verified: /mnt/source/Buildroot_MiSTer/output/build/xone-f2aa9fe01103d7600553b505b298ff0bd47ff280/driver/gamepad.c) and CONFIRMED PRECISE: `gip_gamepad_send_rumble()` begins at line 151 and contains `rumble->last = jiffies;` at exactly line 167; `gip_gamepad_init_rumble()` (line 197) calls `gip_gamepad_send_rumble(&rumble->timer)` unconditionally at line 211 during device init (under the comment '/* stop rumble (required for some exotic gamepads to start input) */', line 205), so rumble->last IS set to jiffies at probe time before `gip_gamepad_queue_rumble()` (line 172) can ever read it at line 190's `mod_timer(&rumble->timer, rumble->last + GIP_GP_RUMBLE_DELAY)`. The claim of functional equivalence to this commit's upfront `gamepad->rumble.last = jiffies` (a one-line addition in gip_gamepad_init_input, confirmed via `git show 5a79654` in the fork repo) holds. Verification detour worth recording: an intermediate WebFetch of the same file from raw.githubusercontent.com returned FABRICATED function boundaries (claimed send_rumble at lines 133-147, init_rumble at 150-167, and that last was never initialized at probe) which briefly and wrongly 'contradicted' this record; the local hash-verified extract is definitive and vindicates the original citation. Disposition=dropped-deliberate and severity confirmed correct."
+}

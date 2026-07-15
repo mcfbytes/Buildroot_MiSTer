@@ -1,0 +1,57 @@
+{
+  "sha": "1412bd7075d24db01785f0749f8efe498f24181d",
+  "subject": "hid-sony: fix divide by 0 exception.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-03-20",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": ["drivers/hid/hid-sony.c"],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["74cb485f68eb3dff6802ee446a602607b03f4fc9"],
+    "vanilla_file_line": "/mnt/source/linux/drivers/hid/hid-playstation.c:2053-2068 (gyro), 2070-2085 (accel), inside dualshock4_get_calibration_data()",
+    "vanilla_quote": "Sanity check gyro calibration data. This is needed to prevent crashes during report handling of virtual, clone or broken devices not implementing calibration data properly. for (i = 0; i < ARRAY_SIZE(ds4->gyro_calib_data); i++) { if (ds4->gyro_calib_data[i].sens_denom == 0) { hid_warn(...); ds4->gyro_calib_data[i].sens_denom = S16_MAX; }}",
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 369 is a STALE pre-P1.9 triage row (`1412bd707`, `5c410e935` | ... | 0022-hid-sony-fixes.patch) predating the P1.9 forward-port. The doc's CURRENT/authoritative content -- lines 1025-1027 ('1412bd707 (hid-sony div-by-0, folded into old 0022) is superseded upstream ... a better one ... init-time guard with a safe fallback ... Dropped.') and line 1153 ('div-by-0 half dropped (already superseded upstream by init-time sens_denom guards)') -- already states exactly this record's conclusion within the SAME document, dated 2026-07-12. Read as a whole (not just the stale line-369 row), the doc agrees with this record.",
+
+  "impact": {
+    "effect_if_absent": "Kernel oops (division by zero) during DualShock4 motion sensor report parsing when device reports invalid (zero) calibration denominators. Affects clone/defective DualShock4 controllers that don't properly populate calibration data.",
+    "affected_hardware": ["DualShock4 Controller (USB)", "DualShock4 Controller 2 (USB/BT)", "DualShock4 Dongle", "Clone DualShock4 devices with invalid calibration"],
+    "device_ids": ["054c:05c4", "054c:09cc", "054c:0ba0"],
+    "severity": "boot-critical",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "Motion sensor axes (ABS_RX, ABS_RY, ABS_RZ) provided by kernel at report-parse time; userspace (Main_MiSTer) does not depend on specific calibration implementation",
+    "main_mister_ref": "/mnt/source/Main_MiSTer/input.cpp:2697 (DS4 quirk detection), but no direct coupling to motion calibration"
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["74cb485f68eb (upstream HID: playstation: sanity check DualShock4 calibration data)"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Fork's 5.15 fix was a runtime guard: `calib->sens_denom ? mult_frac(...) : 0` applied during dualshock4_parse_report() (confirmed via `git show 1412bd7075d24db01785f0749f8efe498f24181d` in the fork repo: hid-sony.c, +2/-2). Upstream 6.18 fix (74cb485f68eb3dff6802ee446a602607b03f4fc9, committed Jan 5 2023 by Roderick Colenbrander, confirmed ancestor of v6.18.38) is more comprehensive: checks ALL calibration data (gyro+accel) at initialization time (dualshock4_get_calibration_data()) and replaces zero denominators with safe defaults (S16_MAX), effectively disabling calibration for that axis. Upstream fix is superior because: (1) catches problem at init rather than per-report, (2) applies to both gyro and accelerometer, (3) substitutes safe value instead of just guarding division. Original commit targets hid-sony.c's dualshock4_parse_report(); DS4 support was moved to hid-playstation.c in upstream commit 4f1f391869eecb11d57e9e07ddec143ff3dc08ee ('HID: sony: remove DualShock4 support', 2023-01-18, confirmed ancestor of v6.18.38).\n\nsonnet-verified correction: the original record's vanilla_file_line (hid-playstation.c:1831-1847, 1868-1884) was derived from the COMMIT DIFF's hunk line numbers rather than re-grepped against the live /mnt/source/linux checkout, and pointed at the WRONG function. Lines ~1083-1128 in the current checkout are inside `dualsense_get_calibration_data()` (the PS5 DualSense controller -- confirmed via `ds->gyro_calib_data`/`DS_GYRO_RANGE` naming, a near-identical sanity check added to that function by a LATER, separate upstream commit not among the cited SHAs). The actual DualShock4 fix from 74cb485f68eb lives at hid-playstation.c:2053-2085 inside `dualshock4_get_calibration_data()` (confirmed via `ds4->gyro_calib_data`/`DS4_GYRO_RANGE` naming and function-boundary grep). Quote text/content was accurate; only the cited line numbers/function attribution were wrong. Corrected.\n\nsonnet-verified correction: `agrees_with_provenance_doc` was flipped from false to true. patch-provenance.md line 369 IS stale (reflects the pre-P1.9 5.15-fork-era triage, as the original record noted), but the doc's own later, dated 'New findings during the port' section (lines 1000-1034) and its patch-status table (line 1153) already contain the exact same conclusion this record reaches -- superseded upstream by init-time sens_denom guards, div-by-0 half dropped, not carried. Since the doc's current/authoritative content agrees with this record, agrees_with_provenance_doc should be true, with a note that the specific old row is superseded within the same document (not that the doc disagrees).\n\nsonnet-verified: corrected"
+}

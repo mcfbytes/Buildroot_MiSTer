@@ -1,0 +1,80 @@
+{
+  "sha": "8a100f2ed224b27aaef3d0dcf61e9cd838269240",
+  "subject": "Update hid-lg4ff.c for Logitech Wheel Support (#32)",
+  "author": "atrac17",
+  "author_is_pr_contributor": true,
+  "date": "2022-07-16",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-lg4ff.c"
+  ],
+  "added": 1425,
+  "removed": 540,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-lg4ff.c:88-96 (effect table), :131-143 (lg4ff_devices[]), :1346-1369 (autocenter wiring); drivers/hid/hid-lg.c:859-923 (lg_devices[] LG_FF4 quirk table), :836 (lg4ff_init() call site) — all v6.18.38, HEAD e46dc0adfe39724bcf52cea47b8f9c9aed86a394",
+    "vanilla_quote": "hid-lg4ff.c:88-96: 'static const signed short lg4ff_wheel_effects[] = {\n\tFF_CONSTANT,\n\tFF_AUTOCENTER,\n\t-1\n};\n\nstatic const signed short no_wheel_effects[] = {\n\t-1\n};' | hid-lg4ff.c:131-142 lg4ff_devices[] assigns lg4ff_wheel_effects to WINGMAN_FFG(0xc293), WHEEL/DF-EX(0xc294), MOMO_WHEEL(0xc295), DFP(0xc298), G25(0xc299), DFGT(0xc29a), G27(0xc29b), G29(0xc24f, via hid-lg.c row), MOMO_WHEEL2(0xca03), WII_WHEEL(0xc29c) — only WINGMAN_FG(0xc20e) gets no_wheel_effects (no FF at all). | hid-lg.c:859-923 lg_devices[] registers every one of those PIDs with driver_data including LG_FF4; hid-lg.c:836 'ret = lg4ff_init(hdev);' runs on probe for any device with the LG_FF4 quirk bit — none of these wheels fall through to hid-generic. | hid-lg4ff.c:1346 'error = input_ff_create_memless(dev, NULL, lg4ff_play);' and :1365/:1367 'dev->ff->set_autocenter = lg4ff_set_autocenter_ffex;' / '..._default;' wire FF_AUTOCENTER through the standard kernel memless-FF core, exactly the mechanism Main_MiSTer's write(EV_FF, FF_AUTOCENTER) call relies on.",
+    "equivalence": "partial"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:1082-1099, 1151-1152, 9.3 (esp. the table at ~1420-1424)",
+  "impact": {
+    "effect_if_absent": "CORRECTED (first-pass claim was wrong). Vanilla 6.18.38's in-tree hid-lg4ff.c (compiled into hid-logitech.ko via hid-lg.c) continues to bind ALL of this commit's wheel IDs — WINGMAN_FFG, WHEEL/DF-EX, MOMO_WHEEL, MOMO_WHEEL2, DFP, G25, DFGT, G27, G29, WII_WHEEL — with the LG_FF4 quirk (hid-lg.c:859-923); none of them fall back to hid-generic. Vanilla supplies FF_CONSTANT + FF_AUTOCENTER, the same two effect types the pre-rewrite driver had. Main_MiSTer's ENTIRE Logitech-wheel force-feedback implementation (input.cpp:4958-5003) writes exactly one FF primitive for these wheels — an EV_FF/FF_AUTOCENTER event (input.cpp:4996-4999) — which vanilla's lg4ff_set_autocenter_default()/_ffex() fully services via input_ff_create_memless(). So for G29/G27/G25/DFP/DFGT/WHEEL(DF-EX), dropping this commit changes NOTHING observable on a MiSTer: steering, pedals, buttons, autocentering force, and range control (set_wheel_range via the driver's real_id/range sysfs attrs, also present in vanilla) all continue to work identically. What IS genuinely lost is the extended effect set this commit's new-lg4ff rewrite adds — FF_SPRING/FF_DAMPER/FF_FRICTION condition effects and FF_PERIODIC/FF_SINE/FF_SQUARE/FF_TRIANGLE/FF_SAW_UP/FF_SAW_DOWN/FF_RAMP waveforms, driven by an hrtimer multi-slot scheduler (fork blob hid-lg4ff.c:161-175, :918-921) — none of which Main_MiSTer or any MiSTer core currently invokes (grep of input.cpp for FF_SPRING/FF_DAMPER/FF_FRICTION/FF_PERIODIC finds exactly one hit for FF_SPRING, and it is NOT in the Logitech branch — see userspace_coupling below). This capability loss is real but currently inert: it would only matter to a hand-written evdev client driving per-frame condition/periodic effects, which does not exist on MiSTer today. Momo (0xc295) and WII_WHEEL (0xc29c) additionally have ZERO Main_MiSTer-side wheel-quirk wiring at all (Momo's case is explicitly commented out in input.cpp's switch, WII_WHEEL isn't referenced at all), so there is no FF coupling for those two PIDs in either direction, with or without this commit. NOTE ON SCOPE: this commit (8a100f2ed) by itself adds NO new device IDs — its device table (fork blob lines 221-232) has the identical membership to vanilla's. The G923 PlayStation/PC variant (046d:c267/native c266) that patch-provenance.md §9.3 identifies as the one real regression is added by a DIFFERENT, later commit (43c52e9ef, the '32-bit rumble fix' commit provenance.md groups with this one under the '0021' patch slot) and is out of scope for this single-commit record per the grouping-is-the-failure-mode rule; Main_MiSTer has zero references to 0xc266/0xc267/0xc26e/0xc26d anywhere (grepped input.cpp and the whole Main_MiSTer tree), so there is no userspace coupling to that variant either way.",
+    "affected_hardware": [
+      "046d:c293 (WINGMAN_FFG)",
+      "046d:c294 (WHEEL / DF-EX)",
+      "046d:c295 (MOMO_WHEEL)",
+      "046d:c298 (DFP_WHEEL)",
+      "046d:c299 (G25_WHEEL)",
+      "046d:c29a (DFGT_WHEEL)",
+      "046d:c29b (G27_WHEEL)",
+      "046d:c29c (WII_WHEEL)",
+      "046d:c24f (G29_WHEEL — MISSING from first-pass device_ids despite being named in its prose)",
+      "046d:ca03 (MOMO_WHEEL2)"
+    ],
+    "device_ids": [
+      "046d:c293",
+      "046d:c294",
+      "046d:c295",
+      "046d:c298",
+      "046d:c299",
+      "046d:c29a",
+      "046d:c29b",
+      "046d:c29c",
+      "046d:c24f",
+      "046d:ca03"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "CORRECTED. Main_MiSTer's Logitech-wheel FF path (input.cpp:4958-5003) uses ONLY the FF_AUTOCENTER pseudo-effect (write of an EV_FF input_event with code=FF_AUTOCENTER at input.cpp:4996-4999), which vanilla hid-lg4ff.c fully implements (set_autocenter callback via input_ff_create_memless). input.cpp:5029's 'fef.type = FF_SPRING' is in a COMPLETELY DIFFERENT branch — the Fanatec-wheel quirk, gated on 'else if (input[i].vid == 0x0eb7)' at input.cpp:5006 — and has nothing to do with Logitech/lg4ff wheels at all. The first-pass record misattributed a real line number to the wrong vendor branch. The file-wide grep for FF_SPRING/FF_DAMPER/FF_FRICTION/FF_PERIODIC/FF_CONSTANT/FF_AUTOCENTER/FF_RUMBLE in input.cpp yields only 6 hits total, none of which pair FF_SPRING (or any new-lg4ff-only effect) with vid==0x046d.",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4959-5003 (Logitech wheel branch, vid==0x046d), autocenter write at :4996-4999. (input.cpp:5029 is the Fanatec branch, vid==0x0eb7, unrelated to this commit.)"
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "The commit is a ~2000-line wholesale replacement of hid-lg4ff.c with the out-of-tree berarma/new-lg4ff hrtimer-driven rewrite; vanilla 6.18.38 is still the pre-2019 architecture (no hrtimer, no LG4FF_VERSION, no per-slot effect scheduler). A forward-port would mean carrying an entire third-party driver rewrite in-tree, for a capability set (FF_SPRING/DAMPER/FRICTION condition effects, FF_PERIODIC waveforms) that Main_MiSTer does not currently consume for any of this commit's wheel IDs. Device-table membership is otherwise identical to vanilla's, so there is no coverage gap to close by porting it.",
+    "effort": "high, and currently low-value: no consumer exists for the added capability"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "vanilla 6.18.38 drivers/hid/hid-lg4ff.c (in-tree, compiled into hid-logitech.ko) — identical device-table membership to this commit for every ID it touches (WINGMAN_FG/FFG, WHEEL/DF-EX, MOMO_WHEEL, MOMO_WHEEL2, DFP, G25, DFGT, G27, G29, WII_WHEEL); FF_CONSTANT+FF_AUTOCENTER retained, which is the entirety of what Main_MiSTer uses",
+      "hid-logitech-hidpp.c for the unrelated G923 Xbox variant (046d:c26e) — not touched by this commit either way"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "Copyright (c) 2019 Bernat Arlandis <berarma@hotmail.com> added to file header; original copyright (c) 2010 Simon Wood retained. Vendored copy of the out-of-tree berarma/new-lg4ff project (hrtimer-driven memless-FF multi-slot scheduler). License: GPL-2.0-or-later (matches kernel SPDX header).",
+  "notes": "SONNET ESCALATION VERIFICATION — the first-pass record's headline claim ('force feedback stops working completely... revert to hid-generic driver... critical regression') is FACTUALLY WRONG and is corrected here. Root cause of the error: (1) input.cpp:5029 ('fef.type = FF_SPRING') was misread as the Logitech-wheel code path; it is actually the Fanatec-wheel branch (vid==0x0eb7, input.cpp:5006-5051), an entirely separate driver family. Main_MiSTer's real Logitech-wheel FF code (input.cpp:4959-5003) uses only FF_AUTOCENTER, which vanilla hid-lg4ff.c fully supports via the standard set_autocenter/input_ff_create_memless mechanism (hid-lg4ff.c:1346-1369). (2) The claim that these wheels 'revert to hid-generic' is contradicted by hid-lg.c:859-923: every wheel ID this commit touches (WINGMAN_FFG, WHEEL/DF-EX, MOMO_WHEEL, MOMO_WHEEL2, DFP, G25, DFGT, G27, G29, WII_WHEEL) is registered in lg_devices[] with the LG_FF4 quirk, and hid-lg.c:836 unconditionally calls lg4ff_init() for LG_FF4 devices on probe — hid_generic_match() never gets a chance at these PIDs. (3) The record's own provenance_doc_ref pointed at patch-provenance.md §9.3, but the record's conclusions directly CONTRADICT that section's own table (patch-provenance.md ~1420-1424), which already states: 'G29, G27, G25, DFP, DFGT, Momo, DF-EX, Wingman | ... | mainline hid-lg4ff — FF, range and mode-switching, all of it, from the maintained in-tree driver ... Arguably a reliability gain.' The first-pass record set agrees_with_provenance_doc=true while asserting the opposite of what that section says; this correction makes the record's conclusion actually match the provenance doc's (already-correct) finding. (4) Device-ID list bug: 046d:c24f (G29_WHEEL) was named in the first-pass prose ('G29/G27/G25/...') but OMITTED from the device_ids/affected_hardware arrays; added here. (5) SCOPE DISCIPLINE: this commit (8a100f2ed) alone adds no new device IDs — G923 support (the one wheel variant that patch-provenance.md §9.3 correctly identifies as genuinely losing FF, falling back to hid-generic) comes from a separate commit, 43c52e9ef, which patch-provenance.md groups with this one under the '0021-hid-lg4ff-g923.patch' slot name but which is a distinct SHA not covered by this record. Per the worker instructions' 'never group commits' rule, that regression belongs to 43c52e9ef's own record, not this one. HONEST REGRESSION RESTATED: for this commit in isolation, retained = full basic FF (autocentering) + steering/pedals/buttons/range-control for every wheel ID it touches, because vanilla's older in-tree driver already does exactly what Main_MiSTer needs; lost = extended condition/periodic FF effect types and hrtimer-driven slot scheduling, which is real but has zero current consumer in Main_MiSTer or any MiSTer core. Severity corrected from 'feature-loss (critical)' to 'none' for MiSTer's actual current behavior; disposition (dropped-deliberate) is left unchanged since the underlying provenance-doc reasoning for not carrying the third-party rewrite wholesale is sound, just for different reasons than the first-pass record gave. sonnet-verified: contradicted — first-pass severity/failure-mode/userspace-coupling claims were disproven by direct source citation (hid-lg.c LG_FF4 table, hid-lg4ff.c autocenter wiring, and input.cpp's actual branch structure), and the corrected conclusion aligns with patch-provenance.md §9.3's own (previously ignored) table."
+}

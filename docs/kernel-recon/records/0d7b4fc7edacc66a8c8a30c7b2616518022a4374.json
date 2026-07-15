@@ -1,0 +1,69 @@
+{
+  "sha": "0d7b4fc7edacc66a8c8a30c7b2616518022a4374",
+  "subject": "Enable CONFIG_PANTHERLORD_FF (#27)",
+  "author": "fjmartinez2k",
+  "author_is_pr_contributor": true,
+  "date": "2022-05-01",
+  "subsystem": "hid",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/Kconfig:896",
+    "vanilla_quote": "config PANTHERLORD_FF\n\tbool \"Pantherlord force feedback support\"\n\tdepends on HID_PANTHERLORD\n\tselect INPUT_FF_MEMLESS",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md (grouped row with 10 other defconfig commits)",
+  "impact": {
+    "effect_if_absent": "Pantherlord and GreenAsia game controllers would not have force feedback (rumble/vibration) support",
+    "affected_hardware": [
+      "Pantherlord/GAMERON dual-PSX adapter",
+      "Pantherlord/GAMERON dual-PCS adapter",
+      "GreenAsia 0x0003 controller",
+      "Jess2 color rumble pad"
+    ],
+    "device_ids": [
+      "0810:0001",
+      "0810:0002",
+      "0e8f:0003",
+      "0f30:0111"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE ioctl/evdev interface",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4881 (fef->type = FF_RUMBLE), 5228 (test_bit(FF_RUMBLE, ff_features))"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "CONFIG_HID_PANTHERLORD"
+    ],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config (CONFIG_PANTHERLORD_FF=y)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Grouped defconfig entry in patch-provenance.md (11 commits total). Commit enabled CONFIG_PANTHERLORD_FF in fork's arch/arm/configs/MiSTer_defconfig, changing it from disabled (# CONFIG_PANTHERLORD_FF is not set) to enabled (CONFIG_PANTHERLORD_FF=y). The option exists in vanilla 6.18 (drivers/hid/Kconfig:896) and is already enabled in our 6.18 config (board/mister/de10nano/linux.config). Stock 5.15 image (IKCONFIG snapshot) also has CONFIG_PANTHERLORD_FF=y. Not carried as a patch; the configuration change has been adopted into our linux.config. Userspace coupling confirmed: Main_MiSTer uses FF_RUMBLE ioctl for rumble effect support across multiple device types including Pantherlord controllers. No conflicts or regressions detected. | sonnet-verified: DEVICE-ID CORRECTION. Re-derived drivers/hid/hid-pl.c's pl_devices[] table directly (this is the actual CONFIG_PANTHERLORD_FF-gated driver, compiled as hid-pl.o per drivers/hid/Makefile:100 'obj-$(CONFIG_HID_PANTHERLORD) += hid-pl.o'): it matches {USB_VENDOR_ID_GAMERON(0x0810), USB_DEVICE_ID_GAMERON_DUAL_PSX_ADAPTOR(0x0001)}, {GAMERON, DUAL_PCS_ADAPTOR(0x0002)}, {USB_VENDOR_ID_GREENASIA(0x0e8f), 0x0003}, {USB_VENDOR_ID_JESS2(0x0f30), JESS2_COLOR_RUMBLE_PAD(0x0111)} (drivers/hid/hid-ids.h:537-539,581-583,749-750). Note: GAMERON and PANTHERLORD are two separate #define names in hid-ids.h that happen to share the literal vendor ID 0x0810 (PANTHERLORD_TWIN_USB_JOYSTICK is also 0x0001, hid-quirks.c:160) — same rebranded hardware, so labeling 0810:0001/0002 'Pantherlord' is defensible. REMOVED '1209:FACA / ControllaBLE Bluetooth gamepad' — exhaustive grep of drivers/hid/*.c and hid-ids.h for '0x1209', '0xFACA', and 'ControllaBLE' found zero matches; this device ID does not appear anywhere in the pl_devices[] table or the kernel tree and was hallucinated in the original pass. userspace_coupling citations independently re-verified byte-exact: Main_MiSTer/input.cpp:4881 is literally 'fef->type = FF_RUMBLE;' and :5228 is literally 'if (test_bit(FF_RUMBLE, ff_features)) {' — both confirmed correct, no change needed. Disposition dropped-deliberate was already correct (config enable IS present in our linux.config, matches the adopted/superseded_by pattern) — no disposition change, device_ids/affected_hardware arrays corrected only."
+}

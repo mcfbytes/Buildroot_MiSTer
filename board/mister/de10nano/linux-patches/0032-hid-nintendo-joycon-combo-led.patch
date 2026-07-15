@@ -1,0 +1,113 @@
+From 45283785a7ace3263f7c165ae6a4ec3055ebdcf6 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 14 Aug 2021 03:42:40 +0800
+Subject: [PATCH 1/1] hid-nintendo: add virtual Joy-Con combo LED, quiet IMU logging
+
+Registers a virtual LED classdev named "<hid-dev>:combo" on each Joy-Con
+(L and R). There is no hardware behind it: Main_MiSTer uses the node as a
+pairing mailbox -- a button-combo gesture writes a shared id to one
+Joy-Con's :combo LED and the rescan path reads it back from both to bind
+the pair into one combined controller (input.cpp:4704/4715 read,
+:4822-4823 write, bind at :4729-4730). Without this node Joy-Con
+combining is entirely and silently non-functional; no manual pairing
+path exists in Main_MiSTer. Also downgrades the two dropped-IMU-report
+compensation messages from hid_warn_ratelimited to hid_dbg, matching
+stock's quiet behavior with flaky/clone Joy-Cons.
+
+Provenance
+----------
+Origin:       45283785a7ace3263f7c165ae6a4ec3055ebdcf6
+              "hid-nintendo: add virtual combo led, don't warn by IMU compensation."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-14, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/45283785a7ace3263f7c165ae6a4ec3055ebdcf6
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No. Vanilla 6.18.38 hid-nintendo has no combo LED (git log
+              -S'combo' over the file's history is empty). The provenance
+              doc's Class-C grouping of this commit under 2af16c1f846b was
+              a misclassification (docs/kernel-recon records, sonnet-verified).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
+              reconciliation carry decision #1 (docs/kernel-recon/
+              silent-regressions.md). Registration made non-fatal (warn +
+              continue) instead of the fork's ignored return value; the
+              6.18 joycon type constants and the hid_warn_ratelimited
+              call sites replace their 5.15 equivalents. The combo LED
+              is registered directly after the home_led: label, ahead of
+              the home-LED block, so the home-LED early-return paths
+              (set failure upstream; registration failure once 0035 makes
+              it non-fatal) cannot skip it on a right Joy-Con
+              (ultrareview finding, 2026-07-15).
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index 7baa0214e4eb..0762d4527854 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -592,6 +592,7 @@ struct joycon_ctlr {
+ 	u32 player_id;
+ 	struct led_classdev leds[JC_NUM_LEDS]; /* player leds */
+ 	struct led_classdev home_led;
++	struct led_classdev combo_led;
+ 	enum joycon_ctlr_state ctlr_state;
+ 	spinlock_t lock;
+ 	u8 mac_addr[6];
+@@ -1487,10 +1488,10 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
+ 				ctlr->imu_avg_delta_ms;
+ 		ctlr->imu_timestamp_us += 1000 * ctlr->imu_avg_delta_ms;
+ 		if (dropped_pkts > JC_IMU_DROPPED_PKT_WARNING) {
+-			hid_warn_ratelimited(ctlr->hdev,
++			hid_dbg(ctlr->hdev,
+ 				 "compensating for %u dropped IMU reports\n",
+ 				 dropped_pkts);
+-			hid_warn_ratelimited(ctlr->hdev,
++			hid_dbg(ctlr->hdev,
+ 				 "delta=%u avg_delta=%u\n",
+ 				 delta, ctlr->imu_avg_delta_ms);
+ 		}
+@@ -2270,6 +2271,16 @@ static int joycon_home_led_brightness_set(struct led_classdev *led,
+ 	return ret;
+ }
+ 
++static int joycon_combo_led_brightness_set(struct led_classdev *led,
++					    enum led_brightness brightness)
++{
++	/*
++	 * Virtual LED with no hardware behind it: userspace (Main_MiSTer)
++	 * uses it as a mailbox to combine two Joy-Cons into one controller.
++	 */
++	return 0;
++}
++
+ static DEFINE_IDA(nintendo_player_id_allocator);
+ 
+ static int joycon_leds_create(struct joycon_ctlr *ctlr)
+@@ -2331,6 +2342,31 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
+ 	}
+ 
+ home_led:
++	/*
++	 * Virtual combo LED: Joy-Con pairing mailbox for userspace.
++	 * Registered before the home LED, whose failure paths return
++	 * early and would otherwise skip this node, silently breaking
++	 * Joy-Con pairing.
++	 */
++	if (ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCL ||
++	    ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCR) {
++		name = devm_kasprintf(dev, GFP_KERNEL, "%s:combo", d_name);
++		if (!name)
++			return -ENOMEM;
++
++		led = &ctlr->combo_led;
++		led->name = name;
++		led->brightness = 0;
++		led->max_brightness = 255;
++		led->brightness_set_blocking = joycon_combo_led_brightness_set;
++		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
++		ret = devm_led_classdev_register(&hdev->dev, led);
++		if (ret) {
++			hid_warn(hdev, "Failed to register combo LED; ret=%d\n", ret);
++			return 0;
++		}
++	}
++
+ 	/* configure the home LED */
+ 	if (jc_type_has_right(ctlr)) {
+ 		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s:%s",

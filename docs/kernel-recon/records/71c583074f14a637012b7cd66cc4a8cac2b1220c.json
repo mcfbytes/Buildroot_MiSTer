@@ -1,0 +1,60 @@
+{
+  "sha": "71c583074f14a637012b7cd66cc4a8cac2b1220c",
+  "subject": "Disable RTC error messages.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2018-01-09",
+  "subsystem": "i2c,rtc",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/i2c/busses/i2c-designware-master.c",
+    "drivers/rtc/rtc-m41t80.c"
+  ],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0030-i2c-designware-quiet-timeout.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [
+      "c7622a4e44d9"
+    ],
+    "vanilla_file_line": "drivers/rtc/rtc-m41t80.c:215; drivers/i2c/busses/i2c-designware-master.c:857",
+    "vanilla_quote": "rtc-m41t80.c line 215: dev_dbg(&client->dev, \"Unable to read date\\n\"); i2c-designware-master.c line 857: dev_err(dev->dev, \"controller timed out\\n\");",
+    "equivalence": "partial"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "Class C (line 348) for m41t80 half + Class F-5 (line 399) for i2c-designware half",
+  "impact": {
+    "effect_if_absent": "Spurious dev_err messages logged to kernel ring buffer on boot when optional RTC add-on board not fitted; no functional impact on boards with RTC hardware present",
+    "affected_hardware": [
+      "DE10-Nano without optional RTC add-on"
+    ],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CRITICAL SPLIT COMMIT \u2014 This single commit touches two files with different upstream status and is split across two provenance doc rows: (1) m41t80 half: DROPPED-UPSTREAM via c7622a4e44d9 (Alexandre Belloni, 2025-05-26, 'rtc: m41t80: reduce verbosity') \u2014 verified at 6.18.38 drivers/rtc/rtc-m41t80.c:215 already contains dev_dbg; (2) i2c-designware half: CARRIED via patch 0030-i2c-designware-quiet-timeout.patch \u2014 verified at 6.18.38 drivers/i2c/busses/i2c-designware-master.c:857 still contains dev_err, confirming need for carry. Patch 0030 header explicitly documents this split and notes forward-port work (Michael C. Ferguson, 2026-07-12): i2c_dw_xfer() was refactored upstream into i2c_dw_wait_transfer() helper; the same dev_err\u2192dev_dbg change applied at new call site. Effect: cosmetic silencing of boot spam when no RTC add-on fitted; no functional loss, hardware support intact. No userspace coupling. Patch applies cleanly. ESCALATE FOR AUDITOR REVIEW: This represents a split-commit handling pattern (one logical commit, two rows in provenance table, mixed disposition) that may require policy clarification. | RESOLVED (orchestrator, 2026-07-15): disposition finalized as carried \u2014 split handling is settled policy (i2c-designware half carried as 0030, rtc-m41t80 half dropped-upstream via c7622a4e44d9, both sonnet-verified); no open question remains."
+}

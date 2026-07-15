@@ -1,0 +1,73 @@
+{
+  "sha": "40120d090aa2b84dd246f6329b29494a367e1936",
+  "subject": "drivers: bluetooth: backport some drivers from upstream.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-24",
+  "subsystem": "bt",
+  "change_type": "backport",
+  "files": [
+    "drivers/bluetooth/btbcm.c",
+    "drivers/bluetooth/btrtl.c",
+    "drivers/bluetooth/btrtl.h",
+    "drivers/bluetooth/btusb.c",
+    "drivers/bluetooth/hci_h5.c"
+  ],
+  "added": 43,
+  "removed": 16,
+  "is_backport_of_vanilla": true,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "27f4d1f214ae4a3364623f212ea2d45f772d35b1",
+      "3011faa29bc6f45d1388b8588cb9c5a5154927e7",
+      "393dc5d19c825906f955210f10ee3befc39854f7",
+      "33404381c5e875cbd57eec6d9bbacd3b13b404c9",
+      "9fd2e2949b43dea869f7fce0f8f51df44f635d59"
+    ],
+    "vanilla_file_line": "drivers/bluetooth/btbcm.c:516 (BCM43430B0, byte-identical); drivers/bluetooth/btrtl.c:1289 (btrtl_set_quirks, moved from the fork-era :733 -- function still exists, current checkout line re-verified); drivers/bluetooth/btusb.c:654-655 (MT7921 0x04ca:0x3802, byte-identical); drivers/bluetooth/btrtl.c:216-231 (8761B/8761BU id_table split, byte-identical)",
+    "vanilla_quote": "btrtl_set_quirks function extracted from btrtl_setup_realtek, called from hci_h5.c instead of inline set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY,...) (3011faa29bc6, May 27 2021 -- diff byte-identical to fork hunk, confirmed via `git show` in /mnt/source/linux); '{ 0x410c, \"BCM43430B0\" },' added to bcm_uart_subver_table (27f4d1f214ae, May 10 2021 -- byte-identical); '{ USB_DEVICE(0x04ca, 0x3802), .driver_info = BTUSB_MEDIATEK | BTUSB_WIDEBAND_SPEECH | BTUSB_VALID_LE_STATES },' (393dc5d19c82, Apr 12 2021, commit body: 'Add support for Lite-On Mediatek Chip (MT7921)' -- byte-identical); '{ USB_DEVICE(0x0b05, 0x190e), .driver_info = BTUSB_REALTEK | BTUSB_WIDEBAND_SPEECH },' (33404381c5e8, May 28 2021 17:26:45 -- byte-identical); ic_id_table '8761B' entry changed HCI_USB->HCI_UART and new '8761BU' entry added with fw_name/cfg_name rtl8761bu_* (9fd2e2949b43, May 28 2021 17:26:44, same-day companion patch to 33404381c5e8 by the same author Joakim Tjernlund, subject 'Bluetooth: btrtl: rename USB fw for RTL8761' -- byte-identical)",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+  "impact": {
+    "effect_if_absent": "Bluetooth devices (BCM43430B0 UART, MT7921 MediaTek USB, Realtek 8761BU) would not be recognized; hci_h5 UART driver would not apply device-specific quirks for WBS and simultaneous discovery",
+    "affected_hardware": [
+      "BCM43430B0 module",
+      "MediaTek MT7921",
+      "Realtek 8761BU (ASUS BT500)"
+    ],
+    "device_ids": [
+      "0x410c (BCM43430B0)",
+      "0x04ca:0x3802 (MT7921)",
+      "0x0b05:0x190e (8761BU)"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This backport commit applies to MiSTer-v5.13.12 branch (2021-08-24, Sorgelig). All functionality was upstream mainline in spring 2021: btrtl_set_quirks refactoring (Chromium/Archie Pusaka, May 27 2021 upstream); device ID additions were upstream April-May 2021. All changes are present and byte-identical in vanilla 5.15.1 and 6.18.38. The commit was not carried forward to v5.15 fork because v5.15.1 baseline already contained all backported functionality. Not in any carried patch file in board/mister/de10nano/linux-patches/.\n\nsonnet-verified correction (grounding re-check): the original vanilla_shas list omitted a 5th upstream commit. The fork's btrtl.c diff has TWO independent hunks: (a) the btrtl_set_quirks extraction (correctly attributed to 3011faa29bc6), and (b) a separate ic_id_table change splitting the single '8761B' entry (originally IC_INFO(...,HCI_USB)) into a UART-mode '8761B' entry (IC_INFO(...,HCI_UART)) plus a new USB-mode '8761BU' entry with rtl8761bu_fw/rtl8761bu_config names -- this second hunk was NOT covered by any of the original 4 cited SHAs. Found and added: 9fd2e2949b43dea869f7fce0f8f51df44f635d59 'Bluetooth: btrtl: rename USB fw for RTL8761' (May 28 2021, same day/companion commit to 33404381c5e8 by the same author, same patch series for ASUS BT500/RTL8761BU support) -- diff is byte-identical to the fork's btrtl.c ic_id_table hunk. Confirmed ancestor of v6.18.38. All 5 SHAs' subjects were re-checked against their actual diffs (not just subject-line pattern-matching) per the grounding contract's 'same-subject is not equivalence' rule -- e.g. 3011faa29bc6's subject is 'Add RTL8822CS capabilities' but its diff IS the btrtl_set_quirks extraction (verified by reading the full commit, not just the title), and 393dc5d19c82's subject is 'Add support for Lite-On Mediatek Chip' but its commit body explicitly says '(MT7921)' and its diff is the exact 0x04ca:0x3802 hunk.\n\nAlso investigated but left unresolved: the fork commit's btusb.c hunk changing 'if (err < 0) return err;' to 'if (err < 0) goto err_free_wc;' in btusb_mtk_hci_wmt_sync() (a memory-leak-avoidance fix on the btusb_mtk_submit_wmt_recv_urb() error path, unrelated to device/quirk support). This exact behavior IS present in current v6.18.38 (function moved and renamed to btmtk_usb_hci_wmt_sync()/btmtk_usb_submit_wmt_recv_urb() in drivers/bluetooth/btmtk.c:629-634, confirmed by direct read: 'err = btmtk_usb_submit_wmt_recv_urb(hdev); ... if (err < 0) goto err_free_wc;'), but I could not pin the exact originating SHA within the time available -- commit 10888140f09c (Feb 2021, introduced err_free_wc/goto pattern generally) did NOT touch this specific call site's return, and 60c6a63a3d30 (Oct 2021, 'fix memory leak in btusb_mtk_submit_wmt_recv_urb()') fixes a DIFFERENT leak (urb->setup_packet in the URB completion callback, not this one). Does not change disposition/equivalence since this is a minor code-quality hunk bundled into a device-support commit, not its substantive purpose, and vanilla is confirmed to behave the same way either way. Flagging for a future pass if exact provenance of this one hunk is ever needed. sonnet-verified: corrected — added missing 5th vanilla SHA (9fd2e2949b43, RTL8761B/8761BU ic_id_table split) that the original record's vanilla_shas list omitted; re-verified all 5 SHAs exist and are ancestors of v6.18.38 via git commands in /mnt/source/linux, re-verified each diff byte-identical (not just subject-matched) against the fork's hunks; updated file:line citations to current v6.18.38 checkout (btrtl_set_quirks moved :733->:1289); disposition/equivalence/severity were already correct and unchanged; one minor unrelated hunk (WMT err_free_wc leak fix) confirmed functionally present upstream but exact SHA not pinned — noted, does not affect verdict."
+}

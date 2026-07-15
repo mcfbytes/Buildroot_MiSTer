@@ -1,0 +1,74 @@
+{
+  "sha": "47dc53a22a31c8cabbe21213084e958a973cfc6d",
+  "subject": "wiimote: fix the buttons codes.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-05-05",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-wiimote-modules.c"
+  ],
+  "added": 12,
+  "removed": 12,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0023-hid-wiimote-fixes.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:370, :1154",
+
+  "impact": {
+    "effect_if_absent": "Wiimote sends generic keyboard codes (KEY_LEFT/RIGHT/UP/DOWN/NEXT/PREVIOUS) instead of gamepad-appropriate codes (BTN_DPAD_LEFT/RIGHT/UP/DOWN/BTN_START/BTN_SELECT). This affects userspace input mapping—devices expecting BTN_DPAD_* codes in their saved button mappings would not recognize KEY_* codes and vice versa.",
+    "affected_hardware": [
+      "Nintendo Wiimote (0x057e:0x0306)",
+      "Nintendo Wiimote 2 (0x057e:0x0330)",
+      "Wiimote Classic Controller extension"
+    ],
+    "device_ids": [
+      "057e:0306",
+      "057e:0330"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "input event codes; input_report_key() emits BTN_DPAD_LEFT/RIGHT/UP/DOWN and BTN_START/BTN_SELECT instead of KEY_LEFT/RIGHT/UP/DOWN and KEY_NEXT/KEY_PREVIOUS",
+    "main_mister_ref": "input.cpp uses generic EV_KEY event handling with button mapping system (mmap[] array in struct input_dev). Event codes are mapped through input_cb() at line 2942+ and compared against mmap[] entries at lines 3099-3101, 3661-3667. No hardcoded wiimote button codes found, but user-created .map files store exact event codes; changing kernel codes breaks existing mappings. Grep for '057e' at input.cpp:2741 (LED handling only, no button code dependency)."
+  },
+
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "minimal"
+  },
+
+  "dependencies": {
+    "depends_on": [
+      "0d7778d1f (wiimote: set uniq field)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+
+  "license_provenance": null,
+
+  "notes": "This commit is part of the tripartite wiimote fix grouped in patch 0023 (along with 0d7778d1f and 15968bc26). The button code change is INTENTIONAL and NOT upstream—vanilla 6.18.38 still uses KEY_LEFT/RIGHT/UP/DOWN/NEXT/PREVIOUS for wiimote d-pad and plus/minus buttons, confirmed by git show v6.18.38:drivers/hid/hid-wiimote-modules.c. MiSTer maintainers deliberately chose BTN_DPAD_* as more semantically correct for a gamepad device (not a remote control). The patch is forward-ported cleanly to 6.18 with NO file-layout conflicts. FAILURE_MODE=SILENT: patch 0023 has shipped in every MiSTer image since 2019, so any wiimote .map file a real user has actually saved was captured against BTN_DPAD_*/BTN_START/BTN_SELECT codes (what the running kernel has always emitted). If this carry were DROPPED in a future forward-port, the kernel would revert to emitting KEY_LEFT/RIGHT/UP/DOWN/NEXT/PREVIOUS, and those existing BTN_DPAD_*-keyed .map file entries would silently stop matching incoming events — not the reverse. [CORRECTED during sonnet review: an earlier draft of this note had the direction backwards, describing .map files 'containing KEY_LEFT' as the ones that would break; that is wrong — a KEY_LEFT-keyed map file only exists if authored against an unpatched/dropped kernel, and dropping this carry would make such a file work again, not break it.] No upstream equivalent exists for this commit (confirmed: git log -S 'BTN_DPAD_LEFT' -- drivers/hid/hid-wiimote-modules.c yields only b8e0fe31a7c8 (2013), which added BTN_DPAD_* to a new 'pro_map' array for Wii U Pro Controller, not to wiimod_keys_map or wiimod_classic_map). For users upgrading from stock to MiSTer: automatic button mapping (Main_MiSTer's default on device connection) adapts to any codes, so the change is transparent; only manual mapping authors would notice. Severity/framing note: because carrying this patch simply preserves the behavior every MiSTer user has always had, the risk this record should emphasize is drop-risk (breaking existing BTN_DPAD_*-keyed .map files on a future kernel bump that fails to re-carry this delta), not any deficiency in the current shipped state — impact.effect_if_absent already reflects this correctly ('devices expecting BTN_DPAD_* codes ... would not recognize KEY_* codes')."
+  ,"sonnet-verified": "carry-mapping into 0023 confirmed exact (button-remap hunks match fork commit verbatim, wiimod_keys_map and wiimod_classic_map both changed as claimed); Main_MiSTer citations spot-checked at input.cpp:2942 (input_cb), :2741 (057e LED handling), :3099-3101 and :3661-3667 (mmap[]-based event-code comparison) — all accurate; AMENDED a direction error in notes: the record had .map files 'containing KEY_LEFT' breaking on drop, when it is actually BTN_DPAD_*-keyed files (the ones real users actually have, since this patch has shipped since 2019) that break if the carry is dropped"
+}

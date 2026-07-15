@@ -1,0 +1,58 @@
+{
+  "sha": "2799f8b9478a67fffaa21f9cbeae886fa0a55b1e",
+  "subject": "add support for NSO N64 controller (#49)",
+  "author": "Shig",
+  "author_is_pr_contributor": true,
+  "date": "2023-09-02",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": ["drivers/hid/hid-ids.h", "drivers/hid/hid-nintendo.c"],
+  "added": 112,
+  "removed": 28,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["94f18bb19945915fcdfd1903841020ef1b6af44a"],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:314-323 (enum joycon_ctlr_type; N64 specifically at :323), drivers/hid/hid-ids.h:1068 (N64CON; SNESCON is :1066, GENCON is :1067)",
+    "vanilla_quote": "enum joycon_ctlr_type { ... JOYCON_CTLR_TYPE_NESL = 0x09, JOYCON_CTLR_TYPE_NESR = 0x0A, JOYCON_CTLR_TYPE_SNES = 0x0B, JOYCON_CTLR_TYPE_GEN = 0x0D, JOYCON_CTLR_TYPE_N64 = 0x0C }; and #define USB_DEVICE_ID_NINTENDO_N64CON 0x2019 in hid-ids.h",
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 335",
+
+  "impact": {
+    "effect_if_absent": "NSO N64 controller (057e:2019) over USB or Bluetooth would not be recognized and would fail to register as an input device, resulting in complete feature loss for this hardware",
+    "affected_hardware": ["Nintendo Switch Online N64 Controller"],
+    "device_ids": ["057e:2019"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "Generic Linux input device (EV_KEY, EV_ABS); button codes BTN_A/B/START/MODE/Z/TL/TR/etc.; no NSO-specific sysfs or ioctl coupling",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["94f18bb19945 (HID: nintendo: add support for nso controllers, 2023-12-04, vanilla 6.18+)"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit adds NSO N64 controller support to the fork ahead of vanilla (Sept 2 vs Dec 4, 2023). The fork's implementation uses JOYCON_CTLR_TYPE_N64=0x0D; vanilla later uses 0x0C (confirmed by direct diff of both commits: fork's 2799f8b9 sets `JOYCON_CTLR_TYPE_N64 = 0x0D`, vanilla's enum has `JOYCON_CTLR_TYPE_GEN = 0x0D, JOYCON_CTLR_TYPE_N64 = 0x0C`). The fork's later commit b00a72159 (Mega Drive controller, Sept 4) corrected the N64 type to 0x0C and renamed the fork's own 0x0D to MD, matching vanilla's eventual pattern -- confirmed via `git show b00a72159 -- drivers/hid/hid-nintendo.c`. Vanilla's 94f18bb19945 is substantially more comprehensive (649 insertions/266 deletions per `git show --stat`, vs this commit's 112/28), introducing a cleaner 'struct joycon_ctlr_button_mapping' design and support for NES/SNES/Genesis controllers in a single refactor. Vanilla's implementation is the canonical upstream version present in 6.18.38. This fork commit is superseded and should be dropped; the N64 feature is fully covered by vanilla. Device ID (057e:2019, confirmed at hid-ids.h:1068) and core functionality (button mapping, dpad, analog stick support) are identical. No userspace coupling detected in Main_MiSTer (grepped input.cpp for N64CON/joycon/0x2019-adjacent references: only generic JOYCONL/JOYCONR pairing logic at input.cpp:4689-4774 and 5845, which predates/is unrelated to this commit). Failure mode is silent: the device simply would not appear as an input device if dropped (since vanilla 6.18.38 provides the support). CORRECTION to prior pass: the vanilla_file_line citation for hid-ids.h was wrong (claimed :989-991, which lands in an unrelated Microsoft-mouse ID block; N64CON is actually at :1068). hid-nintendo.c citation widened to :314-323 to cover the full enum the quote reproduces (prior :323-325 only captured the N64 line and two lines past the enum's closing brace).",
+  "sonnet-verified": "corrected -- SHA/ancestry, N64=0x0D fork vs 0x0C vanilla claim, b00a72159 correction, 649-insertion count, and no-userspace-coupling all confirmed accurate; the hid-ids.h file:line citation was wrong (:989-991 lands in an unrelated Microsoft ID block) and has been fixed to :1068."
+}

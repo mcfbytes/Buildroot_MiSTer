@@ -1,0 +1,64 @@
+{
+  "sha": "3d72b9db7650bc27b0c4a9931adfb144e3b2850b",
+  "subject": "Add cpufreq/overclock driver (#34)",
+  "author": "Michael Huang",
+  "author_is_pr_contributor": true,
+  "date": "2022-10-23",
+  "subsystem": "cpufreq",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/cpufreq/Kconfig.arm",
+    "drivers/cpufreq/Makefile",
+    "drivers/cpufreq/socfpga-cpufreq.c"
+  ],
+  "added": 325,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0003-cpufreq-cyclone5-de10nano-overclock.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md: line 309 (class A table), lines 724-886 (detailed analysis §P1.6)",
+  "impact": {
+    "effect_if_absent": "CPU frequency scaling and overclocking capability unavailable. Board remains at stock 800 MHz. No boot failure; feature silently absent. Community overclock scripts on /media/fat fail silently.",
+    "affected_hardware": [
+      "DE10-Nano",
+      "MiSTer"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "standard /sys/devices/system/cpu/cpu[01]/cpufreq/ sysfs; scaling_available_frequencies, scaling_boost_frequencies, scaling_max_freq, cpuinfo_max_freq",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [
+      "CONFIG_CPU_FREQ",
+      "CLK_INTEL_SOCFPGA32"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL. Copyright Michael Huang 2022. MODULE_LICENSE(\"GPL\") in socfpga-cpufreq.c.",
+  "notes": "Implements CPU frequency scaling and overclocking (400/800/1000/1200 MHz) for Cyclone V SoC FPGA on DE10-Nano board. Frequencies 1000/1200 MHz marked CPUFREQ_BOOST_FREQ to prevent automatic selection on boot. Carried as 0003-cpufreq-cyclone5-de10nano-overclock.patch with significant 6.18 forward-port modifications. FORWARD-PORT NOTES (5.15→6.18): (1) cpufreq_frequency_table_verify() lost 'table' argument; (2) cpufreq_driver::exit() changed from int to void return; (3) wait_for_fsm() made static (was 'void inline'); (4) **scaling_available_frequencies removed from ->attr** — core creates it automatically since 6.x and double-creation aborts policy registration. KNOWN LATENT BUG DELIBERATELY PRESERVED: wait_for_fsm() calls wait_on_bit(word, CLKMGR_STAT_BUSY, mode) passing a mask where bit number expected; polls bit 1 instead of bit 0. In practice harmless as PLL settling covered by register-write latency. Fixing requires timing validation on hardware; not appropriate for forward-port. Cannot be replaced with mainline cpufreq-dt: gen5 socfpga clock driver is read-only (no .set_rate ops), cpu nodes lack 'clocks' property, and complex multi-clock VCO transitions exceed OPP expressiveness. Agrees with provenance doc disposition. sonnet-verified: confirmed — frequency table (400/800/1000/1200 MHz, 1000/1200 flagged CPUFREQ_BOOST_FREQ), Kconfig dependency \"depends on CPU_FREQ && CLK_INTEL_SOCFPGA32\", and defconfig hunk (CONFIG_ARM_SOCFPGA_CPUFREQ=y, CONFIG_CPUFREQ_DT not set) all verified against the fork diff; wait_for_fsm()/wait_on_bit() latent-bug claim confirmed against /mnt/source/linux/include/linux/wait_bit.h (bit param is a bit NUMBER, CLKMGR_STAT_BUSY=BIT(0)=1 is passed as if it were bit-index 1); grep of vanilla drivers/cpufreq/ for socfpga|altera|altr returned zero matches, confirming no upstream equivalent; grep of Main_MiSTer/*.cpp,*.h for cpufreq/socfpga confirmed no direct reference (only unrelated socfpga_reset_manager/fpga_manager structs in fpga_io.cpp), supporting coupled=false as correctly recorded here (contrast with sibling record e6df8e30e, which wrongly had coupled=true before this audit — corrected there)."
+}

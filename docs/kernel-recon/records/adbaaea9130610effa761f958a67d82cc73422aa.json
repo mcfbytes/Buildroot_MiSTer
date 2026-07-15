@@ -1,0 +1,62 @@
+{
+  "sha": "adbaaea9130610effa761f958a67d82cc73422aa",
+  "subject": "hid-microsoft: add XOne Elite 2 ID.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-03-14",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-ids.h",
+    "drivers/hid/hid-microsoft.c"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "f5554725f30475b05b5178b998366f11ecb50c7f"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-ids.h:1013, drivers/hid/hid-microsoft.c:458-459",
+    "vanilla_quote": "#define USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE\t0x0b22 ... { HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE), .driver_data = MS_QUIRK_FF }",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:339",
+  "impact": {
+    "effect_if_absent": "Xbox Elite 2 controller (0x045e:0x0b22) would not be recognized for force-feedback rumble support in 5.15 fork kernel",
+    "affected_hardware": [
+      "Xbox Elite 2 Controller"
+    ],
+    "device_ids": [
+      "045e:0b22"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Fork commit (March 2022) preempted vanilla's formalization by ~13 months. Vanilla 6.18.38 (April 2023, commit f5554725f30475b05b5178b998366f11ecb50c7f) adds the same device (0x045e:0x0b22) with identical driver_data (MS_QUIRK_FF) but uses different #define naming: USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE instead of fork's USB_DEVICE_ID_MS_XBOX_ELITE2_CONTROLLER. This is not a backport; the fork originated the support and vanilla later added a more comprehensive approach (also covering old PID 0x0b05 for model 1797, and separately fixing model 1708's firmware-update PID break — neither part of this fork commit). No userspace coupling: Main_MiSTer does not reference the #define symbols or the raw ID 0x045e:0x0b22 anywhere (grep of Main_MiSTer/*.cpp,*.h for \"0b22\"/\"0B22\" returns nothing). Note this is the Bluetooth-mode PID (0x0b22); Main_MiSTer's XBox-Elite-2 paddle-shift quirk (QUIRK_SHIFT, input.cpp:5523/5810) is keyed on the DIFFERENT wired/dongle PID 0x0b00 and its own source comment states it 'works only through cable or USB dongle' — confirming it does not apply to this BT-mode ID, corroborating the coupled=false finding here (see sonnet-verified sibling record 409f81077926d4a0e2c0cc7ac11dda7605f79469 where that coupling DOES apply). Not carried as patch in our 6.18 build; vanilla provision is sufficient. Failure is silent: dropping this from fork 5.15 would cause Xbox Elite 2 rumble to cease working over Bluetooth without boot/build errors. Distinguish from: commit 9a8cb6a93 (Xbox Series X/S controller at 0x0B13, Sept 2021) and commit c784a6856 (Elite 2 paddle buttons support, April 2026). sonnet-verified: confirmed disposition/equivalence/device-ID/userspace-coupling and vanilla-SHA ancestry; corrected vanilla_file_line — hid-ids.h:903 does not match the live v6.18.38 checkout (MODEL_1797_BLE is actually defined at hid-ids.h:1013; hid-microsoft.c:458-459 was already correct)."
+}

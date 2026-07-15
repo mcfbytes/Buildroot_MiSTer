@@ -1,0 +1,62 @@
+{
+  "sha": "b1b168eb64d0f34952cbf4ed05af74b5f00f630b",
+  "subject": "input: add HID driver to fix Flydigi Vader 4 Pro mapping in D-Input over Bluetooth.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-15",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-vader4.c"
+  ],
+  "added": 114,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0013-hid-flydigi-vader.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md \u00a73.4 Class D",
+  "impact": {
+    "effect_if_absent": "Flydigi Vader 4 Pro controller reports incorrect button codes over Bluetooth D-Input mode, mapping various extra buttons (grips, 4th face button, MODE) as generic consumer-page keys (KEY_ENTER, KEY_TV, KEY_CHANNELUP, etc.) instead of expected gamepad codes. Without driver remapping, buttons are unusable.",
+    "affected_hardware": [
+      "Flydigi Vader 4 Pro"
+    ],
+    "device_ids": [
+      "d7d7:0041"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0-or-later; copyright Alexey Melnikov (2026); driver authored as in-tree code; no external upstream project forked",
+  "notes": "New HID driver for Flydigi Vader 4 Pro over Bluetooth. The controller reports button codes as generic consumer-page keys over BT D-Input mode; this driver's .event hook intercepts and remaps them to proper gamepad codes: KEY_ENTER\u2192BTN_Z, BTN_0\u2192BTN_C, KEY_CHANNELUP\u2192BTN_GRIPL2, KEY_TV\u2192BTN_GRIPL, KEY_CHANNELDOWN\u2192BTN_GRIPR, KEY_EJECTCD\u2192BTN_GRIPR2, KEY_CAMERA\u2192BTN_TRIGGER_HAPPY3, KEY_RED\u2192BTN_MODE. Forward-port to 6.18.38 confirmed: BTN_GRIPL/BTN_GRIPL2/BTN_GRIPR/BTN_GRIPR2 button codes are mainline UAPI since v6.18 (commit 97c01e65ef4c) with byte-identical numeric values (0x224\u20130x227); no UAPI conflicts. Patch 0013-hid-flydigi-vader.patch applies cleanly to 6.18 with improved code formatting from fork commit. CONFIG_HID_VADER4=m enabled in our linux.config. No userspace coupling detected in Main_MiSTer. Silent failure mode: controller simply won't work correctly without the driver, no build/boot error.",
+  "sonnet-verified": "confirmed clean \u2014 device ID d7d7:0041 verified against fork's HID_BLUETOOTH_DEVICE() call. Driver body diffed line-by-line against 0013-hid-flydigi-vader.patch: only whitespace/brace-style cleanup (indentation, split if/return, added blank lines), no functional changes \u2014 consistent with the record's own 'improved code formatting' characterization. BTN_GRIPL/BTN_GRIPR/BTN_GRIPL2/BTN_GRIPR2 = 0x224-0x227 confirmed byte-identical in vanilla include/uapi/linux/input-event-codes.h:605-608, sourced from commit 97c01e65ef4c which is present in the v6.18.38 history. userspace_coupling.coupled=false confirmed by grep \u2014 no 'vader', 'd7d7', or BTN_GRIPx references anywhere in Main_MiSTer. CONFIG_HID_VADER4=m confirmed in linux.config:359. License/author distinction (committer Sorgelig vs. code author Alexey Melnikov) verified against driver's SPDX/copyright header and MODULE_AUTHOR. No amendments needed beyond adding this verdict."
+}

@@ -1,0 +1,62 @@
+{
+  "sha": "2ac0aa1e833a808d94c53a086e8317cd0258e983",
+  "subject": "input: support for mouseX and mice in EVIOCGRAB mode.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-05-26",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/input.c",
+    "drivers/input/mousedev.c"
+  ],
+  "added": 142,
+  "removed": 35,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0026-input-mousedev-eviocgrab.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/input/input.c:111-134 (input_pass_values), drivers/input/mousedev.c:773-782 (mousedev_fops)",
+    "vanilla_quote": "drivers/input/input.c:120-124: grab delivers exclusively to grabbing handle, no second pass. drivers/input/mousedev.c:773-782: mousedev_fops has no .unlocked_ioctl (EVIOCGRAB returns -ENOTTY)",
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md line 373, section 9.1",
+
+  "impact": {
+    "effect_if_absent": "USB mouse pointer stops working the moment a core launches or OSD is visible; Main_MiSTer grabs the evdev node for exclusive input handling, which under vanilla 6.18.38 silences ALL other handlers on the device, including mousedev. Without this patch, mousedev gets no events and the pointer freezes.",
+    "affected_hardware": [
+      "any USB mouse connected to MiSTer"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "EVIOCGRAB ioctl on /dev/input/mouseN nodes",
+    "main_mister_ref": "input.cpp:5177 (opens both event* and mouse* nodes), input.cpp:5237 (writes ImPS/2 magic to mouse node), input.cpp:6144 (reads 4-byte PS/2 packets from mouse), input.cpp:6463 (grabs every fd including mouse node via EVIOCGRAB)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "input_to_handler() replaced by per-handle ->handle_events() method (upstream d469647bafd9, v6.11); RCU read section converted to scoped_guard(rcu) (upstream 21d8dd0daf4c, v6.14); struct input_handler already has passive_observer field, so new flag named ignore_grab to avoid confusion",
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL (kernel in-tree code)",
+  "notes": "LOAD-BEARING PATCH: Without this, every MiSTer user with a USB mouse experiences complete pointer loss when launching any core. The original commit (2019) is from the fork and not upstream; vanilla 6.18.38 still delivers grabbed device events exclusively to the grabbing handler, starving mousedev entirely. Carried in patch 0026 with a cleaner re-implementation using an explicit input_handler->ignore_grab opt-in flag instead of the original's string-matching on handle->name. The forward-ported patch handles upstream structural changes: (1) input_to_handler() no longer exists, replaced by per-handle ->handle_events() method (Torokhov d469647bafd9, v6.11; fixed in 071b24b54d2d, v6.12); (2) RCU read section converted to scoped_guard(rcu) (21d8dd0daf4c, v6.14) so grab path exits with break not explicit unlock+return; (3) mousedev.c ioctl and RCU dereference rewritten to match evdev's idiom with rcu_dereference_protected()+lockdep_is_held(). Third change in patch 0026 (tap-to-click suppression for DS4/DualSense controller touchpads) was merged from commit 52a56ae3d -- co-located in the same carried patch file for packaging convenience, but functionally independent (dis_t2c suppression works without EVIOCGRAB and vice versa; see 52a56ae3d's own record). Provenance doc explicitly covers this as class D constraint A12 (Main_MiSTer relies on mousedev receiving events while evdev is EVIOCGRAB-ed).\n\nsonnet-verified: this is the most heavily-cited record in the batch and every citation independently re-derived against the live checkouts, all confirmed EXACT: (1) drivers/input/input.c:111-134 (input_pass_values) spot-checked line-for-line against /mnt/source/linux -- function opens at 111, the grab short-circuit `if (handle) { count = handle->handle_events(...); break; }` is at lines 120-124 verbatim (both the broader 111-134 range and the narrower 120-124 quote in upstream.vanilla_file_line/vanilla_quote match exactly, no off-by-one). (2) drivers/input/mousedev.c:773-782 (mousedev_fops) confirmed -- the struct has .owner/.read/.write/.poll/.open/.release/.fasync/.llseek and genuinely no .unlocked_ioctl entry, so EVIOCGRAB on a raw mousedev node returns -ENOTTY on vanilla, exactly as claimed. (3) All three forward_port.conflicts SHAs re-derived via `git log` in /mnt/source/linux and confirmed real with matching subjects/dates: d469647bafd9 ('Input: simplify event handling logic', 2024-07-03, v6.11), 071b24b54d2d ('Input: fix regression when re-registering input handlers', 2024-10-27), 21d8dd0daf4c ('Input: use guard notation in input core', 2024-11-06, v6.14); vanilla input.c:119 confirmed to actually use `scoped_guard(rcu) {` as claimed. (4) All five Main_MiSTer citations re-derived with `grep -n` and confirmed byte-exact at the cited line numbers: input.cpp:5177 `if (!strncmp(de->d_name, \"event\", 5) || !strncmp(de->d_name, \"mouse\", 5))`, :5237 `if (input[n].mouse)` (guards the ImPS/2 magic-sequence write immediately following), :6144 `if (read(pool[i].fd, data, sizeof(data)))` (reading the 4-byte PS/2 packet declared just above), :6463 `if (pool[i].fd >= 0) ioctl(pool[i].fd, EVIOCGRAB, ...)` inside input_switch(), :5528 the equivalent EVIOCGRAB call on the hotplug path -- all five match precisely, no citation errors found anywhere in this record. VOCABULARY FIX: dependencies.superseded_by incorrectly listed 52a56ae3d -- 'superseded_by' implies 2ac0aa1e8 is outdated/replaced, but the two commits are co-located in the same patch file for packaging reasons and are functionally independent (confirmed by 52a56ae3d's own record, which states so explicitly); cleared to an empty array, with the co-location relationship documented in prose in this notes field instead (where it already was). Also added license_provenance='GPL (kernel in-tree code)' for parity with sibling record 52a56ae3d, which had it filled in while this one was left null for equivalent in-tree code. No disposition/severity/equivalence/userspace_coupling changes needed -- this record was exceptionally well-grounded to begin with."
+}

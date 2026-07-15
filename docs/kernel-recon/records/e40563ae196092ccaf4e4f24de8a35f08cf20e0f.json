@@ -1,0 +1,67 @@
+{
+  "sha": "e40563ae196092ccaf4e4f24de8a35f08cf20e0f",
+  "subject": "Support for i2c rtc m41t81.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2017-09-17",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 8,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [
+      "eb235c561d04ea64d19a0d3e1413f9c3bc25596c"
+    ],
+    "vanilla_file_line": "drivers/rtc/rtc-m41t80.c:103-105",
+    "vanilla_quote": "{.compatible = \"st,m41t81\", .data = (void *)(M41T80_FEATURE_HT | M41T80_FEATURE_SQ)},",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 3, grouped entry",
+
+  "impact": {
+    "effect_if_absent": "If this commit's RTC node were not carried at all, M41T81 RTC devices would not be recognized by the kernel (silent feature loss; only affects devices with the optional RTC add-on board). Our patch 0004 carries the functionality on the i2c_gpio bit-banged bus (not i2c1) using the exact upstream compatible string \"st,m41t81\", which binds via vanilla's primary of_match_device() exact-match path -- not merely via the legacy suffix-fallback that the fork's original 2017 strings also happened to satisfy (see notes).",
+    "affected_hardware": [
+      "MiSTer DE10-Nano with optional M41T81 RTC add-on"
+    ],
+    "device_ids": [
+      "0x68"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "SONNET-CORRECTED (was over-flagged in first pass): e40563ae196092ccaf4e4f24de8a35f08cf20e0f introduces compatible = \"stm,m41t81\" (typo'd vendor prefix \"stm\" for \"st\") on &i2c1/rtc_at_68. The very next fork commit, 2548c2978fa95c61d146d25f518124836100630c ('Support for i2c rtc mcp794xx.', same day, 2017-09-17 05:57:45 +0800, ~1h41m after this commit's 04:16:09), rewrote the string to bare \"m41t81\" (no vendor prefix at all) while adding a second RTC node (mcp7941x@0x6F). Bare \"m41t81\" is what the fork actually shipped from that point through the MiSTer-v5.15 tip (`git show MiSTer-v5.15:.../socfpga_cyclone5_de10_nano.dts` still reads compatible = \"m41t81\"; `git log --all -G'stm,m41t81'` shows the typo'd string exists in exactly ONE commit, live for under two hours). So the 'contradiction' flagged in the first pass was a same-day, 2017-era intermediate state that was never a shipped divergence.\n\nMore importantly, the first-pass claim that \"stm,m41t81\" would 'silently fail to bind, rendering the node inert' is independently WRONG on the merits, traced through the live i2c-core matching path in /mnt/source/linux (6.18.38):\n  - i2c_device_match() (drivers/i2c/i2c-core-base.c:139-160) tries i2c_of_match_device(drv->of_match_table, client) as its FIRST (not last-resort) check.\n  - i2c_of_match_device() (drivers/i2c/i2c-core-of.c:144-158): 'match = of_match_device(matches, &client->dev); if (match) return match; return i2c_of_match_device_sysfs(matches, client);' -- exact match first, then a suffix-fallback.\n  - i2c_of_match_device_sysfs() (i2c-core-of.c:115-142): for each of_match_table entry, 'name = strchr(matches->compatible, ','); ... if (!name) name = matches->compatible; else name++; if (sysfs_streq(client->name, name)) return matches;' -- compares client->name against the PART OF THE DRIVER'S COMPATIBLE STRING AFTER ITS COMMA.\n  - client->name for a DT-instantiated i2c child comes from of_i2c_get_board_info() -> of_alias_from_compatible() (drivers/of/base.c:1170-1181): 'p = strchr(compatible, \\',\\'); strscpy(alias, p ? p + 1 : compatible, len);' -- strips the NODE's own compatible string at its first comma.\n  - For \"stm,m41t81\": client->name = \"m41t81\" (stripped after the comma). Vanilla's rtc-m41t80 of_match_table entry {.compatible = \"st,m41t81\", ...} (drivers/rtc/rtc-m41t80.c:103) has post-comma suffix \"m41t81\" too -> sysfs_streq matches -> BINDS. This happens inside i2c_of_match_device_sysfs, which is invoked from i2c_of_match_device, the FIRST check i2c_device_match makes -- not a legacy id_table fallback.\n  - For bare \"m41t81\" (the 2017 fix, and the fork's shipped form): client->name = \"m41t81\" (whole string, no comma) -> identical sysfs_streq match against the same entry -> also BINDS.\nSo BOTH the typo'd and the fixed compatible strings bind to vanilla's driver via the exact same mechanism; there is no functional difference between them, and the RTC node was never actually going to go inert even during the two-hour window the typo existed. verification.contradiction is corrected to false and upstream.equivalence to \"equivalent\" (vanilla does the same thing the node needed, via a fallback the kernel itself documents as legacy: drivers/of/base.c:1165-1166, 'a relic from I2C and SPI... do not add any new user').\n\nOur patch 0004 sidesteps the fallback path entirely by using the fully-correct \"st,m41t81\" (exact of_match_table string), which binds via the primary of_match_device() exact-compatible check -- more robust than either historical fork string, since it does not depend on the discouraged suffix-match mechanism at all.\n\nUnrelated architectural point (unchanged from first pass, still correct): this commit's node lives on &i2c1 (the HPS I2C1 controller), which the fork itself later moved off of (commit 1337de1fd, 2018-02-10, 'Switch to i2c-gpio driver for smbus compatibility') onto the bit-banged i2c_gpio bus on portb 22/23, because Main_MiSTer only scans /dev/i2c-0..2 (smbus.cpp:214) and a fourth adapter would push the ADV7513 HDMI-transmitter probe off the end. Patch 0004 places all three candidate RTCs (pcf8563@0x51, m41t81@0x68, mcp7941x@0x6F) on i2c_gpio, not i2c1, matching the fork's own later correction and stock's shipped topology.\n\nGROUPED ENTRY (unchanged): this commit is part of the 13-commit group (aa8afe109..077c2c317) all carried in patch 0004; correctly marked 'carry' in patch-provenance.md."
+  ,
+  "sonnet-verified": "corrected -- verification.contradiction and upstream.equivalence were wrong: traced i2c_device_match() -> i2c_of_match_device() -> i2c_of_match_device_sysfs() (drivers/i2c/i2c-core-of.c) plus of_alias_from_compatible() (drivers/of/base.c:1170-1181) and confirmed BOTH the typo'd \"stm,m41t81\" and the fork's own same-day fix to bare \"m41t81\" bind to vanilla's rtc-m41t80 driver via the documented suffix-match fallback; the typo lived under two hours before 2548c2978 fixed it and was never a shipped state. Patch 0004's \"st,m41t81\" is strictly better (exact of_match_table hit, no fallback needed) but the record's claim of a real divergence was itself the error."
+}

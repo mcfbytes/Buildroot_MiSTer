@@ -1,0 +1,62 @@
+{
+  "sha": "5bdbf2f7e65510acf8c4e2bf484c0be3b72c06d2",
+  "subject": "hid: add quirk for ControllaBLE.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-08",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-pl.c",
+    "drivers/hid/hid-quirks.c"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0018-hid-controllable-quirk.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:366, §3.4 Class D: explicitly listed as carried via 0018-hid-controllable-quirk.patch",
+  "impact": {
+    "effect_if_absent": "ControllaBLE Bluetooth gamepad (VID:PID 1209:FACA) would enumerate as generic HID input device instead of being routed through hid-pl.c (PANTHERLORD dual-PSX-adapter quirk handler); device would not be recognized correctly for MiSTer input mapping, and the HID_QUIRK_MULTI_INPUT (driver_data=1) would not be applied, breaking dual-input handling.",
+    "affected_hardware": [
+      "ControllaBLE Bluetooth gamepad"
+    ],
+    "device_ids": [
+      "1209:FACA"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "HID input device ID matching for device-specific input mapping and mode detection",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4174 (make_unique call for ControllaBLE device setup) and line 5506 (device ID detection for dual-input handling)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "minimal"
+  },
+  "dependencies": {
+    "depends_on": [
+      "CONFIG_HID_PANTHERLORD=y (verified present in linux.config)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Device uses pid.codes VID 0x1209 (shared/test ID namespace) with PID 0xFACA. ControllaBLE is a Bluetooth gamepad that emulates Twin-USB-Joystick protocol. Commit adds device to both hid-pl.c device table (with HID_QUIRK_MULTI_INPUT flag via driver_data=1) and hid-quirks.c special-driver list. Forward-ported to 6.18.38 with comment correction (original had copy-paste 'Twin USB Joystick' comment from adjacent GAMERON entry; fixed to 'ControllaBLE'). Matches provenance-doc claim: disposition=carry, class D. Vanilla 6.18.38 source confirms device ID not present in upstream drivers/hid/hid-pl.c or hid-quirks.c. Strong userspace coupling via Main_MiSTer input device recognition and mode detection.\n\nRECONCILIATION (per task instruction): a separate record, 0d7b4fc7edacc66a8c8a30c7b2616518022a4374.json ('Enable CONFIG_PANTHERLORD_FF'), had its device_ids list corrected by a prior verifier pass to REMOVE '1209:FACA / ControllaBLE', with the note 'exhaustive grep of drivers/hid/*.c and hid-ids.h for 0x1209, 0xFACA, and ControllaBLE found zero matches; this device ID does not appear anywhere in the pl_devices[] table or the kernel tree and was hallucinated in the original pass.' These two findings do NOT contradict each other: 0d7b4fc7e's commit is a KCONFIG-only change (enables CONFIG_PANTHERLORD_FF in the fork's 5.15 defconfig) whose disposition is dropped-deliberate/superseded because the option is already on in OUR linux.config, which tracks vanilla 6.18's hid-pl.c pl_devices[] table -- and 1209:FACA genuinely does NOT exist in VANILLA's pl_devices[] table (confirmed independently: it is a MiSTer-fork-only addition). THIS commit (5bdbf2f7e) is the actual origin of 1209:FACA: it adds the device-table entry to hid-pl.c/hid-quirks.c directly, is carried verbatim (modulo one comment fix) as patch 0018-hid-controllable-quirk.patch, and 1209:FACA IS present in our patched tree (confirmed via `git show 5bdbf2f7e -- drivers/hid/hid-pl.c drivers/hid/hid-quirks.c` and by reading 0018-hid-controllable-quirk.patch directly) and in linux-patches/0018, which board/mister/de10nano applies on top of vanilla. So 0d7b4fc7e's 'hallucinated relative to the kernel tree' finding was scoped to VANILLA (correct), while this record's claim is scoped to OUR patched tree via patch 0018 (also correct) -- no error in either record, just different trees under discussion; 0d7b4fc7e's notes did not make that tree distinction explicit, which is what prompted this cross-check.\n\nsonnet-verified: carry-mapping to 0018-hid-controllable-quirk.patch confirmed exact -- `git show 5bdbf2f7e65510acf8c4e2bf484c0be3b72c06d2` diff (hid-pl.c: `+ { HID_BLUETOOTH_DEVICE(0x1209, 0xFACA), .driver_data = 1 }, /* Twin USB Joystick */`; hid-quirks.c: `+ { HID_BLUETOOTH_DEVICE(0x1209, 0xFACA) },`) matches the carried patch's hunks exactly, modulo the documented comment fix ('Twin USB Joystick' -> 'ControllaBLE'). Device ID 1209:FACA re-derived independently from the live fork diff -- correct as stated. Main_MiSTer citations re-verified byte-exact: input.cpp:4174 is literally `make_unique(0x1209, 0xFACA, 1);  // ControllaBLE` and input.cpp:5506 is literally `else if (input[n].vid == 0x1209 && (input[n].pid == 0xFACE || input[n].pid == 0xFACA))` -- both confirmed correct, no change needed. CONFIG_HID_PANTHERLORD=y confirmed present at linux.config:329. provenance_doc_ref was WRONG (cited 'line ~33', which is unrelated prose about the v5.15.1 baseline-verification procedure, nowhere near this commit) and has been corrected to the actual row at patch-provenance.md:366. Added the reconciliation paragraph above per task instruction; no disposition/severity/coupling changes needed otherwise."
+}

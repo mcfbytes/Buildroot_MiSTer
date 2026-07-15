@@ -1,0 +1,92 @@
+{
+  "sha": "4ddd8ec3de7e1782dc716f7a5f85af38d16795be",
+  "subject": "Add xone (XBox wireless adapter) driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-03-14",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/xone/Kconfig",
+    "drivers/hid/xone/Makefile",
+    "drivers/hid/xone/bus/bus.c",
+    "drivers/hid/xone/bus/bus.h",
+    "drivers/hid/xone/bus/protocol.c",
+    "drivers/hid/xone/bus/protocol.h",
+    "drivers/hid/xone/driver/chatpad.c",
+    "drivers/hid/xone/driver/common.c",
+    "drivers/hid/xone/driver/common.h",
+    "drivers/hid/xone/driver/gamepad.c",
+    "drivers/hid/xone/driver/headset.c",
+    "drivers/hid/xone/transport/dongle.c",
+    "drivers/hid/xone/transport/mt76.c",
+    "drivers/hid/xone/transport/mt76.h",
+    "drivers/hid/xone/transport/mt76_defs.h",
+    "drivers/hid/xone/transport/wired.c"
+  ],
+  "added": 7136,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md §3.5",
+
+  "impact": {
+    "effect_if_absent": "Xbox One wireless adapters, Xbox Series controllers, wireless chatpad, and wireless headsets would not be supported unless provided via separate out-of-tree kmod package",
+    "affected_hardware": [
+      "Xbox One Wireless Dongle",
+      "Xbox Wireless Dongle",
+      "Xbox Series X|S controllers",
+      "Xbox One controllers",
+      "Xbox wireless chatpad",
+      "Xbox wireless headsets"
+    ],
+    "device_ids": [
+      "045e:02e6",
+      "045e:02fe"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "copyright": "Copyright (C) 2021 Severin von Wnuck <severinvonw@outlook.de>",
+    "license": "GPL-2.0-or-later",
+    "origin_project": "medusalix/xone",
+    "origin_url": "https://github.com/medusalix/xone"
+  },
+  "notes": "This commit vendors the xone driver (7 kernel modules: xone-wired, xone-dongle, xone-gip-bus, xone-gip-common, xone-gip-gamepad, xone-gip-headset, xone-gip-chatpad) from medusalix/xone (GPL-2.0-or-later). Verified: JOYSTICK_XONE does not exist in vanilla 6.18.38. Per docs/patch-provenance.md §3.5, this commit was later re-sourced as a Buildroot kmod package (package/xone) using dlundqvist/xone (the actively-maintained fork; medusalix/xone is explicitly in maintenance mode per its own README). The Buildroot package approach is superior for 6.18 reconciliation: (1) avoids vendoring out-of-tree code in the kernel; (2) enables independent driver updates without full kernel rebuilds; (3) upstream fork (dlundqvist) already includes all MiSTer's local enhancements (rumble support, Elite-2 paddle support with PADDLE_ELITE/PADDLE_ELITE2_4X/PADDLE_ELITE2_510 firmware-version cases, per-PID firmware naming, sysfs software pairing attribute). Failure mode is silent: dropping this commit and relying solely on the Buildroot package (enabled via BR2_PACKAGE_XONE=y) preserves all functionality. No userspace coupling found in Main_MiSTer. Disposition: dropped-deliberate in favor of re-sourcing via package/xone. sonnet-verified: correct — vendored commit's own SPDX/copyright headers (GPL-2.0-or-later, Severin von Wnuck, medusalix/xone) confirmed against the fork's git history at 4ddd8ec3d; the 7-module Makefile list (xone-wired/xone-dongle/xone-gip-bus/xone-gip-common/xone-gip-gamepad/xone-gip-headset/xone-gip-chatpad) confirmed exactly; JOYSTICK_XONE absent from vanilla 6.18.38 confirmed. Device_ids lists only the two externally-attachable dongle PIDs (02e6, 02fe) of the four the driver's table actually matches (02f9/091e are laptop-soldered dongles that cannot physically attach to a DE10-Nano, consistent with docs/decisions/0003-xone-firmware.md's scoping) — narrower than the full ID table but not incorrect for MiSTer's actual hardware universe, left as-is."
+}

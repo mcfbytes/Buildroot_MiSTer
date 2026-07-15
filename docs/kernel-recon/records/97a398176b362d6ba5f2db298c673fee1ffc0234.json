@@ -1,0 +1,63 @@
+{
+  "sha": "97a398176b362d6ba5f2db298c673fee1ffc0234",
+  "subject": "update config.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-17",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 3,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:312 (GROUPED row: defconfig 11 commits, includes 97a398176) AND patch-provenance.md:1185 Q10 ('Stock config is 15 months older than fork HEAD (missing HID_VADER4, MACVLAN). P1.3 must reconcile stock-linux.config and HEAD's MiSTer_defconfig.')",
+  "impact": {
+    "effect_if_absent": "CONFIG_HID_VADER4=m enables Flydigi Vader 4 Pro D-Input mode support; CONFIG_JOYSTICK_XPAD=m changes Xbox controller support from built-in to module",
+    "affected_hardware": [
+      "Flydigi Vader 4 Pro (0xd7d7:0x0041 over Bluetooth)",
+      "Xbox controllers (various VID:PIDs)"
+    ],
+    "device_ids": [
+      "d7d7:0041"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "BTN_Z remap for wired/RF XInput-mode Vader controllers (generic BTN_* passthrough for the Bluetooth D-Input HID_VADER4 path)",
+    "main_mister_ref": "/mnt/source/Main_MiSTer/input.cpp:5867 \u2014 'if (input[dev].vid == 0x45E && ev.type == EV_KEY) { switch (ev.code) { ... case KEY_RECORD: ev.code = BTN_Z; break; } }'. CORRECTED: this remap is gated on vid==0x45E (Microsoft), which is the WIRED/RF-dongle XInput path fed by fork commit c035c21c0 (xpad MAP_VADER4, carried in 0017-xpad-mister-deltas.patch) \u2014 NOT this record's CONFIG_HID_VADER4=m driver, which is a Bluetooth-only D-Input path (drivers/hid/hid-vader4.c, id_table HID_BLUETOOTH_DEVICE(0xd7d7,0x0041)) that self-remaps KEY_ENTER->BTN_Z etc INSIDE THE KERNEL before events ever reach userspace. Exhaustive grep of Main_MiSTer for 'Vader', '0xd7d7', 'BTN_GRIPL', 'BTN_GRIPR', 'BTN_TRIGGER_HAPPY3', 'BTN_C' found ZERO matches \u2014 there is no Vader-specific or Bluetooth-D-Input-specific code in Main_MiSTer; those codes are consumed only via Main_MiSTer's generic joystick/button pipeline once the kernel driver emits them as standard evdev codes."
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "b1b168eb6 (input: add HID driver to fix Flydigi Vader 4 Pro mapping in D-Input over Bluetooth \u2014 this is the code CONFIG_HID_VADER4 gates, carried via 0013-hid-flydigi-vader.patch, device 0xd7d7:0x0041)",
+      "c035c21c0 (xpad: support for extra buttons on Flydigi Vader 3/4/5 Pro in wired and RF dongle modes \u2014 a DIFFERENT code path gated by CONFIG_JOYSTICK_XPAD, carried via 0017-xpad-mister-deltas.patch; this is the actual source of the input.cpp:5867 BTN_Z remap, product-string-matched not device-ID-matched)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Four config changes: (1) CONFIG_JOYSTICK_XPAD y\u2192m: exists in vanilla 6.18 (drivers/input/joystick/Kconfig:294), but OUR linux.config still has =y (board/mister/de10nano/linux.config:238) \u2014 a genuine, unresolved config-parity divergence. (2) CONFIG_HID_VADER4=m added: does NOT exist in vanilla 6.18 (custom driver from commit b1b168eb6, confirmed zero matches for 'VADER' in drivers/hid/Kconfig or hid-ids.h); carried in 0013-hid-flydigi-vader.patch; confirmed matches OUR linux.config:356 exactly (CONFIG_HID_VADER4=m) and the resolved build config. (3) CONFIG_HID_GOOGLE_STADIA_FF reordered (line 2642\u21922646): exists in vanilla 6.18, no functional change, both configs have =y \u2014 trivially matched. (4) CONFIG_PAHOLE_HAS_SPLIT_BTF=y removed: correct decision \u2014 in vanilla it is def_bool (auto-derived from PAHOLE_VERSION>=119, lib/Kconfig.debug:392), should never be manually set in defconfig; confirmed absent from both our linux.config fragment and the resolved build (this build's pahole reports <119). | sonnet-verified: MAJOR CORRECTIONS. (a) userspace_coupling citation was conflating two distinct kernel mechanisms \u2014 see corrected userspace_coupling block; input.cpp:5867's BTN_Z remap belongs to the wired/RF XInput path (dependency c035c21c0/JOYSTICK_XPAD), not this record's Bluetooth CONFIG_HID_VADER4 driver (dependency b1b168eb6), which self-remaps at the kernel level and has no Main_MiSTer-specific citable dependency (grep-confirmed zero Vader/BTN_GRIPL/0xd7d7 references in Main_MiSTer). (b) JOYSTICK_XPAD drift-origin traced: `git blame board/mister/de10nano/linux.config:238` shows CONFIG_JOYSTICK_XPAD=y was set by commit 3dfeaebb ('P1.3: derive the 6.18.38 kernel config...', Michael C. Ferguson, 2026-07-12) \u2014 this POSTDATES the fork's 2026-04-17 y->m change (this very commit, 97a398176), yet the commit message for 3dfeaebb describes deriving the baseline from the stock config snapshot and makes no mention of XPAD. docs/stock-inventory/stock-linux.config:1643 (the aged, ~15-month-old snapshot referenced in provenance Q10) ALSO has CONFIG_JOYSTICK_XPAD=y \u2014 the same aged-baseline-inheritance root cause already flagged for CONFIG_MACVLAN in the pilot record (f0fb626ac). No evidence was found of a deliberate 'keep it built-in' engineering decision; this reads as inherited drift, not intent. One plausible-but-UNCONFIRMED technical consideration for a future decision: 0017-xpad-mister-deltas.patch's GIP-controller exclusion logic (so the out-of-tree xone kmod package claims those devices) runs inside xpad_probe(), and a built-in (=y) driver binds during kernel boot before any userspace module loading, whereas a module (=m) only binds once loaded \u2014 this could matter for boot-time device-claiming order relative to xone, but the exclusion check itself is correct regardless of module/built-in status, and no direct evidence ties our =y choice to this reasoning. Reporting both the evidence (inherited drift) and the open technical question honestly, without asserting either as settled. (c) DISPOSITION CORRECTED needs-verification -> not-evaluated: all four sub-changes are now fully grounded (no verification failure remains), but 3 of 4 are resolved/adopted (HID_VADER4, HID_GOOGLE_STADIA_FF reorder, PAHOLE_HAS_SPLIT_BTF removal) while JOYSTICK_XPAD y-vs-m remains a genuine open config-parity question requiring a maintainer decision \u2014 per the macvlan-pilot precedent, that is exactly the 'not-evaluated' case (real gap, no deliberate-drop decision on record), not a grounding-contract failure. provenance_doc_ref expanded to include the line-312 grouped row (97a398176 is one of its 11 SHAs) in addition to Q10, which only names HID_VADER4/MACVLAN and does not mention the XPAD divergence at all \u2014 this record adds that as a new finding. agrees_with_provenance_doc left true (the doc doesn't contradict anything here, it's simply incomplete on the XPAD point, which this record now supplies). | RESOLVED (user carry decision 2026-07-14/15 (see silent-regressions.md + git d2f2791 follow-ups)): CONFIG_JOYSTICK_XPAD switched y->m in linux.config matching stock; HID_VADER4 already carried via 0013; drift closed."
+}

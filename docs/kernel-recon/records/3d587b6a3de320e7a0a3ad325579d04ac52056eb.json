@@ -1,0 +1,87 @@
+{
+  "sha": "3d587b6a3de320e7a0a3ad325579d04ac52056eb",
+  "subject": "Add rtl8821au, rtl88x2bu, rtl8821cu WiFi drivers.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-24",
+  "subsystem": "net-wireless",
+  "change_type": "vendored-driver-tree",
+  "files": [
+    "drivers/net/wireless/realtek/Kconfig",
+    "drivers/net/wireless/realtek/Makefile",
+    "drivers/net/wireless/realtek/rtl8821au/",
+    "drivers/net/wireless/realtek/rtl88x2bu/",
+    "drivers/net/wireless/realtek/rtl8821cu/"
+  ],
+  "added": 1813056,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "source_branch": "MiSTer-v5.13.12",
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "No impact on our build — this commit is the v5.13.12 instance of the vendored-wifi lineage, not carried forward to our 6.18 kernel build.",
+    "affected_hardware": [
+      "RTL8812A (USB)",
+      "RTL8821A (USB)",
+      "RTL8821C (USB)",
+      "RTL8822B / RTL88x2B (USB)"
+    ],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "vendored ~2021 Realtek HAL trees do not build against 6.18; fork abandoned this tree revision one commit later (3740d5b88) in favor of actively-maintained morrownr forks and mainline coverage.",
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "33ff5146a7248ef86e15bb3b78f1f7516f86ee4f (v5.15 expanded version: adds rtl8188eu/rtl8188fu in addition to this commit's three drivers; supersedes this v5.13 lineage instance)",
+      "mainline rtw88 drivers (RTL8821C, RTL8822B)",
+      "BR2_PACKAGE_RTL8812AU (RTL8812A)",
+      "BR2_PACKAGE_RTL8821AU_MORROWNR (RTL8821A)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "author": "Realtek Semiconductor Corporation",
+    "origin_projects": [
+      "RTL8821AU: Realtek vendor tree, combined RTL8812A/RTL8821A HAL",
+      "RTL88X2BU: Realtek vendor tree, RTL8812B/RTL8822B family",
+      "RTL8821CU: Realtek vendor tree"
+    ]
+  },
+
+  "notes": "v5.13.12 instance of the vendored-wifi lineage. Three-driver precursor to the v5.15 expanded version (33ff5146a), which adds rtl8188eu and rtl8188fu. Not carried as a patch in our build; superseded by v5.15 commit within fork history and ultimately by mainline kernel drivers (rtw88) and out-of-tree BR2 packages (rtl8812au, rtl8821au-morrownr). Comprehensive disposition and coverage analysis in record 33ff5146a7248ef86e15bb3b78f1f7516f86ee4f.json.\n\nsonnet-verified: correct. Branch containment confirmed (remotes/origin/MiSTer-v5.13.12 only, via `git branch --contains`); date (2021-08-24) and subject match `git show -s`; added/removed (1813056/0, 1685 files) match `git show --stat` exactly. This record's affected_hardware/superseded_by correctly distinguish RTL8812A (BR2_PACKAGE_RTL8812AU) from RTL8821A (BR2_PACKAGE_RTL8821AU_MORROWNR) as two separate chip families within the combined rtl8821au tree — unlike its sibling record c70a3fc27 (same driver payload, v5.14 branch), which had mislabeled one of the two as 'RTL8811A' and omitted the RTL8812AU package; that sibling has been corrected to match this record's (already-accurate) framing. No changes needed here. The empty upstream.*/device_ids fields and explicit deferral to 33ff5146a's fuller analysis are an intentional, reasonable 'lineage brief' given three near-identical commits (3d587b6a → c70a3fc27 → 33ff5146a) cover the same driver trees with increasing scope; duplicating the full grounding in each would be redundant, not a grounding gap."
+}

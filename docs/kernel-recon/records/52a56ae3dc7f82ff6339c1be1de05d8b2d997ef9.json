@@ -1,0 +1,66 @@
+{
+  "sha": "52a56ae3dc7f82ff6339c1be1de05d8b2d997ef9",
+  "subject": "mousedev: disable touch to click on DualShock4 and DualSense.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/mousedev.c"
+  ],
+  "added": 15,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0026-input-mousedev-eviocgrab.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/input/mousedev.c:374-401",
+    "vanilla_quote": "static void mousedev_touchpad_touch(struct mousedev *mousedev, int value)\n{\n\tif (!value) {\n\t\tif (mousedev->touch &&\n\t\t    time_before(jiffies,\n\t\t\t\tmousedev->touch + msecs_to_jiffies(tap_time))) {\n\t\t\t/*\n\t\t\t * Toggle left button to emulate tap.\n\t\t\t * We rely on the fact that mousedev_mix always has 0\n\t\t\t * motion packet so we won't mess current position.\n\t\t\t */\n\t\t\tset_bit(0, &mousedev->packet.buttons);\n\t\t\tset_bit(0, &mousedev_mix->packet.buttons);\n\t\t\tmousedev_notify_readers(mousedev, &mousedev_mix->packet);\n\t\t\tmousedev_notify_readers(mousedev_mix,\n\t\t\t\t\t\t&mousedev_mix->packet);\n\t\t\tclear_bit(0, &mousedev->packet.buttons);\n\t\t\tclear_bit(0, &mousedev_mix->packet.buttons);\n\t\t}",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 373",
+  "impact": {
+    "effect_if_absent": "DualShock4 and DualSense touchpad would emit spurious left-click button events every time a finger is lifted from the pad; this breaks touchpad-as-mouse input functionality and causes unintended button presses in cores that use the touchpad as a pointing device",
+    "affected_hardware": [
+      "DualShock4",
+      "DualShock4 variant 2",
+      "DualShock4 Wireless Dongle",
+      "DualSense"
+    ],
+    "device_ids": [
+      "054c:05c4",
+      "054c:09cc",
+      "054c:0ba0",
+      "054c:0ce6"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/input/mouseX (mousedev driver)",
+    "main_mister_ref": "input.cpp:5277-5282 (QUIRK_DS4TOUCH device detection by product ID and touchpad name), input.cpp:5728-5743 (touchpad read as lightgun input)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "moderate"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL (kernel in-tree code)",
+  "notes": "CARRIED in patch 0026-input-mousedev-eviocgrab.patch, forward-ported 2026-07-12 by Michael C. Ferguson (task P1.9-esc). Patch 0026 re-implements the original commit with: (1) type change int→bool for dis_t2c field, (2) added documentation comment, (3) macros extracted for device IDs (MOUSEDEV_VENDOR_ID_SONY, MOUSEDEV_DEVICE_ID_SONY_PS4_CONTROLLER, etc.) instead of inline hex values. Device IDs verified against official hid-ids.h (6.18.38: USB_VENDOR_ID_SONY=0x054c, USB_DEVICE_ID_SONY_PS4_CONTROLLER=0x05c4, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2=0x09cc, USB_DEVICE_ID_SONY_PS4_CONTROLLER_DONGLE=0x0ba0, USB_DEVICE_ID_SONY_PS5_CONTROLLER=0x0ce6). USERSPACE COUPLING is explicit and load-bearing: Main_MiSTer input.cpp explicitly detects these device IDs (line 5277) and names (line 5280) to set QUIRK_DS4TOUCH for reading the controller's touchpad as a pointing device through /dev/input/mouseN (input.cpp:5237 writes ImPS/2 mode, :5728-5743 reads as lightgun or regular pointing device). Vanilla 6.18.38 has no dis_t2c field and unconditionally emulates tap-to-click on all touchpads via set_bit/clear_bit in mousedev_touchpad_touch() (equivalence=contradicted). This is a deliberate MiSTer-specific behaviour change to suppress the synthetic tap-to-click emulation for game controllers, which are used as plain pointing devices (e.g., light gun simulators in arcade cores) rather than traditional laptop touchpads. Patch-provenance.md groups this commit with 2ac0aa1e8 (EVIOCGRAB support) in a single row (0026), but they are functionally independent: dis_t2c suppression works without EVIOCGRAB, and EVIOCGRAB works without dis_t2c. The grouping is accurate for patch-level tracking but this commit analysis is independent per P1.9 worker instructions.",
+  "sonnet-verified": "carry-mapping into 0026 confirmed exact (fork commit's dis_t2c hunks present in applied patch, macro-ized as claimed); device IDs 054c:05c4/09cc/0ba0/0ce6 verified byte-for-byte against /mnt/source/linux/drivers/hid/hid-ids.h (USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER[/_2/_DONGLE], USB_DEVICE_ID_SONY_PS5_CONTROLLER); main_mister_ref spot-checked at input.cpp:5266-5285 (QUIRK_DS4TOUCH assignment) and input.cpp:5727-5743 (touchpad-as-lightgun quirk handling) — both accurate"
+}

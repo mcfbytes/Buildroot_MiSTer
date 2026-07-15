@@ -1,0 +1,70 @@
+{
+  "sha": "ec75e65f848e9e6feabe19fdf25d1d3a16e53128",
+  "subject": "Revert \"xinmotek fix (#11)\"",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-29",
+  "source_branch": "MiSTer-v5.13.12",
+  "subsystem": "hid",
+  "change_type": "revert",
+  "files": [
+    "drivers/hid/hid-quirks.c"
+  ],
+  "added": 0,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "c62f7cd8ed06"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-quirks.c:219",
+    "vanilla_quote": "\t{ HID_USB_DEVICE(USB_VENDOR_ID_XIN_MO, USB_DEVICE_ID_XIN_MO_DUAL_ARCADE), HID_QUIRK_MULTI_INPUT },",
+    "equivalence": "byte-identical"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "No effect — reverting this revert would re-introduce the duplicate quirk from a6165424f, which is functionally harmless but redundant. The device support remains in upstream code regardless.",
+    "affected_hardware": [
+      "Xin-Mo (Xinmotek) Dual Arcade Controller"
+    ],
+    "device_ids": [
+      "16c0:05e1"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "a6165424f2c8b0146eda7014b4e6dfb210fc632a"
+    ],
+    "superseded_by": [
+      "c62f7cd8ed06"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CONTEXT: This revert commit removes the duplicate HID quirk entry that was incorrectly added by commit a6165424f. The correct state (single entry for XIN_MO DUAL_ARCADE with MULTI_INPUT quirk) is maintained in vanilla 6.18 via upstream commit c62f7cd8ed06 (2019-12-01). The revert correctly restores the source tree to its intended state. Both commits (add + revert) are net-zero; neither carries forward any real content. Device support is 100% upstream; no carried patches are needed. The revert occurred 1.5 years after the accidental duplicate was added, suggesting the issue was eventually noticed and corrected by the fork maintainer.\n\nsonnet-verified: CONFIRMED, net-zero pair framing holds. `git show ec75e65f8` confirms this is a clean, mechanical revert of a6165424f's single-line diff (git-generated 'This reverts commit a6165424f...' trailer present), restoring hid-quirks.c to the state it already matches in vanilla. c62f7cd8ed06 existence/ancestry, and the vanilla_file_line:219 / stock-5.15.1:194 locations, independently re-verified in this pass (see a6165424f2c8b0146eda7014b4e6dfb210fc632a.json sonnet-verified note for the full derivation — both records must be read together, they are the add/revert pair). FIXED: same two errors as the paired record — vanilla_file_line corrected from stale ':177' (the commit-time line number from c62f7cd8ed06's own 2019 diff, not the current /mnt/source/linux v6.18.38 tree) to ':219'; disposition corrected 'dropped-obsolete' -> 'dropped-upstream' for consistency with the sibling record and the project's established taxonomy (dropped-upstream = single clean vanilla_sha, byte-identical hunk, no policy/BR2-package intermediary — see f9c64d8cd656 precedent). dependencies.depends_on correctly names a6165424f2c8b0146eda7014b4e6dfb210fc632a. NOTE FOR ORCHESTRATOR: downstream summary tables device-support.md:163 and reconciliation.md:128 still say 'dropped-obsolete' for this sha and need regeneration/edit to match. source_branch confirmed present and correct: 'MiSTer-v5.13.12' — `git merge-base --is-ancestor ec75e65f8 origin/MiSTer-v5.13.12` = yes, `--is-ancestor ec75e65f8 origin/MiSTer-v5.15` = no."
+}

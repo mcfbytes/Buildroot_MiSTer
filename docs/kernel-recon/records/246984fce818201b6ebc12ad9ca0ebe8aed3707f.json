@@ -1,0 +1,65 @@
+{
+  "sha": "246984fce818201b6ebc12ad9ca0ebe8aed3707f",
+  "subject": "Enable SPI on LTC. Use HPS LED for SD card activity.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2018-02-06",
+  "subsystem": "dts + spi",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts",
+    "drivers/spi/spidev.c"
+  ],
+  "added": 22,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [
+      "8fad805bdc52"
+    ],
+    "vanilla_file_line": "drivers/spi/spidev.c:732",
+    "vanilla_quote": "{ .compatible = \"rohm,dh2228fv\", .data = &spidev_of_check },",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.1 table rows (de10-nano DTS group + spidev hunk), §N2",
+  "impact": {
+    "effect_if_absent": "Userspace loses SD card activity LED indicator; /dev/spidev1.0 for add-on brightness control becomes unavailable",
+    "affected_hardware": [
+      "DE10-Nano FPGA board (Terasic)"
+    ],
+    "device_ids": [
+      "portb:11",
+      "portb:24"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/sys/class/leds/hps_led0/brightness_hw_changed (LED); /dev/spidev1.0 (SPI)",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4052; Main_MiSTer/brightness.cpp:74"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "carried"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED COMMIT — patch-provenance.md groups this with 12 other commits (aa8afe109 through 077c2c317) in a single DTS row. SPLIT DISPOSITION: (1) LED trigger change 'heartbeat'->'mmc0' CARRIED in 0004 (leds/hps0: label=\"hps_led0\", gpios=<&portb 24 GPIO_ACTIVE_HIGH>, linux,default-trigger=\"mmc0\"); drives hps_led0 brightness_hw_changed for Main_MiSTer SD activity indicator (Main_MiSTer/input.cpp:4052 opens /sys/class/leds/hps_led0/brightness_hw_changed). (2) ltcmode GPIO LED NOT carried in 0004. (3) SPI1 &altspi node DROPPED; retargeted to 'rohm,dh2228fv' compatible in 0004 DTS, which vanilla 6.18.38 spidev already accepts (8fad805bdc52, 2012). (4) spidev.c hunk (altspi addition) DROPPED — vanilla's generic compatible list is sufficient; grep of Main_MiSTer confirms zero references to the string \"altspi\" anywhere in userspace, only to the resulting device node (brightness.cpp:74: open(\"/dev/spidev1.0\", ...)), so there is zero userspace coupling to the fork's driver hunk being dropped -- equivalence for the SPI piece is graded superseded-better (was 'partial').\n\nSONNET-CORRECTED, ltcmode (2): first-pass record flagged 'ltcmode GPIO LED completely missing without documented justification' as an unresolved omission and graded overall equivalence 'partial' on that basis. Verified against the fork's OWN history and this IS resolved -- it is a non-shipped leftover, not a real omission:\n  (a) What the node did in the fork DTS: this commit (246984fce818201b6ebc12ad9ca0ebe8aed3707f, 2018-02-06) added a top-level `ltcmode { compatible = \"gpio-leds\"; ltcsw { label = \"ltc_sw\"; gpios = <&portb 11 0>; default-state = \"off\"; }; };` node -- a GPIO output (not an input/switch despite the 'ltcsw' label) tied to portb pin 11, presumably to drive an LTC-mode indicator/select line on an add-on board.\n  (b) Absence confirmed at THREE levels: (i) the fork's own VERY NEXT commit touching this file, 1337de1fd4145e4dff2b1e73c0f623a718e7d6ef ('Switch to i2c-gpio driver for smbus compatibility.', 2018-02-10, four days later), wraps the entire ltcmode node in a C comment (`/* ... */`) -- `git show 1337de1fd -- arch/.../socfpga_cyclone5_de10_nano.dts` shows the exact diff turning `-\\n\\tltcmode {` into `+/*\\n\\tltcmode {` ... `+*/`. (ii) `git show MiSTer-v5.15:arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts` (the fork's current tip, i.e. everything ever actually released) still has it commented out; `git log --all -G'ltcmode' -- arch/.../socfpga_cyclone5_de10_nano.dts` across every ref returns only the three duplicate 'Enable SPI on LTC...' commits (246984fce on MiSTer-v5.15, plus 24edd52ad/61c16bbbb, the same author/date/diff cherry-picked onto the v5.14 and v5.13.12 branches) -- it is NEVER un-commented anywhere in the fork's history. A C-commented DT node never reaches the compiler, so it never existed in any DTB the fork ever built or shipped. (iii) `grep -n ltcmode docs/stock-inventory/stock.dts` (the DTB decompiled from a running stock MiSTer) returns nothing -- confirms stock's actual runtime device tree never had this node either, consistent with (ii): stock could not inherit a node the fork itself disabled 4 days after adding it. So there is no parity gap between our patch 0004 and either the fork's shipped state or stock's shipped state -- all three agree the node is absent.\n  (c) Userspace: `grep -rn 'ltcmode|ltcsw|ltc_sw' Main_MiSTer` and `grep -rn LTC Main_MiSTer` (case-insensitive) return zero relevant hits -- the only 'LTC'-substring matches are unrelated (FLTCOEF scaler-coefficient command, altcfg() alt-config helper, BLTCON Amiga blitter register comments). Nothing in Main_MiSTer or scripts references an ltcmode/ltc_sw sysfs path.\n  Verdict: this is a NOTE (fork-authored dead code the fork itself killed within days, never shipped, no consumer), not a finding of a real omission. Severity for the overall commit stays feature-loss because the two genuinely-carried pieces (LED trigger, SPI/spidev retarget) would be real losses if dropped -- the ltcmode piece contributes zero severity since it was never live."
+  ,
+  "sonnet-verified": "corrected -- the ltcmode omission is not a finding: the fork's own next commit (1337de1fd, 4 days later) C-comments the node out and it is never un-commented in any fork branch through the MiSTer-v5.15 tip; stock.dts (decompiled runtime DTB) never had it either; Main_MiSTer has zero references. Downgraded from an undocumented-omission finding to an explained note, and the SPI/spidev sub-equivalence upgraded partial -> superseded-better on confirmed zero userspace coupling to the dropped driver hunk."
+}

@@ -69,3 +69,19 @@ Records land in `records/<sha>.json`. Tier-2 = Sonnet 5 only (user directive: no
 - remaining open: 60e08955f mute/BTN_Z (misclassified, cosmetic, no consumer) — user decision pending
 - next: full `make all` before flashing (kmod-package trap does not apply — same kernel version);
   Phase 3 audit; provenance-doc corrections (15 rows)
+
+## PHASE 3 AUDIT COMPLETE (2026-07-15, user-directed full coverage)
+- 8 Sonnet batches audited ALL 50 remaining tier-1-only records (user chose full coverage over §6's
+  10% sample) → tier-2 verification now 123/123. Invariants re-verified, 0 problems.
+- No disposition reversals of substance; corrections were citation precision, vocabulary, and
+  coverage accuracy. Notable: 6 more fabricated/false-match citations caught (map_paddle_btn ×2,
+  brightness.cpp, video.cpp:~3881, MiSTer.ini:2177, device ID 045e:02ea); xinmotek pair
+  re-dispositioned dropped-obsolete→dropped-upstream with verified SHA; chip-family mislabel +
+  bogus ID fixed in c70a3fc27; two records aligned to the mainline-first realtek reality.
+- Cross-record contradictions resolved: ControllaBLE 1209:FACA (vanilla-scope vs our-tree — both right);
+  0015 record updated for 0034's A/B change.
+- Side findings for maintainers: 0012-hid-fanatec.patch has a stray guncon3 provenance comment
+  (cosmetic patch-file cleanup); provenance-doc corrections list unchanged (15 rows).
+- reduce.py: no-orphan scan extended to dependencies.superseded_by (0031 capability-carry).
+- Final: 49 carried / 44 dropped-deliberate / 21 dropped-upstream / 8 dropped-obsolete /
+  1 misclassified (60e08955f mute — open user decision).

@@ -14,7 +14,7 @@
   "removed": 0,
   "is_backport_of_vanilla": false,
 
-  "disposition": "dropped-obsolete",
+  "disposition": "dropped-upstream",
   "carried_patch": null,
   "carried_mode": null,
 
@@ -22,7 +22,7 @@
     "vanilla_shas": [
       "c62f7cd8ed06"
     ],
-    "vanilla_file_line": "drivers/hid/hid-quirks.c:177",
+    "vanilla_file_line": "drivers/hid/hid-quirks.c:219",
     "vanilla_quote": "\t{ HID_USB_DEVICE(USB_VENDOR_ID_XIN_MO, USB_DEVICE_ID_XIN_MO_DUAL_ARCADE), HID_QUIRK_MULTI_INPUT },",
     "equivalence": "byte-identical"
   },
@@ -64,5 +64,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "CRITICAL FINDING: This commit adds an exact duplicate HID quirk entry for USB_VENDOR_ID_XIN_MO / USB_DEVICE_ID_XIN_MO_DUAL_ARCADE. The device was already present in stock 5.15.1 at line 194, introduced by upstream commit c62f7cd8ed06 (2019-12-01). The duplicate causes no functional harm (HID subsystem handles duplicates safely) but is a no-op. The device remains supported in vanilla 6.18 at line 219 with identical quirk flags. Revert commit ec75e65f correctly removed this duplicate 1.5 years later. Not carried in our build; device support is purely upstream. Main_MiSTer references VID 0x16c0 but for the Sinden Lightgun (PIDs 0x0f01/0x0f02/0x0f38/0x0f39), not the XIN_MO arcade stick (PID 0x05e1)."
+  "notes": "CRITICAL FINDING: This commit adds an exact duplicate HID quirk entry for USB_VENDOR_ID_XIN_MO / USB_DEVICE_ID_XIN_MO_DUAL_ARCADE. The device was already present in stock 5.15.1 at line 194, introduced by upstream commit c62f7cd8ed06 (2019-12-01). The duplicate causes no functional harm (HID subsystem handles duplicates safely) but is a no-op. The device remains supported in vanilla 6.18 at line 219 with identical quirk flags. Revert commit ec75e65f correctly removed this duplicate 1.5 years later. Not carried in our build; device support is purely upstream. Main_MiSTer references VID 0x16c0 but for the Sinden Lightgun (PIDs 0x0f01/0x0f02/0x0f38/0x0f39), not the XIN_MO arcade stick (PID 0x05e1).\n\nsonnet-verified: CONFIRMED with two amendments. (1) c62f7cd8ed066a93a243643ebf57ca99f754388e exists in /mnt/source/linux ('HID: Add quirk for Xin-Mo Dual Controller', Priit Laes, 2019-12-01) and `git merge-base --is-ancestor c62f7cd8ed06 v6.18.38` confirms it is an ancestor. (2) The literal added line in `git show a6165424f` is byte-for-byte the fork's own pre-existing entry two lines above (`{ HID_USB_DEVICE(USB_VENDOR_ID_XIN_MO, USB_DEVICE_ID_XIN_MO_DUAL_ARCADE), HID_QUIRK_MULTI_INPUT},` — only a cosmetic missing-space-before-brace differs), confirming the 'duplicate add of an already-present entry' framing verbatim. (3) FIXED: `upstream.vanilla_file_line` was 'drivers/hid/hid-quirks.c:177' — that is the line number in c62f7cd8ed06's OWN 2019 diff context, not in the /mnt/source/linux v6.18.38 checkout; grepped and corrected to line 219 (confirmed via `grep -n XIN_MO_DUAL_ARCADE drivers/hid/hid-quirks.c` in the v6.18.38 tree). Stock 5.15.1 line 194 independently confirmed via grep in /mnt/source/linux-5.15.1. (4) FIXED disposition: 'dropped-obsolete' -> 'dropped-upstream'. This record satisfies the grounding-contract dropped-upstream test exactly (file:line cited in /mnt/source/linux, matching hunk quoted, vanilla confirmed to do the identical thing) with a single clean vanilla_sha and no fork-internal or BR2-package intermediary — the same pattern as precedent record f9c64d8cd656 (hid-nintendo div-by-0, also a case where the fork re-added something vanilla already had), which was graded dropped-upstream. Per this project's established taxonomy (cross-checked against device-support.md/reconciliation.md dropped-deliberate examples like 0d8641a2b, which reserve dropped-deliberate/dropped-obsolete for cases requiring a policy choice among alternative coverage paths, e.g. ADR-governed driver selection or BR2-package substitution), a pure single-vanilla-SHA byte-identical duplicate belongs in dropped-upstream, not dropped-obsolete. NOTE FOR ORCHESTRATOR: downstream summary tables device-support.md:163 and reconciliation.md:124 still say 'dropped-obsolete' for this sha and need regeneration/edit to match. source_branch confirmed present and correct: 'MiSTer-v5.13.12' — `git merge-base --is-ancestor a6165424f origin/MiSTer-v5.13.12` = yes, `--is-ancestor a6165424f origin/MiSTer-v5.15` = no."
 }

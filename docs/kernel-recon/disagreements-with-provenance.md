@@ -1,6 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-07-15 06:48 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
+Generated 2026-07-15 07:16 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `60e08955f` dualsense: give mute button and led to system.
 
@@ -99,7 +99,7 @@ FUNCTIONAL ASSESSMENT: This commit adds two RTC devices (&i2c1 rtc_at_68 and rtc
 
 - disposition: **dropped-obsolete** | severity cosmetic | silent
 - doc ref: 3.6 Class E — Realtek USB WiFi (groups rtl8821au vendors/resyncs but does not list this commit)
-- notes: rtl8821au was vendored in the Linux-Kernel_MiSTer fork but is NOT present in vanilla 6.18.38. It has been extracted to an out-of-tree Buildroot package (rtl8821au-morrownr, sourced from morrownr's actively-maintained fork) in P3.1. The warning suppressions (-Wno-cast-function-type, -Wno-enum-conversion) added here are already present in the current morrownr upstream Makefile (verified via git clone of morrownr/8821au-20210708 at HEAD). This commit is a follow-up compiler-flag fix applied during the kernel fork's active development but is not carried as a separate patch since the driver is no l…
+- notes: rtl8821au was vendored in the Linux-Kernel_MiSTer fork but is NOT present in vanilla 6.18.38. It has been extracted to an out-of-tree Buildroot package (rtl8821au-morrownr, sourced from morrownr's actively-maintained fork) in P3.1. The warning suppressions (-Wno-cast-function-type, -Wno-enum-conversion) added here are already present in the current morrownr upstream Makefile (confirmed by reading /mnt/source/Buildroot_MiSTer/output/build/rtl8821au-morrownr-3a7cdb591b64d99d2670e455bde67c8ab338525b/Makefile — has ccflags-y += -Wno-cast-function-type at one line and -Wno-enum-conversion at anothe…
 
 
 **Total: 15 disagreements.**

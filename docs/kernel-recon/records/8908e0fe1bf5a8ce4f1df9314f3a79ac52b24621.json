@@ -32,6 +32,7 @@
     "effect_if_absent": "Fanatec HID driver module (hid-fanatec.ko) fails to compile correctly; module dependencies not properly resolved, resulting in build failure or incorrect module name/symbol exports",
     "affected_hardware": [
       "Fanatec CSL Elite Wheelbase",
+      "Fanatec CSL Elite PS4 Wheelbase",
       "Fanatec CSR Elite Wheelbase",
       "Fanatec ClubSport Wheelbase V2/V2.5",
       "Fanatec Podium Wheelbase DD1/DD2",
@@ -72,5 +73,6 @@
     "duplicate_of": []
   },
   "license_provenance": "GPL-2.0 (Fanatec driver headers and implementation; copyright gotzl/hid-fanatecff upstream project)",
-  "notes": "Build system fix for Fanatec wheel driver (HID). Changes Makefile to use composite module pattern: obj-$(CONFIG_HID_FTEC) += hid-fanatec.o with hid-fanatec-$(CONFIG_HID_FTEC) += hid-ftec.o hid-ftecff.o. This replaces the original incorrect pattern that listed both object files directly. Patch 0012-hid-fanatec.patch incorporates this fix in its Makefile hunk (lines 76-77), explicitly folding commits e82a5928, 8908e0fe, and ed8f8e6ce together. ESCALATION NOTE: patch-provenance.md groups this commit with e82a5928 and ed8f8e6ce in a single row (line 360), violating the one-commit-per-row contract; each of the three commits should be separately evaluated and listed."
+  "notes": "Build system fix for Fanatec wheel driver (HID). Changes Makefile to use composite module pattern: obj-$(CONFIG_HID_FTEC) += hid-fanatec.o with hid-fanatec-$(CONFIG_HID_FTEC) += hid-ftec.o hid-ftecff.o. This replaces the original incorrect pattern that listed both object files directly. Patch 0012-hid-fanatec.patch incorporates this fix in its Makefile hunk (lines 76-77), explicitly folding commits e82a5928, 8908e0fe, and ed8f8e6ce together. ESCALATION NOTE: patch-provenance.md groups this commit with e82a5928 and ed8f8e6ce in a single row (line 360), violating the one-commit-per-row contract; each of the three commits should be separately evaluated and listed.",
+  "sonnet-verified": "amended \u2014 affected_hardware list was incomplete (missing 'Fanatec CSL Elite PS4 Wheelbase' despite its ID 0eb7:0005 being present in device_ids); added. Makefile diff verified byte-identical between fork commit and the corresponding hunk in 0012-hid-fanatec.patch (composite hid-fanatec.ko module pattern). Grouped-row escalation note against patch-provenance.md:360 confirmed accurate (three commits collapsed into one row)."
 }

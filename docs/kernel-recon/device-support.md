@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-07-15 07:16 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -12,9 +12,9 @@ Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each d
 | `045e:02d1` | `a2242dd85` (carried) |
 | `045e:02dd` | `a2242dd85` (carried), `c708f2222` (dropped-deliberate) |
 | `045e:02e3` | `a2242dd85` (carried), `af27afc4c` (dropped-upstream), `8270e78f4` (dropped-deliberate) |
-| `045e:02e6` | `817ace70b` (carried), `4ddd8ec3d` (dropped-deliberate), `c708f2222` (dropped-deliberate), `d776ddb4e` (dropped-deliberate), `d5beb5aa6` (dropped-obsolete) |
-| `045e:02ea` | `a2242dd85` (carried), `e2eb39e6f` (dropped-deliberate) |
-| `045e:02fe` | `817ace70b` (carried), `4ddd8ec3d` (dropped-deliberate), `c708f2222` (dropped-deliberate), `d776ddb4e` (dropped-deliberate), `d5beb5aa6` (dropped-obsolete) |
+| `045e:02e6` | `817ace70b` (carried), `4ddd8ec3d` (dropped-deliberate), `c708f2222` (dropped-deliberate), `d5beb5aa6` (dropped-deliberate), `d776ddb4e` (dropped-deliberate) |
+| `045e:02ea` | `a2242dd85` (carried) |
+| `045e:02fe` | `817ace70b` (carried), `4ddd8ec3d` (dropped-deliberate), `c708f2222` (dropped-deliberate), `d5beb5aa6` (dropped-deliberate), `d776ddb4e` (dropped-deliberate) |
 | `045e:0b00` | `a2242dd85` (carried), `af27afc4c` (dropped-upstream), `409f81077` (dropped-deliberate), `8270e78f4` (dropped-deliberate), `e2eb39e6f` (dropped-deliberate) |
 | `045e:0b0a` | `af27afc4c` (dropped-upstream) |
 | `045e:0b12` | `a2242dd85` (carried), `af27afc4c` (dropped-upstream) |
@@ -74,22 +74,22 @@ Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each d
 | `0b05:1874` | `143ce187e` (dropped-deliberate) |
 | `0b05:19aa` | `143ce187e` (dropped-deliberate) |
 | `0b9a:016a` | `e503d193c` (carried) |
-| `0b9a:0800` | `9b9aebfac` (carried) |
+| `0b9a:0800` | `8179ac736` (carried), `9b9aebfac` (carried) |
 | `0bda:0179` | `0d8641a2b` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `bdedb82d2` (dropped-deliberate), `109599db7` (dropped-obsolete) |
-| `0bda:0811` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
-| `0bda:0820` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
-| `0bda:0821` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
-| `0bda:0823` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
+| `0bda:0811` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
+| `0bda:0820` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
+| `0bda:0821` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
+| `0bda:0823` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:1a2b` | `e2c082ef9` (dropped-upstream) |
 | `0bda:2102` | `143ce187e` (dropped-deliberate) |
 | `0bda:8179` | `0d8641a2b` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `bdedb82d2` (dropped-deliberate), `109599db7` (dropped-obsolete) |
 | `0bda:8731` | `3740d5b88` (dropped-deliberate) |
-| `0bda:8811` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
-| `0bda:8812` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate) |
+| `0bda:8811` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate) |
+| `0bda:8812` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:881a` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:881b` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:881c` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
-| `0bda:8822` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
+| `0bda:8822` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:a811` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:b812` | `143ce187e` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:b81a` | `143ce187e` (dropped-deliberate) |
@@ -110,21 +110,20 @@ Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each d
 | `0e8d:760a` | `7436e2d6e` (dropped-deliberate) |
 | `0e8d:760b` | `7436e2d6e` (dropped-deliberate) |
 | `0e8f:0003` | `0d7b4fc7e` (dropped-deliberate) |
-| `0eb7:0001` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0004` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0005` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0006` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0007` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0011` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0020` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:0e03` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:183b` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
-| `0eb7:6204` | `8908e0fe1` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0001` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0004` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0005` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0006` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0007` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0011` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0020` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:0e03` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:183b` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
+| `0eb7:6204` | `8908e0fe1` (carried), `e82a59280` (carried), `ed8f8e6ce` (carried) |
 | `0f0d:*` | `5a7965488` (dropped-deliberate) |
 | `0f30:0111` | `0d7b4fc7e` (dropped-deliberate) |
 | `0x04ca:0x3802 (mt7921)` | `40120d090` (dropped-upstream) |
 | `0x0b05:0x190e (8761bu)` | `40120d090` (dropped-upstream) |
-| `0x0b9a:0x0800` | `8179ac736` (carried) |
 | `0x0bda:0x0811` | `993b82e31` (dropped-deliberate) |
 | `0x0bda:0x0821` | `993b82e31` (dropped-deliberate) |
 | `0x0bda:0x0823` | `993b82e31` (dropped-deliberate) |
@@ -132,16 +131,9 @@ Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each d
 | `0x0bda:0x881a` | `993b82e31` (dropped-deliberate) |
 | `0x0bda:0x881b` | `993b82e31` (dropped-deliberate) |
 | `0x0bda:0x881c` | `993b82e31` (dropped-deliberate) |
-| `0x0eb7:0x0001` | `e82a59280` (carried) |
-| `0x0eb7:0x0004` | `e82a59280` (carried) |
-| `0x0eb7:0x0005` | `e82a59280` (carried) |
-| `0x0eb7:0x0006` | `e82a59280` (carried) |
-| `0x0eb7:0x0007` | `e82a59280` (carried) |
-| `0x0eb7:0x0011` | `e82a59280` (carried) |
-| `0x0eb7:0x0020` | `e82a59280` (carried) |
-| `0x0eb7:0x0e03` | `e82a59280` (carried) |
-| `0x0eb7:0x183b` | `e82a59280` (carried) |
-| `0x0eb7:0x6204` | `e82a59280` (carried) |
+| `0x0bda:0xb812` | `993b82e31` (dropped-deliberate) |
+| `0x0bda:0xb81a` | `993b82e31` (dropped-deliberate) |
+| `0x0bda:0xb82c` | `993b82e31` (dropped-deliberate) |
 | `0x410c (bcm43430b0)` | `40120d090` (dropped-upstream) |
 | `0x51` | `1337de1fd` (carried) |
 | `0x68` | `1337de1fd` (carried), `e40563ae1` (carried) |
@@ -160,7 +152,7 @@ Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each d
 | `148f:760c` | `7436e2d6e` (dropped-deliberate) |
 | `148f:760d` | `7436e2d6e` (dropped-deliberate) |
 | `1532:*` | `5a7965488` (dropped-deliberate) |
-| `16c0:05e1` | `a6165424f` (dropped-obsolete), `ec75e65f8` (dropped-obsolete) |
+| `16c0:05e1` | `a6165424f` (dropped-upstream), `ec75e65f8` (dropped-upstream) |
 | `18d1:9400` | `9521b003c` (dropped-upstream) |
 | `18d8:0002` | `70e391b81` (carried) |
 | `2001:330f` | `0d8641a2b` (dropped-deliberate) |

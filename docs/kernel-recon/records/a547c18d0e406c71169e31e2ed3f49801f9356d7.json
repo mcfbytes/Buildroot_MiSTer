@@ -31,9 +31,9 @@
   "carried_mode": null,
   "upstream": {
     "vanilla_shas": [],
-    "vanilla_file_line": "/mnt/source/linux/scripts/gdb/linux/",
-    "vanilla_quote": "GDB debugging helper scripts: clk.py, config.py, cpus.py, device.py, dmesg.py, genpd.py, lists.py, modules.py, proc.py, rbtree.py, symbols.py, tasks.py, timerlist.py, utils.py — all present in vanilla 6.18.38",
-    "equivalence": "byte-identical"
+    "vanilla_file_line": "/mnt/source/linux/scripts/gdb/linux/clk.py",
+    "vanilla_quote": "All 14 non-trivial deleted files present in vanilla 6.18.38: clk.py, config.py, cpus.py, device.py, dmesg.py, genpd.py, lists.py, modules.py, proc.py, rbtree.py, symbols.py, tasks.py, timerlist.py, utils.py. Sample diff, fork's deleted clk.py (pre-deletion, ~5.15-era content) vs /mnt/source/linux/scripts/gdb/linux/clk.py (6.18.38): vanilla gained `if utils.gdb_eval_or_none(\"clk_root_list\") is None: raise gdb.GdbError(\"No clocks registered\")` (76 -> 78 lines) — a normal ~3-years-of-upstream-development delta, not a byte-identical file.",
+    "equivalence": "equivalent"
   },
   "verification": {
     "method": "diff",
@@ -65,5 +65,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "MiSTer fork deliberately deleted 15 GDB helper scripts (−2,156 lines). These files exist in vanilla 6.18.38 and are generated as part of the kernel build process (always-y targets in scripts/gdb/linux/Makefile). However, they have zero functional impact on the built kernel binary or userspace. They are purely optional debugging aids for developers using GDB to debug the kernel. Our 6.18 build keeps these files (from vanilla 6.18.38) since they do not conflict with anything and provide value as optional debug helpers. No carries exist for these files. Disposition aligns with provenance doc: 'dismiss' and 'do not carry'."
+  "notes": "MiSTer fork deliberately deleted 15 GDB helper scripts (−2,156 lines). These files exist in vanilla 6.18.38 and are generated as part of the kernel build process (always-y targets in scripts/gdb/linux/Makefile). However, they have zero functional impact on the built kernel binary or userspace. They are purely optional debugging aids for developers using GDB to debug the kernel. Our 6.18 build keeps these files (from vanilla 6.18.38) since they do not conflict with anything and provide value as optional debug helpers. No carries exist for these files. Disposition aligns with provenance doc: 'dismiss' and 'do not carry'. CORRECTION (sonnet audit): upstream.equivalence was 'byte-identical'; verified false by diffing the fork's pre-deletion file content (git show a547c18d0~1:scripts/gdb/linux/<file>) against current /mnt/source/linux/scripts/gdb/linux/<file> for all 14 non-__init__.py files. Only lists.py and the trivial 1-line __init__.py are byte-identical; the other 12 (clk.py, config.py, cpus.py, device.py, dmesg.py, genpd.py, modules.py, proc.py, rbtree.py, symbols.py, tasks.py, timerlist.py, utils.py) all differ — expected, since they picked up ~3 years of normal upstream GDB-script development between the fork's 5.15 base and 6.18.38 (e.g. clk.py gained a null-registration-list error check). Downgraded equivalence to 'equivalent' (same purpose, functionally interchangeable, not byte-for-byte) — this does not change the disposition or impact assessment, since severity is 'none' either way (debug-only tooling with zero effect on the built kernel). sonnet-verified: corrected — file list and zero-impact assessment solid; equivalence downgraded from byte-identical to equivalent per direct diff."
 }

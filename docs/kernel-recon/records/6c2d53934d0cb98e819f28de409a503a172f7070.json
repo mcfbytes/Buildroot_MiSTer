@@ -17,9 +17,9 @@
   "carried_mode": null,
   "upstream": {
     "vanilla_shas": [],
-    "vanilla_file_line": null,
-    "vanilla_quote": null,
-    "equivalence": "superseded-better"
+    "vanilla_file_line": "arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:681-690",
+    "vanilla_quote": "i2c1: i2c@ffc05000 { #address-cells = <1>; #size-cells = <0>; compatible = \"snps,designware-i2c\"; reg = <0xffc05000 0x1000>; resets = <&rst I2C1_RESET>; clocks = <&l4_sp_clk>; interrupts = <0 159 0x4>; status = \"disabled\"; }; -- no clock-frequency property, same as our board DTS.",
+    "equivalence": "equivalent"
   },
   "verification": {
     "method": "source-grep",
@@ -53,5 +53,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "The fork commit added clock-frequency to i2c1 in the shared socfpga.dtsi file. When forward-porting the de10-nano board DTS to 6.18.38 (P1.7, commit 0004-dts-de10nano-MiSTer.patch), this hunk was deliberately omitted. Rationale (verbatim from patch commit message, lines 77-81): 'The fork also carried a hunk in the SHARED socfpga.dtsi (i2c1 clock-frequency). It is NOT carried: i2c1 is disabled on this board in stock and here, so the property is never read, and dropping it keeps this patch off a file shared by every socfpga board.' Vanilla 6.18.38 (arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:681-690) also does not include clock-frequency on i2c1, confirming the property is not upstream. Since i2c1 remains disabled on the MiSTer board in both stock and our build, this property has zero runtime effect. Disposition is 'dropped-deliberate' to avoid modifying the shared socfpga.dtsi file unnecessarily."
+  "notes": "The fork commit added clock-frequency to i2c1 in the shared socfpga.dtsi file. When forward-porting the de10-nano board DTS to 6.18.38 (P1.7, commit 0004-dts-de10nano-MiSTer.patch), this hunk was deliberately omitted. Rationale (verbatim from patch commit message, lines 77-81): 'The fork also carried a hunk in the SHARED socfpga.dtsi (i2c1 clock-frequency). It is NOT carried: i2c1 is disabled on this board in stock and here, so the property is never read, and dropping it keeps this patch off a file shared by every socfpga board.' Vanilla 6.18.38 (arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:681-690) also does not include clock-frequency on i2c1, confirming the property is not upstream. Since i2c1 remains disabled on the MiSTer board in both stock and our build, this property has zero runtime effect. Disposition is 'dropped-deliberate' to avoid modifying the shared socfpga.dtsi file unnecessarily.\n\nsonnet-verified: PASS with one vocabulary fix. Both quotes re-verified against live checkouts: (1) the patch-0004 commit-message quote ('The fork also carried a hunk in the SHARED socfpga.dtsi (i2c1 clock-frequency). It is NOT carried: i2c1 is disabled on this board in stock and here, so the property is never read, and dropping it keeps this patch off a file shared by every socfpga board.') is verbatim-exact at 0004-dts-de10nano-MiSTer.patch:77-80. (2) vanilla socfpga.dtsi's i2c1 node is exactly at lines 681-690 as cited, and confirmed to carry no clock-frequency property. Vocabulary fix: 'equivalence' was 'superseded-better' with vanilla_file_line/vanilla_quote left null in the structured upstream object (the actual citation lived only in notes) -- inconsistent, and 'superseded-better' overstates the relationship: nothing supersedes anything here, vanilla simply never added clock-frequency to i2c1 either, so the fork's dropped property and vanilla's i2c1 node produce byte-identical DTB output for this node. Changed to 'equivalent' and populated upstream.vanilla_file_line/vanilla_quote with the citation. Disposition, severity, and all other fields unchanged -- correct as written."
 }

@@ -31,7 +31,7 @@
     "contradiction": false
   },
   "agrees_with_provenance_doc": true,
-  "provenance_doc_ref": "docs/patch-provenance.md: e503d193c Namco GunCon 2 → 0010-hid-guncon2.patch",
+  "provenance_doc_ref": "docs/patch-provenance.md: e503d193c Namco GunCon 2 \u2192 0010-hid-guncon2.patch",
   "impact": {
     "effect_if_absent": "Namco GunCon 2 USB lightgun will not enumerate as an input device; Main_MiSTer lightgun calibration and quirk setup will be skipped for this device",
     "affected_hardware": [
@@ -59,5 +59,6 @@
     "duplicate_of": []
   },
   "license_provenance": "GPL-2.0; copyright beardypig; based on PXRC driver by Marcus Folkesson",
-  "notes": "Kernel driver is essential HID input driver for USB lightgun enumeration. Not in vanilla 6.18.38 (verified: no hid-guncon2.c, no USB_VENDOR_ID_NAMCO/USB_PRODUCT_ID_NAMCO_GUNCON2 in drivers/hid/hid-ids.h). Carried as 0010-hid-guncon2.patch (ported from 5.15 to 6.18.38, 2026-07-12); re-ported with style fixes (// comments → /* */, brace placement). Userspace coupling confirmed: Main_MiSTer explicitly detects VID:PID 0x0b9a:0x016a and sets QUIRK_LIGHTGUN_CRT + guncal[] calibration values (X_MIN=145, X_MAX=700, Y_MIN=25, Y_MAX=245 from driver defaults). Failure mode is silent: without this driver, device detection in input.cpp fails and lightgun feature silently unavailable. CONFIG_HID_GUNCON2=y in our linux.config (board/mister/de10nano/linux.config). Defconfig change is cross-architecture (arch/arm/configs/MiSTer_defconfig only — MiSTer is ARM-only platform). No soft dependency on other patches."
+  "notes": "Kernel driver is essential HID input driver for USB lightgun enumeration. Not in vanilla 6.18.38 (verified: no hid-guncon2.c, no USB_VENDOR_ID_NAMCO/USB_PRODUCT_ID_NAMCO_GUNCON2 in drivers/hid/hid-ids.h). Carried as 0010-hid-guncon2.patch (ported from 5.15 to 6.18.38, 2026-07-12); re-ported with style fixes (// comments \u2192 /* */, brace placement). Userspace coupling confirmed: Main_MiSTer explicitly detects VID:PID 0x0b9a:0x016a and sets QUIRK_LIGHTGUN_CRT + guncal[] calibration values (X_MIN=145, X_MAX=700, Y_MIN=25, Y_MAX=245 from driver defaults). Failure mode is silent: without this driver, device detection in input.cpp fails and lightgun feature silently unavailable. CONFIG_HID_GUNCON2=y in our linux.config (board/mister/de10nano/linux.config). Defconfig change is cross-architecture (arch/arm/configs/MiSTer_defconfig only \u2014 MiSTer is ARM-only platform). No soft dependency on other patches.",
+  "sonnet-verified": "confirmed clean \u2014 carry mapping to 0010-hid-guncon2.patch verified (Kconfig/Makefile/hid-ids.h hunks byte-match the fork commit; driver body is a faithful style-only re-port, // -> /* */ and brace/indent changes only). Device ID 0b9a:016a re-derived from fork's hid-ids.h addition. Main_MiSTer input.cpp:5361-5371 citation verified verbatim, including exact guncal[] values (X_MIN=145/X_MAX=700/Y_MIN=25/Y_MAX=245). License provenance (beardypig, based on PXRC by Marcus Folkesson) verified against driver header. Absence from vanilla 6.18.38 hid-ids.h confirmed. No amendments needed."
 }

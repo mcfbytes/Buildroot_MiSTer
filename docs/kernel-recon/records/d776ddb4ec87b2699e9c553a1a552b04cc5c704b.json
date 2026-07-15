@@ -53,9 +53,9 @@
   },
 
   "forward_port": {
-    "applies_to_6_18": true,
+    "applies_to_6_18": false,
     "conflicts": null,
-    "effort": "none"
+    "effort": null
   },
 
   "dependencies": {
@@ -68,5 +68,5 @@
 
   "license_provenance": null,
 
-  "notes": "MiSTer's 5.15 fork vendored the original medusalix/xone driver and patched in per-PID firmware support (this commit). However, the actively-maintained dlundqvist/xone fork — which we now package as BR2_PACKAGE_XONE — already natively includes identical per-PID firmware logic (sprintf(fwname, \"xone_dongle_%04x.bin\", fw_product) in transport/dongle.c:1117). This commit is therefore NOT a carry: it's functionality already present in our packaged source tree. Documentation of both PIDs' firmware is handled by package/xow-firmware/, which ships xone_dongle_02fe.bin (new adapter, also aliased to xow_dongle.bin for stock parity) and xone_dongle_02e6.bin (old adapter, a distinct 70008-byte blob from a different Microsoft .cab). Both external-USB PIDs are covered; PIDs 0x02f9 and 0x091e are soldered-in laptop modules and deliberately omitted (docs/decisions/0003-xone-firmware.md). Verified independently: dlundqvist source f2aa9fe01103d7600553b505b298ff0bd47ff280 (package/xone/xone.mk XONE_VERSION) contains transport/dongle.c:1110-1118 (fw_product logic) and :1307-1308 (id assignment), matching the MiSTer commit's intent byte-for-byte."
+  "notes": "MiSTer's 5.15 fork vendored the original medusalix/xone driver and patched in per-PID firmware support (this commit). However, the actively-maintained dlundqvist/xone fork — which we now package as BR2_PACKAGE_XONE — already natively includes identical per-PID firmware logic (sprintf(fwname, \"xone_dongle_%04x.bin\", fw_product) in transport/dongle.c:1117). This commit is therefore NOT a carry: it's functionality already present in our packaged source tree. Documentation of both PIDs' firmware is handled by package/xow-firmware/, which ships xone_dongle_02fe.bin (new adapter, also aliased to xow_dongle.bin for stock parity) and xone_dongle_02e6.bin (old adapter, a distinct 70008-byte blob from a different Microsoft .cab). Both external-USB PIDs are covered; PIDs 0x02f9 and 0x091e are soldered-in laptop modules and deliberately omitted (docs/decisions/0003-xone-firmware.md). Verified independently: dlundqvist source f2aa9fe01103d7600553b505b298ff0bd47ff280 (package/xone/xone.mk XONE_VERSION) contains transport/dongle.c:1110-1118 (fw_product logic) and :1307-1308 (id assignment), matching the MiSTer commit's intent byte-for-byte. CORRECTION (sonnet audit): forward_port.applies_to_6_18 changed from true/effort:none to false/effort:null for consistency — 'applies_to_6_18' describes whether this literal kernel-tree patch would forward-port onto the 6.18 source (compare a genuinely carried record, e.g. 2d39e76d1, which correctly uses true+trivial for a patch that DOES still apply to the tree). Since xone left the kernel tree entirely for BR2_PACKAGE_XONE, there is no patch to apply to 6.18 at all — 'true' was conflating 'the functionality exists in 6.18's build' (correct) with 'the patch applies to 6.18' (not applicable), and was inconsistent with sibling xone records (4ddd8ec3d, 8270e78f4, e2eb39e6f, d5beb5aa6), which all correctly use false. sonnet-verified: corrected — sprintf/fw_product logic and firmware package split confirmed byte-for-byte at packaged dongle.c:1108-1118, xow-firmware.mk 02fe/02e6 split matches ADR 0003 scope claims exactly; forward_port vocabulary normalized."
 }

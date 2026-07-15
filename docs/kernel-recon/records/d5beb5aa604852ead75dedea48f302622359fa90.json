@@ -13,7 +13,7 @@
   "removed": 0,
   "is_backport_of_vanilla": false,
 
-  "disposition": "dropped-obsolete",
+  "disposition": "dropped-deliberate",
   "carried_patch": null,
   "carried_mode": null,
 
@@ -62,5 +62,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "This commit adds a sysfs 'pair' attribute for software-controlled Xbox Wireless Dongle pairing. The patch-provenance.md (§3.5) explicitly documents that the dlundqvist/xone fork — now sourced as a Buildroot out-of-tree kernel module package (package/xone) — already includes equivalent functionality: a mutex-guarded sysfs 'pairing' attribute (DEVICE_ATTR_RW(pairing) in transport/dongle.c:470). The xone.mk notes all four MiSTer local deltas (rumble, Elite-2 paddles, per-PID firmware, sysfs pairing) are unnecessary as separate patches because dlundqvist/xone independently developed equivalent functionality. Attribute name differs ('pair' in fork vs 'pairing' in dlundqvist), but both expose the same control mechanism via sysfs. This commit is not carried in current linux-patches/ (verified: grep d5beb5aa found no patch file). Since xone is now provided as an out-of-tree package, the kernel-side change is obsolete. No userspace coupling found in Main_MiSTer (grep for 'pair', 'pairing', xone sysfs paths returned no dependencies)."
+  "notes": "This commit adds a sysfs 'pair' attribute for software-controlled Xbox Wireless Dongle pairing. The patch-provenance.md (§3.5) explicitly documents that the dlundqvist/xone fork — now sourced as a Buildroot out-of-tree kernel module package (package/xone) — already includes equivalent functionality: a mutex-guarded sysfs 'pairing' attribute (DEVICE_ATTR_RW(pairing) in transport/dongle.c:470). The xone.mk notes all four MiSTer local deltas (rumble, Elite-2 paddles, per-PID firmware, sysfs pairing) are unnecessary as separate patches because dlundqvist/xone independently developed equivalent functionality. Attribute name differs ('pair' in fork vs 'pairing' in dlundqvist), but both expose the same control mechanism via sysfs. This commit is not carried in current linux-patches/ (verified: grep d5beb5aa found no patch file). Since xone is now provided as an out-of-tree package, the kernel-side change is not carried. No userspace coupling found in Main_MiSTer (grep for 'pair', 'pairing', xone sysfs paths returned no dependencies). CORRECTION (sonnet audit): disposition changed from 'dropped-obsolete' to 'dropped-deliberate' for vocabulary consistency with its four sibling xone commits (4ddd8ec3d, 8270e78f4, d776ddb4e, e2eb39e6f) — all five have the identical underlying cause (xone re-sourced from kernel-vendored to BR2_PACKAGE_XONE per the P3.2 architectural decision, with the packaged fork independently already carrying equivalent functionality), so there is no reasoned basis for classifying this one commit as merely 'obsolete' while its siblings are 'deliberate'. sonnet-verified: corrected — DEVICE_ATTR_RW(pairing) confirmed exactly at packaged transport/dongle.c:470 (pairing_show/pairing_store at :384/:393); disposition normalized to dropped-deliberate."
 }

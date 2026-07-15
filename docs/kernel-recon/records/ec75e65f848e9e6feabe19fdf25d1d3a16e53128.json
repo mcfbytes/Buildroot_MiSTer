@@ -14,7 +14,7 @@
   "removed": 1,
   "is_backport_of_vanilla": false,
 
-  "disposition": "dropped-obsolete",
+  "disposition": "dropped-upstream",
   "carried_patch": null,
   "carried_mode": null,
 
@@ -22,7 +22,7 @@
     "vanilla_shas": [
       "c62f7cd8ed06"
     ],
-    "vanilla_file_line": "drivers/hid/hid-quirks.c:177",
+    "vanilla_file_line": "drivers/hid/hid-quirks.c:219",
     "vanilla_quote": "\t{ HID_USB_DEVICE(USB_VENDOR_ID_XIN_MO, USB_DEVICE_ID_XIN_MO_DUAL_ARCADE), HID_QUIRK_MULTI_INPUT },",
     "equivalence": "byte-identical"
   },
@@ -66,5 +66,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "CONTEXT: This revert commit removes the duplicate HID quirk entry that was incorrectly added by commit a6165424f. The correct state (single entry for XIN_MO DUAL_ARCADE with MULTI_INPUT quirk) is maintained in vanilla 6.18 via upstream commit c62f7cd8ed06 (2019-12-01). The revert correctly restores the source tree to its intended state. Both commits (add + revert) are net-zero; neither carries forward any real content. Device support is 100% upstream; no carried patches are needed. The revert occurred 1.5 years after the accidental duplicate was added, suggesting the issue was eventually noticed and corrected by the fork maintainer."
+  "notes": "CONTEXT: This revert commit removes the duplicate HID quirk entry that was incorrectly added by commit a6165424f. The correct state (single entry for XIN_MO DUAL_ARCADE with MULTI_INPUT quirk) is maintained in vanilla 6.18 via upstream commit c62f7cd8ed06 (2019-12-01). The revert correctly restores the source tree to its intended state. Both commits (add + revert) are net-zero; neither carries forward any real content. Device support is 100% upstream; no carried patches are needed. The revert occurred 1.5 years after the accidental duplicate was added, suggesting the issue was eventually noticed and corrected by the fork maintainer.\n\nsonnet-verified: CONFIRMED, net-zero pair framing holds. `git show ec75e65f8` confirms this is a clean, mechanical revert of a6165424f's single-line diff (git-generated 'This reverts commit a6165424f...' trailer present), restoring hid-quirks.c to the state it already matches in vanilla. c62f7cd8ed06 existence/ancestry, and the vanilla_file_line:219 / stock-5.15.1:194 locations, independently re-verified in this pass (see a6165424f2c8b0146eda7014b4e6dfb210fc632a.json sonnet-verified note for the full derivation — both records must be read together, they are the add/revert pair). FIXED: same two errors as the paired record — vanilla_file_line corrected from stale ':177' (the commit-time line number from c62f7cd8ed06's own 2019 diff, not the current /mnt/source/linux v6.18.38 tree) to ':219'; disposition corrected 'dropped-obsolete' -> 'dropped-upstream' for consistency with the sibling record and the project's established taxonomy (dropped-upstream = single clean vanilla_sha, byte-identical hunk, no policy/BR2-package intermediary — see f9c64d8cd656 precedent). dependencies.depends_on correctly names a6165424f2c8b0146eda7014b4e6dfb210fc632a. NOTE FOR ORCHESTRATOR: downstream summary tables device-support.md:163 and reconciliation.md:128 still say 'dropped-obsolete' for this sha and need regeneration/edit to match. source_branch confirmed present and correct: 'MiSTer-v5.13.12' — `git merge-base --is-ancestor ec75e65f8 origin/MiSTer-v5.13.12` = yes, `--is-ancestor ec75e65f8 origin/MiSTer-v5.15` = no."
 }

@@ -12,18 +12,15 @@
   "added": 2,
   "removed": 2,
   "is_backport_of_vanilla": false,
-
   "disposition": "carried",
   "carried_patch": "0012-hid-fanatec.patch",
   "carried_mode": "re-implemented",
-
   "upstream": {
     "vanilla_shas": [],
     "vanilla_file_line": null,
     "vanilla_quote": null,
     "equivalence": null
   },
-
   "verification": {
     "method": "diff",
     "confidence": "high",
@@ -31,10 +28,21 @@
   },
   "agrees_with_provenance_doc": true,
   "provenance_doc_ref": "docs/patch-provenance.md row: e82a59280, 8908e0fe1, ed8f8e6ce | Fanatec wheels (+build/warning fixes)",
-
   "impact": {
     "effect_if_absent": "Compiler warning about unused variables (usbhid_device and current_period in ftecff_timer function)",
     "affected_hardware": [
+      "Fanatec ClubSport V2 Wheelbase",
+      "Fanatec ClubSport V25 Wheelbase",
+      "Fanatec CSL Elite Wheelbase",
+      "Fanatec CSL Elite PS4 Wheelbase",
+      "Fanatec CSL Elite Pedals",
+      "Fanatec ClubSport Pedals V3",
+      "Fanatec Podium Wheelbase DD1",
+      "Fanatec Podium Wheelbase DD2",
+      "Fanatec CSL DD Wheelbase",
+      "Fanatec CSR Elite Wheelbase"
+    ],
+    "device_ids": [
       "0eb7:0001",
       "0eb7:0004",
       "0eb7:183b",
@@ -45,18 +53,6 @@
       "0eb7:6204",
       "0eb7:0020",
       "0eb7:0011"
-    ],
-    "device_ids": [
-      "0EB7:0001",
-      "0EB7:0004",
-      "0EB7:183B",
-      "0EB7:0006",
-      "0EB7:0007",
-      "0EB7:0E03",
-      "0EB7:0005",
-      "0EB7:6204",
-      "0EB7:0020",
-      "0EB7:0011"
     ],
     "severity": "cosmetic",
     "failure_mode": "silent"
@@ -72,10 +68,13 @@
     "effort": "low"
   },
   "dependencies": {
-    "depends_on": [],
+    "depends_on": [
+      "e82a592804f44f50e3437d9cf9bc626ed2bbd504"
+    ],
     "superseded_by": [],
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "GROUPED ENTRY in provenance.md: This commit is listed with e82a59280 and 8908e0fe1 as a single row in docs/patch-provenance.md rather than individually. The commit comments out two unused variables (usbhid_device and current_period in ftecff_timer) to fix compiler warnings. Patch header (0012-hid-fanatec.patch) states this was 'folded in' during the 5.15→6.18.38 forward-port. However, the actual patch content does not show these variables commented out; instead, they are simply absent from the forward-ported code. The patch was created from scratch for the 6.18 version (files are marked as new in the patch), and the developer (Michael C. Ferguson) did a clean forward-port that removed unused code. The effect of the warning fix (eliminating unused variable warnings) is achieved, but through re-implementation rather than cherry-picking the exact commit. The patch header also mentions dropping other unused variables (s1/s2 in ftecff_update_slot and ret in ftec_tuning_write) as part of the forward-port's -Wunused-but-set-variable cleanup."
+  "notes": "GROUPED ENTRY in provenance.md: This commit is listed with e82a59280 and 8908e0fe1 as a single row in docs/patch-provenance.md rather than individually. The commit comments out two unused variables (usbhid_device and current_period in ftecff_timer) to fix compiler warnings. Patch header (0012-hid-fanatec.patch) states this was 'folded in' during the 5.15\u21926.18.38 forward-port. However, the actual patch content does not show these variables commented out; instead, they are simply absent from the forward-ported code. The patch was created from scratch for the 6.18 version (files are marked as new in the patch), and the developer (Michael C. Ferguson) did a clean forward-port that removed unused code. The effect of the warning fix (eliminating unused variable warnings) is achieved, but through re-implementation rather than cherry-picking the exact commit. The patch header also mentions dropping other unused variables (s1/s2 in ftecff_update_slot and ret in ftec_tuning_write) as part of the forward-port's -Wunused-but-set-variable cleanup.",
+  "sonnet-verified": "amended \u2014 affected_hardware field incorrectly held VID:PID strings (schema requires hardware names); replaced with the correct 10 Fanatec model names, matching the sibling Fanatec records. device_ids normalized to lowercase, no '0x' prefix, for corpus consistency. Added missing dependencies.depends_on 'e82a592804f44f50e3437d9cf9bc626ed2bbd504' (this commit edits hid-ftecff.c, which that commit introduced \u2014 the same dependency pattern already applied correctly in sibling record 8908e0fe1). Core technical claim verified: grepped 0012-hid-fanatec.patch and confirmed 'usbhid_device'/'current_period' do not appear anywhere \u2014 the carried patch removes the dead locals outright rather than commenting them out as the original fork commit did, confirming the 're-implemented' carried_mode and the notes' claim."
 }

@@ -27,8 +27,8 @@
       "8f82bb2cfaf7",
       "1ee6ff9ae3c1"
     ],
-    "vanilla_file_line": "drivers/net/wireless/realtek/rtw88/rtw8821cu.c:12-40; drivers/net/wireless/realtek/rtw88/rtw8822bu.c:12-80; drivers/net/wireless/realtek/rtl8xxxu/core.c:8061-8072 (present but NOT selected in our linux.config)",
-    "vanilla_quote": "rtl8xxxu/core.c:8061-8072: /* RTL8188FU */ {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0xf179, ...), .driver_info = (unsigned long)&rtl8188fu_fops}, {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0x8179, ...), .driver_info = (unsigned long)&rtl8188eu_fops}; rtw8821cu.c:16: {USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0x8811, ...)}; rtw8822bu.c:12: {USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0xb812, ...)}",
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtw88/rtw8821cu.c:12-40; drivers/net/wireless/realtek/rtw88/rtw8822bu.c:12-80; drivers/net/wireless/realtek/rtw88/rtw8812au.c:11-19; drivers/net/wireless/realtek/rtw88/rtw8821au.c:11-23 (rtw8812au.c/rtw8821au.c present in vanilla 6.18 but NOT selected in our linux.config, per linux.config:545 comment)",
+    "vanilla_quote": "rtw8812au.c:11-13: static const struct usb_device_id rtw_8812au_id_table[] = { { USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0x8812, 0xff, 0xff, 0xff), .driver_info = (kernel_ulong_t)&(rtw8812a_hw_spec) }, ...; rtw8821au.c:11-13: static const struct usb_device_id rtw_8821au_id_table[] = { { USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0x0811, 0xff, 0xff, 0xff), .driver_info = (kernel_ulong_t)&(rtw8821a_hw_spec) }, ...; rtw8821cu.c:16: {USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0x8811, ...)}; rtw8822bu.c:12: {USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0xb812, ...)}",
     "equivalence": "partial"
   },
 
@@ -41,18 +41,23 @@
   "provenance_doc_ref": null,
 
   "impact": {
-    "effect_if_absent": "None in our build: this v5.14-only commit does not exist on v5.15 (which stock shipped); stock's 5.15 config built these driver families via commit 33ff5146a (a later, more comprehensive re-commit that supersedes this one with updates and additional drivers). In our 6.18 build, all three chipset families this commit adds have working coverage: RTL8821AU via BR2_PACKAGE_RTL8821AU_MORROWNR, RTL88X2BU via CONFIG_RTW88_8822BU=m (mainline), RTL8821CU via CONFIG_RTW88_8821CU=m (mainline).",
+    "effect_if_absent": "None in our build: this v5.14-only commit does not exist on v5.15 (which stock shipped); stock's 5.15 config built these driver families via commit 33ff5146a (a later, more comprehensive re-commit that supersedes this one with updates and additional drivers). This commit's rtl8821au tree is itself a COMBINED RTL8812A+RTL8821A HAL (two distinct USB ID blocks in the same source tree, split apart post-hoc by 3740d5b88). In our 6.18 build, all four resulting chipset families have working coverage: RTL8821A via BR2_PACKAGE_RTL8821AU_MORROWNR, RTL8812A via BR2_PACKAGE_RTL8812AU, RTL88X2BU via CONFIG_RTW88_8822BU=m (mainline), RTL8821CU via CONFIG_RTW88_8821CU=m (mainline).",
     "affected_hardware": [
       "RTL8821A (USB)",
-      "RTL8811A (USB)",
+      "RTL8812A (USB)",
       "RTL8822B / RTL88x2B (USB)",
       "RTL8821C (USB)"
     ],
     "device_ids": [
+      "0bda:8812",
       "0bda:881a",
       "0bda:881b",
       "0bda:881c",
-      "0bda:8811",
+      "0bda:0811",
+      "0bda:0820",
+      "0bda:0821",
+      "0bda:0823",
+      "0bda:8822",
       "0bda:c811",
       "0bda:b812",
       "0bda:b82c"
@@ -78,7 +83,8 @@
     "superseded_by": [
       "33ff5146a (in-fork, v5.15: 'Add rtl8821au/rtl8812au, rtl88x2bu, rtl8821cu, rtl8188eu, rtl8188fu WiFi drivers.' — replaces THIS v5.14-only commit with a more comprehensive version that adds two additional driver families + rtl8812au, plus updates the rtl8821au/rtl88x2bu/rtl8821cu trees with fixes (removed non-existent kernel includes, adjusted driver parameters); notes a re-commit with improvements, not a simple carry-forward)",
       "3740d5b88 (in-fork: 'Backport rtl8812au rtl8821au rtl8821cu drivers from morrownr' — further evolution, splits rtl8821au+rtl8812au and sources from morrownr's maintained fork, which is what stock's v5.15 config (CONFIG_RTL8812AU=m + CONFIG_RTL8821AU=m, separate symbols) actually used)",
-      "BR2_PACKAGE_RTL8821AU_MORROWNR=y (our 6.18: RTL8821A/RTL8811A, configs/mister_de10nano_defconfig:567, morrownr aircrack-ng fork, commit-pinned + hash-verified)",
+      "BR2_PACKAGE_RTL8821AU_MORROWNR=y (our 6.18: RTL8821A, USB IDs 0x0811/0x0820/0x0821/0x0823/0x8822 per this commit's own os_dep/linux/usb_intf.c, configs/mister_de10nano_defconfig:567, morrownr aircrack-ng fork, commit-pinned + hash-verified)",
+      "BR2_PACKAGE_RTL8812AU=y (our 6.18: RTL8812A, USB IDs 0x8812/0x881a/0x881b/0x881c per this commit's own usb_intf.c, configs/mister_de10nano_defconfig:565, morrownr aircrack-ng fork, commit-pinned + hash-verified)",
       "CONFIG_RTW88_8822BU=m (our 6.18, mainline: RTL8822B/RTL88x2B, linux.config:481, preferred over the out-of-tree 88x2bu because the vendored ~2021 tree FAILED WPA3-only association on real hardware — confirmed docs/wifi-parity.md and linux.config comment)",
       "CONFIG_RTW88_8821CU=m (our 6.18, mainline: RTL8821C, linux.config:488)"
     ],
@@ -97,5 +103,5 @@
     ]
   },
 
-  "notes": "V5.14-ONLY COMMIT — not present on v5.15 (stock's release kernel version). Deliberately replaced by a more comprehensive version (33ff5146a) that re-commits these three driver trees with UPDATES (fixes for non-existent kernel includes like <net/ipx.h>, parameter adjustments) plus adds two additional drivers (rtl8188eu, rtl8188fu) and rtl8812au. The v5.14 vs v5.15 split point represents Sorgelig's iteration on the driver integration strategy: v5.14 separated the rtl8188eu/rtl8188fu addition (0d8641a2b, Aug 30) from the rtl8821au/rtl88x2bu/rtl8821cu group (c70a3fc27, Aug 31), then v5.15 unified all five drivers into 33ff5146a (Nov 8) with fixes and additions. Stock's v5.15.1 config reflects the later state: CONFIG_RTL8188EU=m / RTL8188FU=m / RTL8812AU=m / RTL8821AU=m / RTL8822BU=m / RTL8821CU=m (stock's config files show RTL8812AU and RTL8821AU as SEPARATE symbols, which only exist in the fork post-3740d5b88, confirming stock built a later revision, not 33ff5146a byte-for-byte either — the lineage continued to evolve). Our 6.18 build splits coverage per-chipset: RTL8821AU→Buildroot pkg, RTL88X2BU→mainline rtw88, RTL8821CU→mainline rtw88 (never built the vendored tree in our config, via deliberate Kconfig choice, see linux.config:545 comment 'mainline still cannot drive' + hardware decision on WPA3 support at line 478-481). Zero silent regression: all three driver families have live, working coverage. Severity=none because stock v5.15 users already moved past this commit to 33ff5146a (and further to morrownr in 3740d5b88), and we have working drivers via either package or mainline in 6.18. The provenance.md document (dated 2026-07-08, covering v5.15 HEAD state only) does not reference this v5.14-only commit; no prior-art contradiction to flag."
+  "notes": "V5.14-ONLY COMMIT — not present on v5.15 (stock's release kernel version). Deliberately replaced by a more comprehensive version (33ff5146a) that re-commits these three driver trees with UPDATES (fixes for non-existent kernel includes like <net/ipx.h>, parameter adjustments) plus adds two additional drivers (rtl8188eu, rtl8188fu) and rtl8812au. The v5.14 vs v5.15 split point represents Sorgelig's iteration on the driver integration strategy: v5.14 separated the rtl8188eu/rtl8188fu addition (0d8641a2b, Aug 30) from the rtl8821au/rtl88x2bu/rtl8821cu group (c70a3fc27, Aug 31), then v5.15 unified all five drivers into 33ff5146a (Nov 8) with fixes and additions. Stock's v5.15.1 config reflects the later state: CONFIG_RTL8188EU=m / RTL8188FU=m / RTL8812AU=m / RTL8821AU=m / RTL8822BU=m / RTL8821CU=m (stock's config files show RTL8812AU and RTL8821AU as SEPARATE symbols, which only exist in the fork post-3740d5b88, confirming stock built a later revision, not 33ff5146a byte-for-byte either — the lineage continued to evolve). Our 6.18 build splits coverage per-chipset: RTL8821A→BR2_PACKAGE_RTL8821AU_MORROWNR, RTL8812A→BR2_PACKAGE_RTL8812AU, RTL88X2BU→mainline rtw88, RTL8821CU→mainline rtw88 (never built the vendored tree in our config, via deliberate Kconfig choice, see linux.config:545 comment 'mainline still cannot drive' + hardware decision on WPA3 support at line 478-481). Zero silent regression: all four driver families have live, working coverage. Severity=none because stock v5.15 users already moved past this commit to 33ff5146a (and further to morrownr in 3740d5b88), and we have working drivers via either package or mainline in 6.18. The provenance.md document (dated 2026-07-08, covering v5.15 HEAD state only) does not reference this v5.14-only commit; no prior-art contradiction to flag. CORRECTION (Sonnet audit, batch A7): the prior version of this record mislabeled one of the two chip families this commit's combined rtl8821au tree covers as 'RTL8811A' (affected_hardware + device_id 0bda:8811) — re-derivation of the vendored os_dep/linux/usb_intf.c shows this tree actually contains TWO separate USB-ID blocks, one for RTL8812A (0x8812/0x881a/0x881b/0x881c, driver_info=RTL8812) and one for RTL8821A (0x0811/0x0820/0x0821/0x0823/0x8822, driver_info=RTL8821) — matching its own Kconfig help text 'Realtek 8812A/8821A USB WiFi'. There is no RTL8811A device ID anywhere in this commit's payload; 0bda:8811 (as opposed to the correct 0x0811) is actually an RTL8821C ID in mainline's rtw8821cu.c, unrelated to this tree. Corrected affected_hardware/device_ids to RTL8812A + the real RTL8821A IDs, added the previously-missing BR2_PACKAGE_RTL8812AU=y to superseded_by (RTL8812A coverage was omitted even though BR2_PACKAGE_RTL8821AU_MORROWNR was cited for RTL8821A), and replaced the upstream.vanilla_file_line/vanilla_quote's stray citation of rtl8xxxu/core.c's RTL8188EU/FU device table (irrelevant — this commit never touches rtl8188eu/rtl8188fu, that's bdedb82d/0d8641a2b's payload) with the actually-matching rtw8812au.c:11-19 / rtw8821au.c:11-23 citations, which now correctly back the vanilla_shas already listed (8f82bb2cfaf7, 1ee6ff9ae3c1). Disposition (dropped-deliberate) and severity (none) are unchanged — this was a citation/labeling accuracy fix, not a disposition change. sonnet-verified: corrected — RTL8811A/RTL8812A mislabel and missing RTL8812AU package fixed; per-chipset coverage claim now fully grounded."
 }

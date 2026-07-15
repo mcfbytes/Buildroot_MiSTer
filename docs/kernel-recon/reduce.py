@@ -62,10 +62,13 @@ if len(residue_full) != 15:
 patch_files = sorted(p.name for p in PATCH_DIR.glob("0*.patch"))
 mapped = defaultdict(list)
 for row in rows:
-    cp = row["r"].get("carried_patch")
-    if cp:
+    # a patch's origin may be a direct carry (carried_patch) or a capability
+    # re-implementation recorded in dependencies.superseded_by (e.g. 0031)
+    refs = [row["r"].get("carried_patch") or ""]
+    refs += [str(s) for s in (row["r"].get("dependencies") or {}).get("superseded_by") or []]
+    for cp in refs:
         for pf in patch_files:
-            if pf in cp or cp in pf:
+            if pf in cp or (cp and cp in pf):
                 mapped[pf].append(row["sha"][:9])
 orphans = [pf for pf in patch_files if pf not in mapped]
 if orphans:

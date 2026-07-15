@@ -17,18 +17,15 @@
   "added": 1671,
   "removed": 0,
   "is_backport_of_vanilla": false,
-
   "disposition": "carried",
   "carried_patch": "0012-hid-fanatec.patch",
   "carried_mode": "clean-apply",
-
   "upstream": {
     "vanilla_shas": [],
     "vanilla_file_line": null,
     "vanilla_quote": null,
     "equivalence": null
   },
-
   "verification": {
     "method": "source-grep",
     "confidence": "high",
@@ -36,7 +33,6 @@
   },
   "agrees_with_provenance_doc": true,
   "provenance_doc_ref": "docs/patch-provenance.md: 'e82a59280, 8908e0fe1, ed8f8e6ce | Fanatec wheels (+build/warning fixes)'",
-
   "impact": {
     "effect_if_absent": "Fanatec racing wheels (ClubSport V2/V25, CSL Elite, CSR Elite, Podium DD1/DD2, CSL DD) would not be recognized or controllable as HID input devices; force feedback, pedal calibration, LED control, and steering range adjustment would be unavailable",
     "affected_hardware": [
@@ -52,16 +48,16 @@
       "Fanatec CSR Elite Wheelbase"
     ],
     "device_ids": [
-      "0x0eb7:0x0001",
-      "0x0eb7:0x0004",
-      "0x0eb7:0x0005",
-      "0x0eb7:0x0006",
-      "0x0eb7:0x0007",
-      "0x0eb7:0x0E03",
-      "0x0eb7:0x0011",
-      "0x0eb7:0x183b",
-      "0x0eb7:0x6204",
-      "0x0eb7:0x0020"
+      "0eb7:0001",
+      "0eb7:0004",
+      "0eb7:0005",
+      "0eb7:0006",
+      "0eb7:0007",
+      "0eb7:0e03",
+      "0eb7:0011",
+      "0eb7:183b",
+      "0eb7:6204",
+      "0eb7:0020"
     ],
     "severity": "feature-loss",
     "failure_mode": "silent"
@@ -89,5 +85,6 @@
     "origin_project_url": "https://github.com/gotzl/hid-fanatecff",
     "origin_project_status": "never merged into mainline Linux; remains out-of-tree"
   },
-  "notes": "This commit introduces a complete new HID driver for Fanatec racing wheels ported from the gotzl/hid-fanatecff out-of-tree project. The driver has two components: hid-ftec.c (probe, sysfs interfaces for load/rumble/display, LED management via led_classdev) and hid-ftecff.c (force-feedback implementation via hrtimer-based effect scheduler). Critical feature: pedal calibration via sysfs 'load' attribute and steering range control via 'range' attribute are essential for hardware compatibility. The driver is tightly coupled to Main_MiSTer userspace via vendor_id checks and wheel-range configuration. Verified not present in vanilla Linux 6.18.38 (no hid-ftec.c, hid-ftecff.c, or HID_FTEC configuration option). Carried patch 0012-hid-fanatec.patch already includes forward-port adjustments for 6.18 (hrtimer API changes, -Wmissing-prototypes fixes, unused variable cleanup). Disposition in patch-provenance.md already correctly classified as Class D carry. Author is PR contributor (#24, #25 Michael Huang, PR #24 also includes fix commit #25 folded in). No upstream equivalence exists."
+  "notes": "This commit introduces a complete new HID driver for Fanatec racing wheels ported from the gotzl/hid-fanatecff out-of-tree project. The driver has two components: hid-ftec.c (probe, sysfs interfaces for load/rumble/display, LED management via led_classdev) and hid-ftecff.c (force-feedback implementation via hrtimer-based effect scheduler). Critical feature: pedal calibration via sysfs 'load' attribute and steering range control via 'range' attribute are essential for hardware compatibility. The driver is tightly coupled to Main_MiSTer userspace via vendor_id checks and wheel-range configuration (verified: Main_MiSTer/input.cpp:5006 `input[i].vid == 0x0eb7` and :5049 `set_wheel_range(i, cfg.wheel_range)`). Verified not present in vanilla Linux 6.18.38 (no hid-ftec.c, hid-ftecff.c, or HID_FTEC configuration option). Carried patch 0012-hid-fanatec.patch already includes forward-port adjustments for 6.18 (hrtimer_init()+manual ->function assign -> hrtimer_setup(), confirmed present in vanilla include/linux/hrtimer.h:230; -Wmissing-prototypes fixes, confirmed default-on via /mnt/source/linux/scripts/Makefile.extrawarn:22; unused variable cleanup). All 10 device_ids re-derived against drivers/hid/hid-ftec.h in the fork commit (FANATEC_VENDOR_ID 0x0eb7 + 10 product IDs) and confirmed against the devices[] hid_device_id table in hid-ftec.c; every affected_hardware name maps to its correct ID. Disposition in patch-provenance.md already correctly classified as Class D carry (line 360). Author is PR contributor (#24, #25 Michael Huang, PR #24 also includes fix commit #25 folded in). No upstream equivalence exists. SONNET-AUDIT FLAG (not a record error, flagging for patch maintainer): the 0012-hid-fanatec.patch header comment for hid-ftecff.c contains a stray line \u2014 'Decode fixes from pcnimdock (https://github.com/pcnimdock/guncon3) -- unrelated project note kept for provenance parity with upstream source comment' \u2014 that is copy-paste contamination from the unrelated GunCon3 driver's provenance note (pcnimdock authored GunCon3 decode fixes, not anything Fanatec-related); the patch file itself should be corrected even though this record's license_provenance field does not repeat the error.",
+  "sonnet-verified": "amended \u2014 device_ids format fixed (stripped '0x' prefixes, normalized case, to match VVVV:PPPP schema convention). All 10 device IDs and their hardware-name mapping re-derived and confirmed against the fork's drivers/hid/hid-ftec.h FANATEC_VENDOR_ID/#define block and the devices[] hid_device_id table in hid-ftec.c \u2014 every affected_hardware entry maps to the correct ID. hrtimer_setup() and -Wmissing-prototypes forward-port claims confirmed against live 6.18 checkout. Main_MiSTer input.cpp:5006/5049 citations verified verbatim. Flagged (not amended, out of scope for this record's authority): 0012-hid-fanatec.patch's hid-ftecff.c header comment contains a stray 'pcnimdock/guncon3' provenance note that is copy-paste contamination from the unrelated GunCon3 patch \u2014 patch file needs a maintainer fix, noted in this record's notes field."
 }

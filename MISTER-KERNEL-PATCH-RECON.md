@@ -50,14 +50,62 @@ doc's failure mode was confident, uncited claims; do not reproduce it.
 
 | Ref | What | Where |
 |---|---|---|
-| **Fork** | `MiSTer-devel/Linux-Kernel_MiSTer` — the commits to reconcile | https://github.com/MiSTer-devel/Linux-Kernel_MiSTer (historically based on **v5.15**) |
-| **Vanilla** | Target kernel **6.18.38**; verify against the `v6.18` tag | https://github.com/torvalds/linux (tag `v6.18`); pin `6.18.38` = `configs/mister_de10nano_defconfig:77` |
-| **This repo** | Carried patches + prior-art doc | `board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031`); `docs/patch-provenance.md`; `docs/stock-inventory/stock-linux.config` |
+| **Fork** | `MiSTer-devel/Linux-Kernel_MiSTer` — the commits to reconcile | Local full clone: `/mnt/source/Linux-Kernel_MiSTer`. Pinned HEAD (`MiSTer-v5.15`): `f0fb626acadd07f0718934826b143b6e4c9ce81c`. Vanilla base: **v5.15.1** (see §1.1) |
+| **Vanilla** | Target kernel **6.18.38** | Local linux-stable clone: `/mnt/source/linux`. Pinned `v6.18.38` = `2aa1767b5e96f79560675d55bc0da08ea36fff29`; version also pinned at `configs/mister_de10nano_defconfig:77`. **Must be unshallowed first** (see §1.2) |
+| **This repo** | Carried patches + prior-art doc | `board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031`, with gaps — see §8); `docs/patch-provenance.md`; `docs/stock-inventory/stock-linux.config` |
 | **Userspace** | `MiSTer-devel/Main_MiSTer` — for userspace-coupling cross-ref | https://github.com/MiSTer-devel/Main_MiSTer |
 
 **Grounding requirement:** every worker MUST have read access to a **real vanilla 6.18 source
-tree** (checked out at `v6.18`/`6.18.38`) to grep and quote. Claims are verified against source,
-never from model memory.
+tree** (checked out at `v6.18.38`) *with full git history* to grep, `git log -S`, and quote.
+Claims are verified against source, never from model memory.
+
+### 1.1 Fork repo structure — it is NOT a git fork (verified)
+
+`Linux-Kernel_MiSTer` shares **no ancestry** with Linus's or the stable tree — it was bootstrapped
+by bulk-importing kernel source tarballs. Its entire `MiSTer-v5.15` history is **113 commits**:
+
+- **4 squashed vanilla imports**: root `e12ed6c19` ("v5.13.12"), `137491a75` ("v5.14"),
+  `b6f2ca1c4` ("v5.14.5"), `aba1ef4c1` ("v5.15.1");
+- **1 merge commit** (`4e98a68d1`, PR #42 — its content commits are ordinary commits);
+- **108 non-merge MiSTer delta commits** — the actual reconciliation work list.
+
+The fork's true vanilla base is therefore **tag `v5.15.1`** (confirmed: HEAD `Makefile` says
+`5.15.1`; stock never took later 5.15.x stable updates). `git merge-base` against any vanilla ref
+returns nothing — do not use it (§3 replaces it).
+
+Two older branches exist and were **rebuilt, not merged**, at each version bump:
+`MiSTer-v5.14` (62 non-merge commits unreachable from `MiSTer-v5.15`) and `MiSTer-v5.13.12`
+(52). Most are the same patches re-applied with new SHAs, but the residue includes genuine drops
+(e.g. the wholesale `dwc2: port from socfpga-v4.19` replacement, `Enable Logitech D-Input
+drivers`) — see the old-branch sweep in §3.
+
+### 1.2 Local tree setup (one-time, before Phase 0)
+
+The recon works off **two separate repos** — the fork and vanilla are never mixed into one
+object store. (Git *could* hold both disjoint histories in one repo, but keeping them apart is
+clearer: anything found under `/mnt/source/linux` is vanilla **by construction**, so provenance
+of a quote is never ambiguous.)
+
+```bash
+# 1. Unshallow vanilla — the clone at /mnt/source/linux is depth-1, which breaks
+#    `git log -S`, vanilla-SHA citation, and patch-id matching. Full history (~5 GB):
+git -C /mnt/source/linux fetch --unshallow origin
+git -C /mnt/source/linux fetch origin --tags
+
+# 2. Add a second worktree of vanilla pinned at the fork's base, v5.15.1 — a plain
+#    directory to diff the fork tree against, without touching the 6.18.38 checkout:
+git -C /mnt/source/linux worktree add /mnt/source/linux-5.15.1 v5.15.1
+```
+
+Cross-tree comparisons need no shared git history:
+
+- **tree-level diffs** are plain GNU diff between working trees:
+  `diff -ruN -x .git /mnt/source/linux-5.15.1 /mnt/source/Linux-Kernel_MiSTer`;
+- **patch-id matching** compares hashes as text — `git -C <repo> show <sha> | git patch-id
+  --stable` runs per-repo and the resulting ids are directly comparable across repos.
+
+Worker-facing paths: vanilla 6.18.38 source + full history = `/mnt/source/linux`; vanilla
+5.15.1 base snapshot = `/mnt/source/linux-5.15.1`; fork = `/mnt/source/Linux-Kernel_MiSTer`.
 
 ---
 
@@ -84,30 +132,59 @@ Phase 3  Audit (Opus / deep multi-agent)              ──►  verified reconc
 Machine-generated and **complete** — this is the list the community concern is actually about, so
 it must not be LLM-derived.
 
-1. **Detect the fork's vanilla base.** The fork lived on v5.15; find the merge-base against that
-   tag. Record the base SHA.
-2. **List every fork-original commit:**
+1. **Enumerate the work list.** There is no merge-base (§1.1) — the work list is simply every
+   non-merge commit on `MiSTer-v5.15` **minus the 4 squashed vanilla imports**
+   (`e12ed6c19`, `137491a75`, `b6f2ca1c4`, `aba1ef4c1`) = **108 commits**:
    ```
-   git -C Linux-Kernel_MiSTer log --no-merges --format='%H%x09%an%x09%ad%x09%s' <base>..<head>
+   git -C /mnt/source/Linux-Kernel_MiSTer log --no-merges --format='%H%x09%an%x09%ad%x09%s' MiSTer-v5.15
    ```
    For each, also capture files touched and `+/-` line counts (`--numstat`).
-3. **Deterministic "already upstream" pre-filter.** Before any LLM runs, auto-classify backports
-   of vanilla commits using cherry/patch-id equivalence and subject/author matching against the
-   vanilla changelog:
+2. **Verify import purity.** A squashed import could smuggle non-vanilla changes invisibly.
+   For each import commit, extract its tree (`git -C /mnt/source/Linux-Kernel_MiSTer archive
+   <import-sha> | tar -x -C <scratch>`) and GNU-diff it against the corresponding vanilla tag's
+   tree; any residue beyond the earlier delta commits re-applied on top is itself a **finding**
+   and joins the work list as a synthetic entry.
+3. **Tree-diff completeness backstop (the "nothing left behind" proof).** Commit enumeration
+   alone cannot prove completeness against squashed imports. The full working-tree diff
    ```
-   git -C Linux-Kernel_MiSTer cherry -v <vanilla-ref> <head>      # '-' = equivalent already upstream
-   git patch-id < commit.diff                                     # match against vanilla patch-ids
+   diff -ruN -x .git /mnt/source/linux-5.15.1 /mnt/source/Linux-Kernel_MiSTer
+   ```
+   **is** the total fork delta, independent of commit structure. Attribute every changed path
+   (and, for shared files, every hunk) to ≥1 enumerated commit via
+   `git -C /mnt/source/Linux-Kernel_MiSTer log aba1ef4c1..MiSTer-v5.15 -- <path>`; any
+   unattributable hunk is automatically a finding. This converts the claim from "we looked at
+   every commit" to **"we accounted for every byte of divergence from vanilla 5.15.1"** — the
+   claim the community actually wants.
+4. **Deterministic "already upstream" pre-filter.** Before any LLM runs, auto-classify backports
+   of vanilla commits. Note `git cherry` against the whole vanilla range is impractical (~300k
+   commits, disjoint histories); instead compute `git patch-id --stable` for each of the 108
+   delta commits and compare against patch-ids of vanilla commits **touching the same paths** in
+   `v5.15.1..v6.18.38` (patch-ids are plain hashes — comparable across the two repos as text),
+   plus subject/author matching against the vanilla changelog:
+   ```
+   git -C /mnt/source/Linux-Kernel_MiSTer show <fork-sha> | git patch-id --stable
+   git -C /mnt/source/linux log --format=%H v5.15.1..v6.18.38 -- <paths>   # candidate pool
    ```
    Commits that match are provisionally `dropped-upstream (backport)` **with a concrete vanilla
    SHA** and skip straight to a lighter verification. This removes a large chunk of hallucination
    surface.
-4. **Mechanical change-type tag** per commit, from the file list:
+5. **Old-branch sweep (appendix work list).** `MiSTer-v5.14` has 62 and `MiSTer-v5.13.12` has 52
+   non-merge commits unreachable from `MiSTer-v5.15` (branches were rebuilt per version, not
+   merged). Match them to v5.15-branch commits by patch-id, then subject; the **residue** —
+   commits with no v5.15 equivalent (known examples: the wholesale `dwc2: port from
+   socfpga-v4.19` replacement, later reduced to the single unaligned-IN fix we carry as `0028`;
+   `Enable Logitech D-Input drivers`) — gets Phase 1 analysis as an appendix. This preempts the
+   follow-up question "did anything get lost between MiSTer's own branches?"
+6. **Mechanical change-type tag** per commit, from the file list:
    `in-tree-code` / `kconfig` (`.config`/Kconfig) / `dts` / `out-of-tree-module` (e.g.
    `drivers/hid/xone/**`, wifi vendor dirs) / `uapi-header` / `docs-or-build`.
 
 **Output — `commits.jsonl`**, one object per commit:
 `{ sha, subject, author, author_is_pr_contributor, date, files[], added, removed, change_type,
 prefilter_disposition|null, prefilter_vanilla_sha|null }`
+plus a metadata header record pinning `fork_head=f0fb626acadd…`, `vanilla=2aa1767b5e96…
+(v6.18.38)`, `base=v5.15.1` for reproducibility, and `tree-diff-attribution.md` (step 3) and
+the old-branch residue list (step 5).
 
 ---
 
@@ -145,6 +222,9 @@ behavioral commit and the whole group was stamped "drop."
 - **Distrust the prior doc.** If `docs/patch-provenance.md` already has an entry, record what it
   claims but re-derive independently and set `agrees_with_provenance_doc: true|false`.
 - Prefer `git log -S'<symbol>'` / `-G` in the vanilla tree to locate where functionality landed.
+- **Search by symbol/string, never by old path.** Between 5.15 and 6.18 files were moved and
+  renamed (HID drivers, staging graduations, etc.). A miss at the fork-era path is **not**
+  evidence of absence — grep the whole tree for the symbol before concluding anything.
 
 ### 4.4 Per-commit output schema (`records/<sha>.json`)
 ```json
@@ -202,7 +282,9 @@ COMMIT DIFF:
 <git show output>
 
 You have read access to:
-- the vanilla 6.18 source tree at <path> (grep/view/`git log -S`)
+- the vanilla 6.18.38 source tree + full git history at /mnt/source/linux (grep/view/`git log -S`)
+- the vanilla 5.15.1 base snapshot at /mnt/source/linux-5.15.1
+- the fork repo at /mnt/source/Linux-Kernel_MiSTer
 - carried patches at board/mister/de10nano/linux-patches/
 - Main_MiSTer source at <path>
 - docs/patch-provenance.md (PRIOR ART — record but independently re-derive; may be wrong)
@@ -234,6 +316,9 @@ Merge `records/*.json` into `reconciliation.jsonl` and a sorted `reconciliation.
 - **Single disposition:** no commit carries two conflicting dispositions.
 - **Evidence present:** every `dropped-upstream` row has `vanilla_shas` **or**
   `vanilla_file_line`+`vanilla_quote`; otherwise it is downgraded to `needs-verification`.
+- **Tree-diff attribution closed:** every path/hunk in the Phase 0 §3.3 total-delta diff is
+  attributed to ≥1 record; unattributed hunks fail the run (something escaped enumeration).
+- **Old-branch residue covered:** every Phase 0 §3.5 residue commit has an appendix record.
 - **Doc diff:** emit `disagreements-with-provenance.md` — every row where
   `agrees_with_provenance_doc=false`. Each is a candidate `60e08955f`-class error.
 
@@ -297,15 +382,25 @@ Audit output amends the record in place and appends an `audit_findings.md`.
 5. `silent-regressions.md` — every `failure_mode=silent` with `severity ≥ feature-loss`,
    sorted by impact. **The headline deliverable for the community.**
 6. `device-support.md` — controller/dongle support matrix (fork vs vanilla vs our-build).
-7. `audit_findings.md` — Phase 3 results.
+7. `tree-diff-attribution.md` — the Phase 0 §3.3 total-delta diff with every hunk attributed to
+   a commit record; the mechanical proof that enumeration was complete.
+8. `old-branch-sweep.md` — appendix: `MiSTer-v5.14` / `MiSTer-v5.13.12` residue commits (things
+   dropped between MiSTer's own branches) with dispositions.
+9. `audit_findings.md` — Phase 3 results.
+
+The final report must also explain the **carried-patch numbering gaps** (`0005`–`0009`, `0021`
+are absent from `board/mister/de10nano/linux-patches/`) — otherwise the community will ask what
+was in them.
 
 ---
 
 ## 9. Pilot first (de-risk before the full parallel spend)
 
 Before the full fan-out, run Phase 1 on a **~15–20 commit sample** deliberately spanning the hard
-cases: at least one known-misclassified (`60e08955f`), one clean backport, one deliberate-drop,
-one out-of-tree module, one kconfig-only, one DTS, and one userspace-coupled input commit.
+cases: at least one known-misclassified (`60e08955f` — confirmed reachable on `MiSTer-v5.15`),
+one clean backport, one deliberate-drop, one out-of-tree module, one kconfig-only, one DTS, and
+one userspace-coupled input commit. (At 108 total commits the pilot is ~18% of the run — cheap
+insurance for schema validation before spending the rest.)
 Validate that:
 - the schema captures everything without free-text overflow;
 - the grounding contract actually blocks hallucinated SHAs (spot-check every cited vanilla hunk);
@@ -313,4 +408,5 @@ Validate that:
   `agrees_with_provenance_doc=false` (this is the canary — if the pilot passes it, the pipeline
   works).
 
-Only after the pilot passes should the full ~N-commit run proceed.
+Only after the pilot passes should the full 108-commit run (plus the old-branch residue
+appendix) proceed.

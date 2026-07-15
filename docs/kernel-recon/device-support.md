@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-07-15 06:48 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -39,8 +39,8 @@ Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each d
 | `054c:05c4` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
 | `054c:09cc` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
 | `054c:0ba0` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
-| `054c:0ce6` | `60e08955f` (misclassified), `b76b4bc6a` (misclassified), `f84543926` (misclassified), `52a56ae3d` (carried), `0d60c3482` (dropped-upstream) |
-| `054c:0df2` | `60e08955f` (misclassified), `b76b4bc6a` (misclassified), `0d60c3482` (dropped-upstream) |
+| `054c:0ce6` | `60e08955f` (misclassified), `52a56ae3d` (carried), `b76b4bc6a` (carried), `f84543926` (carried), `0d60c3482` (dropped-upstream) |
+| `054c:0df2` | `60e08955f` (misclassified), `b76b4bc6a` (carried), `0d60c3482` (dropped-upstream) |
 | `056e:4007` | `2371fb1aa` (dropped-obsolete) |
 | `056e:4008` | `0d8641a2b` (dropped-deliberate) |
 | `056e:400e` | `2371fb1aa` (dropped-obsolete) |
@@ -49,12 +49,12 @@ Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each d
 | `057e:0306` | `0d7778d1f` (carried), `15968bc26` (carried), `47dc53a22` (carried) |
 | `057e:0330` | `0d7778d1f` (carried), `15968bc26` (carried), `47dc53a22` (carried) |
 | `057e:0337` | `77862a67f` (carried) |
-| `057e:2006` | `45283785a` (misclassified), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
-| `057e:2007` | `45283785a` (misclassified), `60821059c` (misclassified), `484f68172` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
+| `057e:2006` | `45283785a` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
+| `057e:2007` | `45283785a` (carried), `484f68172` (carried), `60821059c` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
 | `057e:2007 (nesl/nesr — not a distinct pid; shared with the ordinary joy-con r id-table entry, disambiguated purely by an internal ctlr_type handshake byte read at runtime, report->subcmd_reply.data[2] == 0x09/0x0a; no new hid_device_id entry is added for nes at all, in either the fork or vanilla)` | `e155f6a2f` (dropped-upstream) |
-| `057e:2009` | `60821059c` (misclassified), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
+| `057e:2009` | `60821059c` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
 | `057e:200a` | `f9c64d8cd` (dropped-upstream) |
-| `057e:200e` | `60821059c` (misclassified), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
+| `057e:200e` | `60821059c` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
 | `057e:2017` | `c4ec5cb40` (dropped-upstream) |
 | `057e:2017 (snescon — dedicated pid, own hid_usb_device + hid_bluetooth_device id-table entries)` | `e155f6a2f` (dropped-upstream) |
 | `057e:2019` | `2799f8b94` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
@@ -66,7 +66,7 @@ Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each d
 | `0846:9052` | `2371fb1aa` (dropped-obsolete) |
 | `0846:9055` | `143ce187e` (dropped-deliberate) |
 | `0925:0005` | `9f59d13d5` (dropped-deliberate) |
-| `0a12:0001` | `b02a4a011` (needs-verification) |
+| `0a12:0001` | `b02a4a011` (carried) |
 | `0b05:17d3` | `7436e2d6e` (dropped-deliberate) |
 | `0b05:1841` | `143ce187e` (dropped-deliberate) |
 | `0b05:184c` | `143ce187e` (dropped-deliberate) |
@@ -146,8 +146,8 @@ Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each d
 | `0x51` | `1337de1fd` (carried) |
 | `0x68` | `1337de1fd` (carried), `e40563ae1` (carried) |
 | `0x6f` | `1337de1fd` (carried) |
-| `0x7392:0xc811` | `fc09a292a` (needs-verification) |
-| `0x7392:0xd811` | `fc09a292a` (needs-verification) |
+| `0x7392:0xc811` | `fc09a292a` (dropped-deliberate) |
+| `0x7392:0xd811` | `fc09a292a` (dropped-deliberate) |
 | `10f5:*` | `5a7965488` (dropped-deliberate) |
 | `1209:faca` | `5bdbf2f7e` (carried) |
 | `13b1:0043` | `143ce187e` (dropped-deliberate) |
@@ -217,7 +217,7 @@ Generated 2026-07-15 06:06 UTC. VID:PID → commits and dispositions (how each d
 | `7392:d822` | `143ce187e` (dropped-deliberate) |
 | `7392:e822` | `143ce187e` (dropped-deliberate) |
 | `7392:f822` | `143ce187e` (dropped-deliberate) |
-| `d7d7:0041` | `97a398176` (not-evaluated), `b1b168eb6` (carried) |
+| `d7d7:0041` | `b1b168eb6` (carried), `97a398176` (dropped-deliberate) |
 | `nxp:pcf8563` | `6827e7644` (carried) |
 | `portb:11` | `246984fce` (carried) |
 | `portb:24` | `246984fce` (carried) |

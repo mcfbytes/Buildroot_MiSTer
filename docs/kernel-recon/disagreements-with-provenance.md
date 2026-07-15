@@ -1,21 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-07-15 06:06 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
-
-## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
-
-- disposition: **misclassified** | severity feature-loss | silent
-- doc ref: patch-provenance.md:334
-- notes: MISCLASSIFIED. patch-provenance.md:334 GROUPS four commits (`c4ec5cb40`, `9bdab534b`, `60821059c`, `45283785a`) into one Class-C 'drop — now upstream' row citing a single upstream SHA, `2af16c1f846b` ('HID: nintendo: add nintendo switch controller driver', 2021-09-11, v5.16), as the citation for all four. That upstream commit only introduced the BASE hid-nintendo driver (matches c4ec5cb40 and neighbors); it predates 45283785a by about a month in the fork's own history and never touched LED code beyond the stock player/home LEDs. Re-derived independently: `git log -S'combo' -- drivers/hid/hid-n…
-
-## `60821059c` hid-nintendo: don't fail if home led is not present.
-
-- disposition: **misclassified** | severity feature-loss | loud
-- doc ref: patch-provenance.md:334
-- notes: VERIFIED. Fork diff (drivers/hid/hid-nintendo.c, joycon_leds_create()) confirmed by `git show 60821059c`: both `return ret;` statements are commented out — (1) after `devm_led_classdev_register()` fails ('Failed registering home led'), (2) after `joycon_home_led_brightness_set()` fails ('Failed to set home LED dflt; ret=%d'). Both error paths become non-fatal in the fork.
-
-Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git merge-base --is-ancestor` in /mnt/source/linux, checked out at tag v6.18.38):
-- `2af16c1f846b` (2021-09-11, Daniel J. Ogorchock) is simply the o…
+Generated 2026-07-15 06:48 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `60e08955f` dualsense: give mute button and led to system.
 
@@ -23,9 +8,30 @@ Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git 
 - doc ref: patch-provenance.md:337
 - notes: MISCLASSIFIED in patch-provenance.md:337 (verbatim): '| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *...add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. verify controller LED behaviour on HW (P3.13)'. Both cited vanilla SHAs verified to exist in /mnt/source/linux and are ancestors of v6.18.38 (`git me…
 
+## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
+
+- disposition: **carried** | severity feature-loss | silent
+- doc ref: patch-provenance.md:334
+- notes: MISCLASSIFIED. patch-provenance.md:334 GROUPS four commits (`c4ec5cb40`, `9bdab534b`, `60821059c`, `45283785a`) into one Class-C 'drop — now upstream' row citing a single upstream SHA, `2af16c1f846b` ('HID: nintendo: add nintendo switch controller driver', 2021-09-11, v5.16), as the citation for all four. That upstream commit only introduced the BASE hid-nintendo driver (matches c4ec5cb40 and neighbors); it predates 45283785a by about a month in the fork's own history and never touched LED code beyond the stock player/home LEDs. Re-derived independently: `git log -S'combo' -- drivers/hid/hid-n…
+
+## `60821059c` hid-nintendo: don't fail if home led is not present.
+
+- disposition: **carried** | severity feature-loss | loud
+- doc ref: patch-provenance.md:334
+- notes: VERIFIED. Fork diff (drivers/hid/hid-nintendo.c, joycon_leds_create()) confirmed by `git show 60821059c`: both `return ret;` statements are commented out — (1) after `devm_led_classdev_register()` fails ('Failed registering home led'), (2) after `joycon_home_led_brightness_set()` fails ('Failed to set home LED dflt; ret=%d'). Both error paths become non-fatal in the fork.
+
+Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git merge-base --is-ancestor` in /mnt/source/linux, checked out at tag v6.18.38):
+- `2af16c1f846b` (2021-09-11, Daniel J. Ogorchock) is simply the o…
+
+## `8908e0fe1` Fix module compile for Fanatec driver (#25)
+
+- disposition: **carried** | severity feature-loss | loud
+- doc ref: patch-provenance.md line 360
+- notes: Build system fix for Fanatec wheel driver (HID). Changes Makefile to use composite module pattern: obj-$(CONFIG_HID_FTEC) += hid-fanatec.o with hid-fanatec-$(CONFIG_HID_FTEC) += hid-ftec.o hid-ftecff.o. This replaces the original incorrect pattern that listed both object files directly. Patch 0012-hid-fanatec.patch incorporates this fix in its Makefile hunk (lines 76-77), explicitly folding commits e82a5928, 8908e0fe, and ed8f8e6ce together. ESCALATION NOTE: patch-provenance.md groups this commit with e82a5928 and ed8f8e6ce in a single row (line 360), violating the one-commit-per-row contract;…
+
 ## `b76b4bc6a` dualsense: leds config for player 6.
 
-- disposition: **misclassified** | severity cosmetic | silent
+- disposition: **carried** | severity cosmetic | silent
 - doc ref: patch-provenance.md:337
 - notes: SONNET ESCALATION VERIFICATION — every claim re-derived from scratch:
 
@@ -33,17 +39,11 @@ Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git 
 
 ## `f84543926` dualsense: add player id led control.
 
-- disposition: **misclassified** | severity feature-loss | silent
+- disposition: **carried** | severity feature-loss | silent
 - doc ref: patch-provenance.md:337
 - notes: SONNET ESCALATION VERIFICATION -- every link re-derived from scratch, all confirmed:
 
 1. FORK (f84543926, `git show` in /mnt/source/Linux-Kernel_MiSTer): replaces the IDA-based `ps_device_set_player_id()`/`player_id` field with a single `struct led_classdev ds->led`, name `devm_kasprintf(dev, GFP_KERNEL, "%s:player_id", dev_name(dev))` where dev=&hdev->dev (the HID device, e.g. '0003:054C:0CE6.0001:player_id'), max_brightness=5, brightness_set_blocking=dualsense_player_led_brightness_set -> dualsense_set_player_leds(ds, brightness) (clamped >5 -> 0), registered in ds_leds_create() called from …
-
-## `8908e0fe1` Fix module compile for Fanatec driver (#25)
-
-- disposition: **carried** | severity feature-loss | loud
-- doc ref: patch-provenance.md line 360
-- notes: Build system fix for Fanatec wheel driver (HID). Changes Makefile to use composite module pattern: obj-$(CONFIG_HID_FTEC) += hid-fanatec.o with hid-fanatec-$(CONFIG_HID_FTEC) += hid-ftec.o hid-ftecff.o. This replaces the original incorrect pattern that listed both object files directly. Patch 0012-hid-fanatec.patch incorporates this fix in its Makefile hunk (lines 76-77), explicitly folding commits e82a5928, 8908e0fe, and ed8f8e6ce together. ESCALATION NOTE: patch-provenance.md groups this commit with e82a5928 and ed8f8e6ce in a single row (line 360), violating the one-commit-per-row contract;…
 
 ## `0d60c3482` dualsense: add lightbar color control.
 

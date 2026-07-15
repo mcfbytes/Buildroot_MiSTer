@@ -56,3 +56,16 @@ Records land in `records/<sha>.json`. Tier-2 = Sonnet 5 only (user directive: no
 - 60e08955f mute BTN_Z (pilot, confirmed, cosmetic — no consumer)
 - 97a398176 JOYSTICK_XPAD y-vs-m drift (pending verify, defconfig batch)
 - possible NFS_V3 config gap (pending verify, defconfig batch #4)
+
+
+## CARRY DECISIONS EXECUTED (2026-07-15, user-directed)
+- 0032 combo LED (45283785a), 0033 player_id+player6 (f84543926+b76b4bc6a), 0034 NES/Famicom A/B
+  (e155f6a2f partial), 0035 home-LED non-fatal (60821059c), 0036 btusb CSR 0x2512 (b02a4a011 partial)
+- linux.config: +CONFIG_MACVLAN=y; CONFIG_JOYSTICK_XPAD y->m (stock parity)
+- fc09a292a EDUP efuse: dropped-deliberate per user (stay on mainline rtw88); documented limitation
+- verification: full `make linux-dirclean linux-rebuild` PASSED (all 30 patches applied by buildroot,
+  zImage+dtb installed, xpad.ko present, MACVLAN=y in resolved .config); series-applies check on
+  pristine v6.18.38 PASSED; per-object cross-compile clean (no warnings)
+- remaining open: 60e08955f mute/BTN_Z (misclassified, cosmetic, no consumer) — user decision pending
+- next: full `make all` before flashing (kmod-package trap does not apply — same kernel version);
+  Phase 3 audit; provenance-doc corrections (15 rows)

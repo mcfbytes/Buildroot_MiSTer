@@ -1,6 +1,45 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-15 13:37 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
+Generated 2026-07-15 14:57 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
+
+## How to read this table
+
+Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
+reconciled against our vanilla-6.18.38-based build. The full evidence for a row lives in
+`records/<full-sha>.json`.
+
+- **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
+  branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
+  unique commits never reached stock (analyzed so nothing is lost *between* MiSTer's own
+  branches either).
+- **Disposition** — what happened to the commit's functionality in this build:
+  - `carried` — kept, as the patch named in the next column (applied to the pristine
+    kernel.org tree at build time);
+  - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
+    cites the upstream commit and quotes the matching code);
+  - `dropped-deliberate` — intentionally not carried, with the replacement named (a
+    maintained out-of-tree package, a mainline driver, or a documented decision);
+  - `dropped-obsolete` — the code it changed no longer exists in any form we ship
+    (e.g. fixes to a vendored driver that was replaced wholesale).
+- **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
+  carries it (`—` when not carried).
+- **Severity** — the worst plausible effect if this functionality were absent from the
+  build: `boot-critical` (device won't boot/function) > `feature-loss` (a feature or a
+  device stops working) > `cosmetic` (visible but harmless difference) > `none` (no
+  observable effect, e.g. fully replaced elsewhere). For carried rows this describes the
+  drop-risk the patch protects against, not a current problem.
+- **Fail** — how an absence would show up: `loud` (build/boot error you can't miss) or
+  `silent` (nothing errors; the feature just quietly misbehaves or disappears — the
+  dangerous class this reconciliation exists to hunt).
+- **Coupled** — `Y` when MiSTer userspace (Main_MiSTer) directly depends on the kernel
+  interface involved (input event codes, sysfs nodes, /dev nodes, ioctls); these must
+  never be dropped silently. The record cites the exact `file:line`.
+- **Doc✓** — whether the original `docs/patch-provenance.md` triage agreed with this
+  independently re-derived result (`N` rows are the errors this exercise found; all are
+  corrected in that doc's §11).
+- **T2** — `✓` means the record survived a second, independent verification pass
+  (a stronger reviewer re-derived every claim from the actual source trees; 123/123 rows
+  have this).
 
 | SHA | Branch | Disposition | Carried patch | Severity | Fail | Coupled | Doc✓ | T2 | Subject |
 |---|---|---|---|---|---|---|---|---|---|

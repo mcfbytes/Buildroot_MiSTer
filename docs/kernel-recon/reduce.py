@@ -123,6 +123,10 @@ def impact_today(r):
         return "none"
     return "none (decided; see record)"
 
+def trunc(t, n=60):
+    t = t or ""
+    return t if len(t) <= n else t[:n-1] + "\u2026"
+
 def sev(r): return (r.get("impact") or {}).get("severity", "?")
 def fm(r): return (r.get("impact") or {}).get("failure_mode", "?")
 def coup(r): return (r.get("userspace_coupling") or {}).get("coupled")
@@ -220,7 +224,7 @@ the decision behind it. The recurring patterns, so the table reads at a glance:
                 f"| {why_of(r)} "
                 f"| {impact_today(r)} | {sev(r)}/{fm(r)} | {'Y' if coup(r) else '—'} "
                 f"| {'N' if r.get('agrees_with_provenance_doc') is False else 'Y' if r.get('agrees_with_provenance_doc') else '?'} "
-                f"| {'✓' if row['tier2'] else ''} | {r.get('subject','')[:60]} |\n")
+                f"| {'✓' if row['tier2'] else ''} | {trunc(r.get('subject',''))} |\n")
 
 with open(HERE / "disagreements-with-provenance.md", "w") as f:
     f.write(f"# Disagreements with docs/patch-provenance.md\n\nGenerated {now}. Every record "
@@ -260,7 +264,7 @@ with open(HERE / "silent-regressions.md", "w") as f:
     for row in rows:
         r = row["r"]
         if r.get("disposition") == "carried" and fm(r) == "silent" and sev(r) in ("boot-critical", "feature-loss"):
-            f.write(f"- `{row['sha'][:9]}` {r.get('subject')[:60]} → {r.get('carried_patch')}\n")
+            f.write(f"- `{row['sha'][:9]}` {trunc(r.get('subject'))} → {r.get('carried_patch')}\n")
 
 with open(HERE / "device-support.md", "w") as f:
     f.write(f"# Device-ID inventory\n\nGenerated {now}. VID:PID → commits and dispositions "

@@ -48,7 +48,7 @@ deliberately carried unchanged pending hardware validation.
 Notably, **all six live in MiSTer-original or fork-modified code. None is in mainline
 code.** That is the clearest argument for this project's core posture: carry the smallest
 possible delta against a pristine kernel.org tree, and hand each subsystem back to mainline
-as soon as mainline can hold it. The fork's 109 commits are down to 31 carried patches.
+as soon as mainline can hold it. The fork's 123 reconciled commits (108 on the shipped branch + 15 old-branch residue) are down to 31 carried patches.
 
 **Every commit in the MiSTer kernel fork has been independently reconciled against this
 build** — all 108 commits on the shipped `MiSTer-v5.15` branch plus 15 residue commits that
@@ -63,8 +63,7 @@ left behind: every remaining drop is either verifiably in mainline 6.18, replace
 maintained package, or documented as a deliberate decision.
 
 Full detail, with evidence: [`docs/kernel-recon/`](docs/kernel-recon/) (per-commit records,
-`reconciliation.md`, `silent-regressions.md`), [`docs/patch-provenance.md` §10–§11
-](docs/patch-provenance.md) and [`PLAN.md` §4](PLAN.md).
+`reconciliation.md`, `silent-regressions.md`), [`docs/patch-provenance.md` §10–§11](docs/patch-provenance.md) and [`PLAN.md` §4](PLAN.md).
 
 There is also one **known regression**: the Logitech G923 *PlayStation* variant loses force
 feedback (steering, pedals and buttons still work). The Xbox variant and all G29/G27/G25

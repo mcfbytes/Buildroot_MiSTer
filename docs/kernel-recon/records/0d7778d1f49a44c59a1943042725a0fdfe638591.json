@@ -30,7 +30,7 @@
   "agrees_with_provenance_doc": true,
   "provenance_doc_ref": "line 370",
   "impact": {
-    "effect_if_absent": "Multiple paired Wiimotes cannot be distinguished by userspace; applications like Main_MiSTer cannot uniquely identify each device via sysfs uniq field, preventing per-device controller remapping",
+    "effect_if_absent": "Multiple paired Wiimotes cannot be distinguished by userspace; applications like Main_MiSTer cannot uniquely identify each device via the input uniq field (read through /proc/bus/input/devices parsing and the EVIOCGUNIQ ioctl), preventing per-device controller remapping",
     "affected_hardware": [],
     "device_ids": [
       "057E:0306",

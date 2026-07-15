@@ -1,0 +1,67 @@
+{
+  "sha": "43c52e9ef90ff4109dd0911a3177139c1593711a",
+  "subject": "Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54)",
+  "author": "zakk4223",
+  "author_is_pr_contributor": true,
+  "date": "2024-06-26",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-ids.h",
+    "drivers/hid/hid-lg.c",
+    "drivers/hid/hid-lg4ff.c"
+  ],
+  "added": 187,
+  "removed": 37,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:368 (line 368, §9.3)",
+  "impact": {
+    "effect_if_absent": "Logitech G923 racing wheel variants (PlayStation mode: 046d:c267, native mode: 046d:c266) will not bind to lg4ff driver. G923 PlayStation users will get basic joystick functionality via hid-generic (steering, pedals, buttons work) but no force feedback, range control, or mode switching. G923 Xbox variant (046d:c26e) is unaffected—already fully supported upstream by hid-logitech-hidpp.",
+    "affected_hardware": [
+      "Logitech G923 Racing Wheel (PlayStation mode)",
+      "Logitech G923 Racing Wheel (native/PC mode)"
+    ],
+    "device_ids": [
+      "046d:c266",
+      "046d:c267"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "The fork's new-lg4ff rewrite (introduced in commit 8a100f2ed) replaces hid-lg4ff.c wholesale with berarma/new-lg4ff, an out-of-tree hrtimer-driven force-feedback scheduler. This rewrite is not carried forward to 6.18; we use vanilla hid-lg4ff which has a different architecture (input_ff_memless). The commit is an update to that out-of-tree driver and does not apply to vanilla 6.18.",
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "8a100f2ed (initial new-lg4ff rewrite import)"
+    ],
+    "superseded_by": [
+      "hid-logitech-hidpp (for G923 Xbox, 046d:c26e) — /mnt/source/linux/drivers/hid/hid-logitech-hidpp.c:4621: `HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G923_XBOX_WHEEL)`; device ID itself defined /mnt/source/linux/drivers/hid/hid-ids.h:905 `#define USB_DEVICE_ID_LOGITECH_G923_XBOX_WHEEL 0xc26e`. CONFIG_HID_LOGITECH_DJ=y confirmed set in board/mister/de10nano/linux.config:313 (selects CONFIG_HID_LOGITECH_HIDPP by Kconfig default, correctly absent from the savedefconfig-style linux.config as a selected/default symbol)."
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "DELIBERATE OMISSION. Detailed reasoning in patch-provenance.md §9.3:\n\n1. **Architectural mismatch**: Commit 8a100f2ed introduced berarma/new-lg4ff, an out-of-tree hrtimer-driven rewrite. We carry vanilla hid-lg4ff instead. This commit updates that vendored fork driver, which is not in our 6.18 build.\n\n2. **The 32-bit rumble/FF fix is not applicable to 6.18**: The diff changes `parameters[i].k1 = div_s64(...)` — gain-scaling code that exists only in the out-of-tree rewrite. Vanilla 6.18 hid-lg4ff has no parameters, k1/k2, gain scaling, div_s64, or hrtimer. FF scaling is done by input_ff_memless in the kernel input core. There is no bug to fix in vanilla 6.18.\n\n3. **G923 device support requires untestable code**: Adding G923 device IDs (0xc266, 0xc267) to hid-lg4ff would require ~120 lines of multimode/mode-switch code in the vanilla driver to be useful. This code:\n   - Handles PS-mode boot (c267) and switches to native mode (c266) via vendor command (report ID 0x30, payload f8 09 07 01 01 00 00)\n   - Requires detection via bcdDevice mask (0xff00 & 0x3800) — a magic number with no public documentation\n   - Has never run on any wheel (proof-of-concept only)\n   - Has a hard-fail hazard: if c267 is added to lg_devices[] but the mode switch fails or device does not match bcdDevice, the wheel binds to lg_devices but lg4ff_init() fails, leaving it with NO driver at all (hid-generic is blocked by lg_devices[] match). This is worse than the current state.\n\n4. **User impact is acceptable**: G923 PlayStation users currently get hid-generic (joystick, no FF). Carrying this code might LOSE that graceful fallback if the hard-fail triggers. The bet we are not making.\n\n5. **G923 Xbox is already fully supported upstream**: CONFIG_HID_LOGITECH_HIDPP=y (selected by CONFIG_HID_LOGITECH_DJ=y) binds 046d:c26e in mainline and provides full FF support. No regression for Xbox users.\n\n6. **Upstream status**: Mainline 6.18 has no G923-PS support. This code is original to the fork's rewrite and never landed in mainline. Carrying a 120-line untestable hard-fail hazard in a forward-port is outside the project's risk tolerance. Full recipe for a future contributor with hardware is documented in patch-provenance.md §9.3.\n\nsonnet-verified: (1) G923-Xbox-via-hidpp claim now carries a file:line citation (dependencies.superseded_by, added — was previously bare prose with no citation). Re-derived against the LIVE checkout per grounding-contract pilot lessons rather than copied from patch-provenance.md: the doc's own §9.3 cites `hid-logitech-hidpp.c:4669`, but `grep -n G923_XBOX_WHEEL /mnt/source/linux/drivers/hid/hid-logitech-hidpp.c` shows the actual binding at line 4621 in this checkout — used the live-derived line rather than the doc's (source-drift between the doc's checkout and this one, not an error in either). (2) §9.3 hard-fail rationale cross-checked against patch-provenance.md:1358-1442 and found accurately represented: the 'hid-generic blocked once c267 matches lg_devices[], then lg4ff_init() hard-fails leaving no driver bound at all' mechanism, the bcdDevice magic-number gate (mask 0xff00, result 0x3800), and the 'G923 Xbox already fully supported, G923 PS gets hid-generic joystick-only, nothing to fix in vanilla for the 32-bit rumble diff' conclusions all match the source doc's substance. Disposition=dropped-deliberate confirmed correct and well-justified; this is a case where equivalence=contradicted legitimately does NOT imply carry-candidate because the record's own extensive reasoning already treats it as a carry candidate and documents why carrying is actively worse than not (the pilot-lesson heuristic's intent is satisfied, not violated)."
+}

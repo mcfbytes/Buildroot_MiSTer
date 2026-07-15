@@ -1,0 +1,57 @@
+{
+  "sha": "9b9aebfac18940fd28ee242d087812e61ef95bfa",
+  "subject": "hid-guncon3: fix warnings.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-04-13",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": ["drivers/hid/hid-guncon3.c"],
+  "added": 4,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0011-hid-guncon3.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 337: '8179ac736, 9b9aebfac | Namco GunCon 3 (+warning fix)'",
+
+  "impact": {
+    "effect_if_absent": "Compiler warnings (C89 compliance for variable declaration placement; unused return value from input_register_device). Risk of silent failure in device registration if error return value is not checked.",
+    "affected_hardware": ["Namco GunCon 3 IR gun controller"],
+    "device_ids": ["0b9a:0800"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "USB device ID detection (0b9a:0800) for lightgun quirk and calibration initialization",
+    "main_mister_ref": "Main_MiSTer/input.cpp:5374 — device ID match triggers QUIRK_LIGHTGUN with specific calibration values"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "minimal"
+  },
+  "dependencies": {
+    "depends_on": ["8179ac736bda58801cd0fdf177f3f905e2c53635"],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Warning-fix commit is explicitly folded into carried patch 0011-hid-guncon3.patch (see patch header line 19-20). The patch documentation confirms the fix is incorporated and notes forward-port changes for usb_maxpacket() API signature (3-arg→2-arg in 6.18). The driver is MiSTer-specific (not in vanilla 6.18.38); warning fixes are essential for proper error handling of input_register_device() return value, which Main_MiSTer userspace depends on for device detection and lightgun calibration. Agrees with patch-provenance.md class D carry designation."
+}

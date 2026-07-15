@@ -1,0 +1,85 @@
+{
+  "sha": "bdedb82d268a20dbbbf631d6c952dacb109c27c0",
+  "source_branch": "MiSTer-v5.13.12",
+  "subject": "Add rtl8188eu, rtl8188fu WiFi drivers.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-29",
+  "subsystem": "net-wireless",
+  "change_type": "vendored-driver-tree",
+  "files": [
+    "drivers/net/wireless/realtek/Kconfig",
+    "drivers/net/wireless/realtek/Makefile",
+    "drivers/net/wireless/realtek/rtl8188eu/",
+    "drivers/net/wireless/realtek/rtl8188fu/"
+  ],
+  "added": 851322,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtl8xxxu/core.c:8060-8066",
+    "vanilla_quote": "core.c:8060-8066: /* RTL8188FU */ {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0xf179, 0xff, 0xff, 0xff), .driver_info = (unsigned long)&rtl8188fu_fops}, {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0x8179, 0xff, 0xff, 0xff), .driver_info = (unsigned long)&rtl8188eu_fops}, /* Tested by Hans de Goede - rtl8188etv */ {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_REALTEK, 0x0179, 0xff, 0xff, 0xff), .driver_info = (unsigned long)&rtl8188eu_fops}",
+    "equivalence": "partial"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "Silent: these exact Kconfig symbols (CONFIG_RTL8188EU, CONFIG_RTL8188FU) are not in vanilla 6.18 and not in our linux.config; however, the USB device IDs (0x0BDA:0x8179, 0x0BDA:0x0179, 0x0BDA:0xF179) are covered by mainline CONFIG_RTL8XXXU=m which we do enable. Without rtl8xxxu, users with RTL8188E/F USB adapters would lose WiFi.",
+    "affected_hardware": [
+      "RTL8188E (USB)",
+      "RTL8188F (USB)"
+    ],
+    "device_ids": [
+      "0bda:8179",
+      "0bda:0179",
+      "0bda:f179"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "this commit's Kconfig symbols (RTL8188EU, RTL8188FU) do not exist in vanilla 6.18 and will not build; mainline provides equivalent coverage via rtl8xxxu driver for the same USB device IDs",
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "CONFIG_RTL8XXXU=m (mainline rtl8xxxu, in-kernel) -- RTL8188E (0x8179/0x0179) and RTL8188F (0xf179), confirmed in /mnt/source/linux/drivers/net/wireless/realtek/rtl8xxxu/core.c:8060-8066",
+      "33ff5146a (in-fork: 2021-11-08, combines rtl8188eu+rtl8188fu+4 other driver trees, later version on v5.15 branch)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "author": "Realtek Semiconductor Corporation",
+    "origin_projects": [
+      "RTL8188EU: Realtek vendor tree, copyright header 'Copyright(c) 2007 - 2012 Realtek Corporation. All rights reserved.'",
+      "RTL8188FU: Realtek vendor tree, copyright header 'Copyright(c) 2007 - 2012 Realtek Corporation. All rights reserved.'"
+    ]
+  },
+
+  "notes": "This commit on MiSTer-v5.13.12 branch (2021-08-29) adds the initial vendored rtl8188eu and rtl8188fu driver trees. Not carried in any patch file in linux-patches/ directory. The Kconfig symbols CONFIG_RTL8188EU and CONFIG_RTL8188FU do not exist in vanilla 6.18.38 and are not enabled in our linux.config. However, the USB device IDs covered by this commit (0x0BDA:0x8179, 0x0BDA:0x0179 for RTL8188E; 0x0BDA:0xF179 for RTL8188F) are handled by mainline rtl8xxxu driver (CONFIG_RTL8XXXU=m), which is enabled in our build and provides equivalent functionality. Therefore, this commit is marked as 'dropped-deliberate' with 'superseded_by' pointing to rtl8xxxu. Equivalence is 'partial' because the mainline driver may lack some features of the vendored tree, but core WiFi functionality is covered. Later commits on this branch include 109599db7 ('Update rtl8188eu driver') and a combined re-add at 33ff5146a on v5.15 branch that merges these drivers with 4 others. No userspace coupling expected (standard WiFi driver module). Vendored Realtek GPL-2.0 code; not merged upstream as-is due to coding-style/API compliance."
+}

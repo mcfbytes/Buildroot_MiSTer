@@ -1,0 +1,59 @@
+{
+  "sha": "7d2df2d2d947f236de1c78ac1288fa979485f173",
+  "subject": "Disable DMA on UART0/1. DMA is broken on Designware UARTs.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 4,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:915-917 and 928-930",
+    "vanilla_quote": "uart0: serial@ffc02000 {\n\t\t\t...\n\t\t\tdmas = <&pdma 28>,\n\t\t\t       <&pdma 29>;\n\t\t\tdma-names = \"tx\", \"rx\";\n\t\t};\n\t\tuart1: serial@ffc03000 {\n\t\t\t...\n\t\t\tdmas = <&pdma 30>,\n\t\t\t       <&pdma 31>;\n\t\t\tdma-names = \"tx\", \"rx\";",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md: grouped row (commits aa8afe109–077c2c317), disposition \"carry — landed (P1.7)\"",
+  "impact": {
+    "effect_if_absent": "CORRECTED (sonnet verification): NOT boot-critical -- downgraded to feature-loss. Verified drivers/tty/serial/8250/8250_port.c:3305-3325 (serial8250_console_write): the kernel console write path explicitly disables IER and polls the LSR/THR registers directly, bypassing DMA entirely, for ALL console output including boot messages, printk, and oops/panic dumps. This is true regardless of whether dmas/dma-names are present on the uart node. So broken UART DMA cannot stall kernel boot or corrupt console/dmesg output -- console=ttyS0 (linux.config comment, board cmdline) remains reliable either way. What DMA actually gates is regular tty I/O through the 8250 core's DMA-offload path (drivers/tty/serial/8250/8250_dma.c: dma->rx_dma()/serial8250_tx_dma(), used for termios-driven reads/writes once dmas/dma-names are present) -- concretely, the BusyBox getty respawned on ttyS0 by rootfs-overlay/etc/inittab:60 ('ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100') and any userspace app opening /dev/ttyS0 or /dev/ttyS1 directly. If this commit's content were absent, a user with a serial debug cable attached could get an unreliable/hung login shell or garbled data on that port; the DE10-Nano's actual boot-to-menu path (FPGA config + Main_MiSTer OSD over HDMI/VGA) does not touch UART0/1 at all and would be unaffected.",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [
+      "c4d12c768 (Enable UART1.)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED ENTRY IN PROVENANCE DOC (escalation trigger): This commit is listed as one of 13 grouped commits (aa8afe109–077c2c317) in a single row. The change is carried forward in the Buildroot 6.18 branch as part of patch 0004-dts-de10nano-MiSTer.patch (lines 299-313, confirmed by direct read: &uart0 gets the /delete-property/ lines appended after clock-frequency, &uart1 gets only the /delete-property/ lines). The MiSTer board DTS deletes the dma and dma-names properties from the board-level device tree &uart0 and &uart1 nodes, overriding the base socfpga.dtsi definitions which still contain these properties in vanilla (confirmed: socfpga.dtsi:915-917 for uart0, 928-930 for uart1). This is a hardware workaround specific to the Designware UART DMA implementation on the Cyclone5 + HPS variant used in the DE10-Nano. Depends on c4d12c768 (textual/patch-lineage dependency: 7d2df2d2d's diff appends dma-delete lines onto the &uart1 block c4d12c768 created) though sonnet verification of that record found c4d12c768's own content was independently a no-op (uart1 already DT-default-enabled) -- the &uart1 anchor still exists in 0004 regardless via this commit's own content. No upstream equivalent — vanilla 6.18.38's uart nodes in socfpga.dtsi still define dma properties (lines 915-917, 928-930), i.e. equivalence=contradicted is correct and disposition=carried is the right call, not dropped-upstream.\n\nsonnet-verified CORRECTION (severity downgrade, requested sanity-check on 'boot-critical' grade): downgraded impact.severity from boot-critical to feature-loss. See impact.effect_if_absent for the grounding: serial8250_console_write() (drivers/tty/serial/8250/8250_port.c:3305) never uses DMA for console/printk/oops output regardless of DT dma properties, so kernel boot and console reliability are NOT at risk from broken UART DMA. The actually-affected functionality is regular tty I/O via 8250_dma.c's offload path -- concretely the serial getty on ttyS0 (rootfs-overlay/etc/inittab:60) and any userspace serial communication -- which is a feature-loss/reliability issue for the debug/login serial port, not a boot-blocking one. The MiSTer's primary boot-to-menu path (FPGA + Main_MiSTer OSD, HDMI/VGA) never touches UART0/1. Disposition, carried_patch, carried_mode, and equivalence=contradicted all confirmed correct; only the severity grade was overstated.\n\nsonnet-verified: CARRY-MAPPING CONFIRMED, SEVERITY CORRECTED (boot-critical -> feature-loss, evidence-backed) -- disposition/carried_patch/carried_mode/equivalence all hold; the boot-critical grade did not survive checking the 8250 console-write path."
+}

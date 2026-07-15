@@ -1,0 +1,70 @@
+{
+  "sha": "5220d668681db2e017372e4278bf5ba8cac47f87",
+  "subject": "exfat: cleanup from kernel version conditions.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-14",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/exfat_core.c",
+    "fs/exfat/exfat_core.h",
+    "fs/exfat/exfat_data.c",
+    "fs/exfat/exfat_nls.c",
+    "fs/exfat/exfat_oal.c",
+    "fs/exfat/exfat_super.c",
+    "fs/exfat/exfat_super.h"
+  ],
+  "added": 7,
+  "removed": 496,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.8 Class G",
+
+  "impact": {
+    "effect_if_absent": "The fork's sdfat-lineage exfat driver becomes less maintainable; older kernel compatibility shims are retained. However, this driver is entirely absent from 6.18 build — current build uses vanilla exfat from mainline.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "8b6b8c2f5 (Remove original exFAT driver)",
+      "df35bdb27 (Add exFAT with symlinks support)"
+    ],
+    "superseded_by": [
+      "Carried patch 0031-exfat-samsung-symlinks.patch (ADR 0019)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED COMMIT — part of patch-provenance.md §3.8 Class G row grouping all six exfat-replacement commits (8b6b8c2f5, df35bdb27, 858322ce6, 5220d6686, 7f7148c1f, 99a2c80d0) under one row with subject 'Remove mainline exFAT; add out-of-tree exFAT with symlink support; cleanups'. Patch-provenance guidance (§1 Pilot Lessons) explicitly requires analyzing ONLY the assigned commit; grouping is the failure mode this project exists to fix. Per ADR 0010 (accepted 2026-07-12), the entire sdfat-lineage exfat driver was dropped in favor of vanilla exfat from mainline. ADR 0019 (accepted 2026-07-14) amended ADR 0010 to restore symlink support via carried patch 0031 (0031-exfat-samsung-symlinks.patch) against mainline exfat. Current 6.18 build uses vanilla fs/exfat/ (CONFIG_EXFAT_FS=y), not the fork's fs/exfat/ sdfat lineage. This commit is a cleanup within the dropped driver and has zero effect on current build. Escalation required due to grouped-row provenance entry. sonnet-verified: disposition=dropped-obsolete and severity=none confirmed correct — equivalence=null is appropriately left unset (no upstream comparison asserted, consistent with sibling exfat-group records after correction)."
+}

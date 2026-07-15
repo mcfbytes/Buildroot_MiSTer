@@ -1,0 +1,64 @@
+{
+  "sha": "f3c75eb0268277763955dbc6f6d9449cd32c43c5",
+  "subject": "XInput polling rate param + Qanba Obsidian XInput mode support",
+  "author": "eniva",
+  "author_is_pr_contributor": false,
+  "date": "2019-11-21",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/joystick/xpad.c"
+  ],
+  "added": 23,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0017-xpad-mister-deltas.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "6.18.38 drivers/input/joystick/xpad.c:585",
+    "vanilla_quote": "XPAD_XBOX360_VENDOR(0x2c22),\t\t/* Qanba Controllers */",
+    "equivalence": "partial"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:365",
+
+  "impact": {
+    "effect_if_absent": "cpoll module parameter unavailable for polling rate tuning; Qanba Obsidian devices would still bind via vanilla's generic vendor macro but without device-specific mapping/name refinements",
+    "affected_hardware": [
+      "Qanba Obsidian Arcade Joystick"
+    ],
+    "device_ids": [
+      "2c22:2303"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "manual"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Commit adds two complementary changes: (1) cpoll module parameter for XInput controller polling rate tuning via module load parameter, (2) Qanba Obsidian device-specific entry (0x2c22:0x2303) with name and mapping. Vanilla 6.18.38 contains Qanba vendor support (line 585: XPAD_XBOX360_VENDOR(0x2c22)), which enables generic device binding, but lacks both the cpoll parameter and the device-specific xpad_device[] entry. Equivalence is 'partial' because generic vendor binding is present in vanilla but the refinements are not. Carried patch 0017-xpad-mister-deltas.patch combines this commit with three others (GIP exclusion a2242dd85, Vader 3/4/5 Pro c035c21c0, and zakk4223's update af27afc4c as origin reference) and required manual porting from 5.15 to 6.18 (removed debug pr_info prints, proper sorting in xpad_device[], NULL check on udev->product). Patch-provenance.md groups this commit with multiple others at line 365, which is the exact failure mode this recon project exists to fix."
+  ,"sonnet-verified": "carry-mapping into 0017 confirmed (cpoll param + Qanba entry present in applied patch); partial-upstream claim verified exactly — `grep -n '0x2c22' /mnt/source/linux/drivers/input/joystick/xpad.c` returns line 585: `XPAD_XBOX360_VENDOR(0x2c22), /* Qanba Controllers */`, matching the record's vanilla_file_line/vanilla_quote verbatim; vanilla has no 2c22:2303-specific xpad_device[] entry and no cpoll module param, confirming equivalence=partial is correct, not byte-identical/superseded; userspace_coupling.coupled=false confirmed (no cpoll/Qanba/2c22 references anywhere in Main_MiSTer)"
+}

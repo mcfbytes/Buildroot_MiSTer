@@ -1,0 +1,71 @@
+{
+  "sha": "d788e7ab92051bd9b2f4bfd3feb01d1eea5cd2e6",
+  "subject": "Update defconfig (enable logitech wheels).",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-07-17",
+  "subsystem": "input",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/Kconfig:697, drivers/hid/Kconfig:705",
+    "vanilla_quote": "config LOGIG940_FF\n\tbool \"Logitech Flight System G940 force feedback support\"\n\tdepends on HID_LOGITECH\n\tselect INPUT_FF_MEMLESS\n---\nconfig LOGIWHEELS_FF\n\tbool \"Logitech wheels configuration and force feedback support\"\n\tdepends on HID_LOGITECH\n\tselect INPUT_FF_MEMLESS\n\tdefault LOGITECH_FF",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md: grouped row 'defconfig (11 commits)' — disposition: 'config — feeds P1.3'",
+  "impact": {
+    "effect_if_absent": "Logitech G940 flight stick and Logitech wheels (G25/G27/G29/Driving Force series) would lose force feedback support",
+    "affected_hardware": [
+      "Logitech Flight System G940",
+      "Logitech G25 Racing Wheel",
+      "Logitech G27 Racing Wheel",
+      "Logitech G29 Racing Wheel",
+      "Logitech Driving Force",
+      "Logitech Driving Force Pro",
+      "Logitech Driving Force GT",
+      "Logitech Driving Force EX/RX",
+      "Logitech Driving Force Wireless",
+      "Logitech Speed Force Wireless"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "CONFIG_HID_LOGITECH",
+      "CONFIG_LOGITECH_FF"
+    ],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config (CONFIG_LOGIG940_FF=y explicit; CONFIG_LOGIWHEELS_FF achieved via Kconfig default=LOGITECH_FF resolution, confirmed in the actual resolved build config)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Pure kconfig change (defconfig update, not a code patch). Both CONFIG_LOGIG940_FF and CONFIG_LOGIWHEELS_FF exist as standard vanilla options in Linux 6.18 (drivers/hid/Kconfig:697, 705). Current status in our linux.config: CONFIG_LOGIG940_FF=y (explicit); CONFIG_LOGIWHEELS_FF not listed but defaults to CONFIG_LOGITECH_FF (which is y in our config). Commit's intent (enable both) is achieved via current linux.config. Stock reference (stock-linux.config) confirms both should be y. This commit is listed in patch-provenance.md as part of a grouped row of 11 defconfig commits ('config — feeds P1.3'), indicating it was grouped in prior analysis. No patch carried (defconfig changes are config, not patches). | sonnet-verified: DISPOSITION CORRECTED not-evaluated -> dropped-deliberate. The 'default LOGITECH_FF' claim is confirmed at drivers/hid/Kconfig (vanilla 6.18): 'config LOGIWHEELS_FF ... default LOGITECH_FF'; LOGIG940_FF has no default line (defaults n) but IS explicit =y in our fragment. Crucially this was verified against the STRONGEST possible evidence, not just static Kconfig reading: the actual post-olddefconfig resolved kernel .config at /mnt/source/Buildroot_MiSTer/output/build/linux-6.18.38/.config shows CONFIG_LOGITECH_FF=y, CONFIG_LOGIG940_FF=y, AND CONFIG_LOGIWHEELS_FF=y (lines 2949, 2951, 2952) even though LOGIWHEELS_FF has no line at all in our board/mister/de10nano/linux.config fragment (grep confirms absent) — proving the default-resolution chain actually fires in our real build, not just in theory. Per the macvlan-pilot precedent (not-evaluated is reserved for cases where OUR build genuinely lacks the resulting symbol, e.g. CONFIG_MACVLAN which has no line anywhere and resolves to unset), this record's prior 'not-evaluated' was a misapplication: the commit's intent (both wheel/flight-stick FF options enabled) IS achieved in our actual build. Corrected to dropped-deliberate, superseded_by updated to cite the default-resolution mechanism, agrees_with_provenance_doc set true. No userspace_coupling citation was asserted (coupled=false stands, unchanged)."
+}

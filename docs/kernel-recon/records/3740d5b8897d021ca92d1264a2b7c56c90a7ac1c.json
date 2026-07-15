@@ -1,0 +1,117 @@
+{
+  "sha": "3740d5b8897d021ca92d1264a2b7c56c90a7ac1c",
+  "subject": "Backport  rtl8812au  rtl8821au  rtl8821cu drivers from morrownr - issue #39 (#40)",
+  "author": "gkrzystek",
+  "author_is_pr_contributor": true,
+  "date": "2023-02-06",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/net/wireless/realtek/Kconfig",
+    "drivers/net/wireless/realtek/Makefile",
+    "drivers/net/wireless/realtek/rtl8812au/",
+    "drivers/net/wireless/realtek/rtl8821au/",
+    "drivers/net/wireless/realtek/rtl8821cu/",
+    "...1683 more files"
+  ],
+  "added": 942177,
+  "removed": 268583,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md §3.6 'Class E — Realtek USB WiFi', line 392 (GROUPED ENTRY — see notes)",
+
+  "impact": {
+    "effect_if_absent": "None in our 6.18 build: this vendored driver tree is not built in-tree (CONFIG_RTL8812AU, CONFIG_RTL8821AU, CONFIG_RTL8821CU are all unset in linux.config). Per-chipset coverage is via either mainline in-kernel drivers (RTL8188E/F via CONFIG_RTL8XXXU; RTL8821CU via CONFIG_RTW88_8821CU; RTL8822B via CONFIG_RTW88_8822BU) or out-of-tree BR2 packages (RTL8812AU and RTL8821AU via BR2_PACKAGE_RTL8812AU and BR2_PACKAGE_RTL8821AU_MORROWNR). This commit is the morrownr-sourced replacement of the earlier vendored drivers (33ff5146a); it IMPROVES the driver quality by moving from old static versions to actively-maintained fork sources, but the fork itself was intentionally not carried forward in-tree for our kernel builds (replaced with BR2 packages that tie to specific commit SHAs and hashes for verification).",
+    "affected_hardware": [
+      "RTL8812A (USB)",
+      "RTL8811A (USB)",
+      "RTL8821A (USB)",
+      "RTL8821C (USB)",
+      "RTL8188E (USB)",
+      "RTL8188F (USB)"
+    ],
+    "device_ids": [
+      "0bda:8812",
+      "0bda:881a",
+      "0bda:881b",
+      "0bda:881c",
+      "0bda:0811",
+      "0bda:0821",
+      "0bda:8822",
+      "0bda:a811",
+      "0bda:0820",
+      "0bda:0823",
+      "0bda:b82b",
+      "0bda:b820",
+      "0bda:c821",
+      "0bda:c820",
+      "0bda:c82a",
+      "0bda:c82b",
+      "0bda:c811",
+      "0bda:8811",
+      "0bda:8731",
+      "0bda:c80c",
+      "0bda:8179",
+      "0bda:0179",
+      "0bda:f179"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "These vendored driver trees (morrownr versions circa 2023-02) are from the 5.15 stock kernel era and predate significant 6.x kbuild changes; the fork itself was intentionally not forward-ported to 6.18 in-tree. Our build strategy substitutes out-of-tree BR2 packages (commit-pinned, hash-verified) for the same morrownr sources, avoiding the need to maintain in-tree code against kernel version churn. The mainline rtw88 drivers (6.18+) now cover RTL8821CU and RTL8822BU; RTL8812A/RTL8821A have no mainline USB drivers enabled in our config.",
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [
+      "33ff5146a (which this commit REPLACES: the 33ff5146a record documents that commit as 'superseded_by 3740d5b88')"
+    ],
+    "superseded_by": [
+      "BR2_PACKAGE_RTL8812AU (out-of-tree, morrownr fork, commit-pinned)",
+      "BR2_PACKAGE_RTL8821AU_MORROWNR (out-of-tree, morrownr fork, commit-pinned)",
+      "CONFIG_RTL8XXXU=m (mainline, covers RTL8188E/RTL8188F USB IDs)",
+      "CONFIG_RTW88_8821CU=m (mainline rtw88, covers RTL8821CU)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "author": "Realtek Semiconductor Corporation",
+    "origin_projects": [
+      "RTL8812AU: morrownr fork (upstream source: Realtek vendor tree), GPL-2.0, copyright header 'Copyright(c) 2007 - 2017 Realtek Corporation'",
+      "RTL8821AU: morrownr fork (upstream source: Realtek vendor tree), GPL-2.0, copyright header 'Copyright(c) 2007 - 2017 Realtek Corporation'",
+      "RTL8821CU: morrownr fork (upstream source: Realtek vendor tree), GPL-2.0, copyright header 'Copyright(c) 2007 - 2017 Realtek Corporation'",
+      "RTL8188E/RTL8188F: Realtek vendor trees (included in this commit), GPL-2.0"
+    ]
+  },
+
+  "notes": "ESCALATION REQUIRED: patch-provenance.md entry is GROUPED — commit 3740d5b88 appears in a single table row (§3.6, line 392) alongside 7 other commits (33ff5146a, 2371fb1aa, 143ce187e, 4e98a68d1, 43fbb63ae, 993b82e31, 115b1d1ae, fc09a292a). This violates the grounding contract mandate that each commit be analyzed separately. The grouping obscures the critical fact that 3740d5b88 is NOT an addition but a REPLACEMENT of 33ff5146a — 3740d5b88 splits the combined rtl8821au tree (which covered both 8812a and 8821a) into separate morrownr rtl8812au and rtl8821au repositories, and stock 5.15 shipped the post-3740d5b88 tree (confirmed by stock's defconfig carrying RTL8812AU and RTL8821AU as separate CONFIG symbols, which only exist after this split). The record for 33ff5146a (which correctly documents this replacement as superseded_by 3740d5b88) already establishes that all six chipset families are covered in our build via a combination of mainline and out-of-tree BR2 packages, all sourced from morrownr. The 3740d5b88 commit itself is a quality upgrade (old static versions → actively-maintained morrownr), but intentionally not carried forward in-tree to our 6.18 kernel; we pin specific morrownr commit hashes in the BR2 packages instead, which is the recommended long-term strategy for vendored code (do not vendor, re-source). Verified: defconfig adds CONFIG_RTL8812AU=m (separating it from the earlier combined tree); license headers all GPL-2.0 Realtek; no Main_MiSTer userspace coupling to specific driver internals (these are standard USB WiFi drivers with no special ioctls or sysfs interfaces). Device IDs re-derived from rtl8812au/os_dep/linux/usb_intf.c, rtl8821au/os_dep/linux/usb_intf.c, and rtl8821cu/os_dep/linux/usb_intf.c in the commit payload (primary Realtek vendor VID 0x0BDA, product IDs listed above; many OEM variants omitted for brevity but present in each driver). No forward-port conflict — this tree is superseded by out-of-tree BR2 packages for 6.18. sonnet-verified: agrees_with_provenance_doc corrected from null to true — patch-provenance.md §3.6 classifies this whole group's disposition as 're-source' with the same named BR2 packages this record cites, which matches disposition=dropped-deliberate here. REPLACES-relationship re-checked: docs/kernel-recon/records/33ff5146a7248ef86e15bb3b78f1f7516f86ee4f.json's own dependencies.superseded_by field independently states '3740d5b88 (in-fork: ... replaces THIS commit's combined rtl8821au tree with morrownr's split rtl8812au/rtl8821au trees ...)' — confirming the REPLACES relationship this record asserts is present and consistent in the sibling record, not asserted unilaterally here. depends_on citation format is unconventional (a prose explanation rather than a bare sha) but the underlying claim is correct and cross-verified."
+}

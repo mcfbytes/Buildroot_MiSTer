@@ -1,0 +1,80 @@
+{
+  "sha": "a95855a703fa7ae9714390487965a0a7e84406dd",
+  "subject": "dwc2: port from socfpga-v4.19.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-31",
+  "subsystem": "usb",
+  "change_type": "driver-port",
+  "files": [
+    "drivers/usb/dwc2/Kconfig",
+    "drivers/usb/dwc2/Makefile",
+    "drivers/usb/dwc2/core.c",
+    "drivers/usb/dwc2/core.h",
+    "drivers/usb/dwc2/core_intr.c",
+    "drivers/usb/dwc2/debug.h",
+    "drivers/usb/dwc2/debugfs.c",
+    "drivers/usb/dwc2/gadget.c",
+    "drivers/usb/dwc2/hcd.c",
+    "drivers/usb/dwc2/hcd.h",
+    "drivers/usb/dwc2/hcd_ddma.c",
+    "drivers/usb/dwc2/hcd_intr.c",
+    "drivers/usb/dwc2/hcd_queue.c",
+    "drivers/usb/dwc2/hw.h",
+    "drivers/usb/dwc2/params.c",
+    "drivers/usb/dwc2/pci.c",
+    "drivers/usb/dwc2/platform.c"
+  ],
+  "added": 24080,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "source_branch": "MiSTer-v5.14",
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "USB devices on the DE10-Nano would use vanilla dwc2 instead of socfpga-v4.19 dwc2; both implementations have the same unaligned-IN split transfer bug affecting non-isochronous split-IN transfers with non-4-byte-aligned wMaxPacketSize",
+    "affected_hardware": ["DE10-Nano"],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["d7adb20b4ca595838289406c083fff78f004a8c3 — unaligned-IN fix (patch 0028)"],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "author": "Synopsys Inc. (2004-2013)",
+    "license_header": "GPL-2.0+ OR BSD-3-Clause",
+    "origin_project": "Synopsys DesignWare USB2 OTG Controller driver; ported from socfpga-v4.19 (Intel Altera SoC kernel)"
+  },
+  "notes": "Phase 1 APPENDIX: old-branch sweep of MiSTer-v5.14. This commit is NOT on the stock MiSTer-v5.15 branch; it was replaced by version-bump to v5.15.1 which carried vanilla v5.15 dwc2. Stock now uses vanilla 6.18.38 dwc2. The socfpga-v4.19 port adds 24,080 lines but contains NO socfpga-specific tuning or board-specific parameters — it is a generic dwc2 driver backport. KEY FINDING: Both the v4.19 port (this commit) and vanilla 6.18.38 dwc2 contain an identical bug: the unaligned DMA buffer copy (for non-4-byte-aligned wMaxPacketSize split transfers) is only performed for isochronous transfers in dwc2_xfercomp_isoc_split_in(), silently dropping data for all other split-IN transfer types (interrupt, bulk, control). This is documented in carried patch 0028 (Martin Donlon's unaligned-IN fix), which was added to MiSTer-v5.15 and must be carried to 6.18 (already done as patch 0028-dwc2-fix-unaligned-in-split.patch). The v4.19 port is OBSOLETE for the stock build because: (1) it is on v5.14, not stock v5.15; (2) stock now uses vanilla 6.18 which supersedes this port (v6.18 is post-v5.15 upstream evolution); (3) the critical bug fix (patch 0028) is platform-agnostic and applies to vanilla 6.18. USB on DE10-Nano goes through dwc2 — all USB devices depend on this controller. Without patch 0028, devices with non-aligned wMaxPacketSize split-IN transfers would silently lose data, but this is a general dwc2 bug (not MiSTer-specific), not a regression from dropping this port."
+}

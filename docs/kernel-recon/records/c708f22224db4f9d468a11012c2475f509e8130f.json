@@ -1,0 +1,71 @@
+{
+  "sha": "c708f22224db4f9d468a11012c2475f509e8130f",
+  "subject": "xone: update to latest.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-04-13",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/bus/protocol.c",
+    "drivers/hid/xone/bus/protocol.h",
+    "drivers/hid/xone/driver/chatpad.c",
+    "drivers/hid/xone/driver/gamepad.c",
+    "drivers/hid/xone/transport/dongle.c",
+    "drivers/hid/xone/transport/mt76.c",
+    "drivers/hid/xone/transport/wired.c"
+  ],
+  "added": 382,
+  "removed": 360,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md §3.5 (Class D/E — xone, grouped row)",
+  "impact": {
+    "effect_if_absent": "No effect — xone Xbox wireless adapter driver is now sourced from Buildroot package (dlundqvist/xone) instead of fork's vendored drivers/hid/xone/",
+    "affected_hardware": [
+      "Xbox One wireless controller",
+      "Xbox Series X|S wireless controller",
+      "Xbox Wireless Dongle (USB PID 02e6, 02fe, 02dd)"
+    ],
+    "device_ids": [
+      "045e:02e6",
+      "045e:02fe",
+      "045e:02dd"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist/xone commit f2aa9fe01103d7600553b505b298ff0bd47ff280)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0-or-later (vendored from medusalix/xone; dlundqvist fork inherits same license)",
+  "notes": "GROUPED ROW in provenance.md §3.5: all 7 xone commits (4ddd8ec3d, 5a7965488, c708f2222, e2eb39e6f, 8270e78f4, d776ddb4e, d5beb5aa6) listed in one row — escalation trigger. This commit (c708f2222 'xone: update to latest') is a pure refactoring of the vendored driver (code quality improvements to rumble handling, initialization order). Commit is now dead code in fork: xone has been re-sourced as a Buildroot out-of-tree kernel-module package (package/xone), pinned to dlundqvist/xone (f2aa9fe...) as of 2026-07-13. No kernel patches carry xone; no Kconfig option exists in our board/mister/de10nano/linux.config. Dropping this commit from the fork has no user-visible effect: the xone driver still ships in the image via the Buildroot package. The package's comment (xone.mk:41-49) verifies that all 4 of stock's local deltas (rumble fix, Elite-2 paddle backport, per-PID firmware naming, sysfs pairing attribute) are already native features of dlundqvist/xone — no compat patches needed. This commit is equivalent to dlundqvist/xone's code maturity at that point (2022-04-13 was near initial fork time); the package is now ahead. sonnet-verified: package supersession claim re-confirmed directly against package/xone/xone.mk (local checkout) — XONE_VERSION=f2aa9fe01103d7600553b505b298ff0bd47ff280 pinned from dlundqvist/xone, and the 'LOCAL DELTAS' comment block (xone.mk:42-49, off by one from this record's cited :41-49) does state all four of stock's local deltas (rumble handling, Elite-2 paddles, per-PID firmware, sysfs pairing) are already native upstream features. Disposition=dropped-deliberate and severity=feature-loss (relative to a hypothetical drop with no replacement — mitigated to none in practice since package/xone covers it) confirmed correct. NOTE: sibling record 5a7965488 (xone rumble one-liner) claims a specific 'gip_gamepad_send_rumble line 167' citation for the rumble-handling claim referenced here — that specific citation was found to be WRONG on independent verification (see that record); the general 'rumble handling exists' claim in xone.mk itself is not disputed, only the specific line/function citation in the sibling record."
+}

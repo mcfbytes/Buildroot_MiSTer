@@ -1,0 +1,57 @@
+{
+  "sha": "f52690120b0906105636d458ee4127eaa48e66d8",
+  "subject": "dts: enable bridges.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-21",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 13,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:525-531 (sonnet-corrected from 526-531 -- the fpga_bridge0 label line itself is 525, not 526)",
+    "vanilla_quote": "fpga_bridge0: fpga_bridge@ff400000 {\n\t\tcompatible = \"altr,socfpga-lwhps2fpga-bridge\";\n\t\treg = <0xff400000 0x100000>;\n\t\tresets = <&rst LWHPS2FPGA_RESET>;\n\t\tclocks = <&l4_main_clk>;\n\t\tstatus = \"disabled\";",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:3 — grouped row with 12 other commits (aa8afe109...077c2c317), disposition 'carry — landed (P1.7)'",
+  "impact": {
+    "effect_if_absent": "CORRECTED (sonnet verification, requested check on the boot-critical grade + fpga_io.cpp cite): the citation is accurate (do_bridge() exists at fpga_io.cpp:378-393 with the writes at the claimed lines) but the causal claim built on it does NOT hold up. Read drivers/fpga/altera-hps2fpga.c in full: alt_fpga_bridge_probe() (lines 127-192) only calls _alt_hps2fpga_enable_set() -- the function that actually calls reset_control_deassert() and writes the L3 remap register -- when the DT node has an explicit 'bridge-enable' property (line 164: `if (!of_property_read_u32(dev->of_node, \"bridge-enable\", &enable))`). Our 0004 patch's &fpga_bridge0/1/2 overrides set ONLY status=\"okay\", no bridge-enable property, so even with the kernel driver probing successfully, it does NOT bring the bridges out of reset or touch the L3 remap register -- it only requests a reset_control handle, enables the l4_main_clk clock consumer, and registers a struct fpga_bridge with the generic /sys/class/fpga_bridge framework that nothing else in this system reads. Separately, and more decisively: Main_MiSTer's fpga_io.cpp:fpga_load_rbf() (the function that loads every FPGA core, including the very first menu.rbf at boot) calls do_bridge(0) before writing the bitstream and do_bridge(1) after, and do_bridge() operates via raw /dev/mem pointers (reset_regs = SOCFPGA_RSTMGR_ADDRESS, nic301_regs = SOCFPGA_L3REGS_ADDRESS, both mmap'd directly by Main_MiSTer at fpga_io.cpp:34,37) -- it writes reset_regs->brg_mod_reset and nic301_regs->remap itself, completely independent of the kernel's altera-hps2fpga platform driver or of_device_is_available() state for these nodes. Main_MiSTer never goes through the kernel's fpga_bridge/fpga-region subsystem at all. Net conclusion: whether fpga_bridge0/1/2 are status=okay or status=disabled in the DTS has no observable effect on Main_MiSTer's FPGA communication, because Main_MiSTer bypasses the kernel bridge driver's actual enable/disable logic entirely and re-derives the same register state itself on every core load.",
+    "affected_hardware": [
+      "Terasic DE10-Nano with FPGA"
+    ],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "nic301_registers at SOCFPGA_L3REGS_ADDRESS (0xffd06000) and reset_regs->brg_mod_reset; Main_MiSTer touches the SAME physical registers this DTS content nominally configures, but via its own /dev/mem mapping, not via the kernel driver this DTS enables -- see notes for the sonnet-verified correction. Changed coupled from true to false: the DTS status is not what Main_MiSTer depends on.",
+    "main_mister_ref": "Main_MiSTer/fpga_io.cpp:378-393 — do_bridge(uint32_t enable), called from fpga_load_rbf() at lines 436, 489, 497 (every RBF/core load, including initial menu.rbf) — citation confirmed accurate (writel(0x00000000, &reset_regs->brg_mod_reset) at 383, writel(7, ...) at 390), but do_bridge() acts on raw /dev/mem, not through the kernel bridge driver these DTS nodes enable"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "The three FPGA bridges (lwhps2fpga/h2f/f2h, fpga_bridge0/1/2) match stock's DTB (docs/stock-inventory) and this commit's content is byte-for-byte carried into 0004 (clean-apply, verified via diff against the fork commit: identical &fpga_bridge0/1/2 { status = \"okay\"; }; stanzas). Vanilla 6.18 defines the bridges in socfpga.dtsi:525-548 but leaves them disabled (status='disabled') by default -- equivalence=contradicted and disposition=carried are both correct calls. ESCALATE: Commit is part of a GROUPED row in patch-provenance.md (13 commits squashed: aa8afe109...077c2c317).\n\nsonnet-verified CORRECTION (was 'boot-critical' + userspace_coupling.coupled=true; requested check on this severity grade and the fpga_io.cpp cite): downgraded severity from boot-critical to cosmetic and userspace_coupling.coupled from true to false. The original notes claimed a causal chain -- 'this commit enables the bridges -> allows the kernel driver to probe -> Main_MiSTer depends on that' -- that does not survive reading the actual driver and Main_MiSTer source. (1) drivers/fpga/altera-hps2fpga.c's probe() only calls the function that actually deasserts reset / writes L3 remap when an explicit 'bridge-enable' DT property is present (line 164); our 0004 patch sets only status=okay, no bridge-enable property, so the kernel driver probing here does NOT actually bring the bridges out of reset regardless. (2) Main_MiSTer's do_bridge() (fpga_io.cpp:378-393), called from fpga_load_rbf() on every single core load including the initial menu.rbf (call sites at lines 436, 489, 497), writes reset_regs->brg_mod_reset and nic301_regs->remap directly through its own /dev/mem mapping (fpga_io.cpp:34,37: reset_regs/nic301_regs are raw pointers into FPGA_REG_BASE=0xFF000000, mmap'd by fpga_io_init(), nothing to do with the kernel's platform-device/driver-model bridge object). Main_MiSTer re-derives the correct bridge/reset state itself on every core load and never goes through the kernel's fpga_bridge or fpga-region subsystem. So whether this DTS content is present or absent has no observable effect on Main_MiSTer -- it was already self-sufficient. Downgraded to 'cosmetic' rather than 'none' because the change does still register a struct fpga_bridge with /sys/class/fpga_bridge/* (potentially used by unrelated tooling, e.g. manual `fpgautil` invocations or future kernel-side FPGA manager use) and it matches stock's DTB exactly, which has independent value for stock-parity auditing even though it is not load-bearing for the current Main_MiSTer codebase. carried_patch/carried_mode/equivalence/verification.contradiction all confirmed correct; only impact.severity and userspace_coupling were overstated.\n\nsonnet-verified: CARRY-MAPPING CONFIRMED, SEVERITY + COUPLING CORRECTED (boot-critical -> cosmetic, coupled true -> false, evidence-backed) -- disposition/carried_patch/carried_mode/equivalence hold; the fpga_io.cpp cite was accurate but the causal dependency it was used to support was contradicted by reading do_bridge()'s /dev/mem implementation and altera-hps2fpga.c's probe() gating on 'bridge-enable'."
+}

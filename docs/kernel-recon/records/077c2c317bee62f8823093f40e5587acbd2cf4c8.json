@@ -1,0 +1,62 @@
+{
+  "sha": "077c2c317bee62f8823093f40e5587acbd2cf4c8",
+  "subject": "Disable USB overcurrent signaling.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "usb",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts",
+    "drivers/usb/dwc2/core.c"
+  ],
+  "added": 4,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [
+      "b11633c42a76"
+    ],
+    "vanilla_file_line": "drivers/usb/dwc2/params.c:606",
+    "vanilla_quote": "p->oc_disable = of_property_read_bool(hsotg->dev->of_node, \"disable-over-current\");",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.1 (Class A), §N5",
+  "impact": {
+    "effect_if_absent": "USB over-current detection would be enabled on usb1, potentially triggering false over-current errors and disabling the host port if the external power supply is not providing ideal voltage. With disable-over-current, external VBUS indicators are used instead of built-in over-current detection.",
+    "affected_hardware": [
+      "Terasic DE10-Nano (socfpga_cyclone5)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED COMMIT: This commit is part of a 12-commit group in patch-provenance.md §3.1 (commits aa8afe109 through 077c2c317), all related to DE10-Nano DTS changes. This commit contains two logically separate changes: (1) Device tree changes (adds disable-over-current and dr_mode properties to &usb1 node), and (2) Driver code changes (removes conditional guard in drivers/usb/dwc2/core.c). STATUS: Only the DTS changes are carried in patch 0004-dts-de10nano-MiSTer.patch (the DTS is re-implemented on top of mainline's minimal de10nano DTS at a different file path: intel/socfpga/... instead of the fork's flat path). The driver code changes are NOT carried because they are identified in patch-provenance.md §N5 as a no-op: the 'disable-over-current' DTS property unconditionally sets oc_disable=true via drivers/usb/dwc2/params.c (of_property_read_bool), making the conditional guard in the driver always true. Therefore, removing the guard has no behavioral effect. VERIFICATION: (1) DTS property present in patch 0004 (line 317 of patch diff, &usb1 block with 'disable-over-current;' and 'dr_mode=\"host\";'). (2) Driver change not present in any of our linux-patches/*.patch files (grep confirms no matches for oc_disable, GUSBCFG_ULPI_INT_VBUS). (3) Vanilla 6.18.38 drivers/usb/dwc2/core.c still has the conditional guard (verified with git show v6.18.38). (4) Vanilla 6.18.38 drivers/usb/dwc2/params.c has the property-read line, CORRECTED LOCATION by sonnet-verify to params.c:606 (was mis-cited as :65 in first pass -- see SONNET-VERIFIED addendum below: :65 is a DIFFERENT, Ingenic-vendor-specific field, not the generic one that applies here). FUNCTIONAL EQUIVALENCE: With patch 0004's DTS property present, the vanilla conditional code and the fork's unconditional code both result in the same behavior: GUSBCFG_ULPI_INT_VBUS_IND | GUSBCFG_INDICATORPASSTHROUGH flags ARE set. The driver change is dropped per P1.9 confirmed task ruling (patch-provenance.md N5).\n\nSONNET-VERIFIED, property->param->guard chain re-traced against the live 6.18.38 checkout with exact quotes -- LINE-NUMBER CORRECTION: the first-pass record cited params.c:65 for the oc_disable read; that line is actually inside dwc2_set_jz4775_params() (an Ingenic X1000/JZ4775 vendor-quirk setter, params.c:51-61) which sets a DIFFERENT field, `p->activate_ingenic_overcurrent_detection = !device_property_read_bool(hsotg->dev, \"disable-over-current\")` (note also the inverted polarity) -- unrelated to SoCFPGA/de10nano. The field this record actually needs, `p->oc_disable`, is set in the GENERIC path every board goes through: (1) drivers/usb/dwc2/params.c:606, dwc2_get_device_properties() -- `p->oc_disable = of_property_read_bool(hsotg->dev->of_node, \"disable-over-current\");` -- this read is unconditional (not gated on dr_mode; the dr_mode-gated block above it only covers g-rx-fifo-size/g-np-tx-fifo-size/g-tx-fifo-size/otg_caps), so any DT node carrying the property gets oc_disable=true, period. upstream.vanilla_file_line corrected to params.c:606 accordingly. (2) drivers/usb/dwc2/core.c:1092-1126, dwc2_hs_phy_init(), inside `case DWC2_PHY_TYPE_PARAM_ULPI:` -- `/* Set external VBUS indicator as needed. */\\n\\t\\tif (hsotg->params.oc_disable)\\n\\t\\t\\tusbcfg |= (GUSBCFG_ULPI_INT_VBUS_IND |\\n\\t\\t\\t\\t   GUSBCFG_INDICATORPASSTHROUGH);` -- this is the ONLY remaining trace of the guard the fork's commit deletes; with oc_disable forced true by (1), the guard always fires, so vanilla's guarded code and the fork's unconditional code write the identical usbcfg value. (Note: this block only executes at all when hsotg->params.phy_type == DWC2_PHY_TYPE_PARAM_ULPI, but that's immaterial to the equivalence claim -- if the board is NOT ULPI-PHY, neither the guarded nor the unconditional version executes, so the two remain equivalent either way; the equivalence holds regardless of which PHY-type branch this SoC actually takes.) (3) patch 0004 carries the DTS property verbatim: `&usb1 {\\n\\tdr_mode = \"host\";\\n\\tdisable-over-current;\\n\\tstatus = \"okay\";\\n};` (0004-dts-de10nano-MiSTer.patch, matching the original commit's &usb1 hunk). (4) Corroborating context for WHY the fork's driver hack was redundant: vanilla commit b11633c42a76 ('usb: dwc2: disable erroneous overcurrent condition', Dinh Nguyen -- the SoCFPGA platform maintainer -- Oct 2017) added this exact 'disable-over-current' DT binding upstream specifically to solve 'For the case where an external VBUS is used, we should enable the external VBUS comparator in the driver. This would prevent an unnecessary overcurrent error which would then disable the host port' -- the identical SoCFPGA/external-VBUS problem Sorgelig's Aug 2021 fork commit was independently patching around 4 years later, just via a cruder unconditional edit instead of using the DT property that was already available upstream. Chain confirmed end-to-end; equivalence='equivalent' and disposition='carried' (DTS-only) both stand as originally recorded."
+  ,
+  "sonnet-verified": "confirmed -- the no-op equivalence argument holds: params.c:606's dwc2_get_device_properties() unconditionally sets p->oc_disable from the DTS 'disable-over-current' property (patch 0004 carries the property verbatim on &usb1), so core.c's `if (hsotg->params.oc_disable)` guard around GUSBCFG_ULPI_INT_VBUS_IND|GUSBCFG_INDICATORPASSTHROUGH always fires -- making the fork's unconditional version behaviorally identical to vanilla's guarded version on this board. One correction made in passing: the first-pass vanilla_file_line (params.c:65) was misattributed to an unrelated Ingenic-vendor-specific field (activate_ingenic_overcurrent_detection, inverted polarity); corrected to params.c:606, the actual generic oc_disable assignment. Equivalence grade and disposition are otherwise unchanged."
+}

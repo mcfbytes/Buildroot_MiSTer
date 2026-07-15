@@ -1,0 +1,59 @@
+{
+  "sha": "c784a6856d73d78cfd37e4bd0011b186523e31c5",
+  "subject": "hid-microsoft: support for XBox Elite 2 paddles.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-08",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-microsoft.c"
+  ],
+  "added": 44,
+  "removed": 7,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0016-hid-microsoft-elite2-paddles.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/drivers/hid/hid-microsoft.c:458-459",
+    "vanilla_quote": "{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE),\n\t.driver_data = MS_QUIRK_FF },",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md line 1 (0016-hid-microsoft-elite2-paddles.patch marked 'landed (P1.9)')",
+  "impact": {
+    "effect_if_absent": "Xbox Elite 2 controller Bluetooth paddle buttons (BTN_GRIPL/L2/R/R2) become unavailable to userspace; generic HID reports them as unmapped consumer usages and trigger-scale switch",
+    "affected_hardware": [
+      "Xbox Elite 2 Controller"
+    ],
+    "device_ids": [
+      "045E:0B22"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "Linux input subsystem EV_KEY button events: BTN_GRIPL (0x224), BTN_GRIPL2 (0x225), BTN_GRIPR (0x226), BTN_GRIPR2 (0x227)",
+    "main_mister_ref": "Main_MiSTer/MiSTer.ini:2177 (xbe2_shift option mentioning 0x224); Main_MiSTer/joymapping.cpp:map_paddle_btn(); Main_MiSTer/input.cpp:paddle mapping infrastructure"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "minimal — device-table macro renamed (USB_DEVICE_ID_MS_XBOX_ELITE2_CONTROLLER→USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE, same numeric ID 0x0b22); BTN_GRIPL/R/L2/R2 unconditionally available in 6.18 input-event-codes.h so #ifndef guards removed"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit adds MS_QUIRK_ELITE2_PADDLES handling to hid-microsoft driver for Xbox Elite 2 over Bluetooth (device ID 0x0b22, branded USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1797_BLE in 6.18). The fork's original commit defined BTN_GRIPL/R/L2/R2 with #ifndef guards (now dead code in 6.18 where these are unconditional in input-event-codes.h). Paddle decoding: MS_XBE2_PADDLE_USAGE (HID_UP_CONSUMER | 0x0081) bitmask value → BIT(0)=BTN_GRIPR, BIT(1)=BTN_GRIPR2, BIT(2)=BTN_GRIPL, BIT(3)=BTN_GRIPL2. Trigger-scale usage (0x0099) is ignored entirely. Vanilla 6.18.38 lists the Elite 2 device but with only MS_QUIRK_FF (force feedback), no paddle handling — hence equivalence='contradicted' (patch adds functionality absent upstream). Carried patch verified to match fork commit (0016-hid-microsoft-elite2-paddles.patch line 1: 'From c784a6856d73d78cfd37e4bd0011b186523e31c5'). Forward-port is clean with device-table macro rename only. Failure mode is silent (paddles simply become unmapped HID usages if patch is dropped). Userspace coupling confirmed via Main_MiSTer configuration and paddle-axis handling code, though button codes are generic and available through standard input event mapping."
+}

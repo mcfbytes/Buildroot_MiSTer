@@ -1,0 +1,62 @@
+{
+  "sha": "9bdab534b61587b1fc5d1ffaa880077bd6574541",
+  "subject": "hid-nintendo: use default calibration if empty calibration is loaded.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-04",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": ["drivers/hid/hid-nintendo.c"],
+  "added": 4,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["50503e360eeb"],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:1089-1092",
+    "vanilla_quote": "/* check if calibration values are plausible */\n\tif (cal_x->min >= cal_x->center || cal_x->center >= cal_x->max ||\n\t    cal_y->min >= cal_y->center || cal_y->center >= cal_y->max)\n\t\tret = -EINVAL;",
+    "equivalence": "superseded-better"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md line 334 (GROUPED ROW: c4ec5cb40, 9bdab534b, 60821059c, 45283785a)",
+
+  "impact": {
+    "effect_if_absent": "None for the crash/misbehavior case the fork commit targeted: vanilla 6.18.38's ordering check (min<center<max) is a strict superset of the fork's max==min check (proof in notes) and DOES catch the all-zero/empty-calibration clone case, plus a wider class of implausible calibration data the fork's narrower check missed. The only residual difference is the numeric fallback defaults used once a stick is deemed invalid: MiSTer's fork uses center=2048/max=3595 (min=500, unchanged); vanilla uses the original center=2000/max=3500/min=500 (grep-confirmed unrevised since introduction). Because joycon_map_stick_val() normalizes raw ADC readings into a fixed +-32767 logical range using these constants only on the fallback path, a device whose true rest position sits near the 12-bit ADC midpoint (2048) would read roughly a 3% off-center offset under vanilla's defaults versus ~0% under MiSTer's — but this only ever applies to devices that already have failed/implausible calibration (broken clones, or SPI-flash read failures), never to genuine Nintendo hardware with valid factory/user calibration.",
+    "affected_hardware": ["Nintendo Switch Joy-Con Left", "Nintendo Switch Joy-Con Right", "Nintendo Switch Pro Controller", "Nintendo Switch Charging Grip"],
+    "device_ids": ["057e:2006", "057e:2007", "057e:2009", "057e:200e"],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "EV_ABS input events (ABS_X=0, ABS_Y=1, ABS_RX=3, ABS_RY=4) for analog stick axes, already normalized into a fixed +-32767 range by the kernel's joycon_map_stick_val() before userspace ever sees them",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4740-4831 process_joycon() — consumes EV_ABS events from Joy-Cons (axis-sign inversion for combo mode, DPAD simulation, combo/split bookkeeping); grepped input.cpp for the literal constants 2048, 3595, 2000, 3500 and found none — process_joycon() never inspects or depends on which default calibration constants produced the value it receives, so there is zero coupling to the specific fork-vs-vanilla default magnitudes (only to the generic normalized-abs-value interface, which is identical in both trees)."
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "Not a conflict: vanilla 6.18.38's plausibility check (50503e360eeb, 'HID: nintendo: check analog user calibration for plausibility', Sep 21 2022) is mathematically a strict superset of the fork's check. Fork triggers fallback only when max==min on an axis; vanilla triggers whenever NOT(min<center<max). If max==min=v, then min<center<max reduces to v<center<v, which is impossible for any center, so vanilla's negated condition always fires too -- every case the fork's check caught, vanilla also catches, plus additional out-of-order cases (e.g. min>=center with max!=min) the fork's narrower check missed. Confirmed for the specific all-zero clone case (min=center=max=0): 0>=0 trips vanilla's first clause immediately. Per-stick reset granularity also matches: both trees reset both X and Y axes of a stick together whenever either axis is flagged bad (fork: drivers/hid/hid-nintendo.c:846-858 in /mnt/source/Linux-Kernel_MiSTer; vanilla: joycon_use_default_calibration() called once per stick from the same ret check). Only the fallback default magnitudes differ (see impact.effect_if_absent).",
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["50503e360eeb"],
+    "duplicate_of": []
+  },
+
+  "license_provenance": null,
+
+  "notes": "CRITICAL ESCALATION ISSUE (from prior pass, still valid as context): This commit is listed in patch-provenance.md line 334 as part of a GROUPED ROW (4 commits: c4ec5cb40, 9bdab534b, 60821059c, 45283785a) labeled 'Switch Pro/Joy-Con backport + fixes' citing upstream commit 2af16c1f846b ('HID: nintendo: add nintendo switch controller driver', 2021-09-11, v5.16) -- that citation only covers the BASE driver addition, not this specific empty-calibration fix; the doc's specific claim for this sub-commit is imprecise. Re-derived independently: this fork commit predates the upstream driver's initial mainline addition (2021-08-04 fork vs 2021-09-11 mainline), confirming it is a fix to the fork's own 5.15 backport, not a fix to the upstream driver. The correct upstream analogue is 50503e360eeb (Sep 21 2022), found via `git log -- drivers/hid/hid-nintendo.c` in /mnt/source/linux and confirmed by its commit message, which explicitly describes the identical bug class this fork commit fixes: 'Cheap clone controllers may (falsely) report as having a user calibration... The reported user calibration however is min = center = max = 0' -- word-for-word the same failure mode MiSTer's commit message targets, and the vanilla commit additionally cites a real-world divide-by-zero kernel crash (GuliKit KingKong 2 controller) that this exact bug class caused.\n\nMATHEMATICAL PROOF OF SUPERSET (resolving the prior 'contradicted' grading): fork's trigger condition per stick is `x.max==x.min || y.max==y.min`. Vanilla's trigger condition per stick is `NOT(x.min<x.center<x.max) || NOT(y.min<y.center<y.max)`, i.e. `(x.min>=x.center || x.center>=x.max) || (y.min>=y.center || y.center>=y.max)`. Claim: fork-triggers implies vanilla-triggers. Proof: suppose x.max==x.min==v. For vanilla to NOT trigger on x, we'd need x.min<x.center AND x.center<x.max, i.e. v<x.center AND x.center<v -- these two inequalities are mutually exclusive for any real x.center, so vanilla's x-clause must trigger whenever x.max==x.min. Symmetric argument for y. Therefore fork's trigger set is a strict subset of vanilla's trigger set: every case the fork caught (including the all-zero clone case: 0>=0 trivially trips vanilla's min>=center clause), vanilla also catches, PLUS additional implausible-ordering cases (e.g. min>=center with max!=min, or reversed center/max) that the fork's narrower max==min-only check would miss. There is no gap where the fork protected users and vanilla does not -- disposition=dropped-upstream is correct to stand, and equivalence should never have been 'contradicted' (a forbidden pairing with dropped-upstream per worker-instructions.md pilot lessons in the first place).\n\nDEFAULTS DELTA, HONESTLY ASSESSED: fork changed DFLT_STICK_CAL_CEN 2000->2048 and DFLT_STICK_CAL_MAX 3500->3595 (MIN stayed 500 in both). Vanilla 6.18.38 (drivers/hid/hid-nintendo.c:1097-1099) still reads CEN=2000/MAX=3500/MIN=500 -- confirmed via `git log -p --follow -- drivers/hid/hid-nintendo.c` in /mnt/source/linux that no commit ever revised these constants after their introduction in 83d640c4f8f8. joycon_map_stick_val() (byte-identical in both trees: fork hid-nintendo.c:1038-1054, vanilla :1321-1337) only uses these constants on the fallback path, normalizing raw ADC value into +-32767 via (val-center)*32767/(max-center) or the min-side equivalent. Is the sensitivity delta user-noticeable? Only for the narrow population of devices that hit the fallback path (broken/clone calibration or SPI-read failure) -- real Nintendo hardware with valid calibration never touches these constants regardless of kernel version. For a hypothetical fallback device whose true physical rest ADC value sits near the 12-bit midpoint (2048), vanilla's center=2000 default would read approximately (48/1500)*32767 ~= 3.2% off-center at rest versus ~0% under MiSTer's center=2048 default -- a real but small delta, and arguably moot in practice since a clone controller that fails calibration plausibility checks has no verified 'true center' to compare against in the first place. Not verified on physical hardware in this environment; flagged for hardware confirmation but assessed LOW/cosmetic severity given it never touches genuine hardware and the baseline (broken clone with garbage calibration) has no reliable ground truth to begin with. Severity downgraded from feature-loss to cosmetic on this basis (see impact.severity).\n\nSUPERSEDED-BETTER EVIDENCE (userspace non-coupling to the fork's specific interface, per pilot lessons): grepped Main_MiSTer/input.cpp for literal 2048, 3595, 2000, 3500 -- zero hits. process_joycon() (input.cpp:4740-4831) only performs axis-sign inversion for JOYCON combo mode and DPAD simulation/combo-split bookkeeping on already-normalized +-32767 EV_ABS values; it does not know or care which default calibration constants produced them. This confirms zero userspace coupling to the fork's specific default magnitudes, satisfying the evidentiary bar for 'superseded-better'.\n\nCORRECTION FROM FIRST PASS: prior record paired disposition='dropped-upstream' with equivalence='contradicted' and verification.contradiction=true -- a forbidden combination per worker-instructions.md pilot lessons (contradicted implies carry-candidate/misclassified, which directly contradicts a dropped-upstream disposition standing unchanged). The contradiction flag is reserved for an upstream-coverage claim that turns out not to match vanilla; here vanilla's check is proven (above) to be a strict superset of the fork's, so the upstream-coverage claim fully holds and is in fact stronger than the fork's own fix. Corrected: equivalence -> 'superseded-better', verification.contradiction -> false, impact.severity feature-loss -> cosmetic (the actual protection is present and better; only a minor fallback-default magnitude differs), vanilla_file_line off-by-one corrected from 1090-1092 to 1089-1092 (the comment line the quote begins with is line 1089). disposition, carried_patch=null, failure_mode=silent, dependencies.superseded_by=50503e360eeb, and agrees_with_provenance_doc=false were already correct and remain unchanged. sonnet-verified: corrected (equivalence was wrongly graded 'contradicted', a forbidden pairing with dropped-upstream; proved by construction that vanilla's min<center<max ordering check is a strict superset of the fork's max==min check -- it catches the same all-zero clone case plus more -- so regraded to superseded-better with contradiction cleared; severity downgraded feature-loss->cosmetic since real protection is present; the 2000/3500 vs 2048/3595 default-constant delta is real but honestly assessed as low-impact, fallback-path-only, and unverifiable on hardware in this environment)."
+}

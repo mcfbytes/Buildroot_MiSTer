@@ -1,0 +1,72 @@
+{
+  "sha": "9521b003c7e1872521548981ce56e408e3412a08",
+  "subject": "Add support for Google Stadia controller w/ rumble (#52)",
+  "author": "Shig",
+  "author_is_pr_contributor": true,
+  "date": "2023-09-23",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-google-stadiaff.c",
+    "drivers/hid/hid-ids.h"
+  ],
+  "added": 168,
+  "removed": 0,
+  "is_backport_of_vanilla": true,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "24175157b852"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-google-stadiaff.c:144",
+    "vanilla_quote": "{ HID_USB_DEVICE(USB_VENDOR_ID_GOOGLE, USB_DEVICE_ID_GOOGLE_STADIA) },",
+    "equivalence": "byte-identical"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md (commit mapping row for 9521b003c)",
+
+  "impact": {
+    "effect_if_absent": "Google Stadia controller will not have force feedback/rumble support",
+    "affected_hardware": [
+      "Google Stadia controller"
+    ],
+    "device_ids": [
+      "18d1:9400"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE via input subsystem ioctl(EVIOCGBIT)",
+    "main_mister_ref": "Main_MiSTer/input.cpp:4881 fef->type = FF_RUMBLE; Main_MiSTer/input.cpp:5228 test_bit(FF_RUMBLE, ff_features) (probed via ioctl(fd, EVIOCGBIT(EV_FF, ...)) at input.cpp:5226)"
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "24175157b852 (upstream HID: hid-google-stadiaff: add support for Stadia force feedback, 2023-07-16)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Byte-identical backport of upstream commit 24175157b852 (authored 2023-07-16 per `git show -s --format=%ai`, committed 2023-08-14; first landed v6.6). Fork added it 2023-09-23 to MiSTer-v5.15 kernel which lacked the feature. RE-VERIFIED via actual byte-for-byte diff (not just source-grep): `diff -u` of `git show 24175157b852:drivers/hid/hid-google-stadiaff.c` against `git show 9521b003c:drivers/hid/hid-google-stadiaff.c` produced zero output -- the .c file is genuinely byte-identical. The Kconfig entry (HID_GOOGLE_STADIA_FF stanza), Makefile line (obj-$(CONFIG_HID_GOOGLE_STADIA_FF) += hid-google-stadiaff.o), and hid-ids.h define (USB_DEVICE_ID_GOOGLE_STADIA 0x9400) are also textually identical between the two commits' diffs. Device ID is 18d1:9400 (USB_VENDOR_ID_GOOGLE=0x18d1 confirmed at hid-ids.h:562, USB_DEVICE_ID_GOOGLE_STADIA=0x9400 bound at hid-google-stadiaff.c:144). Userspace coupling is generic: Main_MiSTer queries FF_RUMBLE capability and uses standard ff_effect interface — not specific to this driver. CONFIG_HID_GOOGLE_STADIA_FF=y enabled in fork's MiSTer_defconfig and in our current linux.config. Absence silently disables force feedback for this controller only. Escalates to upstream: when/if MiSTer kernel is rebased to 6.18+ this commit becomes redundant. CORRECTION to prior pass: userspace_coupling.main_mister_ref cited input.cpp:302/304, which actually falls inside an unrelated USB-keyboard keycode lookup table, not FF_RUMBLE code -- fixed to the real locations (input.cpp:4881, :5228).",
+  "sonnet-verified": "corrected -- SHA/ancestry, disposition, and the byte-identical equivalence claim CONFIRMED via an actual `diff -u` of both commits' hid-google-stadiaff.c (zero output) plus Kconfig/Makefile/hid-ids.h; the Main_MiSTer citation was wrong (pointed at an unrelated keycode table) and has been fixed to the real FF_RUMBLE lines (input.cpp:4881, :5228)."
+}

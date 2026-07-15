@@ -1,0 +1,57 @@
+{
+  "sha": "3fb48dc16e5d1e68b2b2f4768aef813cac71a392",
+  "subject": "Add support for TP-Link UB500 Adapter (#33)",
+  "author": "birdybro",
+  "author_is_pr_contributor": true,
+  "date": "2022-07-20",
+  "subsystem": "bt",
+  "change_type": "in-tree-code",
+  "files": ["drivers/bluetooth/btusb.c"],
+  "added": 4,
+  "removed": 0,
+  "is_backport_of_vanilla": true,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["4fd6d490796171bf786090fee782e252186632e4"],
+    "vanilla_file_line": "drivers/bluetooth/btusb.c:786-789 (v6.18.38)",
+    "vanilla_quote": "/* Additional Realtek 8761BUV Bluetooth devices */\n\t{ USB_DEVICE(0x2357, 0x0604), .driver_info = BTUSB_REALTEK |\n\t\t\t\t\t     BTUSB_WIDEBAND_SPEECH },",
+    "equivalence": "byte-identical"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line: 3fb48dc16 | btusb: TP-Link UB500 | 4fd6d4907961",
+
+  "impact": {
+    "effect_if_absent": "TP-Link UB500 Adapter (RTL8761B) will not be recognized/supported",
+    "affected_hardware": ["TP-Link UB500 Adapter"],
+    "device_ids": ["2357:0604"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Backport from upstream v5.16 (commit 4fd6d490796171bf786090fee782e252186632e4, authored by Nicholas Flintham, 2021-10-01) to MiSTer's v5.15.1 base; fork commit dated 2022-07-20 postdates vanilla by ~9.5 months, consistent with `is_backport_of_vanilla=true`. The VID:PID 0x2357:0x0604 is supported in 6.18.38 with identical code (BTUSB_REALTEK | BTUSB_WIDEBAND_SPEECH flags) at btusb.c:787-788, byte-identical to the fork's addition. Comment in 6.18.38 reads 'Additional Realtek 8761BUV' (BUV variant) vs MiSTer's 'Additional Realtek 8761B' (B variant) — device ID is same, comment evolution only. No userspace coupling found in Main_MiSTer. Patch-provenance.md (line 343) correctly documents this as upstream in 6.18, exact match.\n\nsonnet-verified: re-derived vanilla SHA independently via `git log` in /mnt/source/linux (confirmed ancestor of v6.18.38), re-grepped btusb.c:787-788 and confirmed exact quote match, cross-checked commit dates confirming true backport direction, re-derived device ID 2357:0604 against the live diff. Only change made: expanded the vanilla SHA from a 12-char abbreviation to the full 40-char form for precision. No factual errors found.\n\nsonnet-verified: confirmed"
+}

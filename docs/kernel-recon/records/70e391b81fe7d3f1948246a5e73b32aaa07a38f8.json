@@ -1,0 +1,57 @@
+{
+  "sha": "70e391b81fe7d3f1948246a5e73b32aaa07a38f8",
+  "subject": "HID: map key Europe 1(0x32) to F24 code (for Keyrah).",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2017-07-17",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": ["drivers/hid/hid-input.c"],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0024-hid-input-keyrah-europe1.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-input.c:31",
+    "vanilla_quote": "27, 43, 43, 39, 40, 41, 51, 52, 53, 58, 59, 60, 61, 62, 63, 64,",
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.4 Class D, line 371",
+
+  "impact": {
+    "effect_if_absent": "Keyrah C64/Amiga USB keyboard adapter's 'Europe 1' key would map to KEY_BACKSLASH (43) instead of KEY_F24 (194), creating a collision with the adapter's physical backslash key and preventing Main_MiSTer from binding the Europe 1 key to custom functions",
+    "affected_hardware": ["Keyrah C64/Amiga USB keyboard adapter"],
+    "device_ids": ["18D8:0002", "2341:8037"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "input event codes - KEY_F24 (194) in Linux input subsystem, mapped in Main_MiSTer keyboard translation tables",
+    "main_mister_ref": "Main_MiSTer/input.cpp:keyrah_trans() function and keyboard mapping arrays around lines with comments '194 KEY_F24' and '194 # on German keyboard, was 0x63 (CTRL on Amiga)' showing KEY_F24 is used in keyboard layout mapping"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Minimal single-line HID keyboard mapping change carried from MiSTer-v5.15 to 6.18.38. Maps USB HID keycode 0x32 (Europe 1 key on Keyrah adapter) from the default KEY_BACKSLASH (43) to KEY_F24 (194) to avoid collision with the adapter's actual backslash key. Vanilla 6.18.38 still has the default 43 mapping at this location. Direct userspace coupling confirmed: Main_MiSTer/input.cpp processes KEY_F24 in keyboard translation tables. Forward-port was byte-identical, clean-apply. Keyrah support requires both kernel patch AND Main_MiSTer configuration (keyrah_mode config parameter with VID:PID 0x18D8:0002 or 0x2341:8037). Silent-failure risk: dropping patch leaves Keyrah Europe 1 key broken without build error."
+}

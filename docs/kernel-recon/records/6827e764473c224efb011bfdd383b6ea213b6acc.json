@@ -1,0 +1,59 @@
+{
+  "sha": "6827e764473c224efb011bfdd383b6ea213b6acc",
+  "subject": "Support for RTC PCF8563",
+  "author": "antoniovillena",
+  "author_is_pr_contributor": false,
+  "date": "2020-10-12",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 4,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "partial"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md row grouping commits aa8afe109 through 077c2c317",
+  "impact": {
+    "effect_if_absent": "RTC device (PCF8563 at I2C address 0x51) will not be registered; /dev/rtcN will not appear for this device",
+    "affected_hardware": [
+      "DE10-Nano with optional RTC add-on board populated with PCF8563 chip"
+    ],
+    "device_ids": [
+      "NXP:PCF8563"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ESCALATION REQUIRED: The provenance doc entry groups this commit with 12 others (aa8afe109, e40563ae1, 2548c2978, 6c2d53934, 246984fce, 1337de1fd, c4d12c768, 7d2df2d2d, c5066763c, 071d9092e, f52690120, 077c2c317) under a single row, violating the single-commit-per-analysis principle. The commit adds a device tree node for a PCF8563 RTC at I2C address 0x51 on the i2c_gpio bit-banged bus. Vanilla 6.18.38's socfpga_cyclone5_de10nano.dts (added in 144616a80889, v6.14) is minimal and contains no RTC nodes. The kernel has full PCF8563 driver support (drivers/rtc/rtc-pcf8563.c, compatible = 'nxp,pcf8563'). The original commit used compatible = 'pcf8563' (without vendor prefix), but the carried patch 0004 corrects this to 'nxp,pcf8563', which is required by the vanilla driver. The DTS node addition is specific to the MiSTer board's optional add-on hardware and represents a carry candidate. No userspace coupling in Main_MiSTer; the RTC is used for FPGA cores, not Linux system time. The failure mode is silent—without the DTS node, the device simply won't be registered, producing no error.\n\nsonnet-verified: carry-mapping CONFIRMED. Re-read the original fork commit diff (`git show 6827e764`) and confirmed it adds exactly `rtc_at_51 { compatible = \"pcf8563\"; reg = <0x51>; };` to the (by-then-already-i2c-gpio) bus alongside the pre-existing m41t81/mcp7941x nodes, matching the record's description. Confirmed 0004's rtc@51 node (patch lines 170-173) uses compatible=\"nxp,pcf8563\", and cross-checked against the live vanilla driver: drivers/rtc/rtc-pcf8563.c:569 has of_device_id.compatible=\"nxp,pcf8563\" in pcf8563_of_match[], confirming the vendor-prefix correction claim. No corrections needed."
+}

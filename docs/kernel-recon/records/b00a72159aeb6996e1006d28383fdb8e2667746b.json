@@ -1,0 +1,65 @@
+{
+  "sha": "b00a72159aeb6996e1006d28383fdb8e2667746b",
+  "subject": "Add support for NSO Mega Drive Controller (#50)",
+  "author": "Shig",
+  "author_is_pr_contributor": false,
+  "date": "2023-09-04",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-ids.h",
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 47,
+  "removed": 6,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "94f18bb19945"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:322 (JOYCON_CTLR_TYPE_GEN = 0x0D); drivers/hid/hid-ids.h:1067 (USB_DEVICE_ID_NINTENDO_GENCON 0x201e)",
+    "vanilla_quote": "JOYCON_CTLR_TYPE_GEN  = 0x0D, | USB_DEVICE_ID_NINTENDO_GENCON) },",
+    "equivalence": "partial"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md line 335 (GROUPED row: `e155f6a2f`, `2799f8b94`, `b00a72159`)",
+  "impact": {
+    "effect_if_absent": "NSO Mega Drive/Genesis controller would still work via vanilla 6.18's gencon support (joycon_type_is_gencon), but over Bluetooth would report incorrect product ID (0x2017/SNESCON instead of 0x201E/MDCON) to userspace input layer.",
+    "affected_hardware": [
+      "Nintendo Switch Online Mega Drive/Genesis Controller"
+    ],
+    "device_ids": [
+      "057e:201e"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "hdev->product (input device id.product field, propagated to input_dev->id.product at vanilla hid-nintendo.c:2134); consumed by Main_MiSTer's GUID-keyed SDL gamecontrollerdb lookup",
+    "main_mister_ref": "Main_MiSTer/gamecontroller_db.cpp:544 gcdb_map_for_controller(bustype, vid, pid, version, ...) builds a GUID string directly from the raw (bustype,vid,pid,version) tuple (line 554: sprintf(guid_str, \"%04x0000%04x0000%04x0000%04x0000\", ...)) and looks it up in /media/fat/linux/gamecontrollerdb/gamecontrollerdb.txt (an external SDL-format community DB, not shipped in this repo); called from Main_MiSTer/input.cpp:3009 with input[sub_dev].pid, which is set at input.cpp:5197 from the kernel-reported id.product. A misreported PID therefore looks up a different GUID row than the physical device."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "N/A - superseded by vanilla 94f18bb19945"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "94f18bb19945 (vanilla, 2023-12-04, 'HID: nintendo: add support for nso controllers')"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ESCALATION REQUIRED — GROUPED ROW in provenance.md: This commit is grouped with `e155f6a2f` (NSO NES/SNES) and `2799f8b94` (NSO N64), but must be analyzed independently (instructions §3). **Disposition analysis**: Fork commit (2023-09-04) precedes upstream 94f18bb19945 (2023-12-04). Vanilla 6.18.38 already includes NSO Genesis/Mega Drive support via 94f18bb19945, using `JOYCON_CTLR_TYPE_GEN (0x0D)` and `USB_DEVICE_ID_NINTENDO_GENCON (0x201e)` -- confirmed at hid-nintendo.c:322 and hid-ids.h:1067. **Key difference (equivalence=partial)**: Fork adds a product-ID forcing workaround (`git show b00a72159`: `if (hdev->product == USB_DEVICE_ID_NINTENDO_SNESCON && ctlr->ctlr_type == JOYCON_CTLR_TYPE_MD) hdev->product = USB_DEVICE_ID_NINTENDO_MDCON;` in joycon_input_create()) for a hardware quirk: the NSO MD controller reports PID 0x201e over USB but 0x2017 (SNESCON's PID) over Bluetooth. Vanilla is *aware* of the identical quirk -- its own comment at hid-nintendo.c:2446-2452 reads verbatim: 'Unfortantly the hdev->product can't always be used due to a ?bug? with the NSO Genesis controller. Over USB, it will report the PID as 0x201E, but over bluetooth it will report the PID as 0x2017 which is the same as the NSO SNES controller' -- but vanilla's fix is architectural, not cosmetic: it never dispatches button/type behavior off hdev->product at all (all type dispatch uses `ctlr->ctlr_type` read from a device-info subcommand, e.g. joycon_type_is_snescon() at hid-nintendo.c:701-703), so buttons are correct either way. Crucially, vanilla makes NO attempt to correct hdev->product itself -- confirmed by grepping hid-nintendo.c for `hdev->product =` (only 2 hits, both unrelated IMU/IMU-input id.product propagation at :2070/:2134, never a corrective assignment) -- so `input_dev->id.product` (set at hid-nintendo.c:2134: `ctlr->input->id.product = hdev->product;`) is left at 0x2017 for a Bluetooth-connected MD pad in vanilla 6.18.38, exactly as this record originally suspected. **RESOLVED (was open in prior pass): the workaround DOES matter for a real consumer.** Main_MiSTer's gamecontroller_db.cpp:544 (gcdb_map_for_controller) builds its DB lookup key as a raw GUID string directly from (bustype, vid, pid, version) -- see gamecontroller_db.cpp:554 -- and looks it up by exact match in an external SDL-format gamecontrollerdb.txt (community-maintained, not shipped in this repo, loaded from /media/fat/linux/gamecontrollerdb/). This is the same GUID scheme SDL2's upstream SDL_GameControllerDB uses, which is known to carry separate, differently-shaped entries for Nintendo SNES vs Genesis/Mega Drive NSO controllers (distinct physical button layouts -- SNES has 4 face buttons + 2 shoulders, Genesis has 3 face buttons + Mode/Start/Z). Main_MiSTer's pid field is populated straight from the kernel's reported id.product (input.cpp:5197), with no MD/SNES-specific correction anywhere in Main_MiSTer C++ (grepped input.cpp for 0x201e/0x2017/Genesis/MDCON: no hits). So on vanilla 6.18.38 with no forward-port of this workaround, a real Bluetooth-connected NSO Genesis controller would have its physical (correct, kernel-level) button events silently re-mapped by gcdb using the SNES controller's DB entry -- a real, concrete, non-hypothetical mis-mapping for anyone using that pad over Bluetooth with a gamecontrollerdb-driven core/frontend. Buttons work correctly at the raw evdev level (kernel dispatch uses ctlr_type, not product), but the SDL-DB remap layer that many RetroArch-style cores/frontends rely on keys strictly off (vid,pid) and would get it wrong. **Carry recommendation**: this is a 4-line hunk (the hdev->product-forcing `if` block) with zero risk of regressing anything else; recommend carrying it as a small supplemental patch (or filing it upstream, since vanilla's own comment shows the maintainers are already aware of the quirk and simply chose not to normalize the user-visible PID). **Failure mode=silent**: no build/boot error, no dmesg output -- only a subtly wrong controller mapping that would be hard for a user to diagnose.",
+  "sonnet-verified": "corrected -- SHA/ancestry, line citations (hid-nintendo.c:322, hid-ids.h:1067), the doc-disagreement/grouped-row flag, and the core partial-equivalence disposition all confirmed accurate; the open question the prior pass left unresolved ('does the product-ID workaround matter for a real consumer') is now answered definitively YES with a path:line citation (gamecontroller_db.cpp:544/554, input.cpp:3009/5197) and a concrete carry recommendation added to notes and userspace_coupling.main_mister_ref."
+}

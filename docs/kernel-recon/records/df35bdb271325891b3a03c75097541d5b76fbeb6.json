@@ -1,0 +1,93 @@
+{
+  "sha": "df35bdb271325891b3a03c75097541d5b76fbeb6",
+  "subject": "Add exFAT with symlinks support.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/Kconfig",
+    "fs/exfat/Makefile",
+    "fs/exfat/exfat_api.c",
+    "fs/exfat/exfat_api.h",
+    "fs/exfat/exfat_bitmap.c",
+    "fs/exfat/exfat_bitmap.h",
+    "fs/exfat/exfat_blkdev.c",
+    "fs/exfat/exfat_blkdev.h",
+    "fs/exfat/exfat_cache.c",
+    "fs/exfat/exfat_cache.h",
+    "fs/exfat/exfat_config.h",
+    "fs/exfat/exfat_core.c",
+    "fs/exfat/exfat_core.h",
+    "fs/exfat/exfat_data.c",
+    "fs/exfat/exfat_data.h",
+    "fs/exfat/exfat_nls.c",
+    "fs/exfat/exfat_nls.h",
+    "fs/exfat/exfat_oal.c",
+    "fs/exfat/exfat_oal.h",
+    "fs/exfat/exfat_super.c",
+    "fs/exfat/exfat_super.h",
+    "fs/exfat/exfat_upcase.c",
+    "fs/exfat/exfat_version.h"
+  ],
+  "added": 12151,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": "0031-exfat-samsung-symlinks.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "partial"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.8, §N1; ADR 0010, ADR 0019",
+
+  "impact": {
+    "effect_if_absent": "exfat filesystem remains functional (vanilla 6.18 exfat replaces it); but symlinks on /media/fat silently fail to resolve — they appear as regular files instead. Arcade organizer's _Organized tree tree breaks (symlinks are not recognized).",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "d_type (DT_LNK directory entry marker); symlink readback via readlink(2); exfat mount on /media/fat with sync,dirsync flags",
+    "main_mister_ref": "Main_MiSTer/file_io.cpp:1592 — 'Handle (possible) symbolic link type in the directory entry'; resolves DT_LNK entries via stat(). Added by Sorgelig commit 325f6b6 (Jan 2019: 'Improved handling of symbolic links')."
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "vanilla 6.18 fs/exfat (partial: filesystem functionality only, not symlinks)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "author": "Samsung Electronics Co., Ltd.",
+    "license": "GPLv2",
+    "header_date_range": "2012-2013",
+    "origin_project": "Samsung exfat-nofuse lineage (exfat driver version 1.2.11)",
+    "origin_reference": "fs/exfat/exfat_version.h (Version 1.2.11; revision history shows 'Release Version 1.1.0' Feb 2012, 'P1: Change Module License to Samsung Proprietary' Apr 2012, later relicensed to GPLv2)",
+    "upstream_in_vanilla": false,
+    "notes": "Original Samsung driver from 2012-2013, re-integrated into MiSTer kernel fork for v5.15. Replaces vanilla 5.15 exfat entirely (commit 8b6b8c2f5 removes all mainline exfat files first). Contains platform-specific Samsung Kconfig options (EXFAT_DISCARD, EXFAT_DELAYED_SYNC, EXFAT_KERNEL_DEBUG, EXFAT_DEBUG_MSG, EXFAT_DEFAULT_CODEPAGE) not in vanilla."
+  },
+  "notes": "LARGE VENDORED COMMIT: 23 files, 12151 lines of Samsung exfat driver (exfat-nofuse lineage, v1.2.11). This is a COMPLETE FILESYSTEM DRIVER REPLACEMENT, not a set of patches. The commit added not just symlink support but a parallel 20-file filesystem implementation that replaces vanilla exfat entirely (commit sequence: 8b6b8c2f5 removes mainline exfat files, df35bdb27 adds Samsung driver). The MiSTer kernel fork remains on this driver through v5.15. HOWEVER: Buildroot_MiSTer's 6.18 build uses vanilla 6.18 exfat (not the Samsung driver), because the Buildroot environment kernels the vanilla Linux tree (/mnt/source/linux v6.18.38), not the fork. Vanilla 6.18 exfat has NO symlink support (grep symlink fs/exfat/*.c → empty). Symlink functionality was restored via carried patch 0031-exfat-samsung-symlinks.patch, which re-implements symlinks using vanilla 6.18 infrastructure (page_symlink/page_get_link), reusing ONLY the on-disk format (EXFAT_ATTR_SYMLINK = 0x0004, EXFAT_ATTR_SYMLINK_OLD = 0x0040) from this commit. The carried patch is ~140 lines and does NOT forward-port the Samsung driver code; it is a fresh implementation. Disposition REFLECTS the MiSTer v5.15 fork context where this commit was made, not the 6.18 build context. In the fork, this commit was live until superseded by the 6.18 migration and ADR 0010/0019 decisions (ADR 0010 dropped the driver entirely; ADR 0019 restored symlinks only via patch 0031). SILENT-REGRESSION FLAG: If dropped without patch 0031, symlink resolution fails silently; Main_MiSTer resolves DT_LNK entries (file_io.cpp:1592) and the arcade organizer's _Organized tree depends on symlinks. The carried patch has high coupling: MiSTer mounts /media/fat with sync,dirsync flags (MiSTer kernel patches init/do_mounts.c), and on-disk exfat symlink format must remain stable across driver updates (existing user cards have symlinks written by the stock kernel's Samsung driver). AGREES WITH PROVENANCE: Patch-provenance.md §3.8 (class G, exfat replacement) and §N1 correctly identify the driver swap and symlink loss, and the resolution via ADR 0010 + ADR 0019. Carried patch 0031 is listed in patch-provenance.md §N1 as the implemented solution (option c: add symlink support to mainline exfat). No ambiguity or misclassification."
+}

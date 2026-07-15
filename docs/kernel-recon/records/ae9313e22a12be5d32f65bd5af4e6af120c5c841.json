@@ -1,0 +1,56 @@
+{
+  "sha": "ae9313e22a12be5d32f65bd5af4e6af120c5c841",
+  "subject": "Enable the NFS filesystem in the kernel. (#45)",
+  "author": "Bas v.d. Wiel",
+  "author_is_pr_contributor": true,
+  "date": "2023-03-13",
+  "subsystem": "fs",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "fs/nfs/Kconfig:2-3",
+    "vanilla_quote": "config NFS_FS\n\ttristate \"NFS client support\"",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md L~340: defconfig group (11 commits), disposition='config — feeds P1.3'",
+  "impact": {
+    "effect_if_absent": "NFS client filesystem support would be unavailable; users cannot mount game libraries or other resources over NFS network shares",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "VOCABULARY CORRECTION (per instructions' kconfig rule, grounding-contract item 5; same fix applied to sibling record 9f59d13d5, SMARTJOYPLUS_FF): previously disposition='dropped-upstream', which wrongly frames this as a case where vanilla-source development superseded the fork's change. CONFIG_NFS_FS is not something that 'arrived upstream' between 5.15 and 6.18 -- it's a long-standing NFS client Kconfig tristate, unchanged in wording at vanilla fs/nfs/Kconfig:2-3 ('config NFS_FS' / 'tristate \"NFS client support\"'). This fork commit (`git show ae9313e22`) is a single-line flip in the fork's own arch/arm/configs/MiSTer_defconfig (`# CONFIG_NFS_FS is not set` -> `CONFIG_NFS_FS=y`) -- a file we do not carry commit-by-commit; we maintain board/mister/de10nano/linux.config directly. Re-derived per the kconfig rule: symbol still exists in 6.18 (yes, fs/nfs/Kconfig:2), set in OUR linux.config (yes -- confirmed `CONFIG_NFS_FS=y` at board/mister/de10nano/linux.config:419), also set in stock (stock-linux.config:3560). The desired end-state is already present in our build, achieved by our own independently-maintained config, not by carrying this commit as a patch -- correct disposition is 'dropped-deliberate' (we deliberately don't carry per-commit defconfig deltas piecemeal), equivalence stays 'equivalent' (same effective setting; there is no vanilla source commit to diff against, hence vanilla_shas correctly stays empty). No linux-patches/*.patch touches NFS_FS -- carried_patch=null confirmed correct; the setting lives purely in our maintained linux.config. NFS is silent-failure: absence merely disables network filesystem mount capability with no build or boot error. NOTE: patch-provenance.md:312 groups this commit with 10 others (including 9f59d13d5, SmartJoyPlus FF) under one 'defconfig (11 commits)' row -- itself a grouped row that should be escalated per the instructions (never analyze/report grouped commits as one unit), even though this record analyzes ae9313e22 alone as required.",
+  "sonnet-verified": "corrected -- config-grep facts (symbol exists at fs/nfs/Kconfig:2-3, set at linux.config:419, stock also =y, no carrying patch) were already accurate, and equivalence='equivalent' was already the right label, but disposition vocabulary was wrong: 'dropped-upstream' implies vanilla-source supersession that never happened here. Reclassified to 'dropped-deliberate' per the instructions' kconfig-axis rule (same fix as sibling record 9f59d13d5)."
+}

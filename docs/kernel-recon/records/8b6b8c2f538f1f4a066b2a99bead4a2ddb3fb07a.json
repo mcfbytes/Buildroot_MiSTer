@@ -1,0 +1,72 @@
+{
+  "sha": "8b6b8c2f538f1f4a066b2a99bead4a2ddb3fb07a",
+  "subject": "Remove original exFAT driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/Kconfig",
+    "fs/exfat/Makefile",
+    "fs/exfat/balloc.c",
+    "fs/exfat/cache.c",
+    "fs/exfat/dir.c",
+    "fs/exfat/exfat_fs.h",
+    "fs/exfat/exfat_raw.h",
+    "fs/exfat/fatent.c",
+    "fs/exfat/file.c",
+    "fs/exfat/inode.c",
+    "fs/exfat/misc.c",
+    "fs/exfat/namei.c",
+    "fs/exfat/nls.c",
+    "fs/exfat/super.c"
+  ],
+  "added": 0,
+  "removed": 7429,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.8 Class G (GROUPED ROW: commits 8b6b8c2f5, df35bdb27, 858322ce6, 5220d6686, 7f7148c1f, 99a2c80d0), §N1",
+
+  "impact": {
+    "effect_if_absent": "The deletion of vanilla 5.15 exfat driver files has no effect if not carried, because vanilla 6.18 retains the exfat driver (same 14 files: fs/exfat/*.c|h with similar structure). Symlink support is provided separately via carried patch 0031 (exfat-samsung-symlinks.patch), which implements Samsung-compatible symlinks on vanilla exfat. FAT12/16/32 support is provided via vanilla vfat (CONFIG_VFAT_FS), not the Samsung driver.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["0031-exfat-samsung-symlinks.patch"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit was part of the fork's strategy to replace vanilla 5.15 exfat (14 files, no symlink support) with the out-of-tree Samsung/exfat-nofuse driver (20+ files, with symlinks for exFAT and FAT12/16/32 support). Patch-provenance.md §N1 and §3.8 document this replacement. The commit is NOT carried in our 6.18 build. Our approach (ADR 0010 + ADR 0019): (1) vanilla 6.18 exfat persists unchanged (same files as deleted here); (2) carried patch 0031 adds Samsung-compatible symlinks to vanilla exfat only; (3) vanilla vfat (CONFIG_VFAT_FS) handles FAT12/16/32 encoding via CONFIG_FAT_DEFAULT_UTF8=y. This trades the Samsung driver's multi-filesystem unified symlink support for maintainability via two vanilla upstream drivers. No exFAT functionality is lost (symlinks via patch 0031, encoding via mount options). FAT12/16/32 symlinks remain unsupported (design decision in ADR 0019). The fork's intent was to REMOVE vanilla exfat to enable Samsung driver integration; our 6.18 build deliberately KEEPS vanilla exfat and adds targeted symlink support instead via a separate carried patch — that is the reason for dropped-deliberate. upstream.equivalence corrected from 'contradicted' to null: this commit is a pure deletion (added=0, no vanilla_file_line/vanilla_quote grounding), so the equivalence enum (which grades behavioral equivalence of functionality a commit ADDS) does not apply — there is no added behavior for vanilla to be equivalent to or contradict, and 'contradicted' would incorrectly flag this dropped-deliberate deletion as a carry candidate per the pilot-lesson heuristic, which is wrong here. sonnet-verified: equivalence-flag semantics fixed per grounding contract (no upstream claim without a quote); disposition=dropped-deliberate and supersession by 0031-exfat-samsung-symlinks.patch confirmed correct."
+}

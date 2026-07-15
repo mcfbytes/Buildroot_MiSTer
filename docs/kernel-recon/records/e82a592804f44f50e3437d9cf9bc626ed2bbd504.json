@@ -1,0 +1,93 @@
+{
+  "sha": "e82a592804f44f50e3437d9cf9bc626ed2bbd504",
+  "subject": "Add Fanatec wheel driver (#24)",
+  "author": "Michael Huang",
+  "author_is_pr_contributor": true,
+  "date": "2022-04-17",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/hid/Kconfig",
+    "drivers/hid/Makefile",
+    "drivers/hid/hid-ftec.c",
+    "drivers/hid/hid-ftec.h",
+    "drivers/hid/hid-ftecff.c"
+  ],
+  "added": 1671,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0012-hid-fanatec.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md: 'e82a59280, 8908e0fe1, ed8f8e6ce | Fanatec wheels (+build/warning fixes)'",
+
+  "impact": {
+    "effect_if_absent": "Fanatec racing wheels (ClubSport V2/V25, CSL Elite, CSR Elite, Podium DD1/DD2, CSL DD) would not be recognized or controllable as HID input devices; force feedback, pedal calibration, LED control, and steering range adjustment would be unavailable",
+    "affected_hardware": [
+      "Fanatec ClubSport V2 Wheelbase",
+      "Fanatec ClubSport V25 Wheelbase",
+      "Fanatec CSL Elite Wheelbase",
+      "Fanatec CSL Elite PS4 Wheelbase",
+      "Fanatec CSL Elite Pedals",
+      "Fanatec ClubSport Pedals V3",
+      "Fanatec Podium Wheelbase DD1",
+      "Fanatec Podium Wheelbase DD2",
+      "Fanatec CSL DD Wheelbase",
+      "Fanatec CSR Elite Wheelbase"
+    ],
+    "device_ids": [
+      "0x0eb7:0x0001",
+      "0x0eb7:0x0004",
+      "0x0eb7:0x0005",
+      "0x0eb7:0x0006",
+      "0x0eb7:0x0007",
+      "0x0eb7:0x0E03",
+      "0x0eb7:0x0011",
+      "0x0eb7:0x183b",
+      "0x0eb7:0x6204",
+      "0x0eb7:0x0020"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "vendor_id 0x0eb7 device enumeration; sysfs attributes for range, load, rumble, display, tuning, LEDs; input event codes with BTN_WHEEL bit set for pedal recognition",
+    "main_mister_ref": "Main_MiSTer/input.cpp:5006 (Fanatec Wheels vendor ID 0x0eb7 check and device-specific handling); 5049 (set_wheel_range call with cfg.wheel_range parameter)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "carried with modifications: hrtimer_init() + assignment pattern replaced with hrtimer_setup(); missing-prototypes warnings fixed via static keywords and extern declarations in hid-ftec.h; unused variable cleanup"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "author": "gotzl (upstream project author)",
+    "copyright": "Copyright (C) gotzl (hid-fanatecff upstream project)",
+    "origin_project": "gotzl/hid-fanatecff",
+    "origin_project_url": "https://github.com/gotzl/hid-fanatecff",
+    "origin_project_status": "never merged into mainline Linux; remains out-of-tree"
+  },
+  "notes": "This commit introduces a complete new HID driver for Fanatec racing wheels ported from the gotzl/hid-fanatecff out-of-tree project. The driver has two components: hid-ftec.c (probe, sysfs interfaces for load/rumble/display, LED management via led_classdev) and hid-ftecff.c (force-feedback implementation via hrtimer-based effect scheduler). Critical feature: pedal calibration via sysfs 'load' attribute and steering range control via 'range' attribute are essential for hardware compatibility. The driver is tightly coupled to Main_MiSTer userspace via vendor_id checks and wheel-range configuration. Verified not present in vanilla Linux 6.18.38 (no hid-ftec.c, hid-ftecff.c, or HID_FTEC configuration option). Carried patch 0012-hid-fanatec.patch already includes forward-port adjustments for 6.18 (hrtimer API changes, -Wmissing-prototypes fixes, unused variable cleanup). Disposition in patch-provenance.md already correctly classified as Class D carry. Author is PR contributor (#24, #25 Michael Huang, PR #24 also includes fix commit #25 folded in). No upstream equivalence exists."
+}

@@ -1,0 +1,102 @@
+{
+  "sha": "993b82e3144d4283a4dd436c4abcf72558646640",
+  "subject": "Update realtek drivers from upstream (#44)",
+  "author": "gkrzystek",
+  "author_is_pr_contributor": true,
+  "date": "2023-03-13",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8812au/Makefile",
+    "drivers/net/wireless/realtek/rtl8812au/core/mesh/rtw_mesh.c",
+    "drivers/net/wireless/realtek/rtl8821au/Makefile",
+    "drivers/net/wireless/realtek/rtl8821au/core/rtw_mlme_ext.c",
+    "drivers/net/wireless/realtek/rtl8821au/core/rtw_pwrctrl.c",
+    "drivers/net/wireless/realtek/rtl8821au/hal/hal_dm.c",
+    "drivers/net/wireless/realtek/rtl8821cu/Makefile",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_ap.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_mlme_ext.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_odm.c",
+    "drivers/net/wireless/realtek/rtl8821cu/core/rtw_recv.c",
+    "drivers/net/wireless/realtek/rtl8821cu/hal/hal_com.c",
+    "drivers/net/wireless/realtek/rtl8821cu/hal/hal_dm_acs.c",
+    "drivers/net/wireless/realtek/rtl8821cu/include/wifi.h",
+    "drivers/net/wireless/realtek/rtl8821cu/os_dep/linux/ioctl_cfg80211.c",
+    "drivers/net/wireless/realtek/rtl8821cu/os_dep/linux/os_intfs.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/Makefile",
+    "drivers/net/wireless/realtek/rtl88x2bu/core/rtw_debug.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/core/rtw_mlme_ext.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/core/rtw_pwrctrl.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/hal/hal_dm.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/hal/hal_dm_acs.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/halmac_88xx/halmac_8822b/halmac_init_8822b.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/halmac_88xx/halmac_8822b/halmac_usb_8822b.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/include/autoconf.h",
+    "drivers/net/wireless/realtek/rtl88x2bu/os_dep/linux/recv_linux.c"
+  ],
+  "added": 159,
+  "removed": 140,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 389",
+
+  "impact": {
+    "effect_if_absent": "No impact to 6.18 build. In-kernel Realtek drivers are not used; they are disabled in CONFIG and replaced with external BR2 packages sourced from morrownr.",
+    "affected_hardware": [
+      "RTL8812AU",
+      "RTL8821AU",
+      "RTL8821CU",
+      "RTL8822BU"
+    ],
+    "device_ids": [
+      "0x0bda:0x8812",
+      "0x0bda:0x881a",
+      "0x0bda:0x881b",
+      "0x0bda:0x881c",
+      "0x0bda:0x0811",
+      "0x0bda:0x0821",
+      "0x0bda:0x0823"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "cfg80211/nl80211 (unchanged across this commit and in BR2 packages)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/rtl8812au (morrownr/8812au-20210820 @ 8cac6f4 'support from kernels 6.17-7.0')",
+      "package/rtl8821au-morrownr (morrownr/8821au-20210708 @ 3a7cdb5 'kernel-7.0 build-fixes')",
+      "package/rtl8821cu-morrownr (morrownr/8821cu-20210916 @ 7f63a9d 'Linux 6.18 build fix')",
+      "package/rtl88x2bu (morrownr/88x2bu-20210702 @ fecac34 'Linux 6.18 compatibility fix')"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "In-kernel Realtek drivers in MiSTer's 5.15 Linux fork (rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu) are NOT used in our 6.18 build — they are completely superseded by external BR2 packages. The in-kernel versions are not enabled in our kernel CONFIG (no CONFIG_RTL8812AU/8821AU/8821CU/8822BU entries in linux.config), and the Kconfig options for these drivers do not exist in vanilla 6.18. Commit 993b82e (Mar 2023) updated these drivers in the stock MiSTer 5.15 fork with two types of changes: (1) debug output reductions (CONFIG_RTW_DEBUG=y→n, CONFIG_PROC_DEBUG=y→n in Makefiles) and (2) cosmetic cleanups (whitespace, trailing lines). IMPACT: Zero impact to 6.18 build, confirmed by patch-provenance.md line 389 recommendation to 're-source' these drivers to BR2 packages. The replacement BR2 packages are commit-pinned to morrownr forks with explicit 6.18+ support assertions in their commit messages. Userspace coupling via cfg80211/nl80211 is preserved across the transition."
+}

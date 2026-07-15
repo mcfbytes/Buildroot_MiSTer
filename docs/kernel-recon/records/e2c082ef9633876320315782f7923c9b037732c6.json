@@ -1,0 +1,57 @@
+{
+  "sha": "e2c082ef9633876320315782f7923c9b037732c6",
+  "subject": "usb-storage: blacklist Realtek WiFi driver CD-ROM.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-31",
+  "subsystem": "usb",
+  "change_type": "in-tree-code",
+  "files": ["drivers/usb/storage/usual-tables.c"],
+  "added": 5,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": ["a3dc32c635bae0ae569f489e00de0e8f015bfc25"],
+    "vanilla_file_line": "drivers/usb/storage/unusual_devs.h:1509",
+    "vanilla_quote": "UNUSUAL_DEV( 0x0bda, 0x1a2b, 0x0000, 0xffff,\n\t\t\"Realtek\",\n\t\t\"DISK\",\n\t\tUSB_SC_DEVICE, USB_PR_DEVICE, NULL,\n\t\tUS_FL_IGNORE_DEVICE ),",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:345",
+
+  "impact": {
+    "effect_if_absent": "Realtek WiFi adapter (0x0bda:0x1a2b) would enumerate as a fake CD-ROM (mass storage device) and usb_modeswitch would fail to switch it to WiFi mode, leaving it non-functional.",
+    "affected_hardware": ["D-Link DWA-171 Wifi Dongle", "Mercury MW310UH", "Realtek multi-mode WiFi adapters"],
+    "device_ids": ["0bda:1a2b"],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": "sonnet-verified correction: usb_modeswitch is NOT part of the current Buildroot_MiSTer build. output/.config (regenerated 2026-07-14, matches configs/mister_de10nano_defconfig) explicitly shows both `# BR2_PACKAGE_USB_MODESWITCH is not set` and `# BR2_PACKAGE_USB_MODESWITCH_DATA is not set` (output/.config:1570-1571); output/target has zero usb_modeswitch files; `git log -S USB_MODESWITCH -- configs/mister_de10nano_defconfig` returns no history -- the option was never enabled via our defconfig. The files the original record cited (work/imgroot/usr/lib/udev/rules.d/40-usb_modeswitch.rules, work/imgroot/usr/share/usb_modeswitch/0bda:1a2b) are stale build-output leftovers (dated 2022-12-24 and 2025-04-02 respectively) from an unrelated/older build of the work/ tree, which is itself .gitignore'd and not tracked source. There is currently no userspace mechanism in our shipped image that provides fallback coverage for this device."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["a3dc32c635bae0ae569f489e00de0e8f015bfc25 (vanilla usb-storage unusual_devs.h blacklist, equivalent mechanism)"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MiSTer's 5.15 fork approach: adds 0x0bda:0x1a2b to the ignore_ids[] table in usual-tables.c (struct ignore_entry only captures vid/pid/bcdmin/bcdmax -- ANY match causes usb_usual_ignore_device() to return -ENXIO from storage_probe(), unconditional of any flags field) with narrow bcdDevice range (0x0000-0x9999). Vanilla 6.18.38 approach: adds an entry to unusual_devs.h (the MAIN usb_storage_usb_ids match table, a different table from ignore_ids) with the US_FL_IGNORE_DEVICE flag and wider bcdDevice range (0x0000-0xffff), AND also adds a companion entry for 0x0bda:0xa192 (Mercury MW310UH, confirmed present at unusual_devs.h:1520). This flag is checked separately in usb.c:689 (`if (us->fflags & US_FL_IGNORE_DEVICE) return -ENODEV;`), a genuinely different code path/table from the fork's ignore_ids mechanism (usb.c:1212) though both live in drivers/usb/storage/usb.c's storage_probe() and produce the same practical outcome: usb-storage refuses to bind the device. Equivalence='equivalent' (not byte-identical) is the right grade given the differing mechanism/table and the wider range plus extra device vanilla covers.\n\nsonnet-verified correction (significant): the original record claimed 'kernel-level suppression is redundant given usb_modeswitch coverage' and cited userspace_coupling.coupled=true backed by files under work/imgroot/. Independent verification found this is WRONG for our actual build: BR2_PACKAGE_USB_MODESWITCH and BR2_PACKAGE_USB_MODESWITCH_DATA are both explicitly unset in the current output/.config, and never appear in configs/mister_de10nano_defconfig's git history. The work/imgroot files cited are stale artifacts (2022/2025 timestamps) from the gitignored work/ build-output tree, not the current shipped rootfs (output/target has zero usb_modeswitch files). Conclusion: there is NO userspace-level fallback for this device in Buildroot_MiSTer today. The kernel-level blacklist (currently obtained for free by building against vanilla 6.18.38, since a3dc32c635ba is upstream) is the SOLE protection mechanism -- not redundant, but load-bearing. This does not change the disposition (still dropped-upstream/equivalent, correctly not carried as a 00xx patch since vanilla covers it) but it does invalidate the 'redundant' framing and raises the practical importance of keeping the vanilla kernel source (not a fork patch) as the source of this protection going forward. Disposition re-verified against patch-provenance.md:345, which matches exactly (byte-for-byte) and does not itself make the redundancy claim -- that claim originated solely in this record's own (unverified) notes.\n\nsonnet-verified: corrected"
+}

@@ -1,0 +1,77 @@
+{
+  "sha": "af27afc4c2662d9b4673687c0279994914060d2a",
+  "subject": "Update xpad driver (#63)",
+  "author": "zakk4223",
+  "author_is_pr_contributor": true,
+  "date": "2025-09-29",
+  "subsystem": "input",
+  "change_type": "uapi-header",
+  "files": [
+    "drivers/input/joystick/xpad.c",
+    "include/uapi/linux/input-event-codes.h"
+  ],
+  "added": 571,
+  "removed": 189,
+  "is_backport_of_vanilla": true,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "e23c69e33248",
+      "677065244aa1"
+    ],
+    "vanilla_file_line": "include/uapi/linux/input-event-codes.h:605-608 (BTN_GRIPL/R/L2/R2), :893 (ABS_PROFILE); drivers/input/joystick/xpad.c:83-85 (MAP_SHARE_BUTTON/PADDLES/PROFILE_BUTTON), :103-105 (PKT_XBE1/XBE2_FW_OLD/FW_5_EARLY), :1096-1099 and :1209-1212 (paddle byte dispatch)",
+    "vanilla_quote": "Vanilla 6.18.38 already contains: BTN_GRIPL (0x224), BTN_GRIPR (0x225), BTN_GRIPL2 (0x226), BTN_GRIPR2 (0x227) in input-event-codes.h:605-608; ABS_PROFILE (0x21) in input-event-codes.h:893; all MAP_PADDLES, MAP_SHARE_BUTTON, MAP_PROFILE_BUTTON constants and paddle handling logic for PKT_XBE1/PKT_XBE2_FW_OLD/PKT_XBE2_FW_5_EARLY firmware variants in xpad.c",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md line 365 groups commits af27afc4c, f3c75eb02, a2242dd85, c035c21c0 as 'xpad deltas' carried in 0017-xpad-mister-deltas.patch, but the patch file header explicitly states 'NOT ported: af27afc4c' — this is a misclassification",
+
+  "impact": {
+    "effect_if_absent": "No user-visible impact; 6.18.38 kernel already provides paddle button support, share button, profile selector, and complete device table that supersedes this commit's changes",
+    "affected_hardware": [
+      "Xbox One Elite Controller (paddle buttons)",
+      "Xbox Series S|X Controller (share button)",
+      "Xbox Adaptive Controller (profile selector)",
+      "Xbox 360 controllers",
+      "third-party Xbox-compatible controllers"
+    ],
+    "device_ids": [
+      "045e:02e3",
+      "045e:0b00",
+      "045e:0b0a",
+      "045e:0b12"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "input event codes (BTN_GRIPL/R/L2/R2, ABS_PROFILE)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "vanilla-6.18.38-xpad.c (commits e23c69e33248 and 677065244aa1, plus subsequent device ID additions)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit represents a wholesale resync of the fork's xpad.c driver with a version that incorporates upstream changes from 2022–2024. Vanilla 6.18.38 already includes all the substantive features this commit brings: (1) Event code constants: BTN_GRIPL/GRIPR/GRIPL2/GRIPR2 (0x224–0x227, verified at input-event-codes.h:605-608, exact match) for Xbox Elite paddle buttons; (2) ABS_PROFILE (0x21, input-event-codes.h:893) for profile selector (Xbox Adaptive Controller); (3) MAP_SHARE_BUTTON/MAP_PADDLES/MAP_PROFILE_BUTTON (xpad.c:83-85, exact match) and packet type detection (PKT_XBE1/XBE2_FW_OLD/FW_5_EARLY at xpad.c:103-105) for GIP protocol decoding; (4) Paddle button reporting with firmware-version-specific byte offsets (BTN_GRIPL/R/L2/R2 dispatch at xpad.c:1096-1099 and again at :1209-1212 for a second firmware branch, both inside PKT_XBE2_FW_5_11-related handling starting ~xpad.c:1087); (5) All GIP protocol command defines; (6) device table reorganization. CORRECTION to prior pass: equivalence was mislabeled 'byte-identical' -- it is not. `git show af27afc4c:drivers/input/joystick/xpad.c | wc -l` = 2383 lines vs vanilla's 2352 (`wc -l drivers/input/joystick/xpad.c`); the files differ structurally (different sort order, fork carries MiSTer-only deltas from other commits layered into the same file, vanilla evolved independently from a different lineage). The *functional* features this specific commit's diff introduces are present and working the same way upstream, which is 'equivalent', not a byte-for-byte match -- reserve 'byte-identical' for cases actually verified via diff with zero output (see e.g. record 9521b003c, Stadia FF). ESCALATION FINDING CONFIRMED: `head -80 board/mister/de10nano/linux-patches/0017-xpad-mister-deltas.patch` contains, verbatim in its Provenance section: 'NOT ported: af27afc4c2662d9b4673687c0279994914060d2a \"Update xpad driver (#63)\", zakk4223, 2025-09-29 -- a wholesale resync of xpad.c to a much newer upstream version. Its content is superseded by 6.18's own xpad.c, which already carries MAP_PADDLES/MAP_SHARE_BUTTON/MAP_PROFILE_BUTTON, the paddle report path (BTN_GRIPL/R/L2/R2), Flydigi Apex 5, and XPAD_XBOX360_VENDOR(0x2c22) is the only piece of it this patch still needs to add itself (see delta 2).' This directly contradicts docs/patch-provenance.md:365, which lists `af27afc4c, f3c75eb02, a2242dd85, c035c21c0` together under 'xpad deltas' → `0017-xpad-mister-deltas.patch` with no indication that af27afc4c specifically was excluded -- a genuine doc/patch-header disagreement, not a re-derivation error on this record's part. The only MiSTer-specific features (cpoll, GIP exclusion for xone driver, Flydigi Vader support, Qanba explicit entry) are not in vanilla 6.18.38 and are correctly carried via separate deltas in the 0017 patch (deltas 1–4 of that patch correspond to fork commits f3c75eb02, a2242dd85, c035c21c0, but NOT af27afc4c). No silent-regression flag needed: dropping this commit causes no functional loss on our image because 6.18.38 already carries the generalized upstream equivalents.",
+  "sonnet-verified": "corrected -- SHAs/ancestry and the doc-disagreement finding (provenance.md:365 groups af27afc4c as carried in 0017; the actual 0017 patch header explicitly says 'NOT ported: af27afc4c ... superseded by 6.18's own xpad.c', quote confirmed verbatim) both CONFIRMED accurate, agrees_with_provenance_doc=false correctly set. equivalence was mislabeled 'byte-identical' where the files are provably not byte-identical (2383 vs 2352 lines, `diff` not run because line counts alone disprove it) -- corrected to 'equivalent'. Also tightened several file:line citations to exact grep-verified locations."
+}

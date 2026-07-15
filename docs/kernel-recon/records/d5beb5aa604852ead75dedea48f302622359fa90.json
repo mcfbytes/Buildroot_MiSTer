@@ -1,0 +1,66 @@
+{
+  "sha": "d5beb5aa604852ead75dedea48f302622359fa90",
+  "subject": "xone: sysfs for software pairing.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-09",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/transport/dongle.c"
+  ],
+  "added": 43,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md §3.5",
+
+  "impact": {
+    "effect_if_absent": "Sysfs 'pair' attribute for software pairing control unavailable in kernel driver; equivalent functionality available via dlundqvist/xone package instead",
+    "affected_hardware": [
+      "USB Xbox Wireless Dongle (PID 02e6, 02fe)"
+    ],
+    "device_ids": [
+      "045e:02e6",
+      "045e:02fe"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "sysfs attribute pair (read/write)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist fork f2aa9fe01...)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit adds a sysfs 'pair' attribute for software-controlled Xbox Wireless Dongle pairing. The patch-provenance.md (§3.5) explicitly documents that the dlundqvist/xone fork — now sourced as a Buildroot out-of-tree kernel module package (package/xone) — already includes equivalent functionality: a mutex-guarded sysfs 'pairing' attribute (DEVICE_ATTR_RW(pairing) in transport/dongle.c:470). The xone.mk notes all four MiSTer local deltas (rumble, Elite-2 paddles, per-PID firmware, sysfs pairing) are unnecessary as separate patches because dlundqvist/xone independently developed equivalent functionality. Attribute name differs ('pair' in fork vs 'pairing' in dlundqvist), but both expose the same control mechanism via sysfs. This commit is not carried in current linux-patches/ (verified: grep d5beb5aa found no patch file). Since xone is now provided as an out-of-tree package, the kernel-side change is obsolete. No userspace coupling found in Main_MiSTer (grep for 'pair', 'pairing', xone sysfs paths returned no dependencies)."
+}

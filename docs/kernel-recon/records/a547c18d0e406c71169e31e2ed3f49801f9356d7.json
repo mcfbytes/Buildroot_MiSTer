@@ -1,0 +1,69 @@
+{
+  "sha": "a547c18d0e406c71169e31e2ed3f49801f9356d7",
+  "subject": "remove unused files.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-08",
+  "subsystem": "kbuild",
+  "change_type": "docs-or-build",
+  "files": [
+    "scripts/gdb/linux/__init__.py",
+    "scripts/gdb/linux/clk.py",
+    "scripts/gdb/linux/config.py",
+    "scripts/gdb/linux/cpus.py",
+    "scripts/gdb/linux/device.py",
+    "scripts/gdb/linux/dmesg.py",
+    "scripts/gdb/linux/genpd.py",
+    "scripts/gdb/linux/lists.py",
+    "scripts/gdb/linux/modules.py",
+    "scripts/gdb/linux/proc.py",
+    "scripts/gdb/linux/rbtree.py",
+    "scripts/gdb/linux/symbols.py",
+    "scripts/gdb/linux/tasks.py",
+    "scripts/gdb/linux/timerlist.py",
+    "scripts/gdb/linux/utils.py"
+  ],
+  "added": 0,
+  "removed": 2156,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/scripts/gdb/linux/",
+    "vanilla_quote": "GDB debugging helper scripts: clk.py, config.py, cpus.py, device.py, dmesg.py, genpd.py, lists.py, modules.py, proc.py, rbtree.py, symbols.py, tasks.py, timerlist.py, utils.py — all present in vanilla 6.18.38",
+    "equivalence": "byte-identical"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:411",
+  "impact": {
+    "effect_if_absent": "GDB debugging helper scripts not available; no effect on kernel binary or runtime behavior. These are optional development/debugging tools.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MiSTer fork deliberately deleted 15 GDB helper scripts (−2,156 lines). These files exist in vanilla 6.18.38 and are generated as part of the kernel build process (always-y targets in scripts/gdb/linux/Makefile). However, they have zero functional impact on the built kernel binary or userspace. They are purely optional debugging aids for developers using GDB to debug the kernel. Our 6.18 build keeps these files (from vanilla 6.18.38) since they do not conflict with anything and provide value as optional debug helpers. No carries exist for these files. Disposition aligns with provenance doc: 'dismiss' and 'do not carry'."
+}

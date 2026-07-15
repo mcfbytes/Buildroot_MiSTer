@@ -1,0 +1,68 @@
+{
+  "sha": "43fbb63ae1860436423be0e67d5f1ecaa7425909",
+  "subject": "wireless: realtek: fix makefiles.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2023-02-24",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8812au/Makefile",
+    "drivers/net/wireless/realtek/rtl8821au/Makefile",
+    "drivers/net/wireless/realtek/rtl8821cu/Makefile",
+    "drivers/net/wireless/realtek/rtl88x2bu/Makefile"
+  ],
+  "added": 20,
+  "removed": 16,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.6 Class E — out-of-tree wireless drivers (re-source to BR2 packages)",
+  "impact": {
+    "effect_if_absent": "none — the kernel drivers are not built due to disabled CONFIG_* symbols",
+    "affected_hardware": [
+      "RTL8812AU 11ac USB",
+      "RTL8821AU 11ac USB",
+      "RTL8821CU 11ac USB",
+      "RTL88X2BU (RTL8822BU) 11ac USB"
+    ],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/rtl8812au (BR2_PACKAGE_RTL8812AU=y)",
+      "package/rtl8821au-morrownr (BR2_PACKAGE_RTL8821AU_MORROWNR=y)",
+      "mainline rtw88_8821cu (replaces rtl8821cu, rtw88 for 8811cu/8821cu)",
+      "mainline rtw88_8822bu (replaces rtl88x2bu; commit 4cf2fc7 disabled kernel-tree driver due to WPA3 failures)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Commit fixes Makefiles for out-of-tree Realtek wireless drivers (rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu) that are vendored in the MiSTer kernel fork. The changes replace $(src) with $(srctree)/$(src) include paths, which is a standard fix for proper out-of-tree module path resolution. However, all four driver symbols (CONFIG_RTL8812AU, CONFIG_RTL8821AU, CONFIG_RTL8821CU, CONFIG_RTL88X2BU) are intentionally disabled in board/mister/de10nano/linux.config — the kernel drivers are not built. These devices are covered via: (1) BR2_PACKAGE_RTL8812AU and BR2_PACKAGE_RTL8821AU_MORROWNR for 11ac chips without mainline USB drivers; (2) mainline rtw88_8821cu/rtw88_8822bu for newer chips (commit 4cf2fc7 'WiFi: mainline-first drivers', ADR 0016, disabled rtl88x2bu due to WPA3 failures with status_code=1 in out-of-tree version). As the kernel-tree drivers are not enabled in the config, this makefile fix produces no user-visible effect if removed. patch-provenance.md correctly classifies this commit as part of the 're-source' group — these drivers should have their own BR2 packages or mainline alternatives rather than being carried in the kernel tree. sonnet-verified: `grep -n \"^CONFIG_RTL8812AU\\|^CONFIG_RTL8821AU\\|^CONFIG_RTL8821CU\\|^CONFIG_RTL88X2BU\"` against board/mister/de10nano/linux.config returns zero matches (not even '# ... is not set' lines) — precision note: these symbols are absent rather than merely disabled, because the vendored driver directories that define their Kconfig entries are not part of our 6.18 kernel source tree at all (never forward-ported in-tree; superseded entirely by the BR2 packages/mainline drivers named in superseded_by). Net effect (severity=none) is unchanged by this distinction. Package/mainline supersession list confirmed precise against configs/mister_de10nano_defconfig and board/mister/de10nano/linux.config:481/488 (CONFIG_RTW88_8822BU=m, CONFIG_RTW88_8821CU=m)."
+}

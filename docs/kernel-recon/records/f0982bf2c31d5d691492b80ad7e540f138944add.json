@@ -1,0 +1,55 @@
+{
+  "sha": "f0982bf2c31d5d691492b80ad7e540f138944add",
+  "subject": "usbhid: apply jspoll for gamepad usage as well.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2019-11-20",
+  "subsystem": "usbhid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/usbhid/hid-core.c"
+  ],
+  "added": 5,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0025-usbhid-jspoll-gamepad.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/usbhid/hid-core.c:1140",
+    "vanilla_quote": "case HID_GD_JOYSTICK:\n\t\t\tif (hid_jspoll_interval > 0)\n\t\t\t\tinterval = hid_jspoll_interval;\n\t\t\tbreak;",
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:372",
+  "impact": {
+    "effect_if_absent": "USB HID devices with top-level usage HID_GD_GAMEPAD would not be covered by the hid_jspoll_interval module parameter override; they would use their hardware-default USB interrupt polling interval rather than the MiSTer-configured jspoll value.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "kernel module parameter (usbhid.jspoll)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Original fork commit (f0982bf2c) included 3 pr_info() debug statements that were dropped in the carried patch (0025-usbhid-jspoll-gamepad.patch). The carried patch keeps only the functional change: adding `case HID_GD_GAMEPAD:` to fall through to the same jspoll interval override as HID_GD_JOYSTICK. Vanilla 6.18.38 still lacks this case and thus does not apply jspoll overrides to gamepad devices. The feature is a straightforward enhancement: HID_GD_GAMEPAD has existed in the kernel since 2005 (include/linux/hid.h) and is used in other HID subsystems (hid-input.c), but was omitted from the usbhid jspoll override logic when that feature was added in 2017 (commit 933bfe4d271ef). The carried patch correctly forward-ports this fix from v5.15 to v6.18.38. No userspace coupling detected; this is a kernel-level USB polling optimization."
+}

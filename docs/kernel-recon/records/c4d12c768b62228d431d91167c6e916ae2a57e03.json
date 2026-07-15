@@ -1,0 +1,57 @@
+{
+  "sha": "c4d12c768b62228d431d91167c6e916ae2a57e03",
+  "subject": "Enable UART1.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2018-03-31",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 4,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:310 (grouped row with 13 commits)",
+  "impact": {
+    "effect_if_absent": "CORRECTED (sonnet verification): none. uart1: serial@ffc03000 in vanilla 6.18's socfpga.dtsi (arch/arm/boot/dts/intel/socfpga/socfpga.dtsi:921-932) carries NO 'status' property, and neither did the fork's own socfpga.dtsi at this commit's parent (verified: `git show c4d12c768^:arch/arm/boot/dts/socfpga.dtsi` also has no status on uart1). Per drivers/of/base.c:476-484 (__of_device_is_available: 'True if the status property is absent or set to okay'), an absent status property means the node is already enabled by default -- confirmed live by vanilla's own &uart0 override (socfpga_cyclone5_de10nano.dts:87-95), which sets clock-frequency but no status, and is undisputedly the working boot console. So this commit's sole content (`&uart1 { status = \"okay\"; };`) was already a no-op even in the original 5.15 fork: uart1 was enabled by DT default both before and after. Our carried patch 0004's &uart1 stanza (lines 310-313) contains ONLY the DMA-delete-property lines (see 7d2df2d2d/record), no status property -- and uart1 is still enabled, via the same default-enabled mechanism, not because 0004 re-adds an explicit enable. Dropping this commit's specific content from history would change nothing observable.",
+    "affected_hardware": [
+      "Terasic DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "UART device tree enablement and /dev/ttyS1 device node",
+    "main_mister_ref": "Main_MiSTer/fpga_base_addr_ac5.h:SOCFPGA_UART1_ADDRESS (0xffc03000); Main_MiSTer/menu.cpp:MENU_UART1 (uart mode menu state and configuration)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ESCALATE: This commit is part of a grouped row in patch-provenance.md:310 containing 13 commits (aa8afe109, e40563ae1, 2548c2978, 6827e7644, 6c2d53934, 246984fce, 1337de1fd, c4d12c768, 7d2df2d2d, c5066763c, 071d9092e, f52690120, 077c2c317). The group was consolidated into single patch 0004-dts-de10nano-MiSTer.patch during forward-port to 6.18 (P1.7). Original commit adds 4 lines (just &uart1 { status = \"okay\"; }). Carried patch 0004's &uart1 stanza (lines 310-313) only has the DMA property deletion (/delete-property/ dmas; /delete-property/ dma-names) from the LATER commit 7d2df2d2d -- it does NOT re-add an explicit status=okay. UART1 is defined in vanilla socfpga.dtsi:921-932 but with no status property at all (see sonnet-verified correction below), and vanilla's board dts likewise never sets status on uart0/uart1 (only clock-frequency). CONFIG_SERIAL_8250_NR_UARTS=2 in our config supports 2 UARTs. Main_MiSTer userspace citations verified: Main_MiSTer/fpga_base_addr_ac5.h:25 has `#define SOCFPGA_UART1_ADDRESS 0xffc03000` (matches uart1's reg = <0xffc03000 ...> in socfpga.dtsi:921 exactly) and Main_MiSTer/menu.cpp has MENU_UART1 (line 142 enum, referenced lines 2996/3567/3574/3665) for UART-mode menu state -- both citations confirmed to exist as claimed.\n\nsonnet-verified CORRECTION (severity downgrade): impact.severity was 'feature-loss', now 'none'. Investigated whether dropping this specific commit's content actually loses functionality. Checked drivers/of/base.c:476-484 (__of_device_is_available): a device tree node with no 'status' property is treated as available/enabled by default -- this is standard DT semantics, not a MiSTer-specific quirk. uart1 in vanilla 6.18's socfpga.dtsi has NO status property (confirmed by direct read of the file), and critically, neither did the FORK's own socfpga.dtsi at this commit's immediate parent (`git -C /mnt/source/Linux-Kernel_MiSTer show c4d12c768^:arch/arm/boot/dts/socfpga.dtsi` also shows no status on uart1). This means the commit's entire diff (`&uart1 { status = \"okay\"; };`) was already a no-op in the 5.15 fork at the time it was written -- uart1 was enabled by DT default both immediately before and immediately after this commit. Confirmed the mechanism works as claimed by checking vanilla's own &uart0 board-file override (socfpga_cyclone5_de10nano.dts:87-95), which sets clock-frequency but deliberately never sets status, and is unambiguously the working boot console (stdout-path = 'serial0:115200n8', serial0 alias = &uart0) -- proof the omit-status-property-means-enabled path is real and load-bearing elsewhere in the same file. Our 0004 patch's &uart1 override likewise has no status property and uart1 is enabled in our build via the identical default mechanism, not because this commit's content was carried forward. Net effect: the disposition/carried_patch/carried_mode mapping is still defensible in the loose sense that 0004 does contain an &uart1 node and uart1 IS enabled in our final devicetree, matching the fork's outcome -- but the specific claim that dropping this commit would produce 'feature-loss' is not supported; dropping it changes nothing observable, in the fork or in our carry. The load-bearing UART1 change in this commit group is actually 7d2df2d2d's DMA-property deletion, a separate commit/record.\n\nsonnet-verified: carry-mapping confirmed (0004 patch does contain an &uart1 override, satisfying the mechanical 'is this commit's target functionality present in 0004' question), Main_MiSTer citations confirmed exact, but impact/severity corrected from feature-loss to none per the DT-default-enabled analysis above.\n\nsonnet-verified: CARRY-MAPPING CONFIRMED, IMPACT CORRECTED (feature-loss -> none, evidence-backed) -- disposition/carried_patch/carried_mode/Main_MiSTer citations all hold; effect_if_absent was overstated."
+}

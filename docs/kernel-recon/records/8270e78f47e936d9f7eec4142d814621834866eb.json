@@ -1,0 +1,66 @@
+{
+  "sha": "8270e78f47e936d9f7eec4142d814621834866eb",
+  "subject": "xone: backport the paddles from fork.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-04-09",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/bus/bus.h",
+    "drivers/hid/xone/bus/protocol.c",
+    "drivers/hid/xone/bus/protocol.h",
+    "drivers/hid/xone/driver/gamepad.c"
+  ],
+  "added": 217,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "/mnt/source/Buildroot_MiSTer/docs/patch-provenance.md:381 (§3.5, xone commit row)",
+  "impact": {
+    "effect_if_absent": "Elite Series 2 and Elite Series 1 Xbox controllers would not report paddle button inputs; paddles (rear secondary buttons) would be silent",
+    "affected_hardware": [
+      "Xbox Elite Series 2 controller (USB and wireless via adapter)",
+      "Xbox Elite Series 1 controller"
+    ],
+    "device_ids": [
+      "045e:0b00",
+      "045e:02e3"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "Input event subsystem (KEY_* events via BTN_GRIPL, BTN_GRIPL2, BTN_GRIPR, BTN_GRIPR2 buttons)",
+    "main_mister_ref": "/mnt/source/Main_MiSTer/joymapping.cpp:220 (map_paddle_btn function for paddle button mapping in UI)"
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist/xone fork, commit f2aa9fe01103d7600553b505b298ff0bd47ff280)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0-or-later (xone driver, per SPDX headers in driver/gamepad.c and top-level LICENSE file)",
+  "notes": "This commit adds Elite Series 2 (and Elite Series 1) paddle support to the vendored xone GIP driver in the MiSTer fork. The implementation includes firmware-version discrimination (enum PaddleCapability with PADDLE_ELITE, PADDLE_ELITE2_4X, PADDLE_ELITE2_510, PADDLE_ELITE2_511 cases) to handle different protocol versions across firmware releases (0x04FF, 0x050A thresholds). DELIBERATELY DROPPED FROM 6.18 KERNEL because: (1) xone is now packaged as a Buildroot out-of-tree kernel-module package (package/xone) rather than vendored in the kernel source; (2) the dlundqvist/xone fork (f2aa9fe01103d7600553b505b298ff0bd47ff280) pinned in package/xone/xone.mk already contains an identical or more sophisticated paddle implementation — verified: device IDs (0x045e:0x0b00, 0x045e:0x02e3), firmware thresholds (0x04FF, 0x050A), and PaddleCapability enum all match the kernel commit byte-for-byte; (3) no separate carry patch is needed. CONFIRMED with source-grep of packaged tarball (grep -n PADDLE_ in dlundqvist gamepad.c yields lines 119–254, matching kernel commit's paddle enums, query functions, and input reporting). This commit is explicitly documented in patch-provenance.md §3.5 as one of 4 MiSTer-local deltas (rumble fix, Elite-2 paddles, per-PID firmware, sysfs pairing) that turned out unnecessary as separate patches because the dlundqvist fork independently grew equivalent functionality. Zero compat patches needed for 6.18. xone GIP driver does not exist in vanilla mainline 6.18 (grep -rl gip_driver drivers/ in vanilla → nothing), so 'upstream' equivalence is inapplicable. Userspace coupling is via Main_MiSTer's input event mapping layer, which has map_paddle_btn() function to bind paddle buttons to UI actions. Userspace is not coupled to kernel xone specifically — the feature works via standard input event subsystem (buttons report via EV_KEY events), so the switch from kernel-vendored to packaged xone does not break userspace."
+}

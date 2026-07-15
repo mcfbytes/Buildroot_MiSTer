@@ -1,0 +1,68 @@
+{
+  "sha": "a6165424f2c8b0146eda7014b4e6dfb210fc632a",
+  "subject": "xinmotek fix (#11)",
+  "author": "Alan Steremberg",
+  "author_is_pr_contributor": true,
+  "date": "2020-02-14",
+  "source_branch": "MiSTer-v5.13.12",
+  "subsystem": "hid",
+  "change_type": "quirk",
+  "files": [
+    "drivers/hid/hid-quirks.c"
+  ],
+  "added": 1,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "c62f7cd8ed06"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-quirks.c:177",
+    "vanilla_quote": "\t{ HID_USB_DEVICE(USB_VENDOR_ID_XIN_MO, USB_DEVICE_ID_XIN_MO_DUAL_ARCADE), HID_QUIRK_MULTI_INPUT },",
+    "equivalence": "byte-identical"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "No effect — device support is already in stock 5.15.1 via upstream commit c62f7cd8ed06; this commit duplicates an existing quirk entry.",
+    "affected_hardware": [
+      "Xin-Mo (Xinmotek) Dual Arcade Controller"
+    ],
+    "device_ids": [
+      "16c0:05e1"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "c62f7cd8ed06"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CRITICAL FINDING: This commit adds an exact duplicate HID quirk entry for USB_VENDOR_ID_XIN_MO / USB_DEVICE_ID_XIN_MO_DUAL_ARCADE. The device was already present in stock 5.15.1 at line 194, introduced by upstream commit c62f7cd8ed06 (2019-12-01). The duplicate causes no functional harm (HID subsystem handles duplicates safely) but is a no-op. The device remains supported in vanilla 6.18 at line 219 with identical quirk flags. Revert commit ec75e65f correctly removed this duplicate 1.5 years later. Not carried in our build; device support is purely upstream. Main_MiSTer references VID 0x16c0 but for the Sinden Lightgun (PIDs 0x0f01/0x0f02/0x0f38/0x0f39), not the XIN_MO arcade stick (PID 0x05e1)."
+}

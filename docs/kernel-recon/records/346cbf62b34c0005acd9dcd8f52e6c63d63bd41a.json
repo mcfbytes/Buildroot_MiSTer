@@ -1,0 +1,58 @@
+{
+  "sha": "346cbf62b34c0005acd9dcd8f52e6c63d63bd41a",
+  "subject": "defconfig: update.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-17",
+  "subsystem": "kconfig",
+  "change_type": "defconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+  "impact": {
+    "effect_if_absent": "exFAT filesystem volume dirty flag synchronization is lazy instead of eager; mitigates potential data-loss scenarios in power-fail during file operations on SD card",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "source_branch": "MiSTer-v5.14",
+  "notes": "CONFIG_EXFAT_DELAYED_SYNC is a Samsung exfat driver feature that does not exist in vanilla 6.18 Kconfig. This commit (on MiSTer-v5.14 branch only) toggles it from disabled to enabled in the fork's v5.15 defconfig. Vanilla 6.18's exfat driver lacks this option entirely. Our 6.18 linux.config does not include CONFIG_EXFAT_DELAYED_SYNC even though stock-linux.config has it enabled=y; this is expected since our mainline exfat lacks the feature. The Samsung exfat symlinks are carried via patch 0031-exfat-samsung-symlinks.patch, but that patch does not include the DELAYED_SYNC codepaths (which were part of the fork's Samsung driver implementation). No userspace code references this option. Disposition: dropped-deliberate — the fork feature was not forward-ported to 6.18's mainline exfat."
+}

@@ -1,0 +1,55 @@
+{
+  "sha": "316288a3db12844571d28ad93656b991587c125b",
+  "subject": "Enable NFS4 driver",
+  "author": "Larry",
+  "author_is_pr_contributor": false,
+  "date": "2023-04-24",
+  "subsystem": "fs",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 13,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 312 (GROUPED row: defconfig 11 commits)",
+  "impact": {
+    "effect_if_absent": "NFS version 4 client support (v4.0/v4.1/v4.2) unavailable; NFS4 mounts fail if attempted",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit (SHA 316288a3d, abbreviated) appears in patch-provenance.md line 312 as part of a GROUPED row with 10 other defconfig commits (215e6e662, 7828d722e, d788e7ab9, 0d7b4fc7e, 5391b8171, 1a1f208fa, ae9313e22, 316288a3d, 97a398176, f0fb626ac, 9f59d13d5). The provenance entry does not assign individual dispositions, classifying all 11 as 'config — feeds P1.3'. Grounding contract §120 requires individual evaluation. All 13 CONFIG_* symbols added exist in vanilla 6.18.38 Kconfig (verified: fs/nfs/Kconfig, fs/Kconfig, net/sunrpc/Kconfig, lib/Kconfig.debug). Our linux.config has CONFIG_NFS_V4=y, CONFIG_NFS_V4_1=y, CONFIG_NFS_V4_2=y enabled (core NFS4 support present). Additional options from commit NOT explicitly set in our linux.config: CONFIG_PNFS_FILE_LAYOUT, CONFIG_PNFS_FLEXFILE_LAYOUT, CONFIG_NFS_V4_1_IMPLEMENTATION_ID_DOMAIN, CONFIG_NFS_V4_1_MIGRATION, CONFIG_NFS_USE_LEGACY_DNS, CONFIG_NFS_USE_KERNEL_DNS, CONFIG_NFS_V4_2_SSC_HELPER, CONFIG_SUNRPC_BACKCHANNEL, CONFIG_PAHOLE_HAS_SPLIT_BTF. However, most have implicit defaults or are auto-selected in vanilla 6.18: PNFS layouts default to NFS_V4's value; IMPLEMENTATION_ID_DOMAIN defaults to 'kernel.org'; NFS_USE_KERNEL_DNS defaults to y when NFS_V4 && !LEGACY_DNS; NFS_V4_2_SSC_HELPER defaults to y if NFS_V4_2; SUNRPC_BACKCHANNEL is selected by NFS_V4_1; PAHOLE_HAS_SPLIT_BTF is auto-detected (def_bool PAHOLE_VERSION >= 119). Disposition='dropped-deliberate' because: (1) core NFS4 support IS in our config; (2) extensions are not explicitly enabled, but upstream 6.18 provides them via defaults/selections; (3) CONFIG_NFS_V4_2_READ_PLUS is explicitly disabled in our config (defconfig line had '# CONFIG_NFS_V4_2_READ_PLUS is not set'). Stock inventory (20250402, 15mo old) has all commit's symbols enabled. Failure mode is silent: NFS4 feature silently unavailable if core support is disabled. No userspace coupling detected in Main_MiSTer. CRITICAL: Escalate because provenance doc entry is GROUPED row (multiple commits in single row per §120). | sonnet-verified: every auto-select/default claim in this record independently re-derived against /mnt/source/linux Kconfig files and CONFIRMED: fs/nfs/Kconfig 'config PNFS_FILE_LAYOUT / tristate / depends on NFS_V4_1 / default NFS_V4' and identical shape for PNFS_FLEXFILE_LAYOUT; 'config NFS_V4_1_IMPLEMENTATION_ID_DOMAIN / default \"kernel.org\"'; 'config NFS_USE_KERNEL_DNS / depends on NFS_V4 && !NFS_USE_LEGACY_DNS / default y'; fs/Kconfig 'config NFS_V4_2_SSC_HELPER / bool / default y if NFS_V4_2' (this one is NOT selected by NFSD as its neighboring fs/nfsd/Kconfig select-line would suggest — it independently defaults y off NFS_V4_2 alone, confirmed relevant since our NFSD is off but NFS_V4_2_SSC_HELPER=y still appears in the resolved build); 'config NFS_V4_1 / select SUNRPC_BACKCHANNEL' confirmed in fs/nfs/Kconfig. PROOF beyond static reading: the actual post-olddefconfig resolved kernel .config (/mnt/source/Buildroot_MiSTer/output/build/linux-6.18.38/.config, lines 3941-3971) shows every one of these symbols =y (PNFS_FILE_LAYOUT, PNFS_FLEXFILE_LAYOUT, NFS_V4_1_IMPLEMENTATION_ID_DOMAIN=\"kernel.org\", NFS_USE_KERNEL_DNS, NFS_V4_2_SSC_HELPER, SUNRPC_BACKCHANNEL) despite none having an explicit line in board/mister/de10nano/linux.config (only NFS_FS/NFS_V2/NFS_V4/NFS_V4_1/NFS_V4_2/NFS_V4_2_READ_PLUS are explicit there). The CONFIG_NFS_V4_2_READ_PLUS explicit-disable claim is independently confirmed: board/mister/de10nano/linux.config:424 literally reads '# CONFIG_NFS_V4_2_READ_PLUS is not set', which overrides that symbol's own Kconfig default of y ('config NFS_V4_2_READ_PLUS / bool / depends on NFS_V4_2 / default y', fs/nfs/Kconfig) — a genuine deliberate override, not an oversight. userspace_coupling coupled=false re-checked: grep for 'nfs' across Main_MiSTer/*.cpp only hits false positives from the substring inside 'confstr'/'user_io_read_confstr' — zero genuine NFS references, confirms no coupling. Disposition dropped-deliberate and the entire auto-select analysis were already correct; only agrees_with_provenance_doc (null->true) needed fixing since the doc's grouped 'config — feeds P1.3' framing is accurate. No other corrections required."
+}

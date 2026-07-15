@@ -1,0 +1,59 @@
+{
+  "sha": "1a1f208faffbb8b9017e4cc74ddbd459a55100ce",
+  "subject": "Update defconfig.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2023-04-23",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 5,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md (grouped row with 10 other defconfig commits: 215e6e662 + 10 others, Class A)",
+  "impact": {
+    "effect_if_absent": "No user-visible impact. Removed symbols are build-system-auto-detected (def_bool), not user-selectable options. Removing them from defconfig is a cleanup that corrects config practice without affecting functionality.",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config (6.18.38 successor artifact)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Grouped defconfig entry in patch-provenance.md (11 commits total, row labeled 'defconfig'). This commit removes 4 auto-detected config symbols and fixes 1 trailing-whitespace issue in PANTHERLORD_FF line. Removed symbols: (1) CONFIG_CC_HAS_ZERO_CALL_USED_REGS=y — def_bool based on $(cc-option,-fzero-call-used-regs=used-gpr) in security/Kconfig.hardening:190, auto-detected; (2) CONFIG_ZERO_CALL_USED_REGS — bool option that depends on CC_HAS_ZERO_CALL_USED_REGS, disabled in defconfig; (3) CONFIG_PAHOLE_HAS_SPLIT_BTF=y — def_bool based on PAHOLE_VERSION>=119 in lib/Kconfig.debug, auto-detected; (4) CONFIG_HAVE_KCSAN_COMPILER=y — def_bool based on compiler capabilities in lib/Kconfig.kcsan, auto-detected. All four symbols exist in vanilla 6.18.38 (verified via grep in respective Kconfig files). CRITICAL: These are NOT user-selectable options — they are build-time capability detection symbols. Having them hardcoded in defconfig is incorrect kernel config practice. They should NOT appear in defconfig files; the build system automatically detects them during make. Our 6.18 linux.config correctly omits these symbols. Disposition: DROPPED-DELIBERATE because (a) the cleanup applies only to fork's 5.15 defconfig artifact, (b) auto-detected symbols must not be in defconfig, (c) our 6.18 linux.config is the successor artifact and correctly excludes them, (d) no functionality loss. ESCALATION FLAG: Commit is part of GROUPED defconfig row (11 commits), per worker instructions §4.7 requires escalation. | sonnet-verified: all 4 auto-derived-symbol claims independently re-derived and CONFIRMED exact, including line numbers: security/Kconfig.hardening:190-191 'config CC_HAS_ZERO_CALL_USED_REGS / def_bool $(cc-option,-fzero-call-used-regs=used-gpr)' (record's cited line 190 is exact); lib/Kconfig.debug:392-393 'config PAHOLE_HAS_SPLIT_BTF / def_bool PAHOLE_VERSION >= 119'; lib/Kconfig.kcsan:6-7 'config HAVE_KCSAN_COMPILER / def_bool (CC_IS_CLANG && ...) || (CC_IS_GCC && ...)'. ZERO_CALL_USED_REGS itself correctly described as a plain bool (not def_bool) depending on CC_HAS_ZERO_CALL_USED_REGS — record does not overclaim its type. Cross-checked against sibling commit 316288a3d (one day later, same defconfig): it briefly RE-ADDS 'CONFIG_PAHOLE_HAS_SPLIT_BTF=y' before commit 97a398176 (2026-04-17) removes it again — a minor flip-flop across fork history, harmless (auto-detected symbols surviving in a defconfig are inert, the build system recomputes them), noted here for completeness but does not change this record's analysis or disposition. Disposition dropped-deliberate confirmed correct as-is (this is a pure cleanup/removal, not a config-enable-adoption case, so the macvlan/dropped-deliberate distinction does not apply here). No corrections required."
+}

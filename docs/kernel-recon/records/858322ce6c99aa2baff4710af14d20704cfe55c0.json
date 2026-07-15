@@ -1,0 +1,60 @@
+{
+  "sha": "858322ce6c99aa2baff4710af14d20704cfe55c0",
+  "subject": "exfat: fix memory mapped file ops.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-14",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/exfat_super.c"
+  ],
+  "added": 48,
+  "removed": 129,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:405, §N1 (§N1.1–N1.3), ADR 0010/0019",
+  "impact": {
+    "effect_if_absent": "No effect on 6.18 builds, which use vanilla exfat. In 5.15 stock builds with Samsung driver, memory-mapped file operations would not have been optimized (version ifdefs removed, mmu_private validation added, exfat_direct_IO simplified).",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [
+      "8b6b8c2f5",
+      "df35bdb27"
+    ],
+    "superseded_by": [
+      "vanilla-exfat-6.18"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Part of 6-commit Samsung exfat driver replacement (patch-provenance.md Class G, row 3.8). Refactors exfat_super.c memory-mapped file operations by: (1) removing 8 kernel-version ifdefs (#if KERNEL_VERSION < 2.6.34/2.6.39/3.4/3.12/3.16/4.1/4.2/4.7); (2) simplifying exfat_readpage/writepage/writepages via direct returns; (3) adding mmu_private validation in exfat_write_end(); (4) refactoring exfat_direct_IO() logic with detailed comments; (5) adding .set_page_dirty=__set_page_dirty_buffers to address_space_operations; (6) renaming _exfat_bmap→exfat_aop_bmap. Samsung driver uses different APIs than vanilla 6.18 exfat (e.g., direct_IO signature, readpage vs. folio API, no valid_size tracking). Per ADR 0019 (2026-07-14), 6.18 build uses vanilla exfat with symlink support via 0031-exfat-samsung-symlinks.patch. Vanilla 6.18 implements equivalent memory-mapped file functionality via different code paths. This commit is neither carried to 6.18 nor appears in patch-provenance.md entries (0001–0031); instead handled as part of the Samsung driver block drop at P0.9. upstream.equivalence corrected from 'contradicted' to null: the field had no vanilla_file_line/vanilla_quote backing it, and the notes' own claim ('vanilla 6.18 implements equivalent memory-mapped file functionality via different code paths') is an 'equivalent' characterization, not 'contradicted' — the two were self-inconsistent. Since this is a dropped-deliberate commit modifying a driver (Samsung exfat) that is not part of our 6.18 build architecture at all, no upstream comparison is actually being asserted; equivalence=null is correct per the same reasoning applied to sibling record 8b6b8c2f5. sonnet-verified: disposition=dropped-deliberate and severity=none confirmed correct; equivalence-flag semantics fixed."
+}

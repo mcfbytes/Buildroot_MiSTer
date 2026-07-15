@@ -1,0 +1,59 @@
+{
+  "sha": "5391b8171686a4b1bad5eabdf16c39d4d08f477a",
+  "subject": "Update defconfig.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2023-04-23",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": ["arch/arm/configs/MiSTer_defconfig"],
+  "added": 17,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md § defconfig (11 commits grouped)",
+
+  "impact": {
+    "effect_if_absent": "Fork's defconfig lacks NFS/SUNRPC/LOCKD configuration; no effect on our 6.18 build as Buildroot uses custom linux.config",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config (NFS_FS=y explicit; NFS_V3/LOCKD/SUNRPC/NFS_COMMON/GRACE_PERIOD/RPCSEC_GSS_KRB5 all achieved via Kconfig select+default chains rooted at NFS_FS=y, confirmed in the actual resolved build config)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED COMMIT: This commit is part of a 11-commit defconfig group in patch-provenance.md (5391b8171 + 10 others). Patch-provenance marks it 'config — feeds P1.3' with no associated patch file. All CONFIG_* symbols this commit added exist in the fork's 5.15 base and, where still-named, in vanilla 6.18.38 Kconfig. Fork's defconfig is not carried in Buildroot patches; Buildroot uses custom linux.config at board/mister/de10nano/linux.config. | sonnet-verified: DISPOSITION CORRECTED not-evaluated -> dropped-deliberate; the original 'not setting NFS_V3/SUNRPC/LOCKD' framing was MISLEADING and is now annotated per instruction. fs/nfs/Kconfig (vanilla 6.18) shows 'config NFS_FS ... select CRC32 / select LOCKD / select SUNRPC / select NFS_COMMON' — so NFS_FS=y (which IS explicit in our linux.config) force-selects LOCKD, SUNRPC, and NFS_COMMON regardless of whether they appear as separate lines. fs/Kconfig shows 'config LOCKD ... select GRACE_PERIOD' (so GRACE_PERIOD also auto-follows) and 'config NFS_V3 ... default y' (NFS_V3 needs no explicit line at all — it defaults on whenever NFS_FS is enabled and not overridden). net/sunrpc/Kconfig shows 'config RPCSEC_GSS_KRB5 ... depends on SUNRPC && CRYPTO ... default y ... select SUNRPC_GSS' — so the Kerberos GSS stack also auto-enables once SUNRPC+CRYPTO are present. PROOF, not just static reading: the actual post-olddefconfig resolved kernel .config at /mnt/source/Buildroot_MiSTer/output/build/linux-6.18.38/.config (lines 3941-3971) shows NFS_FS=y, NFS_V2=y, NFS_V3=y, LOCKD=y, LOCKD_V4=y, GRACE_PERIOD=y, NFS_COMMON=y, SUNRPC=y, SUNRPC_GSS=y, RPCSEC_GSS_KRB5=y, RPCSEC_GSS_KRB5_ENCTYPES_AES_SHA1=y — ALL present and =y in the actual build despite most having NO line in our board/mister/de10nano/linux.config fragment (only NFS_FS/NFS_V2/NFS_V4/NFS_V4_1/NFS_V4_2/NFS_V4_2_READ_PLUS are explicit there, grep-confirmed). CONCLUSION: there is no real feature-loss gap — NFSv2 and NFSv3 client support (the two versions this specific commit's diff is chiefly about) are both fully present in our actual build via the select/default chain rooted at NFS_FS=y. SEPARATE CORRECTION: CONFIG_SUNRPC_DISABLE_INSECURE_ENCTYPES is NOT a 'fork-only custom option' as previously claimed — it genuinely existed upstream from Feb 2019 (commit fe9a270519c7 'SUNRPC: Add build option to disable support for insecure enctypes', present in the 5.15 base the fork forked from) until it was replaced upstream by commit dfe9a123451a 'SUNRPC: Enable rpcsec_gss_krb5.ko to be built without CRYPTO_DES' (2023-01-15, predates this fork commit's 2023-04-23 date) with the per-enctype RPCSEC_GSS_KRB5_ENCTYPES_AES_SHA1/CAMELLIA/AES_SHA2 opt-in model (AES_SHA1 default y). It is a removed/superseded-upstream symbol, not a fork invention; the stale '# ... is not set' line in the fork's defconfig is simply inert cruft that any Kconfig tool silently ignores for an unknown symbol. Grep confirms it is genuinely absent from /mnt/source/linux's net/sunrpc/Kconfig at the checked-out v6.18.38 HEAD. This correction does not change the disposition. agrees_with_provenance_doc set true (the doc's 'config — feeds P1.3' framing is accurate; P1.3 did in fact resolve this)."
+}

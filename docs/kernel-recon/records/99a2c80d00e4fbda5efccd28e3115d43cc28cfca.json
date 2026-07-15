@@ -1,0 +1,57 @@
+{
+  "sha": "99a2c80d00e4fbda5efccd28e3115d43cc28cfca",
+  "subject": "exfat: use ATTR_SYSTEM as symlink flag to preserve links while copying on Windows or other OS.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-17",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": ["fs/exfat/exfat_api.h", "fs/exfat/exfat_super.c", "fs/exfat/exfat_super.h"],
+  "added": 6,
+  "removed": 6,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §N1 line 180, §3.8 Class G line 405 (GROUPED row)",
+
+  "impact": {
+    "effect_if_absent": "Symlinks on /media/fat would not be preserved when copied through Windows or other OS; would revert to 0x0040 encoding incompatible with future stock kernels",
+    "affected_hardware": ["de10nano"],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "exfat ATTR_SYSTEM (0x0004) bit for symlink marking; on-disk format",
+    "main_mister_ref": "Main_MiSTer/file_io.cpp:1593 handles DT_LNK entries"
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": ["0031-exfat-samsung-symlinks.patch"],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit is part of the MiSTer fork's integrated Samsung out-of-tree exfat driver (v5.15 branch), not a carried patch. It changed the exfat symlink on-disk encoding from 0x0040 to 0x0004 (ATTR_SYSTEM), enabling Windows-compatible preservation of symlinks during file copies. For our 6.18 build: (1) The fork's Samsung driver is not carried (dropped per ADR 0010), replaced by vanilla exfat. (2) Symlink functionality is re-implemented via carried patch 0031-exfat-samsung-symlinks.patch, which uses the SAME on-disk encoding (EXFAT_ATTR_SYMLINK = EXFAT_ATTR_SYSTEM = 0x0004). (3) On-disk format compatibility with stock-written symlinks is VERIFIED: both stock (v5.15 with this commit) and our patch 0031 (6.18) read/write 0x0004 as the primary symlink marker, with backward compatibility for 0x0040 (EXFAT_ATTR_SYMLINK_OLD). (4) Main_MiSTer actively resolves symlinks on /media/fat (file_io.cpp:1593, added Jan 2019), so this feature is user-visible and relied upon. (5) GROUPED ROW: patch-provenance.md §3.8 Class G line 405 groups this commit with 5 others (8b6b8c2f5, df35bdb27, 858322ce6, 5220d6686, 7f7148c1f) under one table row, violating the grounding contract that each commit is analyzed independently. sonnet-verified: on-disk-format claim re-derived and CONFIRMED against live checkouts — vanilla /mnt/source/linux/fs/exfat/exfat_raw.h:69 `#define EXFAT_ATTR_SYSTEM 0x0004`; carried patch 0031-exfat-samsung-symlinks.patch defines `#define EXFAT_ATTR_SYMLINK EXFAT_ATTR_SYSTEM` (i.e. 0x0004) and `#define EXFAT_ATTR_SYMLINK_OLD 0x0040`, exactly matching this commit's 0x0004/0x0040 split. Main_MiSTer/file_io.cpp:1593 `else if (de->d_type == DT_LNK || de->d_type == DT_REG)` confirmed present (record cites :1593, matches exactly). Disposition, severity=feature-loss, and userspace_coupling all confirmed correct."
+}

@@ -1,0 +1,64 @@
+{
+  "sha": "409f81077926d4a0e2c0cc7ac11dda7605f79469",
+  "subject": "xpad: add Elite 2 ID.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-04-13",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/joystick/xpad.c"
+  ],
+  "added": 1,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "e23c69e3324892f7420686b3aaa0403df6cf152c"
+    ],
+    "vanilla_file_line": "drivers/input/joystick/xpad.c:166",
+    "vanilla_quote": "{ 0x045e, 0x0b00, \"Microsoft X-Box One Elite 2 pad\", MAP_PADDLES, XTYPE_XBOXONE },",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:340",
+  "impact": {
+    "effect_if_absent": "Dropping this FORK commit itself has NO effect on our 6.18 build: whether xpad.c's 0x045e:0x0b00 entry comes from this fork commit (mapping=0, no paddles) or from vanilla e23c69e3324892f7420686b3aaa0403df6cf152c (MAP_PADDLES, full paddle support), our 0017-xpad-mister-deltas.patch comments the entry out of xpad.c entirely (line 134-135) so xpad never claims the device either way. Real-world effect if the DEVICE were unrecognized by ANY driver (xpad nor xone): Xbox One Elite 2 pad (0x045e:0x0b00) would not generate input events, AND Main_MiSTer's paddle-triggered chatpad-shift quirk (QUIRK_SHIFT, input.cpp:5523/5810) would never arm, since it depends on paddle button events (BTN_TRIGGER_HAPPY5-8) that only a GIP/xpad-paddle-aware driver produces. In our actual build this is a non-issue because package/xone binds 0x045e:0x0b00 via the GIP transport and independently implements paddle reporting (output/build/xone-*/driver/gamepad.c:36-39,224-254,370-373 — BTN_GRIPR/R2/L/L2 aliased to BTN_TRIGGER_HAPPY5/6/7/8), which is what Main_MiSTer's QUIRK_SHIFT logic actually observes.",
+    "affected_hardware": [
+      "Xbox One Elite 2 pad (wired/USB-dongle mode)"
+    ],
+    "device_ids": [
+      "045e:0b00"
+    ],
+    "severity": "none",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "evdev BTN_TRIGGER_HAPPY5..8 (paddle buttons) consumed as a chatpad-accessory shift modifier, keyed on raw USB VID:PID (not on which kernel driver claims the device)",
+    "main_mister_ref": "Main_MiSTer/input.cpp:5523 — `if (input[n].vid == 0x045e && input[n].pid == 0x0b00) input[n].quirk = QUIRK_SHIFT;` with source comment 'XBox Elite 2 controller, use paddles as a special shift for chatpad accessory. Works only through cable or USB dongle.'; consumed at input.cpp:5810 — `if (input[dev].quirk == QUIRK_SHIFT && cfg.xbe2_shift && ev.code == cfg.xbe2_shift) xbe2_shift = ev.value;`. This is a REAL, previously-unflagged coupling: it fires on the raw evdev VID:PID reported by whichever driver binds the device (evdev EVIOCGID reflects the physical USB descriptor, not the matching driver's ID-table entry), so it is satisfied by xone in our build even though xpad's entry for this PID is disabled."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "0017-xpad-mister-deltas.patch:134-135 comments out `{ 0x045e, 0x0b00, \"Microsoft X-Box One Elite 2 pad\", MAP_PADDLES, XTYPE_XBOXONE },` (verified present verbatim in the patch file) so that xpad never claims this device, deliberately ceding it to package/xone's GIP driver, which detects it via bInterfaceSubClass=0x47/bInterfaceProtocol=0xd0 (or the GIP dongle/wired transport) rather than xpad's USB-ID match.",
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "e23c69e3324892f7420686b3aaa0403df6cf152c — Input: xpad - add support for XBOX One Elite paddles (2022-08-18) — supersedes this fork commit's xpad.c contribution specifically (adds MAP_PADDLES + full paddle-packet decoding that the fork's plain ID-only addition lacked); NOT what our build actually uses",
+      "package/xone (BR2_PACKAGE_XONE=y) — the driver that ACTUALLY binds 0x045e:0x0b00 in our 6.18 build; confirmed via output/build/xone-f2aa9fe.../driver/gamepad.c:17 `#define GIP_PRODUCT_ELITE_SERIES_2 0x0b00` and paddle-button reporting at :370-373 using the same BTN_TRIGGER_HAPPY5-8 codes xpad/vanilla use, so Main_MiSTer's paddle-shift coupling (see userspace_coupling) is preserved despite xpad's entry being disabled"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CORRECTED ON SONNET-VERIFY (three substantive changes, not a rubber stamp): (1) disposition dropped-upstream → dropped-deliberate. 'dropped-upstream' implies our build relies on vanilla's xpad.c coverage of this ID, but it does not — 0017-xpad-mister-deltas.patch comments out the SAME line regardless of whether the underlying xpad.c is the 5.15 fork's or 6.18 vanilla's, specifically so package/xone (a BR2 kmod package implementing the proper GIP protocol) binds the device instead. Per worker-instructions pilot lessons, coverage via a BR2 package is dropped-deliberate/dropped-obsolete with superseded_by naming the package, never plain vanilla coverage. (2) equivalence partial → superseded-better, but scoped to the FORK-vs-VANILLA xpad.c comparison only (not our build's actual routing): fork's commit added the ID with mapping=0 (zero paddle support — verified via `git show` diff, single line added, no MAP_PADDLES); vanilla's e23c69e33248 added the SAME id with MAP_PADDLES plus ~190 lines of paddle-packet decoding across three firmware generations (PKT_XBE1/XBE2_FW_OLD/XBE2_FW_5_EARLY/XBE2_FW_5_11) — this is unambiguously superseded-better, not partial, per the schema definition (same device, strictly more capability, zero fork-interface userspace coupling from xpad specifically since xpad never runs against this PID in our build). (3) userspace_coupling.coupled false → true: grep of Main_MiSTer for the raw device ID 0x045e/0x0b00 (not just symbol names) turned up input.cpp:5523 and :5810 — a paddle-buttons-as-chatpad-shift quirk (QUIRK_SHIFT / cfg.xbe2_shift) keyed on this exact VID:PID. The original record's 'No userspace coupling found' claim came from searching for xpad-specific symbols/PIDs that were never grepped directly; searching the literal 0x0b00 constant surfaces it immediately. This coupling is satisfied in our build via xone's independent paddle implementation (BTN_GRIPR/R2/L/L2 == BTN_TRIGGER_HAPPY5/6/7/8, output/build/xone-*/driver/gamepad.c:36-39), so severity is 'none' for us, but this is a load-bearing fact for anyone considering disabling/removing the xone package without restoring xpad's paddle-capable entry — doing so would silently break the chatpad-shift feature. Device class: input/joystick (xpad) / USB HID composite (xone). Vendor: Microsoft."
+}

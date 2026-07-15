@@ -1,0 +1,62 @@
+{
+  "sha": "45283785a7ace3263f7c165ae6a4ec3055ebdcf6",
+  "subject": "hid-nintendo: add virtual combo led, don't warn by IMU compensation.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-14",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 23,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "misclassified",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:2235-2327 (joycon_leds_create, v6.18.38)",
+    "vanilla_quote": "static int joycon_leds_create(struct joycon_ctlr *ctlr)\n{\n\t...\n\t/* configure the player LEDs */\n\t...\nhome_led:\n\t/* configure the home LED */\n\tif (jc_type_has_right(ctlr)) {\n\t\t...\n\t\tret = devm_led_classdev_register(&hdev->dev, led);\n\t\tif (ret) {\n\t\t\thid_err(hdev, \"Failed to register home LED; ret=%d\\n\", ret);\n\t\t\treturn ret;\n\t\t}\n\t}\n\n\treturn 0;\n}",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": false,
+  "provenance_doc_ref": "patch-provenance.md:334",
+  "impact": {
+    "effect_if_absent": "Joy-Con L+R combining is completely non-functional (not merely 'auto-detect disabled with manual fallback'). Individual Joy-Cons still work as separate single-stick controllers, but there is no way — automatic or manual — to pair two Joy-Cons into one virtual controller, because Main_MiSTer's ENTIRE pairing handshake (both the write side triggered by a button-combo request, and the read side that recognizes the pair on device rescan) is implemented purely as a read/write of the kernel-side ':combo' LED sysfs node. No alternative/manual pairing UI exists anywhere in Main_MiSTer (grep of menu.cpp/osd.cpp for 'joycon'/'joy-con' returns zero hits; input.cpp sets input[].bind for QUIRK_JOYCON devices at exactly one place, input.cpp:4729-4730, and that code path is unreachable without a valid combo-id readback).",
+    "affected_hardware": [
+      "Nintendo Joy-Con (L)",
+      "Nintendo Joy-Con (R)"
+    ],
+    "device_ids": [
+      "057e:2006",
+      "057e:2007"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/sys/.../leds/<hid-devname>:combo/brightness (LED classdev registered by joycon_leds_create() in the fork commit; name format '%s:combo' with %s = dev_name(&hdev->dev), e.g. '0005:057E:2006.0001:combo')",
+    "main_mister_ref": "input.cpp:2661-2674 set_led() and input.cpp:2676-2690 get_led() both fopen() the LED's 'brightness' sysfs file and silently return 0/no-op if it does not exist (no error logged) — this is the mechanism by which absence degrades silently. input.cpp:4689-4738 check_joycon() reads ':combo' via get_led() at lines 4704 and 4715 to recognize a matched Joy-Con pair on device rescan and, only if a nonzero shared id is read back, sets the actual pairing at input.cpp:4729-4730 (input[l].bind = r; input[r].bind = l). input.cpp:4785-4823 process_joycon() is the OTHER half of the handshake: on a specific 3-button hold (JOYCON_REQ, misc_flags&7==7) on both an unbound left and right Joy-Con, it writes a freshly-generated id to both controllers' ':combo' LED via set_led() at lines 4822-4823, then force-closes all input fds to trigger the rescan that re-invokes check_joycon(). Without the kernel-side combo LED classdev, the write at 4822-4823 is a silent no-op and the read at 4704/4715 always returns 0, so id_combo never matches and input[l]/input[r].bind is never set — pairing silently never completes, with no error surfaced to the user."
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MISCLASSIFIED. patch-provenance.md:334 GROUPS four commits (`c4ec5cb40`, `9bdab534b`, `60821059c`, `45283785a`) into one Class-C 'drop — now upstream' row citing a single upstream SHA, `2af16c1f846b` ('HID: nintendo: add nintendo switch controller driver', 2021-09-11, v5.16), as the citation for all four. That upstream commit only introduced the BASE hid-nintendo driver (matches c4ec5cb40 and neighbors); it predates 45283785a by about a month in the fork's own history and never touched LED code beyond the stock player/home LEDs. Re-derived independently: `git log -S'combo' -- drivers/hid/hid-nintendo.c` and `git log -S'combo_led' -- drivers/hid/hid-nintendo.c` in /mnt/source/linux (HEAD confirmed at tag v6.18.38, commit e46dc0adfe39) both return ZERO commits across the entire vanilla history of the file — the string 'combo' has never appeared in mainline hid-nintendo.c. `grep -n combo /mnt/source/linux/drivers/hid/hid-nintendo.c` also returns nothing. Vanilla's joycon_leds_create() (hid-nintendo.c:2235-2327) registers exactly the player LEDs and the home LED, then returns — quoted above. This is a fabricated, MiSTer-specific extension with no upstream counterpart and no submission path (it depends on a MiSTer-only Main_MiSTer-side pairing protocol, not something Nintendo/Linux HID maintainers would take). Per the grounding contract, equivalence=contradicted + provenance doc claims upstream coverage in a grouped row => disposition=misclassified (not dropped-upstream, and not merely needs-verification since the contradiction is now fully proven with quotes). CORRECTION TO PRIOR DRAFT OF THIS RECORD: the previous pass's impact/notes claimed 'users lose automatic pairing but can manually configure' — this is WRONG. Traced set_led()/get_led()/check_joycon()/process_joycon() in full: there is no manual fallback. The button-combo-triggered pairing REQUEST (process_joycon, input.cpp:4785-4823) and the pairing RECOGNITION (check_joycon, input.cpp:4689-4738) communicate ONLY via the ':combo' sysfs LED value — one process writes it, the other reads it back after a forced device-rescan. Without the kernel classdev both operations are silent no-ops (fopen fails, functions return 0/false, nothing is logged), so input[].bind is never set for any Joy-Con pair, under any user action. Grep of menu.cpp and osd.cpp for 'joycon'/'joy-con' confirms there is no alternate UI. Net effect: Joy-Con dual-controller combining is entirely and silently broken, not merely 'less convenient.' Individual Joy-Cons (VID 057e, PID 2006/2007 — confirmed against input.cpp:5331-5340) still function as independent single-stick controllers, so severity is feature-loss rather than boot-critical. Secondary, unrelated change in the same commit: IMU-dropped-packet log lines downgraded hid_warn -> hid_dbg (fork diff, both call sites). Vanilla 6.18.38 (hid-nintendo.c:1457-1464) instead uses hid_warn_ratelimited (introduced by b8874720b2f3 'HID: nintendo: Rate limit IMU compensation message', 2025-10-06, confirmed via `git log --oneline -S'hid_warn_ratelimited' -- drivers/hid/hid-nintendo.c` and `git show --stat b8874720b2f3`) — a different mechanism (rate-limit vs. debug-demote) that achieves a similar log-spam-reduction goal but is not the same code; this part is a plausible, lower-stakes carry candidate on its own merits but is NOT what the coupled-regression escalation claim is about and does not rescue the provenance doc's citation for the combo LED half of the commit. Not carried: grep of all 25 files in board/mister/de10nano/linux-patches/*.patch for 'combo' returns zero matches (0015-hid-nintendo-nso-famicom.patch and 0013-hid-flydigi-vader.patch matched only on unrelated 'nintendo'/'joycon' substrings). CONFIG_HID_NINTENDO=y is set in our linux.config (line 323) and drivers/hid/hid-nintendo.c is present and built in vanilla 6.18.38, so the driver itself is not missing — only the combo LED classdev inside it. sonnet-verified: CONFIRMED — every link in the original coupled-regression claim holds under independent re-derivation (fork diff quoted directly from `git show`, vanilla absence proven by both grep and full-history `git log -S`, Main_MiSTer read/write/bind chain traced end-to-end with line numbers, provenance doc grouped-row citation confirmed wrong for this specific commit). One correction made to the prior draft: there is NO manual-pairing fallback in Main_MiSTer — the regression is total loss of Joy-Con combining, not degraded convenience; effect_if_absent, userspace_coupling, and notes above were rewritten accordingly. disposition upgraded from needs-verification to misclassified now that the contradiction is fully evidenced with quotes per the grounding contract.",
+  "sonnet-verified": "confirmed — combo LED registration, vanilla absence, and full Main_MiSTer read/write/bind coupling all verified with direct quotes and line numbers; corrected the 'manual pairing fallback exists' claim in the prior draft (no such fallback exists) and upgraded disposition to misclassified per the grounding contract (contradicted + provenance doc claims upstream in a grouped row)."
+}

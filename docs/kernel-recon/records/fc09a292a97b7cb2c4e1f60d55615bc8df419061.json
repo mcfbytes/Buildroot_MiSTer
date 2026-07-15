@@ -1,0 +1,65 @@
+{
+  "sha": "fc09a292a97b7cb2c4e1f60d55615bc8df419061",
+  "subject": "rtl8821cu: workaround for bad efuse in EDUP EP-AC1661.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-07",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8821cu/Makefile",
+    "drivers/net/wireless/realtek/rtl8821cu/hal/rtl8821c/rtl8821c_ops.c"
+  ],
+  "added": 7,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "needs-verification",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "/mnt/source/linux/drivers/net/wireless/realtek/rtw88/rtw8821c.c:48-58,74-91,594-597,945-955; rtw8821c.h:74-98",
+    "vanilla_quote": "static int rtw8821c_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)\n{\n\tstruct rtw_hal *hal = &rtwdev->hal;\n\tstruct rtw_efuse *efuse = &rtwdev->efuse;\n\tstruct rtw8821c_efuse *map;\n\tint i;\n\n\tmap = (struct rtw8821c_efuse *)log_map;\n\n\tefuse->rfe_option = map->rfe_option & 0x1f;\n\t...\n\thal->pkg_type = map->rfe_option & BIT(5) ? 1 : 0;\n\n\tswitch (efuse->rfe_option) {\n\tcase 0x2: case 0x4: case 0x7: case 0xa: case 0xc: case 0xf:\n\t\thal->rfe_btg = true;\n\t\tbreak;\n\t}\n\t...\n\tif (rtwdev->efuse.rfe_option == 2 || rtwdev->efuse.rfe_option == 4)\n\t\tefuse->txpwr_idx_table[0].pwr_idx_2g = map->txpwr_idx_table[1].pwr_idx_2g;\n---\n// rtw8821c.c:594 get_cck_rx_pwr()\nif (efuse->rfe_option == 0) { lna_gain_table = lna_gain_table_0; ... } else { lna_gain_table = lna_gain_table_1; ... }\n---\n// rtw8821c.c:951 rtw8821c_coex_cfg_rfe_type()\ncoex_rfe->rfe_module_type = efuse->rfe_option;\nswitch (coex_rfe->rfe_module_type) { case 0: case 8: case 1: case 9: /* 1-Ant, Main, WLG */ ... }\n---\n// rtw8821c.h:74-98 struct rtw8821c_efuse layout (byte offsets are comments in-source)\nstruct rtw8821c_efuse {\n\t__le16 rtl_id;\n\tu8 res0[0x0e];\n\tstruct rtw_txpwr_idx txpwr_idx_table[4];\n\tu8 channel_plan;\t\t/* 0xb8 */\n\tu8 xtal_k;\n\tu8 thermal_meter;\n\tu8 iqk_lck;\n\tu8 pa_type;\t\t\t/* 0xbc */\n\tu8 lna_type_2g[2];\t\t/* 0xbd */\n\tu8 lna_type_5g[2];\n\tu8 rf_board_option;\n\tu8 rf_feature_option;\n\tu8 rf_bt_setting;\n\tu8 eeprom_version;\n\tu8 eeprom_customer_id;\n\tu8 tx_bb_swing_setting_2g;\n\tu8 tx_bb_swing_setting_5g;\n\tu8 tx_pwr_calibrate_rate;\n\tu8 rf_antenna_option;\t\t/* 0xc9 */\n\tu8 rfe_option;\n\tu8 country_code[2];\n\t...",
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "patch-provenance.md:389 — grouped row (9 commits: 33ff5146a, 3740d5b88, 2371fb1aa, 143ce187e, 4e98a68d1, 43fbb63ae, 993b82e31, 115b1d1ae, fc09a292a). Text: 'Verify the two local device fixes are present upstream or re-apply as package patches.' Note: this is a conditional TODO, not an assertion that the fix IS upstream — so there is nothing in it to literally 'agree'/'disagree' with; verification below resolves the open question (answer: NOT upstream, re-apply-as-patch branch applies).",
+
+  "impact": {
+    "effect_if_absent": "EFUSE-corrupted rtl8821c-family adapters (map byte at offset 0xCA reads 0xFF/unprogrammed) get efuse->rfe_option = 0xFF & 0x1f = 0x1F in mainline rtw88, which matches none of the explicit switch cases in rtw8821c_read_efuse() (0x2/0x4/0x7/0xa/0xc/0xf) so hal->rfe_btg stays false, get_cck_rx_pwr() falls into the 'else' LNA gain table branch, and rtw8821c_coex_cfg_rfe_type()'s switch on rfe_module_type=0x1F hits whatever its default case is (not individually enumerated here) instead of the correct antenna/RFE-module case. Net effect: silently wrong RX LNA gain table selection and wrong BT-coexistence antenna/RFE-module configuration — degraded RX sensitivity and/or wrong BT-coex antenna switching, NOT a bind/probe failure and NOT boot-critical. The device still binds (its USB ID is in the mainline table) and should still associate to WiFi; the regression is silent RF/coex misconfiguration, not non-functionality.",
+    "affected_hardware": [
+      "EDUP EP-AC1661 (named in the fork commit message as the motivating device with a known-bad EFUSE batch)"
+    ],
+    "device_ids": [
+      "0x7392:0xc811",
+      "0x7392:0xd811"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "sonnet-verified (ESCALATION review, redone from scratch):\n\n(1) FORK COMMIT — confirmed via `git -C /mnt/source/Linux-Kernel_MiSTer show fc09a292a97b7cb2c4e1f60d55615bc8df419061`. Exact added hunk in hal/rtl8821c/rtl8821c_ops.c Hal_ReadRFEType():\n```\n hal->rfe_type = map[EEPROM_RFE_OPTION_8821C];\n if (0xFF != hal->rfe_type)\n     goto exit;\n+\n+// fix for bad EFUSE in EDUP EP-AC1661\n+hal->rfe_type = map[EEPROM_RFE_OPTION_8821C-1];\n+if (0xFF != hal->rfe_type)\n+    goto exit;\n```\nEEPROM_RFE_OPTION_8821C is `#define EEPROM_RFE_OPTION_8821C 0xCA` (include/hal_pg.h:518 in the fork). Confirms the record's claimed offset 0xCA→0xC9 fallback exactly. The Makefile hunk is unrelated debug-logging config (CONFIG_RTW_DEBUG/CONFIG_RTW_LOG_LEVEL) and does not affect this analysis. IMPORTANT: this code is NOT gated on any USB VID/PID — it is a blanket change to Hal_ReadRFEType() affecting every rtl8821c-family device that hits mapvalid && map[0xCA]==0xFF, not an EDUP-specific quirk. EDUP EP-AC1661 is only the motivating case named in the commit message; any 8821c unit with the same bad-efuse symptom would hit the same fallback.\n\n(2) VANILLA rtw8821c.c — confirmed NO equivalent fallback. rtw8821c_read_efuse() does a single unconditional read `efuse->rfe_option = map->rfe_option & 0x1f;` with no 0xFF sentinel check and no secondary-offset fallback anywhere in the function or file (grep of 'rfe_option' across rtw8821c.c shows only the 6 use sites quoted above — none add a bad-value guard). CRITICAL NUANCE not captured in the first-pass record: I pulled the actual `struct rtw8821c_efuse` layout from rtw8821c.h:74-98 and counted offsets — the byte immediately preceding `rfe_option` (0xCA) is `rf_antenna_option` (0xC9), a DIFFERENT, semantically distinct EFUSE field (antenna option, not a redundant/backup copy of RFE type). So the fork's 'fallback' is not reading a legitimate secondary RFE-type storage location — it is reinterpreting an adjacent, unrelated antenna-option byte as an RFE type when the real byte is blank. This is a hacky, batch-specific heuristic (it happened to produce a plausible rfe_type value for the specific bad-EFUSE units Sorgelig had in hand), not a principled fix. This matters for anyone considering forward-porting it: it should not be blindly re-implemented as 'read offset N-1 as a generic bad-efuse fallback' without re-verifying against the actual bad-efuse dumps from real hardware.\n\n(3) GIT LOG SEARCH in /mnt/source/linux v5.15.1..v6.18.38 on drivers/net/wireless/realtek/rtw88/: `--grep=8821c --grep=efuse --all-match` returns 6 commits (2c17afde9ff6, 74a72c367573, 8fbcaa308591, 0a999d82b782, 64e9d5646535, 5db4943a9d6f) — none add a bad/blank-efuse rfe_option fallback for 8821c. Separate `--grep=8821c` finds e1958f4d66a5 ('rtw8821cu: Add ID for Mercusys MU6H') — adding a new device ID, no efuse quirk. Separate `--grep=efuse` finds 2c17afde9ff6 ('wifi: rtw88: Handle RTL8723D(S) with blank efuse', May 2025) — this IS a real precedent for rtw88 handling blank/near-blank efuse (default TX power/antenna/crystal-cap values when the chip's efuse is missing them) but it is scoped to RTL8723D(S)/RTL8703B only (moved into a shared __rtl8723x_read_efuse()), and does not touch rtw8821c.c. So mainline is aware of and has fixed blank-efuse issues for a sibling chip family, but has never received an equivalent fix for 8821c's rfe_option. Confirms absence with high confidence — not merely an omission I failed to find.\n\n(4) DEVICE BINDING — confirmed 0x7392:0xc811 and 0x7392:0xd811 are both present in the rtw8821cu USB ID table: `drivers/net/wireless/realtek/rtw88/rtw8821cu.c:36,38` — `{ USB_DEVICE_AND_INTERFACE_INFO(0x7392, 0xc811, 0xff, 0xff, 0xff), ... },` / `{ USB_DEVICE_AND_INTERFACE_INFO(0x7392, 0xd811, 0xff, 0xff, 0xff), ... },`. So a device with these IDs DOES bind to mainline rtw88_8821cu in our build. A bad efuse does NOT block binding/probe (severity is NOT boot-critical) — it produces silent RF/BT-coex misconfiguration as detailed in `impact.effect_if_absent` above. Caveat: I could not independently verify against an authoritative USB ID database that 0x7392:0xc811/0xd811 specifically ARE the EDUP EP-AC1661's registered IDs (no internet access in this sandbox) — that mapping is inherited from the first-pass record. The code-level regression finding (no fallback exists in mainline, for ANY 8821c device with this bad-efuse symptom) stands independently of whether this exact VID:PID pair is verified.\n\n(5) BR2 PACKAGE CHECK — /mnt/source/Buildroot_MiSTer/package/rtl8821cu-morrownr/ EXISTS (github morrownr/8821cu-20210916 @ 7f63a9da2e8ed83403f6f920e9b1628a37b38ef4, GPL-2.0). I extracted the actual pinned tarball from dl/rtl8821cu-morrownr/ and read hal/rtl8821c/rtl8821c_ops.c directly: Hal_ReadRFEType() there is the UNPATCHED original — `hal->rfe_type = map[EEPROM_RFE_OPTION_8821C]; if (0xFF != hal->rfe_type) goto exit;` followed straight by the 'Empty EFUSE with unknown RFE type!!' error path — NO fallback to offset 0xC9. So the morrownr out-of-tree package does NOT carry Sorgelig's workaround either. Additionally this package is OFF by default: `configs/mister_de10nano_defconfig:570` — '# BR2_PACKAGE_RTL8821CU_MORROWNR is not set -> mainline rtw88_8821cu (8811cu/8821cu)', and `board/mister/de10nano/linux.config:488` confirms `CONFIG_RTW88_8821CU=m` is what actually ships. CONCLUSION: neither of the two available paths for this hardware in our current build (default mainline rtw88_8821cu, or opt-in package/rtl8821cu-morrownr) carries this fix. This does NOT change the regression story as hypothesized in the task — it STRENGTHENS it: there is genuinely zero coverage anywhere in this repo's build surface today.\n\nSCHEMA/GROUNDING-CONTRACT CORRECTION: the first-pass record paired `upstream.equivalence=\"contradicted\"` with `disposition=\"dropped-upstream\"`. worker-instructions.md's Pilot Lessons explicitly forbid this exact pairing ('Never pair contradicted with disposition=\"dropped-upstream\"' — contradicted must be treated as a carry candidate). Reclassified disposition to `needs-verification` here: the code-level facts are fully grounded (high confidence, no hardware needed to confirm the mainline/morrownr gap), but the disposition enum has no clean 'confirmed gap, pending carry decision' value, and a human decision is still needed on whether/how to carry this forward (most plausible path: a small patch to package/rtl8821cu-morrownr's vendored source for users who hit this specific bad-efuse batch, since that's the only in-repo tree with the matching vendor code structure — patching mainline rtw88 upstream would need re-deriving the fix against the real bad-efuse dumps given point (2)'s antenna_option/rfe_option nuance). Also cleared `dependencies.superseded_by` (previously named mainline rtw88_8821cu as superseding this commit) since 'superseded_by' implies functional equivalence per the pilot lessons, which is contradicted, not established, here.\n\nSILENT REGRESSION: confirmed. failure_mode=silent, severity=feature-loss (not boot-critical — device still binds and functions, just misconfigured). Realistically affects only the small population of 8821c-family USB adapters with this specific bad-EFUSE symptom (evidently at least one EDUP EP-AC1661 batch); most users' hardware is unaffected since ordinarily map[0xCA] is programmed.\n\nsonnet-verified: CONFIRMED with correction — the core claim (no equivalent fallback anywhere in mainline rtw88 or in our build's morrownr alternative) holds up under independent re-derivation, but the first-pass record violated the project's own grounding-contract pilot lesson (contradicted+dropped-upstream pairing) and understated the BR2-package angle (which, once checked, reinforces rather than undermines the regression finding). Disposition corrected to needs-verification; superseded_by corrected to empty; one new technical nuance surfaced (0xC9 = rf_antenna_option, not a backup RFE slot)."
+}

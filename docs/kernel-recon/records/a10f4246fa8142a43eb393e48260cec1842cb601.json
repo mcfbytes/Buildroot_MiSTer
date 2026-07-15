@@ -1,0 +1,65 @@
+{
+  "sha": "a10f4246fa8142a43eb393e48260cec1842cb601",
+  "subject": "btusb: add Edimax BT-8500 vid/pid for FW loading.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-09-13",
+  "subsystem": "bt",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/bluetooth/btusb.c"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "c7577014b74c5369490715015db096182f1a2a23"
+    ],
+    "vanilla_file_line": "drivers/bluetooth/btusb.c:797-798",
+    "vanilla_quote": "{ USB_DEVICE(0x7392, 0xc611), .driver_info = BTUSB_REALTEK |\n\t\t\t\t\t     BTUSB_WIDEBAND_SPEECH },",
+    "equivalence": "byte-identical"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "line 344: a10f4246f | btusb: Edimax BT-8500 | c7577014b74c",
+
+  "impact": {
+    "effect_if_absent": "Edimax BT-8500 Bluetooth adapter (RTL8761BUV) cannot be discovered or used; firmware loading fails",
+    "affected_hardware": [
+      "Edimax BT-8500"
+    ],
+    "device_ids": [
+      "7392:c611"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "MiSTer fork commit (2021-09-13, author Sorgelig) predates vanilla by ~11.5 months. Device (0x7392:0xc611) for Edimax BT-8500 / RTL8761BUV added to Realtek device table with BTUSB_REALTEK and BTUSB_WIDEBAND_SPEECH flags. Vanilla equivalent appeared in c7577014b74c5369490715015db096182f1a2a23 (2022-08-31, author Szabolcs Sipos -- confirmed via `git log` in /mnt/source/linux) via upstream Bluetooth maintainer, independently and ~11.5 months AFTER the fork. Patch-provenance.md correctly identifies vanilla coverage (line 344, exact match). No carried patch; not present in linux-patches/. No Main_MiSTer userspace coupling detected. Device is present in vanilla 6.18.38 btusb.c at line 797 with identical device ID and driver flags (byte-identical, confirmed via source-grep in this pass).\n\nsonnet-verified correction: `is_backport_of_vanilla` was incorrectly set to `true` in the original record -- this directly contradicted the record's own notes text (\"predates vanilla by ~11 months\"). Since the fork's commit came FIRST and the vanilla commit has a different author, this is NOT a backport; it is independent/parallel authorship where vanilla later added equivalent coverage. Corrected to `false`.\n\nsonnet-verified: corrected"
+}

@@ -1,0 +1,88 @@
+{
+  "sha": "5a7965488f7430f3bcf09be7951b7891f728831e",
+  "subject": "xone: fixed rumble.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-03-17",
+  "subsystem": "hid",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/hid/xone/driver/gamepad.c"
+  ],
+  "added": 1,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "medium",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md §3.5 (line 381)",
+
+  "impact": {
+    "effect_if_absent": "Rumble timer delay calculations use uninitialized jiffies value, potentially causing incorrect rumble timing on first activation",
+    "affected_hardware": [
+      "Microsoft",
+      "Mad Catz",
+      "PDP",
+      "Hori",
+      "Razer",
+      "PowerA",
+      "BDA",
+      "Thrustmaster",
+      "Turtle Beach",
+      "Hyperkin"
+    ],
+    "device_ids": [
+      "045e:*",
+      "0738:*",
+      "0e6f:*",
+      "0f0d:*",
+      "1532:*",
+      "24c6:*",
+      "20d6:*",
+      "044f:*",
+      "10f5:*",
+      "2e24:*"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE (force feedback) via /dev/input/event*",
+    "main_mister_ref": "input.cpp:rumble_input_device() uses EVIOCRMFF ioctl and ff_effect.u.rumble"
+  },
+
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/xone (dlundqvist/xone fork, commit f2aa9fe01103d7600553b505b298ff0bd47ff280)"
+    ],
+    "duplicate_of": []
+  },
+
+  "license_provenance": "GPL-2.0-or-later (vendored medusalix/xone; now sourced from dlundqvist/xone which carries same license)",
+
+  "notes": "This commit was part of MiSTer's vendored xone driver (medusalix/xone base). MiSTer's kernel no longer vendors xone—it's now a Buildroot package sourced from dlundqvist/xone (P3.2, re-sourced deliberate). xone.mk:42-49 explicitly confirms: 'All FOUR of MiSTer's local deltas turned out to be unnecessary as separate patches...driver/gamepad.c already carries rumble handling'. Disposition is dropped-deliberate because xone is no longer vendored in-kernel; no in-tree kernel patch mechanism exists to carry this one-liner even if it were still needed.\n\nsonnet-verified CORRECTION: the original 'package line 167' claim was checked against the pinned dlundqvist/xone source (github.com/dlundqvist/xone at f2aa9fe01103d7600553b505b298ff0bd47ff280, driver/gamepad.c) and is WRONG on two counts. (1) Line 167 falls inside `gip_gamepad_init_rumble()` (lines 150-167), NOT `gip_gamepad_send_rumble()` (lines 133-147) as claimed. (2) `gip_gamepad_init_rumble()` does NOT set `rumble->last` at all — only `motors`, `duration`, `repeat`, `parent` are initialized there. The `rumble->last = jiffies` assignment does exist, but at line 145 inside `gip_gamepad_send_rumble()` itself — i.e. it runs when a rumble is actually SENT, not at device-init time as this commit's fix did. So `rumble->last` is left at its zero-initialized (kzalloc) value between probe and the first rumble send, which is exactly the class of issue this MiSTer commit fixed (uninitialized baseline for the delay computation in `gip_gamepad_queue_rumble()`'s `mod_timer(&rumble->timer, rumble->last + GIP_GP_RUMBLE_DELAY)`), not an equivalent fix via a different code path. Practical impact remains low (a `mod_timer` target far in the past simply fires at the next tick, so at most the very first rumble activation ignores the intended throttle delay by firing immediately rather than being paced) — severity is left at feature-loss/silent rather than escalated to boot-critical, but the specific 'functionally equivalent, different code path' claim is retracted. verification.confidence lowered to medium and contradiction=true to flag that the supersession claim's specific citation did not hold up; disposition (dropped-deliberate — nothing to carry, xone is not vendored in-kernel) is unaffected since there is no mechanism to carry a one-line kernel-tree patch against a package we don't vendor, only a note that could be filed upstream to dlundqvist/xone if desired."
+}

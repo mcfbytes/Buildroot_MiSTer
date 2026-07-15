@@ -1,0 +1,71 @@
+{
+  "sha": "109599db7eb55bf83533de64c58e167cec1a2600",
+  "subject": "Update rtl8188eu driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-30",
+  "subsystem": "net-wireless",
+  "change_type": "Driver update",
+  "files": [
+    "drivers/net/wireless/realtek/rtl8188eu/..."
+  ],
+  "added": 168367,
+  "removed": 273055,
+  "is_backport_of_vanilla": false,
+  "source_branch": "MiSTer-v5.13.12",
+
+  "disposition": "dropped-obsolete",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "MISTER-KERNEL-PATCH-RECON.md:3.6 (patch-provenance.md line 389)",
+
+  "impact": {
+    "effect_if_absent": "rtl8188eu USB WiFi adapter driver not available in kernel; superseded by rtl8188eu-aircrack-ng Buildroot package in current 6.18 build",
+    "affected_hardware": [
+      "Realtek RTL8188EU USB adapters"
+    ],
+    "device_ids": [
+      "0BDA:8179",
+      "0BDA:0179"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "package/rtl8188eu-aircrack-ng"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": {
+    "license": "GPL-2.0",
+    "source_project": "Realtek (original vendor driver)",
+    "header": "Realtek GPL-2.0 boilerplate: 'Copyright(c) 2007 - 2017 Realtek Corporation. This program is free software; you can redistribute it and/or modify it under the terms of version 2 of the GNU General Public License...'"
+  },
+  "notes": "Huge vendored driver update (695 files, 168K insertions, 273K deletions). v5.13.12 kernel branch only. Per patch-provenance.md §3.6: rtl8188eu and related Realtek drivers were re-sourced from kernel vendor to Buildroot out-of-tree packages (rtl8188eu-aircrack-ng). Directive: 'Do not vendor.' Current 6.18 build ships rtl8188eu-aircrack-ng package instead. This commit's kernel changes are NOT carried forward to 6.18. Disposition: obsolete in current build context."
+}

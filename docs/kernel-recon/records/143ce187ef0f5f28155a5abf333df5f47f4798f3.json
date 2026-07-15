@@ -1,0 +1,111 @@
+{
+  "sha": "143ce187ef0f5f28155a5abf333df5f47f4798f3",
+  "subject": "Sync rtl88x2bu with upstream",
+  "author": "Grzegorz Krzystek",
+  "author_is_pr_contributor": true,
+  "date": "2023-02-14",
+  "subsystem": "net-wireless",
+  "change_type": "out-of-tree-module",
+  "files": [
+    "drivers/net/wireless/realtek/rtl88x2bu/88x2bu.conf",
+    "drivers/net/wireless/realtek/rtl88x2bu/Kconfig",
+    "drivers/net/wireless/realtek/rtl88x2bu/Makefile",
+    "drivers/net/wireless/realtek/rtl88x2bu/core/crypto/aes-*.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/core/rtw_*.c",
+    "drivers/net/wireless/realtek/rtl88x2bu/hal/rtl8822b/usb/*",
+    "drivers/net/wireless/realtek/rtl88x2bu/os_dep/linux/usb_intf.c",
+    "...338 more files"
+  ],
+  "added": 55440,
+  "removed": 24207,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "mainline rtw88_8822bu driver (CONFIG_RTW88_8822BU in 6.18.38)"
+    ],
+    "vanilla_file_line": "/mnt/source/linux/drivers/net/wireless/realtek/rtw88/rtw8822bu.c",
+    "vanilla_quote": "static const struct usb_device_id rtw_8822bu_id_table[] = { { USB_DEVICE_AND_INTERFACE_INFO(RTW_USB_VENDOR_ID_REALTEK, 0xb812, ...), ... }; MODULE_DEVICE_TABLE(usb, rtw_8822bu_id_table);",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "/mnt/source/Buildroot_MiSTer/docs/patch-provenance.md:389 (grouped row with commits 33ff5146a, 3740d5b88, 2371fb1aa, 4e98a68d1, 43fbb63ae, 993b82e31, 115b1d1ae, fc09a292a)",
+  "impact": {
+    "effect_if_absent": "RTL8822BU USB wireless adapters would require alternative driver implementation; main branch uses CONFIG_RTW88_8822BU from mainline kernel instead",
+    "affected_hardware": [
+      "Realtek RTL8822BU USB adapters",
+      "Edimax EW-7822ULC/EW-7822UTC/EW-7822UAD",
+      "ASUS AC1300/U2/AC58",
+      "D-Link DWA-181/DWA-182/DWA-183",
+      "TP-Link Archer T3U/T3U Plus/T4U",
+      "Linksys WUSB6400M/WUSB3600",
+      "And others (30+ device combinations)"
+    ],
+    "device_ids": [
+      "0bda:b812",
+      "0bda:b82c",
+      "0bda:2102",
+      "0bda:b81a",
+      "7392:b822",
+      "7392:c822",
+      "7392:d822",
+      "7392:e822",
+      "7392:f822",
+      "0b05:1841",
+      "0b05:184c",
+      "0b05:19aa",
+      "0b05:1870",
+      "0b05:1874",
+      "2001:331e",
+      "2001:331c",
+      "2001:331f",
+      "13b1:0043",
+      "13b1:0045",
+      "2357:012d",
+      "2357:0138",
+      "2357:0115",
+      "2357:012e",
+      "2357:0116",
+      "2357:0117",
+      "0846:9055",
+      "0e66:0025",
+      "04ca:8602",
+      "20f4:808a",
+      "20f4:805a",
+      "056e:4011",
+      "2c4e:0107",
+      "2c4e:010a",
+      "2001:3322",
+      "0411:03d1"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "Linux kernel USB wireless (cfg80211/nl80211)",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "CONFIG_RTW88_8822BU=m (mainline kernel)",
+      "BR2_PACKAGE_RTL88X2BU (available but disabled in defconfig)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 / Dual BSD-3-Clause (as marked in rtl88x2bu_source)",
+  "notes": "GROUPED COMMIT in patch-provenance.md (line 389) with 8 other Realtek driver syncs (33ff5146a, 3740d5b88, 2371fb1aa, 4e98a68d1, 43fbb63ae, 993b82e31, 115b1d1ae, fc09a292a). DISPOSITION: The commit is deliberately not carried in-kernel because RTL8822BU support is now provided by the mainline rtw88_8822bu driver (CONFIG_RTW88_8822BU=m in linux.config:481), which was backported/added to 6.18. BR2_PACKAGE_RTL88X2BU exists and is commit-pinned to morrownr's fork (fecac34), but is explicitly disabled in defconfig:580. VERIFICATION: Mainline 6.18.38 rtw88 driver at /mnt/source/linux/drivers/net/wireless/realtek/rtw88/ includes RTW88_8822BU support with equivalent/superior device ID coverage (30+ devices from rtw8822bu.c). The previously-noted Edimax EW-7822ULC device fix (115b1d1ae) is already present in mainline device table (0x7392:0xb822 with explicit comment). FAILURE_MODE: Silent — RTL8822BU hardware works via mainline driver instead; no user-visible breakage. SUPERSESSION_CHAIN: fork rtl88x2bu (this commit) → deprecated in favor of → mainline rtw88_8822bu (active, kernel config) ∪ BR2_PACKAGE_RTL88X2BU (inactive, available for fallback). FORWARD_PORT: Not applicable; mainline provides superior implementation. sonnet-verified: WPA3/defconfig:580 citation re-derived and CONFIRMED exact — configs/mister_de10nano_defconfig:580 is precisely `# BR2_PACKAGE_RTL88X2BU is not set`, with the preceding comment block (lines ~572-579) explaining the WPA3/SAE status_code=1 hardware-verified failure and the switch to CONFIG_RTW88_8822BU=m. board/mister/de10nano/linux.config:481 confirmed `CONFIG_RTW88_8822BU=m` exactly as cited. Edimax EW-7822ULC device ID (0x7392:0xb822) confirmed present in /mnt/source/linux/drivers/net/wireless/realtek/rtw88/rtw8822bu.c:18. Disposition, severity=feature-loss (mitigated by mainline coverage), and equivalence=superseded-better all confirmed correct."
+}

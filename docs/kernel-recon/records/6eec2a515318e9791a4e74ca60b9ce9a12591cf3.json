@@ -1,0 +1,66 @@
+{
+  "sha": "6eec2a515318e9791a4e74ca60b9ce9a12591cf3",
+  "subject": "xpad: Add 8BitDo Ultimate Controller ID (#36)",
+  "author": "Ruud Klaver",
+  "author_is_pr_contributor": true,
+  "date": "2022-12-21",
+  "subsystem": "input",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/input/joystick/xpad.c"
+  ],
+  "added": 2,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [
+      "21617de3b4647175a4c6a2a58f40515a94a13df4"
+    ],
+    "vanilla_file_line": "drivers/input/joystick/xpad.c:409",
+    "vanilla_quote": "{ 0x2dc8, 0x3106, \"8BitDo Ultimate Wireless / Pro 2 Wired Controller\", 0, XTYPE_XBOX360 },",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md:341",
+
+  "impact": {
+    "effect_if_absent": "8BitDo Ultimate Wireless Controller (VID:PID 0x2dc8:0x3106) would not be recognized by xpad driver, but vanilla 6.18.38 already provides equivalent support",
+    "affected_hardware": [
+      "8BitDo Ultimate Wireless Controller",
+      "8BitDo Pro 2 Wired Controller (may share same USB ID)"
+    ],
+    "device_ids": [
+      "2dc8:3106"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "Fork commit (2022-12-21) added VID:PID 0x2dc8:0x3106 with description 'Ultimate Wireless Controller' and also added `XPAD_XBOX360_VENDOR(0x2dc8)` to the second (xpad_table) ID-match table (verified via `git show`: 2 files/1 file, 2 insertions across both tables). Vanilla upstream commit 21617de3b4647175a4c6a2a58f40515a94a13df4 (2023-01-27, later) added the same VID:PID with description 'Pro 2 Wired Controller' plus the matching `XPAD_XBOX360_VENDOR(0x2dc8)` entry. Vanilla 6.18.38 currently has both: the xpad_device[] entry (line 409) with a refined merged description 'Ultimate Wireless / Pro 2 Wired Controller', and XPAD_XBOX360_VENDOR(0x2dc8) plus XPAD_XBOXONE_VENDOR(0x2dc8) in xpad_table (lines 586-587, the latter added by unrelated later 8BitDo commits, not this one). Functionally equivalent: same VID:PID, same XTYPE_XBOX360, same 0 mapping flags — only the description string differs (cosmetic). Not carried in any patch file: grepped 0017-xpad-mister-deltas.patch directly for '2dc8'/'3106'/'8BitDo' — the vanilla entry passes through unchanged (context line 150 of the patch shows it untouched), confirming vanilla provision is what our build actually uses. No Main_MiSTer coupling found (grepped for '2dc8'/'3106' — no hits). Provenance doc correctly identified upstream coverage via vanilla commit 21617de3b464. sonnet-verified: confirmed disposition/equivalence/device-ID/no-userspace-coupling and vanilla-SHA ancestry (`git merge-base --is-ancestor 21617de3b4647175a4c6a2a58f40515a94a13df4 v6.18.38` holds); corrected vanilla_file_line from a 2-line range (409-410) to the single matching line (409) — line 410 is a DIFFERENT, unrelated entry (0x2dc8:0x3109 'Ultimate Wireless Bluetooth') that the original quote did not actually cover; normalized the vanilla SHA to its full 40-character form."
+}

@@ -1,0 +1,76 @@
+{
+  "sha": "c3c1a0ec9f9b0fb83eeacc83c00f1cac7517483e",
+  "subject": "dwc2: remove original driver.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-31",
+  "subsystem": "usb",
+  "change_type": "removal-of-wholesale-replacement",
+  "files": [
+    "drivers/usb/dwc2/Kconfig",
+    "drivers/usb/dwc2/Makefile",
+    "drivers/usb/dwc2/core.c",
+    "drivers/usb/dwc2/core_intr.c",
+    "drivers/usb/dwc2/debug.h",
+    "drivers/usb/dwc2/debugfs.c",
+    "drivers/usb/dwc2/drd.c",
+    "drivers/usb/dwc2/gadget.c",
+    "drivers/usb/dwc2/hcd.c",
+    "drivers/usb/dwc2/hcd.h",
+    "drivers/usb/dwc2/hcd_ddma.c",
+    "drivers/usb/dwc2/hcd_intr.c",
+    "drivers/usb/dwc2/hcd_queue.c",
+    "drivers/usb/dwc2/hw.h",
+    "drivers/usb/dwc2/params.c",
+    "drivers/usb/dwc2/pci.c",
+    "drivers/usb/dwc2/platform.c"
+  ],
+  "added": 0,
+  "removed": 25683,
+  "source_branch": "MiSTer-v5.14",
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "Not mentioned in patch-provenance.md (correctly omitted: commit was abandoned on v5.14, never carried to v5.15+). See patch-provenance.md §1.1 note on version-bump commits replacing tree wholesale. No contradiction found.",
+  "impact": {
+    "effect_if_absent": "Entire vanilla dwc2 controller driver removed from v5.14 kernel; no functional effect on this commit alone (immediately replaced by socfpga-4.19 port in a95855a70)",
+    "affected_hardware": [
+      "All systems using dwc2 USB host controller (DE10-Nano, SoCs with Synopsys DesignWare USB2)"
+    ],
+    "device_ids": [],
+    "severity": "boot-critical",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "a95855a70 (socfpga-4.19 dwc2 port — v5.14 only, abandoned at v5.15)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "**CRITICAL STRATEGIC FINDING**: This commit's purpose (removal + replacement by socfpga-4.19 port) was **entirely abandoned at v5.15**. The v5.15.1 baseline (pristine, hash-verified per patch-provenance.md §1.2) kept vanilla dwc2 unchanged from stock v5.15. This indicates the socfpga-4.19 port was deliberately dropped when the fork upgraded to v5.15, reverting to vanilla dwc2 for all subsequent versions (v5.15 → 6.18). **Reasons for abandonment**: (1) Maintainability — a 4.19-based port becomes increasingly divergent and harder to carry forward as the kernel advances (5.15 → 5.18 → 6.x); (2) Upstream maturity — vanilla dwc2 between 4.19 and 5.15 received numerous bug fixes and enhancements (ISOC handling, DDMA flow improvements, hibernation support, etc.) making the custom port obsolete; (3) **No critical socfpga-specific features remain missing** — the fact that we successfully boot and operate with vanilla dwc2 in 6.18 proves the socfpga port was not carrying essential hardware-specific logic. **The ONLY dwc2 patch we carry in 6.18 is 0028 (unaligned-IN split transfer fix, d7adb20b4)**, which is a genuine host-controller bug affecting any split-IN endpoint with wMaxPacketSize not a multiple of 4. This fix is NOT in vanilla 6.18 (hcd_intr.c:922-928 still has the old unconditional align_buf copy confined to isoc-specific path dwc2_xfercomp_isoc_split_in). Recommendation: patch 0028 should be submitted upstream — it benefits all dwc2 users and removes a carried-patch obligation. **No escalation warranted** — the wholesale swap was deliberately strategic, not a missed carry or misclassification."
+}

@@ -1,0 +1,81 @@
+{
+  "sha": "ed8f8e6cec6889945bd889742b3a071ebf34b69f",
+  "subject": "Fix warning.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2023-03-13",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-ftecff.c"
+  ],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0012-hid-fanatec.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md row: e82a59280, 8908e0fe1, ed8f8e6ce | Fanatec wheels (+build/warning fixes)",
+
+  "impact": {
+    "effect_if_absent": "Compiler warning about unused variables (usbhid_device and current_period in ftecff_timer function)",
+    "affected_hardware": [
+      "0eb7:0001",
+      "0eb7:0004",
+      "0eb7:183b",
+      "0eb7:0006",
+      "0eb7:0007",
+      "0eb7:0e03",
+      "0eb7:0005",
+      "0eb7:6204",
+      "0eb7:0020",
+      "0eb7:0011"
+    ],
+    "device_ids": [
+      "0EB7:0001",
+      "0EB7:0004",
+      "0EB7:183B",
+      "0EB7:0006",
+      "0EB7:0007",
+      "0EB7:0E03",
+      "0EB7:0005",
+      "0EB7:6204",
+      "0EB7:0020",
+      "0EB7:0011"
+    ],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "GROUPED ENTRY in provenance.md: This commit is listed with e82a59280 and 8908e0fe1 as a single row in docs/patch-provenance.md rather than individually. The commit comments out two unused variables (usbhid_device and current_period in ftecff_timer) to fix compiler warnings. Patch header (0012-hid-fanatec.patch) states this was 'folded in' during the 5.15→6.18.38 forward-port. However, the actual patch content does not show these variables commented out; instead, they are simply absent from the forward-ported code. The patch was created from scratch for the 6.18 version (files are marked as new in the patch), and the developer (Michael C. Ferguson) did a clean forward-port that removed unused code. The effect of the warning fix (eliminating unused variable warnings) is achieved, but through re-implementation rather than cherry-picking the exact commit. The patch header also mentions dropping other unused variables (s1/s2 in ftecff_update_slot and ret in ftec_tuning_write) as part of the forward-port's -Wunused-but-set-variable cleanup."
+}

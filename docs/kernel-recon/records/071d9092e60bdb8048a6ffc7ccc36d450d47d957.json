@@ -1,0 +1,63 @@
+{
+  "sha": "071d9092e60bdb8048a6ffc7ccc36d450d47d957",
+  "subject": "dts: fix warnings.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "dts",
+  "change_type": "dts",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts"
+  ],
+  "added": 3,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0004-dts-de10nano-MiSTer.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [
+      "v6.18.38"
+    ],
+    "vanilla_file_line": "arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts:72-74 (sonnet-corrected from :109 -- the file is only 95 lines total; the accelerometer@53 node actually starts at line 72)",
+    "vanilla_quote": "\taccelerometer@53 {\n\t\tcompatible = \"adi,adxl345\";\n\t\treg = <0x53>;",
+    "equivalence": "equivalent"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md line 310-311, 926-931 (class A, P1.7)",
+
+  "impact": {
+    "effect_if_absent": "Device tree compiler warnings for unit-address-less nodes in the board DTS; no functional impact",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit fixed three device tree compilation warnings by adding correct unit addresses to device tree node names: (1) adxl345: adxl345@0 -> adxl345@53 (i2c address), (2) spiusb -> spiusb@0 (SPI bus 0 CS 0), (3) spibri -> spibri@0 (SPI bus 1 CS 0) -- confirmed by direct read of the fork commit diff (`git show 071d9092e`), exactly these 3 hunks, nothing else. For P1.7 forward-port to 6.18, patch 0004-dts-de10nano-MiSTer.patch was re-authored on top of mainline's minimal de10nano.dts (new path: arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts) rather than replayed. The re-authored patch includes spiusb@0 with correct addressing (confirmed present at patch line 273: `spiusb@0 {`). accelerometer@53 is absent from 0004 because it's already present with the correct unit address in mainline's own board file (not added by us) -- confirmed by direct read (see corrected citation below). spibri is absent from 0004 for an unrelated reason not fully captured by the original note: patch 0004 replaces the fork's spibri/altspi SPI-bus-1 child entirely with a differently-named spidev@0 node using compatible=\"rohm,dh2228fv\" (a real mainline spidev binding), documented in 0004's own commit body (\"/dev/spidev1.0 WITHOUT A KERNEL PATCH\" section) as a deliberate substitution to avoid needing the fork's spidev_dt_ids[] kernel patch -- it is not merely that 'mainline's minimal board file doesn't define spibri', which was an imprecise characterization; mainline doesn't define ANY spi1 child, and we chose a different one on purpose. The replacement (spidev@0) does carry correct '@0' addressing either way, so the practical warning-fix outcome the original note claimed still holds. All unit-address fixes are present in the 6.18 build via patch 0004, and dtc reports zero new warnings (asserted in 0004's own commit message, not independently re-verified by a build in this pass).\n\nsonnet-verified CORRECTION: upstream.vanilla_file_line was wrong (cited :109 in a 95-line file). Corrected to :72-74, where `accelerometer@53 { compatible = \"adi,adxl345\"; reg = <0x53>; ...` actually lives in /mnt/source/linux/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts (re-derived live, not copied from any prior doc). The quoted content itself was accurate; only the line number was stale/wrong. Also softened the spibri characterization above. disposition/carried_patch/carried_mode/severity all confirmed correct otherwise.\n\nsonnet-verified: CARRY-MAPPING CONFIRMED, CITATION CORRECTED (vanilla_file_line :109 -> :72-74, re-derived live) -- disposition/carried_patch/carried_mode/severity all hold; only the stale line number and the spibri wording needed a fix."
+}

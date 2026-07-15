@@ -1,0 +1,68 @@
+{
+  "sha": "817ace70b4e9facb68a00553c00d485087379f39",
+  "subject": "Remove XBox One Wireless Adapter USB IDs from mt76 driver to allow 'xow' driver compatibility.",
+  "author": "sofakng",
+  "author_is_pr_contributor": false,
+  "date": "2020-10-21",
+  "subsystem": "net-wireless",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/net/wireless/mediatek/mt76/mt76x2/usb.c"
+  ],
+  "added": 0,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0027-mt76x2u-release-xbox-adapter-ids.patch",
+  "carried_mode": "re-implemented",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/net/wireless/mediatek/mt76/mt76x2/usb.c:26-27",
+    "vanilla_quote": "{ USB_DEVICE(0x045e, 0x02e6) },\t/* XBox One Wireless Adapter */\n{ USB_DEVICE(0x045e, 0x02fe) },\t/* XBox One Wireless Adapter */",
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md section 3.4, entry 817ace70b (class D/E); also section 6, entry 0027-mt76x2u-release-xbox-adapter-ids.patch",
+
+  "impact": {
+    "effect_if_absent": "The mt76 driver will bind to Xbox Wireless Dongle USB devices (045e:02e6 and 045e:02fe) before the xone driver can claim them. The mt76 driver treats these as Wi-Fi NICs and will fail to initialize them correctly, preventing wireless Xbox controllers/headsets from functioning. The xone package (BR2_PACKAGE_XONE=y) will be present but unable to bind to these devices.",
+    "affected_hardware": [
+      "Xbox Wireless Dongle (old dongle, PID 02e6)",
+      "Xbox Wireless Dongle (new dongle, PID 02fe)"
+    ],
+    "device_ids": [
+      "045e:02e6",
+      "045e:02fe"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "Input device nodes from xone driver; xone provides /dev/input/event* nodes for wireless Xbox controllers/headsets via the GIP (Game Input Protocol) transport layer",
+    "main_mister_ref": "Main_MiSTer/input.cpp: all input device access via /dev/input/event*; xone driver exposes input devices for wireless adapters bound via package/xone"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [
+      "BR2_PACKAGE_XONE=y (Buildroot package, xone driver)",
+      "BR2_PACKAGE_XOW_FIRMWARE=y (Xbox Wireless Dongle firmware)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "CARRY PATCH — Removes USB device IDs 045e:02e6 and 045e:02fe from mt76x2u_device_table[]. These IDs refer to Xbox Wireless Dongle devices (old and new variants), which implement the Xbox GIP (Game Input Protocol) for wireless controllers/headsets — they are NOT Wi-Fi NICs despite the device ID overlap. Vanilla 6.18.38 still claims these IDs in mt76 (drivers/net/wireless/mediatek/mt76/mt76x2/usb.c:26-27), causing the mt76 driver to bind before xone can. The xone driver has its own device table claiming the same IDs (transport/dongle.c in xone codebase: 045e:02e6 'old dongle', 045e:02fe 'new dongle', plus two others). Without this patch, mt76 will win the driver-matching race and the Xbox Wireless Dongle cannot function. Failure is SILENT: the device appears to be recognized but produces no input events. The forward-ported patch (0027-mt76x2u-release-xbox-adapter-ids.patch) is byte-identical removal but adds an explanatory comment to prevent accidental reintroduction during future mt76 syncs. Patch applies cleanly to 6.18.38 with no conflicts. Provenance doc correctly identifies this as a carry (not upstream); xone is carried as BR2_PACKAGE_XONE (a Buildroot out-of-tree driver package sourced from dlundqvist/xone, the actively-maintained fork). Original commit author sofakng, forward-ported by MCF during P1.9 task."
+}

@@ -1,0 +1,57 @@
+{
+  "sha": "2d39e76d1bc91d7d90f678538ba442c6ccd500a8",
+  "subject": "mmc: don't activate LED on status command.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-26",
+  "subsystem": "mmc",
+  "change_type": "in-tree-code",
+  "files": ["drivers/mmc/core/core.c"],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "carried",
+  "carried_patch": "0020-mmc-no-led-on-send-status.patch",
+  "carried_mode": "clean-apply",
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/mmc/core/core.c:359",
+    "vanilla_quote": "led_trigger_event(host->led, LED_FULL);",
+    "equivalence": "contradicted"
+  },
+
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "patch-provenance.md class F-1",
+
+  "impact": {
+    "effect_if_absent": "Without this patch, the SD activity LED (hps_led0) constantly flickers when the kernel polls card status with continuous MMC_SEND_STATUS commands. The on-screen disk activity indicator in Main_MiSTer would appear to be constantly active even when the card is idle, making it impossible to distinguish genuine I/O activity from background polling.",
+    "affected_hardware": ["DE10-Nano"],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "mmc0 activity trigger -> hps_led0 -> /sys/class/leds/hps_led0/brightness_hw_changed",
+    "main_mister_ref": "Main_MiSTer polls /sys/class/leds/hps_led0/brightness_hw_changed to drive the on-screen disk-activity indicator. See patch 0029-leds-gpio-brightness-hw-changed.patch which explicitly documents this dependency in its provenance header."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial"
+  },
+  "dependencies": {
+    "depends_on": ["0004-dts-de10nano-MiSTer.patch", "0029-leds-gpio-brightness-hw-changed.patch"],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit prevents the MMC activity LED from constantly flickering when the kernel polls card status with MMC_SEND_STATUS (which happens continuously while the card is idle). The DE10-Nano wires the MMC activity trigger to GPIO-controlled hps_led0 via device-tree (patch 0004), which Main_MiSTer reads to update the on-screen SD activity indicator (patch 0029). Dropping this creates a silent regression: users see a constantly flickering disk indicator even when idle. Verified NOT in vanilla 6.18.38: vanilla drivers/mmc/core/core.c unconditionally triggers led_trigger_event() for all MMC commands, including MMC_SEND_STATUS. Forward-ported successfully in P1.9; applies cleanly with minor reformatting to kernel multi-line style (the condition spans 2 lines in 6.18 vs. 1 line in 5.15). Must be carried together with patches 0004 and 0029 for proper MiSTer integration."
+}

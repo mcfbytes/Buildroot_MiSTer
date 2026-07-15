@@ -1,0 +1,55 @@
+{
+  "sha": "7828d722ed97f92b3b82eba53f5eac3f4e982c6f",
+  "subject": "defconfig: compile 80211 as a module.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2022-04-13",
+  "subsystem": "net-wireless",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 2,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "net/wireless/Kconfig:17-18; net/mac80211/Kconfig:2-3",
+    "vanilla_quote": "config CFG80211\n\ttristate \"cfg80211 - wireless configuration API\"\n---\nconfig MAC80211\n\ttristate \"Generic IEEE 802.11 Networking Stack (mac80211)\"",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+  "impact": {
+    "effect_if_absent": "CFG80211 and MAC80211 frameworks would be compiled as built-in kernel components instead of loadable modules. No functional change to wireless capability, but increases kernel size and affects boot-time dependency loading. Wireless drivers that depend on these frameworks would still function identically.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This defconfig change from the MiSTer 5.15 fork aligns the fork's wireless configuration with stock kernel behavior by converting CFG80211 and MAC80211 from built-in (=y) to modular (=m). Both options remain tristate in vanilla 6.18.38 Kconfig, supporting either configuration. Not carried as a patch; instead, the same configuration goal is maintained through board/mister/de10nano/linux.config (currently CONFIG_CFG80211=m, CONFIG_MAC80211=m), which was derived from stock kernel behavior. Stock 5.15.1 multi_v7_defconfig already had these as modules, confirming this commit brought the fork into alignment with upstream defaults. The modular approach reduces kernel footprint and allows loading wireless frameworks only when needed."
+}

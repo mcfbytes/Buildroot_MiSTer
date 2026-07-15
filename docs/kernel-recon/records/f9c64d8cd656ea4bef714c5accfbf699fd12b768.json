@@ -1,0 +1,65 @@
+{
+  "sha": "f9c64d8cd656ea4bef714c5accfbf699fd12b768",
+  "subject": "drivers: hid-nintendo: fix possible division by 0.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2024-10-08",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 18,
+  "removed": 7,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "6eb04ca8c52e3f8c8ea7102ade81d642eee87f4a"
+    ],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:1186-1209 (joycon_calc_imu_cal_divisors guards, warn at 1207-1208), :1360,1441-1444 (joycon_parse_imu_report imu_avg_delta_ms guard moved outside the periodic-recalc block)",
+    "vanilla_quote": "static void joycon_calc_imu_cal_divisors(struct joycon_ctlr *ctlr) { int i, divz = 0; ... if (ctlr->imu_cal_accel_divisor[i] == 0) { ctlr->imu_cal_accel_divisor[i] = 1; divz++; } if (ctlr->imu_cal_gyro_divisor[i] == 0) { ctlr->imu_cal_gyro_divisor[i] = 1; divz++; } } if (divz) hid_warn(ctlr->hdev, \"inaccurate IMU divisors (%d)\\n\", divz); } ... [in joycon_parse_imu_report, after the JC_IMU_SAMPLES_PER_DELTA_AVG block] /* don't ever want divide by zero shenanigans */ if (ctlr->imu_avg_delta_ms == 0) { ctlr->imu_avg_delta_ms = 1; hid_warn(ctlr->hdev, \"calculated avg imu delta of 0\\n\"); }",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md:336",
+  "impact": {
+    "effect_if_absent": "Kernel panic (divide-by-zero exception) if Nintendo Switch Joy-Con or Pro Controller sends calibration data with zero scale or offset values",
+    "affected_hardware": [
+      "Nintendo Switch Joy-Con (L)",
+      "Nintendo Switch Joy-Con (R)",
+      "Nintendo Switch Pro Controller"
+    ],
+    "device_ids": [
+      "057e:2009",
+      "057e:200a",
+      "057e:200e"
+    ],
+    "severity": "boot-critical",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "This commit is byte-identical in function to vanilla commit 6eb04ca8c52e (2023-12-05) which fixes a real divide-by-zero crash reported in SteamOS (github.com/ValveSoftware/SteamOS/issues/1070). The MiSTer fork applied this fix 10 months later (2024-10-08), presumably after the upstream kernel was advanced to 6.18+. Since the MiSTer kernel will be rebased to vanilla 6.18.38 or later, this commit is now redundant and should be dropped. The fix involves two parts: (1) guarding IMU calibration divisor calculations in joycon_calc_imu_cal_divisors() to replace zero divisors with 1 and log a warning; (2) moving the divide-by-zero check in joycon_parse_imu_report() to execute after samples are reset, preventing race conditions. Verified in vanilla 6.18.38:drivers/hid/hid-nintendo.c lines 930-950 (divisor guards) and 1186-1196 (avg_delta check). Already documented in patch-provenance.md:336 as dropped-upstream. No userspace coupling: this is a kernel-internal crash fix. sonnet-verified: Re-derived from scratch — `git show 6eb04ca8c52e3f8c8ea7102ade81d642eee87f4a` in /mnt/source/linux confirms the full 40-char SHA resolves and `git merge-base --is-ancestor` confirms it is reachable from v6.18.38; both fork hunks (accel+gyro divisor guards in joycon_calc_imu_cal_divisors, and the imu_avg_delta_ms==0 check relocated out of the periodic-recalc block in joycon_parse_imu_report) are present in vanilla 6.18.38 with logic that diffs byte-for-byte identical modulo whitespace/blank-line placement (confirmed via direct `diff` of extracted function bodies), so equivalence corrected from byte-identical to equivalent (not partial — vanilla covers both sites the fork does, no under-coverage); vanilla_file_line in the original record was wrong for the current checkout (930-950/1186-1196 mixed historical @@ line numbers with the wrong current location — 1186 is actually where joycon_calc_imu_cal_divisors now starts, not the second hunk) and has been corrected to 1186-1209 and 1360/1441-1444, matching patch-provenance.md:336's citation of 1196,1201 for the divisor guards; agrees_with_provenance_doc=true confirmed independently."
+}

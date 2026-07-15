@@ -1,0 +1,60 @@
+{
+  "sha": "d1002ecd4b1f9350efd57c2e1eea2fb885fc5d9d",
+  "subject": "Implement MiSTer frame buffer device.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2021-08-20",
+  "subsystem": "fbdev",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts",
+    "drivers/video/fbdev/Kconfig",
+    "drivers/video/fbdev/Makefile",
+    "drivers/video/fbdev/MiSTer_fb.c"
+  ],
+  "added": 416,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0001-fbdev-add-MiSTer_fb-driver.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "source-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "docs/patch-provenance.md §3.1 Class A (MiSTer core), §5: `0001-fbdev-add-MiSTer_fb-driver.patch`",
+  "impact": {
+    "effect_if_absent": "MiSTer's frame reader (FPGA video output window at 0x22000000) would not be accessible as /dev/fb0; Main_MiSTer cannot configure video mode via /sys/module/MiSTer_fb/parameters/mode; video output fails silently with no error",
+    "affected_hardware": [
+      "DE10-Nano"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/fb0 (standard fbdev node), FBIO_WAITFORVSYNC ioctl (_IOW('F', 0x20, __u32), standard mainline ABI identical in 5.15 and 6.18), /sys/module/MiSTer_fb/parameters/mode (module_param_cb, mode 0664 RW, format: 'format rb width height stride')",
+    "main_mister_ref": "Main_MiSTer/video.cpp ~L3859-3867 (ioctl FBIO_WAITFORVSYNC), ~L3881+ (write to /sys/module/MiSTer_fb/parameters/mode for video mode configuration)"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "medium"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL v2 (license header: 'This program is free software; you can redistribute it and/or modify it under the terms and conditions of the GNU General Public License, version 2')",
+  "notes": "CARRIED PATCH — NOT UPSTREAM. MiSTer-specific driver for FPGA frame-reader (soft-IP module in DE10-Nano fabric). No mainline equivalent exists or would be accepted as-is (Sorgelig, patch header). Forward-ported from v5.15 to v6.18.38 by Michael C. Ferguson (2026-07-12). The patch includes necessary 6.18 API compatibility changes: (1) fb_read/fb_write/fb_mmap fallback removal (v6.8: 8813e86f6d82) resolved with __FB_DEFAULT_IOMEM_OPS_RDWR and __FB_DEFAULT_IOMEM_OPS_MMAP (iomem variants required — window has no struct pages); (2) FBINFO_FLAG_DEFAULT removal (v6.6: 0444fa357c16); (3) platform_driver::remove() void return (v6.11: 0edb555a65d1); (4) -Wmissing-prototypes enforcement (v6.8: 0fcb70851fbf); (5) memremap() error handling (returns NULL, not ERR_PTR). ABI STABLE: FBIO_WAITFORVSYNC is byte-identical across 5.15 and 6.18; ioctl contract cannot drift. Driver maps FPGA memory region (0x22000000, 8MB) with write-through caching; first 4KB holds pseudo-palette, pixels at offset 4096. Supports multiple color formats (1555, 565, 8-bit, 8888). Platform driver with device-tree binding; VSYNC interrupt (IRQ 40, GIC SPI) triggers frame_count increment and wakes interruptible waitqueue for ioctl. CONFIG_FB_MISTER=y in board/mister/de10nano/linux.config; CONFIG_FB_DEVICE=y (new 6.x) required for /dev/fb0 creation. CARRIES REGRESSED FUNCTIONALITY: Patch-provenance.md notes two forward-port hazards were found via testing (not predicted): platform_driver::remove() void, -Wmissing-prototypes. No issues found in this forward-port; applied cleanly. Main_MiSTer coupling: mode parameter is userspace ABI — shell scripts and video.cpp write it; removing or renaming would break video output. DTS node handled separately in 0004-dts-de10nano-MiSTer.patch."
+}

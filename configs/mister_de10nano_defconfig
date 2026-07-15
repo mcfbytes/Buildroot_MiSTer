@@ -359,6 +359,26 @@ BR2_PACKAGE_EXPAT=y
 BR2_PACKAGE_POPT=y
 BR2_PACKAGE_READLINE=y
 BR2_PACKAGE_NCURSES=y
+# WIDE-CHAR ncurses. Not cosmetic -- it is an ABI-contract fix. Plain
+# BR2_PACKAGE_NCURSES builds the NARROW libncurses.so.6; the wide libncursesw.so.6
+# only comes from --enable-widec (this symbol). docs/package-manifest.md:193 lists
+# the required SONAME as libncursesw.so.6, stock ships exactly that, and 35 stock
+# binaries (bash, dialog, clear, dmesg, alsamixer, ...) DT_NEEDED it -- so a
+# libncursesw-linked ARM binary dropped on the device would fail to start against
+# our narrow lib. This was shipped narrow by omission: the manifest mapped the
+# libncursesw SONAME to BR2_PACKAGE_NCURSES without noting that the "w" requires
+# this second symbol.
+#
+# It also restores wide-char curses in Python (the build symlinks
+# libncurses.so -> libncursesw.so, so _curses/_curses_panel/readline all relink
+# against the wide lib): our narrow _curses lacks the wide-char key-read API --
+# the window.get_wch() method and its module-level companion _curses.unget_wch,
+# both compiled in only against ncursesw. A TUI that reads a keystroke via
+# window.get_wch() -- e.g. to catch the UP arrow -- hits AttributeError on narrow
+# ncurses and commonly falls back to line mode, where the arrow just echoes as
+# ^[[A instead of being captured. Enabling widec is what stock has and what makes
+# window.get_wch() work.
+BR2_PACKAGE_NCURSES_WCHAR=y
 BR2_PACKAGE_SLANG=y
 BR2_PACKAGE_NEWT=y
 BR2_PACKAGE_GPM=y

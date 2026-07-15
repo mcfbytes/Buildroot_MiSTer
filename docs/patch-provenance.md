@@ -346,7 +346,7 @@ Every row verified against 6.18.38 source; upstream commit recovered with `git l
 | ~~`f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a`~~ | **ROW CORRECTED 2026-07-15 — this grouping contained 3 misclassifications** (kernel-recon, all sonnet-verified). None of these were "pre-upstream backports"; they are independent implementations: | | |
 | `0d60c3482` | lightbar control | dropped-upstream / **superseded-better** by **`fc97b4d6a1a6`** (multicolor classdev; the previously cited `8e5198a12d64` only sets a default color) | zero Main_MiSTer coupling; our config already has `LEDS_CLASS_MULTICOLOR=y` |
 | `f84543926` + `b76b4bc6a` | single `:player_id` LED (0-6) | **NOT upstream** (vanilla: five auto-assigned `:white:player-N`); Main_MiSTer co-designed against `:player_id` (`input.cpp:2642-2726`) | → **carried**, `0033-hid-playstation-dualsense-player-id-led.patch` |
-| `60e08955f` | mute → BTN_Z + `:mute` LED | **NOT upstream** (6.18 still toggles mic in-kernel, `hid-playstation.c:1496-1506`; the two SHAs cited above contain zero mute content) | no shipped consumer → cosmetic; **carry decision open** |
+| `60e08955f` | mute → BTN_Z + `:mute` LED | **NOT upstream** (6.18 still toggles mic in-kernel; the two SHAs cited above contain zero mute content) | → **carried**, `0037-hid-playstation-dualsense-mute-btn-z.patch` (2026-07-15) — BTN_Z becomes an extra mappable button, matching stock |
 | `9a8cb6a93` | hid-microsoft: Xbox Series X/S | **`f5554725f304`** *HID: microsoft: Add rumble support to latest xbox controllers* (2023-04-25) | 6.18 `hid-microsoft.c:454` binds `MODEL_1914` (=0x0b13) |
 | `adbaaea91` | hid-microsoft: XOne Elite 2 ID | same as above | 6.18 `hid-microsoft.c:458` binds `MODEL_1797_BLE` (=0x0b22) |
 | `409f81077` | xpad: Elite 2 ID | **`e23c69e33248`** *Input: xpad - add support for XBOX One Elite paddles* (2022-08-18) | 6.18 `xpad.c:166` `{ 0x045e, 0x0b00, …, MAP_PADDLES, XTYPE_XBOXONE }` |
@@ -1508,13 +1508,13 @@ got stamped with the group's disposition. Confirmed misclassifications, all now 
 | `e155f6a2f` (partial) | clean upstream | NES/Famicom A/B swapped vs stock | carried `0034` |
 | `60821059c` home LED | Class C drop | partial (registration still fatal) | carried `0035` |
 | `b02a4a011` CSR 0x2512 | open Q5 | vanilla structurally misses 0x2512 | carried `0036` (detection half) |
-| `60e08955f` mute BTN_Z | Class C drop | fork-only, no shipped consumer | **open** (cosmetic) |
+| `60e08955f` mute BTN_Z | Class C drop | fork-only (the canary misclassification) | carried `0037` |
 | `af27afc4c` xpad resync | carried in 0017 | superseded by 6.18 xpad | not carried (row fixed) |
 | `1412bd707` sony div-0 | carried in 0022 | superseded-better `74cb485f68eb` | not carried (row fixed) |
 | `0d60c3482` lightbar | pre-upstream backport | independent impl., superseded-better | row fixed |
 | realtek coverage (§3.6) | 6 packages =m | mainline-first, 2 packages enabled | row fixed |
 
-New carried patches from these decisions: `0032`–`0036` (see `board/mister/de10nano/
+New carried patches from these decisions: `0032`–`0037` (see `board/mister/de10nano/
 linux-patches/`), each with full provenance headers. Config parity: `CONFIG_MACVLAN=y`,
 `CONFIG_JOYSTICK_XPAD=m`. All verified via full `linux-dirclean` rebuild.
 

@@ -1,14 +1,8 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-07-15 07:16 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-07-15 13:37 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
-## `60e08955f` dualsense: give mute button and led to system. — **cosmetic**
-
-- disposition misclassified; coupled: False; interface: BTN_Z evdev key event (gamepad range) + led_classdev sysfs node named "<hdev>:mute"; NEITHER has a dedicated Main_MiSTer consumer
-- effect if absent: No functional change for any current MiSTer user (see userspace_coupling — no shipped consumer exists either way). At the kernel-capability level: the DualSense mute button no longer surfaces as a distinguishable BTN_Z evdev event (it becomes fully invisible to userspace, same as vanilla), and the mute LED is no longer exposed as a writable /sys/class/leds/*:mute node. Both remain latent/opt-in capabilities that nothing in Main_MiSTer currently reads or writes.
-- hardware: Sony DualSense (PS5 controller)
-
-**Total: 1 candidates** (of which 0 feature-loss).
+**Total: 0 candidates** (of which 0 feature-loss).
 
 ## Protected (carried) silent-failure items
 

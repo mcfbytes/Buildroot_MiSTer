@@ -1,10 +1,9 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-15 07:16 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
+Generated 2026-07-15 13:37 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
 
 | SHA | Branch | Disposition | Carried patch | Severity | Fail | Coupled | Doc✓ | T2 | Subject |
 |---|---|---|---|---|---|---|---|---|---|
-| `60e08955f` | v5.15 | **misclassified** | — | cosmetic | silent | — | N | ✓ | dualsense: give mute button and led to system. |
 | `071d9092e` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | cosmetic | silent | — | Y | ✓ | dts: fix warnings. |
 | `077c2c317` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | feature-loss | silent | — | Y | ✓ | Disable USB overcurrent signaling. |
 | `0d7778d1f` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | feature-loss | silent | Y | Y | ✓ | wiimote: set uniq field. |
@@ -22,6 +21,7 @@ Generated 2026-07-15 07:16 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15
 | `5bdbf2f7e` | v5.15 | **carried** | 0018-hid-controllable-quirk.patch | feature-loss | silent | Y | Y | ✓ | hid: add quirk for ControllaBLE. |
 | `5c410e935` | v5.15 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | feature-loss | loud | — | Y | ✓ | hid-sony: fix for 3rd party DS4 failing to connect by wire. |
 | `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | feature-loss | loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
+| `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | cosmetic | silent | — | N | ✓ | dualsense: give mute button and led to system. |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | feature-loss | silent | — | Y | ✓ | Support for RTC PCF8563 |
 | `70e391b81` | v5.15 | **carried** | 0024-hid-input-keyrah-europe1.patch | feature-loss | silent | Y | Y | ✓ | HID: map key Europe 1(0x32) to F24 code (for Keyrah). |
 | `71c583074` | v5.15 | **carried** | 0030-i2c-designware-quiet-timeout.patch | cosmetic | silent | — | Y | ✓ | Disable RTC error messages. |

@@ -1,12 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-07-15 07:16 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
-
-## `60e08955f` dualsense: give mute button and led to system.
-
-- disposition: **misclassified** | severity cosmetic | silent
-- doc ref: patch-provenance.md:337
-- notes: MISCLASSIFIED in patch-provenance.md:337 (verbatim): '| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *...add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. verify controller LED behaviour on HW (P3.13)'. Both cited vanilla SHAs verified to exist in /mnt/source/linux and are ancestors of v6.18.38 (`git me…
+Generated 2026-07-15 13:37 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
 
@@ -22,6 +16,12 @@ Generated 2026-07-15 07:16 UTC. Every record where independent re-derivation con
 
 Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git merge-base --is-ancestor` in /mnt/source/linux, checked out at tag v6.18.38):
 - `2af16c1f846b` (2021-09-11, Daniel J. Ogorchock) is simply the o…
+
+## `60e08955f` dualsense: give mute button and led to system.
+
+- disposition: **carried** | severity cosmetic | silent
+- doc ref: patch-provenance.md:337
+- notes: MISCLASSIFIED in patch-provenance.md:337 (verbatim): '| `f84543926`, `0d60c3482`, `60e08955f`, `b76b4bc6a` | DualSense player LEDs / lightbar / mute / player-6 | **`8c0ab553b072`** *HID: playstation: expose DualSense player LEDs through LED class* (2021-09-08); **`8e5198a12d64`** *...add initial DualSense lightbar support* (2021-02-16) | 6.18 `hid-playstation.c:217` `update_player_leds`, `:155` lightbar flag. MiSTer's were pre-upstream backports. verify controller LED behaviour on HW (P3.13)'. Both cited vanilla SHAs verified to exist in /mnt/source/linux and are ancestors of v6.18.38 (`git me…
 
 ## `8908e0fe1` Fix module compile for Fanatec driver (#25)
 

@@ -84,7 +84,7 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  
  	/*
  	 * Parse HP/MIC plugged state data for USB use case, since Bluetooth
-@@ -1697,6 +1686,20 @@ static int dualsense_player_id_led_set_brightness(struct led_classdev *led,
+@@ -1699,6 +1688,20 @@ static int dualsense_player_id_led_set_brightness(struct led_classdev *led,
  	return 0;
  }
  
@@ -105,7 +105,7 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  static struct ps_device *dualsense_create(struct hid_device *hdev)
  {
  	struct dualsense *ds;
-@@ -1773,6 +1776,9 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+@@ -1775,6 +1778,9 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
  		ret = PTR_ERR(ds->gamepad);
  		goto err;
  	}
@@ -115,7 +115,7 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  	/* Use gamepad input device name as primary device name for e.g. LEDs */
  	ps_dev->input_dev_name = dev_name(&ds->gamepad->dev);
  
-@@ -1837,6 +1843,21 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+@@ -1839,6 +1845,21 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
  	if (ret)
  		goto err;
  

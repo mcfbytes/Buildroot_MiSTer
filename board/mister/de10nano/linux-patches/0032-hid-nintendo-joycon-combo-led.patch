@@ -30,7 +30,12 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
               silent-regressions.md). Registration made non-fatal (warn +
               continue) instead of the fork's ignored return value; the
               6.18 joycon type constants and the hid_warn_ratelimited
-              call sites replace their 5.15 equivalents.
+              call sites replace their 5.15 equivalents. The combo LED
+              is registered directly after the home_led: label, ahead of
+              the home-LED block, so the home-LED early-return paths
+              (set failure upstream; registration failure once 0035 makes
+              it non-fatal) cannot skip it on a right Joy-Con
+              (ultrareview finding, 2026-07-15).
 ---
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
 index 7baa0214e4eb..0762d4527854 100644
@@ -74,11 +79,16 @@ index 7baa0214e4eb..0762d4527854 100644
  static DEFINE_IDA(nintendo_player_id_allocator);
  
  static int joycon_leds_create(struct joycon_ctlr *ctlr)
-@@ -2363,6 +2374,26 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
- 		}
+@@ -2331,6 +2342,31 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
  	}
  
-+	/* virtual combo LED: Joy-Con pairing mailbox for userspace */
+ home_led:
++	/*
++	 * Virtual combo LED: Joy-Con pairing mailbox for userspace.
++	 * Registered before the home LED, whose failure paths return
++	 * early and would otherwise skip this node, silently breaking
++	 * Joy-Con pairing.
++	 */
 +	if (ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCL ||
 +	    ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCR) {
 +		name = devm_kasprintf(dev, GFP_KERNEL, "%s:combo", d_name);
@@ -98,6 +108,6 @@ index 7baa0214e4eb..0762d4527854 100644
 +		}
 +	}
 +
- 	return 0;
- }
- 
+ 	/* configure the home LED */
+ 	if (jc_type_has_right(ctlr)) {
+ 		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s:%s",

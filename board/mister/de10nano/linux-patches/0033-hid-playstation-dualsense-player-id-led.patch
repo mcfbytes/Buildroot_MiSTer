@@ -32,7 +32,12 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
               ps_device framework: dualsense_set_player_leds() takes the
               player id as a parameter, the five ps_led_register calls and
               their brightness handlers are removed, ps_device_set_player_id
-              is retained for teardown symmetry with DS4.
+              is retained for teardown symmetry with DS4. The shared-state
+              writes in dualsense_set_player_leds() take ds->base.lock
+              (scoped_guard, matching the handler this patch removes):
+              unlike vanilla's probe-time-only caller, the setter is now
+              reachable from sysfs at runtime and races the output worker
+              (ultrareview finding, 2026-07-15).
 ---
 diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
 index 8029b239ed2c..3c2e9b8116ae 100644
@@ -83,7 +88,7 @@ index 8029b239ed2c..3c2e9b8116ae 100644
  static void dualsense_init_output_report(struct dualsense *ds,
  					 struct dualsense_output_report *rp, void *buf)
  {
-@@ -1690,48 +1661,48 @@ static void dualsense_set_lightbar(struct dualsense *ds, u8 red, u8 green, u8 bl
+@@ -1690,48 +1661,50 @@ static void dualsense_set_lightbar(struct dualsense *ds, u8 red, u8 green, u8 bl
  	dualsense_schedule_work(ds);
  }
  
@@ -113,8 +118,12 @@ index 8029b239ed2c..3c2e9b8116ae 100644
 +	if (player_id > 6)
 +		player_id = 0;
  
- 	ds->update_player_leds = true;
- 	ds->player_leds_state = player_ids[player_id];
+-	ds->update_player_leds = true;
+-	ds->player_leds_state = player_ids[player_id];
++	scoped_guard(spinlock_irqsave, &ds->base.lock) {
++		ds->update_player_leds = true;
++		ds->player_leds_state = player_ids[player_id];
++	}
  	dualsense_schedule_work(ds);
  }
  
@@ -151,7 +160,7 @@ index 8029b239ed2c..3c2e9b8116ae 100644
  
  	ds = devm_kzalloc(&hdev->dev, sizeof(*ds), GFP_KERNEL);
  	if (!ds)
-@@ -1847,13 +1818,24 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+@@ -1847,13 +1820,24 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
  	/* Set default lightbar color. */
  	dualsense_set_lightbar(ds, 0, 0, 128); /* blue */
  
@@ -182,7 +191,7 @@ index 8029b239ed2c..3c2e9b8116ae 100644
  
  	ret = ps_device_set_player_id(ps_dev);
  	if (ret) {
-@@ -1861,9 +1843,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+@@ -1861,9 +1845,6 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
  		goto err;
  	}
  

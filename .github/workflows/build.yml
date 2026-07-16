@@ -79,7 +79,7 @@ jobs:
   # plus a `case` is not worth a new third-party dependency to review forever.
   gate:
     name: Decide whether a build is needed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       build_needed: ${{ steps.decide.outputs.build_needed }}
     steps:
@@ -160,7 +160,7 @@ jobs:
     name: Build image (two-stage Buildroot)
     needs: gate
     if: needs.gate.outputs.build_needed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     # 300 min, from a real measurement rather than a guess: the first green cold
     # build (run 29300460591 — empty caches, 4-vCPU runner) took 3h19m47s. This
@@ -300,7 +300,7 @@ jobs:
     name: Build status
     needs: [gate, build]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Report
         env:

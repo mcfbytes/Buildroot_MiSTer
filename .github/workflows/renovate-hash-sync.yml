@@ -96,7 +96,7 @@ permissions:
 jobs:
   hash-sync:
     name: Refresh companion hashes for this PR's version bump(s)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Only Renovate's own PRs, and never a fork (pushing back needs write
     # access to the head branch, which a fork PR's default token never has).
     if: >

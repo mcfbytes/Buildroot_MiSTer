@@ -101,7 +101,7 @@ jobs:
   # ============================================================================
   build:
     name: Build image + assemble release_YYYYMMDD.7z
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     # 330 min: the measured cold build is 3h19m (run 29300460591), and this job
     # does strictly more than build.yml — fetch + verify the ~90 MB stock archive,
@@ -513,12 +513,12 @@ jobs:
   # id-token, attestations) that the build job must NOT have, and it needs none
   # of the build job's disk reclaim or apt setup — `gh` and
   # actions/attest-build-provenance's OIDC/Sigstore flow just work on a bare
-  # GitHub-hosted `ubuntu-latest` runner.
+  # GitHub-hosted Ubuntu runner.
   # ============================================================================
   publish:
     name: Attest provenance + create GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     permissions:
       contents: write        # create the Release and upload its assets

@@ -51,7 +51,7 @@ concurrency:
 jobs:
   check:
     name: Check fork for unreconciled commits
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
 
     steps:

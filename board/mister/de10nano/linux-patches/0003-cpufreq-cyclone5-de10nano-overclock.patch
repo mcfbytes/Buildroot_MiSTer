@@ -72,35 +72,44 @@ fourth is a silent runtime failure.  Behaviour on hardware is otherwise unchange
     policy that has a freq_table.  Leaving it in the driver's ->attr array makes
     the core's second sysfs_create_file() return -EEXIST, which aborts policy
     creation -- the driver would compile and then simply never register.
-    scaling_boost_frequencies is different: the core creates it only when
-    cpufreq_boost_supported() (i.e. when ->set_boost is set, which this driver
-    deliberately leaves NULL), so it stays in ->attr and the file appears exactly
-    as it did on 5.15.
+    scaling_boost_frequencies is also core-created once the driver advertises
+    boost support via ->set_boost (see "OVERCLOCK IS OPT-IN" below), so it too
+    must be left out of ->attr for the same -EEXIST reason.  ->attr is now empty.
 
-The sysfs ABI is therefore bit-for-bit what the stock 5.15 kernel exposed:
+OVERCLOCK IS OPT-IN (the fix in this revision).  The board must NOT overclock on
+its own: it boots at the stock 800 MHz and reaches 1.0/1.2 GHz only when a user
+explicitly enables the standard cpufreq boost knob:
 
+    echo 1 > /sys/devices/system/cpu/cpufreq/boost      # opt in to 1.0/1.2 GHz
+    echo 0 > /sys/devices/system/cpu/cpufreq/boost      # back to stock 800 MHz
+
+Mechanism: the 1000/1200 rows are CPUFREQ_BOOST_FREQ, .set_boost =
+cpufreq_boost_set_sw toggles them, and .boost_enabled = false keeps boost off at
+registration.  With boost off, cpufreq_frequency_table_cpuinfo() skips the boost
+rows, so cpuinfo_max_freq and the default scaling_max_freq are the stock 800 MHz;
+enabling boost re-includes them and lifts the ceiling to 1.2 GHz.
+
+    /sys/devices/system/cpu/cpufreq/boost               default "0" (off)
     /sys/devices/system/cpu/cpu[01]/cpufreq/
         scaling_driver                  "socfpga"
         scaling_governor                default "performance"
         cpuinfo_min_freq                400000
-        cpuinfo_max_freq                1200000     <-- the OC ceiling
-        scaling_min_freq                writable, clamped to cpuinfo_min_freq
-        scaling_max_freq                writable, clamped to cpuinfo_max_freq
+        cpuinfo_max_freq                800000 (boost off) / 1200000 (boost on)
+        scaling_max_freq                default 800000; <= cpuinfo_max_freq
         scaling_available_frequencies   "800000 400000"    (core-created)
-        scaling_boost_frequencies       "1200000 1000000"  (->attr-created)
-        scaling_cur_freq / cpuinfo_cur_freq
+        scaling_boost_frequencies       "1200000 1000000"  (core-created)
 
-  There is NO /sys/devices/system/cpu/cpufreq/boost file -- and there was none on
-  stock either.  create_boost_sysfs_file() is gated on cpufreq_boost_supported()
-  == (cpufreq_driver->set_boost != NULL); this driver never sets ->set_boost and
-  never calls cpufreq_enable_boost_support(), and the fork does not patch
-  drivers/cpufreq/cpufreq.c.  Overclocking is done by writing scaling_max_freq,
-  not by flipping a boost switch.  It works because socfpga_cpu_init() sets
-  cpuinfo.max_freq = 1200000 and cpufreq_frequency_table_cpuinfo() honours a
-  driver-supplied ceiling above the table maximum ("If the driver has set its own
-  cpuinfo.max_freq above max_freq, leave it as is." -- drivers/cpufreq/freq_table.c,
-  unchanged in 6.18).  That one assignment IS the overclock mechanism; a
-  well-meaning cleanup that deletes it silently caps the board at 800 MHz.
+*** WHY THIS CHANGED vs the 5.15 fork (the bug this revision fixes). ***
+The fork set policy->cpuinfo.max_freq = 1200000 in ->init and shipped no
+->set_boost, expecting scaling_max_freq to stay writable to 1.2 GHz while the
+CPUFREQ_BOOST_FREQ flag kept the governor off the boost rows by default.  On 6.18
+that breaks: the default policy->max resolves FREQ_QOS_MAX (default "unbounded")
+against cpuinfo.max_freq, so an explicit 1.2 GHz cpuinfo.max_freq BECOMES the
+default scaling_max_freq, and the "performance" default governor drives straight
+to it.  The board therefore overclocked ITSELF to 1.2 GHz on every boot -- silent,
+unrequested, and unstable under load on passively-cooled boards (observed as
+CPU-0 RCU stalls / hard lockups during heavy SD I/O).  Real software-boost support
+makes the boost rows genuinely opt-in and restores the stock-800-MHz default.
 
 REQUIRES A DTS HUNK (task P1.7).  The driver reads osc1's rate from
 /clkmgr@ffd04000/clocks/osc1/clock-frequency.  Mainline's socfpga.dtsi declares
@@ -165,10 +174,10 @@ index 681d687..70727f2 100644
  obj-$(CONFIG_ARM_ALLWINNER_SUN50I_CPUFREQ_NVMEM) += sun50i-cpufreq-nvmem.o
 diff --git a/drivers/cpufreq/socfpga-cpufreq.c b/drivers/cpufreq/socfpga-cpufreq.c
 new file mode 100644
-index 0000000..5a70118
+index 0000000..0f0b5c9
 --- /dev/null
 +++ b/drivers/cpufreq/socfpga-cpufreq.c
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,386 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * CPUFreq driver for the Intel/Altera Cyclone V SoC FPGA (DE10-Nano).
@@ -441,17 +450,19 @@ index 0000000..5a70118
 +	policy->cur = socfpga_get(policy->cpu);
 +	policy->cpuinfo.transition_latency = 1000000;
 +	/*
-+	 * cpufreq_frequency_table_cpuinfo() recomputes cpuinfo.max_freq from
-+	 * the table but explicitly leaves a larger driver-supplied value in
-+	 * place ("If the driver has set its own cpuinfo.max_freq above
-+	 * max_freq, leave it as is." -- drivers/cpufreq/freq_table.c).  The OC
-+	 * rows are CPUFREQ_BOOST_FREQ and so are skipped there, which would cap
-+	 * cpuinfo.max_freq at the stock 800 MHz.  Setting 1200000 here is what
-+	 * keeps scaling_max_freq writable up to 1.2 GHz -- this assignment is
-+	 * the overclock mechanism, not decoration.  Do not remove it.
++	 * Deliberately do NOT set cpuinfo.max_freq here.
++	 * cpufreq_frequency_table_cpuinfo() derives it from the table, skipping
++	 * the CPUFREQ_BOOST_FREQ rows while boost is off, so the default ceiling
++	 * is the stock 800 MHz.  Overclocking to 1.0/1.2 GHz is opt-in via the
++	 * standard boost knob (/sys/devices/system/cpu/cpufreq/boost), wired up
++	 * by .set_boost below.
++	 *
++	 * The previous forward-port set cpuinfo.max_freq = 1200000 here; on 6.18
++	 * that value leaks into the default policy->max (through the FREQ_QOS_MAX
++	 * resolve), so with the performance default governor the board silently
++	 * booted at 1.2 GHz -- an unrequested overclock.  Boost support replaces
++	 * that hack.
 +	 */
-+	policy->cpuinfo.max_freq = 1200000;
-+	policy->cpuinfo.min_freq = 400000;
 +	policy->freq_table = freq_table;
 +	cpumask_setall(policy->cpus);
 +	return 0;
@@ -464,17 +475,12 @@ index 0000000..5a70118
 +
 +static struct freq_attr *socfpga_cpufreq_attr[] = {
 +	/*
-+	 * scaling_available_frequencies is created by the cpufreq core itself
-+	 * since v6.x (cpufreq_add_dev_interface() does it for every policy that
-+	 * has a freq_table); listing it here as well would make the core's
-+	 * sysfs_create_file() fail with -EEXIST and abort policy creation.
-+	 *
-+	 * scaling_boost_frequencies, however, is only created by the core when
-+	 * cpufreq_boost_supported() -- i.e. when the driver sets ->set_boost,
-+	 * which this driver deliberately does not.  Keep it here so the file is
-+	 * still present, exactly as on the stock 5.15 kernel.
++	 * Both scaling_available_frequencies and scaling_boost_frequencies are
++	 * created by the cpufreq core itself: the former for every policy with a
++	 * freq_table, the latter once the driver advertises boost via ->set_boost
++	 * (below).  Listing either here would make the core's sysfs_create_file()
++	 * fail with -EEXIST and abort policy creation, so this array is empty.
 +	 */
-+	&cpufreq_freq_attr_scaling_boost_freqs,
 +	NULL,
 +};
 +
@@ -486,6 +492,14 @@ index 0000000..5a70118
 +	.exit          = socfpga_cpu_exit,
 +	.name          = "socfpga",
 +	.attr          = socfpga_cpufreq_attr,
++	/*
++	 * Overclocking is opt-in, gated behind the standard boost knob
++	 * (echo 1 > /sys/devices/system/cpu/cpufreq/boost).  cpufreq_boost_set_sw
++	 * toggles the CPUFREQ_BOOST_FREQ rows (1.0/1.2 GHz); with boost off the
++	 * usable ceiling is the stock 800 MHz.  boost_enabled = false keeps boost
++	 * off by default, so the board does not overclock on its own.
++	 */
++	.set_boost     = cpufreq_boost_set_sw,
 +	.boost_enabled = false,
 +};
 +

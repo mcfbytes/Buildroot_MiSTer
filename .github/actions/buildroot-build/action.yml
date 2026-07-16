@@ -20,6 +20,21 @@
 #   * ccache         1.1 GB of a 4 GB cap (28%, no evictions)
 #   * disk at end    8.4 GB free of 72 GB
 #
+# ccache IS working; do not go looking for the "missing" cache. Warm run
+# 29529993571 reported 34945 hits / 34967 cacheable calls — 99.94%, 22 misses —
+# at 0.8 GB of the 4 GB cap. The three sizes you will see are all the same data:
+# ~0.8 GB of real payload, 664 MiB as the zstd cache entry (ccache 4.x already
+# compresses its objects, so the tarball barely shrinks), and the 1.1 GB above,
+# which is `du` rounding ~35k small objects up to 4 KB blocks. The ceiling here
+# is the NUMBER of distinct compilations, not the length of the build: ~35k
+# objects at ~23 KB each is ~0.8 GB and that is the whole population. Nor is the
+# cap the constraint — at 21% it has never evicted.
+#
+# Warm runs are also SMALLER than cold ones on purpose: cache #3 restores
+# output/host WITH its stamps, so host gcc/binutils/glibc never invoke a compiler
+# at all and never reach ccache. The two caches are substitutes. A small ccache
+# next to a healthy br-host hit is the system working, not a leak.
+#
 ################################################################################
 
 name: Build the MiSTer image (Buildroot)
@@ -169,6 +184,24 @@ runs:
         echo "Toolchain fingerprint ($(grep -c . .br-toolchain-fingerprint) lines):"
         cat .br-toolchain-fingerprint
 
+        # The two toolchain cache keys are computed ONCE, here, and consumed by
+        # both a restore and a save step further down. They used to be written as
+        # inline `hashFiles(...)` expressions, which was fine while one combined
+        # `actions/cache` step did both halves — but restore and save are separate
+        # steps now (see the comment above the caches), and a key duplicated across
+        # two steps is a key that can be edited in one of them. The failure mode is
+        # silent: restore looks under one key, save writes another, nothing ever
+        # hits again, and the only symptom is a build that is mysteriously always
+        # cold. Compute once, reference twice.
+        #
+        # sha256sum rather than hashFiles() because this is shell, not an
+        # expression context. The digest only has to be stable and content-derived,
+        # and both halves read the same env var, so the algorithm is irrelevant.
+        tc_hash=$(sha256sum .br-toolchain-fingerprint | cut -d' ' -f1)
+        ir_hash=$(sha256sum configs/mister_initramfs_defconfig | cut -d' ' -f1)
+        echo "BR_HOST_KEY=br-host-${ws_fp}-${ver}-${tc_hash}" >> "$GITHUB_ENV"
+        echo "BR_INITRAMFS_HOST_KEY=br-initramfs-host-${ws_fp}-${ver}-${ir_hash}" >> "$GITHUB_ENV"
+
         echo "Resolved BUILDROOT_VERSION=$ver  workspace-fp=$ws_fp"
 
     ############################################################################
@@ -177,11 +210,68 @@ runs:
     # coexist. Measured sizes from the first green run are in the header above.
     ############################################################################
 
+    # WHY THE TWO DOWNLOAD CACHES ARE SPLIT restore/save AND THE TOOLCHAINS ARE NOT
+    #
+    # `actions/cache` declares `post-if: success()` (read it at the pinned SHA —
+    # it is the last line of its action.yml). Its save runs as a POST step, so
+    # that condition means: a job that FAILS saves nothing. Not a quirk, the
+    # documented design.
+    #
+    # That policy is right for the toolchains (#3/#4 below) and wrong for the
+    # downloads, and the difference is stamps. A half-built output/host saved from
+    # a build that died mid-way would come back WITH its per-package stamps, and
+    # Buildroot would believe them and build straight into a broken tree. Never
+    # save those from a failure.
+    #
+    # Meanwhile hendrikmuhs/ccache-action declares NO post-if, so it saves on
+    # every run including failures. That asymmetry is why run 29529993731 (failed
+    # at 46 min) uploaded 696 MB of ccache and saved no dl/ at all — and why this
+    # repo kept re-fetching 2.7 GB of sources, including a full ~70s git fetch of
+    # glibc from sourceware.org, on every red build. Red builds are the majority
+    # here (see `gh run list`), so "save only on green" meant "almost never save".
+    #
+    # So: restore here, save explicitly at the end under `if: always()`.
+    #
+    # ---------------------------------------------------------------------------
+    # AND THE PART THAT IS NOT OBVIOUS: #2 AND #3 ARE COUPLED. Do not decouple.
+    #
+    # An earlier version of this comment claimed "dl/ has no such hazard — the
+    # worst a partial dl/ can do is miss a file the next run re-downloads." That
+    # is FALSE, and it cost run 29534917900 a 46-minute build. Buildroot records
+    # "this package's source is downloaded" as a STAMP FILE, not by looking in dl/:
+    #
+    #     pkg-generic.mk:849   $(2)_TARGET_SOURCE = $$($(2)_DIR)/.stamp_downloaded
+    #
+    # That stamp lives in output/build/, which cache #3 restores. The bytes live in
+    # dl/, which cache #2 restores. Two keys, two lifetimes — so they CAN disagree,
+    # and when they do Buildroot believes the stamp. Restore #3 without #2 and
+    # every host package is "already downloaded" with nothing on disk to show for
+    # it. `make all` does not care (those packages are already built), so the build
+    # goes green all the way to the image — and then `make legal-info`, which
+    # actually opens the tarballs, dies on the first one:
+    #
+    #     cp: cannot stat '.../dl/ccache/ccache-4.12.3.tar.xz': No such file
+    #
+    # Hence the `if:` on #3/#4 below: a toolchain cache may only be restored when
+    # dl/ came back too, because its stamps are ASSERTIONS ABOUT dl/'s CONTENTS.
+    # A dl/ miss therefore forces a genuinely cold build, which re-downloads
+    # everything and leaves both caches consistent. Expensive and self-healing,
+    # which beats cheap and silently broken.
+    #
+    # `make source` does NOT rescue this — it resolves to the same .stamp_downloaded
+    # and skips exactly the packages that need fetching. `make -B source` would
+    # force the download, but -B re-touches every stamp, and .stamp_extracted
+    # depends on .stamp_downloaded (pkg-generic.mk:960), so the next `make all`
+    # would re-extract, re-patch, re-configure and rebuild every host package —
+    # discarding the very cache we are protecting. There is no cheap validation.
+    # ---------------------------------------------------------------------------
+
     # 1. Buildroot release tarball (~20-30 MB). Kept SEPARATE from dl/ on purpose:
     # it is redundant with the copy inside dl/, but keying it on the version ALONE
     # means a mere defconfig change can never evict this tiny, cheap entry.
-    - name: Cache Buildroot release tarball
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Restore Buildroot release tarball
+      id: tarball-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
         key: buildroot-tarball-${{ env.BUILDROOT_VERSION }}
@@ -191,8 +281,9 @@ runs:
     # to the version alone so an imperfect match still hydrates everything that
     # did NOT change instead of re-downloading the whole package set. dl/ lives at
     # the repo root (survives `make clean`) — never move it under output/.
-    - name: Cache Buildroot dl/ download cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Restore Buildroot dl/ download cache
+      id: dl-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
         key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
@@ -204,24 +295,36 @@ runs:
     # those host packages are already built — without the stamps, restoring
     # output/host alone would not stop Buildroot rebuilding straight into it.
     # THE big win: this is what skips rebuilding gcc/binutils/glibc from scratch.
-    - name: Cache Buildroot host toolchain
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    #
+    # `if:` — the coupling. cache-matched-key is non-empty for BOTH an exact hit
+    # and a restore-keys hit, i.e. "dl/ came back with something". Skip the restore
+    # when it did not, and this build goes cold and re-downloads. See the block
+    # above for why that is the point rather than a regression.
+    - name: Restore Buildroot host toolchain
+      id: host-cache
+      if: steps.dl-cache.outputs.cache-matched-key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           output/host
           output/build/host-*
-        key: br-host-${{ env.WS_FP }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('.br-toolchain-fingerprint') }}
+        key: ${{ env.BR_HOST_KEY }}
 
     # 4. The initramfs stage's SEPARATE static-musl cross-toolchain. `make
     # initramfs` builds its own; caching it turns a ~30 min cold stage 1 into a
     # couple of minutes warm. Busts only on an initramfs-defconfig change.
-    - name: Cache initramfs host toolchain
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    #
+    # Coupled to dl/ for the same reason as #3: this stage shares the one BR2_DL_DIR
+    # with the main build, so its stamps make the same claims about the same dl/.
+    - name: Restore initramfs host toolchain
+      id: initramfs-host-cache
+      if: steps.dl-cache.outputs.cache-matched-key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           output-initramfs/host
           output-initramfs/build/host-*
-        key: br-initramfs-host-${{ env.WS_FP }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_initramfs_defconfig') }}
+        key: ${{ env.BR_INITRAMFS_HOST_KEY }}
 
     # 5. ccache. CCACHE_DIR is exported here to match the BR2_CCACHE_DIR handed to
     # `make` below, so the action caches the exact directory Buildroot's compiler
@@ -239,7 +342,20 @@ runs:
       env:
         DEBIAN_FRONTEND: noninteractive
       with:
-        key: ccache-${{ env.BUILDROOT_VERSION }}
+        # NOT "ccache-<version>": the action prepends its own variant prefix
+        # (`keyPrefix = ccacheVariant + "-"`, src/restore.ts), so that spelling
+        # produced the stuttering `ccache-ccache-2026.02.3-...` entries visible in
+        # `gh cache list`. Passing the bare version yields `ccache-2026.02.3-<ts>`.
+        #
+        # The trailing timestamp is the action's, and it is LOAD-BEARING — do not
+        # reach for `append-timestamp: false` to stop cache entries accumulating.
+        # A GitHub cache key is immutable, so the only way to refresh a cache is to
+        # write a NEW key; with the timestamp off, the first save would own
+        # `ccache-<version>` forever, every later save would be rejected as already
+        # existing, and the cache would freeze at its first contents while the hit
+        # rate decayed. The timestamped key is a prefix match on restore (hence
+        # "Cache hit for restore-key" in the logs), so the newest entry always wins.
+        key: ${{ env.BUILDROOT_VERSION }}
         max-size: ${{ inputs.ccache-max-size }}
         # This action `apt-get install`s ccache itself, BEFORE our own apt step
         # below has run `apt-get update` — so have it refresh the index first.
@@ -323,6 +439,147 @@ runs:
           BR2_CCACHE=y \
           BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
           BR2_CCACHE_USE_BASEDIR=y
+
+    ############################################################################
+    # Save the download caches — PASS OR FAIL. See the long comment above the
+    # restore steps for why these two are saved from a red build and the
+    # toolchain caches (#3/#4) are deliberately NOT.
+    #
+    # Placed after legal-info because `make legal-info` itself fetches the source
+    # tarballs of any package it cannot already find in dl/.
+    ############################################################################
+
+    # THE TRAP THIS GUARDS: a GitHub cache key is IMMUTABLE — whoever writes it
+    # first owns it until the key itself changes. `dl/` is saved under
+    # br-dl-<version>-<defconfig-hash>, which only rotates when the defconfig
+    # does, i.e. possibly not for weeks. So a build that died in its first
+    # minutes, saving a nearly-empty dl/, would not merely be useless: it would
+    # LOCK that stub in. Every later run would exact-hit it, restore almost
+    # nothing, re-download the rest — and, because an exact hit suppresses the
+    # save below, never repair it. Strictly worse than not caching at all.
+    #
+    # A late failure is the common one here and is exactly what we want to keep:
+    # run 29529993731 died at 46 min, after MODPOST, with dl/ fully populated.
+    # Buildroot fetches each package's source before building it, so "got deep
+    # into the build" implies "downloaded nearly everything".
+    #
+    # ASK BUILDROOT, DO NOT GUESS. The first cut of this used a 2 GB size floor,
+    # and run 29534917900 proved a size floor cannot work: dl/ finished that run at
+    # 2.5 GB — comfortably "complete" — while missing the one tarball legal-info
+    # needed. A tree can be the right size and still be missing the file that
+    # matters, so measure the thing we actually care about.
+    #
+    # `make external-deps` is the oracle. It runs with -B (buildroot/Makefile:860),
+    # so unlike `make source` it consults no stamps and cannot be fooled by the
+    # .stamp_downloaded problem described above; it just prints the basename of
+    # every file dl/ is supposed to contain.
+    #
+    # It MUST be invoked with the same BR2_CCACHE=y as the build. That flag is a
+    # command-line override rather than a defconfig symbol, and it pulls host-ccache
+    # plus blake3/hiredis/xxhash/zstd into the package graph — five tarballs that a
+    # bare `make external-deps` does not list at all. Verified both ways locally:
+    # without the flag the list is 158 files and omits ccache-4.12.3.tar.xz (i.e.
+    # it would have missed the exact failure this guards); with it, 163 including
+    # it. Worth knowing that the br-dl cache KEY hashes only the defconfig and is
+    # likewise blind to this — harmless while BR2_CCACHE=y is constant in CI, and a
+    # trap the day it is not.
+    - name: Verify dl/ is complete before caching it
+      id: dl-state
+      if: always()
+      shell: bash
+      run: |
+        set -uo pipefail
+
+        # Bare basenames only. The wrapper Makefile echoes its own recipe and a
+        # hostshim notice onto stdout; every such line contains a '/', '=' or a
+        # space, and no legitimate basename does.
+        if ! make external-deps BR2_CCACHE=y \
+               BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" \
+               BR2_CCACHE_USE_BASEDIR=y 2>/dev/null \
+             | grep -vE '/|=|^\s*$| ' | sort -u > /tmp/dl-needed.txt; then
+          echo "complete=false" >> "$GITHUB_OUTPUT"
+          echo "::notice title=dl/ not cached::Could not enumerate required downloads (make external-deps failed), so dl/ completeness is unknown and it was NOT saved. Erring toward a re-download rather than risk locking an incomplete dl/ into an immutable cache key."
+          exit 0
+        fi
+
+        find dl -type f -printf '%f\n' 2>/dev/null | sort -u > /tmp/dl-have.txt
+        comm -23 /tmp/dl-needed.txt /tmp/dl-have.txt > /tmp/dl-missing.txt || true
+
+        needed=$(wc -l < /tmp/dl-needed.txt)
+        missing=$(wc -l < /tmp/dl-missing.txt)
+        echo "dl/ requires $needed files; $missing missing; $(du -sh dl 2>/dev/null | cut -f1) on disk"
+
+        if [ "$missing" -eq 0 ]; then
+          echo "complete=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "complete=false" >> "$GITHUB_OUTPUT"
+          echo "--- missing ---"; cat /tmp/dl-missing.txt
+          echo "::notice title=dl/ not cached::dl/ is missing $missing of $needed required source files, so it was NOT saved -- an incomplete dl/ would lock itself into an immutable cache key that later runs could not repair. Expected when a build fails before everything is fetched. The missing list is in this step's log."
+        fi
+
+        # Existence check for the tarball save below, done here in shell rather
+        # than as hashFiles() in that step's `if:` — one less expression-context
+        # subtlety to be wrong about, and `actions/cache/save` hard-errors on a
+        # missing path rather than skipping.
+        if [ -f "dl/buildroot-${BUILDROOT_VERSION}.tar.gz" ]; then
+          echo "tarball=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "tarball=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # `cache-hit != 'true'` skips the upload when the primary key was an exact
+    # match (nothing to add, and the save would be rejected anyway). A restore-keys
+    # match leaves cache-hit false, which is what we want: dl/ was hydrated from an
+    # older entry and has since grown, so it is worth re-saving under the new key.
+    - name: Save Buildroot dl/ download cache
+      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: dl/
+        key: ${{ steps.dl-cache.outputs.cache-primary-key }}
+
+    - name: Save Buildroot release tarball
+      if: always() && steps.tarball-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.tarball == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
+        key: ${{ steps.tarball-cache.outputs.cache-primary-key }}
+
+    ############################################################################
+    # Save the toolchain caches — GREEN BUILDS ONLY.
+    #
+    # These used to be plain `actions/cache`, whose post-step `post-if: success()`
+    # gave us the save-on-green behaviour for free. Splitting the restore off (to
+    # couple it to dl/) means the save has to be spelled out — and it must keep
+    # that success-only semantics, because these carry the per-package stamps and
+    # a half-built output/host restored WITH its stamps is a poisoned toolchain.
+    #
+    # NOTE there is deliberately no `always()` here: an `if:` with no status
+    # function has an implicit `success() &&`, so a red build skips these. That is
+    # the whole point, and it is the one place in this file where the absence of
+    # always() is load-bearing rather than an oversight.
+    #
+    # `cache-hit != 'true'` covers both "restored and missed" and "restore was
+    # SKIPPED because dl/ missed" — the latter leaves the output empty, which is
+    # exactly the cold healing run whose freshly-built toolchain we most want to
+    # keep.
+    - name: Save Buildroot host toolchain
+      if: steps.host-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          output/host
+          output/build/host-*
+        key: ${{ env.BR_HOST_KEY }}
+
+    - name: Save initramfs host toolchain
+      if: steps.initramfs-host-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          output-initramfs/host
+          output-initramfs/build/host-*
+        key: ${{ env.BR_INITRAMFS_HOST_KEY }}
 
     - name: Report disk & cache usage
       if: always()

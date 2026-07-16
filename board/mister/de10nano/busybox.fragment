@@ -7,3 +7,39 @@
 # BR2_ROOTFS_MERGED_USR, /sbin/ifup == usr/sbin/ifup, exactly stock's path).
 # CONFIG_IFUP is not set
 # CONFIG_IFDOWN is not set
+
+# util-linux parity (usbmount work, docs/util-linux-parity.md). Stock ships the
+# real util-linux ELF versions of all of the tools below (verified against
+# work/imgroot), and this build now enables BR2_PACKAGE_UTIL_LINUX_BINARIES + the
+# matching program toggles. Two packages that install a program at the same path
+# collide, and the last install wins non-deterministically -- so, same idiom as
+# ifup/ifdown above, turn OFF each BusyBox applet that util-linux now provides so
+# the util-linux binary is the one that lands. Every symbol here has a confirmed
+# util-linux replacement (basic set, or an explicit BR2_PACKAGE_UTIL_LINUX_* toggle
+# in the defconfig); applets with NO util-linux equivalent are deliberately left ON.
+# GETTY is off because the serial console moves to util-linux agetty (inittab).
+# CONFIG_BLKID is not set
+# CONFIG_DMESG is not set
+# CONFIG_FDISK is not set
+# CONFIG_FLOCK is not set
+# CONFIG_FSFREEZE is not set
+# CONFIG_FSTRIM is not set
+# CONFIG_GETOPT is not set
+# CONFIG_GETTY is not set
+# CONFIG_HEXDUMP is not set
+# CONFIG_HWCLOCK is not set
+# CONFIG_KILL is not set
+# CONFIG_MKSWAP is not set
+# CONFIG_MORE is not set
+# CONFIG_MOUNT is not set
+# CONFIG_MOUNTPOINT is not set
+# CONFIG_NOLOGIN is not set
+# CONFIG_READPROFILE is not set
+# CONFIG_RENICE is not set
+# CONFIG_SETARCH is not set
+# CONFIG_SETSID is not set
+# CONFIG_SWAPON is not set
+# CONFIG_SWAPOFF is not set
+# CONFIG_SWITCH_ROOT is not set
+# CONFIG_UMOUNT is not set
+# CONFIG_CHRT is not set

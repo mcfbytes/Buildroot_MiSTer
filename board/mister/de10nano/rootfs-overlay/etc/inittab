@@ -53,11 +53,18 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 ::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
-# /usr/sbin, NOT stock's /sbin: gpm is a real package (not a BusyBox applet,
-# which would land in /sbin regardless), and this build's rootfs is not
-# usr-merged (verified: /sbin is a real directory, not -> /usr/sbin, unlike
-# stock's work/imgroot) -- so /sbin/gpm does not exist. Same root cause as
-# the /etc/profile PATH adaptation above.
+# /usr/sbin, NOT stock's /sbin -- a deliberate, permanent deviation.
+# gpm is a real package (not a BusyBox applet, which would land in /sbin
+# regardless), and Buildroot builds it with --prefix=/usr, so the binary's
+# real path is /usr/sbin/gpm whether or not the rootfs is usr-merged. Stock's
+# binary lives there too; stock's inittab just reaches it via the /sbin ->
+# usr/sbin compat symlink, which only exists because stock is usr-merged.
+# So /usr/sbin/gpm is correct in both layouts and stock's /sbin/gpm is correct
+# in only one. That was not academic: this build was NOT usr-merged until
+# P2.9 v2, and stock's path would have silently failed to spawn gpm on every
+# boot (caught in acceptance, before it ever shipped). We are usr-merged now,
+# so /sbin/gpm would resolve -- but the real path is kept anyway so this line
+# survives an unmerge. Same history as the /etc/profile PATH note.
 ::sysinit:/usr/sbin/gpm -m /dev/input/mice -t imps2
 
 # Put a getty on the serial port (util-linux agetty, adapted from stock -- note 2)

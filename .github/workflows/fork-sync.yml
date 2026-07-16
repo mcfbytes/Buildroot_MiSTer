@@ -59,28 +59,42 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # Exit 1 from the script means "commits need triage", which is a normal state and
-      # must not fail the job -- a red X every week trains people to ignore it. The
-      # report is the product; the exit code only routes it.
+      # must not fail the job -- a red X every week trains people to ignore it. Exit 2 is
+      # a real error and MUST fail. The report is the product; the exit code only routes it.
+      #
+      # Run ONCE, with --markdown, and use that output for both the log and the issue
+      # body. An earlier cut called the script twice -- plain for the log, --markdown for
+      # the body with `|| true` to swallow the expected exit 1 -- which was wrong twice
+      # over: `|| true` also swallows exit 2, so a broken run could file an issue with an
+      # empty body and still go green; and two invocations are two sets of API calls that
+      # can disagree if one hits a transient failure.
       - name: Diff fork HEADs against the reconciled sync points
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          if scripts/check-fork-sync.sh > text-report.txt 2>&1; then
-            echo "drift=false" >> "$GITHUB_OUTPUT"
-          else
-            rc=$?
-            # 2 is a real error (missing branch, malformed conf) -- that SHOULD fail.
-            if [ "$rc" -ne 1 ]; then
+          rc=0
+          scripts/check-fork-sync.sh --markdown > body.md 2> err.txt || rc=$?
+
+          case "$rc" in
+            0) echo "drift=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "drift=true"  >> "$GITHUB_OUTPUT" ;;
+            *)
               echo "::error title=fork-sync check failed::scripts/check-fork-sync.sh exited $rc"
-              cat text-report.txt
+              cat err.txt >&2
               exit "$rc"
-            fi
-            echo "drift=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+          # A body we would post must not be empty -- that is the failure mode the single
+          # invocation is meant to close, so assert it rather than assume it.
+          if [ ! -s body.md ]; then
+            echo "::error title=fork-sync produced an empty report::exit was $rc but body.md is empty"
+            exit 2
           fi
-          cat text-report.txt
-          scripts/check-fork-sync.sh --markdown > body.md || true
+
+          cat body.md
 
       - name: Open or update the backport-queue issue
         env:
@@ -96,8 +110,10 @@ jobs:
           gh label create "$LABEL" --repo "$REPO" --color 0E8A16 \
             --description "Upstream fork commits awaiting a disposition" 2>/dev/null || true
 
+          # --limit 1: only the first match is used, and the default page of 30 is API
+          # work we never look at.
           existing="$(gh issue list --repo "$REPO" --label "$LABEL" --state open \
-            --json number --jq '.[0].number // empty')"
+            --limit 1 --json number --jq '.[0].number // empty')"
 
           if [ "$DRIFT" = "true" ]; then
             {

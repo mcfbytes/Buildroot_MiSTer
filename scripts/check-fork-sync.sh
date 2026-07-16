@@ -38,6 +38,7 @@ markdown=false
 err() { printf 'check-fork-sync: %s\n' "$*" >&2; }
 
 command -v gh >/dev/null || { err 'gh CLI not found'; exit 2; }
+command -v jq >/dev/null || { err 'jq not found (this script parses the compare API with it)'; exit 2; }
 [[ -f $CONF ]] || { err "no such file: $CONF"; exit 2; }
 
 drift=0
@@ -60,6 +61,18 @@ while read -r branch sync; do
 	fi
 
 	ahead="$(jq -r '.ahead_by' <<<"$cmp_json")"
+
+	# Insist on an integer before comparing. This is not defensive padding: bash
+	# arithmetic treats a bare word as an unset variable, so BOTH `[[ null -eq 0 ]]` and
+	# `[[ "" -eq 0 ]]` evaluate TRUE. A response that parsed but had no ahead_by -- an
+	# auth failure, a rate limit, a partial body -- would therefore report "nothing new"
+	# and exit 0. A tool whose entire job is to stop commits going unaccounted for must
+	# not have a path where it silently says all-clear because it could not tell.
+	[[ $ahead =~ ^[0-9]+$ ]] || {
+		err "$branch: compare API returned no usable ahead_by (got '$ahead')."
+		err "Refusing to report 'reconciled' from a response we cannot read."
+		exit 2
+	}
 
 	if [[ $ahead -eq 0 ]]; then
 		if $markdown; then

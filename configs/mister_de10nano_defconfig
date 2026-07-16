@@ -394,6 +394,25 @@ BR2_PACKAGE_LIBUSB_COMPAT=y                 # legacy libusb-0.1 API shim -- stil
 BR2_PACKAGE_LIBEVDEV=y
 BR2_PACKAGE_LIBINPUT=y
 BR2_PACKAGE_MTDEV=y
+BR2_PACKAGE_USBMOUNT=y                       # USB mass-storage automount, stock parity.
+                                             # Stock ships the Debian `usbmount` package
+                                             # (udev RUN+= rule -> /usr/share/usbmount/usbmount)
+                                             # that mounts sd*/ub* block devices under
+                                             # /media/usb0..7 on hotplug and unmounts on
+                                             # removal. Buildroot's usbmount is the same tool
+                                             # (0.0.22, patched to read udev's ID_FS_* env
+                                             # instead of shelling out to blkid -- functionally
+                                             # identical to stock's 0.0.24 script). It needs
+                                             # udev (BR2_PACKAGE_HAS_UDEV -- eudev above) and
+                                             # `select`s BR2_PACKAGE_LOCKFILE_PROGS (-> the
+                                             # liblockfile already enabled below) for the
+                                             # lockfile-create serialisation in its add path.
+                                             # run-parts/logger/expr are BusyBox applets, all
+                                             # present. The stock-tuned usbmount.conf (adds
+                                             # exfat/ntfs/fuseblk + NTFS/fuseblk mount opts,
+                                             # which upstream 0.0.22's default omits) ships in
+                                             # the rootfs-overlay and overrides the package's
+                                             # default -- see docs/usb-automount-parity.md.
 
 # --- Bluetooth ---
 BR2_PACKAGE_BLUEZ5_UTILS=y

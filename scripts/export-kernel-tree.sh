@@ -28,13 +28,42 @@
 #       the fork commit we last reconciled against.
 #     - tag mister-<ver>
 #
-# The branch is an ORPHAN lineage on purpose. It shares no ancestor with MiSTer-v5.15,
-# because a merge whose tree ignores its first parent would make `git log` list ~113
-# commits whose changes are NOT in the tree (someone reads "xone: update driver" and
-# concludes xone is in; it is a Buildroot package now). A log that lists absent changes
-# is worse than an absent ancestor. What was dropped is recorded in
-# MISTER-KERNEL-PATCH-RECON.md, which cites the superseding vanilla commit per fork
-# commit — something no git command can produce.
+# WHERE THE BRANCH HANGS (--parent-repo/--parent)
+# -----------------------------------------------
+# Linux-Kernel_MiSTer is not one chain. Its tarball commits form a SPINE —
+#
+#   e12ed6c19 v5.13.12 -> 137491a75 v5.14 -> b6f2ca1c4 v5.14.5 -> aba1ef4c1 v5.15.1
+#
+# — and each MiSTer-vX.Y branch hangs off a spine point with the MiSTer series replayed
+# on top (MiSTer-v5.15 = aba1ef4c1 + 112 commits). Every spine commit is a PRISTINE
+# tarball with no MiSTer code in it.
+#
+# So the right shape for a new kernel is to extend the spine the same way, parenting the
+# base commit on the newest spine point (aba1ef4c1) rather than on a branch tip:
+#
+#   aba1ef4c1 v5.15.1 --+-- [112 MiSTer commits] --> MiSTer-v5.15   (theirs, untouched)
+#                       |
+#                       +-- v6.18.38 -- [our commits] -> MiSTer-v6.18
+#
+# That buys three things at once:
+#   - shared ancestry with MiSTer-v5.15, so GitHub can compare and a PR is possible at
+#     all (across unrelated histories the compare API 404s: "No common ancestor");
+#   - a log with NO MiSTer-5.15 commits in it — they are siblings, not ancestors — so
+#     nothing lists a change that is absent from the tree. Parenting on the branch TIP
+#     instead would list ~112 commits whose changes this tree discards, and a reader
+#     would see "xone: update driver" and conclude xone is present when it is a
+#     Buildroot package now;
+#   - a base commit whose diff against its parent is PURE upstream 5.15.1 -> 6.18.38,
+#     with zero MiSTer noise, because both trees are pristine.
+#
+# Their branch is never touched: it becomes a sibling, exactly as MiSTer-v5.14 already
+# is. What each of its commits became — carried, superseded upstream, or dropped — is
+# recorded in MISTER-KERNEL-PATCH-RECON.md, which cites the superseding vanilla commit.
+# No git command can answer that: across this much context drift `git patch-id` matches
+# nothing, so "is this commit in 6.18?" is semantic, not mechanical.
+#
+# Without --parent-repo the base commit is a root commit and the branch is an orphan —
+# fine for a standalone tree, but it cannot be PR'd anywhere.
 #
 # This script NEVER touches a fork or a remote. To publish, fetch the orphan branch
 # into a fork and push from there (see EXPORT.md, which spells out the two commands).
@@ -49,9 +78,13 @@
 #     across machines and meaningful, unlike download time. Override with
 #     SOURCE_DATE_EPOCH.
 #
-# Usage: scripts/export-kernel-tree.sh --output DIR [--fork-sync SHA] [--tarball FILE]
+# Usage: scripts/export-kernel-tree.sh --output DIR [--parent-repo R --parent C]
+#                                      [--fork-sync SHA] [--tarball FILE]
 #
 #   --output DIR      where to build the tree (must not already exist)
+#   --parent-repo R   clone R and parent the base commit inside it, extending that
+#                     repo's tarball spine instead of starting a fresh root
+#   --parent C        the spine commit to extend (requires --parent-repo)
 #   --fork-sync SHA   fork commit this export was reconciled against; recorded in
 #                     EXPORT.md as the backport-queue starting point
 #   --tarball FILE    use this tarball instead of the dl/ cache or a download
@@ -78,10 +111,14 @@ say() { printf '\n=== %s\n' "$*"; }
 output=''
 fork_sync=''
 tarball_override=''
+parent_repo=''
+parent=''
 
 while (($#)); do
 	case "$1" in
 	--output) output="${2:-}"; shift 2 ;;
+	--parent-repo) parent_repo="${2:-}"; shift 2 ;;
+	--parent) parent="${2:-}"; shift 2 ;;
 	--fork-sync) fork_sync="${2:-}"; shift 2 ;;
 	--tarball) tarball_override="${2:-}"; shift 2 ;;
 	-h | --help) sed -n '/^# Usage:/,/^# Exit:/p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
@@ -91,6 +128,11 @@ done
 
 [[ -n $output ]] || die 'missing --output DIR (try --help)'
 [[ ! -e $output ]] || die "--output already exists: $output"
+
+# The two go together: a parent is meaningless without the repo it lives in, and cloning
+# a repo without saying where to hang the branch would silently fall back to an orphan.
+[[ -n $parent_repo && -z $parent ]] && die '--parent-repo requires --parent'
+[[ -n $parent && -z $parent_repo ]] && die '--parent requires --parent-repo'
 
 # --- 1. Read the pinned inputs out of the defconfig -----------------------------------
 # The defconfig is the single source of truth for what we build; nothing here is
@@ -157,7 +199,21 @@ say "Tarball verified: sha256 $actual"
 
 # --- 3. Extract ------------------------------------------------------------------------
 
-mkdir -p "$output"
+if [[ -n $parent_repo ]]; then
+	say "Cloning $parent_repo to extend its spine at $parent"
+	git clone --quiet --no-checkout "$parent_repo" "$output" || die "clone failed: $parent_repo"
+	git -C "$output" rev-parse --verify --quiet "$parent^{commit}" >/dev/null ||
+		die "--parent $parent is not a commit in $parent_repo"
+
+	# Detach at the spine point, then replace the worktree wholesale with the new
+	# tarball. `git add --all` stages the deletions and the additions together, so the
+	# resulting commit's tree is the pristine tarball and its parent is the spine.
+	git -C "$output" checkout --quiet --detach "$parent"
+	find "$output" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+else
+	mkdir -p "$output"
+fi
+
 say "Extracting"
 tar -xf "$tarball" -C "$output" --strip-components=1
 
@@ -175,30 +231,46 @@ base_date="$(date -u -d "@$base_epoch" '+%Y-%m-%dT%H:%M:%S+00:00')"
 # nothing else — the review question worth answering.
 
 cd "$output"
-git init --quiet --initial-branch="$branch"
+[[ -n $parent_repo ]] || git init --quiet --initial-branch="$branch"
 git config user.name "$EXPORT_NAME"
 git config user.email "$EXPORT_EMAIL"
 git config commit.gpgsign false
 
-git add --all
+# Subject is bare "v6.18.38" to match the spine's existing convention (v5.13.12, v5.14,
+# v5.14.5, v5.15.1) — the branch should read as the next entry, not a foreign import.
+#
+# --force is load-bearing, not defensive. The kernel ships .gitignore files that match
+# paths it also tracks, so a plain `git add` after a tarball extract silently drops
+# them. That is not hypothetical: it is exactly why this repo's own v5.15.1 base is NOT
+# byte-identical to kernel.org's v5.15.1 — 11 files (Documentation/.yamllint,
+# fs/*/.kunitconfig, selftests/bpf/test_progs.c, selftests/arm64/tags/* to the `tags`
+# ctags pattern, ...) are simply absent from it. Without --force we would reproduce that
+# bug here and lose Documentation/.renames.txt from 6.18.38.
+git add --all --force
 GIT_AUTHOR_DATE="$base_date" GIT_COMMITTER_DATE="$base_date" \
 	git commit --quiet --file=- <<EOF
-Linux $version
+v$version
 
 Pristine upstream kernel $version, unpacked from linux-$version.tar.xz as
 published on kernel.org.
 
   sha256 $expected
 
-Verified against this repo's pinned hash, itself transcribed from kernel.org's
-PGP-signed release manifest. No MiSTer change is present in this commit: every
-MiSTer delta is a separate commit on top, so a diff from this commit to the tip
-of $branch is exactly the MiSTer patch series and nothing else.
+Verified against the pinned hash in Buildroot_MiSTer, itself transcribed from
+kernel.org's PGP-signed release manifest.
 
+No MiSTer change is present in this commit -- it is upstream and nothing else,
+exactly like the v5.13.12/v5.14/v5.14.5/v5.15.1 commits it follows. Every MiSTer
+delta is a separate commit on top, so a diff from this commit to the tip of
+$branch is precisely the MiSTer patch series.
+$(if [[ -n $parent_repo ]]; then printf '%s\n' "
+Because this commit's parent is a pristine tarball commit too, the diff against
+that parent is the pure upstream delta, with no MiSTer code on either side."; fi)
 Generated by scripts/export-kernel-tree.sh in Buildroot_MiSTer. Do not edit this
 tree directly; see EXPORT.md.
 EOF
 base_commit="$(git rev-parse HEAD)"
+[[ -n $parent_repo ]] && git checkout --quiet -b "$branch"
 
 # --- 5. Replay the carried series -------------------------------------------------------
 # --committer-date-is-author-date keeps this reproducible: dates come from the patches,
@@ -300,20 +372,37 @@ is exactly the MiSTer delta against upstream and nothing else.
     make ARCH=arm MiSTer_defconfig
     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage
 
-## Why this branch has no common ancestor with MiSTer-v5.15
+## Where this branch hangs
 
-Deliberate. Attaching it to the 5.15 history would need a merge whose tree ignores
-its first parent, which makes \`git log\` list ~113 commits whose changes are **not
-in this tree** — someone reads "xone: update driver" and concludes xone is present,
-when it is a Buildroot package now. A log that lists absent changes is worse than an
-absent ancestor.
+This repo's tarball commits form a spine, and each \`MiSTer-vX.Y\` branch hangs off a
+spine point with the MiSTer series replayed on top. This branch extends that spine the
+same way, so it is the next entry rather than a foreign import:
 
-\`MiSTer-v5.15\` is untouched and immutable; nothing was lost. What each of its commits
-became — carried, superseded by an upstream commit (with the vanilla commit cited),
-or deliberately dropped — is recorded per commit in \`MISTER-KERNEL-PATCH-RECON.md\`
-in Buildroot_MiSTer. No git command can answer that question: across this much context
-drift \`git patch-id\` matches nothing, so "is this commit in $version?" is a semantic
-question, not a mechanical one.
+    e12ed6c19 v5.13.12 -> 137491a75 v5.14 -> b6f2ca1c4 v5.14.5 -> aba1ef4c1 v5.15.1
+                                                                       |
+                                          +----------------------------+
+                                          |
+       [112 MiSTer commits] -> MiSTer-v5.15        (untouched)
+                                          |
+       v$version -> [$applied MiSTer commits] -> $branch
+
+\`MiSTer-v5.15\` is **not modified and not an ancestor** — it is a sibling, exactly as
+\`MiSTer-v5.14\` already is. Nothing was lost.
+
+Two consequences worth knowing:
+
+- The base commit's parent is itself a pristine tarball commit, so
+  \`git diff aba1ef4c1 v$version\` is the **pure upstream 5.15.1 → $version delta**,
+  with no MiSTer code on either side.
+- No MiSTer-5.15 commit appears in this branch's log, which is the point: this tree
+  does not contain most of them, and a log listing changes that are absent from the
+  tree would be worse than no log at all.
+
+What each 5.15 commit became — carried, superseded by an upstream commit (with the
+vanilla commit cited), or deliberately dropped — is recorded per commit in
+\`MISTER-KERNEL-PATCH-RECON.md\` in Buildroot_MiSTer. No git command can answer that:
+across this much context drift \`git patch-id\` matches nothing, so "is this commit in
+$version?" is a semantic question, not a mechanical one.
 
 ## Publishing
 

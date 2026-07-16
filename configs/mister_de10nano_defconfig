@@ -294,8 +294,14 @@ BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
 # (docs/stock-inventory/binaries-needed-full.txt); the P3.8 MIDI pass
 # deliberately left them for this separate general-ALSA-parity pass.
 # alsactl (mixer save/restore), alsamixer/amixer (volume), aplay/arecord
-# (APLAY provides both), alsabat (BAT), alsaloop, alsatplg, alsaucm.
-# (iecset/speaker-test/alsaconf NOT enabled -- stock shipped none of them.)
+# (APLAY provides both), alsabat (BAT), alsaloop, alsatplg, alsaucm,
+# iecset (S/PDIF status bits), speaker-test (channel test tones) -- every one
+# of these is present in stock's binaries-needed-full.txt.
+# NOT enabled: alsaconf -- stock never shipped it (it has an option here but no
+# stock binary to match). One stock ALSA binary has no parity path at all:
+# usr/bin/aserver IS in stock, but alsa-utils 1.2.15 exposes no
+# BR2_PACKAGE_ALSA_UTILS_* target for it (dropped upstream), so it cannot be
+# selected from this defconfig -- see docs/midi-mt32-parity.md section 5.
 BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
 BR2_PACKAGE_ALSA_UTILS_ALSALOOP=y
 BR2_PACKAGE_ALSA_UTILS_ALSAMIXER=y
@@ -304,6 +310,8 @@ BR2_PACKAGE_ALSA_UTILS_ALSAUCM=y
 BR2_PACKAGE_ALSA_UTILS_AMIXER=y
 BR2_PACKAGE_ALSA_UTILS_APLAY=y
 BR2_PACKAGE_ALSA_UTILS_BAT=y
+BR2_PACKAGE_ALSA_UTILS_IECSET=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
 
 # --- crypto / TLS ---
 BR2_PACKAGE_OPENSSL=y                     # meta-prompt

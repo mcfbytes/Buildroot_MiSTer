@@ -113,6 +113,23 @@ readonly EXPORT_EMAIL="${EXPORT_COMMITTER_EMAIL:-export@mister-devel.invalid}"
 die() { printf 'export-kernel-tree: %s\n' "$*" >&2; exit 1; }
 say() { printf '\n=== %s\n' "$*"; }
 
+# Only set when we download rather than use the dl/ cache. Cleaned on exit: it holds a
+# ~150MB kernel tarball, so leaking it on every run is not a rounding error. --output is
+# deliberately NOT touched here -- it is the deliverable, and it must survive a failure
+# for the failure to be diagnosable.
+#
+# cleanup() uses `if` rather than `[[ ... ]] && rm`: as an EXIT trap, the function's own
+# return status becomes the script's exit status, and a bare `[[ -n $download_dir ]]`
+# returns 1 whenever nothing was downloaded -- making every successful cache-hit run exit
+# 1 despite printing PASS.
+download_dir=''
+cleanup() {
+	if [[ -n $download_dir ]]; then
+		rm -rf "$download_dir"
+	fi
+}
+trap cleanup EXIT
+
 output=''
 fork_sync=''
 tarball_override=''
@@ -176,7 +193,12 @@ fragments="$(resolve_br_path "$(defconfig_value BR2_LINUX_KERNEL_CONFIG_FRAGMENT
 [[ -d $patch_dir ]] || die "patch dir not found: $patch_dir"
 [[ -f $config_file ]] || die "kernel config not found: $config_file"
 
+# nullglob, or an empty patch dir yields an array holding the literal "*.patch" pattern
+# -- length 1, so the guard below passes -- and `git am` then fails on a path that does
+# not exist, blaming the patch rather than the empty directory.
+shopt -s nullglob
 series=("$patch_dir"/*.patch)
+shopt -u nullglob
 ((${#series[@]})) || die "no patches in $patch_dir"
 
 branch="MiSTer-v${version%.*}" # 6.18.38 -> MiSTer-v6.18, matching the fork's convention
@@ -200,7 +222,10 @@ elif [[ -z $tarball ]]; then
 		tarball="$cached"
 		say "Using cached tarball: $tarball"
 	else
-		tarball="$(mktemp -d)/linux-$version.tar.xz"
+		# Explicit template: bare `mktemp -d` is a GNU extension and errors on BSD/macOS.
+		download_dir="$(mktemp -d -t export-kernel-tree.XXXXXXXX)" ||
+			die 'could not create a temporary download directory'
+		tarball="$download_dir/linux-$version.tar.xz"
 		url="https://cdn.kernel.org/pub/linux/kernel/v${version%%.*}.x/linux-$version.tar.xz"
 		say "Downloading $url"
 		curl --fail --location --silent --show-error --output "$tarball" "$url" ||

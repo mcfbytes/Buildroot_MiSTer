@@ -23,8 +23,41 @@
 
 name: Build
 
+# This build costs ~3h20m cold, so what triggers it is a budget decision, not a
+# detail. Two things are going on below.
+#
+# 1. `push` is scoped to master. It used to be a bare `push:`, which — next to
+#    `pull_request:` — meant EVERY commit on a PR branch built TWICE, once per
+#    event, ~6h40m of runner time for one commit. They didn't even cancel each
+#    other: the concurrency group keys on github.ref, and the two events see
+#    different refs (refs/heads/<branch> vs refs/pull/N/merge), so both ran to
+#    completion. Confirmed from the run history, not deduced — every SHA in
+#    `gh run list` appeared twice, once `push` and once `pull_request`.
+#    Now: PRs build once via `pull_request`, master builds once post-merge via
+#    `push`. A branch pushed with no PR open doesn't build, which is the point.
+#
+# 2. Doc-only changes don't compile. NOTE the mechanism: this is decided by the
+#    `gate` job below, NOT by a `paths-ignore:` on this trigger. That was the
+#    obvious implementation and it is a trap, because it is incompatible with
+#    the branch protection this repo wants later: `paths-ignore` stops the
+#    workflow from running AT ALL, so a required "Build" check is never
+#    reported, sits pending forever, and a docs-only PR can never merge. A
+#    skipped JOB has the same problem — "skipped" is not "success" to branch
+#    protection. So the workflow always runs, and the thing that is safe to
+#    mark required is the `status` job at the bottom, which always reports.
+#
+#    The gate is a DENYLIST ("build unless everything changed is a doc"), not
+#    an allowlist ("build only when these paths change"). The allowlist is the
+#    tempting read of "only build when a recompile is needed", but it fails the
+#    wrong way: add a build-relevant path, forget to list it, and CI goes green
+#    having compiled nothing. The denylist fails toward building — it wastes
+#    minutes, it never hides a break. Same reasoning as `clean` erroring rather
+#    than skipping in the top-level Makefile: a tree that looks tested and
+#    isn't is worse than one that obviously wasn't.
 on:
   push:
+    branches:
+      - master
   pull_request:
 
 # Cancel a superseded run for the same ref (e.g. a new push to an open PR)
@@ -39,8 +72,94 @@ permissions:
   contents: read
 
 jobs:
+  # Costs seconds. Decides whether the 3h20m job below is worth starting.
+  #
+  # Deliberately plain git rather than a paths-filter action: this repo pins
+  # every action by SHA for supply-chain reasons, and a `git diff --name-only`
+  # plus a `case` is not worth a new third-party dependency to review forever.
+  gate:
+    name: Decide whether a build is needed
+    runs-on: ubuntu-latest
+    outputs:
+      build_needed: ${{ steps.decide.outputs.build_needed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history: the diff range below reaches back to a base commit
+          # that a shallow clone would not have.
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          # Every path that provably cannot affect a compile. Everything else --
+          # board/, configs/, package/, scripts/, Makefile, external.*,
+          # Config.in, and .github/ itself (this file and the shared composite
+          # action) -- builds. Verified before writing this: no .md is read by
+          # the Makefile, external.mk, Config.in or post-build.sh.
+          is_doc() {
+            case "$1" in
+              docs/*|*.md|LICENSE|.editorconfig|.gitignore) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Establish a diff range, or give up and build. Every unknown here
+          # resolves to "build": a wasted run costs minutes, a wrongly-skipped
+          # one ships an untested image.
+          if [ "$EVENT" = "pull_request" ] && [ -n "${BASE_SHA:-}" ] \
+             && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            range="${BASE_SHA}...HEAD"
+          elif [ "$EVENT" = "push" ] && [ -n "${BEFORE:-}" ] \
+               && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="${BEFORE}..HEAD"
+          else
+            echo "No usable diff range for event '$EVENT' (new branch, force-push, or missing base) -- building."
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(git diff --name-only "$range" --)
+          if [ -z "$files" ]; then
+            echo "Empty diff over '$range' -- building rather than guessing why."
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "--- changed files ($range) ---"
+          echo "$files"
+          echo "---"
+
+          needed=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if ! is_doc "$f"; then
+              echo "Build input touched: $f"
+              needed=true
+              break
+            fi
+          done <<< "$files"
+
+          if [ "$needed" = "true" ]; then
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Build required."
+          else
+            echo "build_needed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Documentation-only change -- skipping the image build."
+          fi
+
   build:
     name: Build image (two-stage Buildroot)
+    needs: gate
+    if: needs.gate.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
 
     # 300 min, from a real measurement rather than a guess: the first green cold
@@ -158,3 +277,58 @@ jobs:
           path: legal-info.tar.gz
           if-no-files-found: error
           retention-days: 14
+
+  # THE JOB TO MARK AS THE REQUIRED STATUS CHECK. Not `build` -- `build` is
+  # skipped on doc-only changes, and branch protection does not count a skipped
+  # check as a passing one, so requiring it directly would wedge exactly the
+  # PRs the gate above is meant to make cheap.
+  #
+  # This job always runs (`if: always()`), so it always reports, and it turns
+  # the pair of upstream results into one honest answer:
+  #
+  #   build succeeded  -> pass   (it compiled, it worked)
+  #   build skipped    -> pass   (docs only; nothing to compile -- the point)
+  #   build failed     -> FAIL   (do not let a skipped-vs-failed confusion
+  #                               turn a broken build into a green check)
+  #   build cancelled  -> FAIL   (a superseded run is not evidence of anything)
+  #   gate itself sick -> FAIL   (if we cannot tell whether a build was needed,
+  #                               we have not established that one wasn't)
+  #
+  # `needs.<job>.result` is used rather than `success()`/`failure()`, which
+  # would fold "skipped" into the wrong bucket.
+  status:
+    name: Build status
+    needs: [gate, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        env:
+          GATE_RESULT: ${{ needs.gate.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_NEEDED: ${{ needs.gate.outputs.build_needed }}
+        run: |
+          set -euo pipefail
+          echo "gate=$GATE_RESULT build=$BUILD_RESULT build_needed=$BUILD_NEEDED"
+
+          if [ "$GATE_RESULT" != "success" ]; then
+            echo "::error::The gate job did not succeed ($GATE_RESULT), so whether a build was needed is unknown. Failing rather than assuming it wasn't."
+            exit 1
+          fi
+
+          case "$BUILD_RESULT" in
+            success)
+              echo "Image built and checked."
+              ;;
+            skipped)
+              if [ "$BUILD_NEEDED" = "true" ]; then
+                echo "::error::The gate asked for a build and it was skipped anyway. That is a workflow bug, not a docs change."
+                exit 1
+              fi
+              echo "Documentation-only change: no image build was needed."
+              ;;
+            *)
+              echo "::error::Image build $BUILD_RESULT."
+              exit 1
+              ;;
+          esac

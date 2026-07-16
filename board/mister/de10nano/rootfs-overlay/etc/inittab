@@ -20,10 +20,14 @@
 #      own remount, on login. Buildroot's OWN skeleton default inittab has
 #      this line UNCOMMENTED, which would defeat the whole read-only-root
 #      design if left in place -- this file overrides that default.
-#   2. The serial getty targets ttyS0 @ 115200 explicitly (BusyBox getty,
-#      not util-linux agetty -- BR2_PACKAGE_UTIL_LINUX_BINARIES is not
-#      selected) rather than stock's "console" alias, matching this board's
-#      actual cmdline (docs/boot-chain.md: "console=ttyS0,115200").
+#   2. The serial console runs util-linux `agetty --nohostname` (stock parity:
+#      stock's inittab uses agetty too -- BR2_PACKAGE_UTIL_LINUX_AGETTY is now
+#      enabled, see docs/util-linux-parity.md), but targets ttyS0 @ 115200
+#      explicitly rather than stock's "console" alias, matching this board's
+#      actual cmdline (docs/boot-chain.md: "console=ttyS0,115200"). agetty
+#      auto-detects the numeric field as the baud rate, so "ttyS0 115200" and
+#      "115200 ttyS0" are equivalent; the port-first form is kept for continuity
+#      with the previous BusyBox getty line.
 #   3. loadkeys/setfont are dropped: this BusyBox build has no "loadkeys"
 #      applet and CONFIG_SETFONT is not set (verified in
 #      output/build/busybox-1.37.0/.config) -- keeping either line would
@@ -56,8 +60,8 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 # the /etc/profile PATH adaptation above.
 ::sysinit:/usr/sbin/gpm -m /dev/input/mice -t imps2
 
-# Put a getty on the serial port (adapted from stock -- see note 2 above)
-ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
+# Put a getty on the serial port (util-linux agetty, adapted from stock -- note 2)
+ttyS0::respawn:/sbin/agetty --nohostname -L ttyS0 115200 vt100
 
 # Stuff to do for the 3-finger salute
 #::ctrlaltdel:/sbin/reboot

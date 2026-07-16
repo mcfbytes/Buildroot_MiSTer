@@ -158,8 +158,10 @@ reasoning, recorded here so the decision isn't re-litigated:
 
 The only thing `S05rtc` offered was a one-line boot-log confirmation, which does not justify
 a parity deviation. **Result: no userspace RTC script; kernel `RTC_HCTOSYS` only, exactly
-like stock.** (`hwclock` remains available in busybox for manual/debug use — `CONFIG_HWCLOCK=y`
-in the built rootfs busybox — it is simply not wired into boot.)
+like stock.** (`hwclock` remains available for manual/debug use, but it is now the
+**util-linux** `hwclock` — `BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y`, with the BusyBox `CONFIG_HWCLOCK`
+applet disabled — matching stock, which shipped util-linux's `hwclock` too. It is still simply
+not wired into boot. See `docs/util-linux-parity.md`.)
 
 **No Buildroot `defconfig` changes needed for this task.** The one pre-existing RTC-related
 line needed no change: `configs/mister_de10nano_defconfig:366` —

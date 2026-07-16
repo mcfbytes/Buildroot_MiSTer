@@ -212,10 +212,13 @@ BR2_REPRODUCIBLE=y
 #
 # Every symbol below was cross-checked against the actual pinned Buildroot
 # tree's Config.in files (not from memory) before being pasted here -- see
-# the P2.1 task's verification pass. No BR2_PACKAGE_UTIL_LINUX_BINARIES:
-# omitted deliberately, matching the manifest -- stock's mount/fdisk/dmesg
-# etc. are covered by BusyBox; only the *libraries* (blkid/fdisk/mount/
-# smartcols/uuid) are needed for SONAME parity. Samba's AD DC / ADS /
+# the P2.1 task's verification pass. BR2_PACKAGE_UTIL_LINUX_BINARIES IS now
+# enabled (see the util-linux binaries block further down): stock actually
+# ships the real util-linux mount/umount/blkid/fdisk/dmesg/agetty/... (2.36.2
+# ELF binaries, not BusyBox -- verified against work/imgroot), so shipping the
+# util-linux programs is the parity-correct choice. The earlier "covered by
+# BusyBox" note was wrong about what stock shipped. See docs/util-linux-parity.md.
+# Samba's AD DC / ADS /
 # smbtorture sub-options are deliberately left unset (standalone file
 # server only, manifest §5 Drop list) -- BusyBox and every other package
 # below is otherwise the full manifest, ungated.
@@ -347,6 +350,42 @@ BR2_PACKAGE_UTIL_LINUX_LIBFDISK=y           # must be listed explicitly or the
 BR2_PACKAGE_UTIL_LINUX_LIBMOUNT=y           # corresponding SONAME won't be built
 BR2_PACKAGE_UTIL_LINUX_LIBSMARTCOLS=y
 BR2_PACKAGE_UTIL_LINUX_LIBUUID=y
+# util-linux BINARIES + programs -- stock parity (usbmount work). Stock ships real
+# util-linux 2.36.2 ELF binaries for mount/umount/blkid/fdisk/dmesg/agetty/hwclock/
+# ... (NOT BusyBox -- verified against work/imgroot), so we ship them too (2.41.4
+# here). The util-linux `mount` matters functionally: it dispatches `mount -t ntfs`
+# to the /sbin/mount.ntfs -> ntfs-3g helper, which BusyBox mount cannot do (no
+# CONFIG_FEATURE_MOUNT_HELPERS) -- that is how NTFS USB drives auto-mount under
+# usbmount, exactly like stock. The overlapping BusyBox applets are turned off in
+# board/mister/de10nano/busybox.fragment so these win deterministically (same idiom
+# as ifupdown). The libs above are already selected; BINARIES re-selects them
+# harmlessly. Full stock<->ours program map: docs/util-linux-parity.md.
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y            # basic set: blkid, blockdev, dmesg,
+                                             # fdisk/sfdisk, findfs, findmnt, flock,
+                                             # fstrim, getopt, hexdump, lsblk, lscpu,
+                                             # mkswap, setarch(+linux32/64), setsid,
+                                             # swapon/swapoff, ... (stock's set)
+BR2_PACKAGE_UTIL_LINUX_MOUNT=y               # mount + umount -- the functional core
+                                             # (helper dispatch to mount.ntfs)
+BR2_PACKAGE_UTIL_LINUX_MOUNTPOINT=y          # mountpoint
+BR2_PACKAGE_UTIL_LINUX_AGETTY=y              # serial-console getty; inittab uses it,
+                                             # replacing BusyBox getty (stock parity)
+BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y             # hwclock (manual/debug; no S05rtc, like stock)
+BR2_PACKAGE_UTIL_LINUX_FSCK=y                # fsck
+BR2_PACKAGE_UTIL_LINUX_PARTX=y               # addpart/delpart/partx/resizepart
+BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS=y          # chrt/ionice/taskset
+BR2_PACKAGE_UTIL_LINUX_IRQTOP=y              # irqtop/lsirq
+BR2_PACKAGE_UTIL_LINUX_KILL=y                # kill
+BR2_PACKAGE_UTIL_LINUX_MORE=y                # more
+BR2_PACKAGE_UTIL_LINUX_NEWGRP=y              # newgrp
+BR2_PACKAGE_UTIL_LINUX_NOLOGIN=y             # nologin
+# NB: util-linux `raw` (stock had /sbin/raw) is intentionally NOT enabled -- its
+# Config.in `depends on !BR2_TOOLCHAIN_HEADERS_AT_LEAST_5_14` and our 6.18 headers
+# are >= 5.14, so the raw(8) char-device interface (removed from the kernel in 5.14)
+# is unbuildable. Obsolete; no BusyBox `raw` applet either, so nothing is lost.
+BR2_PACKAGE_UTIL_LINUX_RENAME=y              # rename
+BR2_PACKAGE_UTIL_LINUX_SETTERM=y             # setterm
+BR2_PACKAGE_UTIL_LINUX_SWITCH_ROOT=y         # switch_root
 BR2_PACKAGE_E2FSPROGS=y
 BR2_PACKAGE_PARTED=y
 BR2_PACKAGE_NTFS_3G=y                       # stock has no NTFS driver at all (kernel side);

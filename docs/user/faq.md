@@ -116,6 +116,28 @@ between releases.
 
 ---
 
+<a id="reverted-to-stock"></a>
+## I was running this image, ran my normal update, and it put stock back. Was that a bug?
+
+No — and it's worth knowing why, because the same mechanism is what makes rollback safe.
+
+The version check is a plain "is it different?" comparison. It has **no concept of newer
+or older**: there is no date parsing and no `<`/`>` anywhere in it. So whenever the
+official database is the only one offering a Linux entry, it sees that your version isn't
+the official one and reinstalls stock — regardless of your version being "higher."
+
+That happens in exactly one situation: **our database wasn't configured on that card.**
+Almost always that means the image was installed some other way — copied on by hand, or
+restored from a backup — without doing [Step 1](onboarding.md#step-1). The updater then
+has no idea this project exists; it just sees a system that doesn't match official and
+fixes it.
+
+The fix is the fix for everything else here: complete [Step 1](onboarding.md#step-1) and
+your image is offered and kept normally. (If you *wanted* stock back, congratulations —
+you've already done it. See [`rollback.md`](rollback.md).)
+
+---
+
 <a id="opted-in-nothing-happened"></a>
 ## I opted in, the update ran fine, and nothing happened. Why?
 

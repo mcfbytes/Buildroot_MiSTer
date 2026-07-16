@@ -37,6 +37,18 @@ https://mcfbytes.github.io/Buildroot_MiSTer/db.json
 Adding a small file to your SD card tells the Downloader to also poll that URL. That's
 the entire opt-in.
 
+> **The opt-in is also what keeps you on this image.** This is worth understanding before
+> you start, because the failure it causes looks like a bug and isn't. The version check
+> is a plain "is it different?" — it has no concept of newer or older. So if our database
+> isn't configured, the official one is the only voice in the room, it notices your
+> version isn't the official one, and it reinstalls stock over you. That is the intended
+> design (it's what makes [rollback](rollback.md) trivial), but it has a sharp edge:
+>
+> **If you install this image by any means other than the opt-in below — copying
+> `linux.img` and `zImage_dtb` onto the card by hand, say — your very next routine
+> `update_all.sh` will quietly put stock back.** Nothing is broken and nothing warns you;
+> the updater is doing exactly its job. Complete Step 1 and your image stays put.
+
 ---
 
 <a id="step-1"></a>

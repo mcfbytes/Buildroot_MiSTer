@@ -116,6 +116,32 @@ between releases.
 
 ---
 
+<a id="opted-in-nothing-happened"></a>
+## I opted in, the update ran fine, and nothing happened. Why?
+
+In order of how often it's the cause:
+
+1. **Linux updates are switched off in your updater.** This is by far the most common
+   reason, and it is completely silent — our database is fetched and parsed correctly,
+   and its Linux entry is then ignored with no error or log line. See
+   [`onboarding.md` Step 2](onboarding.md#step-2). It's a global switch, on by default,
+   so this only bites people who turned it off at some point.
+2. **You're already on this image.** Updates are offered once; if your `/MiSTer.version`
+   already matches the current release, a run that changes nothing is the correct result.
+3. **A different database won the Linux race.** Rare, but it's what the
+   [ordering rule](onboarding.md#multi-db-ordering-rule) describes. Search your Downloader
+   log for the `linux_multiple_dbs` warning — it names every database that lost.
+4. **You used Update All's settings screen and chose "exit without saving, but run".**
+   That specific run reads a temporary config from `/tmp` and won't see our database at
+   all — see [the quirk note](onboarding.md#forcing-a-run). Any normal run afterwards is
+   fine.
+
+The quickest way to distinguish these is a deterministic one-off run:
+`/media/fat/Scripts/update.sh --run-only mister_linux_modernization`. If that installs the
+image, the problem was #3 or #4. If it still does nothing, it's #1 or #2.
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 

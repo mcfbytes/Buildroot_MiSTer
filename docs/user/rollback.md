@@ -28,12 +28,20 @@ boots).
    If you instead added the section manually inside your existing `downloader.ini`,
    delete just that `[mister_linux_modernization]` block.
 
-2. **Re-run the Downloader.** Either run `Scripts/update.sh` from the MiSTer menu, or
-   simply wait for its next scheduled run.
+2. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
+   `Scripts/update.sh` — or simply wait for its next scheduled run. Either works.
 
 3. **Reboot** once it finishes (same as any update — see below for what to expect).
 
 That's the whole procedure. No SD card removal, no re-flashing, no special tools.
+
+> **Step 1 is not optional, and skipping it fails silently.** It is natural to assume
+> that just running the normal updater again is enough to get you back to stock. It
+> isn't. If the opt-in file is still in place, our database keeps being consulted and
+> keeps winning (see [the ordering rule](onboarding.md#multi-db-ordering-rule)), and its
+> version still matches what you're running — so the updater correctly concludes there is
+> nothing to do and changes nothing. You'd see a clean, successful run and still be on
+> this image. **Remove the file first; then re-run.**
 
 ---
 

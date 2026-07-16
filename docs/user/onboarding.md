@@ -7,8 +7,15 @@ they're running a personal, not-yet-sustainability-signed project (see
 irreversible — see [`rollback.md`](rollback.md) if you ever want back out.
 
 This document is the exact, copy-pasteable procedure. It assumes you already have a
-working MiSTer (any recent stock image) with `Downloader_MiSTer` running on its normal
-schedule.
+working MiSTer (any recent stock image) that updates itself normally.
+
+**Both common updaters work, and you don't need to know which one you use.** Whether you
+run `update_all.sh` (Update All, the most common choice) or `Scripts/update.sh`
+(`Downloader_MiSTer` directly), the opt-in below is identical. Update All doesn't replace
+the Downloader — it *runs* it, handing it the same `/media/fat/downloader.ini`, which is
+what makes the drop-in file below discoverable either way. Where the two genuinely differ
+— where a setting lives, who reboots you, and which one accepts the `--run-only` option —
+it's called out explicitly at that point in the text.
 
 ---
 
@@ -29,6 +36,18 @@ https://mcfbytes.github.io/Buildroot_MiSTer/db.json
 
 Adding a small file to your SD card tells the Downloader to also poll that URL. That's
 the entire opt-in.
+
+> **The opt-in is also what keeps you on this image.** This is worth understanding before
+> you start, because the failure it causes looks like a bug and isn't. The version check
+> is a plain "is it different?" — it has no concept of newer or older. So if our database
+> isn't configured, the official one is the only voice in the room, it notices your
+> version isn't the official one, and it reinstalls stock over you. That is the intended
+> design (it's what makes [rollback](rollback.md) trivial), but it has a sharp edge:
+>
+> **If you install this image by any means other than the opt-in below — copying
+> `linux.img` and `zImage_dtb` onto the card by hand, say — your very next routine
+> `update_all.sh` will quietly put stock back.** Nothing is broken and nothing warns you;
+> the updater is doing exactly its job. Complete Step 1 and your image stays put.
 
 ---
 
@@ -66,7 +85,30 @@ That's the whole file. Two lines. No other keys are required.
 section anywhere inside your existing `/media/fat/downloader.ini`. Its position in the
 file — above or below `[distribution_mister]`, first or last — makes **no difference to
 the outcome**. Don't spend time experimenting with section order; see the next section
-for why.
+for why. Update All rewrites `downloader.ini` from time to time, but it only manages the
+databases it knows about — a section it doesn't recognize, like ours, is left alone. (It
+may reformat the file and drop comments *inside* our section; the drop-in file above
+avoids that entirely, which is one more reason to prefer it.)
+
+---
+
+<a id="step-2"></a>
+## Step 2 — check that Linux updates aren't switched off
+
+**If you skip this and Linux updates are disabled, opting in does nothing at all — and
+nothing tells you so.** Our database gets fetched and parsed correctly, and its Linux
+entry is then silently ignored. No error, no warning, no log line. This is the single
+most likely reason for "I followed the guide and nothing happened."
+
+- **Update All users:** open Update All's settings screen and make sure the option to
+  update Linux is **on**. It is on by default, so if you've never touched it, you're
+  fine. If you turned it off at some point, our image can never install.
+- **`Scripts/update.sh` (Downloader directly) users:** this is controlled by
+  `update_linux` in the `[MiSTer]` section of `/media/fat/downloader.ini`. It defaults to
+  true; if that line is present and set false, our image can never install.
+
+This switch is global — it is not per-database. There is no way for our database to
+opt itself back in, which is exactly why it's worth checking once, now.
 
 ---
 
@@ -107,6 +149,55 @@ single most useful piece of information to include in a bug report (see
 
 ---
 
+<a id="forcing-a-run"></a>
+## Forcing a run of just this database (optional)
+
+If you don't want to wait for a scheduled run, or you want to take the race above out of
+the picture entirely, you can tell the Downloader to run **only** this database:
+
+```
+/media/fat/Scripts/update.sh --run-only mister_linux_modernization
+```
+
+This skips every other database, so there is only one Linux entry to consider and nothing
+to race — it is the deterministic way to pull our image, and the right thing to use when
+reproducing a problem for a bug report.
+
+Three caveats:
+
+- **This does not replace [Step 1](#step-1) — it needs it.** `--run-only` can only select
+  a database you've already configured. If you skip Step 1 you'll get:
+
+  ```
+  Invalid database ids: mister_linux_modernization
+  ```
+
+  which is misleading: the id is correct, it just isn't configured yet. Do Step 1 first.
+- **This is a `Downloader_MiSTer` option, not an Update All one.** `update_all.sh` does
+  not pass options through to the Downloader, so `update_all.sh --run-only ...` does
+  nothing useful. Use `Scripts/update.sh` as shown above. This does not change or
+  conflict with your Update All setup in any way — it's just a one-off run.
+- **It updates *only* Linux this time.** Cores, ROMs and everything else your normal
+  update would fetch are skipped for that run. Your next normal `update_all.sh` picks
+  them up again as usual.
+
+The "Linux updates are switched off" gate from [Step 2](#step-2) still applies here —
+`--run-only` cannot override it.
+
+### One Update All quirk worth knowing
+
+If you open Update All's **settings screen** and choose the option that exits *without
+saving* but still runs, that particular run is driven from a temporary configuration file
+in `/tmp` rather than your real `/media/fat/downloader.ini`. Drop-in files are looked for
+next to whichever configuration file is in use — so for that one run, our database is not
+seen and no Linux update happens.
+
+This is harmless and self-correcting: any normal run afterwards behaves as documented.
+But if you've just opted in, went through the settings screen, and saw nothing happen,
+this is very likely why — run it again normally, or use the `--run-only` command above.
+
+---
+
 ## What you should see on a successful update
 
 The Downloader prints a distinct, deliberately alarming-sounding banner whenever it
@@ -120,14 +211,23 @@ Stopping this will make your SD unbootable!
 ...
 ```
 
-Do not power off during this phase. It normally takes well under a minute. Once it
-finishes, the Downloader sets a reboot flag and — by default — automatically reboots the
-system about 30 seconds later (longer than its usual 5-second post-run reboot wait, to
-give you a moment to notice the message).
+Do not power off during this phase. It normally takes well under a minute.
 
 **A reboot is required** to actually run the new kernel; the flash phase alone does not
-switch anything live. If you have automatic reboot disabled in your Downloader
-configuration, reboot manually once the run finishes.
+switch anything live. Who performs that reboot depends on how you update — this is the
+one place the two updaters genuinely differ:
+
+- **`update_all.sh` (Update All):** Update All explicitly *forbids* the Downloader from
+  rebooting and handles it itself once its whole run (not just the Linux part) is done.
+  So you will **not** see the Downloader's own 30-second reboot countdown. Update All
+  reboots automatically by default; if you turned its auto-reboot off, it prints
+  "You should reboot" and leaves it to you.
+- **`Scripts/update.sh` (Downloader directly):** the Downloader sets a reboot flag and,
+  by default, reboots about 30 seconds after the run finishes — a longer pause than its
+  usual 5-second wait, to give you a moment to read the message.
+
+Either way, if nothing reboots on its own, just reboot manually. Nothing is in a
+half-applied state while you wait: the new kernel simply isn't running yet.
 
 After rebooting:
 

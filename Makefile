@@ -228,8 +228,24 @@ $(OUTPUT_DIR)/.config: | $(BR_STAMP)
 # forwarded with O=$(OUTPUT_DIR) only — stage 1 was left fully built. A tree that
 # is half-clean is worse than one that is not clean at all, because it looks
 # fresh. The `if -d` guards keep `make clean` from being the thing that downloads
-# and unpacks Buildroot just to have somewhere to run rm.
+# and unpacks Buildroot just to have somewhere to run rm — which is what going
+# through the catch-all ($(BR_STAMP) is one of its prerequisites) used to mean.
+#
+# $(BR_DIR) can vanish independently of the output dirs — it is gitignored, and
+# `rm -rf work/` is how you force a re-download. Upstream cannot hit this case
+# because upstream's Makefile *is* the Buildroot tree; ours is not, so the check
+# is ours to make. Erroring rather than skipping is the point: Buildroot's clean
+# is the only thing that knows what to delete and what to keep, so skipping it
+# would report success over a still-dirty tree — this bug, again, one layer out.
 clean:
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ]; }; then \
+		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
+		echo "       but an output directory still holds build products. Skipping" >&2; \
+		echo "       would report success over a dirty tree." >&2; \
+		echo "" >&2; \
+		echo "Use 'make distclean' to remove both output directories outright." >&2; \
+		exit 1; \
+	fi
 	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
 	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
 

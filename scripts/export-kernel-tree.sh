@@ -79,12 +79,17 @@
 #     SOURCE_DATE_EPOCH.
 #
 # Usage: scripts/export-kernel-tree.sh --output DIR [--parent-repo R --parent C]
-#                                      [--fork-sync SHA] [--tarball FILE]
+#                                      [--onto COMMIT] [--fork-sync SHA] [--tarball FILE]
 #
 #   --output DIR      where to build the tree (must not already exist)
-#   --parent-repo R   clone R and parent the base commit inside it, extending that
-#                     repo's tarball spine instead of starting a fresh root
-#   --parent C        the spine commit to extend (requires --parent-repo)
+#   --parent-repo R   clone R and work inside it, rather than starting a fresh root
+#   --parent C        spine commit to extend; a base commit is created on top of it
+#                     from the pinned tarball (requires --parent-repo)
+#   --onto COMMIT     replay onto COMMIT, which must ALREADY BE the pinned kernel
+#                     version -- no base commit is created and the tarball is not
+#                     used for the kernel. Use when upstream has published its own
+#                     vanilla base to PR against; the result fast-forwards onto it.
+#                     Mutually exclusive with --parent (requires --parent-repo).
 #   --fork-sync SHA   fork commit this export was reconciled against; recorded in
 #                     EXPORT.md as the backport-queue starting point
 #   --tarball FILE    use this tarball instead of the dl/ cache or a download
@@ -113,12 +118,14 @@ fork_sync=''
 tarball_override=''
 parent_repo=''
 parent=''
+onto=''
 
 while (($#)); do
 	case "$1" in
 	--output) output="${2:-}"; shift 2 ;;
 	--parent-repo) parent_repo="${2:-}"; shift 2 ;;
 	--parent) parent="${2:-}"; shift 2 ;;
+	--onto) onto="${2:-}"; shift 2 ;;
 	--fork-sync) fork_sync="${2:-}"; shift 2 ;;
 	--tarball) tarball_override="${2:-}"; shift 2 ;;
 	-h | --help) sed -n '/^# Usage:/,/^# Exit:/p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
@@ -129,10 +136,14 @@ done
 [[ -n $output ]] || die 'missing --output DIR (try --help)'
 [[ ! -e $output ]] || die "--output already exists: $output"
 
-# The two go together: a parent is meaningless without the repo it lives in, and cloning
-# a repo without saying where to hang the branch would silently fall back to an orphan.
-[[ -n $parent_repo && -z $parent ]] && die '--parent-repo requires --parent'
+# A parent is meaningless without the repo it lives in, and cloning a repo without saying
+# where to hang the branch would silently fall back to an orphan.
+[[ -n $parent_repo && -z $parent && -z $onto ]] && die '--parent-repo requires --parent or --onto'
 [[ -n $parent && -z $parent_repo ]] && die '--parent requires --parent-repo'
+[[ -n $onto && -z $parent_repo ]] && die '--onto requires --parent-repo'
+[[ -n $parent && -n $onto ]] && die '--parent and --onto are mutually exclusive:
+--parent extends a spine and CREATES a base commit from the tarball; --onto replays onto
+a base that already exists. Pick one.'
 
 # --- 1. Read the pinned inputs out of the defconfig -----------------------------------
 # The defconfig is the single source of truth for what we build; nothing here is
@@ -177,7 +188,13 @@ say "Exporting Linux $version + ${#series[@]} carried patches -> $output (branch
 # Fails closed: an unverified kernel tarball is the whole reason linux.hash exists.
 
 tarball="$tarball_override"
-if [[ -z $tarball ]]; then
+if [[ -n $onto ]]; then
+	# --onto: the base already exists upstream, so the kernel tarball is not needed and
+	# no base commit is created. The safety property still has to hold, though -- replaying
+	# a 6.18 series onto, say, a 5.15 base must not be attempted -- so the version is read
+	# back out of the target commit's own Makefile below rather than trusted.
+	say "Replaying onto existing base $onto (no base commit created)"
+elif [[ -z $tarball ]]; then
 	cached="$REPO_ROOT/dl/linux/linux-$version.tar.xz"
 	if [[ -f $cached ]]; then
 		tarball="$cached"
@@ -190,20 +207,52 @@ if [[ -z $tarball ]]; then
 			die "download failed: $url"
 	fi
 fi
-[[ -f $tarball ]] || die "no such tarball: $tarball"
 
-expected="$(sed -n "s/^sha256[[:space:]]\+\([0-9a-f]\{64\}\)[[:space:]]\+linux-$version\.tar\.xz$/\1/p" "$HASH_FILE" | tail -1)"
-[[ -n $expected ]] || die "no sha256 for linux-$version.tar.xz in $HASH_FILE — bump the hash from kernel.org's signed manifest"
+expected=''
+if [[ -z $onto ]]; then
+	[[ -f $tarball ]] || die "no such tarball: $tarball"
 
-actual="$(sha256sum "$tarball" | cut -d' ' -f1)"
-[[ $actual == "$expected" ]] || die "tarball hash mismatch for linux-$version.tar.xz
+	expected="$(sed -n "s/^sha256[[:space:]]\+\([0-9a-f]\{64\}\)[[:space:]]\+linux-$version\.tar\.xz$/\1/p" "$HASH_FILE" | tail -1)"
+	[[ -n $expected ]] || die "no sha256 for linux-$version.tar.xz in $HASH_FILE — bump the hash from kernel.org's signed manifest"
+
+	actual="$(sha256sum "$tarball" | cut -d' ' -f1)"
+	[[ $actual == "$expected" ]] || die "tarball hash mismatch for linux-$version.tar.xz
   expected $expected (from $HASH_FILE)
   actual   $actual"
-say "Tarball verified: sha256 $actual"
+	say "Tarball verified: sha256 $actual"
+fi
 
 # --- 3. Extract ------------------------------------------------------------------------
 
-if [[ -n $parent_repo ]]; then
+if [[ -n $onto ]]; then
+	# Resolve the ref in the SOURCE repo and carry the SHA into the clone. Ref names are
+	# ambiguous across a clone boundary and it is not a theoretical problem: `git clone`
+	# copies the source's LOCAL branches to origin/*, so `--onto origin/MiSTer-v6.18`
+	# resolves inside the clone to the source's own local MiSTer-v6.18 -- a different
+	# commit from the origin/MiSTer-v6.18 the caller meant. That silently replayed a
+	# series onto a tree that already had it applied, and the version check could not
+	# catch it because both trees were the same Linux version.
+	onto="$(git -C "$parent_repo" rev-parse --verify --quiet "$onto^{commit}")" ||
+		die "--onto is not a commit in $parent_repo"
+	say "Resolved --onto to $onto in $parent_repo"
+
+	say "Cloning $parent_repo"
+	git clone --quiet --no-checkout "$parent_repo" "$output" || die "clone failed: $parent_repo"
+	git -C "$output" rev-parse --verify --quiet "$onto^{commit}" >/dev/null ||
+		die "$onto is not reachable in the clone of $parent_repo"
+	git -C "$output" checkout --quiet --detach "$onto"
+
+	# The base is someone else's, so verify it is the version we are about to patch
+	# rather than assuming. Read it from the target's own Makefile: replaying a 6.18
+	# series onto a 5.15 base would otherwise fail deep in `git am` with conflicts that
+	# look like bad patches instead of a bad base.
+	onto_version="$(sed -nE 's/^VERSION = //p;s/^PATCHLEVEL = /./p;s/^SUBLEVEL = /./p' \
+		"$output/Makefile" | head -3 | tr -d '\n')"
+	[[ $onto_version == "$version" ]] || die "--onto $onto is Linux $onto_version, but this
+repo pins $version (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE). Refusing to replay a $version
+patch series onto a $onto_version base."
+	say "Base verified: $onto is Linux $onto_version"
+elif [[ -n $parent_repo ]]; then
 	say "Cloning $parent_repo to extend its spine at $parent"
 	git clone --quiet --no-checkout "$parent_repo" "$output" || die "clone failed: $parent_repo"
 	git -C "$output" rev-parse --verify --quiet "$parent^{commit}" >/dev/null ||
@@ -218,13 +267,19 @@ else
 	mkdir -p "$output"
 fi
 
-say "Extracting"
-tar -xf "$tarball" -C "$output" --strip-components=1
+if [[ -z $onto ]]; then
+	say "Extracting"
+	tar -xf "$tarball" -C "$output" --strip-components=1
+fi
 
 # kernel.org tarballs come from `git archive`, so every file's mtime is the tag's commit
 # time. That makes this stable across machines, unlike the download time.
 if [[ -n ${SOURCE_DATE_EPOCH:-} ]]; then
 	base_epoch="$SOURCE_DATE_EPOCH"
+elif [[ -n $onto ]]; then
+	# No tarball here, so take the base's own commit date. Still deterministic: it is a
+	# property of the commit we were pointed at, not of when this script ran.
+	base_epoch="$(git -C "$output" log --format='%ct' -1 "$onto")"
 else
 	base_epoch="$(stat -c %Y "$output/Makefile")"
 fi
@@ -239,6 +294,14 @@ cd "$output"
 git config user.name "$EXPORT_NAME"
 git config user.email "$EXPORT_EMAIL"
 git config commit.gpgsign false
+
+if [[ -n $onto ]]; then
+	# The base commit is upstream's; ours would be a duplicate. Branch and go straight to
+	# the series, so the result fast-forwards onto their branch and the PR is exactly our
+	# delta -- nothing of theirs restated.
+	base_commit="$(git rev-parse HEAD)"
+	git checkout --quiet -b "$branch"
+else
 
 # Subject is bare "v6.18.38" to match the spine's existing convention (v5.13.12, v5.14,
 # v5.14.5, v5.15.1) — the branch should read as the next entry, not a foreign import.
@@ -275,6 +338,7 @@ tree directly; see EXPORT.md.
 EOF
 base_commit="$(git rev-parse HEAD)"
 [[ -n $parent_repo ]] && git checkout --quiet -b "$branch"
+fi
 
 # --- 5. Replay the carried series -------------------------------------------------------
 # --committer-date-is-author-date keeps this reproducible: dates come from the patches,

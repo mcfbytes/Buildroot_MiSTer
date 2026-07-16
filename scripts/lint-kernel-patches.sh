@@ -51,7 +51,10 @@ fi
 
 # mailinfo writes the split message body and diff out as files; we only care about
 # the identity summary it prints, so they go to a scratch dir we discard.
-scratch="$(mktemp -d)"
+# Explicit template, matching scripts/ci-tests.sh and scripts/check-linux-img.sh: bare
+# `mktemp -d` is a GNU extension and errors out on BSD/macOS mktemp, which wants one.
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/lint-kernel-patches.XXXXXX")" ||
+	exit 1
 trap 'rm -rf "$scratch"' EXIT
 
 checked=0

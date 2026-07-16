@@ -222,8 +222,11 @@ elif [[ -z $tarball ]]; then
 		tarball="$cached"
 		say "Using cached tarball: $tarball"
 	else
-		# Explicit template: bare `mktemp -d` is a GNU extension and errors on BSD/macOS.
-		download_dir="$(mktemp -d -t export-kernel-tree.XXXXXXXX)" ||
+		# Explicit template, matching scripts/ci-tests.sh and scripts/check-linux-img.sh:
+		# bare `mktemp -d` is a GNU extension and errors out on BSD/macOS mktemp, which
+		# wants one. (`-t` is not the answer either -- GNU deprecates it and BSD reads
+		# its argument as a prefix rather than a template.)
+		download_dir="$(mktemp -d "${TMPDIR:-/tmp}/export-kernel-tree.XXXXXX")" ||
 			die 'could not create a temporary download directory'
 		tarball="$download_dir/linux-$version.tar.xz"
 		url="https://cdn.kernel.org/pub/linux/kernel/v${version%%.*}.x/linux-$version.tar.xz"

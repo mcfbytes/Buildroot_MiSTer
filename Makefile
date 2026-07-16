@@ -159,6 +159,7 @@ BR_MAKE_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
 .DEFAULT_GOAL := help
 
 .PHONY: all help buildroot-fetch buildroot-verify buildroot-unpack buildroot-showsig require-tools
+.PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
 .PHONY: zimage-dtb
 
@@ -190,9 +191,80 @@ $(INITRAMFS_DEFCONFIG): ;
 # CONFIG_INITRAMFS_SOURCE at $(INITRAMFS_CPIO) and refuses to configure the kernel
 # if that file is not there — so stage 1 must have run first. Ordering it here is
 # what makes a bare `make all` do the right thing.
-all: initramfs $(BR_STAMP) hostshim
+all: initramfs $(BR_STAMP) hostshim | $(OUTPUT_DIR)/.config
 	$(BR_MAKE) all
 	@$(MAKE) --no-print-directory check-initramfs
+
+# Self-heal a wiped output/ — and NOTHING else.
+#
+# Buildroot treats .config as build *input*, not output: its `all` refuses to run
+# without one (work/buildroot/Makefile:981) and its `clean` deliberately keeps
+# it. So `make clean && make all` was always fine, while `rm -rf output && make
+# all` died with "Please configure Buildroot first". This rule closes that hole.
+#
+# The empty prerequisite list is the load-bearing part: with no prerequisites, an
+# existing .config is always up to date and this recipe never fires again. Giving
+# it the shape stage 1 uses at :253 ($(OUTPUT_DIR)/.config: <the defconfig>)
+# would instead re-load the checked-in defconfig over output/.config every time
+# the defconfig looked newer — silently discarding `make menuconfig` edits that
+# had not been folded back with `savedefconfig`. Stage 1 can afford that; its
+# config is generated, not iterated on. Stage 2's is the one people edit.
+#
+# $(BR_STAMP) is order-only because a parallel `make -j all` gives no ordering
+# between all's own prerequisites, so this cannot rely on all's copy of it.
+# The explicit rule also beats the `%:` catch-all at the bottom of this file,
+# same as `Makefile: ;` and $(INITRAMFS_DEFCONFIG) above.
+$(OUTPUT_DIR)/.config: | $(BR_STAMP)
+	@mkdir -p $(OUTPUT_DIR)
+	$(BR_MAKE) mister_de10nano_defconfig
+
+# --- Cleaning -----------------------------------------------------------------
+# Buildroot's vocabulary, kept on purpose: `clean` deletes what the build
+# produced but KEEPS .config (work/buildroot/Makefile:1140); `distclean` also
+# drops the configuration itself (:1146). The only thing widened is the scope,
+# because P1.10 gave this tree two output directories and Buildroot assumes one.
+#
+# Without an explicit rule here, `clean` fell through the `%:` catch-all and was
+# forwarded with O=$(OUTPUT_DIR) only — stage 1 was left fully built. A tree that
+# is half-clean is worse than one that is not clean at all, because it looks
+# fresh. The `if -d` guards keep `make clean` from being the thing that downloads
+# and unpacks Buildroot just to have somewhere to run rm — which is what going
+# through the catch-all ($(BR_STAMP) is one of its prerequisites) used to mean.
+#
+# $(BR_DIR) can vanish independently of the output dirs — it is gitignored, and
+# `rm -rf work/` is how you force a re-download. Upstream cannot hit this case
+# because upstream's Makefile *is* the Buildroot tree; ours is not, so the check
+# is ours to make. Erroring rather than skipping is the point: Buildroot's clean
+# is the only thing that knows what to delete and what to keep, so skipping it
+# would report success over a still-dirty tree — this bug, again, one layer out.
+clean:
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ]; }; then \
+		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
+		echo "       but an output directory still holds build products. Skipping" >&2; \
+		echo "       would report success over a dirty tree." >&2; \
+		echo "" >&2; \
+		echo "Use 'make distclean' to remove both output directories outright." >&2; \
+		exit 1; \
+	fi
+	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
+	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
+
+# `rm -rf`, not a forwarded `$(BR_MAKE) distclean`, and deliberately not
+# `distclean: clean` the way upstream writes it (:1146).
+#
+# Upstream removes $(O) itself ONLY when O is the in-tree default (:1147). Ours
+# never is, so forwarding distclean would empty the directories but leave
+# .config behind — landing in precisely the state that makes `make all` fail.
+# Removing both output directories outright is what upstream's distclean *means*
+# for an out-of-tree layout, and it makes running `clean` first dead work: there
+# is nothing to preserve in a directory that is about to stop existing.
+#
+# dl/ deliberately survives. Upstream hardcodes `rm -rf $(TOPDIR)/dl` (:1150) and
+# never $(DL_DIR) (:203) — a custom BR2_DL_DIR like ours is a shared download
+# cache that distclean is not entitled to destroy. `git clean -xfd` is the real
+# nothing-but-the-clone hammer; it takes work/ and dl/ with it.
+distclean:
+	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------
 # Phony on purpose. Buildroot is the incremental build system here; re-entering it
@@ -328,6 +400,13 @@ help:
 	@echo "                                    (the ONLY valid source for BUILDROOT_SHA256)"
 	@echo "  make br-help                    - Buildroot's own target list"
 	@echo "  make all                        - build the full image (runs 'initramfs' first)"
+	@echo ""
+	@echo "Cleaning (Buildroot's meanings, applied to BOTH output dirs):"
+	@echo "  make clean                      - delete everything the build produced,"
+	@echo "                                    KEEPING both .config files"
+	@echo "  make distclean                  - rm -rf output/ and output-initramfs/,"
+	@echo "                                    .config included; dl/ is kept (it is a"
+	@echo "                                    shared cache — 'git clean -xfd' takes it)"
 	@echo ""
 	@echo "Two-stage initramfs (P1.10):"
 	@echo "  make initramfs                  - build ONLY the stage-1 cpio and print its size"

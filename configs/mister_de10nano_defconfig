@@ -27,9 +27,51 @@
 #     default C library for the internal toolchain (toolchain-buildroot's own
 #     `default BR2_TOOLCHAIN_BUILDROOT_GLIBC`) — musl is a non-goal (PLAN §3)
 #     and would not even start the stock binary (abi-contract.md §1.3).
-#   - BR2_KERNEL_HEADERS_6_18: matches the 6.18.y kernel P1.3 targets. Left
-#     explicit (rather than trusting the BR2_LINUX_KERNEL-linked default)
-#     since this defconfig does not build a kernel itself.
+#   - BR2_KERNEL_HEADERS_6_18: pins the headers SERIES explicitly. This overrides
+#     Buildroot's own default of BR2_KERNEL_HEADERS_AS_KERNEL
+#     (package/linux-headers/Config.in.host:5), and the override is load-bearing.
+#     DO NOT "fix" it to AS_KERNEL to keep the headers in lockstep with the kernel --
+#     verified by A/B-ing this defconfig through `make defconfig`:
+#
+#       BR2_KERNEL_HEADERS_6_18=y  -> BR2_TOOLCHAIN_HEADERS_AT_LEAST="6.18"
+#       BR2_KERNEL_HEADERS_AS_KERNEL -> BR2_TOOLCHAIN_HEADERS_AT_LEAST="2.6"
+#
+#     glibc is configured --enable-kernel=$(BR2_TOOLCHAIN_HEADERS_AT_LEAST)
+#     (package/glibc/glibc.mk:131). Under AS_KERNEL our kernel version arrives as the
+#     free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38", which Kconfig
+#     cannot compare numerically to select BR2_TOOLCHAIN_HEADERS_AT_LEAST_6_18 -- so it
+#     silently falls back to the floor, 2.6. That would build glibc with ~15 years of
+#     dead compatibility code and runtime syscall-fallback paths for kernels this board
+#     will never run, and drop every 6.18-era fast path. The series pin is the only way
+#     Buildroot learns the headers version here.
+#
+#     (An earlier version of this comment justified the pin with "this defconfig does not
+#     build a kernel itself" -- that was simply false, BR2_LINUX_KERNEL=y is set below.
+#     Right setting, wrong reason, which is how it nearly got reverted.)
+#
+#     ACCEPTED CONSEQUENCE: the series resolves to whatever 6.18.x Buildroot pins for it
+#     (package/linux-headers/Config.in.host, the `default "6.18.33" if
+#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.33) while the kernel is 6.18.38, so
+#     the headers lag the kernel slightly. That is correct and harmless: headers older
+#     than the running kernel is the supported direction, because the kernel's uapi is
+#     forward-compatible by guarantee. The actual uapi delta between 6.18.33 and 6.18.38
+#     is ONE line -- an explicit `__u32 :32;` pad in include/uapi/linux/tee.h, a
+#     subsystem this board does not use. Checked with
+#     `git diff v6.18.33 v6.18.38 -- include/uapi/ arch/arm/include/uapi/`.
+#
+#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included. It is tempting to assume only
+#     a series bump can move uapi; the tee.h line above disproves it, since 6.18.33 ->
+#     6.18.38 is itself a patchlevel range. Stable rules discourage uapi changes but do
+#     not forbid them, so the diff is the authority, not the version numbers.
+#
+#     Also note linux-headers only applies BR2_LINUX_KERNEL_PATCH / BR2_GLOBAL_PATCH_DIR
+#     under AS_KERNEL (package/linux-headers/linux-headers.mk:82), so the series pin
+#     means our carried patches do not reach the headers tree. Verified irrelevant: no
+#     patch in board/mister/de10nano/linux-patches/ MODIFIES a header under include/uapi
+#     or arch/arm/include/uapi (checked against the patches' `+++ b/` target paths: zero
+#     hits). Some do mention uapi headers in prose -- 0001 cites include/uapi/linux/fb.h
+#     to explain an ioctl number -- but none change one; the series is drivers, one DTS,
+#     and fs/exfat.
 #   - BR2_TOOLCHAIN_BUILDROOT_CXX: libstdc++.so.6 is a *toolchain*-provided
 #     library, not a package (docs/abi-contract.md §2.2 rows L5/L6 say so
 #     explicitly), and T8 requires it to export GLIBCXX_3.4.21 + CXXABI_1.3.9.

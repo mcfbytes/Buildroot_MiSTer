@@ -109,7 +109,7 @@ permissions:
 jobs:
   publish:
     name: Regenerate + publish db.json
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     # `pages`/`id-token` are what `actions/deploy-pages` needs (OIDC-based

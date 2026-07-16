@@ -98,7 +98,7 @@ jobs:
   # ==========================================================================
   build:
     name: Build image (leg ${{ matrix.build-id }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -143,7 +143,7 @@ jobs:
       # Hashed from INSIDE output/images/ (not `sha256sum output/images/...`)
       # so the recorded filenames are bare (`linux.img`, `zImage_dtb`), not
       # full paths — the two legs' GITHUB_WORKSPACE paths happen to match
-      # today (both github-hosted ubuntu-latest runners under the same
+      # today (both github-hosted Ubuntu runners under the same
       # container image), but bare filenames make the later `diff` correct
       # by construction instead of by coincidence.
       - name: Compute image hashes
@@ -169,7 +169,7 @@ jobs:
   compare:
     name: Compare double-build hashes
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Download leg A hashes

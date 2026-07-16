@@ -163,8 +163,16 @@ This skips every other database, so there is only one Linux entry to consider an
 to race — it is the deterministic way to pull our image, and the right thing to use when
 reproducing a problem for a bug report.
 
-Two caveats:
+Three caveats:
 
+- **This does not replace [Step 1](#step-1) — it needs it.** `--run-only` can only select
+  a database you've already configured. If you skip Step 1 you'll get:
+
+  ```
+  Invalid database ids: mister_linux_modernization
+  ```
+
+  which is misleading: the id is correct, it just isn't configured yet. Do Step 1 first.
 - **This is a `Downloader_MiSTer` option, not an Update All one.** `update_all.sh` does
   not pass options through to the Downloader, so `update_all.sh --run-only ...` does
   nothing useful. Use `Scripts/update.sh` as shown above. This does not change or

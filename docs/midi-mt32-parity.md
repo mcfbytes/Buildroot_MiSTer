@@ -21,7 +21,7 @@ confirm.
 
 | Path | Links against | Role |
 |---|---|---|
-| `usr/bin/amidi`, `usr/bin/aplaymidi`, `usr/bin/arecordmidi`, `usr/bin/aseqdump`, `usr/bin/aseqnet`, `usr/bin/aserver`, `usr/bin/aconnect` | `libasound.so.2` (+ libc/libm/libpthread/libdl) | alsa-utils' MIDI/sequencer CLI tools |
+| `usr/bin/amidi`, `usr/bin/aplaymidi`, `usr/bin/arecordmidi`, `usr/bin/aseqdump`, `usr/bin/aseqnet`, `usr/bin/aconnect` | `libasound.so.2` (+ libc/libm/libpthread/libdl) | alsa-utils' MIDI/sequencer CLI tools (stock's `usr/bin/aserver` is **not** one of these — it is a PCM/audio tool; see §5) |
 | `usr/sbin/fluidsynth` | `libfluidsynth.so.3`, libc, libpthread | FluidSynth's own CLI |
 | `usr/sbin/midilink` | `libasound.so.2`, libc, libm, libpthread | **the actual ALSA-sequencer client** cores talk to |
 | `usr/sbin/mlinkutil` | `libasound.so.2`, libc, libm, libpthread | MidiLink's small companion utility |
@@ -207,10 +207,15 @@ userland parity should pick this up. **A genuine gap in this Buildroot
 version regardless of scope:** stock's `usr/bin/aserver` has **no**
 corresponding suboption in `work/buildroot/package/alsa-utils/
 alsa-utils.mk` at all — every other stock alsa-utils binary maps to a
-`BR2_PACKAGE_ALSA_UTILS_*` build target except this one. `aserver` is
-`aseqnet`'s companion network sequencer-bridge daemon; niche (not used by
-any MiSTer core), so this is noted rather than worked around (e.g. by
-hand-adding a custom install rule) for this task.
+`BR2_PACKAGE_ALSA_UTILS_*` build target except this one. `aserver` is the
+server process for alsa-lib's `share` / `type server` **PCM (audio)** plugin
+— not a MIDI/sequencer tool — and its source has since been removed from
+upstream alsa-utils (absent from the 1.2.15.2 this tree builds), which is why
+no suboption exists. Stock carried it only as a passive byproduct of its older
+alsa-utils; nothing in stock invokes it — the default PCM in stock's
+`/etc/asound.conf` is `plug → rate → file(/dev/MrAudio) → hw:0`, which never
+opens a `share` PCM. Niche and unused, so this is noted rather than worked
+around (e.g. by hand-adding a custom install rule) for this task.
 
 ## 6. Files changed by this task
 

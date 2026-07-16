@@ -49,20 +49,29 @@
 #     build a kernel itself" -- that was simply false, BR2_LINUX_KERNEL=y is set below.
 #     Right setting, wrong reason, which is how it nearly got reverted.)
 #
-#     ACCEPTED CONSEQUENCE: the series resolves to Buildroot's own 6.18.x pin
-#     (Config.in.host:472 -> "6.18.33") while the kernel is 6.18.38, so headers lag the
-#     kernel slightly. That is correct and harmless: headers older than the running
-#     kernel is the supported direction (uapi is forward compatible by guarantee), and
-#     the actual uapi delta between 6.18.33 and 6.18.38 is ONE line, in
-#     include/uapi/linux/tee.h -- a subsystem this board does not use. Checked with
+#     ACCEPTED CONSEQUENCE: the series resolves to whatever 6.18.x Buildroot pins for it
+#     (package/linux-headers/Config.in.host, the `default "6.18.33" if
+#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.33) while the kernel is 6.18.38, so
+#     the headers lag the kernel slightly. That is correct and harmless: headers older
+#     than the running kernel is the supported direction, because the kernel's uapi is
+#     forward-compatible by guarantee. The actual uapi delta between 6.18.33 and 6.18.38
+#     is ONE line -- an explicit `__u32 :32;` pad in include/uapi/linux/tee.h, a
+#     subsystem this board does not use. Checked with
 #     `git diff v6.18.33 v6.18.38 -- include/uapi/ arch/arm/include/uapi/`.
-#     Re-check that diff on a series bump; a patchlevel bump cannot need it.
+#
+#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included. It is tempting to assume only
+#     a series bump can move uapi; the tee.h line above disproves it, since 6.18.33 ->
+#     6.18.38 is itself a patchlevel range. Stable rules discourage uapi changes but do
+#     not forbid them, so the diff is the authority, not the version numbers.
 #
 #     Also note linux-headers only applies BR2_LINUX_KERNEL_PATCH / BR2_GLOBAL_PATCH_DIR
 #     under AS_KERNEL (package/linux-headers/linux-headers.mk:82), so the series pin
 #     means our carried patches do not reach the headers tree. Verified irrelevant: no
-#     patch in board/mister/de10nano/linux-patches/ touches include/uapi or
-#     arch/arm/include/uapi -- they are drivers, one DTS, and fs/exfat.
+#     patch in board/mister/de10nano/linux-patches/ MODIFIES a header under include/uapi
+#     or arch/arm/include/uapi (checked against the patches' `+++ b/` target paths: zero
+#     hits). Some do mention uapi headers in prose -- 0001 cites include/uapi/linux/fb.h
+#     to explain an ioctl number -- but none change one; the series is drivers, one DTS,
+#     and fs/exfat.
 #   - BR2_TOOLCHAIN_BUILDROOT_CXX: libstdc++.so.6 is a *toolchain*-provided
 #     library, not a package (docs/abi-contract.md §2.2 rows L5/L6 say so
 #     explicitly), and T8 requires it to export GLIBCXX_3.4.21 + CXXABI_1.3.9.

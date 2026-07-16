@@ -57,6 +57,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # Deliberately BEFORE the build, and deliberately in this job rather than a
+      # job of its own: it needs no kernel tree and no network, runs in about a
+      # second, and so costs no extra runner minutes here while failing fast
+      # instead of after a possible 300-minute build.
+      #
+      # It guards an interface the build itself cannot: Buildroot applies these
+      # patches with `patch -p1`, which ignores mail headers, so a malformed
+      # `From:` builds green and only breaks when the series is replayed as git
+      # history with `git am`. See the script's header.
+      - name: Lint kernel patch headers (git am-ability)
+        run: scripts/lint-kernel-patches.sh
+
       # Everything from "prepare the runner" to "linux.img + zImage_dtb exist".
       - name: Build the image
         uses: ./.github/actions/buildroot-build

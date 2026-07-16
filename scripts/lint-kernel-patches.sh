@@ -41,7 +41,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Assigned then marked readonly separately: `readonly X="$(cmd)"` masks cmd's exit status
+# (shellcheck SC2155), and the rest of scripts/ avoids that pattern.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPO_ROOT
 readonly PATCH_DIR="${1:-$REPO_ROOT/board/mister/de10nano/linux-patches}"
 
 if [[ ! -d $PATCH_DIR ]]; then

@@ -5,8 +5,8 @@
 # See docs/rt-beta-kernel.md.
 #
 # The base linux.config reconciles cleanly to 7.2 via `olddefconfig` (verified:
-# every MiSTer-critical symbol survives), so this fragment carries ONLY the two
-# deltas that make this the RT/beta kernel.
+# every MiSTer-critical symbol survives), so this fragment carries ONLY the one
+# delta that makes this the RT/beta kernel.
 
 # --- PREEMPT_RT: the point of the variant ------------------------------------
 # A fully-preemptible real-time kernel. On Linux 7.2, arch/arm selects
@@ -15,12 +15,7 @@
 # RT patch to carry. (RT for 32-bit ARM merged into mainline in Linux 7.1.)
 CONFIG_PREEMPT_RT=y
 
-# --- In-kernel RTL8814AU: stay on a maintained driver ------------------------
-# The out-of-tree rtl8814au-morrownr package is disabled on the beta (it doesn't
-# build on 7.x). Recover the chip with the in-kernel mac80211 rtw88_8814au
-# driver (merged upstream in Linux 6.16) — a maintained path. RTW88=m is already
-# set by linux.config; this pulls in RTW88_8814A.
-#   TODO: rtw88_8814au needs rtw8814a firmware at runtime. Confirm it is covered
-#   by the linux-firmware package set in the defconfig (BR2_PACKAGE_LINUX_FIRMWARE_*)
-#   or add it before relying on 8814au WiFi on the beta.
-CONFIG_RTW88_8814AU=m
+# NOTE: the RTL8814AU chip's in-kernel driver (CONFIG_RTW88_8814AU) is
+# deliberately NOT set here — the main build migrated that chip to the in-kernel
+# rtw88_8814au driver in the shared linux.config, so the beta inherits it
+# automatically. Nothing to duplicate.

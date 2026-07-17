@@ -28,8 +28,8 @@ fragment, layered at build time — mirroring the existing initramfs second-buil
 
 | File | Role |
 |---|---|
-| `configs/mister_rt.fragment` | Buildroot-config delta (kernel = 7.2-rc3 tarball; beta patch dir; kernel-config fragment; disable the 3 OOT WiFi packages). Merged onto `mister_de10nano_defconfig` via `merge_config.sh`. |
-| `board/mister/de10nano/linux-rt.fragment` | Kernel-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` + `CONFIG_RTW88_8814AU=m`. |
+| `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → 7.2-rc3 via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment; disable the 3 OOT WiFi packages). Merged onto `mister_de10nano_defconfig` via `merge_config.sh`. |
+| `board/mister/de10nano/linux-rt.fragment` | Kernel-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
 | `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` (single source of truth). Applies 28 of 31 patches. |
 | `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/`, reusing the shared toolchain/dl/ccache. The main `output/` is never touched. |
 
@@ -55,8 +55,10 @@ The three out-of-tree morrownr drivers (`rtl8812au`, `rtl8814au`, `rtl8821au`)
 So they are disabled on this variant.
 
 - **RTL8814AU** is recovered via the **in-kernel** `rtw88_8814au` driver (merged
-  upstream in Linux 6.16) — `CONFIG_RTW88_8814AU=m` in `linux-rt.fragment`.
-  (TODO: confirm `rtw8814a` firmware is present in the linux-firmware set.)
+  upstream in Linux 6.16). This is inherited from the shared `linux.config` — the
+  main build migrated that chip in-kernel (`CONFIG_RTW88_8814AU=m`), so the beta
+  gets it for free. Firmware `rtw88/rtw8814a_fw.bin` ships via
+  `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88`.
 - **RTL8812AU / RTL8821AU** have no clean in-kernel equivalent at their chipsets
   and are simply absent here. A developer testing RT can use ethernet or the
   in-kernel `rtw88`/`rtw89`/`rtl8xxxu` adapters that the base config already ships.
@@ -97,7 +99,7 @@ shared — no rootfs change is needed to switch kernels.
 | **Full `make rt` build (kernel links, image builds)** | ❌ **unproven** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) |
-| `rtw88_8814au` firmware present | ❌ TODO |
+| `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
 ## 7. TODO before this is more than a scaffold
 
@@ -107,8 +109,7 @@ shared — no rootfs change is needed to switch kernels.
    IRQs (expected to *tighten* pacing — measure it).
 3. Optionally re-anchor patches `0030` and `0037` to 7.x and add them to the
    beta `series` (they were dropped only to keep the first build clean).
-4. Confirm/add `rtw8814a` firmware for `rtw88_8814au`.
-5. Wire `zImage_dtb-rt` into `release.yml` as an extra asset in the *same*
+4. Wire `zImage_dtb-rt` into `release.yml` as an extra asset in the *same*
    `release_YYYYMMDD.7z` (keep ONE `db.json`/`/MiSTer.version` — ADR 0018).
 
 See also: the RT-feasibility and 7.2-port findings in the project memory / the

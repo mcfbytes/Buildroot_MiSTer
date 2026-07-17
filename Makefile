@@ -254,16 +254,17 @@ $(OUTPUT_DIR)/.config: | $(BR_STAMP)
 # is the only thing that knows what to delete and what to keep, so skipping it
 # would report success over a still-dirty tree — this bug, again, one layer out.
 clean:
-	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ]; }; then \
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ]; }; then \
 		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
 		echo "       but an output directory still holds build products. Skipping" >&2; \
 		echo "       would report success over a dirty tree." >&2; \
 		echo "" >&2; \
-		echo "Use 'make distclean' to remove both output directories outright." >&2; \
+		echo "Use 'make distclean' to remove all output directories outright." >&2; \
 		exit 1; \
 	fi
 	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
 	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
+	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 
 # `rm -rf`, not a forwarded `$(BR_MAKE) distclean`, and deliberately not
 # `distclean: clean` the way upstream writes it (:1146).
@@ -280,7 +281,7 @@ clean:
 # cache that distclean is not entitled to destroy. `git clean -xfd` is the real
 # nothing-but-the-clone hammer; it takes work/ and dl/ with it.
 distclean:
-	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR)
+	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------
 # Phony on purpose. Buildroot is the incremental build system here; re-entering it

@@ -13,13 +13,12 @@
 # build on Linux 7.x.
 
 # --- The 7.2-rc3 kernel -------------------------------------------------------
-# An -rc is not published on the normal kernel.org release mirror, so fetch the
-# torvalds snapshot tarball (the exact source this variant was validated
-# against). BR2_LINUX_KERNEL_CUSTOM_TARBALL is a different `choice` member than
-# the base defconfig's BR2_LINUX_KERNEL_CUSTOM_VERSION, so merge_config.sh +
-# olddefconfig switches the choice over cleanly.
-BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
-BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://git.kernel.org/torvalds/t/linux-7.2-rc3.tar.gz"
+# Just override the version value; the base defconfig already sets
+# BR2_LINUX_KERNEL_CUSTOM_VERSION=y. Buildroot handles -rc versions natively —
+# linux/linux.mk detects the "-rc" and fetches the cgit snapshot from
+# https://git.kernel.org/torvalds/t (there is no signed release tarball for an
+# -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc3.
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/ (symlinks
@@ -35,9 +34,10 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister
 # No upstream fix exists for the Linux 7.1 cfg80211 op-table refactor
 # (net_device* -> wireless_dev*): morrownr's drivers top out at kernel 7.0, and
 # our pins are already at each repo's HEAD, so these fail to compile on 7.2.
-# Disable them on the beta. The RTL8814AU chip is recovered via the in-kernel
-# mac80211 rtw88_8814au driver (see linux-rt.fragment); RTL8812AU / RTL8821AU
-# have no in-kernel equivalent and are simply absent on this dev/RT kernel.
+# Disable them on the beta. The RTL8814AU chip is recovered by the in-kernel
+# rtw88_8814au driver inherited from the shared linux.config (the main build
+# migrated that chip in-kernel); RTL8812AU / RTL8821AU have no in-kernel
+# equivalent and are simply absent on this dev/RT kernel.
 # `xone` builds clean on 7.2 and stays enabled (inherited from the base).
 # BR2_PACKAGE_RTL8812AU is not set
 # BR2_PACKAGE_RTL8814AU_MORROWNR is not set

@@ -68,6 +68,17 @@ INITRAMFS_CPIO       := $(INITRAMFS_OUTPUT_DIR)/images/rootfs.cpio
 INITRAMFS_DEFCONFIG  := $(ROOT_DIR)/configs/mister_initramfs_defconfig
 INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
 
+# --- RT / Linux-7.2 "beta" kernel variant (docs/rt-beta-kernel.md) ------------
+# A THIRD Buildroot output dir, same trick as the initramfs stage above: a
+# different kernel *configuration* (Linux 7.2-rc3 + PREEMPT_RT) needs its own O=.
+# It is NOT a second full defconfig — it is the base mister_de10nano_defconfig
+# with configs/mister_rt.fragment layered on at `make rt` time via Buildroot's
+# own merge_config.sh (the whole "thin shim": only the kernel version, its patch
+# subset, its config delta, and the 7.x-incompatible OOT WiFi drivers change).
+# ⚠ SCAFFOLD — never yet built or booted; expect to iterate. See the doc.
+RT_OUTPUT_DIR := $(ROOT_DIR)/output-rt
+RT_FRAGMENT   := $(ROOT_DIR)/configs/mister_rt.fragment
+
 BR_TARBALL := $(DL_DIR)/buildroot-$(BUILDROOT_VERSION).tar.gz
 BR_DIR     := $(WORK_DIR)/buildroot
 # Two properties this path must have, both learned the hard way:
@@ -150,6 +161,10 @@ BR_MAKE = PATH="$(HOSTSHIM_DIR):$$PATH" \
 BR_MAKE_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(INITRAMFS_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
+# The same, aimed at the RT/beta output directory (docs/rt-beta-kernel.md).
+BR_MAKE_RT = PATH="$(HOSTSHIM_DIR):$$PATH" \
+          $(MAKE) -C $(BR_DIR) O=$(RT_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+
 # Bare `make` must NOT be `all`. The P1.1 defconfig deliberately sets no arch or
 # toolchain, so Buildroot would fall back to its own defaults (BR2_i386 +
 # internal toolchain) and a reflexive `make` would spend an hour compiling an
@@ -161,6 +176,7 @@ BR_MAKE_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
 .PHONY: all help buildroot-fetch buildroot-verify buildroot-unpack buildroot-showsig require-tools
 .PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
+.PHONY: rt rt-clean rt-menuconfig
 .PHONY: zimage-dtb
 
 # GNU Make always checks whether its own makefiles need remaking, using
@@ -328,6 +344,42 @@ $(INITRAMFS_OUTPUT_DIR)/.config: $(INITRAMFS_DEFCONFIG) | $(BR_STAMP)
 
 initramfs-clean:
 	rm -rf $(INITRAMFS_OUTPUT_DIR)
+
+# --- RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md) ----------------------
+# Generates the variant .config by layering configs/mister_rt.fragment on the
+# base defconfig with Buildroot's own merge_config.sh, then builds it into its
+# own output-rt/ (shared toolchain/dl/ccache; the main output/ is untouched).
+# Produces output-rt/images/zImage_dtb — the RT kernel — to ship as zImage_dtb-rt
+# alongside the main 6.18 image (selected on-device by a one-line u-boot.txt
+# edit). ⚠ SCAFFOLD: never built/booted; the ARM32 RT kernel + the beta patch
+# subset are unproven on hardware. Verified so far: the config layering resolves,
+# the 28 beta patches apply to 7.2-rc3, and the base linux.config reconciles.
+# Order-only $(BR_STAMP), no file prerequisites — mirrors $(OUTPUT_DIR)/.config
+# above (and for the same reason: a defconfig/fragment listed as a normal
+# prerequisite is caught by the catch-all target-forwarding rule and would
+# re-run against O=$(OUTPUT_DIR)). Re-generate after editing the fragment with
+# `make rt-clean && make rt` (same manual step the main config's design implies).
+$(RT_OUTPUT_DIR)/.config: | $(BR_STAMP)
+	@mkdir -p $(RT_OUTPUT_DIR)
+	$(BR_MAKE_RT) mister_de10nano_defconfig
+	cd $(BR_DIR) && KCONFIG_CONFIG=$(RT_OUTPUT_DIR)/.config \
+		./support/kconfig/merge_config.sh -m -O $(RT_OUTPUT_DIR) $(RT_OUTPUT_DIR)/.config $(RT_FRAGMENT)
+	$(BR_MAKE_RT) olddefconfig
+
+rt: $(RT_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_RT) all
+	@test -f $(RT_OUTPUT_DIR)/images/zImage_dtb || { \
+		echo "FATAL: rt build finished but produced no $(RT_OUTPUT_DIR)/images/zImage_dtb" >&2; exit 1; }
+	@echo ""
+	@echo "==> RT kernel: $(RT_OUTPUT_DIR)/images/zImage_dtb  (ship as zImage_dtb-rt — docs/rt-beta-kernel.md)"
+	@echo ""
+
+# Edit the RT kernel .config interactively (writes back to output-rt/.config).
+rt-menuconfig: $(RT_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_RT) linux-menuconfig
+
+rt-clean:
+	rm -rf $(RT_OUTPUT_DIR)
 
 # Escape hatches for iterating on stage 1 without hand-editing the checked-in
 # configs. Both write to output-initramfs/; remember to fold the result back into

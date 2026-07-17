@@ -10,11 +10,11 @@
 #   - a P2.2/P2.8-style stock-`MiSTer`-binary ABI smoke, run under qemu-user against
 #     the built rootfs (the dynamic-link-resolves-clean check and the
 #     dies-at-FPGA-access-not-earlier whitelist -- docs/abi-contract.md §2.4/§2.5,
-#     A-10/A-22). NOTE: this is a *lightweight* re-implementation, not the future
-#     scripts/check-abi.sh -- no such script exists yet (P2.2's full A-1..A-25 static
-#     SONAME checklist in docs/abi-contract.md §13.1 is that task's own deliverable,
-#     out of scope here). What's implemented is exactly the two headline checks
-#     TASKS.md's own P2.2/P2.8 "Done when" text names.
+#     A-10/A-22). NOTE: this is a *lightweight* interim of just those two qemu-user
+#     gates. The full ABI/loader checklist (docs/abi-contract.md §13.1) now lives in
+#     its own deliverable, scripts/check-abi.sh (P2.2), which build.yml runs
+#     alongside this suite. The overlap on A-10/A-22 is deliberate: they are the two
+#     highest-value checks and cheap enough to assert in both places.
 #   - per-service / per-artifact parity checks harvested from each Phase 3 parity
 #     doc's "verify-in-build" checklist, asserted against the built
 #     output/images/rootfs.tar (the actual shipped artifact) and, where a binary

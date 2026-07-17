@@ -192,7 +192,10 @@ for cand in usr/bin/busybox bin/busybox usr/bin/MiSTer bin/sh; do
 	if [ -e "$ROOTFS/$cand" ]; then A1_ELF="$ROOTFS/$cand"; break; fi
 done
 if [ -z "$A1_ELF" ]; then
-	skip "A-1 toolchain is armv7-a + NEON + VFPv3 + EABIhf" "no probe ELF (busybox) found in rootfs"
+	# A rootfs with no busybox/sh/MiSTer is broken, not "nothing to check" --
+	# SKIP here would let a malformed/empty rootfs pass the toolchain-ABI gate
+	# silently. Fail instead.
+	fail "A-1 toolchain is armv7-a + NEON + VFPv3 + EABIhf" "no probe ELF (busybox/sh/MiSTer) found in rootfs -- rootfs is empty or malformed"
 else
 	a1_attr="$(readelf -A "$A1_ELF" 2>/dev/null)"
 	a1_missing=""
@@ -267,22 +270,31 @@ section "glibc / libstdc++ version floors (A-6, A-7)"
 # =============================================================================
 
 # A-6 — the binary's highest glibc version node is GLIBC_2.28 (fcntl64, §1.2).
-if lib_verdefs libc.so.6 | grep -q 'Name: GLIBC_2.28'; then
+# Distinguish "libc.so.6 absent" from "present but too old" so the failure names
+# the real problem (a missing file otherwise reads as an old glibc).
+if ! find_lib libc.so.6 >/dev/null; then
+	fail "A-6 GLIBC_2.28" "libc.so.6 not found in rootfs -- cannot check the GLIBC_2.28 floor"
+elif lib_verdefs libc.so.6 | grep -q 'Name: GLIBC_2.28'; then
 	pass "A-6 libc.so.6 provides version node GLIBC_2.28"
 else
 	fail "A-6 GLIBC_2.28" "libc.so.6 does not provide GLIBC_2.28 -- a glibc older than 2.28 fails fcntl64@GLIBC_2.28 at startup (§1.2)"
 fi
 
 # A-7 — libstdc++ must carry the GCC-5.1 C++11 ABI: GLIBCXX_3.4.21 and
-# CXXABI_1.3.9 (§1.2 T8).
-a7v="$(lib_verdefs libstdc++.so.6)"
-a7_miss=""
-printf '%s' "$a7v" | grep -q 'Name: GLIBCXX_3.4.21' || a7_miss="$a7_miss GLIBCXX_3.4.21"
-printf '%s' "$a7v" | grep -q 'Name: CXXABI_1.3.9'   || a7_miss="$a7_miss CXXABI_1.3.9"
-if [ -z "$a7_miss" ]; then
-	pass "A-7 libstdc++.so.6 provides GLIBCXX_3.4.21 and CXXABI_1.3.9"
+# CXXABI_1.3.9 (§1.2 T8). As with A-6, name a missing library distinctly from
+# an old one.
+if ! find_lib libstdc++.so.6 >/dev/null; then
+	fail "A-7 libstdc++ C++11 ABI" "libstdc++.so.6 not found in rootfs -- cannot check the GCC-5.1 C++11 ABI floor"
 else
-	fail "A-7 libstdc++ C++11 ABI" "missing:$a7_miss -- libstdc++ older than GCC 5.1 (§1.2 T8)"
+	a7v="$(lib_verdefs libstdc++.so.6)"
+	a7_miss=""
+	printf '%s' "$a7v" | grep -q 'Name: GLIBCXX_3.4.21' || a7_miss="$a7_miss GLIBCXX_3.4.21"
+	printf '%s' "$a7v" | grep -q 'Name: CXXABI_1.3.9'   || a7_miss="$a7_miss CXXABI_1.3.9"
+	if [ -z "$a7_miss" ]; then
+		pass "A-7 libstdc++.so.6 provides GLIBCXX_3.4.21 and CXXABI_1.3.9"
+	else
+		fail "A-7 libstdc++ C++11 ABI" "missing:$a7_miss -- libstdc++ older than GCC 5.1 (§1.2 T8)"
+	fi
 fi
 
 # =============================================================================

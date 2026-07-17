@@ -671,7 +671,12 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 # rtl8188eu/rtl8821au/rtl8821cu/rtl8812au-aircrack-ng packages are left OFF --
 # our pins stay in control, not Buildroot's release cadence (A9 reproducibility).
 BR2_PACKAGE_RTL8812AU=y                          # RTL8812AU 11ac -- no mainline USB driver
-BR2_PACKAGE_RTL8814AU_MORROWNR=y                 # RTL8814AU 4x4 11ac -- no mainline USB driver
+# RTL8814AU: now the in-kernel mac80211 rtw88_8814au driver (CONFIG_RTW88_8814AU
+# in board/mister/de10nano/linux.config, merged upstream in 6.16), NOT the OOT
+# rtl8814au-morrownr package. The package/ definition is kept but unselected (the
+# OOT fork gets no API updates past kernel 6.14; running both would conflict on
+# the same USB IDs). To revert: re-add BR2_PACKAGE_RTL8814AU_MORROWNR=y here and
+# drop CONFIG_RTW88_8814AU from linux.config.
 BR2_PACKAGE_RTL8821AU_MORROWNR=y                 # RTL8811AU/RTL8821AU 11ac -- no mainline USB driver
 # BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set   # -> mainline rtl8xxxu (8188eu)
 # BR2_PACKAGE_RTL8188FU is not set               # -> mainline rtl8xxxu (8188fu)

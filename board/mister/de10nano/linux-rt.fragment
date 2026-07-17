@@ -1,0 +1,21 @@
+# linux-rt.fragment — kernel-config delta for the RT / 7.2 beta variant.
+#
+# Layered on board/mister/de10nano/linux.config by Buildroot at kernel-build
+# time (BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES, set in configs/mister_rt.fragment).
+# See docs/rt-beta-kernel.md.
+#
+# The base linux.config reconciles cleanly to 7.2 via `olddefconfig` (verified:
+# every MiSTer-critical symbol survives), so this fragment carries ONLY the one
+# delta that makes this the RT/beta kernel.
+
+# --- PREEMPT_RT: the point of the variant ------------------------------------
+# A fully-preemptible real-time kernel. On Linux 7.2, arch/arm selects
+# ARCH_SUPPORTS_RT in-tree (arch/arm/Kconfig:45), and EXPERT=y is inherited from
+# linux.config, so PREEMPT_RT is directly selectable — there is NO out-of-tree
+# RT patch to carry. (RT for 32-bit ARM merged into mainline in Linux 7.1.)
+CONFIG_PREEMPT_RT=y
+
+# NOTE: the RTL8814AU chip's in-kernel driver (CONFIG_RTW88_8814AU) is
+# deliberately NOT set here — the main build migrated that chip to the in-kernel
+# rtw88_8814au driver in the shared linux.config, so the beta inherits it
+# automatically. Nothing to duplicate.

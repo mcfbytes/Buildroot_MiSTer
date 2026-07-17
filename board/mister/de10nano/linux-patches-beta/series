@@ -1,0 +1,41 @@
+# series — the linux-patches/ subset applied to the 7.2 beta kernel.
+# Buildroot's apply-patches.sh honors this file: only patches listed here
+# are applied, in order. Entries are symlinks to the shared
+# board/mister/de10nano/linux-patches/ files (single source of truth).
+#
+# Excluded vs the 6.18 set (3), verified against 7.2-rc3:
+#   0015-hid-nintendo-nso-famicom       — UPSTREAMED in 7.2 (FAML/FAMR +
+#     famicom_r_button_mappings already in drivers/hid/hid-nintendo.c).
+#   0030-i2c-designware-quiet-timeout   — trivial 1-line re-anchor pending
+#     (dev_err->dev_dbg). Cosmetic; omitted on beta.
+#   0037-hid-playstation-dualsense-mute-btn-z — genuine MiSTer divergence
+#     (mute btn -> BTN_Z); ~30-min 7.x re-anchor pending. Omitted for now.
+#
+0001-fbdev-add-MiSTer_fb-driver.patch
+0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
+0003-cpufreq-cyclone5-de10nano-overclock.patch
+0004-dts-de10nano-MiSTer.patch
+0010-hid-guncon2.patch
+0011-hid-guncon3.patch
+0012-hid-fanatec.patch
+0013-hid-flydigi-vader.patch
+0014-hid-gamecube-adapter.patch
+0016-hid-microsoft-elite2-paddles.patch
+0017-xpad-mister-deltas.patch
+0018-hid-controllable-quirk.patch
+0019-hidpp-k400-fn-inversion.patch
+0020-mmc-no-led-on-send-status.patch
+0022-hid-playstation-ds4-mac-fix.patch
+0023-hid-wiimote-fixes.patch
+0024-hid-input-keyrah-europe1.patch
+0025-usbhid-jspoll-gamepad.patch
+0026-input-mousedev-eviocgrab.patch
+0027-mt76x2u-release-xbox-adapter-ids.patch
+0028-dwc2-fix-unaligned-in-split.patch
+0029-leds-gpio-brightness-hw-changed.patch
+0031-exfat-samsung-symlinks.patch
+0032-hid-nintendo-joycon-combo-led.patch
+0033-hid-playstation-dualsense-player-id-led.patch
+0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch
+0035-hid-nintendo-home-led-nonfatal.patch
+0036-btusb-csr-clone-lmp-subver-2512.patch

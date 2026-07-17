@@ -14,10 +14,10 @@
 # build.yml five failed runs to find never reached the other two. Read that
 # action's header before changing anything about how the build runs.
 #
-# CAVEAT: scripts/check-abi.sh (P2.2) does not exist yet — the ABI step below
-# runs it only if present and emits a ::notice:: otherwise. ci-tests.sh's own
-# "ABI / stock-binary smoke" section covers the same P2.2/P2.8 core assertions
-# as a lightweight interim (see that script's header).
+# The ABI/SONAME checker is scripts/check-abi.sh (P2.2), run below against the
+# built rootfs. ci-tests.sh's own "ABI / stock-binary smoke" section still
+# carries a lightweight interim of the two qemu-user gates (A-10/A-22) — cheap,
+# and intentionally redundant on the two highest-value checks.
 #
 ################################################################################
 
@@ -195,6 +195,47 @@ jobs:
         with:
           run-legal-info: "true"
 
+      # --- Build overview on the run's Summary page --------------------------
+      # Surfaces the facts a reviewer usually opens the log to hunt for --
+      # kernel/glibc versions, the image sizes, /MiSTer.version, package count --
+      # as a table on the Summary tab. Runs right after the build so it renders
+      # ABOVE the ABI/SONAME section that scripts/check-abi.sh appends later.
+      # Best-effort: every fact is guarded and defaults to "n/a"; a missing one
+      # never fails the build.
+      - name: Build overview (job summary)
+        run: |
+          set -u
+          kver=$(basename "$(ls -d output/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
+          glibc=$(strings output/target/lib/libc.so.6 2>/dev/null | sed -n 's/.*release version \([0-9][0-9.]*[0-9]\).*/\1/p' | head -1)
+          misterver=$(cat output/target/MiSTer.version 2>/dev/null || true)
+          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
+          img=$(sz output/images/linux.img)
+          zimg=$(sz output/images/zImage_dtb)
+          pkgs=$( [ -f output/legal-info/manifest.csv ] && echo $(( $(wc -l < output/legal-info/manifest.csv) - 1 )) || echo "n/a" )
+          case "${GITHUB_EVENT_NAME:-}" in
+            push|workflow_dispatch) art="uploaded (mister-images + SBOM, 14-day retention)";;
+            pull_request)           art="skipped (PR validation run -- artifacts upload on push/dispatch)";;
+            *)                      art="n/a";;
+          esac
+          {
+            echo "## 🧱 Build image summary"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Trigger | \`${GITHUB_EVENT_NAME:-?}\` |"
+            echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| glibc | \`${glibc:-n/a}\` |"
+            echo "| \`/MiSTer.version\` | \`${misterver:-n/a}\` |"
+            echo "| linux.img | ${img} |"
+            echo "| zImage_dtb | ${zimg} |"
+            echo "| Packages (SBOM) | ${pkgs} |"
+            echo "| Artifacts | ${art} |"
+            echo ""
+            echo "Reproducible build (\`BR2_REPRODUCIBLE\`, pinned \`SOURCE_DATE_EPOCH\`). "
+            echo "Parity suite (\`ci-tests.sh\`) and the ABI/SONAME section below run against this image."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # --- Non-hardware parity suite (P3.12) ---------------------------------
       # CI_TESTS_SKIP_QEMU_SYSTEM=1 skips scripts/test-initramfs.sh, the one
       # sub-check that boots a QEMU *system* kernel six times and can take
@@ -222,20 +263,25 @@ jobs:
           retention-days: 14
 
       # --- ABI / SONAME parity checker (P2.2) --------------------------------
-      # Runs if/when P2.2 lands — no workflow change needed then.
+      # Asserts the ABI/loader contract (docs/abi-contract.md §13.1) against the
+      # freshly built rootfs: the 12 DT_NEEDED SONAMEs at the same major, the
+      # glibc-2.34 merge stubs, the loader, /MiSTer.version's byte shape, and --
+      # when the gitignored stock binary is present -- the stock MiSTer's
+      # dynamic-link resolution under qemu-user. A missing SONAME or a dropped
+      # compat stub fails the build here. The two stock-binary gates (A-10/A-22)
+      # SKIP, not fail, in a clean CI checkout where work/ does not exist.
       - name: ABI / SONAME parity checker (P2.2)
-        run: |
-          if [ -x scripts/check-abi.sh ]; then
-            scripts/check-abi.sh output
-          else
-            echo "::notice title=P2.2 not yet implemented::scripts/check-abi.sh does not exist yet (TASKS.md P2.2 is still open). ci-tests.sh's 'ABI / stock-binary smoke' section already covers the equivalent P2.2/P2.8 core checks as an interim -- see scripts/ci-tests.sh's header comment. This step will pick up scripts/check-abi.sh automatically once P2.2 lands."
-          fi
+        run: scripts/check-abi.sh output
 
-      # --- Upload build artifacts, on every push -----------------------------
-      # (Not on pull_request runs, to avoid doubling artifact storage for every
-      # PR revision on top of its eventual push to the target branch.)
+      # --- Upload build artifacts: on push and manual dispatch ---------------
+      # NOT on pull_request runs, to avoid doubling artifact storage for every
+      # PR revision on top of its eventual push to the target branch. A manual
+      # workflow_dispatch DOES upload: fetching the built image is usually the
+      # whole reason someone triggers a build by hand, and without this a manual
+      # run finishes green but publishes nothing (which is exactly what happened
+      # once workflow_dispatch was added as a trigger without updating this gate).
       - name: Upload build artifacts
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mister-images-${{ github.sha }}
@@ -261,7 +307,7 @@ jobs:
       # manifest.csv (every package, version, license, upstream URL), the license
       # texts, buildroot.config, and the source hashes. ~4 MB.
       - name: Package legal-info for upload (SBOM, without the source tarballs)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           set -eu
           tar -czf legal-info.tar.gz \
@@ -271,7 +317,7 @@ jobs:
           echo "SBOM artifact: $(du -h legal-info.tar.gz | cut -f1) (source tarballs excluded -- see release.yml for those)"
 
       - name: Upload SBOM artifact
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: legal-info-${{ github.sha }}

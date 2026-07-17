@@ -27,6 +27,14 @@
 # have failed here. The recipe now lives once, in
 # .github/actions/buildroot-build; read its header before touching the build.
 #
+# SAME REASONING, APPLIED TO VERIFICATION: because we rebuild rather than adopt,
+# we also RE-VERIFY rather than trust. This workflow runs the full non-hardware
+# suite build.yml runs -- scripts/ci-tests.sh (P3.12) then scripts/check-abi.sh
+# (P2.2) -- against its own fresh build of the tagged commit, before packaging.
+# Running only one of that pair would be an incoherent middle: the "the commit
+# already passed build.yml on master" argument for skipping either applies
+# equally to both, and a v* tag can point at a commit master never saw.
+#
 # THE ONE THING THIS FILE CANNOT DO ITSELF: vendor the stock `uboot.img` /
 # `files/linux/` auxiliary payload (updateboot, config templates,
 # u-boot.txt_example, MidiLink.INI, ppp_options, the samba/user-startup/
@@ -176,6 +184,41 @@ jobs:
         with:
           extra-apt-packages: p7zip-full
           run-legal-info: "true"
+
+      # Non-hardware parity suite against the EXACT rootfs about to be shipped
+      # (P3.12) -- the SAME bar build.yml applies to every master push, re-run
+      # here because a v* tag may point at a commit build.yml never validated
+      # identically (see this file's header on why the build is redone, not
+      # adopted). ci-tests.sh + check-abi.sh are a pair in build.yml; running
+      # one but not the other on the shipped image would be an incoherent middle.
+      # CI_TESTS_SKIP_QEMU_SYSTEM=1 matches build.yml: the slow six-boot
+      # qemu-*system* test is skipped; qemu-user (installed by the build action)
+      # drives the rest. Cheap, and only ever runs on a tag push.
+      - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
+        env:
+          CI_TESTS_SKIP_QEMU_SYSTEM: "1"
+        run: scripts/ci-tests.sh
+
+      # Worth having precisely when the step above FAILED -- if: always() so a
+      # failed release build still surfaces the machine-readable failure digest
+      # (mirrors build.yml). ~2 KB; negligible.
+      - name: Upload parity-suite results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-tests-results-${{ github.ref_name }}
+          path: output/ci-tests-results.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Assert the ABI/SONAME contract on the EXACT rootfs about to be shipped
+      # (docs/abi-contract.md §13.1, P2.2) -- a missing SONAME or a dropped glibc
+      # compat stub blocks the release here, before anything is packaged. Also
+      # writes the "ABI / SONAME parity" section onto the run's Summary page.
+      # The stock-binary gates (A-10/A-22) SKIP in this clean checkout (work/ is
+      # gitignored); the static ABI/loader checks run against output/target.
+      - name: ABI / SONAME parity checker (P2.2)
+        run: scripts/check-abi.sh output
 
       ##########################################################################
       # Assemble the flat `dist/` directory -- these seven filenames are
@@ -489,6 +532,44 @@ jobs:
           ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz > SHA256SUMS )
           cat dist/SHA256SUMS
 
+      # --- Release overview on the run's Summary page ------------------------
+      # The tag, the internal version, the archive + image sizes, the full
+      # SHA256SUMS, and -- most importantly -- the draft/db.json coupling a
+      # human needs to understand before clicking Publish.
+      - name: Release overview (job summary)
+        env:
+          RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -u
+          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
+          arc="dist/release_${RELEASE_DATE}.7z"
+          assets=$(find dist -maxdepth 1 -type f | wc -l)
+          {
+            echo "## 🚀 Release build summary"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Internal version (\`/MiSTer.version\`) | \`${RELEASE_DATE}\` |"
+            echo "| Archive | \`release_${RELEASE_DATE}.7z\` ($(sz "$arc")) |"
+            echo "| linux.img | $(sz dist/linux.img) |"
+            echo "| zImage_dtb | $(sz dist/zImage_dtb) |"
+            echo "| Assets staged | ${assets} |"
+            echo ""
+            echo "**Verified before packaging:** stock archive MD5/SHA-256/size + 7z CRC · \`uboot.img\`/\`updateboot\` byte-identical to stock (before *and* after the archive round-trip) · our \`.7z\` extracts under the pinned ARM \`7za\` (qemu-arm) · archive member list matches docs/downloader-contract.md · rootfs passes the non-hardware parity suite (\`ci-tests.sh\`) and the ABI/SONAME checker (section above)."
+            echo ""
+            echo "**Next:** the \`publish\` job attests build provenance and creates a **DRAFT** GitHub Release. A draft is not public and does **not** trigger db.json publication (\`publish-db.yml\` gates on a *published, non-draft* release) until a human clicks **Publish**."
+            echo ""
+            echo "<details><summary>SHA256SUMS</summary>"
+            echo ""
+            echo '```'
+            cat dist/SHA256SUMS 2>/dev/null || echo "(SHA256SUMS not found)"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Report disk & cache usage
         if: always()
         run: |
@@ -573,6 +654,20 @@ jobs:
             dist/buildroot.config \
             dist/linux.config \
             dist/legal-info.tar.gz
+
+      - name: Publish summary (job summary)
+        env:
+          RELEASE_DATE: ${{ needs.build.outputs.release_date }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          {
+            echo "## 📦 Draft release created"
+            echo ""
+            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\` and \`zImage_dtb\`."
+            echo ""
+            echo "> ⚠️ **This is a draft.** It is not public, and db.json is **not** published while it stays a draft."
+            echo "> Clicking **Publish release** — whether as a full release *or* a pre-release — fires \`publish-db.yml\`, which regenerates and publishes db.json to opted-in devices. **The pre-release flag does not prevent that** (the guard there checks draft, not pre-release). For a smoke test, leave it a draft and delete it when done."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Follow-up checklist (cannot be verified by this authoring pass)
         env:

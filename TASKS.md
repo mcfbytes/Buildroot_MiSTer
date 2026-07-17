@@ -494,13 +494,21 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   version.
   **Done when:** full rootfs builds; P2.2's checker passes.
 
-- [ ] **P2.2 — SONAME parity checker** — [SONNET] — Size S — Depends: P2.1
+- [x] **P2.2 — SONAME parity checker** — [SONNET] — Size S — Depends: P2.1
   `scripts/check-abi.sh`: (a) verify every SONAME from `docs/abi-contract.md` exists in
   the built rootfs at the same major version; (b) run the stock `MiSTer` binary's
   dynamic-link resolution against the new rootfs via `qemu-arm` +
   `LD_TRACE_LOADED_OBJECTS` style check; fail on any unresolved symbol/library.
   **Done when:** script exits nonzero on a deliberately broken rootfs (test that) and
   zero on the real one; wired into CI later (P4.1).
+  **Done:** `scripts/check-abi.sh` implements the ABI/loader subset of §13.1
+  (A-1..A-12, A-24, A-25 static; A-10/A-22 under qemu-user, SKIP when the gitignored
+  stock binary is absent). Verified: 15/15 PASS on the built `output/target` (glibc
+  2.42), exit 1 on a rootfs with a SONAME removed. Wired into `build.yml`
+  (`scripts/check-abi.sh output`). The init/config-parity rows of §13.1 (A-13..A-21,
+  A-23) are deliberately **out of scope** here — they belong to P2.3/P2.4 and are
+  asserted by `ci-tests.sh`'s Phase-3 section, several with documented divergences
+  from stock's exact strings.
 
 - [x] **P2.3 — Rootfs overlay: init & config parity** — [SONNET] — Size L — Depends: P0.3, P2.1
   Recreate stock init behavior in `rootfs-overlay/`: the verified S-script set

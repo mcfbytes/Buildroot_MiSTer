@@ -325,6 +325,25 @@ build_installer_kernel() {
 
 	local cpio_override="MISTER_INITRAMFS_CPIO=$INSTALLER_CPIO"
 
+	# SAFETY NET for the shared output/ dir. The relink below transiently overwrites
+	# output/images/zImage_dtb with the INSTALLER kernel; the restore afterward puts
+	# the real one back. If ANYTHING in between fails (a br_make error, the capture
+	# check, a cp) under `set -e`, the script would exit leaving output/ -- a build
+	# dir other targets read -- holding the installer kernel. Arm an EXIT trap that
+	# restores the shipped artifact from the pre-relink snapshot on any early exit,
+	# and disarm it once the normal restore has run. (The kernel build tree under
+	# output/build/linux-*/ still references the installer cpio after such a failure,
+	# but the next `make all` self-corrects via external.mk's default MISTER_INITRAMFS_CPIO;
+	# what must never be left wrong is the shipped output/images/zImage_dtb, and this
+	# guarantees that.) Snapshot exists: snapshot_real_outputs ran before this.
+	_restore_output_zimage() {
+		[ -f "$SAVED_REAL_ZIMAGE_DTB" ] || return 0
+		if cp -f "$SAVED_REAL_ZIMAGE_DTB" "$OUR_ZIMAGE_DTB" 2>/dev/null; then
+			err "output/images/zImage_dtb restored from the pre-relink snapshot after a failure mid-relink"
+		fi
+	}
+	trap '_restore_output_zimage' EXIT
+
 	# Re-embed the installer cpio and re-link. `linux-reconfigure` re-runs the kernel
 	# kconfig-fixup (external.mk sets CONFIG_INITRAMFS_SOURCE=$INSTALLER_CPIO) then
 	# rebuilds + reinstalls the kernel; the trailing `all` re-runs post-image.sh
@@ -345,6 +364,10 @@ build_installer_kernel() {
 	log "  restoring output/ to the real kernel ..."
 	br_make "$OUTPUT_DIR" linux-reconfigure all
 	cp -f "$SAVED_REAL_ZIMAGE_DTB" "$OUR_ZIMAGE_DTB"
+
+	# output/ is back to the real kernel -- disarm the safety net. Any failure in the
+	# sanity checks below no longer risks a dirty output/ (it is already restored).
+	trap - EXIT
 
 	# The captured installer kernel must NOT be the real one -- a wiring mistake here
 	# would ship the throwaway installer kernel to Downloader users. It MUST differ in

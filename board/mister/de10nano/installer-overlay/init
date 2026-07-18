@@ -101,9 +101,14 @@ set -u
 PAYLOAD_DIR="mister-payload"           # subdir on the shipped p1 holding the real card
 CORES_DIR="_Console"                   # payload top-level dir skipped first under RAM pressure
 DATA_LABEL="MiSTer_Data"               # exFAT volume label the final card must carry
-RESERVED_SECTORS=8192                  # 512-byte sectors kept at the tail for the 0xA2 boot
-                                       # partition (mr-fusion parity; 8192*512 = 4 MiB, and
-                                       # uboot.img is ~503 KiB, so this is ample).
+RESERVED_SECTORS=8192                  # 512-byte sectors given to the 0xA2 boot partition
+                                       # (8192*512 = 4 MiB; uboot.img is ~503 KiB, so ample).
+                                       # This is the EXACT p2 size, matching genimage-sdcard.cfg's
+                                       # `size = 4M` on the shipped image -- see the sfdisk step.
+P1_START_SECTORS=2048                  # p1's start LBA = 1 MiB alignment, matching sfdisk's own
+                                       # default AND genimage-sdcard.cfg's `align = 1M`. Named
+                                       # explicitly so the sfdisk layout is deterministic and p2
+                                       # ends up EXACTLY RESERVED_SECTORS (not RESERVED-2048).
 RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel + our own
                                        # working set; the payload tmpfs may use the rest.
 DEV_WAIT=30                            # seconds to wait for a block device to enumerate
@@ -113,6 +118,15 @@ cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
 fat_type=""; stage="starting up"; cores_skipped="no"
 
 log() { printf '[installer] %s\n' "$*"; }
+
+# PID 1 must never exit (that is an instant kernel panic), so every terminal
+# path -- the failure path AND the benign "already installed" halt -- ends by
+# respawning a console shell forever. Factored out so the two callers share it.
+respawn_shell() {
+	while :; do
+		setsid cttyhack /bin/sh || /bin/sh || sleep 5
+	done
+}
 
 # Any fatal error lands here. Never panic silently. Print everything a
 # serial-console user needs to tell WHERE in the install we died (the $stage
@@ -140,10 +154,7 @@ rescue() {
 	printf 'If the card had already been reformatted below, re-flashing is REQUIRED\n'
 	printf 'before it will boot again.\n\n'
 	printf 'Dropping to a rescue shell on the console. Nothing is installed.\n\n'
-	# PID 1 must never exit -> respawn forever (mirrors stage-1 init).
-	while :; do
-		setsid cttyhack /bin/sh || /bin/sh || sleep 5
-	done
+	respawn_shell
 }
 
 # ------------------------------------------------------------- early mounts
@@ -258,8 +269,14 @@ if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/li
 	printf '  %s is exFAT "%s" and already contains linux/linux.img.\n' "$DATA_PART" "$DATA_LABEL"
 	printf '  Refusing to reformat an installed card (your data is safe).\n'
 	printf '  If you meant to reinstall, re-flash sdcard.img first.\n\n'
-	stage="already provisioned (guard tripped)"
-	rescue "nothing to do: card is already installed"
+	# NOT rescue(): this is a benign, correct halt, not a failure. rescue()'s
+	# "INSTALLER: FAILED / Nothing is installed" banner would be actively wrong
+	# here (the card IS installed). We just can't hand off to MiSTer from this
+	# throwaway installer OS, so drop to a console shell with the accurate
+	# message above rather than reboot-looping into this same installer.
+	printf 'Dropping to a console shell. The card is fine -- power-cycle into it,\n'
+	printf 'or re-flash sdcard.img only if you actually want to reinstall.\n\n'
+	respawn_shell
 fi
 
 # --------------------------------------------- locate the payload on the source
@@ -362,19 +379,30 @@ sync
 # ============================================================================
 
 # ------------------------------------------------- repartition to full size (3)
-# mr-fusion parity (S99install-MiSTer.sh): p1 = exFAT data sized to the whole card
-# minus RESERVED_SECTORS, p2 = 0xA2 boot taking the tail. sfdisk's script format is
-# "<start>; <size>; <type>"; empty start = default alignment, empty size = rest.
+# p1 = exFAT data from the 1 MiB-aligned start to the reserved tail; p2 = 0xA2 boot,
+# EXACTLY RESERVED_SECTORS at the very end. Adapted from mr-fusion's
+# S99install-MiSTer.sh, but with EXPLICIT starts+sizes instead of its
+# empty-field "; size; 07" / "; ; a2" form. That form let sfdisk auto-place p1
+# at LBA 2048 and gave p2 "the rest" -- which is RESERVED_SECTORS *minus* p1's
+# 2048-sector start offset (6144, not 8192), so the 0xA2 boot partition came out
+# 3 MiB instead of the intended 4 MiB and its size drifted with p1's alignment.
+# Computing all three numbers here makes the layout deterministic and makes p2
+# match genimage-sdcard.cfg's `size = 4M` on the shipped image byte-for-byte.
 stage="repartitioning $DISK"
 dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)"
 case "$dev_sectors" in ''|*[!0-9]*) rescue "cannot read /sys/block/$disk_name/size" ;; esac
-data_sectors=$((dev_sectors - RESERVED_SECTORS))
+data_sectors=$((dev_sectors - P1_START_SECTORS - RESERVED_SECTORS))
+p2_start=$((dev_sectors - RESERVED_SECTORS))
 [ "$data_sectors" -gt 0 ] || rescue "device too small: $dev_sectors sectors"
-log "card=$dev_sectors sectors; data p1=$data_sectors sectors; reserved tail=$RESERVED_SECTORS"
+log "card=$dev_sectors sectors; p1=[$P1_START_SECTORS,+$data_sectors) exfat; p2=[$p2_start,+$RESERVED_SECTORS) 0xA2"
 
+# `label: dos` forces a fresh MBR (never GPT), regardless of what the shipped
+# card carried. `type=7` = exFAT/NTFS (mr-fusion parity), `type=a2` = the SPL
+# boot partition. Explicit start+size on BOTH lines -> no auto-placement drift.
 sfdisk --force "$DISK" <<EOF || rescue "sfdisk failed -- card partition table may be inconsistent"
-; ${data_sectors}; 07
-; ; a2
+label: dos
+start=${P1_START_SECTORS}, size=${data_sectors}, type=7
+start=${p2_start}, size=${RESERVED_SECTORS}, type=a2
 EOF
 sync
 

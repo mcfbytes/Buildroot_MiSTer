@@ -79,6 +79,43 @@ INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
 RT_OUTPUT_DIR := $(ROOT_DIR)/output-rt
 RT_FRAGMENT   := $(ROOT_DIR)/configs/mister_rt.fragment
 
+# --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
+# A FOURTH Buildroot output dir, same trick as initramfs/RT above: the installer
+# that ships on sdcard.img's FAT32 partition is yet another Buildroot
+# *configuration* (static-musl BusyBox cpio, plus target packages — exfatprogs,
+# util-linux sfdisk — the initramfs stage doesn't need) and so needs its own O=.
+#
+# scripts/mk-sdcard.sh builds THIS SAME output dir itself, driving Buildroot
+# directly (its own br_make helper, shaped exactly like BR_MAKE_INSTALLER
+# below) as step 1/7 of assembling sdcard.img — it does not invoke the
+# `installer` target. These paths are defined here anyway so that target (a
+# standalone escape hatch for iterating on the installer config/overlay,
+# mirroring `initramfs`/`rt`) and `clean`/`distclean` agree with that script on
+# where things live. Keep in sync with scripts/mk-sdcard.sh's own
+# REPO_ROOT-relative constants if either changes.
+INSTALLER_OUTPUT_DIR        := $(ROOT_DIR)/output-installer
+INSTALLER_CPIO               := $(INSTALLER_OUTPUT_DIR)/images/rootfs.cpio
+INSTALLER_DEFCONFIG          := $(ROOT_DIR)/configs/mister_installer_defconfig
+
+# scripts/mk-sdcard.sh's OWN scratch dirs — mk-sdcard.sh drives its Buildroot
+# invocations itself (its own br_make helper), not any target below — but these are
+# still ours to clean up on clean/distclean. NONE of them is a Buildroot O= dir, so
+# all three are plain rm -rf'd (never Buildroot-cleaned):
+#   output-installer-kernel/ - scratch HOLDING dir for mk-sdcard.sh step 2: the
+#                              captured installer zImage_dtb plus the pre-relink
+#                              snapshots of our real zImage_dtb / gzipped linux.img.
+#                              Step 2 now relinks the kernel IN output/ (reusing the
+#                              completed main build, then restoring it) rather than
+#                              building a fourth full Buildroot tree here — a fresh
+#                              from-scratch O= would rebuild the whole toolchain and
+#                              blow the CI job's wall-clock cap. See mk-sdcard.sh's
+#                              build_installer_kernel.
+#   output-sdcard-stage/     - fetched/staged payload (mk-sdcard.sh's STAGE_DIR).
+#   output-sdcard-build/     - genimage's inputs/tmp/out working dirs.
+INSTALLER_KERNEL_OUTPUT_DIR := $(ROOT_DIR)/output-installer-kernel
+SDCARD_STAGE_DIR             := $(ROOT_DIR)/output-sdcard-stage
+SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
+
 BR_TARBALL := $(DL_DIR)/buildroot-$(BUILDROOT_VERSION).tar.gz
 BR_DIR     := $(WORK_DIR)/buildroot
 # Two properties this path must have, both learned the hard way:
@@ -165,6 +202,17 @@ BR_MAKE_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
 BR_MAKE_RT = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(RT_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
+# The same, aimed at the SD-card installer output directory. Only used by the
+# standalone `installer` target below — scripts/mk-sdcard.sh builds
+# $(INSTALLER_OUTPUT_DIR) itself with its own equivalent invocation.
+BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
+          $(MAKE) -C $(BR_DIR) O=$(INSTALLER_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+
+# NOTE: there is no BR_MAKE_INSTALLER_KERNEL. mk-sdcard.sh's step 2 relink no longer
+# builds a fourth Buildroot tree in output-installer-kernel/ — it relinks the kernel
+# IN output/ (reusing the completed main build) and restores it. output-installer-
+# kernel/ is now just a scratch holding dir, plain rm -rf'd by `clean`/`distclean`.
+
 # Bare `make` must NOT be `all`. The P1.1 defconfig deliberately sets no arch or
 # toolchain, so Buildroot would fall back to its own defaults (BR2_i386 +
 # internal toolchain) and a reflexive `make` would spend an hour compiling an
@@ -177,6 +225,8 @@ BR_MAKE_RT = PATH="$(HOSTSHIM_DIR):$$PATH" \
 .PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
 .PHONY: rt rt-clean rt-menuconfig
+.PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
+.PHONY: sdcard
 .PHONY: zimage-dtb
 
 # GNU Make always checks whether its own makefiles need remaking, using
@@ -198,6 +248,10 @@ Makefile: ;
 # i.e. loading the stage-1 config into the MAIN build's output directory. Caught with
 # `make -n initramfs`. An explicit empty rule beats a pattern rule.
 $(INITRAMFS_DEFCONFIG): ;
+
+# Exactly the same landmine, for the SD-card installer defconfig (see the
+# comment above it, and INSTALLER_OUTPUT_DIR's header comment).
+$(INSTALLER_DEFCONFIG): ;
 
 # `make` with no target builds the full image, same as bare Buildroot.
 #
@@ -254,7 +308,7 @@ $(OUTPUT_DIR)/.config: | $(BR_STAMP)
 # is the only thing that knows what to delete and what to keep, so skipping it
 # would report success over a still-dirty tree — this bug, again, one layer out.
 clean:
-	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ]; }; then \
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
 		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
 		echo "       but an output directory still holds build products. Skipping" >&2; \
 		echo "       would report success over a dirty tree." >&2; \
@@ -265,6 +319,8 @@ clean:
 	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
 	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
+	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
+	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
 
 # `rm -rf`, not a forwarded `$(BR_MAKE) distclean`, and deliberately not
 # `distclean: clean` the way upstream writes it (:1146).
@@ -281,7 +337,9 @@ clean:
 # cache that distclean is not entitled to destroy. `git clean -xfd` is the real
 # nothing-but-the-clone hammer; it takes work/ and dl/ with it.
 distclean:
-	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR)
+	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
+	       $(INSTALLER_OUTPUT_DIR) $(INSTALLER_KERNEL_OUTPUT_DIR) \
+	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------
 # Phony on purpose. Buildroot is the incremental build system here; re-entering it
@@ -382,6 +440,34 @@ rt-menuconfig: $(RT_OUTPUT_DIR)/.config hostshim
 rt-clean:
 	rm -rf $(RT_OUTPUT_DIR)
 
+# --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
+# Builds ONLY the installer initramfs cpio, standalone. scripts/mk-sdcard.sh
+# builds this exact output dir itself as step 1/7 of `make sdcard` (see
+# INSTALLER_OUTPUT_DIR's header comment above) — this target is the escape
+# hatch for iterating on configs/mister_installer_defconfig or
+# board/mister/de10nano/installer-overlay/ without running the whole sdcard
+# pipeline, mirroring `initramfs` above.
+$(INSTALLER_OUTPUT_DIR)/.config: $(INSTALLER_DEFCONFIG) | $(BR_STAMP)
+	@mkdir -p $(INSTALLER_OUTPUT_DIR)
+	$(BR_MAKE_INSTALLER) mister_installer_defconfig
+
+installer: $(INSTALLER_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_INSTALLER) all
+	@test -f $(INSTALLER_CPIO) || { \
+		echo "FATAL: installer build finished but produced no $(INSTALLER_CPIO)" >&2; exit 1; }
+	@echo ""
+	@echo "==> installer cpio: $$(stat -c %s $(INSTALLER_CPIO)) bytes  ($(INSTALLER_CPIO))"
+	@echo ""
+
+installer-menuconfig: $(INSTALLER_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_INSTALLER) menuconfig
+
+installer-busybox-menuconfig: $(INSTALLER_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_INSTALLER) busybox-menuconfig
+
+installer-clean:
+	rm -rf $(INSTALLER_OUTPUT_DIR)
+
 # Escape hatches for iterating on stage 1 without hand-editing the checked-in
 # configs. Both write to output-initramfs/; remember to fold the result back into
 # configs/mister_initramfs_defconfig (`savedefconfig`) or into
@@ -434,6 +520,26 @@ zimage-dtb:
 	@mkdir -p $(ZIMAGE_DTB_BINARIES_DIR)
 	$(ROOT_DIR)/board/mister/de10nano/post-image.sh $(ZIMAGE_DTB_BINARIES_DIR)
 
+# --- Full SD-card image (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
+# Runs scripts/mk-sdcard.sh, the orchestrator that builds the installer cpio +
+# relinked installer kernel, fetches/stages the mr-fusion-parity payload, and
+# assembles + xz's the dd/Etcher-writable output/images/sdcard.img(.xz) (or
+# sdcard-full.img(.xz) when SDCARD_CORES=1). See that script's own header for
+# its seven steps — it drives Buildroot directly for the installer pieces and
+# does NOT go through the `installer` target above.
+#
+# Requires a COMPLETED `make all` first: mk-sdcard.sh reads
+# output/images/{linux.img,zImage_dtb} (the real, Downloader-shipped outputs)
+# and fails loudly, by name, if either is missing. Deliberately NOT made an
+# `all`-dependent prerequisite here — `make all` is a 3+ hour build, and a
+# script that already checks its own prerequisites should not have that check
+# duplicated (and silently re-triggered) at the Make level. Mirrors `rt`/
+# `initramfs` in every other respect: a phony target, hostshim ensured first,
+# SDCARD_CORES passed straight through from the environment/command line.
+SDCARD_CORES ?= 0
+sdcard: hostshim
+	SDCARD_CORES=$(SDCARD_CORES) $(ROOT_DIR)/scripts/mk-sdcard.sh
+
 # Deliberately does NOT depend on $(BR_STAMP): `make help` on a fresh clone (or
 # with no network) must print something useful rather than trying to fetch a
 # tarball first. Buildroot's own target list is behind `make br-help`, which
@@ -454,10 +560,11 @@ help:
 	@echo "  make br-help                    - Buildroot's own target list"
 	@echo "  make all                        - build the full image (runs 'initramfs' first)"
 	@echo ""
-	@echo "Cleaning (Buildroot's meanings, applied to BOTH output dirs):"
+	@echo "Cleaning (Buildroot's meanings, applied to ALL output dirs):"
 	@echo "  make clean                      - delete everything the build produced,"
-	@echo "                                    KEEPING both .config files"
-	@echo "  make distclean                  - rm -rf output/ and output-initramfs/,"
+	@echo "                                    KEEPING all .config files"
+	@echo "  make distclean                  - rm -rf output/, output-initramfs/, output-rt/,"
+	@echo "                                    output-installer/ and the sdcard staging dirs,"
 	@echo "                                    .config included; dl/ is kept (it is a"
 	@echo "                                    shared cache — 'git clean -xfd' takes it)"
 	@echo ""
@@ -473,6 +580,17 @@ help:
 	@echo "                                    (runs automatically at the end of 'make all' via"
 	@echo "                                    BR2_ROOTFS_POST_IMAGE_SCRIPT; override the source"
 	@echo "                                    dir with ZIMAGE_DTB_BINARIES_DIR=)"
+	@echo ""
+	@echo "SD-card installer image (P5.3, ADR 0020):"
+	@echo "  make sdcard                     - after 'make all', run scripts/mk-sdcard.sh to"
+	@echo "                                    produce output/images/sdcard.img(.xz)"
+	@echo "                                    (SDCARD_CORES=1 for sdcard-full.img(.xz))"
+	@echo "  make installer                  - build ONLY the installer stage-1 cpio and print"
+	@echo "                                    its size (escape hatch; mk-sdcard.sh builds this"
+	@echo "                                    same output-installer/ itself)"
+	@echo "  make installer-menuconfig       - Buildroot menuconfig for the installer config"
+	@echo "  make installer-busybox-menuconfig - BusyBox menuconfig for the installer BusyBox"
+	@echo "  make installer-clean            - rm -rf output-installer/"
 	@echo ""
 	@echo "Pinned Buildroot: $(BUILDROOT_VERSION) (BR2_EXTERNAL=$(ROOT_DIR))"
 	@echo "Any other target is forwarded verbatim into Buildroot's own Makefile."

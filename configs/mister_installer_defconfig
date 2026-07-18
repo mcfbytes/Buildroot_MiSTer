@@ -1,0 +1,130 @@
+# mister_installer_defconfig — the THROWAWAY INSTALLER OS (TASKS.md P5.3,
+# docs/decisions/0020-sdcard-exfat-reformat-installer.md, PLAN.md §8/§9).
+#
+# This config builds ONE artifact: output-installer/images/rootfs.cpio, a static
+# BusyBox + exfatprogs + util-linux(sfdisk) rootfs that scripts/mk-sdcard.sh embeds
+# into a SECOND, dedicated kernel build to produce the installer's zImage_dtb. That
+# image ships as `linux/zImage_dtb` on the shipped sdcard.img's FAT32 partition — it
+# is NEVER output/images/zImage_dtb (the real MiSTer kernel) and NEVER runs on a
+# card that has already been installed (ADR 0020 §2.1: the reformat replaces this
+# kernel with the real one, which is the primary re-run guard).
+#
+# WHY THIS EXISTS AT ALL (read ADR 0020 §1 first): mr-fusion's "auto-resize" is not
+# a filesystem grow-in-place — MiSTer's data partition is exFAT, and Linux has no
+# resize-in-place tool for exFAT. So a fresh card ships small (fast write, small
+# download) and an on-device first-boot installer OS repartitions + reformats it to
+# fill whatever medium the user actually has, then hands off to the real MiSTer.
+# This config is that installer OS's rootfs. Its /init (a separate task,
+# board/mister/de10nano/installer-overlay/init) does the sfdisk/mkfs.exfat/copy-back/
+# MAC-gen/dd-uboot.img/reboot dance described in ADR 0020 §2.
+#
+# --- Relationship to configs/mister_initramfs_defconfig (STAGE 1) ---
+# This is a SIBLING of stage 1, not a variant of the main target config: same static
+# musl throwaway-cpio shape (BR2_INIT_NONE, BR2_TARGET_ROOTFS_CPIO, no shared libc),
+# because the installer runs from RAM exactly like stage 1's /init does and is
+# deleted the moment it reboots into the real system. It is deliberately BASED ON
+# mister_initramfs_defconfig line-for-line (arch/toolchain/init/device-creation/
+# output/reproducibility all copied verbatim — see that file's header for the
+# reasoning behind each) and adds exactly what the installer's job needs on top:
+#
+#   - BR2_PACKAGE_EXFATPROGS   -> mkfs.exfat (ADR 0020 §2 step 3; -n MiSTer_Data)
+#   - BR2_PACKAGE_UTIL_LINUX + BINARIES -> sfdisk (repartition) and blkid (belt-and-
+#     suspenders re-run guard, ADR 0020 §2.1). Buildroot's util-linux "basic set" is
+#     not further sub-selectable — enabling it for sfdisk also pulls in blkid,
+#     blockdev, dmesg, findfs, hexdump, mkfs, wipefs etc. as a bundle. That overlaps
+#     some BusyBox applets (dmesg, findfs) already in the stage-1 BusyBox set; the
+#     overlap is harmless (both are real, separate binaries; the installer's /init
+#     names whichever it wants) and is NOT a reason to drop either side.
+#   - A few extra BusyBox applets stage 1 does not need: cp (for the payload ->
+#     tmpfs -> exFAT copies), dd (uboot.img -> the 0xA2 partition), reboot (the
+#     final handoff), blockdev and hexdump (MAC-address generation from
+#     /dev/urandom). See board/mister/de10nano/installer-busybox.config's header
+#     for exactly which CONFIG_ symbols that required and why.
+#
+# What it deliberately does NOT add: e2fsprogs. The installer only ever `cp`'s
+# linux/linux.img as an opaque byte blob (never fscks or resizes its ext4 contents;
+# that partition's size is fixed at build time, only the exFAT data partition
+# around it grows) and never builds one, so there is nothing for e2fsprogs to do
+# here. Re-add it if a later /init revision needs to inspect/repair linux.img.
+#
+# ############################################################################
+# #  NOT BR2_TARGET_ROOTFS_INITRAMFS. NOT the main defconfig with a flag.     #
+# #  Same trap A1 names for stage 1 (see mister_initramfs_defconfig) applies  #
+# #  here verbatim: a fourth Buildroot output dir (output-installer/), a      #
+# #  fourth small cpio, never the ~300 MB target rootfs.                     #
+# ############################################################################
+
+# --- Arch/ABI: same silicon as every other build on this board (ADR 0001). Not an
+#     ABI requirement here either — the installer runs on the same Cortex-A9 the
+#     production system does, briefly, once, in RAM.
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+
+# --- Toolchain: musl, static-only. Same reasoning as stage 1: static musl permits
+#     BR2_STATIC_LIBS (glibc does not offer it — Buildroot Config.in:684), and
+#     everything in this cpio is deleted from RAM within seconds of the reformat
+#     finishing, so there is no ABI surface to keep glibc-compatible for.
+#     BR2_TOOLCHAIN_USES_MUSL auto-selects BR2_USE_WCHAR, which is what
+#     BR2_PACKAGE_EXFATPROGS's "depends on BR2_USE_WCHAR" needs — nothing extra to
+#     set for that.
+BR2_TOOLCHAIN_BUILDROOT_MUSL=y
+BR2_KERNEL_HEADERS_6_18=y
+BR2_STATIC_LIBS=y
+
+# --- No init system. The kernel execs /init from the cpio directly, exactly as in
+#     stage 1 — no /sbin/init, no inittab, no S-scripts. Unlike stage 1, this /init
+#     never switch_roots into anything: it does its reformat dance and calls
+#     `reboot` directly (ADR 0020 §2, last step). PID 1 must still never exit
+#     without warning — see board/mister/de10nano/installer-overlay/init (a
+#     separate task) for the rescue-shell contract this config's BusyBox set exists
+#     to support (CTTYHACK/SETSID/ASH_TEST/FEATURE_SH_MATH are all carried over from
+#     stage 1 for exactly that reason).
+BR2_INIT_NONE=y
+
+# --- Device nodes: dynamic/devtmpfs, same load-bearing reasoning as stage 1 (see
+#     that file's header) — /dev/console must exist before /init runs, or there is
+#     no stdin/stdout/stderr and a rescue shell is unreachable.
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y
+
+# --- Target packages: the installer-only additions on top of BusyBox. -----------
+
+# mkfs.exfat -n MiSTer_Data (ADR 0020 §2 step 3). Depends on BR2_USE_WCHAR, which
+# the musl toolchain choice above already selects.
+BR2_PACKAGE_EXFATPROGS=y
+
+# sfdisk (repartition to the real medium size) + blkid (re-run guard: skip the
+# reformat if the data partition is already exFAT labelled MiSTer_Data and already
+# holds linux/linux.img). Buildroot's util-linux only offers this as one "basic
+# set" bool — see this file's header comment for what else rides along with it.
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+
+# --- BusyBox: stage 1's minimal config PLUS the installer-specific applets
+#     (cp -a, dd, reboot, blockdev, hexdump). See that file's header for how it was
+#     generated and which symbols are load-bearing, and this file's header for
+#     which ones were added on top and why.
+BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-busybox.config"
+
+# --- /init itself. A SEPARATE overlay from stage 1's — this is a different
+#     program with a different job (reformat-and-handoff, not mount-and-
+#     switch_root). Not yet written as of this config (a sibling task); this line
+#     is the fixed interface the rest of the sdcard-image plumbing (mk-sdcard.sh,
+#     the installer kernel relink) targets.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-overlay"
+
+# --- Output: a cpio, uncompressed. Same reasoning as stage 1: this cpio is
+#     embedded inside the installer's own zImage (itself LZ4-compressed,
+#     CONFIG_KERNEL_LZ4, stock parity), so compressing it here would compress it
+#     twice and need a matching CONFIG_RD_* decompressor for no benefit. `copy` is
+#     the kernel usr/Makefile's default for a plain .cpio — nothing extra needed on
+#     the kernel-config side of the relink either.
+BR2_TARGET_ROOTFS_CPIO=y
+# BR2_TARGET_ROOTFS_TAR is not set
+
+# --- Reproducibility. The cpio ends up embedded in the installer zImage_dtb that
+#     ships inside sdcard.img(.xz) release assets, so the same double-build
+#     rationale P4.3 applies to the main build applies here too.
+BR2_REPRODUCIBLE=y

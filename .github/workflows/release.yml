@@ -84,6 +84,19 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual runs exist ONLY to build the opt-in "full" sdcard variant (bundles
+  # _Console cores) — the default tagged build already produces the minimal
+  # sdcard.img.xz. Dispatch this AGAINST A TAG (the GitHub UI's "Use workflow
+  # from" ref picker accepts tags) so github.ref_name is the release tag and the
+  # publish job attaches the assets to that tag's draft release. A dispatch on a
+  # branch still builds + verifies the images in `build`, but the publish job is
+  # guarded to tag refs (see its `if:`), so it never mints a branch-named release.
+  workflow_dispatch:
+    inputs:
+      build_full_sdcard:
+        description: 'Also build + publish sdcard-full.img.xz (bundles _Console cores). Off by default; the minimal sdcard.img.xz is always built.'
+        type: boolean
+        default: false
 
 # A re-pushed (corrected) tag should supersede an in-flight run for the same
 # tag; distinct tags already get distinct concurrency groups via github.ref,
@@ -111,11 +124,22 @@ jobs:
     name: Build image + assemble release_YYYYMMDD.7z
     runs-on: ubuntu-26.04
 
-    # 330 min: the measured cold build is 3h19m (run 29300460591), and this job
-    # does strictly more than build.yml — fetch + verify the ~90 MB stock archive,
-    # assemble the 7z, round-trip it through the pinned ARM 7za, hash everything.
-    # 30 min on top of build.yml's 300 covers that tail.
-    timeout-minutes: 330
+    # The measured cold main build is 3h19m (~199 min; run 29300460591), plus
+    # fetching+verifying the ~90 MB stock archive, assembling the 7z, the pinned-ARM-
+    # 7za round trip, and hashing everything. The sdcard steps below add mk-sdcard.sh
+    # step 1 (the installer initramfs — a small static-musl Buildroot build with its
+    # own toolchain, ~1 h) and step 2 (the kernel relink). CRUCIALLY, step 2 does NOT
+    # do a second from-scratch Buildroot build: it REUSES the completed main build in
+    # output/ and only re-links the kernel with the installer initramfs (~15 min each
+    # way, snapshotting+restoring output/ so the shipped kernel is untouched — see
+    # scripts/mk-sdcard.sh's build_installer_kernel). That reuse is deliberate and is
+    # what keeps the whole job around ~5 h, comfortably inside GitHub-hosted runners'
+    # HARD ~6 h (360 min) wall-clock cap. An EARLIER design ran a fresh full Buildroot
+    # build (internal glibc toolchain + rootfs, ~3 h) per sdcard step in a new O=; two
+    # of those stacked on the main build overran the 360-min cap and the release never
+    # published — do not reintroduce a from-scratch O= here without moving the sdcard
+    # assembly to its own job/workflow.
+    timeout-minutes: 355
 
     outputs:
       release_date: ${{ steps.mister_version.outputs.release_date }}
@@ -182,7 +206,15 @@ jobs:
       - name: Build the image
         uses: ./.github/actions/buildroot-build
         with:
-          extra-apt-packages: p7zip-full
+          # p7zip-full assembles release_YYYYMMDD.7z (as before). The rest are the
+          # build-HOST tools scripts/mk-sdcard.sh needs to assemble sdcard.img.xz:
+          # genimage (the hdimage), mtools + dosfstools (build/populate the FAT32
+          # payload partition), xz-utils (compress the image), and jq (parse the
+          # _Console cores listing for the opt-in full variant). None of these
+          # enter the shipped rootfs — they live on PATH only (PLAN §"Host
+          # tooling"). xz-utils is already in the build action's mandatory set;
+          # it is named here for intent and is a harmless duplicate.
+          extra-apt-packages: p7zip-full genimage mtools dosfstools xz-utils jq
           run-legal-info: "true"
 
       # Non-hardware parity suite against the EXACT rootfs about to be shipped
@@ -532,6 +564,86 @@ jobs:
           ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz > SHA256SUMS )
           cat dist/SHA256SUMS
 
+      ##########################################################################
+      # sdcard installer image (TASKS.md P5.3, ADR 0017 §4 amended by ADR 0020).
+      #
+      # SEPARATE, standalone flashable assets — deliberately NOT inside
+      # release_YYYYMMDD.7z and NEVER referenced by db.json. They therefore do
+      # not touch the SHA256SUMS list above (the seven-asset Downloader contract)
+      # nor the pinned-ARM-7za path; the steps here run AFTER all of that so the
+      # already-fetched+verified stock_release.7z can be reused instead of
+      # re-downloading ~90 MB. scripts/mk-sdcard.sh does its own installer
+      # initramfs build + kernel relink off the completed `make all`.
+      ##########################################################################
+
+      # Reuse the stock archive verified above by seeding
+      # fetch-sdcard-payload.sh's own cache with it: that script re-checks
+      # size+MD5+SHA-256 before trusting the cache, so this is a hand-off of
+      # already-verified bytes, not a bypass. The job-level STOCK_* env is
+      # inherited by both mk-sdcard.sh and fetch-sdcard-payload.sh, keeping the
+      # pins in lockstep with the block this workflow already verifies.
+      # Skipped ONLY on an opt-in full-sdcard dispatch: that run targets an
+      # already-released tag whose minimal sdcard.img.xz is already attached, so
+      # rebuilding it here is pure redundancy — and each mk-sdcard.sh run does a
+      # ~30 min kernel relink, so a needless second one risks the job's ~6 h cap.
+      # On a tag push (no inputs) and on a dispatch with the input off, `!inputs.
+      # build_full_sdcard` is true, so the minimal image builds as normal.
+      - name: Build sdcard.img.xz (minimal installer image)
+        if: ${{ !inputs.build_full_sdcard }}
+        env:
+          STAGE_DIR: ${{ github.workspace }}/output-sdcard-stage
+        run: |
+          set -eu
+          mkdir -p "$STAGE_DIR/.fetch-cache"
+          cp -f stock_release.7z "$STAGE_DIR/.fetch-cache/stock_release.7z"
+          scripts/mk-sdcard.sh
+          ls -la output/images/sdcard.img output/images/sdcard.img.xz
+
+      # Static, offline contract check (partition table, uboot.img head, FAT32
+      # payload inventory vs docs/verification/sdcard-payload.md). STOCK_UBOOT_*
+      # come from the job env for the default uboot head compare. Same skip
+      # condition as the build step it verifies.
+      - name: Verify sdcard.img (scripts/check-sdcard.sh)
+        if: ${{ !inputs.build_full_sdcard }}
+        run: scripts/check-sdcard.sh output/images/sdcard.img
+
+      # Opt-in only: the full variant bundles _Console cores (much larger, needs
+      # the GitHub Contents API). Runs only on a workflow_dispatch with the input
+      # set. Reuses the same warm STAGE_DIR (stock archive + installer builds
+      # already there), just adds the cores; fetch-sdcard-payload.sh reconciles.
+      - name: Build + verify sdcard-full.img.xz (opt-in _Console cores)
+        if: ${{ inputs.build_full_sdcard }}
+        env:
+          STAGE_DIR: ${{ github.workspace }}/output-sdcard-stage
+          SDCARD_CORES: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$STAGE_DIR/.fetch-cache"
+          cp -f stock_release.7z "$STAGE_DIR/.fetch-cache/stock_release.7z"
+          scripts/mk-sdcard.sh
+          scripts/check-sdcard.sh output/images/sdcard-full.img
+          ls -la output/images/sdcard-full.img output/images/sdcard-full.img.xz
+
+      # Into dist/ so the existing "Upload release asset bundle" step carries them
+      # to the publish job. sdcard-full.img.xz is only present when the opt-in
+      # step above ran.
+      - name: Stage sdcard image(s) into dist/
+        run: |
+          set -eu
+          # Stage whichever variant(s) this run actually built. A tag push builds
+          # the minimal image; an opt-in full dispatch (which SKIPS the minimal
+          # build above, since the tag already carries it) builds only the full
+          # one. The publish job's `gh release upload --clobber` then adds/refreshes
+          # exactly what landed in dist/, leaving any already-attached asset intact.
+          if [ -f output/images/sdcard.img.xz ]; then
+            cp -f output/images/sdcard.img.xz dist/sdcard.img.xz
+          fi
+          if [ -f output/images/sdcard-full.img.xz ]; then
+            cp -f output/images/sdcard-full.img.xz dist/sdcard-full.img.xz
+          fi
+          ls -la dist/
+
       # --- Release overview on the run's Summary page ------------------------
       # The tag, the internal version, the archive + image sizes, the full
       # SHA256SUMS, and -- most importantly -- the draft/db.json coupling a
@@ -601,6 +713,12 @@ jobs:
     needs: build
     runs-on: ubuntu-26.04
 
+    # Only ever create a Release for a TAG. On a tag push this is always true, so
+    # existing behaviour is unchanged; it exists so a workflow_dispatch on a
+    # NON-tag ref (used to build the opt-in full sdcard variant) still runs the
+    # `build` job's build+verify but does NOT mint a branch-named release here.
+    if: startsWith(github.ref, 'refs/tags/')
+
     permissions:
       contents: write        # create the Release and upload its assets
       id-token: write         # attest-build-provenance's OIDC token exchange
@@ -643,17 +761,38 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -eu
-          gh release create "$TAG" \
-            --draft \
-            --title "$TAG" \
-            --notes "Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`)." \
-            dist/"release_${RELEASE_DATE}.7z" \
-            dist/linux.img \
-            dist/zImage_dtb \
-            dist/SHA256SUMS \
-            dist/buildroot.config \
-            dist/linux.config \
+          # The sdcard installer images are SEPARATE, standalone flashable assets
+          # — NEVER inside release_YYYYMMDD.7z and NEVER referenced by db.json
+          # (ADR 0017 §4 / ADR 0020). sdcard.img.xz is always built; the full
+          # variant only when the opt-in dispatch input was set. Attach whichever
+          # the build job actually staged into dist/.
+          assets=(
+            dist/"release_${RELEASE_DATE}.7z"
+            dist/linux.img
+            dist/zImage_dtb
+            dist/SHA256SUMS
+            dist/buildroot.config
+            dist/linux.config
             dist/legal-info.tar.gz
+          )
+          [ -f dist/sdcard.img.xz ] && assets+=(dist/sdcard.img.xz)
+          [ -f dist/sdcard-full.img.xz ] && assets+=(dist/sdcard-full.img.xz)
+          notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json."
+          # Upsert, not create-only: a tagged push already created this draft, so
+          # the opt-in full-sdcard dispatch (which runs AGAINST that existing tag)
+          # must ADD sdcard-full.img.xz to the draft rather than fail with an
+          # already-exists error. This also lets a re-pushed/corrected tag
+          # re-attach assets once the first run has finished. `gh release create`
+          # only ever creates; `gh release upload --clobber` refreshes in place.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber "${assets[@]}"
+          else
+            gh release create "$TAG" \
+              --draft \
+              --title "$TAG" \
+              --notes "$notes" \
+              "${assets[@]}"
+          fi
 
       - name: Publish summary (job summary)
         env:

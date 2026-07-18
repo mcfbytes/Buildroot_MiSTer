@@ -1,0 +1,540 @@
+#!/bin/sh
+#
+# MiSTer FIRST-BOOT INSTALLER /init  (TASKS.md P5.3; PLAN §8; ADR 0017 §4; ADR 0020)
+#
+# THIS FILE CAN BRICK THE BOARD. Read this whole header, ADR 0020, and
+# docs/boot-chain.md §2.1/§3.1/§5 before touching a single line.
+#
+# ---------------------------------------------------------------------------
+# What this is
+# ---------------------------------------------------------------------------
+# The shipped sdcard.img is a *small* dd/Etcher-writable card. On the very first
+# boot the stock U-Boot (uboot.img, byte-identical, in the 0xA2 boot partition)
+# loads /linux/zImage_dtb off the FAT32 data partition (p1). On the pristine card
+# that zImage_dtb is the INSTALLER kernel: our 6.18 kernel relinked with THIS
+# initramfs embedded. So this /init runs, as PID 1, entirely from RAM (the
+# initramfs is a ramfs; nothing we do to the SD card pulls the rug out from under
+# the running system -- that is the whole reason the reformat-in-place trick works).
+#
+# MiSTer's data partition is exFAT, which Linux cannot grow in place (no resize
+# tool exists for exFAT). So "auto-expand to fill the card" is NOT a filesystem
+# grow -- it is a REFORMAT, exactly like mr-fusion (MiSTer-devel/mr-fusion,
+# builder/scripts/S99install-MiSTer.sh, which this file is adapted from). We:
+#
+#   1. mount the shipped FAT32 data partition (p1) read-only,
+#   2. copy its /mister-payload/ tree into a RAM tmpfs,
+#   3. sfdisk-repartition the WHOLE card to full size: p1 = exFAT data filling the
+#      card minus a small reserved tail, p2 = type 0xA2 for U-Boot,
+#   4. mkfs.exfat -n MiSTer_Data on the new p1 (in-kernel exfat driver, ADR 0019 --
+#      we mount it with `mount -t exfat`, NO fuse, unlike mr-fusion),
+#   5. copy the payload back out of RAM onto the new full-size exFAT p1, then
+#      `zcat` linux/linux.img.gz -> linux/linux.img directly onto that partition
+#      (the 512 MiB image lands on DISK, never in RAM -- see the MEMORY note below),
+#   6. merge any user pre-seed dropped on the FAT partition before first boot,
+#   7. write a UNIQUE per-board MAC into <data>/linux/u-boot.txt,
+#   8. dd uboot.img raw to the new 0xA2 p2,
+#   9. sync + reboot.
+#
+# The reformat writes the REAL /linux/zImage_dtb (from the payload) onto p1, so the
+# next boot loads the real MiSTer kernel, not this installer. That kernel-swap is
+# the primary re-run guard; the exFAT/MiSTer_Data/linux.img check below is belt.
+#
+# ---------------------------------------------------------------------------
+# The load-bearing facts (get one wrong and you brick a card)
+# ---------------------------------------------------------------------------
+# * PARTITION SLOTS ARE FIXED. Both the shipped card and the final card use
+#   p1 = data, p2 = 0xA2 boot -- because the stock U-Boot's compiled-in env has
+#   `mmcroot=/dev/mmcblk0p1` and `load mmc 0:1 ... $bootimage`, i.e. it ALWAYS reads
+#   the kernel from partition 1 (docs/boot-chain.md §3.1 entries 16-17, §4). BootROM
+#   independently scans the MBR for the first 0xA2 partition (§2.1), which is p2.
+#   The final sfdisk table below MUST reproduce this or the reformatted card is dead.
+# * THE 0xA2 PARTITION MOVES. Repartitioning creates a NEW p2 with no SPL in it.
+#   Until `dd uboot.img -> p2` succeeds the card CANNOT boot. That dd is the single
+#   most brick-critical step; it is verified and, if it fails, we scream and hand the
+#   user a recovery hint (re-flash sdcard.img) rather than rebooting into a brick.
+# * uboot.txt MUST END IN A NEWLINE. U-Boot's `env import -t` (no size arg) scans for
+#   '\n' followed by '\0' (docs/boot-chain.md §4, u-boot cmd/nvedit.c:1049-1066). We
+#   printf a trailing newline.
+# * MEMORY IS CAPPED AT 511 MiB. We boot on the STOCK uboot.img, whose compiled-in
+#   `mmcboot` hardcodes `mem=511M memmap=513M$511M` as a LITERAL string and never
+#   interpolates a `mem=` env var (docs/boot-chain.md §4). So this installer sees
+#   ~511 MiB, NOT the full 1 GiB of physical DDR, and NO shipped `linux/u-boot.txt`
+#   can lift that cap -- only rebuilding U-Boot could, which is out of scope. The
+#   payload transits RAM (step 2), so it MUST fit under ~511 MiB. The single item
+#   that would blow that budget is linux.img: a 512 MiB apparent-size ext4 image,
+#   stored NON-sparse on FAT32, i.e. bigger than the whole address space. So it does
+#   NOT transit RAM as a 512 MiB blob -- scripts/mk-sdcard.sh ships it GZIPPED
+#   (linux/linux.img.gz, ~80 MiB of real data); we copy that small .gz through RAM
+#   like everything else and, only AFTER copy-back, `zcat` it straight onto the
+#   exFAT card (step 5b below), so the full 512 MiB is written to DISK, never held
+#   in RAM. The rest of the base (~60 MB: MiSTer, menu.rbf, soundfonts, scripts, the
+#   installer kernel) fits with wide margin; the optional _Console cores (~150-200
+#   MB) may NOT, so we measure free RAM first and, if the full payload will not fit,
+#   copy the base and SKIP the cores with a loud message rather than OOM-bricking.
+#   update_all.sh on the installed card fetches cores anyway.
+# * DEFENSIVE LIKE THE STAGE-1 init. Same contract as
+#   board/mister/de10nano/initramfs-overlay/init: early proc/sys/dev mounts, parse
+#   the cmdline (never hardcode the device), and on ANY fatal error print a banner
+#   and drop to a RESPAWNING rescue shell. PID 1 must NEVER exit (that is an instant
+#   kernel panic). A half-reformatted card must give a diagnosable message, not a
+#   black brick.
+#
+# ---------------------------------------------------------------------------
+# External programs this init needs (beyond the stage-1 busybox applet set)
+# ---------------------------------------------------------------------------
+# From the installer Buildroot config (configs/mister_installer_defconfig):
+#   sfdisk                    (BR2_PACKAGE_UTIL_LINUX + _BINARIES)
+#   mkfs.exfat                (BR2_PACKAGE_EXFATPROGS)
+# Provided by busybox in EITHER stage-1's set or installer-busybox.config:
+#   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
+#   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
+#   cp du dd cut reboot blkid blockdev hexdump               (installer must add)
+# (blkid/blockdev/hexdump may come from busybox or util-linux; only sfdisk+mkfs.exfat
+# must be real external binaries.) NOTE: basename/dirname/od are deliberately NOT
+# built -- /init uses POSIX ${var%/*}/${var##*/} parameter expansion in their place,
+# and hexdump instead of od for the MAC. Everything here is POSIX sh / busybox ash;
+# no bashisms.
+#
+set -u
+
+# --- Tunables ---------------------------------------------------------------
+PAYLOAD_DIR="mister-payload"           # subdir on the shipped p1 holding the real card
+CORES_DIR="_Console"                   # payload top-level dir skipped first under RAM pressure
+DATA_LABEL="MiSTer_Data"               # exFAT volume label the final card must carry
+RESERVED_SECTORS=8192                  # 512-byte sectors given to the 0xA2 boot partition
+                                       # (8192*512 = 4 MiB; uboot.img is ~503 KiB, so ample).
+                                       # This is the EXACT p2 size, matching genimage-sdcard.cfg's
+                                       # `size = 4M` on the shipped image -- see the sfdisk step.
+P1_START_SECTORS=2048                  # p1's start LBA = 1 MiB alignment, matching sfdisk's own
+                                       # default AND genimage-sdcard.cfg's `align = 1M`. Named
+                                       # explicitly so the sfdisk layout is deterministic and p2
+                                       # ends up EXACTLY RESERVED_SECTORS (not RESERVED-2048).
+RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel + our own
+                                       # working set; the payload tmpfs may use the rest.
+DEV_WAIT=30                            # seconds to wait for a block device to enumerate
+
+# --- rescue-banner state (all pre-initialised so `set -u` is safe in rescue) --
+cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
+fat_type=""; stage="starting up"; cores_skipped="no"
+
+log() { printf '[installer] %s\n' "$*"; }
+
+# PID 1 must never exit (that is an instant kernel panic), so every terminal
+# path -- the failure path AND the benign "already installed" halt -- ends by
+# respawning a console shell forever. Factored out so the two callers share it.
+respawn_shell() {
+	while :; do
+		setsid cttyhack /bin/sh || /bin/sh || sleep 5
+	done
+}
+
+# Any fatal error lands here. Never panic silently. Print everything a
+# serial-console user needs to tell WHERE in the install we died (the $stage
+# string), what the card looks like now, and how to get back to a known-good
+# state, then respawn a shell forever. The system is NOT installed.
+rescue() {
+	printf '\n'
+	printf '################################################################\n'
+	printf '#  MiSTer INSTALLER: FAILED\n'
+	printf '#  %s\n' "$*"
+	printf '#  (failed during: %s)\n' "$stage"
+	printf '################################################################\n'
+	printf '  cmdline    : %s\n' "$cmdline"
+	printf '  root=      : %s\n' "$root_arg"
+	printf '  disk       : %s\n' "$DISK"
+	printf '  data part  : %s  (as %s)\n' "$DATA_PART" "$fat_type"
+	printf '  new p1/p2  : %s / %s\n' "$P1" "$P2"
+	printf '  cores kept : %s\n' "$([ "$cores_skipped" = yes ] && echo no || echo yes)"
+	printf -- '--- /proc/partitions ---\n';  cat /proc/partitions   2>/dev/null
+	printf -- '--- /proc/mounts ---\n';       cat /proc/mounts       2>/dev/null
+	printf -- '--- last kernel messages ---\n'; dmesg 2>/dev/null | tail -n 25
+	printf '\n'
+	printf 'RECOVERY: the safest fix is to re-flash sdcard.img to this card with\n'
+	printf 'Etcher or dd and boot again -- that restores a known-good installer.\n'
+	printf 'If the card had already been reformatted below, re-flashing is REQUIRED\n'
+	printf 'before it will boot again.\n\n'
+	printf 'Dropping to a rescue shell on the console. Nothing is installed.\n\n'
+	respawn_shell
+}
+
+# ------------------------------------------------------------- early mounts
+# devtmpfs is not auto-mounted for an initramfs; everything below needs /dev.
+mkdir -p /proc /sys /dev /mnt/src /mnt/dst /tmp/payload /run/preseed
+mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount /proc"
+mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
+mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
+
+# ------------------------------------------------------- parse /proc/cmdline
+# Same discipline as stage-1: cmdline-driven, never positional, never globbing.
+stage="parsing the kernel command line"
+cmdline="$(cat /proc/cmdline)"
+set -f
+# shellcheck disable=SC2086  # deliberate word splitting: that IS the parse
+set -- $cmdline
+for tok in "$@"; do
+	case "$tok" in
+	root=*) root_arg="${tok#root=}" ;;
+	esac
+done
+set +f
+[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
+
+# --------------------------------------------------- resolve the data partition
+# root= points at the FAT data partition (p1). Support a device path, or
+# LABEL=/UUID= via findfs (mirrors stage-1). Wait for slow SD/USB enumeration.
+resolve_data_part() {
+	case "$root_arg" in
+	UUID=*|LABEL=*) findfs "$root_arg" 2>/dev/null ;;
+	*)              [ -b "$root_arg" ] && printf '%s' "$root_arg" ;;
+	esac
+}
+stage="waiting for the data partition"
+waited=0
+while :; do
+	DATA_PART="$(resolve_data_part)"
+	[ -n "$DATA_PART" ] && [ -b "$DATA_PART" ] && break
+	[ "$waited" -ge "$DEV_WAIT" ] && rescue "data partition '$root_arg' never appeared"
+	[ "$waited" = 0 ] && log "waiting up to ${DEV_WAIT}s for $root_arg ..."
+	sleep 1; waited=$((waited + 1))
+done
+log "data partition = $DATA_PART (after ${waited}s)"
+
+# ------------------------------------------------- derive the WHOLE-DISK device
+# NEVER repartition the wrong disk. Find the parent disk of DATA_PART via sysfs:
+# the disk is the /sys/block/<disk>/ directory that CONTAINS the partition's dir.
+# This is authoritative across mmcblk/sd/nvme/usb and needs no name parsing.
+stage="identifying the boot disk"
+partname="${DATA_PART#/dev/}"
+disk_name=""
+for cand in /sys/block/*/"$partname"; do
+	[ -d "$cand" ] || continue
+	# cand = /sys/block/<disk>/<partname>. basename/dirname are NOT built into the
+	# installer busybox (installer-busybox.config), so peel the path with POSIX
+	# parameter expansion instead: strip the trailing /<partname>, then keep the
+	# final path element (the whole-disk name).
+	cand_disk="${cand%/*}"
+	disk_name="${cand_disk##*/}"
+	break
+done
+[ -n "$disk_name" ] || rescue "could not find the parent disk of $DATA_PART in sysfs"
+DISK="/dev/$disk_name"
+[ -b "$DISK" ] || rescue "derived disk $DISK is not a block device"
+
+# Partition-node naming: kernel appends 'p<N>' when the disk name ends in a digit
+# (mmcblk0 -> mmcblk0p1, nvme0n1 -> nvme0n1p1), else '<N>' (sda -> sda1).
+partdev() {
+	case "$1" in
+	*[0-9]) printf '%sp%s' "$1" "$2" ;;
+	*)      printf '%s%s'  "$1" "$2" ;;
+	esac
+}
+P1="$(partdev "$DISK" 1)"
+P2="$(partdev "$DISK" 2)"
+# Sanity: the data partition we were handed must actually be p1 of this disk.
+# The stock U-Boot only ever boots from partition 1, so anything else means the
+# card is not laid out the way this installer requires -- refuse rather than guess.
+[ "$DATA_PART" = "$P1" ] || rescue "data partition $DATA_PART is not p1 ($P1) of $DISK"
+log "disk=$DISK  p1(data)=$P1  p2(boot)=$P2"
+
+# --------------------------------------------------- mount the source read-only
+# READ-ONLY: we only ever read /mister-payload from here, and we must not dirty a
+# partition we are about to destroy. exfat first then vfat (stock-init ordering);
+# the shipped card is FAT32 so vfat wins, but exfat-first also lets the re-run
+# guard below recognise an already-installed card.
+stage="mounting the source data partition"
+if mount -t exfat -o ro "$DATA_PART" /mnt/src 2>/dev/null; then
+	fat_type="exfat"
+elif mount -t vfat -o ro "$DATA_PART" /mnt/src 2>/dev/null; then
+	fat_type="vfat"
+else
+	rescue "cannot mount $DATA_PART as exfat or vfat"
+fi
+log "source mounted ($fat_type)"
+
+# ---------------------------------------------------------------- re-run guard
+# Belt-and-suspenders (the primary guard is that the reformat replaces this
+# installer kernel with the real one, so we normally never run twice). If the data
+# partition is ALREADY the finished article -- exFAT, labelled MiSTer_Data, with a
+# real linux/linux.img at its root (the installer's own /linux holds only
+# zImage_dtb, never linux.img) -- then re-running would DESTROY a good card. Do NOT
+# reformat. We cannot "boot MiSTer" from this throwaway installer OS, so the safe,
+# non-destructive action is to stop and say so clearly rather than risk the user's
+# data or spin a reboot loop.
+label="$(blkid -o value -s LABEL "$DATA_PART" 2>/dev/null || true)"
+if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/linux/linux.img ]; then
+	umount /mnt/src 2>/dev/null || true
+	printf '\n################################################################\n'
+	printf '#  MiSTer INSTALLER: card already provisioned -- NOT reformatting\n'
+	printf '################################################################\n'
+	printf '  %s is exFAT "%s" and already contains linux/linux.img.\n' "$DATA_PART" "$DATA_LABEL"
+	printf '  Refusing to reformat an installed card (your data is safe).\n'
+	printf '  If you meant to reinstall, re-flash sdcard.img first.\n\n'
+	# NOT rescue(): this is a benign, correct halt, not a failure. rescue()'s
+	# "INSTALLER: FAILED / Nothing is installed" banner would be actively wrong
+	# here (the card IS installed). We just can't hand off to MiSTer from this
+	# throwaway installer OS, so drop to a console shell with the accurate
+	# message above rather than reboot-looping into this same installer.
+	printf 'Dropping to a console shell. The card is fine -- power-cycle into it,\n'
+	printf 'or re-flash sdcard.img only if you actually want to reinstall.\n\n'
+	respawn_shell
+fi
+
+# --------------------------------------------- locate the payload on the source
+stage="locating the payload"
+SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
+[ -d "$SRC_PAYLOAD" ] || rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
+# The files without which the reformatted card cannot boot at all. linux.img ships
+# GZIPPED (linux/linux.img.gz) -- see the MEMORY note in the header; it is expanded to
+# linux/linux.img onto the exFAT card after copy-back (step 5b).
+for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
+	[ -f "$SRC_PAYLOAD/$f" ] || rescue "payload is missing $f -- refusing to reformat"
+done
+
+# --------------------------------------------- stash any user pre-seed (step 6)
+# Optional files a user dropped at the root of the FAT card before first boot,
+# mirroring mr-fusion's pre-seed hooks. Copied to RAM now (before we unmount the
+# source) and laid onto the finished card later. All optional; absence is normal.
+stage="collecting user pre-seed"
+for item in wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts config; do
+	if [ -e "/mnt/src/$item" ]; then
+		if cp -a "/mnt/src/$item" "/run/preseed/$item" 2>/dev/null; then
+			log "pre-seed: captured $item"
+		else
+			log "pre-seed: WARNING could not capture $item (ignored)"
+		fi
+	fi
+done
+
+# ------------------------------------------- copy the payload into RAM (step 2)
+# Peak RAM use = size of the tmpfs payload copy (the copy-back target is the SD
+# card, not RAM). Size a tmpfs to (MemAvailable - reserve) so a mis-estimate
+# fails with a clean ENOSPC instead of OOM-hanging the box. Then decide, from a
+# real du of the source, whether the FULL payload fits or we must skip cores.
+stage="measuring RAM"
+avail_kb=0
+while read -r key val _; do
+	[ "$key" = "MemAvailable:" ] && { avail_kb="$val"; break; }
+done < /proc/meminfo
+case "$avail_kb" in ''|*[!0-9]*) avail_kb=0 ;; esac
+budget_kb=$((avail_kb - RAM_RESERVE_KB))
+[ "$budget_kb" -gt 0 ] || rescue "not enough free RAM to stage the payload (avail=${avail_kb}KB)"
+
+mount -t tmpfs -o "size=${budget_kb}k" tmpfs /tmp/payload ||
+	rescue "cannot mount the payload tmpfs (${budget_kb}KB)"
+
+full_kb="$(du -sk "$SRC_PAYLOAD" 2>/dev/null | cut -f1)"
+cores_kb=0
+[ -d "$SRC_PAYLOAD/$CORES_DIR" ] && cores_kb="$(du -sk "$SRC_PAYLOAD/$CORES_DIR" 2>/dev/null | cut -f1)"
+case "$full_kb"  in ''|*[!0-9]*) full_kb=0 ;;  esac
+case "$cores_kb" in ''|*[!0-9]*) cores_kb=0 ;; esac
+base_kb=$((full_kb - cores_kb))
+log "payload: full=${full_kb}KB (cores=${cores_kb}KB, base=${base_kb}KB); RAM budget=${budget_kb}KB"
+
+skip_cores=0
+if [ "$full_kb" -gt "$budget_kb" ]; then
+	skip_cores=1
+	cores_skipped="yes"
+	if [ "$base_kb" -gt "$budget_kb" ]; then
+		rescue "even the base payload (${base_kb}KB) exceeds the RAM budget (${budget_kb}KB)"
+	fi
+	printf '\n****************************************************************\n'
+	printf '*  RAM is too small to stage the _Console cores this boot.\n'
+	printf '*  Installing the BASE system only; SKIPPING cores.\n'
+	printf '*  Run update_all.sh after first boot to fetch cores.\n'
+	printf '****************************************************************\n\n'
+fi
+
+stage="copying the payload into RAM"
+copy_payload_to_ram() {
+	# Copy each top-level entry; skip the cores dir when RAM is tight.
+	for entry in "$SRC_PAYLOAD"/* "$SRC_PAYLOAD"/.[!.]*; do
+		[ -e "$entry" ] || continue
+		name="${entry##*/}"
+		if [ "$skip_cores" = 1 ] && [ "$name" = "$CORES_DIR" ]; then
+			log "skipping cores dir $name (RAM)"
+			continue
+		fi
+		cp -a "$entry" /tmp/payload/ || return 1
+	done
+	return 0
+}
+copy_payload_to_ram || rescue "copying the payload into RAM failed (out of space?)"
+
+# Verify the RAM copy is complete for the boot-critical files BEFORE we destroy
+# anything on disk. If this trips, the card is still a bootable installer. linux.img
+# is present here only in its gzipped form (linux/linux.img.gz); it is expanded onto
+# the card after copy-back (step 5b).
+for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
+	[ -f "/tmp/payload/$f" ] || rescue "RAM payload is missing $f after copy -- aborting before reformat"
+done
+log "payload staged in RAM OK"
+
+# We are done reading the card. Everything destructive is below this line.
+stage="unmounting the source"
+umount /mnt/src || rescue "cannot unmount $DATA_PART before repartitioning"
+sync
+
+# ============================================================================
+#  POINT OF NO RETURN -- from here the card is being rewritten.
+# ============================================================================
+
+# ------------------------------------------------- repartition to full size (3)
+# p1 = exFAT data from the 1 MiB-aligned start to the reserved tail; p2 = 0xA2 boot,
+# EXACTLY RESERVED_SECTORS at the very end. Adapted from mr-fusion's
+# S99install-MiSTer.sh, but with EXPLICIT starts+sizes instead of its
+# empty-field "; size; 07" / "; ; a2" form. That form let sfdisk auto-place p1
+# at LBA 2048 and gave p2 "the rest" -- which is RESERVED_SECTORS *minus* p1's
+# 2048-sector start offset (6144, not 8192), so the 0xA2 boot partition came out
+# 3 MiB instead of the intended 4 MiB and its size drifted with p1's alignment.
+# Computing all three numbers here makes the layout deterministic and makes p2
+# match genimage-sdcard.cfg's `size = 4M` on the shipped image byte-for-byte.
+stage="repartitioning $DISK"
+dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)"
+case "$dev_sectors" in ''|*[!0-9]*) rescue "cannot read /sys/block/$disk_name/size" ;; esac
+data_sectors=$((dev_sectors - P1_START_SECTORS - RESERVED_SECTORS))
+p2_start=$((dev_sectors - RESERVED_SECTORS))
+[ "$data_sectors" -gt 0 ] || rescue "device too small: $dev_sectors sectors"
+log "card=$dev_sectors sectors; p1=[$P1_START_SECTORS,+$data_sectors) exfat; p2=[$p2_start,+$RESERVED_SECTORS) 0xA2"
+
+# `label: dos` forces a fresh MBR (never GPT), regardless of what the shipped
+# card carried. `type=7` = exFAT/NTFS (mr-fusion parity), `type=a2` = the SPL
+# boot partition. Explicit start+size on BOTH lines -> no auto-placement drift.
+sfdisk --force "$DISK" <<EOF || rescue "sfdisk failed -- card partition table may be inconsistent"
+label: dos
+start=${P1_START_SECTORS}, size=${data_sectors}, type=7
+start=${p2_start}, size=${RESERVED_SECTORS}, type=a2
+EOF
+sync
+
+# Make the kernel re-read the new table and wait for the nodes to appear.
+blockdev --rereadpt "$DISK" 2>/dev/null || true
+stage="waiting for new partition nodes"
+waited=0
+while :; do
+	[ -b "$P1" ] && [ -b "$P2" ] && break
+	[ "$waited" -ge "$DEV_WAIT" ] && rescue "new partitions $P1 / $P2 never appeared after sfdisk"
+	sleep 1; waited=$((waited + 1))
+done
+log "new partitions present: $P1 (data), $P2 (boot)"
+
+# --------------------------------------------------- mkfs.exfat on new p1 (4)
+stage="formatting $P1 as exFAT"
+mkfs.exfat -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
+sync
+
+stage="mounting the new data partition"
+mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount new exFAT $P1"
+
+# --------------------------------------------- copy the payload back out of RAM (5)
+stage="writing the payload to the card"
+for entry in /tmp/payload/* /tmp/payload/.[!.]*; do
+	[ -e "$entry" ] || continue
+	cp -a "$entry" /mnt/dst/ || rescue "copying ${entry##*/} onto $P1 failed"
+done
+sync
+
+# ------------------------------------ expand linux.img.gz onto the card (5b)
+# linux.img ships GZIPPED so the 512 MiB image never has to fit the mem=511M RAM
+# tmpfs (header MEMORY note). The small .gz is now on the exFAT card; stream-
+# decompress it to the real linux/linux.img -- zcat reads the .gz and writes the
+# expansion straight to DISK, so the full 512 MiB is never held in RAM -- then drop
+# the .gz so the finished card carries only linux/linux.img (what U-Boot loop-mounts).
+stage="expanding linux.img onto the card"
+[ -f /mnt/dst/linux/linux.img.gz ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
+zcat /mnt/dst/linux/linux.img.gz > /mnt/dst/linux/linux.img ||
+	rescue "decompressing linux/linux.img.gz onto $P1 failed (card out of space, or corrupt payload)"
+rm -f /mnt/dst/linux/linux.img.gz
+sync
+
+# Verify the boot-critical files really landed (linux.img is the expanded one above).
+for f in linux/linux.img linux/zImage_dtb linux/uboot.img; do
+	[ -f "/mnt/dst/$f" ] || rescue "$f missing on $P1 after copy-back"
+done
+log "payload written to $P1"
+
+# ------------------------------------------------- apply user pre-seed (6)
+stage="applying user pre-seed"
+apply_preseed() {
+	# $1 = name under /run/preseed ; $2 = destination path under /mnt/dst
+	[ -e "/run/preseed/$1" ] || return 0
+	# dirname is NOT built into the installer busybox: derive the parent dir with
+	# POSIX parameter expansion (strip the trailing /<basename>).
+	dest="/mnt/dst/$2"
+	mkdir -p "${dest%/*}"
+	if cp -a "/run/preseed/$1" "$dest" 2>/dev/null; then
+		log "pre-seed applied: $1 -> $2"
+	else
+		log "pre-seed: WARNING failed to apply $1 (ignored)"
+	fi
+}
+apply_preseed wpa_supplicant.conf  linux/wpa_supplicant.conf
+apply_preseed _wpa_supplicant.conf linux/_wpa_supplicant.conf
+apply_preseed samba.sh             linux/_samba.sh
+apply_preseed _samba.sh            linux/_samba.sh
+# Directory pre-seeds are merged (cp -a of the dir onto the existing tree).
+if [ -d /run/preseed/Scripts ]; then
+	if cp -a /run/preseed/Scripts /mnt/dst/; then log "pre-seed applied: Scripts/"; else log "pre-seed: WARNING Scripts/ failed (ignored)"; fi
+fi
+if [ -d /run/preseed/config ]; then
+	if cp -a /run/preseed/config /mnt/dst/; then log "pre-seed applied: config/"; else log "pre-seed: WARNING config/ failed (ignored)"; fi
+fi
+
+# --------------------------------------- per-board MAC into u-boot.txt (7)
+# Every board otherwise shares the compiled-in fallback ethaddr 02:03:04:05:06:07
+# (docs/boot-chain.md §3.1 entry 14). Generate a random LOCALLY-ADMINISTERED,
+# UNICAST MAC: first octet |= 0x02 (local-admin bit set) and &= 0xFE (multicast bit
+# cleared). This is the direct arithmetic equivalent of mr-fusion's b="2,6,a,e"
+# low-nibble trick, but readable and awk-free. u-boot.txt MUST end in a newline (see
+# header) -- printf provides it.
+stage="writing per-board MAC"
+gen_mac() {
+	# 6 random bytes as space-separated hex from hexdump; force the first octet's
+	# bits. hexdump is the applet the installer busybox actually ships for exactly
+	# this (installer-busybox.config header: "Picked over CONFIG_AWK ... hexdump -e
+	# is the standard idiom for N random bytes as hex octets"); od is NOT built.
+	# Word-splitting hexdump's output into $1..$6 is the whole point; it emits only
+	# hex digits and spaces, so there is nothing to glob or expand.
+	# shellcheck disable=SC2046
+	set -- $(hexdump -n6 -e '6/1 "%02x "' /dev/urandom)
+	[ $# -eq 6 ] || return 1
+	o1=$(( (0x$1 | 0x02) & 0xFE ))
+	printf '%02X:%02X:%02X:%02X:%02X:%02X' \
+		"$o1" "$((0x$2))" "$((0x$3))" "$((0x$4))" "$((0x$5))" "$((0x$6))"
+}
+mkdir -p /mnt/dst/linux
+if mac="$(gen_mac)" && [ -n "$mac" ]; then
+	printf 'ethaddr=%s\n' "$mac" > /mnt/dst/linux/u-boot.txt ||
+		rescue "cannot write /linux/u-boot.txt on $P1"
+	log "per-board MAC = $mac"
+else
+	# A missing MAC is not fatal (the board still boots with the shared fallback),
+	# but it IS worth shouting about so it can be fixed by hand.
+	log "WARNING: could not generate a MAC; board will use the shared fallback"
+fi
+
+# --------------------------------------------------- flush + unmount the data fs
+stage="flushing the data partition"
+sync
+umount /mnt/dst || rescue "cannot unmount $P1 (data not fully flushed)"
+sync
+
+# ------------------------------------- dd uboot.img to the new 0xA2 p2 (8)
+# THE most brick-critical step. Until this succeeds the card has NO bootloader in
+# its 0xA2 partition and will not boot. We dd from the RAM copy (guaranteed present)
+# and verify the exit status; failure here is a loud rescue, NOT a reboot.
+stage="writing uboot.img to the boot partition ($P2)"
+dd if=/tmp/payload/linux/uboot.img of="$P2" bs=64k 2>/dev/null ||
+	rescue "dd of uboot.img to $P2 FAILED -- card is NOT bootable; re-flash sdcard.img"
+sync; sync
+log "uboot.img written to $P2"
+
+# ------------------------------------------------------------------- reboot (9)
+stage="rebooting into the installed MiSTer"
+log "install complete -- rebooting into MiSTer"
+sync
+# `reboot -f`: direct reboot(2) syscall. Plain `reboot` would try to signal an init
+# process, but we ARE pid 1 and there is no init here -- it would just hang.
+reboot -f
+
+# If reboot ever returns, do not fall off the end of pid 1 (kernel panic).
+rescue "reboot returned unexpectedly"

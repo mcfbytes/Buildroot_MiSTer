@@ -1,0 +1,36 @@
+libchdr_chd: drop the redundant vendored LzmaDec.h include
+
+Companion to patches 0001/0002, and the last hardcoded deps/ reference
+on the lzma path. src/libchdr_chd.c includes
+"../deps/lzma-25.01/include/LzmaDec.h" a second time at line 76, six
+lines after it already pulled in "codec_lzma.h" (which provides
+LzmaDec.h itself -- system or vendored, correctly selected by patch
+0002). Under WITH_SYSTEM_LZMA this duplicate would re-open the vendored
+shim header behind codec_lzma.h's back and re-apply its CHDR_ #define
+renames on top of the system declarations.
+
+Deleting it outright (rather than wrapping it in another ifdef) is
+correct for both configurations: the file references no Lzma/CLzma/
+ISzAlloc/SRes identifier directly -- checked by grepping the whole
+translation unit; every LZMA touchpoint goes through the
+lzma_codec_init/free/decompress functions declared in codec_lzma.h --
+so the include was already dead weight even in the bundled build,
+where codec_lzma.h had made the same declarations visible six lines
+earlier.
+
+Upstream status: follows the maintainer's own WITH_SYSTEM_* pattern
+(added "for distros" per CHANGELOG); candidate for upstreaming, not yet
+sent.
+
+diff --git a/src/libchdr_chd.c b/src/libchdr_chd.c
+--- a/src/libchdr_chd.c
++++ b/src/libchdr_chd.c
+@@ -73,8 +73,6 @@
+ #include "../include/libchdr/huffman.h"
+ #include "../include/libchdr/macros.h"
+ 
+-#include "../deps/lzma-25.01/include/LzmaDec.h"
+-
+ #undef TRUE
+ #undef FALSE
+ #define TRUE 1

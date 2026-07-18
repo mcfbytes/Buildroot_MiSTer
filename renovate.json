@@ -224,6 +224,33 @@
     },
     {
       "customType": "regex",
+      "description": "libchdr commit pin (rtissera/libchdr, master branch) -- the CHD read library for the Main_MiSTer shared-lib refactor; pinned to a branch-head commit, not the stale v0.3.0 tag (see libchdr.mk's header for why). Hash: package/libchdr/libchdr.hash, refreshed by renovate-hash-sync.yml's generic loop (standard $(call github,...) tarball).",
+      "managerFilePatterns": [
+        "^package/libchdr/libchdr\\.mk$"
+      ],
+      "matchStrings": [
+        "LIBCHDR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "rtissera/libchdr",
+      "packageNameTemplate": "https://github.com/rtissera/libchdr",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "7-Zip LZMA SDK tag pin (ip7z/7zip) for the Main_MiSTer shared-lib refactor. Only the LZMA_SDK_VERSION line needs managing -- LZMA_SDK_SOURCE derives from it via $(subst) in the .mk. Hash: package/lzma-sdk/lzma-sdk.hash, refreshed by renovate-hash-sync.yml's BESPOKE lzma-sdk step (release-asset URL with a dots-stripped filename, does not fit the generic $(call github,...) loop).",
+      "managerFilePatterns": [
+        "^package/lzma-sdk/lzma-sdk\\.mk$"
+      ],
+      "matchStrings": [
+        "LZMA_SDK_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "ip7z/7zip",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "Update_All_MiSTer launcher pinned into the sdcard payload (theypsilon/Update_All_MiSTer, master branch). Tracks the branch HEAD and bumps the 40-char commit; the SHA-256/size companions (PINNED_UPDATE_ALL_SHA256/SIZE in the same file) are refreshed by renovate-hash-sync.yml.",
       "managerFilePatterns": [
         "^scripts/fetch-sdcard-payload\\.sh$"
@@ -312,6 +339,19 @@
       ],
       "addLabels": [
         "driver-pin"
+      ]
+    },
+    {
+      "description": "Main_MiSTer shared-library pins (libchdr commit, LZMA SDK tag) -- distinct label per the established per-pin-class convention, so a reviewer knows these change a userspace library ABI Main_MiSTer links against (liblzma-sdk's SONAME is the full version, so an SDK bump IS an ABI event by design), not kernel-module source or a build tool.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "rtissera/libchdr",
+        "ip7z/7zip"
+      ],
+      "addLabels": [
+        "lib-pin"
       ]
     },
     {

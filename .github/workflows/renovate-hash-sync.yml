@@ -12,14 +12,17 @@
 #
 # WHAT THIS WORKFLOW HANDLES, AND WHY EACH CASE IS SAFE TO AUTOMATE:
 #
-#   1. The 11 github-sourced driver/firmware packages (package/*/*.mk +
-#      their .hash). Their own .hash file headers already say the hash is
-#      "locally computed" -- GitHub publishes no signed manifest for a
-#      commit/tag archive tarball, so `sha256sum` of a freshly-fetched
-#      tarball from the ACTUAL pinned owner/repo/ref IS the legitimate,
-#      standard-practice source for these (see e.g. package/xone/xone.hash's
-#      own comment, and pkg-download.mk / the Buildroot manual). Automating
-#      exactly what a human would otherwise type by hand is safe here.
+#   1. The 12 github-sourced packages (package/*/*.mk + their .hash): the
+#      11 driver/firmware pins plus libchdr (a userspace shared library --
+#      Main_MiSTer shared-lib refactor -- but the exact same
+#      $(call github,...) commit-archive shape). Their own .hash file
+#      headers already say the hash is "locally computed" -- GitHub
+#      publishes no signed manifest for a commit/tag archive tarball, so
+#      `sha256sum` of a freshly-fetched tarball from the ACTUAL pinned
+#      owner/repo/ref IS the legitimate, standard-practice source for these
+#      (see e.g. package/xone/xone.hash's own comment, and pkg-download.mk /
+#      the Buildroot manual). Automating exactly what a human would
+#      otherwise type by hand is safe here.
 #
 #   2. The kernel tarball hash (board/mister/de10nano/patches/linux/
 #      linux.hash), refreshed from kernel.org's own PGP-clearsigned
@@ -31,6 +34,22 @@
 #      same trust level as today's manual transcription process, not a
 #      regression. Verifying the clearsign signature is a worthwhile future
 #      hardening step, not implemented here (see docs/renovate.md).
+#
+#   3. The lzma-sdk tarball hash (package/lzma-sdk/lzma-sdk.hash). Same
+#      trust model as case 1 (upstream publishes NO checksums at all --
+#      none on the release, none on 7-zip.org; see the .hash file's own
+#      header), but it cannot ride the generic loop: the tarball is a
+#      GitHub release ASSET, not a commit/tag archive, and its filename
+#      derives from the version with the dots stripped
+#      (7z2602-src.tar.xz for 26.02), so it gets its own bespoke step.
+#
+#   4. The sdcard payload single-file pins (scripts/fetch-sdcard-payload.sh):
+#      update_all.sh and wifi.sh are pinned by commit AND by sha256+size;
+#      renovate.json's git-refs managers bump the PINNED_*_COMMIT, and the
+#      sha256/size companions are recomputed from the raw file at the new
+#      commit -- the same fetch-and-hash practice as case 1. The _Console
+#      cores commit (PINNED_CORES_COMMIT) has no companion hash and is
+#      deliberately not handled (see that script's own header).
 #
 # WHAT THIS WORKFLOW DELIBERATELY DOES NOT HANDLE:
 #
@@ -61,9 +80,12 @@
 # are harmless no-ops once the hash is already correct.
 #
 # UNVERIFIED: like renovate.json itself, this workflow has never been
-# exercised against a real Renovate PR (the repo is still private and
-# Renovate is not yet installed -- see docs/renovate.md). Treat the exact
-# regexes/URLs below as reviewed-by-hand, not proven.
+# exercised against a real Renovate PR (Renovate is installed and live
+# since 2026-07-14, but no custom manager has produced a real PR yet --
+# see docs/renovate.md's "Unverified / what to check on first run").
+# Treat the exact regexes/URLs below -- including the libchdr loop entry
+# and the bespoke lzma-sdk and sdcard-payload steps -- as reviewed-by-hand,
+# not proven.
 #
 ################################################################################
 
@@ -85,6 +107,8 @@ on:
       - "package/midilink/midilink.mk"
       - "package/munt/munt.mk"
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
+      - "package/libchdr/libchdr.mk"
+      - "package/lzma-sdk/lzma-sdk.mk"
       - "scripts/fetch-sdcard-payload.sh"
 
 concurrency:
@@ -116,7 +140,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
-      # --- 1. Github-sourced driver/firmware packages ------------------------
+      # --- 1. Github-sourced packages (drivers/firmware + libchdr) -----------
       # Generic loop, not one step per package: every one of these .mk files
       # follows the identical Buildroot convention
       #   <PKG>_VERSION = <commit-sha-or-tag>
@@ -130,13 +154,14 @@ jobs:
       # provenance) are left untouched -- if one of those legitimately
       # changed too, the build's own hash check will fail closed and a human
       # will need to re-derive that specific line by hand.
-      - name: Refresh driver/firmware package tarball hashes
+      - name: Refresh github-sourced package tarball hashes
         run: |
           set -euo pipefail
           changed=0
           for pkg in rtl8812au rtl8814au-morrownr rtl8821au-morrownr \
                      rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng \
-                     rtl88x2bu xone midilink munt bcm20702-firmware; do
+                     rtl88x2bu xone midilink munt bcm20702-firmware \
+                     libchdr; do
             mk="package/$pkg/$pkg.mk"
             hashfile="package/$pkg/$pkg.hash"
             if [ ! -f "$mk" ] || [ ! -f "$hashfile" ]; then
@@ -248,7 +273,73 @@ jobs:
             echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
           fi
 
-      # --- 3. SD-card payload single-file pins -------------------------------
+      # --- 3. lzma-sdk release-asset tarball hash ----------------------------
+      # Bespoke, NOT part of the generic loop in step 1: lzma-sdk's tarball is
+      # a GitHub release ASSET
+      # (https://github.com/ip7z/7zip/releases/download/<ver>/...), not a
+      # $(call github,...) commit/tag archive, and its filename is derived
+      # from the version with the dots stripped (LZMA_SDK_SOURCE =
+      # 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz, so 26.02 ->
+      # 7z2602-src.tar.xz). Trust model is the same as step 1's: upstream
+      # publishes no checksums anywhere (checked at pin time -- see
+      # package/lzma-sdk/lzma-sdk.hash's own header), so a locally-computed
+      # sha256 of the freshly-fetched asset is the legitimate source. Only the
+      # FIRST sha256 line (the tarball) is rewritten; the DOC/License.txt and
+      # DOC/readme.txt provenance lines beneath it are left untouched -- if
+      # one of those legitimately changed too, the build's own hash check
+      # fails closed and a human re-derives that line by hand.
+      - name: Refresh lzma-sdk release-asset tarball hash
+        run: |
+          set -euo pipefail
+          mk="package/lzma-sdk/lzma-sdk.mk"
+          hashfile="package/lzma-sdk/lzma-sdk.hash"
+
+          if [ ! -f "$mk" ] || [ ! -f "$hashfile" ]; then
+            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          version=$(grep -E '^LZMA_SDK_VERSION[[:space:]]*=' "$mk" | head -1 \
+                     | sed -E 's/^LZMA_SDK_VERSION[[:space:]]*=[[:space:]]*//')
+          if [ -z "$version" ]; then
+            echo "::warning::could not parse LZMA_SDK_VERSION from $mk -- skipping, build will fail closed on a stale hash instead"
+            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          asset="7z$(echo "$version" | tr -d .)-src.tar.xz"
+          url="https://github.com/ip7z/7zip/releases/download/${version}/${asset}"
+          echo "==> lzma-sdk $version: fetching $url"
+          tmpfile=$(mktemp)
+          if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
+            echo "::warning::could not download $url -- leaving $hashfile untouched, build will fail closed on a stale hash instead"
+            rm -f "$tmpfile"
+            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
+          rm -f "$tmpfile"
+
+          newline="sha256  ${newhash}  ${asset}"
+          oldline=$(grep -m1 '^sha256' "$hashfile" || true)
+
+          if [ "$oldline" != "$newline" ]; then
+            awk -v newline="$newline" '
+              BEGIN { done = 0 }
+              /^sha256/ && !done { print newline; done = 1; next }
+              { print }
+            ' "$hashfile" > "$hashfile.tmp"
+            mv "$hashfile.tmp" "$hashfile"
+            echo "Updated $hashfile:"
+            echo "  old: $oldline"
+            echo "  new: $newline"
+            echo "LZMA_SDK_HASH_CHANGED=1" >> "$GITHUB_ENV"
+          else
+            echo "$hashfile already up to date."
+            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
+          fi
+
+      # --- 4. SD-card payload single-file pins -------------------------------
       # scripts/fetch-sdcard-payload.sh pins two individual scripts by commit
       # AND by sha256+size: update_all.sh (theypsilon/Update_All_MiSTer) and
       # wifi.sh (MiSTer-devel/Scripts_MiSTer). renovate.json's git-refs managers
@@ -300,7 +391,9 @@ jobs:
           echo "PAYLOAD_HASH_CHANGED=$changed" >> "$GITHUB_ENV"
 
       - name: Commit and push hash refresh, if anything changed
-        if: env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' || env.PAYLOAD_HASH_CHANGED == '1'
+        if: >
+          env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
+          env.LZMA_SDK_HASH_CHANGED == '1' || env.PAYLOAD_HASH_CHANGED == '1'
         run: |
           set -euo pipefail
           git config user.name "renovate-hash-sync[bot]"
@@ -310,12 +403,18 @@ jobs:
           renovate-hash-sync: refresh companion hash(es) for this PR
 
           Recomputed from a freshly-fetched artifact:
-            - driver/firmware package pins: sha256sum of the github archive
-              tarball at the new pinned owner/repo/ref (same "locally
+            - driver/firmware/libchdr package pins: sha256sum of the github
+              archive tarball at the new pinned owner/repo/ref (same "locally
               computed" practice this tree's own .hash file headers already
               document)
             - kernel pin: kernel.org's signed sha256sums.asc for the
               matching v6.x series
+            - lzma-sdk pin: sha256sum of the ip7z/7zip release ASSET for the
+              new version (upstream publishes no checksums at all -- see
+              package/lzma-sdk/lzma-sdk.hash's header)
+            - sdcard payload pins (update_all.sh, wifi.sh): sha256 + size of
+              the raw file at the new pinned commit, rewritten in place in
+              scripts/fetch-sdcard-payload.sh
 
           BUILDROOT_SHA256 (root Makefile) is NEVER touched by this
           workflow -- see docs/renovate.md and the Makefile's own header

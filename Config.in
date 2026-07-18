@@ -57,4 +57,22 @@ menu "MIDI / MT-32 (P3.8)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/midilink/Config.in"
 endmenu
 
+menu "Main_MiSTer shared libraries"
+	# These back the Main_MiSTer shared-lib refactor (no task ID exists for
+	# this work -- it is referenced by name): Main_MiSTer stops vendoring
+	# lib/{lzma,zstd,miniz,libchdr} in its own tree and links Buildroot-
+	# provided shared libraries instead. Only half the refactor lives here:
+	# the upstream halves (zstd, minizip-ng) are plain Buildroot packages
+	# enabled straight from the defconfig; the two packages upstream Buildroot
+	# does not carry are the ones sourced in this menu. See
+	# docs/main-shared-libs.md for the full provider/SONAME map.
+	#
+	# lzma-sdk is sourced first because libchdr's Config.in selects
+	# BR2_PACKAGE_LZMA_SDK -- depended-on before dependent, the same
+	# menu-readability note as xone/xow-firmware above; both packages remain
+	# independently selectable.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/lzma-sdk/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/libchdr/Config.in"
+endmenu
+
 endmenu

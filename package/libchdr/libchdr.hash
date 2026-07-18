@@ -1,0 +1,12 @@
+# Locally computed (GitHub does not publish signed hashes for commit-archive
+# tarballs -- standard practice for git/github-sourced Buildroot packages,
+# per pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# (2026-07-17) against:
+#   https://github.com/rtissera/libchdr/archive/04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
+#
+#   sha256sum libchdr-04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
+sha256  c6f16b2dbe701fcc9013279e4c968c15e19b9784a4717aebb04d9251f3b25dcf  libchdr-04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
+# LICENSE.txt -- the BSD-3-Clause text; see the LIBCHDR_LICENSE comment in
+# the .mk (the bundled dr_flac's public-domain/MIT-0 statements live inside
+# include/dr_libs/dr_flac.h itself, no separate file exists to hash)
+sha256  e3989a7aee74a91b8cdbdfe204a6b8d03288863ec7533a21c51f1a987ba73539  LICENSE.txt

@@ -596,6 +596,36 @@ else
 fi
 
 # =============================================================================
+section "Main_MiSTer shared libraries"
+# =============================================================================
+# The four libraries backing the Main_MiSTer shared-lib refactor (no task ID
+# -- referenced by name): Main stops vendoring lib/{zstd,miniz,lzma,libchdr}
+# and links these instead. zstd + minizip-ng come from upstream Buildroot
+# (defconfig), lzma-sdk + libchdr from this tree's package/. See
+# docs/main-shared-libs.md.
+#
+# Version parts are WILDCARDED on purpose -- liblzma-sdk's SONAME is the FULL
+# SDK version by policy (every bump is a loud ABI event, see
+# package/lzma-sdk/lzma-sdk.mk), so a Renovate bump changes the filename
+# itself. An exact-version assertion here would go stale and turn CI red on a
+# legitimate bump -- exactly the PR #35 failure mode (commit 1341c93: the
+# 8814au parity check outlived the in-kernel migration and every master build
+# went red until the stale assertion was fixed).
+for spec in \
+	"libzstd\.so\.1:libzstd.so.1* (zstd)" \
+	"libminizip-ng\.so\.4:libminizip-ng.so.4* (minizip-ng)" \
+	"liblzma-sdk\.so\.:liblzma-sdk.so.* (lzma-sdk)" \
+	"libchdr\.so\.0:libchdr.so.0* (libchdr)"; do
+	lib_re="^\\./usr/lib/${spec%%:*}"
+	lib_name="${spec#*:}"
+	if grep -qE "$lib_re" "$TAR_LIST"; then
+		pass "$lib_name present ($(grep -cE "$lib_re" "$TAR_LIST") files)"
+	else
+		fail "$lib_name present" "no matching usr/lib entries in rootfs.tar (grep -E '$lib_re')"
+	fi
+done
+
+# =============================================================================
 section "P3.9 — Python & Downloader ABI gate"
 # =============================================================================
 

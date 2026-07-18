@@ -286,6 +286,41 @@ BR2_PACKAGE_LIBZLIB=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concre
 BR2_PACKAGE_BZIP2=y
 BR2_PACKAGE_XZ=y
 BR2_PACKAGE_LZO=y
+BR2_PACKAGE_ZSTD=y                      # libzstd.so.1 + the zstd CLI (upstream has no
+                                        # sub-option to omit the CLI). Needed by libchdr
+                                        # (CHD v5 zstd hunks) and flips minizip-ng's
+                                        # MZ_ZSTD=ON (see MINIZIP below)
+# BR2_PACKAGE_MINIZIP IS minizip-ng 4.0.3 (zlib-ng/minizip-ng) -- the concrete
+# provider matters here exactly like LIBZLIB above: this is NOT the classic
+# zlib-contrib zip.h/unzip.h library (that one is BR2_PACKAGE_MINIZIP_ZLIB,
+# deliberately NOT set). Buildroot forces -DMZ_COMPAT=OFF (work/buildroot/
+# package/minizip/minizip.mk), so there is no zip.h/unzip.h compat layer at
+# all -- Main_MiSTer's miniz mz_zip_* call sites get ported to the mz_zip.h
+# API instead. Installs libminizip-ng.so.4 + minizip-ng.pc. Feature set under
+# THIS defconfig (minizip.mk keys each MZ_* feature off other BR2_PACKAGE_*
+# symbols): bzip2 + openssl (pkcrypt/wzaes) + lzma-via-xz + zlib + zstd (the
+# ZSTD=y above); NO iconv -- BR2_ENABLE_LOCALE=y, so minizip's "select
+# BR2_PACKAGE_LIBICONV if !BR2_ENABLE_LOCALE" stays off.
+BR2_PACKAGE_MINIZIP=y
+
+# --- Main_MiSTer shared libs ---
+# The BR2_EXTERNAL half of the Main_MiSTer shared-lib refactor (no task ID --
+# referenced by name): Main stops vendoring lib/{lzma,zstd,miniz,libchdr} and
+# links Buildroot-provided shared libraries; the upstream half (zstd,
+# minizip-ng) is enabled in the compression block above. Both packages
+# authored under package/; see docs/main-shared-libs.md.
+BR2_PACKAGE_LZMA_SDK=y                  # 7-Zip LZMA SDK 26.02 as liblzma-sdk.so.<ver>;
+                                        # the full-version SONAME is the deliberate
+                                        # loud-ABI-event policy: the Main binary lives on
+                                        # /media/fat and SURVIVES rootfs reflashes, so an
+                                        # SDK bump must refuse-to-load, not corrupt
+                                        # (package/lzma-sdk/lzma-sdk.mk)
+BR2_PACKAGE_LIBCHDR=y                   # libchdr.so.0; commit-pinned past v0.3.0 for the
+                                        # Findzstd pkg-config fallback (the tag cannot
+                                        # configure against Buildroot's zstd); system
+                                        # zlib/zstd/lzma-sdk via our 3 patches; exports
+                                        # chd_* ONLY (version script), so no symbol
+                                        # collisions with minizip-ng et al.
 
 # --- graphics / fonts ---
 BR2_PACKAGE_FREETYPE=y

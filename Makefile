@@ -224,7 +224,7 @@ BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
 .PHONY: all help buildroot-fetch buildroot-verify buildroot-unpack buildroot-showsig require-tools
 .PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
-.PHONY: rt rt-clean rt-menuconfig
+.PHONY: rt rt-clean rt-menuconfig rt-external-deps rt-legal-info
 .PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
 .PHONY: sdcard
 .PHONY: zimage-dtb
@@ -425,10 +425,41 @@ $(RT_OUTPUT_DIR)/.config: | $(BR_STAMP)
 		./support/kconfig/merge_config.sh -m -O $(RT_OUTPUT_DIR) $(RT_OUTPUT_DIR)/.config $(RT_FRAGMENT)
 	$(BR_MAKE_RT) olddefconfig
 
+# The PREEMPT_RT assert below binds to THE kernel tree, never "the first glob
+# match": `linux-[0-9]*` (not `linux-*`) so linux-firmware-*/linux-headers-*/
+# linux-pam-* siblings can't match, and MORE than one kernel tree is FATAL — a
+# stale sibling (kernel version bumped in the fragment without `make rt-clean`)
+# sorts first often enough that picking one blindly would validate the OLD
+# kernel's .config and false-pass the one guard proving the RT kernel is RT.
 rt: $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) all
 	@test -f $(RT_OUTPUT_DIR)/images/zImage_dtb || { \
 		echo "FATAL: rt build finished but produced no $(RT_OUTPUT_DIR)/images/zImage_dtb" >&2; exit 1; }
+	@set -- $$(ls -d $(RT_OUTPUT_DIR)/build/linux-[0-9]*/ 2>/dev/null); \
+	if [ $$# -eq 0 ]; then \
+		echo "FATAL: rt build finished but no kernel tree exists under" >&2; \
+		echo "       $(RT_OUTPUT_DIR)/build/linux-[0-9]*/ -- cannot prove the kernel is RT." >&2; exit 1; \
+	elif [ $$# -gt 1 ]; then \
+		echo "FATAL: $$# kernel trees under $(RT_OUTPUT_DIR)/build/ -- cannot tell which one" >&2; \
+		echo "       this build produced:" >&2; \
+		printf '         %s\n' "$$@" >&2; \
+		echo "       A stale sibling appears when the fragment's kernel version is bumped" >&2; \
+		echo "       without discarding the old tree; validating its .config could label a" >&2; \
+		echo "       non-RT kernel zImage_dtb-rt. Run 'make rt-clean && make rt'." >&2; exit 1; \
+	fi; \
+	cfg="$$1.config"; \
+	if [ ! -f "$$cfg" ]; then \
+		echo "FATAL: rt build finished but $$cfg" >&2; \
+		echo "       does not exist -- cannot prove the kernel is RT." >&2; exit 1; \
+	fi; \
+	grep -qx 'CONFIG_PREEMPT_RT=y' "$$cfg" || { \
+		echo "FATAL: the built RT kernel is NOT RT: CONFIG_PREEMPT_RT=y is absent from" >&2; \
+		echo "       $$cfg" >&2; \
+		echo "       merge_config.sh only WARNS when a fragment symbol is dropped, and" >&2; \
+		echo "       olddefconfig silently discards symbols whose dependencies fail -- so" >&2; \
+		echo "       without this check a plain 7.2 kernel would ship labeled zImage_dtb-rt." >&2; \
+		echo "       Check board/mister/de10nano/linux-rt.fragment against this kernel" >&2; \
+		echo "       version's Kconfig (docs/rt-beta-kernel.md §1)." >&2; exit 1; }
 	@echo ""
 	@echo "==> RT kernel: $(RT_OUTPUT_DIR)/images/zImage_dtb  (ship as zImage_dtb-rt — docs/rt-beta-kernel.md)"
 	@echo ""
@@ -436,6 +467,19 @@ rt: $(RT_OUTPUT_DIR)/.config hostshim
 # Edit the RT kernel .config interactively (writes back to output-rt/.config).
 rt-menuconfig: $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) linux-menuconfig
+
+# Buildroot's own `external-deps` / `legal-info`, run against the RT config.
+# Explicit rules rather than the `%:` catch-all at the bottom, because the
+# catch-all forwards with O=$(OUTPUT_DIR) — i.e. against the MAIN build. Same
+# reason `rt`/`rt-menuconfig` exist; same rt-* naming precedent. CI leans on
+# both: rt-external-deps is the dl/-completeness oracle for the RT variant's
+# download cache (it runs with -B upstream, so it ignores stamps), and
+# rt-legal-info produces the RT SBOM/GPL-source bundle for release assets.
+rt-external-deps: $(RT_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_RT) external-deps
+
+rt-legal-info: $(RT_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_RT) legal-info
 
 rt-clean:
 	rm -rf $(RT_OUTPUT_DIR)
@@ -574,6 +618,15 @@ help:
 	@echo "  make initramfs-busybox-menuconfig - BusyBox menuconfig for the stage-1 BusyBox"
 	@echo "  make initramfs-clean            - rm -rf output-initramfs/"
 	@echo "  make check-initramfs            - assert the built kernel really embeds the cpio"
+	@echo ""
+	@echo "RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md):"
+	@echo "  make rt                         - build the PREEMPT_RT variant into output-rt/"
+	@echo "                                    (asserts CONFIG_PREEMPT_RT=y in the built kernel)"
+	@echo "  make rt-menuconfig              - kernel menuconfig for the RT variant"
+	@echo "  make rt-external-deps           - list every download the RT config needs (CI's"
+	@echo "                                    dl/-completeness oracle)"
+	@echo "  make rt-legal-info              - legal-info (SBOM + sources) for the RT variant"
+	@echo "  make rt-clean                   - rm -rf output-rt/"
 	@echo ""
 	@echo "zImage_dtb assembly (P1.11):"
 	@echo "  make zimage-dtb                 - cat zImage+DTB and run scripts/check-zimage-dtb.sh"

@@ -7,12 +7,19 @@
 # parity suite (scripts/ci-tests.sh, P3.12) and the ABI/SONAME checker (P2.2)
 # against the result, and uploads the two shipped images plus the SBOM.
 #
+# A second job, `build-rt`, builds the PREEMPT_RT / Linux-7.2 beta variant
+# (`make rt`, docs/rt-beta-kernel.md, ADR 0021) behind the same gate, checks its
+# rootfs with check-abi.sh, and uploads the RT kernel (as `zImage_dtb-rt`) plus
+# an RT SBOM. The kernel is the only RT image artifact here — the full RT image
+# set ships from release.yml only (cost: artifact storage per push).
+#
 # The build recipe itself — disk reclaim, the five input caches, apt deps,
-# defconfig, `make all` — lives in .github/actions/buildroot-build, SHARED with
-# release.yml and reproducibility.yml. It is deliberately not inlined here: the
-# three workflows used to each carry their own copy, and the fixes that took
-# build.yml five failed runs to find never reached the other two. Read that
-# action's header before changing anything about how the build runs.
+# defconfig, `make all` (or `make rt` for the RT variant) — lives in
+# .github/actions/buildroot-build, SHARED with release.yml and
+# reproducibility.yml. It is deliberately not inlined here: the three workflows
+# used to each carry their own copy, and the fixes that took build.yml five
+# failed runs to find never reached the other two. Read that action's header
+# before changing anything about how the build runs.
 #
 # The ABI/SONAME checker is scripts/check-abi.sh (P2.2), run below against the
 # built rootfs. ci-tests.sh's own "ABI / stock-binary smoke" section still
@@ -23,8 +30,13 @@
 
 name: Build
 
-# This build costs ~3h20m cold, so what triggers it is a budget decision, not a
-# detail. Two things are going on below.
+# This build costs ~3h20m cold — and since ADR 0021 there are TWO build jobs
+# behind the gate (`build` and `build-rt`, roughly doubling a cold run's runner
+# minutes), both of which run per PR — so what triggers it is a budget decision,
+# not a detail. If the RT build's PR cost ever needs demoting, the lever is a
+# one-line `if:` change on `build-rt` (restrict it to push/dispatch) plus
+# dropping it from `status`'s needs — see the comments on those two jobs.
+# Two things are going on below.
 #
 # 1. `push` is scoped to master. It used to be a bare `push:`, which — next to
 #    `pull_request:` — meant EVERY commit on a PR branch built TWICE, once per
@@ -325,27 +337,155 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The PREEMPT_RT / Linux-7.2 beta variant (docs/rt-beta-kernel.md, ADR 0021).
+  # Same gate and triggers as `build` — DELIBERATELY, PRs included: the variant
+  # ships as first-class release assets, so a PR that breaks `make rt` should go
+  # red here, not on the next tag. That is a full second Buildroot build per
+  # gated run (cost noted in the trigger comment up top); the demotion lever, if
+  # that cost ever stops paying for itself, is `if: needs.gate.outputs.
+  # build_needed == 'true' && github.event_name != 'pull_request'` here plus
+  # dropping build-rt from `status`'s needs/logic below.
+  build-rt:
+    name: Build RT kernel (PREEMPT_RT beta, Linux 7.2)
+    needs: gate
+    if: needs.gate.outputs.build_needed == 'true'
+    runs-on: ubuntu-26.04
+
+    # Same 300 as `build`: a cold RT build is a cold main build minus the
+    # initramfs stage (same host toolchain from scratch, same rootfs, a
+    # different kernel), so main's measured ceiling bounds it.
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # No patch-header lint here: `build` already lints the one shared
+      # patches dir (linux-patches-beta/ is symlinks + a series into it).
+      - name: Build the RT variant
+        uses: ./.github/actions/buildroot-build
+        with:
+          variant: rt
+          run-legal-info: "true"
+
+      # Mirrors the main job's overview: best-effort, every fact guarded,
+      # a missing one never fails the build. CONFIG_PREEMPT_RT=y is already
+      # hard-asserted by the Makefile's `rt` target (the build would have
+      # failed); the grep here only SURFACES it on the Summary tab.
+      - name: RT build overview (job summary)
+        run: |
+          set -u
+          kver=$(basename "$(ls -d output-rt/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
+          kcfg=$(ls -d output-rt/build/linux-*/ 2>/dev/null | head -1)".config"
+          rt="n/a"
+          if [ -f "$kcfg" ]; then
+            grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
+          fi
+          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
+          zimg=$(sz output-rt/images/zImage_dtb)
+          pkgs=$( [ -f output-rt/legal-info/manifest.csv ] && echo $(( $(wc -l < output-rt/legal-info/manifest.csv) - 1 )) || echo "n/a" )
+          case "${GITHUB_EVENT_NAME:-}" in
+            push|workflow_dispatch) art="uploaded (zImage_dtb-rt + RT SBOM, 14-day retention)";;
+            pull_request)           art="skipped (PR validation run -- artifacts upload on push/dispatch)";;
+            *)                      art="n/a";;
+          esac
+          {
+            echo "## ⏱️ RT kernel build summary (beta)"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Trigger | \`${GITHUB_EVENT_NAME:-?}\` |"
+            echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| PREEMPT_RT | ${rt} |"
+            echo "| zImage_dtb (ships as \`zImage_dtb-rt\`) | ${zimg} |"
+            echo "| Packages (SBOM) | ${pkgs} |"
+            echo "| Artifacts | ${art} |"
+            echo ""
+            echo "Beta status (docs/rt-beta-kernel.md): never booted on hardware yet; selected"
+            echo "on-device via \`bootimage=/linux/zImage_dtb-rt\` in u-boot.txt."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The RT rootfs ships in releases, so catching an ABI/SONAME break here is
+      # cheap insurance; scripts/check-abi.sh is variant-safe (takes the output
+      # dir as its argument). scripts/ci-tests.sh is deliberately NOT run: it
+      # hardcodes the output/ + output-initramfs/ layout, which the rt variant
+      # does not have.
+      - name: ABI / SONAME parity checker (P2.2, RT rootfs)
+        run: scripts/check-abi.sh output-rt
+
+      # Same push/dispatch upload gate as the main job, for the same reasons
+      # (see its comment). The kernel is staged under its ON-DEVICE name,
+      # zImage_dtb-rt, so the artifact's one file is unambiguous — an
+      # output-rt/images/zImage_dtb uploaded as-is would be indistinguishable
+      # from the main kernel by filename alone.
+      - name: Stage the RT kernel under its shipped name (zImage_dtb-rt)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -eu
+          mkdir -p rt-artifact
+          cp output-rt/images/zImage_dtb rt-artifact/zImage_dtb-rt
+
+      - name: Upload RT kernel artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mister-rt-kernel-${{ github.sha }}
+          path: rt-artifact/zImage_dtb-rt
+          if-no-files-found: error
+          retention-days: 14
+
+      # Manifest-only, same exclusions and reasoning as the main job's SBOM:
+      # a CI push distributes nothing, so the GPL source tarballs stay out
+      # (release.yml ships them for the RT variant too).
+      - name: Package RT legal-info for upload (SBOM, without the source tarballs)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -eu
+          tar -czf legal-info-rt.tar.gz \
+            --exclude='legal-info/sources' \
+            --exclude='legal-info/host-sources' \
+            -C output-rt legal-info
+          echo "RT SBOM artifact: $(du -h legal-info-rt.tar.gz | cut -f1) (source tarballs excluded -- see release.yml for those)"
+
+      - name: Upload RT SBOM artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: legal-info-rt-${{ github.sha }}
+          path: legal-info-rt.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
   # THE JOB TO MARK AS THE REQUIRED STATUS CHECK. Not `build` -- `build` is
   # skipped on doc-only changes, and branch protection does not count a skipped
   # check as a passing one, so requiring it directly would wedge exactly the
   # PRs the gate above is meant to make cheap.
   #
   # This job always runs (`if: always()`), so it always reports, and it turns
-  # the pair of upstream results into one honest answer:
+  # the upstream results into one honest answer. The same logic applies to each
+  # build job (`build` and `build-rt`) symmetrically:
   #
-  #   build succeeded  -> pass   (it compiled, it worked)
-  #   build skipped    -> pass   (docs only; nothing to compile -- the point)
-  #   build failed     -> FAIL   (do not let a skipped-vs-failed confusion
+  #   job succeeded    -> pass   (it compiled, it worked)
+  #   job skipped      -> pass   (docs only; nothing to compile -- the point)
+  #   job failed       -> FAIL   (do not let a skipped-vs-failed confusion
   #                               turn a broken build into a green check)
-  #   build cancelled  -> FAIL   (a superseded run is not evidence of anything)
+  #   job cancelled    -> FAIL   (a superseded run is not evidence of anything)
   #   gate itself sick -> FAIL   (if we cannot tell whether a build was needed,
   #                               we have not established that one wasn't)
+  #
+  # `build-rt` is DELIBERATELY gating (ADR 0021): the RT variant is a
+  # first-class release asset, so a PR that breaks it must not merge green. If
+  # its cost is ever demoted (see build-rt's own comment for the trigger
+  # lever), remove it from `needs` here and drop RT_RESULT from the loop —
+  # leaving a needs on a job that no longer runs on PRs would wedge required
+  # checks exactly the way the header comment above describes for `build`.
   #
   # `needs.<job>.result` is used rather than `success()`/`failure()`, which
   # would fold "skipped" into the wrong bucket.
   status:
     name: Build status
-    needs: [gate, build]
+    needs: [gate, build, build-rt]
     if: always()
     runs-on: ubuntu-26.04
     steps:
@@ -353,29 +493,36 @@ jobs:
         env:
           GATE_RESULT: ${{ needs.gate.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          RT_RESULT: ${{ needs.build-rt.result }}
           BUILD_NEEDED: ${{ needs.gate.outputs.build_needed }}
         run: |
           set -euo pipefail
-          echo "gate=$GATE_RESULT build=$BUILD_RESULT build_needed=$BUILD_NEEDED"
+          echo "gate=$GATE_RESULT build=$BUILD_RESULT build-rt=$RT_RESULT build_needed=$BUILD_NEEDED"
 
           if [ "$GATE_RESULT" != "success" ]; then
             echo "::error::The gate job did not succeed ($GATE_RESULT), so whether a build was needed is unknown. Failing rather than assuming it wasn't."
             exit 1
           fi
 
-          case "$BUILD_RESULT" in
-            success)
-              echo "Image built and checked."
-              ;;
-            skipped)
-              if [ "$BUILD_NEEDED" = "true" ]; then
-                echo "::error::The gate asked for a build and it was skipped anyway. That is a workflow bug, not a docs change."
-                exit 1
-              fi
-              echo "Documentation-only change: no image build was needed."
-              ;;
-            *)
-              echo "::error::Image build $BUILD_RESULT."
-              exit 1
-              ;;
-          esac
+          rc=0
+          for pair in "build=$BUILD_RESULT" "build-rt=$RT_RESULT"; do
+            job="${pair%%=*}"; result="${pair#*=}"
+            case "$result" in
+              success)
+                echo "$job: built and checked."
+                ;;
+              skipped)
+                if [ "$BUILD_NEEDED" = "true" ]; then
+                  echo "::error::The gate asked for a build and $job was skipped anyway. That is a workflow bug, not a docs change."
+                  rc=1
+                else
+                  echo "$job: documentation-only change, no build needed."
+                fi
+                ;;
+              *)
+                echo "::error::$job $result."
+                rc=1
+                ;;
+            esac
+          done
+          exit "$rc"

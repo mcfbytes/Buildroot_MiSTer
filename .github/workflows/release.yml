@@ -5,7 +5,7 @@
 #
 # Builds the image using the SAME recipe as build.yml (P4.1) — literally the
 # same code: .github/actions/buildroot-build — then assembles a GitHub Release
-# whose assets are consumable by two completely different downstream actors:
+# whose assets are consumable by three completely different downstream actors:
 #
 #   1. A HUMAN downloading `linux.img` / `zImage_dtb` / configs / SBOM
 #      directly from the Release page.
@@ -17,6 +17,13 @@
 #      assertion in this file about extraction/layout exists to protect
 #      actor #2, because nothing else in the pipeline will catch a mistake
 #      there — see docs/downloader-contract.md §4-§8, §12.
+#   3. A HUMAN opting into the PREEMPT_RT / Linux-7.2 beta (ADR 0021,
+#      docs/rt-beta-kernel.md): `linux-rt.img`, `zImage_dtb-rt`,
+#      `buildroot-rt.config`, `linux-rt.config`, `legal-info-rt.tar.gz`,
+#      built by the parallel `build-rt` job from the same tagged commit.
+#      Deliberately NOT inside release_YYYYMMDD.7z and NEVER referenced by
+#      db.json — actor #2's pinned pipeline never sees an RT byte; pushing
+#      RT at every subscribed device is an OPEN human decision in ADR 0021.
 #
 # WHY THIS REBUILDS INSTEAD OF DEPENDING ON build.yml'S RUN: a release must be
 # built from the tagged commit by a job whose provenance we attest, not adopted
@@ -184,7 +191,10 @@ jobs:
       # the TAGGED COMMIT's UTC date -- fixed per commit, so re-running a tag
       # reproduces the same version rather than silently minting a new one.
       # $GITHUB_ENV so every later step (including the build action) inherits it.
-      # Override by pre-setting MISTER_VERSION in this job's env.
+      # Override by pre-setting MISTER_VERSION in BOTH build jobs' env (this job
+      # AND build-rt) — publish cross-checks that their derived dates agree and
+      # fails on mismatch, so an override applied to only one job wastes both
+      # ~3h builds before dying at publish.
       - name: Derive release version (YYMMDD) from the tagged commit
         run: |
           set -eu
@@ -256,6 +266,10 @@ jobs:
       # Assemble the flat `dist/` directory -- these seven filenames are
       # EXACTLY the seven release assets TASKS.md P4.4 names, no more, no
       # less. Everything from here on writes into dist/ or reads from it.
+      # (The RT beta's five -rt-suffixed assets are NOT among them: those are
+      # staged by the parallel `build-rt` job into its own dist-rt/ bundle and
+      # only merged with these in `publish` — this job's dist/ stays exactly
+      # the seven, plus the separately-contracted sdcard images below.)
       ##########################################################################
 
       - name: Stage dist/ and copy the two image assets
@@ -701,16 +715,209 @@ jobs:
           retention-days: 14
 
   # ============================================================================
-  # publish — attests provenance for the two image assets and creates the
-  # GitHub Release. A separate job on purpose: it needs write scopes (contents,
-  # id-token, attestations) that the build job must NOT have, and it needs none
-  # of the build job's disk reclaim or apt setup — `gh` and
+  # build-rt — the PREEMPT_RT / Linux-7.2 beta variant (docs/rt-beta-kernel.md,
+  # ADR 0021), built in PARALLEL with `build` (no needs between them) from the
+  # same tagged commit, and handed to `publish` as its own dist-rt/ bundle:
+  # linux-rt.img, zImage_dtb-rt, buildroot-rt.config, linux-rt.config,
+  # legal-info-rt.tar.gz. Separate first-class assets — never inside
+  # release_YYYYMMDD.7z, never referenced by db.json (pushing RT bytes at every
+  # Downloader-subscribed device is a human decision, OPEN in ADR 0021) — so
+  # nothing here touches the pinned-7za path or the seven-asset contract above.
+  #
+  # Runs on the opt-in full-sdcard dispatch too, on purpose: publish's
+  # `gh release upload --clobber` makes the re-upload idempotent, and one
+  # unconditional job beats a needs()-guard dance for a rare manual path.
+  #
+  # NO `container:` — see .github/actions/buildroot-build (same reason as build).
+  # ============================================================================
+  build-rt:
+    name: Build RT kernel + image set (PREEMPT_RT beta, Linux 7.2)
+    runs-on: ubuntu-26.04
+
+    # A cold RT build is a cold main build (3h19m measured) minus the initramfs
+    # stage, and this job has none of `build`'s 7z/sdcard assembly on top — so
+    # build.yml's 300-minute ceiling reasoning applies unchanged.
+    timeout-minutes: 300
+
+    outputs:
+      release_date: ${{ steps.mister_version.outputs.release_date }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # DUPLICATE of the primary copy in `build` (10 lines; a reusable workflow
+      # would be overkill for them) — keep the two in lockstep. Both derive from
+      # the same tagged commit, and `publish` cross-checks that their
+      # release_date outputs agree, so drift fails loudly rather than silently.
+      - name: Derive release version (YYMMDD) from the tagged commit
+        run: |
+          set -eu
+          v="${MISTER_VERSION:-$(TZ=UTC git show -s --format=%cd --date=format-local:%y%m%d HEAD)}"
+          case "$v" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+            *) echo "::error::derived MISTER_VERSION '$v' is not 6 digits YYMMDD" >&2; exit 1 ;;
+          esac
+          echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
+          echo "Release version (YYMMDD) = $v  ->  /MiSTer.version (RT variant)"
+
+      # The shared recipe, RT variant (`make rt` into output-rt/, RT-namespaced
+      # caches). No extra-apt-packages: this job assembles no 7z and no sdcard.
+      - name: Build the RT variant
+        uses: ./.github/actions/buildroot-build
+        with:
+          variant: rt
+          run-legal-info: "true"
+
+      # ABI/SONAME contract on the EXACT RT rootfs about to be shipped
+      # (scripts/check-abi.sh is variant-safe; it takes the output dir).
+      # scripts/ci-tests.sh is deliberately NOT run: it hardcodes the
+      # output/ + output-initramfs/ layout, which the rt variant does not have.
+      - name: ABI / SONAME parity checker (P2.2, RT rootfs)
+        run: scripts/check-abi.sh output-rt
+
+      # Same debugfs extraction + byte-shape validation as `build` (read the
+      # LOAD-BEARING comment there): proves post-build.sh baked the SAME
+      # MISTER_VERSION into the RT image. The release_date output feeds the
+      # publish job's main-vs-RT cross-check.
+      - name: Extract and validate /MiSTer.version from the built RT image
+        id: mister_version
+        run: |
+          set -eu
+          workdir=$(mktemp -d ./mister-version.XXXXXX)
+          debugfs -R "rdump /MiSTer.version ${workdir}" output-rt/images/linux.img >/dev/null 2>"${workdir}.debugfs.log" || true
+          verfile="${workdir}/MiSTer.version"
+          if [ ! -f "$verfile" ]; then
+            echo "::error::debugfs could not extract /MiSTer.version from output-rt/images/linux.img" >&2
+            sed 's/^/    /' "${workdir}.debugfs.log" >&2 || true
+            exit 1
+          fi
+          n=$(wc -c < "$verfile")
+          if [ "$n" -ne 6 ]; then
+            echo "::error::/MiSTer.version is ${n} bytes, expected exactly 6 (docs/downloader-contract.md §3/§12)" >&2
+            exit 1
+          fi
+          last_byte_hex=$(tail -c1 "$verfile" | od -An -tx1 | tr -d ' ')
+          if [ "$last_byte_hex" = "0a" ]; then
+            echo "::error::/MiSTer.version ends in a newline -- this permanently breaks the Downloader's version-equality check (docs/downloader-contract.md §3)" >&2
+            exit 1
+          fi
+          yymmdd=$(cat "$verfile")
+          case "$yymmdd" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
+            *)
+              echo "::error::/MiSTer.version content '$yymmdd' is not 6 ASCII digits" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$yymmdd" != "${MISTER_VERSION:-}" ]; then
+            echo "::error::built /MiSTer.version '$yymmdd' != requested MISTER_VERSION '${MISTER_VERSION:-<unset>}' -- post-build.sh did not honor the override" >&2
+            exit 1
+          fi
+          release_date="20${yymmdd}"
+          echo "release_date=${release_date}" >> "$GITHUB_OUTPUT"
+          echo "Resolved RT /MiSTer.version='${yymmdd}' -> RELEASE_DATE=${release_date}"
+
+      # dist-rt/ — the five RT release assets, -rt-suffixed so they can never
+      # collide with (or be mistaken for) the main seven once publish merges
+      # the two bundles into one dist/. `zImage_dtb-rt` is the exact on-device
+      # name docs/rt-beta-kernel.md documents for u-boot.txt's bootimage= line.
+      # Same linux-*/ glob + missing-dir guard as `build`'s linux.config step.
+      - name: Stage dist-rt/ (RT images + configs, -rt names)
+        run: |
+          set -eu
+          mkdir -p dist-rt
+          cp -f output-rt/images/linux.img dist-rt/linux-rt.img
+          cp -f output-rt/images/zImage_dtb dist-rt/zImage_dtb-rt
+          cp -f output-rt/.config dist-rt/buildroot-rt.config
+          kernel_cfg_dir=$(ls -d output-rt/build/linux-*/ 2>/dev/null | head -1)
+          if [ -z "$kernel_cfg_dir" ]; then
+            echo "::error::could not locate output-rt/build/linux-*/ for linux-rt.config" >&2
+            exit 1
+          fi
+          cp -f "${kernel_cfg_dir}.config" dist-rt/linux-rt.config
+          ls -la dist-rt/
+
+      # This DOES carry sources/ (host-sources/ excluded, same as main): a
+      # release distributes the RT kernel and rootfs binaries, so the GPL
+      # accompanying-source obligation applies to the 7.2 kernel and the RT
+      # package set exactly as it does to main's — see the fuller reasoning on
+      # `build`'s legal-info step. Same 2 GiB per-asset guard, same reason.
+      - name: Archive RT legal-info as legal-info-rt.tar.gz
+        run: |
+          set -eu
+          if [ ! -d output-rt/legal-info ]; then
+            echo "::error::output-rt/legal-info does not exist -- did 'make rt-legal-info' run?" >&2
+            exit 1
+          fi
+          tar czf dist-rt/legal-info-rt.tar.gz --exclude='legal-info/host-sources' -C output-rt legal-info
+          limit=$((2 * 1024 * 1024 * 1024))
+          size=$(stat -c %s dist-rt/legal-info-rt.tar.gz)
+          echo "legal-info-rt.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
+          if [ "$size" -ge "$limit" ]; then
+            echo "::error::legal-info-rt.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit. Split the source bundle (see the main legal-info step's guard for options)." >&2
+            exit 1
+          fi
+
+      # Mirrors the main job's overview, RT-shaped: sizes, kernel version,
+      # PREEMPT_RT confirmation (hard-asserted by the Makefile's `rt` target;
+      # surfaced here), and the beta caveat a human should see before publish.
+      - name: RT release overview (job summary)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -u
+          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
+          kver=$(basename "$(ls -d output-rt/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
+          kcfg=$(ls -d output-rt/build/linux-*/ 2>/dev/null | head -1)".config"
+          rt="n/a"
+          if [ -f "$kcfg" ]; then
+            grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
+          fi
+          {
+            echo "## ⏱️ RT release build summary (beta)"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| PREEMPT_RT | ${rt} |"
+            echo "| linux-rt.img | $(sz dist-rt/linux-rt.img) |"
+            echo "| zImage_dtb-rt | $(sz dist-rt/zImage_dtb-rt) |"
+            echo "| legal-info-rt.tar.gz | $(sz dist-rt/legal-info-rt.tar.gz) |"
+            echo ""
+            echo "**Beta status** (docs/rt-beta-kernel.md): never booted on hardware yet. Selected on-device via \`bootimage=/linux/zImage_dtb-rt\` in u-boot.txt; \`linux-rt.img\` must be flashed too if kernel modules are needed (the main \`linux.img\` only carries 6.18 modules). Not inside \`release_YYYYMMDD.7z\`, not referenced by db.json (ADR 0021)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report disk & cache usage
+        if: always()
+        run: |
+          echo "--- disk free ---"; df -h .
+          echo "--- dl/ ---"; du -sh dl 2>/dev/null || true
+          echo "--- output-rt/host ---"; du -sh output-rt/host 2>/dev/null || true
+          echo "--- output-rt (total) ---"; du -sh output-rt 2>/dev/null || true
+          echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true
+          echo "--- dist-rt/ ---"; ls -la dist-rt/ 2>/dev/null || true
+
+      - name: Upload RT release asset bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-rt-${{ github.ref_name }}
+          path: dist-rt/
+          if-no-files-found: error
+          retention-days: 14
+
+  # ============================================================================
+  # publish — attests provenance for the shipped image assets (both variants)
+  # and creates the GitHub Release. A separate job on purpose: it needs write
+  # scopes (contents, id-token, attestations) that the build jobs must NOT
+  # have, and it needs none of their disk reclaim or apt setup — `gh` and
   # actions/attest-build-provenance's OIDC/Sigstore flow just work on a bare
   # GitHub-hosted Ubuntu runner.
   # ============================================================================
   publish:
     name: Attest provenance + create GitHub Release
-    needs: build
+    needs: [build, build-rt]
     runs-on: ubuntu-26.04
 
     # Only ever create a Release for a TAG. On a tag push this is always true, so
@@ -725,24 +932,63 @@ jobs:
       attestations: write     # publish the attestation to this repo
 
     steps:
+      # The two bundles merge into one flat dist/: download-artifact unpacks
+      # both into the same path, and the RT set is -rt-suffixed by construction,
+      # so the fileset union is collision-free.
       - name: Download release asset bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-dist-${{ github.ref_name }}
           path: dist
 
+      - name: Download RT release asset bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-rt-${{ github.ref_name }}
+          path: dist
+
       - name: List downloaded assets
         run: ls -la dist/
 
-      # Attests ONLY the two image assets, per TASKS.md P4.4's explicit
-      # scope -- not the whole dist/ directory (SHA256SUMS/legal-info.tar.gz/
-      # the two .config files are build metadata, not the shipped image).
-      - name: Attest build provenance for linux.img and zImage_dtb
+      # Both build jobs derived MISTER_VERSION independently from the SAME
+      # tagged commit, so inequality here can only mean a build/tooling bug
+      # (one job checked out or resolved something different). Fail loudly
+      # before anything is attested or uploaded under a wrong date.
+      - name: Cross-check main vs RT release dates
+        env:
+          MAIN_DATE: ${{ needs.build.outputs.release_date }}
+          RT_DATE: ${{ needs.build-rt.outputs.release_date }}
+        run: |
+          set -eu
+          if [ "$MAIN_DATE" != "$RT_DATE" ]; then
+            echo "::error::release_date mismatch: build derived '$MAIN_DATE' but build-rt derived '$RT_DATE' -- both come from the same tagged commit, so this is a build bug, not a data race" >&2
+            exit 1
+          fi
+          echo "release_date agrees across build and build-rt: $MAIN_DATE"
+
+      # Appended HERE, not in either build job, because the two halves are
+      # produced by parallel jobs and this is the first place both exist on one
+      # disk. The main seven-asset block `build` generated is left byte-
+      # untouched above the appended lines — the Downloader-contract hashes stay
+      # exactly as that job wrote them.
+      - name: Append RT assets to SHA256SUMS
+        run: |
+          set -eu
+          ( cd dist && sha256sum linux-rt.img zImage_dtb-rt buildroot-rt.config linux-rt.config legal-info-rt.tar.gz >> SHA256SUMS )
+          cat dist/SHA256SUMS
+
+      # Attests ONLY the shipped image/kernel binaries -- both variants', per
+      # TASKS.md P4.4's scope extended by ADR 0021 -- not the whole dist/
+      # directory (SHA256SUMS/legal-info*/the .config files are build metadata,
+      # not the shipped bits).
+      - name: Attest build provenance for the image assets (main + RT)
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             dist/linux.img
             dist/zImage_dtb
+            dist/linux-rt.img
+            dist/zImage_dtb-rt
 
       # Created as a DRAFT, deliberately: this project's stated posture
       # elsewhere (TASKS.md P4.6, "Automerge stays OFF -- a human reviews
@@ -766,6 +1012,11 @@ jobs:
           # (ADR 0017 §4 / ADR 0020). sdcard.img.xz is always built; the full
           # variant only when the opt-in dispatch input was set. Attach whichever
           # the build job actually staged into dist/.
+          #
+          # The five RT assets (ADR 0021) are listed UNconditionally, unlike the
+          # sdcard pair: build-rt runs on every trigger that reaches this job,
+          # so a missing RT file is a bug that must fail this upload loudly, not
+          # be papered over by an existence check.
           assets=(
             dist/"release_${RELEASE_DATE}.7z"
             dist/linux.img
@@ -774,10 +1025,17 @@ jobs:
             dist/buildroot.config
             dist/linux.config
             dist/legal-info.tar.gz
+            dist/linux-rt.img
+            dist/zImage_dtb-rt
+            dist/buildroot-rt.config
+            dist/linux-rt.config
+            dist/legal-info-rt.tar.gz
           )
           [ -f dist/sdcard.img.xz ] && assets+=(dist/sdcard.img.xz)
           [ -f dist/sdcard-full.img.xz ] && assets+=(dist/sdcard-full.img.xz)
-          notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json."
+          notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json.
+
+          **PREEMPT_RT beta (Linux 7.2-rc3):** the \`*-rt\` assets are a separately compiled real-time kernel variant (docs/rt-beta-kernel.md, ADR 0021) — never referenced by db.json, so the Downloader will not offer it. Opt in on-device by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt; if you need kernel modules on RT, flash \`linux-rt.img\` too (the main \`linux.img\` only carries 6.18 modules). Status: not yet validated on hardware."
           # Upsert, not create-only: a tagged push already created this draft, so
           # the opt-in full-sdcard dispatch (which runs AGAINST that existing tag)
           # must ADD sdcard-full.img.xz to the draft rather than fail with an
@@ -802,7 +1060,7 @@ jobs:
           {
             echo "## 📦 Draft release created"
             echo ""
-            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\` and \`zImage_dtb\`."
+            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\`, \`zImage_dtb\`, \`linux-rt.img\` and \`zImage_dtb-rt\`. The five \`*-rt\` assets are the PREEMPT_RT beta (ADR 0021) — separate downloads, never in the 7z, never in db.json."
             echo ""
             echo "> ⚠️ **This is a draft.** It is not public, and db.json is **not** published while it stays a draft."
             echo "> Clicking **Publish release** — whether as a full release *or* a pre-release — fires \`publish-db.yml\`, which regenerates and publishes db.json to opted-in devices. **The pre-release flag does not prevent that** (the guard there checks draft, not pre-release). For a smoke test, leave it a draft and delete it when done."
@@ -815,8 +1073,14 @@ jobs:
         run: |
           cat <<EOF
           ::notice::This workflow has never been run end-to-end. Before trusting it:
-            1. gh release view "$TAG" --json isDraft,assets -- confirm all 7 assets present.
-            2. gh attestation verify dist/linux.img --owner ${{ github.repository_owner }} (and zImage_dtb).
+            1. gh release view "$TAG" --json isDraft,assets -- confirm the expected assets are
+               ALL present (an enumerated list, not a count -- the old "all 7" predated the
+               sdcard and RT assets): release_${RELEASE_DATE}.7z, linux.img, zImage_dtb,
+               SHA256SUMS, buildroot.config, linux.config, legal-info.tar.gz, linux-rt.img,
+               zImage_dtb-rt, buildroot-rt.config, linux-rt.config, legal-info-rt.tar.gz,
+               sdcard.img.xz (and sdcard-full.img.xz only after an opt-in full dispatch).
+            2. gh attestation verify dist/linux.img --owner ${{ github.repository_owner }} (and
+               zImage_dtb, linux-rt.img, zImage_dtb-rt).
             3. Byte-compare the draft release's release_${RELEASE_DATE}.7z member list against
                docs/downloader-contract.md / docs/reference-materials.md by hand once, independent
                of this workflow's own self-check above.

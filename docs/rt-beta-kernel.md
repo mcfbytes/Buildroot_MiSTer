@@ -85,7 +85,19 @@ bootimage=/linux/zImage_dtb-rt
 ```
 
 Remove that line to roll back to the stock kernel. The rootfs (`linux.img`) is
-shared — no rootfs change is needed to switch kernels.
+shared — no rootfs change is needed to switch kernels. (Caveat: the RT rootfs's
+*kernel modules* are 7.2's; if you need modules on RT, use the released
+`linux-rt.img` below rather than the main `linux.img`, which only carries 6.18
+modules.)
+
+**CI builds this variant too (ADR 0021).** Every gated `build.yml` run includes
+a `build-rt` job; on push/dispatch it uploads the kernel as the
+`mister-rt-kernel-<sha>` artifact (a single file named `zImage_dtb-rt`) plus a
+`legal-info-rt-<sha>` SBOM. Releases (`release.yml`) ship the full RT set as
+five separate first-class assets: `linux-rt.img`, `zImage_dtb-rt`,
+`buildroot-rt.config`, `linux-rt.config`, `legal-info-rt.tar.gz` — appended to
+`SHA256SUMS`, provenance-attested (the two binaries), and deliberately NOT
+inside `release_YYYYMMDD.7z` nor referenced by db.json.
 
 ## 6. What's verified vs unproven
 
@@ -96,7 +108,7 @@ shared — no rootfs change is needed to switch kernels.
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ verified |
 | 28/31 patches apply to 7.2-rc3 | ✅ verified |
 | `xone` compiles on 7.2 | ✅ verified |
-| **Full `make rt` build (kernel links, image builds)** | ❌ **unproven** |
+| **Full `make rt` build (kernel links, image builds)** | ⏳ wired into CI (build.yml + release.yml, ADR 0021); **first green run pending** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
@@ -109,8 +121,12 @@ shared — no rootfs change is needed to switch kernels.
    IRQs (expected to *tighten* pacing — measure it).
 3. Optionally re-anchor patches `0030` and `0037` to 7.x and add them to the
    beta `series` (they were dropped only to keep the first build clean).
-4. Wire `zImage_dtb-rt` into `release.yml` as an extra asset in the *same*
-   `release_YYYYMMDD.7z` (keep ONE `db.json`/`/MiSTer.version` — ADR 0018).
+4. ~~Wire `zImage_dtb-rt` into `release.yml`~~ **Partially done (ADR 0021):**
+   the RT kernel and image set now ship as separate first-class release assets
+   (§5). Still OPEN: whether `zImage_dtb-rt` should additionally go *inside*
+   `release_YYYYMMDD.7z` / gain a db.json entry — that pushes RT bytes at every
+   Downloader-subscribed device and stays a human decision (ADR 0021's open
+   question).
 
 See also: the RT-feasibility and 7.2-port findings in the project memory / the
 session that produced this scaffold.

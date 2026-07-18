@@ -1,0 +1,28 @@
+config BR2_PACKAGE_LIBCHDR
+	bool "libchdr"
+	select BR2_PACKAGE_ZLIB
+	select BR2_PACKAGE_ZSTD
+	# BR2_PACKAGE_LZMA_SDK is not an upstream Buildroot symbol -- it is
+	# this tree's own BR2_EXTERNAL sibling (package/lzma-sdk), sourced
+	# into the same Kconfig tree, so the select is legal.
+	select BR2_PACKAGE_LZMA_SDK
+	help
+	  libchdr: MAME's CHD (Compressed Hunks of Data) read library,
+	  maintained standalone by rtissera. Used by Main_MiSTer's cores
+	  support for CD-image formats -- PSX/MegaCD/Saturn/etc. cores
+	  mount .chd disc images through the chd_* API.
+
+	  Built as a shared library (libchdr.so.0.3) against the SYSTEM
+	  zlib, libzstd and liblzma-sdk instead of upstream's vendored
+	  deps/ copies -- zlib/zstd via upstream's own WITH_SYSTEM_*
+	  options, the LZMA SDK via this package's patches (0001-0003),
+	  which add the missing WITH_SYSTEM_LZMA leg in upstream's own
+	  pattern. Only the header-only dr_flac decoder stays bundled
+	  (public domain / MIT-0; no shared-lib alternative exists, see
+	  libchdr.mk).
+
+	  The library exports ONLY chd_* symbols (upstream links with a
+	  version script, src/link.T), so it cannot collide with
+	  minizip-ng's mz_* namespace or anything else in Main's link.
+
+	  https://github.com/rtissera/libchdr

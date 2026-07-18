@@ -43,6 +43,14 @@
 #      derives from the version with the dots stripped
 #      (7z2602-src.tar.xz for 26.02), so it gets its own bespoke step.
 #
+#   4. The sdcard payload single-file pins (scripts/fetch-sdcard-payload.sh):
+#      update_all.sh and wifi.sh are pinned by commit AND by sha256+size;
+#      renovate.json's git-refs managers bump the PINNED_*_COMMIT, and the
+#      sha256/size companions are recomputed from the raw file at the new
+#      commit -- the same fetch-and-hash practice as case 1. The _Console
+#      cores commit (PINNED_CORES_COMMIT) has no companion hash and is
+#      deliberately not handled (see that script's own header).
+#
 # WHAT THIS WORKFLOW DELIBERATELY DOES NOT HANDLE:
 #
 #   * BUILDROOT_SHA256 (root Makefile). Per the Makefile's own header
@@ -76,7 +84,8 @@
 # since 2026-07-14, but no custom manager has produced a real PR yet --
 # see docs/renovate.md's "Unverified / what to check on first run").
 # Treat the exact regexes/URLs below -- including the libchdr loop entry
-# and the bespoke lzma-sdk step -- as reviewed-by-hand, not proven.
+# and the bespoke lzma-sdk and sdcard-payload steps -- as reviewed-by-hand,
+# not proven.
 #
 ################################################################################
 
@@ -100,6 +109,7 @@ on:
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
       - "package/libchdr/libchdr.mk"
       - "package/lzma-sdk/lzma-sdk.mk"
+      - "scripts/fetch-sdcard-payload.sh"
 
 concurrency:
   group: renovate-hash-sync-${{ github.event.pull_request.number }}
@@ -329,13 +339,66 @@ jobs:
             echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
           fi
 
+      # --- 4. SD-card payload single-file pins -------------------------------
+      # scripts/fetch-sdcard-payload.sh pins two individual scripts by commit
+      # AND by sha256+size: update_all.sh (theypsilon/Update_All_MiSTer) and
+      # wifi.sh (MiSTer-devel/Scripts_MiSTer). renovate.json's git-refs managers
+      # bump the PINNED_*_COMMIT (which the raw URL interpolates); the sha256+size
+      # then need recomputing from the file at the new commit -- the same "fetch
+      # the real artifact and sha256sum it" practice as the package loop above.
+      # The _Console cores commit (PINNED_CORES_COMMIT) has no companion hash and
+      # is deliberately not handled here. No heredoc (YAML-indent-safe): the pin
+      # table is a list of "prefix owner/repo path" strings split with `set --`.
+      - name: Refresh sdcard payload script hashes (update_all.sh, wifi.sh)
+        run: |
+          set -euo pipefail
+          file="scripts/fetch-sdcard-payload.sh"
+          changed=0
+          if [ ! -f "$file" ]; then
+            echo "PAYLOAD_HASH_CHANGED=0" >> "$GITHUB_ENV"; exit 0
+          fi
+          for pin in "PINNED_UPDATE_ALL theypsilon/Update_All_MiSTer update_all.sh" \
+                     "PINNED_WIFI_SH MiSTer-devel/Scripts_MiSTer other_authors/wifi.sh"; do
+            # shellcheck disable=SC2086
+            set -- $pin
+            prefix=$1; repo=$2; path=$3
+            commit=$(grep -E "^readonly ${prefix}_COMMIT=" "$file" | head -1 | sed -E 's/.*="([0-9a-f]{40})".*/\1/')
+            if [ -z "$commit" ]; then
+              echo "::warning::could not read ${prefix}_COMMIT from $file -- skipping"
+              continue
+            fi
+            url="https://raw.githubusercontent.com/${repo}/${commit}/${path}"
+            echo "==> ${prefix}: fetching $url"
+            tmpfile=$(mktemp)
+            if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
+              echo "::warning::could not download $url -- skipping, build will fail closed on a stale hash instead"
+              rm -f "$tmpfile"; continue
+            fi
+            newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
+            newsize=$(stat -c %s "$tmpfile")
+            rm -f "$tmpfile"
+            oldhash=$(grep -E "^readonly ${prefix}_SHA256=" "$file" | head -1 | sed -E 's/.*="([0-9a-f]+)".*/\1/')
+            oldsize=$(grep -E "^readonly ${prefix}_SIZE=" "$file" | head -1 | sed -E 's/.*="([0-9]+)".*/\1/')
+            if [ "$oldhash" != "$newhash" ] || [ "$oldsize" != "$newsize" ]; then
+              sed -i -E "s|^(readonly ${prefix}_SHA256=)\"[0-9a-f]+\"|\\1\"${newhash}\"|" "$file"
+              sed -i -E "s|^(readonly ${prefix}_SIZE=)\"[0-9]+\"|\\1\"${newsize}\"|" "$file"
+              echo "Updated ${prefix}: sha256 ${oldhash} -> ${newhash}; size ${oldsize} -> ${newsize}"
+              changed=1
+            else
+              echo "${prefix} already up to date."
+            fi
+          done
+          echo "PAYLOAD_HASH_CHANGED=$changed" >> "$GITHUB_ENV"
+
       - name: Commit and push hash refresh, if anything changed
-        if: env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' || env.LZMA_SDK_HASH_CHANGED == '1'
+        if: >
+          env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
+          env.LZMA_SDK_HASH_CHANGED == '1' || env.PAYLOAD_HASH_CHANGED == '1'
         run: |
           set -euo pipefail
           git config user.name "renovate-hash-sync[bot]"
           git config user.email "renovate-hash-sync@users.noreply.github.com"
-          git add package/*/*.hash board/mister/de10nano/patches/linux/linux.hash
+          git add package/*/*.hash board/mister/de10nano/patches/linux/linux.hash scripts/fetch-sdcard-payload.sh
           git commit -F - <<'COMMITMSG'
           renovate-hash-sync: refresh companion hash(es) for this PR
 
@@ -349,6 +412,9 @@ jobs:
             - lzma-sdk pin: sha256sum of the ip7z/7zip release ASSET for the
               new version (upstream publishes no checksums at all -- see
               package/lzma-sdk/lzma-sdk.hash's header)
+            - sdcard payload pins (update_all.sh, wifi.sh): sha256 + size of
+              the raw file at the new pinned commit, rewritten in place in
+              scripts/fetch-sdcard-payload.sh
 
           BUILDROOT_SHA256 (root Makefile) is NEVER touched by this
           workflow -- see docs/renovate.md and the Makefile's own header

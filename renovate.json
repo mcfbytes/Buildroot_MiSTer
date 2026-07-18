@@ -248,6 +248,48 @@
       "depNameTemplate": "ip7z/7zip",
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Update_All_MiSTer launcher pinned into the sdcard payload (theypsilon/Update_All_MiSTer, master branch). Tracks the branch HEAD and bumps the 40-char commit; the SHA-256/size companions (PINNED_UPDATE_ALL_SHA256/SIZE in the same file) are refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^scripts/fetch-sdcard-payload\\.sh$"
+      ],
+      "matchStrings": [
+        "PINNED_UPDATE_ALL_COMMIT=\"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "theypsilon/Update_All_MiSTer",
+      "packageNameTemplate": "https://github.com/theypsilon/Update_All_MiSTer",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "wifi.sh pinned into the sdcard payload (MiSTer-devel/Scripts_MiSTer other_authors/wifi.sh, master branch). Tracks the branch HEAD and bumps the 40-char commit; the SHA-256/size companions (PINNED_WIFI_SH_SHA256/SIZE in the same file) are refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "^scripts/fetch-sdcard-payload\\.sh$"
+      ],
+      "matchStrings": [
+        "PINNED_WIFI_SH_COMMIT=\"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "MiSTer-devel/Scripts_MiSTer",
+      "packageNameTemplate": "https://github.com/MiSTer-devel/Scripts_MiSTer",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "_Console cores snapshot commit for the opt-in sdcard-full.img (MiSTer-devel/Distribution_MiSTer, main branch). Commit-only pin -- individual cores are fetched by content, not hash-verified (see scripts/fetch-sdcard-payload.sh), so there is no companion hash to sync.",
+      "managerFilePatterns": [
+        "^scripts/fetch-sdcard-payload\\.sh$"
+      ],
+      "matchStrings": [
+        "PINNED_CORES_COMMIT=\"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "currentValueTemplate": "main",
+      "depNameTemplate": "MiSTer-devel/Distribution_MiSTer",
+      "packageNameTemplate": "https://github.com/MiSTer-devel/Distribution_MiSTer",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "packageRules": [
@@ -310,6 +352,20 @@
       ],
       "addLabels": [
         "lib-pin"
+      ]
+    },
+    {
+      "description": "SD-card payload pins (update_all.sh, wifi.sh, and the _Console cores snapshot fetched by scripts/fetch-sdcard-payload.sh). Label distinctly so a reviewer knows these change what a freshly-flashed sdcard.img installs, not a build tool or kernel-module source.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "theypsilon/Update_All_MiSTer",
+        "MiSTer-devel/Scripts_MiSTer",
+        "MiSTer-devel/Distribution_MiSTer"
+      ],
+      "addLabels": [
+        "sdcard-payload-pin"
       ]
     },
     {

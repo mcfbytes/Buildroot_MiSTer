@@ -43,13 +43,15 @@ for the specific pieces most likely to need a fix on the first live run.
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware tag pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `github-tags` datasource, `loose` versioning (flagged `needs-manual-version-check` — see caveat below) | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
+| libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
+| lzma-sdk tag pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk` | `customManagers` regex, `github-tags` datasource over `ip7z/7zip`, `loose` versioning. Only the `LZMA_SDK_VERSION` line is managed — `LZMA_SDK_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke lzma-sdk step** (release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
 | CI container digests | `ubuntu:26.04@sha256:...` in `build.yml`, `release.yml`, `reproducibility.yml`'s `container:` blocks | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
-That is **13 customManagers entries** (Buildroot, kernel, 9 driver commits,
-munt, bcm20702-firmware) plus the two built-in managers (`docker` digests,
-`github-actions`), covering every version/commit/digest pin this repository
-maintains by hand except the four listed below.
+That is **15 customManagers entries** (Buildroot, kernel, 9 driver commits,
+munt, bcm20702-firmware, libchdr, lzma-sdk) plus the two built-in managers
+(`docker` digests, `github-actions`), covering every version/commit/digest pin
+this repository maintains by hand except the four listed below.
 
 ## What is deliberately NOT managed, and why
 
@@ -109,8 +111,11 @@ actually differs, so re-runs on an already-correct PR are harmless no-ops.
 
 **What it fixes automatically, and why each case is safe:**
 
-1. **The 11 driver/firmware `.hash` files** (the 9 commit pins + munt +
-   bcm20702-firmware). Every one of these `.hash` files' own header comment
+1. **The 12 github-archive `.hash` files** (the 9 commit pins + munt +
+   bcm20702-firmware + libchdr — the last a userspace shared library from
+   the Main_MiSTer shared-lib refactor, but the exact same
+   `$(call github,...)` tarball shape as the driver pins). Every one of
+   these `.hash` files' own header comment
    already documents that GitHub publishes no signed manifest for a
    commit/tag archive tarball, and that a **locally-computed** `sha256sum`
    of a freshly-fetched tarball from the real pinned owner/repo/ref is
@@ -132,6 +137,22 @@ actually differs, so re-runs on an already-correct PR are harmless no-ops.
    here), which is the same trust level as today's manual transcription,
    not a regression. Verifying the signature is a worthwhile future
    hardening step, not implemented in this pass.
+
+3. **The lzma-sdk tarball hash** (`package/lzma-sdk/lzma-sdk.hash`) — a
+   **bespoke step**, because lzma-sdk cannot ride the generic loop of
+   case 1: its tarball is a GitHub release **asset**
+   (`https://github.com/ip7z/7zip/releases/download/<ver>/...`), not a
+   commit/tag archive, and the filename derives from the version with the
+   dots stripped (`LZMA_SDK_SOURCE = 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz`,
+   so `26.02` → `7z2602-src.tar.xz`). The trust model is the same as
+   case 1's — upstream publishes **no checksums anywhere** (no checksum
+   assets, none in the release body, none on 7-zip.org; checked at pin
+   time, per the `.hash` file's own header), so a locally-computed
+   `sha256sum` of the freshly-fetched asset is the legitimate source. The
+   step derives the asset URL from the PR's new `LZMA_SDK_VERSION`,
+   downloads it, and rewrites **only the first `sha256` line** of the
+   `.hash` file — the `DOC/License.txt` / `DOC/readme.txt` provenance lines
+   beneath it are never touched.
 
 **What it deliberately does NOT fix:**
 

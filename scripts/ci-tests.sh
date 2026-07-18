@@ -458,14 +458,17 @@ fi
 # In-kernel RTL8814AU (PR #35): the RTL8814AU 4x4 11ac chip moved from the
 # out-of-tree rtl8814au-morrownr package to the mainline rtw88_8814au driver
 # (CONFIG_RTW88_8814AU=m, merged upstream in 6.16). Being an in-tree module it
-# ships under kernel/drivers/net/wireless/realtek/rtw88/ (not updates/), so it is
+# ships at kernel/drivers/net/wireless/realtek/rtw88/ (not updates/), so it is
 # NOT stamp-prone the way the OOT packages above are -- but assert it survived the
 # build so the chip does not silently lose its driver if the config is ever dropped.
-if grep -qE "^\./usr/lib/modules/$KVER/.*/rtw88_8814au\.ko(\.xz)?\$" "$TAR_LIST"; then
+# Exact-path tar_has() (like the xone/OOT checks above), not a regex: the in-tree
+# path is stable and Buildroot compresses modules, so the shipped name is .ko.xz.
+rtw8814au_ko="usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtw88/rtw88_8814au.ko.xz"
+if tar_has "$rtw8814au_ko"; then
 	pass "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)"
 else
 	fail "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)" \
-		"rtw88_8814au not in rootfs.tar -- CONFIG_RTW88_8814AU dropped, or a kernel bump left kmods stale (make linux-rebuild all)"
+		"$rtw8814au_ko not in rootfs.tar -- CONFIG_RTW88_8814AU dropped, or a kernel bump left kmods stale (make linux-rebuild all)"
 fi
 
 xow_size=$(tar_size "usr/lib/firmware/xow_dongle.bin")

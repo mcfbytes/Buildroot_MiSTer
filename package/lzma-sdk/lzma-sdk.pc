@@ -1,0 +1,10 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: lzma-sdk
+Description: 7-Zip LZMA SDK compression library (liblzma-sdk; not xz-utils' liblzma)
+Version: @LZMA_SDK_VERSION@
+Libs: -L${libdir} -llzma-sdk
+Cflags: -I${includedir}/lzma-sdk

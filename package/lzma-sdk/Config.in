@@ -1,0 +1,23 @@
+config BR2_PACKAGE_LZMA_SDK
+	bool "lzma-sdk"
+	help
+	  7-Zip's LZMA SDK (Igor Pavlov's reference LZMA
+	  implementation), compiled as a shared library (liblzma-sdk)
+	  for Main_MiSTer -- which vendors this exact C code as
+	  lib/lzma/ -- and for libchdr, whose CHD v5 LZMA codec is
+	  written against this SDK's API. Pure single-threaded C
+	  (built under Z7_ST), so it needs no toolchain thread or C++
+	  dependencies.
+
+	  This is NOT xz-utils' liblzma.so.5: entirely different API
+	  (LzmaDec_*/LzmaEnc_*/LzmaCompress vs lzma_stream_*), and xz
+	  is packaged separately by upstream Buildroot as 'xz'.
+
+	  Named "lzma-sdk" rather than plain "lzma" because upstream
+	  Buildroot already ships a host-only package/lzma (lzma-utils
+	  4.32.7) squatting the unprefixed LZMA_ Make namespace; a
+	  same-named package here would silently corrupt host-lzma's
+	  download variables rather than error out (the full mechanism
+	  is documented in lzma-sdk.mk's header comment).
+
+	  https://www.7-zip.org/sdk.html

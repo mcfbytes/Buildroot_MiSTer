@@ -96,6 +96,14 @@ on:
     types: [opened, synchronize]
     paths:
       - "configs/mister_de10nano_defconfig"
+      # The kernel-only defconfig copies the main one's kernel stanza, so a
+      # 6.18 bump touches BOTH files (one Renovate PR, same depName). Listed
+      # here so a bump is still picked up if a future change ever moves the
+      # kernel version into the copy alone. configs/mister_rt.fragment is
+      # deliberately absent: its -rc hash cannot be auto-refreshed (no signed
+      # manifest upstream; see the kernel step's own note), so triggering this
+      # workflow for it would do nothing but burn a runner.
+      - "configs/mister_kernel_defconfig"
       - "package/rtl8812au/rtl8812au.mk"
       - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
       - "package/rtl8821au-morrownr/rtl8821au-morrownr.mk"

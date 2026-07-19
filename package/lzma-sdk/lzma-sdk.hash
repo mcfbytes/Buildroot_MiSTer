@@ -1,0 +1,14 @@
+# Locally computed (2026-07-17) -- upstream publishes NO checksums for this
+# release: the ip7z/7zip GitHub release for 26.02 carries no checksum assets
+# and no hashes in the release body, and 7-zip.org publishes none either
+# (checked). Verified against:
+#   https://github.com/ip7z/7zip/releases/download/26.02/7z2602-src.tar.xz
+#
+#   sha256sum 7z2602-src.tar.xz
+sha256  cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd  7z2602-src.tar.xz
+# DOC/License.txt -- see LZMA_SDK_LICENSE_FILES comment in the .mk; its
+# LGPL/unRAR terms scope only the CPP/ code this package never ships
+sha256  9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc  DOC/License.txt
+# DOC/readme.txt -- line 43: "LZMA SDK is written and placed in the public
+# domain by Igor Pavlov."
+sha256  fe2d7d7a34598850576df059c0ee1e114a59db3f9cb1f17379025569da85ed49  DOC/readme.txt

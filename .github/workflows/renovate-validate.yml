@@ -56,3 +56,48 @@ jobs:
       # about outright-malformed JSON.
       - name: Validate renovate.json
         run: npx --yes --package renovate -- renovate-config-validator --strict renovate.json
+
+      # The validator above checks SHAPE ONLY. It cannot tell you whether a
+      # manager actually matches a file or whether a datasource returns anything
+      # — and on 2026-07-18 we found it had been passing clean for four days
+      # while ALL 18 custom managers extracted zero dependencies
+      # (managerFilePatterns are globs unless slash-delimited) and the kernel
+      # datasource returned `no-result` (JSONata collapsed its single-element
+      # result to a bare object). The symptom was exactly what this workflow was
+      # built to prevent: dependency PRs quietly not appearing.
+      #
+      # So actually RUN an extraction. `--platform=local` works against the
+      # checkout with no repo credentials; the token is only needed so datasource
+      # lookups run for real, which is what surfaces `no-result`.
+      - name: Smoke-test extraction (custom managers must match real files)
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # NB: the full debug log runs to several GB — filter the stream, never
+          # spool it to disk, or this step fills the runner.
+          LOG_LEVEL=debug npx --yes --package renovate@latest -- \
+            renovate --platform=local --dry-run=full 2>&1 \
+            | grep -E '"regex": \{"fileCount"|"message": "Failed to look up' \
+            > renovate-run.log || true
+
+          expected=$(python3 -c 'import json;print(len(json.load(open("renovate.json"))["customManagers"]))')
+          actual=$(grep -oE '"regex": \{"fileCount": [0-9]+' renovate-run.log \
+            | grep -oE '[0-9]+$' | head -1 || true)
+          actual=${actual:-0}
+
+          echo "customManagers declared: $expected | regex files matched: $actual"
+          if [ "$actual" -lt "$expected" ]; then
+            echo "::error::Renovate's regex manager matched $actual file(s) but $expected custom managers are declared."
+            echo "::error::At least one custom manager matches nothing. Check managerFilePatterns — entries are GLOBS unless slash-delimited (/^path$/)."
+            exit 1
+          fi
+
+          # A datasource that returns nothing is invisible in the extraction stats.
+          if grep -q '"message": "Failed to look up' renovate-run.log; then
+            echo "::error::A datasource lookup failed (no-result). Offending entries:"
+            grep -o '"message": "Failed to look up[^"]*"' renovate-run.log | sort -u
+            exit 1
+          fi
+
+          echo "OK: $actual files matched, all datasource lookups resolved."

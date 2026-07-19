@@ -1,0 +1,65 @@
+CMakeLists: add a WITH_SYSTEM_LZMA option beside WITH_SYSTEM_ZLIB/ZSTD
+
+Upstream unconditionally vendors the 7-Zip LZMA SDK (deps/lzma-25.01,
+built as the private static chdr-lzma target and folded into libchdr.so)
+-- unlike zlib and zstd, for which the maintainer already provides
+WITH_SYSTEM_ZLIB / WITH_SYSTEM_ZSTD options (his own CHANGELOG.md 0.3.0
+notes: "for distros"). This image ships the same SDK as a real shared
+library (BR2_EXTERNAL sibling package/lzma-sdk: liblzma-sdk.so plus an
+lzma-sdk.pc), and the no-vendoring policy wants libchdr linked against
+that instead of carrying a second private copy of the identical decoder.
+
+This adds the missing third option, deliberately mirroring the
+WITH_SYSTEM_ZSTD block's structure and variable flow: the system branch
+resolves the dependency and appends the imported target to PLATFORM_LIBS
+plus a CHDR_SYSTEM_LZMA compile definition to CHDR_DEFINES (exactly how
+the zstd branch appends zstd::zstd / CHDR_SYSTEM_ZSTD); the else branch
+is upstream's bundled block, content-identical (each line reindented two
+spaces inside the else(), matching the WITH_SYSTEM_ZSTD else block's
+formatting) and still the default (OFF), so plain upstream builds are
+unaffected. The one necessary difference
+from the zstd block: there is no find_package() module or CMake config
+package for the LZMA SDK anywhere (the SDK upstream ships no build
+system at all), so the probe is pkg-config's IMPORTED_TARGET against
+lzma-sdk.pc -- the same fallback mechanism upstream itself reached for
+in commit 23d3ddd ("cmake: fallback to pkgconfig if the zstd cmake
+config is missing") when zstd's CMake config package proved unreliable
+across distros. CHDR_SYSTEM_LZMA is consumed by the companion patches
+0002/0003, which switch src/codec_lzma.h to the system <LzmaDec.h>.
+
+Upstream status: follows the maintainer's own WITH_SYSTEM_* pattern
+(added "for distros" per CHANGELOG); candidate for upstreaming, not yet
+sent.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,6 +8,7 @@ endif()
+ option(INSTALL_STATIC_LIBS "Install static libraries" OFF)
+ option(WITH_SYSTEM_ZLIB "Use system provided zlib library" OFF)
+ option(WITH_SYSTEM_ZSTD "Use system provided zstd library" OFF)
++option(WITH_SYSTEM_LZMA "Use system provided lzma-sdk library" OFF)
+ option(CHDR_WANT_RAW_DATA_SECTOR "Output ECC data and sync header" ON)
+ option(CHDR_WANT_SUBCODE "Output CD subchannel data" ON)
+ option(CHDR_VERIFY_BLOCK_CRC "Verify integrity of decoded data" ON)
+@@ -38,10 +39,17 @@ include(GNUInstallDirs)
+ #--------------------------------------------------
+ 
+ # lzma
+-if(NOT TARGET chdr-lzma)
+-  add_subdirectory(deps/lzma-25.01 EXCLUDE_FROM_ALL)
++if (WITH_SYSTEM_LZMA)
++  find_package(PkgConfig REQUIRED)
++  pkg_check_modules(LZMASDK REQUIRED IMPORTED_TARGET lzma-sdk)
++  list(APPEND PLATFORM_LIBS PkgConfig::LZMASDK)
++  list(APPEND CHDR_DEFINES CHDR_SYSTEM_LZMA)
++else()
++  if(NOT TARGET chdr-lzma)
++    add_subdirectory(deps/lzma-25.01 EXCLUDE_FROM_ALL)
++  endif()
++  list(APPEND CHDR_LIBS chdr-lzma)
+ endif()
+-list(APPEND CHDR_LIBS chdr-lzma)
+ 
+ # zlib
+ if (WITH_SYSTEM_ZLIB)

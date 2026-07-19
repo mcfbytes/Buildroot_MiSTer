@@ -42,7 +42,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | Kernel | `configs/mister_de10nano_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | `customManagers` regex + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
-| bcm20702-firmware tag pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `github-tags` datasource, `loose` versioning (flagged `needs-manual-version-check` — see caveat below) | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
+| bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | lzma-sdk tag pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk` | `customManagers` regex, `github-tags` datasource over `ip7z/7zip`, `loose` versioning. Only the `LZMA_SDK_VERSION` line is managed — `LZMA_SDK_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke lzma-sdk step** (release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
 | 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step**; the cores commit has no companion hash (cores are fetched by content — see the script's header) |
@@ -50,10 +50,42 @@ for the specific pieces most likely to need a fix on the first live run.
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
 That is **18 customManagers entries** (Buildroot, kernel, 9 driver commits,
-munt, bcm20702-firmware, libchdr, lzma-sdk, and the 3 sdcard payload pins)
+munt, bcm20702-firmware — 10 commit pins in total once bcm20702 is counted —
+libchdr, lzma-sdk, and the 3 sdcard payload pins)
 plus the two built-in managers
 (`docker` digests, `github-actions`), covering every version/commit/digest pin
 this repository maintains by hand except the four listed below.
+
+### Why `bcm20702-firmware` is a commit pin, not a tag pin
+
+Changed 2026-07-19, for two independent reasons.
+
+**The tag ordering was wrong, and it fired.** The `_pN` suffix is a patch level
+*on top of* the base version, so `v12.0.1.1105_p4` is **newer** than
+`v12.0.1.1105`. Renovate's `loose` versioning sorted the bare tag higher and
+proposed `v12.0.1.1105` as an upgrade — a **2.5-year downgrade**
+(`v12.0.1.1105` is from 2020-05-02; the pinned `_p4` is from 2022-10-10). The
+`needs-manual-version-check` label was doing its job: a human caught it, and
+automerge is off everywhere, so nothing bad merged.
+
+**Upstream stopped tagging anyway.** The newest tag is from 2022-10-10, but
+`master` is still active — three firmware commits on 2026-07-08 ("Add support
+for multiple INF files", "Add build version of firmware", "Add 6.5.1.6820
+retrospective version"). A tag pin could no longer see real updates at all.
+
+Teaching `loose` a bespoke scheme (as `munt` does with a `regex:` versioning)
+was the other option. A commit pin was chosen instead because it removes the
+ordering question entirely rather than encoding a fragile rule about someone
+else's tag conventions, and because it matches how the 9 other untagged
+upstreams here are already pinned.
+
+**Why this is safe despite tracking a branch:** the package installs exactly
+**one** file, and the `.mk` carries an inline `sha256sum -c` of that `.hcd`
+which fails the build **closed** if it ever changes. The switch itself was a
+verified no-op — `brcm/BCM20702A1-0b05-17cb.hcd` is byte-identical at
+`v12.0.1.1105_p4` and at `master` HEAD (`02204ae0…`, 35000 bytes, matching
+stock). So this only unblocks *future* firmware updates; it changed nothing in
+the image.
 
 ## What is deliberately NOT managed, and why
 
@@ -292,12 +324,9 @@ roughly this priority order, once Renovate actually runs:
    any of these upstreams ever renames its default branch, that one
    manager will silently stop finding new commits (not fail loudly) until
    this file is updated.
-4. **`winterheart/broadcom-bt-firmware`'s tag ordering.** The
-   `vMAJOR.MINOR.PATCH.BUILD_pN` scheme is nonstandard; Renovate's `loose`
-   versioning may not order the trailing `_pN` suffix the way a human would
-   expect. Labeled `needs-manual-version-check` for exactly this reason —
-   automerge is off regardless, so the worst case is a human rejects a
-   wrongly-ordered proposal, not a bad merge.
+4. ~~**`winterheart/broadcom-bt-firmware`'s tag ordering.**~~ **Resolved
+   2026-07-19 by switching to a commit pin** — the concern was real and it
+   fired. See "Why this one is a commit pin" below.
 5. **`renovate-hash-sync.yml`'s push permissions.** Assumes Renovate opens
    PRs from branches in this repo (not a fork), which is standard for the
    GitHub App/Mend-hosted integration once installed directly on this repo.

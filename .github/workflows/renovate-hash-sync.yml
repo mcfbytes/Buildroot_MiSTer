@@ -227,10 +227,34 @@ jobs:
             exit 0
           fi
 
-          kver=$(grep -oE 'BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="[^"]+"' "$defconfig" \
-                  | sed -E 's/.*"([^"]+)"/\1/')
+          # ANCHOR THIS GREP. The defconfig explains the setting in a comment that
+          # quotes it verbatim ("... free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_
+          # VALUE=\"<version>\", which Kconfig ..."), so an unanchored match returns
+          # TWO lines. That made $kver a two-line string, `cut` then ran per-line, and
+          # the series came out as "v6\n6.x" -- producing a URL with an embedded
+          # newline that curl rejected outright ("Malformed input to a URL function").
+          # Because a fetch failure is only a warning here, the run went green while
+          # silently leaving linux.hash stale. Anchoring plus tail -1 keeps it to the
+          # real setting; scripts/export-kernel-tree.sh reads the same file the same way.
+          #
+          # The `|| true` is load-bearing under `set -euo pipefail`: with no match,
+          # grep exits 1, pipefail propagates that to the command substitution, and
+          # because this is a plain assignment `set -e` aborts the step right here --
+          # so the explicit empty-check below would never run and the failure would be
+          # silent. Swallowing the status lets that check emit its diagnostic instead.
+          kver=$(grep -oE '^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="[^"]+"' "$defconfig" \
+                  | sed -E 's/.*"([^"]+)"/\1/' | tail -1 || true)
           if [ -z "$kver" ]; then
             echo "::error::could not extract BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from $defconfig" >&2
+            exit 1
+          fi
+
+          # A malformed version is a bug in THIS script, not a transient network
+          # problem, so fail loudly rather than falling through to the warn-and-skip
+          # path below. bash's =~ anchors against the whole string, so this also
+          # rejects a multi-line $kver if the grep above ever regresses.
+          if ! [[ "$kver" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::extracted kernel version is not a plain version string: '${kver}'" >&2
             exit 1
           fi
 

@@ -36,7 +36,18 @@ Binaries, pre-built artifacts, and large downloads belong in external storage.
 
 ### 2. Every kernel patch must carry a provenance header.
 
-Every file in `board/mister/de10nano/linux-patches/` must include:
+There are **two** kernel patch directories, and picking the right one is the first
+question to answer, not an afterthought:
+
+- `board/mister/de10nano/linux-patches/` — the default. Applied to the image this repo
+  builds *and* replayed into the tree `scripts/export-kernel-tree.sh` publishes upstream
+  (PR #75 against `MiSTer-devel/Linux-Kernel_MiSTer`). If in doubt, your patch goes here.
+- `board/mister/de10nano/linux-patches-upstream/` — for the rare patch that
+  **upstream's** kernel needs but this repo's own image deliberately does not (see that
+  directory's `README.md` for the exact criteria, and `docs/patch-provenance.md` §12 for
+  the motivating example). Buildroot never applies anything here; only the export does.
+
+Every file in either directory must include:
 
 - **Origin commit SHA** (or GitHub issue/PR URL) from the upstream kernel or the stock MiSTer fork
 - **Original author and copyright holder**

@@ -5,8 +5,9 @@
 # Diffs docs/kernel-recon/fork-sync.conf (the last reconciled commit per fork branch)
 # against MiSTer-devel/Linux-Kernel_MiSTer's live HEADs, and prints what has landed since.
 # That list is the backport queue: each commit needs a disposition in
-# docs/patch-provenance.md -- carried into board/mister/de10nano/linux-patches/, or
-# recorded as deliberately dropped with a reason.
+# docs/patch-provenance.md -- carried into board/mister/de10nano/linux-patches/, carried
+# into board/mister/de10nano/linux-patches-upstream/ (the exported tree needs it but our
+# image does not), or recorded as deliberately dropped with a reason.
 #
 # Read fork-sync.conf's header for why this exists at all; the short version is that
 # nothing else ever forces the question, and the fork sat on 5.15.1 for 210 stable
@@ -111,7 +112,8 @@ if $markdown; then
 	if ((drift)); then
 		printf '%s\n' "The fork has commits with no disposition in this repo. Each needs one of:
 
-- **carried** → a patch in \`board/mister/de10nano/linux-patches/\`, or
+- **carried** → a patch in \`board/mister/de10nano/linux-patches/\`, which Buildroot applies to the image *and* the export replays, or
+- **carried for upstream only** → a patch in \`board/mister/de10nano/linux-patches-upstream/\`, when the exported tree needs it but our image deliberately does not (see that directory's README), or
 - **dropped** → a row in \`docs/patch-provenance.md\` saying so, and why (superseded upstream, packaged separately, obsolete…).
 
 Then advance the branch's line in \`docs/kernel-recon/fork-sync.conf\`.

@@ -9,10 +9,15 @@
 #   0037-hid-playstation-dualsense-mute-btn-z — genuine MiSTer divergence
 #     (mute btn -> BTN_Z); ~30-min 7.x re-anchor pending. Omitted for now.
 #
-# NOT-symlink exceptions: two entries are REAL FILES re-anchored for 7.x,
-# because Buildroot applies patches with `patch -F0` (fuzz zero) and their
-# 6.18 context drifted upstream. Keep each in lockstep with its
-# ../linux-patches/ original (both carry a bracketed re-anchor note):
+# NOT-symlink exceptions: three entries are REAL FILES re-anchored for 7.x —
+# the shared 6.18 patches are deliberately untouched (parity with stock).
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these three
+# needed either re-anchored context or a real 7.x API/header delta. Keep
+# each in lockstep with its ../linux-patches/ original (every copy carries
+# a bracketed re-anchor note):
+#   0001-fbdev-add-MiSTer_fb-driver     — one-line delta: 7.x removed
+#     <linux/fbcon.h>; fbcon_update_vcs() now comes from the fbdev-core
+#     header ("core/fbcon.h").
 #   0015-hid-nintendo-nso-famicom       — an earlier port test called this
 #     "upstreamed in 7.2"; that was WRONG (7.2 has no FAML/FAMR 0x07/0x08 —
 #     its left/right nescon types are 0x09/0x0A, a different thing), so it

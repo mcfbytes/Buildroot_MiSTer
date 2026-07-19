@@ -151,7 +151,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  obj-$(CONFIG_FB_CLPS711X)	  += clps711x-fb.o
 --- /dev/null
 +++ b/drivers/video/fbdev/MiSTer_fb.c
-@@ -0,0 +1,418 @@
+@@ -0,0 +1,414 @@
 +/*
 + *  MiSTer_fb.c -- MiSTer Frame Reader driver
 + *
@@ -176,11 +176,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +#include <linux/of_irq.h>
 +#include <linux/uaccess.h>
 +#include <linux/console.h>
-+#if __has_include(<linux/fbcon.h>)
-+#include <linux/fbcon.h>	/* <= 6.x */
-+#else
-+#include "core/fbcon.h"	/* 7.x moved fbcon_update_vcs() into fbdev core */
-+#endif
++#include <linux/fbcon.h>
 +
 +#define PALETTE_SIZE         256
 +#define DRIVER_NAME          "MiSTer_fb"

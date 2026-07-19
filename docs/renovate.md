@@ -143,6 +143,16 @@ pushes, and an auto-generated hash commit must go through a PR. `workflow_dispat
 is already restricted to collaborators with write access, so this does not
 widen who can drive the workflow.
 
+The input must be a **plain branch name**, not a ref. git resolves several
+spellings to the same branch — `master`, `refs/heads/master` and `heads/master`
+all push to `master` (verified with `git push --dry-run`) — so a naive string
+comparison against the default branch is only sound once the ref forms are
+excluded. They are rejected outright rather than normalised, because the same
+value is consumed by both `actions/checkout` and the final `git push`: what gets
+validated has to be exactly what those steps use. The name is also run through
+`git check-ref-format --branch`, which rejects embedded spaces, `..`, a leading
+`-`, and the rest.
+
 **What it fixes automatically, and why each case is safe:**
 
 1. **The 12 github-archive `.hash` files** (the 9 commit pins + munt +

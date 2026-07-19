@@ -355,10 +355,33 @@ if ((${#upstream_series[@]})); then
 
 		up_info="$(git mailinfo "$scratch_dir/msg" "$scratch_dir/patch" <"$up_patch" 2>/dev/null)" ||
 			die "git mailinfo could not parse $up_name. Run scripts/lint-kernel-patches.sh."
+
+		# The exit status above is NOT the signal for a malformed identity, and relying on
+		# it would leave the fast gate half-open. `git mailinfo` exits 0 while leaving
+		# Author/Email EMPTY for a `From:` it cannot parse -- which is why
+		# scripts/lint-kernel-patches.sh checks the fields rather than the status, and why
+		# that script exists at all: this repo shipped exactly that defect once
+		# (0013-hid-flydigi-vader.patch carried `From: Alexey Melnikov` with no <email>).
+		#
+		# `git am` hard-fails on it later with "fatal: empty ident name (for <>) not
+		# allowed" -- but "later" here means after the tarball download, the hash verify,
+		# the clone, the extract and a 31-patch replay, and the failure arrives wearing the
+		# generic series-replay error instead of naming the file and the line. Checking all
+		# three fields the same way the lint does keeps this gate honest: everything `git am`
+		# needs from the headers is validated before any expensive work starts.
 		up_subject="$(sed -n 's/^Subject: //p' <<<"$up_info")"
+		up_author="$(sed -n 's/^Author: //p' <<<"$up_info")"
+		up_email="$(sed -n 's/^Email: //p' <<<"$up_info")"
+
 		[[ -n $up_subject ]] ||
 			die "no Subject: in $up_name — it would appear as a blank row in EXPORT.md's
 upstream-only table, and 'git am' would have no commit message to write."
+
+		[[ -n $up_author && -n $up_email ]] ||
+			die "unparseable From: in $up_name — 'git am' needs \`Name <email>\` to write a
+commit and dies with \"fatal: empty ident name (for <>) not allowed\".
+  got: $(grep -m1 '^From:' "$up_patch" || echo '(no From: line at all)')
+Run scripts/lint-kernel-patches.sh, which checks both series the same way."
 
 		# WHY A REASON IS MANDATORY
 		# -------------------------

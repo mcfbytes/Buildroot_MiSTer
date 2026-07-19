@@ -1,0 +1,46 @@
+codec_lzma: take the LZMA SDK header from the system under CHDR_SYSTEM_LZMA
+
+Companion to patch 0001. src/codec_lzma.h unconditionally includes the
+vendored copy's header by relative path
+("../deps/lzma-25.01/include/LzmaDec.h"), which would defeat
+WITH_SYSTEM_LZMA: the vendored header is a shim that #define-renames
+every public LzmaDec entry point to a CHDR_-prefixed alias (its first
+~15 lines, e.g. LzmaDec_DecodeToBuf -> CHDR_LzmaDec_DecodeToBuf) so the
+bundled static copy cannot collide with a real SDK elsewhere in a host
+process -- compiling against it produces CHDR_* references that no
+system liblzma-sdk exports.
+
+Fixed byte-for-byte on the codec_zstd.h:6-10 pattern (the maintainer's
+own solution to the identical problem for zstd): the CHDR_SYSTEM_LZMA
+compile definition -- set only by patch 0001's system branch -- selects
+a plain #include <LzmaDec.h>, which resolves via lzma-sdk.pc's include
+path (-I.../include/lzma-sdk); LzmaDec.h's own quoted #include
+"7zTypes.h" then resolves same-directory beside it. The bundled default
+build still takes the vendored path, untouched, in the #else. The
+translation unit itself needs no changes: libchdr_codec_lzma.c uses
+only plain 7-Zip names (LzmaDec_Construct/Allocate/Init/DecodeToBuf/
+Free, CLzmaDec, ISzAlloc/ISzAllocPtr, SRes, SizeT, ELzmaStatus,
+LZMA_PROPS_SIZE, SZ_OK, LZMA_FINISH_END,
+LZMA_STATUS_MAYBE_FINISHED_WITHOUT_MARK -- checked, every one), all
+declared by the real SDK's LzmaDec.h/7zTypes.h; the CHDR_ renaming
+lives only in the vendored shim this bypasses.
+
+Upstream status: follows the maintainer's own WITH_SYSTEM_* pattern
+(added "for distros" per CHANGELOG); candidate for upstreaming, not yet
+sent.
+
+diff --git a/src/codec_lzma.h b/src/codec_lzma.h
+--- a/src/codec_lzma.h
++++ b/src/codec_lzma.h
+@@ -3,7 +3,11 @@
+ 
+ #include <stdint.h>
+ 
++#ifdef CHDR_SYSTEM_LZMA
++#include <LzmaDec.h>
++#else
+ #include "../deps/lzma-25.01/include/LzmaDec.h"
++#endif
+ 
+ #include "../include/libchdr/chd.h"
+ 

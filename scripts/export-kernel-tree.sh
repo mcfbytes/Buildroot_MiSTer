@@ -16,11 +16,49 @@
 # byte-identical commits (see DETERMINISM), so re-running after no change is a no-op
 # rather than a force-push of fresh SHAs.
 #
+# TWO SERIES: WHAT WE SHIP vs WHAT THIS TREE CARRIES
+# --------------------------------------------------
+# For most of this script's life those were the same set, and EXPORT.md said so: the
+# exported tree WAS the shipped kernel, patch for patch. That is no longer true, and the
+# difference is deliberate rather than drift.
+#
+# Linux-Kernel_MiSTer is upstream's kernel for every MiSTer, not just ours. Some of what
+# it must carry, our image specifically does not want. The motivating case is the fork's
+# `loop=` boot parameter (fork commit 3d95de58f, "Support for init loop device."), which
+# patches init/do_mounts.c so the KERNEL itself mounts /media/fat and loop-mounts
+# linux/linux.img as the root filesystem. That is upstream's boot mechanism — every stock
+# MiSTer boots through it, and a 6.18 branch that dropped it would not boot on any of
+# them. Our image replaced it with a real initramfs /init, so applying it here would add
+# an unreachable second boot path to the kernel we ship (recorded as carried-upstream-only
+# in docs/kernel-recon/reconciliation.md — carried for this tree, not for our image).
+#
+# Deleting it from the export to keep the two trees identical would be the wrong trade:
+# it would break upstream's boot to preserve a documentation claim. Applying it to our
+# image would be the other wrong trade. So there are two series:
+#
+#   board/mister/de10nano/linux-patches/            carried — applied by BOTH Buildroot
+#                                                   (BR2_LINUX_KERNEL_PATCH) and this
+#                                                   script. The kernel we ship.
+#   board/mister/de10nano/linux-patches-upstream/   upstream-only — applied ONLY here.
+#                                                   Buildroot never sees this directory.
+#
+# The second directory's path is DERIVED from the first ("${patch_dir}-upstream"), so a
+# defconfig change moves both together and this script needs no edit. Numbering there
+# starts at 0100 so a filename alone says which namespace it is in.
+#
+# The cost of the split is that EXPORT.md can no longer say "this tree is the shipped
+# kernel". It must say what it now is: the shipped kernel PLUS exactly these N patches,
+# each named, each with the reason it is not in our image. That is generated below from
+# the files actually present — never hardcoded — and the export FAILS CLOSED if a patch
+# in that directory has no stated reason, because a table row with a blank reason is
+# worse than no table: it reads as reviewed when nothing reviewed it.
+#
 # WHAT YOU GET
 # ------------
 #   <output>/  a fresh git repo, branch MiSTer-v<major.minor>, containing:
 #     - one base commit  "Linux <ver>"  — pristine upstream, hash-verified
 #     - one commit per carried patch, original authorship preserved
+#     - one commit per upstream-only patch, likewise (see TWO SERIES above)
 #     - arch/arm/configs/MiSTer_defconfig — so the tree builds standalone:
 #           make ARCH=arm MiSTer_defconfig && make ARCH=arm zImage
 #       which is the thing `make linux` inside Buildroot cannot hand someone.
@@ -80,6 +118,7 @@
 #
 # Usage: scripts/export-kernel-tree.sh --output DIR [--parent-repo R --parent C]
 #                                      [--onto COMMIT] [--fork-sync SHA] [--tarball FILE]
+#                                      [--upstream-patches DIR] [--no-upstream-patches]
 #
 #   --output DIR      where to build the tree (must not already exist)
 #   --parent-repo R   clone R and work inside it, rather than starting a fresh root
@@ -93,6 +132,19 @@
 #   --fork-sync SHA   fork commit this export was reconciled against; recorded in
 #                     EXPORT.md as the backport-queue starting point
 #   --tarball FILE    use this tarball instead of the dl/ cache or a download
+#   --upstream-patches DIR
+#                     the upstream-only series to replay after the carried one, instead
+#                     of the derived default "<BR2_LINUX_KERNEL_PATCH>-upstream". These
+#                     patches are NOT in the shipped image (see TWO SERIES above). An
+#                     explicitly named directory must exist and be non-empty; the DERIVED
+#                     one may be absent or empty, which simply means there are none.
+#   --no-upstream-patches
+#                     skip the upstream-only series entirely. The result is exactly the
+#                     kernel the image ships — useful for diffing this tree against a
+#                     Buildroot build, where the extra patches are the only expected
+#                     difference and so make the comparison useless. Not what you want
+#                     for a tree you intend to publish. Mutually exclusive with
+#                     --upstream-patches.
 #
 # Exit: 0 = tree built and verified; non-zero = anything failed (fails closed).
 
@@ -125,10 +177,16 @@ say() { printf '\n=== %s\n' "$*"; }
 # return status becomes the script's exit status, and a bare `[[ -n $download_dir ]]`
 # returns 1 whenever nothing was downloaded -- making every successful cache-hit run exit
 # 1 despite printing PASS.
+# scratch_dir holds `git mailinfo` output while we read the upstream-only patches'
+# Subject: lines; it is tiny but there is no reason to leak one per run.
 download_dir=''
+scratch_dir=''
 cleanup() {
 	if [[ -n $download_dir ]]; then
 		rm -rf "$download_dir"
+	fi
+	if [[ -n $scratch_dir ]]; then
+		rm -rf "$scratch_dir"
 	fi
 }
 trap cleanup EXIT
@@ -139,6 +197,8 @@ tarball_override=''
 parent_repo=''
 parent=''
 onto=''
+upstream_patch_dir=''
+skip_upstream=false
 
 while (($#)); do
 	case "$1" in
@@ -148,7 +208,19 @@ while (($#)); do
 	--onto) onto="${2:-}"; shift 2 ;;
 	--fork-sync) fork_sync="${2:-}"; shift 2 ;;
 	--tarball) tarball_override="${2:-}"; shift 2 ;;
-	-h | --help) sed -n '/^# Usage:/,/^# Exit:/p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+	--upstream-patches) upstream_patch_dir="${2:-}"; shift 2 ;;
+	--no-upstream-patches) skip_upstream=true; shift ;;
+	# `q` on the closing line, not a bare range. A sed range RE-ARMS after it closes, and
+	# this file contains a SECOND "# Usage:" -- the one in the build-mister-modules.sh
+	# heredoc emitted in section 6c. Without the quit, the range reopened there, found no
+	# second "# Exit:", and ran to end of file: --help printed ~300 lines of this script's
+	# own source after the banner. Quitting at the first "# Exit:" prints the banner and
+	# only the banner, regardless of what later sections contain.
+	-h | --help)
+		sed -n '/^# Usage:/,/^# Exit:/{p;/^# Exit:/q;}' "${BASH_SOURCE[0]}" |
+			sed 's/^# \?//'
+		exit 0
+		;;
 	*) die "unknown argument: $1 (try --help)" ;;
 	esac
 done
@@ -164,6 +236,12 @@ done
 [[ -n $parent && -n $onto ]] && die '--parent and --onto are mutually exclusive:
 --parent extends a spine and CREATES a base commit from the tarball; --onto replays onto
 a base that already exists. Pick one.'
+
+# Naming a directory and then asking for it to be skipped is not a resolvable intent, and
+# guessing either way would silently produce a tree the caller did not ask for -- one of
+# which (the skipped one) is missing upstream's boot path.
+[[ -n $upstream_patch_dir ]] && $skip_upstream &&
+	die '--upstream-patches and --no-upstream-patches are mutually exclusive.'
 
 # --- 1. Read the pinned inputs out of the defconfig -----------------------------------
 # The defconfig is the single source of truth for what we build; nothing here is
@@ -204,10 +282,169 @@ series=("$patch_dir"/*.patch)
 shopt -u nullglob
 ((${#series[@]})) || die "no patches in $patch_dir"
 
+# --- 1b. The upstream-only series ------------------------------------------------------
+# Patches this tree carries that the shipped image deliberately does not. See TWO SERIES
+# at the top of this file for why that divergence exists and why it is not drift.
+#
+# The default path is DERIVED from the carried series rather than written out, for the
+# same reason nothing else here is hardcoded: BR2_LINUX_KERNEL_PATCH is the one place
+# that says where kernel patches live, and a second hardcoded copy of that path would go
+# stale the first time the defconfig moved -- silently, by finding no directory and
+# exporting a tree with upstream's boot mechanism quietly missing from it.
+
+upstream_explicit=false
+if [[ -n $upstream_patch_dir ]]; then
+	upstream_explicit=true
+	# Absolutize NOW, before anything globs it. The glob below runs in the invocation
+	# cwd, but `git am` runs after the `cd "$output"` in section 4 -- so a RELATIVE
+	# --upstream-patches yields relative paths that are unopenable by the time they are
+	# applied, and git am's failure is reported as patch rot. That sends the operator off
+	# to rebase a patch that was never broken. The carried series is immune only by
+	# accident: it goes through resolve_br_path(), which substitutes an absolute
+	# $REPO_ROOT. Left `-d`-guarded so a missing directory still hits the typo-vs-empty
+	# die below rather than failing here with a worse message.
+	if [[ -d $upstream_patch_dir ]]; then
+		upstream_patch_dir="$(cd "$upstream_patch_dir" && pwd)" ||
+			die "--upstream-patches: cannot resolve directory: $upstream_patch_dir"
+	fi
+else
+	upstream_patch_dir="${patch_dir}-upstream"
+fi
+
+upstream_series=()
+if $skip_upstream; then
+	say 'Skipping the upstream-only series (--no-upstream-patches)'
+	upstream_patch_dir=''
+elif [[ -d $upstream_patch_dir ]]; then
+	shopt -s nullglob
+	upstream_series=("$upstream_patch_dir"/*.patch)
+	shopt -u nullglob
+elif $upstream_explicit; then
+	# An explicitly named directory that is not there is a typo, not an empty series.
+	# Treating it as empty would export a tree missing exactly the patches the caller
+	# went out of their way to ask for, and report PASS.
+	die "--upstream-patches: no such directory: $upstream_patch_dir"
+fi
+
+# Same rule for an explicitly named directory that exists but holds nothing: the caller
+# asked for a series, so producing none is a failure. The DERIVED directory is different
+# -- absent or empty there legitimately means "there are no upstream-only patches", which
+# is the state this repo was in before the loop= patch existed.
+$upstream_explicit && ((${#upstream_series[@]} == 0)) &&
+	die "--upstream-patches: no *.patch files in $upstream_patch_dir"
+
+# Read each upstream-only patch's Subject: and its reason for not being in the image, up
+# front, BEFORE the tarball download and the whole series replay. A missing reason is a
+# hard failure (see below), and discovering that after ten minutes of work would train
+# people to skip the export rather than fix the patch.
+#
+# `git mailinfo` is used rather than a regex because it is the parser `git am` itself
+# uses: it strips the "[PATCH 1/1] " prefix, unfolds continuation lines and decodes
+# RFC2047-encoded headers, so the table below shows the same subject the commit will
+# actually carry. scripts/lint-kernel-patches.sh checks the same thing in CI.
+readonly NOT_IN_IMAGE_FILE='not-in-image'
+upstream_subjects=()
+upstream_reasons=()
+
+if ((${#upstream_series[@]})); then
+	scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/export-kernel-tree-meta.XXXXXX")" ||
+		die 'could not create a temporary directory'
+
+	for up_patch in "${upstream_series[@]}"; do
+		up_name="$(basename "$up_patch")"
+
+		up_info="$(git mailinfo "$scratch_dir/msg" "$scratch_dir/patch" <"$up_patch" 2>/dev/null)" ||
+			die "git mailinfo could not parse $up_name. Run scripts/lint-kernel-patches.sh."
+
+		# The exit status above is NOT the signal for a malformed identity, and relying on
+		# it would leave the fast gate half-open. `git mailinfo` exits 0 while leaving
+		# Author/Email EMPTY for a `From:` it cannot parse -- which is why
+		# scripts/lint-kernel-patches.sh checks the fields rather than the status, and why
+		# that script exists at all: this repo shipped exactly that defect once
+		# (0013-hid-flydigi-vader.patch carried `From: Alexey Melnikov` with no <email>).
+		#
+		# `git am` hard-fails on it later with "fatal: empty ident name (for <>) not
+		# allowed" -- but "later" here means after the tarball download, the hash verify,
+		# the clone, the extract and a 31-patch replay, and the failure arrives wearing the
+		# generic series-replay error instead of naming the file and the line. Checking all
+		# three fields the same way the lint does keeps this gate honest: everything `git am`
+		# needs from the headers is validated before any expensive work starts.
+		#
+		# DUPLICATED ON PURPOSE -- KEEP IN SYNC WITH scripts/lint-kernel-patches.sh
+		# --------------------------------------------------------------------------
+		# The non-empty Author/Email/Subject criteria below are the same three checks
+		# lint-kernel-patches.sh makes (see the `problems+=(...)` block there). They are
+		# duplicated rather than shared because the two scripts have no common library and
+		# sourcing one from the other would couple a CI-only linter to the export's runtime.
+		# That is a deliberate trade, not an oversight: the cost is that a change to the
+		# criteria HERE must be mirrored THERE, or CI and the export start disagreeing about
+		# what a valid patch header is -- and the failure mode is a green lint followed by a
+		# failed export, which is the exact confusion this gate exists to prevent.
+		# If a third caller ever needs these checks, factor all three into a shared helper
+		# instead of adding another copy.
+		up_subject="$(sed -n 's/^Subject: //p' <<<"$up_info")"
+		up_author="$(sed -n 's/^Author: //p' <<<"$up_info")"
+		up_email="$(sed -n 's/^Email: //p' <<<"$up_info")"
+
+		[[ -n $up_subject ]] ||
+			die "no Subject: in $up_name — it would appear as a blank row in EXPORT.md's
+upstream-only table, and 'git am' would have no commit message to write."
+
+		[[ -n $up_author && -n $up_email ]] ||
+			die "unparseable From: in $up_name — 'git am' needs \`Name <email>\` to write a
+commit and dies with \"fatal: empty ident name (for <>) not allowed\".
+  got: $(grep -m1 '^From:' "$up_patch" || echo '(no From: line at all)')
+Run scripts/lint-kernel-patches.sh, which checks both series the same way."
+
+		# WHY A REASON IS MANDATORY
+		# -------------------------
+		# EXPORT.md tells upstream reviewers, in a table, which patches are in this tree
+		# but not in the MiSTer image and why. A row with an empty reason is worse than
+		# no table at all: it has the shape of a reviewed decision without being one, and
+		# it is exactly the kind of claim that goes unchallenged for years. So the reason
+		# is an input to the export, not prose someone remembers to add afterwards.
+		#
+		# Two places it can come from, in this order:
+		#
+		#   1. a `Not-in-image:` line in the patch's own commit message — preferred,
+		#      because it travels with the patch through rebases and re-exports;
+		#   2. a row in the series directory's `not-in-image` file, keyed by filename —
+		#      for patches imported VERBATIM from the fork, where editing the commit
+		#      message would mean rewriting someone else's commit text just to satisfy
+		#      a tool of ours.
+		#
+		# Read from the mailinfo-split message body, not the raw file: grepping the raw
+		# patch would also match a `Not-in-image:` string inside a diff hunk.
+		up_reason="$(sed -n 's/^Not-in-image:[[:space:]]*//p' "$scratch_dir/msg" | head -1)"
+		if [[ -z $up_reason && -f "$upstream_patch_dir/$NOT_IN_IMAGE_FILE" ]]; then
+			# awk with an exact first-field match rather than sed: the key is a
+			# filename full of '.' and '-', which sed would read as a regex, and a
+			# near-miss would silently match the wrong row. Exact equality cannot.
+			# It also skips '#' comment lines for free -- their first field is the
+			# comment, which is never a patch filename.
+			up_reason="$(awk -v key="$up_name" \
+				'$1 == key { $1 = ""; sub(/^[[:space:]]+/, ""); print; exit }' \
+				"$upstream_patch_dir/$NOT_IN_IMAGE_FILE")"
+		fi
+		[[ -n $up_reason ]] || die "no stated reason why $up_name is absent from the MiSTer image.
+
+Every patch in $upstream_patch_dir is carried for the exported
+tree ONLY, and EXPORT.md publishes a table naming each one and why the image does not
+apply it. Refusing to emit that table with a blank row. Add either:
+
+  * a line  'Not-in-image: <one-line reason>'  to the patch's commit message, or
+  * a row   '$up_name  <one-line reason>'  to
+    $upstream_patch_dir/$NOT_IN_IMAGE_FILE"
+
+		upstream_subjects+=("$up_subject")
+		upstream_reasons+=("$up_reason")
+	done
+fi
+
 branch="MiSTer-v${version%.*}" # 6.18.38 -> MiSTer-v6.18, matching the fork's convention
 tag="mister-${version}"
 
-say "Exporting Linux $version + ${#series[@]} carried patches -> $output (branch $branch)"
+say "Exporting Linux $version + ${#series[@]} carried patches + ${#upstream_series[@]} upstream-only -> $output (branch $branch)"
 
 # --- 2. Get the tarball, and verify it against the signed-manifest hash ----------------
 # Fails closed: an unverified kernel tarball is the whole reason linux.hash exists.
@@ -331,7 +568,16 @@ if [[ -n $onto ]]; then
 	# the series, so the result fast-forwards onto their branch and the PR is exactly our
 	# delta -- nothing of theirs restated.
 	base_commit="$(git rev-parse HEAD)"
-	git checkout --quiet -b "$branch"
+	# -B, not -b. `git clone` copies the source repo's LOCAL branches, so as soon as the
+	# parent repo has its own MiSTer-v6.18 checked out -- which it does the moment anyone
+	# fetches a previous export back into it -- `-b` dies with "a branch named
+	# 'MiSTer-v6.18' already exists" after the clone and the base verification have already
+	# succeeded. That made the export's success depend on the parent repo's branch state
+	# rather than on its commits, so it passed the first time and failed forever after.
+	# Overwriting is right here and not destructive: $output is a throwaway clone this
+	# script just created, the ref being replaced is a COPY of the parent's, and the real
+	# publish step is an explicit fetch out of this directory (see EXPORT.md).
+	git checkout --quiet -B "$branch"
 else
 
 # Subject is bare "v6.18.38" to match the spine's existing convention (v5.13.12, v5.14,
@@ -368,7 +614,9 @@ Generated by scripts/export-kernel-tree.sh in Buildroot_MiSTer. Do not edit this
 tree directly; see EXPORT.md.
 EOF
 base_commit="$(git rev-parse HEAD)"
-[[ -n $parent_repo ]] && git checkout --quiet -b "$branch"
+# -B for the same reason as the --onto path above: the clone carries a copy of the parent
+# repo's local branches, so -b fails once the parent has a branch of this name.
+[[ -n $parent_repo ]] && git checkout --quiet -B "$branch"
 fi
 
 # --- 5. Replay the carried series -------------------------------------------------------
@@ -389,7 +637,39 @@ fi
 applied="$(git rev-list --count "$base_commit"..HEAD)"
 ((applied == ${#series[@]})) ||
 	die "expected ${#series[@]} commits, got $applied"
-say "Applied $applied/${#series[@]} patches cleanly"
+say "Applied $applied/${#series[@]} carried patches cleanly"
+
+# --- 5b. Replay the upstream-only series ------------------------------------------------
+# AFTER the carried series and BEFORE the defconfig commit, deliberately. That ordering is
+# what makes the tree's history readable as two contiguous blocks: everything from the
+# base up to carried_tip is exactly the kernel the image ships, and the block after it is
+# exactly what this tree adds for upstream. EXPORT.md publishes both as `git diff` ranges
+# computed from that layout, so reordering these steps silently changes what those
+# one-liners mean.
+#
+# Same --committer-date-is-author-date as above: dates come from the patches, not the
+# clock, so an unchanged series regenerates to identical SHAs.
+
+carried_tip="$(git rev-parse HEAD)"
+upstream_applied=0
+
+if ((${#upstream_series[@]})); then
+	say "Replaying ${#upstream_series[@]} upstream-only patches with git am"
+	if ! git am --committer-date-is-author-date "${upstream_series[@]}" >/dev/null 2>&1; then
+		git am --abort 2>/dev/null || true
+		die "git am failed on the upstream-only series in $upstream_patch_dir.
+
+These patches are never applied by Buildroot, so unlike the carried series NOTHING ELSE
+in this repo exercises them -- an image build stays green while they rot against a new
+kernel. Run scripts/lint-kernel-patches.sh for a malformed From:; otherwise a patch no
+longer applies to $version and needs rebasing onto it."
+	fi
+
+	upstream_applied="$(git rev-list --count "$carried_tip"..HEAD)"
+	((upstream_applied == ${#upstream_series[@]})) ||
+		die "expected ${#upstream_series[@]} upstream-only commits, got $upstream_applied"
+	say "Applied $upstream_applied/${#upstream_series[@]} upstream-only patches cleanly"
+fi
 
 # --- 6. In-tree defconfig, so the tree is usable without Buildroot ------------------------
 # This is the step that makes the export worth shipping: `git clone && make` works, which
@@ -603,7 +883,7 @@ cat >build-mister-modules.sh <<'MODEOF'
 #
 # PASS `LOCALVERSION=` TO THE KERNEL BUILD, exactly as above. Empty, but SET.
 #
-# This tree is a git repo whose HEAD sits ~35 commits past the v<ver> base commit, so
+# This tree is a git repo whose HEAD sits dozens of commits past the v<ver> base commit, so
 # scripts/setlocalversion correctly concludes the source is modified and appends a "+",
 # giving `6.18.38+`. Buildroot builds the same source from a tarball with no git around
 # it, so its identical-but-also-patched kernel reports plain `6.18.38`. The two disagree
@@ -695,6 +975,83 @@ EOF
 
 # --- 7. Say plainly what this tree is ----------------------------------------------------
 
+# COMMIT ARITHMETIC — the two `git diff` one-liners EXPORT.md prints
+# -----------------------------------------------------------------
+# Those one-liners are how an upstream reviewer sees the MiSTer delta, so being off by N
+# is silent, embarrassing, and very easy: the number of commits between the base and the
+# tag is not just the patch count. It is
+#
+#     carried patches + upstream-only patches + defconfig + one per vendored driver
+#     + build-mister-modules.sh + EXPORT.md
+#
+# and three of those terms grow on their own -- a new kernel-module package changes it
+# without anyone touching this section. So it is MEASURED, not derived from a formula
+# that has to be kept in sync. (The previous hand-derived `$((applied + 1))` was already
+# wrong before the upstream-only series existed: with 31 carried patches it named a
+# mid-series commit rather than the base, because it counted neither the defconfig, the
+# three driver commits, the build script, nor EXPORT.md itself.)
+#
+# HEAD is currently the build-script commit; EXPORT.md's own commit is not made yet, and
+# the tag will land on it. Hence the +1. Section 8 asserts both offsets resolve to the
+# commits claimed here rather than trusting this arithmetic.
+base_offset=$(( $(git rev-list --count "$base_commit"..HEAD) + 1 ))
+# The last carried patch: base + carried series = exactly what Buildroot applies.
+# Offsets count BACKWARDS from the tag, so a commit later in the series has a SMALLER
+# offset; the upstream-only block therefore ends nearer the tag than the carried one.
+shipped_offset=$((base_offset - applied))
+upstream_tip_offset=$((shipped_offset - upstream_applied))
+
+# The upstream-only table, generated from the files actually present. Never hardcoded:
+# the whole point is that adding a patch to that directory updates this document, so it
+# cannot describe a series that has moved on without it.
+#
+# EXPORT.md is read by upstream reviewers, so "1 patch(es)" is not good enough for the
+# one sentence in it that people will quote.
+up_patch_noun='patches'
+up_commit_noun='commits'
+if ((upstream_applied == 1)); then
+	up_patch_noun='patch'
+	up_commit_noun='commit'
+fi
+
+upstream_section=''
+if ((upstream_applied)); then
+	upstream_section="## This tree is NOT the kernel the MiSTer image ships
+
+It is that kernel **plus exactly $upstream_applied $up_patch_noun**, listed here. Every one is
+carried for *this* tree only: Buildroot's \`BR2_LINUX_KERNEL_PATCH\` points at
+\`board/mister/de10nano/linux-patches/\` and never sees them, so they are in no MiSTer
+image this repo builds. They are here because Linux-Kernel_MiSTer is upstream's kernel
+for every MiSTer, not only ours, and it has to keep working for all of them.
+
+| patch | not in the MiSTer image because |
+|---|---|
+"
+	for i in "${!upstream_series[@]}"; do
+		# Escape pipes: a Subject: containing one would otherwise split the row into
+		# extra columns and silently mangle the table.
+		upstream_section+="| ${upstream_subjects[$i]//|/\\|} | ${upstream_reasons[$i]//|/\\|} |
+"
+	done
+	upstream_section+="
+They are the last $upstream_applied $up_commit_noun of the patch series here, immediately after
+the carried ones, so the split is visible in the log as well as in this table:
+
+    git log --oneline $tag~$shipped_offset..$tag~$upstream_tip_offset
+
+"
+else
+	upstream_section="## This tree is the kernel the MiSTer image ships
+
+There are no upstream-only patches in this export, so the series here is exactly the
+series Buildroot applies — patch for patch, in the same order. (This repo can carry
+patches for the exported tree alone, in
+\`board/mister/de10nano/linux-patches-upstream/\`; that directory is empty or absent, or
+the export was run with \`--no-upstream-patches\`.)
+
+"
+fi
+
 say 'Writing EXPORT.md'
 cat >EXPORT.md <<EOF
 # This tree is generated
@@ -704,23 +1061,36 @@ It is a **build output**, not a source of truth. It was rendered from
 \`scripts/export-kernel-tree.sh\`, which is where the kernel is actually maintained.
 
 **Changes made directly to this tree will be erased by the next regeneration.**
-To change the kernel, change the patch series in Buildroot_MiSTer
-(\`board/mister/de10nano/linux-patches/\`) and regenerate.
+To change the kernel, change the patch series in Buildroot_MiSTer and regenerate. There
+are two series, and which one a patch belongs in is the first question to answer:
 
-## What is here
+- \`board/mister/de10nano/linux-patches/\` — **carried**. Applied by Buildroot to the
+  shipped MiSTer image *and* replayed here. Anything the image needs goes here.
+- \`board/mister/de10nano/linux-patches-upstream/\` — **upstream-only**. Replayed here
+  and nowhere else; Buildroot never reads this directory. Numbered from 0100 so the
+  namespace is obvious from a filename alone.
+
+$upstream_section## What is here
 
 | | |
 |---|---|
 | Base | Pristine Linux $version from kernel.org, hash-verified (\`$expected\`) |
-| On top | $applied commits, one per carried MiSTer patch, original authorship preserved |
+| Carried patches | $applied commits, one per patch the MiSTer image applies, original authorship preserved |
+| Upstream-only patches | $upstream_applied $up_commit_noun, one per patch carried for this tree alone (see above) |
 | Config | \`arch/arm/configs/MiSTer_defconfig\` — $config_note |
+| Vendored drivers | ${#enabled_kmods[@]} commits, one per out-of-tree kernel module (see below) |
 | Tag | \`$tag\` |
 
-The base commit contains no MiSTer change, so
+The base commit contains no MiSTer change, so the two deltas worth looking at are:
 
-    git diff $tag~$((applied + 1)) $tag
+    git diff $tag~$base_offset $tag              # everything MiSTer adds to upstream $version
+    git diff $tag~$base_offset $tag~$shipped_offset   # only what the MiSTer image ships
 
-is exactly the MiSTer delta against upstream and nothing else.
+The first is this tree in full: both patch series, the in-tree defconfig, and the
+vendored out-of-tree drivers. The second stops at the last carried patch, so it is
+precisely the patch set Buildroot applies when it builds the image — no upstream-only
+patches, and none of the packaging commits that Buildroot supplies from its own tree
+rather than from the kernel source.
 
 ## Building standalone
 
@@ -730,18 +1100,21 @@ is exactly the MiSTer delta against upstream and nothing else.
 
 Three details on that middle line, each of which will bite you otherwise.
 
-**\`LOCALVERSION=\`** — empty, but set. This tree is a git repo whose HEAD is ~35 commits
-past the \`v$version\` base, so \`scripts/setlocalversion\` correctly calls the source
-modified and appends \`+\`, giving \`$version+\`. Buildroot builds the same source from a
-tarball with no git around it, so its equally-patched kernel reports plain \`$version\`.
-That \`+\` lands in **vermagic**, and vermagic is what the kernel matches on when loading
+**\`LOCALVERSION=\`** — empty, but set. This tree is a git repo whose HEAD is
+$base_offset commits past the \`v$version\` base, so \`scripts/setlocalversion\` correctly
+calls the source modified and appends \`+\`, giving \`$version+\`. Buildroot patches a
+tarball with no git around it, so the kernel it builds reports plain \`$version\`. That
+\`+\` lands in **vermagic**, and vermagic is what the kernel matches on when loading
 modules:
 
     vermagic=$version+ SMP mod_unload ARMv7 p2v8     <- without LOCALVERSION=
     vermagic=$version  SMP mod_unload ARMv7 p2v8     <- Buildroot, and here WITH it
 
-Mismatch it and modprobe rejects every module. With it, this tree's kernel and modules
-are interchangeable with the shipped image's.
+Mismatch it and modprobe rejects every module. With it, modules built here load into the
+shipped image's kernel and vice versa. Note that this makes the two **module-compatible**,
+not identical: the kernel image built here is not byte-identical to the shipped one
+whenever the upstream-only series above is non-empty, because the shipped one does not
+contain those patches.
 
 **\`modules\`** — not just \`zImage\`. External modules link against the kernel symbol
 table in \`Module.symvers\`, which modpost writes during \`make modules\` (and which needs
@@ -795,7 +1168,7 @@ same way, so it is the next entry rather than a foreign import:
                                           |
        [112 MiSTer commits] -> MiSTer-v5.15        (untouched)
                                           |
-       v$version -> [$applied MiSTer commits] -> $branch
+       v$version -> [$applied carried + $upstream_applied upstream-only] -> $branch
 
 \`MiSTer-v5.15\` is **not modified and not an ancestor** — it is a sibling, exactly as
 \`MiSTer-v5.14\` already is. Nothing was lost.
@@ -809,8 +1182,9 @@ Two consequences worth knowing:
   does not contain most of them, and a log listing changes that are absent from the
   tree would be worse than no log at all.
 
-What each 5.15 commit became — carried, superseded by an upstream commit (with the
-vanilla commit cited), or deliberately dropped — is recorded per commit in
+What each 5.15 commit became — carried into the image, carried here only (the
+upstream-only series above), superseded by an upstream commit (with the vanilla commit
+cited), or deliberately dropped — is recorded per commit in
 \`MISTER-KERNEL-PATCH-RECON.md\` in Buildroot_MiSTer. No git command can answer that:
 across this much context drift \`git patch-id\` matches nothing, so "is this commit in
 $version?" is a semantic question, not a mechanical one.
@@ -841,7 +1215,12 @@ GIT_AUTHOR_DATE="$base_date" GIT_COMMITTER_DATE="$base_date" \
 
 Names the source of truth, states that direct edits are erased by the next
 regeneration, and records where to look for the disposition of each 5.15 fork
-commit. See scripts/export-kernel-tree.sh in Buildroot_MiSTer."
+commit.
+
+It also states, with a table, that this tree is the kernel the MiSTer image
+ships PLUS the upstream-only patches listed there -- patches Buildroot
+deliberately does not apply -- so nothing here claims the two are identical when
+they are not. See scripts/export-kernel-tree.sh in Buildroot_MiSTer."
 
 git tag -f "$tag" >/dev/null
 
@@ -865,17 +1244,68 @@ for pkg in "${enabled_kmods[@]}"; do
 done
 [[ -x build-mister-modules.sh ]] || die 'build-mister-modules.sh missing or not executable'
 
+# Assert the commit offsets EXPORT.md just printed actually resolve to the commits it
+# claims they do. This is not paranoia about git: it is a check on OUR arithmetic, which
+# has three terms that grow without this file being edited (patch counts, driver count).
+# The failure mode it catches is a document that confidently hands upstream reviewers a
+# `git diff` range naming the wrong commits -- which nothing else would ever notice,
+# because both ranges produce a large, plausible-looking diff either way.
+#
+# --verify --quiet so an offset that runs off the end of history yields an empty string
+# and OUR message, rather than git's "fatal: ambiguous argument" printed first and the
+# actionable one scrolled off behind it.
+[[ "$(git rev-parse --verify --quiet "$tag~$base_offset^{commit}")" == "$base_commit" ]] ||
+	die "EXPORT.md's base offset is wrong: $tag~$base_offset is not the base commit
+$base_commit. The 'git diff' one-liners in EXPORT.md would name the wrong range."
+[[ "$(git rev-parse --verify --quiet "$tag~$shipped_offset^{commit}")" == "$carried_tip" ]] ||
+	die "EXPORT.md's shipped-kernel offset is wrong: $tag~$shipped_offset is not the last
+carried patch $carried_tip. The 'only what the MiSTer image ships' diff in EXPORT.md
+would include or omit patches."
+
+# Assert every upstream-only patch actually became a commit. Same fail-closed rule as the
+# vendored drivers above, and for a sharper reason: nothing else in this repo applies
+# these patches at all, so a silent loss here has no second chance to be noticed -- the
+# image builds green, the export reports PASS, and upstream simply receives a tree whose
+# boot path quietly stopped working. Matching on the subject `git mailinfo` produced means
+# this compares what was ASKED FOR against what was COMMITTED, rather than re-counting the
+# same array twice.
+if ((upstream_applied)); then
+	mapfile -t upstream_log < <(git log --format='%s' "$carried_tip..$tag~$upstream_tip_offset")
+	for i in "${!upstream_series[@]}"; do
+		printf '%s\n' "${upstream_log[@]}" | grep -Fxq -- "${upstream_subjects[$i]}" ||
+			die "upstream-only patch $(basename "${upstream_series[$i]}") produced no commit
+in the exported tree (no commit with subject: ${upstream_subjects[$i]})"
+		printf '  %-52s upstream-only\n' "$(basename "${upstream_series[$i]}")"
+	done
+fi
+
 # The base must be untouched upstream: our delta may not reach outside the patches.
 touched="$(git diff --name-only "$base_commit" "$tag" | wc -l)"
 
 printf '\n'
-printf 'RESULT: PASS — exported Linux %s + %s patches\n' "$version" "$applied"
+printf 'RESULT: PASS — exported Linux %s + %s carried patches + %s upstream-only\n' \
+	"$version" "$applied" "$upstream_applied"
 printf '  tree     %s\n' "$output"
 printf '  branch   %s\n' "$branch"
 printf '  tag      %s\n' "$tag"
-printf '  commits  %s (1 base + %s patches + defconfig + EXPORT.md)\n' \
-	"$(git rev-list --count HEAD)" "$applied"
+# base_offset + 1, NOT `git rev-list --count HEAD`. The parenthetical enumerates this
+# export's own commits, and rev-list counts ANCESTORS too: in --onto/--parent mode that
+# silently adds the parent repo's four spine tarball commits, printing 43 against a
+# breakdown that sums to 39. A reader who adds it up and comes up short reasonably
+# concludes the series got applied twice. base_offset is the distance from the tag back to
+# the base (asserted against the real commit above), so it counts everything AFTER the
+# base -- hence the +1 to include the base that the "1 base" term names.
+printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + %s vendored drivers + build script + EXPORT.md)\n' \
+	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#enabled_kmods[@]}"
 printf '  files touched vs pristine upstream: %s\n' "$touched"
+if ((upstream_applied)); then
+	# Said on stdout as well as in EXPORT.md, because this is the one fact about the
+	# export that a person running it can get wrong in a way that matters: handing the
+	# tree to someone as "the kernel we ship" when it is that plus these.
+	printf '  NOTE: this tree is the shipped kernel PLUS %s upstream-only %s from\n' \
+		"$upstream_applied" "$up_patch_noun"
+	printf '        %s — see EXPORT.md for the table of what and why.\n' "$upstream_patch_dir"
+fi
 printf '\nPublish with:\n'
 printf '  git -C <your-fork> fetch %s %s:%s\n' "$output" "$branch" "$branch"
 printf '  git -C <your-fork> push origin %s\n' "$branch"

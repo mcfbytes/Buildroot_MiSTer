@@ -30,7 +30,7 @@ fragment, layered at build time — mirroring the existing initramfs second-buil
 |---|---|
 | `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → 7.2-rc3 via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment; disable the 3 OOT WiFi packages). Merged onto `mister_de10nano_defconfig` via `merge_config.sh`. |
 | `board/mister/de10nano/linux-rt.fragment` | Kernel-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
-| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` (single source of truth). Applies 28 of 31 patches. |
+| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` (single source of truth). Applies 28 of the 31 *carried* patches (§4 lists the 3 excluded) — the separate `linux-patches-upstream/` series (patches carried for the exported `Linux-Kernel_MiSTer` tree only, never applied by Buildroot; see `docs/patch-provenance.md` §12) is unrelated to this count and is not applied to the beta either. |
 | `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/`, reusing the shared toolchain/dl/ccache. The main `output/` is never touched. |
 
 Nothing is copied: the kernel config is the same `linux.config` + a 2-line
@@ -94,7 +94,7 @@ shared — no rootfs change is needed to switch kernels.
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ verified |
-| 28/31 patches apply to 7.2-rc3 | ✅ verified |
+| 28/31 *carried* patches apply to 7.2-rc3 (`linux-patches/`; excludes the separate `linux-patches-upstream/` series, which this variant does not apply at all — see §2) | ✅ verified |
 | `xone` compiles on 7.2 | ✅ verified |
 | **Full `make rt` build (kernel links, image builds)** | ❌ **unproven** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |

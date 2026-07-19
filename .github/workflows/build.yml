@@ -186,7 +186,14 @@ jobs:
       # patches with `patch -p1`, which ignores mail headers, so a malformed
       # `From:` builds green and only breaks when the series is replayed as git
       # history with `git am`. See the script's header.
-      - name: Lint kernel patch headers (git am-ability)
+      #
+      # With no arguments it lints BOTH series -- the carried one Buildroot
+      # applies, and linux-patches-upstream/, which is carried for the exported
+      # tree only. The second needs this more than the first: nothing else in
+      # this repo reads those files at all, so `git am` at export time is the
+      # only thing that ever exercises their headers, and an export happens
+      # rarely enough for a defect to sit there for months.
+      - name: Lint kernel patch headers (git am-ability, both series)
         run: scripts/lint-kernel-patches.sh
 
       # Everything from "prepare the runner" to "linux.img + zImage_dtb exist".

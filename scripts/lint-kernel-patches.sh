@@ -145,6 +145,19 @@ for dir in "${patch_dirs[@]}"; do
 		email="$(sed -n 's/^Email: //p' <<<"$info")"
 		subject="$(sed -n 's/^Subject: //p' <<<"$info")"
 
+		# DUPLICATED ON PURPOSE -- KEEP IN SYNC WITH scripts/export-kernel-tree.sh
+		# --------------------------------------------------------------------------
+		# These three non-empty checks are also made by export-kernel-tree.sh, in its
+		# section 1b preflight over the upstream-only series, so that a bad header fails
+		# before the tarball download and the series replay rather than minutes later
+		# inside `git am`. They are duplicated rather than shared because the two scripts
+		# have no common library and sourcing this CI-only linter into the export would
+		# couple them at runtime. That is a deliberate trade: the cost is that a change to
+		# the criteria HERE must be mirrored THERE, or the two disagree about what a valid
+		# patch header is -- and the failure mode is this lint passing in CI and the export
+		# then dying on the same file, which is precisely the confusion both checks exist
+		# to prevent. If a third caller ever needs them, factor all three into a shared
+		# helper rather than adding a copy.
 		problems=()
 		[[ -n $author ]] || problems+=('no author name — `From:` needs `Name <email>`')
 		[[ -n $email ]] || problems+=('no author email — `From:` needs `Name <email>`')

@@ -369,6 +369,19 @@ if ((${#upstream_series[@]})); then
 		# generic series-replay error instead of naming the file and the line. Checking all
 		# three fields the same way the lint does keeps this gate honest: everything `git am`
 		# needs from the headers is validated before any expensive work starts.
+		#
+		# DUPLICATED ON PURPOSE -- KEEP IN SYNC WITH scripts/lint-kernel-patches.sh
+		# --------------------------------------------------------------------------
+		# The non-empty Author/Email/Subject criteria below are the same three checks
+		# lint-kernel-patches.sh makes (see the `problems+=(...)` block there). They are
+		# duplicated rather than shared because the two scripts have no common library and
+		# sourcing one from the other would couple a CI-only linter to the export's runtime.
+		# That is a deliberate trade, not an oversight: the cost is that a change to the
+		# criteria HERE must be mirrored THERE, or CI and the export start disagreeing about
+		# what a valid patch header is -- and the failure mode is a green lint followed by a
+		# failed export, which is the exact confusion this gate exists to prevent.
+		# If a third caller ever needs these checks, factor all three into a shared helper
+		# instead of adding another copy.
 		up_subject="$(sed -n 's/^Subject: //p' <<<"$up_info")"
 		up_author="$(sed -n 's/^Author: //p' <<<"$up_info")"
 		up_email="$(sed -n 's/^Email: //p' <<<"$up_info")"

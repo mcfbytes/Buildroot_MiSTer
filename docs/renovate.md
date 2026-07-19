@@ -40,7 +40,7 @@ for the specific pieces most likely to need a fix on the first live run.
 |---|---|---|---|
 | Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.02.x` | `BUILDROOT_SHA256` — **manual**, see below |
 | Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
-| Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **manual, TOFU** — kernel.org signs no `-rc` manifest and Buildroot fetches `-rc` as a cgit `.tar.gz` snapshot, so `renovate-hash-sync.yml` deliberately leaves this line alone. The PR stays red until a human refreshes it per `linux.hash`'s `-rc` block |
+| Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — the hash-sync kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware tag pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `github-tags` datasource, `loose` versioning (flagged `needs-manual-version-check` — see caveat below) | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
@@ -59,8 +59,8 @@ this repository maintains by hand except the four listed below.
 ### Why the two kernel pins are separate managers
 
 `configs/mister_rt.fragment` carries the **identical Kconfig symbol** as the two
-defconfigs, but pins a different upstream line (mainline `-rc`, currently
-`7.2-rc3`) with different cadence, provenance, and review bar. A single manager
+defconfigs, but pins a different upstream line (mainline, currently `7.2-rc3` and headed for
+7.2 final) with different cadence, provenance, and review bar. A single manager
 covering all three files would hand the longterm datasource a `-rc`
 `currentValue` and the mainline datasource a `6.18.x` one. So there are two
 managers with two datasources and two `depName`s, and each file pattern names

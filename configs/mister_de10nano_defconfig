@@ -38,7 +38,7 @@
 #
 #     glibc is configured --enable-kernel=$(BR2_TOOLCHAIN_HEADERS_AT_LEAST)
 #     (package/glibc/glibc.mk:131). Under AS_KERNEL our kernel version arrives as the
-#     free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38", which Kconfig
+#     free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.39", which Kconfig
 #     cannot compare numerically to select BR2_TOOLCHAIN_HEADERS_AT_LEAST_6_18 -- so it
 #     silently falls back to the floor, 2.6. That would build glibc with ~15 years of
 #     dead compatibility code and runtime syscall-fallback paths for kernels this board
@@ -116,7 +116,7 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.39"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"

@@ -130,15 +130,36 @@ actually differs, so re-runs on an already-correct PR are harmless no-ops.
    line beneath it).
 
 2. **The kernel tarball hash**
-   (`board/mister/de10nano/patches/linux/linux.hash`) — refreshed from
-   `https://cdn.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc`, the exact
-   URL and trust model this project's own manual process already uses (see
-   that file's header comment). The workflow fetches the manifest over TLS
-   and greps the matching `linux-<version>.tar.xz` line — it does **not**
-   verify the PGP clearsign signature (no keyring management implemented
-   here), which is the same trust level as today's manual transcription,
-   not a regression. Verifying the signature is a worthwhile future
-   hardening step, not implemented in this pass.
+   (`board/mister/de10nano/patches/linux/linux.hash`) — derived under **two
+   independent PGP signatures**, both verified against public keys committed
+   in `.github/keys/` (never fetched at run time). See
+   [ADR 0021](decisions/0021-kernel-hash-gpg-verification.md) for the full
+   rationale.
+
+   * **path A** — `linux-<version>.tar.sign`, signed by the stable
+     maintainer (Greg Kroah-Hartman, fingerprint cross-checkable against
+     <https://www.kernel.org/signature.html>). The `.sign` covers the
+     *uncompressed* tar, so the workflow decompresses the `.tar.xz` it
+     actually downloaded and verifies that stream, then computes the
+     `.tar.xz` sha256 itself.
+   * **path B** — `sha256sums.asc`, signed by the kernel.org checksum
+     autosigner, parsed **only** from the plaintext gpg emits after
+     verifying (never grepped from the raw `.asc`, which would make the
+     check decorative).
+
+   Both must verify **and agree on the hash**, or the step fails hard and
+   refuses to touch `linux.hash`. Verification is pinned by *fingerprint*
+   via gpg's `--status-fd` `VALIDSIG` line, not by exit status or
+   human-readable output. A signature failure is treated as a supply-chain
+   event and is never downgraded to the warn-and-skip path used for network
+   errors.
+
+   Note the asymmetry recorded in ADR 0021 §4: the maintainer key's
+   fingerprint is published by kernel.org, while the autosigner key is
+   **TOFU-pinned** — kernel.org publishes neither that key nor its
+   fingerprint. Path B is corroboration, not the foundation; kernel.org
+   itself says the checksums are "NOT intended to replace developer
+   signatures".
 
 3. **The lzma-sdk tarball hash** (`package/lzma-sdk/lzma-sdk.hash`) — a
    **bespoke step**, because lzma-sdk cannot ride the generic loop of

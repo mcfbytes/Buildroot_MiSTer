@@ -135,9 +135,10 @@ installer's FAT payload as well, and deliberately NOT inside
 |---|---|
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
-| `linux.config` reconciles to 7.2 (criticals survive) | ✅ verified |
+| `linux.config` reconciles to 7.2 (criticals survive) | ✅ **after a real fix (2026-07-18)**: the earlier full-config test masked a minimal-config trap — 7.x turned the HID drivers' LED `select`s into `depends on`, so `olddefconfig` silently dropped `NEW_LEDS`/`LEDS_CLASS` **and with them the whole HID controller stack** (`HID_PLAYSTATION`/`HID_NINTENDO` vanished from the config, no error). Fixed by making the LED foundation explicit in `linux.config` (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS`, no-ops on 6.18); all 19 critical symbols re-audited present |
 | 29/31 patches apply to 7.2-rc3 at Buildroot's `patch -F0` | ✅ verified through the real `linux-patch` stage (0015 + 0031 re-anchored; the old "28/31" figure was measured at `patch`'s default fuzz 2, which Buildroot forbids, and wrongly counted 0015 as upstreamed) |
 | `xone` compiles on 7.2 | ✅ verified (not shipped by the kernel-only variant — §4) |
+| **The RT kernel compiles and links** | ✅ verified 2026-07-18: local cross-build of the patched 7.2-rc3 tree (`CONFIG_PREEMPT_RT=y`) — zImage 8.57 MiB + DTB + 70 modules, zero errors. Two 7.x API ports were needed and live in the patches: `fbcon_update_vcs()`'s header moved into fbdev core (`__has_include` gate in shared 0001), and `exfat_remove_entries()` grew a `free_benign` arg (beta 0031). (Local build without the embedded initramfs cpio — CI's zImage will be larger.) |
 | **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ⏳ wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended); **first green run pending** |
 | **Module-tree merge into the one linux.img** | ⏳ wired (extra-modules overlay + CI merge assert); **first green run pending** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |

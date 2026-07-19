@@ -108,8 +108,50 @@ the one case where it deliberately does nothing.
 **Triggers on**: `pull_request` (opened/synchronize), only when
 `github.actor == 'renovate[bot]'` and the PR's head repo is this repo (never
 a fork — a fork PR's default token cannot push back to it anyway). It always
-recomputes from the PR's current file content and only commits if the result
-actually differs, so re-runs on an already-correct PR are harmless no-ops.
+recomputes from the branch's current file content and only commits if the
+result actually differs, so re-runs on an already-correct PR are harmless
+no-ops.
+
+**...and manually**, via `workflow_dispatch` with a required `branch` input.
+
+This escape hatch is not a convenience — without it there is **no way at all**
+to re-drive this workflow after fixing a bug in it. Three things block every
+other route, and all three held at once on
+[run 29669946883](https://github.com/mcfbytes/Buildroot_MiSTer/actions/runs/29669946883),
+which executed the same broken kernel-URL code three times across two separate
+fixes:
+
+| route | why it fails |
+|---|---|
+| push the fix to the branch | the `paths:` filter doesn't list the workflow file, so nothing triggers |
+| a maintainer merges the fix in | the `renovate[bot]` actor gate skips the job |
+| re-run the failed run | a re-run replays the workflow definition from the commit the *original* run was created against — so it re-executes the old code |
+
+Only Renovate itself moving the branch head, or this manual trigger, gets new
+code to run.
+
+> **The ref you dispatch *from* and the branch you dispatch *at* are different
+> things, deliberately.** GitHub runs the workflow definition from the ref you
+> dispatch on, while this workflow checks out and pushes to `inputs.branch`.
+> So dispatch **from the default branch** (which has the fixed workflow) and
+> put the branch you want *repaired* — e.g.
+> `renovate/kernel-longterm-6.18-6.x` — in the input. Dispatching *on* the
+> stale branch would just run its stale copy again, which is the whole trap.
+
+Manual runs refuse to target the default branch: this workflow commits and
+pushes, and an auto-generated hash commit must go through a PR. `workflow_dispatch`
+is already restricted to collaborators with write access, so this does not
+widen who can drive the workflow.
+
+The input must be a **plain branch name**, not a ref. git resolves several
+spellings to the same branch — `master`, `refs/heads/master` and `heads/master`
+all push to `master` (verified with `git push --dry-run`) — so a naive string
+comparison against the default branch is only sound once the ref forms are
+excluded. They are rejected outright rather than normalised, because the same
+value is consumed by both `actions/checkout` and the final `git push`: what gets
+validated has to be exactly what those steps use. The name is also run through
+`git check-ref-format --branch`, which rejects embedded spaces, `..`, a leading
+`-`, and the rest.
 
 **What it fixes automatically, and why each case is safe:**
 

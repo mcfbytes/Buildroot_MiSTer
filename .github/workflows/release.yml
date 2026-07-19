@@ -17,13 +17,18 @@
 #      assertion in this file about extraction/layout exists to protect
 #      actor #2, because nothing else in the pipeline will catch a mistake
 #      there — see docs/downloader-contract.md §4-§8, §12.
-#   3. A HUMAN opting into the PREEMPT_RT / Linux-7.2 beta (ADR 0021,
-#      docs/rt-beta-kernel.md): `linux-rt.img`, `zImage_dtb-rt`,
-#      `buildroot-rt.config`, `linux-rt.config`, `legal-info-rt.tar.gz`,
-#      built by the parallel `build-rt` job from the same tagged commit.
-#      Deliberately NOT inside release_YYYYMMDD.7z and NEVER referenced by
-#      db.json — actor #2's pinned pipeline never sees an RT byte; pushing
-#      RT at every subscribed device is an OPEN human decision in ADR 0021.
+#   3. A HUMAN opting into the PREEMPT_RT / Linux-7.2 beta (ADR 0021 as
+#      amended 2026-07-18, docs/rt-beta-kernel.md): `zImage_dtb-rt`,
+#      `linux-rt.config`, `legal-info-rt.tar.gz`, built KERNEL-ONLY by the
+#      `build-kernel` matrix job from the same tagged commit. The RT kernel's
+#      MODULES ride inside the ordinary `linux.img` (the `build` job merges
+#      every kernel leg's depmod'd tree via work/extra-modules-overlay), so
+#      opting in is copying one file + one u-boot.txt line — no separate RT
+#      rootfs exists anymore. The kernel file itself is deliberately NOT
+#      inside release_YYYYMMDD.7z and NEVER referenced by db.json — pushing
+#      an RT KERNEL at every subscribed device stays an OPEN human decision
+#      in ADR 0021 (the amendment notes the modules-in-image half actually
+#      STRENGTHENS the eventual case).
 #
 # WHY THIS REBUILDS INSTEAD OF DEPENDING ON build.yml'S RUN: a release must be
 # built from the tagged commit by a job whose provenance we attest, not adopted
@@ -120,8 +125,146 @@ permissions:
 
 jobs:
   # ============================================================================
+  # build-kernel — the kernel-variant matrix (ADR 0021 as amended 2026-07-18),
+  # KERNEL-ONLY Buildroot builds run BEFORE `build` because `build` merges the
+  # legs' module trees into the one shipped linux.img. Each leg hands `build`
+  # an artifact carrying: zImage_dtb-<name>, linux-<name>.config, the depmod'd
+  # modules tar + its kver, and legal-info-<name>.tar.gz — the FULL kernel
+  # GPL-source bundle (unlike build.yml's manifest-only SBOM transport): a
+  # release DISTRIBUTES the variant kernel binary, so its accompanying source
+  # obligation is real, and kernel-only it is small (~250-300 MB).
+  #
+  # No MISTER_VERSION derivation here: nothing in a kernel-only build bakes it
+  # (there is no rootfs to write /MiSTer.version into) — the duplicate step the
+  # old two-image design carried is gone, not forgotten.
+  #
+  # Adding a variant = one matrix entry (plus its fragment + Makefile targets).
+  # NO `container:` — see .github/actions/buildroot-build (same as build).
+  # ============================================================================
+  build-kernel:
+    name: Build kernel (${{ matrix.kernel }})
+    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        kernel: [rt]
+
+    # Same honestly-unmeasured estimate as build.yml's build-kernel: cold =
+    # cross-toolchain (~1h) + stage-1 initramfs (~30 min) + one kernel build;
+    # 240 is ~2x that. Re-derive from real runs once they exist.
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build the kernel variant
+        uses: ./.github/actions/buildroot-build
+        with:
+          variant: ${{ matrix.kernel }}
+          run-legal-info: "true"
+
+      # Best-effort overview, mirroring build.yml's kernel leg: every fact
+      # guarded, a missing one never fails the build. Uniqueness-guarded
+      # linux-[0-9]* glob for the same reasons documented there.
+      - name: Kernel build overview (job summary)
+        env:
+          KERNEL: ${{ matrix.kernel }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -u
+          kver=$(basename "$(ls -d "output-$KERNEL"/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
+          rt="n/a"
+          trees=(output-"$KERNEL"/build/linux-[0-9]*/)
+          if [ "${#trees[@]}" -eq 1 ] && [ -d "${trees[0]}" ]; then
+            kcfg="${trees[0]}.config"
+            if [ -f "$kcfg" ]; then
+              grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
+            fi
+          elif [ "${#trees[@]}" -gt 1 ]; then
+            rt="n/a (${#trees[@]} kernel trees -- ambiguous)"
+          fi
+          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
+          {
+            echo "## ⏱️ Kernel variant release build (${KERNEL})"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| PREEMPT_RT | ${rt} |"
+            echo "| zImage_dtb (ships as \`zImage_dtb-${KERNEL}\`) | $(sz "output-$KERNEL/images/zImage_dtb") |"
+            echo ""
+            echo "Kernel-only build; its module tree merges into the shipped linux.img in \`build\`,"
+            echo "and \`zImage_dtb-${KERNEL}\` / \`linux-${KERNEL}.config\` / \`legal-info-${KERNEL}.tar.gz\`"
+            echo "become release assets."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Same uniqueness-guarded staging as build.yml's leg (see the comments
+      # there), plus the FULL legal-info bundle with the same 2 GiB per-asset
+      # guard the main legal-info step documents.
+      - name: Stage the kernel artifact (zImage_dtb, config, modules, legal-info)
+        env:
+          KERNEL: ${{ matrix.kernel }}
+        run: |
+          set -euo pipefail
+          # nullglob so a zero-match glob yields an EMPTY array, keeping the
+          # counts in the guard errors truthful — see build.yml's staging step.
+          shopt -s nullglob
+          mkdir -p kernel-artifact
+          cp "output-$KERNEL/images/zImage_dtb" "kernel-artifact/zImage_dtb-$KERNEL"
+
+          trees=(output-"$KERNEL"/build/linux-[0-9]*/)
+          if [ "${#trees[@]}" -ne 1 ] || [ ! -d "${trees[0]}" ]; then
+            echo "::error::expected exactly one kernel tree at output-$KERNEL/build/linux-[0-9]*/ but found ${#trees[@]} -- cannot stage linux-$KERNEL.config (zero: the build produced no kernel tree; more than one: a stale sibling from a version bump)" >&2
+            exit 1
+          fi
+          cp "${trees[0]}.config" "kernel-artifact/linux-$KERNEL.config"
+
+          mods=(output-"$KERNEL"/target/usr/lib/modules/*/)
+          if [ "${#mods[@]}" -ne 1 ] || [ ! -d "${mods[0]}" ]; then
+            echo "::error::expected exactly one module tree under output-$KERNEL/target/usr/lib/modules/ but found ${#mods[@]} -- cannot stage the modules tar (zero: depmod/target-finalize never ran; more than one: a stale sibling from a version bump)" >&2
+            exit 1
+          fi
+          kver=$(basename "${mods[0]}")
+          printf '%s\n' "$kver" > "kernel-artifact/kver-$KERNEL.txt"
+          tar -czf "kernel-artifact/modules-$KERNEL.tar.gz" -C "output-$KERNEL/target" usr/lib/modules
+
+          if [ ! -d "output-$KERNEL/legal-info" ]; then
+            echo "::error::output-$KERNEL/legal-info does not exist -- did 'make $KERNEL-legal-info' run?" >&2
+            exit 1
+          fi
+          tar czf "kernel-artifact/legal-info-$KERNEL.tar.gz" \
+            --exclude='legal-info/host-sources' \
+            -C "output-$KERNEL" legal-info
+          limit=$((2 * 1024 * 1024 * 1024))
+          size=$(stat -c %s "kernel-artifact/legal-info-$KERNEL.tar.gz")
+          echo "legal-info-$KERNEL.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
+          if [ "$size" -ge "$limit" ]; then
+            echo "::error::legal-info-$KERNEL.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit -- split the source bundle (see the main legal-info step's guard for options)." >&2
+            exit 1
+          fi
+          ls -la kernel-artifact/
+
+      # Named by sha, not ref_name, same as build.yml's kernel artifact: this is
+      # same-run transport, and upload-artifact REJECTS '/' in artifact names —
+      # every branch here is slash-named (feat/…, feature/…), so a ref_name-keyed
+      # name would kill a branch dispatch right here, AFTER the multi-hour kernel
+      # build, and auto-skip `build` with it. Applies to every artifact this run
+      # both writes and reads (see the two other sha-named uploads below); tags
+      # (v*) never contain '/', so tag pushes never cared.
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kernel-${{ matrix.kernel }}-${{ github.sha }}
+          path: kernel-artifact/
+          if-no-files-found: error
+          retention-days: 14
+
+  # ============================================================================
   # build — produces every release asset and the pinned-7za-verified archive,
-  # then hands a single artifact bundle to `publish`.
+  # then hands a single artifact bundle to `publish`. Runs AFTER the kernel
+  # matrix (needs) so it can merge every leg's module tree into linux.img and
+  # stage the leg assets into dist/.
   #
   # NO `container:` — see .github/actions/buildroot-build. A container job cannot
   # reclaim the host's ~30 GB of preinstalled software, and without that reclaim
@@ -129,6 +272,7 @@ jobs:
   # ============================================================================
   build:
     name: Build image + assemble release_YYYYMMDD.7z
+    needs: build-kernel
     runs-on: ubuntu-26.04
 
     # The measured cold main build is 3h19m (~199 min; run 29300460591), plus
@@ -191,10 +335,8 @@ jobs:
       # the TAGGED COMMIT's UTC date -- fixed per commit, so re-running a tag
       # reproduces the same version rather than silently minting a new one.
       # $GITHUB_ENV so every later step (including the build action) inherits it.
-      # Override by pre-setting MISTER_VERSION in BOTH build jobs' env (this job
-      # AND build-rt) — publish cross-checks that their derived dates agree and
-      # fails on mismatch, so an override applied to only one job wastes both
-      # ~3h builds before dying at publish.
+      # This is the ONLY job that derives it: the kernel legs bake nothing (no
+      # rootfs), so there is no second copy to keep in lockstep anymore.
       - name: Derive release version (YYMMDD) from the tagged commit
         run: |
           set -eu
@@ -205,6 +347,35 @@ jobs:
           esac
           echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
           echo "Release version (YYMMDD) = $v  ->  /MiSTer.version, release_20${v}.7z, db.json"
+
+      # The kernel legs' artifacts: module trees for the overlay (next step),
+      # kernel/config/legal-info files staged into dist/ further down.
+      - name: Download kernel-variant artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: kernel-*-${{ github.sha }}
+          path: kernel-artifacts
+          merge-multiple: true
+
+      # Same mechanism, same comments as build.yml's step of the same name: the
+      # main defconfig's BR2_ROOTFS_OVERLAY folds this directory into the one
+      # shipped linux.img at target-finalize.
+      - name: Populate the extra-modules overlay from the kernel legs
+        run: |
+          set -euo pipefail
+          mkdir -p work/extra-modules-overlay
+          shopt -s nullglob
+          tars=(kernel-artifacts/modules-*.tar.gz)
+          if [ "${#tars[@]}" -eq 0 ]; then
+            echo "::error::no modules-*.tar.gz found under kernel-artifacts/ -- the build-kernel legs uploaded nothing this job can merge" >&2
+            exit 1
+          fi
+          for t in "${tars[@]}"; do
+            echo "unpacking ${t##*/} into work/extra-modules-overlay/"
+            tar -xzf "$t" -C work/extra-modules-overlay
+          done
+          echo "--- overlay module trees ---"
+          find work/extra-modules-overlay/usr/lib/modules -mindepth 1 -maxdepth 1 -type d | sort
 
       # The shared recipe (disk reclaim, caches, apt, defconfig, `make all`).
       # p7zip-full is this job's own addition -- needed to CREATE
@@ -227,6 +398,23 @@ jobs:
           extra-apt-packages: p7zip-full genimage mtools dosfstools xz-utils jq
           run-legal-info: "true"
 
+      # Same silent-overlay-miss guard as build.yml: a variant kernel shipped
+      # without its modules in linux.img must fail HERE, not on a device.
+      - name: Assert every kernel-variant module tree merged into the image
+        run: |
+          set -euo pipefail
+          rc=0
+          for f in kernel-artifacts/kver-*.txt; do
+            kver=$(tr -d '[:space:]' < "$f")
+            if [ -d "output/target/usr/lib/modules/$kver" ]; then
+              echo "merged: $kver (${f##*/})"
+            else
+              echo "::error::kernel-variant module tree '$kver' (${f##*/}) is MISSING from output/target/usr/lib/modules/ -- the extra-modules overlay did not reach target-finalize" >&2
+              rc=1
+            fi
+          done
+          exit "$rc"
+
       # Non-hardware parity suite against the EXACT rootfs about to be shipped
       # (P3.12) -- the SAME bar build.yml applies to every master push, re-run
       # here because a v* tag may point at a commit build.yml never validated
@@ -248,7 +436,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ci-tests-results-${{ github.ref_name }}
+          # sha-named (matches build.yml): ref_name can carry '/' on a branch
+          # dispatch, which upload-artifact rejects — see the kernel artifact's
+          # naming comment in build-kernel.
+          name: ci-tests-results-${{ github.sha }}
           path: output/ci-tests-results.txt
           if-no-files-found: warn
           retention-days: 14
@@ -263,13 +454,15 @@ jobs:
         run: scripts/check-abi.sh output
 
       ##########################################################################
-      # Assemble the flat `dist/` directory -- these seven filenames are
-      # EXACTLY the seven release assets TASKS.md P4.4 names, no more, no
-      # less. Everything from here on writes into dist/ or reads from it.
-      # (The RT beta's five -rt-suffixed assets are NOT among them: those are
-      # staged by the parallel `build-rt` job into its own dist-rt/ bundle and
-      # only merged with these in `publish` — this job's dist/ stays exactly
-      # the seven, plus the separately-contracted sdcard images below.)
+      # Assemble the flat `dist/` directory. The SEVEN main filenames staged
+      # first are EXACTLY the seven release assets TASKS.md P4.4 names — the
+      # Downloader-contract set, untouched. On top of them dist/ carries, per
+      # kernel variant, three -<name>-suffixed extras taken from the leg
+      # artifacts (zImage_dtb-<name>, linux-<name>.config,
+      # legal-info-<name>.tar.gz — ADR 0021 as amended; for today's matrix
+      # that is the three -rt files), plus the separately-contracted sdcard
+      # images below. Everything from here on writes into dist/ or reads from
+      # it; `publish` uploads it verbatim.
       ##########################################################################
 
       - name: Stage dist/ and copy the two image assets
@@ -326,6 +519,18 @@ jobs:
             echo "::error::legal-info.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit. The package set has outgrown a single source bundle -- split it (e.g. sources/ as its own asset, or publish sources to a separate host and reference them from manifest.csv)." >&2
             exit 1
           fi
+
+      # The per-variant release extras, straight from the leg artifacts (the
+      # legs already applied the uniqueness guards and the legal-info size
+      # guard). Copied by glob so a future matrix entry needs no edit here;
+      # each glob must match at least once — zero matches means the download
+      # step above silently changed shape, and cp's own failure catches that.
+      - name: Stage kernel-variant assets into dist/
+        run: |
+          set -eu
+          cp -f kernel-artifacts/zImage_dtb-* kernel-artifacts/linux-*.config \
+                kernel-artifacts/legal-info-*.tar.gz dist/
+          ls -la dist/
 
       ##########################################################################
       # /MiSTer.version -> RELEASE_DATE. LOAD-BEARING, read the comment.
@@ -570,12 +775,19 @@ jobs:
           done
           echo "Archive layout matches docs/downloader-contract.md / docs/reference-materials.md."
 
+      # Generated ONCE, here, covering the main seven's hashables AND the
+      # kernel-variant extras — every asset lives in this job's dist/ now, so
+      # there is no publish-side append step (the old two-image design needed
+      # one because the RT bundle first met the main bundle in publish).
+      # The variant files are globbed for the same future-matrix reason as the
+      # staging step above.
       - name: Generate SHA256SUMS
         env:
           RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
         run: |
           set -eu
-          ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz > SHA256SUMS )
+          ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz \
+              zImage_dtb-* linux-*.config legal-info-*.tar.gz > SHA256SUMS )
           cat dist/SHA256SUMS
 
       ##########################################################################
@@ -583,11 +795,13 @@ jobs:
       #
       # SEPARATE, standalone flashable assets — deliberately NOT inside
       # release_YYYYMMDD.7z and NEVER referenced by db.json. They therefore do
-      # not touch the SHA256SUMS list above (the seven-asset Downloader contract)
-      # nor the pinned-ARM-7za path; the steps here run AFTER all of that so the
-      # already-fetched+verified stock_release.7z can be reused instead of
-      # re-downloading ~90 MB. scripts/mk-sdcard.sh does its own installer
-      # initramfs build + kernel relink off the completed `make all`.
+      # not touch the SHA256SUMS list above (the Downloader-contract seven plus
+      # the kernel-variant extras) nor the pinned-ARM-7za path; the steps here
+      # run AFTER all of that so the already-fetched+verified stock_release.7z
+      # can be reused instead of re-downloading ~90 MB. scripts/mk-sdcard.sh
+      # does its own installer initramfs build + kernel relink off the
+      # completed `make all`, and ships the RT kernel from the leg artifact
+      # (MISTER_RT_ZIMAGE below) on the card's FAT payload.
       ##########################################################################
 
       # Reuse the stock archive verified above by seeding
@@ -602,10 +816,14 @@ jobs:
       # ~30 min kernel relink, so a needless second one risks the job's ~6 h cap.
       # On a tag push (no inputs) and on a dispatch with the input off, `!inputs.
       # build_full_sdcard` is true, so the minimal image builds as normal.
+      # MISTER_RT_ZIMAGE: mk-sdcard.sh ships the RT kernel on the card's FAT
+      # payload as zImage_dtb-rt (one flashable card, both kernels); in this
+      # job the RT kernel is the leg artifact, not a local output-rt/ build.
       - name: Build sdcard.img.xz (minimal installer image)
         if: ${{ !inputs.build_full_sdcard }}
         env:
           STAGE_DIR: ${{ github.workspace }}/output-sdcard-stage
+          MISTER_RT_ZIMAGE: ${{ github.workspace }}/kernel-artifacts/zImage_dtb-rt
         run: |
           set -eu
           mkdir -p "$STAGE_DIR/.fetch-cache"
@@ -629,6 +847,7 @@ jobs:
         if: ${{ inputs.build_full_sdcard }}
         env:
           STAGE_DIR: ${{ github.workspace }}/output-sdcard-stage
+          MISTER_RT_ZIMAGE: ${{ github.workspace }}/kernel-artifacts/zImage_dtb-rt
           SDCARD_CORES: "1"
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -706,218 +925,29 @@ jobs:
           echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true
           echo "--- dist/ ---"; ls -la dist/ 2>/dev/null || true
 
+      # sha-named, not ref_name: `publish` (same run, same sha) is the only
+      # consumer, and ref_name can carry '/' on a branch dispatch, which
+      # upload-artifact rejects — see the kernel artifact's naming comment.
       - name: Upload release asset bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-dist-${{ github.ref_name }}
+          name: release-dist-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
 
   # ============================================================================
-  # build-rt — the PREEMPT_RT / Linux-7.2 beta variant (docs/rt-beta-kernel.md,
-  # ADR 0021), built in PARALLEL with `build` (no needs between them) from the
-  # same tagged commit, and handed to `publish` as its own dist-rt/ bundle:
-  # linux-rt.img, zImage_dtb-rt, buildroot-rt.config, linux-rt.config,
-  # legal-info-rt.tar.gz. Separate first-class assets — never inside
-  # release_YYYYMMDD.7z, never referenced by db.json (pushing RT bytes at every
-  # Downloader-subscribed device is a human decision, OPEN in ADR 0021) — so
-  # nothing here touches the pinned-7za path or the seven-asset contract above.
-  #
-  # Runs on the opt-in full-sdcard dispatch too, on purpose: publish's
-  # `gh release upload --clobber` makes the re-upload idempotent, and one
-  # unconditional job beats a needs()-guard dance for a rare manual path.
-  #
-  # NO `container:` — see .github/actions/buildroot-build (same reason as build).
-  # ============================================================================
-  build-rt:
-    name: Build RT kernel + image set (PREEMPT_RT beta, Linux 7.2)
-    runs-on: ubuntu-26.04
-
-    # A cold RT build is a cold main build (3h19m measured) minus the initramfs
-    # stage, and this job has none of `build`'s 7z/sdcard assembly on top — so
-    # build.yml's 300-minute ceiling reasoning applies unchanged.
-    timeout-minutes: 300
-
-    outputs:
-      release_date: ${{ steps.mister_version.outputs.release_date }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      # DUPLICATE of the primary copy in `build` (10 lines; a reusable workflow
-      # would be overkill for them) — keep the two in lockstep. Both derive from
-      # the same tagged commit, and `publish` cross-checks that their
-      # release_date outputs agree, so drift fails loudly rather than silently.
-      - name: Derive release version (YYMMDD) from the tagged commit
-        run: |
-          set -eu
-          v="${MISTER_VERSION:-$(TZ=UTC git show -s --format=%cd --date=format-local:%y%m%d HEAD)}"
-          case "$v" in
-            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
-            *) echo "::error::derived MISTER_VERSION '$v' is not 6 digits YYMMDD" >&2; exit 1 ;;
-          esac
-          echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
-          echo "Release version (YYMMDD) = $v  ->  /MiSTer.version (RT variant)"
-
-      # The shared recipe, RT variant (`make rt` into output-rt/, RT-namespaced
-      # caches). No extra-apt-packages: this job assembles no 7z and no sdcard.
-      - name: Build the RT variant
-        uses: ./.github/actions/buildroot-build
-        with:
-          variant: rt
-          run-legal-info: "true"
-
-      # ABI/SONAME contract on the EXACT RT rootfs about to be shipped
-      # (scripts/check-abi.sh is variant-safe; it takes the output dir).
-      # scripts/ci-tests.sh is deliberately NOT run: it hardcodes the
-      # output/ + output-initramfs/ layout, which the rt variant does not have.
-      - name: ABI / SONAME parity checker (P2.2, RT rootfs)
-        run: scripts/check-abi.sh output-rt
-
-      # Same debugfs extraction + byte-shape validation as `build` (read the
-      # LOAD-BEARING comment there): proves post-build.sh baked the SAME
-      # MISTER_VERSION into the RT image. The release_date output feeds the
-      # publish job's main-vs-RT cross-check.
-      - name: Extract and validate /MiSTer.version from the built RT image
-        id: mister_version
-        run: |
-          set -eu
-          workdir=$(mktemp -d ./mister-version.XXXXXX)
-          debugfs -R "rdump /MiSTer.version ${workdir}" output-rt/images/linux.img >/dev/null 2>"${workdir}.debugfs.log" || true
-          verfile="${workdir}/MiSTer.version"
-          if [ ! -f "$verfile" ]; then
-            echo "::error::debugfs could not extract /MiSTer.version from output-rt/images/linux.img" >&2
-            sed 's/^/    /' "${workdir}.debugfs.log" >&2 || true
-            exit 1
-          fi
-          n=$(wc -c < "$verfile")
-          if [ "$n" -ne 6 ]; then
-            echo "::error::/MiSTer.version is ${n} bytes, expected exactly 6 (docs/downloader-contract.md §3/§12)" >&2
-            exit 1
-          fi
-          last_byte_hex=$(tail -c1 "$verfile" | od -An -tx1 | tr -d ' ')
-          if [ "$last_byte_hex" = "0a" ]; then
-            echo "::error::/MiSTer.version ends in a newline -- this permanently breaks the Downloader's version-equality check (docs/downloader-contract.md §3)" >&2
-            exit 1
-          fi
-          yymmdd=$(cat "$verfile")
-          case "$yymmdd" in
-            [0-9][0-9][0-9][0-9][0-9][0-9]) : ;;
-            *)
-              echo "::error::/MiSTer.version content '$yymmdd' is not 6 ASCII digits" >&2
-              exit 1
-              ;;
-          esac
-          if [ "$yymmdd" != "${MISTER_VERSION:-}" ]; then
-            echo "::error::built /MiSTer.version '$yymmdd' != requested MISTER_VERSION '${MISTER_VERSION:-<unset>}' -- post-build.sh did not honor the override" >&2
-            exit 1
-          fi
-          release_date="20${yymmdd}"
-          echo "release_date=${release_date}" >> "$GITHUB_OUTPUT"
-          echo "Resolved RT /MiSTer.version='${yymmdd}' -> RELEASE_DATE=${release_date}"
-
-      # dist-rt/ — the five RT release assets, -rt-suffixed so they can never
-      # collide with (or be mistaken for) the main seven once publish merges
-      # the two bundles into one dist/. `zImage_dtb-rt` is the exact on-device
-      # name docs/rt-beta-kernel.md documents for u-boot.txt's bootimage= line.
-      # Same linux-*/ glob + missing-dir guard as `build`'s linux.config step.
-      - name: Stage dist-rt/ (RT images + configs, -rt names)
-        run: |
-          set -eu
-          mkdir -p dist-rt
-          cp -f output-rt/images/linux.img dist-rt/linux-rt.img
-          cp -f output-rt/images/zImage_dtb dist-rt/zImage_dtb-rt
-          cp -f output-rt/.config dist-rt/buildroot-rt.config
-          kernel_cfg_dir=$(ls -d output-rt/build/linux-*/ 2>/dev/null | head -1)
-          if [ -z "$kernel_cfg_dir" ]; then
-            echo "::error::could not locate output-rt/build/linux-*/ for linux-rt.config" >&2
-            exit 1
-          fi
-          cp -f "${kernel_cfg_dir}.config" dist-rt/linux-rt.config
-          ls -la dist-rt/
-
-      # This DOES carry sources/ (host-sources/ excluded, same as main): a
-      # release distributes the RT kernel and rootfs binaries, so the GPL
-      # accompanying-source obligation applies to the 7.2 kernel and the RT
-      # package set exactly as it does to main's — see the fuller reasoning on
-      # `build`'s legal-info step. Same 2 GiB per-asset guard, same reason.
-      - name: Archive RT legal-info as legal-info-rt.tar.gz
-        run: |
-          set -eu
-          if [ ! -d output-rt/legal-info ]; then
-            echo "::error::output-rt/legal-info does not exist -- did 'make rt-legal-info' run?" >&2
-            exit 1
-          fi
-          tar czf dist-rt/legal-info-rt.tar.gz --exclude='legal-info/host-sources' -C output-rt legal-info
-          limit=$((2 * 1024 * 1024 * 1024))
-          size=$(stat -c %s dist-rt/legal-info-rt.tar.gz)
-          echo "legal-info-rt.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
-          if [ "$size" -ge "$limit" ]; then
-            echo "::error::legal-info-rt.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit. Split the source bundle (see the main legal-info step's guard for options)." >&2
-            exit 1
-          fi
-
-      # Mirrors the main job's overview, RT-shaped: sizes, kernel version,
-      # PREEMPT_RT confirmation (hard-asserted by the Makefile's `rt` target;
-      # surfaced here), and the beta caveat a human should see before publish.
-      - name: RT release overview (job summary)
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -u
-          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
-          kver=$(basename "$(ls -d output-rt/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
-          kcfg=$(ls -d output-rt/build/linux-*/ 2>/dev/null | head -1)".config"
-          rt="n/a"
-          if [ -f "$kcfg" ]; then
-            grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
-          fi
-          {
-            echo "## ⏱️ RT release build summary (beta)"
-            echo ""
-            echo "| Fact | Value |"
-            echo "|---|---|"
-            echo "| Tag | \`${TAG}\` |"
-            echo "| Kernel | \`${kver:-n/a}\` |"
-            echo "| PREEMPT_RT | ${rt} |"
-            echo "| linux-rt.img | $(sz dist-rt/linux-rt.img) |"
-            echo "| zImage_dtb-rt | $(sz dist-rt/zImage_dtb-rt) |"
-            echo "| legal-info-rt.tar.gz | $(sz dist-rt/legal-info-rt.tar.gz) |"
-            echo ""
-            echo "**Beta status** (docs/rt-beta-kernel.md): never booted on hardware yet. Selected on-device via \`bootimage=/linux/zImage_dtb-rt\` in u-boot.txt; \`linux-rt.img\` must be flashed too if kernel modules are needed (the main \`linux.img\` only carries 6.18 modules). Not inside \`release_YYYYMMDD.7z\`, not referenced by db.json (ADR 0021)."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report disk & cache usage
-        if: always()
-        run: |
-          echo "--- disk free ---"; df -h .
-          echo "--- dl/ ---"; du -sh dl 2>/dev/null || true
-          echo "--- output-rt/host ---"; du -sh output-rt/host 2>/dev/null || true
-          echo "--- output-rt (total) ---"; du -sh output-rt 2>/dev/null || true
-          echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true
-          echo "--- dist-rt/ ---"; ls -la dist-rt/ 2>/dev/null || true
-
-      - name: Upload RT release asset bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-dist-rt-${{ github.ref_name }}
-          path: dist-rt/
-          if-no-files-found: error
-          retention-days: 14
-
-  # ============================================================================
-  # publish — attests provenance for the shipped image assets (both variants)
-  # and creates the GitHub Release. A separate job on purpose: it needs write
+  # publish — attests provenance for the shipped image/kernel binaries and
+  # creates the GitHub Release. A separate job on purpose: it needs write
   # scopes (contents, id-token, attestations) that the build jobs must NOT
   # have, and it needs none of their disk reclaim or apt setup — `gh` and
   # actions/attest-build-provenance's OIDC/Sigstore flow just work on a bare
-  # GitHub-hosted Ubuntu runner.
+  # GitHub-hosted Ubuntu runner. `needs: build` covers the kernel matrix
+  # transitively (build itself needs build-kernel).
   # ============================================================================
   publish:
     name: Attest provenance + create GitHub Release
-    needs: [build, build-rt]
+    needs: build
     runs-on: ubuntu-26.04
 
     # Only ever create a Release for a TAG. On a tag push this is always true, so
@@ -932,62 +962,32 @@ jobs:
       attestations: write     # publish the attestation to this repo
 
     steps:
-      # The two bundles merge into one flat dist/: download-artifact unpacks
-      # both into the same path, and the RT set is -rt-suffixed by construction,
-      # so the fileset union is collision-free.
+      # ONE bundle: `build` stages everything — the main seven, the kernel-
+      # variant extras, the sdcard image(s), and the complete SHA256SUMS — so
+      # there is nothing to merge or append here anymore (the old two-image
+      # design downloaded a second RT bundle and appended its hashes at this
+      # point; one image-building job means one bundle and one hash list).
       - name: Download release asset bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-dist-${{ github.ref_name }}
-          path: dist
-
-      - name: Download RT release asset bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-dist-rt-${{ github.ref_name }}
+          name: release-dist-${{ github.sha }}
           path: dist
 
       - name: List downloaded assets
         run: ls -la dist/
 
-      # Both build jobs derived MISTER_VERSION independently from the SAME
-      # tagged commit, so inequality here can only mean a build/tooling bug
-      # (one job checked out or resolved something different). Fail loudly
-      # before anything is attested or uploaded under a wrong date.
-      - name: Cross-check main vs RT release dates
-        env:
-          MAIN_DATE: ${{ needs.build.outputs.release_date }}
-          RT_DATE: ${{ needs.build-rt.outputs.release_date }}
-        run: |
-          set -eu
-          if [ "$MAIN_DATE" != "$RT_DATE" ]; then
-            echo "::error::release_date mismatch: build derived '$MAIN_DATE' but build-rt derived '$RT_DATE' -- both come from the same tagged commit, so this is a build bug, not a data race" >&2
-            exit 1
-          fi
-          echo "release_date agrees across build and build-rt: $MAIN_DATE"
-
-      # Appended HERE, not in either build job, because the two halves are
-      # produced by parallel jobs and this is the first place both exist on one
-      # disk. The main seven-asset block `build` generated is left byte-
-      # untouched above the appended lines — the Downloader-contract hashes stay
-      # exactly as that job wrote them.
-      - name: Append RT assets to SHA256SUMS
-        run: |
-          set -eu
-          ( cd dist && sha256sum linux-rt.img zImage_dtb-rt buildroot-rt.config linux-rt.config legal-info-rt.tar.gz >> SHA256SUMS )
-          cat dist/SHA256SUMS
-
-      # Attests ONLY the shipped image/kernel binaries -- both variants', per
-      # TASKS.md P4.4's scope extended by ADR 0021 -- not the whole dist/
-      # directory (SHA256SUMS/legal-info*/the .config files are build metadata,
-      # not the shipped bits).
-      - name: Attest build provenance for the image assets (main + RT)
+      # Attests ONLY the shipped image/kernel binaries -- per TASKS.md P4.4's
+      # scope extended by ADR 0021 -- not the whole dist/ directory
+      # (SHA256SUMS/legal-info*/the .config files are build metadata, not the
+      # shipped bits). zImage_dtb-rt is a kernel binary a human boots; the one
+      # linux.img now carries every variant's modules, so attesting it covers
+      # the RT modules too.
+      - name: Attest build provenance for the image assets
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             dist/linux.img
             dist/zImage_dtb
-            dist/linux-rt.img
             dist/zImage_dtb-rt
 
       # Created as a DRAFT, deliberately: this project's stated posture
@@ -1003,6 +1003,21 @@ jobs:
       - name: Create draft GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # gh resolves the target repo from a git remote or $GH_REPO ONLY — it
+          # does NOT consult $GITHUB_REPOSITORY. This publish job deliberately has
+          # no actions/checkout (nothing here needs the source tree), so the CWD
+          # ($GITHUB_WORKSPACE) is an empty non-git dir. Without GH_REPO every
+          # `gh release view/create/upload` below dies at repo resolution with
+          # "failed to run git: fatal: not a git repository" BEFORE it reaches the
+          # API: the upsert `if gh release view` then swallows that as a false
+          # condition (set -e is inert inside `if`) and misroutes into the else
+          # branch, whose `gh release create` fails identically and aborts the
+          # step under set -eu — a green ~9h build produces NO release. GH_REPO
+          # hands gh the base repo directly, no checkout needed. NOTE: this
+          # checkout-less shape is inherited byte-for-byte from origin/master's
+          # publish job (the bug pre-dates this rework); fixed here rather than
+          # carried forward.
+          GH_REPO: ${{ github.repository }}
           RELEASE_DATE: ${{ needs.build.outputs.release_date }}
           TAG: ${{ github.ref_name }}
         run: |
@@ -1013,10 +1028,11 @@ jobs:
           # variant only when the opt-in dispatch input was set. Attach whichever
           # the build job actually staged into dist/.
           #
-          # The five RT assets (ADR 0021) are listed UNconditionally, unlike the
-          # sdcard pair: build-rt runs on every trigger that reaches this job,
-          # so a missing RT file is a bug that must fail this upload loudly, not
-          # be papered over by an existence check.
+          # The three RT assets (ADR 0021 as amended) are listed
+          # UNconditionally, unlike the sdcard pair: the build-kernel matrix
+          # runs on every trigger that reaches this job, so a missing RT file
+          # is a bug that must fail this upload loudly, not be papered over by
+          # an existence check.
           assets=(
             dist/"release_${RELEASE_DATE}.7z"
             dist/linux.img
@@ -1025,9 +1041,7 @@ jobs:
             dist/buildroot.config
             dist/linux.config
             dist/legal-info.tar.gz
-            dist/linux-rt.img
             dist/zImage_dtb-rt
-            dist/buildroot-rt.config
             dist/linux-rt.config
             dist/legal-info-rt.tar.gz
           )
@@ -1035,7 +1049,7 @@ jobs:
           [ -f dist/sdcard-full.img.xz ] && assets+=(dist/sdcard-full.img.xz)
           notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json.
 
-          **PREEMPT_RT beta (Linux 7.2-rc3):** the \`*-rt\` assets are a separately compiled real-time kernel variant (docs/rt-beta-kernel.md, ADR 0021) — never referenced by db.json, so the Downloader will not offer it. Opt in on-device by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt; if you need kernel modules on RT, flash \`linux-rt.img\` too (the main \`linux.img\` only carries 6.18 modules). Status: not yet validated on hardware."
+          **PREEMPT_RT beta (Linux 7.2-rc3):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; \`legal-info-rt.tar.gz\` its GPL source bundle. The sdcard installer image also carries \`zImage_dtb-rt\` on its FAT payload. Status: not yet validated on hardware."
           # Upsert, not create-only: a tagged push already created this draft, so
           # the opt-in full-sdcard dispatch (which runs AGAINST that existing tag)
           # must ADD sdcard-full.img.xz to the draft rather than fail with an
@@ -1060,7 +1074,7 @@ jobs:
           {
             echo "## 📦 Draft release created"
             echo ""
-            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\`, \`zImage_dtb\`, \`linux-rt.img\` and \`zImage_dtb-rt\`. The five \`*-rt\` assets are the PREEMPT_RT beta (ADR 0021) — separate downloads, never in the 7z, never in db.json."
+            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\`, \`zImage_dtb\` and \`zImage_dtb-rt\`. The three \`*-rt\` assets are the PREEMPT_RT beta kernel (ADR 0021 as amended — its MODULES ride inside the one \`linux.img\`) — separate downloads, never in the 7z, never in db.json."
             echo ""
             echo "> ⚠️ **This is a draft.** It is not public, and db.json is **not** published while it stays a draft."
             echo "> Clicking **Publish release** — whether as a full release *or* a pre-release — fires \`publish-db.yml\`, which regenerates and publishes db.json to opted-in devices. **The pre-release flag does not prevent that** (the guard there checks draft, not pre-release). For a smoke test, leave it a draft and delete it when done."
@@ -1076,11 +1090,11 @@ jobs:
             1. gh release view "$TAG" --json isDraft,assets -- confirm the expected assets are
                ALL present (an enumerated list, not a count -- the old "all 7" predated the
                sdcard and RT assets): release_${RELEASE_DATE}.7z, linux.img, zImage_dtb,
-               SHA256SUMS, buildroot.config, linux.config, legal-info.tar.gz, linux-rt.img,
-               zImage_dtb-rt, buildroot-rt.config, linux-rt.config, legal-info-rt.tar.gz,
-               sdcard.img.xz (and sdcard-full.img.xz only after an opt-in full dispatch).
+               SHA256SUMS, buildroot.config, linux.config, legal-info.tar.gz, zImage_dtb-rt,
+               linux-rt.config, legal-info-rt.tar.gz, sdcard.img.xz (and sdcard-full.img.xz
+               only after an opt-in full dispatch).
             2. gh attestation verify dist/linux.img --owner ${{ github.repository_owner }} (and
-               zImage_dtb, linux-rt.img, zImage_dtb-rt).
+               zImage_dtb, zImage_dtb-rt).
             3. Byte-compare the draft release's release_${RELEASE_DATE}.7z member list against
                docs/downloader-contract.md / docs/reference-materials.md by hand once, independent
                of this workflow's own self-check above.

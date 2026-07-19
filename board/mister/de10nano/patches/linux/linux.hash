@@ -1,4 +1,6 @@
-# Kernel tarball hash for the pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE.
+# Kernel tarball hashes for the pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUEs:
+# the main defconfig's 6.18.x release, and the RT variant fragment's 7.2-rc
+# cgit snapshot (configs/mister_rt.fragment — ADR 0021).
 #
 # WHY THIS FILE EXISTS
 # Buildroot 2026.02.3 resolves the kernel's hash file to `linux/linux.hash`
@@ -12,19 +14,40 @@
 #
 # That silently defeats G5 (pinned kernel + hash). pkg-patch-hash-dirs also
 # searches $(BR2_GLOBAL_PATCH_DIR)/<pkg>/, which is why this file is here and
-# why the defconfig sets BR2_GLOBAL_PATCH_DIR.
+# why both defconfigs set BR2_GLOBAL_PATCH_DIR.
 #
-# WHERE THIS HASH COMES FROM -- read before changing it.
+# WHERE THE 6.18.38 HASH COMES FROM -- read before changing it.
 # Transcribed from kernel.org's PGP-signed release manifest:
 #
 #     https://cdn.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
 #
-# That signed file is the ONLY source of truth. Do NOT produce this value by
-# downloading the tarball and running sha256sum on it -- that is circular and
-# certifies nothing. Independently corroborated against Buildroot's own
-# linux/from-6.17/linux.hash, which agrees byte-for-byte.
+# That signed file is the ONLY source of truth for RELEASE tarballs. Do NOT
+# produce this value by downloading the tarball and running sha256sum on it --
+# that is circular and certifies nothing. Independently corroborated against
+# Buildroot's own linux/from-6.17/linux.hash, which agrees byte-for-byte.
 #
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
 sha256  ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045  linux-6.18.38.tar.xz
+
+# WHERE THE 7.2-rc3 HASH COMES FROM -- weaker provenance, stated honestly.
+# kernel.org publishes NO signed manifest for -rc kernels: sha256sums.asc
+# covers releases only, and linux/linux.mk fetches "-rc" versions as
+# cgit-generated snapshots from https://git.kernel.org/torvalds/t/ (hence
+# .tar.gz, not .tar.xz). Upstream Buildroot handles that by exempting the file
+# via BR_NO_CHECK_HASH_FOR -- but BR2_DOWNLOAD_FORCE_CHECK_HASHES (kept, per
+# G5) EMPTIES that exemption list (package/pkg-download.mk:119), so without a
+# line here every RT variant build fails closed at the kernel download with
+# "No hash found for linux-7.2-rc3.tar.gz".
+#
+# This value is therefore transcribed from a verified local download
+# (2026-07-18: 265,621,151 bytes; the tarball extracted cleanly and its
+# top-level Makefile reads VERSION=7 PATCHLEVEL=2 EXTRAVERSION=-rc3) -- the
+# circularity the release-hash rule above forbids, accepted here because no
+# signed source exists to transcribe from. It still buys TOFU pinning: every
+# later download must be byte-identical to the inspected one. ACCEPTED RISK:
+# cgit regenerating the snapshot with different compression bytes would fail
+# this check spuriously -- that failure is closed, not open, and an -rc pin is
+# short-lived by nature (the next version bump replaces this line anyway).
+sha256  3f23996e52dbc7a8d8a8729c606775a7bd8e1f5194672086b6f381121742e0bd  linux-7.2-rc3.tar.gz

@@ -21,21 +21,30 @@ RT cannot be a boot-time toggle on ARM32 (no `PREEMPT_DYNAMIC`/static-calls), so
 it must be a **separately compiled kernel image** — shipped as `zImage_dtb-rt`
 alongside the main 6.18 image and selected on-device (§5).
 
-## 2. The "thin shim" structure — no duplicated Buildroot config
+## 2. Structure — a kernel-only base defconfig plus a per-variant fragment
 
-The main 6.18 build is untouched. The variant is the base defconfig plus a small
-fragment, layered at build time — mirroring the existing initramfs second-build.
+The main 6.18 image build is untouched. Since ADR 0021's **2026-07-18
+amendment** the variant is a **kernel-only** Buildroot build (no userland): the
+shared base `configs/mister_kernel_defconfig` — the main defconfig's toolchain
+and kernel stanzas mirrored, `BR2_TARGET_ROOTFS_TAR` only, no packages — with
+the per-variant fragment layered on at build time.
 
 | File | Role |
 |---|---|
-| `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → 7.2-rc3 via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment; disable the 3 OOT WiFi packages). Merged onto `mister_de10nano_defconfig` via `merge_config.sh`. |
-| `board/mister/de10nano/linux-rt.fragment` | Kernel-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
+| `configs/mister_kernel_defconfig` | The kernel-only base, shared by every kernel variant. Its toolchain/kernel stanzas are a **copy** of `mister_de10nano_defconfig`'s, held in lockstep by `scripts/check-kernel-defconfig-sync.sh` (CI runs it before every kernel build and as a lint). With no fragment it builds the main 6.18 kernel. |
+| `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → 7.2-rc3 via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment). Merged onto `mister_kernel_defconfig` via `merge_config.sh`. |
+| `board/mister/de10nano/linux-rt.fragment` | **Kernel**-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` — do not confuse the two fragment layers (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
 | `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` (single source of truth). Applies 28 of 31 patches. |
-| `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/`, reusing the shared toolchain/dl/ccache. The main `output/` is never touched. |
+| `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/` (stage-1 initramfs first — its cpio is embedded into every kernel), reusing the shared dl/ccache; then stages the depmod'd module tree into `work/extra-modules-overlay/`, which the main defconfig's `BR2_ROOTFS_OVERLAY` folds into the ONE shipped `linux.img` at the next `make all`. The main `output/` is never touched by `make rt` itself. |
 
-Nothing is copied: the kernel config is the same `linux.config` + a 2-line
-fragment, and the patch set is symlinks + a `series` file. Editing a shared
-patch or `linux.config` affects both builds automatically.
+The kernel config is the same `linux.config` + a fragment, and the patch set is
+symlinks + a `series` file — editing a shared patch or `linux.config` affects
+both kernels automatically. The one deliberate copy (the base defconfig's
+toolchain/kernel stanzas) is machine-checked, not trusted.
+
+Adding a future kernel variant `foo`: `configs/mister_foo.fragment`, `foo`/
+`foo-clean`/`foo-*` Makefile targets mirroring the `rt` ones, and one entry in
+the CI workflows' `kernel:` matrix list. Everything else derives from the name.
 
 ## 3. Kernel headers / userland ABI — unchanged
 
@@ -43,8 +52,8 @@ patch or `linux.config` affects both builds automatically.
 independent of the kernel *version* being built, so the RT variant's userland is
 still compiled against **6.18 headers** — identical ABI. A 7.2 kernel runs that
 userland fine (Linux never breaks userspace), and `PREEMPT_RT` is UAPI-transparent
-(kernel-internal scheduling/locking; no new syscalls). If you build `rt` as a
-full image, its rootfs is byte-for-byte the main build's userland.
+(kernel-internal scheduling/locking; no new syscalls). There is no separate RT
+userland at all: the RT kernel boots the SAME `linux.img` as the main kernel.
 
 ## 4. WiFi on the beta
 
@@ -52,7 +61,8 @@ The three out-of-tree morrownr drivers (`rtl8812au`, `rtl8814au`, `rtl8821au`)
 **do not build on 7.x**: Linux 7.1 refactored the cfg80211 op-table
 (`net_device*` → `wireless_dev*`), and morrownr's drivers top out at kernel 7.0
 (our pins are already at each repo's HEAD — there is no newer commit to bump to).
-So they are disabled on this variant.
+So this variant has no OOT WiFi modules (the kernel-only base builds no
+packages, and even a 7.x tree could not compile them).
 
 - **RTL8814AU** is recovered via the **in-kernel** `rtw88_8814au` driver (merged
   upstream in Linux 6.16). This is inherited from the shared `linux.config` — the
@@ -62,7 +72,11 @@ So they are disabled on this variant.
 - **RTL8812AU / RTL8821AU** have no clean in-kernel equivalent at their chipsets
   and are simply absent here. A developer testing RT can use ethernet or the
   in-kernel `rtw88`/`rtw89`/`rtl8xxxu` adapters that the base config already ships.
-- `xone` (Xbox controllers) **builds clean on 7.2** and stays enabled.
+- `xone` (Xbox controllers) **compiles clean on 7.2**, but since the 2026-07-18
+  kernel-only restructure the variant build has **no packages**, so no 7.2
+  `xone` (or any other OOT) module ships — the RT kernel's module tree is
+  in-tree-only. Xbox-dongle users testing RT lose xone until a variant
+  OOT-module story exists (open item in ADR 0021's amendment).
 
 If full OOT WiFi on the beta is ever wanted, carry a local
 `#if LINUX_VERSION_CODE >= KERNEL_VERSION(7,1,0)` compat patch (reference:
@@ -72,7 +86,13 @@ version code so it stays inert on the shared 6.18 build.
 ## 5. Build & flash
 
 ```sh
-make rt                       # -> output-rt/images/zImage_dtb  (the RT kernel)
+make rt                       # -> output-rt/images/zImage_dtb (the RT kernel)
+                              #    + its module tree staged into the overlay
+make all                      # -> linux.img now carries BOTH module trees
+# 1. install THAT linux.img on the device first — the normal Linux update
+#    path (replace /media/fat/linux/linux.img): it is the rootfs the RT
+#    module tree lives in, and an older on-device image has only 6.18 modules
+# 2. then put the RT kernel next to it:
 cp output-rt/images/zImage_dtb  /media/fat/linux/zImage_dtb-rt
 ```
 
@@ -84,20 +104,27 @@ Select it on-device with a one-line edit to `/media/fat/linux/u-boot.txt`
 bootimage=/linux/zImage_dtb-rt
 ```
 
-Remove that line to roll back to the stock kernel. The rootfs (`linux.img`) is
-shared — no rootfs change is needed to switch kernels. (Caveat: the RT rootfs's
-*kernel modules* are 7.2's; if you need modules on RT, use the released
-`linux-rt.img` below rather than the main `linux.img`, which only carries 6.18
-modules.)
+Remove that line to roll back to the stock kernel. **Switching needs no rootfs
+flash in either direction** — u-boot.txt is the entire switch — *provided the
+on-device `linux.img` is one built with both trees* (step 1 above; for release
+users, this release's `linux.img`): the ONE `linux.img` carries both kernels'
+module trees (`usr/lib/modules/6.18.38/` and `usr/lib/modules/7.2.0-rc3*/` —
+the second tree is ~5-8 MB in a 512 MiB image with ~268 MB free). Skip step 1
+against an older image and `zImage_dtb-rt` boots with NO 7.2 modules to load:
+WiFi and the rest of the modular driver set silently stay dead, presenting as
+broken peripherals rather than as the missing-module-tree mistake it is.
+There is no `linux-rt.img` anymore.
 
-**CI builds this variant too (ADR 0021).** Every gated `build.yml` run includes
-a `build-rt` job; on push/dispatch it uploads the kernel as the
-`mister-rt-kernel-<sha>` artifact (a single file named `zImage_dtb-rt`) plus a
-`legal-info-rt-<sha>` SBOM. Releases (`release.yml`) ship the full RT set as
-five separate first-class assets: `linux-rt.img`, `zImage_dtb-rt`,
-`buildroot-rt.config`, `linux-rt.config`, `legal-info-rt.tar.gz` — appended to
-`SHA256SUMS`, provenance-attested (the two binaries), and deliberately NOT
-inside `release_YYYYMMDD.7z` nor referenced by db.json.
+**CI builds this variant too (ADR 0021 as amended 2026-07-18).** Every gated
+`build.yml` run includes a `build-kernel` matrix leg for it, which uploads a
+`kernel-rt-<sha>` inter-job artifact (kernel, config, depmod'd modules tar,
+manifest-only SBOM); the `build` job then merges the module tree into the one
+image it ships. Releases (`release.yml`, same shape but serial before the main
+build) ship the RT set as three separate first-class assets: `zImage_dtb-rt`,
+`linux-rt.config`, `legal-info-rt.tar.gz` (the kernel GPL-source bundle) — in
+`SHA256SUMS`, provenance-attested (the kernel binary), carried on the sdcard
+installer's FAT payload as well, and deliberately NOT inside
+`release_YYYYMMDD.7z` nor referenced by db.json.
 
 ## 6. What's verified vs unproven
 
@@ -108,7 +135,8 @@ inside `release_YYYYMMDD.7z` nor referenced by db.json.
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ verified |
 | 28/31 patches apply to 7.2-rc3 | ✅ verified |
 | `xone` compiles on 7.2 | ✅ verified |
-| **Full `make rt` build (kernel links, image builds)** | ⏳ wired into CI (build.yml + release.yml, ADR 0021); **first green run pending** |
+| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ⏳ wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended); **first green run pending** |
+| **Module-tree merge into the one linux.img** | ⏳ wired (extra-modules overlay + CI merge assert); **first green run pending** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
@@ -121,12 +149,15 @@ inside `release_YYYYMMDD.7z` nor referenced by db.json.
    IRQs (expected to *tighten* pacing — measure it).
 3. Optionally re-anchor patches `0030` and `0037` to 7.x and add them to the
    beta `series` (they were dropped only to keep the first build clean).
-4. ~~Wire `zImage_dtb-rt` into `release.yml`~~ **Partially done (ADR 0021):**
-   the RT kernel and image set now ship as separate first-class release assets
-   (§5). Still OPEN: whether `zImage_dtb-rt` should additionally go *inside*
-   `release_YYYYMMDD.7z` / gain a db.json entry — that pushes RT bytes at every
+4. ~~Wire `zImage_dtb-rt` into `release.yml`~~ **Done (ADR 0021, amended
+   2026-07-18):** the RT kernel ships as separate first-class release assets
+   and its modules ride inside the one `linux.img` (§5). Still OPEN: whether
+   `zImage_dtb-rt` should additionally go *inside* `release_YYYYMMDD.7z` /
+   gain a db.json entry — that pushes an RT KERNEL at every
    Downloader-subscribed device and stays a human decision (ADR 0021's open
-   question).
+   question; the amendment notes the modules-in-image change strengthens the
+   eventual case, since a Downloader-updated device would now get kernel and
+   modules coherently).
 
 See also: the RT-feasibility and 7.2-port findings in the project memory / the
 session that produced this scaffold.

@@ -230,12 +230,21 @@ jobs:
 
           newhash=$(echo "$matchline" | awk '{print $1}')
           newline="sha256  ${newhash}  linux-${kver}.tar.xz"
-          oldline=$(grep -m1 '^sha256' "$linuxhash" || true)
+          # Match the RELEASE tarball line SPECIFICALLY (sha256 ... linux-<ver>.tar.xz),
+          # never "the first sha256 line": linux.hash now also carries entries this
+          # step must NOT manage -- e.g. the RT beta's -rc cgit snapshot
+          # (linux-*.tar.gz, no signed manifest exists; see the hash file's own -rc
+          # block for its provenance rules). A first-line match would clobber
+          # whichever entry happened to be on top; the filename-anchored match is
+          # order-independent and leaves foreign lines alone. An RT kernel bump
+          # (configs/mister_rt.fragment) therefore always needs its hash refreshed
+          # BY HAND per the hash file's documented TOFU procedure.
+          oldline=$(grep -m1 -E '^sha256  .*  linux-[0-9][0-9.]*\.tar\.xz$' "$linuxhash" || true)
 
           if [ "$oldline" != "$newline" ]; then
             awk -v newline="$newline" '
               BEGIN { done = 0 }
-              /^sha256/ && !done { print newline; done = 1; next }
+              /^sha256  .*  linux-[0-9][0-9.]*\.tar\.xz$/ && !done { print newline; done = 1; next }
               { print }
             ' "$linuxhash" > "$linuxhash.tmp"
             mv "$linuxhash.tmp" "$linuxhash"

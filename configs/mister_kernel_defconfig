@@ -1,0 +1,123 @@
+# mister_kernel_defconfig — the shared KERNEL-ONLY base for kernel variants
+# (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18).
+#
+# This is NOT a second image. It exists so a kernel variant (`make rt`, and any
+# future sibling) can build a zImage_dtb + a depmod'd module tree in its own
+# O= WITHOUT rebuilding the ~300 MB userland: same toolchain, same kernel
+# stanza, no target packages. The per-variant delta lives in
+# configs/mister_<variant>.fragment, merged on top by the top-level Makefile
+# (same merge_config.sh mechanism the old full-image variant used). With NO
+# fragment merged, this file builds the main 6.18 kernel — which is exactly
+# what makes the lockstep below testable.
+#
+# LOCKSTEP: every BR2_ symbol this file shares with mister_de10nano_defconfig
+# MUST carry the identical value, or the variant kernel is built by a different
+# toolchain / from different sources than the image it plugs into.
+# scripts/check-kernel-defconfig-sync.sh asserts exactly that (CI runs it for
+# every kernel variant before any cache is restored, and build.yml runs it as
+# a lint next to the patch-header lint). Edit the main defconfig's toolchain
+# or kernel stanza -> mirror it here in the same commit, or CI fails in
+# seconds.
+
+# --- Toolchain & arch/ABI — copied from mister_de10nano_defconfig ------------
+# (see that file's header for the full derivation; abi-contract.md §1). The
+# kernel itself does not need C++ (BR2_TOOLCHAIN_BUILDROOT_CXX), but the stanza
+# is mirrored WHOLE on purpose: partial mirroring is how the two toolchains
+# drift. The sync script compares values where a symbol exists in both files
+# AND asserts the toolchain-family name sets (BR2_arm*/BR2_ARM_*/BR2_cortex*/
+# BR2_KERNEL_HEADERS*/BR2_TOOLCHAIN_BUILDROOT_*) match — choice symbols carry
+# their value in the NAME, so dropping or one-sidedly bumping one of these
+# lines fails CI rather than silently narrowing the lockstep.
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+BR2_KERNEL_HEADERS_6_18=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# --- System shape ------------------------------------------------------------
+# Merged /usr, same as the main image: kernel modules physically install under
+# usr/lib/modules/<kver>/ (lib -> usr/lib), which is the exact path the main
+# rootfs uses — the module tree copied out of this build's target/ must line up
+# byte-for-path with where work/extra-modules-overlay/ drops it into the main
+# image, or depmod's indexes point nowhere.
+BR2_ROOTFS_MERGED_USR=y
+
+# No init system, no shell, no BusyBox: this target rootfs is never booted (it
+# exists only to receive the module install + depmod). All THREE lines are
+# needed: init/sh choices default to BusyBox, and BR2_PACKAGE_BUSYBOX is
+# `default y` in its own right (package/busybox/Config.in), so without the
+# explicit not-set it quietly builds anyway — verified by loading this
+# defconfig through kconfig with and without the line.
+BR2_INIT_NONE=y
+BR2_SYSTEM_BIN_SH_NONE=y
+# BR2_PACKAGE_BUSYBOX is not set
+
+# --- Download integrity — same posture as the main defconfig -----------------
+# BR2_GLOBAL_PATCH_DIR is load-bearing even with no packages: it is where
+# Buildroot finds board/mister/de10nano/patches/linux/linux.hash, the ONLY
+# thing that hash-verifies a pinned custom kernel download (see that file's
+# header for why Buildroot's own lookup misses its shipped hashes).
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+
+# --- Reproducibility — same posture as the main defconfig --------------------
+# Not cosmetic even though this rootfs never ships: linux.mk gates
+# KBUILD_BUILD_VERSION/USER/HOST/TIMESTAMP on BR2_REPRODUCIBLE
+# (work/buildroot/linux/linux.mk:169-175), so without it the variant kernel
+# bakes the build machine's real hostname/user/wallclock into its UTS banner —
+# and a release.yml re-run on the same tag (a flow that workflow explicitly
+# supports) would mint a byte-different zImage_dtb-<variant> and SHA256SUMS
+# line, unlike every other shipped binary. As a symbol defined in both files it
+# also falls under check-kernel-defconfig-sync.sh's value comparison for free.
+BR2_REPRODUCIBLE=y
+
+# --- Kernel stanza — mirrored from mister_de10nano_defconfig -----------------
+# Base-without-fragment = the main 6.18 kernel (version, patches, config,
+# compression, DTS — all identical). A variant fragment overrides only what it
+# must (e.g. mister_rt.fragment: version -> 7.2-rc3, patch dir -> the beta
+# subset, one kernel-config fragment). The stage-1 initramfs cpio is embedded
+# by external.mk's LINUX_KCONFIG_FIXUP_CMDS hook exactly as in the main build
+# (it keys on BR2_LINUX_KERNEL=y, not on which defconfig) — which is why the
+# Makefile's kernel-variant targets depend on `initramfs`: without the cpio the
+# kernel kconfig-fixup fails hard, and a variant zImage without it would panic
+# on the FAT root at boot (docs/boot-chain.md I1/I2).
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
+BR2_LINUX_KERNEL_LZ4=y
+BR2_LINUX_KERNEL_ZIMAGE=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"
+
+# --- Host kmod with xz -------------------------------------------------------
+# linux.config sets CONFIG_MODULE_COMPRESS_XZ=y, so the .ko land as .ko.xz and
+# the build-time depmod (LINUX_RUN_DEPMOD, a target-finalize hook) must be able
+# to read them — same line, same reason, as the main defconfig.
+BR2_PACKAGE_HOST_KMOD_XZ=y
+
+# --- Rootfs: tar, and ONLY tar -----------------------------------------------
+# Deliberate, and load-bearing twice over:
+#   1. depmod runs from LINUX_TARGET_FINALIZE_HOOKS (linux.mk), and
+#      target-finalize only runs when at least one rootfs image is built —
+#      tar is the cheapest one there is. Drop this and the module tree ships
+#      WITHOUT modules.dep/modules.alias, i.e. no autoload on device.
+#   2. the tar doubles as the module-transport artifact: CI's build-kernel legs
+#      tar target/usr/lib/modules into the kernel artifact that the main build
+#      job unpacks into work/extra-modules-overlay/.
+# No ext2/no linux.img here — this rootfs is never flashed or shipped, which is
+# also why there is NO BR2_ROOTFS_POST_BUILD_SCRIPT (post-build.sh only bakes
+# /MiSTer.version into a rootfs that ships; this one doesn't).
+BR2_TARGET_ROOTFS_TAR=y
+
+# --- Post-image: zImage_dtb assembly -----------------------------------------
+# Same script, same BR_DIR-relative path idiom as the main defconfig (post-
+# image scripts run with work/buildroot/ as CWD). It cats zImage+DTB into
+# images/zImage_dtb and runs scripts/check-zimage-dtb.sh; its linux.img half
+# self-gates on BR2_TARGET_ROOTFS_EXT2 (absent here), so a kernel-only build
+# gets the kernel artifact and its contract check with nothing else.
+BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"

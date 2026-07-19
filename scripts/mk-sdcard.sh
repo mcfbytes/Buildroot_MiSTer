@@ -4,8 +4,10 @@
 # (`sdcard.img` / `sdcard-full.img`; TASKS.md P5.3, PLAN.md §8, ADR 0017, ADR 0020).
 #
 # This is the ORCHESTRATOR that ties the individually-authored sdcard-image pieces
-# together into one release artifact. It runs AFTER a completed `make all` (it needs
-# the real kernel + rootfs this repo builds) and produces
+# together into one release artifact. It runs AFTER a completed `make rt` THEN
+# `make all` — that order, so `all` folds rt's staged module tree into linux.img
+# (it needs the real kernel + rootfs this repo builds, plus the RT beta
+# kernel shipped on the card as zImage_dtb-rt — or $MISTER_RT_ZIMAGE) and produces
 # `output/images/sdcard.img.xz` (or `output/images/sdcard-full.img.xz` when
 # SDCARD_CORES=1), plus the raw `.img` beside it so `scripts/check-sdcard.sh` can
 # verify the result without a second decompress.
@@ -48,7 +50,8 @@
 #     <stage>/mister-payload/linux/ with OUR linux.img GZIPPED (linux/linux.img.gz --
 #     the installer stream-decompresses it onto the card so the 512 MiB image never
 #     transits the mem=511M RAM; ADR 0020 §3 / installer-overlay/init), overwrite
-#     zImage_dtb with our real one, and lay the INSTALLER zImage_dtb (step 2) at the
+#     zImage_dtb with our real one, add the RT beta kernel as zImage_dtb-rt
+#     (ADR 0021 as amended), and lay the INSTALLER zImage_dtb (step 2) at the
 #     FAT root's own linux/ dir. This reproduces sdcard-payload.md §1 exactly.
 #
 #  5. Build the FAT32 payload filesystem (mkfs.vfat + mcopy -s of the staged
@@ -73,7 +76,9 @@
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
-#   make all                       # prerequisite: the real kernel + rootfs
+#   make rt && make all            # prerequisites: RT kernel FIRST (so `all`
+#                                  # folds its modules into linux.img), then
+#                                  # the main kernel + rootfs
 #   scripts/mk-sdcard.sh           # -> output/images/sdcard.img(.xz)
 #   SDCARD_CORES=1 scripts/mk-sdcard.sh   # -> output/images/sdcard-full.img(.xz)
 #
@@ -124,6 +129,25 @@ readonly INSTALLER_OVERLAY_INIT="$REPO_ROOT/board/mister/de10nano/installer-over
 # --- Our real, Downloader-shipped build outputs (inputs to this script) -----
 readonly OUR_LINUX_IMG="$OUTPUT_DIR/images/linux.img"
 readonly OUR_ZIMAGE_DTB="$OUTPUT_DIR/images/zImage_dtb"
+
+# --- The RT beta kernel (ADR 0021 as amended 2026-07-18) --------------------
+# Ships on the card's mister-payload/linux/ as zImage_dtb-rt, so ONE flashable
+# card carries both kernels (its modules already ride inside our linux.img via
+# the extra-modules overlay — no separate rootfs exists). Default source is a
+# local `make rt`; CI's release job overrides MISTER_RT_ZIMAGE with the
+# build-kernel leg's artifact file, since output-rt/ never exists in that job.
+MISTER_RT_ZIMAGE="${MISTER_RT_ZIMAGE:-$REPO_ROOT/output-rt/images/zImage_dtb}"
+readonly MISTER_RT_ZIMAGE
+
+# The extra-modules overlay (same path as the Makefile's EXTRA_MODULES_OVERLAY):
+# where `make rt` (locally) or the CI kernel artifacts (release.yml) stage the
+# variant module trees that `make all` folds into linux.img. Read-only here —
+# require_prerequisites cross-checks every kver staged in it against the
+# linux.img actually being shipped, because this script snapshots that image
+# BEFORE its own step-2 relink regenerates it: a `make all` that ran before
+# `make rt` yields a snapshot with no RT modules, and nothing downstream would
+# ever notice.
+readonly EXTRA_MODULES_OVERLAY="$REPO_ROOT/work/extra-modules-overlay"
 
 # --- Staging + assembly scratch --------------------------------------------
 # STAGE_DIR is the SAME default fetch-sdcard-payload.sh uses, so a warm
@@ -211,6 +235,24 @@ require_host_tools() {
 	fi
 }
 
+# Resolve debugfs: prefer Buildroot's own host e2fsprogs build (guaranteed
+# present after a `make all` — BR2_TARGET_ROOTFS_EXT2 builds it to make
+# linux.img in the first place), else a PATH debugfs. Same prefer-host-tools
+# shape as resolve_genimage below and scripts/check-linux-img.sh's find_tool.
+resolve_debugfs() {
+	if [ -x "$OUTPUT_DIR/host/sbin/debugfs" ]; then
+		printf '%s' "$OUTPUT_DIR/host/sbin/debugfs"
+		return 0
+	fi
+	if command -v debugfs >/dev/null 2>&1; then
+		command -v debugfs
+		return 0
+	fi
+	err "debugfs not found (neither $OUTPUT_DIR/host/sbin/debugfs nor on PATH)"
+	err "install it, e.g.: sudo apt-get install e2fsprogs"
+	exit 1
+}
+
 # Resolve the genimage binary: prefer the one Buildroot may have built into
 # output/host/bin (BR2_PACKAGE_HOST_GENIMAGE), else a PATH genimage.
 resolve_genimage() {
@@ -237,6 +279,34 @@ require_prerequisites() {
 	# main build has not run — this script cannot and must not fabricate them.
 	[ -f "$OUR_LINUX_IMG" ] || die "missing $OUR_LINUX_IMG — run 'make all' before 'make sdcard'"
 	[ -f "$OUR_ZIMAGE_DTB" ] || die "missing $OUR_ZIMAGE_DTB — run 'make all' before 'make sdcard'"
+	[ -f "$MISTER_RT_ZIMAGE" ] || die "missing $MISTER_RT_ZIMAGE — run 'make rt' before 'make sdcard' (or point MISTER_RT_ZIMAGE at an RT zImage_dtb); the card ships zImage_dtb-rt, docs/verification/sdcard-payload.md"
+
+	# Build-ORDER coherence (the check nothing else can do this late): the card
+	# stages zImage_dtb-rt next to the linux.img above, so that image must
+	# already contain the RT module tree — i.e. `make all` must have run AFTER
+	# `make rt` staged it into the extra-modules overlay. Built the other way
+	# round (all → rt), the image predates the overlay and the RT kernel boots
+	# with NO matching modules: docs/rt-beta-kernel.md §5's silent
+	# broken-peripherals failure, shipped on a flashable card. So: every kver
+	# staged in the overlay must exist inside linux.img (debugfs — read-only,
+	# no root, same tool check-linux-img.sh leans on). An overlay with no
+	# module trees is fine: that is the MISTER_RT_ZIMAGE-override escape hatch
+	# (and CI's release job, which never runs `make rt` locally, populates the
+	# overlay from artifacts BEFORE its `make all` — so it passes here too).
+	local kdir kver listing dbg=""
+	for kdir in "$EXTRA_MODULES_OVERLAY"/usr/lib/modules/*/; do
+		[ -d "$kdir" ] || continue   # unmatched glob stays literal — skip it
+		kver=$(basename "$kdir")
+		[ -n "$dbg" ] || dbg=$(resolve_debugfs)
+		# debugfs -p prints one /ino/mode/uid/gid/name/... record per entry and
+		# exits 0 even when the lookup fails, so success is judged by the OUTPUT
+		# (records start '/<inode>'), not the exit status — same reasoning as
+		# check-linux-img.sh's ssh_keys listing.
+		listing=$("$dbg" -R "ls -p /usr/lib/modules/$kver" "$OUR_LINUX_IMG" 2>/dev/null || true)
+		printf '%s\n' "$listing" | grep -q '^/[0-9]' \
+			|| die "linux.img lacks /usr/lib/modules/$kver, which the extra-modules overlay stages — the image predates the overlay (was 'make all' run BEFORE 'make rt'?). Re-run 'make all' to fold the tree into linux.img, or the card ships zImage_dtb-rt with no matching modules (docs/rt-beta-kernel.md §5)"
+		log "linux.img carries /usr/lib/modules/$kver (matches the overlay)"
+	done
 
 	# The installer pieces authored by the sibling tasks.
 	[ -f "$INSTALLER_DEFCONFIG_FILE" ] || die "missing installer defconfig: $INSTALLER_DEFCONFIG_FILE"
@@ -413,6 +483,10 @@ overlay_our_outputs() {
 	rm -f "$PAYLOAD_DIR/linux/linux.img"
 	cp -f "$SAVED_REAL_LINUX_IMG_GZ" "$PAYLOAD_DIR/linux/linux.img.gz"
 	cp -f "$SAVED_REAL_ZIMAGE_DTB" "$PAYLOAD_DIR/linux/zImage_dtb"
+	# The RT beta kernel rides along under its on-device opt-in name (ADR 0021
+	# as amended; selected via bootimage=/linux/zImage_dtb-rt in u-boot.txt).
+	# No snapshot dance needed: the step-2 relink never touches its source.
+	cp -f "$MISTER_RT_ZIMAGE" "$PAYLOAD_DIR/linux/zImage_dtb-rt"
 
 	# 4b. The FAT root's own linux/ dir holds ONLY the installer kernel
 	#     (sdcard-payload.md §1: linux/, linux/zImage_dtb — nothing else). No

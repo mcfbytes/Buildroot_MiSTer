@@ -71,13 +71,45 @@ INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
 # --- RT / Linux-7.2 "beta" kernel variant (docs/rt-beta-kernel.md) ------------
 # A THIRD Buildroot output dir, same trick as the initramfs stage above: a
 # different kernel *configuration* (Linux 7.2-rc3 + PREEMPT_RT) needs its own O=.
-# It is NOT a second full defconfig — it is the base mister_de10nano_defconfig
-# with configs/mister_rt.fragment layered on at `make rt` time via Buildroot's
-# own merge_config.sh (the whole "thin shim": only the kernel version, its patch
-# subset, its config delta, and the 7.x-incompatible OOT WiFi drivers change).
-# ⚠ SCAFFOLD — never yet built or booted; expect to iterate. See the doc.
+# Since ADR 0021's 2026-07-18 amendment this is a KERNEL-ONLY build, not a
+# second full image: configs/mister_kernel_defconfig (the main defconfig's
+# toolchain + kernel stanzas, rootfs-tar only, no packages) with
+# configs/mister_rt.fragment layered on at `make rt` time via Buildroot's own
+# merge_config.sh. It produces zImage_dtb (ships as zImage_dtb-rt) plus a
+# depmod'd module tree, which `rt` copies into $(EXTRA_MODULES_OVERLAY) below
+# so the ONE shipped linux.img carries both kernels' modules.
+# A future kernel variant `foo` needs only configs/mister_foo.fragment, its own
+# foo/foo-clean/... targets mirroring the rt ones (each derives everything from
+# the name), and a matrix entry in the CI workflows.
+# ⚠ Never yet booted on hardware; expect to iterate. See the doc.
 RT_OUTPUT_DIR := $(ROOT_DIR)/output-rt
 RT_FRAGMENT   := $(ROOT_DIR)/configs/mister_rt.fragment
+
+# --- Extra-modules overlay: how variant module trees reach linux.img ----------
+# The main defconfig's BR2_ROOTFS_OVERLAY lists this (gitignored, under work/)
+# directory SECOND, after the tracked rootfs-overlay. Buildroot rsyncs overlays
+# into TARGET_DIR at target-finalize, so whatever module trees are staged here
+# (by `make rt` locally, or by CI's build-kernel job artifacts) land in the one
+# shipped linux.img next to the main kernel's own tree. Empty directory ->
+# byte-identical main image; `all` below guarantees it at least exists, because
+# Buildroot fails on a missing overlay path.
+#
+# That rsync only ever ADDS or overwrites: SYSTEM_RSYNC (work/buildroot/system/
+# system.mk) is `rsync -a --ignore-times` with NO --delete, and output/target/
+# persists across make invocations. So REMOVING a tree from the image takes TWO
+# removals -- from this overlay AND from output/target/ -- or the next
+# incremental `make all` silently re-ships the copy an earlier run already
+# rsynced in. The rt recipe's stale-kver branch and rt-clean both do exactly
+# that pair. (CI never hits this: its output/target/ is built from scratch
+# every run -- only host caches are restored.)
+#
+# Each variant records the kver it staged in its own stamp file (a work/
+# SIBLING of the overlay, never inside it — everything inside the overlay ships
+# in the image). The stamp is what lets a kernel-version bump remove its OWN
+# stale tree without touching a future sibling variant's, and what rt-clean
+# uses to remove exactly rt's contribution.
+EXTRA_MODULES_OVERLAY := $(WORK_DIR)/extra-modules-overlay
+RT_OVERLAY_STAMP      := $(WORK_DIR)/extra-modules-overlay.rt-kver
 
 # --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
 # A FOURTH Buildroot output dir, same trick as initramfs/RT above: the installer
@@ -261,7 +293,14 @@ $(INSTALLER_DEFCONFIG): ;
 # CONFIG_INITRAMFS_SOURCE at $(INITRAMFS_CPIO) and refuses to configure the kernel
 # if that file is not there — so stage 1 must have run first. Ordering it here is
 # what makes a bare `make all` do the right thing.
+#
+# The mkdir is not decoration: the main defconfig's BR2_ROOTFS_OVERLAY names
+# $(EXTRA_MODULES_OVERLAY), and Buildroot HARD-FAILS on a missing overlay path
+# at target-finalize — hours into a cold build. An empty dir contributes
+# nothing (byte-identical image), so creating it unconditionally is the safe
+# default; `make rt` (or CI's kernel-artifact download) is what populates it.
 all: initramfs $(BR_STAMP) hostshim | $(OUTPUT_DIR)/.config
+	@mkdir -p $(EXTRA_MODULES_OVERLAY)
 	$(BR_MAKE) all
 	@$(MAKE) --no-print-directory check-initramfs
 
@@ -321,6 +360,10 @@ clean:
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
 	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
+	@# The extra-modules overlay is a build product (staged module trees), so
+	@# clean takes it wholesale, stamps included — the next `make rt` restages
+	@# its tree, and `all` recreates the (empty) dir before Buildroot needs it.
+	@rm -rf $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
 
 # `rm -rf`, not a forwarded `$(BR_MAKE) distclean`, and deliberately not
 # `distclean: clean` the way upstream writes it (:1146).
@@ -339,7 +382,8 @@ clean:
 distclean:
 	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
 	       $(INSTALLER_OUTPUT_DIR) $(INSTALLER_KERNEL_OUTPUT_DIR) \
-	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
+	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) \
+	       $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------
 # Phony on purpose. Buildroot is the incremental build system here; re-entering it
@@ -406,13 +450,13 @@ initramfs-clean:
 
 # --- RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md) ----------------------
 # Generates the variant .config by layering configs/mister_rt.fragment on the
-# base defconfig with Buildroot's own merge_config.sh, then builds it into its
-# own output-rt/ (shared toolchain/dl/ccache; the main output/ is untouched).
-# Produces output-rt/images/zImage_dtb — the RT kernel — to ship as zImage_dtb-rt
-# alongside the main 6.18 image (selected on-device by a one-line u-boot.txt
-# edit). ⚠ SCAFFOLD: never built/booted; the ARM32 RT kernel + the beta patch
-# subset are unproven on hardware. Verified so far: the config layering resolves,
-# the 28 beta patches apply to 7.2-rc3, and the base linux.config reconciles.
+# KERNEL-ONLY base configs/mister_kernel_defconfig with Buildroot's own
+# merge_config.sh, then builds it into its own output-rt/ (shared
+# toolchain sources/dl/ccache; the main output/ is untouched). Produces
+# output-rt/images/zImage_dtb — the RT kernel, shipped as zImage_dtb-rt and
+# selected on-device by a one-line u-boot.txt edit — plus a depmod'd module
+# tree that the `rt` recipe stages into $(EXTRA_MODULES_OVERLAY) so the one
+# shipped linux.img carries it.
 # Order-only $(BR_STAMP), no file prerequisites — mirrors $(OUTPUT_DIR)/.config
 # above (and for the same reason: a defconfig/fragment listed as a normal
 # prerequisite is caught by the catch-all target-forwarding rule and would
@@ -420,18 +464,25 @@ initramfs-clean:
 # `make rt-clean && make rt` (same manual step the main config's design implies).
 $(RT_OUTPUT_DIR)/.config: | $(BR_STAMP)
 	@mkdir -p $(RT_OUTPUT_DIR)
-	$(BR_MAKE_RT) mister_de10nano_defconfig
+	$(BR_MAKE_RT) mister_kernel_defconfig
 	cd $(BR_DIR) && KCONFIG_CONFIG=$(RT_OUTPUT_DIR)/.config \
 		./support/kconfig/merge_config.sh -m -O $(RT_OUTPUT_DIR) $(RT_OUTPUT_DIR)/.config $(RT_FRAGMENT)
 	$(BR_MAKE_RT) olddefconfig
 
+# `initramfs` is a hard prerequisite for the same reason it is on `all`:
+# external.mk's LINUX_KCONFIG_FIXUP_CMDS hook keys on BR2_LINUX_KERNEL=y (any
+# O=, this one included) and embeds the stage-1 cpio into the kernel — U-Boot
+# never loads an initrd (A3), so a variant zImage without it would panic on
+# the FAT root at boot, and the fixup itself hard-fails if the cpio is absent.
+#
 # The PREEMPT_RT assert below binds to THE kernel tree, never "the first glob
 # match": `linux-[0-9]*` (not `linux-*`) so linux-firmware-*/linux-headers-*/
 # linux-pam-* siblings can't match, and MORE than one kernel tree is FATAL — a
 # stale sibling (kernel version bumped in the fragment without `make rt-clean`)
 # sorts first often enough that picking one blindly would validate the OLD
 # kernel's .config and false-pass the one guard proving the RT kernel is RT.
-rt: $(RT_OUTPUT_DIR)/.config hostshim
+# The module-tree glob below is uniqueness-guarded for the same reason.
+rt: initramfs $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) all
 	@test -f $(RT_OUTPUT_DIR)/images/zImage_dtb || { \
 		echo "FATAL: rt build finished but produced no $(RT_OUTPUT_DIR)/images/zImage_dtb" >&2; exit 1; }
@@ -458,30 +509,87 @@ rt: $(RT_OUTPUT_DIR)/.config hostshim
 		echo "       merge_config.sh only WARNS when a fragment symbol is dropped, and" >&2; \
 		echo "       olddefconfig silently discards symbols whose dependencies fail -- so" >&2; \
 		echo "       without this check a plain 7.2 kernel would ship labeled zImage_dtb-rt." >&2; \
-		echo "       Check board/mister/de10nano/linux-rt.fragment against this kernel" >&2; \
-		echo "       version's Kconfig (docs/rt-beta-kernel.md §1)." >&2; exit 1; }
-	@echo ""
-	@echo "==> RT kernel: $(RT_OUTPUT_DIR)/images/zImage_dtb  (ship as zImage_dtb-rt — docs/rt-beta-kernel.md)"
-	@echo ""
+		echo "       Two fragment layers are in play and a reviewer has already confused" >&2; \
+		echo "       them: board/mister/de10nano/linux-rt.fragment is the KERNEL-config" >&2; \
+		echo "       layer where CONFIG_PREEMPT_RT lives, wired in via the BUILDROOT-config" >&2; \
+		echo "       layer configs/mister_rt.fragment. Check the kernel-config layer against" >&2; \
+		echo "       this kernel version's Kconfig (docs/rt-beta-kernel.md §1)." >&2; exit 1; }
+	@# Stage the depmod'd module tree into the extra-modules overlay so the next
+	@# `make all` folds it into linux.img. The stamp records which kver rt owns
+	@# in the overlay: on a kernel-version bump the OLD tree is removed by name,
+	@# from the overlay AND from output/target/ (the overlay rsync never deletes
+	@# -- see the EXTRA_MODULES_OVERLAY header -- so an overlay-only removal
+	@# would leave an incremental `make all` shipping THREE module trees). A
+	@# future sibling variant's tree, under its own stamp, is never touched.
+	@set -e; \
+	set -- $$(ls -d $(RT_OUTPUT_DIR)/target/usr/lib/modules/*/ 2>/dev/null); \
+	if [ $$# -ne 1 ]; then \
+		echo "FATAL: expected exactly one module tree under" >&2; \
+		echo "       $(RT_OUTPUT_DIR)/target/usr/lib/modules/ but found $$#." >&2; \
+		echo "       Zero means depmod/target-finalize never ran (is BR2_TARGET_ROOTFS_TAR" >&2; \
+		echo "       still set in configs/mister_kernel_defconfig?); more than one is the" >&2; \
+		echo "       stale-sibling hazard described above. Run 'make rt-clean && make rt'." >&2; exit 1; \
+	fi; \
+	kver=$$(basename "$$1"); \
+	test -s "$$1/modules.alias" || { \
+		echo "FATAL: $$1/modules.alias is missing or empty -- depmod did not run at" >&2; \
+		echo "       target-finalize, so this tree cannot autoload modules on device." >&2; exit 1; }; \
+	if [ -f $(RT_OVERLAY_STAMP) ]; then \
+		old=$$(cat $(RT_OVERLAY_STAMP)); \
+		if [ -n "$$old" ] && [ "$$old" != "$$kver" ]; then \
+			rm -rf "$(EXTRA_MODULES_OVERLAY)/usr/lib/modules/$$old" \
+			       "$(OUTPUT_DIR)/target/usr/lib/modules/$$old"; \
+			echo "==> removed rt's stale $$old module tree (overlay + output/target)"; \
+		fi; \
+	fi; \
+	mkdir -p $(EXTRA_MODULES_OVERLAY)/usr/lib/modules; \
+	rm -rf "$(EXTRA_MODULES_OVERLAY)/usr/lib/modules/$$kver"; \
+	cp -a "$$1" "$(EXTRA_MODULES_OVERLAY)/usr/lib/modules/$$kver"; \
+	echo "$$kver" > $(RT_OVERLAY_STAMP); \
+	echo ""; \
+	echo "==> RT kernel:  $(RT_OUTPUT_DIR)/images/zImage_dtb  (ship as zImage_dtb-rt — docs/rt-beta-kernel.md)"; \
+	echo "==> RT modules: $$kver staged into $(EXTRA_MODULES_OVERLAY)/usr/lib/modules/"; \
+	echo "    (folded into linux.img by the next 'make all'; 'make rt-clean' removes them)"; \
+	echo ""
 
 # Edit the RT kernel .config interactively (writes back to output-rt/.config).
 rt-menuconfig: $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) linux-menuconfig
 
-# Buildroot's own `external-deps` / `legal-info`, run against the RT config.
+# Buildroot's own `external-deps` / `legal-info`, run against the RT config
+# (now the kernel-only one — same target names, much smaller package graph).
 # Explicit rules rather than the `%:` catch-all at the bottom, because the
 # catch-all forwards with O=$(OUTPUT_DIR) — i.e. against the MAIN build. Same
 # reason `rt`/`rt-menuconfig` exist; same rt-* naming precedent. CI leans on
 # both: rt-external-deps is the dl/-completeness oracle for the RT variant's
 # download cache (it runs with -B upstream, so it ignores stamps), and
-# rt-legal-info produces the RT SBOM/GPL-source bundle for release assets.
+# rt-legal-info produces the kernel-source SBOM/GPL bundle for release assets.
 rt-external-deps: $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) external-deps
 
 rt-legal-info: $(RT_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_RT) legal-info
 
+# Removes rt's overlay contribution too (by the kver its stamp recorded), AND
+# the same tree from output/target/: Buildroot's overlay rsync never deletes
+# (see the EXTRA_MODULES_OVERLAY header), so once a `make all` has rsynced the
+# tree into output/target/ an overlay-only removal cannot un-ship it -- every
+# later incremental `make all` would quietly carry it forever. With both
+# removals, "rt-clean then make all" really yields a main-only image. Both rms
+# are harmless when their path is absent (fresh checkout, no output/ yet).
+# The [ -n "$$kver" ] guard matters doubly now: an empty stamp would otherwise
+# turn the rm into `rm -rf .../usr/lib/modules/` -- every variant's tree in
+# the overlay, and the MAIN kernel's tree in output/target/.
 rt-clean:
+	@if [ -f $(RT_OVERLAY_STAMP) ]; then \
+		kver=$$(cat $(RT_OVERLAY_STAMP)); \
+		if [ -n "$$kver" ]; then \
+			rm -rf "$(EXTRA_MODULES_OVERLAY)/usr/lib/modules/$$kver" \
+			       "$(OUTPUT_DIR)/target/usr/lib/modules/$$kver"; \
+			echo "==> removed rt's $$kver module tree (overlay + output/target)"; \
+		fi; \
+		rm -f $(RT_OVERLAY_STAMP); \
+	fi
 	rm -rf $(RT_OUTPUT_DIR)
 
 # --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
@@ -572,14 +680,24 @@ zimage-dtb:
 # its seven steps — it drives Buildroot directly for the installer pieces and
 # does NOT go through the `installer` target above.
 #
-# Requires a COMPLETED `make all` first: mk-sdcard.sh reads
-# output/images/{linux.img,zImage_dtb} (the real, Downloader-shipped outputs)
-# and fails loudly, by name, if either is missing. Deliberately NOT made an
-# `all`-dependent prerequisite here — `make all` is a 3+ hour build, and a
-# script that already checks its own prerequisites should not have that check
-# duplicated (and silently re-triggered) at the Make level. Mirrors `rt`/
-# `initramfs` in every other respect: a phony target, hostshim ensured first,
-# SDCARD_CORES passed straight through from the environment/command line.
+# Requires a COMPLETED `make rt` THEN `make all` first — the ORDER matters:
+# mk-sdcard.sh snapshots output/images/linux.img as-built, and only a `make
+# all` that runs AFTER `make rt` has folded the RT module tree (staged in the
+# extra-modules overlay) into that image. Built the other way round, the card
+# would stage zImage_dtb-rt next to a linux.img with no matching modules —
+# docs/rt-beta-kernel.md §5's silent broken-peripherals failure. mk-sdcard.sh
+# reads output/images/{linux.img,zImage_dtb} (the real, Downloader-shipped
+# outputs) plus output-rt/images/zImage_dtb (shipped on the card as
+# zImage_dtb-rt so one flashable card carries both kernels — override the
+# source with MISTER_RT_ZIMAGE=), fails loudly, by name, if any is missing,
+# and cross-checks linux.img against the overlay's staged kver(s) so an
+# out-of-order build dies there instead of shipping.
+# Deliberately NOT made an `all`/`rt`-dependent prerequisite here — those are
+# multi-hour builds, and a script that already checks its own prerequisites
+# should not have that check duplicated (and silently re-triggered) at the
+# Make level. Mirrors `rt`/`initramfs` in every other respect: a phony target,
+# hostshim ensured first, SDCARD_CORES passed straight through from the
+# environment/command line.
 SDCARD_CORES ?= 0
 sdcard: hostshim
 	SDCARD_CORES=$(SDCARD_CORES) $(ROOT_DIR)/scripts/mk-sdcard.sh
@@ -608,9 +726,10 @@ help:
 	@echo "  make clean                      - delete everything the build produced,"
 	@echo "                                    KEEPING all .config files"
 	@echo "  make distclean                  - rm -rf output/, output-initramfs/, output-rt/,"
-	@echo "                                    output-installer/ and the sdcard staging dirs,"
-	@echo "                                    .config included; dl/ is kept (it is a"
-	@echo "                                    shared cache — 'git clean -xfd' takes it)"
+	@echo "                                    output-installer/, the sdcard staging dirs and"
+	@echo "                                    the extra-modules overlay, .config included;"
+	@echo "                                    dl/ is kept (it is a shared cache —"
+	@echo "                                    'git clean -xfd' takes it)"
 	@echo ""
 	@echo "Two-stage initramfs (P1.10):"
 	@echo "  make initramfs                  - build ONLY the stage-1 cpio and print its size"
@@ -620,13 +739,19 @@ help:
 	@echo "  make check-initramfs            - assert the built kernel really embeds the cpio"
 	@echo ""
 	@echo "RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md):"
-	@echo "  make rt                         - build the PREEMPT_RT variant into output-rt/"
-	@echo "                                    (asserts CONFIG_PREEMPT_RT=y in the built kernel)"
+	@echo "  make rt                         - kernel-only build of the PREEMPT_RT variant into"
+	@echo "                                    output-rt/ (asserts CONFIG_PREEMPT_RT=y), then"
+	@echo "                                    stage its module tree into the extra-modules"
+	@echo "                                    overlay so the next 'make all' ships it in"
+	@echo "                                    linux.img"
 	@echo "  make rt-menuconfig              - kernel menuconfig for the RT variant"
 	@echo "  make rt-external-deps           - list every download the RT config needs (CI's"
 	@echo "                                    dl/-completeness oracle)"
-	@echo "  make rt-legal-info              - legal-info (SBOM + sources) for the RT variant"
-	@echo "  make rt-clean                   - rm -rf output-rt/"
+	@echo "  make rt-legal-info              - legal-info (SBOM + kernel sources) for the RT"
+	@echo "                                    variant"
+	@echo "  make rt-clean                   - rm -rf output-rt/ + remove rt's module tree"
+	@echo "                                    from the extra-modules overlay AND output/target"
+	@echo "                                    (Buildroot's overlay rsync never deletes)"
 	@echo ""
 	@echo "zImage_dtb assembly (P1.11):"
 	@echo "  make zimage-dtb                 - cat zImage+DTB and run scripts/check-zimage-dtb.sh"
@@ -635,8 +760,10 @@ help:
 	@echo "                                    dir with ZIMAGE_DTB_BINARIES_DIR=)"
 	@echo ""
 	@echo "SD-card installer image (P5.3, ADR 0020):"
-	@echo "  make sdcard                     - after 'make all', run scripts/mk-sdcard.sh to"
-	@echo "                                    produce output/images/sdcard.img(.xz)"
+	@echo "  make sdcard                     - after 'make rt' THEN 'make all' (that order:"
+	@echo "                                    'all' folds rt's modules into linux.img), run"
+	@echo "                                    scripts/mk-sdcard.sh to produce"
+	@echo "                                    output/images/sdcard.img(.xz)"
 	@echo "                                    (SDCARD_CORES=1 for sdcard-full.img(.xz))"
 	@echo "  make installer                  - build ONLY the installer stage-1 cpio and print"
 	@echo "                                    its size (escape hatch; mk-sdcard.sh builds this"

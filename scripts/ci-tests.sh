@@ -79,6 +79,14 @@ HOST_SBIN="$BUILD_DIR/host/sbin"
 ROOTFS_TAR="$IMAGES/rootfs.tar"
 ZIMAGE_DTB="$IMAGES/zImage_dtb"
 LINUX_IMG="$IMAGES/linux.img"
+# The MAIN kernel's version. Every module/vermagic check below scopes to
+# usr/lib/modules/$KVER/ on purpose: since ADR 0021's 2026-07-18 amendment the
+# rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0-rc3*,
+# merged in via work/extra-modules-overlay), and those are deliberately out of
+# scope here — their depmod health is asserted by check-abi.sh A-25 (every
+# tree), and their presence in CI by build.yml's merged-kver assert. Do not
+# "fix" these checks to glob across all trees; they would then pass on the
+# variant tree while the main one regressed.
 KVER=6.18.38
 
 # ---------------------------------------------------------------- reporting

@@ -16,8 +16,16 @@ HERE = Path(__file__).resolve().parent
 RECORDS = HERE / "records"
 PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 
-DISP = {"carried", "dropped-upstream", "dropped-deliberate", "dropped-obsolete",
-        "not-evaluated", "needs-verification", "misclassified"}
+# "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the
+# image Buildroot builds (BR2_LINUX_KERNEL_PATCH never sees it), only to the tree
+# scripts/export-kernel-tree.sh publishes to MiSTer-devel/Linux-Kernel_MiSTer, from
+# board/mister/de10nano/linux-patches-upstream/ (a separate, sibling series -- see that
+# directory's README.md). Folding it into "carried" would claim our image ships
+# something it does not; folding it into "dropped-deliberate" would claim upstream's
+# kernel doesn't need it, when the whole reason the split exists is that upstream's own
+# boot flow depends on it. First case: 3d95de58f (the loop= boot parameter).
+DISP = {"carried", "carried-upstream-only", "dropped-upstream", "dropped-deliberate",
+        "dropped-obsolete", "not-evaluated", "needs-verification", "misclassified"}
 
 # ---------------------------------------------------------------- load work lists
 main_shas, meta = [], None
@@ -78,7 +86,7 @@ if orphans:
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 order = {d: i for i, d in enumerate(
     ["misclassified", "needs-verification", "not-evaluated", "carried",
-     "dropped-upstream", "dropped-deliberate", "dropped-obsolete"])}
+     "carried-upstream-only", "dropped-upstream", "dropped-deliberate", "dropped-obsolete"])}
 rows.sort(key=lambda x: (order.get(x["r"].get("disposition"), 9), x["sha"]))
 
 with open(HERE / "reconciliation.jsonl", "w") as f:
@@ -95,6 +103,14 @@ def why_of(r):
     if d == "dropped-upstream":
         shas = (r.get("upstream") or {}).get("vanilla_shas") or []
         parts.append("in mainline" + (f": `{str(shas[0])[:12]}`" if shas else ""))
+    if d == "carried-upstream-only":
+        # Two things a reader needs in one cell: WHERE it is carried (so "\u2014" in the
+        # Carried patch column doesn't read as "nowhere"), and WHY our own image still
+        # doesn't need it -- the superseded_by fallthrough below supplies the latter.
+        up = r.get("upstream_only_patch")
+        if up:
+            parts.append(f"carried for export only: `board/mister/de10nano/"
+                          f"linux-patches-upstream/{up}`")
     sup = (r.get("dependencies") or {}).get("superseded_by") or []
     comp = []
     for it in sup[:2]:
@@ -149,14 +165,25 @@ reconciled against our vanilla-6.18.38-based build. The full evidence for a row 
 - **Disposition** — what happened to the commit's functionality in this build:
   - `carried` — kept, as the patch named in the next column (applied to the pristine
     kernel.org tree at build time);
+  - `carried-upstream-only` — kept, but ONLY in the tree this repo exports to
+    `MiSTer-devel/Linux-Kernel_MiSTer` (`board/mister/de10nano/linux-patches-upstream/`,
+    replayed by `scripts/export-kernel-tree.sh`). Buildroot never applies it —
+    `BR2_LINUX_KERNEL_PATCH` points at `linux-patches/` only — so it is **not** in the
+    image this repo builds; the **Carried patch** column stays `—` for these rows, since
+    that column tracks only what Buildroot applies. Used when upstream's own boot flow
+    needs the commit but this build replaced it with something else (named in
+    Why / replacement). See "The one `carried-upstream-only` row" below;
   - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
     cites the upstream commit and quotes the matching code);
-  - `dropped-deliberate` — intentionally not carried, with the replacement named (a
-    maintained out-of-tree package, a mainline driver, or a documented decision);
+  - `dropped-deliberate` — intentionally not carried **anywhere**, with the replacement
+    named (a maintained out-of-tree package, a mainline driver, or a documented
+    decision). Distinct from `carried-upstream-only`: a `dropped-deliberate` commit's
+    functionality is in no patch series in this repo at all;
   - `dropped-obsolete` — the code it changed no longer exists in any form we ship
     (e.g. fixes to a vendored driver that was replaced wholesale).
 - **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
-  carries it (`—` when not carried).
+  carries it (`—` when not carried into the image — this includes `carried-upstream-only`
+  rows, which are carried into the *export* instead; see Why / replacement for that path).
 - **Impact today** — **read this column first.** It is what a user of *this build*
   actually experiences: `none (carried)` — the feature is present via our patch;
   `none (in mainline)` — 6.18 already has it; `none (replaced)` — a named package/driver
@@ -192,10 +219,11 @@ the decision behind it. The recurring patterns, so the table reads at a glance:
    commit-pinned, hash-verified Buildroot packages or — preferred when it works on the real
    hardware — the mainline in-kernel drivers (`rtw88`, `rtl8xxxu`). Fixes the fork made to
    its vendored copies are verified present in whichever source we actually build.
-2. **Fork mechanisms replaced by this build's architecture.** The `loop=` boot parameter
-   hack is replaced by a real initramfs; the fork's `MiSTer_defconfig` commits are absorbed
-   into `board/mister/de10nano/linux.config` (verified symbol-by-symbol against the resolved
-   build config).
+2. **Fork mechanisms replaced by this build's architecture.** The fork's `MiSTer_defconfig`
+   commits are absorbed into `board/mister/de10nano/linux.config` (verified symbol-by-symbol
+   against the resolved build config). (The `loop=` boot parameter hack — same replacement,
+   a real initramfs — is a related but *distinct* case: it is not dropped, it is carried for
+   the exported tree alone. See "The one `carried-upstream-only` row" below.)
 3. **Shared-file hygiene.** Hunks in files shared by every socfpga board (`socfpga.dtsi`)
    were dropped when provably inert on this board, keeping patches off shared files.
 4. **Rejected on the merits.** Experimental or debug leftovers (the `mt7601u` calibration
@@ -204,6 +232,31 @@ the decision behind it. The recurring patterns, so the table reads at a glance:
 5. **Risk-based.** The out-of-tree new-lg4ff rewrite was not carried: mainline `hid-lg4ff`
    covers every wheel Main_MiSTer actually drives, and the rewrite carries an untestable
    hard-fail hazard. Known limitation: the G923 *PlayStation* variant loses force feedback.
+
+### The one `carried-upstream-only` row
+
+`3d95de58f` ("Support for init loop device") is the only commit at this disposition today.
+It is **not** dropped — the patch is forward-ported to 6.18 and lives at
+`board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`
+— but it is also not `carried` in this table's usual sense, because Buildroot never applies
+it: `BR2_LINUX_KERNEL_PATCH` points only at `board/mister/de10nano/linux-patches/`, and the
+`-upstream` sibling is read only by `scripts/export-kernel-tree.sh`, after the carried
+series, when it builds the tree this repo publishes to `MiSTer-devel/Linux-Kernel_MiSTer`.
+
+Why both things are true at once: the commit adds the `loop=` kernel boot parameter, the
+mechanism **every stock MiSTer boots through** (mount the SD card's exFAT partition,
+loop-mount `linux/linux.img` from it as root). A published `Linux-Kernel_MiSTer` branch
+without it would not boot on any device but the one this repo happens to build. Our own
+image replaced the same job with a real initramfs `/init` (`impact today: none (replaced)`
+above) — so the kernel *we* ship has no use for the in-kernel version, while the kernel
+*upstream* ships cannot boot without it. Neither "drop it from the export" nor "apply it to
+our image" is the right call, so it is carried in exactly one of the two series.
+
+See `board/mister/de10nano/linux-patches-upstream/README.md` for the directory's rules
+(numbering, the mandatory not-in-image reason, what belongs here and what must never), and
+the generated `EXPORT.md` (from `scripts/export-kernel-tree.sh`) for the current,
+authoritative list — this note names the first and, as of this writing, only entry, but the
+directory is not capped at one.
 
 """)
     lims = [row for row in rows if "limitation" in impact_today(row["r"])]

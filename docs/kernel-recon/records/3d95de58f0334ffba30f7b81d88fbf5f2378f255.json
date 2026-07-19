@@ -13,9 +13,10 @@
   "added": 101,
   "removed": 4,
   "is_backport_of_vanilla": false,
-  "disposition": "dropped-deliberate",
+  "disposition": "carried-upstream-only",
   "carried_patch": null,
   "carried_mode": null,
+  "upstream_only_patch": "0100-init-support-for-init-loop-device.patch",
   "upstream": {
     "vanilla_shas": [],
     "vanilla_file_line": null,
@@ -42,9 +43,9 @@
     "main_mister_ref": null
   },
   "forward_port": {
-    "applies_to_6_18": false,
-    "conflicts": null,
-    "effort": null
+    "applies_to_6_18": true,
+    "conflicts": "init/do_mounts.c and drivers/block/loop.c both diverged substantially between 5.15 and 6.18 (sys_ioctl()/sys_close() removed from init code; no include/linux/loop.h or drivers/block/loop.h to declare a prototype against; mount_block_root() is now a parameter-taking helper, not the file-global-driven function the 5.15 patch edited).",
+    "effort": "high; compile-tested only (ARCH=arm vmlinux links warning-free with the board config, both CONFIG_BLK_DEV_LOOP=y and =m), not boot-tested. See the patch's own commit message for the point-by-point rationale."
   },
   "dependencies": {
     "depends_on": [],
@@ -54,5 +55,5 @@
     "duplicate_of": []
   },
   "license_provenance": null,
-  "notes": "Class B commit in patch-provenance.md. Deliberately not forward-ported to 6.18; functionality is being replaced by an initramfs-based boot flow per PLAN §5 and patch-provenance.md §4 analysis. Exports loop_max_part() from drivers/block/loop.c and adds loop_setup() and loop= parameter parsing to init/do_mounts.c. No userspace coupling confirmed via Main_MiSTer audit (no references to /root2, /dev/loop8, or LOOP_SET_FD ioctl). Disposition and grounding align with patch-provenance.md baseline. sonnet-verified: correct — diff re-confirmed against the fork commit exactly (loop_max_part() export in drivers/block/loop.c, loop= __setup + m_open/loop_setup + mount_root() rewrite in init/do_mounts.c); patch-provenance.md §4's 11-point line-by-line coverage table substantiates the '100% of the loop= patch's own logic' claim; grep for root2/loop8/LOOP_SET_FD in Main_MiSTer returns zero hits, confirming no userspace coupling."
+  "notes": "Class B commit in patch-provenance.md. NOT applied to Buildroot_MiSTer's own image -- functionality is replaced there by an initramfs-based boot flow per PLAN §5 and patch-provenance.md §4 analysis (that half of this record is unchanged since the original 2026-07-15 triage). No userspace coupling confirmed via Main_MiSTer audit (no references to /root2, /dev/loop8, or LOOP_SET_FD ioctl). sonnet-verified: correct — diff re-confirmed against the fork commit exactly (loop_max_part() export in drivers/block/loop.c, loop= __setup + m_open/loop_setup + mount_root() rewrite in init/do_mounts.c); patch-provenance.md §4's 11-point line-by-line coverage table substantiates the '100% of the loop= patch's own logic' claim; grep for root2/loop8/LOOP_SET_FD in Main_MiSTer returns zero hits, confirming no userspace coupling.\n\nUPDATED 2026-07-18: the exported Linux-Kernel_MiSTer tree (scripts/export-kernel-tree.sh, PR #75) is upstream's kernel for every stock MiSTer, not just the one this repo builds, and every stock MiSTer boots through the loop= mechanism this commit adds -- so the exported tree must keep carrying it even though our own image does not. Forward-ported to 6.18 and carried at board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch: applied ONLY by scripts/export-kernel-tree.sh, never by Buildroot (BR2_LINUX_KERNEL_PATCH points at linux-patches/ only). Disposition changed from dropped-deliberate to carried-upstream-only to reflect this -- it was never accurate to call this commit's functionality 'dropped' once we started publishing it upstream; it is carried, just not into our image. See linux-patches-upstream/README.md for the directory's rules and docs/kernel-recon/reconciliation.md's disposition legend for the new value."
 }

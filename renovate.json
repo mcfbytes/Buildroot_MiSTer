@@ -57,6 +57,14 @@
       "transformTemplates": [
         "{\"releases\": [$map($filter(releases, function($r) { $r.moniker = \"longterm\" and $contains($r.version, \"6.18.\") }), function($r) { {\"version\": $r.version} })]}"
       ]
+    },
+    "kernelMainline": {
+      "description": "kernel.org's releases.json filtered to the CURRENT MAINLINE release -- the line the RT/beta kernel variant tracks (configs/mister_rt.fragment, docs/rt-beta-kernel.md). This is normally a -rc (e.g. 7.2-rc3), which is exactly why it is a separate datasource from kernelLongterm618: the two pins track different upstream lines with different cadence, different provenance, and different review bars, and must never be able to update each other. The outer [ ] is required for the same reason documented above -- releases.json carries exactly one mainline entry, and JSONata would collapse a single-element sequence into a bare object, which Renovate rejects as `no-result` silently.",
+      "defaultRegistryUrlTemplate": "https://www.kernel.org/releases.json",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\": [$map($filter(releases, function($r) { $r.moniker = \"mainline\" }), function($r) { {\"version\": $r.version} })]}"
+      ]
     }
   },
   "customManagers": [
@@ -75,15 +83,29 @@
     },
     {
       "customType": "regex",
-      "description": "Bump the pinned kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) in the DE10-Nano defconfig, constrained to the current 6.18.y longterm line by the custom datasource above. The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml, which handles this specific case automatically (unlike Buildroot's hash, above, kernel.org's manifest IS fetchable and parseable without a GPG keyring step beyond what the project's own manual process already does). CI (build.yml, pull_request-triggered) then proves the 24 carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713.",
+      "description": "Bump the pinned 6.18.y kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) EVERYWHERE it appears, constrained to the current longterm line by the custom datasource above. BOTH defconfigs are listed on purpose: configs/mister_kernel_defconfig deliberately copies the main defconfig's kernel/toolchain stanza (see its header and scripts/check-kernel-defconfig-sync.sh), so a manager covering only the main one bumps half the repo and leaves the copy behind -- which is exactly what happened on the 6.18.38 -> 6.18.39 bump and is caught, loudly, by the lockstep check. Because both files carry the same depName, Renovate emits ONE PR touching both. configs/mister_rt.fragment carries the same SYMBOL but is deliberately NOT matched here: it pins the mainline -rc line and has its own manager below. The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml. CI (build.yml, pull_request-triggered) then proves the carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713.",
       "managerFilePatterns": [
-        "/^configs/mister_de10nano_defconfig$/"
+        "/^configs/mister_de10nano_defconfig$/",
+        "/^configs/mister_kernel_defconfig$/"
       ],
       "matchStrings": [
         "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>[\\d.]+)\""
       ],
       "depNameTemplate": "kernel-longterm-6.18",
       "datasourceTemplate": "custom.kernelLongterm618",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Bump the RT/beta kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/mister_rt.fragment), which tracks the mainline -rc line rather than 6.18.y -- see docs/rt-beta-kernel.md and ADR 0021. Kept as a SEPARATE manager from the 6.18 one above, with its own datasource and its own depName, because the two must never be able to propose each other's version: the fragment carries the identical Kconfig symbol, so a single shared manager would hand the longterm datasource a -rc currentValue (and vice versa). The matchString accepts BOTH an -rc and a plain mainline version (7.2-rc3 and 7.2), because 7.2 final IS the intended destination of this pin -- docs/rt-beta-kernel.md picks 7.2 precisely because PREEMPT_RT landed for ARM in 7.1, so the variant follows that line through its -rc series and out the other side. IMPORTANT -- the companion hash is NEVER auto-refreshed for this pin, unlike the 6.18 one: renovate-hash-sync.yml's kernel step reads its version from the DE10-Nano defconfig and only ever rewrites that pin's own line, so it leaves this one alone in every case. An RT bump PR is therefore EXPECTED to be red at the kernel download (\"No hash found for linux-<ver>...\", because BR2_DOWNLOAD_FORCE_CHECK_HASHES empties Buildroot's BR_NO_CHECK_HASH_FOR exemption) until a human refreshes it by hand. That is the intended, safe failure mode -- the same shape as the Buildroot hash above. NOTE that the artifact changes shape across the -rc boundary, and so does the provenance a human should demand: while on an -rc, Buildroot fetches a cgit-generated snapshot (linux-<ver>.tar.gz from git.kernel.org) for which kernel.org publishes NO signed manifest, so the value is TOFU per linux.hash's own -rc block; once this pin reaches a stable mainline release it becomes an ordinary linux-<ver>.tar.xz, which IS covered by kernel.org's signed sha256sums.asc and by a maintainer .sign, and should be transcribed from those rather than TOFU-pinned.",
+      "managerFilePatterns": [
+        "/^configs/mister_rt\\.fragment$/"
+      ],
+      "matchStrings": [
+        "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>\\d+\\.\\d+(?:-rc\\d+)?)\""
+      ],
+      "depNameTemplate": "kernel-mainline-rt",
+      "datasourceTemplate": "custom.kernelMainline",
       "versioningTemplate": "loose"
     },
     {
@@ -333,6 +355,21 @@
       "allowedVersions": "/^6\\.18(\\.\\d+)?$/",
       "addLabels": [
         "kernel-pin"
+      ]
+    },
+    {
+      "description": "RT/beta kernel pin (configs/mister_rt.fragment), tracking mainline -rc. Constrained to the 7.x line as defense in depth, mirroring the 6.18 rule above: a jump to a new MAJOR is a deliberate decision about what the beta variant tracks, not routine automation. Labeled distinctly from kernel-pin so a reviewer is never in doubt about WHICH kernel a PR moves -- the two carry the identical Kconfig symbol and otherwise look alike in a diff. needs-manual-hash is not decorative: this PR cannot go green until a human writes the new hash into linux.hash by hand. The hash-sync workflow never touches this line -- and how the value should be obtained depends on which side of the -rc boundary the pin is on (TOFU for a cgit -rc snapshot, kernel.org's signed manifest for a stable release). See the manager description. needs-manual-version-check is carried for the same reason bcm20702-firmware is: `loose` versioning's ordering of a -rcN suffix is not something to trust blindly.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "kernel-mainline-rt"
+      ],
+      "allowedVersions": "/^7\\./",
+      "addLabels": [
+        "rt-kernel-pin",
+        "needs-manual-hash",
+        "needs-manual-version-check"
       ]
     },
     {

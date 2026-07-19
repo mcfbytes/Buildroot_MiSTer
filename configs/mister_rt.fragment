@@ -36,10 +36,15 @@
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
 
 # --- Beta patch set -----------------------------------------------------------
-# linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/ (symlinks
-# to the shared patch files — single source of truth). Its series drops 0015
-# (already upstreamed in 7.2) and, pending a 7.x context re-anchor, 0030 + 0037.
-# The other 28 apply cleanly to 7.2-rc3 (verified).
+# linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks
+# to the shared patch files, EXCEPT 0015 and 0031, which are real re-anchored
+# copies — Buildroot applies patches with `patch -F0` (fuzz zero), and those
+# two patches' 6.18 context drifted upstream (see the series file's header;
+# note 0015 was once wrongly believed upstreamed in 7.2 — it is not: 7.2 has
+# no FAML/FAMR controller types). The series drops only 0030 + 0037 (7.x
+# re-anchors pending). All 29 listed patches apply to 7.2-rc3 at -F0
+# (verified through Buildroot's own apply-patches.sh AND the real
+# `linux-patch` stage, 2026-07-18).
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config ---------

@@ -34,13 +34,16 @@ the per-variant fragment layered on at build time.
 | `configs/mister_kernel_defconfig` | The kernel-only base, shared by every kernel variant. Its toolchain/kernel stanzas are a **copy** of `mister_de10nano_defconfig`'s, held in lockstep by `scripts/check-kernel-defconfig-sync.sh` (CI runs it before every kernel build and as a lint). With no fragment it builds the main 6.18 kernel. |
 | `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → 7.2-rc3 via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment). Merged onto `mister_kernel_defconfig` via `merge_config.sh`. |
 | `board/mister/de10nano/linux-rt.fragment` | **Kernel**-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` — do not confuse the two fragment layers (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
-| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` (single source of truth). Applies 28 of 31 patches. |
+| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` — except `0015` and `0031`, which are real re-anchored copies (Buildroot patches at `-F0`, and their 6.18 context drifted on 7.x; see the series header). Applies 29 of 31 patches. `0015` is re-INCLUDED: the earlier "upstreamed in 7.2" finding was wrong (7.2 has no `FAML`/`FAMR` controller types — its left/right *nescon* support is a different thing). |
 | `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/` (stage-1 initramfs first — its cpio is embedded into every kernel), reusing the shared dl/ccache; then stages the depmod'd module tree into `work/extra-modules-overlay/`, which the main defconfig's `BR2_ROOTFS_OVERLAY` folds into the ONE shipped `linux.img` at the next `make all`. The main `output/` is never touched by `make rt` itself. |
 
 The kernel config is the same `linux.config` + a fragment, and the patch set is
 symlinks + a `series` file — editing a shared patch or `linux.config` affects
-both kernels automatically. The one deliberate copy (the base defconfig's
-toolchain/kernel stanzas) is machine-checked, not trusted.
+both kernels automatically. The deliberate copies (the base defconfig's
+toolchain/kernel stanzas; the two re-anchored patches) are machine-checked or
+lockstep-annotated, not trusted: the sync script covers the former, and each
+re-anchored patch carries a bracketed note naming its `linux-patches/`
+original.
 
 Adding a future kernel variant `foo`: `configs/mister_foo.fragment`, `foo`/
 `foo-clean`/`foo-*` Makefile targets mirroring the `rt` ones, and one entry in
@@ -133,8 +136,8 @@ installer's FAT payload as well, and deliberately NOT inside
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ verified |
-| 28/31 patches apply to 7.2-rc3 | ✅ verified |
-| `xone` compiles on 7.2 | ✅ verified |
+| 29/31 patches apply to 7.2-rc3 at Buildroot's `patch -F0` | ✅ verified through the real `linux-patch` stage (0015 + 0031 re-anchored; the old "28/31" figure was measured at `patch`'s default fuzz 2, which Buildroot forbids, and wrongly counted 0015 as upstreamed) |
+| `xone` compiles on 7.2 | ✅ verified (not shipped by the kernel-only variant — §4) |
 | **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ⏳ wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended); **first green run pending** |
 | **Module-tree merge into the one linux.img** | ⏳ wired (extra-modules overlay + CI merge assert); **first green run pending** |
 | **RT kernel boots on the DE10-Nano** | ❌ **unproven** |

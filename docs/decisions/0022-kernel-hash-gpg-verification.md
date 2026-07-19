@@ -1,4 +1,4 @@
-# ADR 0021 — Verify the kernel tarball hash under two checked-in PGP keys
+# ADR 0022 — Verify the kernel tarball hash under two checked-in PGP keys
 
 **Status:** Accepted (2026-07-18) — decided by @mcfbytes
 **Impact:** `.github/workflows/renovate-hash-sync.yml`, `.github/keys/*.asc`,

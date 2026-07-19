@@ -133,7 +133,7 @@ actually differs, so re-runs on an already-correct PR are harmless no-ops.
    (`board/mister/de10nano/patches/linux/linux.hash`) — derived under **two
    independent PGP signatures**, both verified against public keys committed
    in `.github/keys/` (never fetched at run time). See
-   [ADR 0021](decisions/0021-kernel-hash-gpg-verification.md) for the full
+   [ADR 0022](decisions/0022-kernel-hash-gpg-verification.md) for the full
    rationale.
 
    * **path A** — `linux-<version>.tar.sign`, signed by the stable
@@ -154,7 +154,7 @@ actually differs, so re-runs on an already-correct PR are harmless no-ops.
    event and is never downgraded to the warn-and-skip path used for network
    errors.
 
-   Note the asymmetry recorded in ADR 0021 §4: the maintainer key's
+   Note the asymmetry recorded in ADR 0022 §4: the maintainer key's
    fingerprint is published by kernel.org, while the autosigner key is
    **TOFU-pinned** — kernel.org publishes neither that key nor its
    fingerprint. Path B is corroboration, not the foundation; kernel.org

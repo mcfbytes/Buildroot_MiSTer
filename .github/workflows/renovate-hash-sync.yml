@@ -47,7 +47,7 @@
 #      line, not by gpg's exit status or its human-readable output: exit
 #      status can be 0 for a good-but-expired key, and "Good signature" text
 #      is attacker-influenceable through the filename. See
-#      docs/decisions/0021-kernel-hash-gpg-verification.md for the full
+#      docs/decisions/0022-kernel-hash-gpg-verification.md for the full
 #      rationale, including why the autosigner key is TOFU-pinned (kernel.org
 #      publishes neither that key nor its fingerprint) while the maintainer
 #      key's fingerprint IS cross-checkable against kernel.org/signature.html.
@@ -282,7 +282,7 @@ jobs:
           # --- Trust roots ----------------------------------------------------
           # Import ONLY our two checked-in keys into a throwaway keyring, so a
           # signature made by any other key cannot verify. See
-          # docs/decisions/0021-kernel-hash-gpg-verification.md for why these two
+          # docs/decisions/0022-kernel-hash-gpg-verification.md for why these two
           # and what each is worth.
           GNUPGHOME=$(mktemp -d); export GNUPGHOME; chmod 700 "$GNUPGHOME"
           trap 'rm -rf "$GNUPGHOME"' EXIT

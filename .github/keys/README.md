@@ -10,7 +10,7 @@ Pinning them here makes each key an ordinary reviewable, diffable file, and make
 rotating or adding one a normal PR with a human in the loop.
 
 Rationale, threat model, and the honest weaknesses:
-[ADR 0021](../../docs/decisions/0021-kernel-hash-gpg-verification.md).
+[ADR 0022](../../docs/decisions/0022-kernel-hash-gpg-verification.md).
 
 | File | Key | Fingerprint | Provenance |
 |---|---|---|---|
@@ -50,5 +50,5 @@ Some stable releases are signed by a different maintainer (e.g. Sasha Levin). If
 the kernel line moves to one, the workflow fails **closed** with a message
 saying so. Export that key here, check its fingerprint against
 `kernel.org/signature.html`, add it to the import list and the fingerprint
-allow-list in the workflow, and note it in ADR 0021. A new signer is a trust
+allow-list in the workflow, and note it in ADR 0022. A new signer is a trust
 decision a human should be making deliberately.

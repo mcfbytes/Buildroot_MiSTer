@@ -11,7 +11,8 @@
 #
 # The caller owns what is genuinely its own (which ref to check out, what to do
 # with the images afterwards). Everything from "make the runner able to build"
-# through "the images exist in output/images/" is here.
+# through "the variant's images exist in output/images/ (main) or
+# output-<name>/images/" is here.
 #
 # Measured on the first green cold run (29300460591, 4-vCPU ubuntu-latest):
 #   * wall time      3h19m47s cold
@@ -35,13 +36,42 @@
 # at all and never reach ccache. The two caches are substitutes. A small ccache
 # next to a healthy br-host hit is the system working, not a leak.
 #
+# VARIANTS: the `variant` input selects which build this recipe runs. "main"
+# (the default) is the two-stage 6.18 image, byte-identical behavior — and
+# byte-identical cache KEY STRINGS — to before the input existed, so existing
+# callers (reproducibility.yml passes no inputs) and existing cache entries are
+# unaffected. ANY other name is a KERNEL-ONLY variant (ADR 0021 as amended
+# 2026-07-18): it must have a fragment at configs/mister_<name>.fragment, and
+# everything else — the make targets (`make <name>`, `<name>-legal-info`,
+# `<name>-external-deps`), the output dir (output-<name>/), the cache key
+# namespaces (br-dl-<name>-*, br-<name>-host-*) — is derived from the name, so
+# adding a kernel variant to CI is one fragment + the Makefile targets + a
+# workflow matrix entry, with NO change here. A kernel variant builds
+# configs/mister_kernel_defconfig + its fragment: zImage_dtb plus a depmod'd
+# module tree in output-<name>/, sharing dl/ and ccache with main but its own
+# host-toolchain cache (a cross-toolchain bakes its absolute O= path in, so
+# output/host and output-<name>/host can never share a cache entry). There is
+# no configure step for variants (`make <name>` generates output-<name>/.config
+# itself and it is never cached, so it can never be stale), but the initramfs
+# stage DOES run: every kernel embeds the stage-1 cpio (external.mk's fixup
+# applies to any BR2_LINUX_KERNEL=y build; a zImage without it cannot boot).
+#
+# What the CALLER does with a variant's outputs — staging the module tree into
+# work/extra-modules-overlay/ for the main build, shipping zImage_dtb-<name> —
+# is the caller's business (see build.yml/release.yml); this recipe ends at
+# "output-<name>/images/zImage_dtb and a depmod'd output-<name>/target exist".
+#
 ################################################################################
 
 name: Build the MiSTer image (Buildroot)
 description: >-
-  Prepares a GitHub-hosted runner for a full Buildroot build (disk reclaim, apt
-  deps, five input caches), configures Buildroot from the tracked defconfig, and
-  runs `make all` — leaving linux.img + zImage_dtb in output/images/.
+  Prepares a GitHub-hosted runner for a Buildroot build (disk reclaim, apt
+  deps, five input caches), then builds the requested variant. main: configures
+  from the tracked defconfig and runs `make all` — linux.img + zImage_dtb in
+  output/images/. Any other name is a kernel-only variant (`make <name>` over
+  configs/mister_kernel_defconfig + configs/mister_<name>.fragment) — the
+  variant kernel at output-<name>/images/zImage_dtb plus a depmod'd module
+  tree in output-<name>/target/.
 
 inputs:
   extra-apt-packages:
@@ -58,9 +88,21 @@ inputs:
     required: false
     default: "4G"
   run-legal-info:
-    description: 'Also run `make legal-info` (the SBOM) after the build. "true"/"false".'
+    description: >-
+      Also run `make legal-info` (`make <name>-legal-info` for a kernel
+      variant) — the SBOM — after the build. "true"/"false".
     required: false
     default: "false"
+  variant:
+    description: >-
+      Which build to run: "main" (default — the two-stage 6.18 image; behavior
+      and cache key strings identical to before this input existed) or the
+      name of a kernel-only variant whose fragment exists at
+      configs/mister_<name>.fragment (e.g. "rt", the PREEMPT_RT / Linux-7.2
+      beta, docs/rt-beta-kernel.md). A name with no fragment fails fast in the
+      fingerprint step, before any cache or build work.
+    required: false
+    default: "main"
 
 runs:
   using: composite
@@ -105,8 +147,43 @@ runs:
     # IS relocatable, via the BR2_CCACHE_USE_BASEDIR passed to `make` below.)
     - name: Resolve Buildroot version + cache fingerprints
       shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
       run: |
         set -eu
+
+        # --- Which variant this run builds (see the header) ---------------------
+        # Validated here, before any cache is restored or any build work starts,
+        # so a typo'd variant dies in seconds. "main" is the only special case;
+        # any other NAME is a kernel-only variant and is accepted iff its
+        # fragment exists — that existence check is the entire registry, so a
+        # new variant needs no edit here. The character whitelist keeps a
+        # hostile/typo'd name from ever reaching a path or cache key.
+        # Everything variant-shaped downstream — step-level `if:`s, cache
+        # keys/paths, which make targets run — reads the env computed once in
+        # this step, for the same compute-once/consume-twice reason as
+        # BR_HOST_KEY below.
+        case "$VARIANT" in
+          main) ;;
+          *[!a-z0-9_-]*|'')
+            echo "::error::invalid variant name '$VARIANT' -- kernel-variant names must be non-empty [a-z0-9_-]" >&2
+            exit 1
+            ;;
+          *)
+            if [ ! -f "configs/mister_${VARIANT}.fragment" ]; then
+              echo "::error::unknown variant '$VARIANT' -- .github/actions/buildroot-build accepts 'main' or any kernel variant with a fragment at configs/mister_<name>.fragment (looked for configs/mister_${VARIANT}.fragment)" >&2
+              exit 1
+            fi
+            # Kernel variants build configs/mister_kernel_defconfig, a COPY of
+            # the main defconfig's toolchain/kernel stanzas. Assert the copy has
+            # not drifted BEFORE any cache work: a drifted toolchain stanza
+            # would not just build wrong, it would build wrong under a cache key
+            # that then pins the wrong toolchain in.
+            scripts/check-kernel-defconfig-sync.sh
+            ;;
+        esac
+        echo "VARIANT=$VARIANT" >> "$GITHUB_ENV"
+
         ver=$(sed -n 's/^BUILDROOT_VERSION ?= //p' Makefile | head -1)
         if [ -z "$ver" ]; then
           echo "::error::could not extract BUILDROOT_VERSION from Makefile (format changed?)" >&2
@@ -145,17 +222,28 @@ runs:
         #                      monthly). Distinct from BR2_KERNEL_HEADERS_*, the
         #                      headers glibc is compiled against -- that one is NOT
         #                      excluded and correctly still busts the cache.
-        # Strip comments BEFORE filtering. This defconfig is heavily annotated, with
-        # both trailing comments (`BR2_ROOTFS_MERGED_USR=y  # why`) and indented
-        # continuation lines -- and most of those annotations hang off the
+        # Strip comments BEFORE filtering. These defconfigs are heavily annotated,
+        # with both trailing comments (`BR2_ROOTFS_MERGED_USR=y  # why`) and
+        # indented continuation lines -- and most of those annotations hang off the
         # BR2_PACKAGE_ lines we are trying to exclude. Keeping them would mean
         # editing a COMMENT about a WiFi driver evicts the cross-toolchain and
         # costs a 3h20m rebuild. Only `#` that begins a line or follows whitespace
         # is a comment (values like the ext2 MKFS_OPTIONS contain `^` and `,` but
         # never a bare `#`), so this cannot corrupt a symbol's value.
+        #
+        # WHICH defconfig gets fingerprinted is the variant's: main hashes the
+        # image defconfig; a kernel variant hashes the kernel-only base
+        # (configs/mister_kernel_defconfig -- whose filtered residue is a
+        # NON-empty toolchain stanza, so the sentinel asserts below hold for it
+        # too) and then appends its fragment's residue.
         TC_GEN=1
+        if [ "$VARIANT" = "main" ]; then
+          fp_defconfig=configs/mister_de10nano_defconfig
+        else
+          fp_defconfig=configs/mister_kernel_defconfig
+        fi
         sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' \
-          configs/mister_de10nano_defconfig \
+          "$fp_defconfig" \
           | grep -vE '^($|BR2_PACKAGE_|BR2_LINUX_KERNEL)' \
           | sort > .br-toolchain-fingerprint
 
@@ -170,6 +258,30 @@ runs:
           fi
         done
         echo "gen=$TC_GEN" >> .br-toolchain-fingerprint
+
+        # Kernel variants: run the SAME strip/filter over the variant's fragment
+        # and append. TODAY this appends nothing for rt — the fragment only
+        # carries BR2_LINUX_KERNEL_* lines, all deny-listed above — and that is
+        # the deny-list doing its job, not a bug: a kernel-version bump in the
+        # fragment cannot evict the variant's cross-toolchain, while any future
+        # fragment line that COULD affect it (say a BR2_KERNEL_HEADERS_ change)
+        # correctly busts that variant's key and only that key.
+        #
+        # But "selected zero lines" is grep exit 1, and this step's shell runs
+        # with pipefail — supplied by GitHub's own `shell: bash` invocation,
+        # `bash --noprofile --norc -eo pipefail {0}` (composite steps included),
+        # NOT by the `set -eu` above — so the empty (correct!) result must be
+        # tolerated explicitly or the whole variant dies right here.
+        # `|| [ $? -eq 1 ]` converts exactly that exit into success while a real
+        # grep failure (exit >= 2) still aborts the step. (The defconfig filter
+        # above needs no such guard: its residue is asserted NON-empty by the
+        # sentinels below, for main and kernel defconfigs alike.)
+        if [ "$VARIANT" != "main" ]; then
+          sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' \
+            "configs/mister_${VARIANT}.fragment" \
+            | { grep -vE '^($|BR2_PACKAGE_|BR2_LINUX_KERNEL)' || [ $? -eq 1 ]; } \
+            | sort >> .br-toolchain-fingerprint
+        fi
 
         # Fail loud if the defconfig is ever renamed/reformatted such that this
         # produces an empty or degenerate fingerprint: a frozen cache key is the
@@ -199,15 +311,59 @@ runs:
         # and both halves read the same env var, so the algorithm is irrelevant.
         tc_hash=$(sha256sum .br-toolchain-fingerprint | cut -d' ' -f1)
         ir_hash=$(sha256sum configs/mister_initramfs_defconfig | cut -d' ' -f1)
-        echo "BR_HOST_KEY=br-host-${ws_fp}-${ver}-${tc_hash}" >> "$GITHUB_ENV"
         echo "BR_INITRAMFS_HOST_KEY=br-initramfs-host-${ws_fp}-${ver}-${ir_hash}" >> "$GITHUB_ENV"
 
-        echo "Resolved BUILDROOT_VERSION=$ver  workspace-fp=$ws_fp"
+        # Variant-resolved host-toolchain key + paths, and the two make targets
+        # that differ per variant. main's key STRING is byte-identical to what
+        # this step emitted before the variant input existed, so existing cache
+        # entries keep hitting. A kernel variant gets its own name-derived key
+        # namespace (br-<name>-host-…) because a Buildroot cross-toolchain bakes
+        # its absolute O= prefix in (see WS_FP above): output/host and
+        # output-<name>/host are NOT interchangeable and must never share an
+        # entry. BR_HOST_PATHS is multiline; actions/cache splits `path:` on
+        # newlines AFTER expression expansion, so env indirection here is
+        # equivalent to the literal block it replaced.
+        if [ "$VARIANT" != "main" ]; then
+          echo "BR_HOST_KEY=br-${VARIANT}-host-${ws_fp}-${ver}-${tc_hash}" >> "$GITHUB_ENV"
+          {
+            echo "BR_HOST_PATHS<<BR_HOST_PATHS_EOF"
+            echo "output-${VARIANT}/host"
+            echo "output-${VARIANT}/build/host-*"
+            echo "BR_HOST_PATHS_EOF"
+          } >> "$GITHUB_ENV"
+          echo "BR_LEGAL_TARGET=${VARIANT}-legal-info" >> "$GITHUB_ENV"
+          echo "BR_EXTDEPS_TARGET=${VARIANT}-external-deps" >> "$GITHUB_ENV"
+        else
+          echo "BR_HOST_KEY=br-host-${ws_fp}-${ver}-${tc_hash}" >> "$GITHUB_ENV"
+          {
+            echo "BR_HOST_PATHS<<BR_HOST_PATHS_EOF"
+            echo "output/host"
+            echo "output/build/host-*"
+            echo "BR_HOST_PATHS_EOF"
+          } >> "$GITHUB_ENV"
+          echo "BR_LEGAL_TARGET=legal-info" >> "$GITHUB_ENV"
+          echo "BR_EXTDEPS_TARGET=external-deps" >> "$GITHUB_ENV"
+        fi
+
+        echo "Resolved BUILDROOT_VERSION=$ver  workspace-fp=$ws_fp  variant=$VARIANT"
 
     ############################################################################
     # Five input caches. Mind GitHub's 10 GB per-repo ceiling — it evicts
     # least-recently-used entries once the repo crosses it, so these are sized to
     # coexist. Measured sizes from the first green run are in the header above.
+    #
+    # THE 10 GB MATH, NOW THAT VARIANTS SHARE IT: main's set is ~7 GB
+    # (2.7 GB dl + ~3 GB br-host + br-initramfs-host + ~0.7 GB ccache + the tiny
+    # tarball). Each kernel variant adds ~2-3 GB (br-<name>-host — the
+    # cross-toolchain dominates it; the kernel-only target is small) plus up to
+    # ~3 GB (br-dl-<name> — its content mostly overlaps br-dl, but GitHub cache
+    # entries are opaque blobs, so overlap is not deduplicated). That can put
+    # the repo over the ceiling, which is survivable by design: eviction is
+    # LRU, every cache here is a pure accelerator, and an evicted entry means a
+    # cold, self-healing rebuild (see the coupling note below), never a wrong
+    # one. If eviction thrash ever hurts, the cheapest levers in order: shrink
+    # ccache-max-size, then drop the variant dl SAVE (the restore-keys fallback
+    # to the main dl prefix keeps variant builds mostly warm for free).
     ############################################################################
 
     # WHY THE TWO DOWNLOAD CACHES ARE SPLIT restore/save AND THE TOOLCHAINS ARE NOT
@@ -281,8 +437,13 @@ runs:
     # to the version alone so an imperfect match still hydrates everything that
     # did NOT change instead of re-downloading the whole package set. dl/ lives at
     # the repo root (survives `make clean`) — never move it under output/.
+    #
+    # Exactly ONE of #2 (main) / #2b (kernel variant) runs per invocation; the
+    # skipped step's outputs read as empty strings, which is what the combined
+    # `if:`s and the `||` in the save step below rely on.
     - name: Restore Buildroot dl/ download cache
       id: dl-cache
+      if: env.VARIANT == 'main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
@@ -290,35 +451,73 @@ runs:
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 
-    # 3. The main (glibc) cross-toolchain: output/host plus the per-package build
-    # stamps under output/build/host-*/ that tell Buildroot's incremental make
-    # those host packages are already built — without the stamps, restoring
-    # output/host alone would not stop Buildroot rebuilding straight into it.
-    # THE big win: this is what skips rebuilding gcc/binutils/glibc from scratch.
-    #
-    # `if:` — the coupling. cache-matched-key is non-empty for BOTH an exact hit
-    # and a restore-keys hit, i.e. "dl/ came back with something". Skip the restore
-    # when it did not, and this build goes cold and re-downloads. See the block
-    # above for why that is the point rather than a regression.
-    - name: Restore Buildroot host toolchain
-      id: host-cache
-      if: steps.dl-cache.outputs.cache-matched-key != ''
+    # 2b. A kernel variant's dl/. Its own name-derived KEY, not main's: a
+    # variant config needs sources main never fetches (e.g. rt's 7.2-rc3 kernel
+    # snapshot), and cache keys are immutable — under a shared key, whichever
+    # variant saved first would lock the others' gaps in forever. The key
+    # hashes the two inputs that decide what the variant downloads: the shared
+    # kernel-only base defconfig and the variant's own fragment.
+    # restore-keys falls back through the variant's own prefix to the MAIN dl
+    # prefix, so a cold variant run warm-starts from ~everything main already
+    # fetched. That fallback is SAFE despite the stamp-coupling hazard
+    # documented above: the variant host-toolchain cache's stamps (#3, keyed
+    # br-<name>-host) only assert HOST-package tarballs — and the kernel-only
+    # config's host set (cross-toolchain, host-kmod, …) is a strict SUBSET of
+    # main's, so a fallback-restored main dl satisfies every one of those
+    # stamps — while the variant kernel's own .stamp_downloaded lives in
+    # output-<name>/build/linux-*, which is never cached, so no stale stamp can
+    # vouch for a file only the variant config needs.
+    - name: Restore Buildroot dl/ download cache (kernel variant)
+      id: dl-cache-variant
+      if: env.VARIANT != 'main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: |
-          output/host
-          output/build/host-*
+        path: dl/
+        key: br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_kernel_defconfig', format('configs/mister_{0}.fragment', env.VARIANT)) }}
+        restore-keys: |
+          br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-
+          br-dl-${{ env.BUILDROOT_VERSION }}-
+
+    # 3. The variant's (glibc) cross-toolchain: <O>/host plus the per-package
+    # build stamps under <O>/build/host-*/ that tell Buildroot's incremental make
+    # those host packages are already built — without the stamps, restoring
+    # <O>/host alone would not stop Buildroot rebuilding straight into it.
+    # THE big win: this is what skips rebuilding gcc/binutils/glibc from scratch.
+    # Path and key come from the variant-resolved env (main: output/host under
+    # br-host-…; a kernel variant: output-<name>/host under br-<name>-host-…) —
+    # one step, one namespace per variant, never a shared entry (absolute O=
+    # paths are baked in).
+    #
+    # `if:` — the coupling. cache-matched-key is non-empty for BOTH an exact hit
+    # and a restore-keys hit, i.e. "dl/ came back with something". Only one of
+    # the two dl restore steps ran (the other's outputs are empty), so the OR
+    # reads as "the dl restore for THIS variant matched". Skip the restore when
+    # it did not, and this build goes cold and re-downloads. See the block above
+    # for why that is the point rather than a regression.
+    - name: Restore Buildroot host toolchain
+      id: host-cache
+      if: steps.dl-cache.outputs.cache-matched-key != '' || steps.dl-cache-variant.outputs.cache-matched-key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.BR_HOST_PATHS }}
         key: ${{ env.BR_HOST_KEY }}
 
     # 4. The initramfs stage's SEPARATE static-musl cross-toolchain. `make
     # initramfs` builds its own; caching it turns a ~30 min cold stage 1 into a
     # couple of minutes warm. Busts only on an initramfs-defconfig change.
+    # EVERY variant restores and saves it: the stage-1 cpio is embedded into
+    # every kernel this repo builds (external.mk's fixup applies to any
+    # BR2_LINUX_KERNEL=y build), so `make <variant>` depends on `initramfs`
+    # exactly as `make all` does — and the cache key is variant-independent
+    # (keyed on the initramfs defconfig alone, at the one shared
+    # output-initramfs/ path), so a kernel leg that runs first warms it for the
+    # main build that follows.
     #
     # Coupled to dl/ for the same reason as #3: this stage shares the one BR2_DL_DIR
-    # with the main build, so its stamps make the same claims about the same dl/.
+    # with every build here, so its stamps make the same claims about the same dl/.
     - name: Restore initramfs host toolchain
       id: initramfs-host-cache
-      if: steps.dl-cache.outputs.cache-matched-key != ''
+      if: steps.dl-cache.outputs.cache-matched-key != '' || steps.dl-cache-variant.outputs.cache-matched-key != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
@@ -409,7 +608,14 @@ runs:
     # its own .config.) Regenerate unconditionally on every run: the defconfig is
     # the reproducible source of truth, and doing it every time also stops a stale
     # cached output/.config from silently overriding a defconfig change.
+    #
+    # MAIN-ONLY: `make <variant>` generates output-<variant>/.config itself
+    # (kernel-only defconfig + merge_config.sh of the variant fragment), and no
+    # cache here ever carries a variant .config, so it regenerates fresh every
+    # run and the staleness this step exists to prevent cannot occur for a
+    # kernel variant.
     - name: Configure Buildroot (generate output/.config from the defconfig)
+      if: env.VARIANT == 'main'
       shell: bash
       run: make mister_de10nano_defconfig
 
@@ -424,6 +630,7 @@ runs:
     # post-build.sh. Left unset everywhere else, which keeps ordinary builds
     # reproducible.
     - name: Build image (make all — initramfs + main rootfs, ccache both)
+      if: env.VARIANT == 'main'
       shell: bash
       run: |
         make all \
@@ -431,11 +638,34 @@ runs:
           BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
           BR2_CCACHE_USE_BASEDIR=y
 
+    # A kernel variant: `make <name>` — the stage-1 initramfs (a prerequisite of
+    # every kernel target; its cpio is embedded into the zImage) followed by the
+    # kernel-only Buildroot build into output-<name>/, which ends by staging the
+    # variant's depmod'd module tree into work/extra-modules-overlay/ (unused in
+    # this job; the CALLER ships the tree via the kernel artifact instead). Same
+    # ccache args as main; they propagate through MAKEFLAGS, and all variants
+    # share the one ccache (distinct object keys coexist; the action's header
+    # explains why the cap is not the constraint). The Makefile's variant target
+    # hard-asserts the built kernel's config (e.g. rt's CONFIG_PREEMPT_RT=y), so
+    # a fragment regression fails HERE, loudly, not on a device.
+    - name: Build kernel variant (make <variant> — kernel-only Buildroot build)
+      if: env.VARIANT != 'main'
+      shell: bash
+      run: |
+        make "$VARIANT" \
+          BR2_CCACHE=y \
+          BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
+          BR2_CCACHE_USE_BASEDIR=y
+
+    # BR_LEGAL_TARGET is variant-resolved in the fingerprint step: `legal-info`
+    # for main, `<name>-legal-info` for a kernel variant (same recipe, aimed at
+    # output-<name>/ — kernel-only, so the bundle is dominated by the kernel
+    # source).
     - name: Generate legal-info (SBOM)
       if: inputs.run-legal-info == 'true'
       shell: bash
       run: |
-        make legal-info \
+        make "$BR_LEGAL_TARGET" \
           BR2_CCACHE=y \
           BR2_CCACHE_DIR=$GITHUB_WORKSPACE/.ccache \
           BR2_CCACHE_USE_BASEDIR=y
@@ -469,10 +699,15 @@ runs:
     # needed. A tree can be the right size and still be missing the file that
     # matters, so measure the thing we actually care about.
     #
-    # `make external-deps` is the oracle. It runs with -B (buildroot/Makefile:860),
-    # so unlike `make source` it consults no stamps and cannot be fooled by the
-    # .stamp_downloaded problem described above; it just prints the basename of
-    # every file dl/ is supposed to contain.
+    # `make external-deps` is the oracle (`<name>-external-deps` for a kernel
+    # variant — BR_EXTDEPS_TARGET is variant-resolved in the fingerprint step,
+    # so the list is enumerated against the config whose dl/ is about to be
+    # saved; like main's oracle it does NOT enumerate the stage-1 initramfs
+    # config's downloads, a pre-existing gap main has always had too). It runs
+    # with -B (buildroot/Makefile:860), so unlike `make source` it consults no
+    # stamps and cannot be fooled by the .stamp_downloaded problem described
+    # above; it just prints the basename of every file dl/ is supposed to
+    # contain.
     #
     # It MUST be invoked with the same BR2_CCACHE=y as the build. That flag is a
     # command-line override rather than a defconfig symbol, and it pulls host-ccache
@@ -491,12 +726,18 @@ runs:
         set -uo pipefail
 
         # Bare basenames only. The wrapper Makefile echoes its own recipe and a
-        # hostshim notice onto stdout; every such line contains a '/', '=' or a
-        # space, and no legitimate basename does.
-        if ! make external-deps BR2_CCACHE=y \
+        # hostshim notice onto stdout (for a kernel variant, also the
+        # .config-generation recipe's cd/merge_config.sh lines); every such
+        # line contains a '/', '=' or a space. The '^#' exists for one more
+        # variant case: if the build died before `make <variant>` generated
+        # output-<variant>/.config, the .config rule re-runs HERE and kconfig
+        # prints its "configuration written to" trailer — two bare '#' lines
+        # that match none of the other patterns. No legitimate basename
+        # contains '/', '=' or a space, or starts with '#'.
+        if ! make "$BR_EXTDEPS_TARGET" BR2_CCACHE=y \
                BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" \
                BR2_CCACHE_USE_BASEDIR=y 2>/dev/null \
-             | grep -vE '/|=|^\s*$| ' | sort -u > /tmp/dl-needed.txt; then
+             | grep -vE '/|=|^\s*$| |^#' | sort -u > /tmp/dl-needed.txt; then
           echo "complete=false" >> "$GITHUB_OUTPUT"
           echo "::notice title=dl/ not cached::Could not enumerate required downloads (make external-deps failed), so dl/ completeness is unknown and it was NOT saved. Erring toward a re-download rather than risk locking an incomplete dl/ into an immutable cache key."
           exit 0
@@ -531,12 +772,20 @@ runs:
     # match (nothing to add, and the save would be rejected anyway). A restore-keys
     # match leaves cache-hit false, which is what we want: dl/ was hydrated from an
     # older entry and has since grown, so it is worth re-saving under the new key.
+    #
+    # Variant plumbing: only ONE of the two dl restore steps ran, and a skipped
+    # step's outputs are empty — so both cache-hit conditions collapse to "the
+    # restore that ran was not an exact hit", and the `||` in `key:` resolves to
+    # the primary key of whichever restore ran. The save therefore lands under
+    # the same key namespace it was restored from (br-dl-… or br-dl-<name>-…),
+    # which is what keeps a variant's warm-start-from-main fallback from ever
+    # WRITING into main's key space.
     - name: Save Buildroot dl/ download cache
-      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
+      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-cache-variant.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: ${{ steps.dl-cache.outputs.cache-primary-key }}
+        key: ${{ steps.dl-cache.outputs.cache-primary-key || steps.dl-cache-variant.outputs.cache-primary-key }}
 
     - name: Save Buildroot release tarball
       if: always() && steps.tarball-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.tarball == 'true'
@@ -562,16 +811,19 @@ runs:
     # `cache-hit != 'true'` covers both "restored and missed" and "restore was
     # SKIPPED because dl/ missed" — the latter leaves the output empty, which is
     # exactly the cold healing run whose freshly-built toolchain we most want to
-    # keep.
+    # keep. Path and key are the variant-resolved env, same as the restore — the
+    # one step serves both key namespaces and can never cross them.
     - name: Save Buildroot host toolchain
       if: steps.host-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: |
-          output/host
-          output/build/host-*
+        path: ${{ env.BR_HOST_PATHS }}
         key: ${{ env.BR_HOST_KEY }}
 
+    # Every variant, like its restore: `make <variant>` builds the initramfs
+    # stage too (its cpio is embedded into every kernel), so output-initramfs/
+    # exists on green variant runs as well — and the key is variant-independent,
+    # so whichever variant builds it cold saves it for all.
     - name: Save initramfs host toolchain
       if: steps.initramfs-host-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -587,6 +839,12 @@ runs:
       run: |
         echo "--- disk free ---"; df -h .
         echo "--- dl/ ---"; du -sh dl 2>/dev/null || true
-        echo "--- output/host ---"; du -sh output/host 2>/dev/null || true
-        echo "--- output (total) ---"; du -sh output 2>/dev/null || true
+        if [ "${VARIANT:-main}" = "main" ]; then
+          echo "--- output/host ---"; du -sh output/host 2>/dev/null || true
+          echo "--- output (total) ---"; du -sh output 2>/dev/null || true
+        else
+          echo "--- output-$VARIANT/host ---"; du -sh "output-$VARIANT/host" 2>/dev/null || true
+          echo "--- output-$VARIANT (total) ---"; du -sh "output-$VARIANT" 2>/dev/null || true
+        fi
+        echo "--- output-initramfs (total) ---"; du -sh output-initramfs 2>/dev/null || true
         echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true

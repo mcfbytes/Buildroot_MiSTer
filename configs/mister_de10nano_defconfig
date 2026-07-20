@@ -113,7 +113,18 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 # BR2_EXTERNAL_MISTER_PATH-relative form as mister_initramfs_defconfig's own
 # BR2_ROOTFS_OVERLAY, just pointed at the full-rootfs overlay tree instead of
 # the initramfs one.
-BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
+#
+# The SECOND entry (ADR 0021 as amended 2026-07-18) is the gitignored
+# work/extra-modules-overlay/, where kernel-variant builds stage their
+# depmod'd usr/lib/modules/<kver>/ trees (`make rt` locally; CI's build-kernel
+# artifacts) so the ONE shipped linux.img carries every variant's modules.
+# Empty -> byte-identical image; the Makefile's `all` mkdir -p's it because
+# Buildroot fails on a missing overlay path.
+# NOTE: this line is part of the toolchain-fingerprint deny-list residue in
+# .github/actions/buildroot-build (it is neither BR2_PACKAGE_ nor
+# BR2_LINUX_KERNEL), so ADDING it busts the br-host cache exactly once — one
+# deliberate ~3h cold main build on the PR that introduced it.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay $(BR2_EXTERNAL_MISTER_PATH)/work/extra-modules-overlay"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.39"

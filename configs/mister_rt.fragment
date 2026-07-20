@@ -1,16 +1,25 @@
 # mister_rt.fragment — the RT / Linux-7.2-rc3 "beta" kernel variant.
 #
-# ⚠ SCAFFOLD — not yet built or booted. See docs/rt-beta-kernel.md for status,
-# design, and the open TODOs (a real build, on-hardware boot + RT validation).
+# ⚠ Never yet booted on hardware. See docs/rt-beta-kernel.md for status,
+# design, and the open TODOs (on-hardware boot + RT validation).
 #
-# This is layered on configs/mister_de10nano_defconfig at build time by
-# `make rt` (Buildroot's support/kconfig/merge_config.sh), NOT a second copy of
-# the defconfig. That is the whole "thin shim": everything not listed here is
-# inherited from the base defconfig unchanged — same armv7-a / Cortex-A9
-# toolchain, same 6.18-pinned kernel headers (so the userland ABI is identical),
-# same rootfs. Only four things change: the kernel version, its patch set, its
-# kernel-config delta, and the out-of-tree Realtek WiFi drivers that do not
-# build on Linux 7.x.
+# This is the BUILDROOT-config layer of the variant, layered on the KERNEL-ONLY
+# base configs/mister_kernel_defconfig at build time by `make rt` (Buildroot's
+# support/kconfig/merge_config.sh). Everything not listed here is inherited
+# from that base unchanged — same armv7-a / Cortex-A9 toolchain, same
+# 6.18-pinned kernel headers (so the userland ABI is identical), rootfs-tar
+# only. Three things change: the kernel version, its patch set, and its
+# kernel-config delta. (The base has NO packages, so the old full-image
+# variant's "disable the 7.x-incompatible OOT WiFi drivers" lines are gone —
+# there is nothing to disable; the OOT-WiFi story for RT is in
+# docs/rt-beta-kernel.md §4.)
+#
+# Do not confuse the two fragment layers: THIS file is Buildroot config (BR2_*);
+# board/mister/de10nano/linux-rt.fragment (named below) is KERNEL config
+# (CONFIG_*) and is where CONFIG_PREEMPT_RT actually lives.
+#
+# Adding a future kernel variant `foo` = a sibling configs/mister_foo.fragment
+# like this one + foo/foo-clean/... Makefile targets + one CI matrix entry.
 
 # --- The 7.2-rc3 kernel -------------------------------------------------------
 # Just override the version value; the base defconfig already sets
@@ -18,27 +27,26 @@
 # linux/linux.mk detects the "-rc" and fetches the cgit snapshot from
 # https://git.kernel.org/torvalds/t (there is no signed release tarball for an
 # -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc3.
+#
+# COUPLED to board/mister/de10nano/patches/linux/linux.hash: the base config's
+# BR2_DOWNLOAD_FORCE_CHECK_HASHES disables Buildroot's built-in -rc hash
+# exemption, so the snapshot MUST have a sha256 line there or the build fails
+# closed at download. Bump the version here -> update that line in the same
+# commit (its header says how, and why -rc hashes have weaker provenance).
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
 
 # --- Beta patch set -----------------------------------------------------------
-# linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/ (symlinks
-# to the shared patch files — single source of truth). Its series drops 0015
-# (already upstreamed in 7.2) and, pending a 7.x context re-anchor, 0030 + 0037.
-# The other 28 apply cleanly to 7.2-rc3 (verified).
+# linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks
+# to the shared patch files, EXCEPT 0001, 0015 and 0031, which are real
+# re-anchored copies — Buildroot applies patches with `patch -F0` (fuzz zero),
+# and those three patches' 6.18 context or APIs drifted upstream (see the
+# series file's header; note 0015 was once wrongly believed upstreamed in
+# 7.2 — it is not: 7.2 has no FAML/FAMR controller types). The shared 6.18
+# patches are deliberately untouched, keeping them byte-identical to stock.
+# The series drops only 0030 + 0037 (7.x re-anchors pending). All 29 listed
+# patches apply to 7.2-rc3 at -F0 (verified through Buildroot's own
+# apply-patches.sh AND the real `linux-patch` stage, 2026-07-18).
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config ---------
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-rt.fragment"
-
-# --- Out-of-tree Realtek USB WiFi ---------------------------------------------
-# No upstream fix exists for the Linux 7.1 cfg80211 op-table refactor
-# (net_device* -> wireless_dev*): morrownr's drivers top out at kernel 7.0, and
-# our pins are already at each repo's HEAD, so these fail to compile on 7.2.
-# Disable them on the beta. The RTL8814AU chip is recovered by the in-kernel
-# rtw88_8814au driver inherited from the shared linux.config (the main build
-# migrated that chip in-kernel); RTL8812AU / RTL8821AU have no in-kernel
-# equivalent and are simply absent on this dev/RT kernel.
-# `xone` builds clean on 7.2 and stays enabled (inherited from the base).
-# BR2_PACKAGE_RTL8812AU is not set
-# BR2_PACKAGE_RTL8814AU_MORROWNR is not set
-# BR2_PACKAGE_RTL8821AU_MORROWNR is not set

@@ -28,3 +28,24 @@
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
 sha256  a7a7e3d2ae9d95e74197223a8d4eb5f6be7aac21b6e6de27e9685d001c1f8cb0  linux-6.18.39.tar.xz
+
+# WHERE THE 7.2-rc3 HASH COMES FROM -- weaker provenance, stated honestly.
+# kernel.org publishes NO signed manifest for -rc kernels: sha256sums.asc
+# covers releases only, and linux/linux.mk fetches "-rc" versions as
+# cgit-generated snapshots from https://git.kernel.org/torvalds/t/ (hence
+# .tar.gz, not .tar.xz). Upstream Buildroot handles that by exempting the file
+# via BR_NO_CHECK_HASH_FOR -- but BR2_DOWNLOAD_FORCE_CHECK_HASHES (kept, per
+# G5) EMPTIES that exemption list (package/pkg-download.mk:119), so without a
+# line here every RT variant build fails closed at the kernel download with
+# "No hash found for linux-7.2-rc3.tar.gz".
+#
+# This value is therefore transcribed from a verified local download
+# (2026-07-18: 265,621,151 bytes; the tarball extracted cleanly and its
+# top-level Makefile reads VERSION=7 PATCHLEVEL=2 EXTRAVERSION=-rc3) -- the
+# circularity the release-hash rule above forbids, accepted here because no
+# signed source exists to transcribe from. It still buys TOFU pinning: every
+# later download must be byte-identical to the inspected one. ACCEPTED RISK:
+# cgit regenerating the snapshot with different compression bytes would fail
+# this check spuriously -- that failure is closed, not open, and an -rc pin is
+# short-lived by nature (the next version bump replaces this line anyway).
+sha256  3f23996e52dbc7a8d8a8729c606775a7bd8e1f5194672086b6f381121742e0bd  linux-7.2-rc3.tar.gz

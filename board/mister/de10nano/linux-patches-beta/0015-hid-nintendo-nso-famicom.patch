@@ -1,0 +1,225 @@
+From 484f681720ca5037042a8d3b89158e6d3af09563 Mon Sep 17 00:00:00 2001
+From: Aurora <AuroraWright@users.noreply.github.com>
+Date: Mon, 16 Jun 2025 08:02:31 +0200
+Subject: [PATCH 1/1] HID: nintendo: add support for the NSO Famicom
+ controllers
+
+The Nintendo Switch Online Famicom controllers (the reproduction pair sold
+to NSO subscribers) report themselves over Bluetooth with the Joy-Con (R)
+product ID, 057e:2007, so they already match this driver's device table.
+What they do *not* do is report a controller type the driver knows: the
+device-info subcommand returns 0x07 for controller I and 0x08 for
+controller II. Every type helper in hid-nintendo returns false for those
+values, so on an unmodified 6.18 kernel the pads probe successfully, create
+an input device, and then register *no buttons and no axes at all* -- a
+completely silent, completely dead gamepad, with nothing in dmesg.
+
+This adds the two types and wires them into the two dispatch chains
+(joycon_parse_report() and joycon_input_create()):
+
+  * JOYCON_CTLR_TYPE_FAML (0x07), Famicom controller I, is a NES pad in a
+    different shell -- same buttons, same report bits -- so it reuses
+    nescon_button_mappings verbatim.
+
+  * JOYCON_CTLR_TYPE_FAMR (0x08), Famicom controller II, has no SELECT and
+    no START (on a real Famicom those live on controller I). In their place
+    it carries a microphone and a volume slider. It gets its own four-entry
+    table -- A, B, and the two rail buttons -- so those two bits are simply
+    never reported rather than fabricated. The microphone is not exposed;
+    the original commit says so in its subject ("no mic for Famicom R") and
+    this port does not add it either.
+
+Nothing else needs touching, and that is worth stating explicitly because
+it is where a mechanical port of the original goes wrong (see below): in
+6.18 the capability helpers -- joycon_has_imu(), joycon_has_joysticks(),
+joycon_has_rumble() -- are *positive* lists naming the controllers that DO
+have the capability. A newly added type is excluded from all three by
+construction. No rumble, no IMU, no sticks, correctly, with no code.
+
+Provenance
+----------
+Origin:       484f681720ca5037042a8d3b89158e6d3af09563
+              "input: Add support for the NSO Famicom controllers
+              (no mic for Famicom R) (#62)"
+              MiSTer-devel/Linux-Kernel_MiSTer, 2025-06-16, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/484f681720ca5037042a8d3b89158e6d3af09563
+Author:       Aurora <AuroraWright@users.noreply.github.com>
+Upstream:     No. Verified against 6.18.38: drivers/hid/hid-nintendo.c
+              enum joycon_ctlr_type (:314) has JCL/JCR/PRO/NESL/NESR/SNES/
+              GEN/N64 and no Famicom types; no helper anywhere tests for
+              0x07 or 0x08. Upstream hid-nintendo does support the other
+              NSO controllers -- NES, SNES, N64, Genesis -- via 94f18bb19945
+              ("HID: nintendo: add support for nso controllers", Ryan
+              McClelland, 2023-12-04), which is why those MiSTer commits
+              were dropped as superseded (docs/patch-provenance.md class C)
+              and only the Famicom gap remains. Worth sending upstream:
+              it is a small, self-contained addition in the driver's own
+              idiom.
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9
+              (escalated to [OPUS]: this is a re-implementation, not a
+              rebase -- the original diff does not apply in any form).
+
+              94f18bb19945 rewrote the driver's type detection between the
+              fork's 5.15 base and 6.18. The original patch is written
+              against the old idiom and every one of its hunks is now
+              obsolete:
+
+              * Old: `#define jc_type_is_nescon(ctlr)` etc., macros that
+                AND the USB product ID with the ctlr_type byte. New: typed
+                `static inline bool joycon_type_is_*(struct joycon_ctlr *)`
+                helpers that test ctlr_type alone, in three documented
+                tiers (device / type / capability, hid-nintendo.c:658-767).
+                The product ID is deliberately no longer consulted -- NSO
+                pads lie about it -- so the original's "product == JOYCONR
+                && type == FAMIR" conjunction is redundant; type alone is
+                the authority. Added joycon_type_is_left_famicom() and
+                joycon_type_is_right_famicom() in that idiom.
+              * Old: `jc_type_is_joycon` had to be taught to exclude the
+                new Famicom types, or a Famicom (which reports the Joy-Con
+                (R) product ID) would have been misdetected as a Joy-Con.
+                New: joycon_type_is_any_joycon() is type-based, so it is
+                already false for 0x07/0x08. Hunk dropped.
+              * Old: `jc_type_is_nso` (a roll-up of the NSO types) gated a
+                shared reporting block. New: no such helper exists; each
+                type gets its own arm in joycon_parse_report() and
+                joycon_input_create(). Hunk dropped, replaced by the two
+                new arms.
+              * Old: `jc_has_rumble` was a *negative* list (everything
+                except nescon/snescon/mdcon) and had to be taught about
+                Famicom or the pads would have been given a rumble device
+                they do not have. New: joycon_has_rumble() is a positive
+                list. Hunk dropped -- see the note above.
+              * Old: button sets were flat arrays of BTN_* codes
+                (`famircon_button_inputs[]`) and the bit->code mapping was
+                open-coded in a long if/else in the report handler. New:
+                `struct joycon_ctlr_button_mapping` tables of
+                {code, bit} pairs, consumed by joycon_config_buttons() and
+                joycon_report_buttons(). The original's array cannot be
+                carried; famicom_r_button_mappings[] was authored against
+                the new structure, with the JC_BTN_* bits taken from the
+                shared NSO decode block the original patch relied on
+                (JC_BTN_A/B/L/R, hid-nintendo.c:341-362 -- the bit
+                assignments are unchanged from 5.15).
+
+              Behaviour note, A/B: the original reports "A" as BTN_EAST and
+              "B" as BTN_SOUTH for all NSO controllers. Upstream 6.18 maps
+              NES-family pads positionally instead -- "A" -> BTN_SOUTH,
+              "B" -> BTN_EAST (nescon_button_mappings; cf. the explicit
+              "mapped positionally, rather than by label" comment on
+              gencon_button_mappings). This port follows *upstream's*
+              convention, because Famicom controller I shares
+              nescon_button_mappings and the two pads of one set must not
+              disagree with each other. Consequence: A and B are swapped
+              relative to stock MiSTer -- but they are swapped for the NSO
+              NES, SNES, N64 and Genesis pads too, which is a pre-existing
+              consequence of taking upstream's hid-nintendo instead of the
+              fork's, not something this patch introduces. Users re-map in
+              the MiSTer OSD; flag for P3.13 hardware verification.
+
+              Not hardware-tested: no NSO Famicom pair available here. The
+              type bytes (0x07/0x08), the button set, and the absence of
+              SELECT/START on controller II are taken from the original
+              commit, whose author has the hardware.
+
+Signed-off-by: Aurora <AuroraWright@users.noreply.github.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+[re-anchored for the 7.x beta series. The 2026-07-17 port test concluded
+ this patch was upstreamed in 7.2 -- that was WRONG: 7.2-rc3 has no
+ JOYCON_CTLR_TYPE_FAML/FAMR (0x07/0x08) and no famicom tables; upstream's
+ similarly-named support is the left/right *nescon* types (0x09/0x0A).
+ Re-anchor deltas vs the 6.18 original: the enum gained LIC_PRO = 0x06 as
+ a neighbor, and both dispatch sites' preceding procon branches gained a
+ LIC_PRO conditional (context-only change; the nescon branches this patch
+ extends are unchanged). Keep in lockstep with
+ ../linux-patches/0015-hid-nintendo-nso-famicom.patch.]
+
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index e7302ec01..8e7f104ed 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -317,6 +317,8 @@ enum joycon_ctlr_type {
+ 	JOYCON_CTLR_TYPE_JCR  = 0x02,
+ 	JOYCON_CTLR_TYPE_PRO  = 0x03,
+ 	JOYCON_CTLR_TYPE_LIC_PRO = 0x06,
++	JOYCON_CTLR_TYPE_FAML = 0x07,
++	JOYCON_CTLR_TYPE_FAMR = 0x08,
+ 	JOYCON_CTLR_TYPE_NESL = 0x09,
+ 	JOYCON_CTLR_TYPE_NESR = 0x0A,
+ 	JOYCON_CTLR_TYPE_SNES = 0x0B,
+@@ -463,6 +465,26 @@ static const struct joycon_ctlr_button_mapping nescon_button_mappings[] = {
+ 	{ /* sentinel */ },
+ };
+ 
++/*
++ * The NSO Famicom controllers come as a pair. Controller I is a NES pad in a
++ * different shell -- same buttons, same report layout -- so it reuses
++ * nescon_button_mappings above. Controller II physically has no SELECT and no
++ * START (on a real Famicom those live on controller I); in their place it has a
++ * microphone and a volume slider, which this driver does not expose. So it only
++ * declares the buttons it actually has: without an entry here, the bit is never
++ * reported, and a phantom SELECT/START would be a lie about the hardware.
++ *
++ * A/B follow the positional convention the rest of this driver uses, matching
++ * nescon: "A" -> BTN_SOUTH, "B" -> BTN_EAST.
++ */
++static const struct joycon_ctlr_button_mapping famicom_r_button_mappings[] = {
++	{ BTN_SOUTH,	JC_BTN_A,	},
++	{ BTN_EAST,	JC_BTN_B,	},
++	{ BTN_TL,	JC_BTN_L,	},
++	{ BTN_TR,	JC_BTN_R,	},
++	{ /* sentinel */ },
++};
++
+ static const struct joycon_ctlr_button_mapping snescon_button_mappings[] = {
+ 	{ BTN_EAST,	JC_BTN_A,	},
+ 	{ BTN_SOUTH,	JC_BTN_B,	},
+@@ -744,6 +766,16 @@ static inline bool joycon_type_is_right_nescon(struct joycon_ctlr *ctlr)
+ 	return ctlr->ctlr_type == JOYCON_CTLR_TYPE_NESR;
+ }
+ 
++static inline bool joycon_type_is_left_famicom(struct joycon_ctlr *ctlr)
++{
++	return ctlr->ctlr_type == JOYCON_CTLR_TYPE_FAML;
++}
++
++static inline bool joycon_type_is_right_famicom(struct joycon_ctlr *ctlr)
++{
++	return ctlr->ctlr_type == JOYCON_CTLR_TYPE_FAMR;
++}
++
+ static inline bool joycon_type_is_any_joycon(struct joycon_ctlr *ctlr)
+ {
+ 	return joycon_type_is_left_joycon(ctlr) ||
+@@ -1735,9 +1767,13 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
+ 			joycon_report_buttons(ctlr, rep, lic_procon_button_mappings);
+ 		else
+ 			joycon_report_buttons(ctlr, rep, procon_button_mappings);
+-	} else if (joycon_type_is_any_nescon(ctlr)) {
++	} else if (joycon_type_is_any_nescon(ctlr) ||
++		   joycon_type_is_left_famicom(ctlr)) {
+ 		joycon_report_dpad(ctlr, rep);
+ 		joycon_report_buttons(ctlr, rep, nescon_button_mappings);
++	} else if (joycon_type_is_right_famicom(ctlr)) {
++		joycon_report_dpad(ctlr, rep);
++		joycon_report_buttons(ctlr, rep, famicom_r_button_mappings);
+ 	} else if (joycon_type_is_snescon(ctlr)) {
+ 		joycon_report_dpad(ctlr, rep);
+ 		joycon_report_buttons(ctlr, rep, snescon_button_mappings);
+@@ -2184,9 +2220,13 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
+ 			joycon_config_buttons(ctlr->input, lic_procon_button_mappings);
+ 		else
+ 			joycon_config_buttons(ctlr->input, procon_button_mappings);
+-	} else if (joycon_type_is_any_nescon(ctlr)) {
++	} else if (joycon_type_is_any_nescon(ctlr) ||
++		   joycon_type_is_left_famicom(ctlr)) {
+ 		joycon_config_dpad(ctlr->input);
+ 		joycon_config_buttons(ctlr->input, nescon_button_mappings);
++	} else if (joycon_type_is_right_famicom(ctlr)) {
++		joycon_config_dpad(ctlr->input);
++		joycon_config_buttons(ctlr->input, famicom_r_button_mappings);
+ 	} else if (joycon_type_is_snescon(ctlr)) {
+ 		joycon_config_dpad(ctlr->input);
+ 		joycon_config_buttons(ctlr->input, snescon_button_mappings);
+-- 
+2.43.0

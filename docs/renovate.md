@@ -39,7 +39,8 @@ for the specific pieces most likely to need a fix on the first live run.
 | Pin | File(s) | Mechanism | Hash companion |
 |---|---|---|---|
 | Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.02.x` | `BUILDROOT_SHA256` — **manual**, see below |
-| Kernel | `configs/mister_de10nano_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | `customManagers` regex + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
+| Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
+| Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — the hash-sync kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
@@ -49,12 +50,34 @@ for the specific pieces most likely to need a fix on the first live run.
 | CI container digests | `ubuntu:26.04@sha256:...` in `build.yml`, `release.yml`, `reproducibility.yml`'s `container:` blocks | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
-That is **18 customManagers entries** (Buildroot, kernel, 9 driver commits,
-munt, bcm20702-firmware — 10 commit pins in total once bcm20702 is counted —
-libchdr, lzma-sdk, and the 3 sdcard payload pins)
+That is **19 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
+kernel, 9 driver commits, munt, bcm20702-firmware — 10 commit pins in total
+once bcm20702 is counted — libchdr, lzma-sdk, and the 3 sdcard payload pins)
 plus the two built-in managers
 (`docker` digests, `github-actions`), covering every version/commit/digest pin
 this repository maintains by hand except the four listed below.
+
+### Why the two kernel pins are separate managers
+
+`configs/mister_rt.fragment` carries the **identical Kconfig symbol** as the two
+defconfigs, but pins a different upstream line (mainline, currently `7.2-rc3` and headed for
+7.2 final) with different cadence, provenance, and review bar. A single manager
+covering all three files would hand the longterm datasource a `-rc`
+`currentValue` and the mainline datasource a `6.18.x` one. So there are two
+managers with two datasources and two `depName`s, and each file pattern names
+its files explicitly — no globbing over `configs/`, which would silently
+re-couple them.
+
+Conversely, the two 6.18 files are deliberately in the **same** manager:
+`mister_kernel_defconfig` copies the main defconfig's kernel/toolchain stanza
+(see its header and `scripts/check-kernel-defconfig-sync.sh`), so they must move
+together. Verified against a real Renovate run with both files held back: two
+extracted upgrades, exactly **one** branch
+(`renovate/kernel-longterm-6.18-6.x`) covering both.
+
+That lockstep check is what caught the 6.18.38 → 6.18.39 bump landing in only
+one of the two files, back when the manager listed just
+`mister_de10nano_defconfig`.
 
 ### Why `bcm20702-firmware` is a commit pin, not a tag pin
 

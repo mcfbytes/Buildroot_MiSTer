@@ -1,1 +1,575 @@
-../linux-patches/0001-fbdev-add-MiSTer_fb-driver.patch
+From d1002ecd4b1f9350efd57c2e1eea2fb885fc5d9d Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Fri, 20 Aug 2021 02:04:02 +0800
+Subject: [PATCH 1/1] fbdev: add MiSTer_fb driver
+
+MiSTer's framebuffer. A platform driver bound to the DT node
+`compatible = "MiSTer_fb"` (reg = <0x22000000 0x800000>, IRQ 40) — the
+window the FPGA "frame reader" scans out. The driver memremap()s that
+window, publishes it as /dev/fb0 (pixels at fb_res->start + 4096; the
+first 4 KiB hold the pseudo-palette), and turns the FPGA's per-frame
+interrupt into FBIO_WAITFORVSYNC.
+
+Provenance
+----------
+Origin:       d1002ecd4b1f9350efd57c2e1eea2fb885fc5d9d
+              "Implement MiSTer frame buffer device."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-20, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/d1002ecd4b1f9350efd57c2e1eea2fb885fc5d9d
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, and never submitted. MiSTer-specific — a soft-IP frame
+              reader in DE10-Nano FPGA fabric; mainline has no equivalent
+              and would not take this as-is. Disposition "carry"
+              (docs/patch-provenance.md §3.1, §5).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.4.
+              The origin commit also touched
+              arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts; that hunk
+              belongs to 0004-dts-de10nano-MiSTer.patch (P1.7), not here.
+
+ABI — unchanged by this forward-port (docs/abi-contract.md §4)
+--------------------------------------------------------------
+  * /dev/fb0, a standard fbdev node.
+  * Exactly one ioctl: FBIO_WAITFORVSYNC = _IOW('F', 0x20, __u32) =
+    0x40044620. That is *mainline* UAPI (include/uapi/linux/fb.h), byte
+    identical in 5.15 and 6.18, and architecture-independent (fixed-width
+    __u32 argument). *arg must be 0, else -ENODEV; any other cmd is -ENOTTY;
+    a vsync that does not arrive within VSYNC_TIMEOUT_MSEC (50 ms) is
+    -ETIMEDOUT. There is no custom ioctl and therefore no ioctl drift.
+  * /sys/module/MiSTer_fb/parameters/mode — mode 0664, RW, module_param_cb.
+    Five unsigned ints, "format rb width height stride". Writing it wipes
+    the window, reconfigures fb_info and bumps res_count. This — not the
+    ioctl — is the real custom ABI; Main_MiSTer writes it with a plain
+    shell redirect, so it must stay a genuine sysfs attribute.
+  * /sys/module/MiSTer_fb/parameters/{width,height,stride,format,rb,
+    frame_count,res_count} — mode 0444, RO.
+Not one line below touches any of that.
+
+6.18 API churn (everything not listed here is the 5.15 file verbatim)
+---------------------------------------------------------------------
+Required — the 5.15 file does not build on 6.18 without these:
+
+ 1. fb_read/fb_write/fb_mmap are no longer implicit. Until v6.7 the fbdev
+    core supplied them whenever a driver left the callbacks NULL — the
+    fallback used the __iomem accessors and vm_iomap_memory() on
+    fix.smem_start. v6.8 commit 8813e86f6d82 ("fbdev: Remove default
+    file-I/O implementations") deleted that fallback; a driver with no
+    .fb_mmap now gets a WARN and -ENODEV out of fb_mmap().
+    Resolved with __FB_DEFAULT_IOMEM_OPS_RDWR and __FB_DEFAULT_IOMEM_OPS_MMAP
+    (fb_io_read / fb_io_write / fb_io_mmap), which is precisely what the old
+    core fallback did — so behaviour is preserved, not invented.
+    It has to be the *iomem* variants: this window is FPGA memory above the
+    `mem=511M` line, has no struct pages, and can only be mapped by
+    vm_iomap_memory() on the physical fix.smem_start. (6.18 offers no sysmem
+    mmap helper at all — only __FB_DEFAULT_SYSMEM_OPS_{RDWR,DRAW}.)
+    The *drawing* ops stay on sys_fillrect/sys_copyarea/sys_imageblit exactly
+    as in 5.15: memremap(MEMREMAP_WT) returns a normal-memory mapping, so the
+    direct-deref helpers are correct there. Only fbcon consumes any of this;
+    Main_MiSTer never mmap()s /dev/fb0 (docs/abi-contract.md §4.1).
+ 2. `info->flags = FBINFO_FLAG_DEFAULT;` dropped: FBINFO_DEFAULT /
+    FBINFO_FLAG_DEFAULT were removed in v6.6 by commit 0444fa357c16
+    ("fbdev: Remove FBINFO_DEFAULT and FBINFO_FLAG_DEFAULT"). The macro
+    expanded to 0 and this fb_info is embedded in a devm_kzalloc()'d struct,
+    so deleting the store is a no-op — info->flags is still 0.
+ 3. platform_driver::remove() returns void since v6.11, commit 0edb555a65d1
+    ("platform: Make platform_driver::remove() return void"). fb_remove()
+    changed from int to void; it only ever returned 0.
+ 4. `void fb_set()` -> `static void fb_set()`. -Wmissing-prototypes has been
+    on in the default build since v6.8, commit 0fcb70851fbf
+    ("Makefile.extrawarn: turn on missing-prototypes globally"), and this is
+    the one warning the 5.15 file still produces on 6.18. fb_set() is
+    file-local and was never meant to be a vmlinux-global symbol.
+ 5. Kconfig: FB_SYS_{FILLRECT,COPYAREA,IMAGEBLIT} all still exist in 6.18 and
+    are kept, *plus* FB_IOMEM_FOPS for the fops in (1). Deliberately not the
+    aggregate FB_SYSMEM_HELPERS that docs/kernel-config-deltas.md §4.1
+    suggested: that selects FB_SYSMEM_FOPS (fb_sys_read/fb_sys_write) and
+    still leaves the driver with no mmap. Also `depends on OF` — it is a
+    DT-only driver.
+
+Not required, done anyway (both are pure hardening, zero behavioural change):
+
+ 6. `struct fb_ops ops` -> `const struct fb_ops ops`, and the of_device_id
+    table made const. NOTE: docs/patch-provenance.md §5 lists the fb_ops
+    const-ness as a *hazard* ("will not compile"). It is not one.
+    fb_info::fbops has been `const struct fb_ops *` since v5.6 (bf9e25ec1287),
+    i.e. already in 5.15; assigning a non-const object to it was legal then
+    and is legal now. Constified because the data is read-only, not because
+    the compiler demanded it.
+
+ 7. Two error-path fixes, neither reachable with a correctly-described DT node,
+    neither touching the ABI:
+      - memremap() returns NULL on failure, not an ERR_PTR. The 5.15 code
+        tested IS_ERR(), which is false for NULL, so a failed mapping fell
+        straight through to screen_base = 0x1000 and oopsed on the first fbcon
+        draw. Test for NULL, return -ENOMEM.
+      - the accompanying dev_err() names devm_ioremap_resource(), a function
+        this driver does not call. Say memremap.
+
+CONFIG_FB_MISTER=y goes into board/mister/de10nano/linux.config in the same
+commit — P1.3 deferred the symbol to this task (docs/kernel-config-deltas.md
+§4.1) because kconfig would have discarded it before the driver existed.
+CONFIG_FB_DEVICE=y (a new 6.x symbol) is what creates /dev/fb0 and must not
+drift off.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+[re-anchored for the 7.x beta series: 7.x removed <linux/fbcon.h>;
+ fbcon_update_vcs() is declared in drivers/video/fbdev/core/fbcon.h now
+ (with a !FRAMEBUFFER_CONSOLE inline stub), so this copy's ONLY delta vs
+ ../linux-patches/0001-fbdev-add-MiSTer_fb-driver.patch is that one
+ include line. The shared 6.18 patch is deliberately untouched to retain
+ parity with stock. Keep the two in lockstep when editing either.]
+
+---
+ drivers/video/fbdev/Kconfig     |  11 ++
+ drivers/video/fbdev/Makefile    |   1 +
+ drivers/video/fbdev/MiSTer_fb.c | 414 ++++++++++++++++++++++++++++++++
+ 3 files changed, 426 insertions(+)
+ create mode 100644 drivers/video/fbdev/MiSTer_fb.c
+
+--- a/drivers/video/fbdev/Kconfig
++++ b/drivers/video/fbdev/Kconfig
+@@ -61,6 +61,17 @@
+ 	tristate
+ 	depends on FB
+ 
++config FB_MISTER
++	tristate "MiSTer Frame Reader framebuffer support"
++	depends on FB
++	depends on OF
++	select FB_SYS_FILLRECT
++	select FB_SYS_COPYAREA
++	select FB_SYS_IMAGEBLIT
++	select FB_IOMEM_FOPS
++	help
++	  This driver supports the MiSTer Frame Reader
++
+ config FB_GRVGA
+ 	tristate "Aeroflex Gaisler framebuffer support"
+ 	depends on FB && SPARC
+--- a/drivers/video/fbdev/Makefile
++++ b/drivers/video/fbdev/Makefile
+@@ -12,6 +12,7 @@
+ obj-$(CONFIG_FB_WMT_GE_ROPS)   += wmt_ge_rops.o
+ 
+ # Hardware specific drivers go first
++obj-$(CONFIG_FB_MISTER)           += MiSTer_fb.o
+ obj-$(CONFIG_FB_AMIGA)            += amifb.o c2p_planar.o
+ obj-$(CONFIG_FB_ARC)              += arcfb.o
+ obj-$(CONFIG_FB_CLPS711X)	  += clps711x-fb.o
+--- /dev/null
++++ b/drivers/video/fbdev/MiSTer_fb.c
+@@ -0,0 +1,414 @@
++/*
++ *  MiSTer_fb.c -- MiSTer Frame Reader driver
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ */
++
++#include <linux/dma-mapping.h>
++#include <linux/fb.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/interrupt.h>
++#include <linux/of_irq.h>
++#include <linux/uaccess.h>
++#include <linux/console.h>
++#include "core/fbcon.h"	/* 7.x: fbcon_update_vcs() moved into fbdev core */
++
++#define PALETTE_SIZE         256
++#define DRIVER_NAME          "MiSTer_fb"
++#define VSYNC_TIMEOUT_MSEC   50
++
++static u32 width = 0, height = 0, stride = 0, format = 0, rb = 1, frame_count = 0, res_count = 0;
++module_param(width,  uint, 0444);
++module_param(height, uint, 0444);
++module_param(stride, uint, 0444);
++module_param(format, uint, 0444);
++module_param(rb,     uint, 0444);
++module_param(frame_count, uint, 0444);
++module_param(res_count, uint, 0444);
++
++struct fb_dev {
++	struct platform_device *pdev;
++	struct fb_info info;
++	struct resource *fb_res;
++	void __iomem *fb_base;
++	int irq;
++};
++
++static wait_queue_head_t vs_wait;
++static irqreturn_t irq_handler(int irq, void *par)
++{
++	frame_count++;
++	wake_up_interruptible(&vs_wait);
++	return IRQ_HANDLED;
++}
++
++static struct fb_dev *p_fbdev = 0;
++
++static int fb_setcolreg(unsigned regno, unsigned red, unsigned green,
++			   unsigned blue, unsigned transp, struct fb_info *info)
++{
++	if (regno > 255) return 1;
++
++	red >>= 8;
++	green >>= 8;
++	blue >>= 8;
++
++	red &= 255;
++	green &= 255;
++	blue &= 255;
++
++	if (regno < 256)
++	{
++		if(format==1555)
++		{
++			red >>=3; green >>=3; blue >>=3;
++			((u32 *)info->pseudo_palette)[regno] = rb ? (red << 10) | (green << 5) | blue : (blue << 10) | (green << 5) | red;
++		}
++		else if(format==565)
++		{
++			red >>=3; green >>=2; blue >>=3;
++			((u32 *)info->pseudo_palette)[regno] = rb ? (red << 11) | (green << 5) | blue : (blue << 11) | (green << 5) | red;
++		}
++		else if(format==8)
++		{
++			((u32 *)info->pseudo_palette)[regno] = (red << 16) | (green << 8) | blue;
++		}
++		else
++		{
++			((u32 *)info->pseudo_palette)[regno] = rb ? (red << 16) | (green << 8) | blue : (blue << 16) | (green << 8) | red;
++		}
++	}
++
++	return 0;
++}
++
++static int fb_wait_for_vsync(u32 arg)
++{
++	u32 count;
++	int ret;
++
++	if (arg != 0) return -ENODEV;
++
++	count = frame_count;
++	ret = wait_event_interruptible_timeout(vs_wait,
++				       count != frame_count,
++				       msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
++
++	return (!ret) ? -ETIMEDOUT : 0;
++}
++
++static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
++{
++	int ret;
++	u32 ioarg;
++
++	switch (cmd)
++	{
++	case FBIO_WAITFORVSYNC:
++		if (get_user(ioarg, (u32 __user *)arg))
++		{
++			ret = -EFAULT;
++			break;
++		}
++
++		ret = fb_wait_for_vsync(ioarg);
++		break;
++	default:
++		ret = -ENOTTY;
++	}
++
++	return ret;
++}
++
++/*
++ * The frame buffer is an FPGA-owned window outside the kernel's page
++ * allocator, reached with memremap(MEMREMAP_WT).
++ *
++ * Until v6.7 the fbdev core supplied fb_read()/fb_write()/fb_mmap() itself
++ * whenever a driver left those callbacks NULL, using the __iomem accessors
++ * and vm_iomap_memory() on fix.smem_start. Commit 8813e86f6d82 ("fbdev:
++ * Remove default file-I/O implementations", v6.8) deleted that fallback, so
++ * the fops now have to be named explicitly: __FB_DEFAULT_IOMEM_OPS_RDWR and
++ * __FB_DEFAULT_IOMEM_OPS_MMAP reproduce the old behaviour exactly. They must
++ * be the *iomem* variants - this window has no struct pages, so mmap() can
++ * only go through vm_iomap_memory() on the physical fix.smem_start.
++ *
++ * The drawing ops stay on the sys_* helpers, as in 5.15: memremap() hands
++ * back a normal-memory mapping, so direct dereference is correct there.
++ */
++static const struct fb_ops ops = {
++	.owner = THIS_MODULE,
++	__FB_DEFAULT_IOMEM_OPS_RDWR,
++	.fb_fillrect = sys_fillrect,
++	.fb_copyarea = sys_copyarea,
++	.fb_imageblit = sys_imageblit,
++	.fb_setcolreg = fb_setcolreg,
++	.fb_ioctl = fb_ioctl,
++	__FB_DEFAULT_IOMEM_OPS_MMAP,
++};
++
++static int setup_fb_info(struct fb_dev *fbdev)
++{
++	struct fb_info *info = &fbdev->info;
++
++	if(!width) width = 640;
++	if(!height) height = 480;
++	if(!stride) stride = (width*4 + 255) & ~255;
++
++	info->var.xres = width;
++	info->var.yres = height;
++	info->fix.line_length = stride;
++
++	strcpy(info->fix.id, DRIVER_NAME);
++	info->fix.type = FB_TYPE_PACKED_PIXELS;
++	info->fix.visual = (format == 8) ? FB_VISUAL_PSEUDOCOLOR : FB_VISUAL_TRUECOLOR;
++	info->fix.accel = FB_ACCEL_NONE;
++
++	info->fbops = &ops;
++	info->var.activate = FB_ACTIVATE_NOW;
++	info->var.height = -1;
++	info->var.width = -1;
++	info->var.vmode = FB_VMODE_NONINTERLACED;
++
++	info->var.xres_virtual = info->var.xres,
++	info->var.yres_virtual = info->var.yres;
++
++	info->var.red.msb_right = 0;
++	info->var.green.msb_right = 0;
++	info->var.blue.msb_right = 0;
++
++	if(format==1555)
++	{
++		/* settings for 16bit pixels */
++		info->var.bits_per_pixel = 16;
++
++		info->var.red.offset = 0;
++		info->var.green.offset = 5;
++		info->var.blue.offset = 10;
++
++		info->var.red.length = 5;
++		info->var.green.length = 5;
++		info->var.blue.length = 5;
++	}
++	else if(format==565)
++	{
++		/* settings for 16bit pixels */
++		info->var.bits_per_pixel = 16;
++
++		info->var.red.offset = 0;
++		info->var.green.offset = 5;
++		info->var.blue.offset = 11;
++
++		info->var.red.length = 5;
++		info->var.green.length = 6;
++		info->var.blue.length = 5;
++	}
++	else if(format==8)
++	{
++		/* settings for 256 color mode */
++		info->var.bits_per_pixel = 8;
++
++		info->var.red.offset = 0;
++		info->var.green.offset = 0;
++		info->var.blue.offset = 0;
++
++		info->var.red.length = 8;
++		info->var.green.length = 8;
++		info->var.blue.length = 8;
++	}
++	else
++	{
++		/* settings for 32bit pixels */
++		info->var.bits_per_pixel = 32;
++
++		info->var.red.offset = 0;
++		info->var.green.offset = 8;
++		info->var.blue.offset = 16;
++
++		info->var.red.length = 8;
++		info->var.green.length = 8;
++		info->var.blue.length = 8;
++		format = 8888;
++	}
++
++	if(rb)
++	{
++		u32 tmp = info->var.red.offset;
++		info->var.red.offset = info->var.blue.offset;
++		info->var.blue.offset = tmp;
++	}
++
++	dev_info(&fbdev->pdev->dev, "width = %u, height = %u, format=%u\n", info->var.xres, info->var.yres, format);
++
++	info->fix.smem_len = info->fix.line_length * info->var.yres;
++
++	info->pseudo_palette = fbdev->fb_base;
++
++	return 0;
++}
++
++static int fb_probe(struct platform_device *pdev)
++{
++	int retval;
++	struct fb_dev *fbdev;
++
++	fbdev = devm_kzalloc(&pdev->dev, sizeof(*fbdev), GFP_KERNEL);
++	if (!fbdev)	return -ENOMEM;
++
++	fbdev->pdev = pdev;
++
++	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!fbdev->fb_res) return -ENODEV;
++
++	fbdev->fb_base = memremap(fbdev->fb_res->start, resource_size(fbdev->fb_res), MEMREMAP_WT);
++	if (!fbdev->fb_base)
++	{
++		dev_err(&pdev->dev, "memremap fb failed\n");
++		return -ENOMEM;
++	}
++
++	retval = setup_fb_info(fbdev);
++	fbdev->info.fix.smem_start = fbdev->fb_res->start+4096;
++	fbdev->info.screen_base = fbdev->fb_base+4096;
++
++	retval = fb_alloc_cmap(&fbdev->info.cmap, PALETTE_SIZE, 0);
++	if (retval < 0) return retval;
++
++	platform_set_drvdata(pdev, fbdev);
++
++	retval = register_framebuffer(&fbdev->info);
++	if (retval < 0) goto err_dealloc_cmap;
++
++	dev_info(&pdev->dev, "fb%d: %s frame buffer device at 0x%x+0x%x, virt: 0x%p\n",
++		 fbdev->info.node, fbdev->info.fix.id,
++		 (unsigned)fbdev->info.fix.smem_start,
++		 fbdev->info.fix.smem_len, fbdev->info.screen_base);
++
++	fbdev->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
++	dev_info(&pdev->dev, "fb%d: IRQ=%d\n", fbdev->info.node, fbdev->irq);
++
++	init_waitqueue_head(&vs_wait);
++
++	if (fbdev->irq == NO_IRQ || request_irq(fbdev->irq, &irq_handler, IRQF_SHARED, "MiSTer_fb", fbdev))
++	{
++		dev_err(&pdev->dev, "request_irq failed. fb won't use IRQ.\n");
++	}
++
++	p_fbdev = fbdev;
++	return 0;
++
++err_dealloc_cmap:
++	fb_dealloc_cmap(&fbdev->info.cmap);
++	return retval;
++}
++
++static void fb_remove(struct platform_device *dev)
++{
++	struct fb_dev *fbdev = platform_get_drvdata(dev);
++
++	if (fbdev)
++	{
++		unregister_framebuffer(&fbdev->info);
++		fb_dealloc_cmap(&fbdev->info.cmap);
++		if(fbdev->irq != NO_IRQ) free_irq(fbdev->irq, dev);
++		fbdev->irq = NO_IRQ;
++	}
++}
++
++static void fb_set(struct fb_info *info)
++{
++	struct fb_videomode mode;
++	int ret = 0;
++
++	fb_pan_display(info, &info->var);
++	fb_set_cmap(&info->cmap, info);
++	fb_var_to_videomode(&mode, &info->var);
++
++	if (info->modelist.prev && info->modelist.next && !list_empty(&info->modelist))
++	{
++		ret = fb_add_videomode(&mode, &info->modelist);
++	}
++
++	if (!ret)
++	{
++		/*
++		struct fb_event event;
++		info->flags &= ~FBINFO_MISC_USEREVENT;
++		event.info = info;
++		event.data = &mode;
++		fb_notifier_call_chain(FB_EVENT_MODE_CHANGE_ALL, &event);
++		*/
++		fbcon_update_vcs(info, true);
++	}
++}
++
++static int mode_set(const char *val, const struct kernel_param *kp)
++{
++	if(p_fbdev)
++	{
++		console_lock();
++		lock_fb_info(&p_fbdev->info);
++
++		memset(p_fbdev->fb_base, 0, resource_size(p_fbdev->fb_res));
++
++		sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride);
++		setup_fb_info(p_fbdev);
++
++		fb_set(&p_fbdev->info);
++		unlock_fb_info(&p_fbdev->info);
++
++		res_count++;
++		console_unlock();
++	}
++	return 0;
++}
++
++static int mode_get(char *val, const struct kernel_param *kp)
++{
++	if(p_fbdev)
++	{
++		sprintf(val, "%u %u %u %u %u", format, rb, width, height, stride);
++		return strlen(val);
++	}
++	return 0;
++}
++
++static const struct kernel_param_ops param_ops = {
++	.set = mode_set,
++	.get = mode_get,
++};
++
++module_param_cb(mode, &param_ops, NULL, 0664);
++
++
++static const struct of_device_id fb_match[] = {
++	{ .compatible = "MiSTer_fb" },
++	{},
++};
++MODULE_DEVICE_TABLE(of, fb_match);
++
++static struct platform_driver fb_driver = {
++	.probe = fb_probe,
++	.remove = fb_remove,
++	.driver = {
++		.owner = THIS_MODULE,
++		.name = DRIVER_NAME,
++		.of_match_table = fb_match,
++	},
++};
++module_platform_driver(fb_driver);
++
++MODULE_DESCRIPTION("MiSTer framebuffer driver");
++MODULE_AUTHOR("Sorgelig@MiSTer");
++MODULE_LICENSE("GPL v2");

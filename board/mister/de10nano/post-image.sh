@@ -85,6 +85,22 @@ echo "$prog: wrote $out ($(wc -c <"$out") bytes)"
 ################################################################################
 # P2.5 (A9) — linux.img: the flashable, loop-mounted rootfs image.
 #
+# KERNEL-ONLY CONFIGS SKIP THIS HALF. configs/mister_kernel_defconfig (the
+# kernel-variant base, ADR 0021 as amended 2026-07-18) reuses this script for
+# the zImage_dtb assembly above but builds only a rootfs TAR — there is no
+# rootfs.ext2 and nothing to ship as linux.img. Gate on what the DRIVING
+# config declares (Buildroot exports BR2_CONFIG, the path to the active
+# .config, to every post-image script), NOT on whether rootfs.ext2 happens to
+# exist: for the main config a missing rootfs.ext2 must stay the hard failure
+# it always was, and when BR2_CONFIG is absent (the standalone `make
+# zimage-dtb` escape hatch) the old strict behaviour is preserved too.
+if [ -n "${BR2_CONFIG:-}" ] && [ -f "${BR2_CONFIG:-}" ] \
+	&& ! grep -q '^BR2_TARGET_ROOTFS_EXT2=y' "$BR2_CONFIG"; then
+	echo "$prog: BR2_TARGET_ROOTFS_EXT2 not set in $BR2_CONFIG (kernel-only config) -- skipping linux.img assembly"
+	exit 0
+fi
+
+################################################################################
 # BR2_TARGET_ROOTFS_EXT2 (ext4 variant, see configs/mister_de10nano_defconfig
 # for why that mechanism and not genimage) writes the actual filesystem to
 # BINARIES_DIR/rootfs.ext2 -- that name is fixed by fs/ext2/ext2.mk

@@ -3,13 +3,29 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set (3), verified against 7.2-rc3:
-#   0015-hid-nintendo-nso-famicom       — UPSTREAMED in 7.2 (FAML/FAMR +
-#     famicom_r_button_mappings already in drivers/hid/hid-nintendo.c).
+# Excluded vs the 6.18 set (2), verified against 7.2-rc3:
 #   0030-i2c-designware-quiet-timeout   — trivial 1-line re-anchor pending
 #     (dev_err->dev_dbg). Cosmetic; omitted on beta.
 #   0037-hid-playstation-dualsense-mute-btn-z — genuine MiSTer divergence
 #     (mute btn -> BTN_Z); ~30-min 7.x re-anchor pending. Omitted for now.
+#
+# NOT-symlink exceptions: three entries are REAL FILES re-anchored for 7.x —
+# the shared 6.18 patches are deliberately untouched (parity with stock).
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these three
+# needed either re-anchored context or a real 7.x API/header delta. Keep
+# each in lockstep with its ../linux-patches/ original (every copy carries
+# a bracketed re-anchor note):
+#   0001-fbdev-add-MiSTer_fb-driver     — one-line delta: 7.x removed
+#     <linux/fbcon.h>; fbcon_update_vcs() now comes from the fbdev-core
+#     header ("core/fbcon.h").
+#   0015-hid-nintendo-nso-famicom       — an earlier port test called this
+#     "upstreamed in 7.2"; that was WRONG (7.2 has no FAML/FAMR 0x07/0x08 —
+#     its left/right nescon types are 0x09/0x0A, a different thing), so it
+#     is re-included here, re-anchored (enum gained LIC_PRO; dispatch sites'
+#     preceding procon branches grew a LIC_PRO conditional).
+#   0031-exfat-samsung-symlinks         — exfat_file_inode_operations
+#     gained .fileattr_get upstream, breaking the append-context of the
+#     symlink ops hunk at -F0.
 #
 0001-fbdev-add-MiSTer_fb-driver.patch
 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
@@ -20,6 +36,7 @@
 0012-hid-fanatec.patch
 0013-hid-flydigi-vader.patch
 0014-hid-gamecube-adapter.patch
+0015-hid-nintendo-nso-famicom.patch
 0016-hid-microsoft-elite2-paddles.patch
 0017-xpad-mister-deltas.patch
 0018-hid-controllable-quirk.patch

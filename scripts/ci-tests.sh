@@ -79,7 +79,38 @@ HOST_SBIN="$BUILD_DIR/host/sbin"
 ROOTFS_TAR="$IMAGES/rootfs.tar"
 ZIMAGE_DTB="$IMAGES/zImage_dtb"
 LINUX_IMG="$IMAGES/linux.img"
-KVER=6.18.38
+# The MAIN kernel's version. Every module/vermagic check below scopes to
+# usr/lib/modules/$KVER/ on purpose: since ADR 0021's 2026-07-18 amendment the
+# rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0-rc3*,
+# merged in via work/extra-modules-overlay), and those are deliberately out of
+# scope here — their depmod health is asserted by check-abi.sh A-25 (every
+# tree), and their presence in CI by build.yml's merged-kver assert. Do not
+# "fix" these checks to glob across all trees; they would then pass on the
+# variant tree while the main one regressed.
+#
+# DERIVED, never hardcoded. This was literally `KVER=6.18.38` until 2026-07-19,
+# and it drifted the moment the kernel moved to 6.18.39: every module check
+# below started looking in usr/lib/modules/6.18.38/, found nothing, and
+# reported six failures that all read like the kernel-module packages had gone
+# stale ("a kernel bump needs 'make <pkg>-dirclean'") when in fact the build was
+# fine and only this constant was wrong. A hardcoded version here does not fail
+# safe -- it fails *misleadingly*, pointing the reader at the wrong subsystem.
+#
+# Read the MAIN image's defconfig specifically, which is what the scoping note
+# above is about: configs/mister_rt.fragment overrides this symbol for the RT
+# variant, and configs/mister_kernel_defconfig carries a lockstep copy
+# (scripts/check-kernel-defconfig-sync.sh asserts those two agree).
+#
+# Anchored to ^ and taking the last match on purpose: the defconfig explains
+# this symbol in a comment that quotes it verbatim, so an unanchored match
+# returns two lines -- the exact bug fixed in the hash-sync workflow (#42).
+KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
+	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
+if [ -z "$KVER" ]; then
+	echo "FATAL: could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from" >&2
+	echo "       $ROOT/configs/mister_de10nano_defconfig" >&2
+	exit 1
+fi
 
 # ---------------------------------------------------------------- reporting
 PASS_COUNT=0

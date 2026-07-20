@@ -118,6 +118,14 @@ on:
     types: [opened, synchronize]
     paths:
       - "configs/mister_de10nano_defconfig"
+      # The kernel-only defconfig copies the main one's kernel stanza, so a
+      # 6.18 bump touches BOTH files (one Renovate PR, same depName). Listed
+      # here so a bump is still picked up if a future change ever moves the
+      # kernel version into the copy alone. configs/mister_rt.fragment is
+      # deliberately absent: its -rc hash cannot be auto-refreshed (no signed
+      # manifest upstream; see the kernel step's own note), so triggering this
+      # workflow for it would do nothing but burn a runner.
+      - "configs/mister_kernel_defconfig"
       - "package/rtl8812au/rtl8812au.mk"
       - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
       - "package/rtl8821au-morrownr/rtl8821au-morrownr.mk"
@@ -392,12 +400,45 @@ jobs:
 
           newhash=$(echo "$matchline" | awk '{print $1}')
           newline="sha256  ${newhash}  linux-${kver}.tar.xz"
-          oldline=$(grep -m1 '^sha256' "$linuxhash" || true)
+          # Match the RELEASE tarball line SPECIFICALLY, never "the first sha256
+          # line": linux.hash also carries entries this step must NOT manage --
+          # notably the RT beta's kernel (configs/mister_rt.fragment). A
+          # first-line match would clobber whichever entry happened to be on top.
+          #
+          # Scope the match to THIS pin's major series (linux-<major>.*.tar.xz).
+          # An extension-only match (linux-*.tar.xz) is not enough: it is
+          # sufficient only while the RT pin is an -rc, because Buildroot fetches
+          # -rc as a cgit snapshot (.tar.gz). The moment that pin reaches a
+          # stable mainline release it becomes linux-7.2.tar.xz -- which the old
+          # pattern also matched. Verified: with the RT line first, a 6.18 bump
+          # OVERWROTE it and left the stale 6.18 line intact, producing two 6.18
+          # entries and no RT entry at all. The major-scoped match keeps the two
+          # pins on their own lines regardless of order.
+          #
+          # An RT kernel bump still always needs its hash refreshed BY HAND, per
+          # the hash file's documented TOFU procedure -- this step never touches
+          # that line either way.
+          major="${kver%%.*}"
+          release_re="^sha256  .*  linux-${major}\.[0-9][0-9.]*\.tar\.xz\$"
+
+          # If two lines somehow match, do not guess which one this pin owns.
+          nmatch=$(grep -c -E "$release_re" "$linuxhash" || true)
+          if [ "${nmatch:-0}" -gt 1 ]; then
+            echo "::error::$linuxhash has $nmatch lines matching the ${major}.x release pattern -- refusing to guess which one belongs to this pin." >&2
+            grep -n -E "$release_re" "$linuxhash" >&2 || true
+            exit 1
+          fi
+
+          oldline=$(grep -m1 -E "$release_re" "$linuxhash" || true)
 
           if [ "$oldline" != "$newline" ]; then
-            awk -v newline="$newline" '
+            # Replace by EXACT string match on the line we found, not by
+            # re-deriving a regex inside awk -- passing a regex through `awk -v`
+            # would have its backslash escapes eaten, silently turning `\.` into
+            # "any character".
+            awk -v oldline="$oldline" -v newline="$newline" '
               BEGIN { done = 0 }
-              /^sha256/ && !done { print newline; done = 1; next }
+              $0 == oldline && !done { print newline; done = 1; next }
               { print }
             ' "$linuxhash" > "$linuxhash.tmp"
             mv "$linuxhash.tmp" "$linuxhash"

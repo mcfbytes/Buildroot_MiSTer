@@ -111,7 +111,7 @@ readonly SDCARD_CORES
 # (`git log -1 --format=%H -- update_all.sh` equivalent, via the GitHub API)
 # on 2026-07-17. Bump by re-resolving the same way and re-recording the
 # sha256 of the file at the new commit.
-readonly PINNED_UPDATE_ALL_COMMIT="f15f5676474c342d6d0c8a86915c66971f3f5a44"
+readonly PINNED_UPDATE_ALL_COMMIT="64b2faad9ebb5c47973d33dc1decd356fce6dad0"
 readonly PINNED_UPDATE_ALL_URL="https://raw.githubusercontent.com/theypsilon/Update_All_MiSTer/${PINNED_UPDATE_ALL_COMMIT}/update_all.sh"
 readonly PINNED_UPDATE_ALL_SHA256="15db3c6050b5ee1960391344afe248ee49f25bdaae311051baeb7e77ab8c68f4"
 readonly PINNED_UPDATE_ALL_SIZE="8628"

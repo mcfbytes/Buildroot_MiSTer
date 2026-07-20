@@ -1,0 +1,26 @@
+# not-in-image — why each upstream-only patch is absent from the MiSTer image.
+#
+# scripts/export-kernel-tree.sh publishes these reasons as a table in the generated
+# EXPORT.md, so upstream reviewers can see which patches this tree carries that the
+# MiSTer image does not, and why. The export FAILS CLOSED if a patch in this directory
+# has no reason in either place it looks:
+#
+#   1. a `Not-in-image: <reason>` line in the patch's own commit message  (preferred --
+#      it travels with the patch through rebases and re-exports);
+#   2. a row in THIS file  (for patches imported verbatim from the fork, where editing
+#      the commit message would mean rewriting someone else's commit text).
+#
+# Format:  <patch filename><whitespace><one-line reason>
+#   Blank lines and lines beginning with '#' are ignored. The reason is rendered into a
+#   markdown table cell, so keep it to one line and prose rather than layout.
+#
+# A row here for a patch that no longer exists is simply unused; a patch with no row and
+# no `Not-in-image:` line stops the export.
+#
+# There are deliberately NO rows right now. 0100-init-support-for-init-loop-device.patch
+# carries its reason as a `Not-in-image:` trailer in its own commit message, which takes
+# precedence over this file. Carrying it in both places meant two separately-worded
+# reasons for one patch, and the losing copy could drift for months without anyone
+# noticing -- until a precedence change silently altered the text published to upstream in
+# EXPORT.md. This file stays for the case it is actually for: a patch imported verbatim
+# from the fork, where adding a trailer would mean rewriting someone else's commit text.

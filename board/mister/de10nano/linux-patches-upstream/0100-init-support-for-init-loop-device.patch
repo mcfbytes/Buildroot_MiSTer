@@ -1,0 +1,575 @@
+From 3d95de58f0334ffba30f7b81d88fbf5f2378f255 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Mon, 8 Nov 2021 02:13:42 +0800
+Subject: [PATCH 1/1] init: support for init loop device
+
+Adds the `loop=` boot parameter: the in-kernel half of MiSTer's boot, and
+the reason a MiSTer SD card can be a single plain exFAT partition that the
+user manages from a PC with no Linux tooling at all.
+
+    root=/dev/mmcblk0p1 loop=linux/linux.img
+
+With `loop=` set, mount_block_root() no longer mounts root= as the root
+filesystem. Instead it mounts root= as exFAT on /root2, creates /dev/loop8,
+attaches /root2/<loop=path> to it, mounts /dev/loop8 as the real root, and
+bind-mounts /root2 onto /root/media/fat -- so the card the system was booted
+from stays visible at the path everything in MiSTer userspace expects. With
+`loop=` unset not a line of it runs and mount_block_root() behaves exactly as
+before. MS_NOATIME|MS_NODIRATIME also join the default root_mountflags, for
+every root and not just the looped one: the root device is an SD card, where
+an atime update is a read-modify-write of an erase block whose result nothing
+ever reads back.
+
+Doing this in the kernel rather than in an initramfs is what keeps the
+distribution a single file. There is no cpio to regenerate when the rootfs
+image changes, no second copy of the kernel's view of the card, and no
+userspace on the FAT partition to go stale: `losetup` is effectively
+open-coded here because there is no userspace yet to run it.
+
+Forward-port to 6.18 (from v5.15)
+---------------------------------
+The 5.15 version of this patch does not compile on 6.18 -- not because the
+loop device changed, but because both halves of the code it hooked into were
+rewritten. Each change below is a consequence of that, not a redesign; the
+boot-time behaviour above is the 5.15 behaviour.
+
+ 1. sys_ioctl() and sys_close() are gone from init code, and this patch was
+    built on them. Init-time filesystem work now goes through the explicit
+    helpers in fs/init.c, declared in <linux/init_syscalls.h>: init_mount(),
+    init_mkdir(), init_umount() and so on. There is no init_ioctl() in that
+    list -- an ioctl is driver-defined, so there is nothing generic to wrap.
+    vfs_ioctl() is static to fs/ioctl.c, and do_vfs_ioctl() carries a comment
+    there saying it is "not for drivers and not intended to be
+    EXPORT_SYMBOL()'d".
+
+    So the ioctl is not faked from init/. The loop driver exports the
+    operation instead, as loop_set_backing_fd(), whose body is exactly
+    lo_ioctl()'s LOOP_SET_FD case -- a zeroed struct loop_config carrying only
+    the backing descriptor, and BLK_OPEN_READ|BLK_OPEN_WRITE for the mode,
+    which is what the O_RDWR open() in the 5.15 code produced. Not passing
+    BLK_OPEN_EXCL keeps loop_configure() on its bd_prepare_to_claim() path,
+    the same path an ioctl on a non-exclusive fd takes, so the claim semantics
+    are not quietly different from the userspace route.
+
+    The alternative -- reaching through file_bdev(f)->bd_disk->fops->ioctl()
+    from init/ -- would skip blkdev_ioctl()'s checks and hard-code the loop
+    driver's dispatch table into init/. It was rejected for that reason.
+
+ 2. The descriptor half stays in init/, because loop_configure() fget()s
+    config.fd and there is no reasonable way around that short of splitting
+    loop_configure() itself. 5.15's hand-rolled m_open() is therefore kept in
+    substance -- get_unused_fd_flags() followed by fd_install() -- with its
+    one bug fixed: it leaked the filp_open() reference whenever the descriptor
+    allocation failed, so the fput() moves onto that error path. On the
+    success path fd_install() consumes the reference and no fput() is owed.
+    The corresponding sys_close() is now close_fd() from <linux/fdtable.h>.
+
+    fs/init.c's init_dup() looks like the sanctioned helper for this and is
+    not: despite the name it does not return a descriptor. It calls
+    get_unused_fd_flags(), fd_install()s a reference of its own via get_file(),
+    and returns 0. It was written for console_on_rootfs(), whose callers only
+    check for failure. Building on it here would have bound fd 0 rather than
+    the fd it allocated, and fd 0 at this point in the boot is /dev/console --
+    console_on_rootfs() runs in kernel_init_freeable() before
+    prepare_namespace() -- so loop_configure() would have fget()ed the console,
+    loop_validate_file() would have rejected the character device with -EINVAL,
+    loop8 would have stayed unbound, and mounting /dev/loop8 as root would have
+    panicked on every boot. The close_fd(0) on the way out would additionally
+    have closed init's console stdin while leaking the real descriptor.
+
+ 3. -Wmissing-prototypes is on globally in the default build (0fcb70851fbf,
+    "Makefile.extrawarn: turn on missing-prototypes globally"), so the two
+    exported functions need a prototype visible in loop.c or they warn. 6.18
+    has nowhere to put one: there is no include/linux/loop.h, and there is no
+    drivers/block/loop.h either -- the driver's private header was folded into
+    loop.c, which reaches straight for <uapi/linux/loop.h>.
+
+    So this restores include/linux/loop.h, as a two-declaration header, which
+    also gives init/do_mounts.c the declarations it needs. It re-includes
+    <uapi/linux/loop.h> so that it is a strict superset of the UAPI header it
+    now shadows on the include path: LINUXINCLUDE searches include/ before
+    include/uapi/, so a `#include <linux/loop.h>` that had been resolving to
+    the UAPI header -- which is exactly how the 5.15 patch got LOOP_SET_FD
+    into init/do_mounts.c -- would otherwise silently stop seeing the ioctl
+    definitions. loop.c's own include is switched to <linux/loop.h>
+    accordingly. (Nothing else in 6.18 includes <linux/loop.h>; the only hit
+    in the tree is tools/include/nolibc, which does not use these paths.)
+
+ 4. init/do_mounts.c was refactored. The `#ifdef CONFIG_BLOCK` block inside
+    mount_root() that the 5.15 patch edited is now the body of a separate
+    mount_block_root(char *root_device_name), and mount_root() has become a
+    switch over ROOT_DEV that dispatches to it. The hook therefore moves into
+    mount_block_root(), which is the same code at the same point in the boot.
+    5.15's mount_block_root(name, flags) -- the "mount this device as root,
+    trying each filesystem" primitive -- is 6.18's
+    mount_root_generic(name, pretty_name, flags); the two calls the patch made
+    to it are translated accordingly.
+
+    Relatedly, root_device_name is no longer a file-global in 6.18 but a
+    parameter threaded down from prepare_namespace(). The bind-mount failure
+    message that printed it still does, off the parameter -- but the literal
+    "/dev/" that message prefixed it with in 5.15 is dropped, because what the
+    parameter holds has changed. 5.15's prepare_namespace() advanced
+    root_device_name past its "/dev/" prefix before use; 6.18's does not, and
+    there is no such adjustment anywhere else in the file, so the name now
+    arrives fully qualified. Keeping the literal would print
+    "Failed to bind-mount /dev//dev/mmcblk0p1 ..." on the real MiSTer cmdline.
+
+ 5. The loop= body moves out of mount_block_root() into its own
+    mount_loop_root(), for a reason that is not cosmetic: it has to be
+    compiled out under CONFIG_BLK_DEV_LOOP=m. loop_set_backing_fd() and
+    loop_max_part() are then in a module that cannot possibly be loaded before
+    the root filesystem is mounted, and referencing them from always-built-in
+    init/do_mounts.c would fail the vmlinux link of every =m configuration,
+    allmodconfig included. (The 5.15 patch has this bug: it links only because
+    MiSTer's own config sets CONFIG_BLK_DEV_LOOP=y.) The IS_BUILTIN() stub
+    panics with the reason rather than falling back to mounting root= directly
+    -- that would try to boot the exFAT data partition as the root filesystem,
+    which fails several confusing steps later, or on some configurations
+    "succeeds" with something that is not the system the user asked for.
+
+ 6. `sprintf(lname, "/root2/%s", loop_name)` into a `char lname[32]` is a stack
+    buffer overflow for any loop= argument longer than 24 characters --
+    reachable from the boot command line, which is bounded only by
+    COMMAND_LINE_SIZE. It is now a kasprintf(); slab is up long before
+    prepare_namespace() runs.
+
+ 7. Error paths return the actual errno (or PTR_ERR) instead of 1 and -1, and
+    say which errno in the log. The messages' intent is unchanged. The 5.15
+    error path also issued LOOP_CLR_FD after a failed LOOP_SET_FD; that is
+    dropped because loop_configure() unwinds its own partial state and leaves
+    lo_state == Lo_unbound, so there is nothing to clear.
+
+ 8. One dependency of the 5.15 code survives but is now on notice, and the
+    port makes that explicit rather than inheriting it silently. /dev/loop8 is
+    one past CONFIG_BLK_DEV_LOOP_MIN_COUNT's default of 8 devices, so the
+    driver has not created it and the filp_open() of the node is what brings
+    it into existence: blkdev_get_no_open() finds no inode, calls
+    blk_request_module(), and that reaches the loop driver's loop_probe() via
+    blk_probe_dev(). In 6.18 that fallthrough is conditional on
+    CONFIG_BLOCK_LEGACY_AUTOLOAD, whose help text describes it as a historic
+    feature and which pr_warn_ratelimited()s that it "will be removed". It is
+    `default y` and is therefore y in MiSTer's build, and the boot works -- but
+    when the symbol goes, loop= stops working, and the failure would otherwise
+    surface as an unexplained -ENXIO. The open-failure path now names the
+    symbol, so that day yields an actionable message instead of a puzzle.
+
+The one thing that did NOT need changing, having been checked rather than
+assumed: /dev/loop8's minor is still (max_part + 1) * 8, because loop_add()
+still assigns disk->first_minor = i << part_shift with part_shift derived from
+max_part. loop_max_part() is therefore the 5.15 patch's export carried over
+verbatim.
+
+Not applied to the Buildroot_MiSTer image
+-----------------------------------------
+Buildroot_MiSTer does not carry this patch in the kernel it ships. It boots
+the same card layout through an initramfs /init that does the equivalent
+mounts from userspace, where they can be debugged, and where a failure prints
+something better than a pr_emerg() from prepare_namespace(). That is recorded
+in docs/kernel-recon/reconciliation.md as carried-upstream-only: the commit is
+carried, for the exported tree, and is deliberately not applied to the image
+Buildroot builds. It is explicitly not a drop -- the functionality lives on in
+the patch series below.
+
+The patch lives in board/mister/de10nano/linux-patches-upstream/, a series
+applied only when exporting the tree to Linux-Kernel_MiSTer -- never by
+BR2_LINUX_KERNEL_PATCH -- so that the exported branch keeps upstream's boot
+mechanism working for everyone building from it, while the image Buildroot
+produces is byte-for-byte unaffected.
+
+Provenance
+----------
+Origin:       3d95de58f0334ffba30f7b81d88fbf5f2378f255
+              "Support for init loop device."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-11-08, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/3d95de58f0334ffba30f7b81d88fbf5f2378f255
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, and never submitted. Mounting a loop device from
+              prepare_namespace() is MiSTer-specific policy that mainline
+              expects an initramfs to implement; it would not be accepted.
+              Carried indefinitely on the MiSTer branch.
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-18. Compile-tested
+              only. On top of the carried MiSTer series, with MiSTer's board
+              config (CONFIG_BLK_DEV_LOOP=y, CONFIG_EXFAT_FS=y,
+              CONFIG_BLOCK_LEGACY_AUTOLOAD=y by Kconfig default) a full
+              ARCH=arm vmlinux links warning-free and carries __ksymtab entries
+              for both new symbols; init/do_mounts.o and drivers/block/loop.o
+              also build warning-free with CONFIG_BLK_DEV_LOOP=m, which selects
+              the panicking stub and leaves init/do_mounts.o with no reference
+              to either export. It has NOT been booted on hardware from this
+              tree, because Buildroot_MiSTer's own image does not apply it --
+              see above.
+Not shipped:  board/mister/de10nano/linux-patches-upstream/ (export-only
+              series; docs/kernel-recon/reconciliation.md records commit
+              3d95de58f as carried-upstream-only).
+
+Not-in-image: Buildroot_MiSTer boots through an initramfs /init that performs these mounts from userspace, so the in-kernel loop= path would be unreachable code in the image it builds; every stock MiSTer boots through it, so the exported tree has to keep it working.
+---
+ drivers/block/loop.c |  70 +++++++++++++++-
+ include/linux/loop.h |  39 +++++++++
+ init/do_mounts.c     | 189 ++++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 295 insertions(+), 3 deletions(-)
+ create mode 100644 include/linux/loop.h
+
+diff --git a/drivers/block/loop.c b/drivers/block/loop.c
+index 13ce229..b272ae3 100644
+--- a/drivers/block/loop.c
++++ b/drivers/block/loop.c
+@@ -35,7 +35,7 @@
+ #include <linux/uaccess.h>
+ #include <linux/blk-mq.h>
+ #include <linux/spinlock.h>
+-#include <uapi/linux/loop.h>
++#include <linux/loop.h>
+ 
+ /* Possible states of device */
+ enum {
+@@ -137,6 +137,20 @@ static void loop_global_unlock(struct loop_device *lo, bool global)
+ static int max_part;
+ static int part_shift;
+ 
++/*
++ * Exported for init/do_mounts.c only.  A caller that has to create the loop
++ * device node itself, before udev or even devtmpfs exists, cannot look the
++ * minor number up in sysfs; it has to compute it the way loop_add() does
++ * (disk->first_minor = i << part_shift), and part_shift is derived from
++ * max_part.  Returning max_part rather than part_shift keeps this in the same
++ * units as the module parameter a user would have set.
++ */
++int loop_max_part(void)
++{
++	return max_part;
++}
++EXPORT_SYMBOL(loop_max_part);
++
+ static loff_t lo_calculate_size(struct loop_device *lo, struct file *file)
+ {
+ 	loff_t loopsize;
+@@ -1776,6 +1790,60 @@ static const struct block_device_operations lo_fops = {
+ 	.free_disk =	lo_free_disk,
+ };
+ 
++/*
++ * In-kernel equivalent of ioctl(lo_fd, LOOP_SET_FD, backing_fd), for callers
++ * that have no userspace to issue the ioctl from -- specifically the `loop=`
++ * boot parameter handled in init/do_mounts.c.
++ *
++ * It cannot be done from init/ any other way.  The old trick of calling
++ * sys_ioctl() out of init code stopped working when the in-init syscall
++ * wrappers were withdrawn in favour of the explicit helpers in fs/init.c
++ * (init_mount(), init_mkdir(), init_dup(), ...).  There is no init_ioctl()
++ * among them, and there cannot usefully be one: an ioctl is driver-defined,
++ * so there is nothing generic to wrap.  vfs_ioctl() is static to fs/ioctl.c and
++ * do_vfs_ioctl() is documented there as "not for drivers and not intended to
++ * be EXPORT_SYMBOL()'d".  Reaching through file_bdev(f)->bd_disk->fops->ioctl
++ * from init would skip blkdev_ioctl()'s checks and hard-code this driver's
++ * dispatch table into init/, so the driver exports the operation instead.
++ *
++ * The body is exactly lo_ioctl()'s LOOP_SET_FD case: a zeroed loop_config
++ * carrying only the backing descriptor, which selects the default geometry.
++ * @lo_file must be an open file on the loop device node -- open() is also what
++ * instantiates loopN via loop_probe(), so by the time we are called the node
++ * has a gendisk behind it.  BLK_OPEN_READ|BLK_OPEN_WRITE mirrors the O_RDWR
++ * open() losetup(8) does, and the absence of BLK_OPEN_EXCL makes
++ * loop_configure() take the bd_prepare_to_claim() path -- the same path an
++ * ioctl on a non-exclusive fd takes, so the claim semantics are not quietly
++ * different from the userspace route.
++ *
++ * On failure nothing is bound: loop_configure() unwinds its own partial state
++ * and leaves lo_state == Lo_unbound, so the caller has no LOOP_CLR_FD to do.
++ */
++int loop_set_backing_fd(struct file *lo_file, int backing_fd)
++{
++	struct block_device *bdev;
++	struct loop_config config;
++
++	/*
++	 * Fail closed on anything that is not a loop device: file_bdev() and
++	 * bd_disk->private_data would otherwise reinterpret some other
++	 * driver's private pointer as a struct loop_device.
++	 */
++	if (!is_loop_device(lo_file))
++		return -ENOTBLK;
++
++	bdev = file_bdev(lo_file);
++	if (bdev->bd_disk->fops != &lo_fops)
++		return -ENOTBLK;
++
++	memset(&config, 0, sizeof(config));
++	config.fd = backing_fd;
++
++	return loop_configure(bdev->bd_disk->private_data,
++			      BLK_OPEN_READ | BLK_OPEN_WRITE, bdev, &config);
++}
++EXPORT_SYMBOL(loop_set_backing_fd);
++
+ /*
+  * And now the modules code and kernel interface.
+  */
+diff --git a/include/linux/loop.h b/include/linux/loop.h
+new file mode 100644
+index 0000000..13e80f4
+--- /dev/null
++++ b/include/linux/loop.h
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * In-kernel interface to the loop driver.
++ *
++ * This header exists only so that init/do_mounts.c can bind a loop device
++ * before there is any userspace to run losetup(8) -- see the `loop=` boot
++ * parameter.  Everything else in the tree talks to the loop driver through
++ * the UAPI ioctls in <uapi/linux/loop.h>, which is re-exported below so that
++ * this header is a strict superset of the one it shadows on the include path
++ * (include/ is searched before include/uapi/, so a bare <linux/loop.h> that
++ * did NOT include the UAPI header would silently break any existing
++ * LOOP_SET_FD user that reaches the UAPI definitions that way).
++ */
++#ifndef _LINUX_LOOP_H
++#define _LINUX_LOOP_H
++
++#include <linux/types.h>
++#include <uapi/linux/loop.h>
++
++struct file;
++
++/*
++ * The number of partitions the loop driver reserves per device, as fixed at
++ * loop_init() time from the max_part module parameter.  A caller that has to
++ * mknod a loop device node before /dev exists needs this to work out the minor
++ * number: loopN's first minor is N << part_shift, i.e. N * (max_part + 1).
++ */
++int loop_max_part(void);
++
++/*
++ * Bind @backing_fd to the loop device that @lo_file has open, exactly as the
++ * LOOP_SET_FD ioctl would.  Split out of lo_ioctl() so that in-kernel callers
++ * (init/do_mounts.c) can do this without a syscall: init code can allocate a
++ * descriptor for itself with get_unused_fd_flags() + fd_install(), but there is
++ * no init_ioctl(), and vfs_ioctl() is static to fs/ioctl.c.
++ */
++int loop_set_backing_fd(struct file *lo_file, int backing_fd);
++
++#endif /* _LINUX_LOOP_H */
+diff --git a/init/do_mounts.c b/init/do_mounts.c
+index 6af29da..7b0368b 100644
+--- a/init/do_mounts.c
++++ b/init/do_mounts.c
+@@ -26,9 +26,18 @@
+ #include <linux/raid/detect.h>
+ #include <uapi/linux/mount.h>
+ 
++#include <linux/fdtable.h>
++#include <linux/file.h>
++#include <linux/loop.h>
++
+ #include "do_mounts.h"
+ 
+-int root_mountflags = MS_RDONLY | MS_SILENT;
++/*
++ * MS_NOATIME|MS_NODIRATIME are in the default set because MiSTer's root lives
++ * on an SD card: an atime update is a read-modify-write of an erase block, and
++ * nothing on the system ever reads the result back.
++ */
++int root_mountflags = MS_RDONLY | MS_SILENT | MS_NOATIME | MS_NODIRATIME;
+ static char __initdata saved_root_name[64];
+ static int root_wait;
+ 
+@@ -41,6 +50,27 @@ static int __init load_ramdisk(char *str)
+ }
+ __setup("load_ramdisk=", load_ramdisk);
+ 
++/*
++ * loop=<path>
++ *
++ * Path, relative to the root of the exFAT filesystem on the root= device, of a
++ * disk image to loop-mount as the real root.  Set, mount_block_root() mounts
++ * root= at /root2 as exFAT, attaches <path> to /dev/loop8, mounts that as
++ * /root, and bind-mounts /root2 back onto /root/media/fat.  Unset, the root=
++ * device is mounted directly and none of that code runs.
++ *
++ * This is what lets a MiSTer ship its whole system as one file
++ * (linux/linux.img) on a card that is otherwise a plain exFAT data partition
++ * the user manages from a PC.
++ */
++static char * __initdata loop_name;
++static int __init set_loop_name(char *str)
++{
++	loop_name = str;
++	return 1;
++}
++__setup("loop=", set_loop_name);
++
+ static int __init readonly(char *str)
+ {
+ 	if (*str)
+@@ -371,13 +401,168 @@ static int __init mount_nodev_root(char *root_device_name)
+ }
+ 
+ #ifdef CONFIG_BLOCK
++/*
++ * The loop= path needs loop_set_backing_fd()/loop_max_part() resolved at
++ * vmlinux link time.  IS_BUILTIN(), not IS_ENABLED(): with
++ * CONFIG_BLK_DEV_LOOP=m those symbols live in a module that cannot possibly
++ * be loaded before the root filesystem is mounted, and referencing them from
++ * here would break the vmlinux link of every =m configuration in the world,
++ * allmodconfig included.
++ */
++#if IS_BUILTIN(CONFIG_BLK_DEV_LOOP)
++/*
++ * Attach @file to the loop device node @device -- the in-kernel equivalent of
++ *
++ *	losetup /dev/loop8 /root2/linux/linux.img
++ *
++ * The ioctl half is a driver export because there is no init_ioctl(); see
++ * loop_set_backing_fd() in drivers/block/loop.c.  The descriptor half has to
++ * happen here, because loop_configure() fget()s config.fd.
++ *
++ * Note that fs/init.c's init_dup() cannot be used for this: despite the name it
++ * does not return a descriptor.  It allocates one, fd_install()s a reference of
++ * its own, and then returns 0 -- it exists for console_on_rootfs(), whose
++ * callers only care whether it succeeded.  Using it here would silently bind
++ * fd 0, which by this point in the boot is /dev/console (console_on_rootfs()
++ * runs in kernel_init_freeable() before prepare_namespace()), so the loop
++ * device would be handed a character device and refuse it.  So the descriptor
++ * is allocated directly.
++ *
++ * fd_install() consumes the filp_open() reference: from that point the
++ * descriptor owns it, and close_fd() below is what drops it.  On success
++ * loop_configure() has taken a reference of its own via fget(), so the loop
++ * device keeps the backing file alive after we close our descriptor.
++ */
++static int __init loop_setup(const char *file, const char *device)
++{
++	struct file *backing, *lo_file;
++	int backing_fd, err;
++
++	backing = filp_open(file, O_RDWR | O_LARGEFILE, 0);
++	if (IS_ERR(backing)) {
++		pr_emerg("Failed to open backing file (%s): %ld\n",
++			 file, PTR_ERR(backing));
++		return PTR_ERR(backing);
++	}
++
++	backing_fd = get_unused_fd_flags(0);
++	if (backing_fd < 0) {
++		pr_emerg("Failed to get a descriptor for (%s): %d\n",
++			 file, backing_fd);
++		fput(backing);
++		return backing_fd;
++	}
++	fd_install(backing_fd, backing);
++
++	/*
++	 * Opening the node is not merely how we name the device: it is what
++	 * brings the device into existence.  loop8 is one past
++	 * CONFIG_BLK_DEV_LOOP_MIN_COUNT's default of 8 devices, so the driver
++	 * has not instantiated it; blkdev_get_no_open() finds no inode and
++	 * falls through to blk_request_module() -> blk_probe_dev() ->
++	 * loop_probe(), which loop_add()s it.
++	 *
++	 * That fallthrough is gated on CONFIG_BLOCK_LEGACY_AUTOLOAD, which is
++	 * `default y` but is documented as deprecated and prints a
++	 * pr_warn_ratelimited() saying it "will be removed".  When it goes,
++	 * this open starts returning -ENXIO and this boot method needs a
++	 * different way to instantiate the device -- hence the explicit second
++	 * message below, so that day produces an actionable panic and not a
++	 * puzzle.  (The block Kconfig help text calls out exactly this case:
++	 * "scripts that manually create device nodes and then call losetup".)
++	 */
++	lo_file = filp_open(device, O_RDWR | O_LARGEFILE, 0);
++	if (IS_ERR(lo_file)) {
++		pr_emerg("Failed to open device (%s): %ld\n",
++			 device, PTR_ERR(lo_file));
++		pr_emerg("loop= instantiates %s by opening it, which needs CONFIG_BLOCK_LEGACY_AUTOLOAD=y\n",
++			 device);
++		close_fd(backing_fd);
++		return PTR_ERR(lo_file);
++	}
++
++	err = loop_set_backing_fd(lo_file, backing_fd);
++	if (err)
++		pr_emerg("Failed to set fd: %d\n", err);
++
++	fput(lo_file);
++	close_fd(backing_fd);
++	return err;
++}
++
++static void __init mount_loop_root(char *root_device_name)
++{
++	char *lname;
++	int err;
++
++	err = init_mkdir("/root2", 0777);
++	if (err)
++		pr_emerg("Failed mkdir /root2: %d\n", err);
++
++	err = init_mount("/dev/root", "/root2", "exfat",
++			 MS_DIRSYNC | MS_SYNCHRONOUS | MS_NOATIME |
++			 MS_NODIRATIME, "");
++	if (err)
++		pr_emerg("Failed to mount /dev/root as exFAT: %d\n", err);
++
++	/*
++	 * /dev is still the rootfs one -- devtmpfs is not mounted until
++	 * prepare_namespace() is done with us -- so the node has to be made by
++	 * hand, with the minor computed the way loop_add() does it.
++	 */
++	err = create_dev("/dev/loop8",
++			 MKDEV(LOOP_MAJOR, (loop_max_part() + 1) * 8));
++	if (err < 0)
++		pr_emerg("Failed to create /dev/loop8: %d\n", err);
++
++	/*
++	 * kasprintf() rather than sprintf() into a fixed buffer: loop_name
++	 * points straight into the kernel command line and is bounded only by
++	 * COMMAND_LINE_SIZE, so any fixed-size buffer here is a stack overflow
++	 * waiting for a long enough loop= argument.
++	 */
++	lname = kasprintf(GFP_KERNEL, "/root2/%s", loop_name);
++	if (!lname)
++		panic("VFS: out of memory building the loop= backing path");
++
++	err = loop_setup(lname, "/dev/loop8");
++	if (err)
++		pr_emerg("Failed to loop_setup: %d\n", err);
++	kfree(lname);
++
++	mount_root_generic("/dev/loop8", "/dev/loop8", root_mountflags);
++
++	err = init_mount("/root2", "/root/media/fat", "", MS_BIND, "");
++	if (err)
++		pr_emerg("Failed to bind-mount %s to /root/media/fat : %d\n",
++			 root_device_name, err);
++}
++#else
++static void __init mount_loop_root(char *root_device_name)
++{
++	/*
++	 * Fail loudly.  Falling through to mounting root= directly would try to
++	 * boot the exFAT data partition as the root filesystem: no /sbin/init,
++	 * no recognisable rootfs, and a panic several confusing steps further
++	 * on -- or worse, a successful mount of something that is not the
++	 * system the user asked for.
++	 */
++	panic("VFS: loop=%s needs CONFIG_BLK_DEV_LOOP=y (it is not built in)",
++	      loop_name);
++}
++#endif /* IS_BUILTIN(CONFIG_BLK_DEV_LOOP) */
++
+ static void __init mount_block_root(char *root_device_name)
+ {
+ 	int err = create_dev("/dev/root", ROOT_DEV);
+ 
+ 	if (err < 0)
+ 		pr_emerg("Failed to create /dev/root: %d\n", err);
+-	mount_root_generic("/dev/root", root_device_name, root_mountflags);
++	if (loop_name)
++		mount_loop_root(root_device_name);
++	else
++		mount_root_generic("/dev/root", root_device_name,
++				   root_mountflags);
+ }
+ #else
+ static inline void mount_block_root(char *root_device_name)

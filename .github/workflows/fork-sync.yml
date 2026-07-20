@@ -15,8 +15,11 @@
 #
 # The direction that matters most is MiSTer-v6.18: once #75 merges upstream, commits
 # landing there are changes made to OUR series by other people, and they must flow back
-# into board/mister/de10nano/linux-patches/ or the next `make export` silently erases
-# them. That is the failure this file exists to prevent.
+# into one of the two patch directories or the next `make export` silently erases them:
+# board/mister/de10nano/linux-patches/ if our image wants the change too, or
+# board/mister/de10nano/linux-patches-upstream/ if the exported tree needs it and our
+# image deliberately does not (see that directory's README). That is the failure this
+# file exists to prevent.
 #
 # COST: two compare API calls and no clone -- seconds, weekly. It deliberately does NOT
 # check out the kernel (~300MB) or build anything; "what is new upstream" does not need

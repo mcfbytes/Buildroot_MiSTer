@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-15 15:13 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
+Generated 2026-07-19 02:24 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
 
 ## How to read this table
 
@@ -15,14 +15,25 @@ reconciled against our vanilla-6.18.38-based build. The full evidence for a row 
 - **Disposition** — what happened to the commit's functionality in this build:
   - `carried` — kept, as the patch named in the next column (applied to the pristine
     kernel.org tree at build time);
+  - `carried-upstream-only` — kept, but ONLY in the tree this repo exports to
+    `MiSTer-devel/Linux-Kernel_MiSTer` (`board/mister/de10nano/linux-patches-upstream/`,
+    replayed by `scripts/export-kernel-tree.sh`). Buildroot never applies it —
+    `BR2_LINUX_KERNEL_PATCH` points at `linux-patches/` only — so it is **not** in the
+    image this repo builds; the **Carried patch** column stays `—` for these rows, since
+    that column tracks only what Buildroot applies. Used when upstream's own boot flow
+    needs the commit but this build replaced it with something else (named in
+    Why / replacement). See "The one `carried-upstream-only` row" below;
   - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
     cites the upstream commit and quotes the matching code);
-  - `dropped-deliberate` — intentionally not carried, with the replacement named (a
-    maintained out-of-tree package, a mainline driver, or a documented decision);
+  - `dropped-deliberate` — intentionally not carried **anywhere**, with the replacement
+    named (a maintained out-of-tree package, a mainline driver, or a documented
+    decision). Distinct from `carried-upstream-only`: a `dropped-deliberate` commit's
+    functionality is in no patch series in this repo at all;
   - `dropped-obsolete` — the code it changed no longer exists in any form we ship
     (e.g. fixes to a vendored driver that was replaced wholesale).
 - **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
-  carries it (`—` when not carried).
+  carries it (`—` when not carried into the image — this includes `carried-upstream-only`
+  rows, which are carried into the *export* instead; see Why / replacement for that path).
 - **Impact today** — **read this column first.** It is what a user of *this build*
   actually experiences: `none (carried)` — the feature is present via our patch;
   `none (in mainline)` — 6.18 already has it; `none (replaced)` — a named package/driver
@@ -58,10 +69,11 @@ the decision behind it. The recurring patterns, so the table reads at a glance:
    commit-pinned, hash-verified Buildroot packages or — preferred when it works on the real
    hardware — the mainline in-kernel drivers (`rtw88`, `rtl8xxxu`). Fixes the fork made to
    its vendored copies are verified present in whichever source we actually build.
-2. **Fork mechanisms replaced by this build's architecture.** The `loop=` boot parameter
-   hack is replaced by a real initramfs; the fork's `MiSTer_defconfig` commits are absorbed
-   into `board/mister/de10nano/linux.config` (verified symbol-by-symbol against the resolved
-   build config).
+2. **Fork mechanisms replaced by this build's architecture.** The fork's `MiSTer_defconfig`
+   commits are absorbed into `board/mister/de10nano/linux.config` (verified symbol-by-symbol
+   against the resolved build config). (The `loop=` boot parameter hack — same replacement,
+   a real initramfs — is a related but *distinct* case: it is not dropped, it is carried for
+   the exported tree alone. See "The one `carried-upstream-only` row" below.)
 3. **Shared-file hygiene.** Hunks in files shared by every socfpga board (`socfpga.dtsi`)
    were dropped when provably inert on this board, keeping patches off shared files.
 4. **Rejected on the merits.** Experimental or debug leftovers (the `mt7601u` calibration
@@ -70,6 +82,31 @@ the decision behind it. The recurring patterns, so the table reads at a glance:
 5. **Risk-based.** The out-of-tree new-lg4ff rewrite was not carried: mainline `hid-lg4ff`
    covers every wheel Main_MiSTer actually drives, and the rewrite carries an untestable
    hard-fail hazard. Known limitation: the G923 *PlayStation* variant loses force feedback.
+
+### The one `carried-upstream-only` row
+
+`3d95de58f` ("Support for init loop device") is the only commit at this disposition today.
+It is **not** dropped — the patch is forward-ported to 6.18 and lives at
+`board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`
+— but it is also not `carried` in this table's usual sense, because Buildroot never applies
+it: `BR2_LINUX_KERNEL_PATCH` points only at `board/mister/de10nano/linux-patches/`, and the
+`-upstream` sibling is read only by `scripts/export-kernel-tree.sh`, after the carried
+series, when it builds the tree this repo publishes to `MiSTer-devel/Linux-Kernel_MiSTer`.
+
+Why both things are true at once: the commit adds the `loop=` kernel boot parameter, the
+mechanism **every stock MiSTer boots through** (mount the SD card's exFAT partition,
+loop-mount `linux/linux.img` from it as root). A published `Linux-Kernel_MiSTer` branch
+without it would not boot on any device but the one this repo happens to build. Our own
+image replaced the same job with a real initramfs `/init` (`impact today: none (replaced)`
+above) — so the kernel *we* ship has no use for the in-kernel version, while the kernel
+*upstream* ships cannot boot without it. Neither "drop it from the export" nor "apply it to
+our image" is the right call, so it is carried in exactly one of the two series.
+
+See `board/mister/de10nano/linux-patches-upstream/README.md` for the directory's rules
+(numbering, the mandatory not-in-image reason, what belongs here and what must never), and
+the generated `EXPORT.md` (from `scripts/export-kernel-tree.sh`) for the current,
+authoritative list — this note names the first and, as of this writing, only entry, but the
+directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
@@ -133,6 +170,7 @@ Of 123 rows, **3** describe a real difference a user could notice on this build 
 | `f52690120` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | dts: enable bridges. |
 | `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
 | `fc8f3c2c6` | v5.15 | **carried** | 0019-hidpp-k400-fn-inversion.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Logitech K400r: disable Fn swap. |
+| `3d95de58f` | v5.15 | **carried-upstream-only** | — | carried for export only: `board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`; → initramfs /init boot flow with loop= parameter p… | none (replaced) | feature-loss/silent | — | Y | ✓ | Support for init loop device. |
 | `0d60c3482` | v5.15 | **dropped-upstream** | — | in mainline: `fc97b4d6a1a6`; → fc97b4d6a1a6 (HID: playstation: expose DualSense… | none (in mainline) | cosmetic/silent | — | N | ✓ | dualsense: add lightbar color control. |
 | `1412bd707` | v5.15 | **dropped-upstream** | — | in mainline: `74cb485f68eb`; → 74cb485f68eb (upstream HID: playstation: sanity … | none (in mainline) | boot-critical/loud | — | Y | ✓ | hid-sony: fix divide by 0 exception. |
 | `2799f8b94` | v5.15 | **dropped-upstream** | — | in mainline: `94f18bb19945`; → 94f18bb19945 (HID: nintendo: add support for nso… | none (in mainline) | feature-loss/silent | — | Y | ✓ | add support for NSO N64 controller (#49) |
@@ -165,7 +203,6 @@ Of 123 rows, **3** describe a real difference a user could notice on this build 
 | `346cbf62b` | v5.14 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | ? | ✓ | defconfig: update. |
 | `3740d5b88` | v5.15 | **dropped-deliberate** | — | → BR2_PACKAGE_RTL8812AU (out-of-tree, morrownr for…; BR2_PACKAGE_RTL8821AU_MORROWNR (out-of-tree, mor…; … | none (replaced) | none/silent | — | Y | ✓ | Backport  rtl8812au  rtl8821au  rtl8821cu drivers from morr… |
 | `3d587b6a3` | v5.13.12 | **dropped-deliberate** | — | → 33ff5146a7248ef86e15bb3b78f1f7516f86ee4f (v5.15 …; mainline rtw88 drivers (RTL8821C, RTL8822B); … | none (replaced) | none/silent | — | ? | ✓ | Add rtl8821au, rtl88x2bu, rtl8821cu WiFi drivers. |
-| `3d95de58f` | v5.15 | **dropped-deliberate** | — | → initramfs /init boot flow with loop= parameter p… | none (replaced) | feature-loss/silent | — | Y | ✓ | Support for init loop device. |
 | `409f81077` | v5.15 | **dropped-deliberate** | — | → e23c69e3324892f7420686b3aaa0403df6cf152c — Input…; package/xone (BR2_PACKAGE_XONE=y) — the driver t… | none (replaced) | none/silent | Y | Y | ✓ | xpad: add Elite 2 ID. |
 | `43c52e9ef` | v5.15 | **dropped-deliberate** | — | → hid-logitech-hidpp (for G923 Xbox, 046d:c26e) — … | **limitation — see record** | feature-loss/silent | — | Y | ✓ | Update lg4ff to latest version. Fix broken 32bit rumble/ff … |
 | `43fbb63ae` | v5.15 | **dropped-deliberate** | — | → package/rtl8812au (BR2_PACKAGE_RTL8812AU=y); package/rtl8821au-morrownr (BR2_PACKAGE_RTL8821A…; … | none (replaced) | none/silent | — | Y | ✓ | wireless: realtek: fix makefiles. |

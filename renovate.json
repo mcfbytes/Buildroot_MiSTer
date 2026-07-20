@@ -249,16 +249,17 @@
     },
     {
       "customType": "regex",
-      "description": "BCM20702 Bluetooth firmware tag pin (winterheart/broadcom-bt-firmware). Tag format vMAJOR.MINOR.PATCH.BUILD_pN is nonstandard for 'loose' versioning's ordering of the trailing _pN -- flagged via the needs-manual-version-check label below; automerge is already off everywhere, so worst case is a human rejects a wrongly-ordered proposal. Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml.",
+      "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 9 other untagged upstreams here are pinned. Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
       "managerFilePatterns": [
         "/^package/bcm20702-firmware/bcm20702-firmware\\.mk$/"
       ],
       "matchStrings": [
-        "BCM20702_FIRMWARE_VERSION\\s*=\\s*(?<currentValue>v[\\d.]+_p\\d+)"
+        "BCM20702_FIRMWARE_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
       ],
+      "currentValueTemplate": "master",
       "depNameTemplate": "winterheart/broadcom-bt-firmware",
-      "datasourceTemplate": "github-tags",
-      "versioningTemplate": "loose"
+      "packageNameTemplate": "https://github.com/winterheart/broadcom-bt-firmware",
+      "datasourceTemplate": "git-refs"
     },
     {
       "customType": "regex",
@@ -419,17 +420,6 @@
       ],
       "addLabels": [
         "sdcard-payload-pin"
-      ]
-    },
-    {
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "matchDepNames": [
-        "winterheart/broadcom-bt-firmware"
-      ],
-      "addLabels": [
-        "needs-manual-version-check"
       ]
     },
     {

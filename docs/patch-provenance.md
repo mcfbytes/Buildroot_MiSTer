@@ -16,6 +16,14 @@ cited commit SHA, `file:line`, or upstream commit.
 > `disagreements-with-provenance.md`). Corrections are applied inline below and summarized
 > in §11. The per-commit records are the authoritative evidence; this doc is the narrative map.
 
+> **2026-07-18 two-series update.** This repo now maintains **two** kernel patch series,
+> not one — `board/mister/de10nano/linux-patches/` (applied to the image *and* to the tree
+> this repo exports upstream) and `board/mister/de10nano/linux-patches-upstream/` (exported
+> tree only; Buildroot never applies it). Class B (§3.2/§4) is the motivating case: **still
+> deleted from our own image**, as this doc has always said, but now **carried** in the
+> second series for upstream's sake. See §12 for what changed and why, before reading §3.2
+> or §4 as if this doc describes one tree.
+
 ---
 
 ## 1. Method — how the baseline was established
@@ -325,11 +333,11 @@ design · `config` = feeds P1.3, not a patch.
 > `HID_GAMECUBE_ADAPTER(_FF)`, `JOYSTICK_XONE`, `RTL8188EU/8188FU/8812AU/8821AU/8821CU/8822BU`.
 > (`HID_GOOGLE_STADIA_FF` and `HID_NINTENDO` now come from mainline.)
 
-### 3.2 Class B — `loop=` root patch (delete)
+### 3.2 Class B — `loop=` root patch (delete from our image; carried for export — §12)
 
 | Commit | Subject | Files | Origin | Upstream | Disposition |
 |---|---|---|---|---|---|
-| `3d95de58f` | Support for init loop device | `init/do_mounts.c` (+101/−4), `drivers/block/loop.c` (+7) | Sorgelig | no — and `mount_block_root()`/`init_mount()` were **removed** from `init/do_mounts.c` in the 6.x rewrite | **delete** — replaced by initramfs (§5). Full analysis: §4 |
+| `3d95de58f` | Support for init loop device | `init/do_mounts.c` (+101/−4), `drivers/block/loop.c` (+7) | Sorgelig | no — and `mount_block_root()`/`init_mount()` were **removed** from `init/do_mounts.c` in the 6.x rewrite | **delete (from our image)** — replaced by initramfs (§5). Full analysis: §4. **Not dropped overall** — carried for the exported `Linux-Kernel_MiSTer` tree only; see §12 |
 
 ### 3.3 Class C — HID/BT/storage, now upstream (drop — 22 commits)
 
@@ -517,8 +525,13 @@ The `mount -t vfat || mount -t exfat` fallback routes FAT32 to mainline **vfat**
 
 **Verdict:** the initramfs replacement covers **100 % of the `loop=` patch's own logic**, and
 improves on its error handling. It does **not** cover the *filesystem-driver* substitution that
-the class-B patch silently depends on. Deleting `init/do_mounts.c` is correct and safe;
-**deleting the exfat driver is a separate decision (N1) that P1.10 must not assume away.**
+the class-B patch silently depends on. Deleting `init/do_mounts.c` **from our own image** is
+correct and safe; **deleting the exfat driver is a separate decision (N1) that P1.10 must not
+assume away.**
+
+This verdict is about the image Buildroot builds. It says nothing about the exported
+`Linux-Kernel_MiSTer` tree, which is upstream's kernel for every MiSTer, not just ours, and
+carries `3d95de58f` forward-ported to 6.18 for exactly that reason — see §12.
 
 **Action for P1.10:** mount with
 `-o ro,sync,dirsync,noatime,nodiratime,iocharset=utf8` (vfat) /
@@ -1524,3 +1537,54 @@ B1 and B4 were **found by automated static review on PR #2**, not by the porting
 agents. Both were confirmed against the 5.15 source before being fixed. This is worth
 recording as evidence for the review discipline itself: the ports were already
 building warning-free and passing every acceptance check when these were caught.
+
+## 12. 2026-07-18 two-series update — Class B is carried, not dropped, for the exported tree
+
+Every disposition in §3–§4 is, and always has been, about **the image Buildroot builds**.
+That scope was implicit for the whole life of this doc because there was only one tree to
+talk about: this repo built one kernel, and `scripts/export-kernel-tree.sh` (which renders
+that kernel as a standalone `Linux-Kernel_MiSTer`-style branch for PR #75) replayed exactly
+the same patches. "Delete" and "carried" meant the same thing whichever tree you looked at.
+
+That stopped being true the day this repo started publishing the export upstream.
+`MiSTer-devel/Linux-Kernel_MiSTer` is the kernel for **every** MiSTer, not just the one this
+repo builds, and it needs at least one thing our image deliberately does not: `3d95de58f`
+("Support for init loop device", Class B, §3.2/§4). That commit adds the `loop=` boot
+parameter — the mechanism **every stock MiSTer boots through**, mounting the SD card's
+data partition and loop-mounting `linux/linux.img` from it as root. A published
+`Linux-Kernel_MiSTer` branch without it would not boot on any device but this repo's own.
+Our image replaced the same job with a real initramfs `/init` (§4 verdict, unchanged by
+this update), so the kernel *we* ship has no use for the in-kernel version — but the kernel
+*upstream* ships cannot boot without it.
+
+Neither "leave it out of the export, to keep saying the two trees are identical" nor "apply
+it to our image, to keep saying there's only one patch series" is the right trade. So there
+are now two:
+
+| Series | Applied to our image (Buildroot) | Applied to the exported tree (`scripts/export-kernel-tree.sh`) |
+|---|---|---|
+| `board/mister/de10nano/linux-patches/` (unchanged — everything in §3/§5 above) | yes | yes |
+| `board/mister/de10nano/linux-patches-upstream/` (new) | **no** — `BR2_LINUX_KERNEL_PATCH` never points here | yes, replayed with `git am` immediately after the carried series |
+
+`3d95de58f` is the first, and as of this writing only, patch in the new directory —
+forward-ported to 6.18 and carried at
+`board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`.
+Its Class B row and §4's verdict above are corrected in place to say "from our image", not
+just "deleted", to match.
+
+`docs/kernel-recon/reconciliation.md` gained a matching disposition for this,
+`carried-upstream-only` — distinct from `carried` (in our image) and from
+`dropped-deliberate` (in **neither** series; §3's other Class-B-shaped rows, like the
+`MiSTer_defconfig` commits absorbed into `linux.config`, are still exactly that). See that
+doc's "The one `carried-upstream-only` row" for the full cross-reference.
+
+This doc does not restate the mechanics of the new directory or the export script — both
+are self-documenting and would drift out of sync with a third copy of the same rules here:
+
+- **What belongs in the new directory, and what must never** — numbering (`0100` up, a
+  separate namespace from `0001`–`0037` above), the mandatory reason a patch is absent from
+  the image, provenance-header format: `board/mister/de10nano/linux-patches-upstream/README.md`.
+- **How the export applies it, and what it prints** — `scripts/export-kernel-tree.sh`'s
+  "TWO SERIES" header comment, and the table the script generates in `EXPORT.md` naming
+  every upstream-only patch and why the image does not apply it. That table is the
+  authoritative, current list — this section names the first entry, not a ceiling.

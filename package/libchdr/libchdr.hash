@@ -5,7 +5,7 @@
 #   https://github.com/rtissera/libchdr/archive/04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
 #
 #   sha256sum libchdr-04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
-sha256  c6f16b2dbe701fcc9013279e4c968c15e19b9784a4717aebb04d9251f3b25dcf  libchdr-04a177ee3cea055d93da2d5839d3413168837c6f.tar.gz
+sha256  a222b1f1c842f988c2aad51e5f56ba94a423ed87ccab71f1abdb757caa7444f5  libchdr-6cde5348eb118da3baf94f75a69577a005a484fd.tar.gz
 # LICENSE.txt -- the BSD-3-Clause text; see the LIBCHDR_LICENSE comment in
 # the .mk (the bundled dr_flac's public-domain/MIT-0 statements live inside
 # include/dr_libs/dr_flac.h itself, no separate file exists to hash)

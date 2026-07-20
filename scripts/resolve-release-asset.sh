@@ -87,6 +87,15 @@ if [ ! -f "$RELEASE_JSON" ]; then
 	exit 2
 fi
 
+# Validate the input parses BEFORE the first data jq below. Without this, a
+# present-but-malformed file aborts at that jq under `set -e` with jq's own
+# exit status -- contradicting this script's documented contract (exit 2 for a
+# bad/unreadable input). Fail here instead, as 2, with a clear message.
+if ! jq -e . "$RELEASE_JSON" >/dev/null 2>&1; then
+	echo "::error::release metadata file '$RELEASE_JSON' is not valid JSON -- expected the output of: gh release view <tag> --json isDraft,publishedAt,assets" >&2
+	exit 2
+fi
+
 count=$(jq '[.assets[] | select(.name | test("^release_[0-9]+\\.7z$"))] | length' "$RELEASE_JSON")
 if [ "$count" -ne 1 ]; then
 	echo "::error::expected exactly one release_<date>.7z asset, found $count" >&2

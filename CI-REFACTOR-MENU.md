@@ -1,12 +1,78 @@
 # CI / Release pipeline — refactor plan
 
-Analysis only; no workflow files changed. Nothing here removes a feature, check,
-assertion or trigger. Written to be executed by an `ultracode` session — each
-item carries a recommended model and effort.
+This document was originally written as analysis only, before any workflow file
+was touched. **That is no longer the state of this branch — see "Current
+implementation status" immediately below before reviewing anything else in this
+file.** The rest of the plan (item descriptions, sequencing, effort estimates)
+is left as originally written for historical/rationale purposes; it does not
+describe the diff that is actually sitting in the working tree today. Nothing
+any item here calls for removes a feature, check, assertion or trigger.
 
 **Decisions taken:** item **A1** (composite action, not a reusable workflow);
 item **H** promoted — terse YAML comments, long-form rationale relocated to a new
 `docs/ci.md` with anchor pointers.
+
+## Current implementation status — scope correction (do not skip)
+
+**The uncommitted working-tree diff combines item E (move embedded shell into
+`scripts/`) and item H (terse YAML / `docs/ci.md`) into one change, applied
+together.** The "Sequencing" section below explicitly calls for `E` to land
+*before* `M`/`H`, and for H to "land last, deliberately" — it does not call for
+them to be squashed into one commit reviewed as a comment-only pass. If this
+diff (or a commit built from it) reaches review labelled as "H" / "terse-comment
+pass" / "comment-only", **that label is wrong**: relative to `origin/master` it
+adds/changes many executable lines, not just comments. Concretely, this diff:
+
+- Adds a brand-new step to `renovate-hash-sync.yml` that does not exist on
+  `master`: a second checkout of this repo at `${{ github.workflow_sha }}` into
+  `.hash-sync-tools`, so the four hash-sync `run:` steps can shell out to
+  `.hash-sync-tools/scripts/hash-sync-{github-packages,kernel,lzma-sdk,sdcard-payload}.sh`
+  instead of running ~250 lines of inline `set -euo pipefail` shell.
+- Replaces eight inline verify/fetch `run:` blocks in `release.yml` with calls
+  into `scripts/verify-stock-payload.sh <subcommand> ...`.
+- Replaces duplicated inline `sz()`/legal-info-tarball shell in `build.yml` and
+  `.github/actions/kernel-leg/action.yml` with `source scripts/ci-lib.sh` +
+  `ci_lib_sz` / `ci_lib_package_legal_info`.
+- Replaces `publish-db.yml`'s inline asset-resolution `jq`/`sed` with
+  `scripts/resolve-release-asset.sh` and a new job-level `env: TAG: ...` block.
+- Adds `scripts/shellcheck-composite-actions.sh`, wired into the new
+  `lint.yml`.
+
+**Equivalence verified (spot-checked, not exhaustive):** `ci_lib_package_legal_info`
+reproduces the original full-vs-manifest-only exclude sets; `verify-stock-payload.sh
+verify-uboot`'s `--hash-only` flag reproduces the original full-vs-hash-only
+asymmetry; the `STOCK_*` env vars the extracted scripts read are still supplied
+by `release.yml`'s job-level `env:` block; the hash-sync scripts `cd
+"$REPO_ROOT"` and export `*_HASH_CHANGED` the same way the inline blocks did;
+running the hash-sync scripts from the `github.workflow_sha` checkout preserves
+the original "code runs pinned to the workflow's own ref" property. No runtime
+regression was found in these checks — but that is a behavioral-equivalence
+finding, not evidence that "no executable line changed."
+
+**Outstanding precondition before this can land as-is:** the scripts these
+workflows now call —
+`scripts/ci-lib.sh`, `scripts/verify-stock-payload.sh`,
+`scripts/resolve-release-asset.sh`, `scripts/shellcheck-composite-actions.sh`,
+`scripts/hash-sync-github-packages.sh`, `scripts/hash-sync-kernel.sh`,
+`scripts/hash-sync-lzma-sdk.sh`, `scripts/hash-sync-sdcard-payload.sh`,
+`scripts/lib/hash-sync-common.sh` — are untracked (`git status` shows them as
+`??`) in this worktree today. `renovate-hash-sync.yml`'s new second checkout
+resolves its four scripts at `${{ github.workflow_sha }}` (the SHA of the
+*committed* workflow), so whichever commit first makes the workflow reference
+`.hash-sync-tools/scripts/...` **must also commit those scripts** — otherwise a
+run at that SHA fails every hash-sync step with `No such file or directory`
+(exit 127), which is the exact failure the second checkout exists to avoid.
+Before merging: `git add` these files in the same commit as the workflow/action
+YAML changes (or an earlier ancestor of it), then confirm with
+`git ls-tree <that-commit> -- scripts/lib/hash-sync-common.sh` (and the other
+eight paths) that they are non-empty. This worktree intentionally makes no git
+commits, so that step is left for whoever lands this branch.
+
+**Recommendation:** split this working-tree diff into (at minimum) an "E" commit
+(script extraction, reviewed for behavioral equivalence) followed by an "H"
+commit (comment terseness + `docs/ci.md`, comment-only), matching the
+Sequencing section's own intent — rather than presenting the combined diff
+under the "H" label.
 
 **Supporting data**, produced by a 33-agent verification pass and persisted for
 the implementing session:

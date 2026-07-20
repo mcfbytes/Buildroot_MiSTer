@@ -33,7 +33,7 @@
 # exemption, so the snapshot MUST have a sha256 line there or the build fails
 # closed at download. Bump the version here -> update that line in the same
 # commit (its header says how, and why -rc hashes have weaker provenance).
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc4"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks

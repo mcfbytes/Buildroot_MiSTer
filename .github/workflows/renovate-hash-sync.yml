@@ -25,15 +25,32 @@
 #      otherwise type by hand is safe here.
 #
 #   2. The kernel tarball hash (board/mister/de10nano/patches/linux/
-#      linux.hash), refreshed from kernel.org's own PGP-clearsigned
-#      sha256sums.asc for the matching v6.x series -- the same URL and same
-#      trust model docs/renovate.md and the .hash file's own header already
-#      document as the ONLY legitimate source. This step does NOT verify the
-#      PGP signature (no keyring management here yet) -- it fetches the
-#      manifest over HTTPS and greps the matching line, which is exactly the
-#      same trust level as today's manual transcription process, not a
-#      regression. Verifying the clearsign signature is a worthwhile future
-#      hardening step, not implemented here (see docs/renovate.md).
+#      linux.hash), derived under TWO independent PGP signatures, both
+#      checked against keys committed under .github/keys/ (never fetched at
+#      run time -- a key pulled from the network is not a trust root):
+#
+#        path A  linux-<ver>.tar.sign, signed by the kernel stable maintainer
+#                (Greg Kroah-Hartman). kernel.org calls developer signatures
+#                the "best assurance". The .sign covers the UNCOMPRESSED tar,
+#                so we decompress the .tar.xz we actually downloaded and
+#                verify that stream -- which ties the signature to this exact
+#                file -- then compute its sha256 ourselves.
+#        path B  sha256sums.asc, signed by the kernel.org checksum autosigner,
+#                parsed ONLY from the plaintext gpg wrote after verifying.
+#
+#      Both must succeed AND agree on the hash, or the step fails hard and
+#      refuses to touch linux.hash. A signature failure is a supply-chain
+#      event, not a transient one, so it is never downgraded to the
+#      warn-and-skip path used for network errors.
+#
+#      Verification is pinned by FINGERPRINT via gpg's --status-fd VALIDSIG
+#      line, not by gpg's exit status or its human-readable output: exit
+#      status can be 0 for a good-but-expired key, and "Good signature" text
+#      is attacker-influenceable through the filename. See
+#      docs/decisions/0022-kernel-hash-gpg-verification.md for the full
+#      rationale, including why the autosigner key is TOFU-pinned (kernel.org
+#      publishes neither that key nor its fingerprint) while the maintainer
+#      key's fingerprint IS cross-checkable against kernel.org/signature.html.
 #
 #   3. The lzma-sdk tarball hash (package/lzma-sdk/lzma-sdk.hash). Same
 #      trust model as case 1 (upstream publishes NO checksums at all --
@@ -372,25 +389,94 @@ jobs:
           fi
 
           series="v$(echo "$kver" | cut -d. -f1).x"
-          manifest_url="https://cdn.kernel.org/pub/linux/kernel/${series}/sha256sums.asc"
-          echo "==> kernel $kver: fetching $manifest_url"
+          base="https://cdn.kernel.org/pub/linux/kernel/${series}"
+          echo "==> kernel $kver from $base"
 
-          manifest=$(curl -fsSL --retry 3 "$manifest_url") || {
-            echo "::warning::could not fetch $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
+          # --- Trust roots ----------------------------------------------------
+          # Import ONLY our two checked-in keys into a throwaway keyring, so a
+          # signature made by any other key cannot verify. See
+          # docs/decisions/0022-kernel-hash-gpg-verification.md for why these two
+          # and what each is worth.
+          GNUPGHOME=$(mktemp -d); export GNUPGHOME; chmod 700 "$GNUPGHOME"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          gpg --batch --quiet --import .github/keys/kernel.org-gregkh.asc \
+                                      .github/keys/kernel.org-autosigner.asc
+
+          # gpg's exit status alone is too weak a gate: it can report success for
+          # a good-but-expired key, and "Good signature" text can be spoofed by a
+          # crafted filename. Require a VALIDSIG line naming the exact fingerprint
+          # on the machine-readable status channel instead.
+          require_validsig() {   # $1 = expected fingerprint, $2 = status output
+            printf '%s\n' "$2" | grep -q "^\[GNUPG:\] VALIDSIG $1 " || return 1
           }
+          FPR_GREGKH="647F28654894E3BD457199BE38DBBDC86092693E"
+          FPR_AUTOSIGNER="B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1"
 
-          # kernel.org's manifest lines look like:
-          #   <sha256hash>  linux-6.18.38.tar.xz
-          matchline=$(echo "$manifest" | grep -E "  linux-${kver//./\\.}\.tar\.xz\$" | head -1 || true)
-          if [ -z "$matchline" ]; then
-            echo "::warning::no entry for linux-${kver}.tar.xz in $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
+          workdir=$(mktemp -d); trap 'rm -rf "$GNUPGHOME" "$workdir"' EXIT
+
+          # --- Path A: developer signature over the decompressed tarball ------
+          # kernel.org calls this the "best assurance"; the .sign covers the
+          # UNCOMPRESSED tar, so decompressing the .tar.xz we actually downloaded
+          # and verifying that stream ties the signature to this exact file. We
+          # then compute the .tar.xz hash ourselves -- no manifest needed.
+          if ! curl -fsSL --retry 3 -o "$workdir/linux.tar.xz" "$base/linux-${kver}.tar.xz" \
+            || ! curl -fsSL --retry 3 -o "$workdir/linux.tar.sign" "$base/linux-${kver}.tar.sign"; then
+            echo "::warning::could not download linux-${kver} tarball/signature -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
             echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          newhash=$(echo "$matchline" | awk '{print $1}')
+          statusA=$(xz -dc "$workdir/linux.tar.xz" \
+            | gpg --batch --status-fd 1 --verify "$workdir/linux.tar.sign" - 2>/dev/null || true)
+          if ! require_validsig "$FPR_GREGKH" "$statusA"; then
+            echo "::error::developer signature on linux-${kver}.tar did NOT verify against the checked-in kernel.org maintainer key." >&2
+            echo "::error::This is a supply-chain failure, not a transient one -- refusing to touch $linuxhash." >&2
+            echo "::error::If this line moved to a different signer (e.g. Sasha Levin), add that key under .github/keys/ after checking its fingerprint against kernel.org/signature.html." >&2
+            printf '%s\n' "$statusA" | grep '^\[GNUPG:\]' >&2 || true
+            exit 1
+          fi
+          hash_dev=$(sha256sum "$workdir/linux.tar.xz" | awk '{print $1}')
+          echo "    path A (developer sig, Greg KH):  $hash_dev"
+
+          # --- Path B: autosigner signature over the checksum manifest --------
+          # Independent of path A: a different key, signing a different artifact,
+          # produced by a different kernel.org system.
+          if ! curl -fsSL --retry 3 -o "$workdir/sha256sums.asc" "$base/sha256sums.asc"; then
+            echo "::warning::could not fetch $base/sha256sums.asc -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          statusB=$(gpg --batch --status-fd 1 --output "$workdir/sha256sums.txt" \
+            --decrypt "$workdir/sha256sums.asc" 2>/dev/null || true)
+          if ! require_validsig "$FPR_AUTOSIGNER" "$statusB"; then
+            echo "::error::sha256sums.asc did NOT verify against the checked-in kernel.org autosigner key -- refusing to touch $linuxhash." >&2
+            printf '%s\n' "$statusB" | grep '^\[GNUPG:\]' >&2 || true
+            exit 1
+          fi
+
+          # Parse the VERIFIED plaintext gpg wrote, never the raw .asc -- reading
+          # the signed file directly would make the verification above decorative.
+          matchline=$(grep -E "  linux-${kver//./\\.}\.tar\.xz\$" "$workdir/sha256sums.txt" | head -1 || true)
+          if [ -z "$matchline" ]; then
+            echo "::warning::no entry for linux-${kver}.tar.xz in the verified manifest -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
+            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          hash_manifest=$(echo "$matchline" | awk '{print $1}')
+          echo "    path B (autosigner manifest):     $hash_manifest"
+
+          # --- Both independent paths must agree ------------------------------
+          if [ "$hash_dev" != "$hash_manifest" ]; then
+            echo "::error::kernel.org's developer signature and checksum manifest DISAGREE for linux-${kver}.tar.xz." >&2
+            echo "::error::  developer-signed tarball: $hash_dev" >&2
+            echo "::error::  autosigner manifest:      $hash_manifest" >&2
+            echo "::error::Refusing to touch $linuxhash. Investigate before proceeding." >&2
+            exit 1
+          fi
+          echo "    both paths agree."
+
+          newhash="$hash_dev"
           newline="sha256  ${newhash}  linux-${kver}.tar.xz"
           oldline=$(grep -m1 '^sha256' "$linuxhash" || true)
 

@@ -3,7 +3,7 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set (2), verified against 7.2-rc3:
+# Excluded vs the 6.18 set (2), verified against 7.2-rc4:
 #   0030-i2c-designware-quiet-timeout   — trivial 1-line re-anchor pending
 #     (dev_err->dev_dbg). Cosmetic; omitted on beta.
 #   0037-hid-playstation-dualsense-mute-btn-z — genuine MiSTer divergence

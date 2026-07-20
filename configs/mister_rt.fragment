@@ -1,4 +1,4 @@
-# mister_rt.fragment — the RT / Linux-7.2-rc3 "beta" kernel variant.
+# mister_rt.fragment — the RT / Linux-7.2 "beta" kernel variant.
 #
 # ⚠ Never yet booted on hardware. See docs/rt-beta-kernel.md for status,
 # design, and the open TODOs (on-hardware boot + RT validation).
@@ -21,19 +21,19 @@
 # Adding a future kernel variant `foo` = a sibling configs/mister_foo.fragment
 # like this one + foo/foo-clean/... Makefile targets + one CI matrix entry.
 
-# --- The 7.2-rc3 kernel -------------------------------------------------------
+# --- The 7.2 kernel -----------------------------------------------------------
 # Just override the version value; the base defconfig already sets
 # BR2_LINUX_KERNEL_CUSTOM_VERSION=y. Buildroot handles -rc versions natively —
 # linux/linux.mk detects the "-rc" and fetches the cgit snapshot from
 # https://git.kernel.org/torvalds/t (there is no signed release tarball for an
-# -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc3.
+# -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc4.
 #
 # COUPLED to board/mister/de10nano/patches/linux/linux.hash: the base config's
 # BR2_DOWNLOAD_FORCE_CHECK_HASHES disables Buildroot's built-in -rc hash
 # exemption, so the snapshot MUST have a sha256 line there or the build fails
 # closed at download. Bump the version here -> update that line in the same
 # commit (its header says how, and why -rc hashes have weaker provenance).
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc4"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks
@@ -44,8 +44,8 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc3"
 # 7.2 — it is not: 7.2 has no FAML/FAMR controller types). The shared 6.18
 # patches are deliberately untouched, keeping them byte-identical to stock.
 # The series drops only 0030 + 0037 (7.x re-anchors pending). All 29 listed
-# patches apply to 7.2-rc3 at -F0 (verified through Buildroot's own
-# apply-patches.sh AND the real `linux-patch` stage, 2026-07-18).
+# patches apply to 7.2-rc4 at -F0 (verified through Buildroot's own
+# apply-patches.sh, 2026-07-20; offsets shift but zero hunks take fuzz).
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config ---------

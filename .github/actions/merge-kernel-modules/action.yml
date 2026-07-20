@@ -1,0 +1,95 @@
+################################################################################
+#
+# merge-kernel-modules — folds every kernel-variant module tree into the ONE
+# shipped linux.img, in two phases split around buildroot-build (`phase:
+# download` before, `phase: verify` after). Inputs are always strings: every
+# `if:` below MUST compare against 'download'/'verify' literally, never as a
+# truthiness check. See docs/ci.md#merge-kernel-modules.
+#
+################################################################################
+
+name: Merge kernel-variant module trees into the image
+description: >-
+  Downloads every kernel-variant artifact (build-kernel matrix leg), unpacks
+  its module tree into work/extra-modules-overlay/ (phase: download -- run
+  BEFORE buildroot-build), or asserts every downloaded kver actually merged
+  into output/target/usr/lib/modules/ (phase: verify -- run AFTER
+  buildroot-build).
+
+inputs:
+  phase:
+    description: >-
+      Which half of the merge to run: "download" (download the kernel-variant
+      artifacts and populate the extra-modules overlay -- must run BEFORE the
+      buildroot-build action) or "verify" (assert every kernel-variant module
+      tree merged into the built image -- must run AFTER buildroot-build).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Every phase step below is gated with `if:` and has NO else-branch — an
+    # unrecognised phase MUST fail loud here, not fall through as a silent
+    # no-op. See docs/ci.md#merge-kernel-modules-fail-loud.
+    - name: Reject unknown phase
+      if: inputs.phase != 'download' && inputs.phase != 'verify'
+      shell: bash
+      env:
+        PHASE: ${{ inputs.phase }}
+      run: |
+        echo "::error::merge-kernel-modules: phase must be 'download' or 'verify', got '${PHASE}'" >&2
+        exit 1
+
+    # The kernel legs' module trees, into the overlay the main defconfig's
+    # BR2_ROOTFS_OVERLAY names — Buildroot rsyncs it into TARGET_DIR at
+    # target-finalize, which is how the ONE shipped linux.img ends up carrying
+    # every variant's modules next to main's own.
+    - name: Download kernel-variant artifacts
+      if: inputs.phase == 'download'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: kernel-*-${{ github.sha }}
+        path: kernel-artifacts
+        merge-multiple: true
+
+    - name: Populate the extra-modules overlay from the kernel legs
+      if: inputs.phase == 'download'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p work/extra-modules-overlay
+        shopt -s nullglob
+        tars=(kernel-artifacts/modules-*.tar.gz)
+        # Zero tars is a wiring bug, not an empty matrix: this job only runs
+        # after build-kernel succeeded, and every leg uploads a modules tar.
+        if [ "${#tars[@]}" -eq 0 ]; then
+          echo "::error::no modules-*.tar.gz found under kernel-artifacts/ -- the build-kernel legs uploaded nothing this job can merge" >&2
+          exit 1
+        fi
+        for t in "${tars[@]}"; do
+          echo "unpacking ${t##*/} into work/extra-modules-overlay/"
+          tar -xzf "$t" -C work/extra-modules-overlay
+        done
+        echo "--- overlay module trees ---"
+        find work/extra-modules-overlay/usr/lib/modules -mindepth 1 -maxdepth 1 -type d | sort
+
+    # A silent overlay miss must fail loudly: if a downloaded kver never made
+    # it into the built rootfs (overlay path typo, BR2_ROOTFS_OVERLAY edit),
+    # nothing else in this job would notice — the image builds green, it just
+    # ships a kernel whose modules are not there.
+    - name: Assert every kernel-variant module tree merged into the image
+      if: inputs.phase == 'verify'
+      shell: bash
+      run: |
+        set -euo pipefail
+        rc=0
+        for f in kernel-artifacts/kver-*.txt; do
+          kver=$(tr -d '[:space:]' < "$f")
+          if [ -d "output/target/usr/lib/modules/$kver" ]; then
+            echo "merged: $kver (${f##*/})"
+          else
+            echo "::error::kernel-variant module tree '$kver' (${f##*/}) is MISSING from output/target/usr/lib/modules/ -- the extra-modules overlay did not reach target-finalize" >&2
+            rc=1
+          fi
+        done
+        exit "$rc"

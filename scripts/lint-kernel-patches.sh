@@ -159,8 +159,11 @@ for dir in "${patch_dirs[@]}"; do
 		# to prevent. If a third caller ever needs them, factor all three into a shared
 		# helper rather than adding a copy.
 		problems=()
+		# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 		[[ -n $author ]] || problems+=('no author name — `From:` needs `Name <email>`')
+		# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 		[[ -n $email ]] || problems+=('no author email — `From:` needs `Name <email>`')
+		# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 		[[ -n $subject ]] || problems+=('no subject — `Subject:` is the commit message')
 
 		if ((${#problems[@]})); then
@@ -184,11 +187,15 @@ done
 
 printf '\n'
 if ((failed)); then
+	# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 	printf 'RESULT: FAIL — %d of %d patch(es) are not `git am`-able.\n' "$failed" "$checked" >&2
+	# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 	printf 'These build fine under Buildroot (`patch -p1` ignores mail headers) but\n' >&2
+	# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 	printf 'cannot be replayed as git history. Fix the `From:` line to `Name <email>`.\n' >&2
 	exit 1
 fi
 
+# shellcheck disable=SC2016 # backticks are literal in these human-facing messages.
 printf 'RESULT: PASS — all %d patches in %d series are `git am`-able.\n' \
 	"$checked" "${#patch_dirs[@]}"

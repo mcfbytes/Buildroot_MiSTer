@@ -957,6 +957,87 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
   decision after Phase 3.
   **Done when:** `docs/decisions/0004-hil-rig.md` reviewed; build go/no-go recorded.
 
+### CI verification status (relocated from workflow YAML, item L)
+
+The workflows below carried "never been run end-to-end" / "UNPROVEN" / "HONESTLY
+UNMEASURED" / "PARTIALLY VERIFIED" prose directly in the pipeline YAML. That is project
+status and follow-up work, not pipeline rationale — relocated here verbatim-in-substance;
+the workflow files themselves now keep only the design rationale (why a value is what it
+is), never whether it has been proven yet.
+
+- [ ] **build.yml / release.yml — measure the build-kernel timeout** — [SONNET] — Size S — Depends: P4.1, P4.4
+  `build-kernel`'s `timeout-minutes: 240` (identical job in both files) is still an
+  estimate, not a measurement — no kernel-only leg has actually run yet. The 240 figure
+  is derived from cold = cross-toolchain from scratch (~1h of main's measured 3h19m) +
+  the stage-1 initramfs (~30 min cold, its toolchain cached separately) + one kernel
+  build, with warm dominated by the kernel alone — leaving ~2x slack under GitHub's
+  silent 6-hour default. Re-derive the estimate (and the 240 itself, if warranted) from
+  real cold/warm run durations once they exist.
+  **Done when:** at least one cold and one warm `build-kernel` run have completed and
+  the comments in both files are updated with measured numbers (or the 240 is confirmed
+  correct and the comment says so, with the run link).
+
+- [ ] **reproducibility.yml — first end-to-end run** — [SONNET] — Size S — Depends: P4.3
+  This workflow has never actually been run (it is `workflow_dispatch`-only by design,
+  to avoid doubling build cost on every push — see the file header). `docs/
+  reproducibility.md`'s "no residual nondeterminism" claim is therefore still
+  honest-but-unproven. Dispatch it once, on a branch with warm input caches, and record
+  the real outcome (pass, or whatever nondeterminism it found and how it was fixed) in
+  `docs/reproducibility.md`.
+  **Done when:** one real two-leg run has completed and its hash-comparison result is
+  written up in `docs/reproducibility.md`.
+
+- [ ] **publish-db.yml — first end-to-end run against a real release** — [SONNET] — Size S — Depends: P4.5
+  This workflow has never been run end-to-end against a real release. Before trusting it
+  for the real beta launch (P4.10):
+    1. Confirm GitHub Pages is enabled (Settings → Pages → Source: GitHub Actions) —
+       this workflow cannot enable that setting itself.
+    2. Fetch the deployed URL and diff it against the db.json the run generated (the
+       job summary echoes it) to confirm Pages actually served what the run built, not a
+       stale cached copy.
+    3. Run `scripts/check-db-json-schema.py` against the DEPLOYED file too (not just the
+       pre-deploy local copy) as a final end-to-end confirmation.
+    4. Confirm db.json's `"version"` equals the `/MiSTer.version` baked into the image
+       this release ships. ADR 0018 (Accepted) makes them the same value by
+       construction — both derive from the tagged commit's date — so they should
+       already agree; this is the end-to-end check that they actually do. If they ever
+       diverge, every device re-flashes on every Downloader run, forever.
+  **Done when:** all four checks pass against a real published release.
+
+- [ ] **release.yml — first end-to-end run** — [SONNET] — Size S — Depends: P4.4
+  This workflow has never been run end-to-end. Follow-up checklist before trusting it:
+    1. `gh release view "$TAG" --json isDraft,assets` — confirm the expected assets are
+       ALL present (an enumerated list, not a count — the old "all 7" predated the
+       sdcard and RT assets): `release_${RELEASE_DATE}.7z`, `linux.img`, `zImage_dtb`,
+       `SHA256SUMS`, `buildroot.config`, `linux.config`, `legal-info.tar.gz`,
+       `zImage_dtb-rt`, `linux-rt.config`, `legal-info-rt.tar.gz`, `sdcard.img.xz` (and
+       `sdcard-full.img.xz` only after an opt-in full dispatch).
+    2. `gh attestation verify dist/linux.img --owner <repository_owner>` (and
+       `zImage_dtb`, `zImage_dtb-rt`).
+    3. Byte-compare the draft release's `release_${RELEASE_DATE}.7z` member list against
+       `docs/downloader-contract.md` / `docs/reference-materials.md` by hand once,
+       independent of the workflow's own self-check.
+    4. Confirm the shipped `uboot.img` sha256 in `SHA256SUMS` still reads
+       `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64`.
+    5. Delete the test tag/release afterward (`git tag -d` / `git push --delete`,
+       `gh release delete`) so it doesn't linger as a confusing real-looking draft.
+  **Done when:** all five checks pass against a real (test-tag) draft release, then the
+  test tag/release is deleted.
+
+- [ ] **renovate-hash-sync.yml — remaining unproven refresh paths** — [SONNET] [NET] — Size S — Depends: P4.6
+  Partially verified (as of 2026-07-19): the kernel-hash step HAS been exercised against
+  a real Renovate PR (#41, kernel 6.18.38 → 6.18.39) and works end to end — that run also
+  surfaced (and item J subsequently fixed the visibility of) two bugs: #42, an unanchored
+  defconfig grep that built a URL containing a newline; and a fetch failure that was only
+  ever a `::warning::`, so the job reported SUCCESS three times while silently leaving
+  `linux.hash` stale. Still unproven: the generic github-package loop (all 12
+  github-sourced pins, including libchdr) and the bespoke lzma-sdk and sdcard-payload
+  steps have never run against a real PR — treat those regexes/URLs as reviewed-by-hand,
+  not proven. See `docs/renovate.md`'s "Unverified / what to check on first run".
+  **Done when:** a real Renovate PR has exercised each of the three still-unproven paths
+  at least once with a passing (or fixed-then-passing) run, and `docs/renovate.md` drops
+  the "unverified" caveat for each path once proven.
+
 ---
 
 ## Phase 5 — Full SD-card image + U-Boot from source (deferred; do not start before Phase 4 exit)

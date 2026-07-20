@@ -1,0 +1,78 @@
+################################################################################
+#
+# verify-image — replaces the byte-for-byte duplicate "Run parity test suite" /
+# "Upload parity-suite results" / "ABI / SONAME parity checker" trio that
+# build.yml and release.yml used to each carry (incl. a hand-synced
+# CI_TESTS_SKIP_QEMU_SYSTEM=1). Do not re-inline a copy into either workflow.
+# See docs/ci.md#verify-image-overview.
+#
+################################################################################
+
+name: Run parity suite + ABI/SONAME checker against a built image
+description: >-
+  Runs scripts/ci-tests.sh (the non-hardware parity suite, P3.12) against the
+  image already built by buildroot-build, uploads its machine-readable
+  results as an artifact (if: always(), so a failed suite still surfaces the
+  digest), then runs scripts/check-abi.sh (the ABI/SONAME parity checker,
+  P2.2). Call this AFTER buildroot-build.
+
+inputs:
+  skip-qemu-system:
+    description: >-
+      "true" (default) sets CI_TESTS_SKIP_QEMU_SYSTEM=1, which skips
+      scripts/test-initramfs.sh, the one sub-check that boots a QEMU *system*
+      kernel six times and can take several minutes on its own (see
+      ci-tests.sh's header). Set to "false" in a manual/nightly run to get the
+      full suite. Composite-action inputs are always strings -- compared with
+      == 'true', never relied on for truthiness.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Fail loud: the ternary below has no else-branch validation of its own,
+    # so any value but 'true'/'false' silently takes the falsy branch and
+    # selects the SLOW full suite -- which can blow release.yml's timeout.
+    # See docs/ci.md#sdcard-timing-6h-cap.
+    - name: Validate skip-qemu-system
+      if: inputs.skip-qemu-system != 'true' && inputs.skip-qemu-system != 'false'
+      shell: bash
+      env:
+        SKIP_QEMU_SYSTEM: ${{ inputs.skip-qemu-system }}
+      run: |
+        echo "::error::verify-image: skip-qemu-system must be 'true' or 'false', got '${SKIP_QEMU_SYSTEM}'" >&2
+        exit 1
+
+    # --- Non-hardware parity suite (P3.12) ---------------------------------
+    - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
+      shell: bash
+      env:
+        CI_TESTS_SKIP_QEMU_SYSTEM: ${{ inputs.skip-qemu-system == 'true' && '1' || '0' }}
+      run: scripts/ci-tests.sh
+
+    # if: always() -- this diagnostic artifact matters most when the step
+    # above FAILED (ci-tests.sh also emits its own ::error:: annotations and a
+    # FAILURES digest as its last output; this file is the same list,
+    # machine-readable). A ~2 KB text file, negligible next to the image
+    # artifacts below.
+    #
+    # sha-named, not ref_name: upload-artifact rejects '/' in names and every
+    # branch here is slash-named. See docs/ci.md#artifact-naming-slash-trap.
+    - name: Upload parity-suite results
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ci-tests-results-${{ github.sha }}
+        path: output/ci-tests-results.txt
+        if-no-files-found: warn
+        retention-days: 14
+
+    # --- ABI / SONAME parity checker (P2.2) --------------------------------
+    # scripts/check-abi.sh's own header documents exactly what it asserts and
+    # that it writes an "ABI / SONAME parity" section to the run's Summary
+    # page. The two stock-binary gates (A-10/A-22) SKIP, not fail, when work/
+    # is absent (a clean CI checkout). See docs/ci.md#release-abi-check.
+    - name: ABI / SONAME parity checker (P2.2)
+      shell: bash
+      run: scripts/check-abi.sh output

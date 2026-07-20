@@ -200,3 +200,49 @@ amendment **strengthens** the eventual case for inclusion: the one image now
 carries the RT modules, so a Downloader-updated device would receive kernel
 and modules coherently instead of an orphan kernel. The blocker remains
 hardware validation, not plumbing — the decision stays a human one.
+
+## Amended 2026-07-20 — the kernel-variant registry is derived, not a matrix literal (item D)
+
+Decided by @mcfbytes, correcting item 3 of the 2026-07-18 amendment above (kept
+intact above as the record of what was decided at the time, per this ADR's own
+"superseding the sections above where they conflict" convention — nothing
+above is rewritten in place).
+
+Item 3 above still describes the kernel-variant job as a one-element matrix
+literal (`strategy: matrix: kernel: [rt]`) and says "Adding a kernel variant is
+one fragment + Makefile targets + one matrix entry." Neither is accurate
+anymore, and the second claim was already misleading the moment `release.yml`
+grew its own copy of the same matrix: it actually meant one entry in EACH of
+two files, silently driftable apart. Both `build.yml`'s `gate` job and
+`release.yml`'s new `kernel-variants` job now derive `strategy.matrix.kernel`
+via `fromJSON()` of `scripts/list-kernel-variants.sh`'s output, which reads
+`configs/mister_*.fragment` — the same existence-check registry
+`.github/actions/buildroot-build/action.yml` already enforces — instead of
+either workflow hand-typing its own `kernel: [...]` list. That script's own
+header is the authoritative walkthrough of the mechanism and its failure
+modes (exit non-zero with no JSON on stdout, rather than emitting `[]`, which
+GitHub Actions would run as zero legs and report as a green no-op).
+
+Adding a kernel variant `foo` today is: `configs/mister_foo.fragment` plus its
+`foo`/`foo-clean`/`foo-*` Makefile targets (docs/rt-beta-kernel.md §2; `main`
+is reserved for the full-image build and is rejected by the script). Both
+workflows' build matrices, `release.yml`'s release-asset list, and its
+provenance-attestation `subject-path` all pick `foo` up automatically — the
+attestation `subject-path` is now globbed off `dist/` rather than named, and
+the release-asset list is derived per-variant from the variant names recorded
+in `dist/SHA256SUMS` (the checkout-less `publish` job cannot run
+`scripts/list-kernel-variants.sh`). A dedicated verify step then asserts by
+name, for every variant, that all three of its files are present before either
+list is used — a zero-match *or* partial-loss check, not just a zero-match
+one, so a release can no longer be published short a variant's worth of
+assets. That step is also what covers the attestation, which cannot police
+itself: `actions/attest-build-provenance` globs its whole `subject-path` set
+as a unit and errors only when the *combined* match set is empty, which the
+always-present `dist/linux.img` guarantees it never is. Still requiring a human hand-edit for a new variant: the
+release-notes prose in `release.yml`'s `publish` job (it describes what the
+variant *is*, for a human reader) and `scripts/mk-sdcard.sh`'s bonus
+real-time-kernel slot (`MISTER_RT_ZIMAGE` / `zImage_dtb-rt`), which is a
+single hardcoded slot by that script's own design — one flashable card, one
+bonus kernel — not a variant list. See docs/rt-beta-kernel.md's "Adding a
+future kernel variant" paragraph for the same accounting kept in sync with
+the code.

@@ -1,0 +1,250 @@
+################################################################################
+#
+# kernel-leg — one kernel-variant matrix leg's body: build the variant, render
+# its job-summary overview, stage its artifact (zImage_dtb + .config + depmod'd
+# modules + legal-info), and upload it for `build` to merge downstream.
+#
+# Extracted here because build.yml and release.yml each carried their own copy
+# of this leg (measured 85 vs 91 lines, 72 identical). See docs/ci.md#why-shared-recipe.
+#
+# full-legal-info and release-context are the two real per-caller differences,
+# kept as inputs rather than forked copies. See docs/ci.md#kernel-variant-matrix.
+#
+# What stays at the CALLER, not this recipe: runs-on, timeout-minutes,
+# strategy.matrix, needs, if, and its own Checkout step. See docs/ci.md#recipe-boundary.
+#
+################################################################################
+
+name: Build one kernel-variant matrix leg
+description: >-
+  Builds a kernel-only Buildroot variant (via buildroot-build), renders its
+  job-summary overview, stages its artifact (zImage_dtb, .config, depmod'd
+  modules, legal-info), and uploads kernel-<kernel>-<github.sha> for the
+  `build` job to merge downstream.
+
+inputs:
+  kernel:
+    description: >-
+      The kernel variant name (the matrix.kernel value from the calling job,
+      e.g. "rt") -- composite-action steps cannot read the caller's `matrix`
+      context directly, so the caller must pass it through.
+    required: true
+  full-legal-info:
+    description: >-
+      "true" ships the FULL legal-info bundle (GPL sources included,
+      existence- and 2 GiB-per-asset-guarded) -- for release.yml, which
+      distributes the variant kernel binary. "false" (default) ships a
+      manifest-only SBOM (legal-info/sources and legal-info/host-sources
+      excluded) -- for build.yml, whose CI push distributes nothing.
+    required: false
+    default: "false"
+  release-context:
+    description: >-
+      "true" leads the job-summary table with Tag (and a release-assets
+      footer) -- for release.yml. "false" (default) leads with Trigger/Commit
+      and adds a Packages (SBOM) row (and a u-boot-selection footer) -- for
+      build.yml's CI-only summary.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # MUST run first -- composite-action inputs are STRING booleans, so a caller
+    # typo ("yes"/"True") would otherwise waste a 240-min kernel build (and the
+    # `build` job it auto-skips). See docs/ci.md#composite-input-validation.
+    - name: Validate inputs
+      shell: bash
+      env:
+        FULL_LEGAL_INFO: ${{ inputs.full-legal-info }}
+        RELEASE_CONTEXT: ${{ inputs.release-context }}
+      run: |
+        set -euo pipefail
+        case "$FULL_LEGAL_INFO" in
+          true|false) ;;
+          *)
+            echo "::error::full-legal-info must be exactly \"true\" or \"false\", got \"$FULL_LEGAL_INFO\"" >&2
+            exit 1
+            ;;
+        esac
+        case "$RELEASE_CONTEXT" in
+          true|false) ;;
+          *)
+            echo "::error::release-context must be exactly \"true\" or \"false\", got \"$RELEASE_CONTEXT\"" >&2
+            exit 1
+            ;;
+        esac
+
+    # No patch-header lint here: build.yml's `build` job lints the one shared
+    # patches dir (linux-patches-beta/ is symlinks + a series into it) --
+    # release.yml does not lint patch headers at all.
+    - name: Build the kernel variant
+      uses: ./.github/actions/buildroot-build
+      with:
+        variant: ${{ inputs.kernel }}
+        run-legal-info: "true"
+
+    # Best-effort job-summary overview (every fact guarded; a missing one never
+    # fails the build), mirroring the calling job's own step in build.yml/release.yml.
+    # PREEMPT_RT here only SURFACES the Makefile's hard assert -- docs/ci.md#build-step.
+    # Kernel-tree glob is uniqueness-guarded same as staging below -- docs/ci.md#unique-glob-guard.
+    - name: Kernel build overview (job summary)
+      shell: bash
+      env:
+        KERNEL: ${{ inputs.kernel }}
+        RELEASE_CONTEXT: ${{ inputs.release-context }}
+      run: |
+        set -u
+        # shellcheck source=scripts/ci-lib.sh
+        # Explicit fallback, not a silent skip -- see docs/ci.md#ci-lib-explicit-fallback.
+        source scripts/ci-lib.sh || {
+          echo "::warning::scripts/ci-lib.sh not found -- size facts below will read n/a" >&2
+          ci_lib_sz() { echo "n/a"; }
+        }
+        case "$RELEASE_CONTEXT" in
+          true|false) ;;
+          *)
+            echo "::error::release-context must be exactly \"true\" or \"false\", got \"$RELEASE_CONTEXT\"" >&2
+            exit 1
+            ;;
+        esac
+        # NOT `ls -d ... | head -1` (SC2012; would silently render the WRONG
+        # kernel's version with a stale sibling tree present). Best-effort: any
+        # count other than 1 leaves kver empty, not a failure. See docs/ci.md#unique-glob-guard.
+        kver=""
+        modtrees=(output-"$KERNEL"/target/usr/lib/modules/*/)
+        if [ "${#modtrees[@]}" -eq 1 ] && [ -d "${modtrees[0]}" ]; then
+          kver=$(basename "${modtrees[0]}")
+        fi
+        rt="n/a"
+        trees=(output-"$KERNEL"/build/linux-[0-9]*/)
+        if [ "${#trees[@]}" -eq 1 ] && [ -d "${trees[0]}" ]; then
+          kcfg="${trees[0]}.config"
+          if [ -f "$kcfg" ]; then
+            grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
+          fi
+        elif [ "${#trees[@]}" -gt 1 ]; then
+          rt="n/a (${#trees[@]} kernel trees -- ambiguous)"
+        fi
+        zimg=$(ci_lib_sz "output-$KERNEL/images/zImage_dtb")
+
+        if [ "$RELEASE_CONTEXT" = "true" ]; then
+          # Tag, not Trigger/Commit: a release build only ever runs from a v*
+          # tag push, so the tag IS the identifying fact. GITHUB_REF_NAME is
+          # the runner's own default env var (equivalent to github.ref_name),
+          # available here exactly as it is in any other step.
+          {
+            echo "## ⏱️ Kernel variant release build (${KERNEL})"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Tag | \`${GITHUB_REF_NAME}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| PREEMPT_RT | ${rt} |"
+            echo "| zImage_dtb (ships as \`zImage_dtb-${KERNEL}\`) | ${zimg} |"
+            echo ""
+            echo "Kernel-only build; its module tree merges into the shipped linux.img in \`build\`,"
+            echo "and \`zImage_dtb-${KERNEL}\` / \`linux-${KERNEL}.config\` / \`legal-info-${KERNEL}.tar.gz\`"
+            echo "become release assets."
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          pkgs=$( [ -f "output-$KERNEL/legal-info/manifest.csv" ] && echo $(( $(wc -l < "output-$KERNEL/legal-info/manifest.csv") - 1 )) || echo "n/a" )
+          {
+            echo "## ⏱️ Kernel variant build summary (${KERNEL})"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Trigger | \`${GITHUB_EVENT_NAME:-?}\` |"
+            echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
+            echo "| Kernel | \`${kver:-n/a}\` |"
+            echo "| PREEMPT_RT | ${rt} |"
+            echo "| zImage_dtb (ships as \`zImage_dtb-${KERNEL}\`) | ${zimg} |"
+            echo "| Packages (SBOM) | ${pkgs} |"
+            echo ""
+            echo "Kernel-only build; its module tree merges into the ONE shipped linux.img in the"
+            echo "\`build\` job. Selected on-device via \`bootimage=/linux/zImage_dtb-${KERNEL}\` in u-boot.txt."
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    # INTER-JOB TRANSPORT, not a deliverable -- uploads on ALL events (PRs
+    # included), unlike the main job's gated uploads: `build` needs the module
+    # tree/kver downstream. Sizes and both callers' payload diff: docs/ci.md#kernel-artifact-transport.
+    #
+    # Both globs are uniqueness-guarded (Copilot review) -- same trap as
+    # docs/ci.md#unique-glob-guard.
+    - name: Stage the kernel artifact (zImage_dtb, config, modules, legal-info)
+      shell: bash
+      env:
+        KERNEL: ${{ inputs.kernel }}
+        FULL_LEGAL_INFO: ${{ inputs.full-legal-info }}
+      run: |
+        set -euo pipefail
+        # shellcheck source=scripts/ci-lib.sh
+        source scripts/ci-lib.sh
+        case "$FULL_LEGAL_INFO" in
+          true|false) ;;
+          *)
+            echo "::error::full-legal-info must be exactly \"true\" or \"false\", got \"$FULL_LEGAL_INFO\"" >&2
+            exit 1
+            ;;
+        esac
+        # nullglob -- without it a zero-match glob leaves the LITERAL pattern in
+        # the array and "found 1" would lie about an empty build. Same shopt as
+        # `build`'s Populate step. See docs/ci.md#unique-glob-guard.
+        shopt -s nullglob
+        mkdir -p kernel-artifact
+        cp "output-$KERNEL/images/zImage_dtb" "kernel-artifact/zImage_dtb-$KERNEL"
+
+        # UNIFIED wording (build.yml's and release.yml's copies of this guard
+        # had already drifted -- build.yml's named the Makefile assert,
+        # release.yml's did not. Keeping the more informative one now that
+        # there is only one copy to read.)
+        trees=(output-"$KERNEL"/build/linux-[0-9]*/)
+        if [ "${#trees[@]}" -ne 1 ] || [ ! -d "${trees[0]}" ]; then
+          echo "::error::expected exactly one kernel tree at output-$KERNEL/build/linux-[0-9]*/ but found ${#trees[@]} -- cannot stage linux-$KERNEL.config (zero: the build produced no kernel tree; more than one: a stale sibling from a version bump -- the Makefile's own assert should have caught either)" >&2
+          exit 1
+        fi
+        cp "${trees[0]}.config" "kernel-artifact/linux-$KERNEL.config"
+
+        mods=(output-"$KERNEL"/target/usr/lib/modules/*/)
+        if [ "${#mods[@]}" -ne 1 ] || [ ! -d "${mods[0]}" ]; then
+          echo "::error::expected exactly one module tree under output-$KERNEL/target/usr/lib/modules/ but found ${#mods[@]} -- cannot stage the modules tar (zero: depmod/target-finalize never ran; more than one: a stale sibling from a version bump)" >&2
+          exit 1
+        fi
+        kver=$(basename "${mods[0]}")
+        printf '%s\n' "$kver" > "kernel-artifact/kver-$KERNEL.txt"
+
+        # Depmod'd by target-finalize (the whole point of the kernel config's
+        # BR2_TARGET_ROOTFS_TAR); tar'd from target/ so the paths inside are
+        # exactly what work/extra-modules-overlay/ needs.
+        tar -czf "kernel-artifact/modules-$KERNEL.tar.gz" -C "output-$KERNEL/target" usr/lib/modules
+
+        if [ "$FULL_LEGAL_INFO" = "true" ]; then
+          # FULL GPL-source bundle for release.yml -- existence-asserted (don't
+          # assume run-legal-info produced it) and 2 GiB-per-asset capped, same
+          # guard as the main legal-info step. See docs/ci.md#legal-info-2gib-cap.
+          if [ ! -d "output-$KERNEL/legal-info" ]; then
+            echo "::error::output-$KERNEL/legal-info does not exist -- did 'make $KERNEL-legal-info' run?" >&2
+            exit 1
+          fi
+          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" full
+          ci_lib_check_release_asset_size "kernel-artifact/legal-info-$KERNEL.tar.gz" "legal-info-$KERNEL.tar.gz" \
+            " -- split the source bundle (see the main legal-info step's guard for options)."
+        else
+          # build.yml: manifest-only SBOM (CI push distributes nothing) -- same
+          # exclusions as the main job's SBOM. See docs/ci.md#kernel-variant-matrix.
+          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" manifest-only
+        fi
+
+        ls -la kernel-artifact/
+
+    # sha-named, not ref_name -- upload-artifact REJECTS '/' in names and every
+    # branch here is slash-named; a ref_name key would kill a branch dispatch
+    # AFTER the multi-hour build. See docs/ci.md#artifact-naming-slash-trap.
+    - name: Upload kernel artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: kernel-${{ inputs.kernel }}-${{ github.sha }}
+        path: kernel-artifact/
+        if-no-files-found: error
+        retention-days: 14

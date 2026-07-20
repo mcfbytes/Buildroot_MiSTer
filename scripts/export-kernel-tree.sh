@@ -776,6 +776,8 @@ mapfile -t enabled_kmods < <(
 			dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
 			mk="$REPO_ROOT/package/$dir/$dir.mk"
 			[[ -f $mk ]] || continue
+			# shellcheck disable=SC2016 # literal Makefile text being matched with
+			# grep -F, not a shell expression -- must stay single-quoted.
 			grep -qF '$(eval $(kernel-module))' "$mk" || continue
 			printf '%s\n' "$dir"
 		done
@@ -1228,6 +1230,8 @@ git tag -f "$tag" >/dev/null
 
 say 'Verifying'
 [[ -f arch/arm/configs/MiSTer_defconfig ]] || die 'defconfig missing from the tree'
+# shellcheck disable=SC2015 # both sides are pure status checks (no side
+# effects to half-apply): die runs iff either `git diff --quiet` reports dirty.
 git diff --quiet && git diff --cached --quiet || die 'tree is dirty after export'
 
 # Assert every enabled driver is actually IN the committed tree, rather than trusting that

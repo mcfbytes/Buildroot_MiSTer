@@ -40,7 +40,7 @@ for the specific pieces most likely to need a fix on the first live run.
 |---|---|---|---|
 | Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.02.x` | `BUILDROOT_SHA256` — **manual**, see below |
 | Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
-| Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — the hash-sync kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
+| Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — `renovate-hash-sync.yml`'s kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
@@ -207,6 +207,29 @@ value is consumed by both `actions/checkout` and the final `git push`: what gets
 validated has to be exactly what those steps use. The name is also run through
 `git check-ref-format --branch`, which rejects embedded spaces, `..`, a leading
 `-`, and the rest.
+
+**Implementation: two checkouts, four scripts.** The job checks out the
+target branch first (`env.TARGET_BRANCH` — the PR head, or the dispatch
+input), then does a **second** `actions/checkout` at
+`ref: ${{ github.workflow_sha }}` (this workflow definition's own commit)
+into `path: .hash-sync-tools`, alongside the target-branch tree rather than
+on top of it. The four cases below are each one step that runs
+`.hash-sync-tools/scripts/hash-sync-<case>.sh "$GITHUB_WORKSPACE"` — CODE
+from the workflow's own ref, operating on FILES in the target-branch
+checkout. This split is what makes the `workflow_dispatch` escape hatch
+above actually work: a branch old enough to predate this extraction (a
+stale kernel-bump PR, say) has no `scripts/hash-sync-*.sh` at all, so
+running the scripts out of *that* checkout would exit 127 on exactly the
+branch the escape hatch exists to repair. Sourcing them from the workflow's
+own ref instead means a fix landed on the default branch is what runs,
+regardless of how stale `inputs.branch` is. The four scripts
+(`scripts/hash-sync-{github-packages,kernel,lzma-sdk,sdcard-payload}.sh`,
+sharing `scripts/lib/hash-sync-common.sh`) share the job-level
+`HASH_SYNC_PACKAGES` and `HASH_SYNC_OUTCOMES_FILE` env vars and record their
+per-pin outcomes to the same TSV file that the "Check for a recorded
+workflow bug before pushing anything" and job-summary steps (still inline in
+the workflow, not part of this extraction) read — see
+docs/ci.md#renovate-hash-sync-outcomes-gate.
 
 **What it fixes automatically, and why each case is safe:**
 

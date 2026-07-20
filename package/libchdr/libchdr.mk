@@ -6,7 +6,7 @@
 
 # MAME's CHD (Compressed Hunks of Data) read library, extracted and maintained
 # standalone by rtissera. Main_MiSTer's cores support consumes it for CD-image
-# formats (PSX/MegaCD/Saturn/Neo Geo CD/etc. .chd files). Buildroot 2026.02.3
+# formats (PSX/MegaCD/Saturn/Neo Geo CD/etc. .chd files). Buildroot 2026.05.1
 # upstream has no libchdr package (checked: work/buildroot/package/libchdr does
 # not exist), so this authors one. Built as a shared library against the
 # SYSTEM zlib, zstd and lzma-sdk (the last a BR2_EXTERNAL sibling package)

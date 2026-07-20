@@ -13,7 +13,7 @@
 # upstream Buildroot as package/xz.
 #
 # NAME COLLISION TRAP -- this package MUST be "lzma-sdk", NOT "lzma".
-# Upstream Buildroot 2026.02.3 ships package/lzma (checked: it is host-ONLY
+# Upstream Buildroot 2026.05.1 ships package/lzma (checked: it is host-ONLY
 # lzma-utils 4.32.7, $(eval $(host-autotools-package)) with no target
 # variant), which squats the unprefixed LZMA_ Make namespace. pkg-generic's
 # host-package inheritance derives HOST_LZMA_SOURCE / HOST_LZMA_SITE from

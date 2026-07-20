@@ -10,7 +10,7 @@ against the *source*, and a number did not survive. Every correction is marked
 Target board: Terasic DE10-Nano (Cyclone V SoC, `armv7-a` Cortex-A9)
 
 > **Phase 0 headline:** the central bet holds. All 12 SONAMEs the stock `MiSTer` binary
-> needs survive at the same major version in Buildroot 2026.02 (`docs/package-manifest.md`),
+> needs survive at the same major version in Buildroot 2026.05 (`docs/package-manifest.md`),
 > so §1's "nothing needs rebuilding" premise is now *confirmed* rather than assumed.
 >
 > **All five Phase 0 open questions were decided on 2026-07-12** — see
@@ -31,7 +31,7 @@ with **glibc 2.31**, running **Linux 5.15.1** — a kernel forked in November 20
 **never merged a single 5.15.y stable release**. The Buildroot configuration that produces
 it is not published anywhere.
 
-This plan replaces that image with one built from **Buildroot 2026.02 LTS** and a
+This plan replaces that image with one built from **Buildroot 2026.05** and a
 **mainline 6.18 LTS kernel**, in a public repository, with CI, with release artifacts
 published as GitHub Release assets rather than committed blobs.
 
@@ -57,7 +57,7 @@ hash-verified update channel. **No permission, no fork of the cores, no fork of 
 |-|-|
 |G1|A `linux.img` + `zImage_dtb` that boots the **unmodified, stock** `MiSTer` binary|
 |G2|Modern kernel on a supported LTS with a real security-update path|
-|G3|Modern package set (Buildroot 2026.02 LTS) with a real security-update path|
+|G3|Modern package set (Buildroot 2026.05) with a real security-update path|
 |G4|**No separate kernel repo.** All kernel patches live as `.patch` files in the Buildroot external tree and are applied to a pristine kernel.org tarball|
 |G5|Fully reproducible: pinned Buildroot, pinned kernel + hash, checked-in `.config`, published SBOM|
 |G6|Release artifacts published as **GitHub Release assets**. No binaries in git. Ever.|
@@ -212,7 +212,7 @@ over the corresponding files under `/etc` inside the image. Networking is ifupdo
 init script. Hotplug is **eudev**, not mdev.
 * ext4, volume label `rootfs`
 * **On-device Python is an ABI surface**: `Downloader_MiSTer` and many community scripts run
-with the target's interpreter. Stock ships 3.9 (EOL); Buildroot 2026.02 ships 3.13+.
+with the target's interpreter. Stock ships 3.9 (EOL); Buildroot 2026.05 ships 3.14+.
 Compatibility must be tested, not assumed.
 * Stock ships **52 xz-compressed kernel modules** (`CONFIG_MODULE_COMPRESS_XZ=y`) under
 `/usr/lib/modules/5.15.1-MiSTer/` — every WiFi driver, Bluetooth USB, and `xone` — plus
@@ -619,10 +619,11 @@ January 2025 (landed \~v6.14), so 6.18 has it. But it is **not sufficient on its
 
 ### Do not use Buildroot's default kernel
 
-Buildroot 2026.02.3 sets `BR2_LINUX_KERNEL_LATEST_VERSION` to **6.19.14**. **6.19 is not an
-LTS and is already end-of-life** — it released 8 Feb 2026, its last stable was 6.19.14 on
-22 Apr 2026, and 7.0/7.1 have shipped since. That default has received no security fixes for
-months.
+Buildroot 2026.05.1 sets `BR2_LINUX_KERNEL_LATEST_VERSION` to **7.0.11**. **7.0 is a normal
+(non-LTS) mainline series** — it stops receiving stable updates soon after the next mainline
+opens, so pinning Buildroot's default would put us on a kernel with a short support tail. We
+deliberately pin the **6.18 LTS** line instead (below), which stays on a stable `.y` branch
+with security backports.
 
 This is not a Buildroot defect. `BR2_LINUX_KERNEL_LATEST_VERSION` means *"newest kernel at the
 time this branch was cut"* — it is not a recommendation, and Buildroot's LTS guarantee covers
@@ -775,7 +776,7 @@ binaries (67 MB) with no CI at all**.
 
 ### Reproducibility checklist
 
-* \[x] Buildroot version pinned (2026.02.x LTS)
+* \[x] Buildroot version pinned (2026.05.x)
 * \[x] Kernel version + upstream hash pinned; patches in-tree
 * \[x] `BR2_DOWNLOAD_DIR` populated from upstream; no vendored tarballs
 * \[x] `buildroot.config` and `linux.config` published with every release
@@ -791,7 +792,7 @@ builds twice and compares
 Once the pipeline is stable and trusted, **Renovate** keeps every moving part current
 automatically. This mechanizes the sustainability commitment of §13:
 
-* Buildroot 2026.02.x tarball version + SHA-256 (custom/regex manager over the pin file)
+* Buildroot 2026.05.x tarball version + SHA-256 (custom/regex manager over the pin file)
 * Kernel 6.18.y version + hash (custom datasource over kernel.org's `releases.json`)
 * morrownr driver packages and other commit pins (git datasource)
 * CI container image digests and GitHub Actions versions
@@ -917,7 +918,7 @@ measured against stock would fail on stock itself.]**
 |-|-|-|
 |**P0 — Recon**|Write `docs/abi-contract.md`. Triage all \~60 kernel commits into classes A–F with provenance. Derive the Buildroot package set from the shipped image.|Patch triage table is complete and reviewed|
 |**P1 — Kernel**|Buildroot builds 6.18 LTS from kernel.org + `linux-patches/`. Forward-port `MiSTer_fb`, audio-spi, cpufreq. Replace `loop=` with the initramfs (§5).|Boots to a serial console on real hardware|
-|**P2 — Rootfs**|Buildroot 2026.02 rootfs, glibc, SONAME parity. Read-only root preserved.|**Stock `MiSTer` binary reaches the menu.**|
+|**P2 — Rootfs**|Buildroot 2026.05 rootfs, glibc, SONAME parity. Read-only root preserved.|**Stock `MiSTer` binary reaches the menu.**|
 |**P3 — Parity**|WiFi, Bluetooth, Samba, FTP, SSH, MIDI. CI + release artifacts + SBOM.|Hardware matrix (§11) green|
 |**P4 — Beta**|Publish `db.json`. Recruit testers. Document rollback. Final pipeline hardening: Renovate dependency automation (§9).|Sustained opt-in use, no P1 bugs|
 |**P5 — Full SD image + U-Boot from source**|*Optional.* Build `uboot.img` from the pinned `u-boot_MiSTer` submodule; produce a flashable `sdcard.img` — kernel, `linux.img`, bootloader, mr-fusion-parity payload + `update_all.sh` (§8, ADR 0017).|Fresh card flashed from `sdcard.img` boots to menu; built U-Boot passes behavioural parity + hardware matrix; recovery procedure drilled|

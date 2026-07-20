@@ -44,8 +44,8 @@
 # it. That is circular — it pins whatever bytes you happened to receive, and
 # certifies nothing. A bump (manual or Renovate) MUST take the new hash from
 # the .sign file for the new version. `make buildroot-showsig` prints it.
-BUILDROOT_VERSION ?= 2026.02.3
-BUILDROOT_SHA256   ?= 65528a544f1e07c2f5ec487beca483bd380a6af8351a45f3649a19a0e8b63de2
+BUILDROOT_VERSION ?= 2026.05.1
+BUILDROOT_SHA256   ?= 4808d8f0812d7bdb72e6ec7629de2f17c417a3ce7bf5431f752bc9150a162849
 BUILDROOT_URL       = https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
 BUILDROOT_SIG_URL   = $(BUILDROOT_URL).sign
 

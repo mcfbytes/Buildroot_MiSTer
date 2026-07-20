@@ -590,8 +590,16 @@ BR2_PACKAGE_JIMTCL=y                          # NOT just an obscure shell -- usb
 BR2_PACKAGE_LIBLOCKFILE=y
 BR2_PACKAGE_LIBXML2=y
 BR2_PACKAGE_FILE=y                            # libmagic
-BR2_PACKAGE_PCRE=y                            # legacy PCRE1 -- still NEEDed by name
-                                              # (libpcre.so.1), separate from PCRE2
+# PCRE1 (libpcre.so.1) was REMOVED upstream in Buildroot 2026.05 (EOL, unmaintained;
+# it is now a Config.in.legacy stub that hard-stops the build). Nothing in this image
+# needs it: the stock MiSTer binary does not link it (verified -- no -lpcre, no
+# DT_NEEDED), Python uses its built-in sre engine (not PCRE), and 2026.05's slang
+# dropped its pcre module (--with-pcre=no). The only stock consumers were wget/zsh,
+# neither of which we build. See docs/package-manifest.md for the recorded parity deviation.
+# We DO ship PCRE2 as the replacement, so a libpcre2-8.so.0 provider is present for
+# anything that wants modern PCRE. It is already select'd transitively by libglib2
+# and libselinux; listed explicitly here so it can never be silently dropped.
+BR2_PACKAGE_PCRE2=y                           # libpcre2-8.so.0 -- PCRE1 replacement
 # eudev needs its "/dev management" choice (system/Config.in) switched away from
 # the BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS default -- NOT in the manifest,
 # discovered during P2.1 verification: BR2_PACKAGE_EUDEV=y alone is silently
@@ -610,8 +618,8 @@ BR2_PACKAGE_EUDEV=y                           # NOT mdev -- PLAN §3 explicit re
 BR2_PACKAGE_LFTP=y                            # provides all 4 bundled liblftp-*.so together
 
 # --- Python (A6) ---
-BR2_PACKAGE_PYTHON3=y                         # 3.14.5 -- no legacy-version toggle exists in
-                                              # Buildroot 2026.02; see P3.9 risk entry
+BR2_PACKAGE_PYTHON3=y                         # 3.14.6 -- no legacy-version toggle exists in
+                                              # Buildroot 2026.05; see P3.9 risk entry
 # Python extension modules (P3.9) -- match stock's 3.9 lib-dynload set exactly.
 # SSL + ZLIB are HARD BLOCKERS: without them Downloader_MiSTer crashes on
 # `import ssl` and cannot read its own db.json.zip (proven under qemu-user,

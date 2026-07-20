@@ -7,7 +7,7 @@
 # P3.1 (PLAN.md §4.1 class E) — out-of-tree Realtek RTL8811CU/RTL8821CU
 # (and RTL8821CUH/RTL8731AU) USB WiFi driver.
 #
-# NAMED "-morrownr", NOT plain "rtl8821cu": Buildroot 2026.02.3 upstream
+# NAMED "-morrownr", NOT plain "rtl8821cu": Buildroot 2026.05.1 upstream
 # already ships its OWN package/rtl8821cu — which, notably, is ALSO sourced
 # from morrownr/8821cu-20210916, and (as of this writing) at the exact same
 # commit this package independently pinned (7f63a9d), which is a useful

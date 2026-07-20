@@ -1,77 +1,34 @@
 ################################################################################
 #
 # reproducibility.yml — double-build reproducibility CI (TASKS.md P4.3, A9).
+# Proves two independent builds of the same commit are byte-identical; P2.5
+# only proved local idempotency over one already-built output/ tree, not this.
+# See docs/ci.md#reproducibility-workflow.
 #
-# A9 requires: pinned ext4 feature set, fixed UUID/hash-seed, SOURCE_DATE_EPOCH,
-# BR2_REPRODUCIBLE=y (all landed in P2.5 — configs/mister_de10nano_defconfig)
-# combine to make `linux.img` and `zImage_dtb` byte-identical across two
-# independent builds of the same commit. P2.5 proved that ONCE, locally, for
-# two image-generation passes over the SAME already-built output/ tree (see
-# that task's commit message) — it deliberately did not prove it across two
-# genuinely independent builds (fresh checkout, fresh runner, fresh
-# output/target), because "build discipline forbids make clean on the shared
-# tree" in an interactive session. That is exactly the gap this workflow
-# closes: two SEPARATE GitHub-hosted runners, each doing a full two-stage
-# build from a clean checkout of the same commit, comparing the two
-# resulting image hashes and failing loudly on any mismatch.
+# TRAP: the caches below are INPUTS only (Buildroot tarball, dl/, host
+# toolchain, ccache) — output/target and output/images must NEVER be cached
+# here, or the comparison would compare a cache against itself and pass even
+# when the build is not actually reproducible. See docs/ci.md#input-vs-output-caches.
 #
-# Structure: a `build` job with a 2-leg matrix (`build-id: [a, b]`) so the
-# build recipe is written ONCE but actually executed twice, on two
-# independent runners assigned by GitHub Actions (no guarantee of — and no
-# attempt to force — the same physical host, which is the point: this is
-# what stands in for "two different developers' machines" in CI). Each leg
-# uploads a small SHA256SUMS-style artifact (NOT the multi-hundred-MB images
-# themselves — see the "why no image upload" note below). A dependent
-# `compare` job downloads both and diffs them.
+# Only per-leg SHA256SUMS are uploaded, not the images themselves — doubling
+# storage/transfer for no benefit when build.yml already ships the bytes. On a
+# mismatch, re-run locally with this file's build steps and bisect.
+# See docs/ci.md#no-image-upload.
 #
-# INPUT caches vs OUTPUT caches — the one rule this file must not violate:
-# the four caches below (Buildroot tarball, dl/, host toolchain, ccache) are
-# all INPUTS (source tarballs, a compiled cross-toolchain, compiled-object
-# reuse hints) that a real independent build is entitled to share (a
-# real-world reproducibility bug in, say, package source content or compiler
-# version would still need to be caught, but caching the *toolchain build*
-# is caching an input, not the artifact under test). output/target and
-# output/images — the actual rootfs assembly and the two files being
-# compared — are DELIBERATELY never cached here (build.yml's own four
-# caches don't touch those two paths either), so both legs assemble the
-# target rootfs and generate both images completely fresh, every run.
-# Caching either would make the "two independent builds" comparison
-# compare a cache against itself — passing even when the underlying build
-# is not actually reproducible.
-#
-# WHY NO IMAGE UPLOAD: uploading linux.img (hundreds of MB) from both legs
-# just to diff two 64-byte sha256 lines would roughly double this
-# workflow's artifact storage and transfer time for zero benefit — the
-# per-leg SHA256SUMS-style file is authoritative for the compare job's one
-# job (detect a mismatch), and build.yml (P4.1) already uploads the actual
-# images from its own `push` runs for anyone who needs the bytes. If a
-# mismatch is ever caught here, the fix is to re-run locally with the exact
-# same recipe (this file's build steps) and bisect — the images produced by
-# THAT investigation are the ones worth keeping, not a permanently-retained
-# copy from every green run.
-#
-# SHARED BUILD RECIPE: the build itself lives in
-# .github/actions/buildroot-build, which build.yml and release.yml also call.
-# It used to be a near-verbatim copy in each of the three files; that overlap was
-# not benign. The fixes build.yml needed to go green (no container, disk reclaim,
-# defconfig step, non-root, workspace-keyed toolchain caches) never propagated
-# here, so this workflow would have failed the next time it ran. Sharing the code
-# is also what makes this workflow's claim honest: "same commit -> same bytes" is
-# only meaningful if both legs really do run the same build, and now they demonstrably do.
+# Build recipe: .github/actions/buildroot-build, shared with build.yml and
+# release.yml — a near-verbatim copy here used to silently rot out of sync.
+# See docs/ci.md#why-shared-recipe.
 #
 ################################################################################
 
 name: Reproducibility
 
 on:
-  # MANUAL-ONLY (workflow_dispatch), deliberately NOT push/pull_request.
-  # This is a double build -- 2x the cost of a normal one -- and its shared
-  # INPUT caches (dl/, host toolchain, ccache; same keys as build.yml) are only
-  # warm AFTER build.yml has run. Wiring it to push would burn two *cold*
-  # builds on every commit, in parallel with build.yml (3 cold Buildroot builds
-  # at once). Instead: let build.yml seed the caches, then run this on demand:
+  # MANUAL-ONLY (workflow_dispatch) — do NOT wire to push/pull_request: this is
+  # a double build (2x cost) whose input caches are only warm after build.yml
+  # has run. Dispatch once caches are warm:
   #   gh workflow run reproducibility.yml --ref <branch>
-  # (Add a `schedule:` here later if a periodic warm-cache check is wanted.)
+  # See docs/ci.md#manual-trigger-only.
   workflow_dispatch:
 
 # Cancel a superseded run for the same ref, same as build.yml — a double
@@ -100,13 +57,10 @@ jobs:
       matrix:
         build-id: [a, b]
 
-    # NO `container:` — see .github/actions/buildroot-build. The build does not fit
-    # on a hosted runner without reclaiming the host's preinstalled software, and
-    # a container job cannot reach the host to do that. This does NOT weaken the
-    # comparison: the environment is still held constant across both legs (same
-    # runner image, same shared action), and Buildroot bootstraps its own host
-    # toolchain from pinned sources anyway, so the distro does not leak into the
-    # target output.
+    # NO `container:` — same reason as build.yml/release.yml: disk reclaim needs
+    # host access a container job doesn't have. Does not weaken the comparison —
+    # the environment is held constant across both legs either way.
+    # See docs/ci.md#no-container-disk-reclaim.
 
     # 300 min, matching build.yml — same measured 3h19m cold build (run
     # 29300460591). The two legs run in parallel, so this is per-leg, not summed.
@@ -116,32 +70,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # The shared build recipe (disk reclaim, the five input caches, apt deps,
-      # defconfig, `make all`) — the SAME code build.yml and release.yml run, which
-      # is what makes "same commit -> same bytes" a claim about the source rather
-      # than about three hand-synchronised copies of a workflow.
+      # Shared build recipe (docs/ci.md#why-shared-recipe); the caches it
+      # restores are inputs only (docs/ci.md#input-vs-output-caches).
       #
-      # The caches it restores are INPUTS to the build under test, not the outputs
-      # being compared: sharing a compiled cross-toolchain and ccache across the
-      # two legs does not weaken the comparison (a bad toolchain is build.yml's
-      # correctness checks to catch, not this workflow's). output/target and
-      # output/images are never cached — this leg builds them from scratch every
-      # time, which is the entire point.
-      #
-      # MISTER_VERSION is deliberately left UNSET here, so post-build.sh falls back
-      # to the constant SOURCE_DATE_EPOCH date (ADR 0018). A release build overrides
-      # it; a reproducibility build must not, or the two legs would disagree the
-      # moment they straddle midnight UTC.
+      # TRAP: leave MISTER_VERSION UNSET here (ADR 0018) — setting it would make
+      # the two legs disagree the moment they straddle midnight UTC.
+      # See docs/ci.md#repro-mister-version-unset.
       - name: Build the image
         uses: ./.github/actions/buildroot-build
 
       # --- The whole point of this job: hash the two shipped images ---------
-      # Hashed from INSIDE output/images/ (not `sha256sum output/images/...`)
-      # so the recorded filenames are bare (`linux.img`, `zImage_dtb`), not
-      # full paths — the two legs' GITHUB_WORKSPACE paths happen to match
-      # today (both github-hosted Ubuntu runners under the same
-      # container image), but bare filenames make the later `diff` correct
-      # by construction instead of by coincidence.
+      # TRAP: hash from INSIDE output/images/, not `sha256sum output/images/...`
+      # — bare filenames make the compare step correct by construction, not by
+      # coincidence of matching runner paths. See docs/ci.md#hash-bare-filenames.
       - name: Compute image hashes
         run: |
           set -eu

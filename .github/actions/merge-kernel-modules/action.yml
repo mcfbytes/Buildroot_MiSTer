@@ -1,30 +1,10 @@
 ################################################################################
 #
-# merge-kernel-modules — fold every kernel-variant module tree into the ONE
-# shipped linux.img, and assert the merge actually landed.
-#
-# WHY THIS EXISTS: build.yml and release.yml each carried their own byte-for-
-# byte copy of these steps (the "Download kernel-variant artifacts" +
-# "Populate the extra-modules overlay" pair, and the "Assert every
-# kernel-variant module tree merged" guard). Same mechanism, same script,
-# same failure modes -- kept here once so a fix to one no longer has to be
-# remembered for the other.
-#
-# TWO PHASES, ONE ACTION, CALLED TWICE. The merge is not one contiguous
-# block in the calling job: the overlay must be populated BEFORE
-# `.github/actions/buildroot-build` runs (Buildroot rsyncs the overlay into
-# TARGET_DIR at target-finalize, so it has to exist first), and the merge can
-# only be ASSERTED once the image has actually been built. A single composite
-# action cannot straddle a step that belongs to the caller, so the `phase`
-# input picks which half runs:
-#   phase: download -- "Download kernel-variant artifacts" + "Populate the
-#                       extra-modules overlay from the kernel legs". Call
-#                       this BEFORE buildroot-build.
-#   phase: verify    -- "Assert every kernel-variant module tree merged into
-#                       the image". Call this AFTER buildroot-build.
-# Each step below is gated on the phase with `if:`, composite-action inputs
-# are always strings, so the comparison is always `== 'download'` /
-# `== 'verify'`, never a truthiness check.
+# merge-kernel-modules — folds every kernel-variant module tree into the ONE
+# shipped linux.img, in two phases split around buildroot-build (`phase:
+# download` before, `phase: verify` after). Inputs are always strings: every
+# `if:` below MUST compare against 'download'/'verify' literally, never as a
+# truthiness check. See docs/ci.md#merge-kernel-modules.
 #
 ################################################################################
 
@@ -48,13 +28,9 @@ inputs:
 runs:
   using: composite
   steps:
-    # Fail loud on anything but the two recognised phases. Every step below is
-    # gated with `if: inputs.phase == 'download'` / `== 'verify'` and has no
-    # else-branch -- an unrecognised value (a typo, a stray caller that drops
-    # the `with:` block entirely, wrong case) would otherwise make the whole
-    # composite a silent no-op that exits 0, including the "Assert every
-    # kernel-variant module tree merged" guard below whose entire purpose is
-    # to fail here instead of on a device.
+    # Every phase step below is gated with `if:` and has NO else-branch — an
+    # unrecognised phase MUST fail loud here, not fall through as a silent
+    # no-op. See docs/ci.md#merge-kernel-modules-fail-loud.
     - name: Reject unknown phase
       if: inputs.phase != 'download' && inputs.phase != 'verify'
       shell: bash

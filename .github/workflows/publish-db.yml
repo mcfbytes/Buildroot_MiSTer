@@ -1,75 +1,32 @@
 ################################################################################
 #
-# publish-db.yml — regenerate + publish db.json on GitHub Pages (TASKS.md P4.5,
-# PLAN.md §10 "Distribution: the opt-in db.json", docs/downloader-contract.md
-# P0.6, docs/db-json-versioning.md, ADR 0018).
+# publish-db.yml — regenerate + publish db.json on GitHub Pages (TASKS.md
+# P4.5, PLAN.md §10, docs/downloader-contract.md P0.6,
+# docs/db-json-versioning.md, ADR 0018). The ONLY thing that produces and
+# publishes this document; malformed output can crash or silently break the
+# whole fleet's update path (docs/downloader-contract.md §1, §10).
+# See docs/ci.md#publish-db-overview.
 #
-# WHAT THIS PUBLISHES AND WHY IT MATTERS: `Downloader_MiSTer`'s `LinuxUpdater`
-# never talks to GitHub Releases directly — every subscribed device instead
-# polls whatever URL its `downloader.ini` / drop-in `db_url` names, and reads
-# a `linux` key out of that JSON document (docs/downloader-contract.md §1).
-# This workflow is the ONLY thing that produces and publishes that document
-# for this project. Get it wrong and every subscribed device either never
-# updates again, or updates when it shouldn't, or crashes the whole Downloader
-# run with an uncaught traceback (§10) — see the "schema self-check" step
-# below for why that last failure mode gets a dedicated, independent gate.
+# TRIGGER: `release: types: [published]` (a draft release never fires this —
+# see docs/ci.md#release-draft-gate) + manual `workflow_dispatch` (see the
+# `tag` input's own description below for why it's required). Either path
+# must be a PUBLISHED release — enforced in code by the "Guard against a
+# draft release" step, not just implied by which trigger fired.
 #
-# TRIGGER — AND THE DRAFT-VS-PUBLISHED COUPLING THIS DEPENDS ON:
-# `release.yml` (P4.4, `phase4-release-eng` branch) deliberately creates every
-# release as a DRAFT (that file's own comment explains why: automation
-# proposes, a human approves before anything user-facing goes live). A draft
-# release does NOT fire the `release` webhook's `published` event — GitHub
-# only fires it when a human clicks "Publish release" on an already-built
-# draft. That is precisely the gate this workflow relies on: it triggers on
-# `release: types: [published]`, so regenerating and publishing db.json is
-# itself gated behind the same human approval step as the release it
-# describes, never behind CI alone finishing a build.
-# `workflow_dispatch` is the second trigger, for: re-publishing after fixing
-# a bug in this workflow/script without cutting a new release, or a first-time
-# manual test before ever wiring a real release through it. It takes a
-# `tag` input — REQUIRED, deliberately, so a manual run can never silently
-# operate on "whatever `gh` considers latest" and republish the wrong thing.
-# Either trigger path is required to be a PUBLISHED (non-draft) release — see
-# the "Guard against a draft release" step; this is enforced in code, not
-# just implied by which event fired, because `workflow_dispatch` could
-# otherwise be pointed at a still-draft tag by mistake.
+# STABLE URL: always deploys to the SAME GitHub Pages site and OVERWRITES the
+# prior deploy — required so users configure `db_url` ONCE and every future
+# release is simply available at it (TASKS.md P4.5's "Done when"). See
+# docs/ci.md#stable-pages-url.
 #
-# THE STABLE-URL REQUIREMENT (TASKS.md P4.5's "Done when: ... URL is stable
-# across releases"): this job ALWAYS deploys to the same GitHub Pages site —
-# the repo's default Actions-based Pages environment, whose URL never changes
-# release to release (for this repo: https://mcfbytes.github.io/Buildroot_MiSTer/,
-# so db.json lives at https://mcfbytes.github.io/Buildroot_MiSTer/db.json — see
-# docs/downloader-contract.md §9.5/§11.3 for the exact onboarding
-# `downloader.ini` line users add, which names this same URL literally). Every
-# run OVERWRITES the previous deployment; there is deliberately no per-release
-# path or query string, because the entire point is that users configure the
-# `db_url` ONCE and every future release simply becomes available at it.
+# One-time manual prereq this workflow cannot do for itself: enable
+# Settings → Pages → Build and deployment → Source: GitHub Actions on this
+# repo once, before the first run can deploy. See docs/ci.md#pages-prereq.
 #
-# ONE-TIME MANUAL PREREQUISITE THIS WORKFLOW CANNOT DO FOR ITSELF: a human
-# must enable "Settings → Pages → Build and deployment → Source: GitHub
-# Actions" on this repository once, before the first run of this workflow can
-# successfully deploy. `actions/deploy-pages` fails clearly if this hasn't
-# been done; it is not something a workflow file can flip on its own.
-#
-# VERSIONING (ADR 0018 — Accepted; docs/db-json-versioning.md): the Downloader
-# compares `db.json`'s `linux.version` (last 6 chars) against the running
-# system's `/MiSTer.version` by strict string inequality
-# (docs/downloader-contract.md §3). The two must be EQUAL on an up-to-date
-# device and DIFFERENT otherwise — and both halves bite if you get them wrong:
-# an identical version for two releases means the second is never offered, while
-# a version that can never equal the image's own stamp means every device
-# re-flashes on every Downloader run, forever.
-#
-# ADR 0018 gives both values ONE source of truth — the tagged commit's date.
-# release.yml derives MISTER_VERSION from it, post-build.sh bakes exactly that
-# into `/MiSTer.version`, and it names the archive `release_YYYYMMDD.7z`. The
-# "Derive db version" step below recovers the same 6-digit YYMMDD from that
-# filename and passes it to gen-db-json.py as `--version`. Archive name, image
-# stamp, and published version are the same value by construction.
-#
-# Deliberately NOT from SOURCE_DATE_EPOCH (pinned constant, for reproducibility —
-# every release would claim the same version) and NOT from `publishedAt` (the
-# moment a human clicked publish, which can differ from the build date).
+# VERSIONING (ADR 0018): db.json's `linux.version` must equal the shipped
+# image's `/MiSTer.version` byte-for-byte (docs/downloader-contract.md §3) —
+# get it wrong in either direction and devices never update, or re-flash on
+# every Downloader run, forever. Never derive it from SOURCE_DATE_EPOCH or
+# `publishedAt`. See docs/ci.md#mister-version-coupling.
 #
 ################################################################################
 
@@ -89,20 +46,15 @@ on:
         required: true
         type: string
 
-# Only one publish (and therefore one Pages deployment) in flight at a time —
-# there is exactly one db.json/Pages target for the whole repo, regardless of
-# which release triggered a given run, so two runs racing each other is a
-# correctness risk (an older run finishing last would overwrite a newer
-# publish), not just wasted CI time. Not cancelling an in-flight run: letting
-# a partially-applied Pages deployment get cancelled makes reasoning about
-# "which db.json is currently live" a bigger question than making the next
-# run simply wait its turn.
+# One publish (and therefore one Pages deployment) in flight at a time; never
+# cancel mid-deploy — an older run finishing last could overwrite a newer
+# publish. See docs/ci.md#concurrency-single-pages-target.
 concurrency:
   group: publish-db-pages
   cancel-in-progress: false
 
-# Least privilege at the workflow level; the job below elevates only what
-# actually deploying to Pages requires.
+# Least privilege; the job below elevates only what deploying to Pages
+# requires. See docs/ci.md#least-privilege-permissions.
 permissions:
   contents: read
 
@@ -112,11 +64,9 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
 
-    # `pages`/`id-token` are what `actions/deploy-pages` needs (OIDC-based
-    # deployment, the same mechanism `attest-build-provenance` uses in
-    # release.yml); `contents: read` is enough for `gh release view`/
-    # `download` against a public release — no write scope anywhere in this
-    # job, since it never touches the release itself, only reads from it.
+    # OIDC-based Pages deploy (`pages`/`id-token`), same mechanism as
+    # release.yml's attest-build-provenance; contents:read only — never
+    # touches the release itself. See docs/ci.md#least-privilege-permissions.
     permissions:
       contents: read
       pages: write
@@ -164,66 +114,32 @@ jobs:
           gh release view "$TAG" -R "$REPO" --json isDraft,publishedAt,assets > release.json
           cat release.json
 
-      # See the file header's "draft-vs-published coupling" note: enforced in
-      # code, not just implied by which trigger fired, because
-      # workflow_dispatch could otherwise be pointed at a still-draft tag.
+      # Enforced in code, not just implied by which trigger fired —
+      # workflow_dispatch could point at a still-draft tag. See
+      # docs/ci.md#release-draft-gate.
       - name: Guard against a draft release
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -eu
           is_draft=$(python3 -c "import json; print(json.load(open('release.json'))['isDraft'])")
           if [ "$is_draft" = "True" ]; then
-            echo "::error::release ${{ steps.tag.outputs.tag }} is still a DRAFT -- publish-db.yml must only run against a PUBLISHED release (see this file's header comment on the draft/published coupling with release.yml, P4.4)" >&2
+            echo "::error::release $TAG is still a DRAFT -- publish-db.yml must only run against a PUBLISHED release (see this file's header comment on the draft/published coupling with release.yml, P4.4)" >&2
             exit 1
           fi
-          echo "Confirmed: ${{ steps.tag.outputs.tag }} is a published (non-draft) release."
+          echo "Confirmed: $TAG is a published (non-draft) release."
 
-      # Exactly one `release_YYYYMMDD.7z` asset is expected per release.yml's
-      # (P4.4) own asset set. Fail loudly, not silently, on zero or multiple
-      # matches -- either indicates a release built by something other than
-      # this project's own release.yml, or a naming regression in it.
+      # Fail loudly on zero or multiple release_*.7z matches, not silently —
+      # the ADR 0018 version rule this enforces lives in
+      # scripts/resolve-release-asset.sh's header. See docs/ci.md#release-asset-contract.
       - name: Locate the release_*.7z asset
         id: asset
-        run: |
-          set -eu
-          count=$(jq '[.assets[] | select(.name | test("^release_[0-9]+\\.7z$"))] | length' release.json)
-          if [ "$count" -ne 1 ]; then
-            echo "::error::expected exactly one release_<date>.7z asset, found $count" >&2
-            echo "Assets present:" >&2
-            jq -r '.assets[].name' release.json >&2
-            exit 1
-          fi
-          name=$(jq -r '.assets[] | select(.name | test("^release_[0-9]+\\.7z$")) | .name' release.json)
-          url=$(jq -r '.assets[] | select(.name | test("^release_[0-9]+\\.7z$")) | .url' release.json)
-          size=$(jq -r '.assets[] | select(.name | test("^release_[0-9]+\\.7z$")) | .size' release.json)
-          published_at=$(jq -r '.publishedAt' release.json)
-          # db.json's version must equal the image's /MiSTer.version. Since ADR
-          # 0018's durable fix, BOTH trace to the tagged-commit date that
-          # release.yml baked in and encoded in this filename (release_YYYYMMDD.7z).
-          # Stock's own db.json uses a 6-char YYMMDD version (verified: e.g.
-          # "250402" for release_20250402.7z), so strip the century -> db version
-          # = YYMMDD = /MiSTer.version, byte-for-byte, exactly matching stock's
-          # format. Derive from the filename, NOT publishedAt (which can differ
-          # from the build/commit date and break the version-equality check).
-          archive_version=$(printf '%s' "$name" | sed -n 's/^release_[0-9][0-9]\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.7z$/\1/p')
-          if [ -z "$archive_version" ]; then
-            echo "::error::could not parse YYMMDD from asset name '$name' (expected release_YYYYMMDD.7z)" >&2; exit 1
-          fi
-          {
-            echo "name=$name"
-            echo "url=$url"
-            echo "size=$size"
-            echo "published_at=$published_at"
-            echo "archive_version=$archive_version"
-          } >> "$GITHUB_OUTPUT"
-          echo "Asset: $name ($size bytes), version=$archive_version (from filename)"
-          echo "URL: $url"
+        run: scripts/resolve-release-asset.sh release.json
 
-      # docs/downloader-contract.md §12 item 3: linux.hash/linux.size must
-      # come from the ACTUAL uploaded release asset, not a pre-upload local
-      # copy -- this job has no access to any pre-upload copy anyway (it runs
-      # in a completely separate workflow invocation from release.yml), so
-      # downloading fresh from the published Release URL satisfies this
-      # directly, rather than needing a special self-check re-download.
+      # linux.hash/linux.size must come from the ACTUAL uploaded release
+      # asset, not a pre-upload copy (this job has none anyway — it runs in
+      # a separate workflow invocation from release.yml). See
+      # docs/ci.md#asset-hash-from-live-download.
       - name: Download the release_*.7z asset
         env:
           GH_TOKEN: ${{ github.token }}
@@ -245,12 +161,9 @@ jobs:
           fi
           echo "Downloaded release.7z size confirmed: $actual_size bytes."
 
-      # scripts/gen-db-json.py (P4.5) -- computes linux.hash/linux.size from
-      # the just-downloaded, just-size-verified asset. linux.version is the
-      # archive's YYYYMMDD, whose last 6 chars == the image's /MiSTer.version
-      # (both fixed from the tagged commit -- ADR 0018), so the Downloader's
-      # version-equality check holds. Runs its own schema self-check before
-      # writing anything.
+      # scripts/gen-db-json.py (P4.5) computes linux.hash/linux.size/version
+      # and runs its own schema self-check before writing anything. See
+      # docs/ci.md#mister-version-coupling.
       - name: Generate db.json
         env:
           ASSET_URL: ${{ steps.asset.outputs.url }}
@@ -265,13 +178,9 @@ jobs:
             --out db.json
           cat db.json
 
-      # A SECOND, independent gate on the exact file about to be uploaded to
-      # Pages -- not merely trusting gen-db-json.py's own internal check.
-      # This is TASKS.md P4.5's explicitly mandated "schema self-check ...
-      # against a vendored copy of the Downloader's expectations"
-      # (scripts/db_entity_contract.py; see that file's header for why it's a
-      # hand-mirrored reimplementation rather than a live fetch of upstream
-      # source). "Done when" for this task requires this to run in CI.
+      # Independent 2nd gate on the file about to be uploaded — do not rely
+      # solely on gen-db-json.py's own internal check (TASKS.md P4.5
+      # mandate). See docs/ci.md#schema-self-check-independent-gate.
       - name: Schema self-check (vendored Downloader DbEntity contract)
         run: |
           set -eu

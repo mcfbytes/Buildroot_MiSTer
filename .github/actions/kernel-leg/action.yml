@@ -4,39 +4,14 @@
 # its job-summary overview, stage its artifact (zImage_dtb + .config + depmod'd
 # modules + legal-info), and upload it for `build` to merge downstream.
 #
-# WHY THIS EXISTS: build.yml and release.yml each carried their own copy of
-# this leg (measured 85 vs 91 code lines with comments stripped, 72 identical)
-# for the same build-kernel matrix job, ADR 0021 as amended 2026-07-18. Kept
-# here once so a fix to one no longer has to be remembered for the other —
-# same reasoning as .github/actions/buildroot-build and
-# .github/actions/merge-kernel-modules.
+# Extracted here because build.yml and release.yml each carried their own copy
+# of this leg (measured 85 vs 91 lines, 72 identical). See docs/ci.md#why-shared-recipe.
 #
-# The two REAL differences are inputs, not copies:
-#   full-legal-info — build.yml's leg ships a manifest-only SBOM (a CI push
-#                     distributes nothing, so the GPL source tarballs stay
-#                     out); release.yml's ships the FULL legal-info bundle,
-#                     guarded for existence and GitHub's 2 GiB
-#                     per-release-asset cap, because a release DOES
-#                     distribute the variant kernel binary and the source
-#                     obligation is real. "true"/"false", default "false".
-#   release-context — which facts the job-summary table/footer leads with:
-#                     build.yml wants Trigger/Commit/Packages(SBOM) (a CI run
-#                     has no tag); release.yml wants Tag instead, plus a
-#                     footer naming the release assets this leg contributes.
-#                     Deliberately a SEPARATE input from full-legal-info, even
-#                     though today's two callers set them identically — one
-#                     is about a real distribution/GPL obligation, the other
-#                     is about what a human wants to see on the Summary tab,
-#                     and nothing says a future caller could not want one
-#                     without the other. "true"/"false", default "false".
+# full-legal-info and release-context are the two real per-caller differences,
+# kept as inputs rather than forked copies. See docs/ci.md#kernel-variant-matrix.
 #
-# What stays at the CALLER (composite actions cannot set these, and needs/if
-# are per-job wiring, not part of the leg's body): runs-on, timeout-minutes,
-# strategy.matrix, needs, if. The caller also owns its own Checkout step --
-# `uses: ./.github/actions/kernel-leg` only resolves once the repo running it
-# is already checked out. And matrix.kernel itself: composite-action steps
-# cannot read the caller's `matrix` context, so it comes in via the `kernel`
-# input instead.
+# What stays at the CALLER, not this recipe: runs-on, timeout-minutes,
+# strategy.matrix, needs, if, and its own Checkout step. See docs/ci.md#recipe-boundary.
 #
 ################################################################################
 
@@ -75,19 +50,9 @@ inputs:
 runs:
   using: composite
   steps:
-    # FIRST, before the multi-hour build below -- same fail-fast principle
-    # build.yml documents for its own serial gate ("runs in about a second...
-    # failing fast instead of after a possible 300-minute build"), and the
-    # same shape .github/actions/merge-kernel-modules ("Reject unknown
-    # phase") and .github/actions/verify-image ("Validate skip-qemu-system")
-    # already use as their step 0. Both of these inputs are STRING booleans
-    # (composite actions have no boolean type -- a caller's `true` arrives as
-    # the string "true"), so a caller typing "yes"/"True"/a trailing space is
-    # a real, easy mistake; catching it after a 240-minute kernel build --
-    # which also auto-skips `build` behind it -- would burn the whole leg's
-    # runner time for a typo. The per-step `case` blocks further down are
-    # kept as cheap belt-and-braces so each step still refuses to act on a
-    # value it did not validate itself.
+    # MUST run first -- composite-action inputs are STRING booleans, so a caller
+    # typo ("yes"/"True") would otherwise waste a 240-min kernel build (and the
+    # `build` job it auto-skips). See docs/ci.md#composite-input-validation.
     - name: Validate inputs
       shell: bash
       env:
@@ -119,20 +84,10 @@ runs:
         variant: ${{ inputs.kernel }}
         run-legal-info: "true"
 
-    # Mirrors the calling job's own overview step further down in the same
-    # run (build.yml's `build` job has "Build overview (job summary)";
-    # release.yml's `build` job has "Release overview (job summary)"):
-    # best-effort, every fact guarded, a missing one never fails the build.
-    # The PREEMPT_RT-style config assert is already hard-enforced by
-    # the Makefile's variant target (the build would have failed); the grep
-    # here only SURFACES it on the Summary tab. The kernel-tree glob is
-    # `linux-[0-9]*` AND uniqueness-guarded, same as the Makefile's assert:
-    # linux-firmware-*/linux-headers-* siblings must not match, and with two
-    # trees present naming either would be a guess.
-    #
-    # release-context picks which facts lead the table (Trigger/Commit vs
-    # Tag) and which footer follows -- see the header above for why that is
-    # its own input, separate from full-legal-info.
+    # Best-effort job-summary overview (every fact guarded; a missing one never
+    # fails the build), mirroring the calling job's own step in build.yml/release.yml.
+    # PREEMPT_RT here only SURFACES the Makefile's hard assert -- docs/ci.md#build-step.
+    # Kernel-tree glob is uniqueness-guarded same as staging below -- docs/ci.md#unique-glob-guard.
     - name: Kernel build overview (job summary)
       shell: bash
       env:
@@ -140,6 +95,12 @@ runs:
         RELEASE_CONTEXT: ${{ inputs.release-context }}
       run: |
         set -u
+        # shellcheck source=scripts/ci-lib.sh
+        # Explicit fallback, not a silent skip -- see docs/ci.md#ci-lib-explicit-fallback.
+        source scripts/ci-lib.sh || {
+          echo "::warning::scripts/ci-lib.sh not found -- size facts below will read n/a" >&2
+          ci_lib_sz() { echo "n/a"; }
+        }
         case "$RELEASE_CONTEXT" in
           true|false) ;;
           *)
@@ -147,14 +108,9 @@ runs:
             exit 1
             ;;
         esac
-        # Uniqueness-guarded glob array, NOT `ls -d ... | head -1`: parsing
-        # ls is SC2012, and `head -1` would silently render the WRONG
-        # kernel's version on the Summary tab with a stale sibling tree
-        # present from a version bump -- the same failure mode the kernel-tree
-        # glob just below and the staging step further down already guard
-        # against, so this uses their shape too. Best-effort like every other
-        # fact in this step: anything other than exactly one match leaves
-        # kver empty and the table renders `n/a` rather than failing the leg.
+        # NOT `ls -d ... | head -1` (SC2012; would silently render the WRONG
+        # kernel's version with a stale sibling tree present). Best-effort: any
+        # count other than 1 leaves kver empty, not a failure. See docs/ci.md#unique-glob-guard.
         kver=""
         modtrees=(output-"$KERNEL"/target/usr/lib/modules/*/)
         if [ "${#modtrees[@]}" -eq 1 ] && [ -d "${modtrees[0]}" ]; then
@@ -170,8 +126,7 @@ runs:
         elif [ "${#trees[@]}" -gt 1 ]; then
           rt="n/a (${#trees[@]} kernel trees -- ambiguous)"
         fi
-        sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
-        zimg=$(sz "output-$KERNEL/images/zImage_dtb")
+        zimg=$(ci_lib_sz "output-$KERNEL/images/zImage_dtb")
 
         if [ "$RELEASE_CONTEXT" = "true" ]; then
           # Tag, not Trigger/Commit: a release build only ever runs from a v*
@@ -211,18 +166,12 @@ runs:
           } >> "$GITHUB_STEP_SUMMARY"
         fi
 
-    # The kernel leg's artifact is INTER-JOB TRANSPORT, not a deliverable: the
-    # `build` job downstream needs the module tree (and the merge assert needs
-    # the kver), so — unlike the main job's push/dispatch-gated uploads — this
-    # uploads on ALL events, PRs included. build.yml's leg: ~15 MB (modules tar
-    # + kernel + config + manifest-only SBOM), negligible next to the image
-    # artifacts. release.yml's leg ships the FULL GPL source bundle instead of
-    # the manifest-only SBOM, so it runs ~250-300 MB instead -- still
-    # negligible next to the image artifacts.
+    # INTER-JOB TRANSPORT, not a deliverable -- uploads on ALL events (PRs
+    # included), unlike the main job's gated uploads: `build` needs the module
+    # tree/kver downstream. Sizes and both callers' payload diff: docs/ci.md#kernel-artifact-transport.
     #
-    # Both globs are uniqueness-guarded (the Copilot review's point): with a
-    # stale sibling tree present, `head -1` would silently stage the WRONG
-    # kernel's .config or module tree under the right name.
+    # Both globs are uniqueness-guarded (Copilot review) -- same trap as
+    # docs/ci.md#unique-glob-guard.
     - name: Stage the kernel artifact (zImage_dtb, config, modules, legal-info)
       shell: bash
       env:
@@ -230,6 +179,8 @@ runs:
         FULL_LEGAL_INFO: ${{ inputs.full-legal-info }}
       run: |
         set -euo pipefail
+        # shellcheck source=scripts/ci-lib.sh
+        source scripts/ci-lib.sh
         case "$FULL_LEGAL_INFO" in
           true|false) ;;
           *)
@@ -237,12 +188,9 @@ runs:
             exit 1
             ;;
         esac
-        # nullglob, or a zero-match glob leaves the LITERAL pattern in the
-        # array and the guards below would report "found 1" for an empty
-        # build — the count in the error must be truthful. (Same shopt the
-        # Populate step in `build` uses; the [ ! -d ] halves still catch the
-        # now-empty arrays, and || short-circuits before ${trees[0]} could
-        # trip set -u.)
+        # nullglob -- without it a zero-match glob leaves the LITERAL pattern in
+        # the array and "found 1" would lie about an empty build. Same shopt as
+        # `build`'s Populate step. See docs/ci.md#unique-glob-guard.
         shopt -s nullglob
         mkdir -p kernel-artifact
         cp "output-$KERNEL/images/zImage_dtb" "kernel-artifact/zImage_dtb-$KERNEL"
@@ -272,49 +220,27 @@ runs:
         tar -czf "kernel-artifact/modules-$KERNEL.tar.gz" -C "output-$KERNEL/target" usr/lib/modules
 
         if [ "$FULL_LEGAL_INFO" = "true" ]; then
-          # release.yml: the FULL kernel GPL-source bundle, guarded for
-          # existence (buildroot-build's run-legal-info input above should
-          # already have produced it, but assert rather than assume) and
-          # GitHub's 2 GiB per-release-asset cap -- same guard the main
-          # legal-info step documents.
+          # FULL GPL-source bundle for release.yml -- existence-asserted (don't
+          # assume run-legal-info produced it) and 2 GiB-per-asset capped, same
+          # guard as the main legal-info step. See docs/ci.md#legal-info-2gib-cap.
           if [ ! -d "output-$KERNEL/legal-info" ]; then
             echo "::error::output-$KERNEL/legal-info does not exist -- did 'make $KERNEL-legal-info' run?" >&2
             exit 1
           fi
-          tar -czf "kernel-artifact/legal-info-$KERNEL.tar.gz" \
-            --exclude='legal-info/host-sources' \
-            -C "output-$KERNEL" legal-info
-          limit=$((2 * 1024 * 1024 * 1024))
-          size=$(stat -c %s "kernel-artifact/legal-info-$KERNEL.tar.gz")
-          echo "legal-info-$KERNEL.tar.gz: $size bytes ($((size / 1024 / 1024)) MiB)"
-          if [ "$size" -ge "$limit" ]; then
-            echo "::error::legal-info-$KERNEL.tar.gz is $((size / 1024 / 1024)) MiB, at or over GitHub's 2 GiB per-release-asset limit -- split the source bundle (see the main legal-info step's guard for options)." >&2
-            exit 1
-          fi
+          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" full
+          ci_lib_check_release_asset_size "kernel-artifact/legal-info-$KERNEL.tar.gz" "legal-info-$KERNEL.tar.gz" \
+            " -- split the source bundle (see the main legal-info step's guard for options)."
         else
-          # build.yml: manifest-only SBOM, same exclusions and reasoning as
-          # the main job's SBOM artifact -- a CI push distributes nothing, so
-          # the GPL source tarballs stay out (release.yml ships the full
-          # kernel-source bundle above instead).
-          tar -czf "kernel-artifact/legal-info-$KERNEL.tar.gz" \
-            --exclude='legal-info/sources' \
-            --exclude='legal-info/host-sources' \
-            -C "output-$KERNEL" legal-info
+          # build.yml: manifest-only SBOM (CI push distributes nothing) -- same
+          # exclusions as the main job's SBOM. See docs/ci.md#kernel-variant-matrix.
+          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" manifest-only
         fi
 
         ls -la kernel-artifact/
 
-    # Named by sha, not ref_name: this is same-run transport, and
-    # upload-artifact REJECTS '/' in artifact names -- every branch here is
-    # slash-named (feat/…, feature/…), so a ref_name-keyed name would kill a
-    # branch dispatch right here, AFTER the multi-hour kernel build, and
-    # auto-skip `build` with it. Tags (v*) never contain '/', so tag pushes
-    # (release.yml) never cared either way -- sha-naming is used uniformly so
-    # the one mechanism covers both callers. Applies to every artifact a run
-    # both writes and reads, not just this one -- e.g. build.yml's
-    # mister-images-<sha> and legal-info-<sha>, or release.yml's
-    # release-dist-<sha> and (via .github/actions/verify-image)
-    # ci-tests-results-<sha>.
+    # sha-named, not ref_name -- upload-artifact REJECTS '/' in names and every
+    # branch here is slash-named; a ref_name key would kill a branch dispatch
+    # AFTER the multi-hour build. See docs/ci.md#artifact-naming-slash-trap.
     - name: Upload kernel artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:

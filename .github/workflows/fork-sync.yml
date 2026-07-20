@@ -2,33 +2,21 @@
 #
 # fork-sync.yml — weekly backport queue for MiSTer-devel/Linux-Kernel_MiSTer.
 #
-# This repo is the source of truth for the MiSTer kernel, but the fork is a live repo
-# other people commit to. Anything landing there after our last reconciliation is
-# something we do not have and nobody has decided about. Nothing else forces that
-# question -- and the question does not get asked on its own: the fork sat on 5.15.1
-# through 210 stable releases partly because no moment ever said "these N commits are
-# unaccounted for".
+# Fork drifts silently unless someone asks; nobody does without this job. See
+# docs/ci.md#fork-sync-why.
 #
 # So: scripts/check-fork-sync.sh diffs docs/kernel-recon/fork-sync.conf (the last
 # RECONCILED commit per fork branch) against the fork's live HEADs, and this opens an
 # issue listing whatever has landed since. The queue becomes a fact rather than a memory.
 #
-# The direction that matters most is MiSTer-v6.18: once #75 merges upstream, commits
-# landing there are changes made to OUR series by other people, and they must flow back
-# into one of the two patch directories or the next `make export` silently erases them:
-# board/mister/de10nano/linux-patches/ if our image wants the change too, or
-# board/mister/de10nano/linux-patches-upstream/ if the exported tree needs it and our
-# image deliberately does not (see that directory's README). That is the failure this
-# file exists to prevent.
+# MiSTer-v6.18 commits MUST flow into linux-patches/ or linux-patches-upstream/ (see
+# that dir's README) -- otherwise `make export` silently erases them. See
+# docs/ci.md#fork-sync-v6-18.
 #
-# COST: two compare API calls and no clone -- seconds, weekly. It deliberately does NOT
-# check out the kernel (~300MB) or build anything; "what is new upstream" does not need
-# either. This is why it can be a schedule rather than something manual: it is far below
-# the noise floor of the build workflow. (Contrast build.yml, whose cold path is ~3h.)
+# Cheap and read-only -- safe to run on a schedule. See docs/ci.md#fork-sync-cost.
 #
-# ONE ISSUE, UPDATED -- not one per run. A weekly job that opens a fresh issue is a job
-# people mute, and a muted queue is the same as no queue. It finds its own open issue by
-# label, edits it in place, and closes it when the queue empties.
+# Update the existing issue in place -- do NOT open a new one per run (gets muted).
+# See docs/ci.md#fork-sync-issue-queue.
 #
 ################################################################################
 
@@ -61,16 +49,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # Exit 1 from the script means "commits need triage", which is a normal state and
-      # must not fail the job -- a red X every week trains people to ignore it. Exit 2 is
-      # a real error and MUST fail. The report is the product; the exit code only routes it.
-      #
-      # Run ONCE, with --markdown, and use that output for both the log and the issue
-      # body. An earlier cut called the script twice -- plain for the log, --markdown for
-      # the body with `|| true` to swallow the expected exit 1 -- which was wrong twice
-      # over: `|| true` also swallows exit 2, so a broken run could file an issue with an
-      # empty body and still go green; and two invocations are two sets of API calls that
-      # can disagree if one hits a transient failure.
+      # Exit 1 (drift found) must NOT fail the job; exit 2 (real error) MUST. Call the
+      # script exactly ONCE, with --markdown, for both the log and the issue body --
+      # calling it twice previously let a `|| true` swallow a real failure. See
+      # docs/ci.md#fork-sync-exit-codes.
       - name: Diff fork HEADs against the reconciled sync points
         id: check
         env:

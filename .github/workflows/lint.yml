@@ -2,56 +2,28 @@
 #
 # lint.yml — lint the CI itself: workflow syntax/semantics + shell scripts.
 #
-# WHY THIS EXISTS: every workflow and composite action in .github/ is shell
-# glued together with YAML, and every scripts/*.sh is shell full stop. Neither
-# category gets any syntax or semantics checking until a run actually exercises
-# the broken line — which, for a `runs-on:` typo or an unquoted glob in a
-# rarely-hit branch, can be months. actionlint catches the YAML/expression
-# class of bug (bad `runs-on:`, wrong context, undefined `needs:`, mistyped
-# `${{ }}`) in every workflow AND in locally-referenced composite actions
-# (`uses: ./...`) — that recursion is how .github/actions/buildroot-build's
-# `action.yml` gets its YAML/schema validated without being linted directly
-# (see the "actionlint" step below for why passing action.yml files to
-# actionlint directly does not work). shellcheck is verified only through
-# workflow-level `run:` blocks, though: actionlint's shellcheck integration
-# does NOT descend into a composite action's `runs.steps[].run` bodies (this
-# was tested directly against actionlint 1.7.7 -- shellcheck-flagged shell
-# injected into a composite action's `run:` produces zero findings in
-# project mode, while the identical text at workflow level is flagged).
-# That leaves EVERY composite action under .github/actions/*/action.yml --
-# buildroot-build, kernel-leg, merge-kernel-modules, verify-image, and any
-# future addition -- checked for YAML validity but NOT shellchecked by
-# anything in this job: a known, growing gap, not a covered case. (Extending
-# this job to shellcheck composite-action run: bodies -- e.g. parse each
-# action.yml's runs.steps[].run into a temp script and shellcheck that -- was
-# considered here and deliberately deferred: doing it now would also surface
-# whatever pre-existing shellcheck findings already live in
-# buildroot-build's `run:` bodies, which is out of scope for a kernel-leg-only
-# change and would flip this currently-green job red for unrelated code. The
-# next change that touches this file should pick that up as its own item.)
-# scripts/*.sh sit outside any workflow's `run:` block too, so they get their
-# own explicit shellcheck pass below (same gap for composite actions doesn't
-# apply to them, since they're just scripts).
+# actionlint covers workflow YAML/expressions plus, via project-mode
+# recursion, the metadata of locally-referenced composite actions -- but it
+# does NOT shellcheck a composite action's `run:` bodies. That gap sat open
+# for a while by deliberate deferral; scripts/shellcheck-composite-actions.sh
+# below is what closes it. See docs/ci.md#actionlint-composite-action-gap.
 #
 # Cheap (a two-binary download, no build) and scoped by `paths:` so it never
-# fires on the 3-hour image build's pushes.
+# fires on the 3-hour image build's pushes. See docs/ci.md#lint-ci-overview.
 #
 # Run the same checks locally before pushing:
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
+#   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #
 ################################################################################
 
 name: Lint CI (actionlint + shellcheck)
 
 on:
-  # `push` is scoped to master, `pull_request` covers everything else --
-  # exactly the split build.yml's header documents at length. An unscoped
-  # `push` here would double-run this job on every commit to an open PR
-  # branch (once for refs/heads/<branch>, once for refs/pull/N/merge), which
-  # is the anti-pattern build.yml calls out by name ("EVERY commit on a PR
-  # branch built TWICE... they didn't even cancel each other"). Cheap as this
-  # job is, the house rule is the house rule.
+  # `push` scoped to master, `pull_request` covers everything else -- same
+  # split as build.yml uses, applied even though this job is cheap enough
+  # that skipping it would be tempting. See docs/ci.md#push-pr-trigger-split.
   push:
     branches: [master]
     paths:
@@ -83,23 +55,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # actionlint's own shellcheck integration needs `shellcheck` on PATH.
-      # GitHub-hosted Ubuntu runner images ship it preinstalled; fail loudly
-      # and early (rather than getting a confusing "shellcheck disabled"
-      # actionlint warning later) if that ever stops being true.
-      #
-      # Unlike actionlint (pinned by version + sha256 below), shellcheck here
-      # is whatever the runner image ships -- there's no equivalent pin,
-      # because bundling our own would mean a container or a second binary
-      # download, both rejected for the same house-style reasons as
-      # actionlint's docker-image alternative (see the next step's comment).
-      # SHELLCHECK_EXPECTED_VERSION is not enforced -- a runner-image bump is
-      # not itself a bug -- but a mismatch is surfaced as a `::warning::` so a
-      # gate that goes red on an unrelated PR is immediately traceable to
-      # "shellcheck version changed" instead of looking like a real new bug.
-      # '0.11.0' is the version observed on the runner image as of this
-      # writing (2026-07-20), not a hard requirement -- bump it to match
-      # reality whenever the warning fires and the drift is confirmed benign.
+      # shellcheck must be on PATH for actionlint's integration; fail loudly
+      # if the runner image ever stops shipping it. Version drift is a soft
+      # warning, not a gate -- see docs/ci.md#shellcheck-version-drift.
       - name: Verify shellcheck is available
         env:
           SHELLCHECK_EXPECTED_VERSION: '0.11.0'
@@ -112,23 +70,9 @@ jobs:
             echo "::warning::runner-image shellcheck is ${actual:-unknown}, expected ${SHELLCHECK_EXPECTED_VERSION} -- if this job's findings changed unexpectedly, this version drift is why; update SHELLCHECK_EXPECTED_VERSION once confirmed benign"
           fi
 
-      # Pinned by version + sha256, not an unpinned `curl | sh` installer --
-      # same trust model as the rest of this repo's pinned-tool fetches (see
-      # renovate-hash-sync.yml). A docker-image pin (rhysd/actionlint:1.7.7)
-      # was the other option and does bundle shellcheck, but every other job
-      # in this repo deliberately runs WITHOUT a `container:` (see the
-      # "NO container:" comment in .github/actions/buildroot-build, which is
-      # where build.yml's jobs get theirs from, and directly in release.yml /
-      # reproducibility.yml) and a container here would be the one exception
-      # for no strong reason
-      # -- a plain binary download matches house style and keeps this job's
-      # shellcheck the same one the "Verify shellcheck is available" step
-      # just checked, rather than a second copy baked into the image.
-      #
-      # Checksum is actionlint's own published
-      # actionlint_1.7.7_checksums.txt for the linux_amd64 asset -- verify a
-      # new value at https://github.com/rhysd/actionlint/releases before
-      # bumping ACTIONLINT_VERSION.
+      # Pinned by version + sha256, not curl|sh. MUST re-verify the checksum
+      # at https://github.com/rhysd/actionlint/releases before bumping
+      # ACTIONLINT_VERSION. See docs/ci.md#actionlint-pin.
       - name: Download and verify actionlint
         env:
           ACTIONLINT_VERSION: '1.7.7'
@@ -141,36 +85,17 @@ jobs:
           tar xzf actionlint.tar.gz actionlint
           chmod +x actionlint
 
-      # No file arguments: actionlint's project-mode auto-discovery finds
-      # .github/workflows/*.yml AND recurses into every LOCALLY-referenced
-      # composite action (`uses: ./.github/actions/...`) to check its `runs:`
-      # steps too -- that is the only way this version of actionlint checks
-      # composite actions at all, and it IS metadata/YAML-schema checking
-      # only (see the header comment: the `run:` shell bodies inside a
-      # composite action are not shellchecked by this). Passing an
-      # action.yml path directly (e.g.
-      # `./actionlint .github/actions/buildroot-build/action.yml`) makes it
-      # validate the file against the WORKFLOW schema instead ("on"/"jobs"
-      # missing errors) since actionlint has no standalone composite-action
-      # entry point. .github/actionlint.yaml (self-hosted-runner labels) is
-      # picked up automatically from the project root.
+      # Project-mode auto-discovery covers workflows + local composite
+      # actions (metadata only); never pass an action.yml path directly
+      # (wrong schema, fails). See docs/ci.md#actionlint-project-mode.
       - name: actionlint (workflows + locally-referenced composite actions)
         run: |
           set -euo pipefail
           ./actionlint -color
 
-      # scripts/*.sh are invoked from workflows via `run: scripts/foo.sh ...`,
-      # never inlined into a `run:` block, so actionlint's shellcheck
-      # integration never sees their contents -- this step is what covers
-      # them. `find scripts -name '*.sh'` (not a bare `scripts/*.sh` glob) is
-      # deliberate: it also reaches scripts/inventory/*.sh and
-      # scripts/triage/*.sh, which a non-recursive glob would silently skip.
-      # `-x` follows `# shellcheck source=` directives (e.g. check-abi.sh
-      # sourcing scripts/inventory/common.sh) so a real typo in the sourced
-      # file is still caught, not just the top-level script.
-      # NOTE: this does NOT cover .github/actions/*/action.yml `run:` bodies
-      # either (see the header comment) -- that gap is still open, and now
-      # spans every composite action, not just buildroot-build.
+      # actionlint never sees scripts/*.sh (invoked via `run: scripts/foo.sh`,
+      # never inlined). Recursive find (not a `scripts/*.sh` glob) and `-x`
+      # are both load-bearing -- see docs/ci.md#shellcheck-scripts-coverage.
       - name: shellcheck scripts/**/*.sh
         run: |
           set -euo pipefail
@@ -179,3 +104,11 @@ jobs:
           # same defensive habit the rest of this repo's array-building uses).
           mapfile -d '' -t sh_files < <(find scripts -name '*.sh' -print0)
           shellcheck -x "${sh_files[@]}"
+
+      # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
+      # scripts/shellcheck-composite-actions.sh's own header for the
+      # extraction mechanics.
+      - name: "shellcheck composite-action run: bodies (.github/actions/*/action.yml)"
+        run: |
+          set -euo pipefail
+          scripts/shellcheck-composite-actions.sh

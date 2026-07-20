@@ -3,145 +3,44 @@
 # renovate-hash-sync.yml -- refresh companion tarball/kernel hashes on a
 # Renovate PR (TASKS.md P4.6).
 #
-# THE PROBLEM THIS SOLVES: renovate.json's custom managers can bump a version
-# string or a commit SHA, but Renovate itself has no way to recompute a
-# tarball's sha256 -- that requires actually fetching the artifact. Every pin
-# this repo tracks has a companion `.hash` file that must move in lockstep,
-# or Buildroot's own hash check fails the build CLOSED (safe, but the PR is
-# red and useless without a human manually redoing the hash by hand).
+# Renovate can bump a version/commit pin but cannot recompute a tarball's
+# sha256 itself. Every pin this repo tracks has a companion `.hash` file that
+# must move in lockstep or Buildroot's own hash check fails the build CLOSED
+# (safe, but red and useless without a human redoing the hash by hand). See
+# docs/ci.md#renovate-hash-sync-overview.
 #
-# WHAT THIS WORKFLOW HANDLES, AND WHY EACH CASE IS SAFE TO AUTOMATE:
+# Four cases: (1) the 12 github-sourced package pins, (2) the kernel tarball
+# hash, (3) the bespoke lzma-sdk release-asset hash, (4) the sdcard payload
+# single-file pins. Why a locally-computed sha256sum is a legitimate source
+# for each of these (not a shortcut): docs/ci.md#renovate-hash-sync-safety-model.
 #
-#   1. The 12 github-sourced packages (package/*/*.mk + their .hash): the
-#      11 driver/firmware pins plus libchdr (a userspace shared library --
-#      Main_MiSTer shared-lib refactor -- but the exact same
-#      $(call github,...) commit-archive shape). Their own .hash file
-#      headers already say the hash is "locally computed" -- GitHub
-#      publishes no signed manifest for a commit/tag archive tarball, so
-#      `sha256sum` of a freshly-fetched tarball from the ACTUAL pinned
-#      owner/repo/ref IS the legitimate, standard-practice source for these
-#      (see e.g. package/xone/xone.hash's own comment, and pkg-download.mk /
-#      the Buildroot manual). Automating exactly what a human would
-#      otherwise type by hand is safe here.
+# NEVER automated: BUILDROOT_SHA256 (signed-manifest-only trust), the RT
+# beta's TOFU-pinned `-rc` kernel hash, cabextract/linux-firmware-extra/
+# xow-firmware. See docs/ci.md#renovate-hash-sync-not-automated.
 #
-#   2. The kernel tarball hash (board/mister/de10nano/patches/linux/
-#      linux.hash), refreshed from kernel.org's own PGP-clearsigned
-#      sha256sums.asc for the matching v6.x series -- the same URL and same
-#      trust model docs/renovate.md and the .hash file's own header already
-#      document as the ONLY legitimate source. This step does NOT verify the
-#      PGP signature (no keyring management here yet) -- it fetches the
-#      manifest over HTTPS and greps the matching line, which is exactly the
-#      same trust level as today's manual transcription process, not a
-#      regression. Verifying the clearsign signature is a worthwhile future
-#      hardening step, not implemented here (see docs/renovate.md).
+# TRIGGER: automatically, only for same-repo Renovate PRs touching a file this
+# workflow knows how to fix; idempotent (recomputes every run, commits only on
+# a real diff). Manually via workflow_dispatch -- the only way to re-drive
+# this workflow after a bug in it is fixed. See
+# docs/ci.md#renovate-hash-sync-overview and
+# docs/ci.md#renovate-hash-sync-dispatch-trap (run 29669946883).
 #
-#   3. The lzma-sdk tarball hash (package/lzma-sdk/lzma-sdk.hash). Same
-#      trust model as case 1 (upstream publishes NO checksums at all --
-#      none on the release, none on 7-zip.org; see the .hash file's own
-#      header), but it cannot ride the generic loop: the tarball is a
-#      GitHub release ASSET, not a commit/tag archive, and its filename
-#      derives from the version with the dots stripped
-#      (7z2602-src.tar.xz for 26.02), so it gets its own bespoke step.
+# STATUS: only the kernel step is proven against a real PR (#41). A green run
+# elsewhere can mean "silently skipped", not "verified correct" (bug #42). See
+# docs/ci.md#renovate-hash-sync-verification-status.
 #
-#   4. The sdcard payload single-file pins (scripts/fetch-sdcard-payload.sh):
-#      update_all.sh and wifi.sh are pinned by commit AND by sha256+size;
-#      renovate.json's git-refs managers bump the PINNED_*_COMMIT, and the
-#      sha256/size companions are recomputed from the raw file at the new
-#      commit -- the same fetch-and-hash practice as case 1. The _Console
-#      cores commit (PINNED_CORES_COMMIT) has no companion hash and is
-#      deliberately not handled (see that script's own header).
+# Every step below records a per-pin outcome and the job fails if one is
+# "failed" or if the whole run did nothing -- see
+# docs/ci.md#renovate-hash-sync-outcomes-gate.
 #
-# WHAT THIS WORKFLOW DELIBERATELY DOES NOT HANDLE:
-#
-#   * BUILDROOT_SHA256 (root Makefile). Per the Makefile's own header
-#     comment, this value is ONLY legitimate when transcribed from
-#     Buildroot's GPG-signed release manifest
-#     (https://buildroot.org/downloads/buildroot-<ver>.tar.gz.sign) -- a
-#     locally-computed sha256sum of the downloaded tarball is explicitly
-#     forbidden there (circular; certifies nothing; would bless a
-#     tampered/truncated tarball). This workflow will NOT invent that value.
-#     A Buildroot-version-bump PR from Renovate is EXPECTED to stay red at
-#     `make buildroot-verify` until a human runs
-#     `make buildroot-showsig BUILDROOT_VERSION=<new>` and pastes the signed
-#     hash into the Makefile by hand -- see docs/renovate.md.
-#
-#   * cabextract, linux-firmware-extra, xow-firmware -- not tracked by
-#     renovate.json at all (no machine-readable upstream release feed for
-#     the first two; xow-firmware pins opaque Microsoft Update .cab GUIDs,
-#     not a version). See docs/renovate.md.
-#
-# TRIGGER: automatically, only for PRs opened by Renovate itself (github.actor
-# check below), only on branches in THIS repo (never a fork -- pushing back
-# requires write access the default token does not get on a fork-originated
-# PR), and only when a file this workflow actually knows how to fix has
-# changed. Idempotent by design: it always recomputes from the branch's current
-# file content and only commits if the recomputed hash differs from what's
-# already there, so re-runs (e.g. a second Renovate push to the same PR) are
-# harmless no-ops once the hash is already correct.
-#
-# ...and manually, via workflow_dispatch with a `branch` input. That escape
-# hatch exists because none of the automatic machinery can re-drive this
-# workflow after a bug in it is fixed:
-#
-#   * the paths: filter above does not list this file, so pushing a fix to it
-#     triggers nothing;
-#   * the actor gate skips the job when a human pushes the fix to the branch;
-#   * and a re-run replays the workflow definition from the commit the original
-#     run was created against, so it re-executes the OLD code.
-#
-# All three held simultaneously on run 29669946883, which ran the same broken
-# kernel-URL code three times across two separate fixes. When dispatching,
-# note that the ref you dispatch FROM (which supplies this file) and the
-# `branch` you dispatch AT (which gets checked out and pushed to) are
-# deliberately different things.
-#
-# The kernel step's PR #41 run (kernel 6.18.38 -> 6.18.39) found two bugs
-# this header used to understate: an unanchored defconfig grep that built a
-# URL containing a newline (#42), and the fact that a fetch failure here is
-# only a ::warning:: -- so the job reported SUCCESS three times while
-# silently leaving linux.hash stale. Read every warn-and-skip path below as
-# "this can go green without doing anything".
-#
-# UPDATED 2026-07-20 (item J -- closing the above hole): every warn-and-skip
-# (and previously-silent-skip) path in this file now records a per-pin
-# outcome (refreshed / already-current / skipped / failed) to
-# $HASH_SYNC_OUTCOMES_FILE, and the "Build job summary" step near the end of
-# the job renders that as a table on $GITHUB_STEP_SUMMARY -- a skip is now
-# visible on the run's Summary tab without opening a log -- and turns two
-# specific conditions into a job failure: (a) any pin whose outcome is
-# "failed" (this workflow's OWN regex could not parse/extract something out
-# of a file it controls -- a bug here, not an external hiccup) and (b) every
-# tracked pin coming back skipped-or-failed with nothing refreshed or
-# already-current, which is precisely the run-29669946883 signature (nothing
-# happened, yet the job would otherwise report green). A genuine network blip
-# on ONE pin while the rest succeed is still a legitimate warn+skip -- that
-# case is common (upstream hiccups, a not-yet-published release asset) and
-# does not by itself fail the job; Buildroot's own hash check still fails
-# THE BUILD closed on that one stale hash either way (see case-by-case notes
-# below), so a single skipped pin is safe to leave for the next push to
-# retry, not safe to leave invisible.
-#
-# UPDATED 2026-07-20 (item J follow-up, same day): the kernel step's three
-# `exit 1` aborts (empty $kver, malformed $kver, ambiguous linux.hash) were
-# converted to `exit 0` above so steps 3-4 still run and get their own pins
-# reported -- but that alone silently dropped the guard those aborts used to
-# provide for free: previously a halted job meant NOTHING later could commit
-# or push, so a bug recorded by the kernel step also blocked, say, an
-# lzma-sdk refresh from landing on the PR branch. A dedicated "Check for a
-# recorded workflow bug before pushing anything" step (right before "Commit
-# and push") now recomputes that guard explicitly from the outcomes file --
-# ANY pin recorded "failed" this run suppresses the push, regardless of
-# which of the four steps recorded it. Also: $HASH_SYNC_OUTCOMES_FILE is now
-# scoped by github.run_id/run_attempt (see its own comment at the job env:
-# block) instead of relying on the github-package loop being the first and
-# only writer, so an earlier abort (branch validation, checkout) can no
-# longer cause the summary step to render a stale/previous run's outcomes as
-# this run's; and the summary/gate step runs on `!cancelled()` rather than
-# `always()`, and gives a pin whose step never reached it a distinct
-# "not-run" outcome instead of lumping it in with "failed", so a run
-# GitHub itself cancelled (routine on a Renovate PR that gets pushed to
-# again -- see the concurrency: block) no longer manufactures "a workflow
-# bug" annotations for pins nothing was ever wrong with.
+# NOTE: scripts/hash-sync-{kernel,github-packages,lzma-sdk,sdcard-payload}.sh
+# + scripts/lib/hash-sync-common.sh are the four cases below -- each step
+# just invokes its script (see the second checkout, below, for where the
+# scripts come from). Fix bugs IN THE SCRIPTS; this file only wires them up
+# and owns the per-pin outcome ledger / push-gate / job-summary steps that
+# read what the scripts emit. Each script's own header still carries the
+# case-specific rationale (the `|| true` traps, the major-series-scoped
+# linux.hash match, etc.) -- read it before touching that case's logic.
 #
 ################################################################################
 
@@ -152,13 +51,9 @@ on:
     types: [opened, synchronize]
     paths:
       - "configs/mister_de10nano_defconfig"
-      # The kernel-only defconfig copies the main one's kernel stanza, so a
-      # 6.18 bump touches BOTH files (one Renovate PR, same depName). Listed
-      # here so a bump is still picked up if a future change ever moves the
-      # kernel version into the copy alone. configs/mister_rt.fragment is
-      # deliberately absent: its -rc hash cannot be auto-refreshed (no signed
-      # manifest upstream; see the kernel step's own note), so triggering this
-      # workflow for it would do nothing but burn a runner.
+      # mister_kernel_defconfig copies this stanza's kernel version (one Renovate
+      # PR bumps both); mister_rt.fragment is deliberately absent -- its hash
+      # can't auto-refresh. See docs/ci.md#renovate-hash-sync-not-automated.
       - "configs/mister_kernel_defconfig"
       - "package/rtl8812au/rtl8812au.mk"
       - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
@@ -175,19 +70,9 @@ on:
       - "package/lzma-sdk/lzma-sdk.mk"
       - "scripts/fetch-sdcard-payload.sh"
 
-  # Manual escape hatch. Needed because NOTHING else can re-drive this workflow
-  # after a fix lands: the pull_request trigger's `paths:` filter does not list
-  # this file (so pushing a fix to it triggers nothing), the job is gated on
-  # actor == renovate[bot] (so a maintainer's own push is skipped), and a
-  # re-run replays the workflow definition from the commit the original run was
-  # created against -- which is how run 29669946883 executed the same broken
-  # code three times across two fixes.
-  #
-  # IMPORTANT: dispatch from a branch whose copy of THIS FILE is the one you
-  # want to run (normally the default branch), and name the branch you want
-  # FIXED in the `branch` input. Those are two different things, and conflating
-  # them is the trap above: GitHub runs the workflow definition from the ref you
-  # dispatch on, while this workflow edits and pushes to `inputs.branch`.
+  # Manual escape hatch -- nothing else can re-drive this workflow after a fix
+  # lands (run 29669946883). `branch` is the branch to FIX, NOT the ref you're
+  # dispatching from. See docs/ci.md#renovate-hash-sync-dispatch-trap.
   workflow_dispatch:
     inputs:
       branch:
@@ -220,48 +105,23 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 10
 
-    # Resolved once, here, rather than repeated at each use site. Passing it to
-    # the push step as a shell variable (not an inline ${{ }} expansion) also
-    # closes the script-injection vector actionlint flags for
-    # github.event.pull_request.head.ref -- a branch name is attacker-chosen
-    # text on a PR from an untrusted contributor.
+    # Resolved once, as a shell var (not an inline expression), to avoid a
+    # script-injection vector via github.event.pull_request.head.ref -- a
+    # branch name is attacker-controlled text on a PR. See
+    # docs/ci.md#branch-name-injection.
     env:
       TARGET_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.pull_request.head.ref }}
 
-      # Shared per-pin audit trail (added after run 29669946883 -- see the
-      # header notes above). Each of the four refresh
-      # steps below appends one TAB-separated "<pin>\t<outcome>\t<reason>"
-      # line per pin it owns; the "Build job summary" step near the end turns
-      # that into the $GITHUB_STEP_SUMMARY table and the pass/fail decision.
-      # Just a bare filename here -- NOT a full path -- because the `runner`
-      # context (needed to reach runner.temp) is not available in a job-level
-      # `env:` block (only github/inputs/matrix/needs/secrets/strategy/vars
-      # are). Every step below prefixes it with $RUNNER_TEMP instead, which
-      # IS a plain process environment variable the runner exports into every
-      # step's shell, no context expression required. Kept outside the git
-      # checkout so it can never be accidentally `git add`-ed. The filename is
-      # made unique PER RUN ATTEMPT (github.run_id/github.run_attempt, both
-      # legal in a job-level env: block) rather than relying on a truncating
-      # first writer to make the file this run's own: if the "Validate the
-      # target branch" or "Checkout" step aborts before the github-package
-      # loop (the first step to touch this file) ever runs, a fixed/shared
-      # filename could read back whatever a PREVIOUS run (or a previous
-      # attempt of THIS run) left in $RUNNER_TEMP on this box, and the
-      # summary step would then render fabricated outcomes for pins that were
-      # never examined this run. A run-attempt-scoped name makes that
-      # structurally impossible instead of depending on step ordering. The
-      # github-package loop below still does `: > "$HASH_SYNC_OUTCOMES_FILE"`
-      # before writing -- truncate/create it there anyway, belt-and-braces:
-      # cheap, and it does not depend on any assumption about whether
-      # $RUNNER_TEMP starts clean.
+      # Bare filename (not a full path): the `runner` context isn't available
+      # in a job-level env: block -- every step below prefixes it with
+      # $RUNNER_TEMP instead. Scoped by run_id/run_attempt so an earlier abort
+      # can't leak a stale run's outcomes into this run's summary. See
+      # docs/ci.md#renovate-hash-sync-outcomes-gate.
       HASH_SYNC_OUTCOMES_FILE: hash-sync-outcomes-${{ github.run_id }}-${{ github.run_attempt }}.tsv
 
-      # Single source of truth for the 12 github-sourced package pins (the
-      # generic loop in step 1 iterates this same variable). Hoisted here,
-      # rather than left as two independently-hardcoded lists, so step 1's
-      # loop and the job-summary gate's pin roster at the bottom of the job
-      # cannot drift apart -- see that step's own comment for what drift here
-      # would cost.
+      # Single source of truth for the 12 github-sourced package pins -- shared
+      # by step 1's loop and the job-summary gate's pin roster so they can't
+      # drift apart. See docs/ci.md#renovate-hash-sync-outcomes-gate.
       HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu xone midilink munt bcm20702-firmware libchdr"
 
     steps:
@@ -288,21 +148,10 @@ jobs:
             exit 1
           fi
 
-          # REJECT ref-namespace forms rather than normalising them away. git
-          # resolves several spellings to the same branch, so a plain string
-          # comparison against the default branch is only sound once these are
-          # excluded. Verified with `git push --dry-run`, all three reach master:
-          #
-          #     master              ->  master     (caught by the compare below)
-          #     refs/heads/master   ->  master     (bypasses a naive compare)
-          #     heads/master        ->  master     (bypasses it too)
-          #
-          # Rejecting is deliberate, not laziness: TARGET_BRANCH is consumed by
-          # BOTH actions/checkout and the final `git push`, so the value that
-          # gets validated here must be the exact value those steps use.
-          # Normalising would mean re-exporting through $GITHUB_ENV and relying
-          # on it overriding the job-level env: for later steps -- a subtlety
-          # not worth betting a force-push to the default branch on.
+          # REJECT ref-namespace forms rather than normalise: refs/heads/x and
+          # heads/x both resolve to the same branch as x (verified with
+          # `git push --dry-run`), which would bypass the compare below. See
+          # docs/ci.md#renovate-hash-sync-branch-validation.
           case "$TARGET_BRANCH" in
             refs/*|heads/*|remotes/*|tags/*)
               echo "::error::pass a plain branch name, not a ref: '$TARGET_BRANCH'." >&2
@@ -318,496 +167,99 @@ jobs:
 
           echo "target branch: $TARGET_BRANCH"
 
-      # Same pin as every other workflow in this repo (build.yml et al.) --
-      # kept in sync so Renovate's own github-actions manager (renovate.json)
-      # tracks exactly one actions/checkout dependency, not two drifting
-      # copies.
+      # Same actions/checkout pin as every workflow in this repo -- kept in
+      # sync so Renovate's github-actions manager tracks ONE dependency. See
+      # docs/ci.md#pin-conventions.
       - name: Checkout the target branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # The PR head branch, or the dispatch input -- NOT the ref this
           # workflow definition came from. On a manual run those differ by
-          # design (see the workflow_dispatch note above).
+          # design (see docs/ci.md#renovate-hash-sync-dispatch-trap).
           ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 1
 
+      # A SECOND checkout -- of the hash-sync scripts only, at the ref THIS
+      # workflow definition itself runs from, deliberately NOT the target
+      # branch checked out above. Why this has to be a second checkout and
+      # not just `scripts/hash-sync-*.sh` from the tree above: a kernel-bump
+      # PR (or any branch) that predates this extraction does not have these
+      # scripts at all, so invoking them out of the target-branch checkout
+      # would exit 127 there -- and the workflow_dispatch escape hatch's
+      # entire purpose (see docs/ci.md#renovate-hash-sync-dispatch-trap) is to
+      # run a FIXED copy of this logic against a stale branch, which sourcing
+      # the scripts from that same stale branch would defeat outright.
+      # `path:` checks this out into its own subdirectory so it cannot
+      # clobber the target-branch working tree checked out above.
+      - name: Checkout hash-sync scripts at the workflow's own ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .hash-sync-tools
+          fetch-depth: 1
+
       # --- 1. Github-sourced packages (drivers/firmware + libchdr) -----------
-      # Generic loop, not one step per package: every one of these .mk files
-      # follows the identical Buildroot convention
-      #   <PKG>_VERSION = <commit-sha-or-tag>
-      #   <PKG>_SITE    = $(call github,<owner>,<repo>,$(<PKG>_VERSION))
-      # and the resulting downloaded/hashed tarball is always named
-      # "<package-dir-name>-<VERSION>.tar.gz" by Buildroot's own github
-      # helper (NOT "<repo-name>-<VERSION>.tar.gz" -- checked against every
-      # existing .hash file in this tree before writing this loop). Only the
-      # FIRST `sha256` line (the tarball itself) is ever rewritten; any
-      # further lines (LICENSE, individual source files hashed for
-      # provenance) are left untouched -- if one of those legitimately
-      # changed too, the build's own hash check will fail closed and a human
-      # will need to re-derive that specific line by hand.
+      # Generic loop over the shared Buildroot `$(call github,...)` archive
+      # naming convention (verified against every existing .hash file in this
+      # tree). Only the FIRST sha256 line is ever rewritten -- a further line
+      # legitimately changing fails the build closed for a human to re-derive.
+      # See docs/ci.md#companion-hash-first-line-only.
+      #
+      # Runs from the SECOND checkout (.hash-sync-tools, at this workflow's
+      # own ref), against the TARGET branch's tree ($GITHUB_WORKSPACE, the
+      # first checkout) -- see that checkout step's comment for why. This is
+      # also the step that creates/truncates the shared outcomes file for the
+      # run (scripts/hash-sync-github-packages.sh's own header); the other
+      # three cases append to it. HASH_SYNC_PACKAGES and
+      # HASH_SYNC_OUTCOMES_FILE come from the job-level env: block above;
+      # GITHUB_ENV/RUNNER_TEMP are supplied by Actions itself. See
+      # docs/ci.md#renovate-hash-sync-outcomes-gate.
       - name: Refresh github-sourced package tarball hashes
-        run: |
-          set -euo pipefail
-
-          # Resolve the full path (see HASH_SYNC_OUTCOMES_FILE's own comment
-          # at the job env: block for why this is $RUNNER_TEMP-prefixed here
-          # rather than templated in at the env: block itself, and why the
-          # filename is already run-attempt-unique). Truncate/create it here
-          # anyway -- cheap, and does not depend on any assumption about
-          # $RUNNER_TEMP starting clean.
-          HASH_SYNC_OUTCOMES_FILE="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
-          : > "$HASH_SYNC_OUTCOMES_FILE"
-          record() {
-            # $1=pin $2=outcome(refreshed|already-current|skipped|failed) $3=reason
-            printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$HASH_SYNC_OUTCOMES_FILE"
-          }
-
-          changed=0
-          # shellcheck disable=SC2086
-          for pkg in $HASH_SYNC_PACKAGES; do
-            mk="package/$pkg/$pkg.mk"
-            hashfile="package/$pkg/$pkg.hash"
-            if [ ! -f "$mk" ] || [ ! -f "$hashfile" ]; then
-              # Previously a bare `continue` with no warning at all -- a
-              # totally silent skip. These 12 pins are hardcoded above
-              # BECAUSE their .mk/.hash are supposed to always exist, so this
-              # is not a legitimate "nothing to do here" case; it is either
-              # repo damage or this loop's own package list going stale.
-              # Surfaced (not failed) because it is not a parse/extract bug
-              # in THIS script -- there is nothing here to parse.
-              echo "::warning::$mk or $hashfile not found in this checkout -- skipping $pkg"
-              record "$pkg" skipped "$mk or $hashfile not found in this checkout"
-              continue
-            fi
-
-            # `|| true` on each extraction, and it is load-bearing: under
-            # `set -euo pipefail` a zero-match grep exits 1, pipefail makes
-            # the whole pipeline return 1, that becomes the assignment's
-            # status, and `set -e` kills the STEP right here -- before the
-            # `[ -z ... ]` branch below can run. The handled path would be
-            # dead code and the "remaining pins still get a chance to run"
-            # promise in that branch's comment would be a lie: an
-            # unparseable .mk for package #1 would take out packages 2-N and
-            # steps 2-4 with it, reported as "not-run" rather than as the
-            # parse bug it actually was. With `|| true` the empty string
-            # reaches the guard and the recorded `failed` outcome is what
-            # fails the job, in the summary step, after everything else has
-            # had its turn.
-            version=$(grep -E '^[A-Z0-9_]+_VERSION[[:space:]]*=' "$mk" | head -1 \
-                       | sed -E 's/^[A-Z0-9_]+_VERSION[[:space:]]*=[[:space:]]*//' || true)
-            owner=$(grep -E '_SITE[[:space:]]*=[[:space:]]*\$\(call github,' "$mk" | head -1 \
-                     | sed -E 's/.*\$\(call github,([^,]+),([^,]+),.*/\1/' || true)
-            repo=$(grep -E '_SITE[[:space:]]*=[[:space:]]*\$\(call github,' "$mk" | head -1 \
-                    | sed -E 's/.*\$\(call github,([^,]+),([^,]+),.*/\2/' || true)
-
-            if [ -z "$version" ] || [ -z "$owner" ] || [ -z "$repo" ]; then
-              # A parse/extract failure against a .mk file THIS repo controls
-              # (not a network condition) is a bug in this workflow's own
-              # regexes, not a transient upstream hiccup -- so this is a FAIL,
-              # not a warn-and-continue. Recorded as "failed" (not "skipped")
-              # so the job summary step below fails the job; still `continue`
-              # rather than `exit`, so the remaining pins in this loop -- and
-              # steps 2-4 -- still get a chance to run and be reported on.
-              echo "::error::could not parse $mk (version='$version' owner='$owner' repo='$repo')"
-              record "$pkg" failed "could not parse VERSION/SITE out of $mk -- workflow regex bug, not a network issue; build still fails closed on the stale hash"
-              continue
-            fi
-
-            url="https://github.com/$owner/$repo/archive/$version.tar.gz"
-            echo "==> $pkg: fetching $url"
-            tmpfile=$(mktemp)
-            if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
-              # A download failure against an upstream URL IS a legitimate
-              # network blip -- one package's mirror hiccup should not fail
-              # the other 11 pins' refreshes, so this stays warn-and-continue.
-              echo "::warning::could not download $url for $pkg -- skipping, build will fail closed on a stale hash instead"
-              record "$pkg" skipped "could not download $url"
-              rm -f "$tmpfile"
-              continue
-            fi
-            newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
-            rm -f "$tmpfile"
-
-            newname="${pkg}-${version}.tar.gz"
-            newline="sha256  ${newhash}  ${newname}"
-            oldline=$(grep -m1 '^sha256' "$hashfile" || true)
-
-            if [ "$oldline" != "$newline" ]; then
-              awk -v newline="$newline" '
-                BEGIN { done = 0 }
-                /^sha256/ && !done { print newline; done = 1; next }
-                { print }
-              ' "$hashfile" > "$hashfile.tmp"
-              mv "$hashfile.tmp" "$hashfile"
-              echo "Updated $hashfile:"
-              echo "  old: $oldline"
-              echo "  new: $newline"
-              record "$pkg" refreshed "sha256 updated: $oldline -> $newline"
-              changed=1
-            else
-              echo "$hashfile already up to date."
-              record "$pkg" already-current "sha256 unchanged"
-            fi
-          done
-          echo "PKG_HASH_CHANGED=$changed" >> "$GITHUB_ENV"
+        run: .hash-sync-tools/scripts/hash-sync-github-packages.sh "$GITHUB_WORKSPACE"
 
       # --- 2. Kernel tarball hash --------------------------------------------
       # Only touches board/mister/de10nano/patches/linux/linux.hash's own
       # sha256 data line; the header comment block above it is preserved
-      # verbatim by only ever replacing the FIRST line starting "sha256".
+      # verbatim by only ever replacing the matched "sha256" line. Runs from
+      # the .hash-sync-tools checkout (this workflow's own ref) against the
+      # target branch's tree; see step 1's comment and
+      # docs/ci.md#renovate-hash-sync-dispatch-trap for why -- this is the
+      # case bug #42 and run 29669946883 both came from, so running a stale
+      # copy of THIS script against a branch that needs the fix is exactly
+      # the failure this second checkout exists to prevent.
       - name: Refresh kernel tarball hash from kernel.org's signed manifest
-        run: |
-          set -euo pipefail
-          # See HASH_SYNC_OUTCOMES_FILE's own comment at the job env: block
-          # for why this is resolved to a full path here, per-step.
-          HASH_SYNC_OUTCOMES_FILE="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
-          record() {
-            # $1=outcome(refreshed|already-current|skipped|failed) $2=reason
-            printf 'kernel\t%s\t%s\n' "$1" "$2" >> "$HASH_SYNC_OUTCOMES_FILE"
-          }
-          defconfig="configs/mister_de10nano_defconfig"
-          linuxhash="board/mister/de10nano/patches/linux/linux.hash"
-
-          if [ ! -f "$defconfig" ] || [ ! -f "$linuxhash" ]; then
-            echo "::warning::$defconfig or $linuxhash not found in this checkout -- skipping kernel"
-            record skipped "$defconfig or $linuxhash not found in this checkout"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # ANCHOR THIS GREP. The defconfig explains the setting in a comment that
-          # quotes it verbatim ("... free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_
-          # VALUE=\"<version>\", which Kconfig ..."), so an unanchored match returns
-          # TWO lines. That made $kver a two-line string, `cut` then ran per-line, and
-          # the series came out as "v6\n6.x" -- producing a URL with an embedded
-          # newline that curl rejected outright ("Malformed input to a URL function").
-          # Because a fetch failure is only a warning here, the run went green while
-          # silently leaving linux.hash stale. Anchoring plus tail -1 keeps it to the
-          # real setting; scripts/export-kernel-tree.sh reads the same file the same way.
-          #
-          # The `|| true` is load-bearing under `set -euo pipefail`: with no match,
-          # grep exits 1, pipefail propagates that to the command substitution, and
-          # because this is a plain assignment `set -e` aborts the step right here --
-          # so the explicit empty-check below would never run and the failure would be
-          # silent. Swallowing the status lets that check emit its diagnostic instead.
-          kver=$(grep -oE '^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="[^"]+"' "$defconfig" \
-                  | sed -E 's/.*"([^"]+)"/\1/' | tail -1 || true)
-          if [ -z "$kver" ]; then
-            echo "::error::could not extract BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from $defconfig" >&2
-            # A parse/extract failure against a file THIS repo controls is a
-            # bug in this workflow's own regex, not a transient upstream
-            # condition -- record it as "failed" (not "skipped") so the job
-            # summary step fails the run, but `exit 0` here (not `exit 1`) so
-            # steps 3 and 4 still run and get their own pins reported on
-            # instead of being skipped outright by a halted job. This no
-            # longer risks a partial/mislabelled push: the "Check for a
-            # recorded workflow bug before pushing anything" step (right
-            # before "Commit and push") reads this same recorded "failed"
-            # and suppresses the push job-wide.
-            record failed "could not extract BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from $defconfig"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # A malformed version is a bug in THIS script, not a transient network
-          # problem, so fail loudly rather than falling through to the warn-and-skip
-          # path below. bash's =~ anchors against the whole string, so this also
-          # rejects a multi-line $kver if the grep above ever regresses.
-          if ! [[ "$kver" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "::error::extracted kernel version is not a plain version string: '${kver}'" >&2
-            # Same reasoning as the empty-$kver branch above: fail the run via
-            # the recorded outcome, but let this step exit 0 so later steps
-            # still execute and get their own pins reported. Same push
-            # suppression applies too -- see the note on the empty-$kver
-            # branch above.
-            record failed "extracted kernel version is not a plain version string: '${kver}'"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          series="v$(echo "$kver" | cut -d. -f1).x"
-          manifest_url="https://cdn.kernel.org/pub/linux/kernel/${series}/sha256sums.asc"
-          echo "==> kernel $kver: fetching $manifest_url"
-
-          # An upstream fetch failure is a legitimate network blip against
-          # kernel.org, not a bug in this script -- stays warn-and-continue.
-          manifest=$(curl -fsSL --retry 3 "$manifest_url") || {
-            echo "::warning::could not fetch $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
-            record skipped "could not fetch $manifest_url"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          }
-
-          # kernel.org's manifest lines look like:
-          #   <sha256hash>  linux-6.18.38.tar.xz
-          matchline=$(echo "$manifest" | grep -E "  linux-${kver//./\\.}\.tar\.xz\$" | head -1 || true)
-          if [ -z "$matchline" ]; then
-            # No entry for this exact version is an external/upstream
-            # condition (the release tarball may simply not be published to
-            # kernel.org yet), not evidence this script mis-parsed anything
-            # -- $kver already passed the strict version-format check above.
-            # Stays warn-and-continue.
-            echo "::warning::no entry for linux-${kver}.tar.xz in $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
-            record skipped "no entry for linux-${kver}.tar.xz in $manifest_url"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          newhash=$(echo "$matchline" | awk '{print $1}')
-          newline="sha256  ${newhash}  linux-${kver}.tar.xz"
-          # Match the RELEASE tarball line SPECIFICALLY, never "the first sha256
-          # line": linux.hash also carries entries this step must NOT manage --
-          # notably the RT beta's kernel (configs/mister_rt.fragment). A
-          # first-line match would clobber whichever entry happened to be on top.
-          #
-          # Scope the match to THIS pin's major series (linux-<major>.*.tar.xz).
-          # An extension-only match (linux-*.tar.xz) is not enough: it is
-          # sufficient only while the RT pin is an -rc, because Buildroot fetches
-          # -rc as a cgit snapshot (.tar.gz). The moment that pin reaches a
-          # stable mainline release it becomes linux-7.2.tar.xz -- which the old
-          # pattern also matched. Verified: with the RT line first, a 6.18 bump
-          # OVERWROTE it and left the stale 6.18 line intact, producing two 6.18
-          # entries and no RT entry at all. The major-scoped match keeps the two
-          # pins on their own lines regardless of order.
-          #
-          # An RT kernel bump still always needs its hash refreshed BY HAND, per
-          # the hash file's documented TOFU procedure -- this step never touches
-          # that line either way.
-          major="${kver%%.*}"
-          release_re="^sha256  .*  linux-${major}\.[0-9][0-9.]*\.tar\.xz\$"
-
-          # If two lines somehow match, do not guess which one this pin owns.
-          nmatch=$(grep -c -E "$release_re" "$linuxhash" || true)
-          if [ "${nmatch:-0}" -gt 1 ]; then
-            echo "::error::$linuxhash has $nmatch lines matching the ${major}.x release pattern -- refusing to guess which one belongs to this pin." >&2
-            grep -n -E "$release_re" "$linuxhash" >&2 || true
-            # An ambiguous $linuxhash (or an over-broad release_re) is this
-            # workflow's own problem to resolve, not an upstream condition --
-            # FAIL via the recorded outcome, same reasoning as the two $kver
-            # branches above. `exit 0` so steps 3 and 4 still run. Same push
-            # suppression applies too -- see the note on the empty-$kver
-            # branch above.
-            record failed "$linuxhash has $nmatch lines matching the ${major}.x release pattern -- refusing to guess"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          oldline=$(grep -m1 -E "$release_re" "$linuxhash" || true)
-
-          if [ "$oldline" != "$newline" ]; then
-            # Replace by EXACT string match on the line we found, not by
-            # re-deriving a regex inside awk -- passing a regex through `awk -v`
-            # would have its backslash escapes eaten, silently turning `\.` into
-            # "any character".
-            awk -v oldline="$oldline" -v newline="$newline" '
-              BEGIN { done = 0 }
-              $0 == oldline && !done { print newline; done = 1; next }
-              { print }
-            ' "$linuxhash" > "$linuxhash.tmp"
-            mv "$linuxhash.tmp" "$linuxhash"
-            echo "Updated $linuxhash:"
-            echo "  old: $oldline"
-            echo "  new: $newline"
-            record refreshed "sha256 updated: $oldline -> $newline"
-            echo "PATCH_HASH_CHANGED=1" >> "$GITHUB_ENV"
-          else
-            echo "$linuxhash already up to date."
-            record already-current "sha256 unchanged"
-            echo "PATCH_HASH_CHANGED=0" >> "$GITHUB_ENV"
-          fi
+        run: .hash-sync-tools/scripts/hash-sync-kernel.sh "$GITHUB_WORKSPACE"
 
       # --- 3. lzma-sdk release-asset tarball hash ----------------------------
-      # Bespoke, NOT part of the generic loop in step 1: lzma-sdk's tarball is
-      # a GitHub release ASSET
-      # (https://github.com/ip7z/7zip/releases/download/<ver>/...), not a
-      # $(call github,...) commit/tag archive, and its filename is derived
-      # from the version with the dots stripped (LZMA_SDK_SOURCE =
-      # 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz, so 26.02 ->
-      # 7z2602-src.tar.xz). Trust model is the same as step 1's: upstream
-      # publishes no checksums anywhere (checked at pin time -- see
-      # package/lzma-sdk/lzma-sdk.hash's own header), so a locally-computed
-      # sha256 of the freshly-fetched asset is the legitimate source. Only the
-      # FIRST sha256 line (the tarball) is rewritten; the DOC/License.txt and
-      # DOC/readme.txt provenance lines beneath it are left untouched -- if
-      # one of those legitimately changed too, the build's own hash check
-      # fails closed and a human re-derives that line by hand.
+      # Bespoke, NOT part of step 1's generic loop: lzma-sdk's tarball is a
+      # release ASSET, not a commit/tag archive, and its filename derives from
+      # the version with the dots stripped (26.02 -> 7z2602-src.tar.xz). Only
+      # the FIRST sha256 line is rewritten. See
+      # docs/ci.md#companion-hash-first-line-only. Runs from the
+      # .hash-sync-tools checkout against the target branch's tree; see step
+      # 1's comment.
       - name: Refresh lzma-sdk release-asset tarball hash
-        run: |
-          set -euo pipefail
-          # See HASH_SYNC_OUTCOMES_FILE's own comment at the job env: block
-          # for why this is resolved to a full path here, per-step.
-          HASH_SYNC_OUTCOMES_FILE="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
-          record() {
-            # $1=outcome(refreshed|already-current|skipped|failed) $2=reason
-            printf 'lzma-sdk\t%s\t%s\n' "$1" "$2" >> "$HASH_SYNC_OUTCOMES_FILE"
-          }
-          mk="package/lzma-sdk/lzma-sdk.mk"
-          hashfile="package/lzma-sdk/lzma-sdk.hash"
-
-          if [ ! -f "$mk" ] || [ ! -f "$hashfile" ]; then
-            echo "::warning::$mk or $hashfile not found in this checkout -- skipping lzma-sdk"
-            record skipped "$mk or $hashfile not found in this checkout"
-            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # `|| true` for the same reason as step 1's extractions: without it
-          # a zero-match grep under `set -euo pipefail` kills the step at the
-          # assignment and the handled branch below -- including its `exit 0`
-          # that deliberately lets step 4 still run -- never executes.
-          version=$(grep -E '^LZMA_SDK_VERSION[[:space:]]*=' "$mk" | head -1 \
-                     | sed -E 's/^LZMA_SDK_VERSION[[:space:]]*=[[:space:]]*//' || true)
-          if [ -z "$version" ]; then
-            # Parsing our OWN .mk file -- same class of bug as the github-loop
-            # and kernel-step parse/extract failures, so this is a FAIL (via
-            # the recorded outcome), not a warn-and-continue. `exit 0` (not
-            # `exit 1`) so step 4 still runs and reports its own pins.
-            echo "::error::could not parse LZMA_SDK_VERSION from $mk"
-            record failed "could not parse LZMA_SDK_VERSION from $mk -- workflow regex bug, not a network issue; build still fails closed on the stale hash"
-            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          asset="7z$(echo "$version" | tr -d .)-src.tar.xz"
-          url="https://github.com/ip7z/7zip/releases/download/${version}/${asset}"
-          echo "==> lzma-sdk $version: fetching $url"
-          tmpfile=$(mktemp)
-          if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
-            # A download failure against an upstream release asset is a
-            # legitimate network blip -- stays warn-and-continue.
-            echo "::warning::could not download $url -- leaving $hashfile untouched, build will fail closed on a stale hash instead"
-            record skipped "could not download $url"
-            rm -f "$tmpfile"
-            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
-          rm -f "$tmpfile"
-
-          newline="sha256  ${newhash}  ${asset}"
-          oldline=$(grep -m1 '^sha256' "$hashfile" || true)
-
-          if [ "$oldline" != "$newline" ]; then
-            awk -v newline="$newline" '
-              BEGIN { done = 0 }
-              /^sha256/ && !done { print newline; done = 1; next }
-              { print }
-            ' "$hashfile" > "$hashfile.tmp"
-            mv "$hashfile.tmp" "$hashfile"
-            echo "Updated $hashfile:"
-            echo "  old: $oldline"
-            echo "  new: $newline"
-            record refreshed "sha256 updated: $oldline -> $newline"
-            echo "LZMA_SDK_HASH_CHANGED=1" >> "$GITHUB_ENV"
-          else
-            echo "$hashfile already up to date."
-            record already-current "sha256 unchanged"
-            echo "LZMA_SDK_HASH_CHANGED=0" >> "$GITHUB_ENV"
-          fi
+        run: .hash-sync-tools/scripts/hash-sync-lzma-sdk.sh "$GITHUB_WORKSPACE"
 
       # --- 4. SD-card payload single-file pins -------------------------------
-      # scripts/fetch-sdcard-payload.sh pins two individual scripts by commit
-      # AND by sha256+size: update_all.sh (theypsilon/Update_All_MiSTer) and
-      # wifi.sh (MiSTer-devel/Scripts_MiSTer). renovate.json's git-refs managers
-      # bump the PINNED_*_COMMIT (which the raw URL interpolates); the sha256+size
-      # then need recomputing from the file at the new commit -- the same "fetch
-      # the real artifact and sha256sum it" practice as the package loop above.
-      # The _Console cores commit (PINNED_CORES_COMMIT) has no companion hash and
-      # is deliberately not handled here. No heredoc (YAML-indent-safe): the pin
-      # table is a list of "prefix owner/repo path" strings split with `set --`.
+      # Pins update_all.sh + wifi.sh only, by commit AND sha256+size;
+      # PINNED_CORES_COMMIT has no companion hash and is deliberately not
+      # handled here. See docs/ci.md#renovate-hash-sync-not-automated. Runs
+      # from the .hash-sync-tools checkout against the target branch's tree;
+      # see step 1's comment.
       - name: Refresh sdcard payload script hashes (update_all.sh, wifi.sh)
-        run: |
-          set -euo pipefail
-          # See HASH_SYNC_OUTCOMES_FILE's own comment at the job env: block
-          # for why this is resolved to a full path here, per-step.
-          HASH_SYNC_OUTCOMES_FILE="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
-          record() {
-            # $1=pin $2=outcome(refreshed|already-current|skipped|failed) $3=reason
-            printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$HASH_SYNC_OUTCOMES_FILE"
-          }
-          file="scripts/fetch-sdcard-payload.sh"
-          changed=0
-          if [ ! -f "$file" ]; then
-            # The whole script is missing, so the loop below never runs --
-            # record BOTH pins explicitly here rather than letting them
-            # silently vanish from the job summary (previously this branch
-            # had no per-pin visibility at all: neither a warning nor an
-            # outcomes entry for either pin).
-            echo "::warning::$file not found in this checkout -- skipping PINNED_UPDATE_ALL and PINNED_WIFI_SH"
-            record PINNED_UPDATE_ALL skipped "$file not found in this checkout"
-            record PINNED_WIFI_SH skipped "$file not found in this checkout"
-            echo "PAYLOAD_HASH_CHANGED=0" >> "$GITHUB_ENV"; exit 0
-          fi
-          for pin in "PINNED_UPDATE_ALL theypsilon/Update_All_MiSTer update_all.sh" \
-                     "PINNED_WIFI_SH MiSTer-devel/Scripts_MiSTer other_authors/wifi.sh"; do
-            # shellcheck disable=SC2086
-            set -- $pin
-            prefix=$1; repo=$2; path=$3
-            # `|| true` for the same reason as steps 1 and 3: without it a
-            # zero-match grep under `set -euo pipefail` kills the step at the
-            # assignment, so the handled branch below -- and its `continue`,
-            # which exists precisely so the OTHER pin still gets refreshed --
-            # would be unreachable.
-            commit=$(grep -E "^readonly ${prefix}_COMMIT=" "$file" | head -1 | sed -E 's/.*="([0-9a-f]{40})".*/\1/' || true)
-            if [ -z "$commit" ]; then
-              # Parsing our OWN script's ${prefix}_COMMIT line is the same
-              # class of bug as the .mk parse failures in steps 1 and 3 (a
-              # regex against a file this repo controls, not an upstream
-              # condition) -- FAIL via the recorded outcome rather than
-              # warn-and-continue. Still `continue`, not `exit`, so the
-              # OTHER pin in this same loop still gets refreshed/reported.
-              echo "::error::could not read ${prefix}_COMMIT from $file"
-              record "$prefix" failed "could not read ${prefix}_COMMIT from $file -- workflow regex bug, not a network issue; build still fails closed on the stale hash"
-              continue
-            fi
-            url="https://raw.githubusercontent.com/${repo}/${commit}/${path}"
-            echo "==> ${prefix}: fetching $url"
-            tmpfile=$(mktemp)
-            if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
-              # A download failure against an upstream raw-file URL is a
-              # legitimate network blip -- stays warn-and-continue.
-              echo "::warning::could not download $url -- skipping, build will fail closed on a stale hash instead"
-              record "$prefix" skipped "could not download $url"
-              rm -f "$tmpfile"; continue
-            fi
-            newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
-            newsize=$(stat -c %s "$tmpfile")
-            rm -f "$tmpfile"
-            oldhash=$(grep -E "^readonly ${prefix}_SHA256=" "$file" | head -1 | sed -E 's/.*="([0-9a-f]+)".*/\1/')
-            oldsize=$(grep -E "^readonly ${prefix}_SIZE=" "$file" | head -1 | sed -E 's/.*="([0-9]+)".*/\1/')
-            if [ "$oldhash" != "$newhash" ] || [ "$oldsize" != "$newsize" ]; then
-              sed -i -E "s|^(readonly ${prefix}_SHA256=)\"[0-9a-f]+\"|\\1\"${newhash}\"|" "$file"
-              sed -i -E "s|^(readonly ${prefix}_SIZE=)\"[0-9]+\"|\\1\"${newsize}\"|" "$file"
-              echo "Updated ${prefix}: sha256 ${oldhash} -> ${newhash}; size ${oldsize} -> ${newsize}"
-              record "$prefix" refreshed "sha256 ${oldhash} -> ${newhash}; size ${oldsize} -> ${newsize}"
-              changed=1
-            else
-              echo "${prefix} already up to date."
-              record "$prefix" already-current "sha256/size unchanged"
-            fi
-          done
-          echo "PAYLOAD_HASH_CHANGED=$changed" >> "$GITHUB_ENV"
+        run: .hash-sync-tools/scripts/hash-sync-sdcard-payload.sh "$GITHUB_WORKSPACE"
 
-      # Gate the push on there being NO recorded "failed" outcome anywhere,
-      # from ANY of the four steps above. This restores the effect the
-      # kernel step's three `exit 1` aborts (empty $kver, malformed $kver,
-      # ambiguous linux.hash) used to provide on their own by halting the
-      # whole job: previously, any one of those bugs meant NOTHING later
-      # could commit or push, because every later step (including "Commit
-      # and push") was skipped outright. Converting those aborts to `exit 0`
-      # (so steps 3-4 still run and get their own pins reported -- see the
-      # item-J header notes above) reopened a hole:
-      # a bug recorded by one step no longer stopped a DIFFERENT step's
-      # refresh from being committed and pushed to the Renovate PR branch.
-      # Recomputed as its own step (not folded into the summary step at the
-      # bottom) because it must run, and must be evaluated, BEFORE the push
-      # -- the summary/gate step deliberately runs last so it can report on
-      # a push that already happened, which is exactly wrong for THIS check.
+      # Gate the push: ANY pin recorded "failed" (from any of the four steps
+      # above) suppresses the commit/push below. MUST run and be evaluated
+      # BEFORE the push -- the summary/gate step at the end of the job
+      # deliberately runs LAST, which is exactly wrong for this check. See
+      # docs/ci.md#renovate-hash-sync-outcomes-gate.
       - name: Check for a recorded workflow bug before pushing anything
         run: |
           set -euo pipefail
-          # See HASH_SYNC_OUTCOMES_FILE's own comment at the job env: block
-          # for why this is resolved to a full path here, per-step.
+          # Resolved to a full path per-step; see
+          # docs/ci.md#renovate-hash-sync-outcomes-gate.
           outcomes_file="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
           touch "$outcomes_file"
           n_failed=$(awk -F'\t' '$2 == "failed" { c++ } END { print c+0 }' "$outcomes_file")
@@ -848,66 +300,41 @@ jobs:
           comment. That value must come from Buildroot's GPG-signed .sign
           manifest and is a manual step.
           COMMITMSG
-          # Shell variable, NOT a workflow-expression interpolation: a branch
-          # name is attacker-controlled text on a PR from an untrusted
-          # contributor, and expanding it into the script body before bash sees
-          # it is a command-injection vector (actionlint flags exactly this).
+          # Shell variable, NOT a workflow-expression interpolation --
+          # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
+          # vector otherwise). See docs/ci.md#branch-name-injection.
           # "--" stops a branch named like an option from being parsed as one.
           git push origin -- "HEAD:$TARGET_BRANCH"
 
       # --- Job summary + pass/fail gate over every pin's outcome -------------
-      # `if: !cancelled()` deliberately: this step's whole job is to make a
-      # skip IMPOSSIBLE to miss, so it must still run (and still fail the job
-      # where warranted) even if an earlier step hit something this file's
-      # authors did not anticipate and aborted uncleanly -- exactly the kind
-      # of situation that must NOT go quietly green. `!cancelled()` (not
-      # `always()`) is deliberate too: `always()` also fires when GitHub
-      # cancels the run outright (this job's own concurrency group does
-      # exactly that on every subsequent push to the same Renovate PR --
-      # cancel-in-progress: true, above), and on cancellation nothing was
-      # actually wrong -- synthesizing "failed" rows and an
-      # "a workflow bug" error for pins whose steps were simply never given
-      # the chance to run would train readers to distrust this very table.
-      # `!cancelled()` still runs after an ordinary step failure (the
-      # scenario this comment opened with) but skips only on cancellation.
-      # Every step above records to the SAME $HASH_SYNC_OUTCOMES_FILE
-      # (recorded, not deduced from $GITHUB_ENV *_CHANGED flags, because
-      # those flags only capture refreshed-vs-not, not WHY a pin didn't
-      # refresh).
+      # `if: !cancelled()`, NOT `always()`: this table must survive an
+      # unanticipated abort, but must NOT fire "workflow bug" errors when
+      # GitHub's own cancel-in-progress cancels a superseded run -- that would
+      # train readers to distrust the table. See
+      # docs/ci.md#renovate-hash-sync-outcomes-gate.
       - name: Build job summary and fail on a bug or an all-skipped run
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
-          # See HASH_SYNC_OUTCOMES_FILE's own comment at the job env: block
-          # for why this is resolved to a full path here, per-step.
+          # Resolved to a full path per-step; see
+          # docs/ci.md#renovate-hash-sync-outcomes-gate.
           outcomes_file="$RUNNER_TEMP/$HASH_SYNC_OUTCOMES_FILE"
           touch "$outcomes_file"
 
-          # Every pin this workflow is responsible for, in the same order the
-          # four steps above process them. Cross-checked against
-          # $outcomes_file below so a step that crashed/aborted partway
-          # through its own loop (an unhandled `set -e` exit -- NOT one of
-          # the handled warn/fail branches those steps already record) cannot
-          # make a pin silently vanish from this summary. That gap is exactly
-          # how run 29669946883 went unnoticed: nothing said a pin was even
-          # attempted, let alone skipped.
+          # Every pin this workflow owns, in step order; cross-checked below so
+          # an unhandled `set -e` abort mid-loop can't make a pin silently
+          # vanish from this summary -- exactly how run 29669946883 went
+          # unnoticed. See docs/ci.md#renovate-hash-sync-outcomes-gate.
           all_pins="$HASH_SYNC_PACKAGES kernel lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"
           for pin in $all_pins; do
             if ! awk -F'\t' -v p="$pin" '$1 == p { found=1 } END { exit !found }' "$outcomes_file"; then
-              # Distinct from "failed": this pin's OWN step never got a
-              # chance to record anything (an unhandled `set -e` exit inside
-              # a loop, not one of that step's own handled warn/fail
-              # branches -- those already record). It is not, itself, proof
-              # of a parse/regex bug in this workflow the way a recorded
-              # "failed" is, so it is counted toward the fail gate below but
-              # kept out of the "workflow bug" error message. Still counted
-              # as a failure overall (not silently dropped or treated as a
-              # benign skip): this is exactly the run-29669946883 visibility
-              # gap this step exists to close -- a pin must never silently
-              # vanish from this summary.
+              # "not-run" != "failed": no outcome recorded means the pin's own
+              # step never reached it, not proof of a parse bug -- still
+              # counts toward the fail gate, just not the "workflow bug"
+              # message. See docs/ci.md#renovate-hash-sync-outcomes-gate.
               printf '%s\t%s\t%s\n' "$pin" not-run \
                 "no outcome recorded -- its step exited before reaching this pin (check the step logs above)" \
                 >> "$complete_file"
@@ -943,32 +370,23 @@ jobs:
 
           # Case 1: a genuine bug (a parse/extract failure against a file
           # THIS repo controls, or an unresolvable ambiguity in linux.hash).
-          # These are never legitimate to wave through -- see the
-          # case-by-case notes on each `record ... failed` call above.
+          # These are never legitimate to wave through.
           if [ "$n_failed" -gt 0 ]; then
             echo "::error::$n_failed pin(s) failed (a workflow bug, not an upstream network condition) -- see the job summary table." >&2
             fail=1
           fi
 
-          # Case 1b: a pin that never got an outcome recorded at all -- its
-          # own step aborted uncleanly before reaching it. Kept SEPARATE from
-          # "failed" above: it still fails the job (a pin must never
-          # silently vanish from this summary -- the run-29669946883 gap),
-          # but it is not itself evidence of a parse/regex bug in this
-          # workflow's own code the way a recorded "failed" is, so it gets
-          # its own message rather than being folded into the "workflow bug"
-          # one above.
+          # Case 1b: "not-run" pins -- same "never vanish silently" reasoning
+          # as above. See docs/ci.md#renovate-hash-sync-outcomes-gate.
           if [ "$n_notrun" -gt 0 ]; then
             echo "::error::$n_notrun pin(s) never ran -- an earlier step aborted before reaching them -- see the job summary table." >&2
             fail=1
           fi
 
-          # Case 2: the run-29669946883 signature -- EVERY pin came back
-          # skipped, not-run, or failed, and nothing was refreshed or already
-          # current. A single package's network blip while the rest succeed
-          # is expected and fine (case-by-case notes above); the whole run
-          # doing NOTHING is not -- that combination is what let a malformed
-          # URL report SUCCESS three times while linux.hash stayed stale.
+          # Case 2: run-29669946883 signature -- EVERY pin skipped/not-run/
+          # failed, nothing refreshed/current. A single pin's network blip is
+          # fine; the WHOLE run doing nothing is not. See
+          # docs/ci.md#renovate-hash-sync-outcomes-gate.
           if [ "$((n_refreshed + n_current))" -eq 0 ]; then
             echo "::error::every tracked pin was skipped, not-run, or failed -- this is the run-29669946883 signature (the job would otherwise report green while doing nothing). See the job summary table." >&2
             fail=1

@@ -76,7 +76,7 @@ BR2_REPRODUCIBLE=y
 # --- Kernel stanza — mirrored from mister_de10nano_defconfig -----------------
 # Base-without-fragment = the main 6.18 kernel (version, patches, config,
 # compression, DTS — all identical). A variant fragment overrides only what it
-# must (e.g. mister_rt.fragment: version -> 7.2-rc3, patch dir -> the beta
+# must (e.g. mister_rt.fragment: version -> the 7.2 line, patch dir -> the beta
 # subset, one kernel-config fragment). The stage-1 initramfs cpio is embedded
 # by external.mk's LINUX_KCONFIG_FIXUP_CMDS hook exactly as in the main build
 # (it keys on BR2_LINUX_KERNEL=y, not on which defconfig) — which is why the

@@ -120,7 +120,7 @@ readonly PINNED_UPDATE_ALL_SIZE="8628"
 # MiSTer-devel/Scripts_MiSTer, path other_authors/wifi.sh (docs/wifi-parity.md
 # confirms this exact path). Pinned to a commit resolved the same way as
 # above on 2026-07-17.
-readonly PINNED_WIFI_SH_COMMIT="bc9d20d41db29ca7e03c0b04799e4fce2ef1220f"
+readonly PINNED_WIFI_SH_COMMIT="1b5b6231a6bddf2266d99c405b11449ea35fb5b5"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
 readonly PINNED_WIFI_SH_SHA256="10233fa31ea288f001a5e8cfba18e949270f79fed1295f7fc1d45e5fad78c988"
 readonly PINNED_WIFI_SH_SIZE="5823"

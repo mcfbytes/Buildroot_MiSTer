@@ -2,7 +2,7 @@
 
 Stock MiSTer froze its entire userland at **Buildroot 2021.02.4** (glibc 2.31,
 Linux 5.15.1) and has taken **no `.y` stable updates** on the kernel and few on the
-packages since. This project rebases the whole stack on **Buildroot 2026.02.3** —
+packages since. This project rebases the whole stack on **Buildroot 2026.05.1** —
 roughly **five years** of upstream security and correctness work, on a base with a
 real update path (Renovate-tracked, P4.6/P4.7).
 
@@ -18,12 +18,12 @@ security-update path), and it belongs in the release notes.
 
 ## The stack
 
-| Component | Stock (2021.02.4) | Ours (2026.02.3) | Note |
+| Component | Stock (2021.02.4) | Ours (2026.05.1) | Note |
 |---|---|---|---|
-| Buildroot | **2021.02.4** | **2026.02.3** | ~5 years of the whole distro |
+| Buildroot | **2021.02.4** | **2026.05.1** | ~5 years of the whole distro |
 | Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18.38** LTS (hardware-validated on 6.18.33, the prior patch release) | on a stable `.y` line with security backports |
-| glibc | **2.31** | **2.42** | backward-compatible; every stock binary still runs (proven on hardware) |
-| gcc (toolchain) | 10.x era | **14.3.0** | |
+| glibc | **2.31** | **2.43** | backward-compatible; every stock binary still runs (proven on hardware) |
+| gcc (toolchain) | 10.x era | **14.4.0** | |
 
 The kernel jump is the sharpest: stock forked 5.15.1 and **never took any of the subsequent 5.15.y stable releases**, and 5.15 itself reaches EOL in **Oct 2026** (per kernel.org).
 
@@ -39,7 +39,7 @@ Versions are from the *shipped* artifacts: stock from the extracted stock
 | **Samba** | ~4.14 | **4.23.8** | SMB file sharing, network-facing; ~9 major-minor releases |
 | **BlueZ** | 5.x (`libbluetooth.so.3`) | **5.79** | Bluetooth stack |
 | **wpa_supplicant** | 2.9 | **2.11** | Wi-Fi auth |
-| **Python** | **3.9** | **3.14.5** | on-device interpreter (A6) — 3.9 is itself near EOL; runs the Downloader and community scripts (compatibility tested in P3.9) |
+| **Python** | **3.9** | **3.14.6** | on-device interpreter (A6) — 3.9 is itself near EOL; runs the Downloader and community scripts (compatibility tested in P3.9) |
 | **dbus** | — | **1.14.10** | |
 
 ## Multimedia / library set (SONAME-compatible, still newer)

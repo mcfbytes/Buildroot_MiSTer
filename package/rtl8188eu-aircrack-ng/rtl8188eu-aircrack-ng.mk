@@ -7,7 +7,7 @@
 # P3.1 (PLAN.md §4.1 class E) — out-of-tree Realtek RTL8188EU USB WiFi
 # driver.
 #
-# NAMED "-aircrack-ng", NOT plain "rtl8188eu": Buildroot 2026.02.3 upstream
+# NAMED "-aircrack-ng", NOT plain "rtl8188eu": Buildroot 2026.05.1 upstream
 # already ships its OWN package/rtl8188eu (sourced from
 # benetti-engineering/rtl8188eu, a different fork, built via that fork's own
 # in-kernel-Kconfig-style CONFIG_RTL8188EU=m integration). A same-named

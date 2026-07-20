@@ -333,14 +333,14 @@
   ],
   "packageRules": [
     {
-      "description": "Constrain the Buildroot pin to the 2026.02.x LTS line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes 2026.02.",
+      "description": "Constrain the Buildroot pin to the 2026.05.x line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes 2026.05. (2026.05 is NOT an LTS; 2025.02 was the last LTS and 2027.02 is expected to be the next -- see docs. This is the interim non-LTS line until 2027.02 ships.)",
       "matchManagers": [
         "custom.regex"
       ],
       "matchDepNames": [
         "buildroot/buildroot"
       ],
-      "allowedVersions": "/^2026\\.02(\\.\\d+)?$/",
+      "allowedVersions": "/^2026\\.05(\\.\\d+)?$/",
       "addLabels": [
         "buildroot-pin"
       ]

@@ -7,7 +7,7 @@
 # P3.1 (PLAN.md §4.1 class E) — out-of-tree Realtek RTL8811AU/RTL8821AU USB
 # WiFi driver.
 #
-# NAMED "-morrownr", NOT plain "rtl8821au": Buildroot 2026.02.3 upstream
+# NAMED "-morrownr", NOT plain "rtl8821au": Buildroot 2026.05.1 upstream
 # already ships its OWN package/rtl8821au (sourced from
 # benetti-engineering/rtl8821au, a different fork, built via that fork's own
 # in-kernel-Kconfig-style CONFIG_RTL8812AU_8821AU=m integration). A

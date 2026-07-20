@@ -12,7 +12,7 @@
 # munt's mt32emu_alsadrv "mt32d" console daemon, confirmed by tracing who
 # calls it: package/midilink's own upstream source (main.c's start_munt(),
 # see midilink.mk) literally does `system("... mt32d ... -f <ROM path> &")`.
-# Buildroot 2026.02.3 upstream has no "munt" package (checked:
+# Buildroot 2026.05.1 upstream has no "munt" package (checked:
 # work/buildroot/package/munt does not exist), so this authors one.
 #
 # CHECKED, NOT ASSUMED: mt32emu_alsadrv is a *separate*, plain-Makefile-only

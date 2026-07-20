@@ -10,13 +10,13 @@ Start with `PLAN.md` and `TASKS.md` for project context. Beta testers: see `docs
 
 ## What is this?
 
-MiSTer's operating system is currently distributed as an opaque archive containing a 375 MiB ext4 image built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux 5.15.1** — a kernel forked in November 2021 that has never merged a single 5.15.y stable release. This project replaces that image with one built from **Buildroot 2026.02 LTS** and a **mainline 6.18 LTS kernel**, in a public repository, with CI and reproducible builds.
+MiSTer's operating system is currently distributed as an opaque archive containing a 375 MiB ext4 image built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux 5.15.1** — a kernel forked in November 2021 that has never merged a single 5.15.y stable release. This project replaces that image with one built from **Buildroot 2026.05** and a **mainline 6.18 LTS kernel**, in a public repository, with CI and reproducible builds.
 
 ### Project Status
 
 - **Phase 0** (Reconnaissance & decisions): **Complete**. Patch triage, ABI contract verification, and all five open questions decided (see `docs/decisions/` ADRs 0010–0014).
 - **Phase 1** (Kernel & initramfs): **Complete**. The kernel is pinned to **linux-6.18.38** (latest 6.18.y LTS); all 31 MiSTer patches apply cleanly to it and `zImage_dtb` builds warning-free and boots under QEMU. The first-hardware-boot gate (P1.13) is met **on 6.18.38**, on a real DE10-Nano — booting the **CI-built artifact** (not a local build), with all 12 out-of-tree modules present, Bluetooth firmware loading, and zero BUG/Oops/panic lines. WiFi is confirmed on 6.18.38 too: the RTL8822BU auto-connects to a **WPA3/SAE** network (PMF required) at boot, driven by **mainline `rtw88`** — loaded from the kernel's in-tree path, not an out-of-tree fork (ADR 0016).
-- **Phase 2** (Rootfs & testing): **Complete**. Buildroot 2026.02 LTS, glibc 2.42, reproducible ext4 image with full SBOM; the rootfs **runs on real hardware** (the MiSTer menu and cores load — the ABI contract holds in practice).
+- **Phase 2** (Rootfs & testing): **Complete**. Buildroot 2026.05.1, glibc 2.43, reproducible ext4 image with full SBOM; the rootfs **runs on real hardware** (the MiSTer menu and cores load — the ABI contract holds in practice).
 - **Phase 3** (Module packages & hardware matrix): **Complete**. WiFi, Bluetooth, controllers, and special devices packaged; **hardware-validated on a DE10-Nano** — boot, Bluetooth (controller pairing), WiFi (WPA3 5 GHz auto-connect via mainline rtw88), and the Downloader (HTTPS) confirmed. Completing the full P3.13 device matrix (e.g. Samba and MIDI, currently build/CI-verified only) is the remaining hardware work.
 - **Phase 4** (Release & sustainability): **In progress**. Community governance files, CI/CD, beta-testing program, and publication gate.
 
@@ -30,7 +30,7 @@ MiSTer's operating system is currently distributed as an opaque archive containi
 |---|------|
 | G1 | A `linux.img` + `zImage_dtb` that boots the **unmodified, stock** `MiSTer` binary |
 | G2 | Modern kernel on a supported LTS with a real security-update path |
-| G3 | Modern package set (Buildroot 2026.02 LTS) with a real security-update path |
+| G3 | Modern package set (Buildroot 2026.05) with a real security-update path |
 | G4 | **No separate kernel repo.** All kernel patches live as `.patch` files in the Buildroot external tree and are applied to a pristine kernel.org tarball |
 | G5 | Fully reproducible: pinned Buildroot, pinned kernel + hash, checked-in `.config`, published SBOM |
 | G6 | Release artifacts published as **GitHub Release assets**. No binaries in git. Ever. |
@@ -40,8 +40,8 @@ MiSTer's operating system is currently distributed as an opaque archive containi
 
 ## What's different from the stock image
 
-Beyond the kernel (5.15.1 → 6.18 LTS) and userland (Buildroot 2021.02 → 2026.02, glibc
-2.31 → 2.42), the forward-port surfaced **six latent bugs that are live in every MiSTer
+Beyond the kernel (5.15.1 → 6.18 LTS) and userland (Buildroot 2021.02 → 2026.05, glibc
+2.31 → 2.43), the forward-port surfaced **six latent bugs that are live in every MiSTer
 image shipped to date** — two of them memory-safety bugs. Five are fixed here; one is
 deliberately carried unchanged pending hardware validation.
 

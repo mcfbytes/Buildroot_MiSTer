@@ -245,8 +245,8 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 | `libtorrent.so.21` | `libtorrent.so.21.0.0` | `BR2_PACKAGE_LIBTORRENT` | 0.15.3 | **YES (likely)** | rakshasa's libtorrent (rtorrent's library, distinct from libtorrent-rasterbar); SONAME has moved past 21 in this version range per Debian's experimental packaging (`libtorrent27`). **Recommend dropping `rtorrent`/`libtorrent` entirely (see Drop list) — nothing MiSTer-side uses it**, so the exact soname doesn't matter |
 | `libxml2.so.2` | `libxml2.so.2.9.12` | `BR2_PACKAGE_LIBXML2` | 2.15.3 | no |  |
 | `libmagic.so.1` | `libmagic.so.1.0.0` | `BR2_PACKAGE_FILE` | 5.46 | no |  |
-| `libpcre.so.1` | `libpcre.so.1.2.12` | `BR2_PACKAGE_PCRE` | 8.45 | no | legacy PCRE1, kept only for `libglib2`'s optional PCRE1 users / older consumers — modern packages generally use PCRE2, but PCRE1's SONAME is unaffected either way |
-| `libpcreposix.so.0` | `libpcreposix.so.0.0.7` | `BR2_PACKAGE_PCRE` | 8.45 | no |  |
+| `libpcre.so.1` | *(not provided)* | — | — | no | **Intentional parity deviation (Buildroot 2026.05).** PCRE1 was removed upstream (EOL/unmaintained; now a `Config.in.legacy` stub). Nothing in this image needs `libpcre.so.1`: the stock `MiSTer` binary does not link it (no `-lpcre`, verified against `origin/master`), Python uses its built-in `sre` engine, and 2026.05's `slang` dropped its pcre module. The only stock consumers were `wget`/`zsh`, neither of which we build. `libpcre2-8.so.0` (PCRE2) is provided as the modern replacement, pulled by `libglib2`/`libselinux` and listed explicitly in the defconfig. |
+| `libpcreposix.so.0` | *(not provided)* | — | — | no | Dropped with PCRE1 (same row above) — it is PCRE1's POSIX wrapper. PCRE2 ships its own `libpcre2-posix.so.3`. |
 | `libudev.so.1` | `libudev.so.1.6.3` | `BR2_PACKAGE_EUDEV` | 3.2.14 | no | eudev, not systemd-udev — matches PLAN §3 ("hotplug is eudev, not mdev") |
 
 ### Python (on-device interpreter — A6 ABI surface)
@@ -803,8 +803,9 @@ BR2_PACKAGE_JIMTCL=y                          # NOT just an obscure shell -- usb
 BR2_PACKAGE_LIBLOCKFILE=y
 BR2_PACKAGE_LIBXML2=y
 BR2_PACKAGE_FILE=y                            # libmagic
-BR2_PACKAGE_PCRE=y                            # legacy PCRE1 -- still NEEDed by name
-                                              # (libpcre.so.1), separate from PCRE2
+# PCRE1 removed upstream in Buildroot 2026.05 (EOL); nothing in the image needs
+# libpcre.so.1 (see the libpcre rows above). PCRE2 is the replacement:
+BR2_PACKAGE_PCRE2=y                           # libpcre2-8.so.0 -- PCRE1 replacement
 BR2_PACKAGE_EUDEV=y                           # NOT mdev -- PLAN §3 explicit requirement
 
 # --- lftp ---

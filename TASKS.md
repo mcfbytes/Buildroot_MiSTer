@@ -102,7 +102,7 @@ several of them correct A1–A9.
   reproduce; the only open question is whether *we* may redistribute it.**]**
   [PLAN §3, §4.1] → P3.3, P0.3
 - **A6 — On-device Python is an ABI surface.** `Downloader_MiSTer` and many community
-  scripts run on the target's interpreter (stock: 3.9; Buildroot 2026.02: **3.14**).
+  scripts run on the target's interpreter (stock: 3.9; Buildroot 2026.05: **3.14**).
   Compatibility must be tested, not assumed. **[P0: now evidenced, not suspected —
   `Downloader_MiSTer` pins Python **3.9** in its own CI and builds against `python3.9-dev`.
   The updater that delivers our image has never been tested on any interpreter we would
@@ -247,7 +247,7 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   every claim; includes a worked example db.json entry.
 
 - [x] **P0.7 — Package mapping** — [SONNET] — Size M — Depends: P0.3
-  Map every stock SONAME and every user-facing binary to a Buildroot 2026.02 package
+  Map every stock SONAME and every user-facing binary to a Buildroot 2026.05 package
   (name + version). Flag: packages Buildroot lacks (candidates for `package/` in our
   tree), version jumps with known breaking changes (Samba 4.14→4.2x config syntax,
   OpenSSH policy changes, Python per A6), and anything in stock that should be dropped.
@@ -290,7 +290,7 @@ boots to a serial console on real hardware (P1.13).
 - [x] **P1.1 — BR2_EXTERNAL skeleton** — [SONNET] — Size S — Depends: P0.9
   `external.desc`, `external.mk`, `Config.in`, `configs/mister_de10nano_defconfig`
   (minimal, builds nothing yet), plus a top-level `Makefile`/script that downloads the
-  pinned Buildroot 2026.02.x tarball, verifies its SHA-256, unpacks to `work/buildroot/`,
+  pinned Buildroot 2026.05.x tarball, verifies its SHA-256, unpacks to `work/buildroot/`,
   and invokes it with `BR2_EXTERNAL` set. Buildroot is never vendored (G4/§6).
   **Reference:** `/mnt/source/sb-enema/Makefile` — a working 2026.02.3 pinned-tarball
   wrapper with `BR2_EXTERNAL`, `O=`, `BR2_DL_DIR`, and a `%:` target forwarding rule
@@ -447,7 +447,7 @@ boots to a serial console on real hardware (P1.13).
   * `exec switch_root`; on any failure print a diagnostic banner and drop to a serial
     shell. Wire the two-stage sequencing into the top-level Makefile from P1.1.
   **Reference:** `/mnt/source/sb-enema` builds a `BR2_TARGET_ROOTFS_CPIO` image on
-  Buildroot 2026.02 (x86_64, busybox init, kernel+busybox config fragments) — the same
+  Buildroot 2026.05 (x86_64, busybox init, kernel+busybox config fragments) — the same
   output mechanism as stage 1 here.
   **Done when:** kernel image embeds the cpio; P1.12's QEMU test passes; `/init` is
   shell-checked (`shellcheck`) and under 200 lines; design recorded in
@@ -578,7 +578,7 @@ Exit criterion: the **unmodified stock `MiSTer` binary reaches the menu** on har
   15 % floor.
 
 - [x] **P2.10 — Version-delta doc: five years of upstream fixes** — [SONNET] — Size S — Depends: P2.1
-  Produce `docs/version-delta.md`: stock (Buildroot **2021.02.4**) vs ours (**2026.02.3**)
+  Produce `docs/version-delta.md`: stock (Buildroot **2021.02.4**) vs ours (**2026.05.1**)
   for every package, the version jump, and the security/maintenance value. This is a
   headline win — stock froze the whole userland ~5 years ago — and it directly serves
   **G2/G3** (a real security-update path) and the release notes (P4.9).
@@ -628,7 +628,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   task's own allowance]** — morrownr carries neither RTL8188EU nor RTL8188FU;
   `rtl8188eu` is sourced from `aircrack-ng/rtl8188eus` and `rtl8188fu` from
   `kelebek333/rtl8188fu`, the most actively maintained forks available. **[P0:
-  package names deviate for 3 of 6]** — Buildroot 2026.02.3 upstream now ships its
+  package names deviate for 3 of 6]** — Buildroot 2026.05.1 upstream now ships its
   own same-named `rtl8188eu`/`rtl8821au`/`rtl8821cu` packages (different forks, not
   discovered until this task actually loaded the defconfig) — ours are
   `rtl8188eu-aircrack-ng`/`rtl8821au-morrownr`/`rtl8821cu-morrownr` to avoid a
@@ -908,13 +908,13 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
 - [ ] **P4.6 — Renovate onboarding (final pipeline-hardening step)** — [SONNET] — Size M — Depends: P4.1, P4.4
   **Sequence after P4.8/P4.9, immediately before beta launch** — automate a pipeline
   only once it is stable and trusted (PLAN.md §9). Onboard Renovate and configure
-  `renovate.json` to manage: the Buildroot 2026.02.x tarball version + SHA-256
+  `renovate.json` to manage: the Buildroot 2026.05.x tarball version + SHA-256
   (custom/regex manager over the pin file from P1.1), morrownr package commit pins (git
   datasource), CI container image digests, and GitHub Actions versions. Every Renovate
   PR must trigger the full CI suite (build, patch-apply, ABI checks, reproducibility).
   Automerge stays OFF — a human reviews green PRs. **Reference:**
   `/mnt/source/sb-enema/renovate.json` — a working custom regex manager for
-  `BUILDROOT_VERSION` (github-tags datasource, `allowedVersions` pinned to `2026.02.x`);
+  `BUILDROOT_VERSION` (github-tags datasource, `allowedVersions` pinned to `2026.05.x`);
   use it as the template.
   **Done when:** a real or synthetic Renovate PR for a Buildroot point release opens
   with passing CI; the pin file's regex manager is covered by a Renovate config test.

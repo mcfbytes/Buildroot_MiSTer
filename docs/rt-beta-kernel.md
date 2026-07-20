@@ -45,9 +45,47 @@ lockstep-annotated, not trusted: the sync script covers the former, and each
 re-anchored patch carries a bracketed note naming its `linux-patches/`
 original.
 
-Adding a future kernel variant `foo`: `configs/mister_foo.fragment`, `foo`/
-`foo-clean`/`foo-*` Makefile targets mirroring the `rt` ones, and one entry in
-the CI workflows' `kernel:` matrix list. Everything else derives from the name.
+Adding a future kernel variant `foo`: `configs/mister_foo.fragment` plus
+`foo`/`foo-clean`/`foo-*` Makefile targets mirroring the `rt` ones (`main` is
+reserved — it's `buildroot-build`'s full-image variant name, not available
+for a kernel-only one; `scripts/list-kernel-variants.sh` refuses it). What
+that buys automatically, with nothing to edit:
+
+- **The CI build matrix itself.** `configs/mister_*.fragment` is the registry
+  (the same existence check `.github/actions/buildroot-build/action.yml`
+  already runs), and `build.yml`/`release.yml` each derive their `kernel:`
+  matrix from it via `scripts/list-kernel-variants.sh`, so both pick `foo` up
+  automatically instead of each carrying its own hand-typed matrix literal.
+- **`release.yml`'s release-asset list and provenance-attestation
+  `subject-path`.** The attestation's `subject-path` is globbed off
+  `dist/zImage_dtb-*`, and the release-asset list is derived per-variant from
+  the variant names recorded in `dist/SHA256SUMS` (the `publish` job has no
+  checkout, so `scripts/list-kernel-variants.sh` is not on disk there). A
+  dedicated verify step asserts, **by name and for every variant**, that all
+  three files are present before either is used — so a partial loss (one file
+  gone, or one whole variant's three gone while another variant's remain)
+  fails the job instead of publishing a release short a variant's worth of
+  assets. That per-variant assert is also what covers the attestation:
+  `actions/attest-build-provenance` globs its whole `subject-path` set as a
+  unit and only errors when the *combined* match set is empty, which the
+  always-present `dist/linux.img` guarantees it never is. With that in place,
+  `foo`'s three files are picked up, hashed into `SHA256SUMS`, and attested
+  without a code change.
+
+What still needs a hand-edit for a new variant, because it is genuinely
+per-variant prose or a genuinely single-slot design, not registry-derived
+plumbing:
+
+- **The release-notes text** in `release.yml`'s `publish` job — the
+  human-readable paragraph describing what the variant *is* (a real-time
+  kernel, in this case) is written for a human reader, not derived from a
+  filename.
+- **The sdcard installer's bonus kernel.** `scripts/mk-sdcard.sh` ships
+  exactly ONE extra kernel on the card's FAT payload alongside the main
+  6.18 image (`MISTER_RT_ZIMAGE` → `zImage_dtb-rt`) — that is a deliberate
+  one-card/one-bonus-kernel design, not a variant list, so shipping a second
+  bonus kernel on the same card is a design decision for a human to make, not
+  something this registry can safely infer.
 
 ## 3. Kernel headers / userland ABI — unchanged
 

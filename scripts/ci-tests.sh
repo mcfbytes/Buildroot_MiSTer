@@ -186,6 +186,7 @@ require_present() {
 
 TAR_LIST="$(mktemp "${TMPDIR:-/tmp}/ci-tests-tarlist.XXXXXX")"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/ci-tests-work.XXXXXX")"
+# shellcheck disable=SC2329 # invoked indirectly via `trap cleanup EXIT` below
 cleanup() { rm -f "$TAR_LIST"; rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 tar tf "$ROOTFS_TAR" > "$TAR_LIST"
@@ -421,6 +422,8 @@ else
 	all_fw="$WORKDIR/fw_all66.txt"
 	missing_fw="$WORKDIR/fw_missing10.txt"
 	present_fw="$WORKDIR/fw_present.txt"
+	# shellcheck disable=SC2016 # backticks are literal markdown code-span
+	# delimiters in docs/stock-inventory/firmware.md, not command substitution.
 	grep -E '^\| `[^`]+` \|' "$STOCK_FW_MD" | sed -E 's/^\| `([^`]+)`.*/\1/' | grep -v '/$' | LC_ALL=C sort > "$all_fw"
 	awk '/\*\*Missing \([0-9]+\):\*\*/{f=1;next} f&&/^```/{c++;if(c==2)exit;next} f&&c==1{print}' "$PARITY_FW_MD" | LC_ALL=C sort > "$missing_fw"
 	comm -23 "$all_fw" "$missing_fw" > "$present_fw"

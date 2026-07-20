@@ -15,7 +15,12 @@
 # work/extra-modules-overlay/, and the unchanged `make all` folds them into the
 # ONE shipped linux.img — so a single image carries the main 6.18 modules AND
 # every variant's. Adding a kernel variant = one configs/mister_<name>.fragment
-# + its Makefile targets + one entry in the matrix list below.
+# + its Makefile targets — nothing to edit in this file. The matrix below is
+# `fromJSON` of `gate`'s `kernel_variants` output, which `scripts/
+# list-kernel-variants.sh` derives from the filesystem (configs/mister_*.fragment
+# is the registry — the same one .github/actions/buildroot-build's
+# fragment-existence check reads), so build.yml and release.yml consume the
+# identical, single-source list instead of each hand-maintaining their own.
 #
 # The build recipe itself — disk reclaim, the five input caches, apt deps,
 # defconfig, `make all` (or `make <variant>` for a kernel leg) — lives in
@@ -47,10 +52,12 @@ name: Build
 # so a skipped need skips `build` itself (the needs-cascade rule documented at
 # that job) — it would need an `always() && build_needed`-style guard; (2) the
 # `status` truth table treats a skipped build-kernel while build_needed=true
-# as a workflow bug — it would need a policy-skip success path; (3) `build`'s
-# "Populate the extra-modules overlay" step hard-errors on zero modules tars
-# (the download step itself tolerates an unmatched pattern) — that guard would
-# need relaxing, accepting that PR images then carry only main modules.
+# as a workflow bug — it would need a policy-skip success path; (3) the
+# merge-kernel-modules action's "Populate the extra-modules overlay" step
+# (.github/actions/merge-kernel-modules/action.yml) hard-errors on zero
+# modules tars (the download step itself tolerates an unmatched pattern) —
+# that guard would need relaxing, accepting that PR images then carry only
+# main modules.
 # What triggers the whole pipeline is a budget decision, not a detail.
 # Two things are going on below.
 #
@@ -111,6 +118,7 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       build_needed: ${{ steps.decide.outputs.build_needed }}
+      kernel_variants: ${{ steps.variants.outputs.kernel_variants }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -118,6 +126,22 @@ jobs:
           # Full history: the diff range below reaches back to a base commit
           # that a shallow clone would not have.
           fetch-depth: 0
+
+      # Computed UNCONDITIONALLY -- i.e. before `decide` below, and regardless
+      # of what it finds -- so `build-kernel`'s `strategy.matrix` always has a
+      # well-formed JSON array to `fromJSON()`, including on a doc-only run
+      # where `build-kernel` itself then never executes (its `if:` reads
+      # `build_needed`, not this). A doc-only change must still produce a
+      # valid kernel_variants output; only a genuine repo bug (zero fragments,
+      # or one with an invalid name) may make this step -- and therefore the
+      # whole gate job -- fail loudly. See scripts/list-kernel-variants.sh's
+      # header for the full contract.
+      - name: Derive kernel-variant matrix
+        id: variants
+        run: |
+          set -euo pipefail
+          json=$(scripts/list-kernel-variants.sh)
+          echo "kernel_variants=$json" >> "$GITHUB_OUTPUT"
 
       - name: Decide
         id: decide
@@ -190,8 +214,10 @@ jobs:
   # fragment): zImage_dtb + a depmod'd module tree, no userland. It runs BEFORE
   # `build` because `build` consumes the legs' module trees; a leg that fails
   # auto-skips `build` via `needs`, and `status` explains that cascade.
-  # Adding a variant here = one new name in the matrix list (plus its fragment
-  # and Makefile targets — everything in this job derives from the name).
+  # Adding a variant here = one new configs/mister_<name>.fragment (plus its
+  # Makefile targets) — everything in this job, including the matrix itself,
+  # derives from the name via `gate`'s `kernel_variants` output (see
+  # scripts/list-kernel-variants.sh and the header above).
   build-kernel:
     name: Build kernel (${{ matrix.kernel }})
     needs: gate
@@ -199,131 +225,27 @@ jobs:
     runs-on: ubuntu-26.04
     strategy:
       matrix:
-        kernel: [rt]
+        kernel: ${{ fromJSON(needs.gate.outputs.kernel_variants) }}
 
-    # HONESTLY UNMEASURED — no kernel-only leg has run yet. Estimated: cold =
-    # cross-toolchain from scratch (~1h of main's measured 3h19m) + the stage-1
-    # initramfs (~30 min cold, its toolchain cached separately) + one kernel
-    # build; warm is dominated by the kernel alone. 240 leaves roughly 2x slack
-    # over that estimate while still killing a hung leg well before GitHub's
-    # silent 6-hour default. Re-derive from real runs once they exist.
+    # Estimated: cold = cross-toolchain from scratch (~1h of main's measured
+    # 3h19m) + the stage-1 initramfs (~30 min cold, its toolchain cached
+    # separately) + one kernel build; warm is dominated by the kernel alone.
+    # 240 leaves roughly 2x slack over that estimate while still killing a
+    # hung leg well before GitHub's silent 6-hour default.
     timeout-minutes: 240
 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # No patch-header lint here: `build` lints the one shared patches dir
-      # (linux-patches-beta/ is symlinks + a series into it).
-      - name: Build the kernel variant
-        uses: ./.github/actions/buildroot-build
+      # The shared leg recipe (build the variant, job-summary overview, stage
+      # + upload the artifact) -- see .github/actions/kernel-leg. Both inputs
+      # default to "false": manifest-only SBOM (a CI push distributes
+      # nothing) and the CI-flavoured Trigger/Commit/Packages(SBOM) summary.
+      - name: Build kernel leg (${{ matrix.kernel }})
+        uses: ./.github/actions/kernel-leg
         with:
-          variant: ${{ matrix.kernel }}
-          run-legal-info: "true"
-
-      # Mirrors the main job's overview: best-effort, every fact guarded, a
-      # missing one never fails the build. The PREEMPT_RT-style config assert is
-      # already hard-enforced by the Makefile's variant target (the build would
-      # have failed); the grep here only SURFACES it on the Summary tab. The
-      # kernel-tree glob is `linux-[0-9]*` AND uniqueness-guarded, same as the
-      # Makefile's assert: linux-firmware-*/linux-headers-* siblings must not
-      # match, and with two trees present naming either would be a guess.
-      - name: Kernel build overview (job summary)
-        env:
-          KERNEL: ${{ matrix.kernel }}
-        run: |
-          set -u
-          kver=$(basename "$(ls -d "output-$KERNEL"/target/usr/lib/modules/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
-          rt="n/a"
-          trees=(output-"$KERNEL"/build/linux-[0-9]*/)
-          if [ "${#trees[@]}" -eq 1 ] && [ -d "${trees[0]}" ]; then
-            kcfg="${trees[0]}.config"
-            if [ -f "$kcfg" ]; then
-              grep -qx 'CONFIG_PREEMPT_RT=y' "$kcfg" && rt="✅ CONFIG_PREEMPT_RT=y" || rt="❌ NOT SET"
-            fi
-          elif [ "${#trees[@]}" -gt 1 ]; then
-            rt="n/a (${#trees[@]} kernel trees -- ambiguous)"
-          fi
-          sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
-          zimg=$(sz "output-$KERNEL/images/zImage_dtb")
-          pkgs=$( [ -f "output-$KERNEL/legal-info/manifest.csv" ] && echo $(( $(wc -l < "output-$KERNEL/legal-info/manifest.csv") - 1 )) || echo "n/a" )
-          {
-            echo "## ⏱️ Kernel variant build summary (${KERNEL})"
-            echo ""
-            echo "| Fact | Value |"
-            echo "|---|---|"
-            echo "| Trigger | \`${GITHUB_EVENT_NAME:-?}\` |"
-            echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
-            echo "| Kernel | \`${kver:-n/a}\` |"
-            echo "| PREEMPT_RT | ${rt} |"
-            echo "| zImage_dtb (ships as \`zImage_dtb-${KERNEL}\`) | ${zimg} |"
-            echo "| Packages (SBOM) | ${pkgs} |"
-            echo ""
-            echo "Kernel-only build; its module tree merges into the ONE shipped linux.img in the"
-            echo "\`build\` job. Selected on-device via \`bootimage=/linux/zImage_dtb-${KERNEL}\` in u-boot.txt."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # The kernel leg's artifact is INTER-JOB TRANSPORT, not a deliverable: the
-      # `build` job downstream needs the module tree (and the merge assert needs
-      # the kver), so — unlike the main job's push/dispatch-gated uploads — this
-      # uploads on ALL events, PRs included. ~15 MB (modules tar + kernel +
-      # config + manifest-only SBOM), negligible next to the image artifacts.
-      #
-      # Both globs are uniqueness-guarded (the Copilot review's point): with a
-      # stale sibling tree present, `head -1` would silently stage the WRONG
-      # kernel's .config or module tree under the right name.
-      - name: Stage the kernel artifact (zImage_dtb, config, depmod'd modules)
-        env:
-          KERNEL: ${{ matrix.kernel }}
-        run: |
-          set -euo pipefail
-          # nullglob, or a zero-match glob leaves the LITERAL pattern in the
-          # array and the guards below would report "found 1" for an empty
-          # build — the count in the error must be truthful. (Same shopt the
-          # Populate step in `build` uses; the [ ! -d ] halves still catch the
-          # now-empty arrays, and || short-circuits before ${trees[0]} could
-          # trip set -u.)
-          shopt -s nullglob
-          mkdir -p kernel-artifact
-          cp "output-$KERNEL/images/zImage_dtb" "kernel-artifact/zImage_dtb-$KERNEL"
-
-          trees=(output-"$KERNEL"/build/linux-[0-9]*/)
-          if [ "${#trees[@]}" -ne 1 ] || [ ! -d "${trees[0]}" ]; then
-            echo "::error::expected exactly one kernel tree at output-$KERNEL/build/linux-[0-9]*/ but found ${#trees[@]} -- cannot stage linux-$KERNEL.config (zero: the build produced no kernel tree; more than one: a stale sibling from a version bump -- the Makefile's own assert should have caught either)" >&2
-            exit 1
-          fi
-          cp "${trees[0]}.config" "kernel-artifact/linux-$KERNEL.config"
-
-          mods=(output-"$KERNEL"/target/usr/lib/modules/*/)
-          if [ "${#mods[@]}" -ne 1 ] || [ ! -d "${mods[0]}" ]; then
-            echo "::error::expected exactly one module tree under output-$KERNEL/target/usr/lib/modules/ but found ${#mods[@]} -- cannot stage the modules tar (zero: depmod/target-finalize never ran; more than one: a stale sibling from a version bump)" >&2
-            exit 1
-          fi
-          kver=$(basename "${mods[0]}")
-          printf '%s\n' "$kver" > "kernel-artifact/kver-$KERNEL.txt"
-
-          # Depmod'd by target-finalize (the whole point of the kernel config's
-          # BR2_TARGET_ROOTFS_TAR); tar'd from target/ so the paths inside are
-          # exactly what work/extra-modules-overlay/ needs.
-          tar -czf "kernel-artifact/modules-$KERNEL.tar.gz" -C "output-$KERNEL/target" usr/lib/modules
-
-          # Manifest-only SBOM, same exclusions and reasoning as the main job's
-          # SBOM artifact: a CI push distributes nothing, so the GPL source
-          # tarballs stay out (release.yml ships the full kernel-source bundle).
-          tar -czf "kernel-artifact/legal-info-$KERNEL.tar.gz" \
-            --exclude='legal-info/sources' \
-            --exclude='legal-info/host-sources' \
-            -C "output-$KERNEL" legal-info
-
-          ls -la kernel-artifact/
-
-      - name: Upload kernel artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: kernel-${{ matrix.kernel }}-${{ github.sha }}
-          path: kernel-artifact/
-          if-no-files-found: error
-          retention-days: 14
+          kernel: ${{ matrix.kernel }}
 
   build:
     name: Build image (two-stage Buildroot)
@@ -375,35 +297,13 @@ jobs:
       - name: Lint kernel-defconfig lockstep
         run: scripts/check-kernel-defconfig-sync.sh
 
-      # The kernel legs' module trees, into the overlay the main defconfig's
-      # BR2_ROOTFS_OVERLAY names — Buildroot rsyncs it into TARGET_DIR at
-      # target-finalize, which is how the ONE shipped linux.img ends up carrying
-      # every variant's modules next to main's own.
-      - name: Download kernel-variant artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # Download the kernel-variant artifacts and populate the extra-modules
+      # overlay -- see .github/actions/merge-kernel-modules/action.yml for the
+      # mechanism and why it must run before the build below.
+      - name: Download + populate kernel-variant module overlay
+        uses: ./.github/actions/merge-kernel-modules
         with:
-          pattern: kernel-*-${{ github.sha }}
-          path: kernel-artifacts
-          merge-multiple: true
-
-      - name: Populate the extra-modules overlay from the kernel legs
-        run: |
-          set -euo pipefail
-          mkdir -p work/extra-modules-overlay
-          shopt -s nullglob
-          tars=(kernel-artifacts/modules-*.tar.gz)
-          # Zero tars is a wiring bug, not an empty matrix: this job only runs
-          # after build-kernel succeeded, and every leg uploads a modules tar.
-          if [ "${#tars[@]}" -eq 0 ]; then
-            echo "::error::no modules-*.tar.gz found under kernel-artifacts/ -- the build-kernel legs uploaded nothing this job can merge" >&2
-            exit 1
-          fi
-          for t in "${tars[@]}"; do
-            echo "unpacking ${t##*/} into work/extra-modules-overlay/"
-            tar -xzf "$t" -C work/extra-modules-overlay
-          done
-          echo "--- overlay module trees ---"
-          find work/extra-modules-overlay/usr/lib/modules -mindepth 1 -maxdepth 1 -type d | sort
+          phase: download
 
       # Everything from "prepare the runner" to "linux.img + zImage_dtb exist".
       - name: Build the image
@@ -411,24 +311,13 @@ jobs:
         with:
           run-legal-info: "true"
 
-      # A silent overlay miss must fail loudly: if a downloaded kver never made
-      # it into the built rootfs (overlay path typo, BR2_ROOTFS_OVERLAY edit),
-      # nothing else in this job would notice — the image builds green, it just
-      # ships a kernel whose modules are not there.
-      - name: Assert every kernel-variant module tree merged into the image
-        run: |
-          set -euo pipefail
-          rc=0
-          for f in kernel-artifacts/kver-*.txt; do
-            kver=$(tr -d '[:space:]' < "$f")
-            if [ -d "output/target/usr/lib/modules/$kver" ]; then
-              echo "merged: $kver (${f##*/})"
-            else
-              echo "::error::kernel-variant module tree '$kver' (${f##*/}) is MISSING from output/target/usr/lib/modules/ -- the extra-modules overlay did not reach target-finalize" >&2
-              rc=1
-            fi
-          done
-          exit "$rc"
+      # Assert every kernel-variant module tree merged into the image -- see
+      # .github/actions/merge-kernel-modules/action.yml for the silent-overlay-
+      # miss guard this runs.
+      - name: Assert kernel-variant module trees merged
+        uses: ./.github/actions/merge-kernel-modules
+        with:
+          phase: verify
 
       # --- Build overview on the run's Summary page --------------------------
       # Surfaces the facts a reviewer usually opens the log to hunt for --
@@ -443,7 +332,7 @@ jobs:
           # ALL module trees in the image, not just the boot kernel's: since the
           # extra-modules overlay this list is the proof the variant trees are
           # really inside linux.img.
-          kvers=$(ls output/target/usr/lib/modules/ 2>/dev/null | paste -sd', ' - || true)
+          kvers=$(find output/target/usr/lib/modules -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | LC_ALL=C sort | paste -sd', ' - || true)
           glibc=$(strings output/target/lib/libc.so.6 2>/dev/null | sed -n 's/.*release version \([0-9][0-9.]*[0-9]\).*/\1/p' | head -1)
           misterver=$(cat output/target/MiSTer.version 2>/dev/null || true)
           sz() { [ -f "$1" ] && numfmt --to=iec-i --suffix=B "$(stat -c %s "$1")" || echo "n/a"; }
@@ -474,42 +363,16 @@ jobs:
             echo "Parity suite (\`ci-tests.sh\`) and the ABI/SONAME section below run against this image."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # --- Non-hardware parity suite (P3.12) ---------------------------------
-      # CI_TESTS_SKIP_QEMU_SYSTEM=1 skips scripts/test-initramfs.sh, the one
-      # sub-check that boots a QEMU *system* kernel six times and can take
-      # several minutes on its own (see ci-tests.sh's header). Unset it in a
-      # manual/nightly run to get the full suite.
-      - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
-        env:
-          CI_TESTS_SKIP_QEMU_SYSTEM: "1"
-        run: scripts/ci-tests.sh
-
-      # `if: always()` is the whole point: this artifact is worth having precisely
-      # when the step above FAILED, and a failed step would otherwise abort the job
-      # before we ever upload it. ci-tests.sh also emits a ::error:: annotation per
-      # failure (so the run UI names the broken check without opening the log) and
-      # prints a FAILURES digest as its last output — this file is the same list,
-      # machine-readable, for pasting into a bug or diffing across runs.
-      # A ~2 KB text file; negligible next to the image artifacts below.
-      - name: Upload parity-suite results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Parity suite (ci-tests.sh, P3.12) + ABI/SONAME checker (check-abi.sh,
+      # P2.2) against the image just built -- see
+      # .github/actions/verify-image/action.yml for the full rationale,
+      # including the if: always() on the parity-results upload.
+      # skip-qemu-system: "true" matches the CI_TESTS_SKIP_QEMU_SYSTEM=1 this
+      # job always ran; pass "false" for the full six-boot QEMU suite.
+      - name: Run parity suite + ABI/SONAME checker
+        uses: ./.github/actions/verify-image
         with:
-          name: ci-tests-results-${{ github.sha }}
-          path: output/ci-tests-results.txt
-          if-no-files-found: warn
-          retention-days: 14
-
-      # --- ABI / SONAME parity checker (P2.2) --------------------------------
-      # Asserts the ABI/loader contract (docs/abi-contract.md §13.1) against the
-      # freshly built rootfs: the 12 DT_NEEDED SONAMEs at the same major, the
-      # glibc-2.34 merge stubs, the loader, /MiSTer.version's byte shape, and --
-      # when the gitignored stock binary is present -- the stock MiSTer's
-      # dynamic-link resolution under qemu-user. A missing SONAME or a dropped
-      # compat stub fails the build here. The two stock-binary gates (A-10/A-22)
-      # SKIP, not fail, in a clean CI checkout where work/ does not exist.
-      - name: ABI / SONAME parity checker (P2.2)
-        run: scripts/check-abi.sh output
+          skip-qemu-system: "true"
 
       # --- Upload build artifacts: on push and manual dispatch ---------------
       # NOT on pull_request runs, to avoid doubling artifact storage for every

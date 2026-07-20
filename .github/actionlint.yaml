@@ -1,0 +1,6 @@
+# actionlint's bundled runner-label list lags new GitHub-hosted runners (e.g.
+# ubuntu-26.04), so every job here would otherwise false-positive as an
+# "unknown label" -- declare it explicitly instead of ignoring the check.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

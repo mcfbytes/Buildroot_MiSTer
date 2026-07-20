@@ -59,10 +59,6 @@
 # is also what makes this workflow's claim honest: "same commit -> same bytes" is
 # only meaningful if both legs really do run the same build, and now they demonstrably do.
 #
-# This workflow has never actually been run — see docs/reproducibility.md
-# for the honest, as-yet-unproven status of the "no residual nondeterminism"
-# claim and what would populate that section once CI runs it for real.
-#
 ################################################################################
 
 name: Reproducibility

@@ -323,18 +323,4 @@ jobs:
           ::notice::Published db.json for release $TAG to $PAGE_URL
           Onboarding line for users (docs/downloader-contract.md §9.5/§11.3):
             db_url = ${PAGE_URL}db.json
-          This workflow has never been run end-to-end against a real release. Before
-          trusting it for a real beta launch (P4.10):
-            1. Confirm GitHub Pages is enabled (Settings -> Pages -> Source: GitHub Actions)
-               -- this workflow cannot enable that setting itself.
-            2. Fetch the deployed URL and diff it against the db.json this run generated
-               (cat db.json, above) to confirm Pages actually served what this run built,
-               not a stale cached copy.
-            3. Run scripts/check-db-json-schema.py against the DEPLOYED file too (not just
-               the pre-deploy local copy) as a final end-to-end confirmation.
-            4. Confirm db.json's "version" equals the /MiSTer.version baked into the image
-               this release ships. ADR 0018 (Accepted) makes them the same value by
-               construction -- both derive from the tagged commit's date -- so they should
-               already agree; this is the end-to-end check that they actually do. If they
-               ever diverge, every device re-flashes on every Downloader run, forever.
           EOF

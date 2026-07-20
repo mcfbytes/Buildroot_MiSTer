@@ -45,8 +45,11 @@
 # everything else — the make targets (`make <name>`, `<name>-legal-info`,
 # `<name>-external-deps`), the output dir (output-<name>/), the cache key
 # namespaces (br-dl-<name>-*, br-<name>-host-*) — is derived from the name, so
-# adding a kernel variant to CI is one fragment + the Makefile targets + a
-# workflow matrix entry, with NO change here. A kernel variant builds
+# adding a kernel variant to CI is one fragment + the Makefile targets, with NO
+# change here AND no workflow matrix entry to add either: build.yml and
+# release.yml each derive their `kernel:` matrix from this same fragment
+# registry via scripts/list-kernel-variants.sh, so this existence check IS the
+# registry both matrices read. A kernel variant builds
 # configs/mister_kernel_defconfig + its fragment: zImage_dtb plus a depmod'd
 # module tree in output-<name>/, sharing dl/ and ccache with main but its own
 # host-toolchain cache (a cross-toolchain bakes its absolute O= path in, so

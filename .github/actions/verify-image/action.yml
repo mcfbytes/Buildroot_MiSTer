@@ -1,0 +1,105 @@
+################################################################################
+#
+# verify-image — the non-hardware parity suite (P3.12) plus the ABI/SONAME
+# parity checker (P2.2), run against a freshly built image.
+#
+# WHY THIS EXISTS: build.yml and release.yml each carried their own byte-for-
+# byte copy of the "Run parity test suite" / "Upload parity-suite results" /
+# "ABI / SONAME parity checker" trio. Same script, same artifact shape, same
+# `if: always()` reasoning on the upload -- kept here once so the two never
+# drift apart by accident.
+#
+# skip-qemu-system: CI_TESTS_SKIP_QEMU_SYSTEM used to be hard-coded to "1" in
+# BOTH workflows, with a comment in each saying the two copies must be kept in
+# sync by hand. That is exactly the kind of duplication this action removes:
+# the flag is now ONE input, default "true" (byte-identical behavior to the
+# old hard-coded "1"), with the override available to any caller that wants
+# the full six-boot QEMU system-kernel check (a manual/nightly run).
+#
+# Composite-action inputs are ALWAYS STRINGS — the comparison below is always
+# `inputs.skip-qemu-system == 'true'`, never a truthiness check.
+#
+################################################################################
+
+name: Run parity suite + ABI/SONAME checker against a built image
+description: >-
+  Runs scripts/ci-tests.sh (the non-hardware parity suite, P3.12) against the
+  image already built by buildroot-build, uploads its machine-readable
+  results as an artifact (if: always(), so a failed suite still surfaces the
+  digest), then runs scripts/check-abi.sh (the ABI/SONAME parity checker,
+  P2.2). Call this AFTER buildroot-build.
+
+inputs:
+  skip-qemu-system:
+    description: >-
+      "true" (default) sets CI_TESTS_SKIP_QEMU_SYSTEM=1, which skips
+      scripts/test-initramfs.sh, the one sub-check that boots a QEMU *system*
+      kernel six times and can take several minutes on its own (see
+      ci-tests.sh's header). Set to "false" in a manual/nightly run to get the
+      full suite. Composite-action inputs are always strings -- compared with
+      == 'true', never relied on for truthiness.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Fail loud on anything but "true"/"false". The env: line below is a
+    # `== 'true'` ternary with no else-branch validation of its own -- any
+    # other value (a stray "1", "True", "yes", trailing whitespace) is falsy
+    # to that comparison and silently selects the SLOW full suite, which on
+    # release.yml can push the run past its 355-minute cap (see that
+    # workflow's timeout-minutes comment for what happens when it does).
+    - name: Validate skip-qemu-system
+      if: inputs.skip-qemu-system != 'true' && inputs.skip-qemu-system != 'false'
+      shell: bash
+      env:
+        SKIP_QEMU_SYSTEM: ${{ inputs.skip-qemu-system }}
+      run: |
+        echo "::error::verify-image: skip-qemu-system must be 'true' or 'false', got '${SKIP_QEMU_SYSTEM}'" >&2
+        exit 1
+
+    # --- Non-hardware parity suite (P3.12) ---------------------------------
+    # CI_TESTS_SKIP_QEMU_SYSTEM=1 skips scripts/test-initramfs.sh, the one
+    # sub-check that boots a QEMU *system* kernel six times and can take
+    # several minutes on its own (see ci-tests.sh's header). Unset it in a
+    # manual/nightly run to get the full suite.
+    - name: Run parity test suite (scripts/ci-tests.sh, P3.12)
+      shell: bash
+      env:
+        CI_TESTS_SKIP_QEMU_SYSTEM: ${{ inputs.skip-qemu-system == 'true' && '1' || '0' }}
+      run: scripts/ci-tests.sh
+
+    # `if: always()` is the whole point: this artifact is worth having precisely
+    # when the step above FAILED, and a failed step would otherwise abort the job
+    # before we ever upload it. ci-tests.sh also emits a ::error:: annotation per
+    # failure (so the run UI names the broken check without opening the log) and
+    # prints a FAILURES digest as its last output — this file is the same list,
+    # machine-readable, for pasting into a bug or diffing across runs.
+    # A ~2 KB text file; negligible next to the image artifacts below.
+    #
+    # sha-named: ref_name can carry '/' on a branch dispatch, which
+    # upload-artifact rejects — see the kernel artifact's naming comment on
+    # .github/actions/kernel-leg/action.yml's "Upload kernel artifact" step.
+    - name: Upload parity-suite results
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ci-tests-results-${{ github.sha }}
+        path: output/ci-tests-results.txt
+        if-no-files-found: warn
+        retention-days: 14
+
+    # --- ABI / SONAME parity checker (P2.2) --------------------------------
+    # Asserts the ABI/loader contract (docs/abi-contract.md §13.1) against the
+    # freshly built rootfs: the 12 DT_NEEDED SONAMEs at the same major, the
+    # glibc-2.34 merge stubs, the loader, /MiSTer.version's byte shape, and --
+    # when the gitignored stock binary is present -- the stock MiSTer's
+    # dynamic-link resolution under qemu-user. A missing SONAME or a dropped
+    # compat stub fails the build here. Also writes the "ABI / SONAME parity"
+    # section onto the run's Summary page. The two stock-binary gates
+    # (A-10/A-22) SKIP, not fail, in a clean CI checkout where work/ does not
+    # exist.
+    - name: ABI / SONAME parity checker (P2.2)
+      shell: bash
+      run: scripts/check-abi.sh output

@@ -650,11 +650,17 @@ fi
 # =============================================================================
 section "Main_MiSTer shared libraries"
 # =============================================================================
-# The four libraries backing the Main_MiSTer shared-lib refactor (no task ID
+# The five libraries backing the Main_MiSTer shared-lib refactor (no task ID
 # -- referenced by name): Main stops vendoring lib/{zstd,miniz,lzma,libchdr}
-# and links these instead. zstd + minizip-ng come from upstream Buildroot
-# (defconfig), lzma-sdk + libchdr from this tree's package/. See
-# docs/main-shared-libs.md.
+# and links these instead. zstd + minizip (classic) + minizip-ng come from
+# upstream Buildroot (defconfig), lzma-sdk + libchdr from this tree's
+# package/. See docs/main-shared-libs.md.
+#
+# minizip and minizip-ng are ALTERNATIVES, not a pair: Main links the classic
+# libminizip.so.1 (zip.h/unzip.h API) today, while minizip-ng is staged for a
+# future native mz_zip.h port. Both are asserted because both are shipped --
+# and libminizip.so.1's absence is exactly the failure this section exists to
+# catch ("MiSTer: error while loading shared libraries: libminizip.so.1").
 #
 # Version parts are WILDCARDED on purpose -- liblzma-sdk's SONAME is the FULL
 # SDK version by policy (every bump is a loud ABI event, see
@@ -665,6 +671,7 @@ section "Main_MiSTer shared libraries"
 # went red until the stale assertion was fixed).
 for spec in \
 	"libzstd\.so\.1:libzstd.so.1* (zstd)" \
+	"libminizip\.so\.1:libminizip.so.1* (minizip, classic)" \
 	"libminizip-ng\.so\.4:libminizip-ng.so.4* (minizip-ng)" \
 	"liblzma-sdk\.so\.:liblzma-sdk.so.* (lzma-sdk)" \
 	"libchdr\.so\.0:libchdr.so.0* (libchdr)"; do

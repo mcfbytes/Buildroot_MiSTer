@@ -28,14 +28,21 @@ authored in this tree under `package/` and sourced via the
 ## How Main links these
 
 Against the Buildroot staging sysroot, by pkg-config name — no hardcoded
-paths: `libzstd`, `minizip-ng`, `lzma-sdk`, `libchdr`. All four set
-`INSTALL_STAGING = YES`, so headers + the unversioned dev symlink land in
-staging and `pkg-config --cflags --libs <name>` against `output/staging`
-resolves everything. On the target, zstd/minizip-ng/libchdr (infra-installed)
-ship the versioned `.so` plus the usual unversioned symlink (Buildroot's
+paths: `libzstd`, `minizip` (classic), `minizip-ng`, `lzma-sdk`, `libchdr`.
+All five set `INSTALL_STAGING = YES`, so headers + the unversioned dev symlink
+land in staging and `pkg-config --cflags --libs <name>` against
+`output/staging` resolves everything — for the classic one that is
+`pkg-config --cflags --libs minizip` → `-I/usr/include/minizip -lminizip`.
+On the target, zstd/minizip/minizip-ng/libchdr (infra-installed) ship the
+versioned `.so` plus the usual unversioned symlink (Buildroot's
 target-finalize prunes headers/`.pc`/`.a`, not `.so` symlinks); lzma-sdk's
 hand-written install ships only `liblzma-sdk.so.26.02` — its filename is
 the SONAME, which is all the runtime linker needs.
+
+Note that `minizip` and `minizip-ng` are alternatives, not a pair: Main links
+the **classic** `minizip` (`libminizip.so.1`) today, and `minizip-ng` is built
+and staged only so the eventual native-`mz_zip.h` port has something to link.
+Both are shipped, but a given binary links one or the other.
 
 Mapping from Main's vendored `lib/` dirs to their replacements
 (user decision 2026-07-17 for the miniz row: refactor to zlib + minizip):
@@ -54,10 +61,12 @@ Mapping from Main's vendored `lib/` dirs to their replacements
 ## What this does NOT change (yet)
 
 - **`scripts/check-abi.sh` is deliberately untouched.** Its SONAME contract
-  list asserts what the *stock* `MiSTer` binary needs today. The four new
+  list asserts what the *stock* `MiSTer` binary needs today. The five new
   SONAMEs get added there **when Main actually links them** — asserting them
   as ABI-contract members before any shipped binary DT_NEEDs them would be
-  a false contract. Until then, `scripts/ci-tests.sh`'s
+  a false contract. That includes `libminizip.so.1`: the in-progress
+  shared-lib cleanup DT_NEEDs it, but the *stock* binary still vendors
+  `lib/miniz`, so the contract list stays as-is until that Main ships. Until then, `scripts/ci-tests.sh`'s
   "Main_MiSTer shared libraries" section asserts presence-in-rootfs
   (wildcarded versions, so Renovate bumps don't go stale-red — the PR #35
   lesson, commit `1341c93`).

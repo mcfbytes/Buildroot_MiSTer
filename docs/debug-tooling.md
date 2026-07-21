@@ -124,6 +124,27 @@ time, and in this tree that fixup is already a no-op — `CONFIG_PERF_EVENTS=y`,
 default and are live in the built `.config` today. They are absent from
 `linux.config` only because `savedefconfig` omits defaults.
 
+**What this perf can and cannot do**, taken from the actual build log rather than
+predicted — Buildroot passed:
+
+```
+NO_LIBELF=1 NO_DWARF=1 NO_LIBUNWIND=1 NO_DEMANGLE=1
+NO_LIBTRACEEVENT=1 NO_NEWT=1 NO_SLANG=1 NO_LIBAUDIT=1
+NO_LIBPYTHON=1 NO_LIBPERL=1
+```
+
+and perf's own feature probe reported `libelf: OFF`, `libnuma: on`, `zlib: on`.
+So:
+
+* ✅ `perf stat`, `perf record`/`report` with kernel symbols from
+  `/proc/kallsyms`, hardware counters, NUMA-aware helpers (`libnuma` is on only
+  because rt-tests dragged in numactl — a free side effect);
+* ❌ userspace symbol resolution from ELF binaries, DWARF callchains,
+  `perf probe`, C++ symbol demangling, tracepoint decoding, the TUI.
+
+Each ❌ traces to one omitted package listed in §3 — `elfutils` is the one that
+buys back most of that list.
+
 **Hardware counters really work**, they are not silently downgraded to software
 events: `socfpga.dtsi` carries
 
@@ -149,6 +170,36 @@ boots on hardware, but its wakeup latency has never been measured. `select`s
 
 Note `BR2_PACKAGE_LINUX_TOOLS_RTLA` (osnoise/timerlat tracers) is **not**
 enabled — not requested, and it would pull in `libtracefs`.
+
+#### ⚠ `hwlatdetect` ships broken — known, upstream, and not worth fixing here
+
+`rt-tests.mk` installs the Python `hwlatdetect` as an absolute symlink:
+
+```
+/usr/bin/hwlatdetect -> /usr/lib/python3.14/site-packages//hwlatdetect.py
+```
+
+but this image is built with Buildroot's default `BR2_PACKAGE_PYTHON3_PYC_ONLY=y`,
+whose target-finalize step byte-compiles every `.py` and **deletes the source**.
+Verified on the built tree: `site-packages/` contains `hwlatdetect.pyc` and no
+`hwlatdetect.py`, so the symlink dangles and running `hwlatdetect` on the device
+gives `No such file or directory`. Every other rt-tests binary is a normal C
+program and is completely unaffected — this is `hwlatdetect` alone.
+
+It is left broken deliberately:
+
+* the workaround is one command, since CPython runs a `.pyc` directly —
+  `python3 /usr/lib/python3.14/site-packages/hwlatdetect.pyc`;
+* fixing it properly means either flipping `BR2_PACKAGE_PYTHON3_PY_PYC` (a
+  *global* change to how every Python file in the image is installed, to rescue
+  one script) or a post-build hook to repoint the symlink — both far outside a
+  block whose whole value is being deletable in one motion;
+* and `hwlatdetect` measures SMI-induced hardware latency, which is an x86
+  concern. On a Cortex-A9 there are no SMIs. It is close to the least useful
+  thing in the package here.
+
+`cyclictest` — the tool that actually motivated enabling rt-tests — is a plain
+ELF binary and works normally.
 
 ### 2.5 `CONFIG_COREDUMP`
 
@@ -215,7 +266,8 @@ is a decision on the record rather than an oversight:
 | Symbol | What it would buy | Why it is off |
 | --- | --- | --- |
 | `BR2_PACKAGE_ELFUTILS` | perf gains libelf/DWARF: userspace symbol resolution from ELF binaries, `perf probe`, build-id handling. **Without it perf builds `NO_LIBELF=1 NO_DWARF=1`** (`linux-tool-perf.mk.in:94-96`) and can only symbolize the kernel via `/proc/kallsyms`. | Not requested; a sizeable new package. **This is the most likely thing to want next** — enable it inside the debug block if perf output turns out to be unreadable. |
-| `BR2_PACKAGE_LIBUNWIND` | `strace -k` (stack trace per syscall) and perf DWARF callchains. | Not requested. |
+| `BR2_PACKAGE_LIBUNWIND` | `strace -k` (stack trace per syscall) and perf DWARF callchains. | Not requested. Confirmed off in the build: perf got `NO_LIBUNWIND=1`. |
+| `BR2_PACKAGE_BINUTILS` / `BR2_PACKAGE_LIBTRACEEVENT` | perf C++ symbol demangling (`NO_DEMANGLE=1` today) and tracepoint decoding (`NO_LIBTRACEEVENT=1` today). | Not requested. Noted because `MiSTer` is C++, so unmangled symbols in a profile are the first thing you will hit after `elfutils`. |
 | `BR2_PACKAGE_LINUX_TOOLS_PERF_TUI` | perf's interactive TUI (`slang` is already `=y`, so this is nearly free). | Not requested. |
 | `BR2_PACKAGE_GDB_PYTHON` / `_TUI` | Python scripting / split-window gdb on the device. | Not requested; on-device weight. |
 | `BR2_PACKAGE_LINUX_TOOLS_RTLA` | osnoise / timerlat tracers, complementing cyclictest. | Not requested; pulls in `libtracefs`. |
@@ -295,25 +347,66 @@ grep -rn "debug-tooling"  docs/ README.md          # must return nothing
 
 ## 6. Measured cost (this branch, as built)
 
-Measured against the same `scripts/check-size-budget.sh` gate
-`docs/size-budget.md` uses (floor: ≥ 15 % free of the 512 MiB image).
+From a full cold `make all` of this branch, measured with the same
+`scripts/check-size-budget.sh` gate `docs/size-budget.md` uses (floor: ≥ 15 %
+free of the 512 MiB image).
 
-<!-- filled in from the verification build; see §6.1 for the commands -->
+**`linux.img`: 264 MiB used, 248 MiB free — 48.4 % free. PASS**, comfortably
+above the 15 % floor.
 
-| Item | master | this branch | delta |
-| --- | --- | --- | --- |
-| `linux.img` free | _(pending)_ | _(pending)_ | _(pending)_ |
+Per binary, stripped, as installed:
+
+| Binary | Size |
+| --- | --- |
+| `usr/bin/gdb` | 7.7 MiB |
+| `usr/bin/strace` | 2.1 MiB |
+| `usr/bin/perf` | 2.5 MiB |
+| `usr/bin/gdbserver` | 524 KiB |
+| `usr/bin/cyclictest` | 52 KiB |
+| the other 14 rt-tests binaries | ~1 MiB combined |
+
+**Total delta: +15 MiB of `output/target`.**
+
+That figure needs one correction to be honest, and it is the reason the raw
+before/after percentages do not simply subtract. The master build this was
+compared against had **two** kernel module trees staged (`6.18.39` *and* the
+`7.2.0-rc4` RT tree from a previous `make rt`, 3.2 MiB), and this branch has only
+`6.18.39` — no `make rt` was run in this worktree. Comparing the images
+head-on (50.5 % free vs 48.4 %) therefore understates the debug tooling by
+crediting it with the absent RT tree. The +15 MiB above is `du -sm output/target`
+on both sides with the RT tree subtracted from master's, which is the
+apples-to-apples number.
 
 ### 6.1 How to re-measure
 
 ```sh
 scripts/check-size-budget.sh output/images/linux.img
-du -sh output/target/usr/bin/gdb  output/target/usr/bin/gdbserver \
-       output/target/usr/bin/strace output/target/usr/bin/perf \
-       output/target/usr/bin/cyclictest
+du -sh output/target/usr/bin/{gdb,gdbserver,strace,perf,cyclictest}
 ```
 
-### 6.2 Reproducibility
+### 6.2 Build verification actually performed
+
+A full cold `make all` of this branch, in a dedicated worktree, from `origin/master`:
+
+* both stages built clean (the only `Error … (ignored)` lines in the log are
+  Buildroot's usual e2fsprogs/glibc/nettle doc-target noise, present on master too);
+* `board/mister/de10nano/post-image.sh`'s own `check-linux-img.sh` passed every
+  assertion — 512 MiB, label `rootfs`, both pinned UUID/hash-seed, the exact
+  14-feature stock-derived ext4 feature set, and ADR 0015's no-`ssh_host_*` check;
+* `check-initramfs` passed;
+* `scripts/check-kernel-defconfig-sync.sh` passes (23 shared symbols agree);
+* the built kernel `.config` carries `CONFIG_COREDUMP=y` **and**
+  `CONFIG_ELF_CORE=y` — confirming §2.5's claim that ELF_CORE arrives free —
+  alongside `CONFIG_PERF_EVENTS=y`, `CONFIG_ARM_PMU=y`, `CONFIG_HW_PERF_EVENTS=y`;
+* all six tools are present in `output/target` (see §6 for sizes), with the one
+  documented exception of `hwlatdetect`'s dangling symlink (§2.4).
+
+Not verified: **nothing here has been run on hardware.** The image builds and
+passes every static assertion; whether gdb opens a useful core off a real board,
+and what cyclictest actually reports under the RT kernel, are the next steps and
+the reason this branch exists.
+
+### 6.3 Reproducibility
 
 `BR2_REPRODUCIBLE=y` is on and `.github/workflows/reproducibility.yml` builds the
 tree twice and compares. None of the four tools is known to embed a build

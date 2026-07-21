@@ -10,17 +10,18 @@ that needs them. This document is the reference for that refactor's actual
 consumer: which package provides what, under which SONAME/header-dir/pkg-config
 name, and how Main's vendored dirs map onto them.
 
-Two of the four packages are upstream Buildroot, enabled straight from
+Three of the five packages are upstream Buildroot, enabled straight from
 `configs/mister_de10nano_defconfig` (compression block); the other two are
 authored in this tree under `package/` and sourced via the
 "Main_MiSTer shared libraries" menu in the top-level `Config.in`.
 
-## The four packages
+## The five packages
 
 | Package | Provider | SONAME | Headers | pkg-config | Notes |
 |---|---|---|---|---|---|
 | zstd (`BR2_PACKAGE_ZSTD`) | upstream Buildroot | `libzstd.so.1` | `zstd.h` (top-level `/usr/include`) | `libzstd.pc` | Also installs the `zstd` CLI — upstream has no sub-option to omit it. Needed by libchdr (CHD v5 zstd hunks) and flips minizip-ng's `MZ_ZSTD=ON`. |
-| minizip (`BR2_PACKAGE_MINIZIP`) | upstream Buildroot | `libminizip-ng.so.4` | `include/minizip-ng/` | `minizip-ng.pc` | This IS **minizip-ng 4.0.3** (zlib-ng/minizip-ng), NOT the classic zlib-contrib API (`BR2_PACKAGE_MINIZIP_ZLIB`, deliberately not set). Buildroot forces `-DMZ_COMPAT=OFF`, so there is **no `zip.h`/`unzip.h` compat layer** — Main's miniz `mz_zip_*` call sites get ported to the `mz_zip.h` API. Feature set under our defconfig: bzip2 + openssl (pkcrypt/wzaes) + lzma-via-xz + zlib + zstd; no iconv (locale on). |
+| minizip (`BR2_PACKAGE_MINIZIP`) | upstream Buildroot | `libminizip-ng.so.4` | `include/minizip-ng/` | `minizip-ng.pc` | This IS **minizip-ng 4.0.3** (zlib-ng/minizip-ng), NOT the classic zlib-contrib API (that is `BR2_PACKAGE_MINIZIP_ZLIB`, a separate package — see the row below). Buildroot forces `-DMZ_COMPAT=OFF`, so there is **no `zip.h`/`unzip.h` compat layer** — the native `mz_zip.h` API is retained for an eventual Main port. Feature set under our defconfig: bzip2 + openssl (pkcrypt/wzaes) + lzma-via-xz + zlib + zstd; no iconv (locale on). |
+| minizip-zlib (`BR2_PACKAGE_MINIZIP_ZLIB`) | upstream Buildroot | `libminizip.so.1` | `include/minizip/` | `minizip.pc` | The **classic zlib-contrib minizip** (zlib 1.3.1 `contrib/minizip`, autotools), `select`s zlib. **Enabled for backward compatibility**: the current Main_MiSTer shared-lib cleanup links `libminizip.so.1` (a `NEEDED` in the `MiSTer` binary) via the `zip.h`/`unzip.h` API (`zipOpen`/`unzOpen`), so the target must ship it. Coexists with minizip-ng — distinct SONAME (`.so.1` vs `-ng.so.4`) and non-overlapping symbols (`zipOpen`/`unzOpen` vs `mz_*`), so both load conflict-free. |
 | lzma-sdk (`BR2_PACKAGE_LZMA_SDK`) | BR2_EXTERNAL (`package/lzma-sdk`) | `liblzma-sdk.so.26.02` | `include/lzma-sdk/` (13 headers, Main's vendored `lib/lzma` set 1:1) | `lzma-sdk.pc` | 7-Zip LZMA SDK 26.02, built `-DZ7_ST` (single-threaded — same as Main's vendored build). **The SONAME is the full SDK version, deliberately**: upstream gives no ABI guarantees between releases and the API embeds caller-allocated structs (`CLzmaDec` by value), so a silent struct-layout change is memory corruption, not an error. A full-version SONAME turns every SDK bump into a *loud* ABI event — an old binary refuses to load with a clean linker error. That matters here because the `MiSTer` binary lives on `/media/fat` and **survives rootfs reflashes**; stale-binary-meets-new-rootfs is the expected failure mode. NOT xz-utils' `liblzma.so.5` — entirely different API. |
 | libchdr (`BR2_PACKAGE_LIBCHDR`) | BR2_EXTERNAL (`package/libchdr`) | `libchdr.so.0` (real file `libchdr.so.0.3`) | `include/libchdr/` | `libchdr.pc` | Commit-pinned past `v0.3.0` (the tag can't configure against Buildroot's zstd — no `Findzstd` pkg-config fallback yet). Built against **system zlib/zstd/lzma-sdk** via our patches 0001–0003; the header-only **dr_flac stays bundled** (header-only by design, and `libchdr_flac.c` pokes drflac internals — no `.so` exists to unbundle to). Exports **`chd_*` only** (upstream's version script `src/link.T`), so no `mz_*` or other symbol collision with minizip-ng et al. |
 
@@ -44,7 +45,7 @@ Mapping from Main's vendored `lib/` dirs to their replacements
 | `lib/lzma` | `lzma-sdk` (`liblzma-sdk.so.26.02`) | this workstream |
 | `lib/zstd` | `zstd` (`libzstd.so.1`) | this workstream |
 | `lib/libchdr` | `libchdr` (`libchdr.so.0`) | this workstream |
-| `lib/miniz` | port to zlib + minizip-ng (`libminizip-ng.so.4`; `mz_zip_*` call sites → `mz_zip.h` API, no compat shim) | this workstream |
+| `lib/miniz` | port to zlib + classic minizip (`libminizip.so.1`, `zip.h`/`unzip.h` API) for backward compatibility; minizip-ng (`libminizip-ng.so.4`) stays available for a future native-`mz_zip.h` port | this workstream |
 | `lib/bluetooth` | `bluez5_utils` (`libbluetooth.so.3`) | already shipped |
 | `lib/imlib2` | `imlib2` (`libImlib2.so.1`) | already shipped |
 | `lib/md5` | OpenSSL `libcrypto` — or keep static (tiny) | Main-side call |

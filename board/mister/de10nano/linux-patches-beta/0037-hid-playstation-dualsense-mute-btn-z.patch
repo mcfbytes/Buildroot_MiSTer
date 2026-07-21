@@ -1,0 +1,162 @@
+From 60e08955fe23c2a1d57834f7dc31860395542e4a Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 10 Jul 2021 16:39:05 +0800
+Subject: [PATCH 1/1] hid-playstation: dualsense mic-mute as BTN_Z + userspace mute LED
+
+Vanilla handles the DualSense mic-mute button entirely in-kernel: a
+press toggles the hardware microphone and mute LED, invisible to
+userspace. Stock MiSTer instead reports the button as BTN_Z -- giving
+the controller one extra mappable input -- and exposes the mute LED as
+a writable "<hid-dev>:mute" LED class device so userspace owns it. The
+in-kernel toggle is removed (nothing on MiSTer records from the
+controller microphone).
+
+Provenance
+----------
+Origin:       60e08955fe23c2a1d57834f7dc31860395542e4a
+              "dualsense: give mute button and led to system."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-07-10, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/60e08955fe23c2a1d57834f7dc31860395542e4a
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No. v6.18.38 still toggles the mic in-kernel
+              (hid-playstation.c: last_btn_mic_state) with no BTN_Z and no
+              writable mute LED. patch-provenance.md's original Class-C
+              "drop" grouping for this commit was the canary
+              misclassification that motivated the full reconciliation
+              (docs/kernel-recon, sonnet-verified).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
+              reconciliation carry decision. BTN_Z capability is declared
+              per-device via input_set_capability() instead of editing the
+              ps_gamepad_buttons[] table, which 6.18 shares with
+              DualShock 4 (the fork's 5.15 table was DualSense-only).
+              Mute-LED handler uses 6.18's scoped_guard locking and
+              dualsense_schedule_work().
+[re-anchored for the 7.x beta series: 7.x added the DualSense Edge
+ back-paddle/Fn block (BTN_TRIGGER_HAPPY1-4) in two places the 6.18
+ original anchored against, breaking hunks 3 and 5 at Buildroot's
+ patch -F0. In dualsense_parse_report() the Edge reports now sit
+ between the BTN_MODE report and input_sync(), and in
+ dualsense_create() the matching input_set_capability() block sits
+ between ps_gamepad_create()'s error check and the "Use gamepad input
+ device name" comment. Diff regenerated against 7.2-rc4; added lines
+ are byte-identical to the 6.18 original in
+ ../linux-patches/0037-hid-playstation-dualsense-mute-btn-z.patch --
+ keep the two in lockstep when editing either. No API divergence
+ beyond context: the BTN_Z report is placed after the Edge block so it
+ still lands in the same input_sync() batch, and the BTN_Z capability
+ is declared before the Edge paddles (set order is irrelevant to the
+ resulting EV_KEY bitmap).
+
+ NOT cosmetic, despite the note this patch previously carried: BTN_Z is
+ 0x135, between BTN_WEST (0x134) and BTN_TL (0x136), so declaring it
+ shifts every higher gamepad button up one index in the EV_KEY
+ capability bitmap. Main_MiSTer derives SDL-style bN indices by walking
+ that bitmap (Main:gamecontroller_db.cpp:get_ctrl_index_maps), and the
+ shipped gamecontrollerdb.txt "platform:MiSTer" PS5 rows are written
+ for the BTN_Z-present layout (guide:b11, leftshoulder:b5, back:b9,
+ start:b10). Without this patch those rows resolve one button low --
+ PS/Home acts as Start and L3 opens the OSD.]
+---
+--- a/drivers/hid/hid-playstation.c
++++ b/drivers/hid/hid-playstation.c
+@@ -220,7 +220,7 @@
+ 	/* Microphone */
+ 	bool update_mic_mute;
+ 	bool mic_muted;
+-	bool last_btn_mic_state;
++	struct led_classdev mute_led;
+ 
+ 	/* Player leds */
+ 	bool update_player_leds;
+@@ -1413,7 +1413,6 @@
+ 	u8 battery_data, battery_capacity, charging_status, value;
+ 	int battery_status;
+ 	u32 sensor_timestamp;
+-	bool btn_mic_state;
+ 	int i;
+ 
+ 	/*
+@@ -1478,24 +1477,14 @@
+ 				 ds_report->buttons[2] & DS_EDGE_BUTTONS_RIGHT_PADDLE);
+ 	}
+ 
+-	input_sync(ds->gamepad);
+-
+ 	/*
+-	 * The DualSense has an internal microphone, which can be muted through a mute button
+-	 * on the device. The driver is expected to read the button state and program the device
+-	 * to mute/unmute audio at the hardware level.
++	 * Stock MiSTer reports the mic-mute button to userspace as BTN_Z
++	 * (an extra mappable button) instead of toggling the microphone
++	 * in-kernel; the mute LED is owned by userspace via the ":mute"
++	 * LED class device registered in dualsense_create().
+ 	 */
+-	btn_mic_state = !!(ds_report->buttons[2] & DS_BUTTONS2_MIC_MUTE);
+-	if (btn_mic_state && !ds->last_btn_mic_state) {
+-		scoped_guard(spinlock_irqsave, &ps_dev->lock) {
+-			ds->update_mic_mute = true;
+-			ds->mic_muted = !ds->mic_muted; /* toggle */
+-		}
+-
+-		/* Schedule updating of microphone state at hardware level. */
+-		dualsense_schedule_work(ds);
+-	}
+-	ds->last_btn_mic_state = btn_mic_state;
++	input_report_key(ds->gamepad, BTN_Z, ds_report->buttons[2] & DS_BUTTONS2_MIC_MUTE);
++	input_sync(ds->gamepad);
+ 
+ 	/*
+ 	 * Parse HP/MIC plugged state data for USB use case, since Bluetooth
+@@ -1720,6 +1709,20 @@
+ 	return 0;
+ }
+ 
++static int dualsense_mute_led_set_brightness(struct led_classdev *led,
++					     enum led_brightness brightness)
++{
++	struct hid_device *hdev = to_hid_device(led->dev->parent);
++	struct dualsense *ds = hid_get_drvdata(hdev);
++
++	scoped_guard(spinlock_irqsave, &ds->base.lock) {
++		ds->update_mic_mute = true;
++		ds->mic_muted = !!brightness;
++	}
++	dualsense_schedule_work(ds);
++	return 0;
++}
++
+ static struct ps_device *dualsense_create(struct hid_device *hdev)
+ {
+ 	struct dualsense *ds;
+@@ -1798,6 +1801,9 @@
+ 		goto err;
+ 	}
+ 
++	/* Extra mappable button: mic-mute reported as BTN_Z (stock MiSTer). */
++	input_set_capability(ds->gamepad, EV_KEY, BTN_Z);
++
+ 	/* Register DualSense Edge back paddle and Fn buttons. */
+ 	if (ds->is_edge) {
+ 		input_set_capability(ds->gamepad, EV_KEY, BTN_TRIGGER_HAPPY1);
+@@ -1870,6 +1876,21 @@
+ 	if (ret)
+ 		goto err;
+ 
++	/* Mute button LED, owned by userspace like on stock MiSTer. */
++	ds->mute_led.name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s:mute",
++					   dev_name(&hdev->dev));
++	if (!ds->mute_led.name) {
++		ret = -ENOMEM;
++		goto err;
++	}
++	ds->mute_led.brightness = 0;
++	ds->mute_led.max_brightness = 1;
++	ds->mute_led.brightness_set_blocking = dualsense_mute_led_set_brightness;
++	ds->mute_led.flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
++	ret = devm_led_classdev_register(&hdev->dev, &ds->mute_led);
++	if (ret)
++		goto err;
++
+ 	ret = ps_device_set_player_id(ps_dev);
+ 	if (ret) {
+ 		hid_err(hdev, "Failed to assign player id for DualSense: %d\n", ret);

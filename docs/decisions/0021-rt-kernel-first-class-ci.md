@@ -95,6 +95,20 @@ channel, not a CI wiring detail, and it stays open until the variant has hardwar
 validation behind it. `publish-db.yml` selects assets by the `^release_[0-9]+\.7z$`
 regex, so the RT assets cannot leak into db.json by accident in the meantime.
 
+> **Amendment 2026-07-20 — the stated precondition is now met; the decision is not
+> thereby made.** 7.2-rc4 boots and runs MiSTer on real hardware
+> (docs/rt-beta-kernel.md §6), so "a kernel that has never booted on hardware" no
+> longer describes the RT variant and can no longer be cited as the reason this
+> question is closed-by-default. **This section stays OPEN regardless**: it was
+> always framed as a human decision about the update channel, and one board booting
+> is not the same as the fleet-wide validation that pushing RT bytes to every
+> Downloader-subscribed device would warrant. Two things argue for continued
+> caution rather than less: the boot is `n=1` on the maintainer's own board, and the
+> first thing hardware use surfaced was a real user-visible regression (the `0037`
+> DualSense button-map shift, §7 TODO #3). The vsync/IRQ-40 latency measurement that
+> motivates the whole variant is also still untaken. Revisit deliberately, not as a
+> side effect of this amendment.
+
 ## Consequences
 
 - Every gated CI run proves `make rt` still builds, `check-abi.sh` still passes on

@@ -1,0 +1,58 @@
+From 71c583074f14a637012b7cd66cc4a8cac2b1220c Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Tue, 9 Jan 2018 11:06:11 +0800
+Subject: [PATCH 1/1] i2c-designware: quiet the controller-timeout message
+
+Most DE10-Nano boards don't have the optional RTC add-on fitted on
+the i2c-gpio bus (see 0004-dts-de10nano-MiSTer.patch's rtc_at_51/68/6F
+child nodes), so every boot logs a dev_err "controller timed out" from
+the bit-banged i2c-designware-master.c bus scan. Downgrade it to
+dev_dbg -- cosmetic, silences boot spam with no add-on board fitted.
+
+Provenance
+----------
+Origin:       71c583074f14a637012b7cd66cc4a8cac2b1220c
+              "Disable RTC error messages." (i2c-designware-master.c half
+              only -- the accompanying rtc-m41t80.c hunk is upstream via
+              c7622a4e44d9 "rtc: m41t80: reduce verbosity", 2025-05-26,
+              and is not carried here.)
+              MiSTer-devel/Linux-Kernel_MiSTer, 2018-01-09, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/71c583074f14a637012b7cd66cc4a8cac2b1220c
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, i2c-designware-master.c half only (verified: the
+              "controller timed out" dev_err is still present at its new
+              call site, see below). Disposition "carry"
+              (docs/patch-provenance.md class F-5).
+Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
+              i2c_dw_xfer() was refactored upstream into a small
+              i2c_dw_wait_transfer() helper plus a caller that checks its
+              return value; the same dev_err -> dev_dbg change is applied
+              at the new call site (i2c_dw_xfer(), around the
+              i2c_dw_wait_transfer() call), preserving the original's
+              intent exactly.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+[re-anchored for the 7.x beta series: 7.x renamed i2c_dw_init_master() to
+ i2c_dw_init(), which appears in both the trailing comment and the call
+ immediately after the changed line, so the 6.18 hunk's after-context no
+ longer matches at Buildroot's patch -F0. Diff regenerated against
+ 7.2-rc4; the changed line itself is byte-identical to the 6.18 original
+ in ../linux-patches/0030-i2c-designware-quiet-timeout.patch -- keep the
+ two in lockstep when editing either. No API divergence beyond context:
+ the dev_err -> dev_dbg substitution and its comment are unchanged, and
+ the call site is the same i2c_dw_wait_transfer() failure path.]
+
+---
+diff --git a/drivers/i2c/busses/i2c-designware-master.c b/drivers/i2c/busses/i2c-designware-master.c
+--- a/drivers/i2c/busses/i2c-designware-master.c
++++ b/drivers/i2c/busses/i2c-designware-master.c
+@@ -771,7 +771,8 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
+ 	/* Wait for tx to complete */
+ 	ret = i2c_dw_wait_transfer(dev);
+ 	if (ret) {
+-		dev_err(dev->dev, "controller timed out\n");
++		/* MiSTer: cosmetic -- silence boot spam when no RTC add-on is fitted */
++		dev_dbg(dev->dev, "controller timed out\n");
+ 		/* i2c_dw_init() implicitly disables the adapter */
+ 		i2c_recover_bus(&dev->adapter);
+ 		i2c_dw_init(dev);

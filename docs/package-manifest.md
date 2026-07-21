@@ -846,6 +846,16 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 #   rtorrent / libtorrent            -- unused BitTorrent client, SONAME already drifted
 ```
 
+> ⚠ **This list is deliberately not identical to the live defconfig.**
+> `configs/mister_de10nano_defconfig` currently also carries a `>>> DEBUG
+> TOOLING <<<` block — gdb (+ gdbserver + full debugger), strace, perf and
+> rt-tests — which is **temporary and out of scope for this manifest**: it is
+> not stock parity and never claimed to be. Do **not** reconcile the two by
+> adding those symbols here, and do **not** "fix" the defconfig by deleting the
+> block. See `docs/debug-tooling.md`; it goes away as one unit when the field
+> hard-hang and RT-latency investigations close, at which point the two agree
+> again.
+
 ---
 
 ## Summary for the report

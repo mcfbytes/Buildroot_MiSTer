@@ -175,13 +175,34 @@ defaults, so out of the box:
 * `ulimit -c` is `0` — raise it (`ulimit -c unlimited`) in the shell or init
   script that launches the process you want to dump;
 * `/proc/sys/kernel/core_pattern` is `core`, i.e. a file named `core` in the
-  process's CWD. For `MiSTer_Main` that is `/media/fat`, which is the FAT data
-  partition and survives a rootfs reflash — convenient, but note FAT has no
-  sparse files and a core of the MiSTer process is tens of MB.
+  **process's CWD** — and for the MiSTer binary that CWD is **`/`, not
+  `/media/fat`**. It is launched from `/etc/inittab` as
 
-Neither is changed by this branch. If a future investigation wants cores
-collected automatically, that is a `rootfs-overlay` sysctl change and should get
-its own commit — and its own entry in this document.
+  ```
+  ::sysinit:/media/fat/MiSTer &
+  ```
+
+  and BusyBox `init` runs with `/` as its working directory; the child inherits
+  it, and `Main_MiSTer` never calls `chdir()` (checked — there is no `chdir` in
+  its sources). So an unconfigured core lands in the **root of the loop-mounted
+  512 MiB rootfs**: it is wiped by the next reflash, it eats the free space
+  `scripts/check-size-budget.sh` guards, and a core of a process this size can be
+  tens of MB.
+
+  That makes redirecting `core_pattern` close to mandatory in practice rather
+  than a nicety. The device-side one-liner, no rebuild needed:
+
+  ```sh
+  echo '/media/fat/core.%e.%p' > /proc/sys/kernel/core_pattern
+  ```
+
+  `/media/fat` is the FAT data partition, so it survives a rootfs reflash — but
+  FAT has no sparse files, so the core is written at full size.
+
+Neither knob is changed by this branch: both are runtime state, and persisting
+them is a `rootfs-overlay` sysctl/init change that deserves its own commit — and
+its own entry in this document — rather than riding along in a package-selection
+one.
 
 ---
 
@@ -198,7 +219,7 @@ is a decision on the record rather than an oversight:
 | `BR2_PACKAGE_LINUX_TOOLS_PERF_TUI` | perf's interactive TUI (`slang` is already `=y`, so this is nearly free). | Not requested. |
 | `BR2_PACKAGE_GDB_PYTHON` / `_TUI` | Python scripting / split-window gdb on the device. | Not requested; on-device weight. |
 | `BR2_PACKAGE_LINUX_TOOLS_RTLA` | osnoise / timerlat tracers, complementing cyclictest. | Not requested; pulls in `libtracefs`. |
-| `CONFIG_DEBUG_INFO` in the kernel | kernel-symbol-accurate profiling and `crash`-style analysis. | Enormous (`vmlinux` grows by an order of magnitude) and the kernel is size-constrained by the `mem=511M` cap and the FAT partition. |
+| `CONFIG_DEBUG_INFO` in the kernel | DWARF for the kernel: `perf` annotation against kernel source, `crash`-style analysis. | Enormous, and the cost lands in the **rootfs**, not where you would guess: `zImage` is unaffected (it is objcopy'd from a stripped `vmlinux`), but every shipped `.ko` grows by roughly an order of magnitude, and those live in `linux.img` under the §6 free-space budget. |
 
 ---
 
@@ -241,8 +262,12 @@ is a decision on the record rather than an oversight:
    line back to "Nine changes. Every one is deliberate; every one is cited."
    (D10 is the only temporary row in that table; it is flagged ⚠ so it cannot be
    mistaken for a permanent divergence.)
-4. Delete this file, and its entry in `README.md`.
-5. Rebuild:
+4. Drop the "⚠ This list is deliberately not identical to the live defconfig"
+   note from `docs/package-manifest.md` (it sits directly under the
+   ready-to-paste `BR2_PACKAGE_*` list). Once the block is gone the manifest and
+   the defconfig agree again, which is exactly what that note says.
+5. Delete this file, and its entry in `README.md`.
+6. Rebuild:
 
    ```sh
    make mister_de10nano_defconfig    # re-resolve output/.config from the defconfig
@@ -256,10 +281,10 @@ is a decision on the record rather than an oversight:
    `rm -rf output/target && make all` is the cheap belt-and-braces version (it
    rebuilds no packages, only re-installs them).
 
-Verify with **both** greps — the first catches the two config blocks, the second
-catches the documentation residue (the D10 row and the README entry name the
-file, not the banner, so the first grep alone would pass with them still in
-place):
+Verify with **both** greps. The first catches the two config blocks; the second
+catches the documentation residue (the D10 row, the manifest note and the README
+entry all name the *file*, not the banner, so the first grep alone would pass
+with every one of them still in place):
 
 ```sh
 grep -rn "DEBUG TOOLING"  configs/ board/          # must return nothing

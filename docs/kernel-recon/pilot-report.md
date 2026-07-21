@@ -46,7 +46,7 @@ rows that grouped commits or asserted upstream coverage without verification.
    > `BTN_Z` is `0x135`, between `BTN_WEST` (`0x134`) and `BTN_TL` (`0x136`), so declaring it
    > inserts an index into the `EV_KEY` capability bitmap and shifts every button from L1 up
    > by one. Main_MiSTer derives SDL-style `bN` indices by walking that bitmap
-   > (`gamecontroller_db.c:get_ctrl_index_maps`), and the shipped `gamecontrollerdb.txt`
+   > (`Main:gamecontroller_db.cpp:get_ctrl_index_maps`), and the shipped `gamecontrollerdb.txt`
    > `platform:MiSTer` PS5 rows are written for the BTN_Z-present layout (`guide:b11`,
    > `leftshoulder:b5`, `back:b9`, `start:b10`) vs upstream `platform:Linux` (`guide:b10`,
    > `leftshoulder:b4`, …) — an exact +1 offset that exists *because of* this patch.

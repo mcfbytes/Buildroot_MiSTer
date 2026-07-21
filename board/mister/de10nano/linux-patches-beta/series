@@ -3,7 +3,7 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: NONE. The beta series now carries all 30
+# Excluded vs the 6.18 set: NONE. The beta series now carries all 31
 # patches, so the 7.x kernel and the 6.18 kernel diverge only where an
 # upstream API forced a re-anchor — never by dropping a MiSTer change.
 # Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor

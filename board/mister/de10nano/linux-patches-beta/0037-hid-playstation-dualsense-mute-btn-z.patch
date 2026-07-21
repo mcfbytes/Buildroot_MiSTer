@@ -51,11 +51,11 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
  0x135, between BTN_WEST (0x134) and BTN_TL (0x136), so declaring it
  shifts every higher gamepad button up one index in the EV_KEY
  capability bitmap. Main_MiSTer derives SDL-style bN indices by walking
- that bitmap (gamecontroller_db.c:get_ctrl_index_maps), and the shipped
- gamecontrollerdb.txt "platform:MiSTer" PS5 rows are written for the
- BTN_Z-present layout (guide:b11, leftshoulder:b5, back:b9, start:b10).
- Without this patch those rows resolve one button low -- PS/Home acts
- as Start and L3 opens the OSD.]
+ that bitmap (Main:gamecontroller_db.cpp:get_ctrl_index_maps), and the
+ shipped gamecontrollerdb.txt "platform:MiSTer" PS5 rows are written
+ for the BTN_Z-present layout (guide:b11, leftshoulder:b5, back:b9,
+ start:b10). Without this patch those rows resolve one button low --
+ PS/Home acts as Start and L3 opens the OSD.]
 ---
 --- a/drivers/hid/hid-playstation.c
 +++ b/drivers/hid/hid-playstation.c

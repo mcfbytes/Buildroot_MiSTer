@@ -199,7 +199,7 @@ installer's FAT payload as well, and deliberately NOT inside
    `BTN_Z` (`0x135`) sits between `BTN_WEST` and `BTN_TL`, so declaring it
    shifts every higher gamepad button one index up in the `EV_KEY` capability
    bitmap. Main_MiSTer resolves gamecontrollerdb's SDL-style `bN` indices off
-   that bitmap (`gamecontroller_db.c:get_ctrl_index_maps`), and the shipped
+   that bitmap (`Main:gamecontroller_db.cpp:get_ctrl_index_maps`), and the shipped
    `gamecontrollerdb.txt` `platform:MiSTer` PS5 rows encode the BTN_Z-present
    layout (`guide:b11`, `leftshoulder:b5`, `back:b9`, `start:b10`). Omitting
    the patch slid the whole DualSense map by one: PS/Home acted as Start and

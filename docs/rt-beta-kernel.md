@@ -174,23 +174,28 @@ installer's FAT payload as well, and deliberately NOT inside
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ **after a real fix (2026-07-18)**: the earlier full-config test masked a minimal-config trap — 7.x turned the HID drivers' LED `select`s into `depends on`, so `olddefconfig` silently dropped `NEW_LEDS`/`LEDS_CLASS` **and with them the whole HID controller stack** (`HID_PLAYSTATION`/`HID_NINTENDO` vanished from the config, no error). Fixed by making the LED foundation explicit in `linux.config` (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS`, no-ops on 6.18); all 19 critical symbols re-audited present |
-| 29/31 *carried* patches apply to 7.2-rc4 at Buildroot's `patch -F0` (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ re-verified on the rc3 → rc4 bump (2026-07-20) through Buildroot's own `apply-patches.sh`: 29/29 applied, exit 0, zero hunks taking fuzz (offsets shift, which `-F0` permits). Originally verified on rc3 through the real `linux-patch` stage (0015 + 0031 re-anchored; the old "28/31" figure was measured at `patch`'s default fuzz 2, which Buildroot forbids, and wrongly counted 0015 as upstreamed) |
+| **31/31** *carried* patches apply to 7.2-rc4 at Buildroot's `patch -F0` (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ **complete as of 2026-07-20** — the beta series no longer drops anything. `0037` and `0030` were re-anchored and added (five beta-local copies now: 0001, 0015, 0030, 0031, 0037), so the 7.x kernel diverges from the 6.18 kernel only where an upstream API forced a re-anchor, never by omission. Verified through Buildroot's own `apply-patches.sh` against a pristine 7.2-rc4 tarball: 31/31 applied, exit 0, zero hunks taking fuzz (offsets shift, which `-F0` permits). Earlier figures on this row (29/29, and before that a bogus "28/31" measured at `patch`'s default fuzz 2, which Buildroot forbids) predate those two re-anchors |
 | `xone` compiles on 7.2 | ✅ verified (not shipped by the kernel-only variant — §4) |
 | **The RT kernel compiles and links** | ✅ verified 2026-07-18: local cross-build of the patched 7.2-rc3 tree (`CONFIG_PREEMPT_RT=y`) — zImage 8.57 MiB + DTB + 70 modules, zero errors. Two 7.x API ports were needed and live in beta-local patch copies — the shared 6.18 patches stay byte-identical to stock: `fbcon_update_vcs()`'s header moved into fbdev core (beta 0001, one-line include delta), and `exfat_remove_entries()` grew a `free_benign` arg (beta 0031). (Local build without the embedded initramfs cpio — CI's zImage will be larger.) **Not re-run locally for the rc3 → rc4 bump (2026-07-20)**: that bump re-verified patch application only, so the compile/link claim for the currently pinned rc4 rests on CI's kernel leg, not on a local build. |
-| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ⏳ wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended); **first green run pending** |
+| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ✅ **verified locally 2026-07-20** on the pinned rc4 with the complete 31-patch series: exit 0, `zImage_dtb` 9401461 bytes (7375755 bytes of headroom under the 16 MiB U-Boot budget), all `check-zimage-dtb.sh` assertions pass, modules staged into the extra-modules overlay. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) |
 | **Module-tree merge into the one linux.img** | ⏳ wired (extra-modules overlay + CI merge assert); **first green run pending** |
-| **RT kernel boots on the DE10-Nano** | ❌ **unproven** |
-| **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) |
+| **RT kernel boots on the DE10-Nano** | ✅ **CONFIRMED 2026-07-20** — 7.2-rc4 boots and runs MiSTer on real hardware. This retires the single biggest open risk on the RT variant. It is also how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3) |
+| **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) — boot and general operation are confirmed, but the latency measurement that motivates RT has not been taken |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
 ## 7. TODO before this is more than a scaffold
 
-1. Run `make rt` and fix whatever the first real 7.2 build surfaces.
-2. Boot `zImage_dtb-rt` on hardware; confirm menu, video/audio/input, and that
-   MiSTer_fb's IRQ-40 vsync still meets the 50 ms deadline under RT's threaded
-   IRQs (expected to *tighten* pacing — measure it).
-3. ~~Optionally re-anchor patches `0030` and `0037` to 7.x~~ **`0037` done
-   2026-07-20** — and it was never optional. It was dropped as "cosmetic", but
+1. ~~Run `make rt` and fix whatever the first real 7.2 build surfaces.~~
+   **Done 2026-07-20** — green on the pinned rc4 with the complete 31-patch
+   series (§6).
+2. ~~Boot `zImage_dtb-rt` on hardware; confirm menu, video/audio/input~~
+   **Done 2026-07-20: it boots and runs MiSTer.** Still open, and the actual
+   point of the exercise: confirm MiSTer_fb's IRQ-40 vsync still meets the
+   50 ms deadline under RT's threaded IRQs (expected to *tighten* pacing —
+   measure it).
+3. ~~Optionally re-anchor patches `0030` and `0037` to 7.x~~ **Both done
+   2026-07-20; the beta series now drops nothing.** `0037` was never optional.
+   It was dropped as "cosmetic", but
    `BTN_Z` (`0x135`) sits between `BTN_WEST` and `BTN_TL`, so declaring it
    shifts every higher gamepad button one index up in the `EV_KEY` capability
    bitmap. Main_MiSTer resolves gamecontrollerdb's SDL-style `bN` indices off
@@ -198,12 +203,16 @@ installer's FAT payload as well, and deliberately NOT inside
    `gamecontrollerdb.txt` `platform:MiSTer` PS5 rows encode the BTN_Z-present
    layout (`guide:b11`, `leftshoulder:b5`, `back:b9`, `start:b10`). Omitting
    the patch slid the whole DualSense map by one: PS/Home acted as Start and
-   L3 opened the OSD. Re-anchored copy now lives in `linux-patches-beta/`.
-   `0030` remains omitted and is genuinely cosmetic (one `dev_err`→`dev_dbg`
-   in `i2c-designware-master.c`; no input capability, no userspace interface).
+   L3 opened the OSD. `0030` (one `dev_err`→`dev_dbg` in
+   `i2c-designware-master.c`) genuinely is cosmetic, but was re-anchored and
+   added too: a series that drops nothing is far easier to reason about and to
+   defend upstream than one that drops "only the harmless ones", and the
+   `0037` episode is the standing evidence that we cannot always tell which
+   those are. Both re-anchored copies now live in `linux-patches-beta/`.
    **Rule this established:** any patch that adds or removes an `EV_KEY`/
    `EV_ABS` capability is load-bearing for every SDL-style index map — never
-   classify one as cosmetic on a symbol grep alone.
+   classify one as cosmetic on a symbol grep alone. Default to re-anchoring
+   rather than dropping.
 4. ~~Wire `zImage_dtb-rt` into `release.yml`~~ **Done (ADR 0021, amended
    2026-07-18):** the RT kernel ships as separate first-class release assets
    and its modules ride inside the one `linux.img` (§5). Still OPEN: whether

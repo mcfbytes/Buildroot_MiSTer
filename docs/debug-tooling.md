@@ -11,9 +11,19 @@
 
 ## 1. What was added
 
-Two edits, each wrapped in a matching `>>> DEBUG TOOLING <<<` / `>>> END DEBUG
-TOOLING <<<` banner pair so both can be found with one grep and deleted with one
-editor motion:
+Two edits, each wrapped in a matching banner pair so both can be found with one
+grep and deleted with one editor motion. The banners are, verbatim:
+
+```
+# >>> DEBUG TOOLING — TEMPORARY, REMOVE AS ONE BLOCK <<<
+...
+# >>> END DEBUG TOOLING <<<
+```
+
+(the opening banner in `linux.config` additionally carries a
+`(docs/debug-tooling.md)` suffix). Because the opening and closing banners are
+*not* mirror images, always search for the substring both share — never for a
+full banner line:
 
 ```
 $ grep -rn "DEBUG TOOLING" configs/ board/
@@ -302,8 +312,11 @@ is a decision on the record rather than an oversight:
 
 ## 5. How to revert
 
-1. Delete the `>>> DEBUG TOOLING <<<` … `>>> END DEBUG TOOLING <<<` block from
-   `configs/mister_de10nano_defconfig`.
+1. Delete the whole `DEBUG TOOLING` block from
+   `configs/mister_de10nano_defconfig` — opening banner (`>>> DEBUG TOOLING —
+   TEMPORARY, REMOVE AS ONE BLOCK <<<`) through closing banner
+   (`>>> END DEBUG TOOLING <<<`), inclusive. See §1 for why the two banner lines
+   are not mirror images.
 2. In `board/mister/de10nano/linux.config`, replace the corresponding block with
    the single original line:
 
@@ -314,10 +327,14 @@ is a decision on the record rather than an oversight:
    line back to "Nine changes. Every one is deliberate; every one is cited."
    (D10 is the only temporary row in that table; it is flagged ⚠ so it cannot be
    mistaken for a permanent divergence.)
-4. Drop the "⚠ This list is deliberately not identical to the live defconfig"
-   note from `docs/package-manifest.md` (it sits directly under the
-   ready-to-paste `BR2_PACKAGE_*` list). Once the block is gone the manifest and
-   the defconfig agree again, which is exactly what that note says.
+4. `docs/package-manifest.md`, **two places**:
+   * drop the "⚠ This list is deliberately not identical to the live defconfig"
+     note directly under the ready-to-paste `BR2_PACKAGE_*` list — once the block
+     is gone the manifest and the defconfig agree again, which is what that note
+     says;
+   * in the §5 Drop-list table, restore the `vim, zsh, joe, mc, screen, gdb` row
+     to listing `gdb` among the tools that "remain **off**", and delete the
+     `gdb is no longer off` sentence appended to it.
 5. Delete this file, and its entry in `README.md`.
 6. Rebuild:
 

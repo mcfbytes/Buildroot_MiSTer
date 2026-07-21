@@ -924,9 +924,15 @@ BR2_PACKAGE_KMOD_TOOLS=y                  # TARGET kmod: installs depmod/insmod/
 # must be listed explicitly or enabling the full debugger would silently DROP
 # gdbserver. Setting it is not redundant.
 #
-# GDB_DEBUGGER pulls in BR2_PACKAGE_{GMP,MPFR,READLINE,ZLIB} by select. GMP,
-# readline and zlib are already =y above; MPFR is new and arrives transitively
-# (do not add it here — it would outlive this block's deletion).
+# GDB_DEBUGGER pulls in BR2_PACKAGE_{GMP,MPFR,READLINE,ZLIB} by select. Three of
+# the four are already on and stay on after this block is deleted, but for TWO
+# different reasons, worth keeping straight:
+#   - readline and zlib are set EXPLICITLY in this file (:504, :295-296);
+#   - GMP is NOT set here at all — it arrives transitively via gnutls/gcrypt
+#     (see the crypto/TLS note at :424, which says do not set it separately).
+# Only MPFR is genuinely new, and it too arrives transitively rather than being
+# listed here — do NOT add a line for it, or it would outlive this block's
+# deletion, which is the one thing this arrangement exists to prevent.
 # BR2_USE_WCHAR=y is a GDB_DEBUGGER dependency and is already satisfied
 # (glibc + BR2_ENABLE_LOCALE).
 # GDB_TUI / GDB_PYTHON are deliberately NOT enabled: neither was requested and

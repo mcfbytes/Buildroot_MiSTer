@@ -3,15 +3,15 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set (2), verified against 7.2-rc4:
+# Excluded vs the 6.18 set (1), verified against 7.2-rc4:
 #   0030-i2c-designware-quiet-timeout   — trivial 1-line re-anchor pending
-#     (dev_err->dev_dbg). Cosmetic; omitted on beta.
-#   0037-hid-playstation-dualsense-mute-btn-z — genuine MiSTer divergence
-#     (mute btn -> BTN_Z); ~30-min 7.x re-anchor pending. Omitted for now.
+#     (dev_err->dev_dbg). Cosmetic; omitted on beta. Touches no input
+#     capability and no userspace-visible interface — safe to omit (see
+#     the 0037 note below for what "cosmetic" has to mean to qualify).
 #
-# NOT-symlink exceptions: three entries are REAL FILES re-anchored for 7.x —
+# NOT-symlink exceptions: four entries are REAL FILES re-anchored for 7.x —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
-# Buildroot applies patches with `patch -F0` (fuzz zero), and these three
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these four
 # needed either re-anchored context or a real 7.x API/header delta. Keep
 # each in lockstep with its ../linux-patches/ original (every copy carries
 # a bracketed re-anchor note):
@@ -26,6 +26,19 @@
 #   0031-exfat-samsung-symlinks         — exfat_file_inode_operations
 #     gained .fileattr_get upstream, breaking the append-context of the
 #     symlink ops hunk at -F0.
+#   0037-hid-playstation-dualsense-mute-btn-z — 7.x added the DualSense
+#     Edge back-paddle/Fn blocks at both sites this patch anchors on
+#     (parse_report and dualsense_create), breaking hunks 3 and 5 at -F0.
+#     Previously omitted here as "cosmetic"; that was WRONG. BTN_Z (0x135)
+#     sits between BTN_WEST and BTN_TL, so declaring it shifts every higher
+#     gamepad button one index up in the EV_KEY bitmap — and Main_MiSTer
+#     resolves gamecontrollerdb's SDL-style bN indices off that bitmap.
+#     The shipped gamecontrollerdb.txt "platform:MiSTer" PS5 rows encode
+#     the BTN_Z-present layout (guide:b11), so omitting this patch silently
+#     slides the whole DualSense map by one: PS/Home acts as Start, L3
+#     opens the OSD. Any patch adding/removing an EV_KEY or EV_ABS
+#     capability is load-bearing for those index maps — never classify one
+#     as cosmetic on a symbol grep alone.
 #
 0001-fbdev-add-MiSTer_fb-driver.patch
 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
@@ -56,3 +69,4 @@
 0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch
 0035-hid-nintendo-home-led-nonfatal.patch
 0036-btusb-csr-clone-lmp-subver-2512.patch
+0037-hid-playstation-dualsense-mute-btn-z.patch

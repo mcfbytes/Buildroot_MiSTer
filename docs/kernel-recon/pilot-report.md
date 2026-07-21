@@ -40,6 +40,22 @@ rows that grouped commits or asserted upstream coverage without verification.
    handles mute kernel-internally — no BTN_Z, no `:mute` classdev). However exhaustive grep
    found **no shipped Main_MiSTer consumer** of BTN_Z/`:mute` → severity is cosmetic today;
    it remains a carry-decision item, and the community framing should say exactly that.
+
+   > **CORRECTION (2026-07-20): the "cosmetic, no consumer" call above was WRONG.** The grep
+   > looked for a BTN_Z *symbol* consumer; the coupling is **positional, not by name**.
+   > `BTN_Z` is `0x135`, between `BTN_WEST` (`0x134`) and `BTN_TL` (`0x136`), so declaring it
+   > inserts an index into the `EV_KEY` capability bitmap and shifts every button from L1 up
+   > by one. Main_MiSTer derives SDL-style `bN` indices by walking that bitmap
+   > (`gamecontroller_db.c:get_ctrl_index_maps`), and the shipped `gamecontrollerdb.txt`
+   > `platform:MiSTer` PS5 rows are written for the BTN_Z-present layout (`guide:b11`,
+   > `leftshoulder:b5`, `back:b9`, `start:b10`) vs upstream `platform:Linux` (`guide:b10`,
+   > `leftshoulder:b4`, …) — an exact +1 offset that exists *because of* this patch.
+   > Caught in the field on the 7.2-rc4 RT beta, whose series omitted `0037`: PS/Home acted
+   > as Start and L3 opened the OSD. **Methodology fix:** a patch that adds or removes an
+   > `EV_KEY`/`EV_ABS` capability is load-bearing for every SDL-style index map. Symbol greps
+   > cannot establish "no consumer" for capability changes — check `gamecontrollerdb.txt`
+   > `platform:MiSTer` rows instead. (Saved `input_<vid><pid>_v3.map` files store raw evdev
+   > codes and are immune; only the gcdb auto-map path is affected.)
 3. **Live config drift: `f0fb626ac` macvlan.** Stock enabled `CONFIG_MACVLAN=y` on 2026-07-08
    — after our stock-inventory snapshot was taken — and our `linux.config` has no MACVLAN line.
    Decision required (enable for stock-next parity or document a deliberate drop). Process

@@ -189,8 +189,21 @@ installer's FAT payload as well, and deliberately NOT inside
 2. Boot `zImage_dtb-rt` on hardware; confirm menu, video/audio/input, and that
    MiSTer_fb's IRQ-40 vsync still meets the 50 ms deadline under RT's threaded
    IRQs (expected to *tighten* pacing — measure it).
-3. Optionally re-anchor patches `0030` and `0037` to 7.x and add them to the
-   beta `series` (they were dropped only to keep the first build clean).
+3. ~~Optionally re-anchor patches `0030` and `0037` to 7.x~~ **`0037` done
+   2026-07-20** — and it was never optional. It was dropped as "cosmetic", but
+   `BTN_Z` (`0x135`) sits between `BTN_WEST` and `BTN_TL`, so declaring it
+   shifts every higher gamepad button one index up in the `EV_KEY` capability
+   bitmap. Main_MiSTer resolves gamecontrollerdb's SDL-style `bN` indices off
+   that bitmap (`gamecontroller_db.c:get_ctrl_index_maps`), and the shipped
+   `gamecontrollerdb.txt` `platform:MiSTer` PS5 rows encode the BTN_Z-present
+   layout (`guide:b11`, `leftshoulder:b5`, `back:b9`, `start:b10`). Omitting
+   the patch slid the whole DualSense map by one: PS/Home acted as Start and
+   L3 opened the OSD. Re-anchored copy now lives in `linux-patches-beta/`.
+   `0030` remains omitted and is genuinely cosmetic (one `dev_err`→`dev_dbg`
+   in `i2c-designware-master.c`; no input capability, no userspace interface).
+   **Rule this established:** any patch that adds or removes an `EV_KEY`/
+   `EV_ABS` capability is load-bearing for every SDL-style index map — never
+   classify one as cosmetic on a symbol grep alone.
 4. ~~Wire `zImage_dtb-rt` into `release.yml`~~ **Done (ADR 0021, amended
    2026-07-18):** the RT kernel ships as separate first-class release assets
    and its modules ride inside the one `linux.img` (§5). Still OPEN: whether

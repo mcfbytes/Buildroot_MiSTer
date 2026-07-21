@@ -72,12 +72,12 @@ left off — not needed for mounting.
 ## Defconfig status
 
 ```
-BR2_PACKAGE_CIFS_UTILS=y                      # mount.cifs — BEYOND parity (stock had none)
-BR2_PACKAGE_NFS_UTILS=y                       # mount.nfs  — BEYOND parity (ADR 0022)
-BR2_PACKAGE_NFS_UTILS_NFSV4=y                 # NFSv4/4.1/4.2 (+ nfsidmap, blkmapd)
-# BR2_PACKAGE_NFS_UTILS_RPC_NFSD is not set   # CLIENT ONLY — upstream default is y
-# BR2_PACKAGE_LVM2_STANDARD_INSTALL is not set# lvm2 is a blkmapd dep; keep dmsetup only
-# (no BR2_PACKAGE_RPCBIND)                    # still absent — no NFSv3 NLM locking
+BR2_PACKAGE_CIFS_UTILS=y                        # mount.cifs — BEYOND parity (stock had none)
+BR2_PACKAGE_NFS_UTILS=y                         # mount.nfs  — BEYOND parity (ADR 0022)
+BR2_PACKAGE_NFS_UTILS_NFSV4=y                   # NFSv4/4.1/4.2 (+ nfsidmap, blkmapd)
+# BR2_PACKAGE_NFS_UTILS_RPC_NFSD is not set     # CLIENT ONLY — upstream default is y
+# BR2_PACKAGE_LVM2_STANDARD_INSTALL is not set  # lvm2 is a blkmapd dep; keep dmsetup only
+# (no BR2_PACKAGE_RPCBIND)                      # still absent — no NFSv3 NLM locking
 ```
 
 Kernel (`docs/kernel-config-deltas.md` §7): `CONFIG_CIFS=y`, `CONFIG_NFS_FS=y`,

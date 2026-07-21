@@ -706,6 +706,33 @@ BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mis
 BR2_PACKAGE_DHCPCD=y
 BR2_PACKAGE_NTP=y                             # classic ntpd, matches stock -- NOT chrony/openntpd
 BR2_PACKAGE_CIFS_UTILS=y
+
+# --- NFS client userland (ADR 0022) -- reverses P3.10's "kernel-only NFS" call ---
+# The kernel has carried the whole NFS client all along (NFS_FS/V2/V3/V4/V4_1/V4_2,
+# SUNRPC, LOCKD_V4, NFS_USE_KERNEL_DNS -- docs/netfs-parity.md), but with no
+# mount.nfs helper `mount -t nfs` could not work AT ALL: util-linux's mount execs
+# /sbin/mount.<type> for a network fs, and there is no BusyBox fallback -- its mount
+# applet is disabled outright in our build (`# CONFIG_MOUNT is not set`, and
+# `# CONFIG_FEATURE_MOUNT_NFS is not set` with it; the latter is v2/v3-only anyway).
+# Supplying /sbin/mount.nfs (+ the mount.nfs4 symlink) is the entire point here.
+BR2_PACKAGE_NFS_UTILS=y
+BR2_PACKAGE_NFS_UTILS_NFSV4=y                # NFSv4/4.1/4.2 -> nfsidmap + rpc.idmapd.
+                                             # Buildroot hard-couples --enable-nfsv4 to
+                                             # --enable-blkmapd, which is why lvm2 gets
+                                             # pulled in (trimmed just below).
+# CLIENT ONLY -- this line is load-bearing, not decoration. Upstream defaults
+# `BR2_PACKAGE_NFS_UTILS_RPC_NFSD` to y, and leaving it alone would install
+# rpc.nfsd/rpc.mountd/exportfs + an S60nfs init script, select rpcbind, and -- the
+# real trap -- fire NFS_UTILS_LINUX_CONFIG_FIXUPS, whose KCONFIG_ENABLE_OPT would
+# flip on the in-kernel NFS *server* underneath our deliberate `# CONFIG_NFSD is
+# not set`. We are a client; the server stays off on both sides.
+# BR2_PACKAGE_NFS_UTILS_RPC_NFSD is not set
+# lvm2 is not a feature we want -- it arrives solely as the blkmapd dependency above
+# (blkmapd links libdevicemapper for the pNFS block layout, which no home NAS uses).
+# Upstream defaults to installing the full LVM suite; keep only dmsetup +
+# libdevicemapper so we do not ship an unused volume manager on a games console.
+# BR2_PACKAGE_LVM2_STANDARD_INSTALL is not set
+
 BR2_PACKAGE_RSYNC=y
 BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity for the
                                               # 274-applet set is a P2.3 config concern, not

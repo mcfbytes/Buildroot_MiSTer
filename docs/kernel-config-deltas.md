@@ -92,7 +92,9 @@ gives the reason that actually *forced* the decision.
 
 ## 2. Intentional divergences from the stock config
 
-Nine changes. Every one is deliberate; every one is cited.
+Ten changes. Every one is deliberate; every one is cited. **D10 is the only
+*temporary* one** — it belongs to the debug-tooling work and is expected to be
+reverted; see `docs/debug-tooling.md`.
 
 | # | Symbol | Stock | **Ours** | Why | Authority |
 |---|---|---|---|---|---|
@@ -105,6 +107,7 @@ Nine changes. Every one is deliberate; every one is cited.
 | **D7** | `CONFIG_FAT_DEFAULT_IOCHARSET` | `"iso8859-1"` | `"iso8859-1"` *(unchanged — deliberately)* | ADR 0010 is explicit: **do not "helpfully" change this.** `utf8=1` and `iocharset=` are different knobs; `iocharset=utf8` takes the wrong (byte-at-a-time NLS) code path. Recorded here because leaving it alone *is* the decision. | **ADR 0010(b)** |
 | **D8** | `CONFIG_NTFS3_FS` | *(no NTFS at all)* | **`m`** | Pure addition. **Module, not built-in** — it must not consume `zImage` budget (P1.11). Ships **disabled by default** until stock parity is demonstrated (P2.9). | **ADR 0013** |
 | **D9** | `CONFIG_HID_LOGITECH{,_DJ,_HIDPP}`, `LOGITECH_FF`, `LOGIG940_FF`, `LOGIRUMBLEPAD2_FF`, `LOGIWHEELS_FF`, `HID_PLAYSTATION`, `PLAYSTATION_FF` | `y` | `y` | Stock parity — but they only survive because of D4. See §3.2. | stock config; §3.2 |
+| **D10** ⚠ *temporary* | `CONFIG_COREDUMP` (and, for free, `CONFIG_ELF_CORE`) | **not set** | **`y`** | Without it the kernel cannot dump core at all, so the `gdb` now shipped in the image would have nothing to open. Enabled for the field hard-hang investigation; **revert with the rest of the debug-tooling block.** `ELF_CORE` (`init/Kconfig:1735`, `depends on COREDUMP`, `default y`) comes on by itself and must **not** get a line of its own — it is invisible to kconfig while `COREDUMP` is off, so `savedefconfig` would drop it. | `docs/debug-tooling.md` §2.5; stock config `:721`; `fs/Kconfig.binfmt:171` |
 
 **D1 is the one the task text warned about. D2, D4/D9 and D5 are three more of the same
 shape that nobody had found**, and they are the substance of this task. They are written up

@@ -880,6 +880,91 @@ BR2_PACKAGE_KMOD_TOOLS=y                  # TARGET kmod: installs depmod/insmod/
                                           # modinfo/modprobe/rmmod on the device
 
 ################################################################################
+# >>> DEBUG TOOLING — TEMPORARY, REMOVE AS ONE BLOCK <<<
+#
+# Everything between this banner and the matching "END DEBUG TOOLING" banner is
+# on-device debugging/profiling tooling, enabled on request for the field
+# hard-hang investigation and for RT latency measurement. It is NOT stock
+# parity, it is NOT part of the P2.1 package manifest, and it is expected to be
+# removed once those investigations close. Full rationale, per-package sizes,
+# on-device usage and the exact revert recipe: docs/debug-tooling.md.
+#
+# TO REVERT: delete this whole block (banner to banner) and re-run
+#   make mister_de10nano_defconfig && make all
+# Nothing outside this block and the matching CONFIG_COREDUMP block in
+# board/mister/de10nano/linux.config depends on any of it.
+#
+# The block is deliberately contiguous and BR2_PACKAGE_-only so that (a) it can
+# be deleted with one editor motion, and (b) it cannot evict the CI
+# cross-toolchain cache: .github/actions/buildroot-build's toolchain
+# fingerprint filters out every ^BR2_PACKAGE_ line, so adding these costs no
+# cold 3h rebuild (docs/ci.md#toolchain-fingerprint).
+################################################################################
+
+# gdb — gdbserver AND the full on-device debugger. Both are asked for
+# explicitly: gdbserver for the normal cross-debug flow (host cross-gdb over
+# TCP), the full debugger so a core file can be opened on the device itself
+# with no host toolchain present, which is the realistic flow for a field
+# hard-hang report from a beta tester.
+#
+# NOTE on BR2_PACKAGE_GDB_SERVER: package/gdb/Config.in `select`s it whenever
+# GDB_DEBUGGER is off, so it would be implied by GDB alone TODAY — but that
+# select disappears the moment GDB_DEBUGGER=y (which is the case here), so it
+# must be listed explicitly or enabling the full debugger would silently DROP
+# gdbserver. Setting it is not redundant.
+#
+# GDB_DEBUGGER pulls in BR2_PACKAGE_{GMP,MPFR,READLINE,ZLIB} by select. GMP,
+# readline and zlib are already =y above; MPFR is new and arrives transitively
+# (do not add it here — it would outlive this block's deletion).
+# BR2_USE_WCHAR=y is a GDB_DEBUGGER dependency and is already satisfied
+# (glibc + BR2_ENABLE_LOCALE).
+# GDB_TUI / GDB_PYTHON are deliberately NOT enabled: neither was requested and
+# both only add on-device UI weight.
+BR2_PACKAGE_GDB=y
+BR2_PACKAGE_GDB_SERVER=y
+BR2_PACKAGE_GDB_DEBUGGER=y
+
+# strace — syscall tracing. No dependencies at all on this toolchain.
+# `strace -k` (stack traces on each syscall) additionally wants
+# BR2_PACKAGE_LIBUNWIND, which is deliberately left off; see docs/debug-tooling.md
+# "what is deliberately NOT enabled".
+BR2_PACKAGE_STRACE=y
+
+# perf, built from OUR kernel's own tools/perf (BR2_PACKAGE_LINUX_TOOLS_PERF
+# selects the BR2_PACKAGE_LINUX_TOOLS meta-symbol, which is part of the linux
+# package, not a standalone one — so perf is rebuilt whenever the kernel is).
+#
+# The kernel side needs nothing from us: package/linux-tools/linux-tool-perf.mk.in
+# force-enables CONFIG_PERF_EVENTS via KCONFIG_ENABLE_OPT at kconfig-fixup time,
+# and in this tree that fixup is already a no-op — CONFIG_PERF_EVENTS=y,
+# CONFIG_ARM_PMU=y and CONFIG_HW_PERF_EVENTS=y all resolve on by kconfig default
+# and are live in the built .config today (verified against
+# output/build/linux-6.18.39/.config). Hardware counters are wired too: socfpga.dtsi
+# has the arm,cortex-a9-pmu node with both per-CPU PMU interrupts, so `perf stat`
+# gets real cycle/instruction counts rather than software events only.
+#
+# _NEEDS_HOST_PYTHON3 is NOT optional on this kernel and NOT cosmetic: since
+# ~6.0 perf generates pmu-events.c at build time by running
+# tools/perf/pmu-events/jevents.py, and 6.18.39 still does (that file is present
+# in the unpacked tree). Without this symbol Buildroot never adds host-python3 to
+# PERF_DEPENDENCIES and the perf build fails on whatever python3 the *host*
+# happens to have, or none.
+BR2_PACKAGE_LINUX_TOOLS_PERF=y
+BR2_PACKAGE_LINUX_TOOLS_PERF_NEEDS_HOST_PYTHON3=y
+
+# rt-tests — cyclictest et al., the standard PREEMPT_RT latency harness. This is
+# what actually measures the RT kernel's wakeup latency on hardware, which
+# docs/rt-beta-kernel.md still lists as an open TODO (the RT kernel boots; its
+# latency has never been measured). Selects BR2_PACKAGE_NUMACTL transitively —
+# again, do not list numactl here, it must disappear with this block.
+# hwlatdetect is a Python script and installs because BR2_PACKAGE_PYTHON3=y.
+BR2_PACKAGE_RT_TESTS=y
+
+################################################################################
+# >>> END DEBUG TOOLING <<<
+################################################################################
+
+################################################################################
 # System configuration
 #
 # Everything below lives in Buildroot's *System configuration* menu. They were

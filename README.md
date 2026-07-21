@@ -133,6 +133,7 @@ all, the build fails fast and tells you what to install.
 - **`docs/phase0-review.md`** — Detailed findings from Phase 0 reconnaissance
 - **`docs/verification/stock-release-20250402.md`** — Stock image audit for reference
 - **`docs/package-manifest.md`** — SONAME stability guarantees for the ABI contract
+- **`docs/debug-tooling.md`** — ⚠ **temporary**: the gdb/strace/perf/rt-tests + `CONFIG_COREDUMP` debug block, why each piece is there, and how to revert it as one unit
 
 ---
 

@@ -899,6 +899,17 @@ BR2_PACKAGE_KMOD_TOOLS=y                  # TARGET kmod: installs depmod/insmod/
 # cross-toolchain cache: .github/actions/buildroot-build's toolchain
 # fingerprint filters out every ^BR2_PACKAGE_ line, so adding these costs no
 # cold 3h rebuild (docs/ci.md#toolchain-fingerprint).
+#
+# ⚠ `make savedefconfig` DISSOLVES this block. It rewrites this file from
+# kconfig's own state, which knows nothing about banners: the comments go, and
+# the seven symbols below scatter into the generated ordering — after which
+# "delete the block" is no longer a one-motion operation and the isolation this
+# whole arrangement buys is gone. That is the same hazard this file's own header
+# already warns about for its top comment ("hand-restore it, same as this commit
+# did"); it is called out again here because the cost is higher for a block whose
+# entire purpose is being cleanly removable. If you must round-trip this file,
+# re-cut this block by hand afterwards, or revert the debug tooling FIRST and
+# re-apply it after.
 ################################################################################
 
 # gdb — gdbserver AND the full on-device debugger. Both are asked for

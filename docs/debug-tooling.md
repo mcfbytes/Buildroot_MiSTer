@@ -56,6 +56,20 @@ Both halves were asked for explicitly, and they serve different flows:
   reports a hard hang: they can be walked through `gdb /media/fat/MiSTer core`
   over SSH without installing anything.
 
+**The host half of the gdbserver flow is not built by this branch.** Only the
+*target* symbols were requested, so there is no `arm-linux-gdb` in `output/host/`.
+If you want one, that is a separate knob in the Toolchain menu:
+
+```
+BR2_PACKAGE_HOST_GDB=y          # cross-gdb for the build host
+```
+
+Add it inside the debug block if you need it. It is a *host* package (it builds
+into `output/host/`, ships nothing to the device) and it still matches the
+`^BR2_PACKAGE_` fingerprint filter, so §4's "no cache eviction" conclusion holds
+for it too. It was left out only because the on-device debugger already covers
+the core-file flow, which is the one that matters for a field report.
+
 **The one real trap here.** `package/gdb/Config.in` has:
 
 ```kconfig
@@ -87,9 +101,13 @@ which is **part of the `linux` package**, not a standalone one. Consequences:
 * perf is rebuilt whenever the kernel is, and always matches the running kernel's
   `tools/perf` — no version skew;
 * it is *not* built by the kernel-only `mister_kernel_defconfig` / `make rt`
-  path, which sets no packages. RT gets `CONFIG_COREDUMP` but not perf; the
-  shipped perf comes from the main 6.18.39 build and is what runs under either
-  kernel.
+  path, which sets no packages. RT gets `CONFIG_COREDUMP` but not a perf of its
+  own — the single shipped `perf` is the one from the main 6.18.39 build, and it
+  is what runs under the RT kernel too. The `perf_event_attr` ABI is
+  size-versioned and stable in both directions, so a 6.18 perf works against a
+  7.2 kernel; it will simply not know about anything added after 6.18. Good
+  enough for cyclictest-adjacent work, and worth remembering before blaming the
+  RT kernel for a perf feature that is merely missing from the tool.
 
 **`_NEEDS_HOST_PYTHON3` is mandatory here, not cosmetic.** Since ~6.0 perf
 generates `pmu-events.c` at build time by running
@@ -197,6 +215,12 @@ is a decision on the record rather than an oversight:
   `BR2_cortex` / `BR2_KERNEL_HEADERS` / `BR2_TOOLCHAIN_BUILDROOT_` choice
   families. Package symbols are one-sided by design and exempt.
 * **Image size.** Measured, not estimated — see §6.
+* **SD-card installer: no hard cap hit.** `scripts/mk-sdcard.sh` ships
+  `linux.img` gzipped and sizes the FAT partition from measured staged content
+  (`du -sk --apparent-size`), so a fatter rootfs grows `sdcard.img` rather than
+  overflowing anything. The installer stream-decompresses, so the `mem=511M`
+  ceiling is not approached either. Nothing to do — noted because "we made the
+  rootfs bigger" invites the question.
 * **Attack surface.** A passwordless-root image that now also ships a full
   debugger and `perf`. That is acceptable for a debugging branch on a device with
   no meaningful secrets, and is a further reason this is temporary.
@@ -213,8 +237,12 @@ is a decision on the record rather than an oversight:
    ```
    # CONFIG_COREDUMP is not set
    ```
-3. Delete this file, and its entry in `README.md`.
-4. Rebuild:
+3. Drop the **D10** row from `docs/kernel-config-deltas.md` §2 and put its intro
+   line back to "Nine changes. Every one is deliberate; every one is cited."
+   (D10 is the only temporary row in that table; it is flagged ⚠ so it cannot be
+   mistaken for a permanent divergence.)
+4. Delete this file, and its entry in `README.md`.
+5. Rebuild:
 
    ```sh
    make mister_de10nano_defconfig    # re-resolve output/.config from the defconfig
@@ -228,21 +256,45 @@ is a decision on the record rather than an oversight:
    `rm -rf output/target && make all` is the cheap belt-and-braces version (it
    rebuilds no packages, only re-installs them).
 
-Verify with:
+Verify with **both** greps — the first catches the two config blocks, the second
+catches the documentation residue (the D10 row and the README entry name the
+file, not the banner, so the first grep alone would pass with them still in
+place):
 
 ```sh
-grep -rn "DEBUG TOOLING" configs/ board/ docs/    # must return nothing
+grep -rn "DEBUG TOOLING"  configs/ board/          # must return nothing
+grep -rn "debug-tooling"  docs/ README.md          # must return nothing
 ```
 
 ---
 
 ## 6. Measured cost (this branch, as built)
 
-<!-- filled in from the verification build; see the branch's build log -->
+Measured against the same `scripts/check-size-budget.sh` gate
+`docs/size-budget.md` uses (floor: ≥ 15 % free of the 512 MiB image).
 
-| Item | Before | After | Delta |
+<!-- filled in from the verification build; see §6.1 for the commands -->
+
+| Item | master | this branch | delta |
 | --- | --- | --- | --- |
-| `linux.img` free space | _(pending)_ | _(pending)_ | _(pending)_ |
+| `linux.img` free | _(pending)_ | _(pending)_ | _(pending)_ |
+
+### 6.1 How to re-measure
+
+```sh
+scripts/check-size-budget.sh output/images/linux.img
+du -sh output/target/usr/bin/gdb  output/target/usr/bin/gdbserver \
+       output/target/usr/bin/strace output/target/usr/bin/perf \
+       output/target/usr/bin/cyclictest
+```
+
+### 6.2 Reproducibility
+
+`BR2_REPRODUCIBLE=y` is on and `.github/workflows/reproducibility.yml` builds the
+tree twice and compares. None of the four tools is known to embed a build
+timestamp or path, but **none has been through that workflow yet either** — if a
+byte-identical rebuild starts failing on this branch, one of these packages is
+the first place to look, not the last.
 
 ---
 

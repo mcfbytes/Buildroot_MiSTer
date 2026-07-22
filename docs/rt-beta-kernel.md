@@ -1,10 +1,18 @@
 # RT / Linux-7.2 "beta" kernel variant
 
-**Status: SCAFFOLD.** The wiring below is in place and its config/patch layering
-is verified, but the variant has **never been built end-to-end or booted on
-hardware**. It is intended for **developer testing of PREEMPT_RT and new-kernel
+**Status: BUILT, BOOTED, UNMEASURED** (last updated 2026-07-22; this header used
+to say "SCAFFOLD, never built or booted" and was overtaken by §6).
+
+The variant builds end-to-end (`make rt`, green locally and in CI on the pinned
+**7.2-rc4**, complete **31/31** patch series) and **boots and runs MiSTer on a
+real DE10-Nano — confirmed 2026-07-20.** What is still **not** done is the thing
+that motivates the whole exercise: **no latency measurement has been taken.** So
+there is currently no evidence RT improves anything for a normal user.
+
+It remains intended for **developer testing of PREEMPT_RT and new-kernel
 features**, not general use. WiFi via the out-of-tree Realtek drivers is
-deliberately dropped on this variant (see §4).
+deliberately dropped on this variant (see §4). §6 is the authoritative
+verified-vs-unproven table; §7 is the remaining TODO.
 
 ---
 
@@ -149,7 +157,7 @@ Remove that line to roll back to the stock kernel. **Switching needs no rootfs
 flash in either direction** — u-boot.txt is the entire switch — *provided the
 on-device `linux.img` is one built with both trees* (step 1 above; for release
 users, this release's `linux.img`): the ONE `linux.img` carries both kernels'
-module trees (`usr/lib/modules/6.18.38/` and `usr/lib/modules/7.2.0-rc3*/` —
+module trees (`usr/lib/modules/<main kver>/` and `usr/lib/modules/7.2.0-rc4*/` —
 the second tree is ~5-8 MB in a 512 MiB image with ~268 MB free). Skip step 1
 against an older image and `zImage_dtb-rt` boots with NO 7.2 modules to load:
 WiFi and the rest of the modular driver set silently stay dead, presenting as
@@ -183,7 +191,7 @@ installer's FAT payload as well, and deliberately NOT inside
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) — boot and general operation are confirmed, but the latency measurement that motivates RT has not been taken |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
-## 7. TODO before this is more than a scaffold
+## 7. What is left
 
 1. ~~Run `make rt` and fix whatever the first real 7.2 build surfaces.~~
    **Done 2026-07-20** — green on the pinned rc4 with the complete 31-patch

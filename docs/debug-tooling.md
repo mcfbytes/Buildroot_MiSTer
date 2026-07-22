@@ -1,11 +1,34 @@
 # On-device debug tooling — **temporary, isolated, revert-as-one-block**
 
-> **Status: TEMPORARY.** Everything described here was added on request to
-> support two open investigations — the field hard-hang (a board that dies with
-> no serial output and needs a power cycle) and the still-unmeasured PREEMPT_RT
-> wakeup latency (`docs/rt-beta-kernel.md`). It is **not** stock parity, it is
-> **not** part of the P2.1 package manifest (`docs/package-manifest.md`), and it
-> is expected to be removed once those close. §5 is the exact revert recipe.
+> **Status: TEMPORARY — and one of its two reasons has now closed.** Everything
+> described here was added on request to support two investigations: the field
+> hard-hang (a board that died with no serial output and needed a power cycle)
+> and the still-unmeasured PREEMPT_RT wakeup latency
+> (`docs/rt-beta-kernel.md`). It is **not** stock parity, it is **not** part of
+> the P2.1 package manifest (`docs/package-manifest.md`), and it is expected to
+> be removed once both close. §5 is the exact revert recipe.
+>
+> **Update 2026-07-21 — the field hard-hang is RESOLVED and is no longer a
+> reason to keep this block.** Root cause: the board was **auto-overclocking
+> itself to 1.2 GHz on boot**. The forward-ported socfpga cpufreq driver
+> (`linux-patches/0003-cpufreq-cyclone5-de10nano-overclock.patch`) was written
+> against 5.15, where `CPUFREQ_BOOST_FREQ` kept the governor off the boost rows
+> by default while `scaling_max_freq` stayed writable up to 1.2 GHz; **on 6.18
+> the default `policy->max` resolves differently**, so the overclock became
+> default-**on** rather than opt-in. Fixed in PR #24 (`3fb7f81`, merged
+> `83ae09a`): a proper `->set_boost`, the 1000/1200 MHz rows flagged boost-only,
+> and an 800 MHz default. The board is stable and serial console is clean.
+>
+> That class of defect is the thing worth remembering: the bug was not in the
+> patch's logic but in a **silent semantic change to a kernel flag across the
+> version gap we forward-ported over** — it applied cleanly, compiled, and
+> behaved differently. Any other 5.15-era patch we carry can fail the same way.
+>
+> **What that leaves:** only the RT latency measurement (`rt-tests`) still
+> justifies this block. Do not cite the field hang as an open risk, and do not
+> resurrect the discarded theories (`PANIC_ON_OOPS` + `panic_timeout=0` "silent
+> brick", marginal SD-card contact, USB hub brownout) — each was plausible, some
+> were separately fixed, none was the cause.
 
 ---
 

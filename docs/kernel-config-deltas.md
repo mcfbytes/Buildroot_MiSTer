@@ -3,10 +3,19 @@
 How `board/mister/de10nano/linux.config` was derived, and **every** intentional divergence
 from (a) the extracted stock 5.15 config and (b) the 6.18 `multi_v7_defconfig` baseline.
 
-Every claim below is either a `file:line` in the pinned 6.18.38 tree, a line in the stock
+Every claim below is either a `file:line` in the 6.18.38 tree, a line in the stock
 config, or the literal output of a command reproduced here. Nothing is asserted from memory —
 Phase 0's lesson was that plausible assumptions about this kernel keep turning out false, and
 this task found **three more** that would have shipped silently.
+
+> **On the version in every path below (2026-07-22).** This analysis was performed against
+> **6.18.38**, which was the pin at the time; **the pin has since moved to 6.18.39** and
+> will keep moving with each `.y` release Renovate lands. The `linux-6.18.38` paths,
+> line numbers, and the tarball hash are left exactly as measured — they are the evidence,
+> and re-typing a version string without re-reading the file would make them worth less,
+> not more. Nothing in a `.y` stable bump is expected to invalidate a delta here; the
+> check that would actually catch it is `scripts/check-kernel-defconfig-sync.sh` plus the
+> build itself, both of which run in CI against the current pin.
 
 ## Sources
 
@@ -107,7 +116,7 @@ reverted; see `docs/debug-tooling.md`.
 | **D7** | `CONFIG_FAT_DEFAULT_IOCHARSET` | `"iso8859-1"` | `"iso8859-1"` *(unchanged — deliberately)* | ADR 0010 is explicit: **do not "helpfully" change this.** `utf8=1` and `iocharset=` are different knobs; `iocharset=utf8` takes the wrong (byte-at-a-time NLS) code path. Recorded here because leaving it alone *is* the decision. | **ADR 0010(b)** |
 | **D8** | `CONFIG_NTFS3_FS` | *(no NTFS at all)* | **`m`** | Pure addition. **Module, not built-in** — it must not consume `zImage` budget (P1.11). Ships **disabled by default** until stock parity is demonstrated (P2.9). | **ADR 0013** |
 | **D9** | `CONFIG_HID_LOGITECH{,_DJ,_HIDPP}`, `LOGITECH_FF`, `LOGIG940_FF`, `LOGIRUMBLEPAD2_FF`, `LOGIWHEELS_FF`, `HID_PLAYSTATION`, `PLAYSTATION_FF` | `y` | `y` | Stock parity — but they only survive because of D4. See §3.2. | stock config; §3.2 |
-| **D10** ⚠ *temporary* | `CONFIG_COREDUMP` (and, for free, `CONFIG_ELF_CORE`) | **not set** | **`y`** | Without it the kernel cannot dump core at all, so the `gdb` now shipped in the image would have nothing to open. Enabled for the field hard-hang investigation; **revert with the rest of the debug-tooling block.** `ELF_CORE` (`init/Kconfig:1735`, `depends on COREDUMP`, `default y`) comes on by itself and must **not** get a line of its own — it is invisible to kconfig while `COREDUMP` is off, so `savedefconfig` would drop it. | `docs/debug-tooling.md` §2.5; stock config `:721`; `fs/Kconfig.binfmt:171` |
+| **D10** ⚠ *temporary* | `CONFIG_COREDUMP` (and, for free, `CONFIG_ELF_CORE`) | **not set** | **`y`** | Without it the kernel cannot dump core at all, so the `gdb` now shipped in the image would have nothing to open. Enabled for the field hard-hang and RT-latency investigations; **revert with the rest of the debug-tooling block.** (The hard-hang half **closed 2026-07-21** — root-caused to the 5.15-era overclock patch defaulting the board to 1.2 GHz on 6.18, fixed in PR #24 — so only RT latency still holds this open.) `ELF_CORE` (`init/Kconfig:1735`, `depends on COREDUMP`, `default y`) comes on by itself and must **not** get a line of its own — it is invisible to kconfig while `COREDUMP` is off, so `savedefconfig` would drop it. | `docs/debug-tooling.md` §2.5; stock config `:721`; `fs/Kconfig.binfmt:171` |
 
 **D1 is the one the task text warned about. D2, D4/D9 and D5 are three more of the same
 shape that nobody had found**, and they are the substance of this task. They are written up
@@ -383,7 +392,7 @@ and the single line below is why.
 | Symbol | `multi_v7` | **Ours** | Comment |
 |---|---|---|---|
 | **`ARM_APPENDED_DTB`** | **`y`** | **`n`** | 🚨 **`multi_v7_defconfig` sets it. A3/B1 forbids it.** U-Boot passes the DTB pointer explicitly in `r2` (`docs/boot-chain.md` §4.2), so the appended-DTB path is never taken — but leaving it on would **silently mask a broken `cat zImage dtb`** (the decompressor would find the DTB anyway), which is the exact bug class `scripts/check-zimage-dtb.sh` exists to catch. **Starting from `multi_v7_defconfig` would have violated A3 on line one.** This is the concrete reason the stock config is the correct baseline. |
-| `STRICT_DEVMEM` | `n` | `n` | ✔ **Confirms the P0 finding**: `STRICT_DEVMEM` is *not* default-`y` on 32-bit ARM (`default y if PPC || X86 || ARM64 || S390`). A4 is an assertion, not a fight against a default — in *both* configs. |
+| `STRICT_DEVMEM` | `n` | `n` | ✔ **Confirms the P0 finding**: `STRICT_DEVMEM` is *not* default-`y` on 32-bit ARM (`default y if PPC \|\| X86 \|\| ARM64 \|\| S390`). A4 is an assertion, not a fight against a default — in *both* configs. |
 | `DEVMEM` | `y` | `y` | ✔ A4 satisfied in both. |
 | `EXFAT_FS` | **`n`** | `y` | multi_v7 has **no exFAT**. The data partition may be exFAT (A2) — the board would not boot. |
 | `CIFS` | **`n`** | `y` | Stock has cifs built-in (P3.10). |

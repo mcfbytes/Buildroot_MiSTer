@@ -1,12 +1,30 @@
 # MiSTer Linux Modernization
 
-**A reproducible, drop-in `linux.img` for the MiSTer DE10-Nano, built from a modern
-Buildroot and a mainline LTS kernel — with every MiSTer kernel patch carried in-tree as a
-plain `.patch` file, applied to a pristine, hash-verified kernel.org tarball.**
+**A complete, reproducible operating system for the MiSTer DE10-Nano — kernel, root
+filesystem, a real-time kernel variant, a flashable SD-card image, and the update channel
+that delivers them.** Built in the open from a modern Buildroot and a mainline LTS kernel,
+with every MiSTer kernel patch carried in-tree as a plain `.patch` file applied to a
+pristine, hash-verified kernel.org tarball.
+
+It is a **drop-in replacement**: the unmodified, stock `MiSTer` binary and every existing
+core run on it unchanged.
+
+## What ships
+
+| Artifact | What it is |
+|---|---|
+| `linux.img` + `zImage_dtb` | The OS itself — rootfs and kernel, delivered as a normal update through the **stock on-device Downloader** |
+| `zImage_dtb-rt` | A **`PREEMPT_RT` kernel variant**, built by CI. Its modules ride inside the same `linux.img`, so switching kernels is a one-line `u-boot.txt` edit in either direction — no rootfs flash |
+| `sdcard.img.xz` | A **complete, flashable SD card** that self-expands to the card's real size on first boot — no mr-fusion, no Windows SD installer |
+| `release_YYYYMMDD.7z` | The stock-layout release archive, byte-compatible with the Downloader's expectations |
+| `legal-info.tar.gz` | A **full SBOM** — every package, version, license, and upstream source tarball |
+| `SHA256SUMS` + attestations | Build provenance for the image assets |
+| `db.json` | The **opt-in update channel**, served from GitHub Pages — add one file to your card and releases arrive like any official update |
+| An exportable kernel tree | The carried series, rendered deterministically into `Linux-Kernel_MiSTer` layout so upstream can consume the work without a second fork |
 
 > **Status — personal use only.** Phases 0–3 are complete with hardware validation on a
-> real DE10-Nano; Phase 4 (release engineering & sustainability) is in progress. This
-> image will not be offered publicly until the sustainability commitment in
+> real DE10-Nano; Phase 4 (release engineering & sustainability) is in progress. Nothing
+> here will be offered publicly until the sustainability commitment in
 > [ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md) is signed by a
 > named maintainer. If you are trying it anyway, read
 > [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.
@@ -15,6 +33,7 @@ plain `.patch` file, applied to a pristine, hash-verified kernel.org tarball.**
 
 ## Contents
 
+- [What ships](#what-ships)
 - [The one-paragraph version](#the-one-paragraph-version)
 - [Stock vs. this image, at a glance](#stock-vs-this-image-at-a-glance)
 - [Project status](#project-status)
@@ -47,11 +66,13 @@ MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4
 (93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
 5.15.1** — a kernel forked in November 2021 that has **never merged a single 5.15.y
 stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
-any of it. This project rebuilds that image from **Buildroot 2026.05.1** and a **mainline
-6.18 LTS kernel** in a public repository, with reproducible builds, a signed-hash supply
-chain, an eight-workflow CI pipeline, and a per-commit reconciliation of the entire
-kernel fork — while booting the **unmodified, stock `MiSTer` binary** and every existing
-core.
+any of it. This project rebuilds the whole thing from **Buildroot 2026.05.1** and a
+**mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
+signed-hash supply chain, an eight-workflow CI pipeline, and a per-commit reconciliation
+of the entire kernel fork — then ships it through the same update channel users already
+have, alongside a real-time kernel variant and a flashable card image that stock has no
+equivalent of. All of it boots the **unmodified, stock `MiSTer` binary** and every
+existing core.
 
 The core posture: **prove parity first, then improve.** Carry the smallest possible delta
 against a pristine kernel.org tree, and hand each subsystem back to mainline as soon as
@@ -261,13 +282,24 @@ shipped **byte-identical to stock's**, fetched by hash.
 - **Not all hardware is validated.** Samba and MIDI are build- and CI-verified only. One
   board, one set of peripherals. The matrix in [`docs/testlogs/p3-matrix.md`](docs/testlogs/p3-matrix.md)
   is the truth; this README is a summary of it.
+- **This forward-port has already shipped one real bug, on hardware.** Early builds
+  **auto-overclocked the board to 1.2 GHz on boot** and produced hard hangs. The carried
+  socfpga overclock patch was written against 5.15, where `CPUFREQ_BOOST_FREQ` kept the
+  governor off the boost rows by default; on 6.18 the default `policy->max` resolves
+  differently, so the overclock became default-**on**. It applied cleanly, compiled clean,
+  and behaved differently. Fixed in PR #24 — proper `->set_boost`, boost-only 1000/1200 MHz
+  rows, 800 MHz default — and the board has been stable since. **The lesson generalises:
+  any other 5.15-era patch we carry can have the same class of defect**, and no amount of
+  CI catches a silent semantic change to a kernel flag. This is the strongest argument
+  for the small-delta posture, and the reason the hardware list stays short.
 - **RT is a developer variant.** `PREEMPT_RT` boots and runs on hardware, but **no latency
   measurement has been taken yet** — so there is currently *no evidence* it improves
   anything for a normal user. It exists for testing, not for daily driving.
 - **Debug tooling is temporarily in-tree.** `gdb`/`strace`/`perf`/`rt-tests` and
-  `CONFIG_COREDUMP` are enabled while a field hard-hang is investigated. This costs image
-  size and diverges from stock's config; it is designed to revert as one block.
-  ([`docs/debug-tooling.md`](docs/debug-tooling.md))
+  `CONFIG_COREDUMP` are enabled for two investigations. One of them — a field hard-hang —
+  **closed on 2026-07-21**; the RT latency measurement has not been taken, so the block
+  stays for now. It costs image size and diverges from stock's config, and is designed to
+  revert as one unit. ([`docs/debug-tooling.md`](docs/debug-tooling.md))
 - **The sustainability gate is not met.** Nobody has yet signed up, in writing, to track
   `6.18.y` security releases through end-of-life. Until that happens this is a personal
   project, and saying otherwise would be the one claim that undermines all the others.

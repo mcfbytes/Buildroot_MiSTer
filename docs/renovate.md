@@ -38,7 +38,7 @@ for the specific pieces most likely to need a fix on the first live run.
 
 | Pin | File(s) | Mechanism | Hash companion |
 |---|---|---|---|
-| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.02.x` | `BUILDROOT_SHA256` — **manual**, see below |
+| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **manual**, see below |
 | Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — `renovate-hash-sync.yml`'s kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
 | 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
@@ -393,8 +393,19 @@ required.
 ## Kernel/Buildroot bump scope, restated
 
 Both the Buildroot and kernel `customManagers` entries are intentionally
-narrow: `allowedVersions` locks Buildroot to the `2026.02.x` line and the
+narrow: `allowedVersions` locks Buildroot to the `2026.05.x` line and the
 kernel to `6.18.y`. Neither is meant to propose a Buildroot major/minor
 bump or a kernel LTS-line change — those are larger undertakings (new
 toolchain defaults, a fresh patch-carry audit) that deserve a deliberate,
 human-initiated upgrade, not a routine Renovate PR.
+
+**This has happened once, exactly that way.** The Buildroot line moved
+`2026.02.x` → `2026.05.x` by hand in PR #54, and the `allowedVersions` regex
+moved with it. Note what the line number does *not* tell you: **2026.02 was
+never an LTS.** Buildroot's LTS releases are the February ones on a two-year
+cadence — **2025.02** was the last, **2027.02** is expected to be the next — so
+`2026.05` is an interim non-LTS line, chosen for currency, not longevity. When
+the next line bump comes, update three things together: `BUILDROOT_VERSION` and
+`BUILDROOT_SHA256` in the `Makefile` (the hash from
+`make buildroot-showsig`, never from a tarball you just downloaded), this
+`allowedVersions` regex, and the row in the table above.

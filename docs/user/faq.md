@@ -18,11 +18,19 @@ DE10-Nano board.** Samba and MIDI are currently build- and CI-verified only — 
 not yet been exercised on real hardware. Treat anything not listed above as unverified in
 practice until proven otherwise on your own hardware.
 
-The kernel is pinned to **6.18.38**, and it **has booted on real hardware** — from the
-CI-built artifact rather than a local build, with every out-of-tree module present,
-Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi is confirmed on 6.18.38 as well: the
-RTL8822BU auto-connects at boot to a **WPA3/SAE** network (PMF required), driven by
+The kernel is pinned to **6.18.39**, and the 6.18 line **has booted on real hardware** —
+from the CI-built artifact rather than a local build, with every out-of-tree module
+present, Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi is confirmed too:
+the RTL8822BU auto-connects at boot to a **WPA3/SAE** network (PMF required), driven by
 **mainline `rtw88`** rather than an out-of-tree driver.
+
+One real bug has been found and fixed on hardware since then, and it is worth knowing
+about because it explains why "it compiles and boots" is not the same as "it is correct":
+early builds **auto-overclocked the board to 1.2 GHz**, because the carried overclock
+driver was written for 5.15 and a kernel flag it relied on changed meaning in 6.18. It is
+fixed — the default is 800 MHz and the overclock is opt-in again — but that is the class
+of defect a five-year forward-port produces, and it is why the hardware list above is
+deliberately short.
 
 ---
 
@@ -80,10 +88,10 @@ running this image.
 
 | | Stock | This project |
 |---|---|---|
-| Kernel | **5.15.1** (forked Nov 2021; never took a single `5.15.y` stable update) | **6.18.38** LTS, on a stable `.y` line with ongoing security backports |
-| Buildroot | **2021.02.4** | **2026.02.3** — roughly five years newer |
-| glibc | **2.31** | **2.42** |
-| OpenSSL | **1.1.1** (end-of-life since 2023-09-11 — no upstream fixes since) | **3.6.2** |
+| Kernel | **5.15.1** (forked Nov 2021; never took a single `5.15.y` stable update) | **6.18.39** LTS, on a stable `.y` line with ongoing security backports |
+| Buildroot | **2021.02.4** | **2026.05.1** — roughly five years newer |
+| glibc | **2.31** | **2.43** |
+| OpenSSL | **1.1.1** (end-of-life since 2023-09-11 — no upstream fixes since) | **3.6.3** |
 | WiFi drivers | Six out-of-tree vendor forks, no WPA3 for several chips | Mainline `rtw88`/`rtw89`/`rtl8xxxu`/`mt7921u` etc. where mainline covers the chip (kept as out-of-tree only for the handful of chips mainline still doesn't drive) — **WPA3/SAE hardware-verified working**, which the out-of-tree fork it replaces was not |
 | USB controller/HID support | Stock's existing set | Broader — several additional mainline HID drivers (gamepad and input device support mainline gained since 2021) |
 

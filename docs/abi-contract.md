@@ -672,9 +672,9 @@ is complete for Main_MiSTer @ `14052d2`.
 
 Also used, and easy to overlook:
 
-| Path | Opened at | Purpose | Level |
-|---|---|---|---|
-| **`/dev/input`** (the *directory*) | `Main:input.cpp:1561` — `inotify_add_watch(mfd, "/dev/input", IN_MODIFY\|IN_CREATE\|IN_DELETE)` | **Hotplug detection.** This is how a controller plugged in at runtime is noticed. Requires `CONFIG_INOTIFY_USER=y` (`:3470`) **and** that eudev creates/removes nodes *in that directory* (not, say, in `/dev` flat). | **MUST** |
+| Path | Opened at | Purpose | Requires | Level |
+|---|---|---|---|---|
+| **`/dev/input`** (the *directory*) | `Main:input.cpp:1561` — `inotify_add_watch(mfd, "/dev/input", IN_MODIFY\|IN_CREATE\|IN_DELETE)` | **Hotplug detection.** This is how a controller plugged in at runtime is noticed. | `CONFIG_INOTIFY_USER=y` (`:3470`) **and** that eudev creates/removes nodes *in that directory* (not, say, in `/dev` flat) | **MUST** |
 | **`/proc/bus/input/devices`** | `Main:input.cpp:4098` | Parsed for `P: Phys`, `U: Uniq`, `S: Sysfs`, `H: Handlers` to **merge** the several evdev nodes a single physical device exposes, and to find each device's sysfs path (used for LEDs and `bcdDevice`) | `CONFIG_PROC_FS=y` + `CONFIG_INPUT` proc support | **MUST** |
 | `/proc/<pid>/exe` | `Main:fpga_io.cpp:614` | `readlink()` — how MiSTer re-execs itself when a core requires a different `main` binary | `CONFIG_PROC_FS=y` | **MUST** |
 

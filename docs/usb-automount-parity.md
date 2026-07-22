@@ -38,7 +38,7 @@ all identical.
 
 | Piece | Path | Source | Notes |
 |-------|------|--------|-------|
-| udev rule | `/lib/udev/rules.d/usbmount.rules` | usbmount pkg | `KERNEL=="sd*"`/`"ub*"`, `SUBSYSTEM=="block"`, `ACTION=="add"`/`"remove"` → `RUN+="/usr/share/usbmount/usbmount add|remove"`. Same rule as stock. |
+| udev rule | `/lib/udev/rules.d/usbmount.rules` | usbmount pkg | `KERNEL=="sd*"`/`"ub*"`, `SUBSYSTEM=="block"`, `ACTION=="add"`/`"remove"` → `RUN+="/usr/share/usbmount/usbmount add\|remove"`. Same rule as stock. |
 | script | `/usr/share/usbmount/usbmount` | usbmount pkg | Reads `ID_FS_USAGE`/`ID_FS_TYPE`/`ID_FS_UUID` from the udev env, honours `/etc/fstab` first, else mounts the first free `/media/usbN`. |
 | config | `/etc/usbmount/usbmount.conf` | **rootfs-overlay** (this repo) | Stock-tuned; overrides the package default — see below. |
 | hooks | `/etc/usbmount/{mount,umount}.d/00_*_model_symlink` | usbmount pkg | Create/remove a vendor-model symlink under `/var/run/usbmount`. Same as stock. |

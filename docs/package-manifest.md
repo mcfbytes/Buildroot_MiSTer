@@ -1,9 +1,23 @@
-# Package manifest — stock SONAME/binary → Buildroot 2026.02 mapping
+# Package manifest — stock SONAME/binary → Buildroot mapping
 
 Task: **P0.7**. Deliverable consumed directly by **P2.1** (full package set) and the
 version-jump risk owners **P3.6** (Samba), **P3.7** (SSH/FTP), **P3.9** (Python).
 
-**Buildroot ref pinned:** branch `2026.02.x` @ commit
+> **Which Buildroot this describes (read first).** The mapping below was *established*
+> against **2026.02.3** — that is the tree every "verified by reading the file" claim
+> here was read from. **The image now ships Buildroot 2026.05.1** (bumped by hand in
+> PR #54). Rows touched by that bump have been updated in place and say so inline; the
+> clearest case is PCRE1, removed upstream in 2026.05 and consequently dropped here
+> (see the `libpcre.so.1` / `libpcreposix.so.0` rows). Untouched rows still carry their
+> 2026.02.3 provenance, which is the honest thing for them to carry — a version string
+> re-typed without re-reading the file would be worth less than a dated one.
+>
+> **What is *not* trusted to this document:** the ABI contract itself. `scripts/check-abi.sh`
+> re-derives the SONAME/loader checklist from the **built image** on every CI run, so
+> the 12-SONAME guarantee is machine-verified against whatever Buildroot is actually
+> pinned, whatever this file says.
+
+**Buildroot ref this mapping was read from:** branch `2026.02.x` @ commit
 `679b9ead7620bbf193620d1ebf56f53c1764d37a` = tag **`2026.02.3`**, cloned
 `--depth 1` into `work/buildroot` (gitignored, not committed — standing rule 1).
 GitLab canonical remote: `https://gitlab.com/buildroot.org/buildroot.git`.
@@ -434,6 +448,14 @@ The daemons and tools stock ships that users/scripts depend on directly (not jus
 via SONAME), pulled from `docs/stock-inventory/etc-configs.md`'s init-script list and
 `binaries-needed-full.txt`'s `/usr/bin`, `/usr/sbin` paths — not guessed.
 
+Four of the versions in this table have since moved with the Buildroot 2026.05.1 bump
+(PR #54): **Samba 4.23.8 → 4.24.3**, **OpenSSH 10.2p1 → 10.3p1**, **ProFTPD 1.3.8d →
+1.3.9a**, and OpenSSL 3.6.2 → 3.6.3. The two whose parity analyses that invalidates are
+flagged at the top of [`samba-parity.md`](samba-parity.md) and
+[`ssh-ftp-parity.md`](ssh-ftp-parity.md). Everything else in the table below —
+bluez 5.79, wpa_supplicant 2.11, dhcpcd 10.2.4 — is unchanged at the current pin
+(verified against `output/build/`, 2026-07-22).
+
 | Role | Stock | Buildroot package | BR 2026.02.3 version | Init script (P2.3 parity) |
 |---|---|---|---|---|
 | SMB/CIFS file server | Samba 4.14.6 (`smbd`, `nmbd`) | `BR2_PACKAGE_SAMBA4` | 4.23.8 | `S91smb` |
@@ -852,16 +874,19 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 > perf and rt-tests — which is **temporary and out of scope for this manifest**: it is
 > not stock parity and never claimed to be. Do **not** reconcile the two by
 > adding those symbols here, and do **not** "fix" the defconfig by deleting the
-> block. See `docs/debug-tooling.md`; it goes away as one unit when the field
-> hard-hang and RT-latency investigations close, at which point the two agree
-> again.
+> block. See `docs/debug-tooling.md`; it goes away as one unit when the
+> investigations that justify it close, at which point the two agree again.
+> (The field hard-hang half **closed 2026-07-21**; the RT-latency measurement
+> is still outstanding, so the block stays for now.)
 
 ---
 
 ## Summary for the report
 
-- **Buildroot ref pinned**: branch `2026.02.x` @ `679b9ead7620bbf193620d1ebf56f53c1764d37a`
-  = tag `2026.02.3`.
+- **Buildroot ref this mapping was read from**: branch `2026.02.x` @
+  `679b9ead7620bbf193620d1ebf56f53c1764d37a` = tag `2026.02.3`. **The image now ships
+  2026.05.1** — see the note at the top of this document for what that does and does not
+  change.
 - **12/12 critical ABI-contract SONAMEs (PLAN §3) confirmed at the same major version**
   in Buildroot 2026.02.3, including the two PLAN flagged as highest-risk
   (`libbluetooth.so.3`, `libImlib2.so.1`) — cross-checked against current Arch/Debian

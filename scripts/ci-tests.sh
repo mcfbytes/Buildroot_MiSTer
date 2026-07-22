@@ -181,6 +181,19 @@ require_present() {
 	fi
 }
 
+# require_absent PATH LABEL [WHY] -- PASS if PATH is NOT in rootfs.tar, else FAIL.
+# The mirror of require_present, for the deliberate-exclusion gates: a package
+# whose upstream default installs more than we want (ADR 0022's client-only
+# nfs-utils being the case in hand) regains the extra binaries silently on any
+# option or version bump, and nothing else in the build would complain.
+require_absent() {
+	if tar_has "$1"; then
+		fail "$2 absent" "$1 IS in rootfs.tar${3:+ -- $3}"
+	else
+		pass "$2 absent"
+	fi
+}
+
 # ---------------------------------------------------------------- prereqs
 [ -f "$ROOTFS_TAR" ] || { echo "$prog: no $ROOTFS_TAR -- run a build first (or pass the build dir as \$1)." >&2; exit 2; }
 
@@ -855,15 +868,67 @@ else
 fi
 
 # =============================================================================
-section "P3.10 — Network filesystem client parity"
+section "P3.10 — Network filesystem client parity (NFS half per ADR 0022)"
 # =============================================================================
+# NB on paths: /sbin is a usr-merge symlink to usr/sbin, so tar records these
+# helpers ONLY under ./usr/sbin/ -- never assert the ./sbin/ spelling, it can
+# never match.
 
 require_present "usr/sbin/mount.cifs" "mount.cifs"
 
-if tar_has "usr/sbin/mount.nfs" || tar_has "sbin/mount.nfs"; then
-	fail "mount.nfs ABSENT (parity)" "mount.nfs IS present in rootfs.tar -- P3.10 dropped NFS client parity, this is a regression"
+# ADR 0022 REVERSED P3.10's original call. This check used to assert the exact
+# opposite -- "mount.nfs ABSENT (parity, P3.10 dropped NFS client)" -- which was
+# right while we shipped no NFS userland, and became the reason PR #59's build
+# failed: the defconfig gained BR2_PACKAGE_NFS_UTILS=y and the gate dutifully
+# reported the intended feature as a regression. Parity is a floor, not a
+# ceiling (docs/netfs-parity.md); mount.nfs is now beyond-parity on purpose, so
+# the assertion is inverted rather than deleted.
+require_present "usr/sbin/mount.nfs"   "mount.nfs (ADR 0022, beyond parity)"
+require_present "usr/sbin/mount.nfs4"  "mount.nfs4"
+require_present "usr/sbin/umount.nfs"  "umount.nfs"
+require_present "usr/sbin/umount.nfs4" "umount.nfs4"
+
+# The half of ADR 0022 that is easy to lose. BR2_PACKAGE_NFS_UTILS_RPC_NFSD is
+# `default y` upstream, so "client-only" survives exactly as long as our
+# explicit `# ... is not set` does. Turning it back on would install these, add
+# an S60nfs init script, select rpcbind -- and fire NFS_UTILS_LINUX_CONFIG_FIXUPS,
+# whose KCONFIG_ENABLE_OPT flips the in-kernel NFS *server* on underneath our
+# deliberate `# CONFIG_NFSD is not set`. A games console does not export
+# filesystems; assert both sides of that, userland here and kernel below.
+require_absent "usr/sbin/rpc.nfsd"   "rpc.nfsd (NFS server)"       "BR2_PACKAGE_NFS_UTILS_RPC_NFSD went back to its default y?"
+require_absent "usr/sbin/rpc.mountd" "rpc.mountd (NFS server)"     "BR2_PACKAGE_NFS_UTILS_RPC_NFSD went back to its default y?"
+require_absent "usr/sbin/exportfs"   "exportfs (NFS server)"       "BR2_PACKAGE_NFS_UTILS_RPC_NFSD went back to its default y?"
+require_absent "etc/init.d/S60nfs"   "S60nfs init script"          "the NFS server init script is installed by BR2_PACKAGE_NFS_UTILS_RPC_NFSD"
+require_absent "usr/sbin/rpcbind"    "rpcbind (portmapper)"        "BR2_PACKAGE_RPCBIND is selected by the NFS server; NFSv4 needs no portmapper"
+
+# NB deliberately NOT asserted absent: rpc.statd, rpc.idmapd, nfsdcld*. All three
+# are installed by a client-only nfs-utils and are inert with nothing starting
+# them (ADR 0022 "Accepted limitations"). Their presence is not a server.
+
+# The kernel side of the same invariant, read from the RESOLVED .config rather
+# than the defconfig: CONFIG_NFSD's absence from configs/linux.config proves
+# nothing on its own (that file is a minimal defconfig -- an absent symbol may
+# still be `default y`), and the flip we are guarding against comes from a
+# Buildroot package's LINUX_CONFIG_FIXUPS, which edits the resolved .config and
+# would never show up in ours.
+# Filtered through -f rather than taken straight from the glob: an unmatched
+# glob expands to the literal pattern, so a bare array would report "found 1"
+# for "found none" -- the same fail-misleadingly shape as the hardcoded $KVER
+# above. The linux-[0-9]* spelling (release.yml uses it too) excludes the
+# linux-headers-*/linux-firmware-* siblings; more than one match means a stale
+# tree from a version bump, which is a real thing to notice, not to glob past.
+kconfigs=()
+for _c in "$BUILD_DIR"/build/linux-[0-9]*/.config; do
+	[ -f "$_c" ] && kconfigs+=("$_c")
+done
+if [ "${#kconfigs[@]}" -ne 1 ]; then
+	skip "CONFIG_NFSD stays unset in the built kernel" \
+		"expected exactly one $BUILD_DIR/build/linux-[0-9]*/.config, found ${#kconfigs[@]}"
+elif grep -q '^CONFIG_NFSD=' "${kconfigs[0]}"; then
+	fail "CONFIG_NFSD stays unset in the built kernel" \
+		"$(grep '^CONFIG_NFSD=' "${kconfigs[0]}" | head -1) in ${kconfigs[0]} -- something (NFS_UTILS_LINUX_CONFIG_FIXUPS?) turned the in-kernel NFS server on"
 else
-	pass "mount.nfs ABSENT (parity, P3.10 dropped NFS client)"
+	pass "CONFIG_NFSD stays unset in the built kernel (client-only, ADR 0022)"
 fi
 
 # =============================================================================

@@ -100,6 +100,17 @@ Verified against `output/target` after building `nfs-utils` (2026-07-21):
 4. **`lvm2` trimmed** — `dmsetup` installed, no `lvm` binary, `libaio` not pulled in.
 5. Both `CONFIG_CIFS` and `CONFIG_NFS_FS` remain `=y` in the built kernel.
 
+Items 1–3 and the `CONFIG_NFSD` half of item 5 are **gated in CI**, in
+`scripts/ci-tests.sh`'s "P3.10 — Network filesystem client parity" section: the
+helpers are asserted present in `rootfs.tar`, `rpc.nfsd`/`rpc.mountd`/`exportfs`/
+`S60nfs`/`rpcbind` are asserted absent, and `CONFIG_NFSD` is asserted unset in the
+**resolved** `output/build/linux-*/.config` rather than in `configs/linux.config`
+(a minimal defconfig, where an absent symbol may still be on, and which a package's
+`LINUX_CONFIG_FIXUPS` would not touch anyway). That section previously asserted the
+*opposite* — no `mount.nfs`, per P3.10's original call — and failed this branch's
+first build by reporting the new feature as a regression; it was inverted, not
+deleted, because the client-only shape is the part worth holding onto.
+
 ### Size cost (measured, pre-strip upper bound)
 
 | Package | Installed | Note |

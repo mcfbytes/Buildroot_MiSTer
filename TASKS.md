@@ -789,6 +789,12 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   cifs/NFS mount scripts run unchanged. Kernel side was asserted in P1.3.
   **Done when:** a cifs and an nfs mount succeed from the running image (loop-back test
   acceptable pre-hardware).
+  **Update (2026-07-21):** the NFS half — reconciled away at the time on the grounds
+  that stock ships no `mount.nfs` — is now actually delivered. `nfs-utils` is added
+  **client-only** per [ADR 0022](docs/decisions/0022-nfs-client-userland.md), so
+  `mount -t nfs4` works; `docs/netfs-parity.md` is updated. The kernel needed no
+  change (the NFS client was already complete). Still open for [HW] P3.13: exercise a
+  real NFSv4 mount against a NAS.
 
 - [x] **P3.11 — RTC parity** — [SONNET] — Size S — Depends: P1.7, P2.3
   hctosys/init integration for the i2c-gpio RTC add-on; graceful no-op without the

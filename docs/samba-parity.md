@@ -1,4 +1,23 @@
-# Samba parity — stock (~4.14) vs. this build (4.23.8)
+# Samba parity — stock (~4.14) vs. Samba 4.23.8
+
+> ⚠ **This analysis is one minor release behind what ships (noted 2026-07-22).**
+> Everything below was reasoned against **Samba 4.23.8**, which is what Buildroot
+> 2026.02.3 shipped. **The build now ships Samba 4.24.3** (`SAMBA4_VERSION` in
+> Buildroot 2026.05.1) — carried in by the Buildroot line bump in PR #54, which did
+> not re-run this audit.
+>
+> **What that does and does not put at risk.** The conclusion below rests on *when*
+> each `smb.conf` default changed, and every change it identifies landed **before
+> Samba 4.14** — i.e. before stock. That reasoning does not become wrong because the
+> upper bound moved from 4.23.8 to 4.24.3. What is genuinely **unchecked** is whether
+> **4.24 itself** changed a default that stock's `smb.conf` exposes; nobody has read
+> the 4.24 release notes against this config. Note §1's `unix extensions` row already
+> shows 4.23 introducing an additive default change, so "a new minor cannot move a
+> default" is *not* a safe assumption here.
+>
+> **Owner: P3.6.** Re-read the Samba 4.24 release notes against §1's directive table
+> and either extend the table's version column or record a no-change finding. Nothing
+> in CI asserts package versions, so this drift is caught by reading, not by a test.
 
 Task: **P3.6**. Depends on P2.1 (`BR2_PACKAGE_SAMBA4=y`) and P2.3 (init/config
 parity — `docs/init-parity.md` already marked `/etc/samba/smb.conf` and

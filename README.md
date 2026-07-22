@@ -103,10 +103,23 @@ mainline can hold it.
 | **Real-time kernel** | No | **`PREEMPT_RT` variant** built by CI, booted on hardware |
 
 Every number in that table is sourced. The versions come from the *shipped artifacts* on
-both sides — stock from the extracted stock `linux.img`, ours from the built packages.
-Full detail with citations: [`docs/version-delta.md`](docs/version-delta.md),
-[`docs/package-manifest.md`](docs/package-manifest.md),
-[`docs/verification/stock-release-20250402.md`](docs/verification/stock-release-20250402.md).
+both sides — stock from the extracted stock `linux.img`, ours read off the built tree.
+
+**On version drift, since this table cites documents that can lag it.** The ground truth
+for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
+`configs/mister_de10nano_defconfig` — plus whatever Buildroot's own `.mk` files resolve
+to at that pin. The documents below are **dated analyses**, not a live mirror of those
+pins: a Renovate bump or a Buildroot line bump moves a package without rewriting the
+prose that reasoned about it. Where a document is behind the pin it now says so at the
+top, and lists what has and has not been re-checked. **Nothing in CI asserts package
+versions**, so that gap is closed by reading, not by a test — see
+[the honest list](#what-is-not-better--the-honest-list).
+
+Full detail with citations: [`docs/version-delta.md`](docs/version-delta.md) (the stack,
+re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (the
+251-SONAME mapping, established against Buildroot 2026.02.3),
+[`docs/verification/stock-release-20250402.md`](docs/verification/stock-release-20250402.md)
+(the stock side, fixed forever — stock does not move).
 
 ---
 
@@ -304,9 +317,14 @@ shipped **byte-identical to stock's**, fetched by hash.
   `6.18.y` security releases through end-of-life. Until that happens this is a personal
   project, and saying otherwise would be the one claim that undermines all the others.
   ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md))
-- **The version numbers in this file drift.** They were verified against the built
-  artifacts at the time of writing. [`docs/version-delta.md`](docs/version-delta.md) is
-  the maintained source; the defconfig and `Makefile` pins are the ground truth.
+- **Version numbers drift, and two parity analyses are currently behind the pins.**
+  Every figure here was read off the built tree at the time of writing, but **nothing in
+  CI asserts a package version**, so a Renovate or Buildroot-line bump can move a package
+  out from under the document that reasoned about it. That has already happened: the
+  Buildroot 2026.05.1 bump moved **Samba 4.23.8 → 4.24.3** and **ProFTPD 1.3.8d →
+  1.3.9a** without re-running the P3.6 / P3.7 audits that gated those packages. Both
+  documents now say so at the top, with the specific unchecked question named. The
+  defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
 
 ---
 

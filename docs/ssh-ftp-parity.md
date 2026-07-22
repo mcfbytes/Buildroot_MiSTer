@@ -1,5 +1,21 @@
 # SSH & FTP parity (P3.7)
 
+> ⚠ **Both packages have moved since this analysis (noted 2026-07-22).** It was
+> written against **OpenSSH 10.2p1** and **ProFTPD 1.3.8d** (Buildroot 2026.02.3).
+> The build now ships **OpenSSH 10.3p1** and **ProFTPD 1.3.9a**, carried in by the
+> Buildroot 2026.05.1 bump in PR #54, which did not re-run this audit.
+>
+> **ProFTPD is the one to look at.** OpenSSH `10.2p1 → 10.3p1` is a patch release and
+> the risk analysis below is framed around behaviour changes at 8.8 / 9.0 / 9.8 —
+> boundaries a patch bump cannot cross. **ProFTPD `1.3.8d → 1.3.9a` is a minor
+> release**, and this document's claims about its defaults and its shipped
+> `proftpd.conf` were read against 1.3.8d. That has not been re-verified.
+>
+> **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
+> and confirm the shipped default config still matches what stock's `S50proftpd`
+> expects. Nothing in CI asserts package versions, so this drift is caught by
+> reading, not by a test.
+
 > Scope: `BR2_PACKAGE_OPENSSH` (10.2p1) + `BR2_PACKAGE_PROFTPD` (1.3.8d) against
 > stock's `sshd`/`proftpd`, using `work/imgroot` (stock's `linux.img`, extracted via
 > `debugfs rdump` per `docs/reference-materials.md`) as ground truth throughout —

@@ -448,6 +448,14 @@ The daemons and tools stock ships that users/scripts depend on directly (not jus
 via SONAME), pulled from `docs/stock-inventory/etc-configs.md`'s init-script list and
 `binaries-needed-full.txt`'s `/usr/bin`, `/usr/sbin` paths — not guessed.
 
+Four of the versions in this table have since moved with the Buildroot 2026.05.1 bump
+(PR #54): **Samba 4.23.8 → 4.24.3**, **OpenSSH 10.2p1 → 10.3p1**, **ProFTPD 1.3.8d →
+1.3.9a**, and OpenSSL 3.6.2 → 3.6.3. The two whose parity analyses that invalidates are
+flagged at the top of [`samba-parity.md`](samba-parity.md) and
+[`ssh-ftp-parity.md`](ssh-ftp-parity.md). Everything else in the table below —
+bluez 5.79, wpa_supplicant 2.11, dhcpcd 10.2.4 — is unchanged at the current pin
+(verified against `output/build/`, 2026-07-22).
+
 | Role | Stock | Buildroot package | BR 2026.02.3 version | Init script (P2.3 parity) |
 |---|---|---|---|---|
 | SMB/CIFS file server | Samba 4.14.6 (`smbd`, `nmbd`) | `BR2_PACKAGE_SAMBA4` | 4.23.8 | `S91smb` |

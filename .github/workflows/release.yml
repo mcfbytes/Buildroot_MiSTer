@@ -151,7 +151,7 @@ jobs:
       STOCK_UPDATEBOOT_SHA256: 6ff2d50a080e26d7173b61c52083e9cc42ca658db0c5031b4da1c45c74a562f2
       STOCK_UPDATEBOOT_SIZE: "407"
 
-      # --- Pinned ARM static 7za --------------------------------------------
+      # --- Pinned ARM 7za (dynamically linked, glibc) -----------------------
       # The exact binary the real on-device Downloader fetches; its upstream
       # URL is an intentionally unpinned floating ref (matches what real
       # devices fetch) — the MD5 check below is the actual security control.
@@ -189,7 +189,7 @@ jobs:
           phase: download
 
       # Shared recipe (disk reclaim, caches, apt, defconfig, `make all`).
-      # p7zip-full here is a DIFFERENT 7za than the pinned ARM static one
+      # p7zip-full here is a DIFFERENT 7za than the pinned ARM dynamic one
       # fetched below — this one only creates/inspects the archive on the
       # x86_64 runner. See docs/ci.md#stock-payload-verification.
       - name: Build the image
@@ -372,17 +372,22 @@ jobs:
           echo "Created dist/release_${RELEASE_DATE}.7z"
 
       ##########################################################################
-      # Verify with the EXACT pinned ARM static 7za the real Downloader uses,
+      # Verify with the EXACT pinned ARM 7za the real Downloader uses,
       # under qemu-arm — not a modern host 7z. See
       # docs/ci.md#stock-payload-verification.
       ##########################################################################
       - name: Fetch and verify the pinned ARM 7za
         run: scripts/verify-stock-payload.sh fetch-7za 7za
 
+      # The pinned 7za is dynamically linked (glibc), not static -- qemu-arm
+      # needs -L pointed at an ARM sysroot to resolve its loader/shared libs.
+      # output/target (this job's own build) already has a matching glibc
+      # sysroot, so it's reused here rather than installing armhf multiarch
+      # packages on the runner. See docs/ci.md#stock-payload-verification.
       - name: Verify our archive extracts under the pinned ARM 7za (qemu-arm)
         env:
           RELEASE_DATE: ${{ steps.mister_version.outputs.release_date }}
-        run: scripts/verify-stock-payload.sh roundtrip "dist/release_${RELEASE_DATE}.7z" ./7za downloader-extract
+        run: scripts/verify-stock-payload.sh roundtrip "dist/release_${RELEASE_DATE}.7z" ./7za downloader-extract output/target
 
       - name: Re-verify uboot.img/updateboot after the ARM-7za round trip
         run: scripts/verify-stock-payload.sh verify-uboot downloader-extract --hash-only

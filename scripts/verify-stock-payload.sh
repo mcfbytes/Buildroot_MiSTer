@@ -108,19 +108,29 @@
 #   fetch-7za     <out-binary>
 #       Fetches $STOCK_7ZA_GZ_URL to <out-binary>.gz, verifies its size + MD5
 #       against $STOCK_7ZA_GZ_SIZE/$STOCK_7ZA_GZ_MD5, then `gunzip -k` +
-#       `chmod +x` to produce <out-binary> — the EXACT static ARM `7za` the
-#       real on-device Downloader fetches once and reuses forever
-#       (docs/downloader-contract.md §4).
+#       `chmod +x` to produce <out-binary> — the EXACT ARM `7za` the real
+#       on-device Downloader fetches once and reuses forever
+#       (docs/downloader-contract.md §4). NOTE: this binary is dynamically
+#       linked (glibc, interpreter /lib/ld-linux-armhf.so.3 — verified with
+#       `file`/`readelf -d`), not static; `roundtrip` below depends on that.
 #
-#   roundtrip     <our-archive> <7za-binary> <dest-dir>
-#       Runs the pinned ARM `7za` from `fetch-7za`, under `qemu-arm`, against
-#       an archive WE built: `7za t` (integrity — the Downloader's first
-#       invocation) then `7za x -y ... files/linux/* -o<dest-dir>`
-#       (extraction — the Downloader's second invocation, docs/downloader-
-#       contract.md §5). Testing anything less specific than this literal
-#       binary (e.g. a modern host `7z`) does not prove the compatibility
-#       constraint (docs/downloader-contract.md §4). REQUIRES qemu-user
-#       (`qemu-arm` on PATH) — see the guard note below.
+#   roundtrip     <our-archive> <7za-binary> <dest-dir> <target-sysroot>
+#       Runs the pinned ARM `7za` from `fetch-7za`, under `qemu-arm -L
+#       <target-sysroot>`, against an archive WE built: `7za t` (integrity —
+#       the Downloader's first invocation) then `7za x -y ...
+#       files/linux/* -o<dest-dir>` (extraction — the Downloader's second
+#       invocation, docs/downloader-contract.md §5). Testing anything less
+#       specific than this literal binary (e.g. a modern host `7z`) does not
+#       prove the compatibility constraint (docs/downloader-contract.md §4).
+#       REQUIRES qemu-user (`qemu-arm` on PATH) — see the guard note below.
+#       <target-sysroot> MUST be a directory containing
+#       lib/ld-linux-armhf.so.3 + the shared libs `7za` needs (libc,
+#       libstdc++, libpthread, libm, libgcc_s) — e.g. this build's own
+#       `output/target`, same as scripts/ci-tests.sh's `qemu_target()`
+#       helper uses for target-ARM binaries. `7za` is dynamically linked
+#       (see `fetch-7za` above), so bare `qemu-arm "$sevenza"` fails
+#       looking for /lib/ld-linux-armhf.so.3 on the HOST's root, which a
+#       stock x86_64 CI runner does not have.
 #
 #   verify-layout <our-archive> <release-stage-dir>
 #       Cross-checks `7z l -slt <our-archive>`'s member list against
@@ -131,13 +141,15 @@
 #       stock-release-20250402.md) so a silently-empty stock archive can't
 #       vacuously pass the diff.
 #
-# qemu-user GUARD (`roundtrip` only). The pinned 7za is a static ARM binary;
-# running it on an x86_64 host needs `qemu-arm` (qemu-user). CI always has it
-# (the buildroot-build action installs it for the rest of the parity suite
-# too); a bare laptop may not. `roundtrip` checks for `qemu-arm` on PATH
-# before doing anything else and fails fast with an actionable message
-# (install `qemu-user` / `qemu-user-static`) rather than a raw
-# "command not found" — see the subcommand's own guard below.
+# qemu-user GUARD (`roundtrip` only). The pinned 7za is a dynamically-linked
+# ARM binary; running it on an x86_64 host needs `qemu-arm` (qemu-user) PLUS
+# an ARM sysroot for `-L` (see `roundtrip`'s own entry above) — CI always has
+# both (the buildroot-build action installs qemu-user, and the build job's
+# own `output/target` supplies the sysroot); a bare laptop may not have
+# qemu-user. `roundtrip` checks for `qemu-arm` on PATH before doing anything
+# else and fails fast with an actionable message (install `qemu-user` /
+# `qemu-user-static`) rather than a raw "command not found" — see the
+# subcommand's own guard below.
 #
 # Usage: verify-stock-payload.sh <subcommand> [args...]
 #        verify-stock-payload.sh --help
@@ -162,7 +174,7 @@ usage() {
 	  extract-stock <archive> <dest-dir>
 	  verify-uboot  <extract-root> [--hash-only]
 	  fetch-7za     <out-binary>
-	  roundtrip     <our-archive> <7za-binary> <dest-dir>
+	  roundtrip     <our-archive> <7za-binary> <dest-dir> <target-sysroot>
 	  verify-layout <our-archive> <release-stage-dir>
 
 	See this script's own header comment for the full contract (required
@@ -392,29 +404,37 @@ cmd_fetch_7za() {
 }
 
 # ============================================================================
-# roundtrip <our-archive> <7za-binary> <dest-dir>
+# roundtrip <our-archive> <7za-binary> <dest-dir> <target-sysroot>
 # ============================================================================
 cmd_roundtrip() {
-	[ "$#" -eq 3 ] || usage_die "roundtrip: expected exactly 3 arguments (our-archive, 7za-binary, dest-dir), got $#"
-	local archive=$1 sevenza=$2 dest=$3
+	[ "$#" -eq 4 ] || usage_die "roundtrip: expected exactly 4 arguments (our-archive, 7za-binary, dest-dir, target-sysroot), got $#"
+	local archive=$1 sevenza=$2 dest=$3 sysroot=$4
 
-	# qemu-user GUARD: the pinned 7za is a static ARM binary; running it on
-	# an x86_64 host needs qemu-arm. CI always has it (the buildroot-build
-	# action installs it); a bare laptop may not -- fail fast with an
-	# actionable message instead of a raw "command not found", per this
-	# script's own header note on the guard.
-	command -v qemu-arm >/dev/null 2>&1 || usage_die "'qemu-arm' not found on PATH -- the pinned ARM 7za is a static ARM binary and needs qemu-user to run on this host. Install qemu-user (Debian/Ubuntu: 'apt-get install qemu-user' or 'qemu-user-static') and retry; there is no host-native fallback, because proving byte-for-byte compatibility with the exact binary the real Downloader fetches is the entire point (docs/downloader-contract.md §4)."
+	# qemu-user GUARD: the pinned 7za is a dynamically-linked ARM binary
+	# (glibc; verified with `file`/`readelf -d` -- interpreter
+	# /lib/ld-linux-armhf.so.3, NEEDED libc/libstdc++/libpthread/libm/
+	# libgcc_s), so running it on an x86_64 host needs both qemu-arm AND an
+	# ARM sysroot for `-L` below. CI always has qemu-arm (the
+	# buildroot-build action installs it); a bare laptop may not -- fail
+	# fast with an actionable message instead of a raw "command not found",
+	# per this script's own header note on the guard.
+	command -v qemu-arm >/dev/null 2>&1 || usage_die "'qemu-arm' not found on PATH -- the pinned ARM 7za is a dynamically-linked ARM binary and needs qemu-user to run on this host. Install qemu-user (Debian/Ubuntu: 'apt-get install qemu-user' or 'qemu-user-static') and retry; there is no host-native fallback, because proving byte-for-byte compatibility with the exact binary the real Downloader fetches is the entire point (docs/downloader-contract.md §4)."
 
 	[ -f "$archive" ] || usage_die "roundtrip: '$archive' does not exist"
 	[ -x "$sevenza" ] || usage_die "roundtrip: '$sevenza' does not exist or is not executable -- run 'fetch-7za' first"
+	[ -e "$sysroot/lib/ld-linux-armhf.so.3" ] || usage_die "roundtrip: '$sysroot' has no lib/ld-linux-armhf.so.3 -- pass a built target rootfs (e.g. output/target) as <target-sysroot>. The pinned 7za is dynamically linked and qemu-arm resolves its loader/shared libs (libc/libstdc++/libpthread/libm/libgcc_s) against this sysroot's -L path, same as scripts/ci-tests.sh's qemu_target() helper."
 
+	# -L "$sysroot": qemu-arm resolves the ELF interpreter and every NEEDED
+	# shared library against this sysroot instead of the host's own root --
+	# without it, qemu-arm looks for /lib/ld-linux-armhf.so.3 on the HOST,
+	# which a stock x86_64 CI runner does not have.
 	# 1. Integrity test -- exactly the Downloader's first 7za invocation.
-	qemu-arm "$sevenza" t "$archive"
+	qemu-arm -L "$sysroot" "$sevenza" t "$archive"
 	# 2. Extraction -- exactly the Downloader's second invocation
 	#    (docs/downloader-contract.md §5): files/linux/* only, into a
 	#    fresh directory.
 	mkdir -p "$dest"
-	qemu-arm "$sevenza" x -y "$archive" "files/linux/*" -o"$dest"
+	qemu-arm -L "$sysroot" "$sevenza" x -y "$archive" "files/linux/*" -o"$dest"
 	echo "roundtrip: pinned ARM 7za: both 't' and 'x -y ... files/linux/*' succeeded."
 }
 

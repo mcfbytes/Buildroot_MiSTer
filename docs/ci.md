@@ -1115,7 +1115,7 @@ All three (MD5, SHA-256, size) are checked BEFORE anything is extracted from
 it. Individual `uboot.img`/`updateboot` hashes are re-checked too
 (`docs/downloader-contract.md` §8, §12.1) as belt-and-suspenders.
 
-The pinned ARM static `7za` used to verify the round trip is the **exact**
+The pinned ARM `7za` used to verify the round trip is the **exact**
 binary the real on-device Downloader fetches once and reuses forever
 (`docs/downloader-contract.md` §4). Its own upstream URL is a floating branch
 ref (`raw/master/7za.gz`), not a commit pin — that is a pre-existing fact of
@@ -1143,9 +1143,15 @@ Our own release archive is assembled with **plain solid LZMA2**, not stock's
 BCJ2 filter (`docs/downloader-contract.md` §4's explicit recommendation — BCJ2
 is an artifact of the Windows 7-Zip GUI auto-detecting x86 executables in
 *its* archive, irrelevant to ours). It is then verified with the **exact**
-pinned ARM static `7za` the real Downloader uses — not a modern host `7z`
+pinned ARM `7za` the real Downloader uses — not a modern host `7z`
 (§4's explicit "testing anything less specific doesn't prove the
-constraint") — under `qemu-arm`, since it's a static ARM binary. Both `7za t`
+constraint") — under `qemu-arm -L output/target`. The pinned `7za` is
+dynamically linked (glibc; confirmed with `file`/`readelf -d` — interpreter
+`/lib/ld-linux-armhf.so.3`, `NEEDED` libc/libstdc++/libpthread/libm/
+libgcc_s), so `qemu-arm` needs an ARM sysroot to resolve those against; this
+job's own `output/target` already is one (same pattern as
+`scripts/ci-tests.sh`'s `qemu_target()` helper), so no extra armhf-multiarch
+packages are installed on the runner just for this. Both `7za t`
 (integrity) and `7za x -y ... files/linux/*` (extraction) are exercised,
 exactly the Downloader's own two invocations.
 

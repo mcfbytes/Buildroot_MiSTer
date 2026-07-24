@@ -5,90 +5,87 @@
 ################################################################################
 
 # P3.3 / docs/firmware-parity.md -- see Config.in for the full rationale.
-# SOURCE/SITE/VERSION are copied verbatim from work/buildroot/package/
-# linux-firmware/linux-firmware.mk (same upstream URL, same pinned version),
-# and the tarball hash below is the same published sha256 that sibling
-# package's own .hash file carries -- this is NOT a new/foreign source, only
-# a different subset kept from the identical, already hash-gated download.
-LINUX_FIRMWARE_EXTRA_VERSION = 20251011
-LINUX_FIRMWARE_EXTRA_SOURCE = linux-firmware-$(LINUX_FIRMWARE_EXTRA_VERSION).tar.xz
-LINUX_FIRMWARE_EXTRA_SITE = $(BR2_KERNEL_MIRROR)/linux/kernel/firmware
-LINUX_FIRMWARE_EXTRA_LICENSE = Proprietary
-LINUX_FIRMWARE_EXTRA_LICENSE_FILES = \
-	WHENCE \
-	LICENCE.rtlwifi_firmware.txt \
-	LICENCE.ralink_a_mediatek_company_firmware \
-	LICENCE.mediatek
-LINUX_FIRMWARE_EXTRA_DEPENDENCIES = host-tar
-
-# The Proprietary license above carries no GPL-style "corresponding source"
-# obligation -- only attribution (the LICENSE_FILES below, which pkg-generic.mk
-# saves into legal-info UNCONDITIONALLY, regardless of REDISTRIBUTE). Without
-# this, legal-info archives the entire fetched linux-firmware-20251011.tar.xz
-# (~557 MiB) into legal-info/sources/ even though EXTRACT_CMDS below only ever
-# pulls 8 small files out of it -- that single package was ~1076 MiB of the
-# ~1 GiB+ kernel-variant CI artifact (a "kernel" transport artifact should not
-# carry firmware source at all). REDISTRIBUTE = NO keeps the license files,
-# drops the multi-hundred-MB tarball copy.
-LINUX_FIRMWARE_EXTRA_REDISTRIBUTE = NO
-
-# Four firmware members, plus the four license files above -- every one of
-# these paths is checked, at INSTALL_TARGET_CMDS time below, against the
-# literal request_firmware()/MODULE_FIRMWARE string this project's pinned
-# 6.18.33 kernel source actually uses (docs/firmware-parity.md has the
-# per-file driver citation), not assumed from upstream naming conventions.
 #
-# THREE further files were tried here and dropped: brcm/BCM20702A1-0b05-
-# 17cb.hcd, rtl_bt/rtl8723d_config.bin, rtlwifi/rtl8192eefw.bin. Each has a
-# plausible in-tree kernel consumer (see docs/firmware-parity.md), but a
-# `tar tf` listing of the ACTUAL pinned linux-firmware-20251011.tar.xz
-# (not assumed from driver source alone) shows none of the three exist in
-# this upstream snapshot at all -- e.g. the entire tarball has exactly one
-# `.hcd` file total (brcm/BCM-0bb4-0306.hcd, a different vendor:product),
-# and rtlwifi/ has rtl8192eu_*/rtl8192dufw.bin/rtl8192fufw.bin but no
-# rtl8192eefw.bin. Per the "do not fabricate a source" rule, these are
-# flagged in docs/firmware-parity.md rather than sourced from an
-# unpinned/unverified mirror.
+# Installs the handful of firmware files that stock MiSTer ships, and that this
+# project's pinned kernel actually request_firmware()s, but that NO
+# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs (the four MEMBERS below).
+#
+# It does NOT fetch or unpack a tarball of its own. It takes the files straight
+# out of the linux-firmware package's OWN already-extracted tree
+# ($(LINUX_FIRMWARE_DIR)) -- the identical upstream snapshot, downloaded +
+# hash-verified + extracted exactly ONCE by that package. This package used to
+# fetch its own full ~600 MiB linux-firmware tarball at a SEPARATELY pinned
+# version, which:
+#   (a) DRIFTED -- it sat at 20251011 while the real linux-firmware package
+#       moved to 20260410 (a fork-sync of upstream Buildroot bumps
+#       linux-firmware automatically; this package is on renovate-hash-sync's
+#       "NEVER automated" list and nothing re-pinned it), so the four files
+#       shipped a ~6-month-older snapshot than every other firmware file, and
+#   (b) DOUBLED the download + dl/ footprint for content that is a strict
+#       subset of what linux-firmware already fetched.
+# Reading from $(LINUX_FIRMWARE_DIR) makes version parity STRUCTURAL (there is
+# no second version to keep in sync) and removes the duplicate fetch/extract.
+# `depends on BR2_PACKAGE_LINUX_FIRMWARE` (Config.in) guarantees that tree
+# exists whenever this package is enabled -- it also means this package no
+# longer builds in the kernel-only variants (mister_kernel_defconfig does not
+# enable linux-firmware), where its files landed in a target/ that is thrown
+# away and only cost a wasted ~557 MiB fetch.
+
+# LEGAL-INFO: this package has no _SOURCE of its own, so Buildroot's legal-info
+# treats it as "part of Buildroot" and skips it entirely -- no manifest row, no
+# license collection (pkg-generic.mk guards the whole license/manifest block on
+# a non-empty _SOURCE). That is correct here: the four files ARE linux-firmware
+# files, and linux-firmware -- a hard dependency, always built when this package
+# is -- already records them under its own SBOM entry. Its
+# LINUX_FIRMWARE_LICENSE_FILES lists WHENCE + LICENCE.mediatek +
+# LICENCE.ralink_a_mediatek_company_firmware + LICENCE.rtlwifi_firmware.txt,
+# exactly the licenses our four files fall under, so the attribution is complete
+# via linux-firmware rather than duplicated here.
+LINUX_FIRMWARE_EXTRA_LICENSE = Proprietary
+
+# Reported version tracks linux-firmware's -- used only for the build-dir name,
+# NOT for a download (there is none). No separate pin, so no separate drift.
+# (`=`, not `:=`: deferred so the forward reference to LINUX_FIRMWARE_VERSION
+# resolves after all package .mk files are parsed.)
+LINUX_FIRMWARE_EXTRA_VERSION = $(LINUX_FIRMWARE_VERSION)
+# No source of our own: an empty _SOURCE means pkg-generic.mk builds an empty
+# _MAIN_DOWNLOAD (it is guarded on _SOURCE being non-empty), so nothing is
+# downloaded. Set explicitly (`=`) so the infra's `?=` default cannot fill it.
+LINUX_FIRMWARE_EXTRA_SOURCE =
+
+# Our .stamp_extracted must run AFTER linux-firmware is built, so that
+# $(LINUX_FIRMWARE_DIR) is populated when EXTRACT_CMDS copies out of it.
+# pkg-generic.mk gates .stamp_extracted on _EXTRACT_DEPENDENCIES specifically
+# (regular _DEPENDENCIES gates only -configure, which is too late for a copy we
+# do at extract time).
+LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
+
+# Every path here is checked against the literal request_firmware()/
+# MODULE_FIRMWARE string this project's pinned kernel uses (docs/firmware-
+# parity.md has the per-file driver citation), and confirmed present in the
+# linux-firmware tree (verified against the extracted 20260410 tree, not
+# assumed from upstream naming). THREE further candidates were tried and
+# dropped -- see Config.in and docs/firmware-parity.md.
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7610u.bin \
 	mediatek/mt7622pr2h.bin \
 	mediatek/mt7668pr2h.bin \
-	rtlwifi/rtl8723befw_36.bin \
-	$(LINUX_FIRMWARE_EXTRA_LICENSE_FILES)
+	rtlwifi/rtl8723befw_36.bin
 
-# Custom EXTRACT_CMDS: pull only the members above out of the tarball,
-# instead of generic-package's default of unpacking the whole upstream tree
-# (several hundred MB) a second time -- the sibling linux-firmware package
-# already pays that cost once; this avoids doubling it for seven small
-# files. $(TAR) is Buildroot's own host-tar (support/dependencies/
-# check-host-tar.mk), which auto-detects the .xz compression on read same as
-# every other Buildroot package relies on.
-#
-# The upstream tarball has a single top-level wrapper directory
-# (linux-firmware-<version>/...) -- confirmed via `tar tf` on the actual
-# downloaded file, and the same reason the sibling linux-firmware package's
-# own EXTRACT_CMDS pipes through `tar --strip-components=1`. tar matches
-# member names given on the command line against the archive's REAL internal
-# paths (i.e. still wrapper-prefixed), before --strip-components is applied
-# to the extracted output -- so each member below must be given with the
-# $(LINUX_FIRMWARE_EXTRA_VERSION)/ prefix, even though --strip-components=1
-# then drops that same prefix from what lands in $(@D).
+# Copy the four firmware members out of linux-firmware's extracted tree into
+# our own $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.
 define LINUX_FIRMWARE_EXTRA_EXTRACT_CMDS
-	mkdir -p $(@D)
-	$(TAR) xf $(LINUX_FIRMWARE_EXTRA_DL_DIR)/$(LINUX_FIRMWARE_EXTRA_SOURCE) \
-		-C $(@D) --strip-components=1 \
-		$(addprefix linux-firmware-$(LINUX_FIRMWARE_EXTRA_VERSION)/,$(LINUX_FIRMWARE_EXTRA_MEMBERS))
+	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7610u.bin $(@D)/mediatek/mt7610u.bin
+	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7622pr2h.bin $(@D)/mediatek/mt7622pr2h.bin
+	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7668pr2h.bin $(@D)/mediatek/mt7668pr2h.bin
+	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/rtlwifi/rtl8723befw_36.bin $(@D)/rtlwifi/rtl8723befw_36.bin
 endef
 
 define LINUX_FIRMWARE_EXTRA_INSTALL_TARGET_CMDS
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7610u.bin \
-		$(TARGET_DIR)/lib/firmware/mediatek/mt7610u.bin
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7622pr2h.bin \
-		$(TARGET_DIR)/lib/firmware/mediatek/mt7622pr2h.bin
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7668pr2h.bin \
-		$(TARGET_DIR)/lib/firmware/mediatek/mt7668pr2h.bin
-	$(INSTALL) -m 0644 -D $(@D)/rtlwifi/rtl8723befw_36.bin \
-		$(TARGET_DIR)/lib/firmware/rtlwifi/rtl8723befw_36.bin
+	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7610u.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7610u.bin
+	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7622pr2h.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7622pr2h.bin
+	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7668pr2h.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7668pr2h.bin
+	$(INSTALL) -m 0644 -D $(@D)/rtlwifi/rtl8723befw_36.bin $(TARGET_DIR)/lib/firmware/rtlwifi/rtl8723befw_36.bin
 endef
 
 $(eval $(generic-package))

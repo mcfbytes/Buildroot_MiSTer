@@ -1,5 +1,6 @@
 config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	bool "linux-firmware-extra (stock-parity gap fill)"
+	depends on BR2_PACKAGE_LINUX_FIRMWARE
 	default y
 	help
 	  Four firmware files that stock ships (docs/stock-inventory/
@@ -7,11 +8,18 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	  genuinely still requests, but that Buildroot's own linux-firmware
 	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
 	  has NO sub-option for -- upstream linux-firmware ships every one of
-	  these four (verified: this package downloads the exact same
-	  tarball, at the exact same pinned version, as the sibling
-	  linux-firmware package, and the four paths below were confirmed
-	  present via `tar tf` on the actual downloaded file), Buildroot's
-	  curated Config.in list just never grew a toggle for them.
+	  these four, Buildroot's curated Config.in list just never grew a
+	  toggle for them.
+
+	  This package does NOT fetch a tarball of its own: it installs the
+	  four files straight out of the linux-firmware package's
+	  already-extracted tree (hence the `depends on
+	  BR2_PACKAGE_LINUX_FIRMWARE` above). That is the identical upstream
+	  snapshot, fetched and hash-verified once by linux-firmware, so these
+	  files always match the rest of the firmware on the image and there
+	  is no separately pinned version to drift -- it previously did,
+	  sitting at 20251011 while linux-firmware moved to 20260410. The four
+	  paths below were confirmed present in that extracted tree.
 
 	  Covers: mediatek/mt7610u.bin (MT7610U -- only the "e" PCIe sibling
 	  mt7610e.bin has a toggle), mediatek/mt7622pr2h.bin and
@@ -23,13 +31,13 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 
 	  THREE further stock files with a plausible in-tree consumer --
 	  brcm/BCM20702A1-0b05-17cb.hcd, rtl_bt/rtl8723d_config.bin,
-	  rtlwifi/rtl8192eefw.bin -- were tried here and dropped: none of
-	  the three actually exist in the pinned linux-firmware-20251011
-	  tarball (confirmed via its own file listing, not assumed from the
-	  driver side), so no source is available without stepping outside
-	  the pinned, hash-verified upstream. Flagged in
-	  docs/firmware-parity.md for review rather than sourced from an
-	  unpinned mirror (project rule: do not fabricate a source).
+	  rtlwifi/rtl8192eefw.bin -- were tried here and dropped: none of the
+	  three exist in the linux-firmware tree at all (confirmed against the
+	  extracted tree, most recently 20260410, not assumed from the driver
+	  side), so no source is available without stepping outside the
+	  pinned, hash-verified upstream. Flagged in docs/firmware-parity.md
+	  for review rather than sourced from an unpinned mirror (project
+	  rule: do not fabricate a source).
 
 	  See docs/firmware-parity.md for the full inventory-vs-built diff:
 	  every file's in-tree consumer was checked against THIS project's

@@ -29,9 +29,11 @@ Config.in reasoning:
    upstream HEAD, not stock's kernel) has an in-tree driver that requests
    that exact firmware path via `request_firmware()`/`MODULE_FIRMWARE()` —
    checked by grepping the actual built kernel source tree, cited per-file
-   below — and whether the file exists at all in the pinned
-   `linux-firmware-20251011.tar.xz` (checked via `tar tf` on the actual
-   downloaded, hash-verified archive, not assumed).
+   below — and whether the file exists at all in the linux-firmware tree
+   (checked directly against the extracted, hash-verified tree, not assumed;
+   originally audited against `20251011`, re-confirmed against the current
+   `20260410` pin the package now reads from — the four kept files present,
+   the three dropped ones still absent).
 3. `tar -tvf output/images/rootfs.tar | grep lib/firmware` against the
    full 66-file stock list, diffed with `comm`.
 
@@ -157,18 +159,24 @@ would not survive a `work/` re-extraction and is not part of this project's
 source of truth), `package/linux-firmware-extra` is a small satellite
 Buildroot package that:
 
-- downloads the **exact same** `linux-firmware-20251011.tar.xz`, from the
-  same `$(BR2_KERNEL_MIRROR)/linux/kernel/firmware` site, hash-pinned with
-  the **same published sha256** the sibling `linux-firmware` package's own
-  `.hash` file carries (not a new/foreign source — verified identical);
-- extracts only the four needed members (plus `WHENCE` and three
-  `LICENCE.*` files, for `legal-info`) via a custom `EXTRACT_CMDS` that
-  accounts for the tarball's `linux-firmware-<version>/` wrapper directory
-  (`--strip-components=1`, member names given wrapper-prefixed — this bit
-  the first build attempt, see "Build issues hit" below), avoiding a
-  second full unpack of the ~580 MiB upstream tree;
+- `depends on BR2_PACKAGE_LINUX_FIRMWARE` and takes the four files straight
+  out of that package's OWN already-extracted tree (`$(LINUX_FIRMWARE_DIR)`) —
+  no download or unpack of its own. It has no `_SOURCE`; its `EXTRACT_CMDS`
+  simply copies the four members out of `$(LINUX_FIRMWARE_DIR)`, ordered after
+  linux-firmware is built via `_EXTRACT_DEPENDENCIES`. This is the identical
+  upstream snapshot, fetched and hash-verified exactly once by linux-firmware,
+  so the four files always match the rest of the firmware on the image.
+  (It used to fetch its OWN copy of the linux-firmware tarball at a separately
+  pinned version — which DRIFTED to `20251011` while linux-firmware moved to
+  `20260410`, and doubled the ~600 MiB download + `dl/` footprint; reading from
+  the extracted tree removes both. See the `.mk` header for the full history.)
 - installs them under their stock-matching paths in
-  `$(TARGET_DIR)/lib/firmware/`.
+  `$(TARGET_DIR)/lib/firmware/`;
+- carries no `legal-info` entry of its own: with no `_SOURCE`, Buildroot skips
+  it (it is treated as "part of Buildroot"), and the four files' licenses
+  (`WHENCE`, `LICENCE.mediatek`, `LICENCE.ralink_a_mediatek_company_firmware`,
+  `LICENCE.rtlwifi_firmware.txt`) are already recorded under the
+  `linux-firmware` package, whose `LICENSE_FILES` lists all four.
 
 **Three further candidates were tried and dropped** from this package:
 `brcm/BCM20702A1-0b05-17cb.hcd`, `rtl_bt/rtl8723d_config.bin`,
@@ -336,7 +344,11 @@ be needed if that config gap is ever closed.
    `tar --strip-components=1`. The custom `EXTRACT_CMDS` here didn't
    account for it. Fixed: member names now given wrapper-prefixed
    (`$(addprefix linux-firmware-$(LINUX_FIRMWARE_EXTRA_VERSION)/, ...)`)
-   with `--strip-components=1` on the extraction.
+   with `--strip-components=1` on the extraction. **(Historical: the package
+   was later rewritten to copy the members out of linux-firmware's already-
+   extracted tree instead of unpacking a tarball of its own, so there is no
+   longer any tarball wrapper or `--strip-components` here — see the mechanism
+   bullets above and the `.mk` header.)**
 2. **After that fix, 3 of the original 7 members still failed** (`brcm/
    BCM20702A1-0b05-17cb.hcd`, `rtl_bt/rtl8723d_config.bin`,
    `rtlwifi/rtl8192eefw.bin`) — genuinely absent from the pinned tarball

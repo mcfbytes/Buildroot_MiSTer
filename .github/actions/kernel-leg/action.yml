@@ -31,10 +31,12 @@ inputs:
     required: true
   full-legal-info:
     description: >-
-      "true" ships the FULL legal-info bundle (GPL sources included,
-      existence- and 2 GiB-per-asset-guarded) -- for release.yml, which
-      distributes the variant kernel binary. "false" (default) ships a
-      manifest-only SBOM (legal-info/sources and legal-info/host-sources
+      "true" ships the variant kernel's applied patches + SBOM (patches-only
+      mode: the freely-available upstream *.tar.* source archives are dropped
+      -- the leg distributes the variant kernel binary but not a rootfs, and
+      manifest.csv records the pinned upstream URL+hash; existence- and 2 GiB-
+      per-asset-guarded) -- for release.yml. "false" (default) ships a
+      manifest-only SBOM (all of legal-info/sources and legal-info/host-sources
       excluded) -- for build.yml, whose CI push distributes nothing.
     required: false
     default: "false"
@@ -220,14 +222,20 @@ runs:
         tar -czf "kernel-artifact/modules-$KERNEL.tar.gz" -C "output-$KERNEL/target" usr/lib/modules
 
         if [ "$FULL_LEGAL_INFO" = "true" ]; then
-          # FULL GPL-source bundle for release.yml -- existence-asserted (don't
-          # assume run-legal-info produced it) and 2 GiB-per-asset capped, same
-          # guard as the main legal-info step. See docs/ci.md#legal-info-2gib-cap.
+          # Kernel-variant release bundle: our applied kernel patches + the
+          # SBOM (manifest.csv / license texts / buildroot.config), but NOT the
+          # upstream source archives -- this leg ships only the variant kernel
+          # binary + module tree, whose pinned upstream tree manifest.csv
+          # records the URL+hash of and this repo rebuilds from (patches-only
+          # mode; see ci_lib_package_legal_info for the full rationale and the
+          # ~520 MiB it drops). Existence-asserted (don't assume run-legal-info
+          # produced it) and 2 GiB-per-asset capped, same guard as the main
+          # legal-info step. See docs/ci.md#legal-info-2gib-cap.
           if [ ! -d "output-$KERNEL/legal-info" ]; then
             echo "::error::output-$KERNEL/legal-info does not exist -- did 'make $KERNEL-legal-info' run?" >&2
             exit 1
           fi
-          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" full
+          ci_lib_package_legal_info "output-$KERNEL" "kernel-artifact/legal-info-$KERNEL.tar.gz" patches-only
           ci_lib_check_release_asset_size "kernel-artifact/legal-info-$KERNEL.tar.gz" "legal-info-$KERNEL.tar.gz" \
             " -- split the source bundle (see the main legal-info step's guard for options)."
         else

@@ -170,7 +170,9 @@ There is no `linux-rt.img` anymore.
 manifest-only SBOM); the `build` job then merges the module tree into the one
 image it ships. Releases (`release.yml`, same shape but serial before the main
 build) ship the RT set as three separate first-class assets: `zImage_dtb-rt`,
-`linux-rt.config`, `legal-info-rt.tar.gz` (the kernel GPL-source bundle) — in
+`linux-rt.config`, `legal-info-rt.tar.gz` (the RT kernel's applied patches +
+SBOM; its upstream source is referenced by `manifest.csv`, not bundled — see
+docs/ci.md#legal-info-2gib-cap) — in
 `SHA256SUMS`, provenance-attested (the kernel binary), carried on the sdcard
 installer's FAT payload as well, and deliberately NOT inside
 `release_YYYYMMDD.7z` nor referenced by db.json.

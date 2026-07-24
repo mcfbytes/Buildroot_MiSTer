@@ -121,12 +121,29 @@ ci_lib_sz() {
 #   `make <variant>-legal-info` SBOM output) into DEST_TARBALL. MODE is
 #   one of:
 #
-#     full            Excludes only legal-info/host-sources — ships
+#     full            Excludes only legal-info/host-sources — ships all of
 #                      legal-info/sources/, the GPL "accompanying source"
-#                      for every package actually distributed. Used where
-#                      the artifact really does convey the image
-#                      (release.yml; kernel-leg's full-legal-info branch).
-#     manifest-only    Excludes BOTH legal-info/sources and
+#                      for every package actually distributed. Used by the
+#                      main-image bundle (release.yml), which really does
+#                      convey the whole linux.img — glibc, libstdc++, every
+#                      userspace package — and therefore owes their source.
+#     patches-only     Like full, but ALSO drops every upstream source
+#                      ARCHIVE under legal-info/sources/*/ (the *.tar.*
+#                      downloaded tarballs), keeping our applied *.patch
+#                      files + series. For a kernel-variant leg (kernel-leg's
+#                      full-legal-info branch): that leg ships ONLY the
+#                      variant kernel binary (zImage_dtb-<v>) + its module
+#                      tree, never a rootfs, so glibc/gcc-final/linux-headers
+#                      are build inputs it does not distribute — and the
+#                      variant kernel's own upstream tree is the pinned,
+#                      hash-gated kernel.org tarball that manifest.csv already
+#                      records the URL+hash of and this public repo rebuilds
+#                      from. Bundling a redundant ~520 MiB copy of it (plus
+#                      the toolchain the main bundle already carries) in every
+#                      release was pure dead weight; what stays is the actual
+#                      delta we author (the patches) + the SBOM (manifest.csv,
+#                      license texts, buildroot.config, source hashes).
+#     manifest-only    Excludes ALL of legal-info/sources and
 #                      legal-info/host-sources. A CI push distributes
 #                      nothing, so there is no obligation to carry the GPL
 #                      source tarballs — what remains is the part that is
@@ -135,7 +152,7 @@ ci_lib_sz() {
 #                      and the source hashes. Used by build.yml and
 #                      kernel-leg's non-full branch.
 #
-#   host-sources/ is excluded in EITHER mode, always — see this file's own
+#   host-sources/ is excluded in EVERY mode, always — see this file's own
 #   header for why (the BUILD-TIME-toolchain-vs-shipped-binary distinction
 #   and the 2109 MiB measurement).
 #
@@ -152,11 +169,26 @@ ci_lib_package_legal_info() {
 	full)
 		tar -czf "$dest_tarball" --exclude='legal-info/host-sources' -C "$output_dir" legal-info
 		;;
+	patches-only)
+		# Keep our applied patches (sources/<pkg>/*.patch + series) and the
+		# whole SBOM, but drop every upstream source ARCHIVE the packages were
+		# built from. legal-info files each downloaded tarball at exactly
+		# sources/<pkg>-<ver>/<pkg>-<ver>.tar.<ext> — always one dir deep — so
+		# the anchored glob matches every one (.tar.gz/.xz/.bz2/.zst/…) while
+		# leaving the *.patch/series siblings untouched (they carry no
+		# ".tar."). host-sources dropped as in every mode. See this function's
+		# header for why a kernel-variant leg carries only its patches, not
+		# the freely-available, manifest-referenced upstream kernel tree.
+		tar -czf "$dest_tarball" \
+			--exclude='legal-info/host-sources' \
+			--exclude='legal-info/sources/*/*.tar.*' \
+			-C "$output_dir" legal-info
+		;;
 	manifest-only)
 		tar -czf "$dest_tarball" --exclude='legal-info/sources' --exclude='legal-info/host-sources' -C "$output_dir" legal-info
 		;;
 	*)
-		echo "::error::ci_lib_package_legal_info: MODE must be 'full' or 'manifest-only', got '$mode'" >&2
+		echo "::error::ci_lib_package_legal_info: MODE must be 'full', 'patches-only', or 'manifest-only', got '$mode'" >&2
 		return 1
 		;;
 	esac

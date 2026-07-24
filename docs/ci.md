@@ -707,9 +707,13 @@ a human downloads: the `build` job downstream needs the module tree (and its
 merge-assert needs the kernel version), so — unlike the main job's
 push/dispatch-gated uploads — this uploads on **all** events, PRs included.
 `build.yml`'s leg is ~15 MB (modules tar + kernel + config + manifest-only
-SBOM), negligible next to the image artifacts. `release.yml`'s leg ships the
-full GPL source bundle instead of the manifest-only SBOM, so it runs ~250-300
-MB instead — still negligible next to the image artifacts.
+SBOM), negligible next to the image artifacts. `release.yml`'s leg swaps the
+manifest-only SBOM for a **patches-only** legal-info bundle — our applied
+kernel patches + the SBOM, but NOT the freely-available upstream source
+archives (see [`#legal-info-2gib-cap`](#legal-info-2gib-cap)) — so it stays
+about the same size (~12 MB); it does not carry a redundant ~520 MiB copy of
+the upstream kernel/toolchain source the main `legal-info.tar.gz` already
+conveys.
 
 <a id="ci-lib-explicit-fallback"></a>
 ### ci-lib.sh: explicit fallback, not a silent abort
@@ -1309,6 +1313,23 @@ there's no GPL obligation to carry either — see
 `build.yml`. With both excluded that artifact went from 2109 MB (24x the
 images it accompanies, 87 MB) down to ~4 MB of manifest, license texts,
 `buildroot.config`, and source hashes.
+
+The kernel-variant release leg (`kernel-leg` with `full-legal-info: true`) is
+a THIRD case: **patches-only** (`ci_lib_package_legal_info … patches-only`).
+That leg distributes only the variant kernel binary (`zImage_dtb-rt`) + its
+module tree — never a rootfs — so it owes corresponding source for the kernel,
+not for glibc/libstdc++/userspace (those ship in `linux.img`, and the main
+`legal-info.tar.gz` above already carries their source in full). And the
+kernel's own upstream tree is the pinned, hash-gated kernel.org tarball that
+`manifest.csv` records the URL+hash of and this public repo rebuilds from — so
+bundling a ~265 MiB copy of it, **plus** the ~290 MiB of
+gcc-final/glibc/linux-headers that Buildroot's internal-toolchain backend
+files under `sources/` (NOT `host-sources/`, because the target libc/runtime
+genuinely ship in the main image, so the `full`-mode host-sources exclusion
+never catches them), was ~520 MiB of dead weight duplicating the main bundle.
+`patches-only` keeps the delta we actually author (the `*.patch` files +
+`series`) and the SBOM, and drops every upstream `*.tar.*` archive under
+`sources/*/`, taking `legal-info-rt.tar.gz` from ~520 MiB down to ~0.4 MiB.
 
 <a id="old-two-image-design-retired"></a>
 ### Retired two-image release design

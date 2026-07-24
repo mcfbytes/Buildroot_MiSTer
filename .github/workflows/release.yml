@@ -246,11 +246,18 @@ jobs:
           fi
           cp -f "${trees[0]}.config" dist/linux.config
 
-      # MUST exclude host-sources/ from the shipped legal-info bundle: with it
-      # the archive measured 2109 MiB, over GitHub's 2 GiB per-asset cap — the
-      # first real tag push would have failed at upload. host-sources/ is the
-      # build-time toolchain's source, not the shipped bits' GPL obligation.
-      # See docs/ci.md#legal-info-2gib-cap.
+      # patches-only: ship our applied patches + the SBOM (manifest.csv with
+      # each package's pinned upstream URL+hash, license texts, buildroot.config)
+      # but NOT the upstream *.tar.* source archives. Each archive is the
+      # freely-available, hash-pinned upstream manifest.csv points to and this
+      # public repo rebuilds byte-for-byte, so bundling ~1.4 GiB of it into
+      # every release (591 MiB of that the linux-firmware blob alone) only
+      # duplicated what the repo + upstream already provide and left ~664 MiB
+      # under GitHub's 2 GiB per-asset cap as firmware grows each release. The
+      # complete corresponding source is this repo at the tag + that referenced
+      # upstream; the release notes below carry the GPLv2 written offer.
+      # host-sources/ (the build-time toolchain) is dropped in every mode
+      # regardless. See docs/ci.md#legal-info-2gib-cap.
       - name: Archive legal-info as legal-info.tar.gz
         run: |
           set -eu
@@ -260,7 +267,7 @@ jobs:
             echo "::error::output/legal-info does not exist -- did 'make legal-info' run?" >&2
             exit 1
           fi
-          ci_lib_package_legal_info output dist/legal-info.tar.gz full
+          ci_lib_package_legal_info output dist/legal-info.tar.gz patches-only
 
           # GitHub's hard per-asset ceiling is 2 GiB. Fail here, with a clear
           # message, rather than at the upload.
@@ -682,7 +689,9 @@ jobs:
           # docs/ci.md#variants for the full accounting.
           notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json.
 
-          **PREEMPT_RT beta (Linux 7.2-rc4):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; \`legal-info-rt.tar.gz\` carries the RT kernel's applied patches + SBOM (license texts and manifest.csv with the pinned upstream source URL+hash) — the complete corresponding source is this repo plus that referenced kernel.org archive (the full-image GPL source is in \`legal-info.tar.gz\`). The sdcard installer image also carries \`zImage_dtb-rt\` on its FAT payload. Status: not yet validated on hardware."
+          **Complete corresponding source (GPL/LGPL):** every binary here is built from free/open-source software with Buildroot. \`legal-info.tar.gz\` (main image) and \`legal-info-rt.tar.gz\` (RT kernel) ship the SBOM — \`manifest.csv\` listing each package's exact version, license, and pinned upstream source URL+hash — plus every license text, all local patches we apply, and \`buildroot.config\`. The upstream source archives themselves are deliberately NOT bundled: they are the freely-available, hash-pinned upstreams \`manifest.csv\` points to, and re-bundling ~1.4 GiB of them (591 MiB of that the linux-firmware blob alone) into every release only duplicated what upstream + this repo already provide. The complete corresponding source for every GPL/LGPL component is (a) the upstream archives at the exact versions/URLs in \`manifest.csv\`, byte-verifiable against their recorded hashes, plus (b) this repository at tag \`${{ github.ref_name }}\`, which carries the full Buildroot configuration and all applied patches and rebuilds the identical images with \`make\`. **Written offer:** for at least three years from this release, we will additionally provide a complete machine-readable copy of the corresponding source for any component on request — open an issue at https://github.com/${{ github.repository }}.
+
+          **PREEMPT_RT beta (Linux 7.2-rc4):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; \`legal-info-rt.tar.gz\` carries the RT kernel's applied patches + SBOM (license texts and manifest.csv with the pinned upstream source URL+hash) — the same patches-only form as the main \`legal-info.tar.gz\`, covered by the corresponding-source note above. The sdcard installer image also carries \`zImage_dtb-rt\` on its FAT payload. Status: not yet validated on hardware."
           # Upsert, not create-only: a tagged push already created the draft,
           # so an opt-in full-sdcard dispatch (same tag) must ADD assets
           # rather than fail on already-exists. See

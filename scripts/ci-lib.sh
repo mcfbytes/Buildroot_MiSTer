@@ -123,26 +123,31 @@ ci_lib_sz() {
 #
 #     full            Excludes only legal-info/host-sources — ships all of
 #                      legal-info/sources/, the GPL "accompanying source"
-#                      for every package actually distributed. Used by the
-#                      main-image bundle (release.yml), which really does
-#                      convey the whole linux.img — glibc, libstdc++, every
-#                      userspace package — and therefore owes their source.
+#                      for every package actually distributed. No current
+#                      caller: both release bundles moved to patches-only
+#                      (see below). Retained as the complete-source-in-bundle
+#                      option, should a component ever need its corresponding
+#                      source shipped alongside the binary rather than by the
+#                      written-offer + upstream-pointer route the release
+#                      notes now use (docs/ci.md#legal-info-2gib-cap).
 #     patches-only     Like full, but ALSO drops every upstream source
 #                      ARCHIVE under legal-info/sources/*/ (the *.tar.*
 #                      downloaded tarballs), keeping our applied *.patch
-#                      files + series. For a kernel-variant leg (kernel-leg's
-#                      full-legal-info branch): that leg ships ONLY the
-#                      variant kernel binary (zImage_dtb-<v>) + its module
-#                      tree, never a rootfs, so glibc/gcc-final/linux-headers
-#                      are build inputs it does not distribute — and the
-#                      variant kernel's own upstream tree is the pinned,
-#                      hash-gated kernel.org tarball that manifest.csv already
-#                      records the URL+hash of and this public repo rebuilds
-#                      from. Bundling a redundant ~520 MiB copy of it (plus
-#                      the toolchain the main bundle already carries) in every
-#                      release was pure dead weight; what stays is the actual
-#                      delta we author (the patches) + the SBOM (manifest.csv,
-#                      license texts, buildroot.config, source hashes).
+#                      files + series. Used by BOTH release bundles: the
+#                      main image (release.yml) and the kernel-variant leg
+#                      (kernel-leg's full-legal-info branch). Every dropped
+#                      archive is the pinned, hash-gated upstream that
+#                      manifest.csv records the URL+hash of and this public
+#                      repo rebuilds byte-for-byte — so the corresponding
+#                      source is carried by reference (repo at the tag +
+#                      upstream pointer + the release notes' written offer),
+#                      not by re-bundling ~1.4 GiB (main) / ~520 MiB (RT) of
+#                      freely-available source into every release. What stays
+#                      is the delta we author (the patches) + the SBOM
+#                      (manifest.csv, license texts, buildroot.config,
+#                      source hashes). See docs/ci.md#legal-info-2gib-cap for
+#                      the toolchain-under-sources/ subtlety this also cleans
+#                      up (gcc-final/glibc/linux-headers are NOT host-sources).
 #     manifest-only    Excludes ALL of legal-info/sources and
 #                      legal-info/host-sources. A CI push distributes
 #                      nothing, so there is no obligation to carry the GPL

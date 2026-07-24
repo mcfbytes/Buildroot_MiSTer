@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-24 21:45 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 124/125.
+Generated 2026-07-24 22:36 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 125/125.
 
 ## How to read this table
 
@@ -53,7 +53,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 124/125
+  (a stronger reviewer re-derived every claim from the actual source trees; 125/125
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -209,7 +209,7 @@ Of 125 rows, **2** describe a real difference a user could notice on this build 
 | `4ddd8ec3d` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Add xone (XBox wireless adapter) driver. |
 | `5391b8171` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (NFS_FS=y exp… | none (replaced) | none/silent | — | Y | ✓ | Update defconfig. |
 | `5a7965488` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/silent | Y | Y | ✓ | xone: fixed rumble. |
-| `5fcfae369` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | none (replaced) | feature-loss/silent | Y | Y |  | config: enable CONFIG_TUN for tap device support (#76) |
+| `5fcfae369` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | none (replaced) | feature-loss/silent | Y | Y | ✓ | config: enable CONFIG_TUN for tap device support (#76) |
 | `6c2d53934` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | Use 100kHz for i2c-1 for better compatibility with devices. |
 | `7436e2d6e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | mt7601u possible fix? |
 | `7828d722e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | — | ? | ✓ | defconfig: compile 80211 as a module. |

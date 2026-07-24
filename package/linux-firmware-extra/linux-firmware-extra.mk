@@ -21,6 +21,17 @@ LINUX_FIRMWARE_EXTRA_LICENSE_FILES = \
 	LICENCE.mediatek
 LINUX_FIRMWARE_EXTRA_DEPENDENCIES = host-tar
 
+# The Proprietary license above carries no GPL-style "corresponding source"
+# obligation -- only attribution (the LICENSE_FILES below, which pkg-generic.mk
+# saves into legal-info UNCONDITIONALLY, regardless of REDISTRIBUTE). Without
+# this, legal-info archives the entire fetched linux-firmware-20251011.tar.xz
+# (~557 MiB) into legal-info/sources/ even though EXTRACT_CMDS below only ever
+# pulls 8 small files out of it -- that single package was ~1076 MiB of the
+# ~1 GiB+ kernel-variant CI artifact (a "kernel" transport artifact should not
+# carry firmware source at all). REDISTRIBUTE = NO keeps the license files,
+# drops the multi-hundred-MB tarball copy.
+LINUX_FIRMWARE_EXTRA_REDISTRIBUTE = NO
+
 # Four firmware members, plus the four license files above -- every one of
 # these paths is checked, at INSTALL_TARGET_CMDS time below, against the
 # literal request_firmware()/MODULE_FIRMWARE string this project's pinned

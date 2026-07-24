@@ -1,0 +1,64 @@
+{
+  "sha": "794e6f002d0f655c504733c126a01f8c1f0bc1d4",
+  "subject": "New driver for RTL8821CU",
+  "author": "Takiiiiiiii",
+  "author_is_pr_contributor": true,
+  "date": "2026-07-16",
+  "subsystem": "net-wireless",
+  "change_type": "in-tree-code",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig",
+    "drivers/net/wireless/realtek/rtw88/**"
+  ],
+  "added": 0,
+  "removed": 0,
+  "is_backport_of_vanilla": true,
+  "disposition": "dropped-upstream",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtw88/Kconfig:195 (v6.18.39)",
+    "vanilla_quote": "config RTW88_8821CU\n\ttristate \"Realtek 8821CU USB wireless network adapter\"\n\tdepends on USB\n\tselect RTW88_CORE\n\tselect RTW88_USB\n\tselect RTW88_8821C\n\thelp\n\t  Select this option will enable support for 8821CU chipset\n\n\t  802.11ac USB wireless network adapter",
+    "equivalence": "superseded-better"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "none — this commit postdates docs/patch-provenance.md (fork commit 2026-07-16; the doc's baseline is f0fb626ac). Prior disposition existed ONLY as prose in docs/kernel-recon/fork-sync.conf:43-46; this record is the first structured, evidence-backed one.",
+  "impact": {
+    "effect_if_absent": "None in our build. If neither the fork's vendored backport nor mainline rtw88 8821CU were present, RTL8821CU-based USB WiFi dongles would not bind any driver and would be invisible to userspace (no wlanN interface). We provide the capability via mainline, so nothing is absent.",
+    "affected_hardware": [
+      "Realtek RTL8821CU-based USB WiFi dongles"
+    ],
+    "device_ids": [
+      "0bda:2006", "0bda:8731", "0bda:8811", "0bda:b820", "0bda:b82b",
+      "0bda:c80c", "0bda:c811", "0bda:c820", "0bda:c821", "0bda:c82a",
+      "0bda:c82b", "2001:331d", "7392:c811", "7392:d811", "2c4e:0105"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": false,
+    "conflicts": "N/A — the fork commit bulk-replaces drivers/net/wireless/realtek/rtw88/ with an out-of-tree rtw88 snapshot in order to obtain 8821CU on a 5.15 base. Replaying it onto 6.18.39 would conflict wholesale and would revert mainline's subsequent rtw88 work. NOT claimed: that vanilla strictly supersedes the snapshot in every respect — the snapshot defines two Kconfig symbols vanilla v6.18.39 lacks (RTW88_8821AE, RTW88_8812AE) and ships rtw8821ae.c/rtw8812ae.c with no mainline counterpart. Those are PCIe parts and our resolved config has '# CONFIG_PCI is not set' (line 1181), so they are unreachable on a DE10-Nano regardless; the USB path, which is the only one that can exist on this hardware, is fully covered.",
+    "effort": "n/a"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "mainline rtw88 driver in vanilla v6.18.39 (drivers/net/wireless/realtek/rtw88/rtw8821cu.c), enabled in our build as CONFIG_RTW88_8821CU=m at board/mister/de10nano/linux.config:536"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": "Vendored rtw88 snapshot; upstream rtw88 is GPL-2.0 (Realtek/mainline). Moot for us — not carried.",
+  "notes": "CLOSES A PROSE-ONLY GAP. docs/kernel-recon/fork-sync.conf was advanced from f0fb626ac to 794e6f002 on 2026-07-16 with the disposition stated only in that file's comment and no record file, which is exactly the 'seen, not reconciled' failure mode fork-sync.conf itself exists to prevent. This record supplies the missing evidence.\n\nWHY dropped-upstream RATHER THAN dropped-deliberate: the fork commit's purpose is to obtain 8821CU support that mainline did not yet have on a 5.15 base, by bulk-vendoring a newer rtw88 tree. Vanilla 6.18.39 has that support natively, so this is genuine upstream supersession, not a taste-based drop. Graded superseded-better because vanilla's rtw88 is newer than the snapshot the fork vendored and is maintained, whereas the fork's copy is a frozen bulk import.\n\nCONFIG SYMBOL PARITY — the strongest evidence, and it is exact. `git show 794e6f002 -- arch/arm/configs/MiSTer_defconfig` shows the commit turning on: RTW88=m, RTW88_CORE=m, RTW88_USB=m, RTW88_8821C=m, RTW88_8821CU=m, RTW88_DEBUG=y, RTW88_DEBUGFS=y, RTW88_LEDS=y. The fork's vendored tree uses THE SAME upstream symbol names, so these compare directly against our resolved config. Resolving our board/mister/de10nano/linux.config with `make -C /mnt/source/linux O=<scratch> ARCH=arm olddefconfig` against a clean v6.18.39 checkout yields: CONFIG_RTW88=m (line 1688), RTW88_CORE=m (1689), RTW88_USB=m (1690), RTW88_8821C=m (1693), RTW88_8821CU=m (1703), RTW88_LEDS=y (1709). Every functional symbol matches.\n\nTHE TWO DELIBERATE DIVERGENCES: CONFIG_RTW88_DEBUG and CONFIG_RTW88_DEBUGFS are =y in the fork commit and '# ... is not set' in our resolved config (lines 1707-1708). This is intentional and not a parity gap in any user-visible sense: both are developer instrumentation (verbose driver logging and a debugfs control surface), they add kernel log noise and attack surface on a shipping image, and neither affects whether an 8821CU dongle associates. Recorded here explicitly so a future reader does not mistake the difference for drift.\n\nBR2 PACKAGE: BR2_PACKAGE_RTL8821CU_MORROWNR is deliberately absent from configs/mister_de10nano_defconfig — with mainline rtw88_8821cu enabled, an out-of-tree morrownr driver for the same chip would be redundant and would race the in-tree module for the same USB IDs.\n\nDEVICE-ID EQUIVALENCE — CLOSED, and it is exact. This was the crux: any USB ID the fork's vendored 8821cu binds but mainline does not would be a real dongle-level regression, invisible until a user plugged one in. Both ID tables were extracted from source and compared by an independent adversarial verification pass: 15 IDs on each side, and the SETS ARE IDENTICAL — the only difference is ordering within the table. Mainline's table is drivers/net/wireless/realtek/rtw88/rtw8821cu.c:12-41 at v6.18.39, with RTW_USB_VENDOR_ID_REALTEK defined as 0x0bda at rtw88/usb.h:47. The 15 IDs are enumerated in impact.device_ids above, re-derived from the actual checkout rather than copied from any prior doc. No dongle regresses. sonnet-verified: confirmed (device-ID equivalence exact; two prose overstatements corrected)."
+}

@@ -1,8 +1,15 @@
 # Phase 1 worker instructions — MiSTer kernel patch reconciliation
 
-You are reconciling **exactly ONE commit** from the MiSTer Linux kernel fork against vanilla
-6.18.38 (plan: `MISTER-KERNEL-PATCH-RECON.md` §4). **Analyze ONLY your assigned commit. Never
-group it with other commits** — grouping is the exact failure mode this project exists to fix.
+You are reconciling **exactly ONE commit** from the MiSTer Linux kernel fork against the
+vanilla kernel version we currently ship (plan: `MISTER-KERNEL-PATCH-RECON.md` §4).
+**Analyze ONLY your assigned commit. Never group it with other commits** — grouping is the
+exact failure mode this project exists to fix.
+
+> **Which vanilla version.** Ground on the version `configs/mister_de10nano_defconfig` pins,
+> not on a version quoted in a doc — the pin moves with stable bumps and the docs lag it.
+> The original campaign ran against `v6.18.38`; the 2026-07-24 fork-sync increment ran
+> against **`v6.18.39`** (`docs/kernel-recon/fork-sync-2026-07.md` §5). Check the pin, then
+> `git -C /mnt/source/linux checkout v<that version>` before you quote anything.
 
 ## Get the diff
 
@@ -17,7 +24,7 @@ If the diff is huge (thousands of lines, e.g. vendored drivers), do NOT read it 
 
 | What | Where | Use for |
 |---|---|---|
-| Vanilla 6.18.38 source + **full git history** | `/mnt/source/linux` (checked out at v6.18.38) | grep; `git log -S'<symbol>'`, `git log --grep`, `git log -- <path>` to find where functionality landed; the ONLY valid source of vanilla SHAs/quotes |
+| Vanilla source + **full git history** | `/mnt/source/linux` (check out the version the defconfig pins — v6.18.39 as of 2026-07-24) | grep; `git log -S'<symbol>'`, `git log --grep`, `git log -- <path>` to find where functionality landed; the ONLY valid source of vanilla SHAs/quotes |
 | Vanilla 5.15.1 base snapshot | `/mnt/source/linux-5.15.1` | what the fork patched — context for the original change |
 | Fork repo | `/mnt/source/Linux-Kernel_MiSTer` (branch `MiSTer-v5.15`) | your commit and its neighbors |
 | Carried patches | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031` with gaps) | is this commit carried? grep for symbols/strings from your diff |

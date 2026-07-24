@@ -1,5 +1,11 @@
 # Phase 0 report — canonical enumeration
 
+> **Scope note (added 2026-07-24).** Describes the state at fork HEAD `f0fb626ac` with
+> vanilla grounding `v5.15.1..v6.18.38`. **Not regenerated** for the 2026-07-24 fork-sync
+> increment, which added records for `794e6f002` and `5fcfae369` and moved grounding to
+> `v6.18.39`. For anything after `f0fb626ac`, read
+> [`fork-sync-2026-07.md`](fork-sync-2026-07.md) and `commits.jsonl`'s `_meta.increments`.
+
 Generated 2026-07-15 04:27 UTC by `phase0.py`.
 
 - Fork HEAD (`MiSTer-v5.15`): `f0fb626acadd07f0718934826b143b6e4c9ce81c`

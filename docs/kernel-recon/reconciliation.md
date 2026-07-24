@@ -1,12 +1,12 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-19 02:24 UTC by `reduce.py` from 123 records (108 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 123/123.
+Generated 2026-07-24 21:31 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 124/125.
 
 ## How to read this table
 
 Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
-reconciled against our vanilla-6.18.38-based build. The full evidence for a row lives in
-`records/<full-sha>.json`.
+reconciled against our vanilla-6.18.39-based build. The full evidence for a row
+lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
   branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
@@ -53,8 +53,8 @@ reconciled against our vanilla-6.18.38-based build. The full evidence for a row 
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 123/123 rows
-  have this).
+  (a stronger reviewer re-derived every claim from the actual source trees; 124/125
+  rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
   an ADR/decision). `see record` means the reason is narrative — read the JSON record.
@@ -110,7 +110,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 123 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 125 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `b00a72159` Add support for NSO Mega Drive Controller (#50) — see its record for the decision and affected hardware.
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
@@ -179,6 +179,7 @@ Of 123 rows, **3** describe a real difference a user could notice on this build 
 | `40120d090` | v5.15 | **dropped-upstream** | — | in mainline: `27f4d1f214ae` | none (in mainline) | feature-loss/silent | — | ? | ✓ | drivers: bluetooth: backport some drivers from upstream. |
 | `552f9f197` | v5.15 | **dropped-upstream** | — | in mainline: `f7cbce60a38a`; → f7cbce60a38a (Bluetooth: hci_sync: Fix UAF on cr…; 881559af5f5c (Bluetooth: hci_sync: Attempt to de… | none (in mainline) | boot-critical/loud | — | Y | ✓ | hci_conn: prevent call with NULL pointer. |
 | `6eec2a515` | v5.15 | **dropped-upstream** | — | in mainline: `21617de3b464` | none (in mainline) | feature-loss/silent | — | Y | ✓ | xpad: Add 8BitDo Ultimate Controller ID (#36) |
+| `794e6f002` | v5.15 | **dropped-upstream** | — | in mainline; → mainline rtw88 driver in vanilla v6.18.39 (drive… | none (in mainline) | feature-loss/silent | — | Y | ✓ | New driver for RTL8821CU |
 | `9521b003c` | v5.15 | **dropped-upstream** | — | in mainline: `24175157b852`; → 24175157b852 (upstream HID: hid-google-stadiaff:… | none (in mainline) | feature-loss/silent | Y | Y | ✓ | Add support for Google Stadia controller w/ rumble (#52) |
 | `9a8cb6a93` | v5.15 | **dropped-upstream** | — | in mainline: `f5554725f304`; → f5554725f | none (in mainline) | feature-loss/silent | — | Y | ✓ | hid-microsoft: support for XBox Series X/S controller. |
 | `9bdab534b` | v5.15 | **dropped-upstream** | — | in mainline: `50503e360eeb`; → 50503e360eeb | none (in mainline) | cosmetic/silent | Y | N | ✓ | hid-nintendo: use default calibration if empty calibration … |
@@ -209,6 +210,7 @@ Of 123 rows, **3** describe a real difference a user could notice on this build 
 | `4ddd8ec3d` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Add xone (XBox wireless adapter) driver. |
 | `5391b8171` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (NFS_FS=y exp… | none (replaced) | none/silent | — | Y | ✓ | Update defconfig. |
 | `5a7965488` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/silent | Y | Y | ✓ | xone: fixed rumble. |
+| `5fcfae369` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | none (replaced) | feature-loss/silent | Y | Y |  | config: enable CONFIG_TUN for tap device support (#76) |
 | `6c2d53934` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | Use 100kHz for i2c-1 for better compatibility with devices. |
 | `7436e2d6e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | mt7601u possible fix? |
 | `7828d722e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | — | ? | ✓ | defconfig: compile 80211 as a module. |

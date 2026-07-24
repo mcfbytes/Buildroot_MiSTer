@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-07-24 21:31 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -81,10 +81,11 @@ Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each d
 | `0bda:0821` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:0823` | `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:1a2b` | `e2c082ef9` (dropped-upstream) |
+| `0bda:2006` | `794e6f002` (dropped-upstream) |
 | `0bda:2102` | `143ce187e` (dropped-deliberate) |
 | `0bda:8179` | `0d8641a2b` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `bdedb82d2` (dropped-deliberate), `109599db7` (dropped-obsolete) |
-| `0bda:8731` | `3740d5b88` (dropped-deliberate) |
-| `0bda:8811` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate) |
+| `0bda:8731` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:8811` | `794e6f002` (dropped-upstream), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate) |
 | `0bda:8812` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:881a` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:881b` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
@@ -93,15 +94,15 @@ Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each d
 | `0bda:a811` | `3740d5b88` (dropped-deliberate), `2371fb1aa` (dropped-obsolete) |
 | `0bda:b812` | `143ce187e` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:b81a` | `143ce187e` (dropped-deliberate) |
-| `0bda:b820` | `3740d5b88` (dropped-deliberate) |
-| `0bda:b82b` | `3740d5b88` (dropped-deliberate) |
+| `0bda:b820` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:b82b` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
 | `0bda:b82c` | `143ce187e` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
-| `0bda:c80c` | `3740d5b88` (dropped-deliberate) |
-| `0bda:c811` | `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
-| `0bda:c820` | `3740d5b88` (dropped-deliberate) |
-| `0bda:c821` | `3740d5b88` (dropped-deliberate) |
-| `0bda:c82a` | `3740d5b88` (dropped-deliberate) |
-| `0bda:c82b` | `3740d5b88` (dropped-deliberate) |
+| `0bda:c80c` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:c811` | `794e6f002` (dropped-upstream), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
+| `0bda:c820` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:c821` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:c82a` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
+| `0bda:c82b` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
 | `0bda:f179` | `0d8641a2b` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `bdedb82d2` (dropped-deliberate) |
 | `0df6:0076` | `0d8641a2b` (dropped-deliberate) |
 | `0e66:0023` | `2371fb1aa` (dropped-obsolete) |
@@ -162,6 +163,7 @@ Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each d
 | `2001:3318` | `2371fb1aa` (dropped-obsolete) |
 | `2001:331b` | `0d8641a2b` (dropped-deliberate) |
 | `2001:331c` | `143ce187e` (dropped-deliberate) |
+| `2001:331d` | `794e6f002` (dropped-upstream) |
 | `2001:331e` | `143ce187e` (dropped-deliberate) |
 | `2001:331f` | `143ce187e` (dropped-deliberate) |
 | `2001:3322` | `143ce187e` (dropped-deliberate) |
@@ -190,6 +192,7 @@ Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each d
 | `2955:1003` | `7436e2d6e` (dropped-deliberate) |
 | `2a5f:1000` | `7436e2d6e` (dropped-deliberate) |
 | `2c22:2303` | `f3c75eb02` (carried) |
+| `2c4e:0105` | `794e6f002` (dropped-upstream) |
 | `2c4e:0107` | `143ce187e` (dropped-deliberate) |
 | `2c4e:010a` | `143ce187e` (dropped-deliberate) |
 | `2dc8:3106` | `6eec2a515` (dropped-upstream) |
@@ -205,7 +208,9 @@ Generated 2026-07-19 02:24 UTC. VID:PID → commits and dispositions (how each d
 | `7392:b811` | `0d8641a2b` (dropped-deliberate) |
 | `7392:b822` | `143ce187e` (dropped-deliberate), `115b1d1ae` (dropped-obsolete) |
 | `7392:c611` | `a10f4246f` (dropped-upstream) |
+| `7392:c811` | `794e6f002` (dropped-upstream) |
 | `7392:c822` | `143ce187e` (dropped-deliberate) |
+| `7392:d811` | `794e6f002` (dropped-upstream) |
 | `7392:d822` | `143ce187e` (dropped-deliberate) |
 | `7392:e822` | `143ce187e` (dropped-deliberate) |
 | `7392:f822` | `143ce187e` (dropped-deliberate) |

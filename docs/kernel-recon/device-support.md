@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-07-24 21:31 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-07-24 21:45 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -58,7 +58,7 @@ Generated 2026-07-24 21:31 UTC. VID:PID → commits and dispositions (how each d
 | `057e:2017` | `c4ec5cb40` (dropped-upstream) |
 | `057e:2017 (snescon — dedicated pid, own hid_usb_device + hid_bluetooth_device id-table entries)` | `e155f6a2f` (dropped-upstream) |
 | `057e:2019` | `2799f8b94` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
-| `057e:201e` | `b00a72159` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
+| `057e:201e` | `b00a72159` (carried), `c4ec5cb40` (dropped-upstream) |
 | `0738:*` | `5a7965488` (dropped-deliberate) |
 | `07b8:8179` | `0d8641a2b` (dropped-deliberate) |
 | `0810:0001` | `0d7b4fc7e` (dropped-deliberate) |

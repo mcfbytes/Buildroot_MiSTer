@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-24 21:31 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 124/125.
+Generated 2026-07-24 21:45 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 124/125.
 
 ## How to read this table
 
@@ -110,9 +110,8 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 125 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 125 rows, **2** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
-- `b00a72159` Add support for NSO Mega Drive Controller (#50) — see its record for the decision and affected hardware.
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `fc09a292a` rtl8821cu: workaround for bad efuse in EDUP EP-AC1661. — see its record for the decision and affected hardware.
 
@@ -149,6 +148,7 @@ Of 125 rows, **3** describe a real difference a user could notice on this build 
 | `9b9aebfac` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid-guncon3: fix warnings. |
 | `a2242dd85` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | xpad: exclude GIP-capable controllers. |
 | `aa8afe109` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | boot-critical/silent | Y | Y | ✓ | Add de10-nano DT. |
+| `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
 | `b02a4a011` | v5.15 | **carried** | 0036-btusb-csr-clone-lmp-subver-2512.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | btusb: support for more CSR clones. |
 | `b1b168eb6` | v5.15 | **carried** | 0013-hid-flydigi-vader.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: add HID driver to fix Flydigi Vader 4 Pro mapping in… |
 | `b62efee23` | v5.15 | **carried** | 0029-leds-gpio-brightness-hw-changed.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hps_led: enable brightness change notification. |
@@ -187,7 +187,6 @@ Of 125 rows, **3** describe a real difference a user could notice on this build 
 | `a6165424f` | v5.13.12 | **dropped-upstream** | — | in mainline: `c62f7cd8ed06`; → c62f7cd8ed06 | none (in mainline) | none/silent | — | ? | ✓ | xinmotek fix (#11) |
 | `adbaaea91` | v5.15 | **dropped-upstream** | — | in mainline: `f5554725f304` | none (in mainline) | feature-loss/silent | — | Y | ✓ | hid-microsoft: add XOne Elite 2 ID. |
 | `af27afc4c` | v5.15 | **dropped-upstream** | — | in mainline: `e23c69e33248`; → vanilla-6.18.38-xpad.c (commits e23c69e33248 and… | none (in mainline) | none/silent | — | N | ✓ | Update xpad driver (#63) |
-| `b00a72159` | v5.15 | **dropped-upstream** | — | in mainline: `94f18bb19945`; → 94f18bb19945 (vanilla, 2023-12-04, 'HID: nintend… | **limitation — see record** | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
 | `c4ec5cb40` | v5.15 | **dropped-upstream** | — | in mainline: `2af16c1f846b`; → 2af16c1f846b (v5.16, basic driver); 294a828759d0 (v5.16, charging grip); … | none (in mainline) | feature-loss/silent | Y | Y | ✓ | Support for Nintendo Switch controller (pro, nes, snes, joy… |
 | `e155f6a2f` | v5.15 | **dropped-upstream** | 0034-hid-nintendo-nes-famicom-stock-ab-mapping.patch | in mainline: `94f18bb19945`; → 94f18bb19 | none (in mainline) | feature-loss/silent | Y | Y | ✓ | hid-nintendo: support for Switch NES and SNES controllers. |
 | `e2c082ef9` | v5.15 | **dropped-upstream** | — | in mainline: `a3dc32c635ba`; → a3dc32c635bae0ae569f489e00de0e8f015bfc25 (vanill… | none (in mainline) | feature-loss/silent | — | Y | ✓ | usb-storage: blacklist Realtek WiFi driver CD-ROM. |

@@ -5,11 +5,18 @@ The first *incremental* run of the reconciliation. The original pass
 covers what has landed on `MiSTer-devel/Linux-Kernel_MiSTer` since, using the same
 methodology at a scale that fits the input.
 
-**Outcome: one config change to our build (`CONFIG_TUN=y`), one prose-only disposition
-retrofitted with evidence, and both `fork-sync.conf` pointers advanced.** The adversarial
-pass (§7) additionally surfaced two items that are *not* part of this sync but should not be
-lost: a known-open NSO Genesis limitation upstream has now fixed, and a duplicate device-ID
-entry in our own patch `0017`. Both are recorded in §8 as follow-ups.
+**Outcome: two stock-parity fixes, one prose-only disposition retrofitted with evidence, one
+misclassified record corrected, and both `fork-sync.conf` pointers advanced.**
+
+| # | Finding | Kind | Action |
+|---|---|---|---|
+| 1 | `CONFIG_TUN` off; stock enabled it (§2) | stock-parity gap, silent | `CONFIG_TUN=y` in `linux.config` |
+| 2 | NSO Genesis Bluetooth PID not normalized (§8.1) | **stock-parity gap, silent** — a regression we shipped | carried as `0038`; record `b00a72159` corrected `dropped-upstream` → `carried` |
+| 3 | Duplicate Qanba vendor ID in our `0017` (§8.2) | our own defect | redundant hunk dropped, header claims corrected |
+| 4 | `794e6f002` advanced past on prose alone (§4) | process gap | retrofitted with an evidence-backed record |
+
+Finding 2 is the significant one, and it was **not** visible from the reconciliation records —
+it surfaced only from tree-diffing our export against Sorgelig's independent 6.18 port.
 
 ---
 
@@ -297,29 +304,52 @@ tag object* rather than the commit.
 Neither of these is stock parity, so neither is in scope for the increment that closes this
 sync. Both are real and should not be lost.
 
-### 8.1 NSO Genesis/Mega Drive product normalization — a known-open item upstream has now fixed
+### 8.1 NSO Genesis/Mega Drive PID normalization — a real stock-parity gap — **FIXED, carried as `0038`**
 
-Upstream's 6.18 port carries a hunk our export does not
-(`origin/MiSTer-v6.18:drivers/hid/hid-nintendo.c:2175-2177`):
+> **Correction.** An earlier revision of this section claimed *"stock v5.15 does not have this
+> fix either — upstream authored it during their 6.18 forward-port,"* and filed it as an
+> improvement over stock. **That was wrong.** Stock has had it since 2023. The first grep
+> missed it because stock uses different identifiers (below). This is a **silent regression
+> our image shipped**, not an enhancement — the most serious finding of this increment.
+
+Over Bluetooth the NSO Genesis/Mega Drive pad reports PID `0x2017` — the same PID as the NSO
+SNES pad. Stock corrects it from `ctlr_type` before the input_dev is created
+(`MiSTer-v5.15:drivers/hid/hid-nintendo.c:1761-1765`):
 
 ```c
+/* MD controller has wrong PID via BT, so just force it */
 if (hdev->product == USB_DEVICE_ID_NINTENDO_SNESCON &&
-    ctlr->ctlr_type == JOYCON_CTLR_TYPE_GEN)
-	hdev->product = USB_DEVICE_ID_NINTENDO_GENCON;
+	ctlr->ctlr_type == JOYCON_CTLR_TYPE_MD) {
+	hdev->product = USB_DEVICE_ID_NINTENDO_MDCON;
+}
 ```
 
-Over Bluetooth an NSO Genesis pad presents PID `0x2017` (SNES), so Main_MiSTer's
-`gamecontroller_db.cpp:544/554` GUID lookup selects the **SNES** row and the pad is
-mismapped. Record `b00a72159` already dispositions the originating commit `dropped-upstream`
-**but flags exactly this as a present-day KNOWN LIMITATION with an explicit carry
-recommendation** — so this is a known-*open* item, not new work, and the "nothing new on
-v6.18" framing must not be read as closing it.
+Vanilla does **not**: `grep -c 'hdev->product = ' drivers/hid/hid-nintendo.c` on v6.18.39
+returns **0**. We dropped it, so a Bluetooth-connected Genesis pad presented as an NSO SNES
+pad and Main_MiSTer's GUID-keyed `gamecontrollerdb` lookup
+(`gamecontroller_db.cpp`, `gcdb_map_for_controller()`) matched the **SNES** row — the pad
+came out mismapped, silently. Wired connections were unaffected, which is why this survives
+casual bench testing.
 
-Note **stock v5.15 does not have this fix either** — upstream authored it during their 6.18
-forward-port. Carrying it is therefore an improvement over stock, not stock parity, which is
-why it is a follow-up rather than part of this sync.
+**Why it was missed — the naming trap.** Stock calls the device `MDCON` (`hid-ids.h:936`,
+`0x201E`); mainline calls it `GENCON` (`hid-ids.h:1067`, `0x201e`) — *the same PID*, renamed
+when NSO support landed upstream. Likewise stock's `JOYCON_CTLR_TYPE_MD` and mainline's
+`JOYCON_CTLR_TYPE_GEN` are the same wire value, `0x0D`. Searching the 6.18 tree for stock's
+identifiers finds nothing and reads as "absent upstream"; searching for the *device* finds it
+and reads as "covered". Both are half-right, and record `b00a72159` landed on the second —
+grading the commit `dropped-upstream` with `equivalence: partial`, correctly noting the
+uncovered PID hunk in prose that was then never actioned.
 
-### 8.2 Duplicate Qanba device ID in our patch `0017`
+That record is now corrected to **`carried`** → `0038-hid-nintendo-nso-genesis-bt-pid.patch`,
+re-implemented against 6.18's `joycon_input_create()` with the mainline names.
+
+**This is the same failure family as the DualSense `BTN_Z` case (`0037`)** that motivated the
+whole reconciliation: a genuinely-upstream feature set absorbing one MiSTer-specific
+behavioural commit, and the group stamped "drop". Worth noting that re-reading the record did
+not catch it — **tree-diffing our export against Sorgelig's independent 6.18 port did**,
+because their port kept the hunk and ours had lost it.
+
+### 8.2 Duplicate Qanba device ID in our patch `0017` — **FIXED**
 
 `board/mister/de10nano/linux-patches/0017-xpad-mister-deltas.patch:186` inserts
 `XPAD_XBOX360_VENDOR(0x2c22)` at the head of `xpad_table[]`, but vanilla v6.18.39 already
@@ -329,8 +359,13 @@ and `:617`. Functionally harmless (first match wins), but wrong, and doubly awkw
 the patch header at line 43 asserts this entry "is the only piece of it this patch still
 needs to add itself" — false against 6.18 — while lines 72-75 criticise the fork for
 inserting an entry out of order at the top of the table, which is precisely what the hunk
-does. Fix: drop the hunk, and correct the header claim so delta 2 adds only the
-`xpad_device[]` row.
+does.
+
+**Fixed:** the hunk is deleted (and every later hunk's new-side offset decremented to match),
+and the two header claims are corrected — delta 2 now states that it adds only the
+`xpad_device[]` row, which 6.18 genuinely lacks. Verified: `0x2c22` now appears exactly twice
+in the patched tree — our `xpad_device[]` row and vanilla's already-sorted `xpad_table[]`
+entry.
 
 ### 8.3 `check-fork-sync.sh` cannot see a branch that is not already listed
 

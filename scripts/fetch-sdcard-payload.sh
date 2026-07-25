@@ -131,7 +131,7 @@ readonly PINNED_WIFI_SH_SIZE="5823"
 # design in the plan this script implements) -- only the source commit is
 # recorded, for traceability. Bump by re-resolving `git rev-parse HEAD`
 # against that repo and re-running with the new value.
-readonly PINNED_CORES_COMMIT="b35ae1a53ce99985a969d495adc65cd1e22723e0"
+readonly PINNED_CORES_COMMIT="cec9079df13b176de2442f89054fb64151fdb012"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------

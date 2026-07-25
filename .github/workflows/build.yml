@@ -71,7 +71,7 @@ jobs:
       kernel_variants: ${{ steps.variants.outputs.kernel_variants }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history: the diff range below reaches back to a base commit
           # that a shallow clone would not have.
@@ -172,7 +172,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The shared leg recipe (build the variant, job-summary overview, stage
       # + upload the artifact) -- see .github/actions/kernel-leg. Both inputs
@@ -199,7 +199,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # BEFORE the build (fails in ~1s, not after 300 min). Guards what the
       # build can't: `patch -p1` ignores mail headers, so a malformed

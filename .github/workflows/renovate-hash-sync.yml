@@ -171,7 +171,7 @@ jobs:
       # sync so Renovate's github-actions manager tracks ONE dependency. See
       # docs/ci.md#pin-conventions.
       - name: Checkout the target branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The PR head branch, or the dispatch input -- NOT the ref this
           # workflow definition came from. On a manual run those differ by
@@ -192,7 +192,7 @@ jobs:
       # `path:` checks this out into its own subdirectory so it cannot
       # clobber the target-branch working tree checked out above.
       - name: Checkout hash-sync scripts at the workflow's own ref
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .hash-sync-tools

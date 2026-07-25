@@ -88,9 +88,21 @@ Upstream:     No, and not upstreamable as-is: it overloads a real FAT
               (docs/patch-provenance.md §3.8 class G, option (c);
               decision reversal recorded in ADR 0019, which amends
               ADR 0010).
-Forward-port: n/a (written against 6.18.38 directly, 2026-07-14).
+Forward-port: written against 6.18.38 directly (2026-07-14); one API
+              adaptation for 6.18.40 (2026-07-25) -- see below.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+[6.18.40 API adaptation: the stable series backported upstream's benign-
+ secondary-entry preservation rework, which gave exfat_remove_entries() a
+ 4th arg (bool free_benign). The symlink error-path call passes true,
+ matching upstream's own unlink/rmdir idiom at the same ES_IDX_FILE site.
+ This is now byte-identical to what the 7.x beta series
+ (../linux-patches-beta/0031-exfat-samsung-symlinks.patch) already
+ carried for the same reason -- the two series no longer diverge on any
+ added line, only on hunk context. Keep them in lockstep when editing
+ either. NOTE: this makes the patch require >= 6.18.40; it will not
+ compile against 6.18.39 or earlier, which is fine -- it tracks the
+ pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, not a range.]
 ---
 diff --git a/fs/exfat/dir.c b/fs/exfat/dir.c
 index 97f2ff8..3539964 100644
@@ -329,7 +341,7 @@ index dfe9574..9c42ae8 100644
 +	mutex_lock(&sbi->s_lock);
 +	exfat_set_volume_dirty(sb);
 +	if (!exfat_get_dentry_set_by_ei(&es, sb, EXFAT_I(inode))) {
-+		exfat_remove_entries(inode, &es, ES_IDX_FILE);
++		exfat_remove_entries(inode, &es, ES_IDX_FILE, true);
 +		if (!exfat_put_dentry_set(&es, IS_DIRSYNC(dir))) {
 +			EXFAT_I(inode)->dir.dir = DIR_DELETED;
 +			/*

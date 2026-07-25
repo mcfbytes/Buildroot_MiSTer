@@ -96,10 +96,11 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  context at Buildroot's patch -F0. Diff regenerated against 7.2-rc3;
  added lines are byte-identical to the 6.18 original in
  ../linux-patches/0031-exfat-samsung-symlinks.patch -- keep the two in
- lockstep when editing either. One deliberate 7.x API divergence beyond
- context: exfat_remove_entries() gained a 4th arg (bool free_benign) in
- 7.x; the symlink error-path call passes true, matching upstream's own
- unlink idiom at the same ES_IDX_FILE site.]
+ lockstep when editing either. The exfat_remove_entries() 4th arg
+ (bool free_benign) was a 7.x-only divergence when this was written; the
+ stable series backported the same rework in 6.18.40, so the 6.18 patch
+ now passes true at the same ES_IDX_FILE site too and the added lines are
+ once again identical in both series.]
 
 ---
 diff --git a/fs/exfat/dir.c b/fs/exfat/dir.c

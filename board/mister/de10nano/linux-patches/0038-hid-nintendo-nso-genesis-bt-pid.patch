@@ -1,6 +1,6 @@
 From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
 From: Shig <clockworkjb@gmail.com>
-Date: Mon, 4 Sep 2023 12:00:00 +0800
+Date: Mon, 4 Sep 2023 20:17:52 +1000
 Subject: [PATCH 1/1] hid-nintendo: force correct GENCON PID for the NSO Genesis pad over Bluetooth
 
 The NSO Genesis/Mega Drive pad reports product ID 0x2017 over Bluetooth --

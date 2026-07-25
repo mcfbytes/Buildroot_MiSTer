@@ -1,0 +1,187 @@
+From f123647ef7897831715649c2dcf0b519b4a26252 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 10 Jul 2021 12:00:00 +0800
+Subject: [PATCH 1/1] hid-playstation: stock lightbar LED names and probe-time player-LED clear
+
+Both PlayStation pads silently lose lightbar colour control.
+
+DualSense: stock registers three plain LED classdevs "<hid-dev>:red",
+":green", ":blue" (max_brightness 255). Mainline replaced them with a
+single multicolor device, "inputN:rgb:indicator", driven by
+multi_intensity -- which Main_MiSTer never writes. It writes the three
+colour paths (input.cpp, the branch selected by ":player_id" succeeding,
+which our 0033 node makes succeed), so every write fails and the lightbar
+stays on the driver default blue forever.
+
+DualShock 4: on stock the pad is owned by hid-sony, whose lightbar LEDs are
+named from the HID device -- "<hid-dev>:red/:green/:blue/:global". Mainline
+moved the DS4 into hid-playstation, which names the same four LEDs from the
+INPUT device ("inputN:red"). Main_MiSTer reaches its DS4 fallback branch
+correctly (our DS4 registers no ":player_id", so that probe fails and the
+fallback fires) and then all three colour writes fail, leaving the pad on
+its connection-order default.
+
+Three changes:
+
+  1. ps_led_register()'s hid-sony-compatible branch names from the HID
+     device instead of the input device. That branch is used only by the
+     DS4 lightbar, so the change is naturally scoped to it.
+
+  2. dualsense_create() additionally registers stock's three plain
+     lightbar LEDs. The multicolor device stays registered -- this adds the
+     stock ABI beside it rather than removing mainline's. Both drive the
+     same ds->lightbar_{red,green,blue} state and the same output worker.
+
+  3. dualsense_create() clears the player-LED row at probe, as stock's
+     ds_leds_create() does with dualsense_set_player_leds(ds, 0). Vanilla
+     instead lights a connect-order pattern. This one is transient --
+     Main_MiSTer converges it on the first rescan -- but it removes a
+     visible flash of the wrong pattern at connect.
+
+Provenance
+----------
+Origin:       Stock hid-sony.c (DS4 lightbar, "<hid-dev>:<colour>") and
+              stock hid-playstation.c ds_lightbar_create()/ds_leds_create()
+              (DualSense three-LED lightbar + player-LED clear).
+              Consumer: Main_MiSTer input.cpp, DualSense and DS4 branches.
+Author:       Sorgelig <pour.garbage@gmail.com> (stock naming)
+Upstream:     No -- mainline deliberately moved to the LED class spec and to
+              a multicolor lightbar. This is the ABI stock's userspace uses.
+Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
+              (docs/kernel-recon/fork-sync-2026-07.md §8). The three plain
+              LEDs are new code against 6.18's structures (one get/set pair
+              indexed by position in ds->lightbar_rgb[]), not a textual
+              backport. NOT bench-verified -- needs a DualSense and a DS4.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
+index dd58d089a581..e7ed463be58d 100644
+--- a/drivers/hid/hid-playstation.c
++++ b/drivers/hid/hid-playstation.c
+@@ -198,6 +198,14 @@ struct dualsense {
+ 
+ 	/* RGB lightbar */
+ 	struct led_classdev_mc lightbar;
++	/*
++	 * MiSTer: stock exposes the lightbar as three plain LED classdevs named
++	 * "<hid-dev>:red/:green/:blue" (max_brightness 255), which is what
++	 * Main_MiSTer writes. Mainline replaced them with the single multicolor
++	 * device above, driven by multi_intensity, which Main_MiSTer never
++	 * writes. Both are registered; these three are the stock ABI.
++	 */
++	struct led_classdev lightbar_rgb[3];
+ 	bool update_lightbar;
+ 	u8 lightbar_red;
+ 	u8 lightbar_green;
+@@ -835,9 +843,17 @@ static int ps_led_register(struct ps_device *ps_dev, struct led_classdev *led,
+ 	} else {
+ 		/* Backwards compatible mode for hid-sony, but not compliant
+ 		 * with LED class spec.
++		 *
++		 * MiSTer: named from the HID device, not the input device. This
++		 * branch is used only by the DualShock 4 lightbar, which stock
++		 * serves from hid-sony as "<hid-dev>:red/:green/:blue" -- the
++		 * paths Main_MiSTer writes in its DS4 branch. Mainline moved the
++		 * DS4 into this driver and named them "inputN:red" etc., which
++		 * Main_MiSTer cannot find, leaving the pad on whatever colour
++		 * dualshock4_set_default_lightbar_colors() picked.
+ 		 */
+ 		led->name = devm_kasprintf(&ps_dev->hdev->dev, GFP_KERNEL, "%s:%s",
+-					   ps_dev->input_dev_name, led_info->color);
++					   dev_name(&ps_dev->hdev->dev), led_info->color);
+ 	}
+ 
+ 	if (!led->name)
+@@ -1650,6 +1666,45 @@ static void dualsense_set_lightbar(struct dualsense *ds, u8 red, u8 green, u8 bl
+ 	dualsense_schedule_work(ds);
+ }
+ 
++/*
++ * MiSTer: stock's three plain lightbar LEDs. Index within ds->lightbar_rgb[]
++ * selects the channel, so one pair of callbacks serves red/green/blue.
++ */
++static enum led_brightness dualsense_rgb_led_get_brightness(struct led_classdev *cdev)
++{
++	struct dualsense *ds = container_of(cdev, struct dualsense, lightbar_rgb[0]);
++	unsigned int idx = cdev - ds->lightbar_rgb;
++
++	switch (idx) {
++	case 0:  return ds->lightbar_red;
++	case 1:  return ds->lightbar_green;
++	default: return ds->lightbar_blue;
++	}
++}
++
++static int dualsense_rgb_led_set_brightness(struct led_classdev *cdev,
++					    enum led_brightness brightness)
++{
++	struct dualsense *ds = container_of(cdev, struct dualsense, lightbar_rgb[0]);
++	unsigned int idx = cdev - ds->lightbar_rgb;
++	u8 red, green, blue;
++
++	scoped_guard(spinlock_irqsave, &ds->base.lock) {
++		red = ds->lightbar_red;
++		green = ds->lightbar_green;
++		blue = ds->lightbar_blue;
++	}
++
++	switch (idx) {
++	case 0:  red = brightness; break;
++	case 1:  green = brightness; break;
++	default: blue = brightness; break;
++	}
++
++	dualsense_set_lightbar(ds, red, green, blue);
++	return 0;
++}
++
+ static void dualsense_set_player_leds(struct dualsense *ds, u8 player_id)
+ {
+ 	/*
+@@ -1823,9 +1878,44 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+ 	if (ret)
+ 		goto err;
+ 
++	/*
++	 * MiSTer: also register stock's three plain lightbar LEDs. Main_MiSTer
++	 * writes "<hid-dev>:red/:green/:blue" (input.cpp, DualSense branch) and
++	 * never touches the multicolor device's multi_intensity, so without
++	 * these the lightbar is stuck at the default colour set just below.
++	 */
++	for (unsigned int i = 0; i < ARRAY_SIZE(ds->lightbar_rgb); i++) {
++		static const char * const rgb_names[] = { "red", "green", "blue" };
++		struct led_classdev *led = &ds->lightbar_rgb[i];
++
++		led->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s:%s",
++					   dev_name(&hdev->dev), rgb_names[i]);
++		if (!led->name) {
++			ret = -ENOMEM;
++			goto err;
++		}
++		led->brightness = 0;
++		led->max_brightness = 255;
++		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
++		led->brightness_get = dualsense_rgb_led_get_brightness;
++		led->brightness_set_blocking = dualsense_rgb_led_set_brightness;
++
++		ret = devm_led_classdev_register(&hdev->dev, led);
++		if (ret)
++			goto err;
++	}
++
+ 	/* Set default lightbar color. */
+ 	dualsense_set_lightbar(ds, 0, 0, 128); /* blue */
+ 
++	/*
++	 * MiSTer: stock clears the player-LED row at probe (its ds_leds_create()
++	 * opens with dualsense_set_player_leds(ds, 0)); vanilla instead lights a
++	 * connect-order pattern. Clear it so the row is dark until Main_MiSTer
++	 * writes the real slot via ":player_id".
++	 */
++	dualsense_set_player_leds(ds, 0);
++
+ 	/*
+ 	 * Stock MiSTer exposes ONE writable LED ("<hid-dev>:player_id",
+ 	 * brightness 0-6) instead of vanilla's five auto-assigned player

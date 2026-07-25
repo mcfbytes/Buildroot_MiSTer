@@ -490,7 +490,7 @@ the two highest-value gates is deliberate.
 | `release.yml` | `v*` tags | Rebuilds from scratch (never adopts a CI run), assembles `release_YYYYMMDD.7z`, drafts the GitHub Release |
 | `publish-db.yml` | release *published* | Regenerates `db.json`, schema-checks it, deploys it to GitHub Pages |
 | `reproducibility.yml` | manual dispatch | Proves two independent builds are byte-identical. Manual on purpose: it is a double build, and its input caches are only warm after `build.yml` has run |
-| `renovate-hash-sync.yml` | Renovate PRs | Refreshes companion hashes a version bump leaves stale |
+| `renovate-hash-sync.yml` | Renovate PRs | Refreshes companion hashes a version bump leaves stale; validates the one pin that has none (the `_Console` cores snapshot) |
 | `renovate-validate.yml` | config changes | An invalid Renovate config makes Renovate skip the repo **silently** — this is the only signal you would ever get |
 | `fork-sync.yml` | weekly | Diffs the last-reconciled fork commits against upstream's live HEADs and keeps one issue updated with the backport queue |
 | `lint.yml` | push, PR | `actionlint` over the workflows, `shellcheck` over `scripts/**` and the composite actions' `run:` bodies |

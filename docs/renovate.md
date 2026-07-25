@@ -46,7 +46,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | lzma-sdk tag pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk` | `customManagers` regex, `github-tags` datasource over `ip7z/7zip`, `loose` versioning. Only the `LZMA_SDK_VERSION` line is managed — `LZMA_SDK_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke lzma-sdk step** (release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
-| 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step**; the cores commit has no companion hash (cores are fetched by content — see the script's header) |
+| 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step** (case 4). The cores commit has no companion hash (cores are fetched by content — see the script's header), so it instead gets `renovate-hash-sync.yml`'s **validate-only cores-pin step** (case 5): one Contents API call at the new commit, failing the PR closed if it does not resolve, lists no `*.rbf`, or busts the ~600 MiB cap — because no PR build ever resolves this pin, only `release.yml`'s opt-in `SDCARD_CORES=1` leg |
 | CI container digests | `ubuntu:26.04@sha256:...` in `build.yml`, `release.yml`, `reproducibility.yml`'s `container:` blocks | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
@@ -208,12 +208,12 @@ validated has to be exactly what those steps use. The name is also run through
 `git check-ref-format --branch`, which rejects embedded spaces, `..`, a leading
 `-`, and the rest.
 
-**Implementation: two checkouts, four scripts.** The job checks out the
+**Implementation: two checkouts, five scripts.** The job checks out the
 target branch first (`env.TARGET_BRANCH` — the PR head, or the dispatch
 input), then does a **second** `actions/checkout` at
 `ref: ${{ github.workflow_sha }}` (this workflow definition's own commit)
 into `path: .hash-sync-tools`, alongside the target-branch tree rather than
-on top of it. The four cases below are each one step that runs
+on top of it. The cases below are each one step that runs
 `.hash-sync-tools/scripts/hash-sync-<case>.sh "$GITHUB_WORKSPACE"` — CODE
 from the workflow's own ref, operating on FILES in the target-branch
 checkout. This split is what makes the `workflow_dispatch` escape hatch
@@ -222,8 +222,8 @@ stale kernel-bump PR, say) has no `scripts/hash-sync-*.sh` at all, so
 running the scripts out of *that* checkout would exit 127 on exactly the
 branch the escape hatch exists to repair. Sourcing them from the workflow's
 own ref instead means a fix landed on the default branch is what runs,
-regardless of how stale `inputs.branch` is. The four scripts
-(`scripts/hash-sync-{github-packages,kernel,lzma-sdk,sdcard-payload}.sh`,
+regardless of how stale `inputs.branch` is. The five scripts
+(`scripts/hash-sync-{github-packages,kernel,lzma-sdk,sdcard-payload,cores-pin}.sh`,
 sharing `scripts/lib/hash-sync-common.sh`) share the job-level
 `HASH_SYNC_PACKAGES` and `HASH_SYNC_OUTCOMES_FILE` env vars and record their
 per-pin outcomes to the same TSV file that the "Check for a recorded
@@ -284,8 +284,28 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    new commit and rewrites the `PINNED_*_SHA256`/`_SIZE` lines in place —
    the same fetch-and-hash practice as case 1. The `_Console` cores snapshot
    commit (`PINNED_CORES_COMMIT`) has no companion hash and is deliberately
-   not handled (individual cores are fetched by content — see the script's
-   own header).
+   not handled *here* — it gets case 5 instead (individual cores are fetched
+   by content — see the script's own header).
+
+5. **The `_Console` cores snapshot pin** (`PINNED_CORES_COMMIT`, also in
+   `scripts/fetch-sdcard-payload.sh`) — the one **validate-only** case. It
+   rewrites nothing, because a commit-only pin has no companion value to keep
+   in lockstep. It exists because that pin is the only one in this table that
+   **nothing else fails closed on**: it is read in exactly one place
+   (`fetch_cores()` under `SDCARD_CORES=1`), which runs only in
+   `release.yml`'s opt-in `sdcard-full.img.xz` leg — never in PR CI. So a
+   Renovate bump to a commit that no longer resolves would stay green through
+   merge and first break when someone cuts a release with cores enabled.
+   `scripts/hash-sync-cores-pin.sh` resolves the `_Console` Contents API at
+   the newly-pinned commit (one call, no downloads) and records `failed` — 
+   which suppresses the push and fails the job — if the commit/path does not
+   resolve (404/422), the listing holds zero `*.rbf`, or those `*.rbf` total
+   more than `$EXPECT_CORES_MAX_BYTES` (~600 MiB, the same variable and
+   default `scripts/check-sdcard.sh` enforces on the staged tree). Transport
+   failures, 403 rate-limiting and 5xx record `skipped` instead — an upstream
+   condition is not a verdict on the pin. Needs `GITHUB_TOKEN` (the step
+   passes `github.token`): unauthenticated, the 60/hr-per-runner-IP limit
+   would turn this into a permanent `skipped` that validates nothing.
 
 **What it deliberately does NOT fix:**
 

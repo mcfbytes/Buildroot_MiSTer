@@ -9,10 +9,16 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Four cases: (1) the 12 github-sourced package pins, (2) the kernel tarball
-# hash, (3) the bespoke lzma-sdk release-asset hash, (4) the sdcard payload
-# single-file pins. Why a locally-computed sha256sum is a legitimate source
-# for each of these (not a shortcut): docs/ci.md#renovate-hash-sync-safety-model.
+# Four REFRESH cases: (1) the 12 github-sourced package pins, (2) the kernel
+# tarball hash, (3) the bespoke lzma-sdk release-asset hash, (4) the sdcard
+# payload single-file pins. Why a locally-computed sha256sum is a legitimate
+# source for each of these (not a shortcut):
+# docs/ci.md#renovate-hash-sync-safety-model.
+#
+# Plus one VALIDATE-ONLY case: (5) the _Console cores snapshot pin. It has no
+# companion hash to refresh -- but it is also the one pin no PR build ever
+# resolves, so nothing else fails closed on a bad bump. See step 5 and
+# scripts/hash-sync-cores-pin.sh's header.
 #
 # NEVER automated: BUILDROOT_SHA256 (signed-manifest-only trust), the RT
 # beta's TOFU-pinned `-rc` kernel hash, cabextract/linux-firmware-extra/
@@ -33,8 +39,9 @@
 # "failed" or if the whole run did nothing -- see
 # docs/ci.md#renovate-hash-sync-outcomes-gate.
 #
-# NOTE: scripts/hash-sync-{kernel,github-packages,lzma-sdk,sdcard-payload}.sh
-# + scripts/lib/hash-sync-common.sh are the four cases below -- each step
+# NOTE: scripts/hash-sync-{kernel,github-packages,lzma-sdk,sdcard-payload,
+# cores-pin}.sh + scripts/lib/hash-sync-common.sh are the five cases below --
+# each step
 # just invokes its script (see the second checkout, below, for where the
 # scripts come from). Fix bugs IN THE SCRIPTS; this file only wires them up
 # and owns the per-pin outcome ledger / push-gate / job-summary steps that
@@ -250,6 +257,25 @@ jobs:
       - name: Refresh sdcard payload script hashes (update_all.sh, wifi.sh)
         run: .hash-sync-tools/scripts/hash-sync-sdcard-payload.sh "$GITHUB_WORKSPACE"
 
+      # --- 5. _Console cores snapshot pin: VALIDATE, never rewrite -----------
+      # The odd one out: PINNED_CORES_COMMIT has no companion hash, so there
+      # is nothing to refresh -- but it is also read NOWHERE in PR CI (only
+      # release.yml's opt-in SDCARD_CORES=1 leg resolves it), so a Renovate
+      # bump to a commit that no longer resolves, lists no cores, or blows the
+      # ~600 MiB cap would go unnoticed until a release is cut. One Contents
+      # API call closes that. This step edits no file and its CORES_PIN_CHANGED
+      # is always 0, so it is deliberately ABSENT from the commit/push `if:`
+      # below -- but a "failed" outcome from it still suppresses that push and
+      # fails the job, via the same outcomes ledger as the other four. Runs
+      # from the .hash-sync-tools checkout against the target branch's tree;
+      # see step 1's comment. GITHUB_TOKEN is passed because the
+      # unauthenticated API limit (60/hr per runner IP) would otherwise turn
+      # this check into a 403 -> "skipped" that validates nothing.
+      - name: Validate the _Console cores snapshot pin
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .hash-sync-tools/scripts/hash-sync-cores-pin.sh "$GITHUB_WORKSPACE"
+
       # Gate the push: ANY pin recorded "failed" (from any of the four steps
       # above) suppresses the commit/push below. MUST run and be evaluated
       # BEFORE the push -- the summary/gate step at the end of the job
@@ -325,7 +351,7 @@ jobs:
           # an unhandled `set -e` abort mid-loop can't make a pin silently
           # vanish from this summary -- exactly how run 29669946883 went
           # unnoticed. See docs/ci.md#renovate-hash-sync-outcomes-gate.
-          all_pins="$HASH_SYNC_PACKAGES kernel lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH"
+          all_pins="$HASH_SYNC_PACKAGES kernel lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

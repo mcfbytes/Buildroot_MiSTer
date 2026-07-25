@@ -89,6 +89,14 @@ therefore checks this addendum by **pattern** (directory exists, every entry ins
 matches `*.rbf`, total staged core-payload size is under the ≲600 MiB cap from ADR 0020
 §3) rather than by an exact file-for-file diff — unlike §1, which is asserted exactly.
 
+Because that check only runs against a built `sdcard-full.img` — and only `release.yml`'s
+opt-in `SDCARD_CORES=1` leg ever builds one — the snapshot commit itself is validated much
+earlier, when Renovate bumps it: `renovate-hash-sync.yml`'s cores-pin step
+(`scripts/hash-sync-cores-pin.sh`) resolves the `_Console` listing at the newly-pinned commit
+and fails the PR closed if it does not resolve, holds no `*.rbf`, or already busts the same
+`$EXPECT_CORES_MAX_BYTES` cap this section describes. See
+[`docs/ci.md#renovate-hash-sync-cores-pin`](../ci.md#renovate-hash-sync-cores-pin).
+
 ## 3. What `check-sdcard.sh` actually asserts
 
 1. `sfdisk -d sdcard.img` shows **partition 1** (the `mmcblk0p1`-equivalent slot U-Boot's

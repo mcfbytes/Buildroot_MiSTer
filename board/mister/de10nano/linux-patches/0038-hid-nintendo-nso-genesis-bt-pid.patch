@@ -1,5 +1,5 @@
 From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
-From: Sorgelig <pour.garbage@gmail.com>
+From: Shig <clockworkjb@gmail.com>
 Date: Mon, 4 Sep 2023 12:00:00 +0800
 Subject: [PATCH 1/1] hid-nintendo: force correct GENCON PID for the NSO Genesis pad over Bluetooth
 
@@ -41,7 +41,8 @@ Origin:       b00a72159aeb6996e1006d28383fdb8e2667746b
                           ctlr->ctlr_type == JOYCON_CTLR_TYPE_MD) {
                           hdev->product = USB_DEVICE_ID_NINTENDO_MDCON;
                   }
-Author:       Sorgelig <pour.garbage@gmail.com>
+Author:       Shig <clockworkjb@gmail.com> (author of the origin commit;
+              committed to Linux-Kernel_MiSTer by Sorgelig)
 Upstream:     No. `grep -c 'hdev->product = ' drivers/hid/hid-nintendo.c`
               on v6.18.39 returns 0 -- vanilla never rewrites the PID.
               Mainline DOES have the device (USB_DEVICE_ID_NINTENDO_GENCON
@@ -62,7 +63,7 @@ Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, fork-sync
               real upstream feature absorbing a MiSTer-specific
               behavioural hunk that has no mainline equivalent.
 
-Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Shig <clockworkjb@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c

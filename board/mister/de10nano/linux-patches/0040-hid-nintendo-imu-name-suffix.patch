@@ -28,9 +28,17 @@ Provenance
 Origin:       Behavioural requirement of stock hid-nintendo.c, whose
               imu_name literals ("Nintendo Switch Pro Controller IMU",
               "Nintendo Switch Left Joy-Con IMU", ...) all end in " IMU".
-              Consumer: Main_MiSTer input.cpp, strstr(input[n].name, " IMU").
-Author:       Sorgelig <pour.garbage@gmail.com> (stock naming)
-Upstream:     No -- mainline uses "%s (IMU)".
+              Consumers: Main_MiSTer input.cpp:6103,
+              strstr(input[n].name, " IMU") under a vid == 0x057e gate, AND
+              SDL2's SDL_gamecontroller.c, SDL_strstr(name, " IMU").
+              Nothing in the built rootfs matches the "(IMU)" form.
+Author:       Daniel J. Ogorchock <djogorchock@gmail.com> -- the " IMU"
+              literals are his, from mainline 4ff5b10840a8 ("HID: nintendo:
+              add IMU support"). Stock 5.15 simply predates their removal;
+              it is not a MiSTer-authored delta.
+Upstream:     Partial revert of 94f18bb19945 (Ryan McClelland, "HID: nintendo:
+              add support for nso controllers"), which replaced the fixed
+              literals with "%s (IMU)". Current mainline still uses that.
 Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
               (docs/kernel-recon/fork-sync-2026-07.md §8). One-token change.
 

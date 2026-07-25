@@ -1,5 +1,5 @@
 From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
-From: Sorgelig <pour.garbage@gmail.com>
+From: Shig <clockworkjb@gmail.com>
 Date: Mon, 4 Sep 2023 12:00:00 +0800
 Subject: [PATCH 1/1] hid-nintendo: stock button mapping for NSO N64 and Genesis pads
 
@@ -14,9 +14,13 @@ NES/Famicom. Main_MiSTer derives gamecontrollerdb "bN" indices as a plain
 ascending ordinal over the EV_KEY bitmap (gamecontroller_db.cpp,
 get_ctrl_index_maps()), so one moved code renumbers every button from that
 index on; and .map files store the raw ev->code, so they mis-resolve too.
-The declared code SET is identical between stock and mainline in both
-cases, so the GUID matches the same gamecontrollerdb row either way -- the
-row is simply applied to a different set of physical buttons.
+The GUID is built from bustype/vid/pid/version alone, so the same
+gamecontrollerdb row matches either way -- it is simply resolved onto a
+different set of physical buttons. The declared code sets are the same SIZE
+(13 for the N64, 10 for the Genesis) but NOT the same members: mainline
+declares BTN_C (0x132) and BTN_SELECT (0x13a) where stock declares
+BTN_THUMBL (0x13d) and BTN_THUMBR (0x13e) on the N64, and BTN_SELECT
+(0x13a) where stock declares BTN_TR2 (0x139) on the Genesis.
 
 For the Genesis this compounds with 0038: that patch restored the GENCON
 PID normalisation so the pad once again matches the 057e:201e row, which
@@ -35,11 +39,14 @@ Provenance
 ----------
 Origin:       b00a72159aeb6996e1006d28383fdb8e2667746b
               "Add support for NSO Mega Drive Controller (#50)", 2023-09-04,
-              and the NSO N64 support that preceded it, both against v5.15.
+              and 2799f8b9478a67fffaa21f9cbeae886fa0a55b1e
+              "add support for NSO N64 controller (#49)", 2023-09-02, both
+              against v5.15.
               Stock's assignment lives in hid-nintendo.c's shared
               jc_type_is_nso() block plus the jc_type_is_n64con() and
               jc_type_is_mdcon() blocks.
-Author:       Sorgelig <pour.garbage@gmail.com>
+Author:       Shig <clockworkjb@gmail.com> (author of both origin
+              commits; committed to Linux-Kernel_MiSTer by Sorgelig)
 Upstream:     No. Mainline has the devices but its own mapping; this is a
               deliberate MiSTer-vs-mainline divergence, not a backport.
 Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
@@ -47,7 +54,7 @@ Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
               mapping-table entries, which is how 6.18 structures this.
               NOT bench-verified -- needs an NSO N64 and an NSO Genesis pad.
 
-Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Shig <clockworkjb@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c

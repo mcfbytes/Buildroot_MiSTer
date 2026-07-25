@@ -13,7 +13,7 @@ colour prefix but a different function entirely -- "<hid-dev>:blue:player-5"
 for the home LED, which is not a player indicator at all.
 
 Main_MiSTer opens these by exact path (input.cpp, update_num_hw():
-set_led(led_path, ":home", num ? 1 : 15) and ":player1".."":player4"), and
+set_led(led_path, ":home", num ? 1 : 15) and ":player1"..":player4"), and
 its set_led() treats a failed fopen() as a silent no-op. So under the
 mainline names all five writes are discarded with nothing logged: the
 player row keeps whatever connect-order pattern the driver picked at probe
@@ -64,7 +64,7 @@ index 6782abc449f1..a08ccb159874 100644
 +		 * MiSTer: stock names these "<hid-dev>:player1".."<hid-dev>:player4".
 +		 * Mainline moved them to the LED-class spec ("<dev>:<colour>:<function>",
 +		 * i.e. "<hid-dev>:green:player-1"), which Main_MiSTer cannot find --
-+		 * see the comment in joycon_home_led_create() below.
++		 * see the home-LED comment further down this function.
 +		 */
 +		name = devm_kasprintf(dev, GFP_KERNEL, "%s:player%d", d_name, i + 1);
  		if (!name)
@@ -84,7 +84,7 @@ index 6782abc449f1..a08ccb159874 100644
 +		 * function entirely, since the home LED is not a player indicator.
 +		 *
 +		 * Main_MiSTer opens these by exact path (input.cpp update_num_hw():
-+		 * set_led(led_path, ":home", ...) and ":player1".."":player4"), and
++		 * set_led(led_path, ":home", ...) and ":player1"..":player4"), and
 +		 * set_led() treats a failed fopen() as a silent no-op -- so under the
 +		 * mainline names every write is discarded with nothing logged: the
 +		 * player row never follows the MiSTer player slot and the home LED

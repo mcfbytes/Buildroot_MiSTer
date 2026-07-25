@@ -49,18 +49,50 @@ Upstream:     No -- mainline deliberately moved to the LED class spec and to
               a multicolor lightbar. This is the ABI stock's userspace uses.
 Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
               (docs/kernel-recon/fork-sync-2026-07.md §8). The three plain
-              LEDs are new code against 6.18's structures (one get/set pair
-              indexed by position in ds->lightbar_rgb[]), not a textual
-              backport. NOT bench-verified -- needs a DualSense and a DS4.
+              LEDs are new code against 6.18's structures, not a textual
+              backport: each channel is a struct dualsense_rgb_led carrying
+              its owning device and index explicitly.
+              WHY IT IS SHAPED THAT WAY -- the obvious form,
+              container_of(cdev, struct dualsense, lightbar_rgb[0]) plus
+              (cdev - ds->lightbar_rgb), is WRONG and compiles silently: the
+              fixed [0] subscript only yields the correct base for element 0,
+              so green and blue would resolve to a struct pointer 1 and 2
+              led_classdevs past the real one, take a spinlock at that bogus
+              address, and compute index 0 regardless. Verified with a
+              standalone offsetof test before and after. Do not "simplify"
+              this back.
+              NOT bench-verified -- needs a DualSense and a DS4.
 
 Signed-off-by: Sorgelig <pour.garbage@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
-index dd58d089a581..e7ed463be58d 100644
+index dd58d089a581..cfb55a03ef3e 100644
 --- a/drivers/hid/hid-playstation.c
 +++ b/drivers/hid/hid-playstation.c
-@@ -198,6 +198,14 @@ struct dualsense {
+@@ -171,6 +171,21 @@ struct ps_led_info {
+ #define DS_TOUCHPAD_WIDTH	1920
+ #define DS_TOUCHPAD_HEIGHT	1080
+ 
++struct dualsense;
++
++/*
++ * MiSTer: one channel of stock's three-LED lightbar. The owning device and the
++ * channel index are carried explicitly rather than being recovered from the
++ * classdev's position in an array -- container_of() against a fixed array
++ * element only yields the right base for element 0, and would silently produce
++ * a bogus struct pointer (and a bogus spinlock) for green and blue.
++ */
++struct dualsense_rgb_led {
++	struct led_classdev cdev;
++	struct dualsense *ds;
++	u8 idx;
++};
++
+ struct dualsense {
+ 	struct ps_device base;
+ 	struct input_dev *gamepad;
+@@ -198,6 +213,14 @@ struct dualsense {
  
  	/* RGB lightbar */
  	struct led_classdev_mc lightbar;
@@ -71,11 +103,11 @@ index dd58d089a581..e7ed463be58d 100644
 +	 * device above, driven by multi_intensity, which Main_MiSTer never
 +	 * writes. Both are registered; these three are the stock ABI.
 +	 */
-+	struct led_classdev lightbar_rgb[3];
++	struct dualsense_rgb_led lightbar_rgb[3];
  	bool update_lightbar;
  	u8 lightbar_red;
  	u8 lightbar_green;
-@@ -835,9 +843,17 @@ static int ps_led_register(struct ps_device *ps_dev, struct led_classdev *led,
+@@ -835,9 +858,17 @@ static int ps_led_register(struct ps_device *ps_dev, struct led_classdev *led,
  	} else {
  		/* Backwards compatible mode for hid-sony, but not compliant
  		 * with LED class spec.
@@ -94,7 +126,7 @@ index dd58d089a581..e7ed463be58d 100644
  	}
  
  	if (!led->name)
-@@ -1650,6 +1666,45 @@ static void dualsense_set_lightbar(struct dualsense *ds, u8 red, u8 green, u8 bl
+@@ -1650,6 +1681,46 @@ static void dualsense_set_lightbar(struct dualsense *ds, u8 red, u8 green, u8 bl
  	dualsense_schedule_work(ds);
  }
  
@@ -104,10 +136,10 @@ index dd58d089a581..e7ed463be58d 100644
 + */
 +static enum led_brightness dualsense_rgb_led_get_brightness(struct led_classdev *cdev)
 +{
-+	struct dualsense *ds = container_of(cdev, struct dualsense, lightbar_rgb[0]);
-+	unsigned int idx = cdev - ds->lightbar_rgb;
++	struct dualsense_rgb_led *led = container_of(cdev, struct dualsense_rgb_led, cdev);
++	struct dualsense *ds = led->ds;
 +
-+	switch (idx) {
++	switch (led->idx) {
 +	case 0:  return ds->lightbar_red;
 +	case 1:  return ds->lightbar_green;
 +	default: return ds->lightbar_blue;
@@ -117,8 +149,9 @@ index dd58d089a581..e7ed463be58d 100644
 +static int dualsense_rgb_led_set_brightness(struct led_classdev *cdev,
 +					    enum led_brightness brightness)
 +{
-+	struct dualsense *ds = container_of(cdev, struct dualsense, lightbar_rgb[0]);
-+	unsigned int idx = cdev - ds->lightbar_rgb;
++	struct dualsense_rgb_led *led = container_of(cdev, struct dualsense_rgb_led, cdev);
++	struct dualsense *ds = led->ds;
++	unsigned int idx = led->idx;
 +	u8 red, green, blue;
 +
 +	scoped_guard(spinlock_irqsave, &ds->base.lock) {
@@ -140,7 +173,7 @@ index dd58d089a581..e7ed463be58d 100644
  static void dualsense_set_player_leds(struct dualsense *ds, u8 player_id)
  {
  	/*
-@@ -1823,9 +1878,44 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+@@ -1823,9 +1894,48 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
  	if (ret)
  		goto err;
  
@@ -152,21 +185,25 @@ index dd58d089a581..e7ed463be58d 100644
 +	 */
 +	for (unsigned int i = 0; i < ARRAY_SIZE(ds->lightbar_rgb); i++) {
 +		static const char * const rgb_names[] = { "red", "green", "blue" };
-+		struct led_classdev *led = &ds->lightbar_rgb[i];
++		struct dualsense_rgb_led *led = &ds->lightbar_rgb[i];
++		struct led_classdev *cdev = &led->cdev;
 +
-+		led->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s:%s",
-+					   dev_name(&hdev->dev), rgb_names[i]);
-+		if (!led->name) {
++		led->ds = ds;
++		led->idx = i;
++
++		cdev->name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s:%s",
++					    dev_name(&hdev->dev), rgb_names[i]);
++		if (!cdev->name) {
 +			ret = -ENOMEM;
 +			goto err;
 +		}
-+		led->brightness = 0;
-+		led->max_brightness = 255;
-+		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
-+		led->brightness_get = dualsense_rgb_led_get_brightness;
-+		led->brightness_set_blocking = dualsense_rgb_led_set_brightness;
++		cdev->brightness = 0;
++		cdev->max_brightness = 255;
++		cdev->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
++		cdev->brightness_get = dualsense_rgb_led_get_brightness;
++		cdev->brightness_set_blocking = dualsense_rgb_led_set_brightness;
 +
-+		ret = devm_led_classdev_register(&hdev->dev, led);
++		ret = devm_led_classdev_register(&hdev->dev, cdev);
 +		if (ret)
 +			goto err;
 +	}

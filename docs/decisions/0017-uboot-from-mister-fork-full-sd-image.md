@@ -1,6 +1,12 @@
 # ADR 0017 — Phase 5 builds U-Boot from the MiSTer fork (submodule pin) and adds a full SD-card image; the mainline port is abandoned
 
-**Status:** Accepted (2026-07-13) — decided by @mcfbytes
+**Status:** Accepted (2026-07-13), **amended by ADR 0023 (2026-07-25)** — decision 1's
+"the mainline port is abandoned" becomes "not the first step, and no longer ruled out":
+its cost estimate below overstates the work (nearly all of what the fork adds is U-Boot
+*environment script*, not code) while understating one risk it never names — upstream's
+DE10-Nano QTS handoff is **Terasic's**, not MiSTer's, and differs materially (proven
+from the shipped SPL, ADR 0023 §3). Decisions 2–5 stand as written; the sequencing here
+is unchanged. — decided by @mcfbytes
 **Impact:** PLAN §2 (non-goals), §6 (repo layout), §8 (Phase 5 path), §9 (artifacts),
 §12 (phase table), §13 (risks); TASKS Phase 5 (P5.1–P5.3 replaced by P5.1–P5.4);
 `docs/boot-chain.md` §3.3 / N4 annotations. **No effect on Phases 1–4:** the default
@@ -86,6 +92,11 @@ still requires mr-fusion or the Windows SD installer.
   the effective env is always defaults + `u-boot.txt`, and stock has shipped this
   exact binary for years. If a mainline port ever becomes worthwhile, this ADR does not preclude it —
   it just stops it from being the *first* step.
+  *(Amended by ADR 0023: the port's cost is smaller than "strictly more new code"
+  implies — `mt` is the only missing C, everything else here is environment script —
+  but any port MUST carry MiSTer's `qts/*.h`, because upstream's same-path DE10-Nano
+  handoff is Terasic's and differs in the f2sdram port mask, FPGA user clocks, pinmux
+  and IOCSR chains. ADR 0023 §3.)*
 - **`BR2_TARGET_UBOOT_CUSTOM_GIT` pointing at GitHub.** Pins the same commit, but the
   pin lives only in a Buildroot config string and the source stays outside our tree —
   a deleted or force-pushed upstream breaks the build with no local recourse. The

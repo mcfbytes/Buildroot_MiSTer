@@ -599,7 +599,7 @@ Start here if you want to run it: [`docs/user/onboarding.md`](docs/user/onboardi
 | [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
 | [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
-| [`docs/decisions/`](docs/decisions/) | 16 ADRs: the open questions, the trade-offs, and who decided what |
+| [`docs/decisions/`](docs/decisions/) | 18 ADRs: the open questions, the trade-offs, and who decided what |
 
 ---
 

@@ -33,7 +33,7 @@
 #
 # Prereqs: qemu-system-arm, sfdisk, cmp, truncate, plus a completed `make sdcard`
 # (output/images/sdcard.img + output-installer/images/rootfs.cpio) and the pinned
-# linux-6.18.38 source (dl/linux-6.18.38.tar.xz, same tarball the main build uses).
+# kernel source (dl/linux-<pinned version>.tar.xz, same tarball the main build uses).
 # The ARM cross toolchain comes from output/host/bin (a completed `make all`).
 #
 # Usage:
@@ -55,7 +55,17 @@ UBOOT_REF="${UBOOT_REF:-$ROOT/output-sdcard-stage/mister-payload/linux/uboot.img
 CROSS_COMPILE="${CROSS_COMPILE:-$ROOT/output/host/bin/arm-buildroot-linux-gnueabihf-}"
 
 # --- QEMU test kernel (shares scripts/test-initramfs.sh's source tree + config) ---
-KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-$ROOT/dl/linux-6.18.38.tar.xz}"
+# Derived from the product defconfig, NOT hardcoded -- same reason as
+# scripts/test-initramfs.sh (board patch 0031, applied below, tracks the pinned
+# kernel's APIs; 6.18.40 gave exfat_remove_entries() a 4th arg, so a stale pin
+# here fails the QEMU kernel build with a confusing "too few arguments").
+KERNEL_VERSION="${TEST_SDCARD_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/mister_de10nano_defconfig")}"
+[ -n "$KERNEL_VERSION" ] || {
+	printf 'test-sdcard-install.sh: FATAL: %s\n' \
+		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/mister_de10nano_defconfig" >&2
+	exit 2
+}
+KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-$ROOT/dl/linux-$KERNEL_VERSION.tar.xz}"
 KERNEL_SRC="${TEST_SDCARD_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
 KBUILD="${TEST_SDCARD_KBUILD:-$ROOT/work/test-sdcard-install-kbuild}"
 KERNEL_FRAGMENT="$ROOT/scripts/test-initramfs/qemu-test-kernel.config"

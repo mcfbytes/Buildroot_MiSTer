@@ -50,19 +50,35 @@
 #     Right setting, wrong reason, which is how it nearly got reverted.)
 #
 #     ACCEPTED CONSEQUENCE: the series resolves to whatever 6.18.x Buildroot pins for it
-#     (package/linux-headers/Config.in.host, the `default "6.18.33" if
-#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.33) while the kernel is 6.18.38, so
-#     the headers lag the kernel slightly. That is correct and harmless: headers older
-#     than the running kernel is the supported direction, because the kernel's uapi is
-#     forward-compatible by guarantee. The actual uapi delta between 6.18.33 and 6.18.38
-#     is ONE line -- an explicit `__u32 :32;` pad in include/uapi/linux/tee.h, a
-#     subsystem this board does not use. Checked with
-#     `git diff v6.18.33 v6.18.38 -- include/uapi/ arch/arm/include/uapi/`.
+#     (package/linux-headers/Config.in.host, the `default "6.18.34" if
+#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.34, moved from 6.18.33 by the
+#     Buildroot 2026.02 -> 2026.05 bump) while the kernel is 6.18.40, so the headers lag
+#     the kernel slightly. That is correct and harmless: headers older than the running
+#     kernel is the supported direction, because the kernel's uapi is forward-compatible
+#     by guarantee. Re-checked 2026-07-25 for the 6.18.40 bump: the uapi delta between
+#     6.18.34 and 6.18.40 is FOUR added lines across THREE files, all additive --
+#       * include/uapi/linux/bpf.h    two explicit `__u32 :32;` pads (bpf_prog_info,
+#                                     bpf_map_info)
+#       * include/uapi/linux/tee.h    one explicit `__u32 :32;` pad
+#       * include/uapi/linux/if_link.h  one new enum member, IFLA_BOND_LACP_STRICT,
+#                                     appended before __IFLA_BOND_MAX
+#     arch/arm/include/uapi/ is byte-identical. The `__u32 :32;` lines make padding the
+#     compiler was ALREADY inserting explicit (both structs are
+#     __attribute__((aligned(8)))), so they are not an ABI change at all; the bonding
+#     netlink attribute is additive and this board does not use bonding, tee or bpf
+#     uapi. Checked with
+#     `git diff v6.18.34 v6.18.40 -- include/uapi/ arch/arm/include/uapi/`
+#     (equivalently: diff the two extracted tarballs over those two paths).
 #
-#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included. It is tempting to assume only
-#     a series bump can move uapi; the tee.h line above disproves it, since 6.18.33 ->
-#     6.18.38 is itself a patchlevel range. Stable rules discourage uapi changes but do
-#     not forbid them, so the diff is the authority, not the version numbers.
+#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included -- of the KERNEL or of
+#     BUILDROOT, since the 2026.05 bump moved the headers end of the range on its own.
+#     It is tempting to assume only a series bump can move uapi; every line above
+#     disproves it, since 6.18.34 -> 6.18.40 is itself a patchlevel range. Stable rules
+#     discourage uapi changes but do not forbid them, so the diff is the authority, not
+#     the version numbers. (This block was last found stale by Copilot review on PR #67:
+#     it still said 6.18.33/6.18.38 after the kernel had moved to 6.18.40 and Buildroot
+#     had moved the headers pin to 6.18.34 -- neither of which Renovate can rewrite,
+#     because both live in prose.)
 #
 #     Also note linux-headers only applies BR2_LINUX_KERNEL_PATCH / BR2_GLOBAL_PATCH_DIR
 #     under AS_KERNEL (package/linux-headers/linux-headers.mk:82), so the series pin

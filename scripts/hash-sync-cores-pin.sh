@@ -27,7 +27,7 @@
 # is unusable, would sail through every check on the PR and first surface
 # when someone cuts a release with cores enabled. This script closes that
 # hole with a single Contents API call -- no core downloads, no build -- and
-# asserts exactly the three things fetch_cores() would later depend on:
+# asserts exactly the four things fetch_cores() would later depend on:
 #
 #   1. the pinned commit resolves and the _Console path exists at it
 #      (a Renovate-written SHA is not guaranteed to survive an upstream
@@ -35,7 +35,12 @@
 #   2. the listing contains at least one *.rbf -- the same condition
 #      fetch_cores() itself dies on ("API shape changed or the pin is
 #      stale"), checked here instead of 3 hours into a release build;
-#   3. the API-reported total of those *.rbf files is within
+#   3. every *.rbf the name filter selects is a regular file. A dir,
+#      symlink or submodule named "*.rbf" is selected by fetch_cores()'s
+#      name-only filter but has a null download_url, so its `curl -o` would
+#      fail the release build. See the jq call for why this is asked as a
+#      SEPARATE question rather than narrowed into the selection;
+#   4. the API-reported total of those *.rbf files is within
 #      $EXPECT_CORES_MAX_BYTES -- the SAME ~600 MiB cap
 #      scripts/check-sdcard.sh enforces on the staged tree
 #      (docs/verification/sdcard-payload.md §2 / ADR 0020 §3). Catching an
@@ -109,8 +114,9 @@
 #   scripts/hash-sync-cores-pin.sh /path/to/fixture-repo-root
 #
 # then inspect /tmp/out.tsv. Every branch below (200-ok, 200-zero-rbf,
-# 200-over-cap, 200-unparseable, 404, 403/000, missing file, unparseable pin
-# line) was exercised that way before this script was wired in.
+# 200-non-file-rbf, 200-over-cap, 200-unparseable, 404, 403/000, missing
+# file, unparseable pin line) was exercised that way before this script was
+# wired in.
 
 set -euo pipefail
 
@@ -244,13 +250,30 @@ main() {
 		exit 0
 	fi
 
-	# One jq pass for both numbers. `select(.name | endswith(".rbf"))` is the
-	# SAME filter fetch_cores() applies, so the count and total below describe
-	# exactly the set that would be staged -- not the whole directory (which
-	# also holds a handful of .mgl launcher stubs this payload does not take).
-	local counts n total
-	if ! counts=$(jq -r '[.[] | select(.type == "file" and (.name | endswith(".rbf")))]
-	                     | "\(length) \([.[].size] | add // 0)"' "$body" 2>/dev/null); then
+	# One jq pass for all three numbers.
+	#
+	# The selection is `select(.name | endswith(".rbf"))` and NOTHING ELSE --
+	# character-for-character what fetch_cores() applies, deliberately, so
+	# the count and total below describe exactly the set that would be
+	# staged (not the whole directory, which also holds a handful of .mgl
+	# launcher stubs this payload does not take). A gate whose filter is
+	# merely SIMILAR to the one it predicts is not a gate; it can pass while
+	# the release fails. If fetch_cores()'s filter ever changes, change this
+	# one in the same commit.
+	#
+	# An earlier revision of this script narrowed the selection with
+	# `.type == "file"`, which looked harmless and was not: it silently
+	# diverged from the set fetch_cores() stages. The `type` question is
+	# real, so it is asked SEPARATELY rather than folded into the selection
+	# -- `nonfile` counts selected entries that are not regular files (a
+	# dir/symlink/submodule named "*.rbf"). Those have a null download_url,
+	# so fetch_cores()'s `curl -o` would fail the release build on them;
+	# reporting the count lets this gate FAIL for that reason explicitly,
+	# instead of quietly not counting them.
+	local counts n total nonfile
+	if ! counts=$(jq -r '[.[] | select(.name | endswith(".rbf"))]
+	                     | "\(length) \([.[].size] | add // 0) \([.[] | select(.type != "file")] | length)"' \
+	                     "$body" 2>/dev/null); then
 		echo "::error::PINNED_CORES: could not parse the ${CORES_PATH} listing as a JSON array of entries"
 		hash_sync_record "$outcomes_file" PINNED_CORES failed \
 			"HTTP 200 but the ${CORES_PATH} listing did not parse as a contents array -- GitHub API shape changed; fetch_cores()'s jq would break the same way"
@@ -258,8 +281,18 @@ main() {
 		exit 0
 	fi
 	rm -f "$body"
-	n=${counts% *}
-	total=${counts#* }
+	# shellcheck disable=SC2086
+	set -- $counts
+	n=$1; total=$2; nonfile=$3
+
+	if [ "$nonfile" -gt 0 ]; then
+		# Selected by name, but not a regular file -> download_url is null,
+		# and fetch_cores() would die on the curl. Caught here instead.
+		echo "::error::PINNED_CORES: $nonfile entry(ies) named '*.rbf' under ${CORES_PATH} are not regular files"
+		hash_sync_record "$outcomes_file" PINNED_CORES failed \
+			"$nonfile of $n '*.rbf' entries at ${CORES_REPO}@${commit} are not type=file (dir/symlink/submodule) -- their download_url is null and fetch_cores() would fail the release build on them"
+		exit 0
+	fi
 
 	if [ "$n" -eq 0 ]; then
 		# The same condition fetch_cores() dies on, caught ~3 hours earlier.

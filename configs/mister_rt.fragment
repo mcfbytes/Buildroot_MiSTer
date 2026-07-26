@@ -37,15 +37,22 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc4"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks
-# to the shared patch files, EXCEPT 0001, 0015 and 0031, which are real
+# to the shared patch files, EXCEPT 0001 and 0015, which are real
 # re-anchored copies — Buildroot applies patches with `patch -F0` (fuzz zero),
-# and those three patches' 6.18 context or APIs drifted upstream (see the
+# and those two patches' 6.18 context or APIs drifted upstream (see the
 # series file's header; note 0015 was once wrongly believed upstreamed in
-# 7.2 — it is not: 7.2 has no FAML/FAMR controller types). The shared 6.18
-# patches are deliberately untouched, keeping them byte-identical to stock.
-# The series drops only 0030 + 0037 (7.x re-anchors pending). All 29 listed
-# patches apply to 7.2-rc4 at -F0 (verified through Buildroot's own
-# apply-patches.sh, 2026-07-20; offsets shift but zero hunks take fuzz).
+# 7.2 — it is not: 7.2 has no FAML/FAMR controller types). 0031 was a third
+# until 2026-07-25, when the SHARED patch was re-anchored onto context both
+# trees agree on and the copy became a symlink again — see the series header
+# for why that is the preferred move over a re-anchored copy. The shared 6.18
+# patches are otherwise deliberately untouched, keeping them byte-identical
+# to stock.
+# The series drops NOTHING: all 31 listed patches apply to 7.2-rc4 at -F0
+# (re-verified through Buildroot's own apply-patches.sh 2026-07-25 after 0031
+# became a symlink -- 31/31 applied, offsets shift but zero hunks take fuzz).
+# (This line previously read "drops only 0030 + 0037 ... all 29 listed", which
+# went stale when those two were re-anchored and re-included; 0037 in
+# particular is NOT cosmetic -- see the series header.)
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config ---------

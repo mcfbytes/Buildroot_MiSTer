@@ -46,7 +46,9 @@ Five workflows, one shared build recipe:
 - **`reproducibility.yml`** — manual-only double build that proves two
   independent builds of the same commit are byte-identical.
 - **`renovate-hash-sync.yml`** — triggers on a Renovate PR, refreshes the
-  companion `.hash` files a version/commit bump invalidates.
+  companion `.hash` files a version/commit bump invalidates, and validates
+  the one pin that has no companion hash (the `_Console` cores snapshot —
+  see [`#renovate-hash-sync-cores-pin`](#renovate-hash-sync-cores-pin)).
 
 `lint.yml` and `fork-sync.yml` lint the CI itself and watch the upstream
 kernel fork; they don't build anything.
@@ -1973,6 +1975,53 @@ deliberately **absent** from `paths:`: its `-rc` hash cannot be
 auto-refreshed (no signed manifest upstream — see
 [`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated)), so
 triggering this workflow for it would do nothing but burn a runner.
+
+<a id="renovate-hash-sync-cores-pin"></a>
+### Case 5: the one pin nothing else fails closed on
+
+Cases 1-4 all lean on the same backstop: if the companion hash is stale, the
+BUILD fails closed. That is why a skipped refresh is merely annoying rather
+than dangerous.
+
+`PINNED_CORES_COMMIT` (the `_Console` cores snapshot in
+`scripts/fetch-sdcard-payload.sh`) does not have that backstop. It is a
+commit-only pin — no companion hash by design (cores churn too fast for a
+stable per-file hash to be worth maintaining) — and it is read in exactly one
+place, `fetch_cores()`, which runs only under `SDCARD_CORES=1`, i.e. only in
+`release.yml`'s opt-in `sdcard-full.img.xz` leg. **No PR build resolves it at
+all.** So a Renovate bump to a commit that upstream later force-pushed away
+would go green through review and merge, and first surface as a failed
+release build hours into a cut.
+
+`scripts/hash-sync-cores-pin.sh` closes that with one Contents API call at
+the newly-pinned commit — no core downloads, no build. It records:
+
+| Condition | Outcome | Why |
+|---|---|---|
+| resolves, ≥1 `*.rbf`, total ≤ `$EXPECT_CORES_MAX_BYTES` | `already-current` | commit-only pin: nothing to refresh, and it validated |
+| HTTP 404/422 | `failed` | the pinned commit or `_Console` path does not resolve — a verdict on the pin, not the network |
+| zero `*.rbf` in the listing | `failed` | the exact condition `fetch_cores()` itself dies on, caught ~3 hours earlier |
+| `*.rbf` total > `$EXPECT_CORES_MAX_BYTES` | `failed` | `check-sdcard.sh` would reject the built image; same variable name and ~600 MiB default, so overriding the cap in one place cannot leave the other stale |
+| HTTP 000/403/5xx | `skipped` | transport, rate limit or upstream outage — an upstream condition is not a verdict on the pin |
+
+A `failed` here suppresses the commit/push step and fails the job, like any
+other recorded `failed`. The step passes `GITHUB_TOKEN: ${{ github.token }}`:
+unauthenticated, the 60/hr-per-runner-IP API limit would degrade this to a
+permanent `skipped` that validates nothing.
+
+`CORES_PIN_CHANGED` is always `0` and is deliberately **absent** from the
+push step's `if:` condition — this case never edits a file.
+
+Parse note worth copying if a sixth case is ever added: this script asserts
+the 40-hex shape **in the grep match** and re-extracts with `grep -oE`,
+rather than the `grep | sed -E 's/.*="([0-9a-f]{40})".*/\1/'` idiom cases 1,
+3 and 4 use. `sed` prints its input UNCHANGED when the pattern does not
+match, so that idiom turns a present-but-malformed pin line into the whole
+line rather than the empty string the `-z` guard is testing for — the parse
+bug then escapes as a bogus value and gets misattributed downstream (here it
+would have surfaced as a 404 blaming upstream for our own bad regex). Caught
+by fixture before this case was wired in; **cases 1, 3 and 4 still carry the
+idiom** and should get the same treatment when next touched.
 
 <a id="renovate-hash-sync-safety-model"></a>
 ### Safety model, cases 1-4: why a locally-computed sha256 is legitimate here

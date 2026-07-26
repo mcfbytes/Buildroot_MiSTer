@@ -9,12 +9,23 @@
 # Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor
 # it here rather than removing it from this list.
 #
-# NOT-symlink exceptions: five entries are REAL FILES re-anchored for 7.x —
+# NOT-symlink exceptions: four entries are REAL FILES re-anchored for 7.x —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
-# Buildroot applies patches with `patch -F0` (fuzz zero), and these five
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these four
 # needed either re-anchored context or a real 7.x API/header delta. Keep
 # each in lockstep with its ../linux-patches/ original (every copy carries
-# a bracketed re-anchor note):
+# a bracketed re-anchor note).
+#
+# 0031 WAS a fifth; it is a symlink again as of 2026-07-25. Worth reading
+# before adding a sixth, because the same trick may apply: rather than
+# re-anchoring the 7.x copy around the drifted context, the SHARED patch
+# was moved to anchor somewhere both trees agree (it now defines
+# exfat_symlink_inode_operations *before* exfat_file_inode_operations
+# instead of after, because 7.x had both added a struct member and
+# retabbed the alignment, leaving no common trailing context). Same
+# resulting source, one file. A re-anchored copy is the fallback, not the
+# first move — ask first whether the shared patch can be anchored on
+# something stabler:
 #   0001-fbdev-add-MiSTer_fb-driver     — one-line delta: 7.x removed
 #     <linux/fbcon.h>; fbcon_update_vcs() now comes from the fbdev-core
 #     header ("core/fbcon.h").
@@ -26,9 +37,6 @@
 #   0030-i2c-designware-quiet-timeout   — 7.x renamed i2c_dw_init_master()
 #     to i2c_dw_init(), which appears in both the trailing comment and the
 #     call right after the changed line, so the after-context missed at -F0.
-#   0031-exfat-samsung-symlinks         — exfat_file_inode_operations
-#     gained .fileattr_get upstream, breaking the append-context of the
-#     symlink ops hunk at -F0.
 #   0037-hid-playstation-dualsense-mute-btn-z — 7.x added the DualSense
 #     Edge back-paddle/Fn blocks at both sites this patch anchors on
 #     (parse_report and dualsense_create), breaking hunks 3 and 5 at -F0.

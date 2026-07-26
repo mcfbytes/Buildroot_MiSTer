@@ -106,32 +106,52 @@ readonly SDCARD_CORES
 : "${STOCK_UPDATEBOOT_SIZE:=407}"
 
 # --- Pinned Scripts/update_all.sh ----------------------------------------
-# theypsilon/Update_All_MiSTer, path "update_all.sh" (repo root). Pinned to
-# a commit resolved from the repo's own commit history for that path
-# (`git log -1 --format=%H -- update_all.sh` equivalent, via the GitHub API)
-# on 2026-07-17. Bump by re-resolving the same way and re-recording the
-# sha256 of the file at the new commit.
-readonly PINNED_UPDATE_ALL_COMMIT="64b2faad9ebb5c47973d33dc1decd356fce6dad0"
+# theypsilon/Update_All_MiSTer, path "update_all.sh" (repo root), pinned to a
+# commit on that repo's default branch.
+#
+# AUTOMATED -- do not bump by hand. Renovate's `git-refs` custom manager
+# (renovate.json, dep "theypsilon/Update_All_MiSTer") rewrites the _COMMIT
+# line below; renovate-hash-sync.yml then refetches the raw file at that
+# commit and rewrites the _SHA256/_SIZE lines in the same PR (case 4,
+# scripts/hash-sync-sdcard-payload.sh). `git log -- scripts/fetch-sdcard-
+# payload.sh` is the bump record; deliberately NOT restated as an "as of
+# <date>" comment here, which Renovate cannot update and which would
+# therefore start lying on the first automatic bump.
+readonly PINNED_UPDATE_ALL_COMMIT="02acca0d3305962065538001c58a8a9e66079e07"
 readonly PINNED_UPDATE_ALL_URL="https://raw.githubusercontent.com/theypsilon/Update_All_MiSTer/${PINNED_UPDATE_ALL_COMMIT}/update_all.sh"
 readonly PINNED_UPDATE_ALL_SHA256="15db3c6050b5ee1960391344afe248ee49f25bdaae311051baeb7e77ab8c68f4"
 readonly PINNED_UPDATE_ALL_SIZE="8628"
 
 # --- Pinned Scripts/wifi.sh ------------------------------------------------
 # MiSTer-devel/Scripts_MiSTer, path other_authors/wifi.sh (docs/wifi-parity.md
-# confirms this exact path). Pinned to a commit resolved the same way as
-# above on 2026-07-17.
+# confirms this exact path). Same automated bump path as update_all.sh above
+# (Renovate dep "MiSTer-devel/Scripts_MiSTer" + renovate-hash-sync.yml case 4).
 readonly PINNED_WIFI_SH_COMMIT="1b5b6231a6bddf2266d99c405b11449ea35fb5b5"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
 readonly PINNED_WIFI_SH_SHA256="10233fa31ea288f001a5e8cfba18e949270f79fed1295f7fc1d45e5fad78c988"
 readonly PINNED_WIFI_SH_SIZE="5823"
 
 # --- Pinned _Console cores source commit (SDCARD_CORES=1 only) -----------
-# MiSTer-devel/Distribution_MiSTer HEAD as of 2026-07-17. Deliberately NOT
-# per-file hash-pinned (user-waived caching for cores, per the accepted
-# design in the plan this script implements) -- only the source commit is
-# recorded, for traceability. Bump by re-resolving `git rev-parse HEAD`
-# against that repo and re-running with the new value.
-readonly PINNED_CORES_COMMIT="b35ae1a53ce99985a969d495adc65cd1e22723e0"
+# MiSTer-devel/Distribution_MiSTer, default branch. Deliberately NOT per-file
+# hash-pinned (user-waived caching for cores, per the accepted design in the
+# plan this script implements) -- only the source commit is recorded, for
+# traceability.
+#
+# AUTOMATED -- do not bump by hand. Renovate's `git-refs` custom manager
+# (renovate.json, dep "MiSTer-devel/Distribution_MiSTer") rewrites the line
+# below. It is the ONE payload pin with no companion sha256/size to refresh,
+# so renovate-hash-sync.yml has nothing to rewrite for it -- but the bump is
+# still not unattended: that workflow's case 5
+# (scripts/hash-sync-cores-pin.sh) resolves CORES_API_URL at the NEW commit
+# and fails the PR closed if the pin does not list a usable _Console at that
+# commit. Without that check a cores bump would first be exercised at
+# release time (release.yml's opt-in SDCARD_CORES=1 leg), which is the only
+# place this pin is otherwise read.
+#
+# Any "as of <date>" note is deliberately absent -- Renovate cannot update a
+# comment, so it would start lying on the first automatic bump. `git log --
+# scripts/fetch-sdcard-payload.sh` is the bump record.
+readonly PINNED_CORES_COMMIT="ad03301ba4e75ab80761dab1d000acf1438b0b14"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------

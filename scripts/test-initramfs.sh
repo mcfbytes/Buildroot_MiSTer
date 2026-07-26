@@ -43,7 +43,7 @@
 #   - qemu-system-arm, mkfs.vfat, mkfs.exfat, sfdisk, mke2fs, cpio
 #   - a QEMU-bootable test kernel: reused from a cache
 #     (work/test-initramfs-kbuild/) if present, else built fresh from the
-#     pinned pristine source (work/linux-6.18.38.tar.xz) and
+#     pinned pristine source (work/linux-<pinned version>.tar.xz) and
 #     scripts/test-initramfs/qemu-test-kernel.config -- see ensure_qemu_kernel().
 
 set -uo pipefail  # deliberately not -e: run every requested case, then report
@@ -70,7 +70,23 @@ export MTOOLS_SKIP_CHECK=1
 WORK="${TEST_INITRAMFS_WORK:-$ROOT/work/test-initramfs}"
 KBUILD="${TEST_INITRAMFS_KBUILD:-$ROOT/work/test-initramfs-kbuild}"
 KERNEL_SRC="${TEST_INITRAMFS_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
-KERNEL_TARBALL="${TEST_INITRAMFS_KERNEL_TARBALL:-$ROOT/work/linux-6.18.38.tar.xz}"
+# Derived from the product defconfig, NOT hardcoded: board patch 0031 (applied
+# below) tracks the pinned kernel's APIs and will not compile against an older
+# one -- 6.18.40 gave exfat_remove_entries() a 4th arg, so a stale pin here
+# fails the QEMU kernel build with a confusing "too few arguments". Reading the
+# pin keeps this test kernel on the same version the image ships, which is what
+# this script's header already claims it does.
+KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/mister_de10nano_defconfig")}"
+# Inline, not die() -- that is defined further down, and this block runs before
+# it. Under `set -uo pipefail` (no -e) an undefined-function call would print
+# "command not found" and CARRY ON, which is exactly the silent failure this
+# guard exists to prevent.
+[ -n "$KERNEL_VERSION" ] || {
+	printf 'test-initramfs.sh: FATAL: %s\n' \
+		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/mister_de10nano_defconfig" >&2
+	exit 2
+}
+KERNEL_TARBALL="${TEST_INITRAMFS_KERNEL_TARBALL:-$ROOT/work/linux-$KERNEL_VERSION.tar.xz}"
 QEMU_ZIMAGE="$KBUILD/arch/arm/boot/zImage"
 
 BUILD="$WORK/run"
@@ -153,14 +169,14 @@ check_prereqs() {
 # ---------------------------------------------------------- the QEMU test kernel
 # NOT the DE10-Nano product kernel (board/mister/de10nano/linux.config) -- see
 # scripts/test-initramfs/qemu-test-kernel.config's header. Built out-of-tree
-# (O=) against a pristine 6.18.38 source tree so incremental rebuilds (e.g.
+# (O=) against a pristine source tree at the pinned kernel version so incremental rebuilds (e.g.
 # after /init changes -- see the re-point below) are cheap.
 ensure_qemu_kernel() {
 	if [ ! -f "$KBUILD/Makefile" ]; then
 		log "no cached QEMU test kernel at $KBUILD -- building from scratch"
 		[ -f "$KERNEL_TARBALL" ] || die \
 			"$KERNEL_TARBALL missing; cannot bootstrap the QEMU test kernel." \
-			"Fetch the pinned linux-6.18.38 source tarball (same one P1.3's kernel" \
+			"Fetch the pinned kernel source tarball (same one P1.3's kernel" \
 			"build already uses) to that path, or point TEST_INITRAMFS_KERNEL_TARBALL" \
 			"at it."
 		mkdir -p "$KERNEL_SRC"

@@ -2,6 +2,12 @@
 # tarballs — this is the standard practice for git/github-sourced Buildroot
 # packages, per pkg-download.mk / the Buildroot manual §18.5.2).
 #
-#   sha256sum rtl88x2bu-fecac340fb117eb979f4bb6d28e29730384c382b.tar.gz
-sha256  263c05a393770ff0cdcfdabe99d9b0f374abb913404a1d94c7c9770e145e861c  rtl88x2bu-fecac340fb117eb979f4bb6d28e29730384c382b.tar.gz
+#   sha256sum rtl88x2bu-$(RTL88X2BU_VERSION).tar.gz
+#
+# Written with the .mk variable rather than a literal revision on purpose:
+# renovate-hash-sync.yml rewrites the sha256 DATA line below and can never
+# touch a comment, so a literal here goes stale on the first automatic bump.
+# This one did (it still named the pre-bump revision) and was caught in
+# review of PR #67.
+sha256  d7dae28f0bb3b93dd41daf665a0895776e0fb13f619d228321ba8fd19a6eeb01  rtl88x2bu-249ca9584e1bc807934401211f2ea0df5d733bcd.tar.gz
 sha256  22cdb0a9cf492dbf05c5b27381a5c0e73ae0d4622427b522b0ba92b7495e5fb0  LICENSE

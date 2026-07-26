@@ -69,7 +69,7 @@ jobs:
       kernel_variants: ${{ steps.variants.outputs.kernel_variants }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Derive kernel-variant matrix
         id: variants
@@ -103,7 +103,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Shared leg recipe — see .github/actions/kernel-leg. full-legal-info
       # ships the full GPL source bundle (docs/ci.md#kernel-variant-matrix);
@@ -162,7 +162,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # MUST run before the build: post-build.sh reads MISTER_VERSION to bake
       # /MiSTer.version into the image (ADR 0018). Derived from the tagged

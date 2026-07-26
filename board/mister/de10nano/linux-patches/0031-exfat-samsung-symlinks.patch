@@ -88,9 +88,51 @@ Upstream:     No, and not upstreamable as-is: it overloads a real FAT
               (docs/patch-provenance.md §3.8 class G, option (c);
               decision reversal recorded in ADR 0019, which amends
               ADR 0010).
-Forward-port: n/a (written against 6.18.38 directly, 2026-07-14).
+Forward-port: written against 6.18.38 directly (2026-07-14); adapted
+              2026-07-25 to serve BOTH kernel series from this one file
+              -- see below.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+[Two changes on 2026-07-25 which, together, make this ONE file the whole
+ story for both the 6.18 stable series and the 7.x beta series. There is
+ no longer a re-anchored copy: ../linux-patches-beta/0031-exfat-samsung-
+ symlinks.patch is a SYMLINK to this file, like the other shared entries.
+ Verified applying at -F0 to pristine 6.18.40 AND pristine 7.2-rc4,
+ 12/12 hunks across 6 files, on both.
+
+ 1. 6.18.40 API adaptation. The stable series backported upstream's
+    benign-secondary-entry preservation rework, which gave
+    exfat_remove_entries() a 4th arg (bool free_benign). The symlink
+    error-path call passes true, matching upstream's own unlink/rmdir
+    idiom at the same ES_IDX_FILE site. 7.x already had this, so the
+    adaptation closed the last divergence in ADDED LINES.
+
+ 2. fs/exfat/file.c re-anchor, closing the last divergence in CONTEXT.
+    exfat_symlink_inode_operations is now defined BEFORE
+    exfat_file_inode_operations instead of after it. Appending after was
+    unportable: 7.x both ADDED a .fileattr_get member and RETABBED the
+    member alignment (".setattr" + spaces became ".setattr" + a tab), so
+    the two series shared no trailing context at all -- not one line.
+    Prepending anchors instead on a blank line plus the line
+    "const struct inode_operations exfat_file_inode_operations = {",
+    byte-identical in both trees. Definition order is immaterial (both
+    are file-scope, and exfat_fs.h declares both), so this is a pure
+    re-anchor: post-patch source differs from the old form ONLY in the
+    order of those two definitions -- verified by diffing the patched
+    trees, on both kernels.
+
+ That hunk deliberately carries ONE line of context per side instead of
+ the usual three, and MUST NOT be "helpfully" regenerated at -U3: three
+ lines reaches into the retabbed struct body on 7.x and into the
+ .splice_write/.setlease tail of exfat_file_operations on 6.18, both of
+ which differ between the series. The single trailing context line
+ occurs exactly once in file.c, so the match stays unambiguous; a future
+ upstream edit there fails CLOSED at Buildroot's `patch -F0` -- the same
+ failure mode as before, just reachable from a smaller perturbation.
+
+ NOTE: on the stable side this patch now requires >= 6.18.40; it will
+ not compile against 6.18.39 or earlier. That is fine -- it tracks the
+ pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, not a range.]
 ---
 diff --git a/fs/exfat/dir.c b/fs/exfat/dir.c
 index 97f2ff8..3539964 100644
@@ -193,16 +235,15 @@ index 536c807..36f6706 100644
  	/* Equivalent to a chmod() */
  	ia.ia_valid = ATTR_MODE | ATTR_CTIME;
  	ia.ia_ctime = current_time(inode);
-@@ -778,3 +788,9 @@ const struct inode_operations exfat_file_inode_operations = {
- 	.setattr     = exfat_setattr,
- 	.getattr     = exfat_getattr,
- };
-+
+@@ -776,2 +776,8 @@
+ 
 +const struct inode_operations exfat_symlink_inode_operations = {
 +	.get_link    = page_get_link,
 +	.setattr     = exfat_setattr,
 +	.getattr     = exfat_getattr,
 +};
++
+ const struct inode_operations exfat_file_inode_operations = {
 diff --git a/fs/exfat/inode.c b/fs/exfat/inode.c
 index f9501c3..a1a0ac8 100644
 --- a/fs/exfat/inode.c
@@ -329,7 +370,7 @@ index dfe9574..9c42ae8 100644
 +	mutex_lock(&sbi->s_lock);
 +	exfat_set_volume_dirty(sb);
 +	if (!exfat_get_dentry_set_by_ei(&es, sb, EXFAT_I(inode))) {
-+		exfat_remove_entries(inode, &es, ES_IDX_FILE);
++		exfat_remove_entries(inode, &es, ES_IDX_FILE, true);
 +		if (!exfat_put_dentry_set(&es, IS_DIRSYNC(dir))) {
 +			EXFAT_I(inode)->dir.dir = DIR_DELETED;
 +			/*

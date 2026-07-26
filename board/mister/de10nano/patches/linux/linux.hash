@@ -1,8 +1,8 @@
 # Kernel tarball hash for the pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE.
 #
 # WHY THIS FILE EXISTS
-# Buildroot 2026.02.3 resolves the kernel's hash file to `linux/linux.hash`
-# (see LINUX_HASH_FILES / pkg-patch-hash-dirs in package/pkg-utils.mk:163) --
+# Buildroot resolves the kernel's hash file to `linux/linux.hash` (see
+# LINUX_HASH_FILES / pkg-patch-hash-dirs in package/pkg-utils.mk:163) --
 # a path that DOES NOT EXIST in the release. Its actual hashes live in
 # linux/from-6.17/linux.hash, which that lookup never consults. The result is
 # that a pinned custom kernel version downloads with only
@@ -13,6 +13,15 @@
 # That silently defeats G5 (pinned kernel + hash). pkg-patch-hash-dirs also
 # searches $(BR2_GLOBAL_PATCH_DIR)/<pkg>/, which is why this file is here and
 # why the defconfig sets BR2_GLOBAL_PATCH_DIR.
+#
+# Deliberately no Buildroot version in the paragraph above: it describes a
+# MECHANISM, and naming the version it was first observed on makes the note
+# read as stale the moment the pin moves, even when nothing changed. Re-verified
+# against the pinned tree on 2026-07-25 (Buildroot 2026.05.1): `linux/linux.hash`
+# still does not exist, the real hashes are still under linux/from-6.17/ and
+# linux/before-6.17/, and pkg-patch-hash-dirs is still package/pkg-utils.mk:163.
+# RE-VERIFY ON A BUILDROOT BUMP -- if upstream ever ships linux/linux.hash, this
+# whole file becomes redundant rather than load-bearing.
 #
 # WHERE THIS HASH COMES FROM -- read before changing it.
 # Transcribed from kernel.org's PGP-signed release manifest:
@@ -27,7 +36,7 @@
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
-sha256  a7a7e3d2ae9d95e74197223a8d4eb5f6be7aac21b6e6de27e9685d001c1f8cb0  linux-6.18.39.tar.xz
+sha256  3712fc1ec839e4daac981176c8518912e8f452650aaedfe4381da4419613a431  linux-6.18.40.tar.xz
 
 # WHERE THE 7.2-rc4 HASH COMES FROM -- weaker provenance, stated honestly.
 # kernel.org publishes NO signed manifest for -rc kernels: sha256sums.asc

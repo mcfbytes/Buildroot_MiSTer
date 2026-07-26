@@ -12,8 +12,9 @@ menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
 	# fallback.
 	#
 	# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are NOT
-	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot 2026.02.3 upstream
-	# already ships its own same-named packages (different forks). Same name
+	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot upstream
+	# already ships its own same-named packages (different forks; re-confirmed
+	# present on the pinned tree 2026-07-25). Same name
 	# here would collide on both the Kconfig symbol and the Make namespace;
 	# see each package's Config.in for the detail. rtl8188fu/rtl8812au/rtl88x2bu
 	# have no such collision and keep the plain names; rtl8814au-morrownr takes

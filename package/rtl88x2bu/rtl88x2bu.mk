@@ -32,7 +32,7 @@
 # CONFIG_WIRELESS_EXT (P1.3 hazard — non-prompt, select-only symbol in
 # 6.18), so the wext-only code simply compiles out; no wrapper or kernel
 # `select` hack is needed.
-RTL88X2BU_VERSION = fecac340fb117eb979f4bb6d28e29730384c382b
+RTL88X2BU_VERSION = 249ca9584e1bc807934401211f2ea0df5d733bcd
 RTL88X2BU_SITE = $(call github,morrownr,88x2bu-20210702,$(RTL88X2BU_VERSION))
 RTL88X2BU_LICENSE = GPL-2.0
 RTL88X2BU_LICENSE_FILES = LICENSE

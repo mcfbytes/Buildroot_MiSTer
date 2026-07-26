@@ -38,7 +38,7 @@
 #
 #     glibc is configured --enable-kernel=$(BR2_TOOLCHAIN_HEADERS_AT_LEAST)
 #     (package/glibc/glibc.mk:131). Under AS_KERNEL our kernel version arrives as the
-#     free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.39", which Kconfig
+#     free-form string BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.40", which Kconfig
 #     cannot compare numerically to select BR2_TOOLCHAIN_HEADERS_AT_LEAST_6_18 -- so it
 #     silently falls back to the floor, 2.6. That would build glibc with ~15 years of
 #     dead compatibility code and runtime syscall-fallback paths for kernels this board
@@ -50,19 +50,35 @@
 #     Right setting, wrong reason, which is how it nearly got reverted.)
 #
 #     ACCEPTED CONSEQUENCE: the series resolves to whatever 6.18.x Buildroot pins for it
-#     (package/linux-headers/Config.in.host, the `default "6.18.33" if
-#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.33) while the kernel is 6.18.38, so
-#     the headers lag the kernel slightly. That is correct and harmless: headers older
-#     than the running kernel is the supported direction, because the kernel's uapi is
-#     forward-compatible by guarantee. The actual uapi delta between 6.18.33 and 6.18.38
-#     is ONE line -- an explicit `__u32 :32;` pad in include/uapi/linux/tee.h, a
-#     subsystem this board does not use. Checked with
-#     `git diff v6.18.33 v6.18.38 -- include/uapi/ arch/arm/include/uapi/`.
+#     (package/linux-headers/Config.in.host, the `default "6.18.34" if
+#     BR2_KERNEL_HEADERS_6_18` line -- currently 6.18.34, moved from 6.18.33 by the
+#     Buildroot 2026.02 -> 2026.05 bump) while the kernel is 6.18.40, so the headers lag
+#     the kernel slightly. That is correct and harmless: headers older than the running
+#     kernel is the supported direction, because the kernel's uapi is forward-compatible
+#     by guarantee. Re-checked 2026-07-25 for the 6.18.40 bump: the uapi delta between
+#     6.18.34 and 6.18.40 is FOUR added lines across THREE files, all additive --
+#       * include/uapi/linux/bpf.h    two explicit `__u32 :32;` pads (bpf_prog_info,
+#                                     bpf_map_info)
+#       * include/uapi/linux/tee.h    one explicit `__u32 :32;` pad
+#       * include/uapi/linux/if_link.h  one new enum member, IFLA_BOND_LACP_STRICT,
+#                                     appended before __IFLA_BOND_MAX
+#     arch/arm/include/uapi/ is byte-identical. The `__u32 :32;` lines make padding the
+#     compiler was ALREADY inserting explicit (both structs are
+#     __attribute__((aligned(8)))), so they are not an ABI change at all; the bonding
+#     netlink attribute is additive and this board does not use bonding, tee or bpf
+#     uapi. Checked with
+#     `git diff v6.18.34 v6.18.40 -- include/uapi/ arch/arm/include/uapi/`
+#     (equivalently: diff the two extracted tarballs over those two paths).
 #
-#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included. It is tempting to assume only
-#     a series bump can move uapi; the tee.h line above disproves it, since 6.18.33 ->
-#     6.18.38 is itself a patchlevel range. Stable rules discourage uapi changes but do
-#     not forbid them, so the diff is the authority, not the version numbers.
+#     RE-CHECK THAT DIFF ON ANY BUMP, patchlevel included -- of the KERNEL or of
+#     BUILDROOT, since the 2026.05 bump moved the headers end of the range on its own.
+#     It is tempting to assume only a series bump can move uapi; every line above
+#     disproves it, since 6.18.34 -> 6.18.40 is itself a patchlevel range. Stable rules
+#     discourage uapi changes but do not forbid them, so the diff is the authority, not
+#     the version numbers. (This block was last found stale by Copilot review on PR #67:
+#     it still said 6.18.33/6.18.38 after the kernel had moved to 6.18.40 and Buildroot
+#     had moved the headers pin to 6.18.34 -- neither of which Renovate can rewrite,
+#     because both live in prose.)
 #
 #     Also note linux-headers only applies BR2_LINUX_KERNEL_PATCH / BR2_GLOBAL_PATCH_DIR
 #     under AS_KERNEL (package/linux-headers/linux-headers.mk:82), so the series pin
@@ -127,7 +143,7 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay $(BR2_EXTERNAL_MISTER_PATH)/work/extra-modules-overlay"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.39"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.40"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
@@ -261,7 +277,8 @@ BR2_REPRODUCIBLE=y
 # xpm/zlib) -- everything except gif/id3/jpeg/png/tiff builds into imlib2
 # unconditionally with no Buildroot Config.in gate, so enabling those five
 # reproduces stock's loader set exactly (package/imlib2/Config.in, checked
-# against work/buildroot @ 2026.02.3).
+# against the then-pinned Buildroot 2026.02.3 and NOT re-checked since the
+# 2026.05 bump -- a dated finding, not a standing guarantee).
 #
 # Every symbol below was cross-checked against the actual pinned Buildroot
 # tree's Config.in files (not from memory) before being pasted here -- see
@@ -741,7 +758,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 # --- P3.1/v9: Realtek USB WiFi -- MAINLINE-FIRST out-of-tree driver policy ---
 # Commit-pinned, hash-verified morrownr forks, kept ONLY for the 802.11ac chips
 # mainline still cannot drive: RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU.
-# Their .ko lands under output/target/usr/lib/modules/6.18.38/ and is autoloaded
+# Their .ko lands under output/target/usr/lib/modules/<kernel version>/ and is autoloaded
 # by depmod/eudev on dongle insertion (P3.3). None need CONFIG_WIRELESS_EXT for
 # wpa_supplicant -D nl80211 (per-package .mk documents the finding).
 #
@@ -756,8 +773,9 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 #
 # rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr / rtl8814au-
 # morrownr carry a fork suffix, NOT plain rtl8188eu/rtl8821au/rtl8821cu -- so as
-# not to collide with Buildroot 2026.02.3's own same-named upstream packages
-# (different forks) on the Kconfig symbol and Make namespace. Buildroot's own
+# not to collide with Buildroot's own same-named upstream packages (different
+# forks; re-confirmed present on the pinned tree 2026-07-25) on the Kconfig
+# symbol and Make namespace. Buildroot's own
 # rtl8188eu/rtl8821au/rtl8821cu/rtl8812au-aircrack-ng packages are left OFF --
 # our pins stay in control, not Buildroot's release cadence (A9 reproducibility).
 BR2_PACKAGE_RTL8812AU=y                          # RTL8812AU 11ac -- no mainline USB driver
@@ -876,8 +894,9 @@ BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
 
 # Seven files stock ships that NO linux-firmware sub-option covers, even
 # though upstream linux-firmware carries them and this project's pinned
-# 6.18.38 kernel still has an in-tree consumer for each (verified by grep
-# against the actual built kernel source, not assumed -- see
+# kernel still has an in-tree consumer for each (verified by grep against
+# the actual built kernel source at the time, not assumed; last checked on
+# 6.18.38 -- re-grep on a kernel bump rather than trusting this line -- see
 # package/linux-firmware-extra/linux-firmware-extra.mk and
 # docs/firmware-parity.md for the per-file citation). Same upstream tarball
 # and hash-pin as linux-firmware itself, just a different subset kept.
@@ -983,14 +1002,16 @@ BR2_PACKAGE_STRACE=y
 # and in this tree that fixup is already a no-op — CONFIG_PERF_EVENTS=y,
 # CONFIG_ARM_PMU=y and CONFIG_HW_PERF_EVENTS=y all resolve on by kconfig default
 # and are live in the built .config today (verified against
-# output/build/linux-6.18.39/.config). Hardware counters are wired too: socfpga.dtsi
+# output/build/linux-<pinned version>/.config; last confirmed on 6.18.39).
+# Hardware counters are wired too: socfpga.dtsi
 # has the arm,cortex-a9-pmu node with both per-CPU PMU interrupts, so `perf stat`
 # gets real cycle/instruction counts rather than software events only.
 #
 # _NEEDS_HOST_PYTHON3 is NOT optional on this kernel and NOT cosmetic: since
 # ~6.0 perf generates pmu-events.c at build time by running
-# tools/perf/pmu-events/jevents.py, and 6.18.39 still does (that file is present
-# in the unpacked tree). Without this symbol Buildroot never adds host-python3 to
+# tools/perf/pmu-events/jevents.py, and the pinned kernel still does (that file
+# is present in the unpacked tree; last confirmed on 6.18.39). Without this
+# symbol Buildroot never adds host-python3 to
 # PERF_DEPENDENCIES and the perf build fails on whatever python3 the *host*
 # happens to have, or none.
 BR2_PACKAGE_LINUX_TOOLS_PERF=y

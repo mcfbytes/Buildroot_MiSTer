@@ -1,0 +1,99 @@
+From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
+From: Shig <clockworkjb@gmail.com>
+Date: Mon, 4 Sep 2023 20:17:52 +1000
+Subject: [PATCH 1/1] hid-nintendo: force correct GENCON PID for the NSO Genesis pad over Bluetooth
+
+The NSO Genesis/Mega Drive pad reports product ID 0x2017 over Bluetooth --
+the same PID the NSO SNES pad reports. Stock MiSTer corrects this from
+ctlr_type (read from the controller itself, trustworthy on both
+transports) before the input_dev is created. Vanilla 6.18 does not: it has
+no hdev->product assignment anywhere in hid-nintendo.c.
+
+The loss is silent and userspace-visible. input->id.product is what
+userspace keys GUID lookups off, so with the bogus PID Main_MiSTer's
+SDL-format gamecontrollerdb lookup (gamecontroller_db.cpp,
+gcdb_map_for_controller(), which builds its GUID string from
+bustype/vid/pid/version) matches the SNES row and a Bluetooth-connected
+Genesis pad comes out mismapped. Nothing errors; the pad simply behaves
+as the wrong controller. Wired connections are unaffected -- the PID is
+correct there -- which is why this is easy to miss on the bench.
+
+Kernel-side button/axis mapping is unaffected either way: it dispatches
+off ctlr->ctlr_type, never off hdev->product.
+
+Naming note: mainline calls this device GENCON (0x201e) where stock calls
+it MDCON (0x201E) -- the same PID, renamed when NSO support landed
+upstream. Stock's controller-type enum JOYCON_CTLR_TYPE_MD and mainline's
+JOYCON_CTLR_TYPE_GEN are likewise the same wire value, 0x0D. This patch
+uses the mainline names.
+
+Provenance
+----------
+Origin:       b00a72159aeb6996e1006d28383fdb8e2667746b
+              "Add support for NSO Mega Drive Controller (#50)",
+              MiSTer-devel/Linux-Kernel_MiSTer, 2023-09-04, against v5.15.
+              The originating commit is largely superseded by mainline's
+              own NSO Genesis support (joycon_type_is_gencon() etc.); this
+              PID-normalisation hunk is the one piece of it that has no
+              mainline equivalent. Stock hid-nintendo.c:1761-1765:
+                  /* MD controller has wrong PID via BT, so just force it */
+                  if (hdev->product == USB_DEVICE_ID_NINTENDO_SNESCON &&
+                          ctlr->ctlr_type == JOYCON_CTLR_TYPE_MD) {
+                          hdev->product = USB_DEVICE_ID_NINTENDO_MDCON;
+                  }
+Author:       Shig <clockworkjb@gmail.com> (author of the origin commit;
+              committed to Linux-Kernel_MiSTer by Sorgelig)
+Upstream:     No. `grep -c 'hdev->product = ' drivers/hid/hid-nintendo.c`
+              on v6.18.39 returns 0 -- vanilla never rewrites the PID.
+              Mainline DOES have the device (USB_DEVICE_ID_NINTENDO_GENCON
+              0x201e, hid-ids.h:1067; JOYCON_CTLR_TYPE_GEN = 0x0D,
+              hid-nintendo.c:322), just not the Bluetooth PID fix.
+Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, fork-sync
+              increment (docs/kernel-recon/fork-sync-2026-07.md §8.1).
+              Re-derived against 6.18's joycon_input_create() using the
+              mainline GENCON/TYPE_GEN names; placed immediately before
+              devm_input_allocate_device() so id.product is already
+              correct when the input_dev is populated. Record
+              b00a72159... corrected dropped-upstream -> carried: the
+              original pass graded the whole commit "now upstream" on the
+              strength of mainline's NSO support, recording the uncovered
+              PID hunk as prose ("equivalence: partial") that was then
+              never actioned. That is the grouped-conflation error the
+              reconciliation exists to catch, in its subtler form -- a
+              real upstream feature absorbing a MiSTer-specific
+              behavioural hunk that has no mainline equivalent.
+
+Signed-off-by: Shig <clockworkjb@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index fbd4743e5a3f..273c214f73cc 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -2164,6 +2164,26 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
+ 
+ 	hdev = ctlr->hdev;
+ 
++	/*
++	 * MiSTer: the NSO Genesis/Mega Drive pad reports the WRONG product ID
++	 * over Bluetooth -- 0x2017, the same PID as the NSO SNES pad. Force it
++	 * to the real GENCON PID using ctlr_type, which is read from the
++	 * controller itself and is trustworthy on both transports.
++	 *
++	 * This must happen before the input_dev is created, because
++	 * id.product below is what userspace keys its GUID lookups off: with
++	 * the bogus PID, Main_MiSTer's SDL-format gamecontrollerdb lookup
++	 * (gamecontroller_db.cpp, gcdb_map_for_controller(), which builds a
++	 * "%04x0000%04x0000%04x0000%04x0000" GUID from bustype/vid/pid/version)
++	 * matches the SNES row and the Genesis pad comes out mismapped.
++	 *
++	 * Kernel-side button/axis mapping is unaffected either way: it
++	 * dispatches off ctlr->ctlr_type, never off hdev->product.
++	 */
++	if (hdev->product == USB_DEVICE_ID_NINTENDO_SNESCON &&
++	    ctlr->ctlr_type == JOYCON_CTLR_TYPE_GEN)
++		hdev->product = USB_DEVICE_ID_NINTENDO_GENCON;
++
+ 	ctlr->input = devm_input_allocate_device(&hdev->dev);
+ 	if (!ctlr->input)
+ 		return -ENOMEM;

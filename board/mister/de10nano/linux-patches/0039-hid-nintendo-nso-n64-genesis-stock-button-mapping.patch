@@ -1,0 +1,125 @@
+From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
+From: Shig <clockworkjb@gmail.com>
+Date: Sat, 2 Sep 2023 00:51:48 +1000
+Subject: [PATCH 1/1] hid-nintendo: stock button mapping for NSO N64 and Genesis pads
+
+Mainline's NSO N64 and Genesis tables assign different evdev codes to the
+same wire bits than stock does. For the N64, A and B are outright swapped
+(stock A->BTN_EAST, B->BTN_SOUTH) and three of the four C-buttons move.
+For the Genesis, six of ten bits differ -- A, C, X, Y, Z and Mode; only B,
+Start, Home and Capture agree.
+
+This is silent and userspace-visible, by the same mechanism as 0034 for
+NES/Famicom. Main_MiSTer derives gamecontrollerdb "bN" indices as a plain
+ascending ordinal over the EV_KEY bitmap (gamecontroller_db.cpp,
+get_ctrl_index_maps()), so one moved code renumbers every button from that
+index on; and .map files store the raw ev->code, so they mis-resolve too.
+The GUID is built from bustype/vid/pid/version alone, so the same
+gamecontrollerdb row matches either way -- it is simply resolved onto a
+different set of physical buttons. The declared code sets are the same SIZE
+(13 for the N64, 10 for the Genesis) but NOT the same members: mainline
+declares BTN_C (0x132) and BTN_SELECT (0x13a) where stock declares
+BTN_THUMBL (0x13d) and BTN_THUMBR (0x13e) on the N64, and BTN_SELECT
+(0x13a) where stock declares BTN_TR2 (0x139) on the Genesis.
+
+For the Genesis this compounds with 0038: that patch restored the GENCON
+PID normalisation so the pad once again matches the 057e:201e row, which
+without this patch it would then mismap.
+
+C-left needs no change: stock's BTN_WEST and mainline's BTN_Y are the same
+0x134.
+
+Verified: the resulting code sets are byte-identical to stock's declared
+n64con_button_inputs[] (13 codes) and mdcon_button_inputs[] (10 codes), and
+every wire bit maps to stock's code. Our table drives both
+joycon_report_buttons() and joycon_config_buttons(), so the reported and
+declared sets cannot drift apart the way stock's split arrays can.
+
+Provenance
+----------
+Origin:       b00a72159aeb6996e1006d28383fdb8e2667746b
+              "Add support for NSO Mega Drive Controller (#50)", 2023-09-04,
+              and 2799f8b9478a67fffaa21f9cbeae886fa0a55b1e
+              "add support for NSO N64 controller (#49)", 2023-09-02, both
+              against v5.15.
+              Stock's assignment lives in hid-nintendo.c's shared
+              jc_type_is_nso() block plus the jc_type_is_n64con() and
+              jc_type_is_mdcon() blocks.
+Author:       Shig <clockworkjb@gmail.com> (author of both origin
+              commits; committed to Linux-Kernel_MiSTer by Sorgelig)
+Upstream:     No. Mainline has the devices but its own mapping; this is a
+              deliberate MiSTer-vs-mainline divergence, not a backport.
+Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
+              (docs/kernel-recon/fork-sync-2026-07.md). Re-expressed as
+              mapping-table entries, which is how 6.18 structures this.
+              NOT bench-verified -- needs an NSO N64 and an NSO Genesis pad.
+
+Signed-off-by: Shig <clockworkjb@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index 273c214f73cc..624b57c0ffb9 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -480,32 +480,49 @@ static const struct joycon_ctlr_button_mapping snescon_button_mappings[] = {
+ 	{ /* sentinel */ },
+ };
+ 
++/*
++ * MiSTer: stock's assignment, not mainline's. Six of the ten wire bits land on
++ * a different evdev code upstream (A, C, X, Y, Z and Mode); only B, Start, Home
++ * and Capture agree. Main_MiSTer derives gamecontrollerdb "bN" indices as an
++ * ascending ordinal over the EV_KEY bitmap, so a single moved code renumbers
++ * every button from that index on, and .map files store the raw code -- both
++ * paths silently mis-resolve. Same reasoning as 0034 for NES/Famicom.
++ * Stock: hid-nintendo.c jc_type_is_mdcon() block + the shared NSO block.
++ */
+ static const struct joycon_ctlr_button_mapping gencon_button_mappings[] = {
+-	{ BTN_WEST,	JC_BTN_A,	}, /* A */
++	{ BTN_EAST,	JC_BTN_A,	}, /* A */
+ 	{ BTN_SOUTH,	JC_BTN_B,	}, /* B */
+-	{ BTN_EAST,	JC_BTN_R,	}, /* C */
+-	{ BTN_TL,	JC_BTN_X,	}, /* X MD/GEN 6B Only */
+-	{ BTN_NORTH,	JC_BTN_Y,	}, /* Y MD/GEN 6B Only */
+-	{ BTN_TR,	JC_BTN_L,	}, /* Z MD/GEN 6B Only */
+-	{ BTN_SELECT,	JC_BTN_ZR,	}, /* Mode */
++	{ BTN_TR,	JC_BTN_R,	}, /* C */
++	{ BTN_NORTH,	JC_BTN_X,	}, /* X MD/GEN 6B Only */
++	{ BTN_WEST,	JC_BTN_Y,	}, /* Y MD/GEN 6B Only */
++	{ BTN_TL,	JC_BTN_L,	}, /* Z MD/GEN 6B Only */
++	{ BTN_TR2,	JC_BTN_ZR,	}, /* Mode */
+ 	{ BTN_START,	JC_BTN_PLUS,	},
+ 	{ BTN_MODE,	JC_BTN_HOME,	},
+ 	{ BTN_Z,	JC_BTN_CAP,	},
+ 	{ /* sentinel */ },
+ };
+ 
++/*
++ * MiSTer: stock's assignment, not mainline's -- see the gencon note above for
++ * why a moved code is a silent userspace break. Here A and B are outright
++ * swapped relative to mainline (stock A->BTN_EAST, B->BTN_SOUTH) and three of
++ * the four C-buttons move. C-left is BTN_WEST either way (mainline spells it
++ * BTN_Y, the same 0x134).
++ * Stock: hid-nintendo.c jc_type_is_n64con() block + the shared NSO block.
++ */
+ static const struct joycon_ctlr_button_mapping n64con_button_mappings[] = {
+-	{ BTN_A,		JC_BTN_A,	},
+-	{ BTN_B,		JC_BTN_B,	},
++	{ BTN_EAST,		JC_BTN_A,	},
++	{ BTN_SOUTH,		JC_BTN_B,	},
+ 	{ BTN_TL2,		JC_BTN_ZL,	}, /* Z */
+ 	{ BTN_TL,		JC_BTN_L,	},
+ 	{ BTN_TR,		JC_BTN_R,	},
+ 	{ BTN_TR2,		JC_BTN_LSTICK,	}, /* ZR */
+ 	{ BTN_START,		JC_BTN_PLUS,	},
+-	{ BTN_SELECT,		JC_BTN_Y,	}, /* C UP */
+-	{ BTN_X,		JC_BTN_ZR,	}, /* C DOWN */
+-	{ BTN_Y,		JC_BTN_X,	}, /* C LEFT */
+-	{ BTN_C,		JC_BTN_MINUS,	}, /* C RIGHT */
++	{ BTN_NORTH,		JC_BTN_Y,	}, /* C UP */
++	{ BTN_THUMBL,		JC_BTN_ZR,	}, /* C DOWN */
++	{ BTN_WEST,		JC_BTN_X,	}, /* C LEFT */
++	{ BTN_THUMBR,		JC_BTN_MINUS,	}, /* C RIGHT */
+ 	{ BTN_MODE,		JC_BTN_HOME,	},
+ 	{ BTN_Z,		JC_BTN_CAP,	},
+ 	{ /* sentinel */ },

@@ -1,6 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-07-19 02:24 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
+Generated 2026-07-24 22:36 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
 
@@ -28,6 +28,14 @@ Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git 
 - disposition: **carried** | severity feature-loss | loud
 - doc ref: patch-provenance.md line 360
 - notes: Build system fix for Fanatec wheel driver (HID). Changes Makefile to use composite module pattern: obj-$(CONFIG_HID_FTEC) += hid-fanatec.o with hid-fanatec-$(CONFIG_HID_FTEC) += hid-ftec.o hid-ftecff.o. This replaces the original incorrect pattern that listed both object files directly. Patch 0012-hid-fanatec.patch incorporates this fix in its Makefile hunk (lines 76-77), explicitly folding commits e82a5928, 8908e0fe, and ed8f8e6ce together. ESCALATION NOTE: patch-provenance.md groups this commit with e82a5928 and ed8f8e6ce in a single row (line 360), violating the one-commit-per-row contract;…
+
+## `b00a72159` Add support for NSO Mega Drive Controller (#50)
+
+- disposition: **carried** | severity feature-loss | silent
+- doc ref: patch-provenance.md line 335 (GROUPED row: `e155f6a2f`, `2799f8b94`, `b00a72159`)
+- notes: DISPOSITION CORRECTED 2026-07-24 (fork-sync increment, docs/kernel-recon/fork-sync-2026-07.md §8.1): dropped-upstream -> carried.
+
+WHAT WAS WRONG. The original pass graded this commit 'dropped-upstream' on the strength of mainline having NSO Genesis support (JOYCON_CTLR_TYPE_GEN, USB_DEVICE_ID_NINTENDO_GENCON, joycon_type_is_gencon) and set equivalence='partial' -- correctly noting in effect_if_absent and userspace_coupling that the Bluetooth PID normalisation was NOT covered. That is the grouped-conflation error this reconciliation exists to catch, in its subtler form: not a wholly-wrong cita…
 
 ## `b76b4bc6a` dualsense: leds config for player 6.
 
@@ -62,12 +70,6 @@ Vanilla 6.18.38 history (all three SHAs confirmed via `git log`/`git show`/`git 
 - disposition: **dropped-upstream** | severity none | silent
 - doc ref: patch-provenance.md line 365 groups commits af27afc4c, f3c75eb02, a2242dd85, c035c21c0 as 'xpad deltas' carried in 0017-xpad-mister-deltas.patch, but the patch file header explicitly states 'NOT ported: af27afc4c' — this is a misclassification
 - notes: This commit represents a wholesale resync of the fork's xpad.c driver with a version that incorporates upstream changes from 2022–2024. Vanilla 6.18.38 already includes all the substantive features this commit brings: (1) Event code constants: BTN_GRIPL/GRIPR/GRIPL2/GRIPR2 (0x224–0x227, verified at input-event-codes.h:605-608, exact match) for Xbox Elite paddle buttons; (2) ABS_PROFILE (0x21, input-event-codes.h:893) for profile selector (Xbox Adaptive Controller); (3) MAP_SHARE_BUTTON/MAP_PADDLES/MAP_PROFILE_BUTTON (xpad.c:83-85, exact match) and packet type detection (PKT_XBE1/XBE2_FW_OLD/FW…
-
-## `b00a72159` Add support for NSO Mega Drive Controller (#50)
-
-- disposition: **dropped-upstream** | severity feature-loss | silent
-- doc ref: patch-provenance.md line 335 (GROUPED row: `e155f6a2f`, `2799f8b94`, `b00a72159`)
-- notes: ESCALATION REQUIRED — GROUPED ROW in provenance.md: This commit is grouped with `e155f6a2f` (NSO NES/SNES) and `2799f8b94` (NSO N64), but must be analyzed independently (instructions §3). **Disposition analysis**: Fork commit (2023-09-04) precedes upstream 94f18bb19945 (2023-12-04). Vanilla 6.18.38 already includes NSO Genesis/Mega Drive support via 94f18bb19945, using `JOYCON_CTLR_TYPE_GEN (0x0D)` and `USB_DEVICE_ID_NINTENDO_GENCON (0x201e)` -- confirmed at hid-nintendo.c:322 and hid-ids.h:1067. **Key difference (equivalence=partial)**: Fork adds a product-ID forcing workaround (`git show b00…
 
 ## `0d8641a2b` Add rtl8188eu, rtl8188fu WiFi drivers.
 

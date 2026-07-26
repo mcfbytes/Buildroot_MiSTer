@@ -1,5 +1,12 @@
 # Tree-diff attribution — fork f0fb626ac vs vanilla v5.15.1
 
+> **Scope note (added 2026-07-24).** This is the §3.3 completeness backstop for the ORIGINAL
+> campaign only, at fork HEAD `f0fb626ac`. It does **not** cover the two commits the
+> 2026-07-24 fork-sync increment added (`794e6f002`, `5fcfae369`), nor upstream's parallel
+> `MiSTer-v6.18` port. That increment ran its own tree-diff backstop — against upstream's
+> 6.18 branch rather than v5.15.1, since both 6.18 trees share a base commit — and records it
+> in [`fork-sync-2026-07.md`](fork-sync-2026-07.md) §3.
+
 Generated 2026-07-15 04:27 UTC by `phase0.py`. Content comparison via `git ls-tree -r` blob
 hashes (content-addressed, valid across repos). Every differing path must be
 attributable to ≥1 enumerated delta commit — see plan §3.3.

@@ -147,16 +147,21 @@ def sev(r): return (r.get("impact") or {}).get("severity", "?")
 def fm(r): return (r.get("impact") or {}).get("failure_mode", "?")
 def coup(r): return (r.get("userspace_coupling") or {}).get("coupled")
 
+# Version strings come from commits.jsonl's _meta, never hardcoded: this file is regenerated
+# on every increment and a literal silently goes stale the moment the kernel pin moves.
+vanilla_label = (meta or {}).get("vanilla_target", "?").lstrip("v")
+tier2_n = sum(1 for x in rows if x["tier2"])
+
 with open(HERE / "reconciliation.md", "w") as f:
     f.write(f"# Reconciliation — one row per fork commit\n\nGenerated {now} by `reduce.py` "
             f"from {len(rows)} records ({len(main_shas)} MiSTer-v5.15 + {len(residue_full)} "
             f"old-branch residue). Tier-2 verified: "
             f"{sum(1 for x in rows if x['tier2'])}/{len(rows)}.\n\n")
-    f.write("""## How to read this table
+    f.write(f"""## How to read this table
 
 Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
-reconciled against our vanilla-6.18.38-based build. The full evidence for a row lives in
-`records/<full-sha>.json`.
+reconciled against our vanilla-{vanilla_label}-based build. The full evidence for a row
+lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
   branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
@@ -203,8 +208,8 @@ reconciled against our vanilla-6.18.38-based build. The full evidence for a row 
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 123/123 rows
-  have this).
+  (a stronger reviewer re-derived every claim from the actual source trees; {tier2_n}/{len(rows)}
+  rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
   an ADR/decision). `see record` means the reason is narrative — read the JSON record.

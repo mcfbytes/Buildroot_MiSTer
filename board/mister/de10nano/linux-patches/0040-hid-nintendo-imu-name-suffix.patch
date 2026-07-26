@@ -1,0 +1,70 @@
+From a6b7e36668f60fee6d2cd8dd142db5237c3b3f1f Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 14 Aug 2021 12:00:00 +0800
+Subject: [PATCH 1/1] hid-nintendo: keep the " IMU" suffix userspace filters on
+
+The Joy-Con/Pro Controller registers a second input device for the
+accelerometer and gyro. Main_MiSTer excludes it from its controller pool
+with strstr(name, " IMU") (input.cpp), and that string test is its ONLY
+hook -- there is no INPUT_PROP or capability check behind it.
+
+Stock's names are fixed literals ending in " IMU" / " IMU (Grip)".
+Mainline builds the name as "%s (IMU)", which puts '(' immediately after
+the space, so strstr(name, " IMU") does not match. The IMU node is then
+opened as an ordinary controller: it consumes a device-pool slot, streams
+ABS_X/Y/Z/RX/RY/RZ at IMU rate into the input loop, and can be
+auto-assigned as a player.
+
+Silent -- nothing errors, a phantom controller simply appears.
+
+Dropping the parentheses restores the substring while keeping mainline's
+derived-from-the-HID-name form. Restoring stock's fixed literals would
+also work, but stock derives the MAIN input device's name from the same
+place, and that name is itself gamecontrollerdb-visible -- so the
+minimal change is the safer one.
+
+Provenance
+----------
+Origin:       Behavioural requirement of stock hid-nintendo.c, whose
+              imu_name literals ("Nintendo Switch Pro Controller IMU",
+              "Nintendo Switch Left Joy-Con IMU", ...) all end in " IMU".
+              Consumers: Main_MiSTer input.cpp:6103,
+              strstr(input[n].name, " IMU") under a vid == 0x057e gate, AND
+              SDL2's SDL_gamecontroller.c, SDL_strstr(name, " IMU").
+              Nothing in the built rootfs matches the "(IMU)" form.
+Author:       Daniel J. Ogorchock <djogorchock@gmail.com> -- the " IMU"
+              literals are his, from mainline 4ff5b10840a8 ("HID: nintendo:
+              add IMU support"). Stock 5.15 simply predates their removal;
+              it is not a MiSTer-authored delta.
+Upstream:     Partial revert of 94f18bb19945 (Ryan McClelland, "HID: nintendo:
+              add support for nso controllers"), which replaced the fixed
+              literals with "%s (IMU)". Current mainline still uses that.
+Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
+              (docs/kernel-recon/fork-sync-2026-07.md §8). One-token change.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index 624b57c0ffb9..6782abc449f1 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -2127,7 +2127,17 @@ static int joycon_imu_input_create(struct joycon_ctlr *ctlr)
+ 	ctlr->imu_input->uniq = ctlr->mac_addr_str;
+ 	ctlr->imu_input->phys = hdev->phys;
+ 
+-	imu_name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s (IMU)", ctlr->input->name);
++	/*
++	 * MiSTer: the name must end in the substring " IMU". Main_MiSTer filters
++	 * this device out of its controller pool with strstr(name, " IMU")
++	 * (input.cpp), which is its ONLY hook -- there is no INPUT_PROP or
++	 * capability check behind it. Stock's names are fixed literals ending in
++	 * " IMU" / " IMU (Grip)"; mainline's "%s (IMU)" puts a '(' after the
++	 * space, so the match fails and the accelerometer/gyro node is opened as
++	 * an ordinary controller: it takes a device-pool slot, streams ABS_* at
++	 * IMU rate into the input loop, and can be auto-assigned as a player.
++	 */
++	imu_name = devm_kasprintf(&hdev->dev, GFP_KERNEL, "%s IMU", ctlr->input->name);
+ 	if (!imu_name)
+ 		return -ENOMEM;
+ 

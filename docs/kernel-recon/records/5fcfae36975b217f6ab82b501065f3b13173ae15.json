@@ -1,0 +1,61 @@
+{
+  "sha": "5fcfae36975b217f6ab82b501065f3b13173ae15",
+  "subject": "config: enable CONFIG_TUN for tap device support (#76)",
+  "author": "Nigel Shearman",
+  "author_is_pr_contributor": true,
+  "date": "2026-07-24",
+  "subsystem": "net",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "1da177e4c3f41524e886b7f1b8a0c1fc7321cac2"
+    ],
+    "vanilla_file_line": "drivers/net/Kconfig:396 (v6.18.39)",
+    "vanilla_quote": "config TUN\n\ttristate \"Universal TUN/TAP device driver support\"\n\tdepends on INET\n\tselect CRC32",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "none — this commit postdates docs/patch-provenance.md entirely (fork commit 2026-07-24; the doc's baseline is f0fb626ac). No prior claim exists to agree or disagree with; recorded true as 'no conflict', not as corroboration.",
+  "impact": {
+    "effect_if_absent": "/dev/net/tun is absent, so no tun or tap interface can be created and TUNSETIFF fails with ENODEV. Anything routing or NATing a private subnet on the MiSTer breaks. The concrete loss the fork commit names: a WiFi station cannot emit frames bearing a second source MAC, so CONFIG_MACVLAN (already carried, linux.config:168) cannot give an emulated NIC — e.g. the Amiga A2065 Ethernet card — its own address over wireless the way it can on wired eth0. A tap device is the only way out on WiFi. Wired users are unaffected; WiFi users lose emulated-NIC networking entirely.",
+    "affected_hardware": [
+      "any MiSTer on WiFi bridging an emulated NIC (Amiga A2065, ao486 NE2000, etc.)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/net/tun character device (TUNSETIFF ioctl); resulting tunX/tapX netdevs configured over netlink",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "none — CONFIG_TUN exists in v6.18.39 under the same name with the same dependencies (depends on INET, select CRC32), both already =y in our resolved config, so the symbol needs no companion changes",
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:175 (CONFIG_TUN=y) — our build's config file, which is what Buildroot actually consumes (configs/mister_de10nano_defconfig:133 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE); the fork's arch/arm/configs/MiSTer_defconfig edit itself is not applicable to us"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "DISPOSITION RATIONALE. 'dropped-deliberate' follows the worker-instructions pilot rule that 'carried' strictly means a 00xx-*.patch exists in linux-patches/ — none does and none should, because our kernel config lives in board/mister/de10nano/linux.config rather than an arch/arm/configs defconfig, so a one-symbol stock defconfig change is mirrored as a config line, not a patch file. The fork's defconfig hunk is dropped; the FUNCTIONALITY is provided, per dependencies.superseded_by. This is the identical shape and disposition as the CONFIG_MACVLAN commit f0fb626ac (record in this directory), which is the direct precedent — and which this commit complements: MACVLAN is the wired-path answer, TUN the WiFi-path answer to the same problem.\n\nUPSTREAM SHA CAVEAT: vanilla_shas cites 1da177e4c3f4 because `git log --diff-filter=A -- drivers/net/tun.c` in /mnt/source/linux returns only the 2.6.12-rc2 initial import — the TUN driver predates git history, so no narrower introducing commit exists to cite. The symbol is not new or renamed in 6.18; the Kconfig quote above was re-derived from the live v6.18.39 checkout (line 396, NOT copied from any prior doc).\n\nVERIFICATION — RESOLVED, NOT ASSUMED. linux.config is a MINIMAL defconfig, so a written symbol is not necessarily a resolved one. Copied linux.config to a scratch .config and ran `make -C /mnt/source/linux O=<scratch> ARCH=arm olddefconfig` against a clean v6.18.39 checkout (the exact version configs/mister_de10nano_defconfig:130 pins). Resolved output carries CONFIG_TUN=y at line 1416, with CONFIG_INET=y (line 861) satisfying `depends on` and CONFIG_CRC32=y (line 4290) satisfying `select`. A before/after diff of the two resolved configs shows exactly one changed line ('# CONFIG_TUN is not set' -> 'CONFIG_TUN=y') — no side effects, nothing else flipped on.\n\n=y not =m, matching the fork commit's own reasoning and our CONFIG_MACVLAN precedent: the module directory name does not match `uname -r` on MiSTer, so module autoload is unreliable. CONFIG_TUN_VNET_CROSS_LE left at default n, as the fork commit did. CONFIG_TAP is NOT needed and stays off — it backs macvtap/ipvtap, whereas /dev/net/tun already yields both tunX and tapX.\n\nSILENT REGRESSION: failure_mode=silent. Nothing in the shipped binary probes for /dev/net/tun — an exhaustive grep of /mnt/source/Main_MiSTer for the four terms that would indicate real coupling — 'net/tun', 'TUNSETIFF', 'IFF_TAP' and 'IFF_TUN' — returns zero hits. A bare case-insensitive 'tap' substring search does match ~19 files, but every hit is unrelated: ATAPI command handling (ide_cdrom.cpp, ide.h), cassette-'tape' strings (support/sharpmz/, support/uef/, support/atari8bit/), and similar. No /dev/net/tun consumer exists in the binary. userspace_coupling.coupled=true is asserted WITHOUT a Main_MiSTer path:line by design: the consumers are user-installed networking scripts and core-side bridging, not the main binary. That is precisely why absence surfaces only when a user tries to bridge over WiFi.\n\nWE ARE AHEAD OF THE FORK'S OWN 6.18 BRANCH HERE. This landed on MiSTer-v5.15 on 2026-07-24, one day AFTER Sorgelig committed the MiSTer-v6.18 defconfig (e8f065dbf8, 2026-07-23), which still reads '# CONFIG_TUN is not set' at line 1383. Stock's 5.15.1 line is the source of truth for what stock ships, so we follow v5.15; the fork's 6.18 branch simply has not picked this up yet. Worth raising with Sorgelig as part of the forward-port effort (MiSTer-devel/Linux-Kernel_MiSTer#75).\n\nTIER-2: orchestrator-verified (Opus 5, 2026-07-24): CONFIRMED. An independent pass, instructed to refute the parity claim, re-derived every step against the live trees rather than trusting this record: it re-read fork commit 5fcfae369 (one symbol changed, no companion), re-quoted drivers/net/Kconfig:396-399 at v6.18.39, and re-ran BOTH olddefconfig resolutions itself, reporting the pre->post diff as exactly one line. It specifically chased the most likely defect -- that the commit says 'tap device support' while we do not enable CONFIG_TAP -- and REFUTED it: CONFIG_TAP (drivers/net/Kconfig:420) is a promptless tristate selected by macvtap/ipvtap, tun.c implements IFF_TAP itself (tun.c:1325, :2772, :3072) with no dependency on tap.o and no include of <linux/if_tap.h>, and it registers the node itself (tun_miscdev .nodename = \"net/tun\", tun.c:3484-3487) which DEVTMPFS materialises. It also ran a systematic backstop -- comm -23 of stock's enabled symbols against our resolved config -- and found no missing symbol anywhere in the tun/tap/macvlan/veth/bridge neighbourhood. Two corrections came out of that pass and are applied above: the Main_MiSTer grep sentence was overstated as written, and iproute2 (defconfig:682) was confirmed present so CONFIG_TUN is not a dead symbol on the image."
+}

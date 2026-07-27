@@ -227,3 +227,70 @@ includes this task's `main.conf` change.
 - **[BUILD]** `usr/share/dbus-1/system.d/bluetooth.conf` is present and
   `dbus-daemon --system` accepts it at boot (no D-Bus policy-parse
   errors in the log) — sanity-check only, no change expected (§6).
+
+## 9. Bluetooth firmware audit (v10.2)
+
+`docs/wifi-parity.md` §7 audited USB **WiFi** drivers against their firmware and
+found two drivers built with none at all. This section applies the same method
+to **Bluetooth**, and found the same class of gap.
+
+**Method.** For every `CONFIG_BT_*` driver this image builds, extract the
+firmware path strings it requests (`MODULE_FIRMWARE()`, literal
+`request_firmware()` arguments, and the `snprintf` format strings the drivers
+build names from at runtime), then check each against the shipped
+`/lib/firmware`.
+
+Drivers built: `btusb` (with `_BCM`/`_MTK`/`_RTL` vendor support), `btintel`,
+`btbcm`, `btrtl`, `btmtk`, `ath3k`, `bcm203x`, `btrsi`.
+
+### Gaps found and closed
+
+| Driver | Missing firmware | Now via | Note |
+|---|---|---|---|
+| `btmtk` | `mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin` | `_MEDIATEK_MT7921_BT` | **The notable one.** We already shipped `WIFI_RAM_CODE_MT7961*` for the *WiFi* half of the MT7921AU combo dongle, so that dongle's WiFi worked and its Bluetooth did not. We created that asymmetry by enabling `_MEDIATEK_MT7921` without its `_BT` sibling. |
+| `btmtk` | `mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin` | `_MEDIATEK_MT7922_BT` | `btusb` carries MT7922 USB IDs, so this is a reachable USB path, not only the M.2 part. |
+| `btmtk` | `mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin` | `_MEDIATEK_MT7925_BT` | Same asymmetry as MT7961, for the MT7925U combo. |
+| `btusb` (QCA) | `qca/rampatch_usb_00000302.bin`, `qca/nvm_usb_00000302.bin` | `_QUALCOMM_6174A_BT` | QCA ROME 6174A over USB. `btusb`'s QCA path is **self-contained** — 0 references to `CONFIG_BT_QCA` — so the driver was already able to drive these; firmware was the only missing piece. |
+| `btbcm` | `brcm/BCM-0bb4-0306.hcd` | `linux-firmware-extra` | The **only** `.hcd` upstream linux-firmware carries, and `linux-firmware.mk` has no `.hcd` glob at all, so no sub-option installs it. `btbcm` builds `brcm/BCM%s.hcd` with `%s = "-<vid>-<pid>"`, which is exactly this name. |
+
+Total ≈1.7 MB.
+
+### Already correct (verified, not assumed)
+
+- **Realtek** — 38 files in `rtl_bt/`, including `rtl8761b_fw.bin` /
+  `rtl8761bu_fw.bin`. That matters: RTL8761B/BU are the chips in the
+  ubiquitous cheap USB Bluetooth 5 dongles. Also covered: 8822b/cu, 8851bu,
+  8852au/bu/btu/cu — the BT halves of every rtw88/rtw89 combo we drive.
+- **MediaTek legacy** — `mt7622pr2h.bin`, `mt7663pr2h.bin`, `mt7668pr2h.bin`
+  already shipped via `linux-firmware-extra` (`mt7663pr2h.bin` arrived with the
+  v10 MT7663U work and does double duty as that combo's BT companion).
+- **Atheros** — `ath3k-1.fw` + 18 `ar3k/*.dfu`, added in v10.
+- **Broadcom** — `brcm/BCM20702A1-0b05-17cb.hcd` via `package/bcm20702-firmware`
+  (upstream linux-firmware does not carry it).
+- **Redpine** — the `rsi/*.rps` blobs added in v10.1 serve `btrsi` as well as
+  `rsi_usb`; RS911x firmware is combined WLAN+BT.
+- **CSR** (`CSR8510` and friends, the other very common cheap dongle) needs no
+  firmware at all — `btusb` drives it generically.
+
+### Deliberately NOT shipped
+
+- **Intel** (`BR2_PACKAGE_LINUX_FIRMWARE_IBT`, `intel/ibt-*`) — **30 MB**, and
+  Intel Bluetooth controllers ship essentially only on M.2 WiFi+BT combo cards,
+  which this board cannot host. There is no realistic external Intel BT USB
+  dongle. `CONFIG_BT_INTEL` is nevertheless built because `CONFIG_BT_HCIBTUSB`
+  `select`s it unconditionally — it cannot be turned off while `btusb` is on.
+  So this is a **deliberate** driver-without-firmware, in contrast to the
+  ath3k/mt7663/btmtk cases above, which were accidental. One defconfig line to
+  reverse if an Intel BT dongle ever matters.
+- **`_QUALCOMM_9377_BT`** — its two files are `qca/rampatch_00230302.bin` /
+  `nvm_00230302.bin`, the **non-USB** names, which only the UART path
+  (`hci_qca`, `CONFIG_BT_HCIUART`, not built) requests. No consumer here.
+- **`bcm203x`** (`CONFIG_BT_HCIBCM203X=y`, BCM2033) — needs
+  `BCM2033-MD.hex`/`BCM2033-FW.bin`, which upstream linux-firmware does not
+  carry at all. A ~2003 device with no available source; noted rather than
+  fabricated, same posture as the three dropped files in
+  `docs/firmware-parity.md`.
+
+`scripts/ci-tests.sh` now asserts the MediaTek BT, QCA USB BT, both `.hcd`s and
+the rtl8761b/bu pair are present in the shipped image, so none of this can
+regress silently.

@@ -79,7 +79,15 @@ LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
 # mt7610u.bin above: Buildroot's _RTL_81XX list installs the PCIe sibling
 # rtl8192defw.bin but NOT the USB one, so CONFIG_RTL8192DU=m has no other
 # source. Requested by rtl8192du/sw.c:117 + MODULE_FIRMWARE at :394.
+#
+# brcm/BCM-0bb4-0306.hcd (v10.2) is the ONLY .hcd file upstream linux-firmware
+# carries, and no Buildroot sub-option installs it (there is no .hcd glob
+# anywhere in linux-firmware.mk). btbcm builds its patch filename as
+# "brcm/BCM%s.hcd" with %s = "-<vid>-<pid>" (btbcm.c), so this name is exactly
+# what a 0bb4:0306 dongle asks for. Distinct from brcm/BCM20702A1-0b05-17cb.hcd,
+# which upstream does NOT carry and which package/bcm20702-firmware fetches.
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
+	brcm/BCM-0bb4-0306.hcd \
 	mediatek/mt7610u.bin \
 	mediatek/mt7622pr2h.bin \
 	mediatek/mt7663_n9_rebb.bin \

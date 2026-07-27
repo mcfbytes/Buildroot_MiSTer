@@ -909,6 +909,45 @@ BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y       # ar7010*.fw + htc_7010* -- ath9
                                                 # (AR7010-based 802.11n USB)
 BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y       # carl9170-1.fw -- carl9170
                                                 # (AR9170 802.11n USB)
+# --- v10.2: Bluetooth firmware for combo/BT dongles whose driver we already
+# build (docs/bluetooth-parity.md). Same class of gap as ath3k below: the
+# driver binds, then dies at request_firmware().
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921_BT=y # mediatek/BT_RAM_CODE_MT7961_
+                                                # 1_2_hdr.bin -- the BT half of
+                                                # the MT7921AU combo dongle
+                                                # whose WiFi half we already
+                                                # ship (_MEDIATEK_MT7921 below).
+                                                # Requested by btmtk.c; without
+                                                # it WiFi works and BT does not
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7922_BT=y # mediatek/BT_RAM_CODE_MT7922_
+                                                # 1_1_hdr.bin -- btusb carries
+                                                # MT7922 USB IDs, so this is a
+                                                # reachable USB path, not just
+                                                # the M.2 part
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925_BT=y # mediatek/mt7925/BT_RAM_CODE_
+                                                # MT7925_1_1_hdr.bin -- BT half
+                                                # of the MT7925U combo
+BR2_PACKAGE_LINUX_FIRMWARE_QUALCOMM_6174A_BT=y  # qca/rampatch_usb_00000302.bin
+                                                # + qca/nvm_usb_00000302.bin --
+                                                # QCA ROME 6174A over USB. btusb
+                                                # requests exactly the "_usb_"
+                                                # names (btusb.c:
+                                                # "qca/rampatch_usb_%08x.bin"),
+                                                # and its QCA path is
+                                                # self-contained -- it needs no
+                                                # CONFIG_BT_QCA, so this
+                                                # firmware is the only missing
+                                                # piece. 132 KiB.
+# NOT enabled: _QUALCOMM_9377_BT. Its two files are qca/rampatch_00230302.bin /
+# nvm_00230302.bin -- the NON-usb names, which only the UART path (hci_qca,
+# CONFIG_BT_HCIUART, not built) ever requests. No consumer here.
+# NOT enabled: _LINUX_FIRMWARE_IBT (Intel Bluetooth, intel/ibt-*). 30 MiB, and
+# Intel BT controllers ship essentially only on M.2 WiFi+BT combo cards, which
+# this board cannot host -- there is no realistic external Intel BT USB dongle.
+# CONFIG_BT_INTEL is nonetheless built because CONFIG_BT_HCIBTUSB `select`s it
+# unconditionally (it cannot be turned off while btusb is on), so this is a
+# DELIBERATE driver-without-firmware, unlike the ath3k/mt7663 cases which were
+# accidental. Flip this on if an Intel BT dongle ever needs to work.
 BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004=y       # ath6k/AR6004/hw1.2 + hw1.3
                                                 # (132 KiB) -- ath6kl_usb
                                                 # (CONFIG_ATH6KL_USB=m, new in
@@ -948,7 +987,7 @@ BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
                                                 # from linux-firmware, see
                                                 # above)
 
-# Nine files that NO linux-firmware sub-option covers, even though upstream
+# Ten files that NO linux-firmware sub-option covers, even though upstream
 # linux-firmware carries them and this project's pinned kernel has an in-tree
 # consumer for each (verified by grep against the actual built kernel source,
 # not assumed; last checked on 6.18.40 -- re-grep on a kernel bump rather than

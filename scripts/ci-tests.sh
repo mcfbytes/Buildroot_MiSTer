@@ -542,11 +542,18 @@ else
 		"missing:$brcm_missing -- CONFIG_BRCMFMAC/CONFIG_WLAN_VENDOR_BROADCOM dropped?"
 fi
 
-# Firmware for drivers that were being built with NO firmware at all before v10
-# (docs/wifi-parity.md §6.2/§6.3): MT7663U and ath3k both probed and then failed
-# at request_firmware(). Assert the blobs ship so that regression cannot recur
-# silently. MT7663U needs BOTH ROM-patch/N9 pairs -- the driver picks the N9 to
-# match whichever patch bound, so a half-set breaks a live fallback path.
+# Firmware for drivers that were being built with NO firmware at all
+# (docs/wifi-parity.md §6.2/§6.3, docs/bluetooth-parity.md §9): MT7663U, ath3k,
+# and the MediaTek BT half of the MT7921AU/MT7925U combo dongles whose WiFi half
+# we already shipped, all probed and then failed at request_firmware(). Assert
+# the blobs ship so that regression cannot recur silently.
+#   - MT7663U needs BOTH ROM-patch/N9 pairs: the driver picks the N9 to match
+#     whichever patch bound, so a half-set breaks a live fallback path.
+#   - The QCA pair is the "_usb_" variant specifically -- btusb's QCA path is
+#     self-contained (no CONFIG_BT_QCA) and asks for exactly these names.
+#   - rtl8761b/bu back the most common cheap USB Bluetooth 5 dongles on sale;
+#     they already shipped, and are asserted here so a firmware sub-option
+#     reshuffle cannot drop them unnoticed.
 fw_missing=""
 for f in \
 	mediatek/mt7663pr2h.bin mediatek/mt7663_n9_v3.bin \
@@ -554,14 +561,20 @@ for f in \
 	ath3k-1.fw \
 	brcm/brcmfmac43143.bin brcm/brcmfmac43236b.bin \
 	brcm/brcmfmac43242a.bin brcm/brcmfmac43569.bin \
-	rtlwifi/rtl8192dufw.bin rsi/rs9113_wlan_qspi.rps rsi/rs9116_wlan.rps
+	rtlwifi/rtl8192dufw.bin rsi/rs9113_wlan_qspi.rps rsi/rs9116_wlan.rps \
+	mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin \
+	mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin \
+	mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin \
+	qca/rampatch_usb_00000302.bin qca/nvm_usb_00000302.bin \
+	brcm/BCM-0bb4-0306.hcd brcm/BCM20702A1-0b05-17cb.hcd \
+	rtl_bt/rtl8761b_fw.bin rtl_bt/rtl8761bu_fw.bin
 do
 	tar_has "usr/lib/firmware/$f" || fw_missing="$fw_missing $f"
 done
 if [ -z "$fw_missing" ]; then
-	pass "WiFi/BT firmware: mt7663 (both pairs) + ath3k + brcmfmac + rtl8192du + rsi blobs present (v10)"
+	pass "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present"
 else
-	fail "WiFi/BT firmware: mt7663 (both pairs) + ath3k + brcmfmac + rtl8192du + rsi blobs present (v10)" \
+	fail "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present" \
 		"missing:$fw_missing -- a driver would probe then fail at request_firmware()"
 fi
 

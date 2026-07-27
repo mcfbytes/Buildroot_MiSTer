@@ -151,7 +151,7 @@ readonly PINNED_WIFI_SH_SIZE="5823"
 # Any "as of <date>" note is deliberately absent -- Renovate cannot update a
 # comment, so it would start lying on the first automatic bump. `git log --
 # scripts/fetch-sdcard-payload.sh` is the bump record.
-readonly PINNED_CORES_COMMIT="ad03301ba4e75ab80761dab1d000acf1438b0b14"
+readonly PINNED_CORES_COMMIT="8638660725dcb2cc4665d4accad8274068ff5f63"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------

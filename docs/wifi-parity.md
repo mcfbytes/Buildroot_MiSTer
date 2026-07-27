@@ -277,3 +277,195 @@ worktree's files directly.
   reboot, confirm association — the "existing user configs work unchanged"
   half of `TASKS.md` P3.4's done-when, independent of the community
   script.
+
+## 6. v10 — Broadcom/Cypress, MT7663U firmware, ar3k, and the last two forks retired
+
+> Scope of this section: a driver/firmware-coverage change, not a userland
+> one. Nothing in §1–§5 above changes — no rootfs-overlay file, no
+> `wpa_supplicant`/`dhcpcd`/`wifi.sh` dependency, no `/etc` file. It is
+> recorded here because §3 and the defconfig already point readers at this
+> doc for "which driver binds which dongle" questions.
+
+### 6.1 Broadcom / Cypress USB WiFi (new)
+
+`CONFIG_WLAN_VENDOR_BROADCOM` was off, so `brcmfmac` — the FullMAC driver for
+every BCM43xx/CYW43xx USB dongle — was not built at all. Now on:
+
+| Symbol | Value | Why |
+|---|---|---|
+| `CONFIG_WLAN_VENDOR_BROADCOM` | `y` | vendor gate; nothing below is selectable without it |
+| `CONFIG_BRCMFMAC` | `m` | the FullMAC driver itself |
+| `CONFIG_BRCMFMAC_USB` | `y` | the only bus a dongle arrives on here |
+| `CONFIG_BRCMFMAC_SDIO` | **explicitly off** | `default y` whenever `CONFIG_MMC=y` (it is — the boot SD card), so it must be written out or `olddefconfig` re-enables it. `linux.config` is a *minimal* defconfig; an absent symbol is not an off symbol. The DE10-Nano exposes no SDIO slot a WiFi module could sit in. |
+| `CONFIG_BRCMFMAC_PCIE` | unreachable | `depends on PCI`; `CONFIG_PCI is not set` on this board |
+| `CONFIG_BRCMSMAC` | off | the 11n SoftMAC half — PCIe/BCMA only, same reason |
+
+Firmware: `BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX` + `_BCM43XXX`. Between
+them they install the four BCM43xx **USB** parts `brcmfmac` drives —
+`brcm/brcmfmac43143.bin`, `brcmfmac43236b.bin`, `brcmfmac43242a.bin`,
+`brcmfmac43569.bin` — plus `brcmfmac4373.bin`. Each also `select`s its
+Cypress counterpart (`_CYPRESS_CYW43XX` / `_CYW43XXX`); Cypress bought
+Broadcom's IoT line, so `cypress/cyfmac*` is the same silicon under the later
+vendor name, and newer dongles ask for the `cyfmac` name. Those selects fire
+automatically — confirmed in `output/.config`, not assumed.
+
+**Size cost, measured on the built image** (not estimated — `du` on
+`output/target/usr/lib/firmware` after `make all`): `brcm/` is 9.5 MiB and
+`cypress/` 5.5 MiB, so these four options add **≈15 MiB**. Most of it is
+SDIO/PCIe siblings that *cannot* be used on this board — Buildroot's
+sub-options are coarse per-family groupings, the same "documented superset"
+already accepted throughout `docs/firmware-parity.md`. The USB-only subset is
+≈2.2 MiB, so a curated `linux-firmware-extra` member list could reclaim
+≈13 MiB if the budget ever tightens.
+
+It does not need to now — `scripts/check-size-budget.sh output/images/linux.img`
+on this build reports **287 MiB used / 225 MiB free / 44.0% free, PASS**
+(floor is 15%).
+
+> ⚠️ `docs/size-budget.md`'s "`/lib/firmware` total: 3.1 MiB, 68 regular files"
+> line is **stale** — it predates v9's `RTL_RTW89`, whose `rtw89/` directory
+> alone is 25 MiB, larger than every v10 addition combined. The directory is
+> now **49 MiB across 188 regular files + 67 symlinks**. That doc should be
+> regenerated from a current build rather than trusted; flagged here rather
+> than edited, since it is a generated report.
+
+### 6.2 MT7663U firmware (driver was already on, firmware was missing)
+
+`CONFIG_MT7663U=m` was already set, but **no** `BR2_PACKAGE_LINUX_FIRMWARE_*`
+sub-option installs any `mt7663` file (Buildroot's MediaTek options stop at
+MT7601U/MT7610E/MT76X2E/MT7921/MT7925). The driver therefore probed and then
+failed at `request_firmware()`. Four files now ship via
+`package/linux-firmware-extra`:
+
+| File | Role |
+|---|---|
+| `mediatek/mt7663pr2h.bin` | ROM patch, offload/v3 path (`MT7663_OFFLOAD_ROM_PATCH`) |
+| `mediatek/mt7663_n9_v3.bin` | N9 firmware paired with it (`MT7663_OFFLOAD_FIRMWARE_N9`) |
+| `mediatek/mt7663pr2h_rebb.bin` | ROM patch, fallback path (`MT7663_ROM_PATCH`) |
+| `mediatek/mt7663_n9_rebb.bin` | N9 firmware paired with it (`MT7663_FIRMWARE_N9`) |
+
+All four are `MODULE_FIRMWARE()`-declared in
+`drivers/net/wireless/mediatek/mt76/mt7615/usb.c`. `mt7663_load_rom_patch()`
+(`mt7615/mcu.c`) tries one ROM patch, logs `"%s not found, switching to %s"`
+and tries the other, then selects the N9 blob **to match whichever patch
+bound** — so shipping only one pair leaves a live fallback path broken.
+Both pairs are shipped.
+
+> **Note on the requested filename.** The task asked for
+> `mt7663pr2h_rxd.bin`. No such file exists — not in the pinned 6.18.40 kernel
+> (the only `mt7663*` firmware strings are the four `#define`s at
+> `mt7615/mt7615.h:48-51`; a tree-wide grep for `mt7663pr2h_rxd` returns
+> nothing) and not in linux-firmware 20260410 (`mediatek/` carries
+> `mt7663_n9_rebb.bin`,
+> `mt7663_n9_v3.bin`, `mt7663pr2h.bin`, `mt7663pr2h_rebb.bin` — no `_rxd`
+> variant). The four files above are what MT7663U actually loads. Same
+> "identify the real mechanism rather than manufacture the named file" posture
+> as §0.
+
+### 6.3 ar3k / ath3k Atheros Bluetooth firmware (driver was already on)
+
+Same shape as §6.2: `CONFIG_BT_ATH3K=m` was already built, but **no** firmware
+for it was installed, so every AR3011/AR3012 dongle failed at
+`request_firmware()`. Now enabled:
+
+- `BR2_PACKAGE_LINUX_FIRMWARE_AR3011` → `ath3k-1.fw`, matching
+  `#define ATH3K_FIRMWARE "ath3k-1.fw"` (`drivers/bluetooth/ath3k.c:18`).
+- `BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB` → the `ar3k/*.dfu` patch and config
+  RAM images, matching the paths `ath3k.c` builds at runtime:
+  `snprintf(..., "ar3k/AthrBT_0x%08x.dfu", ...)` (line 378) and
+  `snprintf(..., "ar3k/ramps_0x%08x_%d%s", ...)` (line 440).
+
+Path shapes verified against the driver, and the files confirmed present in
+the extracted linux-firmware tree — not assumed from upstream naming.
+
+### 6.4 The complete mainline `rtw88` USB set — and the end of the fork era
+
+Three `RTW88_*U` chips mainline offers were not built. All three now are:
+
+| Symbol | Chip | Firmware (already shipping via `_RTL_RTW88`'s `rtw88/rtw*.bin` glob) |
+|---|---|---|
+| `CONFIG_RTW88_8723DU` | RTL8723DU 11n | `rtw88/rtw8723d_fw.bin` |
+| `CONFIG_RTW88_8821AU` | RTL8811AU/RTL8821AU 11ac | `rtw88/rtw8821a_fw.bin` |
+| `CONFIG_RTW88_8812AU` | RTL8812AU 11ac | `rtw88/rtw8812a_fw.bin` |
+
+No new firmware option was needed — Buildroot installs the whole
+`rtw88/rtw*.bin` glob, and all three blobs were already on the image,
+unused.
+
+Every `RTW88_*` chip option 6.18 offers is now either built or structurally
+unreachable:
+
+- **built** — all seven USB parts: 8822BU, 8822CU, 8821CU, 8814AU (already)
+  + 8723DU, 8821AU, 8812AU (new).
+- **unreachable** — the PCIe siblings (`RTW88_8822BE/8822CE/8723DE/8821CE/8814AE`)
+  all `depends on PCI`, and `CONFIG_PCI is not set` on this board.
+- **deliberately off** — the SDIO siblings (`RTW88_8822BS/8822CS/8723DS/8723CS/8821CS`)
+  are selectable (`CONFIG_MMC=y`) but the DE10-Nano's only MMC host drives the
+  boot SD card; there is no slot for an SDIO WiFi module. Left off as dead
+  weight. Flip them on in `linux.config` if that ever changes.
+
+**This retires the last two out-of-tree WiFi forks.** ADR 0016 kept
+`package/rtl8812au` and `package/rtl8821au-morrownr` on the sole grounds that
+mainline had no USB driver for RTL8812AU / RTL8811AU / RTL8821AU. That is no
+longer true: the shared `rtw88_88xxa` core (`RTW88_88XXA`, `rtw88xxa.c`)
+landed upstream in 6.13, **after** ADR 0016 was written. Both packages are now
+deselected in the defconfig (kept sourced, one-line revert), for the same
+reasons that drove the 8822BU and 8814AU switches: mainline goes through
+`mac80211` so WPA3/SAE/PMF behave correctly, and the forks need hand-written
+compat patches at every kernel bump.
+
+#### USB-ID coverage diff — nothing is lost
+
+The obvious risk in dropping a vendor fork is a dongle that only the fork's ID
+table claimed. Measured rather than assumed, by extracting both tables:
+
+- the two forks (`os_dep/linux/usb_intf.c`) list **57** IDs;
+- mainline `rtw8812au.c` + `rtw8821au.c` list **50**;
+- the 50 are a **strict subset** of the 57 — mainline claims nothing the forks
+  did not.
+
+Every one of the 7 remaining IDs is claimed by a *different* in-kernel driver
+this image already builds. The forks' tables simply over-claimed IDs belonging
+to other chips; mainline attributes them correctly:
+
+| ID | Fork claimed it as 88xxa | Mainline driver that actually owns it | Built? |
+|---|---|---|---|
+| `056e:400b` | yes | `rtw88_8814au` | ✅ `CONFIG_RTW88_8814AU=m` |
+| `056e:400d` | yes | `rtw88_8814au` | ✅ |
+| `0b05:1817` | yes | `rtw88_8814au` (ASUS USB-AC68, 4×4 RTL8814AU) | ✅ |
+| `2001:331a` | yes | `rtw88_8814au` | ✅ |
+| `7392:a834` | yes | `rtw88_8814au` | ✅ |
+| `07b8:8179` | yes | `rtl8xxxu` (RTL8188EUS) | ✅ `CONFIG_RTL8XXXU=m` |
+| `13b1:0043` | yes | `rtw88_8822bu`/`8822cu` (Linksys WUSB6300 **v2**, RTL8822BU) | ✅ |
+
+`13b1:0043` is the instructive one: only the WUSB6300 **v1** (`13b1:003f`) is a
+true RTL8812AU, and mainline's `rtw8812au.c` does carry `003f`. The fork
+claimed both revisions for its 8812au driver, which would have bound the v2's
+RTL8822BU silicon to the wrong driver.
+
+**Net effect: identical or better device coverage**, with correct per-chip
+attribution. Verified by grepping the pinned kernel tree for each ID.
+
+If some unlisted dongle ever needs a manual bind, mainline supports the
+standard sysfs escape hatch without rebuilding anything:
+`echo <vid> <pid> > /sys/bus/usb/drivers/rtw88_8812au/new_id`.
+
+### 6.5 Verify-on-hardware checklist (v10 additions)
+
+- **[HW]** A BCM43xx/CYW43xx **USB** dongle enumerates, `brcmfmac` binds,
+  firmware loads without a `request_firmware` failure in `dmesg`, and
+  `wpa_supplicant -D nl80211` associates.
+- **[HW]** An MT7663U dongle: confirm in `dmesg` which ROM-patch path bound
+  (the `"not found, switching to"` line tells you), and that the paired N9
+  blob loaded.
+- **[HW]** An AR3011 or AR3012 Bluetooth dongle: `ath3k` loads `ath3k-1.fw`
+  (AR3011) or the `ar3k/*.dfu` pair (AR3012), the device re-enumerates, and
+  `hciconfig` shows the HCI interface come up.
+- **[HW]** **Regression-critical** — an RTL8812AU and an RTL8811AU/8821AU
+  dongle, the two chips whose driver *changed* in this branch. Confirm
+  `rtw88_8812au`/`rtw88_8821au` bind (not the old fork), association works,
+  and — the reason for the switch — WPA3/SAE succeeds where the fork failed
+  with `status_code=1`.
+- **[HW]** An RTL8814AU dongle still binds `rtw88_8814au` with the forks now
+  gone (it did before; the forks were claiming 5 of its IDs, so this confirms
+  removing them changed nothing for it).

@@ -479,43 +479,89 @@ else
 	fail "xone: all 9 .ko.xz modules present" "missing:$xone_missing"
 fi
 
-# Out-of-tree WiFi drivers (ADR 0016): the 802.11ac Realtek chips mainline still
-# cannot drive over USB. These are kernel-module PACKAGES, and Buildroot STAMPS
-# those -- a kernel *version* bump (e.g. 6.18.33 -> 6.18.38) rebuilds the in-tree
-# modules but silently leaves these built against the OLD kernel, so they land in
-# a stale lib/modules/<old>/ tree and vanish from the shipped one. That really
-# happened (local 6.18.38 build) and the xone check above is the only reason it
-# was caught -- these had no assertion at all and would have gone missing
-# silently, taking every RTL8812AU/8821AU adapter with them. Hence this.
-# Fix when it fires: `make <pkg>-dirclean` for each, then rebuild.
-# NOTE: RTL8814AU left this set in PR #35 -- it moved to the in-kernel
-# rtw88_8814au driver and is asserted separately below.
-ootwifi_mods="8812au 8821au"
-ootwifi_missing=""
-for m in $ootwifi_mods; do
-	tar_has "usr/lib/modules/$KVER/updates/$m.ko.xz" || ootwifi_missing="$ootwifi_missing $m"
+# In-kernel USB WiFi (ADR 0016 as updated in v10, docs/wifi-parity.md §6).
+#
+# This assertion USED to check the opposite thing: that the out-of-tree
+# 8812au/8821au .ko.xz were present under updates/. They are deliberately gone
+# now -- mainline gained rtw88_8812au / rtw88_8821au (the shared rtw88_88xxa
+# core, 6.13), so BR2_PACKAGE_RTL8812AU and BR2_PACKAGE_RTL8821AU_MORROWNR are
+# deselected and the image carries ZERO out-of-tree WiFi drivers. Asserting the
+# in-kernel replacements is the same protection against the same failure: a
+# chip silently losing its driver.
+#
+# The stale-kmod hazard the old comment described is real and NOT solved by
+# moving in-tree -- it just moved too. A kernel version bump rebuilds in-tree
+# modules into a NEW lib/modules/<newver>/ while any out-of-tree kernel-module
+# PACKAGE (xone is now the only one, asserted above) stays stamped against the
+# OLD kernel, landing in a stale tree. Because these paths are $KVER-scoped,
+# this check fires if the in-tree modules ever fail to build for the shipped
+# kernel. Fix when it fires: `make <pkg>-dirclean` for the stale package, or
+# `make linux-rebuild all`, then rebuild.
+rtwdir="usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtw88"
+# All seven rtw88 USB parts 6.18 offers -- 8814au was migrated in PR #35;
+# 8812au/8821au/8723du complete the set in v10.
+rtw88_usb_mods="rtw88_8822bu rtw88_8822cu rtw88_8821cu rtw88_8814au rtw88_8723du rtw88_8821au rtw88_8812au"
+rtw88_missing=""
+for m in $rtw88_usb_mods; do
+	tar_has "$rtwdir/$m.ko.xz" || rtw88_missing="$rtw88_missing $m"
 done
-if [ -z "$ootwifi_missing" ]; then
-	pass "out-of-tree WiFi: 8812au + 8821au .ko.xz present (ADR 0016)"
+if [ -z "$rtw88_missing" ]; then
+	pass "in-kernel WiFi: all 7 rtw88 USB .ko.xz present (ADR 0016 / v10)"
 else
-	fail "out-of-tree WiFi: 8812au + 8821au .ko.xz present (ADR 0016)" \
-		"missing:$ootwifi_missing -- kernel-module packages are stamped; a kernel bump needs 'make <pkg>-dirclean' + rebuild"
+	fail "in-kernel WiFi: all 7 rtw88 USB .ko.xz present (ADR 0016 / v10)" \
+		"missing:$rtw88_missing -- a CONFIG_RTW88_*U was dropped, or a kernel bump left the module tree stale (make linux-rebuild all)"
 fi
 
-# In-kernel RTL8814AU (PR #35): the RTL8814AU 4x4 11ac chip moved from the
-# out-of-tree rtl8814au-morrownr package to the mainline rtw88_8814au driver
-# (CONFIG_RTW88_8814AU=m, merged upstream in 6.16). Being an in-tree module it
-# ships at kernel/drivers/net/wireless/realtek/rtw88/ (not updates/), so it is
-# NOT stamp-prone the way the OOT packages above are -- but assert it survived the
-# build so the chip does not silently lose its driver if the config is ever dropped.
-# Exact-path tar_has() (like the xone/OOT checks above), not a regex: the in-tree
-# path is stable and Buildroot compresses modules, so the shipped name is .ko.xz.
-rtw8814au_ko="usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtw88/rtw88_8814au.ko.xz"
-if tar_has "$rtw8814au_ko"; then
-	pass "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)"
+# The out-of-tree forks must NOT come back: if both an OOT fork and the
+# in-kernel driver ship, they bind-fight on the same USB IDs and which one wins
+# is load-order dependent (ADR 0016's stated reason for disabling, not merely
+# not-enabling, them). Assert their absence so a well-meaning re-enable of
+# BR2_PACKAGE_RTL8812AU / _RTL8821AU_MORROWNR fails loudly here.
+ootwifi_present=""
+for m in 8812au 8821au; do
+	tar_has "usr/lib/modules/$KVER/updates/$m.ko.xz" && ootwifi_present="$ootwifi_present $m"
+done
+if [ -z "$ootwifi_present" ]; then
+	pass "out-of-tree WiFi forks absent (mainline-only, ADR 0016 / v10)"
 else
-	fail "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)" \
-		"$rtw8814au_ko not in rootfs.tar -- CONFIG_RTW88_8814AU dropped, or a kernel bump left kmods stale (make linux-rebuild all)"
+	fail "out-of-tree WiFi forks absent (mainline-only, ADR 0016 / v10)" \
+		"present:$ootwifi_present -- would bind-fight the in-kernel rtw88_88xxa drivers on the same USB IDs"
+fi
+
+# Broadcom/Cypress FullMAC USB (v10): brcmfmac + its brcmutil helper. New in
+# this image -- CONFIG_WLAN_VENDOR_BROADCOM was off entirely before.
+brcm_missing=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko.xz" \
+	|| brcm_missing="$brcm_missing brcmfmac"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko.xz" \
+	|| brcm_missing="$brcm_missing brcmutil"
+if [ -z "$brcm_missing" ]; then
+	pass "in-kernel WiFi: brcmfmac + brcmutil .ko.xz present (BCM43xx/CYW43xx USB, v10)"
+else
+	fail "in-kernel WiFi: brcmfmac + brcmutil .ko.xz present (BCM43xx/CYW43xx USB, v10)" \
+		"missing:$brcm_missing -- CONFIG_BRCMFMAC/CONFIG_WLAN_VENDOR_BROADCOM dropped?"
+fi
+
+# Firmware for drivers that were being built with NO firmware at all before v10
+# (docs/wifi-parity.md §6.2/§6.3): MT7663U and ath3k both probed and then failed
+# at request_firmware(). Assert the blobs ship so that regression cannot recur
+# silently. MT7663U needs BOTH ROM-patch/N9 pairs -- the driver picks the N9 to
+# match whichever patch bound, so a half-set breaks a live fallback path.
+fw_missing=""
+for f in \
+	mediatek/mt7663pr2h.bin mediatek/mt7663_n9_v3.bin \
+	mediatek/mt7663pr2h_rebb.bin mediatek/mt7663_n9_rebb.bin \
+	ath3k-1.fw \
+	brcm/brcmfmac43143.bin brcm/brcmfmac43236b.bin \
+	brcm/brcmfmac43242a.bin brcm/brcmfmac43569.bin
+do
+	tar_has "usr/lib/firmware/$f" || fw_missing="$fw_missing $f"
+done
+if [ -z "$fw_missing" ]; then
+	pass "WiFi/BT firmware: mt7663 (both pairs) + ath3k-1.fw + brcmfmac USB blobs present (v10)"
+else
+	fail "WiFi/BT firmware: mt7663 (both pairs) + ath3k-1.fw + brcmfmac USB blobs present (v10)" \
+		"missing:$fw_missing -- a driver would probe then fail at request_firmware()"
 fi
 
 xow_size=$(tar_size "usr/lib/firmware/xow_dongle.bin")

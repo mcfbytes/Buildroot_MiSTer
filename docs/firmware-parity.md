@@ -380,3 +380,70 @@ See `docs/size-budget.md` — `/lib/firmware` totals **3.1 MiB** in the built
 image (68 regular files + 23 symlinks); P3.3's own addition (beyond P3.2's
 already-committed xow-firmware) is **≈ 2.9 MiB**. The image remains at
 **60.6% free** (310.7 MiB / 512 MiB), well above the 15% floor.
+
+---
+
+## v10 additions — firmware beyond the stock inventory
+
+Everything above audits the image against stock's 66-file inventory. The
+files below are **not** stock-parity items: stock ships none of them. They
+exist because this project builds drivers stock never had, and a built driver
+with no firmware is worse than an absent one — it probes, binds, and *then*
+fails at `request_firmware()`, which reads as broken hardware rather than as
+an unsupported dongle. Rationale and the per-file driver citation are in
+`docs/wifi-parity.md` §6.
+
+| Added | Option | Backs | Notes |
+|---|---|---|---|
+| `ath3k-1.fw` | `BR2_PACKAGE_LINUX_FIRMWARE_AR3011` | `ath3k` (`CONFIG_BT_ATH3K=m`) | driver was **already built with no firmware at all** |
+| `ar3k/*.dfu` | `BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB` | `ath3k` AR3012 patch/config RAM | same |
+| `brcm/brcmfmac43143.bin`, `43236b.bin`, `43242a.bin`, `43569.bin`, `4373.bin` (+ SDIO/PCIe siblings) | `BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX`, `_BCM43XXX` | `brcmfmac` (`CONFIG_BRCMFMAC=m`, new) | the four USB parts are the target; siblings ride along |
+| `cypress/cyfmac*` | `_CYPRESS_CYW43XX`, `_CYW43XXX` (auto-`select`ed) | same driver, post-acquisition chip names | selects fire automatically, confirmed in `output/.config` |
+| `mediatek/mt7663pr2h.bin`, `mt7663_n9_v3.bin`, `mt7663pr2h_rebb.bin`, `mt7663_n9_rebb.bin` | `linux-firmware-extra` | `mt7663u` (`CONFIG_MT7663U=m`) | **no Buildroot sub-option covers any mt7663 file**; driver was already built with no firmware |
+
+Two structural points worth carrying forward:
+
+1. **`CONFIG_MT7663U` and `CONFIG_BT_ATH3K` were both already enabled with
+   zero firmware on the image.** That is the failure mode this doc's
+   inventory-vs-built diff is designed to catch, but the diff is scoped to
+   *stock's* 66 files — a beyond-stock driver has nothing to diff against, so
+   it fell through. The durable fix is to check firmware coverage from the
+   **driver** side (every `MODULE_FIRMWARE()` in every module we build) rather
+   than only from the stock-inventory side. Not done here; recorded as the
+   next useful audit.
+
+2. **`linux-firmware-extra`'s recipes are now generated from its
+   `_MEMBERS` list** via `$(foreach ... $(sep))` instead of three
+   hand-maintained copies of the same file list. The three used to agree, but
+   nothing enforced it; a file listed but not copied fails silently.
+
+### Size impact of the v10 additions
+
+Measured with `du` on `output/target/usr/lib/firmware` after a completed
+`make all`, not estimated:
+
+| Added | Size |
+|---|---|
+| `brcm/` (minus the pre-existing 34 KiB BCM20702 `.hcd`) | 9.5 MiB |
+| `cypress/` | 5.5 MiB |
+| `mediatek/mt7663*` ×4 | 1.2 MiB |
+| `ar3k/` (18 `.dfu`) | 343 KiB |
+| `ath3k-1.fw` | 241 KiB |
+| **Total v10 addition** | **≈16 MiB** |
+
+Nearly all of it is Broadcom/Cypress. Buildroot's `BRCM_*`/`CYPRESS_*`
+sub-options are coarse per-family groupings, so SDIO and PCIe firmware rides
+along with the USB files actually wanted — and on this board neither bus can
+reach a WiFi chip (`CONFIG_PCI` is unset; the sole MMC host drives the boot SD
+card). The USB-only subset is ≈2.2 MiB, so a curated `linux-firmware-extra`
+member list could reclaim ≈13 MiB if the budget ever tightens.
+
+It does not need to now — `scripts/check-size-budget.sh output/images/linux.img`
+on this build: **287 MiB used, 225 MiB free, 44.0% free, PASS** (floor 15%).
+
+> ⚠️ **`docs/size-budget.md` is stale and should be regenerated.** It records
+> `/lib/firmware` as "3.1 MiB, 68 regular files + 23 symlinks" and the image as
+> "201.3 MiB used / 60.6% free". Both predate v9: `rtw89/` alone is now 25 MiB
+> — bigger than every v10 addition combined — and the directory holds **49 MiB
+> across 188 regular files + 67 symlinks**. Flagged rather than hand-edited
+> here, since that file is a generated report.

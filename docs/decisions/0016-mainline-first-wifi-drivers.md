@@ -9,6 +9,22 @@ are re-sourced and built (recorded in `docs/wifi-parity.md`,
 `docs/kernel-config-deltas.md`, `docs/package-manifest.md`, and
 `scripts/inventory/build_modules.py`, all annotated to point here).
 
+> **Update (v10) — the rule below is unchanged; its exception list is now
+> empty.** This ADR kept three morrownr forks on the sole factual ground that
+> mainline had no USB driver for those chips. Two of those three facts have
+> since expired: the shared `rtw88_88xxa` core (`RTW88_88XXA`) landed upstream
+> in **6.13**, *after* this ADR was written, giving mainline `rtw88_8812au`
+> (RTL8812AU) and `rtw88_8821au` (RTL8811AU/RTL8821AU); `rtw88_8814au`
+> (RTL8814AU) landed in 6.16 and was adopted earlier. Applying this ADR's own
+> rule to the new facts, **`BR2_PACKAGE_RTL8812AU` and
+> `BR2_PACKAGE_RTL8821AU_MORROWNR` are now deselected too** — so the image
+> carries **zero** out-of-tree WiFi drivers, down from the "6 → 3" recorded
+> under Consequences below. Device coverage was diffed per USB ID and nothing
+> is lost (the forks' extra IDs all belong to other chips whose in-kernel
+> drivers this image already builds). Worked diff, and the v10 additions of
+> `brcmfmac` + MT7663U/ar3k firmware, in `docs/wifi-parity.md` §6.
+> The packages stay sourced in `package/` as a one-line revert.
+
 ## The problem
 
 MiSTer's 5.15 stock kernel predates mainline USB support for several Realtek
@@ -37,9 +53,9 @@ fork only where mainline still has no USB driver.**
 | 8188eu, 8188fu, (8710bu) | `rtl8xxxu` (`CONFIG_RTL8XXXU=m`) | **disabled** |
 | 8821cu / 8811cu | `rtw88_8821cu` | **disabled** |
 | 8822bu | `rtw88_8822bu` (HW-verified WPA3) | **disabled** |
-| 8812au (RTL8812AU, 11ac) | none in mainline | **kept** — `package/rtl8812au` (morrownr) |
-| 8821au (RTL8811AU/8821AU, 11ac) | none in mainline | **kept** — `package/rtl8821au-morrownr` |
-| 8814au (RTL8814AU, 4×4 11ac) | none in mainline | **added** — `package/rtl8814au-morrownr` (new) |
+| 8812au (RTL8812AU, 11ac) | none in mainline *(v10: `rtw88_8812au`, 6.13)* | ~~kept~~ → **disabled in v10** — `package/rtl8812au` (morrownr) |
+| 8821au (RTL8811AU/8821AU, 11ac) | none in mainline *(v10: `rtw88_8821au`, 6.13)* | ~~kept~~ → **disabled in v10** — `package/rtl8821au-morrownr` |
+| 8814au (RTL8814AU, 4×4 11ac) | none in mainline *(later: `rtw88_8814au`, 6.16)* | ~~added~~ → **disabled** — `package/rtl8814au-morrownr` |
 
 The disabled packages stay **present and sourced** in the tree (selectable in
 menuconfig) as a one-line-revert fallback; they are just not selected in the
@@ -93,6 +109,7 @@ boot** and passed traffic; no panic/oops/firmware-failure in dmesg;
 
 - **Fewer out-of-tree drivers to maintain** (6 → 3), all three remaining being the
   actively-maintained morrownr forks for chips mainline still omits.
+  *(v10: now 6 → 0 — see the Update note at the top; mainline covers all three.)*
 - **WPA3 works** on the mainline-driven chips (mac80211 path).
 - **Broader dongle support** than stock (rtw89/mt76/ath USB families added).
 - **Rollback** is one defconfig line per chip (the disabled packages remain in

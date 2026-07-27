@@ -66,26 +66,43 @@ LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
 # linux-firmware tree (verified against the extracted 20260410 tree, not
 # assumed from upstream naming). THREE further candidates were tried and
 # dropped -- see Config.in and docs/firmware-parity.md.
+#
+# The four mediatek/mt7663* files are NOT a stock-parity item (stock ships no
+# mt7663 firmware at all): they back CONFIG_MT7663U=m, which this project
+# enables beyond stock, and which would otherwise probe and then fail at
+# request_firmware(). They are here for the same reason as the rest -- no
+# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs any mt7663 file (Buildroot's
+# MediaTek options stop at MT7601U/MT7610E/MT76X2E/MT7921/MT7925), so the only
+# way to ship them from the pinned, hash-verified tarball is here.
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7610u.bin \
 	mediatek/mt7622pr2h.bin \
+	mediatek/mt7663_n9_rebb.bin \
+	mediatek/mt7663_n9_v3.bin \
+	mediatek/mt7663pr2h.bin \
+	mediatek/mt7663pr2h_rebb.bin \
 	mediatek/mt7668pr2h.bin \
 	rtlwifi/rtl8723befw_36.bin
 
-# Copy the four firmware members out of linux-firmware's extracted tree into
-# our own $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.
+# Copy the firmware members out of linux-firmware's extracted tree into our own
+# $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.
+#
+# Both command blocks are generated from _MEMBERS with $(foreach ... $(sep)) --
+# $(sep) is Buildroot's own newline macro (support/misc/utils.mk), the
+# established idiom for emitting one recipe line per list item. Before this the
+# same file list was written out three times (_MEMBERS plus both recipes); the
+# three agreed, but adding the mt7663 files would have meant editing all three
+# in lockstep, and a miss in either recipe fails silently -- a file listed in
+# _MEMBERS but never copied, or copied but never installed. Deriving both
+# recipes from the single list makes that class of drift impossible.
 define LINUX_FIRMWARE_EXTRA_EXTRACT_CMDS
-	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7610u.bin $(@D)/mediatek/mt7610u.bin
-	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7622pr2h.bin $(@D)/mediatek/mt7622pr2h.bin
-	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/mediatek/mt7668pr2h.bin $(@D)/mediatek/mt7668pr2h.bin
-	$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/rtlwifi/rtl8723befw_36.bin $(@D)/rtlwifi/rtl8723befw_36.bin
+	$(foreach f,$(LINUX_FIRMWARE_EXTRA_MEMBERS), \
+		$(INSTALL) -m 0644 -D $(LINUX_FIRMWARE_DIR)/$(f) $(@D)/$(f)$(sep))
 endef
 
 define LINUX_FIRMWARE_EXTRA_INSTALL_TARGET_CMDS
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7610u.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7610u.bin
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7622pr2h.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7622pr2h.bin
-	$(INSTALL) -m 0644 -D $(@D)/mediatek/mt7668pr2h.bin $(TARGET_DIR)/lib/firmware/mediatek/mt7668pr2h.bin
-	$(INSTALL) -m 0644 -D $(@D)/rtlwifi/rtl8723befw_36.bin $(TARGET_DIR)/lib/firmware/rtlwifi/rtl8723befw_36.bin
+	$(foreach f,$(LINUX_FIRMWARE_EXTRA_MEMBERS), \
+		$(INSTALL) -m 0644 -D $(@D)/$(f) $(TARGET_DIR)/lib/firmware/$(f)$(sep))
 endef
 
 $(eval $(generic-package))

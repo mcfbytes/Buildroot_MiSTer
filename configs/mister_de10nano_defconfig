@@ -756,19 +756,33 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
                                               # a package-selection one
 
 # --- P3.1/v9: Realtek USB WiFi -- MAINLINE-FIRST out-of-tree driver policy ---
-# Commit-pinned, hash-verified morrownr forks, kept ONLY for the 802.11ac chips
-# mainline still cannot drive: RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU.
-# Their .ko lands under output/target/usr/lib/modules/<kernel version>/ and is autoloaded
-# by depmod/eudev on dongle insertion (P3.3). None need CONFIG_WIRELESS_EXT for
-# wpa_supplicant -D nl80211 (per-package .mk documents the finding).
-#
-# The other Realtek USB chips MiSTer's 5.15 stock drove out-of-tree are now
-# handled by IN-KERNEL drivers (board/mister/de10nano/linux.config), so their
-# out-of-tree packages are DISABLED here -- enabling both would bind-fight on
-# the same USB IDs:
+# NO out-of-tree Realtek WiFi fork is selected any more. Every Realtek USB chip
+# MiSTer's 5.15 stock drove with a vendor fork is now handled by an IN-KERNEL
+# driver (board/mister/de10nano/linux.config) -- enabling both would bind-fight
+# on the same USB IDs, so each fork's package is DISABLED here:
 #   8188eu, 8188fu, 8710bu  -> rtl8xxxu       (CONFIG_RTL8XXXU=m, already on)
 #   8811cu, 8821cu          -> rtw88_8821cu   (CONFIG_RTW88_8821CU=m)
 #   8822bu                  -> rtw88_8822bu   (CONFIG_RTW88_8822BU=m, HW-verified WPA3)
+#   8814au                  -> rtw88_8814au   (CONFIG_RTW88_8814AU=m, merged in 6.16)
+#   8812au                  -> rtw88_8812au   (CONFIG_RTW88_8812AU=m, merged in 6.13)
+#   8811au, 8821au          -> rtw88_8821au   (CONFIG_RTW88_8821AU=m, merged in 6.13)
+# The last two lines are new: RTL8812AU and RTL8811AU/RTL8821AU were ADR 0016's
+# only standing exceptions ("no mainline USB driver"), and that is simply no
+# longer true -- the shared rtw88_88xxa core landed in 6.13, after that ADR was
+# written. Mainline goes through mac80211 (WPA3/SAE/PMF work properly, the
+# concrete defect that drove the 8822bu switch) and stays maintained, whereas
+# the morrownr forks need hand-written compat patches every kernel bump.
+# Coverage was diffed, not assumed, and NOTHING is lost. The two forks' USB-ID
+# tables list 57 IDs, mainline rtw88_8812au + rtw88_8821au list 50, and the 50
+# are a strict subset of the 57. Every one of the 7 remaining IDs is claimed by
+# a DIFFERENT in-kernel driver this image already builds -- the forks' tables
+# simply over-claimed IDs belonging to other chips, and mainline attributes them
+# correctly: 5 to rtw88_8814au (056e:400b, 056e:400d, 0b05:1817, 2001:331a,
+# 7392:a834 -- e.g. 0b05:1817 is the ASUS USB-AC68, a 4x4 RTL8814AU), 1 to
+# rtl8xxxu (07b8:8179, an RTL8188EUS), and 1 to rtw88_8822bu/8822cu (13b1:0043,
+# the Linksys WUSB6300 v2 -- RTL8822BU; only the v1, 13b1:003f, is a true
+# 8812AU, and mainline's 8812au table does carry it). Verified by grepping the
+# pinned kernel tree for each ID. See docs/wifi-parity.md §6 for the worked diff.
 # The disabled packages stay sourced (Config.in) as a selectable fallback.
 #
 # rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr / rtl8814au-
@@ -778,14 +792,22 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity 
 # symbol and Make namespace. Buildroot's own
 # rtl8188eu/rtl8821au/rtl8821cu/rtl8812au-aircrack-ng packages are left OFF --
 # our pins stay in control, not Buildroot's release cadence (A9 reproducibility).
-BR2_PACKAGE_RTL8812AU=y                          # RTL8812AU 11ac -- no mainline USB driver
+# RTL8812AU: now the in-kernel mac80211 rtw88_8812au driver (CONFIG_RTW88_8812AU
+# in board/mister/de10nano/linux.config, merged upstream in 6.13 via the shared
+# rtw88_88xxa core), NOT the OOT rtl8812au package. To revert: re-add
+# BR2_PACKAGE_RTL8812AU=y here and drop CONFIG_RTW88_8812AU from linux.config.
+# BR2_PACKAGE_RTL8812AU is not set               # -> mainline rtw88_8812au (8812au)
 # RTL8814AU: now the in-kernel mac80211 rtw88_8814au driver (CONFIG_RTW88_8814AU
 # in board/mister/de10nano/linux.config, merged upstream in 6.16), NOT the OOT
 # rtl8814au-morrownr package. The package/ definition is kept but unselected (the
 # OOT fork gets no API updates past kernel 6.14; running both would conflict on
 # the same USB IDs). To revert: re-add BR2_PACKAGE_RTL8814AU_MORROWNR=y here and
 # drop CONFIG_RTW88_8814AU from linux.config.
-BR2_PACKAGE_RTL8821AU_MORROWNR=y                 # RTL8811AU/RTL8821AU 11ac -- no mainline USB driver
+# RTL8811AU/RTL8821AU: now the in-kernel mac80211 rtw88_8821au driver
+# (CONFIG_RTW88_8821AU, same 6.13 rtw88_88xxa core as 8812au above), NOT the OOT
+# rtl8821au-morrownr package. To revert: re-add
+# BR2_PACKAGE_RTL8821AU_MORROWNR=y here and drop CONFIG_RTW88_8821AU.
+# BR2_PACKAGE_RTL8821AU_MORROWNR is not set      # -> mainline rtw88_8821au (8811au/8821au)
 # BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set   # -> mainline rtl8xxxu (8188eu)
 # BR2_PACKAGE_RTL8188FU is not set               # -> mainline rtl8xxxu (8188fu)
 # BR2_PACKAGE_RTL8821CU_MORROWNR is not set      # -> mainline rtw88_8821cu (8811cu/8821cu)
@@ -887,19 +909,47 @@ BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y       # ar7010*.fw + htc_7010* -- ath9
                                                 # (AR7010-based 802.11n USB)
 BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y       # carl9170-1.fw -- carl9170
                                                 # (AR9170 802.11n USB)
+BR2_PACKAGE_LINUX_FIRMWARE_AR3011=y             # ath3k-1.fw -- the ath3k driver
+                                                # (CONFIG_BT_ATH3K=m, already on)
+                                                # for AR3011 USB Bluetooth. The
+                                                # driver was built but its
+                                                # firmware was NEVER installed,
+                                                # so every AR3011 dongle failed
+                                                # at request_firmware(); this
+                                                # closes that gap.
+BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB=y         # ar3k/*.dfu -- AR3012 USB
+                                                # Bluetooth patch/config RAM
+                                                # images, loaded by the same
+                                                # ath3k driver (and by btusb for
+                                                # the newer AR3012 IDs)
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX=y       # brcm/brcmfmac4373.bin + the
+                                                # 43xx SDIO/PCIe siblings --
+                                                # brcmfmac (CONFIG_BRCMFMAC=m,
+                                                # new). Implicitly `select`s
+                                                # BR2_PACKAGE_LINUX_FIRMWARE_CYPRESS_CYW43XX
+                                                # (cypress/cyfmac*, the same
+                                                # silicon post-acquisition)
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XXX=y      # brcm/brcmfmac43143.bin,
+                                                # 43236b.bin, 43242a.bin,
+                                                # 43569.bin -- the four BCM43xx
+                                                # USB parts brcmfmac drives;
+                                                # `select`s _CYPRESS_CYW43XXX
 BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
                                                 # regulatory.db.p7s (separate
                                                 # from linux-firmware, see
                                                 # above)
 
-# Seven files stock ships that NO linux-firmware sub-option covers, even
-# though upstream linux-firmware carries them and this project's pinned
-# kernel still has an in-tree consumer for each (verified by grep against
-# the actual built kernel source at the time, not assumed; last checked on
-# 6.18.38 -- re-grep on a kernel bump rather than trusting this line -- see
-# package/linux-firmware-extra/linux-firmware-extra.mk and
-# docs/firmware-parity.md for the per-file citation). Same upstream tarball
+# Eight files that NO linux-firmware sub-option covers, even though upstream
+# linux-firmware carries them and this project's pinned kernel has an in-tree
+# consumer for each (verified by grep against the actual built kernel source,
+# not assumed; last checked on 6.18.40 -- re-grep on a kernel bump rather than
+# trusting this line -- see package/linux-firmware-extra/linux-firmware-extra.mk
+# and docs/firmware-parity.md for the per-file citation). Same upstream tarball
 # and hash-pin as linux-firmware itself, just a different subset kept.
+# Four are stock-parity files; the four mediatek/mt7663* ones are NOT (stock
+# ships no mt7663 firmware) -- they back CONFIG_MT7663U=m, which this project
+# enables beyond stock and which until now probed and then failed at
+# request_firmware(). See docs/wifi-parity.md §6.2.
 BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
 
 # Broadcom BCM20702 BT dongle firmware (P3.14) -- brcm/BCM20702A1-0b05-17cb.hcd,

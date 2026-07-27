@@ -447,3 +447,29 @@ on this build: **287 MiB used, 225 MiB free, 44.0% free, PASS** (floor 15%).
 > — bigger than every v10 addition combined — and the directory holds **49 MiB
 > across 188 regular files + 67 symlinks**. Flagged rather than hand-edited
 > here, since that file is a generated report.
+
+### v10.1 — firmware for the USB-driver round-out
+
+`docs/wifi-parity.md` §7 audited every USB WiFi driver 6.18.40 offers against
+what this image builds and added the three non-ancient ones that were missing.
+Their firmware:
+
+| Added | Option | Backs | Size |
+|---|---|---|---|
+| `rtlwifi/rtl8192dufw.bin` | `linux-firmware-extra` | `rtl8192du` (`CONFIG_RTL8192DU=m`) | 31 KB |
+| `ath6k/AR6004/hw1.2`, `hw1.3` | `BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004` | `ath6kl_usb` | 132 KB |
+| `rsi/rs9113_*.rps`, `rsi/rs9116_wlan.rps` | `_REDPINE_RS9113` + `_REDPINE_RS9116` | `rsi_usb` | 1.3 MB |
+
+`rtl8192dufw.bin` is the fourth instance of this file's recurring pattern:
+Buildroot's sub-option ships the **PCIe** member of a chip pair and not the
+**USB** one. `_RTL_81XX` installs `rtlwifi/rtl8192defw.bin` but not
+`rtl8192dufw.bin`, exactly as `_MEDIATEK_MT7610E` installs `mt7610e.bin` but
+not `mt7610u.bin`. Worth checking `…e.bin`/`…u.bin` pairs first whenever a USB
+driver reports a missing firmware file.
+
+Both `_REDPINE_*` toggles are required, not just `_RS9113`: the driver's
+firmware table (`rsi_91x_hal.c:35`) requests `rsi/rs9116_wlan.rps`.
+
+Total v10.1 addition ≈1.5 MB, so the combined v10+v10.1 firmware growth is
+≈17.5 MB. The size-budget caveat recorded under the v10 section still applies
+unchanged.

@@ -469,3 +469,78 @@ standard sysfs escape hatch without rebuilding anything:
 - **[HW]** An RTL8814AU dongle still binds `rtw88_8814au` with the forks now
   gone (it did before; the forks were claiming 5 of its IDs, so this confirms
   removing them changed nothing for it).
+
+## 7. v10.1 — exhaustive USB WiFi driver audit
+
+§6 closed the gaps that were asked for by name. This section is the
+**systematic sweep** behind them: every USB WiFi driver 6.18.40 offers,
+checked against what this image builds, so the answer to "is any dongle
+family unsupported?" is evidence rather than recollection.
+
+**Method.** Two independent enumerations, cross-checked against each other:
+
+1. Parse every `Kconfig` under `drivers/net/wireless/` for prompted
+   `tristate`/`bool` symbols carrying a `depends on … USB` — **36 symbols**.
+2. Find every directory containing a `MODULE_DEVICE_TABLE(usb, …)` and map it
+   back to the `CONFIG_` symbols in its `Makefile`.
+
+(2) surfaced no driver family absent from (1), so the 36 are the complete set.
+A first attempt with a hand-rolled `awk` block-parser returned only 4 and was
+discarded — worth recording, because a plausible-looking sweep that silently
+under-reports is exactly how a gap survives an audit.
+
+### Result: 27 of 36 built before this round, 30 after
+
+**Added in v10.1** — the non-ancient drivers that were missing:
+
+| Symbol | Chip | Firmware | Note |
+|---|---|---|---|
+| `RTL8192DU` | RTL8192DU 802.11n dual-band | `rtlwifi/rtl8192dufw.bin` (31 KB) via `linux-firmware-extra` | Requested by name. **Not** an `rtl8xxxu` chip — that driver has no 8192DU support, so nothing in-tree bound it. Buildroot's `_RTL_81XX` ships the PCIe `rtl8192defw.bin` but not the USB one: the same "`e` has a toggle, `u` does not" gap as `mt7610e`/`mt7610u`. |
+| `ATH6KL_USB` | AR6003/AR6004 802.11n | `ath6k/AR6004/hw1.2`+`hw1.3` (132 KB) via `_ATHEROS_6004` | `ath6kl_core` + USB bus driver only. |
+| `RSI_USB` | Redpine RS9113/RS9116 802.11n | `rsi/rs911{3,6}*` (1.3 MB) via `_REDPINE_RS9113` + `_RS9116` | Both toggles needed — `rsi_91x_hal.c:35` requests `rs9116_wlan.rps`. **The most marginal addition this round**: RS911x is mostly an industrial/IoT module rather than a consumer dongle. Upstream marks it `default m`. Cheap and it works, so it is in; drop `CONFIG_WLAN_VENDOR_RSI`/`RSI_91X`/`RSI_USB` plus those two `BR2_` symbols to revert. |
+
+### Deliberately NOT added, with reasons
+
+| Symbol | Why not |
+|---|---|
+| `ATH10K_USB` | **Upstream says it does not work.** Its Kconfig prompt is literally "Atheros ath10k USB support (**EXPERIMENTAL**)" and the help text reads "Currently work in progress and **will not fully work**." Building it would let it claim QCA9377 USB IDs and then fail — strictly worse than no driver binding, because nothing else gets a chance. This is the one genuinely modern (802.11ac) driver left unbuilt, and the reason is upstream's own assessment, not ours. Revisit if that warning is ever dropped. |
+| `AR5523` | 802.11a/b/g, ~2004 — ancient, out of scope for this round. |
+| `AT76C50X_USB` | 802.11b, ~2001 — ancient. |
+| `P54_USB` | Prism54 USB, 802.11g, ~2004 — ancient. |
+| `ZD1211RW` | ZyDAS ZD1211, 802.11g, ~2005 — ancient. See the consistency note below. |
+| `PLFXLC` | pureLiFi X/XL/XC. **Not WiFi** — Light Fidelity (optical) hardware that happens to live under `drivers/net/wireless/`. No MiSTer relevance. |
+
+> **Consistency note on the "ancient" line.** This image *does* build four
+> drivers of exactly that vintage — `RT2500USB`, `RT73USB`, `RTL8187` (all
+> 802.11g, 2004–2005) and `LIBERTAS`. That is not an inconsistent standard: all
+> four are **stock-parity** items, present because MiSTer's 5.15 stock kernel
+> shipped them (`docs/stock-inventory/modules.md` lists `rt2500usb`, `rt73usb`,
+> `rtl8187`, `rtl8192cu`). The four ancient drivers left off were never in stock
+> and have no other claim. If you would rather have blanket coverage of the
+> 802.11g era, `ZD1211RW` is the obvious one-line addition (~100 KB, no
+> firmware sub-option needed); it was left off only because the brief said to
+> ignore truly ancient hardware.
+
+### Bus-driver completeness (rtw88 / rtw89)
+
+Re-checked exhaustively, not just for the chips named in §6:
+
+- **rtw88** — all seven `RTW88_*U` USB parts are built. The five `RTW88_*E`
+  PCIe parts are unreachable (`CONFIG_PCI` unset) and the five `RTW88_*S` SDIO
+  parts have no slot.
+- **rtw89** — `RTW89_8851BU` + `RTW89_8852BU` are built, and those are the
+  *only* USB variants the tree defines. Every other `RTW89_*` chip
+  (`8852A`, `8852BT`, `8852C`, `8922A`) exists solely in a `…E` PCIe form.
+
+So no USB part of either driver family is unbuilt.
+
+### One trap this audit exposed
+
+`RSI_SDIO` is `default m` under `CONFIG_MMC=y` — enabling `RSI_91X` silently
+pulled in a second bus driver for a slot this board does not have. Caught by
+resolving `linux.config` through `olddefconfig` in a scratch tree *before*
+building, and fixed with an explicit `# CONFIG_RSI_SDIO is not set`. This is
+the third instance of the same trap (`BRCMFMAC_SDIO` in §6.1, `ATH6KL_SDIO`
+which happened to default off, and this one), so `ci-tests.sh` now asserts all
+three SDIO bus drivers are absent from the image rather than trusting the
+config file to stay correct.

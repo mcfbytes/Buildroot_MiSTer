@@ -74,6 +74,11 @@ LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
 # BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs any mt7663 file (Buildroot's
 # MediaTek options stop at MT7601U/MT7610E/MT76X2E/MT7921/MT7925), so the only
 # way to ship them from the pinned, hash-verified tarball is here.
+#
+# rtlwifi/rtl8192dufw.bin (v10.1) is the same shape, and the same shape as
+# mt7610u.bin above: Buildroot's _RTL_81XX list installs the PCIe sibling
+# rtl8192defw.bin but NOT the USB one, so CONFIG_RTL8192DU=m has no other
+# source. Requested by rtl8192du/sw.c:117 + MODULE_FIRMWARE at :394.
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7610u.bin \
 	mediatek/mt7622pr2h.bin \
@@ -82,6 +87,7 @@ LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7663pr2h.bin \
 	mediatek/mt7663pr2h_rebb.bin \
 	mediatek/mt7668pr2h.bin \
+	rtlwifi/rtl8192dufw.bin \
 	rtlwifi/rtl8723befw_36.bin
 
 # Copy the firmware members out of linux-firmware's extracted tree into our own

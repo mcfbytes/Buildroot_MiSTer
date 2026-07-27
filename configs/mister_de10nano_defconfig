@@ -909,6 +909,15 @@ BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y       # ar7010*.fw + htc_7010* -- ath9
                                                 # (AR7010-based 802.11n USB)
 BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y       # carl9170-1.fw -- carl9170
                                                 # (AR9170 802.11n USB)
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004=y       # ath6k/AR6004/hw1.2 + hw1.3
+                                                # (132 KiB) -- ath6kl_usb
+                                                # (CONFIG_ATH6KL_USB=m, new in
+                                                # v10.1; AR6003/AR6004 802.11n
+                                                # USB)
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9113=y     # rsi/rs9113_*.rps -- rsi_usb
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9116=y     # rsi/rs9116_wlan.rps, requested
+                                                # by rsi_91x_hal.c:35 (both
+                                                # toggles needed; CONFIG_RSI_USB=m)
 BR2_PACKAGE_LINUX_FIRMWARE_AR3011=y             # ath3k-1.fw -- the ath3k driver
                                                 # (CONFIG_BT_ATH3K=m, already on)
                                                 # for AR3011 USB Bluetooth. The
@@ -939,17 +948,17 @@ BR2_PACKAGE_WIRELESS_REGDB=y                    # regulatory.db +
                                                 # from linux-firmware, see
                                                 # above)
 
-# Eight files that NO linux-firmware sub-option covers, even though upstream
+# Nine files that NO linux-firmware sub-option covers, even though upstream
 # linux-firmware carries them and this project's pinned kernel has an in-tree
 # consumer for each (verified by grep against the actual built kernel source,
 # not assumed; last checked on 6.18.40 -- re-grep on a kernel bump rather than
 # trusting this line -- see package/linux-firmware-extra/linux-firmware-extra.mk
 # and docs/firmware-parity.md for the per-file citation). Same upstream tarball
 # and hash-pin as linux-firmware itself, just a different subset kept.
-# Four are stock-parity files; the four mediatek/mt7663* ones are NOT (stock
-# ships no mt7663 firmware) -- they back CONFIG_MT7663U=m, which this project
-# enables beyond stock and which until now probed and then failed at
-# request_firmware(). See docs/wifi-parity.md §6.2.
+# Four are stock-parity files; the other five are NOT (stock ships none of
+# them) -- mediatek/mt7663* x4 back CONFIG_MT7663U=m and rtlwifi/rtl8192dufw.bin
+# backs CONFIG_RTL8192DU=m, both enabled beyond stock, and each would otherwise
+# probe and then fail at request_firmware(). See docs/wifi-parity.md §6.2, §7.
 BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
 
 # Broadcom BCM20702 BT dongle firmware (P3.14) -- brcm/BCM20702A1-0b05-17cb.hcd,

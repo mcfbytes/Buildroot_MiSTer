@@ -553,15 +553,54 @@ for f in \
 	mediatek/mt7663pr2h_rebb.bin mediatek/mt7663_n9_rebb.bin \
 	ath3k-1.fw \
 	brcm/brcmfmac43143.bin brcm/brcmfmac43236b.bin \
-	brcm/brcmfmac43242a.bin brcm/brcmfmac43569.bin
+	brcm/brcmfmac43242a.bin brcm/brcmfmac43569.bin \
+	rtlwifi/rtl8192dufw.bin rsi/rs9113_wlan_qspi.rps rsi/rs9116_wlan.rps
 do
 	tar_has "usr/lib/firmware/$f" || fw_missing="$fw_missing $f"
 done
 if [ -z "$fw_missing" ]; then
-	pass "WiFi/BT firmware: mt7663 (both pairs) + ath3k-1.fw + brcmfmac USB blobs present (v10)"
+	pass "WiFi/BT firmware: mt7663 (both pairs) + ath3k + brcmfmac + rtl8192du + rsi blobs present (v10)"
 else
-	fail "WiFi/BT firmware: mt7663 (both pairs) + ath3k-1.fw + brcmfmac USB blobs present (v10)" \
+	fail "WiFi/BT firmware: mt7663 (both pairs) + ath3k + brcmfmac + rtl8192du + rsi blobs present (v10)" \
 		"missing:$fw_missing -- a driver would probe then fail at request_firmware()"
+fi
+
+# v10.1 USB WiFi round-out (docs/wifi-parity.md §7). Every one of these had its
+# firmware checked above or already shipping; assert the modules themselves.
+# ath6k/AR6004 is a DIRECTORY in Buildroot's file list, so the firmware check
+# above deliberately does not name a file inside it -- covered here by the
+# driver's presence plus the ATHEROS_6004 defconfig symbol.
+v101_missing=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtlwifi/rtl8192du/rtl8192du.ko.xz" \
+	|| v101_missing="$v101_missing rtl8192du"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/ath/ath6kl/ath6kl_usb.ko.xz" \
+	|| v101_missing="$v101_missing ath6kl_usb"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/rsi/rsi_usb.ko.xz" \
+	|| v101_missing="$v101_missing rsi_usb"
+if [ -z "$v101_missing" ]; then
+	pass "in-kernel WiFi: rtl8192du + ath6kl_usb + rsi_usb .ko.xz present (v10.1)"
+else
+	fail "in-kernel WiFi: rtl8192du + ath6kl_usb + rsi_usb .ko.xz present (v10.1)" \
+		"missing:$v101_missing -- a CONFIG_ symbol was dropped, or the module tree is stale"
+fi
+
+# The SDIO bus drivers for the three vendors whose USB driver we build are all
+# `default y`/`default m` under CONFIG_MMC=y, so each needs an explicit `is not
+# set` in linux.config or olddefconfig silently builds a second bus driver for a
+# slot this board does not have. Assert they stayed out of the image -- this is
+# the check that catches a linux.config edit dropping those lines.
+sdio_present=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac-sdio.ko.xz" \
+	&& sdio_present="$sdio_present brcmfmac-sdio"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/ath/ath6kl/ath6kl_sdio.ko.xz" \
+	&& sdio_present="$sdio_present ath6kl_sdio"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/rsi/rsi_sdio.ko.xz" \
+	&& sdio_present="$sdio_present rsi_sdio"
+if [ -z "$sdio_present" ]; then
+	pass "SDIO WiFi bus drivers absent (no SDIO WiFi slot on DE10-Nano, v10/v10.1)"
+else
+	fail "SDIO WiFi bus drivers absent (no SDIO WiFi slot on DE10-Nano, v10/v10.1)" \
+		"present:$sdio_present -- a '# CONFIG_*_SDIO is not set' line was dropped from linux.config"
 fi
 
 xow_size=$(tar_size "usr/lib/firmware/xow_dongle.bin")

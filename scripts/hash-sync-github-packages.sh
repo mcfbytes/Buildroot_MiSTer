@@ -19,8 +19,8 @@
 # times while leaving a hash stale -- run 29669946883). See "Testing against
 # a fixture" below.
 #
-# Covers the 12 github-sourced packages (package/*/*.mk + their .hash): the
-# 11 driver/firmware pins plus libchdr (a userspace shared library --
+# Covers the 13 github-sourced packages (package/*/*.mk + their .hash): the
+# 12 driver/firmware pins plus libchdr (a userspace shared library --
 # Main_MiSTer shared-lib refactor -- but the exact same $(call github,...)
 # commit-archive shape). Their own .hash file headers already say the hash
 # is "locally computed" -- GitHub publishes no signed manifest for a

@@ -1,0 +1,22 @@
+#!/bin/sh
+trap ctrl_c INT
+
+function ctrl_c() {
+	killall fluidsynth
+}
+
+fluidsynth -is -a alsa -m alsa_seq /media/fat/linux/soundfonts/SC-55.sf2 &
+
+while [ -z "$(aplaymidi -l |grep 128:)" ]
+do
+	sleep 1
+	echo -n .
+done
+
+echo
+echo playing $MC_EXT_SELECTED
+aplaymidi --port 128 $MC_EXT_SELECTED
+
+killall fluidsynth
+echo
+echo stopped

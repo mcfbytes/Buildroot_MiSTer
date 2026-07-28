@@ -1,15 +1,25 @@
 menu "MiSTer external options"
 
 menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
-	# MAINLINE-FIRST policy: out-of-tree drivers are ENABLED in the defconfig
-	# ONLY for the 802.11ac Realtek USB chips mainline still cannot drive --
-	# RTL8812AU, RTL8811AU/RTL8821AU and RTL8814AU (the three morrownr forks).
-	# The chips mainline now covers -- 8188eu/8188fu/8710bu (rtl8xxxu), 8821cu
-	# (rtw88_8821cu), 8822bu (rtw88_8822bu) -- use the in-kernel driver instead
-	# (board/mister/de10nano/linux.config); their out-of-tree packages are left
-	# DISABLED in the defconfig (enabling them would bind-fight the in-kernel
-	# driver on the same USB IDs) but remain sourced here, selectable, as a
-	# fallback.
+	# MAINLINE-FIRST policy (ADR 0016). The rule is "use the in-kernel driver
+	# for every chip 6.18 can drive; keep an out-of-tree fork ONLY where
+	# mainline still has no USB driver". Applying it to today's kernel leaves
+	# exactly ONE fork ENABLED in the defconfig:
+	#
+	#   rtl8852cu-morrownr -- RTL8852CU/RTL8832CU (Wi-Fi 6E). rtw89 has the
+	#   8852C chip HAL but only a PCIe bus file (rtw8852ce.c; there is no
+	#   rtw8852cu.c), and RTW89_8852CE "depends on PCI" which this board has
+	#   not got. No in-kernel driver exists for the chip at all.
+	#
+	# Every other package in this menu is sourced but left DISABLED in the
+	# defconfig, because mainline covers its chip and enabling both would
+	# bind-fight on the same USB IDs:
+	#   8188eu/8188fu/8710bu -> rtl8xxxu; 8821cu -> rtw88_8821cu;
+	#   8822bu -> rtw88_8822bu; 8812au -> rtw88_8812au;
+	#   8811au/8821au -> rtw88_8821au; 8814au -> rtw88_8814au
+	# (all in board/mister/de10nano/linux.config). They stay here, selectable,
+	# as a one-line-revert fallback if a mainline driver ever disappoints on
+	# specific hardware.
 	#
 	# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are NOT
 	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot upstream
@@ -17,15 +27,17 @@ menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
 	# present on the pinned tree 2026-07-25). Same name
 	# here would collide on both the Kconfig symbol and the Make namespace;
 	# see each package's Config.in for the detail. rtl8188fu/rtl8812au/rtl88x2bu
-	# have no such collision and keep the plain names; rtl8814au-morrownr takes
-	# the suffix purely for a uniform morrownr naming scheme (no upstream
-	# rtl8814au package exists to collide with).
+	# have no such collision and keep the plain names; rtl8814au-morrownr and
+	# rtl8852cu-morrownr take the suffix purely for a uniform morrownr naming
+	# scheme (upstream has no rtl8814au or rtl8852cu package to collide with --
+	# re-checked against the pinned tree 2026-07-27).
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188eu-aircrack-ng/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188fu/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8814au-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821au-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821cu-morrownr/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8852cu-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl88x2bu/Config.in"
 endmenu
 
@@ -74,6 +86,29 @@ menu "Main_MiSTer shared libraries"
 	# independently selectable.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/lzma-sdk/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/libchdr/Config.in"
+endmenu
+
+menu "Archival / on-device update tooling"
+	# 7zip is upstream 7-Zip (`7zz`), sourced here rather than taken from
+	# upstream Buildroot because upstream Buildroot has NO 7zip package --
+	# only package/p7zip, the dead-since-2016 Unix port (re-confirmed absent
+	# on the pinned 2026.05.1 tree, 2026-07-27). It REPLACES the p7zip
+	# selection this image used to carry.
+	#
+	# It is in its own menu, not in "Main_MiSTer shared libraries" above,
+	# because it is neither a library nor Main_MiSTer's: its reason for
+	# existing is the UPDATE PATH. The static copy it drops in
+	# $(BINARIES_DIR)/7za ships on the exFAT data partition as
+	# /media/fat/linux/7za, displacing the p7zip 16.02 binary the Downloader
+	# otherwise fetches off the internet on first use. ADR 0023.
+	#
+	# NOTE the package dir/symbol start with a digit -- BR2_PACKAGE_7ZIP and
+	# the 7ZIP_ Make namespace. That is fine and has upstream precedent
+	# (package/4th -> BR2_PACKAGE_4TH, package/18xx-ti-utils ->
+	# 18XX_TI_UTILS_VERSION); pkg-generic's UPPERCASE derivation and GNU
+	# Make's variable naming both accept a leading digit. No collision with
+	# upstream's P7ZIP_ namespace either way.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/7zip/Config.in"
 endmenu
 
 endmenu

@@ -1,0 +1,23 @@
+# Locally computed (2026-07-27) -- upstream publishes NO checksums for this
+# release: the ip7z/7zip GitHub release for 26.02 carries no checksum assets
+# and no hashes in the release body, and 7-zip.org publishes none either
+# (re-checked at pin time). BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in the defconfig
+# is what makes this file load-bearing rather than decorative.
+#
+# This is the SAME upstream tarball package/lzma-sdk pins, and the tarball
+# sha256 below is therefore identical to the first line of
+# package/lzma-sdk/lzma-sdk.hash BY CONSTRUCTION, not by coincidence. It was
+# re-derived here independently rather than copied:
+#
+#   sha256sum dl/lzma-sdk/7z2602-src.tar.xz
+#   cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd
+#
+# If the two files ever disagree, one of the two packages has been bumped
+# without the other -- see the "SAME UPSTREAM TARBALL" comment in 7zip.mk.
+# Verified against:
+#   https://github.com/ip7z/7zip/releases/download/26.02/7z2602-src.tar.xz
+sha256  cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd  7z2602-src.tar.xz
+# DOC/License.txt -- unlike lzma-sdk, this package DOES compile the CPP/ code
+# those terms cover (including CPP/7zip/Compress/Rar*, hence the unRAR
+# restriction). See the license comment in 7zip.mk for the per-path chain.
+sha256  9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc  DOC/License.txt

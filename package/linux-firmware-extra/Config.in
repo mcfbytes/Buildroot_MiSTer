@@ -1,33 +1,57 @@
 config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
-	bool "linux-firmware-extra (stock-parity gap fill)"
+	bool "linux-firmware-extra (sub-option gap fill)"
 	depends on BR2_PACKAGE_LINUX_FIRMWARE
 	default y
 	help
-	  Four firmware files that stock ships (docs/stock-inventory/
-	  firmware.md) and that a currently in-tree 6.18 kernel driver
+	  Ten firmware files that a currently in-tree 6.18 kernel driver
 	  genuinely still requests, but that Buildroot's own linux-firmware
 	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
 	  has NO sub-option for -- upstream linux-firmware ships every one of
-	  these four, Buildroot's curated Config.in list just never grew a
+	  these ten, Buildroot's curated Config.in list just never grew a
 	  toggle for them.
 
+	  Four are stock-parity files (docs/stock-inventory/firmware.md).
+	  The other six are NOT -- stock ships none of them. The four
+	  mediatek/mt7663* back CONFIG_MT7663U=m, rtlwifi/rtl8192dufw.bin
+	  backs CONFIG_RTL8192DU=m, and brcm/BCM-0bb4-0306.hcd backs btbcm
+	  under btusb; each is enabled beyond stock, and without its firmware
+	  the driver probes and then fails at request_firmware(). See
+	  docs/wifi-parity.md sections 6.2 and 7, and
+	  docs/bluetooth-parity.md.
+
 	  This package does NOT fetch a tarball of its own: it installs the
-	  four files straight out of the linux-firmware package's
+	  files straight out of the linux-firmware package's
 	  already-extracted tree (hence the `depends on
 	  BR2_PACKAGE_LINUX_FIRMWARE` above). That is the identical upstream
 	  snapshot, fetched and hash-verified once by linux-firmware, so these
 	  files always match the rest of the firmware on the image and there
 	  is no separately pinned version to drift -- it previously did,
-	  sitting at 20251011 while linux-firmware moved to 20260410. The four
-	  paths below were confirmed present in that extracted tree.
+	  sitting at 20251011 while linux-firmware moved to 20260410. The
+	  ten paths below were confirmed present in that extracted tree.
 
 	  Covers: mediatek/mt7610u.bin (MT7610U -- only the "e" PCIe sibling
 	  mt7610e.bin has a toggle), mediatek/mt7622pr2h.bin and
 	  mediatek/mt7668pr2h.bin (MediaTek Bluetooth companion firmware,
-	  requested by drivers/bluetooth/btmtk.h, no toggle), and rtlwifi/
+	  requested by drivers/bluetooth/btmtk.h, no toggle), rtlwifi/
 	  rtl8723befw_36.bin (requested by the in-tree rtl8723be sub-driver,
 	  not listed under RTL_87XX alongside the un-suffixed
-	  rtl8723befw.bin).
+	  rtl8723befw.bin), and the four mediatek/mt7663* files MT7663U
+	  loads -- mt7663pr2h.bin + mt7663_n9_v3.bin (the offload/v3 path)
+	  and mt7663pr2h_rebb.bin + mt7663_n9_rebb.bin (the fallback the
+	  driver switches to if the first ROM patch is absent). Both pairs
+	  ship because mt7663_load_rom_patch() picks the N9 blob to match
+	  whichever ROM patch bound, so a half-set breaks a live path.
+
+	  Also rtlwifi/rtl8192dufw.bin (RTL8192DU 802.11n USB) -- the same
+	  "e has a toggle, u does not" gap as mt7610u above: RTL_81XX
+	  installs the PCIe sibling rtl8192defw.bin but not the USB one.
+
+	  And brcm/BCM-0bb4-0306.hcd, the only .hcd upstream linux-firmware
+	  carries -- linux-firmware.mk has no .hcd glob at all, so no
+	  sub-option installs it. btbcm asks for "brcm/BCM-<vid>-<pid>.hcd",
+	  which is exactly this name for a 0bb4:0306 dongle. Not the same
+	  file as brcm/BCM20702A1-0b05-17cb.hcd, which upstream lacks and
+	  package/bcm20702-firmware fetches separately.
 
 	  THREE further stock files with a plausible in-tree consumer --
 	  brcm/BCM20702A1-0b05-17cb.hcd, rtl_bt/rtl8723d_config.bin,

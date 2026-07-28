@@ -43,3 +43,171 @@
 # CONFIG_SWITCH_ROOT is not set
 # CONFIG_UMOUNT is not set
 # CONFIG_CHRT is not set
+
+# T5 -- nine coreutils-style applets BusyBox 1.38.0 offers but this image had
+# left off. Ten Kconfig symbols for nine commands: `netcat` is an alias name
+# for the ninth (`nc`) rather than a tenth applet -- see the nc paragraph
+# below. Verified, not assumed: output/build/busybox-1.38.0/.config had every
+# one of the ten as "# CONFIG_X is not set" before this fragment touched it
+# (re-checked 2026-07-27, including CONFIG_NETCAT). EIGHT of
+# the nine are a true 1:1 reproduction: stock ships them as GNU coreutils --
+# work/imgroot's usr/bin/{stat,timeout,tac,shuf,comm,split,expand,groups} are
+# all symlinks -> coreutils -- and BusyBox's applets take the same names at the
+# same paths, so a script that ran on stock runs here.
+# `stat` and `timeout` matter most in practice: `timeout N cmd` and
+# `stat -c '%s' file` are common in ordinary shell scripts, so a MiSTer script
+# that runs fine on stock currently fails outright on this image.
+#
+# `nc` is the ONE exception and is a DELIBERATE SUBSTITUTION, not a
+# reproduction. Do not let the "stock ships all nine" shorthand elsewhere in
+# this repo mislead: stock's provider is a SEPARATE GNU TOOL, not BusyBox.
+# work/imgroot/usr/bin/netcat is a 34376-byte ARM ELF whose strings include
+# "GNU netcat %s, a rewrite of the famous networking tool." and "netcat (The
+# GNU Netcat) %s" -- i.e. GNU Netcat, exactly what Buildroot's own
+# package/netcat provides (netcat.mk:7, NETCAT_VERSION = 0.7.1) -- and
+# usr/bin/nc is a symlink -> netcat beside it. BusyBox's nc is a different
+# implementation with a different option set (see the NC_* sub-feature notes
+# below), so this trades byte-for-byte parity for ~11 kB instead of a whole
+# extra package. That is the intended call: `nc` on a MiSTer is for ad-hoc
+# on-device network poking, not for anything that depends on GNU Netcat's
+# exact flags. If a real GNU-Netcat dependency ever turns up, the fix is
+# BR2_PACKAGE_NETCAT in the defconfig plus turning CONFIG_NC/CONFIG_NETCAT
+# back off here -- not patching around it.
+# Stock ships BOTH names (`nc` and `netcat`), and CONFIG_NC alone would only
+# give the first: BusyBox has a separate alias applet for the second
+# (networking/nc.c:17-21 "config NETCAT / bool 'netcat (11 kb)' / default n /
+# Alias to nc.", declared at nc.c:51 as
+# APPLET_ODDNAME(netcat, nc, BB_DIR_USR_BIN, ...) -> the same usr/bin/netcat
+# path stock uses). It costs one more applet-table entry and one more symlink
+# -- the 11 kB of code is shared with CONFIG_NC, not paid twice -- so both are
+# turned on below and neither of stock's two names 404s.
+# No collision with a real package: nothing in this defconfig sets
+# BR2_PACKAGE_NETCAT or BR2_PACKAGE_NETCAT_OPENBSD (both exist in this
+# Buildroot tree, package/netcat{,-openbsd}/, and would collide with `nc` at
+# the same usr/bin/nc path exactly like the LSOF/LSUSB/MKDOSFS/{CHVT,
+# DEALLOCVT,OPENVT,SETKEYCODES} block below) -- confirmed by grepping this
+# file's own defconfig for both symbols, neither is present.
+#
+# Two of the nine gate real functionality behind their OWN sub-feature symbol,
+# and the base config (package/busybox/busybox.config) pins each of those
+# EXPLICITLY off -- not merely silent-by-default. An explicit "is not set" is
+# a recorded choice that Kconfig's oldconfig/olddefconfig NEVER overrides with
+# a symbol's own "default y" (it only fills in symbols that have no prior
+# state at all) -- so turning STAT/SPLIT/NC on by themselves, without also
+# turning these on, would silently ship crippled versions of all three:
+#   - stat: FEATURE_STAT_FORMAT gates `-c FORMAT` and FEATURE_STAT_FILESYSTEM
+#     gates `-f`. Without the first, `stat -c '%s' file` -- the single most
+#     common scripted use of stat -- fails with "invalid option -- c".
+#   - split: FEATURE_SPLIT_FANCY gates the 'k'/'m'/'g' suffixes on -b.
+#   - nc: NC_SERVER gates `-l` (listen/server mode), NC_EXTRA gates
+#     `-e`/`-i`/`-w`, and NC_110_COMPAT gates `-s`/`-n`/`-u`/`-v`/`-z` --
+#     i.e. UDP mode and verbose output. All THREE were off in the base
+#     config; a netcat that can neither listen nor speak UDP is not much of
+#     a netcat for on-device debugging, so all three are turned on below.
+CONFIG_STAT=y
+CONFIG_FEATURE_STAT_FORMAT=y
+CONFIG_FEATURE_STAT_FILESYSTEM=y
+CONFIG_TIMEOUT=y
+CONFIG_TAC=y
+CONFIG_SHUF=y
+CONFIG_COMM=y
+CONFIG_SPLIT=y
+CONFIG_FEATURE_SPLIT_FANCY=y
+CONFIG_EXPAND=y
+CONFIG_GROUPS=y
+CONFIG_NC=y
+CONFIG_NETCAT=y
+CONFIG_NC_SERVER=y
+CONFIG_NC_EXTRA=y
+CONFIG_NC_110_COMPAT=y
+
+# T5 -- turn OFF seven BusyBox applets that collide with real packages T5 adds
+# to the defconfig (docs/package-manifest.md §4c). Same non-deterministic
+# "two packages install the same path, last one wins" hazard the ifup/ifdown
+# and util-linux blocks above already warn about, and the same fix: disable
+# BusyBox's stub so the real package's binary is the one that lands,
+# deterministically. Every collision below was found by grepping THIS
+# BusyBox's actual resolved .config for the real package's installed binary
+# name before the package was added -- not discovered later at boot:
+#   - lsof: BR2_PACKAGE_LSOF installs $(TARGET_DIR)/usr/bin/lsof verbatim
+#     (package/lsof/lsof.mk:47). BusyBox's own `lsof` applet is a 3.7 kB
+#     PID/exe/file lister with none of the real lsof's network-socket, NFS,
+#     `-p`, or `-i` support.
+#   - lsusb: BR2_PACKAGE_USBUTILS installs usr/bin/lsusb -- confirmed against
+#     stock itself: work/imgroot's usr/bin/lsusb is this same real ~150 KB
+#     usbutils ELF, not a BusyBox stub. BusyBox's `lsusb` (4.4 kB) only reads
+#     /sys/bus/usb/devices and cannot print vendor/product strings the way
+#     scripts that parse `lsusb` output expect (no usb.ids database).
+#   - mkdosfs: BR2_PACKAGE_DOSFSTOOLS_MKFS_FAT's --enable-compat-symlinks
+#     install ALSO creates sbin/mkdosfs -> mkfs.fat (package/dosfstools/
+#     dosfstools.mk:47, read directly, not assumed) -- the exact path
+#     BusyBox's own `mkdosfs` applet uses.
+#   - chvt, deallocvt, openvt, setkeycodes: BR2_PACKAGE_KBD's unconditional
+#     (chvt/deallocvt/openvt) and KEYCODES_PROGS-gated (setkeycodes; "yes" on
+#     every arch except m68k, kbd-2.9.0/configure.ac:143, so unconditional
+#     here too) PROGS list (kbd-2.9.0/src/Makefile.am:6-11) installs all four
+#     at $(bindir) == usr/bin/, the same path BusyBox's applets use. Checked
+#     against Main_MiSTer too, since chvt sounds Main-relevant: its
+#     video_chvt() (work/Main_MiSTer/video.cpp) is a C function that calls the
+#     VT ioctls directly, never popen()s the `chvt` binary -- so whichever
+#     provider wins here has zero effect on Main itself, only on interactive
+#     or script use of these four names.
+#   Considered and ruled OUT as non-collisions (so deliberately NOT listed
+#   below -- there is nothing to turn off). This enumeration is meant to be
+#   the COMPLETE complement of the list above, and it was derived mechanically
+#   rather than by eye: every name kbd and dosfstools install was intersected
+#   against every APPLET*() name declared by a `//applet:` line in
+#   output/build/busybox-1.38.0 (433 of them, 2026-07-27) --
+#     grep -rho '^//applet:.*' output/build/busybox-1.38.0/*/*.c \
+#       output/build/busybox-1.38.0/*/*/*.c \
+#       | grep -oP '(?<=APPLET\()[a-z0-9_.]+|(?<=APPLET_ODDNAME\()[a-z0-9_.]+|(?<=APPLET_NOEXEC\()[a-z0-9_.]+|(?<=APPLET_NOFORK\()[a-z0-9_.]+' \
+#       | sort -u
+#   -- rather than from memory. Redo it that way, not from this list, if
+#   either package's version moves.
+#     (a) No BusyBox applet of that name exists AT ALL: dosfstools'
+#         `dosfslabel`, `fsck.vfat`, `fsck.msdos`, `dosfsck`, `mkfs.msdos`,
+#         and kbd's `getkeycodes`, `dumpkeys`, `loadkeys`, `showconsolefont`,
+#         `setleds`, `setmetamode`, `psfxtable` (+ its `psfaddtable`/
+#         `psfgettable`/`psfstriptable` symlinks, src/Makefile.am:79-82),
+#         `kbdrate`, `kbdinfo`, `setvtrgb`, `mapscrn`, `loadunimap`,
+#         `unicode_start`, `unicode_stop`. Nothing to resolve. (kbd's
+#         OPTIONAL_PROGS set -- screendump, setpalette, spawn_login, ... -- and
+#         `resizecons` are not in scope: the first defaults to "no"
+#         (configure.ac:194-198, and kbd.mk passes no --enable-optional-progs),
+#         the second is x86-only (configure.ac:148-150), so neither is built
+#         for this target at all.)
+#     (b) Same name, same path, but the applet is pinned off in the base
+#         config so the collision is latent, not live -- ONE Kconfig flip from
+#         becoming real, which is why they are written down instead of just
+#         omitted. BusyBox's `mkfs.vfat` alias (CONFIG_MKFS_VFAT,
+#         busybox.config:669) vs dosfstools' compat symlink; and three kbd
+#         programs, all of them bin_PROGRAMS -> $(bindir) == usr/bin/ via
+#         kbd-2.9.0/src/Makefile.am:7-8, against applets that land at exactly
+#         the same path:
+#           - showkey    console-tools/showkey.c:15, BB_DIR_USR_BIN
+#                        (busybox.config:396, "# CONFIG_SHOWKEY is not set")
+#           - fgconsole  console-tools/fgconsole.c:15, BB_DIR_USR_BIN
+#                        (busybox.config:375)
+#           - kbd_mode   console-tools/kbd_mode.c:17, BB_DIR_BIN -- which IS
+#                        usr/bin here: BR2_ROOTFS_MERGED_USR=y makes
+#                        target/bin a symlink to usr/bin (busybox.config:376)
+#     (c) Same name, DIFFERENT path, so it can never collide: BusyBox's
+#         `setfont` is BB_DIR_USR_SBIN (console-tools/loadfont.c:53) ==
+#         /usr/sbin/setfont, while kbd's is /usr/bin/setfont. Worth stating
+#         explicitly because the guarded inittab line calls the absolute path
+#         /usr/bin/setfont (rootfs-overlay/etc/inittab:73) -- i.e. it asks for
+#         kbd's by construction and could not accidentally get BusyBox's.
+#         Stock agrees: work/imgroot has usr/bin/setfont and no
+#         usr/sbin/setfont. (CONFIG_SETFONT is off in the base config anyway,
+#         busybox.config:378, so today the name exists only once.)
+#     (d) `vlock`: BusyBox's is ON in the base config (busybox.config:561,
+#         CONFIG_VLOCK=y) and owns the name uncontested, because Buildroot
+#         builds kbd with `--disable-vlock` (kbd.mk:11) -- kbd's own vlock is
+#         never compiled, let alone installed. Nothing to turn off.
+# CONFIG_LSOF is not set
+# CONFIG_LSUSB is not set
+# CONFIG_MKDOSFS is not set
+# CONFIG_CHVT is not set
+# CONFIG_DEALLOCVT is not set
+# CONFIG_OPENVT is not set
+# CONFIG_SETKEYCODES is not set

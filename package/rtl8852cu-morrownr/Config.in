@@ -1,0 +1,31 @@
+config BR2_PACKAGE_RTL8852CU_MORROWNR
+	bool "rtl8852cu-morrownr"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree Realtek RTL8852CU / RTL8832CU Wi-Fi 6E (2x2,
+	  2.4/5/6 GHz) USB WiFi driver from the morrownr fork
+	  (kernel-module package). Covers adapters such as the MSI
+	  AXE5400, TP-Link Archer TX50UH / TXE70UH and Mercusys MA86XH.
+
+	  Mainline 6.18 has the RTL8852C chip HAL in rtw89 (RTW89_8852C)
+	  but only a PCIe bus file for it -- rtw8852ce.c exists,
+	  rtw8852cu.c does not -- so RTW89_8852CE is the only offered
+	  symbol and it "depends on PCI", which this board does not have.
+	  An RTL8852CU dongle therefore has NO in-kernel driver at all,
+	  which is the one condition under which ADR 0016 permits an
+	  out-of-tree fork. Same nl80211-only CONFIG_WIRELESS_EXT
+	  conclusion as the sibling morrownr packages, but re-derived
+	  against this driver's own source -- it is the newer Realtek
+	  "phl" code base, not the "rtw" base the others share (see
+	  rtl8852cu-morrownr.mk for the per-file evidence, the bind-
+	  conflict diff, and the two kbuild options this package must
+	  pass).
+
+	  No firmware sub-option is needed: this tree links its firmware
+	  in as a C array rather than calling request_firmware(), unlike
+	  the mainline rtw89 driver.
+
+	  https://github.com/morrownr/rtl8852cu-20251113
+
+comment "rtl8852cu-morrownr needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

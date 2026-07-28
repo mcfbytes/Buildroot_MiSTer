@@ -194,6 +194,31 @@ require_absent() {
 	fi
 }
 
+# not_busybox_symlink PATH LABEL -- PASS if PATH is present in rootfs.tar AND
+# is not a symlink into busybox, else FAIL. For the T5 "two packages install
+# the same path, BusyBox must not be the one that won" regression guard
+# (board/mister/de10nano/busybox.fragment): a collision that quietly resolves
+# back to the BusyBox stub -- e.g. a future edit re-enables the applet without
+# noticing a real package already owns that path -- is silent at build time
+# (last install just wins) and would otherwise only surface as a user running
+# a crippled lsof/lsusb/mkdosfs/chvt/openvt at runtime. require_present alone
+# does not catch that (both providers satisfy "present"), so this checks what
+# provided it.
+not_busybox_symlink() {
+	local path="$1" label="$2" line
+	if ! tar_has "$path"; then
+		fail "$label is the real package, not BusyBox" "$path not in rootfs.tar at all"
+		return
+	fi
+	line=$(tar tvf "$ROOTFS_TAR" -- "./$path" 2>/dev/null | head -1)
+	case "$line" in
+	*'-> '*busybox*)
+		fail "$label is the real package, not BusyBox" "still a busybox symlink: $line" ;;
+	*)
+		pass "$label is the real package, not BusyBox" ;;
+	esac
+}
+
 # ---------------------------------------------------------------- prereqs
 [ -f "$ROOTFS_TAR" ] || { echo "$prog: no $ROOTFS_TAR -- run a build first (or pass the build dir as \$1)." >&2; exit 2; }
 
@@ -479,43 +504,172 @@ else
 	fail "xone: all 9 .ko.xz modules present" "missing:$xone_missing"
 fi
 
-# Out-of-tree WiFi drivers (ADR 0016): the 802.11ac Realtek chips mainline still
-# cannot drive over USB. These are kernel-module PACKAGES, and Buildroot STAMPS
-# those -- a kernel *version* bump (e.g. 6.18.33 -> 6.18.38) rebuilds the in-tree
-# modules but silently leaves these built against the OLD kernel, so they land in
-# a stale lib/modules/<old>/ tree and vanish from the shipped one. That really
-# happened (local 6.18.38 build) and the xone check above is the only reason it
-# was caught -- these had no assertion at all and would have gone missing
-# silently, taking every RTL8812AU/8821AU adapter with them. Hence this.
-# Fix when it fires: `make <pkg>-dirclean` for each, then rebuild.
-# NOTE: RTL8814AU left this set in PR #35 -- it moved to the in-kernel
-# rtw88_8814au driver and is asserted separately below.
-ootwifi_mods="8812au 8821au"
-ootwifi_missing=""
-for m in $ootwifi_mods; do
-	tar_has "usr/lib/modules/$KVER/updates/$m.ko.xz" || ootwifi_missing="$ootwifi_missing $m"
+# In-kernel USB WiFi (ADR 0016 as updated in v10, docs/wifi-parity.md §6).
+#
+# This assertion USED to check the opposite thing: that the out-of-tree
+# 8812au/8821au .ko.xz were present under updates/. They are deliberately gone
+# now -- mainline gained rtw88_8812au / rtw88_8821au (the shared rtw88_88xxa
+# core, 6.13), so BR2_PACKAGE_RTL8812AU and BR2_PACKAGE_RTL8821AU_MORROWNR are
+# deselected. Asserting the in-kernel replacements is the same protection
+# against the same failure: a chip silently losing its driver.
+#
+# The stale-kmod hazard the old comment described is real and NOT solved by
+# moving in-tree -- it just moved too. A kernel version bump rebuilds in-tree
+# modules into a NEW lib/modules/<newver>/ while any out-of-tree kernel-module
+# PACKAGE (xone and, since v10.2, rtl8852cu-morrownr -- both asserted here)
+# stays stamped against the OLD kernel, landing in a stale tree. Because these
+# paths are $KVER-scoped, this check fires if the in-tree modules ever fail to
+# build for the shipped kernel. Fix when it fires: `make <pkg>-dirclean` for the
+# stale package, or `make linux-rebuild all`, then rebuild.
+rtwdir="usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtw88"
+# All seven rtw88 USB parts 6.18 offers -- 8814au was migrated in PR #35;
+# 8812au/8821au/8723du complete the set in v10.
+rtw88_usb_mods="rtw88_8822bu rtw88_8822cu rtw88_8821cu rtw88_8814au rtw88_8723du rtw88_8821au rtw88_8812au"
+rtw88_missing=""
+for m in $rtw88_usb_mods; do
+	tar_has "$rtwdir/$m.ko.xz" || rtw88_missing="$rtw88_missing $m"
 done
-if [ -z "$ootwifi_missing" ]; then
-	pass "out-of-tree WiFi: 8812au + 8821au .ko.xz present (ADR 0016)"
+if [ -z "$rtw88_missing" ]; then
+	pass "in-kernel WiFi: all 7 rtw88 USB .ko.xz present (ADR 0016 / v10)"
 else
-	fail "out-of-tree WiFi: 8812au + 8821au .ko.xz present (ADR 0016)" \
-		"missing:$ootwifi_missing -- kernel-module packages are stamped; a kernel bump needs 'make <pkg>-dirclean' + rebuild"
+	fail "in-kernel WiFi: all 7 rtw88 USB .ko.xz present (ADR 0016 / v10)" \
+		"missing:$rtw88_missing -- a CONFIG_RTW88_*U was dropped, or a kernel bump left the module tree stale (make linux-rebuild all)"
 fi
 
-# In-kernel RTL8814AU (PR #35): the RTL8814AU 4x4 11ac chip moved from the
-# out-of-tree rtl8814au-morrownr package to the mainline rtw88_8814au driver
-# (CONFIG_RTW88_8814AU=m, merged upstream in 6.16). Being an in-tree module it
-# ships at kernel/drivers/net/wireless/realtek/rtw88/ (not updates/), so it is
-# NOT stamp-prone the way the OOT packages above are -- but assert it survived the
-# build so the chip does not silently lose its driver if the config is ever dropped.
-# Exact-path tar_has() (like the xone/OOT checks above), not a regex: the in-tree
-# path is stable and Buildroot compresses modules, so the shipped name is .ko.xz.
-rtw8814au_ko="usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtw88/rtw88_8814au.ko.xz"
-if tar_has "$rtw8814au_ko"; then
-	pass "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)"
+# The REDUNDANT out-of-tree forks must NOT come back: if both an OOT fork and
+# the in-kernel driver for the same chip ship, they bind-fight on the same USB
+# IDs and which one wins is load-order dependent (ADR 0016's stated reason for
+# disabling, not merely not-enabling, them). Assert their absence so a
+# well-meaning re-enable of BR2_PACKAGE_RTL8812AU / _RTL8821AU_MORROWNR fails
+# loudly here.
+#
+# NOTE this list is specifically 8812au/8821au, and it is NOT a blanket "no
+# out-of-tree WiFi" rule -- v10.2 deliberately ships one such module, 8852cu,
+# asserted PRESENT just below. The two assertions do not contradict each other
+# because ADR 0016's rule was never "no forks": it is "no fork for a chip
+# mainline can already drive". 8812au/8821au have rtw88_8812au/rtw88_8821au;
+# RTL8852CU has nothing (rtw89 is PCIe-only for 8852C). Anything added to this
+# list must be a chip with an in-kernel USB driver in the shipped kernel.
+ootwifi_present=""
+for m in 8812au 8821au; do
+	tar_has "usr/lib/modules/$KVER/updates/$m.ko.xz" && ootwifi_present="$ootwifi_present $m"
+done
+if [ -z "$ootwifi_present" ]; then
+	pass "redundant out-of-tree WiFi forks absent (8812au/8821au, ADR 0016 / v10)"
 else
-	fail "in-kernel WiFi: rtw88_8814au.ko.xz present (RTL8814AU, ADR 0016 / PR #35)" \
-		"$rtw8814au_ko not in rootfs.tar -- CONFIG_RTW88_8814AU dropped, or a kernel bump left kmods stale (make linux-rebuild all)"
+	fail "redundant out-of-tree WiFi forks absent (8812au/8821au, ADR 0016 / v10)" \
+		"present:$ootwifi_present -- would bind-fight the in-kernel rtw88_88xxa drivers on the same USB IDs"
+fi
+
+# The ONE permitted out-of-tree WiFi fork must be present: 8852cu.ko
+# (package/rtl8852cu-morrownr, BR2_PACKAGE_RTL8852CU_MORROWNR=y), for the
+# RTL8852CU/RTL8832CU Wi-Fi 6E USB chips. Mainline 6.18 has the 8852C chip HAL
+# in rtw89 but only a PCIe bus file (rtw8852ce.c; no rtw8852cu.c), and
+# RTW89_8852CE depends on PCI which this board has not got -- so without this
+# module those dongles bind NOTHING. See docs/wifi-parity.md §8 and ADR 0016's
+# v10.2 update.
+#
+# Same shape and same path as the xone assertion above (updates/, .ko.xz),
+# because it is the same mechanism: the kernel's scripts/Makefile.modinst
+# defaults INSTALL_MOD_DIR to `updates` for M= builds, and Buildroot xz-
+# compresses modules. It therefore catches the same two failures -- the package
+# silently building no .ko (its `obj-$(CONFIG_RTL8852CU)` needs the
+# CONFIG_RTL8852CU=m the .mk passes, and its ccflags need the KSRC= override; if
+# either is lost the build "succeeds" with zero objects), and a kernel bump
+# leaving the module stamped against the OLD $KVER.
+if tar_has "usr/lib/modules/$KVER/updates/8852cu.ko.xz"; then
+	pass "out-of-tree WiFi: 8852cu.ko.xz present under updates/ (RTL8852CU, ADR 0016 / v10.2)"
+else
+	fail "out-of-tree WiFi: 8852cu.ko.xz present under updates/ (RTL8852CU, ADR 0016 / v10.2)" \
+		"BR2_PACKAGE_RTL8852CU_MORROWNR dropped, the package built zero objects (CONFIG_RTL8852CU=m / KSRC= lost from MODULE_MAKE_OPTS), or a kernel bump left it stale (make rtl8852cu-morrownr-dirclean; make linux-rebuild all)"
+fi
+
+# Broadcom/Cypress FullMAC USB (v10): brcmfmac + its brcmutil helper. New in
+# this image -- CONFIG_WLAN_VENDOR_BROADCOM was off entirely before.
+brcm_missing=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko.xz" \
+	|| brcm_missing="$brcm_missing brcmfmac"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko.xz" \
+	|| brcm_missing="$brcm_missing brcmutil"
+if [ -z "$brcm_missing" ]; then
+	pass "in-kernel WiFi: brcmfmac + brcmutil .ko.xz present (BCM43xx/CYW43xx USB, v10)"
+else
+	fail "in-kernel WiFi: brcmfmac + brcmutil .ko.xz present (BCM43xx/CYW43xx USB, v10)" \
+		"missing:$brcm_missing -- CONFIG_BRCMFMAC/CONFIG_WLAN_VENDOR_BROADCOM dropped?"
+fi
+
+# Firmware for drivers that were being built with NO firmware at all
+# (docs/wifi-parity.md §6.2/§6.3, docs/bluetooth-parity.md §9): MT7663U, ath3k,
+# and the MediaTek BT half of the MT7921AU/MT7925U combo dongles whose WiFi half
+# we already shipped, all probed and then failed at request_firmware(). Assert
+# the blobs ship so that regression cannot recur silently.
+#   - MT7663U needs BOTH ROM-patch/N9 pairs: the driver picks the N9 to match
+#     whichever patch bound, so a half-set breaks a live fallback path.
+#   - The QCA pair is the "_usb_" variant specifically -- btusb's QCA path is
+#     self-contained (no CONFIG_BT_QCA) and asks for exactly these names.
+#   - rtl8761b/bu back the most common cheap USB Bluetooth 5 dongles on sale;
+#     they already shipped, and are asserted here so a firmware sub-option
+#     reshuffle cannot drop them unnoticed.
+fw_missing=""
+for f in \
+	mediatek/mt7663pr2h.bin mediatek/mt7663_n9_v3.bin \
+	mediatek/mt7663pr2h_rebb.bin mediatek/mt7663_n9_rebb.bin \
+	ath3k-1.fw \
+	brcm/brcmfmac43143.bin brcm/brcmfmac43236b.bin \
+	brcm/brcmfmac43242a.bin brcm/brcmfmac43569.bin \
+	rtlwifi/rtl8192dufw.bin rsi/rs9113_wlan_qspi.rps rsi/rs9116_wlan.rps \
+	mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin \
+	mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin \
+	mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin \
+	qca/rampatch_usb_00000302.bin qca/nvm_usb_00000302.bin \
+	brcm/BCM-0bb4-0306.hcd brcm/BCM20702A1-0b05-17cb.hcd \
+	rtl_bt/rtl8761b_fw.bin rtl_bt/rtl8761bu_fw.bin
+do
+	tar_has "usr/lib/firmware/$f" || fw_missing="$fw_missing $f"
+done
+if [ -z "$fw_missing" ]; then
+	pass "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present"
+else
+	fail "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present" \
+		"missing:$fw_missing -- a driver would probe then fail at request_firmware()"
+fi
+
+# v10.1 USB WiFi round-out (docs/wifi-parity.md §7). Every one of these had its
+# firmware checked above or already shipping; assert the modules themselves.
+# ath6k/AR6004 is a DIRECTORY in Buildroot's file list, so the firmware check
+# above deliberately does not name a file inside it -- covered here by the
+# driver's presence plus the ATHEROS_6004 defconfig symbol.
+v101_missing=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/realtek/rtlwifi/rtl8192du/rtl8192du.ko.xz" \
+	|| v101_missing="$v101_missing rtl8192du"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/ath/ath6kl/ath6kl_usb.ko.xz" \
+	|| v101_missing="$v101_missing ath6kl_usb"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/rsi/rsi_usb.ko.xz" \
+	|| v101_missing="$v101_missing rsi_usb"
+if [ -z "$v101_missing" ]; then
+	pass "in-kernel WiFi: rtl8192du + ath6kl_usb + rsi_usb .ko.xz present (v10.1)"
+else
+	fail "in-kernel WiFi: rtl8192du + ath6kl_usb + rsi_usb .ko.xz present (v10.1)" \
+		"missing:$v101_missing -- a CONFIG_ symbol was dropped, or the module tree is stale"
+fi
+
+# The SDIO bus drivers for the three vendors whose USB driver we build are all
+# `default y`/`default m` under CONFIG_MMC=y, so each needs an explicit `is not
+# set` in linux.config or olddefconfig silently builds a second bus driver for a
+# slot this board does not have. Assert they stayed out of the image -- this is
+# the check that catches a linux.config edit dropping those lines.
+sdio_present=""
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac-sdio.ko.xz" \
+	&& sdio_present="$sdio_present brcmfmac-sdio"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/ath/ath6kl/ath6kl_sdio.ko.xz" \
+	&& sdio_present="$sdio_present ath6kl_sdio"
+tar_has "usr/lib/modules/$KVER/kernel/drivers/net/wireless/rsi/rsi_sdio.ko.xz" \
+	&& sdio_present="$sdio_present rsi_sdio"
+if [ -z "$sdio_present" ]; then
+	pass "SDIO WiFi bus drivers absent (no SDIO WiFi slot on DE10-Nano, v10/v10.1)"
+else
+	fail "SDIO WiFi bus drivers absent (no SDIO WiFi slot on DE10-Nano, v10/v10.1)" \
+		"present:$sdio_present -- a '# CONFIG_*_SDIO is not set' line was dropped from linux.config"
 fi
 
 xow_size=$(tar_size "usr/lib/firmware/xow_dongle.bin")
@@ -555,6 +709,550 @@ if tar_has "usr/sbin/iwgetid"; then
 else
 	fail "iwgetid present (symlink to iwconfig)" "not in rootfs.tar"
 fi
+
+# =============================================================================
+section "T2 — WiFi hotplug (70-persistent-net.rules, docs/wifi-parity.md §9)"
+# =============================================================================
+# Closes docs/stock-reconciliation.md §3c's former "top follow-up": a WiFi
+# dongle plugged in after boot must come up without a reboot. The rule
+# deliberately does NOT match stock's literal text (no NAME="wlan0", RUN+=
+# targets %k via an async helper instead of a blocking `ifup -a`) -- see the
+# rule file's own header comment and docs/wifi-parity.md §9 for the verified
+# reasoning. These checks assert the artifact ships correctly AND that the
+# two deliberate divergences have not silently been "corrected" back toward
+# stock's text (which would regress two-adapter support -- see §9).
+
+HOTPLUG_RULE="etc/udev/rules.d/70-persistent-net.rules"
+HOTPLUG_SCRIPT="etc/wifi-hotplug.sh"
+
+require_present "$HOTPLUG_RULE" "70-persistent-net.rules"
+require_present "$HOTPLUG_SCRIPT" "wifi-hotplug.sh"
+
+if tar_has "$HOTPLUG_SCRIPT"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$HOTPLUG_SCRIPT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "wifi-hotplug.sh executable ($mode)" ;;
+	*) fail "wifi-hotplug.sh executable" "mode is '$mode', not executable -- RUN+= execs it directly, udev does not go through a shell" ;;
+	esac
+else
+	skip "wifi-hotplug.sh executable" "$HOTPLUG_SCRIPT missing (see above)"
+fi
+
+# The rule file's mode is asserted exactly, unlike the script's (which only
+# has to be executable): udev must be able to READ it, and nothing should ever
+# execute it. 644 is also what docs/wifi-parity.md §9 "What ships" promises,
+# and an unasserted documented mode is how that promise silently rots.
+if tar_has "$HOTPLUG_RULE"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$HOTPLUG_RULE" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rw-r--r--) pass "70-persistent-net.rules mode 644 ($mode)" ;;
+	*) fail "70-persistent-net.rules mode 644" "mode is '$mode', expected '-rw-r--r--' -- see docs/wifi-parity.md §9" ;;
+	esac
+else
+	skip "70-persistent-net.rules mode 644" "$HOTPLUG_RULE missing (see above)"
+fi
+
+if tar_has "$HOTPLUG_RULE"; then
+	# Comments stripped before any of the content checks below: the file's own
+	# header comment QUOTES stock's original rule verbatim (NAME="wlan0" and
+	# all) as part of explaining the divergence, which would otherwise false-
+	# positive the very regression guard this section exists to run. Only the
+	# active, uncommented directive lines are what actually ships as behavior.
+	rule_content="$WORKDIR/70-persistent-net.rules"
+	tar xOf "$ROOTFS_TAR" "./$HOTPLUG_RULE" 2>/dev/null | grep -v '^#' > "$rule_content"
+
+	if grep -q 'KERNEL=="wlan\*"' "$rule_content"; then
+		pass "70-persistent-net.rules matches KERNEL==\"wlan*\""
+	else
+		fail "70-persistent-net.rules matches KERNEL==\"wlan*\"" "no such match in the shipped rule"
+	fi
+
+	if grep -q 'RUN+="/etc/wifi-hotplug.sh up %k"' "$rule_content" \
+		&& grep -q 'RUN+="/etc/wifi-hotplug.sh down %k"' "$rule_content"; then
+		pass "70-persistent-net.rules RUN+= dispatches to wifi-hotplug.sh, targeted by %k"
+	else
+		fail "70-persistent-net.rules RUN+= dispatches to wifi-hotplug.sh, targeted by %k" \
+			"expected both 'RUN+=\"/etc/wifi-hotplug.sh up %k\"' and '... down %k' -- see $rule_content"
+	fi
+
+	# Regression guard: NAME="wlan0" would break this image's two-adapter
+	# support (auto wlan0 AND auto wlan1 in /etc/network/interfaces since
+	# P2.3) -- see the rule file's own comment and docs/wifi-parity.md §9,
+	# divergence 1, for why this is a deliberate, verified omission, not an
+	# oversight to "fix" back toward stock's literal text.
+	if grep -q 'NAME="wlan0"' "$rule_content"; then
+		fail "70-persistent-net.rules has NOT reintroduced NAME=\"wlan0\"" \
+			"found NAME=\"wlan0\" in the shipped rule -- this collapses wlan0/wlan1 to one name and breaks two-adapter support; see docs/wifi-parity.md §9"
+	else
+		pass "70-persistent-net.rules has NOT reintroduced stock's NAME=\"wlan0\" (two-adapter support preserved)"
+	fi
+else
+	skip "70-persistent-net.rules content checks (KERNEL match, RUN+= target, NAME= regression guard)" "$HOTPLUG_RULE missing (see above)"
+fi
+
+# =============================================================================
+section "T3 — addon.tar §3c closure (helpers, console/UX config, mc)"
+# =============================================================================
+# docs/stock-reconciliation.md §3c. The seven stock helper scripts are vendored
+# BYTE-IDENTICAL from addon.tar (verified against work/imgroot at vendoring
+# time); these checks pin presence, mode, and one content marker each -- the
+# marker is the line whose absence would mean the file was quietly replaced
+# with something other than the stock script (or that a "cleanup" broke the
+# documented mechanism).
+
+# -- executable helpers: path, +x, and a stock content marker ----------------
+# name:marker  (marker chosen from the script's load-bearing line)
+for spec in \
+	"usr/bin/vhd_mount:losetup /dev/loop1" \
+	"usr/bin/m3u_play:mpg123 -@" \
+	"usr/bin/timidity:MC_EXT_SELECTED" \
+	"usr/sbin/vmode:/dev/MiSTer_cmd" \
+	"usr/sbin/uartmode:midilink MENU QUIET" \
+	"usr/sbin/btpair:btctl pair" \
+	"usr/sbin/btctl:org.bluez" \
+	"etc/jms583-phantom-guard.sh:152d" \
+	; do
+	f="${spec%%:*}"; marker="${spec#*:}"
+	if ! tar_has "$f"; then
+		fail "§3c helper $f present+executable+stock-marker" "$f not in rootfs.tar"
+		continue
+	fi
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$f" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*) : ;;
+	*) fail "§3c helper $f present+executable+stock-marker" "mode is '$mode', not executable"; continue ;;
+	esac
+	if tar xOf "$ROOTFS_TAR" "./$f" 2>/dev/null | grep -qF "$marker"; then
+		pass "§3c helper $f present+executable+stock-marker"
+	else
+		fail "§3c helper $f present+executable+stock-marker" "marker '$marker' not found -- file is not the vendored stock script"
+	fi
+done
+
+# btctl must actually RUN on this image: it needs dbus-python + PyGObject
+# (BR2_PACKAGE_DBUS_PYTHON / BR2_PACKAGE_PYTHON_GOBJECT -- the same bindings
+# stock ships for its python3.9). Presence in the tar first, then a real
+# import + a compile of the shipped script under qemu.
+#
+# MATCH .pyc, NOT .py. This defconfig sets BR2_PACKAGE_PYTHON3_PYC_ONLY=y, so
+# target-finalize BYTE-COMPILES every module and DELETES the .py source --
+# `site-packages/dbus/__init__.py` does not exist on this target and never
+# will, while `__init__.pyc` does. An earlier revision asserted the .py and
+# failed against a perfectly good build, with a message blaming a missing
+# BR2_PACKAGE_* symbol that was in fact set. Both spellings are accepted below
+# so the check keeps working if PYC_ONLY is ever turned off.
+for sitepkg in "dbus:dbus-python" "gi:PyGObject (gi)"; do
+	sitepkg_dir=${sitepkg%%:*}
+	sitepkg_label=${sitepkg#*:}
+	if grep -qE "^\./usr/lib/python3\.[0-9]+/site-packages/$sitepkg_dir/__init__\.pyc?$" "$TAR_LIST"; then
+		pass "$sitepkg_label in site-packages (btctl runtime)"
+	else
+		fail "$sitepkg_label in site-packages (btctl runtime)" \
+			"no site-packages/$sitepkg_dir/__init__.py[c] in rootfs.tar -- package not installed at all (note PYC_ONLY means .pyc is the expected spelling)"
+	fi
+done
+if [ -z "$QEMU_ARM" ]; then
+	skip "btctl imports + compiles (dbus, dbus.mainloop.glib, GLib)" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/python3" ] || [ ! -f "$TARGET/usr/sbin/btctl" ]; then
+	skip "btctl imports + compiles (dbus, dbus.mainloop.glib, GLib)" "target python3 or usr/sbin/btctl not present in output/target"
+else
+	btctl_out="$WORKDIR/btctl-imports.out"
+	# cfile= is MANDATORY here, not tidiness. py_compile.compile() with no
+	# cfile writes to importlib.util.cache_from_source(file) -- for an
+	# extension-less script that is
+	# $TARGET/usr/sbin/__pycache__/btctlcpython-314.pyc (no dot: rpartition
+	# ('.') finds none, so the stem and the cache tag concatenate). qemu_target
+	# is `qemu-arm -L $TARGET ...`; -L only redirects the ELF loader, so the
+	# path argument is a plain HOST path and that write really lands in
+	# output/target. Buildroot never wipes output/target between builds, so the
+	# next `make all` would tar a host-generated .pyc into rootfs.tar -- an
+	# unasserted binary in the image (G6), and dead weight besides (btctl is
+	# executed as a script, its __pycache__ is never consulted). A verification
+	# script must not mutate the tree it verifies: send it to $WORKDIR, which
+	# cleanup() rm -rf's on EXIT.
+	if qemu_target "$TARGET/usr/bin/python3" -c \
+		"import dbus, dbus.service, dbus.mainloop.glib; from gi.repository import GLib; import py_compile; py_compile.compile('$TARGET/usr/sbin/btctl', cfile='$WORKDIR/btctl.pyc', doraise=True)" \
+		>"$btctl_out" 2>&1; then
+		pass "btctl imports + compiles under target python (via qemu-arm)"
+	else
+		fail "btctl imports + compiles under target python" "$(tail -3 "$btctl_out" | tr '\n' ' ')"
+	fi
+fi
+# No host-generated bytecode anywhere in the image. This is a real leak path,
+# not paranoia: .gitignore:9 hides __pycache__/ from `git status`, but the
+# rootfs overlay is copied by rsync, not by git -- SYSTEM_RSYNC
+# (work/buildroot/system/system.mk:64-68) passes only RSYNC_VCS_EXCLUSIONS
+# (work/buildroot/Makefile:642-644: .svn/.git/.hg/.bzr/CVS) plus --exclude
+# .empty --exclude '*~'. __pycache__ is on neither list, so a stray py_compile
+# run inside board/.../rootfs-overlay/ (or, before the cfile= fix above, inside
+# output/target/) ships an invisible, unreviewed binary blob to the target. Both
+# routes were live and both are now closed; this asserts they stay closed.
+# Scoped to /usr/sbin is NOT enough -- match anywhere except python's own
+# /usr/lib/python3.N tree, which legitimately ships precompiled bytecode
+# (BR2_PACKAGE_PYTHON3_PYC_ONLY / _PY_PYC, work/buildroot/package/python3/
+# Config.in:32,35). Today that tree holds the ONLY __pycache__ in the image
+# (site-packages/libmount/), verified against output/images/rootfs.tar.
+stray_pyc=$(grep -E '/__pycache__/' "$TAR_LIST" | grep -vE '^\./usr/lib/python3\.[0-9]+/' || true)
+if [ -z "$stray_pyc" ]; then
+	pass "no stray __pycache__ outside python3's stdlib"
+else
+	fail "no stray __pycache__ outside python3's stdlib" "host bytecode in image: $(echo "$stray_pyc" | tr '\n' ' ')"
+fi
+
+# -- fluidsynth path difference, resolved both ways --------------------------
+# Stock has /usr/sbin/fluidsynth (real ELF); the fluidsynth package installs
+# /usr/bin/fluidsynth. No shipped caller uses the absolute stock path
+# (midilink: PATH `fluidsynth`; timidity wrapper: PATH; uartmode: killall by
+# name; Main_MiSTer: no fluidsynth reference at all -- all verified), but
+# third-party user scripts may hardcode stock's path, so a compat symlink
+# closes the difference outright.
+require_present "usr/bin/fluidsynth" "fluidsynth binary (package path)"
+if tar_has "usr/sbin/fluidsynth"; then
+	fs_link=$(tar tvf "$ROOTFS_TAR" -- "./usr/sbin/fluidsynth" 2>/dev/null | awk '{print $NF; exit}')
+	if [ "$fs_link" = "/usr/bin/fluidsynth" ]; then
+		pass "usr/sbin/fluidsynth compat symlink -> /usr/bin/fluidsynth (stock path resolves)"
+	else
+		fail "usr/sbin/fluidsynth compat symlink" "points at '$fs_link', expected /usr/bin/fluidsynth"
+	fi
+else
+	fail "usr/sbin/fluidsynth compat symlink" "not in rootfs.tar -- stock's absolute path would dangle"
+fi
+
+# -- console/audio config ----------------------------------------------------
+# asound.conf routes the ALSA default pcm into /dev/MrAudio (the in-kernel
+# MiSTer SPI audio ring, CONFIG_SND_MISTER_AUDIO=y creates the device node --
+# sound/drivers/MiSTer-audio-spi.c) so mpg123/aplay/fluidsynth are audible
+# through the core's HDMI/analog output.
+#
+# NOT because hw:0 is missing -- hw:0 exists and MUST exist. MiSTer-audio-spi
+# is a chardev SPI driver, not an ALSA driver (no card, no PCM), so the only
+# ALSA card on this board is the patched snd-dummy: CONFIG_SND_DUMMY=y
+# (board/mister/de10nano/linux.config:391, built in, enable[0]=1 at
+# sound/drivers/dummy.c:51) registers it as card 0, and asound.conf's own
+# innermost slave is literally `type hw; card 0` -- the `type file` plugin
+# DUPLICATES the stream, so card 0 must accept S16_LE/48000/2ch or the whole
+# default pcm fails to open (docs/abi-contract.md sec 8.2(a), 8.2(c)).
+# The real failure mode WITHOUT this file: ALSA's default resolves to that
+# dummy card, snd-dummy discards the samples and the system is silently mute
+# (docs/phase0-review.md:128, "omit it and the system is silent").
+if tar_has "etc/asound.conf" && tar xOf "$ROOTFS_TAR" ./etc/asound.conf 2>/dev/null | grep -qF '/dev/MrAudio'; then
+	pass "etc/asound.conf present, targets /dev/MrAudio"
+else
+	fail "etc/asound.conf present, targets /dev/MrAudio" "missing, or no /dev/MrAudio route"
+fi
+# kbd.map blanks VC keycodes 88/113/114/115 (F12/Mute/Vol-/Vol+) -- the keys
+# Main_MiSTer consumes via evdev; loading it stops the framebuffer console
+# double-acting on them. Loaded by the guarded inittab line iff kbd's loadkeys
+# ships (T5); the map itself is stock-identical and harmless alone.
+if tar_has "etc/kbd.map" && tar xOf "$ROOTFS_TAR" ./etc/kbd.map 2>/dev/null | grep -qF 'keycode 88 ='; then
+	pass "etc/kbd.map present, blanks keycode 88 (F12)"
+else
+	fail "etc/kbd.map present, blanks keycode 88 (F12)" "missing, or not the stock map"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/inittab 2>/dev/null | grep -qF '/usr/bin/loadkeys /etc/kbd.map'; then
+	pass "inittab loads kbd.map (guarded loadkeys line)"
+else
+	fail "inittab loads kbd.map (guarded loadkeys line)" "no loadkeys line in etc/inittab"
+fi
+
+# -- JMS583 phantom-LUN guard ------------------------------------------------
+JMS_RULE="etc/udev/rules.d/60-jms583-phantom.rules"
+if tar_has "$JMS_RULE" && tar xOf "$ROOTFS_TAR" "./$JMS_RULE" 2>/dev/null \
+	| grep -qF 'ATTRS{idVendor}=="152d", ATTRS{idProduct}=="0583"'; then
+	pass "60-jms583-phantom.rules present, matches JMS583 (152d:0583)"
+else
+	fail "60-jms583-phantom.rules present, matches JMS583 (152d:0583)" "missing or wrong match"
+fi
+
+# -- vhd_mount's mount point -------------------------------------------------
+# vhd_mount mounts /dev/loop1p1 on /media/rootfs; "/" is read-only at runtime,
+# so the directory must ship in the image (same .gitkeep idiom as /media/fat).
+if grep -qE '^\./media/rootfs/$' "$TAR_LIST"; then
+	pass "/media/rootfs mount point ships in the image"
+else
+	fail "/media/rootfs mount point ships in the image" "vhd_mount has nowhere to mount on the read-only root"
+fi
+
+# -- mc (file manager + the MiSTer launcher wiring) --------------------------
+require_present "usr/bin/mc" "mc binary"
+require_present "usr/bin/memtool" "memtool (pengutronix, stock's usr/bin/memtool)"
+# addon.tar's argv[0]/alias symlinks (memtool.c:475 dispatches on basename;
+# `play` is what mc's stock sound.sh execs for au/voc/snd). Targets must not
+# dangle: memtool from the package above, aplay from alsa-utils.
+for spec in "usr/bin/md:memtool" "usr/bin/mw:memtool" "usr/bin/play:aplay"; do
+	f="${spec%%:*}"; want="${spec#*:}"
+	if ! tar_has "$f"; then
+		fail "$f symlink -> $want" "not in rootfs.tar"
+		continue
+	fi
+	got=$(tar tvf "$ROOTFS_TAR" -- "./$f" 2>/dev/null | awk '{print $NF; exit}')
+	if [ "$got" = "$want" ]; then
+		pass "$f symlink -> $want"
+	else
+		fail "$f symlink -> $want" "points at '$got'"
+	fi
+done
+require_present "usr/share/mc/skins/MiSTer.ini" "mc MiSTer skin"
+if tar_has "root/.config/mc/ini" && tar xOf "$ROOTFS_TAR" ./root/.config/mc/ini 2>/dev/null | grep -qx 'skin=MiSTer'; then
+	pass "root mc config selects the MiSTer skin"
+else
+	fail "root mc config selects the MiSTer skin" "root/.config/mc/ini missing or no skin=MiSTer line"
+fi
+if tar_has "etc/mc/mc.ext.ini"; then
+	mcext="$WORKDIR/mc.ext.ini"
+	tar xOf "$ROOTFS_TAR" ./etc/mc/mc.ext.ini > "$mcext" 2>/dev/null
+	mc_missing=""
+	grep -qx '\[mc.ext.ini\]' "$mcext" || mc_missing="$mc_missing [mc.ext.ini]-version-group"
+	grep -qx 'Open=echo load_core %d/%p >/dev/MiSTer_cmd' "$mcext" || mc_missing="$mc_missing rbf-load_core"
+	grep -qx 'Open=vhd_mount %d/%p' "$mcext" || mc_missing="$mc_missing vhd_mount"
+	grep -qx 'Open=m3u_play %f' "$mcext" || mc_missing="$mc_missing m3u_play"
+	grep -qx 'Open=aplay %s' "$mcext" || mc_missing="$mc_missing wav-aplay"
+	if [ -z "$mc_missing" ]; then
+		pass "mc.ext.ini: version group + all 4 MiSTer handlers (rbf/vhd/m3u/wav)"
+	else
+		fail "mc.ext.ini: version group + all 4 MiSTer handlers" "missing:$mc_missing"
+	fi
+else
+	fail "mc.ext.ini: version group + all 4 MiSTer handlers" "etc/mc/mc.ext.ini not in rootfs.tar"
+fi
+# [core] must carry BOTH patterns. Stock ADDED `extensions=rbf` to upstream's
+# group; it did NOT trade away the Unix-coredump `regexp` (stock's own copy,
+# work/imgroot/etc/mc/filehighlight.ini:22-25, has all three keys). mc appends
+# `regexp` and `extensions` as two independent filters on one group
+# (mc-4.8.33 lib/filehighlight/ini-file-read.c:251,:256), so both coexist.
+# Asserting the regexp too pins the file to exactly two deltas vs the 4.8.33
+# package default ([core] +rbf, [media] +vgm;vgz) -- an earlier draft silently
+# dropped it, which was a third, undocumented divergence from stock.
+if ! tar_has "etc/mc/filehighlight.ini"; then
+	fail "filehighlight.ini: .rbf cores + upstream coredump regexp" "etc/mc/filehighlight.ini not in rootfs.tar"
+else
+	fh="$WORKDIR/filehighlight.ini"
+	tar xOf "$ROOTFS_TAR" ./etc/mc/filehighlight.ini > "$fh" 2>/dev/null
+	fh_missing=""
+	grep -qE '^[[:space:]]*extensions=rbf$'          "$fh" || fh_missing="$fh_missing rbf-extensions"
+	grep -qF 'regexp=^core\\.*\\d*$'                 "$fh" || fh_missing="$fh_missing coredump-regexp"
+	if [ -z "$fh_missing" ]; then
+		pass "filehighlight.ini: .rbf cores + upstream coredump regexp"
+	else
+		fail "filehighlight.ini: .rbf cores + upstream coredump regexp" "missing:$fh_missing"
+	fi
+fi
+
+# -- var/lib/bluetooth (stock's addon 'placeholder' file, closed structurally)
+# Stock kept the dir alive in its tar with a placeholder file; here bluez
+# 5.79's own install ships the directory (Makefile.am:36, install -dm700) and
+# /usr/bin/bluetoothd mounts the persistent ext4 image over it (S45bluetooth).
+# mkdir -p on the read-only root would fail, so the dir MUST be in the image.
+if grep -qE '^\./var/lib/bluetooth/$' "$TAR_LIST"; then
+	pass "/var/lib/bluetooth ships in the image (BT persistence mount point)"
+else
+	fail "/var/lib/bluetooth ships in the image" "bluetoothd's mount point is missing on a read-only root"
+fi
+
+# =============================================================================
+section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c)"
+# =============================================================================
+# Highest-value binaries from each of the three T5 groups, plus regression
+# guards for the BusyBox-applet collisions T5 found and fixed (board/mister/
+# de10nano/busybox.fragment): a collision that "resolves" back to the BusyBox
+# stub -- e.g. because a future edit re-enables the applet without noticing
+# the real package already owns that path -- would be silent at build time
+# (last install just wins) and only show up as a user running a crippled
+# lsof/lsusb/mkdosfs/chvt/openvt at runtime. Presence alone does not catch
+# that, so these checks additionally assert the shipped entry is NOT a
+# busybox symlink where a real package is supposed to own the path.
+
+# -- Group 1: BusyBox applets stock ships as GNU coreutils --------------------
+# `stat`/`timeout` matter most (task's own words) -- ordinary shell scripts
+# use both, and a MiSTer script that works on stock previously failed
+# outright on this image. Presence AND their sub-feature-gated flags (found
+# pinned off in the base busybox.config -- board/mister/de10nano/
+# busybox.fragment's own T5 comment) are both checked, since presence alone
+# would not have caught a crippled `stat` with no `-c` support.
+require_present "usr/bin/stat" "stat"
+require_present "usr/bin/timeout" "timeout"
+if [ -z "$QEMU_ARM" ]; then
+	skip "stat -c (FEATURE_STAT_FORMAT) works" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/stat" ]; then
+	skip "stat -c (FEATURE_STAT_FORMAT) works" "$TARGET/usr/bin/stat not present in output/target"
+elif qemu_target "$TARGET/usr/bin/stat" -c '%s' "$TARGET/usr/bin/stat" >/dev/null 2>&1; then
+	pass "stat -c (FEATURE_STAT_FORMAT) works"
+else
+	fail "stat -c (FEATURE_STAT_FORMAT) works" "stat -c '%s' failed -- FEATURE_STAT_FORMAT may not be compiled in"
+fi
+for spec in "usr/bin/tac:tac" "usr/bin/shuf:shuf" "usr/bin/comm:comm" "usr/bin/split:split" "usr/bin/expand:expand" "usr/bin/groups:groups" "usr/bin/nc:nc"; do
+	path="${spec%%:*}"; label="${spec##*:}"
+	require_present "$path" "$label"
+done
+# Stock ships TWO names for netcat -- usr/bin/netcat (a real GNU Netcat 0.7.1
+# ELF) and usr/bin/nc -> netcat beside it. BusyBox provides the second name
+# only through its own separate alias applet (CONFIG_NETCAT, default n
+# upstream: networking/nc.c:17-21), so this guards the easy-to-lose half of
+# that pair -- CONFIG_NC=y alone satisfies the `nc` check above while leaving
+# `netcat` a command-not-found. Substitution, not reproduction: our provider is
+# BusyBox's nc, not GNU Netcat -- see board/mister/de10nano/busybox.fragment.
+require_present "usr/bin/netcat" "netcat (BusyBox CONFIG_NETCAT alias -- stock's second name for the same command)"
+
+# -- Group 2: wpa_supplicant CLI sub-options -----------------------------------
+# Highest value-per-byte item in T5 and squarely WiFi work (P3.4/docs/wifi-
+# parity.md territory) -- both are sub-options of the wpa_supplicant package
+# already built for this image, not a new package.
+require_present "usr/sbin/wpa_cli" "wpa_cli"
+require_present "usr/sbin/wpa_passphrase" "wpa_passphrase"
+
+# -- Group 3: the highest-value packages, one binary each ---------------------
+# On a games console, joystick calibration/force-feedback tooling
+# (linuxconsoletools) is arguably the single most valuable item in the whole
+# T5 pass; 7-Zip is the highest-priority archival tool (MiSTer release
+# archives are .7z -- without this, on-device extraction was impossible);
+# dosfstools/exfatprogs are what a USB stick actually gets reformatted with.
+require_present "usr/bin/jstest" "jstest (linuxconsoletools joystick calibration)"
+require_present "usr/bin/fftest" "fftest (linuxconsoletools force-feedback test)"
+require_present "usr/sbin/fsck.vfat" "fsck.vfat (dosfstools compat symlink)"
+require_present "usr/sbin/mkfs.vfat" "mkfs.vfat (dosfstools compat symlink)"
+require_present "usr/sbin/fatlabel" "fatlabel (dosfstools)"
+require_present "usr/sbin/mkfs.exfat" "mkfs.exfat (exfatprogs)"
+require_present "usr/sbin/fsck.exfat" "fsck.exfat (exfatprogs)"
+# 7z support: upstream 7-Zip (package/7zip), NOT p7zip -- ADR 0023. Three
+# things get asserted because three different mistakes are possible here.
+require_present "usr/bin/7zz" "7zz (7-Zip 26.02, upstream -- replaced p7zip)"
+# (1) BOTH aliases must resolve to 7zz, and each must be a SYMLINK. `7za` is
+# the name a decade of community scripts reach for (every MiSTer that has ever
+# updated has a /media/fat/linux/7za). `7zr` is subtler and matters more: it is
+# the ONLY 7-Zip name stock's rootfs provides, so it is what a script written
+# against stock calls. A broken alias is invisible until one of them runs.
+#
+# Requiring a symlink is what makes this double as the p7zip-regression guard.
+# Buildroot never un-installs, so a target tree built before the swap keeps
+# p7zip's REAL usr/bin/7zr ELF, and the image would then ship two different 7z
+# implementations of two different vintages -- silent, because both "work". A
+# bare presence check cannot tell those apart; "is a symlink to 7zz" can.
+for sevenzip_alias in 7za 7zr; do
+	if ! tar_has "usr/bin/$sevenzip_alias"; then
+		fail "usr/bin/$sevenzip_alias alias -> 7zz present" "usr/bin/$sevenzip_alias not in rootfs.tar"
+		continue
+	fi
+	sevenzip_entry=$(tar tvf "$ROOTFS_TAR" -- "./usr/bin/$sevenzip_alias" 2>/dev/null | head -1)
+	sevenzip_link=${sevenzip_entry##*-> }
+	case "$sevenzip_entry" in
+	*'-> '*)
+		if [ "$sevenzip_link" = "7zz" ]; then
+			pass "usr/bin/$sevenzip_alias is a symlink -> 7zz"
+		else
+			fail "usr/bin/$sevenzip_alias symlink -> 7zz" "points at '$sevenzip_link', expected 7zz"
+		fi ;;
+	*)
+		fail "usr/bin/$sevenzip_alias is a symlink -> 7zz" \
+			"it is a REAL FILE, not a symlink -- almost certainly p7zip's own binary left behind by a pre-ADR-0023 target tree; run 'make p7zip-dirclean' and delete it ($sevenzip_entry)" ;;
+	esac
+done
+
+# -- The payload 7za: output/images/7za, NOT a rootfs file --------------------
+# This is the one that ends up at /media/fat/linux/7za on the persistent exFAT
+# partition, via release.yml's files/linux/ payload and mk-sdcard.sh's
+# mister-payload/linux/. Its absence silently restores the old behaviour --
+# the Downloader fetching p7zip 16.02 (2016) off the internet -- so it is
+# checked here rather than only in the release job.
+if [ ! -f "$IMAGES/7za" ]; then
+	fail "output/images/7za present (payload 7-Zip for /media/fat/linux/7za)" \
+		"$IMAGES/7za missing -- package/7zip's INSTALL_IMAGES step did not run"
+else
+	# STATIC is a requirement, not an optimization: this binary outlives the
+	# rootfs that installed it (u-boot.txt _vN rollback, a rollback to a stock
+	# image on glibc ~2.32, or a stock user's Downloader run after having once
+	# installed our release). Dynamically linked, it dies at exec with
+	# GLIBC_2.xx-not-found and the Linux update fails at its first `7za t`.
+	# Checked structurally (no INTERP segment, no NEEDED entries) rather than
+	# by parsing `file`, which words this differently across versions.
+	payload_interp=$(readelf -l "$IMAGES/7za" 2>/dev/null | grep -c INTERP || true)
+	payload_needed=$(readelf -d "$IMAGES/7za" 2>/dev/null | grep -c NEEDED || true)
+	payload_arch=$(readelf -h "$IMAGES/7za" 2>/dev/null | awk -F: '/Machine:/{print $2}' | tr -d ' ')
+	if [ "$payload_interp" = "0" ] && [ "$payload_needed" = "0" ]; then
+		pass "output/images/7za is statically linked (survives a rootfs rollback)"
+	else
+		fail "output/images/7za is statically linked" \
+			"INTERP segments=$payload_interp, NEEDED entries=$payload_needed (both must be 0)"
+	fi
+	if [ "$payload_arch" = "ARM" ]; then
+		pass "output/images/7za is a target-ARM ELF (Machine: ARM)"
+	else
+		fail "output/images/7za is a target-ARM ELF" "Machine reads '$payload_arch', expected ARM"
+	fi
+
+	# The behavioural contract, run against the real artifact: the EXACT command
+	# pair linux_updater.py issues -- `7za t <archive>` then
+	# `7za x -y <archive> files/linux/* -o<dir>`. The wildcard is the subtle
+	# part: the on-device shell leaves `files/linux/*` unexpanded (no such dir
+	# in its cwd) and passes it through literally, so 7-Zip's OWN pattern
+	# matching decides what comes out. A regression there would extract the
+	# whole archive -- including files/MiSTer, which the Downloader must never
+	# overwrite -- and no exit code would reveal it. Self-round-trip, so no
+	# host 7z is needed; cross-version compat against the pinned 2016 binary is
+	# release.yml's qemu-arm step (docs/downloader-contract.md §4).
+	if [ -z "$QEMU_ARM" ]; then
+		skip "payload 7za runs the Downloader's t + x command pair" "qemu-arm not found on PATH"
+	else
+		sevenzip_work="$WORKDIR/7za-roundtrip"
+		mkdir -p "$sevenzip_work/stage/files/linux" "$sevenzip_work/out"
+		echo payload > "$sevenzip_work/stage/files/linux/linux.img"
+		echo payload > "$sevenzip_work/stage/files/linux/zImage_dtb"
+		echo decoy   > "$sevenzip_work/stage/files/MiSTer"
+		# Read the whole banner block, not one line: 7-Zip's first stdout line
+		# is EMPTY (the version is on line 2), and p7zip's giveaway "p7zip
+		# Version ..." line is its line 2 -- so any single-line read is wrong
+		# for one of the two. Both binaries print this to stdout, not stderr.
+		sevenzip_banner=$("$QEMU_ARM" "$IMAGES/7za" 2>/dev/null | head -4)
+		sevenzip_ver=$(printf '%s\n' "$sevenzip_banner" | grep -m1 -- '7-Zip')
+		case "$sevenzip_banner" in
+		*p7zip*)
+			fail "payload 7za is upstream 7-Zip, not p7zip" "reports: ${sevenzip_ver:-$sevenzip_banner}" ;;
+		*"7-Zip"*)
+			pass "payload 7za self-reports upstream 7-Zip ($sevenzip_ver)" ;;
+		*)
+			fail "payload 7za self-reports upstream 7-Zip" "unrecognised banner: ${sevenzip_banner:-<no output>}" ;;
+		esac
+		if ( cd "$sevenzip_work/stage" && "$QEMU_ARM" "$IMAGES/7za" a -mx=1 -m0=lzma2 -ms=on ../t.7z files/ ) >/dev/null 2>&1 \
+			&& "$QEMU_ARM" "$IMAGES/7za" t "$sevenzip_work/t.7z" >/dev/null 2>&1 \
+			&& "$QEMU_ARM" "$IMAGES/7za" x -y "$sevenzip_work/t.7z" 'files/linux/*' -o"$sevenzip_work/out" >/dev/null 2>&1
+		then
+			sevenzip_got=$(cd "$sevenzip_work/out" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ')
+			if [ "$sevenzip_got" = "files/linux/linux.img files/linux/zImage_dtb " ]; then
+				pass "payload 7za: t + x -y 'files/linux/*' extracts exactly files/linux/ (files/MiSTer untouched)"
+			else
+				fail "payload 7za: x -y 'files/linux/*' extracts ONLY files/linux/" \
+					"got: ${sevenzip_got:-<nothing>}"
+			fi
+		else
+			fail "payload 7za runs the Downloader's a/t/x command sequence" "one of a, t or x exited nonzero under qemu-arm"
+		fi
+	fi
+fi
+# ntfsprogs SPLITS across bindir and sbindir, and not the way the package name
+# suggests -- get this backwards and the gate fails deterministically on the
+# first real build (it did, in review, before this was corrected).
+# ntfsprogs/Makefile.am:17 `bin_PROGRAMS = ntfsfix ntfsinfo ntfscluster ntfsls
+# ntfscat ntfscmp` -> /usr/bin, while :18's `sbin_PROGRAMS = mkntfs ntfslabel
+# ntfsundelete ntfsresize ntfsclone ntfscp` -> /usr/sbin, plus the
+# install-exec-hook at :166-169 symlinking mkfs.ntfs -> mkntfs there.
+# ntfs-3g.mk passes no --exec-prefix override (unlike dosfstools.mk:13), so
+# bindir really is /usr/bin. Stock lands identically: work/imgroot has
+# usr/bin/ntfsfix and usr/sbin/{mkntfs,mkfs.ntfs}, and no usr/sbin/ntfsfix.
+require_present "usr/sbin/mkfs.ntfs" "mkfs.ntfs (ntfs-3g NTFSPROGS -- found missing despite BR2_PACKAGE_NTFS_3G already being on, see defconfig)"
+require_present "usr/bin/ntfsfix" "ntfsfix (ntfs-3g NTFSPROGS -- /usr/bin, not /usr/sbin; see the path-split note above)"
+require_present "usr/bin/dtc" "dtc (BR2_PACKAGE_DTC_PROGRAMS -- library-only before T5)"
+require_present "usr/bin/loadkeys" "loadkeys (kbd -- what makes the guarded inittab line + T3's etc/kbd.map actually load)"
+require_present "usr/bin/setfont" "setfont (kbd)"
+require_present "usr/bin/htop" "htop"
+require_present "usr/bin/tmux" "tmux"
+
+# -- Regression guards: the BusyBox-applet collisions T5 found and fixed ------
+not_busybox_symlink "usr/bin/lsof" "lsof"
+not_busybox_symlink "usr/bin/lsusb" "lsusb"
+not_busybox_symlink "usr/sbin/mkdosfs" "mkdosfs (dosfstools compat symlink)"
+not_busybox_symlink "usr/bin/chvt" "chvt (kbd)"
+not_busybox_symlink "usr/bin/openvt" "openvt (kbd)"
+not_busybox_symlink "usr/bin/deallocvt" "deallocvt (kbd)"
+not_busybox_symlink "usr/bin/setkeycodes" "setkeycodes (kbd)"
 
 # =============================================================================
 section "P3.5 — Bluetooth parity"

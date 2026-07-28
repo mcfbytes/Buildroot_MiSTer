@@ -1,0 +1,62 @@
+mac_ax: use div_u64() for 64-bit division so the module links on ARM32
+
+Fixes a hard build failure on this board (ARMv7 Cortex-A9). Upstream's
+c2h_wicense_rpt_info() divides a 64-bit value by a constant with the plain C
+`/` operator:
+
+    en_dis_time_ms = (u32)((((u64)rpt->en_dis_time_h << 32) + rpt->en_dis_time_l) / 1000);
+
+On any 32-bit architecture gcc cannot lower a 64-bit division inline, so it
+emits a call to a libgcc/EABI helper -- `__aeabi_uldivmod` on ARM. The kernel
+does not export that symbol to modules, so the build dies at modpost, AFTER
+every object has compiled cleanly:
+
+    ERROR: modpost: "__aeabi_uldivmod" [8852cu.ko] undefined!
+
+That is why upstream ships it: the driver's own README tests against x86_64
+and aarch64, where `/` on a u64 compiles to a native instruction and the bug is
+invisible. It is not a Realtek-vs-us disagreement, just an untested target.
+
+`div_u64()` (linux/math64.h) is the kernel's portable spelling for exactly this
+-- u64 numerator, u32 denominator -- and compiles to the same native divide on
+64-bit while routing through __do_div64 on 32-bit. Semantics are identical; the
+values here are a microsecond counter scaled to milliseconds, well inside u32
+after division.
+
+Not using the driver's own _os_division64() (phl/pltfm_ops_linux.h), which
+would otherwise be the in-idiom choice: it lives in the phl/ platform-ops layer
+and is not reachable from phl/hal_g6/mac/mac_ax/, whose PLTFM_* macro set
+(phl/hal_g6/mac/mac_def.h) offers no division helper at all. A direct
+linux/math64.h include is the smaller change and needs no new layering.
+
+Affects a debug/telemetry printer ("[WisenseRpt] ...") only, so there is no
+behavioural risk beyond the two values it prints.
+
+Upstream status: not submitted. morrownr/rtl8852cu-20251113 is a vendor-drop
+mirror that takes no patches; carry locally. Re-check on every version bump --
+if upstream ever fixes it, this patch will fail to apply and say so loudly,
+which is the outcome we want.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+
+--- a/phl/hal_g6/mac/mac_ax/fwcmd.c
++++ b/phl/hal_g6/mac/mac_ax/fwcmd.c
+@@ -13,6 +13,7 @@
+  *
+  ******************************************************************************/
+ 
++#include <linux/math64.h>
+ #include "fwcmd.h"
+ #include "mcc.h"
+ #include "mac_priv.h"
+@@ -2144,8 +2145,8 @@
+ 
+ 	PLTFM_MEMCPY(rpt, pkg, sizeof(struct rtw_hal_mac_wicense_rpt));
+ 
+-	en_dis_time_ms = (u32)((((u64)rpt->en_dis_time_h << 32) + rpt->en_dis_time_l) / 1000);
+-	active_time_ms = (u32)((((u64)rpt->active_time_h << 32) + rpt->active_time_l) / 1000);
++	en_dis_time_ms = (u32)div_u64((((u64)rpt->en_dis_time_h << 32) + rpt->en_dis_time_l), 1000);
++	active_time_ms = (u32)div_u64((((u64)rpt->active_time_h << 32) + rpt->active_time_l), 1000);
+ 
+ 	if (csi_info->dbg_rpt_mode == WICENSE_DBG_RPT_MODE_EN_DETAIL) {
+ 		PLTFM_MSG_ALWAYS("[WisenseRpt] ===> report start....\n");

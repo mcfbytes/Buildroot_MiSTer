@@ -1,0 +1,14 @@
+# Locally computed (GitHub does not publish signed hashes for commit tarballs --
+# standard practice for git/github-sourced Buildroot packages, per
+# pkg-download.mk / the Buildroot manual).
+#
+#   sha256sum rtl8852cu-morrownr-1530c38e5b1be6d1e96a31cf4f3602a9c23f2465.tar.gz
+#
+# Produced by letting Buildroot do the fetch (`make rtl8852cu-morrownr-source`,
+# 2026-07-27, 24291765 bytes) and hashing what landed in
+# dl/rtl8852cu-morrownr/ -- not by hashing a hand-downloaded copy -- so the
+# value is exactly what Buildroot will re-verify. Recomputed on every fetch, so
+# a tampered or rewritten upstream ref fails the build rather than being
+# silently accepted.
+sha256  b2b21b4be430f319e5af193b7a1fd562fad3c84f0371ce49cae6dd6c0cbbff2e  rtl8852cu-morrownr-1530c38e5b1be6d1e96a31cf4f3602a9c23f2465.tar.gz
+sha256  821deb3a5d7eb3794e6d3f7ba710b2ce09db04eddb4c25005c7a0a741ab8597f  LICENSE

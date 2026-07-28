@@ -177,11 +177,28 @@ record of what was first accepted).
    tree in it), and the duplicated MISTER_VERSION derivation (a kernel-only
    build bakes nothing).
 
-4. **The sdcard installer image carries both kernels**: `zImage_dtb-rt` joins
+4. ~~**The sdcard installer image carries both kernels**: `zImage_dtb-rt` joins
    the FAT payload (`mister-payload/linux/`, docs/verification/
    sdcard-payload.md), so one flashable card boots either kernel via the same
    u-boot.txt line. `make sdcard` therefore now requires `make rt` (or
-   `MISTER_RT_ZIMAGE=`) alongside `make all`.
+   `MISTER_RT_ZIMAGE=`) alongside `make all`.~~
+   **REVERSED 2026-07-27 — decided by @mcfbytes. The card ships NO
+   `zImage_dtb-rt`.** The RT kernel is a developer / early-adopter artifact and
+   stays what the rest of this ADR already makes it: a manual download from the
+   GitHub Release, one of the three `*-rt` assets. Putting it on the card every
+   user flashes bought nothing measurable — nothing on the card referenced it,
+   `u-boot.txt` never selected it, and it is documented as not yet validated on
+   hardware — while it did put an unvalidated real-time kernel in front of
+   every new installer. `$MISTER_RT_ZIMAGE` is deleted from
+   `scripts/mk-sdcard.sh` and from `release.yml`'s two sdcard steps, so
+   **`make sdcard` no longer requires `make rt`** (that requirement, added by
+   the struck text above, is gone with it).
+   *What did NOT change:* item 1 above still holds in full — the RT module
+   trees still ride inside the one shipped `linux.img`, so the
+   download-`zImage_dtb-rt`-and-drop-it-in workflow still finds matching
+   modules on a card built from this image, and no rootfs flash is needed for
+   RT. `mk-sdcard.sh`'s build-order coherence check is kept for exactly that
+   reason, with its justification rewritten to name the manual consumer.
 
 5. **Variant cache derivations — §3's key formulas are superseded.** A kernel
    variant's dl key and host-toolchain fingerprint now derive from

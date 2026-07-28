@@ -660,9 +660,142 @@ Every gap below has a disposition (task's done-when criterion).
 | `libhid` (`libhid.so.0`) | `libhid-detach-device` | **none** | Drop the tool. Legacy USB-HID-via-libusb-0.1 project, superseded everywhere by `libusb`/`hidapi`; nothing MiSTer-specific uses it | rootfs package list (P2.1) |
 | AdPlug (`libadplug.so`, `libbinio.so`) | `adplay` | **none** | Drop the tool. AdLib/OPL music player CLI; not part of any MiSTer audio path (FluidSynth + ALSA handle that) | rootfs package list (P2.1) |
 | `archivemount` | (itself, needs `libarchive.so.13`+`libfuse.so.2`) | **none** (both of its *dependencies*, `libarchive` and `libfuse`, DO exist in Buildroot — `BR2_PACKAGE_LIBARCHIVE` 3.8.7, `BR2_PACKAGE_LIBFUSE` 2.9.9 — but `archivemount` the tool itself is not packaged by Buildroot) | Drop. Already **dangling/non-functional in stock** per P0.3 — reproducing a broken binary faithfully is not a goal. If ever wanted, it's a straightforward `package/` addition (FUSE + libarchive glue, small C source) — file as a future community request, not a P0.7 blocker | Gaps list only, no Phase-3 task currently owns it |
-| Realtek out-of-tree WiFi (11ac: `8812au`, `8821au`) | kernel modules, class E | none (by design — morrownr forks) | **Not this task's gap** — owned by P3.1/v9 as Buildroot `kernel-module` packages sourced from morrownr. v9 moved `8188eu`/`rtl8188fu` (→ in-kernel `rtl8xxxu`), `8821cu` (→ `rtw88_8821cu`) and `88x2bu` (→ `rtw88_8822bu`) to mainline; PR #35 later moved `8814au` (→ in-kernel `rtw88_8814au`) the same way, leaving only `8812au` and `8821au` out-of-tree (no mainline USB driver). See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) | P3.1/v9 |
+| Realtek out-of-tree WiFi — **stale row, kept for history; see the note below** (11ac: `8812au`, `8821au`) | kernel modules, class E | none (by design — morrownr forks) | **Not this task's gap** — owned by P3.1/v9 as Buildroot `kernel-module` packages sourced from morrownr. v9 moved `8188eu`/`rtl8188fu` (→ in-kernel `rtl8xxxu`), `8821cu` (→ `rtw88_8821cu`) and `88x2bu` (→ `rtw88_8822bu`) to mainline; PR #35 later moved `8814au` (→ in-kernel `rtw88_8814au`) the same way, ~~leaving only `8812au` and `8821au` out-of-tree (no mainline USB driver)~~. **Superseded twice**: v10 moved `8812au`/`8821au` to mainline too (`rtw88_88xxa` core, 6.13), taking the out-of-tree count to zero; v10.2 then added **one** new out-of-tree package for a chip that was never in this row at all — `rtl8852cu-morrownr` (RTL8852CU/RTL8832CU Wi-Fi 6E), because mainline's `rtw89` HAL for that chip has no USB bus file, only a PCI one this board can't reach. Current state: **one** out-of-tree WiFi kernel-module package, not the two named in this row's title. See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) (its v10.2 update has the full gap analysis) and `docs/wifi-parity.md` §8 | P3.1/v9 → v10.2 |
 | `xone` (Xbox Wireless) | kernel modules, class D | none (out-of-tree upstream project) | **Closed by P3.2** — `package/xone` (driver, `dlundqvist/xone` fork) + `package/xow-firmware` + `package/cabextract` (dongle firmware, Microsoft-sourced at build time, `docs/decisions/0003-xone-firmware.md`) | P3.2 |
 | MT-32 ROM / soundfont data | `MiSTer` binary's built-in synth, via `libfluidsynth.so.3` | n/a — not software, it's asset data (`mt32-rom-data/`, `soundfonts/`) shipped under `files/linux/` | Carry forward unmodified as static assets, not a rootfs package concern | P3.8 |
+
+### 4b. Follow-ups surfaced by T3 (addon.tar §3c) — stock base-rootfs binaries this manifest never dispositioned
+
+Found while verifying the §3c helper scripts' callees against the built image
+(2026-07-27). None is an `addon.tar` item, so T3 deliberately did **not**
+enable them — they are package-set decisions for this manifest's owner. All
+four have upstream Buildroot packages (re-checked on the pinned
+`work/buildroot` tree), so each would be a plain enable if wanted:
+
+| Stock binary | Verified consumer | Buildroot package | Cost of current absence |
+|---|---|---|---|
+| `usr/sbin/pppd` | `uartmode` mode 1 (PPP-over-UART for retro PCs; only entered when the user creates `/media/fat/linux/ppp_options`) | `pppd` | `uartmode 1` respawn-loops with "not found" errors *iff* the user has created `ppp_options`; otherwise the mode cleanly prints "skip pppd" |
+| `usr/bin/modplug123` | stock mc's mod/s3m/xm/it handler (`work/imgroot/etc/mc/mc.ext`) | `modplugtools` (`libmodplug` is already `=y`) | tracker-module playback in mc reports "not found" (upstream 4.8.33 default falls to `mikmod`, also absent) |
+| `usr/bin/ogg123` | stock mc's ogg handler; mc 4.8.33's own `sound.sh` ogg branch | `vorbis-tools` (`libvorbis`/`libogg` already `=y`) | ogg playback in mc reports "not found" |
+| `usr/bin/mikmod` | a **symlink → `modplug123`** in stock's `addon.tar` (not a real binary); mc 4.8.33's own `sound.sh` mod branch execs `mikmod` | covered by `modplugtools` + one symlink, if ever wanted | dangling target — the symlink is deliberately not vendored (see `docs/stock-reconciliation.md` §3c symlink note) |
+
+---
+
+### 4c. T5 — utility binaries stock ships that this image left out, plus four it does not (2026-07-27)
+
+A filename diff of stock's `/bin`,`/sbin`,`/usr/bin`,`/usr/sbin` (`work/imgroot`)
+against `output/images/rootfs.tar` found 315 differences. Most are noise — a
+full Perl install (§5, `perl5/` row), python3.9-versioned scripts, and GNU
+long-form duplicates of BusyBox applets already covered elsewhere in this
+document. The items below are the real gaps this task closed, plus what it
+found and fixed along the way. Every package was confirmed present in the
+pinned `work/buildroot/package/` tree and its `Config.in`/`.mk` read directly
+(not assumed) before being added — **seven** genuine collisions with a BusyBox
+applet that was already **on** turned up this way (`lsof`, `lsusb`, `mkdosfs`,
+`chvt`, `deallocvt`, `openvt`, `setkeycodes`, across four packages), not
+discovered later at boot; see `board/mister/de10nano/busybox.fragment`'s own
+T5 comments for the full citations. (An earlier revision of this paragraph
+said "three" — written before `kbd` joined the pass and never updated; the
+"all seven disabled" sentence at the end of this section is the correct
+count.)
+
+⚠️ **Not everything in these tables is a stock gap.** Each row's stock status
+was re-checked against `work/imgroot` directly (2026-07-27), and three shapes
+turned up. Read the whole row, not just the heading:
+
+- **Gap closed** (the majority) — stock ships it, we now do too, at the same
+  path. Verified present in stock: `usr/bin/{htop,tmux,picocom,socat,zip,lzop,
+  spi-config,spi-pipe,bt-adapter,bt-agent,bt-device,dtc,jstest,fftest,
+  jscal,lsusb,rz,sz,loadkeys,setfont,ntfsfix}`, `usr/sbin/{ethtool,wpa_cli,
+  wpa_passphrase,mkfs.fat,mkfs.exfat,mkfs.ntfs}`.
+- **Beyond stock** — `strace`, `evtest`, `tcpdump`, `iperf3`. `find
+  work/imgroot -name X` returns **nothing** for any of the four; none appears
+  in the 315-difference stock-only name set either. They are net-new
+  debugging/diagnostic tooling, deliberately carried anyway — not gaps.
+- **Upgrade over stock** — `lsof` and `7zip`.
+  - `lsof`: stock's `usr/bin/lsof` is a symlink → `../../bin/busybox`, i.e.
+    stock's provider *is* the BusyBox applet. Enabling `BR2_PACKAGE_LSOF` and
+    turning `CONFIG_LSOF` off is a deliberate divergence in favour of the real
+    lsof, not parity restoration. (The other BusyBox collisions in this pass do
+    restore parity — stock's `usr/bin/{chvt,deallocvt,openvt,setkeycodes}` are
+    real kbd ELFs, its `usr/bin/lsusb` is the 150980-byte usbutils ELF, and its
+    `usr/sbin/mkdosfs` is a symlink → `mkfs.fat`.)
+  - `7zip` (**not** "gap closed at the same path" — corrected 2026-07-27):
+    stock's only 7-Zip-family binary is `usr/bin/7zr`, and re-identifying it
+    rather than just confirming the path shows it is **p7zip 16.02**
+    (`7-Zip (a) [32] 16.02 … 2016-05-21`, 973,392 bytes). We ship upstream
+    7-Zip **26.02** as `usr/bin/7zz`, aliased from both `7za` and `7zr` — so
+    stock's path *is* answered, by a ten-years-newer superset. Stock ships no
+    `7za` and no `7z` at all, which is why `mc`'s `ext.d/archive.sh`
+    `7za l` branch is dead on stock and works here.  See
+    [ADR 0023](decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md).
+
+**Group 1 — BusyBox applets, present in BusyBox 1.38.0 but off in this
+image's config. Eight of the nine are ones stock ships as GNU coreutils
+(`work/imgroot/usr/bin/{stat,timeout,tac,shuf,comm,split,expand,groups}` are
+all symlinks → `coreutils`), so turning the applet on reproduces the command
+at the same path. `nc` is the exception — see its own row:**
+
+| Applet | Binary(ies) it provides | Why a MiSTer user/script needs it |
+|---|---|---|
+| `stat` (+ `FEATURE_STAT_FORMAT`, `FEATURE_STAT_FILESYSTEM`) | `stat` | `-c FORMAT` and `-f` are both gated behind their own feature symbol, EXPLICITLY pinned off in the base `busybox.config` (not merely defaulted) — without them, `stat -c '%s' file`, the single most common scripted use of `stat`, fails outright |
+| `timeout` | `timeout` | ordinary shell scripts use `timeout N cmd`; a MiSTer script that runs fine on stock previously failed outright on this image |
+| `tac` | `tac` | reverse-line-order cat; scripting convenience, stock parity |
+| `shuf` | `shuf` | random-order line shuffling; scripting convenience, stock parity |
+| `comm` | `comm` | compare two sorted files; scripting convenience, stock parity |
+| `split` (+ `FEATURE_SPLIT_FANCY`) | `split` | without the feature symbol (also pinned off explicitly), `-b`'s `k`/`m`/`g` size suffixes do not work |
+| `expand` | `expand` | tabs-to-spaces; scripting convenience, stock parity |
+| `groups` | `groups` | print a user's group membership; stock parity |
+| `nc` (+ `NETCAT` alias, + `NC_SERVER`, `NC_EXTRA`, `NC_110_COMPAT`) | `nc`, `netcat` | **NOT a coreutils row and not a byte-for-byte reproduction — a deliberate substitution.** Stock's provider is a separate GNU tool: `work/imgroot/usr/bin/netcat` is a 34376-byte ARM ELF whose strings read "GNU netcat %s, a rewrite of the famous networking tool." / "netcat (The GNU Netcat) %s" — GNU Netcat, i.e. exactly what Buildroot's own `package/netcat` builds (`netcat.mk:7`, `NETCAT_VERSION = 0.7.1`) — with `usr/bin/nc` a symlink → `netcat` beside it. BusyBox's `nc` is a different implementation with a different option set; the trade is ~11 kB of applet against a whole extra package, and it is accepted for ad-hoc on-device poking. Stock's *second* name is kept too: `CONFIG_NETCAT=y` (BusyBox's own alias applet, `networking/nc.c:17-21`, `default n` upstream, same `usr/bin/netcat` path) alongside `CONFIG_NC=y`, or `netcat` would be command-not-found. ALL THREE feature symbols were also pinned off explicitly — without them `nc` cannot listen (`-l`), cannot do `-e`/`-i`/`-w`, and cannot do UDP/verbose/`-z` (`-u`/`-v`/`-z`) at all, which is not much of a netcat for on-device network debugging |
+
+**Group 2 — WiFi CLI, sub-options of the wpa_supplicant package already
+built:**
+
+| Symbol | Binary | Why |
+|---|---|---|
+| `BR2_PACKAGE_WPA_SUPPLICANT_CLI` | `usr/sbin/wpa_cli` | interactive/scriptable control of a running `wpa_supplicant` (status, scan, reassociate, saved-network selection) — highest value-per-byte item in this pass, and squarely WiFi work (P3.4) |
+| `BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE` | `usr/sbin/wpa_passphrase` | turns an ASCII passphrase into the PSK hex blob `wpa_supplicant.conf` wants, so a script never has to embed the plaintext passphrase |
+
+**Group 3 — packages, one row each (binaries, dependency notes, and any
+surprise found while adding it):**
+
+| Package | Binaries | Notes |
+|---|---|---|
+| `htop` | `htop` | zero marginal dependency cost — selects `NCURSES`, already on |
+| `linuxconsoletools` (+`JOYSTICK`, +`FORCEFEEDBACK`) | `jstest`, `jscal`, `jscal-store`, `jscal-restore`, `evdev-joystick`, `fftest`, `ffcfstress`, `ffmvforce`, `ffset` (+ `inputattach`, upstream's own unconditional default, not asked for but harmless) | on a games console, arguably the single most valuable item in this whole pass. `FORCEFEEDBACK` selects `SDL2`, already on |
+| `ethtool` | `ethtool` | no dependencies |
+| `usbutils` | `usr/bin/lsusb`, `usr/bin/usb-devices` | this image did not already get `lsusb` from anywhere else (checked); **collides with BusyBox's own `lsusb` applet**, which was already on — disabled in `busybox.fragment` |
+| `evtest` | `evtest` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name evtest` returns nothing; stock has no evtest at all. Added anyway: raw evdev event dumping is the first thing you reach for when a controller misbehaves on a games console. No dependencies |
+| `socat` | `socat` | needs `BR2_USE_MMU`, already true |
+| `picocom` | `picocom` | no dependencies; does not collide with BusyBox's differently-named `microcom` |
+| `lrzsz` | `rz`, `sz` (+ `lrz`/`lsz`/`rb`/`sb`/`rx`/`sx` compat symlinks, bonus beyond stock) | stock ships `rz`/`sz` (`docs/stock-reconciliation.md` §3c); needs dynamic libs, already true |
+| `dosfstools` (+`FATLABEL`, +`FSCK_FAT`, +`MKFS_FAT`) | `fatlabel`, `dosfslabel`, `fsck.fat`, `fsck.vfat`, `fsck.msdos`, `dosfsck`, `mkfs.fat`, `mkfs.vfat`, `mkfs.msdos`, `mkdosfs` | each of the three sub-options **defaults to "n" with nothing in the parent's own prompt text to say so** — confirmed by reading `dosfstools.mk` directly, each is a separate `ifeq(...,y)` install guard; leaving any one unset means that binary (and its compat symlinks) silently does not install. `mkdosfs` **collides with BusyBox's own `mkdosfs` applet**, already on — disabled in `busybox.fragment` |
+| `exfatprogs` | `mkfs.exfat`, `fsck.exfat`, `exfatlabel`, `dump.exfat`, `exfat2img`, `tune.exfat` | no sub-options, no collision (BusyBox has no exFAT support at all) |
+| `ntfs-3g` `NTFSPROGS` sub-option | `mkfs.ntfs` (→ `mkntfs`), `ntfsfix`, + the rest of ntfsprogs | **found missing despite `BR2_PACKAGE_NTFS_3G` already being `=y`** since P2.1 — a real oversight, not a deliberate omission: the sub-option defaults to "n" with no dependency of its own (`package/ntfs-3g/Config.in`), and without it `ntfs-3g.mk` passes `--disable-ntfsprogs`. Fixed in place next to the existing `BR2_PACKAGE_NTFS_3G=y` line |
+| `tmux` | `tmux` | chosen over `screen` (§5) — not both. Needs `BR2_USE_WCHAR`+`BR2_ENABLE_LOCALE` (both true); selects `LIBEVENT`+`NCURSES`, both already on |
+| `strace` | `strace` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name strace` returns nothing. Already enabled *temporarily* by the `DEBUG TOOLING` block (`docs/debug-tooling.md`); this promotes it to a *permanent* part of the package set so it keeps shipping once that block is eventually deleted (and is what `docs/package-manifest.md` §5's `ltrace` row leans on when it rejects ltrace). Set in both places deliberately (harmless, same value — `make mister_de10nano_defconfig` prints a benign "override: reassigning to symbol BR2_PACKAGE_STRACE") |
+| `lsof` | `usr/bin/lsof` | **An UPGRADE over stock, not parity restoration** — stock's `usr/bin/lsof` is a symlink → `../../bin/busybox`, so stock's provider is the BusyBox applet, and choosing the real lsof is a deliberate divergence (worth it: the applet has no network-socket, NFS, `-p` or `-i` support). Needs `BUSYBOX_SHOW_OTHERS`, already on (for `i2c-tools`); **collides with BusyBox's own `lsof` applet**, already on — disabled in `busybox.fragment` |
+| `tcpdump` | `tcpdump` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name tcpdump` returns nothing. Added anyway for on-device WiFi/network debugging (P3.4 territory). Selects `LIBPCAP` automatically; `TCPDUMP_SMB` ("possibly-buggy" per its own Config.in) deliberately left off |
+| `iperf3` | `iperf3` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name 'iperf*'` returns nothing (no iperf2 either). Added anyway: throughput measurement is how a WiFi driver change gets judged. Needs `BR2_TOOLCHAIN_HAS_ATOMIC`+`_THREADS`, both true |
+| `7zip` (**ours**, `package/7zip` — replaced `p7zip`) | `7zz` + `7za` alias, and a **static** `output/images/7za` payload artifact | **highest-priority archival tool** — MiSTer release archives are `.7z`, so on-device extraction was previously impossible. Upstream 7-Zip 26.02, not the dead-at-16.02 p7zip port Buildroot packages. The static payload copy ships to `/media/fat/linux/7za`, the path the Downloader hardcodes and otherwise fills by downloading **p7zip 16.02 (2016)** off the internet — [ADR 0023](decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md). Aliased from **both** `7za` and `7zr` — `7zr` because that is stock's only 7-Zip binary name and therefore the only one a script written against stock can call |
+| `zip` | `zip` | no dependencies; BusyBox has `unzip` but no `zip` applet of its own |
+| `lzop` | `lzop` | selects `LZO`, already on. Installs ONLY the `lzop` binary (verified against upstream 1.04's `Makefile.am`: `bin_PROGRAMS = src/lzop`, no `unlzop`/`lzopcat` symlinks) — does not collide with BusyBox's differently-named `unlzop`/`lzopcat` applets |
+| `dtc` `DTC_PROGRAMS` sub-option | `dtc`, `fdtget`, `fdtput`, `fdtdump`, `convert-dtsv0`, `dtdiff` | **`BR2_PACKAGE_DTC=y` had been library-only (`libfdt`) since P2.1** — `package/dtc/Config.in` says explicitly "only the library is installed... say 'y' to 'dtc programs', below." The `dtc` CLI itself had never actually shipped. Fixed in place next to the existing `BR2_PACKAGE_DTC=y` line |
+| `i2c-tools` | (already `=y`, P3.11) | listed in this task's Group 3, but **already fully enabled** with no gating sub-options — nothing to add |
+| `spi-tools` | `spi-config`, `spi-pipe` | no dependencies at all beyond host-side autoreconf |
+| `bluez-tools` | `bt-adapter`, `bt-agent`, `bt-device`, `bt-network`, `bt-obex` | every one of its `select`s (`DBUS`, `DBUS_GLIB`, `LIBGLIB2`, `READLINE`) was already on — genuinely zero marginal dependency cost. **Independent of** stock's vendored `usr/sbin/btctl`/`btpair` (T3, `docs/stock-reconciliation.md` §3c): those are dbus-python + PyGObject talking to `bluetoothd` directly, not wrappers around these CLI tools — two separate Bluetooth control paths that happen to ship together |
+| `kbd` | `loadkeys`, `setfont`, `showkey`, `dumpkeys`, `chvt`, `deallocvt`, `openvt`, `setkeycodes`, `kbd_mode`, `psfxtable`, `fgconsole`, `kbdrate`, `kbdinfo`, `setvtrgb`, `mapscrn`, `loadunimap`, `setleds`, `setmetamode`, `unicode_start`/`unicode_stop` | the SAME upstream package stock's own loadkeys/setfont/showkey/dumpkeys came from. T3 (2026-07-27) had already vendored `etc/kbd.map` and restored the guarded inittab lines in anticipation of this landing (`docs/stock-reconciliation.md` §3c). **Collides with FOUR BusyBox applets already on** — `chvt`, `deallocvt`, `openvt`, `setkeycodes` — all four disabled in `busybox.fragment`. Also installs kbd's own full `consolefonts`/`keymaps`/`consoletrans`/`unimaps` data trees as an unconditional side effect (§5's zoneinfo/consolefonts row, updated) |
+
+**Explicitly REJECTED** (not gaps missed — see the updated §5 rows for full
+reasoning): `perl`, `vim`, `screen`, target `gdb`, `ltrace`, `unrar`.
+
+**BusyBox-applet collisions found and fixed** (real packages above vs.
+BusyBox applets that were already on): `lsof`, `lsusb`, `mkdosfs`, `chvt`,
+`deallocvt`, `openvt`, `setkeycodes` — all seven disabled in
+`board/mister/de10nano/busybox.fragment`, same non-deterministic
+"last-install-wins" hazard that file's own ifup/ifdown and util-linux blocks
+already document, same fix. `scripts/ci-tests.sh` §"T5" asserts the real
+package won each one, not just that the path is present.
 
 ---
 
@@ -683,9 +816,11 @@ image (PLAN §11/P2.7). A modern package set will not shrink on its own
 | `rtorrent` + `libtorrent` (rakshasa) | binary + lib | nothing in MiSTer's ecosystem uses a BitTorrent client on-device; the SONAME has also drifted past stock's `.so.21` in this version range (Debian ships `libtorrent27` for 0.15.7) so it isn't even a clean 1:1 carry-forward | drop |
 | Samba AD DC/ADS (`BR2_PACKAGE_SAMBA4_AD_DC`, `_ADS`) | ~ several MB of python/jansson/openldap deps, per samba4's own `SAMBA4_DEPENDENCIES` gating | MiSTer is a standalone SMB file server, never a domain controller or AD member; leave both sub-options **off** | space + attack-surface reduction |
 | `python3.9/` site-packages weight (largest single `/usr/lib` consumer per `disk-usage.md`) | 35.84 MiB | not a drop of the interpreter itself (needed, A6) | P3.9/P2.7 should audit which stock-bundled *site-packages* (if any beyond stdlib) are actually MiSTer-specific vs. generic distro cruft, and whether Buildroot's `python3` install-strip options (`.pyc` optimization, docstring stripping — both selectable in `python3.mk`) are enabled |
-| `perl5/` (1484 files) | 27.48 MiB | stock's own init/service scripts are all shell, not Perl — no known MiSTer-specific Perl dependency | audit whether anything MiSTer-specific needs Perl at all; if nothing does, this is the single largest pure-drop candidate in the image — flag for P2.1/P2.7 to verify no hidden Perl dependency (e.g. some util-linux or e2fsprogs helper script) before cutting |
-| `vim`, `zsh`, `joe`, `mc` (Midnight Commander), `screen`, `gdb` | ~15 MiB combined (vim 9.13, zsh 4.22, joe 0.3+0.28, mc 1.1+1.1, screen 0.27, gdb 0.4) | interactive power-user shell tools with no MiSTer-specific role; BusyBox's `vi`/`ash` cover the minimum needed for on-device editing/debugging | **RESOLVED (2026-07-14):** `joe` and `nano` are now **enabled** (`BR2_PACKAGE_JOE=y`, `BR2_PACKAGE_NANO=y`) — people SSH in to edit `wpa_supplicant.conf`/`MiSTer.ini`, and BusyBox `vi` is a hostile way to do that. Note `nano` is also in stock (`binaries-needed-full.txt:218`) and was missing from this row. `vim`, `zsh`, `mc`, `screen` remain **off** — `vim` is the heavy one, though its `libgpm` dep is already satisfied (`BR2_PACKAGE_GPM=y`) if full parity is later wanted. **`gdb` is no longer off** (2026-07-21): it is enabled, with gdbserver and the full debugger, by the temporary `DEBUG TOOLING` block — see `docs/debug-tooling.md`. That is *not* a reversal of this row's reasoning (gdb still has no MiSTer-specific role in a shipping image); it is a debugging branch that reverts as one unit, and this row goes back to reading "off" when it does |
-| `/usr/share/zoneinfo` full tzdata, `/usr/share/consolefonts`+`/usr/share/keymaps` | ~2.6 MiB (zoneinfo 1.57, fonts+keymaps ~1) | stock's `/timezone` is fixed to `Etc/UTC` anyway; console fonts/keymaps beyond the one stock actually uses are unused | **RESOLVED (2026-07-14) — zoneinfo is now ENABLED (`BR2_TARGET_TZ_INFO=y`, zonelist `default`), reversing the trim.** This row's own caveat is exactly what bit: tzdata was never enabled, so the image shipped with **no `/usr/share/zoneinfo` at all** and no `TZ=` value could resolve. The "stock is fixed to `Etc/UTC` anyway" premise was also wrong — it conflated `/etc/timezone` (a label, indeed `Etc/UTC`) with `/etc/localtime` (the file glibc actually reads), which in stock is a **symlink to `/media/fat/linux/timezone`** on the FAT data partition. That indirection is stock's timezone-*persistence* mechanism: the rootfs is reflashed wholesale on update, so a timezone stored inside it cannot survive. We now ship that same symlink from the rootfs-overlay (it deliberately overwrites the `../usr/share/zoneinfo/Etc/UTC` symlink `BR2_TARGET_LOCALTIME` installs, which would NOT persist). Stock's zoneinfo is plain Buildroot tzdata at the default zonelist (both `posix/` and `right/` subtrees present), so this is a 1:1 reproduction, not a judgement call. Guarded by `scripts/ci-tests.sh` §"Timezone parity". `consolefonts`/`keymaps` remain **off**. ⚠️ **The 1.57 MiB in the Size column understates the real image cost by ~3×.** It is the *apparent* size (sum of file bytes, 1,642,867 B — the units `disk-usage.md` reports). On the ext4 image, zoneinfo's 1,191 mostly-tiny zone files each round up to a 4 KiB block, so actual *block* usage is ~4.9 MB. For size-budget decisions against the fixed 512 MiB image, use block usage, not the byte column — this gap applies to any many-small-files directory in that table. Either way it is not a concern here: ~290 MB of the image is free. |
+| `perl5/` (1484 files) | 27.48 MiB | stock's own init/service scripts are all shell, not Perl — no known MiSTer-specific Perl dependency | audit whether anything MiSTer-specific needs Perl at all; if nothing does, this is the single largest pure-drop candidate in the image — flag for P2.1/P2.7 to verify no hidden Perl dependency (e.g. some util-linux or e2fsprogs helper script) before cutting. **REJECTED by maintainer decision, not just deferred (T5, 2026-07-27):** the still-open "verify no hidden Perl dependency" audit this row calls for was **not** re-run as part of T5 (out of scope for a utility-binaries pass) — this is a scope decision, not a completed audit: anyone who needs Perl on-device can build their own image from this repo, so Perl stays off regardless of what a future audit would find. If a hidden Perl dependency is ever found, that is a bug in the *dependent* to fix, not a reason to reopen this row. |
+| `vim`, `zsh`, `joe`, `mc` (Midnight Commander), `screen`, `gdb` | ~15 MiB combined (vim 9.13, zsh 4.22, joe 0.3+0.28, mc 1.1+1.1, screen 0.27, gdb 0.4) | interactive power-user shell tools with no MiSTer-specific role; BusyBox's `vi`/`ash` cover the minimum needed for on-device editing/debugging | **RESOLVED (2026-07-14):** `joe` and `nano` are now **enabled** (`BR2_PACKAGE_JOE=y`, `BR2_PACKAGE_NANO=y`) — people SSH in to edit `wpa_supplicant.conf`/`MiSTer.ini`, and BusyBox `vi` is a hostile way to do that. Note `nano` is also in stock (`binaries-needed-full.txt:218`) and was missing from this row. `vim`, `zsh`, `screen` remain **off** — `vim` is the heavy one, though its `libgpm` dep is already satisfied (`BR2_PACKAGE_GPM=y`) if full parity is later wanted. **`mc` is no longer off (T3, 2026-07-27):** the "no MiSTer-specific role" premise was wrong for mc specifically — stock *wires its media/core helpers into mc* (`addon.tar` overlays `etc/mc/mc.ext` with `.rbf`-loads-core / vhd_mount / m3u_play handlers, ships a MiSTer skin, and `usr/bin/timidity` reads mc's `$MC_EXT_SELECTED`), so mc is the UI those §3c helpers were written for; `BR2_PACKAGE_MC=y` with the ported config set, see `docs/stock-reconciliation.md` §3c. **`gdb` is no longer off** (2026-07-21): it is enabled, with gdbserver and the full debugger, by the temporary `DEBUG TOOLING` block — see `docs/debug-tooling.md`. That is *not* a reversal of this row's reasoning (gdb still has no MiSTer-specific role in a shipping image); it is a debugging branch that reverts as one unit, and this row goes back to reading "off" when it does. **T5 (2026-07-27) re-confirms `vim`, `screen` and target `gdb` stay off, each for its own reason, independently of the above:** `screen` specifically because `tmux` (`BR2_PACKAGE_TMUX=y`, docs §4c below) was added as this image's terminal multiplexer — the two overlap completely, and only one is wanted. `vim` because BusyBox `vi` plus the already-enabled `nano` are judged sufficient for on-device editing; `vim`'s own `libgpm` prerequisite is still satisfied if that call is ever revisited. Target `gdb` (as opposed to `gdbserver`) specifically because host `gdb` + `gdbserver` cross-debugging is judged the better shape for this project and a target debugger is 4-8 MB — this is a *permanent* call about the package manifest, not in tension with the temporary `DEBUG TOOLING` block still shipping one for the open RT-latency work; when that block is deleted (`docs/debug-tooling.md` §5), this row's "off" becomes true again with no further edit needed here. `ltrace` and `unrar` were also considered and rejected in the same T5 pass — see the new row below, they were never listed in this table before. |
+| `ltrace` | small-to-medium (target ltrace + its ELF/dwarf parsing libs) | narrow tool, with a longstanding, well-documented upstream limitation of being frequently broken on ARM (not specific to this toolchain); `strace` (now permanently enabled, docs §4c below) supersedes what this image needs from it | **REJECTED (T5, 2026-07-27):** not added |
+| `unrar` (RARLAB, non-free licence) | small | non-free licence, avoided on principle (the "rule G6" this row used to cite is about not committing binaries to git — PLAN.md §2 — not licensing; corrected 2026-07-27); not needed anyway — MiSTer release archives are `.7z`, not `.rar`, and `7zip`/`7zz` (docs §4c below) closes the archive-extraction gap. `7zz` additionally brings RAR/RAR5 **extraction** along under LGPL-2.1+ with the unRAR restriction, which is a far weaker thing than vendoring RARLAB's own binary (ADR 0023 §5) | **REJECTED (T5, 2026-07-27):** not added, non-free licence is the primary reason independent of need |
+| `/usr/share/zoneinfo` full tzdata, `/usr/share/consolefonts`+`/usr/share/keymaps` | ~2.6 MiB (zoneinfo 1.57, fonts+keymaps ~1) | stock's `/timezone` is fixed to `Etc/UTC` anyway; console fonts/keymaps beyond the one stock actually uses are unused | **RESOLVED (2026-07-14) — zoneinfo is now ENABLED (`BR2_TARGET_TZ_INFO=y`, zonelist `default`), reversing the trim.** This row's own caveat is exactly what bit: tzdata was never enabled, so the image shipped with **no `/usr/share/zoneinfo` at all** and no `TZ=` value could resolve. The "stock is fixed to `Etc/UTC` anyway" premise was also wrong — it conflated `/etc/timezone` (a label, indeed `Etc/UTC`) with `/etc/localtime` (the file glibc actually reads), which in stock is a **symlink to `/media/fat/linux/timezone`** on the FAT data partition. That indirection is stock's timezone-*persistence* mechanism: the rootfs is reflashed wholesale on update, so a timezone stored inside it cannot survive. We now ship that same symlink from the rootfs-overlay (it deliberately overwrites the `../usr/share/zoneinfo/Etc/UTC` symlink `BR2_TARGET_LOCALTIME` installs, which would NOT persist). Stock's zoneinfo is plain Buildroot tzdata at the default zonelist (both `posix/` and `right/` subtrees present), so this is a 1:1 reproduction, not a judgement call. Guarded by `scripts/ci-tests.sh` §"Timezone parity". `consolefonts`/`keymaps` no longer read simply **off** as of **T5 (2026-07-27)**: `BR2_PACKAGE_KBD=y` (docs §4c below) installs its *own* `/usr/share/consolefonts` and `/usr/share/keymaps` trees as an unconditional side effect of `kbd`'s `install-data-hook` (kbd-2.9.0 `data/Makefile.am:73` runs `install-keymaps install-consolefonts install-consoletrans install-unimaps` together, no knob to install only one) — not because this row's trim call was reversed on purpose the way zoneinfo's was. That is real, previously-absent data (~5.5 MiB uncompressed source across the four trees, smaller once gzip'd at build time per kbd's own `--enable-compress=auto` default; not measured against a real build for this task — see the defconfig's own `BR2_PACKAGE_KBD` comment). Either way this is not a size concern, just a correction to what this row claims ships: `./scripts/check-size-budget.sh output/images/linux.img` on the last built image reports **512 MiB total, 290 MiB used, 222 MiB free (43.4%)** against the 15% threshold, so the full uncompressed worst case is ~2.5% of the headroom. (That measurement predates T3/T5's ~21 new packages, so real free space after they land is lower — re-run the script after the next real build.) ⚠️ **The 1.57 MiB in the Size column understates the real image cost by ~3×.** It is the *apparent* size (sum of file bytes, 1,642,867 B — the units `disk-usage.md` reports). On the ext4 image, zoneinfo's 1,191 mostly-tiny zone files each round up to a 4 KiB block, so actual *block* usage is ~4.9 MB. For size-budget decisions against the fixed 512 MiB image, use block usage, not the byte column — this gap applies to any many-small-files directory in that table. Either way it is not a concern here: **222 MiB (43.4%) of the 512 MiB image is free** — 290 MiB is the *used* half of that split, per `scripts/check-size-budget.sh`, and an earlier revision of this row and of the defconfig's `BR2_PACKAGE_KBD` comment had the two swapped. |
 
 **Not recommended to drop** (tempting by size, but load-bearing): `python3.9/`
 stdlib itself (A6), `samba/` core (15.4 MiB, the actual file-server), `gconv/`
@@ -856,9 +991,10 @@ BR2_PACKAGE_NTP=y                             # classic ntpd, matches stock -- N
 BR2_PACKAGE_CIFS_UTILS=y
 BR2_PACKAGE_NFS_UTILS=y
 BR2_PACKAGE_RSYNC=y
-BR2_PACKAGE_BUSYBOX=y                         # 1.37.0, always on; stock parity for the
-                                              # 274-applet set is a P2.3 config concern, not
-                                              # a package-selection one
+BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybox.mk:7),
+                                              # always on; parity with STOCK's 274-applet
+                                              # set (stock runs 1.33.1) is a P2.3 config
+                                              # concern, not a package-selection one
 
 # --- explicitly NOT carried forward (Drop list, section 5) ---
 #   archivemount (broken in stock; its deps libarchive/libfuse ARE kept above for others)

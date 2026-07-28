@@ -1,0 +1,102 @@
+#!/bin/bash
+
+color=$2
+scale=-1
+width=-1
+height=-1
+case $1 in
+  f)
+	scale=1;
+    ;;
+
+  h)
+	scale=2;
+    ;;
+
+  t)
+	scale=3;
+    ;;
+
+  q)
+	scale=4;
+    ;;
+
+  -r)
+	width=$2
+	height=$3
+	color=$4
+    ;;
+
+  *)
+	echo "usage:"
+	echo "	a) vmode scale format"
+	echo "	b) vmode -r width height format"
+	echo
+	echo "       scale  : f - full resolution, h - half, t - one third, q - quarter"
+	echo "       format : rgb32, bgr32, rgb15, bgr15, rgb16, bgr16, idx8"
+	echo
+	exit 0
+    ;;
+esac
+
+fmt=-1
+rb=-1
+case $color in
+  rgb32)
+	fmt=8888
+	rb=1
+    ;;
+
+  rgb15)
+	fmt=1555
+	rb=1
+    ;;
+
+  rgb16)
+	fmt=565
+	rb=1
+    ;;
+
+  bgr32)
+	fmt=8888
+	rb=0
+    ;;
+
+  bgr15)
+	fmt=1555
+	rb=0
+    ;;
+
+  bgr16)
+	fmt=565
+	rb=0
+    ;;
+
+  idx8)
+	fmt=8
+	rb=0
+    ;;
+
+  *)
+	echo "error: unknown format"
+	exit 0
+    ;;
+esac
+
+rescnt=$(cat /sys/module/MiSTer_fb/parameters/res_count)
+
+if [ $width == -1 ]; then
+	echo fb_cmd0 $fmt $rb $scale >/dev/MiSTer_cmd
+else
+	echo fb_cmd1 $fmt $rb $width $height >/dev/MiSTer_cmd
+fi
+
+#wait for confirmation but give up after several tries
+[ $rescnt == $(cat /sys/module/MiSTer_fb/parameters/res_count) ] && usleep 100000 || exit 1
+[ $rescnt == $(cat /sys/module/MiSTer_fb/parameters/res_count) ] && usleep 100000 && echo -n . || exit 1
+[ $rescnt == $(cat /sys/module/MiSTer_fb/parameters/res_count) ] && usleep 100000 && echo -n .
+[ $rescnt == $(cat /sys/module/MiSTer_fb/parameters/res_count) ] && usleep 100000 && echo -n .
+[ $rescnt == $(cat /sys/module/MiSTer_fb/parameters/res_count) ] && usleep 100000 && echo -n . failed!
+echo
+
+exit 1

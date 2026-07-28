@@ -9,8 +9,9 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Four REFRESH cases: (1) the 12 github-sourced package pins, (2) the kernel
-# tarball hash, (3) the bespoke lzma-sdk release-asset hash, (4) the sdcard
+# Four REFRESH cases: (1) the 13 github-sourced package pins, (2) the kernel
+# tarball hash, (3) the bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
+# 7zip -- one step, two packages, same upstream asset), (4) the sdcard
 # payload single-file pins. Why a locally-computed sha256sum is a legitimate
 # source for each of these (not a shortcut):
 # docs/ci.md#renovate-hash-sync-safety-model.
@@ -69,8 +70,21 @@ on:
       - "package/rtl8188fu/rtl8188fu.mk"
       - "package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.mk"
       - "package/rtl88x2bu/rtl88x2bu.mk"
+      # v10.2: the one out-of-tree WiFi driver the image actually ships
+      # (ADR 0016). This list is a second, independent allow-list from
+      # HASH_SYNC_PACKAGES below and BOTH must name a package: missing here,
+      # the pull_request event is filtered out and this workflow never runs at
+      # all on the bump PR -- no skipped job, no red X, no outcome row, just a
+      # stale hash nobody was told about.
+      - "package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk"
       - "package/xone/xone.mk"
       - "package/midilink/midilink.mk"
+      # ADR 0023: 7-Zip, which pins the SAME ip7z/7zip release asset
+      # package/lzma-sdk does. Renovate raises ONE PR touching both .mk files
+      # (shared depName "ip7z/7zip"), and step 3 refreshes both .hash files --
+      # but only if this path filter lets the event through. Same silent-failure
+      # note as rtl8852cu-morrownr above applies.
+      - "package/7zip/7zip.mk"
       - "package/munt/munt.mk"
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
       - "package/libchdr/libchdr.mk"
@@ -126,10 +140,25 @@ jobs:
       # docs/ci.md#renovate-hash-sync-outcomes-gate.
       HASH_SYNC_OUTCOMES_FILE: hash-sync-outcomes-${{ github.run_id }}-${{ github.run_attempt }}.tsv
 
-      # Single source of truth for the 12 github-sourced package pins -- shared
+      # Single source of truth for the 13 github-sourced package pins -- shared
       # by step 1's loop and the job-summary gate's pin roster so they can't
       # drift apart. See docs/ci.md#renovate-hash-sync-outcomes-gate.
-      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu xone midilink munt bcm20702-firmware libchdr"
+      #
+      # This is an explicit ALLOW-LIST, not auto-discovery:
+      # scripts/hash-sync-github-packages.sh iterates over exactly this string
+      # and never scans package/*/*.mk, so a package left out is skipped with
+      # no outcome row at all -- its Renovate PR would bump <PKG>_VERSION and
+      # leave the OLD tarball's sha256 in the .hash, and the build then fails
+      # with a Buildroot hash mismatch that reads like a tampered upstream
+      # commit rather than missing CI wiring. Adding an entry here is not
+      # enough on its own: the same .mk must also appear in the `paths:`
+      # trigger above or the workflow never fires.
+      #
+      # rtl8852cu-morrownr (v10.2) fits the generic loop with no bespoke step:
+      # $(call github,morrownr,rtl8852cu-20251113,$(VERSION)) and a cached
+      # tarball named dl/rtl8852cu-morrownr/rtl8852cu-morrownr-<sha>.tar.gz,
+      # i.e. the <package-dir>-<VERSION>.tar.gz shape the loop assumes.
+      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so
@@ -237,16 +266,24 @@ jobs:
       - name: Refresh kernel tarball hash from kernel.org's signed manifest
         run: .hash-sync-tools/scripts/hash-sync-kernel.sh "$GITHUB_WORKSPACE"
 
-      # --- 3. lzma-sdk release-asset tarball hash ----------------------------
-      # Bespoke, NOT part of step 1's generic loop: lzma-sdk's tarball is a
-      # release ASSET, not a commit/tag archive, and its filename derives from
-      # the version with the dots stripped (26.02 -> 7z2602-src.tar.xz). Only
-      # the FIRST sha256 line is rewritten. See
+      # --- 3. ip7z/7zip release-asset tarball hashes --------------------------
+      # Bespoke, NOT part of step 1's generic loop: these tarballs are release
+      # ASSETS, not commit/tag archives, and the filename derives from the
+      # version with the dots stripped (26.02 -> 7z2602-src.tar.xz). Only the
+      # FIRST sha256 line of each .hash is rewritten. See
       # docs/ci.md#companion-hash-first-line-only. Runs from the
       # .hash-sync-tools checkout against the target branch's tree; see step
       # 1's comment.
-      - name: Refresh lzma-sdk release-asset tarball hash
-        run: .hash-sync-tools/scripts/hash-sync-lzma-sdk.sh "$GITHUB_WORKSPACE"
+      #
+      # TWO packages now, not one (ADR 0023): package/lzma-sdk (liblzma-sdk.so
+      # from the archive's C/ dir) and package/7zip (the 7zz application + the
+      # static /media/fat/linux/7za). The script is table-driven over both and
+      # sets LZMA_SDK_HASH_CHANGED and SEVENZIP_HASH_CHANGED -- the latter is
+      # spelled out rather than "7ZIP_..." because an env var cannot start with
+      # a digit. Renamed from hash-sync-lzma-sdk.sh 2026-07-27 for the same
+      # reason the step title changed: it is no longer one package's case.
+      - name: Refresh ip7z/7zip release-asset tarball hashes (lzma-sdk, 7zip)
+        run: .hash-sync-tools/scripts/hash-sync-ip7z-src.sh "$GITHUB_WORKSPACE"
 
       # --- 4. SD-card payload single-file pins -------------------------------
       # Pins update_all.sh + wifi.sh only, by commit AND sha256+size;
@@ -297,7 +334,8 @@ jobs:
       - name: Commit and push hash refresh, if anything changed
         if: >
           (env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
-           env.LZMA_SDK_HASH_CHANGED == '1' || env.PAYLOAD_HASH_CHANGED == '1') &&
+           env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
+           env.PAYLOAD_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail

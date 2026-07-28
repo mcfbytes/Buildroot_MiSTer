@@ -1598,6 +1598,22 @@ row in the same manifest (`host-*` build-time packages, virtuals) are dropped
 from the edge list rather than emitted as purls the snapshot never defines;
 `scripts/sbom-to-dependency-snapshot.py` reports the count on stderr.
 
+**Where the converter is tested.** `release.yml` only exercises it on a tag,
+and `scripts/ci-tests.sh` asserts against *built artifacts* — neither can
+reach a pure function over a CSV. So the script carries its own
+`--self-test` (inline fixture manifest, asserted through the real
+`load_manifest` → `build_manifest_entry` path) and `lint.yml` runs it, which
+puts the failure on the PR that changes the script instead of on a release
+months later. It covers the decisions a plausible "simplification" would
+silently break: the `DEPENDENCIES` column is parsed by bracket depth rather
+than a whitespace split (license text contains spaces, commas and parens),
+purl segments are percent-encoded (a Buildroot version can carry `/`), a row
+naming itself does not self-loop, a repeated edge is emitted once, and the
+format guard *raises* on a changed header instead of shrugging. Missing-key
+lookups report as failed checks rather than aborting the run with a
+`KeyError`, so a purl-scheme regression — which changes every key — still
+prints the check that explains it.
+
 `job.correlator` is the hardcoded literal `release_buildroot-sbom`, **not**
 `${{ github.workflow }}_${{ github.job }}`. GitHub keeps only the newest
 snapshot per `(job.correlator, detector.name)` pair, so every release must

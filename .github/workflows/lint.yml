@@ -112,3 +112,14 @@ jobs:
         run: |
           set -euo pipefail
           scripts/shellcheck-composite-actions.sh
+
+      # The SBOM -> dependency-snapshot conversion is pure logic over a CSV,
+      # so nothing else in this repo can reach it: ci-tests.sh asserts
+      # against BUILT artifacts, and release.yml only exercises this on a
+      # tag. Its own --self-test runs here instead -- cheap, and it lands on
+      # the PR that changes the script rather than on a release months
+      # later. See docs/ci.md#dependency-graph-submission.
+      - name: SBOM converter self-test (scripts/sbom-to-dependency-snapshot.py)
+        run: |
+          set -euo pipefail
+          python3 scripts/sbom-to-dependency-snapshot.py --self-test

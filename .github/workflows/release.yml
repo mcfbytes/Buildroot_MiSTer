@@ -933,7 +933,12 @@ jobs:
                  --input "$RUNNER_TEMP/dependency-snapshot.json" \
                  > "$resp" 2> "$err"; then
             echo "::error::POST /repos/${GH_REPO}/dependency-graph/snapshots failed. A 403 usually means the dependency graph is disabled for this repository (Settings -> Advanced Security -> Dependency graph); a 404 means the endpoint is unavailable for this repository type." >&2
+            # BOTH streams: `gh api` writes its own "(HTTP 4xx)" line to
+            # stderr but the API's JSON error body -- the part that says WHY,
+            # e.g. a per-field validation message -- to stdout, which is
+            # captured in $resp. Printing only stderr throws that away.
             sed 's/^/    /' "$err" >&2 || true
+            sed 's/^/    /' "$resp" >&2 || true
             exit 1
           fi
           cat "$resp"
@@ -976,11 +981,11 @@ jobs:
           {
             echo "## 🧾 SBOM published to the dependency graph"
             echo ""
-            echo "| | |"
+            echo "| Fact | Value |"
             echo "|---|---|"
-            echo "| Submitted under ref | \`${REF:-<unresolved>}\` |"
-            echo "| API result | ${OUTCOME} |"
-            echo "| API message | ${MESSAGE:-<none>} |"
+            echo "| Submitted under ref | \`${REF:-n/a}\` |"
+            echo "| Submit step outcome | ${OUTCOME:-n/a} |"
+            echo "| API message | ${MESSAGE:-n/a} |"
             echo ""
             echo "Packages per manifest:"
             echo ""

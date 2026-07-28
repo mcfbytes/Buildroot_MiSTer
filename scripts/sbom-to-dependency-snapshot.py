@@ -147,7 +147,10 @@ def purl_for(name, version):
 def load_manifest(path):
     """Read one Buildroot manifest.csv into {package name: row dict}."""
     try:
-        with open(path, newline="", encoding="utf-8") as fh:
+        # utf-8-sig, not utf-8: a stray BOM would otherwise land inside the
+        # first field name and turn a perfectly good manifest into the
+        # "columns changed" error below, which points at the wrong problem.
+        with open(path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None:
                 raise ManifestError(f"{path}: file is empty (no header row)")
@@ -249,9 +252,179 @@ def build_manifest_entry(name, path):
     return {"name": name, "resolved": resolved}
 
 
+# A manifest.csv exercising every parsing decision this file makes, so the
+# checks below are asserted against the real code path (load_manifest ->
+# build_manifest_entry) rather than against the helpers in isolation:
+#   busybox    -- ordinary row; depends on a package that is NOT in the file
+#                 (host-pkgconf, via skeleton) and on two that are
+#   skeleton   -- empty VERSION (versionless purl) and a host-* edge to drop
+#   weird+pkg  -- '+' in the name and '/' in the version (both must encode),
+#                 a LICENSE full of commas/parens, and a duplicated edge
+#   toolchain  -- no dependencies at all
+#   self-dep   -- names ITSELF as a dependency (must not self-loop)
+SELF_TEST_CSV = """\
+"PACKAGE","VERSION","LICENSE","LICENSE FILES","SOURCE ARCHIVE","SOURCE SITE","DEPENDENCIES WITH LICENSES"
+"busybox","1.37.0","GPL-2.0","LICENSE","busybox-1.37.0.tar.bz2","https://busybox.net","skeleton [unknown] toolchain [unknown]"
+"skeleton","","unknown","","","","host-pkgconf [GPL-2.0+]"
+"weird+pkg","1.0/beta","MIT, BSD-3-Clause (foo, bar)","LICENSE","x.tar.gz","https://example.com","busybox [GPL-2.0] busybox [GPL-2.0]"
+"toolchain","","unknown","","","",""
+"self-dep","2.0","MIT","","","","self-dep [MIT] busybox [GPL-2.0]"
+"""
+
+
+def self_test():
+    """Assert the conversion's parsing decisions. Returns 0 or 1.
+
+    There is no pytest harness in this repo (see scripts/ci-tests.sh, which is
+    a shell suite over BUILT artifacts and cannot reach a pure function), and
+    every rule checked here is one a plausible "simplification" would silently
+    break -- splitting the DEPENDENCIES column on whitespace, dropping the
+    percent-encoding, treating every row as `direct`. `lint.yml` runs this.
+    """
+    import tempfile
+
+    failures = []
+
+    def check(label, got, want):
+        if got != want:
+            failures.append(f"{label}\n     got:  {got!r}\n     want: {want!r}")
+
+    # Bracket-depth parsing: license text carries commas, parens and spaces,
+    # so neither a whitespace nor a comma split can recover the names.
+    check(
+        "license text with commas/parens is not mistaken for package names",
+        parse_dependency_names(
+            "glibc [GPL-2.0+ (programs), LGPL-2.1+, BSD-3-Clause, MIT (library)] "
+            "linux-headers [GPL-2.0]"
+        ),
+        ["glibc", "linux-headers"],
+    )
+    check("a bare (licenseless) name still parses", parse_dependency_names("foo"), ["foo"])
+    check("an empty cell yields no names", parse_dependency_names(""), [])
+
+    check("plain purl", purl_for("busybox", "1.37.0"), "pkg:generic/busybox@1.37.0")
+    check(
+        "empty version yields a versionless purl",
+        purl_for("skeleton", ""),
+        "pkg:generic/skeleton",
+    )
+    check(
+        "'+' and '/' are percent-encoded in both segments",
+        purl_for("weird+pkg", "1.0/beta"),
+        "pkg:generic/weird%2Bpkg@1.0%2Fbeta",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "manifest.csv"
+        csv_path.write_text(SELF_TEST_CSV, encoding="utf-8")
+        entry = build_manifest_entry("t", str(csv_path))
+        resolved = entry["resolved"]
+
+        # Never index `resolved` directly: a regression in the purl scheme
+        # changes every KEY, and a bare `resolved[...]` would then abort the
+        # run with a KeyError traceback -- losing the checks after it AND the
+        # already-recorded purl failure that explains the whole thing. Report
+        # a missing key as a failed check like any other.
+        def field(purl, *path):
+            if purl not in resolved:
+                return f"<no resolved entry keyed {purl}>"
+            node = resolved[purl]
+            for key in path:
+                if not isinstance(node, dict) or key not in node:
+                    return f"<{purl} has no {'.'.join(path)}>"
+                node = node[key]
+            return node
+
+        check("every row becomes one resolved entry", len(resolved), 5)
+        check(
+            "resolved is keyed by each entry's own package_url",
+            sorted(resolved),
+            sorted(e["package_url"] for e in resolved.values()),
+        )
+
+        rel = {k: v["relationship"] for k, v in resolved.items()}
+        check(
+            "only packages nothing else depends on are direct",
+            sorted(k for k, v in rel.items() if v == "direct"),
+            ["pkg:generic/self-dep@2.0", "pkg:generic/weird%2Bpkg@1.0%2Fbeta"],
+        )
+        check(
+            "a self-naming row does not become its own dependency",
+            field("pkg:generic/self-dep@2.0", "dependencies"),
+            ["pkg:generic/busybox@1.37.0"],
+        )
+        check(
+            "a repeated edge is emitted once",
+            field("pkg:generic/weird%2Bpkg@1.0%2Fbeta", "dependencies"),
+            ["pkg:generic/busybox@1.37.0"],
+        )
+        check(
+            "an edge naming a package absent from this manifest is dropped",
+            field("pkg:generic/skeleton", "dependencies"),
+            [],
+        )
+        check(
+            "metadata carries the license verbatim, commas and all",
+            field("pkg:generic/weird%2Bpkg@1.0%2Fbeta", "metadata", "license"),
+            "MIT, BSD-3-Clause (foo, bar)",
+        )
+        check(
+            "a row with no source site records no source_site key",
+            "source_site" in resolved.get("pkg:generic/toolchain", {}).get("metadata", {}),
+            False,
+        )
+        check(
+            "every entry is runtime-scoped",
+            {v["scope"] for v in resolved.values()},
+            {"runtime"},
+        )
+
+        # A second run over the same input must be byte-identical: the graph
+        # is submitted per release and a spurious diff is noise.
+        check("output is deterministic", build_manifest_entry("t", str(csv_path)), entry)
+
+        # The format guard has to fire on a changed header, not shrug at it.
+        for label, body in (
+            ("empty file", ""),
+            ("wrong columns", '"PACKAGE","VERSION"\n"a","1"\n'),
+            ("header but no rows", SELF_TEST_CSV.splitlines()[0] + "\n"),
+        ):
+            bad = Path(tmp) / "bad.csv"
+            bad.write_text(body, encoding="utf-8")
+            try:
+                build_manifest_entry("bad", str(bad))
+            except ManifestError:
+                pass
+            else:
+                failures.append(f"{label} was accepted; expected ManifestError")
+
+    if failures:
+        for f in failures:
+            print(f"::error::self-test: {f}", file=sys.stderr)
+        print(f"self-test FAILED ({len(failures)} check(s))", file=sys.stderr)
+        return 1
+    print("self-test OK", file=sys.stderr)
+    return 0
+
+
 def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    # Checked BEFORE argparse, deliberately: --self-test needs none of the
+    # six required arguments below, and the alternative (making all six
+    # conditionally required) means hand-rolling argparse's own "the
+    # following arguments are required" errors for the normal path. Any
+    # other argument passed alongside --self-test is ignored.
+    if "--self-test" in argv:
+        return self_test()
+
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run the built-in conversion checks and exit; ignores every other argument",
     )
     ap.add_argument(
         "--manifest",

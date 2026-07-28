@@ -673,9 +673,11 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   task.** Redistribute `xow_dongle.bin` for stock parity, sourced fresh from Microsoft's own
   official driver `.cab` (Windows Update CDN) at **build time**, hash-pinned at both the
   `.cab` and the extracted-firmware-blob layer, **never committed to git** (G6). New packages:
-  `package/cabextract` (host-only, from cabextract.org.uk upstream, same author/site as this
-  tree's existing `libmspack`) and `package/xow-firmware` (fetches, extracts, double-hash-
-  verifies, installs). Installed under **two names**: `xow_dongle.bin` (stock's literal
+  `package/cabextract` (host-only, cabextract.org.uk's release — same author/site as this
+  tree's existing `libmspack` — but fetched from Fedora's lookaside cache, since the origin
+  is unreachable from CI often enough to break the build) and `package/xow-firmware`
+  (fetches, extracts, double-hash-verifies, installs).
+  Installed under **two names**: `xow_dongle.bin` (stock's literal
   filename, byte-for-byte parity — 70,620 bytes, matches `docs/stock-inventory/firmware.md`
   exactly) **and** a symlinked `xone_dongle_02fe.bin` (what the *actual driver packaged here*
   requests at runtime — `dlundqvist/xone` moved to a per-PID firmware-naming scheme stock's

@@ -353,6 +353,10 @@ publishes no build recipe.
 - **Full SBOM.** Every release ships `legal-info.tar.gz`: `manifest.csv` (package,
   version, license, upstream URL), license texts, and the upstream source tarball of
   every package conveyed — the GPL accompanying-source obligation, discharged properly.
+  The same manifest is submitted to GitHub's dependency graph on release, so the package
+  list is browsable at
+  [Insights → Dependency graph](https://github.com/mcfbytes/Buildroot_MiSTer/network/dependencies)
+  without downloading anything ([`docs/ci.md#dependency-graph-submission`](docs/ci.md#dependency-graph-submission)).
 - **Provenance attestation** on the release images.
 - **No binaries in git. Ever.** Firmware, payloads, and stock blobs are fetched at build
   time, pinned by commit or release **and** hash.

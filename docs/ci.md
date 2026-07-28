@@ -483,8 +483,8 @@ skipped step's outputs read as empty strings, which is what the combined
 ### Variant dl/ fallback to main
 
 A kernel variant's `dl/` restore (#2b) uses its own name-derived key, not
-main's: a variant config needs sources main never fetches (e.g. RT's 7.2-rc3
-kernel snapshot), and cache keys are immutable — under a shared key,
+main's: a variant config needs sources main never fetches (e.g. RT's mainline
+`-rc` kernel snapshot), and cache keys are immutable — under a shared key,
 whichever variant saved first would lock the others' gaps in forever.
 
 `restore-keys` falls back through the variant's own prefix to the **main**

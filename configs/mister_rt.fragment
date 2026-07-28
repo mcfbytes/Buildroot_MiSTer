@@ -1,7 +1,9 @@
 # mister_rt.fragment — the RT / Linux-7.2 "beta" kernel variant.
 #
-# ⚠ Never yet booted on hardware. See docs/rt-beta-kernel.md for status,
-# design, and the open TODOs (on-hardware boot + RT validation).
+# ⚠ 7.2-rc4 booted and ran MiSTer on real hardware (2026-07-20); the currently
+# pinned -rc has NOT been booted. Each -rc bump re-opens that question — the
+# variant is beta precisely because the pin moves faster than hardware testing.
+# See docs/rt-beta-kernel.md for status, design, and the open TODOs.
 #
 # This is the BUILDROOT-config layer of the variant, layered on the KERNEL-ONLY
 # base configs/mister_kernel_defconfig at build time by `make rt` (Buildroot's
@@ -26,30 +28,32 @@
 # BR2_LINUX_KERNEL_CUSTOM_VERSION=y. Buildroot handles -rc versions natively —
 # linux/linux.mk detects the "-rc" and fetches the cgit snapshot from
 # https://git.kernel.org/torvalds/t (there is no signed release tarball for an
-# -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc4.
+# -rc on the kernel.org mirror; confirmed 404). Validated against 7.2-rc5.
 #
 # COUPLED to board/mister/de10nano/patches/linux/linux.hash: the base config's
 # BR2_DOWNLOAD_FORCE_CHECK_HASHES disables Buildroot's built-in -rc hash
 # exemption, so the snapshot MUST have a sha256 line there or the build fails
 # closed at download. Bump the version here -> update that line in the same
 # commit (its header says how, and why -rc hashes have weaker provenance).
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc4"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2-rc5"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks
-# to the shared patch files, EXCEPT 0001 and 0015, which are real
+# to the shared patch files, EXCEPT 0001, 0015, 0030 and 0037, which are real
 # re-anchored copies — Buildroot applies patches with `patch -F0` (fuzz zero),
-# and those two patches' 6.18 context or APIs drifted upstream (see the
+# and those four patches' 6.18 context or APIs drifted upstream (see the
 # series file's header; note 0015 was once wrongly believed upstreamed in
-# 7.2 — it is not: 7.2 has no FAML/FAMR controller types). 0031 was a third
+# 7.2 — it is not: 7.2 has no FAML/FAMR controller types, and 0037 was once
+# wrongly written off as cosmetic — it is not, it shifts the DualSense button
+# indices). 0031 was a fifth
 # until 2026-07-25, when the SHARED patch was re-anchored onto context both
 # trees agree on and the copy became a symlink again — see the series header
 # for why that is the preferred move over a re-anchored copy. The shared 6.18
 # patches are otherwise deliberately untouched, keeping them byte-identical
 # to stock.
-# The series drops NOTHING: all 31 listed patches apply to 7.2-rc4 at -F0
-# (re-verified through Buildroot's own apply-patches.sh 2026-07-25 after 0031
-# became a symlink -- 31/31 applied, offsets shift but zero hunks take fuzz).
+# The series drops NOTHING: all 31 listed patches apply to 7.2-rc5 at -F0
+# (re-verified through Buildroot's own apply-patches.sh on the rc4 -> rc5 bump,
+# 2026-07-28 -- 31/31 applied, exit 0, offsets shift but zero hunks take fuzz).
 # (This line previously read "drops only 0030 + 0037 ... all 29 listed", which
 # went stale when those two were re-anchored and re-included; 0037 in
 # particular is NOT cosmetic -- see the series header.)

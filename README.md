@@ -147,7 +147,7 @@ Validated on **one real DE10-Nano**, booting CI-built artifacts:
 | Bluetooth — firmware load + controller pairing | ✅ Confirmed |
 | Wi-Fi — **WPA3/SAE (PMF required)** 5 GHz auto-connect via mainline `rtw88` | ✅ Confirmed |
 | Downloader over HTTPS | ✅ Confirmed |
-| **`PREEMPT_RT` kernel (7.2-rc4) boots and runs MiSTer** | ✅ Confirmed 2026-07-20 |
+| **`PREEMPT_RT` kernel (7.2-rc4) boots and runs MiSTer** | ✅ Confirmed 2026-07-20 — on rc4; the pin has since moved to **7.2-rc5**, which is build-verified only |
 | Samba, MIDI | ⚠️ Build/CI-verified only — **not** exercised on hardware |
 | RT latency measurement | ⏳ Not yet taken |
 

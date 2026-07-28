@@ -313,6 +313,25 @@ The former "**one path difference**" (stock `/usr/sbin/fluidsynth` vs our
 `/usr/bin/fluidsynth`) is closed by the compat symlink — see the
 `usr/sbin/fluidsynth` row in the table above.
 
+### 3c-bis. Latent defects **inside** stock's own scripts — carried deliberately
+
+Automated review of PR #68 flagged three defects in the vendored helpers.
+All three are **in stock's bytes**, not in our vendoring: `diff` against
+`work/imgroot/usr/sbin/{uartmode,btpair,vmode}` is empty for each. They are
+recorded here, and **deliberately not fixed**, because "vendored
+byte-identical" in the table above is the whole point — `scripts/ci-tests.sh`
+asserts the stock marker in each file, every other MiSTer runs these exact
+bytes, and their callers already cope with the behaviour. Patching them would
+be a silent divergence in the direction this document exists to prevent.
+Precedent for how a real divergence gets made instead: ADR 0016's
+`/etc/network/interfaces` `pre-up` line — one deviation, argued and recorded.
+
+| Script:line | Claim | Verdict on the claim |
+|---|---|---|
+| `uartmode:34` — `if [ -z $localip ]` | Reviewer: unquoted, so an empty `localip` yields `[ -z ]`, "a syntax error / wrong evaluation", and the PPP branch will not fall back to `0.0.0.0`. | **Claim is wrong; the code works.** `[ -z ]` is a POSIX *one-argument* test — true iff that single argument is a non-empty string — and `-z` is non-empty, so it returns TRUE and the fallback branch *is* taken. Verified empirically. The real (latent, unhit) risk is word-splitting if `localip` ever held whitespace; it is assigned from an `ifconfig \| sed` pipeline that yields one token or nothing. |
+| `btpair:10` — "devices(s)" | Reviewer: grammatical typo in a user-facing prompt. | **Correct, and purely cosmetic.** Stock's wording, shown in stock's UI. |
+| `vmode:95-102` — the confirmation poll | Reviewer: the polling is inverted — on success the test goes false and `\|\| exit 1` fires, so the script exits non-zero on success and prints `failed!` regardless. | **Correct — a real bug in stock.** Traced: while `res_count` is *unchanged* the test is true and the script sleeps; the moment it *changes* (i.e. the mode switch is confirmed — the success case) the test goes false and `\|\| exit 1` fires. If it never changes, control falls through to the unconditional `exit 1` on the last line. So `vmode` exits `1` on **both** paths, and `echo -n . failed!` prints "failed!" as an argument on the fifth line either way. Harmless in practice only because callers ignore its status. **Worth reporting upstream to MiSTer-devel**; not ours to diverge on. |
+
 ---
 
 ## 4. Bottom line

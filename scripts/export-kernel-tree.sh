@@ -850,6 +850,11 @@ that silently omits a driver the image ships."
 	# Written as `if`, not `[[ … ]] && die`, because a false test in an && list is a
 	# non-zero status and `set -o errexit` (line 151) would abort the export on the
 	# HAPPY path.
+	# shellcheck disable=SC2016 # the single quotes are the POINT: this matches a
+	# LITERAL "$(" substring in $pkg_opts. Expanding it here is exactly the bug
+	# being detected. (CI runs `shellcheck -x` at default severity, which
+	# includes info-level findings like SC2016 -- do not assume `-S warning`
+	# locally is the same gate.)
 	if [[ $pkg_opts == *'$('* ]]; then
 		die "unhandled make variable in ${upper}_MODULE_MAKE_OPTS: $pkg_opts
 build-mister-modules.sh is bash, not make, so \$(...) there is command substitution.

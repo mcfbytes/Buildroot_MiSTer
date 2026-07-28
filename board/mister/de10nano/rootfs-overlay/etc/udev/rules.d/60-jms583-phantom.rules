@@ -1,0 +1,3 @@
+# JMicron JMS583 USB-NVMe bridge: remove the empty-slot phantom LUN (never-ready,
+# stalls SCSI shutdown). A populated drive is kept.
+ACTION=="add", SUBSYSTEM=="scsi_device", ATTRS{idVendor}=="152d", ATTRS{idProduct}=="0583", RUN+="/bin/sh -c 'setsid /etc/jms583-phantom-guard.sh %k </dev/null >/dev/null 2>&1 &'"

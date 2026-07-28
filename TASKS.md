@@ -1037,7 +1037,7 @@ is), never whether it has been proven yet.
   defconfig grep that built a URL containing a newline; and a fetch failure that was only
   ever a `::warning::`, so the job reported SUCCESS three times while silently leaving
   `linux.hash` stale. Still unproven: the generic github-package loop (all 12
-  github-sourced pins, including libchdr) and the bespoke lzma-sdk and sdcard-payload
+  github-sourced pins, including libchdr) and the bespoke ip7z/7zip (lzma-sdk + 7zip) and sdcard-payload
   steps have never run against a real PR — treat those regexes/URLs as reviewed-by-hand,
   not proven. See `docs/renovate.md`'s "Unverified / what to check on first run".
   **Done when:** a real Renovate PR has exercised each of the three still-unproven paths

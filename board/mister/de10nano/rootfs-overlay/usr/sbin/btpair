@@ -1,0 +1,19 @@
+#!/bin/bash
+
+function clean_up {
+    killall btctl 2>/dev/null
+    exit
+}
+
+trap clean_up SIGHUP SIGINT SIGTERM
+
+echo "Switch input devices(s)"
+echo "to pairing mode."
+echo
+echo "Press Finish when done"
+echo
+echo "Searching..."
+echo
+
+sleep 2
+btctl pair

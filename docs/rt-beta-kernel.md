@@ -26,7 +26,9 @@ mainline in **Linux 7.1**, so on **7.2** `arch/arm/Kconfig` already
 `linux.config`, so `CONFIG_PREEMPT_RT=y` is all it takes.
 
 RT cannot be a boot-time toggle on ARM32 (no `PREEMPT_DYNAMIC`/static-calls), so
-it must be a **separately compiled kernel image** — shipped as `zImage_dtb-rt`
+it must be a **separately compiled kernel image** — a manual GitHub-Release
+download, never card payload (ADR 0021 item 4 as reversed 2026-07-27) —
+shipped as `zImage_dtb-rt`
 alongside the main 6.18 image and selected on-device (§5).
 
 ## 2. Structure — a kernel-only base defconfig plus a per-variant fragment
@@ -88,12 +90,15 @@ plumbing:
   human-readable paragraph describing what the variant *is* (a real-time
   kernel, in this case) is written for a human reader, not derived from a
   filename.
-- **The sdcard installer's bonus kernel.** `scripts/mk-sdcard.sh` ships
-  exactly ONE extra kernel on the card's FAT payload alongside the main
-  6.18 image (`MISTER_RT_ZIMAGE` → `zImage_dtb-rt`) — that is a deliberate
-  one-card/one-bonus-kernel design, not a variant list, so shipping a second
-  bonus kernel on the same card is a design decision for a human to make, not
-  something this registry can safely infer.
+- ~~**The sdcard installer's bonus kernel.**~~ **No longer applicable
+  (2026-07-27).** `scripts/mk-sdcard.sh` used to ship exactly one extra kernel
+  on the card's FAT payload (`MISTER_RT_ZIMAGE` → `zImage_dtb-rt`). It ships
+  **none**: `$MISTER_RT_ZIMAGE` is deleted, and every variant kernel — RT
+  included — is a manual GitHub-Release download (ADR 0021 item 4, reversed).
+  So there is nothing here for a variant registry to infer either way, and
+  adding a future variant no longer raises a "which one goes on the card"
+  question at all. The card's `linux.img` still carries every variant's
+  MODULE tree, which is what makes the download-and-drop-in workflow work.
 
 ## 3. Kernel headers / userland ABI — unchanged
 
@@ -173,8 +178,10 @@ build) ship the RT set as three separate first-class assets: `zImage_dtb-rt`,
 `linux-rt.config`, `legal-info-rt.tar.gz` (the RT kernel's applied patches +
 SBOM; its upstream source is referenced by `manifest.csv`, not bundled — see
 docs/ci.md#legal-info-2gib-cap) — in
-`SHA256SUMS`, provenance-attested (the kernel binary), carried on the sdcard
-installer's FAT payload as well, and deliberately NOT inside
+`SHA256SUMS`, provenance-attested (the kernel binary), **not** on the sdcard
+installer's FAT payload (it was, from 2026-07-18 to 2026-07-27; ADR 0021 item 4
+was reversed — an unvalidated real-time kernel does not belong on every user's
+card, and nothing on the card referenced it), and deliberately NOT inside
 `release_YYYYMMDD.7z` nor referenced by db.json.
 
 ## 6. What's verified vs unproven

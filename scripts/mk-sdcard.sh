@@ -6,8 +6,7 @@
 # This is the ORCHESTRATOR that ties the individually-authored sdcard-image pieces
 # together into one release artifact. It runs AFTER a completed `make rt` THEN
 # `make all` — that order, so `all` folds rt's staged module tree into linux.img
-# (it needs the real kernel + rootfs this repo builds, plus the RT beta
-# kernel shipped on the card as zImage_dtb-rt — or $MISTER_RT_ZIMAGE) and produces
+# (it needs the real kernel + rootfs this repo builds) and produces
 # `output/images/sdcard.img.xz` (or `output/images/sdcard-full.img.xz` when
 # SDCARD_CORES=1), plus the raw `.img` beside it so `scripts/check-sdcard.sh` can
 # verify the result without a second decompress.
@@ -50,9 +49,10 @@
 #     <stage>/mister-payload/linux/ with OUR linux.img GZIPPED (linux/linux.img.gz --
 #     the installer stream-decompresses it onto the card so the 512 MiB image never
 #     transits the mem=511M RAM; ADR 0020 §3 / installer-overlay/init), overwrite
-#     zImage_dtb with our real one, add the RT beta kernel as zImage_dtb-rt
-#     (ADR 0021 as amended), and lay the INSTALLER zImage_dtb (step 2) at the
-#     FAT root's own linux/ dir. This reproduces sdcard-payload.md §1 exactly.
+#     zImage_dtb with our real one, add the static 7-Zip as linux/7za (ADR 0023),
+#     and lay the INSTALLER zImage_dtb (step 2) at the FAT root's own linux/ dir.
+#     This reproduces sdcard-payload.md §1 exactly. The RT beta kernel is
+#     deliberately NOT here — see the note at OUR_PAYLOAD_7ZA below.
 #
 #  5. Build the FAT32 payload filesystem (mkfs.vfat + mcopy -s of the staged
 #     tree), sized to content + generous slack. genimage's own
@@ -129,15 +129,31 @@ readonly INSTALLER_OVERLAY_INIT="$REPO_ROOT/board/mister/de10nano/installer-over
 # --- Our real, Downloader-shipped build outputs (inputs to this script) -----
 readonly OUR_LINUX_IMG="$OUTPUT_DIR/images/linux.img"
 readonly OUR_ZIMAGE_DTB="$OUTPUT_DIR/images/zImage_dtb"
+# The statically-linked 7-Zip 26.02 that package/7zip installs into
+# $(BINARIES_DIR) under the name the Downloader hardcodes. Shipping it on the
+# card means a freshly-flashed device NEVER performs the internet fetch of
+# p7zip 16.02 (2016) that /media/fat/linux/7za's absence triggers -- not even
+# once, unlike the release-archive route which self-heals only on the first
+# update. See ADR 0023 / docs/downloader-contract.md §4.
+readonly OUR_PAYLOAD_7ZA="$OUTPUT_DIR/images/7za"
 
-# --- The RT beta kernel (ADR 0021 as amended 2026-07-18) --------------------
-# Ships on the card's mister-payload/linux/ as zImage_dtb-rt, so ONE flashable
-# card carries both kernels (its modules already ride inside our linux.img via
-# the extra-modules overlay — no separate rootfs exists). Default source is a
-# local `make rt`; CI's release job overrides MISTER_RT_ZIMAGE with the
-# build-kernel leg's artifact file, since output-rt/ never exists in that job.
-MISTER_RT_ZIMAGE="${MISTER_RT_ZIMAGE:-$REPO_ROOT/output-rt/images/zImage_dtb}"
-readonly MISTER_RT_ZIMAGE
+# --- The RT beta kernel is NOT on this card (ADR 0021, amended 2026-07-27) --
+# It USED to ship here as mister-payload/linux/zImage_dtb-rt. It no longer
+# does, and $MISTER_RT_ZIMAGE is gone with it: the RT kernel is a developer /
+# early-adopter artifact, so it stays a manual download from the GitHub
+# Release (`zImage_dtb-rt`, alongside `linux-rt.config` and
+# `legal-info-rt.tar.gz` — that three-asset channel already existed and is
+# unchanged). Putting an unvalidated real-time kernel on the card every user
+# flashes bought nothing: nothing on the card references it, u-boot.txt does
+# not select it by default, and it is documented as not-yet-hardware-validated
+# (docs/rt-beta-kernel.md). The consequence worth knowing: `make sdcard` no
+# longer requires `make rt` to have run.
+#
+# What did NOT change: the RT MODULE trees still ride inside the one shipped
+# linux.img via the extra-modules overlay, so a dev who downloads
+# zImage_dtb-rt and drops it on THIS card's /media/fat/linux/ still finds
+# matching modules. That is exactly what the build-ORDER coherence check in
+# require_prerequisites still guards.
 
 # The extra-modules overlay (same path as the Makefile's EXTRA_MODULES_OVERLAY):
 # where `make rt` (locally) or the CI kernel artifacts (release.yml) stage the
@@ -279,20 +295,32 @@ require_prerequisites() {
 	# main build has not run — this script cannot and must not fabricate them.
 	[ -f "$OUR_LINUX_IMG" ] || die "missing $OUR_LINUX_IMG — run 'make all' before 'make sdcard'"
 	[ -f "$OUR_ZIMAGE_DTB" ] || die "missing $OUR_ZIMAGE_DTB — run 'make all' before 'make sdcard'"
-	[ -f "$MISTER_RT_ZIMAGE" ] || die "missing $MISTER_RT_ZIMAGE — run 'make rt' before 'make sdcard' (or point MISTER_RT_ZIMAGE at an RT zImage_dtb); the card ships zImage_dtb-rt, docs/verification/sdcard-payload.md"
+	# Fail closed rather than ship a card whose /media/fat/linux/7za is absent:
+	# that card silently reverts to fetching p7zip 16.02 off the internet on its
+	# first Linux update, which is the exact behaviour ADR 0023 exists to end.
+	[ -f "$OUR_PAYLOAD_7ZA" ] || die "missing $OUR_PAYLOAD_7ZA — run 'make all' before 'make sdcard' (package/7zip installs it; the card ships linux/7za, docs/verification/sdcard-payload.md)"
 
-	# Build-ORDER coherence (the check nothing else can do this late): the card
-	# stages zImage_dtb-rt next to the linux.img above, so that image must
-	# already contain the RT module tree — i.e. `make all` must have run AFTER
-	# `make rt` staged it into the extra-modules overlay. Built the other way
-	# round (all → rt), the image predates the overlay and the RT kernel boots
-	# with NO matching modules: docs/rt-beta-kernel.md §5's silent
-	# broken-peripherals failure, shipped on a flashable card. So: every kver
-	# staged in the overlay must exist inside linux.img (debugfs — read-only,
-	# no root, same tool check-linux-img.sh leans on). An overlay with no
-	# module trees is fine: that is the MISTER_RT_ZIMAGE-override escape hatch
-	# (and CI's release job, which never runs `make rt` locally, populates the
-	# overlay from artifacts BEFORE its `make all` — so it passes here too).
+	# Build-ORDER coherence (the check nothing else can do this late): the card's
+	# linux.img must already contain every module tree the extra-modules overlay
+	# staged — i.e. `make all` must have run AFTER `make rt` staged it. Built
+	# the other way round (all → rt), the image predates the overlay and a
+	# variant kernel finds NO matching modules: docs/rt-beta-kernel.md §5's
+	# silent broken-peripherals failure, baked into a flashable card.
+	#
+	# This check OUTLIVED the thing that motivated it and is kept deliberately.
+	# The card no longer ships zImage_dtb-rt itself (ADR 0021 as amended
+	# 2026-07-27), but the RT MODULES still ride inside this linux.img, and the
+	# documented dev workflow is to download zImage_dtb-rt and drop it on a card
+	# built from exactly this image. A card whose rootfs lacks the matching
+	# module tree turns that supported workflow into the same silent failure —
+	# so the invariant still has a consumer, just a manual one.
+	#
+	# So: every kver staged in the overlay must exist inside linux.img (debugfs
+	# — read-only, no root, same tool check-linux-img.sh leans on). An overlay
+	# with no module trees is fine and is not an error: that is the plain
+	# `make all` case with no variant built (and CI's release job, which never
+	# runs `make rt` locally, populates the overlay from artifacts BEFORE its
+	# `make all` — so it passes here too).
 	local kdir kver listing dbg=""
 	for kdir in "$EXTRA_MODULES_OVERLAY"/usr/lib/modules/*/; do
 		[ -d "$kdir" ] || continue   # unmatched glob stays literal — skip it
@@ -304,7 +332,7 @@ require_prerequisites() {
 		# check-linux-img.sh's ssh_keys listing.
 		listing=$("$dbg" -R "ls -p /usr/lib/modules/$kver" "$OUR_LINUX_IMG" 2>/dev/null || true)
 		printf '%s\n' "$listing" | grep -q '^/[0-9]' \
-			|| die "linux.img lacks /usr/lib/modules/$kver, which the extra-modules overlay stages — the image predates the overlay (was 'make all' run BEFORE 'make rt'?). Re-run 'make all' to fold the tree into linux.img, or the card ships zImage_dtb-rt with no matching modules (docs/rt-beta-kernel.md §5)"
+			|| die "linux.img lacks /usr/lib/modules/$kver, which the extra-modules overlay stages — the image predates the overlay (was 'make all' run BEFORE 'make rt'?). Re-run 'make all' to fold the tree into linux.img, or a dev who drops the matching variant kernel onto this card boots it with no modules (docs/rt-beta-kernel.md §5)"
 		log "linux.img carries /usr/lib/modules/$kver (matches the overlay)"
 	done
 
@@ -483,10 +511,17 @@ overlay_our_outputs() {
 	rm -f "$PAYLOAD_DIR/linux/linux.img"
 	cp -f "$SAVED_REAL_LINUX_IMG_GZ" "$PAYLOAD_DIR/linux/linux.img.gz"
 	cp -f "$SAVED_REAL_ZIMAGE_DTB" "$PAYLOAD_DIR/linux/zImage_dtb"
-	# The RT beta kernel rides along under its on-device opt-in name (ADR 0021
-	# as amended; selected via bootimage=/linux/zImage_dtb-rt in u-boot.txt).
-	# No snapshot dance needed: the step-2 relink never touches its source.
-	cp -f "$MISTER_RT_ZIMAGE" "$PAYLOAD_DIR/linux/zImage_dtb-rt"
+	# NO zImage_dtb-rt here — the RT beta kernel is a manual GitHub-Release
+	# download for devs, not card payload (ADR 0021 as amended 2026-07-27; see
+	# the MISTER_RT_ZIMAGE note near the top of this file). Its MODULES are
+	# still inside the linux.img.gz above.
+	#
+	# The static 7-Zip 26.02, under the name the Downloader hardcodes
+	# (/media/fat/linux/7za). Already named `7za` in output/images/, so this is
+	# a plain copy with nothing to get wrong. NOT a fetched stock file -- the
+	# stock archive has no 7za of any kind, which is precisely why stock devices
+	# download a 2016 one. ADR 0023.
+	cp -f "$OUR_PAYLOAD_7ZA" "$PAYLOAD_DIR/linux/7za"
 
 	# 4b. The FAT root's own linux/ dir holds ONLY the installer kernel
 	#     (sdcard-payload.md §1: linux/, linux/zImage_dtb — nothing else). No

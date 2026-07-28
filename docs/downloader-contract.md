@@ -234,11 +234,14 @@ whitespace, as a release-blocking check.
 
 ---
 
-## 4. On-demand pinned `7za`: fetched once, then reused
+## 4. On-demand pinned `7za`: fetched once, then reused — *and why we pre-empt it*
 
-Nothing in the installed image can extract a 7z archive. The Downloader fetches a static
-ARM `7za` binary the first time it ever needs one, and thereafter reuses the copy already
-on the SD card:
+Nothing in the **stock** installed image can extract a 7z archive. The Downloader fetches
+an ARM `7za` binary the first time it ever needs one, and thereafter reuses the copy already
+on the SD card. (We ship that file ourselves so the fetch never happens — ADR 0023, boxed
+note below. The upstream mechanism is documented first, because it is what still runs on
+any device that has not yet taken an update from us, and because our archive must stay
+compatible with the binary it installs.)
 
 ```python
 if not self._file_system.is_file(FILE_7z_util):
@@ -273,11 +276,44 @@ if not self._file_system.is_file(FILE_7z_util):
 ```
 [`linux_updater.py#L106-116`](https://github.com/MiSTer-devel/Downloader_MiSTer/blob/915315668b9460b0fcdfc728be8254fe698c479f/src/downloader/linux_updater.py#L106)
 
-**`/media/fat/linux/7za` persists across updates.** Our archive's `files/linux/` payload
-does *not* include a `7za`/`7za.gz` (confirmed: the stock archive's `files/linux/` listing
-in `docs/reference-materials.md` has no such entry), and the later `rsync` (§6) has no
-`--delete`, so an already-installed `7za` is left untouched by every subsequent update.
-**One fetch, forever reused**, unless a user deletes it.
+**`/media/fat/linux/7za` persists across updates.** It lives on the persistent exFAT
+partition, and the later `rsync` (§6) has no `--delete`, so nothing removes it. Upstream's
+model is therefore **one fetch, forever reused** — the 2016 binary above unpacks every OS
+update for the life of the card.
+
+> ### We ship our own `7za` (changed 2026-07-27 — [ADR 0023](decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md))
+>
+> This paragraph used to read "our archive's `files/linux/` payload does *not* include a
+> `7za`/`7za.gz`". **It does now.** `package/7zip` builds upstream 7-Zip **26.02** from the
+> release asset `package/lzma-sdk` already pins, and installs a **statically linked** copy
+> as `output/images/7za`. Two consumers put it on the card:
+>
+> | Route | Lands as | Covers |
+> |---|---|---|
+> | `release.yml` → `release-stage/files/linux/7za` | `/media/fat/linux/7za`, via the §6 `rsync` | every existing device, on its next update |
+> | `scripts/mk-sdcard.sh` → `mister-payload/linux/7za` | same path, written by the installer | a freshly flashed card — it never fetches at all |
+>
+> The §6 `rsync` has no `--delete` but **does** overwrite files it carries, so this replaces
+> whatever binary a device already had, on every update — the "one fetch, forever reused"
+> above stops being true after the first update from us.
+>
+> Static is a requirement, not a size trade: this file outlives the rootfs that placed it
+> (a `_vN` rollback, a rollback to stock's glibc ~2.32, or a stock user's Downloader run
+> after having once installed our release), and a dynamically linked copy would die at
+> `exec` with `GLIBC_2.xx not found` — failing the update at its first `7za t`, in exactly
+> the situation where you are trying to recover. Stock's pinned binary is dynamic and gets
+> away with it only because stock's userland barely moves.
+>
+> Verified as a drop-in on the real command pair, not assumed: both binaries were run under
+> `qemu-arm` against the same solid-LZMA2 archive, both exited 0 on `t` and on
+> `x -y … files/linux/* -o…`, and the extracted trees were **byte-identical** — including
+> correctly *not* extracting `files/MiSTer`. `scripts/ci-tests.sh` asserts that wildcard
+> behaviour on every run.
+>
+> **The hard constraint below is UNAFFECTED and still binding.** Shipping a new extractor
+> cannot bootstrap itself: the update that installs our `7za` is unpacked by whatever `7za`
+> was already there, which on a never-updated device is p7zip 16.02. So the compatibility
+> requirement and its qemu-arm verification stay exactly as written.
 
 ### Hard compatibility constraint on our archive (P4.4)
 
@@ -516,8 +552,11 @@ Numbered steps, each with its source citation. All of §5–§7 happens inside
       is excluded exactly as `docs/verification/stock-release-20250402.md` states — the
       `--exclude="gamecontrollerdb/"` flag is right there in the command, verified against
       this exact line, not just re-asserted. Since there is no `--delete`, anything present
-      in the destination but absent from our shipped payload (e.g. a previously-fetched
-      `7za`, or files a user dropped in manually) is left alone.
+      in the destination but absent from our shipped payload (e.g. files a user dropped
+      in manually) is left alone. Note `7za` is no longer an example of that: since
+      ADR 0023 our payload *does* carry one, so a previously-fetched p7zip 16.02 is
+      overwritten here rather than preserved. Files we ship always win; only files we
+      do not ship survive.
    3. Remove the now-empty staging dir; `sync`.
    4. **Run `/media/fat/linux/updateboot`** — note this executes the copy that `rsync` just
       placed there, i.e. **our** `updateboot`/`uboot.img`, not the previous ones. See §8.

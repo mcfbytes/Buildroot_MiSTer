@@ -41,21 +41,45 @@ for the specific pieces most likely to need a fix on the first live run.
 | Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **manual**, see below |
 | Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, mainline `-rc`) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelMainline` datasource (`moniker=mainline`); `allowedVersions` locked to `7.x`. Labeled `rt-kernel-pin` + `needs-manual-hash` + `needs-manual-version-check` | **always manual** — `renovate-hash-sync.yml`'s kernel step reads its version from the DE10-Nano defconfig and rewrites only that pin's line, so it never touches this one. The PR stays red until a human writes it. Provenance depends on which side of the `-rc` boundary the pin is on: TOFU for a cgit `.tar.gz` snapshot (kernel.org signs no `-rc` manifest), or the signed `sha256sums.asc`/`.sign` once it reaches a stable release |
-| 9 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
+| 10 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,rtl8852cu-morrownr,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
-| lzma-sdk tag pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk` | `customManagers` regex, `github-tags` datasource over `ip7z/7zip`, `loose` versioning. Only the `LZMA_SDK_VERSION` line is managed — `LZMA_SDK_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke lzma-sdk step** (release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
+| 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
 | 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step** (case 4). The cores commit has no companion hash (cores are fetched by content — see the script's header), so it instead gets `renovate-hash-sync.yml`'s **validate-only cores-pin step** (case 5): one Contents API call at the new commit, failing the PR closed if it does not resolve, lists no `*.rbf`, or busts the ~600 MiB cap — because no PR build ever resolves this pin, only `release.yml`'s opt-in `SDCARD_CORES=1` leg |
 | CI container digests | `ubuntu:26.04@sha256:...` in `build.yml`, `release.yml`, `reproducibility.yml`'s `container:` blocks | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
-That is **19 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
-kernel, 9 driver commits, munt, bcm20702-firmware — 10 commit pins in total
-once bcm20702 is counted — libchdr, lzma-sdk, and the 3 sdcard payload pins)
+That is **21 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
+kernel, 10 driver commits, munt, bcm20702-firmware — 11 commit pins in total
+once bcm20702 is counted — libchdr, lzma-sdk, 7zip, and the 3 sdcard payload
+pins; note lzma-sdk and 7zip are 2 entries but only **1** upstream dependency,
+so they raise a single PR)
 plus the two built-in managers
 (`docker` digests, `github-actions`), covering every version/commit/digest pin
 this repository maintains by hand except the four listed below.
+
+### `rtl8852cu-morrownr` is the one driver pin that is not a spare
+
+Every other Realtek fork in the driver row is **sourced but deselected** — kept
+in `package/` as a one-line revert after ADR 0016 moved its chip to a mainline
+driver. `rtl8852cu-morrownr` (added v10.2) is the exception: the image
+**actually builds and ships** it, because `rtw89` carries the RTL8852C chip HAL
+but no `rtw8852cu.c` USB bus file, so mainline cannot drive the chip at all.
+Its pin rotting is therefore a live problem, not a dormant one.
+
+Three places move together for it, and **two of them fail silently**:
+
+1. the `customManagers` entry in `renovate.json` — without it Renovate never
+   proposes a bump at all;
+2. `rtl8852cu-morrownr` in `renovate-hash-sync.yml`'s `HASH_SYNC_PACKAGES` —
+   without it the companion `.hash` is never refreshed on a bump PR, and the
+   build fails on a hash mismatch that reads like a tampered upstream commit;
+3. `package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk` in that same workflow's
+   `paths:` trigger — without it the workflow does not even run on the bump PR.
+   No skipped job, no red X, no outcome row.
+
+The same three-way rule applies to any new github-sourced package pin.
 
 ### Why the two kernel pins are separate managers
 
@@ -99,8 +123,11 @@ retrospective version"). A tag pin could no longer see real updates at all.
 Teaching `loose` a bespoke scheme (as `munt` does with a `regex:` versioning)
 was the other option. A commit pin was chosen instead because it removes the
 ordering question entirely rather than encoding a fragile rule about someone
-else's tag conventions, and because it matches how the 9 other untagged
-upstreams here are already pinned.
+else's tag conventions, and because it matches how the 10 other untagged
+upstreams here are already pinned. (That count is the "driver commit-SHA pins"
+row above — 9 when this was written on 2026-07-19, 10 since `rtl8852cu-morrownr`
+joined it in v10.2. It is deliberately *not* "every `currentDigest` pin", which
+was already 13 others at the time.)
 
 **Why this is safe despite tracking a branch:** the package installs exactly
 **one** file, and the `.mk` carries an inline `sha256sum -c` of that `.hcd`
@@ -223,7 +250,7 @@ running the scripts out of *that* checkout would exit 127 on exactly the
 branch the escape hatch exists to repair. Sourcing them from the workflow's
 own ref instead means a fix landed on the default branch is what runs,
 regardless of how stale `inputs.branch` is. The five scripts
-(`scripts/hash-sync-{github-packages,kernel,lzma-sdk,sdcard-payload,cores-pin}.sh`,
+(`scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,cores-pin}.sh`,
 sharing `scripts/lib/hash-sync-common.sh`) share the job-level
 `HASH_SYNC_PACKAGES` and `HASH_SYNC_OUTCOMES_FILE` env vars and record their
 per-pin outcomes to the same TSV file that the "Check for a recorded
@@ -233,7 +260,7 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
 
 **What it fixes automatically, and why each case is safe:**
 
-1. **The 12 github-archive `.hash` files** (the 9 commit pins + munt +
+1. **The 13 github-archive `.hash` files** (the 10 driver commit pins + munt +
    bcm20702-firmware + libchdr — the last a userspace shared library from
    the Main_MiSTer shared-lib refactor, but the exact same
    `$(call github,...)` tarball shape as the driver pins). Every one of
@@ -260,9 +287,10 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    not a regression. Verifying the signature is a worthwhile future
    hardening step, not implemented in this pass.
 
-3. **The lzma-sdk tarball hash** (`package/lzma-sdk/lzma-sdk.hash`) — a
-   **bespoke step**, because lzma-sdk cannot ride the generic loop of
-   case 1: its tarball is a GitHub release **asset**
+3. **The ip7z/7zip tarball hashes** (`package/lzma-sdk/lzma-sdk.hash` **and**
+   `package/7zip/7zip.hash` — one step, table-driven over both since ADR 0023)
+   — a **bespoke step**, because neither can ride the generic loop of
+   case 1: the tarball is a GitHub release **asset**
    (`https://github.com/ip7z/7zip/releases/download/<ver>/...`), not a
    commit/tag archive, and the filename derives from the version with the
    dots stripped (`LZMA_SDK_SOURCE = 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz`,
@@ -271,10 +299,14 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    assets, none in the release body, none on 7-zip.org; checked at pin
    time, per the `.hash` file's own header), so a locally-computed
    `sha256sum` of the freshly-fetched asset is the legitimate source. The
-   step derives the asset URL from the PR's new `LZMA_SDK_VERSION`,
-   downloads it, and rewrites **only the first `sha256` line** of the
-   `.hash` file — the `DOC/License.txt` / `DOC/readme.txt` provenance lines
-   beneath it are never touched.
+   step derives the asset URL from the PR's new `LZMA_SDK_VERSION` /
+   `7ZIP_VERSION`, downloads it **once per package** (deliberate — each
+   package's hash comes from its own fetch, and a transiently divergent pin
+   pair needs no special case), and rewrites **only the first `sha256` line**
+   of each `.hash` file — the `DOC/License.txt` / `DOC/readme.txt` provenance
+   lines beneath it are never touched. It sets `LZMA_SDK_HASH_CHANGED` and
+   `SEVENZIP_HASH_CHANGED` (spelled out because an env var cannot begin with a
+   digit).
 
 4. **The sdcard payload script pins** (`scripts/fetch-sdcard-payload.sh`) — a
    second **bespoke step**: `update_all.sh` (theypsilon/Update_All_MiSTer)

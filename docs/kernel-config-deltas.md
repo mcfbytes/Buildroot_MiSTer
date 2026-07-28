@@ -285,7 +285,7 @@ set them** — kconfig would discard them.
 | `ARM_SOCFPGA_CPUFREQ` | **P1.6** patch `0003-…` — confirmed **not in mainline 6.18** (`grep -rn SOCFPGA_CPUFREQ --include=Kconfig` → no match) |
 | `HID_GUNCON2`, `HID_GUNCON3`, `HID_FTEC`, `HID_GAMECUBE_ADAPTER`, `HID_GAMECUBE_ADAPTER_FF` | **P1.9** |
 | `JOYSTICK_XONE` | **P3.2** (Buildroot `kernel-module` package) |
-| ~~`RTL8812AU`, `RTL8821AU`~~ — **no longer built** | **P3.1/v9 → retired in v10.** Were out-of-tree morrownr Buildroot packages, kept only because mainline had no USB driver for those chips. `RTL8188EU`/`RTL8188FU` (→ in-kernel `RTL8XXXU`), `RTL8821CU` (→ `RTW88_8821CU`) and `RTL8822BU` (→ `RTW88_8822BU`) moved to mainline drivers; PR #35 later moved `RTL8814AU` (→ `RTW88_8814AU`) the same way; **v10 moved these last two** (→ `RTW88_8812AU` / `RTW88_8821AU`, the shared `RTW88_88XXA` core merged upstream in 6.13), so the image now carries **zero** out-of-tree WiFi drivers. See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) and `docs/wifi-parity.md` §6 |
+| ~~`RTL8812AU`, `RTL8821AU`~~ — **no longer built** | **P3.1/v9 → retired in v10.** Were out-of-tree morrownr Buildroot packages, kept only because mainline had no USB driver for those chips. `RTL8188EU`/`RTL8188FU` (→ in-kernel `RTL8XXXU`), `RTL8821CU` (→ `RTW88_8821CU`) and `RTL8822BU` (→ `RTW88_8822BU`) moved to mainline drivers; PR #35 later moved `RTL8814AU` (→ `RTW88_8814AU`) the same way; **v10 moved these last two** (→ `RTW88_8812AU` / `RTW88_8821AU`, the shared `RTW88_88XXA` core merged upstream in 6.13), so ~~the image now carries **zero** out-of-tree WiFi drivers~~ — **superseded in v10.2**: the image carries exactly **one**, `rtl8852cu-morrownr` (RTL8852CU/8832CU Wi-Fi 6E), because `rtw89` has the 8852C chip HAL but no `rtw8852cu.c` USB bus file and its only symbol, `RTW89_8852CE`, `depends on PCI`. None of the five chips in this row is affected — they all stay on their mainline drivers. See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) and `docs/wifi-parity.md` §6/§8 |
 | `RTW88_8812AU`, `RTW88_8821AU`, `RTW88_8723DU`, `BRCMFMAC`, `BRCMFMAC_USB` | **v10** — completes the mainline `rtw88` USB set (all seven `RTW88_*U` parts now built) and adds Broadcom/Cypress FullMAC USB (`WLAN_VENDOR_BROADCOM` flipped on; `BRCMFMAC_SDIO` explicitly off — `default y` under `MMC=y`, but no SDIO WiFi slot on this board). Firmware via `BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX`/`_BCM43XXX` (+ auto-`select`ed Cypress) and the existing `_RTL_RTW88` glob. See `docs/wifi-parity.md` §6 |
 | `RTL8192DU`, `ATH6KL`+`ATH6KL_USB`, `WLAN_VENDOR_RSI`+`RSI_91X`+`RSI_USB` | **v10.1** — the three non-ancient USB WiFi drivers an exhaustive 36-symbol sweep of `drivers/net/wireless/` found unbuilt (`docs/wifi-parity.md` §7). `RTL8192DU` is *not* an `rtl8xxxu` chip, so nothing bound it; its firmware `rtlwifi/rtl8192dufw.bin` ships via `linux-firmware-extra` (`_RTL_81XX` carries only the PCIe `rtl8192defw.bin`). `ATH10K_USB` deliberately left off — upstream's own Kconfig says it "will not fully work". `RSI_SDIO` explicitly off (`default m` under `MMC=y`, same trap as `BRCMFMAC_SDIO`) |
 | `RTW88_8814AU`, `RTW88_8821CU`, `RTW88_8822CU`, `RTW89_8851BU`, `RTW89_8852BU`, `MT7921U`, `MT7925U`, `ATH9K_HTC`, `CARL9170` | **v9 / PR #35** — mainline USB WiFi broadening ([ADR 0016](decisions/0016-mainline-first-wifi-drivers.md)); firmware via `linux-firmware` sub-options. (`RTW88_8814AU` added by PR #35, replacing the out-of-tree `rtl8814au-morrownr` — it drives the RTL8814AU 4×4 11ac chip.) |
@@ -319,6 +319,35 @@ drift.
 > six morrownr drivers actually need it. **P3.1 must check this per-driver at build time**;
 > if one does need it, the fix is a `select` in that package's Kbuild or a small kernel patch,
 > not a defconfig line. Flagged rather than papered over.
+
+> ✅ **Resolution of that handoff (v10.2).** All six out-of-tree Realtek forks P3.1 had
+> re-sourced were checked and none needs `CONFIG_WIRELESS_EXT`; the question then went moot
+> in v10 when the image dropped to zero out-of-tree WiFi drivers. (The handoff above calls
+> those six "morrownr". Two of them are not: `rtl8188fu` is kelebek333's fork and
+> `rtl8188eu-aircrack-ng` is aircrack-ng's — see
+> `package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk:152-157`. The six are the set
+> `docs/decisions/0016-mainline-first-wifi-drivers.md:71-72` records as stock's forks:
+> `8188eu`, `rtl8188fu`, `8812au`, `8821au`, `8821cu`, `88x2bu`.)
+> The question is live again for the one fork v10.2 re-introduces,
+> `rtl8852cu-morrownr`, and was re-derived against **that** source rather than copied — it is
+> the newer Realtek "phl" code base, not the "rtw" base shared by the five morrownr forks in
+> the tree today (`rtl8812au`, `rtl8814au-morrownr`, `rtl8821au-morrownr`,
+> `rtl8821cu-morrownr`, `rtl88x2bu` — a different set from the six above: `8814au` was added
+> by this project, and the two non-morrownr forks are not siblings of it).
+> Checked, not assumed: only the 8852cu tarball contains a `phl/` tree — **805 regular files
+> across 32 directories**. (837 is the *entry* count, not the file count:
+> `tar tvzf … | grep '/phl/'` yields 805 `-` entries + 32 `d` entries, no symlinks.
+> Recomputed against the pinned `dl/rtl8852cu-morrownr/…1530c38e….tar.gz`, sha256
+> `b2b21b4b…`, matching the `.hash`.)
+> Same answer:
+> the four `CONFIG_WIRELESS_EXT` sites in the tree (`os_dep/linux/os_intfs.c:447`,
+> `include/rtw_ioctl.h:34`, `os_dep/linux/ioctl_linux.c:7709` and `:8173`) are all
+> `iwconfig`/`iwlist`/`iwpriv`-only; the `cfg80211`/`nl80211` path `wpa_supplicant -D nl80211`
+> uses is separate and unguarded. One wrinkle unique to it: `include/osdep_service_linux.h:88-90`
+> would `#define CONFIG_WIRELESS_EXT` itself under `#ifdef CONFIG_NET_RADIO`, but
+> `CONFIG_NET_RADIO` is a pre-2.6.17 symbol with **zero** occurrences in 6.18.40, so that
+> fallback is dead. No `select`, no kernel patch. Detail in
+> `package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk`.
 
 ### 4.3 Renamed / restructured — semantics preserved, **no divergence** (4 groups)
 

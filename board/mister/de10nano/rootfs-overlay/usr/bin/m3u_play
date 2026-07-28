@@ -1,0 +1,20 @@
+#!/bin/bash
+
+shopt -s nocaseglob
+
+if ls *.mp3 1> /dev/null 2>&1; then
+	mpg123 -@ "$1"
+	exit 1
+fi
+
+if ls *.vgm 1> /dev/null 2>&1; then
+	vgmplay "$1"
+	exit 1
+fi
+
+if ls *.vgz 1> /dev/null 2>&1; then
+	vgmplay "$1"
+	exit 1
+fi
+
+exit 0

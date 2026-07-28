@@ -25,7 +25,7 @@ mister-payload/
 mister-payload/linux/
 mister-payload/linux/linux.img.gz
 mister-payload/linux/zImage_dtb
-mister-payload/linux/zImage_dtb-rt
+mister-payload/linux/7za
 mister-payload/linux/uboot.img
 mister-payload/linux/updateboot
 mister-payload/linux/MidiLink.INI
@@ -49,6 +49,16 @@ mister-payload/Scripts/wifi.sh
 That is **25 entries** (7 directories, 18 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
+> **Changed 2026-07-27** — two edits that happen to cancel out in the count.
+> `mister-payload/linux/7za` was **added** (ADR 0023) and
+> `mister-payload/linux/zImage_dtb-rt` was **removed** (ADR 0021, amended
+> again). The RT beta kernel is a developer artifact and stays a manual
+> download from the GitHub Release; shipping an unvalidated real-time kernel on
+> every user's card bought nothing, since nothing on the card referenced it and
+> `u-boot.txt` never selected it. Its **module trees still ride inside
+> `linux.img.gz`**, so the download-and-drop-in workflow still works against a
+> card built from this image.
+
 ### 1.1 Provenance of each top-level entry
 
 | Path | Source | Pin |
@@ -56,7 +66,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `linux/zImage_dtb` | Our kernel (`work/Linux-Kernel_MiSTer` build), relinked by `scripts/mk-sdcard.sh` with the installer initramfs (`configs/mister_installer_defconfig` + `board/mister/de10nano/installer-overlay/`) embedded via `MISTER_INITRAMFS_CPIO` | Built, not fetched — same kernel tree as `output/images/zImage_dtb`, different embedded cpio |
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
 | `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
-| `mister-payload/linux/zImage_dtb-rt` | The PREEMPT_RT beta kernel (`make rt` → `output-rt/images/zImage_dtb` locally; the `build-kernel` leg artifact in CI, via `$MISTER_RT_ZIMAGE`) under its on-device opt-in name — `bootimage=/linux/zImage_dtb-rt` in `u-boot.txt` selects it (ADR 0021 as amended 2026-07-18; its modules already ride inside `linux.img.gz`'s rootfs) | Built, not fetched |
+| `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |
 | `mister-payload/linux/{uboot.img,updateboot,MidiLink.INI,ppp_options,u-boot.txt_example,_samba.sh,_user-startup.sh,_wpa_supplicant.conf}` and `{gamecontrollerdb,mt32-rom-data,soundfonts}/` (full subtrees) | `files/linux/*` inside the pinned stock archive | `STOCK_RELEASE_URL`/`STOCK_RELEASE_MD5`/`STOCK_RELEASE_SHA256`/`STOCK_RELEASE_SIZE` (`.github/workflows/release.yml`); `uboot.img`/`updateboot` additionally re-verified against `STOCK_UBOOT_SHA256`/`STOCK_UPDATEBOOT_SHA256` per `docs/reference-materials.md` |
 | `mister-payload/MiSTer` | `files/MiSTer` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin as above (member the Downloader itself never extracts — `docs/downloader-contract.md` §5 — but this image is not the Downloader path) |
 | `mister-payload/menu.rbf` | `files/menu.rbf` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin |

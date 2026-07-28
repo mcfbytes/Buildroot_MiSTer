@@ -1104,7 +1104,12 @@ The ONE thing `release.yml` cannot do itself: vendor the stock `uboot.img` /
 `files/linux/` auxiliary payload (`updateboot`, config templates,
 `u-boot.txt_example`, `MidiLink.INI`, `ppp_options`, the samba/user-startup/
 wpa_supplicant templates, `gamecontrollerdb/`, `mt32-rom-data/`,
-`soundfonts/`). G6 forbids committing binaries to git, and several of those
+`soundfonts/`). That list is what is **fetched**, not the whole shipped
+`files/linux/` — `linux.img` and `zImage_dtb` are ours, and since ADR 0023 so
+is `7za` (built by `package/7zip`, statically linked, overwriting the p7zip
+16.02 the Downloader would otherwise fetch off the internet). G6 is satisfied
+either way: nothing binary is committed, it is *built*.
+G6 forbids committing binaries to git, and several of those
 files ARE binary (`uboot.img`; arguably the ROM/soundfont payloads). So this
 workflow **fetches** them, at release time, from the exact same
 commit-pinned stock archive `docs/reference-materials.md` /
@@ -1371,9 +1376,11 @@ steps run AFTER all of that so the already-fetched+verified `stock_release.7z`
 can be reused instead of re-downloading ~90 MB.
 
 `scripts/mk-sdcard.sh` does its own installer-initramfs build + kernel relink
-off the completed `make all`, and ships the RT kernel from the leg artifact
-(not a local `output-rt/` build) as `zImage_dtb-rt` on the card's FAT
-payload — one flashable card, both kernels.
+off the completed `make all`. It does **not** put any variant kernel on the
+card: `zImage_dtb-rt` was dropped from the FAT payload on 2026-07-27 (ADR 0021
+item 4, reversed) and `MISTER_RT_ZIMAGE` no longer exists, so these steps pass
+no RT artifact in. The card's `linux.img` still carries the RT module tree, so
+the RT kernel remains a manual GitHub-Release download that drops straight in.
 
 Reuse of the stock archive already verified above happens by seeding
 `fetch-sdcard-payload.sh`'s own cache with it: that script re-checks
@@ -1500,9 +1507,10 @@ creates; `gh release upload --clobber` refreshes in place.
 
 The release-notes prose (the human-readable "PREEMPT_RT beta" paragraph) is
 **not** derived from the variant registry — it stays a hand-edit for any
-future variant, same as `scripts/mk-sdcard.sh`'s single hardcoded
-`MISTER_RT_ZIMAGE` bonus-kernel slot (one card/one bonus kernel by that
-script's own design, not a variant list). See `docs/rt-beta-kernel.md`'s
+future variant. (It used to share that caveat with `scripts/mk-sdcard.sh`'s
+single hardcoded `MISTER_RT_ZIMAGE` bonus-kernel slot; that slot is gone as of
+2026-07-27, so the prose is now the only hand-edit left.) See
+`docs/rt-beta-kernel.md`'s
 "Adding a future kernel variant" paragraph for the full accounting of what is
 and isn't automatic.
 
@@ -2026,8 +2034,8 @@ idiom** and should get the same treatment when next touched.
 <a id="renovate-hash-sync-safety-model"></a>
 ### Safety model, cases 1-4: why a locally-computed sha256 is legitimate here
 
-1. **The 12 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
-   11 driver/firmware pins plus `libchdr` (a userspace shared library — the
+1. **The 13 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
+   12 driver/firmware pins plus `libchdr` (a userspace shared library — the
    Main_MiSTer shared-lib refactor — but the exact same
    `$(call github,...)` commit-archive shape). Their own `.hash` file
    headers already say the hash is "locally computed" — GitHub publishes no
@@ -2155,7 +2163,7 @@ two (or more) drifting copies.
 <a id="companion-hash-first-line-only"></a>
 ### Companion .hash file contract: only the first sha256 line is machine-owned
 
-Every one of the 12 github-sourced `.mk`/`.hash` pairs follows the identical
+Every one of the 13 github-sourced `.mk`/`.hash` pairs follows the identical
 Buildroot convention:
 
 ```
@@ -2172,7 +2180,8 @@ source files hashed for provenance) are left untouched — if one of those
 legitimately changed too, the build's own hash check will fail closed and a
 human will need to re-derive that specific line by hand.
 
-The lzma-sdk step follows the identical only-first-line rule: the
+The ip7z/7zip step (both `lzma-sdk` and `7zip`) follows the identical
+only-first-line rule: the
 `DOC/License.txt` and `DOC/readme.txt` provenance lines beneath the tarball
 hash are left untouched by the same reasoning.
 
@@ -2300,10 +2309,20 @@ counted toward the fail gate but kept out of the "workflow bug" error
 message specifically — it is not, itself, proof of a parse/regex bug the way
 a recorded `failed` is.
 
-`HASH_SYNC_PACKAGES` (the 12 github-sourced package pins) is a single
+`HASH_SYNC_PACKAGES` (the 13 github-sourced package pins) is a single
 hoisted variable, not two independently-hardcoded lists, so step 1's loop and
 the job-summary gate's pin roster at the bottom of the job cannot drift
 apart.
+
+It is still an **allow-list**, though, and it is not the only one: the
+workflow's `on: pull_request: paths:` filter names the same `.mk` files
+independently. Adding a github-sourced package means editing **both**, and
+each omission fails differently and quietly — missing from
+`HASH_SYNC_PACKAGES`, the loop skips it with no outcome row and the PR
+carries a stale hash; missing from `paths:`, the `pull_request` event is
+filtered out and the workflow does not run at all, so there is not even a
+skipped job to notice. `scripts/hash-sync-github-packages.sh` does **not**
+auto-discover `package/*/*.mk` — see its "Required env" header.
 
 ---
 

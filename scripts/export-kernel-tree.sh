@@ -738,6 +738,16 @@ EOF
 # in-tree, across ~1900 files of driver. Wiring them in-tree would mean inventing hooks no
 # upstream tests, then patching upstream Makefiles we would have to maintain forever.
 #
+# rtl8852cu-morrownr (the newer Realtek "phl" tree) reaches the same conclusion by a
+# slightly different route, worth noting so nobody re-tests the old one and declares it
+# fixed: it does still `export TopDIR ?= $(shell pwd)` (its Makefile:319) but its
+# `$(shell cp ... autoconf.h)` is gated off by `CONFIG_AUTOCFG_CP = n` (:67, guard at
+# :465), so THAT specific mutation is inactive. The pwd dependence is not -- `DRV_PATH ?=
+# $(TopDIR)` (:323) is what `include $(wildcard $(DRV_PATH)/platform/*.mk)` resolves
+# against, and in an in-tree build that misses platform/autodetect.mk entirely, taking
+# -DCONFIG_IOCTL_CFG80211 and the rest of the flag set with it. Same verdict: out-of-tree
+# only.
+#
 # So the sources go in at the paths the fork uses (the tree LOOKS like the fork's), and
 # they are built through the exact out-of-tree invocation Buildroot already uses -- which
 # is upstream's own supported path, and is proven daily by our own image builds. The
@@ -758,6 +768,12 @@ declare -A MODULE_PATH=(
 	[rtl8814au-morrownr]='drivers/net/wireless/realtek/rtl8814au'
 	[rtl8821au-morrownr]='drivers/net/wireless/realtek/rtl8821au'
 	[rtl8821cu-morrownr]='drivers/net/wireless/realtek/rtl8821cu'
+	# rtl8852cu-morrownr is the one WiFi fork the image currently SHIPS (v10.2,
+	# ADR 0016 — mainline rtw89 has no rtw8852cu.c), so unlike its neighbours
+	# this row is on the live path, not a just-in-case entry. Same naming rule
+	# as the rest: the fork suffix is a Buildroot package-name concern, and the
+	# in-tree path uses the plain chip name the 5.15 fork would have used.
+	[rtl8852cu-morrownr]='drivers/net/wireless/realtek/rtl8852cu'
 	[rtl88x2bu]='drivers/net/wireless/realtek/rtl88x2bu'
 	[rtl8188eu-aircrack-ng]='drivers/net/wireless/realtek/rtl8188eu'
 	[rtl8188fu]='drivers/net/wireless/realtek/rtl8188fu'
@@ -805,6 +821,40 @@ that silently omits a driver the image ships."
 	pkg_version="$(sed -n "s/^${upper}_VERSION = //p" "$mk" | tail -1)"
 	[[ -n $pkg_version ]] || die "no ${upper}_VERSION in $mk"
 	pkg_opts="$(sed -n "s/^${upper}_MODULE_MAKE_OPTS = //p" "$mk" | tail -1)"
+
+	# EXPORTED_LINUX_DIR. One option value has to be TRANSLATED rather than copied:
+	# rtl8852cu-morrownr passes KSRC=$(LINUX_DIR) (its Makefile probes the kernel
+	# version through KSRC and, left at platform/autodetect.mk's default of
+	# /lib/modules/$(uname -r)/build, silently drops every ccflag -- see that .mk).
+	# $(LINUX_DIR) is a Buildroot make variable. Emitted verbatim into
+	# build-mister-modules.sh it would become bash COMMAND SUBSTITUTION of a command
+	# named LINUX_DIR -- and, checked rather than assumed, `set -o errexit` does NOT
+	# catch that. The emitted line is `build_module <dir> CONFIG_RTL8852CU=m
+	# KSRC=$(LINUX_DIR)`: a simple command with arguments, not an assignment-only
+	# command, and a failed command substitution inside an ARGUMENT word does not
+	# become the enclosing command's exit status. Ran the exact shape under
+	# `set -o errexit; set -o nounset; set -o pipefail` (the generated script's own
+	# preamble): bash printed "LINUX_DIR: command not found" to stderr, build_module
+	# still ran with KSRC= EMPTY, the next line executed, and the script exited 0.
+	# So the silent empty-KSRC build -- every ccflag dropped, including
+	# -I$(src)/include and -DCONFIG_RTL8852C -- is the DEFAULT outcome, not a
+	# hypothetical one behind relaxed errexit. That makes this translation
+	# load-bearing, not belt-and-braces. The exported tree's equivalent is its own
+	# $KDIR, double-quoted in the replacement so a path with spaces survives; the `$`
+	# is backslash-escaped below so THIS script does not expand it.
+	pkg_opts="${pkg_opts//\$(LINUX_DIR)/\"\$KDIR\"}"
+
+	# Fail closed on any OTHER $(...) make variable: an option added later that this
+	# translation does not know about would be emitted verbatim and mis-execute the
+	# same way. Better to stop the export than to ship a build script that does.
+	# Written as `if`, not `[[ … ]] && die`, because a false test in an && list is a
+	# non-zero status and `set -o errexit` (line 151) would abort the export on the
+	# HAPPY path.
+	if [[ $pkg_opts == *'$('* ]]; then
+		die "unhandled make variable in ${upper}_MODULE_MAKE_OPTS: $pkg_opts
+build-mister-modules.sh is bash, not make, so \$(...) there is command substitution.
+Add a translation next to the EXPORTED_LINUX_DIR note in $(basename "${BASH_SOURCE[0]}")."
+	fi
 
 	pkg_tar="$REPO_ROOT/dl/$pkg/$pkg-$pkg_version.tar.gz"
 	[[ -f $pkg_tar ]] || die "missing source tarball: $pkg_tar

@@ -1,0 +1,12 @@
+#!/bin/sh
+if [ -e /dev/loop1p1 ]; then
+	umount /dev/loop1p1
+	losetup -d /dev/loop1
+	echo unmounted
+else
+	if [ ! -z "$1" ]; then
+		losetup /dev/loop1 $1
+		mount /dev/loop1p1 /media/rootfs
+		echo mounted
+	fi
+fi

@@ -14,14 +14,27 @@
 > two facts this doc records have since changed. (1) The P3.1 driver set is no
 > longer six out-of-tree forks: 8188eu/8188fu (→ in-kernel `rtl8xxxu`), 8821cu
 > (→ `rtw88_8821cu`), 8822bu (→ `rtw88_8822bu`, hardware-verified WPA3) and — as
-> of PR #35 — 8814au (→ in-kernel `rtw88_8814au`) moved to mainline; only the
+> of PR #35 — 8814au (→ in-kernel `rtw88_8814au`) moved to mainline; ~~only the
 > 11ac chips with no mainline USB driver — 8812au, 8821au — remain out-of-tree
-> morrownr packages. (2) The §1 claim that
+> morrownr packages~~ (**superseded twice, see below**). (2) The §1 claim that
 > `/etc/network/interfaces` is **byte-identical** to stock is no longer true:
 > each `wlan` stanza gained a `pre-up` wait-for-`wlan0` loop (deliberate — the
 > mainline `rtw88`/`rtw89` USB drivers register `nl80211` asynchronously). The
 > userland-parity findings below (bash/dialog/wireless-tools/iproute2, the
 > nl80211-first path) are unaffected.
+>
+> **Update (v10, §6.4 below):** 8812au and 8821au also moved to mainline
+> (`rtw88_8812au`/`rtw88_8821au`, the shared `RTW88_88XXA` core landed in
+> 6.13) and their morrownr packages were deselected. That took the
+> out-of-tree count to **zero** — briefly true, and no longer.
+>
+> **Update (v10.2, §8 below):** the exhaustive USB audit (§7) found one chip
+> mainline still cannot drive on this board at all — RTL8852CU/RTL8832CU
+> Wi-Fi 6E, whose only mainline bus file (`rtw8852ce.c`) needs `CONFIG_PCI`,
+> which this board does not have. `package/rtl8852cu-morrownr` was added and
+> is the current count: **one** out-of-tree WiFi driver, not zero and not
+> six. Anywhere else in this document that says "zero out-of-tree drivers"
+> is describing the v10 state and is superseded by this note.
 
 ## 0. Correction to the task premise — there is no `wifi.sh` in the base image
 
@@ -85,7 +98,7 @@ path (stock's own README-level instructions) both depend on.
 
 | Contract element | Stock (`work/imgroot`) | Ours | Status |
 |---|---|---|---|
-| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Identical.** `diff` exit 0 against `work/imgroot/etc/network/interfaces` (re-verified this task). Authored by P2.3; `docs/init-parity.md:144` already recorded this. |
+| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9).** Stock's content, plus a 9-line header comment and one `pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop per `wlan` stanza — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly those 11 added lines (re-verified this task). Every stock directive is reproduced unchanged; nothing is removed. Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); `docs/init-parity.md:147` carries the same row. |
 | `/etc/init.d/S40network` | `ifup -a` / `ifdown -a` (ifupdown-scripts package default) | Not overlaid — `BR2_PACKAGE_IFUPDOWN_SCRIPTS`'s own Kconfig default (`default y if BR2_ROOTFS_SKELETON_DEFAULT`, `work/buildroot/package/ifupdown-scripts/Config.in`) auto-selects it; our defconfig sets neither `BR2_PACKAGE_SYSTEMD_NETWORKD` nor `BR2_PACKAGE_NETIFRC` (the two symbols that would suppress it) and leaves `BR2_ROOTFS_SKELETON_DEFAULT` at Buildroot's own default (y) | **Identical**, confirmed byte-for-byte by P2.3 (`docs/init-parity.md:63`); re-confirmed the selecting conditions still hold in this defconfig. |
 | `/etc/init.d/S41dhcpcd` | starts `dhcpcd` globally (no `-i`) | Package default, not overlaid; `BR2_PACKAGE_DHCPCD=y` (defconfig line 409, P2.1) | **Functionally identical** (P2.3 finding, `docs/init-parity.md:64`) — only the PID-file path differs, an artifact of the newer dhcpcd release, not a decision point. |
 | `/etc/dhcpcd.conf` | `hostname`, `clientid`, `option rapid_commit`, etc. enabled | `board/mister/de10nano/rootfs-overlay/etc/dhcpcd.conf` | **Identical.** `diff` exit 0 (re-verified this task). Authored by P2.3. |
@@ -100,11 +113,12 @@ not explicitly excluded" behavior, not by `ifupdown` (`docs/init-parity.md:144`,
 re-confirmed).
 
 **Net result: zero rootfs-overlay changes needed for this layer.** Every
-file P2.3 already wrote is still byte-identical to stock, and every
 `BR2_PACKAGE_WPA_SUPPLICANT*`/`DHCPCD` symbol P2.1 already set is still
-correct. This was verified, not assumed — `diff` was re-run against
-`work/imgroot` for `/etc/network/interfaces` and `/etc/dhcpcd.conf` in this
-task.
+correct, and every file P2.3 wrote still reproduces stock's directives.
+Verified, not assumed — `diff` was re-run against `work/imgroot` in this
+task: `/etc/dhcpcd.conf` is byte-identical (exit 0); `/etc/network/interfaces`
+is stock plus v9's additive `pre-up` wait loop and its header comment (exit 1,
+11 added lines, nothing removed — see the row above).
 
 ## 2. The `wifi.sh` contract itself
 
@@ -378,7 +392,13 @@ for it was installed, so every AR3011/AR3012 dongle failed at
 Path shapes verified against the driver, and the files confirmed present in
 the extracted linux-firmware tree — not assumed from upstream naming.
 
-### 6.4 The complete mainline `rtw88` USB set — and the end of the fork era
+### 6.4 The complete mainline `rtw88` USB set — and the end of the *`rtw88`* fork era
+
+> Section title kept, with one word inserted. It read "the end of the fork era"
+> until v10.2, which is no longer true of the image as a whole: §8 adds
+> `rtl8852cu-morrownr` back for a Wi-Fi 6E chip mainline drives only over PCIe.
+> Everything *this* section says about `rtw88` still holds — none of the chips
+> below reverted.
 
 Three `RTW88_*U` chips mainline offers were not built. All three now are:
 
@@ -534,6 +554,16 @@ Re-checked exhaustively, not just for the chips named in §6:
 
 So no USB part of either driver family is unbuilt.
 
+> ⚠️ **But "no USB *symbol* unbuilt" is not the same as "no USB *dongle*
+> unsupported", and for one chip the two diverge.** `RTW89_8852C` is a chip HAL
+> with a PCIe bus file only (`rtw8852ce.c`; there is no `rtw8852cu.c`), yet
+> **RTL8852CU / RTL8832CU USB dongles are real, on sale, and Wi-Fi 6E** — MSI
+> AXE5400, TP-Link Archer TX50UH / TXE70UH, Mercusys MA86XH. Mainline defines
+> no symbol for them, so they fell through the symbol-based sweep above:
+> nothing was "unbuilt", because nothing existed to build. Reading the line
+> "exists solely in a `…E` PCIe form" as *closed* was the audit's one blind
+> spot. **This was the last open USB WiFi gap, and §8 closes it.**
+
 ### One trap this audit exposed
 
 `RSI_SDIO` is `default m` under `CONFIG_MMC=y` — enabling `RSI_91X` silently
@@ -544,3 +574,363 @@ the third instance of the same trap (`BRCMFMAC_SDIO` in §6.1, `ATH6KL_SDIO`
 which happened to default off, and this one), so `ci-tests.sh` now asserts all
 three SDIO bus drivers are absent from the image rather than trusting the
 config file to stay correct.
+
+## 8. v10.2 — RTL8852CU: the gap mainline cannot close, and the fork that does
+
+§7 closed every gap that had an in-kernel driver waiting to be switched on.
+This one has none, so closing it means shipping an out-of-tree driver again —
+the first since v10 emptied the list. Maintainer decision, 2026-07-27.
+
+### The gap, verified rather than recalled
+
+| Question | Answer, checked against `output/build/linux-6.18.40/` |
+|---|---|
+| Does mainline know the chip? | **Yes** — `RTW89_8852C`, with `rtw8852c.c`, `rtw8852c_rfk.c`, `rtw8852c_rfk_table.c`, `rtw8852c_table.c` all present under `drivers/net/wireless/realtek/rtw89/`. |
+| Does mainline have a USB bus file for it? | **No.** That directory has `rtw8852ce.c` (PCIe) and **no `rtw8852cu.c`**. For contrast it *does* have `rtw8851bu.c` and `rtw8852bu.c`, so this is 8852C-specific, not "rtw89 lacks USB". |
+| What does Kconfig offer? | Only `RTW89_8852CE`, "Realtek 8852CE PCI wireless network (Wi-Fi 6E) adapter", `depends on PCI` — `drivers/net/wireless/realtek/rtw89/Kconfig:113-122`. |
+| Is that reachable here? | **No** — this board has no PCIe (`CONFIG_PCI` unset). |
+| Net effect before v10.2 | An RTL8852CU dongle bound **nothing**. Not a degraded driver, not a slow one: none. |
+
+That is exactly the condition [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md)
+names as its one permitted exception, so the same unchanged rule that emptied
+the exception list in v10 re-populates it here with one entry.
+
+### What ships
+
+`BR2_PACKAGE_RTL8852CU_MORROWNR=y` → `package/rtl8852cu-morrownr/`, a
+`kernel-module` package pinned to
+[morrownr/rtl8852cu-20251113](https://github.com/morrownr/rtl8852cu-20251113)
+commit `1530c38e5b1be6d1e96a31cf4f3602a9c23f2465` (HEAD == `refs/heads/main` at
+pin time), hash-verified. It builds one module, `8852cu.ko`, into
+`usr/lib/modules/$KVER/updates/`.
+
+Chips: **RTL8852CU / RTL8832CU** — Wi-Fi 6E, 2×2, 2.4/5/**6** GHz.
+
+### Bind-conflict check — clean, but read the warning
+
+The fork's source tree is multi-chip (`Makefile:70-76` carries switches for
+8852B, 8852BP, 8852BT, 8851B, 8852C, 8852D, 8842A) and its USB ID table is
+`#ifdef`-partitioned per chip (`os_dep/linux/usb_intf.c:143-202`). Upstream
+enables **only** `CONFIG_RTL8852C`, so the built module claims nine IDs:
+
+| ID | Device |
+|---|---|
+| `0bda:c85a`, `0bda:c832`, `0bda:c85d` | Realtek reference |
+| `0db0:991d` | MSI AXE5400 |
+| `2c4e:0127` | Mercusys MA86XH |
+| `3574:6251` | Sihai Lianzong |
+| `35b2:0502` | TP-Link Archer TXE70UH |
+| `35bc:0101` | TP-Link Archer TX50UH V1 |
+| `35bc:0102` | TP-Link Archer TXE70UH(EU) V1 |
+
+All nine were grepped against `drivers/net/wireless/` and `drivers/bluetooth/`
+in the pinned tree: **zero matches**. Two near-misses are close enough to be
+worth recording — `rtw89_8852bu` holds `35bc:0100` and `35bc:0108`, and `btusb`
+holds `2c4e:0128`.
+
+> ⚠️ **Do not enable another chip switch in that Makefile.** The blocks that are
+> compiled *out* are precisely the colliding ones: the 8852B block lists
+> `0bda:b832/b83a/b852/b85a/a85b`, every one of which mainline's `rtw8852bu.c`
+> claims; the 8851B block lists `0bda:b851` (mainline `rtw8851bu.c`) and
+> `3574:6211` (mainline `mt76/mt7921/usb.c`). Turning either on recreates the
+> load-order-dependent bind fight ADR 0016 exists to prevent.
+
+(Upstream's own `supported-device-IDs` file lists only eight of the nine — it
+omits `2c4e:0127`, which `usb_intf.c:184` does carry. The source is
+authoritative; the doc lags.)
+
+### No firmware sub-option needed
+
+Unlike mainline `rtw89` (which needs `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW89` →
+`rtw89/*.bin`, already on for 8851BU/8852BU), this vendor tree links its
+firmware in as a C array: `Makefile:96` sets `CONFIG_FILE_FWIMG = n`,
+`include/autoconf.h:128` defines `LOAD_FW_HEADER_FROM_DRIVER`, and the image is
+`phl/hal_g6/mac/fw_ax/rtl8852c/hal8852c_fw.c` — one 13.7 MB generated `.c`. So
+there is nothing to add to `/lib/firmware`, and nothing that can fail at
+`request_firmware()` — the failure mode §6.2/§6.3 were about. The trade is
+size: ~15 MB of the ~67 MB source tree is firmware arrays, so expect a large
+`.ko`. **The built size has not been measured** (see the honest-caveats list).
+
+### The build quirk this package must work around
+
+`EXTRA_CFLAGS` no longer exists in 6.18 kbuild (zero hits across
+`output/build/linux-6.18.40/scripts/` and the top-level `Makefile`), and this
+tree still writes all its flags there. It translates them itself —
+`ccflags-y := $(EXTRA_CFLAGS)` at `Makefile:927-934` — but only when a
+kernel-version probe says ≥ 6.15, and that probe shells out to
+`$(MAKE) -s -C $(KSRC) kernelversion` with `KSRC` set by
+`platform/autodetect.mk:18` to `/lib/modules/$(uname -r)/build`: **the build
+host's running kernel**, which in a cross build is wrong and usually absent.
+When the probe fails, the translation is skipped and every flag is dropped —
+including `-I$(src)/include` and the `-DCONFIG_RTL8852C` that selects the chip.
+The package therefore passes `KSRC=$(LINUX_DIR)` alongside `CONFIG_RTL8852CU=m`
+in `MODULE_MAKE_OPTS`; a make command-line assignment beats the `:=` in
+`autodetect.mk`. Full reasoning, plus the two alternatives that were rejected,
+is in `package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk`.
+
+### Honest caveats
+
+- **Not built or run yet.** This section documents a package added by source
+  inspection. Whether `8852cu.ko` actually compiles against 6.18.40 for
+  ARMv7 has **not** been verified, and no hardware test has been done.
+- **Weaker upstream assurance than the older forks had.** Upstream's
+  `README.md:74-75` declares "Kernels: 5.15 - 6.14 (Realtek)" and
+  "Kernels: 6.15 - 7.1 (community support)" — 6.18.40 is in the *community*
+  band. `package/rtl8812au`, by contrast, was pinned to a commit whose own
+  message read "support from kernels 6.17-7.0". Treat a break on a kernel bump
+  as expected maintenance.
+- **Maintenance cost is back.** Out-of-tree means per-kernel compat work and no
+  `mac80211` — the WPA3/SAE argument that drove the 8822bu switch (§6.4, ADR
+  0016) does not apply in our favour here. It is accepted because the
+  alternative is no driver at all.
+- **Revert is one line**: drop `BR2_PACKAGE_RTL8852CU_MORROWNR=y` from the
+  defconfig. Nothing in `linux.config` pairs with it — there is no in-kernel
+  driver to turn back on.
+
+## 9. T2 — WiFi hotplug (`etc/udev/rules.d/70-persistent-net.rules` closed)
+
+`docs/stock-reconciliation.md` §3c named this the top follow-up: stock ships
+`etc/udev/rules.d/70-persistent-net.rules`, we shipped neither it nor an
+equivalent, and a WiFi dongle plugged in *after* boot was never brought up
+(the boot path — `S40network` → `ifup -a`, plus the v9 `pre-up` wait loop
+added to `/etc/network/interfaces`, §1 above — was already fine). This
+section records what closed it and, more importantly, the two places the fix
+deliberately does **not** match stock's literal rule text, both checked
+against this image's actual `eudev`/kernel rather than assumed.
+
+### What ships
+
+- `board/mister/de10nano/rootfs-overlay/etc/udev/rules.d/70-persistent-net.rules`
+  — the udev rule (mode 644), heavily commented with the reasoning below and
+  its file:line citations.
+- `board/mister/de10nano/rootfs-overlay/etc/wifi-hotplug.sh` — the async
+  `ifup`/`ifdown` dispatcher the rule's `RUN+=` calls (mode 755).
+
+**Where stock's copy was read, and what it actually contains.** The path is
+an `addon.tar` entry — `docs/verification/stock-reconciliation/addon-report.txt:25`
+lists it among that tar's 56 files (marked `ABSENT` there, i.e. absent from
+*our* image when that report was generated — which is what this task changes),
+and the tar's `sha256` is recorded in
+`docs/verification/stock-reconciliation/SOURCE.txt`. `addon.tar` itself is
+**not** unpacked anywhere under `work/`, so the bytes below were read from
+the extracted stock rootfs instead:
+`work/imgroot/etc/udev/rules.d/70-persistent-net.rules` (450 bytes, mode
+`0666`). It is **not** only the two rules — it opens with a five-line
+`write_net_rules` banner ("This file was automatically generated by the
+`/usr/lib/udev/write_net_rules` program, run by the
+`persistent-net-generator.rules` rules file. … change only the value of the
+`NAME=` key."). That banner is itself provenance: `write_net_rules` emits
+MAC-address-matched rules, not `KERNEL=="wlan*"` + `NAME="wlan0"` + `RUN+=`,
+so stock's copy is a generated file that was subsequently hand-edited. Its
+two active rules, verbatim (stock's own single-space spacing):
+
+```
+SUBSYSTEM=="net", ACTION=="add", DRIVERS=="?*", KERNEL=="wlan*", NAME="wlan0", RUN+="/sbin/ifup -a"
+SUBSYSTEM=="net", ACTION=="remove", DRIVERS=="?*", KERNEL=="wlan*", RUN+="/sbin/ifdown %k"
+```
+
+### Divergence 1 — no `NAME="wlan0"`
+
+Checked, not assumed, whether `NAME=` on a `SUBSYSTEM=="net"` add rule is
+even still honoured by this image's eudev (3.2.14): **yes.** eudev 3.2.14
+implements `NAME=`-driven netif rename via `SIOCSIFNAME`, and the path that
+actually *compiles* in this image is
+`output/build/eudev-3.2.14/src/udev/udev-event.c:1003-1012` (the `#else`
+arm) → `rename_netif()` (`:883-885`) → `rename_netif_dev_fromname_toname()`
+(`:813-881`) → `ioctl(sk, SIOCSIFNAME, &ifr)` (`:827`). *(No claim is made
+here about what systemd-udev does or when eudev forked from it: there is no
+systemd source anywhere under `work/` or `output/build/`, so neither is
+checkable from this tree. Only the above is, and only the above is
+load-bearing.)* A rule in `70-` runs before eudev's own default
+`/lib/udev/rules.d/80-net-name-slot.rules`, which explicitly backs off once a
+`NAME` has already been assigned (`NAME!="", GOTO="net_name_slot_end"`,
+that file's line 5) — so `NAME="wlan0"` here would have worked exactly as it
+does on stock. It was left out anyway, for these reasons:
+
+1. **It contradicts this image's two-adapter support — though in *this*
+   build the damage is bounded, and the honest version is narrower than it
+   first looks.**
+   `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` has defined
+   both `auto wlan0` and `auto wlan1` since the very first rootfs-overlay
+   commit (`c1965694`, P2.3) — this image already supports two concurrent
+   WiFi adapters, addressed by the kernel's own sequential `wlan%d`
+   numbering. Stock's rule asserts the opposite: that every `wlan*` device
+   is *the* adapter and belongs at the single literal name `wlan0`.
+
+   Traced rather than assumed, here is what that actually does. With a first
+   adapter already holding `wlan0`, `SIOCSIFNAME` on the second (`wlan1`)
+   device fails `EEXIST`; `rename_netif_dev_fromname_toname()` logs `Error
+   changing net interface name` (`udev-event.c:874-875`) and returns < 0;
+   `udev_event_execute_rules()` logs one `could not rename interface …`
+   warning (`:1008-1010`) and **skips** `udev_device_rename()`; the device
+   keeps its kernel name `wlan1`, which still matches the `auto wlan1`
+   stanza. So reproducing stock's `NAME=` would be a per-event failed-rename
+   warning for zero benefit — not a renaming catastrophe. Reason 2 is the
+   load-bearing one.
+
+   It is **not** harmless in general, and that is worth recording because it
+   is one Kconfig symbol away: eudev's collision-avoidance machinery (rename
+   to `rename_%s`, then to `<base><128-ifindex>`, retrying for 90 s —
+   `udev-event.c:829-873` and `:948-1001`) genuinely would produce a name
+   matching *neither* `auto` stanza. It is compiled **out** here —
+   `output/build/eudev-3.2.14/config.h:5` is
+   `/* #undef ENABLE_RULE_GENERATOR */`, because `output/.config:1447` has
+   `# BR2_PACKAGE_EUDEV_RULES_GEN is not set` and
+   `work/buildroot/package/eudev/eudev.mk:40-44` therefore passes
+   `--disable-rule-generator`. Anyone who enables that symbol converts
+   stock's `NAME=` from "noisy no-op" into a real two-adapter regression.
+   Not renaming at all is correct under either setting.
+2. **It is a no-op on this hardware's actual USB topology, so there is
+   nothing to gain by adding it back.** eudev's `net_id` builtin
+   (`output/build/eudev-3.2.14/src/udev/udev-builtin-net_id.c`) only
+   populates `ID_NET_NAME_ONBOARD`/`_SLOT`/`_PATH` — the only properties
+   `80-net-name-slot.rules` consults — via `names_pci()`, which requires a
+   PCI ancestor anywhere in the device's parent chain
+   (`net_id.c:276-294`, `udev_device_get_parent_with_subsystem_devtype(dev,
+   "pci", NULL)`; falls straight to `goto out` with nothing set if none
+   exists). The DE10-Nano's two USB controllers are memory-mapped platform
+   devices, not PCI: `output/build/linux-6.18.40/arch/arm/boot/dts/intel/
+   socfpga/socfpga.dtsi:940` (`usb0: usb@ffb00000 { compatible =
+   "snps,dwc2"; }`) and `:953` (`usb1: usb@ffb40000`, same compatible) — this
+   SoC has no PCI bus at all. So a USB WiFi dongle here never gets a
+   predictable-name property in the first place, and `80-net-name-slot.rules`
+   is a permanent no-op for it regardless of what our rule does. This matches
+   the hardware-verified behaviour already on record in commit `4cf2fc7`
+   ("RTL8822BU auto-connects WPA3 5GHz at boot" via the plain `wlan0` stanza,
+   no rename involved) and the hardcoded `ifup wlan0` / `ip link set wlan0`
+   in Scripts_MiSTer's `other_authors/wifi.sh` (§2 table above, lines 119-120
+   of this file; `wifi.sh:36-42`) — both already assume the kernel-assigned
+   name is the name that sticks.
+
+### Divergence 2 — targeted, asynchronous `RUN+=` instead of `ifup -a`
+
+**When this rule actually runs, verified against `S10udevd`.** `S10udevd`
+coldplugs every device already present at boot — `udevadm trigger
+--type=devices --action=add`, `package/eudev/S10udevd:42` (`:41` is the
+`--type=subsystems` trigger; `:42` is the devices one) — so the "add" uevent
+for a boot-time-present `wlan0`/`wlan1` fires during ordinary startup, not
+only on post-boot insertion. It does **not** run in parallel with
+`S40network`, though: `S10udevd:43` then runs
+`udevadm settle --timeout=$SETTLE_TIMEOUT` (`SETTLE_TIMEOUT=30`,
+`S10udevd:22`), which blocks `rcS` until udev's event queue drains. The rule
+therefore completes *inside* `S10udevd`, several init scripts **before**
+`S40network` starts. What races `S40network`'s `ifup -a` is the *detached*
+`ifup` the helper leaves behind.
+
+**That overlap is safe, verified against the actual mechanism, not just
+argued.** `ifupdown` itself serializes and de-duplicates:
+
+- `lock_interface()` (`output/build/ifupdown-0.8.44/main.c:189-230`) takes an
+  exclusive **POSIX record lock** — `struct flock lock = {.l_type = F_WRLCK,
+  …}` at `main.c:203`, `fcntl(fd, F_SETLK, &lock)` at `:205` with a blocking
+  `fcntl(fd, F_SETLKW, &lock)` fallback at `:208`. It is **not** `flock(2)`:
+  grep the whole `ifupdown-0.8.44` tree and there is no `flock()` call in it.
+  The lock file is per-interface, under `RUN_DIR` (`"/run/network/"`,
+  `header.h:100` — tmpfs per `etc/fstab`, so it is writable even while `/`
+  itself is still read-only at boot, ADR 0011's mechanism), and the recorded
+  state is read only **after** the lock is acquired (`main.c:217-226`).
+- The lock is held for the entire up-sequence and released only at function
+  exit (`main.c:1439-1440`); the state file is written near the *start* of a
+  successful `up` (`main.c:1206`), while still holding the lock.
+- A second `ifup` for the same interface blocks in `F_SETLKW`, and once
+  unblocked sees the state the first invocation already wrote — taking the
+  no-op path (`"interface %s already configured"`, `main.c:1140-1148`)
+  instead of launching a second `wpa_supplicant`.
+
+Whichever of the two racing invocations wins, exactly one `wpa_supplicant`
+ends up running. (One pre-existing, out-of-lane behaviour this makes newly
+*reachable* rather than introduces: `post-down killall -q wpa_supplicant` in
+each `/etc/network/interfaces` stanza kills **every** `wpa_supplicant`
+process, not just the one for the interface being brought down — so
+unplugging one dongle while a second is associated will also kill the
+second's `wpa_supplicant`. This is existing `interfaces` file behaviour
+(P2.3/v9), not something T2 changed; flagged here because hotplug `ifdown` is
+the first caller that can trigger it without a human at the console.)
+
+**Targeting `%k` instead of stock's `-a`, and going through
+`etc/wifi-hotplug.sh` instead of calling `ifup`/`ifdown` directly, are the
+same fix for one root cause.** Each `wlan0`/`wlan1` stanza's `pre-up` loop
+polls `iw dev $IFACE info` for up to 20s while the driver finishes
+registering the `nl80211` interface (§1 table, v9 change). `ifup -a` brings
+up every `auto` stanza, so plugging in **one** dongle (say `wlan0`) would
+also run `ifup wlan1` if `wlan1` is configured but has no device present —
+20 wasted seconds waiting for a device that will never appear, on every
+single-dongle hotplug. Naming the interface that actually fired (`%k`, which
+— per Divergence 1 — is also its permanent name) avoids that.
+
+**Why the detach matters is a boot-time regression avoided, not hygiene.**
+`udevadm settle --timeout=30` (`S10udevd:43`, above) waits on precisely the
+event this rule creates. A non-detached `RUN+=` would hold that event open
+for the whole bring-up — the ≤20 s `iw dev` `pre-up` loop plus the stanza's
+own `post_up sleep 2` — so **every** boot with WiFi hardware present would
+stall `rcS` for >20 s, and any event chain that exceeds 30 s makes `settle`
+give up and print `udevadm settle failed` before continuing. Detaching keeps
+the udev event short and moves the wait off the boot path entirely.
+Secondarily, it frees the worker: occupancy stacks, since a hub with two
+dongles fires two concurrent "add" events.
+
+What the detach is *not* is a rescue from the event timeout: eudev's default
+per-event timeout is 180 s
+(`output/build/eudev-3.2.14/src/udev/udevd.c:72`,
+`arg_event_timeout_usec = 180 * USEC_PER_SEC`; unmodified by `etc/udev/
+udev.conf` or `package/eudev/S10udevd` in this image), so a 20 s wait would
+never have been killed. `etc/wifi-hotplug.sh` does it with `setsid` +
+redirected std fds + background `&` — `setsid` verified present as a real
+util-linux binary (`output/target/usr/bin/setsid`, an ARM ELF;
+`board/mister/de10nano/busybox.fragment`'s `# CONFIG_SETSID is not set`
+disables BusyBox's applet specifically because util-linux's wins, listed in
+the defconfig's `BR2_PACKAGE_UTIL_LINUX_BINARIES` comment). The redirections
+are load-bearing rather than cosmetic in this build: at the shipped udev log
+level (`src/shared/log.c:42` defaults `log_max_level` to `LOG_INFO`, and
+nothing lowers it — `output/target/etc/udev/udev.conf:6` leaves
+`#udev_log="info"` commented, `S10udevd:23` passes `UDEVD_ARGS=""`, and the
+cmdline at `docs/boot-chain.md:323` carries no `udev.log-priority=`)
+`udev_event_spawn()` creates **both** pipes (`udev-event.c:726`, `:733` —
+the `log_get_max_level() >= LOG_INFO` disjunct is true even though `RUN+=`
+passes `result == NULL` at `:1087`) and `spawn_read()` (`:787`) epoll-loops
+until every writer closes. A backgrounded grandchild still holding a write
+end would block the worker for the full bring-up regardless of the `&`. See
+`etc/wifi-hotplug.sh`'s own header for the full trace.
+
+### Kept identical to stock
+
+`SUBSYSTEM=="net"`, the `DRIVERS=="?*"` guard, `KERNEL=="wlan*"`, and the
+remove rule addressing the interface by `%k` (stock's remove rule never had
+the `NAME=` problem — it always used the kernel name).
+
+### Verified present in this image (not assumed)
+
+`output/target/usr/sbin/ifup` — a 72536-byte ARM ELF;
+`output/target/usr/sbin/ifdown` → `/usr/sbin/ifup` (same binary, dispatches
+on `argv[0]`). `output/target/sbin` is itself a symlink to `usr/sbin`
+(`BR2_ROOTFS_MERGED_USR=y`), so stock's `/sbin/ifup` and `/sbin/ifdown`
+spellings resolve to those same two entries. `output/target/usr/sbin/iw` — a
+264720-byte ARM ELF, from `BR2_PACKAGE_IW=y` at
+`configs/mister_de10nano_defconfig:698`; without it the `pre-up` loop's
+`iw dev` would be a permanent 20 s no-op.
+
+### Verify-on-hardware (adds to §5's checklist)
+
+- **[HW]** Plug a WiFi dongle in **after** boot with a
+  `/media/fat/linux/wpa_supplicant.conf` already staged: confirm the
+  interface associates without a reboot (`dmesg`/`iwgetid -r`/DHCP lease),
+  within the pre-up loop's ≤20s window.
+- **[HW]** With two dongles: boot with one attached (gets `wlan0`), then hot
+  plug the second (should register as `wlan1`, per the kernel's own
+  sequential numbering, and come up automatically without disturbing the
+  first).
+- **[HW]** Unplug a dongle: confirm `ifdown` runs (`wpa_supplicant` for that
+  interface stops, `dmesg` shows the "remove" uevent processed) and — per
+  the flagged pre-existing behaviour above — confirm/record whether a second,
+  still-associated adapter's `wpa_supplicant` also gets killed by the shared
+  `killall -q wpa_supplicant` in `post-down`.
+- **[HW]** Boot with WiFi hardware already attached: confirm no double
+  `wpa_supplicant` (e.g. `pgrep -c wpa_supplicant` == number of configured,
+  present interfaces) despite `S40network` and the udev coldplug both firing
+  `ifup` for the same interface.
+- **[BUILD]** `scripts/ci-tests.sh` asserts, against `rootfs.tar`: both
+  `etc/udev/rules.d/70-persistent-net.rules` and `etc/wifi-hotplug.sh` are
+  present; the rule file's mode is exactly `-rw-r--r--` (644 — udev must read
+  it, nothing should execute it); and the script is executable (any `-r?x`
+  mode, since `RUN+=` `exec`s it directly and udev does not go through a
+  shell). It does **not** pin the script to exactly 755.

@@ -26,8 +26,22 @@
     "The only reliable check is a real extraction run, which needs no GitHub token:",
     "  npx --package renovate@latest -- renovate --platform=local --dry-run=full",
     "Expect a `regex` entry in the 'Dependency extraction complete' stats with",
-    "fileCount 18 / depCount 19. If `regex` is absent, the custom managers are dead",
-    "again. Grep the LOG_LEVEL=debug output for `no-result` to catch bug-2-style",
+    "fileCount 22 / depCount 23 (2026-07-27, 21 customManagers). RE-DERIVE BOTH",
+    "whenever a manager is added or a managerFilePatterns entry changes -- neither",
+    "number is the manager count, and this pair had already gone stale silently:",
+    "18/19 was measured at commit e66b46b when there were 18 managers, and nothing",
+    "updated it when 2ae2d5f gave the 6.18 manager a second defconfig and added the",
+    "RT manager. How they are derived, so the next person can recompute instead of",
+    "guessing: fileCount is one per (manager, matched file) PAIR, not per distinct",
+    "file -- scripts/fetch-sdcard-payload.sh is counted three times because three",
+    "managers match it. depCount is one per regex MATCH, which is why it runs one",
+    "ahead of fileCount here: configs/mister_de10nano_defconfig carries",
+    "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"...\" twice -- line 146, the real",
+    "setting, and line 41 inside a header comment, which a regex manager has no",
+    "reason to skip. That model was validated by replaying it over the tree at",
+    "e66b46b, where it reproduces the recorded 18/19 exactly.",
+    "If `regex` is absent entirely, the custom managers are dead again. Grep the",
+    "LOG_LEVEL=debug output for `no-result` to catch bug-2-style",
     "datasource failures, which do NOT show up in the extraction stats at all.",
     "",
     "automerge is OFF everywhere, deliberately: every pin here is a supply-chain",
@@ -208,6 +222,20 @@
     },
     {
       "customType": "regex",
+      "description": "RTL8852CU driver commit pin (morrownr/rtl8852cu-20251113, main branch). `main` is the right ref to track and was checked, not assumed: `git ls-remote https://github.com/morrownr/rtl8852cu-20251113` resolves HEAD and refs/heads/main to the same commit (1530c38e at pin time). Hash: package/rtl8852cu-morrownr/rtl8852cu-morrownr.hash, refreshed by renovate-hash-sync.yml's GENERIC loop -- this package needs no bespoke step: its site is a plain $(call github,morrownr,rtl8852cu-20251113,$(VERSION)) and Buildroot caches the tarball as dl/rtl8852cu-morrownr/rtl8852cu-morrownr-<sha>.tar.gz, i.e. exactly the <package-dir>-<VERSION>.tar.gz shape scripts/hash-sync-github-packages.sh assumes. UNLIKE every other Realtek fork pin in this block, this one is for a driver the image ACTUALLY SHIPS (ADR 0016's v10.2 update: rtw89 carries the 8852C chip HAL but no rtw8852cu.c USB bus file, and its only symbol RTW89_8852CE depends on PCI, which this board has not got -- so mainline cannot drive the chip at all). The others are kept sourced-but-deselected as a one-line revert. THREE places move together for this pin, and two of them fail SILENTLY if forgotten: this manager, `rtl8852cu-morrownr` in renovate-hash-sync.yml's HASH_SYNC_PACKAGES (absent = the hash is never refreshed and the build fails on a mismatch that reads like a tampered upstream), and this .mk in that same workflow's `paths:` trigger (absent = the workflow never fires at all -- no skipped job, no red X, nothing).",
+      "managerFilePatterns": [
+        "/^package/rtl8852cu-morrownr/rtl8852cu-morrownr\\.mk$/"
+      ],
+      "matchStrings": [
+        "RTL8852CU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "main",
+      "depNameTemplate": "morrownr/rtl8852cu-20251113",
+      "packageNameTemplate": "https://github.com/morrownr/rtl8852cu-20251113",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
       "description": "xone (Xbox GIP) driver commit pin (dlundqvist/xone, master branch). Hash: package/xone/xone.hash, refreshed by renovate-hash-sync.yml.",
       "managerFilePatterns": [
         "/^package/xone/xone\\.mk$/"
@@ -249,7 +277,7 @@
     },
     {
       "customType": "regex",
-      "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 9 other untagged upstreams here are pinned. Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
+      "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 10 other untagged upstreams here are pinned (the driver commit-SHA pins -- 9 of them when this was written on 2026-07-19, 10 since rtl8852cu-morrownr joined them in v10.2). Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
       "managerFilePatterns": [
         "/^package/bcm20702-firmware/bcm20702-firmware\\.mk$/"
       ],
@@ -277,12 +305,25 @@
     },
     {
       "customType": "regex",
-      "description": "7-Zip LZMA SDK tag pin (ip7z/7zip) for the Main_MiSTer shared-lib refactor. Only the LZMA_SDK_VERSION line needs managing -- LZMA_SDK_SOURCE derives from it via $(subst) in the .mk. Hash: package/lzma-sdk/lzma-sdk.hash, refreshed by renovate-hash-sync.yml's BESPOKE lzma-sdk step (release-asset URL with a dots-stripped filename, does not fit the generic $(call github,...) loop).",
+      "description": "7-Zip LZMA SDK tag pin (ip7z/7zip) for the Main_MiSTer shared-lib refactor. Only the LZMA_SDK_VERSION line needs managing -- LZMA_SDK_SOURCE derives from it via $(subst) in the .mk. Hash: package/lzma-sdk/lzma-sdk.hash, refreshed by renovate-hash-sync.yml's BESPOKE ip7z/7zip step (scripts/hash-sync-ip7z-src.sh -- release-asset URL with a dots-stripped filename, does not fit the generic $(call github,...) loop). That step is table-driven over BOTH packages that pin this asset: this one and package/7zip (ADR 0023).",
       "managerFilePatterns": [
         "/^package/lzma-sdk/lzma-sdk\\.mk$/"
       ],
       "matchStrings": [
         "LZMA_SDK_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "ip7z/7zip",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "7-Zip application tag pin (ip7z/7zip) for package/7zip -- the `7zz` archiver AND the statically-linked /media/fat/linux/7za that replaces the p7zip 16.02 binary the Downloader used to fetch off the internet (ADR 0023). SAME depName as the lzma-sdk manager above ON PURPOSE: both pin the identical release asset, so Renovate raises ONE PR bumping both .mk files and they cannot silently drift apart. Only the 7ZIP_VERSION line needs managing -- 7ZIP_SOURCE derives from it via $(subst) in the .mk. Hash: package/7zip/7zip.hash, refreshed by the same BESPOKE step in renovate-hash-sync.yml (scripts/hash-sync-ip7z-src.sh, table-driven over both packages).",
+      "managerFilePatterns": [
+        "/^package/7zip/7zip\\.mk$/"
+      ],
+      "matchStrings": [
+        "7ZIP_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
       ],
       "depNameTemplate": "ip7z/7zip",
       "datasourceTemplate": "github-tags",
@@ -386,6 +427,7 @@
         "kelebek333/rtl8188fu",
         "aircrack-ng/rtl8188eus",
         "morrownr/88x2bu-20210702",
+        "morrownr/rtl8852cu-20251113",
         "dlundqvist/xone",
         "MiSTer-devel/MidiLink_MiSTer",
         "munt/munt",
@@ -396,7 +438,7 @@
       ]
     },
     {
-      "description": "Main_MiSTer shared-library pins (libchdr commit, LZMA SDK tag) -- distinct label per the established per-pin-class convention, so a reviewer knows these change a userspace library ABI Main_MiSTer links against (liblzma-sdk's SONAME is the full version, so an SDK bump IS an ABI event by design), not kernel-module source or a build tool.",
+      "description": "Main_MiSTer shared-library pins (libchdr commit, LZMA SDK tag) -- distinct label per the established per-pin-class convention, so a reviewer knows these change a userspace library ABI Main_MiSTer links against (liblzma-sdk's SONAME is the full version, so an SDK bump IS an ABI event by design), not kernel-module source or a build tool. NOTE (ADR 0023): matchDepNames cannot separate the two ip7z/7zip consumers, because package/lzma-sdk and package/7zip deliberately share that depName so one PR bumps both. So an ip7z/7zip PR carrying this label changes BOTH the liblzma-sdk ABI AND the 7zz archiver / the /media/fat/linux/7za updater binary -- review it as both.",
       "matchManagers": [
         "custom.regex"
       ],

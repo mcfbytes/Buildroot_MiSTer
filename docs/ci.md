@@ -1569,10 +1569,12 @@ The job pulls the whole multi-GiB `release-dist` artifact for two small
 tarballs, deliberately. Staging the manifests separately in `build` would
 save the transfer and reintroduce exactly the drift this design exists to
 prevent; a ~1-minute download against a ~9-hour release pipeline is not worth
-that. It runs `needs: [build, publish]`, so nothing is ever published to the
-graph for a release that failed to get created, and it carries its own
-`contents: write` (what the API requires) rather than widening any build job's
-scope — the same isolation rationale as
+that. It runs `needs: publish` — not `needs: build`, and not both — so
+nothing is ever published to the graph for a release that failed to get
+created; `publish` already needs `build` transitively, which is what makes
+the `release-dist` artifact available here. It carries its own `contents:
+write` (what the API requires) rather than widening any build job's scope —
+the same isolation rationale as
 [`#publish-job-scope`](#publish-job-scope).
 
 **Release only, deliberately.** `build.yml` never submits. A dependency graph

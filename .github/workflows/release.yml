@@ -755,3 +755,244 @@ jobs:
             echo "> ⚠️ **This is a draft.** It is not public, and db.json is **not** published while it stays a draft."
             echo "> Clicking **Publish release** — whether as a full release *or* a pre-release — fires \`publish-db.yml\`, which regenerates and publishes db.json to opted-in devices. **The pre-release flag does not prevent that** (the guard there checks draft, not pre-release). For a smoke test, leave it a draft and delete it when done."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # dependency-graph — re-publishes the release's SBOM through GitHub's
+  # dependency submission API so it lands in /network/dependencies (and, for
+  # anything the advisory database can match, Dependabot). The SBOM itself is
+  # not regenerated here: the input is the manifest.csv inside the
+  # legal-info*.tar.gz assets the release actually shipped, so the graph and
+  # the tarball cannot disagree.
+  #
+  # RELEASE ONLY, deliberately — build.yml never submits. A dependency graph
+  # is a claim about what is published, and build.yml's manifest-only SBOM
+  # describes an image that is distributed to nobody. See
+  # docs/ci.md#dependency-graph-submission.
+  # ============================================================================
+  dependency-graph:
+    name: Publish SBOM to the dependency graph
+    # publish, not build: nothing should appear in the graph for a release
+    # that failed to get created. `publish` needs `build` transitively, which
+    # is what makes the release-dist artifact below available.
+    needs: publish
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    # Same tag guard as `publish` (whose `if:` this does NOT inherit —
+    # `needs:` on a skipped job skips this one too, but the guard is repeated
+    # so the intent is readable here rather than inferred).
+    if: startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write        # the dependency submission API requires it
+
+    steps:
+      # Unlike `publish` this job DOES check out: it runs
+      # scripts/sbom-to-dependency-snapshot.py. Nothing else here needs the
+      # tree, so the checkout is shallow by default.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pulls the whole release bundle (several GiB) for two small tarballs.
+      # That is deliberate: extracting the manifests from the assets that were
+      # actually published is what makes the graph and the release agree, and
+      # a ~1-minute artifact download is immaterial against a ~9-hour release
+      # pipeline. Do not "optimise" this into a second, separately-staged
+      # manifest artifact — that would reintroduce a way for the two to drift.
+      - name: Download release asset bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-${{ github.sha }}
+          path: dist
+
+      # ci_lib_package_legal_info archives with `-C <output_dir> legal-info`,
+      # so every bundle carries its manifest at exactly legal-info/manifest.csv.
+      # Each is unpacked under the Buildroot output dir it came from
+      # (legal-info.tar.gz -> output/, legal-info-rt.tar.gz -> output-rt/) and
+      # named that way in the snapshot, which is both stable across releases
+      # and self-describing in the graph UI.
+      #
+      # The variant glob is safe to trust here in a way it would not be in
+      # `publish`: `needs: publish` means that job's by-name check for
+      # legal-info-<variant>.tar.gz has already passed for EVERY variant in
+      # SHA256SUMS. Only the main bundle is re-asserted by name below.
+      - name: Extract each shipped legal-info bundle's manifest.csv
+        id: manifests
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/legal-info.tar.gz ]; then
+            echo "::error::dist/legal-info.tar.gz is missing from the release-dist bundle -- the main image's SBOM is what this job exists to publish; refusing to submit a dependency snapshot without it" >&2
+            exit 1
+          fi
+          shopt -s nullglob
+          : > "$RUNNER_TEMP/manifest-args.txt"
+          for tgz in dist/legal-info.tar.gz dist/legal-info-*.tar.gz; do
+            base=$(basename "$tgz" .tar.gz)
+            case "$base" in
+              legal-info)   outdir=output ;;
+              legal-info-*) outdir="output-${base#legal-info-}" ;;
+              *)
+                echo "::error::unexpected legal-info bundle name '$tgz'" >&2
+                exit 1
+                ;;
+            esac
+            dest="$RUNNER_TEMP/sbom/$outdir"
+            mkdir -p "$dest"
+            # One member, named explicitly: a bundle that somehow lost its
+            # manifest must fail here, not silently contribute nothing.
+            if ! tar -xzf "$tgz" -C "$dest" legal-info/manifest.csv; then
+              echo "::error::$tgz does not contain legal-info/manifest.csv -- ci_lib_package_legal_info's archive layout changed, or the bundle is truncated" >&2
+              exit 1
+            fi
+            printf -- '--manifest\n%s\n' \
+              "${outdir}/legal-info/manifest.csv=${dest}/legal-info/manifest.csv" \
+              >> "$RUNNER_TEMP/manifest-args.txt"
+            echo "staged ${tgz} -> ${outdir}/legal-info/manifest.csv ($(wc -l < "${dest}/legal-info/manifest.csv") lines)"
+          done
+
+      # THE load-bearing step. GitHub only updates a repository's dependency
+      # results from a snapshot whose `ref` is the DEFAULT BRANCH: a
+      # refs/tags/... ref is accepted with a 201 and then quietly ignored
+      # ("The snapshot was accepted, but it is not for the default branch"),
+      # which is exactly the shape of failure this whole job was added to fix.
+      # Since a release tag is cut from master, the tagged commit IS on the
+      # default branch and submitting under refs/heads/<default> is accurate,
+      # not a fiction -- but that has to be CHECKED, not assumed, so a tag cut
+      # from an unmerged branch never claims to describe master.
+      #
+      # compare/<default>...<sha>: `identical` = the tag is the branch tip,
+      # `behind` = the tagged commit is an ancestor of it. `ahead`/`diverged`
+      # mean the commit is not on the default branch at all.
+      # See docs/ci.md#dependency-graph-default-branch.
+      - name: Resolve the ref to submit the snapshot under
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          default_branch=$(gh api "repos/${GH_REPO}" --jq '.default_branch')
+          echo "default branch: ${default_branch}"
+          status=$(gh api "repos/${GH_REPO}/compare/${default_branch}...${SHA}" --jq '.status')
+          echo "compare ${default_branch}...${SHA}: ${status}"
+          case "$status" in
+            identical|behind)
+              echo "ref=refs/heads/${default_branch}" >> "$GITHUB_OUTPUT"
+              echo "on_default_branch=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "ref=${TAG_REF}" >> "$GITHUB_OUTPUT"
+              echo "on_default_branch=false" >> "$GITHUB_OUTPUT"
+              echo "::warning title=Dependency graph will not be updated::Tagged commit ${SHA} is '${status}' relative to ${default_branch}, i.e. it is not on the default branch, so this snapshot is submitted under ${TAG_REF}. GitHub accepts such a snapshot and then ignores it -- /network/dependencies will keep showing the previous release's packages. Merge the tagged commit to ${default_branch} and re-tag if the graph should reflect it."
+              ;;
+          esac
+
+      - name: Build the dependency snapshot from the SBOM
+        env:
+          SHA: ${{ github.sha }}
+          REF: ${{ steps.ref.outputs.ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mapfile -t manifest_args < "$RUNNER_TEMP/manifest-args.txt"
+          if [ "${#manifest_args[@]}" -eq 0 ]; then
+            echo "::error::no manifests were staged -- the extract step should have failed first" >&2
+            exit 1
+          fi
+          # job-correlator is a HARDCODED literal, not github.workflow/job:
+          # GitHub keeps only the newest snapshot per (correlator, detector
+          # name), so each release must reuse this exact string to supersede
+          # the last one. Renaming the workflow must not orphan the series.
+          python3 scripts/sbom-to-dependency-snapshot.py \
+            "${manifest_args[@]}" \
+            --sha "$SHA" \
+            --ref "$REF" \
+            --job-id "$RUN_ID" \
+            --job-correlator 'release_buildroot-sbom' \
+            --job-html-url "$RUN_URL" \
+            --detector-url "$REPO_URL" \
+            --out "$RUNNER_TEMP/dependency-snapshot.json"
+
+      - name: Submit the snapshot to the dependency submission API
+        id: submit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ON_DEFAULT_BRANCH: ${{ steps.ref.outputs.on_default_branch }}
+        run: |
+          set -euo pipefail
+          resp="$RUNNER_TEMP/snapshot-response.json"
+          err="$RUNNER_TEMP/snapshot-response.err"
+          if ! gh api --method POST \
+                 -H "Accept: application/vnd.github+json" \
+                 "/repos/${GH_REPO}/dependency-graph/snapshots" \
+                 --input "$RUNNER_TEMP/dependency-snapshot.json" \
+                 > "$resp" 2> "$err"; then
+            echo "::error::POST /repos/${GH_REPO}/dependency-graph/snapshots failed. A 403 usually means the dependency graph is disabled for this repository (Settings -> Advanced Security -> Dependency graph); a 404 means the endpoint is unavailable for this repository type." >&2
+            # BOTH streams: `gh api` writes its own "(HTTP 4xx)" line to
+            # stderr but the API's JSON error body -- the part that says WHY,
+            # e.g. a per-field validation message -- to stdout, which is
+            # captured in $resp. Printing only stderr throws that away.
+            sed 's/^/    /' "$err" >&2 || true
+            sed 's/^/    /' "$resp" >&2 || true
+            exit 1
+          fi
+          cat "$resp"
+          result=$(jq -r '.result // ""' "$resp")
+          # Flattened to one line before it ever reaches $GITHUB_OUTPUT: a
+          # newline in an API-supplied value is how a `key=value` output line
+          # gets corrupted (and is the classic output-injection shape). It
+          # also has to survive being printed inside a markdown table row in
+          # the summary step below.
+          message=$(jq -r '.message // ""' "$resp" | tr '\n' ' ')
+          echo "message=${message}" >> "$GITHUB_OUTPUT"
+          if [ "$result" != "SUCCESS" ]; then
+            echo "::error::dependency snapshot was not accepted (result='${result}'): ${message}" >&2
+            exit 1
+          fi
+          # A 201 with SUCCESS still does NOT mean the graph was updated --
+          # that is exactly what the default-branch wording reports. Treat it
+          # as a hard failure when the ref step believed it WAS submitting for
+          # the default branch: something in that reasoning is wrong and
+          # silently shipping an unchanged graph is the bug being fixed.
+          case "$message" in
+            *"not for the default branch"*)
+              if [ "$ON_DEFAULT_BRANCH" = "true" ]; then
+                echo "::error::GitHub reports the snapshot is not for the default branch even though the tagged commit was verified to be on it: ${message}" >&2
+                exit 1
+              fi
+              echo "::warning title=Dependency graph not updated::${message}"
+              ;;
+          esac
+
+      - name: Dependency-graph summary (job summary)
+        if: always() && steps.manifests.outcome == 'success'
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          MESSAGE: ${{ steps.submit.outputs.message }}
+          OUTCOME: ${{ steps.submit.outcome }}
+          DEPS_URL: ${{ github.server_url }}/${{ github.repository }}/network/dependencies
+        run: |
+          set -eu
+          {
+            echo "## 🧾 SBOM published to the dependency graph"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Submitted under ref | \`${REF:-n/a}\` |"
+            echo "| Submit step outcome | ${OUTCOME:-n/a} |"
+            echo "| API message | ${MESSAGE:-n/a} |"
+            echo ""
+            echo "Packages per manifest:"
+            echo ""
+            echo '```'
+            jq -r '.manifests | to_entries[] | "\(.key): \(.value.resolved | length) packages"' \
+              "$RUNNER_TEMP/dependency-snapshot.json" 2>/dev/null || echo "(snapshot not built)"
+            echo '```'
+            echo ""
+            echo "View at ${DEPS_URL} (the graph can take a few minutes to reflect a new submission)."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -39,7 +39,9 @@ Five workflows, one shared build recipe:
 - **`release.yml`** — runs on `v*` tags (plus a manual dispatch for the opt-in
   full sdcard image). Rebuilds from scratch rather than adopting `build.yml`'s
   run (see [`#rebuild-not-adopt`](#rebuild-not-adopt)), assembles
-  `release_YYYYMMDD.7z`, and publishes a draft GitHub Release.
+  `release_YYYYMMDD.7z`, publishes a draft GitHub Release, and submits the
+  release's SBOM to GitHub's dependency graph (see
+  [`#dependency-graph-submission`](#dependency-graph-submission)).
 - **`publish-db.yml`** — triggers on the release being *published* (not
   drafted). Regenerates and deploys `db.json` to GitHub Pages, which is the
   only thing the on-device Downloader actually reads.
@@ -1537,6 +1539,127 @@ survived the artifact round trip" step (see
 asset going missing between `build` and `publish` fail loudly — do NOT rely
 on the attestation action to catch that itself.
 
+<a id="dependency-graph-submission"></a>
+### Dependency-graph submission: the SBOM, published as data
+
+Every release has always shipped a complete SBOM — `legal-info.tar.gz`'s
+`manifest.csv`, one row per package actually built into the image, with that
+package's version, license, and pinned upstream source URL. But a tarball
+asset is read by nobody: `/network/dependencies` was **empty**, and so was
+everything downstream of it (the dependency graph insights page, and
+Dependabot alerts for anything the advisory database can match).
+
+The `dependency-graph` job closes that. It re-expresses the same
+`manifest.csv` rows as a *dependency snapshot* and `POST`s it to
+`/repos/{owner}/{repo}/dependency-graph/snapshots` (GitHub's dependency
+submission API), which is the only way to put a non-natively-detected
+ecosystem in the graph — Buildroot is not a package manager GitHub scans for,
+and no lockfile in this repo names a single target package.
+
+**The SBOM is not regenerated.** The job's input is the `manifest.csv`
+extracted from the `legal-info*.tar.gz` assets the release actually shipped,
+so the graph and the tarball cannot disagree: if a package is not in the
+published bundle it is not in the graph either. `legal-info.tar.gz` becomes
+the `output/legal-info/manifest.csv` manifest and each variant's
+`legal-info-<v>.tar.gz` becomes `output-<v>/legal-info/manifest.csv`, so the
+RT kernel's packages are listed as their own manifest rather than merged into
+the main image's.
+
+The job pulls the whole multi-GiB `release-dist` artifact for two small
+tarballs, deliberately. Staging the manifests separately in `build` would
+save the transfer and reintroduce exactly the drift this design exists to
+prevent; a ~1-minute download against a ~9-hour release pipeline is not worth
+that. It runs `needs: publish` — not `needs: build`, and not both — so
+nothing is ever published to the graph for a release that failed to get
+created; `publish` already needs `build` transitively, which is what makes
+the `release-dist` artifact available here. It carries its own `contents:
+write` (what the API requires) rather than widening any build job's scope —
+the same isolation rationale as
+[`#publish-job-scope`](#publish-job-scope).
+
+**Release only, deliberately.** `build.yml` never submits. A dependency graph
+is a claim about what is *published*; `build.yml`'s manifest-only SBOM
+describes an image distributed to nobody, and submitting it would make the
+graph flip on every push to `master`.
+
+**PURLs are `pkg:generic/<name>@<version>`.** Buildroot packages have no
+registry to name them in. Since April 2025 GitHub preserves direct/transitive
+relationships for *any* purl-identified package and files unknown types under
+the ecosystem "other", so these render and stay linked instead of being
+dropped. What `pkg:generic` does **not** buy is advisory matching: Dependabot
+can only alert on a purl whose ecosystem it can look up. Guessing an
+ecosystem per package to earn matching was rejected — a wrong guess asserts a
+package identity the image does not ship, which is worse than no match. Each
+entry's `metadata` carries the license and upstream source URL from the same
+manifest row, so a row stays traceable without the guess.
+
+`relationship` is derived, not read from the Buildroot config: a package that
+appears in some *other* package's `DEPENDENCIES WITH LICENSES` column is
+`indirect`, everything else is `direct`. Dependency names that resolve to no
+row in the same manifest (`host-*` build-time packages, virtuals) are dropped
+from the edge list rather than emitted as purls the snapshot never defines;
+`scripts/sbom-to-dependency-snapshot.py` reports the count on stderr.
+
+**Where the converter is tested.** `release.yml` only exercises it on a tag,
+and `scripts/ci-tests.sh` asserts against *built artifacts* — neither can
+reach a pure function over a CSV. So the script carries its own
+`--self-test` (inline fixture manifest, asserted through the real
+`load_manifest` → `build_manifest_entry` path) and `lint.yml` runs it, which
+puts the failure on the PR that changes the script instead of on a release
+months later. It covers the decisions a plausible "simplification" would
+silently break: the `DEPENDENCIES` column is parsed by bracket depth rather
+than a whitespace split (license text contains spaces, commas and parens),
+purl segments are percent-encoded (a Buildroot version can carry `/`), a row
+naming itself does not self-loop, a repeated edge is emitted once, and the
+format guard *raises* on a changed header instead of shrugging. Missing-key
+lookups report as failed checks rather than aborting the run with a
+`KeyError`, so a purl-scheme regression — which changes every key — still
+prints the check that explains it.
+
+`job.correlator` is the hardcoded literal `release_buildroot-sbom`, **not**
+`${{ github.workflow }}_${{ github.job }}`. GitHub keeps only the newest
+snapshot per `(job.correlator, detector.name)` pair, so every release must
+reuse the exact same string to supersede the previous one — deriving it from
+the workflow name would orphan the whole series the day someone renames the
+workflow.
+
+<a id="dependency-graph-default-branch"></a>
+### Why the snapshot is submitted under `refs/heads/<default>`, not the tag
+
+The trap that makes a tag-triggered submission look like it worked and do
+nothing: GitHub updates a repository's dependency results **only** from a
+snapshot whose `ref` is the default branch. Submit one for `refs/tags/v1.2.3`
+and the API returns `201` with `"result": "SUCCESS"` and the message *"The
+snapshot was accepted, but it is not for the default branch. It will not
+update dependency results for the repository."* — a green step, a green job,
+and an unchanged `/network/dependencies`. This is a known, long-standing
+sharp edge (see `gradle/actions#242` for the same report against a different
+detector).
+
+Since a release tag is cut from `master`, the tagged commit genuinely *is* on
+the default branch, so submitting under `refs/heads/master` is accurate
+rather than a fiction. But the "Resolve the ref to submit the snapshot under"
+step **checks** that instead of assuming it, via
+`GET /repos/{repo}/compare/{default_branch}...{sha}`:
+
+| `.status`   | meaning                                        | ref used            |
+|-------------|------------------------------------------------|---------------------|
+| `identical` | the tagged commit is the branch tip            | `refs/heads/<def>`  |
+| `behind`    | the tagged commit is an ancestor of the tip     | `refs/heads/<def>`  |
+| `ahead`     | commits on the tag that are not on the branch   | `github.ref` (tag)  |
+| `diverged`  | the two histories split                         | `github.ref` (tag)  |
+
+A tag cut from an unmerged branch therefore never claims to describe
+`master`; it falls back to the tag ref and emits a `::warning::` saying, in
+so many words, that the graph will not move and why.
+
+The submit step then re-reads the API's own `message` and fails hard if
+GitHub reports the not-for-the-default-branch outcome *while* the resolve
+step believed it was on the default branch — the two must agree, and
+silently shipping an unchanged graph is the exact bug this job was added to
+fix. "Verify twice, trust once", same posture as
+[`#release-assets-array`](#release-assets-array).
+
 <a id="ci-lib-source-fallback"></a>
 ### ci-lib.sh sourcing in release.yml's summary step
 
@@ -1822,6 +1945,12 @@ any syntax or semantics checking until a run actually exercises the broken
 line — which, for a `runs-on:` typo or an unquoted glob in a rarely-hit
 branch, can be months. Cheap (a two-binary download, no build) and scoped by
 `paths:` so it never fires on the 3-hour image build's pushes.
+
+It has since picked up one non-shell job for the same reason: the last step
+runs `scripts/sbom-to-dependency-snapshot.py --self-test`. That script is
+pure logic over a CSV that `release.yml` only exercises on a tag, so this is
+the only place a regression in it surfaces on the PR that caused it. See
+[`#dependency-graph-submission`](#dependency-graph-submission).
 
 <a id="push-pr-trigger-split"></a>
 ### push/pull_request split, applied even though this job is cheap

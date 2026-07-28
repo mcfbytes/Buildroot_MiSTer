@@ -1,6 +1,16 @@
 # ADR 0017 — Phase 5 builds U-Boot from the MiSTer fork (submodule pin) and adds a full SD-card image; the mainline port is abandoned
 
-**Status:** Accepted (2026-07-13) — decided by @mcfbytes
+**Status:** Accepted (2026-07-13) — decided by @mcfbytes.
+**Superseded in part (2026-07-28) by [ADR 0024](0024-mainline-uboot-capability-artifact.md):**
+§Decision **1** (build the fork, not mainline), **2** (the `u-boot/` submodule pin) and
+**3** (behavioural parity against the fork; `uboot-patches/` restricted to build fixes) are
+replaced — the from-source U-Boot is now built from **mainline 2026.04**. §Decision **4**
+(the full SD-card image) and §Decision **5** (the default channel ships the stock
+`uboot.img` byte-identical, and `sdcard.img` embeds that same blob) **stand unchanged**.
+This ADR remains the record of why the fork was once the cheaper path — its cost estimate
+for a mainline port was an estimate, and ADR 0024 replaces it with a measurement. Execution
+now lives in [`docs/uboot-mainline-port.md`](../uboot-mainline-port.md) and
+[`docs/uboot-tasks.md`](../uboot-tasks.md); do **not** add the `u-boot/` submodule.
 **Impact:** PLAN §2 (non-goals), §6 (repo layout), §8 (Phase 5 path), §9 (artifacts),
 §12 (phase table), §13 (risks); TASKS Phase 5 (P5.1–P5.3 replaced by P5.1–P5.4);
 `docs/boot-chain.md` §3.3 / N4 annotations. **No effect on Phases 1–4:** the default

@@ -1050,48 +1050,32 @@ is), never whether it has been proven yet.
 
 ## Phase 5 — Full SD-card image + U-Boot from source (deferred; do not start before Phase 4 exit)
 
-**Rewritten 2026-07-13 per [ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md).**
-The mainline U-Boot port is abandoned: Phase 5 builds the proven fork
-(`MiSTer-devel/u-boot_MiSTer`, U-Boot 2017.03) from source, pinned as a **git
-submodule**, and adds a **full flashable SD-card image** (kernel + `linux.img` +
-bootloader + mr-fusion-parity payload) so a fresh card can be written without
-mr-fusion or the Windows SD installer. §8's posture is unchanged: highest blast
+**Rewritten 2026-07-13 per [ADR 0017](docs/decisions/0017-uboot-from-mister-fork-full-sd-image.md);
+the U-Boot half re-decided 2026-07-28 per
+[ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).**
+Phase 5 adds a **full flashable SD-card image** (kernel + `linux.img` + bootloader +
+mr-fusion-parity payload) so a fresh card can be written without mr-fusion or the Windows
+SD installer. That is what remains here. **The from-source bootloader moved out of this
+phase entirely** — it is now built from **mainline U-Boot 2026.04** (not the 2017.03 fork,
+and with no `u-boot/` submodule) and tracked in
+[`docs/uboot-tasks.md`](docs/uboot-tasks.md). §8's posture is unchanged: highest blast
 radius, everything here is opt-in, separate from `linux.img` updates, gated on a
 drilled recovery procedure. **The default channel keeps shipping the stock
 `uboot.img` byte-identical (P4.4) — nothing in this phase changes that.**
 
-- [ ] **P5.1 — [NET] U-Boot submodule + from-source build** — [SONNET] — Size M — Depends: P4.10
-  Add the `u-boot/` git submodule → `MiSTer-devel/u-boot_MiSTer` pinned at
-  **`8dcc3484aac6f07314538e82530d446083085e12`** — simultaneously the `MiSTer` branch
-  HEAD (verified 2026-07-13; unmoved since 2021) and the exact commit the shipped
-  `uboot.img` was proven built from (boot-chain §3.1). Set `shallow = true` in
-  `.gitmodules`; CI checkouts gain `submodules: true`. Wire into Buildroot:
-  `BR2_TARGET_UBOOT` + `UBOOT_OVERRIDE_SRCDIR` pointing at the submodule (via
-  `BR2_PACKAGE_OVERRIDE_FILE`; fall back to `BR2_TARGET_UBOOT_CUSTOM_TARBALL`
-  generated from the submodule if the override rsync misbehaves). Start from the
-  fork's own `MiSTer_defconfig` (boot-chain §10: both defconfigs share the env
-  header, but `MiSTer_defconfig` is the likelier shipped one). Output
-  `u-boot-with-spl.sfp`, renamed `uboot.img`. A 2017.03 tree may not compile under
-  2026 toolchains: carry **build fixes only** in `uboot-patches/` (each with a
-  provenance header per standing rule 2 — never behaviour changes); worst case, pin
-  the Arm GNU 10.2-2020.11 toolchain stock used (boot-chain §3.2). The artifact is a
-  build output only at this point — shipped nowhere.
-  **Done when:** CI builds `uboot.img` from the submodule; the SPL socfpga header
-  validates (validation word, length, checksum per boot-chain §2); layout is
-  4×64 KiB SPL copies + uImage at `0x40000`; size fits the `0xA2` partition.
+- [ ] **P5.1 / P5.2 — the from-source U-Boot → moved to [`docs/uboot-tasks.md`](docs/uboot-tasks.md)**
+  **Superseded by [ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).**
+  The from-source bootloader is now built from **mainline U-Boot 2026.04**, not the 2017.03
+  fork, and it is a non-shipping capability artifact. **Do not add the `u-boot/`
+  submodule** — the mainline build uses Buildroot's own hash-verified tarball, and
+  `UBOOT_OVERRIDE_SRCDIR` (which the old P5.1 specified) would have silently skipped the
+  patch step. Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).
+  Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md), tasks U0–U7.
+  **Unchanged:** the default channel keeps shipping the stock `uboot.img` byte-identical
+  (P4.4), and `sdcard.img` keeps embedding that same stock blob (ADR 0017 §Decision 4/5
+  still stand). P5.3 and P5.4 below are unaffected.
 
-- [ ] **P5.2 — Behavioural-parity validation of the built U-Boot** — [OPUS] — Size M — Depends: P5.1
-  Byte identity is impossible (boot-chain §3.2) — prove behavioural parity instead.
-  Script the stock-vs-built comparison: the default-environment blob **must match
-  boot-chain §3.1's 20 entries verbatim** (including the malformed entry-15
-  fingerprint); uImage header fields (load/entry `0x01000040`, os/arch/type); `mt`
-  present in the command table; version-string and timestamp diffs enumerated and
-  individually explained. Any *unexplained* delta fails the task.
-  **Done when:** `docs/verification/uboot-from-source.md` records the full diff list
-  with per-item explanations and a PASS verdict; the comparison script lives in
-  `scripts/` and runs in CI.
-
-- [ ] **P5.3 — [NET] Full SD-card image (`sdcard.img`)** — [SONNET] — Size L — Depends: P1.10, P2.5, P4.4 (P5.1 + P5.2 for the built-U-Boot variant)
+- [ ] **P5.3 — [NET] Full SD-card image (`sdcard.img`)** — [SONNET] — Size L — Depends: P1.10, P2.5, P4.4 (`docs/uboot-tasks.md` U0–U6 for the built-U-Boot variant)
   genimage post-image step producing a complete, dd-able card image: MBR; **p1** =
   FAT32 data partition; **p2** = type **`0xA2`**, ≥ 1 MiB, with `uboot.img` written
   raw at its start (SPL contract, boot-chain §2.1). **p1 payload parity target: "a
@@ -1120,16 +1104,14 @@ drilled recovery procedure. **The default channel keeps shipping the stock
   of p2's head against `uboot.img`; the image's FAT + `linux.img` pass the P1.12
   QEMU initramfs harness; flashing instructions documented.
 
-- [ ] **P5.4 — [HW] SD image + built U-Boot hardware matrix & recovery drill** — human + [OPUS] — Size L — Depends: P5.2, P5.3
+- [ ] **P5.4 — [HW] SD image hardware matrix** — human + [OPUS] — Size L — Depends: P5.3
   (a) Flash `sdcard.img` (stock-blob variant) to a fresh card → boots to menu;
   first-boot `ethaddr` provisioning verified (unique MAC, survives reboot);
-  `update_all.sh` completes a run. (b) The built-U-Boot variant → boots to menu;
-  `u-boot.txt` override honored; warm-reboot core handoff works; an `updateboot`
-  flash + env-wipe cycle leaves the board bootable. (c) Execute the documented
-  brick-recovery procedure from an actually-bricked state at least once before any
-  user sees either artifact.
-  **Done when:** matrix + a successful real recovery drill logged in
-  `docs/testlogs/p5-uboot.md`.
+  `update_all.sh` completes a run.
+  **Done when:** matrix logged in `docs/testlogs/p5-uboot.md`.
+  *(The built-U-Boot hardware matrix and the brick-recovery drill moved to
+  [`docs/uboot-tasks.md`](docs/uboot-tasks.md) U6, which gates them behind a measured
+  `0xA2` partition size and a recovery performed from an actually-bricked state.)*
 
 ---
 

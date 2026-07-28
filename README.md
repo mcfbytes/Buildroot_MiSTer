@@ -134,7 +134,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.1, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
-| **5 — Full SD image & U-Boot** | 🔄 Partially landed | `sdcard.img` builds, and `release.yml` verifies it with `scripts/check-sdcard.sh` ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md)); U-Boot-from-source (P5.1/P5.2) not started, and the SD image has not been flashed to a fresh card on hardware (P5.4) |
+| **5 — Full SD image & U-Boot** | 🔄 Partially landed | `sdcard.img` builds, and `release.yml` verifies it with `scripts/check-sdcard.sh` ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md)); U-Boot-from-source is planned but not started — now targeting **mainline U-Boot**, not the 2017.03 fork ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md), [plan](docs/uboot-mainline-port.md), [tasks](docs/uboot-tasks.md)) — and the SD image has not been flashed to a fresh card on hardware (P5.4) |
 
 ### Hardware validation ledger
 
@@ -678,6 +678,8 @@ Start here if you want to run it: [`docs/user/onboarding.md`](docs/user/onboardi
 |---|---|
 | [`docs/abi-contract.md`](docs/abi-contract.md) | What the kernel and rootfs must honor for the stock binary to run |
 | [`docs/boot-chain.md`](docs/boot-chain.md) | U-Boot contract and its kernel-config implications |
+| [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md) | The plan for a mainline U-Boot built to behave like stock's — design, measured port surface, brick modes. Ships nowhere |
+| [`docs/uboot-tasks.md`](docs/uboot-tasks.md) | Execution tasks for the above (U0–U7), split out of `TASKS.md` |
 | [`docs/downloader-contract.md`](docs/downloader-contract.md) | How the on-device Downloader decides to update |
 | [`docs/package-manifest.md`](docs/package-manifest.md) | All 251 stock SONAMEs mapped to a package, with major-bump flags |
 | [`docs/stock-inventory/`](docs/stock-inventory/) | The audited inventory of the stock image everything above is measured against |

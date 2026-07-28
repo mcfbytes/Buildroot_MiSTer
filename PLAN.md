@@ -572,9 +572,9 @@ mister-linux/
 │   └── linux-firmware-extra/           # P3.3 -- gap-fill for stock firmware.md files no
 │                                       # linux-firmware Config.in sub-option covers; same
 │                                       # tarball/hash as the sibling linux-firmware package
-├── u-boot/                            # P5.1+: git submodule → MiSTer-devel/u-boot_MiSTer
-│                                      # @ 8dcc3484 (ADR 0017). Added in P5.1, not before —
-│                                      # no reason to make every clone/CI fetch it earlier.
+│                                      # (No u-boot/ submodule: ADR 0017's submodule pin was
+│                                      # superseded by ADR 0024 — the mainline build takes
+│                                      # Buildroot's own hash-verified tarball instead.)
 ├── scripts/                           # inventory generators, ABI checker, CI test suite
 ├── .github/workflows/
 │   ├── build.yml                      # build + upload Release assets
@@ -662,6 +662,16 @@ one-line change, and CI tells us immediately if a patch stopped applying.
 ---
 
 ## 8\. U-Boot: deliberately deferred
+
+> **[2026-07-28] This section is superseded from "Phase 5 path" onward by
+> [ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).** The from-source
+> bootloader is now built from **mainline U-Boot 2026.04**, not the 2017.03 fork, as a
+> non-shipping capability artifact — the mainline port surface has been measured rather
+> than estimated, and it is smaller than this section assumed. **Do not add the `u-boot/`
+> submodule.** Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).
+> Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md). Everything below about *v1
+> shipping the stock blob byte-identical* still stands and is still the decision; only the
+> Phase 5 path changed.
 
 The request was for a modern U-Boot. Here is the honest assessment.
 

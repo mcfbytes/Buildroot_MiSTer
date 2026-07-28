@@ -70,7 +70,9 @@ INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
 
 # --- RT / Linux-7.2 "beta" kernel variant (docs/rt-beta-kernel.md) ------------
 # A THIRD Buildroot output dir, same trick as the initramfs stage above: a
-# different kernel *configuration* (Linux 7.2-rc3 + PREEMPT_RT) needs its own O=.
+# different kernel *configuration* (the mainline 7.2 line + PREEMPT_RT) needs its
+# own O=. Deliberately not naming the -rc here: it is only a label at this point
+# and configs/mister_rt.fragment is the single place that pins it.
 # Since ADR 0021's 2026-07-18 amendment this is a KERNEL-ONLY build, not a
 # second full image: configs/mister_kernel_defconfig (the main defconfig's
 # toolchain + kernel stanzas, rootfs-tar only, no packages) with

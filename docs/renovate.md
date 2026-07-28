@@ -84,7 +84,7 @@ The same three-way rule applies to any new github-sourced package pin.
 ### Why the two kernel pins are separate managers
 
 `configs/mister_rt.fragment` carries the **identical Kconfig symbol** as the two
-defconfigs, but pins a different upstream line (mainline, currently `7.2-rc3` and headed for
+defconfigs, but pins a different upstream line (mainline — currently an `-rc`, headed for
 7.2 final) with different cadence, provenance, and review bar. A single manager
 covering all three files would hand the longterm datasource a `-rc`
 `currentValue` and the mainline datasource a `6.18.x` one. So there are two

@@ -118,7 +118,7 @@ the image.
   of any kind; there is no datasource that could meaningfully propose an
   "update" here. Left fully manual.
 
-- **`package/cabextract`** (pinned at `1.11`) — sourced from
+- **`package/cabextract`** (pinned at `1.11`) — released by
   `cabextract.org.uk`, a static project page with no machine-readable
   release feed (no JSON/Atom/tags API). Renovate's `customDatasources` can
   scrape `html`, but this is a stable, extremely low-churn C library used
@@ -126,6 +126,13 @@ the image.
   maintenance burden right now. Left manual — revisit if this project's
   Renovate usage expands to `html`-format custom datasources for other
   reasons.
+
+  Note for whoever bumps it by hand: the tarball is downloaded from Fedora's
+  lookaside cache (the upstream site is unreliable from CI — see
+  `package/cabextract/cabextract.mk`), and that URL embeds the tarball's
+  **SHA512**. A bump must therefore move `CABEXTRACT_VERSION`,
+  `CABEXTRACT_SHA512` and both hashes in `cabextract.hash` together. It fails
+  closed if you miss one, but the 404 is easier to read with this in mind.
 
 - **`package/linux-firmware-extra`** (pinned at `20251011`) — this is a
   **hard, deliberate coupling**, not just a missing datasource: its `.hash`

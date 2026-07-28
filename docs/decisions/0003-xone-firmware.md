@@ -150,7 +150,11 @@ tool with no `Config.in`, pulled in automatically):
 1. **`package/cabextract/`** — `host-cabextract`, built from cabextract.org.uk's
    own upstream source (v1.11, GPL-3.0+, hash-pinned), the same author/site
    as this tree's existing `libmspack` package. HOST-only: nothing on the
-   target ever runs it.
+   target ever runs it. The tarball is *fetched* from Fedora's lookaside
+   cache rather than that upstream site — the origin is intermittently
+   unreachable from CI runners and, being a package of ours, is not covered
+   by Buildroot's `BR2_BACKUP_SITE` mirror. Byte-identical to upstream and
+   still hash-pinned; rationale in `package/cabextract/cabextract.mk`.
 2. **`package/xow-firmware/`** (`BR2_PACKAGE_XOW_FIRMWARE`, `depends on
    BR2_PACKAGE_XONE`, `default y`) — downloads the Microsoft `.cab` above
    (hash-pinned in `xow-firmware.hash`), runs `cabextract` on it, asserts the

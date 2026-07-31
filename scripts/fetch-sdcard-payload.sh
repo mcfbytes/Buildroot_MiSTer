@@ -128,8 +128,8 @@ readonly PINNED_UPDATE_ALL_SIZE="8628"
 # (Renovate dep "MiSTer-devel/Scripts_MiSTer" + renovate-hash-sync.yml case 4).
 readonly PINNED_WIFI_SH_COMMIT="f034c178efd5a836880c457e5fe0bc0c627a17c2"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
-readonly PINNED_WIFI_SH_SHA256="10233fa31ea288f001a5e8cfba18e949270f79fed1295f7fc1d45e5fad78c988"
-readonly PINNED_WIFI_SH_SIZE="5823"
+readonly PINNED_WIFI_SH_SHA256="9d1e3165c44b25529fd71b4781ab848a2b0ce2b08815e9c6ffbc12ba9285e4f9"
+readonly PINNED_WIFI_SH_SIZE="96637"
 
 # --- Pinned _Console cores source commit (SDCARD_CORES=1 only) -----------
 # MiSTer-devel/Distribution_MiSTer, default branch. Deliberately NOT per-file

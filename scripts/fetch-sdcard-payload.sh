@@ -117,7 +117,7 @@ readonly SDCARD_CORES
 # payload.sh` is the bump record; deliberately NOT restated as an "as of
 # <date>" comment here, which Renovate cannot update and which would
 # therefore start lying on the first automatic bump.
-readonly PINNED_UPDATE_ALL_COMMIT="02acca0d3305962065538001c58a8a9e66079e07"
+readonly PINNED_UPDATE_ALL_COMMIT="c22f3b39bdd8d3e54175421081d155cea999b76b"
 readonly PINNED_UPDATE_ALL_URL="https://raw.githubusercontent.com/theypsilon/Update_All_MiSTer/${PINNED_UPDATE_ALL_COMMIT}/update_all.sh"
 readonly PINNED_UPDATE_ALL_SHA256="15db3c6050b5ee1960391344afe248ee49f25bdaae311051baeb7e77ab8c68f4"
 readonly PINNED_UPDATE_ALL_SIZE="8628"
@@ -126,10 +126,10 @@ readonly PINNED_UPDATE_ALL_SIZE="8628"
 # MiSTer-devel/Scripts_MiSTer, path other_authors/wifi.sh (docs/wifi-parity.md
 # confirms this exact path). Same automated bump path as update_all.sh above
 # (Renovate dep "MiSTer-devel/Scripts_MiSTer" + renovate-hash-sync.yml case 4).
-readonly PINNED_WIFI_SH_COMMIT="1b5b6231a6bddf2266d99c405b11449ea35fb5b5"
+readonly PINNED_WIFI_SH_COMMIT="f034c178efd5a836880c457e5fe0bc0c627a17c2"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
-readonly PINNED_WIFI_SH_SHA256="10233fa31ea288f001a5e8cfba18e949270f79fed1295f7fc1d45e5fad78c988"
-readonly PINNED_WIFI_SH_SIZE="5823"
+readonly PINNED_WIFI_SH_SHA256="9d1e3165c44b25529fd71b4781ab848a2b0ce2b08815e9c6ffbc12ba9285e4f9"
+readonly PINNED_WIFI_SH_SIZE="96637"
 
 # --- Pinned _Console cores source commit (SDCARD_CORES=1 only) -----------
 # MiSTer-devel/Distribution_MiSTer, default branch. Deliberately NOT per-file
@@ -151,7 +151,7 @@ readonly PINNED_WIFI_SH_SIZE="5823"
 # Any "as of <date>" note is deliberately absent -- Renovate cannot update a
 # comment, so it would start lying on the first automatic bump. `git log --
 # scripts/fetch-sdcard-payload.sh` is the bump record.
-readonly PINNED_CORES_COMMIT="8638660725dcb2cc4665d4accad8274068ff5f63"
+readonly PINNED_CORES_COMMIT="290901098d2063a8316bebe25a464637920ee98a"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------

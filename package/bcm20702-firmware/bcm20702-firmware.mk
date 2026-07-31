@@ -39,7 +39,7 @@
 # changes. At the moment of the switch the .hcd was byte-identical at
 # v12.0.1.1105_p4 and at master, so the change is a provable no-op for the
 # image -- it only unblocks future firmware updates.
-BCM20702_FIRMWARE_VERSION = efa06da04e7cd88825121dc6d7b318c805356e0e
+BCM20702_FIRMWARE_VERSION = f326999656515a0749258dfefb7cc6731e9933d5
 BCM20702_FIRMWARE_SITE = $(call github,winterheart,broadcom-bt-firmware,$(BCM20702_FIRMWARE_VERSION))
 
 # Broadcom's proprietary BT firmware, redistributed -- NOT GPL. No LICENSE_FILES:

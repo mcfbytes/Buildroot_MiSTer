@@ -50,11 +50,12 @@
 # necessarily sees the box's public IP. Nothing else is sent, nothing is stored
 # remotely, and the request carries no payload -- the public IP the packet
 # already has IS the query. (It is retried while the network is still coming up,
-# so "one lookup" can be up to TZ_TRIES x 2 requests; every retry is identical.) It is opt-out-able before it ever
-# runs (see the stamp file above). ip-api.com's free tier is HTTP-only, so that
-# request is in the clear and a hostile network could answer it -- the blast
-# radius is a wrong timezone, and the answer is validated against the zoneinfo we
-# ship before it is used. See ADR 0025.
+# so "one lookup" can be up to TZ_TRIES x 2 requests; every retry is identical.)
+# It is opt-out-able before it ever runs (see the stamp file above).
+# ip-api.com's free tier is HTTP-only, so that request is in the clear and a
+# hostile network could answer it -- the blast radius is a wrong timezone, and
+# the answer is validated against the zoneinfo we ship before it is used.
+# See ADR 0025.
 
 TZFILE=/media/fat/linux/timezone
 TZSTAMP=/media/fat/linux/timezone.autodetect

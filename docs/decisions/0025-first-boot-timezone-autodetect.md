@@ -114,9 +114,11 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 ## Verification
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
-paths rewritten into a temp dir, `curl` stubbed). 12 cases / 34 assertions covering the
-happy path, the never-overwrite rule, the once-and-only-once contract, the opt-out stamp,
-seven classes of hostile answer, both providers in order, the degraded paths, and the
+paths rewritten into a temp dir, `curl` stubbed). 12 cases / 37 assertions covering the
+happy path, the never-overwrite rule (including that an *empty* timezone file counts as
+unset, so a half-written card self-heals), the once-and-only-once contract, the opt-out
+stamp, seven classes of hostile answer, both providers in order *and* the HTTPS fallback
+actually taking over when the first provider is down, the degraded paths, and the
 "`start` must not block boot" property.
 
 `scripts/ci-tests.sh`'s Timezone section runs it **twice** — once under the host shell,

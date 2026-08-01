@@ -12,7 +12,7 @@
 # second boot. Both are cheap to assert here and impossible to assert from the
 # rootfs.tar checks in ci-tests.sh, which can only see that the file shipped.
 #
-# HOW. The script is copied into a throwaway sandbox with its four absolute
+# HOW. The script is copied into a throwaway sandbox with its three absolute
 # paths (/media/fat, /usr/share/zoneinfo/posix, /usr/bin/curl) rewritten to
 # point inside it, and `curl` is stubbed with a script that answers whatever the
 # case under test wants and records every call. Nothing here needs a build, a
@@ -81,6 +81,11 @@ cat > "$SB/bin/curl" <<EOF
 #!/bin/sh
 echo "\$*" >> "$SB/curl.calls"
 [ -f "$SB/stall" ] && sleep 5
+# \$SB/down-first makes ONLY the first provider fail, so the HTTPS fallback
+# path can be exercised rather than merely asserted to exist.
+if [ -f "$SB/down-first" ]; then
+	case "\$*" in *ip-api.com*) exit 22 ;; esac
+fi
 ans="\$(cat "$SB/answer")"
 [ "\$ans" = FAIL ] && exit 22
 printf '%s\n' "\$ans"
@@ -150,6 +155,11 @@ echo "== 2. a timezone that is already set is never overwritten =="
 reset; printf 'CHOSEN-BY-THE-USER' > "$TZFILE"; boot "America/New_York"
 must   "existing timezone untouched" grep -qx "CHOSEN-BY-THE-USER" "$TZFILE"
 mustnt "did not touch the network" queried
+# An EMPTY timezone file is a failed write, not a choice -- the -s test treats
+# it as unset so a half-written card self-heals instead of being stuck on UTC.
+reset; : > "$TZFILE"; boot "America/New_York"
+must "an empty timezone file is treated as unset, not as a choice" \
+	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
 
 echo "== 3. the guess is spent once, even when it comes up empty =="
 reset; boot "FAIL"
@@ -201,6 +211,14 @@ must "second request is the HTTPS fallback" \
 	grep -qF 'https://ipapi.co/timezone' <<< "$(request 2)"
 must "requests are time-bounded (--max-time)" \
 	grep -q -- '--max-time' "$SB/curl.calls"
+
+# ...and the fallback must actually WORK, not just be reached: ip-api down,
+# ipapi.co answering, is the exact shape of a network that eats plain HTTP.
+reset; : > "$SB/down-first"; boot "America/New_York"; rm -f "$SB/down-first"
+must   "falls back to HTTPS when the first provider is down" \
+	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
+must   "  ... on the first round, without burning the retry window" \
+	test "$(wc -l < "$SB/curl.calls")" -eq 2
 
 echo "== 9. no data partition, or no curl -> silent no-op =="
 reset; mv "$FATDIR" "$FATDIR.away"; boot "America/New_York"; mv "$FATDIR.away" "$FATDIR"

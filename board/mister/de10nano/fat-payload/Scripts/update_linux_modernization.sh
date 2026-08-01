@@ -272,9 +272,23 @@ main() {
 		exit 0
 	fi
 
+	# Capture into a variable and check the status EXPLICITLY. Writing this as
+	# `say "... $(ensure_base_ini)"` would be a silent-failure bug: inside a
+	# command substitution used as an argument, a non-zero exit neither aborts
+	# under `set -e` nor surfaces anywhere -- the function's failure would print
+	# as an empty field and the script would sail on to run the Downloader as
+	# though the card had been configured. Since the entire point of this script
+	# is to stop the Linux image being clobbered silently, it must not fail to
+	# configure the card silently either.
 	say "Checking configuration..."
-	say "  downloader.ini : $(ensure_base_ini)"
-	say "  database       : $(ensure_drop_in_ini)"
+
+	local base_result drop_in_result
+	base_result="$(ensure_base_ini)" || die "could not update $BASE_INI. Is /media/fat mounted read-write and not full? (\`mount -o remount,rw /media/fat\`)"
+	say "  downloader.ini : $base_result"
+
+	drop_in_result="$(ensure_drop_in_ini)" || die "could not write $DROP_IN_INI. Is /media/fat mounted read-write and not full?"
+	say "  database       : $drop_in_result"
+
 	say ""
 	say "  Normal updates (update_all.sh, Scripts/update.sh) will now leave the"
 	say "  Linux image alone entirely -- cores and everything else still update."

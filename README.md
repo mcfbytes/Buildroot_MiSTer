@@ -510,8 +510,9 @@ reusing a proven reference implementation in anything on the boot path.
 
 **What that first boot looks like.** The installer draws a progress splash — banner, nine
 numbered steps, a bar and an elapsed clock — on the **serial console**, and blinks the
-DE10-Nano's on-board `HPS_LED` at about 0.5 Hz for the duration (solid on = stopped and
-wants attention; off = done, rebooting). There is deliberately **no picture on HDMI**: the
+DE10-Nano's on-board `HPS_LED` at about 0.5 Hz through the long steps. Solid on is the only
+state that means trouble (stopped — failed, or the card was already installed); a dark LED
+is just a gap between phases, or the reboot. There is deliberately **no picture on HDMI**: the
 FPGA has no bitstream loaded during the install, so the display stays dark until the menu
 core comes up a minute later. Getting a picture there would mean shipping mr-fusion's
 entire stack — its U-Boot, a second DTB and a framebuffer bitstream — which is a trade

@@ -268,8 +268,11 @@ process that finishes in well under a minute. **Rejected.**
   is not a terminal, so captured logs stay readable.
 - **The HPS LED**, `/sys/class/leds/hps_led0` (DTS `gpio-leds hps0`, `&portb 24`,
   `linux-patches/0004-dts-de10nano-MiSTer.patch`). Blinking ≈0.5 Hz means installing;
-  solid on means stopped and wanting attention (failed, *or* "already provisioned" — the
-  console says which); off means handing off to the reboot. We take it off its DTS
+  **solid on is the only state that means trouble** — stopped and wanting attention
+  (failed, *or* "already provisioned"; the console says which) — and off means either a
+  gap between two long phases or finished and rebooting. Only the long, silent steps carry
+  a heartbeat child, so brief dark gaps mid-install are normal and nothing on the healthy
+  path is permitted to park the LED lit. We take it off its DTS
   `mmc0` default trigger for the duration, on purpose: erratic SD-activity flicker is
   indistinguishable from an ordinary boot, a metronome is not. Nothing persists —
   `linux,default-trigger` is re-applied at probe, so the installed card gets its normal

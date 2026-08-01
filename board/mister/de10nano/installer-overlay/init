@@ -185,8 +185,14 @@ fat_type=""; stage="starting up"; cores_skipped="no"
 #         blinking ~0.5 Hz .. installing; all is well, leave it alone
 #         solid on ......... STOPPED and wants attention: either the install
 #                            failed, or the card was already installed. Either
-#                            way the console says which.
-#         off .............. finished; handing off / rebooting into MiSTer
+#                            way the console says which. This is the ONLY state
+#                            that means trouble, which is why nothing on the
+#                            healthy path is allowed to park the LED lit.
+#         off .............. between two long phases, or finished and rebooting.
+#                            Only the long steps carry a heartbeat, so brief dark
+#                            gaps mid-install are normal; a dark LED never means
+#                            trouble, and the reboot into MiSTer is what tells
+#                            you the "finished" case apart.
 #
 #     We take the LED over (trigger=none), which costs the DTS default `mmc0`
 #     activity flicker for the duration. That is the entire point: erratic
@@ -213,6 +219,10 @@ fat_type=""; stage="starting up"; cores_skipped="no"
 #   * ASCII art is emitted as `printf '%s\n' 'line' 'line' ...` (printf reuses the
 #     format for each argument), so no line is ever escape-processed. Do not
 #     switch it to a heredoc or to escapes in a format string.
+# >>> SPLASH SECTION BEGIN -- scripts/test-installer-splash.sh extracts everything
+# between these two markers VERBATIM and sources it under a POSIX shell against a
+# stubbed /proc/uptime and /sys/class/leds. Keep the section self-contained: it
+# must not reference anything defined outside it, or that test stops working.
 SPLASH_TOTAL=9                # user-visible steps; keep in sync with splash_step calls
 SPLASH_BAR_CELLS=28           # bar width -- the whole status line must fit 80 cols
 SPLASH_FLAG=/run/splash.run   # non-empty => the heartbeat child should keep running
@@ -382,7 +392,13 @@ splash_pulse_stop() {
 	fi
 	# The child toggled the LED in a subshell, so our copy of splash_led_on is
 	# stale. Re-assert a known state or the next toggle can be a no-op frame.
-	splash_led_set 1
+	#
+	# That state must be OFF, not on. The short steps between two long ones are
+	# not bracketed by a heartbeat, so whatever we park here is what the LED shows
+	# across them -- and a SUSTAINED solid-on is the one signal reserved for "the
+	# board has stopped and wants a human" (splash_fail / splash_halt_ok). Parking
+	# on would light that signal in the middle of a perfectly healthy install.
+	splash_led_set 0
 }
 
 splash_done() {
@@ -409,6 +425,7 @@ splash_done() {
 # human. Which of the two it is, is what the console banner is for.
 splash_fail()    { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
 splash_halt_ok() { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
+# >>> SPLASH SECTION END <<<
 
 log() {
 	splash_clear_line

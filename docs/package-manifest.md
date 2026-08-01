@@ -970,6 +970,9 @@ BR2_PACKAGE_LFTP=y                            # provides all 4 bundled liblftp-*
 
 # --- Python (A6) ---
 BR2_PACKAGE_PYTHON3=y                         # 3.14.5 -- no legacy-version toggle exists in
+                                              # NB: incomplete -- see the banner below; the
+                                              # live defconfig also needs PYTHON3_{SSL,ZLIB,
+                                              # BZIP2,XZ,PYEXPAT,READLINE,CURSES}=y (P3.9)
                                               # Buildroot 2026.02; see P3.9 risk entry
 
 # --- Samba (single package covers ~125 of the 251 SONAMEs, see section 1) ---
@@ -1010,7 +1013,14 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybo
 > perf and rt-tests — which is **temporary and out of scope for this manifest**: it is
 > not stock parity and never claimed to be. Do **not** reconcile the two by
 > adding those symbols here, and do **not** "fix" the defconfig by deleting the
-> block. See `docs/debug-tooling.md`; it goes away as one unit when the
+> block. Two further, *intentional* divergences: (1) §6's `BR2_PACKAGE_PYTHON3=y` line
+> predates P3.9 — the live defconfig also sets
+> `BR2_PACKAGE_PYTHON3_{SSL,ZLIB,BZIP2,XZ,PYEXPAT,READLINE,CURSES}=y`
+> (`configs/mister_de10nano_defconfig:705-711`), and `_SSL`/`_ZLIB` are **hard blockers**
+> for Downloader_MiSTer (`docs/python-compat.md`), so do not paste this Python block
+> without them. (2) The ~21 utility packages added by T3/T5 are documented in §4c above,
+> not repeated here. §6 remains the P2.1 stock-parity paste list, not a defconfig mirror.
+> See `docs/debug-tooling.md`; the DEBUG TOOLING block goes away as one unit when the
 > investigations that justify it close, at which point the two agree again.
 > (The field hard-hang half **closed 2026-07-21**; the RT-latency measurement
 > is still outstanding, so the block stays for now.)

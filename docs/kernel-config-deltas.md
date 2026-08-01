@@ -8,9 +8,22 @@ config, or the literal output of a command reproduced here. Nothing is asserted 
 Phase 0's lesson was that plausible assumptions about this kernel keep turning out false, and
 this task found **three more** that would have shipped silently.
 
-> **On the version in every path below (2026-07-22).** This analysis was performed against
-> **6.18.38**, which was the pin at the time; **the pin has since moved to 6.18.39** and
-> will keep moving with each `.y` release Renovate lands. The `linux-6.18.38` paths,
+> **On the version and the counts in every path below (measured 2026-07-22; banner
+> refreshed 2026-08-01).** This analysis was performed against **6.18.38**, which was the
+> pin at the time; **the pin is now 6.18.41** and
+> will keep moving with each `.y` release Renovate lands.
+>
+> **The specific unchecked question:** whether any 6.18.39/.40/.41 stable backport moved a
+> symbol this document depends on. Not re-derived. D2's `MODULE_COMPRESS` parent bool and
+> D5's `NETFILTER_XTABLES_LEGACY`/`IP_NF_IPTABLES_LEGACY` gates would be the two to check
+> first — both are new-gate-above-old-symbol shapes, exactly the failure mode §3 exists to
+> catch.
+>
+> **Two artefact counts have also grown since and are deliberately not retyped below:**
+> `board/mister/de10nano/linux.config` is **627 lines** today, not the 430 quoted in §1
+> and in §1's ⚠, and it now carries **45** `=m` symbols, not the 43 in §1's scale table.
+> Both grew with the v9/v10/v10.1/v10.2 mainline-WiFi additions (§4.1) — the §1 figures
+> are what *this* analysis produced and are left as such. The `linux-6.18.38` paths,
 > line numbers, and the tarball hash are left exactly as measured — they are the evidence,
 > and re-typing a version string without re-reading the file would make them worth less,
 > not more. Nothing in a `.y` stable bump is expected to invalidate a delta here; the
@@ -505,7 +518,7 @@ P1.11 assertions**, not P1.3's — the slot exists, the value does not yet.
 
 | To | Item |
 |---|---|
-| **P1.4** | `FB_SYS_*` are gone as standalone selects; select **`FB_SYSMEM_HELPERS`** (`drivers/video/fbdev/core/Kconfig:164`). `CONFIG_FB_DEVICE=y` is new and is what creates `/dev/fb0` — keep it on. |
+| **P1.4** | ✅ **done — and this row's original advice was wrong.** `FB_SYSMEM_HELPERS` was **not** selected: it pulls in `FB_SYSMEM_FOPS` and still leaves the driver with no `mmap` (6.18 ships no sysmem mmap helper). `0001-fbdev-add-MiSTer_fb-driver.patch` selects `FB_SYS_{FILLRECT,COPYAREA,IMAGEBLIT}` — which all still exist as standalone selects — **plus `FB_IOMEM_FOPS`**. See §4.1 and `docs/patch-provenance.md` §5. `CONFIG_FB_DEVICE=y` is new and is what creates `/dev/fb0` — keep it on. |
 | **P1.6** | `ARM_SOCFPGA_CPUFREQ` **is not in mainline 6.18** — patch `0003` must supply the Kconfig entry as well as the driver. |
 | **P1.10** | Owns `CONFIG_INITRAMFS_SOURCE`. All seven `RD_*` decompressors are on, so any `INITRAMFS_COMPRESSION` choice will work. |
 | **P1.11** | Size-trim candidates if the 16 MiB budget ever gets tight: `XZ_DEC_ARM64`, `XZ_DEC_RISCV`, and the six unused `RD_*` decompressors. Not taken now — ~9 MiB headroom. |

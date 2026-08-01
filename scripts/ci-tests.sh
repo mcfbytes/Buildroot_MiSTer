@@ -1604,7 +1604,7 @@ require_absent "usr/sbin/rpcbind"    "rpcbind (portmapper)"        "BR2_PACKAGE_
 # them (ADR 0022 "Accepted limitations"). Their presence is not a server.
 
 # The kernel side of the same invariant, read from the RESOLVED .config rather
-# than the defconfig: CONFIG_NFSD's absence from configs/linux.config proves
+# than the defconfig: CONFIG_NFSD's absence from board/mister/de10nano/linux.config proves
 # nothing on its own (that file is a minimal defconfig -- an absent symbol may
 # still be `default y`), and the flip we are guarding against comes from a
 # Buildroot package's LINUX_CONFIG_FIXUPS, which edits the resolved .config and

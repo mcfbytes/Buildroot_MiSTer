@@ -158,8 +158,10 @@ var/run -> ../run      (tmpfs, mounted by /etc/fstab: "tmpfs /run tmpfs mode=075
 var/log -> ../tmp      (tmpfs, mounted by /etc/fstab: "tmpfs /tmp tmpfs mode=1777")
 ```
 
-Our overlay's `/etc/fstab` is byte-identical to stock's (`diff` exit 0 against
-`work/imgroot/etc/fstab`), and `/etc/inittab`'s `::sysinit:/bin/mount -a` runs
+Our overlay's `/etc/fstab` reproduces every one of stock's entries unchanged (it has
+since gained two *additive* tmpfs lines stock lacks — `/var/cache/samba` per
+`docs/samba-parity.md` §3 and `/var/lib/seedrng`; nothing stock had was removed or
+altered), and `/etc/inittab`'s `::sysinit:/bin/mount -a` runs
 *before* `::sysinit:/etc/init.d/rcS` (which is what actually invokes
 `S50proftpd`), so both tmpfs mounts are live by the time the script's `mkdir`/
 `touch` run. **No ext4-image persistence trick (à la ADR 0015 / Bluetooth) is
@@ -250,7 +252,7 @@ defconfig is unchanged from its pre-task state.
 The initial misdiagnosis happened because this audit checked
 `skeleton-init-common.mk`'s handling of an empty value, confirmed it matched
 the "looks like a bug" theory, and edited before checking whether
-`BR2_ROOTFS_POST_BUILD_SCRIPT` (defconfig line 65, `post-build.sh`) was doing
+`BR2_ROOTFS_POST_BUILD_SCRIPT` (defconfig line 122, `post-build.sh`) was doing
 something else with the same field — it was. Left in as a record of the
 wrong turn, since the same incomplete-investigation mistake is easy to repeat
 on this specific field.

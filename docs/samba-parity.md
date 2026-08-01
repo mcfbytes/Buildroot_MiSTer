@@ -113,7 +113,10 @@ than assumed.
 One thing this audit does **not** and cannot resolve from a worktree with no
 `output/` tree: whether `testparm`/`smbd -b` actually accepts this file
 cleanly end-to-end on this exact 4.23.8 build (host quirks, compiled-out
-modules, etc.). Flagged for the orchestrator's build-verify pass (see §5).
+modules, etc.). Flagged for the orchestrator's build-verify pass (see §5). **Since
+resolved:** `scripts/ci-tests.sh` now runs `testparm -s` on the shipped `smb.conf` under
+`qemu-arm` on every build — currently passing against Samba 4.24.3. `smbd -b` is still
+not run.
 
 ## 2. Discoverability: NetBIOS (nmbd) vs. WS-Discovery (wsdd) — decision: document only, do not add
 
@@ -236,8 +239,15 @@ correct as committed.
 
 ## 5. What this task could not verify (needs BUILD / hardware LAN, P3.13)
 
-- **`testparm`/`smbd` actually parsing this `smb.conf` cleanly under 4.23.8,
-  end to end.** §1's audit is directive-by-directory against Samba's own
+- ~~**`testparm` actually parsing this `smb.conf` cleanly, end to end.**~~ **CLOSED by CI
+  (not by this task).** `scripts/ci-tests.sh`'s "P3.6 — Samba parity" section runs
+  `testparm -s` on the shipped `smb.conf` under `qemu-arm` on every build and gates on
+  `Loaded services file OK` with no `Unknown parameter`/syntax error — today against
+  **Samba 4.24.3**. (`testparm`'s exit code is nonzero there for an unrelated reason — the
+  lock/state/cache dirs are boot-time tmpfs mounts that do not pre-exist in the static
+  target tree — so the gate reads the parse line, not `$?`.) Still NOT run: `smbd -b`, and
+  `smbd`/`nmbd` actually starting — see the next bullet. The original item, for the
+  record: `testparm`/`smbd` parsing this file under 4.23.8, §1's audit is directive-by-directory against Samba's own
   release notes and `smb.conf(5)`, plus inspection of a prior build's
   installed binaries and tree shape (`work/p3-rootfs`) — it is not a live
   `testparm -s` / `smbd -b` run against *this task's* fstab change, since

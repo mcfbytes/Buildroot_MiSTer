@@ -12,7 +12,7 @@
 
 | | Stock | Ours |
 |---|---|---|
-| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.79** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.02.3's pinned version) |
+| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.79** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.05.1's pinned version) |
 | `libbluetooth` SONAME | `libbluetooth.so.3` (verified: `docs/stock-inventory/shared-libraries-full.txt`, `docs/stock-inventory/binaries-needed.md` DT_NEEDED list) | `libbluetooth.so.3` |
 | `libbluetooth` real name | `libbluetooth.so.3.19.5` | `libbluetooth.so.3.19.15` |
 

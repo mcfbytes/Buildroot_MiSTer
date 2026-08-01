@@ -24,6 +24,19 @@ cited commit SHA, `file:line`, or upstream commit.
 > second series for upstream's sake. See §12 for what changed and why, before reading §3.2
 > or §4 as if this doc describes one tree.
 
+> ⚠ **2026-08-01 — version staleness.** Every `6.18.38` citation below is evidence
+> measured against the pin as it stood on 2026-07-08; the pin is now **6.18.41** and the
+> `file:line` references are deliberately left as measured.
+>
+> **The specific unchecked question:** whether any 6.18.39/.40/.41 stable backport landed
+> one of the fixes this doc records as "not upstream, still required" — `0028` (dwc2
+> unaligned IN split), `0027` (mt76x2u Xbox adapter IDs), F-1 (`MMC_SEND_STATUS` LED) and
+> F-5 (`i2c-designware` `dev_err`) are the four whose carried-ness a `.y` bump could
+> invalidate. None has been re-derived at 6.18.41. The class-C "drop — upstream" verdicts
+> are not exposed the same way: a stable series does not remove drivers. The build is the
+> backstop — Buildroot applies these at `patch -F0`, so a hunk upstream has absorbed fails
+> the build rather than passing silently.
+
 ---
 
 ## 1. Method — how the baseline was established
@@ -406,7 +419,7 @@ Vendored wholesale: **3,428 files**. Triaged as whole trees, not line-by-line.
 
 | Commits | Subject | Origin | Disposition |
 |---|---|---|---|
-| `33ff5146a` (2,548 files / 2.56M+), `3740d5b88` (1,687 files / 942K+), `2371fb1aa`, `143ce187e`, `4e98a68d1` (merge), `43fbb63ae`, `993b82e31`, `115b1d1ae`, `fc09a292a` | Vendor + resync rtl8188eu, rtl8188fu, rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu | **morrownr** (explicitly: `3740d5b88` = *"Backport … from morrownr"*, **gkrzystek**, PR #40); local fixes: EDUP EP-AC1661 efuse (`fc09a292a`), Edimax EW-7822ULC (`115b1d1ae`) | **re-source / mainline-first** — **updated 2026-07-15** (kernel-recon; the earlier all-packages plan was superseded): active coverage is `package/rtl8812au` + `package/rtl8821au-morrownr` (enabled) for RTL8812A/8811A/8821A; **mainline** `rtl8xxxu` for RTL8188E/F, `rtw88_8821cu` for RTL8821C, `rtw88_8822bu` for RTL8822B (the `rtl8188eu-aircrack-ng`, `rtl8188fu`, `rtl8821cu-morrownr`, `rtl88x2bu` packages exist but are **deliberately disabled** — 88x2bu failed WPA3 on hardware). Local-fix action item **resolved**: `115b1d1ae` superseded (morrownr source never had the mis-bound ID; 7392:B822 is claimed by mainline `rtw8822bu.c:18`); `fc09a292a` EDUP efuse fallback exists in **neither** mainline nor morrownr — **deliberate drop** (user decision 2026-07-15), known limitation for corrupt-EFUSE EP-AC1661 units. |
+| `33ff5146a` (2,548 files / 2.56M+), `3740d5b88` (1,687 files / 942K+), `2371fb1aa`, `143ce187e`, `4e98a68d1` (merge), `43fbb63ae`, `993b82e31`, `115b1d1ae`, `fc09a292a` | Vendor + resync rtl8188eu, rtl8188fu, rtl8812au, rtl8821au, rtl8821cu, rtl88x2bu | **morrownr** (explicitly: `3740d5b88` = *"Backport … from morrownr"*, **gkrzystek**, PR #40); local fixes: EDUP EP-AC1661 efuse (`fc09a292a`), Edimax EW-7822ULC (`115b1d1ae`) | **re-source / mainline-first** — **updated 2026-07-15** (kernel-recon; the earlier all-packages plan was superseded): **superseded again in v10/v10.2:** all six chips are now on **mainline** drivers — `rtw88_8812au`/`rtw88_8821au` for RTL8812A/8811A/8821A; **mainline** `rtl8xxxu` for RTL8188E/F, `rtw88_8821cu` for RTL8821C, `rtw88_8822bu` for RTL8822B (the `rtl8188eu-aircrack-ng`, `rtl8188fu`, `rtl8821cu-morrownr`, `rtl88x2bu` packages exist but are **deliberately disabled** — 88x2bu failed WPA3 on hardware). Local-fix action item **resolved**: `115b1d1ae` superseded (morrownr source never had the mis-bound ID; 7392:B822 is claimed by mainline `rtw8822bu.c:18`); `fc09a292a` EDUP efuse fallback exists in **neither** mainline nor morrownr — **deliberate drop** (user decision 2026-07-15), known limitation for corrupt-EFUSE EP-AC1661 units. |
 
 ### 3.7 Class F — misc quirks
 
@@ -1528,7 +1541,20 @@ got stamped with the group's disposition. Confirmed misclassifications, all now 
 | realtek coverage (§3.6) | 6 packages =m | mainline-first, 2 packages enabled | row fixed |
 
 New carried patches from these decisions: `0032`–`0037` (see `board/mister/de10nano/
-linux-patches/`), each with full provenance headers. Config parity: `CONFIG_MACVLAN=y`,
+linux-patches/`), each with full provenance headers.
+
+### Patches added after the 2026-07-15 reconciliation
+
+Five further patches landed on 2026-07-24 and are not dispositioned anywhere above. Each
+carries a self-documenting provenance header; this doc only needs the row.
+
+| Patch | Origin | Why carried |
+|---|---|---|
+| `0038-hid-nintendo-nso-genesis-bt-pid` | `b00a72159` (Shig) | stock-parity: forces the NSO Genesis pad's Bluetooth product ID from `ctlr_type` before the input_dev is created; without it the pad reports the SNES pad's `0x2017` and Main_MiSTer's gamecontrollerdb GUID lookup matches the wrong row |
+| `0039-hid-nintendo-nso-n64-genesis-stock-button-mapping` | `b00a72159` (Shig) | mainline's NSO N64/Genesis tables assign different evdev codes than stock — A/B outright swapped on N64, three of four C-buttons moved, six of ten Genesis bits differ; every gamecontrollerdb `bN` index shifts |
+| `0040-hid-nintendo-imu-name-suffix` | `a6b7e3666` (Sorgelig) | Main_MiSTer excludes the IMU input device with `strstr(name, " IMU")` and that string test is its only hook; mainline's `"%s (IMU)"` does not match, so the IMU node is opened as a phantom controller |
+| `0041-hid-nintendo-stock-led-classdev-names` | `60821059c` (Sorgelig) | stock `player1`-`player4`/`home` LED classdev names — Main_MiSTer opens these by exact path and treats a failed `fopen()` as a silent no-op, so under mainline's names every Switch controller loses userspace LED control (same origin commit as `0035`) |
+| `0042-hid-playstation-stock-lightbar-led-names` | `f123647ef` (Sorgelig) | stock lightbar LED names (`:red`/`:green`/`:blue`) plus probe-time player-LED clear; without them both PlayStation pads lose lightbar colour control | Config parity: `CONFIG_MACVLAN=y`,
 `CONFIG_JOYSTICK_XPAD=m`. All verified via full `linux-dirclean` rebuild.
 
 ### Provenance note
@@ -1582,7 +1608,7 @@ This doc does not restate the mechanics of the new directory or the export scrip
 are self-documenting and would drift out of sync with a third copy of the same rules here:
 
 - **What belongs in the new directory, and what must never** — numbering (`0100` up, a
-  separate namespace from `0001`–`0037` above), the mandatory reason a patch is absent from
+  separate namespace from `0001`–`0042` above), the mandatory reason a patch is absent from
   the image, provenance-header format: `board/mister/de10nano/linux-patches-upstream/README.md`.
 - **How the export applies it, and what it prints** — `scripts/export-kernel-tree.sh`'s
   "TWO SERIES" header comment, and the table the script generates in `EXPORT.md` naming

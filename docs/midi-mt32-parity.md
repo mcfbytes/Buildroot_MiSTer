@@ -135,7 +135,10 @@ confirmed compatible:
   `BR2_PACKAGE_FLUIDSYNTH_ALSA_LIB`) is what MidiLink's `start_fsynth()`
   needs (`fluidsynth -a alsa -m alsa_seq`) — already selected.
 
-**One path difference, not fixed here:** Buildroot's `fluidsynth.mk` has no
+**One path difference — since CLOSED (2026-07, `31d8453`):** the overlay now ships
+`usr/sbin/fluidsynth -> /usr/bin/fluidsynth` (same idiom as `usr/sbin/mount.ntfs`), so
+stock's absolute path resolves for third-party scripts too, and `scripts/ci-tests.sh`
+gates on that symlink. The original finding, for the record: Buildroot's `fluidsynth.mk` has no
 override of `FLUIDSYNTH_INSTALL_TARGET_CMDS`, so the CLI binary lands
 wherever the project's own CMake install rules put it (`usr/bin/fluidsynth`,
 Buildroot's default), not stock's `usr/sbin/fluidsynth`. This does not break
@@ -195,14 +198,15 @@ BR2_PACKAGE_ALSA_UTILS_ASEQDUMP=y
 BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
 ```
 
-**Flagged, not fixed here (out of P3.8's scope):** stock's general
+**Flagged here, fixed later by P3.15:** stock's general
 (non-MIDI) alsa-utils tools — `alsactl`, `alsamixer`, `aplay`/`arecord`
 (`APLAY`), `amixer`, `alsatplg`, `alsaucm`, `alsaloop`, `alsabat`
 (`BAT`), `iecset`, `speaker-test` — are present in stock
 (`docs/stock-inventory/binaries-needed-full.txt`) but are general ALSA
-audio parity, not MIDI parity. No Phase-3 task in `TASKS.md` currently
-appears to own this gap explicitly (`P2.1`, which applied P0.7's package
-list, is marked done `[x]` without them); whoever owns general ALSA
+audio parity, not MIDI parity. **P3.15 — General ALSA userland parity** subsequently owned and closed this:
+`configs/mister_de10nano_defconfig:422-431` now sets
+`BR2_PACKAGE_ALSA_UTILS_{ALSACTL,ALSALOOP,ALSAMIXER,ALSATPLG,ALSAUCM,AMIXER,APLAY,BAT,IECSET,SPEAKER_TEST}=y`
+(`TASKS.md` P3.15, marked done). The general ALSA
 userland parity should pick this up. **A genuine gap in this Buildroot
 version regardless of scope:** stock's `usr/bin/aserver` has **no**
 corresponding suboption in `work/buildroot/package/alsa-utils/
@@ -259,9 +263,10 @@ around (e.g. by hand-adding a custom install rule) for this task.
    `MT32_CONTROL.ROM`/`MT32_PCM.ROM` at `/media/fat/linux/mt32-rom-data`
    (this task cannot verify this at all — no ROMs are or should be present
    anywhere in this repo or its build).
-5. **`fluidsynth`'s installed path** (§3) — confirm `$PATH` for the context
-   MidiLink actually runs under covers `/usr/bin` (Buildroot's install
-   location), not just `/usr/sbin` (stock's).
+5. ~~**`fluidsynth`'s installed path** (§3)~~ — **closed, no hardware check needed:** the
+   overlay ships a `usr/sbin/fluidsynth -> /usr/bin/fluidsynth` compat symlink and
+   `scripts/ci-tests.sh` gates on it, so both the package path and stock's path resolve
+   regardless of `$PATH`.
 6. **`aserver`'s absence** (§5) does not block anything MiSTer actually
    uses — confirm no core/script invokes it.
 

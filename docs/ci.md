@@ -29,7 +29,7 @@ or policy document rather than restating it.
 <a id="pipeline-map"></a>
 ### Pipeline map
 
-Five workflows, one shared build recipe:
+Eight workflows, one shared build recipe. The five that build or publish:
 
 - **`build.yml`** — runs on every push to `master` and every PR. Builds the
   image with `.github/actions/buildroot-build`, builds the PREEMPT_RT kernel
@@ -52,14 +52,23 @@ Five workflows, one shared build recipe:
   the one pin that has no companion hash (the `_Console` cores snapshot —
   see [`#renovate-hash-sync-cores-pin`](#renovate-hash-sync-cores-pin)).
 
-`lint.yml` and `fork-sync.yml` lint the CI itself and watch the upstream
-kernel fork; they don't build anything.
+The other three don't build anything:
+
+- **`lint.yml`** — lints the CI itself.
+- **`renovate-validate.yml`** — runs Renovate's own `renovate-config-validator --strict`
+  on every change to `renovate.json`, plus a `--platform=local --dry-run=full` extraction
+  smoke test. It exists because an invalid config makes Renovate skip the repository
+  *silently* — no failed check, no PR comment; the only symptom is that dependency PRs
+  stop appearing. The smoke test exists because on 2026-07-18 the validator passed clean
+  for four days while all 18 custom managers extracted zero dependencies. See
+  `docs/renovate.md`.
+- **`fork-sync.yml`** — watches the upstream kernel fork.
 
 <a id="recipe-boundary"></a>
 ### Caller vs recipe ownership boundary
 
 `.github/actions/buildroot-build` owns everything from "make the runner able
-to build" through "the variant's images exist in `output/images/`ν(main) or
+to build" through "the variant's images exist in `output/images/` (main) or
 `output-<name>/images/`" (kernel variant). The caller owns what is genuinely
 its own: which ref to check out, and what to do with the images afterwards.
 
@@ -785,7 +794,7 @@ parity checker" trio, including a hand-synced
 sync by hand. That is exactly the kind of duplication this action removes:
 the flag is now ONE input, `skip-qemu-system`, default `"true"`
 (byte-identical behavior to the old hard-coded `"1"`), with the override
-available to any caller that wants the full six-boot QEMU system-kernel check
+available to any caller that wants the full QEMU system-kernel check
 (a manual/nightly run). Do not re-inline a copy of this trio into either
 workflow.
 
@@ -793,7 +802,7 @@ Composite-action inputs are always strings — every comparison against
 `inputs.skip-qemu-system` is `== 'true'`, never a truthiness check.
 
 `CI_TESTS_SKIP_QEMU_SYSTEM=1` skips `scripts/test-initramfs.sh`, the one
-sub-check that boots a QEMU *system* kernel six times and can take several
+sub-check that boots a QEMU *system* kernel once per case (seven today: `fat32`, `exfat`, `symlink`, `label`, `nonascii`, `missing-image`, `rootwait`) and can take several
 minutes on its own. Unset it in a manual/nightly run to get the full suite.
 
 `if: always()` on the parity-results upload is the whole point of that step:
@@ -1179,9 +1188,9 @@ documented canonical member set (`docs/reference-materials.md` §2,
 `docs/verification/stock-release-20250402.md`) catches a silently-empty
 stock archive passing the (vacuous) diff.
 
-`scripts/verify-stock-payload.sh`'s four call sites (`fetch-stock`,
-`verify-stock`, `extract-stock`, `verify-uboot`, `roundtrip`,
-`verify-layout`) are runnable standalone; the `STOCK_*` hash/size pins live
+`scripts/verify-stock-payload.sh`'s seven subcommands (`fetch-stock`, `verify-stock`,
+`extract-stock`, `verify-uboot`, `fetch-7za`, `roundtrip`, `verify-layout`), invoked from
+eight steps in `release.yml`, are each runnable standalone; the `STOCK_*` hash/size pins live
 only in `release.yml`'s job-level `env:` block, not duplicated into the
 script.
 
@@ -1198,6 +1207,13 @@ push, not just this comment. Flagged as an open decision, not a settled one.
 
 <a id="tag-convention"></a>
 ### Tag convention (unratified)
+
+> ⚠ **Stale as of 2026-08-01.** The paragraph below records the state at the workflow's
+> authoring and is kept as-is. Since then **nine** `v*` tags have been cut
+> (`v2026.07.23-rc1` … `v2026.07.31-beta`, the last a published release serving the live
+> `db.json`), all of the shape `v<YYYY.MM.DD>-<rcN|beta>`. **UNCHECKED:** whether that
+> shape is the ratified convention or merely accreted — nothing in `TASKS.md` or an ADR
+> states it. Ratify or replace it before the next release.
 
 No tag convention exists anywhere in this repo as of the workflow's
 authoring (`git tag -l` was empty; `TASKS.md` never specifies one). `v*`
@@ -1705,8 +1721,8 @@ diffs them.
 <a id="input-vs-output-caches"></a>
 ### Input caches vs output caches: the one rule this file must not violate
 
-The four caches this workflow restores (Buildroot tarball, `dl/`, host
-toolchain, ccache) are all **inputs** — source tarballs, a compiled
+The five caches this workflow restores (Buildroot tarball, `dl/`, host
+toolchain, initramfs host toolchain, ccache) are all **inputs** — source tarballs, a compiled
 cross-toolchain, compiled-object reuse hints — that a real independent build
 is entitled to share (a real-world reproducibility bug in, say, package
 source content or compiler version would still need to be caught, but caching
@@ -1714,7 +1730,7 @@ the *toolchain build* is caching an input, not the artifact under test).
 
 `output/target` and `output/images` — the actual rootfs assembly and the two
 files being compared — are **deliberately never cached here** (`build.yml`'s
-own four caches don't touch those two paths either), so both legs assemble
+own five caches don't touch those two paths either), so both legs assemble
 the target rootfs and generate both images completely fresh, every run.
 Caching either would make the "two independent builds" comparison compare a
 cache against itself — passing even when the underlying build is not

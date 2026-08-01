@@ -212,9 +212,14 @@ Then `exec switch_root /newroot /sbin/init`.
 
 ### The honest caveat
 
-**This has been verified under QEMU, not on real hardware.** As of writing, this build has
-not been booted on a real DE10-Nano. Treat the comparison as "two designs, one of them
-tested in an emulator", not as a recommendation from a running system.
+**Verified under QEMU *and* on real hardware.** `scripts/test-initramfs.sh`'s cases run
+under QEMU — that is what covers the negative paths (missing image, `rootwait` timeout,
+rescue shell) which no board test reaches. The positive path is not emulator-only: P1.13
+booted this initramfs on a Terasic DE10-Nano on 2026-07-12
+(`docs/testlogs/p1-first-boot.md`), P2.9 reached the MiSTer menu on our own `linux.img`
+the same day (`docs/testlogs/p2-menu.md`), and a DE10-Nano flashed from our `sdcard.img`
+runs the current image today. What remains unmeasured is the extra boot stage's cost in
+milliseconds (see "What it costs").
 
 ---
 

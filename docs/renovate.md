@@ -17,9 +17,12 @@ npx --package renovate -- renovate-config-validator renovate.json
 ```
 
 That check is not optional busywork: an **invalid Renovate config makes Renovate
-skip the repository silently**. It does not fail loudly, and there is no CI
-signal for it — the only symptom is that dependency PRs quietly stop appearing,
-which is exactly the failure you would not notice for months.
+skip the repository silently**. It does not fail loudly on Renovate's side — the
+only symptom is that dependency PRs quietly stop appearing, which is exactly the failure
+you would not notice for months. `.github/workflows/renovate-validate.yml` runs this same
+validator (with `--strict`) in CI on every change to `renovate.json`, plus a
+`--platform=local --dry-run=full` extraction smoke test, so the gate is automated too —
+run it locally first to avoid a red PR.
 
 What is still unproven is the *behavior* of the custom managers below, as opposed
 to their syntax. Renovate reads its config from the **default branch**, so the
@@ -29,8 +32,14 @@ managers only start producing PRs once this file is on `master`. TASKS.md P4.6's
 > a real or synthetic Renovate PR for a Buildroot point release opens with
 > passing CI; the pin file's regex manager is covered by a Renovate config test
 
-— is therefore **not yet met**: no custom manager here has produced a real PR.
-Treat each one as reviewed-and-schema-valid, not battle-tested, and see
+— is **met for several managers.** The `kernel-longterm-6.18` manager produced PRs #41
+(6.18.38 → 6.18.39) and #66 (→ 6.18.41, merged as `68a8b93`); the RT/mainline kernel
+manager produced #69; and the `git-refs` driver/sdcard-payload managers have opened their
+own digest PRs (`renovate/theypsilon-update_all_mister-digest`,
+`renovate/mister-devel-scripts_mister-digest`,
+`renovate/mister-devel-distribution_mister-digest`,
+`renovate/winterheart-broadcom-bt-firmware-digest`). The remaining managers have not yet
+produced a real PR; treat those as reviewed-and-schema-valid, not battle-tested, and see
 ["Unverified / what to check on first run"](#unverified--what-to-check-on-first-run)
 for the specific pieces most likely to need a fix on the first live run.
 
@@ -47,7 +56,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
 | 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step** (case 4). The cores commit has no companion hash (cores are fetched by content — see the script's header), so it instead gets `renovate-hash-sync.yml`'s **validate-only cores-pin step** (case 5): one Contents API call at the new commit, failing the PR closed if it does not resolve, lists no `*.rbf`, or busts the ~600 MiB cap — because no PR build ever resolves this pin, only `release.yml`'s opt-in `SDCARD_CORES=1` leg |
-| CI container digests | `ubuntu:26.04@sha256:...` in `build.yml`, `release.yml`, `reproducibility.yml`'s `container:` blocks | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
+| CI container digests | **none today** — no workflow uses a `container:` block (see `docs/ci.md#no-container-disk-reclaim`; every build job runs bare on `ubuntu-26.04` so disk reclaim can reach the runner host). The `docker`/`pinDigests` rule is retained as a no-op in case one is ever reintroduced | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
 That is **21 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
@@ -381,8 +390,9 @@ default left in place by accident.
 
 ## Confirmed: every Renovate PR triggers the full build+test CI
 
-`build.yml` (P4.1) triggers on `push` **and** `pull_request` with no branch
-filter — so a Renovate PR (like any other PR) automatically runs the full
+`build.yml` (P4.1) triggers on `pull_request` with no branch filter (`push` is scoped to
+`master` — see `docs/ci.md#push-trigger-scope`) — so a Renovate PR (like any other PR)
+automatically runs the full
 two-stage Buildroot build, `scripts/ci-tests.sh` (the P3.12 parity suite),
 and the ABI/SONAME checker. For the kernel specifically, this is the whole
 mechanized point (PLAN.md §13): a patch-apply break in any of the carried
@@ -408,15 +418,15 @@ unilaterally.
 
 ## Unverified / what to check on first run
 
-None of the following has been exercised against a live Renovate instance
-(the repo isn't onboarded yet — see "Status" above). Check these first, in
-roughly this priority order, once Renovate actually runs:
+Renovate is live and several managers have produced real PRs (see "Status" above). The
+items below are the ones that still have **not** been exercised end to end. Check these
+in roughly this priority order:
 
 1. **The `customDatasources.kernelLongterm618` JSONata transform.** Written
    by hand against kernel.org's documented `releases.json` shape
    (`{"releases": [{"version": "...", "moniker": "longterm", ...}, ...]}`);
-   never evaluated by a real Renovate JSONata engine. If the kernel PR never
-   appears, check this first — the Renovate Dependency Dashboard issue will
+   **Resolved** — evaluated by a real Renovate run; it produced PRs #41 (6.18.38 → 6.18.39)
+   and #66 (→ 6.18.41). If the kernel PR ever *stops* appearing, still check this first — the Renovate Dependency Dashboard issue will
    show a lookup error if the transform is malformed.
 2. **`fileMatch` vs `managerFilePatterns`.** This config follows the
    `/mnt/source/sb-enema/renovate.json` reference template's use of
@@ -431,7 +441,7 @@ roughly this priority order, once Renovate actually runs:
    this file is updated.
 4. ~~**`winterheart/broadcom-bt-firmware`'s tag ordering.**~~ **Resolved
    2026-07-19 by switching to a commit pin** — the concern was real and it
-   fired. See "Why this one is a commit pin" below.
+   fired. See "Why `bcm20702-firmware` is a commit pin, not a tag pin" above.
 5. **`renovate-hash-sync.yml`'s push permissions.** Assumes Renovate opens
    PRs from branches in this repo (not a fork), which is standard for the
    GitHub App/Mend-hosted integration once installed directly on this repo.
@@ -444,10 +454,10 @@ roughly this priority order, once Renovate actually runs:
 the `/mnt/source/sb-enema/renovate.json` reference does for its
 `secureboot_objects` submodule). As of this writing, **this repository has
 no git submodules** — the setting is a harmless no-op today. It is left on
-because Phase 5 planning (see the `phase5-plan-uboot-fork` branch) already
-scopes a `u-boot_MiSTer` fork as a submodule pin; when that lands, Renovate
-will start tracking it automatically with no further `renovate.json` change
-required.
+as a harmless default. Note that the original reason for leaving it on is **gone**:
+[ADR 0024](decisions/0024-mainline-uboot-capability-artifact.md) §Decision 2 explicitly
+drops the planned `u-boot/` submodule (mainline U-Boot is pinned as an ordinary Buildroot
+package instead), so no submodule pin is expected to land.
 
 ## Kernel/Buildroot bump scope, restated
 

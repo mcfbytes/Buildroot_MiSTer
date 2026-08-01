@@ -238,6 +238,21 @@ normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md
 - **By hand:** [`docs/user/onboarding.md`](docs/user/onboarding.md) walks through the same
   steps individually, if you would rather not run an installer at all.
 
+> **Why `curl` and not `wget`.** The `wget` on a MiSTer is the BusyBox applet, built
+> with no TLS support at all — it answers every `https://` URL with `not an http or ftp
+> url` and exits 1 (verified on hardware). Stock ships a real `/usr/bin/curl` linked
+> against `libcurl`/`libssl`, and MiSTer's own `Scripts/update.sh` uses curl exclusively
+> for the same reason. wget is not an alternative here.
+>
+> If curl fails with **exit 60** on your card, its CA certificates have gone stale — a
+> frozen 2021 root filesystem carries a frozen 2021 trust store. The installer detects
+> this up front and retries with `/etc/ssl/certs/cacert.pem` if the card has one;
+> otherwise it stops and tells you to run `Scripts/update.sh` once and accept its
+> certificate repair, which is the supported remedy. It deliberately does not work around
+> this by disabling verification, because it is about to download code and run it as root.
+> (Upstream's own repair does exactly that — `curl -kL` — which is a fair pragmatic
+> choice, and also a decent illustration of why this project exists.)
+
 ### On `curl | bash`
 
 You are piping a remote script into a shell as root, which is worth a moment's thought.

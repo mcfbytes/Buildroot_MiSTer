@@ -107,9 +107,42 @@ preflight() {
 	[ -d "$FAT" ] ||
 		die "$FAT does not exist. This script is meant to be run ON a MiSTer, over SSH or from a terminal, not on your PC."
 
-	command -v curl >/dev/null 2>&1 || die "curl not found."
+	# curl, specifically -- not wget. The wget on a MiSTer is the BusyBox applet,
+	# built with no TLS support at all: it answers every https:// URL with
+	# "not an http or ftp url" and exits 1. Verified on hardware. Stock ships a
+	# real /usr/bin/curl (linked against libcurl/libssl), and MiSTer's own
+	# Scripts/update.sh uses curl exclusively for the same reason.
+	command -v curl >/dev/null 2>&1 ||
+		die "curl not found. It ships with every MiSTer image -- this system looks unusual. (BusyBox wget is not an alternative here: it has no HTTPS support.)"
 	command -v python3 >/dev/null 2>&1 ||
 		die "python3 not found. The MiSTer Downloader requires it, so a MiSTer that can update at all has it -- this system looks unusual."
+
+	# Probe TLS before anything else, so a card with a stale certificate store
+	# gets a straight answer instead of discovering it three steps later as
+	# "could not reach the update channel". curl exit 60 is specifically
+	# "peer certificate cannot be authenticated"; MiSTer images have shipped
+	# expired CA bundles before, which is why Scripts/update.sh carries an
+	# interactive repair for exactly this.
+	tls_rc=0
+	curl -fsS --max-time 20 -o /dev/null "$DB_URL" 2>/dev/null || tls_rc=$?
+	if [ "$tls_rc" -eq 60 ]; then
+		if [ -f /etc/ssl/certs/cacert.pem ]; then
+			CURL_SSL="--cacert /etc/ssl/certs/cacert.pem"
+			export CURL_SSL
+			say "Note: this card's CA certificates look stale; using /etc/ssl/certs/cacert.pem."
+			say ""
+		else
+			die "TLS certificate verification failed, and this card has no
+       /etc/ssl/certs/cacert.pem to fall back on.
+
+       Run \`Scripts/update.sh\` once and accept its offer to fix the
+       certificates -- that is the supported repair, and it is interactive so it
+       has to be you rather than this script. Then run this installer again.
+
+       (Deliberately NOT worked around here by disabling verification: this
+       script downloads code and runs it as root.)"
+		fi
+	fi
 
 	# The rootfs is read-only by design; /media/fat is the writable half.
 	if ! touch "$FAT/.mlm-write-test" 2>/dev/null; then
@@ -136,7 +169,8 @@ installed_version() {
 }
 
 published_version() {
-	curl -fsSL --max-time 30 --retry 2 "$DB_URL" 2>/dev/null | python3 -c 'import json,sys
+	# shellcheck disable=SC2086  # CURL_SSL is an option PAIR and must word-split
+	curl -fsSL --max-time 30 --retry 2 ${CURL_SSL:-} "$DB_URL" 2>/dev/null | python3 -c 'import json,sys
 try:
     print(json.load(sys.stdin)["linux"]["version"][-6:])
 except Exception:
@@ -237,7 +271,8 @@ install_updater() {
 	# message then cheerfully reports "curl exit 0" on every failure, sending
 	# whoever is debugging it down the wrong path.
 	rc=0
-	curl -fsSL --max-time 60 --retry 3 --retry-connrefused -o "$tmp" "$UPDATER_URL" || rc=$?
+	# shellcheck disable=SC2086  # CURL_SSL is an option PAIR and must word-split
+	curl -fsSL --max-time 60 --retry 3 --retry-connrefused ${CURL_SSL:-} -o "$tmp" "$UPDATER_URL" || rc=$?
 
 	if [ "$rc" -ne 0 ]; then
 		rm -f "$tmp"

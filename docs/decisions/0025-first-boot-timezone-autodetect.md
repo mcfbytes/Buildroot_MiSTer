@@ -93,7 +93,8 @@ answer, and every retry carries the same nothing.)
   against the zoneinfo we actually ship before it is used as a path — no `..`, no absolute
   path, no shell metacharacters, no zone we do not have — so a hostile answer cannot
   become an arbitrary file read or a command. `scripts/test-timezone.sh` asserts each of
-  those rejections.
+  those rejections, and the two that could pass vacuously are mutation-checked: with the
+  guard removed they fail, which is the only thing that makes them evidence.
 - An HTTPS provider (`ipapi.co`) is tried second, which also covers networks that block or
   intercept plain HTTP.
 
@@ -131,7 +132,7 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
 paths rewritten into a temp dir, `curl` stubbed; `/proc/net/route` and the dhcpcd hook
-stubbed too). 15 cases / 54 assertions covering the
+stubbed too). 15 cases / 60 assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
 unset, so a half-written card self-heals), the once-and-only-once contract, the opt-out
 stamp, seven classes of hostile answer, both providers in order *and* the HTTPS fallback

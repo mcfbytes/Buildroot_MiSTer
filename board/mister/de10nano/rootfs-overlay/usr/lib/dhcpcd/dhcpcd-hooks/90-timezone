@@ -19,9 +19,16 @@
 # directory: hence no shebang, no exec bit, and no `exit` -- an `exit` here would
 # end dhcpcd's whole hook run, taking 20-resolv.conf and 30-hostname with it.
 
+# NB: dhcpcd's own hooks write this as `if $if_configured && $if_up`, i.e. they
+# EXECUTE the variable as a command. That is their idiom and it works, because
+# dhcpcd sets these to the literal strings true/false. It is compared as data
+# here anyway: this file is sourced into dhcpcd's shell, and a variable that is
+# unset, empty, or ever anything other than those two strings would then be run
+# as a command. Nothing reaches if_up from the network, so this is not a hole
+# being closed -- it is one that never gets to open.
 case "$reason" in
 BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
-	if ${if_up:-false} && [ -x /etc/init.d/S48timezone ]; then
+	if [ "${if_up:-false}" = true ] && [ -x /etc/init.d/S48timezone ]; then
 		/etc/init.d/S48timezone start
 	fi
 	;;

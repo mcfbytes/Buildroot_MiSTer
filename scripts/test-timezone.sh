@@ -185,12 +185,15 @@ verb()    { PATH="$SB/bin:$PATH" "${TEST_SH[@]}" "$SB/sync" "$1" >/dev/null 2>&1
 # hook <reason> <if_up> -- one dhcpcd event, sourced the way dhcpcd sources it.
 # The trailing marker proves the hook did not `exit`, which in a sourced hook
 # would end dhcpcd's whole run and take 20-resolv.conf/30-hostname with it.
+# With one argument, if_up is left UNSET -- the case dhcpcd never produces but
+# the hook must still handle, since it is sourced into dhcpcd's own shell.
 hook() {
 	rm -f "$SB/hook.calls" "$SB/hook.reached-end"
 	(
 		# Exported, as dhcpcd itself passes them: the hook reads them,
 		# this shell does not.
-		export reason="$1" if_up="$2"
+		export reason="$1"
+		[ $# -ge 2 ] && export if_up="$2"
 		# shellcheck source=/dev/null
 		. "$SB/90-timezone"
 		: > "$SB/hook.reached-end"
@@ -261,6 +264,15 @@ reset; boot "America"
 mustnt "directory name rejected" test -e "$TZFILE"
 reset; boot "Mars/Olympus_Mons"
 mustnt "zone we do not ship rejected" test -e "$TZFILE"
+reset; boot "/etc/passwd"
+mustnt "absolute path rejected" test -e "$TZFILE"
+# The one that actually discriminates: "//UTC" joins to "$ZONEDIR//UTC", which
+# DOES resolve, so without an explicit leading-slash rejection this is accepted
+# and installed. Whether that is reachable depends entirely on how the path
+# happens to be joined -- which is the reason to reject the shape outright
+# rather than rely on the join.
+reset; boot "//UTC"
+mustnt "absolute path rejected even when it would resolve" test -e "$TZFILE"
 reset; boot ""
 mustnt "empty answer rejected" test -e "$TZFILE"
 
@@ -337,6 +349,15 @@ hook BOUND6 true
 must   "BOUND6 calls it (IPv6-only networks)" hook_fired
 hook BOUND false
 mustnt "an interface that is not up does not" hook_fired
+# if_up is compared as data, not executed. Unset, empty or junk must all read as
+# "not up" rather than as a command for the sourcing shell to run.
+hook BOUND
+mustnt "if_up unset reads as not-up" hook_fired
+hook BOUND ""
+mustnt "if_up empty reads as not-up" hook_fired
+hook BOUND "$SB/etc/init.d/S48timezone"
+mustnt "a junk if_up is not executed" hook_fired
+must   "  ... and the hook still returned to dhcpcd" test -e "$SB/hook.reached-end"
 hook PREINIT true
 mustnt "PREINIT (no address yet) does not" hook_fired
 hook DEPARTED true

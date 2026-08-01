@@ -151,15 +151,24 @@ detect() {
 			# $zone came off the network: validate BEFORE it is ever
 			# interpolated into a path. Only the characters real zone
 			# names use, which also rules out "." and therefore ".."
-			# path traversal, plus shell metacharacters; and it has to
-			# name a zone file we actually ship (this also rejects an
-			# empty answer, and a directory like "America"). Looser
-			# than timezone.sh's `grep -qE "^.+[/].+$"` in one way --
-			# a slash is not required -- because ip-api does answer
-			# with the slashless-but-real "UTC" for some IPs, and
-			# taking it at its word beats retrying until we time out.
+			# path traversal, plus shell metacharacters; no leading
+			# slash; and it has to name a zone file we actually ship
+			# (which also rejects an empty answer, and a directory
+			# like "America"). Looser than timezone.sh's
+			# `grep -qE "^.+[/].+$"` in one way -- a slash is not
+			# required -- because ip-api does answer with the
+			# slashless-but-real "UTC" for some IPs, and taking it at
+			# its word beats retrying until we time out.
+			#
+			# The leading-slash case is rejected explicitly even
+			# though "$ZONEDIR/$zone" would make "/etc/passwd" harmless
+			# today ("...posix//etc/passwd" does not exist). Relying on
+			# how the path happens to be joined is not the same as
+			# rejecting an absolute path, and this comment claims the
+			# latter -- so the code should do it, not merely get away
+			# with not doing it.
 			case "$zone" in
-				''|*[!A-Za-z0-9/_+-]*) continue ;;
+				''|/*|*[!A-Za-z0-9/_+-]*) continue ;;
 			esac
 			[ -f "$ZONEDIR/$zone" ] || continue
 

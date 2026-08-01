@@ -11,51 +11,63 @@ boots).
 
 ## The procedure
 
-1. **Remove the opt-in database file.** Delete (or rename to not end in `.ini`, if you'd
-   rather keep a copy) whichever file you created in
-   [`onboarding.md`](onboarding.md#step-1):
+1. **Turn Linux updates back on.** Open `/media/fat/downloader.ini` and set the
+   `update_linux` line in the `[MiSTer]` section back to `true` (or simply delete the
+   line — `true` is the default):
+
+   ```ini
+   [MiSTer]
+   update_linux = true
+   ```
+
+   **This is the step that actually matters**, and it is the one that changed. While
+   `update_linux = false` is in place, *no* Linux image can be applied by a normal update
+   — not ours and not the official one. Removing our database alone would leave you stuck
+   on this image with nothing able to replace it.
+
+2. **Remove the opt-in database file.** Delete (or rename to not end in `.ini`, if you'd
+   rather keep a copy):
 
    ```
    /media/fat/downloader_mister_linux_modernization.ini
    ```
 
-   or
-
-   ```
-   /media/fat/downloader/mister_linux_modernization.ini
-   ```
-
    If you instead added the section manually inside your existing `downloader.ini`,
    delete just that `[mister_linux_modernization]` block.
 
-2. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
+   Optionally also delete `/media/fat/Scripts/update_linux_modernization.sh`. Leaving it
+   is harmless — it does nothing unless you run it — but note that **running it again
+   would undo step 1**, since repairing that setting is exactly its job.
+
+3. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
    `Scripts/update.sh` — or simply wait for its next scheduled run. Either works.
 
-3. **Reboot** once it finishes (same as any update — see below for what to expect).
+4. **Reboot** once it finishes (same as any update — see below for what to expect).
 
 That's the whole procedure. No SD card removal, no re-flashing, no special tools.
 
-> **Step 1 is not optional, and skipping it fails silently.** It is natural to assume
-> that just running the normal updater again is enough to get you back to stock. It
-> isn't. If the opt-in file is still in place, our database keeps being consulted and
-> keeps winning (see [the ordering rule](onboarding.md#multi-db-ordering-rule)), and its
-> version still matches what you're running — so the updater correctly concludes there is
-> nothing to do and changes nothing. You'd see a clean, successful run and still be on
-> this image. **Remove the file first; then re-run.**
+> **Steps 1 and 2 are both required, and skipping either fails silently.**
+>
+> Skip **step 1** and the updater has Linux updates switched off entirely: it runs
+> cleanly, reports success, and changes nothing about your Linux image. Skip **step 2**
+> and our database is still configured, still carries a `linux` entry matching what you
+> are already running, and now competes with the official one for the single Linux slot
+> — so you may get a clean successful run and still be on this image. Do both, then
+> re-run.
 
 ---
 
 ## Why this actually works, not just "probably"
 
-With our database gone, `distribution_mister` is the only configured database left that
-carries a `linux` entry — there's no multi-database race to lose (see
-[`onboarding.md`](onboarding.md#multi-db-ordering-rule)
-for what that race is, when our entry is present). The Downloader compares your currently
-running `/MiSTer.version` against the official entry's version. Because this project's
-build stamps a different version than the current official release, that comparison is
-guaranteed to differ — the check is a plain string **inequality**, with no concept of
-"upgrade" vs. "downgrade" built in. A different string is a different string, so the
-official update proceeds automatically, restoring the stock image.
+With `update_linux` back to `true` and our database gone, `distribution_mister` is the
+only configured database left carrying a `linux` entry — so there is no multi-database
+race to lose (see [`onboarding.md`](onboarding.md#multi-db-ordering-rule) for what that
+race is and why this project sidesteps it rather than competing in it). The Downloader
+compares your currently running `/MiSTer.version` against the official entry's version.
+Because this project's build stamps a different version than the current official release,
+that comparison is guaranteed to differ — the check is a plain string **inequality**, with
+no concept of "upgrade" vs. "downgrade" built in. A different string is a different string,
+so the official update proceeds automatically, restoring the stock image.
 
 **Rollback is not a special code path.** It is the exact same apply mechanism as any other
 Linux update, just running in the direction back to stock:

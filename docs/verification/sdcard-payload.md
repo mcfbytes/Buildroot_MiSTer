@@ -40,14 +40,27 @@ mister-payload/linux/soundfonts/
 mister-payload/MiSTer
 mister-payload/menu.rbf
 mister-payload/MiSTer.ini
+mister-payload/downloader.ini
+mister-payload/downloader_mister_linux_modernization.ini
 mister-payload/Scripts/
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
+mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **25 entries** (7 directories, 18 files) for the base inventory. `check-sdcard.sh`
+That is **28 entries** (7 directories, 21 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
+
+> **Changed 2026-08-01** — three entries **added**, all of them this project's own
+> update-channel configuration, staged by `stage_update_channel()` in
+> `scripts/fetch-sdcard-payload.sh`: `mister-payload/downloader.ini`,
+> `mister-payload/downloader_mister_linux_modernization.ini` and
+> `mister-payload/Scripts/update_linux_modernization.sh`. Together they make a
+> freshly flashed card hold on to this project's Linux image across routine
+> `update_all.sh` runs while still updating cores normally, with no user action at
+> all. See `docs/user/onboarding.md` §"Already flashed our sdcard.img?" and the
+> header comment above `stage_update_channel()`.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and
@@ -74,6 +87,9 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/update.sh` | `files/Scripts/update.sh` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin |
 | `mister-payload/Scripts/update_all.sh` | `theypsilon/Update_All_MiSTer`, raw file at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/Scripts/wifi.sh` | `MiSTer-devel/Scripts_MiSTer`, `other_authors/wifi.sh` at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
+| `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares both core databases explicitly: `distribution_mister` (canonical URL from the Downloader's own `constants.py`) and `jtcores` (Jotego, `filter = !jtbeta` to exclude the Patreon-only beta cores, matching what Update All configures for a user who has not enabled them). `distribution_mister` **must** be explicit here — `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some |
+| `mister-payload/downloader_mister_linux_modernization.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader_mister_linux_modernization.ini` | In-tree, not fetched. Registers our `db.json` through the Downloader's drop-in mechanism (`/media/fat/downloader_*.ini`), which is what lets `--run-only mister_linux_modernization` name it |
+| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image: re-enables the Linux update for one run (`UPDATE_LINUX=true`, which the Downloader applies *after* parsing the ini) restricted to one database (`--run-only`), so there is no multi-db race to lose. Idempotently repairs both ini files above before running |
 
 `gamecontrollerdb/`, `mt32-rom-data/`, `soundfonts/` are copied wholesale from the stock
 archive; `check-sdcard.sh` asserts each directory exists and is non-empty rather than

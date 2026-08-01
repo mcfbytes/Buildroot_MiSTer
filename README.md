@@ -85,7 +85,7 @@ mainline can hold it.
 | | Stock MiSTer | This project |
 |---|---|---|
 | **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18.41 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **31 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **36 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
 | **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.3** |
@@ -130,7 +130,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 | Phase | State | What that means |
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 31 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
+| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 36 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.1, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
@@ -174,7 +174,7 @@ Renovate opening a PR on every `.y` bump.
 The interesting part is not the version number — it's the **shape of the delta**. The
 fork's **123 reconciled commits** (108 on the shipped `MiSTer-v5.15` branch plus 15
 residue commits that existed only on the older v5.14/v5.13.12 branches) are down to
-**31 carried patch files**. Every remaining drop is either verifiably in mainline 6.18,
+**36 carried patch files**. Every remaining drop is either verifiably in mainline 6.18,
 replaced by a maintained package, or recorded as a deliberate decision.
 
 **Every commit in the fork was independently reconciled**, each with a machine-readable,
@@ -444,7 +444,7 @@ configs/                 mister_de10nano_defconfig  (the shipped image)
                          mister_installer_defconfig (SD-card installer cpio)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         the 31 carried MiSTer kernel patches, + series
+  linux-patches/         the 36 carried MiSTer kernel patches
   linux-patches-beta/    symlinks to the above + 5 re-anchored real copies for 7.x
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files

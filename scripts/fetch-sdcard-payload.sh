@@ -286,6 +286,72 @@ stage_stock_payload() {
 }
 
 # ============================================================================
+# 1b. Update-channel configuration — this project's own files, from the repo
+# ============================================================================
+# Staged AFTER stage_stock_payload() on purpose: that function does a
+# `cp -a "$extract_dir/linux/."` and writes MiSTer.ini/Scripts/update.sh from
+# the stock archive, and these files must survive that rather than be
+# overwritten by it. No stock payload member carries these three names today,
+# but ordering it this way means a future stock release that does cannot
+# silently win.
+#
+# What these do, one line each (full reasoning lives in the files themselves
+# and in docs/user/onboarding.md):
+#
+#   downloader.ini
+#       [MiSTer] update_linux = false — stops EVERY normal Downloader run from
+#       applying a Linux image, so the official `distribution_mister` entry can
+#       never overwrite ours. Cores and everything else still update normally.
+#       Also declares the two core databases a sane card wants:
+#       `distribution_mister` (the official one) and `jtcores` (Jotego, with
+#       `filter = !jtbeta` so the Patreon-only beta cores are excluded).
+#       distribution_mister MUST be declared explicitly here: the Downloader
+#       only auto-adds it when the base ini declares NO databases at all
+#       (config_reader.py, _add_default_database), and this file declares some.
+#
+#   downloader_mister_linux_modernization.ini
+#       Registers our db.json as an additional database through the
+#       Downloader's drop-in mechanism (/media/fat/downloader_*.ini). Required
+#       for --run-only to be able to name it.
+#
+#   Scripts/update_linux_modernization.sh
+#       The one thing that updates OUR Linux image: re-enables the Linux update
+#       for a single run (UPDATE_LINUX=true) restricted to a single database
+#       (--run-only), so there is no multi-db race to lose.
+#
+# A freshly flashed sdcard.img is therefore correctly configured with no user
+# action at all: cores update, our Linux image stays put, and one entry in the
+# Scripts menu updates it.
+
+stage_update_channel() {
+	local src="$REPO_ROOT/board/mister/de10nano/fat-payload"
+
+	[ -d "$src" ] ||
+		die "update-channel payload dir not found: $src"
+
+	local f
+	for f in downloader.ini downloader_mister_linux_modernization.ini \
+	         Scripts/update_linux_modernization.sh; do
+		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
+	done
+
+	mkdir -p "$PAYLOAD_DIR/Scripts"
+
+	cp -f "$src/downloader.ini" "$PAYLOAD_DIR/downloader.ini"
+	chmod 0644 "$PAYLOAD_DIR/downloader.ini"
+
+	cp -f "$src/downloader_mister_linux_modernization.ini" \
+		"$PAYLOAD_DIR/downloader_mister_linux_modernization.ini"
+	chmod 0644 "$PAYLOAD_DIR/downloader_mister_linux_modernization.ini"
+
+	cp -f "$src/Scripts/update_linux_modernization.sh" \
+		"$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
+	chmod 0755 "$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
+
+	log "staged update-channel config (downloader.ini, db drop-in, Scripts/update_linux_modernization.sh)"
+}
+
+# ============================================================================
 # 2. Scripts/update_all.sh and Scripts/wifi.sh — small, pinned raw fetches
 # ============================================================================
 
@@ -396,6 +462,7 @@ main() {
 	extract_stock_members
 	reverify_uboot_updateboot
 	stage_stock_payload
+	stage_update_channel
 
 	fetch_update_all
 	fetch_wifi_sh

@@ -172,28 +172,38 @@ image, the problem was #3 or #4. If it still does nothing, it's #1 or #2.
 
 ---
 
-## My MiSTer picked its own timezone on first boot. What was that?
+## My MiSTer picked its own timezone by itself. What was that?
 
-**On its first boot, this image looks up your timezone once** and writes it to
-`/media/fat/linux/timezone` — the file `/etc/localtime` points at, and the same file the
-community `timezone.sh` script writes. Stock leaves that file missing, so a fresh card
-runs on **UTC** forever unless you go and set it by hand; if you are anywhere west of
-Greenwich, every save-state timestamp, screenshot name and OSD clock is quietly wrong.
+**This image looks up your timezone once**, on the first boot where it has a network, and
+writes it to `/media/fat/linux/timezone` — the file `/etc/localtime` points at, and the
+same file the community `timezone.sh` script writes. Stock leaves that file missing, so a
+fresh card runs on **UTC** forever unless you go and set it by hand; if you are anywhere
+west of Greenwich, every save-state timestamp, screenshot name and OSD clock is quietly
+wrong.
 
 **What is sent.** A request to `ip-api.com` — the same service `timezone.sh`'s
-"Automatic" mode uses — which sees your public IP and answers with a timezone name, e.g.
-answer: `America/New_York`. That is the whole exchange: the request carries nothing else, and
-nothing is stored remotely. It happens on **one boot only** — if your network is still
-coming up the box keeps retrying quietly in the background for a few minutes, then stops
-for good, whether it got an answer or not.
+"Automatic" mode uses — which sees your public IP and answers with a timezone name like
+`America/New_York`. That is the whole exchange: the request carries nothing else, and
+nothing is stored remotely. It happens **once**: once a provider has answered, usefully or
+not, the box never asks again.
+
+**That first request is plain HTTP, not HTTPS.** ip-api.com's free tier does not offer TLS,
+and it is the provider the community script already uses. So anyone who controls your
+network can read that request, and can answer it in place of ip-api. What that buys them is
+a wrong clock: the answer is only ever used to pick a file out of the zoneinfo already on
+your card, and anything that is not a timezone this image ships is discarded unread. It
+cannot become a download, a command, or a file of their choosing. A second provider,
+`ipapi.co`, is tried over HTTPS when the first does not answer — which also covers networks
+that block or intercept plain HTTP. If a cleartext request is not acceptable on your
+network at all, opt out below and set the timezone by hand.
 
 **It will never overwrite a timezone you set.** Run `timezone.sh`, or drop a zoneinfo
 file at `/media/fat/linux/timezone` yourself, and that is final.
 
 **To opt out before it ever runs**, create an empty file called `timezone.autodetect` in
 the `linux` folder of your SD card, next to `wpa_supplicant.conf`. Nothing will be sent.
-(That is the same file the box writes itself after its one attempt — you can open it, it
-explains itself.)
+(That is the same file the box writes itself once a provider has answered — you can open
+it, it explains itself.)
 
 **If your box had no network on its first boot, nothing is lost.** Being offline is not an
 answer, so the one guess is not spent — nothing is even sent, because the box checks

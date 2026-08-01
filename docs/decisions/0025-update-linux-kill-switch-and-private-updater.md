@@ -140,6 +140,30 @@ update it — the user would be frozen on whatever release they first installed.
 - **The kill switch is a global, not a per-database setting.** Any *other* third-party
   database offering a `linux` entry is also blocked while it is set. That is intended, and
   it is the same protection working as designed.
+- **The kill switch protects `downloader.ini`, and only `downloader.ini`.** This is the one
+  real hole, and it is worth stating precisely. The Downloader resolves its ini from the
+  launcher's own filename: `calculate_config_path()` strips a `scripts` path component,
+  appends `.ini` to the stem, then special-cases `/update.ini` → `/downloader.ini`. So:
+
+  | Launcher | Ini it reads | Covered? |
+  |---|---|---|
+  | `Scripts/update.sh` | `/media/fat/downloader.ini` (via the special case) | ✅ |
+  | `Scripts/update_all.sh` | `/media/fat/downloader.ini` — Update All always sets `DOWNLOADER_INI_PATH` explicitly, which outranks the derived path | ✅ |
+  | `Scripts/update_linux_modernization.sh` | our private ini — set explicitly | ✅ (by design) |
+  | **any other launcher**, e.g. a renamed copy at `Scripts/mycopy.sh` | `/media/fat/mycopy.ini` | ❌ |
+
+  A launcher we have never heard of reads an ini we have never written. If that ini has no
+  `[MiSTer]` section, `update_linux` defaults to **true**; if it declares no databases,
+  `distribution_mister` is auto-added. Such a run *would* install the official image over
+  ours. We do not try to defend against this by writing kill switches into arbitrary
+  `/media/fat/*.ini` files — that is guessing at other tools' configuration, and would
+  break them.
+
+  It is instead handled after the fact, which is why the revert detector exists: the next
+  boot notices `/MiSTer.version` no longer matches what was recorded, says so on the
+  console, writes `Scripts/.config/mister_linux_modernization/REVERTED`, and the boot
+  upkeep has already repaired `downloader.ini`. One run of the updater puts the image back.
+  A single silent revert becomes a single loud one.
 - **Verified on hardware (2026-08-01):** on a DE10-Nano freshly flashed from `sdcard.img`,
   a full `update_all.sh` run installed 379 cores (78 of them Jotego, plus 858 MRAs),
   rebooted, and came back with `linux.img` and `zImage_dtb` byte-identical and the same

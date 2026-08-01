@@ -60,11 +60,18 @@
 TZFILE=/media/fat/linux/timezone
 TZSTAMP=/media/fat/linux/timezone.autodetect
 ZONEDIR=/usr/share/zoneinfo/posix
+# Absolute, and the same string the start() guard tests -- an init script runs
+# with whatever PATH init handed it, and the guard would otherwise be checking a
+# different thing from the one being executed. Same reasoning as the inittab's
+# /usr/sbin/gpm note in docs/init-parity.md.
+CURL=/usr/bin/curl
 
 # Network comes up asynchronously (dhcpcd lease, or a WiFi association that can
 # take tens of seconds), so retry rather than assuming connectivity at S48.
-# ~3 minutes of window: this is the only attempt this box will ever make, so be
-# patient, and it costs nothing but a sleeping background shell.
+# This is the only attempt this box will ever make, so be patient -- it costs
+# nothing but a sleeping background shell. Window is ~3 min when the failures
+# are instant (no route, no DNS) and up to ~8 min if every request instead
+# burns its full --max-time: 18 x (2 x 8s + 10s).
 TZ_TRIES=18
 TZ_INTERVAL=10
 
@@ -98,7 +105,7 @@ detect() {
 		#     intercept plain HTTP.
 		for url in 'http://ip-api.com/line/?fields=timezone' \
 			'https://ipapi.co/timezone'; do
-			zone="$(curl -sfL --max-time 8 "$url" 2>/dev/null |
+			zone="$("$CURL" -sfL --max-time 8 "$url" 2>/dev/null |
 				head -n 1 | tr -d '\r')"
 
 			# $zone came off the network: validate BEFORE it is ever
@@ -149,7 +156,7 @@ start() {
 	[ -e "$TZSTAMP" ] && return 0
 	# No data partition (or no linux/ dir on it): nowhere to persist to.
 	[ -d /media/fat/linux ] || return 0
-	[ -x /usr/bin/curl ] || return 0
+	[ -x "$CURL" ] || return 0
 
 	echo "Timezone: not set, detecting in background"
 	detect &

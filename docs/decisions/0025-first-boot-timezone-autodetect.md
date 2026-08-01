@@ -59,8 +59,8 @@ forever. The cost of that choice is stated plainly below.
 **A background job with a retry window, because the network is not up yet.** `S48` runs
 seconds after `S41dhcpcd`; a DHCP lease, or a Wi-Fi association, can take tens of seconds.
 `start` returns immediately (asserted by the test suite — a blocking lookup would stall
-`rcS` and therefore the whole boot) and the lookup retries for ~3 minutes in the
-background.
+`rcS` and therefore the whole boot) and the lookup retries in the background for ~3
+minutes, or up to ~8 if each request burns its full timeout rather than failing instantly.
 
 ## Trust and privacy — the honest version
 

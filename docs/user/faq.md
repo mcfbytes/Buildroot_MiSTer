@@ -182,10 +182,10 @@ Greenwich, every save-state timestamp, screenshot name and OSD clock is quietly 
 
 **What is sent.** A request to `ip-api.com` — the same service `timezone.sh`'s
 "Automatic" mode uses — which sees your public IP and answers with a timezone name, e.g.
-`America/New_York`. That is the whole exchange: the request carries nothing else, and
+answer: `America/New_York`. That is the whole exchange: the request carries nothing else, and
 nothing is stored remotely. It happens on **one boot only** — if your network is still
-coming up the box retries for a couple of minutes, then stops for good, whether it got an
-answer or not.
+coming up the box keeps retrying quietly in the background for a few minutes, then stops
+for good, whether it got an answer or not.
 
 **It will never overwrite a timezone you set.** Run `timezone.sh`, or drop a zoneinfo
 file at `/media/fat/linux/timezone` yourself, and that is final.

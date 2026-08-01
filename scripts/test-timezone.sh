@@ -15,7 +15,10 @@
 # HOW. The script is copied into a throwaway sandbox with its three absolute
 # paths (/media/fat, /usr/share/zoneinfo/posix, /usr/bin/curl) rewritten to
 # point inside it, and `curl` is stubbed with a script that answers whatever the
-# case under test wants and records every call. Nothing here needs a build, a
+# case under test wants and records every call. The script calls curl by
+# absolute path, so that rewrite -- not a PATH shim -- is what the cases
+# actually exercise; PATH is set as well only so the stub wins if that ever
+# changes. Nothing here needs a build, a
 # board, or a network: the zoneinfo files are synthesized (the script only ever
 # copies them, never parses them), so this runs anywhere in about a second.
 #

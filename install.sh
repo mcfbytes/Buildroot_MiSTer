@@ -163,11 +163,15 @@ preflight() {
             # copy mlm.sh to /media/fat/Scripts/ then, on the MiSTer:
             sh /media/fat/Scripts/mlm.sh --bootstrap-ca
 
-       2. Run \`Scripts/update.sh\` once and accept its certificate repair. Note
-          what that actually does: fetches a CA bundle with verification DISABLED
-          and installs it into /etc/ssl/certs. It works, and it is what MiSTer
-          has always done -- but a tampered bundle there is persistent and
-          silent, and would be trusted by every program on the box from then on.
+       2. Run \`Scripts/update.sh\` once and accept its certificate repair. It
+          works, and it is what MiSTer has always done. Two things worth knowing
+          before you pick it: the bundle is fetched with verification DISABLED
+          (its sha256 comes from the same unverified connection, so it catches a
+          truncated download, not an attacker), and it is installed into
+          /etc/ssl/certs -- where a tampered bundle would be persistent, silent,
+          and trusted by every program on the box from then on. It also deletes
+          the existing certificates BEFORE downloading the new ones, so if that
+          download fails you are left with none at all.
 
        3. Re-run this installer with --bootstrap-ca. Same unverified fetch, but
           used for THIS RUN ONLY and never written to the system trust store, so

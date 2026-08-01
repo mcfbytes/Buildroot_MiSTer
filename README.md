@@ -244,31 +244,58 @@ normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md
 > against `libcurl`/`libssl`, and MiSTer's own `Scripts/update.sh` uses curl exclusively
 > for the same reason. wget is not an alternative here.
 >
-> **If curl fails with exit 60**, this card's CA certificates have gone stale — a root
-> filesystem frozen years ago carries a trust store frozen years ago. Then *nothing* on
-> the card can make a trustworthy HTTPS connection, including whatever would repair it, so
-> there is no way out that doesn't involve a leap of faith somewhere. The installer detects
-> this before printing anything and lays out the options, safest first:
+<a id="if-the-one-liner-seems-to-do-nothing"></a>
+> **If the one-liner appears to do nothing, read this.** On a card whose CA certificates
+> have expired, `curl` fails, `sh` receives an empty pipe, does nothing, and the whole
+> pipeline **exits 0**. You get curl's `(60)` error and no install, with a success status.
+> That is the first symptom, and it is not obvious.
 >
-> 1. **Do it from a machine whose TLS works.** Download the installer there, check its
->    `sha256sum` against the repo, and copy it to the card. No leap of faith at all.
-> 2. **`Scripts/update.sh`'s certificate repair.** What MiSTer has always done. Worth
->    knowing what it actually is: fetch a CA bundle with verification *disabled* and
->    install it into `/etc/ssl/certs`.
-> 3. **`--bootstrap-ca`.** The same unverified fetch, but the bundle goes to `/tmp` and is
->    used for **that run only** — never written to the system trust store.
+> A root filesystem frozen years ago carries a trust store frozen years ago, so *nothing*
+> on the card can make a trustworthy HTTPS connection — including whatever would repair it.
+> There is no way out that does not involve trusting something unverified somewhere. The
+> honest options, safest first:
+>
+> **1. Do it from a machine whose TLS works.** The only option with no leap of faith:
+>
+> ```sh
+> # on your PC
+> curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o mlm.sh
+> sha256sum mlm.sh          # compare against the file on github.com in your browser
+> # copy mlm.sh onto the card (SMB, scp, or the SD card in a reader), then on the MiSTer:
+> sh /media/fat/Scripts/mlm.sh --bootstrap-ca
+> ```
+>
+> **2. `Scripts/update.sh`'s certificate repair.** What MiSTer has always done, and it
+> works. What it actually is, so you can judge it: the bundle is fetched with verification
+> *disabled*, and the `.sha256` it checks against comes from the same unverified connection
+> — so that check catches a truncated download, not an attacker. It installs into
+> `/etc/ssl/certs`, and it **deletes the existing certificates before downloading the
+> replacements**, so a failed download leaves you with none at all.
+>
+> **3. `--bootstrap-ca`**, if you already have the script on the card. Same unverified
+> fetch, but to `/tmp` and used for **that run only** — never written to the system trust
+> store, nothing deleted, the rootfs never remounted writable. It cannot leave the box
+> worse off than it found it.
 >
 > Option 3 exists because the two risks are not symmetric. A CA injected into the system
 > trust store is trusted by every program on the box, for every connection, indefinitely,
-> and everything looks clean afterwards; a tampered one-shot script compromises a box whose
-> root password is already `1` and whose rootfs is about to be replaced wholesale. Limiting
-> the blast radius to one run is strictly better than persisting it, so that is what
-> `--bootstrap-ca` does. It is never automatic — you have to ask for it, and it prints the
-> full warning and waits before it starts.
+> and everything looks clean afterwards. A tampered one-shot script compromises a box whose
+> root password is already `1` and whose root filesystem is about to be replaced wholesale.
+> Limiting the blast radius to one run is strictly better than persisting it.
 >
-> You should only ever need it once: the image being installed ships a current CA bundle
-> and refreshes it on every release, so finishing the install *is* the permanent fix. Which
-> is, more or less, the whole argument for this project in one bug.
+> If you must do it entirely from the MiSTer and accept the trade, this is that, in one
+> line — note that `-k` means the script itself is unverified too, so `--bootstrap-ca` here
+> buys you a clean trust store, not authenticity:
+>
+> ```sh
+> curl -fsSLk https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o /tmp/mlm.sh \
+>   && sh /tmp/mlm.sh --bootstrap-ca
+> ```
+>
+> **You should only ever need this once.** The image being installed ships a current CA
+> bundle and refreshes it on every release, so finishing the install *is* the permanent
+> fix — for curl, for the Downloader, and for everything else on the box. Which is roughly
+> the entire argument for this project, expressed as one bug.
 
 ### On `curl | bash`
 

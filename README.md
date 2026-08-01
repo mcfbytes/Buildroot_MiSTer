@@ -84,7 +84,7 @@ mainline can hold it.
 
 | | Stock MiSTer | This project |
 |---|---|---|
-| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18.40 LTS**, on a live `.y` line with security backports |
+| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18.41 LTS**, on a live `.y` line with security backports |
 | **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **31 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
@@ -166,7 +166,7 @@ own hardware pass.
 
 Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
 stable release**. 5.15 itself reaches end-of-life in October 2026. This project tracks
-**6.18 LTS** (currently 6.18.40 — the pin is
+**6.18 LTS** (currently 6.18.41 — the pin is
 `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`),
 pinned by version and SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.

@@ -59,8 +59,23 @@ G29/G27/G25 wheels are unaffected.
 
 ## How to opt in
 
-Follow [`onboarding.md`](onboarding.md). It is one script, and it configures the rest
-itself.
+**The fast way**, on the MiSTer itself, over SSH — converts an ordinary install (Mr.
+Fusion included) with no reflashing:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
+```
+
+Add `--dry-run` (via `| bash -s -- --dry-run`) to see exactly what it would change first;
+it prints the full list and touches nothing. The
+[README's install section](../../README.md#install-it-on-a-real-mister) has that list in
+full — the short version is that your `MiSTer.ini`, cores, ROMs, saves and config are not
+touched, and the small files a Linux update does replace are backed up to
+`linux/.mlm-backup/` first.
+
+**The other ways in:** flash `sdcard.img.xz` onto a fresh card
+([`sdcard-flashing.md`](sdcard-flashing.md)), or do it by hand
+([`onboarding.md`](onboarding.md)) if you would rather not run an installer.
 
 The important property: **routine `update_all.sh` runs keep working normally** — cores,
 ROMs, MRAs, Jotego — while this image stays put. Updating *this* image is a separate,
@@ -69,9 +84,15 @@ operating system that you did not ask for.
 
 ## How to get back out
 
-[`rollback.md`](rollback.md). Two edits and a normal update run. It is safe at any time,
-for any reason, and "I don't want to run this anymore" is a perfectly good reason — you do
-not need to diagnose anything first.
+One command, then your normal update:
+
+```sh
+/media/fat/Scripts/update_linux_modernization.sh --restore-stock
+```
+
+Full procedure in [`rollback.md`](rollback.md). It is safe at any time, for any reason,
+and "I don't want to run this anymore" is a perfectly good reason — you do not need to
+diagnose anything first.
 
 Rollback is not a special code path: it is the same, well-exercised update mechanism
 running in the other direction.

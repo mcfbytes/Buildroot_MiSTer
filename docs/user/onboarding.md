@@ -9,6 +9,19 @@ irreversible — see [`rollback.md`](rollback.md) if you ever want back out.
 This document is the exact, copy-pasteable procedure. It assumes you already have a
 working MiSTer (any recent stock image) that updates itself normally.
 
+> **There is a one-command version of everything below**, if you would rather not do it by
+> hand:
+>
+> ```sh
+> curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
+> ```
+>
+> It performs exactly the steps on this page, prints what it will change, and waits 10
+> seconds before starting. See the
+> [README's install section](../../README.md#install-it-on-a-real-mister). This page is
+> still worth reading — it explains *why* each step exists, which matters when something
+> looks wrong later.
+
 **Both common updaters work, and you don't need to know which one you use.** Whether you
 run `update_all.sh` (Update All, the most common choice) or `Scripts/update.sh`
 (`Downloader_MiSTer` directly), the opt-in below is identical. Update All doesn't replace

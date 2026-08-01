@@ -37,6 +37,7 @@ core run on it unchanged.
 - [The one-paragraph version](#the-one-paragraph-version)
 - [Stock vs. this image, at a glance](#stock-vs-this-image-at-a-glance)
 - [Project status](#project-status)
+- [**Install it on a real MiSTer**](#install-it-on-a-real-mister)
 - [What this improves](#what-this-improves)
   - [1. The kernel: five years of stable releases, and a way back to mainline](#1-the-kernel-five-years-of-stable-releases-and-a-way-back-to-mainline)
   - [2. Six latent bugs found and fixed](#2-six-latent-bugs-found-and-fixed)
@@ -157,6 +158,95 @@ treated as unverified in practice — that includes most of the
 "all out-of-tree modules present" row is a snapshot from **before** the current branch's
 driver/firmware expansion (Broadcom, Wi-Fi 6/6E, and the rest), which has not yet had its
 own hardware pass.
+
+---
+
+<a id="install-it-on-a-real-mister"></a>
+## Install it on a real MiSTer
+
+**One command, on the MiSTer itself, over SSH.** This converts an ordinary install —
+including one flashed with Mr. Fusion — to this image. It works on a stock card; you do
+not need to reflash anything.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
+```
+
+Prefer to read before you run — the better habit, and this script is written to be read:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o mlm.sh
+less mlm.sh
+sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
+```
+
+`--dry-run` prints the full plan and exits. `--yes` skips the 10-second countdown,
+`--no-reboot` leaves the reboot to you.
+
+> **Read [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.** This is a
+> personal project with an unmet sustainability gate ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md)),
+> validated on one board. The ledger directly above is the honest account of what has and
+> has not been tested on hardware.
+
+### What it changes
+
+The installer prints all of this and pauses before doing anything. Summarised:
+
+| | |
+|---|---|
+| `linux/linux.img`, `linux/zImage_dtb` | **Replaced** — the root filesystem and kernel. This is the point |
+| `linux/uboot.img`, `linux/updateboot` | **Replaced** (our `uboot.img` is byte-identical to stock) |
+| `linux/MidiLink.INI`, `ppp_options`, `u-boot.txt_example`, `_samba.sh`, `_user-startup.sh`, `_wpa_supplicant.conf` | **Replaced.** Backed up to `linux/.mlm-backup/` first. Note these are the shipped *templates* — the `_`-prefixed ones — not your live config |
+| `linux/mt32-rom-data/`, `linux/soundfonts/` | Same-named files replaced; anything extra you added stays |
+| `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit — your comments, sections and databases are left alone. Created (declaring the official database) only if you don't have one |
+| `Scripts/update_linux_modernization.sh` | **Installed** — this is what updates the image from now on |
+| The saved U-Boot environment | **Wiped** (first 512 bytes of the card) by `updateboot`. This happens on **every** Linux update, official ones included |
+| SSH host keys | **Change** — this image generates them per device instead of shipping one set to everyone, so expect a one-time host-key warning ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
+
+### What it leaves alone
+
+- **`MiSTer.ini` and every core `.ini` — not touched.** Nothing in this process reads or
+  writes them.
+- **`games/`, ROMs, saves, states, `config/`, cores, `_Arcade/`** — not touched.
+- **`linux/gamecontrollerdb/`** — explicitly excluded from the sync.
+- **`linux/u-boot.txt`** (holds this card's MAC address) and **`linux/wpa_supplicant.conf`**,
+  **`user-startup.sh`**, **`samba.sh`** — your live files. Only the `_`-prefixed templates
+  are shipped, so your real ones survive.
+- **`linux/hostname`, `hosts`, `interfaces`, `resolv.conf`, `dhcpcd.conf`, `fstab`** —
+  copied *into* the new image before it goes live, so your network identity carries over.
+
+### Afterwards
+
+Your cores keep updating normally — `update_all.sh` and `Scripts/update.sh` simply stop
+touching the Linux image, in either direction. That is what stops the official image
+overwriting this one; see [ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md).
+Updating *this* image is one deliberate action:
+
+```sh
+/media/fat/Scripts/update_linux_modernization.sh            # update
+/media/fat/Scripts/update_linux_modernization.sh --status   # where am I?
+```
+
+**To undo, at any time:** `update_linux_modernization.sh --restore-stock`, then run your
+normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md).
+
+### The other two ways in
+
+- **A fresh card:** flash `sdcard.img.xz` from a [release](https://github.com/mcfbytes/Buildroot_MiSTer/releases).
+  It self-expands on first boot and arrives already configured, with Jotego's cores
+  enabled. See [`docs/user/sdcard-flashing.md`](docs/user/sdcard-flashing.md).
+- **By hand:** [`docs/user/onboarding.md`](docs/user/onboarding.md) walks through the same
+  steps individually, if you would rather not run an installer at all.
+
+### On `curl | bash`
+
+You are piping a remote script into a shell as root, which is worth a moment's thought.
+It is the same trust model MiSTer's own `Scripts/update.sh` already uses — it fetches
+`dont_download.sh` from `raw.githubusercontent.com` and executes it — and the anchor is
+HTTPS to GitHub. The installer does **not** pin a hash of the updater it downloads: both
+come from the same repository over the same TLS connection, so a pin would add no real
+assurance while guaranteeing the file goes stale. If that trade isn't one you want to
+make, use the download-and-read form above, or the by-hand route.
 
 ---
 
@@ -658,7 +748,8 @@ image stamp and the published version now derive from the tagged release date in
 ([ADR 0018](docs/decisions/0018-db-json-version-is-release-date-driven.md),
 [`docs/db-json-versioning.md`](docs/db-json-versioning.md))
 
-Start here if you want to run it: [`docs/user/onboarding.md`](docs/user/onboarding.md) ·
+Start here if you want to run it: [**one-command install**](#install-it-on-a-real-mister) ·
+[`docs/user/onboarding.md`](docs/user/onboarding.md) ·
 [`docs/user/rollback.md`](docs/user/rollback.md) ·
 [`docs/user/faq.md`](docs/user/faq.md) ·
 [`docs/user/serial-recovery.md`](docs/user/serial-recovery.md)

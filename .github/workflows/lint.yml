@@ -36,6 +36,7 @@ on:
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
       - 'board/mister/de10nano/post-build.sh'
+      - 'install.sh'
   pull_request:
     paths:
       - '.github/**'
@@ -43,6 +44,7 @@ on:
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
       - 'board/mister/de10nano/post-build.sh'
+      - 'install.sh'
   workflow_dispatch:
 
 # Same shape as build.yml / release.yml / reproducibility.yml / publish-db.yml:
@@ -129,6 +131,7 @@ jobs:
           set -euo pipefail
           shellcheck -x board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
           shellcheck -s sh -x \
+            install.sh \
             board/mister/de10nano/fat-payload/linux/user-startup.sh \
             board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm \
             board/mister/de10nano/post-build.sh
@@ -152,6 +155,7 @@ jobs:
             board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
             board/mister/de10nano/fat-payload/linux/user-startup.sh
             board/mister/de10nano/post-build.sh
+            install.sh
           )
           rc=0
           for f in "${must_be_exec[@]}"; do

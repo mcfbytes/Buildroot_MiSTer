@@ -15,11 +15,17 @@ persist-to-FAT mechanism this mirrors), [ADR 0011](0011-resolv-conf-buildroot-de
    geo-IP service for the IANA zone of the box's public IP and copies the matching file
    from `/usr/share/zoneinfo/posix/` to `/media/fat/linux/timezone` — the file
    `/etc/localtime` already points at.
-2. **Exactly one guess, ever.** The lookup is gated on two files, both on the data
-   partition: the timezone itself, and a `timezone.autodetect` stamp written when the
-   lookup concludes — success *or* failure.
-3. **Never overwrite a timezone that is already set**, whoever set it.
-4. **No new package.** `curl` and the full zoneinfo set are already in the image.
+2. **One guess, spent when it is actually made.** The lookup is gated on two files on the
+   data partition — the timezone itself, and a `timezone.autodetect` stamp — plus a
+   default-route check. The stamp is written only when a provider **answered**: with a
+   zone we could install, or with something unusable. *Being offline is not an answer*, so
+   it does not spend the guess.
+3. **Re-tried on the event, not on a timer.** `usr/lib/dhcpcd/dhcpcd-hooks/90-timezone`
+   calls `S48timezone start` whenever dhcpcd brings an interface up with an address — so a
+   box that was offline on its first boot gets its guess the moment the user finishes
+   setting up Wi-Fi, on that boot or three boots later.
+4. **Never overwrite a timezone that is already set**, whoever set it.
+5. **No new package.** `curl` and the full zoneinfo set are already in the image.
 
 ## The problem
 
@@ -50,17 +56,26 @@ GPS, no user locale to infer from, and no way to ask the user at boot (`Main_MiS
 the framebuffer; there is no first-run wizard to hook). DHCP option 100/101 (RFC 4833)
 would be ideal and needs no third party — approximately no home router sends it.
 
-**Once, not every boot.** Autodetection is a *first-boot event*, not a boot-time
-behaviour. Anything else means a box that phones out on every boot for the rest of its
-life, and re-litigates a decision the user may have made by hand. The stamp is written
-even when the lookup fails, so an offline box gives up permanently instead of retrying
-forever. The cost of that choice is stated plainly below.
+**Once — but "once" means once we actually got to ask.** Autodetection is a *first-boot
+event*, not a boot-time behaviour: a box that phones out on every boot for the rest of its
+life, re-litigating a decision the user may have made by hand, is exactly what this must
+not become. But spending the guess on a boot where there was no network to ask over would
+be worse than useless, and that boot is *the common case*: a MiSTer card is flashed,
+booted, and only then does the user write `wpa_supplicant.conf`. So the stamp is written
+when a provider answered — usefully or not — and never merely because we tried.
 
-**A background job with a retry window, because the network is not up yet.** `S48` runs
-seconds after `S41dhcpcd`; a DHCP lease, or a Wi-Fi association, can take tens of seconds.
-`start` returns immediately (asserted by the test suite — a blocking lookup would stall
-`rcS` and therefore the whole boot) and the lookup retries in the background for ~3
-minutes, or up to ~8 if each request burns its full timeout rather than failing instantly.
+**Triggered by dhcpcd, not by polling harder.** `S48` runs seconds after `S41dhcpcd`, and
+no amount of waiting at S48 helps a box whose network appears three boots later.
+`usr/lib/dhcpcd/dhcpcd-hooks/90-timezone` — the same extension point dhcpcd's own
+`20-resolv.conf` and `30-hostname` use — calls `S48timezone start` on `BOUND`/`RENEW`/the
+IPv6 equivalents, so the lookup happens the moment an address exists. S48 still tries
+directly when a default route is *already* there (a wired box, or a static address), with
+a short ~1 minute window to cover DNS lagging the route.
+
+**Nothing on a box with no network.** `start` checks `/proc/net/route` for a default route
+and returns before backgrounding anything if there is none: no query, no console line, no
+stamp. And `start` never blocks regardless — it backgrounds the lookup, asserted by the
+test suite, since a blocking lookup would stall `rcS` and therefore the whole boot.
 
 ## Trust and privacy — the honest version
 
@@ -93,10 +108,9 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
   *before* `rcS`. So on the very first boot the OSD clock stays UTC until the next reboot.
   Everything is correct from then on, permanently. Restarting `Main_MiSTer` underneath the
   user to close a one-boot cosmetic gap is not a trade worth making.
-- **A box with no network on its first boot keeps UTC** — the guess is spent. Delete the
-  stamp and reboot for another go, or run `timezone.sh`. This is the direct cost of
-  "once, not every boot", accepted knowingly: the alternative is every offline box
-  retrying on every boot forever.
+- **A box that is *never* online never gets a timezone.** Obvious, but worth stating: the
+  guess is never spent, so nothing accumulates and nothing is retried in the background —
+  the default-route check means an offline boot costs three `stat()` calls.
 - **It does not touch `/etc/timezone`** (a label file nothing reads, `Etc/UTC`, stock
   parity) — `/` is read-only at that point in boot anyway.
 
@@ -107,19 +121,24 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 | Ship a fixed non-UTC default | There is no correct one. UTC is at least honestly neutral. |
 | Prompt the user at first boot | Nowhere to prompt: `Main_MiSTer` owns the display, and the serial console is not a user-facing surface. |
 | DHCP option 100/101 (RFC 4833) | Correct, private, needs no third party — and effectively no consumer router emits it. Worth revisiting as a *preferred* source if that ever changes. |
-| Retry on every boot until it succeeds | Rejected on the maintainer's instruction, and rightly: it turns a first-boot event into permanent boot-time behaviour. |
+| Retry on every boot until it succeeds | Rejected on the maintainer's instruction, and rightly: it turns a first-boot event into permanent boot-time behaviour. The dhcpcd hook gets the same coverage from an event instead of a timer. |
+| Spend the guess on any *attempt*, offline or not | The first boot of a MiSTer is routinely offline — flash, boot, *then* configure Wi-Fi. That would burn the guess on precisely the boot that never had a chance. |
+| A longer poll at S48 instead of the hook | Cannot cover a network configured on a later boot at all, and costs a background process minutes of retries on every offline boot to cover less. |
 | Write `Etc/UTC` on failure instead of a stamp | Would make "we tried and failed" indistinguishable from "the user chose UTC", and would silently pin a real decision. |
 | Bundle `timezone.sh` and tell users to run it | That is today's situation. It is exactly what nobody does. |
 
 ## Verification
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
-paths rewritten into a temp dir, `curl` stubbed). 12 cases / 37 assertions covering the
+paths rewritten into a temp dir, `curl` stubbed; `/proc/net/route` and the dhcpcd hook
+stubbed too). 15 cases / 54 assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
 unset, so a half-written card self-heals), the once-and-only-once contract, the opt-out
 stamp, seven classes of hostile answer, both providers in order *and* the HTTPS fallback
-actually taking over when the first provider is down, the degraded paths, and the
-"`start` must not block boot" property.
+actually taking over when the first provider is down, the degraded paths, the
+offline-does-not-spend-the-guess rule and its inverse, the default-route gate, the
+one-lookup-at-a-time lock, which dhcpcd reasons fire the hook (and that it returns to
+dhcpcd rather than `exit`ing its hook run), and the "`start` must not block boot" property.
 
 `scripts/ci-tests.sh`'s Timezone section runs it **twice** — once under the host shell,
 once under the target's own BusyBox `ash` via `qemu-arm`, since this is a boot-path script

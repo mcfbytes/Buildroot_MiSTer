@@ -67,6 +67,8 @@ ZONEDIR="$SB/usr/share/zoneinfo/posix"
 FATDIR="$SB/media/fat/linux"
 TZFILE="$FATDIR/timezone"
 TZSTAMP="$FATDIR/timezone.autodetect"
+ROUTE="$SB/proc-route"
+LOCKDIR="$SB/lock"
 
 mkdir -p "$ZONEDIR/America" "$FATDIR" "$SB/bin"
 # Synthetic zoneinfo: the script copies these bytes, it never reads them, so
@@ -76,6 +78,19 @@ printf 'zoneinfo-America/New_York\n' > "$ZONEDIR/America/New_York"
 printf 'zoneinfo-UTC\n'              > "$ZONEDIR/UTC"
 # A file OUTSIDE the zone dir, for the path-traversal case to aim at.
 printf 'SECRET\n' > "$SB/passwd"
+
+# Stand-in /proc/net/route, in the kernel's format: header line, then one route
+# per line with a hex destination. 00000000 is the default route the script
+# gates on. route_up/route_down swap between "we have a network" and "we do not".
+route_up() {
+	printf 'Iface\tDestination\tGateway\tFlags\n' > "$ROUTE"
+	printf 'eth0\t00000000\t0102A8C0\t0003\n'    >> "$ROUTE"
+}
+route_down() {
+	printf 'Iface\tDestination\tGateway\tFlags\n' > "$ROUTE"
+	printf 'eth0\t0002A8C0\t00000000\t0001\n'    >> "$ROUTE"
+}
+route_up
 
 # Stub curl. Answers with $SB/answer, or fails like a real curl would when
 # there is no network (exit 22 is curl's HTTP-error code; -f uses it). Logs
@@ -102,18 +117,44 @@ rewrite() {
 	sed -e "s|/media/fat|$SB/media/fat|g" \
 	    -e "s|/usr/share/zoneinfo/posix|$ZONEDIR|g" \
 	    -e "s|/usr/bin/curl|$SB/bin/curl|g" \
+	    -e "s|/proc/net/route|$ROUTE|g" \
+	    -e "s|/proc/net/ipv6_route|$SB/proc-ipv6route|g" \
+	    -e "s|/run/timezone-autodetect|$LOCKDIR|g" \
 	    -e "s|^TZ_TRIES=.*|TZ_TRIES=2|" \
 	    -e "s|^TZ_INTERVAL=.*|TZ_INTERVAL=1|" \
 	    "$SRC"
 }
 rewrite > "$SB/async"
-rewrite | sed -e 's|^\(\s*\)detect &$|\1detect|' > "$SB/sync"
+# Match any detect* function name, and verify afterwards that nothing is left
+# backgrounded: keying this on one exact name meant a later rename silently
+# produced an "async sync copy" and raced every assertion.
+rewrite | sed -E 's|^([[:space:]]*)(detect[a-z_]*) &$|\1\2|' > "$SB/sync"
 chmod +x "$SB/async" "$SB/sync"
-if grep -q 'detect &' "$SB/sync"; then
-	echo "test-timezone.sh: ERROR: could not make the sandbox copy synchronous" >&2
-	echo "  (S48timezone no longer backgrounds detect() as 'detect &'?)" >&2
+if grep -qE '^[[:space:]]*detect[a-z_]* &$' "$SB/sync"; then
+	echo "test-timezone.sh: ERROR: the sandbox copy is still asynchronous" >&2
+	echo "  (a backgrounded call in S48timezone this rewrite does not match?)" >&2
 	exit 2
 fi
+if ! grep -qE '^[[:space:]]*detect[a-z_]*$' "$SB/sync"; then
+	echo "test-timezone.sh: ERROR: no detect call found in the sandbox copy" >&2
+	echo "  (did S48timezone stop calling detect() from start()?)" >&2
+	exit 2
+fi
+
+# The dhcpcd hook, pointed at a stub init script that just records its calls --
+# what matters is WHEN dhcpcd makes it fire, not what the init script then does.
+HOOK_SRC="$ROOT/board/mister/de10nano/rootfs-overlay/usr/lib/dhcpcd/dhcpcd-hooks/90-timezone"
+if [ ! -f "$HOOK_SRC" ]; then
+	echo "test-timezone.sh: ERROR: $HOOK_SRC not found" >&2
+	exit 2
+fi
+mkdir -p "$SB/etc/init.d"
+cat > "$SB/etc/init.d/S48timezone" <<EOF
+#!/bin/sh
+echo "\$1" >> "$SB/hook.calls"
+EOF
+chmod +x "$SB/etc/init.d/S48timezone"
+sed -e "s|/etc/init.d/S48timezone|$SB/etc/init.d/S48timezone|g" "$HOOK_SRC" > "$SB/90-timezone"
 
 pass=0; fail=0
 ok()  { printf '  PASS  %s\n' "$1"; pass=$((pass + 1)); }
@@ -130,7 +171,7 @@ bad() {
 must()   { local d="$1"; shift; if "$@"; then ok "$d"; else bad "$d"; fi; }
 mustnt() { local d="$1"; shift; if "$@"; then bad "$d"; else ok "$d"; fi; }
 
-reset() { rm -f "$TZFILE" "$TZSTAMP" "$TZFILE.tmp"; }
+reset() { rm -f "$TZFILE" "$TZSTAMP" "$TZFILE.tmp"; rmdir "$LOCKDIR" 2>/dev/null; }
 
 # boot <answer> -- one boot of the box, with the providers answering <answer>.
 boot() {
@@ -140,6 +181,22 @@ boot() {
 }
 
 verb()    { PATH="$SB/bin:$PATH" "${TEST_SH[@]}" "$SB/sync" "$1" >/dev/null 2>&1; }
+
+# hook <reason> <if_up> -- one dhcpcd event, sourced the way dhcpcd sources it.
+# The trailing marker proves the hook did not `exit`, which in a sourced hook
+# would end dhcpcd's whole run and take 20-resolv.conf/30-hostname with it.
+hook() {
+	rm -f "$SB/hook.calls" "$SB/hook.reached-end"
+	(
+		# Exported, as dhcpcd itself passes them: the hook reads them,
+		# this shell does not.
+		export reason="$1" if_up="$2"
+		# shellcheck source=/dev/null
+		. "$SB/90-timezone"
+		: > "$SB/hook.reached-end"
+	) >/dev/null 2>&1
+}
+hook_fired() { [ -f "$SB/hook.calls" ]; }
 queried() { [ -f "$SB/curl.calls" ]; }
 request() { sed -n "$1p" "$SB/curl.calls"; }
 
@@ -164,10 +221,22 @@ reset; : > "$TZFILE"; boot "America/New_York"
 must "an empty timezone file is treated as unset, not as a choice" \
 	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
 
-echo "== 3. the guess is spent once, even when it comes up empty =="
+echo "== 3. never reaching a provider does NOT spend the guess =="
+# The common MiSTer story: flash the card, boot it, THEN set up WiFi. That first
+# boot must not burn the one guess, or the box is stuck on UTC forever.
 reset; boot "FAIL"
-must   "stamped after giving up" test -e "$TZSTAMP"
-boot "America/New_York"   # next boot: network is fine now, the stamp must hold it off
+mustnt "no stamp when no provider was ever reached" test -e "$TZSTAMP"
+must   "said it will retry once there is a network" \
+	grep -q "will retry when the network is up" "$SB/out"
+boot "America/New_York"   # ...the user has since configured WiFi
+must   "a later boot still gets its guess" \
+	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
+
+echo "== 3b. ...but an answer we cannot use DOES spend it =="
+# Asking the same broken provider the same question tomorrow will not help.
+reset; boot "<html>captive portal</html>"
+must   "stamped after a provider answered with junk" test -e "$TZSTAMP"
+boot "America/New_York"
 mustnt "no second guess on the next boot" queried
 mustnt "left the timezone unset" test -e "$TZFILE"
 
@@ -201,9 +270,10 @@ reset; boot "UTC"
 must "UTC installed" cmp -s "$TZFILE" "$ZONEDIR/UTC"
 
 echo "== 7. giving up is loud, and says how to fix it by hand =="
-reset; boot "FAIL"
-must "said it is staying on UTC"        grep -q "staying on UTC" "$SB/out"
+reset; boot "<html>captive portal</html>"
+must "said it is staying on UTC"         grep -q "staying on UTC" "$SB/out"
 must "pointed at the timezone.sh script" grep -q "timezone.sh"    "$SB/out"
+reset; boot "FAIL"
 must "retried while offline (2 tries x 2 providers = 4 requests)" \
 	test "$(wc -l < "$SB/curl.calls")" -eq 4
 
@@ -240,8 +310,42 @@ echo "== 11. init verbs =="
 must   "stop exits 0 (rcK must not fail at shutdown)" verb stop
 mustnt "an unknown verb exits nonzero, with usage"    verb bogus
 
-echo "== 12. start returns immediately -- boot is never blocked =="
-# The one case that runs the UNMODIFIED script: detect() must be backgrounded.
+
+echo "== 12. no default route -> nothing is sent, nothing is spent =="
+# This is the "does it slow down a box with no network" answer: start() returns
+# before it backgrounds anything, so there is not even a process to be slow.
+reset; route_down; boot "America/New_York"; route_up
+mustnt "never queried without a route" queried
+mustnt "no timezone written"           test -e "$TZFILE"
+mustnt "guess not spent"               test -e "$TZSTAMP"
+mustnt "nothing said on the console"   test -s "$SB/out"
+
+echo "== 13. one lookup at a time =="
+reset; mkdir "$LOCKDIR"; boot "America/New_York"; rmdir "$LOCKDIR"
+mustnt "a lookup already in flight is not duplicated" queried
+reset; boot "America/New_York"
+mustnt "lock released when the lookup ends" test -d "$LOCKDIR"
+
+echo "== 14. the dhcpcd hook fires on an address, and only then =="
+hook BOUND true
+must   "BOUND with the interface up calls the init script" hook_fired
+must   "  ... with 'start'" grep -qx start "$SB/hook.calls"
+must   "  ... and returns to dhcpcd instead of exiting" test -e "$SB/hook.reached-end"
+hook RENEW true
+must   "RENEW calls it too (cheap no-op once spent)" hook_fired
+hook BOUND6 true
+must   "BOUND6 calls it (IPv6-only networks)" hook_fired
+hook BOUND false
+mustnt "an interface that is not up does not" hook_fired
+hook PREINIT true
+mustnt "PREINIT (no address yet) does not" hook_fired
+hook DEPARTED true
+mustnt "DEPARTED does not" hook_fired
+
+echo "== 15. start returns immediately -- boot is never blocked =="
+# Last on purpose: the one case that runs the UNMODIFIED script, so it leaves a
+# real background job behind that anything after it would race.
+# detect() must be backgrounded.
 # The stub stalls 5s per request, so a foreground detect() could not return
 # inside the 3s budget.
 reset; : > "$SB/stall"; : > "$SB/out"

@@ -1,0 +1,28 @@
+# Kick the first-boot timezone autodetection when an interface actually gets an
+# address (MiSTer -- see ADR 0025 and etc/init.d/S48timezone).
+#
+# WHY A HOOK AT ALL. S48timezone runs at S48, seconds after dhcpcd starts, and
+# it can only wait so long before it has to let go. But the case that actually
+# matters is not "the lease was slow" -- it is "there was no network on the
+# first boot at all". A MiSTer card is flashed, booted, and only *then* does the
+# user set up wpa_supplicant.conf, so the first boot is routinely offline and
+# every boot after it is not. Polling harder at S48 cannot fix that; being told
+# when an address arrives can, and dhcpcd already offers exactly that. This is
+# the same extension point dhcpcd's own 20-resolv.conf and 30-hostname use.
+#
+# SAFE TO FIRE OFTEN. `S48timezone start` is a no-op once a timezone is set or
+# the guess has been spent, it takes its own lock so two lookups cannot overlap,
+# and it backgrounds the work -- so this never delays dhcpcd, and a RENEW every
+# few hours costs three stat() calls, not a query.
+#
+# Sourced, not executed (dhcpcd-run-hooks: `. "$hook"`), like every hook in this
+# directory: hence no shebang, no exec bit, and no `exit` -- an `exit` here would
+# end dhcpcd's whole hook run, taking 20-resolv.conf and 30-hostname with it.
+
+case "$reason" in
+BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
+	if ${if_up:-false} && [ -x /etc/init.d/S48timezone ]; then
+		/etc/init.d/S48timezone start
+	fi
+	;;
+esac

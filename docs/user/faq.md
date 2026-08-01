@@ -195,13 +195,20 @@ the `linux` folder of your SD card, next to `wpa_supplicant.conf`. Nothing will 
 (That is the same file the box writes itself after its one attempt — you can open it, it
 explains itself.)
 
-**If your box had no network on its first boot** it keeps UTC and does not retry — the one
-guess is spent. Either run `timezone.sh`, or delete both `timezone.autodetect` and
-`timezone` from the `linux` folder and reboot for another go.
+**If your box had no network on its first boot, nothing is lost.** Being offline is not an
+answer, so the one guess is not spent — nothing is even sent, because the box checks
+whether it has a route before it asks. The lookup then happens the moment the box actually
+gets an address: finish setting up Wi-Fi, and it fires on that connection, whether that is
+the same boot or three boots later. (The hook that does this is the same one dhcpcd uses
+to update `/etc/resolv.conf`.)
 
-**One cosmetic wrinkle on the very first boot:** the menu clock can still show UTC until
-you reboot once. The timezone is read by each program when it starts, and the MiSTer menu
-starts before the lookup finishes. It is correct from the next boot on, permanently.
+**One cosmetic wrinkle on the boot where it lands:** the menu clock can still show UTC
+until you reboot once. The timezone is read by each program when it starts, and the MiSTer
+menu starts before the lookup finishes. It is correct from the next boot on, permanently.
+
+**To make it try again** after it has settled on something you do not want: delete both
+`timezone` and `timezone.autodetect` from the `linux` folder and reboot — or just run
+`timezone.sh`, which is quicker and lets you pick.
 
 Full reasoning, including why geo-IP rather than something that talks to nobody:
 [ADR 0025](../decisions/0025-first-boot-timezone-autodetect.md).

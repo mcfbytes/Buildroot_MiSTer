@@ -1585,14 +1585,23 @@ fi
 # suite exists to catch.
 require_present "usr/bin/curl" "curl CLI (S48timezone's only runtime dependency)"
 
+# The dhcpcd hook is what makes autodetection survive a first boot with no
+# network -- it re-runs S48timezone the moment an interface gets an address, on
+# that boot or any later one. Without it the feature still works, but only for
+# boxes that happen to be online during the S48 window. Assert the hook AND
+# dhcpcd's runner, since the hook is inert if dhcpcd stops sourcing that dir.
+# NB /lib is a usr-merge symlink, so tar records these only under ./usr/lib/.
+require_present "usr/lib/dhcpcd/dhcpcd-hooks/90-timezone" "dhcpcd 90-timezone hook"
+require_present "usr/lib/dhcpcd/dhcpcd-run-hooks" "dhcpcd hook runner (sources 90-timezone)"
+
 # The behaviour itself -- validation of the network-supplied zone name, and the
 # once-and-only-once contract -- is asserted by its own sandboxed harness, which
 # needs no build and no network.
-printf -- '--- test-timezone.sh: S48timezone behaviour (12 cases) ---\n'
+printf -- '--- test-timezone.sh: S48timezone behaviour (15 cases) ---\n'
 if "$ROOT/scripts/test-timezone.sh"; then
-	pass "test-timezone.sh (S48timezone behaviour, 12 cases)"
+	pass "test-timezone.sh (S48timezone behaviour, 15 cases)"
 else
-	fail "test-timezone.sh (S48timezone behaviour, 12 cases)" \
+	fail "test-timezone.sh (S48timezone behaviour, 15 cases)" \
 		"one or more cases failed -- see output above"
 fi
 

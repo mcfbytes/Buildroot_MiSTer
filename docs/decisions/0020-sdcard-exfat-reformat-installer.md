@@ -295,6 +295,46 @@ parent. `scripts/test-sdcard-install.sh` asserts the splash drew on both the ins
 and the re-run boot, and — because QEMU's `-M virt` has no `hps_led0` — those runs double
 as proof that the LED half degrades to a no-op on hardware that lacks it.
 
+## 7. `menu.rbf` ships at the FAT root, so the FPGA is configured during the install
+
+§6 established that the install is visually silent because the FPGA has no bitstream. That
+turned out to rest on a plain defect rather than a design choice.
+
+The stock U-Boot's cold-boot path runs `fpgaload`, which is
+`load mmc 0:1 $fpgadata $core` with a compiled-in `core=menu.rbf`, read from the FAT
+partition's **root** (`docs/boot-chain.md` §6.1). The shipped installer card's root held
+only `mister-payload/` and `linux/zImage_dtb` — **no `menu.rbf`** — so that load failed on
+every single installer boot. The fabric stayed unconfigured, the ADV7513 never received a
+pixel clock, and the user's monitor read "no signal" for the entire install. (The failure
+is silent: U-Boot's `;`-separated command lists continue past a failed command, so the
+kernel still loaded and the install still worked.)
+
+**Decision: `scripts/mk-sdcard.sh` step 4c stages `menu.rbf` at the FAT root.**
+
+- **Source.** A byte-identical copy of `mister-payload/menu.rbf`, which the payload fetch
+  already downloads and verifies. Not a second download, and **not committed to this
+  repo** — 2.4 MiB of third-party binary does not belong in git. It inherits the existing
+  `STOCK_RELEASE_*` pin, so it needs no Renovate manager of its own.
+- **Cost.** +2.46 MB on the shipped image, against a partition already sized for a ~150–200
+  MiB payload.
+- **The name is not negotiable.** `mmcload` runs `fpgacheck` **before** `scrtest`, so a
+  `core=` set in `linux/u-boot.txt` is imported only *after* the core has already been
+  loaded. `menu.rbf` is the one filename the stock bootloader will ever fetch, and any
+  future custom bitstream must therefore also be installed under that name.
+- **Robustness.** Nothing at install time depends on this file: U-Boot loads it before
+  Linux starts, and `/init` never touches it. If it is absent the installer behaves exactly
+  as it did before this section existed. `mk-sdcard.sh` therefore warns rather than dying,
+  while `check-sdcard.sh`'s inventory contract still gates the shipped article.
+
+**What this does and does not buy.** It gets the fabric configured and HDMI synced, and it
+is a precondition for anything else appearing on that output. It does **not** put a picture
+on screen: as §6 blocker 2 records, `/dev/fb0` is only scanned out once **Main_MiSTer**
+programs the frame reader via `/dev/MiSTer_cmd`, and Main_MiSTer cannot run in the
+installer initramfs. Whether the menu core lights the I/O board's Power LED or paints
+anything of its own before Main_MiSTer attaches is **unverified and needs hardware** — it
+is the specific question P5.4 should answer, because it determines whether a custom
+bitstream (§6's rejected option) has any remaining justification.
+
 ## Consequences
 
 - A fourth Buildroot output directory, `output-installer/`, joins `output/`,

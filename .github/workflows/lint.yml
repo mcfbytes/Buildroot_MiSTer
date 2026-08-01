@@ -133,6 +133,47 @@ jobs:
             board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm \
             board/mister/de10nano/post-build.sh
 
+      # Executable bits on shipped scripts, checked against GIT's recorded mode.
+      #
+      # This is not pedantry. BR2_ROOTFS_OVERLAY copies the overlay tree into the
+      # rootfs preserving permissions, and nothing chmods /etc/init.d/S05mlm on
+      # the way -- so a mode-0644 S05mlm ships non-executable, busybox's rcS
+      # skips it, and the ENTIRE boot-time upkeep mechanism silently never runs.
+      # The image still builds, still boots, and still passes every other check.
+      # It happened once already; this makes it impossible to reintroduce.
+      #
+      # Reads `git ls-files -s` rather than the worktree, because git's index is
+      # what a fresh clone (and therefore CI and every contributor) actually gets.
+      - name: shipped scripts must be executable in git
+        run: |
+          set -euo pipefail
+          must_be_exec=(
+            board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm
+            board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+            board/mister/de10nano/fat-payload/linux/user-startup.sh
+            board/mister/de10nano/post-build.sh
+          )
+          rc=0
+          for f in "${must_be_exec[@]}"; do
+            mode=$(git ls-files -s -- "$f" | awk '{print $1}')
+            if [ -z "$mode" ]; then
+              echo "::error file=$f::tracked file not found in the git index"
+              rc=1
+            elif [ "$mode" != "100755" ]; then
+              echo "::error file=$f::mode is $mode, expected 100755 -- run: git update-index --chmod=+x $f"
+              rc=1
+            fi
+          done
+          # Every other init script must stay executable too, for the same reason.
+          while IFS= read -r f; do
+            mode=$(git ls-files -s -- "$f" | awk '{print $1}')
+            case "$mode" in
+              100755|120000) ;;   # regular executable, or a symlink
+              *) echo "::error file=$f::init script mode is $mode, expected 100755"; rc=1 ;;
+            esac
+          done < <(git ls-files 'board/mister/de10nano/rootfs-overlay/etc/init.d/*')
+          exit "$rc"
+
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the
       # extraction mechanics.

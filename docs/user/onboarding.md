@@ -115,9 +115,15 @@ Then run it once. From the MiSTer menu it appears in **Scripts** as
 On that first run it will:
 
 1. **Set `update_linux = false`** in the `[MiSTer]` section of
-   `/media/fat/downloader.ini`, creating the file if you don't have one. This is a
-   surgical edit — it changes that one key and leaves every other byte, section and
-   comment of your file alone. It does **not** add or remove any of your databases.
+   `/media/fat/downloader.ini`. This is a surgical edit — it changes that one key and
+   leaves every other byte, section and comment of your file alone, and it does **not**
+   add or remove any of your databases.
+
+   The one exception is if you have no `downloader.ini` at all, in which case it creates
+   one — and that file also declares `[distribution_mister]`, the official database. It
+   has to: Update All seeds its defaults only when `downloader.ini` is absent, so creating
+   a file with no databases in it would suppress that seeding and quietly leave you with
+   no core updates at all.
 2. **Generate its own private configuration** under
    `/media/fat/Scripts/.config/mister_linux_modernization/`, naming our database and
    nothing else. This is regenerated on every run, so it can never go stale, and it is

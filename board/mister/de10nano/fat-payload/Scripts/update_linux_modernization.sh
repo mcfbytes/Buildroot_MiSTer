@@ -136,17 +136,48 @@ try:
 except OSError:
     lines, existed = [], False
 
+# A final line with no terminator would otherwise be welded to whatever we
+# insert after it -- '[MiSTer]' + 'update_linux = false' on ONE line, which
+# configparser reads as a section header and silently drops the setting. Cards
+# hand-edited on Windows, or written by a tool that omits the last newline, hit
+# this. Normalising here fixes it for both the insert and the prepend path.
+if lines and not lines[-1].endswith(('\n', '\r')):
+    lines[-1] += '\n'
+
 hdr = re.compile(r'^\s*\[\s*mister\s*\]\s*$', re.I)
 any_hdr = re.compile(r'^\s*\[')
-kv = re.compile(r'^\s*update_linux\s*=\s*(.*?)\s*$', re.I)
+# configparser accepts BOTH '=' and ':' as the key/value delimiter, so a card
+# carrying `update_linux : true` must be recognised and rewritten. Matching only
+# '=' would leave that line in place and append a second `update_linux =` to the
+# same section -- a DuplicateOptionError that makes EVERY Downloader run abort,
+# including the official one, leaving the user unable to update anything at all.
+kv = re.compile(r'^\s*update_linux\s*[=:]\s*(.*?)\s*$', re.I)
 
 start = next((i for i, ln in enumerate(lines) if hdr.match(ln)), None)
 if start is None:
-    # No [MiSTer] section. Prepend one. A base ini with no database sections at
-    # all is still valid: the Downloader then auto-adds distribution_mister with
-    # its canonical URL, so cores keep updating.
     lines = ['[MiSTer]\n', 'update_linux = %s\n' % want, '\n'] + lines
     action = 'created [MiSTer] with update_linux = %s' % want
+
+    # If we are CREATING the file, it must also declare the official database.
+    #
+    # A databases-less base ini is fine for the Downloader itself -- it auto-adds
+    # distribution_mister (config_reader._add_default_database). It is NOT fine
+    # for Update All, which seeds its default database set only when
+    # downloader.ini does not exist. Writing a [MiSTer]-only file therefore
+    # suppresses that seeding while supplying no databases of our own, and an
+    # update_all.sh run afterwards can find nothing to install -- we would have
+    # cost the user their cores in the act of protecting their kernel.
+    #
+    # Only distribution_mister, and only when creating from nothing. Adding
+    # anything else (jtcores, say) to a card that already had its own
+    # configuration would be us making choices for the user; the shipped
+    # sdcard.img template is the right place for opinionated defaults.
+    if not existed and not any(any_hdr.match(ln) for ln in lines[3:]):
+        lines += [
+            '\n',
+            '[distribution_mister]\n',
+            'db_url = https://raw.githubusercontent.com/MiSTer-devel/Distribution_MiSTer/main/db.json.zip\n',
+        ]
 else:
     end = next((j for j in range(start + 1, len(lines)) if any_hdr.match(lines[j])), len(lines))
     idx = next((j for j in range(start + 1, end) if kv.match(lines[j])), None)
@@ -216,6 +247,36 @@ installed_version() {
 	if [ -f /MiSTer.version ]; then cat /MiSTer.version; else echo "unknown"; fi
 }
 
+# Some MiSTers have an empty or expired /etc/ssl/certs, where curl exits 60 on
+# every HTTPS request. Scripts/update.sh handles this with an interactive repair
+# prompt; we cannot prompt (a gamepad has no keyboard, and this also runs from a
+# boot script), so we do the one non-interactive half: retry with the CA bundle
+# the card already carries. Detected ONCE, then exported so every later curl in
+# this run inherits it.
+#
+# We deliberately do NOT fall back to --insecure. Everything fetched here is code
+# we then execute, and silently dropping TLS verification is not a decision to
+# make on a user's behalf without asking.
+probe_curl_ssl() {
+	[ -n "${CURL_SSL:-}" ] && return 0
+
+	local rc=0
+	curl -fsS --max-time 20 -o /dev/null "$DB_URL" 2>/dev/null || rc=$?
+	[ "$rc" -eq 0 ] && return 0
+	# 60 is specifically "peer certificate cannot be authenticated". Anything
+	# else (no route, DNS, 404, timeout) is not ours to interpret here -- let the
+	# real request run and report it with its own message.
+	[ "$rc" -eq 60 ] || return 0
+
+	if [ -f /etc/ssl/certs/cacert.pem ]; then
+		CURL_SSL="--cacert /etc/ssl/certs/cacert.pem"
+		export CURL_SSL
+		say "Note: using /etc/ssl/certs/cacert.pem (this card's CA certificates look stale)."
+	else
+		die "TLS certificate verification failed and this card has no /etc/ssl/certs/cacert.pem to fall back on. Run Scripts/update.sh once -- it offers an interactive certificate repair -- then try this again."
+	fi
+}
+
 published_version() {
 	# shellcheck disable=SC2086  # CURL_SSL carries an option PAIR and must split
 	curl -fsS --location --max-time 30 --retry 2 ${CURL_SSL:-} "$DB_URL" 2>/dev/null \
@@ -269,10 +330,47 @@ take_lock() {
 		[ -r "$p/cmdline" ] || continue
 		cmd=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)
 		case "$cmd" in
-			*dont_download*|*downloader_bin*|*downloader_latest*)
+			# update_all.pyz and ua_downloader_dd.pyz are what Update All
+			# actually runs -- observed on a real board, and neither matches
+			# the dont_download/downloader_* patterns.
+			*dont_download*|*downloader_bin*|*downloader_latest*|*update_all.pyz*|*ua_downloader*)
 				die "a MiSTer Downloader run is already in progress. Wait for it to finish, then run this again." ;;
 		esac
 	done
+}
+
+# The Linux update needs room for the ~80 MB release .7z AND the tree it
+# extracts (a 512 MiB non-sparse linux.img plus the rest of files/linux/) to
+# exist at the same time as the live linux.img. linux_updater.py performs NO
+# free-space check of its own on this path -- LinuxFreeSpaceReservation only
+# covers a database's `files`, and ours declares none -- so `7za x` simply fails
+# partway and the Downloader reports the failure without changing its exit code.
+# Catch it here, where we can say something useful, instead of after an 80 MB
+# download.
+preflight_space() {
+	# A leftover staging tree means a previous run died between extract and
+	# flash; linux_updater.py never cleans it up on the user-files failure path.
+	# It can be several hundred MB, and it is pure garbage -- removing it may by
+	# itself free the space this run needs.
+	if [ -d "$FAT/linux.update" ]; then
+		quiet "Removing a stale $FAT/linux.update left by an earlier interrupted update"
+		rm -rf "$FAT/linux.update" 2>/dev/null || true
+	fi
+	rm -f "$FAT/linux.7z" 2>/dev/null || true
+
+	local need_kb=716800   # 700 MiB
+	local free_kb
+	free_kb=$(df -k "$FAT" 2>/dev/null | awk 'NR==2 {print $4}') || free_kb=""
+	case "$free_kb" in
+		''|*[!0-9]*) return 0 ;;   # unreadable: do not block on a guess
+	esac
+
+	if [ "$free_kb" -lt "$need_kb" ]; then
+		die "not enough free space on $FAT: $((free_kb / 1024)) MiB available, about $((need_kb / 1024)) MiB needed.
+       The update downloads an ~80 MB archive and extracts a 512 MiB filesystem
+       image beside the one you are running, so it needs room for both at once.
+       Free some space and run this again. Nothing has been changed."
+	fi
 }
 
 fetch_launcher() {
@@ -430,6 +528,13 @@ do_restore_stock() {
 	mkdir -p "$FAT/linux" 2>/dev/null || true
 	: > "$OPT_OUT"
 	echo "  created $OPT_OUT (boot-time upkeep is now off)"
+
+	# Tell the revert detector that what is about to happen was ASKED FOR. Without
+	# this it would greet the user with a "THIS CARD WAS REVERTED" banner on the
+	# first boot after a rollback they performed deliberately -- crying wolf on
+	# the one occasion the alarm is wrong.
+	mkdir -p "$STATE_DIR" 2>/dev/null || true
+	: > "$STATE_DIR/deliberate-rollback" 2>/dev/null || true
 	echo ""
 	echo "Now run a normal update -- Scripts > update_all.sh, or Scripts >"
 	echo "update.sh -- and the official Linux image will install over this one."
@@ -456,6 +561,10 @@ do_update() {
 		rm -f "$OPT_OUT" &&
 			quiet "Re-enabled boot-time upkeep (removed $OPT_OUT)"
 	fi
+	# Same reasoning: coming back means the earlier rollback is over, so a future
+	# UNintended revert should be reported again rather than suppressed by a
+	# stale marker.
+	rm -f "$STATE_DIR/deliberate-rollback" 2>/dev/null || true
 
 	# Keep the card's configuration correct even on a plain update run, so a
 	# user who only ever runs this script still stays protected.
@@ -472,6 +581,7 @@ do_update() {
 	inst=$(installed_version)
 	quiet "  Installed : $inst"
 
+	probe_curl_ssl
 	if pub=$(published_version); then
 		quiet "  Available : $pub"
 	else
@@ -508,6 +618,7 @@ do_update() {
 	quiet "  until it says it has finished."
 	quiet ""
 
+	preflight_space
 	write_private_ini
 	fetch_launcher
 

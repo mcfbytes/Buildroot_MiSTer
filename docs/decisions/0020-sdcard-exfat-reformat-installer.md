@@ -317,13 +317,28 @@ as proof that the LED half degrades to a no-op on hardware that lacks it.
   completes) stays P5.4, human-gated, exactly as ADR 0017 already scoped it.
 - The first-boot splash (§6) adds **no** new target package, no new applet and no bytes to
   the shipped card: it is built entirely from shell builtins plus `printf` and `sleep`,
-  both of which the installer BusyBox already ships. The installer BusyBox has no `rm`,
-  `touch`, `kill`, `usleep`, `date`, `seq` or `tr`, and its `sleep` is integer-only
+  both of which the installer BusyBox already ships. That image has no `touch`, `kill`,
+  `usleep`, `date`, `seq` or `tr`, and its `sleep` is integer-only
   (`CONFIG_FEATURE_FANCY_SLEEP` is off, so `sleep 0.2` would parse as `0` and busy-spin a
   core) — so the heartbeat child is stopped by **truncating** a flag file with `: >` and
   reaped with the ash builtin `wait`, and every frame delay is a whole second. Anyone
   editing that section must re-read its `APPLET BUDGET` note first; several obvious
-  implementations of a spinner need applets this image does not contain.
+  implementations of a spinner need applets this image does not contain. Note the budget
+  covers **applets**, not shell builtins: `true`/`false` are unconditional ash builtins
+  (`shell/ash.c` builtintab, outside any `#if`), so `|| true` is safe even though
+  `CONFIG_TRUE` is off — that symbol governs only a standalone `/bin/true`.
+- **`CONFIG_RM` was missing and `/init` called `rm -f` anyway** (step 5b, deleting
+  `linux/linux.img.gz` after expanding it). The call was a silent command-not-found
+  no-op, so **every installed card kept the whole ~80 MiB gzip**, and once the splash
+  existed it also printed `rm: not found` across it. Found by Copilot on PR #76. Fixed by
+  enabling `CONFIG_RM` — `rm -f` needs only the base symbol (`coreutils/rm.c`'s `getopt32`
+  optstring `"fiRrv"` is unconditional, like `CONFIG_CP`), and it costs ~1 KB in a 376 KB
+  binary inside a 13 MB RAM-resident initramfs. `/init` now **verifies** the file is gone
+  and falls back to truncating it, because the real defect was not the missing applet but
+  that an unchecked cleanup command silently no-opped for a whole release; the result is
+  logged and asserted by `scripts/test-sdcard-install.sh`. The applet budget is a budget,
+  not a freeze: needed applets get turned on and justified in
+  `installer-busybox.config`'s header rather than worked around in shell.
 - This ADR does not change any risk already recorded against the stock-blob U-Boot path
   in ADR 0017; it adds one new risk of its own — a botched `sfdisk`/`mkfs.exfat` sequence
   on first boot is now the single point where an install can go wrong on an otherwise-good

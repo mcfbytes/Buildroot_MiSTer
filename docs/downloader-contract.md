@@ -665,7 +665,40 @@ consolidates findings.
 
 ## 9. The multi-db rule: what "first wins" actually means
 
-The warning text, verbatim, and the winning rule:
+> ## ⚠ CORRECTED 2026-08-01 — UPSTREAM CHANGED, AND THIS SECTION'S CONCLUSION IS NOW WRONG
+>
+> This section was analysed against Downloader_MiSTer at commit `915315668`, where the
+> winner was decided by **job-completion order** — a genuine race, which §9.2–§9.4 trace
+> carefully and correctly *for that commit*. **Current Downloader releases do not work that
+> way.** `_update_linux_impl` now explicitly sorts the candidates by their **position in
+> the ini** before taking index 0:
+>
+> ```python
+> if linux_descriptions_count > 1:
+>     ini_positions = {}
+>     for position, db_id in enumerate(self._config['databases']):
+>         ini_positions[db_id] = position
+>     position_for_unlisted = len(ini_positions)
+>     self._linux_descriptions.sort(key=lambda desc: ini_positions.get(desc['id'], position_for_unlisted))
+> ```
+> — `src/downloader/linux_updater.py`, current `main`
+>
+> Two consequences invert this section's practical advice:
+>
+> * **Document size no longer helps.** Keeping our `db.json` small so it would parse first
+>   was a real (if flaky) tactic against `915315668`. It buys nothing now.
+> * **A drop-in registration can never win.** Base-ini sections populate
+>   `config['databases']` *before* drop-ins are merged, and Update All pins
+>   `[distribution_mister]` to the top of `downloader.ini` on every rewrite. So on any card
+>   Update All has touched, the official image wins **deterministically, every run**.
+>
+> The project therefore stopped competing for the slot and closed it instead — see
+> **[ADR 0025](decisions/0025-update-linux-kill-switch-and-private-updater.md)**.
+> §9.2–§9.4 are retained unedited: they are an accurate reading of the pinned commit, and
+> the reasoning is what identified the hazard in the first place.
+
+The warning text, verbatim, and the winning rule (**as at the pinned commit `915315668`;
+see the correction above**):
 
 ```python
 def _update_linux_impl(self, dbs: list[DbEntity]) -> None:
@@ -832,10 +865,14 @@ requires editing the user's existing `downloader.ini` at all.
 > `downloader.ini`, which stops **every** normal run from applying **any** Linux image, and
 > a dedicated `Scripts/update_linux_modernization.sh` re-enables it for one run against one
 > database (`UPDATE_LINUX=true` + `--run-only mister_linux_modernization`). So the drop-in
-> is still required — `--run-only` can only name a database that is configured — but it is
-> no longer sufficient on its own, and "no edits to the existing `downloader.ini`" is no
-> longer true. See [`user/onboarding.md`](user/onboarding.md). The race analysis in this
-> section remains the reason the change was made, and stays as the record of it.
+> is **not used at all** any more: a drop-in is merged after the base ini's sections and so
+> can never outrank `[distribution_mister]` (see the correction at the top of §9), which
+> means registering our database that way would buy no protection while putting it into
+> every routine core update. The updater keeps its own private ini outside `/media/fat`
+> instead. "No edits to the existing `downloader.ini`" is likewise no longer true — the
+> kill switch is exactly such an edit. See
+> [ADR 0025](decisions/0025-update-linux-kill-switch-and-private-updater.md) and
+> [`user/onboarding.md`](user/onboarding.md).
 
 ```python
 def _discover_fs_drop_in_files(self, config_path: str) -> list[str]:
@@ -1040,6 +1077,14 @@ whose **last 6 characters** must exactly equal (byte-for-byte, no whitespace, §
 `/MiSTer.version` baked into that same release's `linux.img` by `post-build.sh` (P2.6).
 
 ### 11.3 — The onboarding `downloader.ini` (or drop-in)
+
+> **Superseded by [ADR 0025](decisions/0025-update-linux-kill-switch-and-private-updater.md).**
+> §11.3 and §11.4 below describe the drop-in onboarding and the "delete the drop-in, re-run"
+> rollback. Neither is what the project does now: onboarding sets
+> `[MiSTer] update_linux = false` and the updater uses a private ini, and rollback needs
+> that setting put *back* (plus the `no_linux_modernization` opt-out marker) or nothing can
+> install a Linux image in either direction. See [`user/onboarding.md`](user/onboarding.md)
+> and [`user/rollback.md`](user/rollback.md). Kept as the schema/worked-example reference.
 
 Per §9.5, the recommended file is `/media/fat/downloader_mister_linux_modernization.ini`:
 

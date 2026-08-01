@@ -14,6 +14,8 @@
 # Run the same checks locally before pushing:
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
+#   shellcheck -x board/mister/de10nano/fat-payload/Scripts/*.sh
+#   shellcheck -s sh -x board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #
 ################################################################################
@@ -29,10 +31,18 @@ on:
     paths:
       - '.github/**'
       - 'scripts/**'
+      # Shell that ships on the card / in the rootfs is shellchecked below, so
+      # a change to it has to be able to trigger this workflow.
+      - 'board/mister/de10nano/fat-payload/**'
+      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'board/mister/de10nano/post-build.sh'
   pull_request:
     paths:
       - '.github/**'
       - 'scripts/**'
+      - 'board/mister/de10nano/fat-payload/**'
+      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'board/mister/de10nano/post-build.sh'
   workflow_dispatch:
 
 # Same shape as build.yml / release.yml / reproducibility.yml / publish-db.yml:
@@ -104,6 +114,24 @@ jobs:
           # same defensive habit the rest of this repo's array-building uses).
           mapfile -d '' -t sh_files < <(find scripts -name '*.sh' -print0)
           shellcheck -x "${sh_files[@]}"
+
+      # Shell that SHIPS on the card or in the rootfs. These are not under
+      # scripts/, so the step above never saw them -- and they are the scripts a
+      # user actually runs, so they are the last place an unlinted bashism
+      # should be allowed to hide.
+      #
+      # Split by dialect on purpose: update_linux_modernization.sh is bash,
+      # while S05mlm and linux/user-startup.sh run under busybox ash (and
+      # user-startup.sh must also run under the STOCK image's shell after a
+      # revert), so they are checked as POSIX sh.
+      - name: shellcheck shipped board scripts
+        run: |
+          set -euo pipefail
+          shellcheck -x board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+          shellcheck -s sh -x \
+            board/mister/de10nano/fat-payload/linux/user-startup.sh \
+            board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm \
+            board/mister/de10nano/post-build.sh
 
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the

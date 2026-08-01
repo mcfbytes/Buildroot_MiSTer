@@ -11,58 +11,55 @@ boots).
 
 ## The procedure
 
-1. **Turn Linux updates back on.** Open `/media/fat/downloader.ini` and set the
-   `update_linux` line in the `[MiSTer]` section back to `true` (or simply delete the
-   line — `true` is the default):
+1. **Run the script with `--restore-stock`.**
 
-   ```ini
-   [MiSTer]
-   update_linux = true
+   ```sh
+   /media/fat/Scripts/update_linux_modernization.sh --restore-stock
    ```
 
-   **This is the step that actually matters**, and it is the one that changed. While
-   `update_linux = false` is in place, *no* Linux image can be applied by a normal update
-   — not ours and not the official one. Removing our database alone would leave you stuck
-   on this image with nothing able to replace it.
+   That does the whole handover for you: it sets `update_linux = true` back in
+   `/media/fat/downloader.ini`, and it creates `/media/fat/linux/no_linux_modernization`
+   so this image's boot-time upkeep stops putting the setting back on the next boot.
 
-2. **Remove the opt-in database file.** Delete (or rename to not end in `.ini`, if you'd
-   rather keep a copy):
+   It downloads nothing and flashes nothing. Until you do step 2 you are still running
+   this image, and running the script again *without* `--restore-stock` puts everything
+   back the way it was.
 
-   ```
-   /media/fat/downloader_mister_linux_modernization.ini
-   ```
+2. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
+   `Scripts/update.sh` — or simply wait for its next scheduled run. The official Linux
+   image installs over this one.
 
-   If you instead added the section manually inside your existing `downloader.ini`,
-   delete just that `[mister_linux_modernization]` block.
-
-   Optionally also delete `/media/fat/Scripts/update_linux_modernization.sh`. Leaving it
-   is harmless — it does nothing unless you run it — but note that **running it again
-   would undo step 1**, since repairing that setting is exactly its job.
-
-3. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
-   `Scripts/update.sh` — or simply wait for its next scheduled run. Either works.
-
-4. **Reboot** once it finishes (same as any update — see below for what to expect).
+3. **Reboot** once it finishes (same as any update — see below for what to expect).
 
 That's the whole procedure. No SD card removal, no re-flashing, no special tools.
 
-> **Steps 1 and 2 are both required, and skipping either fails silently.**
->
-> Skip **step 1** and the updater has Linux updates switched off entirely: it runs
-> cleanly, reports success, and changes nothing about your Linux image. Skip **step 2**
-> and our database is still configured, still carries a `linux` entry matching what you
-> are already running, and now competes with the official one for the single Linux slot
-> — so you may get a clean successful run and still be on this image. Do both, then
-> re-run.
+### Doing it by hand
+
+If you would rather not use the script — or you have already deleted it — both steps it
+performs matter, and skipping either fails silently:
+
+- **Set `update_linux = true`** in the `[MiSTer]` section of `/media/fat/downloader.ini`
+  (or delete the line; `true` is the default). While it is `false`, *no* Linux image can
+  be applied by a normal update — **not ours and not the official one** — so the updater
+  runs cleanly, reports success, and changes nothing.
+- **Create `/media/fat/linux/no_linux_modernization`** (an empty file is fine). Without
+  it, `/etc/init.d/S05mlm` sets `update_linux` back to `false` on the very next boot,
+  because keeping that setting correct is precisely its job. This is the step people miss,
+  and the symptom is "I set it back to true, rebooted, and it was false again."
+
+You do not need to remove anything else. `Scripts/update_linux_modernization.sh` does
+nothing unless you run it, and once the official image is installed neither the boot
+upkeep nor the canonical copies exist any more — they lived in *our* root filesystem,
+which the official image replaces.
 
 ---
 
 ## Why this actually works, not just "probably"
 
-With `update_linux` back to `true` and our database gone, `distribution_mister` is the
-only configured database left carrying a `linux` entry — so there is no multi-database
-race to lose (see [`onboarding.md`](onboarding.md#multi-db-ordering-rule) for what that
-race is and why this project sidesteps it rather than competing in it). The Downloader
+With `update_linux` back to `true`, `distribution_mister` is once again free to supply a
+Linux image — and since this project's database was never registered in your
+`downloader.ini` in the first place (the updater keeps its own private configuration
+elsewhere), the official one is the only candidate. The Downloader
 compares your currently running `/MiSTer.version` against the official entry's version.
 Because this project's build stamps a different version than the current official release,
 that comparison is guaranteed to differ — the check is a plain string **inequality**, with

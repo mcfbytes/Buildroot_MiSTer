@@ -302,22 +302,38 @@ stage_stock_payload() {
 #       [MiSTer] update_linux = false — stops EVERY normal Downloader run from
 #       applying a Linux image, so the official `distribution_mister` entry can
 #       never overwrite ours. Cores and everything else still update normally.
-#       Also declares the two core databases a sane card wants:
-#       `distribution_mister` (the official one) and `jtcores` (Jotego, with
-#       `filter = !jtbeta` so the Patreon-only beta cores are excluded).
-#       distribution_mister MUST be declared explicitly here: the Downloader
-#       only auto-adds it when the base ini declares NO databases at all
-#       (config_reader.py, _add_default_database), and this file declares some.
 #
-#   downloader_mister_linux_modernization.ini
-#       Registers our db.json as an additional database through the
-#       Downloader's drop-in mechanism (/media/fat/downloader_*.ini). Required
-#       for --run-only to be able to name it.
+#       It also reproduces Update All's OWN default database set
+#       (distribution_mister, jtcores with `filter = !jtbeta`, Coin-Op and
+#       update_all_mister). That is not decoration: Update All only seeds those
+#       defaults when downloader.ini does NOT exist
+#       (transition_service.py, from_not_existing_downloader_ini), so shipping
+#       this file at all suppresses the seeding. Reproducing the exact set keeps
+#       a freshly flashed card equivalent to a stock one AND makes Update All
+#       report the file as already canonical (does_downloader_ini_need_save ==
+#       False), so it never rewrites it. distribution_mister must be declared
+#       explicitly: the Downloader only auto-adds it when the base ini declares
+#       NO databases at all (config_reader.py, _add_default_database).
 #
 #   Scripts/update_linux_modernization.sh
-#       The one thing that updates OUR Linux image: re-enables the Linux update
-#       for a single run (UPDATE_LINUX=true) restricted to a single database
-#       (--run-only), so there is no multi-db race to lose.
+#       The one thing that updates OUR Linux image. It runs the Downloader
+#       against its OWN private ini, in a private directory, declaring a single
+#       database, with UPDATE_LINUX=true and --run-only. One candidate, so there
+#       is nothing to sort and nothing to race, on every Downloader build.
+#
+# Deliberately NOT staged here:
+#
+#   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
+#     winner is chosen by position in downloader.ini (linux_updater.py sorts on
+#     config['databases']), base-ini sections always precede drop-ins, and
+#     Update All pins [distribution_mister] to the front — so a drop-in can
+#     never outrank it. It would buy no protection while putting our database
+#     into every normal update_all.sh run, where a transient failure of our
+#     GitHub Pages site would fail the user's whole core update.
+#
+#   * linux/user-startup.sh. /etc/init.d/S05mlm deploys that one
+#     create-if-absent from inside the rootfs, so it can never clobber a
+#     user-startup.sh the user already wrote.
 #
 # A freshly flashed sdcard.img is therefore correctly configured with no user
 # action at all: cores update, our Linux image stays put, and one entry in the
@@ -330,8 +346,7 @@ stage_update_channel() {
 		die "update-channel payload dir not found: $src"
 
 	local f
-	for f in downloader.ini downloader_mister_linux_modernization.ini \
-	         Scripts/update_linux_modernization.sh; do
+	for f in downloader.ini Scripts/update_linux_modernization.sh; do
 		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
 	done
 
@@ -340,15 +355,11 @@ stage_update_channel() {
 	cp -f "$src/downloader.ini" "$PAYLOAD_DIR/downloader.ini"
 	chmod 0644 "$PAYLOAD_DIR/downloader.ini"
 
-	cp -f "$src/downloader_mister_linux_modernization.ini" \
-		"$PAYLOAD_DIR/downloader_mister_linux_modernization.ini"
-	chmod 0644 "$PAYLOAD_DIR/downloader_mister_linux_modernization.ini"
-
 	cp -f "$src/Scripts/update_linux_modernization.sh" \
 		"$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
 	chmod 0755 "$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
 
-	log "staged update-channel config (downloader.ini, db drop-in, Scripts/update_linux_modernization.sh)"
+	log "staged update-channel config (downloader.ini, Scripts/update_linux_modernization.sh)"
 }
 
 # ============================================================================

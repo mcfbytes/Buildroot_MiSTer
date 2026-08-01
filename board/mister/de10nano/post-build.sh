@@ -93,3 +93,61 @@ if [ "$_n" -ne 6 ] || [ "$(tail -c1 "$TARGET_DIR/MiSTer.version" | od -An -tx1 |
 	exit 1
 fi
 echo "post-build.sh: wrote /MiSTer.version = $VERSION_DATE (6 bytes, no newline)"
+
+# --- Canonical update-channel copies (/usr/share/mister-linux-modernization) ---
+# S05mlm pushes these onto /media/fat on every boot. They live in the ROOT
+# FILESYSTEM on purpose, because that is the half of the card this project
+# actually controls: /media/fat is rewritten by Update All, edited by users and
+# survives a reflash, whereas linux.img is replaced wholesale on every release.
+#
+# That inversion is the whole point. It is also the ONLY way to ship a corrected
+# updater script to an existing card: a release_YYYYMMDD.7z can carry nothing but
+# files/linux/**, so it can never write /media/fat/Scripts/ -- but it carries
+# linux.img, and linux.img carries these. Shipping a fixed script is therefore a
+# normal image update, and db.json's files{} can stay empty forever (which keeps
+# the published document tiny, per docs/db-json-versioning.md).
+#
+# Sourced from the SAME board/mister/de10nano/fat-payload/ tree that
+# scripts/fetch-sdcard-payload.sh stages onto sdcard.img, so the card image and
+# the rootfs can never disagree about what the current script is.
+#
+# BR2_EXTERNAL_MISTER_PATH is exported into post-build scripts by Buildroot
+# (external.desc: name = MISTER). Fail loudly rather than silently shipping an
+# image whose S05mlm finds no canonical copy and quietly does nothing.
+: "${BR2_EXTERNAL_MISTER_PATH:?post-build.sh: BR2_EXTERNAL_MISTER_PATH not set}"
+
+MLM_SRC="$BR2_EXTERNAL_MISTER_PATH/board/mister/de10nano/fat-payload"
+MLM_DST="$TARGET_DIR/usr/share/mister-linux-modernization"
+
+[ -d "$MLM_SRC" ] || {
+	echo "post-build.sh: ERROR: $MLM_SRC not found" >&2
+	exit 1
+}
+
+rm -rf "$MLM_DST"
+mkdir -p "$MLM_DST/linux"
+
+for _f in Scripts/update_linux_modernization.sh downloader.ini linux/user-startup.sh; do
+	[ -f "$MLM_SRC/$_f" ] || {
+		echo "post-build.sh: ERROR: missing update-channel source file $MLM_SRC/$_f" >&2
+		exit 1
+	}
+done
+
+# Flattened: S05mlm looks for update_linux_modernization.sh at the top of
+# MLM_DST, not under a Scripts/ subdirectory.
+cp -f "$MLM_SRC/Scripts/update_linux_modernization.sh" "$MLM_DST/update_linux_modernization.sh"
+cp -f "$MLM_SRC/downloader.ini"                        "$MLM_DST/downloader.ini"
+cp -f "$MLM_SRC/linux/user-startup.sh"                 "$MLM_DST/linux/user-startup.sh"
+
+chmod 0755 "$MLM_DST/update_linux_modernization.sh" "$MLM_DST/linux/user-startup.sh"
+chmod 0644 "$MLM_DST/downloader.ini"
+
+# Fixed mtimes: BR2_ROOTFS_OVERLAY files get theirs from git checkout time, and
+# these are copied by hand, so pin them to SOURCE_DATE_EPOCH to keep the image
+# byte-reproducible (P2.5 / A9).
+if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+	find "$MLM_DST" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} + 2>/dev/null || true
+fi
+
+echo "post-build.sh: staged canonical update-channel copies into /usr/share/mister-linux-modernization"

@@ -618,27 +618,36 @@ The main set is seven files (the Downloader-contract set: the `release_YYYYMMDD.
 Distribution is **opt-in and requires zero cooperation from anyone**: a community
 `db.json`, served from GitHub Pages, that the standard on-device Downloader reads.
 
-**Coexistence with the official channel is the hard part, and it is solved.** The
+**Coexistence with the official channel is the hard part, and it is solved**
+([ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md)). The
 Downloader applies at most **one** Linux image per run, and `distribution_mister` always
-offers one too — so with both databases configured the two race for that single slot, and
-the winner is whichever document finished parsing first. Losing that race silently reverts
-the user to stock on a routine core update. Rather than trying to win it (by keeping
-`db.json` small enough to parse first, which works *most* of the time), this project
-cancels it:
+offers one too. When several databases offer one, it sorts the candidates by their
+**position in `downloader.ini`** and takes the first — and since drop-in databases are
+merged *after* the base ini's own sections, and Update All pins `[distribution_mister]` to
+the top on every rewrite, the official image wins **deterministically, every run**. Not a
+race that might go our way: a loss, every time, silently reverting the user on a routine
+core update.
+
+So this project doesn't compete for that slot; it closes it:
 
 - `[MiSTer] update_linux = false` in `downloader.ini` stops **every** normal run from
   applying **any** Linux image. Cores, ROMs, MRAs and Jotego keep updating untouched.
-- `Scripts/update_linux_modernization.sh` re-enables it for one run against one database
-  (`UPDATE_LINUX=true` + `--run-only mister_linux_modernization`). Deterministic.
+- `Scripts/update_linux_modernization.sh` runs the Downloader against its **own private
+  ini** naming one database, so there is nothing to sort and nothing to lose.
+- `/etc/init.d/S05mlm` re-checks all of it on **every boot** from canonical copies held in
+  the root filesystem. That inverts the failure mode — from "something rewrote our config
+  and we're silently disabled forever" to "it was put back at the next boot, and it's in
+  the log" — and it is also how a *corrected* updater reaches an existing card, since a
+  release archive can only carry `files/linux/**` but `linux.img` carries the script.
 
-Verified on hardware: a full `update_all.sh` run installed 379 cores and left `linux.img`
-and `zImage_dtb` **byte-identical**, with the Downloader's own config dump recording
-`update_linux: false` and `UPDATE_LINUX: undefined` — Update All never overrides it. Both
-files, plus a `downloader.ini` with sane defaults (official cores **and** Jotego, minus
-the Patreon-only beta cores), are baked into `sdcard.img`, so a fresh flash needs no user
-action at all. Rolling back is always safe — see
-[`docs/user/rollback.md`](docs/user/rollback.md), noting that it now also means setting
-`update_linux` back to `true`.
+Verified on hardware: a full `update_all.sh` run installed 379 cores, rebooted, and came
+back with `linux.img` and `zImage_dtb` **byte-identical**, the Downloader's own config
+dump recording `update_linux: false` and `UPDATE_LINUX: undefined` — Update All never
+overrides it. The shipped `downloader.ini` also reproduces Update All's default database
+set plus **Jotego** (minus the Patreon-only beta cores), so a fresh `sdcard.img` flash
+needs no user action at all. Rolling back is one command,
+`update_linux_modernization.sh --restore-stock` — see
+[`docs/user/rollback.md`](docs/user/rollback.md).
 
 One subtlety worth calling out because getting it wrong bricks the update loop: stock's
 Downloader compares versions with a **strict string inequality**, not an ordering, and

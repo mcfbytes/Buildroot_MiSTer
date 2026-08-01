@@ -41,7 +41,6 @@ mister-payload/MiSTer
 mister-payload/menu.rbf
 mister-payload/MiSTer.ini
 mister-payload/downloader.ini
-mister-payload/downloader_mister_linux_modernization.ini
 mister-payload/Scripts/
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
@@ -49,18 +48,37 @@ mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **28 entries** (7 directories, 21 files) for the base inventory. `check-sdcard.sh`
+That is **27 entries** (7 directories, 20 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
-> **Changed 2026-08-01** — three entries **added**, all of them this project's own
+> **Changed 2026-08-01** — two entries **added**, both of them this project's own
 > update-channel configuration, staged by `stage_update_channel()` in
-> `scripts/fetch-sdcard-payload.sh`: `mister-payload/downloader.ini`,
-> `mister-payload/downloader_mister_linux_modernization.ini` and
-> `mister-payload/Scripts/update_linux_modernization.sh`. Together they make a
-> freshly flashed card hold on to this project's Linux image across routine
-> `update_all.sh` runs while still updating cores normally, with no user action at
-> all. See `docs/user/onboarding.md` §"Already flashed our sdcard.img?" and the
-> header comment above `stage_update_channel()`.
+> `scripts/fetch-sdcard-payload.sh`:
+>
+> * `mister-payload/downloader.ini` — carries `[MiSTer] update_linux = false`,
+>   which stops every normal Downloader run from applying *any* Linux image, and
+>   reproduces Update All's own default database set so a freshly flashed card
+>   still gets exactly the cores a stock card would. (Update All only seeds those
+>   defaults when `downloader.ini` does **not** exist, so shipping the file
+>   suppresses the seeding — reproducing the set is what keeps parity, and it
+>   also makes Update All treat the file as already canonical and never rewrite
+>   it.)
+> * `mister-payload/Scripts/update_linux_modernization.sh` — the one Scripts-menu
+>   entry that updates this project's Linux image.
+>
+> Together they make a freshly flashed card hold on to this project's Linux image
+> across routine `update_all.sh` runs while still updating cores normally, with
+> no user action at all. See ADR 0025, `docs/user/onboarding.md`, and the header
+> comment above `stage_update_channel()`.
+>
+> Deliberately **not** in this inventory:
+> `mister-payload/downloader_mister_linux_modernization.ini` (a drop-in database
+> registration can never outrank `[distribution_mister]`, so it would buy no
+> protection while putting our database into every core update) and
+> `mister-payload/linux/user-startup.sh` (the revert detector, deployed
+> create-if-absent by `/etc/init.d/S05mlm` from inside the rootfs so it can never
+> clobber a user's own). Neither may be added here — `check-sdcard.sh` diffs this
+> block against the built image in **both** directions.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and

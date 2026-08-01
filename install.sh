@@ -26,9 +26,12 @@
 # --restore-stock` hands the Linux image back to the official database.
 #
 # Options (pipe them through with `| bash -s -- <option>`):
-#   --dry-run   print exactly what would happen and change nothing
-#   --yes       skip the 10-second countdown
-#   --no-reboot install and update, but leave rebooting to you
+#   --dry-run       print exactly what would happen and change nothing
+#   --yes           skip the 10-second countdown
+#   --no-reboot     install and update, but leave rebooting to you
+#   --bootstrap-ca  ONLY if this card's CA certificates are too old to verify
+#                   anything: fetch a CA bundle over an UNVERIFIED connection and
+#                   use it for this run only. Read the warning it prints.
 #
 # Environment:
 #   MLM_REF          git ref to install from (default: master)
@@ -77,15 +80,19 @@ BACKUP_FILES="MidiLink.INI ppp_options u-boot.txt_example _samba.sh _user-startu
 
 DRY_RUN=0
 ASSUME_YES=0
+BOOTSTRAP_CA=0
 REBOOT_ARG=""
+CA_BUNDLE_URL="https://curl.se/ca/cacert.pem"
+CA_BUNDLE_TMP="/tmp/mlm-cacert.pem"
 
 for arg in "$@"; do
 	case "$arg" in
 		--dry-run)   DRY_RUN=1 ;;
+		--bootstrap-ca) BOOTSTRAP_CA=1 ;;
 		--yes|-y)    ASSUME_YES=1 ;;
 		--no-reboot) REBOOT_ARG="--no-reboot" ;;
 		-h|--help)
-			echo "usage: install.sh [--dry-run] [--yes] [--no-reboot]"
+			echo "usage: install.sh [--dry-run] [--yes] [--no-reboot] [--bootstrap-ca]"
 			echo "  piped:  curl -fsSL <url> | bash -s -- --dry-run"
 			exit 0
 			;;
@@ -126,21 +133,48 @@ preflight() {
 	tls_rc=0
 	curl -fsS --max-time 20 -o /dev/null "$DB_URL" 2>/dev/null || tls_rc=$?
 	if [ "$tls_rc" -eq 60 ]; then
-		if [ -f /etc/ssl/certs/cacert.pem ]; then
+		# Try the card's own bundle first -- but VERIFY it actually helps before
+		# accepting it. On an old card that file is often exactly what expired,
+		# and silently adopting it would just move the same failure downstream.
+		if [ -f /etc/ssl/certs/cacert.pem ] &&
+		   curl -fsS --cacert /etc/ssl/certs/cacert.pem --max-time 20 -o /dev/null "$DB_URL" 2>/dev/null; then
 			CURL_SSL="--cacert /etc/ssl/certs/cacert.pem"
 			export CURL_SSL
-			say "Note: this card's CA certificates look stale; using /etc/ssl/certs/cacert.pem."
+			say "Note: this card's default CA path failed; using /etc/ssl/certs/cacert.pem instead."
 			say ""
+		elif [ "$BOOTSTRAP_CA" -eq 1 ]; then
+			bootstrap_ca
 		else
 			die "TLS certificate verification failed, and this card has no
-       /etc/ssl/certs/cacert.pem to fall back on.
+       /etc/ssl/certs/cacert.pem to fall back on. Its CA certificates are too
+       old to verify anything -- a root filesystem frozen years ago carries a
+       trust store frozen years ago.
 
-       Run \`Scripts/update.sh\` once and accept its offer to fix the
-       certificates -- that is the supported repair, and it is interactive so it
-       has to be you rather than this script. Then run this installer again.
+       Nothing on this card can currently make a trustworthy HTTPS connection,
+       so there is no way to fix this over the network from the card without
+       some leap of faith. Your options, safest first:
 
-       (Deliberately NOT worked around here by disabling verification: this
-       script downloads code and runs it as root.)"
+       1. DO IT FROM A MACHINE WITH WORKING TLS. Download the installer there,
+          check it, and copy it to the card (over SMB, scp, or by putting the SD
+          card in that machine):
+
+            curl -fsSL $RAW_BASE/install.sh -o mlm.sh
+            sha256sum mlm.sh        # compare against the repo on github.com
+            # copy mlm.sh to /media/fat/Scripts/ then, on the MiSTer:
+            sh /media/fat/Scripts/mlm.sh --bootstrap-ca
+
+       2. Run \`Scripts/update.sh\` once and accept its certificate repair. Note
+          what that actually does: fetches a CA bundle with verification DISABLED
+          and installs it into /etc/ssl/certs. It works, and it is what MiSTer
+          has always done -- but a tampered bundle there is persistent and
+          silent, and would be trusted by every program on the box from then on.
+
+       3. Re-run this installer with --bootstrap-ca. Same unverified fetch, but
+          used for THIS RUN ONLY and never written to the system trust store, so
+          the exposure ends when the run does.
+
+       This is, for what it is worth, a fairly complete argument for why this
+       project exists."
 		fi
 	fi
 
@@ -162,6 +196,89 @@ preflight() {
 			fi
 			;;
 	esac
+}
+
+# Fetch a CA bundle over an UNVERIFIED connection and use it for this run only.
+#
+# There is no clever way around the leap of faith: a card whose trust store has
+# expired cannot verify anything, including whatever would repair it. What we CAN
+# control is the blast radius, and that is the whole design of this function.
+#
+# We deliberately do NOT do what Scripts/update.sh does -- fetch the bundle
+# insecurely and install it into /etc/ssl/certs. That is the worse of the two
+# available risks: a CA injected into the system trust store is trusted by every
+# program on the box, for every connection, from then on, and it looks completely
+# clean afterwards. Getting a tampered script instead is a one-shot compromise of
+# a box whose root password is `1` and whose rootfs is about to be replaced
+# wholesale anyway.
+#
+# So: bundle to /tmp, used for this run, gone at reboot. The system trust store
+# is not touched, and the rootfs is not remounted rw.
+#
+# You should only need this ONCE. The image being installed ships a current CA
+# bundle and refreshes it every release, so once this run finishes the card's
+# certificates are fixed properly and permanently -- which is rather the point.
+bootstrap_ca() {
+	say ""
+	rule
+	say " WARNING -- UNVERIFIED DOWNLOAD"
+	rule
+	say ""
+	say "  This card's CA certificates cannot verify anything, so the CA bundle"
+	say "  itself has to be fetched with verification turned off:"
+	say ""
+	say "    $CA_BUNDLE_URL"
+	say ""
+	say "  If someone is intercepting this connection they can hand you their own"
+	say "  bundle, and everything this run then 'verifies' would be verified"
+	say "  against them. On a trusted home network that is a remote risk; on a"
+	say "  public or shared one it is not."
+	say ""
+	say "  Limiting the damage: the bundle goes to $CA_BUNDLE_TMP and is used for"
+	say "  THIS RUN ONLY. Nothing is written to /etc/ssl/certs, so no attacker CA"
+	say "  can outlive this run. (Scripts/update.sh's repair does write to the"
+	say "  system trust store, which is why this does not reuse it.)"
+	say ""
+	say "  If you would rather not: Ctrl-C, and fetch the installer from a machine"
+	say "  whose TLS works, then copy it to the card."
+	say ""
+	rule
+
+	if [ "$ASSUME_YES" -eq 0 ]; then
+		say ""
+		say "  Continuing in 10 seconds. Ctrl-C to stop."
+		i=10
+		while [ "$i" -gt 0 ]; do
+			printf '\r  %2d ' "$i"
+			sleep 1
+			i=$((i - 1))
+		done
+		printf '\r      \n'
+	fi
+
+	rm -f "$CA_BUNDLE_TMP"
+	curl -fsSL --insecure --max-time 60 --retry 2 -o "$CA_BUNDLE_TMP" "$CA_BUNDLE_URL" ||
+		die "could not download the CA bundle from $CA_BUNDLE_URL."
+	[ -s "$CA_BUNDLE_TMP" ] || die "the downloaded CA bundle is empty."
+	grep -q 'BEGIN CERTIFICATE' "$CA_BUNDLE_TMP" ||
+		die "the downloaded CA bundle does not contain any certificates -- got a captive portal or an error page."
+
+	CURL_SSL="--cacert $CA_BUNDLE_TMP"
+	export CURL_SSL
+
+	# Prove it actually helps before continuing, rather than failing later with a
+	# confusing message.
+	# shellcheck disable=SC2086  # CURL_SSL is an option PAIR and must word-split
+	curl -fsS $CURL_SSL --max-time 20 -o /dev/null "$DB_URL" ||
+		die "even with the fetched CA bundle, $DB_URL could not be verified. Something else is wrong -- check the date/time on this MiSTer (a badly wrong clock invalidates every certificate)."
+
+	say ""
+	say "  CA bundle fetched and working, for this run only."
+	say ""
+	# Deliberately NOT removed here: CURL_SSL is exported and inherited across
+	# the exec into the updater, which has its own downloads to make and would
+	# otherwise hit the same wall. /tmp is a tmpfs, so the bundle is gone at the
+	# reboot this install ends with -- which is the lifetime we want.
 }
 
 installed_version() {

@@ -244,14 +244,31 @@ normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md
 > against `libcurl`/`libssl`, and MiSTer's own `Scripts/update.sh` uses curl exclusively
 > for the same reason. wget is not an alternative here.
 >
-> If curl fails with **exit 60** on your card, its CA certificates have gone stale — a
-> frozen 2021 root filesystem carries a frozen 2021 trust store. The installer detects
-> this up front and retries with `/etc/ssl/certs/cacert.pem` if the card has one;
-> otherwise it stops and tells you to run `Scripts/update.sh` once and accept its
-> certificate repair, which is the supported remedy. It deliberately does not work around
-> this by disabling verification, because it is about to download code and run it as root.
-> (Upstream's own repair does exactly that — `curl -kL` — which is a fair pragmatic
-> choice, and also a decent illustration of why this project exists.)
+> **If curl fails with exit 60**, this card's CA certificates have gone stale — a root
+> filesystem frozen years ago carries a trust store frozen years ago. Then *nothing* on
+> the card can make a trustworthy HTTPS connection, including whatever would repair it, so
+> there is no way out that doesn't involve a leap of faith somewhere. The installer detects
+> this before printing anything and lays out the options, safest first:
+>
+> 1. **Do it from a machine whose TLS works.** Download the installer there, check its
+>    `sha256sum` against the repo, and copy it to the card. No leap of faith at all.
+> 2. **`Scripts/update.sh`'s certificate repair.** What MiSTer has always done. Worth
+>    knowing what it actually is: fetch a CA bundle with verification *disabled* and
+>    install it into `/etc/ssl/certs`.
+> 3. **`--bootstrap-ca`.** The same unverified fetch, but the bundle goes to `/tmp` and is
+>    used for **that run only** — never written to the system trust store.
+>
+> Option 3 exists because the two risks are not symmetric. A CA injected into the system
+> trust store is trusted by every program on the box, for every connection, indefinitely,
+> and everything looks clean afterwards; a tampered one-shot script compromises a box whose
+> root password is already `1` and whose rootfs is about to be replaced wholesale. Limiting
+> the blast radius to one run is strictly better than persisting it, so that is what
+> `--bootstrap-ca` does. It is never automatic — you have to ask for it, and it prints the
+> full warning and waits before it starts.
+>
+> You should only ever need it once: the image being installed ships a current CA bundle
+> and refreshes it on every release, so finishing the install *is* the permanent fix. Which
+> is, more or less, the whole argument for this project in one bug.
 
 ### On `curl | bash`
 

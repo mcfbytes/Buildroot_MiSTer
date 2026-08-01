@@ -118,9 +118,17 @@ already up to date is correctly recognized as such on every subsequent run. See
 [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md) for the full
 mechanism, if you're curious.
 
-Practically: opt in once (see [`onboarding.md`](onboarding.md)), and future releases will
-be offered normally, the same way official MiSTer updates are — no repeated re-flashing
-between releases.
+Practically: opt in once (see [`onboarding.md`](onboarding.md)), then run
+`Scripts/update_linux_modernization.sh` whenever you want to pull a new release — it uses
+the same on-device Downloader machinery official updates use, and a device already on the
+current release is correctly recognised as such and left alone.
+
+**Note that this image does *not* install itself during a routine `update_all.sh` run**,
+by design. Opting in sets `update_linux = false`, which stops *every* normal run from
+applying *any* Linux image — that is what keeps the official image from overwriting this
+one, since the two would otherwise race for the single Linux update slot the Downloader
+allows per run. Your cores keep updating exactly as before; only the Linux image is
+gated, and only that one script lifts the gate.
 
 ---
 
@@ -197,7 +205,7 @@ at all.
 
 ## See also
 
-- [`onboarding.md`](onboarding.md) — how to opt in, and the multi-database ordering rule
+- [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose
 - [`rollback.md`](rollback.md) — how to get back to stock
 - [`serial-recovery.md`](serial-recovery.md) — recovering a box that won't boot
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture

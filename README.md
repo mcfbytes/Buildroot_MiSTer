@@ -19,7 +19,7 @@ core run on it unchanged.
 | `release_YYYYMMDD.7z` | The stock-layout release archive, byte-compatible with the Downloader's expectations |
 | `legal-info.tar.gz` | A **full SBOM** — every package, version, license, and upstream source tarball |
 | `SHA256SUMS` + attestations | Build provenance for the image assets |
-| `db.json` | The **opt-in update channel**, served from GitHub Pages — add one file to your card and releases arrive like any official update |
+| `db.json` | The **opt-in update channel**, served from GitHub Pages — drop one script into `Scripts/`, run it, and releases arrive through the standard on-device Downloader |
 | An exportable kernel tree | The carried series, rendered deterministically into `Linux-Kernel_MiSTer` layout so upstream can consume the work without a second fork |
 
 > **Status — personal use only.** Phases 0–3 are complete with hardware validation on a
@@ -616,9 +616,29 @@ The main set is seven files (the Downloader-contract set: the `release_YYYYMMDD.
 `-rt` files per kernel variant, plus the separately contracted `sdcard.img.xz`.
 
 Distribution is **opt-in and requires zero cooperation from anyone**: a community
-`db.json`, served from GitHub Pages, that the standard on-device Downloader reads. Add one
-file to your card and future releases arrive the same way official updates do; remove it
-and the next official update puts stock back. Rolling back is always safe.
+`db.json`, served from GitHub Pages, that the standard on-device Downloader reads.
+
+**Coexistence with the official channel is the hard part, and it is solved.** The
+Downloader applies at most **one** Linux image per run, and `distribution_mister` always
+offers one too — so with both databases configured the two race for that single slot, and
+the winner is whichever document finished parsing first. Losing that race silently reverts
+the user to stock on a routine core update. Rather than trying to win it (by keeping
+`db.json` small enough to parse first, which works *most* of the time), this project
+cancels it:
+
+- `[MiSTer] update_linux = false` in `downloader.ini` stops **every** normal run from
+  applying **any** Linux image. Cores, ROMs, MRAs and Jotego keep updating untouched.
+- `Scripts/update_linux_modernization.sh` re-enables it for one run against one database
+  (`UPDATE_LINUX=true` + `--run-only mister_linux_modernization`). Deterministic.
+
+Verified on hardware: a full `update_all.sh` run installed 379 cores and left `linux.img`
+and `zImage_dtb` **byte-identical**, with the Downloader's own config dump recording
+`update_linux: false` and `UPDATE_LINUX: undefined` — Update All never overrides it. Both
+files, plus a `downloader.ini` with sane defaults (official cores **and** Jotego, minus
+the Patreon-only beta cores), are baked into `sdcard.img`, so a fresh flash needs no user
+action at all. Rolling back is always safe — see
+[`docs/user/rollback.md`](docs/user/rollback.md), noting that it now also means setting
+`update_linux` back to `true`.
 
 One subtlety worth calling out because getting it wrong bricks the update loop: stock's
 Downloader compares versions with a **strict string inequality**, not an ordering, and

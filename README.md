@@ -508,6 +508,16 @@ mr-fusion's own mechanism, adopted rather than replaced, per the standing princi
 reusing a proven reference implementation in anything on the boot path.
 ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md))
 
+**What that first boot looks like.** The installer draws a progress splash — banner, nine
+numbered steps, a bar and an elapsed clock — on the **serial console**, and blinks the
+DE10-Nano's on-board `HPS_LED` at about 0.5 Hz for the duration (solid on = stopped and
+wants attention; off = done, rebooting). There is deliberately **no picture on HDMI**: the
+FPGA has no bitstream loaded during the install, so the display stays dark until the menu
+core comes up a minute later. Getting a picture there would mean shipping mr-fusion's
+entire stack — its U-Boot, a second DTB and a framebuffer bitstream — which is a trade
+[ADR 0020 §6](docs/decisions/0020-sdcard-exfat-reformat-installer.md) explains and
+declines. Note `HPS_LED` is on the board itself, so a fully-enclosed case will not show it.
+
 It ships as a **separate release asset**, never inside `release_*.7z` and never referenced
 by `db.json`, because its blast radius is the bootloader. The payload it installs is
 inventoried against real mr-fusion output in

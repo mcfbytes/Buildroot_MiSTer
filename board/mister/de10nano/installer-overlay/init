@@ -89,6 +89,12 @@
 #   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
 #   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
 #   cp du dd cut reboot blkid blockdev hexdump               (installer must add)
+# NOT built, and deliberately never called: rm. There is no `rm` applet in this
+# image, so anything wanting to free a file must truncate it with `: >` instead
+# (see the linux.img.gz reclaim in step 5b). Note this restriction applies to
+# APPLETS only -- `true` and `false` are unconditional ash BUILTINS in BusyBox
+# (shell/ash.c builtintab, outside any #if), so `|| true` is safe here even
+# though CONFIG_TRUE is off; that symbol only governs a standalone /bin/true.
 # (blkid/blockdev/hexdump may come from busybox or util-linux; only sfdisk+mkfs.exfat
 # must be real external binaries.) NOTE: basename/dirname/od are deliberately NOT
 # built -- /init uses POSIX ${var%/*}/${var##*/} parameter expansion in their place,
@@ -787,7 +793,22 @@ splash_pulse_start
 zcat /mnt/dst/linux/linux.img.gz > /mnt/dst/linux/linux.img ||
 	rescue "decompressing linux/linux.img.gz onto $P1 failed (card out of space, or corrupt payload)"
 splash_pulse_stop
-rm -f /mnt/dst/linux/linux.img.gz
+# Reclaim the ~80 MiB the .gz occupies. This TRUNCATES rather than deletes, and
+# that is not a stylistic choice: the installer BusyBox ships no `rm` applet at
+# all (installer-busybox.config, `# CONFIG_RM is not set`), so the `rm -f` that
+# used to be here was a command-not-found no-op. It left the entire ~80 MiB on
+# every installed card, contradicting its own comment -- and, now that there is a
+# splash, printed "rm: not found" across it. `: >` is a shell redirection, needs
+# no applet, and releases the blocks. The zero-byte linux/linux.img.gz left
+# behind is inert: U-Boot loop-mounts linux/linux.img and nothing reads the .gz
+# again. (Found by Copilot on PR #76; the fix is deliberately applet-free rather
+# than turning CONFIG_RM on, which would grow a brick-critical image for one call.)
+: > /mnt/dst/linux/linux.img.gz
+if [ -s /mnt/dst/linux/linux.img.gz ]; then
+	log "WARNING: could not reclaim linux/linux.img.gz (~80 MiB stays used)"
+else
+	log "reclaimed linux/linux.img.gz"
+fi
 sync
 
 # Verify the boot-critical files really landed (linux.img is the expanded one above).

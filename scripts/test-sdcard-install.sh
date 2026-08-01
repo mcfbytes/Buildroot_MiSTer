@@ -187,6 +187,7 @@ main() {
 		'payload staged in RAM OK' \
 		'payload written to' \
 		'per-board MAC = ' \
+		'reclaimed linux/linux.img.gz' \
 		'uboot.img written to' \
 		'install complete'; do
 		if grep -q "$stage" "$INSTALL_LOG"; then pass "installer stage: '$stage'"; else fail "installer never reached: '$stage'"; fi

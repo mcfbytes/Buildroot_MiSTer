@@ -1,0 +1,170 @@
+#!/bin/sh
+#
+# S48timezone   First-boot timezone autodetection.
+#
+# WHY THIS EXISTS.
+# /etc/localtime is a symlink to /media/fat/linux/timezone (stock parity -- the
+# rootfs is reflashed wholesale on update, so the timezone has to live on the FAT
+# data partition to survive; see docs/init-parity.md and the defconfig's tzdata
+# block). On a fresh card that file does not exist yet, so glibc falls back to
+# UTC and every timestamp -- save states, screenshots, the OSD clock, ntpd's own
+# log lines -- is wrong by the local UTC offset until the user goes and finds
+# the community `timezone.sh` script. Most never do. This script does that one
+# lookup for them, once, and then gets out of the way forever.
+#
+# STOCK/COMMUNITY PARITY.
+# This is deliberately the same mechanism as the "Automatic" mode of
+# MiSTer-devel/Scripts_MiSTer's timezone.sh (v1.4): ask ip-api.com for the
+# timezone of the box's public IP, then `cp` the matching file out of
+# /usr/share/zoneinfo/posix/ onto /media/fat/linux/timezone. Same source, same
+# destination, same file format -- so this and a by-hand timezone.sh run are
+# interchangeable, and either can overwrite the other's result. No new package:
+# curl is already in the image (BR2_PACKAGE_LIBCURL_CURL) and so is the full
+# zoneinfo set (BR2_TARGET_TZ_INFO).
+#
+# EXACTLY ONE GUESS, EVER.
+# Two independent gates, both on the data partition so both survive a reflash:
+#   - /media/fat/linux/timezone exists and is non-empty -> a timezone is already
+#     set, by us on an earlier boot, by timezone.sh, or by hand. Never
+#     second-guessed, never overwritten.
+#   - /media/fat/linux/timezone.autodetect exists -> the one guess has been
+#     used. Written when the lookup *concludes*, success or failure, so an
+#     offline box does not re-query on every boot for the rest of its life.
+# So autodetection is a first-boot event, not a boot-time behaviour. Two
+# consequences worth knowing:
+#   - Pre-creating the stamp (`touch /media/fat/linux/timezone.autodetect` on
+#     the card) disables autodetection before it ever runs -- nothing is sent.
+#   - A box with no network on its first boot keeps UTC. Delete the stamp and
+#     reboot for another go, or just run timezone.sh.
+#
+# WHAT IT DOES NOT DO.
+# - It cannot retro-fit the timezone into processes that are already running.
+#   glibc reads /etc/localtime once, at the first localtime() call, and caches
+#   it; Main_MiSTer is started from inittab's sysinit, before rcS, so on the
+#   very first boot its clock stays UTC until the next reboot. The zoneinfo is
+#   correct from that point on, permanently, for everything.
+# - It does not update /etc/timezone (a label file nothing reads; "Etc/UTC",
+#   stock parity) -- / is read-only at this point in boot anyway.
+#
+# PRIVACY / TRUST, stated plainly: this queries a third party, on one boot, which
+# necessarily sees the box's public IP. Nothing else is sent, nothing is stored
+# remotely, and the request carries no payload -- the public IP the packet
+# already has IS the query. (It is retried while the network is still coming up,
+# so "one lookup" can be up to TZ_TRIES x 2 requests; every retry is identical.) It is opt-out-able before it ever
+# runs (see the stamp file above). ip-api.com's free tier is HTTP-only, so that
+# request is in the clear and a hostile network could answer it -- the blast
+# radius is a wrong timezone, and the answer is validated against the zoneinfo we
+# ship before it is used. See ADR 0025.
+
+TZFILE=/media/fat/linux/timezone
+TZSTAMP=/media/fat/linux/timezone.autodetect
+ZONEDIR=/usr/share/zoneinfo/posix
+
+# Network comes up asynchronously (dhcpcd lease, or a WiFi association that can
+# take tens of seconds), so retry rather than assuming connectivity at S48.
+# ~3 minutes of window: this is the only attempt this box will ever make, so be
+# patient, and it costs nothing but a sleeping background shell.
+TZ_TRIES=18
+TZ_INTERVAL=10
+
+# Burn the one guess. Called on every conclusive outcome, including failure --
+# that is what makes this a first-boot event rather than a boot-time one. The
+# body is self-documenting, because this file turns up in the same directory
+# users keep wpa_supplicant.conf and user-startup.sh in.
+stamp() {
+	{
+		echo "MiSTer timezone autodetection has already run."
+		echo "It runs once, on first boot, and never overrides a timezone"
+		echo "you set yourself."
+		echo ""
+		echo "Result: $1"
+		echo ""
+		echo "For another go: delete this file and timezone, then reboot."
+		echo "To choose by hand instead: run the timezone.sh script."
+	} > "$TZSTAMP" 2>/dev/null || :
+}
+
+detect() {
+	tries="$TZ_TRIES"
+	while [ "$tries" -gt 0 ]; do
+		# Providers in order, first plausible answer wins. Quoted, not a
+		# variable: the first URL contains a '?', which unquoted would be
+		# a glob.
+		#   ip-api.com -- what timezone.sh uses. /line/?fields=timezone
+		#     returns the bare zone name on one line, i.e. exactly what
+		#     its `/json/ | jq -rM .timezone` yields, without the jq.
+		#   ipapi.co -- HTTPS fallback, for networks that block or
+		#     intercept plain HTTP.
+		for url in 'http://ip-api.com/line/?fields=timezone' \
+			'https://ipapi.co/timezone'; do
+			zone="$(curl -sfL --max-time 8 "$url" 2>/dev/null |
+				head -n 1 | tr -d '\r')"
+
+			# $zone came off the network: validate BEFORE it is ever
+			# interpolated into a path. Only the characters real zone
+			# names use, which also rules out "." and therefore ".."
+			# path traversal, plus shell metacharacters; and it has to
+			# name a zone file we actually ship (this also rejects an
+			# empty answer, and a directory like "America"). Looser
+			# than timezone.sh's `grep -qE "^.+[/].+$"` in one way --
+			# a slash is not required -- because ip-api does answer
+			# with the slashless-but-real "UTC" for some IPs, and
+			# taking it at its word beats retrying until we time out.
+			case "$zone" in
+				''|*[!A-Za-z0-9/_+-]*) continue ;;
+			esac
+			[ -f "$ZONEDIR/$zone" ] || continue
+
+			# Write via a temp file so an interrupted or short write
+			# (full card, card yanked) leaves no half-copied
+			# zoneinfo behind to be cached as the real thing.
+			if cp "$ZONEDIR/$zone" "$TZFILE.tmp" &&
+				mv -f "$TZFILE.tmp" "$TZFILE"; then
+				echo "Timezone: detected $zone"
+				stamp "$zone"
+				return 0
+			fi
+			# Not conclusive -- the card is full, read-only or gone.
+			# No stamp: a later boot should still get its guess.
+			rm -f "$TZFILE.tmp"
+			echo "Timezone: cannot write $TZFILE" >&2
+			return 1
+		done
+		tries=$((tries - 1))
+		[ "$tries" -gt 0 ] && sleep "$TZ_INTERVAL"
+	done
+
+	echo "Timezone: autodetection found nothing, staying on UTC" >&2
+	echo "Timezone: set it by hand with the timezone.sh script" >&2
+	stamp "no answer from a geo-IP provider (offline?) -- staying on UTC"
+	return 1
+}
+
+start() {
+	# Already set -- by an earlier boot, by timezone.sh, or by hand. Never
+	# second-guess that.
+	[ -s "$TZFILE" ] && return 0
+	# The one guess has already been used (or was pre-empted on purpose).
+	[ -e "$TZSTAMP" ] && return 0
+	# No data partition (or no linux/ dir on it): nowhere to persist to.
+	[ -d /media/fat/linux ] || return 0
+	[ -x /usr/bin/curl ] || return 0
+
+	echo "Timezone: not set, detecting in background"
+	detect &
+}
+
+case "$1" in
+	start|restart|reload)
+		# Nothing to stop first: detection is a one-shot that either
+		# concluded long ago or was never started, and start is a no-op
+		# once either gate is in place. So restart/reload just re-run
+		# it, which is how you re-trigger a lookup (after deleting both
+		# $TZFILE and $TZSTAMP) without a reboot.
+		start;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac

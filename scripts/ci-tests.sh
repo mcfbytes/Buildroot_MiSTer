@@ -1509,7 +1509,7 @@ else
 fi
 
 # =============================================================================
-section "Timezone parity (tzdata + persistent /etc/localtime)"
+section "Timezone (tzdata + persistent /etc/localtime + first-boot autodetect)"
 # =============================================================================
 # Two independent things, both of which were missing and each of which alone
 # breaks the timezone:
@@ -1562,6 +1562,56 @@ else
 	else
 		fail "TZ=America/New_York resolves against shipped zoneinfo" \
 			"$(cat "$tz_out") -- is BR2_TARGET_TZ_INFO=y?"
+	fi
+fi
+
+# --- first-boot autodetection (ADR 0025) -------------------------------------
+# The two checks above prove a timezone CAN be set and CAN persist. Neither says
+# anything about a fresh card, where /media/fat/linux/timezone does not exist yet
+# and glibc silently falls back to UTC. S48timezone is what fills it in, once.
+if grep -qxF './etc/init.d/S48timezone' "$TAR_LIST"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- ./etc/init.d/S48timezone 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "S48timezone present and executable ($mode)" ;;
+	*) fail "S48timezone present and executable" "mode is '$mode', not executable -- rcS skips it silently" ;;
+	esac
+else
+	fail "S48timezone present and executable" "etc/init.d/S48timezone not in rootfs.tar"
+fi
+
+# curl is what S48timezone queries the geo-IP provider with, and the reason this
+# feature needed no new package. If it ever drops out of the package set the init
+# script degrades to a silent no-op, which is exactly the kind of quiet loss this
+# suite exists to catch.
+require_present "usr/bin/curl" "curl CLI (S48timezone's only runtime dependency)"
+
+# The behaviour itself -- validation of the network-supplied zone name, and the
+# once-and-only-once contract -- is asserted by its own sandboxed harness, which
+# needs no build and no network.
+printf -- '--- test-timezone.sh: S48timezone behaviour (12 cases) ---\n'
+if "$ROOT/scripts/test-timezone.sh"; then
+	pass "test-timezone.sh (S48timezone behaviour, 12 cases)"
+else
+	fail "test-timezone.sh (S48timezone behaviour, 12 cases)" \
+		"one or more cases failed -- see output above"
+fi
+
+# ...and again under the shell that will ACTUALLY run it on the box. The host's
+# /bin/sh (dash, on the CI runner) is a good POSIX proxy for BusyBox ash, but it
+# is not the same interpreter, and this is a boot-path script: a construct dash
+# accepts and ash does not would fail on hardware and nowhere else.
+if [ -z "$QEMU_ARM" ]; then
+	skip "test-timezone.sh under the target's own BusyBox ash" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/bin/busybox" ]; then
+	skip "test-timezone.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
+else
+	printf -- '--- test-timezone.sh: same cases, target BusyBox ash under qemu-arm ---\n'
+	if TZ_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
+		"$ROOT/scripts/test-timezone.sh"; then
+		pass "test-timezone.sh under the target's own BusyBox ash"
+	else
+		fail "test-timezone.sh under the target's own BusyBox ash" \
+			"passes on the host shell but not on BusyBox ash -- see output above"
 	fi
 fi
 

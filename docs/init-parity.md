@@ -77,6 +77,12 @@ directly or by an equivalent the package set already installs.
 `rcS` / `rcK` — **identical**, byte-for-byte (BusyBox init's own runlevel drivers,
 package-provided, unchanged from stock).
 
+### Extra init scripts we add on purpose
+
+| Script | Status | Notes |
+|---|---|---|
+| `S48timezone` | **added (divergence, [ADR 0025](decisions/0025-first-boot-timezone-autodetect.md))** | Stock has no equivalent, and that is the gap: `/etc/localtime` points at `/media/fat/linux/timezone`, which **does not exist on a fresh card**, so glibc falls back to UTC silently and permanently. On a boot where no timezone is set, this asks `ip-api.com` for the zone of the box's public IP and copies `/usr/share/zoneinfo/posix/<Zone>` to that path — the *same* provider, destination and file format as the community `Scripts_MiSTer/timezone.sh` "Automatic" mode, so the two are interchangeable. No new package (`curl` and tzdata were already in the image). Three properties worth stating because they are the whole design: it runs **exactly once ever** (gated on the timezone file *and* on a `timezone.autodetect` stamp written even when the lookup fails), it **never overwrites** a timezone anyone has already set, and `start` **returns immediately** — the lookup is backgrounded with a ~3-minute retry window, because `S48` runs seconds after `S41dhcpcd` and the lease (or Wi-Fi association) may not be up yet. Zone names arrive off the network, so they are validated against the shipped zoneinfo before being used as a path; `scripts/test-timezone.sh` asserts each rejection. Numbered 48 to read in order with `S49ntp` (timezone, then time); the ordering has no functional effect since the work is backgrounded either way. |
+
 ### Extra init scripts beyond stock's 12-script list
 
 P2.1's package set (a superset of stock's, per `docs/package-manifest.md` — ~5 years

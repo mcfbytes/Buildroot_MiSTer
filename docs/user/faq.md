@@ -172,6 +172,42 @@ image, the problem was #3 or #4. If it still does nothing, it's #1 or #2.
 
 ---
 
+## My MiSTer picked its own timezone on first boot. What was that?
+
+**On its first boot, this image looks up your timezone once** and writes it to
+`/media/fat/linux/timezone` — the file `/etc/localtime` points at, and the same file the
+community `timezone.sh` script writes. Stock leaves that file missing, so a fresh card
+runs on **UTC** forever unless you go and set it by hand; if you are anywhere west of
+Greenwich, every save-state timestamp, screenshot name and OSD clock is quietly wrong.
+
+**What is sent.** A request to `ip-api.com` — the same service `timezone.sh`'s
+"Automatic" mode uses — which sees your public IP and answers with a timezone name, e.g.
+`America/New_York`. That is the whole exchange: the request carries nothing else, and
+nothing is stored remotely. It happens on **one boot only** — if your network is still
+coming up the box retries for a couple of minutes, then stops for good, whether it got an
+answer or not.
+
+**It will never overwrite a timezone you set.** Run `timezone.sh`, or drop a zoneinfo
+file at `/media/fat/linux/timezone` yourself, and that is final.
+
+**To opt out before it ever runs**, create an empty file called `timezone.autodetect` in
+the `linux` folder of your SD card, next to `wpa_supplicant.conf`. Nothing will be sent.
+(That is the same file the box writes itself after its one attempt — you can open it, it
+explains itself.)
+
+**If your box had no network on its first boot** it keeps UTC and does not retry — the one
+guess is spent. Either run `timezone.sh`, or delete both `timezone.autodetect` and
+`timezone` from the `linux` folder and reboot for another go.
+
+**One cosmetic wrinkle on the very first boot:** the menu clock can still show UTC until
+you reboot once. The timezone is read by each program when it starts, and the MiSTer menu
+starts before the lookup finishes. It is correct from the next boot on, permanently.
+
+Full reasoning, including why geo-IP rather than something that talks to nobody:
+[ADR 0025](../decisions/0025-first-boot-timezone-autodetect.md).
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 
@@ -203,4 +239,5 @@ at all.
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture
 - [ADR 0014](../decisions/0014-sustainability-deferred-not-waived.md),
   [ADR 0015](../decisions/0015-per-device-ssh-host-keys.md),
-  [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md)
+  [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md),
+  [ADR 0025](../decisions/0025-first-boot-timezone-autodetect.md)

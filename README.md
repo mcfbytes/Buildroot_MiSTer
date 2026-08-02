@@ -206,30 +206,41 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 
 ### What it changes
 
-The installer prints all of this and pauses before doing anything. Summarised:
+The installer prints all of this and pauses before doing anything.
 
 | | |
 |---|---|
 | `linux/linux.img`, `linux/zImage_dtb` | **Replaced** — the root filesystem and kernel. This is the point |
-| `linux/uboot.img`, `linux/updateboot` | **Replaced** (our `uboot.img` is byte-identical to stock) |
-| `linux/MidiLink.INI`, `ppp_options`, `u-boot.txt_example`, `_samba.sh`, `_user-startup.sh`, `_wpa_supplicant.conf` | **Replaced.** Backed up to `linux/.mlm-backup/` first. Note these are the shipped *templates* — the `_`-prefixed ones — not your live config |
-| `linux/mt32-rom-data/`, `linux/soundfonts/` | Same-named files replaced; anything extra you added stays |
-| `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit — your comments, sections and databases are left alone. Created (declaring the official database) only if you don't have one |
+| `linux/7za` | **Replaced** — 7-Zip 26.02 instead of the 2016 p7zip |
+| `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit; your comments, sections and databases are left alone, and the original is saved to `linux/.mlm-backup/downloader.ini.orig`. Created (declaring the official database) only if you don't have one |
 | `Scripts/update_linux_modernization.sh` | **Installed** — this is what updates the image from now on |
-| The saved U-Boot environment | **Wiped** (first 512 bytes of the card) by `updateboot`. This happens on **every** Linux update, official ones included |
-| SSH host keys | **Change** — this image generates them per device instead of shipping one set to everyone, so expect a one-time host-key warning ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
+
+**Everything else under `linux/` is rewritten with byte-identical content.** Our release
+archive *is* the stock archive with those three files swapped in, so `MidiLink.INI`,
+`ppp_options`, `uboot.img`, `updateboot`, the `_`-prefixed templates, `mt32-rom-data/` and
+`soundfonts/` come back exactly as they were. It is a no-op unless you had customised one
+— and the small ones are copied to `linux/.mlm-backup/` first in case you had.
+
+Two side effects, both caused by *any* Linux update rather than by this one: the saved
+U-Boot environment (first 512 bytes of the card) is wiped by `updateboot`, and SSH host
+keys change, because this image generates them per device instead of shipping one set to
+everybody ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) — expect a
+one-time host-key warning.
+
+**Afterwards, routine updates stop touching `/media/fat/linux/` altogether.**
+`update_linux = false` means no Linux update runs unless you run the updater, so these
+files end up *more* stable than on stock, where every official Linux update rewrites them.
 
 ### What it leaves alone
 
-- **`MiSTer.ini` and every core `.ini` — not touched.** Nothing in this process reads or
-  writes them.
-- **`games/`, ROMs, saves, states, `config/`, cores, `_Arcade/`** — not touched.
+- **`MiSTer.ini` and every core `.ini` — not touched.** Nor `games/`, ROMs, saves, states,
+  `config/`, cores or `_Arcade/`.
 - **`linux/gamecontrollerdb/`** — explicitly excluded from the sync.
-- **`linux/u-boot.txt`** (holds this card's MAC address) and **`linux/wpa_supplicant.conf`**,
-  **`user-startup.sh`**, **`samba.sh`** — your live files. Only the `_`-prefixed templates
-  are shipped, so your real ones survive.
-- **`linux/hostname`, `hosts`, `interfaces`, `resolv.conf`, `dhcpcd.conf`, `fstab`** —
-  copied *into* the new image before it goes live, so your network identity carries over.
+- **Your live `u-boot.txt`** (holds this card's MAC), **`wpa_supplicant.conf`**,
+  **`user-startup.sh`**, **`samba.sh`** — only the `_`-prefixed templates ship, so the real
+  ones survive.
+- **`linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`** — copied *into* the
+  new image before it goes live, so your network identity carries over.
 
 ### Afterwards
 

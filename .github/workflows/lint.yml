@@ -15,6 +15,7 @@
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
+#   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #
 ################################################################################
 
@@ -29,10 +30,15 @@ on:
     paths:
       - '.github/**'
       - 'scripts/**'
+      # The installer /init is not a script/**, but this job is the only thing
+      # that tests its splash section on a PR (see the unit-test step below).
+      # Without this path a change to the splash alone would skip its own gate.
+      - 'board/mister/de10nano/installer-overlay/**'
   pull_request:
     paths:
       - '.github/**'
       - 'scripts/**'
+      - 'board/mister/de10nano/installer-overlay/**'
   workflow_dispatch:
 
 # Same shape as build.yml / release.yml / reproducibility.yml / publish-db.yml:
@@ -123,3 +129,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/sbom-to-dependency-snapshot.py --self-test
+
+      # Same rationale as the SBOM self-test above: pure shell logic that
+      # nothing else on a PR can reach. The SD-card installer's first-boot
+      # splash (ADR 0020 §6) lives inside a PID-1 /init that can brick a board,
+      # and its only other coverage -- scripts/test-sdcard-install.sh -- needs a
+      # fully built sdcard.img and two QEMU boots, so it never runs on a PR.
+      # This extracts the splash section and exercises it against stubbed sysfs
+      # in about a second. Its load-bearing assertion is the heartbeat child's
+      # lifecycle: the installer BusyBox ships neither `kill` nor `rm`, so the
+      # child is stopped by truncating a flag file and reaped with `wait`. If
+      # that regresses, the installer hangs forever mid-reformat.
+      - name: Installer splash unit test (scripts/test-installer-splash.sh)
+        run: |
+          set -euo pipefail
+          scripts/test-installer-splash.sh

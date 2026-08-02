@@ -21,6 +21,7 @@ relative to `p1`'s root.
 ```
 linux/
 linux/zImage_dtb
+menu.rbf
 mister-payload/
 mister-payload/linux/
 mister-payload/linux/linux.img.gz
@@ -46,8 +47,16 @@ mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **25 entries** (7 directories, 18 files) for the base inventory. `check-sdcard.sh`
+That is **26 entries** (7 directories, 19 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
+
+> **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
+> second copy of `mister-payload/menu.rbf`, and the duplication is deliberate: the stock
+> U-Boot's `fpgaload` reads `$core` (compiled-in `menu.rbf`) from the partition **root**,
+> not from the payload subtree, so without a root copy the FPGA was never configured
+> during the install and HDMI showed "no signal" for its whole duration. It cannot be
+> given another name — `mmcload` runs `fpgacheck` *before* `scrtest`, so a `core=` in
+> `linux/u-boot.txt` is imported only after the core has already been loaded.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and
@@ -64,6 +73,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | Path | Source | Pin |
 |---|---|---|
 | `linux/zImage_dtb` | Our kernel (`work/Linux-Kernel_MiSTer` build), relinked by `scripts/mk-sdcard.sh` with the installer initramfs (`configs/mister_installer_defconfig` + `board/mister/de10nano/installer-overlay/`) embedded via `MISTER_INITRAMFS_CPIO` | Built, not fetched — same kernel tree as `output/images/zImage_dtb`, different embedded cpio |
+| `menu.rbf` (FAT **root**) | A byte-identical copy of `mister-payload/menu.rbf`, placed by `scripts/mk-sdcard.sh` step 4c | Not a second download and **not committed to this repo** — it is the stock file the payload fetch already staged, so it inherits the same `STOCK_RELEASE_*` pin and needs no Renovate manager of its own. This is U-Boot's `$core`: `fpgaload` reads it from the partition **root**, so without this copy the FPGA is left unconfigured for the entire install (ADR 0020 §7) |
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
 | `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
 | `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |

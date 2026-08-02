@@ -508,6 +508,27 @@ mr-fusion's own mechanism, adopted rather than replaced, per the standing princi
 reusing a proven reference implementation in anything on the boot path.
 ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md))
 
+**What that first boot looks like.** The installer draws a progress splash — banner, nine
+numbered steps, a bar and an elapsed clock — on the **serial console**, and blinks the
+DE10-Nano's on-board `HPS_LED` at about 0.5 Hz through the long steps. Solid on is the only
+state that means trouble (stopped — failed, or the card was already installed); a dark LED
+is just a gap between phases, or the reboot. Note `HPS_LED` is on the board itself, so a
+fully-enclosed case will not show it.
+
+The card also carries `menu.rbf` at the FAT **root**, which is what U-Boot loads into the
+FPGA before Linux starts — without it the fabric is never configured and HDMI reads "no
+signal" for the whole install ([ADR 0020 §7](docs/decisions/0020-sdcard-exfat-reformat-installer.md)).
+There is still deliberately **no splash picture** on that output: `/dev/fb0` is only scanned
+out once Main_MiSTer programs the frame reader, and Main_MiSTer does not run in the
+installer. Painting a picture there would mean shipping mr-fusion's entire stack — its
+U-Boot, a second DTB and a framebuffer bitstream — a trade [ADR 0020 §6](docs/decisions/0020-sdcard-exfat-reformat-installer.md)
+explains and declines.
+
+Install time does **not** scale with card capacity — a 1 TiB card formats as fast as an
+8 GiB one (`mkfs.exfat` writes 88 KiB–1.15 MiB of metadata either way, in ~10 ms). The
+dominant cost is the fixed 512 MiB `linux.img` expansion, so what matters is the card's
+**write speed**, not its size.
+
 It ships as a **separate release asset**, never inside `release_*.7z` and never referenced
 by `db.json`, because its blast radius is the bootloader. The payload it installs is
 inventoried against real mr-fusion output in

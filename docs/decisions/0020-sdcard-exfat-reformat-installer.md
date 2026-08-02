@@ -222,6 +222,119 @@ release build.
   ADR 0019's carried symlink patch, so `mount -t exfat` on the installer is strictly
   simpler and drops a dependency mr-fusion could not avoid.
 
+## 6. First-boot feedback: a console UI plus one LED, deliberately not a picture
+
+The install below takes tens of seconds on a board that, during those seconds, looks
+completely dead — no HDMI picture, no menu, and no output at all unless a serial adapter
+is attached. The failure mode this invites is a user concluding the board has hung and
+pulling the power, and the window they are most likely to pull it in is the reformat —
+precisely the window that leaves an unbootable card. So the installer needs to *say*
+something. The question is only what channel it can say it on.
+
+**mr-fusion shows a PNG on HDMI (`fbv -fr /mnt/release/splash.png`). We cannot, and the
+reason is structural, not effort.** Mr-fusion ships an entirely different boot stack: its
+own U-Boot (`vendor/bootloader.img`), the *Terasic* DTB, a *Terasic* framebuffer
+**bitstream** (`vendor/support/de10-nano.rbf`) and an ADV7513 register dump. That core's
+frame reader scans DDR out to HDMI by itself, which is what gives mr-fusion a
+self-sufficient `/dev/fb0` for `fbv` to write into. Our installer boots the **stock MiSTer
+`uboot.img` byte-identical** (ADR 0017) with our own kernel and DTS, and on that stack
+there are three independent blockers:
+
+1. **The FPGA is not configured at all during the install.** U-Boot's `fpgaload` runs
+   `load mmc 0:1 $fpgadata menu.rbf` against the FAT partition **root**
+   (`docs/boot-chain.md` §6.1), and the shipped installer card deliberately has no
+   `menu.rbf` there — its root holds only `mister-payload/` and `linux/zImage_dtb`
+   (`scripts/mk-sdcard.sh` step 4b). With no bitstream in the fabric the ADV7513
+   transmitter never receives a pixel clock, so HDMI is "no signal" for the whole install.
+2. **Even with a core loaded, `/dev/fb0` is inert on its own.** `MiSTer_fb`
+   (`docs/abi-contract.md` §4) is a window on DDR; the FPGA frame reader only scans it out
+   once **Main_MiSTer** programs it, via the `fb_cmd0`/`fb_cmd1` messages `/usr/sbin/vmode`
+   writes to `/dev/MiSTer_cmd` — a FIFO Main_MiSTer itself creates
+   (`Main:input.cpp:4051`). Main_MiSTer cannot run in this throwaway initramfs. Pixels
+   written to `/dev/fb0` here paint memory nothing on the board ever reads.
+3. **The console is `console=ttyS0,115200` only** (`docs/boot-chain.md` §4). Even a live
+   framebuffer would not carry the text without also adding `console=tty0` to a bootargs
+   string the stock `uboot.img` hardcodes.
+
+Reproducing the picture therefore means shipping a bitstream **plus** a second DTB **plus**
+our own U-Boot: megabytes added to the card and a whole new brick surface, to decorate a
+process that finishes in well under a minute. **Rejected.**
+
+**What ships instead**, both in `board/mister/de10nano/installer-overlay/init`:
+
+- **A console progress UI** on the serial console — the documented triage channel: banner,
+  nine numbered steps, a progress bar, percentage, an elapsed clock and a spinner. It
+  animates in place with `\r` on a tty and degrades to one plain line per step when stdout
+  is not a terminal, so captured logs stay readable.
+- **The HPS LED**, `/sys/class/leds/hps_led0` (DTS `gpio-leds hps0`, `&portb 24`,
+  `linux-patches/0004-dts-de10nano-MiSTer.patch`). Blinking ≈0.5 Hz means installing;
+  **solid on is the only state that means trouble** — stopped and wanting attention
+  (failed, *or* "already provisioned"; the console says which) — and off means either a
+  gap between two long phases or finished and rebooting. Only the long, silent steps carry
+  a heartbeat child, so brief dark gaps mid-install are normal and nothing on the healthy
+  path is permitted to park the LED lit. We take it off its DTS
+  `mmc0` default trigger for the duration, on purpose: erratic SD-activity flicker is
+  indistinguishable from an ordinary boot, a metronome is not. Nothing persists —
+  `linux,default-trigger` is re-applied at probe, so the installed card gets its normal
+  activity light back on the very next boot.
+
+**Known limitation, recorded rather than papered over: `HPS_LED` is an on-board
+surface-mount LED, not an externally-facing one.** Users with an open frame or a windowed
+case see it; users with a fully-enclosed case do not, and for them the install remains
+visually silent until the menu core appears. There is no fix available at this layer:
+*every* externally-facing indicator on a MiSTer — the I/O board's Power/Disk/User LEDs
+(`GPIO_1[4]`/`[2]`/`[0]`, i.e. Cyclone V fabric pins `PIN_Y15`/`PIN_AA15`/`PIN_AG28`), the
+eight `LED0..7`, and HDMI itself — is behind the FPGA fabric, and the fabric has no
+bitstream during the install for the reason in blocker 1 above. Making any of them work
+means adopting mr-fusion's whole stack, which is the trade this section already rejected.
+
+The splash is held to one hard rule: **it must never be able to fail an install.** There
+is no `set -e` in that script, every LED write is guarded, the sysfs paths are probed
+rather than assumed, and the heartbeat child is stopped by a means that cannot hang the
+parent. `scripts/test-sdcard-install.sh` asserts the splash drew on both the install boot
+and the re-run boot, and — because QEMU's `-M virt` has no `hps_led0` — those runs double
+as proof that the LED half degrades to a no-op on hardware that lacks it.
+
+## 7. `menu.rbf` ships at the FAT root, so the FPGA is configured during the install
+
+§6 established that the install is visually silent because the FPGA has no bitstream. That
+turned out to rest on a plain defect rather than a design choice.
+
+The stock U-Boot's cold-boot path runs `fpgaload`, which is
+`load mmc 0:1 $fpgadata $core` with a compiled-in `core=menu.rbf`, read from the FAT
+partition's **root** (`docs/boot-chain.md` §6.1). The shipped installer card's root held
+only `mister-payload/` and `linux/zImage_dtb` — **no `menu.rbf`** — so that load failed on
+every single installer boot. The fabric stayed unconfigured, the ADV7513 never received a
+pixel clock, and the user's monitor read "no signal" for the entire install. (The failure
+is silent: U-Boot's `;`-separated command lists continue past a failed command, so the
+kernel still loaded and the install still worked.)
+
+**Decision: `scripts/mk-sdcard.sh` step 4c stages `menu.rbf` at the FAT root.**
+
+- **Source.** A byte-identical copy of `mister-payload/menu.rbf`, which the payload fetch
+  already downloads and verifies. Not a second download, and **not committed to this
+  repo** — 2.4 MiB of third-party binary does not belong in git. It inherits the existing
+  `STOCK_RELEASE_*` pin, so it needs no Renovate manager of its own.
+- **Cost.** +2.46 MB on the shipped image, against a partition already sized for a ~150–200
+  MiB payload.
+- **The name is not negotiable.** `mmcload` runs `fpgacheck` **before** `scrtest`, so a
+  `core=` set in `linux/u-boot.txt` is imported only *after* the core has already been
+  loaded. `menu.rbf` is the one filename the stock bootloader will ever fetch, and any
+  future custom bitstream must therefore also be installed under that name.
+- **Robustness.** Nothing at install time depends on this file: U-Boot loads it before
+  Linux starts, and `/init` never touches it. If it is absent the installer behaves exactly
+  as it did before this section existed. `mk-sdcard.sh` therefore warns rather than dying,
+  while `check-sdcard.sh`'s inventory contract still gates the shipped article.
+
+**What this does and does not buy.** It gets the fabric configured and HDMI synced, and it
+is a precondition for anything else appearing on that output. It does **not** put a picture
+on screen: as §6 blocker 2 records, `/dev/fb0` is only scanned out once **Main_MiSTer**
+programs the frame reader via `/dev/MiSTer_cmd`, and Main_MiSTer cannot run in the
+installer initramfs. Whether the menu core lights the I/O board's Power LED or paints
+anything of its own before Main_MiSTer attaches is **unverified and needs hardware** — it
+is the specific question P5.4 should answer, because it determines whether a custom
+bitstream (§6's rejected option) has any remaining justification.
+
 ## Consequences
 
 - A fourth Buildroot output directory, `output-installer/`, joins `output/`,
@@ -242,6 +355,30 @@ release build.
   none of it depends on the DE10-Nano SoC — only on `losetup`/`sfdisk`/`exfatprogs`
   existing on the runner. Real on-hardware boot (unique MAC survives reboot, `update_all`
   completes) stays P5.4, human-gated, exactly as ADR 0017 already scoped it.
+- The first-boot splash (§6) adds **no** new target package, no new applet and no bytes to
+  the shipped card: it is built entirely from shell builtins plus `printf` and `sleep`,
+  both of which the installer BusyBox already ships. That image has no `touch`, `kill`,
+  `usleep`, `date`, `seq` or `tr`, and its `sleep` is integer-only
+  (`CONFIG_FEATURE_FANCY_SLEEP` is off, so `sleep 0.2` would parse as `0` and busy-spin a
+  core) — so the heartbeat child is stopped by **truncating** a flag file with `: >` and
+  reaped with the ash builtin `wait`, and every frame delay is a whole second. Anyone
+  editing that section must re-read its `APPLET BUDGET` note first; several obvious
+  implementations of a spinner need applets this image does not contain. Note the budget
+  covers **applets**, not shell builtins: `true`/`false` are unconditional ash builtins
+  (`shell/ash.c` builtintab, outside any `#if`), so `|| true` is safe even though
+  `CONFIG_TRUE` is off — that symbol governs only a standalone `/bin/true`.
+- **`CONFIG_RM` was missing and `/init` called `rm -f` anyway** (step 5b, deleting
+  `linux/linux.img.gz` after expanding it). The call was a silent command-not-found
+  no-op, so **every installed card kept the whole ~80 MiB gzip**, and once the splash
+  existed it also printed `rm: not found` across it. Found by Copilot on PR #76. Fixed by
+  enabling `CONFIG_RM` — `rm -f` needs only the base symbol (`coreutils/rm.c`'s `getopt32`
+  optstring `"fiRrv"` is unconditional, like `CONFIG_CP`), and it costs ~1 KB in a 376 KB
+  binary inside a 13 MB RAM-resident initramfs. `/init` now **verifies** the file is gone
+  and falls back to truncating it, because the real defect was not the missing applet but
+  that an unchecked cleanup command silently no-opped for a whole release; the result is
+  logged and asserted by `scripts/test-sdcard-install.sh`. The applet budget is a budget,
+  not a freeze: needed applets get turned on and justified in
+  `installer-busybox.config`'s header rather than worked around in shell.
 - This ADR does not change any risk already recorded against the stock-blob U-Boot path
   in ADR 0017; it adds one new risk of its own — a botched `sfdisk`/`mkfs.exfat` sequence
   on first boot is now the single point where an install can go wrong on an otherwise-good

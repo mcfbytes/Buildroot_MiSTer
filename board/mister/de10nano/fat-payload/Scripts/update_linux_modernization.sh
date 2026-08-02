@@ -296,7 +296,12 @@ except OSError:
     print('missing'); raise SystemExit(0)
 hdr = re.compile(r'^\s*\[\s*mister\s*\]\s*$', re.I)
 any_hdr = re.compile(r'^\s*\[')
-kv = re.compile(r'^\s*update_linux\s*=\s*(.*?)\s*$', re.I)
+# MUST match ensure_kill_switch()'s delimiter set exactly. configparser accepts
+# ':' as well as '=', so a card carrying `update_linux : false` is genuinely
+# protected -- and reading it with an '='-only pattern would report it as absent,
+# i.e. tell a protected user they are NOT protected and invite them to "fix" a
+# configuration that was already correct.
+kv = re.compile(r'^\s*update_linux\s*[=:]\s*(.*?)\s*$', re.I)
 s = next((i for i, l in enumerate(lines) if hdr.match(l)), None)
 if s is None:
     print('absent (defaults to enabled)'); raise SystemExit(0)

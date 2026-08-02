@@ -124,6 +124,14 @@ preflight() {
 	command -v python3 >/dev/null 2>&1 ||
 		die "python3 not found. The MiSTer Downloader requires it, so a MiSTer that can update at all has it -- this system looks unusual."
 
+	# This script is POSIX sh, but the updater it hands off to is #!/bin/bash --
+	# so check for bash HERE rather than letting the exec fail at the very end
+	# with an unhelpful "not found". Stock ships /usr/bin/bash (it is what
+	# Scripts/wifi.sh runs under), so this should never fire; it exists so that
+	# when it does, the message names the actual problem.
+	command -v bash >/dev/null 2>&1 ||
+		die "bash not found. The updater this installs runs under bash, and every MiSTer image ships it -- this system looks unusual."
+
 	# Probe TLS before anything else, so a card with a stale certificate store
 	# gets a straight answer instead of discovering it three steps later as
 	# "could not reach the update channel". curl exit 60 is specifically

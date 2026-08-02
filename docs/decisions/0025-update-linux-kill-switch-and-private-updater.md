@@ -34,9 +34,14 @@ It sorts by **position in the ini** and takes the first. Two facts make that fat
    rewrites the file (`into_ordered_ini_dict(ini, [DB_ID_DISTRIBUTION_MISTER], ...)`).
 
 So on any card Update All has ever touched, the official image does not merely *tend* to
-win — it wins **deterministically, every run**. A routine `update_all.sh` would silently
-replace this project's kernel and root filesystem with the stock one, with no error and no
-warning.
+win — it wins **whenever that database is actually processed** — which is most real runs, since its content changes whenever any core does. (A run where nothing changed skips the database entirely and applies no Linux image at all: `can_skip_db` returns true when `file_checking` is `FASTEST`, the steady-state default, and a skipped database's `linux` entry is never looked at.) A routine `update_all.sh` would silently replace this
+project's kernel and root filesystem with the stock one, with no error and no warning.
+
+That skip is not a reprieve, and relying on it would be a mistake: it only holds until the
+next time a core is published, at which point the official database changes, is processed,
+and takes the Linux slot. It also cuts the other way — it is why an *uninstall* that merely
+flips the setting and waits for the user's next update can silently do nothing, which is
+why `uninstall.sh` performs the revert itself with `file_checking = exhaustive`.
 
 This project previously tried to *win* that contest. That was reasonable against older
 Downloader releases, which resolved it by whichever database's document finished

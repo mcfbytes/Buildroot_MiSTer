@@ -173,16 +173,32 @@ curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/in
 ```
 
 <a id="if-the-one-liner-seems-to-do-nothing"></a>
-> **First, make sure the card's CA certificates are current.** This is `curl | bash`, and
-> on a card that has not been updated in a long time curl cannot verify anything: it fails
-> with `(60)`, `sh` gets an empty pipe, and the pipeline still **exits 0** — so it looks
-> like nothing happened. If that is you, run `Scripts/update.sh` once and accept its
-> certificate repair, then try again.
+> **On a stock card the one-liner above will fail, and fail quietly.** Verified on real
+> hardware: stock's `curl` cannot verify GitHub (`curl: (60)`), `bash` gets an empty pipe,
+> and the pipeline still **exits 0** — so it looks like nothing happened at all.
 >
-> You only need to do that once. This image ships a current CA bundle and refreshes it on
-> every release, which is rather the point. If you would rather not touch the system trust
-> store, `install.sh --bootstrap-ca` fetches one to `/tmp` for a single run instead — it
-> explains the trade-off in full before it does anything.
+> The cause is not an expired bundle. Stock ships exactly one file in `/etc/ssl/certs/`,
+> `cacert.pem`, and it works fine — it simply is not in the hashed-symlink layout curl
+> searches by default, so curl finds no issuer. Passing `--cacert` explicitly fixes it,
+> which is what `Scripts/update.sh` has always done.
+>
+> So fetch the installer with `-k` for that one request and let it take over — it detects
+> this, **verifies the card's own bundle actually works before adopting it**, and uses it
+> for everything afterwards:
+>
+> ```sh
+> curl -fsSLk https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o /tmp/mlm.sh \
+>   && sh /tmp/mlm.sh
+> ```
+>
+> If you would rather not use `-k` at all, download `install.sh` on a machine whose TLS
+> works, check its `sha256sum` against the repo, and copy it onto the card. And if a card
+> ever turns up whose bundle is genuinely broken rather than merely mislocated,
+> `install.sh --bootstrap-ca` fetches a fresh one to `/tmp` for a single run — it explains
+> that trade-off in full before doing anything.
+>
+> You only need any of this once: this image ships a current CA bundle in the layout curl
+> expects, and refreshes it on every release.
 >
 > **`wget` is not an alternative.** The `wget` on a MiSTer is the BusyBox applet with no
 > TLS support at all — it answers every `https://` URL with `not an http or ftp url`.
@@ -762,9 +778,9 @@ Downloader applies at most **one** Linux image per run, and `distribution_mister
 offers one too. When several databases offer one, it sorts the candidates by their
 **position in `downloader.ini`** and takes the first — and since drop-in databases are
 merged *after* the base ini's own sections, and Update All pins `[distribution_mister]` to
-the top on every rewrite, the official image wins **deterministically, every run**. Not a
-race that might go our way: a loss, every time, silently reverting the user on a routine
-core update.
+the top on every rewrite, the official image wins **whenever that database is actually processed** — which is most real runs, since its content changes whenever any core does. (A run where nothing changed skips the database entirely and applies no Linux image at all: `can_skip_db` returns true when `file_checking` is `FASTEST`, the steady-state default, and a skipped database's `linux` entry is never looked at.) Not a race that might go
+our way: a loss whenever it is contested, silently reverting the user on a routine core
+update.
 
 So this project doesn't compete for that slot; it closes it:
 

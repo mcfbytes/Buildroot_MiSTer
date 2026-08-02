@@ -690,7 +690,10 @@ consolidates findings.
 > * **A drop-in registration can never win.** Base-ini sections populate
 >   `config['databases']` *before* drop-ins are merged, and Update All pins
 >   `[distribution_mister]` to the top of `downloader.ini` on every rewrite. So on any card
->   Update All has touched, the official image wins **deterministically, every run**.
+>   Update All has touched, the official image wins whenever that database is actually
+>   processed — most real runs, since its content changes whenever any core does. A run
+>   where nothing changed skips the database, and a skipped database's `linux` entry is
+>   never reached.
 >
 > The project therefore stopped competing for the slot and closed it instead — see
 > **[ADR 0025](decisions/0025-update-linux-kill-switch-and-private-updater.md)**.

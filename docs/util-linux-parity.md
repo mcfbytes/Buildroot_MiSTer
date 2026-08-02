@@ -16,7 +16,8 @@ mount/fdisk/dmesg etc. are covered by BusyBox"* — which was **wrong about what
 shipped**: stock's `mount` is util-linux, not BusyBox.
 
 This change makes the image ship the util-linux programs stock shipped (util-linux
-**2.41.4** here — same tools, newer version). The trigger was **USB automount**: NTFS
+**2.41.5** here — same tools, newer version; the program-set audit below was performed
+against 2.41.4, a patch bump on the same minor). The trigger was **USB automount**: NTFS
 drives only auto-mount if `mount -t ntfs` can dispatch to the `ntfs-3g` helper, and
 **only util-linux `mount` does that** — BusyBox `mount` has no `/sbin/mount.<type>`
 helper dispatch (`CONFIG_FEATURE_MOUNT_HELPERS` was off). See

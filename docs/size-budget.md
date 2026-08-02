@@ -1,8 +1,25 @@
 # Size Budget Report
 
+> ⚠ **These figures are a P3.3-era measurement and have not been regenerated (noted
+> 2026-08-01).** Everything below was produced by `scripts/check-size-budget.sh` and an
+> `lstat` pass against a build that predates v9/v10's WiFi firmware and T3/T5's ~21 new
+> packages. Two later runs of the same script are on record elsewhere in this repo:
+> **287 MiB used / 225 MiB free / 44.0% free** (`docs/firmware-parity.md` §v10,
+> `docs/wifi-parity.md` §7) and **290 MiB used / 222 MiB free / 43.4%**
+> (`docs/package-manifest.md` §5). `/lib/firmware` in particular is no longer 3.1 MiB
+> across 68 files — v9's `rtw89/` alone is 25 MiB and the directory measures **49 MiB
+> across 188 regular files + 67 symlinks**.
+>
+> **The specific unchecked question is not whether the budget passes** — every recorded
+> run passes with roughly 3x the 15% floor — **it is what the current image measures
+> after T3/T5 and the P5.x work.** Nobody has re-run the script since. Regenerate from a
+> fresh build (see "Methodology") rather than hand-editing the numbers below: the
+> per-package `lstat` table is a real measurement, and retyping it would assert an
+> accounting nobody performed.
+
 ## Image Size Summary
 
-**512 MiB** is the standard for the MiSTer environment (double the stock 256 MiB, accounting for U-Boot reserved space). This report validates that the image has sufficient headroom and documents major size contributors.
+**512 MiB** is the standard for the MiSTer environment (stock's `linux.img` is **375 MiB** — 393,216,000 bytes, per `docs/verification/stock-release-20250402.md` — so this is ~1.37x stock, with headroom for U-Boot's reserved space and the `mem=511M` cap). This report validates that the image has sufficient headroom and documents major size contributors.
 
 Figures below were regenerated as part of **P3.3** (module loading & firmware
 infra — the `/lib/firmware` population half) to capture that task's size
@@ -110,21 +127,31 @@ not attributed to a package in the file list).
   exact file set is worth an audit. Both are small (~6 MiB combined) and non-urgent;
   flagged for a future size pass, not a blocker.
 
-- **GLib2 (11.3 MiB + 10.7 MiB bootstrap):** Core dependency for many packages (file, samba4, etc.). The bootstrap artifact (10.7 MiB) is a build-time intermediate that should not appear in runtime but does due to how Buildroot's file list is constructed.
+- **GLib2 (4.5 MiB + 3.8 MiB bootstrap):** Core dependency for many packages (file, samba4, etc.). The bootstrap artifact (3.8 MiB) is a build-time intermediate that should not appear in runtime but does due to how Buildroot's file list is constructed.
 
 ### vs. Stock Comparison
 
 Stock image (375 MiB, measured from `work/imgroot`) contained:
-- Older OpenSSL 1.1 (~5 MiB) vs. OpenSSL 3 (~9 MiB) — **+4 MiB** (security upgrade)
+- Older OpenSSL 1.1 (~5 MiB, stock) vs. our OpenSSL 3 — **4.6 MiB**, per the corrected `lstat` table above; the "~9 MiB" once quoted here was a symlink-following figure (security upgrade at negligible cost)
 - Samba 4.x (present, comparable size)
 - Python 3.9 (present, comparable) vs. our 3.14 (modern)
 - No `file` package in base stock (was optional in test images)
 
-Our image is larger by ~136 MiB (171 MiB vs. 35 MiB of stock content), primarily due to:
-- Full Python 3.14 stdlib (~13 MiB)
-- Samba4 libraries (~62 MiB)
-- OpenSSL 3 (~9 MiB)
-- Additional utilities and dependencies
+⚠ The comparison that stood here — "larger by ~136 MiB (171 MiB vs. 35 MiB of stock
+content)" — was wrong twice over and is corrected rather than repeated. The "35 MiB of
+stock content" matches nothing this project has ever measured: stock's `linux.img` is
+375 MiB (above) and `PLAN.md` §4.2 records its rootfs as **297 MB used of 347 MB**. And
+the per-package figures were the discredited symlink-following ones this document
+already corrects above. From the corrected `lstat` table, our largest contributors are:
+- samba4 — **48.8 MiB** (not ~62)
+- file / libmagic — **10.0 MiB**
+- python3 interpreter + stdlib — **8.7 MiB** (not ~13)
+- openssh — **6.8 MiB**
+- libopenssl — **4.6 MiB** (not ~9)
+- plus the additional utilities and dependencies a five-years-newer package set brings
+
+A like-for-like "ours vs. stock content" delta is deliberately **not** restated: it would
+need a fresh `du`/`lstat` pass over both trees, and nobody has run one.
 
 This growth is **intentional and justified** — we trade image size for modern userland, security, and utility completeness.
 

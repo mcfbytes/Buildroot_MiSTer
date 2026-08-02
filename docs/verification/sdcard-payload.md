@@ -41,13 +41,15 @@ mister-payload/linux/soundfonts/
 mister-payload/MiSTer
 mister-payload/menu.rbf
 mister-payload/MiSTer.ini
+mister-payload/downloader.ini
 mister-payload/Scripts/
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
+mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **26 entries** (7 directories, 19 files) for the base inventory. `check-sdcard.sh`
+That is **28 entries** (7 directories, 21 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 > **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
@@ -57,6 +59,34 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > during the install and HDMI showed "no signal" for its whole duration. It cannot be
 > given another name — `mmcload` runs `fpgacheck` *before* `scrtest`, so a `core=` in
 > `linux/u-boot.txt` is imported only after the core has already been loaded.
+
+> **Changed 2026-08-01** — two entries **added**, both of them this project's own
+> update-channel configuration, staged by `stage_update_channel()` in
+> `scripts/fetch-sdcard-payload.sh`:
+>
+> * `mister-payload/downloader.ini` — carries `[MiSTer] update_linux = false`,
+>   which stops every normal Downloader run from applying *any* Linux image, and
+>   reproduces Update All's own default database set so a freshly flashed card
+>   still gets exactly the cores a stock card would. (Update All only seeds those
+>   defaults when `downloader.ini` does **not** exist, so shipping the file
+>   suppresses the seeding — reproducing the set is what keeps parity, and it
+>   also makes Update All treat the file as already canonical and never rewrite
+>   it.)
+> * `mister-payload/Scripts/update_linux_modernization.sh` — the one Scripts-menu
+>   entry that updates this project's Linux image.
+>
+> Together they make a freshly flashed card hold on to this project's Linux image
+> across routine `update_all.sh` runs while still updating cores normally, with
+> no user action at all. See ADR 0025, `docs/user/onboarding.md`, and the header
+> comment above `stage_update_channel()`.
+>
+> Deliberately **not** in this inventory: a drop-in
+> `downloader_mister_linux_modernization.ini`. A drop-in database registration can
+> never outrank `[distribution_mister]` (base-ini sections precede drop-ins, and
+> Update All pins the official database first), so it would buy no protection while
+> putting our database into every core update. Nothing else is staged either — the
+> updater keeps no state on the card. It may not be added here in any case:
+> `check-sdcard.sh` diffs this block against the built image in **both** directions.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and
@@ -84,6 +114,8 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/update.sh` | `files/Scripts/update.sh` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin |
 | `mister-payload/Scripts/update_all.sh` | `theypsilon/Update_All_MiSTer`, raw file at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/Scripts/wifi.sh` | `MiSTer-devel/Scripts_MiSTer`, `other_authors/wifi.sh` at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
+| `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares the core databases explicitly — `distribution_mister` (canonical URL from the Downloader's own `constants.py`), `jtcores` and `update_all_mister` — because shipping the file suppresses Update All's own default seeding. `distribution_mister` **must** be explicit here: `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some. Deliberately comment-free beyond a two-line header pointing at the docs; the explanation lives in `docs/user/onboarding.md`, since tooling rewrites this file and comments on database sections do not survive |
+| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 
 `gamecontrollerdb/`, `mt32-rom-data/`, `soundfonts/` are copied wholesale from the stock
 archive; `check-sdcard.sh` asserts each directory exists and is non-empty rather than

@@ -118,9 +118,17 @@ already up to date is correctly recognized as such on every subsequent run. See
 [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md) for the full
 mechanism, if you're curious.
 
-Practically: opt in once (see [`onboarding.md`](onboarding.md)), and future releases will
-be offered normally, the same way official MiSTer updates are — no repeated re-flashing
-between releases.
+Practically: opt in once (see [`onboarding.md`](onboarding.md)), then run
+`Scripts/update_linux_modernization.sh` whenever you want to pull a new release — it uses
+the same on-device Downloader machinery official updates use, and a device already on the
+current release is correctly recognised as such and left alone.
+
+**Note that this image does *not* install itself during a routine `update_all.sh` run**,
+by design. Opting in sets `update_linux = false`, which stops *every* normal run from
+applying *any* Linux image — that is what keeps the official image from overwriting this
+one, since the two would otherwise race for the single Linux update slot the Downloader
+allows per run. Your cores keep updating exactly as before; only the Linux image is
+gated, and only that one script lifts the gate.
 
 ---
 
@@ -134,15 +142,30 @@ or older**: there is no date parsing and no `<`/`>` anywhere in it. So whenever 
 official database is the only one offering a Linux entry, it sees that your version isn't
 the official one and reinstalls stock — regardless of your version being "higher."
 
-That happens in exactly one situation: **our database wasn't configured on that card.**
-Almost always that means the image was installed some other way — copied on by hand, or
-restored from a backup — without doing [Step 1](onboarding.md#step-1). The updater then
-has no idea this project exists; it just sees a system that doesn't match official and
-fixes it.
+It happens whenever `update_linux` is **not** `false` on that card, because that setting
+is the only thing standing between the official Linux entry and your image. The usual
+causes:
 
-The fix is the fix for everything else here: complete [Step 1](onboarding.md#step-1) and
-your image is offered and kept normally. (If you *wanted* stock back, congratulations —
-you've already done it. See [`rollback.md`](rollback.md).)
+- **The image was installed some other way** — copied on by hand, restored from a backup —
+  without ever running `Scripts/update_linux_modernization.sh`, so the setting was never
+  written. Run it once; see [`onboarding.md`](onboarding.md#step-1).
+- **Something set `update_linux` back to `true`.** Boot-time upkeep repairs this on the
+  next boot, so it should be self-correcting. Check with
+  `Scripts/update_linux_modernization.sh --status`.
+- **An updater launched under a different script name.** The Downloader derives which
+  `.ini` it reads from the launcher's own filename, so a renamed copy (say
+  `Scripts/mycopy.sh`) reads `/media/fat/mycopy.ini` — a file we have never written, where
+  the Linux update defaults to on. `update.sh` and `update_all.sh` both reach
+  `downloader.ini` and are unaffected; see
+  [ADR 0025](../decisions/0025-update-linux-kill-switch-and-private-updater.md).
+
+**How to tell it happened at all:** this image records the version it expects, and the
+next boot after a revert prints a loud banner on the console and writes
+`Scripts/.config/mister_linux_modernization/REVERTED`.
+
+**The fix in every case:** run `Scripts/update_linux_modernization.sh`. It repairs the
+setting and reinstalls the image. (If you *wanted* stock back, congratulations — you've
+already done it. See [`rollback.md`](rollback.md).)
 
 ---
 
@@ -151,20 +174,20 @@ you've already done it. See [`rollback.md`](rollback.md).)
 
 In order of how often it's the cause:
 
-1. **Linux updates are switched off in your updater.** This is by far the most common
-   reason, and it is completely silent — our database is fetched and parsed correctly,
-   and its Linux entry is then ignored with no error or log line. See
-   [`onboarding.md` Step 2](onboarding.md#step-2). It's a global switch, on by default,
-   so this only bites people who turned it off at some point.
+1. **You ran a *normal* update, not this project's script.** This is by far the most
+   common reason, and it is intentional: `update_all.sh` and `Scripts/update.sh`
+   deliberately apply no Linux image at all now. Run
+   `Scripts/update_linux_modernization.sh` — that is the only thing that updates this
+   image.
 2. **You're already on this image.** Updates are offered once; if your `/MiSTer.version`
    already matches the current release, a run that changes nothing is the correct result.
-3. **A different database won the Linux race.** Rare, but it's what the
-   [ordering rule](onboarding.md#multi-db-ordering-rule) describes. Search your Downloader
-   log for the `linux_multiple_dbs` warning — it names every database that lost.
-4. **You used Update All's settings screen and chose "exit without saving, but run".**
-   That specific run reads a temporary config from `/tmp` and won't see our database at
-   all — see [the quirk note](onboarding.md#forcing-a-run). Any normal run afterwards is
-   fine.
+   `--status` tells you both numbers side by side.
+3. **The script reported "UPDATE DID NOT HAPPEN".** That is not the same as nothing
+   happening — it means the Downloader ran, reported no error, and still installed no
+   image. The usual cause is running out of space on `/media/fat` partway through
+   extraction. The Downloader's exit code cannot report that (it does not inspect the
+   Linux update's result at all), which is exactly why the script checks separately.
+   Free some space and try again; the log named in that message says which phase failed.
 
 The quickest way to distinguish these is a deterministic one-off run:
 `/media/fat/Scripts/update.sh --run-only mister_linux_modernization`. If that installs the
@@ -258,7 +281,7 @@ at all.
 
 ## See also
 
-- [`onboarding.md`](onboarding.md) — how to opt in, and the multi-database ordering rule
+- [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose
 - [`rollback.md`](rollback.md) — how to get back to stock
 - [`serial-recovery.md`](serial-recovery.md) — recovering a box that won't boot
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture

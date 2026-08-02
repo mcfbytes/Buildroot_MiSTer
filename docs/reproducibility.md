@@ -16,8 +16,9 @@ concrete reasons, not reproducibility as an abstract virtue:
 - **Debugging.** If a device behaves differently after "the same" image was reflashed,
   a non-reproducible build leaves open the question of whether the *image itself*
   changed underneath the user. Reproducibility closes that question.
-- **CI caching correctness.** `build.yml` (P4.1) layers four input caches (Buildroot
-  tarball, `dl/`, host toolchain, ccache) under the build for speed. Reproducibility is
+- **CI caching correctness.** `build.yml` (P4.1) layers five input caches (Buildroot
+  tarball, `dl/`, host toolchain, initramfs host toolchain, ccache) under the build for
+  speed. Reproducibility is
   the property that lets those caches be trusted as *inputs only* — if the build were
   sensitive to incidental state (timestamps, directory-scan order, a stray temp file),
   a cache hit could silently produce a different image than a cache miss would have,
@@ -70,11 +71,14 @@ Four mechanisms combine, all landed in P2.5 (`configs/mister_de10nano_defconfig`
 
 ## What the CI job asserts
 
-`.github/workflows/reproducibility.yml` (triggers: `push`, `pull_request`,
-`workflow_dispatch`; `timeout-minutes: 90` per build leg) runs the **same two-stage
-build recipe as `build.yml`** (P4.1: `make initramfs`, then `make all`, same pinned
-`ubuntu:26.04` container digest, same four *input* caches — Buildroot tarball, `dl/`,
-host toolchain, ccache) on **two independent runners**, via a `strategy: matrix:
+`.github/workflows/reproducibility.yml` (trigger: `workflow_dispatch` only — a double
+build is 2x cost and needs `build.yml`'s caches warm first, see
+`docs/ci.md#manual-trigger-only`; `timeout-minutes: 300` per build leg) runs the **same
+build recipe as `build.yml`** (P4.1: one `make all`, whose recipe is `all: initramfs …`
+so a single invocation builds both stages; the same bare `ubuntu-26.04` runner with **no**
+`container:` — see `docs/ci.md#no-container-disk-reclaim`; the same five *input* caches —
+Buildroot tarball, `dl/`, host toolchain, initramfs host toolchain, ccache) on **two
+independent runners**, via a `strategy: matrix:
 build-id: [a, b]`. Each leg:
 
 - Builds from a **fresh checkout** of the same commit — `output/target` and
@@ -108,7 +112,7 @@ distinguishing:
 - **What P2.5 explicitly did not attempt** — "full clean-rebuild determinism not run;
   build discipline forbids `make clean` on the shared tree" (P2.5 commit message) — is
   exactly what this workflow now automates: two genuinely independent builds, fresh
-  checkouts, separate runners, full `make initramfs && make all` each, not just the
+  checkouts, separate runners, a full `make all` (whose `all:` target already depends on `initramfs`) each, not just the
   image-generation tail end of one build re-run. That is a strictly stronger claim than
   P2.5's local proof, and it has not run yet as of this writing.
 

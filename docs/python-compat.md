@@ -2,11 +2,26 @@
 
 **Task:** P3.9. **Constraint index:** A6. **Model:** Sonnet.
 
-**Bottom line up front:** the on-device `python3` on the current build is **broken for
-Downloader_MiSTer and for "Update All"** (the most widely used community updater) — not
-because of a 3.9→3.14 language/stdlib-removal issue, but because the Buildroot `python3`
-package has almost every optional C-extension submodule **deselected**, including
-`ssl`. Both tools do `import ssl` on their core HTTP path and both were **actually run**
+> ⚠ **RESOLVED 2026-07-13 — read this first.** Everything below is the P3.9
+> investigation exactly as it was run, against a build whose Python had almost every
+> optional C-extension deselected. Its two blocking recommendations were applied in the
+> same commit that added this document (`a549bd0`):
+> `configs/mister_de10nano_defconfig:705-711` now sets
+> `BR2_PACKAGE_PYTHON3_{SSL,ZLIB,BZIP2,XZ,PYEXPAT,READLINE,CURSES}=y`, and
+> `scripts/ci-tests.sh`'s "P3.9 — Python & Downloader ABI gate" imports all seven under
+> `qemu-arm` on every run. **The image no longer ships a Python that cannot `import
+> ssl`.**
+>
+> What remains open from this report: `downloader.sh`'s hardcoded `/usr/bin/python3.9`
+> fast-path gate (§3.6), and `sqlite3`/`_decimal`, still deliberately off (stock's 3.9
+> shipped neither). The 3.14.5 evidence below is left exactly as measured — the pin is
+> now 3.14.6, and retyping it would assert an experiment nobody re-ran.
+
+**Bottom line up front:** the on-device `python3` **as built at the time of this
+investigation** was **broken for Downloader_MiSTer and for "Update All"** (the most
+widely used community updater) — not because of a 3.9→3.14 language/stdlib-removal
+issue, but because the Buildroot `python3` package had almost every optional
+C-extension submodule **deselected**, including `ssl`. Both tools do `import ssl` on their core HTTP path and both were **actually run**
 (not just statically inspected) under the real target ARM Python 3.14.5 via
 `qemu-arm`, and both crash identically: `ModuleNotFoundError: No module named '_ssl'`.
 Once that (and one more: `zlib`) is fixed, the evidence gathered here is that
@@ -372,6 +387,11 @@ urgent):**
 I did not make any of these changes — per the task constraints, this is a report for the
 orchestrator to apply and rebuild.
 
+**Applied 2026-07-13 (`a549bd0`).** Both MUSTs plus `BZIP2`/`XZ`/`PYEXPAT`/`READLINE`/
+`CURSES` are live at `configs/mister_de10nano_defconfig:705-711` (a `python3-dirclean`
+was required to force the rebuild). `SQLITE` and `DECIMAL` were deliberately declined —
+stock's Python 3.9 shipped neither.
+
 ---
 
 ## 4. What's actually clean: no 3.9→3.14 language/stdlib-removal breakage found
@@ -416,7 +436,7 @@ Not a blocker even though `BR2_PACKAGE_PYTHON3_DECIMAL` is off — just slower (
 accelerator). Downloader doesn't appear to use `decimal` regardless (not in the grep list
 above); noted only because it's a widely-used module elsewhere.
 
-### 4.4 Full inventory of stdlib import attempts run against the target binary
+### 4.4 Full inventory of stdlib import attempts run against the target binary (PRE-FIX build — see the RESOLVED banner at the top)
 
 | Module | Result | Downloader depends on it? |
 |---|---|---|
@@ -433,6 +453,12 @@ above); noted only because it's a widely-used module elsewhere.
 | `socket` | **OK** | Yes, works |
 | `json` | **OK** | Yes, works |
 | `zipfile` (`ZIP_STORED` only) | **OK** | Yes — but real-world zips are deflate (§3.7) |
+
+**Post-fix (2026-07-13):** `ssl`, `zlib`, `bz2`, `lzma`, `pyexpat`, `curses` and
+`readline` all import on the shipped image; `scripts/ci-tests.sh`'s "P3.9 — Python &
+Downloader ABI gate" asserts every one of them under `qemu-arm` on each run. `sqlite3`
+and `_decimal` remain off by choice. The FAIL cells above are the recorded pre-fix
+experiment and are deliberately not edited.
 
 ---
 
@@ -480,11 +506,11 @@ Python files was not fetched or tested.
 
 | # | Finding | Severity | Verified how | Upstream-fixable or blocker |
 |---|---|---|---|---|
-| 1 | `_ssl` not built (`BR2_PACKAGE_PYTHON3_SSL` unset) | **Blocker** | Real execution: Downloader `__main__.py` and Update All's `.pyz`, both under real qemu-user target 3.14.5 | Our Buildroot config — not a Downloader bug |
-| 2 | `zlib` not built (`BR2_PACKAGE_PYTHON3_ZLIB` unset) | **Blocker** (independent of #1) | Real execution: read of a real DEFLATE zip fails under target 3.14.5 | Our Buildroot config — not a Downloader bug |
+| 1 | `_ssl` not built (`BR2_PACKAGE_PYTHON3_SSL` unset) | **Blocker** — **FIXED `a549bd0`** | Real execution: Downloader `__main__.py` and Update All's `.pyz`, both under real qemu-user target 3.14.5 | Our Buildroot config — not a Downloader bug. `BR2_PACKAGE_PYTHON3_SSL=y` (defconfig:705), CI-gated |
+| 2 | `zlib` not built (`BR2_PACKAGE_PYTHON3_ZLIB` unset) | **Blocker** (independent of #1) — **FIXED `a549bd0`** | Real execution: read of a real DEFLATE zip fails under target 3.14.5 | Our Buildroot config — not a Downloader bug. `BR2_PACKAGE_PYTHON3_ZLIB=y` (defconfig:706), CI-gated |
 | 3 | `downloader.sh` hardcodes `-x /usr/bin/python3.9` to gate the compiled-binary fast path | High — masks/compounds #1, means the broken fallback is always taken on this image | Read of pinned + live `downloader.sh`; confirmed `/usr/bin/python3.9` absent on built rootfs | Downloader's own script; worth an upstream issue, but our python3 version choice (3.14 vs stock's 3.9) is what trips it |
 | 4 | Downloader source: no removed-stdlib imports, no deprecated-ABC imports, 100% of files compile clean under real 3.14 compiler | Informational (good news) | Real execution of `compileall` + grep | N/A |
-| 5 | `bz2`/`sqlite3`/`lzma`/`pyexpat`/`curses`/`readline`/`_decimal` also not built | Low — not used by Downloader or the sampled community scripts | Real execution: each import attempted individually against target | Config, only if a real consumer turns up |
+| 5 | `bz2`/`sqlite3`/`lzma`/`pyexpat`/`curses`/`readline`/`_decimal` also not built | Low — not used by Downloader or the sampled community scripts. **PARTLY FIXED `a549bd0`** | Real execution: each import attempted individually against target | `bz2`/`lzma`/`pyexpat`/`curses`/`readline` are now built (defconfig:707-711); `sqlite3`/`_decimal` declined on purpose — stock's 3.9 shipped neither |
 | 6 | Downloader's own automated test suite is inaccessible (private repo) | Scope limitation, not a code finding | Read of `.gitignore` + `request_tests.yml` + GitHub org search | N/A — cannot be fixed from here |
 | 7 | Official `Scripts_MiSTer` has zero Python files | Informational — narrows A6's blast radius | GitHub API listing | N/A |
 | 8 | MiSTer_SAM (4 files) — no compat issues found | Informational (good news) | Real execution + compileall | N/A |

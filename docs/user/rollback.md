@@ -11,51 +11,63 @@ boots).
 
 ## The procedure
 
-1. **Remove the opt-in database file.** Delete (or rename to not end in `.ini`, if you'd
-   rather keep a copy) whichever file you created in
-   [`onboarding.md`](onboarding.md#step-1):
+1. **Run the script with `--restore-stock`.**
 
-   ```
-   /media/fat/downloader_mister_linux_modernization.ini
+   ```sh
+   /media/fat/Scripts/update_linux_modernization.sh --restore-stock
    ```
 
-   or
+   That does the handover: it sets `update_linux = true` back in
+   `/media/fat/downloader.ini`. That is the whole of it — nothing re-applies the setting
+   behind you, so there is no marker to create and nothing to fight.
 
-   ```
-   /media/fat/downloader/mister_linux_modernization.ini
+   If you no longer have the script on the card, `uninstall.sh` from the repository does
+   the same thing:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/uninstall.sh | sh
    ```
 
-   If you instead added the section manually inside your existing `downloader.ini`,
-   delete just that `[mister_linux_modernization]` block.
+   It downloads nothing and flashes nothing. Until you do step 2 you are still running
+   this image, and running the script again *without* `--restore-stock` puts everything
+   back the way it was.
 
 2. **Re-run your updater.** Whatever you normally use — `update_all.sh` or
-   `Scripts/update.sh` — or simply wait for its next scheduled run. Either works.
+   `Scripts/update.sh` — or simply wait for its next scheduled run. The official Linux
+   image installs over this one.
 
 3. **Reboot** once it finishes (same as any update — see below for what to expect).
 
 That's the whole procedure. No SD card removal, no re-flashing, no special tools.
 
-> **Step 1 is not optional, and skipping it fails silently.** It is natural to assume
-> that just running the normal updater again is enough to get you back to stock. It
-> isn't. If the opt-in file is still in place, our database keeps being consulted and
-> keeps winning (see [the ordering rule](onboarding.md#multi-db-ordering-rule)), and its
-> version still matches what you're running — so the updater correctly concludes there is
-> nothing to do and changes nothing. You'd see a clean, successful run and still be on
-> this image. **Remove the file first; then re-run.**
+### Doing it by hand
+
+If you would rather not use the script — or you have already deleted it — both steps it
+performs matter, and skipping either fails silently:
+
+**Set `update_linux = true`** in the `[MiSTer]` section of `/media/fat/downloader.ini`
+(or delete the line; `true` is the default). While it is `false`, *no* Linux image can be
+applied by a normal update — **not ours and not the official one** — so the updater runs
+cleanly, reports success, and changes nothing.
+
+That is the entire edit. You do not need to remove anything else, and nothing will put it
+back: `Scripts/update_linux_modernization.sh` is the only thing that ever writes that key,
+and it does nothing unless you run it. Delete the script too if you like; it is inert
+either way.
 
 ---
 
 ## Why this actually works, not just "probably"
 
-With our database gone, `distribution_mister` is the only configured database left that
-carries a `linux` entry — there's no multi-database race to lose (see
-[`onboarding.md`](onboarding.md#multi-db-ordering-rule)
-for what that race is, when our entry is present). The Downloader compares your currently
-running `/MiSTer.version` against the official entry's version. Because this project's
-build stamps a different version than the current official release, that comparison is
-guaranteed to differ — the check is a plain string **inequality**, with no concept of
-"upgrade" vs. "downgrade" built in. A different string is a different string, so the
-official update proceeds automatically, restoring the stock image.
+With `update_linux` back to `true`, `distribution_mister` is once again free to supply a
+Linux image — and since this project's database was never registered in your
+`downloader.ini` in the first place (the updater keeps its own private configuration
+elsewhere), the official one is the only candidate. The Downloader
+compares your currently running `/MiSTer.version` against the official entry's version.
+Because this project's build stamps a different version than the current official release,
+that comparison is guaranteed to differ — the check is a plain string **inequality**, with
+no concept of "upgrade" vs. "downgrade" built in. A different string is a different string,
+so the official update proceeds automatically, restoring the stock image.
 
 **Rollback is not a special code path.** It is the exact same apply mechanism as any other
 Linux update, just running in the direction back to stock:

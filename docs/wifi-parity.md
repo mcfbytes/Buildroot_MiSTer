@@ -16,8 +16,8 @@
 > (→ `rtw88_8821cu`), 8822bu (→ `rtw88_8822bu`, hardware-verified WPA3) and — as
 > of PR #35 — 8814au (→ in-kernel `rtw88_8814au`) moved to mainline; ~~only the
 > 11ac chips with no mainline USB driver — 8812au, 8821au — remain out-of-tree
-> morrownr packages~~ (**superseded twice, see below**). (2) The §1 claim that
-> `/etc/network/interfaces` is **byte-identical** to stock is no longer true:
+> morrownr packages~~ (**superseded twice, see below**). (2) The §1 and §4 claims
+> that `/etc/network/interfaces` is **byte-identical** to stock are no longer true:
 > each `wlan` stanza gained a `pre-up` wait-for-`wlan0` loop (deliberate — the
 > mainline `rtw88`/`rtw89` USB drivers register `nl80211` asynchronously). The
 > userland-parity findings below (bash/dialog/wireless-tools/iproute2, the
@@ -100,9 +100,9 @@ path (stock's own README-level instructions) both depend on.
 |---|---|---|---|
 | `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9).** Stock's content, plus a 9-line header comment and one `pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop per `wlan` stanza — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly those 11 added lines (re-verified this task). Every stock directive is reproduced unchanged; nothing is removed. Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); `docs/init-parity.md:147` carries the same row. |
 | `/etc/init.d/S40network` | `ifup -a` / `ifdown -a` (ifupdown-scripts package default) | Not overlaid — `BR2_PACKAGE_IFUPDOWN_SCRIPTS`'s own Kconfig default (`default y if BR2_ROOTFS_SKELETON_DEFAULT`, `work/buildroot/package/ifupdown-scripts/Config.in`) auto-selects it; our defconfig sets neither `BR2_PACKAGE_SYSTEMD_NETWORKD` nor `BR2_PACKAGE_NETIFRC` (the two symbols that would suppress it) and leaves `BR2_ROOTFS_SKELETON_DEFAULT` at Buildroot's own default (y) | **Identical**, confirmed byte-for-byte by P2.3 (`docs/init-parity.md:63`); re-confirmed the selecting conditions still hold in this defconfig. |
-| `/etc/init.d/S41dhcpcd` | starts `dhcpcd` globally (no `-i`) | Package default, not overlaid; `BR2_PACKAGE_DHCPCD=y` (defconfig line 409, P2.1) | **Functionally identical** (P2.3 finding, `docs/init-parity.md:64`) — only the PID-file path differs, an artifact of the newer dhcpcd release, not a decision point. |
+| `/etc/init.d/S41dhcpcd` | starts `dhcpcd` globally (no `-i`) | Package default, not overlaid; `BR2_PACKAGE_DHCPCD=y` (defconfig line 807, P2.1) | **Functionally identical** (P2.3 finding, `docs/init-parity.md:64`) — only the PID-file path differs, an artifact of the newer dhcpcd release, not a decision point. |
 | `/etc/dhcpcd.conf` | `hostname`, `clientid`, `option rapid_commit`, etc. enabled | `board/mister/de10nano/rootfs-overlay/etc/dhcpcd.conf` | **Identical.** `diff` exit 0 (re-verified this task). Authored by P2.3. |
-| `wpa_supplicant` binary + `-D nl80211,wext` | present | `BR2_PACKAGE_WPA_SUPPLICANT=y` + `_NL80211=y` + `_WEXT=y` (defconfig lines 405-407, P2.1) | **Identical** package selection; both driver backends stock's command line names are compiled in. |
+| `wpa_supplicant` binary + `-D nl80211,wext` | present | `BR2_PACKAGE_WPA_SUPPLICANT=y` + `_NL80211=y` + `_WEXT=y` (defconfig lines 745-747, P2.1) | **Identical** package selection; both driver backends stock's command line names are compiled in. |
 | Control-interface path wpa_supplicant actually uses at runtime | `ctrl_interface=/run/wpa_supplicant` (from the shipped `files/linux/_wpa_supplicant.conf` template, the file a user renames to `wpa_supplicant.conf`) | Same — `/run` is our `fstab`'s tmpfs (`tmpfs /run tmpfs mode=0755,nosuid,nodev 0 0`) | **Identical**, and satisfies the read-only-root constraint (A15/ADR 0011) — the socket lives on tmpfs, never on `/`. |
 | `/etc/wpa_supplicant.conf` (package's own upstream sample, `ctrl_interface=/var/run/wpa_supplicant`, `ap_scan=1`, `network={key_mgmt=NONE}`) | present (`work/imgroot/etc/wpa_supplicant.conf`) — confirmed **dead weight**: grepped every stock init script and `/etc/network/interfaces` for `etc/wpa_supplicant` — zero references. It is the package's own installed default, never read by anything. | Installed automatically by `WPA_SUPPLICANT_INSTALL_TARGET_CMDS` (`work/buildroot/package/wpa_supplicant/wpa_supplicant.mk:283-287`, installs `package/wpa_supplicant/wpa_supplicant.conf` verbatim and uncomments its `ctrl_interface` line) | **Identical for free** — same package, same install rule, no overlay action needed. |
 | **Operative** config file, `/media/fat/linux/wpa_supplicant.conf` | lives on the FAT **data** partition, delivered by the SD-card installer/Downloader from the `_wpa_supplicant.conf` template, not by the rootfs build | Out of rootfs scope — same "shipped by `Distribution_MiSTer`, not by us" pattern as every other `/media/fat/linux/*` file (`docs/abi-contract.md` §7.6). Our `board/mister/de10nano/rootfs-overlay/media/fat/.gitkeep` (P1.10) only establishes the empty mount point `/init` moves the FAT partition onto. | **N/A to this task** — nothing to author here. |
@@ -126,21 +126,38 @@ Everything below is cited to the actual fetched script,
 `other_authors/wifi.sh` @ `master`
 (<https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/master/other_authors/wifi.sh>).
 
+> **RE-CHECKED 2026-08-01 against the currently-pinned `wifi.sh`, and three rows were
+> wrong.** This table was written against the RetroPie-derived `wifi.sh` v1.x. The pin in
+> `scripts/fetch-sdcard-payload.sh` (`PINNED_WIFI_SH_COMMIT`) now resolves to upstream's
+> **v2.3.0 rewrite** — 3070 lines against the old ~200 — which manages `wpa_supplicant`
+> itself instead of delegating to `ifup`/`ifdown`. The rows below are corrected; every
+> `wifi.sh:NN` citation still refers to **v1.x** line numbers and means nothing in v2.3.0,
+> so they are marked rather than retyped against a file nobody re-audited line by line.
+>
+> **The conclusion this table exists to support is unchanged, and was re-verified on
+> hardware:** every tool the new version needs is already in the image — `wpa_cli`
+> (`BR2_PACKAGE_WPA_SUPPLICANT_CLI=y`, defconfig:772), `wpa_supplicant`, `dhcpcd`,
+> `udhcpc`, `iwgetid`, `iwlist`, `dialog`, `bash`, `ip`. The only one absent is
+> `dhclient`, and it is the **third** DHCP fallback (`wifi.sh:2027`), tried only after
+> `dhcpcd` (`:2021`) and `udhcpc` (`:2024`) have both failed — both of which we ship. No
+> package changes are required; the four packages this analysis added are still exactly
+> the right four.
+
 | `wifi.sh` dependency | Where in the script | Stock provides | We provided before this task | Status |
 |---|---|---|---|---|
 | `bash` interpreter | `wifi.sh:1`, `#!/usr/bin/env bash` | `usr/bin/bash` (`docs/stock-inventory/binaries-needed-full.txt:25`) | **Nothing** — `BR2_PACKAGE_BASH` was not set anywhere in the defconfig | **Gap — fixed.** `BR2_PACKAGE_BASH=y` added. |
 | `dialog` (all its menus/inputboxes/infoboxes) | `wifi.sh:25` (`printMsgs`) and every interactive function | `usr/bin/dialog` (`binaries-needed-full.txt:76`) | **Nothing** | **Gap — fixed.** `BR2_PACKAGE_DIALOG=y` added. |
-| `ifup wlan0` / `ifdown wlan0` (primary bring-up/tear-down path) | `wifi.sh:36-42`, `_set_interface_wifi()` | ifupdown-scripts | Already present (§1) | **No gap.** |
+| `ifup wlan0` / `ifdown wlan0` | v1.x: the primary bring-up/tear-down path (`wifi.sh:36-42`, `_set_interface_wifi()`). **v2.3.0 deliberately avoids it** and drives `wpa_supplicant` directly (`:2044`) | ifupdown-scripts | Already present (§1) | **No gap either way** — still shipped and still used by the boot path (`/etc/network/interfaces`), just no longer by `wifi.sh`. |
 | `ip link set wlan0 up/down` (fallback only if `ifup`/`ifdown` fail) | `wifi.sh:37,41`, same function | `usr/sbin/ip` (real iproute2, linked against `libcap.so.2` — `binaries-needed-full.txt:461`, not a BusyBox applet) | **Nothing** — no `BR2_PACKAGE_IPROUTE2` | **Gap — fixed.** `BR2_PACKAGE_IPROUTE2=y` added. |
 | `iwlist wlan0 scan` (SSID/encryption-type scan) | `wifi.sh:84`, `list_wifi()` | `usr/sbin/iwconfig` present (same wireless-tools package installs `iwlist`/`iwgetid`/`iwspy`/`iwpriv` alongside it — `binaries-needed-full.txt:465`) | **Nothing** — no `BR2_PACKAGE_WIRELESS_TOOLS` | **Gap — fixed.** `BR2_PACKAGE_WIRELESS_TOOLS=y` (+`_IWCONFIG=y`, default) added. |
 | `iwgetid -r` (poll for a successful association) | `wifi.sh:195`, `gui_connect_wifi()` | same wireless-tools package | **Nothing** | **Same fix as above.** |
-| `/media/fat/linux/wpa_supplicant.conf` — the file `wifi.sh` reads/writes directly (`remove_wifi()` at `wifi.sh:47`, `set_wifi_country()` at `wifi.sh:66-71`, `create_config_wifi()` at `wifi.sh:180-184`) | same FAT-partition path stock's `/etc/network/interfaces` reads via `-c` | n/a (FAT partition) | n/a (FAT partition) | **Already aligned** — `wifi.sh` and the boot-time `pre-up wpa_supplicant … -c /media/fat/linux/wpa_supplicant.conf` hook operate on the exact same file, which is why `wifi.sh` never has to invoke `wpa_supplicant` or `wpa_cli` itself: writing the file and toggling the interface (`ifup`/`ifdown`) is enough to make the `pre-up` hook re-exec `wpa_supplicant` with the new config. |
+| `/media/fat/linux/wpa_supplicant.conf` — the file `wifi.sh` reads/writes directly (`remove_wifi()` at `wifi.sh:47`, `set_wifi_country()` at `wifi.sh:66-71`, `create_config_wifi()` at `wifi.sh:180-184`) | same FAT-partition path stock's `/etc/network/interfaces` reads via `-c` | n/a (FAT partition) | n/a (FAT partition) | **Already aligned** — `wifi.sh` and the boot-time `pre-up wpa_supplicant … -c /media/fat/linux/wpa_supplicant.conf` hook operate on the exact same file, so both agree on the config regardless of which one applies it. **The stated reason has changed, the outcome has not:** v1.x relied on toggling the interface so the `pre-up` hook would re-exec `wpa_supplicant`; v2.3.0 instead launches `wpa_supplicant -B … -c "$WPA_CONF"` itself (`:2044`), guarded by a `wpa_cli ping` probe so it will not double-spawn against our boot-time instance. Same file, same path, still aligned. |
 | `/sys/class/net/wlan0/` (interface-presence check) | `wifi.sh:89` | sysfs | sysfs (`fstab`: `sysfs /sys sysfs defaults 0 0`) | **No gap** — standard devtmpfs/sysfs, appears automatically once P3.1/P3.3's driver+firmware bring up the netdev; not a rootfs-config item. |
-| `wpa_cli` | **not called anywhere in the script** | — | — | **N/A** — confirms the task brief's "whether it calls wpa_cli" question: no, it does not. |
-| `udhcpc`/direct `dhcpcd` invocation | **not called anywhere in the script** | — | — | **N/A** — DHCP is handled entirely by the already-running global `dhcpcd` daemon (`S41dhcpcd`) picking up the now-admin-up `wlan0`, same as stock. |
+| `wpa_cli` | v1.x: not called. **v2.3.0: called 13 times**, including the `wpa_cli ping`/`PONG` probe that gates `reload_wpa_supplicant()` | — | — | **No gap** — `BR2_PACKAGE_WPA_SUPPLICANT_CLI=y` (defconfig:772) already ships `/usr/sbin/wpa_cli`; confirmed present on hardware. (This row previously read "not called anywhere in the script", which was true of v1.x and is false of the pinned version.) |
+| `udhcpc`/direct `dhcpcd` invocation | v1.x: not called. **v2.3.0 calls all three in order** — `dhcpcd -n` (`:2021`), `udhcpc -n -q -i` (`:2024`), `dhclient` (`:2027`) — each under a timeout, taking the first that succeeds | — | — | **No gap** — we ship `dhcpcd` and `udhcpc`, so the chain succeeds at step 1 or 2 and never reaches `dhclient` (which we do not ship, deliberately: it is ISC's client and adding it to satisfy an unreachable third fallback would be dead weight). The global `S41dhcpcd` daemon still handles the boot path as before. (This row previously read "not called anywhere in the script".) |
 
 Three genuinely new Buildroot packages were needed
-(`configs/mister_de10nano_defconfig:463-467`, new "P3.4: WiFi userland
+(`configs/mister_de10nano_defconfig:774-783`, new "P3.4: WiFi userland
 parity (`wifi.sh` contract)" section): `BR2_PACKAGE_BASH`,
 `BR2_PACKAGE_DIALOG`, `BR2_PACKAGE_WIRELESS_TOOLS` (+`_IWCONFIG`, its own
 default-y sub-option, listed for clarity per this file's existing
@@ -150,12 +167,12 @@ dependencies were checked, not assumed:
 - `bash` (`work/buildroot/package/bash/Config.in`): `select
   BR2_PACKAGE_NCURSES` + `select BR2_PACKAGE_READLINE` — both already `=y`
   in this defconfig; `depends on BR2_PACKAGE_BUSYBOX_SHOW_OTHERS` — already
-  `=y` (defconfig line 359, a P2.1 addition originally needed for a
+  `=y` (defconfig line 640, a P2.1 addition originally needed for a
   different package but satisfies this too).
 - `dialog` (`work/buildroot/package/dialog/Config.in`): `select
   BR2_PACKAGE_NCURSES` (already `=y`); `select BR2_PACKAGE_LIBICONV if
   !BR2_ENABLE_LOCALE` — `BR2_ENABLE_LOCALE` is already `=y` (glibc default
-  for this toolchain, per the existing comment at defconfig line ~224), so
+  for this toolchain, per the existing comment at defconfig lines 296-305), so
   this select is a no-op.
 - `wireless_tools` (`work/buildroot/package/wireless_tools/Config.in`): no
   hard dependencies beyond the toolchain; `_IWCONFIG` sub-option (default
@@ -207,8 +224,6 @@ Realtek packages —
   Realtek drivers. No kernel change needed.
   Even without it, since `nl80211` is listed first in `-D nl80211,wext` and
   is confirmed to always work on every P3.1 driver,
-  **`wext` is not required for basic association** — it is stock's own Since `nl80211` is listed first in
-  `-D nl80211,wext` and is confirmed to always work on every P3.1 driver,
   **`wext` is not required for basic association** — it is stock's own
   belt-and-suspenders fallback ordering, reproduced unchanged, not a gap.
   `iwlist`/`iwgetid`'s WEXT dependency (§2) is a separate, narrower
@@ -223,7 +238,7 @@ kernel from this era; no separate check needed.
 ## 4. Files touched by this task
 
 - **Edited** `configs/mister_de10nano_defconfig` — added the "P3.4: WiFi
-  userland parity (`wifi.sh` contract)" section (lines 424-467):
+  userland parity (`wifi.sh` contract)" section (lines 774-783):
   `BR2_PACKAGE_BASH=y`, `BR2_PACKAGE_DIALOG=y`, `BR2_PACKAGE_WIRELESS_TOOLS=y`
   (+`_IWCONFIG=y`), `BR2_PACKAGE_IPROUTE2=y`. No other defconfig lines
   changed.
@@ -258,7 +273,7 @@ worktree's files directly.
 - **[BUILD]** `dmesg`/boot log: `wpa_supplicant` does **not** start at boot
   on a fresh image with no `/media/fat/linux/wpa_supplicant.conf` present
   — the `pre-up [ -f /media/fat/linux/wpa_supplicant.conf ]` guard
-  (`/etc/network/interfaces` line 8/15) should make `ifup wlan0`/`wlan1`
+  (`/etc/network/interfaces` lines 17/25) should make `ifup wlan0`/`wlan1`
   a silent no-op, not an error, on a read-only root with no FAT config
   yet. Confirms P2.3's guard logic survives unmodified.
 - **[BUILD]** With a `/media/fat/linux/wpa_supplicant.conf` staged (e.g.
@@ -492,6 +507,13 @@ standard sysfs escape hatch without rebuilding anything:
 
 ## 7. v10.1 — exhaustive USB WiFi driver audit
 
+> ⚠ **Version staleness (noted 2026-08-01).** This sweep was run against **6.18.40**; the
+> tree is now pinned to **6.18.41**. Every `6.18.40` string below is left as measured.
+> **The specific unchecked question** is whether the USB-WiFi symbol count is still 36 —
+> i.e. whether 6.18.41 added or removed a prompted `depends on … USB` symbol under
+> `drivers/net/wireless/`. A `.y` bump on the same stable line normally does not, and no
+> driver family below has been reported changed; nothing else in §7 was re-verified.
+
 §6 closed the gaps that were asked for by name. This section is the
 **systematic sweep** behind them: every USB WiFi driver 6.18.40 offers,
 checked against what this image builds, so the answer to "is any dongle
@@ -577,6 +599,14 @@ config file to stay correct.
 
 ## 8. v10.2 — RTL8852CU: the gap mainline cannot close, and the fork that does
 
+> ⚠ **Version staleness (noted 2026-08-01).** The mainline-gap table below was checked
+> against **6.18.40**; the pin is now **6.18.41**, and the `6.18.40` strings are left as
+> measured. **The one unchecked question** is whether
+> `drivers/net/wireless/realtek/rtw89/` has since gained an `rtw8852cu.c` (a USB bus file
+> for the 8852C HAL). If it ever does, this section's entire justification collapses and
+> `package/rtl8852cu-morrownr` should be dropped for the in-kernel driver, per ADR 0016.
+> Nothing else here was re-run.
+
 §7 closed every gap that had an in-kernel driver waiting to be switched on.
 This one has none, so closing it means shipping an out-of-tree driver again —
 the first since v10 emptied the list. Maintainer decision, 2026-07-27.
@@ -603,6 +633,11 @@ the exception list in v10 re-populates it here with one entry.
 commit `1530c38e5b1be6d1e96a31cf4f3602a9c23f2465` (HEAD == `refs/heads/main` at
 pin time), hash-verified. It builds one module, `8852cu.ko`, into
 `usr/lib/modules/$KVER/updates/`.
+
+One patch is carried: `0001-mac_ax-use-div_u64-for-64-bit-division-on-32-bit-arch.patch`
+swaps a plain `u64 / 1000` in `phl/hal_g6/mac/mac_ax/fwcmd.c` for the kernel's
+`div_u64()`; without it the module fails at `modpost` on ARM32 with
+`"__aeabi_uldivmod" [8852cu.ko] undefined!`. Every version bump must re-check it.
 
 Chips: **RTL8852CU / RTL8832CU** — Wi-Fi 6E, 2×2, 2.4/5/**6** GHz.
 
@@ -649,7 +684,7 @@ firmware in as a C array: `Makefile:96` sets `CONFIG_FILE_FWIMG = n`,
 there is nothing to add to `/lib/firmware`, and nothing that can fail at
 `request_firmware()` — the failure mode §6.2/§6.3 were about. The trade is
 size: ~15 MB of the ~67 MB source tree is firmware arrays, so expect a large
-`.ko`. **The built size has not been measured** (see the honest-caveats list).
+`.ko`. **Measured: 1.8 MB as shipped** (`8852cu.ko.xz`; ADR 0016 v10.2).
 
 ### The build quirk this package must work around
 
@@ -670,9 +705,12 @@ is in `package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk`.
 
 ### Honest caveats
 
-- **Not built or run yet.** This section documents a package added by source
-  inspection. Whether `8852cu.ko` actually compiles against 6.18.40 for
-  ARMv7 has **not** been verified, and no hardware test has been done.
+- **Built, not run.** The ARMv7 compile is verified: the first real `make all` died at
+  `modpost: "__aeabi_uldivmod" [8852cu.ko] undefined!` (a `u64 / 1000` in
+  `phl/hal_g6/mac/mac_ax/fwcmd.c`), fixed by the carried
+  `0001-mac_ax-use-div_u64-for-64-bit-division-on-32-bit-arch.patch` and re-verified by
+  a dirclean rebuild (commit `4c68ae0`); `scripts/ci-tests.sh` now asserts
+  `usr/lib/modules/$KVER/updates/8852cu.ko.xz` ships. **No hardware test has been done.**
 - **Weaker upstream assurance than the older forks had.** Upstream's
   `README.md:74-75` declares "Kernels: 5.15 - 6.14 (Realtek)" and
   "Kernels: 6.15 - 7.1 (community support)" — 6.18.40 is in the *community*
@@ -798,7 +836,7 @@ does on stock. It was left out anyway, for these reasons:
    the hardware-verified behaviour already on record in commit `4cf2fc7`
    ("RTL8822BU auto-connects WPA3 5GHz at boot" via the plain `wlan0` stanza,
    no rename involved) and the hardcoded `ifup wlan0` / `ip link set wlan0`
-   in Scripts_MiSTer's `other_authors/wifi.sh` (§2 table above, lines 119-120
+   in Scripts_MiSTer's `other_authors/wifi.sh` (§2 table above, lines 133-134
    of this file; `wifi.sh:36-42`) — both already assume the kernel-assigned
    name is the name that sticks.
 
@@ -906,7 +944,7 @@ on `argv[0]`). `output/target/sbin` is itself a symlink to `usr/sbin`
 (`BR2_ROOTFS_MERGED_USR=y`), so stock's `/sbin/ifup` and `/sbin/ifdown`
 spellings resolve to those same two entries. `output/target/usr/sbin/iw` — a
 264720-byte ARM ELF, from `BR2_PACKAGE_IW=y` at
-`configs/mister_de10nano_defconfig:698`; without it the `pre-up` loop's
+`configs/mister_de10nano_defconfig:782`; without it the `pre-up` loop's
 `iw dev` would be a permanent 20 s no-op.
 
 ### Verify-on-hardware (adds to §5's checklist)

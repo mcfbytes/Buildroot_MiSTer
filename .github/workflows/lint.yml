@@ -14,6 +14,7 @@
 # Run the same checks locally before pushing:
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
+#   shellcheck -x board/mister/de10nano/fat-payload/Scripts/*.sh
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #
@@ -30,6 +31,13 @@ on:
     paths:
       - '.github/**'
       - 'scripts/**'
+      # Shell that ships on the card / in the rootfs is shellchecked below, so
+      # a change to it has to be able to trigger this workflow.
+      - 'board/mister/de10nano/fat-payload/**'
+      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'board/mister/de10nano/post-build.sh'
+      - 'install.sh'
+      - 'uninstall.sh'
       # The installer /init is not a script/**, but this job is the only thing
       # that tests its splash section on a PR (see the unit-test step below).
       # Without this path a change to the splash alone would skip its own gate.
@@ -38,6 +46,11 @@ on:
     paths:
       - '.github/**'
       - 'scripts/**'
+      - 'board/mister/de10nano/fat-payload/**'
+      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'board/mister/de10nano/post-build.sh'
+      - 'install.sh'
+      - 'uninstall.sh'
       - 'board/mister/de10nano/installer-overlay/**'
   workflow_dispatch:
 
@@ -110,6 +123,63 @@ jobs:
           # same defensive habit the rest of this repo's array-building uses).
           mapfile -d '' -t sh_files < <(find scripts -name '*.sh' -print0)
           shellcheck -x "${sh_files[@]}"
+
+      # Shell that SHIPS on the card or in the rootfs. These are not under
+      # scripts/, so the step above never saw them -- and they are the scripts a
+      # user actually runs, so they are the last place an unlinted bashism
+      # should be allowed to hide.
+      #
+      # Split by dialect on purpose: update_linux_modernization.sh is bash,
+      # while install.sh and uninstall.sh are POSIX sh so they can be piped into
+      # either `sh` or `bash` on any card.
+      - name: shellcheck shipped board scripts
+        run: |
+          set -euo pipefail
+          shellcheck -x board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+          shellcheck -s sh -x \
+            install.sh \
+            uninstall.sh \
+            board/mister/de10nano/post-build.sh
+
+      # Executable bits on shipped scripts, checked against GIT's recorded mode.
+      #
+      # This is not pedantry: a script that ships mode 0644 is one nothing can
+      # run, and neither the build nor the boot notices. It has already happened
+      # once in this repo (an init script committed 0644 would have shipped
+      # non-executable and silently never run), so the mode is asserted rather
+      # than assumed.
+      #
+      # Reads `git ls-files -s` rather than the worktree, because git's index is
+      # what a fresh clone (and therefore CI and every contributor) actually gets.
+      - name: shipped scripts must be executable in git
+        run: |
+          set -euo pipefail
+          must_be_exec=(
+            board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+            board/mister/de10nano/post-build.sh
+            install.sh
+            uninstall.sh
+          )
+          rc=0
+          for f in "${must_be_exec[@]}"; do
+            mode=$(git ls-files -s -- "$f" | awk '{print $1}')
+            if [ -z "$mode" ]; then
+              echo "::error file=$f::tracked file not found in the git index"
+              rc=1
+            elif [ "$mode" != "100755" ]; then
+              echo "::error file=$f::mode is $mode, expected 100755 -- run: git update-index --chmod=+x $f"
+              rc=1
+            fi
+          done
+          # Every other init script must stay executable too, for the same reason.
+          while IFS= read -r f; do
+            mode=$(git ls-files -s -- "$f" | awk '{print $1}')
+            case "$mode" in
+              100755|120000) ;;   # regular executable, or a symlink
+              *) echo "::error file=$f::init script mode is $mode, expected 100755"; rc=1 ;;
+            esac
+          done < <(git ls-files 'board/mister/de10nano/rootfs-overlay/etc/init.d/*')
+          exit "$rc"
 
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the

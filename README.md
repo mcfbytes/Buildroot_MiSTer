@@ -19,7 +19,7 @@ core run on it unchanged.
 | `release_YYYYMMDD.7z` | The stock-layout release archive, byte-compatible with the Downloader's expectations |
 | `legal-info.tar.gz` | A **full SBOM** — every package, version, license, and upstream source tarball |
 | `SHA256SUMS` + attestations | Build provenance for the image assets |
-| `db.json` | The **opt-in update channel**, served from GitHub Pages — add one file to your card and releases arrive like any official update |
+| `db.json` | The **opt-in update channel**, served from GitHub Pages — drop one script into `Scripts/`, run it, and releases arrive through the standard on-device Downloader |
 | An exportable kernel tree | The carried series, rendered deterministically into `Linux-Kernel_MiSTer` layout so upstream can consume the work without a second fork |
 
 > **Status — personal use only.** Phases 0–3 are complete with hardware validation on a
@@ -37,6 +37,7 @@ core run on it unchanged.
 - [The one-paragraph version](#the-one-paragraph-version)
 - [Stock vs. this image, at a glance](#stock-vs-this-image-at-a-glance)
 - [Project status](#project-status)
+- [**Install it on a real MiSTer**](#install-it-on-a-real-mister)
 - [What this improves](#what-this-improves)
   - [1. The kernel: five years of stable releases, and a way back to mainline](#1-the-kernel-five-years-of-stable-releases-and-a-way-back-to-mainline)
   - [2. Six latent bugs found and fixed](#2-six-latent-bugs-found-and-fixed)
@@ -85,7 +86,7 @@ mainline can hold it.
 | | Stock MiSTer | This project |
 |---|---|---|
 | **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18.41 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **31 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **36 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
 | **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.3** |
@@ -99,7 +100,7 @@ mainline can hold it.
 | **The `.7z` extractor that unpacks every OS update** | **p7zip 16.02 — dated 2016-05-21**, in *two* places: `usr/bin/7zr` in the rootfs, and `/media/fat/linux/7za`, which the Downloader **downloads off the internet** the first time it updates and then reuses forever | **7-Zip 26.02**, built from source in-tree. The `/media/fat/linux/7za` copy is shipped by us — **statically linked**, so it survives a rollback to an older or even stock rootfs — so that download never happens ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **NTFS** | Not supported at all | `ntfs3` in-kernel module + `ntfs-3g` automount |
 | **Image size** | 375 MiB, **13.6% free** ("93% full") | 512 MiB, **39.5% free** — 310 MiB used / 202 MiB free, temporary debug block included, measured by `./scripts/check-size-budget.sh output/images/linux.img` on the image built 2026-07-27 **with** this branch's full package set (the T5 utilities, 7-Zip, and the rtl8852cu driver all included). Floor is 15%. ⚠️ [`docs/size-budget.md`](docs/size-budget.md) still reports 60.6% free: it is a P3.3-vintage report and needs regenerating |
-| **Rootfs build recipe** | Not published — the image is distributed as a finished artifact | This repository |
+| **Rootfs build recipe** | **Not published.** `MiSTer-devel/Linux_Image_creator_MiSTer` exists, but it is an *assembler*, not a builder: `create_img.sh` runs `mkfs.ext4` and untars a prebuilt **82 MiB `rootfs.tar.bz2` committed to git**. Nothing public turns source into that tarball, so the image can be re-packed but its contents cannot be changed, patched or audited beyond `ls` | This repository |
 | **Reproducible** | No published recipe, so unverifiable | **Byte-identical across independent builds**, proven by CI ([`docs/reproducibility.md`](docs/reproducibility.md)) |
 | **SBOM / license manifest** | None published | Full `legal-info` bundle published with every release |
 | **Dependency updates** | Manual, ad-hoc | **Renovate**, covering kernel pins, firmware, and every package hash |
@@ -131,7 +132,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 | Phase | State | What that means |
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 31 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
+| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 36 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.1, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
@@ -161,6 +162,138 @@ own hardware pass.
 
 ---
 
+<a id="install-it-on-a-real-mister"></a>
+## Install it on a real MiSTer
+
+**One command, on the MiSTer itself, over SSH.** This converts an ordinary install —
+including one flashed with Mr. Fusion — to this image. It works on a stock card; you do
+not need to reflash anything.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
+```
+
+<a id="if-the-one-liner-seems-to-do-nothing"></a>
+> **On a stock card the one-liner above will fail, and fail quietly.** Verified on real
+> hardware: stock's `curl` cannot verify GitHub (`curl: (60)`), `bash` gets an empty pipe,
+> and the pipeline still **exits 0** — so it looks like nothing happened at all.
+>
+> The cause is not an expired bundle. Stock ships exactly one file in `/etc/ssl/certs/`,
+> `cacert.pem`, and it works fine — it simply is not in the hashed-symlink layout curl
+> searches by default, so curl finds no issuer. Passing `--cacert` explicitly fixes it,
+> which is what `Scripts/update.sh` has always done.
+>
+> So fetch the installer with `-k` for that one request and let it take over — it detects
+> this, **verifies the card's own bundle actually works before adopting it**, and uses it
+> for everything afterwards:
+>
+> ```sh
+> curl -fsSLk https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o /tmp/mlm.sh \
+>   && sh /tmp/mlm.sh
+> ```
+>
+> If you would rather not use `-k` at all, download `install.sh` on a machine whose TLS
+> works, check its `sha256sum` against the repo, and copy it onto the card. And if a card
+> ever turns up whose bundle is genuinely broken rather than merely mislocated,
+> `install.sh --bootstrap-ca` fetches a fresh one to `/tmp` for a single run — it explains
+> that trade-off in full before doing anything.
+>
+> You only need any of this once: this image ships a current CA bundle in the layout curl
+> expects, and refreshes it on every release.
+>
+> **`wget` is not an alternative.** The `wget` on a MiSTer is the BusyBox applet with no
+> TLS support at all — it answers every `https://` URL with `not an http or ftp url`.
+> Stock ships a real `curl`, and MiSTer's own `update.sh` uses it exclusively.
+
+Prefer to read before you run — the better habit, and this script is written to be read:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o mlm.sh
+less mlm.sh
+sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
+```
+
+`--dry-run` prints the full plan and exits. `--yes` skips the 10-second countdown,
+`--no-reboot` leaves the reboot to you.
+
+> **Read [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.** This is a
+> personal project with an unmet sustainability gate ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md)),
+> validated on one board. The ledger directly above is the honest account of what has and
+> has not been tested on hardware.
+
+### What it changes
+
+The installer prints all of this and pauses before doing anything.
+
+| | |
+|---|---|
+| `linux/linux.img`, `linux/zImage_dtb` | **Replaced** — the root filesystem and kernel. This is the point |
+| `linux/7za` | **Replaced** — 7-Zip 26.02 instead of the 2016 p7zip |
+| `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit; your comments, sections and databases are left alone, and the original is saved to `linux/.mlm-backup/downloader.ini.orig`. Created (declaring the official database) only if you don't have one |
+| `Scripts/update_linux_modernization.sh` | **Installed** — this is what updates the image from now on |
+
+**Everything else under `linux/` is rewritten with byte-identical content.** Our release
+archive *is* the stock archive with those three files swapped in, so `MidiLink.INI`,
+`ppp_options`, `uboot.img`, `updateboot`, the `_`-prefixed templates, `mt32-rom-data/` and
+`soundfonts/` come back exactly as they were. It is a no-op unless you had customised one
+— and the small ones are copied to `linux/.mlm-backup/` first in case you had.
+
+Two side effects, both caused by *any* Linux update rather than by this one: the saved
+U-Boot environment (first 512 bytes of the card) is wiped by `updateboot`, and SSH host
+keys change, because this image generates them per device instead of shipping one set to
+everybody ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) — expect a
+one-time host-key warning.
+
+**Afterwards, routine updates stop touching `/media/fat/linux/` altogether.**
+`update_linux = false` means no Linux update runs unless you run the updater, so these
+files end up *more* stable than on stock, where every official Linux update rewrites them.
+
+### What it leaves alone
+
+- **`MiSTer.ini` and every core `.ini` — not touched.** Nor `games/`, ROMs, saves, states,
+  `config/`, cores or `_Arcade/`.
+- **`linux/gamecontrollerdb/`** — explicitly excluded from the sync.
+- **Your live `u-boot.txt`** (holds this card's MAC), **`wpa_supplicant.conf`**,
+  **`user-startup.sh`**, **`samba.sh`** — only the `_`-prefixed templates ship, so the real
+  ones survive.
+- **`linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`** — copied *into* the
+  new image before it goes live, so your network identity carries over.
+
+### Afterwards
+
+Your cores keep updating normally — `update_all.sh` and `Scripts/update.sh` simply stop
+touching the Linux image, in either direction. That is what stops the official image
+overwriting this one; see [ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md).
+Updating *this* image is one deliberate action:
+
+```sh
+/media/fat/Scripts/update_linux_modernization.sh            # update
+/media/fat/Scripts/update_linux_modernization.sh --status   # where am I?
+```
+
+**To undo, at any time:** `update_linux_modernization.sh --restore-stock`, then run your
+normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md).
+
+### The other two ways in
+
+- **A fresh card:** flash `sdcard.img.xz` from a [release](https://github.com/mcfbytes/Buildroot_MiSTer/releases).
+  It self-expands on first boot and arrives already configured, with Jotego's cores
+  enabled. See [`docs/user/sdcard-flashing.md`](docs/user/sdcard-flashing.md).
+- **By hand:** [`docs/user/onboarding.md`](docs/user/onboarding.md) walks through the same
+  steps individually, if you would rather not run an installer at all.
+
+### On `curl | bash`
+
+You are piping a remote script into a shell as root, which is worth a moment's thought.
+It is the same trust model MiSTer's own `Scripts/update.sh` already uses — it fetches
+`dont_download.sh` from `raw.githubusercontent.com` and executes it — and the anchor is
+HTTPS to GitHub. The installer does **not** pin a hash of the updater it downloads: both
+come from the same repository over the same TLS connection, so a pin would add no real
+assurance while guaranteeing the file goes stale. If that trade isn't one you want to
+make, use the download-and-read form above, or the by-hand route.
+
+---
+
 ## What this improves
 
 ### 1. The kernel: five years of stable releases, and a way back to mainline
@@ -175,7 +308,7 @@ Renovate opening a PR on every `.y` bump.
 The interesting part is not the version number — it's the **shape of the delta**. The
 fork's **123 reconciled commits** (108 on the shipped `MiSTer-v5.15` branch plus 15
 residue commits that existed only on the older v5.14/v5.13.12 branches) are down to
-**31 carried patch files**. Every remaining drop is either verifiably in mainline 6.18,
+**36 carried patch files**. Every remaining drop is either verifiably in mainline 6.18,
 replaced by a maintained package, or recorded as a deliberate decision.
 
 **Every commit in the fork was independently reconciled**, each with a machine-readable,
@@ -445,7 +578,7 @@ configs/                 mister_de10nano_defconfig  (the shipped image)
                          mister_installer_defconfig (SD-card installer cpio)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         the 31 carried MiSTer kernel patches, + series
+  linux-patches/         the 36 carried MiSTer kernel patches
   linux-patches-beta/    symlinks to the above + 5 re-anchored real copies for 7.x
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
@@ -642,9 +775,38 @@ The main set is seven files (the Downloader-contract set: the `release_YYYYMMDD.
 `-rt` files per kernel variant, plus the separately contracted `sdcard.img.xz`.
 
 Distribution is **opt-in and requires zero cooperation from anyone**: a community
-`db.json`, served from GitHub Pages, that the standard on-device Downloader reads. Add one
-file to your card and future releases arrive the same way official updates do; remove it
-and the next official update puts stock back. Rolling back is always safe.
+`db.json`, served from GitHub Pages, that the standard on-device Downloader reads.
+
+**Coexistence with the official channel is the hard part, and it is solved**
+([ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md)). The
+Downloader applies at most **one** Linux image per run, and `distribution_mister` always
+offers one too. When several databases offer one, it sorts the candidates by their
+**position in `downloader.ini`** and takes the first — and since drop-in databases are
+merged *after* the base ini's own sections, and Update All pins `[distribution_mister]` to
+the top on every rewrite, the official image wins **whenever that database is actually processed** — which is most real runs, since its content changes whenever any core does. (A run where nothing changed skips the database entirely and applies no Linux image at all: `can_skip_db` returns true when `file_checking` is `FASTEST`, the steady-state default, and a skipped database's `linux` entry is never looked at.) Not a race that might go
+our way: a loss whenever it is contested, silently reverting the user on a routine core
+update.
+
+So this project doesn't compete for that slot; it closes it:
+
+- `[MiSTer] update_linux = false` in `downloader.ini` stops **every** normal run from
+  applying **any** Linux image. Cores, ROMs, MRAs and Jotego keep updating untouched.
+- `Scripts/update_linux_modernization.sh` runs the Downloader against its **own private
+  ini** naming one database, so there is nothing to sort and nothing to lose.
+- That is the entire mechanism. No boot script, no daemon, no state files: the running
+  system already tells you what you need (`/MiSTer.version` says which image, and
+  `update_linux` says whether it is protected), and nothing re-applies the setting behind
+  you — the updater is the only thing that writes it, and only when you run it. Which is
+  also why reverting is one edit, with nothing to opt out of.
+
+Verified on hardware: a full `update_all.sh` run installed 379 cores, rebooted, and came
+back with `linux.img` and `zImage_dtb` **byte-identical**, the Downloader's own config
+dump recording `update_linux: false` and `UPDATE_LINUX: undefined` — Update All never
+overrides it. The shipped `downloader.ini` also reproduces Update All's default database
+set plus **Jotego**, so a fresh `sdcard.img` flash
+needs no user action at all. Rolling back is one command,
+`update_linux_modernization.sh --restore-stock` — see
+[`docs/user/rollback.md`](docs/user/rollback.md).
 
 One subtlety worth calling out because getting it wrong bricks the update loop: stock's
 Downloader compares versions with a **strict string inequality**, not an ordering, and
@@ -655,7 +817,8 @@ image stamp and the published version now derive from the tagged release date in
 ([ADR 0018](docs/decisions/0018-db-json-version-is-release-date-driven.md),
 [`docs/db-json-versioning.md`](docs/db-json-versioning.md))
 
-Start here if you want to run it: [`docs/user/onboarding.md`](docs/user/onboarding.md) ·
+Start here if you want to run it: [**one-command install**](#install-it-on-a-real-mister) ·
+[`docs/user/onboarding.md`](docs/user/onboarding.md) ·
 [`docs/user/rollback.md`](docs/user/rollback.md) ·
 [`docs/user/faq.md`](docs/user/faq.md) ·
 [`docs/user/serial-recovery.md`](docs/user/serial-recovery.md)

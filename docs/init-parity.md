@@ -48,8 +48,8 @@ reflects the **second, corrected** build.
 
 | Status | Count | Meaning |
 |---|---|---|
-| identical | 6 | Byte-identical to stock, or functionally identical modulo cosmetic/tooling differences (documented per row) |
-| adapted | 6 | Behavior intentionally differs from stock, for a stated reason |
+| identical | 8 | Byte-identical to stock, or functionally identical modulo cosmetic/tooling differences (documented per row) |
+| adapted | 4 | Behavior intentionally differs from stock, for a stated reason |
 | dropped | 0 | — |
 
 All 12 of the verified stock S-scripts are represented in the built image, either
@@ -81,8 +81,11 @@ package-provided, unchanged from stock).
 
 P2.1's package set (a superset of stock's, per `docs/package-manifest.md` — ~5 years
 newer, more packages) installs several init scripts stock never had:
-`S01seedrng`, `S02sysctl`, `S11modules`, `S30rpcbind`, `S35iptables`, `S50crond`,
-`S60nfs`. None of these conflict with anything above (verified by filename/number and
+`S01seedrng`, `S02sysctl`, `S11modules`, `S35iptables`, `S50crond`. (This list also
+carried `S30rpcbind` and `S60nfs` when P2.3 ran, while `nfs-utils` still built its
+default-`y` server half; ADR 0022 made NFS client-only and `rpcbind` was never selected,
+so neither script exists today — `scripts/ci-tests.sh` now asserts both **absent**.) None
+of these conflict with anything above (verified by filename/number and
 by the daemons they start), none write to `/` at runtime, and none are required by
 any P2.3 acceptance item. Left as package defaults; not in scope for this task
 beyond this note. Flagged here for the record, per "diverge from stock only with a
@@ -141,7 +144,7 @@ regardless, so the worst case is slow, never weak.
 | File | Status | Notes |
 |---|---|---|
 | `/etc/resolv.conf` | **identical (Buildroot default, kept)** | Symlink `-> ../run/resolv.conf` — Buildroot's own skeleton default, per ADR 0011. **Not overlaid on purpose** — overlaying it as a regular file would break DNS (see the ADR). Verified still a symlink after the full build (Check 1). |
-| `/etc/fstab` | **identical** | Byte-for-byte reproduction of stock (`diff` exit 0): ext4 `rw,noauto,noatime,nodiratime` root, tmpfs on `/tmp`, `/run`, `/dev/shm`, `/var/lib/samba`, `/var/db/dhcpcd`, plus `proc`/`devpts`/`sysfs`. |
+| `/etc/fstab` | **adapted** (2 additive deviations) | All of stock's entries reproduced verbatim (this row said "identical / byte-for-byte, `diff` exit 0" and was stale — two tmpfs lines stock does not have were appended later: `tmpfs /var/cache/samba tmpfs mode=0755 0 0` per P3.6 / `docs/samba-parity.md` §3, asserted by `scripts/ci-tests.sh`, and `tmpfs /var/lib/seedrng tmpfs mode=0700 0 0` for BusyBox `S01seedrng`. `diff` against `work/imgroot/etc/fstab` now exits 1 with exactly those two lines plus a 6-line explanatory comment, and zero removals): ext4 `rw,noauto,noatime,nodiratime` root, tmpfs on `/tmp`, `/run`, `/dev/shm`, `/var/lib/samba`, `/var/db/dhcpcd`, plus `proc`/`devpts`/`sysfs`. |
 | `/etc/hostname` | **identical** | `MiSTer\n` (7 bytes), byte-for-byte match. |
 | `/etc/hosts` | **identical** | Byte-for-byte match (`127.0.1.1 MiSTer`). Buildroot's own finalize hook writes `127.0.1.1 buildroot` into `output/target/etc/hosts` **before** the overlay is copied (confirmed in the build log); the overlay copy runs later and wins — verified in the extracted image. |
 | `/etc/network/interfaces` | **adapted (v9)** (1 additive deviation) | `lo` + `wlan0`/`wlan1` with the `wpa_supplicant -D nl80211,wext` pre-up hooks, all of stock's directives reproduced unchanged. No `eth0` stanza — matches stock exactly; wired ethernet is handled by dhcpcd's own default (manage-everything-not-explicitly-excluded) behavior, not ifupdown. **This row said "identical / byte-for-byte" until now and was stale:** P2.3 authored it byte-identical, but `4cf2fc7` (v9) added a 9-line header comment plus one `pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info >/dev/null 2>&1; do sleep 1; i=$((i+1)); done` line per `wlan` stanza, because USB WiFi drivers that register `nl80211` asynchronously (mainline `rtw88`/`rtw89`) otherwise lose the race and `wpa_supplicant` fails with "interface not found" on a cold boot. `diff` against `work/imgroot/etc/network/interfaces` now exits 1 with exactly those 11 added lines and zero removals (re-verified). See `docs/wifi-parity.md` §1 and §9 — §9's hotplug rule depends on that loop existing. |

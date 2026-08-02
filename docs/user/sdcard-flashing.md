@@ -132,15 +132,22 @@ longer exists on the card, and every subsequent boot is a normal MiSTer boot.
 Run **`Scripts/update_all.sh`** from the MiSTer menu to fetch current cores and bring
 everything up to date. The card ships with a working base, not a current one.
 
-> **Before you run it, one important caveat.** A freshly flashed card is running this
-> project's Linux, but it is not yet *opted in* to this project's update database. The
-> official updater has no concept of "newer" — it only sees that your Linux isn't the
-> official one, and puts stock back. So **your first `update_all.sh` run will quietly
-> replace this project's Linux with stock** unless you complete
-> [`onboarding.md` Step 1](onboarding.md#step-1) first (a two-line file on the card).
-> Nothing breaks either way — cores and everything else update normally, and you can
-> opt in afterwards and get this image back — but if you flashed this card *because*
-> you want this project's Linux, do the opt-in first.
+> **No caveat here any more — the card ships already configured.** It carries a
+> `downloader.ini` with `[MiSTer] update_linux = false`, which stops every normal update
+> run from applying *any* Linux image, so `update_all.sh` cannot replace this project's
+> Linux with stock. Cores, ROMs, MRAs and Jotego update exactly as usual; the Linux image
+> is simply left alone. This image also re-checks that setting on every boot, so it stays
+> that way.
+>
+> Updating *this project's* Linux is a separate, deliberate action: run
+> **`Scripts > update_linux_modernization`**. Confirm the card's state at any time with
+> `Scripts/update_linux_modernization.sh --status`, which should report
+> `Official Linux updates: DISABLED`.
+>
+> (Earlier revisions of this page warned that your first `update_all.sh` would revert you
+> to stock. That was true of the older opt-in mechanism and is no longer true of a card
+> flashed from this image — see
+> [ADR 0025](../decisions/0025-update-linux-kill-switch-and-private-updater.md).)
 
 Also expected on a fresh card:
 

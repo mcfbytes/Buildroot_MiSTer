@@ -230,7 +230,7 @@ CI must fetch it and verify sha256 `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e57
 from-source build — same commit, `8dcc3484` — ships opt-in only and is validated by
 behavioural parity (P5.2), not byte identity.)*
 
-### 3.3 `mt` is a MiSTer-only U-Boot command (was a Phase-5 blocker; moot under ADR 0017)
+### 3.3 `mt` is a MiSTer-only U-Boot command (a Phase-5 blocker again under ADR 0024; solved with `itest.l`)
 
 `fpgacheck` uses `mt`, which is **not** an upstream U-Boot command. It was added by this fork
 (`u-boot` commit `c0ed23f52e` "Implement simple memory test against value"):
@@ -246,9 +246,11 @@ behavioural parity (P5.2), not byte identity.)*
 
 So `if mt <addr> <val>; then …` means *"if the word at `addr` equals `val`"*. **Any mainline
 U-Boot port must re-implement `mt` or rewrite `fpgacheck` without it** (e.g.
-`setexpr` + `test`). *(ADR 0017 dissolved this blocker: Phase 5 now builds this fork
-itself, so `mt` ships with it. The paragraph stands as part of the record of why the
-mainline port was the more expensive path.)*
+`setexpr` + `test`). *(ADR 0017 briefly dissolved this blocker by building the fork;
+**[ADR 0024](decisions/0024-mainline-uboot-capability-artifact.md) superseded that** —
+Phase 5 now builds **mainline U-Boot 2026.04**, so `mt` does **not** ship. The
+replacement is `itest.l *<addr> == <val>`, verified by execution in a U-Boot sandbox
+across all three warm-reboot dispatch cases — `docs/uboot-mainline-port.md` §3.4.)*
 
 ---
 
@@ -919,8 +921,10 @@ Also preserved by construction, and worth stating so P1.10 does not "improve" th
 * **N3 — `/dev/loop8` is a kernel-patch artifact with a `part_shift`-dependent minor.** Nothing
   in userland depends on it. P1.10 must use `losetup -f`, not a hardcoded node. (§8.3)
 * **N4 — `mt` is a MiSTer-only U-Boot command.** Any mainline U-Boot port must
-  re-implement it or rewrite `fpgacheck`. (§3.3) *(Moot since ADR 0017: Phase 5 builds
-  the fork, `mt` included.)*
+  re-implement it or rewrite `fpgacheck`. (§3.3) *(Live again under
+  [ADR 0024](decisions/0024-mainline-uboot-capability-artifact.md), which builds mainline
+  — resolved not by re-implementing `mt` but with `itest.l *<addr> == <val>`, verified by
+  execution: `docs/uboot-mainline-port.md` §3.4.)*
 * **N5 — `uboot.img` cannot be rebuilt byte-identically** (compiled-in `+0800` timestamp, no
   `SOURCE_DATE_EPOCH`, pinned 2020 Arm toolchain). It must be *fetched by hash*, never built.
   (§3.2) *(Under ADR 0017 this holds for the default channel; the Phase-5 from-source

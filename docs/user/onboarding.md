@@ -9,13 +9,26 @@ irreversible — see [`rollback.md`](rollback.md) if you ever want back out.
 This document is the exact, copy-pasteable procedure. It assumes you already have a
 working MiSTer (any recent stock image) that updates itself normally.
 
+> **There is a one-command version of everything below**, if you would rather not do it by
+> hand:
+>
+> ```sh
+> curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
+> ```
+>
+> It performs exactly the steps on this page, prints what it will change, and waits 10
+> seconds before starting. See the
+> [README's install section](../../README.md#install-it-on-a-real-mister). This page is
+> still worth reading — it explains *why* each step exists, which matters when something
+> looks wrong later.
+
 **Both common updaters work, and you don't need to know which one you use.** Whether you
 run `update_all.sh` (Update All, the most common choice) or `Scripts/update.sh`
 (`Downloader_MiSTer` directly), the opt-in below is identical. Update All doesn't replace
 the Downloader — it *runs* it, handing it the same `/media/fat/downloader.ini`, which is
-what makes the drop-in file below discoverable either way. Where the two genuinely differ
-— where a setting lives, who reboots you, and which one accepts the `--run-only` option —
-it's called out explicitly at that point in the text.
+the file the setup below adjusts. Where the two genuinely differ — who reboots you, and
+which one accepts command-line options — it's called out explicitly at that point in the
+text.
 
 ---
 
@@ -34,167 +47,274 @@ on every release, at a stable URL:
 https://mcfbytes.github.io/Buildroot_MiSTer/db.json
 ```
 
-Adding a small file to your SD card tells the Downloader to also poll that URL. That's
-the entire opt-in.
+But there is a catch, and it is the whole reason this page exists.
 
-> **The opt-in is also what keeps you on this image.** This is worth understanding before
-> you start, because the failure it causes looks like a bug and isn't. The version check
-> is a plain "is it different?" — it has no concept of newer or older. So if our database
-> isn't configured, the official one is the only voice in the room, it notices your
-> version isn't the official one, and it reinstalls stock over you. That is the intended
-> design (it's what makes [rollback](rollback.md) trivial), but it has a sharp edge:
->
-> **If you install this image by any means other than the opt-in below — copying
-> `linux.img` and `zImage_dtb` onto the card by hand, say — your very next routine
-> `update_all.sh` will quietly put stock back.** Nothing is broken and nothing warns you;
-> the updater is doing exactly its job. Complete Step 1 and your image stays put.
+**The Downloader applies at most ONE Linux image per run.** The official
+`distribution_mister` database always carries a `linux` entry too, and its version will
+never match ours. So when both are configured, both are candidates for that single slot —
+and the Downloader picks the one that appears **first in `downloader.ini`'s database
+order**.
+
+That is not a coin flip you might win. It is a loss every time: databases registered by
+drop-in files are always merged *after* the ones in `downloader.ini` itself, and Update All
+pins `[distribution_mister]` to the *top* of that file every time it rewrites it. On any
+card Update All has ever touched, the official image wins deterministically, and a routine
+`update_all.sh` run silently puts you back on the stock image. Nothing warns you; the
+updater is doing exactly its job.
+
+So this project does not try to win that race. It removes it:
+
+1. **`update_linux = false`** in the `[MiSTer]` section of `/media/fat/downloader.ini`
+   switches the Linux update off for *every* normal Downloader run — `update_all.sh` and
+   `Scripts/update.sh` alike. Cores, ROMs, MRAs, Jotego, everything else keeps updating
+   exactly as before. The official Linux image simply can no longer be applied, so it can
+   no longer overwrite ours. There is nothing left to race.
+
+2. **`Scripts/update_linux_modernization.sh`** runs the Downloader against its **own
+   private configuration** — a separate ini naming one database, with the Linux update
+   switched on. One candidate means nothing to sort and nothing to lose. It does not read
+   your `downloader.ini`, so a hand-edited or broken one cannot stop your updates, and our
+   updates cannot disturb your database list.
+
+This is safe against Update All, verified against its source and then on real hardware:
+Update All preserves the `[MiSTer]` section **verbatim** when it rewrites
+`downloader.ini`, and it only ever sets the `UPDATE_LINUX` environment variable to
+`false`, never to `true`. It cannot turn our setting back on.
+
+And if something else ever does flip it, `--status` tells you and re-running the script
+puts it back. There is deliberately no boot script or daemon watching the setting: nothing
+re-applies it behind you, which is exactly what makes rolling back one edit rather than a
+fight.
+
+> **If you install this image by any means other than the setup below** — copying
+> `linux.img` and `zImage_dtb` onto the card by hand, say — **your very next routine
+> `update_all.sh` will quietly put stock back.** Do Step 1 and your image stays put.
+
+> **Already flashed our `sdcard.img`?** Then all of this is already done for you — the
+> card ships with `downloader.ini` and the updater script already in place. Skip to
+> [Step 2](#step-2) and just confirm with
+> `Scripts/update_linux_modernization.sh --status`.
 
 ---
 
 <a id="step-1"></a>
-## Step 1 — add the drop-in database file
+## Step 1 — install the updater script
 
-**Recommended: a drop-in file, not an edit to your existing `downloader.ini`.** The
-Downloader auto-discovers any `*.ini` file matching `/media/fat/downloader_*.ini` or
-`/media/fat/downloader/*.ini` and treats each one as an additional database. Using this
-mechanism means you never touch your existing `downloader.ini` at all — nothing to get
-wrong, nothing to merge back if you later remove it.
-
-Create this file on the SD card's FAT partition (either path works; pick one):
+Download **one file** to your SD card and run it. It configures everything else itself.
 
 ```
-/media/fat/downloader_mister_linux_modernization.ini
+/media/fat/Scripts/update_linux_modernization.sh
 ```
 
-or
+Get it from the repository (over SSH, or by copying it onto the card from a PC):
 
-```
-/media/fat/downloader/mister_linux_modernization.ini
-```
-
-with exactly this content:
-
-```ini
-[mister_linux_modernization]
-db_url = https://mcfbytes.github.io/Buildroot_MiSTer/db.json
+```sh
+curl -fL -o /media/fat/Scripts/update_linux_modernization.sh \
+  https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+chmod +x /media/fat/Scripts/update_linux_modernization.sh
 ```
 
-That's the whole file. Two lines. No other keys are required.
+Then run it once. From the MiSTer menu it appears in **Scripts** as
+`update_linux_modernization`; over SSH it is just:
 
-**Alternative (if you'd rather keep one file):** append the same two lines as a new
-section anywhere inside your existing `/media/fat/downloader.ini`. Its position in the
-file — above or below `[distribution_mister]`, first or last — makes **no difference to
-the outcome**. Don't spend time experimenting with section order; see the next section
-for why. Update All rewrites `downloader.ini` from time to time, but it only manages the
-databases it knows about — a section it doesn't recognize, like ours, is left alone. (It
-may reformat the file and drop comments *inside* our section; the drop-in file above
-avoids that entirely, which is one more reason to prefer it.)
+```sh
+/media/fat/Scripts/update_linux_modernization.sh
+```
+
+On that first run it will:
+
+1. **Set `update_linux = false`** in the `[MiSTer]` section of
+   `/media/fat/downloader.ini`. This is a surgical edit — it changes that one key and
+   leaves every other byte, section and comment of your file alone, and it does **not**
+   add or remove any of your databases.
+
+   The one exception is if you have no `downloader.ini` at all, in which case it creates
+   one — and that file also declares `[distribution_mister]`, the official database. It
+   has to: Update All seeds its defaults only when `downloader.ini` is absent, so creating
+   a file with no databases in it would suppress that seeding and quietly leave you with
+   no core updates at all.
+2. **Generate its own private configuration** under
+   `/media/fat/Scripts/.config/mister_linux_modernization/`, naming our database and
+   nothing else. This is regenerated on every run, so it can never go stale, and it is
+   deliberately *not* placed in `/media/fat` — the Downloader looks for drop-in databases
+   in whichever directory the ini it was given sits in, so an ini there would pull your
+   whole database list into what is meant to be a Linux-only run.
+3. **Update the Linux image** from our database, then reboot if a new one was installed.
+
+Every one of those steps is idempotent. Re-running the script is always safe, and it
+re-checks (and repairs) the configuration each time before it updates — so if anything
+ever knocks the setup out of shape, running the script puts it back.
+
+Useful flags:
+
+| Flag | What it does |
+|---|---|
+| *(none)* | Check, update if a newer release exists, reboot afterwards |
+| `--no-reboot` | Same, but never reboots — prints what to do instead |
+| `--force` | Run the update even when the installed and published versions match |
+| `--setup-only` | Repair the configuration and stop. No download |
+| `--status` | Report only. Changes nothing |
+| `--restore-stock` | Hand the Linux image back to the official database ([rollback](rollback.md)) |
+
+It also honours `linux/no_auto_reboot` on the card, which suppresses the reboot the same
+way `--no-reboot` does.
 
 ---
 
 <a id="step-2"></a>
-## Step 2 — check that Linux updates aren't switched off
+## Step 2 — confirm it took
 
-**If you skip this and Linux updates are disabled, opting in does nothing at all — and
-nothing tells you so.** Our database gets fetched and parsed correctly, and its Linux
-entry is then silently ignored. No error, no warning, no log line. This is the single
-most likely reason for "I followed the guide and nothing happened."
+```sh
+/media/fat/Scripts/update_linux_modernization.sh --status
+```
 
-- **Update All users:** open Update All's settings screen and make sure the option to
-  update Linux is **on**. It is on by default, so if you've never touched it, you're
-  fine. If you turned it off at some point, our image can never install.
-- **`Scripts/update.sh` (Downloader directly) users:** this is controlled by
-  `update_linux` in the `[MiSTer]` section of `/media/fat/downloader.ini`. It defaults to
-  true; if that line is present and set false, our image can never install.
+The line that matters is **Official Linux updates: DISABLED** — that is the protection
+being in place, not a problem:
 
-This switch is global — it is not per-database. There is no way for our database to
-opt itself back in, which is exactly why it's worth checking once, now.
+```
+MiSTer Linux Modernization -- status
+
+  Installed Linux image : 260731
+  Kernel                : 6.18.41
+  Latest published      : 260731
+                          (up to date)
+
+  Official Linux updates: DISABLED   <- this image is protected
+  downloader.ini        : /media/fat/downloader.ini
+  Update channel        : https://mcfbytes.github.io/Buildroot_MiSTer/db.json
+  Boot-time upkeep      : on
+  Last run log          : /media/fat/Scripts/.config/downloader/mister_linux_modernization.log
+```
+
+If it instead says `Official Linux updates: true` (or anything other than `DISABLED`),
+you are **not** protected and a routine `update_all.sh` could replace this image. Run the
+script with `--setup-only` to fix it.
+
+`/MiSTer.version` is the release date as `YYMMDD`; compare it against the newest release
+on the [Releases page](https://github.com/mcfbytes/Buildroot_MiSTer/releases) to see
+whether you are current.
+
+> **Note the inversion, if you have read older versions of this page.** `update_linux`
+> being **false** is now the *correct, wanted* state. Earlier revisions of this document
+> told you to make sure Linux updates were switched **on**, because back then our image
+> arrived through a normal Downloader run and had to win a race to do it. It no longer
+> works that way, and `update_linux = true` now means the **official** image can overwrite
+> ours on any routine update.
 
 ---
 
 <a id="multi-db-ordering-rule"></a>
-## The multi-db ordering rule (read this — it's the difference between "it just works" and a support thread)
+## Why there is no longer a race to lose
 
-`Downloader_MiSTer` only ever applies **one** Linux update per run, even if multiple
-configured databases each carry a `linux` entry. If more than one does, it logs:
+`Downloader_MiSTer` only ever applies **one** Linux update per run, even if several
+configured databases each carry a `linux` entry. When more than one does, it logs:
 
 ```
 Too many databases try to update linux. Only 1 can be processed. Ignoring: <db_id, ...>
 ```
 
-and picks whichever database's own small JSON document **finished downloading and
-parsing first** — a genuine race between concurrent worker threads, not a queue you can
-control from `downloader.ini`.
+and picks whichever database's document **finished downloading and parsing first** — a
+genuine race between concurrent worker threads, not a queue you can control from
+`downloader.ini`. Section order makes no difference; the Downloader fetches every
+configured database concurrently and races them.
 
-**The natural assumption — that putting our section above or below
-`[distribution_mister]` decides which one wins — is wrong.** Section order in
-`downloader.ini` has no bearing on which database's fetch completes first; the Downloader
-concurrently fetches every configured database (six threads by default) and races them.
+**This project used to try to win that race**, by keeping its `db.json` to a few hundred
+bytes so it would parse before `distribution_mister`'s multi-megabyte catalog. That works
+most of the time. "Most of the time" is not good enough for something whose failure mode
+is silently reverting the user's operating system, so it is no longer how any of this
+works.
 
-**What actually decides it, reliably, in practice: document size.** `distribution_mister`'s
-own catalog is a multi-megabyte, multi-thousand-entry community database. This project's
-`db.json` carries nothing but a `db_id`, a timestamp, and the `linux` entry — a few hundred
-bytes. A sub-kilobyte document finishes downloading and parsing before a multi-megabyte one,
-in virtually every real network condition, independent of thread-scheduling luck. That's why
-this project deliberately keeps its `db.json` minimal forever, and it's also why the drop-in
-mechanism above is the right way to opt in: it adds our tiny database alongside
-`distribution_mister` without disturbing anything else in your configuration.
+Instead, `update_linux = false` means **no** database gets the Linux slot during a normal
+run — not ours, not the official one. The contest is cancelled rather than entered. The
+only thing that applies a Linux image is
+`Scripts/update_linux_modernization.sh`, which asks for exactly one database by name
+(`--run-only mister_linux_modernization`) and so has no one to race.
 
-**If you ever suspect the wrong database won** (e.g. you don't see the update you expect,
-or you see one you didn't expect), check the Downloader's own log
-(`Scripts/.config/downloader/<mode>.log` on the SD card) for the `linux_multiple_dbs`
-warning line above — it names every database that lost the race, by id. That line is the
-single most useful piece of information to include in a bug report (see
-[`faq.md`](faq.md#how-to-report-a-bug)).
+Two consequences worth knowing:
+
+- **You should never see the `linux_multiple_dbs` warning again.** If you do, something
+  has re-enabled `update_linux`; run `update_linux_modernization.sh --status` to check,
+  and the script itself will repair it.
+- **`db.json` no longer has to stay tiny to be correct.** It still is small, but that is
+  now a nice property rather than the thing holding the mechanism up.
+
+If an update ever does something you didn't expect, the Downloader's own log
+(`Scripts/.config/downloader/downloader.log` on the SD card) is the thing to include in a
+bug report (see [`faq.md`](faq.md#how-to-report-a-bug)).
+
+---
+
+## Editing `downloader.ini` yourself
+
+The card ships one, and it is an ordinary `downloader.ini` — every setting in it is a
+normal, supported Downloader option that Update All also understands. It is deliberately
+kept to a two-line header rather than a page of comments: this file is rewritten by other
+tooling, and comments attached to database sections do not survive that. Three things are
+worth knowing before you edit it.
+
+**`update_linux` takes a word, and only a word.** `false`, `no`, `n`, `f`, `off` and `0`
+all mean false; `true`, `yes`, `y`, `t`, `on` and `1` all mean true. Anything else makes
+**every** Downloader run fail with a traceback — including the official one — so if you
+change this line, use one of those.
+
+**Do not delete `[distribution_mister]`.** It looks redundant, because a card with no
+`downloader.ini` at all still gets the official database. That is the trap: the Downloader
+only auto-adds it when the base ini declares **no** databases, and this file declares
+several. Removing the section does not fall back to the default — it silently stops your
+main cores from updating. The same applies to any database you want kept.
+
+**Comments survive above and inside `[MiSTer]`, and nowhere else.** When Update All
+rewrites the file it re-emits everything before the first section, and the `[MiSTer]`
+section itself, as raw text — but database sections go through a plain ini writer that
+drops their comments. Put notes to yourself at the top.
 
 ---
 
 <a id="forcing-a-run"></a>
-## Forcing a run of just this database (optional)
+## What the updater script actually runs
 
-If you don't want to wait for a scheduled run, or you want to take the race above out of
-the picture entirely, you can tell the Downloader to run **only** this database:
+Nothing in `update_linux_modernization.sh` is magic. Stripped of the checks, it is one
+command against a private configuration file:
 
+```sh
+# /media/fat/Scripts/.config/mister_linux_modernization/mister_linux_modernization.ini
+#   [MiSTer]
+#   update_linux = true
+#   file_checking = exhaustive
+#
+#   [mister_linux_modernization]
+#   db_url = https://mcfbytes.github.io/Buildroot_MiSTer/db.json
+
+DOWNLOADER_INI_PATH=/media/fat/Scripts/.config/mister_linux_modernization/mister_linux_modernization.ini \
+UPDATE_LINUX=true ALLOW_REBOOT=0 \
+  /tmp/dont_download.sh --run-only mister_linux_modernization
 ```
-/media/fat/Scripts/update.sh --run-only mister_linux_modernization
-```
 
-This skips every other database, so there is only one Linux entry to consider and nothing
-to race — it is the deterministic way to pull our image, and the right thing to use when
-reproducing a problem for a bug report.
+- **The private ini** declares one database and turns the Linux update on for this run
+  only. Your `downloader.ini` is never read, so nothing you have done to it can break our
+  updates and nothing we do can disturb your database list.
+- **It lives in a directory of its own**, not in `/media/fat`. The Downloader discovers
+  drop-in databases by globbing the directory the ini it was handed sits in — an ini
+  dropped in `/media/fat` would pull in every `downloader_*.ini` on the card and turn a
+  Linux-only check into a full core update.
+- **`--run-only`** is a fail-closed assertion rather than a mere filter. If the private ini
+  were ever missing or empty, the Downloader would auto-add `distribution_mister` (it does
+  that whenever the base ini declares no databases) and the run would install the *stock*
+  image. With `--run-only`, an unconfigured id is rejected long before the Linux update is
+  reached.
 
-Three caveats:
+Three things worth knowing:
 
-- **This does not replace [Step 1](#step-1) — it needs it.** `--run-only` can only select
-  a database you've already configured. If you skip Step 1 you'll get:
-
-  ```
-  Invalid database ids: mister_linux_modernization
-  ```
-
-  which is misleading: the id is correct, it just isn't configured yet. Do Step 1 first.
-- **This is a `Downloader_MiSTer` option, not an Update All one.** `update_all.sh` does
-  not pass options through to the Downloader, so `update_all.sh --run-only ...` does
-  nothing useful. Use `Scripts/update.sh` as shown above. This does not change or
-  conflict with your Update All setup in any way — it's just a one-off run.
-- **It updates *only* Linux this time.** Cores, ROMs and everything else your normal
-  update would fetch are skipped for that run. Your next normal `update_all.sh` picks
-  them up again as usual.
-
-The "Linux updates are switched off" gate from [Step 2](#step-2) still applies here —
-`--run-only` cannot override it.
-
-### One Update All quirk worth knowing
-
-If you open Update All's **settings screen** and choose the option that exits *without
-saving* but still runs, that particular run is driven from a temporary configuration file
-in `/tmp` rather than your real `/media/fat/downloader.ini`. Drop-in files are looked for
-next to whichever configuration file is in use — so for that one run, our database is not
-seen and no Linux update happens.
-
-This is harmless and self-correcting: any normal run afterwards behaves as documented.
-But if you've just opted in, went through the settings screen, and saw nothing happen,
-this is very likely why — run it again normally, or use the `--run-only` command above.
+- **This cannot delete anything of yours.** Skipping a database is not removing it.
+  Downloader only removes a database's files through its explicit *uninstall* command, and
+  the local store — one shared file, whichever ini was used — is loaded whole and saved
+  whole. Databases not in this run are carried as non-current and their path claims veto
+  deletion.
+- **`--run-only` cannot override `update_linux` on its own.** That is what
+  `UPDATE_LINUX=true` is for. `Scripts/update.sh --run-only mister_linux_modernization`
+  without it does nothing at all, silently, because the global switch is still off.
+- **It updates *only* Linux.** Cores, ROMs and everything else are skipped for that run.
+  Your next normal `update_all.sh` picks them up as usual.
 
 ---
 
@@ -214,20 +334,18 @@ Stopping this will make your SD unbootable!
 Do not power off during this phase. It normally takes well under a minute.
 
 **A reboot is required** to actually run the new kernel; the flash phase alone does not
-switch anything live. Who performs that reboot depends on how you update — this is the
-one place the two updaters genuinely differ:
+switch anything live.
 
-- **`update_all.sh` (Update All):** Update All explicitly *forbids* the Downloader from
-  rebooting and handles it itself once its whole run (not just the Linux part) is done.
-  So you will **not** see the Downloader's own 30-second reboot countdown. Update All
-  reboots automatically by default; if you turned its auto-reboot off, it prints
-  "You should reboot" and leaves it to you.
-- **`Scripts/update.sh` (Downloader directly):** the Downloader sets a reboot flag and,
-  by default, reboots about 30 seconds after the run finishes — a longer pause than its
-  usual 5-second wait, to give you a moment to read the message.
+- **`update_linux_modernization.sh` (the normal way):** the Downloader sets a reboot flag
+  and reboots about 30 seconds after the run finishes — a longer pause than its usual 5
+  seconds, to give you time to read the message. Pass `--no-reboot` and it will instead
+  tell you a reboot is needed and leave it to you.
+- **`update_all.sh`** never reboots you for *our* Linux image, because with
+  `update_linux = false` it never applies one. (It still reboots for its own reasons, e.g.
+  after a core update, exactly as it always has.)
 
-Either way, if nothing reboots on its own, just reboot manually. Nothing is in a
-half-applied state while you wait: the new kernel simply isn't running yet.
+If nothing reboots on its own, just reboot manually. Nothing is in a half-applied state
+while you wait: the new kernel simply isn't running yet.
 
 After rebooting:
 

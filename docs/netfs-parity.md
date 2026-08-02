@@ -104,7 +104,7 @@ Items 1–3 and the `CONFIG_NFSD` half of item 5 are **gated in CI**, in
 `scripts/ci-tests.sh`'s "P3.10 — Network filesystem client parity" section: the
 helpers are asserted present in `rootfs.tar`, `rpc.nfsd`/`rpc.mountd`/`exportfs`/
 `S60nfs`/`rpcbind` are asserted absent, and `CONFIG_NFSD` is asserted unset in the
-**resolved** `output/build/linux-*/.config` rather than in `configs/linux.config`
+**resolved** `output/build/linux-*/.config` rather than in `board/mister/de10nano/linux.config`
 (a minimal defconfig, where an absent symbol may still be on, and which a package's
 `LINUX_CONFIG_FIXUPS` would not touch anyway). That section previously asserted the
 *opposite* — no `mount.nfs`, per P3.10's original call — and failed this branch's
@@ -119,7 +119,7 @@ deleted, because the client-only shape is the part worth holding onto.
 | `nfs-utils` | 1.00 MiB | |
 | `lvm2` | 0.64 MiB | trimmed to `dmsetup` + `libdevicemapper` |
 | `keyutils` | 0.12 MiB | |
-| **Total** | **≈4.5 MiB** | ~1.4% of the 310.7 MiB free margin (`docs/size-budget.md`) |
+| **Total** | **≈4.5 MiB** | ~2% of the free margin (`docs/size-budget.md` — see its staleness banner; later runs of the same script measure ~225 MiB free, not 310.7) |
 
 Figures exclude headers/`.a`/man pages and are taken *before* Buildroot's strip and
 finalize steps, so the on-image cost is lower.

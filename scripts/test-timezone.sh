@@ -95,10 +95,16 @@ route_up
 # Stub curl. Answers with $SB/answer, or fails like a real curl would when
 # there is no network (exit 22 is curl's HTTP-error code; -f uses it). Logs
 # every invocation so cases can assert on "was the network touched at all".
+TZFILE_FOR_STUB="$TZFILE"
 cat > "$SB/bin/curl" <<EOF
 #!/bin/sh
+TZFILE="$TZFILE_FOR_STUB"
 echo "\$*" >> "$SB/curl.calls"
-[ -f "$SB/stall" ] && sleep 5
+# Block until the test releases us, rather than for a fixed time: a
+# fixed sleep outlives the test run and leaves an orphan behind.
+while [ -f "$SB/stall" ]; do sleep 0.1; done
+# Simulate the user running timezone.sh while the lookup is in flight.
+[ -f "$SB/set-tz-midflight" ] && printf 'CHOSEN-MIDFLIGHT' > "$TZFILE"
 # \$SB/down-first makes ONLY the first provider fail, so the HTTPS fallback
 # path can be exercised rather than merely asserted to exist.
 if [ -f "$SB/down-first" ]; then
@@ -118,7 +124,6 @@ rewrite() {
 	    -e "s|/usr/share/zoneinfo/posix|$ZONEDIR|g" \
 	    -e "s|/usr/bin/curl|$SB/bin/curl|g" \
 	    -e "s|/proc/net/route|$ROUTE|g" \
-	    -e "s|/proc/net/ipv6_route|$SB/proc-ipv6route|g" \
 	    -e "s|/run/timezone-autodetect|$LOCKDIR|g" \
 	    -e "s|^TZ_TRIES=.*|TZ_TRIES=2|" \
 	    -e "s|^TZ_INTERVAL=.*|TZ_INTERVAL=1|" \
@@ -156,8 +161,9 @@ EOF
 chmod +x "$SB/etc/init.d/S48timezone"
 sed -e "s|/etc/init.d/S48timezone|$SB/etc/init.d/S48timezone|g" "$HOOK_SRC" > "$SB/90-timezone"
 
-pass=0; fail=0
-ok()  { printf '  PASS  %s\n' "$1"; pass=$((pass + 1)); }
+pass=0; fail=0; skipped=0
+ok()   { printf '  PASS  %s\n' "$1"; pass=$((pass + 1)); }
+skip() { printf '  SKIP  %s -- %s\n' "$1" "$2"; skipped=$((skipped + 1)); }
 bad() {
 	printf '  FAIL  %s\n' "$1"
 	# The script's own console output is the first thing you want on a
@@ -235,10 +241,21 @@ boot "America/New_York"   # ...the user has since configured WiFi
 must   "a later boot still gets its guess" \
 	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
 
-echo "== 3b. ...but an answer we cannot use DOES spend it =="
-# Asking the same broken provider the same question tomorrow will not help.
+echo "== 3b. a captive portal does NOT spend it either =="
+# HTTP 200 is not an answer. A hotel/airport portal and an ISP that serves a
+# search page for NXDOMAIN both return 200 + HTML; spending the guess on that
+# network strands the box on UTC for the life of the card.
 reset; boot "<html>captive portal</html>"
-must   "stamped after a provider answered with junk" test -e "$TZSTAMP"
+mustnt "no stamp after a portal answered instead of a provider" test -e "$TZSTAMP"
+boot "America/New_York"   # ...off that network now
+must   "detects normally once past the portal" \
+	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
+
+echo "== 3c. ...but a real zone name we do not ship DOES spend it =="
+# A provider replied in the right shape. Asking it again tomorrow will not
+# produce a zone we suddenly have.
+reset; boot "Mars/Olympus_Mons"
+must   "stamped after a provider named a zone we do not ship" test -e "$TZSTAMP"
 boot "America/New_York"
 mustnt "no second guess on the next boot" queried
 mustnt "left the timezone unset" test -e "$TZFILE"
@@ -282,7 +299,7 @@ reset; boot "UTC"
 must "UTC installed" cmp -s "$TZFILE" "$ZONEDIR/UTC"
 
 echo "== 7. giving up is loud, and says how to fix it by hand =="
-reset; boot "<html>captive portal</html>"
+reset; boot "Mars/Olympus_Mons"
 must "said it is staying on UTC"         grep -q "staying on UTC" "$SB/out"
 must "pointed at the timezone.sh script" grep -q "timezone.sh"    "$SB/out"
 reset; boot "FAIL"
@@ -296,6 +313,8 @@ must "second request is the HTTPS fallback" \
 	grep -qF 'https://ipapi.co/timezone' <<< "$(request 2)"
 must "requests are time-bounded (--max-time)" \
 	grep -q -- '--max-time' "$SB/curl.calls"
+must "requests are size-bounded (--max-filesize)" \
+	grep -q -- '--max-filesize' "$SB/curl.calls"
 
 # ...and the fallback must actually WORK, not just be reached: ip-api down,
 # ipapi.co answering, is the exact shape of a network that eats plain HTTP.
@@ -312,16 +331,31 @@ reset; chmod -x "$SB/bin/curl"; boot "America/New_York"; chmod +x "$SB/bin/curl"
 mustnt "no-op without curl" test -e "$TZFILE"
 
 echo "== 10. an unwritable card does not spend the guess =="
-reset; chmod 500 "$FATDIR"; boot "America/New_York"; chmod 700 "$FATDIR"
-must   "reported the unwritable destination" grep -q "cannot write" "$SB/out"
-mustnt "a later boot still gets its guess"   test -e "$TZSTAMP"
-mustnt "no .tmp file left behind"            test -e "$TZFILE.tmp"
+if [ "$(id -u)" -eq 0 ]; then
+	# chmod 500 does not stop root, so this case would not merely fail --
+	# the stamp assertion would pass for the wrong reason. Refuse to run it
+	# rather than report a green that means nothing.
+	skip "an unwritable card does not spend the guess" "running as root"
+else
+	reset; chmod 500 "$FATDIR"; boot "America/New_York"; chmod 700 "$FATDIR"
+	must   "reported the unwritable destination" grep -q "cannot write" "$SB/out"
+	mustnt "a later boot still gets its guess"   test -e "$TZSTAMP"
+	mustnt "no .tmp file left behind"            test -e "$TZFILE.tmp"
+fi
 
 echo "== 11. init verbs =="
 : > "$SB/out"
 must   "stop exits 0 (rcK must not fail at shutdown)" verb stop
 mustnt "an unknown verb exits nonzero, with usage"    verb bogus
 
+
+echo "== 11b. a timezone set WHILE the lookup runs is not clobbered =="
+# start() checked $TZFILE up to a couple of minutes before detect() writes, and
+# the box has just come online -- ample time for the user to run timezone.sh
+# from the Scripts menu. The stub writes the file mid-request to reproduce that.
+reset; : > "$SB/set-tz-midflight"; boot "America/New_York"; rm -f "$SB/set-tz-midflight"
+must   "the user's mid-flight choice survives" grep -qx "CHOSEN-MIDFLIGHT" "$TZFILE"
+mustnt "and no .tmp file is left behind"       test -e "$TZFILE.tmp"
 
 echo "== 12. no default route -> nothing is sent, nothing is spent =="
 # This is the "does it slow down a box with no network" answer: start() returns
@@ -346,7 +380,7 @@ must   "  ... and returns to dhcpcd instead of exiting" test -e "$SB/hook.reache
 hook RENEW true
 must   "RENEW calls it too (cheap no-op once spent)" hook_fired
 hook BOUND6 true
-must   "BOUND6 calls it (IPv6-only networks)" hook_fired
+must   "BOUND6 calls it (inert on this kernel, correct if IPv6 is enabled)" hook_fired
 hook BOUND false
 mustnt "an interface that is not up does not" hook_fired
 # if_up is compared as data, not executed. Unset, empty or junk must all read as
@@ -373,7 +407,16 @@ reset; : > "$SB/stall"; : > "$SB/out"
 printf 'America/New_York' > "$SB/answer"
 start_async() { PATH="$SB/bin:$PATH" timeout 3 "${TEST_SH[@]}" "$SB/async" start >/dev/null 2>&1; }
 must "start returned while the lookup was still in flight" start_async
+# Release the stalled request and let the background job finish, rather than
+# leaving it (and its sleep) running after this script exits and its sandbox is
+# deleted. Doubles as proof that the backgrounded lookup does complete.
 rm -f "$SB/stall"
+for _ in $(seq 50); do
+	[ -e "$TZFILE" ] && break
+	sleep 0.1
+done
+must "the backgrounded lookup then completed on its own" \
+	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
 
-printf '\n%d passed, %d failed\n' "$pass" "$fail"
+printf '\n%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skipped"
 [ "$fail" -eq 0 ]

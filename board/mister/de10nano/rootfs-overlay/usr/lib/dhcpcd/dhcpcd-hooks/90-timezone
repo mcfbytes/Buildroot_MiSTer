@@ -26,6 +26,9 @@
 # unset, empty, or ever anything other than those two strings would then be run
 # as a command. Nothing reaches if_up from the network, so this is not a hole
 # being closed -- it is one that never gets to open.
+# The *6 reasons cannot fire on this kernel -- it is built without IPv6
+# (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
+# correct the day that changes.
 case "$reason" in
 BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
 	if [ "${if_up:-false}" = true ] && [ -x /etc/init.d/S48timezone ]; then

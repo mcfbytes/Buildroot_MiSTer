@@ -1597,11 +1597,11 @@ require_present "usr/lib/dhcpcd/dhcpcd-run-hooks" "dhcpcd hook runner (sources 9
 # The behaviour itself -- validation of the network-supplied zone name, and the
 # once-and-only-once contract -- is asserted by its own sandboxed harness, which
 # needs no build and no network.
-printf -- '--- test-timezone.sh: S48timezone behaviour (15 cases) ---\n'
+printf -- '--- test-timezone.sh: S48timezone behaviour (18 cases) ---\n'
 if "$ROOT/scripts/test-timezone.sh"; then
-	pass "test-timezone.sh (S48timezone behaviour, 15 cases)"
+	pass "test-timezone.sh (S48timezone behaviour, 18 cases)"
 else
-	fail "test-timezone.sh (S48timezone behaviour, 15 cases)" \
+	fail "test-timezone.sh (S48timezone behaviour, 18 cases)" \
 		"one or more cases failed -- see output above"
 fi
 

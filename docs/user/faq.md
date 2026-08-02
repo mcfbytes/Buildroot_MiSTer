@@ -184,8 +184,13 @@ wrong.
 **What is sent.** A request to `ip-api.com` — the same service `timezone.sh`'s
 "Automatic" mode uses — which sees your public IP and answers with a timezone name like
 `America/New_York`. That is the whole exchange: the request carries nothing else, and
-nothing is stored remotely. It happens **once**: once a provider has answered, usefully or
-not, the box never asks again.
+nothing is stored remotely. It happens **once**: once a provider has answered with a
+timezone name, the box never asks again.
+
+A captive portal — a hotel or airport login page, or an ISP that shows a search page for a
+name that does not exist — does **not** count as an answer, even though it replies. Those
+networks stop intercepting eventually, and the box would be stuck on UTC forever if a login
+page could use up its one lookup.
 
 **That first request is plain HTTP, not HTTPS.** ip-api.com's free tier does not offer TLS,
 and it is the provider the community script already uses. So anyone who controls your

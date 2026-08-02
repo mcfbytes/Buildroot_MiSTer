@@ -17,9 +17,10 @@ persist-to-FAT mechanism this mirrors), [ADR 0011](0011-resolv-conf-buildroot-de
    `/etc/localtime` already points at.
 2. **One guess, spent when it is actually made.** The lookup is gated on two files on the
    data partition — the timezone itself, and a `timezone.autodetect` stamp — plus a
-   default-route check. The stamp is written only when a provider **answered**: with a
-   zone we could install, or with something unusable. *Being offline is not an answer*, so
-   it does not spend the guess.
+   default-route check. The stamp is written only when a provider **answered with a zone
+   name**: one we install, or one we do not ship (asking again tomorrow will not help).
+   *Being offline is not an answer, and neither is HTTP 200* — see the captive-portal note
+   below.
 3. **Re-tried on the event, not on a timer.** `usr/lib/dhcpcd/dhcpcd-hooks/90-timezone`
    calls `S48timezone start` whenever dhcpcd brings an interface up with an address — so a
    box that was offline on its first boot gets its guess the moment the user finishes
@@ -70,20 +71,36 @@ no amount of waiting at S48 helps a box whose network appears three boots later.
 `20-resolv.conf` and `30-hostname` use — calls `S48timezone start` on `BOUND`/`RENEW`/the
 IPv6 equivalents, so the lookup happens the moment an address exists. S48 still tries
 directly when a default route is *already* there (a wired box, or a static address), with
-a short ~1 minute window to cover DNS lagging the route.
+a short window to cover DNS lagging the route: 6 rounds x 2 providers, ~50 s if the
+failures are instant and ~2.5 min if every request burns its full 8 s timeout.
+
+**A captive portal must not spend the guess.** This is the sharp edge of "spend it when a
+provider answered", and it is worth stating because the obvious implementation gets it
+wrong: a hotel/airport/school portal — and an ISP that serves a search page for NXDOMAIN —
+answers the request with a perfectly good HTTP 200 carrying HTML. Treating a 200 as "we
+asked and got something" would spend the one guess on precisely the network that stops
+intercepting an hour later, stranding the box on UTC for the life of the card. So the guess
+is spent only once the body *parses as a zone name*: HTML is not an answer, it is
+interference. `scripts/test-timezone.sh` asserts both halves, and the assertion is
+mutation-checked — with the guard reverted, it fails.
 
 **Nothing on a box with no network.** `start` checks `/proc/net/route` for a default route
 and returns before backgrounding anything if there is none: no query, no console line, no
-stamp. And `start` never blocks regardless — it backgrounds the lookup, asserted by the
+stamp. IPv4 only, deliberately — this kernel is built without IPv6 (`linux.config`:
+`# CONFIG_IPV6 is not set`). An earlier revision also grepped `/proc/net/ipv6_route` for
+`::/0`, which is wrong even where that file exists: the kernel always keeps a `::/0`
+*unreachable* entry (`ip6_null_entry`, on `lo`), so the check reported a route on any
+IPv6-enabled box with no connectivity at all. Verified against a real
+`/proc/net/ipv6_route` before removing it. And `start` never blocks regardless — it backgrounds the lookup, asserted by the
 test suite, since a blocking lookup would stall `rcS` and therefore the whole boot.
 
 ## Trust and privacy — the honest version
 
 This makes **one lookup, on one boot**, to a third party that necessarily sees the box's
 public IP. Nothing else is sent — the request has no payload; the public IP the packet
-already carries *is* the query — and nothing is stored remotely. ("One lookup" is up to 36
-identical requests if the network is still coming up: the retry loop stops at the first
-answer, and every retry carries the same nothing.)
+already carries *is* the query — and nothing is stored remotely. ("One lookup" is up to 12
+identical requests if the network is still coming up — 6 rounds x 2 providers: the retry
+loop stops at the first answer, and every retry carries the same nothing.)
 
 - **It is opt-out-able before it ever runs.** `touch /media/fat/linux/timezone.autodetect`
   on the card (or setting a timezone by hand) means nothing is ever sent. The stamp file
@@ -132,7 +149,7 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
 paths rewritten into a temp dir, `curl` stubbed; `/proc/net/route` and the dhcpcd hook
-stubbed too). 15 cases / 60 assertions covering the
+stubbed too). 18 cases / 66 assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
 unset, so a half-written card self-heals), the once-and-only-once contract, the opt-out
 stamp, seven classes of hostile answer, both providers in order *and* the HTTPS fallback

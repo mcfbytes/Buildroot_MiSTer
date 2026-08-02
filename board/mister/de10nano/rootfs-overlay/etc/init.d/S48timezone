@@ -34,9 +34,11 @@
 #     set, by us on an earlier boot, by timezone.sh, or by hand. Never
 #     second-guessed, never overwritten.
 #   - /media/fat/linux/timezone.autodetect exists -> the guess has been used.
-#     Written only when a provider ANSWERED: with a zone we could install, or
-#     with something unusable (asking the same broken provider again tomorrow
-#     will not help). Being offline is not an answer, so it does not spend it.
+#     Written only when a provider ANSWERED WITH A ZONE NAME: one we install, or
+#     one we do not ship (asking again tomorrow will not help). Being offline is
+#     not an answer. Neither is HTTP 200 with a captive portal's HTML in it --
+#     see the comment on `answered` below; that network stops intercepting us
+#     eventually, and the guess has to survive it.
 #   - No default route -> no network to ask over. Return immediately, quietly.
 # So a box that was offline on its first boot still gets its guess later, once
 # the user has set up WiFi -- which is the common case, since the card is
@@ -70,7 +72,7 @@
 # necessarily sees the box's public IP. Nothing else is sent, nothing is stored
 # remotely, and the request carries no payload -- the public IP the packet
 # already has IS the query. (It is retried while the network is still coming up,
-# so "one lookup" can be up to TZ_TRIES x 2 requests; every retry is identical.)
+# so "one lookup" is up to TZ_TRIES x 2 = 12 requests; every retry is identical.)
 # It is opt-out-able before it ever runs (see the stamp file above).
 # ip-api.com's free tier is HTTP-only, so that request is in the clear and a
 # hostile network could answer it -- the blast radius is a wrong timezone, and
@@ -115,18 +117,26 @@ stamp() {
 
 # Do we have anywhere to send a packet? /proc/net/route rather than `ip route`:
 # no binary dependency, no fork, and an all-zeroes destination is exactly what
-# "default route" means. IPv6-only networks are covered by the ::/0 check.
+# "default route" means.
+#
+# IPv4 only, deliberately. This kernel is built without IPv6 (linux.config:
+# "# CONFIG_IPV6 is not set"), so /proc/net/ipv6_route does not exist on the
+# shipped image. An earlier revision checked it anyway, with
+# `grep '^0{32} 00 '` -- which is WRONG even where the file does exist: the
+# kernel always keeps a ::/0 *unreachable* entry (ip6_null_entry, on lo, metric
+# ffffffff, flags 00200200) and that pattern matches it, so it would report a
+# route on any IPv6-enabled box with no connectivity at all. If IPv6 is ever
+# turned on here, match on a real route -- not merely on ::/0.
 have_route() {
 	while read -r _iface dest _rest; do
 		[ "$dest" = "00000000" ] && return 0
 	done < /proc/net/route
-	[ -r /proc/net/ipv6_route ] &&
-		grep -q '^00000000000000000000000000000000 00 ' /proc/net/ipv6_route
+	return 1
 }
 
 detect() {
 	tries="$TZ_TRIES"
-	reached=0
+	answered=0
 	while [ "$tries" -gt 0 ]; do
 		# Providers in order, first plausible answer wins. Quoted, not a
 		# variable: the first URL contains a '?', which unquoted would be
@@ -138,14 +148,17 @@ detect() {
 		#     intercept plain HTTP.
 		for url in 'http://ip-api.com/line/?fields=timezone' \
 			'https://ipapi.co/timezone'; do
-			# curl's OWN exit status, which a pipeline would hide
-			# behind head's. It is what separates "no network" from
-			# "answered with junk", and that decides whether the
-			# guess gets spent.
-			if ! raw="$("$CURL" -sfL --max-time 8 "$url" 2>/dev/null)"; then
+			# curl's own exit status, which a pipeline would hide
+			# behind head's. --max-filesize because everything else
+			# here bounds what a hostile answer can do and an
+			# unbounded read into a shell variable would not: this
+			# board has 511 MB and a LAN responder could push far
+			# more than that inside --max-time. A zone name is ~30
+			# bytes.
+			if ! raw="$("$CURL" -sfL --max-time 8 --max-filesize 4096 \
+				"$url" 2>/dev/null)"; then
 				continue
 			fi
-			reached=1
 			zone="$(printf '%s\n' "$raw" | head -n 1 | tr -d '\r')"
 
 			# $zone came off the network: validate BEFORE it is ever
@@ -170,7 +183,29 @@ detect() {
 			case "$zone" in
 				''|/*|*[!A-Za-z0-9/_+-]*) continue ;;
 			esac
+
+			# Only NOW does this count as having been answered, and
+			# that placement is the whole point. HTTP 200 is not an
+			# answer: a captive portal (hotel, airport, school) and
+			# an ISP that serves a search page for NXDOMAIN both
+			# return 200 with HTML, and treating that as "we asked
+			# and got something" would spend the one guess on the
+			# very network that was going to stop intercepting us in
+			# an hour -- leaving the box on UTC for the life of the
+			# card. Something shaped like a zone name, on the other
+			# hand, means a real provider replied, and if we do not
+			# ship that zone then asking it again tomorrow will not
+			# help.
+			answered=1
 			[ -f "$ZONEDIR/$zone" ] || continue
+
+			# Re-check: start() tested this up to a couple of minutes
+			# ago, and the box has just come online -- ample time for
+			# the user to have run timezone.sh from the Scripts menu.
+			# "Never overwrites a timezone you set" is stated without
+			# qualification in the FAQ, the README and ADR 0025, so
+			# it has to hold here too, not just at the gate.
+			[ -s "$TZFILE" ] && return 0
 
 			# Write via a temp file so an interrupted or short write
 			# (full card, card yanked) leaves no half-copied
@@ -191,16 +226,18 @@ detect() {
 		[ "$tries" -gt 0 ] && sleep "$TZ_INTERVAL"
 	done
 
-	if [ "$reached" -eq 1 ]; then
-		# We got to ask. Asking the same provider the same question on
-		# the next boot will not produce a different answer.
+	if [ "$answered" -eq 1 ]; then
+		# A real provider replied with a zone name and we do not ship it.
+		# Asking the same provider the same question tomorrow will not
+		# produce a different answer.
 		echo "Timezone: no provider returned a zone we ship, staying on UTC" >&2
 		echo "Timezone: set it by hand with the timezone.sh script" >&2
 		stamp "a provider answered, but with no zone we ship -- staying on UTC"
 	else
-		# Never reached anyone, so the guess is NOT spent: the route came
-		# and went, or DNS never came up. The dhcpcd hook will call us
-		# again on the next address, this boot or any later one.
+		# Nobody answered, or only a portal did. The guess is NOT spent:
+		# the route came and went, DNS never came up, or we are behind a
+		# captive portal that will be gone later. The dhcpcd hook calls
+		# us again on the next address, this boot or any later one.
 		echo "Timezone: no answer yet, will retry when the network is up" >&2
 	fi
 	return 1

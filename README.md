@@ -717,7 +717,7 @@ coverage numbers above
 | [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
 | [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
-| [`docs/decisions/`](docs/decisions/) | 20 ADRs: the open questions, the trade-offs, and who decided what |
+| [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |
 
 ---
 

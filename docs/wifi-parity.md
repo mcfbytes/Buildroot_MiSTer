@@ -126,18 +126,35 @@ Everything below is cited to the actual fetched script,
 `other_authors/wifi.sh` @ `master`
 (<https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/master/other_authors/wifi.sh>).
 
+> **RE-CHECKED 2026-08-01 against the currently-pinned `wifi.sh`, and three rows were
+> wrong.** This table was written against the RetroPie-derived `wifi.sh` v1.x. The pin in
+> `scripts/fetch-sdcard-payload.sh` (`PINNED_WIFI_SH_COMMIT`) now resolves to upstream's
+> **v2.3.0 rewrite** — 3070 lines against the old ~200 — which manages `wpa_supplicant`
+> itself instead of delegating to `ifup`/`ifdown`. The rows below are corrected; every
+> `wifi.sh:NN` citation still refers to **v1.x** line numbers and means nothing in v2.3.0,
+> so they are marked rather than retyped against a file nobody re-audited line by line.
+>
+> **The conclusion this table exists to support is unchanged, and was re-verified on
+> hardware:** every tool the new version needs is already in the image — `wpa_cli`
+> (`BR2_PACKAGE_WPA_SUPPLICANT_CLI=y`, defconfig:772), `wpa_supplicant`, `dhcpcd`,
+> `udhcpc`, `iwgetid`, `iwlist`, `dialog`, `bash`, `ip`. The only one absent is
+> `dhclient`, and it is the **third** DHCP fallback (`wifi.sh:2027`), tried only after
+> `dhcpcd` (`:2021`) and `udhcpc` (`:2024`) have both failed — both of which we ship. No
+> package changes are required; the four packages this analysis added are still exactly
+> the right four.
+
 | `wifi.sh` dependency | Where in the script | Stock provides | We provided before this task | Status |
 |---|---|---|---|---|
 | `bash` interpreter | `wifi.sh:1`, `#!/usr/bin/env bash` | `usr/bin/bash` (`docs/stock-inventory/binaries-needed-full.txt:25`) | **Nothing** — `BR2_PACKAGE_BASH` was not set anywhere in the defconfig | **Gap — fixed.** `BR2_PACKAGE_BASH=y` added. |
 | `dialog` (all its menus/inputboxes/infoboxes) | `wifi.sh:25` (`printMsgs`) and every interactive function | `usr/bin/dialog` (`binaries-needed-full.txt:76`) | **Nothing** | **Gap — fixed.** `BR2_PACKAGE_DIALOG=y` added. |
-| `ifup wlan0` / `ifdown wlan0` (primary bring-up/tear-down path) | `wifi.sh:36-42`, `_set_interface_wifi()` | ifupdown-scripts | Already present (§1) | **No gap.** |
+| `ifup wlan0` / `ifdown wlan0` | v1.x: the primary bring-up/tear-down path (`wifi.sh:36-42`, `_set_interface_wifi()`). **v2.3.0 deliberately avoids it** and drives `wpa_supplicant` directly (`:2044`) | ifupdown-scripts | Already present (§1) | **No gap either way** — still shipped and still used by the boot path (`/etc/network/interfaces`), just no longer by `wifi.sh`. |
 | `ip link set wlan0 up/down` (fallback only if `ifup`/`ifdown` fail) | `wifi.sh:37,41`, same function | `usr/sbin/ip` (real iproute2, linked against `libcap.so.2` — `binaries-needed-full.txt:461`, not a BusyBox applet) | **Nothing** — no `BR2_PACKAGE_IPROUTE2` | **Gap — fixed.** `BR2_PACKAGE_IPROUTE2=y` added. |
 | `iwlist wlan0 scan` (SSID/encryption-type scan) | `wifi.sh:84`, `list_wifi()` | `usr/sbin/iwconfig` present (same wireless-tools package installs `iwlist`/`iwgetid`/`iwspy`/`iwpriv` alongside it — `binaries-needed-full.txt:465`) | **Nothing** — no `BR2_PACKAGE_WIRELESS_TOOLS` | **Gap — fixed.** `BR2_PACKAGE_WIRELESS_TOOLS=y` (+`_IWCONFIG=y`, default) added. |
 | `iwgetid -r` (poll for a successful association) | `wifi.sh:195`, `gui_connect_wifi()` | same wireless-tools package | **Nothing** | **Same fix as above.** |
-| `/media/fat/linux/wpa_supplicant.conf` — the file `wifi.sh` reads/writes directly (`remove_wifi()` at `wifi.sh:47`, `set_wifi_country()` at `wifi.sh:66-71`, `create_config_wifi()` at `wifi.sh:180-184`) | same FAT-partition path stock's `/etc/network/interfaces` reads via `-c` | n/a (FAT partition) | n/a (FAT partition) | **Already aligned** — `wifi.sh` and the boot-time `pre-up wpa_supplicant … -c /media/fat/linux/wpa_supplicant.conf` hook operate on the exact same file, which is why `wifi.sh` never has to invoke `wpa_supplicant` or `wpa_cli` itself: writing the file and toggling the interface (`ifup`/`ifdown`) is enough to make the `pre-up` hook re-exec `wpa_supplicant` with the new config. |
+| `/media/fat/linux/wpa_supplicant.conf` — the file `wifi.sh` reads/writes directly (`remove_wifi()` at `wifi.sh:47`, `set_wifi_country()` at `wifi.sh:66-71`, `create_config_wifi()` at `wifi.sh:180-184`) | same FAT-partition path stock's `/etc/network/interfaces` reads via `-c` | n/a (FAT partition) | n/a (FAT partition) | **Already aligned** — `wifi.sh` and the boot-time `pre-up wpa_supplicant … -c /media/fat/linux/wpa_supplicant.conf` hook operate on the exact same file, so both agree on the config regardless of which one applies it. **The stated reason has changed, the outcome has not:** v1.x relied on toggling the interface so the `pre-up` hook would re-exec `wpa_supplicant`; v2.3.0 instead launches `wpa_supplicant -B … -c "$WPA_CONF"` itself (`:2044`), guarded by a `wpa_cli ping` probe so it will not double-spawn against our boot-time instance. Same file, same path, still aligned. |
 | `/sys/class/net/wlan0/` (interface-presence check) | `wifi.sh:89` | sysfs | sysfs (`fstab`: `sysfs /sys sysfs defaults 0 0`) | **No gap** — standard devtmpfs/sysfs, appears automatically once P3.1/P3.3's driver+firmware bring up the netdev; not a rootfs-config item. |
-| `wpa_cli` | **not called anywhere in the script** | — | — | **N/A** — confirms the task brief's "whether it calls wpa_cli" question: no, it does not. |
-| `udhcpc`/direct `dhcpcd` invocation | **not called anywhere in the script** | — | — | **N/A** — DHCP is handled entirely by the already-running global `dhcpcd` daemon (`S41dhcpcd`) picking up the now-admin-up `wlan0`, same as stock. |
+| `wpa_cli` | v1.x: not called. **v2.3.0: called 13 times**, including the `wpa_cli ping`/`PONG` probe that gates `reload_wpa_supplicant()` | — | — | **No gap** — `BR2_PACKAGE_WPA_SUPPLICANT_CLI=y` (defconfig:772) already ships `/usr/sbin/wpa_cli`; confirmed present on hardware. (This row previously read "not called anywhere in the script", which was true of v1.x and is false of the pinned version.) |
+| `udhcpc`/direct `dhcpcd` invocation | v1.x: not called. **v2.3.0 calls all three in order** — `dhcpcd -n` (`:2021`), `udhcpc -n -q -i` (`:2024`), `dhclient` (`:2027`) — each under a timeout, taking the first that succeeds | — | — | **No gap** — we ship `dhcpcd` and `udhcpc`, so the chain succeeds at step 1 or 2 and never reaches `dhclient` (which we do not ship, deliberately: it is ISC's client and adding it to satisfy an unreachable third fallback would be dead weight). The global `S41dhcpcd` daemon still handles the boot path as before. (This row previously read "not called anywhere in the script".) |
 
 Three genuinely new Buildroot packages were needed
 (`configs/mister_de10nano_defconfig:774-783`, new "P3.4: WiFi userland

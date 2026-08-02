@@ -93,6 +93,7 @@ mainline can hold it.
 | **Samba** | ~4.14 | **4.24.3** |
 | **Python** | 3.9 | **3.14.6** |
 | **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
+| **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
 | **Wi-Fi chipset coverage** | Six out-of-tree vendor forks, plus in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine; several chips can't do WPA3 at all | **Mainline-first**: in-kernel `mac80211` (`rtl8xxxu`/`rtw88`/`rtw89`/`mt76`/`ath9k_htc`/`rsi`…) for every chip mainline can drive *that is worth building here* — six symbols are deliberately left off (one upstream itself calls non-working, four 2000s-era 802.11b/g parts, one that is optical LiFi rather than Wi-Fi; [`wifi-parity` §7](docs/wifi-parity.md)) — plus Broadcom/Cypress and Wi-Fi 6/6E support stock never had. **One** out-of-tree driver remains, for a Wi-Fi 6E chip mainline has no USB driver for at all. **WPA3/SAE hardware-verified**; see the [hardware-support table](#wi-fi-and-bluetooth-hardware-support) for the full build- vs. hardware-verified breakdown ([ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md)) |
 | **Bluetooth firmware** | `ath3k` shipped with **no `ath3k-1.fw` and no `ar3k/*.dfu` at all**; no MediaTek MT79xx and no Qualcomm QCA firmware (its Realtek combos *were* covered — `stock-fw.txt` carries `rtl8761bu`, `rtl8822b`, `rtl8822cu`, `rtl8821c`) | Firmware audited driver-by-driver against what each one actually requests at runtime, gaps closed (MediaTek combo, Qualcomm QCA Rome USB, one Broadcom `.hcd`, Atheros AR3011/AR3012) — **including one asymmetry this project itself introduced**: we shipped the MT7961 *Wi-Fi* blob without its *Bluetooth* sibling, so that combo dongle's Wi-Fi worked and its BT did not. Found and closed. Two built drivers still ship with **no** firmware, deliberately and on the record ([`bluetooth-parity` §9](docs/bluetooth-parity.md)) |
 | **The `.7z` extractor that unpacks every OS update** | **p7zip 16.02 — dated 2016-05-21**, in *two* places: `usr/bin/7zr` in the rootfs, and `/media/fat/linux/7za`, which the Downloader **downloads off the internet** the first time it updates and then reuses forever | **7-Zip 26.02**, built from source in-tree. The `/media/fat/linux/7za` copy is shipped by us — **statically linked**, so it survives a rollback to an older or even stock rootfs — so that download never happens ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
@@ -605,6 +606,10 @@ broke and why, without grepping):
   one instruction earlier
 - per-service parity assertions harvested from each Phase 3 parity document, checked
   against the shipped `rootfs.tar` — not against `output/target/`
+- a sandboxed functional test of the timezone autodetect dhcpcd hook
+  ([`scripts/test-timezone.sh`](scripts/test-timezone.sh)) — it turns a string off the
+  network into a filesystem path, so every class of hostile answer is asserted rejected,
+  run twice: under the host shell and under the target's own BusyBox `ash` via `qemu-arm`
 
 Alongside it, [`scripts/check-abi.sh`](scripts/check-abi.sh) runs the full
 SONAME/loader checklist from [`docs/abi-contract.md`](docs/abi-contract.md). The overlap on
@@ -733,7 +738,7 @@ coverage numbers above
 | [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
 | [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
-| [`docs/decisions/`](docs/decisions/) | 17 ADRs: the open questions, the trade-offs, and who decided what |
+| [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |
 
 ---
 

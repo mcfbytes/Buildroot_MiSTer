@@ -172,6 +172,67 @@ image, the problem was #3 or #4. If it still does nothing, it's #1 or #2.
 
 ---
 
+## My MiSTer picked its own timezone by itself. What was that?
+
+**This image looks up your timezone once**, the first time it connects to a network, and
+writes it to `/media/fat/linux/timezone` — the file `/etc/localtime` points at, and the
+same file the community `timezone.sh` script writes. Stock leaves that file missing, so a
+fresh card runs on **UTC** forever unless you go and set it by hand; if you are anywhere
+west of Greenwich, every save-state timestamp, screenshot name and OSD clock is quietly
+wrong.
+
+**What is sent.** A request to `ip-api.com` — the same service `timezone.sh`'s
+"Automatic" mode uses — which sees your public IP and answers with a timezone name like
+`America/New_York`. That is the whole exchange: the request carries nothing else, and
+nothing is stored remotely. It happens **once**: once a provider has answered with a
+timezone name, the box never asks again.
+
+A captive portal — a hotel or airport login page, or an ISP that shows a search page for a
+name that does not exist — does **not** count as an answer, even though it replies. Those
+networks stop intercepting eventually, and the box would be stuck on UTC forever if a login
+page could use up its one lookup.
+
+**That first request is plain HTTP, not HTTPS.** ip-api.com's free tier does not offer TLS,
+and it is the provider the community script already uses. So anyone who controls your
+network can read that request, and can answer it in place of ip-api. What that buys them is
+a wrong clock: the answer is only ever used to pick a file out of the zoneinfo already on
+your card, and anything that is not a timezone this image ships is discarded unread. It
+cannot become a download, a command, or a file of their choosing. A second provider,
+`ipapi.co`, is tried over HTTPS when the first does not answer — which also covers networks
+that block or intercept plain HTTP. If a cleartext request is not acceptable on your
+network at all, opt out below and set the timezone by hand.
+
+**It will never overwrite a timezone you set.** Run `timezone.sh`, or drop a zoneinfo
+file at `/media/fat/linux/timezone` yourself, and that is final.
+
+**To opt out before it ever runs**, create an empty file called `timezone.autodetect` in
+the `linux` folder of your SD card, next to `wpa_supplicant.conf`. Nothing will be sent.
+(That is the same file the box writes itself once a provider has answered — you can open
+it, it explains itself.)
+
+**If your box had no network on its first boot, nothing is lost.** Being offline is not an
+answer, so the one guess is not spent — and nothing is even sent, because the lookup is not
+something the box does at boot and then gives up on. It is attached to the moment the
+network actually arrives, so with no network there is nothing to send and nothing to give
+up on. That moment is when the box gets an address: finish setting up Wi-Fi, and it fires on that connection, whether that is
+the same boot or three boots later. (It is a dhcpcd hook, sitting in the same place as the
+one dhcpcd uses to update `/etc/resolv.conf`.) If you use a **static IP** set only in
+`/etc/network/interfaces`, dhcpcd never runs and this never fires — set the timezone with
+`timezone.sh`.
+
+**One cosmetic wrinkle on the boot where it lands:** the menu clock can still show UTC
+until you reboot once. The timezone is read by each program when it starts, and the MiSTer
+menu starts before the lookup finishes. It is correct from the next boot on, permanently.
+
+**To make it try again** after it has settled on something you do not want: delete both
+`timezone` and `timezone.autodetect` from the `linux` folder, then reconnect or reboot — or just run
+`timezone.sh`, which is quicker and lets you pick.
+
+Full reasoning, including why geo-IP rather than something that talks to nobody:
+[ADR 0025](../decisions/0025-first-boot-timezone-autodetect.md).
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 
@@ -203,4 +264,5 @@ at all.
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture
 - [ADR 0014](../decisions/0014-sustainability-deferred-not-waived.md),
   [ADR 0015](../decisions/0015-per-device-ssh-host-keys.md),
-  [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md)
+  [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md),
+  [ADR 0025](../decisions/0025-first-boot-timezone-autodetect.md)

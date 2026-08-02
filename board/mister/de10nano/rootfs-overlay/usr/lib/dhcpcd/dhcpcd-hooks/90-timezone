@@ -1,0 +1,242 @@
+# Detect the timezone once, the first time this box gets an address.
+# MiSTer -- see ADR 0025. Sourced by dhcpcd-run-hooks, like every hook here.
+#
+# WHY THIS EXISTS.
+# /etc/localtime is a symlink to /media/fat/linux/timezone (stock parity -- the
+# rootfs is reflashed wholesale on update, so the timezone has to live on the FAT
+# data partition to survive; see docs/init-parity.md and the defconfig's tzdata
+# block). On a fresh card that file does not exist, so glibc falls back to UTC
+# and every timestamp -- save states, screenshots, the OSD clock, ntpd's own log
+# lines -- is wrong by the local UTC offset until the user goes and finds the
+# community `timezone.sh` script. Most never do.
+#
+# WHY A DHCP HOOK, AND NOT AN INIT SCRIPT.
+# The event we actually want is "this box now has a network", and dhcpcd already
+# publishes it. An init script can only ask "is there a network *right now*, a
+# few seconds into boot", which is the wrong question twice over: on a DHCP box
+# the lease usually has not landed by then, and on the normal MiSTer card the
+# first boot has no network at all -- it is flashed, booted, and only then does
+# the user write wpa_supplicant.conf. This fires whenever an address arrives:
+# first boot, or three boots later once WiFi is set up.
+#
+# A static-IP box configured only in /etc/network/interfaces never runs dhcpcd,
+# so it never gets here. Accepted, deliberately: setting a static address is
+# already a by-hand act and `timezone.sh` is the same kind of act. A second,
+# near-duplicate trigger in an init script was not worth its own file -- and it
+# needed a /proc/net/route check whose IPv6 arm silently matched the kernel's
+# own ip6_null_entry, which is the sort of thing a redundant code path earns you.
+#
+# STOCK/COMMUNITY PARITY.
+# Deliberately the same mechanism as the "Automatic" mode of
+# MiSTer-devel/Scripts_MiSTer's timezone.sh (v1.4): ask ip-api.com for the
+# timezone of the box's public IP, then `cp` the matching file out of
+# /usr/share/zoneinfo/posix/ onto /media/fat/linux/timezone. Same source, same
+# destination, same file format -- so this and a by-hand timezone.sh run are
+# interchangeable, and either can overwrite the other's result. No new package:
+# curl is already in the image (BR2_PACKAGE_LIBCURL_CURL) and so is the full
+# zoneinfo set (BR2_TARGET_TZ_INFO).
+#
+# THE GUESS IS SPENT WHEN IT IS ACTUALLY MADE -- NOT MERELY ATTEMPTED.
+# Two files on the data partition, so both survive a reflash:
+#   - timezone exists and is non-empty -> already set, by us on an earlier boot,
+#     by timezone.sh, or by hand. Never second-guessed, never overwritten.
+#   - timezone.autodetect exists -> the guess has been used. Written only when a
+#     provider answered WITH A ZONE NAME: one we install, or one we do not ship
+#     (asking again tomorrow will not help). Being offline is not an answer, and
+#     neither is a captive portal's HTTP 200 -- see the note on `answered`.
+# Pre-creating the stamp (`touch /media/fat/linux/timezone.autodetect` on the
+# card) disables autodetection before it ever runs -- nothing is ever sent.
+#
+# DELAYS NOTHING. The work runs in a backgrounded subshell, so dhcpcd is not held
+# up and neither is boot. Being sourced, this file also must not `exit` -- that
+# would end dhcpcd's whole hook run and take 20-resolv.conf and 30-hostname with
+# it. The subshell answers both at once: nothing it defines leaks into dhcpcd's
+# shell, and an `exit` inside it is only its own.
+#
+# PRIVACY / TRUST, stated plainly: this queries a third party, once, which
+# necessarily sees the box's public IP. Nothing else is sent, nothing is stored
+# remotely, and the request carries no payload -- the public IP the packet
+# already has IS the query. (Retried while the network settles, so "one lookup"
+# is up to TZ_TRIES x 2 = 6 requests; every retry is identical.) ip-api.com's
+# free tier is HTTP-only, so that request is in the clear and a hostile network
+# could answer it -- the blast radius is a wrong timezone, and the answer is
+# validated against the zoneinfo we ship before it is used. See ADR 0025.
+#
+# The *6 reasons cannot fire on this kernel -- it is built without IPv6
+# (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
+# correct the day that changes.
+
+case "$reason" in
+BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
+	# if_up is compared as DATA. dhcpcd's own hooks write `if $if_up`, i.e.
+	# they execute it, which works because dhcpcd sets it to the literal
+	# string true or false -- but this is sourced into dhcpcd's shell, where
+	# anything else in that variable would then be run as a command there.
+	if [ "${if_up:-false}" = true ]; then
+	(
+		TZFILE=/media/fat/linux/timezone
+		TZSTAMP=/media/fat/linux/timezone.autodetect
+		ZONEDIR=/usr/share/zoneinfo/posix
+		# Absolute: a hook inherits whatever PATH dhcpcd set, and the
+		# -x guard below has to test the command that actually runs.
+		CURL=/usr/bin/curl
+		# /run is a tmpfs, so a lock can never outlive a boot.
+		LOCKDIR=/run/timezone-autodetect
+		# 20-resolv.conf has already run in this same hook pass, so DNS
+		# is configured; this only covers a provider that is briefly
+		# unreachable. Further retries come free with the next address
+		# event, so this stays small.
+		TZ_TRIES=3
+		TZ_INTERVAL=10
+
+		# Already set, or the guess is spent. Cheapest checks first.
+		[ -s "$TZFILE" ] && exit 0
+		[ -e "$TZSTAMP" ] && exit 0
+		# No data partition (or no linux/ dir on it): nowhere to persist.
+		[ -d /media/fat/linux ] || exit 0
+		[ -x "$CURL" ] || exit 0
+		# One lookup at a time -- two interfaces can BOUND at once, and
+		# a RENEW can land mid-lookup. mkdir is the atomic test-and-set.
+		mkdir "$LOCKDIR" 2>/dev/null || exit 0
+
+		# Record the outcome where a user will find it: this lands in the
+		# same directory they keep wpa_supplicant.conf and
+		# user-startup.sh in, so it explains itself rather than being a
+		# marker byte.
+		stamp() {
+			{
+				echo "MiSTer timezone autodetection has already run."
+				echo "It runs once, and never overrides a timezone you"
+				echo "set yourself."
+				echo ""
+				echo "Result: $1"
+				echo ""
+				echo "For another go: delete this file and timezone,"
+				echo "then reconnect the network or reboot."
+				echo "To choose by hand: run the timezone.sh script."
+			} > "$TZSTAMP" 2>/dev/null || :
+		}
+
+		echo "Timezone: not set, detecting in background"
+
+		answered=0
+		tries="$TZ_TRIES"
+		while [ "$tries" -gt 0 ]; do
+			# Providers in order, first plausible answer wins.
+			# Quoted, not a variable: the first URL contains a '?',
+			# which unquoted would be a glob.
+			#   ip-api.com -- what timezone.sh uses.
+			#     /line/?fields=timezone returns the bare zone name
+			#     on one line, i.e. exactly what its
+			#     `/json/ | jq -rM .timezone` yields, without the jq.
+			#   ipapi.co -- HTTPS fallback, for networks that block
+			#     or intercept plain HTTP.
+			for url in 'http://ip-api.com/line/?fields=timezone' \
+				'https://ipapi.co/timezone'; do
+				# curl's own exit status, which a pipeline would
+				# hide behind head's. --max-filesize because
+				# everything else here bounds what a hostile
+				# answer can do and an unbounded read into a
+				# shell variable would not: this board has
+				# 511 MB and a LAN responder could push far more
+				# than that inside --max-time. A zone name is
+				# ~30 bytes.
+				if ! raw="$("$CURL" -sfL --max-time 8 \
+					--max-filesize 4096 "$url" 2>/dev/null)"; then
+					continue
+				fi
+				zone="$(printf '%s\n' "$raw" | head -n 1 | tr -d '\r')"
+
+				# $zone came off the network: validate BEFORE it
+				# is ever interpolated into a path. Only the
+				# characters real zone names use, which also
+				# rules out "." and therefore ".." traversal,
+				# plus shell metacharacters; no leading slash;
+				# and it has to name a zone file we actually
+				# ship (which also rejects an empty answer, and
+				# a directory like "America"). Looser than
+				# timezone.sh's `grep -qE "^.+[/].+$"` in one
+				# way -- a slash is not required -- because
+				# ip-api does answer with the slashless-but-real
+				# "UTC" for some IPs, and taking it at its word
+				# beats retrying until we time out.
+				#
+				# The leading-slash case is rejected explicitly
+				# even though "$ZONEDIR/$zone" would make
+				# "/etc/passwd" harmless today. Relying on how a
+				# path happens to be joined is not the same as
+				# rejecting an absolute path, and this comment
+				# claims the latter.
+				case "$zone" in
+					''|/*|*[!A-Za-z0-9/_+-]*) continue ;;
+				esac
+
+				# Only NOW does this count as having been
+				# answered, and that placement is the whole
+				# point. HTTP 200 is not an answer: a captive
+				# portal (hotel, airport, school) and an ISP
+				# that serves a search page for NXDOMAIN both
+				# return 200 with HTML, and treating that as "we
+				# asked and got something" would spend the one
+				# guess on the very network that was going to
+				# stop intercepting us in an hour -- leaving the
+				# box on UTC for the life of the card. Something
+				# shaped like a zone name, on the other hand,
+				# means a real provider replied, and if we do
+				# not ship that zone then asking again tomorrow
+				# will not help.
+				answered=1
+				[ -f "$ZONEDIR/$zone" ] || continue
+
+				# Re-check: the gate above ran up to a minute
+				# ago, on a box that just came online, with the
+				# Scripts menu right there. "Never overwrites a
+				# timezone you set" is stated without
+				# qualification in the FAQ, the README and ADR
+				# 0025, so it has to hold here too.
+				[ -s "$TZFILE" ] && break
+
+				# Write via a temp file so an interrupted or
+				# short write (full card, card yanked) leaves no
+				# half-copied zoneinfo behind to be cached as
+				# the real thing.
+				if cp "$ZONEDIR/$zone" "$TZFILE.tmp" &&
+					mv -f "$TZFILE.tmp" "$TZFILE"; then
+					echo "Timezone: detected $zone"
+					stamp "$zone"
+					break
+				fi
+				# Not an answer problem -- the card is full,
+				# read-only or gone. No stamp: a later address
+				# event should still get its go.
+				rm -f "$TZFILE.tmp"
+				echo "Timezone: cannot write $TZFILE" >&2
+				answered=0
+				break
+			done
+			[ -s "$TZFILE" ] && break
+			tries=$((tries - 1))
+			[ "$tries" -gt 0 ] && sleep "$TZ_INTERVAL"
+		done
+
+		if [ -s "$TZFILE" ]; then
+			:
+		elif [ "$answered" -eq 1 ]; then
+			# A real provider replied with a zone name we do not
+			# ship. Asking it again tomorrow will not change that.
+			echo "Timezone: no provider returned a zone we ship, staying on UTC" >&2
+			echo "Timezone: set it by hand with the timezone.sh script" >&2
+			stamp "a provider answered, but with no zone we ship -- staying on UTC"
+		else
+			# Nobody answered, or only a captive portal did. The
+			# guess is NOT spent -- say so, or an offline box looks
+			# identical to one that decided something.
+			echo "Timezone: no answer yet, will retry on the next connection" >&2
+		fi
+
+		rmdir "$LOCKDIR" 2>/dev/null
+	) &   # TZ-BACKGROUND -- scripts/test-timezone.sh keys on this marker to
+	      # run the body synchronously; keep the marker if the line moves.
+	fi
+	;;
+esac

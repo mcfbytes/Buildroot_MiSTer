@@ -1737,6 +1737,13 @@ BR2_GENERATE_LOCALE="en_US.UTF-8"
 # rootfs-overlay ships that symlink and overwrites tzdata's, because Buildroot
 # rsyncs BR2_ROOTFS_OVERLAY *after* package install (Makefile:816). See
 # board/mister/de10nano/rootfs-overlay/etc/localtime.
+#
+# That symlink is dangling on a FRESH card -- /media/fat/linux/timezone does not
+# exist yet, so glibc silently falls back to UTC and stays there. The overlay's
+# usr/lib/dhcpcd/dhcpcd-hooks/90-timezone fills it in once, the first time the
+# box gets an address, from a geo-IP lookup (ADR 0025). It needs the full
+# zonelist below to have a zone to copy, and the `posix/` subtree specifically --
+# the same path the community timezone.sh copies from.
 BR2_TARGET_TZ_INFO=y
 BR2_TARGET_TZ_ZONELIST="default"
 BR2_TARGET_LOCALTIME="Etc/UTC"

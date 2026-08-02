@@ -175,6 +175,11 @@ STAGE_DIR="${STAGE_DIR:-$REPO_ROOT/output-sdcard-stage}"
 readonly STAGE_DIR
 readonly PAYLOAD_DIR="$STAGE_DIR/mister-payload"     # fetch-sdcard-payload.sh's product
 readonly FATROOT_LINUX_DIR="$STAGE_DIR/linux"        # FAT root's linux/ (installer kernel only; no u-boot.txt)
+# The FAT root's own menu.rbf -- U-Boot's `$core`, loaded into the FPGA fabric
+# BEFORE Linux starts. Not a second download and not committed: it is the stock
+# menu.rbf the payload fetch already staged and pinned. See stage_fatroot_core().
+readonly FATROOT_MENU_RBF="$STAGE_DIR/menu.rbf"
+readonly PAYLOAD_MENU_RBF="$PAYLOAD_DIR/menu.rbf"
 
 # genimage's three working directories + the config it consumes.
 readonly BUILD_DIR="$REPO_ROOT/output-sdcard-build"
@@ -534,6 +539,41 @@ overlay_our_outputs() {
 	cp -f "$INSTALLER_ZIMAGE_DTB" "$FATROOT_LINUX_DIR/zImage_dtb"
 
 	log "FAT root linux/: installer zImage_dtb (no u-boot.txt -- see 4b)"
+
+	# 4c. menu.rbf AT THE FAT ROOT -- so the FPGA is actually configured during the
+	#     install (ADR 0020 §7).
+	#
+	#     The stock U-Boot's cold-boot path runs `fpgaload`, which is
+	#     `load mmc 0:1 $fpgadata $core` with a compiled-in `core=menu.rbf`, read
+	#     from the FAT partition's ROOT (docs/boot-chain.md §6.1). Until this step
+	#     existed the shipped card had no menu.rbf there, so that load FAILED on
+	#     every installer boot: the fabric stayed unconfigured, the ADV7513 never
+	#     got a pixel clock, and the user's monitor said "no signal" for the whole
+	#     install. Staging it here makes the load succeed.
+	#
+	#     It CANNOT be overridden to some other filename. `mmcload` runs
+	#     `fpgacheck` BEFORE `scrtest`, so a `core=` set in linux/u-boot.txt is
+	#     imported only after the core has already been loaded. menu.rbf is
+	#     therefore the one name the stock bootloader will ever fetch.
+	#
+	#     Source is the stock menu.rbf the payload fetch already staged and
+	#     verified -- NOT a second download, and deliberately NOT committed to this
+	#     repo (2.4 MiB of third-party binary). It is covered by the existing
+	#     Distribution_MiSTer pin, so it needs no Renovate manager of its own.
+	if [ -f "$PAYLOAD_MENU_RBF" ]; then
+		cp -f "$PAYLOAD_MENU_RBF" "$FATROOT_MENU_RBF"
+		log "FAT root menu.rbf: $(stat -c %s "$FATROOT_MENU_RBF") bytes (U-Boot \$core)"
+	else
+		# Warn, do not die: a dev with a hand-assembled payload should still get an
+		# image. Nothing downstream breaks -- U-Boot's fpgaload simply fails the way
+		# it always used to, and the install itself never touches this file. The
+		# shipped article is still gated: check-sdcard.sh's inventory contract
+		# (docs/verification/sdcard-payload.md) lists menu.rbf, so a release build
+		# missing it fails there rather than shipping quietly.
+		rm -f "$FATROOT_MENU_RBF"
+		log "WARNING: $PAYLOAD_MENU_RBF absent -- FAT root gets NO menu.rbf, so the"
+		log "         FPGA stays unconfigured during install (no HDMI signal)."
+	fi
 }
 
 # ===========================================================================
@@ -558,8 +598,15 @@ build_payload_vfat() {
 	# `du`'s allocated figure here -- but were any sparse file ever added under
 	# mister-payload/, apparent size is what mcopy would actually write, and sizing
 	# from allocated blocks would under-build the vfat and ENOSPC in mcopy.
+	# The exact set of top-level entries that go into the image, built once and
+	# used for BOTH the size measurement and the mcopy below -- if the two ever
+	# disagree, mcopy ENOSPCs on a correctly-sized image or we oversize silently.
+	# menu.rbf (step 4c) is conditional, hence the array rather than a literal list.
+	local -a stage_entries=(mister-payload linux)
+	[ -f "$FATROOT_MENU_RBF" ] && stage_entries+=(menu.rbf)
+
 	local content_kib
-	content_kib="$(cd "$STAGE_DIR" && du -sk --apparent-size mister-payload linux | awk '{sum += $1} END {print sum + 0}')"
+	content_kib="$(cd "$STAGE_DIR" && du -sk --apparent-size "${stage_entries[@]}" | awk '{sum += $1} END {print sum + 0}')"
 	case "$content_kib" in
 		''|*[!0-9]*) die "could not measure staged payload size (got '$content_kib')" ;;
 	esac
@@ -574,12 +621,12 @@ build_payload_vfat() {
 	mkfs.vfat -F 32 -n "$FAT_LABEL" -C "$vfat" "$vfat_kib" >/dev/null ||
 		die "mkfs.vfat failed building $vfat"
 
-	# Copy ONLY the two payload dirs into the image root (never the fetch cache).
+	# Copy ONLY the staged entries into the image root (never the fetch cache).
 	# MTOOLS_SKIP_CHECK=1 stops mtools rejecting our freshly-made FS over cosmetic
 	# geometry nits (same flag check-sdcard.sh uses to read it back). -s = recurse.
 	(
 		cd "$STAGE_DIR"
-		MTOOLS_SKIP_CHECK=1 mcopy -s -i "$vfat" mister-payload linux ::
+		MTOOLS_SKIP_CHECK=1 mcopy -s -i "$vfat" "${stage_entries[@]}" ::
 	) || die "mcopy of the payload into $vfat failed"
 
 	log "FAT32 payload image: $(stat -c %s "$vfat") bytes ($vfat)"

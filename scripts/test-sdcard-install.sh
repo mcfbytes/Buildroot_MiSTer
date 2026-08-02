@@ -26,6 +26,11 @@
 #        exFAT, labelled MiSTer_Data, AND contains linux/linux.img (so the payload
 #        landed and linux.img.gz expanded). Also asserts the benign-halt path does
 #        NOT print the "INSTALLER: FAILED" banner.
+#     5. Assert the FIRST-BOOT SPLASH drew on both boots: banner, every numbered
+#        step, the bar reaching 100%, and the completion banner on the install run
+#        -- and, on the re-run, the banner WITHOUT a completion claim. -M virt has
+#        no hps_led0, so these runs double as proof that the LED half of the splash
+#        degrades to a no-op on a board that has no such LED.
 #
 # NOT the DE10-Nano product kernel and NOT a full boot chain (no BootROM/SPL/U-Boot
 # -- QEMU can't do socfpga). It tests the one new, brick-critical thing that has no
@@ -182,11 +187,43 @@ main() {
 		'payload staged in RAM OK' \
 		'payload written to' \
 		'per-board MAC = ' \
+		'removed linux/linux.img.gz' \
 		'uboot.img written to' \
 		'install complete'; do
 		if grep -q "$stage" "$INSTALL_LOG"; then pass "installer stage: '$stage'"; else fail "installer never reached: '$stage'"; fi
 	done
 	if grep -q 'INSTALLER: FAILED' "$INSTALL_LOG"; then fail "installer dropped to the FAILURE rescue path"; else pass "no installer failure banner"; fi
+
+	# --- 2b. the first-boot splash ------------------------------------------
+	# During the install there is no HDMI and no menu (the FPGA has no bitstream
+	# loaded -- see the long "WHY THERE IS NO HDMI SPLASH" note in the installer
+	# /init), so this console UI plus the hps_led0 heartbeat is the ONLY thing
+	# telling a user the board has not hung. Assert that it actually drew, rather
+	# than only that the install worked silently underneath it.
+	#
+	# NOTE: the guest console is a tty here, so the splash animates in place with
+	# \r and the step labels land mid-line rather than at a line start. Match on
+	# substrings only -- do not anchor these patterns with ^.
+	has "$INSTALL_LOG" 'F I R S T - B O O T   S E T U P' "splash: banner drew"
+	has "$INSTALL_LOG" 'Do NOT power off'                "splash: warns against pulling power"
+	local step
+	for step in \
+		'checking the card' \
+		'reading the payload' \
+		'copying to memory' \
+		'repartitioning the card' \
+		'formatting (exFAT)' \
+		'writing files to the card' \
+		'expanding the system image' \
+		'applying your settings' \
+		'writing the bootloader'; do
+		has "$INSTALL_LOG" "$step" "splash: reached step '$step'"
+	done
+	has "$INSTALL_LOG" '] 100%'          "splash: progress bar reached 100%"
+	has "$INSTALL_LOG" 'INSTALL COMPLETE' "splash: completion banner drew"
+	# QEMU's -M virt has no hps_led0, so this run also proves the LED code path
+	# degrades to a no-op instead of failing an install on a board without one.
+	pass "splash: install completed on a platform with no hps_led0"
 	# The generated MAC must be locally-administered (bit1 set) + unicast (bit0 clear).
 	local mac; mac=$(sed -n 's/.*per-board MAC = \([0-9A-Fa-f:]*\).*/\1/p' "$INSTALL_LOG" | head -1)
 	if [ -n "$mac" ]; then
@@ -229,6 +266,11 @@ main() {
 	has   "$GUARD_LOG" 'source mounted (exfat)' "installed card re-mounts as exFAT"
 	has   "$GUARD_LOG" 'already provisioned'    "re-run guard tripped (exFAT MiSTer_Data + linux/linux.img present)"
 	hasnt "$GUARD_LOG" 'INSTALLER: FAILED'      "benign halt did not print the FAILED banner"
+	# The splash must come up on this path too (the user still needs to see the
+	# board is alive) but must NOT claim an install happened -- a progress UI that
+	# lies about what it did is worse than no progress UI at all.
+	has   "$GUARD_LOG" 'F I R S T - B O O T   S E T U P' "splash: banner drew on the re-run"
+	hasnt "$GUARD_LOG" 'INSTALL COMPLETE'                "splash: benign halt did not claim a completed install"
 
 	echo
 	if [ "$FAILED" -eq 0 ]; then

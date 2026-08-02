@@ -88,12 +88,25 @@
 # Provided by busybox in EITHER stage-1's set or installer-busybox.config:
 #   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
 #   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
-#   cp du dd cut reboot blkid blockdev hexdump               (installer must add)
+#   cp du dd cut reboot blkid blockdev hexdump rm            (installer must add)
+# The applet budget is real but it is NOT fixed: `rm` was added in PR #76 because
+# /init genuinely needed it (step 5b) and it costs ~1 KB. If a future revision
+# needs an applet, turn its CONFIG_ symbol on in installer-busybox.config and
+# document why in that file's header -- do not contort the shell around its
+# absence. Do check the symbol actually exists in the BusyBox being built:
+# kconfig silently discards unknown symbols, so a typo reads as "not set".
+# Note the budget applies to APPLETS only -- `true` and `false` are unconditional
+# ash BUILTINS (shell/ash.c builtintab, outside any #if), so `|| true` is safe
+# here even though CONFIG_TRUE is off; that symbol governs only /bin/true.
 # (blkid/blockdev/hexdump may come from busybox or util-linux; only sfdisk+mkfs.exfat
 # must be real external binaries.) NOTE: basename/dirname/od are deliberately NOT
 # built -- /init uses POSIX ${var%/*}/${var##*/} parameter expansion in their place,
 # and hexdump instead of od for the MAC. Everything here is POSIX sh / busybox ash;
 # no bashisms.
+# The first-boot splash (see its own section below) deliberately adds NOTHING to
+# this list: it is built entirely from shell builtins plus printf and sleep, both
+# of which are already here. Read that section's "APPLET BUDGET" note before
+# editing it -- several obvious implementations need applets we do not ship.
 #
 set -u
 
@@ -117,7 +130,317 @@ DEV_WAIT=30                            # seconds to wait for a block device to e
 cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
 fat_type=""; stage="starting up"; cores_skipped="no"
 
-log() { printf '[installer] %s\n' "$*"; }
+# ===========================================================================
+#  FIRST-BOOT SPLASH -- console progress UI + hps_led0 heartbeat
+# ===========================================================================
+# WHY THIS EXISTS
+# ---------------
+# On a pristine card everything below takes tens of seconds during which the
+# board looks completely dead: no HDMI picture, no menu, and -- without a serial
+# adapter -- no output whatsoever. A user reasonably concludes it has hung and
+# pulls the power, and the window they pull it in is very likely to be the
+# reformat, which is exactly the window that leaves an unbootable card. Every
+# line in this section exists to make "it is working, wait" observable.
+#
+# WHY THERE IS NO HDMI SPLASH -- do not "fix" this without reading this first
+# --------------------------------------------------------------------------
+# mr-fusion shows a PNG on HDMI (`fbv -fr /mnt/release/splash.png`). We cannot,
+# because we do not boot mr-fusion's stack. Mr-fusion ships its OWN U-Boot
+# (vendor/bootloader.img), the *Terasic* DTB, and a *Terasic* framebuffer
+# BITSTREAM (vendor/support/de10-nano.rbf) plus an ADV7513 register dump -- i.e.
+# an FPGA core whose frame reader scans DDR out to HDMI entirely by itself,
+# which is what gives it a self-sufficient /dev/fb0 for fbv to write to.
+#
+# Our installer boots the STOCK MiSTer uboot.img byte-identical (ADR 0017) with
+# our MiSTer kernel and DTS. On that stack there are three independent blockers:
+#
+#   1. The FPGA is not configured AT ALL during install. U-Boot's `fpgaload` runs
+#      `load mmc 0:1 $fpgadata menu.rbf` against the FAT partition ROOT
+#      (docs/boot-chain.md §6.1), and the shipped installer card deliberately has
+#      no menu.rbf there -- its root holds only mister-payload/ and
+#      linux/zImage_dtb (scripts/mk-sdcard.sh step 4b). With no bitstream in the
+#      fabric the ADV7513 transmitter never gets a pixel clock, so HDMI is "no
+#      signal" for the whole install, full stop.
+#   2. Even WITH a core loaded, /dev/fb0 (MiSTer_fb, docs/abi-contract.md §4) is
+#      inert on its own. The FPGA frame reader only scans that DDR window out
+#      once Main_MiSTer programs it, via the fb_cmd0/fb_cmd1 messages that
+#      /usr/sbin/vmode writes to /dev/MiSTer_cmd -- a FIFO **Main_MiSTer itself
+#      creates** (Main:input.cpp:4051). Main_MiSTer does not, and cannot, run in
+#      this throwaway initramfs. Writing pixels to /dev/fb0 from here paints DDR
+#      that nothing on the board ever reads.
+#   3. The kernel console is `console=ttyS0,115200` only (docs/boot-chain.md §4),
+#      so even a live framebuffer would not carry this text without also adding
+#      console=tty0 to a bootargs string the stock uboot.img hardcodes.
+#
+# Reproducing mr-fusion's picture therefore means shipping a bitstream + a second
+# DTB + our own U-Boot: megabytes added to the card and a whole new brick surface,
+# to decorate a process that finishes in well under a minute. Deliberately not
+# done. See docs/decisions/0020-sdcard-exfat-reformat-installer.md §6, which also
+# records the one honest limitation of what we ship instead: HPS_LED is an
+# ON-BOARD LED, so a fully-enclosed case cannot see it, and no externally-facing
+# indicator exists that does not go through the fabric.
+#
+# WHAT WE DO INSTEAD
+# ------------------
+#  1. A progress UI on the serial console -- the documented triage channel:
+#     banner, numbered steps, a bar, percentage, elapsed time and a spinner.
+#  2. The DE10-Nano's HPS LED at /sys/class/leds/hps_led0 (DTS `gpio-leds hps0`,
+#     &portb 24, linux-patches/0004-dts-de10nano-MiSTer.patch). This is HPS-side
+#     GPIO driven by the kernel's gpio-leds driver, so unlike the eight LED0-7
+#     user LEDs -- which hang off the FPGA fabric and are therefore as dead as
+#     HDMI here -- it needs no bitstream. It is the ONLY install-time signal a
+#     user with no serial cable can see, so it carries the state:
+#
+#         blinking ~0.5 Hz .. installing; all is well, leave it alone
+#         solid on ......... STOPPED and wants attention: either the install
+#                            failed, or the card was already installed. Either
+#                            way the console says which. This is the ONLY state
+#                            that means trouble, which is why nothing on the
+#                            healthy path is allowed to park the LED lit.
+#         off .............. between two long phases, or finished and rebooting.
+#                            Only the long steps carry a heartbeat, so brief dark
+#                            gaps mid-install are normal; a dark LED never means
+#                            trouble, and the reboot into MiSTer is what tells
+#                            you the "finished" case apart.
+#
+#     We take the LED over (trigger=none), which costs the DTS default `mmc0`
+#     activity flicker for the duration. That is the entire point: erratic
+#     activity flicker is indistinguishable from an ordinary boot, a metronome is
+#     not. Nothing here persists -- `linux,default-trigger = "mmc0"` is a DTS
+#     property re-applied at probe, so the installed card gets its normal SD
+#     activity light back on the very next boot.
+#
+# A SPLASH MUST NEVER BE ABLE TO FAIL AN INSTALL. There is no `set -e` here; all
+# LED writes are guarded and the sysfs paths are probed, never assumed. If none
+# of this can draw, the install still runs to completion exactly as before.
+#
+# APPLET BUDGET -- read before editing. The installer busybox
+# (installer-busybox.config) ships NO rm, touch, kill, usleep, date, seq or tr,
+# and its `sleep` is integer-only: CONFIG_FEATURE_FANCY_SLEEP is off, so a
+# `sleep 0.2` would parse as 0 and BUSY-SPIN a core for the whole install.
+# Consequently:
+#   * the heartbeat child is stopped by TRUNCATING a flag file with `: >` (a pure
+#     shell redirection) and reaped with the ash builtin `wait` -- not kill (no
+#     applet, and ash's builtin kill is gated behind CONFIG_KILL) and not rm.
+#   * elapsed time is read from /proc/uptime with the `read` builtin -- not date.
+#   * the bar is built by string concatenation in a loop -- not seq/tr/printf.
+#   * every frame delay is a whole number of seconds.
+#   * ASCII art is emitted as `printf '%s\n' 'line' 'line' ...` (printf reuses the
+#     format for each argument), so no line is ever escape-processed. Do not
+#     switch it to a heredoc or to escapes in a format string.
+# >>> SPLASH SECTION BEGIN -- scripts/test-installer-splash.sh extracts everything
+# between these two markers VERBATIM and sources it under a POSIX shell against a
+# stubbed /proc/uptime and /sys/class/leds. Keep the section self-contained: it
+# must not reference anything defined outside it, or that test stops working.
+SPLASH_TOTAL=9                # user-visible steps; keep in sync with splash_step calls
+SPLASH_BAR_CELLS=28           # bar width -- the whole status line must fit 80 cols
+SPLASH_FLAG=/run/splash.run   # non-empty => the heartbeat child should keep running
+
+# All pre-initialised so `set -u` is safe even if rescue() fires during the early
+# mounts, i.e. before splash_init has run. splash_tty=0 until proven otherwise
+# keeps every drawing routine a no-op until then.
+splash_n=0; splash_label="starting up"; splash_bar=""; splash_pct=0
+splash_frame=0; splash_t0=0; splash_tty=0
+splash_led=""; splash_led_on=0; splash_pulsing=0
+
+# Whole seconds since boot. /proc/uptime is "1234.56 5678.90"; `read` splits it.
+splash_uptime() {
+	_up=0
+	read -r _up _rest < /proc/uptime 2>/dev/null || _up=0
+	_up="${_up%%.*}"
+	case "$_up" in ''|*[!0-9]*) _up=0 ;; esac
+	printf '%s' "$_up"
+}
+
+# Elapsed since splash_init, as "0m42s".
+splash_elapsed() {
+	_e=$(( $(splash_uptime) - splash_t0 ))
+	[ "$_e" -ge 0 ] || _e=0
+	printf '%dm%02ds' "$((_e / 60))" "$((_e % 60))"
+}
+
+# Find the HPS LED and take it off its DTS default trigger so brightness writes
+# stick. Restricted to hps_led* on purpose: other /sys/class/leds entries on a
+# MiSTer belong to USB gamepads (patches 0032/0033/0041/0042) and blinking a
+# user's controller to report SD-card progress would be nonsense.
+splash_led_init() {
+	splash_led=""
+	for _c in /sys/class/leds/hps_led0 /sys/class/leds/hps_led*; do
+		[ -w "$_c/brightness" ] || continue
+		splash_led="$_c"
+		break
+	done
+	[ -n "$splash_led" ] || return 0
+	printf 'none' > "$splash_led/trigger" 2>/dev/null || true
+	splash_led_set 0
+}
+
+splash_led_set() {
+	[ -n "$splash_led" ] || return 0
+	printf '%s' "$1" > "$splash_led/brightness" 2>/dev/null || true
+	splash_led_on="$1"
+}
+
+splash_led_toggle() {
+	if [ "$splash_led_on" = 1 ]; then splash_led_set 0; else splash_led_set 1; fi
+}
+
+# Pre-render the bar for the current step; the per-second frames only redraw the
+# spinner and the clock, so this runs once per step, not once per frame.
+splash_render_bar() {
+	_i=0; splash_bar=""
+	while [ "$_i" -lt "$SPLASH_BAR_CELLS" ]; do
+		if [ "$_i" -lt "$1" ]; then splash_bar="$splash_bar#"; else splash_bar="$splash_bar."; fi
+		_i=$((_i + 1))
+	done
+}
+
+# Always `printf '%s' <char>`, never a bare format string: '-' would otherwise be
+# eaten as an option and the backslash frame would be escape-processed. The
+# backslash is written "\\" (double quotes) rather than '\' -- both are a single
+# literal backslash in POSIX sh, but the quoted form does not trip SC1003.
+splash_spin_char() {
+	case $((splash_frame % 4)) in
+	0) printf '%s' '|'  ;;
+	1) printf '%s' '/'  ;;
+	2) printf '%s' '-'  ;;
+	*) printf '%s' "\\" ;;
+	esac
+}
+
+# The live, in-place status line. No trailing newline: it is rewritten with \r
+# every frame and erased to end-of-line so a shorter label cannot leave debris.
+splash_line() {
+	[ "$splash_tty" = 1 ] || return 0
+	printf '\r  [%s] %3d%%  %d/%d  %s  %s %s\033[K' \
+		"$splash_bar" "$splash_pct" "$splash_n" "$SPLASH_TOTAL" \
+		"$(splash_elapsed)" "$(splash_spin_char)" "$splash_label"
+}
+
+splash_clear_line() {
+	[ "$splash_tty" = 1 ] || return 0
+	printf '\r\033[K'
+}
+
+splash_banner() {
+	printf '%s\n' \
+'' \
+'================================================================' \
+'        .------.' \
+'       /  ____ |        M i S T e r' \
+'      |  |____||        F I R S T - B O O T   S E T U P' \
+'      |        |' \
+'      |________|        preparing your SD card' \
+'================================================================' \
+'  This usually takes well under a minute.' \
+'' \
+'  *** Do NOT power off or remove the card while the board LED' \
+'      is blinking. ***' \
+'================================================================' \
+''
+}
+
+splash_init() {
+	splash_t0="$(splash_uptime)"
+	if [ -t 1 ]; then splash_tty=1; else splash_tty=0; fi
+	splash_led_init
+	splash_banner
+	splash_step 0 "starting up"
+}
+
+# splash_step N "label" -- advance the user-visible progress. Always stops the
+# heartbeat first so the child can never interleave with what we are about to
+# print. On a non-tty (a captured log) we emit one plain line per step instead of
+# animating, so log files stay readable.
+splash_step() {
+	splash_pulse_stop
+	splash_n="$1"
+	splash_label="$2"
+	splash_pct=$(( splash_n * 100 / SPLASH_TOTAL ))
+	splash_render_bar "$(( splash_n * SPLASH_BAR_CELLS / SPLASH_TOTAL ))"
+	if [ "$splash_tty" = 1 ]; then
+		splash_line
+	else
+		printf '[installer] step %d/%d: %s\n' "$splash_n" "$SPLASH_TOTAL" "$splash_label"
+	fi
+}
+
+# One animation frame. Called two ways: inline from the polling loops that
+# already sleep 1 (so they animate for free, with no child process), and from the
+# heartbeat child that brackets the long blocking commands.
+splash_tick() {
+	splash_frame=$((splash_frame + 1))
+	splash_led_toggle
+	splash_line
+}
+
+splash_heartbeat() {
+	while [ -s "$SPLASH_FLAG" ]; do
+		splash_tick
+		sleep 1
+	done
+}
+
+splash_pulse_start() {
+	[ "$splash_pulsing" = 0 ] || return 0
+	printf 'run' > "$SPLASH_FLAG" 2>/dev/null || return 0
+	splash_pulsing=1
+	splash_heartbeat &
+}
+
+# Truncating the flag ends the child's loop within one frame. We only `wait` if
+# the truncation is OBSERVED to have worked: if it somehow did not, the child
+# would never exit and a bare `wait` would hang the installer forever -- a
+# cosmetic bug must not be able to do that. /run is ramfs, so the fallback path
+# is close to unreachable; it costs one `[` to be certain.
+splash_pulse_stop() {
+	[ "$splash_pulsing" = 1 ] || return 0
+	splash_pulsing=0
+	if : > "$SPLASH_FLAG" 2>/dev/null && [ ! -s "$SPLASH_FLAG" ]; then
+		wait
+	fi
+	# The child toggled the LED in a subshell, so our copy of splash_led_on is
+	# stale. Re-assert a known state or the next toggle can be a no-op frame.
+	#
+	# That state must be OFF, not on. The short steps between two long ones are
+	# not bracketed by a heartbeat, so whatever we park here is what the LED shows
+	# across them -- and a SUSTAINED solid-on is the one signal reserved for "the
+	# board has stopped and wants a human" (splash_fail / splash_halt_ok). Parking
+	# on would light that signal in the middle of a perfectly healthy install.
+	splash_led_set 0
+}
+
+splash_done() {
+	splash_pulse_stop
+	splash_n="$SPLASH_TOTAL"; splash_pct=100; splash_label="done"
+	splash_render_bar "$SPLASH_BAR_CELLS"
+	splash_clear_line
+	printf '%s\n' \
+'' \
+'================================================================' \
+'  INSTALL COMPLETE' \
+'================================================================'
+	printf '  [%s] 100%%   finished in %s\n' "$splash_bar" "$(splash_elapsed)"
+	printf '%s\n' \
+'' \
+'  Rebooting into MiSTer now. The LED goes dark until the menu' \
+'  core comes up.' \
+'================================================================' \
+''
+	splash_led_set 0
+}
+
+# Both terminal states leave the LED SOLID ON: the board has stopped and wants a
+# human. Which of the two it is, is what the console banner is for.
+splash_fail()    { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
+splash_halt_ok() { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
+# >>> SPLASH SECTION END <<<
+
+log() {
+	splash_clear_line
+	printf '[installer] %s\n' "$*"
+	splash_line
+}
 
 # PID 1 must never exit (that is an instant kernel panic), so every terminal
 # path -- the failure path AND the benign "already installed" halt -- ends by
@@ -133,6 +456,10 @@ respawn_shell() {
 # string), what the card looks like now, and how to get back to a known-good
 # state, then respawn a shell forever. The system is NOT installed.
 rescue() {
+	# Stop the heartbeat and park the LED solid-on BEFORE printing: a still-running
+	# child would otherwise redraw its status line over this banner, and the LED
+	# would keep cheerfully blinking "all is well" next to a failed install.
+	splash_fail
 	printf '\n'
 	printf '################################################################\n'
 	printf '#  MiSTer INSTALLER: FAILED\n'
@@ -164,8 +491,14 @@ mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount 
 mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
 mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
 
+# The splash needs /proc (uptime), /sys (the LED) and /run (the heartbeat flag,
+# created by the mkdir above), so it can only come up once those exist. Before
+# this point every drawing routine is a deliberate no-op -- see splash_tty.
+splash_init
+
 # ------------------------------------------------------- parse /proc/cmdline
 # Same discipline as stage-1: cmdline-driven, never positional, never globbing.
+splash_step 1 "checking the card"
 stage="parsing the kernel command line"
 cmdline="$(cat /proc/cmdline)"
 set -f
@@ -195,6 +528,7 @@ while :; do
 	[ -n "$DATA_PART" ] && [ -b "$DATA_PART" ] && break
 	[ "$waited" -ge "$DEV_WAIT" ] && rescue "data partition '$root_arg' never appeared"
 	[ "$waited" = 0 ] && log "waiting up to ${DEV_WAIT}s for $root_arg ..."
+	splash_tick   # this loop already sleeps 1, so it animates without a child
 	sleep 1; waited=$((waited + 1))
 done
 log "data partition = $DATA_PART (after ${waited}s)"
@@ -263,6 +597,7 @@ log "source mounted ($fat_type)"
 label="$(blkid -o value -s LABEL "$DATA_PART" 2>/dev/null || true)"
 if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/linux/linux.img ]; then
 	umount /mnt/src 2>/dev/null || true
+	splash_halt_ok
 	printf '\n################################################################\n'
 	printf '#  MiSTer INSTALLER: card already provisioned -- NOT reformatting\n'
 	printf '################################################################\n'
@@ -280,6 +615,7 @@ if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/li
 fi
 
 # --------------------------------------------- locate the payload on the source
+splash_step 2 "reading the payload"
 stage="locating the payload"
 SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
 [ -d "$SRC_PAYLOAD" ] || rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
@@ -344,6 +680,7 @@ if [ "$full_kb" -gt "$budget_kb" ]; then
 	printf '****************************************************************\n\n'
 fi
 
+splash_step 3 "copying to memory"
 stage="copying the payload into RAM"
 copy_payload_to_ram() {
 	# Copy each top-level entry; skip the cores dir when RAM is tight.
@@ -358,7 +695,11 @@ copy_payload_to_ram() {
 	done
 	return 0
 }
+# One long, silent, blocking command: bracket it with the heartbeat child so the
+# console clock keeps ticking and the LED keeps blinking while it runs.
+splash_pulse_start
 copy_payload_to_ram || rescue "copying the payload into RAM failed (out of space?)"
+splash_pulse_stop
 
 # Verify the RAM copy is complete for the boot-critical files BEFORE we destroy
 # anything on disk. If this trips, the card is still a bootable installer. linux.img
@@ -388,6 +729,7 @@ sync
 # 3 MiB instead of the intended 4 MiB and its size drifted with p1's alignment.
 # Computing all three numbers here makes the layout deterministic and makes p2
 # match genimage-sdcard.cfg's `size = 4M` on the shipped image byte-for-byte.
+splash_step 4 "repartitioning the card"
 stage="repartitioning $DISK"
 dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)"
 case "$dev_sectors" in ''|*[!0-9]*) rescue "cannot read /sys/block/$disk_name/size" ;; esac
@@ -413,11 +755,13 @@ waited=0
 while :; do
 	[ -b "$P1" ] && [ -b "$P2" ] && break
 	[ "$waited" -ge "$DEV_WAIT" ] && rescue "new partitions $P1 / $P2 never appeared after sfdisk"
+	splash_tick   # ditto -- free animation, no heartbeat child needed here
 	sleep 1; waited=$((waited + 1))
 done
 log "new partitions present: $P1 (data), $P2 (boot)"
 
 # --------------------------------------------------- mkfs.exfat on new p1 (4)
+splash_step 5 "formatting (exFAT)"
 stage="formatting $P1 as exFAT"
 mkfs.exfat -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
 sync
@@ -426,12 +770,15 @@ stage="mounting the new data partition"
 mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount new exFAT $P1"
 
 # --------------------------------------------- copy the payload back out of RAM (5)
+splash_step 6 "writing files to the card"
 stage="writing the payload to the card"
+splash_pulse_start
 for entry in /tmp/payload/* /tmp/payload/.[!.]*; do
 	[ -e "$entry" ] || continue
 	cp -a "$entry" /mnt/dst/ || rescue "copying ${entry##*/} onto $P1 failed"
 done
 sync
+splash_pulse_stop
 
 # ------------------------------------ expand linux.img.gz onto the card (5b)
 # linux.img ships GZIPPED so the 512 MiB image never has to fit the mem=511M RAM
@@ -439,11 +786,36 @@ sync
 # decompress it to the real linux/linux.img -- zcat reads the .gz and writes the
 # expansion straight to DISK, so the full 512 MiB is never held in RAM -- then drop
 # the .gz so the finished card carries only linux/linux.img (what U-Boot loop-mounts).
+splash_step 7 "expanding the system image"
 stage="expanding linux.img onto the card"
 [ -f /mnt/dst/linux/linux.img.gz ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
+# The longest single command in the whole install: 512 MiB decompressed straight
+# onto SD, with no progress of its own. This is THE step users would otherwise
+# sit through wondering whether the board had died.
+splash_pulse_start
 zcat /mnt/dst/linux/linux.img.gz > /mnt/dst/linux/linux.img ||
 	rescue "decompressing linux/linux.img.gz onto $P1 failed (card out of space, or corrupt payload)"
-rm -f /mnt/dst/linux/linux.img.gz
+splash_pulse_stop
+# Delete the now-redundant .gz so the finished card carries only linux/linux.img
+# (what U-Boot loop-mounts). Until PR #76 this `rm -f` was a silent
+# command-not-found no-op -- installer-busybox.config had `# CONFIG_RM is not
+# set` -- so every installed card kept the whole ~80 MiB gzip forever, and once
+# there was a splash it also printed "rm: not found" across it. CONFIG_RM is now
+# on (see that file's header for the costing: ~1 KB in a 13 MB RAM-resident
+# initramfs).
+#
+# Then VERIFY, and fall back to truncating. That is the real lesson of this bug:
+# the failure mode was not "rm was missing", it was "rm was missing and nothing
+# noticed for a whole release". An unchecked cleanup command that silently
+# no-ops is exactly what put 80 MiB on every card. If the applet ever goes away
+# again this now says so on the console AND still releases the blocks.
+rm -f /mnt/dst/linux/linux.img.gz 2>/dev/null
+if [ -e /mnt/dst/linux/linux.img.gz ]; then
+	: > /mnt/dst/linux/linux.img.gz
+	log "WARNING: could not delete linux/linux.img.gz (no rm applet?) -- truncated it instead"
+else
+	log "removed linux/linux.img.gz"
+fi
 sync
 
 # Verify the boot-critical files really landed (linux.img is the expanded one above).
@@ -453,6 +825,7 @@ done
 log "payload written to $P1"
 
 # ------------------------------------------------- apply user pre-seed (6)
+splash_step 8 "applying your settings"
 stage="applying user pre-seed"
 apply_preseed() {
 	# $1 = name under /run/preseed ; $2 = destination path under /mnt/dst
@@ -522,14 +895,20 @@ sync
 # THE most brick-critical step. Until this succeeds the card has NO bootloader in
 # its 0xA2 partition and will not boot. We dd from the RAM copy (guaranteed present)
 # and verify the exit status; failure here is a loud rescue, NOT a reboot.
+splash_step 9 "writing the bootloader"
 stage="writing uboot.img to the boot partition ($P2)"
+splash_pulse_start
 dd if=/tmp/payload/linux/uboot.img of="$P2" bs=64k 2>/dev/null ||
 	rescue "dd of uboot.img to $P2 FAILED -- card is NOT bootable; re-flash sdcard.img"
 sync; sync
+splash_pulse_stop
 log "uboot.img written to $P2"
 
 # ------------------------------------------------------------------- reboot (9)
 stage="rebooting into the installed MiSTer"
+# Draws the completion banner and puts the LED out: from here the next thing that
+# lights it is the installed system's own mmc0 trigger, one boot from now.
+splash_done
 log "install complete -- rebooting into MiSTer"
 sync
 # `reboot -f`: direct reboot(2) syscall. Plain `reboot` would try to signal an init

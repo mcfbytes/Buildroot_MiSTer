@@ -21,6 +21,7 @@ relative to `p1`'s root.
 ```
 linux/
 linux/zImage_dtb
+menu.rbf
 mister-payload/
 mister-payload/linux/
 mister-payload/linux/linux.img.gz
@@ -48,8 +49,16 @@ mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **27 entries** (7 directories, 20 files) for the base inventory. `check-sdcard.sh`
+That is **28 entries** (7 directories, 21 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
+
+> **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
+> second copy of `mister-payload/menu.rbf`, and the duplication is deliberate: the stock
+> U-Boot's `fpgaload` reads `$core` (compiled-in `menu.rbf`) from the partition **root**,
+> not from the payload subtree, so without a root copy the FPGA was never configured
+> during the install and HDMI showed "no signal" for its whole duration. It cannot be
+> given another name — `mmcload` runs `fpgacheck` *before* `scrtest`, so a `core=` in
+> `linux/u-boot.txt` is imported only after the core has already been loaded.
 
 > **Changed 2026-08-01** — two entries **added**, both of them this project's own
 > update-channel configuration, staged by `stage_update_channel()` in
@@ -95,6 +104,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | Path | Source | Pin |
 |---|---|---|
 | `linux/zImage_dtb` | Our kernel (`work/Linux-Kernel_MiSTer` build), relinked by `scripts/mk-sdcard.sh` with the installer initramfs (`configs/mister_installer_defconfig` + `board/mister/de10nano/installer-overlay/`) embedded via `MISTER_INITRAMFS_CPIO` | Built, not fetched — same kernel tree as `output/images/zImage_dtb`, different embedded cpio |
+| `menu.rbf` (FAT **root**) | A byte-identical copy of `mister-payload/menu.rbf`, placed by `scripts/mk-sdcard.sh` step 4c | Not a second download and **not committed to this repo** — it is the stock file the payload fetch already staged, so it inherits the same `STOCK_RELEASE_*` pin and needs no Renovate manager of its own. This is U-Boot's `$core`: `fpgaload` reads it from the partition **root**, so without this copy the FPGA is left unconfigured for the entire install (ADR 0020 §7) |
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
 | `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
 | `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |
@@ -106,7 +116,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/update_all.sh` | `theypsilon/Update_All_MiSTer`, raw file at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/Scripts/wifi.sh` | `MiSTer-devel/Scripts_MiSTer`, `other_authors/wifi.sh` at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares both core databases explicitly: `distribution_mister` (canonical URL from the Downloader's own `constants.py`) and `jtcores` (Jotego, `filter = !jtbeta` to exclude the Patreon-only beta cores, matching what Update All configures for a user who has not enabled them). `distribution_mister` **must** be explicit here — `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some |
-| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image: re-enables the Linux update for one run (`UPDATE_LINUX=true`, which the Downloader applies *after* parsing the ini) restricted to one database (`--run-only`), so there is no multi-db race to lose. Idempotently repairs both ini files above before running |
+| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run. The same file is copied into the rootfs at `/usr/share/mister-linux-modernization/` by `post-build.sh`, and `/etc/init.d/S05mlm` re-deploys it from there each boot — which is how a corrected updater reaches an existing card, since a `release_YYYYMMDD.7z` can only carry `files/linux/**` |
 
 `gamecontrollerdb/`, `mt32-rom-data/`, `soundfonts/` are copied wholesale from the stock
 archive; `check-sdcard.sh` asserts each directory exists and is non-empty rather than

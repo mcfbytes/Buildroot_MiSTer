@@ -1,31 +1,34 @@
 #!/usr/bin/env bash
 #
-# scripts/test-timezone.sh — sandboxed functional test of the first-boot
-# timezone autodetect init script
-# (board/mister/de10nano/rootfs-overlay/etc/init.d/S48timezone).
+# scripts/test-timezone.sh — sandboxed functional test of the timezone
+# autodetect dhcpcd hook
+# (board/mister/de10nano/rootfs-overlay/usr/lib/dhcpcd/dhcpcd-hooks/90-timezone).
 #
-# WHY THIS EXISTS. S48timezone takes a string off the *network* and turns it
-# into a filesystem path. That is the one piece of this image that does so, so
-# its input validation is worth a real test rather than an eyeball. It also has
-# a "happens exactly once, ever" contract (see the script's own header) whose
-# whole point is invisible in a single run -- you only see it break on the
-# second boot. Both are cheap to assert here and impossible to assert from the
-# rootfs.tar checks in ci-tests.sh, which can only see that the file shipped.
+# WHY THIS EXISTS. The hook takes a string off the *network* and turns it into a
+# filesystem path. That is the one piece of this image that does so, so its
+# input validation is worth a real test rather than an eyeball. It also has a
+# "happens exactly once, ever" contract (see the hook's own header) whose whole
+# point is invisible in a single run -- you only see it break on the second
+# connection. And it is *sourced into dhcpcd's shell*, so "leaks nothing" and
+# "never exits its caller" are correctness properties too, not style. None of
+# that is visible to the rootfs.tar checks in ci-tests.sh, which can only see
+# that the file shipped.
 #
-# HOW. The script is copied into a throwaway sandbox with its three absolute
-# paths (/media/fat, /usr/share/zoneinfo/posix, /usr/bin/curl) rewritten to
-# point inside it, and `curl` is stubbed with a script that answers whatever the
-# case under test wants and records every call. The script calls curl by
-# absolute path, so that rewrite -- not a PATH shim -- is what the cases
+# HOW. The hook is copied into a throwaway sandbox with its four absolute paths
+# (/media/fat, /usr/share/zoneinfo/posix, /usr/bin/curl, /run/timezone-autodetect)
+# rewritten to point inside it, and `curl` is stubbed with a script that answers
+# whatever the case under test wants and records every call. The hook calls curl
+# by absolute path, so that rewrite -- not a PATH shim -- is what the cases
 # actually exercise; PATH is set as well only so the stub wins if that ever
-# changes. Nothing here needs a build, a
-# board, or a network: the zoneinfo files are synthesized (the script only ever
-# copies them, never parses them), so this runs anywhere in about a second.
+# changes. Nothing here needs a build, a board, or a network: the zoneinfo files
+# are synthesized (the hook only ever copies them, never parses them), so this
+# runs anywhere in about a second.
 #
-# The sandbox copy is also rewritten to run detect() in the FOREGROUND, so every
-# assertion is deterministic instead of racing a background job. The real
-# script backgrounds it, and that property -- start must not block boot -- is
-# what the last case tests, against an unmodified copy.
+# Each case sources the hook exactly as dhcpcd does, with $reason and $if_up in
+# the environment. One sandbox copy has its `) &` rewritten to `)` so the body
+# runs in the FOREGROUND and every assertion is deterministic instead of racing
+# a background job; the unmodified copy is used for the two properties that only
+# exist because of the backgrounding.
 #
 # Usage: scripts/test-timezone.sh
 #   Exit 0 iff every case passed. Wired into scripts/ci-tests.sh's Timezone
@@ -39,13 +42,18 @@
 #                with arguments, e.g.
 #                TZ_TEST_SH="qemu-arm -L output/target output/target/bin/busybox sh"
 
+# shellcheck disable=SC2030,SC2031
+# Subshell-scoped environment is the whole mechanism here, not an accident: each
+# case sources the hook inside ( ) with its own $reason/$if_up/$PATH, exactly as
+# dhcpcd-run-hooks does, so nothing carries between cases.
+
 set -u
 # Deliberately not -e: run every case, report the whole picture -- same
 # rationale as ci-tests.sh and test-initramfs.sh.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-SRC="$ROOT/board/mister/de10nano/rootfs-overlay/etc/init.d/S48timezone"
+SRC="$ROOT/board/mister/de10nano/rootfs-overlay/usr/lib/dhcpcd/dhcpcd-hooks/90-timezone"
 
 if [ ! -f "$SRC" ]; then
 	echo "test-timezone.sh: ERROR: $SRC not found" >&2
@@ -67,7 +75,6 @@ ZONEDIR="$SB/usr/share/zoneinfo/posix"
 FATDIR="$SB/media/fat/linux"
 TZFILE="$FATDIR/timezone"
 TZSTAMP="$FATDIR/timezone.autodetect"
-ROUTE="$SB/proc-route"
 LOCKDIR="$SB/lock"
 
 mkdir -p "$ZONEDIR/America" "$FATDIR" "$SB/bin"
@@ -79,18 +86,6 @@ printf 'zoneinfo-UTC\n'              > "$ZONEDIR/UTC"
 # A file OUTSIDE the zone dir, for the path-traversal case to aim at.
 printf 'SECRET\n' > "$SB/passwd"
 
-# Stand-in /proc/net/route, in the kernel's format: header line, then one route
-# per line with a hex destination. 00000000 is the default route the script
-# gates on. route_up/route_down swap between "we have a network" and "we do not".
-route_up() {
-	printf 'Iface\tDestination\tGateway\tFlags\n' > "$ROUTE"
-	printf 'eth0\t00000000\t0102A8C0\t0003\n'    >> "$ROUTE"
-}
-route_down() {
-	printf 'Iface\tDestination\tGateway\tFlags\n' > "$ROUTE"
-	printf 'eth0\t0002A8C0\t00000000\t0001\n'    >> "$ROUTE"
-}
-route_up
 
 # Stub curl. Answers with $SB/answer, or fails like a real curl would when
 # there is no network (exit 22 is curl's HTTP-error code; -f uses it). Logs
@@ -116,50 +111,40 @@ printf '%s\n' "\$ans"
 EOF
 chmod +x "$SB/bin/curl"
 
-# Two sandbox copies of the script under test:
-#   .sync — detect() in the foreground, so assertions are race-free
-#   .async — untouched control flow, for the "must not block boot" case
+# Copy the hook with its absolute paths pointed inside the sandbox, and its
+# retry loop shortened so an offline case takes a moment rather than a minute.
+# The TZ_TRIES/TZ_INTERVAL lines live inside the subshell, hence the leading
+# whitespace in the patterns; indentation of the replacement does not matter.
 rewrite() {
 	sed -e "s|/media/fat|$SB/media/fat|g" \
 	    -e "s|/usr/share/zoneinfo/posix|$ZONEDIR|g" \
 	    -e "s|/usr/bin/curl|$SB/bin/curl|g" \
-	    -e "s|/proc/net/route|$ROUTE|g" \
 	    -e "s|/run/timezone-autodetect|$LOCKDIR|g" \
-	    -e "s|^TZ_TRIES=.*|TZ_TRIES=2|" \
-	    -e "s|^TZ_INTERVAL=.*|TZ_INTERVAL=1|" \
+	    -e 's|^[[:space:]]*TZ_TRIES=.*|TZ_TRIES=2|' \
+	    -e 's|^[[:space:]]*TZ_INTERVAL=.*|TZ_INTERVAL=1|' \
 	    "$SRC"
 }
+
+# Two sandbox copies of the hook:
+#   sync  — `) &` rewritten to `)`, so the body runs in the foreground and the
+#           assertions are race-free
+#   async — untouched, for the two properties that exist only because of the &
 rewrite > "$SB/async"
-# Match any detect* function name, and verify afterwards that nothing is left
-# backgrounded: keying this on one exact name meant a later rename silently
-# produced an "async sync copy" and raced every assertion.
-rewrite | sed -E 's|^([[:space:]]*)(detect[a-z_]*) &$|\1\2|' > "$SB/sync"
-chmod +x "$SB/async" "$SB/sync"
-if grep -qE '^[[:space:]]*detect[a-z_]* &$' "$SB/sync"; then
+rewrite | sed -E 's|^([[:space:]]*)\) &.*TZ-BACKGROUND.*|\1)|' > "$SB/sync"
+if grep -qE '^[[:space:]]*\) &' "$SB/sync"; then
 	echo "test-timezone.sh: ERROR: the sandbox copy is still asynchronous" >&2
-	echo "  (a backgrounded call in S48timezone this rewrite does not match?)" >&2
+	echo "  (did the TZ-BACKGROUND marker move or change?)" >&2
 	exit 2
 fi
-if ! grep -qE '^[[:space:]]*detect[a-z_]*$' "$SB/sync"; then
-	echo "test-timezone.sh: ERROR: no detect call found in the sandbox copy" >&2
-	echo "  (did S48timezone stop calling detect() from start()?)" >&2
+if ! grep -qE '^[[:space:]]*\)$' "$SB/sync"; then
+	echo "test-timezone.sh: ERROR: no subshell close found in the sandbox copy" >&2
+	exit 2
+fi
+if ! grep -qE '^[[:space:]]*\) &' "$SB/async"; then
+	echo "test-timezone.sh: ERROR: the hook no longer backgrounds its body" >&2
 	exit 2
 fi
 
-# The dhcpcd hook, pointed at a stub init script that just records its calls --
-# what matters is WHEN dhcpcd makes it fire, not what the init script then does.
-HOOK_SRC="$ROOT/board/mister/de10nano/rootfs-overlay/usr/lib/dhcpcd/dhcpcd-hooks/90-timezone"
-if [ ! -f "$HOOK_SRC" ]; then
-	echo "test-timezone.sh: ERROR: $HOOK_SRC not found" >&2
-	exit 2
-fi
-mkdir -p "$SB/etc/init.d"
-cat > "$SB/etc/init.d/S48timezone" <<EOF
-#!/bin/sh
-echo "\$1" >> "$SB/hook.calls"
-EOF
-chmod +x "$SB/etc/init.d/S48timezone"
-sed -e "s|/etc/init.d/S48timezone|$SB/etc/init.d/S48timezone|g" "$HOOK_SRC" > "$SB/90-timezone"
 
 pass=0; fail=0; skipped=0
 ok()   { printf '  PASS  %s\n' "$1"; pass=$((pass + 1)); }
@@ -179,33 +164,54 @@ mustnt() { local d="$1"; shift; if "$@"; then bad "$d"; else ok "$d"; fi; }
 
 reset() { rm -f "$TZFILE" "$TZSTAMP" "$TZFILE.tmp"; rmdir "$LOCKDIR" 2>/dev/null; }
 
-# boot <answer> -- one boot of the box, with the providers answering <answer>.
-boot() {
+# fire <answer> [reason] [if_up] -- one dhcpcd address event, sourced exactly
+# the way dhcpcd-run-hooks sources it. Defaults to the event that matters:
+# BOUND with the interface up. With if_up given as the literal string "unset",
+# if_up is left undefined -- a case dhcpcd never produces but a sourced file
+# must survive.
+fire() {
 	printf '%s' "$1" > "$SB/answer"
 	rm -f "$SB/curl.calls"
-	PATH="$SB/bin:$PATH" "${TEST_SH[@]}" "$SB/sync" start > "$SB/out" 2>&1
-}
-
-verb()    { PATH="$SB/bin:$PATH" "${TEST_SH[@]}" "$SB/sync" "$1" >/dev/null 2>&1; }
-
-# hook <reason> <if_up> -- one dhcpcd event, sourced the way dhcpcd sources it.
-# The trailing marker proves the hook did not `exit`, which in a sourced hook
-# would end dhcpcd's whole run and take 20-resolv.conf/30-hostname with it.
-# With one argument, if_up is left UNSET -- the case dhcpcd never produces but
-# the hook must still handle, since it is sourced into dhcpcd's own shell.
-hook() {
-	rm -f "$SB/hook.calls" "$SB/hook.reached-end"
 	(
-		# Exported, as dhcpcd itself passes them: the hook reads them,
-		# this shell does not.
-		export reason="$1"
-		[ $# -ge 2 ] && export if_up="$2"
+		export reason="${2:-BOUND}"
+		# ${3-true}, not ${3:-true}: an EMPTY if_up is a case under test
+		# and must not be silently promoted to "true".
+		if [ $# -ge 3 ]; then
+			case "$3" in
+			unset) ;;
+			*) export if_up="$3" ;;
+			esac
+		else
+			export if_up=true
+		fi
+		PATH="$SB/bin:$PATH"
 		# shellcheck source=/dev/null
-		. "$SB/90-timezone"
-		: > "$SB/hook.reached-end"
-	) >/dev/null 2>&1
+		. "$SB/sync"
+		# Reached only if the hook did not exit its caller -- which in a
+		# sourced file would end dhcpcd's whole hook run, taking
+		# 20-resolv.conf and 30-hostname with it.
+		: > "$SB/returned-to-dhcpcd"
+	) > "$SB/out" 2>&1
 }
-hook_fired() { [ -f "$SB/hook.calls" ]; }
+
+# One event with the UNMODIFIED hook: body backgrounded, as dhcpcd sees it.
+fire_async() {
+	printf '%s' "$1" > "$SB/answer"
+	rm -f "$SB/curl.calls"
+	(
+		export reason=BOUND if_up=true
+		PATH="$SB/bin:$PATH"
+		# shellcheck source=/dev/null
+		. "$SB/async"
+	) > "$SB/out" 2>&1
+}
+
+boot() { rm -f "$SB/returned-to-dhcpcd"; fire "$@"; }
+# Invoked indirectly, as `must`/`mustnt` arguments.
+# shellcheck disable=SC2329
+queried() { [ -f "$SB/curl.calls" ]; }
+# shellcheck disable=SC2329
+request() { sed -n "$1p" "$SB/curl.calls"; }
 queried() { [ -f "$SB/curl.calls" ]; }
 request() { sed -n "$1p" "$SB/curl.calls"; }
 
@@ -235,8 +241,8 @@ echo "== 3. never reaching a provider does NOT spend the guess =="
 # boot must not burn the one guess, or the box is stuck on UTC forever.
 reset; boot "FAIL"
 mustnt "no stamp when no provider was ever reached" test -e "$TZSTAMP"
-must   "said it will retry once there is a network" \
-	grep -q "will retry when the network is up" "$SB/out"
+must   "said it will retry on the next connection" \
+	grep -q "will retry on the next connection" "$SB/out"
 boot "America/New_York"   # ...the user has since configured WiFi
 must   "a later boot still gets its guess" \
 	cmp -s "$TZFILE" "$ZONEDIR/America/New_York"
@@ -343,11 +349,6 @@ else
 	mustnt "no .tmp file left behind"            test -e "$TZFILE.tmp"
 fi
 
-echo "== 11. init verbs =="
-: > "$SB/out"
-must   "stop exits 0 (rcK must not fail at shutdown)" verb stop
-mustnt "an unknown verb exits nonzero, with usage"    verb bogus
-
 
 echo "== 11b. a timezone set WHILE the lookup runs is not clobbered =="
 # start() checked $TZFILE up to a couple of minutes before detect() writes, and
@@ -357,14 +358,6 @@ reset; : > "$SB/set-tz-midflight"; boot "America/New_York"; rm -f "$SB/set-tz-mi
 must   "the user's mid-flight choice survives" grep -qx "CHOSEN-MIDFLIGHT" "$TZFILE"
 mustnt "and no .tmp file is left behind"       test -e "$TZFILE.tmp"
 
-echo "== 12. no default route -> nothing is sent, nothing is spent =="
-# This is the "does it slow down a box with no network" answer: start() returns
-# before it backgrounds anything, so there is not even a process to be slow.
-reset; route_down; boot "America/New_York"; route_up
-mustnt "never queried without a route" queried
-mustnt "no timezone written"           test -e "$TZFILE"
-mustnt "guess not spent"               test -e "$TZSTAMP"
-mustnt "nothing said on the console"   test -s "$SB/out"
 
 echo "== 13. one lookup at a time =="
 reset; mkdir "$LOCKDIR"; boot "America/New_York"; rmdir "$LOCKDIR"
@@ -372,41 +365,70 @@ mustnt "a lookup already in flight is not duplicated" queried
 reset; boot "America/New_York"
 mustnt "lock released when the lookup ends" test -d "$LOCKDIR"
 
-echo "== 14. the dhcpcd hook fires on an address, and only then =="
-hook BOUND true
-must   "BOUND with the interface up calls the init script" hook_fired
-must   "  ... with 'start'" grep -qx start "$SB/hook.calls"
-must   "  ... and returns to dhcpcd instead of exiting" test -e "$SB/hook.reached-end"
-hook RENEW true
-must   "RENEW calls it too (cheap no-op once spent)" hook_fired
-hook BOUND6 true
-must   "BOUND6 calls it (inert on this kernel, correct if IPv6 is enabled)" hook_fired
-hook BOUND false
-mustnt "an interface that is not up does not" hook_fired
+echo "== 14. it fires on an address, and only then =="
+reset; boot "America/New_York" BOUND true
+must   "BOUND with the interface up does the lookup" queried
+must   "  ... and returns to dhcpcd instead of exiting" test -e "$SB/returned-to-dhcpcd"
+reset; boot "America/New_York" RENEW true
+must   "RENEW does too (a cheap no-op once spent)" queried
+reset; boot "America/New_York" BOUND6 true
+must   "BOUND6 does (inert on this kernel, correct if IPv6 is enabled)" queried
+reset; boot "America/New_York" BOUND false
+mustnt "an interface that is not up does not" queried
 # if_up is compared as data, not executed. Unset, empty or junk must all read as
 # "not up" rather than as a command for the sourcing shell to run.
-hook BOUND
-mustnt "if_up unset reads as not-up" hook_fired
-hook BOUND ""
-mustnt "if_up empty reads as not-up" hook_fired
-hook BOUND "$SB/etc/init.d/S48timezone"
-mustnt "a junk if_up is not executed" hook_fired
-must   "  ... and the hook still returned to dhcpcd" test -e "$SB/hook.reached-end"
-hook PREINIT true
-mustnt "PREINIT (no address yet) does not" hook_fired
-hook DEPARTED true
-mustnt "DEPARTED does not" hook_fired
+reset; boot "America/New_York" BOUND unset
+mustnt "if_up unset reads as not-up" queried
+reset; boot "America/New_York" BOUND ""
+mustnt "if_up empty reads as not-up" queried
+reset; boot "America/New_York" BOUND "$SB/bin/curl"
+mustnt "a junk if_up is not executed" queried
+must   "  ... and the hook still returned to dhcpcd" test -e "$SB/returned-to-dhcpcd"
+reset; boot "America/New_York" PREINIT true
+mustnt "PREINIT (no address yet) does not" queried
+reset; boot "America/New_York" DEPARTED true
+mustnt "DEPARTED does not" queried
 
-echo "== 15. start returns immediately -- boot is never blocked =="
-# Last on purpose: the one case that runs the UNMODIFIED script, so it leaves a
-# real background job behind that anything after it would race.
-# detect() must be backgrounded.
-# The stub stalls 5s per request, so a foreground detect() could not return
-# inside the 3s budget.
-reset; : > "$SB/stall"; : > "$SB/out"
-printf 'America/New_York' > "$SB/answer"
-start_async() { PATH="$SB/bin:$PATH" timeout 3 "${TEST_SH[@]}" "$SB/async" start >/dev/null 2>&1; }
-must "start returned while the lookup was still in flight" start_async
+echo "== 15. it never delays dhcpcd, and leaks nothing into its shell =="
+# The two cases that run the UNMODIFIED hook. The stub blocks until released, so
+# a foreground body could not return inside the 3 s budget -- dhcpcd waits on
+# the hook run, so a blocking lookup would stall every lease event.
+reset; : > "$SB/stall"
+fire_async_timed() {
+	printf 'America/New_York' > "$SB/answer"
+	rm -f "$SB/curl.calls"
+	# shellcheck disable=SC2016  # $1/$2 are the inner shell's, on purpose
+	timeout 3 sh -c '
+		export reason=BOUND if_up=true
+		PATH="$1/bin:$PATH"
+		. "$2"
+	' _ "$SB" "$SB/async" >/dev/null 2>&1
+}
+must "the sourcing shell returns while the lookup is in flight" fire_async_timed
+
+# Sourced into dhcpcd's own shell, so anything defined at top level would leak
+# into it and into every hook after this one. The subshell is what prevents
+# that, and this is the assertion that says so.
+# In a FRESH shell, not a subshell of this one: the harness defines TZFILE,
+# TZSTAMP, ZONEDIR and LOCKDIR itself, so a subshell could not tell its own
+# variables from the hook's. They are plain assignments here, not exports, so a
+# new `sh -c` does not inherit them.
+# shellcheck disable=SC2016  # $1 is the inner shell's argument, on purpose
+leaks="$(PATH="$SB/bin:$PATH" reason=BOUND if_up=true sh -c '
+	. "$1"
+	for v in TZFILE TZSTAMP ZONEDIR CURL LOCKDIR TZ_TRIES TZ_INTERVAL \
+		answered tries zone url raw; do
+		eval "[ -n \"\${$v+x}\" ]" && echo "variable $v"
+	done
+	command -v stamp >/dev/null 2>&1 && echo "function stamp"
+	:
+' _ "$SB/async")"
+if [ -z "$leaks" ]; then
+	ok "nothing leaks into the shell that sourced it"
+else
+	bad "leaked into dhcpcd's shell: $(echo "$leaks" | tr '\n' ' ')"
+fi
+
 # Release the stalled request and let the background job finish, rather than
 # leaving it (and its sleep) running after this script exits and its sandbox is
 # deleted. Doubles as proof that the backgrounded lookup does complete.

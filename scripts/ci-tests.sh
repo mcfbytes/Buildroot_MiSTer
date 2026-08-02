@@ -1568,40 +1568,28 @@ fi
 # --- first-boot autodetection (ADR 0025) -------------------------------------
 # The two checks above prove a timezone CAN be set and CAN persist. Neither says
 # anything about a fresh card, where /media/fat/linux/timezone does not exist yet
-# and glibc silently falls back to UTC. S48timezone is what fills it in, once.
-if grep -qxF './etc/init.d/S48timezone' "$TAR_LIST"; then
-	mode=$(tar tvf "$ROOTFS_TAR" -- ./etc/init.d/S48timezone 2>/dev/null | awk '{print $1; exit}')
-	case "$mode" in
-	-rwx*|-r-x*) pass "S48timezone present and executable ($mode)" ;;
-	*) fail "S48timezone present and executable" "mode is '$mode', not executable -- rcS skips it silently" ;;
-	esac
-else
-	fail "S48timezone present and executable" "etc/init.d/S48timezone not in rootfs.tar"
-fi
-
-# curl is what S48timezone queries the geo-IP provider with, and the reason this
-# feature needed no new package. If it ever drops out of the package set the init
-# script degrades to a silent no-op, which is exactly the kind of quiet loss this
-# suite exists to catch.
-require_present "usr/bin/curl" "curl CLI (S48timezone's only runtime dependency)"
-
-# The dhcpcd hook is what makes autodetection survive a first boot with no
-# network -- it re-runs S48timezone the moment an interface gets an address, on
-# that boot or any later one. Without it the feature still works, but only for
-# boxes that happen to be online during the S48 window. Assert the hook AND
-# dhcpcd's runner, since the hook is inert if dhcpcd stops sourcing that dir.
+# and glibc silently falls back to UTC. The dhcpcd hook is what fills it in, the
+# first time the box gets an address. Assert the hook AND dhcpcd's runner, since
+# a hook nothing sources is inert.
 # NB /lib is a usr-merge symlink, so tar records these only under ./usr/lib/.
-require_present "usr/lib/dhcpcd/dhcpcd-hooks/90-timezone" "dhcpcd 90-timezone hook"
+require_present "usr/lib/dhcpcd/dhcpcd-hooks/90-timezone" "dhcpcd 90-timezone hook (ADR 0025)"
 require_present "usr/lib/dhcpcd/dhcpcd-run-hooks" "dhcpcd hook runner (sources 90-timezone)"
 
-# The behaviour itself -- validation of the network-supplied zone name, and the
-# once-and-only-once contract -- is asserted by its own sandboxed harness, which
-# needs no build and no network.
-printf -- '--- test-timezone.sh: S48timezone behaviour (18 cases) ---\n'
+# curl is what the hook queries the geo-IP provider with, and the reason this
+# feature needed no new package. If it ever drops out of the package set the hook
+# degrades to a silent no-op, which is exactly the kind of quiet loss this suite
+# exists to catch.
+require_present "usr/bin/curl" "curl CLI (the hook's only runtime dependency)"
+
+# The behaviour itself -- validation of the network-supplied zone name, the
+# once-and-only-once contract, and the two properties it has purely by virtue of
+# being SOURCED into dhcpcd's shell (leaks nothing, never exits its caller) -- is
+# asserted by its own sandboxed harness, which needs no build and no network.
+printf -- '--- test-timezone.sh: timezone hook behaviour (16 cases) ---\n'
 if "$ROOT/scripts/test-timezone.sh"; then
-	pass "test-timezone.sh (S48timezone behaviour, 18 cases)"
+	pass "test-timezone.sh (timezone hook behaviour, 16 cases)"
 else
-	fail "test-timezone.sh (S48timezone behaviour, 18 cases)" \
+	fail "test-timezone.sh (timezone hook behaviour, 16 cases)" \
 		"one or more cases failed -- see output above"
 fi
 

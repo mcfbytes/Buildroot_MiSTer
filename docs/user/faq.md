@@ -174,7 +174,7 @@ image, the problem was #3 or #4. If it still does nothing, it's #1 or #2.
 
 ## My MiSTer picked its own timezone by itself. What was that?
 
-**This image looks up your timezone once**, on the first boot where it has a network, and
+**This image looks up your timezone once**, the first time it connects to a network, and
 writes it to `/media/fat/linux/timezone` — the file `/etc/localtime` points at, and the
 same file the community `timezone.sh` script writes. Stock leaves that file missing, so a
 fresh card runs on **UTC** forever unless you go and set it by hand; if you are anywhere
@@ -214,15 +214,17 @@ it, it explains itself.)
 answer, so the one guess is not spent — nothing is even sent, because the box checks
 whether it has a route before it asks. The lookup then happens the moment the box actually
 gets an address: finish setting up Wi-Fi, and it fires on that connection, whether that is
-the same boot or three boots later. (The hook that does this is the same one dhcpcd uses
-to update `/etc/resolv.conf`.)
+the same boot or three boots later. (It is a dhcpcd hook, sitting in the same place as the
+one dhcpcd uses to update `/etc/resolv.conf`.) If you use a **static IP** set only in
+`/etc/network/interfaces`, dhcpcd never runs and this never fires — set the timezone with
+`timezone.sh`.
 
 **One cosmetic wrinkle on the boot where it lands:** the menu clock can still show UTC
 until you reboot once. The timezone is read by each program when it starts, and the MiSTer
 menu starts before the lookup finishes. It is correct from the next boot on, permanently.
 
 **To make it try again** after it has settled on something you do not want: delete both
-`timezone` and `timezone.autodetect` from the `linux` folder and reboot — or just run
+`timezone` and `timezone.autodetect` from the `linux` folder, then reconnect or reboot — or just run
 `timezone.sh`, which is quicker and lets you pick.
 
 Full reasoning, including why geo-IP rather than something that talks to nobody:

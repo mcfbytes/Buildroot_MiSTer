@@ -1,7 +1,7 @@
 # ADR 0025 — Autodetect the timezone once, on first boot
 
 **Status:** Accepted (2026-08-01) — decided by @mcfbytes
-**Impact:** `board/mister/de10nano/rootfs-overlay/etc/init.d/S48timezone` (new),
+**Impact:** `board/mister/de10nano/rootfs-overlay/usr/lib/dhcpcd/dhcpcd-hooks/90-timezone` (new),
 `scripts/ci-tests.sh` / `scripts/test-timezone.sh`, and every user who flashes a
 fresh card. It is the first unprompted outbound request this project *adds* — `ntpd`
 already reaches the NTP pool at every boot, but that is stock's behaviour, not ours.
@@ -11,18 +11,18 @@ persist-to-FAT mechanism this mirrors), [ADR 0011](0011-resolv-conf-buildroot-de
 
 ## Decision
 
-1. Ship `etc/init.d/S48timezone`. On a boot where **no timezone is set yet**, it asks a
-   geo-IP service for the IANA zone of the box's public IP and copies the matching file
-   from `/usr/share/zoneinfo/posix/` to `/media/fat/linux/timezone` — the file
-   `/etc/localtime` already points at.
+1. Ship **one file**, `usr/lib/dhcpcd/dhcpcd-hooks/90-timezone`. The first time dhcpcd
+   brings an interface up with an address and **no timezone is set yet**, it asks a geo-IP
+   service for the IANA zone of the box's public IP and copies the matching file from
+   `/usr/share/zoneinfo/posix/` to `/media/fat/linux/timezone` — the file `/etc/localtime`
+   already points at. No init script, no boot-time path.
 2. **One guess, spent when it is actually made.** The lookup is gated on two files on the
    data partition — the timezone itself, and a `timezone.autodetect` stamp — plus a
    default-route check. The stamp is written only when a provider **answered with a zone
    name**: one we install, or one we do not ship (asking again tomorrow will not help).
    *Being offline is not an answer, and neither is HTTP 200* — see the captive-portal note
    below.
-3. **Re-tried on the event, not on a timer.** `usr/lib/dhcpcd/dhcpcd-hooks/90-timezone`
-   calls `S48timezone start` whenever dhcpcd brings an interface up with an address — so a
+3. **Driven by the event, not by a timer.** The trigger *is* dhcpcd's address event — so a
    box that was offline on its first boot gets its guess the moment the user finishes
    setting up Wi-Fi, on that boot or three boots later.
 4. **Never overwrite a timezone that is already set**, whoever set it.
@@ -65,14 +65,24 @@ be worse than useless, and that boot is *the common case*: a MiSTer card is flas
 booted, and only then does the user write `wpa_supplicant.conf`. So the stamp is written
 when a provider answered — usefully or not — and never merely because we tried.
 
-**Triggered by dhcpcd, not by polling harder.** `S48` runs seconds after `S41dhcpcd`, and
-no amount of waiting at S48 helps a box whose network appears three boots later.
-`usr/lib/dhcpcd/dhcpcd-hooks/90-timezone` — the same extension point dhcpcd's own
-`20-resolv.conf` and `30-hostname` use — calls `S48timezone start` on `BOUND`/`RENEW`/the
-IPv6 equivalents, so the lookup happens the moment an address exists. S48 still tries
-directly when a default route is *already* there (a wired box, or a static address), with
-a short window to cover DNS lagging the route: 6 rounds x 2 providers, ~50 s if the
-failures are instant and ~2.5 min if every request burns its full 8 s timeout.
+**A dhcpcd hook, not an init script.** The event we want is "this box now has a network",
+and dhcpcd already publishes it — on the same extension point its own `20-resolv.conf` and
+`30-hostname` use. An init script can only ask "is there a network *right now*, a few
+seconds into boot", which is the wrong question twice over: on a DHCP box the lease has
+usually not landed by S48, and on the normal MiSTer card the first boot has no network at
+all.
+
+This started as *both* — an `S48timezone` plus a hook that called it — and the init script
+was removed on review. On DHCP it was near-redundant (at S48 there is usually no route, so
+it did nothing and the hook did the work), and it earned its keep only for static-IP boxes,
+which never run dhcpcd. That gap is **accepted deliberately**: configuring a static address
+is already a by-hand act, and running `timezone.sh` is the same kind of act. The redundant
+path also carried its own bug — a `/proc/net/route` check whose IPv6 arm matched the
+kernel's always-present `ip6_null_entry` (the `::/0` *unreachable* route on `lo`), so it
+reported a route on any IPv6-enabled box with no connectivity at all. One trigger, one
+file. The retry window inside the hook is small on purpose — 3 rounds x 2 providers, and
+`20-resolv.conf` has already run in the same hook pass so DNS is configured — because
+further retries come free with the next address event.
 
 **A captive portal must not spend the guess.** This is the sharp edge of "spend it when a
 provider answered", and it is worth stating because the obvious implementation gets it
@@ -84,15 +94,13 @@ is spent only once the body *parses as a zone name*: HTML is not an answer, it i
 interference. `scripts/test-timezone.sh` asserts both halves, and the assertion is
 mutation-checked — with the guard reverted, it fails.
 
-**Nothing on a box with no network.** `start` checks `/proc/net/route` for a default route
-and returns before backgrounding anything if there is none: no query, no console line, no
-stamp. IPv4 only, deliberately — this kernel is built without IPv6 (`linux.config`:
-`# CONFIG_IPV6 is not set`). An earlier revision also grepped `/proc/net/ipv6_route` for
-`::/0`, which is wrong even where that file exists: the kernel always keeps a `::/0`
-*unreachable* entry (`ip6_null_entry`, on `lo`), so the check reported a route on any
-IPv6-enabled box with no connectivity at all. Verified against a real
-`/proc/net/ipv6_route` before removing it. And `start` never blocks regardless — it backgrounds the lookup, asserted by the
-test suite, since a blocking lookup would stall `rcS` and therefore the whole boot.
+**Nothing on a box with no network.** The hook cannot fire without an address, so an
+offline box does nothing at all: no query, no console line, no stamp, no process. And it
+never blocks — the body is a backgrounded subshell, so dhcpcd, which waits on its hook run,
+is not held up. Being *sourced* makes two more things correctness properties rather than
+style: it must not `exit` (that would end dhcpcd's whole hook run, taking `20-resolv.conf`
+and `30-hostname` with it) and it must not leak a variable or function into dhcpcd's shell.
+The subshell answers both at once, and the suite asserts both.
 
 ## Trust and privacy — the honest version
 
@@ -142,6 +150,7 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 | Retry on every boot until it succeeds | Rejected on the maintainer's instruction, and rightly: it turns a first-boot event into permanent boot-time behaviour. The dhcpcd hook gets the same coverage from an event instead of a timer. |
 | Spend the guess on any *attempt*, offline or not | The first boot of a MiSTer is routinely offline — flash, boot, *then* configure Wi-Fi. That would burn the guess on precisely the boot that never had a chance. |
 | A longer poll at S48 instead of the hook | Cannot cover a network configured on a later boot at all, and costs a background process minutes of retries on every offline boot to cover less. |
+| Keeping an init script *as well as* the hook, for static-IP boxes | Two triggers for one event, where the second fires almost never (at S48 a DHCP lease has usually not landed) and needed a route check that was itself buggy. Anyone who sets a static address by hand can set a timezone by hand. |
 | Write `Etc/UTC` on failure instead of a stamp | Would make "we tried and failed" indistinguishable from "the user chose UTC", and would silently pin a real decision. |
 | Bundle `timezone.sh` and tell users to run it | That is today's situation. It is exactly what nobody does. |
 
@@ -149,14 +158,17 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
 paths rewritten into a temp dir, `curl` stubbed; `/proc/net/route` and the dhcpcd hook
-stubbed too). 18 cases / 66 assertions covering the
+stubbed; the hook sourced exactly as `dhcpcd-run-hooks` sources it). 16 cases / 60
+assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
-unset, so a half-written card self-heals), the once-and-only-once contract, the opt-out
-stamp, seven classes of hostile answer, both providers in order *and* the HTTPS fallback
-actually taking over when the first provider is down, the degraded paths, the
-offline-does-not-spend-the-guess rule and its inverse, the default-route gate, the
-one-lookup-at-a-time lock, which dhcpcd reasons fire the hook (and that it returns to
-dhcpcd rather than `exit`ing its hook run), and the "`start` must not block boot" property.
+unset, so a half-written card self-heals, and that a timezone set *while the lookup runs*
+is not clobbered), the once-and-only-once contract, the opt-out stamp, nine classes of
+hostile answer, both providers in order *and* the HTTPS fallback actually taking over when
+the first is down, the captive-portal rule and its inverse, the one-lookup-at-a-time lock,
+which dhcpcd reasons fire it and which do not, `if_up` handled as data rather than executed
+(unset, empty and junk all read as not-up), that it returns to its caller instead of
+`exit`ing dhcpcd's hook run, that it leaks nothing into the shell that sourced it, and that
+the sourcing shell returns while the lookup is still in flight.
 
 `scripts/ci-tests.sh`'s Timezone section runs it **twice** — once under the host shell,
 once under the target's own BusyBox `ash` via `qemu-arm`, since this is a boot-path script

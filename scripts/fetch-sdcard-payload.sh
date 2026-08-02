@@ -304,7 +304,7 @@ stage_stock_payload() {
 #       never overwrite ours. Cores and everything else still update normally.
 #
 #       It also reproduces Update All's OWN default database set
-#       (distribution_mister, jtcores with `filter = !jtbeta`, Coin-Op and
+#       (distribution_mister, jtcores and
 #       update_all_mister). That is not decoration: Update All only seeds those
 #       defaults when downloader.ini does NOT exist
 #       (transition_service.py, from_not_existing_downloader_ini), so shipping

@@ -337,6 +337,7 @@ show_plan() {
 	say "  /media/fat/linux/mt32-rom-data/, soundfonts/         <- our copies replace same-named"
 	say "                                                          files; anything extra you added stays"
 	say "  /media/fat/downloader.ini       ONE key changed: [MiSTer] update_linux = false."
+	say "                                  The original is saved to .mlm-backup/downloader.ini.orig"
 	say "                                  Your comments, sections and databases are left alone."
 	say "                                  Created (with the official database) only if absent."
 	say "  /media/fat/Scripts/update_linux_modernization.sh      <- installed"

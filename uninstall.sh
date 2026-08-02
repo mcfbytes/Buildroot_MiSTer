@@ -36,8 +36,32 @@
 # so there is one implementation of the edit rather than two.
 #
 # Options:
-#   --remove-script  also delete Scripts/update_linux_modernization.sh
-#   --yes            skip the 10-second countdown
+#   --remove-script    also delete Scripts/update_linux_modernization.sh
+#   --restore-backups  put the files in linux/.mlm-backup/ back (see below)
+#   --yes              skip the 10-second countdown
+#
+# ---------------------------------------------------------------------------
+# ABOUT THE BACKUPS, AND WHEN TO RESTORE THEM
+# ---------------------------------------------------------------------------
+# install.sh copies the small files a Linux update replaces -- MidiLink.INI,
+# ppp_options, the `_`-prefixed templates, updateboot, uboot.img -- into
+# /media/fat/linux/.mlm-backup/ before anything touches them. The updater
+# additionally saves your original downloader.ini there as downloader.ini.orig,
+# once, before its first edit.
+#
+# TIMING MATTERS. Those files live in /media/fat/linux/, which EVERY Linux update
+# rsyncs over -- including the official one you are about to install. Restoring
+# them now would just have them overwritten again minutes later. So:
+#
+#     1. run this script            (re-arms the official image)
+#     2. run your normal update     (installs it, reboots)
+#     3. uninstall.sh --restore-backups   <-- only now
+#
+# downloader.ini.orig is deliberately NOT restored automatically, even with
+# --restore-backups. It is a snapshot from before you opted in, and Update All
+# and you have very likely added databases to that file since; putting the old
+# copy back would silently drop them. The path is printed so you can diff it and
+# decide.
 
 set -eu
 
@@ -45,16 +69,22 @@ FAT="/media/fat"
 BASE_INI="$FAT/downloader.ini"
 UPDATER="$FAT/Scripts/update_linux_modernization.sh"
 PRIVATE_INI="/tmp/mister_linux_modernization.ini"
+BACKUP_DIR="$FAT/linux/.mlm-backup"
+BASE_INI_BACKUP="$BACKUP_DIR/downloader.ini.orig"
 
 REMOVE_SCRIPT=0
 ASSUME_YES=0
+RESTORE_BACKUPS=0
 
 for arg in "$@"; do
 	case "$arg" in
-		--remove-script) REMOVE_SCRIPT=1 ;;
+		--remove-script)   REMOVE_SCRIPT=1 ;;
+		--restore-backups) RESTORE_BACKUPS=1 ;;
 		--yes|-y)        ASSUME_YES=1 ;;
 		-h|--help)
-			echo "usage: uninstall.sh [--remove-script] [--yes]"
+			echo "usage: uninstall.sh [--remove-script] [--restore-backups] [--yes]"
+			echo "  --restore-backups   put linux/.mlm-backup/ files back; run this"
+			echo "                      AFTER the official image has been installed"
 			exit 0
 			;;
 		*) echo "uninstall.sh: unknown option: $arg" >&2; exit 2 ;;
@@ -149,6 +179,28 @@ fi
 
 rm -f "$PRIVATE_INI"
 
+if [ "$RESTORE_BACKUPS" -eq 1 ]; then
+	say ""
+	if [ -d "$BACKUP_DIR" ]; then
+		n=0
+		for f in "$BACKUP_DIR"/*; do
+			[ -f "$f" ] || continue
+			base=$(basename "$f")
+			# Never auto-restore the ini snapshot -- see the header.
+			[ "$base" = "downloader.ini.orig" ] && continue
+			cp -p "$f" "$FAT/linux/$base" 2>/dev/null && n=$((n + 1))
+		done
+		say "Restored $n file(s) from $BACKUP_DIR into $FAT/linux/"
+		if [ -f "$BASE_INI_BACKUP" ]; then
+			say "Your pre-opt-in downloader.ini is at $BASE_INI_BACKUP"
+			say "  (not restored automatically -- you have probably added databases since;"
+			say "   diff it against the live file and merge by hand if you want it back)"
+		fi
+	else
+		say "No backups found at $BACKUP_DIR -- nothing to restore."
+	fi
+fi
+
 if [ "$REMOVE_SCRIPT" -eq 1 ] && [ -e "$UPDATER" ]; then
 	rm -f "$UPDATER" && say "Removed $UPDATER"
 fi
@@ -162,4 +214,12 @@ say ""
 say " That installs the official Linux image over this one and reboots."
 say " Until then you are still running this image, and re-running"
 say " install.sh puts things back."
+if [ "$RESTORE_BACKUPS" -eq 0 ] && [ -d "$BACKUP_DIR" ]; then
+	say ""
+	say " Customised MidiLink.INI, ppp_options or similar? Backups are in"
+	say " $BACKUP_DIR. Restore them AFTER the official"
+	say " image is installed -- it rewrites linux/ too -- with:"
+	say ""
+	say "     uninstall.sh --restore-backups"
+fi
 rule

@@ -244,6 +244,32 @@ bug report (see [`faq.md`](faq.md#how-to-report-a-bug)).
 
 ---
 
+## Editing `downloader.ini` yourself
+
+The card ships one, and it is an ordinary `downloader.ini` — every setting in it is a
+normal, supported Downloader option that Update All also understands. It is deliberately
+kept to a two-line header rather than a page of comments: this file is rewritten by other
+tooling, and comments attached to database sections do not survive that. Three things are
+worth knowing before you edit it.
+
+**`update_linux` takes a word, and only a word.** `false`, `no`, `n`, `f`, `off` and `0`
+all mean false; `true`, `yes`, `y`, `t`, `on` and `1` all mean true. Anything else makes
+**every** Downloader run fail with a traceback — including the official one — so if you
+change this line, use one of those.
+
+**Do not delete `[distribution_mister]`.** It looks redundant, because a card with no
+`downloader.ini` at all still gets the official database. That is the trap: the Downloader
+only auto-adds it when the base ini declares **no** databases, and this file declares
+several. Removing the section does not fall back to the default — it silently stops your
+main cores from updating. The same applies to any database you want kept.
+
+**Comments survive above and inside `[MiSTer]`, and nowhere else.** When Update All
+rewrites the file it re-emits everything before the first section, and the `[MiSTer]`
+section itself, as raw text — but database sections go through a plain ini writer that
+drops their comments. Put notes to yourself at the top.
+
+---
+
 <a id="forcing-a-run"></a>
 ## What the updater script actually runs
 

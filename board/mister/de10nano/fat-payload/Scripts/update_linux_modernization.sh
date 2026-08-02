@@ -76,6 +76,11 @@ readonly DL_CFG="$SCRIPTS_DIR/.config/downloader"
 # anywhere. The only durable marks it makes are the one key in the user's
 # downloader.ini and the image it installs.
 readonly PRIVATE_INI="/tmp/$DB_ID.ini"
+# Shared with install.sh, which backs up the small files in linux/ that a Linux
+# update replaces. Lives on the FAT partition so it survives a rootfs reflash,
+# and the Downloader's rsync runs without --delete so it is never cleaned up.
+readonly BACKUP_DIR="$FAT/linux/.mlm-backup"
+readonly BASE_INI_BACKUP="$BACKUP_DIR/downloader.ini.orig"
 readonly OUR_LOG="$DL_CFG/$DB_ID.log"
 readonly LOCK_DIR="/tmp/$DB_ID.lock"
 readonly LAUNCHER="/tmp/${DB_ID}_dont_download.sh"
@@ -121,8 +126,32 @@ die() { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
 # strict truth-value grammar that RAISES on anything unrecognised, and that
 # exception escapes and makes EVERY Downloader run exit 1 -- so a damaged value
 # is repaired rather than left alone.
+# One-time backup of downloader.ini, taken before we ever write to it.
+#
+# The edit itself is surgical -- one key, every other byte left alone -- so this
+# is not protecting against us mangling the file. It is there so that "what did
+# my downloader.ini look like before I opted in?" always has an answer, on a file
+# that Update All also rewrites and that users hand-edit.
+#
+# Deliberately taken ONCE: on the first write, which is always the install
+# direction. Re-taking it later would capture our own modified version and
+# quietly destroy the only copy of the original.
+backup_base_ini_once() {
+	[ -f "$BASE_INI" ] || return 0
+	[ -f "$BASE_INI_BACKUP" ] && return 0
+	mkdir -p "$BACKUP_DIR" 2>/dev/null || return 0
+	cp -p "$BASE_INI" "$BASE_INI_BACKUP.new" 2>/dev/null || return 0
+	mv -f "$BASE_INI_BACKUP.new" "$BASE_INI_BACKUP" 2>/dev/null || return 0
+	# stderr, NOT stdout: this runs inside ensure_kill_switch, whose stdout is
+	# captured by its callers as the action string. On stdout the notice would be
+	# swallowed into that value and printed as
+	# "Repaired downloader.ini:   backed up your original ...".
+	echo "  backed up your original downloader.ini to $BASE_INI_BACKUP" >&2
+}
+
 ensure_kill_switch() {
 	local want="${1:-false}"
+	backup_base_ini_once
 	python3 - "$BASE_INI" "$want" <<'PYEOF'
 import os, re, sys
 

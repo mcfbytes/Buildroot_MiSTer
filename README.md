@@ -771,7 +771,7 @@ Verified on hardware: a full `update_all.sh` run installed 379 cores, rebooted, 
 back with `linux.img` and `zImage_dtb` **byte-identical**, the Downloader's own config
 dump recording `update_linux: false` and `UPDATE_LINUX: undefined` — Update All never
 overrides it. The shipped `downloader.ini` also reproduces Update All's default database
-set plus **Jotego** (minus the Patreon-only beta cores), so a fresh `sdcard.img` flash
+set plus **Jotego**, so a fresh `sdcard.img` flash
 needs no user action at all. Rolling back is one command,
 `update_linux_modernization.sh --restore-stock` — see
 [`docs/user/rollback.md`](docs/user/rollback.md).

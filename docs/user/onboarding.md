@@ -81,22 +81,18 @@ Update All preserves the `[MiSTer]` section **verbatim** when it rewrites
 `downloader.ini`, and it only ever sets the `UPDATE_LINUX` environment variable to
 `false`, never to `true`. It cannot turn our setting back on.
 
-And if something else does, this image puts it back. `/etc/init.d/S05mlm` re-checks the
-setting on **every boot**, re-deploys the updater script onto the card, and records the
-running version. So the failure mode is not "silently disabled forever" but "put back at
-the next boot, and the fact that it happened is in
-`Scripts/.config/mister_linux_modernization/boot.log`". Boot-time upkeep is also how a
-card picks up a *corrected* updater script: a release archive can only carry
-`files/linux/**` and can never write `Scripts/`, but it does carry `linux.img`, and
-`linux.img` carries the canonical copy.
+And if something else ever does flip it, `--status` tells you and re-running the script
+puts it back. There is deliberately no boot script or daemon watching the setting: nothing
+re-applies it behind you, which is exactly what makes rolling back one edit rather than a
+fight.
 
 > **If you install this image by any means other than the setup below** — copying
 > `linux.img` and `zImage_dtb` onto the card by hand, say — **your very next routine
 > `update_all.sh` will quietly put stock back.** Do Step 1 and your image stays put.
 
 > **Already flashed our `sdcard.img`?** Then all of this is already done for you — the
-> card ships with `downloader.ini` and the updater script in place, and this image's
-> boot-time upkeep keeps them that way. Skip to [Step 2](#step-2) and just confirm with
+> card ships with `downloader.ini` and the updater script already in place. Skip to
+> [Step 2](#step-2) and just confirm with
 > `Scripts/update_linux_modernization.sh --status`.
 
 ---
@@ -160,8 +156,8 @@ Useful flags:
 | `--status` | Report only. Changes nothing |
 | `--restore-stock` | Hand the Linux image back to the official database ([rollback](rollback.md)) |
 
-It also honours two files on the card: `linux/no_auto_reboot` (never reboot) and
-`linux/no_linux_modernization` (opt out of boot-time upkeep entirely).
+It also honours `linux/no_auto_reboot` on the card, which suppresses the reboot the same
+way `--no-reboot` does.
 
 ---
 

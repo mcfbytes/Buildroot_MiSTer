@@ -17,9 +17,16 @@ boots).
    /media/fat/Scripts/update_linux_modernization.sh --restore-stock
    ```
 
-   That does the whole handover for you: it sets `update_linux = true` back in
-   `/media/fat/downloader.ini`, and it creates `/media/fat/linux/no_linux_modernization`
-   so this image's boot-time upkeep stops putting the setting back on the next boot.
+   That does the handover: it sets `update_linux = true` back in
+   `/media/fat/downloader.ini`. That is the whole of it — nothing re-applies the setting
+   behind you, so there is no marker to create and nothing to fight.
+
+   If you no longer have the script on the card, `uninstall.sh` from the repository does
+   the same thing:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/uninstall.sh | sh
+   ```
 
    It downloads nothing and flashes nothing. Until you do step 2 you are still running
    this image, and running the script again *without* `--restore-stock` puts everything
@@ -38,19 +45,15 @@ That's the whole procedure. No SD card removal, no re-flashing, no special tools
 If you would rather not use the script — or you have already deleted it — both steps it
 performs matter, and skipping either fails silently:
 
-- **Set `update_linux = true`** in the `[MiSTer]` section of `/media/fat/downloader.ini`
-  (or delete the line; `true` is the default). While it is `false`, *no* Linux image can
-  be applied by a normal update — **not ours and not the official one** — so the updater
-  runs cleanly, reports success, and changes nothing.
-- **Create `/media/fat/linux/no_linux_modernization`** (an empty file is fine). Without
-  it, `/etc/init.d/S05mlm` sets `update_linux` back to `false` on the very next boot,
-  because keeping that setting correct is precisely its job. This is the step people miss,
-  and the symptom is "I set it back to true, rebooted, and it was false again."
+**Set `update_linux = true`** in the `[MiSTer]` section of `/media/fat/downloader.ini`
+(or delete the line; `true` is the default). While it is `false`, *no* Linux image can be
+applied by a normal update — **not ours and not the official one** — so the updater runs
+cleanly, reports success, and changes nothing.
 
-You do not need to remove anything else. `Scripts/update_linux_modernization.sh` does
-nothing unless you run it, and once the official image is installed neither the boot
-upkeep nor the canonical copies exist any more — they lived in *our* root filesystem,
-which the official image replaces.
+That is the entire edit. You do not need to remove anything else, and nothing will put it
+back: `Scripts/update_linux_modernization.sh` is the only thing that ever writes that key,
+and it does nothing unless you run it. Delete the script too if you like; it is inert
+either way.
 
 ---
 

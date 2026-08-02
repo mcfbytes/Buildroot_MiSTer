@@ -15,7 +15,6 @@
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
 #   shellcheck -x board/mister/de10nano/fat-payload/Scripts/*.sh
-#   shellcheck -s sh -x board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #
@@ -38,6 +37,7 @@ on:
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
+      - 'uninstall.sh'
       # The installer /init is not a script/**, but this job is the only thing
       # that tests its splash section on a PR (see the unit-test step below).
       # Without this path a change to the splash alone would skip its own gate.
@@ -50,6 +50,7 @@ on:
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
+      - 'uninstall.sh'
       - 'board/mister/de10nano/installer-overlay/**'
   workflow_dispatch:
 
@@ -129,27 +130,24 @@ jobs:
       # should be allowed to hide.
       #
       # Split by dialect on purpose: update_linux_modernization.sh is bash,
-      # while S05mlm and linux/user-startup.sh run under busybox ash (and
-      # user-startup.sh must also run under the STOCK image's shell after a
-      # revert), so they are checked as POSIX sh.
+      # while install.sh and uninstall.sh are POSIX sh so they can be piped into
+      # either `sh` or `bash` on any card.
       - name: shellcheck shipped board scripts
         run: |
           set -euo pipefail
           shellcheck -x board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
           shellcheck -s sh -x \
             install.sh \
-            board/mister/de10nano/fat-payload/linux/user-startup.sh \
-            board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm \
+            uninstall.sh \
             board/mister/de10nano/post-build.sh
 
       # Executable bits on shipped scripts, checked against GIT's recorded mode.
       #
-      # This is not pedantry. BR2_ROOTFS_OVERLAY copies the overlay tree into the
-      # rootfs preserving permissions, and nothing chmods /etc/init.d/S05mlm on
-      # the way -- so a mode-0644 S05mlm ships non-executable, busybox's rcS
-      # skips it, and the ENTIRE boot-time upkeep mechanism silently never runs.
-      # The image still builds, still boots, and still passes every other check.
-      # It happened once already; this makes it impossible to reintroduce.
+      # This is not pedantry: a script that ships mode 0644 is one nothing can
+      # run, and neither the build nor the boot notices. It has already happened
+      # once in this repo (an init script committed 0644 would have shipped
+      # non-executable and silently never run), so the mode is asserted rather
+      # than assumed.
       #
       # Reads `git ls-files -s` rather than the worktree, because git's index is
       # what a fresh clone (and therefore CI and every contributor) actually gets.
@@ -157,11 +155,10 @@ jobs:
         run: |
           set -euo pipefail
           must_be_exec=(
-            board/mister/de10nano/rootfs-overlay/etc/init.d/S05mlm
             board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
-            board/mister/de10nano/fat-payload/linux/user-startup.sh
             board/mister/de10nano/post-build.sh
             install.sh
+            uninstall.sh
           )
           rc=0
           for f in "${must_be_exec[@]}"; do

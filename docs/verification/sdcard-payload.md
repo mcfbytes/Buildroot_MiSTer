@@ -80,14 +80,13 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > no user action at all. See ADR 0025, `docs/user/onboarding.md`, and the header
 > comment above `stage_update_channel()`.
 >
-> Deliberately **not** in this inventory:
-> `mister-payload/downloader_mister_linux_modernization.ini` (a drop-in database
-> registration can never outrank `[distribution_mister]`, so it would buy no
-> protection while putting our database into every core update) and
-> `mister-payload/linux/user-startup.sh` (the revert detector, deployed
-> create-if-absent by `/etc/init.d/S05mlm` from inside the rootfs so it can never
-> clobber a user's own). Neither may be added here — `check-sdcard.sh` diffs this
-> block against the built image in **both** directions.
+> Deliberately **not** in this inventory: a drop-in
+> `downloader_mister_linux_modernization.ini`. A drop-in database registration can
+> never outrank `[distribution_mister]` (base-ini sections precede drop-ins, and
+> Update All pins the official database first), so it would buy no protection while
+> putting our database into every core update. Nothing else is staged either — the
+> updater keeps no state on the card. It may not be added here in any case:
+> `check-sdcard.sh` diffs this block against the built image in **both** directions.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and
@@ -116,7 +115,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/update_all.sh` | `theypsilon/Update_All_MiSTer`, raw file at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/Scripts/wifi.sh` | `MiSTer-devel/Scripts_MiSTer`, `other_authors/wifi.sh` at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares both core databases explicitly: `distribution_mister` (canonical URL from the Downloader's own `constants.py`) and `jtcores` (Jotego, `filter = !jtbeta` to exclude the Patreon-only beta cores, matching what Update All configures for a user who has not enabled them). `distribution_mister` **must** be explicit here — `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some |
-| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run. The same file is copied into the rootfs at `/usr/share/mister-linux-modernization/` by `post-build.sh`, and `/etc/init.d/S05mlm` re-deploys it from there each boot — which is how a corrected updater reaches an existing card, since a `release_YYYYMMDD.7z` can only carry `files/linux/**` |
+| `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 
 `gamecontrollerdb/`, `mt32-rom-data/`, `soundfonts/` are copied wholesale from the stock
 archive; `check-sdcard.sh` asserts each directory exists and is non-empty rather than

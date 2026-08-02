@@ -1082,8 +1082,7 @@ whose **last 6 characters** must exactly equal (byte-for-byte, no whitespace, §
 > §11.3 and §11.4 below describe the drop-in onboarding and the "delete the drop-in, re-run"
 > rollback. Neither is what the project does now: onboarding sets
 > `[MiSTer] update_linux = false` and the updater uses a private ini, and rollback needs
-> that setting put *back* (plus the `no_linux_modernization` opt-out marker) or nothing can
-> install a Linux image in either direction. See [`user/onboarding.md`](user/onboarding.md)
+> that setting put *back*, or nothing can install a Linux image in either direction. See [`user/onboarding.md`](user/onboarding.md)
 > and [`user/rollback.md`](user/rollback.md). Kept as the schema/worked-example reference.
 
 Per §9.5, the recommended file is `/media/fat/downloader_mister_linux_modernization.ini`:

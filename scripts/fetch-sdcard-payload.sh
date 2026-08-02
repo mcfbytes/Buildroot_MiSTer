@@ -331,9 +331,8 @@ stage_stock_payload() {
 #     into every normal update_all.sh run, where a transient failure of our
 #     GitHub Pages site would fail the user's whole core update.
 #
-#   * linux/user-startup.sh. /etc/init.d/S05mlm deploys that one
-#     create-if-absent from inside the rootfs, so it can never clobber a
-#     user-startup.sh the user already wrote.
+#   * (nothing else -- the updater keeps no state on the card, and there is no
+#     boot-time component and no rootfs component to keep in step with it)
 #
 # A freshly flashed sdcard.img is therefore correctly configured with no user
 # action at all: cores update, our Linux image stays put, and one entry in the

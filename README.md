@@ -761,11 +761,11 @@ So this project doesn't compete for that slot; it closes it:
   applying **any** Linux image. Cores, ROMs, MRAs and Jotego keep updating untouched.
 - `Scripts/update_linux_modernization.sh` runs the Downloader against its **own private
   ini** naming one database, so there is nothing to sort and nothing to lose.
-- `/etc/init.d/S05mlm` re-checks all of it on **every boot** from canonical copies held in
-  the root filesystem. That inverts the failure mode — from "something rewrote our config
-  and we're silently disabled forever" to "it was put back at the next boot, and it's in
-  the log" — and it is also how a *corrected* updater reaches an existing card, since a
-  release archive can only carry `files/linux/**` but `linux.img` carries the script.
+- That is the entire mechanism. No boot script, no daemon, no state files: the running
+  system already tells you what you need (`/MiSTer.version` says which image, and
+  `update_linux` says whether it is protected), and nothing re-applies the setting behind
+  you — the updater is the only thing that writes it, and only when you run it. Which is
+  also why reverting is one edit, with nothing to opt out of.
 
 Verified on hardware: a full `update_all.sh` run installed 379 cores, rebooted, and came
 back with `linux.img` and `zImage_dtb` **byte-identical**, the Downloader's own config

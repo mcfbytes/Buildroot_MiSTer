@@ -67,31 +67,42 @@ update channel by the obvious route.
    `Scripts/.config/mister_linux_modernization/`, declaring exactly one database with
    `update_linux = true`, plus `--run-only` as a fail-closed assertion. One candidate means
    there is nothing to sort and nothing to lose — on every Downloader build, old or new.
-   The private ini lives in a directory of its own because drop-in discovery globs the
-   directory the resolved ini sits in; placed in `/media/fat` it would drag every
-   `downloader_*.ini` on the card into what is supposed to be a Linux-only run.
+   The private ini is generated in **`/tmp`**, per run, and never persists. It can live
+   there because nothing about the Downloader's state derives from where the ini sits: the
+   log and `.last_successful_run` are built from `base_system_path` plus the ini's
+   *filename stem*, not its directory. The directory matters for exactly one thing —
+   drop-in discovery globs it — and `/tmp` has no `downloader_*.ini` in it. It must **not**
+   be `/media/fat` for that same reason: an ini there would drag every `downloader_*.ini`
+   on the card into what is meant to be a Linux-only run.
 
-3. **Canonical copies in the root filesystem.** `/usr/share/mister-linux-modernization/`
-   holds the updater, the `downloader.ini` template and the revert detector.
-   `post-build.sh` populates it from the same `board/mister/de10nano/fat-payload/` tree
-   that `scripts/fetch-sdcard-payload.sh` stages onto `sdcard.img`, so the card image and
-   the rootfs can never disagree.
+3. **Nothing else.** No boot script, no daemon, no state file, no marker, no rootfs
+   component. The two files above are the entire mechanism, and only `downloader.ini`
+   persists between runs.
 
-4. **Boot-time upkeep.** `/etc/init.d/S05mlm` runs the canonical updater in
-   `--boot-manage` mode: it repairs the kill switch, re-deploys the updater script onto the
-   card, installs the revert detector create-if-absent, and records the running version. It
-   never touches the network and never runs the Downloader.
+### Why there is deliberately no boot-time component
 
-This inverts the failure mode. Instead of *"something rewrote our config and we are
-silently disabled forever"*, it becomes *"something rewrote our config, it was put back at
-the next boot, and the fact that it happened is in the log."* It is also the answer to the
-`files/linux/**` constraint: shipping a corrected updater is just a normal image update,
-because `linux.img` carries the canonical copy and `S05mlm` pushes it onto the card. That
-in turn means `db.json`'s `files{}` can stay empty forever.
+An earlier revision of this decision added an `/etc/init.d` script that re-applied the kill
+switch each boot, canonical copies of the updater in the rootfs for it to deploy, a
+`user-startup.sh` revert detector, and four state files. All of it is gone, for two
+reasons.
 
-5. **Opt-out.** `/media/fat/linux/no_linux_modernization` disables all of the above.
-   `--restore-stock` creates it, sets `update_linux = true`, and tells the user to run a
-   normal update.
+**The running system already is the state.** `/MiSTer.version` and `uname -r` say which
+image is running; `update_linux` in `downloader.ini` says whether the protection is on.
+A recorded `state` file, a `REVERTED` marker and a detector to write them existed to
+answer questions the system can simply be asked. `--status` asks.
+
+**Nothing re-applies the setting, so nothing needs to be fought.** The updater is the only
+thing that ever writes `update_linux`, and it only runs when the user runs it. Once the
+boot script is gone, reverting is genuinely one edit and one normal update — no marker to
+clear, because there is nothing to opt out of. The `no_linux_modernization` file existed
+solely to stop our own boot script undoing the user's rollback.
+
+What this gives up is real and worth stating: a corrected updater can no longer reach an
+existing card automatically through an image update. Recovering that was the strongest
+argument for the rootfs copies, since a `release_YYYYMMDD.7z` can only carry
+`files/linux/**` and can never write `Scripts/`. The judgement is that re-running
+`install.sh` — one command, already the documented way in — is a proportionate price for
+deleting ~184 lines of shell and every piece of persistent state.
 
 ---
 
@@ -159,11 +170,12 @@ update it — the user would be frozen on whatever release they first installed.
   `/media/fat/*.ini` files — that is guessing at other tools' configuration, and would
   break them.
 
-  It is instead handled after the fact, which is why the revert detector exists: the next
-  boot notices `/MiSTer.version` no longer matches what was recorded, says so on the
-  console, writes `Scripts/.config/mister_linux_modernization/REVERTED`, and the boot
-  upkeep has already repaired `downloader.ini`. One run of the updater puts the image back.
-  A single silent revert becomes a single loud one.
+  It is instead handled after the fact, and cheaply: `--status` compares the running
+  `/MiSTer.version` against the published one and says plainly which image you are on. If
+  something did revert you, running the updater puts it back. This is deliberately *pull*
+  rather than *push* — an earlier revision detected reverts from a boot script and
+  announced them on the console, which cost a script, a state file and two markers to
+  deliver a message most users would never see, on a screen they are not looking at.
 - **Verified on hardware (2026-08-01):** on a DE10-Nano freshly flashed from `sdcard.img`,
   a full `update_all.sh` run installed 379 cores (78 of them Jotego, plus 858 MRAs),
   rebooted, and came back with `linux.img` and `zImage_dtb` byte-identical and the same

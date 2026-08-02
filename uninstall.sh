@@ -1,0 +1,165 @@
+#!/bin/sh
+# uninstall.sh -- hand the Linux image back to the official MiSTer database.
+#
+#   curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/uninstall.sh | sh
+#
+# Part of MiSTer Linux Modernization.
+# https://github.com/mcfbytes/Buildroot_MiSTer
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
+#
+# ---------------------------------------------------------------------------
+# WHAT UNINSTALLING ACTUALLY IS
+# ---------------------------------------------------------------------------
+# One line in one file. Opting in set `update_linux = false` in the [MiSTer]
+# section of /media/fat/downloader.ini, which stops EVERY normal Downloader run
+# from applying ANY Linux image -- that is the whole mechanism that kept the
+# official image from replacing this one. Setting it back to `true` re-arms the
+# official database, and the next `update_all.sh` or `Scripts/update.sh` run
+# installs the stock image over this one.
+#
+# Nothing re-applies the setting behind you. This project installs no boot
+# scripts, no daemons and no state files; the updater is the only thing that
+# ever writes that key, and it only runs when you run it. So there is no marker
+# to clear and nothing to fight.
+#
+# This script does NOT flash anything. After it runs you are still on this
+# image, with the official one merely re-armed; the swap happens on your next
+# normal update.
+#
+# It is also not the only way. If you still have the updater on the card,
+# `Scripts/update_linux_modernization.sh --restore-stock` does exactly the same
+# thing without needing the network -- and this script prefers it when present,
+# so there is one implementation of the edit rather than two.
+#
+# Options:
+#   --remove-script  also delete Scripts/update_linux_modernization.sh
+#   --yes            skip the 10-second countdown
+
+set -eu
+
+FAT="/media/fat"
+BASE_INI="$FAT/downloader.ini"
+UPDATER="$FAT/Scripts/update_linux_modernization.sh"
+PRIVATE_INI="/tmp/mister_linux_modernization.ini"
+
+REMOVE_SCRIPT=0
+ASSUME_YES=0
+
+for arg in "$@"; do
+	case "$arg" in
+		--remove-script) REMOVE_SCRIPT=1 ;;
+		--yes|-y)        ASSUME_YES=1 ;;
+		-h|--help)
+			echo "usage: uninstall.sh [--remove-script] [--yes]"
+			exit 0
+			;;
+		*) echo "uninstall.sh: unknown option: $arg" >&2; exit 2 ;;
+	esac
+done
+
+say()  { echo "$*"; }
+die()  { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
+rule() { echo "=================================================================="; }
+
+rule
+say " MiSTer Linux Modernization -- uninstall"
+rule
+say ""
+say "  This re-arms the official Linux image. It changes ONE key:"
+say ""
+say "      $BASE_INI   ->   [MiSTer] update_linux = true"
+say ""
+say "  Nothing is flashed now. On your next normal update -- update_all.sh or"
+say "  Scripts/update.sh -- the official image installs over this one, and the"
+say "  MiSTer reboots into it."
+say ""
+say "  Your cores, ROMs, saves, config and MiSTer.ini are not touched."
+if [ "$REMOVE_SCRIPT" -eq 1 ]; then
+	say "  --remove-script: $UPDATER will also be deleted."
+fi
+say ""
+rule
+
+if [ "$ASSUME_YES" -eq 0 ]; then
+	say ""
+	say "Starting in 10 seconds. Press Ctrl-C now to abort."
+	i=10
+	while [ "$i" -gt 0 ]; do
+		printf '\r  %2d ' "$i"
+		sleep 1
+		i=$((i - 1))
+	done
+	printf '\r      \n'
+fi
+say ""
+
+[ -d "$FAT" ] || die "$FAT does not exist. Run this ON the MiSTer, not on your PC."
+
+if [ -x "$UPDATER" ]; then
+	# One implementation of the edit, not two.
+	say "Using the installed updater's --restore-stock..."
+	"$UPDATER" --restore-stock
+else
+	say "Updater not on the card; editing $BASE_INI directly."
+	[ -f "$BASE_INI" ] ||
+		die "$BASE_INI does not exist, so nothing ever disabled Linux updates here. There is nothing to undo."
+	command -v python3 >/dev/null 2>&1 ||
+		die "python3 not found, and it is needed to edit the ini safely. Set [MiSTer] update_linux = true in $BASE_INI by hand instead."
+
+	python3 - "$BASE_INI" <<'PYEOF' || die "could not update the ini. Is /media/fat writable?"
+import os, re, sys
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8', errors='surrogateescape') as fh:
+    lines = fh.readlines()
+if lines and not lines[-1].endswith(('\n', '\r')):
+    lines[-1] += '\n'
+
+hdr = re.compile(r'^\s*\[\s*mister\s*\]\s*$', re.I)
+any_hdr = re.compile(r'^\s*\[')
+# '=' and ':' are both valid configparser delimiters.
+kv = re.compile(r'^\s*update_linux\s*[=:]\s*(.*?)\s*$', re.I)
+
+s = next((i for i, l in enumerate(lines) if hdr.match(l)), None)
+if s is None:
+    print('no [MiSTer] section -- nothing was disabling Linux updates')
+    raise SystemExit(0)
+e = next((j for j in range(s + 1, len(lines)) if any_hdr.match(lines[j])), len(lines))
+i = next((j for j in range(s + 1, e) if kv.match(lines[j])), None)
+if i is None:
+    print('no update_linux key -- nothing was disabling Linux updates')
+    raise SystemExit(0)
+
+cur = kv.match(lines[i]).group(1).split(';')[0].split('#')[0].strip().lower()
+if cur in ('true', 'yes', 'y', 't', 'on', '1'):
+    print('already true -- official Linux updates were already enabled')
+    raise SystemExit(0)
+
+lines[i] = 'update_linux = true\n'
+tmp = path + '.new'
+with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as fh:
+    fh.writelines(lines)
+os.replace(tmp, path)
+print("changed update_linux from '%s' to true" % cur)
+PYEOF
+fi
+
+rm -f "$PRIVATE_INI"
+
+if [ "$REMOVE_SCRIPT" -eq 1 ] && [ -e "$UPDATER" ]; then
+	rm -f "$UPDATER" && say "Removed $UPDATER"
+fi
+
+say ""
+rule
+say " Done. Now run a normal update:"
+say ""
+say "     Scripts > update_all.sh      (or Scripts > update.sh)"
+say ""
+say " That installs the official Linux image over this one and reboots."
+say " Until then you are still running this image, and re-running"
+say " install.sh puts things back."
+rule

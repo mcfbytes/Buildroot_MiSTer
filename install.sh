@@ -69,10 +69,30 @@ SCRIPTS_DIR="$FAT/Scripts"
 UPDATER="$SCRIPTS_DIR/update_linux_modernization.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
-# Small files in /media/fat/linux/ that the Linux update's rsync replaces. All
-# of these are shipped inside every Linux image, official and ours alike, so
-# they are replaced by ANY update -- this is not something this project does to
-# you. They are backed up anyway because they are tiny and occasionally edited.
+# Small files in /media/fat/linux/ that the Linux update's rsync replaces.
+#
+# Every one of these is genuinely in scope, checked rather than assumed: stock's
+# files/linux/ is {linux.img, zImage_dtb, uboot.img, updateboot, MidiLink.INI,
+# ppp_options, u-boot.txt_example, _samba.sh, _user-startup.sh,
+# _wpa_supplicant.conf, gamecontrollerdb/, mt32-rom-data/, soundfonts/}
+# (docs/verification/stock-release-20250402.md), and our release archive is that
+# same tree with linux.img/zImage_dtb overlaid and 7za added (release.yml,
+# "Assemble release tree"). The flash-phase rsync copies all of it. So these are
+# replaced by ANY Linux update, official or ours -- not something this project
+# does to you.
+#
+# Not listed, deliberately:
+#   gamecontrollerdb/  -- the rsync excludes it outright, so it is never touched.
+#   mt32-rom-data/, soundfonts/  -- rsynced, but directories, and potentially
+#       large. Without --delete, anything you ADDED survives; only a shipped file
+#       you edited in place would be overwritten. Copying them here could mean
+#       hundreds of MB on a sync-mounted exFAT card, which is not a trade worth
+#       making for that case.
+#   linux.img, zImage_dtb, 7za  -- the payload itself.
+#
+# In practice rsync's size+mtime quick check skips an untouched file entirely, so
+# the ones that actually get rewritten are the ones somebody customised -- which
+# is exactly what this backup is for.
 # linux.img / zImage_dtb / 7za are deliberately NOT here: they are the payload,
 # and copying 600 MB onto an exFAT card mounted `sync` to "back up" the thing
 # being replaced would be slow and pointless.

@@ -164,46 +164,33 @@ mustnt() { local d="$1"; shift; if "$@"; then bad "$d"; else ok "$d"; fi; }
 
 reset() { rm -f "$TZFILE" "$TZSTAMP" "$TZFILE.tmp"; rmdir "$LOCKDIR" 2>/dev/null; }
 
-# fire <answer> [reason] [if_up] -- one dhcpcd address event, sourced exactly
-# the way dhcpcd-run-hooks sources it. Defaults to the event that matters:
-# BOUND with the interface up. With if_up given as the literal string "unset",
-# if_up is left undefined -- a case dhcpcd never produces but a sourced file
-# must survive.
+# fire <answer> [reason] [if_up] -- one dhcpcd address event, sourced the way
+# dhcpcd-run-hooks sources it, INSIDE ${TEST_SH[@]}. Running it under the
+# harness's own shell would make TZ_TEST_SH decorative and the "target BusyBox
+# ash" CI leg a no-op that prints PASS.
+#
+# Defaults to the event that matters: BOUND with the interface up. Pass the
+# literal string "unset" as if_up to leave it undefined -- a case dhcpcd never
+# produces but a sourced file must survive. An EMPTY if_up is a distinct case,
+# hence ${3-true} rather than ${3:-true}.
+#
+# The inner shell touches $2 after sourcing: reached only if the hook did not
+# exit its caller, which in a sourced file would end dhcpcd's whole hook run and
+# take 20-resolv.conf and 30-hostname with it.
 fire() {
 	printf '%s' "$1" > "$SB/answer"
 	rm -f "$SB/curl.calls"
-	(
-		export reason="${2:-BOUND}"
-		# ${3-true}, not ${3:-true}: an EMPTY if_up is a case under test
-		# and must not be silently promoted to "true".
-		if [ $# -ge 3 ]; then
-			case "$3" in
-			unset) ;;
-			*) export if_up="$3" ;;
-			esac
-		else
-			export if_up=true
-		fi
-		PATH="$SB/bin:$PATH"
-		# shellcheck source=/dev/null
-		. "$SB/sync"
-		# Reached only if the hook did not exit its caller -- which in a
-		# sourced file would end dhcpcd's whole hook run, taking
-		# 20-resolv.conf and 30-hostname with it.
-		: > "$SB/returned-to-dhcpcd"
-	) > "$SB/out" 2>&1
-}
-
-# One event with the UNMODIFIED hook: body backgrounded, as dhcpcd sees it.
-fire_async() {
-	printf '%s' "$1" > "$SB/answer"
-	rm -f "$SB/curl.calls"
-	(
-		export reason=BOUND if_up=true
-		PATH="$SB/bin:$PATH"
-		# shellcheck source=/dev/null
-		. "$SB/async"
-	) > "$SB/out" 2>&1
+	# shellcheck disable=SC2016  # $1/$2 belong to the inner shell, on purpose
+	_src='. "$1"; : > "$2"'
+	if [ "${3-}" = unset ]; then
+		env -u if_up PATH="$SB/bin:$PATH" reason="${2:-BOUND}" \
+			"${TEST_SH[@]}" -c "$_src" _ \
+			"$SB/sync" "$SB/returned-to-dhcpcd" > "$SB/out" 2>&1
+	else
+		env PATH="$SB/bin:$PATH" reason="${2:-BOUND}" if_up="${3-true}" \
+			"${TEST_SH[@]}" -c "$_src" _ \
+			"$SB/sync" "$SB/returned-to-dhcpcd" > "$SB/out" 2>&1
+	fi
 }
 
 boot() { rm -f "$SB/returned-to-dhcpcd"; fire "$@"; }
@@ -211,8 +198,6 @@ boot() { rm -f "$SB/returned-to-dhcpcd"; fire "$@"; }
 # shellcheck disable=SC2329
 queried() { [ -f "$SB/curl.calls" ]; }
 # shellcheck disable=SC2329
-request() { sed -n "$1p" "$SB/curl.calls"; }
-queried() { [ -f "$SB/curl.calls" ]; }
 request() { sed -n "$1p" "$SB/curl.calls"; }
 
 echo "shell under test: ${TZ_TEST_SH:-sh}"
@@ -397,12 +382,9 @@ reset; : > "$SB/stall"
 fire_async_timed() {
 	printf 'America/New_York' > "$SB/answer"
 	rm -f "$SB/curl.calls"
-	# shellcheck disable=SC2016  # $1/$2 are the inner shell's, on purpose
-	timeout 3 sh -c '
-		export reason=BOUND if_up=true
-		PATH="$1/bin:$PATH"
-		. "$2"
-	' _ "$SB" "$SB/async" >/dev/null 2>&1
+	# shellcheck disable=SC2016  # $1 belongs to the inner shell, on purpose
+	env PATH="$SB/bin:$PATH" reason=BOUND if_up=true \
+		timeout 3 "${TEST_SH[@]}" -c '. "$1"' _ "$SB/async" >/dev/null 2>&1
 }
 must "the sourcing shell returns while the lookup is in flight" fire_async_timed
 
@@ -412,9 +394,9 @@ must "the sourcing shell returns while the lookup is in flight" fire_async_timed
 # In a FRESH shell, not a subshell of this one: the harness defines TZFILE,
 # TZSTAMP, ZONEDIR and LOCKDIR itself, so a subshell could not tell its own
 # variables from the hook's. They are plain assignments here, not exports, so a
-# new `sh -c` does not inherit them.
+# new shell does not inherit them. Under ${TEST_SH[@]}, like every other case.
 # shellcheck disable=SC2016  # $1 is the inner shell's argument, on purpose
-leaks="$(PATH="$SB/bin:$PATH" reason=BOUND if_up=true sh -c '
+leaks="$(env PATH="$SB/bin:$PATH" reason=BOUND if_up=true "${TEST_SH[@]}" -c '
 	. "$1"
 	for v in TZFILE TZSTAMP ZONEDIR CURL LOCKDIR TZ_TRIES TZ_INTERVAL \
 		answered tries zone url raw; do

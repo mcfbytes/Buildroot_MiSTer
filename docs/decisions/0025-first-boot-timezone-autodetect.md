@@ -17,8 +17,8 @@ persist-to-FAT mechanism this mirrors), [ADR 0011](0011-resolv-conf-buildroot-de
    `/usr/share/zoneinfo/posix/` to `/media/fat/linux/timezone` — the file `/etc/localtime`
    already points at. No init script, no boot-time path.
 2. **One guess, spent when it is actually made.** The lookup is gated on two files on the
-   data partition — the timezone itself, and a `timezone.autodetect` stamp — plus a
-   default-route check. The stamp is written only when a provider **answered with a zone
+   data partition — the timezone itself, and a `timezone.autodetect` stamp. The stamp is
+   written only when a provider **answered with a zone
    name**: one we install, or one we do not ship (asking again tomorrow will not help).
    *Being offline is not an answer, and neither is HTTP 200* — see the captive-portal note
    below.
@@ -136,7 +136,7 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
   user to close a one-boot cosmetic gap is not a trade worth making.
 - **A box that is *never* online never gets a timezone.** Obvious, but worth stating: the
   guess is never spent, so nothing accumulates and nothing is retried in the background —
-  the default-route check means an offline boot costs three `stat()` calls.
+  a box that never connects never fires the hook at all.
 - **It does not touch `/etc/timezone`** (a label file nothing reads, `Etc/UTC`, stock
   parity) — `/` is read-only at that point in boot anyway.
 
@@ -157,9 +157,9 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 ## Verification
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
-paths rewritten into a temp dir, `curl` stubbed; `/proc/net/route` and the dhcpcd hook
-stubbed; the hook sourced exactly as `dhcpcd-run-hooks` sources it). 16 cases / 60
-assertions covering the
+paths rewritten into a temp dir, `curl` stubbed, and the hook sourced exactly as
+`dhcpcd-run-hooks` sources it — under `$TZ_TEST_SH`, so the second CI leg genuinely parses
+and runs it as the target's BusyBox `ash`). 16 cases / 60 assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
 unset, so a half-written card self-heals, and that a timezone set *while the lookup runs*
 is not clobbered), the once-and-only-once contract, the opt-out stamp, nine classes of

@@ -211,9 +211,10 @@ the `linux` folder of your SD card, next to `wpa_supplicant.conf`. Nothing will 
 it, it explains itself.)
 
 **If your box had no network on its first boot, nothing is lost.** Being offline is not an
-answer, so the one guess is not spent — nothing is even sent, because the box checks
-whether it has a route before it asks. The lookup then happens the moment the box actually
-gets an address: finish setting up Wi-Fi, and it fires on that connection, whether that is
+answer, so the one guess is not spent — and nothing is even sent, because the lookup is not
+something the box does at boot and then gives up on. It is attached to the moment the
+network actually arrives, so with no network there is nothing to send and nothing to give
+up on. That moment is when the box gets an address: finish setting up Wi-Fi, and it fires on that connection, whether that is
 the same boot or three boots later. (It is a dhcpcd hook, sitting in the same place as the
 one dhcpcd uses to update `/etc/resolv.conf`.) If you use a **static IP** set only in
 `/etc/network/interfaces`, dhcpcd never runs and this never fires — set the timezone with

@@ -65,4 +65,4 @@ sha256  17fc72f0f8d4a8a8633a5d20085f5d9c5a5ec51ee896a0b7ae1ec25da31273ea  linux-
 # different times agreeing on length is NOT a signature, and does not upgrade
 # TOFU to verified provenance; it only rules out a truncated or mid-flight
 # corrupted local copy, which is the one failure this pin could otherwise bless.
-sha256  8be5bf245c5bc89927f15a9f575c04869c25a8d511d8b810ecd8a67e5b0dd51e  linux-7.2-rc5.tar.gz
+sha256  bd3d491e9995e3a91b544e5af18df60e97aff46f270fad4b0cd10bd48ea34f02  linux-7.2-rc6.tar.gz

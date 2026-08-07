@@ -36,7 +36,7 @@
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
-sha256  35a8ef5e8fb44467e56a42b40c23c4c10a61d1e95ff8d738f285230e8bed63e7  linux-6.18.42.tar.xz
+sha256  a1aeb926c7c4a1564368200b1082e45bb958007682d804aff88abbc3a7a47b5d  linux-6.18.43.tar.xz
 
 # WHERE THE 7.2-rc5 HASH COMES FROM -- weaker provenance, stated honestly.
 # kernel.org publishes NO signed manifest for -rc kernels: sha256sums.asc

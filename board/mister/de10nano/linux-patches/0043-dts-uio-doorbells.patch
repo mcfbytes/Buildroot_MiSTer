@@ -1,0 +1,230 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Sat, 08 Aug 2026 00:00:00 +0000
+Subject: [PATCH] ARM: dts: socfpga: de10nano: UIO doorbell nodes for
+ f2h_irq1..8
+
+Adds eight interrupt-only UIO nodes to the MiSTer DE10-Nano DTS, one per
+FPGA-to-HPS interrupt line f2h_irq1..f2h_irq8 (GIC SPI 41..48), so that
+userspace can block on an FPGA event instead of polling for it.
+
+Rationale: ADR-002-interim, Main_MiSTer rewrite plan
+----------------------------------------------------
+Main_MiSTer's core loop finds out about FPGA-side events by reading the
+cause register over the lightweight HPS-to-FPGA bridge in a spin.  The
+interim decision (ADR-002-interim) keeps that register access in
+userspace -- the register-window story belongs to the later HAL work --
+but replaces the poll with a blocking read() on /dev/uioN.  The kernel
+side of that is nothing more than a platform device per doorbell line
+bound to drivers/uio/uio_pdrv_genirq.c, which is what these nodes are.
+
+GIC SPI allocation map
+----------------------
+The Cyclone V routes its 64 FPGA-to-HPS interrupt lines onto GIC SPI
+40..103.  This patch fixes the split:
+
+  SPI 40        f2h_irq0       vsync.  Owned by the MiSTer_fb fbdev
+                               driver (patch 0001, node added by patch
+                               0004).  Explicitly NOT in the pool: it is
+                               a kernel-internal interrupt and handing it
+                               to userspace would break the framebuffer.
+  SPI 41..48    f2h_irq1..8    general doorbell pool.  These eight nodes.
+  SPI 49..103   f2h_irq9..63   reserved.  No nodes; unallocated.
+
+Level, not edge
+---------------
+The doorbell nodes use IRQ_TYPE_LEVEL_HIGH while the MiSTer_fb node two
+lines above uses IRQ_TYPE_EDGE_RISING.  That asymmetry is deliberate and
+load-bearing, not an oversight:
+
+  - A doorbell is backed by a cause register the FPGA holds asserted
+    until userspace acknowledges it.  With an edge trigger, a second
+    event raised while the first is still unacknowledged produces no new
+    edge, so it coalesces into the already-high level and is lost with no
+    diagnostic anywhere.  Level-high cannot lose it: the line stays
+    asserted and re-fires the moment the handler re-enables it.
+  - vsync (SPI 40) is the opposite: a true pulse with no cause register
+    to read back, so edge-rising is correct there.
+
+uio_pdrv_genirq already handles the level case properly -- on a
+level-typed IRQ it sets IRQ_DISABLE_UNLAZY so the line is genuinely
+masked while userspace clears the cause register, instead of the lazy
+mask re-firing immediately (drivers/uio/uio_pdrv_genirq.c,
+uio_pdrv_genirq_probe()).
+
+No reg property
+---------------
+These are interrupt-only nodes.  uio_pdrv_genirq's resource loop simply
+finds no IORESOURCE_MEM and zeroes every uio_mem, so a node with no reg
+probes fine and exports no maps.  The register window arrives later with
+the HAL; adding a reg then only populates map0 and breaks no existing
+userspace, because map0 does not exist today.
+
+Node names are ABI
+------------------
+No "linux,uio-name" property is set, so uio_pdrv_genirq derives
+uio_info.name from the fwnode ("%pfwP") and userspace identifies a
+doorbell by /sys/class/uio/uioN/name == "mister_doorbellN".  Renaming a
+node, or giving it a unit address, changes that string.
+
+Why this patch is shared by both kernel lines
+---------------------------------------------
+board/mister/de10nano/linux-patches/ has no series file, so the stock
+6.18 build applies every patch in it; only the 7.2 beta build filters
+through linux-patches-beta/series.  This patch is therefore applied to
+both trees -- and that is harmless.  CONFIG_UIO is not set in the shared
+board/mister/de10nano/linux.config, so on the stock kernel these nodes
+match no driver, instantiate no device, and cost a few hundred bytes of
+DTB.  Keeping one shared patch file also keeps the DTS byte-identical
+between the two lines, which is the property that lets 0004 be a symlink
+in the beta series rather than a re-anchored copy.
+
+Binding on the RT line needs a command-line parameter
+-----------------------------------------------------
+uio_pdrv_genirq's of_match_table starts empty and is filled in by the
+of_id module parameter (module_param_string(of_id, ...)).  Built as a
+module that is a modprobe argument; built in, as on the RT kernel
+(CONFIG_UIO_PDRV_GENIRQ=y), it has to come from the kernel command line.
+board/mister/de10nano/linux-rt.fragment supplies all three halves of
+this: CONFIG_UIO=y, CONFIG_UIO_PDRV_GENIRQ=y, and
+CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio" with
+CONFIG_CMDLINE_EXTEND=y so it appends to U-Boot's /chosen bootargs
+rather than replacing them.
+
+Provenance
+----------
+Origin:       None.  Originally authored for this tree; no MiSTer fork
+              commit corresponds to it (stock MiSTer has no UIO nodes and
+              no UIO support in its kernel config).
+Author:       Michael C. Ferguson, 2026-08-08.
+Upstream:     No, and not upstreamable as-is.  "generic-uio" is not a
+              documented device-tree binding -- it is a match string
+              invented per-system and injected via uio_pdrv_genirq.of_id,
+              which is precisely why it must be paired with the cmdline
+              parameter.  Disposition "carry" (docs/patch-provenance.md
+              3.1).  Applies to both 6.18 and 7.2: the DTS this patch
+              anchors on is byte-identical in both trees after 0004.
+
+Depends on 0004-dts-de10nano-MiSTer.patch (it inserts after the
+MiSTer_fb node that patch creates) and must sort after it.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 104 ++++++++++++
+ 1 file changed, 104 insertions(+)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -129,6 +129,110 @@
+ 		interrupt-parent = <&intc>;
+ 		interrupts = <0 40 IRQ_TYPE_EDGE_RISING>;
+ 	};
++
++	/*
++	 * FPGA-to-HPS doorbell interrupts, exported to userspace via UIO.
++	 *
++	 * ADR-002-interim (Main_MiSTer rewrite plan): Main_MiSTer's core loop
++	 * currently discovers FPGA-side events by polling the cause register
++	 * over the lightweight bridge.  The interim decision is to keep the
++	 * register access in userspace but replace the poll with a blocking
++	 * read() on /dev/uioN, so the FPGA can wake the process instead of
++	 * being asked.  These nodes are the device-tree half of that; they
++	 * carry the IRQ lines and nothing else.
++	 *
++	 * GIC SPI ALLOCATION MAP -- Cyclone V f2h_irq[] (SoC docs: the 64
++	 * FPGA-to-HPS interrupt lines land on GIC SPI 40..103):
++	 *
++	 *   SPI 40        f2h_irq0       vsync.  Owned by the MiSTer_fb fbdev
++	 *                                driver (node above; patch 0001).
++	 *                                NOT part of the doorbell pool -- do
++	 *                                not add a UIO node for it.
++	 *   SPI 41..48    f2h_irq1..8    general doorbell pool (these nodes).
++	 *   SPI 49..103   f2h_irq9..63   reserved.  Unallocated, no nodes.
++	 *
++	 * IRQ_TYPE_LEVEL_HIGH is deliberate, and is NOT a copy-paste slip from
++	 * MiSTer_fb's IRQ_TYPE_EDGE_RISING above.  A doorbell is a cause
++	 * register the FPGA holds asserted until userspace acknowledges it,
++	 * so level is the semantically correct trigger: with an edge trigger,
++	 * a second event raised while the first is still unacknowledged
++	 * produces no new edge and is silently coalesced away.  vsync is the
++	 * opposite case -- a true pulse with no cause register -- which is why
++	 * SPI 40 is edge-rising and these are not.  uio_pdrv_genirq knows the
++	 * difference: for a level-typed IRQ it sets IRQ_DISABLE_UNLAZY, so the
++	 * line is really masked while userspace clears the cause register
++	 * rather than lazily re-firing (drivers/uio/uio_pdrv_genirq.c).
++	 *
++	 * No "reg" on purpose: these are interrupt-only nodes for now.
++	 * uio_pdrv_genirq accepts zero memory resources (its resource loop
++	 * simply finds no IORESOURCE_MEM and zeroes every map), and the
++	 * register-window story arrives later with the HAL.  Adding a reg
++	 * property then is a backward-compatible change -- it only populates
++	 * map0, which does not exist today.
++	 *
++	 * The node NAME is the ABI: uio_pdrv_genirq has no "linux,uio-name"
++	 * property here, so it derives uio_info.name from the fwnode ("%pfwP")
++	 * and userspace matches on /sys/class/uio/uioN/name.  Do not rename
++	 * these nodes, and do not add unit addresses to them.
++	 *
++	 * Binding: the driver's of_match_table is empty until the kernel
++	 * command line fills it, because it is built in on the RT kernel
++	 * (CONFIG_UIO_PDRV_GENIRQ=y) rather than modprobe'd with a parameter.
++	 * board/mister/de10nano/linux-rt.fragment supplies both that symbol
++	 * and "uio_pdrv_genirq.of_id=generic-uio" via CONFIG_CMDLINE_EXTEND.
++	 *
++	 * On the stock 6.18 kernel CONFIG_UIO is not set at all, so these
++	 * nodes match no driver, create no device, and consume nothing but a
++	 * few hundred bytes of DTB.  That inertness is why this patch is
++	 * shared by both kernel lines while the config change is RT-only.
++	 */
++	mister_doorbell1 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 41 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq1 */
++	};
++
++	mister_doorbell2 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 42 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq2 */
++	};
++
++	mister_doorbell3 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 43 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq3 */
++	};
++
++	mister_doorbell4 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 44 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq4 */
++	};
++
++	mister_doorbell5 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 45 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq5 */
++	};
++
++	mister_doorbell6 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 46 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq6 */
++	};
++
++	mister_doorbell7 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 47 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq7 */
++	};
++
++	mister_doorbell8 {
++		compatible = "generic-uio";
++		interrupt-parent = <&intc>;
++		interrupts = <0 48 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq8 */
++	};
+ };
+ 
+ &gmac1 {
+-- 
+2.51.0

@@ -11,11 +11,12 @@
 # it here rather than removing it from this list.
 #
 # The jump from 0037 to 0043 at the end of the list is that same 0038-0042
-# gap, not a second one: 0043-dts-uio-doorbells is the newest patch in
-# linux-patches/ and depends only on 0004, so it sorts and applies fine over
-# the hole. It is the RT line's reason to exist right now (ADR-002-interim:
-# UIO doorbells on GIC SPI 41..48), even though the patch itself is shared
-# with the 6.18 line, where it is inert for want of CONFIG_UIO.
+# gap, not a second one: 0043-dts-uio-doorbells is BETA-LOCAL — a real file
+# in THIS directory, deliberately absent from the shared linux-patches/ set
+# so the stock 6.18 build (which globs that whole dir via
+# BR2_LINUX_KERNEL_PATCH) never sees it. It depends only on 0004 and applies
+# fine over the hole. It is the RT line's reason to exist right now
+# (ADR-002-interim: UIO doorbells on GIC SPI 41..48).
 #
 # NOT-symlink exceptions: four entries are REAL FILES re-anchored for 7.x —
 # the shared 6.18 patches are deliberately untouched (parity with stock).

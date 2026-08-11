@@ -4,11 +4,19 @@
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
 # Excluded vs the 6.18 set: 0038, 0039, 0040, 0041, 0042 (landed 2026-07-24,
-# not yet re-anchored). The beta series carries 31 of 36
+# not yet re-anchored). The beta series carries 32 of 37
 # patches, so the 7.x kernel and the 6.18 kernel diverge only where an
 # upstream API forced a re-anchor — never by dropping a MiSTer change.
 # Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor
 # it here rather than removing it from this list.
+#
+# The jump from 0037 to 0043 at the end of the list is that same 0038-0042
+# gap, not a second one: 0043-dts-uio-doorbells is BETA-LOCAL — a real file
+# in THIS directory, deliberately absent from the shared linux-patches/ set
+# so the stock 6.18 build (which globs that whole dir via
+# BR2_LINUX_KERNEL_PATCH) never sees it. It depends only on 0004 and applies
+# fine over the hole. It is the RT line's reason to exist right now
+# (ADR-002-interim: UIO doorbells on GIC SPI 41..48).
 #
 # NOT-symlink exceptions: four entries are REAL FILES re-anchored for 7.x —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
@@ -83,3 +91,4 @@
 0035-hid-nintendo-home-led-nonfatal.patch
 0036-btusb-csr-clone-lmp-subver-2512.patch
 0037-hid-playstation-dualsense-mute-btn-z.patch
+0043-dts-uio-doorbells.patch

@@ -5,8 +5,9 @@
 # See docs/rt-beta-kernel.md.
 #
 # The base linux.config reconciles cleanly to 7.2 via `olddefconfig` (verified:
-# every MiSTer-critical symbol survives), so this fragment carries ONLY the one
-# delta that makes this the RT/beta kernel.
+# every MiSTer-critical symbol survives), so this fragment carries ONLY the
+# deltas that make this the RT/beta kernel: PREEMPT_RT itself, and the UIO
+# doorbell support that the RT line exists to serve.
 
 # --- PREEMPT_RT: the point of the variant ------------------------------------
 # A fully-preemptible real-time kernel. On Linux 7.2, arch/arm selects
@@ -14,6 +15,49 @@
 # linux.config, so PREEMPT_RT is directly selectable — there is NO out-of-tree
 # RT patch to carry. (RT for 32-bit ARM merged into mainline in Linux 7.1.)
 CONFIG_PREEMPT_RT=y
+
+# --- UIO doorbells: FPGA-to-HPS f2h_irq1..8 into userspace -------------------
+# ADR-002-interim (Main_MiSTer rewrite plan): stop polling the FPGA cause
+# register over the lightweight bridge; block on read() of /dev/uioN instead.
+# The device-tree half is board/mister/de10nano/linux-patches/
+# 0043-dts-uio-doorbells.patch — eight "generic-uio" nodes on GIC SPI 41..48
+# (SPI 40 is vsync and stays with the MiSTer_fb driver).
+#
+# RT-ONLY, and that asymmetry is the whole point. linux-patches/ has no series
+# file, so the stock 6.18 build applies every patch in it, this one included —
+# but CONFIG_UIO is not set in the shared board/mister/de10nano/linux.config,
+# so on stock those nodes match no driver, create no device and cost nothing
+# but DTB bytes. These two symbols are what turn them into real /dev/uioN
+# devices, and they live here so the stock kernel config stays byte-untouched.
+CONFIG_UIO=y
+CONFIG_UIO_PDRV_GENIRQ=y
+
+# --- The cmdline parameter uio_pdrv_genirq needs when it is built in ---------
+# uio_pdrv_genirq ships with an EMPTY of_match_table; the compatible string it
+# matches is written into that table at runtime by its of_id parameter
+# (module_param_string(of_id, uio_of_genirq_match[0].compatible, 128, 0) —
+# drivers/uio/uio_pdrv_genirq.c). As a module that would be a modprobe
+# argument. Built in (=y above, so the doorbells exist before userspace does),
+# the kernel command line is the only way to set it — without the line below
+# the DTS nodes bind to nothing and no /dev/uio* appears.
+#
+# This fragment is also the RT line's ONLY bootargs surface. There is no
+# per-line U-Boot environment in this repo: U-Boot is stock and unmodified for
+# both kernels (uboot-patches/ is empty; docs/rt-beta-kernel.md §5), and
+# /media/fat/linux/u-boot.txt selects only WHICH zImage loads — it carries no
+# command-line content. The real cmdline arrives via U-Boot's stock
+# `setenv bootargs` plus its /chosen FDT fixup (docs/boot-chain.md §4.2).
+#
+# EXTEND, never FORCE: under CMDLINE_EXTEND, early_init_dt_scan_chosen()
+# appends CONFIG_CMDLINE *after* whatever /chosen supplied (drivers/of/fdt.c),
+# so U-Boot's root=, console= and the rest survive and we contribute exactly
+# one token. CMDLINE_FORCE would overwrite them and the board would not boot.
+# The two symbols must be set together: arch/arm/Kconfig gates the whole
+# "Kernel command line type" choice on `depends on CMDLINE != ""`, and the
+# shared linux.config leaves CONFIG_CMDLINE empty, so no choice is selected
+# there at all — hence no conflict with the stock line.
+CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"
+CONFIG_CMDLINE_EXTEND=y
 
 # NOTE: the RTL8814AU chip's in-kernel driver (CONFIG_RTW88_8814AU) is
 # deliberately NOT set here — the main build migrated that chip to the in-kernel

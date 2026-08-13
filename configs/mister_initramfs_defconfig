@@ -58,6 +58,31 @@ BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/in
 # --- /init itself.
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/initramfs-overlay"
 
+# --- fsck.exfat, for the on-demand repair path (ADR 0026).
+#
+# /media/fat is exFAT, has no journal, and is never cleanly unmounted -- not even
+# by the OSD's own "Reboot", which is a direct write to the HPS reset controller
+# (Main:fpga_io.cpp:588-605) that never reaches init's ::shutdown entries. So the
+# volume-dirty flag (fs/exfat/super.c:512) is effectively always set and nothing
+# ever repairs the lost clusters an unlucky power cut leaves behind.
+#
+# The initramfs is the ONLY place a repair can run. The root filesystem is
+# linux/linux.img, a file *on* the partition being checked, so once the system is
+# up the block device can never be released: fsck.exfat's repair mode opens
+# O_RDWR|O_EXCL and a mount holds an exclusive bdev claim (fs/super.c:1617)
+# whether it is ro or rw. Check-then-boot, or not at all.
+#
+# It runs ONLY when Scripts/check_storage.sh has left a marker, never on a plain
+# boot -- see the fsck_if_requested() section of the initramfs /init for why the
+# dirty flag alone is not a usable trigger.
+#
+# The only dependency is BR2_USE_WCHAR, which musl satisfies; the installer
+# config (configs/mister_installer_defconfig) already builds this package on the
+# same musl+static toolchain. initramfs-post-build.sh then deletes the five
+# binaries we do not use -- see there for why that is done in post-build.
+BR2_PACKAGE_EXFATPROGS=y
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/initramfs-post-build.sh"
+
 # --- Output: a cpio, uncompressed.
 # Uncompressed is deliberate (docs/boot-chain.md I3). The cpio ends up inside the
 # zImage, which is itself LZ4-compressed (CONFIG_KERNEL_LZ4, stock parity), so

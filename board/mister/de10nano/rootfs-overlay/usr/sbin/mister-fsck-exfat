@@ -1,0 +1,349 @@
+#!/bin/bash
+# mister-fsck-exfat -- check the MiSTer data partition, and schedule a repair
+# for the next boot if one is actually needed.
+#
+# Part of MiSTer Linux Modernization.
+# https://github.com/mcfbytes/Buildroot_MiSTer
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
+#
+# Scripts/check_storage.sh on the FAT partition is a three-line shim that execs
+# this. See docs/decisions/0026-user-driven-exfat-fsck.md for the whole design.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS LIVES IN THE ROOTFS AND NOT IN Scripts/
+# ---------------------------------------------------------------------------
+# Two reasons, both load-bearing:
+#
+#   1. It must work when /media/fat is damaged. A repair tool that lives on the
+#      filesystem it repairs is unavailable in exactly the case it exists for.
+#      The rootfs is a separate ext4 image, mounted read-only.
+#
+#   2. It speaks a marker protocol to the initramfs (ADR 0026), and the two ends
+#      must be the same version. Both ship inside one linux.img, so they cannot
+#      drift. A Scripts/ copy updated independently of the kernel could write a
+#      marker that the running initramfs does not understand -- silently doing
+#      nothing, on a box the user has just been told is about to repair itself.
+#
+# ---------------------------------------------------------------------------
+# WHY A CHECK HERE AND A REPAIR THERE
+# ---------------------------------------------------------------------------
+# The repair cannot run on a booted system, at all. The root filesystem is
+# linux/linux.img, a file ON the partition being checked, so the block device
+# can never be released: fsck.exfat's repair mode opens O_RDWR|O_EXCL, and a
+# mounted filesystem holds an exclusive bdev claim (fs/super.c:1617) whether it
+# is mounted ro or rw. Even defeating that would be unsound -- the kernel caches
+# the allocation bitmap and dentries, so repairing underneath a live mount turns
+# a fix into corruption.
+#
+# The CHECK, though, is safe here: -n opens the device O_RDONLY
+# (exfatprogs lib/libexfat.c:147). It reports some false positives because the
+# filesystem moves underneath it, which is why its verdict is advisory and why
+# this is best run from the Scripts menu with no core loaded.
+#
+# So: check while running, with output on screen; repair on the next boot, only
+# if the check found something, and only if the user says yes.
+
+set -uo pipefail
+
+readonly FAT="/media/fat"
+readonly MARKER="$FAT/linux/.fsck-request"
+readonly RESULT="$FAT/linux/.fsck-result"
+readonly FSCK="/usr/sbin/fsck.exfat"
+
+# Seconds to wait for a yes at the repair prompt. Times out to NO.
+#
+# There may be no keyboard attached -- a MiSTer is often driven entirely by a
+# gamepad, and this script can also be run from a boot script or over SSH in a
+# pipeline. Every one of those must end in "changed nothing" rather than
+# "scheduled a multi-minute black-screen boot nobody was there to consent to".
+readonly PROMPT_TIMEOUT=120
+
+MODE="check"
+
+usage() {
+	cat <<'EOF'
+mister-fsck-exfat -- check the MiSTer data partition (exFAT)
+
+  mister-fsck-exfat              check now; offer to schedule a repair if needed
+  mister-fsck-exfat --check-only check now and report; never schedule anything
+  mister-fsck-exfat --schedule   schedule a repair for the next boot, no check
+  mister-fsck-exfat --cancel     cancel a scheduled repair
+  mister-fsck-exfat --status     show whether a repair is scheduled, and the
+                                 result of the last one
+  mister-fsck-exfat --help
+
+The check is read-only and safe to run at any time. The repair itself can only
+run during boot, before the data partition is mounted, and needs a reboot.
+EOF
+}
+
+for arg in "$@"; do
+	case "$arg" in
+		--check-only) MODE="check-only" ;;
+		--schedule)   MODE="schedule" ;;
+		--cancel)     MODE="cancel" ;;
+		--status)     MODE="status" ;;
+		-h|--help)    usage; exit 0 ;;
+		*) echo "mister-fsck-exfat: unknown option: $arg" >&2; usage >&2; exit 2 ;;
+	esac
+done
+
+say()  { echo "$*"; }
+warn() { echo "$*" >&2; }
+die()  { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
+
+rule() { echo "======================================================================"; }
+
+# The block device behind /media/fat, read from the kernel rather than assumed.
+#
+# NOT hardcoded to /dev/mmcblk0p1: the initramfs resolves root= (which may be
+# UUID= or LABEL=) and moves that mount here, and a user booting from USB gets a
+# different node entirely. /proc/mounts is the only thing that knows what
+# actually got mounted. Field 2 is the mount point, field 1 the device, and the
+# LAST match wins -- if anything were ever mounted over the top, the top one is
+# the filesystem we are talking about.
+fat_device() {
+	awk '$2 == "/media/fat" { dev = $1 } END { if (dev != "") print dev }' /proc/mounts
+}
+
+fat_fstype() {
+	awk '$2 == "/media/fat" { fs = $3 } END { if (fs != "") print fs }' /proc/mounts
+}
+
+marker_state() {
+	if [ -e "$MARKER" ]; then echo "scheduled"; else echo "none"; fi
+}
+
+show_last_result() {
+	if [ -f "$RESULT" ]; then
+		say "  Last repair attempt : $(head -n 1 "$RESULT" 2>/dev/null)"
+	else
+		say "  Last repair attempt : none recorded"
+	fi
+}
+
+do_status() {
+	local dev fs
+	dev="$(fat_device)"
+	fs="$(fat_fstype)"
+	say "MiSTer data partition -- status"
+	say ""
+	say "  Device              : ${dev:-unknown}"
+	say "  Filesystem          : ${fs:-unknown}"
+	if [ "$(marker_state)" = "scheduled" ]; then
+		say "  Repair on next boot : YES  (cancel with --cancel)"
+	else
+		say "  Repair on next boot : no"
+	fi
+	show_last_result
+	say ""
+}
+
+do_cancel() {
+	if [ "$(marker_state)" != "scheduled" ]; then
+		say "No repair was scheduled. Nothing to cancel."
+		return 0
+	fi
+	rm -f "$MARKER" || die "could not remove $MARKER"
+	sync
+	say "Cancelled. The next boot will be normal."
+}
+
+# Arm the initramfs. The marker's CONTENT is never read by anything -- the
+# initramfs only tests for the file -- but a human who finds it on the card in
+# Windows deserves to know what it is and how to get rid of it.
+do_schedule() {
+	mkdir -p "$FAT/linux" 2>/dev/null || true
+	cat > "$MARKER" <<'EOF'
+This file asks the MiSTer to check and repair its data partition during the
+next boot, before anything else starts. Delete it to cancel.
+
+The boot it runs on will take much longer than usual and the screen will stay
+black for the whole time. That is expected. Do not power the MiSTer off while
+it is happening.
+
+Created by Scripts/check_storage.sh (/usr/sbin/mister-fsck-exfat).
+EOF
+	# The one write that must survive a power cut between here and the reboot.
+	# /media/fat is mounted sync,dirsync so this is belt and braces.
+	sync
+	[ -e "$MARKER" ] || die "could not create $MARKER"
+}
+
+preflight() {
+	local fs
+	[ -x "$FSCK" ] || die "$FSCK is missing from this image."
+	mountpoint -q "$FAT" || die "$FAT is not mounted. Nothing to check."
+
+	fs="$(fat_fstype)"
+	if [ "$fs" != "exfat" ]; then
+		die "$FAT is $fs, not exFAT. This tool only checks exFAT partitions,
+       and the boot-time repair only ships fsck.exfat."
+	fi
+}
+
+# ---------------------------------------------------------------------------
+do_check() {
+	local dev rc=0 t0 t1 elapsed mins
+
+	preflight
+	dev="$(fat_device)"
+	[ -n "$dev" ] || die "could not work out which device $FAT is mounted from."
+
+	rule
+	say " Checking the MiSTer data partition"
+	rule
+	say ""
+	say "  Device : $dev"
+	say ""
+	say "  This is a READ-ONLY check. It changes nothing, and it is safe to"
+	say "  run at any time."
+	say ""
+	say "  How long it takes depends on how many files are on the card, not"
+	say "  how big the card is -- anywhere from a few seconds to several"
+	say "  minutes. Please wait."
+	say ""
+	rule
+	say ""
+
+	t0="$(date +%s)"
+	# -n is the read-only mode: O_RDONLY, no repair, no writes of any kind.
+	"$FSCK" -n "$dev" || rc=$?
+	t1="$(date +%s)"
+
+	elapsed=$(( t1 - t0 ))
+	[ "$elapsed" -lt 1 ] && elapsed=1
+	mins=$(( (elapsed + 59) / 60 ))
+
+	say ""
+	rule
+
+	# exfatprogs' exit codes (fsck/fsck.c:31-38), fsck(8) convention.
+	#   0 clean   1 corrected (impossible under -n)   4 errors left
+	#   8 operation error   16 syntax   32 cancelled   128 library error
+	case "$rc" in
+		0)
+			say " RESULT: no problems found."
+			rule
+			say ""
+			say "  The data partition looks healthy. Nothing to do."
+			say ""
+			# A stale marker from an earlier run would schedule a pointless
+			# multi-minute boot. The check just proved it is not needed.
+			if [ "$(marker_state)" = "scheduled" ]; then
+				rm -f "$MARKER" && sync
+				say "  (Cancelled a repair that was scheduled for the next boot --"
+				say "   this check found nothing that needs one.)"
+				say ""
+			fi
+			return 0
+			;;
+		4)
+			say " RESULT: problems were found."
+			;;
+		*)
+			say " RESULT: the check could not be completed (fsck.exfat exit $rc)."
+			rule
+			say ""
+			say "  This is not necessarily damage -- it usually means fsck.exfat"
+			say "  could not read the device or did not understand it."
+			say ""
+			say "  Nothing has been scheduled. If you think the card really is"
+			say "  damaged, back it up and check it on a PC."
+			say ""
+			return "$rc"
+			;;
+	esac
+
+	# --- rc == 4: real findings ------------------------------------------------
+	rule
+	say ""
+	say "  Some of this may be a false alarm: the check ran while the MiSTer"
+	say "  was using the card, so files changed underneath it. Findings are"
+	say "  worth acting on, but they are not proof of damage."
+	say ""
+	say "  A repair CANNOT run now. The MiSTer is running from a file on this"
+	say "  very partition, so it can only be repaired during boot, before"
+	say "  anything else starts."
+	say ""
+
+	if [ "$MODE" = "check-only" ]; then
+		say "  --check-only: nothing has been scheduled."
+		say ""
+		say "  To schedule the repair, run this again without --check-only,"
+		say "  or run:  mister-fsck-exfat --schedule"
+		say ""
+		return 4
+	fi
+
+	rule
+	say " IF YOU SCHEDULE THE REPAIR, READ THIS FIRST"
+	rule
+	say ""
+	say "  * It runs on the NEXT BOOT, right after you reboot."
+	say "  * THE SCREEN WILL STAY BLACK for the whole repair. There is no"
+	say "    progress bar and no picture -- the MiSTer cannot display"
+	say "    anything that early in boot. This is normal."
+	say "  * The read-only check you just ran took about ${mins} minute(s)."
+	say "    Expect the repair to take roughly that long again."
+	say "  * DO NOT POWER OFF during the repair. Interrupting it is far more"
+	say "    dangerous than the problems it is fixing."
+	say "  * It runs ONCE. If you do power-cycle through it, the next boot"
+	say "    comes up normally instead of trying again."
+	say ""
+	rule
+	say ""
+
+	# read -r -t: no keyboard, or a non-interactive caller, times out to NO.
+	local answer=""
+	printf 'Schedule the repair and reboot now? Type YES to confirm: '
+	if ! read -r -t "$PROMPT_TIMEOUT" answer; then
+		say ""
+		say ""
+		say "  No answer (or no keyboard). Nothing has been scheduled."
+		say "  Run this again when you are ready."
+		say ""
+		return 4
+	fi
+
+	if [ "$answer" != "YES" ]; then
+		say ""
+		say "  Not confirmed. Nothing has been scheduled."
+		say ""
+		return 4
+	fi
+
+	do_schedule
+	say ""
+	rule
+	say " Repair scheduled for the next boot."
+	rule
+	say ""
+	say "  Rebooting in 10 seconds. DO NOT POWER OFF -- the next boot will"
+	say "  take a while with a black screen, and that is the repair running."
+	say ""
+	say "  (Press Ctrl-C now to stay up. The repair stays scheduled; cancel"
+	say "   it with:  mister-fsck-exfat --cancel)"
+	say ""
+	local i
+	for i in 10 9 8 7 6 5 4 3 2 1; do
+		printf '\r  %2d ' "$i"
+		sleep 1
+	done
+	printf '\r      \n'
+	sync
+	reboot
+}
+
+case "$MODE" in
+	status)     do_status ;;
+	cancel)     do_cancel ;;
+	schedule)   preflight; do_schedule
+	            say "Repair scheduled for the next boot. Reboot when you are ready."
+	            say "Cancel it with: mister-fsck-exfat --cancel" ;;
+	*)          do_check ;;
+esac

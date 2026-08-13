@@ -10,10 +10,14 @@
 # virt` kernel, attach a synthetic MBR disk shaped like a real MiSTer SD card
 # (a FAT/exFAT data partition containing linux/linux.img), and assert -- from
 # INSIDE the switched-root system -- every invariant /init is supposed to
-# have established. Seven cases:
+# have established. Eight cases:
 #
 #   fat32      FAT32 card:  exfat probe fails, falls back to vfat (utf8=1)
 #   exfat      exFAT card:  mounts on the first try
+#   fsck-request  exFAT card carrying linux/.fsck-request: the on-demand repair
+#              path (ADR 0026) -- marker deleted before the repair (exactly
+#              once), unmount BEFORE fsck.exfat -p (its O_RDWR|O_EXCL cannot
+#              open a mounted device), remount with the same sync,dirsync opts
 #   symlink    exFAT card:  Samsung-format symlinks work end-to-end on the
 #              mainline exfat driver + board patch 0031 (ADR 0019), including
 #              the create+unlink cluster-leak regression fsck cannot see
@@ -31,7 +35,7 @@
 # ever be caught (see the case function below for the full argument).
 #
 # Usage: scripts/test-initramfs.sh [case ...]
-#   With no arguments, runs all seven cases. Exit 0 iff every requested case
+#   With no arguments, runs all eight cases. Exit 0 iff every requested case
 #   passed; nonzero otherwise (wired for P4.1's CI job).
 #
 # Prerequisites (all checked explicitly, with an actionable message, before
@@ -553,6 +557,79 @@ case_exfat() {
 	pass_case "$name (exFAT: mounts on the first try -> switch_root)"
 }
 
+# --- fsck-request: the on-demand exFAT repair path (ADR 0026) ---
+#
+# The riskiest thing in that ADR is an ORDERING claim: /init can only repair the
+# data partition by unmounting it first, because fsck.exfat's repair mode opens
+# O_RDWR|O_EXCL and a mounted filesystem holds an exclusive bdev claim
+# (fs/super.c:1617) even when mounted read-only. Get that wrong and the repair
+# silently fails on every real card -- with the partition already unmounted.
+# This case is the only place that ordering is executed rather than reasoned
+# about, on the real cpio, against a real exFAT volume.
+#
+# It also pins the three properties the design leans on:
+#   * exactly-once -- the marker must be GONE afterwards, asserted from inside
+#     the switched-root system by marker-init (a repair that re-arms itself is
+#     indistinguishable from a brick);
+#   * the remount uses the SAME options -- marker-init's existing A13
+#     sync+dirsync+noatime assertion runs against the post-fsck mount, which is
+#     precisely why /init factors the mount into mount_data_partition();
+#   * the outcome is recorded in .fsck-result for the user-facing tool to report.
+case_fsck_request() {
+	local name=fsck-request b="$BUILD/fsck-request"
+	rm -rf "$b"; mkdir -p "$b/rootdir"
+	build_ext4_image "$b/linux.img" "$MARKER_INIT" "$b/rootdir"
+
+	local part="$b/part1.img"
+	truncate -s 96M "$part"
+	mkfs.exfat -n MISTERDATA "$part" >/dev/null
+
+	local disk="$b/sd.img"
+	wrap_mbr "$part" "$disk" 07   # 07 = exFAT/NTFS
+
+	# Same in-guest population as case_exfat (mtools cannot write exFAT and we
+	# are not root), plus the request marker itself. The marker's CONTENT is
+	# never read by /init -- it only tests for the file -- so any bytes do.
+	local poplog="$b/populate.log"
+	# shellcheck disable=SC2016 # deliberate: GUEST ash script text -- $DATADEV/
+	# $IMGDEV/$? must reach the guest unexpanded by this host shell.
+	populate_in_guest "$disk" "$b/linux.img" "$poplog" \
+		'mount -t exfat -o rw "$DATADEV" /mnt/fat; echo "GUEST-EXFAT-RW-MOUNT-RC=$?"' \
+		'mkdir -p /mnt/fat/linux' \
+		'cat "$IMGDEV" > /mnt/fat/linux/linux.img; echo "GUEST-COPY-RC=$?"' \
+		'echo test-request > /mnt/fat/linux/.fsck-request; echo "GUEST-MARKER-RC=$?"' \
+		'umount /mnt/fat; echo "GUEST-UMOUNT-RC=$?"'
+	grep -qE 'GUEST-DATADEV=/dev/vd[ab]1' "$poplog" || { fail_case "$name" "populate: neither /dev/vda1 nor /dev/vdb1 ever appeared (see $poplog)"; return; }
+	grep -q 'GUEST-EXFAT-RW-MOUNT-RC=0' "$poplog"   || { fail_case "$name" "populate: exfat rw mount failed (see $poplog)"; return; }
+	grep -q 'GUEST-COPY-RC=0' "$poplog"             || { fail_case "$name" "populate: linux.img copy failed (see $poplog)"; return; }
+	grep -q 'GUEST-MARKER-RC=0' "$poplog"           || { fail_case "$name" "populate: could not write the .fsck-request marker (see $poplog)"; return; }
+
+	local cmdline="console=ttyAMA0,115200 loglevel=4 loop.max_part=8 mem=511M root=/dev/vda1 loop=linux/linux.img ro rootwait"
+	local log="$b/console.log"
+	boot_qemu "$disk" "$cmdline" "$log"
+
+	# Covers "the marker is gone" too: that assertion lives in marker-init and
+	# so is part of RESULT=PASS.
+	assert_booted_clean "$log" "$name" || return
+
+	grep -q 'fsck: repair requested' "$log" || {
+		fail_case "$name" "/init never noticed the .fsck-request marker"
+		return
+	}
+	# THE ordering assertion. If the unmount had not happened first, fsck.exfat
+	# would have failed to open the device and /init would report a nonzero exit
+	# here instead of a clean-or-repaired verdict.
+	grep -qE 'fsck: (clean: no errors found|repaired: errors were found and corrected)' "$log" || {
+		fail_case "$name" "fsck.exfat did not complete cleanly -- the unmount-before-repair ordering is the usual cause (see $log)"
+		return
+	}
+	grep -q 'fsck: data partition remounted as exfat' "$log" || {
+		fail_case "$name" "the data partition was not remounted after fsck"
+		return
+	}
+	pass_case "$name (exFAT: marker -> delete -> umount -> fsck.exfat -p -> remount -> switch_root)"
+}
+
 # --- symlink: Samsung-format symlinks on exFAT (board patch 0031, ADR 0019) ---
 #
 # Asserts, from inside the guest, on the same kernel the other cases boot:
@@ -755,12 +832,13 @@ case_rootwait() {
 # Driver
 # =========================================================================
 
-ALL_CASES=(fat32 exfat symlink label nonascii missing-image rootwait)
+ALL_CASES=(fat32 exfat fsck-request symlink label nonascii missing-image rootwait)
 
 run_case() {
 	case "$1" in
 	fat32)          case_fat32 ;;
 	exfat)          case_exfat ;;
+	fsck-request)   case_fsck_request ;;
 	symlink)        case_symlink ;;
 	label)          case_label ;;
 	nonascii)       case_nonascii ;;

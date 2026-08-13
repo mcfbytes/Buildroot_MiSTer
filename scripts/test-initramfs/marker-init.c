@@ -150,6 +150,19 @@ int main(void)
 	expect("/dev is devtmpfs (moved from initramfs)", grep_all("/proc/mounts", devtmpfs));
 	expect("/proc is mounted",                      grep_all("/proc/mounts", procfs));
 
+	/* ADR 0026, exactly-once. A repair request must NEVER survive the boot that
+	 * consumed it: if it did, a repair that hung or was power-cycled through
+	 * would re-arm itself every boot, which is indistinguishable from a brick.
+	 *
+	 * Unconditional on purpose. In every case but `fsck-request` the file was
+	 * never created, so this is vacuously true -- and that is exactly the point:
+	 * it also catches an /init that somehow CREATES one. The `fsck-request` case
+	 * is where it has teeth, and it is checked here rather than from the host
+	 * console log because only the switched-root system can see the filesystem
+	 * as /sbin/init finds it. */
+	expect("no fsck request survives the boot that consumed it",
+	       access("/media/fat/linux/.fsck-request", F_OK) != 0);
+
 #ifdef CHECK_NONASCII
 	check_nonascii();
 #endif

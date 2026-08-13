@@ -201,9 +201,10 @@ Then `exec switch_root /newroot /sbin/init`.
 - **No `init/do_mounts.c` patch to forward-port.** §1 is the argument for this: that file
   gets rewritten, and every rewrite is a re-port on a boot-critical path.
 - **Testable without hardware.** `scripts/test-initramfs.sh` boots the real cpio under QEMU
-  across seven cases (fat32, exfat, symlinks, `LABEL=`, non-ASCII filenames, missing image,
-  `rootwait` timeout) and asserts both successful `switch_root` *and* correct failure
-  behaviour. Nothing about the in-kernel path was ever testable that way.
+  across eight cases (fat32, exfat, the on-demand exFAT repair, symlinks, `LABEL=`,
+  non-ASCII filenames, missing image, `rootwait` timeout) and asserts both successful
+  `switch_root` *and* correct failure behaviour. Nothing about the in-kernel path was ever
+  testable that way.
 - **Failures are recoverable.** Every error path in the kernel version is `pr_emerg()` then
   carry on, ending in a panic. Ours prints a diagnostic banner — parsed cmdline,
   `/proc/partitions`, `/proc/filesystems`, `/proc/mounts`, last 25 dmesg lines — and drops

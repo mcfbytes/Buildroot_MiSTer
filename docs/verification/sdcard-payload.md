@@ -43,13 +43,14 @@ mister-payload/menu.rbf
 mister-payload/MiSTer.ini
 mister-payload/downloader.ini
 mister-payload/Scripts/
+mister-payload/Scripts/check_storage.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **28 entries** (7 directories, 21 files) for the base inventory. `check-sdcard.sh`
+That is **29 entries** (7 directories, 22 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 > **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
@@ -87,6 +88,21 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > putting our database into every core update. Nothing else is staged either — the
 > updater keeps no state on the card. It may not be added here in any case:
 > `check-sdcard.sh` diffs this block against the built image in **both** directions.
+
+> **Changed 2026-08-13** — one entry **added**, taking the base inventory from 28 to 29:
+> `mister-payload/Scripts/check_storage.sh` ([ADR 0026](../decisions/0026-user-driven-exfat-fsck.md)),
+> also staged by `stage_update_channel()`.
+>
+> It checks the exFAT data partition for damage and, if it finds any, offers to repair it on
+> the next boot. exFAT has no journal and this box is never cleanly unmounted, so a power cut
+> in the wrong millisecond can leave lost clusters that nothing ever cleans up. The repair
+> itself lives in the initramfs — it is the only place it *can* live, since the rootfs is a
+> file on the partition being repaired — and is never automatic.
+>
+> The staged file is a **three-line shim**: the tool is `/usr/sbin/mister-fsck-exfat`, in the
+> read-only rootfs, because a repair tool stored on the partition it repairs is unavailable
+> in exactly the case it exists for, and because its other end is in the initramfs and the
+> two must ship together. So this entry is stable and has no reason to change again.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and

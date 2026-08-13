@@ -1303,10 +1303,42 @@ if tar_has "etc/bluetooth/input.conf"; then
 		pass "bluetooth input.conf: ClassicBondedOnly=true (CVE-2023-45866 mitigation intact)"
 	else
 		fail "bluetooth input.conf: ClassicBondedOnly=true (CVE-2023-45866 mitigation intact)" \
-			"not set to true -- if this was flipped to fix DS3 pairing, use the CablePairing patch series instead"
+			"not set to true -- if this was flipped to fix DS3 pairing, the supported route is the CablePairing series in board/mister/de10nano/patches/bluez5_utils/, which fixes it WITHOUT weakening every other BR/EDR HID device"
 	fi
 else
 	fail "bluetooth input.conf present" "etc/bluetooth/input.conf not in rootfs.tar"
+fi
+
+# The CablePairing patch series actually reached the source tree. Asserted
+# against the PATCHED BUILD TREE rather than the rootfs, because none of it is
+# visible in a shipped file: bluetoothd's behaviour changes, its name and size
+# do not. Without this, the series silently ceasing to apply (a Buildroot bump,
+# a bad rebase, a deleted directory) would produce a perfectly green build in
+# which a DS3 simply cannot connect over Bluetooth -- the exact regression this
+# whole change exists to fix.
+#
+# BT_IO_SEC_LOW in server.c is the specific marker: it is introduced by patch
+# 0004 and is the mechanism the DS3 depends on. Same glob-into-an-array idiom
+# as the CONFIG_NFSD gate below -- but note a stale sibling build dir from a
+# version bump is REAL here (Buildroot never removes the old one), so the
+# newest directory is chosen rather than demanding exactly one.
+bluez_dirs=()
+for _d in "$BUILD_DIR"/build/bluez5_utils-[0-9]*; do
+	[ -d "$_d" ] && bluez_dirs+=("$_d")
+done
+if [ "${#bluez_dirs[@]}" -eq 0 ]; then
+	skip "bluez CablePairing series applied (DS3 over Bluetooth)" \
+		"no $BUILD_DIR/build/bluez5_utils-[0-9]* directory found"
+else
+	# Newest by version sort, so a leftover tree from a previous pin does not
+	# decide the verdict.
+	bluez_newest=$(printf '%s\n' "${bluez_dirs[@]}" | sort -V | tail -1)
+	if grep -q 'BT_IO_SEC_LOW' "$bluez_newest/profiles/input/server.c" 2>/dev/null; then
+		pass "bluez CablePairing series applied in $(basename "$bluez_newest") (DS3 over Bluetooth)"
+	else
+		fail "bluez CablePairing series applied (DS3 over Bluetooth)" \
+			"BT_IO_SEC_LOW absent from $bluez_newest/profiles/input/server.c -- board/mister/de10nano/patches/bluez5_utils/ did not apply, so a DS3 cannot connect"
+	fi
 fi
 
 # The kernel side of UserspaceHID=false, read from the RESOLVED .config: without
@@ -1314,31 +1346,7 @@ fi
 # have no kernel HIDP to hand its L2CAP sockets to). linux.config is a minimal
 # defconfig, so its silence on the symbol proves nothing -- same reasoning as the
 # CONFIG_NFSD gate in the netfs section.
-# The bluez5_utils VERSION OVERRIDE (end of external.mk) actually took effect.
-# Read from the build tree's directory name, which is derived from
-# BLUEZ5_UTILS_VERSION -- if the override were ever dropped or silently stopped
-# applying, the DS3 CablePairing support (>= 5.83) and bluez#1710's HID
-# report-descriptor fix (5.87) would vanish with it, and nothing in the shipped
-# rootfs would look any different. external.mk's guard covers the
-# Buildroot-caught-up direction; this covers "the override stopped working".
-bluez_dirs=()
-for _d in "$BUILD_DIR"/build/bluez5_utils-[0-9]*; do
-	[ -d "$_d" ] && bluez_dirs+=("$_d")
-done
-if [ "${#bluez_dirs[@]}" -ne 1 ]; then
-	skip "bluez5_utils >= 5.83 (DS3 CablePairing support)" \
-		"expected exactly one $BUILD_DIR/build/bluez5_utils-[0-9]*, found ${#bluez_dirs[@]}"
-else
-	bluez_ver=$(basename "${bluez_dirs[0]}" | sed 's/^bluez5_utils-//')
-	# sort -V puts the smaller first; if 5.83 sorts first, we are at or above it.
-	if [ "$(printf '%s\n%s\n' "$bluez_ver" 5.83 | sort -V | head -1)" = "5.83" ]; then
-		pass "bluez5_utils $bluez_ver >= 5.83 (DS3 CablePairing support present)"
-	else
-		fail "bluez5_utils >= 5.83 (DS3 CablePairing support)" \
-			"built $bluez_ver -- the external.mk version override is not taking effect, so a DS3 cannot connect over Bluetooth"
-	fi
-fi
-
+#
 # Same glob-into-an-array idiom as the CONFIG_NFSD gate below, and for the same
 # stated reason: an unmatched glob expands to the literal pattern, so anything
 # other than exactly one match is a stale-tree condition worth reporting rather

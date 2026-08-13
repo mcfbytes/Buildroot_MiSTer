@@ -1,0 +1,68 @@
+From 56516d6cc8d967b1480fc31a1ac74fe61e04f270 Mon Sep 17 00:00:00 2001
+From: Ludovico de Nittis <ludovico.denittis@collabora.com>
+Date: Thu, 24 Apr 2025 18:29:30 +0200
+Subject: [PATCH] sixaxis: Set CablePairing when pairing a Sixaxis with USB
+
+Sixaxis gamepads don't support encryption. When doing the USB cable
+pairing, set the CablePairing property to keep the connection to the
+device unencrypted.
+
+Provenance
+----------
+Origin:       56516d6cc8d967b1480fc31a1ac74fe61e04f270
+              "sixaxis: Set CablePairing when pairing a Sixaxis with USB"
+              bluez/bluez, 2025-04-24, first released in BlueZ 5.83.
+              https://github.com/bluez/bluez/commit/56516d6cc8d967b1480fc31a1ac74fe61e04f270
+Author:       Ludovico de Nittis <ludovico.denittis@collabora.com> (Collabora)
+Upstream:     YES -- this IS upstream code, carried here only because Buildroot
+              2026.05.1 pins bluez5_utils 5.79
+              (work/buildroot/package/bluez5_utils/bluez5_utils.mk:8), which
+              predates it. DELETE THIS WHOLE DIRECTORY on the first Buildroot
+              bump whose bluez already contains these -- it is not a MiSTer
+              delta and must not outlive the version gap it closes. That
+              happens LOUDLY and on its own: the patches stop applying and the
+              build goes red at .stamp_patched.
+Backport:     -> 5.79, Michael C. Ferguson, 2026-08-13. Applied verbatim, no
+              rewriting for the older tree.
+
+              HUNK OFFSETS ARE EXPECTED and are not a defect -- these are
+              backports across several releases. Do not "fix" a header to claim
+              otherwise: an earlier revision of this series said "no offsets"
+              because it was reading the exit status of `patch --dry-run`,
+              which is 0 whether or not hunks moved. What IS asserted, and was
+              checked with the exact flags support/scripts/apply-patches.sh:119
+              uses (`patch -F0 -g0 -p1 -t -N`): no fuzz, no rejects, applied in
+              Buildroot's real order -- i.e. AFTER package/bluez5_utils/'s own
+              four patches, not against a pristine tarball.
+Why:          Patch 2 of 5. Makes the sixaxis plugin (enabled here,
+              BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_SIXAXIS=y) stamp the property on
+              a DS3/SIXAXIS during USB cable pairing.
+
+              MIGRATION TRAP: plugins/sixaxis.c's setup_device() short-circuits
+              on an already-trusted device, so a DS3 cable paired under an
+              older BlueZ never acquires the property and still fails to
+              connect. Such a pad must be re-paired:
+              `bluetoothctl remove <MAC>`, then cable-pair again.
+---
+ plugins/sixaxis.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/plugins/sixaxis.c b/plugins/sixaxis.c
+index 3e69f1dd2f..ea160c65d3 100644
+--- a/plugins/sixaxis.c
++++ b/plugins/sixaxis.c
+@@ -296,10 +296,13 @@ static void agent_auth_cb(DBusError *derr, void *user_data)
+ 	remove_device = false;
+ 	btd_device_set_temporary(closure->device, false);
+ 
+-	if (closure->type == CABLE_PAIRING_SIXAXIS)
++	if (closure->type == CABLE_PAIRING_SIXAXIS) {
+ 		btd_device_set_record(closure->device, HID_UUID,
+ 						 SIXAXIS_HID_SDP_RECORD);
+ 
++		device_set_cable_pairing(closure->device, true);
++	}
++
+ 	ba2str(&closure->bdaddr, device_addr);
+ 	ba2str(&central_bdaddr, central_addr);
+ 	ba2str(adapter_bdaddr, adapter_addr);

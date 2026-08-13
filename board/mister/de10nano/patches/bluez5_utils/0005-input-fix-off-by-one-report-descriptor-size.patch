@@ -1,0 +1,93 @@
+From e2324f7a87cdbc4c4f95882f841e560bd331327a Mon Sep 17 00:00:00 2001
+From: Andrey Smirnov <andrew.smirnov@gmail.com>
+Date: Fri, 5 Dec 2025 17:52:56 -0800
+Subject: [PATCH] input/device: Fix off by one report descriptor size error
+
+Due to the way we handle SDP strings internally BlueZ ends up
+including and artifically added 0x00 into the report descriptor it
+passes on to UHID. This results in kernel error messages like
+
+[371225.240843] microsoft 0005:045E:02FD.0019: unknown main item tag 0x0
+
+or
+
+[367200.458679] playstation 0005:054C:0CE6.0014: unknown main item tag 0x0
+
+The error is ignored by the kernel's report parser, so this is benign,
+but for the sake of correctness, let's not supply bogus data in the
+first place.
+
+Provenance
+----------
+Origin:       e2324f7a87cdbc4c4f95882f841e560bd331327a
+              "input/device: Fix off by one report descriptor size error"
+              bluez/bluez, 2025-12-05, first released in BlueZ 5.87.
+              https://github.com/bluez/bluez/commit/e2324f7a87cdbc4c4f95882f841e560bd331327a
+Author:       Andrey Smirnov <andrew.smirnov@gmail.com>
+Upstream:     YES -- this IS upstream code, carried here only because Buildroot
+              2026.05.1 pins bluez5_utils 5.79
+              (work/buildroot/package/bluez5_utils/bluez5_utils.mk:8), which
+              predates it. DELETE THIS WHOLE DIRECTORY on the first Buildroot
+              bump whose bluez already contains these -- it is not a MiSTer
+              delta and must not outlive the version gap it closes. That
+              happens LOUDLY and on its own: the patches stop applying and the
+              build goes red at .stamp_patched.
+Backport:     -> 5.79, Michael C. Ferguson, 2026-08-13. Applied verbatim, no
+              rewriting for the older tree.
+
+              HUNK OFFSETS ARE EXPECTED and are not a defect -- these are
+              backports across several releases. Do not "fix" a header to claim
+              otherwise: an earlier revision of this series said "no offsets"
+              because it was reading the exit status of `patch --dry-run`,
+              which is 0 whether or not hunks moved. What IS asserted, and was
+              checked with the exact flags support/scripts/apply-patches.sh:119
+              uses (`patch -F0 -g0 -p1 -t -N`): no fuzz, no rejects, applied in
+              Buildroot's real order -- i.e. AFTER package/bluez5_utils/'s own
+              four patches, not against a pristine tarball.
+Why:          Patch 5 of 5, and the only one NOT part of the CablePairing
+              series -- bluez#1710. extract_hid_desc_data() included the zero
+              delimiter that extract_str() appends to an SDP string in the HID
+              report descriptor it hands to the kernel, making the descriptor
+              one byte too long. Upstream's own commit message names the
+              DualSense as an observed case:
+                playstation 0005:054C:0CE6.0014: unknown main item tag 0x0
+
+              SCOPE, stated honestly: upstream calls this benign -- the
+              kernel's report parser ignores the stray item -- so this is a
+              correctness fix, not a repair for a user-visible fault. Carried
+              because it is small, upstream, and squarely in the path every
+              Bluetooth pad on this image takes.
+
+              It applies REGARDLESS OF TRANSPORT despite the commit message
+              mentioning UHID: the bug is in the SDP extraction that fills
+              struct hidp_connadd_req, which happens BEFORE the uhid/kernel-HIDP
+              branch, and rd_data/rd_size are consumed by both.
+---
+ profiles/input/device.c | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/profiles/input/device.c b/profiles/input/device.c
+index 02a9ad43d6..6bdc5ee3aa 100644
+--- a/profiles/input/device.c
++++ b/profiles/input/device.c
+@@ -863,10 +863,17 @@ static int extract_hid_desc_data(const sdp_record_t *rec,
+ 	if (!d || !SDP_IS_TEXT_STR(d->dtd))
+ 		goto invalid_desc;
+ 
+-	req->rd_data = g_try_malloc0(d->unitSize);
++	/*
++	 * Report descriptor data is parsed by extract_str() which
++	 * will allocate N + 1 bytes for the incoming string to
++	 * include a zero delimiter. Since that zero delimiter isn't a
++	 * part of a report descriptor we adjust the size here to
++	 * account for that.
++	 */
++	req->rd_size = d->unitSize - 1;
++	req->rd_data = g_try_malloc0(req->rd_size);
+ 	if (req->rd_data) {
+-		memcpy(req->rd_data, d->val.str, d->unitSize);
+-		req->rd_size = d->unitSize;
++		memcpy(req->rd_data, d->val.str, req->rd_size);
+ 		epox_endian_quirk(req->rd_data, req->rd_size);
+ 	}
+ 

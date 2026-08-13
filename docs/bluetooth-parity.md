@@ -12,7 +12,7 @@
 
 | | Stock | Ours |
 |---|---|---|
-| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.87** — Buildroot 2026.05.1 pins **5.79** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`), which this tree deliberately overrides forward in `external.mk`; see §10 for why (DS3/SIXAXIS cannot connect at all on 5.79) |
+| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.79** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.05.1's pinned version) |
 | `libbluetooth` SONAME | `libbluetooth.so.3` (verified: `docs/stock-inventory/shared-libraries-full.txt`, `docs/stock-inventory/binaries-needed.md` DT_NEEDED list) | `libbluetooth.so.3` |
 | `libbluetooth` real name | `libbluetooth.so.3.19.5` | `libbluetooth.so.3.19.15` |
 
@@ -366,7 +366,6 @@ share.
 where an absent symbol proves nothing). Without it this setting would strand
 BR/EDR HID entirely, so `scripts/ci-tests.sh` asserts it.
 
-
 ### `ClassicBondedOnly` — pinned to `true`, and the DS3 fixed properly
 
 `true` is already the compiled-in default; pinning it explicitly is a guard,
@@ -375,110 +374,120 @@ make the PS3 pad work. Doing that drops the encryption requirement for **every
 BR/EDR HID device** on the system, re-exposing **CVE-2023-45866**
 (unauthenticated HID injection).
 
-Instead, this image **runs a newer BlueZ**. The block at the end of
-`external.mk` overrides Buildroot 2026.05.1's `bluez5_utils` pin of **5.79** to
-**5.87**, which contains upstream's four-commit `CablePairing` series (first
-released in 5.83, by Ludovico de Nittis / Collabora): the input server listens
-at `BT_IO_SEC_LOW` and re-raises to `BT_IO_SEC_MEDIUM` for everything *except*
-a device carrying the new `CablePairing` property. A cable-paired DS3 connects;
-every other BR/EDR HID device keeps encryption enforced. Upstream closed
+Instead, `board/mister/de10nano/patches/bluez5_utils/` carries upstream's
+**four-commit** `CablePairing` series (BlueZ 5.83, Ludovico de Nittis /
+Collabora) plus one unrelated HID fix, applied through
+`BR2_GLOBAL_PATCH_DIR`:
+
+| Patch | Upstream commit | Role |
+|---|---|---|
+| `0001` | `20ea34e7` | adds the `CablePairing` D-Bus property |
+| `0002` | `56516d6c` | sixaxis plugin sets it during USB cable pairing |
+| `0003` | `c5dffe0` | adds `btd_adapter_has_cable_pairing_devices()` — **the one originally missed** |
+| `0004` | `ba101f47` | input server listens at `BT_IO_SEC_LOW`, re-raises to `BT_IO_SEC_MEDIUM` for everything *except* a `CablePairing` device |
+| `0005` | `e2324f7a` | [bluez#1710](https://github.com/bluez/bluez/pull/1710) — HID report-descriptor off-by-one (5.87). Unrelated to DS3 |
+
+Net effect: a cable-paired DS3 connects, and every other BR/EDR HID device
+keeps encryption enforced. Upstream closed
 [bluez#688](https://github.com/bluez/bluez/issues/688) with this series,
 noting DS3 now works *"with limited exposure to CVE-2023-45866 and without
 changing `ClassicBondedOnly=false`"*.
 
-5.87 rather than the minimum 5.83 also picks up
-[bluez#1710](https://github.com/bluez/bluez/pull/1710), *"input/device: Fix off
-by one report descriptor size error"* — a HID report-descriptor sizing bug
-squarely in the path every Bluetooth controller here takes — plus four
-releases of ordinary BR/EDR and HID fixes.
+`0005` is carried separately because it is squarely in the path every
+Bluetooth pad here takes — upstream's own commit message names the DualSense
+(`playstation 0005:054C:0CE6.0014: unknown main item tag 0x0`). Upstream calls
+it benign (the kernel's parser ignores the stray item), so it is a correctness
+fix rather than a repair for a user-visible fault. It applies **regardless of
+transport** despite the commit message mentioning UHID: the bug is in the SDP
+extraction that fills `struct hidp_connadd_req`, which runs *before* the
+uhid/kernel-HIDP branch.
 
-#### Why a version override and not a patch series
+#### The bug this series already had once
 
-This was **first implemented as a backported patch series** under
-`board/mister/de10nano/patches/bluez5_utils/`, and that approach shipped a
-latent build break. The `CablePairing` series is **four** commits; the first cut
-carried three. The result applied cleanly — `patch` was perfectly happy — while
-leaving `profiles/input/manager.c` calling a
-`btd_adapter_has_cable_pairing_devices()` that nothing in the tree defined, an
+The first cut carried **three** commits and omitted `0003`. It applied cleanly
+— `patch` was perfectly happy — while leaving `profiles/input/manager.c`
+calling a `btd_adapter_has_cable_pairing_devices()` that nothing defined: an
 unconditional compile failure under gcc 14.4's
-`-Wimplicit-function-declaration`. The apply-check could never have caught it:
-**"the series applies" and "the series builds" are different claims**, and only
-the second one matters. A coherent upstream release cannot have that class of
-defect, so the patches were dropped in favour of the override.
+`-Wimplicit-function-declaration`. **"The series applies" and "the series
+builds" are different claims**, and only the second one matters. Anyone
+re-deriving this series from the issue thread must walk the parent chain.
 
-#### What was checked before making that switch
+#### Why not simply run a newer bluez?
 
-Not assumed — each of these was run:
+Overriding `BLUEZ5_UTILS_VERSION` to 5.87 was implemented and then abandoned,
+because it cannot build. `package/bluez5_utils/` ships **four patches of its
+own**, and `pkg-patch-hash-dirs` (`pkg-utils.mk:164`) always includes
+`$(PKGDIR)`, so they are applied to whatever version is built. Against 5.87,
+with the exact flags `apply-patches.sh:119` uses, three report *"Reversed (or
+previously applied) patch detected"* (they went upstream between 5.79 and
+5.87) and one conflicts — and that script runs under `set -e`, so the build
+dies at `.stamp_patched`. No override target ≥ 5.83 avoids this, because the
+patches went upstream *before* the version we need.
 
-| Check | Result |
-|---|---|
-| Does the override propagate? | Yes. `BLUEZ5_UTILS_{VERSION,SOURCE,DIR}` are lazy `=` assignments, so reassigning `VERSION` in `external.mk` re-derives the tarball name and build dir. `external.mk` is parsed *after* `package/*/*.mk` (Buildroot `Makefile:550` vs `:564`). |
-| Does the download + hash check pass? | Yes, end to end: `bluez-5.87.tar.xz: OK (sha256: 26bdcf2c…)`. |
-| Is the hash trustworthy? | Transcribed from kernel.org's **signed** `sha256sums.asc` — the same source Buildroot cites for its own 5.79 line. Not a TOFU pin. |
-| Do any Buildroot configure flags silently stop applying? | Partly. 5.87 **removed** the `health` and `sap` `AC_ARG_ENABLE` options that `bluez5_utils.mk` still passes as `--disable-health` / `--disable-sap`. autotools warns rather than fails, and since we wanted both **off** and they are now gone entirely, the effective build is unchanged. Same class as the `--disable-asan/lsan/ubsan/pie` flags the `.mk` already passes, which **no** bluez in this range defines either. |
-| Does any dependency coupling break? | No. `ell` is pulled in only by `--enable-mesh`, which this image does not enable. |
-| Did the shipped config templates change? | `input.conf` is **byte-identical** 5.79 → 5.87. `main.conf` gained three commented-out options (`FilterDiscoverable`, `IdleTimeout`, `CentralAddressResolution`) and two typo fixes — all documentation, no functional change, so our overlay copy is left alone. Noted here rather than silently ignored. |
+Two further problems came with it: `bluez5_utils-headers` (not optional —
+`package/python3/Config.in:13` selects it) reads
+`bluez-$(BLUEZ5_UTILS_VERSION).tar.xz` **lazily from the other package**, so
+it would fetch 5.87 against a hash file listing only 5.79 — invisible locally,
+since its stale `.stamp_downloaded` short-circuits the step, and fatal only on
+a clean CI build. And `_DL_VERSION` is `:=` (`pkg-generic.mk:498`), evaluated
+before `external.mk`, so `legal-info` and CVE metadata would report 5.79 for a
+5.87 build.
 
-#### The guard that makes an override safe to carry
+Salvaging it needed a `_PKGDIR` redirect to suppress Buildroot's patches (which
+also relocates the hash lookup, requiring its `COPYING` lines to be duplicated)
+plus a headers hash file plus a `_DL_VERSION` override — three fights with the
+package machinery, and the `_PKGDIR` redirect would **silently drop** any
+future Buildroot patch for bluez. `BR2_GLOBAL_PATCH_DIR` is the mechanism
+Buildroot actually provides for this, it needs no workarounds, and it fails
+*loudly*. Forking the package into `package/` was also considered and rejected:
+it would mean owning a ~200-line `.mk` plus Config.in with every sub-option
+forever, and fixing each reverse-dependency.
 
-A forward version override invites one specific failure: a future Buildroot
-bump ships bluez ≥ our pin, and the override silently pins the tree
-**backward** to something older than Buildroot itself provides — a downgrade
-nobody would see in a diff. `external.mk` therefore reads Buildroot's own pin
-(still visible at that point in the parse) and hard-`$(error)`s the moment it
-reaches or passes ours. Verified by simulation, all three branches:
+**These patches are not a MiSTer delta.** They exist solely because Buildroot
+2026.05.1 pins bluez5_utils 5.79 (`bluez5_utils.mk:8`), which predates 5.83.
+**Delete the whole directory** on the first Buildroot bump that lands ≥ 5.83.
 
-| Our pin vs Buildroot's 5.79 | Behaviour |
-|---|---|
-| `5.87` (newer) | proceeds, `BLUEZ5_UTILS_VERSION=5.87` |
-| `5.79` (equal) | errors — "Buildroot now pins … itself … delete the override" |
-| `5.70` (older) | errors — "keeping the override would DOWNGRADE bluez" |
+**Deliberately not version-scoped.** `pkg-patches-dirs`
+(`package/pkg-utils.mk:166-170`) will prefer a `$(dir)/$(VERSION)` subdirectory
+if one exists, so these could have been filed under
+`patches/bluez5_utils/5.79/` and would then stop applying by themselves on any
+version bump. That was rejected: it converts a *loud* failure into a *silent*
+one. Unscoped, a bump to ≥ 5.83 makes the patches fail to apply and the build
+goes red, which is the signal that tells a human to delete this directory; a
+bump to some 5.8x still below 5.83 likewise fails loudly rather than quietly
+shipping an image with DS3 support removed. Failing closed is the same posture
+this repo takes on the kernel hash pins.
 
-Renovate keeps the pin moving forward (`bluez/bluez`, `github-tags`, labelled
-`bluez-override-pin` + `needs-manual-hash`); the guard covers the other axis.
-The hash is **not** auto-refreshed — `renovate-hash-sync.yml`'s generic loop
-only understands `$(call github,...)` package `.mk` files, and bluez ships from
-kernel.org — so a bump PR is *expected* to be red until a human transcribes the
-new sha256 from the signed manifest. Same deliberate posture as the RT kernel
-pin.
-
-#### Config fragments (`conf.d`) — asked about, and **not** available
-
-Worth recording because it looks like it should exist.
-[bluez PR #1735](https://github.com/bluez/bluez/pull/1735), *"Support for
-config fragments (conf.d style dirs)"*, would have let this image ship only its
-**deltas** — a small `/etc/bluetooth/input.conf.d/10-mister.conf` with two keys
-— instead of carrying upstream's entire annotated template and re-syncing it on
-every bump, which is exactly the maintenance burden `main.conf` and
-`input.conf` have here today. Under that design the base file is parsed first
-and fragment files then override individual keys, with `main.conf.d/`,
-`input.conf.d/` and `network.conf.d/` alongside their respective base files.
-
-It is **not merged** (`merged: false`), and it is **not in 5.87** — confirmed
-in the source rather than from the PR state: `src/main.c`'s `load_config()`
-reads exactly one `main.conf`, and the only directory scan anywhere in `src/`
-is `g_dir_open(PLUGINDIR)` in `plugin.c` for loadable plugins. GitHub issue and
-PR numbers there share one namespace, and the entries are auto-created mirrors
-of mailing-list patchwork submissions (`PW_SID:` prefixes), so "closed" means
-the series stopped progressing, not that it landed. So we keep shipping whole
-config files, as `main.conf` already did.
+**Migration trap.** `plugins/sixaxis.c`'s `setup_device()` short-circuits on an
+already-trusted device, so a DS3 that was cable-paired under the *old* BlueZ
+never acquires the property and will still fail to connect. Such a pad must be
+re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
 
 ### Verification status
 
-- **[VERIFIED]** The override resolves and fetches: `BLUEZ5_UTILS_VERSION=5.87`,
-  `SOURCE=bluez-5.87.tar.xz`, and `bluez5_utils-source` completes with
-  `OK (sha256: 26bdcf2c…)` against the signed kernel.org value.
-- **[VERIFIED]** The backward-pin guard fires correctly in all three branches
-  (table above).
-- **[VERIFIED]** 5.87 contains the `CablePairing` series
-  (`btd_adapter_has_cable_pairing_devices`, `device_is_cable_pairing`,
-  `get_necessary_sec_level`, `server_set_cable_pairing` all present) and
-  bluez#1710's fix (`req->rd_size = d->unitSize - 1`).
+- **[VERIFIED]** All five patches apply **in Buildroot's real order** — i.e.
+  *after* `package/bluez5_utils/`'s own four patches, not against a pristine
+  tarball — using the exact flags `apply-patches.sh:119` uses
+  (`patch -F0 -g0 -p1 -t -N`): no fuzz, no rejects. Hunk offsets do occur and
+  are expected for a backport; an earlier revision of this doc claimed "no
+  offsets", which was reading `patch --dry-run`'s exit status (0 whether or not
+  hunks moved).
+- **[VERIFIED]** Every symbol the series introduces resolves afterwards —
+  `btd_adapter_has_cable_pairing_devices`, `device_is_cable_pairing`,
+  `device_set_cable_pairing`, `server_set_cable_pairing`,
+  `get_necessary_sec_level` each have ≥1 reference and exactly one definition.
+  This is the check that would have caught the missing `0003`, and a plain
+  apply-check never could.
+- **[VERIFIED]** Both claimed behaviours are present in the patched tree:
+  `BT_IO_SEC_LOW` in `profiles/input/server.c`, and
+  `rd_size = d->unitSize - 1` in `profiles/input/device.c`.
 - **[VERIFIED]** `CONFIG_BT_HIDP=y` and `CONFIG_UHID=y` in the resolved kernel
   `.config`.
-- **[CI]** `ci-tests.sh` asserts both `input.conf` values, `CONFIG_BT_HIDP`,
-  and that the built bluez is ≥ 5.83. The **compile** of bluez 5.87 against
-  this toolchain is left to the build — it has not been run locally.
+- **[CI — NOT RUN LOCALLY]** That bluez5_utils **compiles** with the series
+  applied. Symbol resolution above is a strong proxy, not a substitute.
+  `ci-tests.sh` asserts both `input.conf` values, `CONFIG_BT_HIDP`, and that
+  `BT_IO_SEC_LOW` reached the built source tree (so the series silently
+  ceasing to apply cannot produce a green build).
 - **[HW — NOT DONE]** DS3/SIXAXIS USB cable-pair, then connect over Bluetooth.
   This is the actual claim of the change and it has **not** been tested on
   hardware.
@@ -486,8 +495,3 @@ config files, as `main.conf` already did.
   connected, and that DS4/DualSense/Switch pads still pair and their LED nodes
   still appear where `Main_MiSTer`'s `get_led_path()` expects (they should —
   the `hid-*` drivers bind identically on both transports).
-
-**Migration trap.** `plugins/sixaxis.c`'s `setup_device()` short-circuits on an
-already-trusted device, so a DS3 that was cable-paired under an older BlueZ
-never acquires the `CablePairing` property and will still fail to connect. Such
-a pad must be re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.

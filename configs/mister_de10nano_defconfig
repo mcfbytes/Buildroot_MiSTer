@@ -1047,11 +1047,34 @@ BR2_PACKAGE_XOW_FIRMWARE=y
 # they share (the lightbar above all) are last-writer-wins, so this stays an
 # operator tool run from a shell.
 #
-# It select's BR2_PACKAGE_HIDAPI (-> libgudev, and libusb which was already
-# on) and BR2_PACKAGE_DBUS (already on, above). Neither select appears as its
-# own line: savedefconfig drops symbols implied by a listed one, verified by
-# regenerating this file after the change. hidapi and libgudev are the only
-# genuinely new libraries this adds to the image.
+# It select's BR2_PACKAGE_HIDAPI and BR2_PACKAGE_DBUS. Neither appears as its
+# own line below, and neither needs to: dbus is already explicitly set above,
+# and savedefconfig omits any symbol a select already forces. Verified by
+# regenerating: `make savedefconfig` before and after this change differ by
+# exactly one line, the BR2_PACKAGE_DUALSENSECTL=y above.
+#
+# THE SELECTS ARE NOT JUST hidapi+libgudev -- READ THIS BEFORE TRIMMING.
+# hidapi's Config.in carries `select BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY if
+# BR2_TOOLCHAIN_USES_GLIBC` (for its runtime UTF conversion of USB string
+# descriptors). This image is glibc and that symbol was OFF, so enabling
+# dualsensectl flips it on, and with BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_LIST empty
+# that copies ALL of glibc's gconv charset modules to the target: 253 .so
+# files, ~6.4 MiB apparent, more after ext4 4 KiB block rounding.
+#
+# That is left ON DELIBERATELY rather than pinned to a minimal list, because it
+# closes a gap this repo already documented as load-bearing: glibc built these
+# modules all along (they are in the sysroot) but nothing ever installed them,
+# so /usr/lib/gconv did not exist on the target at all. Stock ships them
+# (docs/package-manifest.md §1 "glibc iconv/gconv charset modules" -- libCNS,
+# libGB, libJIS, libKSC et al are in stock's own SONAME inventory), and that
+# same doc lists gconv in its "Not recommended to drop (tempting by size, but
+# load-bearing)" set, reason: "needed for any non-ASCII filename over SMB".
+# So this is a stock-parity fix that arrived as a side effect -- accepted on
+# its own merits, not smuggled in. Guarding it: scripts/ci-tests.sh asserts the
+# modules are present, so they cannot silently vanish if dualsensectl is ever
+# turned off again. Pinning GCONV_LIBS_LIST to a guessed subset would risk
+# silently breaking exactly the SMB filename case the manifest calls out.
+# ~6.4 MiB is ~3% of the last measured 222 MiB of free image space.
 BR2_PACKAGE_DUALSENSECTL=y
 
 # --- P3.3: /lib/firmware population (PLAN.md §3/§4.1, module loading &

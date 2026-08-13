@@ -124,10 +124,31 @@ external tree's first `$(eval $(meson-package))`.
 
 **Dependencies.** Straight from upstream's `meson.build`:
 `libudev` → `udev`, `dbus-1` → `dbus`, `hidapi-hidraw` → `hidapi`. Both `dbus`
-and `libusb` (hidapi's other leg) were already in the defconfig, so the only
-genuinely new libraries on the image are **hidapi** and **libgudev**. The
+and `libusb` (hidapi's other leg) were already in the defconfig, so the new
+**libraries** are **hidapi** and **libgudev**. The
 `dbus` use is narrow: `power-off` asks BlueZ over the system bus to
 `Disconnect` the pad (`main.c:422-491`); nothing else touches D-Bus.
+
+**One non-obvious transitive effect: glibc's gconv modules.** `hidapi`'s
+`Config.in` carries `select BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY if
+BR2_TOOLCHAIN_USES_GLIBC` (it converts USB string descriptors at runtime).
+That symbol was off, and `BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_LIST` is empty, so
+enabling `dualsensectl` copies **all 253** gconv charset modules (~6.4 MiB
+apparent, more after ext4 block rounding) into a target that had
+**no `/usr/lib/gconv` at all** — glibc had been building them into the sysroot
+all along with nothing installing them.
+
+This is kept rather than trimmed to a guessed subset, because it closes a gap
+this repo had already flagged. `docs/package-manifest.md` §1 lists the gconv
+modules in stock's own SONAME inventory (`libCNS`, `libGB`, `libJIS`,
+`libKSC`, …), and its "Not recommended to drop (tempting by size, but
+load-bearing)" list names `gconv/` explicitly — *"needed for any non-ASCII
+filename over SMB"*. So the image was missing a documented stock-parity
+requirement and this restores it. `scripts/ci-tests.sh` now asserts the
+modules are present so the gain cannot silently disappear if this package is
+ever turned off. Pinning a minimal charset list would risk silently breaking
+exactly the SMB filename case the manifest calls out; ~6.4 MiB is about 3% of
+the last measured 222 MiB of free image space.
 
 The hidraw backend is the one that matters — hidapi's libusb backend cannot
 see a Bluetooth-connected pad at all.

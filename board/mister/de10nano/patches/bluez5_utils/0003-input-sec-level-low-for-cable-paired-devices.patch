@@ -1,0 +1,227 @@
+From ba101f47dfbad6d4f6fd439570ac4a1093df2ceb Mon Sep 17 00:00:00 2001
+From: Ludovico de Nittis <ludovico.denittis@collabora.com>
+Date: Thu, 24 Apr 2025 18:29:32 +0200
+Subject: [PATCH] input: Automatically use sec level low when using a cable
+ paired device
+
+BT_IO_SEC_LOW is the only way to allow devices that use cable pairing to
+establish a connection.
+
+This adds the ability to start the listening input server with
+BT_IO_SEC_LOW to avoid breaking support for these devices, and then,
+in `hidp_add_connection()`, we check if either `classic_bonded_only` was
+disabled or if this device has `CablePairing`. If neither are true, we
+bump the security back to BT_IO_SEC_MEDIUM, i.e. enforcing encryption.
+
+This allows supporting these devices without having to change the
+classic bonded only option.
+
+Provenance
+----------
+Origin:       ba101f47dfbad6d4f6fd439570ac4a1093df2ceb "input: Automatically use sec level low when using a cable paired device"
+              bluez/bluez, 2025-04-24, first released in BlueZ 5.83.
+              https://github.com/bluez/bluez/commit/ba101f47dfbad6d4f6fd439570ac4a1093df2ceb
+Author:       Ludovico de Nittis <ludovico.denittis@collabora.com> (Collabora)
+Upstream:     YES -- this IS upstream code. It is carried here only because
+              Buildroot 2026.05.1 pins bluez5_utils 5.79
+              (work/buildroot/package/bluez5_utils/bluez5_utils.mk:8), which
+              predates 5.83. DELETE THIS WHOLE DIRECTORY on the first
+              Buildroot bump that lands >= 5.83 -- it is not a MiSTer delta
+              and must not outlive the version gap it exists to close.
+Backport:     5.83 -> 5.79, Michael C. Ferguson, 2026-08-13. Applied with
+              `patch -p1` against a pristine bluez-5.79 tarball: no fuzz, no
+              offsets, no rejects on any of the three. Nothing was rewritten
+              for the older tree -- these are the upstream commits verbatim.
+Why:          Patch 3 of 3, and the one that actually fixes the bug. The
+              input server starts listening at BT_IO_SEC_LOW, and
+              hidp_add_connection() then bumps security back to
+              BT_IO_SEC_MEDIUM unless either classic_bonded_only is off OR
+              the device carries CablePairing. Net effect: a cable-paired
+              DS3 connects while EVERY other BR/EDR HID device still has
+              encryption enforced.
+
+              THIS IS WHY WE DO NOT SET ClassicBondedOnly=false. That option
+              would drop the encryption requirement for all BR/EDR HID
+              devices, re-exposing CVE-2023-45866 (unauthenticated HID
+              injection). Upstream closed bluez#688 with exactly this series
+              and the note that DS3 support is now possible "with limited
+              exposure to CVE-2023-45866 and without changing
+              ClassicBondedOnly=false".
+---
+ profiles/input/device.c  | 19 ++++++++++--
+ profiles/input/manager.c |  3 +-
+ profiles/input/server.c  | 65 ++++++++++++++++++++++++++++++++++++++--
+ profiles/input/server.h  |  3 +-
+ 4 files changed, 83 insertions(+), 7 deletions(-)
+
+diff --git a/profiles/input/device.c b/profiles/input/device.c
+index 3627573e79..a7bc4d44fa 100644
+--- a/profiles/input/device.c
++++ b/profiles/input/device.c
+@@ -47,6 +47,7 @@
+ 
+ #include "device.h"
+ #include "hidp_defs.h"
++#include "server.h"
+ 
+ #define INPUT_INTERFACE "org.bluez.Input1"
+ 
+@@ -1065,6 +1066,7 @@ static gboolean encrypt_notify(GIOChannel *io, GIOCondition condition,
+ static int hidp_add_connection(struct input_device *idev)
+ {
+ 	struct hidp_connadd_req *req;
++	bool cable_pairing;
+ 	GError *gerr = NULL;
+ 	int err;
+ 
+@@ -1088,8 +1090,11 @@ static int hidp_add_connection(struct input_device *idev)
+ 	if (device_name_known(idev->device))
+ 		device_get_name(idev->device, req->name, sizeof(req->name));
+ 
++	cable_pairing = device_is_cable_pairing(idev->device);
++
+ 	/* Make sure the device is bonded if required */
+-	if (classic_bonded_only && !input_device_bonded(idev)) {
++	if (!cable_pairing && classic_bonded_only &&
++			!input_device_bonded(idev)) {
+ 		error("Rejected connection from !bonded device %s", idev->path);
+ 		goto cleanup;
+ 	}
+@@ -1098,7 +1103,10 @@ static int hidp_add_connection(struct input_device *idev)
+ 	/* Some platforms may choose to require encryption for all devices */
+ 	/* Note that this only matters for pre 2.1 devices as otherwise the */
+ 	/* device is encrypted by default by the lower layers */
+-	if (classic_bonded_only || idev->type == BT_UHID_KEYBOARD) {
++	/* Don't enforce encryption for cable paired devices because they */
++	/* don't support it */
++	if (!cable_pairing && (classic_bonded_only ||
++				idev->type == BT_UHID_KEYBOARD)) {
+ 		if (!bt_io_set(idev->intr_io, &gerr,
+ 					BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_MEDIUM,
+ 					BT_IO_OPT_INVALID)) {
+@@ -1546,6 +1554,13 @@ int input_device_register(struct btd_service *service)
+ 	btd_service_set_user_data(service, idev);
+ 	device_set_wake_support(device, true);
+ 
++	if (device_is_cable_pairing(device)) {
++		struct btd_adapter *adapter = device_get_adapter(device);
++		const bdaddr_t *bdaddr = btd_adapter_get_address(adapter);
++
++		server_set_cable_pairing(bdaddr, true);
++	}
++
+ 	return 0;
+ }
+ 
+diff --git a/profiles/input/manager.c b/profiles/input/manager.c
+index d1accc24f8..95ca0a7ee5 100644
+--- a/profiles/input/manager.c
++++ b/profiles/input/manager.c
+@@ -33,7 +33,8 @@
+ 
+ static int hid_server_probe(struct btd_profile *p, struct btd_adapter *adapter)
+ {
+-	return server_start(btd_adapter_get_address(adapter));
++	return server_start(btd_adapter_get_address(adapter),
++				btd_adapter_has_cable_pairing_devices(adapter));
+ }
+ 
+ static void hid_server_remove(struct btd_profile *p,
+diff --git a/profiles/input/server.c b/profiles/input/server.c
+index 79cf08a66b..c8be445c73 100644
+--- a/profiles/input/server.c
++++ b/profiles/input/server.c
+@@ -266,12 +266,26 @@ static void confirm_event_cb(GIOChannel *chan, gpointer user_data)
+ 	g_io_channel_shutdown(chan, TRUE, NULL);
+ }
+ 
+-int server_start(const bdaddr_t *src)
++static BtIOSecLevel get_necessary_sec_level(bool device_cable_pairing)
++{
++	/* Use lower security to allow the cable paired devices to connect. */
++	/* Unless classic bonded only mode is disabled, the security level */
++	/* will be bumped again for non cable paired devices in */
++	/* hidp_add_connection() */
++	if (device_cable_pairing)
++		return BT_IO_SEC_LOW;
++
++	return input_get_classic_bonded_only() ? BT_IO_SEC_MEDIUM :
++						BT_IO_SEC_LOW;
++}
++
++int server_start(const bdaddr_t *src, bool device_sixaxis_cable_pairing)
+ {
+ 	struct input_server *server;
+ 	GError *err = NULL;
+-	BtIOSecLevel sec_level = input_get_classic_bonded_only() ?
+-					BT_IO_SEC_MEDIUM : BT_IO_SEC_LOW;
++	BtIOSecLevel sec_level;
++
++	sec_level = get_necessary_sec_level(device_sixaxis_cable_pairing);
+ 
+ 	server = g_new0(struct input_server, 1);
+ 	bacpy(&server->src, src);
+@@ -308,6 +322,51 @@ int server_start(const bdaddr_t *src)
+ 	return 0;
+ }
+ 
++int server_set_cable_pairing(const bdaddr_t *src, bool device_cable_pairing)
++{
++	struct input_server *server;
++	GSList *l;
++	BtIOSecLevel sec_level;
++	BtIOSecLevel new_sec_level;
++	GError *err = NULL;
++
++	l = g_slist_find_custom(servers, src, server_cmp);
++	if (!l)
++		return -1;
++
++	server = l->data;
++
++	bt_io_get(server->ctrl, &err, BT_IO_OPT_SEC_LEVEL, &sec_level,
++				BT_IO_OPT_INVALID);
++	if (err) {
++		error("%s", err->message);
++		g_error_free(err);
++		return -1;
++	}
++
++	new_sec_level = get_necessary_sec_level(device_cable_pairing);
++	if (sec_level == new_sec_level)
++		return -1;
++
++	DBG("Applying the new security level to the listening input server");
++
++	if (!bt_io_set(server->ctrl, &err, BT_IO_OPT_SEC_LEVEL, new_sec_level,
++							BT_IO_OPT_INVALID)) {
++		error("bt_io_set(OPT_SEC_LEVEL): %s", err->message);
++		g_error_free(err);
++		return -1;
++	}
++
++	if (!bt_io_set(server->intr, &err, BT_IO_OPT_SEC_LEVEL, new_sec_level,
++						BT_IO_OPT_INVALID)) {
++		error("bt_io_set(OPT_SEC_LEVEL): %s", err->message);
++		g_error_free(err);
++		return -1;
++	}
++
++	return 0;
++}
++
+ void server_stop(const bdaddr_t *src)
+ {
+ 	struct input_server *server;
+diff --git a/profiles/input/server.h b/profiles/input/server.h
+index 50f4b61352..4ad82c10e9 100644
+--- a/profiles/input/server.h
++++ b/profiles/input/server.h
+@@ -8,5 +8,6 @@
+  *
+  */
+ 
+-int server_start(const bdaddr_t *src);
++int server_start(const bdaddr_t *src, bool device_cable_pairing);
++int server_set_cable_pairing(const bdaddr_t *src, bool device_cable_pairing);
+ void server_stop(const bdaddr_t *src);

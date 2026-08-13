@@ -160,6 +160,12 @@ by default, functionally equivalent to stock, just packaged differently.
 **No action needed**, but noting it here so a future auditor doesn't go
 looking for a missing `sixaxis.so` and conclude support was dropped.
 
+> **Later correction (see §10):** the plugin being *active* was necessary but
+> not sufficient — a DS3 still could not connect over Bluetooth, because
+> BlueZ 5.79's `ClassicBondedOnly=true` default rejects it before the plugin
+> matters. That is fixed in §10 by a backported upstream patch series, not by
+> weakening the setting.
+
 ## 6. D-Bus policy — location changed upstream, verified correct
 
 `bluez5_utils.mk` passes `--with-dbusconfdir=/usr/share`, so the D-Bus
@@ -294,3 +300,129 @@ Total ≈1.7 MB.
 `scripts/ci-tests.sh` now asserts the MediaTek BT, QCA USB BT, both `.hcd`s and
 the rtl8761b/bu pair are present in the shipped image, so none of this can
 regress silently.
+
+---
+
+## 10. HID transport and DS3/SIXAXIS over Bluetooth (added 2026-08-13)
+
+A later change than the P3.5 audit above, and the first thing in this doc to
+touch `input.conf`. Two settings, one backported patch series, one open
+hardware test. §5 explains why the sixaxis *plugin* is already active; this
+section is about why, until now, that plugin still could not get a DS3
+connected over Bluetooth.
+
+### What we were running before
+
+We shipped no `input.conf` at all, so both settings sat at BlueZ 5.79's
+compiled-in defaults, read from `profiles/input/device.c:92-93`:
+
+```c
+static uhid_state_t uhid_state = UHID_ENABLED;
+static bool classic_bonded_only = true;
+```
+
+Neither default was what we wanted, for different reasons.
+
+### `UserspaceHID` — now `false` (kernel HIDP)
+
+`UHID_ENABLED` is the **opposite of stock**: stock's BlueZ 5.61 defaulted
+`uhid_enabled = false`, so MiSTer has always run kernel HIDP. Three reasons to
+go back:
+
+1. **bluetoothd leaves the per-report data path.** Under uhid,
+   `profiles/input/device.c:1258` registers `intr_watch_cb()` as a glib
+   main-loop watch on the L2CAP interrupt channel; it fires for *every* input
+   report and copies it back into the kernel through `uhid_send_input_report()`
+   (`device.c:386`). A DualSense in full BT report mode is ~250 Hz, so that is
+   ~250 daemon wakeups per second per pad — visible as bluetoothd CPU, and it
+   was noticed in the field before it was explained. With HIDP,
+   `ioctl_connadd()` (`device.c:919`) hands both L2CAP sockets to the kernel
+   via `HIDPCONNADD` and bluetoothd drops out of the data path entirely,
+   polling only `HIDPGETCONNINFO` and tearing down with `HIDPCONNDEL`.
+2. **It matters more on the RT variant** (`docs/rt-beta-kernel.md`). uhid puts
+   a `SCHED_OTHER` glib main loop in the input path, preemptible by any RT
+   task, so controller latency inherits bluetoothd's scheduling jitter — and
+   `Main_MiSTer` pins itself to CPU1 and spins, so bluetoothd contends on CPU0.
+   **This is a mechanistic argument, not a measurement**; the RT latency
+   numbers are still outstanding.
+3. **It repairs `bt_auto_disconnect`.** `Main_MiSTer` identifies BT pads with
+   `strstr(sysfs, "bluetooth")` (`input.cpp:4156`), which never matches uhid's
+   `/sys/devices/virtual/misc/uhid/…` path. The clean fix is upstream —
+   `input.cpp:5200` already reads `bustype` from `EVIOCGID`, so
+   `bustype == BUS_BLUETOOTH` would work on both transports — but this repo
+   does not build `Main_MiSTer`, so this is the only lever available here.
+   `MiSTer.ini` ships `bt_auto_disconnect=0`, so nothing regresses today.
+
+**What it does not cost: Bluetooth LE.** HIDP is BR/EDR-only, and
+`profiles/input/hog.c:257-264` reads `UserspaceHID` *only* to test for the
+`persist` value — it never disables uhid for LE. BLE HID devices keep using
+uhid regardless. What is given up is `persist` mode for BR/EDR (new in 5.79)
+and future BlueZ-side fixes to the BR/EDR HID path. Judged acceptable because
+our device quirks live in the `hid-*` kernel drivers, which **both** paths
+share.
+
+**Safe because `CONFIG_BT_HIDP=y`** — verified in the *resolved* kernel
+`.config`, not in `board/mister/de10nano/linux.config` (a minimal defconfig,
+where an absent symbol proves nothing). Without it this setting would strand
+BR/EDR HID entirely, so `scripts/ci-tests.sh` asserts it.
+
+### `ClassicBondedOnly` — pinned to `true`, and the DS3 fixed properly
+
+`true` is already the compiled-in default; pinning it explicitly is a guard,
+because this is exactly the line every retro-gaming distro flips to `false` to
+make the PS3 pad work. Doing that drops the encryption requirement for **every
+BR/EDR HID device** on the system, re-exposing **CVE-2023-45866**
+(unauthenticated HID injection).
+
+Instead, `board/mister/de10nano/patches/bluez5_utils/` carries upstream's
+three-commit `CablePairing` series (BlueZ 5.83, Ludovico de Nittis /
+Collabora), applied through `BR2_GLOBAL_PATCH_DIR`:
+
+| Patch | Upstream commit | Role |
+|---|---|---|
+| `0001` | `20ea34e7` | adds the `CablePairing` D-Bus property |
+| `0002` | `56516d6c` | sixaxis plugin sets it during USB cable pairing |
+| `0003` | `ba101f47` | input server listens at `BT_IO_SEC_LOW`, re-raises to `BT_IO_SEC_MEDIUM` for everything *except* a `CablePairing` device |
+
+Net effect: a cable-paired DS3 connects, and every other BR/EDR HID device
+keeps encryption enforced. Upstream closed
+[bluez#688](https://github.com/bluez/bluez/issues/688) with this series,
+noting DS3 now works *"with limited exposure to CVE-2023-45866 and without
+changing `ClassicBondedOnly=false`"*.
+
+**These patches are not a MiSTer delta.** They exist solely because Buildroot
+2026.05.1 pins bluez5_utils 5.79 (`bluez5_utils.mk:8`), which predates 5.83.
+**Delete the whole directory** on the first Buildroot bump that lands ≥ 5.83.
+
+**Deliberately not version-scoped.** `pkg-patches-dirs`
+(`package/pkg-utils.mk:166-170`) will prefer a `$(dir)/$(VERSION)` subdirectory
+if one exists, so these could have been filed under
+`patches/bluez5_utils/5.79/` and would then stop applying by themselves on any
+version bump. That was rejected: it converts a *loud* failure into a *silent*
+one. Unscoped, a bump to ≥ 5.83 makes the patches fail to apply and the build
+goes red, which is the signal that tells a human to delete this directory; a
+bump to some 5.8x still below 5.83 likewise fails loudly rather than quietly
+shipping an image with DS3 support removed. Failing closed is the same posture
+this repo takes on the kernel hash pins.
+
+**Migration trap.** `plugins/sixaxis.c`'s `setup_device()` short-circuits on an
+already-trusted device, so a DS3 that was cable-paired under the *old* BlueZ
+never acquires the property and will still fail to connect. Such a pad must be
+re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
+
+### Verification status
+
+- **[VERIFIED]** All three patches apply to a pristine `bluez-5.79` tarball
+  with `patch -p1`: no fuzz, no offsets, no rejects, in the sorted order
+  Buildroot applies them.
+- **[VERIFIED]** `CONFIG_BT_HIDP=y` and `CONFIG_UHID=y` in the resolved kernel
+  `.config`.
+- **[CI]** bluez5_utils compiles with the series applied; `ci-tests.sh` asserts
+  both `input.conf` values and `CONFIG_BT_HIDP`.
+- **[HW — NOT DONE]** DS3/SIXAXIS USB cable-pair, then connect over Bluetooth.
+  This is the actual claim of the change and it has **not** been tested on
+  hardware.
+- **[HW — NOT DONE]** Confirm the bluetoothd CPU drop with a DualSense
+  connected, and that DS4/DualSense/Switch pads still pair and their LED nodes
+  still appear where `Main_MiSTer`'s `get_led_path()` expects (they should —
+  the `hid-*` drivers bind identically on both transports).

@@ -200,6 +200,14 @@ do_check() {
 	say ""
 	say "  Device : $dev"
 	say ""
+
+	# Closes the loop on a repair the user scheduled last time. Without this the
+	# only way to learn what the black-screen boot actually did is --status over
+	# SSH, which is not where the person who used the Scripts menu is looking.
+	if [ -f "$RESULT" ]; then
+		say "  Last repair, on an earlier boot: $(head -n 1 "$RESULT" 2>/dev/null)"
+		say ""
+	fi
 	say "  This is a READ-ONLY check. It changes nothing, and it is safe to"
 	say "  run at any time."
 	say ""

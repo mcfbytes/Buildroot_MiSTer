@@ -448,7 +448,7 @@ initramfs-verify:
 		echo "$$applets" | grep -qx "$$b" && { \
 			echo "FATAL: '$$b' is in the cpio and must not be." >&2; \
 			echo "       board/mister/de10nano/initramfs-post-build.sh is meant to delete it" >&2; \
-			echo "       (~475 KB of zImage for tools stage 1 cannot invoke). Did the" >&2; \
+			echo "       (476 KB of zImage for tools stage 1 cannot invoke). Did the" >&2; \
 			echo "       post-build hook run? See ADR 0026." >&2; \
 			rc=1; }; \
 	done; \

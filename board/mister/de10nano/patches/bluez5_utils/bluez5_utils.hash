@@ -1,0 +1,36 @@
+# Companion hash for the bluez5_utils VERSION OVERRIDE at the end of
+# external.mk (5.79 -> 5.87; see that block for the full rationale, and
+# docs/bluetooth-parity.md §10).
+#
+# WHY THIS FILE EXISTS HERE rather than in the Buildroot package directory:
+# this tree never vendors Buildroot -- it is a GPG-verified upstream tarball
+# unpacked to work/buildroot/ (Makefile:47-50), so package/bluez5_utils/
+# bluez5_utils.hash is not ours to edit. pkg-patch-hash-dirs
+# (package/pkg-utils.mk:164) makes $(BR2_GLOBAL_PATCH_DIR)/<pkg>/ a hash
+# search path as well as a patch search path, and pkg-generic.mk:504-507
+# iterates over ALL of those dirs -- so this file ADDS to Buildroot's own
+# hash file rather than replacing it. Exactly the mechanism
+# board/mister/de10nano/patches/linux/linux.hash already uses.
+#
+# CONSEQUENCES OF THAT, both deliberate:
+#   - Buildroot's own "sha256 4164a530... bluez-5.79.tar.xz" line stays in
+#     effect and is simply never consulted, because hashes are looked up by
+#     FILENAME and this build fetches bluez-5.87.tar.xz.
+#   - Buildroot's COPYING / COPYING.LIB hashes likewise stay in effect and
+#     still match: both files are byte-identical in 5.79 and 5.87 (checked,
+#     b499edde... and ec60b993... respectively), so they are deliberately NOT
+#     duplicated here. If a future bump changes either license file, the build
+#     fails closed on Buildroot's line and the fix is to add the new value
+#     below -- not to delete anything upstream.
+#
+# BR2_DOWNLOAD_FORCE_CHECK_HASHES=y (configs/mister_de10nano_defconfig:154)
+# means a version bump that forgets to update the line below does NOT fall
+# back to "no hash found, continue" -- it fails the build. That is the
+# intended safety property of overriding a package version this way.
+#
+# PROVENANCE: transcribed from kernel.org's own signed manifest,
+# https://www.kernel.org/pub/linux/bluetooth/sha256sums.asc -- the same source
+# Buildroot's bluez5_utils.hash cites for its 5.79 line. Independently
+# confirmed by sha256sum'ing the downloaded tarball, which agrees. This is a
+# signed upstream value, NOT a TOFU pin.
+sha256  26bdcf2cebd7310c6f598850606b037ef0c515fe6608ebc54d22c50c4c32b35f  bluez-5.87.tar.xz

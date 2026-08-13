@@ -1314,6 +1314,31 @@ fi
 # have no kernel HIDP to hand its L2CAP sockets to). linux.config is a minimal
 # defconfig, so its silence on the symbol proves nothing -- same reasoning as the
 # CONFIG_NFSD gate in the netfs section.
+# The bluez5_utils VERSION OVERRIDE (end of external.mk) actually took effect.
+# Read from the build tree's directory name, which is derived from
+# BLUEZ5_UTILS_VERSION -- if the override were ever dropped or silently stopped
+# applying, the DS3 CablePairing support (>= 5.83) and bluez#1710's HID
+# report-descriptor fix (5.87) would vanish with it, and nothing in the shipped
+# rootfs would look any different. external.mk's guard covers the
+# Buildroot-caught-up direction; this covers "the override stopped working".
+bluez_dirs=()
+for _d in "$BUILD_DIR"/build/bluez5_utils-[0-9]*; do
+	[ -d "$_d" ] && bluez_dirs+=("$_d")
+done
+if [ "${#bluez_dirs[@]}" -ne 1 ]; then
+	skip "bluez5_utils >= 5.83 (DS3 CablePairing support)" \
+		"expected exactly one $BUILD_DIR/build/bluez5_utils-[0-9]*, found ${#bluez_dirs[@]}"
+else
+	bluez_ver=$(basename "${bluez_dirs[0]}" | sed 's/^bluez5_utils-//')
+	# sort -V puts the smaller first; if 5.83 sorts first, we are at or above it.
+	if [ "$(printf '%s\n%s\n' "$bluez_ver" 5.83 | sort -V | head -1)" = "5.83" ]; then
+		pass "bluez5_utils $bluez_ver >= 5.83 (DS3 CablePairing support present)"
+	else
+		fail "bluez5_utils >= 5.83 (DS3 CablePairing support)" \
+			"built $bluez_ver -- the external.mk version override is not taking effect, so a DS3 cannot connect over Bluetooth"
+	fi
+fi
+
 # Same glob-into-an-array idiom as the CONFIG_NFSD gate below, and for the same
 # stated reason: an unmatched glob expands to the literal pattern, so anything
 # other than exactly one match is a stale-tree condition worth reporting rather

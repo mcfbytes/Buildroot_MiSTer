@@ -277,6 +277,19 @@
     },
     {
       "customType": "regex",
+      "description": "bluez5_utils VERSION OVERRIDE (external.mk). This is NOT a package of ours -- it is upstream Buildroot's bluez5_utils, whose version this tree deliberately overrides forward (2026.05.1 pins 5.79; we need >= 5.83 for the CablePairing series that makes a DS3/SIXAXIS connectable at all, and 5.87 for bluez#1710's HID report-descriptor off-by-one). See the block at the end of external.mk and docs/bluetooth-parity.md §10. Tracks bluez/bluez GitHub tags, which are plain 5.NN, hence `loose`. TWO things must move together on a bump and BOTH fail closed if they do not: the companion hash at board/mister/de10nano/patches/bluez5_utils/bluez5_utils.hash (BR2_DOWNLOAD_FORCE_CHECK_HASHES=y turns a missing entry into a build failure, not a warning), and nothing else -- the override needs no other edit. The hash is NOT auto-refreshed by renovate-hash-sync.yml: that workflow's generic loop only understands $(call github,...) package .mk files, and this pin is neither a package of ours nor a github archive (bluez ships from kernel.org). So a bump PR here is EXPECTED to be red until a human transcribes the new sha256 from kernel.org's signed sha256sums.asc -- the same deliberate manual-hash posture as the RT kernel pin, and the reason for the needs-manual-hash label below. Do NOT TOFU this value; kernel.org signs it.",
+      "managerFilePatterns": [
+        "/^external\\.mk$/"
+      ],
+      "matchStrings": [
+        "MISTER_BLUEZ5_UTILS_VERSION\\s*=\\s*(?<currentValue>\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "bluez/bluez",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 10 other untagged upstreams here are pinned (the driver commit-SHA pins -- 9 of them when this was written on 2026-07-19, 10 since rtl8852cu-morrownr joined them in v10.2). Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
       "managerFilePatterns": [
         "/^package/bcm20702-firmware/bcm20702-firmware\\.mk$/"
@@ -448,6 +461,15 @@
       ],
       "addLabels": [
         "lib-pin"
+      ]
+    },
+    {
+      "description": "bluez5_utils version override. Its own label because it is a class of one: every other pin here names software this tree packages or fetches itself, whereas this one deliberately overrides the version of an UPSTREAM BUILDROOT package, and a reviewer needs to know that a bump changes the whole Bluetooth stack rather than one of our components. needs-manual-hash is not decorative -- renovate-hash-sync.yml cannot refresh this one (its generic loop only handles $(call github,...) package .mk files; bluez ships from kernel.org), so the PR stays red until a human transcribes the sha256 from kernel.org's signed sha256sums.asc into board/mister/de10nano/patches/bluez5_utils/bluez5_utils.hash. Note also that external.mk hard-errors if Buildroot's own pin ever reaches or passes ours, so this override cannot silently become a downgrade.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["bluez/bluez"],
+      "addLabels": [
+        "bluez-override-pin",
+        "needs-manual-hash"
       ]
     },
     {

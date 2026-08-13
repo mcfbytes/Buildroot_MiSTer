@@ -1317,11 +1317,29 @@ fi
 # which a DS3 simply cannot connect over Bluetooth -- the exact regression this
 # whole change exists to fix.
 #
-# BT_IO_SEC_LOW in server.c is the specific marker: it is introduced by patch
-# 0004 and is the mechanism the DS3 depends on. Same glob-into-an-array idiom
-# as the CONFIG_NFSD gate below -- but note a stale sibling build dir from a
-# version bump is REAL here (Buildroot never removes the old one), so the
-# newest directory is chosen rather than demanding exactly one.
+# CHOOSE THE MARKER CAREFULLY -- the obvious one is wrong. An earlier revision
+# of this check grepped for BT_IO_SEC_LOW, which is VACUOUS: that string is
+# already present in pristine 5.79 (profiles/input/server.c:274), and is in
+# fact the very line patch 0004 replaces. The check passed identically whether
+# the series had applied or not -- inverted, if anything, since it matches most
+# reliably on an UNPATCHED tree.
+#
+# server_set_cable_pairing is introduced only by patch 0004 and appears nowhere
+# in pristine 5.79 (verified against the unpatched tarball, along with
+# get_necessary_sec_level, device_is_cable_pairing and
+# btd_adapter_has_cable_pairing_devices -- any of the four would do).
+#
+# THE FAILURE THIS GUARDS IS LIVE, not hypothetical: Buildroot never revisits
+# .stamp_patched, so adding patches to an ALREADY-BUILT tree is a silent no-op.
+# An incremental `make all` over an output/ that predates this branch ships a
+# bluetoothd with no CablePairing support and no DS3 -- looking, in every
+# shipped file, exactly like a correct build. Use `make bluez5_utils-dirclean`
+# after changing anything in board/mister/de10nano/patches/bluez5_utils/.
+#
+# Same glob-into-an-array idiom as the CONFIG_NFSD gate below -- but note a
+# stale sibling build dir from a version bump is REAL here (Buildroot never
+# removes the old one), so the newest directory is chosen rather than demanding
+# exactly one.
 bluez_dirs=()
 for _d in "$BUILD_DIR"/build/bluez5_utils-[0-9]*; do
 	[ -d "$_d" ] && bluez_dirs+=("$_d")
@@ -1333,11 +1351,11 @@ else
 	# Newest by version sort, so a leftover tree from a previous pin does not
 	# decide the verdict.
 	bluez_newest=$(printf '%s\n' "${bluez_dirs[@]}" | sort -V | tail -1)
-	if grep -q 'BT_IO_SEC_LOW' "$bluez_newest/profiles/input/server.c" 2>/dev/null; then
+	if grep -q 'server_set_cable_pairing' "$bluez_newest/profiles/input/server.c" 2>/dev/null; then
 		pass "bluez CablePairing series applied in $(basename "$bluez_newest") (DS3 over Bluetooth)"
 	else
 		fail "bluez CablePairing series applied (DS3 over Bluetooth)" \
-			"BT_IO_SEC_LOW absent from $bluez_newest/profiles/input/server.c -- board/mister/de10nano/patches/bluez5_utils/ did not apply, so a DS3 cannot connect"
+			"server_set_cable_pairing absent from $bluez_newest/profiles/input/server.c -- board/mister/de10nano/patches/bluez5_utils/ did not apply (a stale .stamp_patched will do this silently; try 'make bluez5_utils-dirclean'), so a DS3 cannot connect"
 	fi
 fi
 

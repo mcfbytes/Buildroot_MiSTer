@@ -479,15 +479,34 @@ re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
   This is the check that would have caught the missing `0003`, and a plain
   apply-check never could.
 - **[VERIFIED]** Both claimed behaviours are present in the patched tree:
-  `BT_IO_SEC_LOW` in `profiles/input/server.c`, and
+  `server_set_cable_pairing` in `profiles/input/server.c`, and
   `rd_size = d->unitSize - 1` in `profiles/input/device.c`.
+
+  > An earlier revision of this line cited `BT_IO_SEC_LOW` as the marker. That
+  > was **vacuous**: the string is already in pristine 5.79
+  > (`profiles/input/server.c:274`) and is in fact the line patch `0004`
+  > replaces, so it distinguished nothing. `server_set_cable_pairing` is
+  > introduced only by the series and appears nowhere in the unpatched tarball.
+- **[VERIFIED]** The series **compiles**. All six files it touches
+  (`src/device.c`, `src/adapter.c`, `plugins/sixaxis.c`,
+  `profiles/input/{device,manager,server}.c`) cross-compile clean for ARM with
+  this repo's own `arm-buildroot-linux-gnueabihf-gcc` 14.4 under
+  `-Wall -Werror=implicit-function-declaration` — the exact error class the
+  originally-missing `0003` would have tripped. Run against a copy of the real
+  configured build tree with Buildroot's own four patches already applied, then
+  ours on top.
 - **[VERIFIED]** `CONFIG_BT_HIDP=y` and `CONFIG_UHID=y` in the resolved kernel
   `.config`.
-- **[CI — NOT RUN LOCALLY]** That bluez5_utils **compiles** with the series
-  applied. Symbol resolution above is a strong proxy, not a substitute.
-  `ci-tests.sh` asserts both `input.conf` values, `CONFIG_BT_HIDP`, and that
-  `BT_IO_SEC_LOW` reached the built source tree (so the series silently
-  ceasing to apply cannot produce a green build).
+- **[CI]** `ci-tests.sh` asserts both `input.conf` values, `CONFIG_BT_HIDP`,
+  and that `server_set_cable_pairing` reached the built source tree — so the
+  series silently ceasing to apply cannot produce a green build.
+
+  > **`.stamp_patched` is the trap here.** Buildroot never revisits it, so
+  > adding or changing patches on an already-built tree is a silent no-op: an
+  > incremental `make all` over an `output/` that predates this branch ships a
+  > `bluetoothd` with no CablePairing support, indistinguishable in every
+  > shipped file from a correct build. Run `make bluez5_utils-dirclean` after
+  > touching anything in `board/mister/de10nano/patches/bluez5_utils/`.
 - **[HW — NOT DONE]** DS3/SIXAXIS USB cable-pair, then connect over Bluetooth.
   This is the actual claim of the change and it has **not** been tested on
   hardware.

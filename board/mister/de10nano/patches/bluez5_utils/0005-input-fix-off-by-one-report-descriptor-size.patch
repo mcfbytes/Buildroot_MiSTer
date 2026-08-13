@@ -58,10 +58,33 @@ Why:          Patch 5 of 5, and the only one NOT part of the CablePairing
               because it is small, upstream, and squarely in the path every
               Bluetooth pad on this image takes.
 
-              It applies REGARDLESS OF TRANSPORT despite the commit message
-              mentioning UHID: the bug is in the SDP extraction that fills
-              struct hidp_connadd_req, which happens BEFORE the uhid/kernel-HIDP
-              branch, and rd_data/rd_size are consumed by both.
+              The SIZING FIX applies regardless of transport despite the commit
+              message mentioning UHID: the bug is in the SDP extraction that
+              fills struct hidp_connadd_req, which happens BEFORE the
+              uhid/kernel-HIDP branch, and rd_data/rd_size are consumed by both.
+
+              ONE UPSTREAM WART CARRIED WITH IT, and it is transport-specific
+              in a way the sizing fix is not. The patch moves the rd_size
+              assignment ABOVE the g_try_malloc0(), so an allocation failure now
+              leaves rd_size != 0 with rd_data == NULL and still returns
+              success. Downstream, uhid_connadd() -> bt_uhid_create() memcpys
+              rd_size bytes from that NULL pointer (src/shared/uhid.c) --
+              a bluetoothd crash; ioctl_connadd() merely gets EFAULT. Reachable
+              only under OOM, and this image selects kernel HIDP for BR/EDR
+              (UserspaceHID=false, see the overlay's input.conf), so the crash
+              path is not the one our pads take. Carried verbatim rather than
+              locally "fixed" because diverging from upstream on an unrelated
+              hardening point is how a backport series starts rotting; if
+              upstream addresses it, that commit is the thing to pull in.
+
+              Applies with fuzz-free offsets on 5.79. Checked that the -1 is
+              safe against THIS tree, not just against 5.87: both producers of
+              unitSize for a text SDP datum agree -- extract_str()
+              (lib/sdp.c:1205, unitSize = n + 1) and
+              sdp_data_alloc_with_length() (lib/sdp.c:428, unitSize = 1 +
+              length), the latter being the path the sixaxis plugin's
+              hard-coded XML SDP record takes -- so the -1 removes the NUL
+              delimiter and can never truncate a real descriptor byte.
 ---
  profiles/input/device.c | 13 ++++++++++---
  1 file changed, 10 insertions(+), 3 deletions(-)

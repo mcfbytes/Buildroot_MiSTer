@@ -1032,6 +1032,28 @@ BR2_PACKAGE_RTL8852CU_MORROWNR=y             # RTL8852CU/8832CU Wi-Fi 6E USB --
 BR2_PACKAGE_XONE=y
 BR2_PACKAGE_XOW_FIRMWARE=y
 
+# --- dualsensectl: DualSense operator CLI (userspace, not a driver) ---
+# Reaches the DualSense features hid-playstation exposes no interface for at
+# all -- adaptive trigger effects, speaker/headphone routing, output volume,
+# rumble/trigger attenuation, microphone mode and volume, player/mic LED
+# dimming, BT power-off, firmware info. STRICTLY ADDITIVE to the DualSense
+# kernel patches (0033 player_id LED, 0037 mic-mute -> BTN_Z, 0042 stock
+# lightbar LED names): those back Main_MiSTer's sysfs-LED and input-event
+# ABIs, which no userspace hidraw client can serve. docs/dualsense-tooling.md
+# has the analysis; package/dualsensectl/dualsensectl.mk has the pin.
+#
+# Nothing invokes it automatically -- no init script, no udev rule. It and
+# hid-playstation both write DS_OUTPUT reports to the same pad and the fields
+# they share (the lightbar above all) are last-writer-wins, so this stays an
+# operator tool run from a shell.
+#
+# It select's BR2_PACKAGE_HIDAPI (-> libgudev, and libusb which was already
+# on) and BR2_PACKAGE_DBUS (already on, above). Neither select appears as its
+# own line: savedefconfig drops symbols implied by a listed one, verified by
+# regenerating this file after the change. hidapi and libgudev are the only
+# genuinely new libraries this adds to the image.
+BR2_PACKAGE_DUALSENSECTL=y
+
 # --- P3.3: /lib/firmware population (PLAN.md §3/§4.1, module loading &
 # firmware infra -- the module-autoload/depmod/kmod/xz-compress half is
 # already done, see BR2_PACKAGE_HOST_KMOD_XZ/BR2_PACKAGE_KMOD_TOOLS below).

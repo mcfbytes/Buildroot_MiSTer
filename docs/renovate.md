@@ -55,13 +55,15 @@ for the specific pieces most likely to need a fix on the first live run.
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
+| dualsensectl tag pin (DualSense operator CLI; labeled `tool-pin`) | `package/dualsensectl/dualsensectl.mk` | `customManagers` regex, `github-tags` datasource over `nowrep/dualsensectl` with plain `loose` versioning — upstream tags ordinary `vMAJOR.MINOR` releases, so no bespoke scheme is needed (unlike munt). The captured `currentValue` **includes the leading `v`** on purpose: `scripts/hash-sync-github-packages.sh` reuses the literal `*_VERSION` string as both the archive ref and the `<pkgdir>-<version>.tar.gz` filename, so splitting the prefix off would desync the two | `package/dualsensectl/dualsensectl.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step** (case 4). The cores commit has no companion hash (cores are fetched by content — see the script's header), so it instead gets `renovate-hash-sync.yml`'s **validate-only cores-pin step** (case 5): one Contents API call at the new commit, failing the PR closed if it does not resolve, lists no `*.rbf`, or busts the ~600 MiB cap — because no PR build ever resolves this pin, only `release.yml`'s opt-in `SDCARD_CORES=1` leg |
 | CI container digests | **none today** — no workflow uses a `container:` block (see `docs/ci.md#no-container-disk-reclaim`; every build job runs bare on `ubuntu-26.04` so disk reclaim can reach the runner host). The `docker`/`pinDigests` rule is retained as a no-op in case one is ever reintroduced | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
-That is **21 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
+That is **22 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
 kernel, 10 driver commits, munt, bcm20702-firmware — 11 commit pins in total
-once bcm20702 is counted — libchdr, lzma-sdk, 7zip, and the 3 sdcard payload
+once bcm20702 is counted — libchdr, lzma-sdk, 7zip, dualsensectl, and the 3
+sdcard payload
 pins; note lzma-sdk and 7zip are 2 entries but only **1** upstream dependency,
 so they raise a single PR)
 plus the two built-in managers
@@ -276,9 +278,10 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
 
 **What it fixes automatically, and why each case is safe:**
 
-1. **The 13 github-archive `.hash` files** (the 10 driver commit pins + munt +
-   bcm20702-firmware + libchdr — the last a userspace shared library from
-   the Main_MiSTer shared-lib refactor, but the exact same
+1. **The 14 github-archive `.hash` files** (the 10 driver commit pins + munt +
+   bcm20702-firmware + libchdr + dualsensectl — the last two userspace, from
+   the Main_MiSTer shared-lib refactor and the DualSense operator tooling
+   respectively, but both the exact same
    `$(call github,...)` tarball shape as the driver pins). Every one of
    these `.hash` files' own header comment
    already documents that GitHub publishes no signed manifest for a

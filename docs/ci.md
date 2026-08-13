@@ -2179,10 +2179,13 @@ idiom** and should get the same treatment when next touched.
 <a id="renovate-hash-sync-safety-model"></a>
 ### Safety model, cases 1-4: why a locally-computed sha256 is legitimate here
 
-1. **The 13 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
+1. **The 14 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
    12 driver/firmware pins plus `libchdr` (a userspace shared library — the
-   Main_MiSTer shared-lib refactor — but the exact same
-   `$(call github,...)` commit-archive shape). Their own `.hash` file
+   Main_MiSTer shared-lib refactor) and `dualsensectl` (a userspace CLI —
+   the DualSense operator tool). Neither of the last two is a driver, but
+   both have the exact same `$(call github,...)` archive shape;
+   `dualsensectl` differs only in pinning a `v`-prefixed tag rather than a
+   commit SHA, which the loop handles without special-casing. Their own `.hash` file
    headers already say the hash is "locally computed" — GitHub publishes no
    signed manifest for a commit/tag archive tarball, so `sha256sum` of a
    freshly-fetched tarball from the ACTUAL pinned owner/repo/ref IS the
@@ -2308,7 +2311,7 @@ two (or more) drifting copies.
 <a id="companion-hash-first-line-only"></a>
 ### Companion .hash file contract: only the first sha256 line is machine-owned
 
-Every one of the 13 github-sourced `.mk`/`.hash` pairs follows the identical
+Every one of the 14 github-sourced `.mk`/`.hash` pairs follows the identical
 Buildroot convention:
 
 ```
@@ -2454,7 +2457,7 @@ counted toward the fail gate but kept out of the "workflow bug" error
 message specifically — it is not, itself, proof of a parse/regex bug the way
 a recorded `failed` is.
 
-`HASH_SYNC_PACKAGES` (the 13 github-sourced package pins) is a single
+`HASH_SYNC_PACKAGES` (the 14 github-sourced package pins) is a single
 hoisted variable, not two independently-hardcoded lists, so step 1's loop and
 the job-summary gate's pin roster at the bottom of the job cannot drift
 apart.

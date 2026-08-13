@@ -277,6 +277,19 @@
     },
     {
       "customType": "regex",
+      "description": "dualsensectl tag pin (nowrep/dualsensectl) -- the DualSense operator CLI, a userspace tool, NOT a substitute for the DualSense kernel patches (see package/dualsensectl/dualsensectl.mk and docs/dualsense-tooling.md). Upstream tags plain vMAJOR.MINOR releases, so `loose` needs no bespoke scheme here, unlike munt above. The leading \"v\" is deliberately INSIDE the captured currentValue rather than being reconstructed in the .mk's SITE line: scripts/hash-sync-github-packages.sh takes the literal RHS of the first *_VERSION line and uses it both as the archive ref and as the <pkgdir>-<version>.tar.gz filename it writes into the .hash, so the two must agree character for character. Renovate rewrites the captured group in place and therefore preserves the prefix. Hash: package/dualsensectl/dualsensectl.hash, refreshed by renovate-hash-sync.yml's generic loop (standard $(call github,...) archive tarball).",
+      "managerFilePatterns": [
+        "/^package/dualsensectl/dualsensectl\\.mk$/"
+      ],
+      "matchStrings": [
+        "DUALSENSECTL_VERSION\\s*=\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "nowrep/dualsensectl",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 10 other untagged upstreams here are pinned (the driver commit-SHA pins -- 9 of them when this was written on 2026-07-19, 10 since rtl8852cu-morrownr joined them in v10.2). Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
       "managerFilePatterns": [
         "/^package/bcm20702-firmware/bcm20702-firmware\\.mk$/"
@@ -448,6 +461,14 @@
       ],
       "addLabels": [
         "lib-pin"
+      ]
+    },
+    {
+      "description": "Userspace controller-tooling pins. Its own label rather than driver-pin, per the established one-label-per-pin-class convention: driver-pin's reviewer contract is \"this changes out-of-tree kernel-module source\", and dualsensectl changes neither kernel-module source nor a library ABI Main_MiSTer links against (lib-pin's contract). It ships one self-contained CLI binary that nothing on the image invokes automatically, so the blast radius of a bad bump is an operator typing a command, not a boot or a link failure.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["nowrep/dualsensectl"],
+      "addLabels": [
+        "tool-pin"
       ]
     },
     {

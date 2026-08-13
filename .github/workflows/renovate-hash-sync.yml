@@ -9,7 +9,7 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Four REFRESH cases: (1) the 13 github-sourced package pins, (2) the kernel
+# Four REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
 # tarball hash, (3) the bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
 # payload single-file pins. Why a locally-computed sha256sum is a legitimate
@@ -89,6 +89,11 @@ on:
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
       - "package/libchdr/libchdr.mk"
       - "package/lzma-sdk/lzma-sdk.mk"
+      # dualsensectl (DualSense operator CLI). Ordinary github tag-archive pin,
+      # covered by the generic loop in step 1. Same both-lists-or-silent-failure
+      # note as rtl8852cu-morrownr above: it must appear HERE and in
+      # HASH_SYNC_PACKAGES below.
+      - "package/dualsensectl/dualsensectl.mk"
       - "scripts/fetch-sdcard-payload.sh"
 
   # Manual escape hatch -- nothing else can re-drive this workflow after a fix
@@ -140,7 +145,7 @@ jobs:
       # docs/ci.md#renovate-hash-sync-outcomes-gate.
       HASH_SYNC_OUTCOMES_FILE: hash-sync-outcomes-${{ github.run_id }}-${{ github.run_attempt }}.tsv
 
-      # Single source of truth for the 13 github-sourced package pins -- shared
+      # Single source of truth for the 14 github-sourced package pins -- shared
       # by step 1's loop and the job-summary gate's pin roster so they can't
       # drift apart. See docs/ci.md#renovate-hash-sync-outcomes-gate.
       #
@@ -158,7 +163,18 @@ jobs:
       # $(call github,morrownr,rtl8852cu-20251113,$(VERSION)) and a cached
       # tarball named dl/rtl8852cu-morrownr/rtl8852cu-morrownr-<sha>.tar.gz,
       # i.e. the <package-dir>-<VERSION>.tar.gz shape the loop assumes.
-      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr"
+      #
+      # dualsensectl fits the same generic loop, and is the first entry pinned
+      # to a "v"-prefixed TAG rather than a bare commit SHA or munt's bespoke
+      # tag scheme. That works because the "v" is carried inside
+      # DUALSENSECTL_VERSION itself: the loop uses the literal *_VERSION value
+      # as both the archive ref and the <package-dir>-<VERSION>.tar.gz filename,
+      # so .../archive/v0.7.tar.gz and dualsensectl-v0.7.tar.gz both fall out of
+      # the same string. Checked at pin time that GitHub serves byte-identical
+      # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
+      # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
+      # dualsensectl.hash.
+      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr dualsensectl"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

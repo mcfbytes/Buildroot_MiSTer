@@ -1,0 +1,24 @@
+# Locally computed (GitHub publishes no signed hashes for tag-archive
+# tarballs -- standard practice for github-sourced Buildroot packages, per
+# pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# against:
+#   https://github.com/nowrep/dualsensectl/archive/$(DUALSENSECTL_VERSION).tar.gz
+#
+#   sha256sum dualsensectl-$(DUALSENSECTL_VERSION).tar.gz
+#
+# Written with the .mk variable rather than a literal tag, for the reason
+# spelled out in package/libchdr/libchdr.hash: renovate-hash-sync.yml rewrites
+# the sha256 DATA line below and can never touch a comment, so a literal here
+# goes stale on the first automatic bump.
+#
+# The two URL forms in play here were checked to serve identical bytes before
+# this pin was written: Buildroot fetches $(SITE)/$(SOURCE), i.e.
+# .../archive/v0.7/dualsensectl-v0.7.tar.gz, while
+# scripts/hash-sync-github-packages.sh fetches .../archive/v0.7.tar.gz. Both
+# hash to the value below. That equivalence is what lets the generic hash-sync
+# loop cover this package at all.
+sha256  a615304596925738b12d0a499f31e1fe0cc3653da230edfe7c68637098ce6b72  dualsensectl-v0.7.tar.gz
+# LICENSE -- the GPLv2 text; the sources themselves are marked
+# GPL-2.0-or-later by SPDX tag, hence DUALSENSECTL_LICENSE = GPL-2.0+ in
+# the .mk rather than plain GPL-2.0
+sha256  8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643  LICENSE

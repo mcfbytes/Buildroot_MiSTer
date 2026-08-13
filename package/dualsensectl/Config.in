@@ -1,0 +1,50 @@
+config BR2_PACKAGE_DUALSENSECTL
+	bool "dualsensectl"
+	depends on BR2_USE_MMU                        # dbus (fork)
+	depends on BR2_TOOLCHAIN_HAS_THREADS_NPTL     # hidapi
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9     # hidapi -> libusb
+	depends on BR2_PACKAGE_HAS_UDEV               # hidapi; and libudev directly
+	select BR2_PACKAGE_HIDAPI
+	select BR2_PACKAGE_DBUS
+	help
+	  dualsensectl: a command-line tool for the Sony PlayStation 5
+	  DualSense controller. It talks to the pad directly over
+	  /dev/hidraw* (via hidapi's hidraw backend), sending the same
+	  DS_OUTPUT reports hid-playstation does, and reaches the parts of
+	  the controller the kernel driver exposes no interface for at all:
+
+	    - adaptive trigger effects (feedback, weapon, bow, galloping,
+	      machine, vibration, and the raw per-zone forms)
+	    - audio routing between the internal speaker and headphone jack,
+	      output volume, and rumble/trigger attenuation
+	    - microphone mode ('chat'/'asr'/'both') and microphone volume
+	    - player/mic LED dimming ("led-brightness")
+	    - controller power-off over Bluetooth
+	    - firmware info and battery level
+
+	  IT IS NOT A REPLACEMENT FOR THE DUALSENSE KERNEL PATCHES.
+	  0033/0037/0042 in board/mister/de10nano/linux-patches/ exist to
+	  satisfy interfaces Main_MiSTer consumes and that no userspace
+	  process can provide: sysfs LED class devices at a path *under the
+	  HID device* (input.cpp's get_led_path() derives it from
+	  /proc/bus/input/devices, so a uleds-created classdev under
+	  /sys/devices/virtual/leds cannot stand in), and BTN_Z on the
+	  existing gamepad input device (vanilla consumes the mic-mute bit
+	  in-kernel and never reports it, and moving the button to a second
+	  uinput device would shift the gamecontrollerdb bN indices). This
+	  package is strictly ADDITIVE to those. See docs/dualsense-tooling.md.
+
+	  NOTE that dualsensectl and hid-playstation both write output
+	  reports to the same pad. The driver only writes when one of its
+	  update_* flags is set, so they do not fight continuously, but
+	  fields they both own (the lightbar in particular) are last-writer-
+	  wins. Nothing runs dualsensectl automatically on this image; it is
+	  an operator tool.
+
+	  https://github.com/nowrep/dualsensectl
+
+comment "dualsensectl needs udev /dev management and a toolchain w/ NPTL threads, gcc >= 4.9"
+	depends on BR2_USE_MMU
+	depends on !BR2_PACKAGE_HAS_UDEV || \
+		!BR2_TOOLCHAIN_HAS_THREADS_NPTL || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_9

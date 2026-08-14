@@ -137,8 +137,11 @@ Anchors on:   Linux 7.2-rc7 as built by this variant -- drivers/uio/uio.c,
               and Documentation/driver-api/uio-howto.rst, all unmodified
               upstream files that no other patch in this series touches.
 
-Depends on nothing else in the series; 0044 depends on it for the
-property to have an effect.
+Applies independently of every other patch in the series, at any
+position. The relationship to 0044 is semantic, not apply-order: the
+mister,map-writecombine property 0044 declares is deliberately inert on
+a kernel without this patch (an unknown DT property is ignored), and
+this patch changes nothing for nodes that do not declare it.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---

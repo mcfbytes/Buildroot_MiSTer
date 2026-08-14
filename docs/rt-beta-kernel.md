@@ -302,12 +302,11 @@ corruption rather than lost throughput.
 **No new kernel config symbol.** All three ride `CONFIG_UIO=y`,
 `CONFIG_UIO_PDRV_GENIRQ=y` and the `uio_pdrv_genirq.of_id=generic-uio` cmdline
 token that `board/mister/de10nano/linux-rt.fragment` already carries.
-⚠ **Three statements in that fragment's comment block are now false, and the
-file cannot be edited under this change's constraint** (`linux-rt.fragment` may be
-touched only when a new `CONFIG_` symbol is strictly required, and none is). No
-symbol is wrong, so build and boot are unaffected — but it is a *second*
-allocation-map comment carrying the retired range, in the file a maintainer opens
-first to learn what the RT line adds, and a stale allocation-map comment is exactly
+The fragment's comment block was updated in this same change (comment-only:
+the stale SPI 41..48 range, the f2h_irq1..8 heading, and the patch-dir
+pointer that predated the beta-local move). No `CONFIG_` symbol changed —
+the fragment remains config-identical — but a stale allocation-map comment
+in the file a maintainer opens first to learn what the RT line adds is exactly
 what produced the wrong premise this whole revision corrects. **Needs the owner's
 explicit comment-only exception**, which changes no generated config and cannot
 perturb the stock build:

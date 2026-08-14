@@ -4,9 +4,11 @@
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
 # Excluded vs the 6.18 set: 0038, 0039, 0040, 0041, 0042 (landed 2026-07-24,
-# not yet re-anchored). The beta series carries 34 of 39
-# patches, so the 7.x kernel and the 6.18 kernel diverge only where an
-# upstream API forced a re-anchor — never by dropping a MiSTer change.
+# not yet re-anchored). The beta series carries 31 of the 36 shared
+# patches plus the 3 beta-local ones below — 34 entries — so within the
+# carried set the 7.x and 6.18 kernels diverge only where an upstream API
+# forced a re-anchor; the 0038-0042 gap is a re-anchoring backlog, not a
+# policy divergence.
 # Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor
 # it here rather than removing it from this list.
 #
@@ -14,8 +16,10 @@
 # gap, not a second one. 0043, 0044 and 0045 are BETA-LOCAL — real files in
 # THIS directory, deliberately absent from the shared linux-patches/ set so
 # the stock 6.18 build (which globs that whole dir via BR2_LINUX_KERNEL_PATCH)
-# never sees them. They depend only on 0004 and on each other, and apply fine
-# over the hole. Together they are the RT line's reason to exist right now
+# never sees them. Apply-order facts, precisely: 0043 anchors on 0004's
+# output; 0044 anchors on 0043's output; 0045 touches only drivers/uio and
+# include files no other patch in this series touches, so it applies
+# independently at any position. All three apply fine over the hole. Together they are the RT line's reason to exist right now
 # (ADR-002-interim and ADR-003, Main_MiSTer rewrite plan):
 #
 #   0043  UIO doorbell nodes on GIC SPI 48..55 (f2h_irq8..15). Interrupt-only

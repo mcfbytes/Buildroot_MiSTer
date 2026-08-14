@@ -61,7 +61,7 @@ discriminator between the DualSense branch and the DualShock 4 fallback:
 
 ```c
 if (set_led(led_path, ":player_id", (num > 5) ? 0 : num)) {
-    //duslsense
+    //duslsense                      <-- [sic], upstream's typo; quoted verbatim
     set_led(led_path, ":blue",  (num == 0) ? 128 : 64);
     ...
 } else {
@@ -69,6 +69,10 @@ if (set_led(led_path, ":player_id", (num > 5) ? 0 : num)) {
     ... color_code[num] ...
 }
 ```
+
+> The `duslsense` misspelling is in the real source (`input.cpp:2704`), not a
+> transcription error here. It is left as-is because this is a verbatim quote —
+> correcting it would misrepresent the file a reader is being pointed at.
 
 Drop `0033` and the failure is not "no player LEDs" — it is that every
 DualSense silently takes the DualShock 4 colour-code path. `0042` is what makes

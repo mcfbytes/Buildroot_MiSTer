@@ -1047,7 +1047,7 @@ BR2_PACKAGE_XOW_FIRMWARE=y
 # they share (the lightbar above all) are last-writer-wins, so this stays an
 # operator tool run from a shell.
 #
-# It select's BR2_PACKAGE_HIDAPI and BR2_PACKAGE_DBUS. Neither appears as its
+# It selects BR2_PACKAGE_HIDAPI and BR2_PACKAGE_DBUS. Neither appears as its
 # own line below, and neither needs to: dbus is already explicitly set above,
 # and savedefconfig omits any symbol a select already forces. Verified by
 # regenerating: `make savedefconfig` before and after this change differ by

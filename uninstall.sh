@@ -49,7 +49,8 @@
 # so there is one implementation of the edit rather than two.
 #
 # Options:
-#   --remove-script    also delete Scripts/update_linux_modernization.sh
+#   --remove-script    also delete this project's Scripts entries
+#                      (update_linux_modernization.sh and check_storage.sh)
 #   --restore-backups  put the files in linux/.mlm-backup/ back (see below)
 #   --yes              skip the 10-second countdown
 #
@@ -81,6 +82,7 @@ set -eu
 FAT="/media/fat"
 BASE_INI="$FAT/downloader.ini"
 UPDATER="$FAT/Scripts/update_linux_modernization.sh"
+CHECK_STORAGE="$FAT/Scripts/check_storage.sh"
 PRIVATE_INI="/tmp/mister_linux_modernization.ini"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 BASE_INI_BACKUP="$BACKUP_DIR/downloader.ini.orig"
@@ -132,7 +134,8 @@ say "  MiSTer reboots into it."
 say ""
 say "  Your cores, ROMs, saves, config and MiSTer.ini are not touched."
 if [ "$REMOVE_SCRIPT" -eq 1 ]; then
-	say "  --remove-script: $UPDATER will also be deleted."
+	say "  --remove-script: $UPDATER and"
+	say "                   $CHECK_STORAGE will also be deleted."
 fi
 say ""
 rule
@@ -265,8 +268,16 @@ if [ "$RESTORE_BACKUPS" -eq 1 ]; then
 	fi
 fi
 
-if [ "$REMOVE_SCRIPT" -eq 1 ] && [ -e "$UPDATER" ]; then
-	rm -f "$UPDATER" && say "Removed $UPDATER"
+# Both of this project's Scripts, together -- install.sh installs them as one
+# set, so --remove-script takes them as one too (ADR 0026). check_storage.sh is
+# only a launcher for a rootfs tool that is about to be replaced by the stock
+# image anyway, so leaving it behind would just be a menu entry that prints
+# "this needs the MiSTer Linux Modernization image".
+if [ "$REMOVE_SCRIPT" -eq 1 ]; then
+	for _f in "$UPDATER" "$CHECK_STORAGE"; do
+		[ -e "$_f" ] || continue
+		rm -f "$_f" && say "Removed $_f"
+	done
 fi
 
 say ""

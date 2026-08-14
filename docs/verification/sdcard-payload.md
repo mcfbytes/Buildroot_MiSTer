@@ -104,10 +104,11 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > the case it exists for, and because its other end is in the initramfs and the two must
 > ship together. So this entry is stable and has no reason to change again.
 >
-> It is staged from `board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh`
-> — **not** from `fat-payload/`. That is the same single file `/etc/init.d/S94storagecheck`
-> installs onto an existing user's card on the first boot after a Linux update, and one copy
-> in the tree is the only way the two delivery paths cannot drift apart.
+> It lands by exactly the same route as `update_linux_modernization.sh` — the two are one
+> set: `install.sh` installs both, `uninstall.sh --remove-script` removes both,
+> `stage_update_channel()` stages both here, and `update_linux_modernization.sh` replaces
+> either if it later goes missing (which is how users who onboarded before this feature
+> existed get the menu entry).
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and

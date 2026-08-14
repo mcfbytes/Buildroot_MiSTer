@@ -5,9 +5,10 @@
 `board/mister/de10nano/initramfs-overlay/init`, `board/mister/de10nano/initramfs-busybox.config`
 (adds `CONFIG_RM`), new files `board/mister/de10nano/initramfs-post-build.sh`,
 `board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat`,
-`board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh`,
-`board/mister/de10nano/rootfs-overlay/etc/init.d/S94storagecheck`; `Makefile`
-(`initramfs-verify`), `scripts/fetch-sdcard-payload.sh`, `.github/workflows/lint.yml`.
+`board/mister/de10nano/fat-payload/Scripts/check_storage.sh`; `Makefile`
+(`initramfs-verify`), `scripts/fetch-sdcard-payload.sh`, `install.sh`, `uninstall.sh`,
+`board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh`,
+`.github/workflows/lint.yml`.
 
 ## 1. The problem
 
@@ -221,18 +222,24 @@ solving it.
   the tool now exists when they need it.
 * HPS_LED is on-board, so a fully enclosed case still sees nothing during the repair; serial
   users see everything. Same limitation ADR 0020 §6 records for the installer.
-* **Everyone gets the Scripts-menu entry, by two paths that share one file.** A freshly
-  flashed `sdcard.img` has it from the installer payload (`stage_update_channel()`).
-  Existing users get it from `/etc/init.d/S94storagecheck`, which copies it onto the card on
-  the first boot after a Linux update — necessary because both halves of the mechanism ride
-  inside `linux.img` and nothing in an image update writes to the FAT partition, so without
-  it the feature would have been SSH-only for every existing user, and the people most
-  likely to hit exFAT damage are the least likely to have SSH configured.
+* **`check_storage.sh` arrives by exactly the same route as
+  `update_linux_modernization.sh`.** Two Scripts this project ships must not land by two
+  different mechanisms, so they are treated as one set everywhere: `install.sh` installs
+  both (one `install_one_script()` helper, one marker check each), `uninstall.sh
+  --remove-script` removes both, `scripts/fetch-sdcard-payload.sh` stages both into
+  `sdcard.img`, and `update_linux_modernization.sh` replaces either if it later goes
+  missing.
 
-  The canonical copy is `/usr/share/mister-fsck-exfat/check_storage.sh` in the rootfs, which
-  *both* paths read, so the two cannot drift. `S94storagecheck` is create-only: an existing
-  `check_storage.sh` — ours, older, or the user's own — is never touched, and it writes via
-  `.part` + rename so a power cut cannot leave a truncated script in the Scripts menu.
-  `install.sh` is deliberately still not involved: it is the update-channel opt-in, with its
-  own `uninstall.sh --remove-script` contract, and the boot-time install reaches strictly
-  more users anyway.
+  That last one is what reaches existing users: both halves of the repair mechanism ride
+  inside `linux.img`, but a Linux update never writes to the FAT partition, so somebody who
+  onboarded before this feature existed would have had the whole thing installed and no way
+  to launch it. The updater's `ensure_companion_scripts()` is create-only (an existing file,
+  ours or the user's, is never touched) and non-fatal (a missing menu entry must never be
+  why an image update fails).
+
+  **Rejected: an `/etc/init.d` script syncing it out of the rootfs on boot.** It worked and
+  was implemented, but it invented a rootfs→exFAT sync convention nothing else in MiSTer
+  follows, and generalizing it to cover both Scripts — the only way it would have been
+  consistent — is a false generalization: the updater is image-independent and manages its
+  own updates, while `check_storage.sh` is a version-locked launcher that never needs
+  updating. Same destination, one mechanism, no new convention.

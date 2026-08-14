@@ -28,15 +28,23 @@
 # So this stays a launcher: stable, and no reason to ever update it.
 #
 # ---------------------------------------------------------------------------
-# THIS FILE IS THE ONE COPY. It lives in the rootfs and is deployed to
-# /media/fat/Scripts/check_storage.sh from two places, both of which read it
-# from right here so the two can never drift:
+# HOW IT GETS ONTO A CARD
+# ---------------------------------------------------------------------------
+# By exactly the same route as Scripts/update_linux_modernization.sh, which is
+# the point -- two Scripts this project ships should not arrive by two different
+# mechanisms:
 #
-#   * /etc/init.d/S94storagecheck -- installs it on boot if the card does not
-#     already have it, which is how EXISTING users get the Scripts-menu entry
-#     when they update the Linux image.
-#   * scripts/fetch-sdcard-payload.sh -- stages it into sdcard.img's payload,
-#     so a freshly flashed card has the entry before its first boot finishes.
+#   * install.sh                        -- onboarding, fetches both
+#   * update_linux_modernization.sh     -- replaces either if it went missing
+#   * scripts/fetch-sdcard-payload.sh   -- stages both into sdcard.img
+#   * uninstall.sh --remove-script      -- removes both
+#
+# An earlier revision had an /etc/init.d script copy this out of the rootfs on
+# boot. It worked, but it invented a rootfs-to-exFAT sync convention that
+# nothing else in MiSTer follows, and generalizing it to cover both Scripts
+# would have been a false generalization: the updater is image-independent and
+# manages its own updates, while this file is a version-locked launcher that
+# never needs updating. Same destination, one mechanism, no new convention.
 
 set -uo pipefail
 

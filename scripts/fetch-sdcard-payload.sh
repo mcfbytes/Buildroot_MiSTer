@@ -352,17 +352,14 @@ stage_update_channel() {
 	[ -d "$src" ] ||
 		die "update-channel payload dir not found: $src"
 
-	# check_storage.sh is staged from the ROOTFS OVERLAY, not from fat-payload/.
-	# It is the same one file /etc/init.d/S94storagecheck installs on existing
-	# cards (ADR 0026), and one copy in the tree is the only way those two
-	# delivery paths cannot drift apart.
-	local shim="$REPO_ROOT/board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh"
+	# Both Scripts, one loop. install.sh, uninstall.sh and the updater treat them
+	# as one set too -- see MLM_SCRIPTS in install.sh (ADR 0026).
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh"
 
 	local f
-	for f in downloader.ini Scripts/update_linux_modernization.sh; do
+	for f in downloader.ini $scripts; do
 		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
 	done
-	[ -f "$shim" ] || die "missing storage-check shim: $shim"
 
 	mkdir -p "$PAYLOAD_DIR/Scripts"
 
@@ -372,14 +369,12 @@ stage_update_channel() {
 	# 0755 explicitly rather than relying on cp -p / the checkout's mode: a
 	# Scripts/ entry that lands 0644 is one the MiSTer menu will not run, and
 	# nothing downstream notices.
-	cp -f "$src/Scripts/update_linux_modernization.sh" \
-		"$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
-	chmod 0755 "$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
+	for f in $scripts; do
+		cp -f "$src/$f" "$PAYLOAD_DIR/$f"
+		chmod 0755 "$PAYLOAD_DIR/$f"
+	done
 
-	cp -f "$shim" "$PAYLOAD_DIR/Scripts/check_storage.sh"
-	chmod 0755 "$PAYLOAD_DIR/Scripts/check_storage.sh"
-
-	log "staged update-channel config (downloader.ini, Scripts/update_linux_modernization.sh, Scripts/check_storage.sh)"
+	log "staged update-channel config (downloader.ini, $scripts)"
 }
 
 # ============================================================================

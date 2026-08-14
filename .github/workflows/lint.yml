@@ -143,7 +143,7 @@ jobs:
           set -euo pipefail
           shellcheck -x \
             board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh \
-            board/mister/de10nano/fat-payload/Scripts/check_storage.sh \
+            board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh \
             board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat
           shellcheck -s sh -x \
             install.sh \
@@ -167,7 +167,7 @@ jobs:
           set -euo pipefail
           must_be_exec=(
             board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
-            board/mister/de10nano/fat-payload/Scripts/check_storage.sh
+            board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh
             board/mister/de10nano/post-build.sh
             board/mister/de10nano/initramfs-post-build.sh
             board/mister/de10nano/initramfs-overlay/init

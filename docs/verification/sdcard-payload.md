@@ -99,10 +99,15 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > itself lives in the initramfs — it is the only place it *can* live, since the rootfs is a
 > file on the partition being repaired — and is never automatic.
 >
-> The staged file is a **three-line shim**: the tool is `/usr/sbin/mister-fsck-exfat`, in the
-> read-only rootfs, because a repair tool stored on the partition it repairs is unavailable
-> in exactly the case it exists for, and because its other end is in the initramfs and the
-> two must ship together. So this entry is stable and has no reason to change again.
+> The staged file is a **shim**: the tool is `/usr/sbin/mister-fsck-exfat`, in the read-only
+> rootfs, because a repair tool stored on the partition it repairs is unavailable in exactly
+> the case it exists for, and because its other end is in the initramfs and the two must
+> ship together. So this entry is stable and has no reason to change again.
+>
+> It is staged from `board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh`
+> — **not** from `fat-payload/`. That is the same single file `/etc/init.d/S94storagecheck`
+> installs onto an existing user's card on the first boot after a Linux update, and one copy
+> in the tree is the only way the two delivery paths cannot drift apart.
 
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and

@@ -26,6 +26,17 @@
 #      user was just told is about to repair itself.
 #
 # So this stays a launcher: stable, and no reason to ever update it.
+#
+# ---------------------------------------------------------------------------
+# THIS FILE IS THE ONE COPY. It lives in the rootfs and is deployed to
+# /media/fat/Scripts/check_storage.sh from two places, both of which read it
+# from right here so the two can never drift:
+#
+#   * /etc/init.d/S94storagecheck -- installs it on boot if the card does not
+#     already have it, which is how EXISTING users get the Scripts-menu entry
+#     when they update the Linux image.
+#   * scripts/fetch-sdcard-payload.sh -- stages it into sdcard.img's payload,
+#     so a freshly flashed card has the entry before its first boot finishes.
 
 set -uo pipefail
 

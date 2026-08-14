@@ -277,8 +277,10 @@ card, several minutes on a full one.
 * **No problems found** → it says so and stops. Nothing else happens. This is the usual
   outcome.
 * **Problems found** → it shows them, tells you how long the repair will take (measured on
-  *your* card, by the check it just ran), and asks you to type `YES`. Anything else,
-  including no keyboard attached, changes nothing.
+  *your* card, by the check it just ran), and asks you to confirm in a yes/no box. **You do
+  not need a keyboard** — move with the d-pad, pick with your controller's first button,
+  back out with the second. The box starts on **No**, so nothing happens unless you
+  deliberately move to Yes. If you walk away, it times out and changes nothing.
 
 **If you say yes, read this.** The repair runs on the **next boot** — it cannot run while
 the MiSTer is on, because the MiSTer is running from a file on the very partition being

@@ -5,8 +5,9 @@
 `board/mister/de10nano/initramfs-overlay/init`, `board/mister/de10nano/initramfs-busybox.config`
 (adds `CONFIG_RM`), new files `board/mister/de10nano/initramfs-post-build.sh`,
 `board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat`,
-`board/mister/de10nano/fat-payload/Scripts/check_storage.sh`; `Makefile` (`initramfs-verify`),
-`scripts/fetch-sdcard-payload.sh`, `.github/workflows/lint.yml`.
+`board/mister/de10nano/rootfs-overlay/usr/share/mister-fsck-exfat/check_storage.sh`,
+`board/mister/de10nano/rootfs-overlay/etc/init.d/S94storagecheck`; `Makefile`
+(`initramfs-verify`), `scripts/fetch-sdcard-payload.sh`, `.github/workflows/lint.yml`.
 
 ## 1. The problem
 
@@ -95,12 +96,26 @@ screen.
    a real HDMI text console — `menu.cpp:3373` calls `video_fb_enable(1)`, then `:3402`
    `execl("/sbin/agetty", "-a", "root", "-l", "/tmp/script", …, "-L", "tty2", "linux")`.
 2. **Clean → stop.** No reboot, no marker. This is where most runs end.
-3. **Errors → explain and ask.** Show the findings, state that the screen will be black,
-   quote the duration *measured on this card* by the scan that just ran, warn against
-   powering off, and require the user to type `YES`. The prompt is `read -r -t 120` and
-   times out to NO — a MiSTer is often driven by a gamepad with no keyboard attached, and
-   the tool may also be run non-interactively; every one of those paths must end in
-   "changed nothing".
+3. **Errors → explain and ask, on a box with no keyboard.** Show the findings, state that
+   the screen will be black, quote the duration *measured on this card* by the scan that
+   just ran, warn against powering off, and confirm through a `dialog --defaultno --yesno`
+   box.
+
+   The prompt has to be answerable by a **controller alone**, because that is how a MiSTer
+   is usually driven. While a Script runs, Main_MiSTer puts the Linux framebuffer on screen
+   and translates the gamepad into a uinput keyboard — but only into arrows, `ENTER`, `ESC`,
+   `SPACE`, `TAB` and `PAGEUP`/`PAGEDOWN` (`Main:input.cpp:2536-2572`, inside the
+   `video_fb_state()` branch). **There are no letter keys at all.** An earlier revision of
+   this design asked the user to type `YES`; that can never be satisfied by a controller, so
+   it would have made the feature unreachable for most of the people it exists for while
+   looking perfectly reasonable over SSH. `dialog` is already on the image and is what
+   `update_all.sh`'s own UI uses.
+
+   `--defaultno` is the safety property: the selection starts on **No**, so scheduling a
+   multi-minute black-screen boot takes a deliberate move to Yes rather than one reflexive
+   press of the button that happens to mean `ENTER`. `--timeout` and every non-Yes outcome
+   (No, `ESC`, no tty, no `dialog`) resolve to "changed nothing". Over SSH, where a keyboard
+   is a fair assumption, it falls back to a typed `YES` with the same timeout.
 4. **Marker, then reboot.** Confirmation writes `/media/fat/linux/.fsck-request`.
 5. **The initramfs obeys, exactly once.** It tests for the marker after the mount it
    already performs, **deletes it before running the repair**, then `umount` →
@@ -206,7 +221,18 @@ solving it.
   the tool now exists when they need it.
 * HPS_LED is on-board, so a fully enclosed case still sees nothing during the repair; serial
   users see everything. Same limitation ADR 0020 §6 records for the installer.
-* Existing installs get `/usr/sbin/mister-fsck-exfat` with the Linux image and can run it
-  over SSH. Only fresh `sdcard.img` cards get the `Scripts/` menu entry staged
-  automatically; adding it to `install.sh` is deliberately out of scope here — that script
-  is the update-channel opt-in, a separate concern with its own `uninstall.sh` contract.
+* **Everyone gets the Scripts-menu entry, by two paths that share one file.** A freshly
+  flashed `sdcard.img` has it from the installer payload (`stage_update_channel()`).
+  Existing users get it from `/etc/init.d/S94storagecheck`, which copies it onto the card on
+  the first boot after a Linux update — necessary because both halves of the mechanism ride
+  inside `linux.img` and nothing in an image update writes to the FAT partition, so without
+  it the feature would have been SSH-only for every existing user, and the people most
+  likely to hit exFAT damage are the least likely to have SSH configured.
+
+  The canonical copy is `/usr/share/mister-fsck-exfat/check_storage.sh` in the rootfs, which
+  *both* paths read, so the two cannot drift. `S94storagecheck` is create-only: an existing
+  `check_storage.sh` — ours, older, or the user's own — is never touched, and it writes via
+  `.part` + rename so a power cut cannot leave a truncated script in the Scripts menu.
+  `install.sh` is deliberately still not involved: it is the update-channel opt-in, with its
+  own `uninstall.sh --remove-script` contract, and the boot-time install reaches strictly
+  more users anyway.

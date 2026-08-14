@@ -178,6 +178,15 @@ mount_data_partition() {
 # rather than re-entering the same repair forever -- an automatic retry loop here
 # is indistinguishable from a brick. One request, one attempt; re-running the
 # script is how you get another.
+
+# True once the request marker is gone. `rm -f` succeeding is not the same claim
+# -- it reports success for a file it never had to touch -- so the file itself is
+# what gets tested.
+marker_deleted() {
+	rm -f "/mnt/fat/$FSCK_MARKER" 2>/dev/null
+	[ ! -e "/mnt/fat/$FSCK_MARKER" ]
+}
+
 fsck_if_requested() {
 	[ -f "/mnt/fat/$FSCK_MARKER" ] || return 0
 
@@ -188,8 +197,19 @@ fsck_if_requested() {
 	# would arm it again for the next boot, and every boot after that, which is
 	# the runaway this whole design exists to prevent. Refusing the repair costs
 	# the user one manual re-run; a boot loop costs them the box.
-	if ! rm -f "/mnt/fat/$FSCK_MARKER" || [ -e "/mnt/fat/$FSCK_MARKER" ]; then
-		log "fsck: SKIPPED -- could not delete $FSCK_MARKER, refusing to risk a repair loop"
+	if ! marker_deleted; then
+		# One retry, through a remount. $FAT_OPTS carries errors=remount-ro, so a
+		# volume corrupt enough to trip exfat_fs_error() on the way into linux/
+		# is now read-only -- and that is precisely the volume that most needs
+		# the repair. Getting it writable again for one unlink is worth a try;
+		# if the filesystem is too far gone for even that, so be it.
+		log "fsck: could not delete $FSCK_MARKER; trying to remount rw"
+		mount -o remount,rw /mnt/fat 2>/dev/null || true
+	fi
+
+	if ! marker_deleted; then
+		log "fsck: SKIPPED -- cannot delete $FSCK_MARKER, refusing to risk a repair loop"
+		log "fsck: the data partition is read-only or full; fix that, then ask again"
 		printf 'skipped: could not delete the request marker (card full or read-only?)\n' \
 			> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
 		sync
@@ -218,6 +238,14 @@ fsck_if_requested() {
 		sync
 		return 0
 	fi
+
+	# Written BEFORE the unmount, and overwritten with the verdict afterwards.
+	# If the user power-cycles through the repair, this is what survives -- so
+	# the tool reports "interrupted" rather than whatever the PREVIOUS run's
+	# outcome happened to be, which would read as a success that never happened.
+	printf 'INTERRUPTED: a repair started but did not finish (powered off during it?)\n' \
+		> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+	sync
 
 	if ! umount /mnt/fat; then
 		# Should be impossible this early -- nothing else has opened the mount yet

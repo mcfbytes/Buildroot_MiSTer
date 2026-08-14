@@ -47,9 +47,16 @@ done
 
 # fsck.exfat is the whole point of pulling the package in; if it is missing the
 # repair path would be a silent no-op on every boot that requested it.
-[ -x "${TARGET_DIR}/usr/sbin/fsck.exfat" ] || [ -x "${TARGET_DIR}/sbin/fsck.exfat" ] || {
-	echo "FATAL: initramfs-post-build.sh: fsck.exfat is not in the target tree." >&2
-	echo "       BR2_PACKAGE_EXFATPROGS is set in configs/mister_initramfs_defconfig;" >&2
-	echo "       did the package move its install path? See ADR 0026." >&2
+#
+# Tests the EXACT path /init invokes ($FSCK_EXFAT, hardcoded absolute because the
+# kernel hands /init no PATH) -- not "either usr/sbin or sbin". Accepting both
+# would let this guard pass on a future exfatprogs that installs to /sbin while
+# every requested repair silently became a no-op, which is the precise failure
+# it exists to catch. Keep the two in step if either ever moves.
+[ -x "${TARGET_DIR}/usr/sbin/fsck.exfat" ] || {
+	echo "FATAL: initramfs-post-build.sh: no ${TARGET_DIR}/usr/sbin/fsck.exfat." >&2
+	echo "       BR2_PACKAGE_EXFATPROGS is set in configs/mister_initramfs_defconfig," >&2
+	echo "       so the package moved its install path. The initramfs /init hardcodes" >&2
+	echo "       FSCK_EXFAT=/usr/sbin/fsck.exfat; update both together. See ADR 0026." >&2
 	exit 1
 }

@@ -187,9 +187,14 @@ Then `exec switch_root /newroot /sbin/init`.
 
 ### What it costs
 
-- **+1.6% zImage.** The cpio is 258,560 bytes uncompressed, 133,586 gzipped into the image.
-  Against U-Boot's 16 MiB load budget that leaves ~8.05 MiB of headroom. (`mem=511M` is
-  irrelevant here — it constrains the FPGA mailbox, not this.)
+- **A small percentage of zImage.** The cpio is **423,424 bytes** uncompressed (226,254
+  gzipped standalone), against U-Boot's 16 MiB load budget for `zImage_dtb`. (`mem=511M` is
+  irrelevant here — it constrains the FPGA mailbox, not this.) The exact headroom is
+  asserted on every build by `scripts/check-zimage-dtb.sh` rather than restated here, since
+  it moves with the kernel config.
+  <br>*Was 258,560 / 133,586 and "+1.6%, ~8.05 MiB headroom" before
+  [ADR 0026](decisions/0026-user-driven-exfat-fsck.md) added `fsck.exfat` (116,564 of the
+  current total) for the on-demand exFAT repair.*
 - **An extra boot stage.** Predicted at a few hundred milliseconds. **Unmeasured.**
 - **`root=PARTUUID=` regression.** BusyBox `findfs` handles `UUID=`/`LABEL=` only; your
   `name_to_dev_t()` handled `PARTUUID=`. Narrow, but real.

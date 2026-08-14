@@ -292,9 +292,11 @@ repaired. During it:
 * It runs **once**. If you do power-cycle through it, the next boot comes up normally rather
   than trying again — so you can never get stuck in a loop of long boots.
 
-**To cancel** a scheduled repair before rebooting, run the script again and it will offer
-to; over SSH, `mister-fsck-exfat --cancel`. Over SSH you also get `--status`,
-`--check-only` and `--schedule`.
+**To cancel** a scheduled repair before rebooting: `mister-fsck-exfat --cancel` over SSH.
+Running the script again will *tell* you a repair is still scheduled, but it will not call
+it off by itself — a check run against a card that is in use cannot prove a repair is
+unnecessary, so it does not overrule a decision you already made. Over SSH you also get
+`--status`, `--check-only` and `--schedule`.
 
 **Some findings are false alarms.** The check runs while the card is in use, so files move
 underneath it. Treat the result as a strong hint, not a verdict — and run it from the

@@ -158,6 +158,15 @@ do_cancel() {
 # Windows deserves to know what it is and how to get rid of it.
 do_schedule() {
 	mkdir -p "$FAT/linux" 2>/dev/null || true
+
+	# Drop any previous outcome. Otherwise a repair that is interrupted -- the
+	# user power-cycles through the black screen -- leaves the PREVIOUS run's
+	# "clean: no errors found" in place, and --status then reports a success
+	# that never happened for a repair that never finished. /init writes an
+	# "interrupted" line of its own before it starts, so the window where this
+	# file is absent is only between scheduling and the repair beginning.
+	rm -f "$RESULT" 2>/dev/null || true
+
 	cat > "$MARKER" <<'EOF'
 This file asks the MiSTer to check and repair its data partition during the
 next boot, before anything else starts. Delete it to cancel.
@@ -240,12 +249,21 @@ do_check() {
 			say ""
 			say "  The data partition looks healthy. Nothing to do."
 			say ""
-			# A stale marker from an earlier run would schedule a pointless
-			# multi-minute boot. The check just proved it is not needed.
+			# A scheduled repair is LEFT ALONE on purpose. It is tempting to
+			# cancel it here -- "the check just proved it is not needed" -- but
+			# this check cannot prove that. It ran against a live, changing
+			# filesystem, which is why its findings are advisory in the other
+			# direction too; and --schedule exists precisely so a user can arm a
+			# repair WITHOUT a check, after a bad power cut they have reason to
+			# distrust. Silently discarding that request would be the tool
+			# overruling the person. Report it and let them decide.
 			if [ "$(marker_state)" = "scheduled" ]; then
-				rm -f "$MARKER" && sync
-				say "  (Cancelled a repair that was scheduled for the next boot --"
-				say "   this check found nothing that needs one.)"
+				say "  Note: a repair is still scheduled for the next boot, from"
+				say "  an earlier run. This check found nothing needing one, but"
+				say "  a live check cannot rule damage out either, so it has been"
+				say "  left in place."
+				say ""
+				say "  To call it off:  mister-fsck-exfat --cancel"
 				say ""
 			fi
 			return 0

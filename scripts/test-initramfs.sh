@@ -627,6 +627,16 @@ case_fsck_request() {
 		fail_case "$name" "the data partition was not remounted after fsck"
 		return
 	}
+	# The recorded outcome, read back from the filesystem by marker-init (the
+	# host cannot see inside an exFAT image) and echoed to the console. This is
+	# the only artifact Scripts/check_storage.sh ever reports, so a redirect that
+	# silently failed on the remounted volume must not pass. "INTERRUPTED" is
+	# /init's pre-repair placeholder -- seeing it here means the verdict write
+	# after the remount did not land.
+	grep -qE 'MARKER: FSCK-RESULT=(clean|repaired)' "$log" || {
+		fail_case "$name" "no usable .fsck-result recorded on the card -- got: $(grep -o 'MARKER: FSCK-RESULT=.*' "$log" || echo '(nothing)')"
+		return
+	}
 	pass_case "$name (exFAT: marker -> delete -> umount -> fsck.exfat -p -> remount -> switch_root)"
 }
 

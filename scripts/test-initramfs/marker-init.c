@@ -71,6 +71,20 @@ static int first_byte(const char *path)
 	return c;
 }
 
+/* Echo a file's first line to the console, prefixed, if the file exists at all.
+ * Not an assertion -- it exports guest-side state so a host-side case can grep
+ * the console log for it. Silent when the file is absent. */
+static void print_first_line(const char *path, const char *prefix)
+{
+	char buf[256];
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	if (fgets(buf, sizeof buf, f))
+		printf("%s%s%s", prefix, buf, strchr(buf, '\n') ? "" : "\n");
+	fclose(f);
+}
+
 #ifdef CHECK_NONASCII
 /*
  * scripts/test-initramfs.sh creates this exact file, with this exact name and
@@ -162,6 +176,13 @@ int main(void)
 	 * as /sbin/init finds it. */
 	expect("no fsck request survives the boot that consumed it",
 	       access("/media/fat/linux/.fsck-request", F_OK) != 0);
+
+	/* And echo the recorded outcome, if there is one, so the host-side case can
+	 * assert it. .fsck-result is the ONLY artifact the user-facing tool reads
+	 * back -- /init's console output is not available to it -- so a redirect
+	 * that silently failed on the remounted volume would otherwise pass CI.
+	 * Absent in every case but `fsck-request`, where its absence is the bug. */
+	print_first_line("/media/fat/linux/.fsck-result", "MARKER: FSCK-RESULT=");
 
 #ifdef CHECK_NONASCII
 	check_nonascii();

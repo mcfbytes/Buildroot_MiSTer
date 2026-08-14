@@ -50,6 +50,20 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
+menu "Controller userspace tooling"
+	# Deliberately NOT folded into the "USB controller drivers" menu above:
+	# everything there is an out-of-tree KERNEL MODULE, and this is a plain
+	# userspace CLI. Upstream Buildroot has no dualsensectl package (checked
+	# against the pinned 2026.05.1 tree).
+	#
+	# This menu is for tools that reach controller features the in-kernel
+	# drivers expose no interface for. It is NOT the place for anything that
+	# substitutes for a carried kernel patch -- the DualSense patches
+	# (0033/0037/0042) back Main_MiSTer's sysfs-LED and input-event ABIs,
+	# which no userspace process can serve. See docs/dualsense-tooling.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/dualsensectl/Config.in"
+endmenu
+
 menu "Firmware infra gap-fill (P3.3, P3.14)"
 	# Fills the handful of stock firmware.md entries that Buildroot's own
 	# linux-firmware package Config.in has no sub-option for, even though

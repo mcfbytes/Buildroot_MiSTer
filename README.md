@@ -900,6 +900,7 @@ coverage numbers above
 | [`docs/size-budget.md`](docs/size-budget.md) | Image headroom and where the bytes go |
 | [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
 | [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
+| [`docs/dualsense-tooling.md`](docs/dualsense-tooling.md) | `dualsensectl`, and why the DualSense kernel patches are not replaceable by udev/userspace |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
 | [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |
 

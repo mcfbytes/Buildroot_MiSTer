@@ -1032,6 +1032,51 @@ BR2_PACKAGE_RTL8852CU_MORROWNR=y             # RTL8852CU/8832CU Wi-Fi 6E USB --
 BR2_PACKAGE_XONE=y
 BR2_PACKAGE_XOW_FIRMWARE=y
 
+# --- dualsensectl: DualSense operator CLI (userspace, not a driver) ---
+# Reaches the DualSense features hid-playstation exposes no interface for at
+# all -- adaptive trigger effects, speaker/headphone routing, output volume,
+# rumble/trigger attenuation, microphone mode and volume, player/mic LED
+# dimming, BT power-off, firmware info. STRICTLY ADDITIVE to the DualSense
+# kernel patches (0033 player_id LED, 0037 mic-mute -> BTN_Z, 0042 stock
+# lightbar LED names): those back Main_MiSTer's sysfs-LED and input-event
+# ABIs, which no userspace hidraw client can serve. docs/dualsense-tooling.md
+# has the analysis; package/dualsensectl/dualsensectl.mk has the pin.
+#
+# Nothing invokes it automatically -- no init script, no udev rule. It and
+# hid-playstation both write DS_OUTPUT reports to the same pad and the fields
+# they share (the lightbar above all) are last-writer-wins, so this stays an
+# operator tool run from a shell.
+#
+# It selects BR2_PACKAGE_HIDAPI and BR2_PACKAGE_DBUS. Neither appears as its
+# own line below, and neither needs to: dbus is already explicitly set above,
+# and savedefconfig omits any symbol a select already forces. Verified by
+# regenerating: `make savedefconfig` before and after this change differ by
+# exactly one line, the BR2_PACKAGE_DUALSENSECTL=y above.
+#
+# THE SELECTS ARE NOT JUST hidapi+libgudev -- READ THIS BEFORE TRIMMING.
+# hidapi's Config.in carries `select BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY if
+# BR2_TOOLCHAIN_USES_GLIBC` (for its runtime UTF conversion of USB string
+# descriptors). This image is glibc and that symbol was OFF, so enabling
+# dualsensectl flips it on, and with BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_LIST empty
+# that copies ALL of glibc's gconv charset modules to the target: 253 .so
+# files, ~6.4 MiB apparent, more after ext4 4 KiB block rounding.
+#
+# That is left ON DELIBERATELY rather than pinned to a minimal list, because it
+# closes a gap this repo already documented as load-bearing: glibc built these
+# modules all along (they are in the sysroot) but nothing ever installed them,
+# so /usr/lib/gconv did not exist on the target at all. Stock ships them
+# (docs/package-manifest.md §1 "glibc iconv/gconv charset modules" -- libCNS,
+# libGB, libJIS, libKSC et al are in stock's own SONAME inventory), and that
+# same doc lists gconv in its "Not recommended to drop (tempting by size, but
+# load-bearing)" set, reason: "needed for any non-ASCII filename over SMB".
+# So this is a stock-parity fix that arrived as a side effect -- accepted on
+# its own merits, not smuggled in. Guarding it: scripts/ci-tests.sh asserts the
+# modules are present, so they cannot silently vanish if dualsensectl is ever
+# turned off again. Pinning GCONV_LIBS_LIST to a guessed subset would risk
+# silently breaking exactly the SMB filename case the manifest calls out.
+# ~6.4 MiB is ~3% of the last measured 222 MiB of free image space.
+BR2_PACKAGE_DUALSENSECTL=y
+
 # --- P3.3: /lib/firmware population (PLAN.md §3/§4.1, module loading &
 # firmware infra -- the module-autoload/depmod/kmod/xz-compress half is
 # already done, see BR2_PACKAGE_HOST_KMOD_XZ/BR2_PACKAGE_KMOD_TOOLS below).

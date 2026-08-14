@@ -1687,6 +1687,43 @@ else
 fi
 
 # =============================================================================
+section "DualSense tooling (dualsensectl) + the gconv modules it drags in"
+# =============================================================================
+
+# The CLI itself and hidapi's hidraw backend -- the libusb backend cannot see a
+# Bluetooth-connected pad, so asserting "some hidapi .so shipped" would not be
+# the same assertion. See docs/dualsense-tooling.md.
+require_present "usr/bin/dualsensectl" "dualsensectl CLI"
+
+if grep -qE '^\./usr/lib/libhidapi-hidraw\.so' "$TAR_LIST"; then
+	pass "libhidapi-hidraw.so* present ($(grep -cE '^\./usr/lib/libhidapi-hidraw\.so' "$TAR_LIST") files)"
+else
+	fail "libhidapi-hidraw.so* present" "no usr/lib/libhidapi-hidraw.so* entries in rootfs.tar"
+fi
+
+# glibc's gconv charset modules. NOT decorative, and not really about
+# dualsensectl: docs/package-manifest.md §1 has them in stock's own SONAME
+# inventory and names gconv/ in its "Not recommended to drop (tempting by size,
+# but load-bearing)" list -- "needed for any non-ASCII filename over SMB". They
+# were nonetheless absent from the target for this project's whole life (glibc
+# built them into the sysroot; nothing installed them), and they arrived only
+# as a transitive select of hidapi
+# (BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY, with an empty _LIST meaning "all").
+#
+# That provenance is exactly why this is asserted here rather than trusted:
+# turning BR2_PACKAGE_DUALSENSECTL back off would silently take SMB non-ASCII
+# filename support with it, and nothing else in the build would say a word.
+# The threshold is deliberately loose -- the point is "the directory is
+# populated", not a specific module count that a glibc bump would churn.
+gconv_count=$(grep -cE '^\./usr/lib/gconv/.*\.so$' "$TAR_LIST" || true)
+if [ "$gconv_count" -ge 100 ]; then
+	pass "glibc gconv charset modules present ($gconv_count .so files)"
+else
+	fail "glibc gconv charset modules present" \
+		"found $gconv_count usr/lib/gconv/*.so in rootfs.tar (expected >=100); did BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY get turned off, or GCONV_LIBS_LIST pinned to a subset?"
+fi
+
+# =============================================================================
 section "Summary"
 # =============================================================================
 

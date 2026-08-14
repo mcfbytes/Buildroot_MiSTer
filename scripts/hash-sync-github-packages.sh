@@ -19,10 +19,14 @@
 # times while leaving a hash stale -- run 29669946883). See "Testing against
 # a fixture" below.
 #
-# Covers the 13 github-sourced packages (package/*/*.mk + their .hash): the
-# 12 driver/firmware pins plus libchdr (a userspace shared library --
-# Main_MiSTer shared-lib refactor -- but the exact same $(call github,...)
-# commit-archive shape). Their own .hash file headers already say the hash
+# Covers the 14 github-sourced packages (package/*/*.mk + their .hash): the
+# 12 driver/firmware pins, libchdr (a userspace shared library --
+# Main_MiSTer shared-lib refactor) and dualsensectl (a userspace CLI) -- the
+# last two are not drivers, but have the exact same $(call github,...)
+# archive shape. Note that dualsensectl is pinned to a "v"-prefixed TAG
+# rather than a commit SHA; the loop below is indifferent to which, since it
+# uses the literal *_VERSION string as both the ref and the filename stem.
+# Their own .hash file headers already say the hash
 # is "locally computed" -- GitHub publishes no signed manifest for a
 # commit/tag archive tarball, so `sha256sum` of a freshly-fetched tarball
 # from the ACTUAL pinned owner/repo/ref IS the legitimate, standard-practice

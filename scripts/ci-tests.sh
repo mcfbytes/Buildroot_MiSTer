@@ -1276,6 +1276,113 @@ else
 	fail "bluetooth main.conf: all 5 stock settings present" "etc/bluetooth/main.conf not in rootfs.tar"
 fi
 
+# input.conf -- the HID half. Both settings are asserted with their VALUES, not
+# merely "the file exists": each is also BlueZ's compiled-in default for one of
+# the two, so a silently-empty or reverted file would otherwise look identical
+# to a correct one on the ClassicBondedOnly side and be invisible here.
+if tar_has "etc/bluetooth/input.conf"; then
+	input_conf="$WORKDIR/input.conf"
+	tar xOf "$ROOTFS_TAR" ./etc/bluetooth/input.conf > "$input_conf" 2>/dev/null
+
+	# Kernel HIDP, not uhid: stock parity, keeps bluetoothd out of the
+	# per-report data path, and repairs Main_MiSTer's bt_auto_disconnect
+	# (input.cpp:4156 matches "bluetooth" in the sysfs path, which uhid's
+	# /sys/devices/virtual/misc/uhid/... never contains).
+	if grep -qE '^UserspaceHID[[:space:]]*=[[:space:]]*false[[:space:]]*$' "$input_conf"; then
+		pass "bluetooth input.conf: UserspaceHID=false (kernel HIDP)"
+	else
+		fail "bluetooth input.conf: UserspaceHID=false (kernel HIDP)" \
+			"not set; BlueZ 5.79 defaults to uhid, which is the opposite of stock"
+	fi
+
+	# The security-relevant one. DS3/SIXAXIS support comes from the
+	# CablePairing backport in board/mister/de10nano/patches/bluez5_utils/,
+	# NOT from disabling this -- flipping it false would drop the encryption
+	# requirement for every BR/EDR HID device (CVE-2023-45866).
+	if grep -qE '^ClassicBondedOnly[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$input_conf"; then
+		pass "bluetooth input.conf: ClassicBondedOnly=true (CVE-2023-45866 mitigation intact)"
+	else
+		fail "bluetooth input.conf: ClassicBondedOnly=true (CVE-2023-45866 mitigation intact)" \
+			"not set to true -- if this was flipped to fix DS3 pairing, the supported route is the CablePairing series in board/mister/de10nano/patches/bluez5_utils/, which fixes it WITHOUT weakening every other BR/EDR HID device"
+	fi
+else
+	fail "bluetooth input.conf present" "etc/bluetooth/input.conf not in rootfs.tar"
+fi
+
+# The CablePairing patch series actually reached the source tree. Asserted
+# against the PATCHED BUILD TREE rather than the rootfs, because none of it is
+# visible in a shipped file: bluetoothd's behaviour changes, its name and size
+# do not. Without this, the series silently ceasing to apply (a Buildroot bump,
+# a bad rebase, a deleted directory) would produce a perfectly green build in
+# which a DS3 simply cannot connect over Bluetooth -- the exact regression this
+# whole change exists to fix.
+#
+# CHOOSE THE MARKER CAREFULLY -- the obvious one is wrong. An earlier revision
+# of this check grepped for BT_IO_SEC_LOW, which is VACUOUS: that string is
+# already present in pristine 5.79 (profiles/input/server.c:274), and is in
+# fact the very line patch 0004 replaces. The check passed identically whether
+# the series had applied or not -- inverted, if anything, since it matches most
+# reliably on an UNPATCHED tree.
+#
+# server_set_cable_pairing is introduced only by patch 0004 and appears nowhere
+# in pristine 5.79 (verified against the unpatched tarball, along with
+# get_necessary_sec_level, device_is_cable_pairing and
+# btd_adapter_has_cable_pairing_devices -- any of the four would do).
+#
+# THE FAILURE THIS GUARDS IS LIVE, not hypothetical: Buildroot never revisits
+# .stamp_patched, so adding patches to an ALREADY-BUILT tree is a silent no-op.
+# An incremental `make all` over an output/ that predates this branch ships a
+# bluetoothd with no CablePairing support and no DS3 -- looking, in every
+# shipped file, exactly like a correct build. Use `make bluez5_utils-dirclean`
+# after changing anything in board/mister/de10nano/patches/bluez5_utils/.
+#
+# Same glob-into-an-array idiom as the CONFIG_NFSD gate below -- but note a
+# stale sibling build dir from a version bump is REAL here (Buildroot never
+# removes the old one), so the newest directory is chosen rather than demanding
+# exactly one.
+bluez_dirs=()
+for _d in "$BUILD_DIR"/build/bluez5_utils-[0-9]*; do
+	[ -d "$_d" ] && bluez_dirs+=("$_d")
+done
+if [ "${#bluez_dirs[@]}" -eq 0 ]; then
+	skip "bluez CablePairing series applied (DS3 over Bluetooth)" \
+		"no $BUILD_DIR/build/bluez5_utils-[0-9]* directory found"
+else
+	# Newest by version sort, so a leftover tree from a previous pin does not
+	# decide the verdict.
+	bluez_newest=$(printf '%s\n' "${bluez_dirs[@]}" | sort -V | tail -1)
+	if grep -q 'server_set_cable_pairing' "$bluez_newest/profiles/input/server.c" 2>/dev/null; then
+		pass "bluez CablePairing series applied in $(basename "$bluez_newest") (DS3 over Bluetooth)"
+	else
+		fail "bluez CablePairing series applied (DS3 over Bluetooth)" \
+			"server_set_cable_pairing absent from $bluez_newest/profiles/input/server.c -- board/mister/de10nano/patches/bluez5_utils/ did not apply (a stale .stamp_patched will do this silently; try 'make bluez5_utils-dirclean'), so a DS3 cannot connect"
+	fi
+fi
+
+# The kernel side of UserspaceHID=false, read from the RESOLVED .config: without
+# CONFIG_BT_HIDP the setting would strand BR/EDR HID entirely (bluetoothd would
+# have no kernel HIDP to hand its L2CAP sockets to). linux.config is a minimal
+# defconfig, so its silence on the symbol proves nothing -- same reasoning as the
+# CONFIG_NFSD gate in the netfs section.
+#
+# Same glob-into-an-array idiom as the CONFIG_NFSD gate below, and for the same
+# stated reason: an unmatched glob expands to the literal pattern, so anything
+# other than exactly one match is a stale-tree condition worth reporting rather
+# than globbing past.
+bt_kconfigs=()
+for _c in "$BUILD_DIR"/build/linux-[0-9]*/.config; do
+	[ -f "$_c" ] && bt_kconfigs+=("$_c")
+done
+if [ "${#bt_kconfigs[@]}" -ne 1 ]; then
+	skip "CONFIG_BT_HIDP enabled (required by input.conf's UserspaceHID=false)" \
+		"expected exactly one $BUILD_DIR/build/linux-[0-9]*/.config, found ${#bt_kconfigs[@]}"
+elif grep -qE '^CONFIG_BT_HIDP=[ym]$' "${bt_kconfigs[0]}"; then
+	pass "CONFIG_BT_HIDP enabled (required by input.conf's UserspaceHID=false)"
+else
+	fail "CONFIG_BT_HIDP enabled (required by input.conf's UserspaceHID=false)" \
+		"not set in ${bt_kconfigs[0]} -- kernel HIDP is unavailable, so UserspaceHID=false would strand BR/EDR HID entirely"
+fi
+
 # =============================================================================
 section "P3.6 — Samba parity"
 # =============================================================================

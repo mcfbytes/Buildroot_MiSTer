@@ -1,17 +1,21 @@
 # RT / Linux-7.2 "beta" kernel variant
 
-**Status: BUILT, BOOTED, UNMEASURED** (last updated 2026-07-28; this header used
+**Status: BUILT, BOOTED, UNMEASURED** (last updated 2026-08-14; this header used
 to say "SCAFFOLD, never built or booted" and was overtaken by §6).
 
-The variant builds end-to-end (`make rt`, green locally and in CI on the pinned
-**7.2-rc5**, **31 of 36 shared + 1 beta-local** carried patches — five landed after the series was last reviewed and are missing, see §2) and **boots and runs MiSTer on a
-real DE10-Nano — confirmed 2026-07-20 on 7.2-rc4.** Two things are still **not**
+The variant builds end-to-end (`make rt`, **31 of 36 shared + 3 beta-local** carried patches — five landed after the series was last reviewed and are missing, see §2; the beta-local three are the UIO set, §8) and **boots and runs MiSTer on a
+real DE10-Nano — confirmed 2026-07-20 on 7.2-rc4, and again 2026-08-14 on the
+currently pinned 7.2.0-rc7** (that build carried `0043` and is what the Wave-1
+hardware pass ran on; `0044`/`0045` are apply-checked only — §8). The last
+figures on the build rows below are from **rc5**, which was the pin when they
+were taken; the pin has since moved rc6 → rc7 by automated bump. Two things are still **not**
 done. The one that motivates the whole exercise: **no latency measurement has
 been taken**, so there is currently no evidence RT improves anything for a
 normal user. The other is a standing consequence of tracking mainline `-rc`:
-**the boot confirmation is version-specific and the pin has moved since** — see
-the §6 row. Read "boots" as "booted on rc4", not "boots on whatever is pinned
-today".
+**the boot confirmation is version-specific and is re-opened by every bump** — see
+the §6 row. Read "boots" as "booted on the version named there", not "boots on
+whatever is pinned today"; today those coincide, and the next automated bump will
+separate them again.
 
 It remains intended for **developer testing of PREEMPT_RT and new-kernel
 features**, not general use. WiFi via the out-of-tree Realtek drivers is
@@ -46,9 +50,9 @@ the per-variant fragment layered on at build time.
 | File | Role |
 |---|---|
 | `configs/mister_kernel_defconfig` | The kernel-only base, shared by every kernel variant. Its toolchain/kernel stanzas are a **copy** of `mister_de10nano_defconfig`'s, held in lockstep by `scripts/check-kernel-defconfig-sync.sh` (CI runs it before every kernel build and as a lint). With no fragment it builds the main 6.18 kernel. |
-| `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → the 7.2 mainline line, currently `7.2-rc5`, via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment). Merged onto `mister_kernel_defconfig` via `merge_config.sh`. |
+| `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → the 7.2 mainline line, currently `7.2-rc7`, via Buildroot's native `-rc` handling; beta patch dir; kernel-config fragment). Merged onto `mister_kernel_defconfig` via `merge_config.sh`. |
 | `board/mister/de10nano/linux-rt.fragment` | **Kernel**-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` — do not confuse the two fragment layers (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
-| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` — except `0001`, `0015`, `0030` and `0037`, which are real re-anchored copies (Buildroot patches at `-F0`; their 6.18 context or APIs drifted on 7.x — see the series header). The shared 6.18 patches stay byte-identical to stock. Applies **31 of the 36** shared patches in `linux-patches/` plus **one beta-local patch** (`0043-dts-uio-doorbells`, a real file in `linux-patches-beta/` only, added 2026-08-08 — kept out of the shared dir so the stock 6.18 build, which applies that entire directory via `BR2_LINUX_KERNEL_PATCH`, never sees it). ⚠ **It currently drops five**: `0038`, `0039`, `0040`, `0041`, `0042` (all landed 2026-07-24, after the series was last reviewed) have no entry and no symlink. That contradicts the standing rule in §7 item 3 — `0039` remaps NSO N64/Genesis buttons and `0040`/`0041`/`0042` are Main_MiSTer-coupled evdev-name and LED-classdev-name parity patches. Re-anchor or symlink them into `linux-patches-beta/series`; do not leave them out. (`0031` was a fifth copy until 2026-07-25, when the *shared* patch was re-anchored onto context both trees agree on and the beta entry became a symlink again; the series header explains why that is the preferred move.) `0015` is re-INCLUDED: the earlier "upstreamed in 7.2" finding was wrong (7.2 has no `FAML`/`FAMR` controller types — its left/right *nescon* support is a different thing). The separate `linux-patches-upstream/` series (carried for the exported `Linux-Kernel_MiSTer` tree only, never applied by Buildroot — `docs/patch-provenance.md` §12) is unrelated to this count and is not applied to the beta either. |
+| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` — except `0001`, `0015`, `0030` and `0037`, which are real re-anchored copies (Buildroot patches at `-F0`; their 6.18 context or APIs drifted on 7.x — see the series header). The shared 6.18 patches stay byte-identical to stock. Applies **31 of the 36** shared patches in `linux-patches/` plus **three beta-local patches** (`0043-dts-uio-doorbells`, `0044-dts-uio-fpga-regions`, `0045-uio-writecombine` — real files in `linux-patches-beta/` only, kept out of the shared dir so the stock 6.18 build, which applies that entire directory via `BR2_LINUX_KERNEL_PATCH`, never sees them; see §8). ⚠ **It currently drops five**: `0038`, `0039`, `0040`, `0041`, `0042` (all landed 2026-07-24, after the series was last reviewed) have no entry and no symlink. That contradicts the standing rule in §7 item 3 — `0039` remaps NSO N64/Genesis buttons and `0040`/`0041`/`0042` are Main_MiSTer-coupled evdev-name and LED-classdev-name parity patches. Re-anchor or symlink them into `linux-patches-beta/series`; do not leave them out. (`0031` was a fifth copy until 2026-07-25, when the *shared* patch was re-anchored onto context both trees agree on and the beta entry became a symlink again; the series header explains why that is the preferred move.) `0015` is re-INCLUDED: the earlier "upstreamed in 7.2" finding was wrong (7.2 has no `FAML`/`FAMR` controller types — its left/right *nescon* support is a different thing). The separate `linux-patches-upstream/` series (carried for the exported `Linux-Kernel_MiSTer` tree only, never applied by Buildroot — `docs/patch-provenance.md` §12) is unrelated to this count and is not applied to the beta either. |
 | `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/` (stage-1 initramfs first — its cpio is embedded into every kernel), reusing the shared dl/ccache; then stages the depmod'd module tree into `work/extra-modules-overlay/`, which the main defconfig's `BR2_ROOTFS_OVERLAY` folds into the ONE shipped `linux.img` at the next `make all`. The main `output/` is never touched by `make rt` itself. |
 
 The kernel config is the same `linux.config` + a fragment, and the patch set is
@@ -195,12 +199,12 @@ card, and nothing on the card referenced it), and deliberately NOT inside
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ **after a real fix (2026-07-18)**: the earlier full-config test masked a minimal-config trap — 7.x turned the HID drivers' LED `select`s into `depends on`, so `olddefconfig` silently dropped `NEW_LEDS`/`LEDS_CLASS` **and with them the whole HID controller stack** (`HID_PLAYSTATION`/`HID_NINTENDO` vanished from the config, no error). Fixed by making the LED foundation explicit in `linux.config` (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS`, no-ops on 6.18); all 19 critical symbols re-audited present |
-| **31 of the 36** carried patches apply to 7.2-rc5 at Buildroot's `patch -F0` (⚠ `0038`–`0042` are not in the beta series at all — see §2; this row measures only the 31 that are) (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ **re-verified on the rc4 → rc5 bump (2026-07-28)** through Buildroot's own `apply-patches.sh` against a pristine 7.2-rc5 tarball: 31/31 applied, exit 0, zero hunks taking fuzz (70 hunks land at an offset, which `-F0` permits). No re-anchor was needed for rc5, so all four beta-local copies (0001, 0015, 0030, 0037) carry over unchanged. **This row measures only the 31 patches the series lists** — it is not evidence about `0038`–`0042`, which have no series entry and so were never offered to `patch` at all. Nothing dropped a patch that was already *in* the series; the omission happened upstream of this check, when five patches landed in `linux-patches/` on 2026-07-24 and the beta series was not updated to match. Earlier figures on this row (29/29, and before that a bogus "28/31" measured at `patch`'s default fuzz 2, which Buildroot forbids) predate the 2026-07-20 `0037`/`0030` re-anchors |
+| **31 of the 36** carried patches apply to the pinned 7.2 `-rc` at Buildroot's `patch -F0` (⚠ `0038`–`0042` are not in the beta series at all — see §2; this row measures only the 31 that are) (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ **re-verified on the rc4 → rc5 bump (2026-07-28)** through Buildroot's own `apply-patches.sh` against a pristine 7.2-rc5 tarball: 31/31 applied, exit 0, zero hunks taking fuzz (70 hunks land at an offset, which `-F0` permits). No re-anchor was needed for rc5, so all four beta-local copies (0001, 0015, 0030, 0037) carry over unchanged. **This row measures only the 31 patches the series lists** — it is not evidence about `0038`–`0042`, which have no series entry and so were never offered to `patch` at all. Nothing dropped a patch that was already *in* the series; the omission happened upstream of this check, when five patches landed in `linux-patches/` on 2026-07-24 and the beta series was not updated to match. Earlier figures on this row (29/29, and before that a bogus "28/31" measured at `patch`'s default fuzz 2, which Buildroot forbids) predate the 2026-07-20 `0037`/`0030` re-anchors. **Carried forward to the current pin:** the rc6 and rc7 bumps were automated and this row was not re-measured for them, but the `output-rt` tree built against **7.2-rc7** records all 32 series entries applied (`.applied_patches_list`: the 31 shared + `0043`), and that build produced a booting kernel — see the boot row. `0044`/`0045` were apply-checked against a pristine rc7 tarball separately (§8) |
 | `xone` compiles on 7.2 | ✅ verified (not shipped by the kernel-only variant — §4) |
-| **The RT kernel compiles and links** | ✅ **re-verified locally on the pinned rc5 (2026-07-28)** — see the `make rt` row below, which is the same cross-build end to end. Two 7.x API ports were needed back on rc3 and still live in beta-local patch copies — the shared 6.18 patches stay byte-identical to stock: `fbcon_update_vcs()`'s header moved into fbdev core (beta 0001, one-line include delta), and `exfat_remove_entries()` grew a `free_benign` arg (that one was folded back into the shared patch on 2026-07-25, so beta 0031 is a symlink again). Unlike the rc3 → rc4 bump, which re-verified patch application only and left this row resting on CI, the rc4 → rc5 bump was built locally before the pin was pushed. |
-| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ✅ **verified locally 2026-07-28** on the pinned **rc5** with the complete 31-patch series, from a clean `make rt-clean` (host toolchain rebuilt too, ~16 min on a 32-core box): exit 0, `CONFIG_PREEMPT_RT=y` present in the built tree's `.config`, `zImage_dtb` 10459749 bytes (6317467 bytes of headroom under the 16 MiB U-Boot budget), all `check-zimage-dtb.sh` assertions pass, 90 modules depmod'd and the `7.2.0-rc5` tree staged into the extra-modules overlay (the stale `7.2.0-rc4` tree was removed from both the overlay and `output/target/`, as the stamp mechanism intends). Prior figure on this row was rc4: 9401461 bytes, 7375755 of headroom. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) |
+| **The RT kernel compiles and links** | ✅ **re-verified locally on rc5 (2026-07-28), and again on rc7** (the `output-rt` tree for the pinned 7.2-rc7 holds a linked `zImage`, `CONFIG_PREEMPT_RT=y`, kernel release `7.2.0-rc7`) — see the `make rt` row below, which is the same cross-build end to end. Two 7.x API ports were needed back on rc3 and still live in beta-local patch copies — the shared 6.18 patches stay byte-identical to stock: `fbcon_update_vcs()`'s header moved into fbdev core (beta 0001, one-line include delta), and `exfat_remove_entries()` grew a `free_benign` arg (that one was folded back into the shared patch on 2026-07-25, so beta 0031 is a symlink again). Unlike the rc3 → rc4 bump, which re-verified patch application only and left this row resting on CI, the rc4 → rc5 bump was built locally before the pin was pushed. |
+| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ✅ **verified locally 2026-07-28** on **rc5** (the pin at the time) with the complete 31-patch series, from a clean `make rt-clean` (host toolchain rebuilt too, ~16 min on a 32-core box): exit 0, `CONFIG_PREEMPT_RT=y` present in the built tree's `.config`, `zImage_dtb` 10459749 bytes (6317467 bytes of headroom under the 16 MiB U-Boot budget), all `check-zimage-dtb.sh` assertions pass, 90 modules depmod'd and the `7.2.0-rc5` tree staged into the extra-modules overlay (the stale `7.2.0-rc4` tree was removed from both the overlay and `output/target/`, as the stamp mechanism intends). Prior figure on this row was rc4: 9401461 bytes, 7375755 of headroom. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) |
 | **Module-tree merge into the one linux.img** | ✅ **green** — the row's "first green run pending" was overtaken by CI run 29758320422 (2026-07-20, rc4: `build-kernel` + `build` both green, so the merge assert ran). Re-verified locally on rc5 (2026-07-28): after `make rt`, a `make all` produced `output/target/usr/lib/modules/` holding exactly `6.18.40` and `7.2.0-rc5` — two trees, no stale third — and `linux.img` passed every `check-linux-img.sh` assertion (512 MiB, pinned UUID/hash-seed, the 14-feature stock-derived set, ADR 0015 ssh-key checks) |
-| **RT kernel boots on the DE10-Nano** | ✅ **CONFIRMED 2026-07-20 — on 7.2-rc4**, which boots and runs MiSTer on real hardware. That retired the single biggest open risk on the variant, and it is how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3). ⚠ **The currently pinned rc5 has not been booted** (bumped 2026-07-28). Boot is a per-version claim and every `-rc` bump re-opens it; the bump verified the tarball, the patch series, and a full local `make rt`, none of which is evidence about boot. Do not read the ✅ as covering the current pin |
+| **RT kernel boots on the DE10-Nano** | ✅ **CONFIRMED 2026-07-20 — on 7.2-rc4**, which boots and runs MiSTer on real hardware. That retired the single biggest open risk on the variant, and it is how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3). ✅ **RE-CONFIRMED 2026-08-14 on the currently pinned 7.2-rc7** — the Wave-1 hardware pass ran on a `7.2.0-rc7 SMP PREEMPT_RT` kernel carrying `0043`, and the doorbell nodes enumerated and delivered events (that pass is also where H-1 and H-2 were found). Boot is a per-version claim and every `-rc` bump re-opens it, so this ✅ covers rc7 and nothing later. It does **not** cover `0044`/`0045`, which had not been written when that kernel was built — §8 |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) — boot and general operation are confirmed, but the latency measurement that motivates RT has not been taken |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
@@ -243,6 +247,133 @@ card, and nothing on the card referenced it), and deliberately NOT inside
    question; the amendment notes the modules-in-image change strengthens the
    eventual case, since a Downloader-updated device would now get kernel and
    modules coherently).
+
+## 8. The three beta-local UIO patches (0043, 0044, 0045)
+
+Everything else in the beta series is a MiSTer patch the stock 6.18 build also
+gets. These three are the exception: they exist **only** in
+`linux-patches-beta/` and are listed only in that directory's `series`, so the
+stock build never sees them and its DTS and `drivers/uio/` stay byte-identical
+to what they were before this work. That asymmetry is deliberate and is the
+constraint the set is written under — the shared `linux-patches/` directory has
+no series file, so anything placed there reaches the stock kernel.
+
+They are the kernel half of the Main_MiSTer rewrite's FPGA-interface work
+(ADR-002-interim and ADR-003): stop polling the FPGA over the lightweight
+bridge, and stop reaching the FPGA's memory through `/dev/mem`.
+
+| Patch | What it adds |
+|---|---|
+| `0043-dts-uio-doorbells` | Eight interrupt-only `generic-uio` DTS nodes, `mister_doorbell1..8`, on **GIC SPI 48..55** (`f2h_irq8..15`), `IRQ_TYPE_LEVEL_HIGH`. A blocking `read()` on `/dev/uioN` replaces the cause-register spin. |
+| `0044-dts-uio-fpga-regions` | Two reg-bearing, interrupt-less `generic-uio` nodes: `mister_lw_window` (the 2 MB lightweight-bridge register window) and `mister_ddr_aperture` (the 512 MiB DDR3 aperture shared with the FPGA over f2sdram). Named, size-bounded mappings instead of `/dev/mem`. |
+| `0045-uio-writecombine` | `UIO_MEM_PHYS_WC` — a write-combining page attribute for UIO physical maps — plus the `uio_pdrv_genirq` property parse that selects it. `drivers/uio/uio.c`, `drivers/uio/uio_pdrv_genirq.c`, `include/linux/uio_driver.h`; 25 lines added, 1 changed. |
+
+**The 0043 pool moved from SPI 41..48 to 48..55 (2026-08-14), and that is the
+substantive change in this revision.** The original split rested on the premise
+that SPI 40 was the only `f2h` line stock gateware drives. It is not: the stock
+wrapper drives both low lines, `f2h_irq = {video_sync, HDMI_TX_VS}`
+(`sys_top.v:573`), and a live capture on the board measured **60.17 Hz of
+events on the SPI-41 node while the other seven pool nodes saw zero events
+across 42 s of armed polling**. `uio_pdrv_genirq` cannot share an interrupt at
+all — its probe fails outright when `IRQF_SHARED` is set, and a DT-probed node
+sets no `irq_flags` — so that node was not merely collecting ~60 Hz of spurious
+doorbell wakes, it was permanently denying the line to any future in-kernel
+consumer. The node **names** did not move with the numbers, because they are
+userspace ABI (`/sys/class/uio/uioN/name`); after the renumber
+`mister_doorbell<N>` is a pool ordinal, and the line is `f2h_irq(N+7)` on GIC
+SPI `N+47`.
+
+**0044 + 0045 are one unlock in two halves, and the split is a safety
+property.** UIO maps `UIO_MEM_PHYS` with unconditional `pgprot_noncached()`,
+which on ARMv7 is strongly ordered — correct for registers, and a hard
+throughput floor for bulk transfers (measured on silicon: ~100 MB/s write,
+~54 MB/s read, 23.3 µs for a 2352-byte sector). `/dev/mem` cannot do better
+here whatever flags are passed, because `mem=511M` puts both windows outside
+the kernel memory map and ARM's `phys_mem_access_prot()` returns
+`pgprot_noncached` unconditionally for `!pfn_valid` ranges (docs/boot-chain.md
+§6.4). So 0045 adds the attribute and 0044 asks for it — on the **aperture node
+only**, never on the register window, which is why they are two nodes rather
+than one node with two maps. Applying 0044 without 0045 is safe: the property
+is an unknown DT property, ignored, and the aperture maps strongly ordered.
+**The failure direction is deliberate — slow, never cached.** A cached mapping
+of memory the FPGA writes without snooping the A9 caches would be silent
+corruption rather than lost throughput.
+
+**No new kernel config symbol.** All three ride `CONFIG_UIO=y`,
+`CONFIG_UIO_PDRV_GENIRQ=y` and the `uio_pdrv_genirq.of_id=generic-uio` cmdline
+token that `board/mister/de10nano/linux-rt.fragment` already carries.
+⚠ **Three statements in that fragment's comment block are now false, and the
+file cannot be edited under this change's constraint** (`linux-rt.fragment` may be
+touched only when a new `CONFIG_` symbol is strictly required, and none is). No
+symbol is wrong, so build and boot are unaffected — but it is a *second*
+allocation-map comment carrying the retired range, in the file a maintainer opens
+first to learn what the RT line adds, and a stale allocation-map comment is exactly
+what produced the wrong premise this whole revision corrects. **Needs the owner's
+explicit comment-only exception**, which changes no generated config and cannot
+perturb the stock build:
+
+1. The section header reads "UIO doorbells: FPGA-to-HPS f2h_irq1..8" — the pool is
+   `f2h_irq8..15`.
+2. It points at `board/mister/de10nano/linux-patches/0043-dts-uio-doorbells.patch`
+   "on GIC SPI 41..48". That path does not exist (0043 became beta-local), and
+   41..48 is the exact range this revision retired.
+3. The `CONFIG_UIO` justification says "linux-patches/ has no series file, so the
+   stock 6.18 build applies every patch in it, this one included" — no longer true,
+   and it contradicts 0043's own "applied only by the 7.2 beta series" and this
+   section.
+
+### Status
+
+| | Status |
+|---|---|
+| All three apply to the pinned **7.2-rc7** at Buildroot's `patch -F0` | ✅ **re-verified 2026-08-14 after the review fixes**, against files extracted from the `linux-7.2-rc7.tar.gz` whose sha256 `linux.hash` pins: `0004` → `0043` → `0044` → `0045`, exit 0, **zero hunks taking fuzz and zero offsets** — every hunk landed at the line its header declares (0043 at 129, 0044 at 280, 0045 at 278/757/866/112/186/210/171). The 0044 anchor moved 271 → 280 because 0043's comment grew by 9 lines; both patches' `@@` counts and diffstats were recomputed rather than left to `patch`'s offset tolerance |
+| The patched DTS compiles | ✅ **re-verified 2026-08-14** (`cpp` + `dtc 1.7.2`, DTB 21300 bytes). Decompiled assertions: `mister_doorbell1..8` carry `interrupts = <0x00 0x30..0x37 0x04>` — DT cells 48..55 (GIC INTID 80..87), trigger 4 = `IRQ_TYPE_LEVEL_HIGH`; `MiSTer_fb` still at cell 0x28 (40) trigger 1 = `EDGE_RISING`, untouched; `mister_lw_window@ff200000` = `<0xff200000 0x200000>` and `mister_ddr_aperture@20000000` = `<0x20000000 0x20000000>` with `mister,map-writecombine` present, both exporting bare names via `linux,uio-name`. **No new `dtc` warnings** — measured, not asserted: the warning set is byte-identical to the `0004`-only baseline (5 pre-existing `simple_bus_reg` warnings, all from upstream `socfpga.dtsi`) |
+| `checkpatch.pl` on 0045 | ✅ 0 warnings, 0 checks on the code, unchanged by the review fixes. The 6 reported "Invalid commit separator" errors are checkpatch mistaking this repo's underlined header sections for the `---` separator (0043 and 0044 produce 9 and 11 of the same, and nothing else) |
+| **The RT kernel builds with the three applied** | ❌ **not yet** — apply-checks only, no `make rt` since 0044/0045 were written |
+| **The nodes probe and the WC mapping is faster** | ❌ **unproven, and it is the whole point.** 0043's nodes are hardware-proven (they enumerated and delivered events on rc7), but at the *old* numbering; the renumbered pool, both 0044 nodes and every `UIO_MEM_PHYS_WC` mapping are unexercised. The expectation for write-combining is 2-4× on writes; if it lands under 1.5× the mapping is not the bottleneck and the strongly-ordered floor is simply accepted |
+| **Ordering under write-combining** | ❌ unproven, and a *new* hazard rather than an old one: a WC store is not globally visible when the instruction retires, so every publish-then-signal sequence over the aperture must fence before it rings a doorbell. Needs a cross-domain test (write a pattern via WC, raise a doorbell, verify the FPGA side saw all of it) — no host-side test can stand in for it |
+
+**H-1 rule, carried into 0044's node comment because it is a correctness
+precondition and not hygiene:** touching an lwhps2fpga offset that no fabric
+slave decodes hard-hangs the HPS — no bus fault, no exception, no panic, no
+console output, power-cycle-only recovery, confirmed three times on hardware
+including once with a serial console attached that logged nothing. Mapping
+`mister_lw_window` is safe; probing it is destructive, diagnostics included. A
+consumer may touch only offsets a loaded core has declared. **All three
+confirmed events were reads**; no write to an undecoded offset has ever been
+issued on hardware, but a write also awaits a fabric response through this
+mapping, so it is presumed equally lethal and the rule covers every access
+type — the measured half is not a scope limit.
+
+**Two preconditions the patches now state explicitly, because both are silent
+when violated:**
+
+- **Why `mister_lw_window` may never be write-combining is not (only) ordering.**
+  WC is Normal memory, and ARMv7 permits speculative reads from Normal memory
+  while forbidding them to Strongly-ordered memory. A WC mapping of a 2 MB window
+  where undecoded reads hard-hang would let the CPU hang the board off a
+  mispredicted path, with the program never issuing a bad access. Mapping that
+  window is safe *because* it is strongly ordered. Fencing correctly does not buy
+  back the right to relax it — which the earlier ordering-only rationale implied
+  it might.
+- **Mappings must be `MAP_SHARED`.** UIO does not check the flags (no `VM_SHARED`
+  test anywhere in `drivers/uio/uio.c`), so a `MAP_PRIVATE` mmap is accepted,
+  COWs on first write, and diverts every store into anonymous RAM the FPGA never
+  sees — while reads still return real memory, so a read-back self-test through
+  the same mapping still passes. Pre-existing UIO/`/dev/mem` behaviour, but 0044
+  is where the mapping contract is being written down, so the flag is pinned in
+  its node comment and belongs in the HAL's `map` contract too.
+
+**Also decided here:** the doorbell spec's **OPEN-4** (node naming after the
+renumber) is resolved in favour of keeping `mister_doorbell1..8` as pool
+ordinals, with the rationale and the rejected alternative stated in 0043's
+header. The spec's own OPEN register lives outside this repo and still needs
+that closure recorded.
+
+⚠ **Out of this change's scope, for the owner:** `configs/mister_rt.fragment`
+carries the same staleness in its comments — line 31 "Validated against
+7.2-rc5" and line 54 "all 31 listed patches apply to 7.2-rc5" — while the
+symbol on line 38 pins `7.2-rc7`. Comments only; no symbol is wrong.
 
 See also: the RT-feasibility and 7.2-port findings in the project memory / the
 session that produced this scaffold.

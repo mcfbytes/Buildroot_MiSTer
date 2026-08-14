@@ -16,11 +16,13 @@
 # RT patch to carry. (RT for 32-bit ARM merged into mainline in Linux 7.1.)
 CONFIG_PREEMPT_RT=y
 
-# --- UIO doorbells: FPGA-to-HPS f2h_irq1..8 into userspace -------------------
+# --- UIO doorbells: FPGA-to-HPS f2h_irq8..15 into userspace ------------------
 # ADR-002-interim (Main_MiSTer rewrite plan): stop polling the FPGA cause
 # register over the lightweight bridge; block on read() of /dev/uioN instead.
-# The device-tree half is board/mister/de10nano/linux-patches/
-# 0043-dts-uio-doorbells.patch — eight "generic-uio" nodes on GIC SPI 41..48
+# The device-tree half is board/mister/de10nano/linux-patches-beta/
+# 0043-dts-uio-doorbells.patch — eight "generic-uio" nodes on GIC SPI 48..55
+# (f2h_irq8..15; renumbered off SPI 40/41, which carry stock HDMI_TX_VS and
+# video_sync per sys_top.v — see 0044/0045 for the region + writecombine half)
 # (SPI 40 is vsync and stays with the MiSTer_fb driver).
 #
 # RT-ONLY, and that asymmetry is the whole point. linux-patches/ has no series

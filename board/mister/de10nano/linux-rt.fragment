@@ -6,8 +6,9 @@
 #
 # The base linux.config reconciles cleanly to 7.2 via `olddefconfig` (verified:
 # every MiSTer-critical symbol survives), so this fragment carries ONLY the
-# deltas that make this the RT/beta kernel: PREEMPT_RT itself, and the UIO
-# doorbell support that the RT line exists to serve.
+# deltas that make this the RT/beta kernel: PREEMPT_RT itself, the UIO
+# doorbell support that the RT line exists to serve, and pstore/ramoops so a
+# board that dies on this kernel can say what it was doing.
 
 # --- PREEMPT_RT: the point of the variant ------------------------------------
 # A fully-preemptible real-time kernel. On Linux 7.2, arch/arm selects
@@ -61,7 +62,71 @@ CONFIG_UIO_PDRV_GENIRQ=y
 CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"
 CONFIG_CMDLINE_EXTEND=y
 
+# --- pstore/ramoops: a crash record that outlives the crash -------------------
+# The device-tree half is board/mister/de10nano/linux-patches-beta/
+# 0046-dts-ramoops.patch — a /reserved-memory node at 0x1FE00000+0x100000 (the
+# last MiB below the mem=511M cap), split 23×32 KiB dmesg records / 256 KiB
+# console / 32 KiB pmsg. Its header carries the address and split arithmetic.
+#
+# Motivation, in one line: hardware finding H-1 hung the board three times with
+# a serial console attached and produced ZERO bytes of output each time. The
+# UART is not a crash channel — it stops being serviced at the instant of the
+# hang. DRAM is, and it is still readable on the next boot.
+#
+# Each symbol below is load-bearing; none is decoration.
+#
+#   PSTORE          the subsystem itself (fs/pstore/Kconfig: tristate,
+#                   default n, so it must be asked for). =y and not =m: the
+#                   console frontend has to be registered before the failures
+#                   worth recording, which are as likely during boot as after
+#                   it, and a module loaded from the rootfs is far too late.
+#   PSTORE_RAM      the ramoops backend — the only one that can work here.
+#                   pstore/blk would write crash data to the SD card through
+#                   the block layer, which a wedged CPU cannot drive; ramoops
+#                   needs nothing but DRAM that keeps its contents. `depends on
+#                   PSTORE` and pulls REED_SOLOMON* in by `select`, so those
+#                   are not listed. =y for the same reason as above.
+#   PSTORE_CONSOLE  the console frontend, and the one that actually addresses
+#                   H-1. Without it the node's console-size is inert and
+#                   pstore only records kmsg DUMPS — which a silent hang never
+#                   triggers, because the kernel never reaches its die path.
+#                   This is what captures printk output as it is produced,
+#                   including the tail still sitting in the UART FIFO.
+#   PSTORE_PMSG     /dev/pmsg0, the userspace breadcrumb channel. This is how a
+#                   probe tool writes "about to touch LW +0x14" somewhere that
+#                   survives the hang it is about to cause — the single fact
+#                   all three H-1 investigations had to recover by bisection.
+#                   `select RT_MUTEXES`, already y under PREEMPT_RT.
+#
+# NOT listed, deliberately: PSTORE_COMPRESS is `default y` and is inherited as
+# such (it deflates dmesg records with the zlib library rather than the crypto
+# API, specifically to avoid secondary faults while recording a panic);
+# REED_SOLOMON* arrive via PSTORE_RAM's `select`; PSTORE_FTRACE would drag in
+# FUNCTION_TRACER, which an RT kernel should not carry by default, and the DT
+# node sets ftrace-size to 0 to match.
+#
+# BETA-ONLY, and it has to be. The DTS node lives only in
+# linux-patches-beta/, so the stock 6.18 DTB has no ramoops node at all;
+# setting these symbols in the shared linux.config would give the stock kernel
+# a pstore subsystem with nothing to bind to. The asymmetry is the same one
+# CONFIG_UIO has above, in the same direction, for the same reason.
+CONFIG_PSTORE=y
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
+CONFIG_PSTORE_PMSG=y
+
 # NOTE: the RTL8814AU chip's in-kernel driver (CONFIG_RTW88_8814AU) is
 # deliberately NOT set here — the main build migrated that chip to the in-kernel
 # rtw88_8814au driver in the shared linux.config, so the beta inherits it
 # automatically. Nothing to duplicate.
+
+# NOTE: the HPS watchdog needs NOTHING here, and that was checked rather than
+# assumed — see docs/rt-beta-kernel.md §9. The `snps,dw-wdt` nodes are upstream
+# in socfpga.dtsi, socfpga_cyclone5.dtsi already does `&watchdog0 { status =
+# "okay"; }`, and the shared linux.config already carries CONFIG_WATCHDOG=y and
+# CONFIG_DW_WATCHDOG=y. /dev/watchdog0 therefore exists on BOTH kernels today.
+# There is no patch to write and no symbol to add: a watchdog whose chardev is
+# never opened is a driver that has bound and done nothing, which is exactly
+# the safe default wanted. Do not "enable" it here — enabling is a userspace
+# decision (open the device and feed it), and adding symbols would only create
+# the appearance of a beta-only capability that is not beta-only.

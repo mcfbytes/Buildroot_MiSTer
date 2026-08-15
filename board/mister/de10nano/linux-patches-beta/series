@@ -5,7 +5,7 @@
 #
 # Excluded vs the 6.18 set: 0038, 0039, 0040, 0041, 0042 (landed 2026-07-24,
 # not yet re-anchored). The beta series carries 31 of the 36 shared
-# patches plus the 3 beta-local ones below — 34 entries — so within the
+# patches plus the 4 beta-local ones below — 35 entries — so within the
 # carried set the 7.x and 6.18 kernels diverge only where an upstream API
 # forced a re-anchor; the 0038-0042 gap is a re-anchoring backlog, not a
 # policy divergence.
@@ -13,14 +13,18 @@
 # it here rather than removing it from this list.
 #
 # The jump from 0037 to 0043 at the end of the list is that same 0038-0042
-# gap, not a second one. 0043, 0044 and 0045 are BETA-LOCAL — real files in
-# THIS directory, deliberately absent from the shared linux-patches/ set so
+# gap, not a second one. 0043, 0044, 0045 and 0046 are BETA-LOCAL — real files
+# in THIS directory, deliberately absent from the shared linux-patches/ set so
 # the stock 6.18 build (which globs that whole dir via BR2_LINUX_KERNEL_PATCH)
 # never sees them. Apply-order facts, precisely: 0043 anchors on 0004's
 # output; 0044 anchors on 0043's output; 0045 touches only drivers/uio and
 # include files no other patch in this series touches, so it applies
-# independently at any position. All three apply fine over the hole. Together they are the RT line's reason to exist right now
-# (ADR-002-interim and ADR-003, Main_MiSTer rewrite plan):
+# independently at any position; 0046 touches the same DTS as 0043/0044 but
+# anchors on the memory@0 node, which sits ABOVE everything those two insert
+# and which no patch in this series modifies — so its hunk lands at the same
+# line whether or not they have been applied, and its position is free too.
+# All four apply fine over the hole. Together they are the RT line's reason to
+# exist right now (ADR-002-interim and ADR-003, Main_MiSTer rewrite plan):
 #
 #   0043  UIO doorbell nodes on GIC SPI 48..55 (f2h_irq8..15). Interrupt-only
 #         nodes; a blocking read() on /dev/uioN replaces the cause-register
@@ -43,9 +47,20 @@
 #         because 0044 is what gives the property a consumer. Without 0045
 #         that property is inert and the aperture maps strongly-ordered:
 #         slower, never unsafe.
+#   0046  a /reserved-memory ramoops node at 0x1FE00000+0x100000 — the last
+#         MiB below the mem=511M cap — split 23x32 KiB dmesg records /
+#         256 KiB console / 32 KiB pmsg. Unrelated to the UIO set: it is
+#         there because hardware finding H-1 hung the board three times, once
+#         with a serial console attached and capturing, and produced ZERO
+#         bytes of output each time. The UART stops being serviced at the
+#         instant of a hang; DRAM does not, and is readable on the next boot.
+#         Needs CONFIG_PSTORE / PSTORE_RAM / PSTORE_CONSOLE / PSTORE_PMSG
+#         from ../linux-rt.fragment — which is also why it must stay
+#         beta-local, since in the stock DTB the node would reserve 1 MiB of
+#         every user's RAM for a subsystem that is not compiled in.
 #
 # NOT-symlink exceptions: four of the shared-patch entries are REAL FILES
-# re-anchored for 7.x (0043-0045 above are real files too, but they are
+# re-anchored for 7.x (0043-0046 above are real files too, but they are
 # beta-local originals, not re-anchors of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
 # Buildroot applies patches with `patch -F0` (fuzz zero), and these four
@@ -122,3 +137,4 @@
 0043-dts-uio-doorbells.patch
 0044-dts-uio-fpga-regions.patch
 0045-uio-writecombine.patch
+0046-dts-ramoops.patch

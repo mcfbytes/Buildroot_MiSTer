@@ -460,8 +460,11 @@ then console, then pmsg, then ftrace (`fs/pstore/ram.c ramoops_probe`) — so
   offset am I about to touch", not for logging.
 - **`ftrace-size` 0** is stated rather than omitted so the four numbers can be
   checked against the arithmetic without knowing the binding's defaults.
-  `PSTORE_FTRACE` would need `FUNCTION_TRACER`, which an RT kernel should not
-  carry by default.
+  `PSTORE_FTRACE` stays unset even though its dependencies are already met —
+  `FUNCTION_TRACER=y` and `DEBUG_FS=y` come from the shared `linux.config` and
+  survive the merge, and `PSTORE_FTRACE` only `depends on` them (it selects
+  nothing) — because a fourth zone would shrink the three that serve H-1, for
+  a per-function-call tracing job unrelated to it.
 - **`ecc-size`** absent (0): Reed-Solomon ECC costs CPU per record write and
   defends against bit rot in DRAM that lost refresh — not against the failure
   that matters here, which is whether the last stores reached DRAM at all.
@@ -549,10 +552,14 @@ something.
 **A bound driver that is never opened does nothing, and that is the safe
 default.** This is a property of the code, not an assumption:
 
-- `dw_wdt_probe()` never calls `dw_wdt_arm_system_reset()`. The `WDT_EN` bit in
-  `WDOG_CONTROL_REG` is set only by `dw_wdt_start()`, which the watchdog core
-  reaches from `open()` on the chardev. Probe writes the timeout register and
-  registers the device; the counter is not armed.
+- `dw_wdt_probe()` never calls `dw_wdt_arm_system_reset()`. In a running system
+  the `WDT_EN` bit in `WDOG_CONTROL_REG` is set only by `dw_wdt_start()`, which
+  the watchdog core reaches from `open()` on the chardev. (The one other writer
+  is `dw_wdt_restart()`, the driver's registered restart handler — it runs only
+  on the reboot path, when the system is already resetting by intent; it is a
+  mechanism for an orderly restart, not a change in unfed boot behaviour.)
+  Probe writes the timeout register and registers the device; the counter is
+  not armed.
 - `CONFIG_WATCHDOG_OPEN_TIMEOUT=0` — the core does **not** start an
   "open me within N seconds or reset" timer.
 - `CONFIG_WATCHDOG_NOWAYOUT` is **not** set, so a clean close (the `V` magic

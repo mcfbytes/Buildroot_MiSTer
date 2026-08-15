@@ -101,9 +101,12 @@ CONFIG_CMDLINE_EXTEND=y
 # NOT listed, deliberately: PSTORE_COMPRESS is `default y` and is inherited as
 # such (it deflates dmesg records with the zlib library rather than the crypto
 # API, specifically to avoid secondary faults while recording a panic);
-# REED_SOLOMON* arrive via PSTORE_RAM's `select`; PSTORE_FTRACE would drag in
-# FUNCTION_TRACER, which an RT kernel should not carry by default, and the DT
-# node sets ftrace-size to 0 to match.
+# REED_SOLOMON* arrive via PSTORE_RAM's `select`; PSTORE_FTRACE stays unset
+# even though it would resolve — FUNCTION_TRACER=y and DEBUG_FS=y are already
+# in the shared linux.config, and PSTORE_FTRACE only `depends on` them, it
+# selects nothing — because a fourth ramoops zone would shrink the three that
+# serve H-1, for a per-function-call tracing job unrelated to it. The DT
+# node's ftrace-size 0 keeps the two halves in lockstep.
 #
 # BETA-ONLY, and it has to be. The DTS node lives only in
 # linux-patches-beta/, so the stock 6.18 DTB has no ramoops node at all;

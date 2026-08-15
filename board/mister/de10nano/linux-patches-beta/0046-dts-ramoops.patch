@@ -86,9 +86,12 @@ Verified free rather than assumed free, at the time of writing:
     secondary-core trampoline;
   * MiSTer_fb (patch 0001) takes its memory from the FPGA aperture via
     its DT reg, not from kernel RAM;
-  * no Main_MiSTer shmem_map() call names an address in this range --
-    the two it does name are 0x1FFFF000 (mailbox) and 0x20000000+32 MiB
-    (the framebuffer, inside the aperture).
+  * no Main_MiSTer shmem_map() call can land in this range: every call
+    site resolves to the 0x1FFFF000 mailbox page or into the aperture --
+    the 0x22000000 framebuffer (video.cpp FB_ADDR), the scaler window at
+    0x20000000 (scaler.h MISTER_SCALER_BASEADDR), savestate bases
+    range-checked against [0x20000000, 0x40000000) (user_io.cpp), and
+    fpga_mem() addresses masked into 0x20000000+ (shmem.h).
 
 The split, and why these four numbers
 -------------------------------------
@@ -130,10 +133,14 @@ the first and most informative crash.
 
   ftrace-size 0 is stated rather than omitted, so the four numbers in the
     node can be checked against the arithmetic above without knowing the
-    binding's defaults.  Persistent function tracing would need
-    PSTORE_FTRACE, which needs FUNCTION_TRACER, which is not a cost an RT
-    kernel should carry by default.  At 0, ramoops allocates no zone and
-    does not register the frontend.
+    binding's defaults.  PSTORE_FTRACE is deliberately not set even though
+    it would resolve -- the shared linux.config already carries
+    FUNCTION_TRACER=y and DEBUG_FS=y, and PSTORE_FTRACE only depends on
+    them (it selects nothing), so "it would drag in the tracer" is not the
+    reason and would be false in this tree.  The reason is the budget: a
+    fourth zone would shrink the three areas above, to serve
+    per-function-call tracing -- a job unrelated to H-1.  At 0, ramoops
+    allocates no zone and does not register the frontend.
 
   ecc-size is absent (0) on purpose.  Reed-Solomon ECC costs CPU on every
     record write and defends against bit rot in DRAM that lost refresh.
@@ -377,10 +384,10 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	 *
 +	 *   ftrace-size 0 -- stated rather than omitted so the four numbers in
 +	 *     this comment can be checked against the node without knowing the
-+	 *     binding's defaults.  Persistent function tracing needs
-+	 *     PSTORE_FTRACE, which needs FUNCTION_TRACER, which is not a cost
-+	 *     an RT kernel should carry by default.  With the size at 0 ramoops
-+	 *     allocates no zone and does not register the ftrace frontend.
++	 *     binding's defaults.  PSTORE_FTRACE would resolve (the base config
++	 *     already carries FUNCTION_TRACER=y), but a fourth zone would
++	 *     shrink the three areas above for a per-function-call tracing job
++	 *     unrelated to H-1.  At 0, ramoops registers no ftrace frontend.
 +	 *
 +	 *   ecc-size is deliberately absent (0).  Reed-Solomon ECC costs CPU on
 +	 *     every record write and defends against bit rot in DRAM that lost

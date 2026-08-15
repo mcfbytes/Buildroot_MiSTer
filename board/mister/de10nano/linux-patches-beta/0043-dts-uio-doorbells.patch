@@ -2,10 +2,10 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
 Date: Sat, 08 Aug 2026 00:00:00 +0000
 Subject: [PATCH] ARM: dts: socfpga: de10nano: UIO doorbell nodes for
- f2h_irq1..8
+ f2h_irq8..15
 
 Adds eight interrupt-only UIO nodes to the MiSTer DE10-Nano DTS, one per
-FPGA-to-HPS interrupt line f2h_irq1..f2h_irq8 (GIC SPI 41..48), so that
+FPGA-to-HPS interrupt line f2h_irq8..f2h_irq15 (GIC SPI 48..55), so that
 userspace can block on an FPGA event instead of polling for it.
 
 Rationale: ADR-002-interim, Main_MiSTer rewrite plan
@@ -23,13 +23,82 @@ GIC SPI allocation map
 The Cyclone V routes its 64 FPGA-to-HPS interrupt lines onto GIC SPI
 40..103.  This patch fixes the split:
 
-  SPI 40        f2h_irq0       vsync.  Owned by the MiSTer_fb fbdev
-                               driver (patch 0001, node added by patch
-                               0004).  Explicitly NOT in the pool: it is
-                               a kernel-internal interrupt and handing it
-                               to userspace would break the framebuffer.
-  SPI 41..48    f2h_irq1..8    general doorbell pool.  These eight nodes.
-  SPI 49..103   f2h_irq9..63   reserved.  No nodes; unallocated.
+  SPI 40        f2h_irq0       HDMI_TX_VS, the vsync pulse.  Owned by
+                               the MiSTer_fb fbdev driver (patch 0001,
+                               node added by patch 0004).  Driven by
+                               stock gateware.  Explicitly NOT in the
+                               pool: it is a kernel-internal interrupt
+                               and handing it to userspace would break
+                               the framebuffer.
+  SPI 41        f2h_irq1       video_sync, the stock frame-sync pulse.
+                               Also driven by stock gateware, ~60 Hz.
+                               NOT in the pool -- see the renumber note
+                               below.  No node.
+  SPI 42..47    f2h_irq2..7    platform reserve, held back.  Named
+                               claimants: audio ring watermark, CEC.
+                               No nodes; unallocated.
+  SPI 48..55    f2h_irq8..15   general doorbell pool.  These eight nodes.
+  SPI 56..103   f2h_irq16..63  reserved.  No nodes; unallocated.
+
+Every "SPI nn" above is an SPI *index* -- the value the second interrupt
+cell carries, which arm,gic.yaml defines as being "in the range [0-987]"
+-- and not a GIC INTID.  INTID = cell + 32, so this pool is INTID 80..87.
+The distinction is worth stating because the textbook rule "DT cell =
+SPI - 32" is about INTIDs: applying it to the labels above would emit
+cells 16..23, which are HPS peripheral interrupts and not f2h lines at
+all.  The MiSTer_fb node uses the same convention already ("SPI 40" =
+cell 40 = f2h_irq0).
+
+Pool renumber: 41..48 became 48..55 (2026-08-14)
+------------------------------------------------
+The first version of this patch put the pool at SPI 41..48, on the
+premise that SPI 40 was the only f2h line stock gateware drives.  That
+premise is wrong, and this revision is the correction.
+
+The stock FPGA wrapper drives the two low lines together:
+
+  f2h_irq = {video_sync, HDMI_TX_VS}          (sys_top.v:573)
+
+so SPI 41 carries a live signal, and a UIO node claimed it.  Measured on
+silicon: the node on SPI 41 saw a steady 60.17 Hz of events with re-arm
+proven live between them, while the other seven pool nodes saw zero
+events and a zero initial event count across 42 s of armed polling.  The
+original reading of that run ("eight lines green") counted eight probe
+processes exiting 0, not eight firing lines; the per-line asymmetry was
+only visible once the event counters were read per node.
+
+Two defects, of different severity, followed from the overlap:
+
+  - ~60 Hz of spurious doorbell traffic on a pool line.  Each frame cost
+    a wakeup, a read() and an ack for an event no core raised.
+    Recoverable in userspace (an empty cause word drains as "no cause"),
+    but pure waste on a latency path, and noise in exactly the counters
+    the doorbell work exists to measure.
+  - The claim is exclusive and permanent, which is the worse half.
+    uio_pdrv_genirq cannot co-own an interrupt at all: its probe fails
+    with "interrupt configuration error" if IRQF_SHARED is set, and a
+    DT-probed node sets no irq_flags, so the request is unshared by
+    construction (uio_pdrv_genirq_probe()).  The node therefore denied
+    SPI 41 to every future in-kernel consumer of that line, silently.
+
+Of the two available fixes -- shift the pool by one to 42..49, or
+realign it to the 8..15 window the rewrite plan's line-allocation table
+reserves -- this takes the second.  The plan of record is the plan of
+record, the pool was never this patch's to place, and 48..55 leaves the
+42..47 platform reserve contiguous and intact.  The cost of moving is
+nil: no gateware drives any pool line today, and no shipping userspace
+consumes these nodes.
+
+The node NAMES do not move with the numbers.  They stay
+mister_doorbell1..8 because they are ABI (below), so after the renumber
+the name carries a pool ORDINAL and not a line number:
+
+  pool ordinal N == f2h_irq(N+7) == DT cell (N+47) == GIC INTID (N+79)
+
+i.e. mister_doorbell1 is f2h_irq8 on SPI index 48 (INTID 80), and
+mister_doorbell8 is f2h_irq15 on SPI index 55 (INTID 87).  The trailing
+comment on each interrupts property is where the f2h index and the DT
+cell are written side by side; keep it in sync with the cell.
 
 Level, not edge
 ---------------
@@ -52,32 +121,53 @@ masked while userspace clears the cause register, instead of the lazy
 mask re-firing immediately (drivers/uio/uio_pdrv_genirq.c,
 uio_pdrv_genirq_probe()).
 
+A level-high node on a line nothing drives is quiet, not noisy: the
+seven pool nodes that sat on undriven lines in the run above recorded no
+events at all, and no initial latched count either.  Declaring the pool
+ahead of the gateware that will drive it costs nothing.
+
 No reg property
 ---------------
 These are interrupt-only nodes.  uio_pdrv_genirq's resource loop simply
 finds no IORESOURCE_MEM and zeroes every uio_mem, so a node with no reg
-probes fine and exports no maps.  The register window arrives later with
-the HAL; adding a reg then only populates map0 and breaks no existing
-userspace, because map0 does not exist today.
+probes fine and exports no maps.  The reg-bearing UIO nodes are a
+separate family, added by patch 0044: memory there, interrupts here.
+Keeping the two orthogonal means either family can gain properties
+without disturbing the other.
 
 Node names are ABI
 ------------------
 No "linux,uio-name" property is set, so uio_pdrv_genirq derives
 uio_info.name from the fwnode ("%pfwP") and userspace identifies a
 doorbell by /sys/class/uio/uioN/name == "mister_doorbellN".  Renaming a
-node, or giving it a unit address, changes that string.
+node, or giving it a unit address, changes that string.  This is also
+why the renumber left the names alone: the minor number a node lands on
+already shifts whenever nodes are added, so name is the only stable
+handle, and the renumber had no reason to touch it.
 
-Why this patch is shared by both kernel lines
----------------------------------------------
-board/mister/de10nano/linux-patches/ has no series file, so the stock
-6.18 build applies every patch in it; only the 7.2 beta build filters
-through linux-patches-beta/series.  This patch is therefore applied to
-both trees -- and that is harmless.  CONFIG_UIO is not set in the shared
-board/mister/de10nano/linux.config, so on the stock kernel these nodes
-match no driver, instantiate no device, and cost a few hundred bytes of
-DTB.  Keeping one shared patch file also keeps the DTS byte-identical
-between the two lines, which is the property that lets 0004 be a symlink
-in the beta series rather than a re-anchored copy.
+This resolves OPEN-4 in the doorbell spec (wavep-doorbell-spec-draft.md
+section 8, "DTS node naming scheme after the 0043 pool renumber") in
+favour of keeping the names, i.e. making them pool ordinals.  State the
+alternative honestly rather than as a non-option: renaming to
+mister_doorbell8..15 today would cost exactly one constant, because the
+only consumers are the hwpass harness and the greenfield name constant
+at MMIO-D3's designated single change point -- and it is never cheaper
+than it is now.  The trade taken here is ABI stability over a numbering
+scheme that reads directly, accepting the ordinal-to-line indirection as
+permanent.  The register entry should be closed with that rationale, or
+overruled while the rename is still one constant.
+
+Why this patch is beta-local
+----------------------------
+This file lives in board/mister/de10nano/linux-patches-beta/ and is
+listed only in that directory's series file, so only the 7.2 beta build
+applies it.  It is deliberately absent from the shared
+board/mister/de10nano/linux-patches/ set, because that directory has no
+series file: the stock 6.18 build applies every patch in it via
+BR2_LINUX_KERNEL_PATCH, and a shared copy would therefore reach the
+stock kernel's DTS as well.  Keeping it beta-local is what lets the
+stock build stay byte-identical to what it was before any of this work,
+which is the property the doorbell series is required to preserve.
 
 Binding on the RT line needs a command-line parameter
 -----------------------------------------------------
@@ -97,25 +187,28 @@ Origin:       None.  Originally authored for this tree; no MiSTer fork
               commit corresponds to it (stock MiSTer has no UIO nodes and
               no UIO support in its kernel config).
 Author:       Michael C. Ferguson, 2026-08-08.
+Revised:      2026-08-14 -- doorbell pool renumbered from GIC SPI 41..48
+              to 48..55 after the SPI-41 overlap with the stock
+              video_sync line was measured on hardware.  Node names,
+              trigger type and node shape are unchanged.
 Upstream:     No, and not upstreamable as-is.  "generic-uio" is not a
               documented device-tree binding -- it is a match string
               invented per-system and injected via uio_pdrv_genirq.of_id,
               which is precisely why it must be paired with the cmdline
               parameter.  Disposition "carry" (docs/patch-provenance.md
-              3.1).  Applies to both 6.18 and 7.2: the DTS this patch
-              anchors on is byte-identical in both trees after 0004.
+              3.1).  Anchors on the DTS as patch 0004 leaves it.
 
 Depends on 0004-dts-de10nano-MiSTer.patch (it inserts after the
 MiSTer_fb node that patch creates) and must sort after it.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 104 ++++++++++++
- 1 file changed, 104 insertions(+)
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 151 ++++++++++++++++++++
+ 1 file changed, 151 insertions(+)
 
 --- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
 +++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
-@@ -129,6 +129,110 @@
+@@ -129,6 +129,157 @@
  		interrupt-parent = <&intc>;
  		interrupts = <0 40 IRQ_TYPE_EDGE_RISING>;
  	};
@@ -134,12 +227,56 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	 * GIC SPI ALLOCATION MAP -- Cyclone V f2h_irq[] (SoC docs: the 64
 +	 * FPGA-to-HPS interrupt lines land on GIC SPI 40..103):
 +	 *
-+	 *   SPI 40        f2h_irq0       vsync.  Owned by the MiSTer_fb fbdev
-+	 *                                driver (node above; patch 0001).
-+	 *                                NOT part of the doorbell pool -- do
-+	 *                                not add a UIO node for it.
-+	 *   SPI 41..48    f2h_irq1..8    general doorbell pool (these nodes).
-+	 *   SPI 49..103   f2h_irq9..63   reserved.  Unallocated, no nodes.
++	 *   SPI 40        f2h_irq0       HDMI_TX_VS, the vsync pulse.  Owned
++	 *                                by the MiSTer_fb fbdev driver (node
++	 *                                above; patch 0001).  DRIVEN by stock
++	 *                                gateware.  NOT part of the doorbell
++	 *                                pool -- do not add a UIO node for it.
++	 *   SPI 41        f2h_irq1       video_sync, the stock frame-sync
++	 *                                pulse.  Also DRIVEN by stock
++	 *                                gateware, ~60 Hz.  NOT free, NOT part
++	 *                                of the pool, and no node -- see the
++	 *                                renumber note below.
++	 *   SPI 42..47    f2h_irq2..7    platform reserve, held back (named
++	 *                                claimants: audio ring watermark,
++	 *                                CEC).  Unallocated, no nodes.
++	 *   SPI 48..55    f2h_irq8..15   general doorbell pool (these nodes).
++	 *   SPI 56..103   f2h_irq16..63  reserved.  Unallocated, no nodes.
++	 *
++	 * NUMBERING: every "SPI nn" above is an SPI *index*, which is exactly
++	 * what the second interrupt cell below holds (arm,gic.yaml: "SPI
++	 * interrupts are in the range [0-987]").  It is NOT the GIC INTID:
++	 * INTID = cell + 32, so this pool is INTID 80..87.  Do not "correct"
++	 * these cells by subtracting 32 -- cells 16..23 are HPS peripheral
++	 * interrupts, not f2h lines at all, and a node pointed at them is a
++	 * silent brick.  The MiSTer_fb node above already uses this same
++	 * convention ("SPI 40" = cell 40 = f2h_irq0).
++	 *
++	 * WHY 48..55 AND NOT 41..48 (renumbered 2026-08-14): the original
++	 * split assumed SPI 40 was the only line stock gateware drives.  It is
++	 * not.  The stock FPGA wrapper drives BOTH low lines --
++	 * f2h_irq = {video_sync, HDMI_TX_VS} (sys_top.v:573) -- and a UIO node
++	 * on SPI 41 therefore sat on a live ~60 Hz source: measured on
++	 * silicon, that node logged 60.17 Hz of events while the other seven
++	 * pool nodes logged zero across 42 s of armed polling.  Two distinct
++	 * defects came with it.  First, ~60 Hz of spurious doorbell wakes on a
++	 * pool line, each one a wakeup, a read() and an ack for an event no
++	 * core raised.  Second, and worse, the claim is EXCLUSIVE and
++	 * permanent: uio_pdrv_genirq refuses to share an IRQ at all (its probe
++	 * fails with "interrupt configuration error" when IRQF_SHARED is set,
++	 * and a DT-probed node sets no irq_flags), so the node denied SPI 41
++	 * to every future in-kernel consumer of that line.  A doorbell pool
++	 * must sit only on lines no other agent drives; 48..55 is the split
++	 * the rewrite plan's line-allocation table reserves for it, and it
++	 * leaves the 42..47 platform reserve contiguous and intact.
++	 *
++	 * The node NAMES did not move with the numbers.  mister_doorbell1..8
++	 * are pool ORDINALS, not line numbers, and they are ABI (below).  The
++	 * mapping is: pool ordinal N == f2h_irq(N+7) == DT cell (N+47) ==
++	 * GIC INTID (N+79).  The ordinal is what userspace resolves by name;
++	 * the line number is what a core declares in its IRQ: token.  Keep the
++	 * trailing f2h_irqNN comment on each interrupts property in sync -- it
++	 * is where the f2h index and the DT cell are written side by side.
 +	 *
 +	 * IRQ_TYPE_LEVEL_HIGH is deliberate, and is NOT a copy-paste slip from
 +	 * MiSTer_fb's IRQ_TYPE_EDGE_RISING above.  A doorbell is a cause
@@ -153,12 +290,16 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	 * line is really masked while userspace clears the cause register
 +	 * rather than lazily re-firing (drivers/uio/uio_pdrv_genirq.c).
 +	 *
-+	 * No "reg" on purpose: these are interrupt-only nodes for now.
++	 * A LEVEL_HIGH node on an undriven line is quiet, not noisy: the seven
++	 * pool lines that stock gateware ties low recorded zero events and a
++	 * zero initial event count.  Nodes may therefore be declared ahead of
++	 * the gateware that will drive them.
++	 *
++	 * No "reg" on purpose: these are interrupt-only nodes.
 +	 * uio_pdrv_genirq accepts zero memory resources (its resource loop
 +	 * simply finds no IORESOURCE_MEM and zeroes every map), and the
-+	 * register-window story arrives later with the HAL.  Adding a reg
-+	 * property then is a backward-compatible change -- it only populates
-+	 * map0, which does not exist today.
++	 * reg-bearing UIO nodes are a separate family added by patch 0044 --
++	 * memory there, interrupts here, deliberately orthogonal.
 +	 *
 +	 * The node NAME is the ABI: uio_pdrv_genirq has no "linux,uio-name"
 +	 * property here, so it derives uio_info.name from the fwnode ("%pfwP")
@@ -171,57 +312,56 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	 * board/mister/de10nano/linux-rt.fragment supplies both that symbol
 +	 * and "uio_pdrv_genirq.of_id=generic-uio" via CONFIG_CMDLINE_EXTEND.
 +	 *
-+	 * On the stock 6.18 kernel CONFIG_UIO is not set at all, so these
-+	 * nodes match no driver, create no device, and consume nothing but a
-+	 * few hundred bytes of DTB.  That inertness is why this patch is
-+	 * shared by both kernel lines while the config change is RT-only.
++	 * This patch is applied only by the 7.2 beta series; the stock 6.18
++	 * build never sees it, so the DTS it builds carries no UIO nodes at
++	 * all.
 +	 */
 +	mister_doorbell1 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 41 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq1 */
++		interrupts = <0 48 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq8 */
 +	};
 +
 +	mister_doorbell2 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 42 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq2 */
++		interrupts = <0 49 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq9 */
 +	};
 +
 +	mister_doorbell3 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 43 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq3 */
++		interrupts = <0 50 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq10 */
 +	};
 +
 +	mister_doorbell4 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 44 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq4 */
++		interrupts = <0 51 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq11 */
 +	};
 +
 +	mister_doorbell5 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 45 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq5 */
++		interrupts = <0 52 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq12 */
 +	};
 +
 +	mister_doorbell6 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 46 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq6 */
++		interrupts = <0 53 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq13 */
 +	};
 +
 +	mister_doorbell7 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 47 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq7 */
++		interrupts = <0 54 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq14 */
 +	};
 +
 +	mister_doorbell8 {
 +		compatible = "generic-uio";
 +		interrupt-parent = <&intc>;
-+		interrupts = <0 48 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq8 */
++		interrupts = <0 55 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq15 */
 +	};
  };
  

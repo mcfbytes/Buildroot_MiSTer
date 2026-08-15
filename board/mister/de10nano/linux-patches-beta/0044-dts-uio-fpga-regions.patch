@@ -1,0 +1,368 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 14 Aug 2026 00:00:00 +0000
+Subject: [PATCH] ARM: dts: socfpga: de10nano: reg-bearing UIO nodes for the LW
+ window and the DDR3 aperture
+
+Adds two interrupt-less, reg-bearing UIO nodes so the MiSTer HAL can map
+the FPGA register window and the shared DDR3 aperture through named file
+descriptors instead of /dev/mem.
+
+Rationale
+---------
+Every FPGA-side mapping today goes through /dev/mem: an unnamed,
+unbounded handle to all of physical memory, opened with O_SYNC as its
+only attribute knob.  Two nodes replace that with named, size-bounded
+descriptors -- /dev/uioN plus /sys/class/uio/uioN/maps/mapN/size -- so
+the window a process can reach is the window the device tree gave it,
+and a mapping bug lands as an mmap failure instead of as a write into
+whatever else lives at that physical address.
+
+The second reason is throughput, and it needs the companion kernel patch
+0045 to become real.  The measured floor for the strongly-ordered
+mapping /dev/mem can produce here is ~100 MB/s write and ~54 MB/s read
+over the AXI bridge -- 23.3 us for a 2352-byte sector, measured on
+silicon.  That floor is a property of the page attribute, not of the
+bridge.
+
+Two nodes, not one
+------------------
+The write-combining property below is node-scoped, and the safety
+argument wants the LW window to be structurally incapable of inheriting
+it rather than merely configured not to.  Hence one never-WC node for
+the register window and one WC-capable node for the bulk aperture:
+
+  mister_lw_window     0xff200000 + 0x200000   the whole 2 MB lwhps2fpga
+                       window.  Mapped noncached (strongly ordered) by
+                       uio_mmap_physical unconditionally -- which is what
+                       control registers and the GPO strobe handshake
+                       require, so the driver's lack of a choice here is
+                       the correct behaviour and not a limitation.
+
+  mister_ddr_aperture  0x20000000 + 0x20000000  the 512 MiB DDR3 aperture
+                       shared with the FPGA over f2sdram.  Carries
+                       "mister,map-writecombine".
+
+The never-WC rule on the register window is not only about ordering.
+Write-combining is Normal memory (patch 0045 quotes the encoding), and
+ARMv7 permits speculative data accesses to Normal memory while forbidding
+them to Device and Strongly-ordered memory.  A WC mapping of a 2 MB
+window where an undecoded read hard-hangs the board (H-1 below) would
+therefore let the CPU issue such a read on its own, off a mispredicted
+path, with no program access at any bad offset at all -- turning "mapping
+is safe, only probing is destructive" into a latent random hang.  Mapping
+this window is safe precisely BECAUSE it is strongly ordered.  That is
+the load-bearing half of the rule; the ordering requirement below is the
+other half, and satisfying the ordering half alone is not sufficient.
+
+Why the aperture is one node with one map, rather than a node per named
+region: UIO selects a map by page offset and always maps from the
+region's base, so a consumer reaching a high region maps a long prefix
+of address space.  That cost is VA only -- the mappings are VM_PFNMAP,
+so they consume no RAM and mlockall does not page-lock them -- and if it
+ever proves to matter on device, the fix is to split the reg into up to
+MAX_UIO_MAPS (5) entries at the hot region bases.  The property stays
+node-scoped either way.  Per-region bounds enforcement stays in
+userspace regardless, because a core's AXI windows are negotiated at
+runtime and a static DT cannot enumerate them.
+
+Write-combining is a two-part unlock
+------------------------------------
+This kernel's uio_mmap_physical maps UIO_MEM_PHYS with unconditional
+pgprot_noncached (drivers/uio/uio.c), i.e. strongly ordered on ARMv7, so
+this DTS change alone changes no mapping attribute anywhere.
+"mister,map-writecombine" is read by nothing until patch 0045 (a
+UIO_MEM_PHYS_WC memtype plus property parsing in uio_pdrv_genirq) is
+applied; without it the property is an unknown DT property, ignored, and
+the node maps at today's floor.
+
+The fail-safe direction is deliberate.  An old kernel with a new DTB
+degrades to slow-and-correct.  It never degrades to a CACHED mapping:
+the FPGA writes this memory over f2sdram without snooping the A9 L1/L2,
+so a cacheable mapping would produce silent data corruption rather than
+lost throughput.  Write-combining is Normal non-cacheable -- stores
+merge in the store buffer, nothing is allocated in cache -- which is
+weaker ordering but not weaker coherency.
+
+/dev/mem cannot provide this at all on this board, whatever flags are
+passed.  The kernel's memory is capped at mem=511M on the boot command
+line (docs/boot-chain.md section 6.4), so both windows here are outside
+the kernel memory map, and for !pfn_valid ranges ARM's
+phys_mem_access_prot() returns pgprot_noncached unconditionally.  The
+O_SYNC-selects-write-combining path in that function applies only to
+pfn_valid ranges -- and if this aperture ever became one, dropping
+O_SYNC would hand back a *cached* mapping, i.e. exactly the corruption
+class above.  That road is a dead end in both directions; the UIO path
+is the only sanctioned one that does not invent a new driver.
+
+mem=511M is also a PRECONDITION, not just an explanation
+--------------------------------------------------------
+The paragraph above cites the cap in the negative direction ("so /dev/mem
+cannot help").  It runs in the positive direction too, and that is the
+safety-relevant one: the DTS still declares memory@0 reg = <0x0
+0x40000000>, a full 1 GiB that nominally covers this entire aperture.
+The only thing keeping these pages out of the kernel's linear map is the
+mem=511M token U-Boot supplies -- stock CONFIG_BOOTARGS, which this repo
+does not own (docs/boot-chain.md:155 and section 6.4; memmap= is inert on
+ARM, mem= does all of the work).
+
+If that token were ever lost, or the memory node changed, the
+write-combining mapping this patch enables would become a Normal
+non-cacheable user alias of pages the kernel also maps cacheable.  On
+ARMv7 mismatched-attribute aliases of the same physical page are
+architecturally UNPREDICTABLE -- worse than the cached-mapping hazard
+argued against above, and not fail-safe in any direction.  Exposure today
+is low (boot-chain.md:876 lists mem=511M as CI-gated and user-immutable,
+and the /dev/mem path this replaces has the same latent dependency), so
+this is stated rather than enforced.  The structural fix, if it is ever
+wanted, is a /reserved-memory node with no-map over 0x20000000 +
+0x20000000, which would stop depending on a bootarg this repo does not
+control.
+
+No interrupts on purpose
+------------------------
+uio_pdrv_genirq accepts an interrupt-less node: platform_get_irq_optional
+returns -ENXIO, the driver substitutes UIO_IRQ_NONE and probes normally
+(drivers/uio/uio_pdrv_genirq.c).  These nodes carry memory only; the
+doorbell nodes of patch 0043 carry interrupts only.  Keeping the two
+families orthogonal means either can gain properties without disturbing
+the other.
+
+Map-only, never probe (hardware finding H-1)
+--------------------------------------------
+Mapping mister_lw_window is safe.  Reading an offset inside it that no
+fabric slave decodes is not: the interconnect waits indefinitely for a
+response and the HPS hard-hangs -- no bus fault, no exception, no panic,
+no console output, no crash record, power-cycle-only recovery.  This was
+confirmed three times on hardware, once with a serial console attached
+that logged nothing at all.  The menu core decodes nothing anywhere in
+this window.
+
+All three confirmed events were READS, and that is a limit of the
+evidence, not a scope limit on the rule.  No write to an undecoded LW
+offset has ever been issued on hardware; a write also awaits a fabric
+response through this strongly-ordered mapping, so it is expected to hang
+identically and must be presumed equally lethal.  The rule covers every
+access type -- do not read the measured half as licence for a
+"harmless", write-only probe.
+
+The node therefore changes no obligation on the consumer: it may touch
+only offsets a loaded core has declared, and "probe the window to see
+what answers" is a destructive operation -- in diagnostics too, which is
+where the temptation lives.  A SIGBUS guard cannot help, because no
+fault is ever delivered.  This is called out in the node comment as well
+as here, because the DTS is where someone will read it first.
+
+Mappings must be MAP_SHARED
+---------------------------
+UIO does not check the mapping flags: there is no VM_SHARED or
+VM_MAYSHARE test anywhere in drivers/uio/uio.c, so a MAP_PRIVATE mmap of
+either node reaches remap_pfn_range(), whose COW special case accepts a
+full-VMA private mapping and installs write-protected PTEs.  Reads then
+return real FPGA-side memory while the first write copies the page into
+anonymous RAM, after which every store lands somewhere the FPGA can never
+see.  A consumer that fences correctly and rings a doorbell publishes
+nothing, the failure is data-dependent and non-crashing, and it survives
+any read-back-through-the-same-mapping self-test.  This is pre-existing
+UIO (and /dev/mem) behaviour rather than anything this patch introduces,
+but the node comment is where the mapping contract is being written down,
+so the flag is pinned there.
+
+Node names are ABI, and the unit address does not change them
+-------------------------------------------------------------
+Userspace matches /sys/class/uio/uioN/name, never the uioN minor --
+adding UIO nodes renumbers every minor after them, so the name is the
+only stable handle.  Unlike the 0043 doorbell nodes, these have "reg", so
+DT correctness wants a unit address regardless, and dtc's
+unit_address_vs_reg check warns without one -- default-on in standalone
+dtc, and in a kernel build only under W=1, since scripts/Makefile.dtbs
+adds -Wno-unit_address_vs_reg unless KBUILD_EXTRA_WARN contains 1.
+
+Both are satisfied at once with "linux,uio-name": uio_pdrv_genirq uses
+that property verbatim for the exported name and falls back to the
+fwnode name ("%pfwP", which includes the unit address) only when the
+property is absent.  So the nodes carry proper unit addresses and export
+the bare strings "mister_lw_window" and "mister_ddr_aperture".  This
+also makes the name ABI explicit rather than an artifact of how the node
+happens to be spelled -- worth having in its own right.  Renaming a node
+is now safe; changing the property is not.
+
+Placement
+---------
+Both nodes are children of the root, beside the doorbell nodes, and not
+of soc/bus@ff200000 (the &fpga label).  That node is documented in the
+base DTS as the place where an FPGA image's own device-tree overlay adds
+its devices; nothing here should depend on it or collide with it.  The
+overlapping reg range costs nothing: neither simple-bus nor
+uio_pdrv_genirq requests the memory region, both only record it, so
+there is no reservation to conflict over.
+
+Binding, and why this patch is beta-local
+-----------------------------------------
+compatible = "generic-uio" rides the same mechanism patch 0043 set up:
+uio_pdrv_genirq's of_match_table is empty until the of_id parameter
+fills it, and board/mister/de10nano/linux-rt.fragment supplies
+CONFIG_UIO=y, CONFIG_UIO_PDRV_GENIRQ=y and
+CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio" (with
+CONFIG_CMDLINE_EXTEND=y) for the RT kernel.  No new kernel config symbol
+is needed for this patch or for 0045.
+
+Like 0043, this file lives only in linux-patches-beta/ and is listed
+only in that directory's series file.  The shared linux-patches/
+directory has no series file -- the stock 6.18 build applies all of it
+via BR2_LINUX_KERNEL_PATCH -- so a copy there would reach the stock
+kernel's DTS.  Beta-local is what keeps the stock build byte-identical.
+
+Provenance
+----------
+Origin:       None.  Originally authored for this tree; no MiSTer fork
+              commit corresponds to it.
+Author:       Michael C. Ferguson, 2026-08-14.
+Upstream:     No, and not upstreamable as-is.  Both "generic-uio" and
+              "mister,map-writecombine" are per-system inventions rather
+              than documented bindings, for the same reason 0043 is:
+              "generic-uio" only ever matches because the of_id cmdline
+              parameter writes it into an otherwise empty match table.
+              Disposition "carry" (docs/patch-provenance.md 3.1).
+Depends on:   0004 (the DTS base) and 0043 (it anchors after the last
+              doorbell node, and shares 0043's UIO cmdline plumbing).
+              Patch 0045 is what makes the write-combining property do
+              anything; this patch is correct and inert without it.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 121 +++++++++++++++++
+ 1 file changed, 121 insertions(+)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -280,6 +280,127 @@
+ 		interrupt-parent = <&intc>;
+ 		interrupts = <0 55 IRQ_TYPE_LEVEL_HIGH>;	/* f2h_irq15 */
+ 	};
++
++	/*
++	 * Reg-bearing UIO nodes: named, bounded, descriptor-based mappings of
++	 * the two FPGA-side windows, so the HAL maps them through /dev/uioN
++	 * instead of through /dev/mem.  Memory only -- these carry no
++	 * interrupts, the doorbell nodes above carry no reg, and the two
++	 * families stay orthogonal on purpose.  uio_pdrv_genirq accepts an
++	 * interrupt-less node: platform_get_irq_optional() returns -ENXIO and
++	 * the device runs with irq = UIO_IRQ_NONE.
++	 *
++	 * The exported name is the ABI, and here it is stated explicitly
++	 * rather than derived: uio_pdrv_genirq uses "linux,uio-name" verbatim
++	 * for /sys/class/uio/uioN/name when the property is present, and falls
++	 * back to the fwnode name ("%pfwP", unit address included) only when
++	 * it is absent.  That is what lets these nodes carry a DT-correct unit
++	 * address -- wanted for any node with "reg", and warned about by dtc's
++	 * unit_address_vs_reg check (default-on in standalone dtc; in a kernel
++	 * build only under W=1) -- while userspace still matches the bare
++	 * string.  Userspace must never key on the uioN minor: adding any UIO
++	 * node shifts the numbering of every node after it.
++	 *
++	 * MAP_SHARED, ALWAYS.  UIO does not check the mapping flags -- there
++	 * is no VM_SHARED test anywhere in drivers/uio/uio.c -- so a
++	 * MAP_PRIVATE mmap of either node is accepted, silently COWs on the
++	 * first write, and diverts every subsequent store into anonymous RAM
++	 * the FPGA can never see.  Reads still return real memory and a
++	 * read-back self-test through the same mapping still passes, so the
++	 * corruption is invisible from the process that caused it.
++	 *
++	 * mister_lw_window -- the whole 2 MB lightweight HPS-to-FPGA bridge
++	 * window.  Core control registers and doorbell cause registers live
++	 * here.  This node must ALWAYS map strongly-ordered: uio_mmap_physical
++	 * applies pgprot_noncached unconditionally to UIO_MEM_PHYS, which is
++	 * exactly right here, not a limitation to work around.  The GPO strobe
++	 * handshake and the register-window fence bracketing depend on it.
++	 * NEVER add mister,map-writecombine to this node -- the reason the two
++	 * windows are separate nodes at all is that the property is
++	 * node-scoped, so this one is structurally incapable of inheriting it.
++	 * That rule is not only about ordering, and the ordering half is the
++	 * weaker one: write-combining is Normal memory, and ARMv7 permits
++	 * SPECULATIVE reads from Normal memory while forbidding them to
++	 * Strongly-ordered memory.  A WC mapping of a window where undecoded
++	 * reads hard-hang the board (H-1, below) could therefore hang it off a
++	 * mispredicted path, with the program never issuing a bad access at
++	 * all.  Mapping this window is safe only BECAUSE it is strongly
++	 * ordered.  Fencing correctly does not buy back the right to relax it.
++	 *
++	 * MAP-ONLY, NEVER PROBE (hardware finding H-1).  Mapping this window
++	 * is safe.  Touching an offset that no fabric slave decodes is not:
++	 * the interconnect waits forever for a response and the HPS hard-hangs
++	 * with no exception, no panic, no console output and no crash record
++	 * -- power-cycle-only recovery, confirmed three times on silicon,
++	 * including once with a serial console attached that logged nothing.
++	 * All three confirmed events were READS; no write to an undecoded
++	 * offset has been issued on hardware, but a write awaits a fabric
++	 * response through this mapping too, so presume it equally lethal --
++	 * the rule covers every access type, not just the measured one.
++	 * The menu core decodes nothing in this window at all.  A consumer may
++	 * therefore touch only offsets that a loaded core has declared, and
++	 * "probe the window to see what is there" is a destructive operation,
++	 * diagnostics included.
++	 *
++	 * mister_ddr_aperture -- the 512 MiB DDR3 aperture the FPGA shares
++	 * with the HPS through the f2sdram ports (0x20000000..0x3FFFFFFF).
++	 * The kernel does not own this memory and cannot: the boot command
++	 * line caps it at mem=511M, so every page here is outside the kernel
++	 * memory map (docs/boot-chain.md section 6.4).  That is also why
++	 * /dev/mem cannot help -- for !pfn_valid ranges ARM's
++	 * phys_mem_access_prot() returns pgprot_noncached whatever the flags,
++	 * O_SYNC included.
++	 *
++	 * That cap is a PRECONDITION of the write-combining map below, not
++	 * just an explanation.  memory@0 above still declares the full 1 GiB,
++	 * and mem=511M -- supplied by stock U-Boot, which this tree does not
++	 * own -- is the only thing holding these pages out of the kernel's
++	 * linear map.  Lose it and the WC mapping becomes a Normal
++	 * non-cacheable alias of pages the kernel also maps cacheable, which
++	 * ARMv7 leaves architecturally UNPREDICTABLE.  If that dependency ever
++	 * needs removing, do it with a /reserved-memory no-map node over this
++	 * range rather than by trusting the bootarg.
++	 *
++	 * "mister,map-writecombine" asks for a write-combining mapping of this
++	 * node's regions instead.  It is parsed only by patch 0045; on a
++	 * kernel without it the property is unknown and simply ignored, and
++	 * the node maps at today's strongly-ordered floor (~100 MB/s write,
++	 * measured).  The failure direction is deliberate: an old kernel with
++	 * a new DTB degrades to slow-and-correct, never to a CACHED mapping of
++	 * memory the FPGA writes without snooping the A9 caches -- that would
++	 * be silent corruption rather than lost throughput.
++	 *
++	 * Write-combining is a weaker ordering, so it moves work to the
++	 * consumer: a store into a WC region is not globally visible when the
++	 * instruction retires, and every publish-then-signal sequence must
++	 * fence before it rings a doorbell or raises a strobe.
++	 *
++	 * One map per node, and the whole aperture in it, because UIO selects
++	 * a map by page offset and always maps from the region base, so a
++	 * consumer reaching a high region maps a long prefix of address space
++	 * (VA only -- these are VM_PFNMAP, they cost no RAM and are not
++	 * page-locked by mlockall).  If that VA cost ever proves to matter,
++	 * split this node's reg into up to MAX_UIO_MAPS (5) entries at the hot
++	 * region bases; the property stays node-scoped either way.
++	 *
++	 * Both nodes sit at the root, beside the doorbell nodes, not under the
++	 * soc/bus@ff200000 node (label &fpga) -- that one is reserved for the
++	 * FPGA image's own DT overlay (see its comment), and nothing here
++	 * should depend on it.  The overlapping reg is not a conflict: neither
++	 * simple-bus nor uio_pdrv_genirq requests the region, they record it.
++	 */
++	mister_lw_window@ff200000 {
++		compatible = "generic-uio";
++		linux,uio-name = "mister_lw_window";
++		reg = <0xff200000 0x00200000>;
++	};
++
++	mister_ddr_aperture@20000000 {
++		compatible = "generic-uio";
++		linux,uio-name = "mister_ddr_aperture";
++		reg = <0x20000000 0x20000000>;
++		mister,map-writecombine;
++	};
+ };
+ 
+ &gmac1 {
+-- 
+2.51.0

@@ -4,21 +4,49 @@
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
 # Excluded vs the 6.18 set: 0038, 0039, 0040, 0041, 0042 (landed 2026-07-24,
-# not yet re-anchored). The beta series carries 32 of 37
-# patches, so the 7.x kernel and the 6.18 kernel diverge only where an
-# upstream API forced a re-anchor — never by dropping a MiSTer change.
+# not yet re-anchored). The beta series carries 31 of the 36 shared
+# patches plus the 3 beta-local ones below — 34 entries — so within the
+# carried set the 7.x and 6.18 kernels diverge only where an upstream API
+# forced a re-anchor; the 0038-0042 gap is a re-anchoring backlog, not a
+# policy divergence.
 # Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor
 # it here rather than removing it from this list.
 #
 # The jump from 0037 to 0043 at the end of the list is that same 0038-0042
-# gap, not a second one: 0043-dts-uio-doorbells is BETA-LOCAL — a real file
-# in THIS directory, deliberately absent from the shared linux-patches/ set
-# so the stock 6.18 build (which globs that whole dir via
-# BR2_LINUX_KERNEL_PATCH) never sees it. It depends only on 0004 and applies
-# fine over the hole. It is the RT line's reason to exist right now
-# (ADR-002-interim: UIO doorbells on GIC SPI 41..48).
+# gap, not a second one. 0043, 0044 and 0045 are BETA-LOCAL — real files in
+# THIS directory, deliberately absent from the shared linux-patches/ set so
+# the stock 6.18 build (which globs that whole dir via BR2_LINUX_KERNEL_PATCH)
+# never sees them. Apply-order facts, precisely: 0043 anchors on 0004's
+# output; 0044 anchors on 0043's output; 0045 touches only drivers/uio and
+# include files no other patch in this series touches, so it applies
+# independently at any position. All three apply fine over the hole. Together they are the RT line's reason to exist right now
+# (ADR-002-interim and ADR-003, Main_MiSTer rewrite plan):
 #
-# NOT-symlink exceptions: four entries are REAL FILES re-anchored for 7.x —
+#   0043  UIO doorbell nodes on GIC SPI 48..55 (f2h_irq8..15). Interrupt-only
+#         nodes; a blocking read() on /dev/uioN replaces the cause-register
+#         poll over the lightweight bridge. The pool sat at SPI 41..48 until
+#         2026-08-14 — stock gateware drives BOTH low f2h lines
+#         (HDMI_TX_VS and video_sync, sys_top.v:573), so the old split had a
+#         UIO node exclusively claiming a live ~60 Hz line. Renumbered, not
+#         renamed: the node names are userspace ABI and stayed
+#         mister_doorbell1..8, which are now pool ordinals rather than line
+#         numbers.
+#   0044  reg-bearing UIO nodes for the 2 MB lightweight-bridge register
+#         window and the 512 MiB shared DDR3 aperture — named, size-bounded
+#         mappings in place of /dev/mem. Memory only, no interrupts. Must
+#         sort after 0043: it anchors on the last doorbell node.
+#   0045  UIO_MEM_PHYS_WC, a write-combining page attribute for UIO physical
+#         maps, selected by the "mister,map-writecombine" property 0044 puts
+#         on the aperture node (and deliberately not on the register-window
+#         node). Touches drivers/uio/, include/linux/ and the uio-howto
+#         documentation only, no DTS, so its position is free — listed last
+#         because 0044 is what gives the property a consumer. Without 0045
+#         that property is inert and the aperture maps strongly-ordered:
+#         slower, never unsafe.
+#
+# NOT-symlink exceptions: four of the shared-patch entries are REAL FILES
+# re-anchored for 7.x (0043-0045 above are real files too, but they are
+# beta-local originals, not re-anchors of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
 # Buildroot applies patches with `patch -F0` (fuzz zero), and these four
 # needed either re-anchored context or a real 7.x API/header delta. Keep
@@ -92,3 +120,5 @@
 0036-btusb-csr-clone-lmp-subver-2512.patch
 0037-hid-playstation-dualsense-mute-btn-z.patch
 0043-dts-uio-doorbells.patch
+0044-dts-uio-fpga-regions.patch
+0045-uio-writecombine.patch

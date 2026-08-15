@@ -1,0 +1,254 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 14 Aug 2026 00:00:00 +0000
+Subject: [PATCH] uio: add a write-combining physical memtype and let
+ uio_pdrv_genirq request it
+
+UIO can only hand userspace one page attribute for a physical mapping.
+uio_mmap_physical() applies pgprot_noncached() to every UIO_MEM_PHYS map
+unconditionally:
+
+  drivers/uio/uio.c:757-759
+        vma->vm_ops = &uio_physical_vm_ops;
+        if (idev->info->mem[mi].memtype == UIO_MEM_PHYS)
+                vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+For a register file that is exactly right.  For a large memory-like
+region shared with a device it is a throughput floor with no way around
+it, because on ARMv7 pgprot_noncached() is L_PTE_MT_UNCACHED
+(arch/arm/include/asm/pgtable.h:105-106), which the TEX-remap table
+encodes as Strongly-ordered (arch/arm/mm/proc-macros.S:135, entry 0x00):
+non-bufferable, in-order, one outstanding transaction, so the CPU stalls
+per beat.  Measured on a Cyclone V (DE10-Nano), streaming into an FPGA's
+shared DDR3 aperture through such a mapping tops out at ~100 MB/s write
+and ~54 MB/s read.
+
+This adds UIO_MEM_PHYS_WC, which is UIO_MEM_PHYS mapped with
+pgprot_writecombine() instead -- on ARMv7 L_PTE_MT_BUFFERABLE
+(arch/arm/include/asm/pgtable.h:108-109), encoded as Normal non-cacheable
+(proc-macros.S:136, PTE_EXT_TEX(1)), so stores merge in the write buffer
+into bursts.  It is a weaker ordering, not a weaker coherency: the
+mapping stays non-cacheable, so a device writing the same memory without
+snooping the CPU caches is as safe as it was before.
+
+The change is four files:
+
+  include/linux/uio_driver.h    UIO_MEM_PHYS_WC = 6, appended after
+                                UIO_MEM_DMA_COHERENT (memtype defines,
+                                :162-173), with the ordering and
+                                speculation caveats next to it.
+  drivers/uio/uio.c             one else-if in uio_mmap_physical() at the
+                                unconditional pgprot_noncached() above,
+                                and the new memtype added to the mmap
+                                dispatch switch beside UIO_MEM_PHYS
+                                (:864-868).
+  drivers/uio/uio_pdrv_genirq.c read a boolean device property once at
+                                probe and use it to pick the memtype in
+                                the resource loop, which today hardcodes
+                                UIO_MEM_PHYS (:203).
+  Documentation/driver-api/     the memtype field's own documentation
+    uio-howto.rst               (:276-280), which enumerates the values a
+                                driver may set.  (That list is already two
+                                values behind -- it names neither
+                                UIO_MEM_IOVA nor UIO_MEM_DMA_COHERENT --
+                                but leaving it three behind is not the fix,
+                                and the "upstreamable as is" claim below is
+                                only true with this hunk.)
+
+No behaviour change for anything that does not ask for it
+---------------------------------------------------------
+memtype is chosen by the driver that fills in struct uio_mem, so every
+existing UIO driver keeps UIO_MEM_PHYS and reaches the same
+pgprot_noncached() line it always did.  The new branch is unreachable
+unless a driver sets the new value.  In uio_pdrv_genirq the selector is
+device_property_read_bool(), which returns false for a device with no
+fwnode, so platform-data-instantiated devices are unaffected as well --
+the loop assigns UIO_MEM_PHYS exactly as before.
+
+pgprot_writecombine() is available on every architecture: where the
+architecture defines no write-combining attribute, include/linux/pgtable.h
+:1793-1795 aliases it to pgprot_noncached(), so a UIO_MEM_PHYS_WC map
+degrades to today's uncached mapping rather than failing to build or
+mapping something unsafe.
+
+Ordering, and who owns it
+-------------------------
+A store into a write-combining region is not globally visible when the
+instruction retires; it may sit merged in the write buffer, and stores
+may reach memory out of order relative to each other.  Any userspace
+publish-then-signal sequence over such a mapping therefore needs a
+barrier between the payload writes and whatever announces them -- a
+doorbell write, a strobe, a ring index.  This is why the attribute is
+opt-in per device rather than a global relaxation of UIO_MEM_PHYS, and
+why a device with both buffers and ordered registers should describe
+them as two devices: an ordered register file must keep the strongly
+ordered mapping, and a device-scoped flag makes that separation
+structural instead of a review item.
+
+Why a new memtype rather than a flag
+------------------------------------
+memtype is already the dispatch key in uio_mmap() and already selects
+between three mapping implementations; a sixth value costs one switch
+label and one else-if.  A separate flags field in struct uio_mem would
+add state that every existing driver would have to initialise correctly
+to keep its current behaviour, for the same one bit of information.
+
+The device-tree property
+------------------------
+"mister,map-writecombine" is a vendor property on "generic-uio", which
+is itself not a documented binding -- it is a match string injected at
+runtime through uio_pdrv_genirq's of_id module parameter
+(uio_pdrv_genirq.c:251-258).  The generic half of this patch (the
+memtype, its handling in uio.c, and the uio-howto.rst entry) is written
+to be upstreamable as is; the property parse is local, and would need a
+documented binding and a vendor prefix review before it could go
+anywhere.  Kept in one patch here because splitting them would put a
+memtype in the tree that nothing in the tree can select.
+
+Consumers
+---------
+board/mister/de10nano/linux-patches-beta/0044-dts-uio-fpga-regions.patch
+adds the two nodes that use this: the register window, which
+deliberately does NOT carry the property and so keeps the strongly
+ordered mapping, and the shared DDR3 aperture, which does.  Applying
+0044 without this patch is safe and inert -- an unknown DT property is
+ignored and the aperture maps uncached, i.e. correct but at the floor
+above.  That is the intended failure direction: never a cached mapping
+of memory an FPGA writes without snooping the A9 caches, which would be
+silent corruption rather than lost throughput.
+
+No new kernel config symbol is required; this rides CONFIG_UIO and
+CONFIG_UIO_PDRV_GENIRQ, which board/mister/de10nano/linux-rt.fragment
+already sets for the RT kernel.
+
+Provenance
+----------
+Origin:       None.  Originally authored for this tree; no MiSTer fork
+              commit corresponds to it (stock MiSTer builds no UIO at
+              all).
+Author:       Michael C. Ferguson, 2026-08-14.
+Upstream:     Not submitted.  The uio.c / uio_driver.h half is written to
+              upstreamable standards and could be; the DT property half
+              cannot go as is (vendor property on an undocumented
+              binding).  Disposition "carry" (docs/patch-provenance.md
+              3.1), same posture as 0043 and 0044.
+Anchors on:   Linux 7.2-rc7 as built by this variant -- drivers/uio/uio.c,
+              drivers/uio/uio_pdrv_genirq.c, include/linux/uio_driver.h
+              and Documentation/driver-api/uio-howto.rst, all unmodified
+              upstream files that no other patch in this series touches.
+
+Applies independently of every other patch in the series, at any
+position. The relationship to 0044 is semantic, not apply-order: the
+mister,map-writecombine property 0044 declares is deliberately inert on
+a kernel without this patch (an unknown DT property is ignored), and
+this patch changes nothing for nodes that do not declare it.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ Documentation/driver-api/uio-howto.rst |  9 +++++++++
+ drivers/uio/uio.c                      |  3 +++
+ drivers/uio/uio_pdrv_genirq.c          | 12 +++++++++++-
+ include/linux/uio_driver.h             | 18 ++++++++++++++++++
+ 4 files changed, 41 insertions(+), 1 deletion(-)
+
+--- a/Documentation/driver-api/uio-howto.rst
++++ b/Documentation/driver-api/uio-howto.rst
+@@ -278,6 +278,15 @@
+    mapped. Use ``UIO_MEM_LOGICAL`` for logical memory (e.g. allocated
+    with :c:func:`__get_free_pages()` but not kmalloc()). There's also
+    ``UIO_MEM_VIRTUAL`` for virtual memory.
++
++   ``UIO_MEM_PHYS_WC`` is ``UIO_MEM_PHYS`` mapped write-combining rather
++   than uncached, for memory-like regions such as buffers, framebuffers
++   and shared apertures. Stores to such a mapping may be merged and
++   reordered, so user space must place a barrier between a write and
++   whatever publishes it, and a device that also has ordered registers
++   must describe those as a separate ``UIO_MEM_PHYS`` mapping. Do not use
++   it for a region where reads have side effects or may not complete:
++   write-combining memory may be read speculatively.
+ 
+ -  ``phys_addr_t addr``: Required if the mapping is used. Fill in the
+    address of your memory block. This address is the one that appears in
+--- a/drivers/uio/uio.c
++++ b/drivers/uio/uio.c
+@@ -757,6 +757,8 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
+ 	vma->vm_ops = &uio_physical_vm_ops;
+ 	if (idev->info->mem[mi].memtype == UIO_MEM_PHYS)
+ 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
++	else if (idev->info->mem[mi].memtype == UIO_MEM_PHYS_WC)
++		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+ 
+ 	/*
+ 	 * We cannot use the vm_iomap_memory() helper here,
+@@ -864,6 +866,7 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
+ 	switch (idev->info->mem[mi].memtype) {
+ 	case UIO_MEM_IOVA:
+ 	case UIO_MEM_PHYS:
++	case UIO_MEM_PHYS_WC:
+ 		ret = uio_mmap_physical(vma);
+ 		break;
+ 	case UIO_MEM_LOGICAL:
+--- a/drivers/uio/uio_pdrv_genirq.c
++++ b/drivers/uio/uio_pdrv_genirq.c
+@@ -112,6 +112,7 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 	struct fwnode_handle *node = dev_fwnode(&pdev->dev);
+ 	struct uio_pdrv_genirq_platdata *priv;
+ 	struct uio_mem *uiomem;
++	bool map_wc;
+ 	int ret = -EINVAL;
+ 	int i;
+ 
+@@ -185,6 +186,15 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ 
++	/*
++	 * Regions of a device flagged this way are mapped write-combining
++	 * rather than uncached.  The property is per device, not per region:
++	 * a device that needs both attributes describes them as two nodes,
++	 * so that a region carrying ordered registers cannot inherit the
++	 * relaxed attribute by accident.
++	 */
++	map_wc = device_property_read_bool(&pdev->dev, "mister,map-writecombine");
++
+ 	uiomem = &uioinfo->mem[0];
+ 
+ 	for (i = 0; i < pdev->num_resources; ++i) {
+@@ -200,7 +210,7 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 			break;
+ 		}
+ 
+-		uiomem->memtype = UIO_MEM_PHYS;
++		uiomem->memtype = map_wc ? UIO_MEM_PHYS_WC : UIO_MEM_PHYS;
+ 		uiomem->addr = r->start & PAGE_MASK;
+ 		uiomem->offs = r->start & ~PAGE_MASK;
+ 		uiomem->size = (uiomem->offs + resource_size(r)
+--- a/include/linux/uio_driver.h
++++ b/include/linux/uio_driver.h
+@@ -171,6 +171,24 @@ extern int __must_check
+  * Do not use in new drivers.
+  */
+ #define UIO_MEM_DMA_COHERENT	5
++/*
++ * UIO_MEM_PHYS_WC is UIO_MEM_PHYS with a write-combining page attribute
++ * instead of an uncached one, for regions where the mapping is memory-like
++ * (buffers, framebuffers, shared apertures) rather than a register file.
++ * Stores may be merged and reordered, so a driver that also has ordered
++ * registers must keep them in a separate UIO_MEM_PHYS mapping, and userspace
++ * must place a barrier between a write to such a region and whatever
++ * publishes it.
++ *
++ * Never use it for a region where reads have side effects or may not
++ * complete: write-combining is Normal memory, from which the CPU is permitted
++ * to read speculatively, so an access no program issued can reach any address
++ * in the mapping.  This is the same discipline ioremap_wc() carries.
++ *
++ * On architectures with no write-combining attribute this falls back to the
++ * uncached mapping (asm-generic pgprot_writecombine).
++ */
++#define UIO_MEM_PHYS_WC	6
+ 
+ /* defines for uio_port->porttype */
+ #define UIO_PORT_NONE	0
+-- 
+2.51.0

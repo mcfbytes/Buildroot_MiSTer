@@ -54,7 +54,8 @@
 #         with a serial console attached and capturing, and produced ZERO
 #         bytes of output each time. The UART stops being serviced at the
 #         instant of a hang; DRAM does not, and is readable on the next boot.
-#         Needs CONFIG_PSTORE / PSTORE_RAM / PSTORE_CONSOLE / PSTORE_PMSG
+#         Needs CONFIG_PSTORE / CONFIG_PSTORE_RAM / CONFIG_PSTORE_CONSOLE /
+#         CONFIG_PSTORE_PMSG
 #         from ../linux-rt.fragment — which is also why it must stay
 #         beta-local, since in the stock DTB the node would reserve 1 MiB of
 #         every user's RAM for a subsystem that is not compiled in.

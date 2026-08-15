@@ -888,6 +888,17 @@ Also preserved by construction, and worth stating so P1.10 does not "improve" th
 * **The data partition may be FAT32 *or* exFAT** — and on 6.18 those are two different
   filesystem drivers (§8.4). Try `vfat`, then `exfat`.
 * **No initrd is loaded, ever** (`-` in `bootz`). The cpio must be embedded (A1/I1/I2).
+* **One optional step sits between the mount and the loop-mount: the on-demand exFAT
+  repair** ([ADR 0026](decisions/0026-user-driven-exfat-fsck.md)). `/init` tests for
+  `linux/.fsck-request` on the just-mounted data partition; with no marker — every ordinary
+  boot — that is a single `test -f` and the sequence above is unchanged. With a marker it
+  deletes it (exactly-once: an automatic retry loop here is indistinguishable from a brick),
+  unmounts, runs `fsck.exfat -p`, and remounts with the *same* `$FAT_OPTS`, which is why the
+  mount is factored into `mount_data_partition()`. It fails open on everything except a
+  partition that will not remount, which drops to `rescue()`. The initramfs is the only place
+  a repair can run at all: the rootfs is a file on the partition being checked, and a mount
+  holds an exclusive bdev claim even when read-only, so `fsck`'s `O_RDWR|O_EXCL` can never
+  succeed once the system is up.
 
 ---
 

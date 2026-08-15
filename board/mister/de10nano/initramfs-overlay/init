@@ -26,6 +26,20 @@ set -u
 ROOTWAIT_DEFAULT=30                 # seconds, when the cmdline says bare `rootwait`
 FAT_OPTS="rw,sync,dirsync,noatime,nodiratime,fmask=0022,dmask=0022,errors=remount-ro"
 
+# On-demand exfat repair (ADR 0026). Paths are relative to the data partition.
+# Written by Scripts/check_storage.sh (really /usr/sbin/mister-fsck-exfat in the
+# rootfs); consumed, and deleted, here. They live under linux/ rather than at the
+# card root so they stay out of the user's way in Windows -- the trade-off being
+# that a volume damaged badly enough that linux/ is unreadable cannot ask for its
+# own repair. That case fails the mount above first and lands in rescue anyway.
+FSCK_MARKER="linux/.fsck-request"
+FSCK_RESULT="linux/.fsck-result"
+# Absolute: the kernel hands /init an environment of just HOME= and TERM=
+# (init/main.c envp_init[]), so PATH is whatever BusyBox ash defaults to. Every
+# other command here is an applet and resolves regardless; this is the one real
+# binary, and it is not worth making it depend on that default.
+FSCK_EXFAT="/usr/sbin/fsck.exfat"
+
 cmdline=""
 root_arg=""
 loop_arg=""
@@ -34,6 +48,8 @@ rootwait=0
 rootdev=""
 loopdev=""
 fat_type=""
+fsck_rc=0
+fsck_msg=""
 
 log() { printf '[init] %s\n' "$*"; }
 
@@ -124,6 +140,156 @@ while :; do
 done
 log "root device $rootdev ready (after ${waited}s)"
 
+# ------------------------------------------------- mount helper / on-demand repair
+# Factored out of the mount site below because the repair path has to take the
+# filesystem down and put it back up again with the SAME options. Two copies of
+# an option string that A13 depends on is exactly the drift that ships silently.
+# Sets $fat_type; returns non-zero if neither driver would take the partition.
+mount_data_partition() {
+	if mount -t exfat -o "$FAT_OPTS" "$rootdev" /mnt/fat 2>/dev/null; then
+		fat_type="exfat"
+	elif mount -t vfat -o "$FAT_OPTS,utf8=1" "$rootdev" /mnt/fat; then
+		fat_type="vfat"
+	else
+		return 1
+	fi
+	return 0
+}
+
+# Repair the data partition, but ONLY when the user asked for it. See ADR 0026.
+#
+# WHY NOT JUST CHECK THE DIRTY FLAG. exfat sets VOLUME_DIRTY at the start of every
+# modifying operation (fs/exfat/inode.c:43, namei.c:570 and six more) and clears it
+# in exactly two places: put_super and reconfigure (super.c:49, :763). Nothing
+# clears it at the end of an operation, and this box is never cleanly unmounted --
+# the OSD's own Reboot is a direct HPS reset-controller write (Main:fpga_io.cpp:588)
+# that never reaches init's ::shutdown entries. So the flag is set within seconds
+# of every boot and is still set at every mount. Gating on it would mean fscking on
+# essentially every boot, for a walk whose cost is O(files) -- tens of seconds on a
+# loaded card, minutes on a full one -- with NO way to tell the user what is
+# happening: HDMI needs Main_MiSTer to program the FPGA frame reader, and fsck.exfat
+# prints nothing until it finishes. A user watching a black screen power-cycles, and
+# power-cycling mid-repair is how you turn a lost cluster into an unbootable card.
+#
+# So the trigger is an explicit marker and nothing else.
+#
+# EXACTLY ONCE. The marker is deleted BEFORE the repair runs, not after. If fsck
+# wedges or the user power-cycles through it, the next boot must come up normally
+# rather than re-entering the same repair forever -- an automatic retry loop here
+# is indistinguishable from a brick. One request, one attempt; re-running the
+# script is how you get another.
+
+# True once the request marker is gone. `rm -f` succeeding is not the same claim
+# -- it reports success for a file it never had to touch -- so the file itself is
+# what gets tested.
+marker_deleted() {
+	rm -f "/mnt/fat/$FSCK_MARKER" 2>/dev/null
+	[ ! -e "/mnt/fat/$FSCK_MARKER" ]
+}
+
+fsck_if_requested() {
+	[ -f "/mnt/fat/$FSCK_MARKER" ] || return 0
+
+	log "fsck: repair requested via $FSCK_MARKER"
+
+	# Fail CLOSED on the one failure that matters. If the marker cannot be
+	# removed -- a full or already-remounted-ro card -- then running the repair
+	# would arm it again for the next boot, and every boot after that, which is
+	# the runaway this whole design exists to prevent. Refusing the repair costs
+	# the user one manual re-run; a boot loop costs them the box.
+	if ! marker_deleted; then
+		# One retry, through a remount. $FAT_OPTS carries errors=remount-ro, so a
+		# volume corrupt enough to trip exfat_fs_error() on the way into linux/
+		# is now read-only -- and that is precisely the volume that most needs
+		# the repair. Getting it writable again for one unlink is worth a try;
+		# if the filesystem is too far gone for even that, so be it.
+		log "fsck: could not delete $FSCK_MARKER; trying to remount rw"
+		mount -o remount,rw /mnt/fat 2>/dev/null || true
+	fi
+
+	if ! marker_deleted; then
+		log "fsck: SKIPPED -- cannot delete $FSCK_MARKER, refusing to risk a repair loop"
+		log "fsck: the data partition is read-only or full; fix that, then ask again"
+		printf 'skipped: could not delete the request marker (card full or read-only?)\n' \
+			> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+		sync
+		return 0
+	fi
+	sync
+
+	# fsck.exfat cannot check FAT32, and we deliberately do not ship fsck.fat here
+	# (initramfs-post-build.sh). A FAT32 card is a supported but unusual
+	# configuration; say so rather than pretending the repair happened.
+	if [ "$fat_type" != "exfat" ]; then
+		log "fsck: SKIPPED -- partition is $fat_type, not exfat"
+		printf 'skipped: partition is %s, not exfat\n' "$fat_type" \
+			> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+		sync
+		return 0
+	fi
+
+	# Checked BEFORE the unmount, not after: a missing binary must not leave the
+	# data partition torn down. initramfs-post-build.sh and the Makefile's
+	# initramfs-verify both assert it is here, so this is the belt to their braces.
+	if [ ! -x "$FSCK_EXFAT" ]; then
+		log "fsck: SKIPPED -- $FSCK_EXFAT is not in this initramfs"
+		printf 'skipped: this Linux image ships no fsck.exfat in its initramfs\n' \
+			> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+		sync
+		return 0
+	fi
+
+	# Written BEFORE the unmount, and overwritten with the verdict afterwards.
+	# If the user power-cycles through the repair, this is what survives -- so
+	# the tool reports "interrupted" rather than whatever the PREVIOUS run's
+	# outcome happened to be, which would read as a success that never happened.
+	printf 'INTERRUPTED: a repair started but did not finish (powered off during it?)\n' \
+		> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+	sync
+
+	if ! umount /mnt/fat; then
+		# Should be impossible this early -- nothing else has opened the mount yet
+		# -- but the repair is optional and booting is not. Leave it mounted.
+		log "fsck: SKIPPED -- could not unmount the data partition"
+		printf 'skipped: could not unmount the data partition\n' \
+			> "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+		sync
+		return 0
+	fi
+
+	printf '\n'
+	printf '########################################################\n'
+	printf '#  Repairing the MiSTer data partition. DO NOT POWER OFF.\n'
+	printf '#  There is no display output until this finishes.\n'
+	printf '########################################################\n\n'
+
+	# -p (preen) rather than -y: it repairs what is unambiguous and leaves the rest
+	# for a human, which is the right default for a filesystem full of someone
+	# else's save games. Output goes straight to the console for serial users.
+	fsck_rc=0
+	"$FSCK_EXFAT" -p "$rootdev" || fsck_rc=$?
+	log "fsck: fsck.exfat exited $fsck_rc"
+
+	# Codes are exfatprogs' (fsck/fsck.c:31-38), which follow the fsck(8)
+	# convention: 0 clean, 1 corrected, 4 damage it would not touch, 8+ its own
+	# failure. NONE of them is a reason to refuse to boot -- a card we could not
+	# repair is still a card the user wants their games off.
+	case "$fsck_rc" in
+		0) fsck_msg="clean: no errors found" ;;
+		1) fsck_msg="repaired: errors were found and corrected" ;;
+		4) fsck_msg="INCOMPLETE: errors remain that -p would not fix on its own" ;;
+		*) fsck_msg="FAILED: fsck.exfat could not run (exit $fsck_rc)" ;;
+	esac
+	log "fsck: $fsck_msg"
+
+	mount_data_partition ||
+		rescue "data partition would not remount after fsck (exit $fsck_rc) -- see the fsck output above"
+
+	printf '%s\n' "$fsck_msg" > "/mnt/fat/$FSCK_RESULT" 2>/dev/null || true
+	sync
+	log "fsck: data partition remounted as $fat_type"
+}
+
 # -------------------------------------------------- no loop= : root= IS the rootfs
 # Stock's do_mounts.c takes this branch too (the `else` at fork line 681).
 if [ -z "$loop_arg" ]; then
@@ -137,14 +303,12 @@ else
 # fails BusyBox silently retries O_RDONLY and the kernel then marks the loop device
 # read-only -- which is precisely the state A15 forbids. exfat first, vfat second.
 log "mounting data partition $rootdev (exfat, then vfat)"
-if mount -t exfat -o "$FAT_OPTS" "$rootdev" /mnt/fat 2>/dev/null; then
-	fat_type="exfat"
-elif mount -t vfat -o "$FAT_OPTS,utf8=1" "$rootdev" /mnt/fat; then
-	fat_type="vfat"
-else
-	rescue "cannot mount $rootdev as exfat or vfat"
-fi
+mount_data_partition || rescue "cannot mount $rootdev as exfat or vfat"
 log "data partition mounted as $fat_type"
+
+# --------------------------------------------------- on-demand exfat repair (ADR 0026)
+# Runs only when Scripts/check_storage.sh left a marker. Never on a plain boot.
+fsck_if_requested
 
 # ------------------------------------------------------------ loop-mount the image
 [ -f "/mnt/fat/$loop_arg" ] || rescue "loop image '$loop_arg' not found on $rootdev"

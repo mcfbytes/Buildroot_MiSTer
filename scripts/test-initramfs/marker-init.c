@@ -71,6 +71,20 @@ static int first_byte(const char *path)
 	return c;
 }
 
+/* Echo a file's first line to the console, prefixed, if the file exists at all.
+ * Not an assertion -- it exports guest-side state so a host-side case can grep
+ * the console log for it. Silent when the file is absent. */
+static void print_first_line(const char *path, const char *prefix)
+{
+	char buf[256];
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	if (fgets(buf, sizeof buf, f))
+		printf("%s%s%s", prefix, buf, strchr(buf, '\n') ? "" : "\n");
+	fclose(f);
+}
+
 #ifdef CHECK_NONASCII
 /*
  * scripts/test-initramfs.sh creates this exact file, with this exact name and
@@ -149,6 +163,26 @@ int main(void)
 	/* Moved from the initramfs; the rootfs image has no devtmpfs line in fstab. */
 	expect("/dev is devtmpfs (moved from initramfs)", grep_all("/proc/mounts", devtmpfs));
 	expect("/proc is mounted",                      grep_all("/proc/mounts", procfs));
+
+	/* ADR 0026, exactly-once. A repair request must NEVER survive the boot that
+	 * consumed it: if it did, a repair that hung or was power-cycled through
+	 * would re-arm itself every boot, which is indistinguishable from a brick.
+	 *
+	 * Unconditional on purpose. In every case but `fsck-request` the file was
+	 * never created, so this is vacuously true -- and that is exactly the point:
+	 * it also catches an /init that somehow CREATES one. The `fsck-request` case
+	 * is where it has teeth, and it is checked here rather than from the host
+	 * console log because only the switched-root system can see the filesystem
+	 * as /sbin/init finds it. */
+	expect("no fsck request survives the boot that consumed it",
+	       access("/media/fat/linux/.fsck-request", F_OK) != 0);
+
+	/* And echo the recorded outcome, if there is one, so the host-side case can
+	 * assert it. .fsck-result is the ONLY artifact the user-facing tool reads
+	 * back -- /init's console output is not available to it -- so a redirect
+	 * that silently failed on the remounted volume would otherwise pass CI.
+	 * Absent in every case but `fsck-request`, where its absence is the bug. */
+	print_first_line("/media/fat/linux/.fsck-result", "MARKER: FSCK-RESULT=");
 
 #ifdef CHECK_NONASCII
 	check_nonascii();

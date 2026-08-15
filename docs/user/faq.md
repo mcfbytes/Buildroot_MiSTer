@@ -256,6 +256,60 @@ Full reasoning, including why geo-IP rather than something that talks to nobody:
 
 ---
 
+## Can I check my SD card for corruption?
+
+Yes — **Scripts > check_storage.sh**.
+
+MiSTer's data partition is exFAT, which has **no journal**. Every save, config and
+screenshot is written straight through to the card, but a multi-step change (allocate
+space, update the map, write the directory entry) is not one atomic operation. Pull the
+power in the wrong millisecond and the card can be left with a small inconsistency. It is
+rare per power cut — but nothing ever cleans it up, so it accumulates over the years, and
+Windows will start offering to "Scan and fix" a card that never gets scanned.
+
+Nothing does this automatically, on purpose. See below.
+
+**What the script does.** It runs a **read-only** check while the MiSTer is running,
+showing progress on screen. It changes nothing and is safe to run at any time. How long it
+takes depends on how many files are on the card, not how big it is — seconds on a fresh
+card, several minutes on a full one.
+
+* **No problems found** → it says so and stops. Nothing else happens. This is the usual
+  outcome.
+* **Problems found** → it shows them, tells you how long the repair will take (measured on
+  *your* card, by the check it just ran), and asks you to confirm in a yes/no box. **You do
+  not need a keyboard** — move with the d-pad, pick with your controller's first button,
+  back out with the second. The box starts on **No**, so nothing happens unless you
+  deliberately move to Yes. If you walk away, it times out and changes nothing.
+
+**If you say yes, read this.** The repair runs on the **next boot** — it cannot run while
+the MiSTer is on, because the MiSTer is running from a file on the very partition being
+repaired. During it:
+
+* **The screen stays black the whole time. There is no picture and no progress bar.** The
+  MiSTer cannot display anything that early in boot. This is normal, and it is the reason
+  the repair is never scheduled behind your back.
+* **Do not power off.** Interrupting a repair is far more dangerous than the problems it is
+  fixing.
+* It runs **once**. If you do power-cycle through it, the next boot comes up normally rather
+  than trying again — so you can never get stuck in a loop of long boots.
+
+**To cancel** a scheduled repair before rebooting: `mister-fsck-exfat --cancel` over SSH.
+Running the script again will *tell* you a repair is still scheduled, but it will not call
+it off by itself — a check run against a card that is in use cannot prove a repair is
+unnecessary, so it does not overrule a decision you already made. Over SSH you also get
+`--status`, `--check-only` and `--schedule`.
+
+**Some findings are false alarms.** The check runs while the card is in use, so files move
+underneath it. Treat the result as a strong hint, not a verdict — and run it from the
+Scripts menu with no core loaded, which is the quietest the card ever is.
+
+Full reasoning, including why this is not automatic and why the card is not simply
+formatted as ext4:
+[ADR 0026](../decisions/0026-user-driven-exfat-fsck.md).
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 

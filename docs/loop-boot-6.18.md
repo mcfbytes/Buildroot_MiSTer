@@ -187,9 +187,15 @@ Then `exec switch_root /newroot /sbin/init`.
 
 ### What it costs
 
-- **+1.6% zImage.** The cpio is 258,560 bytes uncompressed, 133,586 gzipped into the image.
-  Against U-Boot's 16 MiB load budget that leaves ~8.05 MiB of headroom. (`mem=511M` is
-  irrelevant here — it constrains the FPGA mailbox, not this.)
+- **A small percentage of zImage.** The cpio is **424,448 bytes** uncompressed, and the
+  `zImage_dtb` it lands in measures **8,994,445 bytes** — **7,782,771 bytes (7.42 MiB) of
+  headroom** against U-Boot's 16 MiB load budget, which `scripts/check-zimage-dtb.sh`
+  asserts on every build. (`mem=511M` is irrelevant here — it constrains the FPGA mailbox,
+  not this.)
+  <br>*Was 258,560 uncompressed / "~8.05 MiB headroom" before
+  [ADR 0026](decisions/0026-user-driven-exfat-fsck.md) added `fsck.exfat` (116,564 of the
+  current cpio) for the on-demand exFAT repair — so that feature cost about 0.25 MiB of
+  headroom.*
 - **An extra boot stage.** Predicted at a few hundred milliseconds. **Unmeasured.**
 - **`root=PARTUUID=` regression.** BusyBox `findfs` handles `UUID=`/`LABEL=` only; your
   `name_to_dev_t()` handled `PARTUUID=`. Narrow, but real.
@@ -201,9 +207,10 @@ Then `exec switch_root /newroot /sbin/init`.
 - **No `init/do_mounts.c` patch to forward-port.** §1 is the argument for this: that file
   gets rewritten, and every rewrite is a re-port on a boot-critical path.
 - **Testable without hardware.** `scripts/test-initramfs.sh` boots the real cpio under QEMU
-  across seven cases (fat32, exfat, symlinks, `LABEL=`, non-ASCII filenames, missing image,
-  `rootwait` timeout) and asserts both successful `switch_root` *and* correct failure
-  behaviour. Nothing about the in-kernel path was ever testable that way.
+  across eight cases (fat32, exfat, the on-demand exFAT repair, symlinks, `LABEL=`,
+  non-ASCII filenames, missing image, `rootwait` timeout) and asserts both successful
+  `switch_root` *and* correct failure behaviour. Nothing about the in-kernel path was ever
+  testable that way.
 - **Failures are recoverable.** Every error path in the kernel version is `pr_emerg()` then
   carry on, ending in a panic. Ours prints a diagnostic banner — parsed cmdline,
   `/proc/partitions`, `/proc/filesystems`, `/proc/mounts`, last 25 dmesg lines — and drops

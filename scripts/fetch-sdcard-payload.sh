@@ -321,6 +321,14 @@ stage_stock_payload() {
 #       database, with UPDATE_LINUX=true and --run-only. One candidate, so there
 #       is nothing to sort and nothing to race, on every Downloader build.
 #
+#   Scripts/check_storage.sh
+#       Checks this exFAT partition for damage and, if it finds any, offers to
+#       repair it on the next boot (ADR 0026). A three-line shim: the tool is
+#       /usr/sbin/mister-fsck-exfat in the rootfs, because a repair tool stored
+#       on the partition it repairs is unavailable exactly when it is needed,
+#       and because its other end is in the initramfs and the two must ship
+#       together. Staged here only so the Scripts menu has an entry for it.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -344,8 +352,12 @@ stage_update_channel() {
 	[ -d "$src" ] ||
 		die "update-channel payload dir not found: $src"
 
+	# Both Scripts, one loop. install.sh, uninstall.sh and the updater treat them
+	# as one set too -- see MLM_SCRIPTS in install.sh (ADR 0026).
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh"
+
 	local f
-	for f in downloader.ini Scripts/update_linux_modernization.sh; do
+	for f in downloader.ini $scripts; do
 		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
 	done
 
@@ -354,11 +366,15 @@ stage_update_channel() {
 	cp -f "$src/downloader.ini" "$PAYLOAD_DIR/downloader.ini"
 	chmod 0644 "$PAYLOAD_DIR/downloader.ini"
 
-	cp -f "$src/Scripts/update_linux_modernization.sh" \
-		"$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
-	chmod 0755 "$PAYLOAD_DIR/Scripts/update_linux_modernization.sh"
+	# 0755 explicitly rather than relying on cp -p / the checkout's mode: a
+	# Scripts/ entry that lands 0644 is one the MiSTer menu will not run, and
+	# nothing downstream notices.
+	for f in $scripts; do
+		cp -f "$src/$f" "$PAYLOAD_DIR/$f"
+		chmod 0755 "$PAYLOAD_DIR/$f"
+	done
 
-	log "staged update-channel config (downloader.ini, Scripts/update_linux_modernization.sh)"
+	log "staged update-channel config (downloader.ini, $scripts)"
 }
 
 # ============================================================================

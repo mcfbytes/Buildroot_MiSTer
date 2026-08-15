@@ -383,6 +383,7 @@ plain-language version of what that means on an untrusted network.
 | Capability | Stock | Here |
 |---|---|---|
 | **exFAT** | Out-of-tree Samsung driver (also handled FAT12/16/32) | **Mainline `exfat`**, with the Samsung symlink extension carried as patch `0031` ([ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [ADR 0019](docs/decisions/0019-exfat-symlinks-carried-patch.md)) |
+| **exFAT repair** | None. exFAT has no journal, the card is never cleanly unmounted (even the OSD's "Reboot" is a raw HPS reset-controller write), so lost clusters accumulate and nothing ever checks | **Scripts > check_storage.sh** — a read-only scan while running, and, only if it finds something and you confirm, a one-shot `fsck.exfat` on the next boot from the initramfs, the only place a repair can run ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
 | **NTFS** | Not supported | `ntfs3` module + `ntfs-3g` automount via util-linux `mount` ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
 | **USB automount** | Debian `usbmount` 0.0.24 | Buildroot `usbmount`, functionally identical, **plus NTFS** ([`docs/usb-automount-parity.md`](docs/usb-automount-parity.md)) |
 | **Archive extraction** | `7zr` = p7zip 16.02 (2016); the updater additionally fetches the same 2016 build over the network as `/media/fat/linux/7za` | **7-Zip 26.02** as `7zz` (+`7za`), and a static copy shipped to `/media/fat/linux/7za` so nothing is fetched ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |

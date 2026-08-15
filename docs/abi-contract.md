@@ -1296,6 +1296,19 @@ which will be blamed on the kernel, correctly.
 **P1.10 must mount `/media/fat -o sync,dirsync,noatime,nodiratime,iocharset=utf8`** (and **not**
 `ro` — only the *root* is read-only). This is `docs/patch-provenance.md` **N3/Q3**.
 
+> **What `/etc/resync` actually buys, on mainline exfat — see
+> [ADR 0026](decisions/0026-user-driven-exfat-fsck.md) §1(c).** The requirement above stands
+> and `/etc/resync` is kept verbatim for parity (I3), but the "belt and braces" framing
+> overstates the loop's effect on *this* kernel: mainline `fs/exfat` has **no `.sync_fs`**
+> operation (`exfat_sops`, `super.c:207-215`), so `sync(2)`'s two `sync_fs_one_sb` passes are
+> no-ops for `/media/fat`; `sync_bdevs()` only writes back page cache and never issues a
+> device flush; and under `SB_SYNCHRONOUS` every `write()` has *already* ended in
+> `exfat_file_fsync()` (`file.c:581`) = `__generic_file_fsync` + `sync_blockdev` +
+> `blkdev_issue_flush`. The mount options are doing all of the work; the 5-second loop is
+> parity, not protection. What the options cannot do — because exFAT has no journal — is make
+> a multi-step metadata update *atomic*, and nothing on the box ever repairs what an unlucky
+> power cut leaves behind. That gap is what ADR 0026 addresses, out of band and on request.
+
 ### 9.3 Layout assumptions — **MUST**
 
 Everything Main_MiSTer expects under the storage root (`/media/fat`, or `/media/usbN` if the

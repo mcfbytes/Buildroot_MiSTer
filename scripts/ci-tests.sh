@@ -283,16 +283,16 @@ else
 fi
 
 if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
-	skip "test-initramfs.sh (P1.12 QEMU boot test, 6 cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
+	skip "test-initramfs.sh (P1.12 QEMU boot test, 8 cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
 elif ! have qemu-system-arm; then
-	skip "test-initramfs.sh (P1.12 QEMU boot test, 6 cases)" "qemu-system-arm not found on PATH"
+	skip "test-initramfs.sh (P1.12 QEMU boot test, 8 cases)" "qemu-system-arm not found on PATH"
 else
-	printf -- '--- test-initramfs.sh: fat32 exfat label nonascii missing-image rootwait ---\n'
-	printf '  (builds/reuses a QEMU test kernel and boots it 6 times -- can take several minutes)\n'
+	printf -- '--- test-initramfs.sh: fat32 exfat fsck-request symlink label nonascii missing-image rootwait ---\n'
+	printf '  (builds/reuses a QEMU test kernel and boots it 8 times -- can take several minutes)\n'
 	if "$ROOT/scripts/test-initramfs.sh"; then
-		pass "test-initramfs.sh (P1.12 QEMU boot test, 6 cases)"
+		pass "test-initramfs.sh (P1.12 QEMU boot test, 8 cases)"
 	else
-		fail "test-initramfs.sh (P1.12 QEMU boot test, 6 cases)" "one or more of the 6 cases failed -- see output above"
+		fail "test-initramfs.sh (P1.12 QEMU boot test, 8 cases)" "one or more of the 8 cases failed -- see output above"
 	fi
 fi
 

@@ -413,7 +413,17 @@ initramfs: $(INITRAMFS_OUTPUT_DIR)/.config hostshim
 #
 # A wrong applet name is a brick. Check the artifact, not the intent.
 INITRAMFS_REQUIRED_APPLETS := sh mount umount losetup switch_root cttyhack setsid \
-                              sleep mkdir cat ls dmesg tail findfs printf echo test
+                              sleep mkdir cat ls dmesg tail findfs printf echo test \
+                              rm sync
+
+# The one non-applet binary /init runs, and the five exfatprogs ships that it must
+# NOT: initramfs-post-build.sh deletes them because every byte here is a byte of
+# zImage. Asserted in BOTH directions against the built cpio — a missing fsck.exfat
+# makes every requested repair a silent no-op, and a resurrected mkfs.exfat puts a
+# card-reformatter one typo away from the boot path. See ADR 0026.
+INITRAMFS_REQUIRED_BINS := usr/sbin/fsck.exfat
+INITRAMFS_FORBIDDEN_BINS := usr/sbin/dump.exfat usr/sbin/exfat2img usr/sbin/exfatlabel \
+                            usr/sbin/mkfs.exfat usr/sbin/tune.exfat
 .PHONY: initramfs-verify
 initramfs-verify:
 	@rc=0; \
@@ -424,6 +434,22 @@ initramfs-verify:
 			echo "       Check its CONFIG_ symbol really exists in this BusyBox version —" >&2; \
 			echo "       kconfig silently discards unknown symbols. See the header of" >&2; \
 			echo "       board/mister/de10nano/initramfs-busybox.config." >&2; \
+			rc=1; }; \
+	done; \
+	for b in $(INITRAMFS_REQUIRED_BINS); do \
+		echo "$$applets" | grep -qx "$$b" || { \
+			echo "FATAL: /init needs '$$b' but it is not in the cpio." >&2; \
+			echo "       Is BR2_PACKAGE_EXFATPROGS still set in" >&2; \
+			echo "       configs/mister_initramfs_defconfig, and did the package move its" >&2; \
+			echo "       install path? See ADR 0026." >&2; \
+			rc=1; }; \
+	done; \
+	for b in $(INITRAMFS_FORBIDDEN_BINS); do \
+		echo "$$applets" | grep -qx "$$b" && { \
+			echo "FATAL: '$$b' is in the cpio and must not be." >&2; \
+			echo "       board/mister/de10nano/initramfs-post-build.sh is meant to delete it" >&2; \
+			echo "       (476 KB of zImage for tools stage 1 cannot invoke). Did the" >&2; \
+			echo "       post-build hook run? See ADR 0026." >&2; \
 			rc=1; }; \
 	done; \
 	echo "$$applets" | grep -qx 'init' || { \
@@ -440,7 +466,7 @@ initramfs-verify:
 	else \
 		echo "WARN: qemu-arm not installed; skipping the ash -n parse check of /init." >&2; \
 	fi; \
-	[ $$rc -eq 0 ] && echo "==> initramfs-verify OK: $(words $(INITRAMFS_REQUIRED_APPLETS)) applets + /init + /dev/console + ash parses /init"; \
+	[ $$rc -eq 0 ] && echo "==> initramfs-verify OK: $(words $(INITRAMFS_REQUIRED_APPLETS)) applets + $(words $(INITRAMFS_REQUIRED_BINS)) binary + $(words $(INITRAMFS_FORBIDDEN_BINS)) trimmed + /init + /dev/console + ash parses /init"; \
 	exit $$rc
 
 $(INITRAMFS_OUTPUT_DIR)/.config: $(INITRAMFS_DEFCONFIG) | $(BR_STAMP)

@@ -132,14 +132,25 @@ jobs:
       # Split by dialect on purpose: update_linux_modernization.sh is bash,
       # while install.sh and uninstall.sh are POSIX sh so they can be piped into
       # either `sh` or `bash` on any card.
+      #
+      # mister-fsck-exfat and its Scripts/ shim are bash (BR2_PACKAGE_BASH is on
+      # the target). The initramfs /init and initramfs-post-build.sh are `sh`:
+      # stage 1 has BusyBox ash and nothing else. `make initramfs-verify`
+      # additionally parses /init with the very ash we just built -- shellcheck
+      # checks the language, that checks the interpreter we ship.
       - name: shellcheck shipped board scripts
         run: |
           set -euo pipefail
-          shellcheck -x board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+          shellcheck -x \
+            board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh \
+            board/mister/de10nano/fat-payload/Scripts/check_storage.sh \
+            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat
           shellcheck -s sh -x \
             install.sh \
             uninstall.sh \
-            board/mister/de10nano/post-build.sh
+            board/mister/de10nano/post-build.sh \
+            board/mister/de10nano/initramfs-post-build.sh \
+            board/mister/de10nano/initramfs-overlay/init
 
       # Executable bits on shipped scripts, checked against GIT's recorded mode.
       #
@@ -156,7 +167,11 @@ jobs:
           set -euo pipefail
           must_be_exec=(
             board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
+            board/mister/de10nano/fat-payload/Scripts/check_storage.sh
             board/mister/de10nano/post-build.sh
+            board/mister/de10nano/initramfs-post-build.sh
+            board/mister/de10nano/initramfs-overlay/init
+            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat
             install.sh
             uninstall.sh
           )

@@ -3,17 +3,21 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: 0038, 0039, 0040, 0041, 0042 (landed 2026-07-24,
-# not yet re-anchored). The beta series carries 31 of the 36 shared
-# patches plus the 4 beta-local ones below — 35 entries — so within the
+# Excluded vs the 6.18 set: NOTHING. The beta series carries ALL 36 shared
+# patches plus the 4 beta-local ones below — 40 entries — so within the
 # carried set the 7.x and 6.18 kernels diverge only where an upstream API
-# forced a re-anchor; the 0038-0042 gap is a re-anchoring backlog, not a
-# policy divergence.
-# Keep it that way: if a patch will not apply to a newer 7.x -rc, re-anchor
-# it here rather than removing it from this list.
+# forced a re-anchor.
+# 0038-0042 were the last gap: they landed in the shared dir on 2026-07-24,
+# went unlisted here for three weeks, and were closed on 2026-08-17 once
+# measured rather than assumed. They needed NO re-anchor — plain symlinks,
+# applied on 7.2 final at -F0 with offsets only (0038 1, 0039 1, 0040 1,
+# 0041 2, 0042 5 hunks at an offset, zero fuzz), and drivers/hid/ compiles
+# clean for ARM with all five in. See docs/rt-beta-kernel.md §6.
+# Keep it that way: if a patch will not apply to a newer 7.x release,
+# re-anchor it here rather than removing it from this list.
 #
-# The jump from 0037 to 0043 at the end of the list is that same 0038-0042
-# gap, not a second one. 0043, 0044, 0045 and 0046 are BETA-LOCAL — real files
+# The list now runs 0037 -> 0038 with no gap. 0043, 0044, 0045 and 0046
+# are BETA-LOCAL — real files
 # in THIS directory, deliberately absent from the shared linux-patches/ set so
 # the stock 6.18 build (which globs that whole dir via BR2_LINUX_KERNEL_PATCH)
 # never sees them. Apply-order facts, precisely: 0043 anchors on 0004's
@@ -135,6 +139,11 @@
 0035-hid-nintendo-home-led-nonfatal.patch
 0036-btusb-csr-clone-lmp-subver-2512.patch
 0037-hid-playstation-dualsense-mute-btn-z.patch
+0038-hid-nintendo-nso-genesis-bt-pid.patch
+0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch
+0040-hid-nintendo-imu-name-suffix.patch
+0041-hid-nintendo-stock-led-classdev-names.patch
+0042-hid-playstation-stock-lightbar-led-names.patch
 0043-dts-uio-doorbells.patch
 0044-dts-uio-fpga-regions.patch
 0045-uio-writecombine.patch

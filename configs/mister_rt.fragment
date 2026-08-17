@@ -80,21 +80,24 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2"
 # for why that is the preferred move over a re-anchored copy. The shared 6.18
 # patches are otherwise deliberately untouched, keeping them byte-identical
 # to stock.
-# The series drops NOTHING that it lists: all 35 entries (31 shared + the four
+# The series drops NOTHING, full stop: all 40 entries (ALL 36 shared + the four
 # beta-local patches 0043/0044/0045 -- the UIO set -- and 0046, the ramoops
-# crash-record reservation) apply to 7.2 FINAL at -F0 -- re-verified 2026-08-17
-# with 0046 in the series, through Buildroot's own apply-patches.sh against a
-# freshly extracted pristine linux-7.2.tar.xz whose sha256 matched the signed
-# manifest: 35/35 applied, exit 0, ZERO hunks taking fuzz (70 hunks land at an
-# offset, which -F0 permits). No re-anchor was needed for the final release, so
-# all four re-anchored copies (0001, 0015, 0030, 0037) carry over unchanged, and
-# all four beta-local patches landed at zero offset. The offset distribution is
-# identical to the 34-entry run taken on the rc7 -> 7.2 bump earlier the same
-# day, before 0046 existed: 0046 costs the rest of the series nothing.
-# ⚠ Separately: the series does NOT list 0038-0042 at all (they landed in the
-# shared dir on 2026-07-24 and the beta series was never updated). That is a
-# re-anchoring backlog, not a policy divergence, and the 35/35 figure above is
-# NOT evidence about them -- see docs/rt-beta-kernel.md §2 and §7.
+# crash-record reservation) apply to 7.2 FINAL at -F0 -- verified 2026-08-17
+# through Buildroot's own apply-patches.sh against a freshly extracted pristine
+# linux-7.2.tar.xz whose sha256 matched the signed manifest: 40/40 applied,
+# exit 0, ZERO hunks taking fuzz (80 hunks land at an offset, which -F0
+# permits). No re-anchor was needed anywhere: the four re-anchored copies
+# (0001, 0015, 0030, 0037) carry over unchanged and, with all four beta-local
+# patches, land at zero offset.
+# 0038-0042 were the last gap -- listed nowhere in the beta series from
+# 2026-07-24 until 2026-08-17, on the ASSUMPTION they would need re-anchoring.
+# Measured, they needed none: plain symlinks, clean at -F0, and drivers/hid/
+# cross-compiles for ARM with all five in (hid-nintendo.o and hid-playstation.o
+# both build, zero warnings). The three runs that day nest: 34/34 (70 offsets)
+# on the rc7 -> 7.2 bump, 35/35 (70) once 0046 landed, 40/40 (80) with
+# 0038-0042 symlinked in. See docs/rt-beta-kernel.md §2 and §6.
+# ⚠ Applying is not building: the last `make rt` was the 34-entry series, so
+# the next one is the first to BUILD all 40 -- docs/rt-beta-kernel.md §7 item 0.
 # (This line previously read "drops only 0030 + 0037 ... all 29 listed", which
 # went stale when those two were re-anchored and re-included; 0037 in
 # particular is NOT cosmetic -- see the series header.)

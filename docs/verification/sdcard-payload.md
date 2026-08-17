@@ -44,13 +44,14 @@ mister-payload/MiSTer.ini
 mister-payload/downloader.ini
 mister-payload/Scripts/
 mister-payload/Scripts/check_storage.sh
+mister-payload/Scripts/mount_smb.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **29 entries** (7 directories, 22 files) for the base inventory. `check-sdcard.sh`
+That is **30 entries** (7 directories, 23 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 > **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
@@ -88,6 +89,29 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > putting our database into every core update. Nothing else is staged either — the
 > updater keeps no state on the card. It may not be added here in any case:
 > `check-sdcard.sh` diffs this block against the built image in **both** directions.
+
+> **Changed 2026-08-17** — one entry **added**, taking the base inventory from 29 to 30:
+> `mister-payload/Scripts/mount_smb.sh`
+> ([docs/cifs-mount-fscache-probe.md](../cifs-mount-fscache-probe.md)), also staged by
+> `stage_update_channel()`.
+>
+> It mounts a NAS share over SMB/CIFS. It ships because the community script for this job,
+> `Scripts_MiSTer/cifs_mount.sh`, **could not run on this image**: before doing any work it
+> required `fscache.ko` to be listed in `/lib/modules/$(uname -r)/modules.builtin`, and
+> Linux 6.8 merged `fs/fscache/` into `fs/netfs/`, making `CONFIG_FSCACHE` a `bool` rather
+> than a module target — so no kernel ≥ 6.8 records that name at all. It reported "The
+> current Kernel doesn't support CIFS (SAMBA)" on a kernel whose CIFS is complete and
+> working. That was [fixed upstream](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)
+> on 2026-08-17, but **nothing distributes `cifs_mount.sh`** — it is in no Downloader
+> database — so the fix never reaches a card on its own, and this entry is what makes an
+> SMB mount work out of the box.
+>
+> Unlike `check_storage.sh` this is **not** a shim — it is self-contained on the card, and
+> configured by `Scripts/mount_smb.ini` beside it (an existing `cifs_mount.ini` is read as a
+> fallback, so migrating costs nothing). Its behaviour is gated by
+> `scripts/test-mount-smb.sh`.
+>
+> It lands by the same one route as the other two, which are now a set of three.
 
 > **Changed 2026-08-13** — one entry **added**, taking the base inventory from 28 to 29:
 > `mister-payload/Scripts/check_storage.sh` ([ADR 0026](../decisions/0026-user-driven-exfat-fsck.md)),

@@ -271,29 +271,45 @@ EOF
 # ---------------------------------------------------------------------------
 # Companion Scripts
 # ---------------------------------------------------------------------------
-# This project ships two Scripts/ entries and they arrive by ONE route: install.sh
-# puts both on the card, and this function replaces either if it later goes
-# missing (ADR 0026). It is the same shape as ensure_kill_switch above -- repair
-# the card's configuration on every run, so a user who only ever runs this script
-# ends up correct.
+# This project ships three Scripts/ entries and they arrive by ONE route:
+# install.sh puts them all on the card, and this function replaces any that
+# later goes missing (ADR 0026). It is the same shape as ensure_kill_switch
+# above -- repair the card's configuration on every run, so a user who only ever
+# runs this script ends up correct.
 #
 # Needed because check_storage.sh drives a tool that lives in the ROOTFS, and a
 # Linux update replaces the rootfs without ever writing to the FAT partition. A
 # user who onboarded before that tool existed would otherwise have the whole
-# mechanism installed and no way to launch it from the Scripts menu.
+# mechanism installed and no way to launch it from the Scripts menu. mount_smb.sh
+# is here for the same reason -- it postdates the first onboarding cohort too.
 #
 # CREATE-ONLY, and quiet about it:
 #   * An existing file is never touched. It may be an older copy, or one the
-#     user edited; the shim is a launcher for a versioned rootfs tool, so an old
-#     one still works and there is nothing to "upgrade".
+#     user edited; and mount_smb.sh in particular may hold hand-edited USER
+#     OPTIONS, which is exactly why it reads mount_smb.ini as well.
 #   * A failure here is NOT fatal. This runs on the way to a Linux update, and
 #     a missing menu entry must never be the reason the image does not install.
 ensure_companion_scripts() {
 	[ -d "$SCRIPTS_DIR" ] || return 0
-	[ -e "$SCRIPTS_DIR/check_storage.sh" ] && return 0
 
-	local url="${MLM_CHECK_STORAGE_URL:-https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
-	local tmp="/tmp/check_storage.sh.$$"
+	# name | marker proving we got the real file, not a captive portal | blurb
+	# The URL override is passed in rather than derived from the name: the
+	# same MLM_*_URL spellings install.sh uses, stated once, greppable.
+	ensure_one_companion check_storage.sh 'mister-fsck-exfat' \
+		"storage check -- see the Scripts menu" \
+		"${MLM_CHECK_STORAGE_URL:-}"
+	ensure_one_companion mount_smb.sh 'kernel_supports_cifs' \
+		"mount a NAS share -- see the Scripts menu" \
+		"${MLM_MOUNT_SMB_URL:-}"
+}
+
+ensure_one_companion() {
+	local name="$1" marker="$2" blurb="$3" url="$4"
+	[ -e "$SCRIPTS_DIR/$name" ] && return 0
+
+	[ -n "$url" ] ||
+		url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
+	local tmp="/tmp/$name.$$"
 
 	rm -f "$tmp"
 	# shellcheck disable=SC2086  # CURL_SSL carries an option PAIR and must split
@@ -304,10 +320,10 @@ ensure_companion_scripts() {
 
 	# Same guard as install.sh: a captive portal or a 404 page must never be
 	# installed as an executable and then run as root.
-	if [ -s "$tmp" ] && head -n 1 "$tmp" | grep -q '^#!' && grep -q 'mister-fsck-exfat' "$tmp"; then
-		if mv -f "$tmp" "$SCRIPTS_DIR/check_storage.sh" 2>/dev/null; then
-			chmod 0755 "$SCRIPTS_DIR/check_storage.sh" 2>/dev/null || true
-			say "Installed Scripts/check_storage.sh (storage check -- see the Scripts menu)"
+	if [ -s "$tmp" ] && head -n 1 "$tmp" | grep -q '^#!' && grep -q "$marker" "$tmp"; then
+		if mv -f "$tmp" "$SCRIPTS_DIR/$name" 2>/dev/null; then
+			chmod 0755 "$SCRIPTS_DIR/$name" 2>/dev/null || true
+			say "Installed Scripts/$name ($blurb)"
 			return 0
 		fi
 	fi

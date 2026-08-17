@@ -310,6 +310,67 @@ formatted as ext4:
 
 ---
 
+<a id="cifs-mount-says-no-cifs-support"></a>
+## `cifs_mount.sh` says "The current Kernel doesn't support CIFS (SAMBA)". Do I need to update?
+
+**No.** Nothing is wrong with your MiSTer, nothing is missing from the image, and
+updating Linux will not help — a *newer* kernel is what triggers this. Use **Scripts >
+mount_smb.sh** instead; it does the same job and ships with this image.
+
+The bug in `cifs_mount.sh` was [fixed upstream](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)
+on 2026-08-17, from this investigation. But that file is not part of any update — it is
+not in the MiSTer Downloader's database — so the copy already on your card will keep
+failing until you replace it yourself. `mount_smb.sh` needs no such step.
+
+The community script `cifs_mount.sh` checks whether the kernel can do CIFS by looking for
+five kernel components by name, one of which is `fscache`. Linux 6.8 merged fscache into
+another component, so that name is no longer listed on any kernel that new — including
+this one. The script finds four of its five names, gives up on the fifth, and prints a
+message about the kernel that is simply wrong. CIFS itself is built into this image's
+kernel and works fine. (fscache was never needed for CIFS in the first place.)
+
+Stock MiSTer runs an older kernel where that file still existed, which is why the script
+works there and not here.
+
+**What to do:**
+
+1. Run **Scripts > mount_smb.sh** once. It will tell you to configure it.
+2. Create `/media/fat/Scripts/mount_smb.ini` with at least your server:
+
+   ```ini
+   SERVER=192.168.0.10
+   SHARE=MiSTer
+   LOCAL_DIR=cifs
+   MOUNT_AT_BOOT=true
+   ```
+
+   Leave `USERNAME` blank for guest access. Already have a `cifs_mount.ini`? You can skip
+   this — it is read automatically as a fallback, so your existing settings just work.
+3. Run it again. Your share appears at `/media/fat/cifs`, which is the location the MiSTer
+   binary checks before `games/`.
+
+`mount_smb.sh --umount` unmounts everything again. If you had `cifs_mount.sh` set to mount
+at boot, enabling `MOUNT_AT_BOOT` here removes its leftover entry for you — both would
+otherwise fight over the same folders.
+
+**About mounting at boot.** `MOUNT_AT_BOOT=true` is all you need — there is nothing else
+to set up. The share is mounted a little *after* the MiSTer menu appears, because the
+network does not exist until after the MiSTer program has already started (this is true on
+stock too). That is harmless: the MiSTer program checks for `/media/fat/cifs` at the moment
+you browse for a game, not once at startup, so your share appears in the menus as soon as
+it mounts. You do not need to reboot or reload anything. If your MiSTer joins WiFi slowly
+and the boot mount sometimes misses, raise `BOOT_START_DELAY_SECONDS` (default 8) in the
+ini. `/tmp/mount_smb.log` records what happened during boot.
+
+A NAS that refuses to connect is usually one of two things: an old server that will not
+negotiate modern SMB (add `ADDITIONAL_MOUNT_OPTIONS=vers=2.0`), or a share whose "guest"
+access needs `ADDITIONAL_MOUNT_OPTIONS=guest`.
+
+The full technical account, including why we did not simply patch the upstream script:
+[`cifs-mount-fscache-probe.md`](../cifs-mount-fscache-probe.md).
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 

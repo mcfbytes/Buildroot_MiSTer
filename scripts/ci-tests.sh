@@ -1730,6 +1730,49 @@ section "P3.10 — Network filesystem client parity (NFS half per ADR 0022)"
 
 require_present "usr/sbin/mount.cifs" "mount.cifs"
 
+# The CIFS half has a userland gap that mount.cifs being present does not close.
+# Scripts_MiSTer's cifs_mount.sh -- the community script everyone reaches for --
+# gated on finding fscache.ko listed in modules.builtin, and Linux 6.8 folded
+# fscache into netfs.ko (CONFIG_FSCACHE went tristate -> bool, so it is no longer
+# a module target and its name is recorded nowhere), so no kernel we ship could
+# satisfy it. Fixed upstream in Scripts_MiSTer#141 (2026-08-17), but nothing
+# distributes that file, so the fix reaches no existing card on its own. We ship
+# mount_smb.sh (docs/cifs-mount-fscache-probe.md); its behaviour is gated by its
+# own sandboxed harness, which needs no build and no network.
+printf -- '--- test-mount-smb.sh: mount_smb.sh behaviour ---\n'
+if "$ROOT/scripts/test-mount-smb.sh"; then
+	pass "test-mount-smb.sh (mount_smb.sh behaviour)"
+else
+	fail "test-mount-smb.sh (mount_smb.sh behaviour)" \
+		"one or more cases failed -- see output above"
+fi
+
+# The fact that made cifs_mount.sh unrunnable, asserted directly so that a
+# future kernel bump which somehow restored fscache.ko would show up as a
+# CHANGED ASSUMPTION rather than as silence. This is not a defect in our image:
+# CONFIG_CIFS=y and CONFIG_FSCACHE=y both hold, and CONFIG_CIFS_FSCACHE is unset
+# on stock too -- fscache was never required for CIFS.
+#
+# Read from rootfs.tar like the rest of this file, at usr/lib/modules/$KVER
+# (/lib is a usr-merge symlink, so tar records only the usr/ spelling) rather
+# than from output/target -- CI has the tar, not necessarily a target tree.
+CIFS_BUILTIN="usr/lib/modules/$KVER/modules.builtin"
+if tar_has "$CIFS_BUILTIN"; then
+	builtin_list="$WORKDIR/modules.builtin"
+	tar xOf "$ROOTFS_TAR" "./$CIFS_BUILTIN" 2>/dev/null > "$builtin_list"
+	if grep -q 'fs/smb/client/cifs\.ko' "$builtin_list"; then
+		pass "cifs.ko is built into the $KVER kernel (modules.builtin)"
+	else
+		fail "cifs.ko built into the $KVER kernel" \
+			"absent from modules.builtin -- CONFIG_CIFS is no longer =y"
+	fi
+	if grep -q 'fscache\.ko' "$builtin_list"; then
+		note "NOTE: fscache.ko is back in $KVER modules.builtin -- cifs_mount.sh's probe would pass again; revisit docs/cifs-mount-fscache-probe.md"
+	fi
+else
+	fail "modules.builtin present for $KVER" "$CIFS_BUILTIN not in rootfs.tar"
+fi
+
 # ADR 0022 REVERSED P3.10's original call. This check used to assert the exact
 # opposite -- "mount.nfs ABSENT (parity, P3.10 dropped NFS client)" -- which was
 # right while we shipped no NFS userland, and became the reason PR #59's build

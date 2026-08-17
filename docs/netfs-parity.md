@@ -135,6 +135,9 @@ finalize steps, so the on-image cost is lower.
 - `work/buildroot/package/nfs-utils/` — nfs-utils 2.9.1; note `BR2_PACKAGE_NFS_UTILS_RPC_NFSD`
   is `default y` and its `NFS_UTILS_LINUX_CONFIG_FIXUPS` would `KCONFIG_ENABLE_OPT(CONFIG_NFSD)`.
 - `docs/decisions/0022-nfs-client-userland.md` — the client-only NFS decision.
+- [`docs/cifs-mount-fscache-probe.md`](cifs-mount-fscache-probe.md) — why
+  `Scripts_MiSTer/cifs_mount.sh` cannot run on a kernel ≥ 6.8, and the
+  `Scripts/mount_smb.sh` we ship in its place.
 
 ## Decision audit trail
 
@@ -144,12 +147,25 @@ finalize steps, so the on-image cost is lower.
 | 2026-07-13 | Task "nfs mount succeeds" assumed stock NFS userland that doesn't exist | Reconcile: NFS stays kernel-only like stock; only the CIFS mount is verified |
 | 2026-07-21 | Remote-storage use case (games served from a NAS) needs a real NFS mount; kernel client was already complete, only `mount.nfs` was missing | **Supersede the 2026-07-13 call:** add `nfs-utils` **client-only** ([ADR 0022](decisions/0022-nfs-client-userland.md)); server + `rpcbind` still excluded |
 | 2026-07-21 | CIFS/SMB mounting audited on the same pass | **No change needed** — `CONFIG_CIFS=y` + `mount.cifs` already work; `CIFS_XATTR`/`UPCALL`/`DFS_UPCALL` left unset as AD/Kerberos-only features |
+| 2026-08-17 | The 2026-07-21 audit checked the *kernel and helper*, and both were fine — but the community script users actually reach for, `Scripts_MiSTer/cifs_mount.sh`, cannot run here at all: it requires `fscache.ko` in `modules.builtin`, and Linux 6.8 folded fscache into `netfs.ko`. It reports "The current Kernel doesn't support CIFS (SAMBA)" on a working kernel | Ship **`Scripts/mount_smb.sh`** — a clean reimplementation gating on `/proc/filesystems` — by the same one route as our other Scripts (ADR 0026). **No kernel or defconfig change**; there was never anything to fix on that side ([cifs-mount-fscache-probe.md](cifs-mount-fscache-probe.md)) |
 
 ## Implications for community tools
 
 `mount -t cifs //host/share /media/...` works (our `mount.cifs` addition), and since
 ADR 0022 `mount -t nfs4 host:/export /media/...` works too. Neither is configured for
 you: no `/etc/fstab` entries and no automount are added, and there is no NFS *server*.
+
+**`Scripts_MiSTer/cifs_mount.sh` was the exception, and it was never a kernel or helper
+problem.** Copies predating 2026-08-17 refuse to run on any kernel ≥ 6.8 — including both
+of ours — because the capability probe requires `modules.builtin` to list `fscache.ko`,
+which Linux 6.8 stopped recording when it merged `fs/fscache/` into `fs/netfs/` and made
+`CONFIG_FSCACHE` a `bool` — a `bool` is not a module target, so no name is recorded and
+`=m` is not available either. The mount it would have performed works perfectly; the
+probe did not. **Fixed upstream in
+[Scripts_MiSTer#141](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)**, raised
+from this work and merged the same day. We still ship `Scripts/mount_smb.sh`, because
+nothing distributes `cifs_mount.sh` — the fix cannot reach a card by itself.
+Full account in [`cifs-mount-fscache-probe.md`](cifs-mount-fscache-probe.md).
 
 Two limits worth knowing before filing a bug:
 

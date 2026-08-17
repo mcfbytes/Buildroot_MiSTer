@@ -12,6 +12,17 @@
 # ---------------------------------------------------------------------------
 # WHY THIS EXISTS RATHER THAN Scripts/cifs_mount.sh
 # ---------------------------------------------------------------------------
+# The bug described below was fixed upstream on 2026-08-17 by Scripts_MiSTer
+# PR #141, raised from this work. Three reasons to keep this script survive it:
+#
+#   1. Nothing distributes cifs_mount.sh -- there is no Scripts_MiSTer database,
+#      and Distribution_MiSTer's curated Scripts/ subset does not include it. The
+#      upstream fix reaches only people who re-download it by hand, while this
+#      arrives with the image (install.sh, fetch-sdcard-payload.sh, the updater).
+#   2. Upstream's boot entry is still unguarded on "$1" -- see below.
+#   3. Upstream's /etc/init.d/S99 fallback cannot survive a Linux update here.
+#
+# docs/cifs-mount-fscache-probe.md carries the full account. The history:
 # MiSTer-devel/Scripts_MiSTer's cifs_mount.sh cannot mount anything on a kernel
 # newer than 6.7. Before doing any work it walks a hard-coded list of module
 # FILENAMES --

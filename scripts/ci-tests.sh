@@ -1730,13 +1730,13 @@ require_present "usr/sbin/mount.cifs" "mount.cifs"
 
 # The CIFS half has a userland gap that mount.cifs being present does not close.
 # Scripts_MiSTer's cifs_mount.sh -- the community script everyone reaches for --
-# gates on finding fscache.ko listed in modules.builtin, and Linux 6.8 folded
+# gated on finding fscache.ko listed in modules.builtin, and Linux 6.8 folded
 # fscache into netfs.ko (CONFIG_FSCACHE went tristate -> bool, so it is no longer
-# a module target and its name is recorded nowhere), so no kernel we will ever
-# ship can satisfy it. It reports "The
-# current Kernel doesn't support CIFS (SAMBA)" on a working kernel. We ship
-# mount_smb.sh instead (docs/cifs-mount-fscache-probe.md); its behaviour is
-# gated by its own sandboxed harness, which needs no build and no network.
+# a module target and its name is recorded nowhere), so no kernel we ship could
+# satisfy it. Fixed upstream in Scripts_MiSTer#141 (2026-08-17), but nothing
+# distributes that file, so the fix reaches no existing card on its own. We ship
+# mount_smb.sh (docs/cifs-mount-fscache-probe.md); its behaviour is gated by its
+# own sandboxed harness, which needs no build and no network.
 printf -- '--- test-mount-smb.sh: mount_smb.sh behaviour ---\n'
 if "$ROOT/scripts/test-mount-smb.sh"; then
 	pass "test-mount-smb.sh (mount_smb.sh behaviour)"

@@ -314,8 +314,13 @@ formatted as ext4:
 ## `cifs_mount.sh` says "The current Kernel doesn't support CIFS (SAMBA)". Do I need to update?
 
 **No.** Nothing is wrong with your MiSTer, nothing is missing from the image, and
-updating will not help — a *newer* kernel is what triggers this. Use **Scripts >
+updating Linux will not help — a *newer* kernel is what triggers this. Use **Scripts >
 mount_smb.sh** instead; it does the same job and ships with this image.
+
+The bug in `cifs_mount.sh` was [fixed upstream](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)
+on 2026-08-17, from this investigation. But that file is not part of any update — it is
+not in the MiSTer Downloader's database — so the copy already on your card will keep
+failing until you replace it yourself. `mount_smb.sh` needs no such step.
 
 The community script `cifs_mount.sh` checks whether the kernel can do CIFS by looking for
 five kernel components by name, one of which is `fscache`. Linux 6.8 merged fscache into

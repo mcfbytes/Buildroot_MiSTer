@@ -155,13 +155,16 @@ finalize steps, so the on-image cost is lower.
 ADR 0022 `mount -t nfs4 host:/export /media/...` works too. Neither is configured for
 you: no `/etc/fstab` entries and no automount are added, and there is no NFS *server*.
 
-**`Scripts_MiSTer/cifs_mount.sh` is the exception, and it is not a kernel or helper
-problem.** It refuses to run on any kernel ≥ 6.8 — including both of ours — because its
-capability probe requires `modules.builtin` to list `fscache.ko`, which Linux 6.8 stopped
-recording when it merged `fs/fscache/` into `fs/netfs/` and made `CONFIG_FSCACHE` a `bool`
-— a `bool` is not a module target, so no name is recorded and `=m` is not available
-either. The mount it would have performed works perfectly; the
-probe does not. We ship `Scripts/mount_smb.sh` instead, which asks `/proc/filesystems`.
+**`Scripts_MiSTer/cifs_mount.sh` was the exception, and it was never a kernel or helper
+problem.** Copies predating 2026-08-17 refuse to run on any kernel ≥ 6.8 — including both
+of ours — because the capability probe requires `modules.builtin` to list `fscache.ko`,
+which Linux 6.8 stopped recording when it merged `fs/fscache/` into `fs/netfs/` and made
+`CONFIG_FSCACHE` a `bool` — a `bool` is not a module target, so no name is recorded and
+`=m` is not available either. The mount it would have performed works perfectly; the
+probe did not. **Fixed upstream in
+[Scripts_MiSTer#141](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)**, raised
+from this work and merged the same day. We still ship `Scripts/mount_smb.sh`, because
+nothing distributes `cifs_mount.sh` — the fix cannot reach a card by itself.
 Full account in [`cifs-mount-fscache-probe.md`](cifs-mount-fscache-probe.md).
 
 Two limits worth knowing before filing a bug:

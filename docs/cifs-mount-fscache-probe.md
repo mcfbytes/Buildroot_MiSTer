@@ -1,8 +1,28 @@
 # `cifs_mount.sh` and the `fscache.ko` that stopped existing
 
+> **Status: fixed upstream, 2026-08-17.**
+> [MiSTer-devel/Scripts_MiSTer#141](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)
+> — raised from this investigation, merged by sorgelig — replaces the module-name
+> probe with the same `/proc/filesystems` test `mount_smb.sh` uses. A copy of
+> `cifs_mount.sh` fetched today works on a 6.8+ kernel.
+>
+> **The fix does not reach existing cards on its own**, and that is not a
+> criticism of it — nothing distributes `cifs_mount.sh` at all (see
+> [How this file reaches a card](#how-this-file-reaches-a-card)). Every copy
+> already sitting in a `Scripts/` folder stays broken until its owner
+> re-downloads it by hand. We keep shipping `Scripts/mount_smb.sh`; the reasons
+> are narrower now and are listed in
+> [Why we still ship ours](#why-we-still-ship-ours).
+>
+> Everything below describes the bug **as it was**, and is kept because the
+> mechanism is subtle, because it recurs in any script that probes
+> `modules.builtin` by name, and because two further defects in the same code
+> path are still open upstream.
+
 ## Summary
 
-`Scripts_MiSTer/cifs_mount.sh` cannot mount anything on this image. It exits with
+`Scripts_MiSTer/cifs_mount.sh`, in every copy predating 2026-08-17, cannot mount
+anything on this image. It exits with
 
 ```
 The current Kernel doesn't
@@ -12,8 +32,8 @@ MiSTer Linux system.
 ```
 
 **Nothing is missing from the image.** CIFS support is complete and working; the
-script is looking for the wrong thing. Its capability probe tests for module
-*names* in `modules.builtin`, and one of the five it requires — `fscache.ko` —
+script was looking for the wrong thing. Its capability probe tested for module
+*names* in `modules.builtin`, and one of the five it required — `fscache.ko` —
 stopped being recorded there in Linux 6.8, and cannot be recorded there by any
 kernel we will ever ship.
 
@@ -26,10 +46,10 @@ whole of this bug.
 
 Because the message names the kernel and tells you to update it, this reads as an
 image defect. It is not one, and no amount of updating fixes it: a *newer* kernel
-is the thing that triggers it. Any MiSTer on a kernel ≥ 6.8 hits this, not just
-ours.
-
-We ship `Scripts/mount_smb.sh` in its place.
+is the thing that triggers it. Any MiSTer on a kernel ≥ 6.8 hit this, not just
+ours — including sorgelig's own `MiSTer-v6.18` branch, whose `MiSTer_defconfig`
+carries `CONFIG_CIFS=y` and `CONFIG_FSCACHE=y`. That is what made it worth
+raising upstream rather than only working around here.
 
 ## Root cause
 
@@ -131,6 +151,56 @@ being recorded at all.
 
 The script is not broken *by* us; it was written against a kernel generation that
 has since moved on, and we are the first MiSTer image to cross the 6.8 boundary.
+
+<a id="how-this-file-reaches-a-card"></a>
+## How this file reaches a card — it doesn't, automatically
+
+This is why fixing it upstream was necessary but not sufficient, and it was
+checked rather than assumed:
+
+- **There is no Scripts_MiSTer database.** No `db` branch, no `db.json.zip`
+  (all three plausible URLs 404). It is a plain source repo, not a Downloader
+  source.
+- **`Distribution_MiSTer`'s `db.json` carries a curated subset** — 1435 files, of
+  which 11 are `Scripts/`: `update.sh`, `wifi.sh`, `timezone.sh`, `rtc.sh`,
+  `samba_on.sh`, `ini_settings.sh`, `fast_USB_polling_{on,off}.sh` and three
+  `Scripts/.config/downloader/` files. **`cifs_mount.sh` is not among them.**
+- **`update_all_db.json` carries 10 files**, all of Update_All's own; no
+  `cifs_mount.sh`.
+- **The stock release archive ships only `Scripts/update.sh`**
+  (`docs/verification/stock-release-20250402.md`).
+
+So `cifs_mount.sh` arrives on a card by hand — downloaded from GitHub, or
+inherited from an old SD image — and nothing ever updates it in place. A fix in
+the repo reaches only people who go and fetch it again.
+
+> **Correction, recorded because an earlier revision of this document argued from
+> it:** the original decision not to fork `cifs_mount.sh` was justified partly by
+> "Update_All would overwrite our copy". That is **false** — no database carries
+> the file, so a fork would never have been clobbered. The decision stands on its
+> other grounds (991 lines of largely dead code, and the boot-entry behaviour we
+> needed to differ on), but that particular reason was wrong.
+
+<a id="why-we-still-ship-ours"></a>
+## Why we still ship ours
+
+After upstream #141, three reasons remain — and only three:
+
+1. **It arrives automatically.** `install.sh`, `scripts/fetch-sdcard-payload.sh`
+   and the updater's repair path all place `mount_smb.sh` on the card, so an SMB
+   mount works with no hunting on GitHub. Per the section above, the upstream fix
+   has no such route.
+2. **The boot entry's `$1` guard is still missing upstream.** `S99user` invokes
+   `/media/fat/linux/user-startup.sh` with `start`, `stop` **and** `restart`;
+   upstream's `STARTUP_COMMAND` (`cifs_mount.sh:220`) is unguarded, so it also
+   fires a mount during shutdown. Ours writes a `case "${1:-start}"` block.
+3. **Its `/etc/init.d/S99cifs_mount` fallback cannot survive a Linux update**,
+   which reflashes the whole rootfs. Only `/media/fat` persists. Ours writes to
+   `user-startup.sh` only, with no init.d path at all.
+
+Points 2 and 3 are open upstream; see the audit trail for their disposition.
+Should they be fixed and a distribution route ever appear, this script's
+justification narrows to nothing and it should be retired rather than defended.
 
 ### fscache was never required for CIFS anyway
 
@@ -311,5 +381,9 @@ target's own BusyBox ash via `qemu-arm` — the shell that actually runs it.
 |---|---|---|
 | 2026-08-17 | `cifs_mount.sh` reports "The current Kernel doesn't support CIFS" on this image; four of its five probed module names resolve, `fscache.ko` cannot | Root-caused to the Linux 6.8 `fscache`→`netfs` merge. **Not an image defect** — `CONFIG_CIFS=y`, `CONFIG_FSCACHE=y`, `mount.cifs` all present |
 | 2026-08-17 | First pass recorded the merge as landing in Linux **6.3**. Wrong — corrected to **6.8** | Re-verified from primary sources rather than recollection: tag bisect of `fs/fscache/` (present v6.2-v6.7, absent v6.8+), the `tristate`→`bool` Kconfig change, and stock's own `modules.builtin`. The conclusion is unchanged and now rests on the Kconfig type, which is stronger than a file listing |
+| 2026-08-17 | Wording implied `fscache.ko` was a **file** that disappeared. It never was one — stock ships 52 `.ko`s and none of the five probed names is among them | Reworded throughout: `modules.builtin` lists module **targets compiled in**, not files. A `tristate` set to `=y` is recorded there; a `bool` is not recorded at all, and `CONFIG_FSCACHE=m` is unavailable |
+| 2026-08-17 | Raised upstream as [Scripts_MiSTer#141](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141) (`+8/-40`, one file) — **merged by sorgelig** | Upstream now uses the same `/proc/filesystems` test. Verified before submitting that the unpatched file reproduces the bug and the patched one does not, that the message text and exit code are byte-identical, and that it still refuses a genuinely CIFS-less kernel |
+| 2026-08-17 | Checked how `cifs_mount.sh` is distributed: **it isn't**. No Scripts_MiSTer db; `Distribution_MiSTer`'s 11 `Scripts/` entries exclude it; `update_all_db.json` excludes it; the stock archive ships only `update.sh` | Keep `mount_smb.sh`. The upstream fix cannot reach an existing card on its own, and automatic delivery is now reason #1 for ours. Earlier "Update_All would clobber a fork" reasoning retracted as false |
+| 2026-08-17 | Two defects remain in upstream's boot path: unguarded `$1` in `STARTUP_COMMAND` (`:220`), and an `/etc/init.d/S99` fallback that a Linux update destroys | `$1` guard is a genuine one-line bug worth its own upstream PR. The init.d fallback is near-dead code (it only runs when `/etc/init.d/S99user` is absent) and removing it would be a robustness regression on systems that lack it — **not** worth a PR; recorded here instead |
 | 2026-08-17 | Fixing it in place would mean forking a 991-line actively-maintained upstream script that Update_All can overwrite | Ship `mount_smb.sh` under our own name instead, by the same one route as our other Scripts (ADR 0026) |
 | 2026-08-17 | Upstream's boot entry is unguarded on `$1` and its `/etc/init.d` fallback does not survive a rootfs reflash | Ours writes only a `$1`-guarded `user-startup.sh` block, and removes a stale `cifs_mount` entry when it installs its own |

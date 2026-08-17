@@ -330,11 +330,12 @@ stage_stock_payload() {
 #       together. Staged here only so the Scripts menu has an entry for it.
 #
 #   Scripts/mount_smb.sh
-#       Mounts a NAS share over SMB/CIFS. Ships because Scripts_MiSTer's own
-#       cifs_mount.sh cannot run on this image: it gates on finding fscache.ko
-#       in modules.builtin, and Linux 6.8 folded fscache into netfs.ko, so no
-#       kernel this new can satisfy it (docs/cifs-mount-fscache-probe.md).
-#       Self-contained, on the card, and configured by Scripts/mount_smb.ini.
+#       Mounts a NAS share over SMB/CIFS. Ships because nothing distributes
+#       Scripts_MiSTer's own cifs_mount.sh -- it is in no Downloader database, so
+#       even the upstream fix we landed for it (Scripts_MiSTer#141, after it
+#       proved unrunnable on any kernel >= 6.8) cannot reach a card by itself.
+#       See docs/cifs-mount-fscache-probe.md. Self-contained, on the card, and
+#       configured by Scripts/mount_smb.ini.
 #
 # Deliberately NOT staged here:
 #

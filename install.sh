@@ -21,8 +21,9 @@
 # 3. Installs this project's Scripts onto the card:
 #    update_linux_modernization.sh (updates the image from now on),
 #    check_storage.sh (checks the exFAT data partition for damage, ADR 0026) and
-#    mount_smb.sh (mounts a NAS share; replaces Scripts_MiSTer's cifs_mount.sh,
-#    which cannot run on a kernel this new -- docs/cifs-mount-fscache-probe.md).
+#    mount_smb.sh (mounts a NAS share; nothing distributes Scripts_MiSTer's
+#    cifs_mount.sh, so this is how an SMB mount works out of the box --
+#    docs/cifs-mount-fscache-probe.md).
 # 4. Runs it, which sets the `update_linux = false` kill switch, fetches this
 #    project's image through the stock on-device Downloader, and reboots.
 #

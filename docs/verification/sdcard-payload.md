@@ -96,14 +96,15 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > `stage_update_channel()`.
 >
 > It mounts a NAS share over SMB/CIFS. It ships because the community script for this job,
-> `Scripts_MiSTer/cifs_mount.sh`, **cannot run on this image at all**: before doing any work
-> it requires `fscache.ko` to be listed in `/lib/modules/$(uname -r)/modules.builtin`, and
+> `Scripts_MiSTer/cifs_mount.sh`, **could not run on this image**: before doing any work it
+> required `fscache.ko` to be listed in `/lib/modules/$(uname -r)/modules.builtin`, and
 > Linux 6.8 merged `fs/fscache/` into `fs/netfs/`, making `CONFIG_FSCACHE` a `bool` rather
-> than a module target — so no kernel ≥ 6.8 records that name at all. It
-> reports "The current Kernel doesn't support CIFS (SAMBA)" on a kernel whose CIFS is
-> complete and working. Nothing in the image is missing; the probe is looking for the wrong
-> thing. Ours asks `/proc/filesystems` instead, which is correct whether `cifs` is built in
-> or modular, on any kernel version.
+> than a module target — so no kernel ≥ 6.8 records that name at all. It reported "The
+> current Kernel doesn't support CIFS (SAMBA)" on a kernel whose CIFS is complete and
+> working. That was [fixed upstream](https://github.com/MiSTer-devel/Scripts_MiSTer/pull/141)
+> on 2026-08-17, but **nothing distributes `cifs_mount.sh`** — it is in no Downloader
+> database — so the fix never reaches a card on its own, and this entry is what makes an
+> SMB mount work out of the box.
 >
 > Unlike `check_storage.sh` this is **not** a shim — it is self-contained on the card, and
 > configured by `Scripts/mount_smb.ini` beside it (an existing `cifs_mount.ini` is read as a

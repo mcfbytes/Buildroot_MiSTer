@@ -192,9 +192,10 @@ ini 'SERVER=192.168.0.9'
 out="$(run_smb)"
 lacks "$out" "doesn't" "no 'The current Kernel doesn't support CIFS' on a CIFS-capable kernel"
 contains "$out" "Done!" "mounts when /proc/filesystems lists cifs"
-# The precise regression: a kernel with CIFS but no fscache.ko anywhere must
-# still mount. The sandbox has no modules.builtin at all, which is the strongest
-# form of that -- the old probe could not have passed here under any reading.
+# The precise regression: a kernel with CIFS but no fscache.ko NAME recorded in
+# modules.builtin must still mount. The sandbox has no modules.builtin at all,
+# which is the strongest form of that -- the old probe could not have passed
+# here under any reading.
 if [ ! -e "$SB/lib/modules" ]; then
 	ok "gate consults no module list (none exists in the sandbox)"
 else

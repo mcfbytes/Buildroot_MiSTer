@@ -97,9 +97,9 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 >
 > It mounts a NAS share over SMB/CIFS. It ships because the community script for this job,
 > `Scripts_MiSTer/cifs_mount.sh`, **cannot run on this image at all**: before doing any work
-> it requires `fscache.ko` to appear in `/lib/modules/$(uname -r)/modules.builtin`, and
-> Linux 6.8 merged `fs/fscache/` into `fs/netfs/` — so `CONFIG_FSCACHE=y` now compiles those
-> objects into `netfs.ko` and no kernel ≥ 6.8 can ever produce the file it looks for. It
+> it requires `fscache.ko` to be listed in `/lib/modules/$(uname -r)/modules.builtin`, and
+> Linux 6.8 merged `fs/fscache/` into `fs/netfs/`, making `CONFIG_FSCACHE` a `bool` rather
+> than a module target — so no kernel ≥ 6.8 records that name at all. It
 > reports "The current Kernel doesn't support CIFS (SAMBA)" on a kernel whose CIFS is
 > complete and working. Nothing in the image is missing; the probe is looking for the wrong
 > thing. Ours asks `/proc/filesystems` instead, which is correct whether `cifs` is built in

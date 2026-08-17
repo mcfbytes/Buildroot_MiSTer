@@ -318,11 +318,11 @@ updating will not help — a *newer* kernel is what triggers this. Use **Scripts
 mount_smb.sh** instead; it does the same job and ships with this image.
 
 The community script `cifs_mount.sh` checks whether the kernel can do CIFS by looking for
-five module files by name, one of which is `fscache.ko`. Linux 6.8 merged fscache into
-another module, so that filename no longer exists on any kernel that new — including this
-one. The script finds four of its five names, gives up on the fifth, and prints a message
-about the kernel that is simply wrong. CIFS itself is built into this image's kernel and
-works fine. (fscache was never needed for CIFS in the first place.)
+five kernel components by name, one of which is `fscache`. Linux 6.8 merged fscache into
+another component, so that name is no longer listed on any kernel that new — including
+this one. The script finds four of its five names, gives up on the fifth, and prints a
+message about the kernel that is simply wrong. CIFS itself is built into this image's
+kernel and works fine. (fscache was never needed for CIFS in the first place.)
 
 Stock MiSTer runs an older kernel where that file still existed, which is why the script
 works there and not here.

@@ -157,9 +157,10 @@ you: no `/etc/fstab` entries and no automount are added, and there is no NFS *se
 
 **`Scripts_MiSTer/cifs_mount.sh` is the exception, and it is not a kernel or helper
 problem.** It refuses to run on any kernel ≥ 6.8 — including both of ours — because its
-capability probe requires a `fscache.ko` that Linux 6.8 stopped producing when it merged
-`fs/fscache/` into `fs/netfs/` and made `CONFIG_FSCACHE` a `bool` (so it can never be a
-module again under any configuration). The mount it would have performed works perfectly; the
+capability probe requires `modules.builtin` to list `fscache.ko`, which Linux 6.8 stopped
+recording when it merged `fs/fscache/` into `fs/netfs/` and made `CONFIG_FSCACHE` a `bool`
+— a `bool` is not a module target, so no name is recorded and `=m` is not available
+either. The mount it would have performed works perfectly; the
 probe does not. We ship `Scripts/mount_smb.sh` instead, which asks `/proc/filesystems`.
 Full account in [`cifs-mount-fscache-probe.md`](cifs-mount-fscache-probe.md).
 

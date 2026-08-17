@@ -18,20 +18,24 @@
 #
 #     KERNEL_MODULES="md4.ko|md5.ko|des_generic.ko|fscache.ko|cifs.ko"
 #
-# -- and requires every one of them to appear in
+# -- and requires every one of them to be listed in
 # /lib/modules/$(uname -r)/modules.builtin (or in lsmod). Four of the five are
-# there on this image. fscache.ko is not, and no kernel >= 6.8 can ever provide
-# it. Linux 6.8 merged fs/fscache/ into fs/netfs/ and, in the same move, changed
+# listed on this image; fscache.ko is not, and no kernel >= 6.8 can list it.
+#
+# None of these is a FILE, on any MiSTer: all five are built into the kernel, and
+# modules.builtin is the manifest of module TARGETS that were compiled in, not a
+# directory listing. That is why the probe worked at all -- and why it now fails.
+# Linux 6.8 merged fs/fscache/ into fs/netfs/ and, in the same move, changed
 # CONFIG_FSCACHE from `tristate` to `bool`:
 #
-#     v6.7  fs/fscache/Kconfig    config FSCACHE / tristate
+#     v6.7  fs/fscache/Kconfig    config FSCACHE / tristate   <- a module target
 #           fs/fscache/Makefile   obj-$(CONFIG_FSCACHE) := fscache.o
-#     v6.8  fs/netfs/Kconfig      config FSCACHE / bool, depends on NETFS_SUPPORT
+#     v6.8  fs/netfs/Kconfig      config FSCACHE / bool       <- not a target
 #           fs/netfs/Makefile     netfs-$(CONFIG_FSCACHE) += fscache_*.o
 #
-# A `bool` symbol can only ever be y or n, never m -- so from 6.8 onward fscache
-# is not a module under ANY configuration; its objects are linked into netfs.ko.
-# The probe therefore reports
+# A `bool` symbol is not a module target, so Kbuild records no name for it, and
+# `bool` can only ever be y or n -- CONFIG_FSCACHE=m is not available. From 6.8
+# the name is simply absent from the manifest. The probe therefore reports
 #
 #     The current Kernel doesn't support CIFS (SAMBA).
 #     Please update your MiSTer Linux system.

@@ -12,14 +12,17 @@ kernel.org mirror, no longer a cgit `.tar.gz`), the hash provenance (kernel.org'
 PGP-signed manifest instead of TOFU — and the signature was actually verified,
 see `linux.hash`), and the kernel release string (`7.2.0-rc7` → **`7.2.0`**,
 which is the module directory name too). From here the pin tracks **7.2.y**
-point releases rather than mainline; it does not follow 7.3-rc1. See §9.
+point releases rather than mainline; it does not follow 7.3-rc1. See §10.
 
-The variant builds end-to-end (`make rt`, **31 of 36 shared + 3 beta-local** carried patches — five landed after the series was last reviewed and are missing, see §2; the beta-local three are the UIO set, §8) and **boots and runs MiSTer on a
+The variant builds end-to-end (`make rt`, **all 36 shared + 4 beta-local**
+carried patches — **40 entries, and the series now drops nothing**; three of the
+beta-local four are the UIO set (§8) and the fourth is the ramoops crash-record
+reservation (§9)) and **boots and runs MiSTer on a
 real DE10-Nano — confirmed 2026-07-20 on 7.2-rc4, and again 2026-08-14 on
 7.2.0-rc7** (that build carried `0043` and is what the Wave-1 hardware pass ran
-on; `0044`/`0045` are apply-checked only — §8). The last
-figures on the build rows below are from **rc5**, which was the pin when they
-were taken; the pin has since moved rc6 → rc7 by automated bump, then rc7 → 7.2.
+on; `0044`, `0045` and `0046` were all written after it — §8, §9). Every
+figure on the rows below — application **and** build — is from **7.2 final** on
+the full **40-entry** series, 2026-08-17.
 Two things are still **not**
 done. The one that motivates the whole exercise: **no latency measurement has
 been taken**, so there is currently no evidence RT improves anything for a
@@ -67,14 +70,14 @@ the per-variant fragment layered on at build time.
 |---|---|
 | `configs/mister_kernel_defconfig` | The kernel-only base, shared by every kernel variant. Its toolchain/kernel stanzas are a **copy** of `mister_de10nano_defconfig`'s, held in lockstep by `scripts/check-kernel-defconfig-sync.sh` (CI runs it before every kernel build and as a lint). With no fragment it builds the main 6.18 kernel. |
 | `configs/mister_rt.fragment` | Buildroot-config delta (kernel version → the 7.2 line, currently **`7.2`** — a plain mainline release since 2026-08-17, so Buildroot's `-rc` cgit-snapshot path in `linux/linux.mk` no longer applies and it fetches the ordinary `linux-7.2.tar.xz` from the `v7.x` mirror directory; beta patch dir; kernel-config fragment). Merged onto `mister_kernel_defconfig` via `merge_config.sh`. |
-| `board/mister/de10nano/linux-rt.fragment` | **Kernel**-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y` — do not confuse the two fragment layers (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here). |
-| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` — except `0001`, `0015`, `0030` and `0037`, which are real re-anchored copies (Buildroot patches at `-F0`; their 6.18 context or APIs drifted on 7.x — see the series header). The shared 6.18 patches stay byte-identical to stock. Applies **31 of the 36** shared patches in `linux-patches/` plus **three beta-local patches** (`0043-dts-uio-doorbells`, `0044-dts-uio-fpga-regions`, `0045-uio-writecombine` — real files in `linux-patches-beta/` only, kept out of the shared dir so the stock 6.18 build, which applies that entire directory via `BR2_LINUX_KERNEL_PATCH`, never sees them; see §8). ⚠ **It currently drops five**: `0038`, `0039`, `0040`, `0041`, `0042` (all landed 2026-07-24, after the series was last reviewed) have no entry and no symlink. That contradicts the standing rule in §7 item 3 — `0039` remaps NSO N64/Genesis buttons and `0040`/`0041`/`0042` are Main_MiSTer-coupled evdev-name and LED-classdev-name parity patches. Re-anchor or symlink them into `linux-patches-beta/series`; do not leave them out. (`0031` was a fifth copy until 2026-07-25, when the *shared* patch was re-anchored onto context both trees agree on and the beta entry became a symlink again; the series header explains why that is the preferred move.) `0015` is re-INCLUDED: the earlier "upstreamed in 7.2" finding was wrong (7.2 has no `FAML`/`FAMR` controller types — its left/right *nescon* support is a different thing). The separate `linux-patches-upstream/` series (carried for the exported `Linux-Kernel_MiSTer` tree only, never applied by Buildroot — `docs/patch-provenance.md` §12) is unrelated to this count and is not applied to the beta either. |
+| `board/mister/de10nano/linux-rt.fragment` | **Kernel**-config delta layered on the shared `linux.config`: `CONFIG_PREEMPT_RT=y`, the `CONFIG_UIO*` + cmdline set the doorbells need (§8), and the `CONFIG_PSTORE*` set the ramoops node needs (§9) — do not confuse the two fragment layers (RTL8814AU's in-kernel driver comes from `linux.config` itself, inherited — not duplicated here; the same is true of the watchdog, §9.3). |
+| `board/mister/de10nano/linux-patches-beta/` | `series` file + **symlinks** to the shared `linux-patches/` — except `0001`, `0015`, `0030` and `0037`, which are real re-anchored copies (Buildroot patches at `-F0`; their 6.18 context or APIs drifted on 7.x — see the series header). The shared 6.18 patches stay byte-identical to stock. Applies **all 36** shared patches in `linux-patches/` plus **four beta-local patches** (`0043-dts-uio-doorbells`, `0044-dts-uio-fpga-regions`, `0045-uio-writecombine` — see §8 — and `0046-dts-ramoops` — see §9; all real files in `linux-patches-beta/` only, kept out of the shared dir so the stock 6.18 build, which applies that entire directory via `BR2_LINUX_KERNEL_PATCH`, never sees them) — **40 entries, dropping nothing**. ✅ **The five-patch gap closed 2026-08-17**: `0038`–`0042` had landed in the shared dir on 2026-07-24 and gone unlisted here for three weeks, which contradicted the standing rule in §7 item 3 (`0039` remaps NSO N64/Genesis buttons; `0040`/`0041`/`0042` are Main_MiSTer-coupled evdev-name and LED-classdev-name parity patches). Measured rather than assumed, they needed **no re-anchor at all** — plain symlinks, clean at `-F0` on 7.2 final, and `drivers/hid/` compiles for ARM with all five in (§6). (`0031` was a fifth copy until 2026-07-25, when the *shared* patch was re-anchored onto context both trees agree on and the beta entry became a symlink again; the series header explains why that is the preferred move.) `0015` is re-INCLUDED: the earlier "upstreamed in 7.2" finding was wrong (7.2 has no `FAML`/`FAMR` controller types — its left/right *nescon* support is a different thing). The separate `linux-patches-upstream/` series (carried for the exported `Linux-Kernel_MiSTer` tree only, never applied by Buildroot — `docs/patch-provenance.md` §12) is unrelated to this count and is not applied to the beta either. |
 | `Makefile` (`rt`, `rt-clean`, `rt-menuconfig`) | Builds into `output-rt/` (stage-1 initramfs first — its cpio is embedded into every kernel), reusing the shared dl/ccache; then stages the depmod'd module tree into `work/extra-modules-overlay/`, which the main defconfig's `BR2_ROOTFS_OVERLAY` folds into the ONE shipped `linux.img` at the next `make all`. The main `output/` is never touched by `make rt` itself. |
 
 The kernel config is the same `linux.config` + a fragment, and the patch set is
 symlinks + a `series` file — editing a shared patch or `linux.config` affects
 both kernels automatically. The deliberate copies (the base defconfig's
-toolchain/kernel stanzas; the two re-anchored patches) are machine-checked or
+toolchain/kernel stanzas; the four re-anchored patches) are machine-checked or
 lockstep-annotated, not trusted: the sync script covers the former, and each
 re-anchored patch carries a bracketed note naming its `linux-patches/`
 original.
@@ -216,27 +219,29 @@ card, and nothing on the card referenced it), and deliberately NOT inside
 | 7.2 has ARM32 `ARCH_SUPPORTS_RT` in-tree | ✅ verified (`arch/arm/Kconfig`) |
 | Config layering (fragment → 7.2 config) resolves | ✅ verified (`merge_config.sh` + `olddefconfig`, clean) |
 | `linux.config` reconciles to 7.2 (criticals survive) | ✅ **after a real fix (2026-07-18)**: the earlier full-config test masked a minimal-config trap — 7.x turned the HID drivers' LED `select`s into `depends on`, so `olddefconfig` silently dropped `NEW_LEDS`/`LEDS_CLASS` **and with them the whole HID controller stack** (`HID_PLAYSTATION`/`HID_NINTENDO` vanished from the config, no error). Fixed by making the LED foundation explicit in `linux.config` (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS`, no-ops on 6.18); all 19 critical symbols re-audited present |
-| **All 34 series entries** (31 of the 36 shared + the 3 beta-local) apply to the pinned **7.2 final** at Buildroot's `patch -F0` (⚠ `0038`–`0042` are not in the beta series at all — see §2; this row measures only what the series lists) (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ **re-verified on the rc7 → 7.2 bump (2026-08-17)** through Buildroot's own `apply-patches.sh` against a pristine `linux-7.2.tar.xz` whose sha256 matched kernel.org's signed manifest: **34/34 applied, exit 0, zero hunks taking fuzz** (70 hunks land at an offset, which `-F0` permits). No re-anchor was needed for the final release, so all four re-anchored copies (0001, 0015, 0030, 0037) carry over unchanged — and each of those four, plus all three beta-local patches, landed at **zero offset**, i.e. the 7.x re-anchors are still exactly right. The 70 offsets are concentrated where they always were (`0017` 18, `0031` 12, `0033` 5). This is the first time this row has been measured on the whole 34-entry series against a release rather than an `-rc`. **This row measures only the entries the series lists** — it is not evidence about `0038`–`0042`, which have no series entry and so were never offered to `patch` at all. Nothing dropped a patch that was already *in* the series; the omission happened upstream of this check, when five patches landed in `linux-patches/` on 2026-07-24 and the beta series was not updated to match. Earlier figures on this row (31/31 on rc5; before that 29/29, and a bogus "28/31" measured at `patch`'s default fuzz 2, which Buildroot forbids) predate the 2026-07-20 `0037`/`0030` re-anchors and the beta-local UIO set |
+| **All 40 series entries** (all 36 shared + the 4 beta-local) apply to the pinned **7.2 final** at Buildroot's `patch -F0` (`linux-patches/`; the separate `linux-patches-upstream/` series is never applied to this variant — see §2) | ✅ **re-verified 2026-08-17 on the full 40-entry series**, through Buildroot's own `apply-patches.sh` against a freshly extracted pristine `linux-7.2.tar.xz` whose sha256 matched kernel.org's signed manifest (`f9fef3d1…`): **40/40 applied, exit 0, zero hunks taking fuzz** (80 hunks land at an offset, which `-F0` permits). No re-anchor was needed anywhere: the four re-anchored copies (0001, 0015, 0030, 0037) carry over unchanged and, with all four beta-local patches, land at **zero offset**. The offsets are concentrated where they always were (`0017` 18, `0031` 12, `0033` 5, `0042` 5). **This row now measures the whole series** — the standing "⚠ not evidence about `0038`–`0042`" caveat is retired, because those five are in the series as of the same day (§2). Three measurements were taken that day and each is a strict superset of the last: **34/34** on the rc7 → 7.2 bump (70 offsets), **35/35** once `0046` landed (70 offsets — identical distribution, so `0046` costs the rest of the series nothing), **40/40** with `0038`–`0042` symlinked in (80 offsets, the ten new ones all inside the five added patches). Earlier figures (31/31 on rc5; before that 29/29, and a bogus "28/31" measured at `patch`'s default fuzz 2, which Buildroot forbids) predate the 2026-07-20 `0037`/`0030` re-anchors and the beta-local set. ⚠ Applying is not building — see the next row |
+| **`0038`–`0042` and `0046` compile on 7.2** (the six the series gained on 2026-08-17) | ✅ **verified twice, 2026-08-17.** First cheaply: a targeted ARM cross-compile of `drivers/hid/`, `drivers/leds/` and `fs/pstore/` on the 40-patch tree with the real config — exit 0, **zero warnings, zero errors**, `hid-nintendo.o` and `hid-playstation.o` (the two files all five HID patches touch) and `fs/pstore/ram.o` (`0046`'s consumer) all built. Then for real, inside the full `make rt` below, with Buildroot's own toolchain rather than the host's — which is the run that counts |
 | `xone` compiles on 7.2 | ✅ verified (not shipped by the kernel-only variant — §4) |
-| **The RT kernel compiles and links** | ✅ **re-verified locally on rc5 (2026-07-28), and again on rc7** (the `output-rt` tree for the pinned 7.2-rc7 holds a linked `zImage`, `CONFIG_PREEMPT_RT=y`, kernel release `7.2.0-rc7`) — see the `make rt` row below, which is the same cross-build end to end. Two 7.x API ports were needed back on rc3 and still live in beta-local patch copies — the shared 6.18 patches stay byte-identical to stock: `fbcon_update_vcs()`'s header moved into fbdev core (beta 0001, one-line include delta), and `exfat_remove_entries()` grew a `free_benign` arg (that one was folded back into the shared patch on 2026-07-25, so beta 0031 is a symlink again). Unlike the rc3 → rc4 bump, which re-verified patch application only and left this row resting on CI, the rc4 → rc5 bump was built locally before the pin was pushed. ✅ **Re-verified on 7.2 final, 2026-08-17**, from a clean `make rt-clean` (both toolchains from scratch, no ccache): exit 0, kernel release string **`7.2.0`**, `CONFIG_PREEMPT_RT=y` in the built tree's `.config`, and `.applied_patches_list` records all **34** series entries — the first time the beta-local `0044`/`0045` have been through a real build rather than an apply-check. No 7.x API port was needed beyond the ones already carried. |
-| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ✅ **verified locally on 7.2 final, 2026-08-17**, from a clean `make rt-clean`: exit 0, `CONFIG_PREEMPT_RT=y`, kernel release `7.2.0`, **`zImage_dtb` 9285012 bytes (7492204 bytes of headroom, 44.7%, under the 16 MiB U-Boot budget)**, all `check-zimage-dtb.sh` assertions pass (embedded DTB **21300 bytes** — byte-identical to the standalone `dtc` measurement in §8, reached exactly at EOF), **90 modules** depmod'd and the `7.2.0` tree staged into the extra-modules overlay. The 19 critical config symbols were re-audited present — notably the LED/HID foundation (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS` → `HID_PLAYSTATION`/`HID_NINTENDO`/`HID_SONY`/`HID_WIIMOTE`), i.e. **the 7.x `select`→`depends on` silent-drop trap did not recur**. Size across pins: rc4 9401461, rc5 10459749, 7.2 final 9285012 — the final release is ~1.17 MB *smaller* than rc5 and lands back near rc4, so rc5 looks like a transient in that tree rather than a growth trend; not investigated, and it moves the budget the safe way. Prior figures on this row were rc5's. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) — though note CI could not run on this change, see below. ✅ Previously verified 2026-07-28 on **rc5** (the pin at the time) with the complete 31-patch series, from a clean `make rt-clean` (host toolchain rebuilt too, ~16 min on a 32-core box): exit 0, `CONFIG_PREEMPT_RT=y` present in the built tree's `.config`, `zImage_dtb` 10459749 bytes (6317467 bytes of headroom under the 16 MiB U-Boot budget), all `check-zimage-dtb.sh` assertions pass, 90 modules depmod'd and the `7.2.0-rc5` tree staged into the extra-modules overlay (the stale `7.2.0-rc4` tree was removed from both the overlay and `output/target/`, as the stamp mechanism intends). Prior figure on this row was rc4: 9401461 bytes, 7375755 of headroom. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) |
+| **The RT kernel compiles and links** | ✅ **re-verified locally on rc5 (2026-07-28), and again on rc7** (the `output-rt` tree for the pinned 7.2-rc7 holds a linked `zImage`, `CONFIG_PREEMPT_RT=y`, kernel release `7.2.0-rc7`) — see the `make rt` row below, which is the same cross-build end to end. Two 7.x API ports were needed back on rc3 and still live in beta-local patch copies — the shared 6.18 patches stay byte-identical to stock: `fbcon_update_vcs()`'s header moved into fbdev core (beta 0001, one-line include delta), and `exfat_remove_entries()` grew a `free_benign` arg (that one was folded back into the shared patch on 2026-07-25, so beta 0031 is a symlink again). Unlike the rc3 → rc4 bump, which re-verified patch application only and left this row resting on CI, the rc4 → rc5 bump was built locally before the pin was pushed. ✅ **Re-verified on 7.2 final, 2026-08-17**, from a clean `make rt-clean` (both toolchains from scratch, no ccache): exit 0, kernel release string **`7.2.0`**, `CONFIG_PREEMPT_RT=y` in the built tree's `.config`, and `.applied_patches_list` records all **34** series entries as they stood that day — the first time the beta-local `0044`/`0045` have been through a real build rather than an apply-check. No 7.x API port was needed beyond the ones already carried. ✅ **Re-verified on the full 40-entry series later the same day**, again from a clean tree: exit 0, release `7.2.0`, `CONFIG_PREEMPT_RT=y`, `.applied_patches_list` 40 entries ending `0044` → `0045` → `0046`. That run is the first to have compiled `0038`–`0042` and `0046` as part of a kernel rather than as an apply-check or a subsystem build. |
+| **Full `make rt` build (kernel-only; zImage links, modules depmod'd)** | ✅ **verified locally on 7.2 final with the full 40-entry series, 2026-08-17**, from a tree with no `output-rt/` at all (both toolchains from scratch, no ccache): exit 0, `CONFIG_PREEMPT_RT=y`, kernel release `7.2.0`, **`zImage_dtb` 9303550 bytes (7473666 bytes of headroom, 44.5%, under the 16 MiB U-Boot budget)**, all `check-zimage-dtb.sh` assertions pass (embedded DTB **21574 bytes** — byte-identical to the standalone `cpp`+`dtc` measurement in §9.6, reached exactly at EOF), **90 modules** depmod'd and the `7.2.0` tree staged into the extra-modules overlay. The six patches added that day cost **18538 bytes** total (18264 of kernel text from the five HID patches, 274 of DTB from `0046`) — measured against the 34-entry build below, not estimated. ✅ Previously verified the same day on the **34-entry** series: `zImage_dtb` 9285012 bytes, DTB 21300, same 90 modules. The 19 critical config symbols were re-audited present — notably the LED/HID foundation (`NEW_LEDS`/`LEDS_CLASS`/`LEDS_TRIGGERS` → `HID_PLAYSTATION`/`HID_NINTENDO`/`HID_SONY`/`HID_WIIMOTE`), i.e. **the 7.x `select`→`depends on` silent-drop trap did not recur**. Size across pins: rc4 9401461, rc5 10459749, 7.2 final 9285012 — the final release is ~1.17 MB *smaller* than rc5 and lands back near rc4, so rc5 looks like a transient in that tree rather than a growth trend; not investigated, and it moves the budget the safe way. Prior figures on this row were rc5's. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) — though note CI could not run on this change, see below. ✅ Previously verified 2026-07-28 on **rc5** (the pin at the time) with the complete 31-patch series, from a clean `make rt-clean` (host toolchain rebuilt too, ~16 min on a 32-core box): exit 0, `CONFIG_PREEMPT_RT=y` present in the built tree's `.config`, `zImage_dtb` 10459749 bytes (6317467 bytes of headroom under the 16 MiB U-Boot budget), all `check-zimage-dtb.sh` assertions pass, 90 modules depmod'd and the `7.2.0-rc5` tree staged into the extra-modules overlay (the stale `7.2.0-rc4` tree was removed from both the overlay and `output/target/`, as the stamp mechanism intends). Prior figure on this row was rc4: 9401461 bytes, 7375755 of headroom. Also wired into CI (build.yml + release.yml `build-kernel` matrix, ADR 0021 as amended) |
 | **Module-tree merge into the one linux.img** | ✅ **green** — the row's "first green run pending" was overtaken by CI run 29758320422 (2026-07-20, rc4: `build-kernel` + `build` both green, so the merge assert ran). Re-verified locally on rc5 (2026-07-28): after `make rt`, a `make all` produced `output/target/usr/lib/modules/` holding exactly `6.18.40` and `7.2.0-rc5` — two trees, no stale third — and `linux.img` passed every `check-linux-img.sh` assertion (512 MiB, pinned UUID/hash-seed, the 14-feature stock-derived set, ADR 0015 ssh-key checks) |
-| **RT kernel boots on the DE10-Nano** | ⚠️ **NOT on the currently pinned 7.2 — re-opened 2026-08-17 by the rc7 → 7.2 bump.** ✅ **CONFIRMED 2026-07-20 on 7.2-rc4**, which booted and ran MiSTer on real hardware. That retired the single biggest open risk on the variant, and it is how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3). ✅ **RE-CONFIRMED 2026-08-14 on 7.2-rc7** — the Wave-1 hardware pass ran on a `7.2.0-rc7 SMP PREEMPT_RT` kernel carrying `0043`, and the doorbell nodes enumerated and delivered events (that pass is also where H-1 and H-2 were found). Boot is a **per-version claim** and every bump re-opens it, which is exactly the state this row is in now: 7.2 final is patch-verified (34/34 at `-F0`), DTS-verified, and **built** (`make rt` green from clean, 2026-08-17 — see the build rows above), but it has **not been booted**. Everything that can be checked without hardware has been checked and passed; none of it is a boot. This ✅ covers rc4 and rc7 and nothing else. It also does **not** cover `0044`/`0045`, which had not been written when the rc7 kernel was built — §8 |
+| **RT kernel boots on the DE10-Nano** | ⚠️ **NOT on the currently pinned 7.2 — re-opened 2026-08-17 by the rc7 → 7.2 bump.** ✅ **CONFIRMED 2026-07-20 on 7.2-rc4**, which booted and ran MiSTer on real hardware. That retired the single biggest open risk on the variant, and it is how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3). ✅ **RE-CONFIRMED 2026-08-14 on 7.2-rc7** — the Wave-1 hardware pass ran on a `7.2.0-rc7 SMP PREEMPT_RT` kernel carrying `0043`, and the doorbell nodes enumerated and delivered events (that pass is also where H-1 and H-2 were found). Boot is a **per-version claim** and every bump re-opens it, which is exactly the state this row is in now: 7.2 final is patch-verified (**40/40** at `-F0`), DTS-verified, and **built on the whole 40-entry series** (`make rt` green from clean, 2026-08-17 — see the build rows above), but it has **not been booted**. Everything that can be checked without hardware has been checked and passed; none of it is a boot. This ✅ covers rc4 and rc7 and nothing else. It also does **not** cover `0044`, `0045`, `0046` or the re-added `0038`–`0042`: none were in the series when the rc7 kernel was built, and all six have since been built but never booted — §2, §8, §9 |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) — boot and general operation are confirmed, but the latency measurement that motivates RT has not been taken |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
 ## 7. What is left
 
-0. ~~Build the pinned 7.2 final.~~ **Done 2026-08-17** — `make rt` green from a
-   clean `make rt-clean`, carrying all 34 series entries including the
-   beta-local UIO set (§6). **Booting it is still open**, and it is now the
-   only thing standing between this variant and the same status it had on rc7.
+0. ~~Build the pinned 7.2 final.~~ **Done 2026-08-17, twice** — `make rt` green
+   from clean on the 34 series entries that existed that morning, and again on
+   the full **40** after `0046` and `0038`–`0042` landed (§6). Nothing about the
+   series is now unbuilt. **Booting it is still open**, and it is now
+   the only thing standing between this variant and the same status it had on rc7.
    `make rt-clean` is mandatory before `make rt` on a version bump — the old
    kernel tree survives in `output-rt/build/` otherwise and the `rt` recipe
    refuses to guess which of two trees to validate. Items 1 and 2 below record
    the same work on earlier `-rc`s; this was that work re-opened by the version
    change, not a new kind of task. It should be the last time it re-opens on a
-   merge-window delta: from here the pin moves by 7.2.y point release (§9).
+   merge-window delta: from here the pin moves by 7.2.y point release (§10).
    Note this build was verified **locally only** — GitHub Actions was in a
    major outage on 2026-08-17, so no CI run exists for it.
 1. ~~Run `make rt` and fix whatever the first real 7.2 build surfaces.~~
@@ -248,7 +253,13 @@ card, and nothing on the card referenced it), and deliberately NOT inside
    50 ms deadline under RT's threaded IRQs (expected to *tighten* pacing —
    measure it).
 3. ~~Optionally re-anchor patches `0030` and `0037` to 7.x~~ **Both done
-   2026-07-20; the beta series now drops nothing.** `0037` was never optional.
+   2026-07-20.** ~~And re-add `0038`–`0042`, which landed in the shared dir on
+   2026-07-24 and were never listed in the beta series.~~ **Done 2026-08-17 —
+   the beta series now genuinely drops nothing, 40 entries.** That gap sat open
+   for three weeks on the assumption the five would need re-anchoring; measured,
+   they needed none, and are plain symlinks like the rest (§2, §6). The lesson
+   is the cheap one: *measure before assuming a patch needs work*. `0037` was
+   never optional.
    It was dropped as "cosmetic", but
    `BTN_Z` (`0x135`) sits between `BTN_WEST` and `BTN_TL`, so declaring it
    shifts every higher gamepad button one index up in the `EV_KEY` capability
@@ -276,8 +287,20 @@ card, and nothing on the card referenced it), and deliberately NOT inside
    question; the amendment notes the modules-in-image change strengthens the
    eventual case, since a Downloader-updated device would now get kernel and
    modules coherently).
+5. **Run the observability validation on hardware** (§9.5). Two things are
+   waiting on it, and they are worth separating: whether the `0046` reservation
+   actually populates `/sys/fs/pstore` across a warm reset — cheap, step 1, and
+   a precondition for trusting any of it — and the genuinely open H-1 question
+   of whether a watchdog warm reset clears a dangling AXI transaction (§9.4).
+   Until the second is answered, the watchdog is infrastructure that is present
+   and off by default, **not** a stated H-1 mitigation.
 
 ## 8. The three beta-local UIO patches (0043, 0044, 0045)
+
+There is a fourth beta-local patch, `0046-dts-ramoops`, which is not part of
+this set and has its own section (§9): it is observability rather than
+FPGA interface, and it shares nothing with these three but the beta-local
+constraint described immediately below.
 
 Everything else in the beta series is a MiSTer patch the stock 6.18 build also
 gets. These three are the exception: they exist **only** in
@@ -354,7 +377,7 @@ perturb the stock build:
 
 | | Status |
 |---|---|
-| All three apply to the pinned **7.2 final** at Buildroot's `patch -F0` | ✅ **re-verified 2026-08-17 on the rc7 → 7.2 bump**, as part of the full 34-entry series run against a pristine `linux-7.2.tar.xz` whose sha256 matched kernel.org's signed manifest: exit 0, **zero hunks taking fuzz and zero offsets** for all three. Zero offset is the notable part — it means the release's context around `0004`'s output, `drivers/uio/` and the uio-howto is byte-identical to rc7's where these patches touch it, so the anchors recorded below are still literally correct rather than merely tolerated. ✅ Previously verified 2026-08-14 against `linux-7.2-rc7.tar.gz`, individually (`0004` → `0043` → `0044` → `0045`): every hunk landed at the line its header declares (0043 at 129, 0044 at 280, 0045 at 278/757/866/112/186/210/171). The 0044 anchor moved 271 → 280 back then because 0043's comment grew by 9 lines; both patches' `@@` counts and diffstats were recomputed rather than left to `patch`'s offset tolerance |
+| All three apply to the pinned **7.2 final** at Buildroot's `patch -F0` | ✅ **re-verified 2026-08-17 on 7.2 final**, most recently as part of the full **40-entry** series run against a freshly extracted pristine `linux-7.2.tar.xz` whose sha256 matched kernel.org's signed manifest: exit 0, **zero hunks taking fuzz and zero offsets** for all three. Zero offset is the notable part — it means the release's context around `0004`'s output, `drivers/uio/` and the uio-howto is byte-identical to rc7's where these patches touch it, so the anchors recorded below are still literally correct rather than merely tolerated. ✅ Previously verified 2026-08-14 against `linux-7.2-rc7.tar.gz`, individually (`0004` → `0043` → `0044` → `0045`): every hunk landed at the line its header declares (0043 at 129, 0044 at 280, 0045 at 278/757/866/112/186/210/171). The 0044 anchor moved 271 → 280 back then because 0043's comment grew by 9 lines; both patches' `@@` counts and diffstats were recomputed rather than left to `patch`'s offset tolerance |
 | The patched DTS compiles | ✅ **re-verified 2026-08-17 on 7.2 final** (`cpp` + `dtc 1.7.2`, DTB **21300 bytes — byte-count-identical to the rc7 measurement**, and the same 5 pre-existing `socfpga.dtsi` `simple_bus_reg` warnings, no new ones). ✅ Previously verified 2026-08-14 on rc7, where the decompiled assertions below were checked: `mister_doorbell1..8` carry `interrupts = <0x00 0x30..0x37 0x04>` — DT cells 48..55 (GIC INTID 80..87), trigger 4 = `IRQ_TYPE_LEVEL_HIGH`; `MiSTer_fb` still at cell 0x28 (40) trigger 1 = `EDGE_RISING`, untouched; `mister_lw_window@ff200000` = `<0xff200000 0x200000>` and `mister_ddr_aperture@20000000` = `<0x20000000 0x20000000>` with `mister,map-writecombine` present, both exporting bare names via `linux,uio-name`. **No new `dtc` warnings** — measured, not asserted: the warning set is byte-identical to the `0004`-only baseline (5 pre-existing `simple_bus_reg` warnings, all from upstream `socfpga.dtsi`) |
 | `checkpatch.pl` on 0045 | ✅ 0 warnings, 0 checks on the code, unchanged by the review fixes. The 6 reported "Invalid commit separator" errors are checkpatch mistaking this repo's underlined header sections for the `---` separator (0043 and 0044 produce 9 and 11 of the same, and nothing else) |
 | **The RT kernel builds with the three applied** | ✅ **YES, as of 2026-08-17** — this row was ❌ "apply-checks only, no `make rt` since 0044/0045 were written" until the rc7 → 7.2 build. That build carried all three: `.applied_patches_list` records 34 entries ending `0043` → `0044` → `0045`, the kernel linked, and `0045`'s `UIO_MEM_PHYS_WC` compiled into `drivers/uio/`. It is a **build**, not a probe — the row below is still ❌ |
@@ -402,9 +425,321 @@ that closure recorded.
 carries the same staleness in its comments — line 31 "Validated against
 7.2-rc5" and line 54 "all 31 listed patches apply to 7.2-rc5" — while the
 symbol on line 38 pins `7.2-rc7`.~~ **Fixed 2026-08-17** with the rc7 → 7.2
-bump: both comments now describe the pinned version and the 34-entry series.
+bump: both comments now describe the pinned version and the series, which
+reached 35 entries when `0046` landed (§9).
 
-## 9. What the pin tracks, and why that changed at 7.2
+## 9. Observability: the crash record (0046) and the watchdog open question
+
+The Wave-1 hardware pass produced one finding that no amount of care would have
+softened: **H-1 hung the board three times and left nothing behind.** No bus
+fault, no exception, no panic (`panic=15` never fired), no network — and on the
+third event, with a serial console attached and capturing, **zero bytes of
+output**. Three investigations each had to rediscover by bisection what the
+board had been doing. The finding's own conclusion was that "one DT node would
+have said all of this on the first event".
+
+This section is that node, plus the honest accounting of what it does and does
+not buy, plus the one mitigation that could turn the failure class from
+power-cycle-only into something recoverable — and the open question that stops
+us from claiming it already does.
+
+### 9.1 `0046-dts-ramoops` — what it reserves and why there
+
+A `/reserved-memory` `ramoops` node at **`0x1FE00000`, size `0x100000`** — the
+last mebibyte of RAM the kernel is allowed to touch.
+
+The address is forced from both ends (`docs/boot-chain.md` §6.4 has the
+arithmetic):
+
+| Address | What owns it |
+|---|---|
+| `0x1FE00000` | **this region**, 510 MiB |
+| `0x1FF00000` | the `mem=511M` cap — `early_mem()` discards the DTB's memory node and adds back exactly `[0, 0x1FF00000)`. The token comes from stock U-Boot's `CONFIG_BOOTARGS`, which this tree does not own |
+| `0x1FFFF000` | MiSTer's shmem mailbox (`Main_MiSTer fpga_io.cpp:398`) |
+| `0x1FFFFF08` | MiSTer's warm-boot flag |
+| `0x20000000` | the 512 MiB DDR3 aperture shared with the FPGA (`mister_ddr_aperture`, §8) |
+
+So everything at or above the cap is already spoken for — by MiSTer userspace or
+by the FPGA — and none of it is memory the kernel may reserve in the first
+place. That leaves `[0, 0x1FF00000)`, and within it the **top is the only
+placement that costs nothing**: a region lower down punches a hole the linear
+map has to work around, while a region at the top merely shortens lowmem by
+1 MiB. `0x1FE00000` is 2 MiB-aligned (`PMD_SIZE` on ARM without LPAE), so the
+linear map still ends on a clean PMD boundary.
+
+Checked free rather than assumed free: no CMA area exists (`CONFIG_DMA_CMA` is
+not set, so `dma_contiguous_reserve()` reserves nothing); the only other static
+reservation on this SoC is `socfpga_cyclone5.dtsi`'s `/memreserve/` of the first
+4 KiB for the secondary-core trampoline; `MiSTer_fb` takes its memory from the
+FPGA aperture (`MiSTer_fb@22000000`), not from kernel RAM; and no Main_MiSTer
+`shmem_map()` call names an address in the range.
+
+**The split.** ramoops carves the region in probe order — dmesg from the base,
+then console, then pmsg, then ftrace (`fs/pstore/ram.c ramoops_probe`) — so
+1 MiB becomes, with no remainder:
+
+| Offset | Size | Area | Property |
+|---|---|---|---|
+| `0x1FE00000` | `0x0B8000` | dmesg, **23 records × 32 KiB** | `record-size = <0x8000>` |
+| `0x1FEB8000` | `0x040000` | console, **256 KiB** | `console-size = <0x40000>` |
+| `0x1FEF8000` | `0x008000` | pmsg, **32 KiB** | `pmsg-size = <0x8000>` |
+| `0x1FF00000` | — | == the cap | — |
+
+`dump_mem_sz = size − console − ftrace − pmsg` = `0x100000 − 0x40000 − 0x8000`
+= `0xB8000`, and `0xB8000 / 0x8000 = 23` exactly.
+
+- **`record-size` 32 KiB** must be a power of two — ramoops silently applies
+  `rounddown_pow_of_two()` otherwise, wasting nearly half the dmesg area without
+  logging anything. 32 KiB is sized against `CONFIG_PSTORE_DEFAULT_KMSG_BYTES` (10240),
+  which caps a single kmsg dump: a whole dump fits with 3× headroom *before*
+  `CONFIG_PSTORE_COMPRESS` deflates it, so a record is never what truncates a crash.
+  23 retained records means a reboot loop does not immediately overwrite the
+  first and most informative one.
+- **`console-size` 256 KiB** is the largest share, deliberately, because it is
+  the area that pays off for a *silent* failure. It is written as printk
+  produces output, not on the crash path.
+- **`pmsg-size` 32 KiB** is `/dev/pmsg0`, deliberately small: it is for "which
+  offset am I about to touch", not for logging.
+- **`ftrace-size` 0** is stated rather than omitted so the four numbers can be
+  checked against the arithmetic without knowing the binding's defaults.
+  `CONFIG_PSTORE_FTRACE` stays unset even though its dependencies are already
+  met — `CONFIG_FUNCTION_TRACER=y` and `CONFIG_DEBUG_FS=y` come from the shared
+  `linux.config` and survive the merge, and `CONFIG_PSTORE_FTRACE` only
+  `depends on` them (it selects
+  nothing) — because a fourth zone would shrink the three that serve H-1, for
+  a per-function-call tracing job unrelated to it.
+- **`ecc-size`** absent (0): Reed-Solomon ECC costs CPU per record write and
+  defends against bit rot in DRAM that lost refresh — not against the failure
+  that matters here, which is whether the last stores reached DRAM at all.
+- **`max-reason = <3>`** is `KMSG_DUMP_EMERG`. The default is 2
+  (`KMSG_DUMP_OOPS`); 3 additionally catches emergency restart at no cost, while
+  4 or 5 would write a record on every clean shutdown and rotate real crashes
+  out of a 23-deep ring inside a day of ordinary use.
+
+**Config.** `linux-rt.fragment` gains exactly four symbols, each justified in
+place: `CONFIG_PSTORE`, `CONFIG_PSTORE_RAM`, `CONFIG_PSTORE_CONSOLE`,
+`CONFIG_PSTORE_PMSG`. All `=y`, not `=m` — the failures worth recording are as
+likely during boot as after it. `CONFIG_REED_SOLOMON*` arrive by `select`;
+`CONFIG_PSTORE_COMPRESS=y` is inherited as a Kconfig default;
+`CONFIG_PSTORE_FTRACE` stays unset. Beta-only for the same reason as the UIO set: the node lives only in the
+beta series, so setting these on stock would give that kernel a pstore
+subsystem with nothing to bind to — and putting the *node* on stock would
+reserve 1 MiB of every user's RAM for a subsystem that is not compiled in.
+
+### 9.2 What it buys, stated precisely
+
+The honest version matters more than the flattering one, because the flattering
+one would get this node trusted for a job it cannot do.
+
+**For an H-1-class hang there is no kmsg dump to take.** The kernel never
+reaches its die path, `kmsg_dump()` is never called, and the 23 dmesg records
+stay empty for exactly the failure that motivated the node.
+
+What survives is:
+
+- **the console area** — everything printk emitted up to the hang, including the
+  tail that was still sitting in the UART FIFO when the port stopped being
+  serviced; and
+- **the pmsg area** — whatever the userspace tool wrote to `/dev/pmsg0` before
+  it made the fatal access. A probe tool that writes *"about to read LW +0x14"*
+  before issuing the read converts a silent brick into a named offset, which is
+  the single fact all three H-1 investigations spent their time recovering by
+  bisection.
+
+The dmesg records are for the ordinary oops and panic this board can also
+produce, which today are equally unrecoverable if it never gets far enough to
+write them to the card. Both jobs are wanted; that is why the region is split
+three ways rather than given whole to either.
+
+**And there is a hard limit.** DRAM keeps its contents across a *warm* reset,
+and neither U-Boot nor the kernel writes this range on the way back up (U-Boot
+loads the zImage at `0x01000000` and relocates itself to the top of the full
+1 GiB; the kernel reserves the region before the allocator runs). A **power
+cycle** is different: refresh stops and the contents decay over seconds. H-1
+hangs were power-cycle-only recoveries — so for that exact failure this node
+yields a **best-effort** record, not a guaranteed one.
+
+That limit is the entire reason the next subsection exists. A best-effort record
+still beats three empty logs, but the way to make it reliable is to stop needing
+the power cycle.
+
+**Harvesting.** Nothing appears by itself:
+
+```sh
+mount -t pstore pstore /sys/fs/pstore
+ls /sys/fs/pstore          # dmesg-ramoops-N, console-ramoops-0, pmsg-ramoops-0
+```
+
+Records persist until removed with `rm`, which is what frees the slot for the
+next crash — a harvest step that forgets to delete will eventually stop
+recording new ones.
+
+### 9.3 The watchdog: already present, deliberately inert, and NOT patched
+
+**There is no `0047`, and that is a finding rather than an omission.** The
+obvious next move after 0046 is "add a watchdog patch". It was checked against
+the kernel source before being written, and every piece already exists:
+
+| Piece | Where it already is |
+|---|---|
+| DT nodes | `arch/arm/boot/dts/intel/socfpga/socfpga.dtsi` — `watchdog0@ffd02000` and `watchdog1@ffd03000`, `compatible = "snps,dw-wdt"`, both `status = "disabled"` there |
+| Node enabled | `arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5.dtsi` — `&watchdog0 { status = "okay"; };`, upstream, included by our `.dts` |
+| Driver | shared `board/mister/de10nano/linux.config` — `CONFIG_WATCHDOG=y`, `CONFIG_DW_WATCHDOG=y` (and `CONFIG_WATCHDOG_CORE=y` by `select`) |
+
+So **`/dev/watchdog0` exists on both kernels today**, stock 6.18 included. There
+was nothing to enable, so nothing was invented: no patch, and **no symbol added
+to `linux-rt.fragment`** — only a `NOTE` recording the check so the next person
+does not add `CONFIG_DW_WATCHDOG=y` a second time and conclude they enabled
+something.
+
+**A bound driver that is never opened does nothing, and that is the safe
+default.** This is a property of the code, not an assumption:
+
+- `dw_wdt_probe()` never calls `dw_wdt_arm_system_reset()`. In a running system
+  the `WDT_EN` bit in `WDOG_CONTROL_REG` is set only by `dw_wdt_start()`, which
+  the watchdog core reaches from `open()` on the chardev. (The one other writer
+  is `dw_wdt_restart()`, the driver's registered restart handler — it runs only
+  on the reboot path, when the system is already resetting by intent; it is a
+  mechanism for an orderly restart, not a change in unfed boot behaviour.)
+  Probe writes the timeout register and registers the device; the counter is
+  not armed.
+- `CONFIG_WATCHDOG_OPEN_TIMEOUT=0` — the core does **not** start an
+  "open me within N seconds or reset" timer.
+- `CONFIG_WATCHDOG_NOWAYOUT` is **not** set, so a clean close (the `V` magic
+  character) stops the timer; a feeder can be started and stopped at will.
+- `watchdog_stop_on_reboot()` is called in probe, so an orderly reboot stops it.
+- `CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED=y` covers the one case where the
+  hardware *is* already counting at probe (a bootloader that armed it): the core
+  adopts it (`WDOG_HW_RUNNING`) and pings it from a kernel worker until
+  userspace opens the device — so even then it does not reset the board on its
+  own.
+
+The net effect is that arming the watchdog is a **userspace opt-in**: open
+`/dev/watchdog0` and feed it. Boot behaviour is unchanged when nothing does.
+
+### 9.4 OPEN QUESTION (H-1): does a warm reset actually clear a dangling AXI transaction?
+
+The reason to want the watchdog for H-1 specifically is that it does not depend
+on a working CPU: the L4 watchdog is clocked from `osc1` and counts down whether
+or not the cores are making progress, so a feeder that dies with the CPU is
+exactly the trigger wanted.
+
+**What is not known is whether its reset recovers this particular failure.** In
+an H-1 hang the CPU is stalled waiting for a read response from the lwhps2fpga
+interconnect that will never arrive, and the symptoms (both cores dead, no
+network) point at the L3 interconnect being blocked rather than one core being
+stuck. A watchdog warm reset resets the CPUs; whether it also resets the
+*bridge* — and so retires the outstanding transaction — depends on what the
+reset manager asserts on a watchdog event, and we have not established that on
+this silicon.
+
+The three outcomes are materially different and none is currently ruled out:
+
+1. **Warm reset recovers.** The board reboots to a shell, and pstore is readable
+   with the pmsg breadcrumb intact. H-1 stops being power-cycle-only, and 0046's
+   record becomes reliable rather than best-effort for this class.
+2. **Warm reset fires but the board re-wedges** during U-Boot or early kernel, at
+   the first bridge access. The stall survived the reset; the watchdog is no help
+   for H-1 (still useful for ordinary hangs), and external power control remains
+   the only mitigation class — which is what the Wave-1 finding already suspected.
+3. **The reset never happens.** Something about the stalled state prevents the
+   reset from completing. Worth knowing, and it would close the question hardest.
+
+Until this is settled, **do not describe the watchdog as an H-1 mitigation** —
+describe it as infrastructure that is present, off by default, and untested
+against H-1.
+
+### 9.5 On-device test plan for §9.4
+
+Destructive by construction: it deliberately hangs the board. Run it with MiSTer
+stopped, a known core loaded, and a **serial console attached and logging** —
+the network is the first thing to die, so anything the test learns arrives over
+the wire or not at all. `lw-latency` refuses to run without `--offset` **and** an
+explicit `--core-decodes-this` attestation, which this test supplies knowingly.
+
+**Step 0 — prove the instrument before trusting it (no hang yet).**
+Otherwise a null result in step 2 is unattributable.
+
+- `ls /dev/watchdog0`; read `/sys/class/watchdog/watchdog0/{state,timeout,bootstatus}`
+  and the boot `dmesg` line, to establish whether the bootloader left the timer
+  running (the `CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED` case) or whether it is idle.
+- Open the device, set a short timeout (15 s), feed it, then **stop feeding
+  without closing cleanly**. The board must reset at ≈T+timeout. This proves the
+  timer, the reset path, and the timeout value — with no bus stall anywhere near
+  it. If this fails, stop: everything after it is uninterpretable.
+
+**Step 1 — prove pstore across a warm reset.**
+
+- `mount -t pstore pstore /sys/fs/pstore`, `rm -f /sys/fs/pstore/*`.
+- Write a known string to `/dev/pmsg0`; `echo c > /proc/sysrq-trigger` (panic).
+- After the reboot: `dmesg-ramoops-0` must hold the panic and `pmsg-ramoops-0`
+  the string. This calibrates *both* frontends on a failure the kernel survives
+  long enough to record, so step 2 can attribute any absence to the hang rather
+  than to a broken reservation.
+
+**Step 2 — the experiment: hang with the watchdog fed.**
+
+- Feeder running with a short timeout (15 s), pstore mounted and emptied.
+- Write a breadcrumb naming the exact target to `/dev/pmsg0`, e.g.
+  `H1-TEST lw-latency --offset 0x00 t=<timestamp>`, and **`fsync`/`write()`
+  before** the hazardous call — pmsg is a plain write, so ordering is the
+  caller's job.
+- Trigger the hang (undecoded LW offset, menu core loaded).
+- Record, from the serial console and a wall clock:
+  - **(a)** does a reset occur at ≈T+timeout?
+  - **(b)** if it resets: does U-Boot print? does the kernel boot? does a shell
+    come back? → outcome 1 if yes;
+  - **(c)** if it resets and then dies again: **where** — U-Boot banner then
+    silence (bridge stall survived, killed at the first bridge touch) vs no
+    output at all (the reset did not take) → outcome 2 vs 3;
+  - **(d)** if nothing happens by T+3×timeout → outcome 3.
+- On any successful boot: read all of `/sys/fs/pstore` and record whether the
+  pmsg breadcrumb survived, and how much console history came back with it.
+
+**Step 3 — the power-cycle comparison (the control).**
+
+Repeat the *identical* hang with **no feeder running**, then recover by pulling
+power, and compare against step 2:
+
+- **Recovery:** power cycle always works (already known). The delta being
+  measured is solely whether the warm reset also worked.
+- **Record survival:** this is the part that cannot be inferred. Compare
+  `/sys/fs/pstore` contents after a warm reset (step 2) against after a power
+  cycle, with the interval between power-off and power-on recorded — DRAM decays
+  over seconds, so a fast cycle may preserve the breadcrumb and a slow one will
+  not. Run it at a few intervals (immediate, 10 s, 60 s) to find where the
+  record stops being readable on this board. That number is what tells a future
+  operator whether "pull power fast" is worth doing at all.
+
+**Step 4 — is the recovered state actually clean?** Only if step 2 gave outcome
+1: after the watchdog recovery, run the Wave-1 A1/A2 probes (`mmio-probe`,
+`gpi-sample`) and then trigger H-1 a *second* time. A recovery that boots but
+cannot survive a repeat is outcome 2 wearing outcome 1's clothes.
+
+**What each result changes.** Outcome 1: the watchdog becomes a documented
+development mitigation, an opt-in feeder is worth shipping for the RT line, and
+0046's record is upgraded from best-effort to reliable for this class. Outcomes
+2 and 3: record it plainly, stop proposing the feeder as an H-1 answer, and
+leave external power control as the only mitigation class — with 0046 still
+earning its place, because a best-effort record beats three empty logs.
+
+### 9.6 Status
+
+| | Status |
+|---|---|
+| `0046` applies to the pinned **7.2 final** at Buildroot's `patch -F0` | ✅ **re-verified 2026-08-17 on 7.2 final** — full **40-entry** series through Buildroot's own `apply-patches.sh` against a freshly extracted pristine `linux-7.2.tar.xz` (sha256 `f9fef3d1…`, the value `linux.hash` transcribes from kernel.org's PGP-signed manifest): **40/40, exit 0, zero fuzz**, and `0046` lands at the line its header declares with **zero offset**. An intermediate 35-entry run showed the offset distribution unchanged from the pre-`0046` 34-entry one, so `0046` costs the rest of the series nothing (§6). ✅ Previously verified 2026-08-14 on **7.2-rc7**, the pin at the time, same shape against `linux-7.2-rc7.tar.gz`. This row was re-opened by the rc7 → 7.2 bump and is closed again |
+| `0046` is independent of `0043`/`0044` | ✅ **verified** — it anchors on `memory@0`, which sits above everything those two insert and which no patch in the series modifies. Applied to a `0004`-only tree it lands at the same line, zero offset |
+| The patched DTS compiles | ✅ **re-verified 2026-08-17 on 7.2 final** (`cpp` + `dtc 1.7.2`, exit 0). DTB **21300 → 21574 bytes** — the same 274-byte delta and the same absolute size as on rc7, and 21300 is exactly what §6's `make rt` row measured for the pre-`0046` series. The dtc warning set is **byte-identical** to the pre-`0046` baseline — the same five pre-existing `simple_bus_reg` warnings from upstream `socfpga.dtsi`, no new `unit_address_vs_reg` |
+| The node is in the DTB as intended | ✅ decompiled: `reserved-memory` with `#address-cells`/`#size-cells` = 1 and `ranges`, holding `ramoops@1fe00000` with `reg = <0x1fe00000 0x100000>`, `record-size 0x8000`, `console-size 0x40000`, `pmsg-size 0x8000`, `ftrace-size 0`, `max-reason 3`. `memory@0`, `MiSTer_fb@22000000`, the eight doorbells and both UIO region nodes unchanged |
+| The four `CONFIG_PSTORE*` symbols survive `olddefconfig` | ✅ **verified, and since confirmed in the real build** — `merge_config.sh` (`linux.config` + `linux-rt.fragment`) then `make ARCH=arm olddefconfig` on the pristine tree, and the same four re-read out of the built `output-rt` tree's `.config` afterwards: all four stay `=y`, `CONFIG_REED_SOLOMON`/`CONFIG_REED_SOLOMON_ENC8`/`CONFIG_REED_SOLOMON_DEC8` arrive by `select`, `CONFIG_PSTORE_COMPRESS=y` and `CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240` are inherited, `CONFIG_PSTORE_FTRACE` stays unset. This is the check the LED `select`→`depends on` trap of §6 exists to demand |
+| The watchdog needs no patch and no symbol | ✅ **verified from source, not assumed** — DT node enabled upstream in `socfpga_cyclone5.dtsi`, `CONFIG_WATCHDOG=y` + `CONFIG_DW_WATCHDOG=y` already in the shared `linux.config`, resolved `=y` in the same `olddefconfig` run alongside `CONFIG_WATCHDOG_CORE=y`, `CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED=y`, `CONFIG_WATCHDOG_OPEN_TIMEOUT=0`, `CONFIG_WATCHDOG_NOWAYOUT` unset |
+| **The RT kernel builds with `0046` applied** | ✅ **YES, as of 2026-08-17** — this row was ❌ until a `make rt` ran on the full 40-entry series from a clean tree: exit 0, `.applied_patches_list` ends `0045` → `0046`, and the shipped DTB carries `ramoops@1fe00000` with the intended `reg`/`record-size`/`console-size`/`pmsg-size`/`ftrace-size`/`max-reason` (decompiled from `output-rt/images/`, not from the standalone `dtc` run). The embedded DTB is **21574 bytes**, byte-identical to the standalone measurement above |
+| **The reservation survives a real boot** | ❌ **unproven.** Nothing here has run on hardware: that `pfn_valid()` is true for the region and ramoops takes the `vmap()` write-combining path, that the region does not collide with anything the running kernel wants, and that `/sys/fs/pstore` populates at all are all read off the source. §9.5 step 1 is the cheapest possible first confirmation |
+| **Records survive a warm reset** | ❌ unproven — §9.5 step 1 |
+| **Records survive a power cycle, and for how long** | ❌ unproven, and expected to be a *duration*, not a yes/no — §9.5 step 3 |
+| **A watchdog warm reset clears an H-1 AXI stall** | ❌ **THE open question** — §9.4. Do not describe the watchdog as an H-1 mitigation until §9.5 answers it |
+
+## 10. What the pin tracks, and why that changed at 7.2
 
 Until 2026-08-17 this pin followed **mainline**: whatever `kernel.org`'s
 `releases.json` called `moniker=mainline`, which for the whole life of the

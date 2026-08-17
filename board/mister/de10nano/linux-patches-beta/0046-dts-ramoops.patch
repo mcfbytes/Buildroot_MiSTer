@@ -1,0 +1,487 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 14 Aug 2026 00:00:00 +0000
+Subject: [PATCH] ARM: dts: socfpga: de10nano: reserve 1 MiB of ramoops/pstore
+ at 0x1FE00000
+
+Adds a /reserved-memory ramoops node so that a crash -- or a hang that
+produces no crash at all -- leaves a record in DRAM that the next boot
+can read.
+
+Rationale
+---------
+Hardware finding H-1 (Wave-1 pass, three confirmed events): a read of an
+lwhps2fpga offset that no fabric slave decodes hard-hangs the HPS.  There
+is no bus fault, no exception, no panic, and -- confirmed on the third
+event with a serial console attached and capturing -- not one byte of
+console output.  Three hangs produced three empty logs.  The finding's
+own conclusion was that "one DT node would have said all of this on the
+first event".  This is that node.
+
+The channel that failed was the UART: it stops being serviced at the
+instant of the hang, so everything printk had produced but not yet
+drained died with it, and everything the test tool knew about what it was
+about to do was never written down anywhere durable.  A ramoops region is
+a channel that does not need a live CPU to be read: it is written as the
+messages are produced, into DRAM, and read back after the reset.
+
+What it actually buys, stated precisely
+---------------------------------------
+For an H-1-class hang there is no kmsg dump to take.  The kernel never
+reaches its die path, kmsg_dump() is never called, and the "dmesg"
+records this node provisions stay empty for exactly the failure that
+motivated it.  Overclaiming that would be worse than not having the node.
+
+What does survive is:
+
+  * the CONSOLE area -- everything printk emitted up to the hang,
+    including the tail still sitting in the UART FIFO, because
+    pstore's console frontend is written on the printk path and not on
+    the crash path; and
+
+  * the PMSG area -- whatever userspace wrote to /dev/pmsg0 before the
+    fatal access.  A probe tool that writes "about to read LW +0x14"
+    before it issues the read converts a silent brick into a named
+    offset, which is the single fact all three H-1 investigations spent
+    their time recovering by bisection instead.
+
+The dmesg records are for the ordinary oops and panic this board can also
+produce, which today are equally unrecoverable if the board does not get
+far enough to write them to the card.  Both jobs are wanted; that is why
+the region is split three ways rather than given whole to either.
+
+Address: 0x1FE00000, and why it is the only comfortable one
+-----------------------------------------------------------
+A reserved-memory region has to live inside memory the kernel actually
+owns, and on this board that is a narrow window (docs/boot-chain.md
+section 6.4 carries the arithmetic):
+
+  0x1FF00000   the mem=511M cap.  early_mem() discards every memory
+               region the DTB advertised and adds back exactly
+               [0, 0x1FF00000).  The token comes from stock U-Boot's
+               CONFIG_BOOTARGS, which this tree does not own.
+  0x1FFFF000   MiSTer's shmem mailbox (Main_MiSTer fpga_io.cpp:398).
+  0x1FFFFF08   MiSTer's warm-boot flag.
+  0x20000000   the 512 MiB DDR3 aperture shared with the FPGA over
+               f2sdram (patch 0044's mister_ddr_aperture).
+
+Everything at or above the cap is therefore already spoken for -- by
+MiSTer userspace or by the FPGA -- and none of it is memory the kernel is
+permitted to reserve in the first place.  That leaves [0, 0x1FF00000),
+and within it the top is the only placement that costs nothing: a region
+in the middle of lowmem punches a hole that the linear map has to work
+around, whereas a region at the top merely shortens lowmem by 1 MiB.
+
+0x1FE00000 is 2 MiB-aligned, which is PMD_SIZE on ARM without LPAE, so
+the linear map ends on a clean PMD boundary instead of degenerating into
+page mappings around a hole.  Size 0x100000 puts the end of the region
+exactly on the cap, with no gap to explain.
+
+Verified free rather than assumed free, at the time of writing:
+
+  * no CMA area exists -- CONFIG_DMA_CMA is not set in this tree, so
+    dma_contiguous_reserve() reserves nothing and cannot land here;
+  * the only other static reservation on this SoC is
+    socfpga_cyclone5.dtsi's /memreserve/ of the first 4 KiB, for the
+    secondary-core trampoline;
+  * MiSTer_fb (patch 0001) takes its memory from the FPGA aperture via
+    its DT reg, not from kernel RAM;
+  * no Main_MiSTer shmem_map() call can land in this range: every call
+    site resolves to the 0x1FFFF000 mailbox page or into the aperture --
+    the 0x22000000 framebuffer (video.cpp FB_ADDR), the scaler window at
+    0x20000000 (scaler.h MISTER_SCALER_BASEADDR), savestate bases
+    range-checked against [0x20000000, 0x40000000) (user_io.cpp), and
+    fpga_mem() addresses masked into 0x20000000+ (shmem.h).
+
+The split, and why these four numbers
+-------------------------------------
+ramoops carves the region in probe order -- dmesg from the base, then
+console, then pmsg, then ftrace (fs/pstore/ram.c ramoops_probe) -- so
+1 MiB becomes:
+
+  0x1FE00000  +0x0B8000  dmesg    23 records x 0x8000   (record-size)
+  0x1FEB8000  +0x040000  console  256 KiB               (console-size)
+  0x1FEF8000  +0x008000  pmsg      32 KiB               (pmsg-size)
+  0x1FF00000             == the cap; nothing left over.
+
+The dmesg area is whatever remains after the fixed areas
+(dump_mem_sz = size - console - ftrace - pmsg), divided into record-size
+chunks: 0x100000 - 0x40000 - 0x8000 = 0xB8000, and 0xB8000 / 0x8000 = 23
+exactly, so the region divides with no remainder.  Twenty-three retained
+records is deep enough that a reboot loop does not immediately overwrite
+the first and most informative crash.
+
+  record-size 0x8000 (32 KiB) must be a power of two: ramoops silently
+    applies rounddown_pow_of_two() otherwise, which would waste nearly
+    half the dmesg area without logging anything.  32 KiB is sized
+    against PSTORE_DEFAULT_KMSG_BYTES, which caps one kmsg dump at 10240
+    bytes -- so a full dump fits with 3x headroom before PSTORE_COMPRESS
+    deflates it, and a record is never what truncates a crash.
+
+  console-size 0x40000 (256 KiB) is the largest share, because it is the
+    area that pays off for a silent hang.  It is a circular buffer of
+    everything going to the console, written as printk produces it, so it
+    holds the tail of the boot plus whatever has run since -- on the
+    order of a couple of thousand lines at typical MiSTer line lengths,
+    which spans a boot and a test run comfortably.  This is the area that
+    would have had something to say on all three H-1 events.
+
+  pmsg-size 0x8000 (32 KiB) is /dev/pmsg0, read back after the reset as
+    /sys/fs/pstore/pmsg-ramoops-0.  Deliberately small: it is for "which
+    offset am I about to touch", not for logging, and its cost on the
+    hazardous path is one write().
+
+  ftrace-size 0 is stated rather than omitted, so the four numbers in the
+    node can be checked against the arithmetic above without knowing the
+    binding's defaults.  PSTORE_FTRACE is deliberately not set even though
+    it would resolve -- the shared linux.config already carries
+    FUNCTION_TRACER=y and DEBUG_FS=y, and PSTORE_FTRACE only depends on
+    them (it selects nothing), so "it would drag in the tracer" is not the
+    reason and would be false in this tree.  The reason is the budget: a
+    fourth zone would shrink the three areas above, to serve
+    per-function-call tracing -- a job unrelated to H-1.  At 0, ramoops
+    allocates no zone and does not register the frontend.
+
+  ecc-size is absent (0) on purpose.  Reed-Solomon ECC costs CPU on every
+    record write and defends against bit rot in DRAM that lost refresh.
+    It does not defend against the failure that matters here -- whether
+    the last stores reached DRAM at all -- and enabling it would change
+    the buffer layout and shrink all three areas.
+
+  max-reason 3 is KMSG_DUMP_EMERG (include/linux/kmsg_dump.h): dump on
+    panic, oops and emergency restart, but not on KMSG_DUMP_SHUTDOWN (4).
+    The default when the property is absent is 2 (KMSG_DUMP_OOPS).
+    Raising it to 3 costs nothing and catches the emergency-restart path;
+    raising it to 4 or 5 would write a record on every clean shutdown and
+    rotate real crashes out of a 23-deep ring inside a day of ordinary
+    use.
+
+Memory type, and the alias question
+-----------------------------------
+mem-type is absent, which is 0, "write-combined".  Because the region is
+inside the kernel's memory map, pfn_valid() is true for it and
+persistent_ram_buffer_map() takes the vmap() path with
+pgprot_writecombine() (fs/pstore/ram_core.c).  That is the right
+attribute and both alternatives are wrong here: mem-type 2 ("cached")
+would leave the newest records in the A9 D-cache at the moment the CPU
+wedges, losing precisely the last lines -- the ones worth having --
+while mem-type 1 ("unbuffered", strongly ordered on ARMv7) would
+serialise every console byte to buy ordering against a device that does
+not exist.
+
+That leaves a cacheable alias of these pages in the kernel linear map,
+which is accepted here rather than overlooked.  It is NOT the
+mismatched-attribute hazard that patch 0044's header argues about at
+length, and the difference is worth being explicit about because the two
+look alike:
+
+  * 0044's hazard is a write-combining USER mapping of pages that are
+    also ordinary allocatable RAM the kernel writes through its cacheable
+    linear mapping.  Two writers, two attributes, same lines.
+  * Here the region is reserved before the allocator ever sees it, so
+    nothing writes it through the linear alias: not the buddy allocator,
+    and not memtest (CONFIG_MEMTEST is not set in this tree, and
+    early_memtest() iterates free ranges only in any case).  A line the
+    CPU speculatively fills through the alias is clean, and a clean line
+    cannot be written back over a record.
+
+no-map was considered and rejected.  On ARM it would remove the linear
+alias -- map_lowmem() iterates with for_each_mem_range(), whose flags do
+not include MEMBLOCK_NOMAP, so should_skip_region() skips the region --
+and adjust_lowmem_bounds() uses the same iterator, so arm_lowmem_limit
+and high_memory would shorten correctly rather than dangle.  What it
+would NOT do is move ramoops to the ioremap path: arch/arm's pfn_valid()
+answers from memblock.memory, and NOMAP regions stay in memblock.memory,
+so the mapping ramoops ends up making is byte-for-byte the same either
+way.  So no-map buys only the removal of an alias that is provably
+write-never, at the price of departing from every in-tree ARM ramoops
+node (all of which are plain reserved-memory).  Not worth it here.  It
+would be worth revisiting if this region ever moved into the middle of
+lowmem, where the linear-map split is real rather than a shortening.
+
+Persistence, and the limit that motivates the watchdog
+------------------------------------------------------
+DRAM keeps its contents across a warm reset, and neither U-Boot nor the
+kernel writes this range on the way back up: U-Boot loads the zImage at
+0x01000000 and relocates itself to the top of the full 1 GiB, both far
+from 510 MiB, and the kernel reserves the region before the allocator
+runs.
+
+A POWER CYCLE is a different thing.  The DDR3 stops being refreshed and
+the contents decay over seconds.  H-1 hangs were power-cycle-only
+recoveries, so for that exact failure this node yields a best-effort
+record and not a guaranteed one.  That is not an argument against the
+node -- a best-effort record beats three empty logs -- but it is the
+argument for having a watchdog capable of turning such a hang into a warm
+reset, where the record is reliable.  docs/rt-beta-kernel.md section 9
+carries that open question and the on-device test that would settle it.
+
+Userspace
+---------
+Nothing appears by itself.  The records are exposed by pstorefs:
+
+  mount -t pstore pstore /sys/fs/pstore
+
+after which dmesg-ramoops-N, console-ramoops-0 and pmsg-ramoops-0 can be
+read.  Records persist until removed with rm, which is what frees the
+slot for the next crash -- a harvest step that forgets to delete will
+eventually stop recording new ones.
+
+Binding, and why this patch is beta-local
+-----------------------------------------
+Unlike 0043 and 0044, this node uses only documented upstream bindings:
+compatible = "ramoops" under /reserved-memory, exactly as
+Documentation/devicetree/bindings/reserved-memory/ramoops.yaml describes,
+and the platform device is created by of_platform_default_populate_init()
+which matches "ramoops" from its reserved_mem_matches table
+(drivers/of/platform.c).  Nothing here is invented.
+
+It still lives only in linux-patches-beta/ and is listed only in that
+directory's series, for the same reason 0043-0045 do: the shared
+linux-patches/ directory has no series file and is applied whole to the
+stock 6.18 build via BR2_LINUX_KERNEL_PATCH, so a copy there would put
+this node into the stock DTB -- where CONFIG_PSTORE is not set, no driver
+claims the region, and the only effect would be 1 MiB of RAM reserved
+from every stock user for nothing.  Beta-local is what keeps the stock
+build byte-identical.
+
+The four config symbols it needs (CONFIG_PSTORE, CONFIG_PSTORE_RAM,
+CONFIG_PSTORE_CONSOLE, CONFIG_PSTORE_PMSG) are added to
+board/mister/de10nano/linux-rt.fragment in the same change, each with its
+justification, and are beta-only for the same reason.
+
+Provenance
+----------
+Origin:       None.  Originally authored for this tree; no MiSTer fork
+              commit corresponds to it.
+Author:       Michael C. Ferguson, 2026-08-14.
+Upstream:     No.  The binding is upstream and the node is
+              schema-correct, but the content is board policy, not a
+              hardware description: it encodes a 1 MiB carve-out whose
+              legality depends on a mem=511M token supplied by a U-Boot
+              this tree does not own, and whose size split is tuned to
+              one project's debugging needs.  Upstream socfpga has no
+              reason to carry either.  Disposition "carry"
+              (docs/patch-provenance.md 3.1).
+Depends on:   0004 (the DTS base) only.  It anchors on the memory@0 node,
+              which no other patch in this series touches, and its hunk
+              sits above the region 0043 and 0044 add to, so it applies
+              at the same line whether or not those two are present.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 201 +++++++++++++++++
+ 1 file changed, 201 insertions(+)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -42,6 +42,207 @@
+ 		reg = <0x0 0x40000000>;
+ 	};
+ 
++	/*
++	 * ramoops: a crash record that survives the reset, in the last
++	 * mebibyte of RAM the kernel is allowed to touch.
++	 *
++	 * WHY THIS EXISTS.  Hardware finding H-1: a read of an lwhps2fpga
++	 * offset that no fabric slave decodes hard-hangs the HPS -- no bus
++	 * fault, no exception, no panic, and (confirmed with a serial console
++	 * attached) not one byte of console output.  Three events produced
++	 * three empty logs.  Nothing inside the box could say what the machine
++	 * had been doing, because the only channel was a UART that stops being
++	 * serviced at the instant of the hang.  This node is the channel that
++	 * does not need a live CPU to be read afterwards: printk output and
++	 * userspace breadcrumbs land in DRAM as they are produced, and are
++	 * still there on the next boot.
++	 *
++	 * Be precise about what it buys.  For an H-1-class hang there is no
++	 * kmsg dump to take -- the kernel never reaches its die path -- so the
++	 * "dmesg" records below stay empty for exactly the failure that
++	 * motivated the node.  What survives is the CONSOLE area (everything
++	 * printk emitted up to the hang, including the tail that was still
++	 * sitting in the UART FIFO) and the PMSG area (whatever the userspace
++	 * tool wrote to /dev/pmsg0 before it made the fatal access).  A probe
++	 * tool that logs "about to read LW +0x14" to pmsg turns a silent brick
++	 * into a named offset.  The dmesg records are for the ordinary oops and
++	 * panic that this board can also produce; both jobs are wanted, and
++	 * they are why the region is split three ways rather than given whole
++	 * to either.
++	 *
++	 * ADDRESS: 0x1FE00000, size 0x100000 -- fixed, and the choice is forced
++	 * from both ends (docs/boot-chain.md section 6.4 has the arithmetic):
++	 *
++	 *   0x00000000  start of the 1 GiB of DDR3.
++	 *   ...         kernel image, then everything the buddy allocator owns.
++	 *   0x1FE00000  THIS REGION.  510 MiB.
++	 *   0x1FF00000  the mem=511M cap.  Stock U-Boot's CONFIG_BOOTARGS puts
++	 *               it here and this tree does not own that command line;
++	 *               early_mem() discards the DTB's memory node and adds back
++	 *               exactly [0, 0x1FF00000).
++	 *   0x1FFFF000  MiSTer's shmem mailbox (Main_MiSTer fpga_io.cpp).
++	 *   0x1FFFFF08  MiSTer's warm-boot flag.
++	 *   0x20000000  the 512 MiB DDR3 aperture the FPGA shares over f2sdram
++	 *               (see mister_ddr_aperture below).
++	 *
++	 * So everything at or above the cap is already spoken for -- by MiSTer
++	 * userspace, or by the FPGA -- and none of it is memory the kernel may
++	 * reserve.  A reserved-memory region must be inside what the kernel
++	 * actually owns, which leaves [0, 0x1FF00000), and inside that the top
++	 * is the only address that costs nothing: putting the region anywhere
++	 * else punches a hole in the middle of lowmem, while putting it at the
++	 * top merely shortens lowmem by 1 MiB.  0x1FE00000 is 2 MiB-aligned
++	 * (PMD_SIZE on ARM without LPAE), so the linear map ends on a clean
++	 * PMD boundary rather than being broken into page mappings around a
++	 * hole.
++	 *
++	 * Verified free, not assumed free, at the time of writing: no CMA area
++	 * exists (CONFIG_DMA_CMA is not set, so dma_contiguous_reserve()
++	 * reserves nothing); the only other static reservation on this SoC is
++	 * socfpga_cyclone5.dtsi's /memreserve/ of the first 4 KiB for the
++	 * secondary-core trampoline; MiSTer_fb takes its memory from the FPGA
++	 * aperture, not from here; and no Main_MiSTer shmem_map() call names an
++	 * address in this range.  If a future change wants lowmem back, move
++	 * this region -- do not shrink it into a non-2 MiB-aligned base.
++	 *
++	 * THE SPLIT.  1 MiB total, and the three areas below add up to exactly
++	 * that with no remainder.  ramoops carves the region in probe order --
++	 * dmesg first from the base, then console, then pmsg, then ftrace
++	 * (fs/pstore/ram.c ramoops_probe) -- so the layout is:
++	 *
++	 *   0x1FE00000  +0x0B8000  dmesg    23 records x 0x8000  (record-size)
++	 *   0x1FEB8000  +0x040000  console  256 KiB              (console-size)
++	 *   0x1FEF8000  +0x008000  pmsg      32 KiB              (pmsg-size)
++	 *   0x1FF00000             == the cap.  Nothing left over.
++	 *
++	 * The dmesg area is what ramoops has left after the fixed areas
++	 * (dump_mem_sz = size - console - ftrace - pmsg), divided into
++	 * record-size chunks: 0x100000 - 0x40000 - 0x8000 = 0xB8000, and
++	 * 0xB8000 / 0x8000 = 23 exactly.  Twenty-three retained oops/panic
++	 * records is deep enough that a reboot loop does not immediately
++	 * overwrite the first and most informative crash.
++	 *
++	 *   record-size 0x8000 (32 KiB).  Must be a power of two -- ramoops
++	 *     silently rounds down with rounddown_pow_of_two() otherwise, which
++	 *     would waste half the area without saying so.  32 KiB is chosen
++	 *     against PSTORE_DEFAULT_KMSG_BYTES, which caps a single kmsg dump
++	 *     at 10240 bytes: a whole dump fits with 3x headroom even before
++	 *     PSTORE_COMPRESS deflates it, so a record is never the thing that
++	 *     truncates a crash.
++	 *
++	 *   console-size 0x40000 (256 KiB).  The largest of the three, because
++	 *     it is the one that pays off for a silent hang.  It is a circular
++	 *     buffer of everything that goes to the console, written as printk
++	 *     produces it, so it holds the tail of the boot and of whatever ran
++	 *     since -- roughly the last couple of thousand lines at typical
++	 *     MiSTer line lengths, which comfortably spans a boot plus a test
++	 *     run.  This is the area that would have had something to say on
++	 *     all three H-1 events.
++	 *
++	 *   pmsg-size 0x8000 (32 KiB).  /dev/pmsg0: a write-only character
++	 *     device for userspace breadcrumbs, read back after the reset as
++	 *     /sys/fs/pstore/pmsg-ramoops-0.  Small on purpose -- it is for
++	 *     "which offset am I about to touch", not for logging.  Its cost is
++	 *     one write() on the hazardous path.
++	 *
++	 *   ftrace-size 0 -- stated rather than omitted so the four numbers in
++	 *     this comment can be checked against the node without knowing the
++	 *     binding's defaults.  PSTORE_FTRACE would resolve (the base config
++	 *     already carries FUNCTION_TRACER=y), but a fourth zone would
++	 *     shrink the three areas above for a per-function-call tracing job
++	 *     unrelated to H-1.  At 0, ramoops registers no ftrace frontend.
++	 *
++	 *   ecc-size is deliberately absent (0).  Reed-Solomon ECC costs CPU on
++	 *     every record write and defends against bit rot in DRAM that lost
++	 *     refresh.  The failure it does NOT defend against is the one here:
++	 *     whether the last stores reached DRAM at all.  Paying for it would
++	 *     also change the buffer layout and shrink every area.
++	 *
++	 * max-reason 3 = KMSG_DUMP_EMERG (include/linux/kmsg_dump.h), i.e. take
++	 * a dump for panic, oops and emergency restart, but NOT for
++	 * KMSG_DUMP_SHUTDOWN (4).  Without this the default is 2
++	 * (KMSG_DUMP_OOPS).  Going to 3 costs nothing and catches the
++	 * emergency-restart path; going to 4 or 5 would write a fresh record on
++	 * every clean shutdown and rotate real crashes out of a 23-deep ring in
++	 * under a day of ordinary use.
++	 *
++	 * MEMORY TYPE.  mem-type is deliberately absent, which is 0,
++	 * "write-combined".  Because this region is inside the kernel's memory
++	 * map, pfn_valid() is true for it and ramoops maps it with vmap() and
++	 * pgprot_writecombine() (fs/pstore/ram_core.c
++	 * persistent_ram_buffer_map).  That is the right attribute and the
++	 * other two are both wrong here: mem-type 2 ("cached") would leave the
++	 * newest records sitting in the A9 D-cache at the moment the CPU wedges
++	 * -- losing precisely the last lines, which are the ones worth having
++	 * -- and mem-type 1 ("unbuffered", strongly ordered) would serialise
++	 * every console byte for no benefit, since nothing here needs ordering
++	 * against a device.
++	 *
++	 * There is a cacheable alias of these pages in the kernel linear map,
++	 * and that is accepted rather than overlooked.  It is NOT the
++	 * mismatched-attribute hazard that mister_ddr_aperture's comment warns
++	 * about: there, the pages would be ordinary allocatable RAM that the
++	 * kernel writes through the cacheable mapping while userspace writes
++	 * the same lines write-combining.  Here the region is reserved before
++	 * the allocator ever sees it, so nothing writes it through the linear
++	 * alias -- not the buddy allocator, not memtest (CONFIG_MEMTEST is not
++	 * set, and early_memtest() skips reserved ranges regardless).  A line
++	 * the CPU speculatively fills through the clean alias is never dirty
++	 * and so can never be written back over a record.  Every in-tree ARM
++	 * ramoops node is placed the same way, plain reserved-memory with no
++	 * no-map.
++	 *
++	 * no-map was considered and rejected.  On ARM it would remove the
++	 * linear alias (map_lowmem() iterates with for_each_mem_range(), which
++	 * skips MEMBLOCK_NOMAP), but it would NOT move ramoops to the
++	 * ioremap path, because arch/arm's pfn_valid() answers from
++	 * memblock.memory and NOMAP regions stay in it -- so the mapping ramoops
++	 * makes is identical either way.  It buys only the removal of an alias
++	 * that is provably write-never, at the price of leaving every in-tree
++	 * precedent behind.  Not worth it; revisit if this region ever moves
++	 * into the middle of lowmem, where the linear-map split is real.
++	 *
++	 * PERSISTENCE, and its limit.  DRAM keeps its contents across a warm
++	 * reset -- the L4 watchdog reset (watchdog0, enabled upstream in
++	 * socfpga_cyclone5.dtsi) and `reboot` both qualify -- and neither
++	 * U-Boot nor the kernel writes this range on the way back up: U-Boot
++	 * loads the zImage at 0x01000000 and relocates itself to the top of the
++	 * full 1 GiB, both far from 510 MiB.  A POWER CYCLE is different: the
++	 * DDR3 stops being refreshed and the contents decay over seconds.  So a
++	 * hang that can only be cleared by pulling power gives a best-effort
++	 * record at best -- which is the argument for having a watchdog able to
++	 * turn that hang into a warm reset, and the reason
++	 * docs/rt-beta-kernel.md treats the two as one piece of work.
++	 *
++	 * USERSPACE.  Nothing appears automatically: mount -t pstore pstore
++	 * /sys/fs/pstore, then read dmesg-ramoops-N, console-ramoops-0 and
++	 * pmsg-ramoops-0.  Records persist until deleted (rm), which is what
++	 * frees the slot for the next crash.
++	 *
++	 * BETA-LOCAL, like 0043-0045.  This node needs CONFIG_PSTORE,
++	 * CONFIG_PSTORE_RAM, CONFIG_PSTORE_CONSOLE and CONFIG_PSTORE_PMSG,
++	 * which board/mister/de10nano/linux-rt.fragment supplies for the RT
++	 * kernel only.  The shared linux-patches/ directory has no series file
++	 * and is applied whole to the stock 6.18 build, so a copy there would
++	 * put this node in the stock DTB, where it would reserve 1 MiB of RAM
++	 * that no driver claims.  Keep it here.
++	 */
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		ramoops@1fe00000 {
++			compatible = "ramoops";
++			reg = <0x1fe00000 0x00100000>;	/* 510..511 MiB */
++			record-size  = <0x00008000>;	/*  32 KiB x 23 */
++			console-size = <0x00040000>;	/* 256 KiB       */
++			pmsg-size    = <0x00008000>;	/*  32 KiB       */
++			ftrace-size  = <0x00000000>;	/* off; see above */
++			max-reason   = <3>;		/* KMSG_DUMP_EMERG */
++		};
++	};
++
+ 	soc {
+ 		fpga: bus@ff200000 {
+ 			compatible = "simple-bus";
+-- 
+2.51.0

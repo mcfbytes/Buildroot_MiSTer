@@ -355,6 +355,20 @@
     },
     {
       "customType": "regex",
+      "description": "azcopy release pin (Azure/azure-storage-azcopy) -- Microsoft's Azure Storage CLI, carried for off-device backup of the exFAT data partition. Upstream tags are v-prefixed (v10.32.7) but AZCOPY_VERSION holds the BARE version and azcopy.mk reconstructs the \"v\" in its SITE line -- the opposite of the dualsensectl/munt convention here, and deliberate; the comment above AZCOPY_VERSION says why. extractVersionTemplate strips the tag's \"v\" so Renovate compares and writes bare versions. THE HASH IS NOT AUTO-REFRESHED AND CANNOT BE. azcopy is a golang-package, so the file Buildroot hashes is the post-`go mod vendor` -go2 tarball, not the GitHub archive; scripts/hash-sync-github-packages.sh's `curl | sha256sum` method would write a plausible-looking WRONG value, so azcopy is deliberately ABSENT from HASH_SYNC_PACKAGES in renovate-hash-sync.yml -- do not add it there. Every bump PR therefore FAILS CLOSED on the stale hash (BR2_DOWNLOAD_FORCE_CHECK_HASHES=y) until a human runs the regeneration recipe in package/azcopy/azcopy.hash: the same deliberate posture as the RT kernel pin. A bump must also re-verify that both ARMv7 patches still apply -- 0002 patches a VENDORED file, so a github.com/wastore/keyctl bump is meant to break it loudly. See docs/azcopy.md.",
+      "managerFilePatterns": [
+        "/^package/azcopy/azcopy\\.mk$/"
+      ],
+      "matchStrings": [
+        "AZCOPY_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "Azure/azure-storage-azcopy",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "description": "Update_All_MiSTer launcher pinned into the sdcard payload (theypsilon/Update_All_MiSTer, master branch). Tracks the branch HEAD and bumps the 40-char commit; the SHA-256/size companions (PINNED_UPDATE_ALL_SHA256/SIZE in the same file) are refreshed by renovate-hash-sync.yml.",
       "managerFilePatterns": [
         "/^scripts/fetch-sdcard-payload\\.sh$/"
@@ -479,6 +493,15 @@
       "matchDepNames": ["nowrep/dualsensectl"],
       "addLabels": [
         "tool-pin"
+      ]
+    },
+    {
+      "description": "azcopy. Shares tool-pin's reviewer contract exactly -- one self-contained userspace CLI binary that nothing on the image invokes automatically, so a bad bump costs an operator a command, not a boot -- and so takes that label rather than a fourth one. It is a SEPARATE rule only so it can carry needs-manual-hash without editing dualsensectl's, which does not need it. needs-manual-hash is the same signal the RT kernel pin carried until 2026-08-17 and means precisely one thing: no automated step can refresh this package's .hash, so the bump PR is expected to arrive RED and stays red until a human runs package/azcopy/azcopy.hash's regeneration recipe. It is red-by-design, not a broken bot -- see that file and docs/azcopy.md section 5 for why a golang-package's hash cannot be curl'd.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["Azure/azure-storage-azcopy"],
+      "addLabels": [
+        "tool-pin",
+        "needs-manual-hash"
       ]
     },
     {

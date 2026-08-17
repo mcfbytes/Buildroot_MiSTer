@@ -2514,6 +2514,32 @@ filtered out and the workflow does not run at all, so there is not even a
 skipped job to notice. `scripts/hash-sync-github-packages.sh` does **not**
 auto-discover `package/*/*.mk` — see its "Required env" header.
 
+**A note on azcopy and this job's disk/cache budget.** `BR2_PACKAGE_AZCOPY` is **not
+enabled** in `configs/mister_de10nano_defconfig` (size, see `docs/azcopy.md` §1), so
+`host-go` is not built and none of the below is in the default pipeline today. It
+matters the moment anyone flips that line, because the numbers are large: host-go is a
+five-stage from-source bootstrap, and vendoring left **1.7 GiB in `GOMODCACHE`**
+(`output/host/share/go-path/pkg/mod`) on the branch that developed it. All of that
+lands under `output/`, which this job's own budget section already records ending a
+cold build at **8.4 GB free of 72 GB** — and cache #3 globs `output/host` +
+`output/build/host-*`, so it would land in the `br-host` cache entry too, against
+GitHub's 10 GB LRU ceiling. Before enabling azcopy in CI, re-measure both; do not
+assume the existing headroom absorbs it.
+
+**One package is a deliberate exception to the hash-sync allow-list rule: `azcopy`.** It is
+github-sourced and looks exactly like a candidate, and adding it to
+`HASH_SYNC_PACKAGES` (or to the `paths:` filter) would be actively harmful. It
+is a `golang-package`, so Buildroot sets `AZCOPY_DOWNLOAD_POST_PROCESS = go`
+and the file it hashes is the **post-`go mod vendor` `-go2` tarball**, not the
+GitHub archive. Case 1's method is `curl <archive-url> | sha256sum`; run
+against azcopy that produces the hash of the pre-vendoring tarball — a
+plausible-looking wrong value that would turn a green bump PR into a build
+that fails at download time on master. Reproducing the real hash needs a Go
+toolchain and a fetch of every module in `go.sum`; it is not a one-line curl
+and must not be automated as if it were. azcopy's bump PRs are therefore
+**expected to arrive red** (Renovate labels them `needs-manual-hash`) until a
+human runs the recipe in `package/azcopy/azcopy.hash`. See `docs/azcopy.md` §5.
+
 ---
 
 ## Cross-cutting conventions

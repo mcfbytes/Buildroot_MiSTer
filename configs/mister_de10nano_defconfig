@@ -1507,6 +1507,45 @@ BR2_PACKAGE_LZOP=y                            # lzop compressor. Selects BR2_PAC
                                               # base config, so there is nothing to
                                               # disable even if it did share the name.
 
+# --- Off-device backup: Azure Storage CLI (package present, NOT enabled) ------
+# azcopy (package/azcopy, BR2_EXTERNAL -- upstream Buildroot has none) pushes
+# the exFAT data partition's saves/screenshots/config to Azure Storage straight
+# from the board. It WORKS: it was built, installed and exercised end-to-end on
+# real hardware (132 MiB uploaded, md5-verified round trip, incremental `sync`,
+# Azure Files, plan files on exFAT). docs/azcopy.md section 4 has the transcript.
+#
+# IT IS OFF BECAUSE OF SIZE, and only because of size. 41,007,016 bytes =
+# 39.1 MiB installed -- the second-largest package in the image after samba4's
+# ~49 MiB, and about a fifth of the free space linux.img has left
+# (scripts/check-size-budget.sh on the 2026-08-17 build: 195 MiB / 38.1% free).
+# The budget would still pass at ~30.5% free. "Would still pass" is not the
+# same as "is worth spending", and for a tool most users will never run it is
+# not: azcopy ships as a standalone downloadable artifact instead, where the
+# people who want it pay the 8.3 MiB (xz) download and nobody else pays
+# anything. See docs/azcopy.md section 1.
+#
+# WHY IT IS SO BIG, since that is the obvious next question: almost none of it
+# is AzCopy. Measured by linking each dependency tree on its own for ARMv7 --
+# an empty Go binary is 1.2 MB, +Azure SDK is 5.5 MB, and +Google Cloud Storage
+# is 27.6 MB. GCS drags in gRPC, protobuf and the Envoy go-control-plane xDS
+# protos, none of which a MiSTer backup will ever execute. AzCopy's own code is
+# ~1.3 MB of symbols. docs/azcopy.md section 1 also prices the surgery to cut
+# it out (~20 files, a permanently-carried patch across credential handling).
+#
+# TURNING IT ON is one line -- uncomment the line below and the package builds,
+# installs /usr/bin/azcopy and its /etc/profile.d/azcopy.sh defaults, and
+# selects BR2_PACKAGE_HOST_GO (build-time only, nothing from it ships) plus
+# BR2_PACKAGE_CA_CERTIFICATES (already =y in its own right in the crypto/TLS
+# block above, and deliberately kept explicit there so it survives azcopy being
+# switched off again). Note that enabling it also pulls host-go's five-stage
+# from-source bootstrap into the build; docs/ci.md's disk-and-cache budget was
+# written without it, so check that before turning it on in CI.
+#
+# ARMv7 IS NOT AN UPSTREAM-SUPPORTED TARGET for AzCopy: Microsoft publishes
+# linux/amd64 and linux/arm64 binaries only, and two defects had to be patched
+# to build and run at all (package/azcopy/0001-*, 0002-*).
+# BR2_PACKAGE_AZCOPY is not set
+
 # --- T5: hardware buses ---
 # dtc (BR2_PACKAGE_DTC_PROGRAMS) and i2c-tools (BR2_PACKAGE_I2C_TOOLS) are also
 # part of this task's Group 3 list, but both are handled where their existing

@@ -1,0 +1,62 @@
+config BR2_PACKAGE_AZCOPY
+	bool "azcopy"
+	depends on BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_GO
+	select BR2_PACKAGE_CA_CERTIFICATES
+	help
+	  AzCopy: Microsoft's command-line client for Azure Storage --
+	  Blob, Azure Files and Data Lake Storage Gen2. On this image its
+	  reason for existing is off-device backup: pushing the exFAT data
+	  partition's saves, screenshots and configuration to Azure
+	  Storage straight from the MiSTer, with no PC in the middle.
+
+	  `azcopy sync` is the subcommand that matters here. It is
+	  incremental and restartable, which a 100 Mbit link and an
+	  800 MHz dual-core Cortex-A9 both reward. `azcopy copy`,
+	  `azcopy list`, `azcopy remove`, `azcopy jobs resume` and the
+	  `login` family are all present too.
+
+	  IT IS BIG, AND IT IS OFF BY DEFAULT. 39.1 MiB installed makes it
+	  the second-largest single package in this image after samba4,
+	  about a fifth of the free space linux.img has left, so
+	  configs/mister_de10nano_defconfig deliberately does not enable
+	  it -- azcopy is published as a standalone download instead.
+
+	  Almost none of that size is AzCopy. Measured per dependency
+	  tree for ARMv7: an empty Go binary is 1.2 MB, +Azure SDK is
+	  5.5 MB, and +Google Cloud Storage is 27.6 MB -- GCS pulls in
+	  gRPC, protobuf and the Envoy xDS protos, none of which a MiSTer
+	  will ever execute. docs/azcopy.md section 1 has the breakdown
+	  and the options for cutting it down.
+
+	  MICROSOFT DOES NOT SUPPORT 32-BIT ARM. The v10.32.7 release
+	  ships linux/amd64 and linux/arm64 binaries and nothing else, so
+	  this is a build for an architecture upstream neither compiles
+	  nor tests. Two defects had to be patched to get here (a 32-bit
+	  compile error in the Azure Files NFS path, and OABI syscall
+	  numbers in a vendored keyring dependency that killed every
+	  `azcopy login` subcommand). Both patches are in this package's
+	  directory with full write-ups. docs/azcopy.md records exactly
+	  what has and has not been exercised on ARMv7.
+
+	  https://github.com/Azure/azure-storage-azcopy
+
+# Upstream's own Go packages (cloudflared, gocryptfs, docker-cli, ...) carry no
+# comment block, on the reasonable grounds that
+# BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS is an architecture fact with nothing
+# for a user to toggle. On ARM it is not purely architectural --
+# package/go/Config.in.host gates it on `BR2_arm && BR2_TOOLCHAIN_SUPPORTS_PIE`
+# and on `!BR2_ARM_CPU_ARMV4` -- so a comment is offered here, scoped to ARM
+# where it is the difference between "your CPU cannot run Go" and "your
+# toolchain choice took Go away".
+#
+# Note what it does NOT mean for THIS defconfig: BR2_TOOLCHAIN_USES_GLIBC
+# selects BR2_TOOLCHAIN_SUPPORTS_PIE UNCONDITIONALLY (toolchain/Config.in:19 --
+# checked; the `if !BR2_STATIC_LIBS` qualifier is on the uClibc and musl selects
+# two stanzas below, not glibc's). So on this image PIE cannot be lost, and the
+# only reachable ways to make this comment appear are to switch libc to
+# musl/uClibc AND set BR2_STATIC_LIBS, or to pick an ARMv4 core. It is here for
+# the person who does one of those, not because it is expected to fire.
+comment "azcopy needs a Go-supported ARM config (ARMv5+, toolchain w/ PIE)"
+	depends on BR2_arm
+	depends on !BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS

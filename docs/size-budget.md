@@ -85,6 +85,52 @@ headroom (60.6% free vs. the 15% floor).
 
 ---
 
+## azcopy (2026-08-17) — packaged, deliberately NOT enabled
+
+`package/azcopy` would be the largest single thing added to this image since samba4,
+and its size is exactly why `configs/mister_de10nano_defconfig` leaves it switched
+off. **None of the figures below are in the shipped image today** — they are what
+enabling that one line would cost. The full accounting —
+how the binary was measured, what the strip step does to a Go binary, the build-time
+cost of dragging in host-go — is in [`docs/azcopy.md`](azcopy.md) §1. The numbers that
+belong in *this* document:
+
+- **azcopy installs 41,007,016 bytes (39.1 MiB)** as a single binary at
+  `/usr/bin/azcopy`, after the `strip --remove-section=.comment --remove-section=.note`
+  that `Makefile:785` runs over every target binary. Nothing else lands in the rootfs:
+  it needs only `libc.so.6` and `libresolv.so.2`, both already present as part of
+  glibc, and the `BR2_PACKAGE_CA_CERTIFICATES` its Config.in selects was already `=y`.
+  The one other new file is `/etc/profile.d/azcopy.sh`, ~4 KiB.
+- That makes it **the second-largest package in the image**, behind samba4 (48.8 MiB)
+  and ahead of `file`/libmagic (10.0 MiB). It belongs in the Top 10 table below,
+  at rank 2, whenever that table is next regenerated from a real build.
+- **Fresh filesystem measurement, taken for this change** — `scripts/check-size-budget.sh`
+  itself, run against `output/images/linux.img` built on 2026-08-17 *without* azcopy,
+  reports `Total: 512 MiB (131072 blocks x 4096 bytes) / Used: 317 MiB / Free: 195 MiB
+  / Free: 38.1% / PASS`. (`dumpe2fs -h` on the same image: 49,991 free blocks.)
+  Adding 41,007,016 bytes is 10,012 blocks, leaving **39,979 free = 156.2 MiB =
+  30.5% free** — still about twice the script's 15% (76.8 MiB) floor.
+
+Two things about that measurement are worth stating plainly. First, **195.3 MiB is the
+real current free figure**, not the 310.7 MiB in the headline table above — which the
+banner at the top of this document already flags as a P3.3-era number that nobody has
+regenerated. It is also below the two later runs recorded in the banner (225 MiB and
+222 MiB), which is the direction of travel you would expect and another reason to
+re-run the script rather than trust any of these. Second, the 30.5% "after" figure is
+**arithmetic on a measured binary, not a `dumpe2fs` of an image containing it** — the
+same distinction this document's banner insists on. Regenerate it from a real build
+before quoting it as a measurement.
+
+The honest headline: the budget would still pass comfortably, and azcopy would still
+spend about a fifth of the image's remaining free space — which is why it is packaged
+but not enabled, and shipped as an optional download instead. It is worth noting the
+shape of the cost, because it is unusual: measured per dependency tree, an empty Go
+binary for ARMv7 is 1.2 MB, +Azure SDK is 5.5 MB, and +Google Cloud Storage is 27.6 MB.
+Almost the whole 39 MiB is a cloud provider this image will never talk to. See
+[`docs/azcopy.md`](azcopy.md) §1 for the breakdown and the options for cutting it.
+
+---
+
 ## Top 10 Packages by Installed Size
 
 Attributed from `output/build/packages-file-list.txt` by summing the **real byte

@@ -15,6 +15,7 @@
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
 #   shellcheck -x board/mister/de10nano/fat-payload/Scripts/*.sh
+#   shellcheck -s sh -x package/azcopy/azcopy-profile.sh
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #
@@ -35,6 +36,7 @@ on:
       # a change to it has to be able to trigger this workflow.
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'package/azcopy/azcopy-profile.sh'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
@@ -48,6 +50,7 @@ on:
       - 'scripts/**'
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'package/azcopy/azcopy-profile.sh'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
@@ -138,6 +141,16 @@ jobs:
       # stage 1 has BusyBox ash and nothing else. `make initramfs-verify`
       # additionally parses /init with the very ash we just built -- shellcheck
       # checks the language, that checks the interpreter we ship.
+      #
+      # package/azcopy/azcopy-profile.sh is `sh` for the same reason. It is
+      # installed as /etc/profile.d/azcopy.sh by azcopy.mk rather than shipped
+      # from the rootfs overlay, so that it lands only in images that actually
+      # have the binary -- which is why it is named here by its SOURCE path and
+      # not by an /etc/profile.d glob. It carries no shebang (it is sourced by
+      # /etc/profile's own loop, never executed), which is exactly why `-s sh`
+      # has to be stated: shellcheck has nothing else to infer the dialect
+      # from. It is installed 0644, so it is deliberately absent from the
+      # executable-bit check below.
       - name: shellcheck shipped board scripts
         run: |
           set -euo pipefail
@@ -150,7 +163,8 @@ jobs:
             uninstall.sh \
             board/mister/de10nano/post-build.sh \
             board/mister/de10nano/initramfs-post-build.sh \
-            board/mister/de10nano/initramfs-overlay/init
+            board/mister/de10nano/initramfs-overlay/init \
+            package/azcopy/azcopy-profile.sh
 
       # Executable bits on shipped scripts, checked against GIT's recorded mode.
       #

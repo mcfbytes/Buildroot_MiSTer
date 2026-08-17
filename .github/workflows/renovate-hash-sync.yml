@@ -10,7 +10,9 @@
 # docs/ci.md#renovate-hash-sync-overview.
 #
 # Four REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
-# tarball hash, (3) the bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
+# tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
+# RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
+# bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
 # payload single-file pins. Why a locally-computed sha256sum is a legitimate
 # source for each of these (not a shortcut):
@@ -21,9 +23,17 @@
 # resolves, so nothing else fails closed on a bad bump. See step 5 and
 # scripts/hash-sync-cores-pin.sh's header.
 #
-# NEVER automated: BUILDROOT_SHA256 (signed-manifest-only trust), the RT
-# beta's TOFU-pinned `-rc` kernel hash, cabextract/linux-firmware-extra/
-# xow-firmware. See docs/ci.md#renovate-hash-sync-not-automated.
+# NEVER automated: BUILDROOT_SHA256 (signed-manifest-only trust), ANY `-rc`
+# kernel hash (no signed manifest exists for a cgit snapshot -- hand-written
+# TOFU only), cabextract/linux-firmware-extra/xow-firmware. See
+# docs/ci.md#renovate-hash-sync-not-automated.
+#
+# That second entry NARROWED on 2026-08-17 and the old wording is still
+# quoted in older commits: it used to read "the RT beta's TOFU-pinned `-rc`
+# kernel hash", naming a PIN. The prohibition was always really about the
+# ARTIFACT KIND. The RT pin left the -rc series when Linux 7.2 released, its
+# tarball became an ordinary signed-manifest release, and case 2 now refreshes
+# it -- while still refusing an -rc for either pin.
 #
 # TRIGGER: automatically, only for same-repo Renovate PRs touching a file this
 # workflow knows how to fix; idempotent (recomputes every run, commits only on
@@ -60,9 +70,20 @@ on:
     paths:
       - "configs/mister_de10nano_defconfig"
       # mister_kernel_defconfig copies this stanza's kernel version (one Renovate
-      # PR bumps both); mister_rt.fragment is deliberately absent -- its hash
-      # can't auto-refresh. See docs/ci.md#renovate-hash-sync-not-automated.
+      # PR bumps both).
       - "configs/mister_kernel_defconfig"
+      # The RT/beta kernel pin. ADDED 2026-08-17: this file used to be
+      # deliberately ABSENT here, because while that pin tracked mainline -rc
+      # its hash could not be auto-refreshed at all (no signed manifest exists
+      # for a cgit snapshot). Linux 7.2 released, the pin moved onto the 7.2
+      # line, and its tarball is now covered by kernel.org's signed manifest
+      # like any other release -- so step 2's `--pin=rt` invocation can do the
+      # work and this path has to let the event through for it to run.
+      # Same both-lists-or-silent-failure note as rtl8852cu-morrownr below: a
+      # missing path filter means no skipped job, no red X, no outcome row --
+      # the workflow simply never runs and nobody is told the hash is stale.
+      # See docs/ci.md#renovate-hash-sync-not-automated.
+      - "configs/mister_rt.fragment"
       - "package/rtl8812au/rtl8812au.mk"
       - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
       - "package/rtl8821au-morrownr/rtl8821au-morrownr.mk"
@@ -269,18 +290,44 @@ jobs:
       - name: Refresh github-sourced package tarball hashes
         run: .hash-sync-tools/scripts/hash-sync-github-packages.sh "$GITHUB_WORKSPACE"
 
-      # --- 2. Kernel tarball hash --------------------------------------------
+      # --- 2. Kernel tarball hashes (TWO pins, two steps) ---------------------
       # Only touches board/mister/de10nano/patches/linux/linux.hash's own
-      # sha256 data line; the header comment block above it is preserved
-      # verbatim by only ever replacing the matched "sha256" line. Runs from
-      # the .hash-sync-tools checkout (this workflow's own ref) against the
-      # target branch's tree; see step 1's comment and
+      # sha256 data lines; the header comment blocks are preserved verbatim by
+      # only ever replacing the matched "sha256" line. Runs from the
+      # .hash-sync-tools checkout (this workflow's own ref) against the target
+      # branch's tree; see step 1's comment and
       # docs/ci.md#renovate-hash-sync-dispatch-trap for why -- this is the
       # case bug #42 and run 29669946883 both came from, so running a stale
       # copy of THIS script against a branch that needs the fix is exactly
       # the failure this second checkout exists to prevent.
-      - name: Refresh kernel tarball hash from kernel.org's signed manifest
-        run: .hash-sync-tools/scripts/hash-sync-kernel.sh "$GITHUB_WORKSPACE"
+      #
+      # TWO STEPS, ONE SCRIPT, ONE SHARED linux.hash. Both pins live in that
+      # one file and each step rewrites only its own pin's line -- the script
+      # scopes its match to the pin's MAJOR series (6.x vs 7.x), which is what
+      # makes running both against one file safe. Each step records its own
+      # outcome row ("kernel" / "kernel-rt") and sets its OWN changed-flag
+      # variable; see the push gate below, and the CHANGED_VAR note in the
+      # script for why sharing one variable would silently suppress a push.
+      #
+      # Always run BOTH, even though a Renovate PR only ever moves one of them:
+      # the other reports `already-current` in about a second, and a
+      # conditional here would be one more thing to get wrong on the dispatch
+      # path (where no PR payload says which pin moved).
+      - name: Refresh stable kernel tarball hash from kernel.org's signed manifest
+        run: .hash-sync-tools/scripts/hash-sync-kernel.sh --pin=stable "$GITHUB_WORKSPACE"
+
+      # NEW 2026-08-17, when Linux 7.2 released and the RT/beta pin crossed the
+      # -rc boundary. It was NOT automatable before that and the reason was
+      # never "nobody got round to it": an -rc is fetched as a cgit snapshot
+      # that kernel.org signs no manifest for, so its hash could only ever be
+      # hand-written TOFU. On the 7.2 line the artifact is an ordinary
+      # linux-7.2.tar.xz covered by the signed sha256sums.asc -- same source,
+      # same trust level as the stable pin above. The script still REFUSES any
+      # -rc for either pin, so if this pin is ever hand-pointed back at one,
+      # this step records `skipped` and the build fails closed instead.
+      # See docs/ci.md#renovate-hash-sync-not-automated.
+      - name: Refresh RT/beta kernel tarball hash from kernel.org's signed manifest
+        run: .hash-sync-tools/scripts/hash-sync-kernel.sh --pin=rt "$GITHUB_WORKSPACE"
 
       # --- 3. ip7z/7zip release-asset tarball hashes --------------------------
       # Bespoke, NOT part of step 1's generic loop: these tarballs are release
@@ -350,6 +397,7 @@ jobs:
       - name: Commit and push hash refresh, if anything changed
         if: >
           (env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
+           env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
            env.PAYLOAD_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
@@ -366,8 +414,9 @@ jobs:
               archive tarball at the new pinned owner/repo/ref (same "locally
               computed" practice this tree's own .hash file headers already
               document)
-            - kernel pin: kernel.org's signed sha256sums.asc for the
-              matching v6.x series
+            - kernel pins (stable 6.18.y and the RT/beta 7.2 line): kernel.org's
+              signed sha256sums.asc for each pin's own vN.x series. An -rc is
+              never refreshed here -- no signed manifest exists for one
             - lzma-sdk pin: sha256sum of the ip7z/7zip release ASSET for the
               new version (upstream publishes no checksums at all -- see
               package/lzma-sdk/lzma-sdk.hash's header)
@@ -405,7 +454,12 @@ jobs:
           # an unhandled `set -e` abort mid-loop can't make a pin silently
           # vanish from this summary -- exactly how run 29669946883 went
           # unnoticed. See docs/ci.md#renovate-hash-sync-outcomes-gate.
-          all_pins="$HASH_SYNC_PACKAGES kernel lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
+          # `kernel-rt` joined the ledger on 2026-08-17 with case 2's second
+          # pin. It MUST be listed: a pin absent from this string is not
+          # cross-checked, so its step could stop recording anything at all and
+          # the summary would look complete -- the precise shape of run
+          # 29669946883.
+          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

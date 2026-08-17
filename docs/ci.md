@@ -2123,11 +2123,21 @@ why this escape hatch has to exist at all and the trap in how to use it.
 `configs/mister_kernel_defconfig` copies the main defconfig's kernel stanza,
 so a 6.18 bump touches BOTH files (one Renovate PR, same depName) — both are
 listed in `paths:` so a bump is still picked up if a future change ever moves
-the kernel version into the copy alone. `configs/mister_rt.fragment` is
-deliberately **absent** from `paths:`: its `-rc` hash cannot be
-auto-refreshed (no signed manifest upstream — see
-[`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated)), so
-triggering this workflow for it would do nothing but burn a runner.
+the kernel version into the copy alone.
+
+`configs/mister_rt.fragment` **is listed too, as of 2026-08-17** — and it was
+deliberately absent before that, so a reader coming from an older commit
+should know the reason changed rather than the rule bending. While the RT/beta
+pin tracked mainline `-rc`, Buildroot fetched a cgit snapshot that kernel.org
+publishes no signed manifest for; that hash could only be hand-written TOFU,
+so triggering this workflow for it would have done nothing but burn a runner.
+Linux 7.2 released on 2026-08-16 and the pin moved onto the 7.2 line, where
+the artifact is an ordinary `linux-7.2.tar.xz` covered by the signed
+`sha256sums.asc` exactly like the stable pin — so case 2 now refreshes both,
+as two steps over one shared `linux.hash`, and this path filter is what lets
+an RT bump PR reach them. An `-rc` is still never refreshed for either pin;
+see
+[`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated).
 
 <a id="renovate-hash-sync-cores-pin"></a>
 ### Case 5: the one pin nothing else fails closed on
@@ -2239,9 +2249,27 @@ idiom** and should get the same treatment when next touched.
   `renovate.json` at all (no machine-readable upstream release feed for the
   first two; `xow-firmware` pins opaque Microsoft Update `.cab` GUIDs, not a
   version). See `docs/renovate.md`.
-- **The RT beta's `-rc` kernel hash** (`configs/mister_rt.fragment`) — TOFU-
-  pinned, no signed manifest exists for a `-rc` snapshot upstream; refreshed
-  by hand per that hash file's documented procedure.
+- **Any `-rc` kernel hash, for either pin.** kernel.org's `sha256sums.asc`
+  covers releases only, and Buildroot fetches an `-rc` as a cgit-generated
+  snapshot (`linux-<ver>.tar.gz` from `git.kernel.org/torvalds/t`) that
+  upstream signs in no way at all. There is nothing to transcribe from, so
+  such a value can only be Trust-On-First-Use from a download a human actually
+  inspected — per `linux.hash`'s own documented procedure. Computing a sha256
+  of whatever arrived and calling it provenance is circular, which is the same
+  reason `BUILDROOT_SHA256` is never automated either.
+  `scripts/hash-sync-kernel.sh` enforces this at runtime: it refuses any
+  version containing `-rc`, records `skipped`, and leaves the line alone, so
+  the build fails **closed** at the kernel download rather than blessing an
+  unexamined snapshot.
+
+  **This entry narrowed on 2026-08-17** and older commits still quote the
+  previous wording, "the RT beta's `-rc` kernel hash
+  (`configs/mister_rt.fragment`)". That named a *pin*; the prohibition was
+  always really about the *artifact kind*. The RT pin left the `-rc` series
+  when Linux 7.2 released, its tarball became an ordinary signed-manifest
+  release, and case 2 refreshes it now — under exactly the same rule the
+  stable pin has always followed. Nothing was relaxed: what changed is which
+  side of the rule that pin sits on.
 
 <a id="renovate-hash-sync-dispatch-trap"></a>
 ### Manual dispatch escape hatch, and its trap
@@ -2370,24 +2398,38 @@ character".
 <a id="renovate-hash-sync-rt-line-clobber"></a>
 ### RT-line clobber trap
 
-Match the RELEASE tarball line SPECIFICALLY, never "the first sha256 line":
-`linux.hash` also carries entries this step must NOT manage — notably the RT
-beta's kernel (`configs/mister_rt.fragment`). A first-line match would
-clobber whichever entry happened to be on top.
+Match THIS pin's release-tarball line SPECIFICALLY, never "the first sha256
+line": `linux.hash` carries **both** pins' entries (the stable 6.18.y kernel
+and the RT/beta 7.2 one), and a first-line match would clobber whichever
+happened to be on top.
 
-Scope the match to THIS pin's **major series** (`linux-<major>.*.tar.xz`).
+Scope the match to THIS pin's **major series** (`linux-<major>....tar.xz`).
 An extension-only match (`linux-*.tar.xz`) is not enough: it is sufficient
 only while the RT pin is an `-rc`, because Buildroot fetches `-rc` as a cgit
-snapshot (`.tar.gz`). The moment that pin reaches a stable mainline release
-it becomes `linux-7.2.tar.xz` — which the old pattern also matched.
-**Verified**: with the RT line first, a 6.18 bump OVERWROTE it and left the
-stale 6.18 line intact, producing two 6.18 entries and no RT entry at all.
-The major-scoped match keeps the two pins on their own lines regardless of
-order.
+snapshot (`.tar.gz`) that no `.tar.xz` pattern can match. The moment that pin
+reaches a stable release it becomes `linux-7.2.tar.xz` — which the old pattern
+also matched. **Verified** back then: with the RT line first, a 6.18 bump
+OVERWROTE it and left the stale 6.18 line intact, producing two 6.18 entries
+and no RT entry at all. The major-scoped match keeps the two pins on their own
+lines regardless of order.
 
-An RT kernel bump still always needs its hash refreshed BY HAND, per the
-hash file's documented TOFU procedure — this step never touches that line
-either way.
+**That hypothetical arrived on 2026-08-17**, when Linux 7.2 released and the RT
+pin's line did become `linux-7.2.tar.xz`. The scoping written in advance is
+what made the collision a non-event — and it is precisely what now allows both
+pins to be refreshed automatically against one shared file, as two invocations
+(`--pin=stable`, `--pin=rt`). Two consequences worth stating plainly:
+
+- If the two pins ever land on the **same major series**, each would match the
+  other's line. The ambiguity guard catches that and records `failed` rather
+  than guessing — loud, and correct.
+- The pattern must keep matching **both** shapes the pins produce:
+  three-component `linux-6.18.44.tar.xz` and two-component `linux-7.2.tar.xz`
+  (kernel.org publishes a `.0` release under a two-component name). It does;
+  do not "simplify" it into requiring three components.
+
+An `-rc` is still never refreshed, for either pin — the script refuses it
+outright; see
+[`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated).
 
 <a id="renovate-hash-sync-outcomes-gate"></a>
 ### The per-pin outcomes ledger and the job-summary gate

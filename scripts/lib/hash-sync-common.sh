@@ -64,14 +64,25 @@
 #     forbidden there (it would certify nothing and could bless a
 #     tampered/truncated tarball). See the root Makefile's own header and
 #     docs/renovate.md.
-#   * configs/mister_rt.fragment's TOFU-pinned mainline `-rc` kernel hash is
-#     NEVER refreshed by any script in this family either. kernel.org signs
-#     no manifest for an `-rc` cgit snapshot, so that pin's hash is
-#     Trust-On-First-Use and can ONLY be re-derived by hand, per the RT
-#     hash file's own documented procedure. scripts/hash-sync-kernel.sh
-#     (case 2) refreshes the STABLE longterm kernel pin in the same
-#     linux.hash file and is deliberately scoped (by major series) to never
-#     touch this line -- see that script's own header and inline comments.
+#   * ANY `-rc` kernel hash is NEVER refreshed by any script in this family.
+#     kernel.org signs no manifest for an `-rc` cgit snapshot, so such a hash
+#     is Trust-On-First-Use and can ONLY be re-derived by hand from an
+#     inspected local download, per linux.hash's own documented procedure.
+#
+#     NOTE, because this prohibition NARROWED on 2026-08-17 and the old
+#     wording is still quoted in places: it used to read "configs/
+#     mister_rt.fragment's kernel hash is never refreshed", i.e. it was
+#     scoped to a FILE. It is now scoped to the ARTIFACT KIND, which is what
+#     it was always really about. The RT/beta pin left the `-rc` series when
+#     Linux 7.2 released; its tarball is now an ordinary linux-7.2.tar.xz
+#     covered by kernel.org's PGP-signed sha256sums.asc, the same source and
+#     the same trust level as the longterm pin. scripts/hash-sync-kernel.sh
+#     (case 2) therefore handles BOTH pins -- as its `stable` and `rt` pin
+#     arguments -- and refuses, loudly and per-pin, any version containing
+#     `-rc`. The build then fails closed at the kernel download rather than
+#     blessing a snapshot nobody looked at. The two pins stay on their own
+#     lines in the shared linux.hash by MAJOR-SERIES scoping; see that
+#     script's own header and inline comments.
 
 set -euo pipefail
 

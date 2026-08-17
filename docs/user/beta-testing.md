@@ -37,7 +37,7 @@ rather than a local build.
 | Wi-Fi — WPA3/SAE (PMF required), 5 GHz, auto-connect at boot, via mainline `rtw88` | ✅ |
 | Downloader over HTTPS | ✅ |
 | `update_all.sh` updates cores without disturbing this image | ✅ |
-| `PREEMPT_RT` kernel variant boots and runs MiSTer | ✅ (on 7.2-rc4) |
+| `PREEMPT_RT` kernel variant boots and runs MiSTer | ✅ (on 7.2-rc4 and 7.2-rc7; the pin is now 7.2 final, which builds but has not been booted) |
 
 | Builds and passes CI, but **no hardware has ever exercised it** | |
 |---|---|

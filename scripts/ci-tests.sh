@@ -81,7 +81,9 @@ ZIMAGE_DTB="$IMAGES/zImage_dtb"
 LINUX_IMG="$IMAGES/linux.img"
 # The MAIN kernel's version. Every module/vermagic check below scopes to
 # usr/lib/modules/$KVER/ on purpose: since ADR 0021's 2026-07-18 amendment the
-# rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0-rc3*,
+# rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0 — that
+# example read "7.2.0-rc3*" until the pin reached 7.2 final on 2026-08-17; it
+# is illustrative either way, nothing here globs on it,
 # merged in via work/extra-modules-overlay), and those are deliberately out of
 # scope here — their depmod health is asserted by check-abi.sh A-25 (every
 # tree), and their presence in CI by build.yml's merged-kver assert. Do not

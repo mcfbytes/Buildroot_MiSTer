@@ -274,13 +274,22 @@ is_special() {
 # --- capability -----------------------------------------------------------
 
 # Ask the kernel what it supports, rather than inferring it from module
-# filenames. /proc/filesystems lists every registered filesystem type whether
-# it was built in (CONFIG_CIFS=y, this image) or loaded from a module, so this
-# one test covers both and never goes stale when the kernel reorganizes its
-# source tree -- which is precisely what broke cifs_mount.sh.
+# filenames -- which is precisely what broke cifs_mount.sh.
+#
+# /proc/filesystems lists what the kernel has REGISTERED: built-in filesystems
+# (CONFIG_CIFS=y, this image) and modules that are currently loaded. It does
+# NOT list a module that is available but unloaded, so a bare grep would be a
+# false negative on a modular kernel -- and would be stricter than the mount it
+# is guarding, because mount autoloads: get_fs_type() calls
+# request_module("fs-%s") for an unregistered type (fs/filesystems.c). Load it
+# ourselves first, then let the second grep give the authoritative answer.
+#
+# modprobe's own exit status is deliberately ignored: whether it was missing,
+# refused, or found nothing, the only question that matters is whether cifs is
+# registered afterwards, and the grep answers exactly that.
 kernel_supports_cifs() {
 	grep -qE '(^|[[:space:]])cifs$' /proc/filesystems && return 0
-	modprobe cifs >/dev/null 2>&1 || return 1
+	modprobe cifs >/dev/null 2>&1
 	grep -qE '(^|[[:space:]])cifs$' /proc/filesystems
 }
 

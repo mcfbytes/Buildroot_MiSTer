@@ -212,6 +212,26 @@ contains "$out" "no CIFS" "reports a genuinely CIFS-less kernel"
 check "$rc" "1" "exits 1 on a CIFS-less kernel"
 drop_sandbox
 
+# The case /proc/filesystems ALONE cannot answer: cifs is available as a module
+# but nothing has loaded it, so it is not registered yet. A bare grep would be a
+# false negative here -- and stricter than mount, which autoloads via
+# get_fs_type() -> request_module("fs-cifs"). The modprobe stage is what covers
+# it, and this is the case that proves the stage earns its place.
+new_sandbox
+printf 'nodev\tsysfs\n\text4\n' > "$SB/proc/filesystems"
+cat > "$SB/bin/modprobe" <<STUB
+#!/bin/sh
+[ "\$1" = "cifs" ] || exit 1
+printf 'nodev\tcifs\n' >> "$SB/proc/filesystems"
+exit 0
+STUB
+chmod +x "$SB/bin/modprobe"
+ini 'SERVER=192.168.0.9'
+out="$(run_smb)"
+lacks "$out" "no CIFS" "modular-but-unloaded cifs is NOT reported as unsupported"
+contains "$out" "Done!" "modprobe stage loads it and the mount proceeds"
+drop_sandbox
+
 # --------------------------------------------------------------------------
 echo
 echo "ini is parsed as data"

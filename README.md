@@ -580,8 +580,8 @@ configs/                 mister_de10nano_defconfig  (the shipped image)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
   linux-patches/         the 36 carried MiSTer kernel patches
-  linux-patches-beta/    all 36 above (symlinks; 4 re-anchored real copies for 7.x)
-                         + 4 beta-local patches = the 40-entry `series`
+  linux-patches-beta/    all 36 above (32 symlinks + 4 re-anchored 7.x copies)
+                         + 4 beta-local patches = the 40-entry series
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups

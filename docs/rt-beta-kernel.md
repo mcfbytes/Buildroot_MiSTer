@@ -497,9 +497,9 @@ then console, then pmsg, then ftrace (`fs/pstore/ram.c ramoops_probe`) — so
 
 - **`record-size` 32 KiB** must be a power of two — ramoops silently applies
   `rounddown_pow_of_two()` otherwise, wasting nearly half the dmesg area without
-  logging anything. 32 KiB is sized against `PSTORE_DEFAULT_KMSG_BYTES` (10240),
+  logging anything. 32 KiB is sized against `CONFIG_PSTORE_DEFAULT_KMSG_BYTES` (10240),
   which caps a single kmsg dump: a whole dump fits with 3× headroom *before*
-  `PSTORE_COMPRESS` deflates it, so a record is never what truncates a crash.
+  `CONFIG_PSTORE_COMPRESS` deflates it, so a record is never what truncates a crash.
   23 retained records means a reboot loop does not immediately overwrite the
   first and most informative one.
 - **`console-size` 256 KiB** is the largest share, deliberately, because it is
@@ -509,9 +509,10 @@ then console, then pmsg, then ftrace (`fs/pstore/ram.c ramoops_probe`) — so
   offset am I about to touch", not for logging.
 - **`ftrace-size` 0** is stated rather than omitted so the four numbers can be
   checked against the arithmetic without knowing the binding's defaults.
-  `PSTORE_FTRACE` stays unset even though its dependencies are already met —
-  `FUNCTION_TRACER=y` and `DEBUG_FS=y` come from the shared `linux.config` and
-  survive the merge, and `PSTORE_FTRACE` only `depends on` them (it selects
+  `CONFIG_PSTORE_FTRACE` stays unset even though its dependencies are already
+  met — `CONFIG_FUNCTION_TRACER=y` and `CONFIG_DEBUG_FS=y` come from the shared
+  `linux.config` and survive the merge, and `CONFIG_PSTORE_FTRACE` only
+  `depends on` them (it selects
   nothing) — because a fourth zone would shrink the three that serve H-1, for
   a per-function-call tracing job unrelated to it.
 - **`ecc-size`** absent (0): Reed-Solomon ECC costs CPU per record write and
@@ -525,9 +526,9 @@ then console, then pmsg, then ftrace (`fs/pstore/ram.c ramoops_probe`) — so
 **Config.** `linux-rt.fragment` gains exactly four symbols, each justified in
 place: `CONFIG_PSTORE`, `CONFIG_PSTORE_RAM`, `CONFIG_PSTORE_CONSOLE`,
 `CONFIG_PSTORE_PMSG`. All `=y`, not `=m` — the failures worth recording are as
-likely during boot as after it. `REED_SOLOMON*` arrive by `select`;
-`PSTORE_COMPRESS=y` is inherited as a Kconfig default; `PSTORE_FTRACE` stays
-unset. Beta-only for the same reason as the UIO set: the node lives only in the
+likely during boot as after it. `CONFIG_REED_SOLOMON*` arrive by `select`;
+`CONFIG_PSTORE_COMPRESS=y` is inherited as a Kconfig default;
+`CONFIG_PSTORE_FTRACE` stays unset. Beta-only for the same reason as the UIO set: the node lives only in the
 beta series, so setting these on stock would give that kernel a pstore
 subsystem with nothing to bind to — and putting the *node* on stock would
 reserve 1 MiB of every user's RAM for a subsystem that is not compiled in.
@@ -590,7 +591,7 @@ the kernel source before being written, and every piece already exists:
 |---|---|
 | DT nodes | `arch/arm/boot/dts/intel/socfpga/socfpga.dtsi` — `watchdog0@ffd02000` and `watchdog1@ffd03000`, `compatible = "snps,dw-wdt"`, both `status = "disabled"` there |
 | Node enabled | `arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5.dtsi` — `&watchdog0 { status = "okay"; };`, upstream, included by our `.dts` |
-| Driver | shared `board/mister/de10nano/linux.config` — `CONFIG_WATCHDOG=y`, `CONFIG_DW_WATCHDOG=y` (and `WATCHDOG_CORE=y` by `select`) |
+| Driver | shared `board/mister/de10nano/linux.config` — `CONFIG_WATCHDOG=y`, `CONFIG_DW_WATCHDOG=y` (and `CONFIG_WATCHDOG_CORE=y` by `select`) |
 
 So **`/dev/watchdog0` exists on both kernels today**, stock 6.18 included. There
 was nothing to enable, so nothing was invented: no patch, and **no symbol added
@@ -668,7 +669,7 @@ Otherwise a null result in step 2 is unattributable.
 
 - `ls /dev/watchdog0`; read `/sys/class/watchdog/watchdog0/{state,timeout,bootstatus}`
   and the boot `dmesg` line, to establish whether the bootloader left the timer
-  running (the `WATCHDOG_HANDLE_BOOT_ENABLED` case) or whether it is idle.
+  running (the `CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED` case) or whether it is idle.
 - Open the device, set a short timeout (15 s), feed it, then **stop feeding
   without closing cleanly**. The board must reset at ≈T+timeout. This proves the
   timer, the reset path, and the timeout value — with no bus stall anywhere near
@@ -737,8 +738,8 @@ earning its place, because a best-effort record beats three empty logs.
 | `0046` is independent of `0043`/`0044` | ✅ **verified** — it anchors on `memory@0`, which sits above everything those two insert and which no patch in the series modifies. Applied to a `0004`-only tree it lands at the same line, zero offset |
 | The patched DTS compiles | ✅ **re-verified 2026-08-17 on 7.2 final** (`cpp` + `dtc 1.7.2`, exit 0). DTB **21300 → 21574 bytes** — the same 274-byte delta and the same absolute size as on rc7, and 21300 is exactly what §6's `make rt` row measured for the pre-`0046` series. The dtc warning set is **byte-identical** to the pre-`0046` baseline — the same five pre-existing `simple_bus_reg` warnings from upstream `socfpga.dtsi`, no new `unit_address_vs_reg` |
 | The node is in the DTB as intended | ✅ decompiled: `reserved-memory` with `#address-cells`/`#size-cells` = 1 and `ranges`, holding `ramoops@1fe00000` with `reg = <0x1fe00000 0x100000>`, `record-size 0x8000`, `console-size 0x40000`, `pmsg-size 0x8000`, `ftrace-size 0`, `max-reason 3`. `memory@0`, `MiSTer_fb@22000000`, the eight doorbells and both UIO region nodes unchanged |
-| The four `PSTORE` symbols survive `olddefconfig` | ✅ **verified** — `merge_config.sh` (`linux.config` + `linux-rt.fragment`) then `make ARCH=arm olddefconfig` on the pristine tree: all four stay `=y`, `REED_SOLOMON`/`_ENC8`/`_DEC8` arrive by `select`, `PSTORE_COMPRESS=y` and `PSTORE_DEFAULT_KMSG_BYTES=10240` are inherited, `PSTORE_FTRACE` stays unset. This is the check the LED `select`→`depends on` trap of §6 exists to demand |
-| The watchdog needs no patch and no symbol | ✅ **verified from source, not assumed** — DT node enabled upstream in `socfpga_cyclone5.dtsi`, `CONFIG_WATCHDOG=y` + `CONFIG_DW_WATCHDOG=y` already in the shared `linux.config`, resolved `=y` in the same `olddefconfig` run alongside `WATCHDOG_CORE=y`, `WATCHDOG_HANDLE_BOOT_ENABLED=y`, `WATCHDOG_OPEN_TIMEOUT=0`, `WATCHDOG_NOWAYOUT` unset |
+| The four `CONFIG_PSTORE*` symbols survive `olddefconfig` | ✅ **verified** — `merge_config.sh` (`linux.config` + `linux-rt.fragment`) then `make ARCH=arm olddefconfig` on the pristine tree: all four stay `=y`, `CONFIG_REED_SOLOMON`/`CONFIG_REED_SOLOMON_ENC8`/`CONFIG_REED_SOLOMON_DEC8` arrive by `select`, `CONFIG_PSTORE_COMPRESS=y` and `CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240` are inherited, `CONFIG_PSTORE_FTRACE` stays unset. This is the check the LED `select`→`depends on` trap of §6 exists to demand |
+| The watchdog needs no patch and no symbol | ✅ **verified from source, not assumed** — DT node enabled upstream in `socfpga_cyclone5.dtsi`, `CONFIG_WATCHDOG=y` + `CONFIG_DW_WATCHDOG=y` already in the shared `linux.config`, resolved `=y` in the same `olddefconfig` run alongside `CONFIG_WATCHDOG_CORE=y`, `CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED=y`, `CONFIG_WATCHDOG_OPEN_TIMEOUT=0`, `CONFIG_WATCHDOG_NOWAYOUT` unset |
 | **The RT kernel builds with `0046` applied** | ❌ **not yet** — apply-check, DTS compile and config-merge only. §6's green `make rt` row is the **34-entry** series from 2026-08-17, taken before `0046` existed; no `make rt` has run with it in |
 | **The reservation survives a real boot** | ❌ **unproven.** Nothing here has run on hardware: that `pfn_valid()` is true for the region and ramoops takes the `vmap()` write-combining path, that the region does not collide with anything the running kernel wants, and that `/sys/fs/pstore` populates at all are all read off the source. §9.5 step 1 is the cheapest possible first confirmation |
 | **Records survive a warm reset** | ❌ unproven — §9.5 step 1 |

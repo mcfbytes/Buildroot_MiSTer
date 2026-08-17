@@ -75,38 +75,46 @@ CONFIG_CMDLINE_EXTEND=y
 #
 # Each symbol below is load-bearing; none is decoration.
 #
-#   PSTORE          the subsystem itself (fs/pstore/Kconfig: tristate,
-#                   default n, so it must be asked for). =y and not =m: the
-#                   console frontend has to be registered before the failures
-#                   worth recording, which are as likely during boot as after
-#                   it, and a module loaded from the rootfs is far too late.
-#   PSTORE_RAM      the ramoops backend — the only one that can work here.
-#                   pstore/blk would write crash data to the SD card through
-#                   the block layer, which a wedged CPU cannot drive; ramoops
-#                   needs nothing but DRAM that keeps its contents. `depends on
-#                   PSTORE` and pulls REED_SOLOMON* in by `select`, so those
-#                   are not listed. =y for the same reason as above.
-#   PSTORE_CONSOLE  the console frontend, and the one that actually addresses
-#                   H-1. Without it the node's console-size is inert and
-#                   pstore only records kmsg DUMPS — which a silent hang never
-#                   triggers, because the kernel never reaches its die path.
-#                   This is what captures printk output as it is produced,
-#                   including the tail still sitting in the UART FIFO.
-#   PSTORE_PMSG     /dev/pmsg0, the userspace breadcrumb channel. This is how a
-#                   probe tool writes "about to touch LW +0x14" somewhere that
-#                   survives the hang it is about to cause — the single fact
-#                   all three H-1 investigations had to recover by bisection.
-#                   `select RT_MUTEXES`, already y under PREEMPT_RT.
+#   CONFIG_PSTORE          the subsystem itself (fs/pstore/Kconfig: tristate,
+#                          default n, so it must be asked for). =y and not =m:
+#                          the console frontend has to be registered before the
+#                          failures worth recording, which are as likely during
+#                          boot as after it, and a module loaded from the rootfs
+#                          is far too late.
+#   CONFIG_PSTORE_RAM      the ramoops backend — the only one that can work
+#                          here. pstore/blk would write crash data to the SD
+#                          card through the block layer, which a wedged CPU
+#                          cannot drive; ramoops needs nothing but DRAM that
+#                          keeps its contents. `depends on CONFIG_PSTORE` and
+#                          pulls CONFIG_REED_SOLOMON* in by `select`, so those
+#                          are not listed. =y for the same reason as above.
+#   CONFIG_PSTORE_CONSOLE  the console frontend, and the one that actually
+#                          addresses H-1. Without it the node's console-size is
+#                          inert and pstore only records kmsg DUMPS — which a
+#                          silent hang never triggers, because the kernel never
+#                          reaches its die path. This is what captures printk
+#                          output as it is produced, including the tail still
+#                          sitting in the UART FIFO.
+#   CONFIG_PSTORE_PMSG     /dev/pmsg0, the userspace breadcrumb channel. This is
+#                          how a probe tool writes "about to touch LW +0x14"
+#                          somewhere that survives the hang it is about to cause
+#                          — the single fact all three H-1 investigations had to
+#                          recover by bisection. `select CONFIG_RT_MUTEXES`,
+#                          already y under PREEMPT_RT.
 #
-# NOT listed, deliberately: PSTORE_COMPRESS is `default y` and is inherited as
-# such (it deflates dmesg records with the zlib library rather than the crypto
-# API, specifically to avoid secondary faults while recording a panic);
-# REED_SOLOMON* arrive via PSTORE_RAM's `select`; PSTORE_FTRACE stays unset
-# even though it would resolve — FUNCTION_TRACER=y and DEBUG_FS=y are already
-# in the shared linux.config, and PSTORE_FTRACE only `depends on` them, it
-# selects nothing — because a fourth ramoops zone would shrink the three that
-# serve H-1, for a per-function-call tracing job unrelated to it. The DT
-# node's ftrace-size 0 keeps the two halves in lockstep.
+# Symbol names are spelled CONFIG_* throughout, including the ones that are
+# NOT set here, so that grepping the canonical name finds the decision.
+#
+# NOT listed, deliberately: CONFIG_PSTORE_COMPRESS is `default y` and is
+# inherited as such (it deflates dmesg records with the zlib library rather than
+# the crypto API, specifically to avoid secondary faults while recording a
+# panic); CONFIG_REED_SOLOMON* arrive via CONFIG_PSTORE_RAM's `select`;
+# CONFIG_PSTORE_FTRACE stays unset even though it would resolve —
+# CONFIG_FUNCTION_TRACER=y and CONFIG_DEBUG_FS=y are already in the shared
+# linux.config, and CONFIG_PSTORE_FTRACE only `depends on` them, it selects
+# nothing — because a fourth ramoops zone would shrink the three that serve
+# H-1, for a per-function-call tracing job unrelated to it. The DT node's
+# ftrace-size 0 keeps the two halves in lockstep.
 #
 # BETA-ONLY, and it has to be. The DTS node lives only in
 # linux-patches-beta/, so the stock 6.18 DTB has no ramoops node at all;

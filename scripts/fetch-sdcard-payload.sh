@@ -329,6 +329,13 @@ stage_stock_payload() {
 #       and because its other end is in the initramfs and the two must ship
 #       together. Staged here only so the Scripts menu has an entry for it.
 #
+#   Scripts/mount_smb.sh
+#       Mounts a NAS share over SMB/CIFS. Ships because Scripts_MiSTer's own
+#       cifs_mount.sh cannot run on this image: it gates on finding fscache.ko
+#       in modules.builtin, and Linux 6.8 folded fscache into netfs.ko, so no
+#       kernel this new can satisfy it (docs/cifs-mount-fscache-probe.md).
+#       Self-contained, on the card, and configured by Scripts/mount_smb.ini.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -352,9 +359,9 @@ stage_update_channel() {
 	[ -d "$src" ] ||
 		die "update-channel payload dir not found: $src"
 
-	# Both Scripts, one loop. install.sh, uninstall.sh and the updater treat them
+	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see MLM_SCRIPTS in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/mount_smb.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

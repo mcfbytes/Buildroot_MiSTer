@@ -19,8 +19,10 @@
 # 2. Backs up the handful of small files in /media/fat/linux/ that a Linux
 #    update overwrites (see BACKUP_FILES below) into /media/fat/linux/.mlm-backup/.
 # 3. Installs this project's Scripts onto the card:
-#    update_linux_modernization.sh (updates the image from now on) and
-#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026).
+#    update_linux_modernization.sh (updates the image from now on),
+#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026) and
+#    mount_smb.sh (mounts a NAS share; replaces Scripts_MiSTer's cifs_mount.sh,
+#    which cannot run on a kernel this new -- docs/cifs-mount-fscache-probe.md).
 # 4. Runs it, which sets the `update_linux = false` kill switch, fetches this
 #    project's image through the stock on-device Downloader, and reboots.
 #
@@ -39,6 +41,7 @@
 #   MLM_REF                git ref to install from (default: master)
 #   MLM_UPDATER_URL        override where the updater script is fetched from
 #   MLM_CHECK_STORAGE_URL  override where check_storage.sh is fetched from
+#   MLM_MOUNT_SMB_URL      override where mount_smb.sh is fetched from
 #
 # ---------------------------------------------------------------------------
 # ON `curl | bash`
@@ -68,18 +71,21 @@ UPDATER_URL="${MLM_UPDATER_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Sc
 # Same override shape as UPDATER_URL, for the same two reasons (forks, and
 # exercising the install path end to end against a file:// URL).
 CHECK_STORAGE_URL="${MLM_CHECK_STORAGE_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
+# Same override shape again, same two reasons.
+MOUNT_SMB_URL="${MLM_MOUNT_SMB_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/mount_smb.sh}"
 DB_URL="https://mcfbytes.github.io/Buildroot_MiSTer/db.json"
 
 FAT="/media/fat"
 SCRIPTS_DIR="$FAT/Scripts"
 UPDATER="$SCRIPTS_DIR/update_linux_modernization.sh"
 CHECK_STORAGE="$SCRIPTS_DIR/check_storage.sh"
+MOUNT_SMB="$SCRIPTS_DIR/mount_smb.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
-# These two are ONE SET, and every path that touches them treats them as one:
-# install.sh installs both, `update_linux_modernization.sh --setup-only`
-# replaces either if it went missing, `uninstall.sh --remove-script` removes
-# both, and scripts/fetch-sdcard-payload.sh stages both into sdcard.img. Two
+# These three are ONE SET, and every path that touches them treats them as one:
+# install.sh installs all three, `update_linux_modernization.sh --setup-only`
+# replaces any that went missing, `uninstall.sh --remove-script` removes all
+# three, and scripts/fetch-sdcard-payload.sh stages all three into sdcard.img.
 # Scripts this project ships must not arrive by two different mechanisms
 # (ADR 0026).
 
@@ -369,6 +375,7 @@ show_plan() {
 	say "                                (your original is saved to linux/.mlm-backup/)"
 	say "  /media/fat/Scripts/update_linux_modernization.sh   <- installed"
 	say "  /media/fat/Scripts/check_storage.sh                <- installed"
+	say "  /media/fat/Scripts/mount_smb.sh                    <- installed"
 	say ""
 	say "  That is the whole of it. Our release archive IS the stock archive with"
 	say "  those first three files swapped in, so everything else under linux/ --"
@@ -473,11 +480,12 @@ install_one_script() {
 # Deliberately straight-line calls rather than a loop over a list variable: a
 # `... | while read` loop runs in a SUBSHELL, where install_one_script's die()
 # exits only that subshell and the install would carry on past a failure it had
-# already reported. Two calls do not need a parser.
+# already reported. Three calls do not need a parser.
 install_scripts() {
 	mkdir -p "$SCRIPTS_DIR" || die "could not create $SCRIPTS_DIR"
 	install_one_script "$UPDATER_URL"       "$UPDATER"       'mister_linux_modernization'
 	install_one_script "$CHECK_STORAGE_URL" "$CHECK_STORAGE" 'mister-fsck-exfat'
+	install_one_script "$MOUNT_SMB_URL"     "$MOUNT_SMB"     'kernel_supports_cifs'
 }
 
 # ---------------------------------------------------------------------------

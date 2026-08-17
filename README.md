@@ -149,7 +149,7 @@ Validated on **one real DE10-Nano**, booting CI-built artifacts:
 | Bluetooth — firmware load + controller pairing | ✅ Confirmed |
 | Wi-Fi — **WPA3/SAE (PMF required)** 5 GHz auto-connect via mainline `rtw88` | ✅ Confirmed |
 | Downloader over HTTPS | ✅ Confirmed |
-| **`PREEMPT_RT` kernel boots and runs MiSTer** | ✅ Confirmed on **7.2-rc4** (2026-07-20) and **7.2-rc7** (2026-08-14). The pin has since moved to **7.2 final**, which is patch- and DTS-verified but **not yet built or booted** — boot is a per-version claim |
+| **`PREEMPT_RT` kernel boots and runs MiSTer** | ✅ Confirmed on **7.2-rc4** (2026-07-20) and **7.2-rc7** (2026-08-14). The pin has since moved to **7.2 final**, which builds green (`make rt`, 2026-08-17) but has **not been booted** — boot is a per-version claim |
 | Samba, MIDI | ⚠️ Build/CI-verified only — **not** exercised on hardware |
 | RT latency measurement | ⏳ Not yet taken |
 

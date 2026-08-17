@@ -38,31 +38,56 @@
 # the intended behaviour.
 sha256  0f72d938f06828e82c90405174fe572287db7bfe089e2fc46572a99a7f240d43  linux-6.18.44.tar.xz
 
-# WHERE THE 7.2-rc5 HASH COMES FROM -- weaker provenance, stated honestly.
-# kernel.org publishes NO signed manifest for -rc kernels: sha256sums.asc
-# covers releases only, and linux/linux.mk fetches "-rc" versions as
-# cgit-generated snapshots from https://git.kernel.org/torvalds/t/ (hence
-# .tar.gz, not .tar.xz). Upstream Buildroot handles that by exempting the file
-# via BR_NO_CHECK_HASH_FOR -- but BR2_DOWNLOAD_FORCE_CHECK_HASHES (kept, per
-# G5) EMPTIES that exemption list (package/pkg-download.mk:119), so without a
-# line here every RT variant build fails closed at the kernel download with
-# "No hash found for linux-7.2-rc5.tar.gz".
+# WHERE THE RT / BETA KERNEL HASH COMES FROM -- as of 2026-08-17, the SAME
+# signed-manifest rule as the stable pin above. This entry belongs to the RT
+# beta variant (configs/mister_rt.fragment, docs/rt-beta-kernel.md); it is a
+# SECOND pin in this one file, on a different upstream line, and the two must
+# never be confused for each other.
 #
-# This value is therefore transcribed from a verified local download
-# (2026-07-28: 265,671,235 bytes; the tarball extracted cleanly and its
-# top-level Makefile reads VERSION=7 PATCHLEVEL=2 EXTRAVERSION=-rc5) -- the
-# circularity the release-hash rule above forbids, accepted here because no
-# signed source exists to transcribe from. It still buys TOFU pinning: every
-# later download must be byte-identical to the inspected one. ACCEPTED RISK:
-# cgit regenerating the snapshot with different compression bytes would fail
-# this check spuriously -- that failure is closed, not open, and an -rc pin is
-# short-lived by nature (the next version bump replaces this line anyway).
+# THIS BLOCK USED TO DOCUMENT A TOFU HASH. It no longer does, and the change is
+# an upgrade, not a relaxation. While the pin was an -rc, linux/linux.mk fetched
+# a cgit-generated snapshot (linux-<ver>.tar.GZ from git.kernel.org/torvalds/t)
+# for which kernel.org publishes NO signature of any kind -- sha256sums.asc
+# covers releases only -- so the value could only ever be Trust-On-First-Use
+# from a locally inspected download. 7.2 released on 2026-08-16; the pin moved
+# to the plain release, the artifact became an ordinary linux-7.2.tar.XZ off the
+# kernel.org mirror, and that file IS covered by the signed manifest:
 #
-# Weak corroboration, worth exactly what it is: the rc5 snapshot CI fetched on
-# the Renovate bump PR (run 30325869158, before it failed closed here for want
-# of this line) was 265,671,235 bytes -- byte-count-identical to the local
-# download this hash was taken from. Two fetches from different hosts at
-# different times agreeing on length is NOT a signature, and does not upgrade
-# TOFU to verified provenance; it only rules out a truncated or mid-flight
-# corrupted local copy, which is the one failure this pin could otherwise bless.
-sha256  aa217866eea669da8d84212161131a7315bb94dafcd739a9e9e294d65e748c10  linux-7.2-rc7.tar.gz
+#     https://cdn.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
+#
+# Transcribed from that manifest, whose clearsign signature was VERIFIED (not
+# merely fetched over HTTPS) on 2026-08-17:
+#
+#     gpg: Signature made Sun Aug 16 23:35:10 2026
+#     gpg: Good signature from "Kernel.org checksum autosigner <autosigner@kernel.org>"
+#     Primary key fingerprint: B886 8C80 BA62 A1FF FAF5  FDA9 632D 3A06 589D A6B1
+#
+# Stated precisely, so nobody over-reads it: that is a valid signature by the
+# kernel.org autosigner key, with the key itself trusted on first fetch from a
+# keyserver rather than through a web of trust ("[unknown]" in gpg's output).
+# It is strictly stronger than the TOFU it replaced, and is the same trust level
+# the 6.18 pin above has always had. A pristine linux-7.2.tar.xz was downloaded
+# and did hash to the value below (160,068,116 bytes; its top-level Makefile
+# reads VERSION=7 PATCHLEVEL=2 SUBLEVEL=0 EXTRAVERSION=) -- that download
+# CORROBORATES the signed value, it is not the source of it. Do not ever
+# reverse those two roles; a locally-computed sha256sum as the SOURCE is
+# circular and certifies nothing, exactly as the stable-pin rule above says.
+#
+# NOTE the deliberate spelling asymmetry, which reads like a typo and is not:
+# the tarball is two-component (linux-7.2.tar.xz -- kernel.org publishes no
+# linux-7.2.0 tarball), while the kernel it builds calls itself 7.2.0 and
+# installs its modules under usr/lib/modules/7.2.0/.
+#
+# Still true, and still the reason a missing line here is fatal rather than a
+# warning: BR2_DOWNLOAD_FORCE_CHECK_HASHES (kept, per G5) EMPTIES Buildroot's
+# BR_NO_CHECK_HASH_FOR exemption list (package/pkg-download.mk:119), so a build
+# with no line for the pinned version fails closed at the kernel download with
+# "No hash found for linux-<ver>...".
+#
+# IF THIS PIN EVER GOES BACK TO AN -rc, this block's rule reverts with it: no
+# signed manifest exists for a cgit snapshot, the filename becomes .tar.gz, and
+# the value must be hand-written TOFU from an inspected local download. That is
+# also the one case scripts/hash-sync-kernel.sh refuses to automate -- it
+# declines any value containing "-rc" and leaves this line alone, so the build
+# fails closed rather than blessing a snapshot nobody looked at.
+sha256  f9fef3d14c0df53819026f4be74459835c2a0b0dcbf5b5bbd9ea19f0829402b3  linux-7.2.tar.xz

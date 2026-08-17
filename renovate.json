@@ -26,7 +26,7 @@
     "The only reliable check is a real extraction run, which needs no GitHub token:",
     "  npx --package renovate@latest -- renovate --platform=local --dry-run=full",
     "Expect a `regex` entry in the 'Dependency extraction complete' stats with",
-    "fileCount 22 / depCount 23 (2026-07-27, 21 customManagers). RE-DERIVE BOTH",
+    "fileCount 23 / depCount 24 (2026-08-17, 22 customManagers). RE-DERIVE BOTH",
     "whenever a manager is added or a managerFilePatterns entry changes -- neither",
     "number is the manager count, and this pair had already gone stale silently:",
     "18/19 was measured at commit e66b46b when there were 18 managers, and nothing",
@@ -43,6 +43,17 @@
     "If `regex` is absent entirely, the custom managers are dead again. Grep the",
     "LOG_LEVEL=debug output for `no-result` to catch bug-2-style",
     "datasource failures, which do NOT show up in the extraction stats at all.",
+    "",
+    "AND IT HAD GONE STALE AGAIN, exactly as this note predicts of itself: the",
+    "recorded pair was 22/23 until 2026-08-17, when a real extraction measured",
+    "23/24 -- the dualsensectl manager landed after the 22/23 measurement and",
+    "nothing re-derived the numbers. Measured on BOTH master and the 7.2 branch",
+    "that refreshed this line, which is the only way to tell 'the tree grew a",
+    "manager' from 'my change moved the count': the 7.2 RT-pin rewrite is",
+    "count-NEUTRAL (same managers, same file patterns, one match each) and the",
+    "whole delta predates it. Note the `no-result` grep above now has nine",
+    "false positives -- the literal string appears inside the descriptions that",
+    "warn about it, this one included. Read the hits, do not just count them.",
     "",
     "automerge is OFF everywhere, deliberately: every pin here is a supply-chain",
     "trust decision (kernel, Buildroot, out-of-tree driver commits, firmware), and",
@@ -72,12 +83,12 @@
         "{\"releases\": [$map($filter(releases, function($r) { $r.moniker = \"longterm\" and $contains($r.version, \"6.18.\") }), function($r) { {\"version\": $r.version} })]}"
       ]
     },
-    "kernelMainline": {
-      "description": "kernel.org's releases.json filtered to the CURRENT MAINLINE release -- the line the RT/beta kernel variant tracks (configs/mister_rt.fragment, docs/rt-beta-kernel.md). This is normally a -rc (e.g. 7.2-rc3), which is exactly why it is a separate datasource from kernelLongterm618: the two pins track different upstream lines with different cadence, different provenance, and different review bars, and must never be able to update each other. The outer [ ] is required for the same reason documented above -- releases.json carries exactly one mainline entry, and JSONata would collapse a single-element sequence into a bare object, which Renovate rejects as `no-result` silently.",
+    "kernelStable72": {
+      "description": "kernel.org's releases.json filtered to the 7.2 LINE -- what the RT/beta kernel variant tracks (configs/mister_rt.fragment, docs/rt-beta-kernel.md). RENAMED AND REWRITTEN 2026-08-17, when 7.2 released and the pin crossed the -rc boundary; it was `kernelMainline` and filtered on moniker=mainline, which was right while 7.2 was in -rc and became actively WRONG the moment it shipped: mainline moves on to 7.3-rc1 within about two weeks of a release, so the old filter would have proposed dragging the beta variant off the line it had just reached and back into permanent -rc churn. docs/rt-beta-kernel.md picks 7.2 because PREEMPT_RT for 32-bit ARM landed in 7.1, and 7.2 final was always the intended DESTINATION of this pin, not a waypoint. Moving to 7.3+ is now a deliberate human edit of this datasource, mirroring how kernelLongterm618 hardcodes 6.18. WHY THE FILTER IS MONIKER-AGNOSTIC, which is the one thing to understand before touching it: the 7.2 line changes moniker underneath us. TODAY 7.2 is the `mainline` entry and no 7.2.y stable release exists yet (stable is still 7.1.8), so a moniker=stable filter would match NOTHING and report `no-result` -- a silent no-op, exactly the bug class this file's header warns about. Once 7.2.1 ships, 7.2.y becomes the `stable` entry and mainline becomes 7.3-rcN. Matching on the VERSION rather than the moniker is what spans that handover without a flag day. The `= \"7.2\"` clause is the two-component release itself; the `$substring(...,0,4) = \"7.2.\"` clause is every later 7.2.y point release. The trailing dot is load-bearing (it is what stops 7.21 matching) and $substring is used rather than $contains so a hypothetical 17.2.x could never match either. TRIPWIRE: when the 7.2 line goes EOL and drops out of releases.json, this filter matches nothing and the pin SILENTLY stops being managed -- no PR, no error. That is the moment to make the deliberate decision about which line the variant tracks next, and the only way to notice it is the dependency dashboard going quiet, so check it if this pin has been still for a long time. The outer [ ] is required for the same reason documented above -- this filter matches exactly one entry, and JSONata would collapse a single-element sequence into a bare object, which Renovate rejects as `no-result` silently.",
       "defaultRegistryUrlTemplate": "https://www.kernel.org/releases.json",
       "format": "json",
       "transformTemplates": [
-        "{\"releases\": [$map($filter(releases, function($r) { $r.moniker = \"mainline\" }), function($r) { {\"version\": $r.version} })]}"
+        "{\"releases\": [$map($filter(releases, function($r) { $r.version = \"7.2\" or $substring($r.version, 0, 4) = \"7.2.\" }), function($r) { {\"version\": $r.version} })]}"
       ]
     }
   },
@@ -111,15 +122,15 @@
     },
     {
       "customType": "regex",
-      "description": "Bump the RT/beta kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/mister_rt.fragment), which tracks the mainline -rc line rather than 6.18.y -- see docs/rt-beta-kernel.md and ADR 0021. Kept as a SEPARATE manager from the 6.18 one above, with its own datasource and its own depName, because the two must never be able to propose each other's version: the fragment carries the identical Kconfig symbol, so a single shared manager would hand the longterm datasource a -rc currentValue (and vice versa). The matchString accepts BOTH an -rc and a plain mainline version (7.2-rc3 and 7.2), because 7.2 final IS the intended destination of this pin -- docs/rt-beta-kernel.md picks 7.2 precisely because PREEMPT_RT landed for ARM in 7.1, so the variant follows that line through its -rc series and out the other side. IMPORTANT -- the companion hash is NEVER auto-refreshed for this pin, unlike the 6.18 one: renovate-hash-sync.yml's kernel step reads its version from the DE10-Nano defconfig and only ever rewrites that pin's own line, so it leaves this one alone in every case. An RT bump PR is therefore EXPECTED to be red at the kernel download (\"No hash found for linux-<ver>...\", because BR2_DOWNLOAD_FORCE_CHECK_HASHES empties Buildroot's BR_NO_CHECK_HASH_FOR exemption) until a human refreshes it by hand. That is the intended, safe failure mode -- the same shape as the Buildroot hash above. NOTE that the artifact changes shape across the -rc boundary, and so does the provenance a human should demand: while on an -rc, Buildroot fetches a cgit-generated snapshot (linux-<ver>.tar.gz from git.kernel.org) for which kernel.org publishes NO signed manifest, so the value is TOFU per linux.hash's own -rc block; once this pin reaches a stable mainline release it becomes an ordinary linux-<ver>.tar.xz, which IS covered by kernel.org's signed sha256sums.asc and by a maintainer .sign, and should be transcribed from those rather than TOFU-pinned.",
+      "description": "Bump the RT/beta kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/mister_rt.fragment), which tracks the 7.2 line rather than 6.18.y -- see docs/rt-beta-kernel.md and ADR 0021. Kept as a SEPARATE manager from the 6.18 one above, with its own datasource and its own depName, because the two must never be able to propose each other's version: the fragment carries the identical Kconfig symbol, so a single shared manager would hand one datasource the other's currentValue. UPDATED 2026-08-17, when 7.2 released and this pin crossed the -rc boundary (7.2-rc7 -> 7.2); the depName went `kernel-mainline-rt` -> `kernel-rt-7.2` because the old one now describes a line this pin deliberately no longer follows. Renaming a depName orphans any open branch under the old name and starts a fresh dependency-dashboard entry -- that was accepted as a one-off cost, not overlooked. THE matchString MUST ACCEPT THREE FORMS and the reason is a silent-failure trap: `7.2-rc7` (history, and the shape it would return to if a human ever repoints this at an -rc), `7.2` (a two-component release -- what kernel.org actually publishes for a .0), and `7.2.1` (every later point release on this line). The three-component alternative is not hypothetical padding: the moment 7.2.1 lands and Renovate writes it here, a matchString that only accepted two components would stop matching its own output, extract zero deps, and silently leave the pin unmanaged forever -- validator-clean and invisible, exactly the failure mode this file's header describes. THE COMPANION HASH IS NOW AUTO-REFRESHED, which reverses what this description said until 2026-08-17: linux-7.2.tar.xz is an ordinary release tarball covered by kernel.org's PGP-signed sha256sums.asc, so scripts/hash-sync-kernel.sh handles this pin as its `rt` case and a routine 7.2.y bump PR can go green on its own. That script REFUSES any value containing `-rc` (kernel.org signs no manifest for a cgit snapshot, so such a hash can only be hand-written TOFU) and leaves the line untouched, so the build fails closed at the kernel download rather than blessing an unexamined snapshot -- see linux.hash's own header and docs/ci.md#renovate-hash-sync-not-automated. allowedVersions below keeps -rc out of this manager's reach in the first place; the script's refusal is the second line of defense for a hand edit.",
       "managerFilePatterns": [
         "/^configs/mister_rt\\.fragment$/"
       ],
       "matchStrings": [
-        "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>\\d+\\.\\d+(?:-rc\\d+)?)\""
+        "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>\\d+\\.\\d+(?:\\.\\d+)?(?:-rc\\d+)?)\""
       ],
-      "depNameTemplate": "kernel-mainline-rt",
-      "datasourceTemplate": "custom.kernelMainline",
+      "depNameTemplate": "kernel-rt-7.2",
+      "datasourceTemplate": "custom.kernelStable72",
       "versioningTemplate": "loose"
     },
     {
@@ -413,17 +424,16 @@
       ]
     },
     {
-      "description": "RT/beta kernel pin (configs/mister_rt.fragment), tracking mainline -rc. Constrained to the 7.x line as defense in depth, mirroring the 6.18 rule above: a jump to a new MAJOR is a deliberate decision about what the beta variant tracks, not routine automation. Labeled distinctly from kernel-pin so a reviewer is never in doubt about WHICH kernel a PR moves -- the two carry the identical Kconfig symbol and otherwise look alike in a diff. needs-manual-hash is not decorative: this PR cannot go green until a human writes the new hash into linux.hash by hand. The hash-sync workflow never touches this line -- and how the value should be obtained depends on which side of the -rc boundary the pin is on (TOFU for a cgit -rc snapshot, kernel.org's signed manifest for a stable release). See the manager description. needs-manual-version-check is carried for the same reason bcm20702-firmware is: `loose` versioning's ordering of a -rcN suffix is not something to trust blindly.",
+      "description": "RT/beta kernel pin (configs/mister_rt.fragment), tracking the 7.2 line. TIGHTENED 2026-08-17 from /^7\\./ to the 7.2 line specifically, at the same time the datasource stopped filtering on moniker=mainline: the two together are what keep this pin ON 7.2 now that it has arrived there. /^7\\./ was correct while 7.2 was in -rc (it fenced off a MAJOR jump, the only jump that mattered then) but it would have waved 7.3-rc1 straight through about two weeks after 7.2 shipped. Defense in depth, mirroring the 6.18 rule above: the datasource already scopes to 7.2, and this is the second, independent statement of the same intent -- moving the beta variant to a new upstream LINE is a deliberate decision, not routine automation, and it takes edits in both places. The pattern admits 7.2 and 7.2.N and nothing else; note it also excludes every -rc, so Renovate cannot walk this pin back across the boundary it just crossed. Labeled distinctly from kernel-pin so a reviewer is never in doubt about WHICH kernel a PR moves -- the two carry the identical Kconfig symbol and otherwise look alike in a diff. needs-manual-hash was DROPPED on 2026-08-17 and its absence is a claim, not an oversight: a 7.2.y tarball is covered by kernel.org's signed manifest, so scripts/hash-sync-kernel.sh's `rt` case refreshes linux.hash on the PR and it can go green unattended. The label would have to come back if this pin were ever hand-pointed at an -rc again, which allowedVersions above now prevents Renovate from doing on its own. needs-manual-version-check STAYS, with a sharper meaning than the `loose`-ordering worry it was originally carried for (that worry is largely moot once -rc is out of range): every version bump re-opens the RT variant's hardware-boot claim, which is per-version and cannot be inherited from the previous pin -- see docs/rt-beta-kernel.md §6.",
       "matchManagers": [
         "custom.regex"
       ],
       "matchDepNames": [
-        "kernel-mainline-rt"
+        "kernel-rt-7.2"
       ],
-      "allowedVersions": "/^7\\./",
+      "allowedVersions": "/^7\\.2(\\.\\d+)?$/",
       "addLabels": [
         "rt-kernel-pin",
-        "needs-manual-hash",
         "needs-manual-version-check"
       ]
     },

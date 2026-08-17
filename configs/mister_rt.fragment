@@ -96,8 +96,9 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2"
 # both build, zero warnings). The three runs that day nest: 34/34 (70 offsets)
 # on the rc7 -> 7.2 bump, 35/35 (70) once 0046 landed, 40/40 (80) with
 # 0038-0042 symlinked in. See docs/rt-beta-kernel.md §2 and §6.
-# ⚠ Applying is not building: the last `make rt` was the 34-entry series, so
-# the next one is the first to BUILD all 40 -- docs/rt-beta-kernel.md §7 item 0.
+# And BUILT, not just applied: `make rt` is green on all 40 from a clean tree
+# (2026-08-17) -- exit 0, release 7.2.0, CONFIG_PREEMPT_RT=y, zImage_dtb
+# 9303550 bytes, 90 modules. Still NOT BOOTED; that is per-version and open.
 # (This line previously read "drops only 0030 + 0037 ... all 29 listed", which
 # went stale when those two were re-anchored and re-included; 0037 in
 # particular is NOT cosmetic -- see the series header.)

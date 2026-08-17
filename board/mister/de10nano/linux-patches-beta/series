@@ -11,8 +11,8 @@
 # went unlisted here for three weeks, and were closed on 2026-08-17 once
 # measured rather than assumed. They needed NO re-anchor — plain symlinks,
 # applied on 7.2 final at -F0 with offsets only (0038 1, 0039 1, 0040 1,
-# 0041 2, 0042 5 hunks at an offset, zero fuzz), and drivers/hid/ compiles
-# clean for ARM with all five in. See docs/rt-beta-kernel.md §6.
+# 0041 2, 0042 5 hunks at an offset, zero fuzz), and `make rt` is green on the
+# whole 40 from a clean tree. See docs/rt-beta-kernel.md §6.
 # Keep it that way: if a patch will not apply to a newer 7.x release,
 # re-anchor it here rather than removing it from this list.
 #

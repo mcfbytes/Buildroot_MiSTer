@@ -238,9 +238,25 @@ cannot be inferred, and where no answer can be read the tool refuses instead of
 guessing. Everything else it can do (`list`, `unpair`, `info`, `receiver`) is for
 an SSH session, where typing is possible.
 
-`unpair` is the one operation that asks for confirmation even in the single
-receiver case: pairing is additive and harmless, while unpairing the keyboard
-you are typing on is a way to strand yourself.
+`unpair` is the one operation that asks for confirmation even in the
+single-receiver case: pairing is additive and harmless, while unpairing the
+keyboard you are typing on is a way to strand yourself. **Without an answer it
+does not proceed** — falling through when stdin is not a terminal would make a
+destructive operation the default for every pipeline and boot script, which is
+the opposite of the posture everything else here takes. `--yes` is the way to
+say "I have decided" ahead of time; nothing else is.
+
+`--yes` therefore means one thing and not another, and the two need stating
+together because the same flag reaches both:
+
+* a **confirmation** — "unpair slot 2?" — is taken as yes;
+* a **choice with no safe default** — which of two receivers you meant — still
+  fails. Answering a yes/no is not the same as inventing which dongle was
+  intended.
+
+(On a console with no keyboard attached, stdin *is* a terminal but nothing can be
+typed. The prompt times out to No and changes nothing, which is the right
+outcome for that case.)
 
 ## 6. What is deliberately not shipped
 
@@ -286,7 +302,7 @@ line character for character.
 ### Wrapper
 
 Off-hardware, against synthetic `/sys/class/hidraw` trees and a stub `ltunify`,
-**42 scenarios across six rigs** pass. The rigs reproduce the multi-node reality
+**50 scenarios across six rigs** pass. The rigs reproduce the multi-node reality
 above — including report descriptors with and without the HID++ collection — so
 the grouping is exercised, not assumed:
 
@@ -308,6 +324,12 @@ mode described in §4.3 — both permanently and on the first call only — and 
 that an unreadable receiver never reads as "all six slots are free", never sails
 past the slots-full pre-check, never reports pre-existing devices as newly
 paired, and never turns into "slot N is already free" during an unpair.
+
+Eight more cover the `--yes`/confirmation rule above, driven through a real pty
+so the typed `y`/`n` path is exercised rather than mocked: `unpair` without a
+terminal and without `--yes` refuses **and the slot is asserted still paired**;
+`--yes` proceeds and the slot is asserted gone; a typed `n` changes nothing; and
+`--yes` still refuses to pick between two receivers.
 
 That covers the enumeration and decision logic, which is where the wrapper's
 value is.

@@ -118,7 +118,9 @@ mister-pair-logitech -- pair a Logitech device to a Unifying receiver
 
 Options:
   -r, --receiver <hidrawN>   use this receiver; skip auto-detection
-  -y, --yes                  never prompt (fails instead of asking)
+  -y, --yes                  do not prompt. A confirmation is taken as yes;
+                             a choice with no safe default -- which receiver,
+                             when two are plugged in -- still fails.
   -h, --help
 
 Supported:     Unifying (046d:c52b, c532) and Nano (046d:c52f, c534).
@@ -868,8 +870,25 @@ cmd_unpair() {
 
 	# Unpairing the keyboard you are typing on is a real way to strand yourself,
 	# so this one asks -- unlike pairing, which is additive and harmless.
-	if [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
+	#
+	# WITHOUT AN ANSWER IT DOES NOT PROCEED. Falling through to the unpair when
+	# stdin is not a terminal would make a destructive operation the DEFAULT for
+	# every pipeline and boot script, which is the opposite of the posture the
+	# rest of this tool takes. --yes is the way to say "I have decided" ahead of
+	# time; nothing else is.
+	#
+	# Note that --yes cannot stand in for the receiver CHOICE in
+	# select_receiver: answering a yes/no is not the same as inventing which of
+	# two dongles was meant, so that one still refuses. Same flag, and the help
+	# text above says which behaviour to expect where.
+	if [ "$ASSUME_YES" -eq 0 ]; then
+		if [ ! -t 0 ]; then
+			die "unpair needs confirmation and stdin is not a terminal, so there is no way to ask. Nothing was changed. Re-run with --yes if you are sure."
+		fi
 		printf 'Unpair slot %s? The device stops working until it is paired again. [y/N]: ' "$UNPAIR_TARGET"
+		# A timeout or EOF leaves answer empty, which is a No. On a console with
+		# no keyboard attached, stdin IS a terminal but nothing can be typed --
+		# so timing out to "changed nothing" is the behaviour that case needs.
 		read -r -t "$PROMPT_TIMEOUT" answer || answer=""
 		say ""
 		case "${answer,,}" in

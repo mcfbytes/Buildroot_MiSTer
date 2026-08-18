@@ -375,6 +375,7 @@ at all.
 - [`rollback.md`](rollback.md) — how to get back to stock
 - [`serial-recovery.md`](serial-recovery.md) — recovering a box that won't boot
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture
+- [`../logitech-pairing.md`](../logitech-pairing.md) — which Logitech receivers can be paired on-box, and why the others cannot
 - [ADR 0014](../decisions/0014-sustainability-deferred-not-waived.md),
   [ADR 0015](../decisions/0015-per-device-ssh-host-keys.md),
   [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md),

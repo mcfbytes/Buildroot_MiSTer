@@ -704,9 +704,22 @@ jobs:
           # Strip with the build's own cross strip, exactly as target-finalize
           # would (package/Makefile.in's STRIPCMD) -- `make azcopy` stops short
           # of that step, and the difference is ~16 MiB.
-          strip=$(echo output/host/bin/*-linux-*-strip)
+          #
+          # Resolved into an array and asserted to be exactly one, rather than
+          # $(echo <glob>). That shorthand degrades badly in both directions:
+          # zero matches leaves the literal pattern and >1 leaves a
+          # space-separated list, and each then fails at the strip invocation
+          # with an error naming a path that never existed. It is unambiguous in
+          # this tree today -- but "today" is doing real work in that sentence,
+          # and a second cross toolchain appearing under output/host/bin is
+          # exactly the kind of change nobody would think to re-check here.
+          mapfile -t strips < <(ls output/host/bin/*-linux-*-strip 2>/dev/null || true)
+          if [ "${#strips[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one cross strip matching output/host/bin/*-linux-*-strip, found ${#strips[@]}: ${strips[*]-<none>}" >&2
+            exit 1
+          fi
           cp output/target/usr/bin/azcopy azcopy-dist/azcopy
-          "$strip" --remove-section=.comment --remove-section=.note azcopy-dist/azcopy
+          "${strips[0]}" --remove-section=.comment --remove-section=.note azcopy-dist/azcopy
           ( cd azcopy-dist && xz -9 -T0 -c azcopy > "azcopy-${ver}-armv7.xz" && rm -f azcopy )
           ( cd azcopy-dist && sha256sum "azcopy-${ver}-armv7.xz" > "azcopy-${ver}-armv7.xz.sha256" )
           ls -l azcopy-dist/

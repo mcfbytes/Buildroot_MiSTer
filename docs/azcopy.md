@@ -36,7 +36,15 @@ left, for a tool most users will never run. It works — §4 is a transcript of 
 on real hardware — it just does not earn a permanent seat in a fixed 512 MiB
 filesystem by default.
 
-Turning it on is one line in the defconfig. The numbers below are what that line costs.
+**Instead, every tagged release carries it as a standalone download**:
+`azcopy-<version>-armv7.xz`, ~8.3 MiB, built by the `build-azcopy` job in
+`release.yml` and **statically linked** so it keeps working across an image rollback
+(see `docs/ci.md#azcopy-release-asset` for why that job is separate from the image
+build, and why static). People who want azcopy pay the download; nobody else pays
+anything.
+
+Turning it on *in the image* is still one line in the defconfig. The numbers below are
+what that line costs.
 
 ### The binary
 
@@ -404,6 +412,23 @@ Go's ARM runtime does its own 64-bit-alignment check in software, so an unaligne
 | `go test ./common/... ./ste/... ./sddl/... ./traverser/...`, GOARCH=arm | `common/parallel`, `sddl`, `traverser` **ok**; `common` and `ste` fail on tests that demand live `ACCOUNT_NAME`/`ACCOUNT_KEY` and **fail identically on amd64** |
 | stripped vs unstripped | identical output and exit codes across `--version`, `env`, `jobs list`, `login status` |
 | `unaligned 64-bit atomic operation` panics | **zero**, across everything above and everything on hardware |
+
+### The published (static) artifact was tested separately
+
+The download `release.yml` attaches is **not** the binary the tables above were
+produced with — it is built `CGO_ENABLED=0` (see `docs/ci.md#azcopy-release-asset`
+for why), which swaps glibc's NSS resolver for Go's own. That difference is precisely
+what a network transfer exercises, so it was retested on the same DE10-Nano rather
+than assumed:
+
+- `file` reports `statically linked`, and the board has no `ldd` to disagree.
+- `azcopy --version` → `azcopy version 10.32.7`.
+- **A real 8 MiB round trip to Blob storage and back**, resolving
+  `mcfteststorage1.blob.core.windows.net` through the pure-Go resolver: md5
+  `3d5916aa…` identical in both directions.
+
+DNS, TLS and transfer therefore all work without glibc NSS on real hardware — which
+is the claim the static artifact rests on.
 
 ### What is still NOT tested
 

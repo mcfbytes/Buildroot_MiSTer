@@ -19,8 +19,16 @@
 # NOT ENABLED BY DEFAULT. configs/mister_de10nano_defconfig leaves
 # BR2_PACKAGE_AZCOPY unset on size grounds alone: 39.1 MiB installed would make
 # this the second-largest package in the image after samba4, for a tool most
-# owners will never run. It is published as a standalone download instead. The
-# package is complete and tested; it is one uncommented line away.
+# owners will never run. The package is complete and tested; it is one
+# uncommented line away.
+#
+# IT IS STILL SHIPPED, just not in the image: release.yml's `build-azcopy` job
+# builds it on every tag and attaches azcopy-<version>-armv7.xz to the release.
+# That build passes CGO_ENABLED=0 via AZCOPY_GO_ENV on the make command line --
+# deliberately NOT set in this file, because static is a property of the
+# DOWNLOAD (which outlives the rootfs that installed it and must survive a
+# rollback to an older or stock image), not of an in-image azcopy, which should
+# keep cgo and glibc's NSS resolver. See docs/ci.md#azcopy-release-asset.
 #
 # READ docs/azcopy.md BEFORE TOUCHING THIS PACKAGE. It carries the size
 # accounting (including why a file-transfer CLI is 39 MiB -- Google Cloud

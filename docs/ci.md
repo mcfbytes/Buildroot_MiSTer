@@ -2431,6 +2431,54 @@ An `-rc` is still never refreshed, for either pin — the script refuses it
 outright; see
 [`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated).
 
+<a id="azcopy-release-asset"></a>
+### azcopy ships as a release asset, from its own job
+
+`azcopy` is packaged but **not in the image** (`BR2_PACKAGE_AZCOPY` unset — 39 MiB,
+`docs/azcopy.md` §1). Every tagged release still carries it as a standalone
+`azcopy-<version>-armv7.xz` download, built by the **`build-azcopy`** job in
+`release.yml`.
+
+**Why a separate job and not a step in `build`.** Two independent reasons, either
+sufficient:
+
+1. **It cannot be allowed to reach `linux.img`, and a step inside `build` could.**
+   `make azcopy` installs into `$(TARGET_DIR)`. `scripts/mk-sdcard.sh` then
+   *regenerates* `linux.img` from that same `output/` — its own header says it
+   "snapshots that image BEFORE its own step-2 relink regenerates it". Anything
+   sitting in `output/target` at that moment ships, silently, in an image whose
+   whole point is not to contain it. A different runner with a different checkout
+   cannot make that mistake regardless of what gets added to `build` later.
+2. **`build` has no wall-clock to spare.** It is budgeted `timeout-minutes: 355`
+   against GitHub's hard 360-minute cap and has already overrun it once (see that
+   job's own timeout comment — a release silently failed to publish). azcopy costs
+   ~4–5 min for host-go plus ~12 s for itself; spending that from ~36 minutes of
+   slack is a bad trade when it can run concurrently for the price of one extra
+   runner.
+
+**The asset is static** (`CGO_ENABLED=0`, passed as `AZCOPY_GO_ENV` on the make
+command line, not baked into `azcopy.mk` — an in-image azcopy should keep cgo and
+glibc's NSS resolver). Same reasoning as `package/7zip`'s static
+`/media/fat/linux/7za`: a downloaded binary **outlives the rootfs that installed
+it** and must survive a rollback to an older `linux.img`, or to a stock image whose
+glibc is years behind. A dynamic build dies at `exec` with `GLIBC_2.xx not found`.
+
+**It fails closed in three places**, because a release that quietly dropped the
+download would look identical to one that never carried it:
+
+- `build-azcopy` asserts `file` reports `statically linked` and that
+  `qemu-arm azcopy --version` prints the version `azcopy.mk` pins;
+- its `upload-artifact` uses `if-no-files-found: error`;
+- `publish` has `needs: [build, build-azcopy]` and refuses to create the release
+  if the two expected files are not in `dist/`.
+
+**The dl/ cache key is deliberately distinct** (`br-dl-azcopy-*`, not the image
+build's `br-dl-*`). This job's `dl/` holds only the Buildroot tarball, the Go
+bootstrap and azcopy; sharing the key would let whichever job wrote first publish
+its `dl/` under it, and a cache is immutable once written — so if this job won the
+race the image build would silently lose almost its whole download cache and
+re-fetch everything.
+
 <a id="renovate-hash-sync-outcomes-gate"></a>
 ### The per-pin outcomes ledger and the job-summary gate
 

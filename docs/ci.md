@@ -2517,9 +2517,11 @@ auto-discover `package/*/*.mk` — see its "Required env" header.
 **A note on azcopy and this job's disk/cache budget.** `BR2_PACKAGE_AZCOPY` is **not
 enabled** in `configs/mister_de10nano_defconfig` (size, see `docs/azcopy.md` §1), so
 `host-go` is not built and none of the below is in the default pipeline today. It
-matters the moment anyone flips that line, because the numbers are large: host-go is a
-five-stage from-source bootstrap, and vendoring left **1.7 GiB in `GOMODCACHE`**
-(`output/host/share/go-path/pkg/mod`) on the branch that developed it. All of that
+matters the moment anyone flips that line — though **not for the reason you would
+guess**. Wall clock is cheap: the five-stage host-go bootstrap measured **3.0 min**,
+`host-go-src` another **1.2 min**, and azcopy itself compiles in **12 s**. The problem
+is disk: vendoring left **1.7 GiB in `GOMODCACHE`** (`output/host/share/go-path/pkg/mod`)
+on the branch that developed it. All of that
 lands under `output/`, which this job's own budget section already records ending a
 cold build at **8.4 GB free of 72 GB** — and cache #3 globs `output/host` +
 `output/build/host-*`, so it would land in the `br-host` cache entry too, against

@@ -186,13 +186,29 @@ Selecting azcopy pulls in **host-go**, which Buildroot builds *from source* on a
 x86_64 host (`BR2_PACKAGE_HOST_GO_SRC` is the default whenever
 `BR2_PACKAGE_HOST_GO_BOOTSTRAP_STAGE5_ARCH_SUPPORTS`, per
 `work/buildroot/package/go/Config.in.host`). That is a five-stage bootstrap before the
-compiler you actually wanted — the chain observed in `output/build/` on the first build
-of this branch was `host-go-bootstrap-stage1-1.4-bootstrap-20171003` (the C-written
-Go 1.4) → `stage2-1.19.13` → `stage3-1.21.8` → `stage4-1.23.12` → `stage5-1.25.10` →
-`host-go-1.26.3` — plus the target toolchain, which `HOST_GO_DEPENDENCIES_CGO` pulls in
-even for the *download* step. It is a genuine, one-off addition to cold CI wall-clock on
-top of the ~3h20m the pipeline already takes. It is warm-cacheable like everything else,
-and it is *not* a rootfs cost: nothing from host-go ships.
+compiler you actually wanted: `host-go-bootstrap-stage1-1.4-bootstrap-20171003` (the
+C-written Go 1.4) → `stage2-1.19.13` → `stage3-1.21.8` → `stage4-1.23.12` →
+`stage5-1.25.10` → `host-go-1.26.3`.
+
+**It is much cheaper than that description makes it sound, and an earlier revision of
+this document overstated it.** Timed from `output/build/build-time.log` on a 32-core
+host:
+
+| Step | Wall time |
+|---|---:|
+| host-go bootstrap stages 1–5 | **3.0 min** |
+| `host-go-src` (the real 1.26.3 compiler) + install | **1.2 min** |
+| azcopy `go mod vendor`, module cache warm | **39 s** |
+| azcopy compile + link + install | **12 s** |
+| *(target toolchain, pulled in by `HOST_GO_DEPENDENCIES_CGO`)* | *~10 min — but the image build builds this anyway, so it is not incremental* |
+
+So on top of a pipeline that already builds the toolchain, **azcopy adds roughly
+4–5 minutes**, nearly all of it host-go. On a truly cold tree with no `dl/` cache the
+vendoring is slower (it fetches ~1.7 GiB of modules with `GOPROXY=direct`), but CI
+caches `dl/`, and once `azcopy-<ver>-go2.tar.gz` is in that cache the vendoring never
+runs again until a version bump.
+
+None of it is a rootfs cost: nothing from host-go ships.
 
 It was left at the from-source default rather than switched to `host-go-bin` (which
 downloads a pre-built toolchain tarball) because building compilers from source is the
@@ -458,10 +474,13 @@ reading the manual:
 
 This was not theory: the pin in this commit was produced exactly that way. The first
 `make azcopy-source` on this branch failed closed against a placeholder of zeros and
-printed `c04793e0…`; pasting that in and re-running passed with the check on. As a
-bonus, that second run re-did `go mod vendor` from scratch and arrived at the same
-hash, which is a (small, single-host) data point that Buildroot's `mk_tar_gz` repack
-is as deterministic as it claims — the property this whole pin rests on.
+printed `c04793e0…`; pasting that in and re-running passed with the check on.
+
+**`go mod vendor` has now been run three separate times on this tree and produced a
+byte-identical tarball every time** (the third deliberately, with the `dl/` copy deleted
+and the module cache warm — 39 s). That is a real, if single-host, data point that
+Buildroot's `mk_tar_gz` repack is as deterministic as it claims, which is the property
+this whole pin rests on.
 
 Also on every bump: re-run the ARMv7 build and re-check that both patches still apply —
 0002 in particular patches a vendored file, so a `go.mod` bump of

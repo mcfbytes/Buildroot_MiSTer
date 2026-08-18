@@ -1537,9 +1537,11 @@ BR2_PACKAGE_LZOP=y                            # lzop compressor. Selects BR2_PAC
 # selects BR2_PACKAGE_HOST_GO (build-time only, nothing from it ships) plus
 # BR2_PACKAGE_CA_CERTIFICATES (already =y in its own right in the crypto/TLS
 # block above, and deliberately kept explicit there so it survives azcopy being
-# switched off again). Note that enabling it also pulls host-go's five-stage
-# from-source bootstrap into the build; docs/ci.md's disk-and-cache budget was
-# written without it, so check that before turning it on in CI.
+# switched off again). Enabling it also pulls host-go's five-stage from-source
+# bootstrap into the build -- measured at ~4.2 min, plus ~12 s to compile
+# azcopy itself, so WALL CLOCK is not the concern. DISK is: host-go's module
+# cache measured 1.7 GiB, and docs/ci.md's disk-and-cache budget was written
+# without it. Check that before turning it on in CI.
 #
 # ARMv7 IS NOT AN UPSTREAM-SUPPORTED TARGET for AzCopy: Microsoft publishes
 # linux/amd64 and linux/arm64 binaries only, and two defects had to be patched

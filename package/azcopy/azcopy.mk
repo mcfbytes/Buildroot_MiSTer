@@ -35,11 +35,13 @@
 #   1. It drags in host-go, which Buildroot builds FROM SOURCE by default on
 #      an x86_64 host (BR2_PACKAGE_HOST_GO_SRC is the default when
 #      BR2_PACKAGE_HOST_GO_BOOTSTRAP_STAGE5_ARCH_SUPPORTS, see
-#      work/buildroot/package/go/Config.in.host). That is a real, one-off
-#      addition to cold CI wall-clock. It is left at the default rather than
-#      switched to host-go-bin: go-bin downloads a pre-built toolchain
-#      tarball, and "build the compiler from source" is the posture the rest
-#      of this tree already takes.
+#      work/buildroot/package/go/Config.in.host). Measured, so nobody has to
+#      fear it: the five bootstrap stages take 3.0 min and host-go-src another
+#      1.2 min, and azcopy itself compiles in 12 s. Wall clock is not the
+#      problem; DISK is -- the module cache measured 1.7 GiB. It is left at
+#      the from-source default rather than switched to host-go-bin (which
+#      downloads a pre-built toolchain tarball), because "build the compiler
+#      from source" is the posture the rest of this tree already takes.
 #   2. The tarball this package hashes is NOT the GitHub archive. Buildroot's
 #      golang infrastructure sets <PKG>_DOWNLOAD_POST_PROCESS = go, which runs
 #      `go mod vendor` and repacks -- see azcopy.hash for the whole story and

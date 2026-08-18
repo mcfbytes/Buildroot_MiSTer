@@ -1096,11 +1096,16 @@ BR2_PACKAGE_DUALSENSECTL=y
 #
 # LIMITS ARE REAL AND ARE HANDLED IN THE WRAPPER, NOT HERE. ltunify supports
 # Unifying (c52b/c532) and Nano (c52f/c534) only; it does NOT support Bolt
-# (c548) or Lightspeed (c539/c53a/c53f/c543), and it assumes the first receiver
-# it finds is the one you meant. /usr/sbin/mister-pair-logitech (rootfs overlay)
-# enumerates every receiver, refuses the unsupported ones by name, and pins the
-# choice with ltunify's -d flag; Scripts/pair_logitech.sh is its launcher on the
-# data partition, the same shim shape ADR 0026 established for check_storage.sh.
+# (c548) or Lightspeed (c539/c53a/c53f/c543). It also assumes the first hidraw
+# node it finds is the receiver you meant -- wrong when two are plugged in, and
+# wrong again for a single NANO receiver, which owns two nodes because
+# logi_dj_probe's "no HID++ collection -> -ENODEV" guard is recvr_type_dj-only.
+# /usr/sbin/mister-pair-logitech (rootfs overlay) groups nodes by physical USB
+# device, classifies by product ID independently of driver (Bolt is bound by
+# hid-multitouch here, so a driver-first filter would not even see it), refuses
+# the unsupported families by name, and pins the choice with ltunify's -d flag.
+# Scripts/pair_logitech.sh is its launcher on the data partition, the same shim
+# shape ADR 0026 established for check_storage.sh.
 #
 # NOT SOLAAR, which is the maintained tool and does cover Bolt: its only
 # console_scripts entry point routes through solaar.gtk, which imports

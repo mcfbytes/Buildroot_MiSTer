@@ -97,37 +97,71 @@ It is also, run bare on this board, capable of three specific kinds of quiet
 wrongness. `/usr/sbin/mister-pair-logitech` exists for these three reasons and
 no others:
 
-### 4.1 It picks the first receiver it finds
+### 4.1 It picks the first hidraw node it finds
 
 `open_hidraw()` (`ltunify.c:1158`) globs
 `/sys/class/hidraw/hidraw*/device/driver`, filters on vendor `046d` and a
 receiver driver name, and takes the first hit. The comment in the loop says so
 outright: *"Assume that the first match is the receiver."*
 
-Re-pairing is precisely the case where two receivers are plugged in — the old
-one and the new one. Pairing writes to whichever the glob happened to return
-first, and there is no output that tells you which that was. The wrapper
-enumerates every receiver, shows them with product ID and USB path, and pins the
-chosen one through ltunify's own `-d` flag. When two are present and no choice
-can be read, it refuses rather than guessing.
+That is wrong in two separate ways on this board.
 
-### 4.2 It accepts receivers it cannot drive
+**Two receivers.** Re-pairing is precisely the case where two are plugged in —
+the old one and the new one. Pairing writes to whichever the glob returned first,
+and nothing tells you which that was.
 
-`hid-logitech-dj` binds Bolt and Lightspeed receivers as `logitech-djreceiver`,
-identically to Unifying ones. They therefore pass ltunify's driver-name test and
-fail later, at the register write, or just sit there until the window times out.
+**One receiver, several nodes.** `hid-logitech-dj` claims more than one interface
+per receiver, and how many survive to become hidraw nodes depends on the family
+(`logi_dj_probe`, and the `no_dj_interfaces` switch above it):
 
-| Product ID | Family | ltunify |
+| Family | `driver_data` | hidraw nodes |
 |---|---|---|
-| `046d:c52b`, `c532` | Unifying | supported |
-| `046d:c52f`, `c534` | Nano | supported |
-| `046d:c548` | Bolt | **no** — different pairing protocol |
-| `046d:c539`, `c53a`, `c53f`, `c543` | Lightspeed / Powerplay | **no** |
-| `046d:c51b` | 27 MHz | **no** — predates HID++ |
+| Unifying `c52b`/`c532` | `recvr_type_dj` | **one** — probe returns `-ENODEV` for any interface without a HID++ collection |
+| Nano `c534` | `recvr_type_hidpp` | **two** — that `-ENODEV` guard is `recvr_type_dj`-only |
+| Nano `c52f` | `recvr_type_mouse_only` | **two** |
+| Lightspeed/Powerplay | `recvr_type_gaming_hidpp` | up to **three** |
 
-The IDs come from the kernel's own `drivers/hid/hid-ids.h`, not from a web page.
-The wrapper classifies by product ID and refuses the unsupported families up
-front, by name, with the reason and the suggestion to pair on a desktop instead.
+So a per-node view shows one perfectly ordinary Nano dongle as two receivers.
+ltunify papers over this with a hardcoded special case — skip interface 0 on
+`c534` — which covers exactly one product.
+
+The wrapper instead **groups hidraw nodes by physical USB device** and emits one
+record per receiver. Within a group it picks the node that actually declares the
+HID++ vendor collection (usage page `0xFF00`, usage `0x01` — the same
+`rep->application == 0xff000001` test `logi_dj_probe` uses), falling back to the
+highest interface number. That is ltunify's `c534` rule generalised to every
+family, derived rather than hardcoded. The chosen node is then pinned with
+ltunify's own `-d` flag.
+
+With two receivers present and no answer readable, the wrapper refuses rather
+than guessing.
+
+### 4.2 It mishandles receivers it cannot drive — in both directions
+
+| Product ID | Family | Driver on 6.18 | ltunify |
+|---|---|---|---|
+| `046d:c52b`, `c532` | Unifying | `logitech-djreceiver` | supported |
+| `046d:c52f`, `c534` | Nano | `logitech-djreceiver` | supported |
+| `046d:c548` | Bolt | **`hid-multitouch`** | **no** — different pairing protocol |
+| `046d:c539`, `c53a`, `c53f`, `c543` | Lightspeed / Powerplay | `logitech-djreceiver` | **no** |
+| `046d:c51b` | 27 MHz | `logitech-djreceiver` | **no** — predates HID++ |
+
+The IDs come from the kernel's own `drivers/hid/hid-ids.h` and
+`logi_dj_receivers[]`, not from a web page — and reading that table is what turns
+up the asymmetry:
+
+* **Lightspeed, Powerplay and 27 MHz receivers bind as `logitech-djreceiver`**,
+  identically to Unifying ones. They pass ltunify's driver-name test and then
+  fail at the register write, or sit there until the window times out.
+* **Bolt is not in `logi_dj_receivers[]` at all.** On this kernel `c548` is
+  claimed by `hid-multitouch`. So ltunify's driver-name test *rejects* it, and
+  it prints `No Logitech Unifying Receiver device found` at somebody looking
+  straight at the dongle in the port.
+
+The wrapper therefore classifies by USB product ID **independently of which
+driver claimed the device**, and only then looks for a node ltunify could use.
+That is what lets a Bolt receiver be named and refused with a reason instead of
+being invisible.
 
 ### 4.3 It always exits 0
 
@@ -230,12 +264,23 @@ line character for character.
 
 ### Wrapper
 
-Off-hardware, against a synthetic `/sys/class/hidraw` tree and a stub `ltunify`,
-26 scenarios pass: classification of all five receiver families, the `c534` Nano
-interface-0 exclusion, `logitech-djdevice` children correctly ignored,
-non-Logitech HID devices ignored, the multi-receiver refusal, pairing success and
-timeout distinguished by slot diff, unpair round-trip, and the argument
-validation errors. That rig covers the enumeration and decision logic, which is
+Off-hardware, against synthetic `/sys/class/hidraw` trees and a stub `ltunify`,
+**34 scenarios across six rigs** pass. The rigs reproduce the multi-node reality
+above — including report descriptors with and without the HID++ collection — so
+the grouping is exercised, not assumed:
+
+| Rig | Contents | What it proves |
+|---|---|---|
+| A | 13 nodes: Unifying, Bolt-on-`hid-multitouch`, two Nanos, Lightspeed, a DualSense, a **wired** Logitech mouse, a `logitech-djdevice` child | grouping into 5 receivers; wired 046d hardware and DJ children excluded; HID++ node chosen; naming a sibling node resolves to it |
+| B | Bolt + Lightspeed only | both families named and refused, one reason each |
+| C | no Logitech hardware | the "not found" path |
+| D | one Unifying receiver | **pairs with no prompt at all** — the no-keyboard case |
+| E | one Nano receiver, two nodes | seen as **one** receiver, not two |
+| F | Unifying PID bound to a driver ltunify cannot use | the "should not be reachable" guard fires with a real message |
+
+Plus, across those: pairing success and timeout distinguished by slot diff (the
+only way to tell, given the always-exit-0 behaviour), the unpair round-trip, and
+argument validation. That covers the enumeration and decision logic, which is
 where the wrapper's value is.
 
 ### Not yet done

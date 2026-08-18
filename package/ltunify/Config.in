@@ -30,12 +30,15 @@ config BR2_PACKAGE_LTUNIFY
 	    046d:c539, c53a,
 	         c53f, c543   Lightspeed        NOT supported
 
-	  Bolt uses a different pairing protocol, and hid-logitech-dj
-	  binds it as "logitech-djreceiver" just like a Unifying one --
-	  so ltunify's own auto-detection will select a Bolt receiver
-	  and then fail against it. It also assumes the FIRST receiver
-	  it finds is the one you meant, which is wrong precisely when
-	  two are plugged in.
+	  Lightspeed and 27 MHz receivers bind as "logitech-djreceiver"
+	  just like Unifying ones, so ltunify's own auto-detection will
+	  select one and then fail against it. Bolt goes wrong the other
+	  way: this kernel binds it with hid-multitouch, so ltunify does
+	  not see it as a receiver at all and reports "not found".
+	  ltunify also assumes the FIRST receiver it finds is the one
+	  you meant, which is wrong precisely when two are plugged in --
+	  and it sees a single Nano receiver as two, because such a
+	  receiver owns two hidraw nodes.
 
 	  Both hazards are why this image does not expect anyone to run
 	  ltunify by hand. /usr/sbin/mister-pair-logitech enumerates

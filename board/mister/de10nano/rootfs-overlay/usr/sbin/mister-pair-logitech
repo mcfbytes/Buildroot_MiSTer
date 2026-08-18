@@ -46,12 +46,16 @@
 #      is wrong exactly when it matters. This script enumerates every receiver
 #      and pins the chosen one with ltunify's own -d flag.
 #
-#   2. IT ACCEPTS RECEIVERS IT CANNOT DRIVE. hid-logitech-dj binds Bolt and
-#      Lightspeed receivers as "logitech-djreceiver" just like Unifying ones, so
-#      they pass ltunify's driver-name test and then fail at the register write,
-#      or worse, sit there timing out. Bolt speaks a different pairing protocol
-#      and ltunify has never known about it. This script classifies by USB
-#      product ID and refuses up front, by name, with a reason.
+#   2. IT MISHANDLES RECEIVERS IT CANNOT DRIVE, in two opposite ways.
+#      hid-logitech-dj binds Lightspeed/Powerplay and 27 MHz receivers as
+#      "logitech-djreceiver" identically to Unifying ones, so those pass
+#      ltunify's driver-name test and then fail at the register write, or sit
+#      there timing out. A BOLT receiver goes wrong the other way: on this
+#      kernel it is not in hid-logitech-dj's device table at all (hid-multitouch
+#      claims it), so ltunify's driver-name test rejects it and prints "No
+#      Logitech Unifying Receiver device found" at somebody staring at the
+#      dongle in the port. This script classifies by USB product ID INDEPENDENTLY
+#      of driver, so both cases get named, with a reason.
 #
 #   3. IT ALWAYS EXITS 0. Read the bottom of ltunify's main(): every command
 #      path that gets as far as opening the receiver falls through to a single
@@ -229,7 +233,7 @@ kind_is_supported() {
 kind_refusal_reason() {
 	case "$1" in
 		bolt)
-			echo "Bolt uses a different pairing protocol that ltunify has never spoken. The kernel drives an already-paired Bolt device fine; only pairing is out of reach here."
+			echo "Bolt uses a different pairing protocol that ltunify has never spoken -- and on this kernel a Bolt receiver is not even claimed by hid-logitech-dj, so ltunify does not recognise it as a receiver at all. The kernel drives an already-paired Bolt device fine; only pairing is out of reach here."
 			;;
 		lightspeed)
 			echo "Lightspeed and Powerplay receivers ship factory-paired to one specific device and use a protocol ltunify does not implement."
@@ -246,68 +250,167 @@ kind_refusal_reason() {
 # ---------------------------------------------------------------------------
 # Enumeration
 # ---------------------------------------------------------------------------
-# Prints one TAB-separated record per usable hidraw node:
+# ONE RECORD PER PHYSICAL RECEIVER, not per hidraw node. That distinction is the
+# whole reason this function is more than a glob, so it is worth stating why.
 #
-#   <hidrawN> <pid> <kind> <usb-bus-id> <product-string>
+# A receiver exposes several USB interfaces and `hid-logitech-dj` claims more
+# than one of them, per its `no_dj_interfaces` table (hid-logitech-dj.c, in
+# logi_dj_probe). How many survive to become hidraw nodes depends on the family:
 #
-# The selection rules deliberately MIRROR ltunify's open_hidraw(), because the
-# node this hands to `ltunify -d` has to be one ltunify would itself have
-# accepted -- a node it rejects would just make it fall back to auto-detection
-# semantics we are trying to avoid:
+#   * Unifying c52b/c532 are recvr_type_dj, and probe returns -ENODEV for any
+#     interface without a HID++ collection ("Ignore interfaces without DJ/HID++
+#     collection ... dont create any hid_device for them"). Exactly ONE node.
+#   * Nano c534 (recvr_type_hidpp) and c52f (recvr_type_mouse_only) have
+#     no_dj_interfaces = 2 and that -ENODEV guard is recvr_type_dj-only, so BOTH
+#     interfaces become hidraw nodes. TWO nodes for one dongle.
+#   * Lightspeed/Powerplay (recvr_type_gaming_hidpp) likewise, up to three.
 #
-#   * driver must be "logitech-djreceiver" (hid-logitech-dj), or "hid-generic"
-#     for the older c52f Nano, which the kernel does not always claim.
-#   * vendor must be 046d.
-#   * for the c534 Nano, interface 0 is keyboard-events-only and carries no
-#     HID++ collection; the usable node is on a later interface. ltunify.c:1216
-#     skips it and so does this.
+# Emitting a record per node would therefore make a single perfectly ordinary
+# Nano receiver look like two or three receivers, and this script's "more than
+# one receiver, refuse to guess" branch would fire on a box that has one. For a
+# user with no working keyboard that is a dead end, so grouping is not a tidiness
+# concern.
 #
-# Reading idVendor/idProduct/product from the USB device (device/../..) rather
-# than parsing the HID modalias: same values, but it also yields the bus id and
-# the product string, which is what makes a two-receiver prompt legible.
+# CLASSIFICATION IS BY USB PRODUCT ID, INDEPENDENT OF DRIVER, and that is also
+# deliberate. The Bolt receiver (c548) is NOT in hid-logitech-dj's device table
+# at all on this kernel -- it is claimed by hid-multitouch. Filtering on the
+# driver name first, the way ltunify's open_hidraw() does, would make a Bolt
+# receiver invisible, and the user would be told "no Logitech receiver found"
+# while looking at one plugged into the board. Classifying first and only then
+# looking for a usable node is what lets the refusal name the actual hardware.
+#
+# Output, one line per receiver, TAB-separated:
+#
+#   <node> <pid> <kind> <usb-bus-id> <product-string> <all-nodes-csv>
+#
+# <node> is the hidraw node to hand to `ltunify -d`, or "-" when the receiver has
+# none that ltunify would accept. <all-nodes-csv> is every node belonging to this
+# receiver, so --receiver can be matched against any of them.
+
+# True if this hidraw node's report descriptor declares the HID++ vendor
+# collection -- usage page 0xFF00, usage 0x01, which is `06 00 ff 09 01` in the
+# raw descriptor bytes. This is the same thing logi_dj_probe tests for as
+# `rep->application == 0xff000001`, and it is the definitional way to find the
+# interface that actually speaks HID++ rather than guessing from the interface
+# number.
+has_hidpp_collection() {
+	local rd="$1/device/report_descriptor" hex
+	[ -r "$rd" ] || return 1
+	hex="$(od -An -tx1 -v "$rd" 2>/dev/null | tr -d ' \n')" || return 1
+	case "$hex" in
+		*0600ff0901*) return 0 ;;
+	esac
+	return 1
+}
+
 enumerate_receivers() {
-	local node driverlink driver usbdev vid pid kind iface product busid
+	local node nodename driverlink driver usbdev vid pid kind product busid
+	local ifnum cand hidpp raw=""
 
 	for node in "$SYSFS_HIDRAW"/hidraw*; do
-		[ -e "$node/device/driver" ] || continue
-
-		driverlink="$(readlink "$node/device/driver" 2>/dev/null)" || continue
-		driver="${driverlink##*/}"
-		case "$driver" in
-			logitech-djreceiver|hid-generic) ;;
-			*) continue ;;
-		esac
+		[ -e "$node/device" ] || continue
 
 		# hid device -> USB interface -> USB device.
 		usbdev="$(readlink -f "$node/device/../.." 2>/dev/null)" || continue
 		[ -r "$usbdev/idVendor" ] && [ -r "$usbdev/idProduct" ] || continue
 
 		vid="$(<"$usbdev/idVendor")"
-		pid="$(<"$usbdev/idProduct")"
 		[ "${vid,,}" = "046d" ] || continue
+		pid="$(<"$usbdev/idProduct")"
+		pid="${pid,,}"
+
+		driver=""
+		if driverlink="$(readlink "$node/device/driver" 2>/dev/null)"; then
+			driver="${driverlink##*/}"
+		fi
 
 		kind="$(receiver_kind "$pid")"
 
-		# hid-generic on a Logitech device is only interesting for the one
-		# receiver the kernel may leave unclaimed. Anything else bound to
-		# hid-generic is an ordinary peripheral, not a receiver.
-		if [ "$driver" = "hid-generic" ] && [ "${pid,,}" != "c52f" ]; then
+		# What counts as a receiver at all. A known receiver product ID, or
+		# anything hid-logitech-dj claimed -- that driver binds receivers and
+		# nothing else, so it catches a product ID newer than this script
+		# without also sweeping up every wired Logitech mouse, which shares the
+		# 046d vendor ID and is emphatically not a receiver.
+		if [ "$kind" = "unknown" ] && [ "$driver" != "logitech-djreceiver" ]; then
 			continue
 		fi
 
-		if [ "${pid,,}" = "c534" ] && [ -r "$node/device/../bInterfaceNumber" ]; then
-			iface="$(<"$node/device/../bInterfaceNumber")"
-			# Stored as two hex digits ("00"); compare as a string, because
-			# arithmetic context would read "08"/"09" as invalid octal.
-			[ "$iface" = "00" ] && continue
+		# Is this the node ltunify could be pointed at? Its open_hidraw() takes
+		# only these two driver names, so a node it would reject is no use to us
+		# even if the receiver is otherwise fine.
+		cand=0
+		case "$driver" in
+			logitech-djreceiver|hid-generic) cand=1 ;;
+		esac
+
+		hidpp=0
+		[ "$cand" -eq 1 ] && has_hidpp_collection "$node" && hidpp=1
+
+		# bInterfaceNumber is printed by the kernel as two HEX digits
+		# (drivers/usb/core/sysfs.c), so it is converted explicitly rather than
+		# used in arithmetic context, where "08" and "09" are invalid octal.
+		ifnum=-1
+		if [ -r "$node/device/../bInterfaceNumber" ]; then
+			ifnum="$(<"$node/device/../bInterfaceNumber")"
+			ifnum=$((16#$ifnum))
 		fi
 
 		product="$(cat "$usbdev/product" 2>/dev/null)"
 		[ -n "$product" ] || product="Logitech receiver"
 		busid="${usbdev##*/}"
+		nodename="${node##*/}"
 
-		printf '%s\t%s\t%s\t%s\t%s\n' "${node##*/}" "${pid,,}" "$kind" "$busid" "$product"
+		raw+="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+			"$busid" "$pid" "$kind" "$product" "$nodename" "$cand" "$hidpp" "$ifnum")"$'\n'
 	done
+
+	[ -n "$raw" ] || return 0
+
+	# Group by USB device and pick one node per receiver: a candidate over a
+	# non-candidate, then the one that actually carries the HID++ collection,
+	# then the highest interface number. That last tiebreak is only reached when
+	# the descriptor scan cannot decide, and it reproduces ltunify's own
+	# hardcoded c534 rule ("the first one is only used for keyboard events ...
+	# the second one is for the mouse, and that interface has a vendor-specific
+	# HID page for HID++") as a general rule rather than a per-product special
+	# case.
+	printf '%s' "$raw" \
+		| LC_ALL=C sort -t $'\t' -k1,1 -k6,6r -k7,7r -k8,8nr \
+		| awk -F'\t' '
+			{
+				if (!($1 in seen)) {
+					seen[$1] = 1
+					node[$1]  = ($6 == "1") ? $5 : "-"
+					pid[$1]   = $2
+					kind[$1]  = $3
+					prod[$1]  = $4
+					order[++n] = $1
+				}
+				all[$1] = ($1 in all) ? all[$1] "," $5 : $5
+			}
+			END {
+				for (i = 1; i <= n; i++) {
+					b = order[i]
+					printf "%s\t%s\t%s\t%s\t%s\t%s\n", node[b], pid[b], kind[b], b, prod[b], sortnodes(all[b])
+				}
+			}
+			# The records arrive best-node-first, so the accumulated list is in
+			# selection order. Re-sort it by hidraw NUMBER for display: this
+			# string is shown to a human comparing it against ls output, and
+			# "hidraw4,hidraw3" reads like a mistake.
+			function sortnodes(csv,   a, m, i, j, tmp) {
+				m = split(csv, a, ",")
+				for (i = 2; i <= m; i++) {
+					tmp = a[i]
+					for (j = i - 1; j >= 1 && num(a[j]) > num(tmp); j--)
+						a[j + 1] = a[j]
+					a[j + 1] = tmp
+				}
+				csv = a[1]
+				for (i = 2; i <= m; i++) csv = csv "," a[i]
+				return csv
+			}
+			function num(s) { sub(/^[^0-9]*/, "", s); return s + 0 }'
 }
 
 # ---------------------------------------------------------------------------
@@ -338,14 +441,29 @@ slot_count() {
 # Receiver selection
 # ---------------------------------------------------------------------------
 print_receiver_table() {
-	local node pid kind busid product label
-	while IFS=$'\t' read -r node pid kind busid product; do
+	local node pid kind busid product allnodes label shown
+	while IFS=$'\t' read -r node pid kind busid product allnodes; do
 		label="$(receiver_kind_label "$kind")"
-		# The 14 on the continuation line is 5 ("/dev/") + the 9-wide node
-		# field above it, so the label sits under the product name rather
-		# than three columns to its left.
-		printf '  /dev/%-9s %s (046d:%s) at USB %s\n' "$node" "$product" "$pid" "$busid"
+		# A receiver with no node ltunify would accept still gets a row -- being
+		# told what is plugged in and why it cannot be used is the entire point
+		# of listing it.
+		# Kept to 14 characters or fewer so it does not overflow the field and
+		# push the rest of the row out of alignment.
+		if [ "$node" = "-" ]; then
+			shown="(unusable)"
+		else
+			shown="/dev/$node"
+		fi
+		# The 14 on the continuation line is the width of the field above it, so
+		# the label sits under the product name rather than three columns left.
+		printf '  %-14s %s (046d:%s) at USB %s\n' "$shown" "$product" "$pid" "$busid"
 		printf '  %-14s %s\n' "" "$label"
+		# Only worth saying when the receiver spans more than one node, which is
+		# exactly the case somebody comparing this against `ls /sys/class/hidraw`
+		# would otherwise find confusing.
+		case "$allnodes" in
+			*,*) printf '  %-14s (one receiver, hidraw nodes: %s)\n' "" "$allnodes" ;;
+		esac
 	done
 }
 
@@ -365,8 +483,34 @@ RECEIVER_NODE=""
 RECEIVER_KIND=""
 RECEIVER_DESC=""
 
+# Turn one enumerate_receivers record into the RECEIVER_* globals.
+set_receiver_from_record() {
+	local node pid kind busid product allnodes
+	IFS=$'\t' read -r node pid kind busid product allnodes <<<"$1"
+	RECEIVER_KIND="$kind"
+	RECEIVER_DESC="$product (046d:$pid) at USB $busid"
+	if [ "$node" = "-" ]; then
+		RECEIVER_NODE=""
+	else
+		RECEIVER_NODE="/dev/$node"
+	fi
+}
+
+# Match a user-supplied name against a receiver record. Deliberately matches the
+# WHOLE node list, not just the chosen node: a Nano receiver owns two hidraw
+# nodes, and somebody reading `ls /sys/class/hidraw` and passing the one we did
+# not pick means the right receiver and should get it, not an error.
+match_receiver() {
+	printf '%s\n' "$2" | awk -F'\t' -v n="$1" '
+		{
+			if ($1 == n) { print; exit }
+			split($6, nodes, ",")
+			for (i in nodes) if (nodes[i] == n) { print; exit }
+		}'
+}
+
 select_receiver() {
-	local all supported count line node pid kind busid product answer i
+	local all supported count line node pid kind busid product allnodes answer
 
 	all="$(enumerate_receivers)"
 
@@ -377,10 +521,12 @@ select_receiver() {
 		say ""
 		say "  Plug the receiver into a USB port on the MiSTer and try again."
 		say ""
-		say "  If it IS plugged in, check that the kernel sees it:"
+		say "  If it IS plugged in, check that the kernel sees it at all:"
 		say "      lsusb | grep -i logitech"
-		say "  and that it bound to the receiver driver:"
-		say "      ls -l /sys/class/hidraw/*/device/driver"
+		say ""
+		say "  A receiver shows up here whatever driver claimed it, so if lsusb"
+		say "  lists one and this does not, its USB product ID is newer than"
+		say "  this script -- worth reporting, with that lsusb line."
 		say ""
 		say "  A Bluetooth Logitech device is a different thing entirely and"
 		say "  does not appear here -- use btpair for those."
@@ -393,16 +539,18 @@ select_receiver() {
 	# thirty seconds into a pairing window.
 	if [ -n "$WANT_RECEIVER" ]; then
 		node="${WANT_RECEIVER##*/}"
-		line="$(printf '%s\n' "$all" | awk -F'\t' -v n="$node" '$1 == n')"
+		line="$(match_receiver "$node" "$all")"
 		if [ -z "$line" ]; then
-			warn "No usable Logitech receiver at '$WANT_RECEIVER'. What is present:"
+			warn "No Logitech receiver at '$WANT_RECEIVER'. What is present:"
 			printf '%s\n' "$all" | print_receiver_table >&2
-			die "pick one of the nodes listed above."
+			die "pick one of the receivers listed above."
 		fi
-		IFS=$'\t' read -r node pid kind busid product <<<"$line"
-		RECEIVER_NODE="/dev/$node"
-		RECEIVER_KIND="$kind"
-		RECEIVER_DESC="$product (046d:$pid) at USB $busid"
+		set_receiver_from_record "$line"
+		# Say so when the name given resolves to a different node on the same
+		# receiver, rather than silently using something the user did not type.
+		if [ -n "$RECEIVER_NODE" ] && [ "$RECEIVER_NODE" != "/dev/$node" ]; then
+			say "Using $RECEIVER_NODE -- the HID++ node of the same receiver as $node."
+		fi
 		return 0
 	fi
 
@@ -415,8 +563,8 @@ select_receiver() {
 		say ""
 		printf '%s\n' "$all" | print_receiver_table
 		say ""
-		# One reason per distinct kind present, not one per node: a c534 shows
-		# up on more than one interface and would otherwise repeat itself.
+		# One reason per distinct kind present, not one per receiver: two Bolt
+		# dongles would otherwise print the same paragraph twice.
 		local k
 		while read -r k; do
 			[ -n "$k" ] || continue
@@ -435,10 +583,7 @@ select_receiver() {
 	count="$(printf '%s\n' "$supported" | wc -l)"
 
 	if [ "$count" -eq 1 ]; then
-		IFS=$'\t' read -r node pid kind busid product <<<"$supported"
-		RECEIVER_NODE="/dev/$node"
-		RECEIVER_KIND="$kind"
-		RECEIVER_DESC="$product (046d:$pid) at USB $busid"
+		set_receiver_from_record "$supported"
 		return 0
 	fi
 
@@ -457,7 +602,7 @@ select_receiver() {
 		warn "Pairing writes to whichever receiver is chosen, and choosing wrong"
 		warn "silently pairs your device to the other dongle. Re-run naming one:"
 		warn ""
-		printf '%s\n' "$supported" | while IFS=$'\t' read -r node _ _ _ _; do
+		printf '%s\n' "$supported" | while IFS=$'\t' read -r node _ _ _ _ _; do
 			warn "    mister-pair-logitech --receiver $node"
 		done
 		warn ""
@@ -466,10 +611,8 @@ select_receiver() {
 
 	if [ -x "$DIALOG" ] && [ -t 1 ]; then
 		local -a menu=()
-		i=1
-		while IFS=$'\t' read -r node pid kind busid product; do
+		while IFS=$'\t' read -r node pid kind busid product allnodes; do
 			menu+=("$node" "$product (046d:$pid) USB $busid")
-			i=$((i + 1))
 		done <<<"$supported"
 		answer="$("$DIALOG" --clear --title " Which receiver? " \
 			--timeout "$PROMPT_TIMEOUT" \
@@ -485,14 +628,10 @@ select_receiver() {
 
 	[ -n "$answer" ] || die "no receiver chosen; nothing was changed."
 
-	node="${answer##*/}"
-	line="$(printf '%s\n' "$supported" | awk -F'\t' -v n="$node" '$1 == n')"
+	line="$(match_receiver "${answer##*/}" "$supported")"
 	[ -n "$line" ] || die "'$answer' is not one of the receivers listed above."
 
-	IFS=$'\t' read -r node pid kind busid product <<<"$line"
-	RECEIVER_NODE="/dev/$node"
-	RECEIVER_KIND="$kind"
-	RECEIVER_DESC="$product (046d:$pid) at USB $busid"
+	set_receiver_from_record "$line"
 }
 
 require_supported_receiver() {
@@ -505,6 +644,14 @@ require_supported_receiver() {
 		kind_refusal_reason "$RECEIVER_KIND" | indent_wrapped 68 "  "
 		say ""
 		exit 1
+	fi
+
+	# A supported family with no node ltunify would accept should not be
+	# reachable -- every Unifying and Nano receiver has one. Checked anyway,
+	# because the alternative is `ltunify -d ""`, which silently falls back to
+	# the auto-detection this whole script exists to avoid.
+	if [ -z "$RECEIVER_NODE" ]; then
+		die "$RECEIVER_DESC is a receiver ltunify supports, but no hidraw node on it is bound to a driver ltunify can use. Check 'ls -l /sys/class/hidraw/*/device/driver' and please report this."
 	fi
 }
 
@@ -522,17 +669,25 @@ show_slots() {
 }
 
 cmd_list() {
-	local all node pid kind busid product
+	local all node pid kind busid product allnodes
 
 	all="$(enumerate_receivers)"
 	[ -n "$all" ] || { say "No Logitech receiver found."; exit 1; }
 
-	while IFS=$'\t' read -r node pid kind busid product; do
+	while IFS=$'\t' read -r node pid kind busid product allnodes; do
 		rule
-		say "/dev/$node -- $product (046d:$pid) at USB $busid"
+		say "$product (046d:$pid) at USB $busid"
 		say "$(receiver_kind_label "$kind")"
+		if [ "$node" = "-" ]; then
+			say "hidraw nodes: $allnodes (none of them usable by ltunify)"
+		else
+			case "$allnodes" in
+				*,*) say "hidraw nodes: $allnodes (using /dev/$node)" ;;
+				*)   say "hidraw node: /dev/$node" ;;
+			esac
+		fi
 		rule
-		if kind_is_supported "$kind"; then
+		if kind_is_supported "$kind" && [ "$node" != "-" ]; then
 			show_slots "/dev/$node"
 		else
 			say "  (slots cannot be read -- ltunify does not speak this"

@@ -23,16 +23,23 @@
 # WHAT IT CANNOT DO, stated here because the limits are the reason a wrapper
 # exists at all (rootfs-overlay/usr/sbin/mister-pair-logitech):
 #
-#   * BOLT RECEIVERS (046d:c548) ARE NOT SUPPORTED. Bolt speaks a different
-#     pairing protocol. hid-logitech-dj binds Bolt as "logitech-djreceiver" all
-#     the same, so ltunify's auto-detection (open_hidraw(), ltunify.c:1158)
-#     happily selects one and then fails at the register write. The wrapper
-#     classifies the receiver by USB product ID and refuses up front.
-#   * LIGHTSPEED / POWERPLAY gaming receivers (c539/c53a/c53f/c543) likewise.
+#   * LIGHTSPEED / POWERPLAY (c539/c53a/c53f/c543) and 27 MHz (c51b) receivers
+#     bind as "logitech-djreceiver" identically to Unifying ones, so they pass
+#     ltunify's driver-name test in open_hidraw() (ltunify.c:1158) and then fail
+#     at the register write, or time out.
+#   * BOLT RECEIVERS (046d:c548) fail the OTHER way. On this kernel Bolt is not
+#     in hid-logitech-dj's device table at all -- hid-multitouch claims it -- so
+#     ltunify's driver-name test rejects it and reports "No Logitech Unifying
+#     Receiver device found" at somebody looking straight at the dongle. The
+#     wrapper classifies by USB product ID independently of driver so it can say
+#     what is actually plugged in.
 #   * "Assume that the first match is the receiver" (ltunify.c:1188) -- with two
 #     receivers plugged in, which is EXACTLY the re-pair case, it silently picks
-#     whichever hidraw node globbed first. The wrapper enumerates them all and
-#     makes the choice explicit through ltunify's own -d/--device escape hatch.
+#     whichever hidraw node globbed first. The wrapper groups nodes by physical
+#     USB device and makes the choice explicit through ltunify's own -d escape
+#     hatch. Grouping matters on its own: a Nano receiver owns TWO hidraw nodes
+#     (logi_dj_probe's -ENODEV guard for HID++-less interfaces is
+#     recvr_type_dj-only), so a per-node view shows one dongle as two.
 #
 # UPSTREAM IS FROZEN. Last commit 2020-06-14. That is a known and accepted
 # property of this pin, not an oversight: the HID++ 1.0 pairing registers it

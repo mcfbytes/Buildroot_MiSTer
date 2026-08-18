@@ -271,47 +271,70 @@ EOF
 # ---------------------------------------------------------------------------
 # Companion Scripts
 # ---------------------------------------------------------------------------
-# This project ships two Scripts/ entries and they arrive by ONE route: install.sh
-# puts both on the card, and this function replaces either if it later goes
-# missing (ADR 0026). It is the same shape as ensure_kill_switch above -- repair
-# the card's configuration on every run, so a user who only ever runs this script
-# ends up correct.
+# This project ships three Scripts/ entries and they arrive by ONE route:
+# install.sh puts them all on the card, and this function replaces any that
+# later go missing (ADR 0026). It is the same shape as ensure_kill_switch
+# above -- repair the card's configuration on every run, so a user who only ever
+# runs this script ends up correct.
 #
-# Needed because check_storage.sh drives a tool that lives in the ROOTFS, and a
+# Needed because both companion shims drive tools that live in the ROOTFS, and a
 # Linux update replaces the rootfs without ever writing to the FAT partition. A
-# user who onboarded before that tool existed would otherwise have the whole
-# mechanism installed and no way to launch it from the Scripts menu.
+# user who onboarded before one of those tools existed would otherwise have the
+# whole mechanism installed and no way to launch it from the Scripts menu. That
+# is not hypothetical -- it is exactly what happens to every existing
+# installation the first time it updates to an image that has a new tool in it.
 #
 # CREATE-ONLY, and quiet about it:
 #   * An existing file is never touched. It may be an older copy, or one the
-#     user edited; the shim is a launcher for a versioned rootfs tool, so an old
+#     user edited; the shims are launchers for versioned rootfs tools, so an old
 #     one still works and there is nothing to "upgrade".
 #   * A failure here is NOT fatal. This runs on the way to a Linux update, and
 #     a missing menu entry must never be the reason the image does not install.
+#
+# The marker in the third column is the name of the rootfs tool the shim execs.
+# It is what distinguishes the real script from a captive portal's login page,
+# and it must never be installed and run as root without that check.
 ensure_companion_scripts() {
 	[ -d "$SCRIPTS_DIR" ] || return 0
-	[ -e "$SCRIPTS_DIR/check_storage.sh" ] && return 0
 
-	local url="${MLM_CHECK_STORAGE_URL:-https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
-	local tmp="/tmp/check_storage.sh.$$"
+	# name | URL-override env var | content marker
+	local entry name override marker url tmp default_url
+	for entry in \
+		"check_storage.sh|MLM_CHECK_STORAGE_URL|mister-fsck-exfat" \
+		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech"
+	do
+		name="${entry%%|*}"
+		override="${entry#*|}"; override="${override%%|*}"
+		marker="${entry##*|}"
 
-	rm -f "$tmp"
-	# shellcheck disable=SC2086  # CURL_SSL carries an option PAIR and must split
-	if ! curl -fsSL --max-time 30 --retry 2 ${CURL_SSL:-} -o "$tmp" "$url" 2>/dev/null; then
+		[ -e "$SCRIPTS_DIR/$name" ] && continue
+
+		default_url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
+		# Indirect expansion, so each entry keeps its own documented override
+		# (MLM_CHECK_STORAGE_URL, MLM_PAIR_LOGITECH_URL) rather than one shared
+		# variable that could only ever point at a single file.
+		url="${!override:-$default_url}"
+		tmp="/tmp/$name.$$"
+
 		rm -f "$tmp"
-		return 0
-	fi
-
-	# Same guard as install.sh: a captive portal or a 404 page must never be
-	# installed as an executable and then run as root.
-	if [ -s "$tmp" ] && head -n 1 "$tmp" | grep -q '^#!' && grep -q 'mister-fsck-exfat' "$tmp"; then
-		if mv -f "$tmp" "$SCRIPTS_DIR/check_storage.sh" 2>/dev/null; then
-			chmod 0755 "$SCRIPTS_DIR/check_storage.sh" 2>/dev/null || true
-			say "Installed Scripts/check_storage.sh (storage check -- see the Scripts menu)"
-			return 0
+		# shellcheck disable=SC2086  # CURL_SSL carries an option PAIR and must split
+		if ! curl -fsSL --max-time 30 --retry 2 ${CURL_SSL:-} -o "$tmp" "$url" 2>/dev/null; then
+			rm -f "$tmp"
+			continue
 		fi
-	fi
-	rm -f "$tmp"
+
+		# Same guard as install.sh: a captive portal or a 404 page must never be
+		# installed as an executable and then run as root.
+		if [ -s "$tmp" ] && head -n 1 "$tmp" | grep -q '^#!' && grep -q "$marker" "$tmp"; then
+			if mv -f "$tmp" "$SCRIPTS_DIR/$name" 2>/dev/null; then
+				chmod 0755 "$SCRIPTS_DIR/$name" 2>/dev/null || true
+				say "Installed Scripts/$name (see the Scripts menu)"
+				continue
+			fi
+		fi
+		rm -f "$tmp"
+	done
+	return 0
 }
 
 # ---------------------------------------------------------------------------

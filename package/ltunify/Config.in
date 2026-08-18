@@ -1,0 +1,56 @@
+config BR2_PACKAGE_LTUNIFY
+	bool "ltunify"
+	select BR2_PACKAGE_LIBEXECINFO if !BR2_TOOLCHAIN_USES_GLIBC
+	help
+	  ltunify: pair, unpair and inspect devices on a Logitech
+	  Unifying receiver, from the command line. It talks to the
+	  receiver directly over /dev/hidraw*, writing HID++ 1.0
+	  registers, and links against nothing but libc (+ -lrt).
+
+	    ltunify list            show the six pairing slots
+	    ltunify pair [timeout]  open the receiver for pairing
+	    ltunify unpair idx      free a slot
+	    ltunify info idx        per-device detail
+	    ltunify receiver-info   receiver firmware/serial
+
+	  WHY IT IS HERE. Nothing else on this image can re-pair a
+	  Logitech device to a receiver. The kernel side is complete --
+	  CONFIG_HID_LOGITECH_DJ gives each paired device its own input
+	  node, and CONFIG_HID_LOGITECH_HIDPP its battery -- but the
+	  pairing handshake itself has no kernel interface and no
+	  sysfs knob. A device that arrives pre-paired in the box needs
+	  none of this; a replacement receiver, a bare dongle off eBay,
+	  or two devices being consolidated onto one dongle do.
+
+	  WHAT IT CANNOT DO. Only UNIFYING and NANO receivers:
+
+	    046d:c52b, c532   Unifying          supported
+	    046d:c52f, c534   Nano              supported
+	    046d:c548         Bolt              NOT supported
+	    046d:c539, c53a,
+	         c53f, c543   Lightspeed        NOT supported
+
+	  Bolt uses a different pairing protocol, and hid-logitech-dj
+	  binds it as "logitech-djreceiver" just like a Unifying one --
+	  so ltunify's own auto-detection will select a Bolt receiver
+	  and then fail against it. It also assumes the FIRST receiver
+	  it finds is the one you meant, which is wrong precisely when
+	  two are plugged in.
+
+	  Both hazards are why this image does not expect anyone to run
+	  ltunify by hand. /usr/sbin/mister-pair-logitech enumerates
+	  every receiver, classifies it by USB product ID, refuses the
+	  unsupported ones by name, and pins the chosen one with
+	  ltunify's -d flag. Scripts/pair_logitech.sh on the data
+	  partition launches it from the MiSTer Scripts menu.
+
+	  Nothing invokes ltunify automatically: no init script, no
+	  udev rule. Pairing is a deliberate act.
+
+	  Upstream has been frozen since 2020-06-14. Accepted -- see
+	  package/ltunify/ltunify.mk and docs/logitech-pairing.md,
+	  which also record why Solaar (maintained, covers Bolt) is
+	  not the choice here: it would pull GTK3 onto an image with
+	  no display server.
+
+	  https://github.com/Lekensteyn/ltunify

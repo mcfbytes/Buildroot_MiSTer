@@ -115,6 +115,15 @@ on:
       # note as rtl8852cu-morrownr above: it must appear HERE and in
       # HASH_SYNC_PACKAGES below.
       - "package/dualsensectl/dualsensectl.mk"
+      # ltunify (Logitech Unifying pairing CLI). Ordinary github archive pin --
+      # a commit SHA rather than a tag, which the generic loop in step 1 is
+      # indifferent to. Same both-lists-or-silent-failure note as above.
+      #
+      # Expected to be INERT: upstream's last commit is 2020-06-14, so this
+      # should never fire. That is not a reason to leave it out -- an entry that
+      # never fires costs nothing, and the alternative is a pin with no
+      # refresh path on the day the repository does wake up.
+      - "package/ltunify/ltunify.mk"
       - "scripts/fetch-sdcard-payload.sh"
 
   # Manual escape hatch -- nothing else can re-drive this workflow after a fix
@@ -195,7 +204,7 @@ jobs:
       # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
       # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
       # dualsensectl.hash.
-      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr dualsensectl"
+      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr dualsensectl ltunify"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

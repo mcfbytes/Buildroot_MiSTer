@@ -44,13 +44,14 @@ mister-payload/MiSTer.ini
 mister-payload/downloader.ini
 mister-payload/Scripts/
 mister-payload/Scripts/check_storage.sh
+mister-payload/Scripts/pair_logitech.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **29 entries** (7 directories, 22 files) for the base inventory. `check-sdcard.sh`
+That is **30 entries** (7 directories, 23 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 > **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
@@ -110,6 +111,26 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > either if it later goes missing (which is how users who onboarded before this feature
 > existed get the menu entry).
 
+> **Changed 2026-08-18** — one entry **added**, taking the base inventory from 29 to 30:
+> `mister-payload/Scripts/pair_logitech.sh` ([docs/logitech-pairing.md](../logitech-pairing.md)),
+> also staged by `stage_update_channel()`.
+>
+> It pairs a Logitech keyboard or mouse to a Unifying receiver. Everything else about
+> Logitech hardware on this board is already the kernel's job and needs nothing installed —
+> `CONFIG_HID_LOGITECH_DJ` gives every already-paired device its own input node — but the
+> pairing handshake itself has no kernel interface at all, so a replacement or second-hand
+> receiver cannot be bound to a device without it.
+>
+> The staged file is a **shim**, same shape and same reason as `check_storage.sh` above: the
+> tool is `/usr/sbin/mister-pair-logitech`, in the read-only rootfs, because it is
+> version-locked to the `ltunify` binary whose command grammar it drives and whose
+> always-exit-0 behaviour it works around. Both ship inside one `linux.img` and cannot drift.
+> So this entry is stable and has no reason to change again.
+>
+> It lands by the same route as the other two — the three are one set, and the sentence
+> above about `install.sh` / `uninstall.sh --remove-script` / `stage_update_channel()` /
+> `update_linux_modernization.sh` now covers all three rather than both.
+
 > **Changed 2026-07-27** — two edits that happen to cancel out in the count.
 > `mister-payload/linux/7za` was **added** (ADR 0023) and
 > `mister-payload/linux/zImage_dtb-rt` was **removed** (ADR 0021, amended
@@ -137,6 +158,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/update_all.sh` | `theypsilon/Update_All_MiSTer`, raw file at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/Scripts/wifi.sh` | `MiSTer-devel/Scripts_MiSTer`, `other_authors/wifi.sh` at a pinned commit | Commit + sha256 recorded by `scripts/fetch-sdcard-payload.sh` (see its `renovate.json` entry) |
 | `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares the core databases explicitly — `distribution_mister` (canonical URL from the Downloader's own `constants.py`), `jtcores` and `update_all_mister` — because shipping the file suppresses Update All's own default seeding. `distribution_mister` **must** be explicit here: `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some. Deliberately comment-free beyond a two-line header pointing at the docs; the explanation lives in `docs/user/onboarding.md`, since tooling rewrites this file and comments on database sections do not survive |
+| `mister-payload/Scripts/pair_logitech.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-pair-logitech` in the rootfs, which in turn drives `/usr/bin/ltunify` (`BR2_PACKAGE_LTUNIFY`). Passes no arguments deliberately: the tool's no-argument default is "pair", and it completes without asking anything when exactly one usable receiver is present — which matters because the person running this may have no keyboard, the one being paired being the only one. See [docs/logitech-pairing.md](../logitech-pairing.md) |
 | `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 
 `gamecontrollerdb/`, `mt32-rom-data/`, `soundfonts/` are copied wholesale from the stock

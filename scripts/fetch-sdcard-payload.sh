@@ -352,9 +352,9 @@ stage_update_channel() {
 	[ -d "$src" ] ||
 		die "update-channel payload dir not found: $src"
 
-	# Both Scripts, one loop. install.sh, uninstall.sh and the updater treat them
-	# as one set too -- see MLM_SCRIPTS in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh"
+	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
+	# as one set too -- see install_scripts() in install.sh (ADR 0026).
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

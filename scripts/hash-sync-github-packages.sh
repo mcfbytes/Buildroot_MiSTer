@@ -43,9 +43,16 @@
 # through review and then break the build at download time on master.
 # Reproducing the real hash needs a Go toolchain plus a fetch of every module
 # in go.sum; it is not a one-line curl and must not be automated as one.
-# azcopy's bump PRs are expected to arrive red (Renovate labels them
-# needs-manual-hash) until a human runs the recipe in package/azcopy/azcopy.hash.
-# See docs/azcopy.md section 5.
+#
+# WHAT ACTUALLY STOPS A STALE azcopy HASH, since it is not this script and not
+# the image build either: azcopy is not enabled in the defconfig, so build.yml
+# never compiles it and never exercises the pin. A version-only bump would
+# otherwise be entirely green with a hash matching nothing. The gate is the
+# "azcopy version/hash pin consistency" step in .github/workflows/lint.yml,
+# which fails any PR where AZCOPY_VERSION and the filename on azcopy.hash's
+# sha256 line disagree. Renovate additionally labels these PRs
+# needs-manual-hash. The recipe is in package/azcopy/azcopy.hash; see
+# docs/azcopy.md section 5.
 #
 # Generic loop, not one call site per package: every one of these .mk files
 # follows the identical Buildroot convention

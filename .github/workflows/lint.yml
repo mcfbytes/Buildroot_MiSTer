@@ -36,7 +36,9 @@ on:
       # a change to it has to be able to trigger this workflow.
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
-      - 'package/azcopy/azcopy-profile.sh'
+      # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
+      # directory feeds the version/hash consistency gate.
+      - 'package/azcopy/**'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
@@ -50,7 +52,9 @@ on:
       - 'scripts/**'
       - 'board/mister/de10nano/fat-payload/**'
       - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
-      - 'package/azcopy/azcopy-profile.sh'
+      # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
+      # directory feeds the version/hash consistency gate.
+      - 'package/azcopy/**'
       - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
@@ -209,6 +213,42 @@ jobs:
             esac
           done < <(git ls-files 'board/mister/de10nano/rootfs-overlay/etc/init.d/*')
           exit "$rc"
+
+      # azcopy's hash pin cannot be refreshed by renovate-hash-sync.yml (it is a
+      # golang-package -- the hashed file is the post-`go mod vendor` -go2
+      # tarball, not the GitHub archive; see that script's header). It is also
+      # NOT enabled in the defconfig, so build.yml never builds it and never
+      # exercises the pin either. Between those two facts a Renovate bump of
+      # AZCOPY_VERSION alone would sail through entirely green, carrying a hash
+      # that matches nothing -- and the breakage would surface later, to
+      # whoever first enables the package.
+      #
+      # This is the gate that closes that. It is deliberately narrow and needs
+      # no toolchain, no Go and no network: if AZCOPY_VERSION and the tarball
+      # filename on azcopy.hash's sha256 line disagree, the hash is stale by
+      # construction. It fires on any PR touching package/azcopy -- a Renovate
+      # bump or a hand edit alike -- and it is why the "fails closed" language
+      # in azcopy.hash / renovate.json / docs is now true rather than aspirational.
+      #
+      # It cannot catch "same version, different bytes"; nothing cheap can.
+      # That case is caught at download time by BR2_DOWNLOAD_FORCE_CHECK_HASHES.
+      - name: azcopy version/hash pin consistency
+        run: |
+          set -euo pipefail
+          mk=package/azcopy/azcopy.mk
+          hash=package/azcopy/azcopy.hash
+          ver=$(sed -n 's/^AZCOPY_VERSION[[:space:]]*=[[:space:]]*//p' "$mk" | tr -d '[:space:]')
+          if [ -z "$ver" ]; then
+            echo "::error file=$mk::could not read AZCOPY_VERSION"
+            exit 1
+          fi
+          want="azcopy-${ver}-go2.tar.gz"
+          got=$(awk '$1 == "sha256" && $3 ~ /-go2\.tar\.gz$/ { print $3 }' "$hash")
+          if [ "$got" != "$want" ]; then
+            echo "::error file=$hash::stale hash pin -- AZCOPY_VERSION is '$ver' so this file must pin '$want', but it pins '${got:-<nothing>}'. The hash CANNOT be auto-refreshed for a golang-package; regenerate it by hand using the recipe in $hash (docs/azcopy.md section 5)."
+            exit 1
+          fi
+          echo "azcopy pin consistent: $want"
 
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the

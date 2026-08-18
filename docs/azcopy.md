@@ -423,10 +423,24 @@ It also means two things you have to remember:
    deliberately **absent** from `HASH_SYNC_PACKAGES` in
    `.github/workflows/renovate-hash-sync.yml`. Do not add it.
 2. **Renovate still proposes bumps** (`renovate.json` has a custom manager over
-   `AZCOPY_VERSION`), and every one of those PRs **fails closed** on the stale hash
-   until a human regenerates it. That is the same deliberate posture the RT kernel pin
-   takes: an automated version bump you must consciously bless, rather than one that
-   silently self-approves.
+   `AZCOPY_VERSION`), and every one of those PRs must be blessed by a human who
+   regenerates the hash. **What enforces that is worth being precise about, because the
+   obvious answers are all wrong here:** this workflow does not (azcopy is excluded from
+   it), and neither does the image build — azcopy is not enabled in the defconfig, so
+   `build.yml` never compiles it and never exercises the pin. A version-only bump would
+   otherwise go entirely green carrying a hash that matches nothing, and the breakage
+   would surface much later, to whoever first enables the package.
+
+   The gate is the **`azcopy version/hash pin consistency` step in
+   `.github/workflows/lint.yml`**. It fails any PR where `AZCOPY_VERSION` and the tarball
+   filename on `azcopy.hash`'s `sha256` line disagree — which a version bump without a
+   regenerated hash always does. It needs no toolchain, no Go and no network, and it
+   fires on a hand edit as readily as on a Renovate bump. Renovate additionally labels
+   these PRs `needs-manual-hash`, which is a signal to the reviewer, not the enforcement.
+
+   It cannot catch "same version, different bytes"; nothing cheap can. That case is
+   caught at download time by `BR2_DOWNLOAD_FORCE_CHECK_HASHES`, the moment anyone builds
+   the package.
 
 The regeneration recipe lives in `azcopy.hash`'s own header, next to the value it
 produces, so it cannot drift away from it. Two things about it are worth repeating

@@ -2536,9 +2536,23 @@ against azcopy that produces the hash of the pre-vendoring tarball — a
 plausible-looking wrong value that would turn a green bump PR into a build
 that fails at download time on master. Reproducing the real hash needs a Go
 toolchain and a fetch of every module in `go.sum`; it is not a one-line curl
-and must not be automated as if it were. azcopy's bump PRs are therefore
-**expected to arrive red** (Renovate labels them `needs-manual-hash`) until a
-human runs the recipe in `package/azcopy/azcopy.hash`. See `docs/azcopy.md` §5.
+and must not be automated as if it were.
+
+**What actually enforces that** is worth being precise about, because the obvious
+answer is wrong. It is *not* this workflow (azcopy is excluded from both
+`HASH_SYNC_PACKAGES` and the `paths:` filter) and it is *not* the image build
+either — azcopy is not enabled in the defconfig, so `build.yml` never compiles it
+and never exercises the pin. A Renovate bump of `AZCOPY_VERSION` alone would
+otherwise go entirely green carrying a hash that matches nothing, and the
+breakage would surface later, to whoever first enables the package.
+
+The gate is the **`azcopy version/hash pin consistency` step in `lint.yml`**: it
+fails any PR where `AZCOPY_VERSION` and the tarball filename on `azcopy.hash`'s
+`sha256` line disagree. Cheap (no toolchain, no Go, no network), and it fires on
+a hand edit as readily as on a Renovate bump. Renovate additionally labels these
+PRs `needs-manual-hash`. It cannot catch "same version, different bytes" —
+nothing cheap can; that case is caught at download time by
+`BR2_DOWNLOAD_FORCE_CHECK_HASHES`. See `docs/azcopy.md` §5.
 
 ---
 

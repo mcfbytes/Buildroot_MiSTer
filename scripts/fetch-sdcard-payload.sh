@@ -117,7 +117,7 @@ readonly SDCARD_CORES
 # payload.sh` is the bump record; deliberately NOT restated as an "as of
 # <date>" comment here, which Renovate cannot update and which would
 # therefore start lying on the first automatic bump.
-readonly PINNED_UPDATE_ALL_COMMIT="c22f3b39bdd8d3e54175421081d155cea999b76b"
+readonly PINNED_UPDATE_ALL_COMMIT="bcae6992f9575e3e292d5d3e89ef8a1700681097"
 readonly PINNED_UPDATE_ALL_URL="https://raw.githubusercontent.com/theypsilon/Update_All_MiSTer/${PINNED_UPDATE_ALL_COMMIT}/update_all.sh"
 readonly PINNED_UPDATE_ALL_SHA256="15db3c6050b5ee1960391344afe248ee49f25bdaae311051baeb7e77ab8c68f4"
 readonly PINNED_UPDATE_ALL_SIZE="8628"

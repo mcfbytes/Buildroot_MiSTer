@@ -1,0 +1,84 @@
+# THE FIRST LINE BELOW IS NOT THE HASH OF THE GITHUB TARBALL. Read this before
+# "correcting" it against https://github.com/Azure/azure-storage-azcopy.
+#
+# azcopy is a golang-package, so Buildroot sets
+#   AZCOPY_DOWNLOAD_POST_PROCESS = go        (package/pkg-golang.mk)
+# which means the file that lands in $(BR2_DL_DIR)/azcopy/ -- and therefore the
+# only file whose hash is ever checked -- is NOT what GitHub served. Buildroot
+# downloads azcopy-10.32.7.tar.gz, runs support/download/go-post-process on it
+# (which runs `go mod vendor` inside the tree, adding a 57 MiB vendor/ directory
+# and leaving ~1.7 GiB in the host module cache on the way), and repacks the
+# result -- 18,664,891 bytes for this version -- DETERMINISTICALLY via mk_tar_gz in
+# support/download/helpers -- POSIX format, sorted file list, fixed mtime,
+# --owner=0 --group=0, gzip -6 -n. The output is azcopy-10.32.7-go2.tar.gz.
+# The intermediate GitHub tarball is never hashed at all, which is just as
+# well: GitHub's archive gzip output has changed under projects before.
+#
+# So the hash is "locally computed" in a stronger sense than usual -- it
+# certifies the vendored dependency set as much as the AzCopy sources, and it
+# cannot be derived by fetching a URL. BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in the
+# defconfig is what makes it load-bearing rather than decorative.
+#
+# HOW TO REGENERATE IT ON A VERSION BUMP -- this is mandatory and manual.
+#
+# BUDGET HOURS FOR THE FIRST RUN, AND DO IT IN A WARM TREE. `azcopy-source`
+# looks like a download-only target and is not: pkg-golang.mk puts host-go in
+# AZCOPY_DOWNLOAD_DEPENDENCIES, go.mk puts `toolchain` in
+# HOST_GO_DEPENDENCIES_CGO, and pkg-generic.mk makes the -source target depend
+# on both. So on a clean output/ this builds the entire cross toolchain and
+# host-go's five-stage bootstrap BEFORE it reaches the download whose error
+# message you are here for. It is not hung. On a tree that has built azcopy
+# before, it is a couple of minutes.
+#
+#     # 1. bump AZCOPY_VERSION in azcopy.mk, then, from the repo root:
+#     make mister_de10nano_defconfig
+#     make azcopy-source          # EXPECTED TO FAIL, on the stale hash below
+#
+#     # 2. read the real hash straight out of the failure. Buildroot prints it:
+#     #     ERROR: azcopy-<ver>-go2.tar.gz has wrong sha256 hash:
+#     #     ERROR: expected: <the stale value from this file>
+#     #     ERROR: got     : <THE VALUE YOU WANT>
+#     # Paste the "got" value into the sha256 line below, and update the
+#     # filename on it to the new version.
+#
+#     # 3. re-run, and this time it must pass:
+#     make azcopy-source
+#
+#     # 4. re-check the two license lines by hand. `go mod vendor` does not
+#     #    touch them, but a MICROSOFT change to LICENSE/NOTICE.txt would, and
+#     #    step 3 would NOT catch it -- license-file hashes are only consulted
+#     #    by `make legal-info`, never by the download check:
+#     tar -xzOf dl/azcopy/azcopy-<new-version>-go2.tar.gz \
+#         azcopy-<new-version>/LICENSE | sha256sum
+#
+# DO NOT try to shortcut step 2 by turning BR2_DOWNLOAD_FORCE_CHECK_HASHES off
+# and running `sha256sum dl/azcopy/*-go2.tar.gz`. That does not work and the
+# reason is worth knowing: FORCE_CHECK_HASHES only governs what happens when a
+# file has NO hash listed. A hash that IS listed is always checked, so the
+# stale value here still fails the download -- and Buildroot DELETES the
+# mismatching file, so there is nothing left in dl/ to sha256sum afterwards.
+# The error message is the only place the value survives. (Both halves of that
+# were established the hard way while writing this package, not reasoned about.)
+#
+# WHY scripts/hash-sync-github-packages.sh CANNOT DO THIS FOR US, and why
+# azcopy is deliberately absent from HASH_SYNC_PACKAGES in
+# .github/workflows/renovate-hash-sync.yml: that script's whole method is
+# `curl <archive-url> | sha256sum`. For this package that produces the hash of
+# the pre-vendoring tarball -- a plausible-looking, wrong value that would turn
+# a green bump PR into a build that fails at download time on master. The
+# reproduction needs a Go toolchain and a network fetch of every module in
+# go.sum; it is not a one-line curl and must not be automated as if it were.
+#
+# Renovate still WATCHES the version (renovate.json, custom manager over
+# AZCOPY_VERSION), so bumps are still proposed. They just fail closed on this
+# hash until a human runs the recipe above -- the same deliberate posture the
+# RT kernel pin takes.
+sha256  c04793e0d7cd5e23961c3a26b3c27fb7eba99e1db32a80454f53f4b5df7ff59c  azcopy-10.32.7-go2.tar.gz
+# LICENSE and NOTICE.txt, both at the tree root, both hashed from the pristine
+# v10.32.7 tag. LICENSE is the MIT text (Copyright (c) 2017 Microsoft);
+# NOTICE.txt is Microsoft's third-party attribution file, listing the MIT /
+# Apache-2.0 / BSD-2-Clause / BSD-3-Clause terms of everything AzCopy links in.
+# Both are unaffected by the go-vendoring above, so unlike the tarball these
+# two ARE ordinary `sha256sum` values of files you can fetch and check.
+sha256  e9ca6f8518c969a4d3bb98030581771975a90730a27d294123855c90a31eddcc  LICENSE
+sha256  0554ab1ee35cc4d77b48353fc1e9b93069b3e29822ab4de4d9a34b4c5d5bc98f  NOTICE.txt

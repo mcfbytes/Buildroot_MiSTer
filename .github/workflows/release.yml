@@ -592,13 +592,158 @@ jobs:
           retention-days: 14
 
   # ============================================================================
+  # build-azcopy — builds the optional azcopy download (docs/azcopy.md).
+  #
+  # A SEPARATE JOB, AND THAT IS THE WHOLE POINT. azcopy is deliberately NOT in
+  # the image (BR2_PACKAGE_AZCOPY is unset; 39 MiB, see docs/azcopy.md §1), so
+  # the one thing this must never do is leak into linux.img. Building it in the
+  # `build` job's output/ would do exactly that, and not hypothetically:
+  # scripts/mk-sdcard.sh REGENERATES linux.img from that same output/ after the
+  # image has already been staged ("snapshots that image BEFORE its own step-2
+  # relink regenerates it" -- its own header). Anything sitting in output/target
+  # at that moment ships. A different runner with a different checkout cannot
+  # make that mistake, at any point in the step order, no matter what is added
+  # to `build` later.
+  #
+  # It also costs nothing on the critical path. `build` is budgeted at 355 min
+  # against a hard 360-min cap and has already overrun it once (see that job's
+  # timeout comment); this runs concurrently instead of eating that ~36 min of
+  # slack. The trade is one extra runner: measured ~4-5 min for host-go plus
+  # ~12 s for azcopy itself, on top of the target toolchain.
+  #
+  # STATIC (CGO_ENABLED=0), for the same reason package/7zip ships a static
+  # /media/fat/linux/7za: a downloaded binary OUTLIVES the rootfs that put it
+  # there. It has to survive a rollback to an older linux.img, or to a stock
+  # image whose glibc is years behind ours. A dynamic build dies at exec with
+  # GLIBC_2.xx-not-found; static removes the failure mode. Costs the pure-Go
+  # DNS resolver instead of glibc NSS, which is not a difference anyone will
+  # notice here.
+  # ============================================================================
+  build-azcopy:
+    name: Build azcopy (optional download)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install build dependencies
+        run: |
+          set -eu
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            build-essential bash bc bison flex gawk \
+            git patch gzip bzip2 xz-utils cpio unzip rsync \
+            file wget curl ca-certificates perl \
+            python3 python3-dev \
+            libssl-dev libncurses-dev pkg-config texinfo \
+            qemu-user
+
+      # A DISTINCT cache key from the `build` job's br-dl-* on purpose. Sharing
+      # it would let whichever job wrote first publish its dl/ under that key --
+      # and this job's dl/ holds only the Buildroot tarball, azcopy and the Go
+      # bootstrap, so if it won the race it would hand the image build a dl/
+      # cache missing almost everything. Immutable-once-written caches make that
+      # a silent slow rebuild, not an error.
+      - name: Cache dl/ (azcopy job only)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: dl/
+          key: br-dl-azcopy-${{ hashFiles('Makefile', 'package/azcopy/azcopy.mk', 'package/azcopy/azcopy.hash') }}
+          restore-keys: br-dl-azcopy-
+
+      # `echo >> .config` + olddefconfig is the standard Buildroot idiom for
+      # "the committed defconfig, plus this one symbol". It is used rather than
+      # a committed fragment because there is exactly one symbol and no make
+      # target to hang a fragment off (unlike configs/mister_rt.fragment, which
+      # `make rt` exists to apply). BR2_PACKAGE_HOST_GO and
+      # BR2_PACKAGE_CA_CERTIFICATES come along via the package's own `select`s.
+      - name: Configure (defconfig + azcopy)
+        run: |
+          set -eu
+          make mister_de10nano_defconfig
+          echo 'BR2_PACKAGE_AZCOPY=y' >> output/.config
+          make olddefconfig
+          grep -qx 'BR2_PACKAGE_AZCOPY=y' output/.config
+
+      # AZCOPY_GO_ENV is appended after HOST_GO_TARGET_ENV by pkg-golang.mk, so
+      # this CGO_ENABLED wins over the =1 that config would otherwise give. Set
+      # on the command line rather than in azcopy.mk because it is a property of
+      # THIS artifact, not of the package: an in-image azcopy should keep cgo and
+      # glibc's NSS resolver.
+      - name: Build azcopy (static)
+        run: make azcopy AZCOPY_GO_ENV=CGO_ENABLED=0
+
+      # Fail loudly here rather than ship a binary nobody ran. `file` proves the
+      # static link the whole artifact rationale rests on, and qemu-user proves
+      # it actually executes on ARM -- the check that would have caught the
+      # keyctl SIGILL (package/azcopy/0002-*) had it been in a startup path.
+      - name: Verify the artifact
+        run: |
+          set -eu
+          bin=output/target/usr/bin/azcopy
+          ver=$(sed -n 's/^AZCOPY_VERSION[[:space:]]*=[[:space:]]*//p' package/azcopy/azcopy.mk | tr -d '[:space:]')
+          file "$bin"
+          file "$bin" | grep -q 'statically linked' || {
+            echo "::error::azcopy is not statically linked -- CGO_ENABLED=0 did not take effect" >&2
+            exit 1
+          }
+          got=$(qemu-arm "$bin" --version)
+          echo "$got"
+          [ "$got" = "azcopy version $ver" ] || {
+            echo "::error::built azcopy reports '$got', expected 'azcopy version $ver'" >&2
+            exit 1
+          }
+
+      - name: Stage azcopy-armv7 asset
+        run: |
+          set -eu
+          ver=$(sed -n 's/^AZCOPY_VERSION[[:space:]]*=[[:space:]]*//p' package/azcopy/azcopy.mk | tr -d '[:space:]')
+          mkdir -p azcopy-dist
+          # Strip with the build's own cross strip, exactly as target-finalize
+          # would (package/Makefile.in's STRIPCMD) -- `make azcopy` stops short
+          # of that step, and the difference is ~16 MiB.
+          #
+          # Resolved into an array and asserted to be exactly one, rather than
+          # $(echo <glob>). That shorthand degrades badly in both directions:
+          # zero matches leaves the literal pattern and >1 leaves a
+          # space-separated list, and each then fails at the strip invocation
+          # with an error naming a path that never existed. It is unambiguous in
+          # this tree today -- but "today" is doing real work in that sentence,
+          # and a second cross toolchain appearing under output/host/bin is
+          # exactly the kind of change nobody would think to re-check here.
+          mapfile -t strips < <(ls output/host/bin/*-linux-*-strip 2>/dev/null || true)
+          if [ "${#strips[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one cross strip matching output/host/bin/*-linux-*-strip, found ${#strips[@]}: ${strips[*]-<none>}" >&2
+            exit 1
+          fi
+          cp output/target/usr/bin/azcopy azcopy-dist/azcopy
+          "${strips[0]}" --remove-section=.comment --remove-section=.note azcopy-dist/azcopy
+          ( cd azcopy-dist && xz -9 -T0 -c azcopy > "azcopy-${ver}-armv7.xz" && rm -f azcopy )
+          ( cd azcopy-dist && sha256sum "azcopy-${ver}-armv7.xz" > "azcopy-${ver}-armv7.xz.sha256" )
+          ls -l azcopy-dist/
+
+      - name: Upload azcopy asset
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: azcopy-dist-${{ github.sha }}
+          path: azcopy-dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  # ============================================================================
   # publish — attests provenance and creates the GitHub Release. Separate job
   # for the elevated write scopes (contents, id-token, attestations) the build
   # jobs must NOT have. See docs/ci.md#publish-job-scope.
   # ============================================================================
   publish:
     name: Attest provenance + create GitHub Release
-    needs: build
+    # build-azcopy is a hard dependency, not a soft one: a release that
+    # silently dropped the optional azcopy download because that job failed
+    # would look identical to a release that never carried it. Fail the
+    # publish instead. See docs/ci.md#azcopy-release-asset.
+    needs: [build, build-azcopy]
     runs-on: ubuntu-26.04
 
     # Only ever create a Release for a TAG. On a tag push this is always true, so
@@ -620,6 +765,15 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-dist-${{ github.sha }}
+          path: dist
+
+      # Into the same dist/ the main bundle landed in, so the assets array
+      # below stays one flat list. Separate artifact because it comes from a
+      # separate job -- see build-azcopy's header for why that job is separate.
+      - name: Download azcopy asset
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: azcopy-dist-${{ github.sha }}
           path: dist
 
       - name: List downloaded assets
@@ -718,6 +872,18 @@ jobs:
           assets+=("${variant_assets[@]}")
           [ -f dist/sdcard.img.xz ] && assets+=(dist/sdcard.img.xz)
           [ -f dist/sdcard-full.img.xz ] && assets+=(dist/sdcard-full.img.xz)
+          # azcopy: globbed rather than named because the filename carries the
+          # package's version (azcopy-<ver>-armv7.xz), and this job has no
+          # checkout to read AZCOPY_VERSION from. Unlike the sdcard lines above
+          # this is NOT optional -- build-azcopy is in `needs:` and uploads with
+          # if-no-files-found: error, so an empty glob here means something
+          # upstream lied and the release must not go out half-assembled.
+          mapfile -t azcopy_assets < <(ls dist/azcopy-*-armv7.xz dist/azcopy-*-armv7.xz.sha256 2>/dev/null || true)
+          if [ "${#azcopy_assets[@]}" -ne 2 ]; then
+            echo "::error::expected dist/azcopy-<ver>-armv7.xz and its .sha256 from the build-azcopy job, found ${#azcopy_assets[@]} file(s); refusing to publish a release missing the optional azcopy download" >&2
+            exit 1
+          fi
+          assets+=("${azcopy_assets[@]}")
           # Added unconditionally (build-kernel always runs, so at least one
           # variant is guaranteed — the verify step above already failed the
           # job otherwise). The release-notes prose below is a hand-edit per
@@ -726,6 +892,8 @@ jobs:
           notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json.
 
           **Complete corresponding source (GPL/LGPL):** every binary here is built from free/open-source software with Buildroot. \`legal-info.tar.gz\` (main image) and \`legal-info-rt.tar.gz\` (RT kernel) ship the SBOM — \`manifest.csv\` listing each package's exact version, license, and pinned upstream source URL+hash — plus every license text, all local patches we apply, and \`buildroot.config\`. The upstream source archives themselves are deliberately NOT bundled: they are the freely-available, hash-pinned upstreams \`manifest.csv\` points to, and re-bundling ~1.4 GiB of them (591 MiB of that the linux-firmware blob alone) into every release only duplicated what upstream + this repo already provide. The complete corresponding source for every GPL/LGPL component is (a) the upstream archives at the exact versions/URLs in \`manifest.csv\`, byte-verifiable against their recorded hashes, plus (b) this repository at tag \`${{ github.ref_name }}\`, which carries the full Buildroot configuration and all applied patches and rebuilds the identical images with \`make\`. **Written offer:** for at least three years from this release, we will additionally provide a complete machine-readable copy of the corresponding source for any component on request — open an issue at https://github.com/${{ github.repository }}.
+
+          **azcopy (optional, ARMv7):** \`azcopy-<version>-armv7.xz\` is Microsoft's Azure Storage CLI, for backing the card's \`saves\`/\`savestates\`/\`screenshots\`/\`config\` up to Azure Storage from the board itself. It is a STANDALONE DOWNLOAD and is deliberately **not** in \`linux.img\`: at 39 MiB installed it would be the second-largest thing in the image after Samba, for a tool most owners will never run — and almost all of that size is Google Cloud Storage support that a MiSTer never executes (an empty Go binary is 1.2 MB; +Azure SDK 5.5 MB; +GCS 27.6 MB). Statically linked on purpose, so it keeps working if you roll back to an older image or to stock. To use it: \`xz -d\` it onto \`/media/fat\`, \`chmod +x\`, and set \`AZCOPY_JOB_PLAN_LOCATION\`/\`AZCOPY_LOG_LOCATION\` under \`/media/fat\` plus \`AZCOPY_BUFFER_GB=0.125\` — that last one matters, because AzCopy otherwise sizes its buffer cache at 1 GiB on a board with 511 MiB of RAM. Microsoft does not build or test AzCopy for 32-bit ARM; this build carries two local patches to make it compile and to stop every \`azcopy login\` dying on SIGILL. See \`docs/azcopy.md\` for the full write-up and the on-hardware test record.
 
           **PREEMPT_RT beta (Linux 7.2):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; \`legal-info-rt.tar.gz\` carries the RT kernel's applied patches + SBOM (license texts and manifest.csv with the pinned upstream source URL+hash) — the same patches-only form as the main \`legal-info.tar.gz\`, covered by the corresponding-source note above. It is a MANUAL download only: the sdcard installer image deliberately does NOT carry it (ADR 0021 item 4, reversed 2026-07-27 — an unvalidated real-time kernel does not belong on every user's card). Status: build-verified only. Earlier pins booted and ran MiSTer on one DE10-Nano — 7.2-rc4 on 2026-07-20 and 7.2-rc7 on 2026-08-14 — but boot is a per-version claim, so treat the kernel in THIS release as unvalidated on hardware unless a maintainer says otherwise. (This paragraph is hand-maintained prose and its version can go stale ahead of the pin; \`linux-rt.config\` in this same release is authoritative for what was actually built.) The pin tracks the 7.2.y line as of 2026-08-17 — it no longer follows mainline \`-rc\`, so this caveat is re-opened by a point release rather than weekly. No latency measurement has been taken on any version."
           # Upsert, not create-only: a tagged push already created the draft,

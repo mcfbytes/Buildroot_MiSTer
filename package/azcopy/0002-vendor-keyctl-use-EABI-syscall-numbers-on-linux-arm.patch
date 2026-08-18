@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Mon, 17 Aug 2026 00:00:00 +0000
+Subject: [PATCH 2/2] vendor/keyctl: use EABI syscall numbers on linux/arm
+
+github.com/wastore/keyctl carries the syscall numbers it needs as a
+per-GOARCH constant file. The linux/arm file uses the OLD ABI numbering:
+
+    syscall_keyctl   uintptr = 9437495   // 0x900137 = 0x900000 + 311
+    syscall_add_key  uintptr = 9437493   // 0x900135 = 0x900000 + 309
+    syscall_setfsgid uintptr = 9437323   // 0x90008b = 0x900000 + 139
+
+0x900000 is __NR_SYSCALL_BASE for ARM OABI. Go's linux/arm port is EABI,
+where the base is 0 and the numbers are plainly 311 / 309 / 139
+(arch/arm/tools/syscall.tbl). Every one of the three constants above is
+exactly the right EABI number with the OABI base bolted on, so the sibling
+files for 386/arm64/ppc are all correct and only this one is wrong -- it
+was evidently transcribed from an OABI table.
+
+The consequence is not a graceful ENOSYS. AzCopy caches its OAuth token in
+the kernel session keyring, so EVERY `azcopy login*` subcommand goes
+through here, and the bogus syscall number takes the whole process out:
+
+    $ azcopy login status
+    SIGILL: illegal instruction
+    PC=0x1edf4 m=0 sigcode=4
+    goroutine 1 gp=0x4804148 m=0 mp=0x27226f8 [syscall]:
+    syscall.Syscall6(0x900137, 0x0, 0xfffffffd, 0x1, 0x0, 0x0, 0x0)
+            syscall/syscall_linux.go:96 +0x8
+    github.com/wastore/keyctl.keyctl(0x0, {0x5093a5c, 0x2, 0x2})
+            github.com/wastore/keyctl@v0.3.1/sys_linux.go:114 +0x16c
+    github.com/wastore/keyctl.newKeyring(0xfffffffd)
+
+With the three constants corrected the same command answers normally:
+
+    $ azcopy login status
+    INFO: You are currently not logged in. Please login using 'azcopy login'
+
+(Both transcripts are from the ARMv7 binary run under qemu-arm; see
+docs/azcopy.md for the full test matrix and what it does and does not
+prove.)
+
+Provenance
+----------
+Origin:       Not upstream. Written for this repo against
+              github.com/wastore/keyctl v0.3.1 as vendored by
+              Azure/azure-storage-azcopy v10.32.7.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Upstream:     NO -- not submitted, to either wastore/keyctl (the fork
+              AzCopy depends on) or jsipprell/keyctl (the parent it was
+              forked from; the same OABI constants are in both). Both
+              repos have been dormant for years. Worth sending; not sent.
+Disposition:  RUNTIME BLOCKER for the `login` command family. Not a build
+              blocker -- the package compiles and every non-login
+              subcommand works without it -- so it must NOT be dropped
+              silently on a version bump on the grounds that "the build is
+              green". A green build proves nothing about this patch.
+Patches WHAT: vendor/, not the AzCopy sources. That directory does not
+              exist in the upstream GitHub archive; it is created by
+              Buildroot's own Go download post-process
+              (support/download/go-post-process, which runs `go mod
+              vendor`) and is therefore part of the -go2 tarball this
+              package pins the hash of. So the file IS present at
+              .stamp_patched time, and the hash pin is what makes the
+              content it patches deterministic. If a future keyctl bump
+              changes this file, the patch fails to apply and the build
+              goes red -- which is the desired failure mode.
+Scope:        linux/arm only. sys_linux_386.go, sys_linux_arm64.go and the
+              ppc variants were read and are already correct; they are not
+              touched.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ vendor/github.com/wastore/keyctl/sys_linux_arm.go | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/vendor/github.com/wastore/keyctl/sys_linux_arm.go b/vendor/github.com/wastore/keyctl/sys_linux_arm.go
+index 8202b66..d004af1 100644
+--- a/vendor/github.com/wastore/keyctl/sys_linux_arm.go
++++ b/vendor/github.com/wastore/keyctl/sys_linux_arm.go
+@@ -1,7 +1,10 @@
+ package keyctl
+ 
++// EABI syscall numbers (arch/arm/tools/syscall.tbl). The values these
++// replaced were the same numbers with the ARM OABI __NR_SYSCALL_BASE
++// (0x900000) added, which Go's EABI-only linux/arm port cannot use.
+ const (
+-	syscall_keyctl   uintptr = 9437495
+-	syscall_add_key  uintptr = 9437493
+-	syscall_setfsgid uintptr = 9437323
+-)
+\ No newline at end of file
++	syscall_keyctl   uintptr = 311
++	syscall_add_key  uintptr = 309
++	syscall_setfsgid uintptr = 139
++)
+-- 
+2.51.0
+

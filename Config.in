@@ -125,4 +125,28 @@ menu "Archival / on-device update tooling"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/7zip/Config.in"
 endmenu
 
+menu "Off-device backup"
+	# azcopy is Microsoft's Azure Storage CLI. Upstream Buildroot has no
+	# azcopy package (re-confirmed absent on the pinned 2026.05.1 tree,
+	# 2026-08-17 -- the only "az*" package there is azure-iot-sdk-c), so
+	# this tree authors one.
+	#
+	# Its own menu rather than a line in "Archival / on-device update
+	# tooling" above: that menu is about the UPDATE PATH -- 7zip exists to
+	# put a working `7za` at /media/fat/linux/7za so the Downloader never
+	# fetches a 2016 binary off the internet. azcopy is the opposite
+	# direction of travel, pushing the data partition OFF the board, and
+	# shares neither that menu's rationale nor its constraints.
+	#
+	# THE ONE THING TO KNOW BEFORE ENABLING IT: ~39 MiB installed, which
+	# makes it the second-largest package in this image (samba4, ~49 MiB,
+	# is first). docs/azcopy.md carries the measurement and the effect on
+	# the 15% free-space budget; docs/size-budget.md carries the budget.
+	#
+	# It is also the image's first and only Go package, so selecting it
+	# pulls host-go into the build. See package/azcopy/azcopy.mk for what
+	# that costs and why host-go is left at its from-source default.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/azcopy/Config.in"
+endmenu
+
 endmenu

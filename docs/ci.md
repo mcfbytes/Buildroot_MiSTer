@@ -2431,6 +2431,54 @@ An `-rc` is still never refreshed, for either pin — the script refuses it
 outright; see
 [`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated).
 
+<a id="azcopy-release-asset"></a>
+### azcopy ships as a release asset, from its own job
+
+`azcopy` is packaged but **not in the image** (`BR2_PACKAGE_AZCOPY` unset — 39 MiB,
+`docs/azcopy.md` §1). Every tagged release still carries it as a standalone
+`azcopy-<version>-armv7.xz` download, built by the **`build-azcopy`** job in
+`release.yml`.
+
+**Why a separate job and not a step in `build`.** Two independent reasons, either
+sufficient:
+
+1. **It cannot be allowed to reach `linux.img`, and a step inside `build` could.**
+   `make azcopy` installs into `$(TARGET_DIR)`. `scripts/mk-sdcard.sh` then
+   *regenerates* `linux.img` from that same `output/` — its own header says it
+   "snapshots that image BEFORE its own step-2 relink regenerates it". Anything
+   sitting in `output/target` at that moment ships, silently, in an image whose
+   whole point is not to contain it. A different runner with a different checkout
+   cannot make that mistake regardless of what gets added to `build` later.
+2. **`build` has no wall-clock to spare.** It is budgeted `timeout-minutes: 355`
+   against GitHub's hard 360-minute cap and has already overrun it once (see that
+   job's own timeout comment — a release silently failed to publish). azcopy costs
+   ~4–5 min for host-go plus ~12 s for itself; spending that from ~36 minutes of
+   slack is a bad trade when it can run concurrently for the price of one extra
+   runner.
+
+**The asset is static** (`CGO_ENABLED=0`, passed as `AZCOPY_GO_ENV` on the make
+command line, not baked into `azcopy.mk` — an in-image azcopy should keep cgo and
+glibc's NSS resolver). Same reasoning as `package/7zip`'s static
+`/media/fat/linux/7za`: a downloaded binary **outlives the rootfs that installed
+it** and must survive a rollback to an older `linux.img`, or to a stock image whose
+glibc is years behind. A dynamic build dies at `exec` with `GLIBC_2.xx not found`.
+
+**It fails closed in three places**, because a release that quietly dropped the
+download would look identical to one that never carried it:
+
+- `build-azcopy` asserts `file` reports `statically linked` and that
+  `qemu-arm azcopy --version` prints the version `azcopy.mk` pins;
+- its `upload-artifact` uses `if-no-files-found: error`;
+- `publish` has `needs: [build, build-azcopy]` and refuses to create the release
+  if the two expected files are not in `dist/`.
+
+**The dl/ cache key is deliberately distinct** (`br-dl-azcopy-*`, not the image
+build's `br-dl-*`). This job's `dl/` holds only the Buildroot tarball, the Go
+bootstrap and azcopy; sharing the key would let whichever job wrote first publish
+its `dl/` under it, and a cache is immutable once written — so if this job won the
+race the image build would silently lose almost its whole download cache and
+re-fetch everything.
+
 <a id="renovate-hash-sync-outcomes-gate"></a>
 ### The per-pin outcomes ledger and the job-summary gate
 
@@ -2513,6 +2561,48 @@ carries a stale hash; missing from `paths:`, the `pull_request` event is
 filtered out and the workflow does not run at all, so there is not even a
 skipped job to notice. `scripts/hash-sync-github-packages.sh` does **not**
 auto-discover `package/*/*.mk` — see its "Required env" header.
+
+**A note on azcopy and this job's disk/cache budget.** `BR2_PACKAGE_AZCOPY` is **not
+enabled** in `configs/mister_de10nano_defconfig` (size, see `docs/azcopy.md` §1), so
+`host-go` is not built and none of the below is in the default pipeline today. It
+matters the moment anyone flips that line — though **not for the reason you would
+guess**. Wall clock is cheap: the five-stage host-go bootstrap measured **3.0 min**,
+`host-go-src` another **1.2 min**, and azcopy itself compiles in **12 s**. The problem
+is disk: vendoring left **1.7 GiB in `GOMODCACHE`** (`output/host/share/go-path/pkg/mod`)
+on the branch that developed it. All of that
+lands under `output/`, which this job's own budget section already records ending a
+cold build at **8.4 GB free of 72 GB** — and cache #3 globs `output/host` +
+`output/build/host-*`, so it would land in the `br-host` cache entry too, against
+GitHub's 10 GB LRU ceiling. Before enabling azcopy in CI, re-measure both; do not
+assume the existing headroom absorbs it.
+
+**One package is a deliberate exception to the hash-sync allow-list rule: `azcopy`.** It is
+github-sourced and looks exactly like a candidate, and adding it to
+`HASH_SYNC_PACKAGES` (or to the `paths:` filter) would be actively harmful. It
+is a `golang-package`, so Buildroot sets `AZCOPY_DOWNLOAD_POST_PROCESS = go`
+and the file it hashes is the **post-`go mod vendor` `-go2` tarball**, not the
+GitHub archive. Case 1's method is `curl <archive-url> | sha256sum`; run
+against azcopy that produces the hash of the pre-vendoring tarball — a
+plausible-looking wrong value that would turn a green bump PR into a build
+that fails at download time on master. Reproducing the real hash needs a Go
+toolchain and a fetch of every module in `go.sum`; it is not a one-line curl
+and must not be automated as if it were.
+
+**What actually enforces that** is worth being precise about, because the obvious
+answer is wrong. It is *not* this workflow (azcopy is excluded from both
+`HASH_SYNC_PACKAGES` and the `paths:` filter) and it is *not* the image build
+either — azcopy is not enabled in the defconfig, so `build.yml` never compiles it
+and never exercises the pin. A Renovate bump of `AZCOPY_VERSION` alone would
+otherwise go entirely green carrying a hash that matches nothing, and the
+breakage would surface later, to whoever first enables the package.
+
+The gate is the **`azcopy version/hash pin consistency` step in `lint.yml`**: it
+fails any PR where `AZCOPY_VERSION` and the tarball filename on `azcopy.hash`'s
+`sha256` line disagree. Cheap (no toolchain, no Go, no network), and it fires on
+a hand edit as readily as on a Renovate bump. Renovate additionally labels these
+PRs `needs-manual-hash`. It cannot catch "same version, different bytes" —
+nothing cheap can; that case is caught at download time by
+`BR2_DOWNLOAD_FORCE_CHECK_HASHES`. See `docs/azcopy.md` §5.
 
 ---
 

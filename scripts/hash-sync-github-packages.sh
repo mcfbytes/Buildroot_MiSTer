@@ -34,6 +34,26 @@
 # pkg-download.mk / the Buildroot manual). Automating exactly what a human
 # would otherwise type by hand is safe here.
 #
+# NOT COVERED, AND MUST NOT BE ADDED: package/azcopy. It is github-sourced and
+# looks like an obvious 15th entry, but it is a golang-package, so Buildroot
+# sets AZCOPY_DOWNLOAD_POST_PROCESS = go and the file it actually hashes is the
+# post-`go mod vendor` -go2 tarball, NOT the GitHub archive. The `curl |
+# sha256sum` this script performs would therefore write the hash of the
+# pre-vendoring tarball -- a plausible-looking WRONG value that would sail
+# through review and then break the build at download time on master.
+# Reproducing the real hash needs a Go toolchain plus a fetch of every module
+# in go.sum; it is not a one-line curl and must not be automated as one.
+#
+# WHAT ACTUALLY STOPS A STALE azcopy HASH, since it is not this script and not
+# the image build either: azcopy is not enabled in the defconfig, so build.yml
+# never compiles it and never exercises the pin. A version-only bump would
+# otherwise be entirely green with a hash matching nothing. The gate is the
+# "azcopy version/hash pin consistency" step in .github/workflows/lint.yml,
+# which fails any PR where AZCOPY_VERSION and the filename on azcopy.hash's
+# sha256 line disagree. Renovate additionally labels these PRs
+# needs-manual-hash. The recipe is in package/azcopy/azcopy.hash; see
+# docs/azcopy.md section 5.
+#
 # Generic loop, not one call site per package: every one of these .mk files
 # follows the identical Buildroot convention
 #   <PKG>_VERSION = <commit-sha-or-tag>

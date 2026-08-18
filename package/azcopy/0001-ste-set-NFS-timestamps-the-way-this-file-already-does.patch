@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Mon, 17 Aug 2026 00:00:00 +0000
+Subject: [PATCH 1/2] ste: set NFS timestamps the way this file already does
+
+PutNFSProperties() populates a []syscall.Timeval with a composite literal
+whose Sec/Usec fields are int64 values. That only compiles on 64-bit Linux
+targets: syscall.Timeval's fields are int64 on linux/amd64 and linux/arm64
+but int32 on linux/386, linux/arm and linux/mips, so GOARCH=arm fails with
+
+  ste/downloader-azureFiles_linux.go:255:9: cannot use lastModifiedTimeSec
+      (variable of type int64) as int32 value in struct literal
+  ste/downloader-azureFiles_linux.go:255:36: cannot use
+      int64(lastModifiedTimeNsec / 1000) (value of type int64) as int32
+      value in struct literal
+  (and the same two for line 256)
+
+The fix is to do what setDates() already does earlier in this same file for
+the SMB equivalent of the same operation: build a unix.Timespec and
+call unix.UtimesNanoAt(). golang.org/x/sys/unix is already imported here for
+exactly that. syscall is not needed for anything else in the file, so its
+import goes too.
+
+unix.TimeToTimespec() is used rather than the unix.NsecToTimespec() that
+setDates() uses, because it is strictly safer and costs nothing: it builds
+from the same t.Unix()/t.Nanosecond() pair the removed code used, and returns
+ERANGE if the seconds do not fit the target's field width instead of silently
+wrapping. On 32-bit that field is int32, so this is a live case (see Caveat).
+
+Provenance
+----------
+Origin:       Not upstream. Written for this repo against
+              Azure/azure-storage-azcopy v10.32.7.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Upstream:     NO -- not submitted. Microsoft ships AzCopy for linux/amd64
+              and linux/arm64 only (the v10.32.7 release has no linux/arm
+              or linux/386 asset), so upstream has no CI leg that would
+              have caught this and no declared support for the target this
+              image builds for. Worth sending, but "we built it for an
+              architecture upstream does not claim to support" is the
+              honest status until it is.
+Disposition:  BUILD BLOCKER. Without it `make azcopy` cannot produce an
+              ARMv7 binary at all -- this is a compile error, not a
+              warning, so the failure is loud and total.
+Behaviour:    THIS IS NOT A PURE REFACTOR, and an earlier revision of this
+              header wrongly claimed it was. Three real differences, all of
+              them on 64-bit targets too, all of them improvements:
+                1. Resolution. utimensat takes nanoseconds; utimes took
+                   microseconds. The removed code truncated the sub-second
+                   part to microseconds. Azure Files timestamps carry 100 ns
+                   resolution, so this now preserves what it is given.
+                   (Note it is NOT the case that syscall.NsecToTimeval
+                   would have been equivalent-but-arch-safe: that helper
+                   does `nsec += 999` and rounds UP to the next microsecond,
+                   so it would have shifted every non-exact timestamp
+                   forward. That is why this patch does not use it.)
+                2. Out-of-range times now fail loudly. TimeToTimespec
+                   returns ERANGE where the old code silently truncated
+                   int64 seconds into whatever the field held.
+                3. The syscall changes from utimes(2) to utimensat(2). Both
+                   have been in Linux since 2.6.22; utimensat is what the
+                   SMB path in this same file has always used.
+Caveat:       On a 32-bit target Timespec.Sec is int32, so Azure Files NFS
+              last-write-times beyond 2038 (or before 1902) cannot be
+              represented. That limit is the platform's, not this patch's --
+              but where the original would have wrapped silently, this now
+              returns an ERANGE error naming the timestamp. Called out so
+              the next reader does not have to rediscover it.
+
+Verified:     builds clean for GOOS=linux GOARCH=arm GOARM=7, GOARCH=386 and
+              GOARCH=amd64 with go 1.26.3 (the version Buildroot 2026.05.1
+              pins in package/go/go.mk); `go vet ./ste/` reports nothing new.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ ste/downloader-azureFiles_linux.go | 27 ++++++++++++++-------------
+ 1 file changed, 14 insertions(+), 13 deletions(-)
+
+diff --git a/ste/downloader-azureFiles_linux.go b/ste/downloader-azureFiles_linux.go
+index cf86e54..1fb70b4 100644
+--- a/ste/downloader-azureFiles_linux.go
++++ b/ste/downloader-azureFiles_linux.go
+@@ -11,7 +11,6 @@ import (
+ 	"strconv"
+ 	"strings"
+ 	"sync"
+-	"syscall"
+ 
+ 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azfile/file"
+ 
+@@ -245,19 +244,21 @@ func (*azureFilesDownloader) PutNFSProperties(sip INFSPropertyBearingSourceInfoP
+ 
+ 	lastWriteTime := propHolder.FileLastWriteTime()
+ 
+-	// Convert the time to Unix timestamp (seconds and nanoseconds)
+-	lastModifiedTimeSec := lastWriteTime.Unix()        // Seconds part
+-	lastModifiedTimeNsec := lastWriteTime.Nanosecond() // Nanoseconds part
+-
+-	// Convert the time to syscall.Timeval type (seconds and microseconds)
+-	// syscall.Timeval expects seconds and microseconds, so we convert the nanoseconds
+-	tv := []syscall.Timeval{
+-		{Sec: lastModifiedTimeSec, Usec: int64(lastModifiedTimeNsec / 1000)}, // Convert nanoseconds to microseconds
+-		{Sec: lastModifiedTimeSec, Usec: int64(lastModifiedTimeNsec / 1000)}, // Set both atime and mtime to the same timestamp
++	// Convert the time to a unix.Timespec, which setDates() above already uses
++	// for the SMB equivalent of this operation. A syscall.Timeval composite
++	// literal cannot be used here: its Sec and Usec fields are int64 on 64-bit
++	// Linux but int32 on linux/386, linux/arm and linux/mips, so populating
++	// them from int64 values is a compile error on every 32-bit target.
++	// unix.TimeToTimespec builds the architecture-correct struct from the same
++	// Unix()/Nanosecond() pair, and returns ERANGE when the seconds do not fit
++	// the target's field width instead of silently wrapping.
++	ts, err := unix.TimeToTimespec(lastWriteTime)
++	if err != nil {
++		return fmt.Errorf("Failed to represent lastModifiedTime %v for %s. Error: %w", lastWriteTime, txInfo.Destination, err)
+ 	}
+ 
+-	// Use syscall.Utimes to set modification times
+-	err = syscall.Utimes(txInfo.Destination, tv)
++	// Set both atime and mtime to the same timestamp
++	err = unix.UtimesNanoAt(unix.AT_FDCWD, txInfo.Destination, []unix.Timespec{ts, ts}, 0 /* flags */)
+ 	if err != nil {
+ 		return fmt.Errorf("Failed to set lastModifiedTime for %s. Error: %w", txInfo.Destination, err)
+ 	}
+-- 
+2.51.0
+

@@ -126,7 +126,7 @@ readonly PINNED_UPDATE_ALL_SIZE="8628"
 # MiSTer-devel/Scripts_MiSTer, path other_authors/wifi.sh (docs/wifi-parity.md
 # confirms this exact path). Same automated bump path as update_all.sh above
 # (Renovate dep "MiSTer-devel/Scripts_MiSTer" + renovate-hash-sync.yml case 4).
-readonly PINNED_WIFI_SH_COMMIT="f034c178efd5a836880c457e5fe0bc0c627a17c2"
+readonly PINNED_WIFI_SH_COMMIT="ba2d6c5ceee7ec7eb335d5f6d4347f5fd02c0323"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
 readonly PINNED_WIFI_SH_SHA256="9d1e3165c44b25529fd71b4781ab848a2b0ce2b08815e9c6ffbc12ba9285e4f9"
 readonly PINNED_WIFI_SH_SIZE="96637"

@@ -89,11 +89,22 @@ LTUNIFY_LICENSE_FILES = ltunify.c
 # !BR2_TOOLCHAIN_USES_GLIBC` in Config.in covers a non-glibc toolchain the same
 # way upstream's package/hddtemp and package/libest do.
 #
-# NOTE that no -lexecinfo is added to the link even when libexecinfo is
-# selected, which is where this deliberately differs from hddtemp.mk. Verified
-# rather than assumed: `grep backtrace *.c` over the pinned tree returns
-# nothing, so only the header is ever needed, and linking the library would add
-# a DT_NEEDED for symbols the binary does not reference.
+# The DEPENDENCIES line below is the other half of that select and is not
+# optional: a select only turns the symbol on, it does not order the builds, so
+# without it Buildroot may compile ltunify before libexecinfo has installed
+# execinfo.h into staging -- an intermittent "execinfo.h: No such file or
+# directory" rather than an honest failure. Every in-tree user of this select
+# pairs it the same way (package/hddtemp, package/libest).
+#
+# What is NOT added is -lexecinfo at link time, which is where this differs from
+# hddtemp.mk. Verified rather than assumed: `grep backtrace *.c` over the pinned
+# tree returns nothing, so only the header is ever needed, and linking the
+# library would add a DT_NEEDED for symbols the binary does not reference.
+#
+# Both lines are inert on this image -- it is glibc, so the select never fires.
+ifeq ($(BR2_PACKAGE_LIBEXECINFO),y)
+LTUNIFY_DEPENDENCIES += libexecinfo
+endif
 
 # A plain Makefile with no configure step -- generic-package, and only the
 # `ltunify` target.

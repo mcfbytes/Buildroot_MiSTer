@@ -329,6 +329,17 @@ stage_stock_payload() {
 #       and because its other end is in the initramfs and the two must ship
 #       together. Staged here only so the Scripts menu has an entry for it.
 #
+#   Scripts/pair_logitech.sh
+#       Pairs a Logitech keyboard or mouse to a Unifying receiver
+#       (docs/logitech-pairing.md). Same shim shape and same reason as
+#       check_storage.sh above: the tool is /usr/sbin/mister-pair-logitech in
+#       the rootfs, version-locked to the ltunify binary whose command grammar
+#       it drives and whose always-exit-0 behaviour it works around, and both
+#       ship inside one linux.img so they cannot drift. Staged here only so the
+#       Scripts menu has an entry for it — which matters more than usual here,
+#       because the user reaching for it may have no working keyboard to type a
+#       command with.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux

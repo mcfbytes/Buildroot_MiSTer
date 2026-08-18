@@ -182,6 +182,27 @@ message: when nothing changed, the tool says so and lists the actual causes
 (device not power-cycled in the window, flat batteries, it is a Bluetooth device,
 it is a Bolt device).
 
+**The same quirk bites the slot read itself, which is subtler.** When ltunify
+cannot talk to the receiver, `list` writes `Unable to request a list of paired
+devices` to stderr and still exits 0, emitting no `idx=` lines — byte for byte
+what a receiver with six empty slots produces. Taking that at face value would be
+worse than useless: it reports "all six slots are free" for a receiver that is
+full, skips the slots-full pre-check, and then blames flat batteries for what was
+really an unreadable receiver.
+
+So the read is gated on the `Connected devices:` banner, which ltunify's `main()`
+only reaches inside `if (get_all_devices(fd))` — present if and only if the slot
+table was genuinely read. A failed read aborts `pair` and `unpair` outright,
+quoting ltunify's own stderr; in `list` it is reported per receiver and the other
+receivers are still shown, since `list` is what you run to find out what is wrong.
+
+Each command reads the slot table **once** and reuses it for the display, the
+slots-full check and the diff baseline. Reading it repeatedly would let the list
+printed on screen disagree with the list the diff was computed against — and a
+transient failure on only the first read would produce the worst outcome
+available: an empty baseline, so every device already on the receiver reappears
+under "New:" beneath a headline of "Paired."
+
 ## 5. Shape on the card
 
 Same shape ADR 0026 established for `check_storage.sh`, for the same reason:
@@ -265,7 +286,7 @@ line character for character.
 ### Wrapper
 
 Off-hardware, against synthetic `/sys/class/hidraw` trees and a stub `ltunify`,
-**34 scenarios across six rigs** pass. The rigs reproduce the multi-node reality
+**42 scenarios across six rigs** pass. The rigs reproduce the multi-node reality
 above — including report descriptors with and without the HID++ collection — so
 the grouping is exercised, not assumed:
 
@@ -280,8 +301,16 @@ the grouping is exercised, not assumed:
 
 Plus, across those: pairing success and timeout distinguished by slot diff (the
 only way to tell, given the always-exit-0 behaviour), the unpair round-trip, and
-argument validation. That covers the enumeration and decision logic, which is
-where the wrapper's value is.
+argument validation.
+
+A further eight scenarios drive the stub's `list` into the always-exit-0 failure
+mode described in §4.3 — both permanently and on the first call only — and assert
+that an unreadable receiver never reads as "all six slots are free", never sails
+past the slots-full pre-check, never reports pre-existing devices as newly
+paired, and never turns into "slot N is already free" during an unpair.
+
+That covers the enumeration and decision logic, which is where the wrapper's
+value is.
 
 ### Not yet done
 

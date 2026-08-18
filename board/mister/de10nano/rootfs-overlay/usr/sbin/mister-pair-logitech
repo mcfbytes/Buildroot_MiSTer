@@ -122,8 +122,9 @@ Options:
   -h, --help
 
 Supported:     Unifying (046d:c52b, c532) and Nano (046d:c52f, c534).
-NOT supported: Bolt (c548) and Lightspeed/Powerplay (c539, c53a, c53f, c543).
-               Those need Solaar on a desktop; see docs/logitech-pairing.md.
+NOT supported: Bolt (c548), Lightspeed/Powerplay (c539, c53a, c53f, c543)
+               and 27 MHz (c51b). Those need Solaar or Logitech's own
+               software on a desktop; see docs/logitech-pairing.md.
 
 A device that came pre-paired with its own receiver needs none of this.
 EOF
@@ -422,19 +423,63 @@ enumerate_receivers() {
 # is paired` (ltunify.c:212). That is what makes a before/after comparison a
 # valid test of whether pairing took, rather than a test of whether the device
 # happened to be awake.
-slots_of() {
-	local dev="$1"
+#
+# THE BANNER IS THE SUCCESS SIGNAL, and the reason is the same always-exit-0
+# quirk documented in the header. When the receiver cannot be talked to, ltunify
+# writes "Unable to request a list of paired devices" to stderr and STILL exits
+# 0, leaving no `idx=` lines behind -- byte for byte what a receiver with six
+# empty slots produces. Treating that as "nothing is paired" would be actively
+# dangerous: it would report "all six slots are free" for a receiver that is
+# full, skip the slots-full pre-check, and then blame flat batteries for a
+# failure that was really an unreadable receiver.
+#
+# ltunify's main() only calls print_all_devices() -- the function that emits
+# "Connected devices:" -- inside `if (get_all_devices(fd))`, so the banner
+# appears if and only if the slot table was actually read.
+#
+# Sets SLOTS (possibly empty) and SLOTS_ERROR; returns non-zero on a failed read.
+SLOTS=""
+SLOTS_ERROR=""
+
+read_slots() {
+	local dev="$1" out
+	SLOTS=""
+	SLOTS_ERROR=""
+
+	out="$("$LTUNIFY" -d "$dev" list 2>&1)"
+
+	case "$out" in
+		*"Connected devices:"*) ;;
+		*)
+			SLOTS_ERROR="$out"
+			return 1
+			;;
+	esac
+
 	# sed rather than grep as the filter: grep exits 1 when a receiver has no
 	# devices paired at all, which under `set -o pipefail` would make this
 	# function report failure for the perfectly ordinary empty case.
-	"$LTUNIFY" -d "$dev" list 2>/dev/null | sed -n '/^idx=/p' | sort
+	SLOTS="$(printf '%s\n' "$out" | sed -n '/^idx=/p' | sort)"
+	return 0
+}
+
+# Give up with the receiver's own words rather than a generic message: whatever
+# ltunify wrote to stderr is the most specific thing anyone has about why.
+die_unreadable() {
+	warn ""
+	warn "ERROR: could not read the pairing slots on $1."
+	if [ -n "$SLOTS_ERROR" ]; then
+		warn ""
+		printf '%s\n' "$SLOTS_ERROR" | sed 's/^/  ltunify: /' >&2
+	fi
+	warn ""
+	warn "Unplug the receiver, plug it back in, and try again. Nothing was changed."
+	exit 1
 }
 
 slot_count() {
-	local out
-	out="$(slots_of "$1")"
-	[ -z "$out" ] && { echo 0; return; }
-	printf '%s\n' "$out" | wc -l
+	[ -z "$SLOTS" ] && { echo 0; return; }
+	printf '%s\n' "$SLOTS" | wc -l
 }
 
 # ---------------------------------------------------------------------------
@@ -658,13 +703,15 @@ require_supported_receiver() {
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+# Print whatever read_slots last put in SLOTS. Takes no device argument and does
+# NOT re-read: every caller has already done the read, and re-reading here is
+# what would let the list on screen disagree with the list the before/after diff
+# was computed from.
 show_slots() {
-	local dev="$1" slots
-	slots="$(slots_of "$dev")"
-	if [ -z "$slots" ]; then
+	if [ -z "$SLOTS" ]; then
 		say "  (no devices paired -- all six slots are free)"
 	else
-		printf '%s\n' "$slots" | sed 's/^/  /'
+		printf '%s\n' "$SLOTS" | sed 's/^/  /'
 	fi
 }
 
@@ -687,36 +734,49 @@ cmd_list() {
 			esac
 		fi
 		rule
-		if kind_is_supported "$kind" && [ "$node" != "-" ]; then
-			show_slots "/dev/$node"
-		else
+		if ! kind_is_supported "$kind" || [ "$node" = "-" ]; then
 			say "  (slots cannot be read -- ltunify does not speak this"
 			say "   receiver's protocol; run --help for what to do instead)"
+		elif read_slots "/dev/$node"; then
+			show_slots
+		else
+			# Not fatal here, unlike everywhere else: `list` is the command
+			# somebody runs to find out what is going on, so one unreadable
+			# receiver must not stop the others being reported.
+			say "  (could not read this receiver -- ltunify said:)"
+			printf '%s\n' "$SLOTS_ERROR" | sed 's/^/    /'
 		fi
 		say ""
 	done <<<"$all"
 }
 
 cmd_pair() {
-	local before after added
+	local before added
 
 	select_receiver
 	require_supported_receiver
 
-	before="$(slots_of "$RECEIVER_NODE")"
+	# ONE read, reused for the display, the slots-full check and the diff
+	# baseline. Reading three times would let the list printed on screen
+	# disagree with the list the diff is computed against, and a transient
+	# failure on only the first read would produce the worst possible outcome:
+	# an empty baseline, so every device already on the receiver reappears
+	# under "New:" beneath a headline of "Paired."
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	before="$SLOTS"
 
 	rule
 	say "Pairing to: $RECEIVER_DESC"
 	rule
 	say ""
 	say "Already paired to this receiver:"
-	show_slots "$RECEIVER_NODE"
+	show_slots
 	say ""
 
 	# The six-slot limit is the receiver's, and hitting it is the single most
 	# common reason a pairing attempt "does nothing" -- say so BEFORE burning
 	# the pairing window rather than after.
-	if [ "$(slot_count "$RECEIVER_NODE")" -ge 6 ]; then
+	if [ "$(slot_count)" -ge 6 ]; then
 		warn "This receiver already has all six slots in use."
 		warn "Free one first:  mister-pair-logitech unpair <slot>"
 		exit 1
@@ -735,8 +795,11 @@ cmd_pair() {
 	"$LTUNIFY" -d "$RECEIVER_NODE" pair "$PAIR_TIMEOUT"
 
 	say ""
-	after="$(slots_of "$RECEIVER_NODE")"
-	added="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after"))"
+	# A failed read here is fatal rather than "nothing was paired": the device
+	# may well have paired, and saying it did not would send the user off to
+	# check batteries for a problem that is the receiver falling off the bus.
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	added="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$SLOTS"))"
 
 	rule
 	if [ -n "$added" ]; then
@@ -747,7 +810,7 @@ cmd_pair() {
 		printf '%s\n' "$added" | sed 's/^/  /'
 		say ""
 		say "All devices on this receiver now:"
-		show_slots "$RECEIVER_NODE"
+		show_slots
 		say ""
 		say "A newly paired keyboard or mouse should work immediately."
 		say ""
@@ -773,7 +836,7 @@ cmd_pair() {
 }
 
 cmd_unpair() {
-	local before after removed answer
+	local before removed answer
 
 	case "$UNPAIR_TARGET" in
 		''|*[!0-9]*) die "slot must be a number from 1 to 6, got: $UNPAIR_TARGET" ;;
@@ -785,17 +848,21 @@ cmd_unpair() {
 	select_receiver
 	require_supported_receiver
 
-	before="$(slots_of "$RECEIVER_NODE")"
+	# One read, same reasoning as cmd_pair: an unreadable receiver here would
+	# otherwise look like "slot N is already free" and talk the user out of an
+	# unpair that was never attempted.
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	before="$SLOTS"
 
 	rule
 	say "Receiver: $RECEIVER_DESC"
 	rule
 	say ""
 	say "Currently paired:"
-	show_slots "$RECEIVER_NODE"
+	show_slots
 	say ""
 
-	if ! printf '%s\n' "$before" | grep -q "^idx=${UNPAIR_TARGET}\b"; then
+	if ! printf '%s\n' "$before" | grep -q "^idx=${UNPAIR_TARGET}[^0-9]"; then
 		die "slot $UNPAIR_TARGET is already free on this receiver."
 	fi
 
@@ -814,8 +881,8 @@ cmd_unpair() {
 	"$LTUNIFY" -d "$RECEIVER_NODE" unpair "$UNPAIR_TARGET"
 
 	say ""
-	after="$(slots_of "$RECEIVER_NODE")"
-	removed="$(comm -23 <(printf '%s\n' "$before") <(printf '%s\n' "$after"))"
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	removed="$(comm -23 <(printf '%s\n' "$before") <(printf '%s\n' "$SLOTS"))"
 
 	rule
 	if [ -n "$removed" ]; then
@@ -825,7 +892,7 @@ cmd_unpair() {
 		printf '%s\n' "$removed" | sed 's/^/  was: /'
 		say ""
 		say "Remaining on this receiver:"
-		show_slots "$RECEIVER_NODE"
+		show_slots
 		say ""
 		return 0
 	fi

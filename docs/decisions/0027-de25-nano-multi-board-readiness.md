@@ -1,8 +1,9 @@
 # ADR 0027 — DE25-Nano ("MiSTer 2.0") readiness: same repo, staged, framework-gated
 
-**Status:** Proposed (2026-08-19) — drafted for review by @mcfbytes; no build-system,
-CI, or release change is made by this ADR. Accepting it commits the project to a
-*posture* (same repo, staged plan, guarded couplings), not to any build work.
+**Status:** Accepted (2026-08-19) — decided by @mcfbytes. No build-system, CI, or
+release change is made by this ADR: acceptance commits the project to a *posture*
+(same repo, staged plan, guarded couplings) and to the initial-deliverable scope in
+Decision 6, not to any build work yet.
 **Impact (when acted on):** `configs/`, `board/mister/`, `scripts/` (board
 parameterization), `.github/` (a manual DE25 lane), `docs/` (this plan suite).
 **Related:** [ADR 0021](0021-rt-kernel-first-class-ci.md) (the variant machinery this
@@ -82,8 +83,20 @@ as a new board axis on the existing variant machinery, not as a fork.** Concrete
    `version[-6:]`); board identity comes from the device tree, never from that file.
 5. **CI stays cheap.** Any DE25 build lane is `workflow_dispatch`-only until the board
    is a real target; it does not enter the per-PR path and does not get a protected slice
-   of the ~7 GB-of-10 GB cache budget (`docs/ci.md#cache-budget-and-sizing`) — cold
+   of the ~7 GB-of-10 GB cache budget ([docs/ci.md#cache-budget-and-sizing](../ci.md#cache-budget-and-sizing)) — cold
    builds are acceptable for a manual lane.
+6. **The initial deliverable is a bare developer OS.** Early DE25 releases (on D2
+   completion) ship **no MiSTer-specific binaries** — none exist for the board. The
+   image keeps the DE10 image's footprint and conventions (two-stage initramfs, overlay
+   services, exFAT state model) so developers can use it in their own testing
+   workflows. U-Boot is built here from source, excluding MiSTer binaries; whether and
+   when MiSTer binaries join is a future decision point, taken with community adoption
+   — at which point assets load in the same way the DE10 pipeline overlays the stock
+   payload today. These early artifacts publish as plain GitHub releases under the
+   `de25-YYYYMMDD` tags; the db.json/updater channel stays framework-gated, since it
+   presupposes the MiSTer downloader stack on-device. MiSTer-facing conventions
+   ultimately belong to the upstream project owner (Sorgelig); this repo produces a
+   theoretical work product that upstream may adopt, or not.
 
 ## Alternatives rejected
 
@@ -112,8 +125,10 @@ guards in D1 are cheap precisely because they only apply to code being touched a
   `mister_linux_modernization_de25nano`.
 - Future contributors touching the four coupling sites inherit a documented obligation
   (D1 guards) instead of an unwritten one.
-- The improvement decision points in the plan (§"Decision points") are **explicitly not
-  decided** by this ADR; each graduates to its own ADR when its phase activates.
+- Initial dispositions for the plan's decision points were recorded by the owner on
+  acceptance (plan §6): DP-4 and DP-5 decided, DP-1 and DP-9 decided in direction, the
+  rest tabled. Tabled DPs still graduate to their own ADRs when their phase activates;
+  MiSTer-facing calls rest with the upstream project owner.
 - If "MiSTer 2.0" lands on different hardware than the DE25-Nano, the plan's
   board-specific recon (D0) is discarded but the readiness guards, channel design, and
   phase structure transfer as-is — they are keyed to "a second, aarch64 board," not to

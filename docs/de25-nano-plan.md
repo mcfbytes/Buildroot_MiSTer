@@ -2,8 +2,9 @@
 
 **Governing decision:** [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md)
 (same repo, staged, framework-gated). **Task list (ultracode-targeted):**
-[`de25-nano-tasks.md`](de25-nano-tasks.md). **Status:** pre-hardware, pre-framework.
-Research snapshot 2026-08-19; every claim below is tagged **[V]** (verified this
+[`de25-nano-tasks.md`](de25-nano-tasks.md). **Status:** pre-hardware, pre-framework;
+ADR 0027 **Accepted** 2026-08-19 with owner dispositions on every DP (§6) and the
+bare-developer-OS initial scope (§2). Research snapshot 2026-08-19; every claim below is tagged **[V]** (verified this
 session — repo file, pinned doc, or primary web source) or **[U]** (unverified /
 to-be-established, with the task that pins it).
 
@@ -44,9 +45,14 @@ designs, not Agilex **[V]**.
 - **L0 — the MiSTer framework port.** Main_MiSTer on aarch64, SDM-based core loading,
   a new `sys/` for cores, video/audio plumbing, the memory map. **Out of scope for this
   repo, permanently.** It is the gate for L2. We track it (D0.4); we do not build it.
-- **L1 — a bring-up Linux.** Toolchain, ATF+U-Boot, kernel+DTS, SD image, serial
-  console, network, FPGA reconfig proof. Entirely within this repo's competence, useful
-  without L0 (kicking tires, upstream contributions), gated only on hardware.
+- **L1 — a bare developer OS.** Toolchain, ATF+U-Boot (built here from source, no
+  MiSTer binaries), kernel+DTS, SD image, serial console, network, FPGA reconfig proof
+  — keeping the DE10 image's footprint and conventions but shipping **no
+  MiSTer-specific binaries** (none exist for the board). Per ADR 0027 Decision 6 this
+  is the *early release deliverable itself*, published under the `de25-YYYYMMDD` tags
+  for developers' own testing workflows — not merely a stepping stone. Gated only on
+  hardware. MiSTer assets load in later, the way the DE10 pipeline overlays the stock
+  payload today, if/when community adoption happens.
 - **L2 — MiSTer parity.** Everything in §5's matrix that depends on what L0 defines
   (fb/audio patches, core-loading integration, updateboot analogue, installer).
   Framework-gated.
@@ -69,9 +75,10 @@ Full inventory in ADR 0027 §Context. What each needs, when touched:
    symbol sets the moment a second board defconfig exists (D1.2) — they are correctness
    guards and must not be weakened to "any arch," only parameterized.
 4. **`package/azcopy`**: armv7 release asset + two 32-bit-only patches (incl. the
-   OABI-keyctl runtime blocker). aarch64 upstream assets exist; both patches drop out
-   **[V asset naming / U runtime]** (D3.2 re-verifies on hardware — ADR-culture rule:
-   a green build proves nothing about keyctl).
+   OABI-keyctl runtime blocker). **Disposition (2026-08-19): not shipped on DE25.**
+   The package exists only because Microsoft publishes no armv7 binary; they do publish
+   linux-arm64 ones, so DE25 users fetch those directly. The DE10 armv7 pipeline is
+   untouched; this coupling simply does not port.
 
 Everything else — 20 packages, ~44/48 overlay files, the variant machinery, docs
 apparatus — is board-agnostic **[V, surveyed 2026-08-19]**.
@@ -108,7 +115,9 @@ with no BootROM-from-SD fallback **[U]**.
 
 ## 5. Parity matrix
 
-"Parity" = a DE25 user gets what a DE10 user gets from this project today. Effort:
+"Parity" = a DE25 user gets what a DE10 user gets from this project today. Per the
+accepted scope (ADR 0027 Decision 6), early releases target only the OS rows; F-gated
+rows additionally ship nothing MiSTer-specific until adoption. Effort:
 S(mall)/M(edium)/L(arge)/XL. Gate: H(ardware, D2) / F(ramework, D3) / —(none).
 
 | Subsystem | DE10 today | DE25 path | Effort | Gate |
@@ -122,7 +131,7 @@ S(mall)/M(edium)/L(arge)/XL. Gate: H(ardware, D2) / F(ramework, D3) / —(none).
 | Kernel patches — board (~8: MiSTer_fb, audio SPI, DTS, overclock…) | carried | meaningless until L0 defines fb/audio; do not port speculatively | XL | F |
 | FPGA load | U-Boot preload + Main's mailbox/fpgamgr | `stratix10-soc` + SDM; latency + mechanism dossier first (D0.2) | XL | F |
 | Video (vmode, fb) | MiSTer_fb + ascal in fabric | undefined until L0 | XL | F |
-| Rootfs packages (20) | armv7 | rebuild on aarch64; azcopy loses both patches; per-pkg audit D3.2 | M | H |
+| Rootfs packages (20) | armv7 | rebuild on aarch64; azcopy dropped from the DE25 set (Microsoft ships arm64 binaries); per-pkg audit D3.2 | M | H |
 | Rootfs overlay & services (S40…S99, samba/ssh/ftp/ntp per parity docs) | shipped | carries over ~44/48 files; udev/vmode/uartmode board-touching remainder re-derived | S | H |
 | Wi-Fi/BT | 8 Realtek OOT pkgs + bcm firmware | same packages, aarch64 rebuild (no onboard radio on either board) | M | H |
 | OOT kmods (xone…) | per-kernel stamping traps known | same traps, new kernel tree; dirclean discipline carries | M | H |
@@ -130,6 +139,7 @@ S(mall)/M(edium)/L(arge)/XL. Gate: H(ardware, D2) / F(ramework, D3) / —(none).
 | RT variant | `output-rt`, fragment-registered, CI matrix | evaluate on big.LITTLE (DP-6) — do not assume it ports 1:1 | L | H |
 | sdcard installer (mr-fusion style) | `feature/full-sdcard-image` | re-derive for Agilex layout after D0.1 | L | F |
 | Update channel | ADR 0025 private updater | §4.2; one more (db, updater, tag) triple | M | F |
+| Developer-preview release (bare OS) | n/a (DE10 ships the full MiSTer payload) | plain GH releases under `de25-YYYYMMDD`: sdcard image, kernel, rootfs, SHA256SUMS, provenance; no db.json/updater | M | H |
 | CI | gate → kernel-matrix → build; ~3h20m cold | manual `workflow_dispatch` lane only; no cache slice | M | H |
 | Reproducibility & provenance | double-build, attestations, SHA256SUMS | same machinery, second lane | S | H |
 | Docs/ADR culture | 27 ADRs, parity-doc suite | this plan is its first artifact | — | — |
@@ -137,45 +147,75 @@ S(mall)/M(edium)/L(arge)/XL. Gate: H(ardware, D2) / F(ramework, D3) / —(none).
 ## 6. Decision points (future ADRs, deliberately undecided)
 
 Where the DE25 could be *better* than parity. Each is a numbered DP so tasks and future
-ADRs can cite them; none is decided here.
+ADRs can cite them. **Owner dispositions recorded 2026-08-19 (@mcfbytes) on ADR 0027
+acceptance** are inlined below; tabled DPs still graduate to their own ADRs when their
+phase activates, and MiSTer-facing calls ultimately rest with the upstream project
+owner (Sorgelig) — this plan enables testing, it does not preempt adoption.
 
 - **DP-1 · Reference-image posture.** On DE10 we shadow a stock image (byte-identical
   uboot.img, parity docs, rollback-to-stock). On DE25 **there is no stock to shadow** —
   whatever ships first *is* the reference. Freedom (mainline-first everywhere, no
   bug-for-bug compatibility) and responsibility (we own recovery stories) both follow.
   This inverts many standing constraints and deserves its own ADR early in D2.
+  **Disposition: decided in direction** — early releases are a bare developer OS;
+  U-Boot is built here excluding MiSTer binaries; including MiSTer binaries is a
+  future DP, taken with community adoption (ADR 0027 Decision 6).
 - **DP-2 · FIT image + verified boot.** The zImage_dtb replacement is a FIT by default;
   FIT signing (and ATF/SDM authenticated-boot features) would give the update channel
   integrity the DE10 never had. Cost: key management for a hobbyist project.
+  **Disposition: tabled** — key management is not expected to be wanted, but it gets a
+  considered look (not a silent skip) when D3.4 opens.
 - **DP-3 · A/B rootfs slots.** DE10's `mem=511M` + single `linux.img` forced the
   fragile swap-then-reboot flow (§10 of the downloader contract: flash-phase errors are
   masked). With 1 GB HPS RAM and no 511M cap, an A/B `linux.img` pair with a U-Boot
   bootcount fallback becomes feasible — the single biggest robustness upgrade available.
+  **Disposition: tabled.** Owner rationale: the rootfs sits as a file on an exFAT SD
+  card, so recovery is "pull the card, copy a known-good `linux.img` from any PC" — a
+  fallback slot buys little. Two caveats stand on record: (a) the DE10 flash flow can
+  silently swap in a bad image while reporting success (downloader contract §10);
+  A/B+bootcount would auto-recover where today's answer is card surgery — an accepted
+  cost; (b) the low-value verdict applies to the *rootfs* layer only. If DE25 boot
+  firmware lives in QSPI, there is no pull-the-card recovery at that layer, which is
+  why D0.1's power-loss-safe firmware-update/fallback requirement is non-negotiable
+  regardless of this DP.
 - **DP-4 · 64-bit userland throughout.** Not optional (the HPS is aarch64) but has
   follow-ons worth deciding once: time64/Y2038 done, keyctl-OABI class of bugs gone,
   and any 32-bit-compat shims for ported framework code explicitly rejected or scoped.
+  **Disposition: decided** — pure aarch64 userland, full stop: no 32-bit
+  compat/multilib, and a future framework port is expected to be 64-bit native.
 - **DP-5 · Crypto extensions.** A76/A55 carry AES/SHA — hash verification (updater,
   check scripts, azcopy) gets ~an order of magnitude faster; consider defaulting
-  stronger hashes where the Downloader contract doesn't pin MD5.
+  stronger hashes where the Downloader contract doesn't pin MD5. **Disposition:
+  decided** — enable the extensions in toolchain/kernel wherever available (cheap even
+  if lightly used); **no** hash-algorithm migration now — that is a community decision
+  for later.
 - **DP-6 · RT and CPU topology.** Main_MiSTer pins itself to CPU1 on DE10 (2 cores).
   On 2+2 big.LITTLE the right shape is undecided: cores/Main on A76s with housekeeping
   isolated to A55s? `isolcpus`/`irqaffinity` layout? Revisit the "no irqbalance"
-  decision with 4 CPUs. Measurement-first, on hardware.
+  decision with 4 CPUs. Measurement-first, on hardware. **Disposition: tabled** —
+  requires Main_MiSTer rework; revisit at D3.6.
 - **DP-7 · KVM.** A76 does virtualization; almost certainly out of scope for a games
   device, but note it exists before someone asks (containers for server-side tooling,
-  e.g. GroovyMiSTer-adjacent services).
+  e.g. GroovyMiSTer-adjacent services). **Disposition: tabled** — no identified use
+  case, and a container-based deployment model (HAOS-style) is considered unlikely to
+  ever fit this project's nature.
 - **DP-8 · Native update mechanism.** If MiSTer 2.0 does *not* adopt
   `Downloader_MiSTer`, we are free of the 7z/`files/linux/*`/MD5 contract and DP-2/DP-3
   compose into a properly signed, A/B, delta-friendly channel. Decide only when the
-  framework's direction is known.
+  framework's direction is known. **Disposition: tabled** — community decision.
 - **DP-9 · UIO/doorbell + FPGA-region DTS as first-class.** The RT beta series' UIO
   doorbell/fpga-region patches (0043–0045) are bolt-ons on DE10; on Agilex, DT-overlay
   regions are the *native* reconfiguration idiom — the DE25 kernel config could make
-  that the designed-in interface rather than a variant extra.
+  that the designed-in interface rather than a variant extra. **Disposition: decided
+  in direction** — the DE25 (including any RT variant) adopts the Agilex-native
+  idioms: DTS/fpga-region configuration in place of the carried UIO doorbell patches,
+  provided D0.2 confirms that is the proper architecture. The beta-series UIO patches
+  (0043–0045) are not ported by default.
 - **DP-10 · Display pipeline ownership.** If the HDMI 2.0 transmitter is HPS-reachable
   [U, D0.1], a kernel DRM path for menus/OSD becomes possible independent of the fabric
   scaler — a real architectural fork from the DE10's everything-through-ascal design.
-  L0's call ultimately, but our recon feeds it.
+  L0's call ultimately, but our recon feeds it. **Disposition: tabled** — pending
+  Main_MiSTer changes and community adoption either way.
 
 ## 7. Risks and open unknowns
 

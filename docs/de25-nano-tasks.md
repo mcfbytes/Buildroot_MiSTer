@@ -60,7 +60,9 @@ MiSTer-style HPS-visible framebuffer would require. Feeds DP-9/DP-10 and the L0 
   latency evidence; memory-architecture docs, medium) → 1 `opus` synthesis → `fable`
   verify (2 refuters) on the "core switching is/isn't UX-viable" conclusion. ~7 agents.
 - **Accept:** the reconfig path is described end-to-end with driver file:line cites; a
-  latency estimate exists with explicit confidence bounds and a hw-measurement plan.
+  latency estimate exists with explicit confidence bounds and a hw-measurement plan;
+  DP-9's decided direction ("Agilex-native DTS/fpga-region idioms instead of carrying
+  the UIO doorbell patches") is explicitly confirmed or refuted.
 
 ### D0.3 Kernel patch portability audit → `docs/de25-patch-portability.md`  **⚠ size**
 Classify every patch in `board/mister/de10nano/linux-patches/` (36) and
@@ -127,7 +129,8 @@ gets a `fable` adversarial review before it ever runs on the board (rule 2).
 | D2.4 | `genimage-sdcard-de25.cfg` + `check-sdcard-de25.sh` + flash procedure | image boots from cold flash; check script fail-closed | `sonnet` implement → `fable` adversarial review (flash path) |
 | D2.5 | FPGA reconfig proof + **measured** full-reconfig latency | RBF loads via overlay from Linux; latency table (feeds DP-9, D0.2 [U]s resolved) | inline + 1 `opus` analysis of results |
 | D2.6 | manual `workflow_dispatch` CI lane, cold-build, no cache slice | lane green once; documented cost per run; zero effect on PR path | 1 `sonnet` + `/code-review`; obey rule 4 |
-| D2.7 | **DP-1 ADR** (reference-image posture) — first DP to graduate | ADR merged Proposed→Accepted by owner | judge panel: 3 `opus` position drafts → `fable` synthesis |
+| D2.7 | **DP-1 ADR** — formalize the accepted bare-developer-OS release scope (ADR 0027 Decision 6); the residual question is only when/whether MiSTer binaries join | ADR merged Proposed→Accepted by owner | 1 `opus` draft + 1 `fable` review — judge panel dropped; direction was decided on ADR 0027 acceptance |
+| D2.8 | Developer-preview release lane: manual publish under `de25-YYYYMMDD` tags (sdcard image, kernel, rootfs, SHA256SUMS, provenance; **no db.json/updater** — that stays F-gated) | one draft release published with attested assets; zero PR-path impact | 1 `sonnet` + `/code-review`; obey rule 4 |
 
 ## Phase D3 — Parity (gate: upstream framework exists) — produces L2
 
@@ -136,10 +139,10 @@ Standing shapes, sized now so the plan is costable:
 
 - **D3.1 Patch-series port** — pipeline per D0.3-portable patch: `sonnet` rebase leg →
   compile-check leg → `opus` review of the handful with conflicts. ~30–40 agents ⚠ size.
-- **D3.2 Package audit on aarch64** — pipeline over 20 packages: `haiku` build-config
-  leg → `sonnet` verdict (azcopy: switch to aarch64 asset, drop both patches, **keep the
-  hardware keyctl re-verification step** — green build proves nothing, per house memory).
-  ~25 agents ⚠ size.
+- **D3.2 Package audit on aarch64** — pipeline over the packages targeted at DE25:
+  `haiku` build-config leg → `sonnet` verdict. azcopy is **excluded from the DE25 set**
+  (owner disposition 2026-08-19: Microsoft publishes linux-arm64 binaries, so we do not
+  package or publish it there; the DE10 armv7 pipeline is untouched). ~25 agents ⚠ size.
 - **D3.3 Services/overlay parity** — one `sonnet` leg per existing `docs/*-parity.md`
   (~10), each re-deriving its subsystem for DE25 → `opus` synthesis. ~12 agents.
 - **D3.4 Update channel implementation** — per plan §4.2. Small code, maximal care:
@@ -152,8 +155,11 @@ Standing shapes, sized now so the plan is costable:
 
 ## Phase D4 — Decision points → ADRs
 
-Each plan §6 DP graduates when its phase reaches it (DP-1 in D2.7; DP-2/3/8 with D3.4;
-DP-6 with D3.6; DP-9/10 after D0.2+D2.5). Uniform shape: **judge panel** — 3 `opus`
+Owner dispositions were recorded on ADR 0027 acceptance (plan §6): DP-4/DP-5 decided,
+DP-1/DP-9 decided in direction, the rest tabled. Only tabled DPs graduate here —
+DP-2/3/8 with D3.4, DP-6 with D3.6, DP-10 with L0/community adoption; DP-9's direction
+is validated by D0.2, and DP-1's residual (MiSTer-binary inclusion) waits on adoption,
+per D2.7. Uniform shape for those that do graduate: **judge panel** — 3 `opus`
 independent position drafts (different priors: conservative / mainline-first /
 robustness-first) → `fable` synthesis into a Proposed ADR → owner decides. ~4–5 agents
 per DP. Never batch multiple DPs into one workflow; each is a separate decision with

@@ -85,17 +85,22 @@ apparatus — is board-agnostic **[V, surveyed 2026-08-19]**.
 
 ## 4. Boot chain and update channel
 
-### 4.1 Boot chain (mostly [U] — D0.1 produces `docs/de25-boot-chain.md`)
+### 4.1 Boot chain — elevated to [`de25-boot-chain.md`](de25-boot-chain.md)
 
-Known shape **[V]**: SDM boots first; ATF BL2 is the FSBL; BL31 stays resident (PSCI,
-SMC); U-Boot proper; Linux. To pin down, with the same line-cited rigor as
-`docs/boot-chain.md`: which artifacts live in QSPI vs SD for an "HPS-first" DE25 boot;
-what the SDM demands of the SD layout; where U-Boot's environment lives and what the
-warm-reboot/core-preload story becomes; what a *safe* field-update of boot firmware
-looks like (the `updateboot` analogue) — including whether QSPI writes are ever needed
-and how to make them power-loss-safe, since the stock DE10 `updateboot` habit of raw
-`dd` + env wipe must not be cargo-culted onto a board where the failure mode is a brick
-with no BootROM-from-SD fallback **[U]**.
+Desk-research first pass done 2026-08-19 (a partial D0.1 result; that doc's §8 lists
+what remains). The load-bearing findings **[V at desk level]**: SDM boots first from
+QSPI (board MSEL default `001` AS-Fast; only-other documented scheme is JTAG); QSPI
+holds SDM firmware + the phase-1 HPS bitstream with the FSBL embedded; **everything
+else lives on the SD FAT/rootfs partitions** (`u-boot.itb` = BL31+U-Boot+DTB, fabric
+`core.rbf`, kernel, rootfs) — so **routine use never writes QSPI** and new-card UX
+matches the DE10. There is no 0xA2 analogue: the FSBL loads `u-boot.itb` by name from
+FAT. The one new seam is factory-QSPI ↔ SD-payload version skew; v1 recommendation
+(graduates with the DP-1 ADR) is to pin factory QSPI byte-untouched, mirror the DE10
+stock-uboot posture, and freeze the FSBL→`u-boot.itb` contract. Any future QSPI write
+is RSU-protected or does not exist; unbrick path is the on-board USB-Blaster III +
+JTAG. Remaining unknowns (SDM-from-SD on this board, factory FSBL compatibility with a
+mainline FIT, RSU sizing, env location, DDR-handoff coupling) are enumerated as Q1–Q6
+in that doc **[U]**.
 
 ### 4.2 Update channel (design fixed by ADR 0027; analysis [V] against the pinned Downloader)
 

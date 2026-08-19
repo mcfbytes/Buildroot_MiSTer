@@ -43,11 +43,17 @@ field update looks like (the `updateboot` analogue — including whether QSPI is
 written and the recovery path if it's interrupted). Primary sources: DE25-Nano User
 Manual (DigiKey PDF P0804), Terasic System CD, Altera GSRD boot-example docs
 (rel-24.x/25.x), RocketBoards Agilex-5 bootloader doc, mainline U-Boot + ATF source.
-- **Orchestration:** multi-modal sweep — 5 `sonnet` readers (one per source class,
-  medium effort) → 1 `opus` synthesis → `fable` adversarial verify (3 refuters, high)
-  on the brick-risk claims only. ~9–10 agents.
-- **Accept:** every §4.1 [U] in the plan resolved to [V] or explicitly parked with a
-  named blocker; a "what would brick the board" section exists and survived refutation.
+- **Status 2026-08-19:** a desk-research first pass exists —
+  [`de25-boot-chain.md`](de25-boot-chain.md) (boot chain, QSPI/SD split, MSEL table,
+  postures, brick inventory §7). **The task narrows to that doc's §8 Q1–Q6** (SDM-from-SD
+  on this board incl. a Terasic inquiry, factory QSPI contents, FSBL→`u-boot.itb`
+  contract, RSU sizing, env location, DDR-handoff coupling) plus the adversarial-verify
+  pass over §7's brick-risk claims, which have not yet survived refutation.
+- **Orchestration (narrowed):** 1 `sonnet` leg per open Q (≤6, medium) → 1 `opus`
+  synthesis into the doc → `fable` adversarial verify (3 refuters, high) on §7.
+  ~10 agents.
+- **Accept:** every §8 Q resolved to [V] or explicitly parked with a named blocker
+  (hardware-gated items hand off to D2.2); §7 survived refutation.
 
 ### D0.2 FPGA reconfig + shared-memory dossier → `docs/de25-fpga-reconfig.md`
 How core loading would actually work: `stratix10-soc` FPGA manager + SDM mailbox path

@@ -301,6 +301,20 @@
     },
     {
       "customType": "regex",
+      "description": "ltunify commit pin (Lekensteyn/ltunify, master branch) -- the Logitech Unifying pairing CLI (see package/ltunify/ltunify.mk and docs/logitech-pairing.md). A COMMIT pin, not the v0.3 tag: master HEAD is v0.3 plus one commit that silences a warn_unused_result warning, and pinning the tag would emit that warning in every build. git-refs on master rather than github-tags for exactly that reason -- the useful state is one commit ahead of the newest tag, which a tag datasource can never see. THIS MANAGER IS EXPECTED TO BE INERT: upstream's last commit is 2020-06-14T20:59:19Z and the project is finished, so it should never raise a PR. It exists so the pin has a refresh path if the repository ever wakes up, rather than being the one github-sourced package here with no manager. Hash: package/ltunify/ltunify.hash, refreshed by renovate-hash-sync.yml's generic loop (standard $(call github,...) archive tarball). Note the .hash carries a SECOND sha256 line for ltunify.c, which that loop deliberately does not touch -- it is the licence file (upstream ships no LICENSE), so a changed ltunify.c means a human re-reads the header before re-deriving it.",
+      "managerFilePatterns": [
+        "/^package/ltunify/ltunify\\.mk$/"
+      ],
+      "matchStrings": [
+        "LTUNIFY_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "Lekensteyn/ltunify",
+      "packageNameTemplate": "https://github.com/Lekensteyn/ltunify",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
       "description": "BCM20702 Bluetooth firmware COMMIT pin (winterheart/broadcom-bt-firmware, master branch). Was a github-tags/loose TAG pin until 2026-07-19; changed for two independent reasons. (1) Upstream stopped tagging: the newest tag v12.0.1.1105_p4 is from 2022-10-10, while master is still active (three firmware commits on 2026-07-08), so a tag pin could no longer see real updates. (2) The tag scheme actively misled the ordering: the trailing _pN is a patch level ON TOP of the base version, so v12.0.1.1105_p4 is NEWER than v12.0.1.1105 -- but under `loose` the bare tag sorts higher, and Renovate kept proposing v12.0.1.1105 (2020-05-02) as an upgrade, i.e. a 2.5-year DOWNGRADE. A commit pin removes the ordering question entirely instead of trying to teach `loose` a bespoke scheme, and matches how the 10 other untagged upstreams here are pinned (the driver commit-SHA pins -- 9 of them when this was written on 2026-07-19, 10 since rtl8852cu-morrownr joined them in v10.2). Safe because the package installs exactly ONE file and the .mk's inline sha256sum of that .hcd fails the build CLOSED if it ever changes -- the switch itself was a verified no-op (the .hcd is byte-identical at the old tag and at master). Hash: package/bcm20702-firmware/bcm20702-firmware.hash, refreshed by renovate-hash-sync.yml's generic loop.",
       "managerFilePatterns": [
         "/^package/bcm20702-firmware/bcm20702-firmware\\.mk$/"
@@ -488,9 +502,9 @@
       ]
     },
     {
-      "description": "Userspace controller-tooling pins. Its own label rather than driver-pin, per the established one-label-per-pin-class convention: driver-pin's reviewer contract is \"this changes out-of-tree kernel-module source\", and dualsensectl changes neither kernel-module source nor a library ABI Main_MiSTer links against (lib-pin's contract). It ships one self-contained CLI binary that nothing on the image invokes automatically, so the blast radius of a bad bump is an operator typing a command, not a boot or a link failure.",
+      "description": "Userspace input-device tooling pins (dualsensectl, ltunify). Their own label rather than driver-pin, per the established one-label-per-pin-class convention: driver-pin's reviewer contract is \"this changes out-of-tree kernel-module source\", and neither of these changes kernel-module source nor a library ABI Main_MiSTer links against (lib-pin's contract). Each ships one self-contained CLI binary that nothing on the image invokes automatically, so the blast radius of a bad bump is an operator typing a command, not a boot or a link failure. One extra thing for an ltunify reviewer specifically: /usr/sbin/mister-pair-logitech drives its command-line grammar and works around its always-exit-0 behaviour, so a bump that changed either would break the wrapper silently -- re-read docs/logitech-pairing.md section 4 before merging one.",
       "matchManagers": ["custom.regex"],
-      "matchDepNames": ["nowrep/dualsensectl"],
+      "matchDepNames": ["nowrep/dualsensectl", "Lekensteyn/ltunify"],
       "addLabels": [
         "tool-pin"
       ]

@@ -1833,6 +1833,33 @@ else
 fi
 
 # =============================================================================
+section "Logitech pairing (ltunify + mister-pair-logitech)"
+# =============================================================================
+
+# The CLI, and the wrapper that is the only thing meant to invoke it. Both, not
+# either: the wrapper without ltunify is a script that dies on its own preflight
+# check, and ltunify without the wrapper is a tool that will cheerfully pair to
+# the wrong receiver (docs/logitech-pairing.md section 4).
+require_present "usr/bin/ltunify" "ltunify CLI"
+require_present "usr/sbin/mister-pair-logitech" "mister-pair-logitech wrapper"
+
+# The udev rule upstream's `make install` would have dropped in. Asserted ABSENT
+# rather than merely not-installed, because the way it would come back is
+# somebody "fixing" ltunify.mk to use the stock install target -- at which point
+# this fails and says why. It grants seat users access via TAG+="uaccess", which
+# needs logind/elogind (not on this image), to a node root already owns.
+require_absent "usr/lib/udev/rules.d/42-logitech-unify-permissions.rules" \
+	"ltunify udev permission rule (deliberately not installed)"
+require_absent "etc/udev/rules.d/42-logitech-unify-permissions.rules" \
+	"ltunify udev permission rule in /etc (deliberately not installed)"
+
+# read-dev-usbmon is upstream's usbmon-capture debugging tool. LTUNIFY_BUILD_CMDS
+# builds only the `ltunify` target specifically so this never ships; it needs
+# CONFIG_USB_MON (not enabled) and its helper is documented upstream as broken.
+require_absent "usr/bin/read-dev-usbmon" \
+	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
+
+# =============================================================================
 section "Summary"
 # =============================================================================
 

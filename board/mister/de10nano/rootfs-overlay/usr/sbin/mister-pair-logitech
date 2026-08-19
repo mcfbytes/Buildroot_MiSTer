@@ -1,0 +1,962 @@
+#!/bin/bash
+# mister-pair-logitech -- pair a Logitech keyboard or mouse to a Unifying
+# receiver, from the MiSTer itself.
+#
+# Part of MiSTer Linux Modernization.
+# https://github.com/mcfbytes/Buildroot_MiSTer
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
+#
+# Scripts/pair_logitech.sh on the data partition is a shim that execs this. See
+# docs/logitech-pairing.md for the whole design, and ADR 0026 for why the pair
+# is shaped that way.
+#
+# ---------------------------------------------------------------------------
+# WHAT THIS IS FOR, AND WHAT NEEDS NOTHING
+# ---------------------------------------------------------------------------
+# A Logitech device that arrived pre-paired in the same box as its receiver
+# needs NOTHING. Plug the receiver in and it works: CONFIG_HID_LOGITECH_DJ is
+# built in, so all six slots enumerate as individual input devices with their
+# own logical product IDs, and CONFIG_HID_LOGITECH_HIDPP reports battery.
+#
+# This exists for the case the kernel has no answer for -- binding a device to a
+# receiver it did not ship with:
+#
+#   * the original receiver was lost or died, and you have a spare
+#   * a bare dongle, second-hand, paired to somebody else's keyboard
+#   * a keyboard and a mouse you want on ONE dongle instead of two
+#
+# There is no sysfs knob and no ioctl for that handshake. ltunify writes the
+# HID++ 1.0 pairing registers over /dev/hidraw* directly.
+#
+# ---------------------------------------------------------------------------
+# WHY A WRAPPER AND NOT "JUST RUN ltunify"
+# ---------------------------------------------------------------------------
+# Three specific reasons, each one a way a bare `ltunify pair` misleads you on
+# this box in particular:
+#
+#   1. IT PICKS THE WRONG RECEIVER, SILENTLY. ltunify's open_hidraw()
+#      (ltunify.c:1158) globs /sys/class/hidraw/hidraw*/device/driver and takes
+#      the first Logitech match -- the comment in that loop literally reads
+#      "Assume that the first match is the receiver". Re-pairing is the one
+#      situation where TWO receivers are plugged in at once, so the assumption
+#      is wrong exactly when it matters. This script enumerates every receiver
+#      and pins the chosen one with ltunify's own -d flag.
+#
+#   2. IT MISHANDLES RECEIVERS IT CANNOT DRIVE, in two opposite ways.
+#      hid-logitech-dj binds Lightspeed/Powerplay and 27 MHz receivers as
+#      "logitech-djreceiver" identically to Unifying ones, so those pass
+#      ltunify's driver-name test and then fail at the register write, or sit
+#      there timing out. A BOLT receiver goes wrong the other way: on this
+#      kernel it is not in hid-logitech-dj's device table at all (hid-multitouch
+#      claims it), so ltunify's driver-name test rejects it and prints "No
+#      Logitech Unifying Receiver device found" at somebody staring at the
+#      dongle in the port. This script classifies by USB product ID INDEPENDENTLY
+#      of driver, so both cases get named, with a reason.
+#
+#   3. IT ALWAYS EXITS 0. Read the bottom of ltunify's main(): every command
+#      path that gets as far as opening the receiver falls through to a single
+#      `return 0`. A pairing TIMEOUT exits 0. "Device not found" exits 0. So the
+#      exit status cannot be used to tell whether anything happened -- which is
+#      why this script reads the six pairing slots BEFORE and AFTER and reports
+#      the difference. That diff is the actual success signal.
+#
+# ---------------------------------------------------------------------------
+# IT MUST WORK WITH NO KEYBOARD ATTACHED
+# ---------------------------------------------------------------------------
+# Load-bearing, and it shapes the whole CLI. If the keyboard you are pairing is
+# your only keyboard, then at the moment you run this you have no keyboard: you
+# got here by picking an entry in the MiSTer Scripts menu with a gamepad.
+#
+# So the DEFAULT ACTION, with no arguments, is to pair -- and when there is
+# exactly one usable receiver it completes without asking anything. Prompts
+# appear only where a choice genuinely cannot be inferred (two receivers, or
+# which slot to free), and when no answer can be read, this refuses rather than
+# guessing: pairing to the wrong receiver is not a recoverable mistake for
+# somebody with no working input device.
+
+set -uo pipefail
+
+readonly LTUNIFY="/usr/bin/ltunify"
+readonly DIALOG="/usr/bin/dialog"
+readonly SYSFS_HIDRAW="/sys/class/hidraw"
+
+# ltunify's own default (perform_pair() coerces 0 to 30). Stated here so the
+# on-screen "you have N seconds" and the value actually passed cannot drift.
+readonly PAIR_TIMEOUT_DEFAULT=30
+
+# Seconds to wait at any prompt before giving up. Times out to "do nothing",
+# never to a default choice -- see the no-keyboard note above.
+readonly PROMPT_TIMEOUT=120
+
+MODE="pair"
+PAIR_TIMEOUT="$PAIR_TIMEOUT_DEFAULT"
+WANT_RECEIVER=""
+UNPAIR_TARGET=""
+INFO_TARGET=""
+ASSUME_YES=0
+
+say()  { echo "$*"; }
+warn() { echo "$*" >&2; }
+die()  { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
+rule() { echo "======================================================================"; }
+
+usage() {
+	cat <<'EOF'
+mister-pair-logitech -- pair a Logitech device to a Unifying receiver
+
+  mister-pair-logitech                 pair (the default -- asks nothing when
+                                       there is exactly one usable receiver)
+  mister-pair-logitech pair [seconds]  same, with an explicit pairing window
+  mister-pair-logitech list            show every receiver and all six slots
+  mister-pair-logitech unpair <slot>   free a slot (1-6)
+  mister-pair-logitech info <slot>     detail for one paired device
+  mister-pair-logitech receiver        receiver firmware and serial
+
+Options:
+  -r, --receiver <hidrawN>   use this receiver; skip auto-detection
+  -y, --yes                  do not prompt. A confirmation is taken as yes;
+                             a choice with no safe default -- which receiver,
+                             when two are plugged in -- still fails.
+  -h, --help
+
+Supported:     Unifying (046d:c52b, c532) and Nano (046d:c52f, c534).
+NOT supported: Bolt (c548), Lightspeed/Powerplay (c539, c53a, c53f, c543)
+               and 27 MHz (c51b). Those need Solaar or Logitech's own
+               software on a desktop; see docs/logitech-pairing.md.
+
+A device that came pre-paired with its own receiver needs none of this.
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+# Hand-rolled rather than getopt: this has to stay readable to somebody
+# debugging it over a serial console, and the grammar is four verbs.
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-h|--help)     usage; exit 0 ;;
+		-y|--yes)      ASSUME_YES=1 ;;
+		-r|--receiver)
+			[ "$#" -ge 2 ] || die "--receiver needs a value, e.g. --receiver hidraw2"
+			WANT_RECEIVER="$2"
+			shift
+			;;
+		pair)
+			MODE="pair"
+			# An optional numeric argument, and ONLY if it is numeric -- so
+			# `pair` followed by nothing, or by another flag, still parses.
+			if [ "$#" -ge 2 ] && [ -z "${2//[0-9]/}" ] && [ -n "$2" ]; then
+				PAIR_TIMEOUT="$2"
+				shift
+			fi
+			;;
+		list)          MODE="list" ;;
+		receiver|receiver-info) MODE="receiver" ;;
+		unpair)
+			MODE="unpair"
+			[ "$#" -ge 2 ] || die "unpair needs a slot number, e.g. 'unpair 2'. Run 'list' to see the slots."
+			UNPAIR_TARGET="$2"
+			shift
+			;;
+		info)
+			MODE="info"
+			[ "$#" -ge 2 ] || die "info needs a slot number, e.g. 'info 1'. Run 'list' to see the slots."
+			INFO_TARGET="$2"
+			shift
+			;;
+		*) warn "mister-pair-logitech: unknown argument: $1"; usage >&2; exit 2 ;;
+	esac
+	shift
+done
+
+# ltunify's pair_start() takes the timeout as a u8, so 1-255. 0 is accepted by
+# ltunify as "use 30", but rejecting it here keeps the on-screen countdown
+# honest -- it prints the number it was given.
+case "$PAIR_TIMEOUT" in
+	''|*[!0-9]*) die "pairing timeout must be a number of seconds, got: $PAIR_TIMEOUT" ;;
+esac
+if [ "$PAIR_TIMEOUT" -lt 1 ] || [ "$PAIR_TIMEOUT" -gt 255 ]; then
+	die "pairing timeout must be between 1 and 255 seconds (ltunify sends it as a single byte), got: $PAIR_TIMEOUT"
+fi
+
+[ -x "$LTUNIFY" ] || die "$LTUNIFY is missing. This image should ship it (BR2_PACKAGE_LTUNIFY); something is wrong with the installation."
+
+if [ "$(id -u)" -ne 0 ]; then
+	die "must run as root -- the receiver's /dev/hidraw* node is 0600 root:root."
+fi
+
+# ---------------------------------------------------------------------------
+# Receiver classification
+# ---------------------------------------------------------------------------
+# The product IDs come from the kernel's own drivers/hid/hid-ids.h, not from a
+# web page: USB_DEVICE_ID_LOGITECH_UNIFYING_RECEIVER (c52b) and _2 (c532),
+# _NANO_RECEIVER (c52f) and _2 (c534), _BOLT_RECEIVER (c548),
+# _NANO_RECEIVER_LIGHTSPEED_1 (c539), _1_1 (c53f), _1_2 (c543), _POWERPLAY
+# (c53a), _27MHZ_MOUSE_RECEIVER (c51b).
+#
+# The split that matters is NOT "which does the kernel drive" -- hid-logitech-dj
+# drives all of the DJ ones -- but "which pairing protocol does ltunify speak",
+# which is HID++ 1.0 register writes, i.e. Unifying and Nano only.
+receiver_kind() {
+	case "${1,,}" in
+		c52b|c532) echo "unifying" ;;
+		c52f|c534) echo "nano" ;;
+		c548)      echo "bolt" ;;
+		c539|c53a|c53f|c543) echo "lightspeed" ;;
+		c51b)      echo "27mhz" ;;
+		*)         echo "unknown" ;;
+	esac
+}
+
+receiver_kind_label() {
+	case "$1" in
+		unifying)   echo "Unifying receiver" ;;
+		nano)       echo "Nano receiver" ;;
+		bolt)       echo "Bolt receiver -- NOT SUPPORTED" ;;
+		lightspeed) echo "Lightspeed/Powerplay receiver -- NOT SUPPORTED" ;;
+		27mhz)      echo "27 MHz receiver -- NOT SUPPORTED" ;;
+		*)          echo "unrecognised Logitech receiver -- NOT SUPPORTED" ;;
+	esac
+}
+
+kind_is_supported() {
+	case "$1" in
+		unifying|nano) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+# Why a given receiver was refused. Kept beside the classifier so a new product
+# ID cannot be added to one and forgotten in the other.
+kind_refusal_reason() {
+	case "$1" in
+		bolt)
+			echo "Bolt uses a different pairing protocol that ltunify has never spoken -- and on this kernel a Bolt receiver is not even claimed by hid-logitech-dj, so ltunify does not recognise it as a receiver at all. The kernel drives an already-paired Bolt device fine; only pairing is out of reach here."
+			;;
+		lightspeed)
+			echo "Lightspeed and Powerplay receivers ship factory-paired to one specific device and use a protocol ltunify does not implement."
+			;;
+		27mhz)
+			echo "27 MHz receivers predate the Unifying protocol entirely; they pair with a hardware button, not over HID++."
+			;;
+		*)
+			echo "This product ID is not one of the Unifying (c52b/c532) or Nano (c52f/c534) receivers ltunify implements."
+			;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# Enumeration
+# ---------------------------------------------------------------------------
+# ONE RECORD PER PHYSICAL RECEIVER, not per hidraw node. That distinction is the
+# whole reason this function is more than a glob, so it is worth stating why.
+#
+# A receiver exposes several USB interfaces and `hid-logitech-dj` claims more
+# than one of them, per its `no_dj_interfaces` table (hid-logitech-dj.c, in
+# logi_dj_probe). How many survive to become hidraw nodes depends on the family:
+#
+#   * Unifying c52b/c532 are recvr_type_dj, and probe returns -ENODEV for any
+#     interface without a HID++ collection ("Ignore interfaces without DJ/HID++
+#     collection ... dont create any hid_device for them"). Exactly ONE node.
+#   * Nano c534 (recvr_type_hidpp) and c52f (recvr_type_mouse_only) have
+#     no_dj_interfaces = 2 and that -ENODEV guard is recvr_type_dj-only, so BOTH
+#     interfaces become hidraw nodes. TWO nodes for one dongle.
+#   * Lightspeed/Powerplay (recvr_type_gaming_hidpp) likewise, up to three.
+#
+# Emitting a record per node would therefore make a single perfectly ordinary
+# Nano receiver look like two or three receivers, and this script's "more than
+# one receiver, refuse to guess" branch would fire on a box that has one. For a
+# user with no working keyboard that is a dead end, so grouping is not a tidiness
+# concern.
+#
+# CLASSIFICATION IS BY USB PRODUCT ID, INDEPENDENT OF DRIVER, and that is also
+# deliberate. The Bolt receiver (c548) is NOT in hid-logitech-dj's device table
+# at all on this kernel -- it is claimed by hid-multitouch. Filtering on the
+# driver name first, the way ltunify's open_hidraw() does, would make a Bolt
+# receiver invisible, and the user would be told "no Logitech receiver found"
+# while looking at one plugged into the board. Classifying first and only then
+# looking for a usable node is what lets the refusal name the actual hardware.
+#
+# Output, one line per receiver, TAB-separated:
+#
+#   <node> <pid> <kind> <usb-bus-id> <product-string> <all-nodes-csv>
+#
+# <node> is the hidraw node to hand to `ltunify -d`, or "-" when the receiver has
+# none that ltunify would accept. <all-nodes-csv> is every node belonging to this
+# receiver, so --receiver can be matched against any of them.
+
+# True if this hidraw node's report descriptor declares the HID++ vendor
+# collection -- usage page 0xFF00, usage 0x01, which is `06 00 ff 09 01` in the
+# raw descriptor bytes. This is the same thing logi_dj_probe tests for as
+# `rep->application == 0xff000001`, and it is the definitional way to find the
+# interface that actually speaks HID++ rather than guessing from the interface
+# number.
+has_hidpp_collection() {
+	local rd="$1/device/report_descriptor" hex
+	[ -r "$rd" ] || return 1
+	hex="$(od -An -tx1 -v "$rd" 2>/dev/null | tr -d ' \n')" || return 1
+	case "$hex" in
+		*0600ff0901*) return 0 ;;
+	esac
+	return 1
+}
+
+enumerate_receivers() {
+	local node nodename driverlink driver usbdev vid pid kind product busid
+	local ifnum cand hidpp raw=""
+
+	for node in "$SYSFS_HIDRAW"/hidraw*; do
+		[ -e "$node/device" ] || continue
+
+		# hid device -> USB interface -> USB device.
+		usbdev="$(readlink -f "$node/device/../.." 2>/dev/null)" || continue
+		[ -r "$usbdev/idVendor" ] && [ -r "$usbdev/idProduct" ] || continue
+
+		vid="$(<"$usbdev/idVendor")"
+		[ "${vid,,}" = "046d" ] || continue
+		pid="$(<"$usbdev/idProduct")"
+		pid="${pid,,}"
+
+		driver=""
+		if driverlink="$(readlink "$node/device/driver" 2>/dev/null)"; then
+			driver="${driverlink##*/}"
+		fi
+
+		kind="$(receiver_kind "$pid")"
+
+		# What counts as a receiver at all. A known receiver product ID, or
+		# anything hid-logitech-dj claimed -- that driver binds receivers and
+		# nothing else, so it catches a product ID newer than this script
+		# without also sweeping up every wired Logitech mouse, which shares the
+		# 046d vendor ID and is emphatically not a receiver.
+		if [ "$kind" = "unknown" ] && [ "$driver" != "logitech-djreceiver" ]; then
+			continue
+		fi
+
+		# Is this the node ltunify could be pointed at? Its open_hidraw() takes
+		# only these two driver names, so a node it would reject is no use to us
+		# even if the receiver is otherwise fine.
+		cand=0
+		case "$driver" in
+			logitech-djreceiver|hid-generic) cand=1 ;;
+		esac
+
+		hidpp=0
+		[ "$cand" -eq 1 ] && has_hidpp_collection "$node" && hidpp=1
+
+		# bInterfaceNumber is printed by the kernel as two HEX digits
+		# (drivers/usb/core/sysfs.c), so it is converted explicitly rather than
+		# used in arithmetic context, where "08" and "09" are invalid octal.
+		ifnum=-1
+		if [ -r "$node/device/../bInterfaceNumber" ]; then
+			ifnum="$(<"$node/device/../bInterfaceNumber")"
+			ifnum=$((16#$ifnum))
+		fi
+
+		product="$(cat "$usbdev/product" 2>/dev/null)"
+		[ -n "$product" ] || product="Logitech receiver"
+		busid="${usbdev##*/}"
+		nodename="${node##*/}"
+
+		raw+="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+			"$busid" "$pid" "$kind" "$product" "$nodename" "$cand" "$hidpp" "$ifnum")"$'\n'
+	done
+
+	[ -n "$raw" ] || return 0
+
+	# Group by USB device and pick one node per receiver: a candidate over a
+	# non-candidate, then the one that actually carries the HID++ collection,
+	# then the highest interface number. That last tiebreak is only reached when
+	# the descriptor scan cannot decide, and it reproduces ltunify's own
+	# hardcoded c534 rule ("the first one is only used for keyboard events ...
+	# the second one is for the mouse, and that interface has a vendor-specific
+	# HID page for HID++") as a general rule rather than a per-product special
+	# case.
+	printf '%s' "$raw" \
+		| LC_ALL=C sort -t $'\t' -k1,1 -k6,6r -k7,7r -k8,8nr \
+		| awk -F'\t' '
+			{
+				if (!($1 in seen)) {
+					seen[$1] = 1
+					node[$1]  = ($6 == "1") ? $5 : "-"
+					pid[$1]   = $2
+					kind[$1]  = $3
+					prod[$1]  = $4
+					order[++n] = $1
+				}
+				all[$1] = ($1 in all) ? all[$1] "," $5 : $5
+			}
+			END {
+				for (i = 1; i <= n; i++) {
+					b = order[i]
+					printf "%s\t%s\t%s\t%s\t%s\t%s\n", node[b], pid[b], kind[b], b, prod[b], sortnodes(all[b])
+				}
+			}
+			# The records arrive best-node-first, so the accumulated list is in
+			# selection order. Re-sort it by hidraw NUMBER for display: this
+			# string is shown to a human comparing it against ls output, and
+			# "hidraw4,hidraw3" reads like a mistake.
+			function sortnodes(csv,   a, m, i, j, tmp) {
+				m = split(csv, a, ",")
+				for (i = 2; i <= m; i++) {
+					tmp = a[i]
+					for (j = i - 1; j >= 1 && num(a[j]) > num(tmp); j--)
+						a[j + 1] = a[j]
+					a[j + 1] = tmp
+				}
+				csv = a[1]
+				for (i = 2; i <= m; i++) csv = csv "," a[i]
+				return csv
+			}
+			function num(s) { sub(/^[^0-9]*/, "", s); return s + 0 }'
+}
+
+# ---------------------------------------------------------------------------
+# Slot reading
+# ---------------------------------------------------------------------------
+# `ltunify list` prints a "Connected devices:" banner and then one
+# "idx=N<TAB>type<TAB>name" line per PAIRED slot -- paired, not merely powered
+# on: ltunify's own struct field is `bool device_present; // whether the device
+# is paired` (ltunify.c:212). That is what makes a before/after comparison a
+# valid test of whether pairing took, rather than a test of whether the device
+# happened to be awake.
+#
+# THE BANNER IS THE SUCCESS SIGNAL, and the reason is the same always-exit-0
+# quirk documented in the header. When the receiver cannot be talked to, ltunify
+# writes "Unable to request a list of paired devices" to stderr and STILL exits
+# 0, leaving no `idx=` lines behind -- byte for byte what a receiver with six
+# empty slots produces. Treating that as "nothing is paired" would be actively
+# dangerous: it would report "all six slots are free" for a receiver that is
+# full, skip the slots-full pre-check, and then blame flat batteries for a
+# failure that was really an unreadable receiver.
+#
+# ltunify's main() only calls print_all_devices() -- the function that emits
+# "Connected devices:" -- inside `if (get_all_devices(fd))`, so the banner
+# appears if and only if the slot table was actually read.
+#
+# Sets SLOTS (possibly empty) and SLOTS_ERROR; returns non-zero on a failed read.
+SLOTS=""
+SLOTS_ERROR=""
+
+read_slots() {
+	local dev="$1" out
+	SLOTS=""
+	SLOTS_ERROR=""
+
+	out="$("$LTUNIFY" -d "$dev" list 2>&1)"
+
+	case "$out" in
+		*"Connected devices:"*) ;;
+		*)
+			SLOTS_ERROR="$out"
+			return 1
+			;;
+	esac
+
+	# sed rather than grep as the filter: grep exits 1 when a receiver has no
+	# devices paired at all, which under `set -o pipefail` would make this
+	# function report failure for the perfectly ordinary empty case.
+	SLOTS="$(printf '%s\n' "$out" | sed -n '/^idx=/p' | sort)"
+	return 0
+}
+
+# Give up with the receiver's own words rather than a generic message: whatever
+# ltunify wrote to stderr is the most specific thing anyone has about why.
+die_unreadable() {
+	warn ""
+	warn "ERROR: could not read the pairing slots on $1."
+	if [ -n "$SLOTS_ERROR" ]; then
+		warn ""
+		printf '%s\n' "$SLOTS_ERROR" | sed 's/^/  ltunify: /' >&2
+	fi
+	warn ""
+	warn "Unplug the receiver, plug it back in, and try again. Nothing was changed."
+	exit 1
+}
+
+slot_count() {
+	[ -z "$SLOTS" ] && { echo 0; return; }
+	printf '%s\n' "$SLOTS" | wc -l
+}
+
+# ---------------------------------------------------------------------------
+# Receiver selection
+# ---------------------------------------------------------------------------
+print_receiver_table() {
+	local node pid kind busid product allnodes label shown
+	while IFS=$'\t' read -r node pid kind busid product allnodes; do
+		label="$(receiver_kind_label "$kind")"
+		# A receiver with no node ltunify would accept still gets a row -- being
+		# told what is plugged in and why it cannot be used is the entire point
+		# of listing it.
+		# Kept to 14 characters or fewer so it does not overflow the field and
+		# push the rest of the row out of alignment.
+		if [ "$node" = "-" ]; then
+			shown="(unusable)"
+		else
+			shown="/dev/$node"
+		fi
+		# The 14 on the continuation line is the width of the field above it, so
+		# the label sits under the product name rather than three columns left.
+		printf '  %-14s %s (046d:%s) at USB %s\n' "$shown" "$product" "$pid" "$busid"
+		printf '  %-14s %s\n' "" "$label"
+		# Only worth saying when the receiver spans more than one node, which is
+		# exactly the case somebody comparing this against `ls /sys/class/hidraw`
+		# would otherwise find confusing.
+		case "$allnodes" in
+			*,*) printf '  %-14s (one receiver, hidraw nodes: %s)\n' "" "$allnodes" ;;
+		esac
+	done
+}
+
+# Wrap a reason to the console width and indent it. fold -s breaks on spaces and
+# leaves the break character at the end of the line, so the trailing whitespace
+# is stripped before the indent goes on.
+indent_wrapped() {
+	fold -s -w "$1" | sed -e 's/[[:space:]]*$//' -e "s/^/$2/"
+}
+
+# Sets RECEIVER_NODE / RECEIVER_KIND / RECEIVER_DESC, or exits.
+#
+# Assigning to globals rather than echoing a result: the interactive branch
+# writes prompts to the terminal, and a command substitution would swallow them
+# into the captured value instead of showing them to the user.
+RECEIVER_NODE=""
+RECEIVER_KIND=""
+RECEIVER_DESC=""
+
+# Turn one enumerate_receivers record into the RECEIVER_* globals.
+set_receiver_from_record() {
+	local node pid kind busid product allnodes
+	IFS=$'\t' read -r node pid kind busid product allnodes <<<"$1"
+	RECEIVER_KIND="$kind"
+	RECEIVER_DESC="$product (046d:$pid) at USB $busid"
+	if [ "$node" = "-" ]; then
+		RECEIVER_NODE=""
+	else
+		RECEIVER_NODE="/dev/$node"
+	fi
+}
+
+# Match a user-supplied name against a receiver record. Deliberately matches the
+# WHOLE node list, not just the chosen node: a Nano receiver owns two hidraw
+# nodes, and somebody reading `ls /sys/class/hidraw` and passing the one we did
+# not pick means the right receiver and should get it, not an error.
+match_receiver() {
+	printf '%s\n' "$2" | awk -F'\t' -v n="$1" '
+		{
+			if ($1 == n) { print; exit }
+			split($6, nodes, ",")
+			for (i in nodes) if (nodes[i] == n) { print; exit }
+		}'
+}
+
+select_receiver() {
+	local all supported count line node pid kind busid product allnodes answer
+
+	all="$(enumerate_receivers)"
+
+	if [ -z "$all" ]; then
+		rule
+		say "No Logitech receiver found."
+		rule
+		say ""
+		say "  Plug the receiver into a USB port on the MiSTer and try again."
+		say ""
+		say "  If it IS plugged in, check that the kernel sees it at all:"
+		say "      lsusb | grep -i logitech"
+		say ""
+		say "  A receiver shows up here whatever driver claimed it, so if lsusb"
+		say "  lists one and this does not, its USB product ID is newer than"
+		say "  this script -- worth reporting, with that lsusb line."
+		say ""
+		say "  A Bluetooth Logitech device is a different thing entirely and"
+		say "  does not appear here -- use btpair for those."
+		say ""
+		exit 1
+	fi
+
+	# An explicit --receiver wins, but is still checked: pointing it at a Bolt
+	# receiver or at some unrelated hidraw node should say so, not fail obscurely
+	# thirty seconds into a pairing window.
+	if [ -n "$WANT_RECEIVER" ]; then
+		node="${WANT_RECEIVER##*/}"
+		line="$(match_receiver "$node" "$all")"
+		if [ -z "$line" ]; then
+			warn "No Logitech receiver at '$WANT_RECEIVER'. What is present:"
+			printf '%s\n' "$all" | print_receiver_table >&2
+			die "pick one of the receivers listed above."
+		fi
+		set_receiver_from_record "$line"
+		# Say so when the name given resolves to a different node on the same
+		# receiver, rather than silently using something the user did not type.
+		if [ -n "$RECEIVER_NODE" ] && [ "$RECEIVER_NODE" != "/dev/$node" ]; then
+			say "Using $RECEIVER_NODE -- the HID++ node of the same receiver as $node."
+		fi
+		return 0
+	fi
+
+	supported="$(printf '%s\n' "$all" | awk -F'\t' '$3 == "unifying" || $3 == "nano"')"
+
+	if [ -z "$supported" ]; then
+		rule
+		say "Found a Logitech receiver, but not one that can be paired here."
+		rule
+		say ""
+		printf '%s\n' "$all" | print_receiver_table
+		say ""
+		# One reason per distinct kind present, not one per receiver: two Bolt
+		# dongles would otherwise print the same paragraph twice.
+		local k
+		while read -r k; do
+			[ -n "$k" ] || continue
+			say "  $(receiver_kind_label "$k"):"
+			kind_refusal_reason "$k" | indent_wrapped 66 "    "
+			say ""
+		done < <(printf '%s\n' "$all" | cut -f3 | sort -u)
+		say "  Pair it on a PC or Mac instead -- Logitech's own Options+ software,"
+		say "  or Solaar on Linux -- then bring the receiver back here. Once the"
+		say "  device is paired, this MiSTer drives it perfectly well; it is only"
+		say "  the pairing handshake that is out of reach."
+		say ""
+		exit 1
+	fi
+
+	count="$(printf '%s\n' "$supported" | wc -l)"
+
+	if [ "$count" -eq 1 ]; then
+		set_receiver_from_record "$supported"
+		return 0
+	fi
+
+	# More than one. This is the case ltunify gets wrong by design, so it is the
+	# one place this script insists on an explicit answer.
+	rule
+	say "More than one Logitech receiver is plugged in."
+	rule
+	say ""
+	printf '%s\n' "$supported" | print_receiver_table
+	say ""
+
+	if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+		warn "Refusing to guess which receiver you meant."
+		warn ""
+		warn "Pairing writes to whichever receiver is chosen, and choosing wrong"
+		warn "silently pairs your device to the other dongle. Re-run naming one:"
+		warn ""
+		printf '%s\n' "$supported" | while IFS=$'\t' read -r node _ _ _ _ _; do
+			warn "    mister-pair-logitech --receiver $node"
+		done
+		warn ""
+		exit 1
+	fi
+
+	if [ -x "$DIALOG" ] && [ -t 1 ]; then
+		local -a menu=()
+		while IFS=$'\t' read -r node pid kind busid product allnodes; do
+			menu+=("$node" "$product (046d:$pid) USB $busid")
+		done <<<"$supported"
+		answer="$("$DIALOG" --clear --title " Which receiver? " \
+			--timeout "$PROMPT_TIMEOUT" \
+			--menu "Two or more Logitech receivers are plugged in.\n\nPick the one you want to pair TO:" \
+			15 70 4 "${menu[@]}" 3>&1 1>&2 2>&3)" || answer=""
+		clear 2>/dev/null || printf '\033[2J\033[H'
+	else
+		say "Type the hidraw name of the receiver you want to pair TO"
+		printf 'and press Enter (blank cancels): '
+		read -r -t "$PROMPT_TIMEOUT" answer || answer=""
+		say ""
+	fi
+
+	[ -n "$answer" ] || die "no receiver chosen; nothing was changed."
+
+	line="$(match_receiver "${answer##*/}" "$supported")"
+	[ -n "$line" ] || die "'$answer' is not one of the receivers listed above."
+
+	set_receiver_from_record "$line"
+}
+
+require_supported_receiver() {
+	if ! kind_is_supported "$RECEIVER_KIND"; then
+		rule
+		say "$RECEIVER_DESC"
+		say "$(receiver_kind_label "$RECEIVER_KIND")"
+		rule
+		say ""
+		kind_refusal_reason "$RECEIVER_KIND" | indent_wrapped 68 "  "
+		say ""
+		exit 1
+	fi
+
+	# A supported family with no node ltunify would accept should not be
+	# reachable -- every Unifying and Nano receiver has one. Checked anyway,
+	# because the alternative is `ltunify -d ""`, which silently falls back to
+	# the auto-detection this whole script exists to avoid.
+	if [ -z "$RECEIVER_NODE" ]; then
+		die "$RECEIVER_DESC is a receiver ltunify supports, but no hidraw node on it is bound to a driver ltunify can use. Check 'ls -l /sys/class/hidraw/*/device/driver' and please report this."
+	fi
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+# Print whatever read_slots last put in SLOTS. Takes no device argument and does
+# NOT re-read: every caller has already done the read, and re-reading here is
+# what would let the list on screen disagree with the list the before/after diff
+# was computed from.
+show_slots() {
+	if [ -z "$SLOTS" ]; then
+		say "  (no devices paired -- all six slots are free)"
+	else
+		printf '%s\n' "$SLOTS" | sed 's/^/  /'
+	fi
+}
+
+cmd_list() {
+	local all node pid kind busid product allnodes
+
+	all="$(enumerate_receivers)"
+	[ -n "$all" ] || { say "No Logitech receiver found."; exit 1; }
+
+	while IFS=$'\t' read -r node pid kind busid product allnodes; do
+		rule
+		say "$product (046d:$pid) at USB $busid"
+		say "$(receiver_kind_label "$kind")"
+		if [ "$node" = "-" ]; then
+			say "hidraw nodes: $allnodes (none of them usable by ltunify)"
+		else
+			case "$allnodes" in
+				*,*) say "hidraw nodes: $allnodes (using /dev/$node)" ;;
+				*)   say "hidraw node: /dev/$node" ;;
+			esac
+		fi
+		rule
+		if ! kind_is_supported "$kind" || [ "$node" = "-" ]; then
+			say "  (slots cannot be read -- ltunify does not speak this"
+			say "   receiver's protocol; run --help for what to do instead)"
+		elif read_slots "/dev/$node"; then
+			show_slots
+		else
+			# Not fatal here, unlike everywhere else: `list` is the command
+			# somebody runs to find out what is going on, so one unreadable
+			# receiver must not stop the others being reported.
+			say "  (could not read this receiver -- ltunify said:)"
+			printf '%s\n' "$SLOTS_ERROR" | sed 's/^/    /'
+		fi
+		say ""
+	done <<<"$all"
+}
+
+cmd_pair() {
+	local before added
+
+	select_receiver
+	require_supported_receiver
+
+	# ONE read, reused for the display, the slots-full check and the diff
+	# baseline. Reading three times would let the list printed on screen
+	# disagree with the list the diff is computed against, and a transient
+	# failure on only the first read would produce the worst possible outcome:
+	# an empty baseline, so every device already on the receiver reappears
+	# under "New:" beneath a headline of "Paired."
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	before="$SLOTS"
+
+	rule
+	say "Pairing to: $RECEIVER_DESC"
+	rule
+	say ""
+	say "Already paired to this receiver:"
+	show_slots
+	say ""
+
+	# The six-slot limit is the receiver's, and hitting it is the single most
+	# common reason a pairing attempt "does nothing" -- say so BEFORE burning
+	# the pairing window rather than after.
+	if [ "$(slot_count)" -ge 6 ]; then
+		warn "This receiver already has all six slots in use."
+		warn "Free one first:  mister-pair-logitech unpair <slot>"
+		exit 1
+	fi
+
+	say "NOW, on the device you want to pair:"
+	say ""
+	say "  * switch it OFF and then back ON, or"
+	say "  * press its Connect button (underneath, on most Logitech gear)"
+	say ""
+	say "You have ${PAIR_TIMEOUT} seconds. Waiting..."
+	say ""
+
+	# ltunify's own progress goes straight to the terminal. Its exit status is
+	# NOT consulted -- see the header: it returns 0 on a pairing timeout too.
+	"$LTUNIFY" -d "$RECEIVER_NODE" pair "$PAIR_TIMEOUT"
+
+	say ""
+	# A failed read here is fatal rather than "nothing was paired": the device
+	# may well have paired, and saying it did not would send the user off to
+	# check batteries for a problem that is the receiver falling off the bus.
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	added="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$SLOTS"))"
+
+	rule
+	if [ -n "$added" ]; then
+		say "Paired."
+		rule
+		say ""
+		say "New:"
+		printf '%s\n' "$added" | sed 's/^/  /'
+		say ""
+		say "All devices on this receiver now:"
+		show_slots
+		say ""
+		say "A newly paired keyboard or mouse should work immediately."
+		say ""
+		return 0
+	fi
+
+	say "Nothing was paired."
+	rule
+	say ""
+	say "The slot list is unchanged, so the device never completed the"
+	say "handshake. The usual causes, in the order worth checking:"
+	say ""
+	say "  * The device was not power-cycled inside the ${PAIR_TIMEOUT}-second window."
+	say "    Run this again and switch it off and on when it says Waiting."
+	say "  * Flat or missing batteries. A device with just enough charge to"
+	say "    light an LED often has too little to complete pairing."
+	say "  * It is a Bluetooth device, not a Unifying one. Those pair with"
+	say "    btpair instead, and have no dongle."
+	say "  * It is a Bolt or Lightspeed device. Those cannot be paired here"
+	say "    at all -- see 'mister-pair-logitech --help'."
+	say ""
+	return 1
+}
+
+cmd_unpair() {
+	local before removed answer
+
+	case "$UNPAIR_TARGET" in
+		''|*[!0-9]*) die "slot must be a number from 1 to 6, got: $UNPAIR_TARGET" ;;
+	esac
+	if [ "$UNPAIR_TARGET" -lt 1 ] || [ "$UNPAIR_TARGET" -gt 6 ]; then
+		die "slot must be a number from 1 to 6, got: $UNPAIR_TARGET"
+	fi
+
+	select_receiver
+	require_supported_receiver
+
+	# One read, same reasoning as cmd_pair: an unreadable receiver here would
+	# otherwise look like "slot N is already free" and talk the user out of an
+	# unpair that was never attempted.
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	before="$SLOTS"
+
+	rule
+	say "Receiver: $RECEIVER_DESC"
+	rule
+	say ""
+	say "Currently paired:"
+	show_slots
+	say ""
+
+	if ! printf '%s\n' "$before" | grep -q "^idx=${UNPAIR_TARGET}[^0-9]"; then
+		die "slot $UNPAIR_TARGET is already free on this receiver."
+	fi
+
+	# Unpairing the keyboard you are typing on is a real way to strand yourself,
+	# so this one asks -- unlike pairing, which is additive and harmless.
+	#
+	# WITHOUT AN ANSWER IT DOES NOT PROCEED. Falling through to the unpair when
+	# stdin is not a terminal would make a destructive operation the DEFAULT for
+	# every pipeline and boot script, which is the opposite of the posture the
+	# rest of this tool takes. --yes is the way to say "I have decided" ahead of
+	# time; nothing else is.
+	#
+	# Note that --yes cannot stand in for the receiver CHOICE in
+	# select_receiver: answering a yes/no is not the same as inventing which of
+	# two dongles was meant, so that one still refuses. Same flag, and the help
+	# text above says which behaviour to expect where.
+	if [ "$ASSUME_YES" -eq 0 ]; then
+		if [ ! -t 0 ]; then
+			die "unpair needs confirmation and stdin is not a terminal, so there is no way to ask. Nothing was changed. Re-run with --yes if you are sure."
+		fi
+		printf 'Unpair slot %s? The device stops working until it is paired again. [y/N]: ' "$UNPAIR_TARGET"
+		# A timeout or EOF leaves answer empty, which is a No. On a console with
+		# no keyboard attached, stdin IS a terminal but nothing can be typed --
+		# so timing out to "changed nothing" is the behaviour that case needs.
+		read -r -t "$PROMPT_TIMEOUT" answer || answer=""
+		say ""
+		case "${answer,,}" in
+			y|yes) ;;
+			*) say "Nothing was changed."; exit 0 ;;
+		esac
+	fi
+
+	"$LTUNIFY" -d "$RECEIVER_NODE" unpair "$UNPAIR_TARGET"
+
+	say ""
+	read_slots "$RECEIVER_NODE" || die_unreadable "$RECEIVER_DESC"
+	removed="$(comm -23 <(printf '%s\n' "$before") <(printf '%s\n' "$SLOTS"))"
+
+	rule
+	if [ -n "$removed" ]; then
+		say "Unpaired."
+		rule
+		say ""
+		printf '%s\n' "$removed" | sed 's/^/  was: /'
+		say ""
+		say "Remaining on this receiver:"
+		show_slots
+		say ""
+		return 0
+	fi
+
+	say "Slot $UNPAIR_TARGET is still paired."
+	rule
+	say ""
+	say "The receiver did not accept the unpair request. Try again; if it keeps"
+	say "failing, unplug the receiver, plug it back in, and retry."
+	say ""
+	return 1
+}
+
+cmd_info() {
+	case "$INFO_TARGET" in
+		''|*[!0-9]*) die "slot must be a number from 1 to 6, got: $INFO_TARGET" ;;
+	esac
+	if [ "$INFO_TARGET" -lt 1 ] || [ "$INFO_TARGET" -gt 6 ]; then
+		die "slot must be a number from 1 to 6, got: $INFO_TARGET"
+	fi
+
+	select_receiver
+	require_supported_receiver
+
+	rule
+	say "Receiver: $RECEIVER_DESC"
+	rule
+	"$LTUNIFY" -d "$RECEIVER_NODE" info "$INFO_TARGET"
+}
+
+cmd_receiver() {
+	select_receiver
+	require_supported_receiver
+
+	rule
+	say "Receiver: $RECEIVER_DESC"
+	rule
+	"$LTUNIFY" -d "$RECEIVER_NODE" receiver-info
+}
+
+case "$MODE" in
+	pair)     cmd_pair ;;
+	list)     cmd_list ;;
+	unpair)   cmd_unpair ;;
+	info)     cmd_info ;;
+	receiver) cmd_receiver ;;
+	*)        die "internal error: unhandled mode '$MODE'" ;;
+esac

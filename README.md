@@ -231,6 +231,7 @@ The installer prints all of this and pauses before doing anything.
 | `linux/7za` | **Replaced** — 7-Zip 26.02 instead of the 2016 p7zip |
 | `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit; your comments, sections and databases are left alone, and the original is saved to `linux/.mlm-backup/downloader.ini.orig`. Created (declaring the official database) only if you don't have one |
 | `Scripts/update_linux_modernization.sh` | **Installed** — this is what updates the image from now on |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh` | **Installed** — two small launchers for tools that live in the image ([exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md)) |
 
 **Everything else under `linux/` is rewritten with byte-identical content.** Our release
 archive *is* the stock archive with those three files swapped in, so `MidiLink.INI`,
@@ -384,6 +385,7 @@ plain-language version of what that means on an untrusted network.
 |---|---|---|
 | **exFAT** | Out-of-tree Samsung driver (also handled FAT12/16/32) | **Mainline `exfat`**, with the Samsung symlink extension carried as patch `0031` ([ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [ADR 0019](docs/decisions/0019-exfat-symlinks-carried-patch.md)) |
 | **exFAT repair** | None. exFAT has no journal, the card is never cleanly unmounted (even the OSD's "Reboot" is a raw HPS reset-controller write), so lost clusters accumulate and nothing ever checks | **Scripts > check_storage.sh** — a read-only scan while running, and, only if it finds something and you confirm, a one-shot `fsck.exfat` on the next boot from the initramfs, the only place a repair can run ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
+| **Logitech pairing** | None. `hid-logitech-dj` drives every *already-paired* device, but the pairing handshake has no kernel interface, so a replacement or second-hand Unifying receiver cannot be bound to a device on-box at all | **Scripts > pair_logitech.sh** — enumerates every receiver, refuses the families it cannot drive (Bolt, Lightspeed) by name, and confirms the result from the receiver's own slot table ([`docs/logitech-pairing.md`](docs/logitech-pairing.md)) |
 | **NTFS** | Not supported | `ntfs3` module + `ntfs-3g` automount via util-linux `mount` ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
 | **USB automount** | Debian `usbmount` 0.0.24 | Buildroot `usbmount`, functionally identical, **plus NTFS** ([`docs/usb-automount-parity.md`](docs/usb-automount-parity.md)) |
 | **Archive extraction** | `7zr` = p7zip 16.02 (2016); the updater additionally fetches the same 2016 build over the network as `/media/fat/linux/7za` | **7-Zip 26.02** as `7zz` (+`7za`), and a static copy shipped to `/media/fat/linux/7za` so nothing is fetched ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
@@ -903,6 +905,7 @@ coverage numbers above
 | [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
 | [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
 | [`docs/dualsense-tooling.md`](docs/dualsense-tooling.md) | `dualsensectl`, and why the DualSense kernel patches are not replaceable by udev/userspace |
+| [`docs/logitech-pairing.md`](docs/logitech-pairing.md) | `ltunify` + `mister-pair-logitech` — the one Logitech gap the kernel has no interface for, and why not Solaar |
 | [`docs/azcopy.md`](docs/azcopy.md) | `azcopy` for off-device backup — what it costs in image space, and what building it for an architecture Microsoft does not support took |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
 | [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |

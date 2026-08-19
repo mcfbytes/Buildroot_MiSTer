@@ -1077,6 +1077,46 @@ BR2_PACKAGE_XOW_FIRMWARE=y
 # ~6.4 MiB is ~3% of the last measured 222 MiB of free image space.
 BR2_PACKAGE_DUALSENSECTL=y
 
+# --- ltunify: Logitech Unifying receiver pairing (userspace, not a driver) ---
+# Closes the one Logitech gap the kernel cannot: the PAIRING HANDSHAKE. Every
+# other part is already covered and needs nothing added --
+# CONFIG_HID_LOGITECH_DJ (board/mister/de10nano/linux.config) gives each paired
+# device its own input node with its own logical VID/PID, which is what
+# Main_MiSTer identifies pads and keyboards by, and it `select`s
+# CONFIG_HID_LOGITECH_HIDPP (drivers/hid/Kconfig:697), which is why HIDPP is =y
+# in the resolved .config while being absent from our minimal defconfig. Stock
+# has exactly the same four symbols. A device that came pre-paired in its box
+# therefore works with nothing installed at all.
+#
+# Pairing is the exception: no sysfs knob, no ioctl, no kernel interface of any
+# kind. ltunify writes the HID++ 1.0 registers itself over /dev/hidraw*.
+#
+# ~40 KiB installed and it links against nothing but libc -- this is the
+# cheapest package in the image, not a size question.
+#
+# LIMITS ARE REAL AND ARE HANDLED IN THE WRAPPER, NOT HERE. ltunify supports
+# Unifying (c52b/c532) and Nano (c52f/c534) only; it does NOT support Bolt
+# (c548) or Lightspeed (c539/c53a/c53f/c543). It also assumes the first hidraw
+# node it finds is the receiver you meant -- wrong when two are plugged in, and
+# wrong again for a single NANO receiver, which owns two nodes because
+# logi_dj_probe's "no HID++ collection -> -ENODEV" guard is recvr_type_dj-only.
+# /usr/sbin/mister-pair-logitech (rootfs overlay) groups nodes by physical USB
+# device, classifies by product ID independently of driver (Bolt is bound by
+# hid-multitouch here, so a driver-first filter would not even see it), refuses
+# the unsupported families by name, and pins the choice with ltunify's -d flag.
+# Scripts/pair_logitech.sh is its launcher on the data partition, the same shim
+# shape ADR 0026 established for check_storage.sh.
+#
+# NOT SOLAAR, which is the maintained tool and does cover Bolt: its only
+# console_scripts entry point routes through solaar.gtk, which imports
+# solaar.ui, which requires Gtk 3.0 -- on an image with zero X11/GTK packages.
+# docs/logitech-pairing.md §2 has the comparison and the recheck conditions.
+#
+# No new selects worth noting: `select BR2_PACKAGE_LIBEXECINFO if
+# !BR2_TOOLCHAIN_USES_GLIBC` is inert here (this image is glibc), so this is a
+# one-line change with no transitive tail -- unlike dualsensectl above.
+BR2_PACKAGE_LTUNIFY=y
+
 # --- P3.3: /lib/firmware population (PLAN.md §3/§4.1, module loading &
 # firmware infra -- the module-autoload/depmod/kmod/xz-compress half is
 # already done, see BR2_PACKAGE_HOST_KMOD_XZ/BR2_PACKAGE_KMOD_TOOLS below).

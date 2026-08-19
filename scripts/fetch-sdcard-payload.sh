@@ -329,6 +329,17 @@ stage_stock_payload() {
 #       and because its other end is in the initramfs and the two must ship
 #       together. Staged here only so the Scripts menu has an entry for it.
 #
+#   Scripts/pair_logitech.sh
+#       Pairs a Logitech keyboard or mouse to a Unifying receiver
+#       (docs/logitech-pairing.md). Same shim shape and same reason as
+#       check_storage.sh above: the tool is /usr/sbin/mister-pair-logitech in
+#       the rootfs, version-locked to the ltunify binary whose command grammar
+#       it drives and whose always-exit-0 behaviour it works around, and both
+#       ship inside one linux.img so they cannot drift. Staged here only so the
+#       Scripts menu has an entry for it — which matters more than usual here,
+#       because the user reaching for it may have no working keyboard to type a
+#       command with.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -352,9 +363,9 @@ stage_update_channel() {
 	[ -d "$src" ] ||
 		die "update-channel payload dir not found: $src"
 
-	# Both Scripts, one loop. install.sh, uninstall.sh and the updater treat them
-	# as one set too -- see MLM_SCRIPTS in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh"
+	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
+	# as one set too -- see install_scripts() in install.sh (ADR 0026).
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

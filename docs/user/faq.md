@@ -310,6 +310,42 @@ formatted as ext4:
 
 ---
 
+## My Logitech keyboard came with a different receiver. Can I pair it?
+
+Usually — **Scripts > pair_logitech.sh**.
+
+First, the case that needs nothing: if the keyboard or mouse came **in the same box** as
+its little USB receiver, it is already paired and just works. Plug the receiver in. That is
+true on stock too, and it covers most people.
+
+This script is for the other case — binding a device to a receiver it did not ship with.
+A lost or dead dongle and a spare from the drawer; a second-hand receiver that remembers
+somebody else's keyboard; a keyboard and a mouse you would rather have on one dongle than
+two. There is no way to do that without a tool, because the pairing handshake is the one
+part of Logitech support that Linux has no built-in interface for.
+
+**Run it, then switch the device off and on.** With one receiver plugged in it asks nothing
+at all — which is on purpose, because if the keyboard you are pairing is your only keyboard
+then you have no way to answer a question. Pick the entry with a gamepad and follow the
+screen. It tells you afterwards whether the device actually paired, rather than leaving you
+to guess.
+
+**It does not work with every Logitech receiver.** The small ones marked **Unifying**
+(an orange star) and the plain **Nano** receivers, yes. **Bolt** receivers (a newer, larger
+logo) and the **Lightspeed** dongles that come with gaming mice, no — those speak a
+different pairing protocol. The script recognises them and says so rather than failing
+mysteriously. Pair those on a PC or Mac and bring the receiver back; once paired, the
+MiSTer drives them perfectly well.
+
+Bluetooth Logitech devices are a different thing entirely and have no dongle — those pair
+with **btpair**, the same as any other Bluetooth controller.
+
+Over SSH there is more: `mister-pair-logitech list` shows every receiver and all six of its
+slots, and `unpair` frees one when the receiver is full. Full detail:
+[docs/logitech-pairing.md](../logitech-pairing.md).
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 
@@ -339,6 +375,7 @@ at all.
 - [`rollback.md`](rollback.md) — how to get back to stock
 - [`serial-recovery.md`](serial-recovery.md) — recovering a box that won't boot
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture
+- [`../logitech-pairing.md`](../logitech-pairing.md) — which Logitech receivers can be paired on-box, and why the others cannot
 - [ADR 0014](../decisions/0014-sustainability-deferred-not-waived.md),
   [ADR 0015](../decisions/0015-per-device-ssh-host-keys.md),
   [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md),

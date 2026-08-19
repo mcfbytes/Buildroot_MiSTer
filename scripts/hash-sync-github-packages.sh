@@ -19,13 +19,18 @@
 # times while leaving a hash stale -- run 29669946883). See "Testing against
 # a fixture" below.
 #
-# Covers the 14 github-sourced packages (package/*/*.mk + their .hash): the
+# Covers the 15 github-sourced packages (package/*/*.mk + their .hash): the
 # 12 driver/firmware pins, libchdr (a userspace shared library --
-# Main_MiSTer shared-lib refactor) and dualsensectl (a userspace CLI) -- the
-# last two are not drivers, but have the exact same $(call github,...)
-# archive shape. Note that dualsensectl is pinned to a "v"-prefixed TAG
-# rather than a commit SHA; the loop below is indifferent to which, since it
-# uses the literal *_VERSION string as both the ref and the filename stem.
+# Main_MiSTer shared-lib refactor) and dualsensectl + ltunify (userspace
+# CLIs) -- the last three are not drivers, but have the exact same
+# $(call github,...) archive shape. Note that dualsensectl is pinned to a
+# "v"-prefixed TAG while ltunify is pinned to a commit SHA; the loop below is
+# indifferent to which, since it uses the literal *_VERSION string as both
+# the ref and the filename stem.
+#
+# ltunify's entry is expected never to fire -- upstream's last commit is
+# 2020-06-14. It is covered anyway so the pin has a refresh path if that ever
+# changes; a loop entry that never matches costs nothing.
 # Their own .hash file headers already say the hash
 # is "locally computed" -- GitHub publishes no signed manifest for a
 # commit/tag archive tarball, so `sha256sum` of a freshly-fetched tarball

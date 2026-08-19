@@ -50,18 +50,31 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
-menu "Controller userspace tooling"
+menu "Input-device userspace tooling"
 	# Deliberately NOT folded into the "USB controller drivers" menu above:
-	# everything there is an out-of-tree KERNEL MODULE, and this is a plain
-	# userspace CLI. Upstream Buildroot has no dualsensectl package (checked
-	# against the pinned 2026.05.1 tree).
+	# everything there is an out-of-tree KERNEL MODULE, and these are plain
+	# userspace CLIs. Upstream Buildroot has neither package (checked against
+	# the pinned 2026.05.1 tree).
 	#
-	# This menu is for tools that reach controller features the in-kernel
-	# drivers expose no interface for. It is NOT the place for anything that
-	# substitutes for a carried kernel patch -- the DualSense patches
-	# (0033/0037/0042) back Main_MiSTer's sysfs-LED and input-event ABIs,
-	# which no userspace process can serve. See docs/dualsense-tooling.md.
+	# This menu is for tools that reach input-device functionality the
+	# in-kernel drivers expose no interface for. It is NOT the place for
+	# anything that substitutes for a carried kernel patch -- the DualSense
+	# patches (0033/0037/0042) back Main_MiSTer's sysfs-LED and input-event
+	# ABIs, which no userspace process can serve. See
+	# docs/dualsense-tooling.md.
+	#
+	# Titled "Input-device", not "Controller": ltunify is about keyboards and
+	# mice on a Logitech receiver, and squeezing it under a gamepad-shaped
+	# heading would have been the wrong shape for the next tool too. Both
+	# entries satisfy the same one-line contract above; only the class of
+	# peripheral differs.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/dualsensectl/Config.in"
+	# ltunify: pairing for Logitech Unifying/Nano receivers. hid-logitech-dj
+	# drives every ALREADY-paired device perfectly and has no interface for
+	# the pairing handshake itself -- there is no sysfs knob and no ioctl, so
+	# this is a genuine gap and not a duplicate of anything in the kernel.
+	# See docs/logitech-pairing.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/ltunify/Config.in"
 endmenu
 
 menu "Firmware infra gap-fill (P3.3, P3.14)"

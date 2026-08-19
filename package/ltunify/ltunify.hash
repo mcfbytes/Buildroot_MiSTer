@@ -1,0 +1,31 @@
+# Locally computed (GitHub publishes no signed hashes for commit-archive
+# tarballs -- standard practice for github-sourced Buildroot packages, per
+# pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# against:
+#   https://github.com/Lekensteyn/ltunify/archive/$(LTUNIFY_VERSION).tar.gz
+#
+#   sha256sum ltunify-$(LTUNIFY_VERSION).tar.gz
+#
+# Written with the .mk variable rather than a literal SHA, for the reason
+# spelled out in package/libchdr/libchdr.hash: renovate-hash-sync.yml rewrites
+# the sha256 DATA line below and can never touch a comment, so a literal here
+# goes stale on the first automatic bump.
+sha256  8abcb0360df115486ae22a0d2d77bb2c549bed91ce0d6a8f854384bd35655c13  ltunify-b68dc9af6db53de231d5ac71f9b6ba2ff3057a68.tar.gz
+
+# ltunify.c -- LTUNIFY_LICENSE_FILES. Upstream ships no LICENSE/COPYING file at
+# all, so the GPL-3.0+ notice lives in this source file's header and this is the
+# file `make legal-info` copies out.
+#
+# TWO THINGS TO KNOW IF THIS EVER FAILS.
+#
+#   1. It is checked by `make legal-info`, NOT by the build. A stale value here
+#      does not stop an image being produced; it stops the licence manifest
+#      being produced. That is the same property package/dualsensectl's LICENSE
+#      line has.
+#
+#   2. scripts/hash-sync-github-packages.sh rewrites only the FIRST sha256 line
+#      in this file, by design. So a version bump refreshes the tarball hash
+#      above and leaves this one alone -- deliberately, because a changed
+#      ltunify.c is a changed licence header until a human has re-read it and
+#      re-derived this value by hand.
+sha256  744810f9fcf02a9c567d13ab193f766d53ebe8a95e634d408bb5bef376e4862b  ltunify.c

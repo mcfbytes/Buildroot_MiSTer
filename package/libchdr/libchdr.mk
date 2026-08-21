@@ -16,6 +16,18 @@
 # package's patch 0001, with 0002/0003 switching the sources to the system
 # <LzmaDec.h> (see each patch's header for the full story).
 #
+# PATCH 0004 IS A DIFFERENT ANIMAL -- an upstream BUG FIX, not an unbundling
+# step. lzma_compute_aligned_dictionary_size() hand-reimplements the LZMA SDK's
+# LzmaEncProps_Normalize() and inverts both operators of the reduceSize clamp,
+# so the LZMA dictionary keeps level 9's 1 << 26 = 64 MiB default instead of
+# dropping to the 18,816 bytes cdlz_codec_init() asks for: a 2,730x
+# over-allocation, once per chd_file handle. It is invisible to RSS because the
+# pages are never touched -- but a consumer that calls mlockall(), as a
+# real-time CD-DA player must, gets all of it as resident unswappable RAM.
+# Measured on the DE10-Nano: 128 MB on a 488 MB board, VmRSS 155,972 -> 27,996
+# kB with the patch, and byte-identical output (FNV-1a over all 31,984 hunks of
+# the test image unchanged). Drop 0004 when upstream carries the fix.
+#
 # ONE DEP STAYS BUNDLED, DELIBERATELY: the header-only dr_flac decoder
 # (include/dr_libs/dr_flac.h) is compiled into the library by src/
 # libchdr_flac.c. No shared-lib alternative exists to unbundle to (dr_libs is

@@ -85,7 +85,7 @@ mainline can hold it.
 
 | | Stock MiSTer | This project |
 |---|---|---|
-| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18.41 LTS**, on a live `.y` line with security backports |
+| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
 | **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **36 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
@@ -301,9 +301,10 @@ make, use the download-and-read form above, or the by-hand route.
 
 Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
 stable release**. 5.15 itself reaches end-of-life in October 2026. This project tracks
-**6.18 LTS** (currently 6.18.41 — the pin is
-`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`),
-pinned by version and SHA-256 against kernel.org, with
+**6.18 LTS** — the exact patch level is
+`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`,
+and it is deliberately not repeated in prose here because stable `.y` releases
+land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
 
 The interesting part is not the version number — it's the **shape of the delta**. The
@@ -564,6 +565,9 @@ shipped **byte-identical to stock's**, fetched by hash.
   1.3.9a** without re-running the P3.6 / P3.7 audits that gated those packages. Both
   documents now say so at the top, with the specific unchecked question named. The
   defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
+  For the kernel this is handled by not writing the number down: narrative prose says
+  "6.18 LTS", and `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in the defconfig is the only
+  place the `.y` lives.
 
 ---
 

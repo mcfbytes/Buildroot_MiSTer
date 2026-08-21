@@ -18,11 +18,13 @@ DE10-Nano board.** Samba and MIDI are currently build- and CI-verified only — 
 not yet been exercised on real hardware. Treat anything not listed above as unverified in
 practice until proven otherwise on your own hardware.
 
-The kernel is pinned to **6.18.39**, and the 6.18 line **has booted on real hardware** —
-from the CI-built artifact rather than a local build, with every out-of-tree module
-present, Bluetooth firmware loading, and no kernel BUG/Oops/panic. WiFi is confirmed too:
-the RTL8822BU auto-connects at boot to a **WPA3/SAE** network (PMF required), driven by
-**mainline `rtw88`** rather than an out-of-tree driver.
+The kernel is pinned to a specific release on the **6.18 LTS** line (which release moves
+with upstream stable — `configs/mister_de10nano_defconfig` is the pin), and the 6.18 line
+**has booted on real hardware** — from the CI-built artifact rather than a local build,
+with every out-of-tree module present, Bluetooth firmware loading, and no kernel
+BUG/Oops/panic. WiFi is confirmed too: the RTL8822BU auto-connects at boot to a
+**WPA3/SAE** network (PMF required), driven by **mainline `rtw88`** rather than an
+out-of-tree driver.
 
 One real bug has been found and fixed on hardware since then, and it is worth knowing
 about because it explains why "it compiles and boots" is not the same as "it is correct":
@@ -88,7 +90,7 @@ running this image.
 
 | | Stock | This project |
 |---|---|---|
-| Kernel | **5.15.1** (forked Nov 2021; never took a single `5.15.y` stable update) | **6.18.39** LTS, on a stable `.y` line with ongoing security backports |
+| Kernel | **5.15.1** (forked Nov 2021; never took a single `5.15.y` stable update) | **6.18** LTS, on a stable `.y` line with ongoing security backports |
 | Buildroot | **2021.02.4** | **2026.05.1** — roughly five years newer |
 | glibc | **2.31** | **2.43** |
 | OpenSSL | **1.1.1** (end-of-life since 2023-09-11 — no upstream fixes since) | **3.6.3** |

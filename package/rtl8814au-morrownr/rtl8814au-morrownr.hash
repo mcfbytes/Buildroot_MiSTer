@@ -3,5 +3,5 @@
 # pkg-download.mk / the Buildroot manual).
 #
 #   sha256sum rtl8814au-morrownr-b1866ce2b857a8dfe2e147e19eb8eca0a842ce18.tar.gz
-sha256  f6b8ea4866391666ebbf62a12dbb729771059848156b41a4fc774d1a38de9dfb  rtl8814au-morrownr-b1866ce2b857a8dfe2e147e19eb8eca0a842ce18.tar.gz
+sha256  01f40ad7cbeed680078bacf1dfdf97abd7a627e37d89fc034d363c24f7b109db  rtl8814au-morrownr-1840d7b23bf2350a3e9e22448a93c251d2fec73c.tar.gz
 sha256  22cdb0a9cf492dbf05c5b27381a5c0e73ae0d4622427b522b0ba92b7495e5fb0  LICENSE

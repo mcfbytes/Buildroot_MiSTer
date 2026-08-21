@@ -31,7 +31,7 @@
 # latter. Our kernel leaves CONFIG_WIRELESS_EXT unset (P1.3 hazard -- non-prompt,
 # select-only symbol in 6.18), so the wext-only code compiles out cleanly; no
 # wrapper or kernel `select` hack is needed.
-RTL8814AU_MORROWNR_VERSION = b1866ce2b857a8dfe2e147e19eb8eca0a842ce18
+RTL8814AU_MORROWNR_VERSION = 1840d7b23bf2350a3e9e22448a93c251d2fec73c
 RTL8814AU_MORROWNR_SITE = $(call github,morrownr,8814au,$(RTL8814AU_MORROWNR_VERSION))
 RTL8814AU_MORROWNR_LICENSE = GPL-2.0
 RTL8814AU_MORROWNR_LICENSE_FILES = LICENSE

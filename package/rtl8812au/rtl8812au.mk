@@ -36,7 +36,7 @@
 # non-prompt, select-only symbol in 6.18 — see TASKS.md P1.3/P3.1). That just
 # means the wext-only code above compiles out. No wrapper, no kernel `select`
 # hack, no defconfig line is needed for this driver to work under nl80211.
-RTL8812AU_VERSION = 8cac6f43316a56cc89cc8cb532cd6c6ae14c4805
+RTL8812AU_VERSION = 4722250273e4316daf9d8688e9916ea94c36a5ff
 RTL8812AU_SITE = $(call github,morrownr,8812au-20210820,$(RTL8812AU_VERSION))
 RTL8812AU_LICENSE = GPL-2.0
 RTL8812AU_LICENSE_FILES = LICENSE

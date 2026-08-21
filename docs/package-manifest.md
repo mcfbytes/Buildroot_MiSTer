@@ -834,9 +834,9 @@ stdlib itself (A6), `samba/` core (15.4 MiB, the actual file-server), `gconv/`
 Grouped to match the tables above. Comments mark every non-obvious line — the naming
 gotchas the task specifically warned about (`LIBOPENSSL` not `OPENSSL`, `LIBCURL` not
 `CURL`, and for zlib a concrete provider — `ZLIB_NG` or `LIBZLIB` — not `ZLIB` alone,
-etc.), sub-options needed for stock parity that aren't
-pulled in by default, and places where a Buildroot `select` already drags in a
-dependency transitively so P2.1 shouldn't also set it by hand.
+etc.), sub-options needed for stock parity that aren't pulled in by default, and places
+where a Buildroot `select` already drags in a dependency transitively so P2.1 shouldn't
+also set it by hand.
 
 ```
 # --- toolchain ---

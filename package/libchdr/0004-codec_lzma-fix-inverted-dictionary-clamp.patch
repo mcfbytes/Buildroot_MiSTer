@@ -19,9 +19,17 @@ and dictSize:
 
 Effect: dictSize keeps level 9's default of 1 << 26 = 64 MiB instead of
 dropping to reduceSize. For CD-LZ, cdlz_codec_init() passes
-(hunkbytes / CD_FRAME_SIZE) * CD_MAX_SECTOR_DATA = 18,816 bytes, so
-LzmaDec_Allocate reserves 64 MiB to decode 18 KB -- a 2,730x
-over-allocation, once per chd_file handle.
+(hunkbytes / CD_FRAME_SIZE) * CD_MAX_SECTOR_DATA = 18,816 bytes. The clamp
+should reduce dictSize to that, and LzmaEnc_WriteProperties then rounds it up
+to the next representable dictionary size, 24,576. So the decoder should
+allocate a 24,576-byte dictionary; instead it allocates 67,108,864, which is
+2,731x larger, once per chd_file handle.
+
+Measured with an LD_PRELOAD malloc interposer on a DE10-Nano, two handles
+open (lzma_fast_alloc adds a 68-byte header to each request):
+
+    before   malloc(67108932) x2     67,108,864-byte dictionary
+    after    malloc(24644)    x2         24,576-byte dictionary
 
 Nothing is wrong with the decode path itself: codec init runs once per
 chd_open (libchdr_chd.c:1089) and lzma_codec_decompress only calls

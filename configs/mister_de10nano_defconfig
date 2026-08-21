@@ -310,7 +310,31 @@ BR2_REPRODUCIBLE=y
 
 # --- compression ---
 BR2_PACKAGE_ZLIB=y                      # meta-prompt
-BR2_PACKAGE_LIBZLIB=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concrete provider
+# zlib provider: zlib-ng in ZLIB_COMPAT mode, not classic zlib. package/zlib's
+# Config.in is a virtual package with a choice between BR2_PACKAGE_LIBZLIB and
+# BR2_PACKAGE_ZLIB_NG; ZLIB_NG_ARCH_SUPPORTS is `default y if BR2_arm` (and
+# BR2_aarch64, so this survives a 64-bit port). zlib-ng.mk builds -DZLIB_COMPAT=1,
+# so it installs libz.so.1 and every consumer follows transparently.
+#
+# BLAST RADIUS, measured on the rig before making the switch. Inside Main_MiSTer
+# the dynamic libz is used by exactly two things: support/uef/uef_reader.cpp
+# (gzip-wrapped UEF tape images -- BBC Micro / Acorn Electron only), and
+# libpng16/Imlib2 for the OSD background images and boot logo (video.cpp:3822+).
+# It is NOT used for CHD: stock compiles libchdr in statically and that copy
+# includes <miniz.h>, whose compat macros rewrite inflate -> mz_inflate, so every
+# CD core decodes through miniz inside the binary. Verified from the published
+# release binary, not just the Makefile.
+#
+# Verified on-device with the library preloaded: PNG decode through imlib2 ->
+# libpng -> zlib succeeds identically, gzip round-trips, and curl reports
+# "zlib/1.3.1.zlib-ng" while still working. No package we enable selects
+# BR2_PACKAGE_ZLIB_FORCE_LIBZLIB (only assimp/clamav/quazip do, none of them ours).
+#
+# WHY: measured CHD decode win for the greenfield firmware, which unlike stock
+# links the SHARED libchdr and so does reach system zlib -- audio hunks p90
+# -10 to -11%, max -7 to -15%. See harness/rig/chd-decode-optimization.md in
+# Main_MiSTer for the numbers.
+BR2_PACKAGE_ZLIB_NG=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concrete provider
 BR2_PACKAGE_BZIP2=y
 BR2_PACKAGE_XZ=y
 BR2_PACKAGE_LZO=y
@@ -319,7 +343,7 @@ BR2_PACKAGE_ZSTD=y                      # libzstd.so.1 + the zstd CLI (upstream 
                                         # (CHD v5 zstd hunks) and flips minizip-ng's
                                         # MZ_ZSTD=ON (see MINIZIP below)
 # BR2_PACKAGE_MINIZIP IS minizip-ng 4.0.3 (zlib-ng/minizip-ng) -- the concrete
-# provider matters here exactly like LIBZLIB above: this is NOT the classic
+# provider matters here exactly like the ZLIB provider above: this is NOT the classic
 # zlib-contrib zip.h/unzip.h library (that one is BR2_PACKAGE_MINIZIP_ZLIB,
 # enabled just below). Buildroot forces -DMZ_COMPAT=OFF (work/buildroot/
 # package/minizip/minizip.mk), so there is no zip.h/unzip.h compat layer at

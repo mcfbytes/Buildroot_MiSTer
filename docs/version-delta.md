@@ -26,7 +26,7 @@ security-update path), and it belongs in the release notes.
 | Component | Stock (2021.02.4) | Ours (2026.05.1) | Note |
 |---|---|---|---|
 | Buildroot | **2021.02.4** | **2026.05.1** | ~5 years of the whole distro |
-| Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18.41** LTS (currently running on hardware; also validated on 6.18.33 and 6.18.38) | on a stable `.y` line with security backports |
+| Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18** LTS — the `.y` moves with upstream stable, so the pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `configs/mister_de10nano_defconfig`) is the only place it is written down; hardware-validated at 6.18.33, 6.18.38 and 6.18.41 | on a stable `.y` line with security backports |
 | glibc | **2.31** | **2.43** | backward-compatible; every stock binary still runs (proven on hardware) |
 | gcc (toolchain) | 10.x era | **14.4.0** | |
 

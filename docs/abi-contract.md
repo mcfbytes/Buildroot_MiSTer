@@ -245,7 +245,7 @@ is the point of the project.
 | L4 | `librt.so.1` | `librt-2.31.so` | glibc (a **stub** on ≥ 2.34 — §1.3) | toolchain |
 | L5 | `libstdc++.so.6` | `libstdc++.so.6.0.28` | GCC | toolchain |
 | L6 | `libgcc_s.so.1` | `libgcc_s.so.1` | GCC | toolchain |
-| L7 | `libz.so.1` | `libz.so.1.2.11` | zlib | `BR2_PACKAGE_ZLIB` |
+| L7 | `libz.so.1` | `libz.so.1.2.11` | zlib-ng, `ZLIB_COMPAT` (see below) | `BR2_PACKAGE_ZLIB_NG` |
 | L8 | `libbz2.so.1.0` | `libbz2.so.1.0.8` | bzip2 | `BR2_PACKAGE_BZIP2` |
 | L9 | `libpng16.so.16` | `libpng16.so.16.37.0` | libpng | `BR2_PACKAGE_LIBPNG` |
 | L10 | `libfreetype.so.6` | `libfreetype.so.6.17.4` | FreeType | `BR2_PACKAGE_FREETYPE` |
@@ -264,6 +264,31 @@ is the point of the project.
   a SONAME check — but `menu.png` / `menu.jpg` backgrounds silently stop working without them.
   See `docs/stock-inventory/shared-libraries.md` (the "plugin/dlopen" breakdown). **SHOULD**:
   ship the imlib2 loader set.
+
+**Not a hazard, but write it down — `libz.so.1`'s *provider* is not classic zlib.**
+Buildroot models zlib as a **virtual package** with a Kconfig `choice`
+(`package/zlib/Config.in`): `BR2_PACKAGE_LIBZLIB` is upstream's default, `BR2_PACKAGE_ZLIB_NG`
+is the other arm. This image selects **zlib-ng 2.3.3** (`configs/mister_de10nano_defconfig`,
+compression block, where the blast-radius measurement is recorded). That choice is invisible to
+every row above:
+
+* **The SONAME does not move.** `package/zlib-ng/zlib-ng.mk` builds `-DZLIB_COMPAT=1`, which
+  installs `libz.so.1` exporting the classic `zlib.h` API. A-3 and A-10 (§13.1) are unaffected,
+  and nothing that `DT_NEEDED`s `libz.so.1` — the stock `MiSTer` binary of §2.1 included — can
+  tell the difference at load time. The "bump? no" column of
+  `docs/package-manifest.md` still holds for the same reason.
+* **One observable difference:** `zlibVersion()` returns `"1.3.1.zlib-ng"` rather than a plain
+  `1.x.y`, so anything that *parses* that string sees a fourth component. Nothing in the
+  `DT_NEEDED` set does; `curl` merely prints it (`zlib/1.3.1.zlib-ng`, verified on the board).
+* **Decompression output is bit-identical** — verified, not assumed: a generated PNG corpus
+  decoded through imlib2 → libpng → zlib produced identical pixel checksums under both
+  providers. Compressed **output** is valid but *not* byte-identical between the two, so a
+  consumer that hashes its own deflate bytes would notice. Nothing in this image is known to.
+* **Build reproducibility (`docs/reproducibility.md`) is untouched**, because the swap is
+  target-side only: `package/zlib/Config.in` hard-codes
+  `BR2_PACKAGE_PROVIDES_HOST_ZLIB` to `"host-libzlib"` regardless of the target choice
+  ("ensure libzlib is used for the host variant"), so every host tool that compresses during a
+  build still links classic zlib.
 
 ### 2.3 The transitive closure — **MUST**
 

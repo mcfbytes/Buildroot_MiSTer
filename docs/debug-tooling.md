@@ -65,7 +65,7 @@ Nothing else in the tree references any of it.
 | --- | --- | --- |
 | gdb / gdbserver | 15.2 | `BR2_GDB_VERSION` default for a GCC >= 9 toolchain (`package/gdb/Config.in.host:77`) |
 | strace | 7.0 | `package/strace/strace.mk` |
-| perf | 6.18.41 | built from **our own kernel's** `tools/perf`, not a standalone release |
+| perf | = the kernel pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `configs/mister_de10nano_defconfig`) | built from **our own kernel's** `tools/perf`, not a standalone release — so it tracks the pin by construction, never separately (§2) |
 | rt-tests | 2.8 | `package/rt-tests/rt-tests.mk` |
 | numactl | 2.0.19 | pulled in by rt-tests (`select`) |
 | mpfr | 4.2.2 | pulled in by the full gdb (`select`) |
@@ -135,7 +135,7 @@ which is **part of the `linux` package**, not a standalone one. Consequences:
   `tools/perf` — no version skew;
 * it is *not* built by the kernel-only `mister_kernel_defconfig` / `make rt`
   path, which sets no packages. RT gets `CONFIG_COREDUMP` but not a perf of its
-  own — the single shipped `perf` is the one from the main 6.18.41 build, and it
+  own — the single shipped `perf` is the one from the main image's kernel build, and it
   is what runs under the RT kernel too. The `perf_event_attr` ABI is
   size-versioned and stable in both directions, so a 6.18 perf works against a
   7.2 kernel; it will simply not know about anything added after 6.18. Good

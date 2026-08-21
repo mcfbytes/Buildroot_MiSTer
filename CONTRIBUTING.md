@@ -97,7 +97,9 @@ All external sources (kernel, Buildroot, packages, firmware) must be:
 # Bad: floating reference
 KERNEL_VERSION = 6.18.y
 
-# Good: pinned tag
+# Good: pinned tag (version illustrative -- the live kernel pin is
+# BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/mister_de10nano_defconfig,
+# which is the one place it is written down)
 KERNEL_VERSION = 6.18.38
 
 # Bad: no hash

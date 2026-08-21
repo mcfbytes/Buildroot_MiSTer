@@ -54,7 +54,7 @@ cross-checks for the two riskiest ones):
 | 7 | `libfreetype.so.6` | **yes** | `BR2_PACKAGE_FREETYPE` 2.14.3; frozen at `.so.6` since FreeType 2.0 |
 | 8 | `libbz2.so.1.0` | **yes** | `BR2_PACKAGE_BZIP2` 1.0.8, unchanged since 2000 |
 | 9 | `libpng16.so.16` | **yes** | `BR2_PACKAGE_LIBPNG` 1.6.58 — the "16" is libpng's parallel-install branch tag, part of the package's identity |
-| 10 | `libz.so.1` | **yes** | `BR2_PACKAGE_LIBZLIB` 1.3.2 (default provider under the `BR2_PACKAGE_ZLIB` choice) |
+| 10 | `libz.so.1` | **yes** | `BR2_PACKAGE_ZLIB_NG` 2.3.3 in `ZLIB_COMPAT` mode (provider under the `BR2_PACKAGE_ZLIB` choice; `BR2_PACKAGE_LIBZLIB` is the Buildroot default, we select zlib-ng instead). **SONAME is unchanged** — compat mode installs `libz.so.1`, so nothing that `DT_NEEDS` it can tell the difference |
 | 11 | `libImlib2.so.1` | **yes** | `BR2_PACKAGE_IMLIB2` 1.12.5. **Specifically checked per the task's flag** — current Arch `imlib2` 1.12.6-1 sonames page still lists only `libImlib2.so.1` |
 | 12 | `libbluetooth.so.3` | **yes** | `BR2_PACKAGE_BLUEZ5_UTILS` 5.79. **Specifically checked per the task's flag** — current Arch `bluez-libs` package `Provides: libbluetooth.so=3`; Debian/Ubuntu still name the runtime package `libbluetooth3` at recent bluez versions |
 
@@ -111,7 +111,7 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 
 | SONAME | stock realfile | Buildroot package | version | bump? | notes |
 |---|---|---|---|---|---|
-| `libz.so.1` | `libz.so.1.2.11` | `BR2_PACKAGE_LIBZLIB` (via `BR2_PACKAGE_ZLIB` provider choice) | 1.3.2 | no | zlib SONAME has never bumped |
+| `libz.so.1` | `libz.so.1.2.11` | `BR2_PACKAGE_ZLIB_NG` (via `BR2_PACKAGE_ZLIB` provider choice) | 2.3.3 compat | no | zlib SONAME has never bumped, and zlib-ng's `ZLIB_COMPAT` mode keeps it. `zlibVersion()` reports `1.3.1.zlib-ng` rather than a plain `1.x.y`, which is the one observable difference; decode output is bit-identical (verified, `harness/rig/png-check.sh`) |
 | `libbz2.so.1.0` | `libbz2.so.1.0.8` | `BR2_PACKAGE_BZIP2` | 1.0.8 | no | unchanged since bzip2 1.0 (2000) |
 | `liblzma.so.5` | `liblzma.so.5.2.5` | `BR2_PACKAGE_XZ` | 5.8.3 | no |  |
 | `liblzo2.so.2` | `liblzo2.so.2.0.0` | `BR2_PACKAGE_LZO` | 2.10 | no |  |
@@ -833,9 +833,10 @@ stdlib itself (A6), `samba/` core (15.4 MiB, the actual file-server), `gconv/`
 
 Grouped to match the tables above. Comments mark every non-obvious line — the naming
 gotchas the task specifically warned about (`LIBOPENSSL` not `OPENSSL`, `LIBCURL` not
-`CURL`, `LIBZLIB` not `ZLIB`, etc.), sub-options needed for stock parity that aren't
-pulled in by default, and places where a Buildroot `select` already drags in a
-dependency transitively so P2.1 shouldn't also set it by hand.
+`CURL`, and for zlib a concrete provider — `ZLIB_NG` or `LIBZLIB` — not `ZLIB` alone,
+etc.), sub-options needed for stock parity that aren't pulled in by default, and places
+where a Buildroot `select` already drags in a dependency transitively so P2.1 shouldn't
+also set it by hand.
 
 ```
 # --- toolchain ---
@@ -848,7 +849,9 @@ BR2_TOOLCHAIN_BUILDROOT_CXX=y          # libstdc++ (MiSTer binary, samba4, rtorr
 
 # --- compression ---
 BR2_PACKAGE_ZLIB=y                      # meta-prompt
-BR2_PACKAGE_LIBZLIB=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concrete provider
+BR2_PACKAGE_ZLIB_NG=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concrete provider.
+                                        # zlib-ng in ZLIB_COMPAT mode; still installs libz.so.1.
+                                        # BR2_PACKAGE_LIBZLIB is the classic-zlib alternative.
 BR2_PACKAGE_BZIP2=y
 BR2_PACKAGE_XZ=y
 BR2_PACKAGE_LZO=y

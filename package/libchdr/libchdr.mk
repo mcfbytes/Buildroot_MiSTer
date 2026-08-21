@@ -16,6 +16,31 @@
 # package's patch 0001, with 0002/0003 switching the sources to the system
 # <LzmaDec.h> (see each patch's header for the full story).
 #
+# PATCH 0004 IS A DIFFERENT ANIMAL -- an upstream BUG FIX, not an unbundling
+# step. lzma_compute_aligned_dictionary_size() hand-reimplements the LZMA SDK's
+# LzmaEncProps_Normalize() and inverts both operators of the reduceSize clamp,
+# so the LZMA dictionary keeps level 9's 1 << 26 = 64 MiB default instead of
+# dropping to the 18,816 bytes cdlz_codec_init() asks for (which
+# LzmaEnc_WriteProperties then rounds up to 24,576). Measured with a malloc
+# interposer: 67,108,864 bytes allocated where 24,576 is correct, 2,731x more,
+# once per chd_file handle. It is invisible to RSS because the
+# pages are never touched -- but a consumer that calls mlockall(), as a
+# real-time CD-DA player must, gets all of it as resident unswappable RAM.
+# Measured on the DE10-Nano: 128 MB on a 488 MB board, VmRSS 155,972 -> 27,996
+# kB with the patch, and byte-identical output (FNV-1a over all 31,984 hunks of
+# the test image unchanged). Drop 0004 when upstream carries the fix.
+#
+# PATCH 0005 is a performance change, not a correctness one. crc16() is
+# byte-at-a-time and runs on EVERY hunk read (VERIFY_BLOCK_CRC defaults to 1),
+# which for a CD image is a 19,584-byte pass per hunk on top of the codec.
+# Slicing-by-4 folds four bytes per iteration from three derived tables; same
+# polynomial, same result, 1.5 kB more .rodata, plain C so every target gains.
+# Measured on the DE10-Nano: 299.6 -> 127.0 us per hunk (2.36x), and end to end
+# through chd_read() the audio hunks of a Sonic CD .chd go p50 2,212 -> 1,894 us
+# and p90 2,698 -> 2,176 us. Verified byte-exact: all 31,984 hunks decode with 0
+# failures and an unchanged FNV-1a over every decoded byte. Drop 0005 when
+# upstream carries it.
+#
 # ONE DEP STAYS BUNDLED, DELIBERATELY: the header-only dr_flac decoder
 # (include/dr_libs/dr_flac.h) is compiled into the library by src/
 # libchdr_flac.c. No shared-lib alternative exists to unbundle to (dr_libs is

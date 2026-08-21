@@ -332,7 +332,7 @@ BR2_PACKAGE_ZLIB=y                      # meta-prompt
 #
 # WHY: measured CHD decode win for the greenfield firmware, which unlike stock
 # links the SHARED libchdr and so does reach system zlib -- audio hunks p90
-# -10 to -11%%, max -7 to -15%%. See harness/rig/chd-decode-optimization.md in
+# -10 to -11%, max -7 to -15%. See harness/rig/chd-decode-optimization.md in
 # Main_MiSTer for the numbers.
 BR2_PACKAGE_ZLIB_NG=y                   # NOT "BR2_PACKAGE_ZLIB" alone -- concrete provider
 BR2_PACKAGE_BZIP2=y
@@ -343,7 +343,7 @@ BR2_PACKAGE_ZSTD=y                      # libzstd.so.1 + the zstd CLI (upstream 
                                         # (CHD v5 zstd hunks) and flips minizip-ng's
                                         # MZ_ZSTD=ON (see MINIZIP below)
 # BR2_PACKAGE_MINIZIP IS minizip-ng 4.0.3 (zlib-ng/minizip-ng) -- the concrete
-# provider matters here exactly like LIBZLIB above: this is NOT the classic
+# provider matters here exactly like the ZLIB provider above: this is NOT the classic
 # zlib-contrib zip.h/unzip.h library (that one is BR2_PACKAGE_MINIZIP_ZLIB,
 # enabled just below). Buildroot forces -DMZ_COMPAT=OFF (work/buildroot/
 # package/minizip/minizip.mk), so there is no zip.h/unzip.h compat layer at

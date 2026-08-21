@@ -57,6 +57,23 @@ Verified byte-exact rather than merely error-free -- FNV-1a over all
 31,984 decoded hunks of the test image is ab0ea6b040de538a before and
 after, with 0 read failures.
 
+Provenance -- the bug is libchdr's own, not inherited from MAME. MAME
+(src/lib/util/chdcodec.cpp) never computes dictionary size by hand: its
+chd_lzma_decompressor derives decoder properties by actually instantiating
+an encoder -- configure_properties() calls the real LzmaEncProps_Normalize(),
+then LzmaEnc_Create/LzmaEnc_SetProps/LzmaEnc_WriteProperties -- so the
+clamp is the SDK's own and is correct. libchdr did the same until this
+refactor replaced those three SDK calls with lzma_compute_aligned_dictionary_size(),
+presumably to drop the encoder dependency, and transcribed the clamp
+backwards. (MAME uses level 6 where libchdr uses 9; with a correct clamp
+both reduce to hunkbytes, so the difference is invisible -- which is
+another reason the inversion produced no wrong output, only wrong size.)
+
+Note the size is target-dependent and 64-bit hosts fare worse. With the
+clamp broken, dictSize falls through to 1 << (sizeof(size_t) / 2 + 24):
+1 << 26 = 64 MiB on a 32-bit target (measured above), but 1 << 28 =
+256 MiB per chd_file handle on a 64-bit one.
+
 Upstream status: bug in upstream master (6cde534) and present at the
 v0.3.0 tag; candidate for upstreaming, not yet sent.
 

@@ -28,6 +28,17 @@
 # kB with the patch, and byte-identical output (FNV-1a over all 31,984 hunks of
 # the test image unchanged). Drop 0004 when upstream carries the fix.
 #
+# PATCH 0005 is a performance change, not a correctness one. crc16() is
+# byte-at-a-time and runs on EVERY hunk read (VERIFY_BLOCK_CRC defaults to 1),
+# which for a CD image is a 19,584-byte pass per hunk on top of the codec.
+# Slicing-by-4 folds four bytes per iteration from three derived tables; same
+# polynomial, same result, 1.5 kB more .rodata, plain C so every target gains.
+# Measured on the DE10-Nano: 299.6 -> 127.0 us per hunk (2.36x), and end to end
+# through chd_read() the audio hunks of a Sonic CD .chd go p50 2,212 -> 1,894 us
+# and p90 2,698 -> 2,176 us. Verified byte-exact: all 31,984 hunks decode with 0
+# failures and an unchanged FNV-1a over every decoded byte. Drop 0005 when
+# upstream carries it.
+#
 # ONE DEP STAYS BUNDLED, DELIBERATELY: the header-only dr_flac decoder
 # (include/dr_libs/dr_flac.h) is compiled into the library by src/
 # libchdr_flac.c. No shared-lib alternative exists to unbundle to (dr_libs is

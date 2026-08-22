@@ -10,5 +10,5 @@
 # value is exactly what Buildroot will re-verify. Recomputed on every fetch, so
 # a tampered or rewritten upstream ref fails the build rather than being
 # silently accepted.
-sha256  418924b1c700aa9144c2e4c9ba9fb86828b92bbfe31526d33bbbdefa7dafe99b  rtl8852cu-morrownr-c9b43801805db0b39f7b9e0da11f8841a95a069c.tar.gz
+sha256  610f48cc0f69de5ac03f46075b6d2f5df9192d2a7aa0f85bfd8093450f30d63c  rtl8852cu-morrownr-6e4ee1322fdbdc35a2cbc79f1eff9168001742e3.tar.gz
 sha256  821deb3a5d7eb3794e6d3f7ba710b2ce09db04eddb4c25005c7a0a741ab8597f  LICENSE

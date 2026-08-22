@@ -45,7 +45,7 @@
 # CONFIG_WIRELESS_EXT (P1.3 hazard — non-prompt, select-only symbol in
 # 6.18), so the wext-only code simply compiles out; no wrapper or kernel
 # `select` hack is needed.
-RTL8821CU_MORROWNR_VERSION = d2e771537c2a496fb34de8dcfe9ac3bfb97cb262
+RTL8821CU_MORROWNR_VERSION = bda65aac150d2cde0df9603206eec23a6f3b77c4
 RTL8821CU_MORROWNR_SITE = $(call github,morrownr,8821cu-20210916,$(RTL8821CU_MORROWNR_VERSION))
 RTL8821CU_MORROWNR_LICENSE = GPL-2.0
 RTL8821CU_MORROWNR_LICENSE_FILES = LICENSE

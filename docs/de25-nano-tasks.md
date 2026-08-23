@@ -10,6 +10,37 @@ orchestration shape and the *smallest agent tier that can do the work honestly* 
 over-tiering wastes tokens, under-tiering produces confident nonsense in exactly the
 places (boot flow, flash paths) where this board can be bricked.
 
+> ## Execution status — 2026-08-22
+>
+> **Phase D0 and Phase D1 are COMPLETE.** Everything below them is either done, hardware-gated,
+> or framework-gated. Nine owner decisions were taken across 2026-08-19 → 2026-08-22 and are
+> recorded in [`de25-implementation-path.md`](de25-implementation-path.md) §1 — read those before
+> planning any D2 work; several of them foreclose options this task list still describes as open.
+>
+> | Task | State | Deliverable |
+> |---|---|---|
+> | D0.1 | **done** 2026-08-21 | [`de25-boot-chain.md`](de25-boot-chain.md) — §8 Q1–Q6 closed or parked; §9 refutation record |
+> | D0.2 | **done** 2026-08-21 | [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) — DP-9 **confirmed** |
+> | D0.3 | **done** 2026-08-21 | [`de25-patch-portability.md`](de25-patch-portability.md) — all 40 patches |
+> | D0.4 | **open** | not started; a `/schedule` routine, not a workflow |
+> | D1.1 | **done** 2026-08-21 | [`de25-readiness-ledger.md`](de25-readiness-ledger.md) — 54 files, 65 rows |
+> | D1.2 | **designed, NOT implemented** | design lives in the ledger §5; the code change is still owed |
+> | D1.3 | **done** 2026-08-21 | forward-pointer sections in `downloader-contract.md` §13, `db-json-versioning.md` |
+>
+> **Two documents exist that this task list never anticipated**, both created 2026-08-22 from a
+> third-party DE25-Nano that boots Linux to the MiSTer MENU (repos supplied by the owner as
+> reference; nothing adopted):
+> [`de25-reference-implementation.md`](de25-reference-implementation.md) — analysis of that board,
+> partly salvaged from a spend-limited run and **partly unrefuted**, read its status header — and
+> [`de25-implementation-path.md`](de25-implementation-path.md) — the settled implementation path:
+> kernel 7.2, the minimal DTS node set, prior art, U-Boot shape, and the answer to how the fabric
+> is reached from userspace.
+>
+> **The single biggest open risk is not in this task list:** binding the mainline FPGA-manager
+> driver is proven, but *programming* the fabric through mainline `svc` is not, and one attempt on
+> real silicon wedged a board. See `de25-implementation-path.md` §2.6 for the four-step hardware
+> test that settles it. Run it before building anything that assumes it works.
+
 **Agent tier legend**
 
 | Tier | Use for | Never for |
@@ -43,12 +74,21 @@ field update looks like (the `updateboot` analogue — including whether QSPI is
 written and the recovery path if it's interrupted). Primary sources: DE25-Nano User
 Manual (DigiKey PDF P0804), Terasic System CD, Altera GSRD boot-example docs
 (rel-24.x/25.x), RocketBoards Agilex-5 bootloader doc, mainline U-Boot + ATF source.
-- **Status 2026-08-19:** a desk-research first pass exists —
+- **DONE 2026-08-21.** The doc is now 690 lines. Q1 resolved **[V]**: the SDM *cannot* boot from
+  the microSD on this board, so the QSPI seam is permanent. Q6 **[V]**: all DDR/pinmux handoff
+  lives inside the QSPI bitstream. Q5 **[V]**: `saveenv` writes back to wherever the env loaded
+  from, so a FAT miss lands in QSPI. The factory QSPI image is public and was downloaded and
+  hashed (`golden_top_hps.jic`, 16,777,447 B, sha256 `e3d20c2d…b38a4`, independently re-verified).
+  Q2/Q3/Q4 partial, parked with named blockers → D2.2. §7 survived a 3-lens refutation pass that
+  amended 8 of 22 claims and added 7 new brick vectors; §9 records it.
+  **Standing risk:** "no release writes QSPI" is enforced by prose only — `git grep` finds zero
+  board-identity assertion outside `docs/`. ADR 0027 Decision 4 is unimplemented.
+- ~~**Status 2026-08-19:** a desk-research first pass exists —
   [`de25-boot-chain.md`](de25-boot-chain.md) (boot chain, QSPI/SD split, MSEL table,
   postures, brick inventory §7). **The task narrows to that doc's §8 Q1–Q6** (SDM-from-SD
   on this board incl. a Terasic inquiry, factory QSPI contents, FSBL→`u-boot.itb`
   contract, RSU sizing, env location, DDR-handoff coupling) plus the adversarial-verify
-  pass over §7's brick-risk claims, which have not yet survived refutation.
+  pass over §7's brick-risk claims, which have not yet survived refutation.~~
 - **Orchestration (narrowed):** 1 `sonnet` leg per open Q (≤6, medium) → 1 `opus`
   synthesis into the doc → `fable` adversarial verify (3 refuters, high) on §7.
   ~10 agents.
@@ -56,6 +96,10 @@ Manual (DigiKey PDF P0804), Terasic System CD, Altera GSRD boot-example docs
   (hardware-gated items hand off to D2.2); §7 survived refutation.
 
 ### D0.2 FPGA reconfig + shared-memory dossier → `docs/de25-fpga-reconfig.md`
+- **DONE 2026-08-21.** **DP-9 CONFIRMED** — fpga-region/DT-overlay is the Agilex-native idiom and
+  the UIO doorbell patches 0043–0045 are not ported. Core-switching judged UX-viable at
+  low-to-moderate confidence (desk only). Later corrected by the 2026-08-22 pass: *binding is not
+  programming* — see the status block at the top of this file.
 How core loading would actually work: `stratix10-soc` FPGA manager + SDM mailbox path
 (read the in-tree driver), RBF formats, DT-overlay region flow, authentication/VAB
 requirements if any, and — the highest-value unknown — expected **full-reconfiguration
@@ -86,8 +130,20 @@ provenance record cited).
 - **Accept:** a table with one row per patch, verdict + one-line rationale + provenance
   cite; totals reconciled against the plan's "~28 portable / ~8 board" estimate, with
   deltas explained.
+- **DONE 2026-08-21**, but **not in the shape specified above.** On owner direction the flat
+  ~55-agent per-patch sweep was replaced with **triage-first**: 5 batched legs risk-rated all 40
+  unique patches, only the RED (DE10/Cyclone-V-specific) set got a per-patch deep dive, plus one
+  cross-cutting leg tracing vsync / framebuffer / f2h_irq / audio / doorbells as *mechanisms*
+  rather than per-file. ~20 agents instead of ~55, and it fit the default size guideline.
+  The doc adds a second verdict per patch the original task never asked for — **target series**
+  (shared / de10-only / de25-only / drop) — serving the owner's standing goal of one repo building
+  both boards off a shared base. Inventory established: **40 unique basenames**; 4 beta-only
+  (0043–0046); 4 present in both series but **differing in content** (0001, 0015, 0030, 0037).
+  **Prefer this shape for any future large audit.**
 
-### D0.4 Upstream watch (recurring; NOT an ultracode task)
+### D0.4 Upstream watch (recurring; NOT an ultracode task) — **STILL OPEN**
+- Worth doing sooner than it looks: Altera took the DE25-Nano board file in-house on its default
+  branch **11 days before we went looking**. This is exactly the signal class D0.4 exists to catch.
 Monthly brief: MiSTer framework/aarch64 port signals, Terasic BSP/System-CD releases,
 mainline `agilex5` movement, MiSTeX direction. Too small for a workflow — a scheduled
 routine (`/schedule`, monthly) with 2–3 web-search legs appending dated entries to
@@ -96,7 +152,14 @@ not silently logged.
 
 ## Phase D1 — Readiness guards (no gate; opportunistic, cheap)
 
-### D1.1 Coupling ledger → `docs/de25-readiness-ledger.md`
+### D1.1 Coupling ledger → `docs/de25-readiness-ledger.md` — **DONE 2026-08-21**
+- 54 files / 457 matching lines / 65 rows; 14 semantic blockers. Coverage reconciled against the
+  canonical grep. **Use `git grep` for the reconciliation**, not `grep -r`: the wrapper `grep` in
+  this environment honours `.gitignore` and returns 457 lines where GNU grep returns 15,796.
+- **Three couplings ADR 0027's "four" did not anticipate:** `.github/workflows/lint.yml` hard-codes
+  ~20 board paths and **fails silently** (a DE25 tree goes unlinted behind a green check — this is
+  a live hole for the DE10 too); the `renovate.json` + `renovate-hash-sync.yml` bump axis (a new
+  defconfig added without them lands a stale kernel pin); `release.yml`'s 13 coupled lines.
 Inventory every hard-coded `de10nano` / `BR2_arm` / zImage-semantics site (survey found
 ~14 scripts, 4 CI files, 4 defconfig path lines, `external.mk`'s initramfs default) and
 write the per-file "when you touch this, do this instead" instruction. Code changes are
@@ -107,7 +170,11 @@ introductions may be proposed as a follow-up diff for separate review.
 - **Accept:** ledger covers 100% of a fresh grep for `de10nano|BR2_arm|zImage` outside
   `board/mister/de10nano/` and `docs/`; each entry is actionable in one sentence.
 
-### D1.2 Arch-assert generalization design (design only)
+### D1.2 Arch-assert generalization design (design only) — **DESIGNED, NOT IMPLEMENTED**
+- The design has no separate deliverable file; it lives as a section of
+  [`de25-readiness-ledger.md`](de25-readiness-ledger.md). It holds fail-closed for the DE10.
+- **The code change is still owed, and D2.1 cannot land without it**: both guards hard-assert
+  `^BR2_arm`, so an aarch64 defconfig cannot pass them as they stand.
 Spec (not implement) the per-board expected-symbol tables for
 `scripts/check-kernel-defconfig-sync.sh` and the buildroot-build action's toolchain
 fingerprint, so DE25's defconfig lands against ready guards rather than weakened ones.
@@ -115,17 +182,38 @@ fingerprint, so DE25's defconfig lands against ready guards rather than weakened
   ultracode; fine to run inline).
 - **Accept:** the design keeps both checks fail-closed for DE10 exactly as today.
 
-### D1.3 Channel namespace reservation (docs only)
+### D1.3 Channel namespace reservation (docs only) — **DONE 2026-08-21**
+- `downloader-contract.md` §13 and a DE25 section in `db-json-versioning.md`.
 Cross-reference ADR 0027 §Decision-4's reserved names (tags `de25-YYYYMMDD`,
 `db-de25nano.json`, db_id, updater script name, board-identity assertion) into
 `docs/downloader-contract.md` (a short forward-pointer section) and
 `docs/db-json-versioning.md`. 1 `sonnet` agent, inline; no workflow.
 
-## Phase D2 — Bring-up (gate: hardware in hand) — produces L1
+## Phase D2 — Bring-up (gate: hardware in hand **per task, not per phase**) — produces L1
 
 Hardware-in-the-loop work does not fan out; ultracode's role in D2 is the *design and
 review* passes around each step, not the step itself. Every flash/QSPI-touching script
 gets a `fable` adversarial review before it ever runs on the board (rule 2).
+
+> **Correction 2026-08-22 — the gate was drawn at the wrong level.** Reading it as
+> "all of D2 waits for hardware" is wrong and was costing real progress. Several D2 tasks
+> never touch a board; only their *validation* does:
+>
+> | Task | Needs hardware? |
+> |---|---|
+> | **D2.1** defconfig builds green | **No.** Its own accept criterion is `make` green *locally*. Blocked only on D1.2's implementation. |
+> | **D2.3** DTS authoring | **Partly.** Authoring + `dtc` + `dtbs_check` now; only *booting* it needs the board. The node set is specified in `de25-implementation-path.md` §3.1 and prior art exists upstream. |
+> | **D2.4** genimage cfg + check script | **Partly.** Both are writable now, plus `u-boot.itb` can be built and its shape verified with `dumpimage` against the SPL contract. Cold-flash boot needs the board. |
+> | **D2.6** manual CI lane | **No.** |
+> | **D2.7** DP-1 ADR | **No.** |
+> | **D2.2 / D2.5 / D2.8** | **Yes** — UART bring-up, measured reconfig latency, published attested artifacts. |
+>
+> Also doable now and not listed as a task anywhere: compile-testing the D0.3 *shared*-series
+> patches against aarch64/7.2 (turns desk verdicts into compile-verified ones — the cheapest
+> de-risk available for D3.1), writing the two kernel patches decisions 8 and 9 imply, writing and
+> compile-testing the ~100-line overlay-trigger driver, and extending
+> `scripts/test-initramfs.sh` to an aarch64 `qemu-system-aarch64 -M virt` path so the
+> initramfs / loop-root / overlay-services userland is exercised with no board at all.
 
 | Task | Deliverable | Accept | Orchestration |
 |---|---|---|---|
@@ -173,13 +261,27 @@ its own evidence base.
 
 ---
 
-## Suggested first invocation
+## What to do next — 2026-08-22
 
-With no hardware and no framework, the only live work is D0 + D1. A reasonable single
-opening move:
+D0 and D1 are done; the opening move this section used to describe has been executed. The live
+work now, in the order that unblocks the most:
 
-> ultracode — run D0.1 and D0.2 from docs/de25-nano-tasks.md as two sequential
-> workflows, then D1.1. Standing rules 1–3 apply; tag everything [V]/[U].
+1. **Implement D1.2** (the arch-assert generalization), then **D2.1** — the aarch64 defconfig built
+   green on 7.2. D2.1 is blocked on D1.2 and on nothing else. Local build; keep it off CI.
+2. **Author the DE25 DTS** (D2.3's desk half) and validate with `dtc` + `dtbs_check`. Node set in
+   `de25-implementation-path.md` §3.1; harvest board wiring from Altera's in-house DE25 board file
+   but take `mmc0` in **SD4HC** form — `cdns,sd6hc` is nowhere in mainline and buys a carried
+   driver rewrite.
+3. **Compile-test the D0.3 shared-series patches against aarch64/7.2.** Highest de-risk per unit
+   of effort; converts desk verdicts into compile-verified ones.
+4. **An ADR for the nine owner decisions.** They are load-bearing and currently live only in
+   `de25-implementation-path.md` §1 — ADR 0027 predates all of them.
+5. **Fix `lint.yml`'s silent failure** (ledger finding) — it affects the DE10 today.
+6. **Stand up D0.4** as a `/schedule` routine.
 
-D0.3 (⚠ size) is worth a dedicated turn with the size guideline raised. D0.4 is a
-`/schedule` routine, not a workflow.
+Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a
+later phase must refute, run them **sequentially**, not in parallel. D0.1 was first launched with
+its Q-legs and refuters concurrent; 17 of the 22 brick-risk claims turned out to be *generated by*
+the Q findings, so the refuters would have attacked a claim set that no longer existed. Resequenced
+and re-run, the refuters killed or amended 8. Parallelising a verify stage against the stage that
+produces what it verifies is a false economy.

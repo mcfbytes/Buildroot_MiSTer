@@ -1,6 +1,6 @@
 CMakeLists: add a WITH_SYSTEM_LZMA option beside WITH_SYSTEM_ZLIB/ZSTD
 
-Upstream unconditionally vendors the 7-Zip LZMA SDK (deps/lzma-25.01,
+Upstream unconditionally vendors the 7-Zip LZMA SDK (deps/lzma-26.02,
 built as the private static chdr-lzma target and folded into libchdr.so)
 -- unlike zlib and zstd, for which the maintainer already provides
 WITH_SYSTEM_ZLIB / WITH_SYSTEM_ZSTD options (his own CHANGELOG.md 0.3.0
@@ -42,12 +42,12 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
  option(CHDR_WANT_RAW_DATA_SECTOR "Output ECC data and sync header" ON)
  option(CHDR_WANT_SUBCODE "Output CD subchannel data" ON)
  option(CHDR_VERIFY_BLOCK_CRC "Verify integrity of decoded data" ON)
-@@ -38,10 +39,17 @@ include(GNUInstallDirs)
+@@ -42,10 +43,17 @@ include(GNUInstallDirs)
  #--------------------------------------------------
  
  # lzma
 -if(NOT TARGET chdr-lzma)
--  add_subdirectory(deps/lzma-25.01 EXCLUDE_FROM_ALL)
+-  add_subdirectory(deps/lzma-26.02 EXCLUDE_FROM_ALL)
 +if (WITH_SYSTEM_LZMA)
 +  find_package(PkgConfig REQUIRED)
 +  pkg_check_modules(LZMASDK REQUIRED IMPORTED_TARGET lzma-sdk)
@@ -55,7 +55,7 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 +  list(APPEND CHDR_DEFINES CHDR_SYSTEM_LZMA)
 +else()
 +  if(NOT TARGET chdr-lzma)
-+    add_subdirectory(deps/lzma-25.01 EXCLUDE_FROM_ALL)
++    add_subdirectory(deps/lzma-26.02 EXCLUDE_FROM_ALL)
 +  endif()
 +  list(APPEND CHDR_LIBS chdr-lzma)
  endif()

@@ -132,7 +132,7 @@ S(mall)/M(edium)/L(arge)/XL. Gate: H(ardware, D2) / F(ramework, D3) / —(none).
 | Boot firmware | stock `uboot.img` hash-pinned (ADR 0017/0024) | ATF + mainline U-Boot **from source** — no stock artifact exists to pin; ADR 0024's capability work becomes the prerequisite | L | H |
 | Kernel base | mainline 6.18 armv7 + 36-patch series | same tree, arm64 target; base `socfpga_agilex5` DTs in-tree | M | H |
 | Board DTS | in-tree `socfpga_cyclone5_de10nano` + carried patch | **authored by us** from GHRD (no in-tree DE25 DTS yet [U]) | L | H |
-| Kernel patches — input/HID (~28) | carried, arch-neutral | port as-is; series shared, applied per-board (D0.3 classifies all 36+40 patch-by-patch) | M | — |
+| Kernel patches — input/HID (~28) | carried, arch-neutral | port as-is; series shared, applied per-board (D0.3 classifies all 37+40 patch-by-patch) | M | — |
 | Kernel patches — board (~8: MiSTer_fb, audio SPI, DTS, overclock…) | carried | meaningless until L0 defines fb/audio; do not port speculatively | XL | F |
 | FPGA load | U-Boot preload + Main's mailbox/fpgamgr | `stratix10-soc` + SDM; latency + mechanism dossier first (D0.2) | XL | F |
 | Video (vmode, fb) | MiSTer_fb + ascal in fabric | undefined until L0 | XL | F |

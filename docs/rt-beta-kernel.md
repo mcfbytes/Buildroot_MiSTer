@@ -284,7 +284,10 @@ card, and nothing on the card referenced it), and deliberately NOT inside
    added too: a series that drops nothing is far easier to reason about and to
    defend upstream than one that drops "only the harmless ones", and the
    `0037` episode is the standing evidence that we cannot always tell which
-   those are. Both re-anchored copies now live in `linux-patches-beta/`.
+   those are. (`0047`, the series' one omission since 2026-08-24, is not a
+   counterexample and does not reopen this: it is not a judgement that the
+   patch is harmless here, it is the observation that 7.2 already contains it
+   — §2.) Both re-anchored copies now live in `linux-patches-beta/`.
    **Rule this established:** any patch that adds or removes an `EV_KEY`/
    `EV_ABS` capability is load-bearing for every SDL-style index map — never
    classify one as cosmetic on a symbol grep alone. Default to re-anchoring

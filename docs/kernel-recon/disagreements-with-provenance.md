@@ -1,6 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-07-24 22:36 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
+Generated 2026-08-24 15:49 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
 

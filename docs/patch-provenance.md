@@ -1557,6 +1557,41 @@ carries a self-documenting provenance header; this doc only needs the row.
 | `0042-hid-playstation-stock-lightbar-led-names` | `f123647ef` (Sorgelig) | stock lightbar LED names (`:red`/`:green`/`:blue`) plus probe-time player-LED clear; without them both PlayStation pads lose lightbar colour control | Config parity: `CONFIG_MACVLAN=y`,
 `CONFIG_JOYSTICK_XPAD=m`. All verified via full `linux-dirclean` rebuild.
 
+### `0047` — the first BACKPORT, added 2026-08-24
+
+Every patch above exists because mainline does **not** have the change. `0047` is the first
+one that exists because mainline **does** — and the stable line we pin does not.
+
+| Patch | Origin | Why carried |
+|---|---|---|
+| `0047-btusb-mercusys-ma530-2c4e-0115` | `ce21a5cf3d1f` (Hrvoje Nuic, mainline) — landed independently on the fork as `6332499e7` (Stanislav Ponomarev) | adds USB `2c4e:0115` (Mercusys MA530 / MA550H, Realtek RTL8761BUV) to `btusb`'s `quirks_table`. Without the row the adapter binds no driver, never reaches `btrtl`, never loads `rtl8761bu_fw.bin`, and no `hci0` appears — every Bluetooth feature on the box is silently absent for a user who owns that dongle and no other |
+
+The disposition that looks right and is not is `dropped-upstream`. That disposition asserts
+the functionality is present in **the kernel we build**, and it is not: the commit first
+released in **7.2**, and we pin **6.18.y**, which never received it — it carries no
+`Cc: stable`, so no `.y` bump will bring it in. Checked by tag rather than inferred: absent
+from `v6.18.38`, `v6.18.44`, `v6.18.45`, `v7.0` and `v7.1`; present in `v7.2-rc1` and `v7.2`.
+
+Three consequences follow, and each is written down where the reader who needs it will be:
+
+- **It is the one shared patch the RT/beta series omits.** `configs/mister_rt.fragment` pins
+  7.2, which already has the ID. That omission is forced, not tidy: at `-F0` against a
+  pristine `v7.2` the hunk reports `Hunk #1 FAILED at 786`, so listing it would break
+  `make rt` at patch time rather than apply harmlessly twice.
+  (`board/mister/de10nano/linux-patches-beta/series` header; `docs/rt-beta-kernel.md` §2.)
+- **It has an expiry date.** The day the stock kernel pin leaves `6.18.y` for 7.2 or newer,
+  this patch is deleted outright — re-applying it would collide with the in-tree row. The
+  patch's own `Upstream:` block says so in capitals.
+- **It took number `0047`, not `0043`.** `0043`–`0046` are beta-local patches living only in
+  `linux-patches-beta/`. One number means one patch across both directories, so the shared
+  series now reads `0001`–`0042`, then `0047`.
+
+Record: `docs/kernel-recon/records/6332499e7545499dc361d09af7b44b33f494fe5d.json`
+(disposition `carried`, tier-2 re-derived from `git.kernel.org` rather than the GitHub mirror
+the first pass used). Neither adapter was tested here — we own neither. The failure mode if
+the contributors' testimony is wrong is a dongle that still does not bind; a device-ID row
+cannot regress hardware that does not match it.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting
@@ -1608,7 +1643,7 @@ This doc does not restate the mechanics of the new directory or the export scrip
 are self-documenting and would drift out of sync with a third copy of the same rules here:
 
 - **What belongs in the new directory, and what must never** — numbering (`0100` up, a
-  separate namespace from `0001`–`0042` above), the mandatory reason a patch is absent from
+  separate namespace from `0001`–`0047` above), the mandatory reason a patch is absent from
   the image, provenance-header format: `board/mister/de10nano/linux-patches-upstream/README.md`.
 - **How the export applies it, and what it prints** — `scripts/export-kernel-tree.sh`'s
   "TWO SERIES" header comment, and the table the script generates in `EXPORT.md` naming

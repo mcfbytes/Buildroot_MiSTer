@@ -3,18 +3,35 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: NOTHING. The beta series carries ALL 36 shared
-# patches plus the 4 beta-local ones below — 40 entries — so within the
-# carried set the 7.x and 6.18 kernels diverge only where an upstream API
-# forced a re-anchor.
+# Excluded vs the 6.18 set: EXACTLY ONE, and it is the only kind of exclusion
+# that can ever be safe — 0047-btusb-mercusys-ma530-2c4e-0115.patch, which is
+# not fork code at all but a BACKPORT of mainline ce21a5cf3d1f, whose first
+# release is 7.2. This kernel IS 7.2, so it already has those two lines in
+# drivers/bluetooth/btusb.c. Measured, not assumed: at -F0 against pristine
+# v7.2 the hunk does not apply twice, it FAILS ("Hunk #1 FAILED at 786"), so
+# listing it here would break `make rt` at patch time. The 6.18 image needs it
+# because 6.18.y never got the commit (no Cc: stable) — see the patch's own
+# Upstream: block. When the pin for the STOCK kernel finally leaves 6.18.y,
+# that patch is deleted from linux-patches/ outright and this exclusion goes
+# with it.
+# The beta series therefore carries 36 of the 37 shared patches plus the 4
+# beta-local ones below — still 40 entries — so within the carried set the 7.x
+# and 6.18 kernels diverge only where an upstream API forced a re-anchor.
 # 0038-0042 were the last gap: they landed in the shared dir on 2026-07-24,
 # went unlisted here for three weeks, and were closed on 2026-08-17 once
 # measured rather than assumed. They needed NO re-anchor — plain symlinks,
 # applied on 7.2 final at -F0 with offsets only (0038 1, 0039 1, 0040 1,
 # 0041 2, 0042 5 hunks at an offset, zero fuzz), and `make rt` is green on the
 # whole 40 from a clean tree. See docs/rt-beta-kernel.md §6.
-# Keep it that way: if a patch will not apply to a newer 7.x release,
-# re-anchor it here rather than removing it from this list.
+# Keep it that way. The rule is unchanged and the 0047 exclusion above does not
+# soften it: if a patch will not apply to a newer 7.x release, RE-ANCHOR it here
+# rather than removing it from this list. "It does not apply" is never by itself
+# a reason to drop — 0015 and 0037 were both dropped on that reasoning once and
+# both were wrong. The single admissible reason to omit a shared patch is the
+# one 0047 has: the change is already IN the 7.x tree because it came from
+# mainline and the beta pin is at or past its first release. That is checkable
+# in one command (grep the pristine tarball for the added lines) and must be
+# checked, not inferred from a subject line.
 #
 # The list now runs 0037 -> 0038 with no gap. 0043, 0044, 0045 and 0046
 # are BETA-LOCAL — real files
@@ -63,6 +80,13 @@
 #         from ../linux-rt.fragment — which is also why it must stay
 #         beta-local, since in the stock DTB the node would reserve 1 MiB of
 #         every user's RAM for a subsystem that is not compiled in.
+#
+# ONE NUMBERING NAMESPACE, TWO DIRECTORIES. 0043-0046 being beta-local is why
+# the next SHARED patch took 0047 rather than 0043: a number means one patch
+# across both directories, so a reader who sees "0044" never has to ask which
+# 0044. The shared dir therefore reads 0001-0042 then 0047, with the 0043-0046
+# hole reserved. Applying order is unaffected — the shared dir is globbed and
+# sorted, so 0047 simply applies last there, and it is not in this series at all.
 #
 # NOT-symlink exceptions: four of the shared-patch entries are REAL FILES
 # re-anchored for 7.x (0043-0046 above are real files too, but they are

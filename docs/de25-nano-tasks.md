@@ -71,14 +71,14 @@ MiSTer-style HPS-visible framebuffer would require. Feeds DP-9/DP-10 and the L0 
   the UIO doorbell patches") is explicitly confirmed or refuted.
 
 ### D0.3 Kernel patch portability audit → `docs/de25-patch-portability.md`  **⚠ size**
-Classify every patch in `board/mister/de10nano/linux-patches/` (36) and
+Classify every patch in `board/mister/de10nano/linux-patches/` (37) and
 `linux-patches-beta/` (40; audit the union once, note series membership) as
 **portable-as-is / portable-with-rework / board-specific / superseded-upstream-by-6.18+**
 for an arm64 Agilex target. Must consult `docs/patch-provenance.md` and
 `docs/kernel-recon/`; provenance dispositions carry (e.g. 0037/BTN_Z is functional, not
 cosmetic — dropping it breaks gamecontrollerdb indexing; any "drop" verdict needs the
 provenance record cited).
-- **Orchestration:** pipeline over ~44 unique patches — per patch 1 `sonnet` (low
+- **Orchestration:** pipeline over ~45 unique patches — per patch 1 `sonnet` (low
   effort: read patch + provenance record, emit verdict via schema) → `opus` dedup +
   series-level synthesis → `fable` spot-verify every *portable* verdict that touches
   `arch/`, DTS, or Kconfig (expect ~6–10). ~55 agents total — run with the size

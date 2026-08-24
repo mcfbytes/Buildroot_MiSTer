@@ -1,0 +1,65 @@
+{
+  "sha": "6332499e7545499dc361d09af7b44b33f494fe5d",
+  "subject": "Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78)",
+  "author": "Stanislav Ponomarev",
+  "author_is_pr_contributor": true,
+  "date": "2026-08-24",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "bluetooth",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/bluetooth/btusb.c"
+  ],
+  "added": 2,
+  "removed": 0,
+  "is_backport_of_vanilla": true,
+  "disposition": "carried",
+  "carried_patch": "0047-btusb-mercusys-ma530-2c4e-0115.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [
+      "ce21a5cf3d1fd92b84ea9ad2b7c7240aff2162d2"
+    ],
+    "vanilla_file_line": "drivers/bluetooth/btusb.c:830 (v7.2; the quoted comment line is 829) -- and NOT in v6.18.45, the version configs/mister_de10nano_defconfig pins",
+    "vanilla_quote": "\t/* Additional Realtek 8761BUV Bluetooth devices */\n\t{ USB_DEVICE(0x2c4e, 0x0115), .driver_info = BTUSB_REALTEK |\n\t\t\t\t\t\t     BTUSB_WIDEBAND_SPEECH },",
+    "equivalence": "exact"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "none -- this commit postdates docs/patch-provenance.md's baseline (f0fb626ac) by five years. Dispositioned here first; docs/patch-provenance.md section 11 carries the summary row.",
+  "impact": {
+    "effect_if_absent": "A Mercusys MA530 or MA550H Bluetooth adapter (USB 2c4e:0115, Realtek RTL8761BUV) binds no driver at all: btusb's quirks_table has no matching entry, so the device never reaches btrtl, never loads rtl_bt/rtl8761bu_fw.bin, and no hci0 appears. Every Bluetooth feature on the box -- pad pairing, DS3/SIXAXIS, BT audio -- is simply absent for a user who owns that dongle and no other. Nothing logs an error; the device just does not enumerate as a controller.",
+    "affected_hardware": [
+      "Mercusys MA550H USB Bluetooth 5 adapter (Realtek RTL8761BUV)",
+      "Mercusys MA530 USB Bluetooth 5 adapter (Realtek RTL8761BUV)"
+    ],
+    "device_ids": [
+      "2c4e:0115"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial -- two lines, applied verbatim. Not forward-ported from the fork at all: the mainline commit's own hunk applies unmodified to 6.18.y, so the carried patch is a straight backport with zero edits."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": [
+      "ce21a5cf3d1fd92b84ea9ad2b7c7240aff2162d2 (mainline, 2026-04-22, 'Bluetooth: btusb: Add Mercusys MA530 for Realtek RTL8761BUV') -- the fork commit is an independent re-landing of the identical two lines"
+    ]
+  },
+  "license_provenance": "GPL-2.0. Two lines of a mainline device-ID table, carried verbatim from torvalds/linux ce21a5cf3d1f with authorship preserved (Hrvoje Nuic).",
+  "notes": "THE FIRST 'carried' ROW THAT IS NOT FORK CODE. Every other carried patch in board/mister/de10nano/linux-patches/ exists because mainline does not have the change. This one is the opposite: mainline DOES have it, and we carry it anyway because the 6.18.y stable line we pin never received it. The disposition is therefore 'carried', not 'dropped-upstream' -- 'dropped-upstream' asserts the functionality is present in the kernel we build, and here it demonstrably is not.\n\nWHY THE FORK COMMIT AND OUR PATCH ARE NOT THE SAME FILE. scripts/check-fork-sync.sh flagged 6332499e7 (Stanislav Ponomarev, MiSTer-v6.18, 2026-08-24). Its two added lines are byte-identical to mainline ce21a5cf3d1f (Hrvoje Nuic, authored 2026-04-22, committed 2026-06-11 by Luiz Augusto von Dentz via bluetooth-next -> net-next merge 9bbdc7dc4090). Two people landed the same table row independently. The patch we carry names the MAINLINE commit as its origin and preserves Hrvoje Nuic's authorship, because that is where the code and the attribution come from; this record is keyed on the fork SHA because that is what the sync check raised. dependencies.duplicate_of records the relationship.\n\nRELEASE ARITHMETIC, CHECKED BY TAG RATHER THAN INFERRED. The ID is absent from v7.0 and v7.1 and present in v7.2-rc1 and v7.2 final, so v7.2 is its first release. It is absent from the pinned v6.18.45 (and from v6.18.44 and v6.18.38, the other two 6.18.y trees this repo touches). The commit carries no 'Cc: stable', so no 6.18.y point release will bring it in -- which is exactly why carrying it is not redundant with the stable-bump treadmill.\n\nTHE RT VARIANT MUST NOT HAVE IT, AND THAT IS MEASURED. configs/mister_rt.fragment pins 7.2, which already carries the ID, so 0047 is the one shared patch deliberately absent from board/mister/de10nano/linux-patches-beta/series. This is not a tidiness choice: at -F0 (Buildroot's fuzz setting) against a pristine v7.2 btusb.c the hunk reports 'Hunk #1 FAILED at 786' -- listing it would break `make rt` at patch time rather than apply harmlessly twice.\n\nAPPLY EVIDENCE. Dry-run at -F0 against pristine btusb.c from v6.18.45 (offset 0), v6.18.44 (offset 0) and v6.18.38 (offset -2, the base scripts/export-kernel-tree.sh replays onto). Offsets are permitted at -F0; fuzz is not, and none was taken. scripts/lint-kernel-patches.sh passes on the patch (git-am-able, identity parses).\n\nNOTHING ELSE WAS MISSING. The device needs firmware and a setup path as well as a table row, and both were already in place before this change: rtl_bt/rtl8761bu_fw.bin and rtl8761bu_config.bin ship via BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT (present in output/target/lib/firmware/rtl_bt/), and the resolved kernel config has CONFIG_BT_HCIBTUSB=m, CONFIG_BT_RTL=m, CONFIG_BT_HCIBTUSB_RTL=y. The two-line table entry was the only gap.\n\nNOT HARDWARE-TESTED HERE. Neither adapter is on hand. The fork's contributor reports a tested MA550H and the mainline author a tested MA530. The failure mode if that testimony were wrong is a dongle that still does not bind -- a device-ID row cannot regress hardware that does not match it.\n\norchestrator-verified (Opus 5, 2026-08-24): every claim in this record re-derived a second time from git.kernel.org (stable/linux.git v6.18.45 plain btusb.c: 0 matches; torvalds/linux.git v7.2: 1 match; torvalds/linux.git patch/?id=ce21a5cf3d1f: commit present, author Hrvoje Nuic, date 2026-04-22) rather than from the GitHub mirror the first pass used. Independent source, same answer."
+}

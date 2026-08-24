@@ -80,8 +80,15 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2"
 # for why that is the preferred move over a re-anchored copy. The shared 6.18
 # patches are otherwise deliberately untouched, keeping them byte-identical
 # to stock.
-# The series drops NOTHING, full stop: all 40 entries (ALL 36 shared + the four
-# beta-local patches 0043/0044/0045 -- the UIO set -- and 0046, the ramoops
+# The series drops exactly ONE shared patch, and only because 7.2 already has
+# it: 0047-btusb-mercusys-ma530-2c4e-0115, a backport of mainline ce21a5cf3d1f
+# (Mercusys MA530/MA550H, USB 2c4e:0115) whose first release IS 7.2. The 6.18
+# image needs it because 6.18.y never received the commit; this kernel does not,
+# and listing it would not be harmlessly redundant -- at -F0 against pristine
+# v7.2 the hunk FAILS ("Hunk #1 FAILED at 786"), which would break the build.
+# It goes away on its own the day the stock pin leaves 6.18.y. Nothing else is
+# dropped: all 40 entries (the other 36 shared + the four beta-local patches
+# 0043/0044/0045 -- the UIO set -- and 0046, the ramoops
 # crash-record reservation) apply to 7.2 FINAL at -F0 -- verified 2026-08-17
 # through Buildroot's own apply-patches.sh against a freshly extracted pristine
 # linux-7.2.tar.xz whose sha256 matched the signed manifest: 40/40 applied,
@@ -101,7 +108,10 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2"
 # 9303550 bytes, 90 modules. Still NOT BOOTED; that is per-version and open.
 # (This line previously read "drops only 0030 + 0037 ... all 29 listed", which
 # went stale when those two were re-anchored and re-included; 0037 in
-# particular is NOT cosmetic -- see the series header.)
+# particular is NOT cosmetic -- see the series header. It then read "drops
+# NOTHING, full stop" from 2026-08-17 until 2026-08-24, when 0047 landed in the
+# shared dir. The 40/40 measurement below is unaffected: 0047 was never in the
+# series, so the run that produced it is still a run of the whole series.)
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config ---------

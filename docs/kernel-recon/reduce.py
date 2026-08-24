@@ -8,7 +8,7 @@ silent-regressions.md, device-support.md. Exits nonzero on invariant violation.
 
 import json
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -152,9 +152,18 @@ def coup(r): return (r.get("userspace_coupling") or {}).get("coupled")
 vanilla_label = (meta or {}).get("vanilla_target", "?").lstrip("v")
 tier2_n = sum(1 for x in rows if x["tier2"])
 
+# The work list stopped being single-branch on 2026-08-24, when the first MiSTer-v6.18 commit
+# was dispositioned (commits.jsonl _meta.increments). This line used to hardcode "MiSTer-v5.15"
+# for every work-list record, which would now silently mislabel that commit -- and the count and
+# the label are the two things a reader checks the file's scope against. Derived from the records'
+# own source_branch instead, the same field the table's Branch column reads.
+main_set = set(main_shas)
+work_by_branch = Counter(row["branch"] for row in rows if row["sha"] in main_set)
+work_label = " + ".join(f"{n} {b}" for b, n in sorted(work_by_branch.items()))
+
 with open(HERE / "reconciliation.md", "w") as f:
     f.write(f"# Reconciliation — one row per fork commit\n\nGenerated {now} by `reduce.py` "
-            f"from {len(rows)} records ({len(main_shas)} MiSTer-v5.15 + {len(residue_full)} "
+            f"from {len(rows)} records ({work_label} + {len(residue_full)} "
             f"old-branch residue). Tier-2 verified: "
             f"{sum(1 for x in rows if x['tier2'])}/{len(rows)}.\n\n")
     f.write(f"""## How to read this table
@@ -339,7 +348,6 @@ print(f"records: {len(rows)}  problems: {len(problems)}")
 for p in problems:
     print("PROBLEM:", p)
 print(f"tier2: {sum(1 for x in rows if x['tier2'])}/{len(rows)}")
-from collections import Counter
 print("dispositions:", dict(Counter(x["r"].get("disposition") for x in rows)))
 print("doc disagreements:", sum(1 for x in rows if x["r"].get("agrees_with_provenance_doc") is False))
 print("patch mapping:", {k: len(v) for k, v in sorted(mapped.items())})

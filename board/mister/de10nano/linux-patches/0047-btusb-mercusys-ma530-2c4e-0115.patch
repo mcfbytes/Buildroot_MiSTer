@@ -1,0 +1,77 @@
+From ce21a5cf3d1fd92b84ea9ad2b7c7240aff2162d2 Mon Sep 17 00:00:00 2001
+From: Hrvoje Nuic <hrvoje.nuic@gmail.com>
+Date: Wed, 22 Apr 2026 23:26:47 +0200
+Subject: [PATCH 1/1] Bluetooth: btusb: Add Mercusys MA530 for Realtek RTL8761BUV
+
+Add the USB ID for the Mercusys MA530 Bluetooth adapter. The device uses
+a Realtek RTL8761BUV controller and works with the existing Realtek setup
+path.
+
+The device reports vendor ID 0x2c4e and product ID 0x0115, and loads the
+rtl_bt/rtl8761bu_fw.bin firmware successfully with this quirk.
+
+Provenance
+----------
+Origin:       ce21a5cf3d1fd92b84ea9ad2b7c7240aff2162d2
+              "Bluetooth: btusb: Add Mercusys MA530 for Realtek RTL8761BUV"
+              torvalds/linux, authored 2026-04-22, committed 2026-06-11 by
+              Luiz Augusto von Dentz via bluetooth-next -> net-next
+              (merge 9bbdc7dc4090, "for-net-next-2026-06-11").
+Author:       Hrvoje Nuic <hrvoje.nuic@gmail.com>
+Upstream:     YES -- and this is the first patch in this series for which that
+              is true. Every other carried patch is fork-only code mainline
+              does not have; this one is a plain BACKPORT of a mainline commit
+              that has simply not reached the stable line we pin. Verified by
+              tag, not inferred: absent from v7.0 and v7.1, present in
+              v7.2-rc1 and v7.2 final, so v7.2 is its first release. It is
+              also absent from every 6.18.y up to and including the pinned
+              6.18.45 (the commit carries no Cc: stable, so it is not queued
+              for that line and no bump inside 6.18.y will bring it in).
+              DELETE THIS PATCH the moment the kernel pin leaves 6.18.y for
+              7.2 or newer -- at that point the ID is in-tree and re-adding it
+              would collide.
+Backport:     v7.2 -> 6.18.45, Michael C. Ferguson, 2026-08-24. Zero edits --
+              the hunk is byte-identical to the mainline commit's, because the
+              context it anchors on has not moved across the whole 6.18.y line.
+              Verified to apply at -F0 (Buildroot's fuzz setting, so an offset
+              is allowed and fuzz is not) against pristine btusb.c from
+              v6.18.45 (0 offset), v6.18.44 (0), and v6.18.38 (-2) -- the last
+              being the base scripts/export-kernel-tree.sh replays onto.
+Fork:         MiSTer-devel/Linux-Kernel_MiSTer landed the same two lines
+              independently as 6332499e7 ("Bluetooth: btusb: add Mercusys
+              2c4e:0115 support (#78)", 2026-08-24, Stanislav Ponomarev),
+              which is what scripts/check-fork-sync.sh flagged. That commit and
+              this patch are the same change; the record for it is
+              docs/kernel-recon/records/6332499e7545499dc361d09af7b44b33f494fe5d.json.
+              This file names the MAINLINE commit as its origin because that is
+              where the code came from and who wrote it.
+Not in beta:  deliberately absent from board/mister/de10nano/linux-patches-beta/
+              series -- the RT variant pins 7.2, which already carries the ID
+              in-tree. Not merely redundant there: MEASURED, the same -F0
+              dry-run against v7.2's btusb.c is "Hunk #1 FAILED at 786", so
+              listing it would break `make rt` at patch time rather than
+              apply twice. This is the beta series' ONLY exclusion, and that
+              file's header records it.
+Hardware:     Mercusys MA550H (tested by the fork's contributor) and MA530
+              (tested by the mainline author). Not tested here -- we have
+              neither adapter. The risk of being wrong is a dongle that
+              still does not bind, never a regression: the entry is one row
+              in a device-ID table that nothing else reads.
+Firmware:     already shipped. rtl_bt/rtl8761bu_fw.bin and
+              rtl8761bu_config.bin come from BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT
+              (docs/firmware-parity.md), and CONFIG_BT_RTL / CONFIG_BT_HCIBTUSB_RTL
+              are already on, so the ID entry was the only missing piece.
+---
+diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
+index ea9df7d..46931fc 100644
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -786,6 +786,8 @@ static const struct usb_device_id quirks_table[] = {
+ 	{ USB_DEVICE(0x2ff8, 0xb011), .driver_info = BTUSB_REALTEK },
+ 
+ 	/* Additional Realtek 8761BUV Bluetooth devices */
++	{ USB_DEVICE(0x2c4e, 0x0115), .driver_info = BTUSB_REALTEK |
++						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x2357, 0x0604), .driver_info = BTUSB_REALTEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x0b05, 0x190e), .driver_info = BTUSB_REALTEK |

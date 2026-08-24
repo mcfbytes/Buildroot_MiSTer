@@ -2175,7 +2175,9 @@ permanent `skipped` that validates nothing.
 `CORES_PIN_CHANGED` is always `0` and is deliberately **absent** from the
 push step's `if:` condition — this case never edits a file.
 
-Parse note worth copying if a sixth case is ever added: this script asserts
+Parse note — copied by case 6 (`scripts/hash-sync-buildroot.sh`) when it was
+added on 2026-08-24, and still worth copying into any future case: this
+script asserts
 the 40-hex shape **in the grep match** and re-extracts with `grep -oE`,
 rather than the `grep | sed -E 's/.*="([0-9a-f]{40})".*/\1/'` idiom cases 1,
 3 and 4 use. `sed` prints its input UNCHANGED when the pattern does not
@@ -2187,7 +2189,7 @@ by fixture before this case was wired in; **cases 1, 3 and 4 still carry the
 idiom** and should get the same treatment when next touched.
 
 <a id="renovate-hash-sync-safety-model"></a>
-### Safety model, cases 1-4: why a locally-computed sha256 is legitimate here
+### Safety model, the refresh cases: where each refreshed value legitimately comes from
 
 1. **The 14 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
    12 driver/firmware pins plus `libchdr` (a userspace shared library — the
@@ -2231,20 +2233,25 @@ idiom** and should get the same treatment when next touched.
    (`PINNED_CORES_COMMIT`) has no companion hash and is deliberately not
    handled (see that script's own header).
 
+6. **The Buildroot tarball hash** (`BUILDROOT_SHA256`, root Makefile),
+   refreshed by `scripts/hash-sync-buildroot.sh` from Buildroot's own
+   GPG-clearsigned release manifest
+   (`https://buildroot.org/downloads/buildroot-<ver>.tar.gz.sign`) — the
+   exact signed file `make buildroot-showsig` prints for the manual
+   transcription this case replaces, and the same trust model as case 2's
+   kernel.org manifest: fetched over HTTPS, the `SHA256:` line for the
+   pinned version's own filename transcribed, the PGP signature **not**
+   verified (the same keyring-management gap as case 2, the same "no worse
+   than the manual process" argument, and the same worthwhile-future-
+   hardening note). The script never downloads the tarball and never
+   computes a hash — a `skipped`/`failed` outcome leaves the Makefile
+   untouched and the build fails closed at `make buildroot-verify`, exactly
+   the red-PR posture a Buildroot bump had before this case existed
+   (2026-08-24). Numbered 6 because validate-only case 5 predates it.
+
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
 
-- **`BUILDROOT_SHA256`** (root Makefile). Per the Makefile's own header
-  comment, this value is ONLY legitimate when transcribed from Buildroot's
-  GPG-signed release manifest
-  (`https://buildroot.org/downloads/buildroot-<ver>.tar.gz.sign`) — a
-  locally-computed `sha256sum` of the downloaded tarball is explicitly
-  forbidden there (circular; certifies nothing; would bless a
-  tampered/truncated tarball). This workflow will NOT invent that value. A
-  Buildroot-version-bump PR from Renovate is EXPECTED to stay red at `make
-  buildroot-verify` until a human runs `make buildroot-showsig
-  BUILDROOT_VERSION=<new>` and pastes the signed hash into the Makefile by
-  hand — see `docs/renovate.md`.
 - **`cabextract`, `linux-firmware-extra`, `xow-firmware`** — not tracked by
   `renovate.json` at all (no machine-readable upstream release feed for the
   first two; `xow-firmware` pins opaque Microsoft Update `.cab` GUIDs, not a
@@ -2255,8 +2262,10 @@ idiom** and should get the same treatment when next touched.
   upstream signs in no way at all. There is nothing to transcribe from, so
   such a value can only be Trust-On-First-Use from a download a human actually
   inspected — per `linux.hash`'s own documented procedure. Computing a sha256
-  of whatever arrived and calling it provenance is circular, which is the same
-  reason `BUILDROOT_SHA256` is never automated either.
+  of whatever arrived and calling it provenance is circular — the move this
+  workflow family permanently forbids for every pin whose upstream signs a
+  manifest (`BUILDROOT_SHA256` included; case 6 transcribes its signed
+  manifest and never hashes the tarball).
   `scripts/hash-sync-kernel.sh` enforces this at runtime: it refuses any
   version containing `-rc`, records `skipped`, and leaves the line alone, so
   the build fails **closed** at the kernel download rather than blessing an
@@ -2270,6 +2279,20 @@ idiom** and should get the same treatment when next touched.
   release, and case 2 refreshes it now — under exactly the same rule the
   stable pin has always followed. Nothing was relaxed: what changed is which
   side of the rule that pin sits on.
+
+**`BUILDROOT_SHA256` left this list on 2026-08-24** — it used to head it,
+worded "this workflow will NOT invent that value ... until a human runs
+`make buildroot-showsig` and pastes the signed hash by hand", and older
+commits still quote that. The same source-not-transcriber distinction as the
+2026-08-17 kernel narrowing above applies: what the Makefile's header
+actually forbids is *producing* the value by hashing a downloaded tarball
+(circular — and that remains permanently forbidden), while the legitimate
+source was always Buildroot's GPG-signed `.sign` manifest, which a script
+can transcribe exactly as a human does. Case 6
+(`scripts/hash-sync-buildroot.sh`) now does that transcription — see the
+safety-model section above. Nothing was relaxed here either: no code path in
+that script downloads the tarball at all, and a skipped refresh still fails
+the build closed at `make buildroot-verify`.
 
 <a id="renovate-hash-sync-dispatch-trap"></a>
 ### Manual dispatch escape hatch, and its trap
@@ -2306,6 +2329,12 @@ A green run elsewhere in this workflow can therefore mean "silently
 skipped", not "verified correct". Read every warn-and-skip path in this
 workflow as "this can go green without doing anything" until proven
 otherwise by a real PR run.
+
+Case 6 (buildroot, added 2026-08-24) sits one rung below "proven against a
+real PR": it was exercised at authoring time against local fixtures for all
+four outcomes, including a live-manifest run that reproduced PR #116's
+manual `BUILDROOT_SHA256` edit byte-for-byte — but no real Renovate PR has
+driven it through the workflow yet.
 
 <a id="renovate-hash-sync-branch-validation"></a>
 ### Branch-name validation & default-branch guard

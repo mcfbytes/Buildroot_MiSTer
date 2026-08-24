@@ -20,7 +20,11 @@
 # (linux-<ver>.tar.GZ) for which kernel.org publishes NO signed manifest. Such
 # a hash can only be Trust-On-First-Use from a download a human actually
 # inspected, so automating it would have meant inventing trust -- the same
-# reason BUILDROOT_SHA256 is still never automated. Linux 7.2 released on
+# reason no script in this family ever hashes a downloaded tarball whose
+# upstream signs a manifest (see scripts/lib/hash-sync-common.sh; until
+# 2026-08-24 this sentence instead named BUILDROOT_SHA256 as "still never
+# automated", and case 6 has since narrowed that the same way this case was
+# narrowed). Linux 7.2 released on
 # 2026-08-16, the RT pin moved onto the 7.2 line, and its artifact became an
 # ordinary linux-7.2.tar.XZ off the kernel.org mirror -- which IS covered by
 # the PGP-signed sha256sums.asc, exactly like the stable pin. Same source, same
@@ -80,8 +84,9 @@
 # prohibitions this workflow family observes):
 #
 #   * ANY `-rc` kernel hash, for either pin -- see the header note above.
-#   * BUILDROOT_SHA256 (root Makefile) -- unrelated to this file, but this
-#     script does not touch it either; see scripts/lib/hash-sync-common.sh.
+#   * BUILDROOT_SHA256 (root Makefile) -- not this script's pin (case 6,
+#     scripts/hash-sync-buildroot.sh, owns it since 2026-08-24); this script
+#     does not touch it. See scripts/lib/hash-sync-common.sh.
 #
 # Usage:
 #   scripts/hash-sync-kernel.sh [--pin=stable|rt] [REPO_ROOT]
@@ -278,7 +283,9 @@ main() {
 	# local download and pin it Trust-On-First-Use -- see linux.hash's own
 	# header for the procedure. Automating it would mean computing a sha256 of
 	# whatever arrived and calling that provenance, which is circular and is
-	# exactly what this workflow family refuses to do for BUILDROOT_SHA256 too.
+	# exactly the move this workflow family permanently forbids for every
+	# signed-manifest pin, BUILDROOT_SHA256 included (case 6 transcribes its
+	# signed manifest; it never hashes the tarball).
 	#
 	# `skipped`, not `failed`: an -rc pin is a legitimate state of the tree
 	# (the RT variant lived there for months), not a defect. The consequence is

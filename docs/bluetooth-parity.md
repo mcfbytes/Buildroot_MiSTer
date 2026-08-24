@@ -267,6 +267,17 @@ Total ≈1.7 MB.
   `rtl8761bu_fw.bin`. That matters: RTL8761B/BU are the chips in the
   ubiquitous cheap USB Bluetooth 5 dongles. Also covered: 8822b/cu, 8851bu,
   8852au/bu/btu/cu — the BT halves of every rtw88/rtw89 combo we drive.
+  ⚠ **Firmware coverage is not the same as device coverage**, and the RTL8761BU
+  family is where that bites: every one of these dongles is a different
+  VID:PID sold under a different brand, and `btusb`'s `quirks_table` has to
+  name each one before `btrtl` is ever reached to load the firmware above. A
+  missing row looks exactly like a dead dongle and logs nothing. First
+  instance, 2026-08-24: `2c4e:0115` (Mercusys MA530 / MA550H) — in mainline
+  since 7.2, never backported to 6.18.y, so we carry
+  `board/mister/de10nano/linux-patches/0047-btusb-mercusys-ma530-2c4e-0115.patch`
+  (`docs/patch-provenance.md`, "`0047` — the first BACKPORT"). Expect more of
+  these, and expect them to arrive as user reports rather than as build
+  failures.
 - **MediaTek legacy** — `mt7622pr2h.bin`, `mt7663pr2h.bin`, `mt7668pr2h.bin`
   already shipped via `linux-firmware-extra` (`mt7663pr2h.bin` arrived with the
   v10 MT7663U work and does double duty as that combo's BT companion).

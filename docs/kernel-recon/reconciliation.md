@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-07-24 22:36 UTC by `reduce.py` from 125 records (110 MiSTer-v5.15 + 15 old-branch residue). Tier-2 verified: 125/125.
+Generated 2026-08-24 15:36 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
 
 ## How to read this table
 
@@ -53,7 +53,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 125/125
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/126
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -110,7 +110,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 125 rows, **2** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 126 rows, **2** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `fc09a292a` rtl8821cu: workaround for bad efuse in EDUP EP-AC1661. — see its record for the decision and affected hardware.
@@ -137,6 +137,7 @@ Of 125 rows, **2** describe a real difference a user could notice on this build 
 | `5c410e935` | v5.15 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | feature-loss/loud | — | Y | ✓ | hid-sony: fix for 3rd party DS4 failing to connect by wire. |
 | `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
 | `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | cosmetic/silent | — | N | ✓ | dualsense: give mute button and led to system. |
+| `6332499e7` | v6.18 | **carried** | 0047-btusb-mercusys-ma530-2c4e-0115.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for RTC PCF8563 |
 | `70e391b81` | v5.15 | **carried** | 0024-hid-input-keyrah-europe1.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | HID: map key Europe 1(0x32) to F24 code (for Keyrah). |
 | `71c583074` | v5.15 | **carried** | 0030-i2c-designware-quiet-timeout.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | Disable RTC error messages. |

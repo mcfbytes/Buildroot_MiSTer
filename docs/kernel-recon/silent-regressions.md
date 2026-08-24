@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-07-24 22:36 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-08-24 15:36 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -21,6 +21,7 @@ These WOULD regress silently if their patch were ever dropped — they are carri
 - `484f68172` input: Add support for the NSO Famicom controllers (no mic … → 0015-hid-nintendo-nso-famicom.patch
 - `52a56ae3d` mousedev: disable touch to click on DualShock4 and DualSens… → 0026-input-mousedev-eviocgrab.patch
 - `5bdbf2f7e` hid: add quirk for ControllaBLE. → 0018-hid-controllable-quirk.patch
+- `6332499e7` Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) → 0047-btusb-mercusys-ma530-2c4e-0115.patch
 - `6827e7644` Support for RTC PCF8563 → 0004-dts-de10nano-MiSTer.patch
 - `70e391b81` HID: map key Europe 1(0x32) to F24 code (for Keyrah). → 0024-hid-input-keyrah-europe1.patch
 - `77862a67f` Add support for official gamecube-adapter (#48) → 0014-hid-gamecube-adapter.patch

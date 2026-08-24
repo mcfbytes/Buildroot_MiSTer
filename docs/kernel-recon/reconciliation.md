@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-08-24 15:36 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
+Generated 2026-08-24 15:49 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
 
 ## How to read this table
 

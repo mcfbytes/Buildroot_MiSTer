@@ -86,7 +86,7 @@ mainline can hold it.
 | | Stock MiSTer | This project |
 |---|---|---|
 | **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 108 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel delta** | 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
 | **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.3** |

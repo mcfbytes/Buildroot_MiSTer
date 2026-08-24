@@ -20,7 +20,7 @@
     "vanilla_shas": [
       "ce21a5cf3d1fd92b84ea9ad2b7c7240aff2162d2"
     ],
-    "vanilla_file_line": "drivers/bluetooth/btusb.c:836 (v7.2) -- and NOT in v6.18.45, the version configs/mister_de10nano_defconfig pins",
+    "vanilla_file_line": "drivers/bluetooth/btusb.c:830 (v7.2; the quoted comment line is 829) -- and NOT in v6.18.45, the version configs/mister_de10nano_defconfig pins",
     "vanilla_quote": "\t/* Additional Realtek 8761BUV Bluetooth devices */\n\t{ USB_DEVICE(0x2c4e, 0x0115), .driver_info = BTUSB_REALTEK |\n\t\t\t\t\t\t     BTUSB_WIDEBAND_SPEECH },",
     "equivalence": "exact"
   },

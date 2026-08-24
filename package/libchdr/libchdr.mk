@@ -16,21 +16,22 @@
 # package's patch 0001, with 0002/0003 switching the sources to the system
 # <LzmaDec.h> (see each patch's header for the full story).
 #
-# PATCH 0004 IS A DIFFERENT ANIMAL -- an upstream BUG FIX, not an unbundling
-# step. lzma_compute_aligned_dictionary_size() hand-reimplements the LZMA SDK's
-# LzmaEncProps_Normalize() and inverts both operators of the reduceSize clamp,
-# so the LZMA dictionary keeps level 9's 1 << 26 = 64 MiB default instead of
-# dropping to the 18,816 bytes cdlz_codec_init() asks for (which
-# LzmaEnc_WriteProperties then rounds up to 24,576). Measured with a malloc
-# interposer: 67,108,864 bytes allocated where 24,576 is correct, 2,731x more,
-# once per chd_file handle. It is invisible to RSS because the
-# pages are never touched -- but a consumer that calls mlockall(), as a
-# real-time CD-DA player must, gets all of it as resident unswappable RAM.
-# Measured on the DE10-Nano: 128 MB on a 488 MB board, VmRSS 155,972 -> 27,996
-# kB with the patch, and byte-identical output (FNV-1a over all 31,984 hunks of
-# the test image unchanged). Drop 0004 when upstream carries the fix.
+# FORMER PATCH 0004 (codec_lzma inverted dictionary clamp) WAS DROPPED
+# 2026-08-24, exactly as its own instruction said to ("Drop 0004 when
+# upstream carries the fix"): upstream fixed the inverted MIN/MAX in
+# lzma_compute_aligned_dictionary_size()'s reduceSize clamp in commit
+# fa364205 ("Fix LZMA dict-size bug...", merged via upstream PR #169), which
+# this pin carries. Upstream's version spells the clamp
+# MIN(dictSize, MAX(reduceSize, kReduceMin)) with a comment memorializing
+# the old bug, and switched the assumed encoder level 9 -> 6 (matching
+# MAME's chdman) in the same commit -- invisible with a correct clamp, as
+# the dropped patch's own header predicted. The bug's full story (64 MiB
+# dictionary where 24,576 bytes is correct, ~128 MB of unswappable RAM for
+# an mlockall() consumer with two handles) lives in that patch's header;
+# recover it from git history at this file's 2026-08-24 change if it is
+# ever needed again.
 #
-# PATCH 0005 is a performance change, not a correctness one. crc16() is
+# PATCH 0005 is a performance change, not a correctness one. crc16 is
 # byte-at-a-time and runs on EVERY hunk read (VERIFY_BLOCK_CRC defaults to 1),
 # which for a CD image is a 19,584-byte pass per hunk on top of the codec.
 # Slicing-by-4 folds four bytes per iteration from three derived tables; same
@@ -38,8 +39,13 @@
 # Measured on the DE10-Nano: 299.6 -> 127.0 us per hunk (2.36x), and end to end
 # through chd_read() the audio hunks of a Sonic CD .chd go p50 2,212 -> 1,894 us
 # and p90 2,698 -> 2,176 us. Verified byte-exact: all 31,984 hunks decode with 0
-# failures and an unchanged FNV-1a over every decoded byte. Drop 0005 when
-# upstream carries it.
+# failures and an unchanged FNV-1a over every decoded byte. Rebased 2026-08-24
+# onto this pin's crc16_update() split (upstream's CHDR_LOWRAM_MAP work made
+# the CRC continuable; the slicing loop is initial-value-agnostic so it drops
+# in unchanged -- see the patch's rebase note). Drop 0005 when upstream
+# carries it. The gap in the numbering is deliberate, not an error: 0004 was
+# dropped as upstreamed (above) and renaming this file would orphan its
+# history and every reference to it.
 #
 # ONE DEP STAYS BUNDLED, DELIBERATELY: the header-only dr_flac decoder
 # (include/dr_libs/dr_flac.h) is compiled into the library by src/
@@ -57,14 +63,21 @@
 # Without it, WITH_SYSTEM_ZSTD does a bare find_package(zstd REQUIRED)
 # expecting zstd's CMake config package -- which Buildroot's zstd package
 # (Makefile-installed, ships only libzstd.pc, no *.cmake) does not provide,
-# so configure FAILS at the tag. The pin (upstream master HEAD at pin time,
-# 2026-07-17; commit date 2026-06-20) also carries the
-# chd_read_header_core_file_callbacks fix (798a4f7, file size populated
-# before reading the header). Version/ABI are unchanged from the tag: CMake
+# so configure FAILS at the tag. The pin (upstream master HEAD at bump time;
+# Renovate PR #115, 2026-08-24, previously 6cde534 of 2026-07-17) carries
+# everything the old pin did (798a4f7's chd_read_header_core_file_callbacks
+# fix included) plus, notably: the dictionary-clamp fix that used to be this
+# package's patch 0004 (see above), a vendored LZMA SDK bump 25.01 -> 26.02
+# -- now the SAME version as the system lzma-sdk package this build links
+# instead of it -- a vendored miniz bump (also unused here; system zlib),
+# and new CHDR_WANT_TESTS / CHDR_LOWRAM_MAP options, both left at their
+# defaults (tests build a non-installed benchmark, exactly what the old pin
+# built unconditionally; LOWRAM_MAP=OFF is the old pin's behavior).
+# Version/ABI are unchanged from the tag: CMake
 # project() still says 0.3.0, so this still produces libchdr.so.0.3 with
-# SONAME libchdr.so.0 (verified by host-building the pinned+patched source
-# at pin time).
-LIBCHDR_VERSION = 6cde5348eb118da3baf94f75a69577a005a484fd
+# SONAME libchdr.so.0 (re-verified at the 2026-08-24 bump by cross-building
+# the pinned+patched source and reading the .so's SONAME).
+LIBCHDR_VERSION = fa3304197ccb919fee4356caa30d67b16a820a20
 LIBCHDR_SITE = $(call github,rtissera,libchdr,$(LIBCHDR_VERSION))
 # LICENSE.txt is the standard BSD 3-clause text ("Copyright Romain
 # Tisserand", the three numbered conditions, the all-caps disclaimer --

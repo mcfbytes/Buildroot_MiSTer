@@ -35,12 +35,25 @@ decode with 0 failures and the FNV-1a over every decoded byte is unchanged at
 ab0ea6b040de538a. A wrong CRC would fail every hunk, since hunk_read_compressed
 returns CHDERR_DECOMPRESSION_ERROR on mismatch.
 
+Rebase note (2026-08-24, pin fa33041): upstream's CHDR_LOWRAM_MAP work
+split crc16() into a continuable crc16_update(crc, data, length) plus a
+crc16() wrapper, so the map CRC can be verified chunk by chunk without
+materializing the whole map. The slicing loop lands inside crc16_update
+unchanged: it is initial-value-agnostic (each step only folds the running
+crc through the same tables the bytewise loop uses), so continuation calls
+compose exactly as bytewise ones do and the chunked map path gains the same
+speedup. Re-verified at rebase time with a host harness: 2000 random
+buffers, whole-buffer vs random-split continuation vs the 12-byte
+map-entry pattern, all byte-exact against the pristine bytewise
+implementation. The DE10-Nano timings above predate the rebase (measured
+at pin 6cde534); the loop is unchanged, so they carry.
+
 Upstream status: candidate for upstreaming, not yet sent.
 
 diff --git a/src/libchdr_chd.c b/src/libchdr_chd.c
 --- a/src/libchdr_chd.c
 +++ b/src/libchdr_chd.c
-@@ -623,9 +623,127 @@
+@@ -700,9 +700,127 @@ static uint16_t crc16_update(uint16_t crc, const void *data, uint32_t length)
  		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0
  	};
  
@@ -155,7 +168,7 @@ diff --git a/src/libchdr_chd.c b/src/libchdr_chd.c
 +
  	const uint8_t *src = (uint8_t*)data;
  
--	/* fetch the current value into a local and rip through the source data */
+-	/* rip through the source data */
 +	/* rip through the source data four bytes at a time, then any tail */
 +	while (length >= 4)
 +	{

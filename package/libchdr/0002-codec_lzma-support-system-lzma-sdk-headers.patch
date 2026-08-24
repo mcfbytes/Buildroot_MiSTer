@@ -2,7 +2,7 @@ codec_lzma: take the LZMA SDK header from the system under CHDR_SYSTEM_LZMA
 
 Companion to patch 0001. src/codec_lzma.h unconditionally includes the
 vendored copy's header by relative path
-("../deps/lzma-25.01/include/LzmaDec.h"), which would defeat
+("../deps/lzma-26.02/include/LzmaDec.h"), which would defeat
 WITH_SYSTEM_LZMA: the vendored header is a shim that #define-renames
 every public LzmaDec entry point to a CHDR_-prefixed alias (its first
 ~15 lines, e.g. LzmaDec_DecodeToBuf -> CHDR_LzmaDec_DecodeToBuf) so the
@@ -39,7 +39,7 @@ diff --git a/src/codec_lzma.h b/src/codec_lzma.h
 +#ifdef CHDR_SYSTEM_LZMA
 +#include <LzmaDec.h>
 +#else
- #include "../deps/lzma-25.01/include/LzmaDec.h"
+ #include "../deps/lzma-26.02/include/LzmaDec.h"
 +#endif
  
  #include "../include/libchdr/chd.h"

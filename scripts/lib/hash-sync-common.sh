@@ -54,16 +54,32 @@
 #
 # This workflow's two permanent, cross-cutting prohibitions -- restated here
 # because this is the one file every case script sources, so this is where a
-# future fifth case script is most likely to be reviewed against them:
+# future case script is most likely to be reviewed against them:
 #
-#   * BUILDROOT_SHA256 (root Makefile) is NEVER refreshed by any script in
-#     this family. That value is only legitimate when transcribed BY A HUMAN
-#     from Buildroot's GPG-signed release manifest
-#     (https://buildroot.org/downloads/buildroot-<ver>.tar.gz.sign) --
-#     a locally-computed sha256sum of the downloaded tarball is explicitly
-#     forbidden there (it would certify nothing and could bless a
-#     tampered/truncated tarball). See the root Makefile's own header and
+#   * NO script in this family may ever produce a pinned-manifest hash by
+#     DOWNLOADING THE ARTIFACT AND HASHING IT when upstream publishes a
+#     signed manifest for it. That is circular -- it certifies whatever bytes
+#     arrived and could bless a tampered/truncated tarball. Applies today to
+#     BUILDROOT_SHA256 (root Makefile) and both kernel pins: their values
+#     are legitimate ONLY as transcriptions from upstream's GPG-signed
+#     manifest (buildroot.org's buildroot-<ver>.tar.gz.sign, kernel.org's
+#     sha256sums.asc). See the root Makefile's own header and
 #     docs/renovate.md.
+#
+#     NOTE, because this prohibition NARROWED on 2026-08-24 and the old
+#     wording is still quoted in places: it used to read "BUILDROOT_SHA256 is
+#     NEVER refreshed by any script in this family ... only legitimate when
+#     transcribed BY A HUMAN". The capitalized clause conflated the SOURCE
+#     (the signed manifest -- the real requirement) with the TRANSCRIBER (a
+#     human -- incidental). scripts/hash-sync-buildroot.sh (case 6) now
+#     transcribes the same signed manifest `make buildroot-showsig` prints,
+#     never touching the tarball itself -- the same source-not-transcriber
+#     narrowing the kernel case went through on 2026-08-17, below. The
+#     locally-computed-hash half was always the substance and stands
+#     unchanged. (Cases 1, 3 and 4 DO fetch-and-hash, legitimately: their
+#     upstreams publish no checksums at all, so a locally-computed sha256 of
+#     the actual pinned artifact IS the standard-practice source there --
+#     see docs/ci.md#renovate-hash-sync-safety-model.)
 #   * ANY `-rc` kernel hash is NEVER refreshed by any script in this family.
 #     kernel.org signs no manifest for an `-rc` cgit snapshot, so such a hash
 #     is Trust-On-First-Use and can ONLY be re-derived by hand from an

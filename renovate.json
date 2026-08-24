@@ -95,7 +95,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Bump the pinned Buildroot release (BUILDROOT_VERSION) in the wrapper Makefile. Deliberately does NOT try to also update the companion BUILDROOT_SHA256 on the next line -- that hash is only legitimate when transcribed from Buildroot's own GPG-signed release manifest (the Makefile's own header comment forbids a locally-computed sha256sum, since that would be circular and would bless a tampered/truncated tarball). A human runs `make buildroot-showsig BUILDROOT_VERSION=<new>` and pastes the signed hash in by hand -- see docs/renovate.md. Until then this PR is RED (buildroot-verify fails closed), which is the intended, safe failure mode.",
+      "description": "Bump the pinned Buildroot release (BUILDROOT_VERSION) in the wrapper Makefile. Deliberately does NOT try to also update the companion BUILDROOT_SHA256 on the next line -- that hash is only legitimate when transcribed from Buildroot's own GPG-signed release manifest (the Makefile's own header comment forbids a locally-computed sha256sum, since that would be circular and would bless a tampered/truncated tarball). SINCE 2026-08-24 that transcription is automated: renovate-hash-sync.yml case 6 (scripts/hash-sync-buildroot.sh) fetches the .sign manifest and rewrites BUILDROOT_SHA256 on the PR branch -- the same signed source `make buildroot-showsig` prints, never a hash of the tarball itself. Before that date a human transcribed it by hand and the PR deliberately stayed RED until they did. If the sync run skips (network, unpublished manifest), the PR still fails closed at buildroot-verify and the manual recipe in docs/renovate.md is the fallback.",
       "managerFilePatterns": [
         "/^Makefile$/"
       ],

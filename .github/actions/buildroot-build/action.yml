@@ -129,7 +129,12 @@ runs:
         esac
         echo "VARIANT=$VARIANT" >> "$GITHUB_ENV"
 
-        ver=$(sed -n 's/^BUILDROOT_VERSION ?= //p' Makefile | head -1)
+        # Whitespace-tolerant on purpose, matching renovate.json's own
+        # matchString (BUILDROOT_VERSION\s*\?=\s*): the Makefile stanza is
+        # column-aligned, so the gap is more than one space and may move again
+        # the next time a neighboring variable changes length. A single-space
+        # match here broke on exactly that (run 32698708260).
+        ver=$(sed -n -e 's/[[:space:]]*$//' -e 's/^BUILDROOT_VERSION[[:space:]]*?=[[:space:]]*//p' Makefile | head -1)
         if [ -z "$ver" ]; then
           echo "::error::could not extract BUILDROOT_VERSION from Makefile (format changed?)" >&2
           exit 1

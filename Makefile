@@ -44,8 +44,18 @@
 # it. That is circular — it pins whatever bytes you happened to receive, and
 # certifies nothing. A bump (manual or Renovate) MUST take the new hash from
 # the .sign file for the new version. `make buildroot-showsig` prints it.
-BUILDROOT_VERSION ?= 2026.05.1
-BUILDROOT_SHA256   ?= 4808d8f0812d7bdb72e6ec7629de2f17c417a3ce7bf5431f752bc9150a162849
+#
+# Since 2026-08-24 a Renovate bump gets this transcription done FOR it:
+# .github/workflows/renovate-hash-sync.yml case 6
+# (scripts/hash-sync-buildroot.sh) fetches the same .sign manifest and
+# rewrites the hash below on the PR branch. That script transcribes the
+# signed manifest exactly as a human would — it never downloads the tarball,
+# so the prohibition above stands untouched. The manual `make
+# buildroot-showsig` transcription remains the procedure for a hand bump, and
+# the fallback whenever the sync run skipped (the PR then stays red at `make
+# buildroot-verify`, which is the safe failure mode).
+BUILDROOT_VERSION  ?= 2026.05.2
+BUILDROOT_SHA256   ?= f1c8157570bdc452163db2ff109978246cd25b4e93d3c4c9fefaeee3c4d6982d
 BUILDROOT_URL       = https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
 BUILDROOT_SIG_URL   = $(BUILDROOT_URL).sign
 

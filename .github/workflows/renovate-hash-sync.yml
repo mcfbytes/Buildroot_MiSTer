@@ -9,26 +9,40 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Four REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
+# Five REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
 # tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
 # RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
 # bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
-# payload single-file pins. Why a locally-computed sha256sum is a legitimate
-# source for each of these (not a shortcut):
-# docs/ci.md#renovate-hash-sync-safety-model.
+# payload single-file pins, and (6) -- numbered after validate-only case 5,
+# which predates it -- the Buildroot tarball hash (BUILDROOT_SHA256 in the
+# root Makefile), transcribed from buildroot.org's GPG-clearsigned .sign
+# manifest. Why a locally-computed sha256sum is a legitimate source for cases
+# 1/3/4 (not a shortcut), and why cases 2 and 6 transcribe a signed manifest
+# instead: docs/ci.md#renovate-hash-sync-safety-model.
 #
 # Plus one VALIDATE-ONLY case: (5) the _Console cores snapshot pin. It has no
 # companion hash to refresh -- but it is also the one pin no PR build ever
 # resolves, so nothing else fails closed on a bad bump. See step 5 and
 # scripts/hash-sync-cores-pin.sh's header.
 #
-# NEVER automated: BUILDROOT_SHA256 (signed-manifest-only trust), ANY `-rc`
-# kernel hash (no signed manifest exists for a cgit snapshot -- hand-written
-# TOFU only), cabextract/linux-firmware-extra/xow-firmware. See
+# NEVER automated: ANY `-rc` kernel hash (no signed manifest exists for a
+# cgit snapshot -- hand-written TOFU only),
+# cabextract/linux-firmware-extra/xow-firmware. See
 # docs/ci.md#renovate-hash-sync-not-automated.
 #
-# That second entry NARROWED on 2026-08-17 and the old wording is still
+# BUILDROOT_SHA256 LEFT that list on 2026-08-24, and older commits (plus this
+# workflow's own commit-message template before that date) still quote
+# "BUILDROOT_SHA256 is NEVER automated (signed-manifest-only trust)". The
+# prohibition was always about the SOURCE, not the transcriber: hashing a
+# downloaded tarball is circular and remains permanently forbidden, but the
+# GPG-signed .sign manifest that `make buildroot-showsig` prints for a human
+# to transcribe is exactly transcribable by a script too -- the same
+# narrowing case 2 went through on 2026-08-17 when the RT pin left the -rc
+# series. See scripts/hash-sync-buildroot.sh's header.
+#
+# The `-rc` entry itself NARROWED earlier, on 2026-08-17 (it was the list's
+# second entry then, behind BUILDROOT_SHA256), and the old wording is still
 # quoted in older commits: it used to read "the RT beta's TOFU-pinned `-rc`
 # kernel hash", naming a PIN. The prohibition was always really about the
 # ARTIFACT KIND. The RT pin left the -rc series when Linux 7.2 released, its
@@ -44,15 +58,18 @@
 #
 # STATUS: only the kernel step is proven against a real PR (#41). A green run
 # elsewhere can mean "silently skipped", not "verified correct" (bug #42). See
-# docs/ci.md#renovate-hash-sync-verification-status.
+# docs/ci.md#renovate-hash-sync-verification-status. Case 6 (buildroot) was
+# verified at authoring time (2026-08-24) against local fixtures for all four
+# outcomes -- including a live-manifest refresh reproducing PR #116's manual
+# hash edit byte-for-byte -- but has not yet run against a real Renovate PR.
 #
 # Every step below records a per-pin outcome and the job fails if one is
 # "failed" or if the whole run did nothing -- see
 # docs/ci.md#renovate-hash-sync-outcomes-gate.
 #
-# NOTE: scripts/hash-sync-{kernel,github-packages,lzma-sdk,sdcard-payload,
-# cores-pin}.sh + scripts/lib/hash-sync-common.sh are the five cases below --
-# each step
+# NOTE: scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,
+# cores-pin,buildroot}.sh + scripts/lib/hash-sync-common.sh are the six cases
+# below -- each step
 # just invokes its script (see the second checkout, below, for where the
 # scripts come from). Fix bugs IN THE SCRIPTS; this file only wires them up
 # and owns the per-pin outcome ledger / push-gate / job-summary steps that
@@ -68,6 +85,14 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
+      # The root Makefile carries the Buildroot pin (BUILDROOT_VERSION /
+      # BUILDROOT_SHA256) that case 6 refreshes. ADDED 2026-08-24, when that
+      # case was added -- before that a Buildroot bump PR deliberately stayed
+      # red until a human transcribed the signed hash (see the header). Same
+      # both-lists-or-silent-failure note as rtl8852cu-morrownr below: absent
+      # here, the workflow never runs on a Buildroot bump at all -- no skipped
+      # job, no red X, no outcome row.
+      - "Makefile"
       - "configs/mister_de10nano_defconfig"
       # mister_kernel_defconfig copies this stanza's kernel version (one Renovate
       # PR bumps both).
@@ -385,7 +410,22 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: .hash-sync-tools/scripts/hash-sync-cores-pin.sh "$GITHUB_WORKSPACE"
 
-      # Gate the push: ANY pin recorded "failed" (from any of the four steps
+      # --- 6. Buildroot tarball hash (BUILDROOT_SHA256, root Makefile) --------
+      # NEW 2026-08-24. Transcribed from buildroot.org's GPG-clearsigned
+      # release manifest (buildroot-<ver>.tar.gz.sign) -- the SAME signed file
+      # `make buildroot-showsig` prints for the manual transcription this step
+      # replaces, and the same trust model as case 2's kernel.org manifest.
+      # The script never downloads the tarball, never computes a sha256 of
+      # one, and edits ONLY the hash value on the Makefile's BUILDROOT_SHA256
+      # line (stanza alignment preserved byte-for-byte -- that stanza is
+      # Renovate-watched). See the header above for why the old "NEVER
+      # automated" entry narrowed, and the script's own header for the full
+      # rationale. Runs from the .hash-sync-tools checkout against the target
+      # branch's tree; see step 1's comment.
+      - name: Refresh the Buildroot tarball hash from buildroot.org's signed manifest
+        run: .hash-sync-tools/scripts/hash-sync-buildroot.sh "$GITHUB_WORKSPACE"
+
+      # Gate the push: ANY pin recorded "failed" (from any of the steps
       # above) suppresses the commit/push below. MUST run and be evaluated
       # BEFORE the push -- the summary/gate step at the end of the job
       # deliberately runs LAST, which is exactly wrong for this check. See
@@ -408,13 +448,13 @@ jobs:
           (env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
            env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
-           env.PAYLOAD_HASH_CHANGED == '1') &&
+           env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail
           git config user.name "renovate-hash-sync[bot]"
           git config user.email "renovate-hash-sync@users.noreply.github.com"
-          git add package/*/*.hash board/mister/de10nano/patches/linux/linux.hash scripts/fetch-sdcard-payload.sh
+          git add Makefile package/*/*.hash board/mister/de10nano/patches/linux/linux.hash scripts/fetch-sdcard-payload.sh
           git commit -F - <<'COMMITMSG'
           renovate-hash-sync: refresh companion hash(es) for this PR
 
@@ -432,11 +472,12 @@ jobs:
             - sdcard payload pins (update_all.sh, wifi.sh): sha256 + size of
               the raw file at the new pinned commit, rewritten in place in
               scripts/fetch-sdcard-payload.sh
-
-          BUILDROOT_SHA256 (root Makefile) is NEVER touched by this
-          workflow -- see docs/renovate.md and the Makefile's own header
-          comment. That value must come from Buildroot's GPG-signed .sign
-          manifest and is a manual step.
+            - Buildroot pin (BUILDROOT_SHA256, root Makefile): transcribed
+              from buildroot.org's GPG-signed release manifest
+              (buildroot-<ver>.tar.gz.sign) -- the same signed file `make
+              buildroot-showsig` prints, never a locally-computed sha256sum
+              of the tarball (that remains forbidden; see the Makefile's own
+              header comment)
           COMMITMSG
           # Shell variable, NOT a workflow-expression interpolation --
           # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
@@ -468,7 +509,15 @@ jobs:
           # cross-checked, so its step could stop recording anything at all and
           # the summary would look complete -- the precise shape of run
           # 29669946883.
-          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
+          #
+          # `7zip` and `buildroot` joined on 2026-08-24. `7zip` was an
+          # OVERSIGHT being fixed, not a new pin: case 3 has recorded a "7zip"
+          # row since ADR 0023 made it table-driven over both ip7z packages,
+          # but only "lzma-sdk" was ever listed here -- so a case-3 abort
+          # between the two packages would have made the 7zip row vanish from
+          # this summary without a trace, the exact failure this cross-check
+          # exists to catch. `buildroot` is case 6's row.
+          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

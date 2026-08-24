@@ -47,7 +47,7 @@ for the specific pieces most likely to need a fix on the first live run.
 
 | Pin | File(s) | Mechanism | Hash companion |
 |---|---|---|---|
-| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **manual**, see below |
+| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below |
 | Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, the **7.2 line**) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelStable72` datasource; `allowedVersions` locked to `/^7\.2(\.\d+)?$/`. Labeled `rt-kernel-pin` + `needs-manual-version-check`. **Rewritten 2026-08-17** when 7.2 released: the datasource was `kernelMainline` (`moniker=mainline`) and the depName `kernel-mainline-rt`. Both were right while 7.2 was in `-rc` and wrong the moment it shipped — mainline moves to 7.3-rc1 about two weeks later, so the old filter would have dragged the variant straight back off the line it had just reached. The filter is now **moniker-agnostic and version-scoped**, because the 7.2 line changes moniker underneath us: today 7.2 is the `mainline` entry and no 7.2.y stable release exists yet, and once 7.2.1 ships it becomes the `stable` entry instead. The matchString accepts two- *and* three-component values for the same reason | `board/mister/de10nano/patches/linux/linux.hash` — **auto-refreshed since 2026-08-17** by `renovate-hash-sync.yml` (`hash-sync-kernel.sh --pin=rt`) from kernel.org's signed `sha256sums.asc`, same as the 6.18 pin. This row says the opposite of what it said before that date, and the reason is that the pin changed sides, not that the rule loosened: an `-rc` is fetched as a cgit `.tar.gz` snapshot upstream signs in no way, so its hash could only be hand-written TOFU; a 7.2.y release is an ordinary `.tar.xz` covered by the signed manifest. The script still **refuses** any `-rc` for either pin, leaving the build to fail closed |
 | 10 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,rtl8852cu-morrownr,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
@@ -276,8 +276,8 @@ stale kernel-bump PR, say) has no `scripts/hash-sync-*.sh` at all, so
 running the scripts out of *that* checkout would exit 127 on exactly the
 branch the escape hatch exists to repair. Sourcing them from the workflow's
 own ref instead means a fix landed on the default branch is what runs,
-regardless of how stale `inputs.branch` is. The five scripts
-(`scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,cores-pin}.sh`,
+regardless of how stale `inputs.branch` is. The six scripts
+(`scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,cores-pin,buildroot}.sh`,
 sharing `scripts/lib/hash-sync-common.sh`) share the job-level
 `HASH_SYNC_PACKAGES` and `HASH_SYNC_OUTCOMES_FILE` env vars and record their
 per-pin outcomes to the same TSV file that the "Check for a recorded
@@ -367,30 +367,42 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    passes `github.token`): unauthenticated, the 60/hr-per-runner-IP limit
    would turn this into a permanent `skipped` that validates nothing.
 
-**What it deliberately does NOT fix:**
+6. **The Buildroot tarball hash** (`BUILDROOT_SHA256`, root `Makefile`) —
+   **added 2026-08-24**; it was the headline entry of the "does NOT fix"
+   list below until then, so older commits of this doc say the opposite.
+   `scripts/hash-sync-buildroot.sh` fetches Buildroot's GPG-clearsigned
+   release manifest
+   (`https://buildroot.org/downloads/buildroot-<version>.tar.gz.sign`) —
+   the exact signed file `make buildroot-showsig` prints — and transcribes
+   its `SHA256:` line for the pinned version's own filename into the
+   Makefile, preserving the stanza's alignment byte-for-byte. Same trust
+   model as case 2: the signed manifest is the source, the PGP signature is
+   not yet verified (same keyring gap, same manual-parity argument, same
+   future-hardening note), and **no code path downloads the tarball or
+   computes a hash of one** — the Makefile's prohibition on locally-computed
+   hashes stands untouched. On a `skipped` (network blip, manifest not
+   published yet) the PR simply stays red at `make buildroot-verify`, the
+   posture every Buildroot bump had before this case existed, and the
+   manual recipe is the fallback:
 
-- **`BUILDROOT_SHA256`** (root `Makefile`). Per the Makefile's own header
-  comment, this value is legitimate **only** when transcribed from
-  Buildroot's GPG-signed release manifest
-  (`https://buildroot.org/downloads/buildroot-<version>.tar.gz.sign`). A
-  locally-computed `sha256sum` of the downloaded tarball is explicitly
-  forbidden there — it would be circular (it blesses whatever bytes were
-  received, tampered or not) and defeats the entire point of pinning a
-  hash. `renovate-hash-sync.yml` will not invent this value.
+   ```
+   make buildroot-showsig BUILDROOT_VERSION=<new-version>
+   ```
 
-  **The manual step, every time Renovate bumps `BUILDROOT_VERSION`:**
+   Take the `SHA256:` line from that signed manifest and paste it into
+   `BUILDROOT_SHA256` in the `Makefile`, on the same PR branch, then push.
+   **A red PR here is the safe failure mode, not a bug**: it is strictly
+   better than a green PR that quietly ships a wrong/unverified hash.
 
-  ```
-  make buildroot-showsig BUILDROOT_VERSION=<new-version>
-  ```
-
-  Take the `SHA256:` line from that signed manifest and paste it into
-  `BUILDROOT_SHA256` in the `Makefile`, on the same PR branch, then push.
-  Until that happens, the PR is **expected** to be red — `make
-  buildroot-verify` (invoked by `make all` in CI) fails loudly and exactly
-  names this fix in its own error message. **A red PR here is the safe
-  failure mode, not a bug**: it is strictly better than a green PR that
-  quietly ships a wrong/unverified hash.
+**What it deliberately does NOT fix:** any `-rc` kernel hash (kernel.org
+signs no manifest for a cgit snapshot — hand-written TOFU only, and
+`hash-sync-kernel.sh` refuses one at runtime) and `azcopy` (a golang-package:
+Buildroot hashes the post-`go mod vendor` tarball, so a fetched-archive hash
+would be a plausible-looking WRONG value — see the azcopy manager's
+description in `renovate.json` and `docs/azcopy.md`). Until 2026-08-24
+`BUILDROOT_SHA256` headed this list; it is case 6 above now. See
+`docs/ci.md#renovate-hash-sync-not-automated` for the full statement,
+including the pins Renovate does not track at all.
 
 ## Automerge: OFF, everywhere
 

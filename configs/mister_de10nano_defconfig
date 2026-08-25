@@ -778,8 +778,10 @@ BR2_PACKAGE_OPENSSH=y
 # connection, before any auth -- so the box looks like it is serving SSH while
 # refusing every client, password and key alike. That regression reached us via
 # Buildroot 2026.05.1 -> 2026.05.2, which bumped openssh 10.3p1 -> 10.5p1 and so
-# crossed the 10.4 boundary. --without-sandbox falls back to the rlimit sandbox
-# and restores the posture the image actually had all along. Setting
+# crossed the 10.4 boundary. --without-sandbox selects SANDBOX_NULL -- verified on
+# the rebuild: config.h gets "#define SANDBOX_NULL 1" and none of sshd,
+# sshd-session or sshd-auth carries a seccomp string any more. That restores the
+# posture the image actually had all along (the sandbox never engaged). Setting
 # CONFIG_SECCOMP=y instead is the beyond-parity fix (post-build.sh:22 already
 # lists it as such), but it would arm that armhf/glibc syscall allowlist for the
 # first time ever and needs a real build-and-SSH test, not a hotfix.

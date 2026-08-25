@@ -765,6 +765,27 @@ BR2_PACKAGE_SAMBA4=y
 
 # --- daemons / user-facing binaries (manifest §2) ---
 BR2_PACKAGE_OPENSSH=y
+# Deliberately NOT set (Buildroot defaults it to y, i.e. --with-sandbox):
+#   BR2_PACKAGE_OPENSSH_SANDBOX
+# Our kernel carries "# CONFIG_SECCOMP is not set" (linux.config:48), matching
+# stock (docs/stock-inventory/stock-linux.config:592), so prctl(PR_SET_SECCOMP)
+# returns EINVAL. Through openssh 10.3 that was only a debug() and sshd ran the
+# pre-auth child unsandboxed -- which is what this image has silently done for
+# its entire life; the seccomp sandbox was never once active here. openssh 10.4
+# (upstream 7ab700f, "Make failure to set SECCOMP or NO_NEW_PRIVS fatal") turned
+# it into fatal(). The LISTENER still binds and listens normally, but the
+# pre-auth privsep child of sshd-session then dies status 255 on every single
+# connection, before any auth -- so the box looks like it is serving SSH while
+# refusing every client, password and key alike. That regression reached us via
+# Buildroot 2026.05.1 -> 2026.05.2, which bumped openssh 10.3p1 -> 10.5p1 and so
+# crossed the 10.4 boundary. --without-sandbox falls back to the rlimit sandbox
+# and restores the posture the image actually had all along. Setting
+# CONFIG_SECCOMP=y instead is the beyond-parity fix (post-build.sh:22 already
+# lists it as such), but it would arm that armhf/glibc syscall allowlist for the
+# first time ever and needs a real build-and-SSH test, not a hotfix.
+# NB: configure-time flag -- changing it requires `make openssh-dirclean` before
+# the rebuild, or the stale --with-sandbox stamp ships the same broken sshd.
+# BR2_PACKAGE_OPENSSH_SANDBOX is not set
 BR2_PACKAGE_PROFTPD=y
 BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y          # default y already, listed for clarity

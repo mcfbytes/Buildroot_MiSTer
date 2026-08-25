@@ -99,7 +99,7 @@ and are passed straight to ntfs-3g, same as on stock.
   auto-`select`ed `BR2_PACKAGE_LOCKFILE_PROGS=y`/`BR2_PACKAGE_LIBLOCKFILE=y`, and all
   the util-linux program toggles (`…_MOUNT`, `…_BINARIES`, `…_AGETTY`, …) — i.e. the
   symbols are valid in the pinned Buildroot (originally resolved against 2026.02.3;
-  re-proven on every CI build, now 2026.05.1), nothing is silently dropped, and the
+  re-proven on every CI build, now 2026.05.2), nothing is silently dropped, and the
   inline-commented defconfig still parses.
 - **Source is fetchable + pinned.** `usbmount_0.0.22.tar.gz` downloads from Buildroot's
   backup mirror and matches the package's pinned

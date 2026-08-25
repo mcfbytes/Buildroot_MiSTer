@@ -5,8 +5,8 @@ version-jump risk owners **P3.6** (Samba), **P3.7** (SSH/FTP), **P3.9** (Python)
 
 > **Which Buildroot this describes (read first).** The mapping below was *established*
 > against **2026.02.3** — that is the tree every "verified by reading the file" claim
-> here was read from. **The image now ships Buildroot 2026.05.1** (bumped by hand in
-> PR #54). Rows touched by that bump have been updated in place and say so inline; the
+> here was read from. **The image now ships Buildroot 2026.05.2** (bumped by hand in
+> PR #54, then by Renovate to 2026.05.2). Rows touched by that bump have been updated in place and say so inline; the
 > clearest case is PCRE1, removed upstream in 2026.05 and consequently dropped here
 > (see the `libpcre.so.1` / `libpcreposix.so.0` rows). Untouched rows still carry their
 > 2026.02.3 provenance, which is the honest thing for them to carry — a version string
@@ -448,13 +448,15 @@ The daemons and tools stock ships that users/scripts depend on directly (not jus
 via SONAME), pulled from `docs/stock-inventory/etc-configs.md`'s init-script list and
 `binaries-needed-full.txt`'s `/usr/bin`, `/usr/sbin` paths — not guessed.
 
-Four of the versions in this table have since moved with the Buildroot 2026.05.1 bump
-(PR #54): **Samba 4.23.8 → 4.24.3**, **OpenSSH 10.2p1 → 10.3p1**, **ProFTPD 1.3.8d →
-1.3.9a**, and OpenSSL 3.6.2 → 3.6.3. The two whose parity analyses that invalidates are
-flagged at the top of [`samba-parity.md`](samba-parity.md) and
-[`ssh-ftp-parity.md`](ssh-ftp-parity.md). Everything else in the table below —
-bluez 5.79, wpa_supplicant 2.11, dhcpcd 10.2.4 — is unchanged at the current pin
-(verified against `output/build/`, 2026-07-22).
+Several versions in this table have since moved, across two Buildroot bumps. The
+2026.05.1 bump (PR #54) moved **Samba 4.23.8 → 4.24.3**, **OpenSSH 10.2p1 → 10.3p1**,
+**ProFTPD 1.3.8d → 1.3.9a**, and OpenSSL 3.6.2 → 3.6.3. The 2026.05.2 bump then moved
+**Samba 4.24.3 → 4.24.5**, **OpenSSH 10.3p1 → 10.5p1** and **wpa_supplicant 2.11 →
+2.12**. The two whose parity analyses that invalidates are flagged at the top of
+[`samba-parity.md`](samba-parity.md) and [`ssh-ftp-parity.md`](ssh-ftp-parity.md) — and
+the OpenSSH move broke SSH outright on the shipped image, which that document now
+records. bluez 5.79 and dhcpcd 10.2.4 are unchanged at the current pin (verified
+against `output/build/`, 2026-08-24).
 
 | Role | Stock | Buildroot package | BR 2026.02.3 version | Init script (P2.3 parity) |
 |---|---|---|---|---|
@@ -1034,7 +1036,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybo
 
 - **Buildroot ref this mapping was read from**: branch `2026.02.x` @
   `679b9ead7620bbf193620d1ebf56f53c1764d37a` = tag `2026.02.3`. **The image now ships
-  2026.05.1** — see the note at the top of this document for what that does and does not
+  2026.05.2** — see the note at the top of this document for what that does and does not
   change.
 - **12/12 critical ABI-contract SONAMEs (PLAN §3) confirmed at the same major version**
   in Buildroot 2026.02.3, including the two PLAN flagged as highest-risk

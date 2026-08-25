@@ -67,7 +67,7 @@ MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4
 (93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
 5.15.1** — a kernel forked in November 2021 that has **never merged a single 5.15.y
 stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
-any of it. This project rebuilds the whole thing from **Buildroot 2026.05.1** and a
+any of it. This project rebuilds the whole thing from **Buildroot 2026.05.2** and a
 **mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
 signed-hash supply chain, an eight-workflow CI pipeline, and a per-commit reconciliation
 of the entire kernel fork — then ships it through the same update channel users already
@@ -87,12 +87,12 @@ mainline can hold it.
 |---|---|---|
 | **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
 | **Kernel delta** | 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
-| **Buildroot** | 2021.02.4 | **2026.05.1** (~5 years of upstream work) |
+| **Buildroot** | 2021.02.4 | **2026.05.2** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
 | **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.3** |
-| **OpenSSH** | 8.6p1 | **10.3p1** |
-| **Samba** | ~4.14 | **4.24.3** |
-| **Python** | 3.9 | **3.14.6** |
+| **OpenSSH** | 8.6p1 | **10.5p1** |
+| **Samba** | ~4.14 | **4.24.5** |
+| **Python** | 3.9 | **3.14.7** |
 | **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
 | **Wi-Fi chipset coverage** | Six out-of-tree vendor forks, plus in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine; several chips can't do WPA3 at all | **Mainline-first**: in-kernel `mac80211` (`rtl8xxxu`/`rtw88`/`rtw89`/`mt76`/`ath9k_htc`/`rsi`…) for every chip mainline can drive *that is worth building here* — six symbols are deliberately left off (one upstream itself calls non-working, four 2000s-era 802.11b/g parts, one that is optical LiFi rather than Wi-Fi; [`wifi-parity` §7](docs/wifi-parity.md)) — plus Broadcom/Cypress and Wi-Fi 6/6E support stock never had. **One** out-of-tree driver remains, for a Wi-Fi 6E chip mainline has no USB driver for at all. **WPA3/SAE hardware-verified**; see the [hardware-support table](#wi-fi-and-bluetooth-hardware-support) for the full build- vs. hardware-verified breakdown ([ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md)) |
@@ -133,7 +133,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
 | **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 37 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
-| **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.1, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
+| **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.2, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
 | **5 — Full SD image & U-Boot** | 🔄 Partially landed | `sdcard.img` builds, and `release.yml` verifies it with `scripts/check-sdcard.sh` ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md)); U-Boot-from-source is planned but not started — now targeting **mainline U-Boot**, not the 2017.03 fork ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md), [plan](docs/uboot-mainline-port.md), [tasks](docs/uboot-tasks.md)) — and the SD image has not been flashed to a fresh card on hardware (P5.4) |
@@ -369,10 +369,10 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
   This image generates unique keys on first boot and persists them to an ext4 image on the
   FAT partition, **reusing stock's own proven mechanism** for Bluetooth pairing keys.
   ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md))
-- **OpenSSH 8.6p1 → 10.3p1**, **Samba ~4.14 → 4.24.3**, **BlueZ → 5.79**,
-  **wpa_supplicant 2.9 → 2.11** — the network-facing surface, several release cycles of
+- **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.5**, **BlueZ → 5.79**,
+  **wpa_supplicant 2.9 → 2.12** — the network-facing surface, several release cycles of
   hardening each.
-- **Python 3.9 → 3.14.6** — the on-device interpreter that runs the Downloader and
+- **Python 3.9 → 3.14.7** — the on-device interpreter that runs the Downloader and
   community scripts (compatibility tested; see [`docs/python-compat.md`](docs/python-compat.md)).
 - **An actual update path.** Renovate tracks the kernel, firmware, and every pinned
   package; CI proves each bump still builds and still passes the parity suite. Stock's
@@ -563,9 +563,13 @@ shipped **byte-identical to stock's**, fetched by hash.
 - **Version numbers drift, and two parity analyses are currently behind the pins.**
   Every figure here was read off the built tree at the time of writing, but **nothing in
   CI asserts a package version**, so a Renovate or Buildroot-line bump can move a package
-  out from under the document that reasoned about it. That has already happened: the
-  Buildroot 2026.05.1 bump moved **Samba 4.23.8 → 4.24.3** and **ProFTPD 1.3.8d →
-  1.3.9a** without re-running the P3.6 / P3.7 audits that gated those packages. Both
+  out from under the document that reasoned about it. That has already happened twice.
+  The Buildroot 2026.05.1 bump moved **Samba 4.23.8 → 4.24.3** and **ProFTPD 1.3.8d →
+  1.3.9a** without re-running the P3.6 / P3.7 audits that gated those packages. The
+  2026.05.2 bump then moved **OpenSSH 10.3p1 → 10.5p1**, crossing the skipped 10.4
+  release where upstream made a failed seccomp `prctl()` fatal rather than a `debug()` —
+  which **broke every SSH connection on the shipped image** and forced a release to be
+  pulled. Buildroot classified that bump as `openssh: (no CVE assigned)`. Both parity
   documents now say so at the top, with the specific unchecked question named. The
   defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
   For the kernel this is handled by not writing the number down: narrative prose says

@@ -1,15 +1,16 @@
 # Samba parity — stock (~4.14) vs. Samba 4.23.8
 
-> ⚠ **This analysis is one minor release behind what ships (noted 2026-07-22).**
+> ⚠ **This analysis is one minor release behind what ships (last noted 2026-08-24).**
 > Everything below was reasoned against **Samba 4.23.8**, which is what Buildroot
-> 2026.02.3 shipped. **The build now ships Samba 4.24.3** (`SAMBA4_VERSION` in
-> Buildroot 2026.05.1) — carried in by the Buildroot line bump in PR #54, which did
-> not re-run this audit.
+> 2026.02.3 shipped. **The build now ships Samba 4.24.5** (`SAMBA4_VERSION` in
+> Buildroot 2026.05.2) — carried in by the Buildroot line bump in PR #54 (4.23.8 →
+> 4.24.3) and then the 2026.05.2 bump (4.24.3 → 4.24.5), neither of which re-ran this
+> audit.
 >
 > **What that does and does not put at risk.** The conclusion below rests on *when*
 > each `smb.conf` default changed, and every change it identifies landed **before
 > Samba 4.14** — i.e. before stock. That reasoning does not become wrong because the
-> upper bound moved from 4.23.8 to 4.24.3. What is genuinely **unchecked** is whether
+> upper bound moved from 4.23.8 to 4.24.5. What is genuinely **unchecked** is whether
 > **4.24 itself** changed a default that stock's `smb.conf` exposes; nobody has read
 > the 4.24 release notes against this config. Note §1's `unix extensions` row already
 > shows 4.23 introducing an additive default change, so "a new minor cannot move a

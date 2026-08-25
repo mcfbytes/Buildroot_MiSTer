@@ -91,7 +91,7 @@ running this image.
 | | Stock | This project |
 |---|---|---|
 | Kernel | **5.15.1** (forked Nov 2021; never took a single `5.15.y` stable update) | **6.18** LTS, on a stable `.y` line with ongoing security backports |
-| Buildroot | **2021.02.4** | **2026.05.1** — roughly five years newer |
+| Buildroot | **2021.02.4** | **2026.05.2** — roughly five years newer |
 | glibc | **2.31** | **2.43** |
 | OpenSSL | **1.1.1** (end-of-life since 2023-09-11 — no upstream fixes since) | **3.6.3** |
 | WiFi drivers | Six out-of-tree vendor forks, no WPA3 for several chips | Mainline `rtw88`/`rtw89`/`rtl8xxxu`/`mt7921u` etc. where mainline covers the chip (kept as out-of-tree only for the handful of chips mainline still doesn't drive) — **WPA3/SAE hardware-verified working**, which the out-of-tree fork it replaces was not |

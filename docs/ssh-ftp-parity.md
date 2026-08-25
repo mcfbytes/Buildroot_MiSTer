@@ -1,15 +1,32 @@
 # SSH & FTP parity (P3.7)
 
-> ⚠ **Both packages have moved since this analysis (noted 2026-07-22).** It was
-> written against **OpenSSH 10.2p1** and **ProFTPD 1.3.8d** (Buildroot 2026.02.3).
-> The build now ships **OpenSSH 10.3p1** and **ProFTPD 1.3.9a**, carried in by the
-> Buildroot 2026.05.1 bump in PR #54, which did not re-run this audit.
+> ⚠ **Both packages have moved since this analysis — twice (last noted 2026-08-24).**
+> It was written against **OpenSSH 10.2p1** and **ProFTPD 1.3.8d** (Buildroot 2026.02.3).
+> The build now ships **OpenSSH 10.5p1** and **ProFTPD 1.3.9a**, carried in by the
+> Buildroot 2026.05.1 bump in PR #54 and then the 2026.05.2 bump, neither of which
+> re-ran this audit.
 >
-> **ProFTPD is the one to look at.** OpenSSH `10.2p1 → 10.3p1` is a patch release and
-> the risk analysis below is framed around behaviour changes at 8.8 / 9.0 / 9.8 —
-> boundaries a patch bump cannot cross. **ProFTPD `1.3.8d → 1.3.9a` is a minor
-> release**, and this document's claims about its defaults and its shipped
-> `proftpd.conf` were read against 1.3.8d. That has not been re-verified.
+> **The OpenSSH half of the previous version of this warning was wrong, and it cost a
+> release.** It reasoned that `10.2p1 → 10.3p1` was a patch bump and so could not cross
+> the 8.8 / 9.0 / 9.8 behaviour boundaries this document is framed around, and pointed
+> the reader at ProFTPD instead. Buildroot 2026.05.2 then moved **10.3p1 → 10.5p1**,
+> crossing **10.4** — where upstream commit `7ab700f` ("Make failure to set SECCOMP or
+> NO_NEW_PRIVS fatal") turned a failed `prctl(PR_SET_SECCOMP)` from a `debug()` into a
+> `fatal()`. Our kernel carries `# CONFIG_SECCOMP is not set` (matching stock), so the
+> seccomp sandbox had never actually engaged on this image; from 10.4 that became sshd
+> binding and listening normally while its pre-auth privsep child died on **every**
+> connection, before any auth. Fixed by disabling `BR2_PACKAGE_OPENSSH_SANDBOX`
+> (Buildroot defaults it to `y`, so it had never appeared in our defconfig). Buildroot
+> classified the bump as `openssh: (no CVE assigned)`.
+>
+> **Two lessons this document should carry forward.** "Patch release, cannot cross a
+> boundary" is not a safe inference when the range contains a *skipped* release. And a
+> `default y` Buildroot symbol is invisible in a minimal defconfig — the resolved
+> `output/.config` is the only honest source for what is actually enabled.
+>
+> **ProFTPD remains unaudited.** `1.3.8d → 1.3.9a` is a minor release, and this
+> document's claims about its defaults and its shipped `proftpd.conf` were read against
+> 1.3.8d. That has not been re-verified.
 >
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`

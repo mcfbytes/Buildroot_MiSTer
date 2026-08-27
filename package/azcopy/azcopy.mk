@@ -70,7 +70,7 @@
 # the constraint does not apply and the plain upstream version number -- which
 # is what `azcopy --version` prints, and what AzcopyVersion in common/version.go
 # hardcodes -- is the more useful thing to have in the variable.
-AZCOPY_VERSION = 10.32.7
+AZCOPY_VERSION = 10.32.8
 AZCOPY_SITE = $(call github,Azure,azure-storage-azcopy,v$(AZCOPY_VERSION))
 
 # MIT, per the LICENSE file at the repo root -- read, not inferred; its first

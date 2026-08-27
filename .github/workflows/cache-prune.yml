@@ -1,0 +1,225 @@
+################################################################################
+#
+# cache-prune.yml — delete the Actions caches a closed PR leaves behind.
+#
+# WHY THIS EXISTS: GitHub's cache scoping is asymmetric. A PR run RESTORES from
+# its own ref, the base branch and the default branch -- so PRs already share
+# master's warm `dl/` and toolchains for free -- but it can only SAVE into
+# `refs/pull/<N>/merge`, a scope no other run can ever read. Every PR run
+# therefore mints its own ~5 GB set (dl/ + br-host + br-initramfs-host +
+# ccache) that is dead weight the moment the PR closes, yet still counts
+# against the repo's 10 GB ceiling for up to 7 days.
+#
+# That is not free, because eviction is LRU across the WHOLE repo: three
+# same-day Renovate PRs pushed the repo to 14.2 GB and evicted every
+# master-scoped entry. The next PR then restored nothing --
+#   "Cache not found for input keys: br-dl-2026.05.2-..., br-dl-2026.05.2-"
+# -- re-downloaded all 198 source tarballs, and died 1h13m in when
+# cdn.kernel.org dropped the 160 MB kernel tarball mid-transfer and answered
+# the retry with a 503 (run 33098842073). A warm dl/ would never have asked.
+#
+# So: prune each PR's scope as it closes, and sweep daily for what the close
+# event cannot catch (see the `schedule:` comment below). This does not raise
+# the ceiling -- it stops dead PRs from spending it. See
+# docs/ci.md#cache-prune for the budget math and the remaining levers.
+#
+# `pull_request_target`, NOT `pull_request`: deleting a cache needs
+# `actions: write`, and a `pull_request` run from a FORK gets a read-only
+# GITHUB_TOKEN no `permissions:` block can widen -- the job would fail exactly
+# where it is needed. `pull_request_target` runs in the base-repo context with
+# a writable token. It is safe HERE, and the reason is narrow enough to state
+# in full: this job never checks the PR out, never runs a line of its code,
+# and reads exactly one PR-controlled value -- `.number`, an integer. Do not
+# add a checkout, a build, or any interpolation of a PR title/branch name to
+# this file. See docs/ci.md#cache-prune-trigger.
+#
+################################################################################
+
+name: Prune CI caches
+
+on:
+  pull_request_target:
+    types: [closed]
+  schedule:
+    # Daily 05:30 UTC, half an hour ahead of fork-sync.yml so the two scheduled
+    # jobs never report in the same minute. DAILY, not weekly, because the
+    # close event provably cannot be the only path: closing a PR does not
+    # cancel that PR's in-flight `build.yml` run (its concurrency only cancels
+    # on a new push to the same ref), so a build still running when Renovate
+    # supersedes its PR re-saves ~5 GB into the scope this job just emptied.
+    # A ~10-second job is the cheap side of that trade. See
+    # docs/ci.md#cache-prune.
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keyed PER PR, not one global group. GitHub keeps at most ONE pending run per
+# concurrency group: with a single group, three PRs closing seconds apart (the
+# exact Renovate pattern that caused the incident above) would run the first,
+# leave the second pending, and SILENTLY CANCEL that second one when the third
+# queued -- leaking a ~5 GB scope until the next sweep. There is nothing to
+# serialize across PRs anyway: every delete is by cache id, and two prunes can
+# never name the same id. The `run_id` fallback gives each sweep/dispatch its
+# own group for the same reason.
+concurrency:
+  group: cache-prune-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Delete caches for closed pull requests
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+
+    # Narrower than the file-level default on purpose: `actions: write` is the
+    # one scope that can DELETE build state, so it is granted to this job only.
+    # `pull-requests: read` is what the sweep uses to ask whether a PR is still
+    # open before touching anything of its.
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
+
+    steps:
+      - name: Delete caches scoped to closed pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          ######################################################################
+          # 1. Decide which refs to prune.
+          #
+          # THE INVARIANT, and the only one that matters in this file: nothing
+          # outside `refs/pull/<digits>/merge` is ever deleted. master's caches
+          # are the thing this workflow EXISTS to protect -- a bug that reached
+          # `refs/heads/master` would invert the whole point of the job. Both
+          # branches below construct or filter that shape explicitly rather
+          # than trusting the API's ordering or a substring match.
+          ######################################################################
+          : > prune-refs.txt
+
+          if [ "$EVENT" = "pull_request_target" ]; then
+            case "${PR_NUMBER:-}" in
+              ''|*[!0-9]*)
+                echo "::error title=cache prune::event $EVENT carried no numeric PR number ('${PR_NUMBER:-}')"
+                exit 1
+                ;;
+            esac
+            echo "refs/pull/${PR_NUMBER}/merge" > prune-refs.txt
+          else
+            # Sweep. Enumerate the refs that actually hold caches -- PRs closed
+            # before this workflow landed, plus anything a missed or failed
+            # close event leaked -- and keep whatever still belongs to an open
+            # PR. An API failure here leaves `state` unset and the ref is KEPT:
+            # a cold rebuild costs an hour, a wrongly deleted open PR's cache
+            # costs the same hour AND hides why.
+            if ! gh api --paginate "repos/$GH_REPO/actions/caches" \
+                 -q '.actions_caches[].ref' </dev/null | sort -u > all-refs.txt; then
+              echo "::error title=cache prune::could not enumerate cache scopes -- nothing was pruned this run"
+              exit 1
+            fi
+
+            while read -r ref; do
+              num="${ref#refs/pull/}"
+              num="${num%/merge}"
+              case "$ref" in
+                refs/pull/*/merge) ;;
+                *) echo "skipping $ref (not a pull-request scope)"; continue ;;
+              esac
+              case "$num" in
+                ''|*[!0-9]*) echo "skipping $ref (unparseable PR number)"; continue ;;
+              esac
+
+              state="$(gh api "repos/$GH_REPO/pulls/$num" -q .state </dev/null 2>/dev/null || true)"
+              if [ "$state" = "closed" ]; then
+                echo "$ref" >> prune-refs.txt
+              else
+                echo "keeping $ref (pull request state: ${state:-unknown})"
+              fi
+            done < all-refs.txt
+          fi
+
+          ######################################################################
+          # 2. Delete, by cache id. Listing per-ref and deleting by id (rather
+          # than DELETE ?key=&ref=) keeps the size in hand for the summary and
+          # cannot fan out to another scope through a key collision.
+          ######################################################################
+          freed=0
+          deleted=0
+
+          while read -r ref; do
+            # --method GET is NOT optional: `gh api` switches to POST as soon
+            # as any -f field is present, and this endpoint would answer 404
+            # rather than list anything.
+            #
+            # NON-FATAL on purpose. Under `set -e` a bare call would abort the
+            # whole step on one transient 5xx -- losing every ref still queued
+            # AND the summary below, which is the number worth reading. A ref
+            # skipped here is simply pruned by tomorrow's sweep.
+            #
+            # `.ref` is selected as well as used as the query, see the check
+            # in the loop body.
+            if ! gh api --method GET --paginate "repos/$GH_REPO/actions/caches" -f "ref=$ref" \
+                 -q '.actions_caches[] | "\(.id)\t\(.ref)\t\(.size_in_bytes)\t\(.key)"' \
+                 </dev/null > entries.txt; then
+              echo "::warning title=cache prune::could not list caches for $ref -- left for the next sweep"
+              continue
+            fi
+
+            while IFS=$'\t' read -r id got_ref size key; do
+              [ -n "$id" ] || continue
+
+              # THE LAST GUARD, and the only one that protects master. Every
+              # other check in this file validates what we ASK for; this one
+              # validates what came BACK. Without it the invariant rests
+              # entirely on the server honouring `?ref=` -- and GitHub ignores
+              # query parameters it does not recognise, so a rename or an API
+              # change would silently turn this listing into "every cache in
+              # the repo" and delete master's dl/ and toolchains on faith.
+              # `$ref` was shape-checked as refs/pull/<digits>/merge above, so
+              # equality with it is the whole test.
+              if [ "$got_ref" != "$ref" ]; then
+                echo "::warning title=cache prune::refusing cache $id ($key): asked for '$ref', API returned '$got_ref'"
+                continue
+              fi
+
+              # A non-numeric size would make the arithmetic below abort the
+              # whole step under `set -e`, losing the deletions still queued.
+              case "${size:-}" in ''|*[!0-9]*) size=0 ;; esac
+              if gh api --silent -X DELETE "repos/$GH_REPO/actions/caches/$id" </dev/null; then
+                freed=$((freed + size))
+                deleted=$((deleted + 1))
+                # $got_ref, not $ref: log what was actually deleted.
+                echo "deleted $key ($((size / 1048576)) MiB) on $got_ref"
+              else
+                echo "::warning title=cache prune::could not delete cache $id ($key) on $ref"
+              fi
+            done < entries.txt
+          done < prune-refs.txt
+
+          ######################################################################
+          # 3. Report. The interesting number is what is left, not what went --
+          # the ceiling is what bites, and a run that freed 0 bytes while the
+          # repo sits at 9.9 GB is the one worth reading.
+          ######################################################################
+          usage="$(gh api "repos/$GH_REPO/actions/cache/usage" \
+            -q .active_caches_size_in_bytes 2>/dev/null || echo 0)"
+
+          {
+            echo "### Cache prune"
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Trigger | \`$EVENT\` |"
+            echo "| Caches deleted | $deleted |"
+            echo "| Reclaimed | $((freed / 1048576)) MiB |"
+            echo "| Repo cache in use after | $((usage / 1048576)) MiB of 10240 MiB |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=Cache prune::Deleted $deleted cache(s), reclaimed $((freed / 1048576)) MiB; repo now at $((usage / 1048576)) MiB of the 10240 MiB ceiling."

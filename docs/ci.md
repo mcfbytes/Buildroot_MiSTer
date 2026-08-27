@@ -29,7 +29,7 @@ or policy document rather than restating it.
 <a id="pipeline-map"></a>
 ### Pipeline map
 
-Eight workflows, one shared build recipe. The five that build or publish:
+Nine workflows, one shared build recipe. The five that build or publish:
 
 - **`build.yml`** — runs on every push to `master` and every PR. Builds the
   image with `.github/actions/buildroot-build`, builds the PREEMPT_RT kernel
@@ -52,7 +52,7 @@ Eight workflows, one shared build recipe. The five that build or publish:
   the one pin that has no companion hash (the `_Console` cores snapshot —
   see [`#renovate-hash-sync-cores-pin`](#renovate-hash-sync-cores-pin)).
 
-The other three don't build anything:
+The other four don't build anything:
 
 - **`lint.yml`** — lints the CI itself.
 - **`renovate-validate.yml`** — runs Renovate's own `renovate-config-validator --strict`
@@ -63,6 +63,9 @@ The other three don't build anything:
   for four days while all 18 custom managers extracted zero dependencies. See
   `docs/renovate.md`.
 - **`fork-sync.yml`** — watches the upstream kernel fork.
+- **`cache-prune.yml`** — deletes the Actions cache scope a pull request
+  leaves behind when it closes, so master's warm `dl/` is not evicted by dead
+  PRs. See [`#cache-prune`](#cache-prune).
 
 <a id="recipe-boundary"></a>
 ### Caller vs recipe ownership boundary
@@ -306,11 +309,107 @@ dominates it) plus up to ~3 GB (`br-dl-<name>` — its content mostly overlaps
 deduplicated). That can put the repo over the ceiling, which is survivable by
 design: eviction is LRU, every cache here is a pure accelerator, and an
 evicted entry means a cold, self-healing rebuild (see
-[`#cache-coupling`](#cache-coupling)), never a wrong one. If eviction thrash
-ever hurts, the cheapest levers in order: shrink `ccache-max-size`, then drop
+[`#cache-coupling`](#cache-coupling)), never a wrong one. Eviction thrash
+*did* hurt, on 2026-08-27 — see [`#cache-prune`](#cache-prune) for the
+incident and the workflow that reclaims a closed PR's scope. Beyond that, the
+cheapest levers in order: shrink `ccache-max-size`, then drop
 the variant `dl/` SAVE (the restore-keys fallback to the main `dl/` prefix
 keeps variant builds mostly warm for free — see
 [`#variant-dl-fallback`](#variant-dl-fallback)).
+
+<a id="cache-prune"></a>
+### Cache scoping, and pruning a closed PR's scope
+
+GitHub's cache scoping is asymmetric, and both halves matter here:
+
+- **Restore** reaches the run's own ref, the PR's **base branch**, and the
+  default branch. A PR therefore already inherits master's warm `dl/` and
+  toolchains — there is nothing to configure and no way to make a PR "share
+  master's cache" more than it already does.
+- **Save** only ever writes the run's own scope, and a `pull_request` run's
+  scope is `refs/pull/<N>/merge` — readable by re-runs of that same PR and
+  nothing else. (PRs are barred from writing parent scopes on purpose: it is
+  what stops an untrusted contributor poisoning master's cache.)
+
+So every PR run mints a private ~5 GB set (`dl/` + `br-host` +
+`br-initramfs-host` + ccache) that no other run will ever read, and that
+GitHub keeps until it goes **7 days without an access** — long past the merge.
+
+That is what broke run **33098842073**. Three same-day Renovate PRs took the
+repo to **14.2 GB** against the 10 GB ceiling, LRU evicted every
+master-scoped entry, and the next PR restored nothing:
+
+```
+Cache not found for input keys: br-dl-2026.05.2-c421904b…, br-dl-2026.05.2-
+```
+
+It re-downloaded all 198 source tarballs cold and died 1h13m in, when
+cdn.kernel.org closed the connection 45 MB into the 160 MB kernel tarball and
+answered the retry with a 503. `BR2_BACKUP_SITE` (sources.buildroot.net) does
+not mirror kernel tarballs — both fallback URLs 404 — so the download had
+nowhere left to go. **The lesson is not "add a retry": it is that a cold
+`dl/` is a 2 GB dependency on other people's mirrors, paid once per PR.**
+
+`cache-prune.yml` deletes a PR's scope as the PR closes, and sweeps daily for
+what the close event cannot catch. That sweep is not just a belt-and-braces
+mop-up, so do not demote it to weekly: **closing a PR does not cancel that
+PR's in-flight `build.yml` run** (its concurrency only cancels on a new push
+to the same ref), so a build still running when Renovate supersedes its PR
+re-saves ~5 GB into the scope the close event just emptied. Renovate closing
+a superseded PR inside a 3h20m build window makes that ordinary, not exotic.
+The sweep also picks up PRs closed before this workflow existed, and any close
+event that was missed or failed.
+
+Its one invariant is that nothing outside `refs/pull/<digits>/merge` is ever
+deleted. Three checks enforce it, and the third is the one that matters:
+
+1. The sweep matches that ref shape explicitly (a `case` on the glob, then a
+   second `case` rejecting a non-numeric PR number — `refs/pull/12/foo/merge`
+   passes the first and fails the second).
+2. It **keeps** any ref whose PR is not `closed`, including when the API call
+   that would say so fails. A cold rebuild costs an hour; deleting a live PR's
+   cache costs the same hour and hides why.
+3. Before each delete, the `.ref` the API *returned* is compared against the
+   `ref` that was *asked for*. Everything else validates the request; only
+   this validates the response. GitHub ignores query parameters it does not
+   recognise, so without it a rename of `?ref=` would silently turn the
+   listing into "every cache in the repo" and this loop would delete master's
+   `dl/` and toolchains on faith.
+
+Protecting master's caches is the entire point of the job, so a bug that
+reached `refs/heads/master` would invert it.
+
+**Scope, stated exactly:** only pull-request scopes are pruned. A cache saved
+under `refs/heads/<feature-branch>` — which is what a `workflow_dispatch` on a
+branch produces, `reproducibility.yml`'s double build included — is left to
+GitHub's own 7-day expiry. Widening the sweep to `refs/heads/*` would mean
+teaching it which branch refs are safe, and getting that wrong deletes
+master's set: the narrow rule is worth more than the few GB it leaves behind.
+
+Be clear about what this buys. Steady state is master's ~7 GB plus one open
+PR's ~5 GB, which is still over the ceiling: the prune stops **dead** PRs from
+spending the budget, it does not create headroom for concurrent live ones. If
+master's `dl/` starts getting evicted again with the prune in place, the
+levers in [`#cache-budget-and-sizing`](#cache-budget-and-sizing) are next,
+plus deleting superseded `ccache-<version>-<timestamp>` generations — the
+ccache action mints a new ~2 GB entry every run by design (see
+[`#ccache-key`](#ccache-key)) and only the newest is ever restored.
+
+<a id="cache-prune-trigger"></a>
+### Why the prune runs on `pull_request_target`
+
+Deleting a cache needs `actions: write`, and a `pull_request` run triggered
+from a **fork** gets a read-only `GITHUB_TOKEN` that no `permissions:` block
+can widen — the job would fail exactly where it is needed.
+`pull_request_target` runs in the base-repo context with a writable token.
+
+`pull_request_target` is the trigger people are rightly warned about, so the
+safety argument is stated in full rather than assumed. The job **never checks
+the PR out**, runs none of its code, installs nothing, and reads exactly one
+PR-controlled value — `github.event.pull_request.number`, an integer
+validated against `*[!0-9]*` before it is used. Adding a checkout, a build
+step, or any interpolation of a PR title or branch name into that shell would
+turn a safe workflow into an unsafe one.
 
 <a id="ws-fp"></a>
 ### WS_FP: the workspace-path fingerprint

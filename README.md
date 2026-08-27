@@ -69,7 +69,7 @@ MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4
 stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
 any of it. This project rebuilds the whole thing from **Buildroot 2026.05.2** and a
 **mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
-signed-hash supply chain, an eight-workflow CI pipeline, and a per-commit reconciliation
+signed-hash supply chain, a nine-workflow CI pipeline, and a per-commit reconciliation
 of the entire kernel fork — then ships it through the same update channel users already
 have, alongside a real-time kernel variant and a flashable card image that stock has no
 equivalent of. All of it boots the **unmodified, stock `MiSTer` binary** and every
@@ -602,7 +602,7 @@ board/mister/de10nano/
 package/                 16 packages: Realtek Wi-Fi, xone, libchdr, lzma-sdk, midilink, munt…
 scripts/                 the verification suite, hash-sync, SD-card builder, kernel export
 docs/                    ADRs, parity audits, the kernel reconciliation, user docs
-.github/                 8 workflows + 4 composite actions
+.github/                 9 workflows + 4 composite actions
 ```
 
 ### Two kernels, one image
@@ -775,6 +775,7 @@ the two highest-value gates is deliberate.
 | `renovate-validate.yml` | config changes | An invalid Renovate config makes Renovate skip the repo **silently** — this is the only signal you would ever get |
 | `fork-sync.yml` | weekly | Diffs the last-reconciled fork commits against upstream's live HEADs and keeps one issue updated with the backport queue |
 | `lint.yml` | push, PR | `actionlint` over the workflows, `shellcheck` over `scripts/**` and the composite actions' `run:` bodies |
+| `cache-prune.yml` | PR closed, daily | Deletes the ~5 GB Actions cache scope a closed PR leaves behind — dead PRs were evicting master's warm `dl/` under GitHub's 10 GB LRU ceiling |
 
 The full rationale, incident history, and measured numbers live in
 [`docs/ci.md`](docs/ci.md) — the workflows keep the imperative and the run ID, that

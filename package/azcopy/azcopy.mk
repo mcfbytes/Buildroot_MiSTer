@@ -56,10 +56,26 @@
 #      the exact command to regenerate the hash on a version bump.
 #   3. Consequently scripts/hash-sync-github-packages.sh CANNOT cover this
 #      package and azcopy is deliberately absent from HASH_SYNC_PACKAGES in
-#      .github/workflows/renovate-hash-sync.yml. Renovate still proposes the
-#      version bump (renovate.json has a custom manager for the line below);
-#      the bump PR then fails closed on the stale hash until a human runs the
-#      regeneration recipe. Same fail-closed posture as the RT kernel pin.
+#      .github/workflows/renovate-hash-sync.yml -- that loop's method is
+#      `curl <archive-url> | sha256sum`, which here would hash the
+#      PRE-vendoring archive and write a confidently wrong value. That
+#      exclusion is permanent.
+#
+#      What is NOT permanent, and changed on 2026-08-28: the hash is now
+#      refreshed automatically anyway, by a case of its own --
+#      scripts/hash-sync-azcopy.sh (case 7), which REBUILDS the -go2 tarball
+#      using Buildroot's own support/download/go-post-process and Buildroot's
+#      own pinned Go, then hashes the result. package/azcopy/azcopy.mk is
+#      therefore IN that workflow's `paths:` filter while staying out of
+#      HASH_SYNC_PACKAGES; the two allow-lists disagree for this one package
+#      on purpose. Older commits (and this file's own header before that date)
+#      still say the hash "CANNOT be auto-refreshed" -- read that as "cannot
+#      be curl'd", which remains true.
+#
+#      The manual recipe in azcopy.hash is not retired: it is still the local
+#      procedure, and the fallback whenever case 7 records a skip. The bump PR
+#      still fails closed on a stale hash either way -- lint.yml's "azcopy
+#      version/hash pin consistency" step is what makes that true.
 
 # PLAIN VERSION, "v" RECONSTRUCTED IN THE SITE LINE -- deliberately NOT the
 # package/dualsensectl and package/munt convention of keeping the tag's "v" or
@@ -109,10 +125,12 @@ AZCOPY_GOMOD = github.com/Azure/azure-storage-azcopy/v10
 #
 #   AZCOPY_LDFLAGS   -- there is no -X version stamp to inject. AzCopy carries
 #                       its version as a plain source constant
-#                       (common/version.go: `const AzcopyVersion = "10.32.7"`),
+#                       (common/version.go: `const AzcopyVersion = "10.32.8"`),
 #                       so the binary self-reports correctly with no link-time
 #                       help. Verified by running the built ARMv7 binary:
-#                       `azcopy --version` -> "azcopy version 10.32.7".
+#                       `azcopy --version` -> "azcopy version 10.32.7"
+#                       (verified at the 10.32.7 pin; the constant tracks the
+#                       tag, so 10.32.8 self-reports 10.32.8).
 #   AZCOPY_TAGS      -- upstream's own release pipeline builds the Linux
 #                       binaries with no build tags; there is no "minimal" or
 #                       "no cloud X" tag to trim with. (The *_se_* release
@@ -154,3 +172,63 @@ define AZCOPY_INSTALL_TARGET_CMDS
 endef
 
 $(eval $(golang-package))
+
+# --- TEMPORARY: vendor through the module proxy (upstream moved a tag) --------
+#
+# ADDED 2026-08-28, for the 10.32.7 -> 10.32.8 bump. DELETE THIS BLOCK the
+# moment it stops being needed -- scripts/hash-sync-azcopy.sh tells you when,
+# loudly and on every bump PR (see "HOW THIS BLOCK GETS REMOVED" below). It is
+# a deviation from stock Buildroot behaviour and must not outlive its cause.
+#
+# WHAT BROKE. pkg-golang.mk vendors with GOPROXY=direct, i.e. `go mod vendor`
+# fetches every module straight from its origin VCS. AzCopy 10.32.8's go.sum
+# names github.com/googleapis/enterprise-certificate-proxy v0.3.21, and that
+# project MOVED the v0.3.21 git tag after publishing it:
+#
+#   proxy.golang.org / go.sum record it at 82da9ba (2026-08-11, "chore: Bump
+#   version from v0.3.20 to v0.3.21"); the tag in the repository now points at
+#   3afb37a (2026-08-14), two bugfix commits later.
+#
+# A tag is mutable; a published module version is not. So a direct fetch gets
+# bytes that can never satisfy go.sum, and the vendoring dies:
+#
+#   verifying github.com/googleapis/enterprise-certificate-proxy@v0.3.21:
+#   checksum mismatch
+#       downloaded: h1:EwROawv3cMS8uI2hnx2pwAosDYo3UJQ9RygfjgZeYcE=
+#       go.sum:     h1:OFdQ3tnCX/zaQ0Cedur3D3z7kI6HiLX9g3TiAN4/DFU=
+#
+# That is `make azcopy` failing at DOWNLOAD, on any cold dl/ cache -- including
+# release.yml's build-azcopy job, which builds this package on every tag.
+#
+# WHY THIS IS NOT A WEAKENING, and why a patch cannot fix it instead. Every
+# module is still verified against AzCopy's own go.sum, which is itself
+# checkable against the sum.golang.org transparency log; nothing here disables
+# a check. All this changes is WHERE the bytes are fetched from, and the proxy
+# is the immutable, log-attested copy of exactly the bytes go.sum names -- the
+# git tag is the mutable one. (A package/azcopy/*.patch correcting the go.sum
+# line could not work at all: `go mod vendor` runs inside the DOWNLOAD step,
+# in support/download/go-post-process, and the tarball is hashed before
+# Buildroot ever extracts it to output/build and applies patches. There is no
+# hook in between. It would also mean trusting the moved tag over the attested
+# bytes, which is the wrong direction.)
+#
+# WHY AZCOPY_DL_ENV AND NOT AZCOPY_GO_ENV. Both would override pkg-golang.mk's
+# GOPROXY=direct, but AZCOPY_GO_ENV is a MAKE VARIABLE that release.yml sets on
+# the command line (`make azcopy AZCOPY_GO_ENV=CGO_ENABLED=0`, see
+# docs/ci.md#azcopy-release-asset) -- and a command-line assignment REPLACES
+# the makefile's value outright, which would silently drop this override in the
+# one job that most needs it. AZCOPY_DL_ENV is download-only and nothing
+# overrides it. It must be appended AFTER $(eval $(golang-package)) above:
+# pkg-golang.mk does its own `AZCOPY_DL_ENV += ... GOPROXY=direct ...` inside
+# that eval, and DL_ENV is emitted as a shell command prefix, where the LAST
+# assignment of a variable wins.
+#
+# HOW THIS BLOCK GETS REMOVED. scripts/hash-sync-azcopy.sh (renovate-hash-sync
+# case 7) always attempts GOPROXY=direct FIRST and only falls back to the value
+# on the line below. When direct succeeds it emits a ::notice:: saying this
+# block is obsolete. That is safe to act on: a module that verifies against
+# go.sum has byte-identical content whichever source served it, so the two
+# paths produce the same vendor tree and the same -go2 tarball hash. In
+# practice this will clear itself when AzCopy ships a release whose go.sum no
+# longer names enterprise-certificate-proxy v0.3.21.
+AZCOPY_DL_ENV += GOPROXY=https://proxy.golang.org,direct

@@ -221,13 +221,21 @@ jobs:
           done < <(git ls-files 'board/mister/de10nano/rootfs-overlay/etc/init.d/*')
           exit "$rc"
 
-      # azcopy's hash pin cannot be refreshed by renovate-hash-sync.yml (it is a
-      # golang-package -- the hashed file is the post-`go mod vendor` -go2
-      # tarball, not the GitHub archive; see that script's header). It is also
-      # NOT enabled in the defconfig, so build.yml never builds it and never
-      # exercises the pin either. Between those two facts a Renovate bump of
-      # AZCOPY_VERSION alone would sail through entirely green, carrying a hash
-      # that matches nothing -- and the breakage would surface later, to
+      # azcopy's hash pin IS refreshed by renovate-hash-sync.yml as of
+      # 2026-08-28 -- but by case 7 (scripts/hash-sync-azcopy.sh), which
+      # REBUILDS the post-`go mod vendor` -go2 tarball, never by case 1's
+      # curl-and-hash loop. This comment used to open "azcopy's hash pin cannot
+      # be refreshed by renovate-hash-sync.yml" and older commits still show
+      # that; it was the method that could not work, not the task.
+      #
+      # THIS STEP DID NOT BECOME REDUNDANT. Case 7 can record a `skipped`
+      # outcome -- a network blip, or a bump that will not vendor at all -- and
+      # then the hash IS stale. It also never runs on a fork PR or a hand edit
+      # (it is gated to renovate[bot]'s own same-repo PRs). And build.yml
+      # cannot catch it either: azcopy is NOT enabled in the defconfig, so the
+      # image build never compiles it and never exercises the pin. Between
+      # those facts a bump of AZCOPY_VERSION carrying a stale hash could still
+      # sail through entirely green -- and the breakage would surface later, to
       # whoever first enables the package.
       #
       # This is the gate that closes that. It is deliberately narrow and needs
@@ -235,7 +243,7 @@ jobs:
       # filename on azcopy.hash's sha256 line disagree, the hash is stale by
       # construction. It fires on any PR touching package/azcopy -- a Renovate
       # bump or a hand edit alike -- and it is why the "fails closed" language
-      # in azcopy.hash / renovate.json / docs is now true rather than aspirational.
+      # in azcopy.hash / renovate.json / docs is true rather than aspirational.
       #
       # It cannot catch "same version, different bytes"; nothing cheap can.
       # That case is caught at download time by BR2_DOWNLOAD_FORCE_CHECK_HASHES.
@@ -252,7 +260,7 @@ jobs:
           want="azcopy-${ver}-go2.tar.gz"
           got=$(awk '$1 == "sha256" && $3 ~ /-go2\.tar\.gz$/ { print $3 }' "$hash")
           if [ "$got" != "$want" ]; then
-            echo "::error file=$hash::stale hash pin -- AZCOPY_VERSION is '$ver' so this file must pin '$want', but it pins '${got:-<nothing>}'. The hash CANNOT be auto-refreshed for a golang-package; regenerate it by hand using the recipe in $hash (docs/azcopy.md section 5)."
+            echo "::error file=$hash::stale hash pin -- AZCOPY_VERSION is '$ver' so this file must pin '$want', but it pins '${got:-<nothing>}'. renovate-hash-sync case 7 (scripts/hash-sync-azcopy.sh) normally refreshes this on the bump branch -- check that workflow's run for an 'azcopy' row of 'skipped'/'failed' and re-dispatch it, or regenerate by hand using the recipe in $hash (docs/azcopy.md section 5). It is NOT refreshable by case 1's curl-and-hash loop; do not add azcopy to HASH_SYNC_PACKAGES."
             exit 1
           fi
           echo "azcopy pin consistent: $want"

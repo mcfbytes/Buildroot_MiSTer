@@ -462,26 +462,61 @@ It also means two things you have to remember:
    pre-vendoring tarball: a plausible-looking wrong value that would land a green bump
    PR and then fail the build on master at download time. azcopy is therefore
    deliberately **absent** from `HASH_SYNC_PACKAGES` in
-   `.github/workflows/renovate-hash-sync.yml`. Do not add it.
-2. **Renovate still proposes bumps** (`renovate.json` has a custom manager over
-   `AZCOPY_VERSION`), and every one of those PRs must be blessed by a human who
-   regenerates the hash. **What enforces that is worth being precise about, because the
-   obvious answers are all wrong here:** this workflow does not (azcopy is excluded from
-   it), and neither does the image build — azcopy is not enabled in the defconfig, so
-   `build.yml` never compiles it and never exercises the pin. A version-only bump would
-   otherwise go entirely green carrying a hash that matches nothing, and the breakage
-   would surface much later, to whoever first enables the package.
+   `.github/workflows/renovate-hash-sync.yml`. Do not add it — that exclusion is
+   permanent, and it is not the same question as whether the hash can be automated at
+   all (it can, and is; see the next item).
+2. **Renovate proposes bumps** (`renovate.json` has a custom manager over
+   `AZCOPY_VERSION`), and **since 2026-08-28 the hash is refreshed on the bump branch
+   automatically** — by a case of its own, not by the loop above.
+   `scripts/hash-sync-azcopy.sh` (`renovate-hash-sync.yml` **case 7**) does exactly what
+   the recipe below does: it unpacks the pinned, `BUILDROOT_SHA256`-verified Buildroot
+   tree, downloads the Go version *that tree* pins (verified against *that tree's*
+   `package/go/go.hash`), runs **Buildroot's own `support/download/go-post-process`**,
+   and hashes the `-go2` tarball that comes out. It re-derives the `LICENSE` and
+   `NOTICE.txt` lines from the same tarball, so step 4 of the recipe below is covered
+   too. Nothing about the reproduction is re-implemented, and a Buildroot bump moves it
+   in lockstep with the real build. `package/azcopy/azcopy.mk` is in that workflow's
+   `paths:` filter for this; it is still **never** in `HASH_SYNC_PACKAGES`.
 
-   The gate is the **`azcopy version/hash pin consistency` step in
+   **This section used to say the opposite** — "every one of those PRs must be blessed by
+   a human who regenerates the hash" — and older commits still read that way. What could
+   not be automated was the `curl | sha256sum` *method*, not the task.
+
+   **The fail-closed gate is unchanged, and still matters**, because case 7 can record a
+   skip (a network blip; a bump that will not vendor at all). The obvious backstops do
+   not apply here: the image build never compiles azcopy (it is not enabled in the
+   defconfig), so a version-only bump with a stale hash would otherwise go entirely
+   green. The gate is the **`azcopy version/hash pin consistency` step in
    `.github/workflows/lint.yml`**. It fails any PR where `AZCOPY_VERSION` and the tarball
-   filename on `azcopy.hash`'s `sha256` line disagree — which a version bump without a
-   regenerated hash always does. It needs no toolchain, no Go and no network, and it
-   fires on a hand edit as readily as on a Renovate bump. Renovate additionally labels
-   these PRs `needs-manual-hash`, which is a signal to the reviewer, not the enforcement.
+   filename on `azcopy.hash`'s `sha256` line disagree. It needs no toolchain, no Go and
+   no network, and it fires on a hand edit as readily as on a Renovate bump.
 
    It cannot catch "same version, different bytes"; nothing cheap can. That case is
    caught at download time by `BR2_DOWNLOAD_FORCE_CHECK_HASHES`, the moment anyone builds
    the package.
+
+3. **A bump can be blocked by an upstream that moved a git tag**, and this is not
+   hypothetical: it happened on the 10.32.7 → 10.32.8 bump (PR #122). `pkg-golang.mk`
+   vendors with `GOPROXY=direct`, i.e. straight from each module's origin VCS.
+   `github.com/googleapis/enterprise-certificate-proxy` published `v0.3.21`, then moved
+   the tag three days later to two commits further on. A published module version is
+   immutable and a git tag is not, so a direct fetch can no longer satisfy AzCopy's
+   `go.sum` and the vendoring dies with a `checksum mismatch` — `make azcopy` failing at
+   **download**, on any cold `dl/` cache, `release.yml`'s `build-azcopy` job included.
+
+   The fix is the temporary `AZCOPY_DL_ENV += GOPROXY=…` block at the end of
+   `azcopy.mk`, which vendors through the module proxy instead. That is not a weakening:
+   every module is still verified against `go.sum` (itself checkable against the
+   `sum.golang.org` transparency log), and the proxy holds the immutable, log-attested
+   copy of exactly the bytes `go.sum` names — the mutable git tag is the other one. A
+   `package/azcopy/*.patch` correcting `go.sum` **cannot** substitute for it: `go mod
+   vendor` runs inside the *download* step and the tarball is hashed before Buildroot
+   ever extracts it and applies patches.
+
+   Case 7 always tries `direct` first and only falls back to that declared override, and
+   it emits a `::notice::` when `direct` starts working again — at which point the block
+   should be deleted. Acting on that notice is safe: a `go.sum`-verified module is
+   byte-identical whichever source served it.
 
 The regeneration recipe lives in `azcopy.hash`'s own header, next to the value it
 produces, so it cannot drift away from it. Two things about it are worth repeating

@@ -5,12 +5,12 @@
 #   AZCOPY_DOWNLOAD_POST_PROCESS = go        (package/pkg-golang.mk)
 # which means the file that lands in $(BR2_DL_DIR)/azcopy/ -- and therefore the
 # only file whose hash is ever checked -- is NOT what GitHub served. Buildroot
-# downloads azcopy-10.32.7.tar.gz, runs support/download/go-post-process on it
+# downloads azcopy-10.32.8.tar.gz, runs support/download/go-post-process on it
 # (which runs `go mod vendor` inside the tree, adding a 57 MiB vendor/ directory
 # and leaving ~1.7 GiB in the host module cache on the way), and repacks the
-# result -- 18,664,891 bytes for this version -- DETERMINISTICALLY via mk_tar_gz in
+# result -- 18,638,008 bytes for this version -- DETERMINISTICALLY via mk_tar_gz in
 # support/download/helpers -- POSIX format, sorted file list, fixed mtime,
-# --owner=0 --group=0, gzip -6 -n. The output is azcopy-10.32.7-go2.tar.gz.
+# --owner=0 --group=0, gzip -6 -n. The output is azcopy-10.32.8-go2.tar.gz.
 # The intermediate GitHub tarball is never hashed at all, which is just as
 # well: GitHub's archive gzip output has changed under projects before.
 #
@@ -19,7 +19,21 @@
 # cannot be derived by fetching a URL. BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in the
 # defconfig is what makes it load-bearing rather than decorative.
 #
-# HOW TO REGENERATE IT ON A VERSION BUMP -- this is mandatory and manual.
+# HOW TO REGENERATE IT ON A VERSION BUMP.
+#
+# SINCE 2026-08-28 A RENOVATE BUMP GETS THIS DONE FOR IT.
+# .github/workflows/renovate-hash-sync.yml case 7
+# (scripts/hash-sync-azcopy.sh) rebuilds the -go2 tarball on the PR branch and
+# rewrites all three sha256 lines below -- using Buildroot's OWN
+# support/download/go-post-process out of the pinned, BUILDROOT_SHA256-verified
+# tree, with the Go version that tree pins, verified against that tree's own
+# package/go/go.hash. It is the recipe below, run by a runner instead of by
+# you, with nothing re-implemented.
+#
+# The recipe below is NOT retired. It is still the procedure for a hand bump,
+# and the fallback whenever the sync run records a skip (the PR then stays red
+# at lint.yml's "azcopy version/hash pin consistency" step, which is the safe
+# failure mode). Read it before touching this file by hand.
 #
 # BUDGET HOURS FOR THE FIRST RUN, AND DO IT IN A WARM TREE. `azcopy-source`
 # looks like a download-only target and is not: pkg-golang.mk puts host-go in
@@ -60,22 +74,32 @@
 # The error message is the only place the value survives. (Both halves of that
 # were established the hard way while writing this package, not reasoned about.)
 #
-# WHY scripts/hash-sync-github-packages.sh CANNOT DO THIS FOR US, and why
+# WHY scripts/hash-sync-github-packages.sh CAN NEVER DO THIS FOR US, and why
 # azcopy is deliberately absent from HASH_SYNC_PACKAGES in
 # .github/workflows/renovate-hash-sync.yml: that script's whole method is
 # `curl <archive-url> | sha256sum`. For this package that produces the hash of
 # the pre-vendoring tarball -- a plausible-looking, wrong value that would turn
-# a green bump PR into a build that fails at download time on master. The
-# reproduction needs a Go toolchain and a network fetch of every module in
-# go.sum; it is not a one-line curl and must not be automated as if it were.
+# a green bump PR into a build that fails at download time on master. That
+# exclusion is permanent; case 7 (above) is a separate step precisely so it
+# never has to live in that loop.
 #
-# Renovate still WATCHES the version (renovate.json, custom manager over
-# AZCOPY_VERSION), so bumps are still proposed. They just fail closed on this
-# hash until a human runs the recipe above -- the same deliberate posture the
-# RT kernel pin takes.
-sha256  c04793e0d7cd5e23961c3a26b3c27fb7eba99e1db32a80454f53f4b5df7ff59c  azcopy-10.32.7-go2.tar.gz
+# UNTIL 2026-08-28 THIS PARAGRAPH ENDED "it is not a one-line curl and must not
+# be automated as if it were", and older commits still quote it. The operative
+# words were always "as if it were": what could not be automated was the
+# METHOD, not the task. "Needs a Go toolchain and a network fetch of every
+# module in go.sum" describes a CI job, and case 7 is that job.
+#
+# Renovate WATCHES the version (renovate.json, custom manager over
+# AZCOPY_VERSION), case 7 refreshes these three lines on the bump branch, and
+# if it cannot, the PR fails closed on the stale hash at lint.yml's
+# consistency step -- the same deliberate posture the RT kernel pin takes.
+sha256  d2e3a9dac25d105db81aa2cc012b365bc9f7da1d8ecd43a9c9a5e02d86b6745f  azcopy-10.32.8-go2.tar.gz
 # LICENSE and NOTICE.txt, both at the tree root, both hashed from the pristine
-# v10.32.7 tag. LICENSE is the MIT text (Copyright (c) 2017 Microsoft);
+# v10.32.8 tag -- byte-identical to v10.32.7's, which is the expected outcome
+# and not a copy-paste. Case 7 re-derives these two from the tarball it just
+# built, so step 4 of the recipe above is now done automatically as well; on a
+# hand bump it is still yours to do. LICENSE is the MIT text
+# (Copyright (c) 2017 Microsoft);
 # NOTICE.txt is Microsoft's third-party attribution file, listing the MIT /
 # Apache-2.0 / BSD-2-Clause / BSD-3-Clause terms of everything AzCopy links in.
 # Both are unaffected by the go-vendoring above, so unlike the tarball these

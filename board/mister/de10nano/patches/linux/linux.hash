@@ -36,7 +36,7 @@
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
-sha256  1b3fbafd43601a5473107cf8172a2b66f42994119089d7aee078e4bca3dee818  linux-6.18.47.tar.xz
+sha256  5ebdadb10a4b5708fc6b1c457764a110bc49f8150cc3502c59b921ead8c6fc8c  linux-6.18.48.tar.xz
 
 # WHERE THE RT / BETA KERNEL HASH COMES FROM -- as of 2026-08-17, the SAME
 # signed-manifest rule as the stable pin above. This entry belongs to the RT

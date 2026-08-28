@@ -11,7 +11,7 @@
 # touch a comment, so a literal here goes stale on the first automatic bump.
 # Both of these had (they still named the 04a177ee pin, two bumps back), as
 # did the "verified at pin time (2026-07-17)" date this replaces.
-sha256  8624d522bd0abb4946e811d2931a989629638dd1250487ad2c51e5ce83af7af8  libchdr-fa3304197ccb919fee4356caa30d67b16a820a20.tar.gz
+sha256  6b7a04ae29ad497dcae4a0f918b289df7df95eea6dd2deed8c420b2ee2c481cd  libchdr-970a0ce060c0aa1012b1eebba1433c9a9e8ac8b9.tar.gz
 # LICENSE.txt -- the BSD-3-Clause text; see the LIBCHDR_LICENSE comment in
 # the .mk (the bundled dr_flac's public-domain/MIT-0 statements live inside
 # include/dr_libs/dr_flac.h itself, no separate file exists to hash)

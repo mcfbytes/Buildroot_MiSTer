@@ -2348,6 +2348,38 @@ idiom** and should get the same treatment when next touched.
    the red-PR posture a Buildroot bump had before this case existed
    (2026-08-24). Numbered 6 because validate-only case 5 predates it.
 
+7. **The azcopy vendored-tarball hash** (`package/azcopy/azcopy.hash`),
+   refreshed by `scripts/hash-sync-azcopy.sh` — a **third kind of source**,
+   neither "hash the pinned artifact" (1/3/4) nor "transcribe a signed
+   manifest" (2/6), but **rebuild the artifact the way the build will, then
+   hash what came out**. azcopy is a `golang-package`, so the file Buildroot
+   hashes is `azcopy-<ver>-go2.tar.gz` — the GitHub archive with
+   `go mod vendor` run inside it and the tree deterministically repacked —
+   and **no URL anywhere serves that file**, so there is nothing to fetch and
+   nothing to transcribe. The value certifies the vendored dependency set as
+   much as the AzCopy sources.
+
+   What makes it trustworthy is that it is not a re-implementation. The
+   script runs **Buildroot's own `support/download/go-post-process`** out of
+   the pinned, `BUILDROOT_SHA256`-verified tree (`make buildroot-unpack`),
+   with the Go version **that tree** pins (`package/go/go.mk`), verified
+   against **that tree's** `package/go/go.hash`. Nothing is hard-coded, so a
+   Buildroot bump moves the reproduction in lockstep with the real build.
+   Every module is still `go.sum`-verified; nothing here disables a check.
+   It also re-hashes `LICENSE`/`NOTICE.txt`, which no build ever reads (only
+   `make legal-info` does) and which the manual recipe therefore carried as a
+   separate by-hand step.
+
+   `GOPROXY`: the script tries `direct` (`pkg-golang.mk`'s stock setting)
+   first and falls back to whatever `GOPROXY=` value `azcopy.mk`'s
+   `AZCOPY_DL_ENV` line declares, if any — and emits a `::notice::` when
+   `direct` succeeds while an override is still present, so a temporary
+   override cannot be forgotten. That is safe to act on: a `go.sum`-verified
+   module has byte-identical content whichever source served it, so both
+   paths yield the same tarball. Added 2026-08-28; see
+   `scripts/hash-sync-azcopy.sh`'s header for the moved-tag incident that
+   made the override necessary.
+
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
 
@@ -2378,6 +2410,19 @@ idiom** and should get the same treatment when next touched.
   release, and case 2 refreshes it now — under exactly the same rule the
   stable pin has always followed. Nothing was relaxed: what changed is which
   side of the rule that pin sits on.
+
+**`azcopy` left this list on 2026-08-28.** It used to sit here worded
+"reproducing the real hash needs a Go toolchain and a fetch of every module in
+`go.sum`; it is not a one-line curl and **must not be automated as if it
+were**", and older commits still quote that. Read the sentence again: the
+prohibition was on *pretending it is case 1*, and that half is permanent —
+azcopy must never join `HASH_SYNC_PACKAGES`. But "needs a Go toolchain and a
+network fetch" is a description of a CI job, not of an impossibility. Case 7
+(`scripts/hash-sync-azcopy.sh`) does the real thing instead: it rebuilds the
+`-go2` tarball with Buildroot's own post-processor and Buildroot's own pinned
+Go, and hashes that. Same source-not-transcriber narrowing as the two entries
+below, one step further along — case 7 *re-derives* its artifact rather than
+fetching it, which is legitimate precisely because nothing serves it.
 
 **`BUILDROOT_SHA256` left this list on 2026-08-24** — it used to head it,
 worded "this workflow will NOT invent that value ... until a human runs
@@ -2704,33 +2749,41 @@ cold build at **8.4 GB free of 72 GB** — and cache #3 globs `output/host` +
 GitHub's 10 GB LRU ceiling. Before enabling azcopy in CI, re-measure both; do not
 assume the existing headroom absorbs it.
 
-**One package is a deliberate exception to the hash-sync allow-list rule: `azcopy`.** It is
-github-sourced and looks exactly like a candidate, and adding it to
-`HASH_SYNC_PACKAGES` (or to the `paths:` filter) would be actively harmful. It
-is a `golang-package`, so Buildroot sets `AZCOPY_DOWNLOAD_POST_PROCESS = go`
-and the file it hashes is the **post-`go mod vendor` `-go2` tarball**, not the
-GitHub archive. Case 1's method is `curl <archive-url> | sha256sum`; run
-against azcopy that produces the hash of the pre-vendoring tarball — a
-plausible-looking wrong value that would turn a green bump PR into a build
-that fails at download time on master. Reproducing the real hash needs a Go
-toolchain and a fetch of every module in `go.sum`; it is not a one-line curl
-and must not be automated as if it were.
+**`azcopy` is still a deliberate exception to the hash-sync ALLOW-LIST rule,
+even though it now has a refresh case.** It is github-sourced and looks exactly
+like a case-1 candidate, and adding it to `HASH_SYNC_PACKAGES` would be
+actively harmful. It is a `golang-package`, so Buildroot sets
+`AZCOPY_DOWNLOAD_POST_PROCESS = go` and the file it hashes is the
+**post-`go mod vendor` `-go2` tarball**, not the GitHub archive. Case 1's
+method is `curl <archive-url> | sha256sum`; run against azcopy that produces
+the hash of the pre-vendoring tarball — a plausible-looking wrong value that
+would turn a green bump PR into a build that fails at download time on master.
 
-**What actually enforces that** is worth being precise about, because the obvious
-answer is wrong. It is *not* this workflow (azcopy is excluded from both
-`HASH_SYNC_PACKAGES` and the `paths:` filter) and it is *not* the image build
-either — azcopy is not enabled in the defconfig, so `build.yml` never compiles it
-and never exercises the pin. A Renovate bump of `AZCOPY_VERSION` alone would
-otherwise go entirely green carrying a hash that matches nothing, and the
-breakage would surface later, to whoever first enables the package.
+What changed on **2026-08-28** is only that the work now gets done by a case of
+its own. `package/azcopy/azcopy.mk` **is** in the `paths:` filter (it has to
+be, or the workflow never fires on an azcopy bump), and **case 7**
+(`scripts/hash-sync-azcopy.sh`) refreshes the hash by *rebuilding* the `-go2`
+tarball with Buildroot's own post-processor rather than by fetching anything —
+see the safety-model section above. So the two allow-lists disagree for exactly
+one package, on purpose: `paths:` yes, `HASH_SYNC_PACKAGES` never.
 
-The gate is the **`azcopy version/hash pin consistency` step in `lint.yml`**: it
-fails any PR where `AZCOPY_VERSION` and the tarball filename on `azcopy.hash`'s
-`sha256` line disagree. Cheap (no toolchain, no Go, no network), and it fires on
-a hand edit as readily as on a Renovate bump. Renovate additionally labels these
-PRs `needs-manual-hash`. It cannot catch "same version, different bytes" —
-nothing cheap can; that case is caught at download time by
-`BR2_DOWNLOAD_FORCE_CHECK_HASHES`. See `docs/azcopy.md` §5.
+**Two gates still stand behind it**, and both matter because case 7 can record
+`skipped` (a network blip, an un-vendorable bump) and leave the hash stale:
+
+- The **`azcopy version/hash pin consistency` step in `lint.yml`** fails any PR
+  where `AZCOPY_VERSION` and the tarball filename on `azcopy.hash`'s `sha256`
+  line disagree. Cheap (no toolchain, no Go, no network), and it fires on a
+  hand edit as readily as on a Renovate bump. This is the gate that *closes*:
+  a case-7 skip leaves the PR red rather than merging a stale pin. It cannot
+  catch "same version, different bytes" — nothing cheap can.
+- `BR2_DOWNLOAD_FORCE_CHECK_HASHES` catches that last case at download time.
+  Worth remembering that the image build cannot: azcopy is not enabled in the
+  defconfig, so `build.yml` never compiles it and never exercises the pin.
+  `release.yml`'s `build-azcopy` job does, on every tag.
+
+See `docs/azcopy.md` §5 for the manual regeneration recipe, which case 7
+automates but does not retire — it is still the local procedure, and the
+fallback whenever case 7 skips.
 
 ---
 

@@ -9,17 +9,19 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Five REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
+# Six REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
 # tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
 # RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
 # bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
-# payload single-file pins, and (6) -- numbered after validate-only case 5,
+# payload single-file pins, (6) -- numbered after validate-only case 5,
 # which predates it -- the Buildroot tarball hash (BUILDROOT_SHA256 in the
 # root Makefile), transcribed from buildroot.org's GPG-clearsigned .sign
-# manifest. Why a locally-computed sha256sum is a legitimate source for cases
-# 1/3/4 (not a shortcut), and why cases 2 and 6 transcribe a signed manifest
-# instead: docs/ci.md#renovate-hash-sync-safety-model.
+# manifest, and (7) azcopy's post-`go mod vendor` tarball hash, which is
+# REBUILT rather than fetched. Why a locally-computed sha256sum is a
+# legitimate source for cases 1/3/4 (not a shortcut), why cases 2 and 6
+# transcribe a signed manifest instead, and why case 7 is a third kind
+# altogether: docs/ci.md#renovate-hash-sync-safety-model.
 #
 # Plus one VALIDATE-ONLY case: (5) the _Console cores snapshot pin. It has no
 # companion hash to refresh -- but it is also the one pin no PR build ever
@@ -30,6 +32,19 @@
 # cgit snapshot -- hand-written TOFU only),
 # cabextract/linux-firmware-extra/xow-firmware. See
 # docs/ci.md#renovate-hash-sync-not-automated.
+#
+# AZCOPY LEFT that list on 2026-08-28, and older commits (plus package/azcopy's
+# own file headers before that date) still quote "the hash CANNOT be
+# auto-refreshed for a golang-package". What could not be automated was the
+# METHOD that sentence was aimed at -- case 1's `curl <archive-url> |
+# sha256sum`, which for a golang-package hashes the pre-vendoring tarball and
+# produces a plausible-looking WRONG value. That half stands: azcopy must
+# never join HASH_SYNC_PACKAGES below. But the artifact itself can be REBUILT
+# the way the build builds it -- Buildroot's own support/download/
+# go-post-process, its own pinned Go -- and then hashed, which is what case 7
+# does. Same source-not-transcriber narrowing cases 2 and 6 went through, one
+# step further: case 7 re-derives the artifact rather than fetching it. See
+# scripts/hash-sync-azcopy.sh's header.
 #
 # BUILDROOT_SHA256 LEFT that list on 2026-08-24, and older commits (plus this
 # workflow's own commit-message template before that date) still quote
@@ -68,8 +83,8 @@
 # docs/ci.md#renovate-hash-sync-outcomes-gate.
 #
 # NOTE: scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,
-# cores-pin,buildroot}.sh + scripts/lib/hash-sync-common.sh are the six cases
-# below -- each step
+# cores-pin,buildroot,azcopy}.sh + scripts/lib/hash-sync-common.sh are the
+# seven cases below -- each step
 # just invokes its script (see the second checkout, below, for where the
 # scripts come from). Fix bugs IN THE SCRIPTS; this file only wires them up
 # and owns the per-pin outcome ledger / push-gate / job-summary steps that
@@ -135,6 +150,14 @@ on:
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
       - "package/libchdr/libchdr.mk"
       - "package/lzma-sdk/lzma-sdk.mk"
+      # azcopy (case 7). ADDED 2026-08-28, when that case was added -- before
+      # that an azcopy bump PR deliberately stayed red until a human ran
+      # package/azcopy/azcopy.hash's regeneration recipe by hand. Same
+      # both-lists-or-silent-failure note as rtl8852cu-morrownr above, with a
+      # twist: azcopy must appear HERE but must NEVER appear in
+      # HASH_SYNC_PACKAGES below (case 1's curl-and-hash method would write a
+      # confidently wrong value for a golang-package -- see the header).
+      - "package/azcopy/azcopy.mk"
       # dualsensectl (DualSense operator CLI). Ordinary github tag-archive pin,
       # covered by the generic loop in step 1. Same both-lists-or-silent-failure
       # note as rtl8852cu-morrownr above: it must appear HERE and in
@@ -184,7 +207,17 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.actor == 'renovate[bot]' &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    timeout-minutes: 10
+    # RAISED 10 -> 20 on 2026-08-28, with case 7. Every other case is a fetch
+    # and a hash and the whole job used to finish in about a minute, which 10
+    # covered several times over. Case 7 REBUILDS azcopy's vendored tarball
+    # (Buildroot unpack + a ~67 MB Go toolchain + ~1.7 GiB of modules) and
+    # takes 5-8 minutes on its own when it fires -- close enough to 10 that a
+    # slow runner would time the job out and silently lose every other case's
+    # refresh along with it. This is a CEILING, not a duration: it only fires
+    # on an actual AZCOPY_VERSION bump (case 7 returns `already-current` in
+    # seconds otherwise), so raising it costs no Actions minutes on any other
+    # PR.
+    timeout-minutes: 20
 
     # Resolved once, as a shell var (not an inline expression), to avoid a
     # script-injection vector via github.event.pull_request.head.ref -- a
@@ -218,6 +251,13 @@ jobs:
       # $(call github,morrownr,rtl8852cu-20251113,$(VERSION)) and a cached
       # tarball named dl/rtl8852cu-morrownr/rtl8852cu-morrownr-<sha>.tar.gz,
       # i.e. the <package-dir>-<VERSION>.tar.gz shape the loop assumes.
+      #
+      # azcopy is the one package that has a refresh case (7) and must still
+      # NEVER appear in this string. It is a golang-package: the file Buildroot
+      # hashes is the post-`go mod vendor` -go2 tarball, and this loop's
+      # `curl <archive-url> | sha256sum` would hash the pre-vendoring archive
+      # instead -- a value that looks right, passes review, and fails the build
+      # on master. Case 7's own step handles it.
       #
       # dualsensectl fits the same generic loop, and is the first entry pinned
       # to a "v"-prefixed TAG rather than a bare commit SHA or munt's bespoke
@@ -425,6 +465,42 @@ jobs:
       - name: Refresh the Buildroot tarball hash from buildroot.org's signed manifest
         run: .hash-sync-tools/scripts/hash-sync-buildroot.sh "$GITHUB_WORKSPACE"
 
+      # --- 7. azcopy's post-`go mod vendor` tarball hash ----------------------
+      # NEW 2026-08-28. The one case that REBUILDS its artifact instead of
+      # fetching it. azcopy is a golang-package, so the file Buildroot hashes
+      # is azcopy-<ver>-go2.tar.gz -- the GitHub archive with `go mod vendor`
+      # run inside it and the tree deterministically repacked -- and no URL
+      # anywhere serves that file. Case 1's method cannot produce it and azcopy
+      # must stay out of HASH_SYNC_PACKAGES; see the header for why that half
+      # of the old "cannot be automated" claim is permanent while the other
+      # half was not.
+      #
+      # The script runs BUILDROOT'S OWN support/download/go-post-process from
+      # the pinned (BUILDROOT_SHA256-verified) tree, with the Go version that
+      # tree pins, verified against that tree's own package/go/go.hash -- so
+      # nothing about the reproduction is re-implemented or hard-coded here,
+      # and a Buildroot bump moves it in lockstep. It also refreshes the
+      # LICENSE/NOTICE.txt lines, which no build ever checks (only `make
+      # legal-info` reads them) and which the manual recipe therefore had as a
+      # separate by-hand step.
+      #
+      # EXPENSIVE by this family's standards -- it unpacks Buildroot,
+      # downloads a ~67 MB Go toolchain and vendors ~1.7 GiB of modules, so
+      # 5-8 minutes rather than case 1's seconds. That cost is why the
+      # `paths:` filter above matters more here than anywhere else: this step
+      # returns `already-current` in seconds when azcopy.hash already pins the
+      # current AZCOPY_VERSION -- which is what EVERY non-azcopy bump PR sees,
+      # since `paths:` fires this workflow for any pin, not just this one. The
+      # expensive path is reached only by an actual AZCOPY_VERSION bump. That
+      # ordering (cheap check first, scratch dir and downloads after) is
+      # load-bearing for this job's Actions-minutes budget; do not move it.
+      # It is also why the job timeout went 10 -> 20 -- see its comment above.
+      #
+      # Runs from the .hash-sync-tools checkout against the target branch's
+      # tree; see step 1's comment.
+      - name: Rebuild and refresh the azcopy vendored-tarball hash
+        run: .hash-sync-tools/scripts/hash-sync-azcopy.sh "$GITHUB_WORKSPACE"
+
       # Gate the push: ANY pin recorded "failed" (from any of the steps
       # above) suppresses the commit/push below. MUST run and be evaluated
       # BEFORE the push -- the summary/gate step at the end of the job
@@ -448,7 +524,8 @@ jobs:
           (env.PKG_HASH_CHANGED == '1' || env.PATCH_HASH_CHANGED == '1' ||
            env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
-           env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1') &&
+           env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1' ||
+           env.AZCOPY_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail
@@ -478,6 +555,13 @@ jobs:
               buildroot-showsig` prints, never a locally-computed sha256sum
               of the tarball (that remains forbidden; see the Makefile's own
               header comment)
+            - azcopy pin: REBUILT, not fetched. Buildroot's own
+              support/download/go-post-process re-ran `go mod vendor` over the
+              newly pinned tag with the Go version the pinned Buildroot tree
+              pins, and the resulting azcopy-<ver>-go2.tar.gz was hashed --
+              the only way this value can be derived, since no URL serves that
+              file (see package/azcopy/azcopy.hash's header). LICENSE and
+              NOTICE.txt were re-hashed from the same tarball
           COMMITMSG
           # Shell variable, NOT a workflow-expression interpolation --
           # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
@@ -517,7 +601,12 @@ jobs:
           # between the two packages would have made the 7zip row vanish from
           # this summary without a trace, the exact failure this cross-check
           # exists to catch. `buildroot` is case 6's row.
-          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
+          #
+          # `azcopy` joined on 2026-08-28 with case 7. It is deliberately NOT
+          # in $HASH_SYNC_PACKAGES (that string is case 1's curl-and-hash
+          # roster, which must never touch a golang-package) and so has to be
+          # named here separately, exactly like the four pins before it.
+          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot azcopy PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

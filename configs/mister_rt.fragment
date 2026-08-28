@@ -64,7 +64,7 @@
 # exemption, so the tarball MUST have a sha256 line there or the build fails
 # closed at download. Bump the version here -> update that line in the same
 # commit (its header says where the value must come from).
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.1"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.2"
 
 # --- Beta patch set -----------------------------------------------------------
 # linux-patches-beta/ is a series-file-driven SUBSET of linux-patches/: symlinks

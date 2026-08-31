@@ -337,7 +337,7 @@ runs:
       run: echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
 
     - name: Cache ccache
-      uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+      uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
       # This action runs its own apt-get; it used to be covered by a job-level
       # DEBIAN_FRONTEND that the callers no longer carry, so set it here.
       env:

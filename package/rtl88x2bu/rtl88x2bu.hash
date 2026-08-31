@@ -9,5 +9,5 @@
 # touch a comment, so a literal here goes stale on the first automatic bump.
 # This one did (it still named the pre-bump revision) and was caught in
 # review of PR #67.
-sha256  6301ff577a018076fa59eabdff9240fae04d708863b7b6793093ac42f76c2ed8  rtl88x2bu-b6caabb5bd2b985f0a174f3c65940cece546fbad.tar.gz
+sha256  f8b1631f040bf24f1bed245ea16048f0f1fb3823feae8501f78546d5360c715c  rtl88x2bu-02252b2f5f522030edf27ca9ae9b6cf56abbdef4.tar.gz
 sha256  22cdb0a9cf492dbf05c5b27381a5c0e73ae0d4622427b522b0ba92b7495e5fb0  LICENSE

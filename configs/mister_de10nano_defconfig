@@ -483,8 +483,8 @@ BR2_PACKAGE_LIBCURL_OPENSSL=y              # TLS backend parity: stock's curl li
 # GNU wget -- stock parity restored (issue #130, 2026-09-01). Stock ships a real
 # GNU wget ELF at usr/bin/wget linked against libgnutls.so.30, libnettle.so.8,
 # libpcre.so.1, libuuid.so.1 and libz.so.1 (docs/stock-inventory/
-# binaries-needed-full.txt:351), plus GNU wget's own /etc/wgetrc (etc-configs.md
-# :1097, 4945 bytes -- a file BusyBox's applet never reads). Stock's BusyBox
+# binaries-needed-full.txt:351), plus GNU wget's own /etc/wgetrc -- 4945 bytes,
+# see etc-configs.md:1097 -- a file BusyBox's applet never reads. Stock's BusyBox
 # 1.33.1 ALSO had the wget applet compiled in (busybox-applets.md:278), but the
 # GNU ELF owned the path, so the applet was unreachable as `wget` -- the same
 # "two providers, one path" shape as ifup/util-linux/lsof below.

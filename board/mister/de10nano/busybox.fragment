@@ -225,10 +225,10 @@ CONFIG_NC_110_COMPAT=y
 # with BOTH of its TLS knobs off -- "# CONFIG_FEATURE_WGET_HTTPS is not set"
 # (.config:1009) and "# CONFIG_FEATURE_WGET_OPENSSL is not set" (.config:1010) --
 # which makes SSL_SUPPORTED 0, so networking/wget.c's scheme dispatch has no
-# https:// arm at all (the P_HTTPS branch at wget.c:568-572 is inside
+# https:// arm at all (the P_HTTPS branch at networking/wget.c:568-572 is inside
 # `#if SSL_SUPPORTED`) and every https URL falls through to
-# bb_error_msg_and_die("not an http or ftp url: %s") at wget.c:578. That is the
-# verbatim error in issue #130.
+# bb_error_msg_and_die("not an http or ftp url: %s") at networking/wget.c:578.
+# That is the verbatim error in issue #130.
 #
 # Considered and rejected: flipping CONFIG_FEATURE_WGET_HTTPS=y here instead of
 # adding the package. It is the cheaper edit but the wrong one. BusyBox's own

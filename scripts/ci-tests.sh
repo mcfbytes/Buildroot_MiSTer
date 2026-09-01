@@ -1267,22 +1267,38 @@ not_busybox_symlink "usr/bin/setkeycodes" "setkeycodes (kbd)"
 not_busybox_symlink "usr/bin/wget" "wget (GNU wget -- issue #130, https support)"
 #   2. /etc/wgetrc -- installed by the GNU wget package only; the BusyBox applet
 #      neither ships nor reads it, so this distinguishes the two providers by
-#      something other than the binary itself (stock has it: docs/
-#      stock-inventory/etc-configs.md:1097).
+#      something other than the binary itself -- stock has it, see
+#      docs/stock-inventory/etc-configs.md:1097
 require_present "etc/wgetrc" "/etc/wgetrc (GNU wget's config -- BusyBox's applet never reads one)"
 #   3. +https    -- the actual bug. GNU wget's --version banner prints a feature
 #      line of +/-flags; a wget built --without-ssl still installs, still owns
 #      the path, and still ships wgetrc, so checks 1 and 2 would both pass while
 #      https stayed broken. This is the only one that would have caught #130.
+#      Deliberately NOT written as `qemu_target ... | grep -q`: a pipeline only
+#      reports grep's status, so a qemu/loader/sysroot problem (empty output)
+#      would be indistinguishable from the https regression and would send the
+#      reader after the wrong bug -- the one failure mode this check exists to
+#      name precisely. Run and test separately instead.
+#      `--version` exits 0 even when wget warns on stderr that it cannot read
+#      /etc/wgetrc -- which it DOES under qemu, because the file is not
+#      root-owned in output/target and wget's startup-file security check
+#      rejects it. Verified (exit 0, banner still on stdout), so the status
+#      test below is safe; do not "fix" that warning by dropping the check.
 if [ -z "$QEMU_ARM" ]; then
 	skip "wget has https support (+https)" "qemu-arm not found on PATH"
 elif [ ! -x "$TARGET/usr/bin/wget" ]; then
 	skip "wget has https support (+https)" "$TARGET/usr/bin/wget not present in output/target"
-elif qemu_target "$TARGET/usr/bin/wget" --version 2>/dev/null | grep -q -- '+https'; then
-	pass "wget has https support (+https)"
 else
-	fail "wget has https support (+https)" \
-		"--version does not report +https -- built --without-ssl? (issue #130 was the BusyBox applet's equivalent of this)"
+	wget_ver="$WORKDIR/wget-version.txt"
+	if ! qemu_target "$TARGET/usr/bin/wget" --version >"$wget_ver" 2>/dev/null; then
+		fail "wget --version runs under qemu-arm" \
+			"could not execute $TARGET/usr/bin/wget (loader/sysroot problem, not an https finding) -- +https NOT verified"
+	elif grep -q -- '+https' "$wget_ver"; then
+		pass "wget has https support (+https)"
+	else
+		fail "wget has https support (+https)" \
+			"ran, but --version reports no +https -- built --without-ssl? banner: $(head -1 "$wget_ver")"
+	fi
 fi
 
 # =============================================================================

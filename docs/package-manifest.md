@@ -259,7 +259,7 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 | `libtorrent.so.21` | `libtorrent.so.21.0.0` | `BR2_PACKAGE_LIBTORRENT` | 0.15.3 | **YES (likely)** | rakshasa's libtorrent (rtorrent's library, distinct from libtorrent-rasterbar); SONAME has moved past 21 in this version range per Debian's experimental packaging (`libtorrent27`). **Recommend dropping `rtorrent`/`libtorrent` entirely (see Drop list) — nothing MiSTer-side uses it**, so the exact soname doesn't matter |
 | `libxml2.so.2` | `libxml2.so.2.9.12` | `BR2_PACKAGE_LIBXML2` | 2.15.3 | no |  |
 | `libmagic.so.1` | `libmagic.so.1.0.0` | `BR2_PACKAGE_FILE` | 5.46 | no |  |
-| `libpcre.so.1` | *(not provided)* | — | — | no | **Intentional parity deviation (Buildroot 2026.05).** PCRE1 was removed upstream (EOL/unmaintained; now a `Config.in.legacy` stub). Nothing in this image needs `libpcre.so.1`: the stock `MiSTer` binary does not link it (no `-lpcre`, verified against `origin/master`), Python uses its built-in `sre` engine, and 2026.05's `slang` dropped its pcre module. The only stock consumers were `wget`/`zsh`, neither of which we build. `libpcre2-8.so.0` (PCRE2) is provided as the modern replacement, pulled by `libglib2`/`libselinux` and listed explicitly in the defconfig. |
+| `libpcre.so.1` | *(not provided)* | — | — | no | **Intentional parity deviation (Buildroot 2026.05).** PCRE1 was removed upstream (EOL/unmaintained; now a `Config.in.legacy` stub). Nothing in this image needs `libpcre.so.1`: the stock `MiSTer` binary does not link it (no `-lpcre`, verified against `origin/master`), Python uses its built-in `sre` engine, and 2026.05's `slang` dropped its pcre module. The only stock consumers were `wget`/`zsh`. **Corrected 2026-09-01 (issue #130):** the "neither of which we build" half of this sentence used to be true and is no longer — `BR2_PACKAGE_WGET=y` now ships GNU wget again (§4d below). That does **not** weaken this row: this Buildroot's `wget.mk:16` passes `--disable-pcre` unconditionally, so modern GNU wget does not link PCRE1 under any configuration, and `wget.mk:67` builds it against `BR2_PACKAGE_PCRE2` instead. `zsh` is still not built. `libpcre2-8.so.0` (PCRE2) is provided as the modern replacement, pulled by `libglib2`/`libselinux` and listed explicitly in the defconfig. |
 | `libpcreposix.so.0` | *(not provided)* | — | — | no | Dropped with PCRE1 (same row above) — it is PCRE1's POSIX wrapper. PCRE2 ships its own `libpcre2-posix.so.3`. |
 | `libudev.so.1` | `libudev.so.1.6.3` | `BR2_PACKAGE_EUDEV` | 3.2.14 | no | eudev, not systemd-udev — matches PLAN §3 ("hotplug is eudev, not mdev") |
 
@@ -798,6 +798,93 @@ BusyBox applets that were already on): `lsof`, `lsusb`, `mkdosfs`, `chvt`,
 "last-install-wins" hazard that file's own ifup/ifdown and util-linux blocks
 already document, same fix. `scripts/ci-tests.sh` §"T5" asserts the real
 package won each one, not just that the path is present.
+
+---
+
+### 4d. GNU wget — an eighth BusyBox collision T5 missed (issue #130, 2026-09-01)
+
+T5's collision sweep (§4c) enumerated the applets that clash with packages *it
+was adding*. It never looked at a package stock ships that this image had
+dropped **and** BusyBox happened to cover by the same name — so `wget` fell
+through every net, and shipped as a crippled BusyBox applet for as long as this
+image has existed. A user found it, not a build check.
+
+**What stock ships.** A real GNU wget ELF at `usr/bin/wget`, linked
+`libc.so.6, libgnutls.so.30, libnettle.so.8, libpcre.so.1, libuuid.so.1,
+libz.so.1` (`docs/stock-inventory/binaries-needed-full.txt:351`), plus GNU
+wget's own `/etc/wgetrc` (`etc-configs.md:1097`, 4945 bytes — a file the BusyBox
+applet never reads). Stock's BusyBox 1.33.1 *also* had the applet compiled in
+(`busybox-applets.md:278`, one of its 274), but the GNU binary owned the path,
+so the applet was unreachable as `wget`. Same shape as §4c's `lsusb`/`chvt`
+rows: two providers, one path, the real ELF wins.
+
+**What we shipped instead, and why it broke.** BusyBox was the only provider
+(`busybox.links:217`), built with `CONFIG_FEATURE_WGET_HTTPS` **and**
+`CONFIG_FEATURE_WGET_OPENSSL` both off (resolved `.config:1009-1010`). With
+neither set, `SSL_SUPPORTED` is 0, the `P_HTTPS` arm of the scheme dispatch is
+preprocessed away (`networking/wget.c:568-572` sits inside `#if SSL_SUPPORTED`),
+and every `https://` URL reaches the fallthrough at `wget.c:578`:
+`bb_error_msg_and_die("not an http or ftp url: %s")`. That is the verbatim text
+in issue #130. `curl` was unaffected — we build it with OpenSSL — which is why
+the report reads "but curl works!".
+
+**Why it had been left out, and why that reason no longer holds.** The only
+recorded rationale is the PCRE1 row in §"Libraries" above: *"the only stock
+consumers were `wget`/`zsh`, neither of which we build."* That was written to
+justify dropping `libpcre.so.1` after Buildroot 2026.05 removed PCRE1, and it
+quietly took wget down with it. The premise is stale — this Buildroot's
+`wget.mk:16` passes `--disable-pcre` **unconditionally**, so GNU wget does not
+link PCRE1 in any configuration, and `wget.mk:67` builds it against the
+`BR2_PACKAGE_PCRE2` we already ship. Restoring wget resurrects nothing.
+
+**The fix.** `BR2_PACKAGE_WGET=y` in the defconfig, `# CONFIG_WGET is not set`
+in `board/mister/de10nano/busybox.fragment`. No other symbol had to change:
+`BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y`, `BR2_USE_WCHAR=y` and `BR2_USE_MMU=y` (the
+package's three `Config.in` dependencies) were all already set. TLS backend is
+GnuTLS — stock's — for free, because `wget.mk:26` prefers `BR2_PACKAGE_GNUTLS`
+over OpenSSL when both are present and we set both.
+
+**Resulting link set vs stock.** This is a parity claim, so it was *built* and
+`readelf -d`'d rather than predicted from the `.mk` — and doing so turned up one
+difference the prediction missed (`libunistring`, last row). Each line is traced
+to the `wget.mk` conditional that decides it:
+
+| stock DT_NEEDED | ours | how |
+|---|---|---|
+| `libgnutls.so.30`, `libnettle.so.8` | same | `wget.mk:26`, `--with-ssl=gnutls` (`BR2_PACKAGE_GNUTLS=y`) |
+| `libuuid.so.1` | same | `wget.mk:46`, `--with-libuuid` (`BR2_PACKAGE_UTIL_LINUX_LIBUUID=y`) |
+| `libz.so.1` | same | `wget.mk:53`, `--with-zlib` (`BR2_PACKAGE_ZLIB=y`) |
+| `libc.so.6`, `ld-linux-armhf.so.3` | same | — |
+| `libpcre.so.1` | `libpcre2-8.so.0` | intended substitution. `wget.mk:16` `--disable-pcre` is unconditional; `wget.mk:67` `--enable-pcre2` (`BR2_PACKAGE_PCRE2=y`) |
+| *(absent)* | *(absent)* | `libpsl`, `libidn2`, `c-ares` — `wget.mk:18/40/60` all take their `--without`/`--disable` branches here, and none appears in stock's list either |
+| *(absent)* | `libunistring.so.5` | **unpredicted, benign.** wget 1.25.0's bundled gnulib links `-lunistring`; stock's older wget did not, and `shared-libraries.md` has no libunistring row. Costs nothing: `BR2_PACKAGE_LIBUNISTRING=y` was *already* set and `usr/lib/libunistring.so.5.2.1` was already in the image before this change, pulled in by another package. No new runtime dependency, no new bytes. |
+
+**Verified, not assumed** (2026-09-01, `make wget` against the warm tree):
+`./configure` resolved to `--with-ssl=gnutls --disable-pcre --enable-pcre2
+--with-libuuid --with-zlib --without-libpsl --disable-iri --without-cares`,
+its summary reports `PCRE: yes, via libpcre2`, and the built ARM ELF's
+`--version` banner under `qemu-arm` reads `+https ... +ssl/gnutls`. The
+installed `/etc/wgetrc` is **4945 bytes — byte-for-byte stock's size**
+(`etc-configs.md:1097`). Before the change, `output/target/usr/bin/wget` was
+a symlink → `../../bin/busybox`; after it, a 564,760-byte GNU wget ELF.
+
+**Rejected alternative.** Flipping `CONFIG_FEATURE_WGET_HTTPS=y` in the
+fragment is the one-line version and is the wrong call. BusyBox's own Kconfig
+help for that symbol states its internal TLS "does *not* check that the peer is
+who it claims to be", does not verify signature hashes on incoming data, and
+does not check the peer's certificate — an `https://` that silently accepts an
+impersonating server, on a device whose network use is downloading cores and
+updates. It would also still ignore `/etc/wgetrc` and still not match stock's
+option set.
+
+**Stated divergence.** Stock kept `CONFIG_WGET=y` *and* shipped the GNU ELF, so
+`busybox wget` stayed reachable there. Buildroot cannot express that safely —
+two packages owning `usr/bin/wget` is the install-order race
+`busybox.fragment` exists to prevent — so the applet is off and that spelling is
+gone. The `wget` name, which is what scripts actually use, is answered by a
+strictly more capable binary. Guarded by `scripts/ci-tests.sh` §"T5"
+(`not_busybox_symlink usr/bin/wget`, plus an `/etc/wgetrc` presence check that
+distinguishes the two providers).
 
 ---
 

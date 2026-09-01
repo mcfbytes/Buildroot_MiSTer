@@ -1256,6 +1256,35 @@ not_busybox_symlink "usr/bin/openvt" "openvt (kbd)"
 not_busybox_symlink "usr/bin/deallocvt" "deallocvt (kbd)"
 not_busybox_symlink "usr/bin/setkeycodes" "setkeycodes (kbd)"
 
+# -- The eighth collision, found by a user rather than by T5 (issue #130) -----
+# T5 swept for applets clashing with packages it was ADDING; it never looked at
+# a package stock ships that this image had DROPPED and BusyBox covered by the
+# same name. `wget` was exactly that, and shipped as a crippled applet with no
+# https support at all until 2026-09-01. See docs/package-manifest.md §4d.
+# Three checks, because each catches a different way of regressing:
+#   1. provider  -- BR2_PACKAGE_WGET off again (or CONFIG_WGET back on) would
+#      silently hand usr/bin/wget back to BusyBox.
+not_busybox_symlink "usr/bin/wget" "wget (GNU wget -- issue #130, https support)"
+#   2. /etc/wgetrc -- installed by the GNU wget package only; the BusyBox applet
+#      neither ships nor reads it, so this distinguishes the two providers by
+#      something other than the binary itself (stock has it: docs/
+#      stock-inventory/etc-configs.md:1097).
+require_present "etc/wgetrc" "/etc/wgetrc (GNU wget's config -- BusyBox's applet never reads one)"
+#   3. +https    -- the actual bug. GNU wget's --version banner prints a feature
+#      line of +/-flags; a wget built --without-ssl still installs, still owns
+#      the path, and still ships wgetrc, so checks 1 and 2 would both pass while
+#      https stayed broken. This is the only one that would have caught #130.
+if [ -z "$QEMU_ARM" ]; then
+	skip "wget has https support (+https)" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/wget" ]; then
+	skip "wget has https support (+https)" "$TARGET/usr/bin/wget not present in output/target"
+elif qemu_target "$TARGET/usr/bin/wget" --version 2>/dev/null | grep -q -- '+https'; then
+	pass "wget has https support (+https)"
+else
+	fail "wget has https support (+https)" \
+		"--version does not report +https -- built --without-ssl? (issue #130 was the BusyBox applet's equivalent of this)"
+fi
+
 # =============================================================================
 section "P3.5 — Bluetooth parity"
 # =============================================================================

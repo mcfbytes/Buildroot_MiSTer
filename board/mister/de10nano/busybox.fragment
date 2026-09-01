@@ -211,3 +211,40 @@ CONFIG_NC_110_COMPAT=y
 # CONFIG_DEALLOCVT is not set
 # CONFIG_OPENVT is not set
 # CONFIG_SETKEYCODES is not set
+
+# GNU wget vs BusyBox's wget applet -- issue #130 (2026-09-01). Same
+# "two packages install the same path, last one wins" hazard as the ifup/ifdown,
+# util-linux and lsof/lsusb/mkdosfs/kbd blocks above, and the same fix.
+# BR2_PACKAGE_WGET (added to the defconfig in the same change) installs a real
+# GNU wget 1.25.0 at usr/bin/wget; BusyBox's CONFIG_WGET applet -- ON in the base
+# config (output/build/busybox-1.38.0/.config:1003, read directly) -- claims the
+# identical path via busybox.links:217. Turning the applet off makes the GNU
+# binary the deterministic winner.
+#
+# This one is a functional fix, not just determinism. BusyBox's applet was built
+# with BOTH of its TLS knobs off -- "# CONFIG_FEATURE_WGET_HTTPS is not set"
+# (.config:1009) and "# CONFIG_FEATURE_WGET_OPENSSL is not set" (.config:1010) --
+# which makes SSL_SUPPORTED 0, so networking/wget.c's scheme dispatch has no
+# https:// arm at all (the P_HTTPS branch at wget.c:568-572 is inside
+# `#if SSL_SUPPORTED`) and every https URL falls through to
+# bb_error_msg_and_die("not an http or ftp url: %s") at wget.c:578. That is the
+# verbatim error in issue #130.
+#
+# Considered and rejected: flipping CONFIG_FEATURE_WGET_HTTPS=y here instead of
+# adding the package. It is the cheaper edit but the wrong one. BusyBox's own
+# Kconfig help for that symbol says its internal TLS "does *not* check that the
+# peer is who it claims to be", does not verify signature hashes on incoming
+# data, and does not check the peer's certificate -- i.e. it would give the
+# MiSTer an https:// that silently accepts an impersonating server, on a box
+# whose whole job is downloading cores and updates over the network. It would
+# also still ignore /etc/wgetrc and still not match stock's option set. Stock
+# solved this by shipping GNU wget; so do we.
+#
+# Divergence from stock, stated rather than glossed: stock kept CONFIG_WGET=y in
+# its BusyBox *and* shipped the GNU ELF, so `busybox wget` remained reachable
+# there as a hand-built-image accident. Buildroot cannot express that safely --
+# two packages owning usr/bin/wget is exactly the non-deterministic install-order
+# race this file exists to prevent -- so the applet goes off and `busybox wget`
+# is gone. Nothing calls it by that spelling; the `wget` name, which is what
+# scripts use, is answered by a strictly more capable binary.
+# CONFIG_WGET is not set

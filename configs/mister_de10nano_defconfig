@@ -480,6 +480,44 @@ BR2_PACKAGE_LIBCURL_CURL=y                # installs the `curl` CLI binary -- of
                                           # default, stock ships it, community scripts use it
 BR2_PACKAGE_LIBCURL_OPENSSL=y              # TLS backend parity: stock's curl links
                                           # libcrypto/libssl, not GnuTLS
+# GNU wget -- stock parity restored (issue #130, 2026-09-01). Stock ships a real
+# GNU wget ELF at usr/bin/wget linked against libgnutls.so.30, libnettle.so.8,
+# libpcre.so.1, libuuid.so.1 and libz.so.1 (docs/stock-inventory/
+# binaries-needed-full.txt:351), plus GNU wget's own /etc/wgetrc (etc-configs.md
+# :1097, 4945 bytes -- a file BusyBox's applet never reads). Stock's BusyBox
+# 1.33.1 ALSO had the wget applet compiled in (busybox-applets.md:278), but the
+# GNU ELF owned the path, so the applet was unreachable as `wget` -- the same
+# "two providers, one path" shape as ifup/util-linux/lsof below.
+# This image previously shipped ONLY the BusyBox applet, with
+# CONFIG_FEATURE_WGET_HTTPS and CONFIG_FEATURE_WGET_OPENSSL both off, so
+# SSL_SUPPORTED was 0 and every https:// URL died at networking/wget.c:578 with
+# "wget: not an http or ftp url:" -- while curl (above) worked, which is exactly
+# how issue #130 was reported.
+# The recorded reason for leaving wget out was the PCRE1 removal note further
+# down this file ("the only stock consumers were wget/zsh, neither of which we
+# build"). That premise is stale: this Buildroot's wget.mk:16 passes
+# --disable-pcre UNCONDITIONALLY, so GNU wget does not want PCRE1 at all, and
+# wget.mk:67 gives it --enable-pcre2 against the BR2_PACKAGE_PCRE2 we already
+# ship. Nothing here resurrects PCRE1.
+# TLS backend is GnuTLS, matching stock, and for free: wget.mk:26 prefers
+# BR2_PACKAGE_GNUTLS over OpenSSL when both are present, and we set both.
+# Built and readelf'd, not predicted (2026-09-01): the resolved DT_NEEDED is
+# libgnutls.so.30, libnettle.so.8, libuuid.so.1, libz.so.1, libc.so.6 and
+# ld-linux-armhf.so.3 -- identical to stock's -- plus libpcre2-8.so.0 where
+# stock had libpcre.so.1, plus libunistring.so.5, which stock's older wget did
+# not link. The last one is free: BR2_PACKAGE_LIBUNISTRING was already set and
+# the .so was already in the image before this change. libpsl, libidn2 and
+# c-ares stay out (wget.mk:18/40/60 take their --without/--disable branches),
+# which is also what stock did -- none of the three is in stock's list either.
+# The installed /etc/wgetrc is 4945 bytes, byte-for-byte stock's size, and the
+# ARM binary's --version banner reports "+https ... +ssl/gnutls" under qemu-arm.
+# Prerequisites were already satisfied, nothing else had to change:
+# BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y (below), BR2_USE_WCHAR=y and BR2_USE_MMU=y.
+# The colliding BusyBox applet is turned off in board/mister/de10nano/
+# busybox.fragment so this binary wins deterministically (same idiom as
+# ifup/ifdown and the util-linux block).
+BR2_PACKAGE_WGET=y                        # real GNU wget 1.25.0 w/ GnuTLS -- https
+                                          # works, /etc/wgetrc is read (stock parity)
 BR2_PACKAGE_DBUS=y
 BR2_PACKAGE_DBUS_CPP=y                    # dbusxx-introspect; low-value but zero-cost parity
 BR2_PACKAGE_DBUS_GLIB=y

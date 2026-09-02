@@ -752,9 +752,9 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=".../board/mister/common/linux-mister.fra
 ```
 
 Rationale, measurements and per-subsystem justification are that track's
-([`de25-kernel-config.md`](de25-kernel-config.md)), not this one's. **One step is still owed:**
-`board/mister/de25nano/linux.fragment` is now referenced by nothing and should be `git rm`'d in the
-commit that carries this change.
+([`de25-kernel-config.md`](de25-kernel-config.md)), not this one's.
+`board/mister/de25nano/linux.fragment` is referenced by nothing once this lands and is `git rm`'d
+in the same commit.
 
 ---
 

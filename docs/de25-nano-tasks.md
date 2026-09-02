@@ -313,28 +313,56 @@ so a boot failure there would tell us nothing about our image.
 - What he can answer for us, in order: factory SPL boots our FIT (D0.1 Q3) → kernel reaches a
   serial login on our DTS (D2.3) → mmc0 under SMMU (§8 Q2) → the §2.6 fabric-programming test.
 
+## Wave 2 — 2026-09-02 (pre-hardware) — DONE, on `feature/de25-wave2`
+
+Goal: a card that can go into a borrowed board. Same agent sizing as wave 1; two `fable`
+adversarial passes (config refactor; boot path) before anything is called done.
+
+| Track | Deliverable | Result |
+|---|---|---|
+| U-Boot + TF-A (D2.4 desk half) | mainline U-Boot v2026.07 + TF-A v2.15.0 as Buildroot packages; `board/mister/de25nano/uboot.fragment`, `uboot-dts/`; `docs/de25-uboot.md` | `u-boot.itb` built by binman and `dumpimage`-verified against the factory SPL contract (crc32 only, no keys; addresses disjoint). QSPI write paths compiled OUT (`CMD_SF`/`MTD`/`UBI`/`ENV_IS_IN_UBI` absent from the resolved config; verified again in the binary's strings). Stock's default boot command contains a `saveenv && ubi part root` leg — gone with `CMD_SF`. `HANDOFF` and `BLOBLIST` off (factory SPL, not ours, runs first). §8 Q6 closed negative: `# CONFIG_SPL is not set` removes the FIT. SD PHY: SoCDK-validated delays, default-speed 25 MHz for first contact. |
+| SD card image (D2.4 other half) | `genimage-sdcard.cfg`, `post-image.sh`, `scripts/check-sdcard-de25.sh`, `docs/de25-sdcard.md` | MBR, p1 FAT32 `DE25BOOT` (`u-boot.itb`, `Image`, dtb, `extlinux/extlinux.conf`), p2 = ext4 rootfs written directly (**interim** p2 decision). Checker opens the FIT, allow-lists p1, rejects the DE10 card and every mutated card. `make de25` asserts the card exists and passed. |
+| Kernel diet + shared fragment | `board/mister/common/linux-mister.fragment`, `board/mister/de25nano/linux.config`, `scripts/check-kernel-fragment-noop.sh`, `docs/de25-kernel-config.md` | 1,481 → 92 modules, 90 MB → 2.4 MiB, `Image` 41.9 → 20.7 MB; installed module name set identical to the DE10's. Fragment proven a **no-op on the DE10 6.18 tree** (mechanical check; wire it after the DE10 kernel build step). The wave-1 arm64-defconfig kernel had joydev/uinput/hidraw and the pad drivers OFF — invisible in a green build. |
+| Config refactor (owner option 2) | `configs/fragments/*` stacks, monoliths deleted, comments → `docs/buildroot-config.md`, `scripts/check-config-fragments.sh` + golden hashes, `lint-config` CI job | PR #137. DE10 resolved config identical old vs new (two independent proofs); fingerprint residue byte-identical; 30+ mutations exercised; kernel-pin bumps don't move the golden, Buildroot bumps warn and are auto-refreshed by hash-sync case 8. |
+
+### What the boot-path `fable` pass established (for the borrowed-board owner)
+
+No brick-class or boot-blocking finding. Verified in the built artefacts, not the config: no QSPI
+command or driver in U-Boot proper; BL31 issues no QSPI/RSU command at boot; the kernel has no
+MTD/spi-nor/RSU driver and its DTB has no flash node; the FIT is unsigned-crc32 at the addresses
+the factory SPL expects; nothing writes anything a power cycle does not clear. First-boot
+expectations worth knowing: BL31 prints on UART0, so **no `NOTICE: BL31` lines on the header
+UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measurement); if
+`Retrieving file: /Image` stalls, the SD PHY timing in `uboot-dts/` is the first knob
+(`de25-uboot.md` §5.1).
+
+### Still open after wave 2
+
+- p2 filesystem / DE10-style two-stage layout (FAT boot + exFAT data + `linux.img` loop root)
+  — owner decision; the initramfs route is arch-neutral and the rewritten `loop=` patch
+  compile-verifies on aarch64, so both are open. Recommendation: first hardware boot on the plain
+  ext4 card, then switch.
+- The DE25 kernel pin has no Renovate manager and shares `linux.hash` by symlink with the DE10
+  registry (an rt bump can drop the line the DE25 needs). Pre-existing; needs its own manager.
+- DE25 selects no `linux-firmware`; the shared fragment builds the Wi-Fi/BT drivers that will
+  ask for it. Owner decision against the bare-developer-OS scope.
+- Patch 0002 (MiSTer audio) still excluded; `openssh` will need `_SANDBOX` off when added.
+
 ## What to do next — 2026-08-22
 
 D0 and D1 are done; the opening move this section used to describe has been executed. The live
 work now, in the order that unblocks the most:
 
-Items 1–5 of the original list were executed as wave 1 (above). Remaining, in unblock order:
+Waves 1 and 2 executed items 1–5 of the original list and the first three of the wave-1 list.
+Remaining, in unblock order:
 
-1. **U-Boot + TF-A desk build** (D2.4's buildable half, implementation-path §8 Q6): mainline
-   v2026.07 + TF-A v2.15.0 as Buildroot packages in the DE25 Buildroot configuration,
-   `# CONFIG_SPL is not set`,
-   the §6.2 env fragment with `CONFIG_ENV_IS_IN_UBI` off, `u-boot.itb` shape checked with
-   `dumpimage` against the factory SPL contract. Then the `fable` pass that gates any image
-   leaving this machine (rule 2).
-2. **`genimage-sdcard-de25.cfg` + `check-sdcard-de25.sh`** (D2.4's other half), so a card can be
-   written for the borrowed-board test.
-3. **Kernel diet**: replace `arm64 defconfig` + fragment with a curated config — 1,481 modules is
-   not a MiSTer kernel. Also decide `Image` vs `Image.gz`.
-4. **`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) so userland is
-   exercised with no board.
-5. **Owner decisions**: 0002 audio patch (audit Q8), p2 filesystem, shared-base defconfig
-   refactor (ADR 0029 "left open"), upstream submission of 0101/0102.
-6. **Stand up D0.4** as a `/schedule` routine.
+1. **Hardware session** on a borrowed board (QSPI at factory): factory SPL boots our FIT → serial
+   login → SD under the 25 MHz cap → `dd` the card clean → lift to 50 MHz → the §2.6 fabric
+   test, SMMU-off first.
+2. **`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
+   initramfs itself, which the two-stage layout will need.
+3. **Owner decisions** listed under "Still open after wave 2".
+4. **Stand up D0.4** as a `/schedule` routine.
 
 Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a
 later phase must refute, run them **sequentially**, not in parallel. D0.1 was first launched with

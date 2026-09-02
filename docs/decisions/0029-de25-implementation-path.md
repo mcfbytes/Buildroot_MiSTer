@@ -49,6 +49,7 @@ Accept the nine decisions below as the bounding constraints for DE25 wave 1.
 | D7 | Carry the `sdhci-cadence` 40-bit DMA-mask patch, upstreamably | §1 row 8, §1.1 | *no DP* — instance of D5 |
 | D8 | Fix mainline's unbindable Agilex 5 svc node **upstream** | §3.1 note | **DP-9** |
 | D9 | A vendor `svc` carry is a hardware-gated escape hatch | §1 row 9, §2.6 | **DP-9**, **DP-1** |
+| D10 | The SMMU ships **disabled**; DMA isolation is a non-goal (DE10 parity) | [`de25-dts-rationale.md`](../de25-dts-rationale.md) §4 | **DP-9**, **DP-1** |
 
 ### D1 — Core loading goes through `fpga_manager` + a DT overlay
 
@@ -222,6 +223,38 @@ critical, not merely be what the vendor happens to do.
   mainline-first is refuted *on the svc layer only* and the real choice graduates to its own ADR, with
   a sizing diff and a TF-A `plat/intel/soc/agilex5` read — unread here **[U]** (§8 Q1/Q5).
 - **Re-open if.** The test passes — the hatch closes and D5 holds unqualified on the svc layer.
+
+### D10 — The SMMU ships disabled; DMA isolation is a non-goal
+
+**Decision (owner, 2026-09-02).** The board device tree leaves the Agilex 5 `arm,smmu-v3` at
+`status = "disabled"`, every `iommus` reference stays in the tree but is inert, and this is the
+intended configuration, not a wave-1 expedient. DMA isolation for peripherals and for the fabric
+is **not a goal** of this image: the DE10-Nano's Cyclone V has no SMMU, so a core in the fabric
+can already DMA anywhere in RAM on stock, and this is parity with that, not a regression. The
+security value an IOMMU carries on a laptop or server does not apply to a games console whose
+fabric is loaded by its owner.
+
+- **Evidence.** Mainline `stratix10-svc` takes the SDM buffer from the `GET_MEM` SMC, keeps
+  **physical** addresses in its gen_pool and hands them to the SDM raw (no `iommu_map`/`dma_map`
+  anywhere in the file), while the dtsi's `iommus = <&smmu 10>` attaches the svc device to a
+  translated default domain. With the SMMU on, mainline can bind the FPGA manager but the SDM's
+  first read faults: **SMMU-on cannot program the fabric on a mainline kernel** — traced at 7.2.2
+  and matching the one failed attempt seen on real silicon **[V, rationale §4.1]**. Terasic's
+  vendor driver makes SMMU-on work with an IOVA carveout, `iommu_map()` and an SDM remapper
+  bypass; mainline has none of that. SMMU-off makes the driver's assumption true.
+- **Consequences.** Disabling the SMMU is what gives D1 (fpga-manager + overlay on mainline) its
+  chance, so D10 is a precondition of D1, not a trade against it. The D7 patch is not
+  load-bearing on the shipped path (all DRAM is below 4 GiB). The runtime equivalent for a test
+  card is the kernel argument `iommu.passthrough=1` in `extlinux.conf` — the SMMU cannot be
+  toggled from userspace after boot, but the hardware session can compare both shapes by editing
+  a text file on the FAT partition. **SMMU-off is unproven, not disproven** (rationale U10):
+  Terasic's driver refuses to run on Agilex 5 without the SMMU and always disables the SDM
+  remapper, which mainline never touches; the §2.6 fabric test runs SMMU-off **first** and is
+  what settles it.
+- **Re-open if.** Upstream `stratix10-svc` gains IOMMU-aware buffer handling (then SMMU-on
+  becomes a free choice and this decision is revisited on its merits, still with isolation as a
+  non-goal by default); or the SMMU-off fabric test fails on hardware and the vendor remapper
+  behaviour turns out to be required — that is D9's escape hatch, evaluated then.
 
 ## Decisions deliberately left open
 

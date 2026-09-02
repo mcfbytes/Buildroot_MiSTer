@@ -173,6 +173,10 @@ if [ ! -f "$binaries_dir/$FIT_NAME" ]; then
 		note "WARNING: SKIPPING $SDCARD_NAME. The kernel and rootfs are built; there"
 		note "WARNING: is NO SD-card image, and nothing produced by this build can boot"
 		note "WARNING: a DE25-Nano. Unset DE25_ALLOW_NO_UBOOT to make this a hard error."
+		# A card from an EARLIER run must not survive this one: the de25 recipe
+		# reports whatever sdcard-de25.img it finds, and a stale image would make
+		# the skip above a lie. Remove the card and its p1 filesystem image.
+		rm -f "$binaries_dir/$SDCARD_NAME" "$binaries_dir/boot-de25.vfat"
 		exit 0
 	fi
 	die "no $FIT_NAME in $binaries_dir.

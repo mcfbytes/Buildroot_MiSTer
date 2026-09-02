@@ -91,6 +91,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f "$FRAGMENT" ] || die "fragment does not exist: $FRAGMENT"
+# Canonicalise now: merge_config.sh runs after a `cd` into the scratch dir,
+# where a relative --fragment path would no longer resolve.
+FRAGMENT=$(readlink -f "$FRAGMENT")
 
 # --- bind to THE kernel tree, fail closed on zero or many --------------------
 if [ -z "$TREE" ]; then

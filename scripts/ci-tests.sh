@@ -98,19 +98,19 @@ LINUX_IMG="$IMAGES/linux.img"
 # fine and only this constant was wrong. A hardcoded version here does not fail
 # safe -- it fails *misleadingly*, pointing the reader at the wrong subsystem.
 #
-# Read the MAIN image's defconfig specifically, which is what the scoping note
+# Read the DE10 board fragment specifically, which is what the scoping note
 # above is about: configs/mister_rt.fragment overrides this symbol for the RT
-# variant, and configs/mister_kernel_defconfig carries a lockstep copy
-# (scripts/check-kernel-defconfig-sync.sh asserts those two agree).
+# variant; the kernel-only stack shares this very fragment with the image
+# (configs/fragments/stacks.mk), so there is no lockstep copy to worry about.
 #
-# Anchored to ^ and taking the last match on purpose: the defconfig explains
-# this symbol in a comment that quotes it verbatim, so an unanchored match
-# returns two lines -- the exact bug fixed in the hash-sync workflow (#42).
+# Anchored to ^ and taking the last match on purpose: a comment quoting the
+# symbol verbatim would otherwise match too -- the exact bug fixed in the
+# hash-sync workflow (#42).
 KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
-	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
+	"$ROOT/configs/fragments/de10nano.fragment" | tail -1)
 if [ -z "$KVER" ]; then
 	echo "FATAL: could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from" >&2
-	echo "       $ROOT/configs/mister_de10nano_defconfig" >&2
+	echo "       $ROOT/configs/fragments/de10nano.fragment" >&2
 	exit 1
 fi
 

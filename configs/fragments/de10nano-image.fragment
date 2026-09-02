@@ -400,11 +400,13 @@ BR2_PACKAGE_KBD=y
 #   make de10nano-defconfig && make all
 # WARNING: do not add numactl/mpfr lines here — they arrive by select and must
 # disappear with this block. GDB_SERVER must stay explicit next to GDB_DEBUGGER.
+# strace is NOT in this block any more: T5 (§5.32) made it permanent, and a
+# second BR2_PACKAGE_STRACE=y line here would be a redefinition
+# check-config-fragments.sh rejects.
 ################################################################################
 BR2_PACKAGE_GDB=y
 BR2_PACKAGE_GDB_SERVER=y
 BR2_PACKAGE_GDB_DEBUGGER=y
-BR2_PACKAGE_STRACE=y
 BR2_PACKAGE_LINUX_TOOLS_PERF=y
 BR2_PACKAGE_LINUX_TOOLS_PERF_NEEDS_HOST_PYTHON3=y
 BR2_PACKAGE_RT_TESTS=y
@@ -414,9 +416,12 @@ BR2_PACKAGE_RT_TESTS=y
 
 ################################################################################
 # System configuration (§5.43) — the System configuration menu, NOT the
-# toolchain menu (so no from-scratch-rebuild hazard). Merged /usr and the root
-# password live in common.fragment.
+# toolchain menu (so no from-scratch-rebuild hazard). Merged /usr lives in
+# common.fragment.
 ################################################################################
+
+# --- root password: empty = passwordless root, matching stock (§5.43, ADR 0015) ---
+BR2_TARGET_GENERIC_ROOT_PASSWD=""
 
 # --- locale data (§5.44) ---
 # WARNING: BR2_ENABLE_LOCALE (toolchain menu, already y) only compiles locale

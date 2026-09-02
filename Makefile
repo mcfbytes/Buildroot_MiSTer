@@ -164,6 +164,10 @@ INSTALLER_DEFCONFIG          := $(ROOT_DIR)/configs/mister_installer_defconfig
 INSTALLER_KERNEL_OUTPUT_DIR := $(ROOT_DIR)/output-installer-kernel
 SDCARD_STAGE_DIR             := $(ROOT_DIR)/output-sdcard-stage
 SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
+# scripts/check-config-fragments.sh's scratch O= dirs (one per fragment
+# stack, config-only, never built). Not a Buildroot-cleanable tree either:
+# plain rm -rf'd below, like the three above.
+CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
 
 # --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
 # A FIFTH Buildroot output dir, and by far the biggest departure of the five:
@@ -484,7 +488,7 @@ clean:
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
 	@if [ -d $(DE25_OUTPUT_DIR) ]; then $(BR_MAKE_DE25) clean; fi
-	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
+	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR)
 	@# The extra-modules overlay is a build product (staged module trees), so
 	@# clean takes it wholesale, stamps included — the next `make rt` restages
 	@# its tree, and `all` recreates the (empty) dir before Buildroot needs it.
@@ -508,7 +512,7 @@ distclean:
 	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
 	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) \
 	       $(INSTALLER_KERNEL_OUTPUT_DIR) \
-	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) \
+	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR) \
 	       $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------

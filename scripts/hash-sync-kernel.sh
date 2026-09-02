@@ -9,7 +9,7 @@
 # had when it took no options at all:
 #
 #   --pin=stable   the 6.18.y longterm kernel that the SHIPPED image runs.
-#                  Version read from configs/mister_de10nano_defconfig.
+#                  Version read from configs/fragments/de10nano.fragment.
 #   --pin=rt       the RT/beta kernel variant (docs/rt-beta-kernel.md).
 #                  Version read from configs/mister_rt.fragment.
 #
@@ -136,7 +136,7 @@
 #
 # Testing against a fixture: point REPO_ROOT at a scratch directory
 # containing a fake version file for the pin under test -- configs/
-# mister_de10nano_defconfig for `stable`, configs/mister_rt.fragment for `rt`
+# fragments/de10nano.fragment for `stable`, configs/mister_rt.fragment for `rt`
 # (each just needs the one BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="..." line;
 # including a SECOND, unanchored-looking copy in a comment is exactly the
 # bug-#42 regression test this case wants) -- plus a fake linux.hash carrying
@@ -198,7 +198,7 @@ done
 # rt pin gets its own, which the .yml's gate must OR in (it does).
 case "$PIN" in
 	stable)
-		VERSION_FILE="configs/mister_de10nano_defconfig"
+		VERSION_FILE="configs/fragments/de10nano.fragment"
 		OUTCOME_PIN="kernel"
 		CHANGED_VAR="PATCH_HASH_CHANGED"
 		;;

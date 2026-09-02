@@ -80,14 +80,14 @@ KERNEL_SRC="${TEST_INITRAMFS_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
 # fails the QEMU kernel build with a confusing "too few arguments". Reading the
 # pin keeps this test kernel on the same version the image ships, which is what
 # this script's header already claims it does.
-KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/mister_de10nano_defconfig")}"
+KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/fragments/de10nano.fragment")}"
 # Inline, not die() -- that is defined further down, and this block runs before
 # it. Under `set -uo pipefail` (no -e) an undefined-function call would print
 # "command not found" and CARRY ON, which is exactly the silent failure this
 # guard exists to prevent.
 [ -n "$KERNEL_VERSION" ] || {
 	printf 'test-initramfs.sh: FATAL: %s\n' \
-		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/mister_de10nano_defconfig" >&2
+		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/fragments/de10nano.fragment" >&2
 	exit 2
 }
 KERNEL_TARBALL="${TEST_INITRAMFS_KERNEL_TARBALL:-$ROOT/work/linux-$KERNEL_VERSION.tar.xz}"

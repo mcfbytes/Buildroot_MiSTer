@@ -46,6 +46,8 @@ BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
 BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200=y
 BR2_TARGET_GENERIC_HOSTNAME="de25"
 BR2_TARGET_GENERIC_ISSUE="Welcome to MiSTer DE25-Nano (developer OS)"
+# Empty = passwordless root; on this board the only way in (no SSH keys yet).
+BR2_TARGET_GENERIC_ROOT_PASSWD=""
 
 # --- Packages: none, deliberately (docs/buildroot-config.md §6.8) ---
 # --- Not here yet: bootloader, SD-card image — D2.2 / D2.4 (docs/buildroot-config.md §6.9) ---

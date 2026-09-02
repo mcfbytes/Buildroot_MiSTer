@@ -1,0 +1,10 @@
+# configs/fragments/golden.sha256 — sha256 of each stack's NORMALISED resolved
+# .config for the pinned Buildroot version (scripts/check-config-fragments.sh
+# (d); docs/buildroot-config.md §9). Regenerate ONLY with
+#   scripts/check-config-fragments.sh --update-golden
+# and say in the commit message what changed and why. Columns:
+# <BUILDROOT_VERSION> <stack> <sha256>
+2026.05.2 de10nano bc6265aaee6ec9afb8ef897b27118476ad9ec3f103bc96a0a88503cc00069698
+2026.05.2 de10nano-kernel c80cb96ce4ef103377da8dac678f2a909ef9bd9d55e79b57d6434d93119d7d9f
+2026.05.2 de25nano d4272e042c0686d33b28cf55ea11b9ef4e57755a0b9e55307d75e3ab2c04a174
+2026.05.2 rt 6f31278b678e4c7de41da98fa9ec688db57b345dfa39e82e748562b0f2d8923a

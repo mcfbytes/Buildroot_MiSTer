@@ -42,14 +42,16 @@ BOARD_COMMON_SENTINELS="BR2_KERNEL_HEADERS BR2_TOOLCHAIN_BUILDROOT_CXX"
 BOARD_COMMON_FAMILIES="BR2_KERNEL_HEADERS BR2_TOOLCHAIN_BUILDROOT_"
 
 # Sentinel symbols check-kernel-defconfig-sync.sh's `for must in ...` assert
-# requires present in configs/mister_kernel_defconfig (its :83, pre-change).
+# requires present in the kernel-only fragment stack (configs/fragments/
+# stacks.mk DE10NANO_KERNEL_FRAGMENTS; before the 2026-09 fragment split, in
+# configs/mister_kernel_defconfig).
 # Merge order for a consumer is ARCH ROW FIRST, then BOARD_COMMON_SENTINELS —
 # see that script for why the order matters (byte-identity with today's
 # literal list, so docs/de25-readiness-ledger.md §5.6's migration check is
 # meaningful).
 declare -A BOARD_ARCH_SENTINELS=(
 	[de10nano]="BR2_arm BR2_cortex_a9"
-	# [V] — matches configs/mister_de25nano_defconfig (D2.1, 2026-09-02):
+	# [V] — matches configs/fragments/de25nano.fragment (D2.1, 2026-09-02):
 	# BR2_aarch64=y and BR2_cortex_a76_a55=y are its arch/CPU choices.
 	# Change this row in the same commit as any change to those two lines.
 	[de25nano]="BR2_aarch64 BR2_cortex_a76_a55"
@@ -61,7 +63,7 @@ declare -A BOARD_ARCH_SENTINELS=(
 # then BOARD_COMMON_FAMILIES merge order as the sentinels above.
 declare -A BOARD_ARCH_FAMILIES=(
 	[de10nano]="BR2_arm BR2_ARM_ BR2_cortex"
-	# [V] — checked against configs/mister_de25nano_defconfig (2026-09-02):
+	# [V] — checked against configs/fragments/de25nano.fragment (2026-09-02):
 	# it sets BR2_aarch64 and BR2_cortex_a76_a55 and no BR2_ARM_* symbol at
 	# all (AArch64 has no such knobs in Buildroot). BR2_ARM_ is carried over
 	# so that an aarch64 defconfig populating none of it is a legitimate
@@ -76,6 +78,7 @@ declare -A BOARD_ARCH_FAMILIES=(
 # not plain symbol names (hence the leading '^').
 declare -A BOARD_FINGERPRINT_SENTINELS=(
 	[de10nano]="^BR2_arm ^BR2_cortex"
-	# [U] — confirm against configs/mister_de25nano_defconfig when it lands.
+	# [V] — configs/fragments/de25nano.fragment sets BR2_aarch64=y and
+	# BR2_cortex_a76_a55=y (2026-09-02).
 	[de25nano]="^BR2_aarch64 ^BR2_cortex"
 )

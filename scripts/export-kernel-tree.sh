@@ -156,7 +156,7 @@ set -o pipefail
 # (shellcheck SC2155), and the rest of scripts/ avoids that pattern.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
-readonly DEFCONFIG="$REPO_ROOT/configs/mister_de10nano_defconfig"
+readonly DEFCONFIG="$REPO_ROOT/configs/fragments/de10nano.fragment"
 readonly HASH_FILE="$REPO_ROOT/board/mister/de10nano/patches/linux/linux.hash"
 
 # Committer identity for the generated commits. Patch AUTHORS are preserved by `git am`;

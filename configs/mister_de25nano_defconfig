@@ -275,13 +275,16 @@ BR2_REPRODUCIBLE=y
 # with the main image about that path or depmod's indexes point nowhere.
 BR2_ROOTFS_MERGED_USR=y
 
-# Serial console. The Agilex 5 HPS UART0 is a 16550 (`snps,dw-apb-uart`) at
-# 0x10c02000 — verified, not assumed: `uart0: serial@10c02000` with
-# `reg = <0x10c02000 0x100>` in the kernel's own socfpga_agilex5.dtsi:461-470.
-# The 8250 driver enumerates it as ttyS0. 115200 8N1 is what mainline's own
-# Agilex 5 board file asks for (`stdout-path = "serial0:115200n8"`,
-# socfpga_agilex5_socdk.dts:20-22) and what the DE25-Nano's USB-UART bridge
-# uses, so anything else means a garbled login prompt rather than a missing one.
+# Serial console. The DE25-Nano's header UART is the HPS **uart1**
+# (`serial@10c02100`, `snps,dw-apb-uart`, 16550-compatible) — not uart0,
+# which is the SoC Development Kit's console. The board DTS enables only
+# uart1 and aliases it `serial0` with `stdout-path = "serial0:115200n8"`
+# (board/mister/de25nano/socfpga_agilex5_de25nano.dts, "Console UART"; every
+# reference tree agrees, docs/de25-dts-rationale.md U1 [V]). It is the only
+# enabled 8250 port, so it is ttyS0 whichever numbering rule 8250 applies.
+# 115200 8N1 is what every reference asks for and what the board's USB-UART
+# bridge uses, so anything else means a garbled login prompt rather than a
+# missing one.
 #
 # This is the ONE line whose failure mode is "the board looks dead". The kernel
 # side of it comes from the fragment (8250 + 8250_DW + 8250_CONSOLE, all =y)

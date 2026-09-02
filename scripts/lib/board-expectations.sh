@@ -49,10 +49,9 @@ BOARD_COMMON_FAMILIES="BR2_KERNEL_HEADERS BR2_TOOLCHAIN_BUILDROOT_"
 # meaningful).
 declare -A BOARD_ARCH_SENTINELS=(
 	[de10nano]="BR2_arm BR2_cortex_a9"
-	# [U] — confirm against configs/mister_de25nano_defconfig when it lands.
-	# BR2_aarch64 is the live arch choice (docs/de25-readiness-ledger.md
-	# §5.4); BR2_cortex_a76_a55 is D2.1's CPU pick, not yet verified against
-	# a real defconfig.
+	# [V] — matches configs/mister_de25nano_defconfig (D2.1, 2026-09-02):
+	# BR2_aarch64=y and BR2_cortex_a76_a55=y are its arch/CPU choices.
+	# Change this row in the same commit as any change to those two lines.
 	[de25nano]="BR2_aarch64 BR2_cortex_a76_a55"
 )
 
@@ -62,11 +61,12 @@ declare -A BOARD_ARCH_SENTINELS=(
 # then BOARD_COMMON_FAMILIES merge order as the sentinels above.
 declare -A BOARD_ARCH_FAMILIES=(
 	[de10nano]="BR2_arm BR2_ARM_ BR2_cortex"
-	# [U] — confirm against configs/mister_de25nano_defconfig when it lands.
-	# BR2_ARM_ is carried over unchanged (docs/de25-readiness-ledger.md
-	# §5.4): both 32- and 64-bit cores share the BR2_cortex_* namespace, and
-	# an aarch64 defconfig populating no BR2_ARM_* symbol is a legitimate
-	# empty-set match, not a failure.
+	# [V] — checked against configs/mister_de25nano_defconfig (2026-09-02):
+	# it sets BR2_aarch64 and BR2_cortex_a76_a55 and no BR2_ARM_* symbol at
+	# all (AArch64 has no such knobs in Buildroot). BR2_ARM_ is carried over
+	# so that an aarch64 defconfig populating none of it is a legitimate
+	# empty-set match, not a failure; both 32- and 64-bit cores share the
+	# BR2_cortex_* namespace.
 	[de25nano]="BR2_aarch64 BR2_ARM_ BR2_cortex"
 )
 

@@ -707,11 +707,11 @@ $(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP)
 # leave someone to discover it at a dead serial console.
 #
 # The .dtb is asserted by GLOB rather than by name on purpose. The name is
-# owned by the defconfig, which today names mainline's socdk board file as an
-# explicit PLACEHOLDER and will be switched to a custom
-# BR2_LINUX_KERNEL_CUSTOM_DTS_PATH when the real DE25 device tree lands (D2.3).
-# A hardcoded filename here would fail the build on exactly the day that switch
-# happens, for a reason that has nothing to do with what went wrong. Buildroot
+# owned by the defconfig (BR2_LINUX_KERNEL_CUSTOM_DTS_PATH names the board
+# file, board/mister/de25nano/socfpga_agilex5_de25nano.dts; it was mainline's
+# socdk placeholder until D2.3 landed). A hardcoded filename here would fail
+# the build on the day the DTS is renamed or a second variant is added, for a
+# reason that has nothing to do with what went wrong. Buildroot
 # installs the dtb into images/ under its BASENAME (linux/linux.mk:491-497,
 # `notdir` unless BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME), so a flat glob sees it
 # either way. Zero dtbs IS a failure: BR2_LINUX_KERNEL_DTS_SUPPORT is on, so an
@@ -733,7 +733,11 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 	echo ""; \
 	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
 	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -c %s $$d) bytes)"; done; \
-	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4"; \
+	test -f $(DE25_OUTPUT_DIR)/images/rootfs.ext4 || { \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/rootfs.ext4" >&2; \
+		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
+		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
+	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
 	echo "    Bare developer OS -- no MiSTer binaries, no bootloader yet (D2.2)."; \
 	echo ""
 

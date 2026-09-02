@@ -49,9 +49,14 @@
 #   * build.yml's `build` job — as a lint next to lint-kernel-patches.sh, so
 #     drift also fails a main-only change that edits the main defconfig
 #     without mirroring.
-#   * By hand: scripts/check-kernel-defconfig-sync.sh (no arguments), or
-#     BOARD=<name> scripts/check-kernel-defconfig-sync.sh [<name>] to check
-#     against a different board's expected symbols.
+#   * By hand: scripts/check-kernel-defconfig-sync.sh (no arguments).
+#     BOARD=<name> (or a single positional <name>) selects which board's
+#     EXPECTATION ROW the asserts below use; it does NOT change which two
+#     files are compared. The compared pair is fixed to the DE10 defconfigs
+#     named above (the file-path axis is deliberately not wired yet —
+#     docs/de25-readiness-ledger.md §5.7 risk 3), so BOARD=de25nano today
+#     asserts aarch64 expectations against the DE10 pair and fails, as it
+#     should: it is a table self-test, not a DE25 lockstep check.
 #
 # BOARD selects the per-board sentinel/family tables in scripts/lib/
 # board-expectations.sh (docs/de25-readiness-ledger.md §5.2) — an optional
@@ -80,10 +85,17 @@ KERNEL_DEFCONFIG="$ROOT/configs/mister_kernel_defconfig"
 # See this file's header for why the default must stay byte-identical to
 # the pre-table literal lists.
 BOARD="${1:-${BOARD:-de10nano}}"
-if [ -z "${BOARD_ARCH_SENTINELS[$BOARD]+set}" ]; then
-	echo "check-kernel-defconfig-sync: FATAL: unknown board '$BOARD' -- scripts/lib/board-expectations.sh has no row for it. Known boards: ${!BOARD_ARCH_SENTINELS[*]}" >&2
-	exit 2
-fi
+# Both tables are checked, not just the first one the script happens to read:
+# a board row added to one table and forgotten in the other would otherwise
+# surface as a bare `set -u` unbound-variable trace at the later expansion
+# instead of a usage error naming the board and the table.
+for table in BOARD_ARCH_SENTINELS BOARD_ARCH_FAMILIES; do
+	if ! declare -n _tbl="$table" 2>/dev/null || [ -z "${_tbl[$BOARD]+set}" ]; then
+		echo "check-kernel-defconfig-sync: FATAL: unknown board '$BOARD' -- scripts/lib/board-expectations.sh's $table has no row for it. Known boards: ${!BOARD_ARCH_SENTINELS[*]}" >&2
+		exit 2
+	fi
+done
+unset -n _tbl
 
 for f in "$MAIN_DEFCONFIG" "$KERNEL_DEFCONFIG"; do
 	[ -f "$f" ] || { echo "check-kernel-defconfig-sync: FATAL: missing $f" >&2; exit 2; }

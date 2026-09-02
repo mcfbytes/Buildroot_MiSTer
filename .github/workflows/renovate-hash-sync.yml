@@ -108,10 +108,10 @@ on:
       # here, the workflow never runs on a Buildroot bump at all -- no skipped
       # job, no red X, no outcome row.
       - "Makefile"
-      - "configs/mister_de10nano_defconfig"
-      # mister_kernel_defconfig copies this stanza's kernel version (one Renovate
-      # PR bumps both).
-      - "configs/mister_kernel_defconfig"
+      # The DE10 kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) lives in
+      # the board fragment since the 2026-09 fragment split; the kernel-only
+      # stack shares that same file, so there is no second copy to list.
+      - "configs/fragments/de10nano.fragment"
       # The RT/beta kernel pin. ADDED 2026-08-17: this file used to be
       # deliberately ABSENT here, because while that pin tracked mainline -rc
       # its hash could not be auto-refreshed at all (no signed manifest exists

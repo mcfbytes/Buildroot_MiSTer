@@ -153,13 +153,50 @@ jobs:
             echo "::notice::Documentation-only change -- skipping the image build."
           fi
 
+  # Configuration-level lint, in its own job so a bad fragment or patch
+  # header fails in about a minute BEFORE any kernel leg or the 3h image
+  # build starts (both `needs` this). Config-only by design: the fragment
+  # check unpacks the pinned Buildroot tarball (10 MB, hash-verified by the
+  # wrapper Makefile) and runs kconfig -- no toolchain, no package, no
+  # compile. See docs/ci.md#lint-config.
+  lint-config:
+    name: Lint configuration (patch headers, fragment stacks)
+    needs: gate
+    if: needs.gate.outputs.build_needed == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Guards what the build can't: `patch -p1` ignores mail headers, so a
+      # malformed `From:` builds green and only breaks `git am` at export
+      # time. See docs/ci.md#patch-lint-placement.
+      - name: Lint kernel patch headers (git am-ability, both series)
+        run: scripts/lint-kernel-patches.sh
+
+      # Text-level: the image and kernel-only fragment stacks share their
+      # toolchain/kernel fragments by construction -- assert that structure
+      # holds (no Buildroot tree needed; the kernel legs re-run this before
+      # any cache restore). See docs/ci.md#kernel-defconfig-lockstep.
+      - name: Lint kernel-defconfig lockstep
+        run: scripts/check-kernel-defconfig-sync.sh
+
+      # Resolved-level: regenerate every fragment stack through Buildroot's
+      # own merge_config.sh + olddefconfig and assert no redefinition
+      # between fragments, no silently dropped symbol, resolved lockstep,
+      # and the golden hash of the resolved DE10 configuration. See
+      # docs/ci.md#lint-config.
+      - name: Check fragment stacks (regenerate + golden hashes)
+        run: scripts/check-config-fragments.sh
+
   # KERNEL-ONLY leg per variant (ADR 0021); runs before `build`, which
   # consumes its module tree -- a failed leg auto-skips `build` (see
   # `status`). Add a variant = one new configs/mister_<name>.fragment;
   # everything here derives from the name via `gate`. See docs/ci.md#variants.
   build-kernel:
     name: Build kernel (${{ matrix.kernel }})
-    needs: gate
+    needs: [gate, lint-config]
     if: needs.gate.outputs.build_needed == 'true'
     runs-on: ubuntu-26.04
     strategy:
@@ -188,7 +225,7 @@ jobs:
     # needs on the matrix job aggregates ALL its legs; a failed (or cancelled)
     # leg therefore auto-skips this job — `status` below translates that skip
     # into "the kernel leg is the root cause", not a second failure.
-    needs: [gate, build-kernel]
+    needs: [gate, lint-config, build-kernel]
     if: needs.gate.outputs.build_needed == 'true'
     runs-on: ubuntu-26.04
 
@@ -201,19 +238,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # BEFORE the build (fails in ~1s, not after 300 min). Guards what the
-      # build can't: `patch -p1` ignores mail headers, so a malformed
-      # `From:` builds green and only breaks `git am` at export time.
-      # See docs/ci.md#patch-lint-placement.
-      - name: Lint kernel patch headers (git am-ability, both series)
-        run: scripts/lint-kernel-patches.sh
-
-      # Kernel-only defconfig is a manually mirrored COPY of the main
-      # defconfig's toolchain/kernel stanzas -- this asserts it hasn't
-      # drifted (a main-only edit is easy to forget to mirror).
-      # See docs/ci.md#kernel-defconfig-lockstep.
-      - name: Lint kernel-defconfig lockstep
-        run: scripts/check-kernel-defconfig-sync.sh
+      # The patch-header and configuration lints that used to sit here run
+      # in the `lint-config` job above, which this job `needs` -- same
+      # fail-before-the-3h-build property, minus the wait for the kernel
+      # legs. See docs/ci.md#lint-config.
 
       # Populates the overlay the build below consumes -- see
       # .github/actions/merge-kernel-modules and docs/ci.md#kernel-module-overlay.
@@ -351,19 +379,20 @@ jobs:
   # needs.<job>.result is used instead of success()/failure()).
   status:
     name: Build status
-    needs: [gate, build-kernel, build]
+    needs: [gate, lint-config, build-kernel, build]
     if: always()
     runs-on: ubuntu-26.04
     steps:
       - name: Report
         env:
           GATE_RESULT: ${{ needs.gate.result }}
+          LINT_RESULT: ${{ needs.lint-config.result }}
           KERNEL_RESULT: ${{ needs.build-kernel.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           BUILD_NEEDED: ${{ needs.gate.outputs.build_needed }}
         run: |
           set -euo pipefail
-          echo "gate=$GATE_RESULT build-kernel=$KERNEL_RESULT build=$BUILD_RESULT build_needed=$BUILD_NEEDED"
+          echo "gate=$GATE_RESULT lint-config=$LINT_RESULT build-kernel=$KERNEL_RESULT build=$BUILD_RESULT build_needed=$BUILD_NEEDED"
 
           if [ "$GATE_RESULT" != "success" ]; then
             echo "::error::The gate job did not succeed ($GATE_RESULT), so whether a build was needed is unknown. Failing rather than assuming it wasn't."
@@ -371,12 +400,32 @@ jobs:
           fi
 
           rc=0
+          case "$LINT_RESULT" in
+            success)
+              echo "lint-config: patch headers, lockstep and fragment stacks are clean."
+              ;;
+            skipped)
+              if [ "$BUILD_NEEDED" = "true" ]; then
+                echo "::error::The gate asked for a build and lint-config was skipped anyway. That is a workflow bug, not a docs change."
+                rc=1
+              else
+                echo "lint-config: documentation-only change, nothing to lint."
+              fi
+              ;;
+            *)
+              echo "::error::lint-config $LINT_RESULT. (Expect build-kernel and build to show as skipped below -- that is this failure cascading through needs, not two more bugs.)"
+              rc=1
+              ;;
+          esac
+
           case "$KERNEL_RESULT" in
             success)
               echo "build-kernel: every kernel leg built and uploaded its module tree."
               ;;
             skipped)
-              if [ "$BUILD_NEEDED" = "true" ]; then
+              if [ "$BUILD_NEEDED" = "true" ] && [ "$LINT_RESULT" != "success" ]; then
+                echo "build-kernel: skipped because lint-config did not succeed -- the needs-cascade, already failed above."
+              elif [ "$BUILD_NEEDED" = "true" ]; then
                 echo "::error::The gate asked for a build and build-kernel was skipped anyway. That is a workflow bug, not a docs change."
                 rc=1
               else
@@ -396,8 +445,8 @@ jobs:
             skipped)
               if [ "$BUILD_NEEDED" != "true" ]; then
                 echo "build: documentation-only change, no build needed."
-              elif [ "$KERNEL_RESULT" != "success" ]; then
-                echo "build: skipped because build-kernel did not succeed -- the needs-cascade, already failed above."
+              elif [ "$LINT_RESULT" != "success" ] || [ "$KERNEL_RESULT" != "success" ]; then
+                echo "build: skipped because lint-config or build-kernel did not succeed -- the needs-cascade, already failed above."
               else
                 echo "::error::The gate asked for a build and build was skipped anyway. That is a workflow bug, not a docs change."
                 rc=1

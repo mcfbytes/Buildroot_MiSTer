@@ -654,15 +654,15 @@ jobs:
           restore-keys: br-dl-azcopy-
 
       # `echo >> .config` + olddefconfig is the standard Buildroot idiom for
-      # "the committed defconfig, plus this one symbol". It is used rather than
-      # a committed fragment because there is exactly one symbol and no make
-      # target to hang a fragment off (unlike configs/mister_rt.fragment, which
-      # `make rt` exists to apply). BR2_PACKAGE_HOST_GO and
+      # "the committed configuration, plus this one symbol". It is used rather
+      # than a committed fragment because there is exactly one symbol and no
+      # make target to hang a fragment off (unlike configs/mister_rt.fragment,
+      # which `make rt` exists to apply). BR2_PACKAGE_HOST_GO and
       # BR2_PACKAGE_CA_CERTIFICATES come along via the package's own `select`s.
-      - name: Configure (defconfig + azcopy)
+      - name: Configure (DE10-Nano fragment stack + azcopy)
         run: |
           set -eu
-          make mister_de10nano_defconfig
+          make de10nano-defconfig
           echo 'BR2_PACKAGE_AZCOPY=y' >> output/.config
           make olddefconfig
           grep -qx 'BR2_PACKAGE_AZCOPY=y' output/.config

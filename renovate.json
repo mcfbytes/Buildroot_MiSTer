@@ -35,11 +35,17 @@
     "guessing: fileCount is one per (manager, matched file) PAIR, not per distinct",
     "file -- scripts/fetch-sdcard-payload.sh is counted three times because three",
     "managers match it. depCount is one per regex MATCH, which is why it runs one",
-    "ahead of fileCount here: configs/mister_de10nano_defconfig carries",
-    "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"...\" twice -- line 146, the real",
-    "setting, and line 41 inside a header comment, which a regex manager has no",
-    "reason to skip. That model was validated by replaying it over the tree at",
-    "e66b46b, where it reproduces the recorded 18/19 exactly.",
+    "ahead of fileCount here: until the 2026-09 fragment split",
+    "configs/mister_de10nano_defconfig carried BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE",
+    "twice -- the real setting and a verbatim quote inside a header comment, which",
+    "a regex manager has no reason to skip. That model was validated by replaying it",
+    "over the tree at e66b46b, where it reproduces the recorded 18/19 exactly.",
+    "SINCE THE FRAGMENT SPLIT (2026-09): the 6.18 kernel manager matches ONE file,",
+    "configs/fragments/de10nano.fragment, whose only occurrence of the symbol is the",
+    "setting itself (the kernel-only stack shares that file, so the second defconfig",
+    "and its match are gone). By the model above that is fileCount 22 / depCount 22",
+    "(the 6.18 manager went from 2 files / 3 matches to 1 / 1) -- DERIVED, not",
+    "measured: re-measure with the dry-run above before trusting either number.",
     "If `regex` is absent entirely, the custom managers are dead again. Grep the",
     "LOG_LEVEL=debug output for `no-result` to catch bug-2-style",
     "datasource failures, which do NOT show up in the extraction stats at all.",
@@ -108,10 +114,9 @@
     },
     {
       "customType": "regex",
-      "description": "Bump the pinned 6.18.y kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) EVERYWHERE it appears, constrained to the current longterm line by the custom datasource above. BOTH defconfigs are listed on purpose: configs/mister_kernel_defconfig deliberately copies the main defconfig's kernel/toolchain stanza (see its header and scripts/check-kernel-defconfig-sync.sh), so a manager covering only the main one bumps half the repo and leaves the copy behind -- which is exactly what happened on the 6.18.38 -> 6.18.39 bump and is caught, loudly, by the lockstep check. Because both files carry the same depName, Renovate emits ONE PR touching both. configs/mister_rt.fragment carries the same SYMBOL but is deliberately NOT matched here: it pins the mainline -rc line and has its own manager below. The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml. CI (build.yml, pull_request-triggered) then proves the carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713.",
+      "description": "Bump the pinned 6.18.y kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE), constrained to the current longterm line by the custom datasource above. Since the 2026-09 fragment split the pin lives in exactly ONE file, configs/fragments/de10nano.fragment: the shipped image's stack and the kernel-only stack every kernel variant builds on both include that fragment (configs/fragments/stacks.mk), so there is no mirrored copy to bump alongside it any more. (Before the split BOTH configs/mister_de10nano_defconfig and configs/mister_kernel_defconfig were listed, because a manager covering only the main one bumped half the repo and left the copy behind -- which is exactly what happened on the 6.18.38 -> 6.18.39 bump and was caught, loudly, by the lockstep check. That failure mode is gone by construction; scripts/check-kernel-defconfig-sync.sh now guards the construction instead.) configs/mister_rt.fragment and configs/fragments/de25nano.fragment carry the same SYMBOL but are deliberately NOT matched here: both pin the 7.2 line (the rt fragment has its own manager below; the DE25 pin is unmanaged today). The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml. CI (build.yml, pull_request-triggered) then proves the carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713.",
       "managerFilePatterns": [
-        "/^configs/mister_de10nano_defconfig$/",
-        "/^configs/mister_kernel_defconfig$/"
+        "/^configs/fragments/de10nano\\.fragment$/"
       ],
       "matchStrings": [
         "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"(?<currentValue>[\\d.]+)\""

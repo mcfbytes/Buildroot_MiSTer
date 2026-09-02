@@ -215,25 +215,19 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister
 # genimage work (D2.2/D2.4), not here.
 BR2_LINUX_KERNEL_IMAGE=y
 
-# DEVICE TREE — THIS IS A PLACEHOLDER.
-# `intel/socfpga_agilex5_socdk` is mainline's Agilex 5 SoC Development Kit
-# board file (arch/arm64/boot/dts/intel/socfpga_agilex5_socdk.dts). It is here
-# so this defconfig builds green TODAY and produces a .dtb of the right shape;
-# it is NOT the DE25-Nano's device tree and it will not boot the board
-# correctly (mmc0, the fpga-mgr and the fpga-region are absent from EVERY
-# mainline base — docs/de25-implementation-path.md §3).
-#
-# A real board DTS is being authored in parallel at
-# board/mister/de25nano/socfpga_agilex5_de25nano.dts (task D2.3, node set in
-# §3.1). When it lands, REPLACE the line below with:
-#
-#   BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
-#
-# and drop BR2_LINUX_KERNEL_INTREE_DTS_NAME. The two are alternatives, not
-# complements. Note the DTS will `#include` socfpga_agilex5.dtsi out of the
-# kernel tree, so a custom path does not mean a from-scratch device tree.
+# DEVICE TREE — the DE25-Nano board file, authored on mainline's
+# socfpga_agilex5.dtsi (it `#include`s the dtsi out of the kernel tree, so a
+# custom path does not mean a from-scratch device tree). Node set and every
+# per-line justification: docs/de25-dts-rationale.md; the node set itself is
+# docs/de25-implementation-path.md §3.1. Depends on the two carried patches in
+# board/mister/de25nano/linux-patches (0101 sdhci-cadence 40-bit mask + binding,
+# 0102 intel,agilex5-svc match). Ships with the SMMU disabled for wave 1 — see
+# the rationale §4 for why the SMMU-on shape cannot program the fabric on
+# mainline. CUSTOM_DTS_PATH and INTREE_DTS_NAME are alternatives, not
+# complements; mainline's socdk board file was the placeholder before D2.3
+# landed and is not the DE25-Nano (no mmc0, fpga-mgr or fpga-region).
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
-BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga_agilex5_socdk"
+BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
 
 # NO STAGE-1 INITRAMFS ON THIS BOARD, and that is a design point rather than a
 # gap. The DE10 embeds an armv7 BusyBox cpio into its zImage because U-Boot

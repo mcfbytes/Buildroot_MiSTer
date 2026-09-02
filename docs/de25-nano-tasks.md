@@ -261,22 +261,78 @@ its own evidence base.
 
 ---
 
+## Wave 1 — 2026-09-02 (pre-hardware)
+
+Executed on branch `feature/de25-wave1` on top of the D0/D1 recon (PR #132). Agent sizing per
+track: routine shell/CI edits on Sonnet, build/DTS/patch/ADR authoring on Opus, adversarial
+verification on Fable, environment prep on Haiku.
+
+| Track | Task | Deliverable | Status |
+|---|---|---|---|
+| 1 | D1.2 implement | `scripts/lib/board-expectations.sh`; `check-kernel-defconfig-sync.sh` + `buildroot-build/action.yml` table-driven, DE10 default byte-identical | **DONE** `1f9374c` — §5.6 checks 1/2/3/5 run; no-arg and BOARD=de10nano byte-identical; `bogus` exits 2 |
+| 2 | D2.1 | `configs/mister_de25nano_defconfig`, `board/mister/de25nano/linux.fragment`, `make de25` family, external.mk initramfs-hook guard | **DONE** `6dd5604` — toolchain 8 min; **full build green**: `Image` 41.9 MB, ext4 rootfs, 34/34 patches applied at -F0, both carried patches compiled. Kernel is arm64 `defconfig` + fragment (1,481 modules, 90 MB) — a diet is wave-2 work |
+| 3 | D2.3 desk half | `board/mister/de25nano/socfpga_agilex5_de25nano.dts` + `docs/de25-dts-rationale.md`; dtc + dtbs_check | **DONE** `d8ad032`+`ae86dbe` — dtc 0 warnings; dtbs_check 5 (all the fpga-mgr binding gap); **SMMU shipped disabled** after the Fable review (see below); `socfpga_agilex5_de25nano.dtb` (17,138 B) built through Buildroot via `BR2_LINUX_KERNEL_CUSTOM_DTS_PATH` — note the `arm64/intel/…` include-prefix form, because Buildroot copies a custom DTS into the `dts/` root, not `dts/intel/` |
+| 4 | patch series | `board/mister/de25nano/linux-patches/` (shared symlinks + 0101 sdhci-cadence 40-bit mask + 0102 svc match) | **DONE** `e47cb3e`+`6f50981` — 32 symlinks (3 to the 7.x-anchored beta copies, load-bearing) + 0101/0102; 0002 audio and 0047 excluded (README maps every row) |
+| 5 | D4 ADR | `docs/decisions/0029-de25-implementation-path.md` (Proposed) | **DONE** `f156140` — Proposed; four source inconsistencies resolved explicitly; open decisions listed |
+| 6 | ledger §6.5 | `lint.yml` board-agnostic, fails loudly on an empty set | **DONE** `6f55523` — discovery + empty-set guard; de10nano file set unchanged, verified by running both steps |
+
+### What the Fable review changed (2026-09-02)
+
+The adversarial pass on the DTS and the two patches produced one design-level finding that
+inverts §3.1's default: **with the SMMU enabled, mainline `stratix10-svc` cannot program the
+fabric** — it takes the SDM buffer from the `GET_MEM` SMC, keeps *physical* addresses in its
+gen_pool and hands them to the SDM raw (no `iommu_map`/`dma_map` anywhere in the file), while
+the dtsi's `iommus = <&smmu 10>` attaches the svc device to a translated default domain. Binding
+and programming are different claims; SMMU-on satisfies only the first. Wave 1 therefore ships
+`&smmu { status = "disabled"; }` with every `iommus` left in place (inert via `of_iommu`'s
+`-ENODEV`), and the §2.6 fabric test runs in that shape first. SMMU-off is **unproven, not
+disproven** (`de25-dts-rationale.md` U10). Other actions taken: `max-frequency = 25 MHz` on
+mmc0 for first boot, the 1 GiB memory node downgraded from "measured" to "Terasic's U-Boot DTS
+constant" (U-Boot rewrites `/memory` from IO96B anyway), a BL31 `GET_MEM`-vs-`service_reserved`
+check added as U9 to run *before* the first reconfiguration attempt, and the uart1 console
+promoted to [V].
+
+### Testing on a borrowed board before we own one
+
+A friend's DE25-Nano can run our SD images, with one condition that follows directly from
+[`de25-boot-chain.md`](de25-boot-chain.md) §2: **the QSPI must hold the factory phase-1
+image.** Our card ships `u-boot.itb` only and relies on the *factory SPL's* contract (FAT on
+partition 1, FIT at `0x82000000`, boot order `mmc0`). A modified QSPI carries a different SPL
+with a different contract — the reference board's, for instance, is exFAT-aware and RSU-shaped —
+so a boot failure there would tell us nothing about our image.
+
+- **Restore is the same tool he already used to modify it**: Quartus Programmer over the on-board
+  USB-Blaster III, `quartus_pgm -m jtag -c 1 -o "pvi;golden_top_hps.jic"`, from the Resource
+  Package (`…/GHRD/output_files/program_qspi_flash/`). Verify the file first:
+  `golden_top_hps.jic` is 16,777,447 B, sha256 `e3d20c2d…38a4` (full hash in boot-chain §8).
+- **Doing this on his board also closes an open [U] of ours**: that the *published* JIC boots a
+  physical board at all (boot-chain §8, "an archived copy"). Record the board revision.
+- **Safety bar before any image reaches him** (rule 2 of this plan): a `fable` adversarial pass on
+  the U-Boot env fragment proving `CONFIG_ENV_IS_IN_UBI` is off (implementation-path §6.2 —
+  a *load-path* QSPI write, not a save-path one) and that nothing in the image can write QSPI.
+- What he can answer for us, in order: factory SPL boots our FIT (D0.1 Q3) → kernel reaches a
+  serial login on our DTS (D2.3) → mmc0 under SMMU (§8 Q2) → the §2.6 fabric-programming test.
+
 ## What to do next — 2026-08-22
 
 D0 and D1 are done; the opening move this section used to describe has been executed. The live
 work now, in the order that unblocks the most:
 
-1. **Implement D1.2** (the arch-assert generalization), then **D2.1** — the aarch64 defconfig built
-   green on 7.2. D2.1 is blocked on D1.2 and on nothing else. Local build; keep it off CI.
-2. **Author the DE25 DTS** (D2.3's desk half) and validate with `dtc` + `dtbs_check`. Node set in
-   `de25-implementation-path.md` §3.1; harvest board wiring from Altera's in-house DE25 board file
-   but take `mmc0` in **SD4HC** form — `cdns,sd6hc` is nowhere in mainline and buys a carried
-   driver rewrite.
-3. **Compile-test the D0.3 shared-series patches against aarch64/7.2.** Highest de-risk per unit
-   of effort; converts desk verdicts into compile-verified ones.
-4. **An ADR for the nine owner decisions.** They are load-bearing and currently live only in
-   `de25-implementation-path.md` §1 — ADR 0027 predates all of them.
-5. **Fix `lint.yml`'s silent failure** (ledger finding) — it affects the DE10 today.
+Items 1–5 of the original list were executed as wave 1 (above). Remaining, in unblock order:
+
+1. **U-Boot + TF-A desk build** (D2.4's buildable half, implementation-path §8 Q6): mainline
+   v2026.07 + TF-A v2.15.0 as Buildroot packages in the DE25 defconfig, `# CONFIG_SPL is not set`,
+   the §6.2 env fragment with `CONFIG_ENV_IS_IN_UBI` off, `u-boot.itb` shape checked with
+   `dumpimage` against the factory SPL contract. Then the `fable` pass that gates any image
+   leaving this machine (rule 2).
+2. **`genimage-sdcard-de25.cfg` + `check-sdcard-de25.sh`** (D2.4's other half), so a card can be
+   written for the borrowed-board test.
+3. **Kernel diet**: replace `arm64 defconfig` + fragment with a curated config — 1,481 modules is
+   not a MiSTer kernel. Also decide `Image` vs `Image.gz`.
+4. **`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) so userland is
+   exercised with no board.
+5. **Owner decisions**: 0002 audio patch (audit Q8), p2 filesystem, shared-base defconfig
+   refactor (ADR 0029 "left open"), upstream submission of 0101/0102.
 6. **Stand up D0.4** as a `/schedule` routine.
 
 Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a

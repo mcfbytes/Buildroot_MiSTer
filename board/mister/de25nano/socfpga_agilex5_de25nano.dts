@@ -22,7 +22,7 @@
  * Copyright (C) 2025, Altera Corporation          (DE25-Nano board wiring)
  */
 
-#include "socfpga_agilex5.dtsi"
+#include "arm64/intel/socfpga_agilex5.dtsi"
 
 / {
 	/*

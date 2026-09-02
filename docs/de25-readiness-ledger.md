@@ -16,7 +16,7 @@ DP-2 depends on).
 ## 1. Why this document exists, and what it is *not*
 
 A fresh grep for `de10nano|BR2_arm|zImage` outside `board/mister/de10nano/` and `docs/` hits
-**55 files and 457 lines** (§7). Almost all of them are a **path** or a **name**. Exactly four
+**54 files and 457 lines** (§7). Almost all of them are a **path** or a **name**. Exactly four
 things in this repo are *semantically* ARM32/Cyclone-V — they encode a fact about the silicon
 or the boot ROM that has no aarch64 analogue at all **[V** ADR 0027:42-46**]**:
 
@@ -27,13 +27,13 @@ or the boot ROM that has no aarch64 analogue at all **[V** ADR 0027:42-46**]**:
 | (c) | `^BR2_arm` / `^BR2_cortex` asserts | `.github/actions/buildroot-build/action.yml:190` **[V]**, `scripts/check-kernel-defconfig-sync.sh:83,129` **[V]** | Buildroot's arch symbols are mutually-exclusive Kconfig *choices*, not values a variable can carry |
 | (d) | armv7-pinned `package/azcopy` | `package/azcopy/Config.in:64` (`depends on BR2_arm`) **[V]** | Gates a Go cross-build that only exists for 32-bit ARM |
 
-Everything else — 51 of the 55 files — says `de10nano` because that is where the board's files
+Everything else — the other fifty-odd files — says `de10nano` because that is where the board's files
 *live*, or says `zImage_dtb` because that is what today's only kernel artifact is *called*.
 Those are cheap: a `BOARD=` variable, or a second sibling file, fixes them at the moment
 someone touches them. **Collapsing the two classes together is the failure mode this ledger
 exists to prevent** — it would either (i) invite someone to "generalize" the zImage header
 parser, which is not generalizable, or (ii) inflate the DE25 port's apparent cost from four
-real design decisions to fifty-five.
+real design decisions to fifty-four.
 
 **Decision 3's obligation, restated:** we do not pre-build DE25 plumbing. We stop *deepening*
 the four. Any newly written or substantially rewritten script/CI step that would hard-code
@@ -435,4 +435,4 @@ counted twice.
    real and belongs in D2's estimate, not discovered during it.
 
 Nothing in the sweep contradicted the four couplings, and no *fifth* semantic coupling was
-found: every one of the 51 non-(a)-(d) files is a path, a name, or prose.
+found: every one of the remaining non-(a)-(d) files is a path, a name, or prose.

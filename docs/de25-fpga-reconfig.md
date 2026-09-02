@@ -414,8 +414,12 @@ DTS patch **[V]**, added by the DE25 board DTS on top of the in-tree
 };
 ```
 
-Writing the two-string form now is free and forward-compatible: 6.18.44 matches on the
-fallback, a newer kernel matches on the specific string.
+Writing the two-string form now is free and forward-compatible **at runtime**: 6.18.44
+matches on the fallback, a newer kernel matches on the specific string. It is **not**
+schema-clean today — the fpga-mgr binding has not adopted the `items`/`oneOf` form, so
+`dtbs_check` warns on the two-string compatible until Khairul's series lands (see
+[`de25-implementation-path.md`](de25-implementation-path.md) §2.5 and §8 Q4). Runtime
+binding and CI cleanliness are separate claims; only the first holds now.
 
 Note what is *not* there: no `fpga-bridges` property, and no bridge nodes at all — the
 Cyclone V shape (`fpga_bridge0..3` at `0xff400000`/`0xff500000`/`0xff600000`/`0xffc25080`

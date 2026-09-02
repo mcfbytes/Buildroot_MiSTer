@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * U-Boot additions for the Terasic DE25-Nano.
+ *
+ * U-Boot's build automatically #includes <board>-u-boot.dtsi next to
+ * <board>.dts (scripts/Makefile.lib, u_boot_dtsi_options), which is why this
+ * file has no entry anywhere in the config: it is found by NAME. Rename the
+ * .dts and this file must be renamed in the same commit or the board silently
+ * loses everything below -- including the FIT description, which is the entire
+ * output of this build.
+ *
+ * Modelled on mainline v2026.07's arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi.
+ */
+
+/*
+ * LOAD-BEARING, AND NOT OPTIONAL: this pulls in socfpga_agilex5-u-boot.dtsi,
+ * which in turn #includes socfpga_soc64_fit-u-boot.dtsi -- the binman
+ * description that IS u-boot.itb. Without this line the build produces a
+ * working U-Boot binary and no FIT at all.
+ */
+#include "socfpga_agilex5-u-boot.dtsi"
+
+/ {
+	chosen {
+		/*
+		 * serial0 is aliased to uart1 in the .dts. 115200 8N1 is what the
+		 * board's USB-UART bridge and every reference tree use.
+		 *
+		 * NOTE what is NOT here: mainline's socdk carries
+		 *   u-boot,spl-boot-order = &mmc,&flash0,&nand,"/memory";
+		 * That property is read by board_boot_order() in SPL. OUR SPL
+		 * NEVER RUNS -- the factory SPL in QSPI does, from its own DTB,
+		 * whose boot order is already known and fixed:
+		 *   "/soc/mmc0@10808000", "/soc/spi@108d2000/flash@0",
+		 *   "/soc/nand@10b80000", "/memory"
+		 * (docs/de25-boot-chain.md section 2). Restating it here would
+		 * describe a decision we do not get to make, and referencing
+		 * &flash0 would not even compile: this board file deliberately
+		 * declares no QSPI flash node.
+		 */
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+&uart1 {
+	/*
+	 * socfpga_agilex5-u-boot.dtsi marks &uart0 bootph-all because socdk's
+	 * console is uart0. Ours is uart1, and without this marking the node is
+	 * not bound before relocation, so every printf between board_init_f and
+	 * relocation is lost -- which is precisely the window where a bring-up
+	 * failure would be diagnosed.
+	 */
+	bootph-all;
+};
+
+&mmc {
+	/*
+	 * Conservative on purpose. Mainline's socdk block declares
+	 * sd-uhs-sdr50/sdr104 with vqmmc-supply = <&sd_io_1v8_reg>, whose GPIO
+	 * (portb 3) is a SoC Development Kit board fact -- the DE25-Nano's
+	 * 1.8V/3.3V switch, if it has one, is not on that pin, and driving the
+	 * wrong GPIO to change the SD bus voltage is a way to break a card, not
+	 * a way to go faster. The reference DE25 tree also declares no vqmmc
+	 * regulator. So: no UHS modes, no voltage switching, plain 4-bit SD
+	 * high-speed at 50 MHz.
+	 *
+	 * The cdns,phy-* / cdns,ctrl-hrs* timing properties socdk lists are all
+	 * omitted deliberately: drivers/mmc/sdhci-cadence6.c carries a built-in
+	 * default for every one of them (its property tables give each entry a
+	 * default value), so omitting them selects the driver's own defaults
+	 * rather than transplanting another board's tuning.
+	 *
+	 * Throughput does not matter here. This controller's whole job in
+	 * U-Boot is to read one kernel Image and one dtb, once, per boot.
+	 */
+	status = "okay";
+	no-mmc;
+	no-sdio;
+	disable-wp;
+	bus-width = <4>;
+	cap-sd-highspeed;
+	max-frequency = <50000000>;
+	bootph-all;
+};
+
+/*
+ * Name the FIT's fdt-0 after this board.
+ *
+ * socfpga_soc64_fit-u-boot.dtsi hardcodes description = "socfpga_socdk" for
+ * every SoC64 board. It is a description string with no functional effect --
+ * board_fit_config_name_match() compares the CONFIGURATION node's description,
+ * not the image's -- but "socfpga_socdk" in a DE25 artifact is exactly the kind
+ * of label that gets believed later. docs/de25-implementation-path.md section
+ * 6.1 asks for it to be renamed per board.
+ */
+&images {
+	fdt-0 {
+		description = "socfpga_agilex5_de25nano";
+	};
+};
+
+/*
+ * Drop the kernel.itb image from the binman description.
+ *
+ * TWO independent reasons, and either alone would be sufficient:
+ *
+ * 1. WE DO NOT SHIP kernel.itb. This board boots via extlinux: U-Boot reads
+ *    extlinux/extlinux.conf off the FAT partition and loads Image + dtb as
+ *    plain files. A second, unused, unsigned FIT carrying a copy of the kernel
+ *    is a redundant artifact whose staleness nobody would notice.
+ *
+ * 2. WITHOUT THIS, THE BUILD FAILS. binman is invoked with --allow-missing
+ *    --fake-ext-blobs but WITHOUT --ignore-missing (U-Boot's Makefile only
+ *    adds the latter when BINMAN_ALLOW_MISSING is set), and it returns 103 --
+ *    "Some images are invalid" -- if any image is missing an external blob.
+ *    The kernel image's blob-ext entries are "Image" and "linux.dtb". Buildroot
+ *    passes BINMAN_INDIRS=$(BINARIES_DIR), so binman does find images/Image --
+ *    but nothing in this project ever produces a file called linux.dtb (ours
+ *    is socfpga_agilex5_de25nano.dtb), so kernel.itb can never be complete.
+ *
+ * The alternative fixes were setting BINMAN_ALLOW_MISSING=1 -- which would
+ * ALSO silence a genuinely missing bl31.bin, the one blob whose absence must
+ * never be silent -- or patching U-Boot. Deleting the node we do not want is
+ * smaller than both and needs no patch. The reference DE25 tree does the same
+ * thing in the same place.
+ */
+&binman {
+	/delete-node/ kernel;
+};

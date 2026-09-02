@@ -10,7 +10,7 @@ load-bearing comments were folded into this document when that file was deleted.
 |---|---|---|
 | [`board/mister/de25nano/linux.config`](../board/mister/de25nano/linux.config) | kernel `CONFIG_*` | the DE25's **base**: arm64 + Agilex 5 + boot path + FPGA stack + the "not a distro kernel" exclusions. A **minimal defconfig**, DE10 style. |
 | [`board/mister/common/linux-mister.fragment`](../board/mister/common/linux-mister.fragment) | kernel `CONFIG_*` | the **arch-neutral MiSTer personality**, shared: input/HID, Bluetooth, Wi-Fi, USB, sound, filesystems, netfilter, LEDs, RTC. |
-| [`configs/mister_de25nano_defconfig`](../configs/mister_de25nano_defconfig) | Buildroot `BR2_*` | names both of the above (§7). |
+| [`configs/fragments/de25nano.fragment`](../configs/fragments/de25nano.fragment) | Buildroot `BR2_*` | names both of the above (§7); rationale in [`docs/buildroot-config.md`](buildroot-config.md) §6.5. |
 | [`scripts/check-kernel-fragment-noop.sh`](../scripts/check-kernel-fragment-noop.sh) | check | proves the fragment changes nothing on the DE10 (§6). |
 
 ---
@@ -134,20 +134,23 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
 * `# CONFIG_SUSPEND is not set` — `SUSPEND` is `default y` wherever
   `ARCH_SUSPEND_POSSIBLE`, so the explicit off is required, not decorative.
 * **`# CONFIG_SECCOMP is not set` is load-bearing, and it reaches into the
-  Buildroot defconfig.** It is `default y` on arm64 (wave 1 had `SECCOMP=y`) and
+  Buildroot configuration.** It is `default y` on arm64 (wave 1 had `SECCOMP=y`) and
   matches stock on the DE10. The coupling: `BR2_PACKAGE_OPENSSH_SANDBOX` is
   `default y` in Buildroot, and since openssh 10.4 a failed
   `prctl(PR_SET_SECCOMP)` is `fatal()` rather than `debug()` — so an image with
   SECCOMP off and the sandbox on gets an `sshd` that **binds and listens while
   killing every connection preauth**, password and key alike. The DE10 fixes
-  that with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` in its own defconfig
-  (commit `9824cd6`; the rationale is in that file at
-  `configs/mister_de10nano_defconfig:806-828`).
+  that with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` in its own image
+  fragment (commit `9824cd6`; the line is now
+  `configs/fragments/de10nano-image.fragment` and the rationale
+  `docs/buildroot-config.md` §5.19).
 
-  **Action for the DE25 defconfig:** it ships no `openssh` today (the DE25 is a
-  bare BusyBox developer OS, ADR 0027), so nothing is broken now — but the day
-  `BR2_PACKAGE_OPENSSH=y` is added there, `# BR2_PACKAGE_OPENSSH_SANDBOX is not
-  set` must be added with it. It is a configure-time flag, so changing it later
+  **Action for `configs/fragments/de25nano.fragment`:** it ships no `openssh`
+  today (the DE25 is a bare BusyBox developer OS, ADR 0027), so nothing is
+  broken now — but the day `BR2_PACKAGE_OPENSSH=y` is added there,
+  `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added with it. The
+  fragment carries a WARNING at its package section saying exactly that
+  (`docs/buildroot-config.md` §6.8). It is a configure-time flag, so changing it later
   also needs `make openssh-dirclean` or the stale stamp ships the broken sshd.
 
 ### 3.2 Modules and the `.ko.xz` layout (§2)
@@ -171,7 +174,7 @@ They are arch-neutral and both boards need exactly this value, and the project's
 standing rule is *one home per symbol* — duplicating a line into both files
 creates two places to change it and one place to forget. The consequence is
 stated at the top of the board file: **`linux.config` alone does not boot.** The
-two files are a pair and the Buildroot defconfig always names both.
+two files are a pair and `configs/fragments/de25nano.fragment` always names both.
 
 ### 3.5 Networking core and netfilter (§5)
 The DE10's exact set: `NET`/`PACKET`/`UNIX`/`INET`, `NET_KEY`(+`_MIGRATE`),
@@ -474,14 +477,15 @@ a bare name in `BR2_LINUX_KERNEL_DEFCONFIG`, `linux/linux.mk:360-361`).
 
 ### 7.1 Firmware — enabled drivers with no blobs
 
-The DE25 defconfig currently selects **no** `BR2_PACKAGE_LINUX_FIRMWARE_*` at
-all, while the shared fragment now builds the whole DE10 Wi-Fi/Bluetooth driver
-set. Those drivers will bind and then fail at `request_firmware()`. That is not
-a regression — wave 1 had exactly the same drivers as `=m` from arm64
-`defconfig`, also without firmware — but it is now a *deliberate* set, so the
-decision should be explicit. The DE10's 29 firmware
-selections (`configs/mister_de10nano_defconfig:1221-1366`, **52 MB** installed
-at `/lib/firmware`) are the menu to copy from; see
+`configs/fragments/de25nano.fragment` currently selects **no**
+`BR2_PACKAGE_LINUX_FIRMWARE_*` at all, while the shared fragment now builds the
+whole DE10 Wi-Fi/Bluetooth driver set. Those drivers will bind and then fail at
+`request_firmware()`. That is not a regression — wave 1 had exactly the same
+drivers as `=m` from arm64 `defconfig`, also without firmware — but it is now a
+*deliberate* set, so the decision should be explicit. The DE10's 29 firmware
+selections (`configs/fragments/de10nano-image.fragment`, its "/lib/firmware
+population" block; `docs/buildroot-config.md` §5.28; **52 MB** installed at
+`/lib/firmware`) are the menu to copy from; see
 [`firmware-parity.md`](firmware-parity.md) and [`wifi-parity.md`](wifi-parity.md).
 This is an **owner decision**, not a config fact: the initial DE25 scope is a
 bare developer OS (ADR 0027), and the firmware set is tens of MB of rootfs.

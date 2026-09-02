@@ -98,8 +98,9 @@ therefore does the kernel live on p1 or p2?").
 Why this and not something else, stated as reasoning rather than as a settled decision:
 
 - It is what Buildroot already builds (`BR2_TARGET_ROOTFS_EXT2` + `_EXT2_4`), so the card needs
-  no new machinery — no loop-mounted `linux.img`, no stage-1 initramfs, no installer. The DE25
-  defconfig already says this out loud ("NO STAGE-1 INITRAMFS ON THIS BOARD").
+  no new machinery — no loop-mounted `linux.img`, no stage-1 initramfs, no installer. The DE25's
+  configuration rationale already says this out loud (`docs/buildroot-config.md` §6.5, "NO STAGE-1
+  INITRAMFS ON THIS BOARD").
 - Kernel-on-p1 sidesteps the "can U-Boot read p2?" question entirely, which §6.3 names as the
   reason to prefer it.
 - The exFAT blocker that shaped the reference implementation's very different card **has

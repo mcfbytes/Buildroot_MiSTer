@@ -326,7 +326,7 @@ CONFIG_PPP_ASYNC=y
 # Every driver here is mainline (ADR 0016 "mainline-first"); all are =m and
 # autoload on the dongle's modalias. Firmware comes from the board defconfig's
 # BR2_PACKAGE_LINUX_FIRMWARE_* selection plus package/linux-firmware-extra —
-# a driver enabled here with no firmware selected in the defconfig binds and
+# a driver enabled here with no firmware selected in the board fragment binds and
 # then fails at request_firmware(). See docs/wifi-parity.md.
 #
 # Every *_SDIO bus driver is explicitly OFF: SDIO bus support is `default y`

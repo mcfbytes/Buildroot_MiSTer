@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * U-Boot board device tree for the Terasic DE25-Nano (Intel/Altera Agilex 5).
+ *
+ * THIS IS THE U-BOOT DEVICE TREE, NOT THE KERNEL ONE.
+ * The kernel's board file is ../socfpga_agilex5_de25nano.dts and the two share
+ * a basename on purpose -- each tree names its board file the same way -- but
+ * they are different files describing the same board to two different sets of
+ * drivers. Do not "deduplicate" them: U-Boot's socfpga_agilex5.dtsi and the
+ * kernel's are separate upstream files with different node sets, different
+ * compatibles (U-Boot's mmc0 is "altr,agilex5-sd6hc"/"cdns,sd6hc"; the kernel's
+ * has no mmc0 at all and ours declares the SD4HC form), and different
+ * -u-boot.dtsi machinery. See docs/de25-uboot.md and docs/de25-dts-rationale.md.
+ *
+ * WHY THIS FILE EXISTS AT ALL. Mainline U-Boot v2026.07 has no DE25-Nano board:
+ * board/terasic/ has de0-nano-soc, de1-soc, de10-nano, de10-standard and sockit
+ * and no de25 entry, and there is no configs/*de25* anywhere in the tree
+ * (docs/de25-implementation-path.md section 6). The nearest in-tree Agilex 5
+ * board is socfpga_agilex5_socdk, and it is NOT usable as-is: it aliases
+ * serial0 to &uart0, while the DE25-Nano's header UART is uart1. Booting the
+ * socdk device tree on this board produces a console on a pin nobody has wired
+ * -- i.e. a board that looks dead. That single line is why we carry a board
+ * file instead of reusing socdk's.
+ *
+ * Authored against mainline U-Boot v2026.07's arch/arm/dts/socfpga_agilex5.dtsi
+ * (which this #includes out of the U-Boot tree, so this is a small delta, not a
+ * from-scratch device tree). Cross-checked node by node against the reference
+ * DE25 U-Boot tree at /mnt/source/de25-uboot-socfpga
+ * (arch/arm/dts/socfpga_agilex5_de25_nano.dts) -- read for board WIRING only;
+ * none of its SPL, RSU or exFAT-SPL work is carried.
+ */
+
+#include "socfpga_agilex5.dtsi"
+
+/ {
+	model = "SoCFPGA Agilex5 Terasic DE25-Nano";
+
+	aliases {
+		/*
+		 * THE ONE LINE THIS FILE EXISTS FOR. uart1 (serial@10c02100) is
+		 * the DE25-Nano's USB-UART header; uart0 is the SoC Development
+		 * Kit's console. Every DE25 reference tree agrees
+		 * (docs/de25-dts-rationale.md U1 [V]); the -u-boot.dtsi beside
+		 * this file points stdout-path at serial0, so this alias is what
+		 * decides whether the board has a console at all.
+		 */
+		serial0 = &uart1;
+
+		/*
+		 * Pin the SD controller at mmc 0, explicitly.
+		 *
+		 * UCLASS_MMC carries DM_UC_FLAG_SEQ_ALIAS, so this alias fixes
+		 * dev_seq(). With a single MMC controller the answer would be 0
+		 * anyway, but "0" is load-bearing in three places that are not
+		 * in this file and cannot check each other:
+		 *   - CONFIG_ENV_FAT_DEVICE_AND_PART="0:1" (where uboot.env lives)
+		 *   - the factory SPL's own FS-boot device
+		 *   - distro_bootcmd's mmc0 boot target, and every "load mmc 0:1"
+		 *     in the extlinux/boot path on the SD card
+		 * Writing it down means a future second MMC device cannot silently
+		 * renumber the one the card layout is written against.
+		 */
+		mmc0 = &mmc;
+	};
+
+	/*
+	 * DRAM, declared -- not handed off.
+	 *
+	 * Mainline's socdk board file leaves this <0 0 0 0> and says "we expect
+	 * the bootloader to fill in the reg", which on Agilex 5 means U-Boot
+	 * proper reads gd->ram_size out of the SPL's bloblist handoff
+	 * (arch/arm/mach-socfpga/misc.c dram_init(), guarded on CONFIG_HANDOFF
+	 * && ARCH_SOCFPGA_AGILEX5). We do NOT run our own SPL -- the factory
+	 * SPL in QSPI does, and it is a Terasic build of a different U-Boot
+	 * whose CONFIG_BLOBLIST_ADDR we cannot read out of any published
+	 * artifact. So the fragment turns CONFIG_HANDOFF off and dram_init()
+	 * falls back to fdtdec_setup_mem_size_base(), which reads the "/memory"
+	 * node BY PATH -- hence the node name with no unit address, exactly as
+	 * mainline's socdk and the reference DE25 tree both write it.
+	 *
+	 * 1 GiB at 0x8000_0000 is what the DE25-Nano User Manual and every DE25
+	 * bootloader source state, and it matches the value our kernel DTS
+	 * declares (docs/de25-dts-rationale.md, "Memory"). It is a VENDOR
+	 * DECLARATION, not a measurement: the authority is the IO96B readout the
+	 * factory SPL prints as its "DDR:" lines on first boot. Under-declaring
+	 * degrades gracefully (we simply do not use the top half);
+	 * over-declaring puts U-Boot's relocation target in nonexistent DRAM.
+	 */
+	memory {
+		device_type = "memory";
+		reg = <0 0x80000000 0 0x40000000>;
+	};
+
+	soc {
+		clocks {
+			/*
+			 * The SoC dtsi declares osc1 as a fixed-clock with no
+			 * rate; every Agilex 5 board file sets it, and the whole
+			 * clock tree (and therefore the UART divisor) hangs off
+			 * it. 25 MHz is what socdk and the reference DE25 tree
+			 * both use.
+			 */
+			osc1 {
+				clock-frequency = <25000000>;
+			};
+		};
+	};
+};
+
+/* Console. See the alias above. */
+&uart1 {
+	status = "okay";
+};
+
+/*
+ * microSD. The controller is enabled here; its capabilities and the
+ * bootph-all marking live in the -u-boot.dtsi beside this file, because that
+ * is where mainline's socdk keeps them.
+ */
+&mmc {
+	status = "okay";
+};
+
+/*
+ * DELIBERATE OMISSIONS -- each one is a decision, not an oversight:
+ *
+ *   - NO &qspi and NO flash node. The QSPI holds the factory SDM firmware,
+ *     the phase-1 bitstream and the factory SPL, and nothing we ship may
+ *     write it (docs/de25-boot-chain.md section 7, rows 1/5/10/12). Leaving
+ *     the node at the dtsi's "disabled" default means that even if a QSPI
+ *     driver were somehow compiled in, nothing would probe. The fragment
+ *     removes the driver too; this is the second lock on the same door.
+ *
+ *   - NO &nand. Same reasoning, plus the board has no NAND.
+ *
+ *   - NO &gmac0 / no PHY node. U-Boot does not need ethernet to load a kernel
+ *     off the card, and the DE25's PHY address and phy-mode in U-Boot terms
+ *     are unverified. Add it in the hardware session if netboot is wanted.
+ *
+ *   - NO leds, watchdogs, timers, i2c, i3c, usb, spi0/spi1. None is on the
+ *     path from reset to "load Image from FAT and boot it". Every node here
+ *     is a node someone has to keep correct for a board nobody has booted yet.
+ */

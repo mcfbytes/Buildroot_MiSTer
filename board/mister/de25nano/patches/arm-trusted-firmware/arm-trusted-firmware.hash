@@ -1,0 +1,60 @@
+# ARM Trusted Firmware tarball hash for the pinned
+# BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE.
+#
+# WHY THIS FILE EXISTS
+# Buildroot ships NO hash file for arm-trusted-firmware at all (there is no
+# boot/arm-trusted-firmware/arm-trusted-firmware.hash in 2026.05.2), because
+# the package downloads by git and Buildroot excuses git-generated tarballs
+# from hashing:
+#
+#     ifeq ($(BR2_TARGET_ARM_TRUSTED_FIRMWARE):$(..._CUSTOM_VERSION)...,y:y)
+#     BR_NO_CHECK_HASH_FOR += $(ARM_TRUSTED_FIRMWARE_SOURCE)
+#
+# That excuse does NOT apply here. BR2_DOWNLOAD_FORCE_CHECK_HASHES=y (set in
+# the defconfig) empties BR_NO_CHECK_HASH_FOR entirely
+# (package/pkg-download.mk:119), so with no hash file the download fails closed
+# with "No hash found". Buildroot finds this file via pkg-patch-hash-dirs
+# (package/pkg-utils.mk:163), which searches $(BR2_GLOBAL_PATCH_DIR)/<pkg>/.
+#
+# NOTE THE FILENAME, it is not the obvious one. Buildroot's git backend names
+# its generated tarball <pkg>-<version>-git<N>.tar.gz, where N is
+# BR_FMT_VERSION_git in package/pkg-download.mk -- the ARCHIVE FORMAT version,
+# bumped whenever upstream changes what goes into the tarball or how it is
+# packed. If a Buildroot bump changes that number, this filename AND this hash
+# both change, and the build will fail closed until they are re-derived. That
+# is the intended behaviour; do not "fix" it by loosening the check.
+#
+# WHERE THIS HASH COMES FROM -- read before changing it, and note honestly
+# what it is and is not.
+#
+# It is a TRUST-ON-FIRST-USE value, unlike the U-Boot hash next door.
+# trustedfirmware.org publishes no release tarballs and no signed checksum
+# manifest, so there is no signed artifact to transcribe from. What exists is
+# an annotated, PGP-SIGNED git tag, and the chain that value rests on is:
+#
+#   1. Buildroot cloned https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git
+#      over TLS and checked out tag v2.15.0
+#      (dl/arm-trusted-firmware/git, verified 2026-09-02).
+#   2. That tag is annotated object 9ad327a8d124ce82002614c23e33992d4de6f7cf,
+#      tagged "Trusted Firmware-A release v2.15.0" by Olivier Deprez
+#      <olivier.deprez@arm.com>, and it points at commit
+#      da738d5eae93af342fdc4995dd3c05acb4c9d757.
+#   3. The SAME commit id was obtained from an INDEPENDENT clone made in a
+#      separate working directory on the same day, so the value below is not
+#      anchored on a single fetch.
+#   4. The tag carries a PGP signature by RSA key
+#      5D6F896043ADEFDF7B76BFAA89C08CFDB8673E0C. That signature could NOT be
+#      verified: the key is published on neither keys.openpgp.org nor
+#      keyserver.ubuntu.com (both returned 404 on 2026-09-02). Say so plainly
+#      rather than implying a verification that did not happen.
+#   5. sha256 of the tarball Buildroot then generated from that checkout.
+#
+# TO UPGRADE THIS TO A VERIFIED CHAIN: obtain the TF-A release key through a
+# channel you trust (the trustedfirmware.org project pages, or an Arm-published
+# keyring), import it, run `git tag -v v2.15.0` in dl/arm-trusted-firmware/git,
+# and record the result here in place of item 4.
+#
+# ON A VERSION BUMP: re-derive both lines. The cheap, honest way is to set this
+# hash to all zeros, run `make de25`, and transcribe the "got" value the
+# check-hash error prints -- after re-doing steps 1-4 for the new tag.
+sha256  b807d8bf190b7c46b4260729b4bbe2f7df83cd1086edcb181d66595ae6598d23  arm-trusted-firmware-v2.15.0-git4.tar.gz

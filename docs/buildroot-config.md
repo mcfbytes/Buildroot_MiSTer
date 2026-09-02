@@ -2077,21 +2077,25 @@ release scope is a BARE DEVELOPER OS); ADR 0029.
 
 ### 6.1 What this is, and — more importantly — what it is not
 
-This builds an aarch64 toolchain, a mainline 7.2.2 kernel and a minimal
-BusyBox ext4 rootfs that boots to a serial login with ethernet up. That is
-the whole scope. There are NO MiSTer packages here, NO DE10 packages, and
-nothing beyond what a developer needs to get a shell on the board. That is
-not an oversight or a staging state — it is the accepted release scope for
-this board until the upstream MiSTer framework grows an aarch64 story
-(`de25-nano-tasks.md` D2.7 / Phase D3).
+This builds an aarch64 toolchain, a mainline 7.2.2 kernel, a minimal BusyBox
+ext4 rootfs that boots to a serial login with ethernet up, the bootloader that
+loads them (TF-A BL31 inside a mainline U-Boot FIT, §6.9) and the SD-card image
+that carries the lot (§6.11). That is the whole scope. There are NO MiSTer
+packages here, NO DE10 packages, and nothing beyond what a developer needs to
+get a shell on the board. That is not an oversight or a staging state — it is
+the accepted release scope for this board until the upstream MiSTer framework
+grows an aarch64 story (`de25-nano-tasks.md` D2.7 / Phase D3).
 
 THE DE10 IS NOT AFFECTED BY THIS FRAGMENT. The de25nano stack is `common` +
 `de25nano` (§1); nothing from `de10nano.fragment`, `de10nano-image.fragment`,
 `kernel-only.fragment` or `mister_rt.fragment` is in it, and the DE25 gets its
 OWN Buildroot output directory (`output-de25/`, `make de25`) exactly the way
-the RT variant and the two initramfs stages get theirs. The one file the two
-boards genuinely share beyond `common.fragment` is the kernel-tarball hash
-registry — §6.3.
+the RT variant and the two initramfs stages get theirs. No `BR2_` symbol is
+shared between the boards outside `common.fragment`. Two FILES are shared by
+path, each with its own reason and its own guard: the kernel-tarball hash
+registry (a symlink, §6.3) and the MiSTer kernel-config fragment
+(`board/mister/common/linux-mister.fragment`, proved a no-op on the DE10 by
+`scripts/check-kernel-fragment-noop.sh`, §6.5).
 
 WHY THE OLD FILE WAS NOT THE OUTPUT OF `savedefconfig` — and why the fragment
 still is not. The DE10 monolith's header explained that it WAS canonical
@@ -2102,18 +2106,30 @@ validation yet, the reasoning is the deliverable. It has been round-tripped
 through `savedefconfig` to prove every symbol really exists — but the file
 itself is not the machine's output.
 
-ROUND-TRIP RESULT, 2026-09-02 (Buildroot 2026.05.2). savedefconfig ADDED
-nothing (so no symbol is implied-but-unstated) and DROPPED exactly three lines
-as non-divergent from a kconfig default: `BR2_LINUX_KERNEL_IMAGE`,
-`BR2_TARGET_ROOTFS_EXT2_LABEL`, `BR2_TARGET_GENERIC_ROOT_PASSWD`. All three
-are kept anyway, for the reason §5.2 gives for the DE10's own EXT2_LABEL line:
-a Buildroot default is not a promise. `BR2_LINUX_KERNEL_IMAGE` is the sharpest
-case — the "Kernel binary format" choice carries `default
-BR2_LINUX_KERNEL_ZIMAGE if BR2_arm || BR2_armeb` and NO default for aarch64
-(`linux/Config.in:242-244`), so on this architecture it resolves to whichever
-entry upstream happens to list first. That is not something a boot artifact
-should depend on. (`scripts/check-config-fragments.sh` (b) now proves each
-of those three survives olddefconfig on every run, §11.)
+ROUND-TRIP RESULT, re-run 2026-09-02 after the bootloader stanza landed
+(Buildroot 2026.05.2). savedefconfig ADDED nothing (so no symbol is
+implied-but-unstated) and DROPPED exactly six lines as non-divergent from a
+kconfig default:
+
+- `BR2_LINUX_KERNEL_IMAGE`, `BR2_TARGET_ROOTFS_EXT2_LABEL`,
+  `BR2_TARGET_GENERIC_ROOT_PASSWD`;
+- `BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31` (selected by
+  `BR2_TARGET_UBOOT_NEEDS_ATF_BL31`), `BR2_TARGET_UBOOT_NEEDS_ATF_BL31_BIN`
+  (the default of its choice), `BR2_TARGET_UBOOT_USE_DEFCONFIG` (the default
+  of its choice).
+
+All six are kept anyway, for the reason §5.2 gives for the DE10's own
+EXT2_LABEL line: a Buildroot default is not a promise. The three bootloader
+ones are worth the redundancy for a second reason — "BL31 only, no FIP", "BL31
+as a raw `.bin`, not an ELF" and "an in-tree board defconfig, not a custom
+config file" are the three facts a reader most needs from that stanza, and
+inferring them from a select and two choice defaults is not reading.
+`BR2_LINUX_KERNEL_IMAGE` is the sharpest case — the "Kernel binary format"
+choice carries `default BR2_LINUX_KERNEL_ZIMAGE if BR2_arm || BR2_armeb` and
+NO default for aarch64 (`linux/Config.in:242-244`), so on this architecture it
+resolves to whichever entry upstream happens to list first. That is not
+something a boot artifact should depend on. (`scripts/check-config-fragments.sh`
+(b) now proves each of those six survives olddefconfig on every run, §11.)
 
 ### 6.2 Architecture & toolchain — `BR2_aarch64`, `BR2_cortex_a76_a55`, `BR2_KERNEL_HEADERS_7_0`
 
@@ -2245,24 +2261,51 @@ aarch64.
 
 ### 6.5 Kernel config, image format, device tree, no initramfs
 
-KERNEL CONFIG = the kernel's own arm64 defconfig + one fragment:
-`BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y`,
-`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=".../board/mister/de25nano/linux.fragment"`.
-Deliberately UNLIKE the DE10, which ships a full pinned `linux.config`. arm64
-`defconfig` is the configuration mainline actually CI-tests; starting there
-means every symbol we do not name tracks upstream for free, and the delta
-stays short enough to review line by line during bring-up. Converting to a
-pinned full config the way the DE10 has one is a later decision, taken when
-the board's shape settles.
+KERNEL CONFIG = a pinned minimal base + the shared MiSTer driver fragment:
+`# BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG is not set`,
+`BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y`,
+`BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE=".../board/mister/de25nano/linux.config"`,
+`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=".../board/mister/common/linux-mister.fragment"`.
 
-NOTE THE SYMBOL NAME — this is NOT `BR2_LINUX_KERNEL_USE_DEFCONFIG`. That
-option means "an in-tree defconfig NAMED <x>" and appends `_defconfig` to
+THIS SUPERSEDES THE WAVE-1 WIRING, which was the kernel's own arm64
+`defconfig` (`BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG`) plus
+`board/mister/de25nano/linux.fragment`. The idea there was that arm64
+`defconfig` is the configuration mainline actually CI-tests, so every symbol
+we do not name tracks upstream for free. What it actually produced was 1,481
+modules and a 41.9 MB `Image`: mainline's arm64 `defconfig` is a distro kernel
+for every SoC ARM ships, and **no fragment can subtract from it** — a
+`# CONFIG_X is not set` line in a merged fragment loses to a `select` from
+anything the base left on. The rationale, the measurements and the
+per-subsystem justification are in `docs/de25-kernel-config.md`; the short
+version is 1,481 → 92 modules, 90 MB → 2.4 MiB of installed modules, 41.9 MB →
+20.7 MB `Image`, with the DE10's exact installed-module name set.
+
+So this board now ships a pinned base the way the DE10 does
+(`board/mister/de25nano/linux.config`, this board's minimal arm64 + Agilex 5
+base), and the delta over it is one fragment.
+
+THE FRAGMENT IS SHARED WITH THE DE10, BY PATH, ON PURPOSE.
+`board/mister/common/linux-mister.fragment` is the arch-neutral MiSTer
+driver/feature set, and it is proven a no-op against the DE10's resolved
+6.18.48 config by `scripts/check-kernel-fragment-noop.sh` — so a symbol added
+there for this board cannot silently change the DE10's kernel. The base and
+the fragment share no symbol. This is the kernel-config counterpart of the
+hash-registry symlink in §6.3: one file, two boards, an automated check that
+the sharing stays honest.
+
+NOTE THE SYMBOL NAME — this is `BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG`, and it is
+NOT `BR2_LINUX_KERNEL_USE_DEFCONFIG`. That other option means "an in-tree
+defconfig NAMED <x>" and appends `_defconfig` to
 `BR2_LINUX_KERNEL_DEFCONFIG` (`linux/linux.mk:360-361`), so asking it for
 arm64's plain `defconfig` would build `defconfig_defconfig` — a file that does
-not exist. `BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG` is the option that means
-literally `make ARCH=arm64 defconfig` (`linux.mk:362-372`, and its own help
-text names ARM64 as the case it exists for). Getting this wrong fails late,
-in the kernel build, not at configure time.
+not exist. (`BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG`, the wave-1 choice, is
+the one that means literally `make ARCH=arm64 defconfig` —
+`linux.mk:362-372`, and its own help text names ARM64 as the case it exists
+for.) Getting this wrong fails late, in the kernel build, not at configure
+time. The wave-1 choice is stated as `is not set` rather than simply dropped,
+so the change of shape is visible in the fragment rather than inferable from
+an absence — and `scripts/check-config-fragments.sh` (b) proves that not-set
+line really resolves that way.
 
 `BR2_LINUX_KERNEL_IMAGE=y` — uncompressed `Image`, not `Image.gz`. This is the
 Agilex/U-Boot FIT convention: the FIT image U-Boot loads carries its own
@@ -2353,21 +2396,172 @@ visible, and a package added "just to have it" quietly repeals that decision.
 The fragment split did not change this: the DE10 package set lives in
 `de10nano-image.fragment`, which is not in the DE25 stack (§10).
 
-### 6.9 NOT HERE YET — phase 2 (D2.2 / D2.4)
+ONE STANDING OBLIGATION IS ALREADY BOOKED AGAINST THAT EMPTY LIST, and the
+fragment carries it as a WARNING so it cannot be missed at the moment it
+matters. `board/mister/de25nano/linux.config` carries
+`# CONFIG_SECCOMP is not set` (a MiSTer posture, matching stock and the DE10 —
+`docs/de25-kernel-config.md` §3.1; `SECCOMP` is `default y` on arm64, so wave 1
+had it on). `BR2_PACKAGE_OPENSSH_SANDBOX` is `default y` in Buildroot, and
+since openssh 10.4 a failed `prctl(PR_SET_SECCOMP)` is `fatal()` rather than
+`debug()`. The combination is an `sshd` that binds and listens while killing
+every connection preauth, password and key alike — the DE10 hit exactly this
+and fixes it with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` (§5.19 has the
+full write-up). Nothing is broken on the DE25 today, because it ships no
+openssh; but the day `BR2_PACKAGE_OPENSSH=y` is added to `de25nano.fragment`,
+`# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added in the same commit.
+It is a configure-time flag, so flipping it later also needs
+`make openssh-dirclean` or the stale stamp ships the broken sshd.
 
-BOOTLOADER. There is no `BR2_TARGET_ARM_TRUSTED_FIRMWARE` and no
-`BR2_TARGET_UBOOT` in this fragment, so `make de25` produces a kernel + rootfs
-and nothing that can boot them. Both are planned for D2.2, and the shape is
-already settled by `docs/de25-boot-chain.md` and `de25-implementation-path.md`
-§6: we build `u-boot.itb` ONLY, from mainline, and the factory SPL in QSPI is
-NEVER touched (posture 1 — the SDM on this board cannot boot from the microSD
-at all, so the QSPI seam is permanent and any write to it is a brick risk
-with no recovery path). ATF comes in as the BL31 that goes inside that FIT.
+### 6.9 Bootloader — ATF BL31 + mainline U-Boot, packaged as `u-boot.itb`
 
-SD-CARD IMAGE. `genimage-sdcard-de25.cfg` + a fail-closed check script are
-D2.4. Two partitions, fixed by the factory SPL's `CONFIG_SPL_FS_FAT` + boot
-partition 1: p1 FAT (the FIT and the DTB), p2 the ext4 root built above.
-There is explicitly NO shared SD card with the DE10 (decision 4).
+D2.4's buildable half. Full write-up, including the per-line rationale for
+`board/mister/de25nano/uboot.fragment` and the QSPI-write audit table:
+`docs/de25-uboot.md`. Contract: `docs/de25-implementation-path.md` §6.1–§6.3;
+`docs/de25-boot-chain.md` §2, §3, §5 and the §7 brick-risk register.
+
+WHAT THIS BUILDS, AND WHAT IT DOES NOT. It builds exactly two artifacts:
+`images/bl31.bin` (ATF) and `images/u-boot.itb` (a binman FIT carrying BL31 +
+U-Boot proper + our U-Boot dtb). It does NOT build or ship an SPL. On this
+board the FSBL is Terasic's U-Boot SPL, resident in QSPI inside the factory
+phase-1 bitstream, and it is NEVER touched — posture 1. The SDM on this board
+cannot boot from the microSD at all, so the QSPI seam is permanent and any
+write to it is brick-class with a JTAG-only recovery. That is why the U-Boot
+fragment's largest block is about making a QSPI write structurally impossible
+rather than merely unlikely.
+
+The SPL is nevertheless COMPILED — see `uboot.fragment`'s "SPL" block for the
+one-line Kconfig reason (`select BINMAN if SPL_ATF`, and `BINMAN` has no
+prompt). Nothing of it is shipped: `BR2_TARGET_UBOOT_SPL` is deliberately
+absent from the fragment, so Buildroot copies no `spl/*` file into `images/`.
+That is the answer to `de25-implementation-path.md` §8 Q6, and it is negative.
+
+**ARM Trusted Firmware.** `BR2_TARGET_ARM_TRUSTED_FIRMWARE=y`,
+`_CUSTOM_VERSION=y`, `_CUSTOM_VERSION_VALUE="v2.15.0"`, `_PLATFORM="agilex5"`,
+`_BL31=y`, `_IMAGES="bl31.bin"`.
+
+Mainline TF-A v2.15.0. Buildroot 2026.05.2's newest offer is v2.12
+(`boot/arm-trusted-firmware/Config.in`), which has no Agilex 5 platform, so a
+custom version is not a preference here — it is the only route.
+`plat/intel/soc/agilex5/` exists at v2.15.0 and its `socfpga_plat_def.h` sets
+`BL31_BASE 0x80000000`, which is exactly the load/entry address the SoC64
+binman FIT description hardcodes for the `atf` image. Verified against the
+tag; the pairing with U-Boot 2026.07 is still [U] — nobody has booted it.
+
+The version string is the git TAG (`v2.15.0`, with the leading `v`), because
+`ARM_TRUSTED_FIRMWARE_SITE_METHOD` is git: Buildroot clones
+`git.trustedfirmware.org/TF-A/trusted-firmware-a.git` and generates the
+tarball itself. Hash provenance is in the `.hash` file's header.
+
+BL31 only. No BL2 and no FIP: BL2's job on this SoC is done by the factory
+SPL, and a FIP is the packaging format for a chain we do not own. `_BL31` is
+selected anyway by `BR2_TARGET_UBOOT_NEEDS_ATF_BL31` below; it is stated in the
+fragment because "which ATF images exist" is a fact the configuration should
+assert rather than leave to be inferred. `_IMAGES` defaults to `"*.bin"`, which
+would copy whatever the platform's release directory happens to contain; naming
+the one file we ship keeps `images/` auditable and makes the Makefile's `de25`
+assertion and that line describe the same thing.
+
+**U-Boot.** `BR2_TARGET_UBOOT=y`, `_BUILD_SYSTEM_KCONFIG=y`,
+`_CUSTOM_VERSION=y`, `_CUSTOM_VERSION_VALUE="2026.07"`, `_USE_DEFCONFIG=y`,
+`_BOARD_DEFCONFIG="socfpga_agilex5"`, `_CONFIG_FRAGMENT_FILES`,
+`_CUSTOM_DTS_PATH`, `_NEEDS_ATF_BL31=y`, `_NEEDS_ATF_BL31_BIN=y`,
+`_USE_BINMAN=y`, `_NEEDS_OPENSSL=y`, `_FORMAT_ITB=y`,
+`# BR2_TARGET_UBOOT_FORMAT_BIN is not set`.
+
+Mainline v2026.07 (released 2026-07-07; v2026.10 was at -rc when this was
+written). Buildroot 2026.05.2 ships 2026.04, so again a custom version.
+
+NOTE THE BUILD-SYSTEM LINE, it is not optional.
+`BR2_TARGET_UBOOT_BUILD_SYSTEM` defaults to KCONFIG *only* if
+`BR2_TARGET_UBOOT_LATEST_VERSION` is set (`boot/uboot/Config.in:11-12`); on a
+custom version it falls back to LEGACY, which would try `make <board>_config`
+and fail on a tree that has had no such target for a decade.
+
+Mainline has NO DE25-Nano board — `board/terasic/` has `de0-nano-soc`,
+`de1-soc`, `de10-nano`, `de10-standard` and `sockit`, and there is no
+`configs/*de25*` anywhere in the tree. `socfpga_agilex5_defconfig` (the SoC
+Development Kit) is the base; `uboot.fragment` is the whole delta and every
+line of it is commented.
+
+The board device tree, and the `-u-boot.dtsi` that goes with it: Buildroot
+copies BOTH files into `arch/arm/dts/` before the build (`uboot.mk`'s
+`UBOOT_CUSTOM_DTS_PATH` is a plain `cp -f <list> <dir>`); U-Boot then builds
+`$(CONFIG_DEFAULT_DEVICE_TREE).dtb` because `scripts/Makefile.dts` adds it to
+`dtb-y`, and auto-includes `<board>-u-boot.dtsi` BY NAME. Both files therefore
+have to travel together and be named consistently with the fragment's
+`CONFIG_DEFAULT_DEVICE_TREE`. They live in a `uboot-dts/` subdirectory because
+the U-Boot board file and the KERNEL board file share a basename by convention
+and must not share a directory.
+
+BL31 goes INSIDE the FIT. `_NEEDS_ATF_BL31` makes uboot depend on
+arm-trusted-firmware, copies `images/bl31.bin` into the U-Boot build tree
+before the build, and passes `BL31=<path>`; binman's `atf` image picks it up as
+a blob-ext named `bl31.bin`. The `_BIN` (rather than `_ELF`) form is what the
+SoC64 binman description asks for.
+
+`u-boot.itb` is produced by BINMAN, not by the legacy `u-boot.itb:` Makefile
+rule (that one is gated on `U_BOOT_ITS`, set only under the deprecated
+`SPL_FIT_GENERATOR`). `BR2_TARGET_UBOOT_USE_BINMAN` tells Buildroot the same
+thing — it drops `u-boot.itb` from `UBOOT_MAKE_TARGET`, adds the three host
+python packages binman needs (jsonschema, pyyaml, yamllint) and passes
+`BINMAN_INDIRS` so binman can find blobs in `images/`. It also selects
+`BR2_TARGET_UBOOT_NEEDS_PYTHON3` / `_PYELFTOOLS` / `_PYLIBFDT`, which is why
+those three are not separate lines.
+
+`_NEEDS_OPENSSL` brings host-openssl in for the U-Boot host tools:
+`CONFIG_TOOLS_LIBCRYPTO` is `default y` and `mkimage` links libcrypto. Without
+it the build silently depends on whatever openssl headers the developer's
+machine happens to have, which is exactly the class of thing this project pins.
+
+Ship the FIT and nothing else. `BR2_TARGET_UBOOT_FORMAT_BIN` is `default y` in
+Buildroot and is turned OFF: `u-boot.bin` is a raw image with no place in this
+board's boot chain, and an `images/` directory that contains only what goes on
+the card is what makes the card-image step's file list reviewable.
+
+### 6.10 Host tools — `dumpimage`/`mkimage`, with FIT support
+
+`BR2_PACKAGE_HOST_UBOOT_TOOLS=y`, `BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT=y`.
+
+host-uboot-tools gives us `host/bin/dumpimage` and `host/bin/mkimage`.
+`dumpimage` is how the FIT's shape is checked against the factory SPL contract
+(`de25-implementation-path.md` §6.1) — image list, load addresses, the default
+configuration's firmware/loadables/fdt, and the fact that the only integrity
+stamp is a crc32 with no rsa key. That check is not decoration: the factory SPL
+is built with `FIT_SIGNATURE` on and no keys, so an unsigned crc32 FIT is what
+it accepts and a key-requiring one would strand every board.
+
+FIT_SUPPORT is the trap. It is **not** `default y`: with it off,
+`dumpimage -l u-boot.itb` prints nothing at all and exits 0, which is a
+verification step that always passes and never checks anything. Found the hard
+way on the first build. (It selects `BR2_PACKAGE_HOST_DTC`.)
+
+### 6.11 SD-card image (D2.4)
+
+`BR2_PACKAGE_HOST_GENIMAGE=y`, `BR2_PACKAGE_HOST_MTOOLS=y`,
+`BR2_PACKAGE_HOST_DOSFSTOOLS=y`,
+`BR2_ROOTFS_POST_IMAGE_SCRIPT=".../board/mister/de25nano/post-image.sh"`.
+
+Two partitions, fixed by the factory SPL's `CONFIG_SPL_FS_FAT` + boot
+partition 1: p1 FAT32 (`u-boot.itb`, `Image`, the dtb,
+`extlinux/extlinux.conf`), p2 the ext4 root of §6.6, written directly (an
+interim p2 decision — `docs/de25-sdcard.md`). There is explicitly NO shared SD
+card with the DE10 (ADR 0029 D3). Layout:
+`board/mister/de25nano/genimage-sdcard.cfg`; assembled and verified by
+`post-image.sh` + `scripts/check-sdcard-de25.sh`.
+
+host-genimage does NOT pull in mtools or dosfstools itself
+(`package/genimage/genimage.mk`: `HOST_GENIMAGE_DEPENDENCIES = host-pkgconf
+host-libconfuse`) and genimage's vfat handler shells out to `mcopy` and
+`mkdosfs` BY NAME, so on a runner without them the card build fails inside
+genimage rather than at configure time. host-e2fsprogs is already implied by
+`BR2_TARGET_ROOTFS_EXT2` (`fs/ext2/ext2.mk`), which is where the checker gets
+`dumpe2fs` and `e2fsck`; `sfdisk` comes from the host's util-linux, as for the
+DE10's checker.
+
+`BR2_ROOTFS_POST_IMAGE_SCRIPT` is a per-board symbol for the same reason the
+DE10's is (§10): both boards set it, to different scripts. Without
+`u-boot.itb` in `images/` this FAILS the build by design;
+`DE25_ALLOW_NO_UBOOT=1` in the environment downgrades it to a loud skip.
 
 ---
 
@@ -2753,21 +2947,27 @@ The judgement calls, each recorded here:
 | `BR2_TARGET_ROOTFS_EXT2`, `_EXT2_4`, `_EXT2_LABEL="rootfs"` | `de10nano-image` **and** `de25nano` (duplicated across sibling stacks) | Identical on both boards but NOT in the kernel-only stack, which is rootfs-tar only by design (§4.2); putting them in `common` would give the kernel-only base an ext4 image (and make `post-image.sh`'s `linux.img` half fire), or need a `# ... is not set` override in `kernel-only` — the one thing fragments must never do (§1). Duplication across mutually exclusive stacks is not an override; the check permits it. |
 | `BR2_GLOBAL_PATCH_DIR` | per board | Same purpose (the kernel hash registry) but a different directory on each board, for the reason §6.3 gives (the DE10 dir also carries bluez5 patches). |
 | `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `BR2_LINUX_KERNEL_PATCH` | per board (`de10nano` / `de25nano`); overridden by `mister_rt.fragment` | Different lines and different series; the only allowlisted redefinition in the tree is rt's (§7). |
-| `BR2_PACKAGE_HOST_KMOD_XZ`, `BR2_ROOTFS_POST_IMAGE_SCRIPT` | `de10nano` (board), not `de10nano-image` | The kernel-only stack needs both (build-time depmod of `.ko.xz`; `zImage_dtb` assembly) — §3.5, §3.6. The DE25 has neither (arm64 `defconfig` does not compress modules; the DE25 ships `Image` + `.dtb`, no `zImage_dtb`). |
+| `BR2_PACKAGE_HOST_KMOD_XZ`, `BR2_ROOTFS_POST_IMAGE_SCRIPT` | `de10nano` (board), not `de10nano-image` | The kernel-only stack needs both (build-time depmod of `.ko.xz`; `zImage_dtb` assembly) — §3.5, §3.6. `BR2_ROOTFS_POST_IMAGE_SCRIPT` is now set by BOTH boards, to different scripts (the DE25's assembles the card, §6.11), so it is a per-board symbol on both sides rather than a `common` one. `BR2_PACKAGE_HOST_KMOD_XZ` stays DE10-only: the DE25 ships no `zImage_dtb`, and its own `.ko.xz` question is tracked in §6.5's kernel-config work, not here. |
 | `BR2_ROOTFS_POST_BUILD_SCRIPT`, `BR2_ROOTFS_OVERLAY` | `de10nano-image` | Image-only by design (§4.2: `post-build.sh` stamps a rootfs that ships). |
 | `BR2_TARGET_ROOTFS_EXT2_SIZE`, `_INODE_SIZE`, `_MKFS_OPTIONS` | `de10nano-image` | The DE25's 256 MiB ext4 has none of the DE10's contracts yet (§6.6). |
 | The whole package set, `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV`, `BR2_GENERATE_LOCALE`, `BR2_TARGET_TZ_*`, `BR2_TARGET_LOCALTIME` | `de10nano-image` | Rule 5. Locale/timezone are arch-neutral and the owner's target listed them as common candidates, but the DE25 old file set none of them and giving a bare developer OS tzdata/locale data is a scope decision D2.x should take explicitly, not a side effect of a refactor. |
 | `BR2_INIT_NONE`, `BR2_SYSTEM_BIN_SH_NONE`, `# BR2_PACKAGE_BUSYBOX is not set`, `BR2_TARGET_ROOTFS_TAR` | `kernel-only` | Exactly the old kernel defconfig minus what it shared with the image (§4). |
-| DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_ARCH_DEFAULT_CONFIG`, `CONFIG_FRAGMENT_FILES`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). |
+| DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_CUSTOM_CONFIG`, `CUSTOM_CONFIG_FILE`, `CONFIG_FRAGMENT_FILES`, `# USE_ARCH_DEFAULT_CONFIG is not set`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). The kernel-config pair names DE25 files; the *fragment* file it names is shared with the DE10 by path, but that sharing is a file, not a symbol (§6.5). |
+| The whole DE25 bootloader stanza (`BR2_TARGET_ARM_TRUSTED_FIRMWARE*`, `BR2_TARGET_UBOOT*`) | `de25nano` | The DE10 has no bootloader in its Buildroot config at all — its boot chain is the stock/Terasic one, assembled outside Buildroot (`docs/boot-chain.md`). Nothing to share, so no `common` question arises. |
+| `BR2_PACKAGE_HOST_UBOOT_TOOLS`, `_FIT_SUPPORT`, `BR2_PACKAGE_HOST_GENIMAGE`, `BR2_PACKAGE_HOST_MTOOLS`, `BR2_PACKAGE_HOST_DOSFSTOOLS` | `de25nano` | Host tooling for the FIT and the card image (§6.10, §6.11), and DE25-only in fact: the DE10 stack sets none of these five. Note the near-miss — `de10nano-image` sets `BR2_PACKAGE_DOSFSTOOLS` (+ `_FATLABEL`, `_FSCK_FAT`, `_MKFS_FAT`), the TARGET package that ships `mkfs.fat` on the board, which is a different symbol from `BR2_PACKAGE_HOST_DOSFSTOOLS`. Not a `common` candidate on either count, and rule 4 says so twice over: `common` is in the kernel-only stack, so a `BR2_PACKAGE_HOST_*` line added there would move the kernel-variant toolchain fingerprint and bust every variant's host-toolchain cache, exactly as recorded for `BR2_TARGET_GENERIC_ROOT_PASSWD` above. |
 | `mister_initramfs_defconfig`, `mister_installer_defconfig` | left standalone | They share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). Not worth it; their comments moved here (§8, §9) for the same reason as the others. |
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
 Symbol counts (assignments + explicit not-set lines): `common` 7;
 `de10nano` 16; `kernel-only` 3 + 1 not-set; `de10nano-image` 257 + 10 not-set;
-`de25nano` 19. de10nano stack total 280 + 10 not-set — the old file had 281
-assignment lines, of which one was the duplicate `BR2_PACKAGE_STRACE=y`, so
+`de25nano` 45 + 2 not-set. de10nano stack total 280 + 10 not-set — the old
+file had 281 assignment lines, of which one was the duplicate `BR2_PACKAGE_STRACE=y`, so
 the SET of symbols is identical; de10nano-kernel stack 26 + 1, exactly the
-old kernel defconfig's; de25nano stack 26, exactly the old DE25 defconfig's.
+old kernel defconfig's; de25nano stack 52 + 2 not-set, exactly the old DE25
+defconfig's (26 + 0 at the split; the bootloader, host-tool and card stanzas of
+§6.9–§6.11 and the kernel-config switch of §6.5 arrived with wave 2 and were
+ported symbol-for-symbol, the resulting stack symbol set diffed line-for-line
+against the last version of the deleted file).
 
 ---
 
@@ -2865,3 +3065,10 @@ moved. The same identity was checked for `mister_initramfs_defconfig` and
 `mister_installer_defconfig` after their comments moved here (only comments
 changed; the resolved configs are byte-identical, `BR2_DEFCONFIG` included,
 since the files kept their names).
+
+SINCE THE SPLIT, one golden line has moved on purpose: `de25nano`, when the
+DE25 wave-2 work (§6.5's kernel-config switch and the §6.9–§6.11 bootloader,
+host-tool and card stanzas) was ported into `de25nano.fragment`. The
+`de10nano`, `de10nano-kernel` and `rt` lines are unchanged from the split, and
+must stay so — the DE25 shares no stack with them, so a DE25 change that moves
+any of the other three is a bug in the change, not in the hash.

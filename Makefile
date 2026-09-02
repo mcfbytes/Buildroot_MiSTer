@@ -814,22 +814,57 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 		echo "       BR2_LINUX_KERNEL_CUSTOM_DTS_PATH did not build." >&2; exit 1; \
 	fi; \
 	echo ""; \
-	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
-	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -c %s $$d) bytes)"; done; \
+	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
+	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -L -c %s $$d) bytes)"; done; \
 	test -f $(DE25_OUTPUT_DIR)/images/rootfs.ext4 || { \
 		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/rootfs.ext4" >&2; \
 		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
 		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
-	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
-	echo "    Bare developer OS -- no MiSTer binaries, no bootloader yet (D2.2)."; \
+	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
+	test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/bl31.bin" >&2; \
+		echo "       (BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31 + _IMAGES=\"bl31.bin\" select it.)" >&2; \
+		echo "       BL31 is what goes INSIDE u-boot.itb as the 'atf' image, so a missing" >&2; \
+		echo "       bl31.bin means the FIT below is either absent or built around a" >&2; \
+		echo "       binman-faked zero blob -- which boots nothing and says nothing." >&2; exit 1; }; \
+	echo "==> DE25 bl31:   $(DE25_OUTPUT_DIR)/images/bl31.bin  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/bl31.bin) bytes)"; \
+	test -f $(DE25_OUTPUT_DIR)/images/u-boot.itb || { \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/u-boot.itb" >&2; \
+		echo "       This is THE artifact of the bootloader half of the build: the factory" >&2; \
+		echo "       SPL in QSPI looks for a file of exactly that name on FAT partition 1" >&2; \
+		echo "       (SPL_FS_LOAD_PAYLOAD_NAME under SPL_LOAD_FIT, boot partition 1)." >&2; \
+		echo "       The usual cause is CONFIG_BINMAN having gone off: it is selected only" >&2; \
+		echo "       as 'select BINMAN if SPL_ATF' and it has no prompt, so anything that" >&2; \
+		echo "       turns CONFIG_SPL off takes the FIT with it, silently and with a green" >&2; \
+		echo "       U-Boot build. See board/mister/de25nano/uboot.fragment, SPL block." >&2; exit 1; }; \
+	echo "==> DE25 FIT:    $(DE25_OUTPUT_DIR)/images/u-boot.itb  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/u-boot.itb) bytes)"; \
+	echo "    Verify its shape against the factory SPL contract with:"; \
+	echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
+	echo "    Bare developer OS -- no MiSTer binaries."; \
 	echo ""
+	@if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ]; then \
+		echo "==> DE25 card:   SKIPPED (DE25_ALLOW_NO_UBOOT=1) -- no u-boot.itb, so nothing"; \
+		echo "                 this build produced can boot a board."; \
+		echo ""; \
+	elif [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
+		echo "==> DE25 card:   $(DE25_OUTPUT_DIR)/images/sdcard-de25.img  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/sdcard-de25.img) bytes)"; \
+		echo "                 dd it to a card; docs/de25-sdcard.md."; \
+		echo ""; \
+	else \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/sdcard-de25.img" >&2; \
+		echo "       (BR2_ROOTFS_POST_IMAGE_SCRIPT runs board/mister/de25nano/post-image.sh," >&2; \
+		echo "       which assembles the card and hands it to scripts/check-sdcard-de25.sh." >&2; \
+		echo "       A build that emits no card is not a green build.)" >&2; exit 1; \
+	fi
 
 # Escape hatches for iterating without hand-editing the checked-in fragments.
 # Both write to output-de25/; fold the result back into
 # configs/fragments/de25nano.fragment by hand (a `savedefconfig` of
 # output-de25/ is unordered, comment-free and NOT tracked --
-# docs/buildroot-config.md §1) or into board/mister/de25nano/linux.fragment
-# by hand.
+# docs/buildroot-config.md §1), into board/mister/de25nano/linux.config, or --
+# carefully, it is SHARED with the DE10 and must stay a no-op there
+# (scripts/check-kernel-fragment-noop.sh) -- into
+# board/mister/common/linux-mister.fragment.
 #
 # de25-linux-menuconfig exists as its own target for the same reason
 # rt-menuconfig does: the `%:` catch-all would forward a bare

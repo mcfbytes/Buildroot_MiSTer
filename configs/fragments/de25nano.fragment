@@ -3,7 +3,9 @@
 # NO MiSTer packages, NO DE10 packages — that is the accepted release scope
 # (ADR 0027 Decision 6, ADR 0029, docs/de25-nano-tasks.md D2.7), not a gap.
 # Layered on common only (configs/fragments/stacks.mk, DE25NANO_FRAGMENTS);
-# nothing here is shared with the DE10 stacks except that common layer.
+# no BR2_ symbol here is shared with the DE10 stacks except through that common
+# layer. Two FILES are shared by path — the kernel-tarball hash registry (§6.3)
+# and the MiSTer kernel-config fragment (§6.5) — and each says so at its line.
 # Rationale for every line: docs/buildroot-config.md §6.
 
 # --- Architecture & toolchain (docs/buildroot-config.md §6.2) ---
@@ -28,11 +30,17 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/patches"
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.3"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/linux-patches"
 
-# --- Kernel config = arm64 defconfig + one fragment; Image; board DTS (docs/buildroot-config.md §6.5) ---
-# WARNING: USE_ARCH_DEFAULT_CONFIG, not USE_DEFCONFIG (that one would build
+# --- Kernel config = pinned minimal base + shared MiSTer fragment; Image; board DTS (docs/buildroot-config.md §6.5) ---
+# WARNING: USE_CUSTOM_CONFIG, not USE_DEFCONFIG (that one would build
 # `defconfig_defconfig`). No stage-1 initramfs on this board by design.
-BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/linux.fragment"
+# WARNING: the wave-1 arm64-`defconfig` base is stated OFF, not just dropped, so
+# the change of shape is visible here rather than inferable from an absence.
+# WARNING: the fragment file is SHARED WITH THE DE10 BY PATH and must stay a
+# no-op against the DE10's resolved config — scripts/check-kernel-fragment-noop.sh.
+# BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG is not set
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/linux.config"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/common/linux-mister.fragment"
 BR2_LINUX_KERNEL_IMAGE=y
 BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
 
@@ -53,4 +61,64 @@ BR2_TARGET_GENERIC_ISSUE="Welcome to MiSTer DE25-Nano (developer OS)"
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
 
 # --- Packages: none, deliberately (docs/buildroot-config.md §6.8) ---
-# --- Not here yet: bootloader, SD-card image — D2.2 / D2.4 (docs/buildroot-config.md §6.9) ---
+# WARNING: the day BR2_PACKAGE_OPENSSH=y is added here it must be added
+# TOGETHER WITH `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` — this board's
+# linux.config has no CONFIG_SECCOMP, and openssh's sandbox is `default y`,
+# which yields an sshd that listens and kills every connection preauth
+# (docs/buildroot-config.md §6.8, docs/de25-kernel-config.md).
+
+# --- Bootloader: ATF BL31 + mainline U-Boot -> u-boot.itb (docs/buildroot-config.md §6.9) ---
+# WARNING: TF-A v2.15.0 and U-Boot 2026.07 are CUSTOM versions because
+# Buildroot 2026.05.2 offers neither an Agilex 5 TF-A platform nor a new enough
+# U-Boot. BUILD_SYSTEM_KCONFIG is NOT optional on a custom version — it
+# defaults to KCONFIG only under BR2_TARGET_UBOOT_LATEST_VERSION.
+BR2_TARGET_ARM_TRUSTED_FIRMWARE=y
+BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION=y
+BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE="v2.15.0"
+BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM="agilex5"
+BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31=y
+BR2_TARGET_ARM_TRUSTED_FIRMWARE_IMAGES="bl31.bin"
+BR2_TARGET_UBOOT=y
+BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2026.07"
+BR2_TARGET_UBOOT_USE_DEFCONFIG=y
+BR2_TARGET_UBOOT_BOARD_DEFCONFIG="socfpga_agilex5"
+# WARNING: the whole U-Boot delta — including the traps that keep a QSPI write
+# structurally impossible (CONFIG_ENV_IS_IN_UBI off) and the factory SPL's
+# bloblist out of our dram_init (CONFIG_HANDOFF / CONFIG_BLOBLIST off) — lives
+# in uboot.fragment, line by line. Read it before touching this stanza.
+BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/uboot.fragment"
+# WARNING: both files travel together — U-Boot auto-includes the -u-boot.dtsi
+# BY NAME, and the U-Boot board file shares a basename with the KERNEL board
+# file, which is why they live in uboot-dts/ and not beside it.
+BR2_TARGET_UBOOT_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano-u-boot.dtsi"
+BR2_TARGET_UBOOT_NEEDS_ATF_BL31=y
+BR2_TARGET_UBOOT_NEEDS_ATF_BL31_BIN=y
+BR2_TARGET_UBOOT_USE_BINMAN=y
+BR2_TARGET_UBOOT_NEEDS_OPENSSL=y
+# WARNING: NO SPL IS SHIPPED (no BR2_TARGET_UBOOT_SPL). The FSBL is the factory
+# U-Boot SPL in QSPI and is NEVER touched — posture 1, brick-class. The SPL is
+# nevertheless COMPILED, because `select BINMAN if SPL_ATF` is the only thing
+# that turns BINMAN on and BINMAN is what produces u-boot.itb.
+BR2_TARGET_UBOOT_FORMAT_ITB=y
+# FORMAT_BIN is `default y`; off so images/ holds only what goes on the card.
+# BR2_TARGET_UBOOT_FORMAT_BIN is not set
+
+# --- Host tools: dumpimage/mkimage, WITH FIT support (docs/buildroot-config.md §6.10) ---
+# WARNING: FIT_SUPPORT is NOT `default y`, and without it `dumpimage -l
+# u-boot.itb` prints nothing and exits 0 — a verification step that always
+# passes. Found the hard way on the first build.
+BR2_PACKAGE_HOST_UBOOT_TOOLS=y
+BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT=y
+
+# --- SD-card image: p1 FAT32 + p2 ext4, assembled by post-image.sh (docs/buildroot-config.md §6.11) ---
+# WARNING: host-genimage pulls in NEITHER mtools NOR dosfstools, and genimage's
+# vfat handler shells out to `mcopy`/`mkdosfs` by name — without these two the
+# card build fails inside genimage, not at configure time.
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_MTOOLS=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+# WARNING: fails the build when images/u-boot.itb is missing, BY DESIGN;
+# DE25_ALLOW_NO_UBOOT=1 in the environment downgrades it to a loud skip.
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/post-image.sh"

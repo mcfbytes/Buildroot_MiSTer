@@ -321,7 +321,8 @@ work now, in the order that unblocks the most:
 Items 1–5 of the original list were executed as wave 1 (above). Remaining, in unblock order:
 
 1. **U-Boot + TF-A desk build** (D2.4's buildable half, implementation-path §8 Q6): mainline
-   v2026.07 + TF-A v2.15.0 as Buildroot packages in the DE25 defconfig, `# CONFIG_SPL is not set`,
+   v2026.07 + TF-A v2.15.0 as Buildroot packages in the DE25 Buildroot configuration,
+   `# CONFIG_SPL is not set`,
    the §6.2 env fragment with `CONFIG_ENV_IS_IN_UBI` off, `u-boot.itb` shape checked with
    `dumpimage` against the factory SPL contract. Then the `fable` pass that gates any image
    leaving this machine (rule 2).

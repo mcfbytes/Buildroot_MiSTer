@@ -178,8 +178,9 @@ if [ ! -f "$binaries_dir/$FIT_NAME" ]; then
 	die "no $FIT_NAME in $binaries_dir.
        The factory SPL loads that FIT by name from p1 and nothing else will do
        (docs/de25-boot-chain.md §2 step 4, §8.3), so a card without it cannot
-       boot. It comes from BR2_TARGET_UBOOT + BR2_TARGET_ARM_TRUSTED_FIRMWARE,
-       which are D2.2 work and are not in configs/mister_de25nano_defconfig yet.
+       boot. It comes from BR2_TARGET_UBOOT + BR2_TARGET_ARM_TRUSTED_FIRMWARE
+       in configs/fragments/de25nano.fragment (docs/buildroot-config.md §6.9),
+       so a missing FIT means that stanza did not build.
        To build the kernel and rootfs anyway and skip the card, re-run with
        DE25_ALLOW_NO_UBOOT=1."
 fi

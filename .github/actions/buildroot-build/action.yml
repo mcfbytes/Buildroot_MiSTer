@@ -36,6 +36,17 @@ description: >-
   tree in output-<name>/target/.
 
 inputs:
+  board:
+    description: >-
+      Which board's arch/toolchain sentinel expectations to check the
+      toolchain fingerprint against (scripts/lib/board-expectations.sh's
+      BOARD_FINGERPRINT_SENTINELS, docs/de25-readiness-ledger.md §5.2/§5.5):
+      "de10nano" (default — behavior and cache key strings identical to
+      before this input existed) or any other board with a row in that
+      table (e.g. "de25nano"). An unrecognized value fails the same way an
+      unrecognized variant does, before any cache or build work.
+    required: false
+    default: "de10nano"
   extra-apt-packages:
     description: >-
       Space-separated apt packages to install on top of the mandatory build set
@@ -101,8 +112,23 @@ runs:
       shell: bash
       env:
         VARIANT: ${{ inputs.variant }}
+        BOARD: ${{ inputs.board }}
       run: |
         set -eu
+
+        # shellcheck source=scripts/lib/board-expectations.sh
+        source scripts/lib/board-expectations.sh
+
+        # --- Which board this run checks the fingerprint against ---------------
+        # Validated ONCE, here, before any cache/build work -- same idiom as
+        # the variant validation just below. Registry membership is the
+        # table itself (scripts/lib/board-expectations.sh), not a list
+        # duplicated here. See docs/de25-readiness-ledger.md §5.5.
+        if [ -z "${BOARD_FINGERPRINT_SENTINELS[$BOARD]+set}" ]; then
+          echo "::error::unknown board '$BOARD' -- .github/actions/buildroot-build accepts 'de10nano' or any board with a row in scripts/lib/board-expectations.sh's BOARD_FINGERPRINT_SENTINELS (known: ${!BOARD_FINGERPRINT_SENTINELS[*]})" >&2
+          exit 1
+        fi
+        echo "BOARD=$BOARD" >> "$GITHUB_ENV"
 
         # --- Which variant this run builds (see the file header) ---------------
         # Validated ONCE, here, before any cache/build work — fragment
@@ -190,9 +216,13 @@ runs:
         # Fail loud if the defconfig is ever renamed/reformatted such that this
         # produces an empty or degenerate fingerprint: a frozen cache key is the
         # worst outcome available here (see docs/ci.md#toolchain-fingerprint).
-        # Assert the two lines that no ARM defconfig can lack and that nothing
-        # legitimate ever removes.
-        for must in '^BR2_arm' '^BR2_cortex'; do
+        # Assert the lines BOARD's row says no defconfig for that board can
+        # lack and that nothing legitimate ever removes (scripts/lib/
+        # board-expectations.sh's BOARD_FINGERPRINT_SENTINELS; for the
+        # default "de10nano" this is the same two patterns as before this
+        # table existed).
+        # shellcheck disable=SC2086 # word splitting over the merged pattern list is intended
+        for must in ${BOARD_FINGERPRINT_SENTINELS[$BOARD]}; do
           if ! grep -q "$must" .br-toolchain-fingerprint; then
             echo "::error::toolchain fingerprint is missing '$must' -- the filter in .github/actions/buildroot-build/action.yml has gone stale, so this cache key can no longer detect a toolchain change. Refusing to build rather than risk restoring a wrong compiler." >&2
             exit 1

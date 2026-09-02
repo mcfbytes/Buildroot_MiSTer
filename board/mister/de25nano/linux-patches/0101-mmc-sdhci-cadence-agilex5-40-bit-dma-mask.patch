@@ -1,0 +1,134 @@
+From 600df0999ac2a9090eb862022261fe6d9e21139c Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Wed, 2 Sep 2026 00:23:16 -0500
+Subject: [PATCH 1/1] mmc: sdhci-cadence: limit Agilex 5 SD4HC to a 40-bit
+ DMA mask
+
+The Cadence SD4HC macro integrated on Intel/Altera Agilex 5 exposes only
+40 of the 64 descriptor address bits to the HPS interconnect, but its
+capability register still advertises 64-bit addressing.  The driver binds
+it today through the generic "cdns,sd4hc" entry, which carries no driver
+data, so sdhci_setup_host() reaches sdhci_set_dma_mask() with
+SDHCI_USE_64_BIT_DMA set and installs DMA_BIT_MASK(64).
+
+Nothing then keeps DMA addresses inside the controller's wired range.
+With the SMMU enabled the IOVA allocator hands out addresses top-down, so
+the very first mapping tends to land above bit 39; the controller drops
+the high bits and the resulting access is reported by arm-smmu-v3 as an
+"input address caused fault" (F_TRANSLATION) with no mmc-shaped
+diagnostic anywhere.  With the SMMU disabled the same truncation
+corrupts DMA to physical memory above 1 TiB.
+
+Give the macro its own compatible with driver data that installs a
+40-bit mask through the existing ->set_dma_mask hook, in the same way
+sdhci-of-esdhc.c does for the ls1043a/ls1046a eSDHC.  The hook runs
+inside sdhci_setup_host() in place of sdhci_set_dma_mask(), which is the
+only point early enough: the mask has to be right before the ADMA
+descriptor table is allocated, and any dma_set_mask_and_coherent() call
+made in probe before sdhci_add_host() would simply be overwritten by
+sdhci_set_dma_mask().
+
+SDHCI_QUIRK2_BROKEN_64_BIT_DMA is deliberately not used.  It would clear
+SDHCI_USE_64_BIT_DMA and fall back to a 32-bit mask and 32-bit ADMA2
+descriptors.  The 64-bit descriptor format works on this controller --
+only the address range is narrower -- and a 32-bit mask would bounce
+every transfer through swiotlb on a SoC whose DRAM base is 0x8000_0000.
+40 bits covers the whole Agilex 5 physical address map.
+
+The binding gains the new string in the vendor enum, so the
+
+	compatible = "intel,agilex5-sd4hc", "cdns,sd4hc";
+
+form used by Agilex 5 board device trees is dtbs_check-clean.  Boards
+that keep only the generic fallback are unaffected and keep today's
+behaviour.
+
+Mainline currently ships no Agilex 5 mmc node, so nothing in tree
+changes.  Carried locally against Linux 7.2.2 for the DE25-Nano pending
+upstream submission; it is an upstream candidate as-is, and whether and
+when to post it to linux-mmc is the maintainer's call.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ .../devicetree/bindings/mmc/cdns,sdhci.yaml   |  1 +
+ drivers/mmc/host/sdhci-cadence.c              | 41 +++++++++++++++++++
+ 2 files changed, 42 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml b/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
+index 6c7317d..be75995 100644
+--- a/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
++++ b/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
+@@ -14,6 +14,7 @@ properties:
+     items:
+       - enum:
+           - amd,pensando-elba-sd4hc
++          - intel,agilex5-sd4hc
+           - microchip,mpfs-sd4hc
+           - microchip,pic64gx-sd4hc
+           - mobileye,eyeq-sd4hc
+diff --git a/drivers/mmc/host/sdhci-cadence.c b/drivers/mmc/host/sdhci-cadence.c
+index 435603c..d1ad6ab 100644
+--- a/drivers/mmc/host/sdhci-cadence.c
++++ b/drivers/mmc/host/sdhci-cadence.c
+@@ -6,6 +6,7 @@
+ 
+ #include <linux/bitfield.h>
+ #include <linux/bits.h>
++#include <linux/dma-mapping.h>
+ #include <linux/iopoll.h>
+ #include <linux/module.h>
+ #include <linux/mmc/host.h>
+@@ -500,6 +501,42 @@ static const struct sdhci_cdns_drv_data sdhci_eyeq_drv_data = {
+ 	},
+ };
+ 
++/*
++ * The SD4HC instance integrated on Intel/Altera Agilex 5 drives only 40 of the
++ * 64 ADMA2 descriptor address bits onto the HPS interconnect.  The capability
++ * register still advertises 64-bit addressing, so sdhci_set_dma_mask() would
++ * install a 64-bit DMA mask and let the allocator (or, with the SMMU enabled,
++ * the IOVA allocator, which allocates top-down) hand out an address above bit
++ * 39.  That address is silently truncated by the controller, which shows up as
++ * an arm-smmu-v3 "input address caused fault" (F_TRANSLATION) rather than as
++ * anything mmc-shaped.
++ *
++ * Cap the mask at 40 bits instead of setting SDHCI_QUIRK2_BROKEN_64_BIT_DMA:
++ * the 64-bit descriptor format itself works, it is only the address range that
++ * is narrower, and forcing the 32-bit fallback would bounce every transfer on
++ * a SoC whose DRAM starts at 0x8000_0000.
++ */
++static int sdhci_cdns_agilex5_set_dma_mask(struct sdhci_host *host)
++{
++	return dma_set_mask_and_coherent(mmc_dev(host->mmc), DMA_BIT_MASK(40));
++}
++
++static const struct sdhci_ops sdhci_cdns_agilex5_ops = {
++	.set_clock = sdhci_set_clock,
++	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
++	.set_bus_width = sdhci_set_bus_width,
++	.set_dma_mask = sdhci_cdns_agilex5_set_dma_mask,
++	.reset = sdhci_reset,
++	.platform_execute_tuning = sdhci_cdns_execute_tuning,
++	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
++};
++
++static const struct sdhci_cdns_drv_data sdhci_cdns_agilex5_drv_data = {
++	.pltfm_data = {
++		.ops = &sdhci_cdns_agilex5_ops,
++	},
++};
++
+ static const struct sdhci_cdns_drv_data sdhci_cdns_drv_data = {
+ 	.pltfm_data = {
+ 		.ops = &sdhci_cdns_ops,
+@@ -653,6 +690,10 @@ static const struct of_device_id sdhci_cdns_match[] = {
+ 		.compatible = "mobileye,eyeq-sd4hc",
+ 		.data = &sdhci_eyeq_drv_data,
+ 	},
++	{
++		.compatible = "intel,agilex5-sd4hc",
++		.data = &sdhci_cdns_agilex5_drv_data,
++	},
+ 	{ .compatible = "cdns,sd4hc" },
+ 	{ /* sentinel */ }
+ };

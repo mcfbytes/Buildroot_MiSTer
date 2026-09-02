@@ -1,0 +1,52 @@
+From 882e32be97592b169d9ab0bdd069a3a3225bc3d0 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Wed, 2 Sep 2026 00:23:29 -0500
+Subject: [PATCH 1/1] firmware: stratix10-svc: match intel,agilex5-svc
+
+arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi has carried
+
+	firmware {
+		svc {
+			compatible = "intel,agilex5-svc";
+			...
+		};
+	};
+
+since the SoC was added, and Documentation/devicetree/bindings/firmware/
+intel,stratix10-svc.yaml lists "intel,agilex5-svc" in its compatible
+enum -- but stratix10_svc_drv_match[] has never held that string.  The
+node is therefore inert on every released kernel: stratix10_svc_init()'s
+of_platform_populate() skips it, no service driver is created, and every
+would-be client of the SDM (fpga-mgr, rsu, fcs) has nothing to attach to.
+Because the node is a lone compatible with no fallback string, the OF
+core cannot rescue it either.
+
+Add the match entry.  This is a pure match-table addition and changes no
+behaviour for the two strings already listed; the Agilex 5 SDM speaks the
+same SMC/mailbox protocol the driver already implements for Agilex, so no
+per-compatible driver data is needed and none is added.
+
+With this in place, boards no longer need to override the DT compatible to
+"intel,agilex-svc" purely to get a driver bound.
+
+Carried locally against Linux 7.2.2 for the DE25-Nano pending upstream
+submission; it is an upstream candidate as-is, and whether and when to
+post it to linux-fpga is the maintainer's call.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/firmware/stratix10-svc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/firmware/stratix10-svc.c b/drivers/firmware/stratix10-svc.c
+index 5e20057..568c998 100644
+--- a/drivers/firmware/stratix10-svc.c
++++ b/drivers/firmware/stratix10-svc.c
+@@ -1911,6 +1911,7 @@ EXPORT_SYMBOL_GPL(stratix10_svc_free_memory);
+ static const struct of_device_id stratix10_svc_drv_match[] = {
+ 	{.compatible = "intel,stratix10-svc"},
+ 	{.compatible = "intel,agilex-svc"},
++	{.compatible = "intel,agilex5-svc"},
+ 	{},
+ };
+ 

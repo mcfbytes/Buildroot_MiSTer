@@ -1,6 +1,6 @@
 # configs/fragments/golden.sha256 — sha256 of each stack's NORMALISED resolved
 # .config for the pinned Buildroot version (scripts/check-config-fragments.sh
-# (d); docs/buildroot-config.md §9). Regenerate ONLY with
+# (d); docs/buildroot-config.md §11). Regenerate ONLY with
 #   scripts/check-config-fragments.sh --update-golden
 # and say in the commit message what changed and why. Columns:
 # <BUILDROOT_VERSION> <stack> <sha256>

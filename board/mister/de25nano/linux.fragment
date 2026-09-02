@@ -6,7 +6,7 @@
 # There are two "fragment" layers in this repo and they are easy to confuse
 # (a reviewer already has, see the `rt` recipe's error text in the Makefile):
 #
-#   * configs/mister_de25nano_defconfig  — BUILDROOT config (BR2_*).
+#   * configs/fragments/de25nano.fragment — BUILDROOT config (BR2_*).
 #   * THIS FILE                          — KERNEL config (CONFIG_*), named by
 #     that defconfig's BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES and merged onto
 #     the base by Buildroot's own support/kconfig/merge_config.sh, followed by

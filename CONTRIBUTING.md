@@ -98,7 +98,7 @@ All external sources (kernel, Buildroot, packages, firmware) must be:
 KERNEL_VERSION = 6.18.y
 
 # Good: pinned tag (version illustrative -- the live kernel pin is
-# BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/mister_de10nano_defconfig,
+# BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE in configs/fragments/de10nano.fragment,
 # which is the one place it is written down)
 KERNEL_VERSION = 6.18.38
 

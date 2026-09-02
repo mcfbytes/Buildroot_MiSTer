@@ -5,7 +5,7 @@
 # `<STACK>_FRAGMENTS := <name> <name> ...` line per stack, names without the
 # `.fragment` suffix, in merge order (later fragments layer on earlier ones).
 #
-# See docs/buildroot-config.md §1 for the mechanism and §8 for why each
+# See docs/buildroot-config.md §1 for the mechanism and §10 for why each
 # symbol lives where it does.
 #
 # The de10nano and de10nano-kernel stacks share `common` and `de10nano` BY

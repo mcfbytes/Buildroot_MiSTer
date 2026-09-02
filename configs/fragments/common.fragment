@@ -3,7 +3,7 @@
 # later fragment must never redefine anything here
 # (scripts/check-config-fragments.sh fails the build if one does).
 # Rationale for every line, and why some "obviously shared" symbols are NOT
-# here: docs/buildroot-config.md §2 and §8.
+# here: docs/buildroot-config.md §2 and §10.
 
 # --- Toolchain: C++ (docs/buildroot-config.md §2.1) ---
 BR2_TOOLCHAIN_BUILDROOT_CXX=y

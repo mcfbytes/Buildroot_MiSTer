@@ -16,7 +16,7 @@
 # subcommand: it is incremental and restartable, which matters a great deal
 # over a 100 Mbit link driven by a 800 MHz dual-core Cortex-A9.
 #
-# NOT ENABLED BY DEFAULT. configs/mister_de10nano_defconfig leaves
+# NOT ENABLED BY DEFAULT. configs/fragments/de10nano-image.fragment leaves
 # BR2_PACKAGE_AZCOPY unset on size grounds alone: 39.1 MiB installed would make
 # this the second-largest package in the image after samba4, for a tool most
 # owners will never run. The package is complete and tested; it is one

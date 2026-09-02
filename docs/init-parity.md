@@ -22,10 +22,10 @@ read from `output/target/` **after** P2.1's full package-set build but **before*
 this task's overlay was wired in, so the diffs are genuinely against what Buildroot's
 packages install unprompted, not against a strawman. The overlay itself lives at
 `board/mister/de10nano/rootfs-overlay/` and is wired via `BR2_ROOTFS_OVERLAY` in
-`configs/mister_de10nano_defconfig` (added by this task; previously unset for the
+`configs/fragments/de10nano-image.fragment` (added by this task; previously unset for the
 full-rootfs build — only the initramfs defconfig had its own overlay).
 
-Build verified: `make mister_de10nano_defconfig && make all` completed clean,
+Build verified: `make de10nano-defconfig && make all` completed clean,
 `output/images/rootfs.tar` (180 MB) and `output/images/zImage_dtb` (8,771,237 bytes,
 `check-zimage-dtb.sh` all-pass) both produced. All claims below were checked against
 `output/images/rootfs.tar`, extracted fresh, with the actual commands and output
@@ -172,7 +172,7 @@ mechanism that wasn't there. It was flagged here rather than silently left out, 
 not affect SSH or networking (P2.3's hard requirements), which is why it wasn't a blocker.
 
 **This gap is now closed.** `BR2_PACKAGE_USBMOUNT=y` is set in
-`configs/mister_de10nano_defconfig`, the stock-tuned `usbmount.conf` ships in the overlay,
+`configs/fragments/de10nano-image.fragment`, the stock-tuned `usbmount.conf` ships in the overlay,
 and util-linux `mount` plus a `mount.ntfs -> ntfs-3g` helper make NTFS drives mount the
 way they do on stock. See **`docs/usb-automount-parity.md`** for the full picture.
 

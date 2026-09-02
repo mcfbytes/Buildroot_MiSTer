@@ -204,7 +204,7 @@ BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
 (`BAT`), `iecset`, `speaker-test` — are present in stock
 (`docs/stock-inventory/binaries-needed-full.txt`) but are general ALSA
 audio parity, not MIDI parity. **P3.15 — General ALSA userland parity** subsequently owned and closed this:
-`configs/mister_de10nano_defconfig:422-431` now sets
+`configs/fragments/de10nano-image.fragment` now sets
 `BR2_PACKAGE_ALSA_UTILS_{ALSACTL,ALSALOOP,ALSAMIXER,ALSATPLG,ALSAUCM,AMIXER,APLAY,BAT,IECSET,SPEAKER_TEST}=y`
 (`TASKS.md` P3.15, marked done). The general ALSA
 userland parity should pick this up. **A genuine gap in this Buildroot
@@ -227,7 +227,7 @@ around (e.g. by hand-adding a custom install rule) for this task.
 - `package/midilink/{Config.in,midilink.mk,midilink.hash}` — new.
 - `Config.in` (repo root) — added a `"MIDI / MT-32 (P3.8)"` menu sourcing
   both new packages' `Config.in`.
-- `configs/mister_de10nano_defconfig` — added `BR2_PACKAGE_MUNT=y`,
+- `configs/fragments/de10nano-image.fragment` — added `BR2_PACKAGE_MUNT=y`,
   `BR2_PACKAGE_MIDILINK=y`, `BR2_PACKAGE_ALSA_UTILS=y` + six MIDI-specific
   `BR2_PACKAGE_ALSA_UTILS_*` suboptions, right after the existing FluidSynth
   block.

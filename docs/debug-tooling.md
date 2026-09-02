@@ -54,7 +54,7 @@ $ grep -rn "DEBUG TOOLING" configs/ board/
 
 | Where | What |
 | --- | --- |
-| `configs/mister_de10nano_defconfig` | `BR2_PACKAGE_GDB` + `_GDB_SERVER` + `_GDB_DEBUGGER`, `BR2_PACKAGE_STRACE`, `BR2_PACKAGE_LINUX_TOOLS_PERF` (+ `_NEEDS_HOST_PYTHON3`), `BR2_PACKAGE_RT_TESTS` |
+| `configs/fragments/de10nano-image.fragment` | `BR2_PACKAGE_GDB` + `_GDB_SERVER` + `_GDB_DEBUGGER`, `BR2_PACKAGE_STRACE`, `BR2_PACKAGE_LINUX_TOOLS_PERF` (+ `_NEEDS_HOST_PYTHON3`), `BR2_PACKAGE_RT_TESTS` |
 | `board/mister/de10nano/linux.config` | `CONFIG_COREDUMP=y` (was `# CONFIG_COREDUMP is not set`) |
 
 Nothing else in the tree references any of it.
@@ -65,7 +65,7 @@ Nothing else in the tree references any of it.
 | --- | --- | --- |
 | gdb / gdbserver | 15.2 | `BR2_GDB_VERSION` default for a GCC >= 9 toolchain (`package/gdb/Config.in.host:77`) |
 | strace | 7.0 | `package/strace/strace.mk` |
-| perf | = the kernel pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `configs/mister_de10nano_defconfig`) | built from **our own kernel's** `tools/perf`, not a standalone release — so it tracks the pin by construction, never separately (§2) |
+| perf | = the kernel pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `configs/fragments/de10nano.fragment`) | built from **our own kernel's** `tools/perf`, not a standalone release — so it tracks the pin by construction, never separately (§2) |
 | rt-tests | 2.8 | `package/rt-tests/rt-tests.mk` |
 | numactl | 2.0.19 | pulled in by rt-tests (`select`) |
 | mpfr | 4.2.2 | pulled in by the full gdb (`select`) |
@@ -133,7 +133,7 @@ which is **part of the `linux` package**, not a standalone one. Consequences:
 
 * perf is rebuilt whenever the kernel is, and always matches the running kernel's
   `tools/perf` — no version skew;
-* it is *not* built by the kernel-only `mister_kernel_defconfig` / `make rt`
+* it is *not* built by the kernel-only fragment stack (`configs/fragments/kernel-only.fragment`) / `make rt`
   path, which sets no packages. RT gets `CONFIG_COREDUMP` but not a perf of its
   own — the single shipped `perf` is the one from the main image's kernel build, and it
   is what runs under the RT kernel too. The `perf_event_attr` ABI is
@@ -247,7 +247,7 @@ actually writes the ELF core file. It turns on for free and **must not** get a
 line of its own: it is invisible to kconfig while `COREDUMP` is off, so a
 `savedefconfig` round-trip would drop any line added for it.
 
-`linux.config` is shared with `configs/mister_kernel_defconfig`, so the RT/beta
+`linux.config` is shared with the kernel-only stack (`configs/fragments/de10nano.fragment` names it), so the RT/beta
 kernel gets coredumps too. That is wanted — RT is the variant under active
 on-hardware investigation.
 
@@ -336,7 +336,7 @@ is a decision on the record rather than an oversight:
 ## 5. How to revert
 
 1. Delete the whole `DEBUG TOOLING` block from
-   `configs/mister_de10nano_defconfig` — opening banner (`>>> DEBUG TOOLING —
+   `configs/fragments/de10nano-image.fragment` — opening banner (`>>> DEBUG TOOLING —
    TEMPORARY, REMOVE AS ONE BLOCK <<<`) through closing banner
    (`>>> END DEBUG TOOLING <<<`), inclusive. See §1 for why the two banner lines
    are not mirror images.
@@ -362,7 +362,7 @@ is a decision on the record rather than an oversight:
 6. Rebuild:
 
    ```sh
-   make mister_de10nano_defconfig    # re-resolve output/.config from the defconfig
+   make de10nano-defconfig    # re-resolve output/.config from the fragment stack
    make all
    ```
 

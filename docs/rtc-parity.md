@@ -164,7 +164,7 @@ applet disabled — matching stock, which shipped util-linux's `hwclock` too. It
 not wired into boot. See `docs/util-linux-parity.md`.)
 
 **No Buildroot `defconfig` changes needed for this task.** The one pre-existing RTC-related
-line needed no change: `configs/mister_de10nano_defconfig:647` —
+line needed no change: `configs/fragments/de10nano-image.fragment` —
 `BR2_PACKAGE_I2C_TOOLS=y  # for the i2c-gpio RTC add-on, P3.11` (installs `i2cdetect`/
 `i2cget`/`i2cset` for bench debugging of the bit-banged bus).
 

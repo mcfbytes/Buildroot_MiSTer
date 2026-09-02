@@ -188,7 +188,7 @@ CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
 # Its configuration is the de25nano fragment stack (common + de25nano,
 # configs/fragments/stacks.mk): it shares exactly the arch-neutral `common`
 # layer with the DE10 stacks and nothing else -- no DE10 toolchain, kernel or
-# package fragment is in its stack (docs/buildroot-config.md §6, §8).
+# package fragment is in its stack (docs/buildroot-config.md §6, §10).
 #
 # ALSO UNLIKE `rt` and `all`: `de25` does NOT depend on `initramfs`. That cpio
 # is an armv7 BusyBox built by configs/mister_initramfs_defconfig, and it exists

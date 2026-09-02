@@ -19,7 +19,7 @@ identically to the stock 2017.03 fork as the evidence allows, as a **build artif
   (515,141 B, sha256 `e2d46cf9…62ba64`), fetched by hash. ADR 0017 §Decision-5 stands.
 * `sdcard.img` keeps embedding that same stock blob. `scripts/mk-sdcard.sh` and
   `scripts/check-sdcard.sh` are untouched.
-* `configs/mister_de10nano_defconfig` gains **no** `BR2_TARGET_UBOOT*` line.
+* `configs/fragments/de10nano-image.fragment` gains **no** `BR2_TARGET_UBOOT*` line.
 * **No artifact this plan produces may ever be named `uboot.img`.** `updateboot` `dd`s
   `/media/fat/linux/uboot.img` over the `0xA2` partition on every Linux update with no
   version check, no hash check and no opt-out (boot-chain §5). The build output is

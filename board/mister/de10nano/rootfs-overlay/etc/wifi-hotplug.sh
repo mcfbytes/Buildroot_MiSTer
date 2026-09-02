@@ -27,7 +27,7 @@
 # setsid + redirected std fds is what makes the detach actually stick:
 #   - setsid (util-linux's, not BusyBox's -- board/mister/de10nano/
 #     busybox.fragment carries "# CONFIG_SETSID is not set" specifically
-#     because util-linux provides it; configs/mister_de10nano_defconfig's
+#     because util-linux provides it; configs/fragments/de10nano-image.fragment's
 #     BR2_PACKAGE_UTIL_LINUX_BINARIES comment lists setsid among the basic
 #     set it installs, and it is confirmed present at output/target/usr/bin/
 #     setsid, an ELF binary, not a BusyBox applet) starts ifup/ifdown in a

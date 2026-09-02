@@ -164,7 +164,8 @@ keys/paths, which make targets run) reads the env this step computes once —
 same compute-once/consume-twice reasoning as the cache keys
 ([`#cache-keys`](#cache-keys)).
 
-A kernel variant builds `configs/mister_kernel_defconfig` + its fragment:
+A kernel variant builds the `de10nano-kernel` fragment stack (`common` +
+`de10nano` + `kernel-only`, `configs/fragments/stacks.mk`) + its fragment:
 `zImage_dtb` plus a depmod'd module tree in `output-<name>/`, sharing `dl/`
 and ccache with main but its own host-toolchain cache (a cross-toolchain
 bakes its absolute `O=` path in, so `output/host` and `output-<name>/host` can
@@ -175,14 +176,16 @@ the initramfs stage DOES run: every kernel embeds the stage-1 cpio
 (`external.mk`'s fixup applies to any `BR2_LINUX_KERNEL=y` build; a zImage
 without it cannot boot).
 
-`configs/mister_kernel_defconfig` is a manually mirrored **copy** of the main
-defconfig's toolchain/kernel stanzas. `scripts/check-kernel-defconfig-sync.sh`
-asserts the copy has not drifted, and it runs in **two** places: inside
-`buildroot-build`'s fingerprint step (before any cache work — a drifted
-toolchain stanza would build wrong under a cache key that then pins the wrong
-toolchain in) and again as its own step in `build.yml`'s `build` job, which
-catches the main-only edit path (main defconfig changed, mirror forgotten) in
-seconds rather than waiting for a kernel leg to fail.
+The kernel-only stack shares its toolchain/kernel fragments with the image
+stack **by construction** (before the 2026-09 fragment split it was a manually
+mirrored copy, `configs/mister_kernel_defconfig`).
+`scripts/check-kernel-defconfig-sync.sh` asserts that structure still holds —
+every toolchain/kernel-family symbol lives in a fragment both stacks use — and
+it runs in **two** places: inside `buildroot-build`'s fingerprint step (before
+any cache work — a drifted toolchain stanza would build wrong under a cache key
+that then pins the wrong toolchain in) and again in `build.yml`'s
+`lint-config` job ([`#lint-config`](#lint-config)), which fails the whole run
+in seconds rather than waiting for a kernel leg to fail.
 
 What still needs a hand-edit for a new variant (nothing above does): the
 release-notes prose in `release.yml`'s `publish` job (a human-readable
@@ -456,20 +459,25 @@ Excluded, with reasons:
   compiled against), which is **not** excluded and correctly still busts the
   cache.
 
-Comments are stripped **before** filtering: these defconfigs are heavily
+Comments are stripped **before** filtering: the old defconfigs were heavily
 annotated, with both trailing comments (`BR2_ROOTFS_MERGED_USR=y  # why`) and
-indented continuation lines, and most of those annotations hang off the
-`BR2_PACKAGE_` lines being excluded. Keeping them would mean editing a
+indented continuation lines, and most of those annotations hung off the
+`BR2_PACKAGE_` lines being excluded (the fragments now carry one-line pointers
+into `docs/buildroot-config.md`, but the rule stands). Keeping them would mean editing a
 comment about a WiFi driver evicts the cross-toolchain and costs a 3h20m
 rebuild. Only a `#` that begins a line or follows whitespace is treated as a
 comment marker (values like the ext2 `MKFS_OPTIONS` contain `^` and `,` but
 never a bare `#`), so this cannot corrupt a symbol's value.
 
-Which defconfig gets fingerprinted is the variant's: main hashes the image
-defconfig; a kernel variant hashes the kernel-only base
-(`configs/mister_kernel_defconfig` — whose filtered residue is a non-empty
-toolchain stanza, so the sentinel assert below holds for it too) and then
-appends its fragment's residue. Kernel variants run the SAME strip/filter
+Which configuration gets fingerprinted is the variant's: main hashes the
+`de10nano` fragment stack; a kernel variant hashes the `de10nano-kernel` stack
+(whose filtered residue is a non-empty toolchain stanza, so the sentinel
+assert below holds for it too) and then appends its fragment's residue. The
+stack's files come from `configs/fragments/stacks.mk` via
+`scripts/lib/config-stacks.sh`; they are concatenated before the
+strip/filter/sort, and the resulting residue is byte-identical to what the
+old single-file defconfigs produced — the 2026-09 fragment split moved
+neither cache key. Kernel variants run the SAME strip/filter
 over the variant's fragment and append. TODAY this appends nothing for `rt` —
 the fragment only carries `BR2_LINUX_KERNEL_*` lines, all deny-listed above —
 and that is the deny-list doing its job, not a bug: a kernel-version bump in
@@ -1063,14 +1071,36 @@ enough for a defect to sit there for months undetected.
 <a id="kernel-defconfig-lockstep"></a>
 ### Kernel-defconfig lockstep check, run twice
 
-Same fail-fast reasoning as the patch lint: the kernel-only base defconfig is
-a manually mirrored copy of the main defconfig's toolchain/kernel stanzas
-(see [`#variants`](#variants)), and `scripts/check-kernel-defconfig-sync.sh`
-asserts the copy has not drifted. The composite action (`buildroot-build`)
-runs it for every kernel leg too; running it here, in `build.yml`'s own
-`build` job, as well, catches the main-only edit path (main defconfig
-changed, mirror forgotten) in seconds, without waiting for a kernel leg to
-fail.
+Same fail-fast reasoning as the patch lint: the kernel-only base stack shares
+its toolchain/kernel fragments with the image stack by construction (see
+[`#variants`](#variants)), and `scripts/check-kernel-defconfig-sync.sh`
+asserts that structure holds. The composite action (`buildroot-build`) runs it
+for every kernel leg too; running it in `build.yml`'s `lint-config` job as
+well catches an edit that puts a toolchain/kernel symbol in a one-stack
+fragment in seconds, without waiting for a kernel leg to fail.
+
+<a id="lint-config"></a>
+### The `lint-config` job: fragment stacks regenerated before anything builds
+
+`build.yml` runs `lint-kernel-patches.sh`, `check-kernel-defconfig-sync.sh`
+and `scripts/check-config-fragments.sh` in a job of their own (`lint-config`)
+that `build-kernel` and `build` both `needs`, so a bad fragment fails the run
+in about a minute instead of after an hour of kernel legs. The fragment check
+is config-only by design: it unpacks the pinned Buildroot tarball (10 MB,
+hash-verified by the wrapper Makefile's `buildroot-unpack`) and runs
+kconfig — no toolchain, no packages, no compile. It regenerates every stack
+(`de10nano`, `de10nano-kernel`, `de25nano`, and the kernel-only stack + each
+`configs/mister_<variant>.fragment`) through Buildroot's own `merge_config.sh
+-m` + `olddefconfig` and asserts: no symbol defined by two fragments of a
+stack (the rt fragment's version/patch-dir overrides are the one allowlist),
+every fragment symbol survives `olddefconfig`, the resolved image and
+kernel-only configs agree outside a named list of designed divergences, and
+the sha256 of each NORMALISED resolved `.config` equals
+`configs/fragments/golden.sha256` for the pinned Buildroot version. A
+Buildroot bump is expected to move those hashes; the PR stays red until a
+commit updates them with `--update-golden` and says why — the same
+fail-closed posture `BUILDROOT_SHA256` had before hash-sync case 6. Full
+description: `docs/buildroot-config.md` §11.
 
 <a id="kernel-module-overlay"></a>
 ### Kernel module overlay: download then populate
@@ -1798,7 +1828,7 @@ CI cache correctness). What follows here is only the mechanics of how
 
 A9 requires: pinned ext4 feature set, fixed UUID/hash-seed,
 `SOURCE_DATE_EPOCH`, `BR2_REPRODUCIBLE=y` (all landed in P2.5 —
-`configs/mister_de10nano_defconfig`) combine to make `linux.img` and
+the `de10nano` fragment stack, `docs/buildroot-config.md` §5.2) combine to make `linux.img` and
 `zImage_dtb` byte-identical across two independent builds of the same
 commit. P2.5 proved that ONCE, locally, for two image-generation passes over
 the SAME already-built `output/` tree — it deliberately did not prove it
@@ -2219,10 +2249,11 @@ to the same PR) are harmless no-ops once the hash is already correct.
 [`#renovate-hash-sync-dispatch-trap`](#renovate-hash-sync-dispatch-trap) for
 why this escape hatch has to exist at all and the trap in how to use it.
 
-`configs/mister_kernel_defconfig` copies the main defconfig's kernel stanza,
-so a 6.18 bump touches BOTH files (one Renovate PR, same depName) — both are
-listed in `paths:` so a bump is still picked up if a future change ever moves
-the kernel version into the copy alone.
+The 6.18 kernel pin lives in `configs/fragments/de10nano.fragment` alone since
+the 2026-09 fragment split (the kernel-only stack shares that file, so there
+is no mirrored copy any more) — that file is what `paths:` lists. Before the
+split the main defconfig and its copy `configs/mister_kernel_defconfig` were
+both listed, since one Renovate PR touched both.
 
 `configs/mister_rt.fragment` **is listed too, as of 2026-08-17** — and it was
 deliberately absent before that, so a reader coming from an older commit
@@ -2736,7 +2767,7 @@ skipped job to notice. `scripts/hash-sync-github-packages.sh` does **not**
 auto-discover `package/*/*.mk` — see its "Required env" header.
 
 **A note on azcopy and this job's disk/cache budget.** `BR2_PACKAGE_AZCOPY` is **not
-enabled** in `configs/mister_de10nano_defconfig` (size, see `docs/azcopy.md` §1), so
+enabled** in `configs/fragments/de10nano-image.fragment` (size, see `docs/azcopy.md` §1), so
 `host-go` is not built and none of the below is in the default pipeline today. It
 matters the moment anyone flips that line — though **not for the reason you would
 guess**. Wall clock is cheap: the five-stage host-go bootstrap measured **3.0 min**,

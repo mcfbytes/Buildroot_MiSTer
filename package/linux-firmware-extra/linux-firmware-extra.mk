@@ -27,7 +27,7 @@
 # no second version to keep in sync) and removes the duplicate fetch/extract.
 # `depends on BR2_PACKAGE_LINUX_FIRMWARE` (Config.in) guarantees that tree
 # exists whenever this package is enabled -- it also means this package no
-# longer builds in the kernel-only variants (mister_kernel_defconfig does not
+# longer builds in the kernel-only variants (the kernel-only fragment stack does not
 # enable linux-firmware), where its files landed in a target/ that is thrown
 # away and only cost a wasted ~557 MiB fetch.
 

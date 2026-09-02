@@ -25,7 +25,7 @@
 # and switch_roots. mkfs.exfat in particular has no business being one `sh`
 # typo away from the boot path of a device whose data partition is the thing it
 # would reformat. (The full set does ship in the ROOTFS, where a user with a
-# shell can reach it -- BR2_PACKAGE_EXFATPROGS in mister_de10nano_defconfig.)
+# shell can reach it -- BR2_PACKAGE_EXFATPROGS in configs/fragments/de10nano-image.fragment.)
 #
 # KEEP THIS LIST IN STEP with what the initramfs /init actually invokes. The
 # Makefile's `initramfs-verify` target asserts both directions against the built

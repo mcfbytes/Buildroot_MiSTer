@@ -26,7 +26,7 @@ concrete reasons, not reproducibility as an abstract virtue:
 
 ## How this is delivered
 
-Four mechanisms combine, all landed in P2.5 (`configs/mister_de10nano_defconfig`):
+Four mechanisms combine, all landed in P2.5 (`configs/fragments/de10nano-image.fragment`):
 
 1. **`BR2_REPRODUCIBLE=y`.** Buildroot's own reproducible-build mode. Exports
    `SOURCE_DATE_EPOCH` pinned to Buildroot's own pinned-tree last-commit date (constant
@@ -64,7 +64,7 @@ Four mechanisms combine, all landed in P2.5 (`configs/mister_de10nano_defconfig`
    reference — same commit means same Buildroot tree, same kernel source, same patches,
    same defconfig.
 
-4. **A checked-in config, not a locally-generated one.** `configs/mister_de10nano_defconfig`
+4. **A checked-in config, not a locally-generated one.** `configs/fragments/de10nano-image.fragment`
    and `configs/mister_initramfs_defconfig` are committed. There is no `menuconfig`
    step between "clone this commit" and "build this image" — the defconfig fully
    determines the build.
@@ -139,7 +139,7 @@ this section should be updated with:
 
 ## Related
 
-- `configs/mister_de10nano_defconfig` — the `BR2_REPRODUCIBLE` + ext4-options block
+- `configs/fragments/de10nano-image.fragment` — the `BR2_REPRODUCIBLE` + ext4-options block
   (search `BR2_REPRODUCIBLE` / `BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS`).
 - `scripts/check-linux-img.sh` — asserts the pinned size/label/UUID/hash-seed/feature-set
   contract (and the ADR 0015 no-baked-keys invariant) on every build; runs automatically

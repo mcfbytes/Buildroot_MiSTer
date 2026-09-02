@@ -27,8 +27,7 @@ if current_linux_version == linux['version'][-6:]:
 ```
 
 `/MiSTer.version` is written at build time by `board/mister/de10nano/post-build.sh`,
-which derives its 6-byte `YYMMDD` stamp from `SOURCE_DATE_EPOCH`. `configs/
-mister_de10nano_defconfig` pins `SOURCE_DATE_EPOCH` to **Buildroot's own last-commit
+which derives its 6-byte `YYMMDD` stamp from `SOURCE_DATE_EPOCH`. `configs/fragments/de10nano-image.fragment` pins `SOURCE_DATE_EPOCH` to **Buildroot's own last-commit
 date** — fixed as long as `BUILDROOT_VERSION` doesn't change (that pin is exactly what
 makes two independent builds of the same commit byte-identical, P2.5/A9's reproducibility
 requirement).
@@ -87,7 +86,7 @@ exact-byte-match hazard" (a mismatched `/MiSTer.version` makes the inequality pe
 true) — here the mismatch is a **deliberate, chosen trade-off** rather than a whitespace
 bug, made because the alternative (never offering a new release to an already-updated
 device) was judged worse. **This should not be considered a closed question.** The
-durable fix belongs in `post-build.sh`/`configs/mister_de10nano_defconfig` (P2.6), not
+durable fix belongs in `post-build.sh`/`configs/fragments/de10nano-image.fragment` (P2.6), not
 here: have `post-build.sh` accept a build-time override (e.g. an env var the release
 workflow sets to that release's own real date) for `/MiSTer.version` specifically, while
 leaving `SOURCE_DATE_EPOCH` itself pinned for every *other* reproducibility guarantee

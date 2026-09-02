@@ -199,7 +199,7 @@
 # output/target/sbin -> usr/sbin, so stock's /sbin/ifup and /sbin/ifdown
 # spellings resolve to those same two entries (BR2_ROOTFS_MERGED_USR=y).
 # output/target/usr/sbin/iw, a 264720-byte ARM ELF, from
-# BR2_PACKAGE_IW=y at configs/mister_de10nano_defconfig:698 -- the pre-up
+# BR2_PACKAGE_IW=y at configs/fragments/de10nano-image.fragment -- the pre-up
 # loop's `iw dev` would be a permanent 20s no-op without it.
 
 SUBSYSTEM=="net", ACTION=="add",    DRIVERS=="?*", KERNEL=="wlan*", RUN+="/etc/wifi-hotplug.sh up %k"

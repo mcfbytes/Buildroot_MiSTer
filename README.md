@@ -111,7 +111,7 @@ both sides — stock from the extracted stock `linux.img`, ours read off the bui
 
 **On version drift, since this table cites documents that can lag it.** The ground truth
 for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
-`configs/mister_de10nano_defconfig` — plus whatever Buildroot's own `.mk` files resolve
+the DE10-Nano fragment stack under `configs/fragments/` — plus whatever Buildroot's own `.mk` files resolve
 to at that pin. The documents below are **dated analyses**, not a live mirror of those
 pins: a Renovate bump or a Buildroot line bump moves a package without rewriting the
 prose that reasoned about it. Where a document is behind the pin it now says so at the
@@ -302,7 +302,7 @@ make, use the download-and-read form above, or the by-hand route.
 Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
 stable release**. 5.15 itself reaches end-of-life in October 2026. This project tracks
 **6.18 LTS** — the exact patch level is
-`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`,
+`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/fragments/de10nano.fragment`,
 and it is deliberately not repeated in prose here because stable `.y` releases
 land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
@@ -585,11 +585,17 @@ shipped **byte-identical to stock's**, fetched by hash.
 ```
 Makefile                 wrapper: fetches + hash-verifies Buildroot, forwards targets
 Config.in / external.mk  BR2_EXTERNAL definition for the 16 in-tree packages
-configs/                 mister_de10nano_defconfig  (the shipped image)
-                         mister_kernel_defconfig    (kernel-only base, shared by variants)
-                         mister_rt.fragment         (PREEMPT_RT / 7.x delta)
+configs/fragments/       stacks.mk                  (which fragments form which config)
+                         common.fragment            (policy shared by every board + variant)
+                         de10nano.fragment          (DE10 arch/ABI, headers, kernel stanza)
+                         de10nano-image.fragment    (the shipped image: hooks, ext4, packages)
+                         kernel-only.fragment       (kernel-only base, shared by variants)
+                         de25nano.fragment          (DE25-Nano developer OS, aarch64)
+                         golden.sha256              (resolved-config hashes CI asserts)
+configs/                 mister_rt.fragment         (PREEMPT_RT / 7.x delta)
                          mister_initramfs_defconfig (stage-1 cpio)
                          mister_installer_defconfig (SD-card installer cpio)
+                         -> docs/buildroot-config.md has the rationale for every line
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
   linux-patches/         37 carried patches: 36 MiSTer + 1 mainline backport (0047)
@@ -712,7 +718,7 @@ inventoried against real mr-fusion output in
 
 ```sh
 make                            # prints help — deliberately NOT a build
-make mister_de10nano_defconfig  # load the config
+make de10nano-defconfig         # generate output/.config from the fragment stack
 make all                        # build (first run bootstraps a cross-toolchain — hours, not minutes)
 ```
 

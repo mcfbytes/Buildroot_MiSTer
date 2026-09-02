@@ -294,7 +294,7 @@ glibc 2.43):
 * **`read-dev-usbmon` correctly not built**, and `ltunify --version` reports the
   pinned SHA rather than an empty string.
 
-`make mister_de10nano_defconfig` against the external tree resolves
+`make de10nano-defconfig` against the external tree resolves
 `BR2_PACKAGE_LTUNIFY=y`, leaves `BR2_PACKAGE_LIBEXECINFO` unselected (correct on
 a glibc toolchain), and `LTUNIFY_SOURCE` matches the filename on the `.hash`
 line character for character.

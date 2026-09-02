@@ -19,7 +19,7 @@ not yet been exercised on real hardware. Treat anything not listed above as unve
 practice until proven otherwise on your own hardware.
 
 The kernel is pinned to a specific release on the **6.18 LTS** line (which release moves
-with upstream stable — `configs/mister_de10nano_defconfig` is the pin), and the 6.18 line
+with upstream stable — `configs/fragments/de10nano.fragment` is the pin), and the 6.18 line
 **has booted on real hardware** — from the CI-built artifact rather than a local build,
 with every out-of-tree module present, Bluetooth firmware loading, and no kernel
 BUG/Oops/panic. WiFi is confirmed too: the RTL8822BU auto-connects at boot to a

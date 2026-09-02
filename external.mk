@@ -29,7 +29,7 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 # we just point it at a different, much smaller cpio.
 #
 # WHY HERE AND NOT IN THE DEFCONFIG. The obvious alternative is
-# BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES in configs/mister_de10nano_defconfig. Do
+# BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES in configs/fragments/de10nano.fragment. Do
 # not: package/pkg-kconfig.mk:19-20 makes `make linux-update-defconfig` and
 # `make linux-savedefconfig` HARD-FAIL ("Unable to perform when fragment files are
 # set") as soon as any fragment is configured — and those are precisely the commands
@@ -48,7 +48,7 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 #
 # BR2_LINUX_KERNEL=y alone was the right condition while every output directory
 # in this tree built for the same armv7 board. It no longer is:
-# configs/mister_de25nano_defconfig builds an AARCH64 kernel for a different
+# the de25nano fragment stack (configs/fragments/de25nano.fragment) builds an AARCH64 kernel for a different
 # board (Agilex 5), in output-de25/, and this hook keys on the *symbol*, not on
 # which defconfig or which O= is in play — so without a second test it would
 # fire there too and try to embed $(MISTER_INITRAMFS_CPIO) into that kernel.
@@ -69,17 +69,17 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 # THE TEST IS ON THE ARCHITECTURE, not on a board name or a defconfig name, and
 # that is the point: the thing that makes this hook wrong for the DE25 is not
 # "it is the DE25", it is that the cpio is armv7 userspace. Every output dir
-# this hook is *meant* for -- the main DE10 image, configs/mister_kernel_defconfig
+# this hook is *meant* for -- the main DE10 image, the kernel-only stack
 # and the rt variant built on it -- is BR2_arm=y, and every one of them wants the
 # cpio. So `BR2_arm` names the actual precondition and needs no maintenance when
 # a fourth armv7 variant or a second aarch64 board appears.
 #
 # Considered and rejected: a BR2_EXTERNAL Config.in symbol (e.g. a
 # "BR2_PACKAGE_MISTER_EMBED_STAGE1_INITRAMFS" bool) would be more explicit, but
-# it would have to be added to configs/mister_de10nano_defconfig AND
-# configs/mister_kernel_defconfig to keep them building — editing both files
-# that scripts/check-kernel-defconfig-sync.sh locks in lockstep, and changing
-# the DE10's toolchain-fingerprint cache key, for zero behavioural difference.
+# it would have to be added to configs/fragments/de10nano.fragment (the board
+# layer both DE10 stacks share) to keep them building — a toolchain-family
+# edit that changes the DE10's toolchain-fingerprint cache key, for zero
+# behavioural difference.
 # Revisit if a third board ever needs a stage-1 cpio of its own architecture.
 ifeq ($(BR2_LINUX_KERNEL)$(BR2_arm),yy)
 

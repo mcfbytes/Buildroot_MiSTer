@@ -2,7 +2,7 @@
 #
 # check-config-fragments.sh — regenerate every Buildroot configuration from
 # its fragment stack and prove the stack means what it says
-# (docs/buildroot-config.md §1, §9).
+# (docs/buildroot-config.md §1, §11).
 #
 # The monolithic defconfigs were split into configs/fragments/ (stacks.mk
 # lists which fragments make which configuration). merge_config.sh +
@@ -326,7 +326,7 @@ if [ "$UPDATE_GOLDEN" = true ]; then
 	{
 		echo "# configs/fragments/golden.sha256 — sha256 of each stack's NORMALISED resolved"
 		echo "# .config for the pinned Buildroot version (scripts/check-config-fragments.sh"
-		echo "# (d); docs/buildroot-config.md §9). Regenerate ONLY with"
+		echo "# (d); docs/buildroot-config.md §11). Regenerate ONLY with"
 		echo "#   scripts/check-config-fragments.sh --update-golden"
 		echo "# and say in the commit message what changed and why. Columns:"
 		echo "# <BUILDROOT_VERSION> <stack> <sha256>"

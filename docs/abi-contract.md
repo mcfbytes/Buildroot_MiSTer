@@ -268,7 +268,7 @@ is the point of the project.
 **Not a hazard, but write it down — `libz.so.1`'s *provider* is not classic zlib.**
 Buildroot models zlib as a **virtual package** with a Kconfig `choice`
 (`package/zlib/Config.in`): `BR2_PACKAGE_LIBZLIB` is upstream's default, `BR2_PACKAGE_ZLIB_NG`
-is the other arm. This image selects **zlib-ng 2.3.3** (`configs/mister_de10nano_defconfig`,
+is the other arm. This image selects **zlib-ng 2.3.3** (`configs/fragments/de10nano-image.fragment`,
 compression block, where the blast-radius measurement is recorded). That choice is invisible to
 every row above:
 

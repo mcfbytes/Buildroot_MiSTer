@@ -5,7 +5,7 @@ vanilla kernel version we currently ship (plan: `MISTER-KERNEL-PATCH-RECON.md` �
 **Analyze ONLY your assigned commit. Never group it with other commits** — grouping is the
 exact failure mode this project exists to fix.
 
-> **Which vanilla version.** Ground on the version `configs/mister_de10nano_defconfig` pins,
+> **Which vanilla version.** Ground on the version `configs/fragments/de10nano.fragment` pins,
 > not on a version quoted in a doc — the pin moves with stable bumps and the docs lag it.
 > The original campaign ran against `v6.18.38`; the 2026-07-24 fork-sync increment ran
 > against **`v6.18.39`** (`docs/kernel-recon/fork-sync-2026-07.md` §5). Check the pin, then
@@ -29,7 +29,7 @@ If the diff is huge (thousands of lines, e.g. vendored drivers), do NOT read it 
 | Fork repo | `/mnt/source/Linux-Kernel_MiSTer` (branch `MiSTer-v5.15`) | your commit and its neighbors |
 | Carried patches | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031` with gaps) | is this commit carried? grep for symbols/strings from your diff |
 | Our kernel config | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux.config` | kconfig reconciliation |
-| Our Buildroot defconfig | `/mnt/source/Buildroot_MiSTer/configs/mister_de10nano_defconfig` | BR2 packages (some fork drivers now ship as out-of-tree kmod packages, e.g. xone, 8812au — grep `package/` and the defconfig) |
+| Our Buildroot defconfig | `/mnt/source/Buildroot_MiSTer/configs/fragments/de10nano.fragment` | BR2 packages (some fork drivers now ship as out-of-tree kmod packages, e.g. xone, 8812au — grep `package/` and the defconfig) |
 | Stock kernel config | `/mnt/source/Buildroot_MiSTer/docs/stock-inventory/stock-linux.config` | what stock shipped |
 | Main_MiSTer userspace | `/mnt/source/Main_MiSTer` | userspace coupling: grep input event codes, ioctls, sysfs paths, /dev nodes |
 | Prior art (**may be wrong**) | `/mnt/source/Buildroot_MiSTer/docs/patch-provenance.md` | record what it claims, then re-derive INDEPENDENTLY |

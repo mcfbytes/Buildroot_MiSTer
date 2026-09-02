@@ -236,6 +236,13 @@ None of these is decided here. Each is named so it is not mistaken for settled.
    refactoring the DE10 defconfig while bringing up an unbooted board couples two risks and puts DE10
    regressions on the DE25's critical path. **Interim, not the end state** — the shared-base refactor
    is a future ADR, taken once a DE25 has booted and the overlap is measured rather than predicted.
+   *Addendum 2026-09-02:* the owner took the refactor early, on the condition that the DE10 build be
+   provably unchanged: all three defconfigs became fragment stacks under `configs/fragments/`
+   (`docs/buildroot-config.md`; the measured overlap is the seven-symbol `common.fragment`, §10
+   there — the DE25 stack shares nothing else with the DE10 and still carries no DE10 package).
+   The DE10's resolved `.config`, `savedefconfig` and CI cache keys were shown byte-identical
+   before the monoliths were deleted (§11 there). Not an ADR of its own: no decision recorded
+   here changed.
 3. **The U-Boot / TF-A version pairing.** Mainline U-Boot **v2026.07** + TF-A **v2.15.0** is the
    recommendation, but the pairing is **unblessed and untested by us [U]** — the vendors document only
    forks and no DE25-Nano board exists in mainline U-Boot, so we carry the fragment ourselves **[V

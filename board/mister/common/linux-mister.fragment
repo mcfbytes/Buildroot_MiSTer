@@ -1,0 +1,723 @@
+#
+# board/mister/common/linux-mister.fragment — the ARCH-NEUTRAL MiSTer kernel
+# personality, shared by every board this repo builds.
+#
+# WHAT THIS FILE IS
+# -----------------
+# A MiSTer is defined, at the kernel level, far more by *what a user plugs into
+# it* than by which FPGA SoC it happens to run on: USB gamepads and arcade
+# encoders, Bluetooth controllers, Wi-Fi dongles, USB audio, USB storage, the
+# exFAT/NFS/CIFS filesystems its games live on. None of that is arch-specific.
+# This file is that set, extracted from the DE10-Nano's kernel config, which is
+# the canonical MiSTer hardware list (it is a port of the stock MiSTer kernel
+# config, see docs/kernel-config-deltas.md).
+#
+# HOW THE TWO BOARDS CONSUME IT
+# -----------------------------
+#   DE25-Nano (today)   BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE = the board's own
+#                       minimal arm64 base, board/mister/de25nano/linux.config
+#                       BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES = THIS FILE
+#                       -> Buildroot merges base + fragment with
+#                          support/kconfig/merge_config.sh, then `olddefconfig`.
+#
+#   DE10-Nano (today)   still ships one whole file,
+#                       board/mister/de10nano/linux.config. 404 of the 409
+#                       lines below appear in it verbatim; the other 5 are
+#                       SENTINELS (the USB, USB_HID, HID, INPUT and WLAN menu
+#                       gates) that the DE10 gets from a Kconfig `default` or,
+#                       in the USB case, from a `select` — they are named here
+#                       because they are single points of failure, and each was
+#                       checked to already hold that value in the DE10's
+#                       RESOLVED config. The DE10 does NOT reference this
+#                       fragment yet — adopting it is a separate change, and
+#                       the invariant below is what makes that change safe.
+#
+# ***THE INVARIANT: THIS FILE MUST BE A NO-OP ON THE DE10.***
+# Every single line here is byte-identical to the corresponding line in the
+# DE10's RESOLVED kernel config (output/build/linux-<ver>/.config), not merely
+# to its minimal defconfig. Merging this fragment onto the DE10's resolved
+# config must therefore produce zero `merge_config.sh` "redefined" warnings and
+# a bit-identical config after `olddefconfig`.
+#
+#   Check it mechanically:   scripts/check-kernel-fragment-noop.sh
+#
+# That check is the whole point. It is what lets the DE10 adopt this fragment
+# later with a provable zero-delta, and it is what stops a DE25-motivated edit
+# from silently changing the DE10's driver set.
+#
+# FIVE RULES FOR EDITING THIS FILE
+# --------------------------------
+#  1. A symbol belongs here only if BOTH boards want the SAME VALUE and the
+#     symbol is not arch- or SoC-specific. Anything that names an on-chip IP
+#     block (8250_DW, DESIGNWARE_I2C, DWAPB GPIO, DW_WATCHDOG, SDHCI_CADENCE,
+#     PL330, the FPGA manager, the SoC's clk/reset drivers) lives in the
+#     board's own linux.config, NOT here — even when both boards happen to
+#     have the same IP.
+#  2. A symbol that does not exist in BOTH kernel trees must not be named here.
+#     Kernel versions differ between boards (DE10 is on 6.18.y, DE25 on 7.2.y).
+#     `olddefconfig` DISCARDS an unknown symbol silently — never an error — so a
+#     version-skewed line is a silent no-op, not a build failure. Two symbols
+#     were excluded for exactly this reason; see docs/de25-kernel-config.md §9.
+#  3. An ABSENT symbol is NOT an off symbol. Several `# CONFIG_X is not set`
+#     lines below are load-bearing because the symbol is `default y` (or
+#     `default m` under CONFIG_MMC=y) and would otherwise switch itself on.
+#     They are marked where that is the case.
+#  4. Never add a symbol here without checking its value in the DE10's resolved
+#     .config first. Rule 1 is a judgement; the invariant is arithmetic.
+#  5. NEVER write a bare `CONFIG_<SYM>` token in a COMMENT here when the file
+#     also sets <SYM>. merge_config.sh resolves a symbol's "new value" with
+#     `grep -w CONFIG_<SYM> <fragment>`, which happily matches prose, so a
+#     comment mentioning a symbol makes merge_config print a FALSE "Value of
+#     CONFIG_<SYM> is redefined by fragment" warning on every build — and that
+#     warning is exactly the signal the no-op check reads. Name symbols in
+#     comments without the prefix ("the USB symbol", "SECCOMP").
+#
+# SIX SYMBOLS BELOW REQUIRE CARRIED PATCHES, on BOTH boards:
+#   HID_GUNCON2 (0010), HID_GUNCON3 (0011), HID_FTEC (0012),
+#   HID_VADER4 (0013), HID_GAMECUBE_ADAPTER + _FF (0014).
+# Both board patch directories carry 0010-0014 (the DE25's are symlinks into
+# the DE10's). If a board ever drops one of those patches, its symbol vanishes
+# from that board's tree and this fragment silently loses a driver there.
+#
+# Provenance: extracted 2026-09-02 from board/mister/de10nano/linux.config and
+# verified line-by-line against output/build/linux-6.18.48/.config (all 475
+# lines of the DE10 defconfig were confirmed to resolve to exactly their stated
+# value first, so any subset of it is a no-op by construction).
+# Rationale, per subsystem, and the per-kernel-bump re-check list:
+# docs/de25-kernel-config.md.
+#
+
+# =============================================================================
+# 1. Core kernel personality
+# =============================================================================
+# SYSVIPC: required by several MiSTer userland pieces and by Buildroot's
+# default init. TASK*/TASKSTATS/PROFILING/RELAY: stock-parity accounting.
+# IKCONFIG_PROC: /proc/config.gz — the only way to answer "what is actually in
+# the kernel on this board" from the board itself, which this project relies on
+# repeatedly (see docs/kernel-config-deltas.md).
+CONFIG_SYSVIPC=y
+CONFIG_HIGH_RES_TIMERS=y
+CONFIG_TASKSTATS=y
+CONFIG_TASK_DELAY_ACCT=y
+CONFIG_TASK_XACCT=y
+CONFIG_TASK_IO_ACCOUNTING=y
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+CONFIG_LOG_BUF_SHIFT=14
+# cgroups + namespaces as the DE10 has them — enough for the container/Docker
+# use the fork enabled MACVLAN/TUN for, no more. Notably NOT the full
+# MEMCG/BLK_CGROUP set: the DE10 does not have it and neither board needs it.
+CONFIG_CGROUPS=y
+CONFIG_CPUSETS=y
+CONFIG_NAMESPACES=y
+CONFIG_RELAY=y
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_SYSFS_SYSCALL=y
+CONFIG_EXPERT=y
+CONFIG_PROFILING=y
+# 1000 Hz is a MiSTer latency posture, not a default: the generic Kconfig.hz
+# choice defaults to HZ_250, so this is a real change on any base.
+CONFIG_HZ_1000=y
+# SUSPEND is `default y` wherever ARCH_SUSPEND_POSSIBLE — an explicit off is
+# required, not optional (rule 3). Nothing on either board suspends; the DE25
+# has no PSCI idle-states in its DTS and the DE10 has no PM hardware at all.
+# CONFIG_SUSPEND is not set
+CONFIG_PM=y
+# SECCOMP OFF IS LOAD-BEARING, AND IT REACHES INTO THE BUILDROOT DEFCONFIG.
+# It is `default y` on arm64 and matches stock on the DE10, so this is a real
+# change on any arm64 base. The coupling: Buildroot's BR2_PACKAGE_OPENSSH_SANDBOX
+# is `default y`, and since openssh 10.4 a failed prctl(PR_SET_SECCOMP) is
+# fatal() rather than debug() — so an image with SECCOMP off and the sandbox on
+# gets an sshd that BINDS AND LISTENS while killing every connection preauth,
+# password and key alike. The DE10 fixes that in its own defconfig with
+# `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` (see its comment there, commit
+# 9824cd6). ANY BOARD THAT ADOPTS THIS FRAGMENT AND SHIPS OPENSSH MUST CARRY
+# THAT DEFCONFIG LINE TOO. (Note it is a configure-time flag: changing it needs
+# `make openssh-dirclean` or the stale stamp ships the same broken sshd.)
+# CONFIG_SECCOMP is not set
+
+# =============================================================================
+# 2. Modules and the .ko.xz layout
+# =============================================================================
+# MODULE_COMPRESS_XZ is an ABI contract, not a size tweak: the on-disk module
+# layout is `.ko.xz` and docs/abi-contract.md + the Downloader's expectations
+# are written against it. docs/kernel-config-deltas.md §3.1 records this as one
+# of the three symbols `olddefconfig` silently dropped once already.
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODULE_COMPRESS=y
+CONFIG_MODULE_COMPRESS_XZ=y
+
+# =============================================================================
+# 3. Block layer, partitions, binfmt
+# =============================================================================
+# ATARI_PARTITION: MiSTer mounts Atari/Amiga-era disk images. PARTITION_ADVANCED
+# is its gate.
+CONFIG_PARTITION_ADVANCED=y
+CONFIG_ATARI_PARTITION=y
+# CONFIG_IOSCHED_BFQ is not set
+CONFIG_BINFMT_MISC=y
+# Loop devices: how MiSTer mounts .img/.vhd game media. RAM disks at the DE10's
+# geometry (2 x 8 MiB).
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_BLK_DEV_RAM=y
+CONFIG_BLK_DEV_RAM_COUNT=2
+CONFIG_BLK_DEV_RAM_SIZE=8192
+
+# =============================================================================
+# 4. /dev and hotplug
+# =============================================================================
+# devtmpfs + its automount are BOOT-PATH essentials and they live here, not in
+# the per-board base: they are arch-neutral and both boards need exactly this.
+# A board base file alone therefore does NOT boot — this fragment is mandatory,
+# not optional. UEVENT_HELPER is the mdev hotplug path (docs/init-parity.md).
+CONFIG_UEVENT_HELPER=y
+CONFIG_UEVENT_HELPER_PATH="/sbin/hotplug"
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+
+# =============================================================================
+# 5. Networking core
+# =============================================================================
+# IPv6 is OFF, matching the DE10 and stock. IP_PNP* keep kernel-level IP
+# configuration (and therefore an NFS root) possible.
+CONFIG_NET=y
+CONFIG_PACKET=y
+CONFIG_UNIX=y
+CONFIG_NET_KEY=y
+CONFIG_NET_KEY_MIGRATE=y
+CONFIG_INET=y
+CONFIG_IP_MULTICAST=y
+CONFIG_IP_PNP=y
+CONFIG_IP_PNP_DHCP=y
+CONFIG_IP_PNP_BOOTP=y
+CONFIG_IP_PNP_RARP=y
+# CONFIG_IPV6 is not set
+CONFIG_NETWORK_PHY_TIMESTAMPING=y
+
+# --- netfilter: exactly the DE10's set (iptables-legacy + conntrack helpers) --
+CONFIG_NETFILTER=y
+CONFIG_NF_CONNTRACK=y
+CONFIG_NF_CONNTRACK_PROCFS=y
+# CONFIG_NF_CT_PROTO_SCTP is not set
+CONFIG_NF_CONNTRACK_FTP=y
+CONFIG_NF_CONNTRACK_IRC=y
+CONFIG_NF_CONNTRACK_SIP=y
+CONFIG_NF_CT_NETLINK=y
+CONFIG_NETFILTER_XTABLES_LEGACY=y
+CONFIG_NETFILTER_XT_MARK=y
+CONFIG_NETFILTER_XT_TARGET_LOG=y
+CONFIG_NETFILTER_XT_TARGET_NFLOG=y
+CONFIG_NETFILTER_XT_TARGET_TCPMSS=y
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
+CONFIG_NETFILTER_XT_MATCH_LIMIT=y
+CONFIG_NETFILTER_XT_MATCH_POLICY=y
+CONFIG_NETFILTER_XT_MATCH_STATE=y
+CONFIG_IP_NF_IPTABLES_LEGACY=y
+CONFIG_NF_LOG_ARP=y
+CONFIG_NF_LOG_IPV4=y
+CONFIG_IP_NF_IPTABLES=y
+# IP_NF_FILTER + IP_NF_TARGET_REJECT: docs/kernel-config-deltas.md §3.3 — these
+# two were silently dropped once by olddefconfig and took the whole legacy
+# iptables filter table with them.
+CONFIG_IP_NF_FILTER=y
+CONFIG_IP_NF_TARGET_REJECT=y
+CONFIG_VLAN_8021Q=y
+CONFIG_VLAN_8021Q_GVRP=y
+
+# =============================================================================
+# 6. Bluetooth — the controller path
+# =============================================================================
+# BT_HIDP is what turns a paired DS4/DualSense/Pro Controller into an input
+# device. RFCOMM_TTY is used by the pairing tooling (docs/bluetooth-parity.md).
+# btusb is =m and autoloads on the dongle's modalias; the two built-in vendor
+# options inside it (MTK) and the two other transports match the DE10 exactly.
+CONFIG_BT=y
+CONFIG_BT_RFCOMM=y
+CONFIG_BT_RFCOMM_TTY=y
+CONFIG_BT_HIDP=y
+CONFIG_BT_HCIBTUSB=m
+CONFIG_BT_HCIBTUSB_MTK=y
+CONFIG_BT_HCIBCM203X=y
+CONFIG_BT_ATH3K=m
+
+# =============================================================================
+# 7. Wireless stack
+# =============================================================================
+# mac80211/cfg80211 are =m on the DE10 and stay =m here: a Wi-Fi dongle is
+# optional hardware, and the stack costs ~1 MiB resident when loaded.
+# CFG80211_WEXT is needed by the older wireless tooling MiSTer scripts use.
+CONFIG_CFG80211=m
+# CONFIG_CFG80211_DEFAULT_PS is not set
+CONFIG_CFG80211_WEXT=y
+CONFIG_MAC80211=m
+CONFIG_MAC80211_LEDS=y
+# Sentinel: WLAN is the menu gate every driver below hangs off. `default y`,
+# but naming it makes an upstream demotion a visible merge warning.
+CONFIG_WLAN=y
+
+# =============================================================================
+# 8. Network devices
+# =============================================================================
+CONFIG_NETDEVICES=y
+# MACVLAN + TUN: container/Docker networking, and the only way to give an
+# emulated NIC (e.g. the Amiga A2065) its own MAC over wireless. =y not =m —
+# the module directory does not match `uname -r`, so autoload is unreliable.
+CONFIG_MACVLAN=y
+CONFIG_TUN=y
+# --- vendor gates: every wired-NIC vendor menu the DE10 turns OFF -------------
+# These are `bool ... default y` menu gates; leaving them absent turns dozens of
+# drivers back on (rule 3). The board's own linux.config keeps whichever vendor
+# menu its SoC MAC lives under (STMICRO/stmmac on both boards today) and adds
+# any further arch-only vendor gates its base exposes.
+# NOT listed, although the DE10 turns them off too: NET_VENDOR_CIRRUS and
+# NET_VENDOR_FARADAY are `depends on ARM` and do not exist on arm64, so naming
+# them here would be a line that survives on one board and is silently dropped
+# on the other — exactly what rule 2 forbids.
+# CONFIG_NET_VENDOR_ALACRITECH is not set
+# CONFIG_NET_VENDOR_AMAZON is not set
+# CONFIG_NET_VENDOR_AQUANTIA is not set
+# CONFIG_NET_VENDOR_ARC is not set
+# CONFIG_NET_VENDOR_BROADCOM is not set
+# CONFIG_NET_VENDOR_CADENCE is not set
+# CONFIG_NET_VENDOR_CAVIUM is not set
+# CONFIG_NET_VENDOR_CORTINA is not set
+# CONFIG_NET_VENDOR_EZCHIP is not set
+# CONFIG_NET_VENDOR_HISILICON is not set
+# CONFIG_NET_VENDOR_HUAWEI is not set
+# CONFIG_NET_VENDOR_INTEL is not set
+# CONFIG_NET_VENDOR_MARVELL is not set
+# CONFIG_NET_VENDOR_MELLANOX is not set
+# CONFIG_NET_VENDOR_MICREL is not set
+# CONFIG_NET_VENDOR_MICROCHIP is not set
+# CONFIG_NET_VENDOR_MICROSEMI is not set
+# CONFIG_NET_VENDOR_NI is not set
+# CONFIG_NET_VENDOR_NATSEMI is not set
+# CONFIG_NET_VENDOR_NETRONOME is not set
+# CONFIG_NET_VENDOR_QUALCOMM is not set
+# CONFIG_NET_VENDOR_RENESAS is not set
+# CONFIG_NET_VENDOR_ROCKER is not set
+# CONFIG_NET_VENDOR_SAMSUNG is not set
+# CONFIG_NET_VENDOR_SEEQ is not set
+# CONFIG_NET_VENDOR_SOLARFLARE is not set
+# CONFIG_NET_VENDOR_SMSC is not set
+# CONFIG_NET_VENDOR_SYNOPSYS is not set
+# CONFIG_NET_VENDOR_VIA is not set
+# CONFIG_NET_VENDOR_WIZNET is not set
+# --- PHYs. Board-agnostic on purpose: which part is fitted is a DTS question,
+# and phylib binds by MDIO ID, not by DT. Both boards carry both drivers.
+CONFIG_MARVELL_PHY=y
+CONFIG_MICREL_PHY=y
+# --- PPP: dial-up/serial-link cores and the MiSTer "modem" use cases.
+CONFIG_PPP=y
+CONFIG_PPP_BSDCOMP=y
+CONFIG_PPP_DEFLATE=y
+CONFIG_PPP_FILTER=y
+CONFIG_PPP_MPPE=y
+CONFIG_PPP_ASYNC=y
+# USB Ethernet adapters are NOT supported on the DE10 and are not added here —
+# `default y` menu gate, so the explicit off is load-bearing (rule 3).
+# CONFIG_USB_NET_DRIVERS is not set
+
+# =============================================================================
+# 9. Wi-Fi dongles — the exact DE10 set, chip for chip
+# =============================================================================
+# Every driver here is mainline (ADR 0016 "mainline-first"); all are =m and
+# autoload on the dongle's modalias. Firmware comes from the board defconfig's
+# BR2_PACKAGE_LINUX_FIRMWARE_* selection plus package/linux-firmware-extra —
+# a driver enabled here with no firmware selected in the board fragment binds and
+# then fails at request_firmware(). See docs/wifi-parity.md.
+#
+# Every *_SDIO bus driver is explicitly OFF: SDIO bus support is `default y`
+# whenever CONFIG_MMC=y (both boards, for the SD card), so olddefconfig would
+# otherwise build SDIO Wi-Fi drivers for a slot neither board has (rule 3).
+# Every *_PCIE/*E sibling is unreachable — neither board sets CONFIG_PCI.
+#
+# --- Atheros: ath9k_htc (AR9271/AR7010), carl9170 (AR9170), ath6kl (AR600x) ---
+CONFIG_WLAN_VENDOR_ATH=y
+CONFIG_ATH9K_HTC=m
+CONFIG_CARL9170=m
+CONFIG_ATH6KL=m
+CONFIG_ATH6KL_USB=m
+# CONFIG_WLAN_VENDOR_ADMTEK is not set
+# CONFIG_WLAN_VENDOR_ATMEL is not set
+# --- Broadcom/Cypress FullMAC USB (BCM43143/43236B/43242A/43569/4373) --------
+CONFIG_WLAN_VENDOR_BROADCOM=y
+CONFIG_BRCMFMAC=m
+CONFIG_BRCMFMAC_USB=y
+# CONFIG_BRCMFMAC_SDIO is not set
+# CONFIG_BRCMSMAC is not set
+# CONFIG_WLAN_VENDOR_INTEL is not set
+# CONFIG_WLAN_VENDOR_INTERSIL is not set
+# --- Marvell: Libertas + mwifiex USB ----------------------------------------
+CONFIG_LIBERTAS=m
+CONFIG_LIBERTAS_USB=m
+CONFIG_LIBERTAS_THINFIRM=m
+CONFIG_LIBERTAS_THINFIRM_USB=m
+CONFIG_MWIFIEX=m
+CONFIG_MWIFIEX_USB=m
+# --- MediaTek mt76 USB: 7601U, 76x0U, 76x2U, 7663U, 7921U(=MT7961), 7925U ----
+CONFIG_MT7601U=m
+CONFIG_MT76x0U=m
+CONFIG_MT76x2U=m
+CONFIG_MT7663U=m
+CONFIG_MT7921U=m
+CONFIG_MT7925U=m
+# CONFIG_WLAN_VENDOR_MICROCHIP is not set
+# --- Ralink rt2x00 USB ------------------------------------------------------
+CONFIG_RT2X00=m
+CONFIG_RT2500USB=m
+CONFIG_RT73USB=m
+CONFIG_RT2800USB=m
+CONFIG_RT2800USB_RT3573=y
+CONFIG_RT2800USB_RT53XX=y
+CONFIG_RT2800USB_RT55XX=y
+CONFIG_RT2800USB_UNKNOWN=y
+# --- Realtek: legacy rtlwifi/rtl8xxxu, then the whole mainline rtw88/rtw89 set
+CONFIG_RTL8187=m
+CONFIG_RTL8192CU=m
+CONFIG_RTL8192DU=m
+# CONFIG_RTLWIFI_DEBUG is not set
+CONFIG_RTL8XXXU=m
+CONFIG_RTL8XXXU_UNTESTED=y
+CONFIG_RTW88=m
+CONFIG_RTW88_8822BU=m
+CONFIG_RTW88_8821CU=m
+CONFIG_RTW88_8822CU=m
+CONFIG_RTW88_8814AU=m
+CONFIG_RTW88_8723DU=m
+CONFIG_RTW88_8821AU=m
+CONFIG_RTW88_8812AU=m
+CONFIG_RTW89=m
+CONFIG_RTW89_8851BU=m
+CONFIG_RTW89_8852BU=m
+# --- Redpine RS9113/RS9116 USB ----------------------------------------------
+CONFIG_WLAN_VENDOR_RSI=y
+CONFIG_RSI_91X=m
+CONFIG_RSI_USB=m
+# CONFIG_RSI_SDIO is not set
+# --- vendor menus left off --------------------------------------------------
+# CONFIG_WLAN_VENDOR_ST is not set
+# CONFIG_WLAN_VENDOR_TI is not set
+# CONFIG_WLAN_VENDOR_ZYDAS is not set
+# CONFIG_WLAN_VENDOR_QUANTENNA is not set
+# EEPROM_93CX6 is a `select`ed dependency of rt2x00 and rtl8187; named here
+# because it is otherwise invisible and its disappearance would be silent.
+CONFIG_EEPROM_93CX6=y
+
+# =============================================================================
+# 10. Input — the core MiSTer contract
+# =============================================================================
+# joydev/evdev/uinput and mousedev are the three device classes MiSTer_Main and
+# every controller-mapping tool open. uinput is what the pairing/remap helpers
+# write through. PS/2 keyboard and mouse are OFF: neither board has a PS/2
+# controller, and the DE10's Keyrah adapters arrive over USB HID.
+CONFIG_INPUT=y
+CONFIG_INPUT_MOUSEDEV=y
+CONFIG_INPUT_JOYDEV=y
+CONFIG_INPUT_EVDEV=y
+# CONFIG_KEYBOARD_ATKBD is not set
+# CONFIG_MOUSE_PS2 is not set
+CONFIG_MOUSE_APPLETOUCH=y
+CONFIG_MOUSE_BCM5974=y
+CONFIG_MOUSE_SYNAPTICS_USB=y
+# Classic serial/USB joysticks — the pre-HID arcade and flight-stick era.
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_JOYSTICK_IFORCE=y
+CONFIG_JOYSTICK_IFORCE_USB=y
+CONFIG_JOYSTICK_IFORCE_232=y
+CONFIG_JOYSTICK_WARRIOR=y
+CONFIG_JOYSTICK_MAGELLAN=y
+CONFIG_JOYSTICK_SPACEORB=y
+CONFIG_JOYSTICK_SPACEBALL=y
+CONFIG_JOYSTICK_STINGER=y
+CONFIG_JOYSTICK_TWIDJOY=y
+CONFIG_JOYSTICK_ZHENHUA=y
+# xpad is =m (it is the one input driver users swap for a fork).
+CONFIG_JOYSTICK_XPAD=m
+CONFIG_JOYSTICK_XPAD_FF=y
+CONFIG_JOYSTICK_XPAD_LEDS=y
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_INPUT_MISC=y
+CONFIG_INPUT_UINPUT=y
+# SERIO stays (iforce-232 needs it) but the legacy serial-port attach does not.
+# CONFIG_SERIO_SERPORT is not set
+# CONFIG_LEGACY_PTYS is not set
+
+# =============================================================================
+# 11. HID — every hid-* driver the DE10 enables
+# =============================================================================
+# Sentinels first: HID is the bus, USB_HID is the transport every wired pad
+# arrives on. Both are `default y` but both are the single point of failure for
+# the entire controller story, so they are named.
+CONFIG_HID=y
+CONFIG_USB_HID=y
+CONFIG_HID_BATTERY_STRENGTH=y
+CONFIG_HIDRAW=y
+CONFIG_UHID=y
+CONFIG_HID_ACRUX=y
+CONFIG_HID_ACRUX_FF=y
+CONFIG_HID_BELKIN=y
+CONFIG_HID_CHERRY=y
+CONFIG_HID_CHICONY=y
+CONFIG_HID_CORSAIR=y
+CONFIG_HID_COUGAR=y
+CONFIG_HID_DRAGONRISE=y
+CONFIG_HID_ELECOM=y
+CONFIG_HID_EZKEY=y
+CONFIG_HID_GEMBIRD=y
+CONFIG_HID_HOLTEK=y
+CONFIG_HID_GOOGLE_STADIA_FF=y
+CONFIG_HID_KEYTOUCH=y
+CONFIG_HID_KYE=y
+CONFIG_HID_ICADE=y
+CONFIG_HID_KENSINGTON=y
+CONFIG_HID_LED=y
+CONFIG_HID_LENOVO=y
+CONFIG_HID_LOGITECH=y
+CONFIG_HID_LOGITECH_DJ=y
+CONFIG_LOGITECH_FF=y
+CONFIG_LOGIRUMBLEPAD2_FF=y
+CONFIG_LOGIG940_FF=y
+CONFIG_HID_MAGICMOUSE=y
+CONFIG_HID_MAYFLASH=y
+CONFIG_HID_REDRAGON=y
+CONFIG_HID_MICROSOFT=y
+CONFIG_HID_MONTEREY=y
+CONFIG_HID_MULTITOUCH=y
+CONFIG_HID_NINTENDO=y
+CONFIG_NINTENDO_FF=y
+CONFIG_HID_ORTEK=y
+CONFIG_HID_PANTHERLORD=y
+CONFIG_PANTHERLORD_FF=y
+CONFIG_HID_PLANTRONICS=y
+CONFIG_HID_PLAYSTATION=y
+CONFIG_PLAYSTATION_FF=y
+CONFIG_HID_PRIMAX=y
+CONFIG_HID_RETRODE=y
+CONFIG_HID_ROCCAT=y
+CONFIG_HID_SAITEK=y
+CONFIG_HID_SONY=y
+CONFIG_SONY_FF=y
+CONFIG_HID_SPEEDLINK=y
+CONFIG_HID_STEAM=y
+CONFIG_HID_SUNPLUS=y
+CONFIG_HID_RMI=y
+CONFIG_HID_GREENASIA=y
+CONFIG_HID_SMARTJOYPLUS=y
+CONFIG_SMARTJOYPLUS_FF=y
+CONFIG_HID_THRUSTMASTER=y
+CONFIG_HID_WIIMOTE=y
+CONFIG_HID_XINMO=y
+CONFIG_HID_ZEROPLUS=y
+CONFIG_HID_PID=y
+CONFIG_HID_BETOP_FF=y
+CONFIG_HID_BIGBEN_FF=y
+CONFIG_HID_MEGAWORLD_FF=y
+CONFIG_HID_STEELSERIES=y
+# --- PATCH-GATED. These six symbols do not exist in a stock tree; they come
+# from linux-patches/0010-0014, which both boards carry (the DE25's entries are
+# symlinks into the DE10's series). Drop a patch on either board and the
+# corresponding line here becomes a silent no-op on that board.
+CONFIG_HID_GUNCON2=y
+CONFIG_HID_GUNCON3=y
+CONFIG_HID_FTEC=y
+CONFIG_HID_GAMECUBE_ADAPTER=y
+CONFIG_HID_GAMECUBE_ADAPTER_FF=y
+CONFIG_HID_VADER4=m
+CONFIG_USB_HIDDEV=y
+
+# =============================================================================
+# 12. USB host — class drivers and the dongle-facing bus plumbing
+# =============================================================================
+# Sentinel, and an important one: the USB symbol has NO `default` in Kconfig at
+# all. On the DE10 it is currently switched on only as a side effect of
+# `select USB` inside MOUSE_APPLETOUCH / MOUSE_BCM5974 / MOUSE_SYNAPTICS_USB.
+# That is far too fragile to leave implicit for the bus every MiSTer peripheral
+# arrives on, so it is stated.
+# (The HOST CONTROLLER driver is per-board and lives in the board's own file:
+# dwc2 on both boards today, but that is an SoC fact, not a shared one.)
+CONFIG_USB=y
+CONFIG_USB_ANNOUNCE_NEW_DEVICES=y
+CONFIG_USB_DYNAMIC_MINORS=y
+CONFIG_USB_ACM=y
+CONFIG_USB_STORAGE=y
+CONFIG_USB_UAS=y
+# usbip: used by the debug rig to forward a controller from a host PC to the
+# board without physically moving it (docs/debug-tooling.md).
+CONFIG_USBIP_CORE=y
+CONFIG_USBIP_VHCI_HCD=y
+CONFIG_USBIP_HOST=y
+# USB serial adapters — MIDI/serial-link cores and console cables.
+CONFIG_USB_SERIAL=y
+CONFIG_USB_SERIAL_CONSOLE=y
+CONFIG_USB_SERIAL_GENERIC=y
+CONFIG_USB_SERIAL_SIMPLE=y
+CONFIG_USB_SERIAL_CH341=y
+CONFIG_USB_SERIAL_CP210X=y
+CONFIG_USB_SERIAL_FTDI_SIO=y
+CONFIG_USB_SERIAL_PL2303=y
+# PHY plumbing. NOP_USB_XCEIV is required by BOTH boards' USB DT: the DE10's
+# dwc2 and the DE25's usb0 both reference a `usb-nop-xceiv` node.
+CONFIG_USB_ULPI_BUS=y
+CONFIG_NOP_USB_XCEIV=y
+CONFIG_USB_ULPI=y
+
+# =============================================================================
+# 13. SCSI / USB mass storage
+# =============================================================================
+# There is no real SCSI HBA on either board; this is the transport layer USB
+# storage rides on. SCSI_LOWLEVEL off keeps every actual HBA driver out.
+CONFIG_SCSI=y
+# CONFIG_SCSI_PROC_FS is not set
+CONFIG_BLK_DEV_SD=y
+CONFIG_BLK_DEV_SR=y
+# CONFIG_BLK_DEV_BSG is not set
+# CONFIG_SCSI_LOWLEVEL is not set
+
+# =============================================================================
+# 14. Sound
+# =============================================================================
+# USB audio is the arch-neutral half of MiSTer's audio story: USB DACs and
+# headsets. The board's OWN audio path (the DE10's MiSTer audio SPI codec, from
+# linux-patches/0002) is NOT here — it is patch-gated and board-specific.
+# SND_DUMMY gives userland a card to open when no real one is present.
+CONFIG_SOUND=y
+CONFIG_SND=y
+CONFIG_SND_OSSEMUL=y
+CONFIG_SND_HRTIMER=y
+# CONFIG_SND_SUPPORT_OLD_API is not set
+CONFIG_SND_SEQUENCER=y
+CONFIG_SND_SEQUENCER_OSS=y
+CONFIG_SND_DUMMY=y
+CONFIG_SND_USB_AUDIO=y
+
+# =============================================================================
+# 15. I2C, GPIO, LEDs, RTC, regulators, watchdog core, hwrng
+# =============================================================================
+# Cores and userland ABIs only. Every controller driver (DESIGNWARE_PLATFORM,
+# GPIO_DWAPB, DW_WATCHDOG) is on-chip IP and lives in the board's own file.
+CONFIG_HW_RANDOM=y
+CONFIG_I2C=y
+CONFIG_I2C_CHARDEV=y
+# HELPER_AUTO off keeps the algorithm bit-bang helpers from being pulled in
+# wholesale; I2C_GPIO is enabled explicitly instead.
+# CONFIG_I2C_HELPER_AUTO is not set
+CONFIG_I2C_SMBUS=y
+CONFIG_I2C_GPIO=y
+CONFIG_GPIOLIB=y
+CONFIG_GPIO_SYSFS=y
+CONFIG_WATCHDOG=y
+CONFIG_REGULATOR=y
+CONFIG_REGULATOR_FIXED_VOLTAGE=y
+# LEDs. LEDS_BRIGHTNESS_HW_CHANGED is what linux-patches/0029 teaches leds-gpio
+# to report; LEDS_USER is /dev/uleds, used by the controller LED tooling; the
+# multicolour class is what hid-playstation and hid-nintendo register their
+# player/lightbar LEDs through (patches 0032/0033/0041/0042).
+CONFIG_NEW_LEDS=y
+CONFIG_LEDS_CLASS=y
+CONFIG_LEDS_CLASS_MULTICOLOR=y
+CONFIG_LEDS_BRIGHTNESS_HW_CHANGED=y
+CONFIG_LEDS_GPIO=y
+CONFIG_LEDS_USER=y
+CONFIG_LEDS_TRIGGERS=y
+# The three I2C RTC parts MiSTer add-on boards fit (docs/rtc-parity.md). All
+# three are plug-in modules on an I2C header, i.e. user hardware, not SoC.
+CONFIG_RTC_CLASS=y
+CONFIG_RTC_DRV_DS1307=y
+CONFIG_RTC_DRV_PCF8563=y
+CONFIG_RTC_DRV_M41T80=y
+
+# =============================================================================
+# 16. Filesystems
+# =============================================================================
+# ext4 (rootfs), vfat (the FAT boot partition), exfat (the MiSTer data
+# partition convention, ADR 0010 / 0019) — all BOOT PATH, all =y, and all here
+# rather than in the board base because they are arch-neutral and identical.
+# FAT_DEFAULT_UTF8 matches stock. NTFS3 is =m: real but rarely used.
+# AFFS is the Amiga filesystem; ISO9660/UDF are for CD images; FUSE+CUSE are
+# what the userland mounters (exfat tooling, network mounts) need.
+CONFIG_EXT4_FS=y
+CONFIG_VFAT_FS=y
+CONFIG_FAT_DEFAULT_UTF8=y
+CONFIG_EXFAT_FS=y
+CONFIG_NTFS3_FS=m
+# CONFIG_DNOTIFY is not set
+CONFIG_FUSE_FS=y
+CONFIG_CUSE=y
+CONFIG_FSCACHE=y
+CONFIG_ISO9660_FS=y
+CONFIG_JOLIET=y
+CONFIG_ZISOFS=y
+CONFIG_UDF_FS=y
+CONFIG_TMPFS=y
+CONFIG_CONFIGFS_FS=y
+CONFIG_AFFS_FS=y
+# Network filesystems: NFS client (ADR 0022) and CIFS/SMB (docs/samba-parity.md,
+# docs/netfs-parity.md). NOTE: NFS_V4_1 is deliberately absent — see rule 2 and
+# docs/de25-kernel-config.md §9; it was removed as a separate symbol after 6.18
+# and NFSv4.1 is unconditional in 7.x.
+CONFIG_NFS_FS=y
+CONFIG_NFS_V2=y
+CONFIG_NFS_V4=y
+CONFIG_NFS_V4_2=y
+# CONFIG_NFS_V4_2_READ_PLUS is not set
+CONFIG_CIFS=y
+# CONFIG_CIFS_STATS2 is not set
+# Codepages. UTF8 is NOT optional with exfat (its default iocharset is utf8 and
+# a missing codepage fails the mount at runtime, not at build time). The rest
+# are the stock set, for FAT/CIFS/ISO9660 media authored in other locales.
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_CODEPAGE_855=y
+CONFIG_NLS_CODEPAGE_866=y
+CONFIG_NLS_CODEPAGE_936=y
+CONFIG_NLS_CODEPAGE_950=y
+CONFIG_NLS_CODEPAGE_1251=y
+CONFIG_NLS_ASCII=y
+CONFIG_NLS_ISO8859_1=y
+CONFIG_NLS_ISO8859_5=y
+CONFIG_NLS_ISO8859_15=y
+CONFIG_NLS_KOI8_R=y
+CONFIG_NLS_KOI8_U=y
+CONFIG_NLS_MAC_CYRILLIC=y
+CONFIG_NLS_UTF8=y
+
+# =============================================================================
+# 17. Keys and crypto
+# =============================================================================
+# The generic-C algorithms CIFS/NFS/PPP-MPPE need. No arch accelerators here:
+# those are per-arch symbols (CRYPTO_AES_ARM vs CRYPTO_AES_ARM64_*) and belong
+# in the board's own file if wanted at all.
+CONFIG_ENCRYPTED_KEYS=y
+CONFIG_INIT_STACK_NONE=y
+CONFIG_CRYPTO_NULL=y
+CONFIG_CRYPTO_DES=y
+CONFIG_CRYPTO_CTS=y
+CONFIG_CRYPTO_XTS=y
+CONFIG_CRYPTO_SEQIV=y
+CONFIG_CRYPTO_ECHAINIV=y
+CONFIG_CRYPTO_MD4=y
+CONFIG_CRYPTO_MD5=y
+CONFIG_CRYPTO_SHA1=y
+CONFIG_CRYPTO_CRC32C=y
+
+# =============================================================================
+# 18. Diagnostics
+# =============================================================================
+# The P3.13 crash/hang triage set. On a board with a serial console and no
+# display, a kernel that limps after an oops is strictly worse than one that
+# panics loudly: PANIC_ON_OOPS + SOFTLOCKUP_DETECTOR + WQ_WATCHDOG +
+# DETECT_HUNG_TASK between them cover a spinning CPU, a stalled workqueue and a
+# wedged D-state I/O. MAGIC_SYSRQ is the last resort over the same cable.
+# FUNCTION_TRACER is the ftrace substrate docs/debug-tooling.md assumes.
+CONFIG_PRINTK_TIME=y
+CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+CONFIG_MAGIC_SYSRQ=y
+CONFIG_DEBUG_FS=y
+CONFIG_DETECT_HUNG_TASK=y
+# CONFIG_RCU_TRACE is not set
+CONFIG_FUNCTION_TRACER=y
+CONFIG_PANIC_ON_OOPS=y
+CONFIG_SOFTLOCKUP_DETECTOR=y
+CONFIG_WQ_WATCHDOG=y

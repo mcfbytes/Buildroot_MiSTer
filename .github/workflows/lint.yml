@@ -186,6 +186,7 @@ jobs:
           )
           sh_relpaths=(
             post-build.sh
+            post-image.sh
             initramfs-post-build.sh
             initramfs-overlay/init
           )
@@ -249,6 +250,7 @@ jobs:
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
             post-build.sh
+            post-image.sh
             initramfs-post-build.sh
             initramfs-overlay/init
             rootfs-overlay/usr/sbin/mister-fsck-exfat

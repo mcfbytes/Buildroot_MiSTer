@@ -668,7 +668,14 @@ driver-defined and there is nothing generic to wrap, and the internal `vfs_ioctl
 in-kernel on a 64-bit ARM SoC is the rewrite this project already had to do for 6.18:
 export a purpose-built attach helper from the loop driver itself and call it with
 `filp_open()`ed files instead of descriptors (`linux-patches-upstream/0100-…`, carried
-for the upstream fork, not shipped in this image). The initramfs design, by contrast,
+for the upstream fork, not shipped in this image). That rewrite contains no syscall and
+no architecture-specific line, and it does compile for aarch64: applied to a pristine
+6.18.48 tree with an arm64 toolchain, `init/do_mounts.o` and `drivers/block/loop.o`
+build clean, referencing only `filp_open()`, `init_mount()` and the two exported loop
+helpers. So the *rewritten* patch is portable; it is the *stock* patch that is not, and
+the rewrite still has to be re-anchored on every kernel line it is carried to (it
+already needs a context refresh for 7.x, where the `load_ramdisk=` block it sits next
+to was removed). The initramfs design, by contrast,
 contains no architecture-specific line at all: `mount`, `losetup`, and
 `switch_root` behave identically on any CPU the kernel runs on. Should this image ever
 need to boot something that is not a Cyclone V, the boot path comes along unchanged, and

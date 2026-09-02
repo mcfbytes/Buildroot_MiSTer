@@ -1,0 +1,90 @@
+From: MiSTer Buildroot (DE25-Nano board support)
+Subject: [PATCH] configs: socfpga_soc64: only define mtdids/mtdparts env when MTD exists
+
+CFG_EXTRA_ENV_SETTINGS in socfpga_soc64_common.h references
+CONFIG_MTDIDS_DEFAULT and CONFIG_MTDPARTS_DEFAULT unconditionally, in all
+three of its variants. Those two symbols are
+
+	config MTDIDS_DEFAULT
+		string "Default MTD IDs"
+		depends on MTD || SPI_FLASH
+
+(cmd/Kconfig), so they simply do not exist once a board turns the MTD and
+SPI-NOR stack off, and the build fails with
+
+	include/configs/socfpga_soc64_common.h:133:19: error: expected '}'
+	    before 'CONFIG_MTDIDS_DEFAULT'
+
+That is not a hypothetical configuration. The Terasic DE25-Nano (Agilex 5)
+boots from SD under a factory SPL resident in QSPI, and its QSPI additionally
+holds the SDM firmware and the phase-1 HPS bitstream. There is no
+power-loss-safe update path for that flash on this board, so a U-Boot that
+can write it is a brick risk with a JTAG-only recovery. The board's config
+therefore compiles out CADENCE_QSPI, the SPI-NOR stack, MTD, UBI and every
+command that could reach them -- and then cannot build.
+
+Wrap the two lines in a macro that expands to nothing when neither symbol is
+defined. No functional change for any board that has MTD or SPI_FLASH.
+
+Upstream status: not submitted yet. Local carry for
+board/mister/de25nano; see docs/de25-uboot.md.
+
+Signed-off-by: MiSTer Buildroot <noreply@example.com>
+---
+--- a/include/configs/socfpga_soc64_common.h
++++ b/include/configs/socfpga_soc64_common.h
+@@ -59,6 +59,24 @@
+ /*
+  * Environment variable
+  */
++/*
++ * MTD-dependent environment variables.
++ *
++ * CONFIG_MTDIDS_DEFAULT and CONFIG_MTDPARTS_DEFAULT only exist when
++ * MTD or SPI_FLASH is enabled (they are "depends on MTD || SPI_FLASH"
++ * in cmd/Kconfig). Referencing them unconditionally breaks the build of
++ * any SoC64 board that has no flash of its own to manage -- for example a
++ * board that boots from SD only and deliberately compiles out the SPI-NOR
++ * stack so that nothing in U-Boot can write its boot flash.
++ */
++#if defined(CONFIG_MTDIDS_DEFAULT) && defined(CONFIG_MTDPARTS_DEFAULT)
++#define SOCFPGA_MTDPARTS_ENV_SETTINGS \
++	"mtdids=" CONFIG_MTDIDS_DEFAULT "\0" \
++	"mtdparts=" CONFIG_MTDPARTS_DEFAULT "\0"
++#else
++#define SOCFPGA_MTDPARTS_ENV_SETTINGS
++#endif
++
+ #if IS_ENABLED(CONFIG_DISTRO_DEFAULTS)
+ #if IS_ENABLED(CONFIG_CMD_MMC)
+ #define BOOT_TARGET_DEVICES_MMC(func) func(MMC, mmc, 0)
+@@ -130,8 +148,7 @@
+ 	"loadaddr=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
+ 	"bootfile=" CONFIG_BOOTFILE "\0" \
+ 	"mmcroot=/dev/mmcblk0p2\0" \
+-	"mtdids=" CONFIG_MTDIDS_DEFAULT "\0" \
+-	"mtdparts=" CONFIG_MTDPARTS_DEFAULT "\0" \
++	SOCFPGA_MTDPARTS_ENV_SETTINGS \
+ 	"linux_qspi_enable=if sf probe; then " \
+ 		"echo Enabling QSPI at Linux DTB...;" \
+ 		"fdt addr ${fdt_addr}; fdt resize;" \
+@@ -162,8 +179,7 @@
+ 	"loadaddr=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
+ 	"bootfile=" CONFIG_BOOTFILE  "\0" \
+ 	"mmcroot=/dev/mmcblk0p2\0" \
+-	"mtdids=" CONFIG_MTDIDS_DEFAULT "\0" \
+-	"mtdparts=" CONFIG_MTDPARTS_DEFAULT "\0" \
++	SOCFPGA_MTDPARTS_ENV_SETTINGS \
+ 	"linux_qspi_enable=if sf probe; then " \
+ 		"echo Enabling QSPI at Linux DTB...;" \
+ 		"fdt addr ${fdt_addr}; fdt resize;" \
+@@ -216,8 +232,7 @@
+ 		"bootm ${loadaddr}\0" \
+ 	"mmcfitload=mmc rescan;" \
+ 		"load mmc 0:1 ${loadaddr} ${bootfile}\0" \
+-	"mtdids=" CONFIG_MTDIDS_DEFAULT "\0" \
+-	"mtdparts=" CONFIG_MTDPARTS_DEFAULT "\0" \
++	SOCFPGA_MTDPARTS_ENV_SETTINGS \
+ 	"linux_qspi_enable=if sf probe; then " \
+ 		"echo Enabling QSPI at Linux DTB...;" \
+ 		"fdt addr ${fdt_addr}; fdt resize;" \

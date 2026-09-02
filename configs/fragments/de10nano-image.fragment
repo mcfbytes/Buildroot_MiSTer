@@ -1,0 +1,432 @@
+# de10nano-image.fragment — everything that makes the DE10-Nano stack the
+# SHIPPED MiSTer image rather than a kernel-only build: board hooks, the
+# ext4 linux.img contract, the full package set, and system configuration.
+# Layered on common + de10nano (configs/fragments/stacks.mk).
+#
+# NOTHING in this file may touch the toolchain or the kernel stanza — those
+# live in de10nano.fragment so the kernel-only stack shares them by
+# construction (scripts/check-kernel-defconfig-sync.sh fails if a toolchain/
+# kernel family symbol appears here). Package selection is by design invisible
+# to CI's toolchain-cache fingerprint (docs/ci.md#toolchain-fingerprint).
+#
+# The package list is docs/package-manifest.md §6 applied verbatim, plus the
+# additions each section's doc entry records. Rationale for every line, with
+# citations: docs/buildroot-config.md §5. Section numbers below refer to it.
+
+# --- Board hooks: post-build script, rootfs overlays (§5.1) ---
+# WARNING: the SECOND overlay entry (work/extra-modules-overlay) is where
+# kernel variants stage their module trees; `make all` mkdir -p's it because
+# Buildroot hard-fails on a missing overlay path. Adding/changing this line
+# busts the CI toolchain cache once (it is not BR2_PACKAGE_/BR2_LINUX_KERNEL).
+BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/post-build.sh"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay $(BR2_EXTERNAL_MISTER_PATH)/work/extra-modules-overlay"
+
+# --- Image generation: ext4 linux.img, reproducible (§5.2) ---
+# WARNING: MKFS_OPTIONS pins the feature set, UUID, hash seed and block size
+# explicitly — mke2fs defaults drift across e2fsprogs versions and the UUID/
+# seed are random otherwise. scripts/check-linux-img.sh asserts this contract.
+# INODE_SIZE is an int symbol: no trailing comment allowed on that line.
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"
+BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+BR2_TARGET_ROOTFS_EXT2_INODE_SIZE=256
+BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS="-U 71916572-439f-448e-b8d8-12b0a032fa56 -E hash_seed=9afc615c-c310-4e03-ada9-613522e83ae6 -b 4096 -O has_journal,ext_attr,resize_inode,dir_index,filetype,extent,64bit,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize,metadata_csum,^metadata_csum_seed,^orphan_file"
+
+################################################################################
+# P2.1 — Full package set (§5.3 for the preamble: manifest provenance, the
+# imlib2 loader exception, BR2_ENABLE_LOCALE deliberately absent)
+################################################################################
+
+# --- compression (§5.4) ---
+# WARNING: ZLIB_NG (zlib-ng in ZLIB_COMPAT mode) is the concrete zlib provider;
+# MINIZIP is minizip-ng, MINIZIP_ZLIB is the classic zlib-contrib one — both.
+BR2_PACKAGE_ZLIB=y
+BR2_PACKAGE_ZLIB_NG=y
+BR2_PACKAGE_BZIP2=y
+BR2_PACKAGE_XZ=y
+BR2_PACKAGE_LZO=y
+BR2_PACKAGE_ZSTD=y
+BR2_PACKAGE_MINIZIP=y
+BR2_PACKAGE_MINIZIP_ZLIB=y
+
+# --- Main_MiSTer shared libs (§5.5, docs/main-shared-libs.md) ---
+BR2_PACKAGE_LZMA_SDK=y
+BR2_PACKAGE_LIBCHDR=y
+
+# --- graphics / fonts (§5.6) ---
+# WARNING: the IMLIB2_* loaders are dlopen'd plugins — without them menu.png/
+# menu.jpg backgrounds silently fail to load with no DT_NEEDED signal.
+BR2_PACKAGE_FREETYPE=y
+BR2_PACKAGE_LIBPNG=y
+BR2_PACKAGE_JPEG=y
+BR2_PACKAGE_JPEG_TURBO=y
+BR2_PACKAGE_TIFF=y
+BR2_PACKAGE_GIFLIB=y
+BR2_PACKAGE_IMLIB2=y
+BR2_PACKAGE_IMLIB2_JPEG=y
+BR2_PACKAGE_IMLIB2_PNG=y
+BR2_PACKAGE_IMLIB2_GIF=y
+BR2_PACKAGE_IMLIB2_TIFF=y
+BR2_PACKAGE_IMLIB2_ID3=y
+BR2_PACKAGE_LIBXKBCOMMON=y
+BR2_PACKAGE_SDL2=y
+
+# --- audio (§5.7) ---
+BR2_PACKAGE_ALSA_LIB=y
+BR2_PACKAGE_LIBAO=y
+BR2_PACKAGE_LIBVORBIS=y
+BR2_PACKAGE_LIBOGG=y
+BR2_PACKAGE_MPG123=y
+BR2_PACKAGE_LIBID3TAG=y
+BR2_PACKAGE_LIBMODPLUG=y
+BR2_PACKAGE_FLUIDSYNTH=y
+BR2_PACKAGE_FLUIDSYNTH_ALSA_LIB=y
+
+# --- MIDI / MT-32 (P3.8) + ALSA CLI tools (P3.15) (§5.8, docs/midi-mt32-parity.md) ---
+BR2_PACKAGE_MUNT=y
+BR2_PACKAGE_MIDILINK=y
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_ACONNECT=y
+BR2_PACKAGE_ALSA_UTILS_AMIDI=y
+BR2_PACKAGE_ALSA_UTILS_APLAYMIDI=y
+BR2_PACKAGE_ALSA_UTILS_ARECORDMIDI=y
+BR2_PACKAGE_ALSA_UTILS_ASEQDUMP=y
+BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
+BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
+BR2_PACKAGE_ALSA_UTILS_ALSALOOP=y
+BR2_PACKAGE_ALSA_UTILS_ALSAMIXER=y
+BR2_PACKAGE_ALSA_UTILS_ALSATPLG=y
+BR2_PACKAGE_ALSA_UTILS_ALSAUCM=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_BAT=y
+BR2_PACKAGE_ALSA_UTILS_IECSET=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
+
+# --- crypto / TLS (§5.9) ---
+# nettle/gmp/libtasn1/libgpg-error/libffi arrive transitively — do not set.
+BR2_PACKAGE_OPENSSL=y
+BR2_PACKAGE_LIBOPENSSL=y
+BR2_PACKAGE_GNUTLS=y
+BR2_PACKAGE_LIBGCRYPT=y
+BR2_PACKAGE_LIBSSH2=y
+BR2_PACKAGE_CA_CERTIFICATES=y
+
+# --- networking / D-Bus / GLib (§5.10) ---
+# GNU wget (issue #130): the BusyBox applet is disabled in busybox.fragment.
+BR2_PACKAGE_LIBCURL=y
+BR2_PACKAGE_LIBCURL_CURL=y
+BR2_PACKAGE_LIBCURL_OPENSSL=y
+BR2_PACKAGE_WGET=y
+BR2_PACKAGE_DBUS=y
+BR2_PACKAGE_DBUS_CPP=y
+BR2_PACKAGE_DBUS_GLIB=y
+BR2_PACKAGE_LIBEVENT=y
+BR2_PACKAGE_LIBNL=y
+BR2_PACKAGE_IPTABLES=y
+BR2_PACKAGE_LIBGLIB2=y
+BR2_PACKAGE_GOBJECT_INTROSPECTION=y
+
+# --- util-linux / e2fsprogs / disk & fs tools (§5.11, docs/util-linux-parity.md) ---
+# WARNING: each util-linux lib sub-option defaults to n — list them or the
+# SONAME is not built. `raw` is deliberately absent (unbuildable on >=5.14).
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y
+BR2_PACKAGE_UTIL_LINUX_LIBFDISK=y
+BR2_PACKAGE_UTIL_LINUX_LIBMOUNT=y
+BR2_PACKAGE_UTIL_LINUX_LIBSMARTCOLS=y
+BR2_PACKAGE_UTIL_LINUX_LIBUUID=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_UTIL_LINUX_MOUNT=y
+BR2_PACKAGE_UTIL_LINUX_MOUNTPOINT=y
+BR2_PACKAGE_UTIL_LINUX_AGETTY=y
+BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y
+BR2_PACKAGE_UTIL_LINUX_FSCK=y
+BR2_PACKAGE_UTIL_LINUX_PARTX=y
+BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS=y
+BR2_PACKAGE_UTIL_LINUX_IRQTOP=y
+BR2_PACKAGE_UTIL_LINUX_KILL=y
+BR2_PACKAGE_UTIL_LINUX_MORE=y
+BR2_PACKAGE_UTIL_LINUX_NEWGRP=y
+BR2_PACKAGE_UTIL_LINUX_NOLOGIN=y
+BR2_PACKAGE_UTIL_LINUX_RENAME=y
+BR2_PACKAGE_UTIL_LINUX_SETTERM=y
+BR2_PACKAGE_UTIL_LINUX_SWITCH_ROOT=y
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_PARTED=y
+BR2_PACKAGE_NTFS_3G=y
+BR2_PACKAGE_NTFS_3G_NTFSPROGS=y
+BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_INOTIFY_TOOLS=y
+BR2_PACKAGE_JQ=y
+BR2_PACKAGE_EXPAT=y
+BR2_PACKAGE_POPT=y
+BR2_PACKAGE_READLINE=y
+BR2_PACKAGE_NCURSES=y
+# WARNING: NCURSES_WCHAR is an ABI-contract fix (wide libncursesw.so.6, what
+# stock ships); narrow -> wide is a clean-rebuild change.
+BR2_PACKAGE_NCURSES_WCHAR=y
+BR2_PACKAGE_SLANG=y
+BR2_PACKAGE_NEWT=y
+BR2_PACKAGE_GPM=y
+BR2_PACKAGE_LIBARCHIVE=y
+BR2_PACKAGE_LIBFUSE=y
+
+# --- USB / input (§5.12, docs/usb-automount-parity.md) ---
+BR2_PACKAGE_LIBUSB=y
+BR2_PACKAGE_LIBUSB_COMPAT=y
+BR2_PACKAGE_LIBEVDEV=y
+BR2_PACKAGE_LIBINPUT=y
+BR2_PACKAGE_MTDEV=y
+BR2_PACKAGE_USBMOUNT=y
+
+# --- Bluetooth (§5.13) ---
+# WARNING: DEPRECATED depends on CLIENT || TOOLS — silently dropped without them.
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
+BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_SIXAXIS=y
+
+# --- PAM / capabilities (§5.14) ---
+BR2_PACKAGE_LINUX_PAM=y
+BR2_PACKAGE_LIBCAP=y
+BR2_PACKAGE_LIBCAP_NG=y
+
+# --- misc small libraries / tools (§5.15) ---
+# WARNING: BUSYBOX_SHOW_OTHERS gates I2C_TOOLS and LSOF; the EUDEV device-
+# creation choice gates EUDEV, LIBINPUT and BLUEZ5 SIXAXIS — kconfig drops all
+# of them silently without these lines.
+BR2_PACKAGE_DTC=y
+BR2_PACKAGE_DTC_PROGRAMS=y
+BR2_PACKAGE_SUDO=y
+BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
+BR2_PACKAGE_I2C_TOOLS=y
+BR2_PACKAGE_JIMTCL=y
+BR2_PACKAGE_LIBLOCKFILE=y
+BR2_PACKAGE_LIBXML2=y
+BR2_PACKAGE_FILE=y
+BR2_PACKAGE_MEMTOOL=y
+BR2_PACKAGE_PCRE2=y
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_PACKAGE_EUDEV=y
+
+# --- lftp (§5.16) ---
+BR2_PACKAGE_LFTP=y
+
+# --- Python (A6 / P3.9) + btctl runtime (§5.17, docs/python-compat.md) ---
+# WARNING: SSL + ZLIB are hard blockers for Downloader_MiSTer.
+BR2_PACKAGE_PYTHON3=y
+BR2_PACKAGE_PYTHON3_SSL=y
+BR2_PACKAGE_PYTHON3_ZLIB=y
+BR2_PACKAGE_PYTHON3_BZIP2=y
+BR2_PACKAGE_PYTHON3_XZ=y
+BR2_PACKAGE_PYTHON3_PYEXPAT=y
+BR2_PACKAGE_PYTHON3_READLINE=y
+BR2_PACKAGE_PYTHON3_CURSES=y
+BR2_PACKAGE_DBUS_PYTHON=y
+BR2_PACKAGE_PYTHON_GOBJECT=y
+
+# --- Samba: standalone file server only (§5.18) ---
+BR2_PACKAGE_SAMBA4=y
+
+# --- daemons / user-facing binaries (§5.19, docs/ssh-ftp-parity.md, docs/wifi-parity.md) ---
+# WARNING: OPENSSH_SANDBOX must stay off — CONFIG_SECCOMP=n in our kernel and
+# openssh >= 10.4 makes a failed seccomp setup FATAL for every connection.
+# Configure-time flag: `make openssh-dirclean` before rebuilding after a change.
+BR2_PACKAGE_OPENSSH=y
+# BR2_PACKAGE_OPENSSH_SANDBOX is not set
+BR2_PACKAGE_PROFTPD=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
+BR2_PACKAGE_WPA_SUPPLICANT_WEXT=y
+BR2_PACKAGE_WPA_SUPPLICANT_DEBUG_SYSLOG=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
+BR2_PACKAGE_BASH=y
+BR2_PACKAGE_DIALOG=y
+BR2_PACKAGE_WIRELESS_TOOLS=y
+BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG=y
+BR2_PACKAGE_IW=y
+BR2_PACKAGE_IPROUTE2=y
+
+# --- editors, ifupdown, BusyBox config fragment, dhcpcd, ntp, cifs (§5.20) ---
+BR2_PACKAGE_JOE=y
+BR2_PACKAGE_NANO=y
+BR2_PACKAGE_IFUPDOWN=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/busybox.fragment"
+BR2_PACKAGE_DHCPCD=y
+BR2_PACKAGE_NTP=y
+BR2_PACKAGE_CIFS_UTILS=y
+
+# --- Midnight Commander (T3, §5.21) ---
+BR2_PACKAGE_MC=y
+
+# --- NFS client userland (ADR 0022, §5.22) ---
+# WARNING: RPC_NFSD is `default y` upstream and its LINUX_CONFIG_FIXUPS would
+# flip CONFIG_NFSD on in our kernel — the not-set line is load-bearing.
+BR2_PACKAGE_NFS_UTILS=y
+BR2_PACKAGE_NFS_UTILS_NFSV4=y
+# BR2_PACKAGE_NFS_UTILS_RPC_NFSD is not set
+# BR2_PACKAGE_LVM2_STANDARD_INSTALL is not set
+
+# --- rsync, BusyBox (§5.23) ---
+BR2_PACKAGE_RSYNC=y
+BR2_PACKAGE_BUSYBOX=y
+
+# --- Realtek USB WiFi: mainline-first out-of-tree driver policy (§5.24, docs/wifi-parity.md) ---
+# WARNING: exactly ONE OOT fork is on (rtl8852cu-morrownr, no mainline USB
+# driver exists). Every other chip is driven in-kernel; enabling a fork too
+# would bind-fight on the same USB IDs.
+# BR2_PACKAGE_RTL8812AU is not set
+# BR2_PACKAGE_RTL8821AU_MORROWNR is not set
+# BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set
+# BR2_PACKAGE_RTL8188FU is not set
+# BR2_PACKAGE_RTL8821CU_MORROWNR is not set
+# BR2_PACKAGE_RTL88X2BU is not set
+BR2_PACKAGE_RTL8852CU_MORROWNR=y
+
+# --- xone: Xbox One/Series accessory driver + dongle firmware (P3.2, ADR 0003, §5.25) ---
+BR2_PACKAGE_XONE=y
+BR2_PACKAGE_XOW_FIRMWARE=y
+
+# --- dualsensectl (§5.26, docs/dualsense-tooling.md) ---
+# NOTE: pulls BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY on via hidapi — deliberate
+# (stock ships gconv); scripts/ci-tests.sh asserts the modules are present.
+BR2_PACKAGE_DUALSENSECTL=y
+
+# --- ltunify: Logitech Unifying pairing (§5.27, docs/logitech-pairing.md) ---
+BR2_PACKAGE_LTUNIFY=y
+
+# --- /lib/firmware population (P3.3, §5.28, docs/firmware-parity.md) ---
+# WARNING: changing linux-firmware SUB-options on an incremental build installs
+# nothing (Buildroot stamping) — `make linux-firmware-dirclean` first.
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7610E=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7650=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT76X2E=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925=y
+BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_81XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_88XX_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW89=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9271=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7922_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_QUALCOMM_6174A_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004=y
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9113=y
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9116=y
+BR2_PACKAGE_LINUX_FIRMWARE_AR3011=y
+BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB=y
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XXX=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
+BR2_PACKAGE_BCM20702_FIRMWARE=y
+
+# --- explicitly NOT carried forward: manifest §5 Drop list (§5.29) — a note, no config ---
+
+# --- kmod: target tools (§5.30; the HOST xz half is in de10nano.fragment) ---
+BR2_PACKAGE_KMOD_TOOLS=y
+
+################################################################################
+# T5 — utility binaries stock ships (2026-07-27). Preamble, rejected list
+# (perl, vim, screen, gdb, ltrace, unrar): §5.31.
+################################################################################
+
+# --- T5: process / file / syscall inspection (§5.32) ---
+BR2_PACKAGE_HTOP=y
+BR2_PACKAGE_STRACE=y
+BR2_PACKAGE_LSOF=y
+
+# --- T5: USB / input / joystick & force-feedback (§5.33) ---
+BR2_PACKAGE_USBUTILS=y
+BR2_PACKAGE_EVTEST=y
+BR2_PACKAGE_LINUXCONSOLETOOLS=y
+BR2_PACKAGE_LINUXCONSOLETOOLS_JOYSTICK=y
+BR2_PACKAGE_LINUXCONSOLETOOLS_FORCEFEEDBACK=y
+
+# --- T5: filesystem tools, FAT/exFAT (§5.34) ---
+# WARNING: dosfstools' three programs each default to n — all three needed.
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_FATLABEL=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+BR2_PACKAGE_DOSFSTOOLS_MKFS_FAT=y
+BR2_PACKAGE_EXFATPROGS=y
+
+# --- T5: serial / terminal (§5.35) ---
+BR2_PACKAGE_PICOCOM=y
+BR2_PACKAGE_LRZSZ=y
+BR2_PACKAGE_TMUX=y
+
+# --- T5: network diagnostics (§5.36) ---
+BR2_PACKAGE_ETHTOOL=y
+BR2_PACKAGE_SOCAT=y
+BR2_PACKAGE_TCPDUMP=y
+BR2_PACKAGE_IPERF3=y
+
+# --- T5: archival — package/7zip (OURS), not upstream p7zip (ADR 0023, §5.37) ---
+BR2_PACKAGE_7ZIP=y
+BR2_PACKAGE_ZIP=y
+BR2_PACKAGE_LZOP=y
+
+# --- Off-device backup: azcopy — packaged, NOT enabled, size only (§5.38, docs/azcopy.md) ---
+# BR2_PACKAGE_AZCOPY is not set
+
+# --- T5: hardware buses (§5.39) ---
+BR2_PACKAGE_SPI_TOOLS=y
+
+# --- T5: Bluetooth CLI (§5.40) ---
+BR2_PACKAGE_BLUEZ_TOOLS=y
+
+# --- T5: console / keyboard (§5.41) ---
+BR2_PACKAGE_KBD=y
+
+################################################################################
+# >>> DEBUG TOOLING — TEMPORARY, REMOVE AS ONE BLOCK <<<  (§5.42, docs/debug-tooling.md)
+# TO REVERT: delete this block (banner to banner) and the matching
+# CONFIG_COREDUMP block in board/mister/de10nano/linux.config, then
+#   make de10nano-defconfig && make all
+# WARNING: do not add numactl/mpfr lines here — they arrive by select and must
+# disappear with this block. GDB_SERVER must stay explicit next to GDB_DEBUGGER.
+################################################################################
+BR2_PACKAGE_GDB=y
+BR2_PACKAGE_GDB_SERVER=y
+BR2_PACKAGE_GDB_DEBUGGER=y
+BR2_PACKAGE_STRACE=y
+BR2_PACKAGE_LINUX_TOOLS_PERF=y
+BR2_PACKAGE_LINUX_TOOLS_PERF_NEEDS_HOST_PYTHON3=y
+BR2_PACKAGE_RT_TESTS=y
+################################################################################
+# >>> END DEBUG TOOLING <<<
+################################################################################
+
+################################################################################
+# System configuration (§5.43) — the System configuration menu, NOT the
+# toolchain menu (so no from-scratch-rebuild hazard). Merged /usr and the root
+# password live in common.fragment.
+################################################################################
+
+# --- locale data (§5.44) ---
+# WARNING: BR2_ENABLE_LOCALE (toolchain menu, already y) only compiles locale
+# SUPPORT; this line GENERATES the data — empty shipped no /usr/lib/locale.
+BR2_GENERATE_LOCALE="en_US.UTF-8"
+
+# --- timezone / tzdata (§5.45) ---
+# WARNING: BR2_TARGET_LOCALTIME installs /etc/localtime as a symlink into
+# zoneinfo — the rootfs-overlay overwrites it to point at the FAT data
+# partition, which is the only thing that survives a reflash (ADR 0025).
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_TZ_ZONELIST="default"
+BR2_TARGET_LOCALTIME="Etc/UTC"

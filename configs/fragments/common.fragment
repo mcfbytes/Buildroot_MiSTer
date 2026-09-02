@@ -1,0 +1,25 @@
+# common.fragment — Buildroot policy shared by EVERY board and every kernel
+# variant in this tree. Layered first; a board fragment must never redefine
+# anything here (scripts/check-config-fragments.sh fails the build if one does).
+# Rationale for every line: docs/buildroot-config.md §2.
+
+# --- Toolchain: C++ (docs/buildroot-config.md §2.1) ---
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# --- Download integrity (docs/buildroot-config.md §2.2) ---
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+
+# --- Kernel: pinned custom version, DTS support (docs/buildroot-config.md §2.3) ---
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+
+# --- Reproducibility (docs/buildroot-config.md §2.4) ---
+BR2_REPRODUCIBLE=y
+
+# --- Merged /usr (docs/buildroot-config.md §2.5) ---
+# WARNING: load-bearing — Buildroot validates BR2_ROOTFS_OVERLAY's shape against it.
+BR2_ROOTFS_MERGED_USR=y
+
+# --- Root password: empty (docs/buildroot-config.md §2.6) ---
+BR2_TARGET_GENERIC_ROOT_PASSWD=""

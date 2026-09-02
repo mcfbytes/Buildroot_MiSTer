@@ -165,6 +165,36 @@ reference 2025.01-lineage tree and v2026.07 (`diff -q` → identical) **[V]**, s
 `CONFIG_HANDOFF=y` with `CONFIG_BLOBLIST_ADDR=0x72000` is a viable second attempt. Try the DTS
 constant first.
 
+### 4.4b …and the bloblist goes with it, which removes a latent overlap
+
+With `HANDOFF` off nothing in this build reads or writes a bloblist, so
+`# CONFIG_BLOBLIST is not set` as well. That is not tidiness. The stock defconfig sets
+`BLOBLIST_FIXED` with `ADDR = 0x7e000`, `SIZE = 0x1000`, i.e. the on-chip-RAM region
+`0x7E000..0x7EFFF`. TF-A v2.15.0's Agilex 5 platform puts its **secondary-CPU handshake words at the
+top of that same page** **[V]**:
+
+```
+PLAT_HANDOFF_OFFSET = 0x0007F000                 agilex5/socfpga_plat_def.h:30
+BL_DATA_LIMIT       = PLAT_HANDOFF_OFFSET
+PLAT_CPUID_RELEASE  = BL_DATA_LIMIT - 16 = 0x7EFF0
+PLAT_SEC_ENTRY      = BL_DATA_LIMIT -  8 = 0x7EFF8   common/platform_def.h:125-128
+```
+
+and `bl31_plat_setup.c:59` writes `PLAT_SEC_ENTRY`. The declared bloblist region covers both words.
+
+**Today the overlap is benign** — U-Boot writes only the ~32-byte bloblist header at `0x7E000` and
+never grows into the last 16 bytes of the page. But "benign because nothing currently fills the
+buffer" is a property of today's blob set, not a guarantee, and what it guards against is a
+secondary CPU jumping to a clobbered entry point. Deleting a region nothing uses is strictly better
+than reasoning about how full it gets.
+
+**Checked, not assumed [V]:** with `BLOBLIST` off the config still resolves to `SPL=y`,
+`SPL_ATF=y`, `BINMAN=y`, a full U-Boot build completes, and `u-boot.itb` is still produced.
+`BLOBLIST_FIXED`, `BLOBLIST_ADDR`, `BLOBLIST_SIZE`, `SPL_BLOBLIST`, `HANDOFF` and `SPL_HANDOFF` all
+disappear from the resolved config. The `# CONFIG_HANDOFF is not set` line is kept anyway: the two
+lines record two separate decisions, and if a future bump makes something `select BLOBLIST` again,
+the HANDOFF line is still what keeps `dram_init()` off the factory SPL's bloblist.
+
 ### 4.5 SPL — §8 Q6, answered
 
 `de25-implementation-path.md` §6.1 reasoned from the Kconfig graph that `# CONFIG_SPL is not set`
@@ -240,16 +270,59 @@ the whole justification; everything else in our board file follows from keeping 
 | `&uart1` | `status = "okay"` + `bootph-all` | the dtsi ships it disabled; `socfpga_agilex5-u-boot.dtsi` marks `&uart0` `bootph-all`, not uart1, and without the marking there is no pre-relocation console — the exact window a bring-up failure would be diagnosed in |
 | `&mmc` | `okay`, `no-mmc`, `no-sdio`, `disable-wp`, `bus-width = <4>`, `cap-sd-highspeed`, `max-frequency = <50000000>`, `bootph-all` | see below |
 
-**The `&mmc` block is deliberately more conservative than socdk's.** socdk declares
-`sd-uhs-sdr50`/`sd-uhs-sdr104` with `vqmmc-supply = <&sd_io_1v8_reg>`, whose GPIO is `<&portb 3>` —
-a **SoCDK board fact**. Driving the wrong GPIO to switch SD bus voltage is a way to break a card,
-not a way to go faster, and the reference DE25 tree declares no vqmmc regulator either **[V]**. So:
-no UHS, no voltage switching, plain 4-bit high-speed at 50 MHz. socdk's ~25 `cdns,phy-*` /
-`cdns,ctrl-hrs*` timing properties are omitted for the same reason plus a better one:
-`drivers/mmc/sdhci-cadence6.c` carries a **built-in default for every one of them** **[V, its
-property tables give each entry a default]**, so omitting them selects the driver's defaults rather
-than transplanting another board's tuning. Throughput is irrelevant — this controller reads one
-`Image` and one `.dtb`, once, per boot.
+### 5.1 The `&mmc` block — board facts vs SoC facts, treated differently
+
+Those are two different categories and the block splits them deliberately.
+
+**BOARD facts we do not take from socdk.** socdk declares `sd-uhs-sdr50`/`sd-uhs-sdr104` with
+`vqmmc-supply = <&sd_io_1v8_reg>`, whose GPIO is `<&portb 3>` — a **SoC Development Kit wiring
+fact**. Driving the wrong GPIO to switch SD bus voltage is a way to break a card, not a way to go
+faster, and the reference DE25 tree declares no vqmmc regulator either **[V]**. So: no UHS modes,
+no voltage switching, no regulator phandles.
+
+**SoC facts we do take from socdk.** An earlier draft of this file omitted socdk's `cdns,*` timing
+properties on the argument that `drivers/mmc/sdhci-cadence6.c` carries a built-in default for every
+one of them. That is true and it was the wrong conclusion: **the driver's defaults are a fallback,
+not a validated configuration.** For SD high speed they are
+
+```
+cdns,phy-dqs-timing-delay-sd-hs      0x00380004
+cdns,phy-gate-lpbk-ctrl-delay-sd-hs  0x01A00040
+cdns,phy-dq-timing-delay-sd-hs       0x00000001
+cdns,ctrl-hrs07-* / cdns,ctrl-hrs16-*   (no entry at all)
+```
+
+**[V `drivers/mmc/sdhci-cadence6.c:75-135`]** — values that no validated Agilex 5 board ships.
+socdk's, which are the only Agilex 5 SD timings anyone has run on silicon, are `0x780001`,
+`0x81a40040`, `0x10000001`, `hrs16 = 0x101`, `hrs07 = 0xA0001`
+**[V `arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi:122-134`]**. These are *controller* delays, not
+board wiring, so they transfer. We now copy the `sd-ds` and `sd-hs` stanzas verbatim, with the
+source named in the file.
+
+**Speed: default speed only, 25 MHz.** `cap-sd-highspeed` is **not** set and `max-frequency` is
+`<25000000>`, so U-Boot proper never leaves DS mode — the slowest and most forgiving SD timing there
+is. The cost is nothing that matters: 4-bit DS is about 12.5 MB/s, so the 20 MB `Image` costs under
+two seconds, once, per boot. The `sd-hs` values are still declared so that lifting the cap is a
+one-line change rather than a research task.
+
+**This is the first knob to turn if the card misbehaves.** The symptoms to watch for on the first
+boot are: `Retrieving file: /Image` stalling or timing out; `mmc_load_image_raw` / `sdhci` timeout
+messages; a CRC or checksum complaint from extlinux or from `booti`; or a kernel that starts and
+then panics on a corrupt initramfs/rootfs read. Any of those is a timing problem until proven
+otherwise, and the order of attack is:
+
+1. **Already at the safest setting** (DS, 25 MHz, socdk PHY values) — that is what ships.
+2. If it still fails, try the *driver-default* PHY values (delete the `cdns,*` lines) — that
+   isolates "socdk's timings are wrong for this board" from "the card or the socket is the problem".
+3. Only then suspect the card itself; `dd if=/dev/mmcblk0 of=/dev/null bs=1M` from Linux is the
+   independent check, because it exercises the kernel's driver rather than U-Boot's.
+
+**Lifting it, once a full `dd` of the card reads clean under Linux and U-Boot has booted reliably a
+few times:** re-add `cap-sd-highspeed;` and set `max-frequency = <50000000>;` in
+`socfpga_agilex5_de25nano-u-boot.dtsi`. That is the whole change — the `sd-hs` PHY block it needs is
+already there. Re-test a cold boot and a `Retrieving file:` of the kernel before keeping it. Going
+beyond 50 MHz means UHS, which means a `vqmmc` regulator, which means establishing the DE25's real
+1.8 V switch GPIO on hardware — a different and much larger job.
 
 **Deliberate omissions:** no `&qspi` and no flash node (the node stays at the dtsi's `disabled`
 default, so even a hypothetically-present driver would not probe — the second lock on §7's door);
@@ -277,18 +350,19 @@ it references `&flash0`, which this board file deliberately does not declare.
 
 | `output-de25/images/` | Size | From |
 |---|---|---|
-| `u-boot.itb` | 731,728 B | binman, U-Boot v2026.07 |
-| `bl31.bin` | 53,304 B | TF-A v2.15.0, `PLAT=agilex5` |
+| `u-boot.itb` | 728,176 B (`sha256 38b38e59…`) | binman, U-Boot v2026.07 |
+| `bl31.bin` | 53,304 B (`sha256 863073b2…`) | TF-A v2.15.0, `PLAT=agilex5` |
 | `Image` | 20,711,432 B | Linux 7.2.2 (see §12b — the kernel-config switch landed in this pass's defconfig edit) |
 | `socfpga_agilex5_de25nano.dtb` | 17,138 B | kernel DTS (D2.3, unchanged here) |
 | `rootfs.ext4` → `rootfs.ext2` | 256 MiB | D2.1, unchanged here |
 
 The FIT's `Created:` timestamp is `Sun Aug 23 16:00:00 2026` — `SOURCE_DATE_EPOCH` from
 `BR2_REPRODUCIBLE=y`, not wall-clock, so the artifact is reproducible **[V]**. Confirmed in
-practice: two independent `make de25` runs, hours apart and with a full kernel reconfigure between
-them, produced a byte-identical `u-boot.itb`
-(`sha256 c47dfdf78f912853df59a0a05463dc2e914a693894e23ef9da20d95b1e677100`) and `bl31.bin`
-(`sha256 863073b2c0a9489ae04cbf077b5496975f7aa7f925a8397fad705bcb3c390bf1`) **[V]**.
+practice: repeated `make de25` runs, hours apart and with a full kernel reconfigure between them,
+produced byte-identical artifacts — `bl31.bin` is
+`sha256 863073b2c0a9489ae04cbf077b5496975f7aa7f925a8397fad705bcb3c390bf1` across every run, and
+`u-boot.itb` is byte-stable for a given config (it changed only when the config did: 731,728 B
+before the review fixes, 728,176 B after `CONFIG_BLOBLIST` came out and the mmc node grew) **[V]**.
 
 **Housekeeping done in the same pass:** `images/socfpga_agilex5_socdk.dtb` was a stale leftover from
 before D2.3 (mtime predating this build by hours, from when the defconfig still pointed at
@@ -462,11 +536,12 @@ CONFIG_ENV_IS_IN_FAT=y
 | `CONFIG_SPL_SPI_LOAD`, `SPL_SPI_FLASH_MTD`, `SPL_DM_SPI_FLASH`, `SPL_MTD` | **off** | our SPL never runs, so these are inert either way | closed for tidiness |
 | **`bootcmd_qspi`** (default env) | **absent** | **YES, AND THIS IS THE SHARPEST FINDING.** The stock `BOOTENV_DEV_QSPI` body in `include/configs/socfpga_soc64_common.h` is literally `"ubi detach; sf probe && … env select UBI; saveenv && ubi part root && …"` — a QSPI write *inside the default boot command*, reached by falling through `distro_bootcmd`. It is gated on `IS_ENABLED(CONFIG_CMD_SF)`, so turning `CMD_SF` off deletes the boot target **and** the env string | closed **[V, `boot_targets=mmc0` in the built default env]** |
 | **`bootcmd_nand`** (default env) | **absent** | same shape, `env select UBI; saveenv; ubi part root` | closed (gated on `CMD_NAND`) |
-| `linux_qspi_enable` (default env) | **present** | no. It is `if sf probe; then … fdt set … status okay; fi`. `sf` does not exist in this build, so the command fails at word 1 and the `if` body never runs. Nothing invokes it either — it is not in `bootcmd` | **inert, argued.** Harmless to leave; removing it means patching a shared SoC64 header for cosmetics |
+| `linux_qspi_enable` (default env) | **present** | **Correction to an earlier draft of this table, which said "nothing invokes it".** Something does: `board_prep_linux()` in `arch/arm/mach-socfpga/board.c:194-197` runs `run_command(env_get("linux_qspi_enable"), 0)` on **every FIT-kernel boot**. The argument is the *gate*, not the caller — that block is `if (use_fit && IS_ENABLED(CONFIG_CADENCE_QSPI))`, and `CADENCE_QSPI` is compiled out, so the call site does not exist in our binary **[V, read]**. Belt-and-braces even if it did: the variable's body starts `if sf probe`, and `sf` is not a command here. (We boot via extlinux, not a FIT kernel, so `use_fit` would also be false — but that is the weakest of the three arguments and is not what this row rests on.) | **inert, and it is the Kconfig gate that makes it so** |
 | `CONFIG_QSPI_BOOT` | **on** (inherited) | no. Despite the name it is a `boot/Kconfig` media choice consumed **only** by NXP Layerscape and i.MX code — every reference is under `arch/arm/cpu/armv8/fsl-layerscape`, `arch/arm/cpu/armv7/ls102xa` or `arch/arm/mach-imx` **[V, tree-wide grep]** | **inert, argued** |
 | `CONFIG_SPI` / `CONFIG_DESIGNWARE_SPI` | **on** | no. A different controller (spi0/spi1 general-purpose pins), not the Cadence QSPI block behind the SDM | **inert, argued** |
 | RSU (`cmd/rsu.c`, `CONFIG_CMD_RSU`) | **does not exist** in mainline v2026.07 | — | not applicable **[V, no such file]** |
 | `CONFIG_SOCFPGA_SECURE_VAB_AUTH` | **off** | no | — |
+| `CONFIG_BLOBLIST` | **off** | not QSPI — but it declared `0x7E000..0x7EFFF`, which covers TF-A's `PLAT_CPUID_RELEASE` (`0x7EFF0`) and `PLAT_SEC_ENTRY` (`0x7EFF8`) | closed. §4.4b — a latent RAM overlap, not a flash one, removed rather than argued |
 
 **Second lock, outside Kconfig:** our board device tree declares no `&qspi` flash node and leaves
 the controller at the SoC dtsi's `status = "disabled"`, so even a driver that somehow returned would
@@ -626,6 +701,7 @@ Then, in order:
 | Expect | Means |
 |---|---|
 | any output at all on uart1 @115200 8N1 | the alias/`stdout-path` pair is right. **Silence here is the failure this board file exists to prevent** |
+| **NO `NOTICE:  BL31: v2.15.0…` lines** | **expected — absence is not failure.** TF-A's Agilex 5 platform registers its console at `PLAT_INTEL_UART_BASE`, which is `PLAT_UART0_BASE = 0x10C02000` **[V `plat/intel/soc/common/include/platform_def.h:156`, `plat/intel/soc/agilex5/include/socfpga_plat_def.h:154`, `bl31_plat_setup.c:61`]** — that is **uart0**, not the DE25's header UART at `0x10C02100`. So BL31 runs and says nothing on the cable you are watching. Do not read a missing BL31 banner as "BL31 did not run"; the thing that proves BL31 ran is the U-Boot banner on the next line, because U-Boot is BL33 and only BL31 gets there. (If you need BL31's own output, uart0 is exposed on the HPS header pins, or `PLAT_INTEL_UART_BASE` can be re-pointed in a TF-A rebuild — neither is needed for a normal bring-up.) |
 | `U-Boot 2026.07 …` banner | the FIT parsed, BL31 ran, BL33 entered — i.e. the whole §2 pairing works. This is the [U] that only hardware closes |
 | `DRAM:  1 GiB` | `dram_init()` took the `fdtdec` branch (§4.4). If instead U-Boot dies before the banner with `Missing SPL hand-off info`, `CONFIG_HANDOFF` came back on |
 | `Loading Environment from FAT... ` then either `OK` or `Unable to read "uboot.env" from mmc0:1...` | §10. **`Loading Environment from UBI` must NEVER appear.** If it does, stop and do not boot again until the config is fixed — that message means the QSPI is being attached |
@@ -647,6 +723,8 @@ this build; typing them should produce `Unknown command` — which is itself a u
 | The build produces `images/u-boot.itb` and `images/bl31.bin` from mainline sources | **[V]** — this build |
 | The FIT matches the §6.1 factory-SPL contract: images, load addresses, default config, crc32-only signature, no keys | **[V]** — `dumpimage`, §6 |
 | No load or save path in this U-Boot can write the QSPI | **[V, config-traced]** — §7 |
+| The stock `BLOBLIST_FIXED` region overlapped TF-A's secondary-CPU handshake words, and no longer exists in this build | **[V]** — §4.4b |
+| U-Boot's SD access uses socdk's silicon-validated Agilex 5 PHY timings, at default speed only | **[V, config-traced]** — §5.1. Whether those timings suit *this* board is **[U]** until hardware |
 | `# CONFIG_SPL is not set` does not work; SPL is compiled and nothing of it is shipped | **[V]** — §4.5, closes §8 Q6 |
 | `boot_targets` contains only `mmc0`, and `bootcmd_qspi`'s embedded `saveenv` is gone | **[V]** — built default env |
 | U-Boot 2026.07 + TF-A v2.15.0 boot this board under the factory SPL | **[U]** — needs hardware. ADR 0029 D4 |
@@ -687,8 +765,10 @@ commit that carries this change.
 2. **`CONFIG_HANDOFF` off + a declared 1 GiB (§4.4)** vs `CONFIG_BLOBLIST_ADDR=0x72000` and taking
    the measured size from the factory SPL. Recommendation: as shipped; revisit only if the board
    reports the wrong size.
-3. **The conservative `&mmc` block (§5)** — no UHS, 50 MHz. Faster modes need the DE25's real vqmmc
-   GPIO, which is a hardware-session observation.
+3. **The `&mmc` block (§5.1)** — socdk's silicon-validated PHY timings, but default speed only at
+   25 MHz. It is the first knob to turn if the card misbehaves, and §5.1 has both the diagnosis
+   order and the one-line lift back to 50 MHz high speed. Faster than that needs the DE25's real
+   vqmmc GPIO, which is a hardware-session observation.
 4. **No seeded `uboot.env` (§10).**
 5. **`CONFIG_FS_EXFAT=y`** anticipates §8 Q7 resolving toward exFAT on p2. If p2 stays ext4 forever,
    this line can go.

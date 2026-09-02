@@ -55,31 +55,69 @@
 
 &mmc {
 	/*
-	 * Conservative on purpose. Mainline's socdk block declares
-	 * sd-uhs-sdr50/sdr104 with vqmmc-supply = <&sd_io_1v8_reg>, whose GPIO
-	 * (portb 3) is a SoC Development Kit board fact -- the DE25-Nano's
-	 * 1.8V/3.3V switch, if it has one, is not on that pin, and driving the
-	 * wrong GPIO to change the SD bus voltage is a way to break a card, not
-	 * a way to go faster. The reference DE25 tree also declares no vqmmc
-	 * regulator. So: no UHS modes, no voltage switching, plain 4-bit SD
-	 * high-speed at 50 MHz.
+	 * CONSERVATIVE ON THE BOARD FACTS, SoCDK-VALIDATED ON THE SoC FACTS.
+	 * Those are two different things and this block deliberately treats them
+	 * differently.
 	 *
-	 * The cdns,phy-* / cdns,ctrl-hrs* timing properties socdk lists are all
-	 * omitted deliberately: drivers/mmc/sdhci-cadence6.c carries a built-in
-	 * default for every one of them (its property tables give each entry a
-	 * default value), so omitting them selects the driver's own defaults
-	 * rather than transplanting another board's tuning.
+	 * BOARD facts we do NOT take from socdk: mainline's
+	 * socfpga_agilex5_socdk-u-boot.dtsi declares sd-uhs-sdr50/sdr104 with
+	 * vqmmc-supply = <&sd_io_1v8_reg>, whose GPIO is <&portb 3>. That pin is
+	 * a SoC Development Kit wiring fact; the DE25-Nano's 1.8V/3.3V switch, if
+	 * it has one, is not necessarily there, and driving the wrong GPIO to
+	 * change SD bus voltage is a way to break a card rather than a way to go
+	 * faster. The reference DE25 U-Boot tree declares no vqmmc regulator
+	 * either. So: no UHS modes, no voltage switching, no regulator phandles.
 	 *
-	 * Throughput does not matter here. This controller's whole job in
-	 * U-Boot is to read one kernel Image and one dtb, once, per boot.
+	 * SoC facts we DO take from socdk: the cdns,* PHY/controller delay values
+	 * below, copied verbatim from
+	 *   u-boot v2026.07 arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi:122-134
+	 * (the sd-ds and sd-hs stanzas only). These are Agilex 5 SD-controller
+	 * timings, not board wiring -- and they are the only Agilex 5 values
+	 * anyone has run on silicon.
+	 *
+	 * WHY COPY THEM AT ALL, when the driver has defaults? Because the
+	 * driver's defaults are not a validated configuration, they are a
+	 * fallback. drivers/mmc/sdhci-cadence6.c's property tables give every
+	 * entry a default, and for sd-hs those defaults are
+	 *   dqs 0x00380004, gate-lpbk 0x01A00040, dq 0x00000001,
+	 *   and NO ctrl-hrs07 / ctrl-hrs16 entries at all
+	 * -- values no validated Agilex 5 board ships. socdk uses 0x780001,
+	 * 0x81a40040, 0x10000001, hrs16 = 0x101, hrs07 = 0xA0001. Shipping the
+	 * driver defaults on first-contact hardware would mean debugging a card
+	 * read against timings nobody has ever proven on this SoC.
+	 *
+	 * SPEED: default-speed (DS) only, 25 MHz. cap-sd-highspeed is
+	 * deliberately NOT set and max-frequency is 25 MHz, so U-Boot proper
+	 * never leaves DS mode. This is the slowest and most forgiving SD timing
+	 * there is, and the controller's entire job here is to read one Image and
+	 * one .dtb, once, per boot -- at 25 MHz 4-bit that is about 12.5 MB/s,
+	 * so a 20 MB kernel costs under two seconds. The sd-hs values are still
+	 * declared above so that lifting the cap is a one-line change rather than
+	 * a research task. See docs/de25-uboot.md section 5 for the lift
+	 * procedure and for what a timing problem looks like on the console.
 	 */
 	status = "okay";
 	no-mmc;
 	no-sdio;
 	disable-wp;
 	bus-width = <4>;
-	cap-sd-highspeed;
-	max-frequency = <50000000>;
+	max-frequency = <25000000>;
+
+	/* SD card default speed (DS) and UHS-I SDR12 mode timing configuration */
+	cdns,phy-dqs-timing-delay-sd-ds = <0x00780000>;
+	cdns,phy-gate-lpbk-ctrl-delay-sd-ds = <0x81a40040>;
+	cdns,phy-dll-slave-ctrl-sd-ds = <0x00a000fe>;
+	cdns,phy-dq-timing-delay-sd-ds = <0x28000001>;
+
+	/* SD card high speed and UHS-I SDR25 mode timing configuration.
+	 * Declared but NOT REACHED while cap-sd-highspeed is absent -- kept so
+	 * that enabling high speed later is one line, not a research task. */
+	cdns,phy-dqs-timing-delay-sd-hs = <0x780001>;
+	cdns,phy-gate-lpbk-ctrl-delay-sd-hs = <0x81a40040>;
+	cdns,phy-dq-timing-delay-sd-hs = <0x10000001>;
+	cdns,ctrl-hrs16-slave-ctrl-sd-hs = <0x101>;
+	cdns,ctrl-hrs07-timing-delay-sd-hs = <0xA0001>;
+
 	bootph-all;
 };
 

@@ -844,7 +844,7 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 		echo "    Verify its shape against the factory SPL contract with:"; \
 		echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
 		echo "    Bare developer OS -- no MiSTer binaries."; \
-		echo "" \
+		echo ""; \
 	fi
 	@if [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
 		echo "==> DE25 card:   $(DE25_OUTPUT_DIR)/images/sdcard-de25.img  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/sdcard-de25.img) bytes)"; \

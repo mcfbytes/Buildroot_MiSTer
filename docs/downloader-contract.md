@@ -1182,3 +1182,35 @@ db wins the race.)
     db.json must equal, case-insensitively, the section name in the example
     `downloader.ini`/drop-in file shown in P4.8's docs, or onboarding fails at
     `DbEntityValidationException` (§1, §9.5) on the user's very first run.
+
+---
+
+## 13. DE25-Nano: a reserved channel namespace, not a second arbitration point
+
+[ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md) reserves — does not
+implement — a second, parallel channel for a possible future DE25-Nano board: release
+tags `de25-YYYYMMDD` (DE10 keeps bare `YYYYMMDD`), a second Pages document
+`db-de25nano.json` with its own db_id `mister_linux_modernization_de25nano`, and a
+per-board updater script. See [`docs/de25-nano-plan.md`](de25-nano-plan.md) for the
+staged plan these names belong to.
+
+Nothing in this document changes today. The load-bearing point for anyone editing this
+contract is what the reservation rules out, not what it adds:
+
+* **No arbitration point exists, or is planned, where DE10 and DE25 artifacts could meet
+  on one device.** §9's "first wins" hazard is a same-board, multi-db race; it has no
+  cross-board analogue to design against, because the two boards' updaters, private
+  inis, and db.json documents are entirely separate from the start.
+* **`/MiSTer.version` stays exactly six bytes on both boards** (§3, §12.2) — the
+  Downloader's comparison (`current_linux_version == linux['version'][-6:]`) is
+  per-device and per-file; a DE25 build does not widen, reinterpret, or share that
+  contract, it just runs the identical one against its own six bytes.
+* **Board identity is never read from that file.** It comes from the device tree. Do not
+  design any future DE25 assertion (ADR 0027 Decision 4's "board-identity assertion
+  before any flash step") around `/MiSTer.version` — it was never a board discriminator
+  and this reservation doesn't make it one.
+* **The stock `updateboot` raw-`dd`s the whole disk** (§8) with no board check of its
+  own. Crossing a DE10 archive onto a DE25 device, or vice versa, through this mechanism
+  is board-fatal, not merely a failed update — this is exactly why Decision 4 requires a
+  board-identity assertion to exist *before* any future DE25 flash step reuses this code
+  path.

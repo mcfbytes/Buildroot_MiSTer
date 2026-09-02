@@ -107,3 +107,16 @@ back to back** from an already-subscribed user base.
 Both columns can't simultaneously be "yes" without a P2.6 change to how
 `/MiSTer.version` itself is derived. This task picks the column that keeps updates
 flowing, and documents the cost.
+
+## DE25-Nano: reserved, not a second version scheme
+
+[ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md) reserves a second Pages
+document, `db-de25nano.json`, for a possible future DE25-Nano board — not implemented
+yet; see [`docs/de25-nano-plan.md`](de25-nano-plan.md) for the staged plan. The
+reservation does not introduce a second version scheme: the release-date-driven approach
+documented above (ADR 0018) carries over unchanged, and a future DE25 `db.json` would
+derive its own `linux.version` from *its own* release's publish date the same way this
+one does. Each board's db.json versions independently — a DE25 release date has no
+bearing on, and is never compared against, the DE10 db.json's version or the DE10
+`/MiSTer.version`, and vice versa. Do not read the "residual trade-off" above as
+something a second board doc could resolve or share; it is per-board by construction.

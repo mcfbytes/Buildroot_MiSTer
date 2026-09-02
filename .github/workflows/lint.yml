@@ -14,7 +14,7 @@
 # Run the same checks locally before pushing:
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
-#   shellcheck -x board/mister/de10nano/fat-payload/Scripts/*.sh
+#   shellcheck -x board/mister/*/fat-payload/Scripts/*.sh
 #   shellcheck -s sh -x package/azcopy/azcopy-profile.sh
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
@@ -32,33 +32,30 @@ on:
     paths:
       - '.github/**'
       - 'scripts/**'
-      # Shell that ships on the card / in the rootfs is shellchecked below, so
-      # a change to it has to be able to trigger this workflow.
-      - 'board/mister/de10nano/fat-payload/**'
-      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      # Shell that ships on the card or in the rootfs is shellchecked below,
+      # and the SD-installer's /init splash is unit-tested below too, so a
+      # change to either has to be able to trigger this workflow. One glob
+      # (not the four per-subdir literals this used to be: fat-payload/**,
+      # rootfs-overlay/etc/init.d/**, post-build.sh, installer-overlay/**),
+      # so a second board directory can't silently sit outside this trigger
+      # the way it silently sat outside the shellcheck targets below -- see
+      # docs/ci.md#lint-ci-overview and docs/de25-readiness-ledger.md §6.5.
+      - 'board/mister/**'
       # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
       # directory feeds the version/hash consistency gate.
       - 'package/azcopy/**'
-      - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
-      # The installer /init is not a script/**, but this job is the only thing
-      # that tests its splash section on a PR (see the unit-test step below).
-      # Without this path a change to the splash alone would skip its own gate.
-      - 'board/mister/de10nano/installer-overlay/**'
   pull_request:
     paths:
       - '.github/**'
       - 'scripts/**'
-      - 'board/mister/de10nano/fat-payload/**'
-      - 'board/mister/de10nano/rootfs-overlay/etc/init.d/**'
+      - 'board/mister/**'
       # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
       # directory feeds the version/hash consistency gate.
       - 'package/azcopy/**'
-      - 'board/mister/de10nano/post-build.sh'
       - 'install.sh'
       - 'uninstall.sh'
-      - 'board/mister/de10nano/installer-overlay/**'
   workflow_dispatch:
 
 # Same shape as build.yml / release.yml / reproducibility.yml / publish-db.yml:
@@ -158,22 +155,67 @@ jobs:
       # has to be stated: shellcheck has nothing else to infer the dialect
       # from. It is installed 0644, so it is deliberately absent from the
       # executable-bit check below.
+      #
+      # The list below used to be eight literal board/mister/de10nano/... paths
+      # -- silently skipping a second board tree entirely (see
+      # docs/de25-readiness-ledger.md §6.5). Instead it walks every directory
+      # under board/mister/ and, per board, tests for each conventional
+      # relative script path; a board that has not grown a given script yet
+      # (a board mid-bring-up, e.g. before its post-build.sh lands) is simply
+      # skipped FOR THAT ONE FILE, same as today's de10nano would be skipped
+      # for a filename it doesn't ship. What must NOT happen silently is every
+      # board missing every entry (glob typo, board/mister/ itself vanishing,
+      # etc.) -- that fails the step outright, per docs/ci.md#lint-ci-overview.
       - name: shellcheck shipped board scripts
         run: |
           set -euo pipefail
-          shellcheck -x \
-            board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh \
-            board/mister/de10nano/fat-payload/Scripts/check_storage.sh \
-            board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh \
-            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat \
-            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-pair-logitech
-          shellcheck -s sh -x \
-            install.sh \
-            uninstall.sh \
-            board/mister/de10nano/post-build.sh \
-            board/mister/de10nano/initramfs-post-build.sh \
-            board/mister/de10nano/initramfs-overlay/init \
-            package/azcopy/azcopy-profile.sh
+          mapfile -d '' -t boards < <(find board/mister -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+          if [ "${#boards[@]}" -eq 0 ]; then
+            echo "::error::no board directories found under board/mister -- expected at least board/mister/de10nano"
+            exit 1
+          fi
+
+          # Conventional per-board relative paths, split by dialect exactly as
+          # de10nano's fixed list above used to be.
+          bash_relpaths=(
+            fat-payload/Scripts/update_linux_modernization.sh
+            fat-payload/Scripts/check_storage.sh
+            fat-payload/Scripts/pair_logitech.sh
+            rootfs-overlay/usr/sbin/mister-fsck-exfat
+            rootfs-overlay/usr/sbin/mister-pair-logitech
+          )
+          sh_relpaths=(
+            post-build.sh
+            initramfs-post-build.sh
+            initramfs-overlay/init
+          )
+
+          bash_files=()
+          sh_files=()
+          for board in "${boards[@]}"; do
+            for rel in "${bash_relpaths[@]}"; do
+              [ -f "$board/$rel" ] && bash_files+=("$board/$rel")
+            done
+            for rel in "${sh_relpaths[@]}"; do
+              [ -f "$board/$rel" ] && sh_files+=("$board/$rel")
+            done
+          done
+
+          if [ "${#bash_files[@]}" -eq 0 ] && [ "${#sh_files[@]}" -eq 0 ]; then
+            echo "::error::none of the conventional shipped-script paths were found under any of: ${boards[*]} -- expected at least de10nano's fat-payload/Scripts/*.sh and rootfs-overlay/usr/sbin/mister-*"
+            exit 1
+          fi
+
+          echo "boards discovered: ${boards[*]}"
+          echo "bash-dialect shipped board scripts (${#bash_files[@]}):"
+          printf '  %s\n' "${bash_files[@]}"
+          echo "sh-dialect shipped board scripts (${#sh_files[@]}):"
+          printf '  %s\n' "${sh_files[@]}"
+
+          if [ "${#bash_files[@]}" -gt 0 ]; then
+            shellcheck -x "${bash_files[@]}"
+          fi
+          shellcheck -s sh -x install.sh uninstall.sh package/azcopy/azcopy-profile.sh "${sh_files[@]}"
 
       # Executable bits on shipped scripts, checked against GIT's recorded mode.
       #
@@ -185,21 +227,50 @@ jobs:
       #
       # Reads `git ls-files -s` rather than the worktree, because git's index is
       # what a fresh clone (and therefore CI and every contributor) actually gets.
+      #
+      # must_be_exec used to be eight literal board/mister/de10nano/... paths;
+      # it now walks board/mister/*/ the same way the shellcheck step above
+      # does (same conventional-relpath list, same "missing for this board is
+      # fine, missing for EVERY board is not" empty-set guard) -- see that
+      # step's comment and docs/de25-readiness-ledger.md §6.5. The init.d
+      # sweep below was already a real glob (`git ls-files` over a directory),
+      # so it only needed the board segment opened up.
       - name: shipped scripts must be executable in git
         run: |
           set -euo pipefail
-          must_be_exec=(
-            board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh
-            board/mister/de10nano/fat-payload/Scripts/check_storage.sh
-            board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh
-            board/mister/de10nano/post-build.sh
-            board/mister/de10nano/initramfs-post-build.sh
-            board/mister/de10nano/initramfs-overlay/init
-            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat
-            board/mister/de10nano/rootfs-overlay/usr/sbin/mister-pair-logitech
-            install.sh
-            uninstall.sh
+          mapfile -d '' -t boards < <(find board/mister -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+          if [ "${#boards[@]}" -eq 0 ]; then
+            echo "::error::no board directories found under board/mister -- expected at least board/mister/de10nano"
+            exit 1
+          fi
+
+          relpaths=(
+            fat-payload/Scripts/update_linux_modernization.sh
+            fat-payload/Scripts/check_storage.sh
+            fat-payload/Scripts/pair_logitech.sh
+            post-build.sh
+            initramfs-post-build.sh
+            initramfs-overlay/init
+            rootfs-overlay/usr/sbin/mister-fsck-exfat
+            rootfs-overlay/usr/sbin/mister-pair-logitech
           )
+
+          board_files=()
+          for board in "${boards[@]}"; do
+            for rel in "${relpaths[@]}"; do
+              [ -f "$board/$rel" ] && board_files+=("$board/$rel")
+            done
+          done
+
+          if [ "${#board_files[@]}" -eq 0 ]; then
+            echo "::error::none of the conventional shipped-script paths were found under any of: ${boards[*]} -- expected at least de10nano's fat-payload/Scripts/*.sh"
+            exit 1
+          fi
+
+          must_be_exec=(install.sh uninstall.sh "${board_files[@]}")
+          echo "checking executable bit on:"
+          printf '  %s\n' "${must_be_exec[@]}"
+
           rc=0
           for f in "${must_be_exec[@]}"; do
             mode=$(git ls-files -s -- "$f" | awk '{print $1}')
@@ -218,7 +289,7 @@ jobs:
               100755|120000) ;;   # regular executable, or a symlink
               *) echo "::error file=$f::init script mode is $mode, expected 100755"; rc=1 ;;
             esac
-          done < <(git ls-files 'board/mister/de10nano/rootfs-overlay/etc/init.d/*')
+          done < <(git ls-files 'board/mister/*/rootfs-overlay/etc/init.d/*')
           exit "$rc"
 
       # azcopy's hash pin IS refreshed by renovate-hash-sync.yml as of

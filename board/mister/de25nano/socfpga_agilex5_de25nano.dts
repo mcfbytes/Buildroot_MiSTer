@@ -82,14 +82,24 @@
 
 	/*
 	 * MAINLINE's socfpga_agilex5.dtsi has no memory node, so the board file
-	 * must supply one.  1 GiB at 0x8000_0000 is what the FACTORY SPL DTB
-	 * reports (docs/de25-boot-chain.md §3, [V SPL-dtb]) and what the User
-	 * Manual specifies for the HPS.  TERASIC and FRIEND hard-code 2 GiB,
-	 * which over-claims by 2x on a 1 GiB board; ALTERA and MAINLINE's socdk
-	 * declare size 0 and rely entirely on the bootloader.  We state the
-	 * measured size: U-Boot's fdt_fixup_memory_banks() rewrites it from its
-	 * own DDR init anyway, and under-claiming degrades gracefully where
-	 * over-claiming and size-0 do not.
+	 * must supply one.  1 GiB at 0x8000_0000 matches the *UM* and the DE25
+	 * U-Boot DTS constant (de25-uboot-socfpga:.../socfpga_agilex5_de25_nano-
+	 * u-boot.dtsi, "/* 1GB *\/  reg = <0 0x80000000 0 0x40000000>").
+	 *
+	 * Be precise about what that is: a DECLARED CONSTANT, not a measurement.
+	 * The real size comes from the IO96B controller at runtime —
+	 * sdram_agilex5.c computes hw_size from io96b_ctrl->overall_size, caps
+	 * the DT value at it, and prints "DDR: Warning ..." on any mismatch —
+	 * and U-Boot then rewrites Linux's node wholesale from bi_dram
+	 * (arch/arm/lib/bootm-fdt.c fdt_fixup_memory_banks(),
+	 * CONFIG_ARCH_FIXUP_FDT_MEMORY default y).  So this value is a fallback
+	 * that only matters if that fixup does not run.
+	 *
+	 * It is still the right value to state.  TERASIC and FRIEND hard-code
+	 * 2 GiB, which over-claims on a 1 GiB board; ALTERA and MAINLINE's socdk
+	 * declare size 0, which boots nothing if the fixup is skipped.
+	 * Under-claiming degrades gracefully where neither of those does.
+	 * First-boot action: capture U-Boot's "DDR:" lines and confirm.
 	 *
 	 * Note the consequence for DMA: all DRAM lives in
 	 * 0x8000_0000..0xBFFF_FFFF, i.e. entirely inside 32 bits.
@@ -168,18 +178,56 @@
 };
 
 /*
- * MAINLINE 7.2 ships the SMMU disabled (it is enabled at master).  Enable it:
- * mainline's own svc node declares iommus = <&smmu 10>, and every DMA master
- * this board enables (gmac0, usb0, mmc0) carries an iommus phandle.
+ * SMMU: DISABLED for wave 1 — a deliberate divergence from TERASIC, ALTERA and
+ * FRIEND, all three of which set status = "okay".  This is MAINLINE 7.2's own
+ * default (the node is enabled at master), and it is not a convenience: with
+ * the SMMU ON, mainline's FPGA-configuration path CANNOT work on this SoC.
  *
- * Consequence, and the reason mmc0 below keeps its iommus property:
- * arm_smmu_init_initial_stes() fills EVERY stream-table entry with
- * arm_smmu_make_abort_ste() (drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c),
- * so under an ENABLED SMMU a master that is not described by an iommus
- * property does not bypass — it aborts.
+ * Why, traced through mainline 7.2.2 source:
+ *   - stratix10-svc.c:865-869  takes the shared-buffer address straight out of
+ *     the INTEL_SIP_SMC_FPGA_CONFIG_GET_MEM SMC return (res.a1/res.a2).
+ *   - :956                     devm_memremap()s that PHYSICAL address.
+ *   - :1873-1876               gen_pool_virt_to_phys() puts PHYSICAL addresses
+ *                              in the pool; :1780 copies one into pdata->paddr.
+ *   - :607 (RECONFIG_DATA_SUBMIT) and :655 (FCS) hand that raw physical
+ *     address to the SDM as SMC argument a1.
+ *   - grep iommu_map|dma_map_single|dma_alloc over the whole file -> 0 hits.
+ * Meanwhile the svc device inherits iommus = <&smmu 10>, and
+ * arm_smmu_def_domain_type() (arm-smmu-v3.c:4294-4304) returns 0 for anything
+ * non-PCI, so the core gives it the build default IOMMU_DEFAULT_DMA_STRICT —
+ * a TRANSLATED domain over an empty page table.  Those physical addresses are
+ * then unmapped IOVAs and the first RECONFIG_DATA_SUBMIT faults.
+ *
+ * That SDM traffic really does traverse the SMMU is not an assumption: it is
+ * exactly what Terasic's vendor svc compensates for (IOVA carveout +
+ * iommu_map(), a +0x80000000 offset, and an SDM remapper disable), none of
+ * which exists in mainline at 6.18.44, 7.2 or master.
+ *
+ * SMMU-OFF is therefore the only configuration in which mainline's svc layer
+ * can possibly program this fabric.  It is not *proven* to work either — the
+ * vendor driver hard-fails without the SMMU, and mainline never touches the
+ * remapper — but it is the leg to test first (de25-implementation-path.md
+ * §2.6 step 4), and the closest supporting evidence is the friend's
+ * iommu.passthrough=1 cold boot reaching a login prompt.
+ *
+ * Every iommus property in the tree is KEPT and simply goes inert:
+ * of_iommu_xlate() returns -ENODEV for an unavailable IOMMU node
+ * (drivers/iommu/of_iommu.c:28-29) and of_iommu_configure() treats -ENODEV as
+ * "this device has no IOMMU", not as an error.  Every master then DMAs
+ * physically, which is safe here because all DRAM is below 4 GiB.
+ *
+ * ALTERNATIVE, for the second leg of the §2.6 test — swap the line below for:
+ *
+ *	&smmu { status = "okay"; };
+ *
+ * and change NOTHING else.  Every iommus property (gmac0 1, mmc0 5, usb0 6,
+ * dmac0 8, dmac1 9, svc 10) is already present and correct for that shape, and
+ * it must stay that way: arm_smmu_init_initial_stes() fills EVERY stream-table
+ * entry with arm_smmu_make_abort_ste() (arm-smmu-v3.c:1925-1934), so under an
+ * ENABLED SMMU a master with no iommus property does not bypass — it aborts.
  */
 &smmu {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND */
+	status = "disabled";
 };
 
 &soc {
@@ -214,31 +262,65 @@
 		clock-names = "biu", "ciu";
 
 		/*
-		 * SMMU decision (docs/de25-implementation-path.md §8 Q2).  KEPT.
-		 * With &smmu okay, an undeclared master hits an abort STE, so
-		 * dropping iommus here would trade a POSSIBLE F_TRANSLATION for a
-		 * CERTAIN abort.  The F_TRANSLATION risk is addressed on the driver
-		 * side by linux-patches/0101 (40-bit DMA mask), not by removing the
-		 * SMMU mapping.  Escape hatch if §2.6's hardware test wants the SMMU
-		 * off: setting &smmu status = "disabled" makes every iommus property
-		 * in the tree inert (of_iommu_xlate() returns -ENODEV for a disabled
-		 * IOMMU node, which of_iommu_configure() treats as "no IOMMU", not as
-		 * an error) and mmc0 then DMAs physically — safe here because all
-		 * DRAM is below 4 GiB.  One line, no other edits.
+		 * SMMU decision (docs/de25-implementation-path.md §8 Q2).  KEPT, but
+		 * INERT as shipped: &smmu is disabled above, so of_iommu_xlate()
+		 * returns -ENODEV and mmc0 DMAs physically.  The property stays
+		 * because it is correct hardware description and because it is
+		 * mandatory the moment anyone flips &smmu to "okay" — under an
+		 * enabled SMMU an undescribed master aborts rather than bypasses.
+		 * With the SMMU off, the §8 Q2 40-bit truncation cannot bite at all:
+		 * every DRAM address on this board is below 4 GiB.  linux-patches/0101
+		 * is still correct and still wanted — it is what makes the SMMU-on leg
+		 * of the §2.6 test survivable — it is just not load-bearing here.
 		 */
 		iommus = <&smmu 5>;				/* TERASIC + ALTERA + FRIEND */
 		/*
 		 * KEPT.  Corroborated inside MAINLINE itself: the sibling nand
 		 * controller on this same SoC carries dma-coherent in
-		 * socfpga_agilex5.dtsi, which is upstream's own statement that
+		 * socfpga_agilex5.dtsi:315, which is upstream's own statement that
 		 * Agilex 5 HPS peripheral masters are coherent.  All three vendor
 		 * trees agree.
+		 *
+		 * Caveat now that the SMMU is off: the vendor trees all assert this
+		 * with the SMMU ON, where cacheability of the access comes from the
+		 * STE/IOMMU_CACHE attributes rather than from the master's own
+		 * dma-coherent property, so their evidence does NOT transfer
+		 * unchanged to the SMMU-off shape.  Tagged [U2]: this must be
+		 * re-checked by data integrity test in the shipped (SMMU-off)
+		 * configuration, not inferred.  If reads come back corrupt, DELETE
+		 * THIS LINE FIRST — treating a coherent master as non-coherent is
+		 * always correct, merely slower; the converse silently corrupts.
 		 */
 		dma-coherent;
 
 		/* ---- board wiring below this line ---- */
 
 		bus-width = <4>;			/* TERASIC + ALTERA + FRIEND */
+
+		/*
+		 * FIRST-BOOT CLOCK CAP.  Mainline's sdhci-cadence programs NONE of the
+		 * 40 cdns,phy-* values the vendor trees carry (its property table knows
+		 * only eleven cdns,phy-input-delay-* / cdns,phy-dll-delay-* names,
+		 * sdhci-cadence.c:108-119), so Linux inherits whatever PHY state U-Boot
+		 * left behind rather than configuring it.  The ONLY boot of this board
+		 * on a mainline sdhci-cadence driver — FRIEND,
+		 * socfpga_agilex5_de25_nano.dts:110-126 — reached that state only after
+		 * dropping high-speed advertisement and capping the clock at 25 MHz,
+		 * following corrupted SD SCR reads.  Start where the one working data
+		 * point is.  Lift this once a sustained dd read/write is clean; see
+		 * docs/de25-dts-rationale.md [U3].
+		 */
+		max-frequency = <25000000>;		/* FRIEND */
+
+		/*
+		 * KEPT even though FRIEND drops it, because dropping it would be
+		 * theatre: sdhci.c:4572 sets MMC_CAP_SD_HIGHSPEED from the capability
+		 * register's SDHCI_CAN_DO_HISPD (bit 21) regardless of DT, and our
+		 * sdhci-caps-mask does not clear that bit.  max-frequency above is the
+		 * property that actually constrains the bus.  If a bench test ever
+		 * needs genuine default-speed-only, the real lever is widening the caps
+		 * mask to <0x00002000 0x0020ff00>, not deleting this line.
+		 */
 		cap-sd-highspeed;			/* TERASIC + ALTERA */
 		disable-wp;				/* TERASIC + ALTERA + FRIEND — no WP switch wired */
 		no-1-8-v;				/* TERASIC + FRIEND — 3.3V-only signalling */

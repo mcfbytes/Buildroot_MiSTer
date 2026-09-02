@@ -162,6 +162,11 @@ trap cleanup EXIT
 mkdir -p "$WORK/control" "$WORK/test"
 
 export ARCH SRCARCH="$ARCH" KERNELVERSION
+# srctree is how kconfig's `conf` finds the top-level Kconfig (and every
+# `source`d file) when run from a directory other than the kernel tree:
+# zconf_fopen() retries a relative path under $srctree. That is why the two
+# olddefconfig runs below can `cd` into scratch dirs that contain only a
+# .config and still name a bare "Kconfig".
 export srctree="$TREE"
 export CC="$CC_BIN" LD="$LD_BIN"
 export HOSTCC=${HOSTCC:-gcc} HOSTCXX=${HOSTCXX:-g++}

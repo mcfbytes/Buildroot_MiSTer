@@ -821,7 +821,7 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
 		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
 	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
-	@if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
+	if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
 		echo "==> DE25 bl31/FIT: SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb was built)"; \
 	else \
 		test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \

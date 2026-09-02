@@ -41,6 +41,11 @@ BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/linux-
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/linux.config"
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/common/linux-mister.fragment"
+# WARNING: the shared fragment sets CONFIG_MODULE_COMPRESS_XZ, so build-time
+# depmod needs host kmod built with xz or it silently ships an EMPTY
+# modules.dep (0 lines; found on the first wave-2 card). Same trap as the
+# DE10 -- docs/buildroot-config.md §3.5.
+BR2_PACKAGE_HOST_KMOD_XZ=y
 BR2_LINUX_KERNEL_IMAGE=y
 BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
 

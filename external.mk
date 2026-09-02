@@ -44,7 +44,44 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 #
 ################################################################################
 
-ifeq ($(BR2_LINUX_KERNEL),y)
+# WHY THE ARCH TEST — added with the DE25-Nano target (D2.1).
+#
+# BR2_LINUX_KERNEL=y alone was the right condition while every output directory
+# in this tree built for the same armv7 board. It no longer is:
+# configs/mister_de25nano_defconfig builds an AARCH64 kernel for a different
+# board (Agilex 5), in output-de25/, and this hook keys on the *symbol*, not on
+# which defconfig or which O= is in play — so without a second test it would
+# fire there too and try to embed $(MISTER_INITRAMFS_CPIO) into that kernel.
+#
+# Two things would go wrong, one loudly and one not:
+#   1. LOUDLY, and only by luck: the fixup hard-fails if the cpio is absent, so
+#      a DE25 build in a tree that had never run `make initramfs` would die with
+#      an error message telling the developer to build a stage-1 initramfs their
+#      board does not have and does not want.
+#   2. QUIETLY, which is the real hazard: in a tree that HAS run `make
+#      initramfs` (i.e. any tree that has built the DE10 image — so, every
+#      developer's, and CI's), the cpio exists and the fixup succeeds. The
+#      aarch64 kernel then ships an armv7 BusyBox as its initramfs, boots, runs
+#      /init, and fails at the first exec with a message about the *binary*
+#      rather than about the build. A green build that produces that is worse
+#      than no build.
+#
+# THE TEST IS ON THE ARCHITECTURE, not on a board name or a defconfig name, and
+# that is the point: the thing that makes this hook wrong for the DE25 is not
+# "it is the DE25", it is that the cpio is armv7 userspace. Every output dir
+# this hook is *meant* for -- the main DE10 image, configs/mister_kernel_defconfig
+# and the rt variant built on it -- is BR2_arm=y, and every one of them wants the
+# cpio. So `BR2_arm` names the actual precondition and needs no maintenance when
+# a fourth armv7 variant or a second aarch64 board appears.
+#
+# Considered and rejected: a BR2_EXTERNAL Config.in symbol (e.g. a
+# "BR2_PACKAGE_MISTER_EMBED_STAGE1_INITRAMFS" bool) would be more explicit, but
+# it would have to be added to configs/mister_de10nano_defconfig AND
+# configs/mister_kernel_defconfig to keep them building — editing both files
+# that scripts/check-kernel-defconfig-sync.sh locks in lockstep, and changing
+# the DE10's toolchain-fingerprint cache key, for zero behavioural difference.
+# Revisit if a third board ever needs a stage-1 cpio of its own architecture.
+ifeq ($(BR2_LINUX_KERNEL)$(BR2_arm),yy)
 
 # Overridable so CI can build the two stages in separate workspaces.
 MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs/images/rootfs.cpio
@@ -77,4 +114,4 @@ endef
 # LZ4-compressed zImage to squeeze (LZ4 optimises for decode speed, not ratio).
 LINUX_KCONFIG_FIXUP_CMDS += $(sep)$(MISTER_LINUX_INITRAMFS_FIXUP)
 
-endif # BR2_LINUX_KERNEL
+endif # BR2_LINUX_KERNEL && BR2_arm

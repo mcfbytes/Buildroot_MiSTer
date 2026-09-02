@@ -42,9 +42,12 @@ inputs:
       toolchain fingerprint against (scripts/lib/board-expectations.sh's
       BOARD_FINGERPRINT_SENTINELS, docs/de25-readiness-ledger.md §5.2/§5.5):
       "de10nano" (default — behavior and cache key strings identical to
-      before this input existed) or any other board with a row in that
-      table (e.g. "de25nano"). An unrecognized value fails the same way an
-      unrecognized variant does, before any cache or build work.
+      before this input existed). This is the ONLY value accepted today:
+      BOARD selects an expectation row but does not yet route the
+      defconfig, cache key, output dir or make target, so any other board
+      (de25nano included, even though its row exists in the table) is
+      rejected up front rather than allowed to fail its sentinel late.
+      Widen BOARD_ROUTED below when board routing lands (ledger §3/§4).
     required: false
     default: "de10nano"
   extra-apt-packages:
@@ -121,13 +124,26 @@ runs:
 
         # --- Which board this run checks the fingerprint against ---------------
         # Validated ONCE, here, before any cache/build work -- same idiom as
-        # the variant validation just below. Registry membership is the
-        # table itself (scripts/lib/board-expectations.sh), not a list
-        # duplicated here. See docs/de25-readiness-ledger.md §5.5.
+        # the variant validation just below. Two gates, both fail-closed:
+        # (1) the board must have a row in the registry
+        #     (scripts/lib/board-expectations.sh, ledger §5.5), and
+        # (2) it must be ROUTED: this action still fingerprints the DE10
+        #     defconfig, runs the DE10 lockstep check and builds `make all` /
+        #     `make $VARIANT`, so a board that is in the table but not routed
+        #     would fail its sentinel late and misleadingly. BOARD_ROUTED is
+        #     the explicit list of boards this action can actually build;
+        #     extend it in the same change that wires defconfig, cache key,
+        #     output dir and make target per board (ledger §3/§4).
+        BOARD_ROUTED="de10nano"
         if [ -z "${BOARD_FINGERPRINT_SENTINELS[$BOARD]+set}" ]; then
-          echo "::error::unknown board '$BOARD' -- .github/actions/buildroot-build accepts 'de10nano' or any board with a row in scripts/lib/board-expectations.sh's BOARD_FINGERPRINT_SENTINELS (known: ${!BOARD_FINGERPRINT_SENTINELS[*]})" >&2
+          echo "::error::unknown board '$BOARD' -- no row in scripts/lib/board-expectations.sh's BOARD_FINGERPRINT_SENTINELS (known: ${!BOARD_FINGERPRINT_SENTINELS[*]})" >&2
           exit 1
         fi
+        case " $BOARD_ROUTED " in
+          *" $BOARD "*) ;;
+          *) echo "::error::board '$BOARD' has an expectation row but is not routed through this action yet (routed: $BOARD_ROUTED) -- it would fail its arch sentinel after the DE10 defconfig was fingerprinted. Wire the board through defconfig/cache/output/target selection before enabling it here." >&2
+             exit 1 ;;
+        esac
         echo "BOARD=$BOARD" >> "$GITHUB_ENV"
 
         # --- Which variant this run builds (see the file header) ---------------

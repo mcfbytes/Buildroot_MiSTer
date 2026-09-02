@@ -258,11 +258,14 @@ BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"
 BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
 
-# Byte-identical rebuilds from the same commit. Cheap, and the release lane
-# (D2.8, "attested artifacts") will want it; adopting it now means the first
-# release is not the commit that discovers what BR2_REPRODUCIBLE changes.
-# It pins SOURCE_DATE_EPOCH and the kernel's KBUILD_BUILD_* stamps; it does NOT
-# pin mke2fs's UUID/hash-seed — see the ext2 note above.
+# Reproducibility groundwork, not a byte-identical-image guarantee yet. It pins
+# SOURCE_DATE_EPOCH and the kernel's KBUILD_BUILD_* stamps, so Image and the
+# module tree rebuild identically from the same commit; rootfs.ext4 does NOT,
+# because mke2fs's UUID and hash seed are still random here (the DE10 pins
+# them via _MKFS_OPTIONS; this defconfig does not yet — see the ext2 note
+# above). Cheap, and the release lane (D2.8, "attested artifacts") will want
+# it; adopting it now means the first release is not the commit that
+# discovers what BR2_REPRODUCIBLE changes.
 BR2_REPRODUCIBLE=y
 
 ################################################################################

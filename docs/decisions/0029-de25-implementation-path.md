@@ -165,26 +165,34 @@ route exists.
 
 #### D6 and D7 fix two *independent* problems — do not conflate them
 
-They read as one fix and are not; dropping either leaves a board that does not boot from SD (§1.1).
+They read as one fix and are not. Dropping the 7.2 pin leaves a board that does not boot from SD
+(§1.1). Dropping the sdhci patch does **not** break the *shipped* wave-1 boot path: with the SMMU
+disabled there are no IOVAs to truncate and all DRAM sits below 4 GiB
+([`de25-dts-rationale.md`](../de25-dts-rationale.md) §4.4) — 0101 is what makes the future SMMU-on
+test leg survivable, and it is carried now so that leg is a one-line DTS change.
 
 | Problem | What fixes it | What does **not** fix it |
 |---|---|---|
 | `clkmgr` never probes, so every `&clkmgr` consumer (`mmc0`, gmac) defers forever | **The 7.2 pin.** `clk-agilex5.c` exists in 7.2 and matches `"intel,agilex5-clkmgr"` with real `.data` (`drivers/clk/socfpga/clk-agilex5.c:544`) **[V]**; 6.18.44 has no such file **[V]** | The sdhci patch. Entirely unrelated code path. |
-| `mmc0` DMA faults through the SMMU (mainline takes the 64-bit branch; the vendor caps the controller at 40 bits) | **The carried `sdhci-cadence` patch.** | The 7.2 pin. A vendor-vs-mainline driver delta, **not** a 6.18 regression — it travels forward to 6.19 and 7.2 unchanged **[V]** |
+| `mmc0` DMA faults through the SMMU (mainline takes the 64-bit branch; the vendor caps the controller at 40 bits) — **reachable only with the SMMU enabled**, which wave 1 does not ship | **The carried `sdhci-cadence` patch.** | The 7.2 pin. A vendor-vs-mainline driver delta, **not** a 6.18 regression — it travels forward to 6.19 and 7.2 unchanged **[V]** |
 
 D8's one-liner is a *third* independent thing: it fixes fpga-mgr/svc **binding**, touches neither DMA
-nor clocks, and is sent upstream rather than carried.
+nor clocks, and is carried locally (0102) pending an owner decision on upstream submission.
 
 ### D8 — Fix mainline's unbindable Agilex 5 svc node upstream, one match-table line
 
 **Decision.** Mainline ships an Agilex 5 `/firmware/svc` node whose `compatible` matches no driver on
-any released kernel through v7.2 or `master`; we send the one-line match-table fix upstream and
-meanwhile override the compatible to `intel,agilex-svc` in our DTS — no local match-table patch.
+any released kernel through v7.2 or `master`. We **carry the one-line match-table fix locally**
+(`board/mister/de25nano/linux-patches/0102`) and keep mainline's own `intel,agilex5-svc` compatible
+in the DTS, so the device tree does not misdescribe the SoC; overriding the compatible to
+`intel,agilex-svc` is retained only as the documented fallback if 0102 is ever dropped. Whether and
+when 0102 is submitted upstream is an owner decision (see "Decisions deliberately left open").
 
 - **Evidence.** `stratix10_svc_drv_match` has never contained `intel,agilex5-svc` (`grep -c agilex5` →
   0 at v7.2 and `master`) **[V §3, §3.1]**. The override is schema-clean — `intel,agilex-svc` is in
   the binding's `enum` and `iommus` is top-level, so `iommus = <&smmu 10>` stays legal, while the
-  two-string form fails `dtbs_check` **[V §3.1]**.
+  two-string form fails `dtbs_check` **[V §3.1]**. Keeping the agilex5 string (with 0102) also
+  satisfies the binding's `allOf`, which *requires* `iommus` for that string, without a workaround.
 - **Consequences.** The fpga-mgr *child* differs: use the two-string fallback and accept a transient
   `dtbs_check` **warning** until the v6 binding lands — **correcting** [`de25-fpga-reconfig.md`](../de25-fpga-reconfig.md)
   §4.2's "free and forward-compatible" claim, true at runtime but not schema-clean **[V §2.5]**.
@@ -200,10 +208,15 @@ testing proves mainline `svc` cannot program the fabric, and only for capability
 MiSTer — and the same bar applies to any vendor-kernel behaviour: it must buy a real win on something
 critical, not merely be what the vendor happens to do.
 
-- **Evidence.** The gate is §2.6's four-step test: boot a ≥6.19 mainline kernel with **no driver
-  patches**, confirm `fpga0`/`region0` probe (the binding half, expected to pass), then apply an
-  overlay with `firmware-name` and watch for `SVC_STATUS_BUFFER_DONE` or the `RECONFIG_REQUEST`
-  timeout — twice, SMMU disabled and enabled, the likeliest discriminator **[V §2.6]**.
+- **Evidence.** The gate is §2.6's four-step test: boot the 7.2 kernel with **no behavioural svc
+  patches** — 0102 (match-table only) stays applied, because without it the shipped DTS's
+  `intel,agilex5-svc` node binds nothing and the test would stop at a binding failure that says
+  nothing about mainline's programming path — confirm `fpga0`/`region0` probe (the binding half,
+  expected to pass), then apply an overlay with `firmware-name` and watch for
+  `SVC_STATUS_BUFFER_DONE` or the `RECONFIG_REQUEST` timeout. **SMMU disabled first** (the shipped
+  shape); the SMMU-enabled leg is predicted to fail by source (mainline svc passes physical
+  addresses, [`de25-dts-rationale.md`](../de25-dts-rationale.md) §4.1) and is run second only to
+  confirm that prediction **[V §2.6, corrected]**.
 - **Consequences.** **Run this test first in the D2 hardware session**; nothing else depends on it
   (clock driver, SD controller, DTS node set, U-Boot, partition layout are independent). If it fails,
   mainline-first is refuted *on the svc layer only* and the real choice graduates to its own ADR, with

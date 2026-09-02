@@ -693,7 +693,11 @@ rt-clean:
 # the same manual step the main and rt configs imply.
 #
 # No merge_config.sh step: unlike `rt`, this defconfig is standalone.
-$(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP)
+# `hostshim` is an order-only prerequisite HERE, not only on `de25`: under
+# `make -j de25` the sibling prerequisites of `de25` run concurrently, so the
+# config recipe (which invokes Buildroot, whose dependency check needs the
+# shim's `install` on PATH) could otherwise start before the shim exists.
+$(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
 	@mkdir -p $(DE25_OUTPUT_DIR)
 	$(BR_MAKE_DE25) mister_de25nano_defconfig
 

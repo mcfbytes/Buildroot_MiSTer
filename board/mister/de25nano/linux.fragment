@@ -113,11 +113,14 @@ CONFIG_MMC_SDHCI_PLTFM=y
 CONFIG_MMC_SDHCI_CADENCE=y
 
 # --- IOMMU -------------------------------------------------------------------
-# socfpga_agilex5.dtsi ships an `arm,smmu-v3` node (status = "disabled" at
-# v7.2; the board DTS turns it on — docs/de25-implementation-path.md §3.1).
-# Already y in arm64 defconfig (:1608); sentinel, because the svc binding's
-# `iommus = <&smmu 10>` property and the mmc0 DMA question above both assume a
-# live SMMU driver.
+# socfpga_agilex5.dtsi ships an `arm,smmu-v3` node, status = "disabled" at
+# v7.2, and the board DTS LEAVES IT DISABLED for wave 1 (mainline's svc hands
+# the SDM physical addresses, so a translated SMMU stream cannot program the
+# fabric — docs/de25-dts-rationale.md §4). Every `iommus` in the tree is
+# therefore inert at runtime. The driver stays =y (already y in arm64
+# defconfig :1608) so the SMMU-on leg of the §2.6 programming test is a
+# one-line DTS change with no kernel rebuild; it is not load-bearing for the
+# shipped configuration.
 CONFIG_ARM_SMMU_V3=y
 
 # --- Ethernet ----------------------------------------------------------------

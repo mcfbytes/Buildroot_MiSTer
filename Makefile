@@ -821,34 +821,38 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
 		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
 	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
-	test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \
-		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/bl31.bin" >&2; \
-		echo "       (BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31 + _IMAGES=\"bl31.bin\" select it.)" >&2; \
-		echo "       BL31 is what goes INSIDE u-boot.itb as the 'atf' image, so a missing" >&2; \
-		echo "       bl31.bin means the FIT below is either absent or built around a" >&2; \
-		echo "       binman-faked zero blob -- which boots nothing and says nothing." >&2; exit 1; }; \
-	echo "==> DE25 bl31:   $(DE25_OUTPUT_DIR)/images/bl31.bin  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/bl31.bin) bytes)"; \
-	test -f $(DE25_OUTPUT_DIR)/images/u-boot.itb || { \
-		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/u-boot.itb" >&2; \
-		echo "       This is THE artifact of the bootloader half of the build: the factory" >&2; \
-		echo "       SPL in QSPI looks for a file of exactly that name on FAT partition 1" >&2; \
-		echo "       (SPL_FS_LOAD_PAYLOAD_NAME under SPL_LOAD_FIT, boot partition 1)." >&2; \
-		echo "       The usual cause is CONFIG_BINMAN having gone off: it is selected only" >&2; \
-		echo "       as 'select BINMAN if SPL_ATF' and it has no prompt, so anything that" >&2; \
-		echo "       turns CONFIG_SPL off takes the FIT with it, silently and with a green" >&2; \
-		echo "       U-Boot build. See board/mister/de25nano/uboot.fragment, SPL block." >&2; exit 1; }; \
-	echo "==> DE25 FIT:    $(DE25_OUTPUT_DIR)/images/u-boot.itb  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/u-boot.itb) bytes)"; \
-	echo "    Verify its shape against the factory SPL contract with:"; \
-	echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
-	echo "    Bare developer OS -- no MiSTer binaries."; \
-	echo ""
-	@if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ]; then \
-		echo "==> DE25 card:   SKIPPED (DE25_ALLOW_NO_UBOOT=1) -- no u-boot.itb, so nothing"; \
-		echo "                 this build produced can boot a board."; \
-		echo ""; \
-	elif [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
+	@if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
+		echo "==> DE25 bl31/FIT: SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb was built)"; \
+	else \
+		test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \
+			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/bl31.bin" >&2; \
+			echo "       (BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31 + _IMAGES=\"bl31.bin\" select it.)" >&2; \
+			echo "       BL31 is what goes INSIDE u-boot.itb as the 'atf' image, so a missing" >&2; \
+			echo "       bl31.bin means the FIT below is either absent or built around a" >&2; \
+			echo "       binman-faked zero blob -- which boots nothing and says nothing." >&2; exit 1; }; \
+		echo "==> DE25 bl31:   $(DE25_OUTPUT_DIR)/images/bl31.bin  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/bl31.bin) bytes)"; \
+		test -f $(DE25_OUTPUT_DIR)/images/u-boot.itb || { \
+			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/u-boot.itb" >&2; \
+			echo "       This is THE artifact of the bootloader half of the build: the factory" >&2; \
+			echo "       SPL in QSPI looks for a file of exactly that name on FAT partition 1" >&2; \
+			echo "       (SPL_FS_LOAD_PAYLOAD_NAME under SPL_LOAD_FIT, boot partition 1)." >&2; \
+			echo "       The usual cause is CONFIG_BINMAN having gone off: it is selected only" >&2; \
+			echo "       as 'select BINMAN if SPL_ATF' and it has no prompt, so anything that" >&2; \
+			echo "       turns CONFIG_SPL off takes the FIT with it, silently and with a green" >&2; \
+			echo "       U-Boot build. See board/mister/de25nano/uboot.fragment, SPL block." >&2; exit 1; }; \
+		echo "==> DE25 FIT:    $(DE25_OUTPUT_DIR)/images/u-boot.itb  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/u-boot.itb) bytes)"; \
+		echo "    Verify its shape against the factory SPL contract with:"; \
+		echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
+		echo "    Bare developer OS -- no MiSTer binaries."; \
+		echo "" \
+	fi
+	@if [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
 		echo "==> DE25 card:   $(DE25_OUTPUT_DIR)/images/sdcard-de25.img  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/sdcard-de25.img) bytes)"; \
 		echo "                 dd it to a card; docs/de25-sdcard.md."; \
+		echo ""; \
+	elif [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
+		echo "==> DE25 card:   SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb) -- nothing"; \
+		echo "                 this build produced can boot a board."; \
 		echo ""; \
 	else \
 		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/sdcard-de25.img" >&2; \

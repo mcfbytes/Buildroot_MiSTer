@@ -23,7 +23,7 @@ BR2_KERNEL_HEADERS_7_0=y
 # registry — bumping the kernel below means editing that de10nano file.
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/patches"
 
-# --- Kernel: mainline 7.2.2 (docs/buildroot-config.md §6.4) ---
+# --- Kernel: mainline 7.2.3 (docs/buildroot-config.md §6.4) ---
 # WARNING: do NOT point PATCH at the DE10's linux-patches/ — 4 of the 40 differ
 # in content between the DE10's main and beta series alone, and none has been
 # compile-tested on aarch64/7.2; this directory takes only what D0.3 triaged.

@@ -174,7 +174,7 @@ CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
 # every directory above builds for the DE10-Nano's armv7 Cyclone V. This one
 # builds for a DIFFERENT BOARD — the Terasic DE25-Nano, an Intel/Altera
 # Agilex 5 whose HPS is aarch64 (2x Cortex-A76 + 2x Cortex-A55). Different
-# architecture, different toolchain, different kernel line (mainline 7.2.2),
+# architecture, different toolchain, different kernel line (mainline 7.2.3),
 # different rootfs. It shares with the main build exactly two things: the
 # pinned Buildroot tree and the dl/ download cache.
 #
@@ -1048,11 +1048,12 @@ help:
 	@echo ""
 	@echo "DE25-Nano developer OS (aarch64 / Agilex 5 -- docs/de25-nano-tasks.md D2.1):"
 	@echo "  make de25                       - build the DE25-Nano image into output-de25/"
-	@echo "                                    (aarch64 toolchain + mainline 7.2.2 kernel +"
-	@echo "                                    minimal BusyBox ext4 rootfs; asserts images/Image"
-	@echo "                                    and a .dtb exist). BARE DEVELOPER OS: no MiSTer"
-	@echo "                                    binaries, no bootloader yet. Does NOT run"
-	@echo "                                    'initramfs' -- that cpio is armv7."
+	@echo "                                    (aarch64 toolchain + mainline 7.2.3 kernel +"
+	@echo "                                    minimal BusyBox ext4 rootfs + TF-A/U-Boot FIT +"
+	@echo "                                    the SD-card image; asserts images/Image, a .dtb,"
+	@echo "                                    bl31.bin, u-boot.itb and sdcard-de25.img exist)."
+	@echo "                                    BARE DEVELOPER OS: no MiSTer binaries. Does NOT"
+	@echo "                                    run 'initramfs' -- that cpio is armv7."
 	@echo "  make de25nano-defconfig         - (re)generate output-de25/.config from its"
 	@echo "                                    fragment stack (common + de25nano)"
 	@echo "  make de25-menuconfig            - Buildroot menuconfig for the DE25 config"

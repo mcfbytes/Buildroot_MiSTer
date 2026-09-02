@@ -343,7 +343,11 @@ UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measur
   compile-verifies on aarch64, so both are open. Recommendation: first hardware boot on the plain
   ext4 card, then switch.
 - The DE25 kernel pin has no Renovate manager and shares `linux.hash` by symlink with the DE10
-  registry (an rt bump can drop the line the DE25 needs). Pre-existing; needs its own manager.
+  registry, so an rt bump replaces the 7.2.y hash line rather than adding one. **This happened on
+  2026-09-02** (rt 7.2.2 -> 7.2.3): the DE25 pin was moved to 7.2.3 in the same series of commits
+  and the series/config were re-verified there (34/34 patches at `-F0`, 460 symbols 0 dropped,
+  `docs/de25-kernel-config.md` §8). Still needs its own Renovate manager, or a hash-sync rule that
+  keeps every line a fragment still pins, so the next bump is not manual.
 - DE25 selects no `linux-firmware`; the shared fragment builds the Wi-Fi/BT drivers that will
   ask for it. Owner decision against the bare-developer-OS scope.
 - Patch 0002 (MiSTer audio) still excluded; `openssh` will need `_SANDBOX` off when added.

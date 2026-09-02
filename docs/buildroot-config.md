@@ -430,13 +430,19 @@ adds a new one and no shared symbol ever disagrees. `scripts/check-config-fragme
 play (§11). CI runs the text-level check for every kernel variant before any
 cache is restored and both checks in `build.yml`'s `lint-config` job.
 
-Known follow-up (pre-existing, not fixed here): the DE25 kernel pin (§6.4)
+Known follow-up, and it has now HAPPENED ONCE: the DE25 kernel pin (§6.4)
 has no Renovate manager and shares `linux.hash` by symlink (§6.3), so an rt
-bump 7.2.2 -> 7.2.3 handled by `hash-sync-kernel.sh --pin=rt` can drop the
-7.2.2 hash line the DE25 still needs — the DE25 build would then fail closed
-at download until its pin follows. Either a DE25 manager with the same
-depName as rt (one PR moves both) or a hash-sync rule that keeps every line
-a fragment still pins is the fix; neither is taken by the fragment split.
+bump handled by `hash-sync-kernel.sh --pin=rt` replaces the 7.2.y hash line
+rather than adding one — and the DE25, still pinned to the old point release,
+loses the only hash that verifies its tarball. 2026-09-02: Renovate's rt bump
+7.2.2 -> 7.2.3 did exactly that; the DE25 pin was moved to 7.2.3 in the same
+series of commits and the two are back in step (the RT variant and the DE25
+have always pinned the same tarball, which is the whole reason the hash file
+is shared). Had they not been moved together the DE25 build would have failed
+CLOSED at download — the fail-safe direction, but a failure nonetheless.
+Either a DE25 manager with the same depName as rt (one PR moves both) or a
+hash-sync rule that keeps every line a fragment still pins is the standing
+fix; neither is taken here.
 
 ### 4.1 No init, no shell, no BusyBox — `BR2_INIT_NONE`, `BR2_SYSTEM_BIN_SH_NONE`, `# BR2_PACKAGE_BUSYBOX is not set`
 
@@ -2077,7 +2083,7 @@ release scope is a BARE DEVELOPER OS); ADR 0029.
 
 ### 6.1 What this is, and — more importantly — what it is not
 
-This builds an aarch64 toolchain, a mainline 7.2.2 kernel, a minimal BusyBox
+This builds an aarch64 toolchain, a mainline 7.2.3 kernel, a minimal BusyBox
 ext4 rootfs that boots to a serial login with ethernet up, the bootloader that
 loads them (TF-A BL31 inside a mainline U-Boot FIT, §6.9) and the SD-card image
 that carries the lot (§6.11). That is the whole scope. There are NO MiSTer
@@ -2168,11 +2174,11 @@ something a boot artifact should depend on. (`scripts/check-config-fragments.sh`
   `package/linux-headers/Config.in.host` tops out at `BR2_KERNEL_HEADERS_7_0`
   (`:55-58`, resolving to 7.0.14 at `:477`); the series list is
   5.10/5.15/6.1/6.6/6.12/6.18/7.0. 7_0 is therefore the newest series
-  Buildroot has that is <= our 7.2.2 kernel, and headers OLDER than the
+  Buildroot has that is <= our 7.2.3 kernel, and headers OLDER than the
   running kernel is the supported direction — the kernel's uapi is
   forward-compatible by guarantee. §3.2 documents the diff-the-uapi
   discipline that comes with this; the same discipline applies here on any
-  kernel or Buildroot bump, and the range to diff is 7.0.14 -> 7.2.2.
+  kernel or Buildroot bump, and the range to diff is 7.0.14 -> 7.2.3.
 
   RE-CHECK ON EVERY BUILDROOT BUMP: a Buildroot bump moves the point release
   inside a series on its own, and the day Buildroot adds a 7.2 series this
@@ -2187,7 +2193,7 @@ where Buildroot finds `<dir>/linux/linux.hash`, the only thing that
 hash-verifies a pinned custom kernel download. Buildroot's own lookup
 resolves the kernel's hash file to `linux/linux.hash`, a path that does not
 exist in the release (its real hashes live in `linux/from-6.17/linux.hash`,
-which that lookup never consults), so without this the 7.2.2 tarball would
+which that lookup never consults), so without this the 7.2.3 tarball would
 download with a "no hash file" WARNING and never be verified — and
 `BR2_DOWNLOAD_FORCE_CHECK_HASHES` cannot save you, because it only forces the
 checking of hashes that exist. The full mechanism is written up in the hash
@@ -2199,7 +2205,7 @@ THE HASH FILE IS SHARED WITH THE DE10, BY SYMLINK, ON PURPOSE.
 repo's kernel-tarball hash registry: it carries BOTH pins (the DE10's 6.18.y
 line and the 7.2.y line the RT variant tracks), its header records the
 provenance rule for each, and `scripts/hash-sync-kernel.sh` is its single
-automated writer. The DE25 pins 7.2.2 — the same tarball the RT variant
+automated writer. The DE25 pins 7.2.3 — the same tarball the RT variant
 already pins — so a second copy of that sha256 could only ever drift out of
 sync with the one the sync script maintains. A symlink cannot drift.
 
@@ -2217,10 +2223,10 @@ The `de25nano/patches/linux/` directory contains the hash symlink and nothing
 else — no global patches are applied to the kernel from here. Carried kernel
 patches live in `BR2_LINUX_KERNEL_PATCH` (§6.4) instead.
 
-### 6.4 Kernel — mainline 7.2.2
+### 6.4 Kernel — mainline 7.2.3
 
 `BR2_LINUX_KERNEL`, `BR2_LINUX_KERNEL_CUSTOM_VERSION` come from `common` (§2.3);
-`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.2"` is here.
+`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.3"` is here.
 
 WHY 7.2 AND NOT THE DE10'S 6.18 (`docs/de25-implementation-path.md` §5, and
 decision 7, which supersedes decision 6's openness):
@@ -2238,7 +2244,7 @@ an existing pattern rather than a third kernel line.
 The cost, stated honestly: 7.2 is not LTS, so this board inherits the RT
 beta's bump treadmill (`docs/rt-beta-kernel.md`). Re-open the choice if
 kernel.org designates a 7.x release longterm. The tarball is already
-hash-pinned in the shared `linux.hash` (the RT variant tracks the same 7.2.2),
+hash-pinned in the shared `linux.hash` (the RT variant tracks the same 7.2.3),
 so this costs no new download and no new TOFU value. The DE25 pin has no
 Renovate manager today (`renovate.json`'s 6.18 manager deliberately excludes
 this file; the 7.2 manager matches only the rt fragment).
@@ -2599,7 +2605,7 @@ Adding a future kernel variant `foo` = a sibling `configs/mister_foo.fragment`
 like this one + `foo`/`foo-clean`/... Makefile targets + nothing else in CI
 (the workflows derive the matrix from the fragment glob; §1).
 
-### 7.1 The 7.2 kernel — `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.2"`
+### 7.1 The 7.2 kernel — `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.3"`
 
 Just override the version value; the base stack already sets
 `BR2_LINUX_KERNEL_CUSTOM_VERSION=y`.
@@ -2629,7 +2635,7 @@ rather than one more automated -rc bump:
    two-component (`linux-7.2.tar.xz` — kernel.org publishes no linux-7.2.0),
    while the kernel it builds calls itself three-component (7.2.0). Both
    spellings are correct and neither is a typo for the other. (Point releases
-   since — 7.2.2 today — are three-component in both places.)
+   since — 7.2.3 today — are three-component in both places.)
 
 On a version bump, `make rt-clean` is MANDATORY before `make rt` — the old
 kernel tree survives in `output-rt/build/` otherwise and `rt` refuses to guess

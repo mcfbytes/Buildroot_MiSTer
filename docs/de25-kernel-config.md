@@ -526,6 +526,30 @@ one of them a toolchain-identity symbol (`CC_VERSION_TEXT`, `GCC_VERSION`,
 `merge_config.sh` printed **zero** warnings inside the Buildroot build too:
 base and fragment share no symbol (§2), so there is nothing to redefine.
 
+**RE-VERIFIED AT 7.2.3, 2026-09-02.** Renovate's rt bump moved the shared
+`linux.hash` off 7.2.2 and the DE25 pin followed
+(`docs/buildroot-config.md` §6.4, and the hazard note in §4 that this bump
+turned from hypothetical into history). The whole measurement was re-run
+against the real Buildroot build after a `linux-dirclean` on a freshly
+downloaded, hash-verified `linux-7.2.3.tar.xz`
+(`output-de25/build/linux-7.2.3/.config`):
+
+| | 7.2.2 (wave 2) | 7.2.3 (re-run) |
+|---|---|---|
+| asked-for symbols / dropped | 460 (51 + 409) / **0** | 460 (51 + 409) / **0** |
+| `merge_config.sh` warnings from `linux-mister.fragment` | 0 | 0 |
+| carried patch series | 34/34 at `patch -F0` | 34/34 at `patch -F0`, 0 fuzz, 0 rejects (79 hunks moved by line offset only, which `-F0` permits) |
+| `=m` symbols | 92 | 92 |
+| installed `.ko.xz` | 91 | 91 |
+| installed module bytes | 2.4 MiB | 2,565,868 B (2.4 MiB) |
+| `Image` | 20,711,432 B | 20,711,432 B |
+| module name set vs the DE10's | identical | identical (compared against the DE10's 6.18.48 tree: 91 vs 91, empty diff both directions) |
+
+Nothing moved. Note the `Image` size is *coincidentally* unchanged — the
+`Image` is not byte-identical (a stable-tree point release changes code), only
+the same length. The board device tree **is** byte-identical at 7.2.3, which
+says mainline's `socfpga_agilex5.dtsi` did not move in the point release.
+
 Four candidates were removed during authoring because they did *not* survive,
 and each removal is a finding:
 

@@ -38,7 +38,29 @@
 #     a type byte that lies about its filesystem is how a card boots on one
 #     reader and not another.
 #
-#  3. extlinux.conf PARSES, NAMES THE RIGHT ROOT DEVICE AND CONSOLE, AND
+#     p1 IS AN ALLOW-LIST, NOT A REQUIRED-SET: anything beyond those four
+#     entries fails the image. U-Boot's distro boot runs `scan_dev_for_scripts`
+#     immediately after `scan_dev_for_extlinux` on the SAME partition, so a
+#     stray `/boot.scr` is not decoration — it executes the moment extlinux
+#     fails, before any prompt, with the whole U-Boot command set available. A
+#     `uboot.env` is refused for a different reason: the card deliberately
+#     ships none (docs/de25-uboot.md §10), and a seeded one would override the
+#     compiled-in environment on every already-written card, forever.
+#
+#  3. u-boot.itb IS THE FIT THIS BUILD PRODUCED, AND ONE THE FACTORY SPL CAN
+#     ACTUALLY EXECUTE. Three assertions, because the file being present under
+#     the right name proves nothing about what is inside it: (a) byte-identical
+#     to the build's own `u-boot.itb`; (b) `dumpimage -l` shows the
+#     de25-uboot.md §6.1 contract — images `uboot` (load 0x80200000), `atf`
+#     (load 0x80000000), `fdt-0`, and a default configuration signed `crc32`;
+#     (c) the decompiled FIT declares no `rsa`/`required`/`sha<n>`
+#     verification. (c) matters most and is the least obvious: the factory SPL
+#     is built with `CONFIG_SPL_FIT_SIGNATURE=y` and its control DTB carries NO
+#     KEYS (boot-chain §7 row 6, §8.3), so a FIT demanding key verification
+#     strands the board at SPL on EVERY boot — which, with no serial console
+#     attached, is indistinguishable from a bad card.
+#
+#  4. extlinux.conf PARSES, NAMES THE RIGHT ROOT DEVICE AND CONSOLE, AND
 #     MENTIONS NO FLASH. `root=/dev/mmcblk0p2` is the interim p2 decision
 #     (docs/de25-sdcard.md); `console=ttyS0,115200` is HPS uart1, the only
 #     enabled 8250 port on this board, and getting it wrong produces a board
@@ -48,20 +70,26 @@
 #     recoverable only with JTAG and a PC, with no RSU safety net
 #     (docs/de25-boot-chain.md §6, §7 rows 1/5/10/11/12).
 #
-#  4. p2 IS A CLEAN ext4 LABELLED `rootfs`. Written verbatim from Buildroot's
+#  5. p2 IS A CLEAN ext4 LABELLED `rootfs`. Written verbatim from Buildroot's
 #     rootfs.ext4 (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4). `e2fsck -fn` is the cheap
 #     proof that the bytes genimage copied are a filesystem and not a truncated
 #     one; the `extent` feature is what distinguishes an actual ext4 from an
 #     ext2 image that merely got named .ext4.
 #
-#  5. THE IMAGE FITS A BUDGET. p1 (256 MiB) + p2 (rootfs.ext4, 256 MiB today) +
+#  6. THE IMAGE FITS A BUDGET. p1 (256 MiB) + p2 (rootfs.ext4, 256 MiB today) +
 #     1 MiB of alignment ≈ 513 MiB. $EXPECT_MAX_IMAGE_BYTES defaults to 768 MiB:
 #     enough headroom that a modest rootfs bump does not trip it, tight enough
 #     that a runaway one does. Raise it deliberately, in the commit that grows
 #     the rootfs — never to make a red run go green.
 #
 # Usage:
-#   scripts/check-sdcard-de25.sh <sdcard-de25.img>
+#   scripts/check-sdcard-de25.sh <sdcard-de25.img> [reference-images-dir]
+#
+#   [reference-images-dir]  where the PRISTINE build artifacts live — the
+#                           `u-boot.itb` that assertion 3a compares against.
+#                           Defaults to $DE25_REF_DIR, then $BINARIES_DIR, then
+#                           the image's own directory (Buildroot puts both in
+#                           BINARIES_DIR), then <repo>/output-de25/images.
 #
 # Environment overrides (all optional; each is pinned, not derived, and must be
 # kept in sync BY HAND with board/mister/de25nano/genimage-sdcard.cfg and
@@ -76,12 +104,19 @@
 #   $MIN_BOOT_PART_SECTORS  default 524288 (256 MiB)
 #
 # Host tools: sfdisk (util-linux), mtools (mdir/mcopy/mlabel), e2fsprogs
-# (dumpe2fs/e2fsck), dd. All are resolved from BINARIES_DIR/../host/{bin,sbin}
-# first and PATH second, so a Buildroot build that produced the image can
-# always check it: BR2_PACKAGE_HOST_GENIMAGE pulls in host-mtools and
-# host-dosfstools, and BR2_TARGET_ROOTFS_EXT2 pulls in host-e2fsprogs. Unlike
-# check-sdcard.sh there is NO root loop-mount fallback — mtools has never been
-# optional for anyone who can build this image.
+# (dumpe2fs/e2fsck), u-boot-tools (dumpimage), dtc, dd, cmp. Resolved from
+# $DE25_HOST_DIR/{bin,sbin}, then BINARIES_DIR/../host/{bin,sbin}, then this
+# repo's output-de25/host/{bin,sbin}, then PATH — so a Buildroot build that
+# produced the image can always check it: BR2_PACKAGE_HOST_GENIMAGE pulls in
+# host-mtools and host-dosfstools, BR2_TARGET_ROOTFS_EXT2 pulls in
+# host-e2fsprogs, and BR2_TARGET_UBOOT's FIT support pulls in host-uboot-tools
+# (dumpimage) and host-dtc. dumpimage is NOT a distro tool, which is exactly
+# why the search list is longer than a bare PATH lookup: an unfindable
+# dumpimage would leave assertion 3 unrunnable, and a checker that skips the
+# FIT is how a card ships carrying a FIT nobody ever opened. A missing tool is
+# exit 2, never a silent skip. Unlike check-sdcard.sh there is NO root
+# loop-mount fallback — mtools has never been optional for anyone who can
+# build this image.
 #
 # Exit: 0 = all assertions pass; 1 = a contract violation; 2 = usage/IO/tooling
 # error.
@@ -124,29 +159,58 @@ ok()   { printf 'ok   %s\n' "$*"; }
 bad()  { printf 'FAIL %s\n' "$*" >&2; fail=1; }
 
 usage() {
-	echo "usage: $prog <sdcard-de25.img>" >&2
+	echo "usage: $prog <sdcard-de25.img> [reference-images-dir]" >&2
 	exit 2
 }
 
-[ $# -eq 1 ] || usage
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
 img=$1
+ref_dir_arg=${2:-}
 [ -f "$img" ] || { echo "$prog: no such file: $img" >&2; exit 2; }
 
 img_dir=$(CDPATH='' cd -- "$(dirname -- "$img")" && pwd)
-host_bin="$img_dir/../host/bin"
-host_sbin="$img_dir/../host/sbin"
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+
+# --- where the PRISTINE build artifacts live (assertion 2a's reference) ------
+# In a real build this is BINARIES_DIR, which is also where sdcard-de25.img
+# itself lands -- so $img_dir is the right answer almost always. The explicit
+# arg and $DE25_REF_DIR exist for checking an image that has been moved away
+# from its build tree (a copy under test, a release artifact).
+ref_dir=${ref_dir_arg:-${DE25_REF_DIR:-${BINARIES_DIR:-}}}
+if [ -z "$ref_dir" ]; then
+	if [ -f "$img_dir/$EXPECT_FIT_NAME" ]; then
+		ref_dir=$img_dir
+	else
+		ref_dir="$repo_root/output-de25/images"
+	fi
+fi
+
+# --- host tools -------------------------------------------------------------
+# Searched in order: $DE25_HOST_DIR (an explicit Buildroot HOST_DIR), the one
+# implied by the image's own location (BINARIES_DIR/../host, Buildroot's
+# layout), this repo's output-de25/host, then PATH. dumpimage in particular is
+# NOT a distro tool -- it comes from host-uboot-tools, which the DE25 build
+# enables for exactly this purpose (docs/de25-uboot.md §10) -- so PATH alone
+# would leave assertion 2b silently unrunnable, which is how a checker ends up
+# passing a FIT it never opened.
+tool_dirs="${DE25_HOST_DIR:+$DE25_HOST_DIR/bin $DE25_HOST_DIR/sbin} \
+$img_dir/../host/bin $img_dir/../host/sbin \
+$repo_root/output-de25/host/bin $repo_root/output-de25/host/sbin"
 
 find_tool() {  # find_tool NAME -> absolute path, or exit 2
-	if [ -x "$host_bin/$1" ]; then
-		echo "$host_bin/$1"
-	elif [ -x "$host_sbin/$1" ]; then
-		echo "$host_sbin/$1"
-	elif command -v "$1" >/dev/null 2>&1; then
+	for _d in $tool_dirs; do
+		if [ -x "$_d/$1" ]; then
+			echo "$_d/$1"
+			return 0
+		fi
+	done
+	if command -v "$1" >/dev/null 2>&1; then
 		command -v "$1"
-	else
-		echo "$prog: cannot find '$1' (looked in $host_bin, $host_sbin and PATH)" >&2
-		exit 2
+		return 0
 	fi
+	echo "$prog: cannot find '$1' (looked in $tool_dirs and PATH)" >&2
+	exit 2
 }
 
 sfdisk_bin=$(find_tool sfdisk)
@@ -155,7 +219,10 @@ mcopy_bin=$(find_tool mcopy)
 mlabel_bin=$(find_tool mlabel)
 dumpe2fs_bin=$(find_tool dumpe2fs)
 e2fsck_bin=$(find_tool e2fsck)
+dumpimage_bin=$(find_tool dumpimage)
+dtc_bin=$(find_tool dtc)
 command -v dd >/dev/null 2>&1 || { echo "$prog: dd not found on PATH" >&2; exit 2; }
+command -v cmp >/dev/null 2>&1 || { echo "$prog: cmp not found on PATH" >&2; exit 2; }
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/check-sdcard-de25.XXXXXX")
 # shellcheck disable=SC2329 # invoked indirectly via `trap cleanup EXIT` below
@@ -326,14 +393,44 @@ else
 				bad "p1 is MISSING $want"
 			fi
 		done
-		# Extras are reported, not failed: p1 is where a future core.rbf and
-		# uboot.env legitimately go. What is NOT tolerated is a DE10 payload
-		# tree, which is the signature of the wrong board's card in this slot.
+		# p1 IS AN ALLOW-LIST, NOT A REQUIRED-SET. Anything not on the list
+		# below fails the image, and this is the assertion with the sharpest
+		# teeth on the card.
+		#
+		# Why extras cannot be "informational": U-Boot's distro boot runs
+		# `scan_dev_for_scripts` IMMEDIATELY AFTER `scan_dev_for_extlinux` on
+		# the same partition. So a stray `/boot.scr` is not inert decoration
+		# -- it is code that executes the moment extlinux fails for any
+		# reason, before anyone gets a prompt, with the full U-Boot command
+		# set available to it. A `boot.scr` containing a flash-erase command
+		# is a brick-class payload that this checker used to wave through.
+		#
+		# `uboot.env` is on the list of named offenders for a different
+		# reason: the card DELIBERATELY ships no environment file
+		# (docs/de25-uboot.md §10). A seeded one silently OVERRIDES the
+		# compiled-in environment forever after, so the next release's
+		# bootcmd/bootargs/boot_targets change would be ignored on every
+		# already-written card. Its appearance means somebody re-opened that
+		# decision without saying so.
+		#
+		# When p1 legitimately grows a file -- a core.rbf, say -- add it here
+		# and to genimage-sdcard.cfg's `files` list in the same commit. That
+		# is the point: growing the card is a decision, not an accident.
 		extras=$(grep -vxF -e "$EXPECT_FIT_NAME" -e "$EXPECT_KERNEL_NAME" \
 			-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' "$actual" || true)
-		if [ -n "$extras" ]; then
-			note "additional entries on p1 (informational):"
-			printf '%s\n' "$extras" | sed 's/^/    + /'
+		if [ -z "$extras" ]; then
+			ok "p1 holds nothing beyond the four expected files (no boot.scr, no *.scr, no uboot.env)"
+		else
+			bad "p1 holds entries outside the allow-list -- p1 is an allow-list, not a required-set:"
+			printf '%s\n' "$extras" | sed 's/^/    + /' >&2
+			note "A stray boot.scr / *.scr EXECUTES: distro boot runs scan_dev_for_scripts"
+			note "  right after scan_dev_for_extlinux on this same partition, so it runs the"
+			note "  moment extlinux fails -- with the whole U-Boot command set available."
+			note "A uboot.env must not ship either: the card deliberately has none"
+			note "  (docs/de25-uboot.md §10); a seeded one overrides the compiled-in"
+			note "  environment on every already-written card, forever."
+			note "If p1 is meant to grow a file, add it to this allow-list AND to"
+			note "  genimage-sdcard.cfg's files list in the same commit."
 		fi
 	else
 		bad "could not read p1's file inventory (mdir failed -- is p1 a FAT filesystem at all?)"
@@ -342,7 +439,110 @@ else
 	fi
 
 	# ---------------------------------------------------------------------
-	# 3. extlinux.conf
+	# 3. u-boot.itb -- the file the factory SPL actually executes
+	# ---------------------------------------------------------------------
+	# Three independent assertions, because each of the first two can be
+	# satisfied by something that still does not boot:
+	#
+	#  (a) byte-identical to the build's own u-boot.itb. Catches a swapped,
+	#      truncated or hand-edited FIT outright.
+	#  (b) dumpimage -l: the contract terms from docs/de25-uboot.md §6.1 --
+	#      images `uboot` (load 0x80200000), `atf` (load 0x80000000) and
+	#      `fdt-0`, plus a default configuration whose signature algo is
+	#      crc32. A FIT that parses but loads U-Boot at the wrong address is
+	#      a silent no-boot.
+	#  (c) NO key-based verification anywhere. The factory SPL is built with
+	#      CONFIG_SPL_FIT_SIGNATURE=y and its control DTB carries NO KEYS
+	#      (docs/de25-boot-chain.md §7 row 6, §8.3), so a FIT that DEMANDS a
+	#      verification the SPL cannot perform strands the board at SPL on
+	#      every boot -- and without a serial console that is
+	#      indistinguishable from a bad card. Grepping the decompiled FIT for
+	#      rsa/required/sha<n> is cruder than parsing it, deliberately: it
+	#      catches the property in any spelling, on images as well as on
+	#      configurations, including nodes dumpimage does not summarise.
+	itb="$work/u-boot.itb"
+	if mt "$mcopy_bin" "::/$EXPECT_FIT_NAME" "$itb" > "$work/mcopy-itb.out" 2> "$work/mcopy-itb.err"; then
+
+		# (a) -------------------------------------------------------------
+		ref_itb="$ref_dir/$EXPECT_FIT_NAME"
+		if [ -f "$ref_itb" ]; then
+			if cmp -s "$itb" "$ref_itb"; then
+				ok "p1's $EXPECT_FIT_NAME is byte-identical to $ref_itb"
+			else
+				bad "p1's $EXPECT_FIT_NAME DIFFERS from $ref_itb -- the card carries a FIT this build did not produce"
+			fi
+		else
+			bad "no reference $EXPECT_FIT_NAME at $ref_itb -- cannot prove the card's FIT is the one this build produced (pass the images dir as argument 2, or set \$DE25_REF_DIR)"
+		fi
+
+		# (b) -------------------------------------------------------------
+		if "$dumpimage_bin" -l "$itb" > "$work/dumpimage.out" 2> "$work/dumpimage.err"; then
+			di="$work/dumpimage.out"
+
+			check_fit_image() {  # check_fit_image NAME EXPECTED_LOAD
+				if ! grep -qE "^ Image [0-9]+ \($1\)\$" "$di"; then
+					bad "$EXPECT_FIT_NAME has no image named '$1' (factory-SPL FIT contract, de25-uboot.md §6.1)"
+					return
+				fi
+				_load=$(awk -v n="$1" '
+					$0 ~ "^ Image [0-9]+ \\(" n "\\)$" { inb = 1; next }
+					inb && /^ (Image|Default|Configuration)/ { inb = 0 }
+					inb && /Load Address:/ { print $3; exit }' "$di")
+				if [ "$_load" = "$2" ]; then
+					ok "$EXPECT_FIT_NAME image '$1' loads at $2"
+				else
+					bad "$EXPECT_FIT_NAME image '$1' loads at '${_load:-<none>}', expected $2"
+				fi
+			}
+
+			check_fit_image uboot 0x80200000
+			check_fit_image atf 0x80000000
+
+			if grep -qE '^ Image [0-9]+ \(fdt-0\)$' "$di"; then
+				ok "$EXPECT_FIT_NAME has the 'fdt-0' image"
+			else
+				bad "$EXPECT_FIT_NAME has no 'fdt-0' image"
+			fi
+
+			def_cfg=$(sed -n "s/^ Default Configuration: '\\(.*\\)'\$/\\1/p" "$di" | head -n1)
+			if [ -n "$def_cfg" ]; then
+				ok "$EXPECT_FIT_NAME names a default configuration: '$def_cfg'"
+			else
+				bad "$EXPECT_FIT_NAME names no default configuration -- board_fit_config_name_match() falls back to /configurations/default, and there would be none"
+			fi
+
+			sign_algo=$(sed -n 's/^  Sign algo:[[:space:]]*//p' "$di" | head -n1)
+			case $sign_algo in
+				crc32*)
+					ok "$EXPECT_FIT_NAME signature algo is crc32 ('$sign_algo') -- an integrity stamp, no keys" ;;
+				'')
+					bad "$EXPECT_FIT_NAME's default configuration carries no signature node at all (expected a crc32 integrity stamp)" ;;
+				*)
+					bad "$EXPECT_FIT_NAME signature algo is '$sign_algo', expected crc32 -- the factory SPL has FIT_SIGNATURE on with NO keys, so anything else is a card that strands at SPL on every boot" ;;
+			esac
+		else
+			bad "dumpimage -l could not parse p1's $EXPECT_FIT_NAME -- it is not a FIT image"
+			sed 's/^/    /' "$work/dumpimage.err" >&2
+		fi
+
+		# (c) -------------------------------------------------------------
+		if "$dtc_bin" -I dtb -O dts -o "$work/itb.dts" "$itb" >/dev/null 2>&1; then
+			if key_hits=$(grep -inE 'rsa|required|sha[0-9]' "$work/itb.dts"); then
+				bad "$EXPECT_FIT_NAME declares key-based verification -- the factory SPL has no keys and would refuse to boot it:"
+				printf '%s\n' "$key_hits" | sed 's/^/    /' >&2
+			else
+				ok "$EXPECT_FIT_NAME declares no rsa/required/sha<n> verification"
+			fi
+		else
+			bad "dtc could not decompile p1's $EXPECT_FIT_NAME as a device tree -- a FIT *is* a DTB, so this is not one"
+		fi
+	else
+		bad "could not read $EXPECT_FIT_NAME from p1"
+		sed 's/^/    /' "$work/mcopy-itb.err" >&2
+	fi
+
+	# ---------------------------------------------------------------------
+	# 4. extlinux.conf
 	# ---------------------------------------------------------------------
 	conf="$work/extlinux.conf"
 	if mt "$mcopy_bin" "::/$EXTLINUX_PATH" "$conf" > "$work/mcopy.out" 2> "$work/mcopy.err"; then
@@ -426,7 +626,7 @@ else
 fi
 
 # =============================================================================
-# 4. p2: a clean ext4 labelled `rootfs`
+# 5. p2: a clean ext4 labelled `rootfs`
 # =============================================================================
 if [ -z "$rootfs_start" ]; then
 	bad "cannot inspect p2 -- partition $ROOTFS_PART_NUM was not found above"

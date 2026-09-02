@@ -56,8 +56,13 @@ that filename — are the **entire interface** between this card and the board's
 Everything else on p1 is read later, by U-Boot proper, and is ours to arrange.
 
 256 MiB is sized for room, not fit: the payload today is ~42 MiB. The slack is there because a
-`core.rbf`, a `uboot.env` and any boot-time fabric bitstream all have to live on this same FAT
-partition, and growing p1 later means re-writing every card.
+`core.rbf` and any boot-time fabric bitstream have to live on this same FAT partition, and
+growing p1 later means re-writing every card. **Room is not permission:** p1 is an *allow-list*
+in the checker, so a file that is not one of the four fails the image. A `uboot.env` in
+particular is deliberately **not** shipped ([`de25-uboot.md`](de25-uboot.md) §10) — a seeded
+environment file silently overrides the compiled-in one on every already-written card, so the
+next release's `bootcmd`/`bootargs` change would be ignored forever. Adding a file to p1 means
+editing the genimage `files` list *and* the checker's allow-list in the same commit.
 
 ### `extlinux.conf`
 
@@ -223,7 +228,7 @@ does **not** appear localises the failure to one link of the chain
 |---|---|---|
 | 1 | **SPL banner and DDR init** — the factory SPL running out of QSPI, before anything on the card is read | Nothing on the card is implicated. Check power, the UART cable, and MSEL/SW5 at its factory default (`001`, AS Fast). A board whose QSPI was modified is a different board — §7. |
 | 2 | **SPL loading `u-boot.itb`** from `mmc0` | The FAT/entry-1/filename contract failed. Confirm p1 is entry 1, FAT32, and holds `u-boot.itb` (the checker asserts all three) — then suspect the **partition-table type** (§3) or FIT signature policy (boot-chain §7 row 6). This is D0.1 Q3, and it has never been tested on hardware by anyone. |
-| 3 | **ATF BL31 + U-Boot proper banner** | The FIT loaded but its contents did not run: an ATF/U-Boot pairing problem, not a card-layout one (implementation-path §8 Q5). |
+| 3 | **The `U-Boot 2026.07 …` banner.** Note what you will *not* see: **no `NOTICE:  BL31:` lines**. TF-A's Agilex 5 platform prints on **UART0**, not the uart1 header this cable is on ([`de25-uboot.md`](de25-uboot.md) §5 on the uart0/uart1 split), so a silent BL31 is expected and is not evidence of anything | The FIT loaded but its contents did not run: an ATF/U-Boot pairing problem, not a card-layout one (implementation-path §8 Q5). |
 | 4 | `Loading Environment from FAT` | **Stop and read boot-chain §7 rows 5/11/12 before proceeding.** `Loading Environment from UBI` means the U-Boot build has `ENV_IS_IN_UBI` compiled in, and the UBI attach path can **write QSPI on an environment LOAD**, with no `saveenv` anywhere. That is the brick-class hazard the whole posture is built around. |
 | 5 | **U-Boot picking up `extlinux/extlinux.conf`** on `mmc 0:1` and reporting the `de25` label | The extlinux bootmeth did not find or parse the file. The checker proves the file is there and parses; what it cannot prove is U-Boot's **search path** and **mmc device number** — see §8. |
 | 6 | Kernel `Booting Linux on physical CPU`, then `earlycon` output | Kernel loaded but the console argument is wrong, or `Image`/DTB mismatch. |
@@ -260,11 +265,21 @@ Read it before shipping anyone a card. The two rules that matter most:
 
 `check-sdcard-de25.sh` asserts, from the image bytes alone: MBR (and no GPT signature at LBA 1),
 exactly two partitions, no `0xA2`, p1 = `0x0c` and ≥ 256 MiB and genuinely FAT32 (read from the
-BPB, not trusted from the type byte) and labelled `DE25BOOT` and holding the four files;
-`extlinux.conf` parses, names a default that resolves to a real label, names a kernel and fdt
-that exist on p1, carries `root=/dev/mmcblk0p2`, `console=ttyS0,115200` and `rootwait`, and
-mentions no flash machinery; p2 = `0x83`, ext4 (`extent` feature present), labelled `rootfs`,
-`e2fsck -fn`-clean; and the whole image within a size budget.
+BPB, not trusted from the type byte) and labelled `DE25BOOT` and holding the four files **and
+nothing else**; that `u-boot.itb` is byte-identical to the build's own, that `dumpimage -l`
+shows the §6.1 FIT contract (`uboot` at `0x80200000`, `atf` at `0x80000000`, `fdt-0`, a default
+configuration signed `crc32`), and that the decompiled FIT declares no `rsa`/`required`/`sha<n>`
+verification; `extlinux.conf` parses, names a default that resolves to a real label, names a
+kernel and fdt that exist on p1, carries `root=/dev/mmcblk0p2`, `console=ttyS0,115200` and
+`rootwait`, and mentions no flash machinery; p2 = `0x83`, ext4 (`extent` feature present),
+labelled `rootfs`, `e2fsck -fn`-clean; and the whole image within a size budget.
+
+Two of those exist because a review found the checker passing cards that could not boot: it used
+to treat extra p1 files as informational (so a `/boot.scr` carrying a flash-erase rode along —
+distro boot runs `scan_dev_for_scripts` right after `scan_dev_for_extlinux`, so it executes the
+moment extlinux fails), and it never opened `u-boot.itb` at all (so 4 KiB of `/dev/urandom`
+under that name passed, as did a FIT re-signed `sha256,rsa2048` + `required = "conf"` — which the
+keyless factory SPL would refuse on every boot).
 
 It **cannot** prove any of the following, and none of them should be described as verified until
 a board says so:
@@ -272,8 +287,8 @@ a board says so:
 | Assumption | Owned by | How it gets settled |
 |---|---|---|
 | The factory SPL reads an **MBR** table | U-Boot track / D2.2 | §3. First boot, or an SPL binary readback. |
-| U-Boot's extlinux **search path** is `/extlinux/extlinux.conf` on `mmc 0:1` | U-Boot track | Its distro-boot/bootstd config. If the build instead expects `/boot/extlinux/`, `post-image.sh` and the genimage `files` list change together. |
+| ~~U-Boot's extlinux **search path**~~ — **SETTLED [V]** | — | Closed by the built environment, not inferred: `boot_prefixes="/ /boot/"` and `boot_syslinux_conf="extlinux/extlinux.conf"`, so `/extlinux/extlinux.conf` at the root of p1 is the **first** path tried ([`de25-uboot.md`](de25-uboot.md) §9.1, read from `u-boot-initial-env` of the shipped build). The card layout matches. |
 | The card is **`mmc 0`** in U-Boot and **`mmcblk0`** in Linux | U-Boot track / DTS | The factory SPL's boot order names `/soc/mmc0@10808000` (boot-chain §2 step 4), and our DTS enables exactly one SD controller — but neither is a measurement. |
 | `u-boot.itb` is the **only** file the SPL wants | frozen contract, boot-chain §8.3 | Already `[V]` at the Kconfig level; `[U]` against the factory flash. |
-| A `uboot.env` on p1 is needed | U-Boot track | Row 4 of §6's checklist. If the U-Boot build wants one, it becomes a fifth file on p1 and this document, the genimage `files` list and the checker's expected set all change together. |
+| ~~A `uboot.env` on p1 is needed~~ — **SETTLED: no** | — | [`de25-uboot.md`](de25-uboot.md) §10 traces the code path: with `ENV_IS_IN_UBI` off there is exactly one env driver compiled in, and a missing file makes `env_fat_load()` load the built-in environment and return `-EIO` with **no write anywhere**. Shipping one is a staleness hazard for no safety gain, so the checker's p1 allow-list now **rejects** `uboot.env`. |
 | The image boots at all | nobody, yet | §6. |

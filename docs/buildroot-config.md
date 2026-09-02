@@ -309,9 +309,10 @@ against the patches' `+++ b/` target paths: zero hits). Some do mention uapi
 headers in prose — 0001 cites `include/uapi/linux/fb.h` to explain an ioctl
 number — but none change one; the series is drivers, one DTS, and fs/exfat.
 
-Memory note that backs this: a Buildroot bump moves the point release inside
-the series on its own (`docs/de25-readiness-ledger.md`; the DE25's §6.2 says
-the same for its 7.0 series).
+The same point is made from the other side in §6.2: a Buildroot bump moves
+the point release inside a headers series on its own (2026.02 -> 2026.05 moved
+this one from 6.18.33 to 6.18.34 with no kernel bump at all), which is why the
+re-check discipline above names Buildroot bumps as well as kernel bumps.
 
 ### 3.3 Global patch dir = the kernel-tarball hash registry — `BR2_GLOBAL_PATCH_DIR`
 
@@ -428,6 +429,14 @@ adds a new one and no shared symbol ever disagrees. `scripts/check-config-fragme
 (c) then proves the RESOLVED configs still agree once package `select`s are in
 play (§11). CI runs the text-level check for every kernel variant before any
 cache is restored and both checks in `build.yml`'s `lint-config` job.
+
+Known follow-up (pre-existing, not fixed here): the DE25 kernel pin (§6.4)
+has no Renovate manager and shares `linux.hash` by symlink (§6.3), so an rt
+bump 7.2.2 -> 7.2.3 handled by `hash-sync-kernel.sh --pin=rt` can drop the
+7.2.2 hash line the DE25 still needs — the DE25 build would then fail closed
+at download until its pin follows. Either a DE25 manager with the same
+depName as rt (one PR moves both) or a hash-sync rule that keeps every line
+a fragment still pins is the fix; neither is taken by the fragment split.
 
 ### 4.1 No init, no shell, no BusyBox — `BR2_INIT_NONE`, `BR2_SYSTEM_BIN_SH_NONE`, `# BR2_PACKAGE_BUSYBOX is not set`
 
@@ -2779,33 +2788,67 @@ compile; ~4 s warm; runs in `lint-config`): for each stack in `stacks.mk` plus
   fragment text AND from merge_config.sh's own "redefined" output;
   `ALLOWED_OVERRIDES` (rt: `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`,
   `BR2_LINUX_KERNEL_PATCH`) is the only exception;
-- (b) every effective fragment line survives olddefconfig verbatim
-  (`# X is not set` must not resolve to `X=y`/`=m`) — the silently-dropped-
-  symbol class (unmet dependency, renamed option after a Buildroot bump);
+- (b) every effective fragment line survives olddefconfig verbatim — a
+  `# X is not set` line must come back as exactly that line, so a misspelt
+  not-set symbol (absent from the resolved config in either form) is caught
+  too — the silently-dropped-symbol class (unmet dependency, renamed option
+  after a Buildroot bump, typo);
 - (c) the resolved `de10nano` and `de10nano-kernel` configs agree on every
   symbol outside `LOCKSTEP_DIVERGENCE_PREFIXES` (packages, init/shell,
   rootfs images, overlay/post-build, device creation, system configuration,
   `BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_*` — the hidapi select of §5.26 —
   `BR2_GDB_VERSION`, `BR2_DEFCONFIG`);
 - (d) the sha256 of the NORMALISED resolved `.config` equals
-  `configs/fragments/golden.sha256` for the pinned `BUILDROOT_VERSION`.
+  `configs/fragments/golden.sha256` for the pinned `BUILDROOT_VERSION`;
+- (e) path consumers: every `configs/fragments/<file>` named in the code/CI
+  surface (`Makefile`, `scripts/`, `.github/`, `renovate.json` — not docs)
+  exists, and `action.yml`'s two `hashFiles()` lists equal the `DE10NANO` /
+  `DE10NANO_KERNEL` stacks' files. A fragment rename that updates `stacks.mk`
+  would otherwise pass (a)-(d) while the dl-cache keys, Renovate's
+  `managerFilePatterns`, the workflow path filter and the scripts that read
+  a pin by filename (`hash-sync-kernel.sh`, `ci-tests.sh`,
+  `test-initramfs.sh`, `test-sdcard-install.sh`, `export-kernel-tree.sh`,
+  `lint-kernel-patches.sh`) all went silently stale.
 
-Normalisation for (d) keeps every `BR2_X=` and `# BR2_X is not set` line and
-drops: kconfig's banner/menu comments (they carry Buildroot's git-describe and
-the absolute `BR2_EXTERNAL` path); `BR2_HOSTARCH`, `BR2_HOST_GCC_VERSION`,
-`BR2_HOST_GCC_AT_LEAST_*` (the build host); `BR2_VERSION`,
-`BR2_EXTERNAL_MISTER_*` (git-describe, absolute path); `BR2_DEFCONFIG`
-(savedefconfig's output path); and `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`,
-which Renovate rewrites weekly and whose landing (b) already proves. So the
-hash is stable across machines and across routine kernel bumps and moves ONLY
-when the resolved configuration really changes. A Buildroot bump is EXPECTED
-to move it: run `scripts/check-config-fragments.sh --update-golden --keep`,
-diff `output-config-check/<stack>/normalised.config` against the previous
-good run, and commit the new hashes with that reading in the message. (A
-Renovate Buildroot-bump PR therefore stays red until that commit — the same
-fail-closed posture as the `BUILDROOT_SHA256` transcription before hash-sync
-case 6 automated it; automating the golden refresh in `renovate-hash-sync.yml`
-is the natural follow-up.)
+**Host independence of (d).** `olddefconfig` is run with Buildroot's host
+inputs pinned on the make command line (`HOSTARCH=x86_64`,
+`HOSTCC_VERSION=14` — Buildroot derives `BR2_HOSTARCH`,
+`BR2_HOST_GCC_AT_LEAST_*` and every host-gated package from them, and both are
+`:=` variables a command-line assignment overrides), so the resolved config
+the check reasons about is a pure function of (fragments, Buildroot version).
+Normalisation then keeps only the SET symbols (`BR2_X=…`; `# … is not set`
+lines are dropped — lossless for drift, since a symbol flipping on or off
+shows as a set line appearing or vanishing, and the not-set list is exactly
+where host-gated symbols come and go between machines) and drops, belt and
+braces, the set symbols that are host- or checkout-derived even so:
+`BR2_HOSTARCH`, `BR2_HOST_GCC_VERSION`, `BR2_HOST_GCC_AT_LEAST_*`;
+`BR2_PACKAGE_*_ARCH_SUPPORTS`, `BR2_PACKAGE_HOST_GO_BIN_HOST_ARCH`,
+`BR2_PACKAGE_PROVIDES_HOST_RUSTC` (HOSTARCH-derived); the
+`depends on BR2_HOST_GCC_AT_LEAST_*` consumers that are `=y` here —
+`BR2_PACKAGE_GOBJECT_INTROSPECTION`, `BR2_PACKAGE_HOST_GOBJECT_INTROSPECTION`,
+`BR2_PACKAGE_HOST_QEMU*`, `BR2_PACKAGE_LIBGLIB2_BOOTSTRAP`,
+`BR2_PACKAGE_PYTHON_GOBJECT` (measured: the only set lines that move between
+`HOSTCC_VERSION` 4.9/5/9/14, at the gcc >= 8 floor; the fragment ones are
+still proved by (b)); `BR2_VERSION`, `BR2_EXTERNAL_MISTER_*` (git-describe,
+absolute path); `BR2_DEFCONFIG`; and the two kernel-version symbols Renovate
+moves weekly, `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` and kconfig's derived
+`BR2_LINUX_KERNEL_VERSION` (landing proved by (b)). Measured 2026-09-02: the
+de10nano hash is identical for the real host (gcc 15), `HOSTARCH=aarch64`,
+and `HOSTCC_VERSION` 9, 5 and 4.9, and unchanged by bumping the 6.18, rt and
+DE25 kernel pins. So the hash moves ONLY when the resolved configuration
+really changes.
+
+**Buildroot bumps.** A bump changes Kconfig defaults and is EXPECTED to move
+every hash. Two outcomes, deliberately different: a pinned version with **no
+golden line at all** is a `::warning` — the check prints the new lines ready
+to paste and the build proceeds, so the automated bump PR still proves it
+builds — and `.github/workflows/renovate-hash-sync.yml` case 8
+(`scripts/hash-sync-golden.sh`) records the new lines in that PR by running
+this tree's `--update-golden` against the freshly unpacked, hash-verified
+tarball. A mismatch against a **recorded** line is drift and fails. By hand:
+`scripts/check-config-fragments.sh --update-golden --keep`, read
+`output-config-check/<stack>/normalised.config` against the previous good
+run, commit with that reading in the message (`docs/renovate.md` case 8).
 
 **The identity proof at the split (2026-09-02, Buildroot 2026.05.2).** Before
 the monoliths were deleted, each old file was loaded with `make

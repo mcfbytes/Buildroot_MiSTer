@@ -1096,11 +1096,17 @@ stack (the rt fragment's version/patch-dir overrides are the one allowlist),
 every fragment symbol survives `olddefconfig`, the resolved image and
 kernel-only configs agree outside a named list of designed divergences, and
 the sha256 of each NORMALISED resolved `.config` equals
-`configs/fragments/golden.sha256` for the pinned Buildroot version. A
-Buildroot bump is expected to move those hashes; the PR stays red until a
-commit updates them with `--update-golden` and says why — the same
-fail-closed posture `BUILDROOT_SHA256` had before hash-sync case 6. Full
-description: `docs/buildroot-config.md` §11.
+`configs/fragments/golden.sha256` for the pinned Buildroot version, plus a
+guard that every fragment path hard-coded outside `stacks.mk` (the two
+`hashFiles()` lists here, Renovate's `managerFilePatterns`, the scripts that
+read a pin by filename) still exists and matches the stacks. A Buildroot bump
+is expected to move the hashes: a version with **no** golden lines yet is a
+`::warning`, not a failure (so the automated bump PR still builds), and
+`renovate-hash-sync.yml` case 8 records the new lines in that PR; a mismatch
+against a *recorded* line is drift and fails. The hashes are host-independent
+by construction (olddefconfig runs with `HOSTARCH`/`HOSTCC_VERSION` pinned,
+and the host-derived symbols are excluded from the normalisation) and do not
+move on a kernel bump. Full description: `docs/buildroot-config.md` §11.
 
 <a id="kernel-module-overlay"></a>
 ### Kernel module overlay: download then populate

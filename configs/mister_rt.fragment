@@ -12,11 +12,16 @@
 
 # --- The 7.2 kernel: the ONE allowlisted override of the base stack's version (§7.1) ---
 # WARNING: coupled to board/mister/de10nano/patches/linux/linux.hash — bump
-# both in one commit (Renovate + renovate-hash-sync.yml do this for a .y bump;
-# an -rc value is refused by the sync script and must be hand-pinned).
+# both in one commit (Renovate + renovate-hash-sync.yml do this for a .y bump).
+# This pin is a signed-manifest release, strictly stronger than the TOFU hash
+# the old -rc pins had: do NOT reintroduce a TOFU value here without moving
+# back to an -rc (the sync script refuses -rc values; only a hand pin can).
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.3"
 
 # --- Beta patch set: the series-file-driven subset of linux-patches/ (§7.2) ---
+# WARNING: the series deliberately DROPS 0047 (already in 7.2; at -F0 its hunk
+# FAILS against pristine v7.2 — "Hunk #1 FAILED at 786") and carries four
+# re-anchored copies (0001/0015/0030/0037); see the series header.
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches-beta"
 
 # --- RT + 7.x kernel-config delta, layered on the shared linux.config (§7.3) ---

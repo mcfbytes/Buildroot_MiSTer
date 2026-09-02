@@ -51,7 +51,7 @@ doc's failure mode was confident, uncited claims; do not reproduce it.
 | Ref | What | Where |
 |---|---|---|
 | **Fork** | `MiSTer-devel/Linux-Kernel_MiSTer` — the commits to reconcile | Local full clone: `/mnt/source/Linux-Kernel_MiSTer`. Pinned HEAD (`MiSTer-v5.15`): `f0fb626acadd07f0718934826b143b6e4c9ce81c`. Vanilla base: **v5.15.1** (see §1.1) |
-| **Vanilla** | Target kernel **6.18.38** | Local linux-stable clone: `/mnt/source/linux`. Pinned `v6.18.38` = `2aa1767b5e96f79560675d55bc0da08ea36fff29`; version also pinned at `configs/mister_de10nano_defconfig:77`. **Must be unshallowed first** (see §1.2) |
+| **Vanilla** | Target kernel **6.18.38** | Local linux-stable clone: `/mnt/source/linux`. Pinned `v6.18.38` = `2aa1767b5e96f79560675d55bc0da08ea36fff29`; version also pinned in the Buildroot config (then `configs/mister_de10nano_defconfig`; since the 2026-09 fragment split `configs/fragments/de10nano.fragment`, `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`). **Must be unshallowed first** (see §1.2) |
 | **This repo** | Carried patches + prior-art doc | `board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031`, with gaps — see §8); `docs/patch-provenance.md`; `docs/stock-inventory/stock-linux.config` |
 | **Userspace** | `MiSTer-devel/Main_MiSTer` — for userspace-coupling cross-ref | https://github.com/MiSTer-devel/Main_MiSTer |
 
@@ -367,7 +367,8 @@ Audit output amends the record in place and appends an `audit_findings.md`.
   reassuring to the community.
 - **Config reconciliation is its own axis.** For `kconfig` changes the question is not "is it
   upstream" but "does this `CONFIG_*` still exist / was it renamed / is it set in our defconfig" —
-  verify against 6.18 Kconfig + `configs/mister_de10nano_defconfig`, not the source tree.
+  verify against 6.18 Kconfig + the Buildroot config (`configs/fragments/de10nano.fragment`
+  since the 2026-09 fragment split; `configs/mister_de10nano_defconfig` before it), not the source tree.
 - **Provenance & license.** For vendored / third-party-PR code (xone, wifi vendor drivers,
   Fanatec, etc.), capture author + license — gates whether we can carry *or* upstream it.
 

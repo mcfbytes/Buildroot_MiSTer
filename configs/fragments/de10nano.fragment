@@ -19,6 +19,9 @@ BR2_ARM_FPU_NEON=y
 BR2_KERNEL_HEADERS_6_18=y
 
 # --- Global patch dir = the kernel-tarball hash registry (docs/buildroot-config.md §3.3) ---
+# WARNING: load-bearing even with no packages — it is where Buildroot finds
+# patches/linux/linux.hash, the ONLY thing that hash-verifies the pinned
+# kernel tarball; kernel-only variants need it too.
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 
 # --- Kernel stanza (docs/buildroot-config.md §3.4) ---

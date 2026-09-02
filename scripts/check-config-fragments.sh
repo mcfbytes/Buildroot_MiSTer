@@ -29,10 +29,12 @@
 #       (mister_rt.fragment) — ALLOWED_OVERRIDES below, per variant.
 #   (b) EVERY FRAGMENT SYMBOL SURVIVES olddefconfig: each `BR2_X=val` line
 #       must appear verbatim in the resolved .config, and each
-#       `# BR2_X is not set` must not resolve to BR2_X=y. This is what
-#       catches a dropped symbol (unmet dependency, renamed option after a
-#       Buildroot bump, typo) that kconfig would otherwise discard silently —
-#       the DE25 bring-up's fragment-vs-resolved comparison, made permanent.
+#       `# BR2_X is not set` must resolve to exactly that line (a typo'd
+#       symbol name is absent from the resolved config in EITHER form, and
+#       kconfig says nothing). This is what catches a dropped symbol (unmet
+#       dependency, renamed option after a Buildroot bump, typo) that kconfig
+#       would otherwise discard silently — the DE25 bring-up's
+#       fragment-vs-resolved comparison, made permanent.
 #   (c) RESOLVED-LEVEL LOCKSTEP: the de10nano and de10nano-kernel resolved
 #       configs agree on every symbol except a named list of designed
 #       divergences (packages, init/shell choice, rootfs image types, system
@@ -42,15 +44,27 @@
 #       fragments still resolve identically once package selects are in play.
 #   (d) GOLDEN HASH: sha256 of the NORMALISED resolved .config equals the
 #       value recorded in configs/fragments/golden.sha256 for the pinned
-#       Buildroot version. Normalisation drops what legitimately varies by
-#       host or checkout (see normalise_config) and the Renovate-managed
-#       kernel version value (its landing is already proved by (b)), so the
-#       hash is stable across machines and across routine kernel bumps and
-#       moves ONLY when the resolved configuration really changes. A
-#       Buildroot bump changes defaults, so it is expected to move the
-#       hashes: run with --update-golden, READ the diff of the normalised
-#       configs it leaves under output-config-check/, and commit the new
-#       hashes with that reading in the message.
+#       Buildroot version. Normalisation keeps only the SET symbols
+#       (`BR2_X=...`), and drops what legitimately varies by host or checkout
+#       (see normalise_config) plus the two kernel-version symbols Renovate
+#       moves weekly (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE and kconfig's
+#       derived BR2_LINUX_KERNEL_VERSION — their landing is already proved by
+#       (b)), so the hash is stable across machines and across routine
+#       kernel bumps of every pin (6.18.y, the rt 7.2.y pin, the DE25 pin)
+#       and moves ONLY when the resolved configuration really changes.
+#       olddefconfig is also run with the HOST inputs pinned to canonical
+#       values (HOSTARCH, HOSTCC_VERSION — Buildroot derives BR2_HOSTARCH,
+#       BR2_HOST_GCC_AT_LEAST_* and every host-gated package from them), so
+#       the resolved config the check reasons about is a pure function of
+#       (fragments, Buildroot version), never of the machine running it.
+#       Two outcomes: a MISMATCH against a recorded line is a failure (the
+#       configuration drifted; if intended, --update-golden and commit with
+#       the reason). NO line at all for the pinned Buildroot version is a
+#       ::warning, not a failure — a Buildroot bump changes defaults and is
+#       expected to move every hash; the check prints the new lines ready to
+#       paste, .github/workflows/renovate-hash-sync.yml case 8 commits them
+#       on a Renovate bump PR, and the build is allowed to proceed so the
+#       bump PR still proves it builds.
 #
 # Cost: needs the pinned Buildroot tree (fetched/unpacked by `make
 # buildroot-unpack` if absent — a 10 MB download, no compile beyond
@@ -67,6 +81,14 @@
 #              always left in place on failure).
 #   CHECK_CONFIG_BR_DIR=<path>  use an already-unpacked Buildroot tree
 #              instead of the wrapper's work/buildroot (tests, CI fixtures).
+#   CHECK_CONFIG_HOSTARCH / CHECK_CONFIG_HOSTCC_VERSION  override the pinned
+#              host inputs (self-tests only: the golden must NOT move).
+#
+# It also guards the hard-coded fragment PATHS outside stacks.mk (§ "path
+# consumers" below): a fragment rename with stacks.mk updated would otherwise
+# pass every check while action.yml's hashFiles() lists, renovate.json's
+# managerFilePatterns and the scripts that read a pin by filename all went
+# silently stale.
 #
 # Exit: 0 = every stack passes; 1 = an assertion failed; 2 = usage/IO error.
 
@@ -81,6 +103,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 GOLDEN="$ROOT/configs/fragments/golden.sha256"
 CHECK_DIR="$ROOT/output-config-check"
+
+# Canonical host inputs for olddefconfig (see (d) above). Buildroot computes
+# both with `:=` from the real host compiler; a command-line assignment
+# overrides that. x86_64 + GCC 14 is what the CI runners and the developer
+# hosts have had since the 2026.05 bump; the values only have to be FIXED,
+# not true, for the resolved config to be host-independent.
+PIN_HOSTARCH="${CHECK_CONFIG_HOSTARCH:-x86_64}"
+PIN_HOSTCC_VERSION="${CHECK_CONFIG_HOSTCC_VERSION:-14}"
 
 # Per-variant allowlist for (a): symbols a kernel variant's fragment is
 # EXPECTED to redefine on top of the kernel-only stack. Anything else a
@@ -174,17 +204,35 @@ if [ "${#only[@]}" -gt 0 ]; then
 fi
 
 # --- Normalisation for the golden hash ----------------------------------------
-# Keep: every `BR2_X=...` line and every `# BR2_X is not set` line (both are
-# configuration). Drop: kconfig's banner/menu comments (they carry the
-# Buildroot git-describe and the BR2_EXTERNAL path), and the symbols that
-# legitimately vary by host or checkout — BR2_HOSTARCH / BR2_HOST_GCC_* (the
-# build host), BR2_VERSION / BR2_EXTERNAL_MISTER_* (git-describe and absolute
-# path), BR2_DEFCONFIG (savedefconfig's output path) — plus the one value
-# Renovate rewrites weekly, BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, whose
-# landing check (b) already proves. Everything else is the configuration.
+# Keep: every SET symbol (`BR2_X=...`). `# BR2_X is not set` lines are
+# dropped from the hash — losslessly for drift detection, since a symbol that
+# flips on shows up as a new set line and one that flips off as a vanished
+# set line, and the not-set list is exactly where host-gated symbols (a
+# package `depends on BR2_HOSTARCH = ...`, a host-gcc floor) appear or
+# disappear between machines. Then drop the set symbols that legitimately
+# vary by host or checkout even with the host inputs pinned:
+#   BR2_HOSTARCH, BR2_HOST_GCC_VERSION, BR2_HOST_GCC_AT_LEAST_*   the build host
+#   BR2_PACKAGE_*_ARCH_SUPPORTS, BR2_PACKAGE_HOST_GO_BIN_HOST_ARCH,
+#   BR2_PACKAGE_PROVIDES_HOST_RUSTC                                HOSTARCH-derived
+#   BR2_PACKAGE_(HOST_)GOBJECT_INTROSPECTION, BR2_PACKAGE_HOST_QEMU*,
+#   BR2_PACKAGE_LIBGLIB2_BOOTSTRAP, BR2_PACKAGE_PYTHON_GOBJECT   `depends on
+#       BR2_HOST_GCC_AT_LEAST_*` consumers that are =y here (measured: these
+#       are the only set lines that move between HOSTCC_VERSION 5/9/14 —
+#       the fragment lines among them are still proved by (b))
+#   BR2_VERSION, BR2_EXTERNAL_MISTER_*                             git-describe / absolute path
+#   BR2_DEFCONFIG                                                  savedefconfig's output path
+#   BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, BR2_LINUX_KERNEL_VERSION  the Renovate-
+#       managed kernel pin and kconfig's copy of it (landing proved by (b))
+# Everything else is the configuration.
 normalise_config() {
-	grep -E '^(BR2_[A-Za-z0-9_]+=|# BR2_[A-Za-z0-9_]+ is not set$)' "$1" \
-		| grep -vE '^(BR2_HOSTARCH|BR2_HOST_GCC_VERSION|BR2_HOST_GCC_AT_LEAST_|BR2_VERSION=|BR2_EXTERNAL_MISTER_|BR2_DEFCONFIG=|BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=)'
+	grep -E '^BR2_[A-Z0-9_]+=' "$1" \
+		| grep -vE '^(BR2_HOSTARCH|BR2_HOST_GCC_VERSION|BR2_HOST_GCC_AT_LEAST_|BR2_VERSION=|BR2_EXTERNAL_MISTER_|BR2_DEFCONFIG=|BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=|BR2_LINUX_KERNEL_VERSION=)' \
+		| grep -vE '^(BR2_PACKAGE_[A-Z0-9_]+_ARCH_SUPPORTS=|BR2_PACKAGE_HOST_GO_BIN_HOST_ARCH=|BR2_PACKAGE_PROVIDES_HOST_RUSTC=)' \
+		| grep -vE '^(BR2_PACKAGE_GOBJECT_INTROSPECTION=|BR2_PACKAGE_HOST_GOBJECT_INTROSPECTION=|BR2_PACKAGE_HOST_QEMU|BR2_PACKAGE_LIBGLIB2_BOOTSTRAP=|BR2_PACKAGE_PYTHON_GOBJECT=)'
+}
+
+golden_has_version() { # any line recorded for BR_VERSION at all?
+	[ -f "$GOLDEN" ] && awk -v v="$BR_VERSION" '$1 == v { found = 1 } END { exit !found }' "$GOLDEN"
 }
 
 golden_lookup() { # $1 = stack -> recorded hash for BR_VERSION, or empty
@@ -195,6 +243,7 @@ golden_lookup() { # $1 = stack -> recorded hash for BR_VERSION, or empty
 # --- Per-stack work -----------------------------------------------------------
 declare -A NEW_GOLDEN=()
 declare -A RESOLVED=()
+missing_golden=0
 for stack in "${stack_order[@]}"; do
 	# shellcheck disable=SC2206 # the file list is space-separated on purpose
 	files=(${STACK_FILES[$stack]})
@@ -241,7 +290,9 @@ for stack in "${stack_order[@]}"; do
 		done < <(sed -n 's/^Value of \([A-Za-z0-9_]*\) is redefined by fragment .*/\1/p' "$odir/merge.log")
 	fi
 
-	if ! make -C "$BR_DIR" O="$odir" BR2_EXTERNAL="$ROOT" BR2_DL_DIR="$ROOT/dl" olddefconfig >"$odir/olddefconfig.log" 2>&1; then
+	if ! make -C "$BR_DIR" O="$odir" BR2_EXTERNAL="$ROOT" BR2_DL_DIR="$ROOT/dl" \
+			HOSTARCH="$PIN_HOSTARCH" HOSTCC_VERSION="$PIN_HOSTCC_VERSION" \
+			olddefconfig >"$odir/olddefconfig.log" 2>&1; then
 		cat "$odir/olddefconfig.log" >&2
 		die "$stack: olddefconfig failed"
 	fi
@@ -263,8 +314,13 @@ for stack in "${stack_order[@]}"; do
 		line="${effective[$sym]}"
 		case "$line" in
 			"# "*" is not set")
-				if grep -qx "$sym=y" "$resolved" || grep -qx "$sym=m" "$resolved"; then
-					fail "$stack: fragment says '$line' but the resolved .config has $(grep -x "$sym=[ym]" "$resolved")"
+				# The symbol must come back as EXACTLY this line. `=y`/`=m`
+				# means the not-set was overridden by a select or default;
+				# absent in both forms means kconfig never heard of the name
+				# (typo, or the option no longer exists in this Buildroot).
+				if ! grep -qxF -- "$line" "$resolved"; then
+					actual=$(grep -E "^(# )?$sym( is not set|=)" "$resolved" || echo "<absent in both forms — misspelt or unknown symbol in Buildroot $BR_VERSION>")
+					fail "$stack: fragment says '$line' but the resolved .config has $actual"
 					dropped=$((dropped + 1))
 				fi
 				;;
@@ -286,8 +342,13 @@ for stack in "${stack_order[@]}"; do
 	NEW_GOLDEN[$stack]="$hash"
 	if [ "$UPDATE_GOLDEN" = false ]; then
 		want=$(golden_lookup "$stack")
-		if [ -z "$want" ]; then
-			fail "$stack: no golden hash recorded for Buildroot $BR_VERSION in ${GOLDEN#"$ROOT"/} (a Buildroot bump, or a new stack). Run '$(basename "$0") --update-golden', review the normalised config under ${odir#"$ROOT"/}/, and commit the new line with the reason."
+		if [ -z "$want" ] && ! golden_has_version; then
+			# A Buildroot bump: nothing recorded for this version yet. Warn,
+			# print the line, let the build proceed (see (d) in the header).
+			echo "::warning::$stack: no golden hash recorded for Buildroot $BR_VERSION in ${GOLDEN#"$ROOT"/} -- a Buildroot bump. Expected line: '$BR_VERSION $stack $hash'. renovate-hash-sync.yml case 8 commits it on a Renovate PR; by hand: '$(basename "$0") --update-golden', then commit with what changed."
+			missing_golden=$((missing_golden + 1))
+		elif [ -z "$want" ]; then
+			fail "$stack: ${GOLDEN#"$ROOT"/} records Buildroot $BR_VERSION for other stacks but has no line for '$stack' (a new stack, or a deleted line). Run '$(basename "$0") --update-golden' and commit the new line with the reason."
 		elif [ "$want" != "$hash" ]; then
 			fail "$stack: resolved configuration DRIFTED — sha256 of the normalised .config is $hash, golden says $want (${GOLDEN#"$ROOT"/}). If the change is intended, run '$(basename "$0") --update-golden' and commit the new hash with a message saying what changed and why; the normalised config is at ${odir#"$ROOT"/}/normalised.config for diffing against the previous good run."
 		else
@@ -321,6 +382,48 @@ elif [ "${#only[@]}" -eq 0 ]; then
 	fail "resolved-level lockstep: de10nano or de10nano-kernel stack missing from stacks.mk"
 fi
 
+# --- Path consumers outside stacks.mk -----------------------------------------
+# stacks.mk is the source of truth for WHICH fragments exist, but several
+# consumers must name fragment files literally and cannot read it:
+# GitHub's hashFiles() (action.yml's two dl-cache keys), Renovate's
+# managerFilePatterns, the workflow path filter, and the scripts that read a
+# pin off one fragment by filename. A rename that updates stacks.mk passes
+# (a)-(d) while all of those go stale. Two asserts:
+#   1. every `configs/fragments/<name>` token in the code/CI surface
+#      (Makefile, scripts/, .github/, renovate.json -- not docs, which may
+#      legitimately name history) must exist in the tree;
+#   2. action.yml's hashFiles() list containing de10nano-image must equal the
+#      DE10NANO stack's files, and the one containing kernel-only must equal
+#      the DE10NANO_KERNEL stack's (the format('mister_{0}.fragment') item is
+#      the variant's own fragment and is skipped).
+if [ "${#only[@]}" -eq 0 ]; then
+	action="$ROOT/.github/actions/buildroot-build/action.yml"
+	while IFS= read -r tok; do
+		[ -n "$tok" ] || continue
+		if [ ! -e "$ROOT/$tok" ]; then
+			fail "path consumer: '$tok' is named in the code/CI surface but does not exist -- a fragment was renamed or moved without updating every consumer ($(grep -rlF -- "$tok" "$ROOT/Makefile" "$ROOT/scripts" "$ROOT/.github" "$ROOT/renovate.json" | sed "s|^$ROOT/||" | tr '\n' ' '))"
+		fi
+	done < <(grep -rhoE 'configs/fragments/[A-Za-z0-9_.\\-]+' "$ROOT/Makefile" "$ROOT/scripts" "$ROOT/.github" "$ROOT/renovate.json" \
+		| sed -e 's/\\*\././g' -e 's/[.,:;)]*$//' | sort -u)
+	if [ -f "$action" ]; then
+		check_hashfiles() { # $1 = stack var, $2 = distinguishing fragment name
+			local want got
+			want=$(config_stack_files "$1" | sed "s|^$ROOT/||" | sort | tr '\n' ' ')
+			got=$(grep -oE "hashFiles\([^)]*configs/fragments/$2\.fragment[^)]*\)" "$action" \
+				| grep -oE "'configs/fragments/[^']+'" | tr -d "'" | sort -u | tr '\n' ' ')
+			if [ -z "$got" ]; then
+				fail "path consumer: $action has no hashFiles() list naming configs/fragments/$2.fragment -- the dl-cache key for the $(config_stack_label "$1") stack is gone"
+			elif [ "$got" != "$want" ]; then
+				fail "path consumer: $action's hashFiles() list for the $(config_stack_label "$1") stack is [$got] but stacks.mk says [$want] -- keep the two in step (hashFiles cannot read stacks.mk)"
+			fi
+		}
+		check_hashfiles DE10NANO de10nano-image
+		check_hashfiles DE10NANO_KERNEL kernel-only
+	else
+		fail "path consumer: $action not found"
+	fi
+fi
+
 # --- Golden file --------------------------------------------------------------
 if [ "$UPDATE_GOLDEN" = true ]; then
 	{
@@ -348,7 +451,11 @@ fi
 
 if [ "$rc" -eq 0 ]; then
 	[ "$KEEP" = true ] || rm -rf "$CHECK_DIR"
-	echo "check-config-fragments: OK — ${#stack_order[@]} stack(s) regenerate cleanly from their fragments (Buildroot $BR_VERSION)"
+	if [ "$missing_golden" -gt 0 ]; then
+		echo "check-config-fragments: OK with $missing_golden WARNING(s) — ${#stack_order[@]} stack(s) regenerate cleanly from their fragments, but ${GOLDEN#"$ROOT"/} has no lines for Buildroot $BR_VERSION yet (see the warnings above)"
+	else
+		echo "check-config-fragments: OK — ${#stack_order[@]} stack(s) regenerate cleanly from their fragments (Buildroot $BR_VERSION)"
+	fi
 else
 	echo "check-config-fragments: FAILED — resolved configs left under ${CHECK_DIR#"$ROOT"/}/ for inspection" >&2
 fi

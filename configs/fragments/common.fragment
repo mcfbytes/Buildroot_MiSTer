@@ -17,6 +17,9 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 
 # --- Reproducibility (docs/buildroot-config.md §2.4) ---
+# WARNING: not cosmetic for the kernel-only stack either — linux.mk gates the
+# KBUILD_BUILD_* stamps on it; without it a release re-run mints a different
+# zImage_dtb-<variant>. Does NOT pin mke2fs's UUID/seed (§5.2 does, per image).
 BR2_REPRODUCIBLE=y
 
 # --- Merged /usr (docs/buildroot-config.md §2.5) ---

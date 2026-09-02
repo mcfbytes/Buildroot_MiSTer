@@ -350,7 +350,7 @@ it references `&flash0`, which this board file deliberately does not declare.
 
 | `output-de25/images/` | Size | From |
 |---|---|---|
-| `u-boot.itb` | 728,176 B (`sha256 38b38e59…`) | binman, U-Boot v2026.07 |
+| `u-boot.itb` | 728,168 B (`sha256 49f1c7dd…`, clean build 2026-09-02) | binman, U-Boot v2026.07 |
 | `bl31.bin` | 53,304 B (`sha256 863073b2…`) | TF-A v2.15.0, `PLAT=agilex5` |
 | `Image` | 20,711,432 B | Linux 7.2.2 (see §12b — the kernel-config switch landed in this pass's defconfig edit) |
 | `socfpga_agilex5_de25nano.dtb` | 17,138 B | kernel DTS (D2.3, unchanged here) |
@@ -361,8 +361,17 @@ The FIT's `Created:` timestamp is `Sun Aug 23 16:00:00 2026` — `SOURCE_DATE_EP
 practice: repeated `make de25` runs, hours apart and with a full kernel reconfigure between them,
 produced byte-identical artifacts — `bl31.bin` is
 `sha256 863073b2c0a9489ae04cbf077b5496975f7aa7f925a8397fad705bcb3c390bf1` across every run, and
-`u-boot.itb` is byte-stable for a given config (it changed only when the config did: 731,728 B
-before the review fixes, 728,176 B after `CONFIG_BLOBLIST` came out and the mmc node grew) **[V]**.
+`u-boot.itb` is byte-stable **within a build tree** — verified twice: two runs in the wave-2 tree
+(728,176 B) and, after a full `distclean`, two runs in the clean tree including a
+`uboot-dirclean` rebuild (728,168 B, `sha256 49f1c7dd…`) **[V]**. It is **not yet shown to be
+byte-stable across clean trees [U]**: the wave-2 tree's FIT and the clean tree's FIT differ by
+8 bytes, all of it inside the `uboot` payload (650,056 → 650,048 B; `atf` and `fdt-0` identical
+in size and BL31 identical in hash), with the same resolved Buildroot config. The version string
+is not the cause (it carries only the pinned `SOURCE_DATE_EPOCH` date). The boot contract is
+unaffected — load addresses, config node, crc32-only signature and DTB are what the checker
+asserts, not the hash — but the D2.8 release lane should pin this down with two clean CI builds
+before it publishes attested hashes. (History: 731,728 B before the review fixes, 728,176 B
+after `CONFIG_BLOBLIST` came out and the mmc node grew.)
 
 **Housekeeping done in the same pass:** `images/socfpga_agilex5_socdk.dtb` was a stale leftover from
 before D2.3 (mtime predating this build by hours, from when the defconfig still pointed at
@@ -468,8 +477,8 @@ image to its `load` address **[V]**.
 |---|---|---|
 | BL31 (`atf`, load = entry) | `0x8000_0000` → | 53,304 B (0xD038) |
 | BL31 limit (TF-A `socfpga_plat_def.h:150`) | `0x8200_0000` | — |
-| U-Boot proper (`uboot`, load) | `0x8020_0000` → | 654,016 B (0x9FAC0) |
-| FIT staging (SPL load address) | `0x8200_0000` → | 731,728 B (0xB2A50) total |
+| U-Boot proper (`uboot`, load) | `0x8020_0000` → | 650,048 B (0x9EB40) |
+| FIT staging (SPL load address) | `0x8200_0000` → | 728,168 B (0xB1C68) total |
 | DRAM (declared) | `0x8000_0000` – `0xBFFF_FFFF` | 1 GiB |
 
 **No collision [V]:** BL31 ends far below `0x8020_0000`; U-Boot proper at `0x8020_0000` plus its

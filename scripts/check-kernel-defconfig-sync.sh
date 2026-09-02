@@ -50,9 +50,26 @@
 #     drift also fails a main-only change that edits the main defconfig
 #     without mirroring.
 #   * By hand: scripts/check-kernel-defconfig-sync.sh (no arguments).
+#     BOARD=<name> (or a single positional <name>) selects which board's
+#     EXPECTATION ROW the asserts below use; it does NOT change which two
+#     files are compared. The compared pair is fixed to the DE10 defconfigs
+#     named above (the file-path axis is deliberately not wired yet —
+#     docs/de25-readiness-ledger.md §5.7 risk 3), so BOARD=de25nano today
+#     asserts aarch64 expectations against the DE10 pair and fails, as it
+#     should: it is a table self-test, not a DE25 lockstep check.
+#
+# BOARD selects the per-board sentinel/family tables in scripts/lib/
+# board-expectations.sh (docs/de25-readiness-ledger.md §5.2) — an optional
+# $1 wins over the BOARD env var if both are given. Defaults to
+# "de10nano"; none of the call sites above pass either today, so that
+# default is the only path any of them exercise, and it is defined to
+# reproduce this file's own former literal sentinel/family lists
+# byte-for-byte (§5.6) — the table is not a behaviour change for DE10, only
+# a second board's row is new. An unrecognized BOARD is a usage error (exit
+# 2 below), never a silent fallback to an existing board's row.
 #
 # Exit: 0 = in lockstep; 1 = drift, a one-sided choice bump, or a missing
-# sentinel; 2 = usage/IO error.
+# sentinel; 2 = usage/IO error (including an unrecognized BOARD).
 
 set -euo pipefail
 export LC_ALL=C
@@ -60,6 +77,25 @@ export LC_ALL=C
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAIN_DEFCONFIG="$ROOT/configs/mister_de10nano_defconfig"
 KERNEL_DEFCONFIG="$ROOT/configs/mister_kernel_defconfig"
+
+# shellcheck source=scripts/lib/board-expectations.sh
+. "$ROOT/scripts/lib/board-expectations.sh"
+
+# $1 (if given) wins over the BOARD env var; both fall back to "de10nano".
+# See this file's header for why the default must stay byte-identical to
+# the pre-table literal lists.
+BOARD="${1:-${BOARD:-de10nano}}"
+# Both tables are checked, not just the first one the script happens to read:
+# a board row added to one table and forgotten in the other would otherwise
+# surface as a bare `set -u` unbound-variable trace at the later expansion
+# instead of a usage error naming the board and the table.
+for table in BOARD_ARCH_SENTINELS BOARD_ARCH_FAMILIES; do
+	if ! declare -n _tbl="$table" 2>/dev/null || [ -z "${_tbl[$BOARD]+set}" ]; then
+		echo "check-kernel-defconfig-sync: FATAL: unknown board '$BOARD' -- scripts/lib/board-expectations.sh's $table has no row for it. Known boards: ${!BOARD_ARCH_SENTINELS[*]}" >&2
+		exit 2
+	fi
+done
+unset -n _tbl
 
 for f in "$MAIN_DEFCONFIG" "$KERNEL_DEFCONFIG"; do
 	[ -f "$f" ] || { echo "check-kernel-defconfig-sync: FATAL: missing $f" >&2; exit 2; }
@@ -79,8 +115,12 @@ kernel_stripped=$(strip_config "$KERNEL_DEFCONFIG")
 # --- 2. Sentinels first: a degenerate kernel defconfig must not pass ---------
 # (an empty or mis-stripped file would trivially satisfy the "no symbol
 # disagrees" check below — same reasoning as the fingerprint's BR2_arm assert).
+# Merge order is BOARD's arch row first, then the common row — this
+# reproduces, for BOARD=de10nano, the exact former literal list in the same
+# order (scripts/lib/board-expectations.sh, §5.3).
 rc=0
-for must in BR2_arm BR2_cortex_a9 BR2_KERNEL_HEADERS BR2_TOOLCHAIN_BUILDROOT_CXX; do
+# shellcheck disable=SC2086 # word splitting over the merged symbol list is intended
+for must in ${BOARD_ARCH_SENTINELS[$BOARD]} $BOARD_COMMON_SENTINELS; do
 	if ! printf '%s\n' "$kernel_stripped" | grep -q "^${must}"; then
 		echo "FAIL: sentinel '${must}' is absent from configs/mister_kernel_defconfig --" >&2
 		echo "      the kernel-only toolchain stanza has been lost or renamed; see that" >&2
@@ -126,7 +166,10 @@ fi
 # types) share none of these prefixes, so they stay exempt. Both-sides-empty
 # degenerates to equal sets — that hole is what the presence sentinels above
 # close.
-for family in BR2_arm BR2_ARM_ BR2_cortex BR2_KERNEL_HEADERS BR2_TOOLCHAIN_BUILDROOT_; do
+# Same merge order as the sentinels above: BOARD's arch row first, then the
+# common row (scripts/lib/board-expectations.sh, §5.3).
+# shellcheck disable=SC2086 # word splitting over the merged symbol list is intended
+for family in ${BOARD_ARCH_FAMILIES[$BOARD]} $BOARD_COMMON_FAMILIES; do
 	main_names=$(printf '%s\n' "$main_stripped" | sed -n "s/^\(${family}[A-Za-z0-9_]*\)=.*/\1/p" | sort)
 	kernel_names=$(printf '%s\n' "$kernel_stripped" | sed -n "s/^\(${family}[A-Za-z0-9_]*\)=.*/\1/p" | sort)
 	if [ "$main_names" != "$kernel_names" ]; then

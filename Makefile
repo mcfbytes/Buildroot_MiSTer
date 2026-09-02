@@ -160,6 +160,43 @@ INSTALLER_KERNEL_OUTPUT_DIR := $(ROOT_DIR)/output-installer-kernel
 SDCARD_STAGE_DIR             := $(ROOT_DIR)/output-sdcard-stage
 SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
 
+# --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
+# A FIFTH Buildroot output dir, and by far the biggest departure of the five:
+# every directory above builds for the DE10-Nano's armv7 Cyclone V. This one
+# builds for a DIFFERENT BOARD — the Terasic DE25-Nano, an Intel/Altera
+# Agilex 5 whose HPS is aarch64 (2x Cortex-A76 + 2x Cortex-A55). Different
+# architecture, different toolchain, different kernel line (mainline 7.2.2),
+# different rootfs. It shares with the main build exactly two things: the
+# pinned Buildroot tree and the dl/ download cache.
+#
+# It follows the same trick as initramfs/rt/installer for the same reason: a
+# different Buildroot *configuration* needs a different O=. Sharing
+# $(OUTPUT_DIR) would clobber the DE10's armv7 toolchain with an aarch64 one —
+# and Buildroot cross-toolchains bake their absolute O= path in, so the two can
+# never share a host tree even if you wanted them to (ADR 0021 §3 makes the
+# same point about output-rt/).
+#
+# UNLIKE `rt`, there is NO fragment to merge: configs/mister_de25nano_defconfig
+# is a standalone, self-contained defconfig, so $(DE25_OUTPUT_DIR)/.config is a
+# plain one-line `$(BR_MAKE_DE25) mister_de25nano_defconfig` rather than
+# defconfig + merge_config.sh + olddefconfig. The rt fragment exists because
+# that variant is a *delta* on the DE10's own kernel stanza; the DE25 shares no
+# stanza with anything.
+#
+# ALSO UNLIKE `rt` and `all`: `de25` does NOT depend on `initramfs`. That cpio
+# is an armv7 BusyBox built by configs/mister_initramfs_defconfig, and it exists
+# because the DE10's real root is a loop-mounted ext4 image on a FAT partition
+# that U-Boot will not load an initrd for (A3, docs/boot-chain.md). The DE25
+# boots a plain ext4 root partition, so there is nothing for a stage 1 to do —
+# and embedding armv7 userspace in an aarch64 kernel would produce a kernel that
+# panics in a novel and confusing way. external.mk's LINUX_KCONFIG_FIXUP_CMDS
+# hook is guarded off for this build; see the guard's comment there.
+#
+# Scope reminder, because the target name invites the wrong assumption: this is
+# a BARE DEVELOPER OS. No MiSTer binaries, no DE10 packages. See ADR 0027
+# Decision 6 and the defconfig's header.
+DE25_OUTPUT_DIR := $(ROOT_DIR)/output-de25
+
 BR_TARBALL := $(DL_DIR)/buildroot-$(BUILDROOT_VERSION).tar.gz
 BR_DIR     := $(WORK_DIR)/buildroot
 # Two properties this path must have, both learned the hard way:
@@ -252,6 +289,13 @@ BR_MAKE_RT = PATH="$(HOSTSHIM_DIR):$$PATH" \
 BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(INSTALLER_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
+# The same, aimed at the DE25-Nano output directory (docs/de25-nano-tasks.md
+# D2.1). Byte-for-byte the same shape as the four above — same Buildroot tree,
+# same BR2_EXTERNAL, same dl/ cache; only O= and the defconfig differ. The
+# aarch64-ness lives entirely in configs/mister_de25nano_defconfig, not here.
+BR_MAKE_DE25 = PATH="$(HOSTSHIM_DIR):$$PATH" \
+          $(MAKE) -C $(BR_DIR) O=$(DE25_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+
 # NOTE: there is no BR_MAKE_INSTALLER_KERNEL. mk-sdcard.sh's step 2 relink no longer
 # builds a fourth Buildroot tree in output-installer-kernel/ — it relinks the kernel
 # IN output/ (reusing the completed main build) and restores it. output-installer-
@@ -269,6 +313,7 @@ BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
 .PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
 .PHONY: rt rt-clean rt-menuconfig rt-external-deps rt-legal-info
+.PHONY: de25 de25-clean de25-menuconfig de25-linux-menuconfig
 .PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
 .PHONY: sdcard
 .PHONY: zimage-dtb
@@ -359,7 +404,7 @@ $(OUTPUT_DIR)/.config: | $(BR_STAMP)
 # is the only thing that knows what to delete and what to keep, so skipping it
 # would report success over a still-dirty tree — this bug, again, one layer out.
 clean:
-	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(DE25_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
 		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
 		echo "       but an output directory still holds build products. Skipping" >&2; \
 		echo "       would report success over a dirty tree." >&2; \
@@ -371,6 +416,7 @@ clean:
 	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
+	@if [ -d $(DE25_OUTPUT_DIR) ]; then $(BR_MAKE_DE25) clean; fi
 	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
 	@# The extra-modules overlay is a build product (staged module trees), so
 	@# clean takes it wholesale, stamps included — the next `make rt` restages
@@ -393,7 +439,8 @@ clean:
 # nothing-but-the-clone hammer; it takes work/ and dl/ with it.
 distclean:
 	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
-	       $(INSTALLER_OUTPUT_DIR) $(INSTALLER_KERNEL_OUTPUT_DIR) \
+	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) \
+	       $(INSTALLER_KERNEL_OUTPUT_DIR) \
 	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) \
 	       $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
 
@@ -630,6 +677,95 @@ rt-clean:
 	fi
 	rm -rf $(RT_OUTPUT_DIR)
 
+# --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
+# Loads configs/mister_de25nano_defconfig into output-de25/. Order-only
+# $(BR_STAMP) and NO file prerequisite on the defconfig — same shape, same two
+# reasons, as $(OUTPUT_DIR)/.config and $(RT_OUTPUT_DIR)/.config above: a
+# defconfig listed as a normal prerequisite gets caught by the `%:` catch-all
+# target-forwarding rule at the bottom of this file and would be "remade" with
+# O=$(OUTPUT_DIR) (i.e. loaded into the DE10's output dir — here that would
+# mean loading an AARCH64 config over the armv7 build, which is about as bad as
+# this class of bug gets), and with no prerequisites an existing .config is
+# always up to date, so `make de25-menuconfig` edits are not silently
+# discarded by the next `make de25`.
+#
+# Re-generate after editing the defconfig with `make de25-clean && make de25`,
+# the same manual step the main and rt configs imply.
+#
+# No merge_config.sh step: unlike `rt`, this defconfig is standalone.
+# `hostshim` is an order-only prerequisite HERE, not only on `de25`: under
+# `make -j de25` the sibling prerequisites of `de25` run concurrently, so the
+# config recipe (which invokes Buildroot, whose dependency check needs the
+# shim's `install` on PATH) could otherwise start before the shim exists.
+$(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
+	@mkdir -p $(DE25_OUTPUT_DIR)
+	$(BR_MAKE_DE25) mister_de25nano_defconfig
+
+# Deliberately NOT `de25: initramfs ...` — see DE25_OUTPUT_DIR's header for why
+# the stage-1 cpio has no business in an aarch64 kernel.
+#
+# The post-build assertions are the DE25's equivalent of `rt`'s
+# CONFIG_PREEMPT_RT check and `initramfs`'s cpio check: Buildroot exits 0 on
+# plenty of configurations that produce no bootable artifact, and on a board
+# with no hardware validation yet the build must say so at the end rather than
+# leave someone to discover it at a dead serial console.
+#
+# The .dtb is asserted by GLOB rather than by name on purpose. The name is
+# owned by the defconfig (BR2_LINUX_KERNEL_CUSTOM_DTS_PATH names the board
+# file, board/mister/de25nano/socfpga_agilex5_de25nano.dts; it was mainline's
+# socdk placeholder until D2.3 landed). A hardcoded filename here would fail
+# the build on the day the DTS is renamed or a second variant is added, for a
+# reason that has nothing to do with what went wrong. Buildroot
+# installs the dtb into images/ under its BASENAME (linux/linux.mk:491-497,
+# `notdir` unless BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME), so a flat glob sees it
+# either way. Zero dtbs IS a failure: BR2_LINUX_KERNEL_DTS_SUPPORT is on, so an
+# empty images/*.dtb means the DTS silently did not build.
+de25: $(DE25_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25) all
+	@test -f $(DE25_OUTPUT_DIR)/images/Image || { \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/Image" >&2; \
+		echo "       (BR2_LINUX_KERNEL_IMAGE=y selects the uncompressed aarch64 'Image'" >&2; \
+		echo "       target -- if the defconfig was changed to Image.gz, change this" >&2; \
+		echo "       assertion in the same commit.)" >&2; exit 1; }
+	@set -- $$(ls $(DE25_OUTPUT_DIR)/images/*.dtb 2>/dev/null); \
+	if [ $$# -eq 0 ]; then \
+		echo "FATAL: de25 build finished but installed no device tree blob into" >&2; \
+		echo "       $(DE25_OUTPUT_DIR)/images/ -- BR2_LINUX_KERNEL_DTS_SUPPORT is set," >&2; \
+		echo "       so this means the DTS named by BR2_LINUX_KERNEL_INTREE_DTS_NAME /" >&2; \
+		echo "       BR2_LINUX_KERNEL_CUSTOM_DTS_PATH did not build." >&2; exit 1; \
+	fi; \
+	echo ""; \
+	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
+	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -c %s $$d) bytes)"; done; \
+	test -f $(DE25_OUTPUT_DIR)/images/rootfs.ext4 || { \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/rootfs.ext4" >&2; \
+		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
+		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
+	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
+	echo "    Bare developer OS -- no MiSTer binaries, no bootloader yet (D2.2)."; \
+	echo ""
+
+# Escape hatches for iterating without hand-editing the checked-in defconfig.
+# Both write to output-de25/; fold the result back into
+# configs/mister_de25nano_defconfig (`savedefconfig`, then hand-restore the
+# header comments -- see that file's own note) or into
+# board/mister/de25nano/linux.fragment by hand.
+#
+# de25-linux-menuconfig exists as its own target for the same reason
+# rt-menuconfig does: the `%:` catch-all would forward a bare
+# `make linux-menuconfig` with O=$(OUTPUT_DIR), i.e. against the DE10.
+de25-menuconfig: $(DE25_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25) menuconfig
+
+de25-linux-menuconfig: $(DE25_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25) linux-menuconfig
+
+# Plain rm -rf, like initramfs-clean/installer-clean and unlike rt-clean: this
+# build stages nothing into the extra-modules overlay and contributes nothing
+# to output/, so there is no second removal to pair with.
+de25-clean:
+	rm -rf $(DE25_OUTPUT_DIR)
+
 # --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
 # Builds ONLY the installer initramfs cpio, standalone. scripts/mk-sdcard.sh
 # builds this exact output dir itself as step 1/7 of `make sdcard` (see
@@ -764,7 +900,8 @@ help:
 	@echo "  make clean                      - delete everything the build produced,"
 	@echo "                                    KEEPING all .config files"
 	@echo "  make distclean                  - rm -rf output/, output-initramfs/, output-rt/,"
-	@echo "                                    output-installer/, the sdcard staging dirs and"
+	@echo "                                    output-installer/, output-de25/, the sdcard"
+	@echo "                                    staging dirs and"
 	@echo "                                    the extra-modules overlay, .config included;"
 	@echo "                                    dl/ is kept (it is a shared cache —"
 	@echo "                                    'git clean -xfd' takes it)"
@@ -790,6 +927,17 @@ help:
 	@echo "  make rt-clean                   - rm -rf output-rt/ + remove rt's module tree"
 	@echo "                                    from the extra-modules overlay AND output/target"
 	@echo "                                    (Buildroot's overlay rsync never deletes)"
+	@echo ""
+	@echo "DE25-Nano developer OS (aarch64 / Agilex 5 -- docs/de25-nano-tasks.md D2.1):"
+	@echo "  make de25                       - build the DE25-Nano image into output-de25/"
+	@echo "                                    (aarch64 toolchain + mainline 7.2.2 kernel +"
+	@echo "                                    minimal BusyBox ext4 rootfs; asserts images/Image"
+	@echo "                                    and a .dtb exist). BARE DEVELOPER OS: no MiSTer"
+	@echo "                                    binaries, no bootloader yet. Does NOT run"
+	@echo "                                    'initramfs' -- that cpio is armv7."
+	@echo "  make de25-menuconfig            - Buildroot menuconfig for the DE25 config"
+	@echo "  make de25-linux-menuconfig      - kernel menuconfig for the DE25 kernel"
+	@echo "  make de25-clean                 - rm -rf output-de25/"
 	@echo ""
 	@echo "zImage_dtb assembly (P1.11):"
 	@echo "  make zimage-dtb                 - cat zImage+DTB and run scripts/check-zimage-dtb.sh"

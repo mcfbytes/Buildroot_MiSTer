@@ -645,6 +645,29 @@ even though the rootfs is mounted read-only (or `/etc/profile`'s login-time
 options. All of it is annotated in [`PLAN.md` §5](PLAN.md) and
 [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md).
 
+**Forward-looking: the stock patch is 32-bit-ARM-only by construction.** Stock's
+`loop_setup()` issues the loop attach as a direct call into the syscall entry points —
+`sys_ioctl(device_fd, LOOP_SET_FD, file_fd)` then `sys_close()` — from inside
+`init/do_mounts.c`. That compiles on the DE10-Nano's Cortex-A9 only because 32-bit ARM
+still defines `sys_ioctl()` as an ordinary C function. Every 64-bit ARM kernel since 4.19
+selects `ARCH_HAS_SYSCALL_WRAPPER`, which turns each syscall into
+`__arm64_sys_ioctl(const struct pt_regs *)` and drops the C-callable `sys_*` prototypes
+altogether (`include/linux/syscalls.h` declares them only under
+`#ifndef CONFIG_ARCH_HAS_SYSCALL_WRAPPER`). On aarch64 the stock patch does not merely
+misbehave; it has no symbol to call and cannot build. The kernel's sanctioned
+replacements for init-time work — the `init_mount()`, `init_mkdir()`, `init_chdir()`
+family in `fs/init.c` — deliberately include no `init_ioctl()`, because an ioctl is
+driver-defined and there is nothing generic to wrap, and the internal `vfs_ioctl()` /
+`blkdev_ioctl()` paths are private to `fs/` and `block/`. So the only way to keep `loop=`
+in-kernel on a 64-bit ARM SoC is the rewrite this project already had to do for 6.18:
+export a purpose-built attach helper from the loop driver itself and call it with
+`filp_open()`ed files instead of descriptors (`linux-patches-upstream/0100-…`, carried
+for the upstream fork, not shipped in this image). The initramfs design, by contrast,
+contains no architecture-specific line at all: `mount`, `losetup`, and
+`switch_root` behave identically on any CPU the kernel runs on. Should this image ever
+need to boot something that is not a Cyclone V, the boot path comes along unchanged, and
+the kernel carries one patch fewer than it otherwise would.
+
 ### The full SD-card image
 
 `make sdcard` produces a complete, `dd`-able `sdcard.img` — a two-partition MBR with the

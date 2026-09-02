@@ -1,8 +1,8 @@
-From 600df0999ac2a9090eb862022261fe6d9e21139c Mon Sep 17 00:00:00 2001
+From 10fade754cb1294e18c675486fc72e41825d425b Mon Sep 17 00:00:00 2001
 From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
-Date: Wed, 2 Sep 2026 00:23:16 -0500
-Subject: [PATCH 1/1] mmc: sdhci-cadence: limit Agilex 5 SD4HC to a 40-bit
- DMA mask
+Date: Wed, 2 Sep 2026 00:45:51 -0500
+Subject: [PATCH 1/1] mmc: sdhci-cadence: limit Agilex 5 SD4HC to a 40-bit DMA
+ mask
 
 The Cadence SD4HC macro integrated on Intel/Altera Agilex 5 exposes only
 40 of the 64 descriptor address bits to the HPS interconnect, but its
@@ -43,6 +43,19 @@ form used by Agilex 5 board device trees is dtbs_check-clean.  Boards
 that keep only the generic fallback are unaffected and keep today's
 behaviour.
 
+The binding also gains four properties this integration needs and the
+schema never described: Agilex 5 wires two clocks to the macro (biu and
+ciu) where the schema allowed one, and the controller sits behind an
+arm-smmu-v3 on an I/O-coherent port.  Without them a conforming device
+tree trips "clocks: ... is too long" and an unevaluatedProperties error
+naming clock-names, iommus and dma-coherent.  No existing board is
+constrained: clocks keeps minItems: 1, clock-names is optional and
+likewise minItems: 1, and iommus and dma-coherent are optional.
+dma-coherent is already declared by nine other mmc bindings
+(arasan,sdhci.yaml, fsl,esdhc.yaml, sdhci-am654.yaml, ...) and
+"iommus: maxItems: 1" matches usb/dwc2.yaml, which describes another
+Agilex 5 peripheral behind the same SMMU.
+
 Mainline currently ships no Agilex 5 mmc node, so nothing in tree
 changes.  Carried locally against Linux 7.2.2 for the DE25-Nano pending
 upstream submission; it is an upstream candidate as-is, and whether and
@@ -50,12 +63,12 @@ when to post it to linux-mmc is the maintainer's call.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- .../devicetree/bindings/mmc/cdns,sdhci.yaml   |  1 +
+ .../devicetree/bindings/mmc/cdns,sdhci.yaml   | 15 ++++++-
  drivers/mmc/host/sdhci-cadence.c              | 41 +++++++++++++++++++
- 2 files changed, 42 insertions(+)
+ 2 files changed, 55 insertions(+), 1 deletion(-)
 
 diff --git a/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml b/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
-index 6c7317d..be75995 100644
+index 6c7317d..10666b0 100644
 --- a/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
 +++ b/Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml
 @@ -14,6 +14,7 @@ properties:
@@ -66,6 +79,31 @@ index 6c7317d..be75995 100644
            - microchip,mpfs-sd4hc
            - microchip,pic64gx-sd4hc
            - mobileye,eyeq-sd4hc
+@@ -28,11 +29,23 @@ properties:
+     maxItems: 1
+ 
+   clocks:
+-    maxItems: 1
++    minItems: 1
++    maxItems: 2
++
++  clock-names:
++    minItems: 1
++    items:
++      - const: biu
++      - const: ciu
+ 
+   resets:
+     maxItems: 1
+ 
++  iommus:
++    maxItems: 1
++
++  dma-coherent: true
++
+   # PHY DLL input delays:
+   # They are used to delay the data valid window, and align the window to
+   # sampling clock. The delay starts from 5ns (for delay parameter equal to 0)
 diff --git a/drivers/mmc/host/sdhci-cadence.c b/drivers/mmc/host/sdhci-cadence.c
 index 435603c..d1ad6ab 100644
 --- a/drivers/mmc/host/sdhci-cadence.c

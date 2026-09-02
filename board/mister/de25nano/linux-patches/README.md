@@ -81,7 +81,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 
 | # | Patch | Why |
 |---|---|---|
-| 101 | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook, plus the matching binding string in `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml`. Addresses `docs/de25-implementation-path.md` §8 Q2 (the leading hypothesis for the mmc0/`arm-smmu-v3` `F_TRANSLATION` fault): mainline takes `DMA_BIT_MASK(64)` where the controller drives only 40 address bits. Upstreamable as-is; carried locally pending submission. |
+| 101 | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. Addresses `docs/de25-implementation-path.md` §8 Q2 (the leading hypothesis for the mmc0/`arm-smmu-v3` `F_TRANSLATION` fault): mainline takes `DMA_BIT_MASK(64)` where the controller drives only 40 address bits. Its binding hunk also completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — which is what makes the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). Upstreamable as-is; carried locally pending submission. |
 | 102 | `0102-firmware-stratix10-svc-match-agilex5-svc` | One-line match-table addition so mainline's `intel,agilex5-svc` DT node (shipped in `socfpga_agilex5.dtsi`, listed in the binding, matched by no driver) actually binds. `docs/de25-implementation-path.md` §3.1 bullet 2. Removes the need for a DTS-side compatible override. Upstreamable as-is; carried locally pending submission. |
 
 ### Counts
@@ -109,6 +109,16 @@ both present. A single-string `compatible = "intel,agilex5-sd4hc"` would bind th
 the schema; `compatible = "cdns,sd4hc"` alone stays schema-clean but binds the generic entry and
 therefore **does not get the 40-bit mask**.
 
+The same binding hunk also declares the four properties the Agilex 5 `mmc0` node needs and the
+schema previously lacked, so the node may carry all of them and stay clean:
+
+- `clocks` — now `minItems: 1, maxItems: 2`, and `clock-names` accepts `biu`, `ciu` in that order;
+- `iommus` — `maxItems: 1` (same form as `usb/dwc2.yaml` for another Agilex 5 peripheral);
+- `dma-coherent` — `true` (as nine other `mmc/*.yaml` bindings already declare).
+
+Nothing here is made mandatory, so the in-tree `cdns,sd4hc` boards are unaffected — verified:
+`uniphier-ld20-ref.dtb` and `elba-asic.dtb` both build `CHECK_DTBS=y`-clean with the patch applied.
+
 `0102` means the DTS does **not** need to override `/firmware/svc`'s compatible to
 `"intel,agilex-svc"`; mainline's `"intel,agilex5-svc"` now binds directly, and the binding's
 `allOf` requirement that `iommus` be present for that string continues to hold.
@@ -126,3 +136,9 @@ work/buildroot/support/scripts/apply-patches.sh <fresh linux-7.2.2> \
 
 34/34 applied, zero hunks taking fuzz, zero rejects, exit 0. `scripts/lint-kernel-patches.sh`
 accepts this directory as an argument and passes.
+
+`dtbs_check` on `socfpga_agilex5_de25nano.dtb` at 7.2.2 + `0101` + `0102` leaves **5** warnings,
+all of them the expected `fpga-mgr` two-string ones from `docs/de25-dts-rationale.md` §2.2 rows
+1–5; both `mmc@10808000` warnings are gone. `make dt_binding_check
+DT_SCHEMA_FILES=Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` is clean
+(CHKDT / LINT / STYLE / example DTC all pass).

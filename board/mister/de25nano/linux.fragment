@@ -83,8 +83,9 @@ CONFIG_ARCH_INTEL_SOCFPGA=y
 CONFIG_CLK_INTEL_SOCFPGA=y
 CONFIG_CLK_INTEL_SOCFPGA64=y
 
-# --- Serial console — HPS UART0, a 16550 at 0x10c02000 -----------------------
-# socfpga_agilex5.dtsi's uart0 is `snps,dw-apb-uart`, driven by 8250_DW.
+# --- Serial console — HPS UART1 (the DE25-Nano's header UART; uart0 is the
+# SoCDK's) — both are `snps,dw-apb-uart` in socfpga_agilex5.dtsi, driven by
+# 8250_DW. The DTS selects uart1 via serial0/stdout-path.
 # All four already y in arm64 defconfig (:557,:558,:563,:568); sentinels,
 # because a serial login IS the acceptance criterion for this board and a
 # console that is a module is a console that does not exist at panic time.

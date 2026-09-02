@@ -20,13 +20,16 @@ diagnostic anywhere.  With the SMMU disabled the same truncation
 corrupts DMA to physical memory above 1 TiB.
 
 Give the macro its own compatible with driver data that installs a
-40-bit mask through the existing ->set_dma_mask hook, in the same way
-sdhci-of-esdhc.c does for the ls1043a/ls1046a eSDHC.  The hook runs
-inside sdhci_setup_host() in place of sdhci_set_dma_mask(), which is the
-only point early enough: the mask has to be right before the ADMA
-descriptor table is allocated, and any dma_set_mask_and_coherent() call
-made in probe before sdhci_add_host() would simply be overwritten by
-sdhci_set_dma_mask().
+40-bit mask through the existing ->set_dma_mask hook, as sdhci-tegra.c
+does (sdhci-of-esdhc.c narrows the ls1043a/ls1046a eSDHC to 40 bits too,
+but from ->enable_dma).  The hook runs inside sdhci_setup_host() in place
+of sdhci_set_dma_mask(), which is the only point early enough: the mask
+has to be right before the ADMA descriptor table is allocated, and any
+dma_set_mask_and_coherent() call made in probe before sdhci_add_host()
+would simply be overwritten by sdhci_set_dma_mask().  Because the hook
+replaces sdhci_set_dma_mask() outright, a failed 40-bit mask falls back
+to PIO rather than to a 32-bit retry; that is acceptable here, since a
+40-bit mask cannot fail on this SoC's bus.
 
 SDHCI_QUIRK2_BROKEN_64_BIT_DMA is deliberately not used.  It would clear
 SDHCI_USE_64_BIT_DMA and fall back to a 32-bit mask and 32-bit ADMA2

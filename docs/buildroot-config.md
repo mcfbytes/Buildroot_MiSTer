@@ -2754,10 +2754,11 @@ The judgement calls, each recorded here:
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
 Symbol counts (assignments + explicit not-set lines): `common` 7;
-`de10nano` 16; `kernel-only` 3 + 1 not-set; `de10nano-image` 258 + 10 not-set;
-`de25nano` 19. de10nano stack total 281 + 10 not-set, exactly the old file's;
-de10nano-kernel stack 26 + 1, exactly the old kernel defconfig's; de25nano
-stack 26, exactly the old DE25 defconfig's.
+`de10nano` 16; `kernel-only` 3 + 1 not-set; `de10nano-image` 257 + 10 not-set;
+`de25nano` 19. de10nano stack total 280 + 10 not-set — the old file had 281
+assignment lines, of which one was the duplicate `BR2_PACKAGE_STRACE=y`, so
+the SET of symbols is identical; de10nano-kernel stack 26 + 1, exactly the
+old kernel defconfig's; de25nano stack 26, exactly the old DE25 defconfig's.
 
 ---
 

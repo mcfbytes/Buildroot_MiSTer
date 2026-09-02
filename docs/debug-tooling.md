@@ -54,7 +54,7 @@ $ grep -rn "DEBUG TOOLING" configs/ board/
 
 | Where | What |
 | --- | --- |
-| `configs/fragments/de10nano-image.fragment` | `BR2_PACKAGE_GDB` + `_GDB_SERVER` + `_GDB_DEBUGGER`, `BR2_PACKAGE_STRACE`, `BR2_PACKAGE_LINUX_TOOLS_PERF` (+ `_NEEDS_HOST_PYTHON3`), `BR2_PACKAGE_RT_TESTS` |
+| `configs/fragments/de10nano-image.fragment` | `BR2_PACKAGE_GDB` + `_GDB_SERVER` + `_GDB_DEBUGGER`, `BR2_PACKAGE_LINUX_TOOLS_PERF` (+ `_NEEDS_HOST_PYTHON3`), `BR2_PACKAGE_RT_TESTS`. `BR2_PACKAGE_STRACE` was in the block too until the 2026-09 fragment split: T5 had already promoted strace to a permanent package (its own line in the T5 section), and the fragment sets it once, there — deleting the block no longer removes strace (`docs/buildroot-config.md` §5.32) |
 | `board/mister/de10nano/linux.config` | `CONFIG_COREDUMP=y` (was `# CONFIG_COREDUMP is not set`) |
 
 Nothing else in the tree references any of it.

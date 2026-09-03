@@ -188,6 +188,26 @@ else
 			note "(50-timesyncd.conf here means configure probed the host; see external.mk's dhcpcd block)"
 		fi
 	fi
+	# The EXAMPLE hooks are pinned too (--with-eghooks=yp.conf): they are the
+	# other half of what the host probe used to decide, and a bump that stops
+	# honouring the option would otherwise change the canonical file set with
+	# a green build. Expected set = dhcpcd's unconditional examples + 50-yp.conf.
+	EXPECT_DHCPCD_EGHOOKS="10-wpa_supplicant 15-timezone 29-lookup-hostname 50-yp.conf"
+	eghooks_dir=$(find "$dump_dir" -type d -path '*/share/dhcpcd/hooks' 2>/dev/null | head -1)
+	if [ -z "$eghooks_dir" ]; then
+		bad "no /usr/share/dhcpcd/hooks (example hooks) directory in the image"
+	else
+		got_eg=$(find "$eghooks_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ' | sed 's/ $//')
+		# shellcheck disable=SC2086  # word-splitting the space-separated list is the point
+		want_eg=$(printf '%s\n' $EXPECT_DHCPCD_EGHOOKS | sort | tr '\n' ' ' | sed 's/ $//')
+		if [ "$got_eg" = "$want_eg" ]; then
+			ok "dhcpcd example-hook set is exactly the pinned one ($want_eg)"
+		else
+			bad "dhcpcd example-hook set differs from the pinned one (--with-eghooks not honoured, or a host probe leaked)"
+			note "expected: $want_eg"
+			note "found:    $got_eg"
+		fi
+	fi
 fi
 
 rm -f "$dump_dir.rdump.log"

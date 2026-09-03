@@ -115,3 +115,39 @@ endef
 LINUX_KCONFIG_FIXUP_CMDS += $(sep)$(MISTER_LINUX_INITRAMFS_FIXUP)
 
 endif # BR2_LINUX_KERNEL && BR2_arm
+
+################################################################################
+#
+# dhcpcd: pin the hook set so it cannot depend on the BUILD HOST.
+#
+# dhcpcd's own ./configure decides which dhcpcd-hooks to install by probing the
+# machine it runs on -- `which ntpd`, `which chronyd`,
+# /usr/lib/systemd/systemd-timesyncd, `which ypbind` -- unless it is handed the
+# list explicitly (configure: `if ! $HOOKSET` around the probes; HOOKSET is
+# only set by --with-hooks). Buildroot's package/dhcpcd/dhcpcd.mk passes no
+# --with-hooks, so the TARGET image inherited the host's daemons: a GitHub
+# runner (ntpd/chronyd on PATH) shipped 50-ntp.conf, a developer box with
+# systemd-timesyncd and no ntpd shipped 50-timesyncd.conf instead -- and the
+# build was green either way. Found 2026-09-02 by diffing a CI image against a
+# local one (docs/init-parity.md, dhcpcd row).
+#
+# This appends to the package's own CONFIG_OPTS -- legal because Buildroot
+# includes BR2_EXTERNAL .mk files after package/*/*.mk (work/buildroot/
+# Makefile: package includes first, then $(BR2_EXTERNAL_MKS)) and the
+# DHCPCD_CONFIGURE_CMDS `define` expands $(DHCPCD_CONFIG_OPTS) when the recipe
+# RUNS, not when the .mk is parsed. No Buildroot patch, no dhcpcd patch.
+#
+# The values reproduce the canonical (CI-built) image exactly: the base hooks
+# 01-test/20-resolv.conf/30-hostname are unconditional in hooks/Makefile;
+# `ntp.conf` selects 50-ntp.conf (we ship classic ntpd, BR2_PACKAGE_NTP, so
+# DHCP-offered NTP servers land in /etc/ntp.conf as on stock); `yp.conf` keeps
+# the 50-yp.conf EXAMPLE hook under /usr/share/dhcpcd/hooks, which CI also
+# shipped. Names are hook stems: configure's find_hook() matches
+# [0-9][0-9]-<stem>[.conf], so "ntp.conf" is right and "50-ntp.conf" silently
+# matches nothing (verified against dhcpcd 10.2.4's configure).
+# scripts/check-linux-img.sh asserts the resulting hook set, fail-closed.
+#
+################################################################################
+ifeq ($(BR2_PACKAGE_DHCPCD),y)
+DHCPCD_CONFIG_OPTS += --with-hooks=ntp.conf --with-eghooks=yp.conf
+endif

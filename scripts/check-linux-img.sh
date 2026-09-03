@@ -163,7 +163,53 @@ else
 		bad "ssh_host_* file(s) found IN THE IMAGE -- this ships a private key:"
 		printf '%s\n' "$found" | while IFS= read -r f; do note "$f"; done
 	fi
+	# dhcpcd's hook set must be the PINNED one, never the build host's. dhcpcd's
+	# configure probes the machine it runs on for ntpd/chronyd/timesyncd/ypbind and
+	# installs hooks accordingly unless told otherwise; external.mk pins it with
+	# --with-hooks/--with-eghooks (see the comment there). This assertion is what
+	# turns a future regression -- a Buildroot bump that changes the option, a host
+	# that grows a daemon -- from a silent image difference into a red build.
+	# Expected set = the canonical CI-built image: dhcpcd's three unconditional
+	# hooks, 50-ntp.conf (we ship ntpd), and our own 90-timezone (ADR 0025).
+	EXPECT_DHCPCD_HOOKS="01-test 20-resolv.conf 30-hostname 50-ntp.conf 90-timezone"
+	hooks_dir=$(find "$dump_dir" -type d -path '*/dhcpcd/dhcpcd-hooks' 2>/dev/null | head -1)
+	if [ -z "$hooks_dir" ]; then
+		bad "no dhcpcd-hooks directory in the image (dhcpcd or its hooks are missing)"
+	else
+		got_hooks=$(find "$hooks_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ' | sed 's/ $//')
+		# shellcheck disable=SC2086  # word-splitting the space-separated list is the point
+		want_hooks=$(printf '%s\n' $EXPECT_DHCPCD_HOOKS | sort | tr '\n' ' ' | sed 's/ $//')
+		if [ "$got_hooks" = "$want_hooks" ]; then
+			ok "dhcpcd hook set is exactly the pinned one ($want_hooks)"
+		else
+			bad "dhcpcd hook set differs from the pinned one -- a build-host daemon leaked into the image?"
+			note "expected: $want_hooks"
+			note "found:    $got_hooks"
+			note "(50-timesyncd.conf here means configure probed the host; see external.mk's dhcpcd block)"
+		fi
+	fi
+	# The EXAMPLE hooks are pinned too (--with-eghooks=yp.conf): they are the
+	# other half of what the host probe used to decide, and a bump that stops
+	# honouring the option would otherwise change the canonical file set with
+	# a green build. Expected set = dhcpcd's unconditional examples + 50-yp.conf.
+	EXPECT_DHCPCD_EGHOOKS="10-wpa_supplicant 15-timezone 29-lookup-hostname 50-yp.conf"
+	eghooks_dir=$(find "$dump_dir" -type d -path '*/share/dhcpcd/hooks' 2>/dev/null | head -1)
+	if [ -z "$eghooks_dir" ]; then
+		bad "no /usr/share/dhcpcd/hooks (example hooks) directory in the image"
+	else
+		got_eg=$(find "$eghooks_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ' | sed 's/ $//')
+		# shellcheck disable=SC2086  # word-splitting the space-separated list is the point
+		want_eg=$(printf '%s\n' $EXPECT_DHCPCD_EGHOOKS | sort | tr '\n' ' ' | sed 's/ $//')
+		if [ "$got_eg" = "$want_eg" ]; then
+			ok "dhcpcd example-hook set is exactly the pinned one ($want_eg)"
+		else
+			bad "dhcpcd example-hook set differs from the pinned one (--with-eghooks not honoured, or a host probe leaked)"
+			note "expected: $want_eg"
+			note "found:    $got_eg"
+		fi
+	fi
 fi
+
 rm -f "$dump_dir.rdump.log"
 
 # Belt-and-suspenders: the specific mount point ADR 0015 names must exist and

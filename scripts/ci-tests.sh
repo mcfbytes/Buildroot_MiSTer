@@ -1766,6 +1766,57 @@ else
 	fi
 fi
 
+# --- cold-boot time sync (91-ntp-kick) ---------------------------------------
+# Same shape as the timezone hook above, and for the same reason: ntpd is started
+# by S49ntp before any network exists, so on a no-RTC board the clock waits on
+# ntpd's DNS retry backoff (2-3-4-6-8-12-16-24-32-48-64s) rather than on the
+# network. This hook restarts ntpd once, when an address actually arrives. Assert
+# the hook AND dhcpcd's runner, since a hook nothing sources is inert.
+require_present "usr/lib/dhcpcd/dhcpcd-hooks/91-ntp-kick" "dhcpcd 91-ntp-kick hook"
+require_present "etc/init.d/S49ntp" "S49ntp (the hook restarts it; without it the kick is a no-op)"
+
+# `iburst` is what makes the kick worth making: without it ntpd falls back to
+# minpoll and takes minutes to select a source, so the restart would buy little.
+# It ships in the ntp package's own ntp.conf, which means a package bump could
+# drop it with a green build.
+if tar_has "etc/ntp.conf"; then
+	if tar xOf "$ROOTFS_TAR" ./etc/ntp.conf 2>/dev/null | grep -qE '^server .*[[:space:]]iburst'; then
+		pass "/etc/ntp.conf keeps iburst on its server lines"
+	else
+		fail "/etc/ntp.conf keeps iburst on its server lines" \
+			"without iburst the 91-ntp-kick restart converges in minutes, not seconds"
+	fi
+else
+	fail "/etc/ntp.conf present" "not in rootfs.tar"
+fi
+
+# The behaviour -- once per boot and not once per event, never starting an ntpd
+# that is not running, not spending its one kick on a pass that bailed out, and
+# the two SOURCED properties -- has its own sandboxed harness. No build, no
+# board, no network.
+printf -- '--- test-ntp-kick.sh: ntpd kick hook behaviour (29 cases) ---\n'
+if "$ROOT/scripts/test-ntp-kick.sh"; then
+	pass "test-ntp-kick.sh (ntpd kick hook behaviour, 29 cases)"
+else
+	fail "test-ntp-kick.sh (ntpd kick hook behaviour, 29 cases)" \
+		"one or more cases failed -- see output above"
+fi
+
+if [ -z "$QEMU_ARM" ]; then
+	skip "test-ntp-kick.sh under the target's own BusyBox ash" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/bin/busybox" ]; then
+	skip "test-ntp-kick.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
+else
+	printf -- '--- test-ntp-kick.sh: same cases, target BusyBox ash under qemu-arm ---\n'
+	if NTP_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
+		"$ROOT/scripts/test-ntp-kick.sh"; then
+		pass "test-ntp-kick.sh under the target's own BusyBox ash"
+	else
+		fail "test-ntp-kick.sh under the target's own BusyBox ash" \
+			"passes on the host shell but not on BusyBox ash -- see output above"
+	fi
+fi
+
 # =============================================================================
 section "P3.10 — Network filesystem client parity (NFS half per ADR 0022)"
 # =============================================================================

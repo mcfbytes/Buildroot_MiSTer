@@ -1,0 +1,139 @@
+# Restart ntpd once, the first time this box gets an address and ntpd is
+# already running. MiSTer -- sourced by dhcpcd-run-hooks, like every hook here.
+#
+# WHY THIS EXISTS.
+# This board has no RTC, so on a cold boot the clock starts at the epoch and
+# every timestamp -- save states, screenshots, the OSD clock, syslog, ntpd's own
+# log lines -- is wrong until NTP lands. S49ntp starts `ntpd -g` at a fixed
+# point in rcS, whether or not a network exists yet, and on the common path it
+# does not: WiFi association plus DHCP usually completes well after S49.
+#
+# ntpd survives that in one respect and not in the other, and the difference is
+# the whole reason for this file:
+#
+#   the interface half heals itself.  ntpd is built with HAVE_RTNETLINK
+#     (output/build/ntp-4.2.8p18/config.h:786), so an address appearing is a
+#     netlink event: ntp_io.c:4874 schedules an endpoint rescan UPDATE_GRACE
+#     seconds out, and ntp_io.c:1980 -> ntp_peer.c:763 refresh_all_peerinterfaces
+#     -> peer_refresh_interface reattaches peers to it within ~3s. Nothing to fix.
+#
+#   the DNS half does not.  /etc/ntp.conf names 0-3.pool.ntp.org, and for a
+#     `server <hostname>` line the peer is created ONLY in the DNS callback
+#     (ntp_config.c:4459-4463 -> peer_name_resolved). At S49 there is no
+#     /etc/resolv.conf yet -- 20-resolv.conf writes it in this very hook pass --
+#     so resolution fails and NO PEERS EXIST. The rescan above then has nothing
+#     to reattach, and peer_xmit returns early on !peer->dstadr
+#     (ntp_proto.c:4157) regardless.
+#
+# So the clock waits on ntpd's DNS retry backoff, and nothing else.
+# libntp/ntp_intres.c manage_dns_retry_interval walks 2-3-4-6-8-12-16-24-32-48-64
+# seconds; config.h:1313 leaves IGNORE_DNS_ERRORS undefined, so DNSFLAGS is 0 and
+# retmax is 64, not 1024. Attempts therefore land at t = 2, 5, 9, 15, 23, 35, 51,
+# 75, 107, 155, 219, 283 ... seconds after ntpd started, then every 64s. The wait
+# is however long until the next slot after the address arrives: a few seconds on
+# a wired box, 10-20s on a typical WiFi boot, and 30s to a couple of minutes when
+# the network turns up late (slow AP, a cable plugged in after boot, or WiFi
+# configured on a card that has already been booted once).
+#
+# A restart re-resolves immediately against the resolv.conf that now exists.
+# /etc/ntp.conf carries `iburst` on all four pool lines, so ntpd gets its samples
+# at ~2s intervals rather than at minpoll, and S49ntp's `-g` permits the one
+# large step a no-RTC box needs -- correct time within roughly 10-15s of the kick.
+#
+# WHY A DHCP HOOK, AND NOT AN INIT SCRIPT OR A UDEV RULE.
+# Same argument as 90-timezone's, which see: the event we want is "this box now
+# has an address", and dhcpcd is what publishes it. An init script can only ask
+# whether there is a network a few seconds into boot, which is the wrong question
+# -- that is precisely the state that created this problem. A udev rule is wrong
+# in the other direction: a net `add` uevent fires when the netdev is CREATED,
+# before association, before a lease, before a route, before resolv.conf. Kicking
+# a DNS-dependent daemon there would reproduce the bug one layer down.
+#
+# dhcpcd is already fully event-driven underneath this: it runs in master mode
+# and learns about new interfaces from netlink (RTM_NEWLINK ->
+# dhcpcd_handleinterface, src/if-linux.c:1137), so a dongle plugged in three
+# boots later reaches this hook with no init involvement at all.
+#
+# WHY sntp IS NOT USED HERE.
+# `sntp -Ss` would set the clock in about a second instead of ten, but
+# BR2_PACKAGE_NTP_SNTP also installs Buildroot's own /etc/init.d/S48sntp
+# (package/ntp/ntp.mk:110-114), which runs sntp at boot -- one script before
+# ntpd, with no network -- and would have to be suppressed. Ten seconds is not
+# worth a package symbol plus a post-build prune.
+#
+# WHY NOT service_condcommand, WHICH 50-ntp.conf USES.
+# It cannot work on this image, for two independent reasons. dhcpcd's detect_init
+# (dhcpcd-run-hooks) finds no systemctl/rc-service/invoke-rc.d/service/sv here and
+# falls through to its /etc/init.d branch, which tests `[ -x /etc/init.d/ntpd ]`
+# -- ours is S49ntp. And service_status runs `$x/$1 status`, a verb S49ntp has no
+# case for. Both fail silently, returning 1. This calls the script directly.
+#
+# ONCE PER BOOT, AND ONLY FOR AN ntpd THAT IS ALREADY RUNNING.
+# The mkdir is the atomic test-and-set, on a tmpfs, so it re-arms every boot and
+# cannot be won twice: two interfaces can BOUND at the same moment, and RENEW
+# fires again every few hours for the life of the session. Restarting ntpd on
+# each renewal would throw away its accumulated clock discipline for no reason,
+# which is a real cost rather than a theoretical one.
+#
+# The running check is what keeps this from starting a daemon nobody asked for --
+# if ntpd was disabled by hand, or via /etc/default/ntpd, that decision stands.
+# It also handles the ordering case that looks like a bug and is not: on a WIRED
+# box, S41dhcpcd blocks until the first lease is bound, so this hook fires DURING
+# S41 -- before S49ntp has started ntpd at all. The check fails, the stamp is
+# deliberately not claimed (it is taken last, after every gate), and rcS then
+# starts ntpd a moment later with resolv.conf already in place, which is the
+# outcome we wanted anyway. Nothing is lost and nothing needed kicking.
+#
+# A static-IP box configured only in /etc/network/interfaces never runs dhcpcd,
+# so it never gets here. Accepted, and the same gap ADR 0025 accepts: ntpd's own
+# backoff still converges there, just on its own schedule.
+#
+# DELAYS NOTHING. The work runs in a backgrounded subshell -- S49ntp's `restart`
+# has a `sleep 1` in it, and a hook must not hold up dhcpcd's chain. Being
+# sourced, this file also must not `exit`: that would end dhcpcd's whole hook run
+# and take 20-resolv.conf and 30-hostname with it. The subshell answers both at
+# once, and keeps every variable below out of dhcpcd's shell.
+#
+# The *6 reasons cannot fire on this kernel -- it is built without IPv6
+# (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
+# correct the day that changes.
+
+case "$reason" in
+BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
+	# if_up is compared as DATA, not executed. dhcpcd's own hooks write
+	# `if $if_up`, which works because dhcpcd sets it to the literal string
+	# true or false -- but this is sourced into dhcpcd's shell, where
+	# anything else in that variable would then run as a command there.
+	if [ "${if_up:-false}" = true ]; then
+	(
+		NTP_INIT=/etc/init.d/S49ntp
+		# S49ntp passes `-p $PIDFILE` to ntpd, so ntpd itself writes
+		# this. /var/run is a usr-merge-era symlink to /run (a tmpfs),
+		# so the file cannot outlive a boot. If /etc/default/ntpd has
+		# moved PIDFILE, the check below simply fails and this hook does
+		# nothing -- the safe direction.
+		NTPD_PID=/var/run/ntpd.pid
+		# tmpfs, so the once-per-boot stamp re-arms on every boot.
+		STAMPDIR=/run/ntp-kick
+
+		# Cheapest checks first; the stamp is claimed LAST, so a pass
+		# that bails out early leaves the one kick still available.
+		[ -x "$NTP_INIT" ] || exit 0
+		[ -s "$NTPD_PID" ] || exit 0
+		ntpd_pid="$(cat "$NTPD_PID" 2>/dev/null)"
+		case "$ntpd_pid" in
+			''|*[!0-9]*) exit 0 ;;
+		esac
+		# A stale pidfile cannot survive the tmpfs, but a crashed ntpd
+		# within one boot can leave one. kill -0 is the liveness test.
+		kill -0 "$ntpd_pid" 2>/dev/null || exit 0
+
+		mkdir "$STAMPDIR" 2>/dev/null || exit 0
+
+		echo "ntpd: address acquired, restarting to re-resolve the NTP pool"
+		"$NTP_INIT" restart
+	) &   # NTP-KICK-BACKGROUND -- scripts/test-ntp-kick.sh keys on this
+	      # marker to run the body synchronously; keep it if the line moves.
+	fi
+	;;
+esac

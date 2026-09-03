@@ -141,3 +141,26 @@ CONFIG_PSTORE_PMSG=y
 # the safe default wanted. Do not "enable" it here — enabling is a userspace
 # decision (open the device and feed it), and adding symbols would only create
 # the appearance of a beta-only capability that is not beta-only.
+
+# --- Troubleshooting channels (RT/7.2 variant ONLY; the 6.18 stock-parity kernel
+# is untouched). Leave with the other debug options when a shipping 7.2 kernel
+# is cut.
+#   CONFIG_NETCONSOLE         send printk (incl. an oops/panic) over UDP to a
+#                             listener; the ONLY way kernel text leaves this
+#                             board: the serial console is disabled and the
+#                             pstore backend above has no RAM reservation yet.
+#   CONFIG_NETCONSOLE_DYNAMIC configure the target at RUNTIME through configfs
+#                             (/sys/kernel/config/netconsole) from the rig's own
+#                             out-of-band config -- no listener address is ever
+#                             baked into this tree.
+#   CONFIG_MAGIC_SYSRQ        sysrq over /proc/sysrq-trigger for a live
+#                             backtrace/state dump when the board is wedged but
+#                             still reachable.
+# Measured need: a whole-board reboot during a PSX session on 2026-09-02 left no
+# trace anywhere (kernel.panic=15 fired; logs on tmpfs died with it).
+CONFIG_NETCONSOLE=y
+CONFIG_NETCONSOLE_DYNAMIC=y
+CONFIG_CONFIGFS_FS=y
+CONFIG_MAGIC_SYSRQ=y
+CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x1
+

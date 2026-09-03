@@ -153,14 +153,17 @@ CONFIG_PSTORE_PMSG=y
 #                             (/sys/kernel/config/netconsole) from the rig's own
 #                             out-of-band config -- no listener address is ever
 #                             baked into this tree.
-#   CONFIG_MAGIC_SYSRQ        sysrq over /proc/sysrq-trigger for a live
-#                             backtrace/state dump when the board is wedged but
-#                             still reachable.
+#   (inherited, NOT set here) CONFIGFS_FS=y and MAGIC_SYSRQ=y already come from
+#                             the shared linux.config, so /sys/kernel/config
+#                             exists for the dynamic target and sysrq over
+#                             /proc/sysrq-trigger gives a live backtrace/state
+#                             dump when the board is wedged but reachable.
+#                             MAGIC_SYSRQ_DEFAULT_ENABLE stays at the kernel
+#                             default 0x1 (= ALL functions), the same as the
+#                             stock-parity 6.18 kernel -- narrowing it here
+#                             would make RT diverge from stock for no gain.
 # Measured need: a whole-board reboot during a PSX session on 2026-09-02 left no
 # trace anywhere (kernel.panic=15 fired; logs on tmpfs died with it).
 CONFIG_NETCONSOLE=y
 CONFIG_NETCONSOLE_DYNAMIC=y
-CONFIG_CONFIGFS_FS=y
-CONFIG_MAGIC_SYSRQ=y
-CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x1
 

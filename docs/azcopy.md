@@ -20,7 +20,7 @@ this tree authors one. It is also **the first and only Go package in the tree**,
 has consequences of its own (§5).
 
 > **The default image does not contain azcopy.** The package builds and is fully
-> wired, but `configs/mister_de10nano_defconfig` leaves `BR2_PACKAGE_AZCOPY` unset,
+> wired, but `configs/fragments/de10nano-image.fragment` leaves `BR2_PACKAGE_AZCOPY` unset,
 > for the size reason in §1. To get azcopy onto a MiSTer today you either flip that
 > line and rebuild, or drop the released binary onto `/media/fat` yourself — which is
 > exactly how every test in §4 was run.
@@ -29,7 +29,7 @@ has consequences of its own (§5).
 
 ## 1. Size and cost — read this first
 
-**The package is present but NOT enabled** in `configs/mister_de10nano_defconfig`, and
+**The package is present but NOT enabled** in `configs/fragments/de10nano-image.fragment`, and
 size is the only reason. At 39.1 MiB installed it would be the second-largest package
 in the image after samba4, spending about a fifth of the free space `linux.img` has
 left, for a tool most users will never run. It works — §4 is a transcript of it working
@@ -235,7 +235,7 @@ all of it is fetched on a cold build, and all of it is inside the hash.
 
 ### Turning it on, and turning it back off
 
-Uncomment `BR2_PACKAGE_AZCOPY` in `configs/mister_de10nano_defconfig`. Turning it off
+Uncomment `BR2_PACKAGE_AZCOPY` in `configs/fragments/de10nano-image.fragment`. Turning it off
 again is deleting that line: nothing in the image depends on azcopy — no init script
 starts it, no other package links it, no parity test asserts it.
 `BR2_PACKAGE_CA_CERTIFICATES` and

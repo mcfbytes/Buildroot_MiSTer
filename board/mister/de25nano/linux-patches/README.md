@@ -1,6 +1,6 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.2.2**, aarch64 (Agilex 5). See
+**Base:** mainline Linux **7.2.3**, aarch64 (Agilex 5). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
 version pin.
 
@@ -19,9 +19,9 @@ without renumbering.
 `linux-patches/` (the shipped 6.18 series) and `linux-patches-beta/` (the 7.x series), so they
 link to the canonical file in `linux-patches/`. Three — `0015`, `0030`, `0037` — have a
 **7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because this
-board is on 7.2.2. (`0001` is the fourth divergent pair; it is DE10-only and excluded either way.)
+board is on 7.2.x. (`0001` is the fourth divergent pair; it is DE10-only and excluded either way.)
 
-That choice is not cosmetic — the shipped 6.18-anchored copies **hard-fail** on 7.2.2 at
+That choice is not cosmetic — the shipped 6.18-anchored copies **hard-fail** on 7.2.x at
 Buildroot's `patch -F0`: `0015` 3/5 hunks FAILED, `0030` 1/1 FAILED, `0037` 4/6 FAILED. If you
 ever "simplify" these three to point at `linux-patches/`, the build breaks immediately.
 
@@ -130,14 +130,22 @@ Both DE25-local patches were generated with `git format-patch` against a pristin
 Buildroot's own applier at its `patch -F0` (zero-fuzz) setting:
 
 ```
-work/buildroot/support/scripts/apply-patches.sh <fresh linux-7.2.2> \
+work/buildroot/support/scripts/apply-patches.sh <fresh linux-7.2.x> \
     board/mister/de25nano/linux-patches
 ```
 
 34/34 applied, zero hunks taking fuzz, zero rejects, exit 0. `scripts/lint-kernel-patches.sh`
 accepts this directory as an argument and passes.
 
-`dtbs_check` on `socfpga_agilex5_de25nano.dtb` at 7.2.2 + `0101` + `0102` leaves **5** warnings,
+RE-VERIFIED AT 7.2.3 (2026-09-02), when Renovate's rt bump moved the shared `linux.hash` and the
+DE25 pin followed (`docs/buildroot-config.md` §6.4). `make de25` after a `linux-dirclean` on a
+freshly downloaded, hash-verified `linux-7.2.3.tar.xz`: **34/34 applied, 0 hunks with fuzz, 0
+rejects**, 79 hunks relocated by line OFFSET only — which `patch -F0` permits (`-F` caps *fuzz*,
+i.e. context mismatch, not displacement). Note what this does and does not prove: the series still
+applies and the kernel still builds; nothing here has been run on hardware at 7.2.3.
+
+`dtbs_check` on `socfpga_agilex5_de25nano.dtb` at 7.2.2 + `0101` + `0102` (the measurement was
+taken at 7.2.2 and has not been re-run at 7.2.3) leaves **5** warnings,
 all of them the expected `fpga-mgr` two-string ones from `docs/de25-dts-rationale.md` §2.2 rows
 1–5; both `mmc@10808000` warnings are gone. `make dt_binding_check
 DT_SCHEMA_FILES=Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` is clean

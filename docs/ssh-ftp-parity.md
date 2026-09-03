@@ -211,7 +211,7 @@ No changes made. Notable existing content, confirmed intentional/stock-matching:
 
 Module set also matches stock: our defconfig sets only
 `BR2_PACKAGE_PROFTPD=y`, no `BR2_PACKAGE_PROFTPD_MOD_*` suboption (confirmed:
-`grep PROFTPD configs/mister_de10nano_defconfig` → exactly one line). Stock's
+`grep PROFTPD configs/fragments/de10nano-image.fragment` → exactly one line). Stock's
 own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/binaries-needed-full.txt`:
 `libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0` — no libssl, no sqlite, no
 pcre2) is consistent with the same bare/no-submodule build.
@@ -221,7 +221,7 @@ pcre2) is consistent with the same bare/no-submodule build.
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted
 
 **Corrected after a false start, recorded here so it isn't retried.**
-`configs/mister_de10nano_defconfig` has `BR2_TARGET_GENERIC_ROOT_PASSWD=""`.
+`configs/fragments/de10nano-image.fragment` has `BR2_TARGET_GENERIC_ROOT_PASSWD=""`.
 Read in isolation, and per Buildroot's own `system/Config.in` ("If set to
 empty (the default), then no root password will be set, and root will need
 no password to log in"), this looks exactly like the bug it would be if

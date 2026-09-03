@@ -1,0 +1,299 @@
+# uboot.fragment -- DE25-Nano deltas on mainline's socfpga_agilex5_defconfig.
+#
+# Applied by Buildroot on top of BR2_TARGET_UBOOT_BOARD_DEFCONFIG
+# ("socfpga_agilex5") via BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES:
+# merge_config.sh, then olddefconfig. Every line below is a DELTA -- if a value
+# here matches what the board defconfig already resolves to, it is restated
+# only where the restatement is the point (see the environment block).
+#
+# Design: docs/de25-uboot.md (per-line rationale + the QSPI-write audit table),
+#         docs/de25-implementation-path.md sections 6.1-6.3 and section 8 Q6,
+#         docs/de25-boot-chain.md sections 2, 3, 5 and the section 7 brick-risk
+#         register.
+#
+# THE ONE RULE THIS FILE ENFORCES: nothing we ship may write the QSPI. The QSPI
+# holds the SDM firmware, the phase-1 HPS bitstream (with ALL the DDR and
+# pinmux handoff data) and the factory SPL. It has no power-loss-safe update
+# path on this board, and a corrupted one is a JTAG-and-a-PC recovery. That is
+# brick-class. See the audit block below, and de25-boot-chain.md section 7.
+#
+# EDITING RULE, learned the hard way: never start a COMMENT line with
+# "# CONFIG_<something>" unless it really is an "is not set" directive.
+# support/kconfig/merge_config.sh greps this file for every symbol it is
+# changing and echoes the matching lines back at you, so a prose line that
+# begins that way turns the merge report into nonsense -- and a line that
+# happens to end in "is not set" would be parsed as a real directive
+# (SED_CONFIG_EXP2 is: caret, hash, space, the symbol name, then the
+# literal words "is not set" anchored to end of line). Indent
+# such prose, or lead with a word.
+
+################################################################################
+# Board device tree
+################################################################################
+#
+# Names board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts, which
+# BR2_TARGET_UBOOT_CUSTOM_DTS_PATH copies into arch/arm/dts/ before the build.
+# scripts/Makefile.dts adds $(CONFIG_DEFAULT_DEVICE_TREE).dtb to dtb-y, so a
+# dts that appears in no arch Makefile list still gets built -- which is what
+# makes carrying a board file without patching U-Boot possible at all.
+#
+# Mainline v2026.07 has no DE25-Nano board and socdk aliases serial0 to uart0,
+# which is the wrong UART on this board. That is the whole reason for the
+# custom dts; the .dts header explains it at length.
+CONFIG_DEFAULT_DEVICE_TREE="socfpga_agilex5_de25nano"
+
+################################################################################
+# Environment -- the block that makes a QSPI write structurally impossible
+################################################################################
+#
+# docs/de25-implementation-path.md section 6.2, and de25-boot-chain.md section
+# 7 rows 5 and 12.
+#
+# The stock socfpga_agilex5_defconfig compiles in BOTH env locations: FAT
+# (device 0, partition 1) and UBI (volume "env" in the QSPI "root" MTD
+# partition). FAT is tried first and env_save() writes back to whichever
+# location env_load() succeeded from, so with a valid uboot.env on FAT,
+# `saveenv` never reaches UBI.
+#
+# THE HAZARD IS NOT saveenv. It is on the LOAD path, with no user action at
+# all: env_ubi_load() (env/ubi.c:107) calls ubi_part() UNCONDITIONALLY at
+# env/ubi.c:128 whenever the FAT load fails. That runs ubi_dev_scan() ->
+# ubi_init() -> ubi_attach_mtd_dev() -> ubi_attach(); against a blank MTD
+# partition the attach SUCCEEDS ("empty MTD device detected"), and
+# ubi_read_volume_table() then calls create_empty_lvol() -> create_vtbl(),
+# which WRITES a fresh UBI layout volume into the QSPI.
+#
+#   Missing or corrupt uboot.env on FAT + a blank QSPI "root" MTD
+#   ==> QSPI is written on the very first env_load(), with no saveenv anywhere.
+#
+# Grepping env/ubi.c for a write finds nothing -- the write is three call
+# levels down, inside the UBI attach path. That is why the guard has to be
+# "the driver is not compiled in", not "do not run saveenv".
+#
+# ENV_IS_IN_UBI is a plain defconfig choice: nothing in ARCH_SOCFPGA_AGILEX5 or
+# ARCH_SOCFPGA_SOC64 selects it, so turning it off here is sufficient.
+CONFIG_ENV_IS_IN_FAT=y
+CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+# CONFIG_ENV_IS_IN_UBI is not set
+#
+# The other env backends, stated explicitly rather than left to a default.
+# None is set by the board defconfig today; naming them means a future
+# Buildroot or U-Boot bump that flips a default fails the CI grep instead of
+# quietly re-opening the hazard. ENV_IS_IN_SPI_FLASH is the sharpest of the
+# three: it would put the environment directly in the QSPI.
+# CONFIG_ENV_IS_IN_SPI_FLASH is not set
+# CONFIG_ENV_IS_IN_NAND is not set
+# CONFIG_ENV_IS_IN_MMC is not set
+
+################################################################################
+# QSPI: no driver, no commands, no filesystem -- three locks on one door
+################################################################################
+#
+# Turning ENV_IS_IN_UBI off closes the automatic path. These lines close the
+# manual ones: a root shell at the U-Boot prompt, a boot script, or a ported
+# DE10 habit. de25-boot-chain.md section 7 rows 10 and 11 exist because the
+# env guard alone does not cover them.
+#
+# LOCK 1 -- the controller driver. cadence_qspi is the ONLY way U-Boot can
+# reach this flash; the SD/MMC controller is a physically separate block, so
+# with this off no amount of sector arithmetic on mmcblk can touch boot flash.
+# CONFIG_CADENCE_QSPI is not set
+#
+# LOCK 2 -- the SPI-NOR stack above it. Without these, `sf` has nothing to
+# bind to even if a command survived.
+# CONFIG_DM_SPI_FLASH is not set
+# CONFIG_SPI_FLASH is not set
+# CONFIG_SPI_FLASH_MTD is not set
+# CONFIG_SPI_FLASH_STMICRO is not set
+# CONFIG_SPI_FLASH_SPANSION is not set
+#
+# LOCK 3 -- the commands. Each of these can erase or write flash directly.
+# CMD_SF is "default y if DM_SPI_FLASH", so it is on in the stock config and
+# has to be named here even though lock 2 already removes its subject.
+# CONFIG_CMD_SF is not set
+# CONFIG_CMD_SF_TEST is not set
+# CONFIG_CMD_MTD is not set
+# CONFIG_CMD_MTDPARTS is not set
+# CONFIG_CMD_UBI is not set
+# CONFIG_CMD_UBIFS is not set
+# CONFIG_CMD_NAND is not set
+#
+# ... and the layers those commands sit on, so that nothing can re-select them.
+# CONFIG_MTD is not set
+# CONFIG_DM_MTD is not set
+# CONFIG_MTD_UBI is not set
+# CONFIG_MTD_RAW_NAND is not set
+#
+# The same, SPL-side. Our SPL is compiled (see the SPL block below) but never
+# shipped, so this is belt-and-braces rather than a live hazard -- it also
+# keeps the SPL link from referencing a QSPI stack we just removed.
+# CONFIG_SPL_SPI_LOAD is not set
+# CONFIG_SPL_SPI_FLASH_MTD is not set
+# CONFIG_SPL_DM_SPI_FLASH is not set
+# CONFIG_SPL_MTD is not set
+#
+# NOT DISABLED, and deliberately so:
+#   * CONFIG_SPI / CONFIG_DESIGNWARE_SPI -- the DesignWare SPI master (spi0/spi1
+#   general-purpose pins). A different controller from the Cadence QSPI block;
+#   it cannot reach boot flash.
+#   * CONFIG_QSPI_BOOT -- despite the name this is a boot/Kconfig media choice
+#   consumed only by NXP Layerscape and i.MX code (grep: every user is under
+#   arch/arm/cpu/armv8/fsl-layerscape, arch/arm/cpu/armv7/ls102xa or
+#   arch/arm/mach-imx). It is inert on socfpga and changing it would be
+#   cosmetic churn in a file whose every line should mean something.
+
+################################################################################
+# DRAM -- do not depend on the factory SPL's bloblist
+################################################################################
+#
+# A coupling that no existing document names, found while building this.
+#
+# arch/arm/mach-socfpga/misc.c dram_init() has two branches. Under the
+# combination CONFIG_HANDOFF + ARCH_SOCFPGA_AGILEX5 it does
+#   bloblist_find(BLOBLISTT_U_BOOT_SPL_HANDOFF, ...)
+# and returns -ENOENT -- a fatal early initcall failure -- if the blob is not
+# there. That blob is written by OUR SPL, at OUR CONFIG_BLOBLIST_ADDR. But our
+# SPL never runs: the factory SPL in QSPI does (posture 1), it is a Terasic
+# build of U-Boot 2025.01, and its BLOBLIST_ADDR is a compiled-in constant that
+# appears in no artifact we can read. Mainline's socdk uses 0x7e000; the
+# reference DE25 tree uses 0x72000. If they disagree, U-Boot proper dies before
+# it has done anything, and the failure is indistinguishable from a bad card.
+#
+# With HANDOFF off, dram_init() takes the other branch --
+# fdtdec_setup_mem_size_base(), which reads the "/memory" node from our own
+# u-boot.dtb -- and the whole question disappears. The cost is that the DRAM
+# size is a declared constant (1 GiB at 0x8000_0000, in the board .dts) instead
+# of the IO96B readout. That is the right trade for posture 1: the QSPI side is
+# not ours and not verifiable, so U-Boot's first initcall must not depend on it.
+#
+# IF THE HARDWARE SESSION SHOWS THE WRONG DRAM SIZE, the fix is the constant in
+# the .dts, not this line. (The struct spl_handoff ABI itself is byte-identical
+# between the reference 2025.01-lineage tree and v2026.07 -- diff of
+# include/handoff.h -- so re-enabling HANDOFF with CONFIG_BLOBLIST_ADDR=0x72000
+# is a viable fallback if the measured size ever has to come from the SPL.)
+# CONFIG_HANDOFF is not set
+#
+# ... and with HANDOFF off, the bloblist itself has no remaining user in this
+# build, so it goes too. That is not tidiness -- it removes a latent memory
+# overlap.
+#
+# The stock defconfig sets BLOBLIST + BLOBLIST_FIXED with ADDR 0x7e000 and
+# SIZE 0x1000, i.e. the region 0x7E000..0x7EFFF in on-chip RAM. TF-A v2.15.0's
+# Agilex 5 platform puts its secondary-CPU handshake words at the top of that
+# same page:
+#     PLAT_HANDOFF_OFFSET = 0x0007F000        (agilex5/socfpga_plat_def.h:30)
+#     BL_DATA_LIMIT       = PLAT_HANDOFF_OFFSET
+#     PLAT_CPUID_RELEASE  = BL_DATA_LIMIT - 16 = 0x7EFF0
+#     PLAT_SEC_ENTRY      = BL_DATA_LIMIT -  8 = 0x7EFF8   (common/platform_def.h:125-128)
+# and bl31_plat_setup.c:59 writes PLAT_SEC_ENTRY. The declared bloblist region
+# covers both words.
+#
+# TODAY that is benign -- U-Boot only ever writes the ~32-byte bloblist header
+# at 0x7E000 and never grows into the last 16 bytes of the page. But "benign
+# because nothing currently fills the buffer" is a property of today's blob
+# set, not a guarantee, and the failure it guards against is a secondary CPU
+# jumping to a clobbered entry point. Since nothing in this build reads or
+# writes a bloblist once HANDOFF is off, deleting the region is strictly
+# better than reasoning about how full it gets.
+#
+# CHECKED, not assumed: with this off the config still resolves to SPL=y,
+# SPL_ATF=y and BINMAN=y, and a full U-Boot build completes and still emits
+# u-boot.itb. BLOBLIST_FIXED, BLOBLIST_ADDR, BLOBLIST_SIZE, SPL_BLOBLIST,
+# HANDOFF and SPL_HANDOFF all disappear from the resolved config with it --
+# which is why the HANDOFF line above is now belt-and-braces rather than the
+# operative guard. Keep both: they document two separate decisions, and if a
+# future bump makes something select BLOBLIST again, the HANDOFF line is still
+# the one that keeps dram_init() off the factory SPL's bloblist.
+# CONFIG_BLOBLIST is not set
+
+################################################################################
+# SPL -- section 8 Q6, answered by building it
+################################################################################
+#
+# de25-implementation-path.md section 6.1 reasoned from the Kconfig graph that
+# our fragment could carry "# CONFIG_SPL is not set" and genuinely eliminate
+# SPL compilation, since none of the binman FIT images references anything
+# under spl/. IT CANNOT, and the reason is one line of Kconfig:
+#
+#     config ARCH_SOCFPGA_AGILEX5
+#             select BINMAN if SPL_ATF          (arch/arm/mach-socfpga/Kconfig)
+#
+# SPL_ATF lives inside `menu "SPL configuration options" depends on SPL`
+# (common/spl/Kconfig:19-20), so with SPL off SPL_ATF is off, BINMAN is not
+# selected -- and CONFIG_BINMAN is a bool with NO PROMPT (dts/Kconfig:15), so
+# it cannot be turned back on from a defconfig or a fragment; kconfig drops the
+# line. No binman means no u-boot.itb, which is the only artifact this build
+# exists to produce.
+#
+# That was CHECKED, not just reasoned: this same fragment plus one extra
+# "SPL is not set" line, resolved through merge_config.sh + olddefconfig,
+# produces a .config in which SPL_ATF and BINMAN are absent entirely.
+#
+# So SPL STAYS COMPILED, and NOTHING OF IT IS SHIPPED. That is enforced
+# positively rather than by omission: BR2_TARGET_UBOOT_SPL is not set in
+# configs/fragments/de25nano.fragment, so Buildroot copies no spl/* file into
+# images/, and the Makefile's `de25` assertions name u-boot.itb and bl31.bin
+# and nothing else. The factory SPL in QSPI remains untouched, which is the
+# posture-1 contract.
+#
+# Q6 is therefore CLOSED, in the negative. Do not re-open it by adding
+# "# CONFIG_SPL is not set" here: it does not fail loudly, it produces a build
+# with no FIT in it.
+
+################################################################################
+# Filesystems and boot
+################################################################################
+#
+# FAT: partition 1 is FAT by the factory SPL's own contract (CONFIG_SPL_FS_FAT
+# + SYS_MMCSD_FS_BOOT_PARTITION=1), and it is where u-boot.itb, the kernel, the
+# dtb and extlinux/extlinux.conf all live -- and where uboot.env WOULD live if
+# anything ever wrote one; the card ships none. FS_FAT and CMD_FAT are
+# already pulled in by BOOT_DEFAULTS_CMDS; restated because the environment and
+# the boot path both depend on them and a silent regression here is a board
+# that does not boot.
+CONFIG_FS_FAT=y
+CONFIG_CMD_FAT=y
+#
+# exFAT: mainline gained a real fs/exfat in commit b86a651b64 (2025-03-17),
+# after the reference board's 2025.01 base -- which is exactly why that project
+# had to hand-roll libexfat and an exFAT-aware SPL. For us it is one line.
+# Partition 2's filesystem is still an open owner decision
+# (de25-implementation-path.md section 8 Q7); enabling this now means the
+# answer "exFAT" does not require a U-Boot change later. It reads and writes
+# the SD card only and cannot touch QSPI.
+CONFIG_FS_EXFAT=y
+#
+# Boot flow: extlinux, from the FAT partition.
+#
+# DISTRO_DEFAULTS is already y in the board defconfig and resolves BOOTCOMMAND
+# to "run distro_bootcmd"; BOOTMETH_EXTLINUX is y by default. distro_bootcmd
+# scans mmc 0 and, per prefix "/" then "/boot/", looks for
+# extlinux/extlinux.conf. Restated here because the boot path is the deliverable
+# and because upstream marks DISTRO_DEFAULTS deprecated -- the day it is
+# removed, this line is where the migration to BOOTSTD_DEFAULTS starts, and the
+# grep that finds it should find a comment too.
+#
+# The card side of this contract (D2.4's other half, another owner):
+#   p1 (FAT) : /u-boot.itb, /Image, /socfpga_agilex5_de25nano.dtb,
+#              /extlinux/extlinux.conf
+#              and NO uboot.env -- the card deliberately ships none. With
+#              ENV_IS_IN_UBI gone there is exactly one env driver compiled in,
+#              so a FAT miss loads the built-in default environment and writes
+#              nothing; a frozen uboot.env on the card would instead override
+#              every future release's default env. docs/de25-uboot.md section
+#              10 has the trace.
+#   extlinux.conf:
+#       default de25
+#       label de25
+#           kernel /Image
+#           fdt /socfpga_agilex5_de25nano.dtb
+#           append console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait
+CONFIG_DISTRO_DEFAULTS=y
+#
+# Fallback bootargs. With extlinux these are REPLACED by the config's `append`
+# line, so this string is only used if something boots the kernel by hand from
+# the U-Boot prompt. The stock socfpga_agilex5_defconfig ships a ramdisk-and-
+# nosmp string aimed at Simics emulation; leaving that in place would make a
+# manual `booti` do something surprising on real hardware.
+CONFIG_USE_BOOTARGS=y
+CONFIG_BOOTARGS="console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait"

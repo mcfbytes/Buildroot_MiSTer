@@ -30,7 +30,7 @@ no new libraries.
 
 ## What is enabled
 
-In `configs/mister_de10nano_defconfig`, next to the existing util-linux library
+In `configs/fragments/de10nano-image.fragment`, next to the existing util-linux library
 selections:
 
 | Symbol | Programs |
@@ -123,7 +123,7 @@ binary used for manual/debug `hwclock` calls.
 
 ## Verification
 
-- **kconfig resolves cleanly.** `make mister_de10nano_defconfig && make olddefconfig`
+- **kconfig resolves cleanly.** `make de10nano-defconfig && make olddefconfig`
   (no compile) lands all 16 enabled util-linux program toggles in `output/.config`
   with nothing silently dropped; the 25 BusyBox `# CONFIG_… is not set` fragment lines
   all target symbols confirmed present in the built BusyBox `.config` (so none is a

@@ -19,7 +19,7 @@ config BR2_PACKAGE_AZCOPY
 	  IT IS BIG, AND IT IS OFF BY DEFAULT. 39.1 MiB installed makes it
 	  the second-largest single package in this image after samba4,
 	  about a fifth of the free space linux.img has left, so
-	  configs/mister_de10nano_defconfig deliberately does not enable
+	  configs/fragments/de10nano-image.fragment deliberately does not enable
 	  it. Every tagged release instead carries a STATIC build as a
 	  standalone azcopy-<version>-armv7.xz download (the build-azcopy
 	  job in release.yml); static so it survives a rollback to an

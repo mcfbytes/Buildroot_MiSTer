@@ -133,7 +133,7 @@ including **two genuine upstream defects** in the very defconfig a naive port st
   (515,141 B, sha256 `e2d46cf9…62ba64`), fetched by hash. ADR 0017 §Decision 5 stands.
 * **`sdcard.img` still embeds that same stock blob.** ADR 0017 §Decision 4 and ADR 0020
   stand; `scripts/mk-sdcard.sh` and `scripts/check-sdcard.sh` are untouched.
-* `configs/mister_de10nano_defconfig` gains no `BR2_TARGET_UBOOT*` line.
+* `configs/fragments/de10nano-image.fragment` gains no `BR2_TARGET_UBOOT*` line.
 * **No artifact produced by this work may be named `uboot.img`.** `updateboot` `dd`s
   `/media/fat/linux/uboot.img` over the `0xA2` partition on every Linux update with no
   version check, no hash check and no opt-out (boot-chain §5).

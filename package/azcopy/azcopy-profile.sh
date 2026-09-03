@@ -21,7 +21,7 @@
 # image -- including the default one, which does not build azcopy at all.
 #
 # THAT MATTERS MOST IF YOU ARE RUNNING A DOWNLOADED BINARY. The default image
-# does not enable this package (see configs/mister_de10nano_defconfig), so the
+# does not enable this package (see configs/fragments/de10nano-image.fragment), so the
 # usual way to have azcopy on a MiSTer is to drop the released binary onto
 # /media/fat yourself -- in which case this file is NOT present and none of the
 # defaults below apply. Set them yourself; that is what the copy-paste note

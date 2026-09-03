@@ -88,7 +88,7 @@ headroom (60.6% free vs. the 15% floor).
 ## azcopy (2026-08-17) — packaged, deliberately NOT enabled
 
 `package/azcopy` would be the largest single thing added to this image since samba4,
-and its size is exactly why `configs/mister_de10nano_defconfig` leaves it switched
+and its size is exactly why `configs/fragments/de10nano-image.fragment` leaves it switched
 off. **None of the figures below are in the shipped image today** — they are what
 enabling that one line would cost. The full accounting —
 how the binary was measured, what the strip step does to a Go binary, the build-time

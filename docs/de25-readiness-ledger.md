@@ -79,6 +79,22 @@ in prose, no action or a one-word reword.
 
 ## 3. The ledger — CI
 
+> **Status, 2026-09-02 — the file-path axis this section and §4 describe has since
+> been wired.** The three monolithic defconfigs (`configs/mister_de10nano_defconfig`,
+> `configs/mister_kernel_defconfig`, `configs/mister_de25nano_defconfig`) were split into
+> fragment stacks under `configs/fragments/` (`stacks.mk` says which fragments form
+> which configuration; `docs/buildroot-config.md` §1 and §10). Every consumer named
+> below by those filenames now reads a fragment: `.github/actions/buildroot-build`
+> fingerprints the variant's stack through `scripts/lib/config-stacks.sh`;
+> `renovate.json`, `renovate-hash-sync.yml`, `scripts/hash-sync-kernel.sh`,
+> `scripts/ci-tests.sh`, `scripts/test-initramfs.sh`, `scripts/test-sdcard-install.sh`,
+> `scripts/export-kernel-tree.sh` and `scripts/lint-kernel-patches.sh` read
+> `configs/fragments/de10nano.fragment`; `scripts/check-linux-img.sh` cites
+> `configs/fragments/de10nano-image.fragment`; `scripts/check-kernel-defconfig-sync.sh`
+> compares the two DE10 stacks' merged text. The `Makefile` rows in §4 are superseded
+> by `make de10nano-defconfig` / `make de25nano-defconfig`. The line numbers below are
+> the pre-split ones and are kept as the record of what was verified.
+
 | file:line | coupling | sev | when you touch this, do this instead |
 |---|---|---|---|
 | `.github/actions/buildroot-build/action.yml:190-195` | Toolchain-fingerprint sentinel requires `^BR2_arm` and `^BR2_cortex` or the build fails loud **[V]** — coupling (c) | semantic-blocker | Adopt §5's `BOARD_FINGERPRINT_SENTINELS` row lookup with a validated `board` input; never add a second arch string beside these, and never soften the assert to a warning. |
@@ -94,6 +110,9 @@ in prose, no action or a one-word reword.
 | `renovate.json:38,111,113` | `fileMatch` and its long rationale pin `configs/mister_de10nano_defconfig` (and `mister_kernel_defconfig`) by literal name **[V]** | parameterize | Add the DE25 defconfig to the same manager's file list — one PR touching every board is the intent, and a per-board manager would recreate exactly the half-the-repo bump this comment documents. |
 
 ## 4. The ledger — configs, packages, top level
+
+> See the 2026-09-02 status note at the top of §3: the `configs/*_defconfig` rows below
+> describe files that have since become `configs/fragments/*.fragment`.
 
 | file:line | coupling | sev | when you touch this, do this instead |
 |---|---|---|---|

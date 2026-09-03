@@ -28,12 +28,14 @@
 # filesystem accident (e.g. every fragment deleted) and a release/CI run that
 # silently ships zero kernel variants while looking successful.
 #
-# EXCLUDED ON PURPOSE: configs/mister_kernel_defconfig (the shared kernel-only
-# BASE every variant builds against) and configs/mister_initramfs_defconfig
-# (the stage-1 initramfs config). Neither carries a `.fragment` suffix, so the
-# glob below already excludes both without any special-casing — the explicit
-# denylist further down exists only so that fact survives a future rename
-# instead of relying on an accident of extension.
+# EXCLUDED ON PURPOSE: the board/common fragment stacks under
+# configs/fragments/ (the shared kernel-only BASE every variant builds against
+# lives there, configs/fragments/stacks.mk) and configs/mister_initramfs_defconfig
+# (the stage-1 initramfs config). The stacks live in a SUBDIRECTORY and the
+# initramfs defconfig carries no `.fragment` suffix, so the glob below already
+# excludes both without any special-casing — the explicit denylist further
+# down exists only so that fact survives a future rename or move instead of
+# relying on an accident of path or extension.
 #
 # ALSO RESERVED: the variant name "main". Unlike the two defconfigs above,
 # a hypothetical configs/mister_main.fragment WOULD match the *.fragment glob
@@ -66,11 +68,11 @@ variants=()
 shopt -s nullglob
 for f in configs/mister_*.fragment; do
 	case "$f" in
-	configs/mister_kernel_defconfig | configs/mister_initramfs_defconfig)
-		# Unreachable given the *.fragment glob above -- neither defconfig
-		# carries that extension -- but kept explicit per the EXCLUDED ON
-		# PURPOSE note in the header, so this is documented in code, not
-		# just prose.
+	configs/fragments/* | configs/mister_initramfs_defconfig)
+		# Unreachable given the *.fragment glob above -- the stacks are in a
+		# subdirectory and the initramfs defconfig lacks the extension -- but
+		# kept explicit per the EXCLUDED ON PURPOSE note in the header, so
+		# this is documented in code, not just prose.
 		continue
 		;;
 	esac

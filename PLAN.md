@@ -530,7 +530,7 @@ mister-linux/
 ├── external.mk
 ├── Config.in
 ├── configs/
-│   ├── mister_de10nano_defconfig
+│   ├── fragments/   (common, de10nano, de10nano-image, kernel-only, de25nano + stacks.mk)
 │   └── mister_initramfs_defconfig     # stage-1 tiny static-BusyBox cpio (§5)
 ├── board/mister/de10nano/
 │   ├── linux.config                   # full kernel config (make savedefconfig)

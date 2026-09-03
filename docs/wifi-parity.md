@@ -157,7 +157,7 @@ Everything below is cited to the actual fetched script,
 | `udhcpc`/direct `dhcpcd` invocation | v1.x: not called. **v2.3.0 calls all three in order** — `dhcpcd -n` (`:2021`), `udhcpc -n -q -i` (`:2024`), `dhclient` (`:2027`) — each under a timeout, taking the first that succeeds | — | — | **No gap** — we ship `dhcpcd` and `udhcpc`, so the chain succeeds at step 1 or 2 and never reaches `dhclient` (which we do not ship, deliberately: it is ISC's client and adding it to satisfy an unreachable third fallback would be dead weight). The global `S41dhcpcd` daemon still handles the boot path as before. (This row previously read "not called anywhere in the script".) |
 
 Three genuinely new Buildroot packages were needed
-(`configs/mister_de10nano_defconfig:774-783`, new "P3.4: WiFi userland
+(`configs/fragments/de10nano-image.fragment`, new "P3.4: WiFi userland
 parity (`wifi.sh` contract)" section): `BR2_PACKAGE_BASH`,
 `BR2_PACKAGE_DIALOG`, `BR2_PACKAGE_WIRELESS_TOOLS` (+`_IWCONFIG`, its own
 default-y sub-option, listed for clarity per this file's existing
@@ -237,7 +237,7 @@ kernel from this era; no separate check needed.
 
 ## 4. Files touched by this task
 
-- **Edited** `configs/mister_de10nano_defconfig` — added the "P3.4: WiFi
+- **Edited** `configs/fragments/de10nano-image.fragment` — added the "P3.4: WiFi
   userland parity (`wifi.sh` contract)" section (lines 774-783):
   `BR2_PACKAGE_BASH=y`, `BR2_PACKAGE_DIALOG=y`, `BR2_PACKAGE_WIRELESS_TOOLS=y`
   (+`_IWCONFIG=y`), `BR2_PACKAGE_IPROUTE2=y`. No other defconfig lines
@@ -944,7 +944,7 @@ on `argv[0]`). `output/target/sbin` is itself a symlink to `usr/sbin`
 (`BR2_ROOTFS_MERGED_USR=y`), so stock's `/sbin/ifup` and `/sbin/ifdown`
 spellings resolve to those same two entries. `output/target/usr/sbin/iw` — a
 264720-byte ARM ELF, from `BR2_PACKAGE_IW=y` at
-`configs/mister_de10nano_defconfig:782`; without it the `pre-up` loop's
+`configs/fragments/de10nano-image.fragment`; without it the `pre-up` loop's
 `iw dev` would be a permanent 20 s no-op.
 
 ### Verify-on-hardware (adds to §5's checklist)

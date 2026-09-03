@@ -447,6 +447,13 @@ One consequence worth carrying: **all DRAM lives in `0x8000_0000..0xBFFF_FFFF`, 
 
 ## 4. The SMMU / `mmc0` decision (implementation path §8 Q2 and §8 Q1)
 
+> **Status: owner decision, ADR 0029 D10 (2026-09-02).** SMMU-off is the intended
+> configuration, not a wave-1 expedient: DMA isolation is a non-goal for this image (the DE10's
+> Cyclone V has no SMMU, so this is parity, not a regression), and SMMU-off is the precondition
+> for mainline `svc` to program the fabric at all. Re-open only if upstream `svc` grows
+> IOMMU-aware buffer handling, or the SMMU-off fabric test fails on hardware.
+
+
 **Decision: `&smmu { status = "disabled"; }` for wave 1** — MAINLINE 7.2's own default, and a
 deliberate divergence from all three references, which set it `okay`. **`mmc0` keeps both
 `iommus = <&smmu 5>` and `dma-coherent`**, and so does every other master in the tree; with the

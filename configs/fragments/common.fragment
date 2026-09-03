@@ -1,0 +1,27 @@
+# common.fragment — Buildroot policy shared by EVERY board and every kernel
+# variant in this tree, including the kernel-only stack. Layered first; a
+# later fragment must never redefine anything here
+# (scripts/check-config-fragments.sh fails the build if one does).
+# Rationale for every line, and why some "obviously shared" symbols are NOT
+# here: docs/buildroot-config.md §2 and §10.
+
+# --- Toolchain: C++ (docs/buildroot-config.md §2.1) ---
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# --- Download integrity (docs/buildroot-config.md §2.2) ---
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+
+# --- Kernel: pinned custom version, DTS support (docs/buildroot-config.md §2.3) ---
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+
+# --- Reproducibility (docs/buildroot-config.md §2.4) ---
+# WARNING: not cosmetic for the kernel-only stack either — linux.mk gates the
+# KBUILD_BUILD_* stamps on it; without it a release re-run mints a different
+# zImage_dtb-<variant>. Does NOT pin mke2fs's UUID/seed (§5.2 does, per image).
+BR2_REPRODUCIBLE=y
+
+# --- Merged /usr (docs/buildroot-config.md §2.5) ---
+# WARNING: load-bearing — Buildroot validates BR2_ROOTFS_OVERLAY's shape against it.
+BR2_ROOTFS_MERGED_USR=y

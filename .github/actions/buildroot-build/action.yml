@@ -29,9 +29,10 @@ name: Build the MiSTer image (Buildroot)
 description: >-
   Prepares a GitHub-hosted runner for a Buildroot build (disk reclaim, apt
   deps, five input caches), then builds the requested variant. main: configures
-  from the tracked defconfig and runs `make all` — linux.img + zImage_dtb in
-  output/images/. Any other name is a kernel-only variant (`make <name>` over
-  configs/mister_kernel_defconfig + configs/mister_<name>.fragment) — the
+  from the DE10-Nano fragment stack (configs/fragments/, stacks.mk) and runs
+  `make all` — linux.img + zImage_dtb in output/images/. Any other name is a
+  kernel-only variant (`make <name>` over the de10nano-kernel fragment stack
+  + configs/mister_<name>.fragment) — the
   variant kernel at output-<name>/images/zImage_dtb plus a depmod'd module
   tree in output-<name>/target/.
 
@@ -162,10 +163,12 @@ runs:
               echo "::error::unknown variant '$VARIANT' -- .github/actions/buildroot-build accepts 'main' or any kernel variant with a fragment at configs/mister_<name>.fragment (looked for configs/mister_${VARIANT}.fragment)" >&2
               exit 1
             fi
-            # Kernel variants build a COPY of main's toolchain/kernel stanzas
-            # (configs/mister_kernel_defconfig) — assert it hasn't drifted
-            # BEFORE any cache work, or a drift builds wrong under a cache key
-            # that then pins the wrong toolchain in. See docs/ci.md#variants.
+            # Kernel variants build on the de10nano-kernel fragment stack,
+            # which shares its toolchain/kernel fragments with main's stack by
+            # construction (configs/fragments/stacks.mk) — assert that
+            # structure still holds BEFORE any cache work, or a drift builds
+            # wrong under a cache key that then pins the wrong toolchain in.
+            # See docs/ci.md#variants.
             scripts/check-kernel-defconfig-sync.sh
             ;;
         esac
@@ -192,16 +195,29 @@ runs:
         # first so editing one can't evict the cross-toolchain either. See
         # docs/ci.md#toolchain-fingerprint before changing this filter.
         #
-        # Fingerprints the variant's own base defconfig + fragment, not
-        # main's. See docs/ci.md#toolchain-fingerprint.
+        # Fingerprints the variant's own base STACK + fragment, not main's:
+        # main = the de10nano stack, a kernel variant = the de10nano-kernel
+        # stack (configs/fragments/stacks.mk, read through the same helper
+        # the check scripts use). The fragments are concatenated before the
+        # strip/filter/sort, so the residue is the same sorted set of lines
+        # the old single-file defconfig produced — the fingerprint, and
+        # therefore the cache key, did not move at the fragment split.
+        # See docs/ci.md#toolchain-fingerprint.
         TC_GEN=1
+        ROOT="$PWD"
+        # shellcheck source=scripts/lib/config-stacks.sh
+        source scripts/lib/config-stacks.sh
         if [ "$VARIANT" = "main" ]; then
-          fp_defconfig=configs/mister_de10nano_defconfig
+          mapfile -t fp_files < <(config_stack_files DE10NANO)
         else
-          fp_defconfig=configs/mister_kernel_defconfig
+          mapfile -t fp_files < <(config_stack_files DE10NANO_KERNEL)
+        fi
+        if [ "${#fp_files[@]}" -eq 0 ]; then
+          echo "::error::configs/fragments/stacks.mk names no fragments for this variant's stack" >&2
+          exit 1
         fi
         sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' \
-          "$fp_defconfig" \
+          "${fp_files[@]}" \
           | grep -vE '^($|BR2_PACKAGE_|BR2_LINUX_KERNEL)' \
           | sort > .br-toolchain-fingerprint
 
@@ -315,16 +331,18 @@ runs:
 
     # 2. dl/ — every package source tarball. Lives at repo root (survives
     # `make clean`) — NEVER move it under output/. Keyed on the full
-    # defconfig; restore-keys falls back to the version alone so an
-    # imperfect match still hydrates what didn't change. See
-    # docs/ci.md#dl-cache.
+    # DE10-Nano fragment stack (the three files configs/fragments/stacks.mk
+    # lists for DE10NANO_FRAGMENTS — hashFiles() cannot read stacks.mk, so
+    # they are spelled out here; keep the two in step); restore-keys falls
+    # back to the version alone so an imperfect match still hydrates what
+    # didn't change. See docs/ci.md#dl-cache.
     - name: Restore Buildroot dl/ download cache
       id: dl-cache
       if: env.VARIANT == 'main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
+        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/de10nano-image.fragment') }}
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 
@@ -339,7 +357,7 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_kernel_defconfig', format('configs/mister_{0}.fragment', env.VARIANT)) }}
+        key: br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/kernel-only.fragment', format('configs/mister_{0}.fragment', env.VARIANT)) }}
         restore-keys: |
           br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-
           br-dl-${{ env.BUILDROOT_VERSION }}-
@@ -435,14 +453,14 @@ runs:
       run: make hostshim
 
     # Regenerate output/.config UNCONDITIONALLY every run — a stale cached
-    # one can silently override a defconfig change (run 29293209070 died
+    # one can silently override a fragment change (run 29293209070 died
     # here after a 52min stage 1). MAIN-ONLY: a kernel variant's .config is
     # never cached, so it can't go stale in the first place. See
     # docs/ci.md#configure-buildroot.
-    - name: Configure Buildroot (generate output/.config from the defconfig)
+    - name: Configure Buildroot (generate output/.config from the fragment stack)
       if: env.VARIANT == 'main'
       shell: bash
-      run: make mister_de10nano_defconfig
+      run: make de10nano-defconfig
 
     # `make all` builds both stages under one ccache (BR2_CCACHE propagates
     # through MAKEFLAGS to the musl initramfs too — distinct ccache keys, so

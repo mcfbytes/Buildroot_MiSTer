@@ -5,14 +5,14 @@
 # Two independent things this proves about a built linux.img, neither of
 # which "it mounted fine once" would catch:
 #
-#  1. PINNED EXT4 FEATURE SET / LABEL / UUID. configs/mister_de10nano_defconfig's
-#     BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS spells these out explicitly (its own
-#     header explains why: e2fsprogs' own mke2fs.conf defaults already drift
+#  1. PINNED EXT4 FEATURE SET / LABEL / UUID. configs/fragments/de10nano-image.fragment's
+#     BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS spells these out explicitly
+#     (docs/buildroot-config.md §5.2 explains why: e2fsprogs' own mke2fs.conf defaults already drift
 #     from what stock's linux.img actually has, and a future e2fsprogs bump
 #     could drift further). This script is the build-time proof that the
 #     option string actually landed in the artifact, the same role
 #     check-zimage-dtb.sh plays for the zImage/DTB concatenation contract.
-#     The expected values below MUST be kept in sync with that defconfig by
+#     The expected values below MUST be kept in sync with that fragment by
 #     hand -- there is no single source of truth to derive them from at
 #     build time (dumpe2fs reads the finished image, not the mkfs command
 #     line that produced it).
@@ -38,7 +38,7 @@ set -eu
 prog=${0##*/}
 fail=0
 
-# --- the pinned contract -- MUST match configs/mister_de10nano_defconfig ----
+# --- the pinned contract -- MUST match configs/fragments/de10nano-image.fragment ----
 EXPECT_LABEL="rootfs"
 EXPECT_UUID="71916572-439f-448e-b8d8-12b0a032fa56"
 EXPECT_HASH_SEED="9afc615c-c310-4e03-ada9-613522e83ae6"

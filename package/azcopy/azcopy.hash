@@ -45,7 +45,7 @@
 # before, it is a couple of minutes.
 #
 #     # 1. bump AZCOPY_VERSION in azcopy.mk, then, from the repo root:
-#     make mister_de10nano_defconfig
+#     make de10nano-defconfig
 #     make azcopy-source          # EXPECTED TO FAIL, on the stale hash below
 #
 #     # 2. read the real hash straight out of the failure. Buildroot prints it:

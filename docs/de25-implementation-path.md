@@ -330,6 +330,14 @@ Ang Tien Sung / Khairul Anuar Romli, Altera; via Dinh Nguyen), **561 lines**, ma
 
 ### 3.1 The nodes, as authored (on a 7.x base)
 
+> **Superseded on two points (2026-09-02).** (1) `&smmu { status = "okay"; }` below is **not**
+> what ships: the SMMU is **disabled** by owner decision — ADR 0029 **D10** — because mainline
+> `stratix10-svc` hands the SDM physical addresses and cannot program the fabric through a
+> translated stream; see [`de25-dts-rationale.md`](de25-dts-rationale.md) §4. (2) The svc
+> compatible is **not** overridden; mainline's `intel,agilex5-svc` is kept and carried patch
+> `0102` makes it bind (ADR 0029 D8). The listing is kept as the record of the node set.
+
+
 ```dts
 /* mainline 7.x ships /firmware/svc with a compatible that binds no driver.
    Override it; keep iommus (a top-level property in the binding, legal for any

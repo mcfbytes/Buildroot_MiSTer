@@ -1,0 +1,43 @@
+# de10nano.fragment — the DE10-Nano BOARD layer: arch/ABI, toolchain headers
+# series, and the kernel stanza. Shared by the full image stack
+# (+ de10nano-image) and the kernel-only stack (+ kernel-only) — see
+# configs/fragments/stacks.mk. Everything a kernel variant must agree with
+# the shipped image on lives HERE and nowhere else.
+# Rationale for every line: docs/buildroot-config.md §3.
+
+# --- Arch / ABI: armv7-a Cortex-A9, NEON + VFPv3, EABIhf (docs/buildroot-config.md §3.1) ---
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+
+# --- Kernel headers SERIES (docs/buildroot-config.md §3.2) ---
+# WARNING: do NOT "fix" this to BR2_KERNEL_HEADERS_AS_KERNEL — that silently
+# drops glibc's --enable-kernel floor to 2.6. Re-diff include/uapi on ANY
+# kernel or Buildroot bump (a Buildroot bump moves the series' point release).
+BR2_KERNEL_HEADERS_6_18=y
+
+# --- Global patch dir = the kernel-tarball hash registry (docs/buildroot-config.md §3.3) ---
+# WARNING: load-bearing even with no packages — it is where Buildroot finds
+# patches/linux/linux.hash, the ONLY thing that hash-verifies the pinned
+# kernel tarball; kernel-only variants need it too.
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
+
+# --- Kernel stanza (docs/buildroot-config.md §3.4) ---
+# Renovate bumps the version line (renovate.json, kernel-longterm-6.18);
+# the tarball hash follows via .github/workflows/renovate-hash-sync.yml.
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.49"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
+BR2_LINUX_KERNEL_LZ4=y
+BR2_LINUX_KERNEL_ZIMAGE=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"
+
+# --- Host kmod with xz: build-time depmod must read .ko.xz (docs/buildroot-config.md §3.5) ---
+BR2_PACKAGE_HOST_KMOD_XZ=y
+
+# --- Post-image: zImage_dtb assembly + contract check (docs/buildroot-config.md §3.6) ---
+# Path is relative to work/buildroot/ (post-image scripts run from there).
+BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"

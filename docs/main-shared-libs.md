@@ -11,7 +11,7 @@ consumer: which package provides what, under which SONAME/header-dir/pkg-config
 name, and how Main's vendored dirs map onto them.
 
 Three of the five packages are upstream Buildroot, enabled straight from
-`configs/mister_de10nano_defconfig` (compression block); the other two are
+`configs/fragments/de10nano-image.fragment` (compression block); the other two are
 authored in this tree under `package/` and sourced via the
 "Main_MiSTer shared libraries" menu in the top-level `Config.in`.
 

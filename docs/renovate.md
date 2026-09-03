@@ -47,8 +47,8 @@ for the specific pieces most likely to need a fix on the first live run.
 
 | Pin | File(s) | Mechanism | Hash companion |
 |---|---|---|---|
-| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below |
-| Kernel (6.18.y longterm) | **both** `configs/mister_de10nano_defconfig` *and* `configs/mister_kernel_defconfig` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) | one `customManagers` regex listing both files + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
+| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below. **Since 2026-09-02 a second companion:** `configs/fragments/golden.sha256` — the resolved-config hashes `scripts/check-config-fragments.sh` asserts per Buildroot version — is recorded for the new version by case 8 (`hash-sync-golden.sh`) in the same PR; if that case skips, `lint-config` only *warns* on the missing lines and the manual step is `scripts/check-config-fragments.sh --update-golden` + commit |
+| Kernel (6.18.y longterm) | `configs/fragments/de10nano.fragment` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) — the ONE file both DE10 stacks share since the 2026-09 fragment split | one `customManagers` regex on that file + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, the **7.2 line**) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelStable72` datasource; `allowedVersions` locked to `/^7\.2(\.\d+)?$/`. Labeled `rt-kernel-pin` + `needs-manual-version-check`. **Rewritten 2026-08-17** when 7.2 released: the datasource was `kernelMainline` (`moniker=mainline`) and the depName `kernel-mainline-rt`. Both were right while 7.2 was in `-rc` and wrong the moment it shipped — mainline moves to 7.3-rc1 about two weeks later, so the old filter would have dragged the variant straight back off the line it had just reached. The filter is now **moniker-agnostic and version-scoped**, because the 7.2 line changes moniker underneath us: today 7.2 is the `mainline` entry and no 7.2.y stable release exists yet, and once 7.2.1 ships it becomes the `stable` entry instead. The matchString accepts two- *and* three-component values for the same reason | `board/mister/de10nano/patches/linux/linux.hash` — **auto-refreshed since 2026-08-17** by `renovate-hash-sync.yml` (`hash-sync-kernel.sh --pin=rt`) from kernel.org's signed `sha256sums.asc`, same as the 6.18 pin. This row says the opposite of what it said before that date, and the reason is that the pin changed sides, not that the rule loosened: an `-rc` is fetched as a cgit `.tar.gz` snapshot upstream signs in no way, so its hash could only be hand-written TOFU; a 7.2.y release is an ordinary `.tar.xz` covered by the signed manifest. The script still **refuses** any `-rc` for either pin, leaving the build to fail closed |
 | 10 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,rtl8852cu-morrownr,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
@@ -112,16 +112,19 @@ hash-sync script — kept apart there by major-series line scoping rather than b
 being different managers; see
 [`docs/ci.md#renovate-hash-sync-rt-line-clobber`](ci.md#renovate-hash-sync-rt-line-clobber).
 
-Conversely, the two 6.18 files are deliberately in the **same** manager:
-`mister_kernel_defconfig` copies the main defconfig's kernel/toolchain stanza
-(see its header and `scripts/check-kernel-defconfig-sync.sh`), so they must move
-together. Verified against a real Renovate run with both files held back: two
-extracted upgrades, exactly **one** branch
-(`renovate/kernel-longterm-6.18-6.x`) covering both.
-
-That lockstep check is what caught the 6.18.38 → 6.18.39 bump landing in only
-one of the two files, back when the manager listed just
-`mister_de10nano_defconfig`.
+Conversely, the 6.18 pin now lives in exactly **one** file,
+`configs/fragments/de10nano.fragment`, which both the image stack and the
+kernel-only stack include (`configs/fragments/stacks.mk`,
+`docs/buildroot-config.md` §1) — so one manager, one file, one branch. Before
+the 2026-09 fragment split there were two files (`mister_de10nano_defconfig`
+and its hand-mirrored copy `mister_kernel_defconfig`) deliberately in the same
+manager so they moved together; a real Renovate run with both held back gave
+two extracted upgrades and exactly one branch
+(`renovate/kernel-longterm-6.18-6.x`). That lockstep check is what caught the
+6.18.38 → 6.18.39 bump landing in only one of the two files, back when the
+manager listed just `mister_de10nano_defconfig`; the failure mode is gone by
+construction now, and `scripts/check-kernel-defconfig-sync.sh` guards the
+construction instead.
 
 ### Why `bcm20702-firmware` is a commit pin, not a tag pin
 
@@ -394,6 +397,31 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    **A red PR here is the safe failure mode, not a bug**: it is strictly
    better than a green PR that quietly ships a wrong/unverified hash.
 
+7. **azcopy's vendored tarball hash** — see the table above.
+
+8. **The golden config hashes** (`configs/fragments/golden.sha256`) —
+   **added 2026-09-02** with the fragment split (`docs/buildroot-config.md`
+   §11). `scripts/check-config-fragments.sh` pins, per `BUILDROOT_VERSION`,
+   the sha256 of each fragment stack's normalised resolved `.config`; a
+   Buildroot bump changes Kconfig defaults and is *expected* to move every
+   one of them. So that a Renovate Buildroot-bump PR still gets its build,
+   `lint-config` only **warns** when the pinned version has no golden lines
+   at all (a mismatch against a *recorded* line is still a failure — that is
+   drift), and this case, `scripts/hash-sync-golden.sh`, runs the **target
+   branch's** `check-config-fragments.sh --update-golden` through its
+   Makefile (`make buildroot-unpack` fetches and verifies the new tarball
+   with the hash case 6 just wrote) and commits the new lines alongside. It
+   never rewrites lines that already exist for the pinned version, and it is
+   a no-op on kernel bumps (the kernel-version symbols are excluded from the
+   normalisation). If it skips (unpack failed, the check found a real
+   fragment problem), the PR is not red for it — the manual step is:
+
+   ```
+   scripts/check-config-fragments.sh --update-golden --keep
+   # read output-config-check/<stack>/normalised.config against the previous
+   # good run, then commit configs/fragments/golden.sha256 saying what changed
+   ```
+
 **What it deliberately does NOT fix:** any `-rc` kernel hash (kernel.org
 signs no manifest for a cgit snapshot — hand-written TOFU only, and
 `hash-sync-kernel.sh` refuses one at runtime) and `azcopy` (a golang-package:
@@ -498,7 +526,10 @@ moved with it. Note what the line number does *not* tell you: **2026.02 was
 never an LTS.** Buildroot's LTS releases are the February ones on a two-year
 cadence — **2025.02** was the last, **2027.02** is expected to be the next — so
 `2026.05` is an interim non-LTS line, chosen for currency, not longevity. When
-the next line bump comes, update three things together: `BUILDROOT_VERSION` and
+the next line bump comes, update four things together: `BUILDROOT_VERSION` and
 `BUILDROOT_SHA256` in the `Makefile` (the hash from
 `make buildroot-showsig`, never from a tarball you just downloaded), this
-`allowedVersions` regex, and the row in the table above.
+`allowedVersions` regex, the row in the table above, and the golden config
+hashes (`scripts/check-config-fragments.sh --update-golden`, case 8 above —
+read the normalised-config diff before committing; a line bump is exactly
+when defaults move).

@@ -289,7 +289,8 @@ boots to a serial console on real hardware (P1.13).
 
 - [x] **P1.1 — BR2_EXTERNAL skeleton** — [SONNET] — Size S — Depends: P0.9
   `external.desc`, `external.mk`, `Config.in`, `configs/mister_de10nano_defconfig`
-  (minimal, builds nothing yet), plus a top-level `Makefile`/script that downloads the
+  (minimal, builds nothing yet; since the 2026-09 fragment split that file is the
+  `configs/fragments/` de10nano stack — `docs/buildroot-config.md`), plus a top-level `Makefile`/script that downloads the
   pinned Buildroot 2026.05.x tarball, verifies its SHA-256, unpacks to `work/buildroot/`,
   and invokes it with `BR2_EXTERNAL` set. Buildroot is never vendored (G4/§6).
   **Reference:** `/mnt/source/sb-enema/Makefile` — a working 2026.02.3 pinned-tarball
@@ -706,7 +707,8 @@ Exit criterion: hardware matrix (§11) green (P3.13).
 
   **Result: module-autoload half already done pre-task (kmod+depmod xz support,
   modules.dep/modules.alias populated — see the P3.3 (core) commit). This pass covers only
-  `/lib/firmware` population.** `configs/mister_de10nano_defconfig` gained
+  `/lib/firmware` population.** `configs/mister_de10nano_defconfig` (now
+  `configs/fragments/de10nano-image.fragment`, §5.28 of `docs/buildroot-config.md`) gained
   `BR2_PACKAGE_LINUX_FIRMWARE` + 9 sub-options (`MEDIATEK_MT7601U/MT7610E/MT7650/MT76X2E`,
   `RALINK_RT2XX`, `RTL_81XX/RTL_87XX/RTL_87XX_BT/RTL_88XX_BT`), `BR2_PACKAGE_WIRELESS_REGDB`
   (a separate package from linux-firmware for `regulatory.db`/`.p7s`), and

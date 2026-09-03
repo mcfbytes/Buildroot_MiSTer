@@ -775,7 +775,7 @@ surprise found while adding it):**
 | `exfatprogs` | `mkfs.exfat`, `fsck.exfat`, `exfatlabel`, `dump.exfat`, `exfat2img`, `tune.exfat` | no sub-options, no collision (BusyBox has no exFAT support at all) |
 | `ntfs-3g` `NTFSPROGS` sub-option | `mkfs.ntfs` (→ `mkntfs`), `ntfsfix`, + the rest of ntfsprogs | **found missing despite `BR2_PACKAGE_NTFS_3G` already being `=y`** since P2.1 — a real oversight, not a deliberate omission: the sub-option defaults to "n" with no dependency of its own (`package/ntfs-3g/Config.in`), and without it `ntfs-3g.mk` passes `--disable-ntfsprogs`. Fixed in place next to the existing `BR2_PACKAGE_NTFS_3G=y` line |
 | `tmux` | `tmux` | chosen over `screen` (§5) — not both. Needs `BR2_USE_WCHAR`+`BR2_ENABLE_LOCALE` (both true); selects `LIBEVENT`+`NCURSES`, both already on |
-| `strace` | `strace` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name strace` returns nothing. Already enabled *temporarily* by the `DEBUG TOOLING` block (`docs/debug-tooling.md`); this promotes it to a *permanent* part of the package set so it keeps shipping once that block is eventually deleted (and is what `docs/package-manifest.md` §5's `ltrace` row leans on when it rejects ltrace). Set in both places deliberately (harmless, same value — `make mister_de10nano_defconfig` prints a benign "override: reassigning to symbol BR2_PACKAGE_STRACE") |
+| `strace` | `strace` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name strace` returns nothing. Already enabled *temporarily* by the `DEBUG TOOLING` block (`docs/debug-tooling.md`); this promotes it to a *permanent* part of the package set so it keeps shipping once that block is eventually deleted (and is what `docs/package-manifest.md` §5's `ltrace` row leans on when it rejects ltrace). Set in both places deliberately (harmless, same value — `make de10nano-defconfig` prints a benign "override: reassigning to symbol BR2_PACKAGE_STRACE") |
 | `lsof` | `usr/bin/lsof` | **An UPGRADE over stock, not parity restoration** — stock's `usr/bin/lsof` is a symlink → `../../bin/busybox`, so stock's provider is the BusyBox applet, and choosing the real lsof is a deliberate divergence (worth it: the applet has no network-socket, NFS, `-p` or `-i` support). Needs `BUSYBOX_SHOW_OTHERS`, already on (for `i2c-tools`); **collides with BusyBox's own `lsof` applet**, already on — disabled in `busybox.fragment` |
 | `tcpdump` | `tcpdump` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name tcpdump` returns nothing. Added anyway for on-device WiFi/network debugging (P3.4 territory). Selects `LIBPCAP` automatically; `TCPDUMP_SMB` ("possibly-buggy" per its own Config.in) deliberately left off |
 | `iperf3` | `iperf3` | **BEYOND STOCK, not a gap closed** — `find work/imgroot -name 'iperf*'` returns nothing (no iperf2 either). Added anyway: throughput measurement is how a WiFi driver change gets judged. Needs `BR2_TOOLCHAIN_HAS_ATOMIC`+`_THREADS`, both true |
@@ -1100,7 +1100,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybo
 ```
 
 > ⚠ **This list is deliberately not identical to the live defconfig.**
-> `configs/mister_de10nano_defconfig` currently also carries a bannered
+> `configs/fragments/de10nano-image.fragment` currently also carries a bannered
 > `DEBUG TOOLING` block — gdb (+ gdbserver + full debugger), strace,
 > perf and rt-tests — which is **temporary and out of scope for this manifest**: it is
 > not stock parity and never claimed to be. Do **not** reconcile the two by
@@ -1108,7 +1108,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybo
 > block. Two further, *intentional* divergences: (1) §6's `BR2_PACKAGE_PYTHON3=y` line
 > predates P3.9 — the live defconfig also sets
 > `BR2_PACKAGE_PYTHON3_{SSL,ZLIB,BZIP2,XZ,PYEXPAT,READLINE,CURSES}=y`
-> (`configs/mister_de10nano_defconfig:705-711`), and `_SSL`/`_ZLIB` are **hard blockers**
+> (`configs/fragments/de10nano-image.fragment`), and `_SSL`/`_ZLIB` are **hard blockers**
 > for Downloader_MiSTer (`docs/python-compat.md`), so do not paste this Python block
 > without them. (2) The ~21 utility packages added by T3/T5 are documented in §4c above,
 > not repeated here. §6 remains the P2.1 stock-parity paste list, not a defconfig mirror.

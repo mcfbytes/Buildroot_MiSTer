@@ -6,7 +6,7 @@
 > investigation exactly as it was run, against a build whose Python had almost every
 > optional C-extension deselected. Its two blocking recommendations were applied in the
 > same commit that added this document (`a549bd0`):
-> `configs/mister_de10nano_defconfig:705-711` now sets
+> `configs/fragments/de10nano-image.fragment` now sets
 > `BR2_PACKAGE_PYTHON3_{SSL,ZLIB,BZIP2,XZ,PYEXPAT,READLINE,CURSES}=y`, and
 > `scripts/ci-tests.sh`'s "P3.9 — Python & Downloader ABI gate" imports all seven under
 > `qemu-arm` on every run. **The image no longer ships a Python that cannot `import
@@ -388,7 +388,7 @@ I did not make any of these changes — per the task constraints, this is a repo
 orchestrator to apply and rebuild.
 
 **Applied 2026-07-13 (`a549bd0`).** Both MUSTs plus `BZIP2`/`XZ`/`PYEXPAT`/`READLINE`/
-`CURSES` are live at `configs/mister_de10nano_defconfig:705-711` (a `python3-dirclean`
+`CURSES` are live at `configs/fragments/de10nano-image.fragment` (a `python3-dirclean`
 was required to force the rebuild). `SQLITE` and `DECIMAL` were deliberately declined —
 stock's Python 3.9 shipped neither.
 

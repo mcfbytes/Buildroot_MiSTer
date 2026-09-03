@@ -108,10 +108,10 @@ on:
       # here, the workflow never runs on a Buildroot bump at all -- no skipped
       # job, no red X, no outcome row.
       - "Makefile"
-      - "configs/mister_de10nano_defconfig"
-      # mister_kernel_defconfig copies this stanza's kernel version (one Renovate
-      # PR bumps both).
-      - "configs/mister_kernel_defconfig"
+      # The DE10 kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) lives in
+      # the board fragment since the 2026-09 fragment split; the kernel-only
+      # stack shares that same file, so there is no second copy to list.
+      - "configs/fragments/de10nano.fragment"
       # The RT/beta kernel pin. ADDED 2026-08-17: this file used to be
       # deliberately ABSENT here, because while that pin tracked mainline -rc
       # its hash could not be auto-refreshed at all (no signed manifest exists
@@ -501,6 +501,20 @@ jobs:
       - name: Rebuild and refresh the azcopy vendored-tarball hash
         run: .hash-sync-tools/scripts/hash-sync-azcopy.sh "$GITHUB_WORKSPACE"
 
+      # --- 8. Golden config hashes (configs/fragments/golden.sha256) ---------
+      # NEW 2026-09-02, with the fragment split. A Buildroot bump changes
+      # Kconfig defaults and so moves every stack's golden resolved-config
+      # hash; lint-config only WARNS on a version with no golden line, so the
+      # bump PR still builds, and this case records the new lines in the same
+      # PR. Runs the TARGET branch's scripts/check-config-fragments.sh
+      # --update-golden through the target branch's Makefile (the golden
+      # format is that tree's), after case 6 has written the tarball hash the
+      # unpack verifies against. Never rewrites lines that already exist for
+      # the pinned version -- drift is lint-config's to fail, not this case's
+      # to bless. See the script's header and docs/renovate.md.
+      - name: Record golden config hashes for a bumped Buildroot
+        run: .hash-sync-tools/scripts/hash-sync-golden.sh "$GITHUB_WORKSPACE"
+
       # Gate the push: ANY pin recorded "failed" (from any of the steps
       # above) suppresses the commit/push below. MUST run and be evaluated
       # BEFORE the push -- the summary/gate step at the end of the job
@@ -525,13 +539,13 @@ jobs:
            env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
            env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1' ||
-           env.AZCOPY_HASH_CHANGED == '1') &&
+           env.AZCOPY_HASH_CHANGED == '1' || env.GOLDEN_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail
           git config user.name "renovate-hash-sync[bot]"
           git config user.email "renovate-hash-sync@users.noreply.github.com"
-          git add Makefile package/*/*.hash board/mister/de10nano/patches/linux/linux.hash scripts/fetch-sdcard-payload.sh
+          git add Makefile package/*/*.hash board/mister/de10nano/patches/linux/linux.hash scripts/fetch-sdcard-payload.sh configs/fragments/golden.sha256
           git commit -F - <<'COMMITMSG'
           renovate-hash-sync: refresh companion hash(es) for this PR
 
@@ -562,6 +576,12 @@ jobs:
               the only way this value can be derived, since no URL serves that
               file (see package/azcopy/azcopy.hash's header). LICENSE and
               NOTICE.txt were re-hashed from the same tarball
+            - golden config hashes (configs/fragments/golden.sha256): on a
+              Buildroot bump only, the target branch's own
+              scripts/check-config-fragments.sh --update-golden was run
+              against the freshly unpacked (hash-verified) Buildroot tree and
+              the new version's lines recorded -- never a rewrite of lines
+              that already existed (docs/buildroot-config.md section 11)
           COMMITMSG
           # Shell variable, NOT a workflow-expression interpolation --
           # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
@@ -606,7 +626,10 @@ jobs:
           # in $HASH_SYNC_PACKAGES (that string is case 1's curl-and-hash
           # roster, which must never touch a golang-package) and so has to be
           # named here separately, exactly like the four pins before it.
-          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot azcopy PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
+          #
+          # `golden` joined on 2026-09-02 with case 8 (the resolved-config
+          # golden hashes a Buildroot bump moves; scripts/hash-sync-golden.sh).
+          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot azcopy golden PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

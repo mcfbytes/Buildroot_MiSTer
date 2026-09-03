@@ -12,10 +12,14 @@
 #   3. Unpacks it to work/buildroot/ (idempotent: if a Buildroot tree of the
 #      pinned version is already present there, the download/verify/unpack
 #      step is skipped entirely and no network access is made).
-#   4. Forwards every other target (menuconfig, mister_de10nano_defconfig,
-#      olddefconfig, savedefconfig, ...) into that Buildroot tree with
-#      BR2_EXTERNAL set to this repo, O= pointed at an out-of-tree output
-#      directory, and BR2_DL_DIR pointed at the persistent download cache.
+#   4. Generates each Buildroot configuration by layering the fragments under
+#      configs/fragments/ (configs/fragments/stacks.mk says which) with
+#      Buildroot's own merge_config.sh + olddefconfig -- there is no monolithic
+#      defconfig any more (docs/buildroot-config.md §1) -- and forwards every
+#      other target (menuconfig, olddefconfig, savedefconfig, ...) into that
+#      Buildroot tree with BR2_EXTERNAL set to this repo, O= pointed at an
+#      out-of-tree output directory, and BR2_DL_DIR pointed at the persistent
+#      download cache.
 #
 # work/, dl/, and output/ are all gitignored — see .gitignore.
 #
@@ -84,10 +88,11 @@ INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
 # own O=. Deliberately not naming the -rc here: it is only a label at this point
 # and configs/mister_rt.fragment is the single place that pins it.
 # Since ADR 0021's 2026-07-18 amendment this is a KERNEL-ONLY build, not a
-# second full image: configs/mister_kernel_defconfig (the main defconfig's
-# toolchain + kernel stanzas, rootfs-tar only, no packages) with
-# configs/mister_rt.fragment layered on at `make rt` time via Buildroot's own
-# merge_config.sh. It produces zImage_dtb (ships as zImage_dtb-rt) plus a
+# second full image: the de10nano-kernel fragment stack (common + de10nano +
+# kernel-only, configs/fragments/stacks.mk -- the SAME toolchain + kernel
+# fragments the shipped image is built from, rootfs-tar only, no packages)
+# with configs/mister_rt.fragment layered on at `make rt` time via Buildroot's
+# own merge_config.sh. It produces zImage_dtb (ships as zImage_dtb-rt) plus a
 # depmod'd module tree, which `rt` copies into $(EXTRA_MODULES_OVERLAY) below
 # so the ONE shipped linux.img carries both kernels' modules.
 # A future kernel variant `foo` needs only configs/mister_foo.fragment, its own
@@ -159,13 +164,17 @@ INSTALLER_DEFCONFIG          := $(ROOT_DIR)/configs/mister_installer_defconfig
 INSTALLER_KERNEL_OUTPUT_DIR := $(ROOT_DIR)/output-installer-kernel
 SDCARD_STAGE_DIR             := $(ROOT_DIR)/output-sdcard-stage
 SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
+# scripts/check-config-fragments.sh's scratch O= dirs (one per fragment
+# stack, config-only, never built). Not a Buildroot-cleanable tree either:
+# plain rm -rf'd below, like the three above.
+CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
 
 # --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
 # A FIFTH Buildroot output dir, and by far the biggest departure of the five:
 # every directory above builds for the DE10-Nano's armv7 Cyclone V. This one
 # builds for a DIFFERENT BOARD — the Terasic DE25-Nano, an Intel/Altera
 # Agilex 5 whose HPS is aarch64 (2x Cortex-A76 + 2x Cortex-A55). Different
-# architecture, different toolchain, different kernel line (mainline 7.2.2),
+# architecture, different toolchain, different kernel line (mainline 7.2.3),
 # different rootfs. It shares with the main build exactly two things: the
 # pinned Buildroot tree and the dl/ download cache.
 #
@@ -176,12 +185,10 @@ SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
 # never share a host tree even if you wanted them to (ADR 0021 §3 makes the
 # same point about output-rt/).
 #
-# UNLIKE `rt`, there is NO fragment to merge: configs/mister_de25nano_defconfig
-# is a standalone, self-contained defconfig, so $(DE25_OUTPUT_DIR)/.config is a
-# plain one-line `$(BR_MAKE_DE25) mister_de25nano_defconfig` rather than
-# defconfig + merge_config.sh + olddefconfig. The rt fragment exists because
-# that variant is a *delta* on the DE10's own kernel stanza; the DE25 shares no
-# stanza with anything.
+# Its configuration is the de25nano fragment stack (common + de25nano,
+# configs/fragments/stacks.mk): it shares exactly the arch-neutral `common`
+# layer with the DE10 stacks and nothing else -- no DE10 toolchain, kernel or
+# package fragment is in its stack (docs/buildroot-config.md §6, §10).
 #
 # ALSO UNLIKE `rt` and `all`: `de25` does NOT depend on `initramfs`. That cpio
 # is an armv7 BusyBox built by configs/mister_initramfs_defconfig, and it exists
@@ -291,10 +298,45 @@ BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
 
 # The same, aimed at the DE25-Nano output directory (docs/de25-nano-tasks.md
 # D2.1). Byte-for-byte the same shape as the four above — same Buildroot tree,
-# same BR2_EXTERNAL, same dl/ cache; only O= and the defconfig differ. The
-# aarch64-ness lives entirely in configs/mister_de25nano_defconfig, not here.
+# same BR2_EXTERNAL, same dl/ cache; only O= and the fragment stack differ. The
+# aarch64-ness lives entirely in configs/fragments/de25nano.fragment, not here.
 BR_MAKE_DE25 = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(DE25_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+
+# --- Config fragments (docs/buildroot-config.md §1) ---------------------------
+# There is no monolithic defconfig. Every Buildroot configuration in this tree
+# is a STACK of fragments under configs/fragments/, listed in merge order by
+# configs/fragments/stacks.mk (the single source of truth -- the check scripts
+# parse that same file). Generation is exactly the idiom `rt` has always used:
+# Buildroot's own support/kconfig/merge_config.sh -m concatenates the fragments
+# into <O>/.config (warning on any symbol a later fragment redefines -- there
+# must be none within a stack; scripts/check-config-fragments.sh enforces that
+# in CI), then `olddefconfig` resolves every unlisted symbol to its Kconfig
+# default. That resolves to the byte-identical .config the old
+# `make mister_<board>_defconfig` produced (proved at the split: only
+# BR2_DEFCONFIG, the savedefconfig OUTPUT path, differs).
+#
+# Consequence worth knowing: `make savedefconfig` now writes output/defconfig
+# (Buildroot's default when BR2_DEFCONFIG names no file) instead of clobbering a
+# tracked file. Fold a menuconfig experiment back by hand into the right
+# fragment -- savedefconfig output is unordered and comment-free, which is why
+# the old monolith kept losing its comments.
+FRAGMENT_DIR := $(ROOT_DIR)/configs/fragments
+include $(FRAGMENT_DIR)/stacks.mk
+# $(call stack_files,<names>) -> absolute fragment paths, in merge order.
+stack_files = $(addprefix $(FRAGMENT_DIR)/,$(addsuffix .fragment,$(1)))
+DE10NANO_STACK        := $(call stack_files,$(DE10NANO_FRAGMENTS))
+DE10NANO_KERNEL_STACK := $(call stack_files,$(DE10NANO_KERNEL_FRAGMENTS))
+DE25NANO_STACK        := $(call stack_files,$(DE25NANO_FRAGMENTS))
+
+# $(call merge_fragments,<O dir>,<fragment paths...>) -- step 1 of 2; the
+# caller follows it with the matching `$(BR_MAKE_*) olddefconfig`. The first
+# fragment is merge_config.sh's base file, the rest are merged onto it.
+define merge_fragments
+	@mkdir -p $(1)
+	cd $(BR_DIR) && KCONFIG_CONFIG=$(1)/.config \
+		./support/kconfig/merge_config.sh -m -O $(1) $(2)
+endef
 
 # NOTE: there is no BR_MAKE_INSTALLER_KERNEL. mk-sdcard.sh's step 2 relink no longer
 # builds a fourth Buildroot tree in output-installer-kernel/ — it relinks the kernel
@@ -328,6 +370,12 @@ BR_MAKE_DE25 = PATH="$(HOSTSHIM_DIR):$$PATH" \
 # An explicit rule always wins over a pattern rule for the same target name,
 # so this simple line is what breaks that cycle.
 Makefile: ;
+
+# The included configs/fragments/stacks.mk is a makefile too, so GNU Make
+# would try to remake it through the `%:` catch-all as well -- forwarding a
+# target named `/.../configs/fragments/stacks.mk` into Buildroot with
+# O=$(OUTPUT_DIR). Same explicit-empty-rule fix as `Makefile: ;` above.
+$(FRAGMENT_DIR)/stacks.mk: ;
 
 # [P1.10] Exactly the same landmine, one step further out. $(INITRAMFS_DEFCONFIG) is
 # a prerequisite of $(INITRAMFS_OUTPUT_DIR)/.config below. It is an existing file with
@@ -370,19 +418,42 @@ all: initramfs $(BR_STAMP) hostshim | $(OUTPUT_DIR)/.config
 #
 # The empty prerequisite list is the load-bearing part: with no prerequisites, an
 # existing .config is always up to date and this recipe never fires again. Giving
-# it the shape stage 1 uses at :253 ($(OUTPUT_DIR)/.config: <the defconfig>)
-# would instead re-load the checked-in defconfig over output/.config every time
-# the defconfig looked newer — silently discarding `make menuconfig` edits that
-# had not been folded back with `savedefconfig`. Stage 1 can afford that; its
-# config is generated, not iterated on. Stage 2's is the one people edit.
+# it the shape stage 1 uses ($(INITRAMFS_OUTPUT_DIR)/.config: <the defconfig>)
+# would instead re-generate output/.config from the fragments every time one
+# of them looked newer — silently discarding `make menuconfig` edits that had
+# not been folded back into a fragment. Stage 1 can afford that; its config is
+# generated, not iterated on. Stage 2's is the one people edit. Regenerate
+# deliberately with `make de10nano-defconfig` (what CI does, every run).
 #
 # $(BR_STAMP) is order-only because a parallel `make -j all` gives no ordering
 # between all's own prerequisites, so this cannot rely on all's copy of it.
-# The explicit rule also beats the `%:` catch-all at the bottom of this file,
-# same as `Makefile: ;` and $(INITRAMFS_DEFCONFIG) above.
-$(OUTPUT_DIR)/.config: | $(BR_STAMP)
-	@mkdir -p $(OUTPUT_DIR)
-	$(BR_MAKE) mister_de10nano_defconfig
+# `hostshim` is order-only here too, so the Buildroot invocation below finds
+# the GNU `install` shim under `make -j`. The explicit rule also beats the `%:`
+# catch-all at the bottom of this file, same as `Makefile: ;` and
+# $(INITRAMFS_DEFCONFIG) above.
+$(OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
+	$(call merge_fragments,$(OUTPUT_DIR),$(DE10NANO_STACK))
+	$(BR_MAKE) olddefconfig
+
+# Force-regenerate the DE10-Nano configuration from its fragment stack --
+# the replacement for the old `make mister_de10nano_defconfig`. CI runs this
+# unconditionally so a stale output/.config can never mask a fragment change.
+.PHONY: de10nano-defconfig
+de10nano-defconfig: | $(BR_STAMP) hostshim
+	@rm -f $(OUTPUT_DIR)/.config
+	@$(MAKE) --no-print-directory $(OUTPUT_DIR)/.config
+
+# The three monolithic defconfigs were split into configs/fragments/ (see the
+# fragment block above). Anything still asking for them by name gets told
+# where to go instead of a confusing Buildroot "no rule" failure.
+.PHONY: mister_de10nano_defconfig mister_kernel_defconfig mister_de25nano_defconfig
+mister_de10nano_defconfig mister_kernel_defconfig mister_de25nano_defconfig:
+	@echo "FATAL: configs/$@ no longer exists -- the monolithic defconfigs were split into" >&2
+	@echo "       configs/fragments/ (docs/buildroot-config.md §1). Use instead:" >&2
+	@echo "         make de10nano-defconfig   # the DE10-Nano image (output/.config)" >&2
+	@echo "         make de25nano-defconfig   # the DE25-Nano developer OS (output-de25/.config)" >&2
+	@echo "         make rt                   # the kernel-only base + configs/mister_rt.fragment" >&2
+	@exit 1
 
 # --- Cleaning -----------------------------------------------------------------
 # Buildroot's vocabulary, kept on purpose: `clean` deletes what the build
@@ -417,7 +488,7 @@ clean:
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
 	@if [ -d $(DE25_OUTPUT_DIR) ]; then $(BR_MAKE_DE25) clean; fi
-	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR)
+	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR)
 	@# The extra-modules overlay is a build product (staged module trees), so
 	@# clean takes it wholesale, stamps included — the next `make rt` restages
 	@# its tree, and `all` recreates the (empty) dir before Buildroot needs it.
@@ -441,7 +512,7 @@ distclean:
 	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
 	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) \
 	       $(INSTALLER_KERNEL_OUTPUT_DIR) \
-	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) \
+	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR) \
 	       $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
 
 # --- Stage 1: the initramfs cpio ----------------------------------------------
@@ -535,7 +606,8 @@ initramfs-clean:
 
 # --- RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md) ----------------------
 # Generates the variant .config by layering configs/mister_rt.fragment on the
-# KERNEL-ONLY base configs/mister_kernel_defconfig with Buildroot's own
+# KERNEL-ONLY base stack (common + de10nano + kernel-only fragments,
+# $(DE10NANO_KERNEL_STACK)) with Buildroot's own
 # merge_config.sh, then builds it into its own output-rt/ (shared
 # toolchain sources/dl/ccache; the main output/ is untouched). Produces
 # output-rt/images/zImage_dtb — the RT kernel, shipped as zImage_dtb-rt and
@@ -547,11 +619,11 @@ initramfs-clean:
 # prerequisite is caught by the catch-all target-forwarding rule and would
 # re-run against O=$(OUTPUT_DIR)). Re-generate after editing the fragment with
 # `make rt-clean && make rt` (same manual step the main config's design implies).
-$(RT_OUTPUT_DIR)/.config: | $(BR_STAMP)
-	@mkdir -p $(RT_OUTPUT_DIR)
-	$(BR_MAKE_RT) mister_kernel_defconfig
-	cd $(BR_DIR) && KCONFIG_CONFIG=$(RT_OUTPUT_DIR)/.config \
-		./support/kconfig/merge_config.sh -m -O $(RT_OUTPUT_DIR) $(RT_OUTPUT_DIR)/.config $(RT_FRAGMENT)
+# The rt fragment is the ONE place a later fragment legitimately redefines
+# earlier symbols (kernel version + patch dir); scripts/check-config-fragments.sh
+# allowlists exactly those.
+$(RT_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
+	$(call merge_fragments,$(RT_OUTPUT_DIR),$(DE10NANO_KERNEL_STACK) $(RT_FRAGMENT))
 	$(BR_MAKE_RT) olddefconfig
 
 # `initramfs` is a hard prerequisite for the same reason it is on `all`:
@@ -612,7 +684,7 @@ rt: initramfs $(RT_OUTPUT_DIR)/.config hostshim
 		echo "FATAL: expected exactly one module tree under" >&2; \
 		echo "       $(RT_OUTPUT_DIR)/target/usr/lib/modules/ but found $$#." >&2; \
 		echo "       Zero means depmod/target-finalize never ran (is BR2_TARGET_ROOTFS_TAR" >&2; \
-		echo "       still set in configs/mister_kernel_defconfig?); more than one is the" >&2; \
+		echo "       still set in configs/fragments/kernel-only.fragment?); more than one is the" >&2; \
 		echo "       stale-sibling hazard described above. Run 'make rt-clean && make rt'." >&2; exit 1; \
 	fi; \
 	kver=$$(basename "$$1"); \
@@ -678,10 +750,10 @@ rt-clean:
 	rm -rf $(RT_OUTPUT_DIR)
 
 # --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
-# Loads configs/mister_de25nano_defconfig into output-de25/. Order-only
-# $(BR_STAMP) and NO file prerequisite on the defconfig — same shape, same two
+# Generates output-de25/.config from the de25nano fragment stack. Order-only
+# $(BR_STAMP) and NO file prerequisite on the fragments — same shape, same two
 # reasons, as $(OUTPUT_DIR)/.config and $(RT_OUTPUT_DIR)/.config above: a
-# defconfig listed as a normal prerequisite gets caught by the `%:` catch-all
+# fragment listed as a normal prerequisite gets caught by the `%:` catch-all
 # target-forwarding rule at the bottom of this file and would be "remade" with
 # O=$(OUTPUT_DIR) (i.e. loaded into the DE10's output dir — here that would
 # mean loading an AARCH64 config over the armv7 build, which is about as bad as
@@ -689,17 +761,24 @@ rt-clean:
 # always up to date, so `make de25-menuconfig` edits are not silently
 # discarded by the next `make de25`.
 #
-# Re-generate after editing the defconfig with `make de25-clean && make de25`,
-# the same manual step the main and rt configs imply.
+# Re-generate after editing a fragment with `make de25nano-defconfig` (or
+# `make de25-clean && make de25`), the same deliberate step the main and rt
+# configs imply.
 #
-# No merge_config.sh step: unlike `rt`, this defconfig is standalone.
 # `hostshim` is an order-only prerequisite HERE, not only on `de25`: under
 # `make -j de25` the sibling prerequisites of `de25` run concurrently, so the
 # config recipe (which invokes Buildroot, whose dependency check needs the
 # shim's `install` on PATH) could otherwise start before the shim exists.
 $(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
-	@mkdir -p $(DE25_OUTPUT_DIR)
-	$(BR_MAKE_DE25) mister_de25nano_defconfig
+	$(call merge_fragments,$(DE25_OUTPUT_DIR),$(DE25NANO_STACK))
+	$(BR_MAKE_DE25) olddefconfig
+
+# Force-regenerate the DE25 configuration -- the replacement for the old
+# `make mister_de25nano_defconfig`; mirrors de10nano-defconfig above.
+.PHONY: de25nano-defconfig
+de25nano-defconfig: | $(BR_STAMP) hostshim
+	@rm -f $(DE25_OUTPUT_DIR)/.config
+	@$(MAKE) --no-print-directory $(DE25_OUTPUT_DIR)/.config
 
 # Deliberately NOT `de25: initramfs ...` — see DE25_OUTPUT_DIR's header for why
 # the stage-1 cpio has no business in an aarch64 kernel.
@@ -735,21 +814,61 @@ de25: $(DE25_OUTPUT_DIR)/.config hostshim
 		echo "       BR2_LINUX_KERNEL_CUSTOM_DTS_PATH did not build." >&2; exit 1; \
 	fi; \
 	echo ""; \
-	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
-	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -c %s $$d) bytes)"; done; \
+	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
+	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -L -c %s $$d) bytes)"; done; \
 	test -f $(DE25_OUTPUT_DIR)/images/rootfs.ext4 || { \
 		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/rootfs.ext4" >&2; \
 		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
 		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
-	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
-	echo "    Bare developer OS -- no MiSTer binaries, no bootloader yet (D2.2)."; \
-	echo ""
+	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
+	if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
+		echo "==> DE25 bl31/FIT: SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb was built)"; \
+	else \
+		test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \
+			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/bl31.bin" >&2; \
+			echo "       (BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31 + _IMAGES=\"bl31.bin\" select it.)" >&2; \
+			echo "       BL31 is what goes INSIDE u-boot.itb as the 'atf' image, so a missing" >&2; \
+			echo "       bl31.bin means the FIT below is either absent or built around a" >&2; \
+			echo "       binman-faked zero blob -- which boots nothing and says nothing." >&2; exit 1; }; \
+		echo "==> DE25 bl31:   $(DE25_OUTPUT_DIR)/images/bl31.bin  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/bl31.bin) bytes)"; \
+		test -f $(DE25_OUTPUT_DIR)/images/u-boot.itb || { \
+			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/u-boot.itb" >&2; \
+			echo "       This is THE artifact of the bootloader half of the build: the factory" >&2; \
+			echo "       SPL in QSPI looks for a file of exactly that name on FAT partition 1" >&2; \
+			echo "       (SPL_FS_LOAD_PAYLOAD_NAME under SPL_LOAD_FIT, boot partition 1)." >&2; \
+			echo "       The usual cause is CONFIG_BINMAN having gone off: it is selected only" >&2; \
+			echo "       as 'select BINMAN if SPL_ATF' and it has no prompt, so anything that" >&2; \
+			echo "       turns CONFIG_SPL off takes the FIT with it, silently and with a green" >&2; \
+			echo "       U-Boot build. See board/mister/de25nano/uboot.fragment, SPL block." >&2; exit 1; }; \
+		echo "==> DE25 FIT:    $(DE25_OUTPUT_DIR)/images/u-boot.itb  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/u-boot.itb) bytes)"; \
+		echo "    Verify its shape against the factory SPL contract with:"; \
+		echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
+		echo "    Bare developer OS -- no MiSTer binaries."; \
+		echo ""; \
+	fi
+	@if [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
+		echo "==> DE25 card:   $(DE25_OUTPUT_DIR)/images/sdcard-de25.img  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/sdcard-de25.img) bytes)"; \
+		echo "                 dd it to a card; docs/de25-sdcard.md."; \
+		echo ""; \
+	elif [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
+		echo "==> DE25 card:   SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb) -- nothing"; \
+		echo "                 this build produced can boot a board."; \
+		echo ""; \
+	else \
+		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/sdcard-de25.img" >&2; \
+		echo "       (BR2_ROOTFS_POST_IMAGE_SCRIPT runs board/mister/de25nano/post-image.sh," >&2; \
+		echo "       which assembles the card and hands it to scripts/check-sdcard-de25.sh." >&2; \
+		echo "       A build that emits no card is not a green build.)" >&2; exit 1; \
+	fi
 
-# Escape hatches for iterating without hand-editing the checked-in defconfig.
+# Escape hatches for iterating without hand-editing the checked-in fragments.
 # Both write to output-de25/; fold the result back into
-# configs/mister_de25nano_defconfig (`savedefconfig`, then hand-restore the
-# header comments -- see that file's own note) or into
-# board/mister/de25nano/linux.fragment by hand.
+# configs/fragments/de25nano.fragment by hand (a `savedefconfig` of
+# output-de25/ is unordered, comment-free and NOT tracked --
+# docs/buildroot-config.md §1), into board/mister/de25nano/linux.config, or --
+# carefully, it is SHARED with the DE10 and must stay a no-op there
+# (scripts/check-kernel-fragment-noop.sh) -- into
+# board/mister/common/linux-mister.fragment.
 #
 # de25-linux-menuconfig exists as its own target for the same reason
 # rt-menuconfig does: the `%:` catch-all would forward a bare
@@ -828,7 +947,7 @@ check-initramfs:
 	exit $$rc
 
 # --- zImage_dtb (P1.11 / A3) ----------------------------------------------------
-# The REAL hook is BR2_ROOTFS_POST_IMAGE_SCRIPT in configs/mister_de10nano_defconfig
+# The REAL hook is BR2_ROOTFS_POST_IMAGE_SCRIPT in configs/fragments/de10nano.fragment
 # (board/mister/de10nano/post-image.sh), which Buildroot runs automatically at the
 # end of every `$(BR_MAKE) all` and which already fails the build on a contract
 # violation -- so `make all` needs no extra step here, unlike check-initramfs above
@@ -883,12 +1002,15 @@ sdcard: hostshim
 help:
 	@echo "MiSTer BR2_EXTERNAL wrapper (TASKS.md P1.1)"
 	@echo ""
-	@echo "  make mister_de10nano_defconfig  - load configs/mister_de10nano_defconfig"
+	@echo "  make de10nano-defconfig         - (re)generate output/.config from the DE10-Nano"
+	@echo "                                    fragment stack (configs/fragments/, stacks.mk)"
 	@echo "  make menuconfig                 - interactive Buildroot config"
 	@echo "  make linux-menuconfig           - interactive kernel config"
-	@echo "  make savedefconfig              - save current config back to a defconfig"
+	@echo "  make savedefconfig              - save current config to output/defconfig (fold"
+	@echo "                                    it back into configs/fragments/ by hand)"
 	@echo "  make olddefconfig               - non-interactively resolve config to defaults"
 	@echo "  make list-defconfigs            - list built-in and external defconfigs"
+	@echo "                                    (only the initramfs/installer ones remain)"
 	@echo "  make buildroot-verify           - download (if needed) + SHA-256-verify the"
 	@echo "                                    pinned Buildroot tarball, without unpacking"
 	@echo "  make buildroot-showsig          - print upstream's GPG-signed release manifest"
@@ -930,11 +1052,14 @@ help:
 	@echo ""
 	@echo "DE25-Nano developer OS (aarch64 / Agilex 5 -- docs/de25-nano-tasks.md D2.1):"
 	@echo "  make de25                       - build the DE25-Nano image into output-de25/"
-	@echo "                                    (aarch64 toolchain + mainline 7.2.2 kernel +"
-	@echo "                                    minimal BusyBox ext4 rootfs; asserts images/Image"
-	@echo "                                    and a .dtb exist). BARE DEVELOPER OS: no MiSTer"
-	@echo "                                    binaries, no bootloader yet. Does NOT run"
-	@echo "                                    'initramfs' -- that cpio is armv7."
+	@echo "                                    (aarch64 toolchain + mainline 7.2.3 kernel +"
+	@echo "                                    minimal BusyBox ext4 rootfs + TF-A/U-Boot FIT +"
+	@echo "                                    the SD-card image; asserts images/Image, a .dtb,"
+	@echo "                                    bl31.bin, u-boot.itb and sdcard-de25.img exist)."
+	@echo "                                    BARE DEVELOPER OS: no MiSTer binaries. Does NOT"
+	@echo "                                    run 'initramfs' -- that cpio is armv7."
+	@echo "  make de25nano-defconfig         - (re)generate output-de25/.config from its"
+	@echo "                                    fragment stack (common + de25nano)"
 	@echo "  make de25-menuconfig            - Buildroot menuconfig for the DE25 config"
 	@echo "  make de25-linux-menuconfig      - kernel menuconfig for the DE25 kernel"
 	@echo "  make de25-clean                 - rm -rf output-de25/"
@@ -1041,7 +1166,7 @@ buildroot-unpack: $(BR_STAMP)
 
 # --- Forward everything else into Buildroot ------------------------------------
 # make menuconfig, make linux-menuconfig, make savedefconfig, make
-# mister_de10nano_defconfig (Buildroot's own %_defconfig rule finds it under
+# mister_initramfs_defconfig (Buildroot's own %_defconfig rule finds it under
 # this tree's configs/, since BR2_EXTERNAL is set above), etc.
 %: $(BR_STAMP) hostshim
 	$(BR_MAKE) $@

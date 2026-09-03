@@ -1,0 +1,44 @@
+# U-Boot tarball hash for the pinned BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE.
+#
+# WHY THIS FILE EXISTS
+# Buildroot ships boot/uboot/uboot.hash, but it only ever carries the ONE
+# version that release bundles — 2026.04 in Buildroot 2026.05.2. We pin 2026.07
+# (docs/de25-uboot.md), so that file has no line for our tarball.
+#
+# That is not a "no hash file" WARNING, it is a HARD FAILURE, and the
+# difference matters. support/download/check-hash counts hash FILES and hash
+# LINES separately: with at least one hash file present but no line matching
+# the downloaded basename it exits 3 ("No hash found for ..."), and
+# BR2_DOWNLOAD_FORCE_CHECK_HASHES=y (set in the defconfig) empties
+# BR_NO_CHECK_HASH_FOR so nothing can excuse it. So the build fails closed
+# until this file exists — which is the intended behaviour, and the reason a
+# U-Boot version bump MUST update this file in the same commit.
+#
+# Buildroot finds it because pkg-patch-hash-dirs (package/pkg-utils.mk:163)
+# searches $(BR2_GLOBAL_PATCH_DIR)/<pkg>/ as well as the package directory, and
+# the defconfig points BR2_GLOBAL_PATCH_DIR at board/mister/de25nano/patches.
+# Same mechanism as the kernel's linux.hash next door; that file's header has
+# the long version.
+#
+# WHERE THIS HASH COMES FROM — read before changing it.
+# Fetched 2026-09-02 from the U-Boot release server:
+#
+#     https://ftp.denx.de/pub/u-boot/u-boot-2026.07.tar.bz2
+#     https://ftp.denx.de/pub/u-boot/u-boot-2026.07.tar.bz2.sig
+#
+# and the detached signature was VERIFIED, not merely downloaded:
+#
+#     gpg: Signature made Mon Jul  6 19:02:11 2026 CDT
+#     gpg:                using EDDSA key F3CEA8743D60E0192F9B4C7A2BE2A0F50ABFE40A
+#     gpg:                issuer "trini@konsulko.com"
+#     gpg: Good signature from "Thomas Rini <trini@konsulko.com>"
+#
+# Thomas Rini is the U-Boot maintainer and the signer of every U-Boot release
+# tarball; the key was retrieved from keys.openpgp.org by full fingerprint.
+# The sha256 below is of the tarball that signature covers. This is therefore a
+# SIGNED provenance chain, not a trust-on-first-use value — do not downgrade it
+# to "locally computed" on the next bump without re-doing the verification.
+#
+# The gpl-2.0.txt line is for `legal-info` only, and Buildroot's own
+# boot/uboot/uboot.hash already carries it; it is not repeated here.
+sha256  78e8bfc382fe388f9b55aa1daf8c563522a037779b5d4c349d1415e381f1243e  u-boot-2026.07.tar.bz2

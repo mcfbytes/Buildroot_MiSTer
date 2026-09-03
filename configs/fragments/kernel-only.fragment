@@ -1,0 +1,17 @@
+# kernel-only.fragment — turns a board stack into the KERNEL-ONLY base a
+# kernel variant (`make rt`, CI's build-kernel legs) builds against: no init,
+# no shell, no BusyBox, rootfs-tar only. Layered on common + de10nano
+# (configs/fragments/stacks.mk, DE10NANO_KERNEL_FRAGMENTS); a variant's own
+# configs/mister_<name>.fragment is merged on top of that by the Makefile.
+# This is NOT a second image. Rationale: docs/buildroot-config.md §4.
+
+# --- No init, no shell, no BusyBox (docs/buildroot-config.md §4.1) ---
+# WARNING: all three lines are needed; BusyBox is `default y` on its own.
+BR2_INIT_NONE=y
+BR2_SYSTEM_BIN_SH_NONE=y
+# BR2_PACKAGE_BUSYBOX is not set
+
+# --- Rootfs: tar, and ONLY tar (docs/buildroot-config.md §4.2) ---
+# WARNING: drop this and depmod never runs — the module tree ships without
+# modules.dep/modules.alias. The tar is also CI's module-transport artifact.
+BR2_TARGET_ROOTFS_TAR=y

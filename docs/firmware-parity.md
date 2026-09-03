@@ -15,7 +15,7 @@
 This is the P3.3 deliverable for the **firmware population** half of
 "Module loading & firmware infra" (TASKS.md). The **module-autoload** half
 (kmod/depmod/eudev/xz-compression) was already done — see the P3.3 (core)
-commit and `configs/mister_de10nano_defconfig`'s `BR2_PACKAGE_HOST_KMOD_XZ` /
+commit and `configs/fragments/de10nano-image.fragment`'s `BR2_PACKAGE_HOST_KMOD_XZ` /
 `BR2_PACKAGE_KMOD_TOOLS` lines. This document covers only `/lib/firmware`.
 
 **Target:** `docs/stock-inventory/firmware.md` — the authoritative 66-file
@@ -61,7 +61,7 @@ Config.in reasoning:
 
 > The original P3.3 run measured 56 present / 10 missing. `brcm/BCM20702A1-0b05-17cb.hcd`
 > was subsequently sourced by `package/bcm20702-firmware` (P3.14,
-> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `configs/mister_de10nano_defconfig:1202`;
+> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `configs/fragments/de10nano-image.fragment`;
 > `scripts/ci-tests.sh` fails the build if it is absent from the image), which is what
 > moves present 56→57 and flagged 2→1. The obsolete count was independently a miscount:
 > that section lists **seven** files, not six.
@@ -140,7 +140,7 @@ driver exists to use them (harmless unused bytes, not a gap).
 
 ## defconfig changes
 
-`configs/mister_de10nano_defconfig`, added after the P3.2 block:
+`configs/fragments/de10nano-image.fragment`, added after the P3.2 block:
 
 ```
 BR2_PACKAGE_LINUX_FIRMWARE=y

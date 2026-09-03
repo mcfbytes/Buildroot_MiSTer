@@ -94,7 +94,7 @@ and are passed straight to ntfs-3g, same as on stock.
 
 ## Verification
 
-- **Config resolves.** `make mister_de10nano_defconfig && make olddefconfig` (kconfig
+- **Config resolves.** `make de10nano-defconfig && make olddefconfig` (kconfig
   only, no compile) produces an `output/.config` with `BR2_PACKAGE_USBMOUNT=y` + the
   auto-`select`ed `BR2_PACKAGE_LOCKFILE_PROGS=y`/`BR2_PACKAGE_LIBLOCKFILE=y`, and all
   the util-linux program toggles (`…_MOUNT`, `…_BINARIES`, `…_AGETTY`, …) — i.e. the

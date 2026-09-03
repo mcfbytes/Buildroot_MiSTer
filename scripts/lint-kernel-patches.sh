@@ -50,7 +50,7 @@
 #
 # Usage: scripts/lint-kernel-patches.sh [patch-dir...]
 #   With no arguments, lints the series named by BR2_LINUX_KERNEL_PATCH in
-#   configs/mister_de10nano_defconfig, plus the upstream-only series alongside it
+#   configs/fragments/de10nano.fragment, plus the upstream-only series alongside it
 #   ("<that path>-upstream") when that directory exists.
 #   A directory named on the command line must exist and contain patches.
 #
@@ -64,7 +64,7 @@ set -o pipefail
 # (shellcheck SC2155), and the rest of scripts/ avoids that pattern.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
-readonly DEFCONFIG="$REPO_ROOT/configs/mister_de10nano_defconfig"
+readonly DEFCONFIG="$REPO_ROOT/configs/fragments/de10nano.fragment"
 
 # Resolve the default from the defconfig rather than hardcoding the path, which is what
 # the usage text above has always promised and what scripts/export-kernel-tree.sh already

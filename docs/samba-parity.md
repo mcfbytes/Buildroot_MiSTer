@@ -48,7 +48,7 @@ build's package install doesn't pre-bake either — fixed in `etc/fstab`
 - Our Samba version: `SAMBA4_VERSION = 4.23.8` in
   `work/buildroot/package/samba4/samba4.mk`, built with
   `--enable-fhs --localstatedir=/var` and no AD DC / ADS / smbtorture
-  (`configs/mister_de10nano_defconfig`'s existing `BR2_PACKAGE_SAMBA4=y`
+  (`configs/fragments/de10nano-image.fragment`'s existing `BR2_PACKAGE_SAMBA4=y`
   block, unchanged by this task).
 - Built-image ground truth: `work/p3-rootfs/` (an extracted rootfs from a
   prior build of this repo's *current* overlay+defconfig — verified
@@ -235,7 +235,7 @@ directory by then.
 | `docs/samba-parity.md` | this file |
 
 **Not changed:** `overlay/etc/samba/smb.conf`, `etc/init.d/S91smb`,
-`configs/mister_de10nano_defconfig` — see §1/§3 for why each is already
+`configs/fragments/de10nano-image.fragment` — see §1/§3 for why each is already
 correct as committed.
 
 ## 5. What this task could not verify (needs BUILD / hardware LAN, P3.13)

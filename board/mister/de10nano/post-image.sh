@@ -85,7 +85,7 @@ echo "$prog: wrote $out ($(wc -c <"$out") bytes)"
 ################################################################################
 # P2.5 (A9) — linux.img: the flashable, loop-mounted rootfs image.
 #
-# KERNEL-ONLY CONFIGS SKIP THIS HALF. configs/mister_kernel_defconfig (the
+# KERNEL-ONLY CONFIGS SKIP THIS HALF. the kernel-only fragment stack (configs/fragments/kernel-only.fragment) (the
 # kernel-variant base, ADR 0021 as amended 2026-07-18) reuses this script for
 # the zImage_dtb assembly above but builds only a rootfs TAR — there is no
 # rootfs.ext2 and nothing to ship as linux.img. Gate on what the DRIVING
@@ -101,7 +101,7 @@ if [ -n "${BR2_CONFIG:-}" ] && [ -f "${BR2_CONFIG:-}" ] \
 fi
 
 ################################################################################
-# BR2_TARGET_ROOTFS_EXT2 (ext4 variant, see configs/mister_de10nano_defconfig
+# BR2_TARGET_ROOTFS_EXT2 (ext4 variant, see configs/fragments/de10nano-image.fragment
 # for why that mechanism and not genimage) writes the actual filesystem to
 # BINARIES_DIR/rootfs.ext2 -- that name is fixed by fs/ext2/ext2.mk
 # regardless of the ext2/3/4 GEN choice; Buildroot additionally symlinks

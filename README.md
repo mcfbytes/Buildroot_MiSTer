@@ -793,7 +793,8 @@ broke and why, without grepping):
 - a sandboxed functional test of the timezone autodetect dhcpcd hook
   ([`scripts/test-timezone.sh`](scripts/test-timezone.sh)) — it turns a string off the
   network into a filesystem path, so every class of hostile answer is asserted rejected,
-  run twice: under the host shell and under the target's own BusyBox `ash` via `qemu-arm`
+  run three times: under the host shell, under the target's own `bash --posix` via `qemu-arm`
+  (what `/bin/sh` is on the box, as on stock), and under the target's BusyBox `ash`
 
 Alongside it, [`scripts/check-abi.sh`](scripts/check-abi.sh) runs the full
 SONAME/loader checklist from [`docs/abi-contract.md`](docs/abi-contract.md). The overlap on

@@ -141,3 +141,37 @@ CONFIG_PSTORE_PMSG=y
 # the safe default wanted. Do not "enable" it here — enabling is a userspace
 # decision (open the device and feed it), and adding symbols would only create
 # the appearance of a beta-only capability that is not beta-only.
+
+# --- Troubleshooting channels (RT/7.2 variant ONLY; the 6.18 stock-parity kernel
+# is untouched). Leave with the other debug options when a shipping 7.2 kernel
+# is cut.
+#   CONFIG_NETCONSOLE         send printk (incl. an oops/panic) over UDP to a
+#                             listener AS IT HAPPENS -- the LIVE, off-board
+#                             channel. It complements, not replaces, the
+#                             on-board post-mortem channel: pstore/ramoops IS
+#                             provisioned on this kernel (0046-dts-ramoops.patch
+#                             reserves 1 MiB at 0x1FE00000; PSTORE_RAM=y above),
+#                             but ramoops only helps if the board comes back
+#                             from a warm reboot so /sys/fs/pstore can be read,
+#                             and it dies with a power cycle or a hang that
+#                             never reboots. With the serial console disabled,
+#                             netconsole is the one channel that gets the last
+#                             lines OFF the board while it is still dying.
+#   CONFIG_NETCONSOLE_DYNAMIC configure the target at RUNTIME through configfs
+#                             (/sys/kernel/config/netconsole) from the rig's own
+#                             out-of-band config -- no listener address is ever
+#                             baked into this tree.
+#   (inherited, NOT set here) CONFIGFS_FS=y and MAGIC_SYSRQ=y already come from
+#                             the shared linux.config, so /sys/kernel/config
+#                             exists for the dynamic target and sysrq over
+#                             /proc/sysrq-trigger gives a live backtrace/state
+#                             dump when the board is wedged but reachable.
+#                             MAGIC_SYSRQ_DEFAULT_ENABLE stays at the kernel
+#                             default 0x1 (= ALL functions), the same as the
+#                             stock-parity 6.18 kernel -- narrowing it here
+#                             would make RT diverge from stock for no gain.
+# Measured need: a whole-board reboot during a PSX session on 2026-09-02 left no
+# trace anywhere (kernel.panic=15 fired; logs on tmpfs died with it).
+CONFIG_NETCONSOLE=y
+CONFIG_NETCONSOLE_DYNAMIC=y
+

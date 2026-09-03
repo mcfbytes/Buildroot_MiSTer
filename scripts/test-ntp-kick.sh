@@ -70,12 +70,68 @@ fi
 read -r -a TEST_SH <<< "${NTP_TEST_SH:-sh}"
 
 SB="$(mktemp -d "${TMPDIR:-/tmp}/ntp-kick-test.XXXXXX")"
-trap 'rm -rf "$SB"' EXIT
+mkdir -p "$SB/bin"
+trap 'pkill -P $$ -f "$SB/(not)?ntpd" 2>/dev/null; rm -rf "$SB"' EXIT
 
 NTP_INIT="$SB/S49ntp"
 NTPD_PID="$SB/ntpd.pid"
 STAMPDIR="$SB/ntp-kick"
 CALLS="$SB/init.calls"
+NTPD_EXEC="$SB/ntpd"
+
+# Real executables named "ntpd" and "notntpd", so /proc/PID/comm makes the
+# identity check testable with live processes rather than mocks. bash is the
+# copy source because this script already requires it, and unlike coreutils or
+# busybox it does not dispatch on argv[0] and refuse to run under another name.
+# The trailing `:` in the command defeats bash's exec optimisation for a single
+# command -- without it bash exec()s sleep and comm becomes "sleep", not "ntpd".
+cp "$BASH" "$NTPD_EXEC"
+cp "$BASH" "$SB/notntpd"
+
+# Stub for busybox's start-stop-daemon probe. It encodes exactly the semantics
+# MEASURED on the two binaries that matter -- ours (BusyBox 1.38.0) and stock's
+# (1.33.1, extracted from Linux_Image_creator_MiSTer's rootfs.tar.bz2 and run
+# under qemu-arm) -- rather than guessing them:
+#   live pid, no -x                     -> 0
+#   live pid, -x naming another process -> 1
+#   live pid, -x naming this process    -> 0   (matched by NAME, not by
+#                                               resolved path: a decoy whose
+#                                               exe was /usr/lib/.../sleep
+#                                               still matched -x /usr/bin/sleep)
+#   reaped pid                          -> 1, and prints "warning: killing
+#                                          process N: No such process" to
+#                                          stderr, NOT gated on -q, on BOTH
+#   pidfile containing 0                -> 0   (the quirk the hook must reject
+#                                               for itself)
+# A stub rather than the real ARM binary because the harness also runs under
+# target busybox ash via qemu, and nesting qemu inside qemu to reach the real
+# one is not portable. The real binary's behaviour is pinned by the measurement
+# above, recorded in docs/bluetooth-parity.md's sibling analysis and the hook.
+cat > "$SB/bin/start-stop-daemon" <<'EOSSD'
+#!/bin/sh
+pidfile=""; want=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-p) pidfile="$2"; shift 2 ;;
+		-x) want="$2"; shift 2 ;;
+		*)  shift ;;
+	esac
+done
+[ -n "$pidfile" ] && [ -s "$pidfile" ] || exit 1
+pid=$(cat "$pidfile")
+case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+[ "$pid" = 0 ] && exit 0
+if ! kill -0 "$pid" 2>/dev/null; then
+	echo "start-stop-daemon: warning: killing process $pid: No such process" >&2
+	exit 1
+fi
+if [ -n "$want" ]; then
+	comm=$(cat "/proc/$pid/comm" 2>/dev/null)
+	[ "$comm" = "${want##*/}" ] || exit 1
+fi
+exit 0
+EOSSD
+chmod +x "$SB/bin/start-stop-daemon"
 
 # The stub stands in for /etc/init.d/S49ntp: record the verb, say nothing.
 cat > "$NTP_INIT" <<EOF
@@ -87,6 +143,7 @@ chmod +x "$NTP_INIT"
 rewrite() {
 	sed -e "s|/etc/init.d/S49ntp|$NTP_INIT|g" \
 	    -e "s|/var/run/ntpd.pid|$NTPD_PID|g" \
+	    -e "s|/usr/sbin/ntpd|$NTPD_EXEC|g" \
 	    -e "s|/run/ntp-kick|$STAMPDIR|g" \
 	    "$SRC"
 }
@@ -129,10 +186,14 @@ wait 2>/dev/null
 # reboot — a fresh boot: tmpfs stamp gone, no record of past calls.
 reboot_sim() { rm -rf "$STAMPDIR"; rm -f "$CALLS"; }
 
-# ntpd_running / ntpd_stopped / ntpd_stale — the three pidfile states.
-ntpd_running() { printf '%s\n' "$$" > "$NTPD_PID"; }
-ntpd_stopped() { rm -f "$NTPD_PID"; }
-ntpd_stale()   { printf '%s\n' "$DEADPID" > "$NTPD_PID"; }
+# Pidfile states. The live ones start a REAL process with the right (or wrong)
+# name, so the hook's identity probe is exercised rather than mocked away.
+_daemon=""
+_stop_daemon() { [ -n "$_daemon" ] && kill "$_daemon" 2>/dev/null; wait "$_daemon" 2>/dev/null; _daemon=""; }
+ntpd_running()  { _stop_daemon; "$NTPD_EXEC" -c 'sleep 60; :' & _daemon=$!; printf '%s\n' "$_daemon" > "$NTPD_PID"; }
+ntpd_impostor() { _stop_daemon; "$SB/notntpd" -c 'sleep 60; :' & _daemon=$!; printf '%s\n' "$_daemon" > "$NTPD_PID"; }
+ntpd_stopped()  { _stop_daemon; rm -f "$NTPD_PID"; }
+ntpd_stale()    { _stop_daemon; printf '%s\n' "$DEADPID" > "$NTPD_PID"; }
 
 # fire [reason] [if_up] -- one dhcpcd address event, sourced the way
 # dhcpcd-run-hooks sources it, INSIDE ${TEST_SH[@]}. Running it under the
@@ -149,11 +210,11 @@ fire() {
 	# shellcheck disable=SC2016  # $1/$2 belong to the inner shell, on purpose
 	_src='. "$1"; : > "$2"'
 	if [ "${2-}" = unset ]; then
-		env -u if_up reason="${1:-BOUND}" \
+		env -u if_up PATH="$SB/bin:$PATH" reason="${1:-BOUND}" \
 			"${TEST_SH[@]}" -c "$_src" _ \
 			"$SB/sync" "$SB/returned-to-dhcpcd" > "$SB/out" 2>&1
 	else
-		env reason="${1:-BOUND}" if_up="${2-true}" \
+		env PATH="$SB/bin:$PATH" reason="${1:-BOUND}" if_up="${2-true}" \
 			"${TEST_SH[@]}" -c "$_src" _ \
 			"$SB/sync" "$SB/returned-to-dhcpcd" > "$SB/out" 2>&1
 	fi
@@ -224,6 +285,23 @@ reboot_sim; : > "$NTPD_PID"
 fire BOUND true
 mustnt "empty pidfile: does not kick"                     kicked
 
+# Liveness alone is not enough. The pidfile cannot outlive a boot (tmpfs), but a
+# crashed ntpd within one boot leaves one, and a long-running box can wrap
+# pid_max and reuse that pid. S49ntp's stop() is stock's -- `start-stop-daemon
+# -K -p "$PIDFILE"` with no -x -- so restarting on a reused pid would SIGTERM an
+# unrelated process. Found in review of PR #147.
+reboot_sim; ntpd_impostor
+fire BOUND true
+mustnt "reused pid owned by another process: does not kick"   kicked
+mustnt "reused pid: the stamp is NOT spent"               stamped
+# 0 is its own case: `kill -0 0` signals the process GROUP, and the real
+# start-stop-daemon probe was measured to SUCCEED on a pidfile containing 0.
+# The hook has to reject it itself -- the probe will not do it.
+reboot_sim; ntpd_stopped; printf '0\n' > "$NTPD_PID"
+fire BOUND true
+mustnt "pidfile containing 0: does not kick"              kicked
+mustnt "pidfile 0: the stamp is NOT spent"                stamped
+
 printf '\n--- events that must do nothing ---\n'
 reboot_sim; ntpd_running
 fire BOUND false
@@ -264,7 +342,7 @@ leak_check='. "$1"; for v in NTP_INIT NTPD_PID STAMPDIR ntpd_pid; do
 	eval "val=\${$v-UNSET}"; [ "$val" = UNSET ] || { echo "LEAKED $v"; exit 1; }
 done; exit 0'
 reboot_sim; ntpd_running
-if env reason=BOUND if_up=true "${TEST_SH[@]}" -c "$leak_check" _ "$SB/sync" \
+if env PATH="$SB/bin:$PATH" reason=BOUND if_up=true "${TEST_SH[@]}" -c "$leak_check" _ "$SB/sync" \
 	> "$SB/out" 2>&1; then
 	ok "leaks no variables into dhcpcd's shell"
 else

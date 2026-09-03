@@ -137,6 +137,9 @@ BOUND|REBOOT|BOUND6|REBOOT6)
 		# moved PIDFILE, the check below simply fails and this hook does
 		# nothing -- the safe direction.
 		NTPD_PID=/var/run/ntpd.pid
+		# Matched against the pidfile's process so a stale pidfile whose
+		# pid has been REUSED cannot make us restart -- see below.
+		NTPD_EXEC=/usr/sbin/ntpd
 		# tmpfs, so the once-per-boot stamp re-arms on every boot.
 		STAMPDIR=/run/ntp-kick
 
@@ -145,12 +148,35 @@ BOUND|REBOOT|BOUND6|REBOOT6)
 		[ -x "$NTP_INIT" ] || exit 0
 		[ -s "$NTPD_PID" ] || exit 0
 		ntpd_pid="$(cat "$NTPD_PID" 2>/dev/null)"
+		# Reject empty, non-numeric, and 0. 0 matters on its own: `kill -0
+		# 0` signals the whole process GROUP, and start-stop-daemon -t
+		# against a pidfile containing 0 was measured to return success
+		# on this image -- either would make a garbage pidfile look live.
 		case "$ntpd_pid" in
-			''|*[!0-9]*) exit 0 ;;
+			''|0|*[!0-9]*) exit 0 ;;
 		esac
-		# A stale pidfile cannot survive the tmpfs, but a crashed ntpd
-		# within one boot can leave one. kill -0 is the liveness test.
-		kill -0 "$ntpd_pid" 2>/dev/null || exit 0
+		# Liveness AND identity, in one probe. Liveness alone is not
+		# enough: the pidfile cannot outlive a boot (tmpfs), but a crashed
+		# ntpd within one boot leaves one behind, and a long-running box
+		# can wrap pid_max and reuse that pid for something unrelated.
+		# We would then restart "ntpd" -- and S49ntp's stop() is stock's,
+		# which does `start-stop-daemon -K -p "$PIDFILE"` with no -x, so
+		# it would SIGTERM that unrelated process before starting a daemon
+		# that was not running. This hook is the first automatic caller of
+		# that script (50-ntp.conf's service_condcommand never fires here,
+		# see above), so the exposure is ours to avoid.
+		#
+		# -x makes start-stop-daemon match the process as well as the
+		# pidfile. Measured on both BusyBox vintages that matter -- ours
+		# (1.38.0) and stock's (1.33.1), the latter extracted from
+		# Linux_Image_creator_MiSTer's rootfs.tar.bz2 and run under
+		# qemu-arm -- against a live decoy process: without -x the probe
+		# returns 0, with `-x /usr/sbin/ntpd` it returns 1, and with the
+		# decoy's own name it returns 0. Note the match is by name, not by
+		# resolved path (a decoy whose exe was /usr/lib/.../sleep still
+		# matched `-x /usr/bin/sleep`), which is ample here: the case being
+		# excluded is a reused pid belonging to something that is not ntpd.
+		start-stop-daemon -K -t -q -p "$NTPD_PID" -x "$NTPD_EXEC" 2>/dev/null || exit 0
 
 		mkdir "$STAMPDIR" 2>/dev/null || exit 0
 

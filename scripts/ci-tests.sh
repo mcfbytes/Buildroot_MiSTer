@@ -1803,11 +1803,11 @@ fi
 # that is not running, not spending its one kick on a pass that bailed out, and
 # the two SOURCED properties -- has its own sandboxed harness. No build, no
 # board, no network.
-printf -- '--- test-ntp-kick.sh: ntpd kick hook behaviour (34 cases) ---\n'
+printf -- '--- test-ntp-kick.sh: ntpd kick hook behaviour (38 cases) ---\n'
 if "$ROOT/scripts/test-ntp-kick.sh"; then
-	pass "test-ntp-kick.sh (ntpd kick hook behaviour, 34 cases)"
+	pass "test-ntp-kick.sh (ntpd kick hook behaviour, 38 cases)"
 else
-	fail "test-ntp-kick.sh (ntpd kick hook behaviour, 34 cases)" \
+	fail "test-ntp-kick.sh (ntpd kick hook behaviour, 38 cases)" \
 		"one or more cases failed -- see output above"
 fi
 

@@ -174,14 +174,38 @@ must   "BOUND with ntpd running kicks it"                 kicked
 must   "the verb is restart"                              grep -qx 'restart' "$CALLS"
 must   "the once-per-boot stamp is claimed"               stamped
 
+reboot_sim; ntpd_running
+fire REBOOT true
+must   "REBOOT (a cached lease confirmed at startup) kicks too" kicked
+
 printf '\n--- once per boot, not once per event ---\n'
-fire RENEW true
-must   "a later RENEW does not kick again"                kicks 1
+reboot_sim; ntpd_running
 fire BOUND true
-must   "a later BOUND does not kick again"                kicks 1
+fire BOUND true
+must   "a second BOUND does not kick again"               kicks 1
 reboot_sim; ntpd_running
 fire BOUND true
 must   "the stamp re-arms on the next boot (tmpfs)"       kicks 1
+
+printf '\n--- a renewal is not an acquisition ---\n'
+# dhcpcd picks RENEW/REBIND only when state->old is non-NULL (src/dhcp.c:
+# 2499-2513) -- the address was already there. Matching them would combine badly
+# with the deliberately re-armable stamp: a renewal arriving hours into the
+# session would restart an ntpd that has been synchronised the whole time,
+# discarding its accumulated discipline. The wired ordering case is what makes
+# that reachable rather than theoretical, since it always bails out first and
+# leaves the kick armed. Found in review of PR #147.
+reboot_sim; ntpd_stopped
+fire BOUND true                    # fires during S41dhcpcd, before S49ntp
+mustnt "wired ordering bails out"                         kicked
+mustnt "...leaving the kick armed"                        stamped
+ntpd_running                       # hours later; ntpd long since synchronised
+fire RENEW true
+mustnt "a RENEW hours later does not restart a synced ntpd"   kicked
+fire REBIND true
+mustnt "a REBIND hours later does not either"             kicked
+fire BOUND true
+must   "...but a genuine new lease still gets its kick"   kicked
 
 printf '\n--- ntpd that is not running is left alone ---\n'
 reboot_sim; ntpd_stopped
@@ -200,17 +224,6 @@ reboot_sim; : > "$NTPD_PID"
 fire BOUND true
 mustnt "empty pidfile: does not kick"                     kicked
 
-# The ordering case the hook was written around: on a wired box this fires
-# during S41dhcpcd, before S49ntp has started ntpd. The pass must bail out
-# WITHOUT spending the stamp, so a genuinely late interface still gets its kick.
-printf '\n--- the wired-box ordering case ---\n'
-reboot_sim; ntpd_stopped
-fire BOUND true
-mustnt "fires before ntpd exists: no kick"                kicked
-ntpd_running
-fire BOUND true
-must   "a later address event still gets its one kick"    kicked
-
 printf '\n--- events that must do nothing ---\n'
 reboot_sim; ntpd_running
 fire BOUND false
@@ -225,6 +238,10 @@ fire PREINIT true
 mustnt "PREINIT does not kick"                            kicked
 fire EXPIRE true
 mustnt "EXPIRE does not kick"                             kicked
+fire RENEW true
+mustnt "RENEW does not kick even with ntpd up and stamp unspent"  kicked
+fire REBIND true
+mustnt "REBIND does not kick either"                      kicked
 mustnt "none of the above spent the stamp"                stamped
 
 printf '\n--- missing init script ---\n'

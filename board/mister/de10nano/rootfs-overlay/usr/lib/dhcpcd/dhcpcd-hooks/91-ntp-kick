@@ -94,12 +94,36 @@
 # and take 20-resolv.conf and 30-hostname with it. The subshell answers both at
 # once, and keeps every variable below out of dhcpcd's shell.
 #
+# ACQUISITION REASONS ONLY -- NOT RENEW OR REBIND.
+# 90-timezone matches BOUND|REBOOT|REBIND|RENEW and their *6 forms, which is
+# right for a hook gated on a persistent file it writes once. It is WRONG here,
+# because this hook's guard is deliberately re-armable: a pass that bails out
+# does not spend the stamp (see above), so any later matching event can still
+# fire the kick. Match a renewal and that "later event" includes one arriving
+# hours into the session, against an ntpd that has been synchronised the whole
+# time -- restarting it there would discard its accumulated clock discipline for
+# nothing. The wired ordering case makes that reachable rather than theoretical:
+# it always bails out first, leaving the kick armed for exactly such an event.
+#
+# The distinction is in dhcpcd's own selection logic (src/dhcp.c:2499-2513):
+# RENEW and REBIND are both chosen only when `state->old` is non-NULL -- we
+# already had a lease, and merely extended it (RENEW) or moved it to another
+# server or address (REBIND). Neither is an address ARRIVING, which is the event
+# this hook exists to catch. BOUND is a new lease and REBOOT is a cached lease
+# confirmed at startup (DHS_REBOOT); those two are the acquisitions.
+#
+# Nothing is lost by narrowing: every case this hook was written for -- WiFi
+# associating minutes into a boot, a dongle plugged in later, an AP that comes
+# back after the box is up -- is a NEW lease, hence BOUND. And an address that
+# changes under a RENEW/REBIND needs no kick anyway: ntpd already holds peers by
+# then, and the HAVE_RTNETLINK path above reattaches them within ~3s.
+#
 # The *6 reasons cannot fire on this kernel -- it is built without IPv6
 # (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
 # correct the day that changes.
 
 case "$reason" in
-BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)
+BOUND|REBOOT|BOUND6|REBOOT6)
 	# if_up is compared as DATA, not executed. dhcpcd's own hooks write
 	# `if $if_up`, which works because dhcpcd sets it to the literal string
 	# true or false -- but this is sourced into dhcpcd's shell, where

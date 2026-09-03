@@ -1779,12 +1779,21 @@ require_present "etc/init.d/S49ntp" "S49ntp (the hook restarts it; without it th
 # minpoll and takes minutes to select a source, so the restart would buy little.
 # It ships in the ntp package's own ntp.conf, which means a package bump could
 # drop it with a green build.
+# EVERY server line, not merely one of them: a bump that drops iburst from some
+# of the pool lines would leave ntpd waiting at minpoll for those, which is the
+# regression this is here to catch. Counted rather than grep -q'd.
 if tar_has "etc/ntp.conf"; then
-	if tar xOf "$ROOTFS_TAR" ./etc/ntp.conf 2>/dev/null | grep -qE '^server .*[[:space:]]iburst'; then
-		pass "/etc/ntp.conf keeps iburst on its server lines"
+	ntp_conf_body=$(tar xOf "$ROOTFS_TAR" ./etc/ntp.conf 2>/dev/null)
+	n_server=$(printf '%s\n' "$ntp_conf_body" | grep -cE '^server[[:space:]]')
+	n_iburst=$(printf '%s\n' "$ntp_conf_body" | grep -cE '^server[[:space:]].*[[:space:]]iburst([[:space:]]|$)')
+	if [ "$n_server" -eq 0 ]; then
+		fail "/etc/ntp.conf keeps iburst on every server line" \
+			"no 'server' lines at all -- 91-ntp-kick would have nothing to resolve"
+	elif [ "$n_server" -eq "$n_iburst" ]; then
+		pass "/etc/ntp.conf keeps iburst on every server line ($n_iburst/$n_server)"
 	else
-		fail "/etc/ntp.conf keeps iburst on its server lines" \
-			"without iburst the 91-ntp-kick restart converges in minutes, not seconds"
+		fail "/etc/ntp.conf keeps iburst on every server line" \
+			"only $n_iburst of $n_server server lines carry it; without iburst the 91-ntp-kick restart converges in minutes, not seconds"
 	fi
 else
 	fail "/etc/ntp.conf present" "not in rootfs.tar"
@@ -1794,11 +1803,11 @@ fi
 # that is not running, not spending its one kick on a pass that bailed out, and
 # the two SOURCED properties -- has its own sandboxed harness. No build, no
 # board, no network.
-printf -- '--- test-ntp-kick.sh: ntpd kick hook behaviour (29 cases) ---\n'
+printf -- '--- test-ntp-kick.sh: ntpd kick hook behaviour (34 cases) ---\n'
 if "$ROOT/scripts/test-ntp-kick.sh"; then
-	pass "test-ntp-kick.sh (ntpd kick hook behaviour, 29 cases)"
+	pass "test-ntp-kick.sh (ntpd kick hook behaviour, 34 cases)"
 else
-	fail "test-ntp-kick.sh (ntpd kick hook behaviour, 29 cases)" \
+	fail "test-ntp-kick.sh (ntpd kick hook behaviour, 34 cases)" \
 		"one or more cases failed -- see output above"
 fi
 

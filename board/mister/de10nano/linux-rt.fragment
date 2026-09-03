@@ -146,9 +146,17 @@ CONFIG_PSTORE_PMSG=y
 # is untouched). Leave with the other debug options when a shipping 7.2 kernel
 # is cut.
 #   CONFIG_NETCONSOLE         send printk (incl. an oops/panic) over UDP to a
-#                             listener; the ONLY way kernel text leaves this
-#                             board: the serial console is disabled and the
-#                             pstore backend above has no RAM reservation yet.
+#                             listener AS IT HAPPENS -- the LIVE, off-board
+#                             channel. It complements, not replaces, the
+#                             on-board post-mortem channel: pstore/ramoops IS
+#                             provisioned on this kernel (0046-dts-ramoops.patch
+#                             reserves 1 MiB at 0x1FE00000; PSTORE_RAM=y above),
+#                             but ramoops only helps if the board comes back
+#                             from a warm reboot so /sys/fs/pstore can be read,
+#                             and it dies with a power cycle or a hang that
+#                             never reboots. With the serial console disabled,
+#                             netconsole is the one channel that gets the last
+#                             lines OFF the board while it is still dying.
 #   CONFIG_NETCONSOLE_DYNAMIC configure the target at RUNTIME through configfs
 #                             (/sys/kernel/config/netconsole) from the rig's own
 #                             out-of-band config -- no listener address is ever

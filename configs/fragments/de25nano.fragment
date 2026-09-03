@@ -2,10 +2,15 @@
 # (Intel/Altera Agilex 5, HPS = 2x Cortex-A76 + 2x Cortex-A55, aarch64).
 # NO MiSTer packages, NO DE10 packages — that is the accepted release scope
 # (ADR 0027 Decision 6, ADR 0029, docs/de25-nano-tasks.md D2.7), not a gap.
-# Layered on common only (configs/fragments/stacks.mk, DE25NANO_FRAGMENTS);
-# no BR2_ symbol here is shared with the DE10 stacks except through that common
-# layer. Two FILES are shared by path — the kernel-tarball hash registry (§6.3)
-# and the MiSTer kernel-config fragment (§6.5) — and each says so at its line.
+# The ONE package set this board shares with the DE10 image is the /lib/firmware
+# blob set, and it is NOT listed here: the stack is `common de25nano
+# image-common` (configs/fragments/stacks.mk, DE25NANO_FRAGMENTS) and
+# image-common.fragment carries that selection once for both boards (owner
+# decision 2026-09-03, docs/buildroot-config.md §12; the shared kernel fragment
+# below already builds the Wi-Fi/Bluetooth drivers that ask for those blobs).
+# No BR2_ symbol here is shared with the DE10 stacks except through those two
+# shared layers. Two FILES are shared by path — the kernel-tarball hash registry
+# (§6.3) and the MiSTer kernel-config fragment (§6.5) — each says so at its line.
 # Rationale for every line: docs/buildroot-config.md §6.
 
 # --- Architecture & toolchain (docs/buildroot-config.md §6.2) ---
@@ -50,6 +55,9 @@ BR2_LINUX_KERNEL_IMAGE=y
 BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
 
 # --- Root filesystem: plain ext4, 256 MiB (docs/buildroot-config.md §6.6) ---
+# MEASURED 2026-09-03, with image-common's ~52 MiB of firmware installed:
+# 85.6 MiB used of 256 MiB (33%), 170 MiB free. No bump needed; the headroom is
+# the point of the number, so it is not trimmed to fit either.
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"
@@ -65,7 +73,9 @@ BR2_TARGET_GENERIC_ISSUE="Welcome to MiSTer DE25-Nano (developer OS)"
 # Empty = passwordless root; on this board the only way in (no SSH keys yet).
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
 
-# --- Packages: none, deliberately (docs/buildroot-config.md §6.8) ---
+# --- Packages: none beyond the shared firmware set (docs/buildroot-config.md §6.8) ---
+# The /lib/firmware blobs come from image-common.fragment (§12); nothing else
+# is enabled here, and adding something needs a task that authorises it.
 # WARNING: the day BR2_PACKAGE_OPENSSH=y is added here it must be added
 # TOGETHER WITH `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` — this board's
 # linux.config has no CONFIG_SECCOMP, and openssh's sandbox is `default y`,

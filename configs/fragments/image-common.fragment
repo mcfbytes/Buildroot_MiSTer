@@ -1,0 +1,61 @@
+# image-common.fragment — the package set every board's SHIPPED IMAGE gets,
+# whatever its architecture. Arch-neutral by construction: nothing here may
+# name a CPU, an ABI, a board directory, a MiSTer binary or an out-of-tree
+# driver for hardware only one board can host.
+#
+# In the IMAGE stack of every board (configs/fragments/stacks.mk:
+# DE10NANO_FRAGMENTS and DE25NANO_FRAGMENTS) and in the kernel-only stack of
+# none of them — that is the whole point of the fragment, and the reason it is
+# not `common`: `common` IS in the kernel-only stack, so a package line there
+# would spend a ~557 MiB fetch and ~52 MiB of install, on every kernel leg, on
+# blobs that land in a rootfs.tar which ships nothing but modules and is then
+# thrown away — and would move that stack's dl-cache key, which hashes
+# common.fragment (docs/buildroot-config.md §10, its rule 6 and the firmware
+# row; the toolchain fingerprint is the one key a BR2_PACKAGE_ line cannot
+# move — it denies that prefix). It is equally not per-board: parity between
+# the boards is exactly what this fragment makes structural, not remembered.
+#
+# THIS IS THE HOME FOR THE SHARED PACKAGE SET AS THE DE25 GROWS. A package
+# both images want moves de10nano-image.fragment -> here, in a commit that
+# shows the de10nano golden hash did NOT move (the resolved config is the
+# same, only differently filed) and the de25nano one did. What must NOT come
+# here: anything DE10-specific, and anything the DE25's bare-developer-OS
+# scope has not taken (ADR 0027 Decision 6 / ADR 0029 — §10 rule 5 still
+# applies; an owner decision per package, not a refactor's side effect).
+#
+# Rationale for every line: docs/buildroot-config.md §12.
+
+# --- /lib/firmware population (P3.3, §12.1, docs/firmware-parity.md) ---
+# WARNING: changing linux-firmware SUB-options on an incremental build installs
+# nothing (Buildroot stamping) — `make linux-firmware-dirclean` first.
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7610E=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7650=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT76X2E=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925=y
+BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_81XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_88XX_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW89=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9271=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7922_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_QUALCOMM_6174A_BT=y
+BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004=y
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9113=y
+BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9116=y
+BR2_PACKAGE_LINUX_FIRMWARE_AR3011=y
+BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB=y
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX=y
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XXX=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y
+BR2_PACKAGE_BCM20702_FIRMWARE=y

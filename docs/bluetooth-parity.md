@@ -40,11 +40,12 @@ so `/bin` is itself a symlink to `usr/bin` in the built image, making
 `etc/init.d/S45bluetooth -> /bin/bluetoothd` resolve to our
 `usr/bin/bluetoothd`):
 
-- `board/mister/de10nano/rootfs-overlay/usr/bin/bluetoothd` — **diffed
-  byte-for-byte against the stock verbatim capture during this audit: 0
-  differences.** Same `start`/`stop`/`restart`/`renew`/`reload`/`hcireset`
-  shape, same `BLUETOOTHD_ARGS="-n -E -C"`, same ext4-image persistence
-  idiom (see §3).
+- `board/mister/de10nano/rootfs-overlay/usr/bin/bluetoothd` — **byte-for-byte
+  against the stock verbatim capture when this audit ran: 0 differences.**
+  Same `start`/`stop`/`restart`/`renew`/`reload`/`hcireset` shape, same
+  `BLUETOOTHD_ARGS="-n -E -C"`, same ext4-image persistence idiom (see §3).
+  **One deviation has since been added, in `stop()` only — see §3.1.** Every
+  other line, and the whole verb set, remains stock's.
 - `board/mister/de10nano/rootfs-overlay/etc/init.d/S45bluetooth` — symlink
   to `/bin/bluetoothd`, matching stock's shape exactly.
 - `board/mister/de10nano/rootfs-overlay/etc/init.d/S40bluetoothd` —
@@ -93,8 +94,70 @@ host-key mechanism from (`/media/fat/linux/ssh.ext4` -> `/etc/ssh_keys`) —
 Bluetooth's is the original, SSH's the derived design.
 
 Differences from stock: **none found.** The script is a byte-identical
-reproduction (§2), so the persistence path, mount options, image size, and
-`renew` semantics all match stock exactly.
+reproduction (§2) apart from the `stop()` wait described next, so the
+persistence path, mount options, image size, and `renew` semantics all match
+stock exactly.
+
+### 3.1 The one deviation: `stop()` waits for the daemon to exit
+
+`start-stop-daemon -K` only sends SIGTERM and returns; it does not wait. Stock
+unmounts on the very next line, so the `umount` races a `bluetoothd` that still
+has `/var/lib/bluetooth` open — it fails `EBUSY` and leaves the loop mount up
+over a possibly-dirty ext4 image.
+
+This is **reachable from the OSD, not merely at shutdown**. `renew`
+(`Main:menu.cpp:7166`, an ABI entry point per `docs/abi-contract.md` §7.6) runs
+`stop` → `umount` → `rm $BTIMG` → `start`, so losing the race deletes the image
+file while it is still loop-mounted. Stock hedges with fixed sleeps — `sleep 2`
+in `renew`, `sleep 1` in `restart` — which is a guess, not a wait.
+
+The fix is upstream Buildroot's, from `package/bluez5_utils/S40bluetoothd`'s
+`stop()`: poll `start-stop-daemon --stop --test` until the process is gone, then
+remove the pidfile. One change from upstream — **ours is bounded** (50 × 0.1 s =
+5 s, then unmount anyway). Upstream's loop is infinite, which on this board would
+hang an OSD menu item forever if `bluetoothd` ever ignored SIGTERM; giving up
+after 5 s is no worse than stock's behaviour today and correct in every other
+case.
+
+Verified by **running** the binaries under `qemu-arm`, not by reading them —
+including stock's, since upstream MiSTer builds on a much older Buildroot and
+its BusyBox is a different vintage. Stock's `/usr/bin/busybox`, extracted from
+`rootfs.tar.bz2` in `MiSTer-devel/Linux_Image_creator_MiSTer`, is **v1.33.1
+(2022-12-24)**; ours is 1.38.0.
+
+| | stock 1.33.1 | ours 1.38.0 |
+|---|---|---|
+| `start-stop-daemon -K -t -q -p` on a live pid | exit 0 | exit 0 |
+| …on a reaped pid | exit 1 | exit 1 |
+| …stderr on the reaped-pid probe | `warning: killing process N: No such process` | identical |
+| `sleep 0.1` | works, ~0.1 s | works, ~0.1 s |
+
+Two things follow. `-t` is in the base option string, not behind
+`CONFIG_FEATURE_START_STOP_DAEMON_FANCY`, and fractional `sleep` is built into
+both — so **this same code is valid on stock**, which matters because the intent
+is to hand it upstream.
+
+And the `2>/dev/null` is **load-bearing**, on both. This is the part that is
+easy to get wrong by reading the source: on the final probe — the one that ends
+the loop — `start-stop-daemon` writes `warning: killing process N: No such
+process` to stderr, *not* gated on `-q`, because BusyBox's pidfile reader does
+not check liveness before building `found_procs`, so the dead pid reaches the
+`bb_perror_msg` branch (`:391`) rather than the silent `!G.found_procs` path
+(`:381-385`). An earlier draft of this section claimed the opposite from a
+source read; running both binaries against a reaped pid disproved it. Without
+the redirect, every `stop`/`restart`/`renew` would emit a spurious warning.
+
+Loop behaviour, measured against our BusyBox: dead pid in the pidfile → 0
+iterations, 44 ms; a daemon that exits 0.6 s after SIGTERM → 5 iterations,
+0.61 s; a daemon that never exits → 50 iterations, then proceeds.
+
+**This is a divergence from stock and the intent is to remove it by fixing
+stock.** `usr/bin/bluetoothd` is not tracked as source upstream — it ships
+inside `addon.tar`, a binary blob committed to
+`MiSTer-devel/Linux_Image_creator_MiSTer` (`docs/verification/
+stock-reconciliation/addon-report.txt:33`, `usr/bin/bluetoothd  EXACT`) — so the
+upstream route is a report against that repo rather than an ordinary source PR.
+Until then this row is the record that we are one `stop()` ahead of stock.
 
 One asymmetry worth naming explicitly (not a defect, a property of the
 mechanism): unlike SSH's `S50sshd`, this script has **no ephemeral tmpfs

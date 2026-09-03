@@ -715,9 +715,9 @@ fi
 # /bin/sh and root's login shell are bash, as on stock (issue #144,
 # docs/buildroot-config.md §5.19). One symbol (BR2_SYSTEM_BIN_SH_BASH) drives
 # both through Buildroot's skeleton finalize hook, and kconfig drops that
-# symbol SILENTLY if BUSYBOX_SHOW_OTHERS ever goes away -- the build stays
-# green and /bin/sh quietly becomes BusyBox ash again. Usr-merged rootfs: the
-# tar records /bin/sh only as ./usr/bin/sh.
+# symbol SILENTLY if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS ever goes away -- the
+# build stays green and /bin/sh quietly becomes BusyBox ash again. Usr-merged
+# rootfs: the tar records /bin/sh only as ./usr/bin/sh.
 sh_line=$(tar tvf "$ROOTFS_TAR" -- "./usr/bin/sh" 2>/dev/null | head -1)
 case "$sh_line" in
 *'-> bash')
@@ -727,7 +727,7 @@ case "$sh_line" in
 *)
 	fail "/bin/sh -> bash (stock parity, BR2_SYSTEM_BIN_SH_BASH)" "is: $sh_line" ;;
 esac
-root_line=$(tar xOf "$ROOTFS_TAR" "./etc/passwd" 2>/dev/null | grep '^root:')
+root_line=$(tar xOf "$ROOTFS_TAR" "./etc/passwd" 2>/dev/null | grep -m1 '^root:')
 case "$root_line" in
 root:*:/bin/bash)
 	pass "root's login shell is /bin/bash (stock parity)" ;;

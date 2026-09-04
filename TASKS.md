@@ -708,7 +708,9 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   **Result: module-autoload half already done pre-task (kmod+depmod xz support,
   modules.dep/modules.alias populated — see the P3.3 (core) commit). This pass covers only
   `/lib/firmware` population.** `configs/mister_de10nano_defconfig` (now
-  `configs/fragments/de10nano-image.fragment`, §5.28 of `docs/buildroot-config.md`) gained
+  `configs/fragments/image-common.fragment`, §12.1 of `docs/buildroot-config.md` —
+  it was `de10nano-image.fragment` / §5.28 until the DE25 image adopted the same
+  set on 2026-09-03) gained
   `BR2_PACKAGE_LINUX_FIRMWARE` + 9 sub-options (`MEDIATEK_MT7601U/MT7610E/MT7650/MT76X2E`,
   `RALINK_RT2XX`, `RTL_81XX/RTL_87XX/RTL_87XX_BT/RTL_88XX_BT`), `BR2_PACKAGE_WIRELESS_REGDB`
   (a separate package from linux-firmware for `regulatory.db`/`.p7s`), and

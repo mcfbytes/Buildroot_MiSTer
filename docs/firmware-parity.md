@@ -61,7 +61,8 @@ Config.in reasoning:
 
 > The original P3.3 run measured 56 present / 10 missing. `brcm/BCM20702A1-0b05-17cb.hcd`
 > was subsequently sourced by `package/bcm20702-firmware` (P3.14,
-> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `configs/fragments/de10nano-image.fragment`;
+> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `configs/fragments/image-common.fragment`
+> (it was in `de10nano-image.fragment` until 2026-09-03, `docs/buildroot-config.md` §12.2);
 > `scripts/ci-tests.sh` fails the build if it is absent from the image), which is what
 > moves present 56→57 and flagged 2→1. The obsolete count was independently a miscount:
 > that section lists **seven** files, not six.
@@ -140,7 +141,13 @@ driver exists to use them (harmless unused bytes, not a gap).
 
 ## defconfig changes
 
-`configs/fragments/de10nano-image.fragment`, added after the P3.2 block:
+These lines were added to `configs/fragments/de10nano-image.fragment` after
+the P3.2 block. **Since 2026-09-03 they live in
+`configs/fragments/image-common.fragment`** — the layer shared by every board's
+image stack — because the DE25-Nano image adopted the same set for parity
+(owner decision; `docs/buildroot-config.md` §12, and §12.1 for the full
+sub-option table this document feeds). The symbols and their rationale are
+unchanged by that move; only the file holding them changed.
 
 ```
 BR2_PACKAGE_LINUX_FIRMWARE=y

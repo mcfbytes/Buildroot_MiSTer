@@ -475,20 +475,38 @@ Note the symbol name: `BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG`, **not**
 `BR2_LINUX_KERNEL_USE_DEFCONFIG` (that one names an in-tree defconfig and takes
 a bare name in `BR2_LINUX_KERNEL_DEFCONFIG`, `linux/linux.mk:360-361`).
 
-### 7.1 Firmware — enabled drivers with no blobs
+### 7.1 Firmware — RESOLVED 2026-09-03: the DE25 ships the DE10's blob set
 
-`configs/fragments/de25nano.fragment` currently selects **no**
-`BR2_PACKAGE_LINUX_FIRMWARE_*` at all, while the shared fragment now builds the
-whole DE10 Wi-Fi/Bluetooth driver set. Those drivers will bind and then fail at
-`request_firmware()`. That is not a regression — wave 1 had exactly the same
-drivers as `=m` from arm64 `defconfig`, also without firmware — but it is now a
-*deliberate* set, so the decision should be explicit. The DE10's 29 firmware
-selections (`configs/fragments/de10nano-image.fragment`, its "/lib/firmware
-population" block; `docs/buildroot-config.md` §5.28; **52 MB** installed at
-`/lib/firmware`) are the menu to copy from; see
-[`firmware-parity.md`](firmware-parity.md) and [`wifi-parity.md`](wifi-parity.md).
-This is an **owner decision**, not a config fact: the initial DE25 scope is a
-bare developer OS (ADR 0027), and the firmware set is tens of MB of rootfs.
+**The obligation this section recorded is closed.** It read: `de25nano.fragment`
+selects no `BR2_PACKAGE_LINUX_FIRMWARE_*` at all while the shared fragment
+builds the whole DE10 Wi-Fi/Bluetooth driver set, so those drivers bind and
+then fail at `request_firmware()`; the DE10's 29 selections are the menu to
+copy from; and the call is an **owner decision**, not a config fact, because
+the DE25's scope is a bare developer OS (ADR 0027) and the set is tens of MB of
+rootfs.
+
+The owner took it on **2026-09-03: mirror the DE10's selection, for parity.**
+How it was implemented — structurally, not by copying lines into
+`de25nano.fragment`:
+
+* The whole block moved OUT of `de10nano-image.fragment` and INTO a new
+  `configs/fragments/image-common.fragment`, the layer shared by every board's
+  IMAGE stack and by no kernel-only stack. `DE25NANO_FRAGMENTS` gained it, so
+  the DE25 gets the identical 31 symbols with no second copy to keep in step
+  (`configs/fragments/stacks.mk`; `docs/buildroot-config.md` §12, per-symbol
+  calls in §12.2).
+* `xow-firmware` did NOT come along: it `depends on BR2_PACKAGE_XONE`, an
+  out-of-tree module this board does not build (§12.2).
+* Built and measured on the real DE25 output tree: `/lib/firmware` holds
+  **202 files + 66 symlinks, 52 MB** — byte-for-byte the DE10's tree minus
+  exactly the three xow/xone entries. The ext4 rootfs goes to **85.6 MiB used
+  of 256 MiB** (33%), so `BR2_TARGET_ROOTFS_EXT2_SIZE="256M"` stands unchanged.
+* The DE10 is provably unaffected: its resolved configuration is identical
+  (its golden hash did not move), and CI's toolchain fingerprint is
+  byte-identical — see `docs/buildroot-config.md` §11 and §12.3.
+
+See [`firmware-parity.md`](firmware-parity.md) and
+[`wifi-parity.md`](wifi-parity.md) for what each sub-option installs.
 
 ---
 

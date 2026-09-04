@@ -12,7 +12,7 @@
 # Six REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
 # tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
 # RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
-# bespoke ip7z/7zip release-asset hashes (lzma-sdk AND
+# bespoke ip7z/7zip release-asset AND license-file hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
 # payload single-file pins, (6) -- numbered after validate-only case 5,
 # which predates it -- the Buildroot tarball hash (BUILDROOT_SHA256 in the
@@ -71,8 +71,12 @@
 # docs/ci.md#renovate-hash-sync-overview and
 # docs/ci.md#renovate-hash-sync-dispatch-trap (run 29669946883).
 #
-# STATUS: only the kernel step is proven against a real PR (#41). A green run
-# elsewhere can mean "silently skipped", not "verified correct" (bug #42). See
+# STATUS: the kernel step (#41) and the ip7z/7zip step (#149) are proven
+# against real PRs. A green run elsewhere can mean "silently skipped", not
+# "verified correct" (bug #42) -- and note that #149 was green here and STILL
+# left master red, because this workflow's correctness is not the same thing
+# as the build's: it refreshed both tarball hashes perfectly while leaving a
+# license-file hash stale, which only `make legal-info` catches. See
 # docs/ci.md#renovate-hash-sync-verification-status. Case 6 (buildroot) was
 # verified at authoring time (2026-08-24) against local fixtures for all four
 # outcomes -- including a live-manifest refresh reproducing PR #116's manual
@@ -406,11 +410,19 @@ jobs:
       # --- 3. ip7z/7zip release-asset tarball hashes --------------------------
       # Bespoke, NOT part of step 1's generic loop: these tarballs are release
       # ASSETS, not commit/tag archives, and the filename derives from the
-      # version with the dots stripped (26.02 -> 7z2602-src.tar.xz). Only the
-      # FIRST sha256 line of each .hash is rewritten. See
-      # docs/ci.md#companion-hash-first-line-only. Runs from the
-      # .hash-sync-tools checkout against the target branch's tree; see step
-      # 1's comment.
+      # version with the dots stripped (26.03 -> 7z2603-src.tar.xz). Runs from
+      # the .hash-sync-tools checkout against the target branch's tree; see
+      # step 1's comment.
+      #
+      # SINCE 2026-09-04 this refreshes the LICENSE-FILE hashes too, not just
+      # the tarball line -- the files each package's *_LICENSE_FILES names,
+      # hashed out of the same asset, with a printed diff of any that changed.
+      # PR #149 (26.02 -> 26.03) is why: the tarball refresh was correct, but
+      # 26.03 rewrapped DOC/readme.txt, which lzma-sdk pins because the
+      # public-domain grant for the C/ code lives only there -- so legal-info
+      # failed at the END of an ~80-minute build, i.e. after the merge. The
+      # script header carries the full rationale, including why an auto-
+      # refreshed license hash is only honest alongside that diff.
       #
       # TWO packages now, not one (ADR 0023): package/lzma-sdk (liblzma-sdk.so
       # from the archive's C/ dir) and package/7zip (the 7zz application + the
@@ -419,7 +431,7 @@ jobs:
       # spelled out rather than "7ZIP_..." because an env var cannot start with
       # a digit. Renamed from hash-sync-lzma-sdk.sh 2026-07-27 for the same
       # reason the step title changed: it is no longer one package's case.
-      - name: Refresh ip7z/7zip release-asset tarball hashes (lzma-sdk, 7zip)
+      - name: Refresh ip7z/7zip release-asset + license-file hashes (lzma-sdk, 7zip)
         run: .hash-sync-tools/scripts/hash-sync-ip7z-src.sh "$GITHUB_WORKSPACE"
 
       # --- 4. SD-card payload single-file pins -------------------------------
@@ -557,9 +569,14 @@ jobs:
             - kernel pins (stable 6.18.y and the RT/beta 7.2 line): kernel.org's
               signed sha256sums.asc for each pin's own vN.x series. An -rc is
               never refreshed here -- no signed manifest exists for one
-            - lzma-sdk pin: sha256sum of the ip7z/7zip release ASSET for the
-              new version (upstream publishes no checksums at all -- see
-              package/lzma-sdk/lzma-sdk.hash's header)
+            - ip7z/7zip pins (lzma-sdk, 7zip): sha256sum of the release
+              ASSET for the new version (upstream publishes no checksums at
+              all -- see package/lzma-sdk/lzma-sdk.hash's header), PLUS the
+              files each package's *_LICENSE_FILES names, hashed from that
+              same asset. A changed license file is refreshed AND diffed
+              into the step log with a ::warning:: -- read that diff before
+              merging; it is the only thing standing between an automated
+              hash refresh and a silent relicense
             - sdcard payload pins (update_all.sh, wifi.sh): sha256 + size of
               the raw file at the new pinned commit, rewritten in place in
               scripts/fetch-sdcard-payload.sh

@@ -13,6 +13,25 @@ and the hard archive-compatibility constraint it does **not** change),
 ADR 0020 (the exFAT installer whose payload now carries the binary),
 `package/lzma-sdk` (same upstream release asset, different half of it).
 
+> **Update 2026-09-04 — the pin has moved; this ADR has not.** Everything
+> below is the record as decided and verified on 2026-07-27, against 7-Zip
+> **26.02**, and is deliberately left at that version: the verification
+> section describes commands actually run then, and rewriting their output
+> would falsify the record. The decision (ship 7-Zip from source instead of
+> letting the Downloader fetch p7zip 16.02) is version-independent and still
+> stands. The **current** pin is **26.03** — `package/7zip/7zip.mk` and
+> `package/lzma-sdk/lzma-sdk.mk` are the source of truth for it.
+>
+> One behavior described below has since changed. The verification bullet
+> "provenance lines beneath the first `sha256` line untouched" recorded the
+> hash-sync's *original* rule: refresh the tarball hash only, and let a
+> changed license file fail the build closed for a human to re-derive. The
+> 26.03 bump showed that fail-closed lands as a red master rather than a red
+> PR (it fires in `make legal-info`, at the end of an ~80-minute build), so
+> `scripts/hash-sync-ip7z-src.sh` now also refreshes the hashes of the files
+> named in each package's `*_LICENSE_FILES` and prints a diff of any that
+> changed. See that script's header for the full rationale.
+
 ## 1. The problem
 
 Nothing in the installed MiSTer image can extract a `.7z`, yet every Linux

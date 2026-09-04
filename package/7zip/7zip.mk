@@ -35,11 +35,11 @@
 # other in the same PR unless you have a reason not to. Note the LICENSE
 # differs between the two for real reasons -- see the license comment below.
 7ZIP_VERSION = 26.03
-# 7z$(subst .,,26.02) = 7z2602-src.tar.xz -- the versioning scheme 7-zip.org
+# 7z$(subst .,,26.03) = 7z2603-src.tar.xz -- the versioning scheme 7-zip.org
 # itself uses for source drops. The GitHub ip7z/7zip release page is the
 # project's own release channel (7-zip.org's download page links there); it
 # publishes NO checksums (no checksum assets, none in the release body, none
-# on 7-zip.org -- re-checked at pin time, 2026-07-27), hence the
+# on 7-zip.org -- re-checked at the 26.03 bump, 2026-09-04), hence the
 # locally-computed hash in 7zip.hash and the defconfig's
 # BR2_DOWNLOAD_FORCE_CHECK_HASHES=y actually guarding it.
 7ZIP_SOURCE = 7z$(subst .,,$(7ZIP_VERSION))-src.tar.xz

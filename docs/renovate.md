@@ -54,7 +54,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
-| 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2602-src.tar.xz`; does not fit the generic loop) |
+| 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2603-src.tar.xz`; does not fit the generic loop; also refreshes each package's `*_LICENSE_FILES` hashes and diffs any that changed — see case 3 below) |
 | dualsensectl tag pin (DualSense operator CLI; labeled `tool-pin`) | `package/dualsensectl/dualsensectl.mk` | `customManagers` regex, `github-tags` datasource over `nowrep/dualsensectl` with plain `loose` versioning — upstream tags ordinary `vMAJOR.MINOR` releases, so no bespoke scheme is needed (unlike munt). The captured `currentValue` **includes the leading `v`** on purpose: `scripts/hash-sync-github-packages.sh` reuses the literal `*_VERSION` string as both the archive ref and the `<pkgdir>-<version>.tar.gz` filename, so splitting the prefix off would desync the two | `package/dualsensectl/dualsensectl.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | azcopy release pin (Azure Storage CLI, off-device backup; labeled `tool-pin`) | `package/azcopy/azcopy.mk` | `customManagers` regex, `github-releases` datasource over `Azure/azure-storage-azcopy` with `semver` versioning and `extractVersionTemplate: ^v(?<version>.*)$`. Upstream tags are `v`-prefixed but `AZCOPY_VERSION` holds the **bare** version — the opposite of the dualsensectl row above, and deliberate: that row's `v`-inside-the-version trick exists only to keep `scripts/hash-sync-github-packages.sh`'s generic loop working, and azcopy is **not in that loop** (next column), so the constraint does not apply and the bare number that `azcopy --version` prints is the more useful thing to have in the variable | `package/azcopy/azcopy.hash` — **auto-refreshed since 2026-08-28, by a case of its own (7), never by the generic loop.** azcopy is a `golang-package`: Buildroot sets `DOWNLOAD_POST_PROCESS = go`, runs `go mod vendor`, and hashes the repacked `-go2` tarball, so the generic loop's `curl \| sha256sum` would write the hash of the *pre-vendoring* archive — a wrong value that looks right. azcopy is therefore permanently absent from `HASH_SYNC_PACKAGES`, but it **is** in the workflow's `paths:` filter (it has to be, or nothing fires on a bump): `scripts/hash-sync-azcopy.sh` **rebuilds** the `-go2` tarball with Buildroot's own `support/download/go-post-process` and Buildroot's own pinned Go, then hashes it — and re-derives the `LICENSE`/`NOTICE.txt` lines too. Before that date this row read "**NOT auto-refreshed, and cannot be**", and older commits still show it; the curl-and-hash *method* was what could not work. If case 7 skips, the stale pin is still caught: the image build cannot help (azcopy is off by default, so `build.yml` never compiles it), but the **`azcopy version/hash pin consistency` step in `lint.yml`** rejects any change where `AZCOPY_VERSION` and the filename on the `sha256` line disagree, and the manual recipe in `azcopy.hash` remains the fallback. See `docs/azcopy.md` §5 and `docs/ci.md#renovate-hash-sync-safety-model` |
 | 3 sdcard payload pins (`update_all.sh`, `wifi.sh`, `_Console` cores snapshot; labeled `sdcard-payload-pin`) | `scripts/fetch-sdcard-payload.sh` (`PINNED_UPDATE_ALL_COMMIT`, `PINNED_WIFI_SH_COMMIT`, `PINNED_CORES_COMMIT`) | `customManagers` regex per pin, `git-refs` datasource tracking the upstream default branch HEAD via `currentDigest` (`theypsilon/Update_All_MiSTer`, `MiSTer-devel/Scripts_MiSTer`, `MiSTer-devel/Distribution_MiSTer`) | `PINNED_{UPDATE_ALL,WIFI_SH}_SHA256`/`_SIZE` in the same script — auto-refreshed by `renovate-hash-sync.yml`'s **bespoke sdcard-payload step** (case 4). The cores commit has no companion hash (cores are fetched by content — see the script's header), so it instead gets `renovate-hash-sync.yml`'s **validate-only cores-pin step** (case 5): one Contents API call at the new commit, failing the PR closed if it does not resolve, lists no `*.rbf`, or busts the ~600 MiB cap — because no PR build ever resolves this pin, only `release.yml`'s opt-in `SDCARD_CORES=1` leg |
@@ -325,19 +325,45 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
    (`https://github.com/ip7z/7zip/releases/download/<ver>/...`), not a
    commit/tag archive, and the filename derives from the version with the
    dots stripped (`LZMA_SDK_SOURCE = 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz`,
-   so `26.02` → `7z2602-src.tar.xz`). The trust model is the same as
+   so `26.03` → `7z2603-src.tar.xz`). The trust model is the same as
    case 1's — upstream publishes **no checksums anywhere** (no checksum
    assets, none in the release body, none on 7-zip.org; checked at pin
    time, per the `.hash` file's own header), so a locally-computed
    `sha256sum` of the freshly-fetched asset is the legitimate source. The
    step derives the asset URL from the PR's new `LZMA_SDK_VERSION` /
-   `7ZIP_VERSION`, downloads it **once per package** (deliberate — each
+   `7ZIP_VERSION` and downloads it **once per package** (deliberate — each
    package's hash comes from its own fetch, and a transiently divergent pin
-   pair needs no special case), and rewrites **only the first `sha256` line**
-   of each `.hash` file — the `DOC/License.txt` / `DOC/readme.txt` provenance
-   lines beneath it are never touched. It sets `LZMA_SDK_HASH_CHANGED` and
+   pair needs no special case). It sets `LZMA_SDK_HASH_CHANGED` and
    `SEVENZIP_HASH_CHANGED` (spelled out because an env var cannot begin with a
    digit).
+
+   **It refreshes license-file hashes too**, since 2026-09-04 — the only
+   other case that does is case 7 (azcopy). It used to rewrite *only* the
+   first `sha256` line and never touch the `DOC/License.txt` /
+   `DOC/readme.txt` lines beneath it, on the reasoning that a changed
+   license file should fail the build closed for a human. It does fail
+   closed — but in `make legal-info`, at the **end of an ~80-minute image
+   build**, so on the 26.03 bump (PR #149) the first anyone heard of it was
+   a red master, on a bump whose tarball hashes were both perfect. Now each
+   package's `*_LICENSE_FILES` is read from its `.mk` (single source of
+   truth — adding a license file needs no script edit) and those files are
+   hashed out of the same tarball. Note the two packages list **different**
+   sets on purpose: `7zip` pins only `DOC/License.txt`, `lzma-sdk` also pins
+   `DOC/readme.txt` because the public-domain grant for the `C/` code lives
+   there and nowhere else. That asymmetry is exactly why 26.03 broke one and
+   not the other.
+
+   Because auto-refreshing a license hash would otherwise let a silent
+   relicense ride in on a green PR, **any license-file change prints a
+   diff**: the step re-fetches the previous release (recovered from the old
+   filename in the line it is about to overwrite), emits a unified diff of
+   the license text into the step log, raises a `::warning::` and marks the
+   outcome row loudly. Reviewing that diff is the job — "version banner plus
+   three typo fixes" (what 26.03 actually was) versus a changed grant. The
+   diff is best-effort and can never fail the refresh. A license file named
+   in a `.mk` but **missing from the tarball** is a `failed` outcome that
+   leaves the `.hash` untouched: upstream renaming or dropping one needs a
+   human before the pin can move.
 
 4. **The sdcard payload script pins** (`scripts/fetch-sdcard-payload.sh`) — a
    second **bespoke step**: `update_all.sh` (theypsilon/Update_All_MiSTer)

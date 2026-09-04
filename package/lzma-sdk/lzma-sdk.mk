@@ -27,12 +27,12 @@
 # collides -- silently. Precedent for suffixing our way out of an upstream
 # squat: package/rtl8188eu-aircrack-ng (see its Config.in).
 LZMA_SDK_VERSION = 26.03
-# 7z$(subst .,,26.02) = 7z2602-src.tar.xz -- the same versioning scheme
+# 7z$(subst .,,26.03) = 7z2603-src.tar.xz -- the same versioning scheme
 # 7-zip.org itself uses for source drops. The GitHub ip7z/7zip release page
 # is the project's own release channel (7-zip.org's download page links
 # there); it publishes NO checksums (no checksum assets, none in the release
-# body, none on 7-zip.org -- checked at pin time, 2026-07-17), hence the
-# locally-computed hash in lzma-sdk.hash and the defconfig's
+# body, none on 7-zip.org -- re-checked at the 26.03 bump, 2026-09-04), hence
+# the locally-computed hash in lzma-sdk.hash and the defconfig's
 # BR2_DOWNLOAD_FORCE_CHECK_HASHES=y actually guarding it.
 LZMA_SDK_SOURCE = 7z$(subst .,,$(LZMA_SDK_VERSION))-src.tar.xz
 LZMA_SDK_SITE = \
@@ -42,17 +42,27 @@ LZMA_SDK_SITE = \
 # would eat C/ itself. Precedent: upstream package/lzma-alone sets the same
 # for its equally flat lzma922.tar.bz2 from the same author.
 LZMA_SDK_STRIP_COMPONENTS = 0
-# License chain, verified per-file at pin time (2026-07-17), CHECKED, NOT
-# ASSUMED: DOC/readme.txt line 43 states "LZMA SDK is written and placed in
-# the public domain by Igor Pavlov."; every .c this package compiles and
-# every .h it installs carries "Igor Pavlov : Public domain" in its opening
-# comment (all 21 files checked individually against the extracted 26.02
-# tree). DOC/License.txt's LGPL and unRAR-restriction terms apply only to
-# CPP/ code (the 7-Zip application proper, Rar codecs) that this package
-# never compiles or ships; it is listed in LICENSE_FILES anyway so the legal
-# text that scopes those exclusions travels with the image's legal-info.
-# Precedent: upstream package/lzma-alone uses "Public Domain" for this same
-# SDK's C code.
+# License chain, verified per-file at pin time and RE-verified at every bump
+# (latest: 26.03, 2026-09-04), CHECKED, NOT ASSUMED: DOC/readme.txt line 43
+# states "LZMA SDK is written and placed in the public domain by Igor
+# Pavlov."; every .c this package compiles and every .h it installs carries
+# "Igor Pavlov : Public domain" in its opening comment (all 21 files checked
+# individually against the extracted 26.03 tree). DOC/License.txt's LGPL and
+# unRAR-restriction terms apply only to CPP/ code (the 7-Zip application
+# proper, Rar codecs) that this package never compiles or ships; it is listed
+# in LICENSE_FILES anyway so the legal text that scopes those exclusions
+# travels with the image's legal-info. Precedent: upstream package/lzma-alone
+# uses "Public Domain" for this same SDK's C code.
+#
+# WHY A README IS IN LICENSE_FILES, since it looks like a mistake and is not:
+# DOC/readme.txt is where the public-domain grant for the C/ code actually
+# LIVES. It is the operative licence text for everything this package ships,
+# and DOC/License.txt -- the file that LOOKS like the licence -- covers only
+# the CPP/ code we never compile. Drop readme.txt from this list and the
+# image's legal-info would claim "Public Domain" while carrying nothing but
+# LGPL/unRAR terms that do not apply to a single shipped byte. Its hash in
+# lzma-sdk.hash is therefore a tripwire on the grant itself; that it also
+# catches upstream's typo fixes is the cost of it working at all.
 LZMA_SDK_LICENSE = Public Domain
 LZMA_SDK_LICENSE_FILES = DOC/License.txt DOC/readme.txt
 LZMA_SDK_INSTALL_STAGING = YES
@@ -65,7 +75,7 @@ LZMA_SDK_INSTALL_STAGING = YES
 #
 # -DZ7_ST is CRITICAL, empirically proven during recon: -D_7ZIP_ST alone is
 # NOT enough on SDK >= 23.01. The _7ZIP_ST -> Z7_ST compat shim at the
-# bottom of C/7zTypes.h is commented out in 26.02 (lines 593-599 of the
+# bottom of C/7zTypes.h is commented out in 26.03 (lines 594-600 of the
 # extracted file, wrapped in /* */), so without -DZ7_ST, LzmaEnc.c includes
 # LzFindMt.h and the link dies with undefined MatchFinderMt_* references.
 # -D_7ZIP_ST is kept belt-and-braces for any straggler that still checks the
@@ -77,13 +87,13 @@ LZMA_SDK_INSTALL_STAGING = YES
 # -Wl,--no-undefined turns any silently-missing symbol into a hard link
 # error at build time instead of a dlopen/exec-time surprise on the device.
 #
-# SONAME POLICY -- full version (liblzma-sdk.so.26.02), deliberately NOT a
+# SONAME POLICY -- full version (liblzma-sdk.so.26.03), deliberately NOT a
 # stable .so.1: upstream gives no ABI guarantees between SDK releases, and
 # the API is caller-allocated-struct based (CLzmaDec etc. are embedded by
 # value in consumer structs), so a struct-layout change recompiles into
 # silent memory corruption if an old binary meets a new library. Making the
 # full version the SONAME turns every SDK bump into a LOUD ABI event: a
-# consumer built against 26.02 refuses to start against 26.03 with a clean
+# consumer built against 26.03 refuses to start against 26.04 with a clean
 # linker error. That matters specifically here because the Main_MiSTer
 # binary lives on the persistent /media/fat partition and SURVIVES rootfs
 # reflashes (see docs: persistent state lives on /media/fat) -- a stale

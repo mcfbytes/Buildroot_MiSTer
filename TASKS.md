@@ -1040,11 +1040,21 @@ is), never whether it has been proven yet.
   surfaced (and item J subsequently fixed the visibility of) two bugs: #42, an unanchored
   defconfig grep that built a URL containing a newline; and a fetch failure that was only
   ever a `::warning::`, so the job reported SUCCESS three times while silently leaving
-  `linux.hash` stale. Still unproven: the generic github-package loop (all 12
-  github-sourced pins, including libchdr) and the bespoke ip7z/7zip (lzma-sdk + 7zip) and sdcard-payload
-  steps have never run against a real PR — treat those regexes/URLs as reviewed-by-hand,
-  not proven. See `docs/renovate.md`'s "Unverified / what to check on first run".
-  **Done when:** a real Renovate PR has exercised each of the three still-unproven paths
+  `linux.hash` stale.
+  The **ip7z/7zip step is now proven** (2026-09-04): PR #149 (26.02 → 26.03) exercised it
+  against a real PR and both `.hash` files got the correct new tarball sha256 on the first
+  try — the regex, the dots-stripped filename derivation, the release-asset URL and the
+  two-package table all held. Like #41 before it, the run also surfaced a real bug: the
+  step refreshed only the tarball line, so 26.03's rewrapped `DOC/readme.txt` left
+  `lzma-sdk`'s license hash stale and `make legal-info` failed — *after* the PR had merged,
+  because that check runs at the end of an ~80-minute image build. Fixed by teaching the
+  step to refresh `*_LICENSE_FILES` hashes and diff any that changed; see
+  `scripts/hash-sync-ip7z-src.sh`'s header.
+  Still unproven: the generic github-package loop (all 12 github-sourced pins, including
+  libchdr) and the sdcard-payload step have never run against a real PR — treat those
+  regexes/URLs as reviewed-by-hand, not proven. See `docs/renovate.md`'s "Unverified /
+  what to check on first run".
+  **Done when:** a real Renovate PR has exercised each of the two still-unproven paths
   at least once with a passing (or fixed-then-passing) run, and `docs/renovate.md` drops
   the "unverified" caveat for each path once proven.
 

@@ -27,6 +27,17 @@ done
 unset i
 
 export LC_ALL=en_US.UTF-8
-resize >/dev/null
+# Stock runs a bare `resize` here. That is the BusyBox applet: it writes a
+# cursor-position query to STDERR and reads the terminal's reply from STDIN
+# under a 3 s alarm. On the serial console that is how the shell ever learns
+# the window size. On an SSH login it is at best redundant (sshd propagates the
+# client's window size through the pty) and at worst harmful: a client that
+# opens the login shell WITHOUT a pty (WinSCP's SCP mode and its terminal
+# window) gets the escape bytes on stderr and loses its first command to
+# resize's scanf, which WinSCP reports as "Error skipping startup message".
+# Stock has the identical defect (verified on release_20250402). Deliberate
+# deviation: only run resize for an interactive, non-SSH shell. SSH_CONNECTION
+# is set by sshd for every session, pty or not (SSH_TTY is not). Issue #142.
+[ "$PS1" ] && [ -z "$SSH_CONNECTION" ] && resize >/dev/null
 mount -o remount,rw /
 

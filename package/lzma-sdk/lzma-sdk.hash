@@ -1,14 +1,26 @@
-# Locally computed (2026-07-17) -- upstream publishes NO checksums for this
-# release: the ip7z/7zip GitHub release for 26.02 carries no checksum assets
+# Locally computed (2026-09-04) -- upstream publishes NO checksums for this
+# release: the ip7z/7zip GitHub release for 26.03 carries no checksum assets
 # and no hashes in the release body, and 7-zip.org publishes none either
-# (checked). Verified against:
-#   https://github.com/ip7z/7zip/releases/download/26.02/7z2602-src.tar.xz
+# (re-checked at bump time). Verified against:
+#   https://github.com/ip7z/7zip/releases/download/26.03/7z2603-src.tar.xz
 #
-#   sha256sum 7z2602-src.tar.xz
+#   sha256sum 7z2603-src.tar.xz
 sha256  9cbde5099c6deb73691b0579063da5827522ccbbcba3f0020fd04e8c8c16c0d4  7z2603-src.tar.xz
 # DOC/License.txt -- see LZMA_SDK_LICENSE_FILES comment in the .mk; its
-# LGPL/unRAR terms scope only the CPP/ code this package never ships
+# LGPL/unRAR terms scope only the CPP/ code this package never ships.
+# Byte-identical across 26.02 -> 26.03.
 sha256  9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc  DOC/License.txt
 # DOC/readme.txt -- line 43: "LZMA SDK is written and placed in the public
 # domain by Igor Pavlov."
-sha256  fe2d7d7a34598850576df059c0ee1e114a59db3f9cb1f17379025569da85ed49  DOC/readme.txt
+#
+# THIS FILE IS THIS PACKAGE'S ACTUAL LICENCE TEXT, which is why it is hashed
+# at all: LZMA_SDK_LICENSE is "Public Domain", and the sentence on line 43 is
+# the ONLY place upstream grants that -- DOC/License.txt covers the LGPL/unRAR
+# CPP/ code this package never compiles. So this line is the tripwire on the
+# grant itself, not decoration on a README.
+#
+# Re-derived at the 26.03 bump (2026-09-04): the sentence is unchanged and
+# still on line 43. The whole 26.02 -> 26.03 diff is the version banner plus
+# three typo fixes ("infomation" -> "information", "Assembeler" -> "Assembler"
+# x2, "optimzing" -> "optimizing") -- no change of terms.
+sha256  a3e1a519b69573fce58715189c550ed696678304079ee436319d396ff9b72664  DOC/readme.txt

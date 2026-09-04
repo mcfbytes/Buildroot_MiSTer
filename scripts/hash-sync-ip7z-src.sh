@@ -29,12 +29,14 @@
 # case here, not in the .yml.
 #
 # Extracted so this case is independently testable against a fixture -- see
-# "Testing against a fixture" below. This case has NEVER run against a real
-# PR (per TASKS.md's "renovate-hash-sync.yml — remaining unproven refresh
-# paths" item and docs/renovate.md's "Unverified / what to check on first
-# run" section, which name it as one of the three untested cases), which is
-# exactly why it gets its own fixture-shaped entry point rather than staying
-# folded into a 700-line workflow file.
+# "Testing against a fixture" below.
+#
+# FIRST REAL RUN: PR #149 (ip7z/7zip 26.02 -> 26.03), 2026-09-04. The tarball
+# refresh itself was CORRECT -- both .hash files got the right new sha256 for
+# 7z2603-src.tar.xz on the first try, so the regex, the dots-stripped filename
+# derivation, the release-asset URL and the two-package table are now proven
+# against a real PR rather than reviewed by hand. What the run exposed was the
+# LICENSE-FILE gap this script used to leave to a human, described next.
 #
 # Bespoke, NOT part of the generic github-packages loop (case 1,
 # scripts/hash-sync-github-packages.sh): these tarballs are GitHub release
@@ -44,10 +46,52 @@
 # Trust model is the same as case 1's: upstream publishes no checksums
 # anywhere (checked at pin time -- see each .hash file's own header), so a
 # locally-computed sha256 of the freshly-fetched asset is the legitimate
-# source. Only the FIRST sha256 line (the tarball) is rewritten in each file;
-# the DOC/License.txt and DOC/readme.txt provenance lines beneath it are left
-# untouched -- if one of those legitimately changed too, the build's own hash
-# check fails closed and a human re-derives that line by hand.
+# source.
+#
+# LICENSE FILES ARE REFRESHED TOO, as of 2026-09-04. This used to read "only
+# the FIRST sha256 line (the tarball) is rewritten; if a DOC/ line legitimately
+# changed too, the build fails closed and a human re-derives it by hand." That
+# fail-closed is real and correct -- but it fires on `make legal-info`, which
+# in this repo runs at the END of a ~80-minute image build, so in practice the
+# human learned about it from a RED MASTER rather than from the PR. That is
+# what happened on PR #149: 26.03 rewrapped DOC/readme.txt (version banner plus
+# three typo fixes, no change of terms), lzma-sdk's legal-info rejected the
+# stale hash, and master went red for a bump that was otherwise perfect.
+#
+# So this script now derives the license-file hashes from the SAME tarball it
+# just hashed, exactly as case 7 (scripts/hash-sync-azcopy.sh) has always done
+# for azcopy's LICENSE/NOTICE.txt -- see that script's "LICENSE/NOTICE.txt ARE
+# REFRESHED TOO" note for the shared rationale. Having already downloaded and
+# verified the asset, reading two more files out of it costs nothing.
+#
+# THIS TRADES A HARD STOP FOR A REVIEWABLE DIFF, WHICH IS THE POINT -- but it
+# does mean a silent relicense could now ride in on a green PR, so the trade is
+# only honest because of the next paragraph. Do not delete it.
+#
+# WHEN A LICENSE FILE CHANGES, THE DIFF IS PRINTED. On any license-hash change
+# the script re-fetches the PREVIOUS version's asset (recovered from the old
+# filename in the .hash line it is about to overwrite) and emits a unified diff
+# of the license text into the step log, plus a ::warning:: and a loud outcome
+# row. A reviewer then sees "banner + typo fixes" (fine, merge) versus "the
+# grant sentence changed" (stop) without having to fetch anything by hand. The
+# diff is BEST-EFFORT: if the old asset cannot be fetched or its version cannot
+# be parsed, the refresh still happens and a ::notice:: says the diff was
+# unavailable. It must never be able to fail the refresh.
+#
+# Which files these are is read from <PKG>_LICENSE_FILES in the .mk -- the same
+# single-source-of-truth rule case 7 follows for azcopy.mk. Nothing is
+# hard-coded here, so adding a license file to a .mk needs no edit to this
+# script. Note the two packages deliberately list DIFFERENT sets: 7zip pins
+# only DOC/License.txt, while lzma-sdk also pins DOC/readme.txt because that is
+# where the public-domain grant for the C/ code actually lives (see the license
+# comment in lzma-sdk.mk). That asymmetry is exactly why 26.03 broke one
+# package's legal-info and not the other's.
+#
+# A license file listed in the .mk but MISSING FROM THE TARBALL is a `failed`
+# outcome and leaves the .hash untouched, mirroring case 7: upstream renaming
+# or dropping a license file needs a human to look at <PKG>_LICENSE_FILES
+# before the pin can move, and writing a correct tarball hash beside a license
+# line nobody re-derived would be worse than refreshing nothing.
 #
 # The asset is fetched ONCE PER PACKAGE, not once per distinct version. Two
 # packages pinned at the same version therefore download the same ~1.5 MB
@@ -95,12 +139,18 @@
 # not silently skip the other one's refresh.
 #
 # Testing against a fixture: point REPO_ROOT at a scratch directory
-# containing fake package/<pkg>/<pkg>.mk files (each just needs a
-# <VAR> = <ver> line) and fake package/<pkg>/<pkg>.hash files (a
-# "sha256  ...  7z<verdigits>-src.tar.xz" line plus any provenance lines
-# beneath it, to confirm those survive untouched). Either let it really
-# fetch real ip7z/7zip release assets, or prepend a fake `curl` to $PATH
-# that serves a fixture asset:
+# containing fake package/<pkg>/<pkg>.mk files (each needs a <VAR> = <ver>
+# line and, to exercise the license path, a <PKG>_LICENSE_FILES = ... line)
+# and fake package/<pkg>/<pkg>.hash files (a
+# "sha256  ...  7z<verdigits>-src.tar.xz" line, a sha256 line per license
+# file, plus provenance comments, to confirm those survive untouched).
+# Cases worth covering, all reachable with two real versions of the asset:
+# an unchanged license file (already-current), a changed one (refreshed +
+# the diff), one named in the .mk but absent from the .hash (warning, no
+# line added), and one named in the .mk but absent from the tarball
+# (`failed`, .hash untouched). Either let it really fetch real ip7z/7zip
+# release assets, or prepend a fake `curl` to $PATH that serves a fixture
+# asset:
 #
 #   HASH_SYNC_OUTCOMES_FILE=/tmp/out.tsv \
 #   PATH="/path/to/fixture/bin:$PATH" \
@@ -125,6 +175,20 @@ REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 [ -d "$REPO_ROOT" ] || { echo "::error::REPO_ROOT '$REPO_ROOT' is not a directory" >&2; exit 2; }
 
 : "${HASH_SYNC_OUTCOMES_FILE:?HASH_SYNC_OUTCOMES_FILE must be set}"
+
+SCRATCH=""
+# `return 0` is load-bearing, not decorative -- bash propagates a non-zero
+# status out of an EXIT trap, so a bare `[ -n "$SCRATCH" ] && rm -rf ...` would
+# make the script exit 1 on any path that never allocated a scratch dir. Same
+# trap, same footgun, same fix as scripts/hash-sync-azcopy.sh; see the longer
+# note in that file for the incident that found it.
+cleanup() {
+	if [ -n "$SCRATCH" ]; then
+		rm -rf "$SCRATCH"
+	fi
+	return 0
+}
+trap cleanup EXIT
 
 # One row per package that pins an ip7z/7zip release asset:
 #   <package dir, which is also the .mk/.hash basename>|<Make version
@@ -173,50 +237,159 @@ sync_one() {
 		return 0
 	fi
 
-	local asset url tmpfile
+	local asset url wd tmpfile
 	asset="7z$(echo "$version" | tr -d .)-src.tar.xz"
 	url="https://github.com/ip7z/7zip/releases/download/${version}/${asset}"
 	echo "==> $pkg $version: fetching $url"
-	tmpfile=$(mktemp)
+	wd="$(mktemp -d "$SCRATCH/$pkg.XXXXXX")"
+	tmpfile="$wd/$asset"
 	if ! curl -fsSL --retry 3 "$url" -o "$tmpfile"; then
 		# A download failure against an upstream release asset is a
 		# legitimate network blip -- stays warn-and-continue.
 		echo "::warning::could not download $url -- leaving $hashfile untouched, build will fail closed on a stale hash instead"
 		hash_sync_record "$outcomes_file" "$pkg" skipped "could not download $url"
-		rm -f "$tmpfile"
 		hash_sync_set_env "$env_var" 0
 		return 0
 	fi
 	local newhash
 	newhash=$(sha256sum "$tmpfile" | cut -d' ' -f1)
-	rm -f "$tmpfile"
 
-	local newline oldline
+	# The tarball line still carries the OLD asset name at this point, so it
+	# is matched by its "-src.tar.xz" suffix rather than by name -- the same
+	# reason case 7 matches azcopy's by "-go2.tar.gz".
+	local newline oldline old_asset
 	newline="sha256  ${newhash}  ${asset}"
-	oldline=$(grep -m1 '^sha256' "$hashfile" || true)
+	oldline=$(awk '$1 == "sha256" && $3 ~ /-src\.tar\.xz$/ { print; exit }' "$hashfile" || true)
+	old_asset=$(printf '%s\n' "$oldline" | awk '{ print $3 }')
 
-	if [ "$oldline" != "$newline" ]; then
-		awk -v newline="$newline" '
-			BEGIN { done = 0 }
-			/^sha256/ && !done { print newline; done = 1; next }
-			{ print }
-		' "$hashfile" > "$hashfile.tmp"
-		mv "$hashfile.tmp" "$hashfile"
-		echo "Updated $hashfile:"
-		echo "  old: $oldline"
-		echo "  new: $newline"
-		hash_sync_record "$outcomes_file" "$pkg" refreshed "sha256 updated: $oldline -> $newline"
-		hash_sync_set_env "$env_var" 1
+	# --- license files ---------------------------------------------------
+	# <PKG>_LICENSE_FILES in the .mk is the single source of truth for which
+	# files these are; see this script's header. The archive is FLAT
+	# (<PKG>_STRIP_COMPONENTS = 0), so each entry is also its exact member
+	# path inside the tarball and its exact filename column in the .hash --
+	# no path translation needed anywhere in here.
+	local lic_var="${version_var%_VERSION}_LICENSE_FILES"
+	local license_files
+	license_files=$(grep -E "^${lic_var}[[:space:]]*=" "$mk" | head -1 \
+	                 | sed -E "s/^${lic_var}[[:space:]]*=[[:space:]]*//" || true)
+
+	local licmap="$wd/licmap.tsv" lic_changed=""
+	: > "$licmap"
+	if [ -z "$license_files" ]; then
+		# Not fatal: the tarball hash is still correct and useful. But say
+		# so loudly -- a .mk that stopped matching this grep (a continued
+		# line, a rename) would otherwise silently revert this case to its
+		# pre-2026-09-04 behavior and put the legal-info break back.
+		echo "::warning::could not parse $lic_var from $mk -- refreshing the tarball hash only; any changed license file will fail closed in legal-info as it did before PR #149"
 	else
-		echo "$hashfile already up to date."
-		hash_sync_record "$outcomes_file" "$pkg" already-current "sha256 unchanged"
-		hash_sync_set_env "$env_var" 0
+		local lf lf_hash old_lf_line
+		for lf in $license_files; do
+			if ! tar -C "$wd" -xJf "$tmpfile" "$lf" 2>/dev/null; then
+				echo "::error::$pkg $version's tarball does not contain $lf, which $lic_var names"
+				hash_sync_record "$outcomes_file" "$pkg" failed \
+					"$lf missing from $asset -- upstream renamed or dropped a license file; $lic_var in $mk needs a human before this pin can move"
+				hash_sync_set_env "$env_var" 0
+				return 0
+			fi
+			lf_hash=$(sha256sum "$wd/$lf" | cut -d' ' -f1)
+			old_lf_line=$(awk -v f="$lf" '$1 == "sha256" && $3 == f { print; exit }' "$hashfile" || true)
+			if [ -z "$old_lf_line" ]; then
+				# Deliberately NOT auto-added: giving a license file its
+				# first recorded hash is a trust decision, not a refresh.
+				echo "::warning::$lic_var names $lf but $hashfile has no sha256 line for it -- add one by hand if it should be pinned"
+				continue
+			fi
+			printf '%s\t%s\n' "$lf" "$lf_hash" >> "$licmap"
+			if [ "$(printf '%s\n' "$old_lf_line" | awk '{ print $2 }')" != "$lf_hash" ]; then
+				lic_changed="${lic_changed}${lic_changed:+ }$lf"
+			fi
+		done
 	fi
+
+	# Rewrite matched BY FILENAME so the provenance comments -- which are most
+	# of both these files -- survive verbatim.
+	awk -v tarline="$newline" -v mapfile="$licmap" '
+		BEGIN {
+			while ((getline line < mapfile) > 0) {
+				split(line, a, "\t"); h[a[1]] = a[2]
+			}
+		}
+		$1 == "sha256" && $3 ~ /-src\.tar\.xz$/ { print tarline; next }
+		$1 == "sha256" && ($3 in h) { print "sha256  " h[$3] "  " $3; next }
+		{ print }
+	' "$hashfile" > "$hashfile.tmp"
+
+	if cmp -s "$hashfile" "$hashfile.tmp"; then
+		rm -f "$hashfile.tmp"
+		echo "$hashfile already up to date."
+		hash_sync_record "$outcomes_file" "$pkg" already-current "tarball and license-file sha256s unchanged"
+		hash_sync_set_env "$env_var" 0
+		return 0
+	fi
+	mv "$hashfile.tmp" "$hashfile"
+	echo "Updated $hashfile:"
+	echo "  old: $oldline"
+	echo "  new: $newline"
+
+	local reason="sha256 updated: $oldline -> $newline"
+	if [ -n "$lic_changed" ]; then
+		# The loud path. See "WHEN A LICENSE FILE CHANGES" in the header:
+		# auto-refreshing these is only defensible because the reviewer is
+		# handed the actual textual diff here.
+		echo "::warning::$pkg: license file(s) CHANGED across this bump: $lic_changed -- read the diff below and confirm the terms did not change before merging"
+		reason="$reason; LICENSE FILE(S) CHANGED, REVIEW THE DIFF IN THE STEP LOG: $lic_changed"
+		diff_license_files "$wd" "$old_asset" "$lic_changed"
+	fi
+	hash_sync_record "$outcomes_file" "$pkg" refreshed "$reason"
+	hash_sync_set_env "$env_var" 1
+	return 0
+}
+
+# diff_license_files WORKDIR OLD_ASSET "FILE [FILE...]"
+#   Best-effort: fetches the PREVIOUS release asset and prints a unified diff
+#   of each changed license file into the step log. Every failure path here is
+#   a notice and a `return 0` -- this is a review aid bolted onto an already-
+#   completed refresh, and it must never be able to fail one.
+diff_license_files() {
+	local wd="$1" old_asset="$2" files="$3"
+	local old_version old_url old_dir lf
+
+	# 7z2602-src.tar.xz -> 26.02, inverting the .mk's
+	# 7z$(subst .,,$(<PKG>_VERSION))-src.tar.xz. Anything not matching that
+	# exact shape skips the diff, never the refresh.
+	old_version=$(printf '%s\n' "$old_asset" \
+		| sed -nE 's/^7z([0-9]{2})([0-9]{2})-src\.tar\.xz$/\1.\2/p')
+	if [ -z "$old_version" ]; then
+		echo "::notice::could not derive the previous version from '$old_asset' -- skipping the license diff; compare by hand"
+		return 0
+	fi
+
+	old_dir="$wd/old"
+	mkdir -p "$old_dir"
+	old_url="https://github.com/ip7z/7zip/releases/download/${old_version}/${old_asset}"
+	echo "--- fetching $old_version to diff its license text against ---"
+	if ! curl -fsSL --retry 3 "$old_url" -o "$old_dir/$old_asset"; then
+		echo "::notice::could not download $old_url -- skipping the license diff; compare by hand"
+		return 0
+	fi
+	for lf in $files; do
+		if ! tar -C "$old_dir" -xJf "$old_dir/$old_asset" "$lf" 2>/dev/null; then
+			echo "::notice::$lf is not present in $old_version -- newly added license file, nothing to diff"
+			continue
+		fi
+		echo "===== diff $lf : $old_version -> current ====="
+		# `|| true`: diff exits 1 when files differ, which they do by
+		# construction here, and pipefail would otherwise kill the script.
+		diff -u "$old_dir/$lf" "$wd/$lf" | head -80 || true
+		echo "===== end diff $lf ====="
+	done
 	return 0
 }
 
 main() {
 	cd "$REPO_ROOT"
+
+	SCRATCH="$(mktemp -d)"
 
 	local outcomes_file
 	outcomes_file="$(hash_sync_resolve_outcomes_file "$HASH_SYNC_OUTCOMES_FILE")"

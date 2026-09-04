@@ -2353,13 +2353,32 @@ idiom** and should get the same treatment when next touched.
    clearsign signature is a worthwhile future hardening step, not implemented
    here.
 
-3. **The lzma-sdk tarball hash** (`package/lzma-sdk/lzma-sdk.hash`). Same
+3. **The ip7z/7zip tarball hashes** (`package/lzma-sdk/lzma-sdk.hash` **and**
+   `package/7zip/7zip.hash` — one table-driven step over both packages since
+   ADR 0023; they pin the identical release asset). Same
    trust model as case 1 (upstream publishes NO checksums at all — none on
    the release, none on 7-zip.org; see the `.hash` file's own header), but it
    cannot ride the generic loop: the tarball is a GitHub release **asset**,
    not a commit/tag archive, and its filename derives from the version with
-   the dots stripped (`7z2602-src.tar.xz` for 26.02), so it gets its own
+   the dots stripped (`7z2603-src.tar.xz` for 26.03), so it gets its own
    bespoke step.
+
+   **This case also refreshes license-file hashes** (since 2026-09-04), which
+   cases 1, 2 and 4 have no equivalent of — only case 7 (azcopy) does the
+   same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
+   files are hashed out of the tarball the step just fetched. The reason is a
+   real incident: on the 26.03 bump (PR #149) the tarball hash refreshed
+   perfectly, but 26.03 had rewrapped `DOC/readme.txt` — which `lzma-sdk`
+   pins because the public-domain grant for the `C/` code lives there and
+   nowhere else — so `make legal-info` rejected the stale hash. That check
+   runs at the *end* of an ~80-minute image build, so the fail-closed
+   surfaced only after the PR had merged and master was red. Refreshing the
+   hash trades that hard stop for a reviewable one: when a license file
+   changes, the step re-fetches the previous release, prints a unified diff
+   of the license text into the log, and marks the outcome row loudly, so a
+   reviewer can tell a typo fix from a relicense. A license file named in a
+   `.mk` but missing from the tarball is a `failed` outcome that leaves the
+   `.hash` untouched — upstream renaming or dropping one needs a human.
 
 4. **The sdcard payload single-file pins** (`scripts/fetch-sdcard-payload.sh`):
    `update_all.sh` and `wifi.sh` are pinned by commit AND by sha256+size;
@@ -2500,8 +2519,9 @@ exactly the run-29669946883 trap.
 <a id="renovate-hash-sync-verification-status"></a>
 ### Verification status
 
-Only the kernel step is proven against a real PR (**#41**, kernel 6.18.38 →
-6.18.39). That run found two bugs the original header used to understate: an
+Two steps are proven against real PRs: the kernel step (**#41**, kernel
+6.18.38 → 6.18.39) and the ip7z/7zip step (**#149**, 7-Zip 26.02 → 26.03).
+The #41 run found two bugs the original header used to understate: an
 unanchored defconfig grep that built a URL containing a newline (bug **#42**
 — see [`#renovate-hash-sync-kernel-grep-bug`](#renovate-hash-sync-kernel-grep-bug)),
 and the fact that a fetch failure was only ever a `::warning::` — so the job
@@ -2510,6 +2530,19 @@ A green run elsewhere in this workflow can therefore mean "silently
 skipped", not "verified correct". Read every warn-and-skip path in this
 workflow as "this can go green without doing anything" until proven
 otherwise by a real PR run.
+
+**#149 is the sharper lesson, because nothing went green-but-skipped — the
+step did its job correctly and master still broke.** Both `.hash` files got
+the right new tarball sha256 on the first try. What the step did not do was
+refresh the *license-file* hashes beneath it, and 26.03 had rewrapped
+`DOC/readme.txt`, which `package/lzma-sdk` pins because the public-domain
+grant for the `C/` code lives there and nowhere else. Buildroot checks those
+hashes only in `make legal-info`, which in this repo runs at the **end of an
+~80-minute image build** — long after the PR merged. So: a green
+`renovate-hash-sync` run is evidence about *this workflow*, never about the
+build. The fix (refresh `*_LICENSE_FILES` hashes, and diff any that changed)
+is described in case 3 above; the general point is that a hash refresh is
+only as complete as the set of hashes the `.hash` file actually pins.
 
 Case 6 (buildroot, added 2026-08-24) sits one rung below "proven against a
 real PR": it was exercised at authoring time against local fixtures for all
@@ -2565,6 +2598,27 @@ tarball itself) is ever rewritten; any further lines (LICENSE, individual
 source files hashed for provenance) are left untouched — if one of those
 legitimately changed too, the build's own hash check will fail closed and a
 human will need to re-derive that specific line by hand.
+
+**This contract now describes case 1 only.** Cases 3 (ip7z/7zip) and 7
+(azcopy) refresh their license-file lines as well, recording and (for case 3)
+diffing what changed; see case 3 in
+[`#renovate-hash-sync-safety-model`](#renovate-hash-sync-safety-model) for
+why, and PR #149 in the incident table for what the old rule cost.
+
+> **Known latent risk, not yet fixed (2026-09-04).** The "human re-derives it
+> by hand" half of this contract has the same delivery problem case 3 hit:
+> Buildroot verifies these extra lines only in `make legal-info`, at the end
+> of an ~80-minute image build, so the human finds out from a red *master*,
+> not a red PR. Twelve case-1 pins carry such a line. Two are the sharp ones:
+> `rtl8188eu-aircrack-ng` pins `core/rtw_cmd.c` and `ltunify` pins
+> `ltunify.c` as their `*_LICENSE_FILES` (the licence header lives inside the
+> source file). Both are `git-refs` commit-digest pins on active upstreams, so
+> **any** commit touching those two files reproduces the PR #149 failure —
+> and a source file changes far more often than a `DOC/readme.txt`. The other
+> ten pin a conventional `LICENSE`/`COPYING`, which moves rarely. Generalising
+> case 3's approach (refresh `*_LICENSE_FILES` hashes, print a diff when one
+> changes) to the case-1 loop is the fix; it is deliberately not bundled with
+> the 26.03 repair.
 
 The ip7z/7zip step (both `lzma-sdk` and `7zip`) follows the identical
 only-first-line rule: the
@@ -2865,7 +2919,8 @@ Part IV above, alongside the other composite-action internals.)
 | bug #42 | Unanchored defconfig grep returned 2 lines; malformed kernel-tarball URL; job reported green 3x while linux.hash stayed stale | [`#renovate-hash-sync-kernel-grep-bug`](#renovate-hash-sync-kernel-grep-bug) |
 | (verified repro) | RT-line clobber: first-line/extension-only match let a 6.18 bump overwrite the RT hash entry | [`#renovate-hash-sync-rt-line-clobber`](#renovate-hash-sync-rt-line-clobber) |
 | 29669946883 | Manual dispatch replayed the same broken kernel-URL code 3x across 2 fixes (ref-vs-branch confusion) | [`#renovate-hash-sync-dispatch-trap`](#renovate-hash-sync-dispatch-trap) |
-| PR #41 | Only proven real-world run of the kernel hash-sync step (6.18.38 → 6.18.39) | [`#renovate-hash-sync-verification-status`](#renovate-hash-sync-verification-status) |
+| PR #41 | Proven real-world run of the kernel hash-sync step (6.18.38 → 6.18.39) | [`#renovate-hash-sync-verification-status`](#renovate-hash-sync-verification-status) |
+| PR #149 / run 33891728513 | Proven real-world run of the ip7z/7zip step (26.02 → 26.03) — tarball hashes correct, license-file hash left stale, `legal-info` red on master 80 min in | [`#renovate-hash-sync-verification-status`](#renovate-hash-sync-verification-status) |
 | (build.yml history) | Every SHA in `gh run list` built twice (push + pull_request) before the trigger scope fix, ~6h40m/commit | [`#push-trigger-scope`](#push-trigger-scope) |
 | (measured) | legal-info.tar.gz with host-sources/ included: 2109 MiB, over GitHub's 2 GiB per-asset cap | [`#legal-info-2gib-cap`](#legal-info-2gib-cap) |
 | (earlier design) | From-scratch sdcard Buildroot build overran the 360-min runner cap; release never published | [`#sdcard-timing-6h-cap`](#sdcard-timing-6h-cap) |

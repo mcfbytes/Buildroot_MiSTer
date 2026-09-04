@@ -284,7 +284,7 @@ update for the life of the card.
 > ### We ship our own `7za` (changed 2026-07-27 — [ADR 0023](decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md))
 >
 > This paragraph used to read "our archive's `files/linux/` payload does *not* include a
-> `7za`/`7za.gz`". **It does now.** `package/7zip` builds upstream 7-Zip **26.02** from the
+> `7za`/`7za.gz`". **It does now.** `package/7zip` builds upstream 7-Zip **26.03** from the
 > release asset `package/lzma-sdk` already pins, and installs a **statically linked** copy
 > as `output/images/7za`. Two consumers put it on the card:
 >

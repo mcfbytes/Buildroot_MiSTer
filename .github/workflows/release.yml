@@ -365,7 +365,7 @@ jobs:
           cp -a stock-extract/files release-stage/files
           cp -f output/images/linux.img release-stage/files/linux/linux.img
           cp -f output/images/zImage_dtb release-stage/files/linux/zImage_dtb
-          # ADD (not overlay) the statically-linked 7-Zip 26.02 that
+          # ADD (not overlay) the statically-linked 7-Zip 26.03 that
           # package/7zip builds. The stock archive has NO 7za of any kind --
           # which is exactly why a stock device downloads p7zip 16.02 (2016)
           # from SD-Installer-Win64_MiSTer the first time it needs to extract

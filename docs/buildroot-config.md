@@ -702,7 +702,7 @@ links Buildroot-provided shared libraries; the upstream half (zstd, minizip-ng)
 is §5.4. Both packages are authored under `package/`; see
 `docs/main-shared-libs.md`.
 
-- `BR2_PACKAGE_LZMA_SDK=y` — 7-Zip LZMA SDK 26.02 as `liblzma-sdk.so.<ver>`;
+- `BR2_PACKAGE_LZMA_SDK=y` — 7-Zip LZMA SDK 26.03 as `liblzma-sdk.so.<ver>`;
   the full-version SONAME is the deliberate loud-ABI-event policy: the Main
   binary lives on `/media/fat` and SURVIVES rootfs reflashes, so an SDK bump
   must refuse-to-load, not corrupt (`package/lzma-sdk/lzma-sdk.mk`).
@@ -1764,7 +1764,7 @@ not a preference, it closes a real hole. The Downloader hardcodes
 `/media/fat/linux/7za` and, when that file is absent, DOWNLOADS p7zip 16.02
 (2016-05-21, ARM, dynamically linked) from
 `SD-Installer-Win64_MiSTer/raw/master/7za.gz` to fill it. Our build now ships
-a statically-linked 7-Zip 26.02 into that exact path via both payload routes,
+a statically-linked 7-Zip 26.03 into that exact path via both payload routes,
 so the fetch never fires. Full mechanism + evidence: ADR 0023,
 `docs/downloader-contract.md` §4. p7zip itself is dead upstream since 16.02
 and carried on only by a community fork at 17.06 (2022), so "the latest

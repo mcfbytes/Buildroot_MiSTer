@@ -26,7 +26,7 @@
 # upstream (host packages have no prompt), so only the Make namespace
 # collides -- silently. Precedent for suffixing our way out of an upstream
 # squat: package/rtl8188eu-aircrack-ng (see its Config.in).
-LZMA_SDK_VERSION = 26.02
+LZMA_SDK_VERSION = 26.03
 # 7z$(subst .,,26.02) = 7z2602-src.tar.xz -- the same versioning scheme
 # 7-zip.org itself uses for source drops. The GitHub ip7z/7zip release page
 # is the project's own release channel (7-zip.org's download page links

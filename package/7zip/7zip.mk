@@ -34,7 +34,7 @@
 # build disjoint artifacts with no shared ABI). If you bump one, bump the
 # other in the same PR unless you have a reason not to. Note the LICENSE
 # differs between the two for real reasons -- see the license comment below.
-7ZIP_VERSION = 26.02
+7ZIP_VERSION = 26.03
 # 7z$(subst .,,26.02) = 7z2602-src.tar.xz -- the versioning scheme 7-zip.org
 # itself uses for source drops. The GitHub ip7z/7zip release page is the
 # project's own release channel (7-zip.org's download page links there); it

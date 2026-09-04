@@ -98,7 +98,7 @@ path (stock's own README-level instructions) both depend on.
 
 | Contract element | Stock (`work/imgroot`) | Ours | Status |
 |---|---|---|---|
-| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9).** Stock's content, plus a 9-line header comment and one `pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop per `wlan` stanza — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly those 11 added lines (re-verified this task). Every stock directive is reproduced unchanged; nothing is removed. Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); `docs/init-parity.md:147` carries the same row. |
+| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9, revised).** Stock's content, plus a header comment and two `pre-up` lines per `wlan` stanza: a `[ -e /sys/class/net/$IFACE ]` device-presence guard and the `i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop behind it — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly 47 added lines (43 comment + 4 code) and zero removals. Every stock directive is reproduced unchanged; nothing is removed. Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); the guard was added later to stop `S40network`'s `ifup -a` burning the full 20 s on an absent `wlan1` (§9). `docs/init-parity.md:150` carries the same row. |
 | `/etc/init.d/S40network` | `ifup -a` / `ifdown -a` (ifupdown-scripts package default) | Not overlaid — `BR2_PACKAGE_IFUPDOWN_SCRIPTS`'s own Kconfig default (`default y if BR2_ROOTFS_SKELETON_DEFAULT`, `work/buildroot/package/ifupdown-scripts/Config.in`) auto-selects it; our defconfig sets neither `BR2_PACKAGE_SYSTEMD_NETWORKD` nor `BR2_PACKAGE_NETIFRC` (the two symbols that would suppress it) and leaves `BR2_ROOTFS_SKELETON_DEFAULT` at Buildroot's own default (y) | **Identical**, confirmed byte-for-byte by P2.3 (`docs/init-parity.md:63`); re-confirmed the selecting conditions still hold in this defconfig. |
 | `/etc/init.d/S41dhcpcd` | starts `dhcpcd` globally (no `-i`) | Package default, not overlaid; `BR2_PACKAGE_DHCPCD=y` (defconfig line 807, P2.1) | **Functionally identical** (P2.3 finding, `docs/init-parity.md:64`) — only the PID-file path differs, an artifact of the newer dhcpcd release, not a decision point. |
 | `/etc/dhcpcd.conf` | `hostname`, `clientid`, `option rapid_commit`, etc. enabled | `board/mister/de10nano/rootfs-overlay/etc/dhcpcd.conf` | **Identical.** `diff` exit 0 (re-verified this task). Authored by P2.3. |
@@ -117,8 +117,8 @@ re-confirmed).
 correct, and every file P2.3 wrote still reproduces stock's directives.
 Verified, not assumed — `diff` was re-run against `work/imgroot` in this
 task: `/etc/dhcpcd.conf` is byte-identical (exit 0); `/etc/network/interfaces`
-is stock plus v9's additive `pre-up` wait loop and its header comment (exit 1,
-11 added lines, nothing removed — see the row above).
+is stock plus v9's additive `pre-up` lines and their header comment (exit 1,
+47 added lines, nothing removed — see the row above).
 
 ## 2. The `wifi.sh` contract itself
 
@@ -895,6 +895,20 @@ also run `ifup wlan1` if `wlan1` is configured but has no device present —
 20 wasted seconds waiting for a device that will never appear, on every
 single-dongle hotplug. Naming the interface that actually fired (`%k`, which
 — per Divergence 1 — is also its permanent name) avoids that.
+
+**The boot path had the identical bug, and needed its own fix.** `%k` only
+narrows the *hotplug* caller; `S40network` still runs a literal `ifup -a`, so on
+every boot of a single-dongle box the `wlan1` stanza polled its full 20 s for a
+device that will never appear — with `S41dhcpcd`, `S49ntp`, `S50sshd` and
+Main_MiSTer all serialised behind it in `rcS`. Measured, not estimated: running
+the stanza's exact loop against an absent interface takes 20 s. The fix is a
+`pre-up [ -e /sys/class/net/$IFACE ]` guard ahead of the loop in each stanza
+(§1 table). It is safe precisely *because* this rule exists: a dongle that is
+merely slow rather than absent still gets its `add` uevent, and this rule fires
+on udev's boot-time coldplug (`S10udevd`'s `udevadm trigger`) as well as on
+later insertion, so bring-up for a late device is event-driven rather than
+polled. The v9 loop stays behind the guard as a cheap safety net for the narrow
+case it was written for — netdev present, `nl80211` not yet ready.
 
 **Why the detach matters is a boot-time regression avoided, not hygiene.**
 `udevadm settle --timeout=30` (`S10udevd:43`, above) waits on precisely the

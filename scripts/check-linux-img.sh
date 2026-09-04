@@ -170,8 +170,12 @@ else
 	# turns a future regression -- a Buildroot bump that changes the option, a host
 	# that grows a daemon -- from a silent image difference into a red build.
 	# Expected set = the canonical CI-built image: dhcpcd's three unconditional
-	# hooks, 50-ntp.conf (we ship ntpd), and our own 90-timezone (ADR 0025).
-	EXPECT_DHCPCD_HOOKS="01-test 20-resolv.conf 30-hostname 50-ntp.conf 90-timezone"
+	# hooks, 50-ntp.conf (we ship ntpd), and our own 90-timezone (ADR 0025) and
+	# 91-ntp-kick. NB 50-ntp.conf is dhcpcd's own and is inert here by design --
+	# etc/dhcpcd.conf leaves `option ntp_servers` commented out (stock parity), so
+	# it is never offered any servers to merge. It is pinned because its PRESENCE
+	# is what proves configure did not probe the build host, not because it runs.
+	EXPECT_DHCPCD_HOOKS="01-test 20-resolv.conf 30-hostname 50-ntp.conf 90-timezone 91-ntp-kick"
 	hooks_dir=$(find "$dump_dir" -type d -path '*/dhcpcd/dhcpcd-hooks' 2>/dev/null | head -1)
 	if [ -z "$hooks_dir" ]; then
 		bad "no dhcpcd-hooks directory in the image (dhcpcd or its hooks are missing)"

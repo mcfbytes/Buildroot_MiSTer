@@ -712,6 +712,29 @@ else
 	fail "iwgetid present (symlink to iwconfig)" "not in rootfs.tar"
 fi
 
+# /bin/sh and root's login shell are bash, as on stock (issue #144,
+# docs/buildroot-config.md §5.19). One symbol (BR2_SYSTEM_BIN_SH_BASH) drives
+# both through Buildroot's skeleton finalize hook, and kconfig drops that
+# symbol SILENTLY if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS ever goes away -- the
+# build stays green and /bin/sh quietly becomes BusyBox ash again. Usr-merged
+# rootfs: the tar records /bin/sh only as ./usr/bin/sh.
+sh_line=$(tar tvf "$ROOTFS_TAR" -- "./usr/bin/sh" 2>/dev/null | head -1)
+case "$sh_line" in
+*'-> bash')
+	pass "/bin/sh -> bash (stock parity, BR2_SYSTEM_BIN_SH_BASH)" ;;
+'')
+	fail "/bin/sh -> bash (stock parity, BR2_SYSTEM_BIN_SH_BASH)" "usr/bin/sh not in rootfs.tar" ;;
+*)
+	fail "/bin/sh -> bash (stock parity, BR2_SYSTEM_BIN_SH_BASH)" "is: $sh_line" ;;
+esac
+root_line=$(tar xOf "$ROOTFS_TAR" "./etc/passwd" 2>/dev/null | grep -m1 '^root:')
+case "$root_line" in
+root:*:/bin/bash)
+	pass "root's login shell is /bin/bash (stock parity)" ;;
+*)
+	fail "root's login shell is /bin/bash (stock parity)" "passwd: ${root_line:-no root line}" ;;
+esac
+
 # =============================================================================
 section "T2 — WiFi hotplug (70-persistent-net.rules, docs/wifi-parity.md §9)"
 # =============================================================================
@@ -1747,22 +1770,41 @@ else
 		"one or more cases failed -- see output above"
 fi
 
-# ...and again under the shell that will ACTUALLY run it on the box. The host's
-# /bin/sh (dash, on the CI runner) is a good POSIX proxy for BusyBox ash, but it
-# is not the same interpreter, and this is a boot-path script: a construct dash
-# accepts and ash does not would fail on hardware and nowhere else.
+# ...and again under the target's own interpreters. The host's /bin/sh (dash,
+# on the CI runner) is a good POSIX proxy, but it is not what runs on the box,
+# and this is a boot-path script: a construct dash accepts and the real shell
+# does not would fail on hardware and nowhere else. On the box /bin/sh is bash
+# (issue #144, stock parity), invoked through the `sh` symlink so it runs in
+# POSIX mode -- `bash --posix` is the same thing spelled explicitly. BusyBox
+# ash is still shipped and still a valid /etc/shells entry, so keep that run
+# too: it is the stricter interpreter, and the hook must not depend on bash.
 if [ -z "$QEMU_ARM" ]; then
+	skip "test-timezone.sh under the target's own bash --posix (/bin/sh)" "qemu-arm not found on PATH"
 	skip "test-timezone.sh under the target's own BusyBox ash" "qemu-arm not found on PATH"
-elif [ ! -x "$TARGET/bin/busybox" ]; then
-	skip "test-timezone.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
 else
-	printf -- '--- test-timezone.sh: same cases, target BusyBox ash under qemu-arm ---\n'
-	if TZ_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
-		"$ROOT/scripts/test-timezone.sh"; then
-		pass "test-timezone.sh under the target's own BusyBox ash"
+	if [ ! -x "$TARGET/usr/bin/bash" ]; then
+		skip "test-timezone.sh under the target's own bash --posix (/bin/sh)" "$TARGET/usr/bin/bash not present"
 	else
-		fail "test-timezone.sh under the target's own BusyBox ash" \
-			"passes on the host shell but not on BusyBox ash -- see output above"
+		printf -- '--- test-timezone.sh: same cases, target bash --posix (what /bin/sh is on the box) under qemu-arm ---\n'
+		if TZ_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/usr/bin/bash --posix" \
+			"$ROOT/scripts/test-timezone.sh"; then
+			pass "test-timezone.sh under the target's own bash --posix (/bin/sh)"
+		else
+			fail "test-timezone.sh under the target's own bash --posix (/bin/sh)" \
+				"passes on the host shell but not on the target's bash -- see output above"
+		fi
+	fi
+	if [ ! -x "$TARGET/bin/busybox" ]; then
+		skip "test-timezone.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
+	else
+		printf -- '--- test-timezone.sh: same cases, target BusyBox ash under qemu-arm ---\n'
+		if TZ_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
+			"$ROOT/scripts/test-timezone.sh"; then
+			pass "test-timezone.sh under the target's own BusyBox ash"
+		else
+			fail "test-timezone.sh under the target's own BusyBox ash" \
+				"passes on the host shell but not on BusyBox ash -- see output above"
+		fi
 	fi
 fi
 

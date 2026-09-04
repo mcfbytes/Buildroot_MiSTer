@@ -190,8 +190,22 @@ ensure_qemu_kernel() {
 		log "configuring: multi_v7_defconfig + $KERNEL_FRAGMENT"
 		make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
 			multi_v7_defconfig
-		"$KERNEL_SRC/scripts/kconfig/merge_config.sh" -O "$KBUILD" \
-			"$KBUILD/.config" "$KERNEL_FRAGMENT" >&2
+		# merge_config.sh finishes with a BARE `make ... alldefconfig` in the
+		# CURRENT directory -- it has no -C. Run from this repo's root (the
+		# normal way to invoke this script) that `make` hits the wrapper
+		# Makefile, which forwards `alldefconfig` to Buildroot, which fails
+		# ("Can't read seed configuration"), and merge_config.sh exits before
+		# writing the merged .config. Every fragment symbol the base defconfig
+		# already had looks fine; every one it lacked (CONFIG_EXFAT_FS,
+		# CONFIG_FAT_DEFAULT_UTF8) is silently missing, and the three exFAT
+		# cases fail with "mount: No such device" for a reason that looks
+		# nothing like this. So: cd into the kernel tree, give its make the
+		# ARCH it needs, and refuse to continue if the merge fails. The
+		# fragment-survival check after olddefconfig below is the backstop.
+		(cd "$KERNEL_SRC" && ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
+			scripts/kconfig/merge_config.sh -O "$KBUILD" \
+				"$KBUILD/.config" "$KERNEL_FRAGMENT" >&2) \
+			|| die "merge_config.sh failed for $KERNEL_FRAGMENT"
 	elif [ ! -d "$KERNEL_SRC" ]; then
 		die "$KBUILD exists but its source tree $KERNEL_SRC does not." \
 			"Remove $KBUILD (or set TEST_INITRAMFS_KBUILD to a fresh path) and re-run."
@@ -216,6 +230,23 @@ ensure_qemu_kernel() {
 		--set-str CONFIG_INITRAMFS_SOURCE "$CPIO"
 	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
 		olddefconfig >&2
+
+	# Every `CONFIG_X=y` the fragment asks for must be in the resolved config,
+	# on a fresh bootstrap AND on a cached $KBUILD (a cache made by a run whose
+	# merge silently failed -- see above -- keeps its broken .config forever,
+	# because the merge only happens on bootstrap). Fail with the fix spelled
+	# out rather than let the exFAT cases fail on a symptom.
+	missing=""
+	while IFS= read -r sym; do
+		grep -qx "$sym" "$KBUILD/.config" || missing="$missing $sym"
+	done <<-EOF
+	$(grep -E '^CONFIG_[A-Z0-9_]+=y$' "$KERNEL_FRAGMENT")
+	EOF
+	[ -z "$missing" ] || die \
+		"QEMU test kernel .config lacks fragment symbol(s):$missing" \
+		"(from $KERNEL_FRAGMENT). If $KBUILD is a cache from before the" \
+		"merge_config.sh cwd fix, remove it (rm -rf $KBUILD) and re-run to" \
+		"bootstrap a correct one."
 
 	log "building QEMU test kernel zImage (embedding $(basename "$CPIO"))"
 	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \

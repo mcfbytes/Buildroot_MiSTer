@@ -1129,6 +1129,29 @@ overlay's `70-persistent-net.rules` pre-up depends on it),
 `BR2_PACKAGE_IPROUTE2=y` (stock's `/usr/sbin/ip` — wifi.sh's link up/down
 fallback).
 
+`BR2_SYSTEM_BIN_SH_BASH=y` — **`/bin/sh` is bash, and so is root's login
+shell** (issue #144). Stock has `/bin/sh -> bash` and
+`root:x:0:0:root:/root:/bin/bash`; until this symbol was added we shipped
+Buildroot's defaults, BusyBox ash as `/bin/sh` and root on `/bin/sh`, with
+nothing recording the difference. That matters in two places: a user script
+in `/media/fat/Scripts` with a `#!/bin/sh` shebang and bash syntax runs on
+stock and may not on ash (`docs/stock-reconciliation.md`'s `usr/bin/timidity`
+row is the one case that was checked by hand — its `function` keyword happens
+to be in ash's bash-compat set), and an interactive root session over ssh or
+the console gets ash's line editing and no bash history. One symbol does both
+halves: Buildroot's `SKELETON_INIT_COMMON_SET_BIN_SH` finalize hook runs
+`ln -sf bash /bin/sh` **and** `sed '/^root:/s,[^/]*$,bash,' /etc/passwd`
+(`package/skeleton-init-common/skeleton-init-common.mk`), so no post-build
+edit is needed and the result is byte-for-byte stock's layout. The symbol
+depends on `BR2_PACKAGE_BUSYBOX_SHOW_OTHERS` (§5.15, already on) — without
+it kconfig silently drops the choice back to BusyBox, which is why the
+fragment carries a WARNING next to it. BusyBox's own `ash` applet stays
+built and listed in `/etc/shells`, exactly as on stock; only what `sh`
+resolves to changes. Scripts invoked as `sh` get bash in POSIX mode
+(`argv[0]` is `sh`), same as stock. `scripts/ci-tests.sh` asserts both
+halves against `rootfs.tar` (P3.4 section) and runs the dhcpcd timezone hook
+under the target's bash in POSIX mode as well as under ash.
+
 ### 5.20 On-device text editors, ifupdown, BusyBox fragment, dhcpcd, ntp, cifs
 
 Editors (stock parity): stock ships `usr/bin/joe`, `usr/bin/nano` AND

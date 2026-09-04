@@ -158,8 +158,8 @@ to add traffic silently, hence the disclosure above, the FAQ entry, and the opt-
 
 `scripts/test-timezone.sh` — a sandboxed functional test (no build, no board, no network:
 paths rewritten into a temp dir, `curl` stubbed, and the hook sourced exactly as
-`dhcpcd-run-hooks` sources it — under `$TZ_TEST_SH`, so the second CI leg genuinely parses
-and runs it as the target's BusyBox `ash`). 16 cases / 60 assertions covering the
+`dhcpcd-run-hooks` sources it — under `$TZ_TEST_SH`, so the target CI legs genuinely parse
+and run it as the target's own shells). 16 cases / 60 assertions covering the
 happy path, the never-overwrite rule (including that an *empty* timezone file counts as
 unset, so a half-written card self-heals, and that a timezone set *while the lookup runs*
 is not clobbered), the once-and-only-once contract, the opt-out stamp, nine classes of
@@ -170,10 +170,14 @@ which dhcpcd reasons fire it and which do not, `if_up` handled as data rather th
 `exit`ing dhcpcd's hook run, that it leaks nothing into the shell that sourced it, and that
 the sourcing shell returns while the lookup is still in flight.
 
-`scripts/ci-tests.sh`'s Timezone section runs it **twice** — once under the host shell,
-once under the target's own BusyBox `ash` via `qemu-arm`, since this is a boot-path script
-and dash-accepts-it is not the same claim as ash-accepts-it — and additionally asserts the
-script ships executable and that `curl`, its one runtime dependency, is still in the image.
+`scripts/ci-tests.sh`'s Timezone section runs it **three times** — once under the host
+shell, once under the target's own `bash --posix` via `qemu-arm`, once under the target's
+BusyBox `ash` — since this is a boot-path script and dash-accepts-it is not the same claim
+as the-box's-shell-accepts-it — and additionally asserts the script ships executable and
+that `curl`, its one runtime dependency, is still in the image. (Addendum 2026-09-03: this
+ADR originally said *twice*, host + ash, because `/bin/sh` was BusyBox ash at the time.
+Issue #144 made `/bin/sh` bash as on stock, so the shell that actually sources this hook
+on the box is bash in POSIX mode; the ash leg is kept as the stricter interpreter.)
 
 **Not yet verified on hardware**: the on-device first-boot path (real card, real DHCP)
 has not been exercised. That belongs to the next hardware validation pass.

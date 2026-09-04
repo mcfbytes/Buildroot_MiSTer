@@ -32,14 +32,17 @@
 #
 # Usage: scripts/test-timezone.sh
 #   Exit 0 iff every case passed. Wired into scripts/ci-tests.sh's Timezone
-#   section, which runs it twice: once under the host shell, and once under the
-#   target's own BusyBox ash via qemu-arm (TZ_TEST_SH, below) -- the shell that
-#   will actually run this on the box. The host's /bin/sh is usually dash, which
-#   is a good POSIX proxy but is not the same interpreter.
+#   section, which runs it three times: under the host shell, under the target's
+#   own bash --posix via qemu-arm (TZ_TEST_SH, below) -- /bin/sh on the box is
+#   bash as on stock (issue #144), invoked as `sh` so it runs in POSIX mode --
+#   and under the target's BusyBox ash, the stricter interpreter, which stays
+#   shipped as /bin/ash. The host's /bin/sh is usually dash, which is a good
+#   POSIX proxy but is not the same interpreter as either.
 #
 # Env:
 #   TZ_TEST_SH   shell to run the script under (default: sh). May be a command
 #                with arguments, e.g.
+#                TZ_TEST_SH="qemu-arm -L output/target output/target/usr/bin/bash --posix"
 #                TZ_TEST_SH="qemu-arm -L output/target output/target/bin/busybox sh"
 
 # shellcheck disable=SC2030,SC2031
@@ -166,8 +169,8 @@ reset() { rm -f "$TZFILE" "$TZSTAMP" "$TZFILE.tmp"; rmdir "$LOCKDIR" 2>/dev/null
 
 # fire <answer> [reason] [if_up] -- one dhcpcd address event, sourced the way
 # dhcpcd-run-hooks sources it, INSIDE ${TEST_SH[@]}. Running it under the
-# harness's own shell would make TZ_TEST_SH decorative and the "target BusyBox
-# ash" CI leg a no-op that prints PASS.
+# harness's own shell would make TZ_TEST_SH decorative and the target-shell CI
+# legs (bash --posix, BusyBox ash) no-ops that print PASS.
 #
 # Defaults to the event that matters: BOUND with the interface up. Pass the
 # literal string "unset" as if_up to leave it undefined -- a case dhcpcd never

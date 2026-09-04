@@ -246,6 +246,12 @@ BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
 BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
 BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
 BR2_PACKAGE_BASH=y
+# WARNING: BR2_SYSTEM_BIN_SH_BASH depends on BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+# (§5.15 above); without it kconfig drops this line silently and /bin/sh falls
+# back to BusyBox ash. Stock parity: Buildroot's skeleton finalize hook makes
+# /bin/sh -> bash AND sets root's login shell to /bin/bash from this one symbol
+# (issue #144; docs §5.19).
+BR2_SYSTEM_BIN_SH_BASH=y
 BR2_PACKAGE_DIALOG=y
 BR2_PACKAGE_WIRELESS_TOOLS=y
 BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG=y

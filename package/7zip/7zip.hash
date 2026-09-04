@@ -16,7 +16,7 @@
 # without the other -- see the "SAME UPSTREAM TARBALL" comment in 7zip.mk.
 # Verified against:
 #   https://github.com/ip7z/7zip/releases/download/26.02/7z2602-src.tar.xz
-sha256  cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd  7z2602-src.tar.xz
+sha256  9cbde5099c6deb73691b0579063da5827522ccbbcba3f0020fd04e8c8c16c0d4  7z2603-src.tar.xz
 # DOC/License.txt -- unlike lzma-sdk, this package DOES compile the CPP/ code
 # those terms cover (including CPP/7zip/Compress/Rar*, hence the unRAR
 # restriction). See the license comment in 7zip.mk for the per-path chain.

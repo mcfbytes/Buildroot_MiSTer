@@ -67,7 +67,7 @@ MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4
 (93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
 5.15.1** — a kernel forked in November 2021 that has **never merged a single 5.15.y
 stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
-any of it. This project rebuilds the whole thing from **Buildroot 2026.05.2** and a
+any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
 **mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
 signed-hash supply chain, a nine-workflow CI pipeline, and a per-commit reconciliation
 of the entire kernel fork — then ships it through the same update channel users already
@@ -87,11 +87,11 @@ mainline can hold it.
 |---|---|---|
 | **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
 | **Kernel delta** | 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
-| **Buildroot** | 2021.02.4 | **2026.05.2** (~5 years of upstream work) |
-| **glibc / gcc** | 2.31 / gcc 10-era | **2.43 / 14.4.0** |
-| **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.3** |
+| **Buildroot** | 2021.02.4 | **2026.08** (~5 years of upstream work) |
+| **glibc / gcc** | 2.31 / gcc 10-era | **2.44 / 15.3.0** |
+| **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.4** |
 | **OpenSSH** | 8.6p1 | **10.5p1** |
-| **Samba** | ~4.14 | **4.24.5** |
+| **Samba** | ~4.14 | **4.24.6** |
 | **Python** | 3.9 | **3.14.7** |
 | **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
@@ -133,7 +133,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
 | **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 37 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
-| **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.05.2, glibc 2.43, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
+| **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.08, glibc 2.44, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
 | **5 — Full SD image & U-Boot** | 🔄 Partially landed | `sdcard.img` builds, and `release.yml` verifies it with `scripts/check-sdcard.sh` ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md)); U-Boot-from-source is planned but not started — now targeting **mainline U-Boot**, not the 2017.03 fork ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md), [plan](docs/uboot-mainline-port.md), [tasks](docs/uboot-tasks.md)) — and the SD image has not been flashed to a fresh card on hardware (P5.4) |
@@ -359,7 +359,7 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
 
 ### 3. Security posture
 
-- **OpenSSL 1.1.1 → 3.6.3.** Stock ships a TLS library that has been **end-of-life since
+- **OpenSSL 1.1.1 → 3.6.4.** Stock ships a TLS library that has been **end-of-life since
   2023-09-11** and has received no upstream fixes since. This is the single strongest
   security argument for the whole project, and it is a plain, checkable fact.
 - **Per-device SSH host keys.** Every stock MiSTer ships the *same* host keys, baked into
@@ -369,7 +369,7 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
   This image generates unique keys on first boot and persists them to an ext4 image on the
   FAT partition, **reusing stock's own proven mechanism** for Bluetooth pairing keys.
   ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md))
-- **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.5**, **BlueZ → 5.79**,
+- **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.6**, **BlueZ → 5.86**,
   **wpa_supplicant 2.9 → 2.12** — the network-facing surface, several release cycles of
   hardening each.
 - **Python 3.9 → 3.14.7** — the on-device interpreter that runs the Downloader and
@@ -571,7 +571,15 @@ shipped **byte-identical to stock's**, fetched by hash.
   which **broke every SSH connection on the shipped image** and forced a release to be
   pulled. Buildroot classified that bump as `openssh: (no CVE assigned)`. Both parity
   documents now say so at the top, with the specific unchecked question named. The
-  defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
+  **2026.08 line bump** then moved the compiler itself — **gcc 14.4.0 → 15.3.0**, glibc
+  2.43 → 2.44, gdb 15.2 → 16.3 — plus **bluez 5.79 → 5.86**, Samba 4.24.5 → 4.24.6 and
+  OpenSSL 3.6.3 → 3.6.4. Two of those had consequences a version table cannot show: bluez
+  5.86 already contains the CablePairing series this repo had been backporting, so
+  `board/mister/de10nano/patches/bluez5_utils/` was deleted outright; and Buildroot
+  **retired the 7.0 kernel-headers series**, which silently collapsed the DE25 toolchain
+  from glibc to uClibc until the headers pin was moved to 7.1 (see
+  [`buildroot-config`](docs/buildroot-config.md) §6.2 and the fragment's own comment).
+  The defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
   For the kernel this is handled by not writing the number down: narrative prose says
   "6.18 LTS", and `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in the defconfig is the only
   place the `.y` lives.
@@ -884,7 +892,7 @@ Start here if you want to run it: [**one-command install**](#install-it-on-a-rea
 |---|------|
 | G1 | A `linux.img` + `zImage_dtb` that boots the **unmodified, stock** `MiSTer` binary |
 | G2 | Modern kernel on a supported LTS with a real security-update path |
-| G3 | Modern package set (Buildroot 2026.05) with a real security-update path |
+| G3 | Modern package set (Buildroot 2026.08) with a real security-update path |
 | G4 | **No separate kernel repo.** All kernel patches live as `.patch` files in the Buildroot external tree, applied to a pristine kernel.org tarball |
 | G5 | Fully reproducible: pinned Buildroot, pinned kernel + hash, checked-in `.config`, published SBOM |
 | G6 | Release artifacts published as **GitHub Release assets**. No binaries in git. Ever. |

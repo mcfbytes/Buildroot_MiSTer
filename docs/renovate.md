@@ -47,7 +47,7 @@ for the specific pieces most likely to need a fix on the first live run.
 
 | Pin | File(s) | Mechanism | Hash companion |
 |---|---|---|---|
-| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.05.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below. **Since 2026-09-02 a second companion:** `configs/fragments/golden.sha256` — the resolved-config hashes `scripts/check-config-fragments.sh` asserts per Buildroot version — is recorded for the new version by case 8 (`hash-sync-golden.sh`) in the same PR; if that case skips, `lint-config` only *warns* on the missing lines and the manual step is `scripts/check-config-fragments.sh --update-golden` + commit |
+| Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.08.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below. **Since 2026-09-02 a second companion:** `configs/fragments/golden.sha256` — the resolved-config hashes `scripts/check-config-fragments.sh` asserts per Buildroot version — is recorded for the new version by case 8 (`hash-sync-golden.sh`) in the same PR; if that case skips, `lint-config` only *warns* on the missing lines and the manual step is `scripts/check-config-fragments.sh --update-golden` + commit |
 | Kernel (6.18.y longterm) | `configs/fragments/de10nano.fragment` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) — the ONE file both DE10 stacks share since the 2026-09 fragment split | one `customManagers` regex on that file + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, the **7.2 line**) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelStable72` datasource; `allowedVersions` locked to `/^7\.2(\.\d+)?$/`. Labeled `rt-kernel-pin` + `needs-manual-version-check`. **Rewritten 2026-08-17** when 7.2 released: the datasource was `kernelMainline` (`moniker=mainline`) and the depName `kernel-mainline-rt`. Both were right while 7.2 was in `-rc` and wrong the moment it shipped — mainline moves to 7.3-rc1 about two weeks later, so the old filter would have dragged the variant straight back off the line it had just reached. The filter is now **moniker-agnostic and version-scoped**, because the 7.2 line changes moniker underneath us: today 7.2 is the `mainline` entry and no 7.2.y stable release exists yet, and once 7.2.1 ships it becomes the `stable` entry instead. The matchString accepts two- *and* three-component values for the same reason | `board/mister/de10nano/patches/linux/linux.hash` — **auto-refreshed since 2026-08-17** by `renovate-hash-sync.yml` (`hash-sync-kernel.sh --pin=rt`) from kernel.org's signed `sha256sums.asc`, same as the 6.18 pin. This row says the opposite of what it said before that date, and the reason is that the pin changed sides, not that the rule loosened: an `-rc` is fetched as a cgit `.tar.gz` snapshot upstream signs in no way, so its hash could only be hand-written TOFU; a 7.2.y release is an ordinary `.tar.xz` covered by the signed manifest. The script still **refuses** any `-rc` for either pin, leaving the build to fail closed |
 | 10 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,rtl8852cu-morrownr,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
@@ -540,22 +540,46 @@ package instead), so no submodule pin is expected to land.
 ## Kernel/Buildroot bump scope, restated
 
 Both the Buildroot and kernel `customManagers` entries are intentionally
-narrow: `allowedVersions` locks Buildroot to the `2026.05.x` line and the
+narrow: `allowedVersions` locks Buildroot to the `2026.08.x` line and the
 kernel to `6.18.y`. Neither is meant to propose a Buildroot major/minor
 bump or a kernel LTS-line change — those are larger undertakings (new
 toolchain defaults, a fresh patch-carry audit) that deserve a deliberate,
 human-initiated upgrade, not a routine Renovate PR.
 
-**This has happened once, exactly that way.** The Buildroot line moved
-`2026.02.x` → `2026.05.x` by hand in PR #54, and the `allowedVersions` regex
-moved with it. Note what the line number does *not* tell you: **2026.02 was
-never an LTS.** Buildroot's LTS releases are the February ones on a two-year
-cadence — **2025.02** was the last, **2027.02** is expected to be the next — so
-`2026.05` is an interim non-LTS line, chosen for currency, not longevity. When
-the next line bump comes, update four things together: `BUILDROOT_VERSION` and
-`BUILDROOT_SHA256` in the `Makefile` (the hash from
-`make buildroot-showsig`, never from a tarball you just downloaded), this
-`allowedVersions` regex, the row in the table above, and the golden config
-hashes (`scripts/check-config-fragments.sh --update-golden`, case 8 above —
-read the normalised-config diff before committing; a line bump is exactly
-when defaults move).
+**THIS IS WHY A LINE BUMP NEVER SHOWS UP AS A RENOVATE PR**, and it is worth
+stating plainly because the absence looks like a broken manager. It is not one.
+The manager extracts fine, `github-tags` sees the new tag, and `loose`
+versioning orders the versions correctly — `2026.08` parses to `[2026, 8]` and
+`2026.05.2` to `[2026, 5, 2]`, so the element-wise compare puts `2026.08`
+ahead; the differing component *count* is not what stops it, and neither is the
+absence of a patch component. `allowedVersions` is what filters the candidate
+out, deliberately, so that moving the line stays a human decision.
+
+**This has now happened twice, the same way both times.** The Buildroot line
+moved `2026.02.x` → `2026.05.x` by hand in PR #54, and `2026.05.x` →
+`2026.08.x` on 2026-09-05; the `allowedVersions` regex moved with it each time.
+Note what the line number does *not* tell you: **neither 2026.02 nor 2026.08 is
+an LTS.** Buildroot's LTS releases are the February ones on a two-year cadence
+— **2025.02** was the last, **2027.02** is expected to be the next — so
+`2026.08` is an interim non-LTS line, chosen for currency, not longevity. When
+the next line bump comes, update **five** things together:
+
+1. `BUILDROOT_VERSION` and `BUILDROOT_SHA256` in the `Makefile` — the hash from
+   `make buildroot-showsig`, never from a tarball you just downloaded.
+2. This `allowedVersions` regex. Bump it *with* the Makefile pin, never
+   separately: left behind it silently freezes the pin, moved ahead it invites
+   a line jump nobody reviewed.
+3. The row in the table above.
+4. The golden config hashes (`scripts/check-config-fragments.sh
+   --update-golden`, case 8 above).
+5. **The resolved-config diff — actually read it.** A line bump is exactly when
+   defaults move, and the golden hash only tells you *that* something moved.
+   The 2026.08 bump is the cautionary tale: Buildroot retired the 7.0
+   kernel-headers series into `Config.in.legacy`, and because a retired symbol
+   still *sets* cleanly, the fragment-survival check passed with 0 dropped
+   while the DE25 toolchain silently fell from glibc to uClibc. Diffing the
+   normalised configs against the previous line caught it; nothing else would
+   have. Resolve the old line's configs with
+   `CHECK_CONFIG_BR_DIR=<old-tree> scripts/check-config-fragments.sh --keep`
+   and diff `output-config-check/<stack>/normalised.config` against the new
+   run's.

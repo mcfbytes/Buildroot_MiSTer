@@ -918,13 +918,15 @@ Exit criterion: beta users successfully opt in via `db.json` and can roll back (
 - [ ] **P4.6 — Renovate onboarding (final pipeline-hardening step)** — [SONNET] — Size M — Depends: P4.1, P4.4
   **Sequence after P4.8/P4.9, immediately before beta launch** — automate a pipeline
   only once it is stable and trusted (PLAN.md §9). Onboard Renovate and configure
-  `renovate.json` to manage: the Buildroot 2026.05.x tarball version + SHA-256
+  `renovate.json` to manage: the Buildroot 2026.08.x tarball version + SHA-256
   (custom/regex manager over the pin file from P1.1), morrownr package commit pins (git
   datasource), CI container image digests, and GitHub Actions versions. Every Renovate
   PR must trigger the full CI suite (build, patch-apply, ABI checks, reproducibility).
   Automerge stays OFF — a human reviews green PRs. **Reference:**
   `/mnt/source/sb-enema/renovate.json` — a working custom regex manager for
-  `BUILDROOT_VERSION` (github-tags datasource, `allowedVersions` pinned to `2026.05.x`);
+  `BUILDROOT_VERSION` (github-tags datasource, `allowedVersions` pinned to the current
+  line — `2026.08.x` today; a line bump moves that regex by hand, which is why a line
+  bump never arrives as a Renovate PR);
   use it as the template.
   **Done when:** a real or synthetic Renovate PR for a Buildroot point release opens
   with passing CI; the pin file's regex manager is covered by a Renovate config test.

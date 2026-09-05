@@ -5,8 +5,9 @@ version-jump risk owners **P3.6** (Samba), **P3.7** (SSH/FTP), **P3.9** (Python)
 
 > **Which Buildroot this describes (read first).** The mapping below was *established*
 > against **2026.02.3** — that is the tree every "verified by reading the file" claim
-> here was read from. **The image now ships Buildroot 2026.05.2** (bumped by hand in
-> PR #54, then by Renovate to 2026.05.2). Rows touched by that bump have been updated in place and say so inline; the
+> here was read from. **The image now ships Buildroot 2026.08** (bumped by hand to
+> 2026.05.x in PR #54, by Renovate within that line, then by hand to 2026.08 on
+> 2026-09-05). Rows touched by those bumps have been updated in place and say so inline; the
 > clearest case is PCRE1, removed upstream in 2026.05 and consequently dropped here
 > (see the `libpcre.so.1` / `libpcreposix.so.0` rows). Untouched rows still carry their
 > 2026.02.3 provenance, which is the honest thing for them to carry — a version string
@@ -56,7 +57,7 @@ cross-checks for the two riskiest ones):
 | 9 | `libpng16.so.16` | **yes** | `BR2_PACKAGE_LIBPNG` 1.6.58 — the "16" is libpng's parallel-install branch tag, part of the package's identity |
 | 10 | `libz.so.1` | **yes** | `BR2_PACKAGE_ZLIB_NG` 2.3.3 in `ZLIB_COMPAT` mode (provider under the `BR2_PACKAGE_ZLIB` choice; `BR2_PACKAGE_LIBZLIB` is the Buildroot default, we select zlib-ng instead). **SONAME is unchanged** — compat mode installs `libz.so.1`, so nothing that `DT_NEEDS` it can tell the difference |
 | 11 | `libImlib2.so.1` | **yes** | `BR2_PACKAGE_IMLIB2` 1.12.5. **Specifically checked per the task's flag** — current Arch `imlib2` 1.12.6-1 sonames page still lists only `libImlib2.so.1` |
-| 12 | `libbluetooth.so.3` | **yes** | `BR2_PACKAGE_BLUEZ5_UTILS` 5.79. **Specifically checked per the task's flag** — current Arch `bluez-libs` package `Provides: libbluetooth.so=3`; Debian/Ubuntu still name the runtime package `libbluetooth3` at recent bluez versions |
+| 12 | `libbluetooth.so.3` | **yes** | `BR2_PACKAGE_BLUEZ5_UTILS` 5.86. **Specifically checked per the task's flag** — current Arch `bluez-libs` package `Provides: libbluetooth.so=3`; Debian/Ubuntu still name the runtime package `libbluetooth3` at recent bluez versions |
 
 **No project-threatening ABI break exists in this set.** This is the single most
 important fact this task turned up: nothing forces a redesign of the ABI-parity
@@ -226,7 +227,7 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 
 | SONAME | stock realfile | Buildroot package | version | bump? | notes |
 |---|---|---|---|---|---|
-| `libbluetooth.so.3` | `libbluetooth.so.3.19.5` | `BR2_PACKAGE_BLUEZ5_UTILS` (+`_PLUGINS_SIXAXIS`, `_DEPRECATED` for hciconfig/hcitool/sdptool/rfcomm/l2ping/hcidump parity) | 5.79 | no | **verified**: Arch's current `bluez-libs` package still `Provides: libbluetooth.so=3` — one of the 12 critical SONAMEs, confirmed safe |
+| `libbluetooth.so.3` | `libbluetooth.so.3.19.5` | `BR2_PACKAGE_BLUEZ5_UTILS` (+`_PLUGINS_SIXAXIS`, `_DEPRECATED` for hciconfig/hcitool/sdptool/rfcomm/l2ping/hcidump parity) | 5.86 | no | **verified**: Arch's current `bluez-libs` package still `Provides: libbluetooth.so=3` — one of the 12 critical SONAMEs, confirmed safe |
 
 ### PAM / capabilities
 
@@ -455,15 +456,26 @@ Several versions in this table have since moved, across two Buildroot bumps. The
 2.12**. The two whose parity analyses that invalidates are flagged at the top of
 [`samba-parity.md`](samba-parity.md) and [`ssh-ftp-parity.md`](ssh-ftp-parity.md) — and
 the OpenSSH move broke SSH outright on the shipped image, which that document now
-records. bluez 5.79 and dhcpcd 10.2.4 are unchanged at the current pin (verified
-against `output/build/`, 2026-08-24).
+records.
+
+The **2026.08 line bump** (2026-09-05) then moved the toolchain itself —
+**gcc 14.4.0 → 15.3.0**, **glibc 2.43 → 2.44**, gdb 15.2 → 16.3 — plus
+**bluez 5.79 → 5.86**, Samba 4.24.5 → 4.24.6 and OpenSSL 3.6.3 → 3.6.4. The bluez
+move is the consequential one for this document: 5.86 already contains the
+upstream `CablePairing` series this repo had been backporting, so
+`board/mister/de10nano/patches/bluez5_utils/` was deleted (see
+[`bluetooth-parity.md`](bluetooth-parity.md) §10). dhcpcd is **still 10.2.4** and
+its `--with-hooks` host-probing bug is **still unfixed upstream** — Buildroot
+2026.08's `package/dhcpcd/dhcpcd.mk` still passes no `--with-hooks`, so
+`external.mk`'s override remains load-bearing. Versions verified against
+`make show-info` on the 2026.08 build, 2026-09-05.
 
 | Role | Stock | Buildroot package | BR 2026.02.3 version | Init script (P2.3 parity) |
 |---|---|---|---|---|
 | SMB/CIFS file server | Samba 4.14.6 (`smbd`, `nmbd`) | `BR2_PACKAGE_SAMBA4` | 4.23.8 | `S91smb` |
 | SSH server | OpenSSH 8.6p1 (`sshd`) | `BR2_PACKAGE_OPENSSH` | 10.2p1 | `S50sshd` |
 | FTP server | ProFTPD (stock ships it, exact version not in IKCONFIG) | `BR2_PACKAGE_PROFTPD` | 1.3.8d | `S50proftpd` |
-| Bluetooth stack | bluez 5.61 (`bluetoothd`) | `BR2_PACKAGE_BLUEZ5_UTILS` | 5.79 | `S45bluetooth` → symlink to `/bin/bluetoothd` control script (P0.3 finding) |
+| Bluetooth stack | bluez 5.61 (`bluetoothd`) | `BR2_PACKAGE_BLUEZ5_UTILS` | 5.86 | `S45bluetooth` → symlink to `/bin/bluetoothd` control script (P0.3 finding) |
 | WiFi supplicant | wpa_supplicant 2.x | `BR2_PACKAGE_WPA_SUPPLICANT` (+`_NL80211`, +`_WEXT` — stock's `/etc/network/interfaces` passes `-D nl80211,wext`, both drivers must be built) | 2.11 | invoked from `ifupdown` `pre-up` in `/etc/network/interfaces`, not its own S-script |
 | DHCP client | dhcpcd | `BR2_PACKAGE_DHCPCD` | 10.2.4 | `S41dhcpcd` |
 | NTP daemon | `ntpd` (classic ntp.org, not chrony/openntpd) | `BR2_PACKAGE_NTP` | 4.2.8p18 | `S49ntp` |
@@ -477,8 +489,8 @@ against `output/build/`, 2026-08-24).
 | HTTP client (Downloader, scripts) | curl 7.78.0 | `BR2_PACKAGE_LIBCURL` +`_CURL` (installs the CLI, off by default) +`_OPENSSL` (TLS backend parity — stock's `curl` links `libcrypto`/`libssl`, not GnuTLS) | 8.20.0 | n/a |
 | Init/shell userland | BusyBox 1.33.1 (274 applets) | `BR2_PACKAGE_BUSYBOX` | 1.37.0 | provides `rcS`/`rcK`, most of `/bin` |
 | Privilege elevation | sudo | `BR2_PACKAGE_SUDO` | 1.9.17p2 | n/a |
-| Bluetooth legacy tools (`hciconfig`, `hcitool`, `sdptool`, `rfcomm`, `l2ping`, `hcidump`) | present in stock | `BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y` | 5.79 | upstream bluez gates these behind this option now |
-| PS3 controller pairing | `sixaxis.so` bluez plugin | `BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_SIXAXIS=y` | 5.79 | pulls in `_PLUGINS_HID` transitively (`select`, don't set separately) |
+| Bluetooth legacy tools (`hciconfig`, `hcitool`, `sdptool`, `rfcomm`, `l2ping`, `hcidump`) | present in stock | `BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y` | 5.86 | upstream bluez gates these behind this option now |
+| PS3 controller pairing | `sixaxis.so` bluez plugin | `BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_SIXAXIS=y` | 5.86 | pulls in `_PLUGINS_HID` transitively (`select`, don't set separately) |
 
 **MT-32 / soundfont note (P3.8):** `MidiLink.INI`, `mt32-rom-data/`, and `soundfonts/`
 are **not** Linux userland — they are data files shipped under `files/linux/` on the
@@ -614,7 +626,7 @@ for real incompatibilities is **reporting them upstream to `Downloader_MiSTer` /
 community script authors**, not silently pinning an EOL interpreter — Buildroot
 2026.02 gives us no easy way to pin 3.9 even if we wanted to.
 
-### bluez 5.61 → 5.79 (owner: P3.5) — confirmed safe
+### bluez 5.61 → 5.86 (owner: P3.5) — confirmed safe
 
 `libbluetooth.so.3` unchanged (see headline finding). Behavior-level: bluez5's
 `main.conf` schema (verbatim stock config uses `FastConnectable`, `Privacy`,
@@ -1123,7 +1135,7 @@ BR2_PACKAGE_BUSYBOX=y                         # 1.38.0 in this Buildroot (busybo
 
 - **Buildroot ref this mapping was read from**: branch `2026.02.x` @
   `679b9ead7620bbf193620d1ebf56f53c1764d37a` = tag `2026.02.3`. **The image now ships
-  2026.05.2** — see the note at the top of this document for what that does and does not
+  2026.08** — see the note at the top of this document for what that does and does not
   change.
 - **12/12 critical ABI-contract SONAMEs (PLAN §3) confirmed at the same major version**
   in Buildroot 2026.02.3, including the two PLAN flagged as highest-risk

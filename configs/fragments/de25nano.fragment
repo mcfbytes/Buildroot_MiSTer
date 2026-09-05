@@ -13,10 +13,23 @@
 # "simplify" it to BR2_cortex_a76. No NEON/VFP knobs exist on AArch64.
 BR2_aarch64=y
 BR2_cortex_a76_a55=y
-# WARNING: headers SERIES pin, same trap as the DE10's (§3.2). 7_0 is the
-# newest series Buildroot 2026.05.2 offers below our 7.2 kernel; re-check on
+# WARNING: headers SERIES pin, same trap as the DE10's (§3.2). 7_1 is the
+# newest series Buildroot 2026.08 offers below our 7.2 kernel; re-check on
 # every Buildroot bump and move to a 7.2 series the day one exists.
-BR2_KERNEL_HEADERS_7_0=y
+#
+# WAS 7_0 UNTIL THE 2026.08 BUMP, and the way it broke is the reason this
+# WARNING exists. Buildroot 2026.08 REMOVED the 7.0 series outright -- it is
+# now a Config.in.legacy stub ("kernel headers version 7.0.x are no longer
+# supported", selecting BR2_LEGACY). A retired symbol does not error out at
+# merge time: `BR2_KERNEL_HEADERS_7_0=y` still SET fine, so
+# check-config-fragments' (b) "every fragment symbol survives" assertion still
+# passed with 0 dropped -- the literal line really was in the resolved config.
+# What silently collapsed was everything downstream of it: the headers choice
+# fell back to BR2_KERNEL_HEADERS_AS_KERNEL, and with it the libc choice fell
+# from glibc to uClibc. The GOLDEN HASH is what caught it, which is exactly the
+# backstop it exists to be. If you ever see BR2_TOOLCHAIN_USES_UCLIBC in a
+# resolved DE25 config, look here first.
+BR2_KERNEL_HEADERS_7_1=y
 
 # --- Download integrity (docs/buildroot-config.md §6.3) ---
 # WARNING: patches/linux/linux.hash here is a SYMLINK to the DE10's hash

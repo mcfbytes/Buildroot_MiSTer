@@ -1518,13 +1518,15 @@ require_present "etc/init.d/S50sshd" "S50sshd"
 # overlay source, because the overlay only matters if it actually reaches the
 # rootfs.
 #
-# WHY THIS GATE EXISTS: the rootfs is a read-only loop-mounted ext4 and a fresh
-# image ships no /root/.ssh at all, so the DEFAULT path (.ssh/authorized_keys)
-# can only ever be filled by baking a key into linux.img before flashing -- and
-# every update then discards it. /media/fat/linux/authorized_keys is the only
-# location a user can write from an ordinary PC (card reader, any OS) that the
-# update process does not touch. Dropping this line would silently return every
-# user to "your key is gone after each update", with nothing else failing.
+# WHY THIS GATE EXISTS: an update replaces linux.img wholesale, so a key under
+# /root/.ssh -- which lives inside that file -- does not survive one. (/ is also
+# read-only at boot and a fresh image ships no /root/.ssh at all; it becomes
+# writable only via /etc/profile's remount on interactive login, so putting a
+# key there by hand needs a login first -- circular when the key IS the login
+# method.) /media/fat/linux/authorized_keys is the only location a user can
+# write from an ordinary PC (card reader, any OS) that the update process does
+# not touch. Dropping this line would silently return every user to "your key
+# is gone after each update", with nothing else failing.
 if tar_has "etc/ssh/sshd_config"; then
 	sshd_conf="$WORKDIR/sshd_config"
 	tar xOf "$ROOTFS_TAR" ./etc/ssh/sshd_config > "$sshd_conf" 2>/dev/null

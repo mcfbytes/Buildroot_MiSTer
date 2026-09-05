@@ -47,12 +47,20 @@ PermitRootLogin yes
 # but this is overridden so installations will only check .ssh/authorized_keys
 #
 # SECOND PATH ADDED: /media/fat/linux/authorized_keys -- a user's key that
-# SURVIVES AN IMAGE UPDATE. The rootfs is a read-only loop-mounted ext4
-# (`/dev/loop0 on / type ext4 (ro)`), so /root/.ssh cannot be written at
-# runtime at all, and a fresh image ships no /root/.ssh whatsoever -- which
-# means the first path above is only ever populated by baking a key into
-# linux.img before flashing, and every update then throws it away. The FAT
-# partition is not reflashed, so a key here persists across every update. This
+# SURVIVES AN IMAGE UPDATE. An update replaces linux.img wholesale, so anything
+# under /root/.ssh -- which lives inside that file -- is destroyed by it. That
+# is the durable reason for this second path, and it holds regardless of how
+# the root filesystem happens to be mounted at the time.
+#
+# Getting a key into the first path is awkward besides: / is mounted READ-ONLY
+# at boot (`ro` on the cmdline; inittab's remount-rw line is deliberately left
+# commented, ADR 0011) and a fresh image ships NO /root/.ssh at all. It does
+# become writable later -- /etc/profile ends with `mount -o remount,rw /` on
+# interactive login, which is how / ever becomes writable at all (stock parity,
+# docs/init-parity.md) -- so a key CAN be placed there by hand. It just needs a
+# login first, which is circular when the key IS the login method, and it does
+# not survive the next update either way. The FAT partition is not reflashed,
+# so a key here persists across every update. This
 # is the same "persist it on /media/fat" principle as ADR 0015's host keys,
 # and sshd's native multi-path support means it needs no init script, no
 # bind-mount and no user-startup.sh hook.

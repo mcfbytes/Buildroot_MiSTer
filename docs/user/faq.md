@@ -108,11 +108,12 @@ ssh -i ~/.ssh/id_ed25519 root@mister.lan
 
 **Why that location, and why it survives an update.** An OS update replaces `linux.img`
 wholesale. The usual place for a key, `/root/.ssh/authorized_keys`, lives *inside* that
-file — and the root filesystem is mounted read-only, so nothing on the box can even write
-there at runtime. A key put there therefore has to be injected into the image before
-flashing, and the next update throws it away. The exFAT partition is never reflashed, so
-a key kept there is picked up again after every update. `sshd` is configured to read both
-locations, so you do not have to choose.
+file, so the update throws it away. (You *can* put a key there once you are logged in —
+the root filesystem starts read-only and becomes writable when you log in — but you need
+to be logged in first, which is awkward when the key is how you wanted to log in, and it
+is gone again after the next update.) The exFAT partition is never reflashed, so a key
+kept there is picked up again after every update. `sshd` reads both locations, so you do
+not have to choose.
 
 This is the same principle as the per-device host keys above: anything that must outlive
 an update lives on the data partition, not in the image.

@@ -113,14 +113,25 @@ host-key-mismatch note.
 
 ### 1.3 User `authorized_keys` on the FAT partition — the second `AuthorizedKeysFile` path
 
-**The gap.** `/` is a read-only loop-mounted ext4 (`/dev/loop0 on / type ext4 (ro)`), so
-nothing on the box can write `/root/.ssh` at runtime, and a freshly built image ships **no
-`/root/.ssh` at all** (only `/root/.config/mc/`). The stock-parity
-`AuthorizedKeysFile .ssh/authorized_keys` can therefore only ever be populated by
-injecting a key into `linux.img` *before* flashing — and since an update replaces
-`linux.img` wholesale, every update silently discards it. That is precisely the
-"persistent state must live on `/media/fat`" trap, and it had been costing a manual
-re-push on every single flash.
+**The gap.** An update replaces `linux.img` wholesale, and `/root/.ssh` lives *inside*
+that file — so a key there is destroyed by every update. That is the "persistent state
+must live on `/media/fat`" trap, and it had been costing a manual re-push on every single
+flash. **This is the durable reason for the second path, and it does not depend on how
+`/` happens to be mounted.**
+
+Getting a key into the stock-parity path is awkward besides. `/` is mounted **read-only at
+boot** (`ro` on the cmdline; inittab's remount-rw line is deliberately left commented,
+ADR 0011) and a freshly built image ships **no `/root/.ssh` at all** — only
+`/root/.config/mc/`. It *does* become writable later: `/etc/profile` ends with
+`mount -o remount,rw /` on interactive login, which is how `/` ever becomes writable at
+all (stock parity — see [`init-parity.md`](init-parity.md), the `/etc/profile` row). So a
+key **can** be placed there by hand — it just requires logging in first, which is circular
+when the key *is* the login method, and it still does not survive the next update.
+
+> An earlier revision of this section claimed `/root/.ssh` "cannot be written at runtime".
+> That was wrong: the login-time remount makes it writable. Corrected after observing a
+> booted rig report `/dev/loop0 on / type ext4 (rw,...)`. The conclusion is unchanged —
+> only the reasoning needed to be right.
 
 **The fix.** `sshd` accepts multiple `AuthorizedKeysFile` paths and tries each in turn, so
 the shipped config now lists the stock path *plus* `/media/fat/linux/authorized_keys`.

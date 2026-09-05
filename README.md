@@ -370,9 +370,10 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
   FAT partition, **reusing stock's own proven mechanism** for Bluetooth pairing keys.
   ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md))
 - **SSH key login that survives an update.** An OS update replaces `linux.img` wholesale,
-  and the root filesystem is mounted read-only — so `/root/.ssh/authorized_keys`, the
-  usual place for a key, cannot be written on the box at all and only exists if it was
-  baked into the image before flashing. Every update then discards it. `sshd` here also
+  and `/root/.ssh/authorized_keys` — the usual place for a key — lives inside it, so every
+  update discards it. (The root filesystem is read-only at boot and only becomes writable
+  once you log in, so putting a key there also means logging in first, which is circular
+  when the key *is* the login method.) `sshd` here also
   reads **`/media/fat/linux/authorized_keys`**, on the exFAT partition an update never
   touches: drop your `.pub` file there from any PC with a card reader and key login keeps
   working across every future update. No shell access, no script to edit, and

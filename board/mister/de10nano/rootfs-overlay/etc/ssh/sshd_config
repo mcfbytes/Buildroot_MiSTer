@@ -45,7 +45,38 @@ PermitRootLogin yes
 
 # The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
 # but this is overridden so installations will only check .ssh/authorized_keys
-AuthorizedKeysFile	.ssh/authorized_keys
+#
+# SECOND PATH ADDED: /media/fat/linux/authorized_keys -- a user's key that
+# SURVIVES AN IMAGE UPDATE. The rootfs is a read-only loop-mounted ext4
+# (`/dev/loop0 on / type ext4 (ro)`), so /root/.ssh cannot be written at
+# runtime at all, and a fresh image ships no /root/.ssh whatsoever -- which
+# means the first path above is only ever populated by baking a key into
+# linux.img before flashing, and every update then throws it away. The FAT
+# partition is not reflashed, so a key here persists across every update. This
+# is the same "persist it on /media/fat" principle as ADR 0015's host keys,
+# and sshd's native multi-path support means it needs no init script, no
+# bind-mount and no user-startup.sh hook.
+#
+# WHY NOT ssh.ext4 (ADR 0015's mechanism)? Considered and rejected. That is an
+# ext4 image INSIDE a file, right for HOST keys because the DEVICE writes them
+# -- but an authorized_keys file is written by the USER, and an ext4-in-a-file
+# cannot be opened from Windows or macOS with a card reader, while editing it
+# on the box needs the very shell access the key is meant to grant. The split
+# is who writes the file: machine-written state in ssh.ext4, user-supplied
+# state on exFAT.
+#
+# StrictModes STAYS ON (default yes) and this path satisfies it: the initramfs
+# mounts the FAT partition with fmask=0022,dmask=0022 and no uid/gid options
+# (board/mister/de10nano/initramfs-overlay/init:27), so the file lands
+# root-owned 0755 and its parents 0755 -- owner-writable only, which is what
+# sshd requires. Those mount options are OURS and fixed, not user-tunable, so
+# this cannot be silently invalidated by a differently-mounted card. Verified
+# end-to-end on hardware (exFAT, StrictModes=yes, key auth from this path
+# alone).
+#
+# ORDER MATTERS ONLY FOR PRECEDENCE, NOT FUNCTION: sshd tries every listed
+# file, so a key in either location works.
+AuthorizedKeysFile	.ssh/authorized_keys /media/fat/linux/authorized_keys
 
 #AuthorizedPrincipalsFile none
 

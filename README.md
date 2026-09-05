@@ -369,6 +369,15 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
   This image generates unique keys on first boot and persists them to an ext4 image on the
   FAT partition, **reusing stock's own proven mechanism** for Bluetooth pairing keys.
   ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md))
+- **SSH key login that survives an update.** An OS update replaces `linux.img` wholesale,
+  and the root filesystem is mounted read-only — so `/root/.ssh/authorized_keys`, the
+  usual place for a key, cannot be written on the box at all and only exists if it was
+  baked into the image before flashing. Every update then discards it. `sshd` here also
+  reads **`/media/fat/linux/authorized_keys`**, on the exFAT partition an update never
+  touches: drop your `.pub` file there from any PC with a card reader and key login keeps
+  working across every future update. No shell access, no script to edit, and
+  `StrictModes` stays on — the initramfs mounts that partition `fmask=0022,dmask=0022`,
+  which is exactly what `sshd` requires. ([FAQ](docs/user/faq.md#ssh-key-persist))
 - **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.6**, **BlueZ → 5.86**,
   **wpa_supplicant 2.9 → 2.12** — the network-facing surface, several release cycles of
   hardening each.

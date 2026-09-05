@@ -86,6 +86,45 @@ running this image.
 
 ---
 
+<a id="ssh-key-persist"></a>
+## How do I log in with an SSH key, and make it survive image updates?
+
+Put your **public** key in a file called `authorized_keys` in the `linux` folder on the
+card's main (exFAT) partition — the same partition you see when you put the card in your
+PC:
+
+```
+/media/fat/linux/authorized_keys      # on the box
+<card>\linux\authorized_keys          # from Windows/macOS with a card reader
+```
+
+Paste in the contents of your **`.pub`** file (e.g. `~/.ssh/id_ed25519.pub`) — one key
+per line, more than one key is fine. That's the whole procedure: no shell access needed,
+no script to edit, and it works from any OS. Then connect normally:
+
+```sh
+ssh -i ~/.ssh/id_ed25519 root@mister.lan
+```
+
+**Why that location, and why it survives an update.** An OS update replaces `linux.img`
+wholesale. The usual place for a key, `/root/.ssh/authorized_keys`, lives *inside* that
+file — and the root filesystem is mounted read-only, so nothing on the box can even write
+there at runtime. A key put there therefore has to be injected into the image before
+flashing, and the next update throws it away. The exFAT partition is never reflashed, so
+a key kept there is picked up again after every update. `sshd` is configured to read both
+locations, so you do not have to choose.
+
+This is the same principle as the per-device host keys above: anything that must outlive
+an update lives on the data partition, not in the image.
+
+> **Note:** the key file is read by the SSH server as root, so treat the card as you would
+> any machine you can log into. Put only your **public** key there — never a private key.
+> Adding a key does not disable password login; if you want key-only access, set
+> `PasswordAuthentication no` in `/etc/ssh/sshd_config` (that change lives in the image,
+> so it is undone by an update).
+
+---
+
 ## What actually changed vs. stock?
 
 | | Stock | This project |

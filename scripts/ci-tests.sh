@@ -1513,6 +1513,42 @@ fi
 
 require_present "etc/init.d/S50sshd" "S50sshd"
 
+# A user's SSH key on the FAT partition must be honoured, so that key access
+# survives an image update. Asserted on the SHIPPED sshd_config, not the
+# overlay source, because the overlay only matters if it actually reaches the
+# rootfs.
+#
+# WHY THIS GATE EXISTS: the rootfs is a read-only loop-mounted ext4 and a fresh
+# image ships no /root/.ssh at all, so the DEFAULT path (.ssh/authorized_keys)
+# can only ever be filled by baking a key into linux.img before flashing -- and
+# every update then discards it. /media/fat/linux/authorized_keys is the only
+# location a user can write from an ordinary PC (card reader, any OS) that the
+# update process does not touch. Dropping this line would silently return every
+# user to "your key is gone after each update", with nothing else failing.
+if tar_has "etc/ssh/sshd_config"; then
+	sshd_conf="$WORKDIR/sshd_config"
+	tar xOf "$ROOTFS_TAR" ./etc/ssh/sshd_config > "$sshd_conf" 2>/dev/null
+	if grep -qE '^AuthorizedKeysFile[[:space:]].*[[:space:]]/media/fat/linux/authorized_keys[[:space:]]*$' "$sshd_conf"; then
+		pass "sshd_config: AuthorizedKeysFile includes /media/fat/linux/authorized_keys (key survives an image update)"
+	else
+		fail "sshd_config: AuthorizedKeysFile includes /media/fat/linux/authorized_keys" \
+			"absent -- a user key placed on the FAT partition would be ignored, so SSH key access would be lost on every image update. Actual: $(grep -E '^AuthorizedKeysFile' "$sshd_conf" || echo '<no AuthorizedKeysFile line>')"
+	fi
+
+	# StrictModes must stay at its default (yes). The FAT path above satisfies it
+	# only because the initramfs mounts with fmask=0022,dmask=0022
+	# (board/mister/de10nano/initramfs-overlay/init); an explicit 'StrictModes no'
+	# would mean someone worked around a permissions problem instead of fixing it.
+	if grep -qE '^StrictModes[[:space:]]+no' "$sshd_conf"; then
+		fail "sshd_config: StrictModes not disabled" \
+			"'StrictModes no' is set -- the FAT authorized_keys path is designed to satisfy StrictModes, so disabling it hides a real permissions fault"
+	else
+		pass "sshd_config: StrictModes left at default (yes)"
+	fi
+else
+	fail "sshd_config present" "etc/ssh/sshd_config not in rootfs.tar"
+fi
+
 # =============================================================================
 section "P3.8 — MIDI / MT-32 parity"
 # =============================================================================

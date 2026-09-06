@@ -27,6 +27,13 @@ Contents:
 9. [`mister_installer_defconfig`](#9-mister_installer_defconfig)
 10. [Placement decisions — what is common, what is board-only, and why](#10-placement-decisions)
 11. [Checks, golden hashes, and the identity proof](#11-checks-golden-hashes-and-the-identity-proof)
+12. [`image-common.fragment`](#12-image-commonfragment)
+
+`image-common.fragment` is a per-fragment section like §2–§9 and belongs, by
+subject, between §5 and §6. It is numbered **12** and placed last on purpose:
+roughly twenty cross-references to §6–§11 exist in other documents (two of them
+in files this change may not touch), and renumbering to insert a §6 would break
+every one of them for a cosmetic gain. Read §12 straight after §5.
 
 ---
 
@@ -37,10 +44,12 @@ configs/
   fragments/
     stacks.mk                the ONE place that says which fragments form which config
     common.fragment          policy shared by every board and every kernel variant
+    image-common.fragment    packages shared by every board's IMAGE stack — and by no
+                             kernel-only stack (today: the /lib/firmware blob set, §12)
     de10nano.fragment        DE10-Nano board layer: arch/ABI, headers series, kernel stanza
     de10nano-image.fragment  DE10-Nano shipped image: board hooks, ext4 contract, packages, system config
     kernel-only.fragment     turns a board stack into the kernel-only base variants build on
-    de25nano.fragment        DE25-Nano developer OS (aarch64), layered on common only
+    de25nano.fragment        DE25-Nano developer OS (aarch64), layered on common + image-common
     golden.sha256            sha256 of each stack's normalised resolved .config (§11)
   mister_rt.fragment         the RT / 7.2 kernel variant, layered on the kernel-only stack
   mister_initramfs_defconfig stage-1 initramfs cpio (standalone Buildroot config, §8)
@@ -51,9 +60,9 @@ configs/
 
 | Stack | Fragments | Output dir | Make entry point |
 |---|---|---|---|
-| `de10nano` | `common de10nano de10nano-image` | `output/` | `make de10nano-defconfig` (and `make all`) |
+| `de10nano` | `common de10nano image-common de10nano-image` | `output/` | `make de10nano-defconfig` (and `make all`) |
 | `de10nano-kernel` | `common de10nano kernel-only` | — (base only) | used by every kernel variant |
-| `de25nano` | `common de25nano` | `output-de25/` | `make de25nano-defconfig` (and `make de25`) |
+| `de25nano` | `common de25nano image-common` | `output-de25/` | `make de25nano-defconfig` (and `make de25`) |
 | `rt` (variant) | `de10nano-kernel` + `configs/mister_rt.fragment` | `output-rt/` | `make rt` |
 
 **Generation** is the idiom `make rt` has used since ADR 0021: Buildroot's own
@@ -88,8 +97,15 @@ produced — the only difference is `BR2_DEFCONFIG`, which is where
 - The kernel-only base shares `common` + `de10nano` with the image **by
   construction**. That replaces the old hand-mirrored copy; §4 and §11 say what
   the lockstep check still guards.
+- The two sharing axes are at right angles: `common` is shared by every stack
+  INCLUDING the kernel-only one, `image-common` by every IMAGE stack and by NO
+  kernel-only stack. A package both images want goes in `image-common` (§12),
+  never in `common` — rule 4 of §10 says why (`common` is in the kernel-only
+  stack's fingerprint text, and the kernel-only rootfs.tar ships modules, not
+  blobs).
 - Adding a board = a new `<board>.fragment` (+ optionally `<board>-image`), a
-  `<BOARD>_FRAGMENTS` line in `stacks.mk`, a `BR_MAKE_<BOARD>` / `.config` rule
+  `<BOARD>_FRAGMENTS` line in `stacks.mk` (with `image-common` in it if the
+  board ships an image), a `BR_MAKE_<BOARD>` / `.config` rule
   pair in the Makefile mirroring the DE25's, a golden line (§11), and rows in
   `scripts/lib/board-expectations.sh`. Adding a kernel variant is unchanged
   from ADR 0021: one `configs/mister_<name>.fragment`, its Makefile targets, and
@@ -481,6 +497,13 @@ a kernel-only build: board hooks, the ext4 `linux.img` contract, the full
 package set, and system configuration. Nothing in it may touch the toolchain
 or the kernel stanza (those are §3); package selection is by design invisible
 to CI's toolchain-cache fingerprint (`docs/ci.md#toolchain-fingerprint`).
+
+DE10-ONLY, by definition: this fragment is in one stack. The part of the
+package set BOTH boards' images share now lives one layer down, in
+`image-common.fragment` (§12) — today exactly the `/lib/firmware` blob set,
+whose section here (§5.28) is a redirect. When a package listed below is
+adopted by another board's image, it moves there; nothing else about it
+changes.
 
 ### 5.1 Board hooks: post-build script, rootfs overlays
 
@@ -1494,88 +1517,16 @@ No new selects worth noting: `select BR2_PACKAGE_LIBEXECINFO if
 !BR2_TOOLCHAIN_USES_GLIBC` is inert here (this image is glibc), so this is a
 one-line change with no transitive tail — unlike dualsensectl above.
 
-### 5.28 P3.3: /lib/firmware population
+### 5.28 P3.3: /lib/firmware population — MOVED to §12.1
 
-PLAN.md §3/§4.1, module loading & firmware infra — the
-module-autoload/depmod/kmod/xz-compress half is already done (§3.5, §5.30).
-Source of truth: `docs/firmware-parity.md` (the inventory -> sub-option mapping
-+ the built-vs-stock diff). Target: `docs/stock-inventory/firmware.md`'s
-66-file inventory (`xow_dongle.bin`, the 67th stock file, is P3.2's
-xow-firmware, §5.25, not repeated here).
-
-linux-firmware itself (`BR2_PACKAGE_LINUX_FIRMWARE`) is a meta-option with no
-files of its own — every actual file comes from a sub-option, each picked
-because it is the SMALLEST upstream grouping that contains an inventory file
-(Buildroot's own file lists are coarse per sub-option, so some non-inventory
-sibling files ride along — a documented superset, not a problem; see the
-parity doc). `regulatory.db`/`.p7s` come from a SEPARATE package
-(wireless-regdb, not linux-firmware — upstream split them out after the
-kernel gained direct .db-loading support in 4.15).
-
-Buildroot stamping trap: changing linux-firmware SUB-options on an incremental
-build installs nothing and exits 0 — `make linux-firmware-dirclean` first.
-
-| symbol | files / reason |
-|---|---|
-| `_MEDIATEK_MT7601U` | `mt7601u.bin` (top-level, via WHENCE-driven symlink — see parity doc for the build-verified proof) |
-| `_MEDIATEK_MT7610E` | `mediatek/mt7610e.bin` |
-| `_MEDIATEK_MT7650` | `mt7650.bin` — filed under Buildroot's "Bluetooth firmware" menu (MT7650 is a WiFi+BT combo chip) but is the ONLY toggle that installs this WiFi file; stock's own inventory attributes it to rt2800usb, not to Bluetooth |
-| `_MEDIATEK_MT76X2E` | `mediatek/mt7662.bin` + `mediatek/mt7662_rom_patch.bin` (top-level via symlink) — also what the in-tree mt76x2u USB driver requests (`mt76x2/usb_mcu.c`), not a separate `mt7662u.bin` (see parity doc: stock's own `mediatek/mt7662u.bin` / `mt7662u_rom_patch.bin` are the OLD out-of-tree name, superseded, not reproduced) |
-| `_MEDIATEK_MT7921` | `WIFI_RAM_CODE_MT7961*.bin` — MT7921U (`mt7921u.ko`, WiFi6 USB; the USB part reports as MT7961) |
-| `_MEDIATEK_MT7925` | `WIFI_RAM_CODE_MT7925*.bin` — MT7925U (`mt7925u.ko`, WiFi6E USB) |
-| `_RALINK_RT2XX` | `rt2870.bin` (rt2800usb, `FIRMWARE_RT2870`) + siblings |
-| `_RTL_81XX` | rtlwifi 8188e/8192c/8192d/8192s/8192eu family |
-| `_RTL_87XX` | rtlwifi 8712u/8723a/8723b family |
-| `_RTL_87XX_BT` | rtl_bt 8723a/8723b/8723bs/8761a/8761bu family |
-| `_RTL_88XX_BT` | `rtl_bt/rtl88*.bin` glob — covers 8812ae/8821a/8821c/8822b/8822cu in one option |
-| `_RTL_RTW88` | `rtw88/rtw8822b_fw.bin` etc. — firmware for the MAINLINE rtw88 driver we now use for RTL8822BU (replacing out-of-tree 88x2bu); also covers 8821cu/8822cu rtw88 |
-| `_RTL_RTW89` | `rtw89/*.bin` — mainline rtw89 (RTL8851BU/RTL8852BU WiFi6/6E USB) |
-| `_ATHEROS_9271` | `ar9271.fw` + `htc_9271*` — ath9k_htc (AR9271 802.11n USB) |
-| `_ATHEROS_7010` | `ar7010*.fw` + `htc_7010*` — ath9k_htc (AR7010-based 802.11n USB) |
-| `_ATHEROS_9170` | `carl9170-1.fw` — carl9170 (AR9170 802.11n USB) |
-| `_MEDIATEK_MT7921_BT` | v10.2 Bluetooth firmware for combo/BT dongles whose driver we already build (`docs/bluetooth-parity.md`); same class of gap as ath3k below — the driver binds, then dies at `request_firmware()`. `mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin` — the BT half of the MT7921AU combo dongle whose WiFi half we already ship. Requested by `btmtk.c`; without it WiFi works and BT does not |
-| `_MEDIATEK_MT7922_BT` | `mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin` — btusb carries MT7922 USB IDs, so this is a reachable USB path, not just the M.2 part |
-| `_MEDIATEK_MT7925_BT` | `mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin` — BT half of the MT7925U combo |
-| `_QUALCOMM_6174A_BT` | `qca/rampatch_usb_00000302.bin` + `qca/nvm_usb_00000302.bin` — QCA ROME 6174A over USB. btusb requests exactly the "_usb_" names (`btusb.c`: "qca/rampatch_usb_%08x.bin"), and its QCA path is self-contained — it needs no `CONFIG_BT_QCA`, so this firmware is the only missing piece. 132 KiB |
-| `_ATHEROS_6004` | `ath6k/AR6004/hw1.2` + `hw1.3` (132 KiB) — ath6kl_usb (`CONFIG_ATH6KL_USB=m`, new in v10.1; AR6003/AR6004 802.11n USB) |
-| `_REDPINE_RS9113` | `rsi/rs9113_*.rps` — rsi_usb |
-| `_REDPINE_RS9116` | `rsi/rs9116_wlan.rps`, requested by `rsi_91x_hal.c:35` (both toggles needed; `CONFIG_RSI_USB=m`) |
-| `_AR3011` | `ath3k-1.fw` — the ath3k driver (`CONFIG_BT_ATH3K=m`, already on) for AR3011 USB Bluetooth. The driver was built but its firmware was NEVER installed, so every AR3011 dongle failed at `request_firmware()`; this closes that gap |
-| `_AR3012_USB` | `ar3k/*.dfu` — AR3012 USB Bluetooth patch/config RAM images, loaded by the same ath3k driver (and by btusb for the newer AR3012 IDs) |
-| `_BRCM_BCM43XX` | `brcm/brcmfmac4373.bin` + the 43xx SDIO/PCIe siblings — brcmfmac (`CONFIG_BRCMFMAC=m`, new). Implicitly `select`s `BR2_PACKAGE_LINUX_FIRMWARE_CYPRESS_CYW43XX` (`cypress/cyfmac*`, the same silicon post-acquisition) |
-| `_BRCM_BCM43XXX` | `brcm/brcmfmac43143.bin`, `43236b.bin`, `43242a.bin`, `43569.bin` — the four BCM43xx USB parts brcmfmac drives; `select`s `_CYPRESS_CYW43XXX` |
-| `BR2_PACKAGE_WIRELESS_REGDB` | `regulatory.db` + `regulatory.db.p7s` (separate from linux-firmware, see above) |
-
-NOT enabled: `_QUALCOMM_9377_BT`. Its two files are `qca/rampatch_00230302.bin`
-/ `nvm_00230302.bin` — the NON-usb names, which only the UART path (hci_qca,
-`CONFIG_BT_HCIUART`, not built) ever requests. No consumer here. NOT enabled:
-`_LINUX_FIRMWARE_IBT` (Intel Bluetooth, `intel/ibt-*`). 30 MiB, and Intel BT
-controllers ship essentially only on M.2 WiFi+BT combo cards, which this board
-cannot host — there is no realistic external Intel BT USB dongle.
-`CONFIG_BT_INTEL` is nonetheless built because `CONFIG_BT_HCIBTUSB` `select`s
-it unconditionally (it cannot be turned off while btusb is on), so this is a
-DELIBERATE driver-without-firmware, unlike the ath3k/mt7663 cases which were
-accidental. Flip this on if an Intel BT dongle ever needs to work.
-
-`BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y` — ten files that NO linux-firmware
-sub-option covers, even though upstream linux-firmware carries them and this
-project's pinned kernel has an in-tree consumer for each (verified by grep
-against the actual built kernel source, not assumed; last checked on 6.18.40 —
-re-grep on a kernel bump rather than trusting this line — see
-`package/linux-firmware-extra/linux-firmware-extra.mk` and
-`docs/firmware-parity.md` for the per-file citation). Same upstream tarball and
-hash-pin as linux-firmware itself, just a different subset kept. Four are
-stock-parity files; the other five are NOT (stock ships none of them) —
-`mediatek/mt7663*` x4 back `CONFIG_MT7663U=m` and `rtlwifi/rtl8192dufw.bin`
-backs `CONFIG_RTL8192DU=m`, both enabled beyond stock, and each would
-otherwise probe and then fail at `request_firmware()`. See `docs/wifi-parity.md`
-§6.2, §7.
-
-`BR2_PACKAGE_BCM20702_FIRMWARE=y` — Broadcom BCM20702 BT dongle firmware
-(P3.14): `brcm/BCM20702A1-0b05-17cb.hcd`, the one brcm .hcd stock ships (35000
-bytes) but mainline linux-firmware lacks. Hash-pinned build-time fetch, never
-a committed blob — same maintainer-approved vendor-firmware posture as xow
-(ADR 0003). See `package/bcm20702-firmware/`.
+The `/lib/firmware` blob set is no longer selected by this fragment: it moved,
+symbol for symbol, to `image-common.fragment` when the DE25-Nano image adopted
+the same set for parity (owner decision 2026-09-03). The rationale, the
+sub-option table and the per-symbol placement calls are **§12.1**; the resolved
+`de10nano` configuration is unchanged by the move (§11's golden line for this
+stack did not budge — that is the proof the move was a filing change and
+nothing else). This heading is kept as a redirect so §5's numbering, which
+other documents cite, stays put.
 
 ### 5.29 Explicitly NOT carried forward (manifest §5 Drop list)
 
@@ -2115,14 +2066,25 @@ get a shell on the board. That is not an oversight or a staging state — it is
 the accepted release scope for this board until the upstream MiSTer framework
 grows an aarch64 story (`de25-nano-tasks.md` D2.7 / Phase D3).
 
+One thing has been added to that scope since, by owner decision (2026-09-03):
+the `/lib/firmware` blob set, mirrored from the DE10 for parity because the
+shared kernel fragment already builds the Wi-Fi/Bluetooth drivers that ask for
+those blobs. It is not selected in `de25nano.fragment` — it comes from the
+shared image layer, `image-common.fragment` (§12), which is why the stack grew
+a third fragment. Firmware is data for drivers this board already builds, not a
+package a user runs; the bare-developer-OS scope is otherwise untouched (§6.8).
+
 THE DE10 IS NOT AFFECTED BY THIS FRAGMENT. The de25nano stack is `common` +
-`de25nano` (§1); nothing from `de10nano.fragment`, `de10nano-image.fragment`,
-`kernel-only.fragment` or `mister_rt.fragment` is in it, and the DE25 gets its
-OWN Buildroot output directory (`output-de25/`, `make de25`) exactly the way
-the RT variant and the two initramfs stages get theirs. No `BR2_` symbol is
-shared between the boards outside `common.fragment`. Two FILES are shared by
-path, each with its own reason and its own guard: the kernel-tarball hash
-registry (a symlink, §6.3) and the MiSTer kernel-config fragment
+`de25nano` + `image-common` (§1); nothing from `de10nano.fragment`,
+`de10nano-image.fragment`, `kernel-only.fragment` or `mister_rt.fragment` is in
+it, and the DE25 gets its OWN Buildroot output directory (`output-de25/`, `make
+de25`) exactly the way the RT variant and the two initramfs stages get theirs.
+The only `BR2_` symbols shared between the boards are those in
+`common.fragment` and `image-common.fragment` — and sharing them is what those
+two fragments are FOR: a symbol in either is one selection, read by both
+stacks, not a copy that can drift. Two FILES are shared by path, each with its
+own reason and its own guard: the kernel-tarball hash registry (a symlink,
+§6.3) and the MiSTer kernel-config fragment
 (`board/mister/common/linux-mister.fragment`, proved a no-op on the DE10 by
 `scripts/check-kernel-fragment-noop.sh`, §6.5).
 
@@ -2373,7 +2335,14 @@ guard's comment there.
 `BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"`, `BR2_TARGET_ROOTFS_EXT2_SIZE="256M"`.
 This is a developer OS, not the DE10's shipped `linux.img`. 256 MiB
 comfortably holds BusyBox + the toolchain runtime with room for a developer to
-scp things in. There is deliberately none of the DE10's ceremony here — no
+scp things in — and, since 2026-09-03, the ~52 MiB `/lib/firmware` set from
+`image-common` (§12). MEASURED after that build, from the built image itself
+(`dumpe2fs -h output-de25/images/rootfs.ext4`: 262,144 blocks of 1 KiB,
+174,469 free): **85.6 MiB used of 256 MiB, 33%, 170 MiB free** — up from ~34
+MiB before the firmware. The size line therefore did NOT need to move; it is
+left at 256M rather than trimmed to fit, because headroom for a developer to
+copy things onto the rootfs is the point of the number. Re-measure the same way
+when the package list next grows. There is deliberately none of the DE10's ceremony here — no
 pinned UUID/hash-seed, no forced feature list, no hard-link to `linux.img` —
 because none of it has a contract to satisfy yet: no Downloader channel, no
 stock artifact to be byte-compatible with, and no reproducibility lane (D2.8
@@ -2413,17 +2382,27 @@ there is no network provisioning, no `authorized_keys`, and no per-device SSH
 host-key machinery yet (ADR 0015 is a DE10 rootfs-overlay feature and is not
 carried here).
 
-### 6.8 Packages — none, deliberately
+### 6.8 Packages — none in this fragment; the shared firmware set from `image-common`
 
 BusyBox is Buildroot's own default (`BR2_PACKAGE_BUSYBOX` is `default y` in
 `package/busybox/Config.in`) and so does not appear as a line; it is the
-entire userland. Nothing else is enabled: no MiSTer packages, no DE10
-packages, no out-of-tree WiFi or controller drivers, no debug tooling. When
-something is eventually needed here, add it in a commit that says which task
-authorised it — the empty package list is the D2.1/D2.7 scope decision made
-visible, and a package added "just to have it" quietly repeals that decision.
-The fragment split did not change this: the DE10 package set lives in
+entire userland. `de25nano.fragment` itself still enables **no** package: no
+MiSTer packages, no DE10 packages, no out-of-tree WiFi or controller drivers,
+no debug tooling. When something is eventually needed here, add it in a commit
+that says which task authorised it — the near-empty package list is the
+D2.1/D2.7 scope decision made visible, and a package added "just to have it"
+quietly repeals that decision. The DE10's package set lives in
 `de10nano-image.fragment`, which is not in the DE25 stack (§10).
+
+The one exception, and it is deliberate: the `/lib/firmware` blob set reaches
+this board through `image-common.fragment` (§12), which IS in the stack. That
+is 31 symbols and ~52 MiB of `/lib/firmware` — data for the Wi-Fi/Bluetooth
+drivers the shared kernel fragment already builds, so without it those drivers
+bind and then fail at `request_firmware()` (`docs/de25-kernel-config.md` §7.1,
+now closed). Owner decision, 2026-09-03: parity with the DE10's selection. It
+is not a repeal of the bare-developer-OS scope — no binary a user invokes was
+added — and the rootfs measurement §6.6 records is what keeps that claim
+honest.
 
 ONE STANDING OBLIGATION IS ALREADY BOOKED AGAINST THAT EMPTY LIST, and the
 fragment carries it as a WARNING so it cannot be missed at the moment it
@@ -2963,9 +2942,20 @@ and DE25 files side by side. Rules applied, in order:
    old single file's. It is (§11).
 5. The DE25 is a bare developer OS by decision (ADR 0027 D6, ADR 0029): NO
    DE10 package or MiSTer symbol may reach its stack, whatever "arch-neutral"
-   would otherwise suggest. So "common" is the genuinely shared policy, not
+   would otherwise suggest — until the owner decides otherwise for a named
+   package, which is rule 6. So "common" is the genuinely shared policy, not
    the bulk of the DE10 file — the bulk (the package set) is DE10-only by
    construction, in `de10nano-image`.
+6. **Added 2026-09-03 with `image-common.fragment`.** A symbol EVERY BOARD'S
+   IMAGE wants, and NO kernel-only stack may have, is `image-common` (§12).
+   Rules 1–5 were written when there was one image stack, so "shared" could
+   only mean `common`; the DE25 adopting the DE10's firmware set made the
+   second axis real. The test is two-sided and both sides are load-bearing:
+   *every image wants it* (else it is a board fragment, rule 3) **and** *the
+   kernel-only base must not build it* (else it is `common`, rule 1 — and
+   rule 4's cache consequence bites). Reaching this rule is an owner decision
+   per package, not a refactor's judgement: rule 5 still governs WHETHER the
+   DE25 takes a package, and this rule only says where it is then filed.
 
 The judgement calls, each recorded here:
 
@@ -2979,7 +2969,8 @@ The judgement calls, each recorded here:
 | `BR2_PACKAGE_HOST_KMOD_XZ`, `BR2_ROOTFS_POST_IMAGE_SCRIPT` | `de10nano` (board), not `de10nano-image` | The kernel-only stack needs both (build-time depmod of `.ko.xz`; `zImage_dtb` assembly) — §3.5, §3.6. `BR2_ROOTFS_POST_IMAGE_SCRIPT` is now set by BOTH boards, to different scripts (the DE25's assembles the card, §6.11), so it is a per-board symbol on both sides rather than a `common` one. `BR2_PACKAGE_HOST_KMOD_XZ` is set by **both** board fragments (`de10nano` and `de25nano`), each for its own depmod: the shared kernel fragment (`board/mister/common/linux-mister.fragment`) sets `CONFIG_MODULE_COMPRESS_XZ`, so build-time depmod on either board needs host kmod with xz or it silently ships an empty `modules.dep` (§3.5; the DE25 hit exactly that on its first wave-2 card). It is not in `common` for the rule-4 reason above (`common` is in the kernel-only stack's fingerprint text). |
 | `BR2_ROOTFS_POST_BUILD_SCRIPT`, `BR2_ROOTFS_OVERLAY` | `de10nano-image` | Image-only by design (§4.2: `post-build.sh` stamps a rootfs that ships). |
 | `BR2_TARGET_ROOTFS_EXT2_SIZE`, `_INODE_SIZE`, `_MKFS_OPTIONS` | `de10nano-image` | The DE25's 256 MiB ext4 has none of the DE10's contracts yet (§6.6). |
-| The whole package set, `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV`, `BR2_GENERATE_LOCALE`, `BR2_TARGET_TZ_*`, `BR2_TARGET_LOCALTIME` | `de10nano-image` | Rule 5. Locale/timezone are arch-neutral and the owner's target listed them as common candidates, but the DE25 old file set none of them and giving a bare developer OS tzdata/locale data is a scope decision D2.x should take explicitly, not a side effect of a refactor. |
+| `BR2_PACKAGE_LINUX_FIRMWARE` + its 27 sub-options, `BR2_PACKAGE_WIRELESS_REGDB`, `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA`, `BR2_PACKAGE_BCM20702_FIRMWARE` (31 symbols) | `image-common` (moved out of `de10nano-image`, 2026-09-03) | **Not `common`:** `common` is in the kernel-only stack, whose rootfs is a tar of modules that is thrown away after the `.ko`s are lifted out of it — putting the firmware there would spend a ~557 MiB fetch and ~52 MiB of install on every kernel leg for files no variant ships (`package/linux-firmware-extra/linux-firmware-extra.mk` says the same thing about its own `depends on`), and would move the kernel-variant dl-cache key, which hashes `common.fragment`. The toolchain fingerprint is the one thing it would NOT move: that filter denies `BR2_PACKAGE_` outright (rule 4's usual bite does not apply to package symbols — the other three reasons stand on their own). **Not per-board:** parity IS the owner's decision (2026-09-03), and two copies of a 29-line selection is precisely the hand-mirroring the fragment split exists to end; the DE25 builds the same Wi-Fi/BT drivers from the shared kernel fragment, and they fail at `request_firmware()` without the blobs. Per-symbol calls, including what stayed behind, in §12.1. |
+| The rest of the package set, `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV`, `BR2_GENERATE_LOCALE`, `BR2_TARGET_TZ_*`, `BR2_TARGET_LOCALTIME` | `de10nano-image` | Rule 5. Locale/timezone are arch-neutral and the owner's target listed them as common candidates, but the DE25 old file set none of them and giving a bare developer OS tzdata/locale data is a scope decision D2.x should take explicitly, not a side effect of a refactor. |
 | `BR2_INIT_NONE`, `BR2_SYSTEM_BIN_SH_NONE`, `# BR2_PACKAGE_BUSYBOX is not set`, `BR2_TARGET_ROOTFS_TAR` | `kernel-only` | Exactly the old kernel defconfig minus what it shared with the image (§4). |
 | DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_CUSTOM_CONFIG`, `CUSTOM_CONFIG_FILE`, `CONFIG_FRAGMENT_FILES`, `# USE_ARCH_DEFAULT_CONFIG is not set`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). The kernel-config pair names DE25 files; the *fragment* file it names is shared with the DE10 by path, but that sharing is a file, not a symbol (§6.5). |
 | The whole DE25 bootloader stanza (`BR2_TARGET_ARM_TRUSTED_FIRMWARE*`, `BR2_TARGET_UBOOT*`) | `de25nano` | The DE10 has no bootloader in its Buildroot config at all — its boot chain is the stock/Terasic one, assembled outside Buildroot (`docs/boot-chain.md`). Nothing to share, so no `common` question arises. |
@@ -2987,16 +2978,22 @@ The judgement calls, each recorded here:
 | `mister_initramfs_defconfig`, `mister_installer_defconfig` | left standalone | They share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). Not worth it; their comments moved here (§8, §9) for the same reason as the others. |
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
-Symbol counts (assignments + explicit not-set lines): `common` 7;
-`de10nano` 16; `kernel-only` 3 + 1 not-set; `de10nano-image` 257 + 10 not-set;
-`de25nano` 45 + 2 not-set. de10nano stack total 280 + 10 not-set — the old
-file had 281 assignment lines, of which one was the duplicate `BR2_PACKAGE_STRACE=y`, so
-the SET of symbols is identical; de10nano-kernel stack 26 + 1, exactly the
-old kernel defconfig's; de25nano stack 52 + 2 not-set, exactly the old DE25
-defconfig's (26 + 0 at the split; the bootloader, host-tool and card stanzas of
-§6.9–§6.11 and the kernel-config switch of §6.5 arrived with wave 2 and were
-ported symbol-for-symbol, the resulting stack symbol set diffed line-for-line
-against the last version of the deleted file).
+Symbol counts (assignments + explicit not-set lines), re-measured 2026-09-03
+with `config_strip_fragment` (`scripts/lib/config-stacks.sh`, the same reader
+the checks use): `common` 7; `de10nano` 16; `kernel-only` 3 + 1 not-set;
+`image-common` 31; `de10nano-image` 226 + 10 not-set; `de25nano` 46 + 2
+not-set. de10nano stack total 280 + 10 not-set — UNCHANGED by the firmware
+move, which took 31 symbols out of `de10nano-image` (257 → 226) and put them in
+`image-common`, in the same stack; the old file had 281 assignment lines, of
+which one was the duplicate `BR2_PACKAGE_STRACE=y`, so the SET of symbols is
+identical. de10nano-kernel stack 26 + 1, exactly the old kernel defconfig's.
+de25nano stack 84 + 2 not-set: 53 + 2 of its own two layers (the bootloader,
+host-tool and card stanzas of §6.9–§6.11 and the kernel-config switch of §6.5
+arrived with wave 2 and were ported symbol-for-symbol against the last version
+of the deleted file) plus `image-common`'s 31. Two corrections to the numbers
+this paragraph carried before: `de25nano` was 46, not 45, and the stack 53, not
+52 — the paragraph was written at the split and a symbol was added after it,
+which is why the counts are now measured rather than transcribed.
 
 ---
 
@@ -3032,7 +3029,9 @@ compile; ~4 s warm; runs in `lint-config`): for each stack in `stacks.mk` plus
 - (e) path consumers: every `configs/fragments/<file>` named in the code/CI
   surface (`Makefile`, `scripts/`, `.github/`, `renovate.json` — not docs)
   exists, and `action.yml`'s two `hashFiles()` lists equal the `DE10NANO` /
-  `DE10NANO_KERNEL` stacks' files. A fragment rename that updates `stacks.mk`
+  `DE10NANO_KERNEL` stacks' files (the DE10NANO one is four files since
+  `image-common` joined that stack; the comparison is set-wise, both sides
+  sorted, so the order inside `hashFiles()` is free). A fragment rename that updates `stacks.mk`
   would otherwise pass (a)-(d) while the dl-cache keys, Renovate's
   `managerFilePatterns`, the workflow path filter and the scripts that read
   a pin by filename (`hash-sync-kernel.sh`, `ci-tests.sh`,
@@ -3095,9 +3094,191 @@ moved. The same identity was checked for `mister_initramfs_defconfig` and
 changed; the resolved configs are byte-identical, `BR2_DEFCONFIG` included,
 since the files kept their names).
 
-SINCE THE SPLIT, one golden line has moved on purpose: `de25nano`, when the
-DE25 wave-2 work (§6.5's kernel-config switch and the §6.9–§6.11 bootloader,
-host-tool and card stanzas) was ported into `de25nano.fragment`. The
-`de10nano`, `de10nano-kernel` and `rt` lines are unchanged from the split, and
-must stay so — the DE25 shares no stack with them, so a DE25 change that moves
-any of the other three is a bug in the change, not in the hash.
+SINCE THE SPLIT, the `de25nano` golden line has moved on purpose twice: once
+when the DE25 wave-2 work (§6.5's kernel-config switch and the §6.9–§6.11
+bootloader, host-tool and card stanzas) was ported into `de25nano.fragment`,
+and once on 2026-09-03 when `image-common.fragment` joined its stack and
+brought the `/lib/firmware` set (§12) with it —
+`2adb6b40…` → `714728e0…`, the added lines being exactly the 31 moved symbols
+plus the two sub-options `_BRCM_BCM43XX`/`_BRCM_BCM43XXX` `select`
+(`_CYPRESS_CYW43XX`, `_CYPRESS_CYW43XXX`), and nothing else. The `de10nano`,
+`de10nano-kernel` and `rt` lines are unchanged from the split, and must stay
+so — the DE25 shares no stack with them, so a DE25 change that moves any of the
+other three is a bug in the change, not in the hash. That rule did real work in
+this change: moving 31 symbols from `de10nano-image` to `image-common` is
+inside ONE stack, so `de10nano` had to hash the same afterwards, and it does.
+The same argument in the CI dimension: the toolchain fingerprint is computed
+over the stack's concatenated fragments, comment-stripped, `BR2_PACKAGE_`-
+denied and **sorted**, so relocating package lines between fragments of one
+stack cannot move it — measured byte-identical (26 lines) before and after.
+The dl-cache key, which is `hashFiles()` over the same four files, DOES move
+once; `restore-keys` falls back to the version prefix, so that run is warm.
+
+---
+
+## 12. `image-common.fragment`
+
+The package set every board's SHIPPED IMAGE gets, whatever its architecture:
+in `DE10NANO_FRAGMENTS` and `DE25NANO_FRAGMENTS`, and in no kernel-only stack
+(`configs/fragments/stacks.mk`; §1's table). It is the second sharing axis, at
+right angles to `common`'s: `common` is what every stack shares INCLUDING the
+kernel-only base, `image-common` is what every stack that produces a rootfs
+somebody boots shares and the kernel-only base must NOT have. §10 rule 6 is
+the placement test; §10's table row is the argument for the one thing in it
+today.
+
+Arch-neutral by construction. Nothing here may name a CPU, an ABI, a board
+directory, a MiSTer binary, or an out-of-tree driver for hardware only one
+board can host — those are board fragments. And arch-neutrality is necessary,
+not sufficient: §10 rule 5 still decides WHETHER the DE25 takes a package at
+all (locale data and tzdata are arch-neutral and are deliberately still
+DE10-only, §10). A package arrives here by an owner decision naming it, in a
+commit that shows the `de10nano` golden hash unmoved and the `de25nano` one
+moved (§11) — that pair of facts is what "the same resolved config, differently
+filed, plus a deliberate addition on the other board" looks like.
+
+**This is the home for the shared package set as the DE25 grows.** Today it is
+one block, the `/lib/firmware` blobs. As the DE25 leaves bare-developer-OS
+scope, each package both images want moves `de10nano-image` → here rather than
+being duplicated; the DE10 fragment keeps only what is genuinely DE10-only.
+
+### 12.1 P3.3: /lib/firmware population
+
+Selected here for **both** boards' images since 2026-09-03 (it was §5.28, in
+`de10nano-image.fragment`, from P3.3 until then). Everything below is the DE10
+rationale unchanged — every file, sub-option and citation still holds, because
+the same symbols now resolve into both configs. What the DE25 adds is the
+reason the set is shared: `board/mister/common/linux-mister.fragment` builds
+the same Wi-Fi/Bluetooth driver set on both kernels (`docs/de25-kernel-config.md`
+§7.1), so the DE25 had exactly these drivers binding and then failing at
+`request_firmware()`. Owner decision, 2026-09-03: mirror the DE10's selection
+rather than curate a second one — a curated subset would be a second thing to
+keep in step, and the boards take the same USB dongles.
+
+PLAN.md §3/§4.1, module loading & firmware infra — the
+module-autoload/depmod/kmod/xz-compress half is already done (§3.5, §5.30).
+Source of truth: `docs/firmware-parity.md` (the inventory -> sub-option mapping
++ the built-vs-stock diff). Target: `docs/stock-inventory/firmware.md`'s
+66-file inventory (`xow_dongle.bin`, the 67th stock file, is P3.2's
+xow-firmware, §5.25, not repeated here).
+
+linux-firmware itself (`BR2_PACKAGE_LINUX_FIRMWARE`) is a meta-option with no
+files of its own — every actual file comes from a sub-option, each picked
+because it is the SMALLEST upstream grouping that contains an inventory file
+(Buildroot's own file lists are coarse per sub-option, so some non-inventory
+sibling files ride along — a documented superset, not a problem; see the
+parity doc). `regulatory.db`/`.p7s` come from a SEPARATE package
+(wireless-regdb, not linux-firmware — upstream split them out after the
+kernel gained direct .db-loading support in 4.15).
+
+Buildroot stamping trap: changing linux-firmware SUB-options on an incremental
+build installs nothing and exits 0 — `make linux-firmware-dirclean` first.
+
+| symbol | files / reason |
+|---|---|
+| `_MEDIATEK_MT7601U` | `mt7601u.bin` (top-level, via WHENCE-driven symlink — see parity doc for the build-verified proof) |
+| `_MEDIATEK_MT7610E` | `mediatek/mt7610e.bin` |
+| `_MEDIATEK_MT7650` | `mt7650.bin` — filed under Buildroot's "Bluetooth firmware" menu (MT7650 is a WiFi+BT combo chip) but is the ONLY toggle that installs this WiFi file; stock's own inventory attributes it to rt2800usb, not to Bluetooth |
+| `_MEDIATEK_MT76X2E` | `mediatek/mt7662.bin` + `mediatek/mt7662_rom_patch.bin` (top-level via symlink) — also what the in-tree mt76x2u USB driver requests (`mt76x2/usb_mcu.c`), not a separate `mt7662u.bin` (see parity doc: stock's own `mediatek/mt7662u.bin` / `mt7662u_rom_patch.bin` are the OLD out-of-tree name, superseded, not reproduced) |
+| `_MEDIATEK_MT7921` | `WIFI_RAM_CODE_MT7961*.bin` — MT7921U (`mt7921u.ko`, WiFi6 USB; the USB part reports as MT7961) |
+| `_MEDIATEK_MT7925` | `WIFI_RAM_CODE_MT7925*.bin` — MT7925U (`mt7925u.ko`, WiFi6E USB) |
+| `_RALINK_RT2XX` | `rt2870.bin` (rt2800usb, `FIRMWARE_RT2870`) + siblings |
+| `_RTL_81XX` | rtlwifi 8188e/8192c/8192d/8192s/8192eu family |
+| `_RTL_87XX` | rtlwifi 8712u/8723a/8723b family |
+| `_RTL_87XX_BT` | rtl_bt 8723a/8723b/8723bs/8761a/8761bu family |
+| `_RTL_88XX_BT` | `rtl_bt/rtl88*.bin` glob — covers 8812ae/8821a/8821c/8822b/8822cu in one option |
+| `_RTL_RTW88` | `rtw88/rtw8822b_fw.bin` etc. — firmware for the MAINLINE rtw88 driver we now use for RTL8822BU (replacing out-of-tree 88x2bu); also covers 8821cu/8822cu rtw88 |
+| `_RTL_RTW89` | `rtw89/*.bin` — mainline rtw89 (RTL8851BU/RTL8852BU WiFi6/6E USB) |
+| `_ATHEROS_9271` | `ar9271.fw` + `htc_9271*` — ath9k_htc (AR9271 802.11n USB) |
+| `_ATHEROS_7010` | `ar7010*.fw` + `htc_7010*` — ath9k_htc (AR7010-based 802.11n USB) |
+| `_ATHEROS_9170` | `carl9170-1.fw` — carl9170 (AR9170 802.11n USB) |
+| `_MEDIATEK_MT7921_BT` | v10.2 Bluetooth firmware for combo/BT dongles whose driver we already build (`docs/bluetooth-parity.md`); same class of gap as ath3k below — the driver binds, then dies at `request_firmware()`. `mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin` — the BT half of the MT7921AU combo dongle whose WiFi half we already ship. Requested by `btmtk.c`; without it WiFi works and BT does not |
+| `_MEDIATEK_MT7922_BT` | `mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin` — btusb carries MT7922 USB IDs, so this is a reachable USB path, not just the M.2 part |
+| `_MEDIATEK_MT7925_BT` | `mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin` — BT half of the MT7925U combo |
+| `_QUALCOMM_6174A_BT` | `qca/rampatch_usb_00000302.bin` + `qca/nvm_usb_00000302.bin` — QCA ROME 6174A over USB. btusb requests exactly the "_usb_" names (`btusb.c`: "qca/rampatch_usb_%08x.bin"), and its QCA path is self-contained — it needs no `CONFIG_BT_QCA`, so this firmware is the only missing piece. 132 KiB |
+| `_ATHEROS_6004` | `ath6k/AR6004/hw1.2` + `hw1.3` (132 KiB) — ath6kl_usb (`CONFIG_ATH6KL_USB=m`, new in v10.1; AR6003/AR6004 802.11n USB) |
+| `_REDPINE_RS9113` | `rsi/rs9113_*.rps` — rsi_usb |
+| `_REDPINE_RS9116` | `rsi/rs9116_wlan.rps`, requested by `rsi_91x_hal.c:35` (both toggles needed; `CONFIG_RSI_USB=m`) |
+| `_AR3011` | `ath3k-1.fw` — the ath3k driver (`CONFIG_BT_ATH3K=m`, already on) for AR3011 USB Bluetooth. The driver was built but its firmware was NEVER installed, so every AR3011 dongle failed at `request_firmware()`; this closes that gap |
+| `_AR3012_USB` | `ar3k/*.dfu` — AR3012 USB Bluetooth patch/config RAM images, loaded by the same ath3k driver (and by btusb for the newer AR3012 IDs) |
+| `_BRCM_BCM43XX` | `brcm/brcmfmac4373.bin` + the 43xx SDIO/PCIe siblings — brcmfmac (`CONFIG_BRCMFMAC=m`, new). Implicitly `select`s `BR2_PACKAGE_LINUX_FIRMWARE_CYPRESS_CYW43XX` (`cypress/cyfmac*`, the same silicon post-acquisition) |
+| `_BRCM_BCM43XXX` | `brcm/brcmfmac43143.bin`, `43236b.bin`, `43242a.bin`, `43569.bin` — the four BCM43xx USB parts brcmfmac drives; `select`s `_CYPRESS_CYW43XXX` |
+| `BR2_PACKAGE_WIRELESS_REGDB` | `regulatory.db` + `regulatory.db.p7s` (separate from linux-firmware, see above) |
+
+NOT enabled: `_QUALCOMM_9377_BT`. Its two files are `qca/rampatch_00230302.bin`
+/ `nvm_00230302.bin` — the NON-usb names, which only the UART path (hci_qca,
+`CONFIG_BT_HCIUART`, not built) ever requests. No consumer here. NOT enabled:
+`_LINUX_FIRMWARE_IBT` (Intel Bluetooth, `intel/ibt-*`). 30 MiB, and Intel BT
+controllers ship essentially only on M.2 WiFi+BT combo cards, which this board
+cannot host — there is no realistic external Intel BT USB dongle.
+`CONFIG_BT_INTEL` is nonetheless built because `CONFIG_BT_HCIBTUSB` `select`s
+it unconditionally (it cannot be turned off while btusb is on), so this is a
+DELIBERATE driver-without-firmware, unlike the ath3k/mt7663 cases which were
+accidental. Flip this on if an Intel BT dongle ever needs to work.
+
+`BR2_PACKAGE_LINUX_FIRMWARE_EXTRA=y` — ten files that NO linux-firmware
+sub-option covers, even though upstream linux-firmware carries them and this
+project's pinned kernel has an in-tree consumer for each (verified by grep
+against the actual built kernel source, not assumed; last checked on 6.18.40 —
+re-grep on a kernel bump rather than trusting this line — see
+`package/linux-firmware-extra/linux-firmware-extra.mk` and
+`docs/firmware-parity.md` for the per-file citation). Same upstream tarball and
+hash-pin as linux-firmware itself, just a different subset kept. Four are
+stock-parity files; the other five are NOT (stock ships none of them) —
+`mediatek/mt7663*` x4 back `CONFIG_MT7663U=m` and `rtlwifi/rtl8192dufw.bin`
+backs `CONFIG_RTL8192DU=m`, both enabled beyond stock, and each would
+otherwise probe and then fail at `request_firmware()`. See `docs/wifi-parity.md`
+§6.2, §7.
+
+`BR2_PACKAGE_BCM20702_FIRMWARE=y` — Broadcom BCM20702 BT dongle firmware
+(P3.14): `brcm/BCM20702A1-0b05-17cb.hcd`, the one brcm .hcd stock ships (35000
+bytes) but mainline linux-firmware lacks. Hash-pinned build-time fetch, never
+a committed blob — same maintainer-approved vendor-firmware posture as xow
+(ADR 0003). See `package/bcm20702-firmware/`.
+
+### 12.2 Per-symbol placement calls
+
+Every symbol in the DE10's old "/lib/firmware population" block was decided
+individually, plus the two neighbours that could plausibly have come along.
+
+| Symbol(s) | Call | Why |
+|---|---|---|
+| `BR2_PACKAGE_LINUX_FIRMWARE` + its 27 sub-options (the §12.1 table) | **moved** to `image-common` | The owner's decision names exactly this set. No sub-option carries a `depends on` in Buildroot's `package/linux-firmware/Config.in`, so nothing here is arch-gated and every line survives `olddefconfig` on aarch64 — proved by check (b) on the `de25nano` stack, 86 symbols, 0 dropped. |
+| `BR2_PACKAGE_WIRELESS_REGDB` | **moved** | Not part of `linux-firmware` (upstream split it out, §12.1), but it is `/lib/firmware` content requested the same way — `cfg80211` loads `regulatory.db`/`.p7s` directly since 4.15 — and `cfg80211` is in the shared kernel fragment. Shipping the drivers and their firmware on the DE25 while leaving the regulatory database behind would mean a board that associates but is stuck on the world-roaming channel set. Arch-neutral data package, no dependencies. |
+| `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA` (ours) | **moved** | `depends on BR2_PACKAGE_LINUX_FIRMWARE` and installs out of that package's extracted tree (no source of its own), so it goes exactly where its parent goes or it is dead weight. Its files back in-tree drivers (`MT7663U`, `RTL8192DU`, btbcm) that the shared kernel fragment builds on both boards. Note its own `.mk` reasoning still holds unchanged on the other axis: it does not build in the kernel-only variants, because `linux-firmware` is not in that stack — which is precisely what keeping this fragment out of `kernel-only` preserves. |
+| `BR2_PACKAGE_BCM20702_FIRMWARE` (ours) | **moved** | A one-file firmware package for a USB Bluetooth dongle (`brcm/BCM20702A1-0b05-17cb.hcd`), uploaded by btbcm under btusb — both built by the shared kernel fragment. Same class as the rest: blobs for drivers this board already has, no binary a user runs, arch-neutral (it installs a blob; nothing is compiled). Kept out would leave the identical `request_firmware()` gap on the DE25 that P3.14 closed on the DE10. |
+| `BR2_PACKAGE_XOW_FIRMWARE` | **stayed** in `de10nano-image` | It is `depends on BR2_PACKAGE_XONE` (`package/xow-firmware/Config.in`), and `xone` is an out-of-tree kernel module the DE25 does not build. Moving it would not merely be wrong in principle — the symbol's dependency would be unmet in the `de25nano` stack and `olddefconfig` would silently drop it, which check (b) turns into a hard failure. The check makes this call for us. |
+| `BR2_PACKAGE_XONE`, `BR2_PACKAGE_RTL8852CU_MORROWNR` | **stayed** | Out-of-tree kernel modules: they compile against a specific kernel and have never been built on aarch64/7.2 (§5.24, §5.25). Firmware is data; a driver is code that has to build and bind. Not the same decision, and not this fragment's business until someone builds and tests them. |
+| `BR2_PACKAGE_KMOD_TOOLS` | **stayed** | Arch-neutral and a plausible "both images want it" candidate, but no owner decision has taken it for the DE25 (§10 rule 5), and the DE25 has no module-loading userland story yet — BusyBox's own `modprobe` covers its needs. A candidate for a later commit, not a side effect of this one. |
+
+### 12.3 What the move did, and did not, change
+
+- **The DE10's resolved configuration: nothing.** 31 symbols moved between two
+  fragments of the same stack, so the merged text is the same set; the
+  `de10nano` golden hash (§11) is byte-identical either side of the move, and
+  so are `de10nano-kernel` and `rt` (neither stack contains this fragment).
+- **CI's toolchain fingerprint: nothing.** It is computed over the stack's
+  concatenated fragments, comment-stripped, `BR2_PACKAGE_`/`BR2_LINUX_KERNEL`
+  denied, and **sorted** (`.github/actions/buildroot-build/action.yml`), so
+  neither the relocation nor the fragment count can move it. Measured
+  byte-identical, 26 lines, before and after.
+- **CI's dl-cache key: once.** It is `hashFiles()` over the DE10 stack's
+  files, which is now four (`check-config-fragments.sh` (e) asserts that list
+  equals the stack). `restore-keys` falls back to the Buildroot-version prefix,
+  so the first run after this change still hydrates `dl/` from the previous
+  entry.
+- **Renovate: nothing.** No manager matches these lines. The only
+  `managerFilePatterns` entry naming a fragment is the 6.18 kernel pin's
+  (`configs/fragments/de10nano.fragment`), and the firmware packages' own pins
+  live in `package/*/*.hash` and `package/bcm20702-firmware/bcm20702-firmware.mk`,
+  matched by their own managers regardless of which fragment enables them.
+  `linux-firmware` itself is bumped by fork-syncing upstream Buildroot.
+- **The DE25's rootfs: +52 MiB, measured.** Built 2026-09-03 in
+  `output-de25/`: `target/lib/firmware` holds **202 files + 66 symlinks, 52
+  MiB**, and `find | sort` against the DE10's own `output/target/lib/firmware`
+  (204 + 67) differs by exactly three entries — `xow_dongle.bin`,
+  `xone_dongle_02fe.bin`, `xone_dongle_02e6.bin`, the xow-firmware package that
+  §12.2 deliberately left behind. That empty diff modulo three files is the
+  parity claim, checked rather than asserted. §6.6 records the ext4 numbers
+  (85.6 MiB used of 256 MiB) and why `BR2_TARGET_ROOTFS_EXT2_SIZE` still
+  stands; `scripts/check-sdcard-de25.sh` passes on the rebuilt card.

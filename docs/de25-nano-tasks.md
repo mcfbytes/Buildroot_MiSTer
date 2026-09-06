@@ -338,18 +338,17 @@ UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measur
 
 ### Still open after wave 2
 
-- p2 filesystem / DE10-style two-stage layout (FAT boot + exFAT data + `linux.img` loop root)
-  — owner decision; the initramfs route is arch-neutral and the rewritten `loop=` patch
-  compile-verifies on aarch64, so both are open. Recommendation: first hardware boot on the plain
-  ext4 card, then switch.
+- ~~p2 filesystem / DE10-style two-stage layout~~ **Decided 2026-09-03 (ADR 0029 D11):** the
+  two-stage layout is the target; the plain ext4 card stays until hardware. Owed before the
+  switch: an aarch64 stage-1 initramfs stack + its QEMU test path.
 - The DE25 kernel pin has no Renovate manager and shares `linux.hash` by symlink with the DE10
   registry, so an rt bump replaces the 7.2.y hash line rather than adding one. **This happened on
   2026-09-02** (rt 7.2.2 -> 7.2.3): the DE25 pin was moved to 7.2.3 in the same series of commits
   and the series/config were re-verified there (34/34 patches at `-F0`, 460 symbols 0 dropped,
   `docs/de25-kernel-config.md` §8). Still needs its own Renovate manager, or a hash-sync rule that
   keeps every line a fragment still pins, so the next bump is not manual.
-- DE25 selects no `linux-firmware`; the shared fragment builds the Wi-Fi/BT drivers that will
-  ask for it. Owner decision against the bare-developer-OS scope.
+- ~~DE25 selects no `linux-firmware`~~ **Decided 2026-09-03 (ADR 0029 D12):** mirror the DE10
+  set via a shared `image-common` fragment (PR in flight); seccomp stays off as on the DE10.
 - Patch 0002 (MiSTer audio) still excluded; `openssh` will need `_SANDBOX` off when added.
 
 ## What to do next — 2026-08-22
@@ -365,7 +364,10 @@ Remaining, in unblock order:
    test, SMMU-off first.
 2. **`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
    initramfs itself, which the two-stage layout will need.
-3. **Owner decisions** listed under "Still open after wave 2".
+3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
+   submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
+   (ordered on return), so the aarch64 initramfs stack and its QEMU path are the pre-hardware
+   work that remains. Item 2 above should be done before the board arrives.
 4. **Stand up D0.4** as a `/schedule` routine.
 
 Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a

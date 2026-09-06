@@ -50,6 +50,8 @@ Accept the nine decisions below as the bounding constraints for DE25 wave 1.
 | D8 | Fix mainline's unbindable Agilex 5 svc node **upstream** | §3.1 note | **DP-9** |
 | D9 | A vendor `svc` carry is a hardware-gated escape hatch | §1 row 9, §2.6 | **DP-9**, **DP-1** |
 | D10 | The SMMU ships **disabled**; DMA isolation is a non-goal (DE10 parity) | [`de25-dts-rationale.md`](../de25-dts-rationale.md) §4 | **DP-9**, **DP-1** |
+| D11 | Card layout **target** is the DE10-style two-stage layout; the plain-ext4 card stays until hardware | [`de25-sdcard.md`](../de25-sdcard.md) | **DP-3** |
+| D12 | The DE25 mirrors the DE10's `linux-firmware` selection; seccomp stays off as on the DE10 | [`de25-kernel-config.md`](../de25-kernel-config.md) §7.1 | **DP-1**, 0027 **Decision 6** |
 
 ### D1 — Core loading goes through `fpga_manager` + a DT overlay
 
@@ -256,11 +258,50 @@ fabric is loaded by its owner.
   non-goal by default); or the SMMU-off fabric test fails on hardware and the vendor remapper
   behaviour turns out to be required — that is D9's escape hatch, evaluated then.
 
+### D11 — Card layout: the DE10-style two-stage layout is the target; plain ext4 until hardware
+
+**Decision (owner, 2026-09-03).** The DE25 card will use the DE10's model: p1 FAT holding the
+boot files, p2 an exFAT data partition (the `/media/fat` equivalent) holding `linux/linux.img`,
+loop-mounted as the root by the embedded initramfs. Until a board is in hand the shipped card
+keeps the interim shape (p2 = the ext4 root written directly, `root=/dev/mmcblk0p2`), because it
+isolates the factory-SPL, DTS and SD-controller questions the first boot has to answer.
+
+- **Evidence.** The initramfs two-stage design carries no architecture-specific line (README,
+  "The initramfs that deleted a kernel patch"); mainline U-Boot reads FAT and exFAT
+  (implementation-path §6.3); the factory SPL reads FAT on partition 1 only (boot-chain §8), which
+  fixes p1's role either way. The rewritten in-kernel `loop=` patch also compile-verifies on
+  aarch64, so both routes stay open, but the initramfs is the plan.
+- **Consequences.** A new aarch64 stage-1 initramfs stack and its QEMU test path are owed before
+  the switch; `genimage-sdcard.cfg`, `extlinux.conf`'s kernel arguments and the card checker
+  change together. The DE25 inherits the DE10's `linux.img` update flow and downloader contract
+  unchanged. This closes §8 Q7 of the implementation path.
+- **Re-open if.** The first hardware boot shows U-Boot cannot read the FAT boot files reliably,
+  or Main_MiSTer's DE25 port needs a layout the loop root cannot provide.
+
+### D12 — Firmware parity with the DE10; seccomp stays off
+
+**Decision (owner, 2026-09-03).** The DE25 image ships the DE10's `linux-firmware` selection
+(the 29 `BR2_PACKAGE_LINUX_FIRMWARE_*` choices plus `linux-firmware-extra`), so a dongle that
+works on a DE10 works on a DE25. The mechanism is a shared `image-common` fragment included by
+both boards' image stacks and never by the kernel-only stack (rule 4 of
+[`buildroot-config.md`](../buildroot-config.md) §10). `CONFIG_SECCOMP` stays off, exactly as on
+the DE10; the obligation that travels with it — `BR2_PACKAGE_OPENSSH_SANDBOX` must be off when
+openssh joins the image — is accepted, not argued.
+
+- **Evidence.** The shared kernel fragment (`board/mister/common/linux-mister.fragment`) already
+  builds every Wi-Fi/Bluetooth driver the DE10 has; without the blobs they bind and fail at
+  `request_firmware()` ([`de25-kernel-config.md`](../de25-kernel-config.md) §7.1). Cost measured
+  on the DE10: ~52 MB installed.
+- **Consequences.** This is the first shared *package* content between the boards and the
+  natural home for more as the DE25 grows out of the bare developer OS (ADR 0027 Decision 6 is
+  refined, not reversed: still no MiSTer binaries). The DE25 rootfs size follows the measurement.
+- **Re-open if.** The DE25 ever ships a Wi-Fi/Bluetooth driver set that differs from the DE10's.
+
 ## Decisions deliberately left open
 
 None of these is decided here. Each is named so it is not mistaken for settled.
 
-1. **p2's filesystem, and therefore whether the kernel lives on p1 or p2** (§8 Q7, §6.3). D3 fixes the
+1. ~~**p2's filesystem, and therefore whether the kernel lives on p1 or p2**~~ **Decided 2026-09-03 — D11** (two-stage target, plain ext4 interim). Original text kept for the record: (§8 Q7, §6.3). D3 fixes the
    partition count and p1's FAT type only; mainline U-Boot now reads exFAT (`CONFIG_FS_EXFAT`) **[V]**,
    so this is a project decision, not a capability gap.
 2. **Whether the DE10 and DE25 defconfigs are refactored into a shared base + per-board fragments.**

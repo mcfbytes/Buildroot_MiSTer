@@ -331,18 +331,20 @@ runs:
 
     # 2. dl/ — every package source tarball. Lives at repo root (survives
     # `make clean`) — NEVER move it under output/. Keyed on the full
-    # DE10-Nano fragment stack (the three files configs/fragments/stacks.mk
+    # DE10-Nano fragment stack (the four files configs/fragments/stacks.mk
     # lists for DE10NANO_FRAGMENTS — hashFiles() cannot read stacks.mk, so
-    # they are spelled out here; keep the two in step); restore-keys falls
-    # back to the version alone so an imperfect match still hydrates what
-    # didn't change. See docs/ci.md#dl-cache.
+    # they are spelled out here; keep the two in step, which
+    # scripts/check-config-fragments.sh (e) asserts by comparing this list
+    # with the stack); restore-keys falls back to the version alone so an
+    # imperfect match still hydrates what didn't change. See
+    # docs/ci.md#dl-cache.
     - name: Restore Buildroot dl/ download cache
       id: dl-cache
       if: env.VARIANT == 'main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/de10nano-image.fragment') }}
+        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/image-common.fragment', 'configs/fragments/de10nano-image.fragment') }}
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 

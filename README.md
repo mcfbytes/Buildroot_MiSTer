@@ -609,9 +609,11 @@ configs/fragments/       stacks.mk                  (which fragments form which 
                          de10nano-image.fragment    (the shipped image: hooks, ext4, packages)
                          kernel-only.fragment       (kernel-only base, shared by variants)
                          de25nano.fragment          (DE25-Nano developer OS, aarch64)
+                         initramfs-common.fragment  (stage-1 cpio: everything but the arch)
+                         initramfs-de10nano.fragment / initramfs-de25nano.fragment
+                                                    (stage-1 arch/ABI + headers, per board)
                          golden.sha256              (resolved-config hashes CI asserts)
 configs/                 mister_rt.fragment         (PREEMPT_RT / 7.x delta)
-                         mister_initramfs_defconfig (stage-1 cpio)
                          mister_installer_defconfig (SD-card installer cpio)
                          -> docs/buildroot-config.md has the rationale for every line
 board/mister/de10nano/
@@ -763,6 +765,7 @@ Two things that will bite you otherwise:
 | `make rt` | Kernel-only `PREEMPT_RT` build → `zImage_dtb-rt` + module overlay |
 | `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all`. The card carries no variant kernel, so `make rt` is not required first; if you *do* build RT, run it before `make all` so its modules land in the image |
 | `make initramfs` | Stage-1 cpio only, and print its size |
+| `make de25-initramfs` | The same stage 1 built for aarch64 (`output-initramfs-de25/`), verified; boot-test it with `scripts/test-initramfs.sh --board de25nano` |
 | `make menuconfig` / `linux-menuconfig` | Interactive Buildroot / kernel config |
 | `make savedefconfig` | Write the config back to the defconfig (**always** do this after editing) |
 | `make buildroot-verify` | Download + SHA-256-verify the pinned Buildroot tarball |
@@ -802,7 +805,8 @@ broke and why, without grepping):
 - the image-contract checks — `check-zimage-dtb.sh`, `check-linux-img.sh`,
   `check-size-budget.sh`
 - the structural initramfs checks, plus a **full QEMU boot test of the initramfs `/init`**
-  (booted six times, across the failure paths)
+  (eight cases, across the failure paths — and the same eight again on
+  `qemu-system-aarch64` for the aarch64 build of the same `/init`, when it has been built)
 - an ABI smoke test running the **stock `MiSTer` binary** under `qemu-user` against the
   built rootfs: dynamic linking must resolve clean, and it must die at FPGA access and not
   one instruction earlier

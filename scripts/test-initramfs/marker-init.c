@@ -7,7 +7,7 @@
  *
  * This is the /sbin/init baked into the tiny ext4 image that the REAL
  * initramfs /init loop-mounts and switch_root's into (see
- * board/mister/de10nano/initramfs-overlay/init). It runs as PID 1 in the
+ * board/mister/common/initramfs-overlay/init). It runs as PID 1 in the
  * switched root and asserts, from *inside* the booted system, every property
  * /init is supposed to have established, then powers the machine off so QEMU
  * exits with a deterministic status.

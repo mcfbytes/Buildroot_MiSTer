@@ -298,6 +298,38 @@ else
 	fi
 fi
 
+# The DE25-Nano's stage 1: the SAME /init built for aarch64 (`make
+# de25-initramfs`, ADR 0029 D11), checked the same two ways -- the Makefile's
+# structural cpio assertions and the eight QEMU cases, on qemu-system-aarch64.
+# Gated on the cpio EXISTING rather than on a board flag: this suite runs
+# against a DE10 image, and a tree that has never built the DE25 stage 1 has
+# nothing to check here -- but one that has must not skip it silently.
+DE25_INITRAMFS_CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
+if [ ! -f "$DE25_INITRAMFS_CPIO" ]; then
+	skip "de25-initramfs-verify (aarch64 cpio applet/structure check)" "no $DE25_INITRAMFS_CPIO -- 'make de25-initramfs' not run in this tree"
+	skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "same: no DE25 stage-1 cpio built"
+else
+	printf -- '--- de25-initramfs-verify (Makefile: the DE10 initramfs-verify assertions, on the aarch64 cpio under qemu-aarch64) ---\n'
+	if ( cd "$ROOT" && make --no-print-directory de25-initramfs-verify ); then
+		pass "de25-initramfs-verify (aarch64 cpio applet/structure check)"
+	else
+		fail "de25-initramfs-verify (aarch64 cpio applet/structure check)"
+	fi
+	if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
+		skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
+	elif ! have qemu-system-aarch64; then
+		skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "qemu-system-aarch64 not found on PATH"
+	else
+		printf -- '--- test-initramfs.sh --board de25nano: the same 8 cases on qemu-system-aarch64 -M virt ---\n'
+		printf '  (builds/reuses an aarch64 QEMU test kernel from the DE25 product config and boots it 8 times)\n'
+		if "$ROOT/scripts/test-initramfs.sh" --board de25nano; then
+			pass "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)"
+		else
+			fail "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "one or more of the 8 cases failed -- see output above"
+		fi
+	fi
+fi
+
 # =============================================================================
 section "ABI / stock-binary smoke (P2.2 + P2.8 core checks)"
 # =============================================================================
@@ -1539,7 +1571,7 @@ if tar_has "etc/ssh/sshd_config"; then
 
 	# StrictModes must stay at its default (yes). The FAT path above satisfies it
 	# only because the initramfs mounts with fmask=0022,dmask=0022
-	# (board/mister/de10nano/initramfs-overlay/init); an explicit 'StrictModes no'
+	# (board/mister/common/initramfs-overlay/init); an explicit 'StrictModes no'
 	# would mean someone worked around a permissions problem instead of fixing it.
 	if grep -qE '^StrictModes[[:space:]]+no' "$sshd_conf"; then
 		fail "sshd_config: StrictModes not disabled" \

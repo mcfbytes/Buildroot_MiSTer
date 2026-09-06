@@ -339,8 +339,9 @@ UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measur
 ### Still open after wave 2
 
 - ~~p2 filesystem / DE10-style two-stage layout~~ **Decided 2026-09-03 (ADR 0029 D11):** the
-  two-stage layout is the target; the plain ext4 card stays until hardware. Owed before the
-  switch: an aarch64 stage-1 initramfs stack + its QEMU test path.
+  two-stage layout is the target; the plain ext4 card stays until hardware. ~~Owed before the
+  switch: an aarch64 stage-1 initramfs stack + its QEMU test path.~~ **Delivered 2026-09-06
+  (wave 3 below).** Still owed before the switch: the 7.x re-anchor of patch 0031.
 - The DE25 kernel pin has no Renovate manager and shares `linux.hash` by symlink with the DE10
   registry, so an rt bump replaces the 7.2.y hash line rather than adding one. **This happened on
   2026-09-02** (rt 7.2.2 -> 7.2.3): the DE25 pin was moved to 7.2.3 in the same series of commits
@@ -350,6 +351,24 @@ UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measur
 - ~~DE25 selects no `linux-firmware`~~ **Decided 2026-09-03 (ADR 0029 D12):** mirror the DE10
   set via a shared `image-common` fragment (PR in flight); seccomp stays off as on the DE10.
 - Patch 0002 (MiSTer audio) still excluded; `openssh` will need `_SANDBOX` off when added.
+
+## Wave 3 — 2026-09-06 (pre-hardware) — the aarch64 stage 1 and its QEMU leg
+
+Goal: ADR 0029 D11's owed pre-hardware work — the stage-1 initramfs built for aarch64 and a
+QEMU path that boots it — done sequentially in the main tree (owner request: single file).
+
+| Track | Deliverable | Result |
+|---|---|---|
+| Stage 1 as a fragment stack | `configs/fragments/initramfs-common.fragment` + `initramfs-de10nano` / `initramfs-de25nano`; `configs/mister_initramfs_defconfig` deleted; `/init`, `initramfs-busybox.config`, `initramfs-post-build.sh` moved to `board/mister/common/`; `INITRAMFS_*_FRAGMENTS` in `stacks.mk`; golden lines for both; checker (f) arch lockstep | DE10 stage-1 resolved config identical old vs new on Buildroot 2026.08 bar `BR2_DEFCONFIG`, the `-dirty` suffix and the three moved paths (5,240 lines). Existing four golden lines unchanged. `BR_INITRAMFS_HOST_KEY` now hashes the stack via `config_stack_files` (one cold CI cache, once). |
+| `make de25-initramfs` family | `de25-initramfs`, `-verify` (the DE10 `initramfs-verify` recipe with three variables re-pointed, parse under `qemu-aarch64`), `-clean`, `-defconfig`, `-menuconfig`, `-busybox-menuconfig`; `output-initramfs-de25/` in clean/distclean/help | aarch64 musl toolchain + cpio in 6 min from nothing; 466,944-byte cpio, static aarch64 BusyBox; verify OK (19 applets + fsck.exfat + 5 trimmed + /init + /dev/console + ash parses /init). NOT embedded in the DE25 kernel (D11 interim); `external.mk` comment carries the switch. |
+| `scripts/test-initramfs.sh --board de25nano` | board switch (`--board` / `TEST_INITRAMFS_BOARD`); per-board cpio, QEMU binary/machine (`-M virt -cpu cortex-a76`), cross compiler (the stage-1 build's own musl toolchain — no `make de25` needed), kernel version pin, 0031 source, caches (`work/test-initramfs-de25*`); test kernel = `board/mister/de25nano/linux.config` + `linux-mister.fragment` + the unchanged harness fragment; kernel tarball default now prefers `dl/linux/` | Whole run incl. the 7.2.3 kernel build: 4 m 16 s; one case re-run 5.5 s. **7/8 PASS**; `symlink` FAIL = a real kernel Oops (below). DE10 leg byte-for-byte unchanged in behaviour. `ci-tests.sh` gained the DE25 leg (skips when no DE25 cpio was built). |
+
+**Finding (the point of the exercise).** Patch 0031's `exfat_symlink` → `page_symlink()` →
+`a_ops->write_begin` = NULL → `Oops: pc 0x0`, kernel panic, on the first symlink created. 7.x
+exFAT is iomap-based and has no `write_begin`/`write_end` (6.18.49 has both). Not an aarch64 bug;
+not an `/init` bug; a 7.x carry bug in 0031 that the RT kernel shares and nothing had ever
+run. Recorded in ADR 0002 §8b, `docs/rt-beta-kernel.md` §6, the DE25 patch README; the fix is
+"What to do next" item 2.
 
 ## What to do next — 2026-08-22
 
@@ -362,12 +381,18 @@ Remaining, in unblock order:
 1. **Hardware session** on a borrowed board (QSPI at factory): factory SPL boots our FIT → serial
    login → SD under the 25 MHz cap → `dd` the card clean → lift to 50 MHz → the §2.6 fabric
    test, SMMU-off first.
-2. **`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
-   initramfs itself, which the two-stage layout will need.
+2. ~~**`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
+   initramfs itself, which the two-stage layout will need.~~ **DONE 2026-09-06** (wave 3).
+   What it surfaced is the new pre-hardware item: **patch 0031 (exFAT Samsung symlinks) Oopses
+   on symlink creation on every 7.x kernel** — `page_symlink()` calls
+   `a_ops->write_begin`, which 7.x exFAT (iomap) no longer has (ADR 0002 §8b). Affects the DE25
+   AND the DE10's RT 7.2.3 kernel (same patch file by symlink). Re-anchor 0031 for 7.x (write the
+   link target without `page_symlink`), in `linux-patches-beta/` as a beta-local copy and
+   pointed to from the DE25 series; the aarch64 leg's `symlink` case is the acceptance test —
+   it is the ONLY place 0031-on-7.x is executed rather than compiled.
 3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
    submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
-   (ordered on return), so the aarch64 initramfs stack and its QEMU path are the pre-hardware
-   work that remains. Item 2 above should be done before the board arrives.
+   (ordered on return).
 4. **Stand up D0.4** as a `/schedule` routine.
 
 Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a

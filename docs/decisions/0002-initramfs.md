@@ -11,8 +11,8 @@ PLAN.md **§5**; `docs/boot-chain.md` §8 (I1–I3, L1–L2) and §9.
 **Depends on:** **ADR 0010** (drop the out-of-tree exfat driver) — that decision is
 what makes the vfat fallback a *boot* requirement rather than a nicety.
 **Impact:** `configs/mister_initramfs_defconfig`,
-`board/mister/de10nano/initramfs-overlay/init`,
-`board/mister/de10nano/initramfs-busybox.config`, `external.mk`, top-level `Makefile`.
+`board/mister/common/initramfs-overlay/init`,
+`board/mister/common/initramfs-busybox.config`, `external.mk`, top-level `Makefile`.
 Creates a requirement on **P2.3** (§7) and on **P1.3** (§3).
 
 ---
@@ -118,7 +118,7 @@ at the disk, not at the build.
 
 ## 4. What `/init` does
 
-`board/mister/de10nano/initramfs-overlay/init` — 192 lines, `shellcheck`-clean under
+`board/mister/common/initramfs-overlay/init` — 192 lines, `shellcheck`-clean under
 `bash`, `sh` and `dash`.
 
 1. `mount` `/proc`, `/sys`, **`/dev` (devtmpfs)**. Not optional: `CONFIG_DEVTMPFS_MOUNT`
@@ -337,6 +337,34 @@ ship*. So `make initramfs` now verifies the **artifact**:
 
 **After any BusyBox version bump, re-run `make initramfs` and believe its output, not
 this file.**
+
+## 8b. Amendment 2026-09-06 — the same `/init` on aarch64, and what its first run found
+
+ADR 0029 D11 made the two-stage layout the DE25-Nano's target too. Stage 1 is now a
+fragment stack per board (`configs/fragments/initramfs-common` + `initramfs-<board>`,
+`docs/buildroot-config.md` §8); `/init`, the BusyBox config and the post-build hook moved
+to `board/mister/common/` and are built for both boards unchanged. `make de25-initramfs`
+produces the aarch64 cpio (466,944 bytes, static musl BusyBox 1.38.0, gcc 15.3.0) and
+runs the §8a artifact checks on it under `qemu-aarch64`; `scripts/test-initramfs.sh
+--board de25nano` boots it on `qemu-system-aarch64 -M virt -cpu cortex-a76` through the
+same eight cases as the DE10 leg — with the DE25's OWN product kernel config
+(`board/mister/de25nano/linux.config` + the shared fragment) as the test kernel's base,
+at the DE25's pinned 7.2.3, which the DE10 leg cannot do for its board.
+
+Result on the first run: **7 of 8 cases pass** (fat32, exfat, fsck-request, label,
+nonascii, missing-image, rootwait — every `/init` path, unchanged). The `symlink` case
+**fails with a kernel Oops** in `exfat_symlink` → `page_symlink` → `pc: 0x0`. That is not
+an aarch64 bug and not an `/init` bug: board patch 0031 (ADR 0019) writes the link target
+through the VFS's generic `page_symlink()`, which calls `a_ops->write_begin`, and 7.x
+exFAT moved to iomap and no longer has `write_begin`/`write_end` in its address-space
+ops (`fs/exfat/inode.c`, 7.2.3 vs 6.18.49). So 0031 as carried crashes on symlink
+CREATION on every 7.x kernel. The DE10's shipped 6.18 kernel is unaffected; the DE10's
+RT 7.2.3 kernel (`linux-patches-beta/0031` is a symlink to the same file) has the same
+latent crash and had never been exercised — the DE10 QEMU leg only ever boots the 6.18
+pin. Fix: a 7.x re-anchor of 0031 that writes the symlink data without `page_symlink`;
+tracked in `docs/de25-nano-tasks.md` and `docs/rt-beta-kernel.md`. This is precisely
+the class of bug the harness exists to catch, and the first one a second architecture
+caught for the first.
 
 ## 9. Known gaps (deliberate, not oversights)
 

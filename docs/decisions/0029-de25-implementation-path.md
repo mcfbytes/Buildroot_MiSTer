@@ -275,6 +275,13 @@ isolates the factory-SPL, DTS and SD-controller questions the first boot has to 
   the switch; `genimage-sdcard.cfg`, `extlinux.conf`'s kernel arguments and the card checker
   change together. The DE25 inherits the DE10's `linux.img` update flow and downloader contract
   unchanged. This closes §8 Q7 of the implementation path.
+  **Delivered 2026-09-06:** the `initramfs-de25nano` stack (`make de25-initramfs`, the DE10's
+  `/init` built for aarch64, shared files under `board/mister/common/`) and
+  `scripts/test-initramfs.sh --board de25nano` (the eight DE10 cases on `qemu-system-aarch64`,
+  test kernel built from this board's own `linux.config`). 7/8 pass; the `symlink` case found
+  that patch 0031 Oopses on every 7.x kernel (ADR 0002 §8b) — a fix is owed before the switch,
+  and it applies to the DE10's RT kernel as well. The cpio is built and proven but NOT embedded
+  until the card switches (`external.mk` guard comment has the one-commit recipe).
 - **Re-open if.** The first hardware boot shows U-Boot cannot read the FAT boot files reliably,
   or Main_MiSTer's DE25 port needs a layout the loop root cannot provide.
 

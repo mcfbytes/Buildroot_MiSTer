@@ -58,8 +58,8 @@
 # buildroot-showsig` transcription remains the procedure for a hand bump, and
 # the fallback whenever the sync run skipped (the PR then stays red at `make
 # buildroot-verify`, which is the safe failure mode).
-BUILDROOT_VERSION  ?= 2026.05.2
-BUILDROOT_SHA256   ?= f1c8157570bdc452163db2ff109978246cd25b4e93d3c4c9fefaeee3c4d6982d
+BUILDROOT_VERSION  ?= 2026.08
+BUILDROOT_SHA256   ?= d678e810abf877d04513e03ca2c99f992dd49118b9c2e18d6e25f5f58fa8c5cd
 BUILDROOT_URL       = https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
 BUILDROOT_SIG_URL   = $(BUILDROOT_URL).sign
 

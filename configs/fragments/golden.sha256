@@ -4,6 +4,10 @@
 #   scripts/check-config-fragments.sh --update-golden
 # and say in the commit message what changed and why. Columns:
 # <BUILDROOT_VERSION> <stack> <sha256>
+2026.08 de10nano fccaabea951a6d8b8f65f16bf85d199046eae9bacf6ea5102f5a1842317870b6
+2026.08 de10nano-kernel b69db3e12782bfede48587acbb9549a0f2ef794acb6b8a41d5c95bc112a91104
+2026.08 de25nano 81e7f4e613aafa3114768db14eadbc66c778f310e10dd1d163acfbbe1e7289b6
+2026.08 rt 103e68329df556920a06b736bcbafcad3913ce3ce49ef75f448df2797465ad95
 2026.05.2 de10nano 251ae321011945e690a32f2fbb704b619681fd26d06acf578f7691e76286f992
 2026.05.2 de10nano-kernel 5b372abe43c46c4eb5f3c88d51e48ff2eb6fa713b3c02f0f337c39d0f111dc69
 2026.05.2 de25nano 714728e0bd12e3fb6f86a0b932c204a1acae642a9aba3d0770501bc6b3d7952a

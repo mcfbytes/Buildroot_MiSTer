@@ -2098,7 +2098,7 @@ through `savedefconfig` to prove every symbol really exists — but the file
 itself is not the machine's output.
 
 ROUND-TRIP RESULT, re-run 2026-09-02 after the bootloader stanza landed
-(Buildroot 2026.05.2). savedefconfig ADDED nothing (so no symbol is
+(Buildroot 2026.05.2, re-checked at 2026.08). savedefconfig ADDED nothing (so no symbol is
 implied-but-unstated) and DROPPED exactly six lines as non-divergent from a
 kconfig default:
 
@@ -2145,7 +2145,7 @@ something a boot artifact should depend on. (`scripts/check-config-fragments.sh`
   comes from `common`, §2.1). glibc is already the default C library for the
   internal toolchain, so it is not a line (savedefconfig drops non-divergent
   symbols); musl is a project-wide non-goal.
-- `BR2_KERNEL_HEADERS_7_0`: pins the headers SERIES explicitly, for exactly
+- `BR2_KERNEL_HEADERS_7_1`: pins the headers SERIES explicitly, for exactly
   the reason §3.2 spells out at length — do not "fix" it to
   `BR2_KERNEL_HEADERS_AS_KERNEL` to keep headers in lockstep with the kernel.
   Under AS_KERNEL the kernel version arrives as the free-form string
@@ -2155,19 +2155,36 @@ something a boot artifact should depend on. (`scripts/check-config-fragments.sh`
   dead compatibility code and syscall-fallback paths for kernels this board
   will never run.
 
-  WHY 7_0 AND NOT 7_2. Buildroot 2026.05.2 offers NO 7.2 headers series.
-  `package/linux-headers/Config.in.host` tops out at `BR2_KERNEL_HEADERS_7_0`
-  (`:55-58`, resolving to 7.0.14 at `:477`); the series list is
-  5.10/5.15/6.1/6.6/6.12/6.18/7.0. 7_0 is therefore the newest series
+  WHY 7_1 AND NOT 7_2. Buildroot 2026.08 offers NO 7.2 headers series.
+  `package/linux-headers/Config.in.host` tops out at `BR2_KERNEL_HEADERS_7_1`
+  (`:55`, resolving to 7.1.13 at `:481`); the series list is
+  5.10/5.15/6.1/6.6/6.12/6.18/7.1. 7_1 is therefore the newest series
   Buildroot has that is <= our 7.2.3 kernel, and headers OLDER than the
   running kernel is the supported direction — the kernel's uapi is
   forward-compatible by guarantee. §3.2 documents the diff-the-uapi
   discipline that comes with this; the same discipline applies here on any
-  kernel or Buildroot bump, and the range to diff is 7.0.14 -> 7.2.3.
+  kernel or Buildroot bump, and the range to diff is 7.1.13 -> 7.2.3.
+
+  WAS 7_0 UNTIL THE 2026.08 BUMP, AND THE WAY IT BROKE IS INSTRUCTIVE.
+  Buildroot 2026.08 did not merely add 7.1 — it REMOVED 7.0, moving
+  `BR2_KERNEL_HEADERS_7_0` into `Config.in.legacy` ("kernel headers version
+  7.0.x are no longer supported", selecting `BR2_LEGACY`). A retired symbol
+  does not fail loudly at merge time: `BR2_KERNEL_HEADERS_7_0=y` still SET,
+  so `check-config-fragments.sh`'s (b) assertion — every fragment symbol
+  survives `olddefconfig` — passed with **0 dropped**, because the literal
+  line really was in the resolved config. What collapsed was everything
+  downstream: the headers choice fell back to `AS_KERNEL` (precisely the
+  outcome the paragraph above warns against), and with it the libc choice
+  fell from **glibc to uClibc**. Only the (d) GOLDEN HASH caught it. Two
+  lessons: a `Config.in.legacy` demotion is invisible to a symbol-presence
+  check, and the golden hash is not bookkeeping — it is the backstop that
+  makes a line bump reviewable at all.
 
   RE-CHECK ON EVERY BUILDROOT BUMP: a Buildroot bump moves the point release
-  inside a series on its own, and the day Buildroot adds a 7.2 series this
-  pin should move to it in a deliberate commit.
+  inside a series on its own, it can RETIRE a series out from under this pin
+  (as 2026.08 did), and the day Buildroot adds a 7.2 series this pin should
+  move to it in a deliberate commit. Diff the resolved configs, do not just
+  regenerate the golden hash.
 
 ### 6.3 Download integrity — `BR2_GLOBAL_PATCH_DIR` (DE25) and the shared hash file
 
@@ -2447,9 +2464,10 @@ That is the answer to `de25-implementation-path.md` §8 Q6, and it is negative.
 `_CUSTOM_VERSION=y`, `_CUSTOM_VERSION_VALUE="v2.15.0"`, `_PLATFORM="agilex5"`,
 `_BL31=y`, `_IMAGES="bl31.bin"`.
 
-Mainline TF-A v2.15.0. Buildroot 2026.05.2's newest offer is v2.12
-(`boot/arm-trusted-firmware/Config.in`), which has no Agilex 5 platform, so a
-custom version is not a preference here — it is the only route.
+Mainline TF-A v2.15.0. Buildroot 2026.08's newest offer is still v2.12
+(`boot/arm-trusted-firmware/Config.in:60`) — the 2026.08 bump did not move it —
+and v2.12 has no Agilex 5 platform, so a custom version is not a preference
+here: it is the only route.
 `plat/intel/soc/agilex5/` exists at v2.15.0 and its `socfpga_plat_def.h` sets
 `BL31_BASE 0x80000000`, which is exactly the load/entry address the SoC64
 binman FIT description hardcodes for the `atf` image. Verified against the
@@ -2477,7 +2495,19 @@ assertion and that line describe the same thing.
 `# BR2_TARGET_UBOOT_FORMAT_BIN is not set`.
 
 Mainline v2026.07 (released 2026-07-07; v2026.10 was at -rc when this was
-written). Buildroot 2026.05.2 ships 2026.04, so again a custom version.
+written). Buildroot 2026.05.2 shipped 2026.04, so this had to be a custom
+version.
+
+**THE 2026.08 BUMP CLOSED THAT GAP AND THE PIN HAS NOT MOVED YET.** Buildroot
+2026.08's `BR2_TARGET_UBOOT_LATEST_VERSION` is `2026.07`
+(`boot/uboot/Config.in:88`) — the exact version this fragment pins by hand. So
+the custom-version pin is now redundant *in version terms*, and switching to
+`LATEST` would also make the build-system line below unnecessary (see why in
+the next paragraph). Deliberately NOT changed as part of the 2026.08 bump: the
+DE25 stack is not built or booted in this repo's CI, so swapping the U-Boot
+source out from under an unbooted board belongs in its own commit, with a
+build, rather than riding along on a Buildroot bump. Left as a flagged
+simplification.
 
 NOTE THE BUILD-SYSTEM LINE, it is not optional.
 `BR2_TARGET_UBOOT_BUILD_SYSTEM` defaults to KCONFIG *only* if

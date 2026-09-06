@@ -12,20 +12,19 @@
 
 | | Stock | Ours |
 |---|---|---|
-| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.79** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.05.1's pinned version) |
+| BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.86** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.08's pinned version) |
 | `libbluetooth` SONAME | `libbluetooth.so.3` (verified: `docs/stock-inventory/shared-libraries-full.txt`, `docs/stock-inventory/binaries-needed.md` DT_NEEDED list) | `libbluetooth.so.3` |
-| `libbluetooth` real name | `libbluetooth.so.3.19.5` | `libbluetooth.so.3.19.15` |
+| `libbluetooth` real name | `libbluetooth.so.3.19.5` | `libbluetooth.so.3.19.16` |
 
 **SONAME match confirmed against an actual build artifact**, not inferred:
-main-checkout `output/target` (a build already run there, outside this
-worktree — read-only, not built by this task) has `usr/lib/libbluetooth.so.3
--> libbluetooth.so.3.19.15`, and `readelf -d` on the real `.so` reports
+this branch's own `output/target` has `usr/lib/libbluetooth.so.3 ->
+libbluetooth.so.3.19.16`, and `readelf -d` on the real `.so` reports
 `Library soname: [libbluetooth.so.3]`. BlueZ's `libbluetooth` SONAME has
 been stable at major version 3 since the 4.x/5.x transition, so this was
-expected, but it is now verified rather than assumed. **The orchestrator's
-own integrated build should still re-check this** (see checklist below) —
-the confirmation above comes from a separate, already-built tree on the
-main checkout, not from a build of this branch's changes.
+expected, but it is verified rather than assumed. Note the libtool revision
+moves on a bluez bump (`.3.19.15` under 5.79, `.3.19.16` under 5.86) while
+the SONAME does not — which is the whole point of checking the SONAME and
+not the filename.
 
 ## 2. Init sequence
 
@@ -113,26 +112,37 @@ it so it's a known, deliberate choice rather than an oversight.
 
 Auditing `/etc/bluetooth/main.conf` (stock's full verbatim text is in
 `docs/stock-inventory/etc-configs.md` lines 767-898) against the
-bluez5_utils-5.79 package's own compiled-in default (`output/target
-/etc/bluetooth/main.conf` on the main checkout's existing build) found
+bluez5_utils package's own compiled-in default (`src/main.conf` in the
+bluez tarball; audited against 5.79, re-checked against 5.86) found
 **two settings stock sets explicitly that our image was leaving at the
 package default**, because no `main.conf` existed in the overlay before
 this task:
 
-| Setting | Stock | BlueZ 5.79 package default (uncommented → active) | Gap |
+| Setting | Stock | BlueZ package default (uncommented → active) | Gap |
 |---|---|---|---|
-| `[General] Name` | `Name = MiSTer` | `#Name = BlueZ` → adapter advertises as `BlueZ 5.79` | **User-visible**: pairing UI on a phone/controller would show "BlueZ 5.79" instead of "MiSTer". |
-| `[Policy] AutoEnable` | `AutoEnable = true` (stock's own comment: "Defaults to 'false'" on stock's BlueZ version) | `#AutoEnable=true` (BlueZ 5.79's own comment: "Defaults to 'true'") | **Behaviorally probably fine either way** on 5.79, since upstream's compiled default flipped to `true` since stock's BlueZ version was released — but leaving it unset means correctness depends on an upstream default that happens to agree with stock today, not on anything we assert or would notice if it regressed. |
+| `[General] Name` | `Name = MiSTer` | `#Name = BlueZ` → adapter advertises as `BlueZ X.YZ` (`BlueZ 5.86` today) | **User-visible**: pairing UI on a phone/controller would show "BlueZ 5.86" instead of "MiSTer". |
+| `[Policy] AutoEnable` | `AutoEnable = true` (stock's own comment: "Defaults to 'false'" on stock's BlueZ version) | `#AutoEnable=true` (BlueZ's own comment, unchanged through 5.86: "Defaults to 'true'") | **Behaviorally probably fine either way** on current BlueZ, since upstream's compiled default flipped to `true` since stock's BlueZ version was released — but leaving it unset means correctness depends on an upstream default that happens to agree with stock today, not on anything we assert or would notice if it regressed. |
 
 **Fix:** added `board/mister/de10nano/rootfs-overlay/etc/bluetooth/main.conf`
-— the full BlueZ 5.79 package-default file (kept complete, all other
-options left as commented documentation, matching this repo's existing
+— the full BlueZ package-default file (kept complete, all other options left
+as commented documentation, matching this repo's existing
 `etc/ssh/sshd_config` overlay style of "keep the upstream default file,
 annotate the deltas") — with exactly these two lines uncommented and set
 to stock's values, each with a comment explaining why.
 
 No other settings in stock's `main.conf` were set (everything else was
 commented / default), so no further deltas exist there.
+
+**The overlay's commented scaffolding is the 5.79 vintage**, not 5.86's. The
+2026.08 bump was checked and the drift is **comment-only**: diffing our file's
+*active* lines against pristine 5.86's `src/main.conf` yields exactly the five
+settings this repo sets on purpose (`Name`, `FastConnectable`, `Privacy`,
+`JustWorksRepairing`, `AutoEnable` — the five `ci-tests.sh` asserts). What 5.86
+adds or moves is commented documentation only (`FilterDiscoverable`,
+`IdleTimeout`, `CentralAddressResolution`, `ExportClaimedServices`, a reworded
+`TemporaryTimeout`/`Channels` comment, `Client` relocated to `[CSIS]`), so
+nothing behavioural is stale. Re-syncing the scaffolding to 5.86 is optional
+housekeeping, deliberately not done as part of the bump.
 
 ## 5. sixaxis plugin — packaging shape changed upstream (not a gap)
 
@@ -141,16 +151,17 @@ Stock ships PS3-controller BT pairing as a **loadable plugin**:
 /shared-libraries.md:523`), dlopen'd by `bluetoothd` at runtime from
 `PLUGINDIR`.
 
-In BlueZ 5.79, `--enable-sixaxis` (set via `BR2_PACKAGE_BLUEZ5_UTILS_
+In current BlueZ, `--enable-sixaxis` (set via `BR2_PACKAGE_BLUEZ5_UTILS_
 PLUGINS_SIXAXIS=y`, already on) compiles `plugins/sixaxis.c` **directly
 into the `bluetoothd` binary** as a builtin plugin — confirmed by reading
-the generated `Makefile` in the main checkout's existing build
-(`plugins/bluetoothd-sixaxis.o` linked into `src_bluetoothd`) and by
-`strings` on the built `bluetoothd`, which contains the `sixaxis_init` /
-`sixaxis_exit` / `sixaxis_sdp_cb` symbols and plugin-descriptor string
-directly. **No `usr/lib/bluetooth/plugins/` directory exists in the built
+the generated `Makefile` (`plugins/bluetoothd-sixaxis.o` linked into
+`src_bluetoothd`) and by `strings` on the built
+`usr/libexec/bluetooth/bluetoothd`, which contains the sixaxis log strings
+and plugin descriptor directly (re-verified on the 5.86 build: 24 matches,
+including `plugins/sixaxis.c` and `sixaxis: setting up new device`). **No `usr/lib/bluetooth/plugins/` directory exists in the built
 image at all** — there's nothing to put there anymore; upstream BlueZ
-moved (some time between stock's version and 5.79) toward compiling
+moved (some time between stock's version and 5.79, and still so in 5.86)
+toward compiling
 "internal" plugins straight into the daemon rather than shipping them as
 separate `.so` files. Builtin plugins register themselves automatically
 unless explicitly disabled (`DisablePlugins=` in `main.conf`, which we
@@ -162,8 +173,9 @@ looking for a missing `sixaxis.so` and conclude support was dropped.
 
 > **Later correction (see §10):** the plugin being *active* was necessary but
 > not sufficient — a DS3 still could not connect over Bluetooth, because
-> BlueZ 5.79's `ClassicBondedOnly=true` default rejects it before the plugin
-> matters. That is fixed in §10 by a backported upstream patch series, not by
+> BlueZ's `ClassicBondedOnly=true` default rejects it before the plugin
+> matters. That is fixed in §10 by an upstream patch series (backported while
+> Buildroot pinned 5.79, and part of bluez itself since 5.83), not by
 > weakening the setting.
 
 ## 6. D-Bus policy — location changed upstream, verified correct
@@ -324,8 +336,9 @@ connected over Bluetooth.
 
 ### What we were running before
 
-We shipped no `input.conf` at all, so both settings sat at BlueZ 5.79's
-compiled-in defaults, read from `profiles/input/device.c:92-93`:
+We shipped no `input.conf` at all, so both settings sat at BlueZ's
+compiled-in defaults, read from `profiles/input/device.c:92-93` under 5.79
+(`93-94` under 5.86; the values are unchanged):
 
 ```c
 static uhid_state_t uhid_state = UHID_ENABLED;
@@ -367,7 +380,8 @@ go back:
 **What it does not cost: Bluetooth LE.** HIDP is BR/EDR-only, and
 `profiles/input/hog.c:257-264` reads `UserspaceHID` *only* to test for the
 `persist` value — it never disables uhid for LE. BLE HID devices keep using
-uhid regardless. What is given up is `persist` mode for BR/EDR (new in 5.79)
+uhid regardless. What is given up is `persist` mode for BR/EDR (new in 5.79,
+still present in 5.86)
 and future BlueZ-side fixes to the BR/EDR HID path. Judged acceptable because
 our device quirks live in the `hid-*` kernel drivers, which **both** paths
 share.
@@ -385,18 +399,16 @@ make the PS3 pad work. Doing that drops the encryption requirement for **every
 BR/EDR HID device** on the system, re-exposing **CVE-2023-45866**
 (unauthenticated HID injection).
 
-Instead, `board/mister/de10nano/patches/bluez5_utils/` carries upstream's
-**four-commit** `CablePairing` series (BlueZ 5.83, Ludovico de Nittis /
-Collabora) plus one unrelated HID fix, applied through
-`BR2_GLOBAL_PATCH_DIR`:
+Instead, DS3 support comes from upstream's **four-commit** `CablePairing`
+series (BlueZ 5.83, Ludovico de Nittis / Collabora), which the pinned bluez
+now ships on its own:
 
-| Patch | Upstream commit | Role |
-|---|---|---|
-| `0001` | `20ea34e7` | adds the `CablePairing` D-Bus property |
-| `0002` | `56516d6c` | sixaxis plugin sets it during USB cable pairing |
-| `0003` | `c5dffe0` | adds `btd_adapter_has_cable_pairing_devices()` — **the one originally missed** |
-| `0004` | `ba101f47` | input server listens at `BT_IO_SEC_LOW`, re-raises to `BT_IO_SEC_MEDIUM` for everything *except* a `CablePairing` device |
-| `0005` | `e2324f7a` | [bluez#1710](https://github.com/bluez/bluez/pull/1710) — HID report-descriptor off-by-one (5.87). Unrelated to DS3 |
+| Commit | Role |
+|---|---|
+| `20ea34e7` | adds the `CablePairing` D-Bus property |
+| `56516d6c` | sixaxis plugin sets it during USB cable pairing |
+| `c5dffe0` | adds `btd_adapter_has_cable_pairing_devices()` |
+| `ba101f47` | input server listens at `BT_IO_SEC_LOW`, re-raises to `BT_IO_SEC_MEDIUM` for everything *except* a `CablePairing` device |
 
 Net effect: a cable-paired DS3 connects, and every other BR/EDR HID device
 keeps encryption enforced. Upstream closed
@@ -404,41 +416,78 @@ keeps encryption enforced. Upstream closed
 noting DS3 now works *"with limited exposure to CVE-2023-45866 and without
 changing `ClassicBondedOnly=false`"*.
 
-`0005` is carried separately because it is squarely in the path every
-Bluetooth pad here takes — upstream's own commit message names the DualSense
-(`playstation 0005:054C:0CE6.0014: unknown main item tag 0x0`). Upstream calls
-it benign (the kernel's parser ignores the stray item), so it is a correctness
-fix rather than a repair for a user-visible fault. It applies **regardless of
-transport** despite the commit message mentioning UHID: the bug is in the SDP
-extraction that fills `struct hidp_connadd_req`, which runs *before* the
-uhid/kernel-HIDP branch.
+#### The retired backport directory (removed in the 2026.08 bump)
 
-#### The bug this series already had once
+While Buildroot pinned bluez **5.79**, which predates 5.83, these commits were
+carried as five patch files in `board/mister/de10nano/patches/bluez5_utils/`,
+applied through `BR2_GLOBAL_PATCH_DIR` — the four above plus `e2324f7a`
+([bluez#1710](https://github.com/bluez/bluez/pull/1710)), the HID
+report-descriptor off-by-one, whose upstream commit message names the
+DualSense (`playstation 0005:054C:0CE6.0014: unknown main item tag 0x0`).
 
-The first cut carried **three** commits and omitted `0003`. It applied cleanly
-— `patch` was perfectly happy — while leaving `profiles/input/manager.c`
-calling a `btd_adapter_has_cable_pairing_devices()` that nothing defined: an
+**That directory is gone.** Buildroot 2026.08 pins bluez **5.86**, which
+contains all five commits, so the version gap the backports existed to close
+is closed. They were never a MiSTer delta, and the headers said to delete them
+on exactly this event.
+
+It ended the way it was designed to. The patches were deliberately **not**
+version-scoped under `patches/bluez5_utils/5.79/` — `pkg-patches-dirs`
+(`package/pkg-utils.mk:166-170`) would have preferred such a subdirectory and
+the series would then have stopped applying *silently* on any bump. Unscoped,
+the bump made all five fail to apply and the build went red at
+`.stamp_patched`, which is the signal that told a human to delete the
+directory. Failing closed is the same posture this repo takes on the kernel
+hash pins.
+
+Each was confirmed redundant against the **pristine 5.86 tarball**, with the
+exact flags `apply-patches.sh:119` uses, rather than assumed from the release
+notes — which matters, because `0005`'s own header predicted 5.87 and it is in
+fact already in 5.86:
+
+| Patch | Result against pristine 5.86 |
+|---|---|
+| `0001` | `src/device.c`, `src/device.h`: *"Reversed (or previously applied)"*. Its `doc/org.bluez.Device.rst` hunk reports FAILED, but the property **is** documented there (line 374) — upstream reflowed the file after 5.83, so only the context moved |
+| `0002` | Hunk FAILED, and this one is **superseded, not merely redundant**: 5.86 calls `device_set_cable_pairing()` *outside* the `CABLE_PAIRING_SIXAXIS` branch (`plugins/sixaxis.c:305`) and adds `server_set_cable_pairing()`. Upstream generalised it beyond the Sixaxis; re-applying the backport would have *narrowed* it |
+| `0003` | `src/adapter.c`, `src/adapter.h`: *"Reversed (or previously applied)"* |
+| `0004` | all four files: *"Reversed (or previously applied)"* |
+| `0005` | `profiles/input/device.c`: *"Reversed (or previously applied)"* — `rd_size = d->unitSize - 1` is at line 873 of 5.86 |
+
+Also settled by the bump: `package/bluez5_utils/` in 2026.08 ships **no
+patches of its own** (2026.05.x shipped four), so nothing of Buildroot's is
+being suppressed or fought with either.
+
+#### The bug the backport series already had once
+
+Kept because it is the lesson, not the history: the first cut carried **three**
+commits and omitted `c5dffe0`. It applied cleanly — `patch` was perfectly happy
+— while leaving `profiles/input/manager.c` calling a
+`btd_adapter_has_cable_pairing_devices()` that nothing defined: an
 unconditional compile failure under gcc 14.4's
 `-Wimplicit-function-declaration`. **"The series applies" and "the series
-builds" are different claims**, and only the second one matters. Anyone
-re-deriving this series from the issue thread must walk the parent chain.
+builds" are different claims**, and only the second one matters. Anyone who
+ever has to re-derive this series (a bluez downgrade below 5.83) must walk the
+parent chain.
 
-#### Why not simply run a newer bluez?
+#### Why the backport, rather than overriding the bluez version — resolved by the bump
+
+Historical, and no longer a live decision: Buildroot's own bluez is now new
+enough. Recorded because it is the reasoning any future "just pin a newer
+upstream release" proposal runs into.
 
 Overriding `BLUEZ5_UTILS_VERSION` to 5.87 was implemented and then abandoned,
-because it cannot build. `package/bluez5_utils/` ships **four patches of its
-own**, and `pkg-patch-hash-dirs` (`pkg-utils.mk:164`) always includes
-`$(PKGDIR)`, so they are applied to whatever version is built. Against 5.87,
-with the exact flags `apply-patches.sh:119` uses, three report *"Reversed (or
-previously applied) patch detected"* (they went upstream between 5.79 and
-5.87) and one conflicts — and that script runs under `set -e`, so the build
-dies at `.stamp_patched`. No override target ≥ 5.83 avoids this, because the
-patches went upstream *before* the version we need.
+because it could not build. `package/bluez5_utils/` shipped (in 2026.05.x)
+**four patches of its own**, and `pkg-patch-hash-dirs` (`pkg-utils.mk:164`)
+always includes `$(PKGDIR)`, so they were applied to whatever version was
+built. Against 5.87, with the exact flags `apply-patches.sh:119` uses, three
+reported *"Reversed (or previously applied) patch detected"* and one
+conflicted — and that script runs under `set -e`, so the build died at
+`.stamp_patched`. No override target ≥ 5.83 avoided this, because Buildroot's
+patches went upstream *before* the version we needed.
 
 Two further problems came with it: `bluez5_utils-headers` (not optional —
 `package/python3/Config.in:13` selects it) reads
-`bluez-$(BLUEZ5_UTILS_VERSION).tar.xz` **lazily from the other package**, so
-it would fetch 5.87 against a hash file listing only 5.79 — invisible locally,
+`bluez-$(BLUEZ5_UTILS_VERSION).tar.xz` **lazily from the other package**, so it
+would fetch 5.87 against a hash file listing only 5.79 — invisible locally,
 since its stale `.stamp_downloaded` short-circuits the step, and fatal only on
 a clean CI build. And `_DL_VERSION` is `:=` (`pkg-generic.mk:498`), evaluated
 before `external.mk`, so `legal-info` and CVE metadata would report 5.79 for a
@@ -448,76 +497,50 @@ Salvaging it needed a `_PKGDIR` redirect to suppress Buildroot's patches (which
 also relocates the hash lookup, requiring its `COPYING` lines to be duplicated)
 plus a headers hash file plus a `_DL_VERSION` override — three fights with the
 package machinery, and the `_PKGDIR` redirect would **silently drop** any
-future Buildroot patch for bluez. `BR2_GLOBAL_PATCH_DIR` is the mechanism
-Buildroot actually provides for this, it needs no workarounds, and it fails
-*loudly*. Forking the package into `package/` was also considered and rejected:
-it would mean owning a ~200-line `.mk` plus Config.in with every sub-option
+future Buildroot patch for bluez. `BR2_GLOBAL_PATCH_DIR` was the mechanism
+Buildroot actually provides for this: no workarounds, and it fails *loudly* —
+which is precisely how the 2026.08 bump announced that the backports were done.
+Forking the package into `package/` was also considered and rejected: it would
+have meant owning a ~200-line `.mk` plus Config.in with every sub-option
 forever, and fixing each reverse-dependency.
 
-**These patches are not a MiSTer delta.** They exist solely because Buildroot
-2026.05.1 pins bluez5_utils 5.79 (`bluez5_utils.mk:8`), which predates 5.83.
-**Delete the whole directory** on the first Buildroot bump that lands ≥ 5.83.
-
-**Deliberately not version-scoped.** `pkg-patches-dirs`
-(`package/pkg-utils.mk:166-170`) will prefer a `$(dir)/$(VERSION)` subdirectory
-if one exists, so these could have been filed under
-`patches/bluez5_utils/5.79/` and would then stop applying by themselves on any
-version bump. That was rejected: it converts a *loud* failure into a *silent*
-one. Unscoped, a bump to ≥ 5.83 makes the patches fail to apply and the build
-goes red, which is the signal that tells a human to delete this directory; a
-bump to some 5.8x still below 5.83 likewise fails loudly rather than quietly
-shipping an image with DS3 support removed. Failing closed is the same posture
-this repo takes on the kernel hash pins.
-
 **Migration trap.** `plugins/sixaxis.c`'s `setup_device()` short-circuits on an
-already-trusted device, so a DS3 that was cable-paired under the *old* BlueZ
-never acquires the property and will still fail to connect. Such a pad must be
-re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
+already-trusted device, so a DS3 that was cable-paired under a BlueZ without
+this series never acquires the property and will still fail to connect. Such a
+pad must be re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
 
 ### Verification status
 
-- **[VERIFIED]** All five patches apply **in Buildroot's real order** — i.e.
-  *after* `package/bluez5_utils/`'s own four patches, not against a pristine
-  tarball — using the exact flags `apply-patches.sh:119` uses
-  (`patch -F0 -g0 -p1 -t -N`): no fuzz, no rejects. Hunk offsets do occur and
-  are expected for a backport; an earlier revision of this doc claimed "no
-  offsets", which was reading `patch --dry-run`'s exit status (0 whether or not
-  hunks moved).
-- **[VERIFIED]** Every symbol the series introduces resolves afterwards —
+- **[VERIFIED]** All five backports are redundant against the **pristine 5.86
+  tarball** — checked with the exact flags `apply-patches.sh:119` uses
+  (`patch -F0 -g0 -p1 -t -N`), not inferred from release notes. Per-patch
+  results are in the table above; `0002` is *superseded* rather than merely
+  redundant, since upstream widened the call beyond the Sixaxis branch.
+- **[VERIFIED]** Both claimed behaviours are present in pristine 5.86:
+  `server_set_cable_pairing` in `profiles/input/server.c` (line 325, alongside
+  `get_necessary_sec_level` at 269), and `rd_size = d->unitSize - 1` in
+  `profiles/input/device.c` (line 873).
+
+  > `BT_IO_SEC_LOW` is **not** a usable marker for this. It was already in
+  > pristine 5.79 (`profiles/input/server.c:274`) and is in fact the line the
+  > series replaces, so it distinguishes nothing. `server_set_cable_pairing`
+  > appears nowhere in 5.79 and is the marker `ci-tests.sh` uses.
+- **[VERIFIED]** Every symbol the series needs resolves in 5.86 —
   `btd_adapter_has_cable_pairing_devices`, `device_is_cable_pairing`,
   `device_set_cable_pairing`, `server_set_cable_pairing`,
-  `get_necessary_sec_level` each have ≥1 reference and exactly one definition.
-  This is the check that would have caught the missing `0003`, and a plain
-  apply-check never could.
-- **[VERIFIED]** Both claimed behaviours are present in the patched tree:
-  `server_set_cable_pairing` in `profiles/input/server.c`, and
-  `rd_size = d->unitSize - 1` in `profiles/input/device.c`.
-
-  > An earlier revision of this line cited `BT_IO_SEC_LOW` as the marker. That
-  > was **vacuous**: the string is already in pristine 5.79
-  > (`profiles/input/server.c:274`) and is in fact the line patch `0004`
-  > replaces, so it distinguished nothing. `server_set_cable_pairing` is
-  > introduced only by the series and appears nowhere in the unpatched tarball.
-- **[VERIFIED]** The series **compiles**. All six files it touches
-  (`src/device.c`, `src/adapter.c`, `plugins/sixaxis.c`,
-  `profiles/input/{device,manager,server}.c`) cross-compile clean for ARM with
-  this repo's own `arm-buildroot-linux-gnueabihf-gcc` 14.4 under
-  `-Wall -Werror=implicit-function-declaration` — the exact error class the
-  originally-missing `0003` would have tripped. Run against a copy of the real
-  configured build tree with Buildroot's own four patches already applied, then
-  ours on top.
+  `get_necessary_sec_level`. This is the check that caught the missing
+  `c5dffe0` in the backport era, and a plain apply-check never could.
+- **[VERIFIED]** bluez **5.86 builds** with the backport directory removed:
+  `bluez5_utils-dirclean` then a full `make all` reaches
+  `.stamp_target_installed` on `output/build/bluez5_utils-5.86`.
 - **[VERIFIED]** `CONFIG_BT_HIDP=y` and `CONFIG_UHID=y` in the resolved kernel
   `.config`.
 - **[CI]** `ci-tests.sh` asserts both `input.conf` values, `CONFIG_BT_HIDP`,
-  and that `server_set_cable_pairing` reached the built source tree — so the
-  series silently ceasing to apply cannot produce a green build.
-
-  > **`.stamp_patched` is the trap here.** Buildroot never revisits it, so
-  > adding or changing patches on an already-built tree is a silent no-op: an
-  > incremental `make all` over an `output/` that predates this branch ships a
-  > `bluetoothd` with no CablePairing support, indistinguishable in every
-  > shipped file from a correct build. Run `make bluez5_utils-dirclean` after
-  > touching anything in `board/mister/de10nano/patches/bluez5_utils/`.
+  and that `server_set_cable_pairing` is in the built bluez source tree. That
+  last gate outlived the backports on purpose: it asserts the *behaviour*
+  reached the tree, never which mechanism put it there, so it now guards
+  against the pinned bluez losing the series (a downgrade below 5.83, a vendor
+  fork) exactly as it once guarded against the patches failing to apply.
 - **[HW — NOT DONE]** DS3/SIXAXIS USB cable-pair, then connect over Bluetooth.
   This is the actual claim of the change and it has **not** been tested on
   hardware.

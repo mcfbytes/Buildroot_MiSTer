@@ -2,7 +2,7 @@
 
 Stock MiSTer froze its entire userland at **Buildroot 2021.02.4** (glibc 2.31,
 Linux 5.15.1) and has taken **no `.y` stable updates** on the kernel and few on the
-packages since. This project rebases the whole stack on **Buildroot 2026.05.2** —
+packages since. This project rebases the whole stack on **Buildroot 2026.08** —
 roughly **five years** of upstream security and correctness work, on a base with a
 real update path (Renovate-tracked, P4.6/P4.7).
 
@@ -23,12 +23,12 @@ security-update path), and it belongs in the release notes.
 > whenever Renovate lands a bump — when in doubt, the defconfig and `Makefile` pins are
 > the ground truth and this table is a summary of them.
 
-| Component | Stock (2021.02.4) | Ours (2026.05.2) | Note |
+| Component | Stock (2021.02.4) | Ours (2026.08) | Note |
 |---|---|---|---|
-| Buildroot | **2021.02.4** | **2026.05.2** | ~5 years of the whole distro |
+| Buildroot | **2021.02.4** | **2026.08** | ~5 years of the whole distro |
 | Linux kernel | **5.15.1** (forked Nov 2021, **never merged a single 5.15.y**) | **6.18** LTS — the `.y` moves with upstream stable, so the pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, `configs/fragments/de10nano.fragment`) is the only place it is written down; hardware-validated at 6.18.33, 6.18.38 and 6.18.41 | on a stable `.y` line with security backports |
-| glibc | **2.31** | **2.43** | backward-compatible; every stock binary still runs (proven on hardware) |
-| gcc (toolchain) | 10.x era | **14.4.0** | |
+| glibc | **2.31** | **2.44** | backward-compatible; every stock binary still runs (proven on hardware) |
+| gcc (toolchain) | 10.x era | **15.3.0** | |
 
 The kernel jump is the sharpest: stock forked 5.15.1 and **never took any of the subsequent 5.15.y stable releases**, and 5.15 itself reaches EOL in **Oct 2026** (per kernel.org).
 
@@ -39,10 +39,10 @@ Versions are from the *shipped* artifacts: stock from the extracted stock
 
 | Package | Stock | Ours | Why it matters |
 |---|---|---|---|
-| **OpenSSL** | **1.1.1** (`libssl.so.1.1`) | **3.6.3** (`libssl.so.3`) | **OpenSSL 1.1.1 reached end-of-life on 2023-09-11** — stock ships a TLS library that has received **no** upstream fixes for ~2 years. This is the single strongest security argument. Major SONAME bump `1.1 → 3`. |
+| **OpenSSL** | **1.1.1** (`libssl.so.1.1`) | **3.6.4** (`libssl.so.3`) | **OpenSSL 1.1.1 reached end-of-life on 2023-09-11** — stock ships a TLS library that has received **no** upstream fixes for ~2 years. This is the single strongest security argument. Major SONAME bump `1.1 → 3`. |
 | **OpenSSH** | **8.6p1** | **10.5p1** | the network login surface; ~4 years and several release cycles of hardening |
-| **Samba** | ~4.14 | **4.24.5** | SMB file sharing, network-facing; ~9 major-minor releases |
-| **BlueZ** | 5.x (`libbluetooth.so.3`) | **5.79** | Bluetooth stack |
+| **Samba** | ~4.14 | **4.24.6** | SMB file sharing, network-facing; ~9 major-minor releases |
+| **BlueZ** | 5.x (`libbluetooth.so.3`) | **5.86** | Bluetooth stack — 5.86 carries upstream's `CablePairing` series (DS3 over BT), which this repo backported by hand while Buildroot pinned 5.79 ([`bluetooth-parity` §10](bluetooth-parity.md)) |
 | **wpa_supplicant** | 2.9 | **2.12** | Wi-Fi auth |
 | **Python** | **3.9** | **3.14.7** | on-device interpreter (A6) — 3.9 is itself near EOL; runs the Downloader and community scripts (compatibility tested in P3.9) |
 | **dbus** | — | **1.14.10** | |

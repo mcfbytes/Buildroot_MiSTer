@@ -45,7 +45,46 @@ PermitRootLogin yes
 
 # The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
 # but this is overridden so installations will only check .ssh/authorized_keys
-AuthorizedKeysFile	.ssh/authorized_keys
+#
+# SECOND PATH ADDED: /media/fat/linux/authorized_keys -- a user's key that
+# SURVIVES AN IMAGE UPDATE. An update replaces linux.img wholesale, so anything
+# under /root/.ssh -- which lives inside that file -- is destroyed by it. That
+# is the durable reason for this second path, and it holds regardless of how
+# the root filesystem happens to be mounted at the time.
+#
+# Getting a key into the first path is awkward besides: / is mounted READ-ONLY
+# at boot (`ro` on the cmdline; inittab's remount-rw line is deliberately left
+# commented, ADR 0011) and a fresh image ships NO /root/.ssh at all. It does
+# become writable later -- /etc/profile ends with `mount -o remount,rw /` on
+# interactive login, which is how / ever becomes writable at all (stock parity,
+# docs/init-parity.md) -- so a key CAN be placed there by hand. It just needs a
+# login first, which is circular when the key IS the login method, and it does
+# not survive the next update either way. The FAT partition is not reflashed,
+# so a key here persists across every update. This
+# is the same "persist it on /media/fat" principle as ADR 0015's host keys,
+# and sshd's native multi-path support means it needs no init script, no
+# bind-mount and no user-startup.sh hook.
+#
+# WHY NOT ssh.ext4 (ADR 0015's mechanism)? Considered and rejected. That is an
+# ext4 image INSIDE a file, right for HOST keys because the DEVICE writes them
+# -- but an authorized_keys file is written by the USER, and an ext4-in-a-file
+# cannot be opened from Windows or macOS with a card reader, while editing it
+# on the box needs the very shell access the key is meant to grant. The split
+# is who writes the file: machine-written state in ssh.ext4, user-supplied
+# state on exFAT.
+#
+# StrictModes STAYS ON (default yes) and this path satisfies it: the initramfs
+# mounts the FAT partition with fmask=0022,dmask=0022 and no uid/gid options
+# (board/mister/de10nano/initramfs-overlay/init:27), so the file lands
+# root-owned 0755 and its parents 0755 -- owner-writable only, which is what
+# sshd requires. Those mount options are OURS and fixed, not user-tunable, so
+# this cannot be silently invalidated by a differently-mounted card. Verified
+# end-to-end on hardware (exFAT, StrictModes=yes, key auth from this path
+# alone).
+#
+# ORDER MATTERS ONLY FOR PRECEDENCE, NOT FUNCTION: sshd tries every listed
+# file, so a key in either location works.
+AuthorizedKeysFile	.ssh/authorized_keys /media/fat/linux/authorized_keys
 
 #AuthorizedPrincipalsFile none
 

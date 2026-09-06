@@ -431,14 +431,14 @@
   ],
   "packageRules": [
     {
-      "description": "Constrain the Buildroot pin to the 2026.05.x line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes 2026.05. (2026.05 is NOT an LTS; 2025.02 was the last LTS and 2027.02 is expected to be the next -- see docs. This is the interim non-LTS line until 2027.02 ships.)",
+      "description": "Constrain the Buildroot pin to the 2026.08.x line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes the pinned line. (2026.08 is NOT an LTS; 2025.02 was the last LTS and 2027.02 is expected to be the next -- see docs. This is the interim non-LTS line until 2027.02 ships.) THIS REGEX IS WHY A LINE BUMP NEVER ARRIVES AS A RENOVATE PR, and that is deliberate, not a bug in the manager: `loose` versioning orders 2026.08 above 2026.05.2 correctly ([2026,8] vs [2026,5,2]), the github-tags datasource sees the tag, and allowedVersions then filters it out -- so a line bump stays a human decision. Moved 2026.05.x -> 2026.08.x by hand on 2026-09-05, the same way PR #54 moved 2026.02.x -> 2026.05.x. Bump this WITH the Makefile pin, never separately: leaving it behind silently freezes the pin, and moving it ahead invites a line jump nobody reviewed.",
       "matchManagers": [
         "custom.regex"
       ],
       "matchDepNames": [
         "buildroot/buildroot"
       ],
-      "allowedVersions": "/^2026\\.05(\\.\\d+)?$/",
+      "allowedVersions": "/^2026\\.08(\\.\\d+)?$/",
       "addLabels": [
         "buildroot-pin"
       ]

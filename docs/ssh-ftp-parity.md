@@ -84,7 +84,7 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 |---|---|---|---|
 | `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
-| `AuthorizedKeysFile` | `.ssh/authorized_keys` | same | identical |
+| `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/linux/authorized_keys`** | **intentional divergence, added 2026-09-05** — see §1.3 |
 | `PermitUserEnvironment` | `yes` | `yes` (comment added: MiSTer scripts rely on it) | identical |
 | `Subsystem sftp` | `/usr/libexec/sftp-server` | same | identical |
 | `HostKey` lines | commented defaults (`/etc/ssh/ssh_host_{rsa,dsa,ecdsa,ed25519}_key`) | uncommented, repointed at `/etc/ssh_keys/...`, **no DSA entry** | intentional divergence — ADR 0015, not new |
@@ -110,6 +110,62 @@ version bump, not something a config edit can restore — a sufficiently old SSH
 client (year-2016-ish) may need `-oHostKeyAlgorithms=+ssh-rsa` or similar to
 connect. Worth a line in the user-facing FAQ (P4.8), alongside the ADR 0015
 host-key-mismatch note.
+
+### 1.3 User `authorized_keys` on the FAT partition — the second `AuthorizedKeysFile` path
+
+**The gap.** An update replaces `linux.img` wholesale, and `/root/.ssh` lives *inside*
+that file — so a key there is destroyed by every update. That is the "persistent state
+must live on `/media/fat`" trap, and it had been costing a manual re-push on every single
+flash. **This is the durable reason for the second path, and it does not depend on how
+`/` happens to be mounted.**
+
+Getting a key into the stock-parity path is awkward besides. `/` is mounted **read-only at
+boot** (`ro` on the cmdline; inittab's remount-rw line is deliberately left commented,
+ADR 0011) and a freshly built image ships **no `/root/.ssh` at all** — only
+`/root/.config/mc/`. It *does* become writable later: `/etc/profile` ends with
+`mount -o remount,rw /` on interactive login, which is how `/` ever becomes writable at
+all (stock parity — see [`init-parity.md`](init-parity.md), the `/etc/profile` row). So a
+key **can** be placed there by hand — it just requires logging in first, which is circular
+when the key *is* the login method, and it still does not survive the next update.
+
+> An earlier revision of this section claimed `/root/.ssh` "cannot be written at runtime".
+> That was wrong: the login-time remount makes it writable. Corrected after observing a
+> booted rig report `/dev/loop0 on / type ext4 (rw,...)`. The conclusion is unchanged —
+> only the reasoning needed to be right.
+
+**The fix.** `sshd` accepts multiple `AuthorizedKeysFile` paths and tries each in turn, so
+the shipped config now lists the stock path *plus* `/media/fat/linux/authorized_keys`.
+Nothing else changes: no init script, no bind-mount, no `user-startup.sh` hook, no new
+persistence image.
+
+**Why not reuse ADR 0015's `ssh.ext4`?** It was considered and rejected. That mechanism is
+right for *host* keys because the **device** writes them: an ext4 image inside a file on
+the FAT partition, mounted rw at `/etc/ssh_keys`. But an `authorized_keys` file is written
+by the **user**, and an ext4-image-in-a-file cannot be opened from Windows or macOS with a
+card reader — and editing it on the box requires the very shell access the key is meant to
+grant, which is circular for anyone setting key auth up for the first time. The exFAT
+partition is writable from every OS with no tooling. So the split is *who writes the
+file*: machine-written state goes in `ssh.ext4`, user-supplied state goes on exFAT.
+
+**`StrictModes` stays on (default `yes`), and the FAT path satisfies it.** `sshd` rejects
+an `authorized_keys` whose file or parent directories are group- or world-writable. The
+initramfs mounts the partition `fmask=0022,dmask=0022` with no `uid`/`gid` options
+(`board/mister/de10nano/initramfs-overlay/init:27`), so the file lands root-owned `0755`
+under `0755` parents — owner-writable only. Those mount options are **ours** and fixed, so
+this cannot be invalidated by a card mounted differently elsewhere. Disabling
+`StrictModes` was never necessary and `scripts/ci-tests.sh` now fails if someone does it.
+
+**Verified on hardware**, not reasoned about: a second `sshd` on port 2223 configured with
+*only* the FAT path and `StrictModes yes` accepted a key login (OpenSSH 10.5p1, exFAT,
+real board). The shipped config additionally passes `sshd -t` and reports both paths under
+`sshd -T` on the device.
+
+**CI:** `scripts/ci-tests.sh` asserts the FAT path is present in the **shipped**
+`sshd_config` (not the overlay source) and that `StrictModes no` is absent — dropping
+either would otherwise return every user to "your key is gone after each update" with
+nothing failing. User-facing instructions are in
+[the FAQ](user/faq.md#ssh-key-persist).
+
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
 

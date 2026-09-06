@@ -82,7 +82,7 @@ that look like they might collide but do **not**:
   `setpriv` stays BusyBox.
 - **`setsid`** — this one *does* collide (util-linux ships it in the basic set), so
   BusyBox `SETSID` is disabled. (The initramfs `/init` also uses `setsid`, but that is
-  the **separate** stage-1 BusyBox — `board/mister/de10nano/initramfs-busybox.config`
+  the **separate** stage-1 BusyBox — `board/mister/common/initramfs-busybox.config`
   — and is untouched by this fragment.)
 
 ## The serial console: BusyBox `getty` → util-linux `agetty`

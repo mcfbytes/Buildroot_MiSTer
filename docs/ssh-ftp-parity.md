@@ -150,7 +150,7 @@ file*: machine-written state goes in `ssh.ext4`, user-supplied state goes on exF
 **`StrictModes` stays on (default `yes`), and the FAT path satisfies it.** `sshd` rejects
 an `authorized_keys` whose file or parent directories are group- or world-writable. The
 initramfs mounts the partition `fmask=0022,dmask=0022` with no `uid`/`gid` options
-(`board/mister/de10nano/initramfs-overlay/init:27`), so the file lands root-owned `0755`
+(`board/mister/common/initramfs-overlay/init:27`), so the file lands root-owned `0755`
 under `0755` parents — owner-writable only. Those mount options are **ours** and fixed, so
 this cannot be invalidated by a card mounted differently elsewhere. Disabling
 `StrictModes` was never necessary and `scripts/ci-tests.sh` now fails if someone does it.

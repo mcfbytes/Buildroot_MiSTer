@@ -269,7 +269,13 @@ runs:
         # this is shell, and both halves read the same env var either way.
         # See docs/ci.md#cache-keys.
         tc_hash=$(sha256sum .br-toolchain-fingerprint | cut -d' ' -f1)
-        ir_hash=$(sha256sum configs/mister_initramfs_defconfig | cut -d' ' -f1)
+        # The stage-1 configuration is the initramfs-de10nano fragment stack
+        # (configs/fragments/stacks.mk), read through the same helper as the
+        # image/kernel stacks above so a fragment added to the stack moves this
+        # key without anyone editing a list here.
+        mapfile -t ir_files < <(config_stack_files INITRAMFS_DE10NANO)
+        [ "${#ir_files[@]}" -gt 0 ] || { echo "::error::configs/fragments/stacks.mk names no fragments for INITRAMFS_DE10NANO" >&2; exit 1; }
+        ir_hash=$(cat "${ir_files[@]}" | sha256sum | cut -d' ' -f1)
         echo "BR_INITRAMFS_HOST_KEY=br-initramfs-host-${ws_fp}-${ver}-${ir_hash}" >> "$GITHUB_ENV"
 
         # Variant-resolved host-toolchain key + paths (main's key STRING

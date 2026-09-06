@@ -64,8 +64,8 @@ Four mechanisms combine, all landed in P2.5 (`configs/fragments/de10nano-image.f
    reference — same commit means same Buildroot tree, same kernel source, same patches,
    same defconfig.
 
-4. **A checked-in config, not a locally-generated one.** `configs/fragments/de10nano-image.fragment`
-   and `configs/mister_initramfs_defconfig` are committed. There is no `menuconfig`
+4. **A checked-in config, not a locally-generated one.** The fragment stacks under
+   `configs/fragments/` (image, kernel-only and stage-1 initramfs alike) are committed. There is no `menuconfig`
    step between "clone this commit" and "build this image" — the defconfig fully
    determines the build.
 

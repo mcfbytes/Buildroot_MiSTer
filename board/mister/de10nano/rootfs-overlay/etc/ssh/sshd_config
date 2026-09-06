@@ -75,7 +75,7 @@ PermitRootLogin yes
 #
 # StrictModes STAYS ON (default yes) and this path satisfies it: the initramfs
 # mounts the FAT partition with fmask=0022,dmask=0022 and no uid/gid options
-# (board/mister/de10nano/initramfs-overlay/init:27), so the file lands
+# (board/mister/common/initramfs-overlay/init:27), so the file lands
 # root-owned 0755 and its parents 0755 -- owner-writable only, which is what
 # sshd requires. Those mount options are OURS and fixed, not user-tunable, so
 # this cannot be silently invalidated by a differently-mounted card. Verified

@@ -4,7 +4,7 @@
 #
 # Stage-1 (initramfs) post-build hook. Runs after the cpio's target tree is
 # assembled and before the cpio is generated (BR2_ROOTFS_POST_BUILD_SCRIPT in
-# configs/mister_initramfs_defconfig). Reproducible: no timestamps, no
+# configs/fragments/initramfs-common.fragment). Reproducible: no timestamps, no
 # randomness, no network -- it only deletes files (A9).
 #
 # WHY THIS EXISTS -- exfatprogs ships six binaries and /init calls one.
@@ -55,7 +55,7 @@ done
 # it exists to catch. Keep the two in step if either ever moves.
 [ -x "${TARGET_DIR}/usr/sbin/fsck.exfat" ] || {
 	echo "FATAL: initramfs-post-build.sh: no ${TARGET_DIR}/usr/sbin/fsck.exfat." >&2
-	echo "       BR2_PACKAGE_EXFATPROGS is set in configs/mister_initramfs_defconfig," >&2
+	echo "       BR2_PACKAGE_EXFATPROGS is set in configs/fragments/initramfs-common.fragment," >&2
 	echo "       so the package moved its install path. The initramfs /init hardcodes" >&2
 	echo "       FSCK_EXFAT=/usr/sbin/fsck.exfat; update both together. See ADR 0026." >&2
 	exit 1

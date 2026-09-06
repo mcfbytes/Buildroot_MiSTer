@@ -73,7 +73,7 @@
 #   copy the base and SKIP the cores with a loud message rather than OOM-bricking.
 #   update_all.sh on the installed card fetches cores anyway.
 # * DEFENSIVE LIKE THE STAGE-1 init. Same contract as
-#   board/mister/de10nano/initramfs-overlay/init: early proc/sys/dev mounts, parse
+#   board/mister/common/initramfs-overlay/init: early proc/sys/dev mounts, parse
 #   the cmdline (never hardcode the device), and on ANY fatal error print a banner
 #   and drop to a RESPAWNING rescue shell. PID 1 must NEVER exit (that is an instant
 #   kernel panic). A half-reformatted card must give a diagnosable message, not a

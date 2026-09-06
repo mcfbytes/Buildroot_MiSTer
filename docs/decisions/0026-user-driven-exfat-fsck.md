@@ -2,8 +2,8 @@
 
 **Status:** Accepted (2026-08-13) — decided by @mcfbytes
 **Impact:** `configs/mister_initramfs_defconfig` (adds `BR2_PACKAGE_EXFATPROGS`),
-`board/mister/de10nano/initramfs-overlay/init`, `board/mister/de10nano/initramfs-busybox.config`
-(adds `CONFIG_RM`), new files `board/mister/de10nano/initramfs-post-build.sh`,
+`board/mister/common/initramfs-overlay/init`, `board/mister/common/initramfs-busybox.config`
+(adds `CONFIG_RM`), new files `board/mister/common/initramfs-post-build.sh`,
 `board/mister/de10nano/rootfs-overlay/usr/sbin/mister-fsck-exfat`,
 `board/mister/de10nano/fat-payload/Scripts/check_storage.sh`; `Makefile`
 (`initramfs-verify`), `scripts/fetch-sdcard-payload.sh`, `install.sh`, `uninstall.sh`,

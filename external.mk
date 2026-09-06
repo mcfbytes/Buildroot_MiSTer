@@ -21,8 +21,9 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 # P1.10 — stage-2 half of the two-stage initramfs build (A1, PLAN.md §5,
 # docs/decisions/0002-initramfs.md).
 #
-# Stage 1 (configs/mister_initramfs_defconfig, driven by the top-level Makefile's
-# `initramfs` target) produces output-initramfs/images/rootfs.cpio. This block is
+# Stage 1 (the `initramfs-common initramfs-de10nano` fragment stack,
+# configs/fragments/stacks.mk, driven by the top-level Makefile's `initramfs`
+# target) produces output-initramfs/images/rootfs.cpio. This block is
 # what makes the MAIN build's kernel swallow it: it injects CONFIG_INITRAMFS_SOURCE
 # into the kernel .config at kconfig-fixup time, which is the same mechanism
 # Buildroot itself uses for BR2_TARGET_ROOTFS_INITRAMFS (linux/linux.mk:412-419) —
@@ -80,7 +81,27 @@ include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 # layer both DE10 stacks share) to keep them building — a toolchain-family
 # edit that changes the DE10's toolchain-fingerprint cache key, for zero
 # behavioural difference.
-# Revisit if a third board ever needs a stage-1 cpio of its own architecture.
+#
+# THE DE25 SWITCH (ADR 0029 D11; docs/de25-sdcard.md §2). Since 2026-09-06 an
+# aarch64 stage 1 of the same /init exists -- `make de25-initramfs`, the
+# `initramfs-common initramfs-de25nano` stack, output-initramfs-de25/images/
+# rootfs.cpio, verified and booted through scripts/test-initramfs.sh --board
+# de25nano -- but it is deliberately NOT embedded while the shipped DE25 card
+# keeps D11's interim plain-ext4 root (the first hardware boot is meant to
+# answer the SPL/DTS/SD-controller questions with as few moving parts as
+# possible). When the card moves to the two-stage layout, the change HERE is
+# to make the cpio path follow the architecture instead of gating on it:
+#   ifeq ($(BR2_LINUX_KERNEL),y)
+#   ifeq ($(BR2_aarch64),y)
+#   MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs-de25/images/rootfs.cpio
+#   else
+#   MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs/images/rootfs.cpio
+#   endif
+# together with `de25: de25-initramfs ...` in the Makefile, the `loop=`
+# bootargs in board/mister/de25nano/post-image.sh, the exFAT p2 in its
+# genimage config and the checker -- one commit, as docs/de25-sdcard.md §2
+# lists. Until then the BR2_arm gate below stands, and the hazard it guards
+# (an armv7 cpio in an aarch64 kernel) is unchanged.
 ifeq ($(BR2_LINUX_KERNEL)$(BR2_arm),yy)
 
 # Overridable so CI can build the two stages in separate workspaces.

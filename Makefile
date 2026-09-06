@@ -77,10 +77,34 @@ OUTPUT_DIR := $(ROOT_DIR)/output
 #
 # It is emphatically NOT BR2_TARGET_ROOTFS_INITRAMFS on the main config: that
 # option embeds the whole ~300 MB target rootfs into the kernel (A1).
+#
+# Since 2026-09-06 stage 1 is a fragment STACK like every other configuration
+# here (configs/fragments/stacks.mk: `initramfs-common initramfs-de10nano`),
+# not a standalone defconfig -- and it has an aarch64 sibling,
+# $(DE25_INITRAMFS_OUTPUT_DIR) below, built from `initramfs-common
+# initramfs-de25nano`. The /init, the BusyBox config and the post-build hook
+# are shared by both boards under board/mister/common/.
 INITRAMFS_OUTPUT_DIR := $(ROOT_DIR)/output-initramfs
 INITRAMFS_CPIO       := $(INITRAMFS_OUTPUT_DIR)/images/rootfs.cpio
-INITRAMFS_DEFCONFIG  := $(ROOT_DIR)/configs/mister_initramfs_defconfig
-INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init
+INITRAMFS_INIT       := $(ROOT_DIR)/board/mister/common/initramfs-overlay/init
+
+# --- DE25-Nano stage-1 initramfs (ADR 0029 D11; docs/de25-sdcard.md §2) -----
+# The SAME /init, BusyBox config and hook, built for aarch64 (static musl, the
+# DE25's CPU tuning and headers series -- the initramfs-de25nano fragment).
+# A sixth Buildroot output dir, for the usual reason: a
+# different configuration needs a different O=, and this one's toolchain is a
+# different architecture from output-initramfs/'s.
+#
+# NOT YET EMBEDDED. The shipped DE25 card keeps D11's interim plain-ext4 root
+# until a board has booted it, and external.mk's embedding fixup still keys on
+# BR2_arm. `make de25-initramfs` builds and verifies the cpio (the same
+# applet/binary/parse assertions as the DE10's, run under qemu-aarch64) and
+# `scripts/test-initramfs.sh --board de25nano` boots it through all eight
+# cases on qemu-system-aarch64 -- so the day the card switches to the
+# two-stage layout, the stage-1 half is already proven. See the DE25_OUTPUT_DIR
+# header for why `de25` still does not depend on ANY initramfs target.
+DE25_INITRAMFS_OUTPUT_DIR := $(ROOT_DIR)/output-initramfs-de25
+DE25_INITRAMFS_CPIO       := $(DE25_INITRAMFS_OUTPUT_DIR)/images/rootfs.cpio
 
 # --- RT / Linux-7.2 "beta" kernel variant (docs/rt-beta-kernel.md) ------------
 # A THIRD Buildroot output dir, same trick as the initramfs stage above: a
@@ -191,13 +215,16 @@ CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
 # package fragment is in its stack (docs/buildroot-config.md §6, §10).
 #
 # ALSO UNLIKE `rt` and `all`: `de25` does NOT depend on `initramfs`. That cpio
-# is an armv7 BusyBox built by configs/mister_initramfs_defconfig, and it exists
-# because the DE10's real root is a loop-mounted ext4 image on a FAT partition
-# that U-Boot will not load an initrd for (A3, docs/boot-chain.md). The DE25
-# boots a plain ext4 root partition, so there is nothing for a stage 1 to do —
-# and embedding armv7 userspace in an aarch64 kernel would produce a kernel that
-# panics in a novel and confusing way. external.mk's LINUX_KCONFIG_FIXUP_CMDS
-# hook is guarded off for this build; see the guard's comment there.
+# is an armv7 BusyBox (the initramfs-de10nano stack), and it exists because the
+# DE10's real root is a loop-mounted ext4 image on a FAT partition that U-Boot
+# will not load an initrd for (A3, docs/boot-chain.md). Embedding armv7
+# userspace in an aarch64 kernel would produce a kernel that panics in a novel
+# and confusing way. Nor does `de25` depend on `de25-initramfs` -- YET: the
+# aarch64 stage 1 exists and is QEMU-proven (see DE25_INITRAMFS_OUTPUT_DIR
+# above), but the shipped card keeps ADR 0029 D11's interim plain-ext4 root
+# until a board has booted it, so the DE25 kernel embeds nothing and
+# external.mk's LINUX_KCONFIG_FIXUP_CMDS hook is guarded off for this build;
+# see the guard's comment there for the switch.
 #
 # Scope reminder, because the target name invites the wrong assumption: this is
 # a BARE DEVELOPER OS. No MiSTer binaries, no DE10 packages. See ADR 0027
@@ -282,9 +309,13 @@ BR_MAKE = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
 # The same, aimed at the stage-1 output directory. Same Buildroot tree, same
-# BR2_EXTERNAL, same download cache — only O= and the defconfig differ.
+# BR2_EXTERNAL, same download cache — only O= and the fragment stack differ.
 BR_MAKE_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
           $(MAKE) -C $(BR_DIR) O=$(INITRAMFS_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
+
+# The same, aimed at the DE25's stage-1 output directory.
+BR_MAKE_DE25_INITRAMFS = PATH="$(HOSTSHIM_DIR):$$PATH" \
+          $(MAKE) -C $(BR_DIR) O=$(DE25_INITRAMFS_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
 
 # The same, aimed at the RT/beta output directory (docs/rt-beta-kernel.md).
 BR_MAKE_RT = PATH="$(HOSTSHIM_DIR):$$PATH" \
@@ -328,6 +359,8 @@ stack_files = $(addprefix $(FRAGMENT_DIR)/,$(addsuffix .fragment,$(1)))
 DE10NANO_STACK        := $(call stack_files,$(DE10NANO_FRAGMENTS))
 DE10NANO_KERNEL_STACK := $(call stack_files,$(DE10NANO_KERNEL_FRAGMENTS))
 DE25NANO_STACK        := $(call stack_files,$(DE25NANO_FRAGMENTS))
+INITRAMFS_DE10NANO_STACK := $(call stack_files,$(INITRAMFS_DE10NANO_FRAGMENTS))
+INITRAMFS_DE25NANO_STACK := $(call stack_files,$(INITRAMFS_DE25NANO_FRAGMENTS))
 
 # $(call merge_fragments,<O dir>,<fragment paths...>) -- step 1 of 2; the
 # caller follows it with the matching `$(BR_MAKE_*) olddefconfig`. The first
@@ -354,6 +387,8 @@ endef
 .PHONY: all help buildroot-fetch buildroot-verify buildroot-unpack buildroot-showsig require-tools
 .PHONY: clean distclean
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
+.PHONY: initramfs-defconfig de25-initramfs de25-initramfs-clean de25-initramfs-defconfig
+.PHONY: de25-initramfs-menuconfig de25-initramfs-busybox-menuconfig de25-initramfs-verify
 .PHONY: rt rt-clean rt-menuconfig rt-external-deps rt-legal-info
 .PHONY: de25 de25-clean de25-menuconfig de25-linux-menuconfig
 .PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
@@ -377,14 +412,18 @@ Makefile: ;
 # O=$(OUTPUT_DIR). Same explicit-empty-rule fix as `Makefile: ;` above.
 $(FRAGMENT_DIR)/stacks.mk: ;
 
-# [P1.10] Exactly the same landmine, one step further out. $(INITRAMFS_DEFCONFIG) is
-# a prerequisite of $(INITRAMFS_OUTPUT_DIR)/.config below. It is an existing file with
-# no rule of its own, so the catch-all `%: $(BR_STAMP) hostshim` pattern rule matched
-# it and make dutifully "remade" it — by forwarding a target literally named
-# `/…/configs/mister_initramfs_defconfig` into Buildroot **with O=$(OUTPUT_DIR)**,
-# i.e. loading the stage-1 config into the MAIN build's output directory. Caught with
-# `make -n initramfs`. An explicit empty rule beats a pattern rule.
-$(INITRAMFS_DEFCONFIG): ;
+# [P1.10] Exactly the same landmine, one step further out. The stage-1 stacks'
+# fragment files are prerequisites of $(INITRAMFS_OUTPUT_DIR)/.config and
+# $(DE25_INITRAMFS_OUTPUT_DIR)/.config below (unlike the image configs, a
+# stage-1 .config IS regenerated when a fragment changes -- see
+# $(OUTPUT_DIR)/.config's comment for why the two differ). Each is an existing
+# file with no rule of its own, so the catch-all `%: $(BR_STAMP) hostshim`
+# pattern rule matched the old standalone defconfig and make dutifully "remade"
+# it — by forwarding a target literally named `/…/configs/mister_initramfs_defconfig`
+# into Buildroot **with O=$(OUTPUT_DIR)**, i.e. loading the stage-1 config into
+# the MAIN build's output directory. Caught with `make -n initramfs`. An
+# explicit empty rule beats a pattern rule.
+$(sort $(INITRAMFS_DE10NANO_STACK) $(INITRAMFS_DE25NANO_STACK)): ;
 
 # Exactly the same landmine, for the SD-card installer defconfig (see the
 # comment above it, and INSTALLER_OUTPUT_DIR's header comment).
@@ -430,7 +469,7 @@ all: initramfs $(BR_STAMP) hostshim | $(OUTPUT_DIR)/.config
 # `hostshim` is order-only here too, so the Buildroot invocation below finds
 # the GNU `install` shim under `make -j`. The explicit rule also beats the `%:`
 # catch-all at the bottom of this file, same as `Makefile: ;` and
-# $(INITRAMFS_DEFCONFIG) above.
+# the stage-1 fragment rule above.
 $(OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
 	$(call merge_fragments,$(OUTPUT_DIR),$(DE10NANO_STACK))
 	$(BR_MAKE) olddefconfig
@@ -475,7 +514,7 @@ mister_de10nano_defconfig mister_kernel_defconfig mister_de25nano_defconfig:
 # is the only thing that knows what to delete and what to keep, so skipping it
 # would report success over a still-dirty tree — this bug, again, one layer out.
 clean:
-	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(DE25_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
+	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INITRAMFS_OUTPUT_DIR) ] || [ -d $(DE25_INITRAMFS_OUTPUT_DIR) ] || [ -d $(RT_OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(DE25_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
 		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
 		echo "       but an output directory still holds build products. Skipping" >&2; \
 		echo "       would report success over a dirty tree." >&2; \
@@ -485,6 +524,7 @@ clean:
 	fi
 	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
 	@if [ -d $(INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_INITRAMFS) clean; fi
+	@if [ -d $(DE25_INITRAMFS_OUTPUT_DIR) ]; then $(BR_MAKE_DE25_INITRAMFS) clean; fi
 	@if [ -d $(RT_OUTPUT_DIR) ]; then $(BR_MAKE_RT) clean; fi
 	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
 	@if [ -d $(DE25_OUTPUT_DIR) ]; then $(BR_MAKE_DE25) clean; fi
@@ -510,7 +550,7 @@ clean:
 # nothing-but-the-clone hammer; it takes work/ and dl/ with it.
 distclean:
 	rm -rf $(OUTPUT_DIR) $(INITRAMFS_OUTPUT_DIR) $(RT_OUTPUT_DIR) \
-	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) \
+	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) $(DE25_INITRAMFS_OUTPUT_DIR) \
 	       $(INSTALLER_KERNEL_OUTPUT_DIR) \
 	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR) \
 	       $(EXTRA_MODULES_OVERLAY) $(RT_OVERLAY_STAMP)
@@ -518,7 +558,7 @@ distclean:
 # --- Stage 1: the initramfs cpio ----------------------------------------------
 # Phony on purpose. Buildroot is the incremental build system here; re-entering it
 # is cheap when nothing changed, and it is the only thing that knows that editing
-# board/mister/de10nano/initramfs-overlay/init or initramfs-busybox.config means
+# board/mister/common/initramfs-overlay/init or initramfs-busybox.config means
 # the cpio must be regenerated.
 initramfs: $(INITRAMFS_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_INITRAMFS) all
@@ -528,6 +568,28 @@ initramfs: $(INITRAMFS_OUTPUT_DIR)/.config hostshim
 	@echo ""
 	@echo "==> stage-1 initramfs: $$(stat -c %s $(INITRAMFS_CPIO)) bytes  ($(INITRAMFS_CPIO))"
 	@echo ""
+
+# The DE25's stage 1: the same recipe aimed at the aarch64 stack. NOT a
+# prerequisite of `de25` (see DE25_INITRAMFS_OUTPUT_DIR's header: built and
+# proven, not yet embedded). The verify step is the same target with its three
+# artifact-locating variables re-pointed -- one set of assertions for both
+# boards, so a new applet /init needs cannot be checked on one and not the other.
+de25-initramfs: $(DE25_INITRAMFS_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25_INITRAMFS) all
+	@test -f $(DE25_INITRAMFS_CPIO) || { \
+		echo "FATAL: DE25 stage 1 finished but produced no $(DE25_INITRAMFS_CPIO)" >&2; exit 1; }
+	@$(MAKE) --no-print-directory de25-initramfs-verify
+	@echo ""
+	@echo "==> DE25 stage-1 initramfs: $$(stat -c %s $(DE25_INITRAMFS_CPIO)) bytes  ($(DE25_INITRAMFS_CPIO))"
+	@echo "    Built and verified; NOT embedded in the DE25 kernel yet (ADR 0029 D11)."
+	@echo "    Boot-test it: scripts/test-initramfs.sh --board de25nano"
+	@echo ""
+
+de25-initramfs-verify:
+	@$(MAKE) --no-print-directory initramfs-verify \
+		INITRAMFS_VERIFY_CPIO=$(DE25_INITRAMFS_CPIO) \
+		INITRAMFS_VERIFY_BUSYBOX=$(DE25_INITRAMFS_OUTPUT_DIR)/target/bin/busybox \
+		INITRAMFS_VERIFY_QEMU=qemu-aarch64
 
 # Every command /init actually invokes, asserted against the cpio we just built.
 #
@@ -552,30 +614,36 @@ INITRAMFS_REQUIRED_APPLETS := sh mount umount losetup switch_root cttyhack setsi
 INITRAMFS_REQUIRED_BINS := usr/sbin/fsck.exfat
 INITRAMFS_FORBIDDEN_BINS := usr/sbin/dump.exfat usr/sbin/exfat2img usr/sbin/exfatlabel \
                             usr/sbin/mkfs.exfat usr/sbin/tune.exfat
+
+# What initramfs-verify checks, and with which user-mode emulator it parses
+# /init. Defaults are the DE10's; de25-initramfs-verify overrides all three.
+INITRAMFS_VERIFY_CPIO    ?= $(INITRAMFS_CPIO)
+INITRAMFS_VERIFY_BUSYBOX ?= $(INITRAMFS_OUTPUT_DIR)/target/bin/busybox
+INITRAMFS_VERIFY_QEMU    ?= qemu-arm
 .PHONY: initramfs-verify
 initramfs-verify:
 	@rc=0; \
-	applets=$$(cpio -t --quiet < $(INITRAMFS_CPIO)); \
+	applets=$$(cpio -t --quiet < $(INITRAMFS_VERIFY_CPIO)); \
 	for a in $(INITRAMFS_REQUIRED_APPLETS); do \
 		echo "$$applets" | grep -qE "^(bin|sbin|usr/bin|usr/sbin)/$$a$$" || { \
 			echo "FATAL: /init needs '$$a' but it is not in the cpio." >&2; \
 			echo "       Check its CONFIG_ symbol really exists in this BusyBox version —" >&2; \
 			echo "       kconfig silently discards unknown symbols. See the header of" >&2; \
-			echo "       board/mister/de10nano/initramfs-busybox.config." >&2; \
+			echo "       board/mister/common/initramfs-busybox.config." >&2; \
 			rc=1; }; \
 	done; \
 	for b in $(INITRAMFS_REQUIRED_BINS); do \
 		echo "$$applets" | grep -qx "$$b" || { \
 			echo "FATAL: /init needs '$$b' but it is not in the cpio." >&2; \
 			echo "       Is BR2_PACKAGE_EXFATPROGS still set in" >&2; \
-			echo "       configs/mister_initramfs_defconfig, and did the package move its" >&2; \
+			echo "       configs/fragments/initramfs-common.fragment, and did the package move its" >&2; \
 			echo "       install path? See ADR 0026." >&2; \
 			rc=1; }; \
 	done; \
 	for b in $(INITRAMFS_FORBIDDEN_BINS); do \
 		echo "$$applets" | grep -qx "$$b" && { \
 			echo "FATAL: '$$b' is in the cpio and must not be." >&2; \
-			echo "       board/mister/de10nano/initramfs-post-build.sh is meant to delete it" >&2; \
+			echo "       board/mister/common/initramfs-post-build.sh is meant to delete it" >&2; \
 			echo "       (476 KB of zImage for tools stage 1 cannot invoke). Did the" >&2; \
 			echo "       post-build hook run? See ADR 0026." >&2; \
 			rc=1; }; \
@@ -585,24 +653,52 @@ initramfs-verify:
 	echo "$$applets" | grep -qx 'dev/console' || { \
 		echo "FATAL: /dev/console is not in the cpio — /init would have no stdio and the" >&2; \
 		echo "       rescue shell would be unreachable. Is device creation set to STATIC?" >&2; rc=1; }; \
-	if command -v qemu-arm >/dev/null 2>&1; then \
-		qemu-arm $(INITRAMFS_OUTPUT_DIR)/target/bin/busybox ash -n $(INITRAMFS_INIT) || { \
+	if command -v $(INITRAMFS_VERIFY_QEMU) >/dev/null 2>&1; then \
+		$(INITRAMFS_VERIFY_QEMU) $(INITRAMFS_VERIFY_BUSYBOX) ash -n $(INITRAMFS_INIT) || { \
 			echo "FATAL: the BusyBox ash we just built cannot even PARSE /init." >&2; \
 			echo "       Usually a shell FEATURE that allnoconfig left off (e.g." >&2; \
 			echo "       CONFIG_FEATURE_SH_MATH for \$$((arith))). shellcheck cannot see this:" >&2; \
 			echo "       it checks the language, this checks the interpreter we ship." >&2; rc=1; }; \
 	else \
-		echo "WARN: qemu-arm not installed; skipping the ash -n parse check of /init." >&2; \
+		echo "WARN: $(INITRAMFS_VERIFY_QEMU) not installed; skipping the ash -n parse check of /init." >&2; \
 	fi; \
-	[ $$rc -eq 0 ] && echo "==> initramfs-verify OK: $(words $(INITRAMFS_REQUIRED_APPLETS)) applets + $(words $(INITRAMFS_REQUIRED_BINS)) binary + $(words $(INITRAMFS_FORBIDDEN_BINS)) trimmed + /init + /dev/console + ash parses /init"; \
+	[ $$rc -eq 0 ] && echo "==> initramfs-verify OK ($$(basename $$(dirname $$(dirname $(INITRAMFS_VERIFY_CPIO))))): $(words $(INITRAMFS_REQUIRED_APPLETS)) applets + $(words $(INITRAMFS_REQUIRED_BINS)) binary + $(words $(INITRAMFS_FORBIDDEN_BINS)) trimmed + /init + /dev/console + ash parses /init"; \
 	exit $$rc
 
-$(INITRAMFS_OUTPUT_DIR)/.config: $(INITRAMFS_DEFCONFIG) | $(BR_STAMP)
-	@mkdir -p $(INITRAMFS_OUTPUT_DIR)
-	$(BR_MAKE_INITRAMFS) mister_initramfs_defconfig
+# Stage-1 configs are generated from their fragment stacks by the same
+# merge_config.sh + olddefconfig idiom as every other configuration here (see
+# the "Config fragments" block above). UNLIKE the image configs, the stack's
+# fragment files ARE prerequisites: a stage-1 config is generated, never
+# iterated on with menuconfig, so regenerating it whenever a fragment is newer
+# is the right default (the same behaviour the old standalone defconfig had).
+# The empty rule for the fragment files, above, keeps the `%:` catch-all off
+# them. $(BR_STAMP) and hostshim are order-only for the reasons given at
+# $(OUTPUT_DIR)/.config.
+$(INITRAMFS_OUTPUT_DIR)/.config: $(INITRAMFS_DE10NANO_STACK) | $(BR_STAMP) hostshim
+	$(call merge_fragments,$(INITRAMFS_OUTPUT_DIR),$(INITRAMFS_DE10NANO_STACK))
+	$(BR_MAKE_INITRAMFS) olddefconfig
+
+$(DE25_INITRAMFS_OUTPUT_DIR)/.config: $(INITRAMFS_DE25NANO_STACK) | $(BR_STAMP) hostshim
+	$(call merge_fragments,$(DE25_INITRAMFS_OUTPUT_DIR),$(INITRAMFS_DE25NANO_STACK))
+	$(BR_MAKE_DE25_INITRAMFS) olddefconfig
+
+# Force-regenerate either stage-1 configuration, mirroring de10nano-defconfig /
+# de25nano-defconfig (the file prerequisites above make this mostly redundant,
+# but a stale .config left by an interrupted merge does not look newer than
+# anything, and this is the deliberate way out).
+initramfs-defconfig: | $(BR_STAMP) hostshim
+	@rm -f $(INITRAMFS_OUTPUT_DIR)/.config
+	@$(MAKE) --no-print-directory $(INITRAMFS_OUTPUT_DIR)/.config
+
+de25-initramfs-defconfig: | $(BR_STAMP) hostshim
+	@rm -f $(DE25_INITRAMFS_OUTPUT_DIR)/.config
+	@$(MAKE) --no-print-directory $(DE25_INITRAMFS_OUTPUT_DIR)/.config
 
 initramfs-clean:
 	rm -rf $(INITRAMFS_OUTPUT_DIR)
+
+de25-initramfs-clean:
+	rm -rf $(DE25_INITRAMFS_OUTPUT_DIR)
 
 # --- RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md) ----------------------
 # Generates the variant .config by layering configs/mister_rt.fragment on the
@@ -914,14 +1010,23 @@ installer-clean:
 	rm -rf $(INSTALLER_OUTPUT_DIR)
 
 # Escape hatches for iterating on stage 1 without hand-editing the checked-in
-# configs. Both write to output-initramfs/; remember to fold the result back into
-# configs/mister_initramfs_defconfig (`savedefconfig`) or into
-# board/mister/de10nano/initramfs-busybox.config by hand.
+# configs. They write to output-initramfs/ (or output-initramfs-de25/);
+# remember to fold the result back into the initramfs-common / initramfs-<board>
+# fragment under configs/fragments/
+# or into board/mister/common/initramfs-busybox.config by hand -- and note that
+# the NEXT `make initramfs` regenerates the .config from the fragments if one
+# of them is newer (a stage-1 config is generated, not iterated on).
 initramfs-menuconfig: $(INITRAMFS_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_INITRAMFS) menuconfig
 
 initramfs-busybox-menuconfig: $(INITRAMFS_OUTPUT_DIR)/.config hostshim
 	$(BR_MAKE_INITRAMFS) busybox-menuconfig
+
+de25-initramfs-menuconfig: $(DE25_INITRAMFS_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25_INITRAMFS) menuconfig
+
+de25-initramfs-busybox-menuconfig: $(DE25_INITRAMFS_OUTPUT_DIR)/.config hostshim
+	$(BR_MAKE_DE25_INITRAMFS) busybox-menuconfig
 
 # --- The assertion that stops a silent brick ----------------------------------
 # docs/boot-chain.md §8, I1 and I2. The failure this guards against is not loud: a
@@ -1010,7 +1115,7 @@ help:
 	@echo "                                    it back into configs/fragments/ by hand)"
 	@echo "  make olddefconfig               - non-interactively resolve config to defaults"
 	@echo "  make list-defconfigs            - list built-in and external defconfigs"
-	@echo "                                    (only the initramfs/installer ones remain)"
+	@echo "                                    (only the installer one remains)"
 	@echo "  make buildroot-verify           - download (if needed) + SHA-256-verify the"
 	@echo "                                    pinned Buildroot tarball, without unpacking"
 	@echo "  make buildroot-showsig          - print upstream's GPG-signed release manifest"
@@ -1022,7 +1127,8 @@ help:
 	@echo "  make clean                      - delete everything the build produced,"
 	@echo "                                    KEEPING all .config files"
 	@echo "  make distclean                  - rm -rf output/, output-initramfs/, output-rt/,"
-	@echo "                                    output-installer/, output-de25/, the sdcard"
+	@echo "                                    output-installer/, output-de25/,"
+	@echo "                                    output-initramfs-de25/, the sdcard"
 	@echo "                                    staging dirs and"
 	@echo "                                    the extra-modules overlay, .config included;"
 	@echo "                                    dl/ is kept (it is a shared cache —"
@@ -1034,6 +1140,10 @@ help:
 	@echo "  make initramfs-busybox-menuconfig - BusyBox menuconfig for the stage-1 BusyBox"
 	@echo "  make initramfs-clean            - rm -rf output-initramfs/"
 	@echo "  make check-initramfs            - assert the built kernel really embeds the cpio"
+	@echo "  make de25-initramfs             - the SAME stage 1 built for aarch64 into"
+	@echo "                                    output-initramfs-de25/ and verified (built and"
+	@echo "                                    QEMU-proven; not embedded in the DE25 kernel yet)"
+	@echo "  make de25-initramfs-clean       - rm -rf output-initramfs-de25/"
 	@echo ""
 	@echo "RT / Linux-7.2 beta kernel (docs/rt-beta-kernel.md):"
 	@echo "  make rt                         - kernel-only build of the PREEMPT_RT variant into"
@@ -1057,7 +1167,8 @@ help:
 	@echo "                                    the SD-card image; asserts images/Image, a .dtb,"
 	@echo "                                    bl31.bin, u-boot.itb and sdcard-de25.img exist)."
 	@echo "                                    BARE DEVELOPER OS: no MiSTer binaries. Does NOT"
-	@echo "                                    run 'initramfs' -- that cpio is armv7."
+	@echo "                                    run 'initramfs' (armv7) nor 'de25-initramfs'"
+	@echo "                                    (built + QEMU-proven, not embedded yet: D11)."
 	@echo "  make de25nano-defconfig         - (re)generate output-de25/.config from its"
 	@echo "                                    fragment stack (common + de25nano)"
 	@echo "  make de25-menuconfig            - Buildroot menuconfig for the DE25 config"
@@ -1166,7 +1277,7 @@ buildroot-unpack: $(BR_STAMP)
 
 # --- Forward everything else into Buildroot ------------------------------------
 # make menuconfig, make linux-menuconfig, make savedefconfig, make
-# mister_initramfs_defconfig (Buildroot's own %_defconfig rule finds it under
+# mister_installer_defconfig (Buildroot's own %_defconfig rule finds it under
 # this tree's configs/, since BR2_EXTERNAL is set above), etc.
 %: $(BR_STAMP) hostshim
 	$(BR_MAKE) $@

@@ -87,7 +87,7 @@ reusing a proven reference implementation over writing new code in a boot-path c
    - `dd`s `uboot.img` onto the (unchanged-geometry) `0xA2` partition, `sync`s, reboots.
 
    Every step follows the defensive idiom already established by
-   `board/mister/de10nano/initramfs-overlay/init`: on any fatal error, print a clear
+   `board/mister/common/initramfs-overlay/init`: on any fatal error, print a clear
    banner and drop to a rescue shell rather than panicking silently — a half-reformatted
    card must be diagnosable, not a second brick added on top of the first-boot problem
    this feature exists to solve. PID 1 never exits.

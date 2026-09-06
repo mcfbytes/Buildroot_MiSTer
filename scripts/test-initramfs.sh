@@ -138,8 +138,9 @@ de25nano)
 	KERNEL_BASE_FILES=("$ROOT/board/mister/de25nano/linux.config"
 	                   "$ROOT/board/mister/common/linux-mister.fragment")
 	PIN_FRAGMENT="$ROOT/configs/fragments/de25nano.fragment"
-	# A symlink into the DE10 series today; resolved through the DE25's own
-	# patch dir so a re-anchored 7.x copy is picked up the day one exists.
+	# Resolved through the DE25's own patch dir, which links to the 7.x
+	# re-anchored copy in linux-patches-beta/ (since 2026-09-06 -- this
+	# very case found the shared 6.18 form Oopsing on 7.x, ADR 0002 §8b).
 	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de25nano/linux-patches/0031-exfat-samsung-symlinks.patch"
 	CACHE_TAG="-de25"
 	;;

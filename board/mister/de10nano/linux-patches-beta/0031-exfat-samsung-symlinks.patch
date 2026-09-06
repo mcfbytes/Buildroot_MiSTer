@@ -1,1 +1,524 @@
-../linux-patches/0031-exfat-samsung-symlinks.patch
+From df35bdb271325891b3a03c75097541d5b76fbeb6 Mon Sep 17 00:00:00 2001
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Jul 2026 11:20:00 -0500
+Subject: [PATCH 1/1] exfat: Samsung-compatible symlinks on mainline exfat
+
+MiSTer's arcade organizer builds its entire _Organized tree out of
+symlinks on the exFAT data partition, so ADR 0010's "symlinks appear
+unused" finding is wrong in the way its own §Rationale warned it might
+be (n=1 evidence). Mainline exfat has no symlink support at all; this
+adds it, byte-compatible with the on-disk format of the out-of-tree
+Samsung driver that every stock MiSTer kernel has shipped, so symlink
+trees already on users' cards keep resolving:
+
+  * a symlink is an ordinary file dentry set whose attributes carry
+    the DOS "system" bit (0x0004, EXFAT_ATTR_SYMLINK), and whose file
+    data is the target path, NOT NUL-terminated
+    (i_size == strlen(target));
+  * 0x0040 (EXFAT_ATTR_SYMLINK_OLD), the marker used by even older
+    Samsung releases, is honoured on read and upgraded to 0x0004 on
+    the next attr writeback, never written on create.
+
+Unlike the Samsung driver (a parallel 20-file filesystem
+implementation), this reuses the vanilla infrastructure: creation goes
+through exfat_add_entry() + page_symlink() (which writes exactly len-1
+bytes -- the Samsung format falls straight out), and readback is
+page_get_link(), whose nd_terminate_link() handles the on-disk string
+having no NUL. The symlink inode needs inode_nohighmem() because
+page_get_link() uses page_address() directly.
+
+Locking: exfat_get_block() takes sbi->s_lock, so exfat_symlink() must
+drop s_lock before page_symlink(). If the data write fails, the
+just-created dentry set is removed again (same incantation as
+exfat_unlink()); only once that removal has durably reached the disk
+is nlink cleared so eviction frees the allocated cluster -- on a
+removal failure the entry is left alive instead, because a live
+on-disk entry must never point at freed clusters. On dirsync mounts
+(MiSTer mounts /media/fat with sync,dirsync) the target write is
+flushed with write_inode_now() before the symlink is instantiated.
+
+Four sharp edges found in review, all handled here:
+
+  * ei->type stays TYPE_FILE: TYPE_SYMLINK exists only as a creation-
+    time dispatch code for exfat_add_entry()/exfat_set_entry_type().
+    An in-core type of its own would defeat __exfat_truncate()'s type
+    guard, leaking the target's cluster on every same-mount
+    create+delete (the arcade organizer's reorganize pattern), and
+    fsck.exfat does not even flag the orphaned bitmap bits.
+  * The SET_ATTRIBUTES ioctl pins EXFAT_ATTR_SYMLINK to its current
+    state on non-directories: the system bit now encodes S_IFMT, and
+    flipping it on a live inode would hand setattr an S_IFLNK/S_IFREG
+    type swap the VFS cannot express.
+  * readdir derives d_type with fs_umode_to_dtype(exfat_make_mode()),
+    the same classifier lstat uses, so getdents and stat can never
+    disagree about linkness (GNU find trusts d_type -- a DT_REG lie
+    here is exactly why ADR 0010's evidence scan missed the symlinks).
+  * The one attr predicate lives in EXFAT_ATTR_SYMLINK_ANY, consumed
+    by both exfat_make_mode() and exfat_fill_inode().
+
+Semantics concession, inherited from stock: any non-directory entry
+carrying attribute 0x0004 or 0x0040 is presented as a symlink, even if
+it is a genuine Windows "system" file (e.g. IndexerVolumeGuid inside
+System Volume Information). Stock MiSTer kernels have behaved this way
+since 2021; matching that behaviour is the point of this patch.
+
+Scope concession: exFAT only. The Samsung driver also mounted
+FAT12/16/32 and gave them the same symlinks; mainline vfat has no
+symlink support and does not get any here. A FAT32-formatted MiSTer
+card with an organized arcade tree still loses its symlinks (ADR 0019).
+
+Provenance
+----------
+Origin:       df35bdb271325891b3a03c75097541d5b76fbeb6
+              "Add exFAT with symlinks support."
+              MiSTer-devel/Linux-Kernel_MiSTer, 2021-08-30, against v5.15.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/df35bdb271325891b3a03c75097541d5b76fbeb6
+              Origin of the ON-DISK FORMAT only (exfat_super.c:676
+              exfat_symlink(), exfat_core.c:2629 exfat_set_entry_type()
+              TYPE_SYMLINK, exfat_api.h:65 ATTR_SYMLINK/ATTR_SYMLINK_OLD).
+              The code below is a fresh implementation against mainline
+              fs/exfat, not a forward-port of the Samsung driver.
+Author:       Michael C. Ferguson (new code); format by Samsung, carried
+              into MiSTer by Sorgelig <pour.garbage@gmail.com>.
+Upstream:     No, and not upstreamable as-is: it overloads a real FAT
+              attribute bit that Windows assigns to ordinary files, so
+              upstream would (reasonably) reject the ambiguity. Carried
+              indefinitely; fs/exfat churn is low (6 files, all touching
+              stable functions). Disposition "carry"
+              (docs/patch-provenance.md §3.8 class G, option (c);
+              decision reversal recorded in ADR 0019, which amends
+              ADR 0010).
+Forward-port: written against 6.18.38 directly (2026-07-14); adapted
+              2026-07-25 to serve BOTH kernel series from this one file
+              -- see below.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+[Two changes on 2026-07-25 which, together, make this ONE file the whole
+ story for both the 6.18 stable series and the 7.x beta series. There is
+ no longer a re-anchored copy: ../linux-patches-beta/0031-exfat-samsung-
+ symlinks.patch is a SYMLINK to this file, like the other shared entries.
+ Verified applying at -F0 to pristine 6.18.40 AND pristine 7.2-rc4,
+ 12/12 hunks across 6 files, on both.
+
+ 1. 6.18.40 API adaptation. The stable series backported upstream's
+    benign-secondary-entry preservation rework, which gave
+    exfat_remove_entries() a 4th arg (bool free_benign). The symlink
+    error-path call passes true, matching upstream's own unlink/rmdir
+    idiom at the same ES_IDX_FILE site. 7.x already had this, so the
+    adaptation closed the last divergence in ADDED LINES.
+
+ 2. fs/exfat/file.c re-anchor, closing the last divergence in CONTEXT.
+    exfat_symlink_inode_operations is now defined BEFORE
+    exfat_file_inode_operations instead of after it. Appending after was
+    unportable: 7.x both ADDED a .fileattr_get member and RETABBED the
+    member alignment (".setattr" + spaces became ".setattr" + a tab), so
+    the two series shared no trailing context at all -- not one line.
+    Prepending anchors instead on a blank line plus the line
+    "const struct inode_operations exfat_file_inode_operations = {",
+    byte-identical in both trees. Definition order is immaterial (both
+    are file-scope, and exfat_fs.h declares both), so this is a pure
+    re-anchor: post-patch source differs from the old form ONLY in the
+    order of those two definitions -- verified by diffing the patched
+    trees, on both kernels.
+
+ That hunk deliberately carries ONE line of context per side instead of
+ the usual three, and MUST NOT be "helpfully" regenerated at -U3: three
+ lines reaches into the retabbed struct body on 7.x and into the
+ .splice_write/.setlease tail of exfat_file_operations on 6.18, both of
+ which differ between the series. The single trailing context line
+ occurs exactly once in file.c, so the match stays unambiguous; a future
+ upstream edit there fails CLOSED at Buildroot's `patch -F0` -- the same
+ failure mode as before, just reachable from a smaller perturbation.
+
+ NOTE: on the stable side this patch now requires >= 6.18.40; it will
+ not compile against 6.18.39 or earlier. That is fine -- it tracks the
+ pinned BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, not a range.]
+[re-anchored for the 7.x beta series (2026-09-06): a real 7.x API delta,
+not a context drift, so the shared 6.18 patch stays as it is and this copy
+exists (the 2026-07-25 note in linux-patches-beta/series still holds for
+context-only drift -- this is the other kind). 7.x exfat moved its data
+path to iomap (fs/exfat/iomap.c) and exfat_aops has no write_begin /
+write_end any more; page_symlink() in fs/namei.c calls aops->write_begin
+unconditionally, so the 6.18 form of exfat_symlink() Oopses on the first
+symlink created (pc: 0x0, lr: page_symlink+0x178, caught by
+scripts/test-initramfs.sh --board de25nano's `symlink` case -- the first
+thing to ever EXECUTE this patch on 7.x; it applies and compiles fine).
+Delta vs the shared patch is confined to fs/exfat/namei.c: a new
+exfat_symlink_write_target() allocates the clusters with
+exfat_map_cluster() (7.x signature) under s_lock, fills the sectors
+through buffer heads, flushes the range with sync_blockdev_range() so
+page_get_link()'s iomap bio read sees it, and does the valid_size /
+zeroed_size / i_size bookkeeping exfat_write_iomap_end() and the VFS
+write path would have done; exfat_symlink() calls it where it called
+page_symlink(). Everything else (on-disk format, attr bits, get_link,
+readdir, ioctl pinning, error path) is byte-identical to the shared patch.
+Diff regenerated at -U3 against pristine 7.2.3 -- the shared patch's
+-U1 file.c hunk was only ever needed to match BOTH trees, and this copy
+matches one. Verified: applies at -F0 to pristine 7.2.3, 12/12 hunks;
+compiles for arm (the RT config) and arm64 (the DE25 config); the
+aarch64 QEMU `symlink` case passes hot+cold with the cluster-leak
+tripwire and fsck-clean.]
+---
+
+diff --git a/fs/exfat/dir.c b/fs/exfat/dir.c
+--- a/fs/exfat/dir.c
++++ b/fs/exfat/dir.c
+@@ -256,8 +256,10 @@
+ 	}
+ 
+ 	mutex_unlock(&EXFAT_SB(sb)->s_lock);
++	/* one classifier for readdir and lstat: DT_LNK iff st_mode is S_IFLNK */
+ 	if (!dir_emit(ctx, nb->lfn, strlen(nb->lfn), inum,
+-			(de.attr & EXFAT_ATTR_SUBDIR) ? DT_DIR : DT_REG))
++			fs_umode_to_dtype(exfat_make_mode(EXFAT_SB(sb),
++							  de.attr, 0))))
+ 		goto out;
+ 	ctx->pos = cpos;
+ 	goto get_new;
+@@ -385,6 +387,10 @@
+ 	} else if (type == TYPE_FILE) {
+ 		ep->type = EXFAT_FILE;
+ 		ep->dentry.file.attr = cpu_to_le16(EXFAT_ATTR_ARCHIVE);
++	} else if (type == TYPE_SYMLINK) {
++		ep->type = EXFAT_FILE;
++		ep->dentry.file.attr = cpu_to_le16(EXFAT_ATTR_ARCHIVE |
++						   EXFAT_ATTR_SYMLINK);
+ 	}
+ }
+ 
+diff --git a/fs/exfat/exfat_fs.h b/fs/exfat/exfat_fs.h
+--- a/fs/exfat/exfat_fs.h
++++ b/fs/exfat/exfat_fs.h
+@@ -62,6 +62,7 @@
+ #define TYPE_VOLUME		0x0103
+ #define TYPE_DIR		0x0104
+ #define TYPE_FILE		0x011F
++#define TYPE_SYMLINK		0x015F
+ #define TYPE_CRITICAL_SEC	0x0200
+ #define TYPE_STREAM		0x0201
+ #define TYPE_EXTEND		0x0202
+@@ -349,6 +350,9 @@
+ 	if (attr & EXFAT_ATTR_SUBDIR)
+ 		return (mode & ~sbi->options.fs_dmask) | S_IFDIR;
+ 
++	if (attr & EXFAT_ATTR_SYMLINK_ANY)
++		return (mode & ~sbi->options.fs_fmask) | S_IFLNK;
++
+ 	return (mode & ~sbi->options.fs_fmask) | S_IFREG;
+ }
+ 
+@@ -644,6 +648,7 @@
+ 
+ /* inode.c */
+ extern const struct inode_operations exfat_file_inode_operations;
++extern const struct inode_operations exfat_symlink_inode_operations;
+ void exfat_sync_inode(struct inode *inode);
+ struct inode *exfat_build_inode(struct super_block *sb,
+ 		struct exfat_dir_entry *info, loff_t i_pos);
+diff --git a/fs/exfat/exfat_raw.h b/fs/exfat/exfat_raw.h
+--- a/fs/exfat/exfat_raw.h
++++ b/fs/exfat/exfat_raw.h
+@@ -72,6 +72,18 @@
+ #define EXFAT_ATTR_SUBDIR	0x0010
+ #define EXFAT_ATTR_ARCHIVE	0x0020
+ 
++/*
++ * Samsung's out-of-tree exfat driver (exfat-nofuse lineage, carried by
++ * MiSTer's kernel fork) overloads the DOS "system" attribute to mark a
++ * symlink whose target path is stored as the file's data, not
++ * NUL-terminated (i_size == strlen(target)).  0x0040 is a reserved
++ * attribute bit that even older Samsung releases used for the same
++ * purpose; it is honoured on read but never written.
++ */
++#define EXFAT_ATTR_SYMLINK	EXFAT_ATTR_SYSTEM
++#define EXFAT_ATTR_SYMLINK_OLD	0x0040
++#define EXFAT_ATTR_SYMLINK_ANY	(EXFAT_ATTR_SYMLINK | EXFAT_ATTR_SYMLINK_OLD)
++
+ #define EXFAT_ATTR_RWMASK	(EXFAT_ATTR_HIDDEN | EXFAT_ATTR_SYSTEM | \
+ 				 EXFAT_ATTR_VOLUME | EXFAT_ATTR_SUBDIR | \
+ 				 EXFAT_ATTR_ARCHIVE)
+diff --git a/fs/exfat/file.c b/fs/exfat/file.c
+--- a/fs/exfat/file.c
++++ b/fs/exfat/file.c
+@@ -469,6 +469,16 @@
+ 		 EXFAT_ATTR_ARCHIVE);
+ 	attr |= (is_dir ? EXFAT_ATTR_SUBDIR : 0);
+ 
++	/*
++	 * The system bit doubles as the symlink marker (EXFAT_ATTR_SYMLINK),
++	 * so flipping it here would change the inode's S_IFMT under the VFS
++	 * (exfat_make_mode() below would hand setattr an S_IFLNK/S_IFREG
++	 * mode swap on a live inode).  Pin it to its current state.
++	 */
++	if (!is_dir)
++		attr = (attr & ~EXFAT_ATTR_SYMLINK) |
++		       (oldattr & EXFAT_ATTR_SYMLINK);
++
+ 	/* Equivalent to a chmod() */
+ 	ia.ia_valid = ATTR_MODE | ATTR_CTIME;
+ 	ia.ia_ctime = current_time(inode);
+@@ -972,6 +982,12 @@
+ 	.setlease	= generic_setlease,
+ };
+ 
++const struct inode_operations exfat_symlink_inode_operations = {
++	.get_link    = page_get_link,
++	.setattr     = exfat_setattr,
++	.getattr     = exfat_getattr,
++};
++
+ const struct inode_operations exfat_file_inode_operations = {
+ 	.setattr	= exfat_setattr,
+ 	.getattr	= exfat_getattr,
+diff --git a/fs/exfat/inode.c b/fs/exfat/inode.c
+--- a/fs/exfat/inode.c
++++ b/fs/exfat/inode.c
+@@ -393,6 +393,24 @@
+ 		inode->i_op = &exfat_dir_inode_operations;
+ 		inode->i_fop = &exfat_dir_operations;
+ 		set_nlink(inode, info->num_subdirs);
++	} else if (info->attr & EXFAT_ATTR_SYMLINK_ANY) {
++		/*
++		 * Samsung-style symlink: target path stored as file data.
++		 * EXFAT_ATTR_SYMLINK_OLD is not in EXFAT_ATTR_RWMASK, so a
++		 * legacy-marked link would lose its marker on the next attr
++		 * writeback; OR-ing in EXFAT_ATTR_SYMLINK keeps it a link if
++		 * that ever happens.  This does not itself dirty the inode —
++		 * the on-disk marker only changes on a writeback triggered
++		 * for some other reason.
++		 */
++		info->attr |= EXFAT_ATTR_SYMLINK;
++		inode->i_generation |= 1;
++		inode->i_mode = exfat_make_mode(sbi, info->attr, 0777);
++		inode->i_op = &exfat_symlink_inode_operations;
++		inode->i_mapping->a_ops = &exfat_aops;
++		inode->i_mapping->nrpages = 0;
++		/* page_get_link() dereferences page_address() directly */
++		inode_nohighmem(inode);
+ 	} else { /* regular file */
+ 		inode->i_generation |= 1;
+ 		inode->i_mode = exfat_make_mode(sbi, info->attr, 0777);
+diff --git a/fs/exfat/namei.c b/fs/exfat/namei.c
+--- a/fs/exfat/namei.c
++++ b/fs/exfat/namei.c
+@@ -514,8 +514,19 @@
+ 	info->flags = ALLOC_NO_FAT_CHAIN;
+ 	info->type = type;
+ 
+-	if (type == TYPE_FILE) {
++	if (type == TYPE_FILE || type == TYPE_SYMLINK) {
+ 		info->attr = EXFAT_ATTR_ARCHIVE;
++		if (type == TYPE_SYMLINK) {
++			info->attr |= EXFAT_ATTR_SYMLINK;
++			/*
++			 * In-core, a symlink is a TYPE_FILE inode told apart
++			 * by its attr bit, exactly as when re-read from disk
++			 * (exfat_get_entry_type() has no symlink case).
++			 * __exfat_truncate()'s type guard relies on this to
++			 * free the target's cluster on eviction.
++			 */
++			info->type = TYPE_FILE;
++		}
+ 		info->start_clu = EXFAT_EOF_CLUSTER;
+ 		info->size = 0;
+ 		info->num_subdirs = 0;
+@@ -581,6 +592,190 @@
+ 	return err;
+ }
+ 
++/*
++ * Write a new symlink's target path as the inode's file data.
++ *
++ * [7.x re-anchor] The 6.18 version of this patch hands the inode to the
++ * VFS's page_symlink(), which writes through a_ops->write_begin /
++ * write_end.  7.x exfat is iomap-based and has neither (fs/exfat/inode.c,
++ * exfat_aops), so page_symlink() jumps through a NULL pointer -- an Oops on
++ * the first symlink created.  There is also no in-kernel way to drive
++ * iomap_file_buffered_write() without a struct file.  So the target is
++ * written the way exfat writes its own metadata: allocate the clusters
++ * under s_lock, fill the sectors through buffer heads, and flush the range
++ * before anyone can read it back -- page_get_link() reads via iomap bios
++ * straight from the device, which never sees a dirty bdev buffer.  Then do
++ * the bookkeeping exfat_write_iomap_end() would have done (valid_size,
++ * zeroed_size) plus the i_size update the VFS write path would have done.
++ *
++ * Runs on a fresh, unhashed-to-dcache inode with no page cache, so there
++ * is nothing to keep coherent and no reader to race.
++ */
++static int exfat_symlink_write_target(struct inode *inode, const char *symname,
++				      unsigned int len)
++{
++	struct super_block *sb = inode->i_sb;
++	struct exfat_sb_info *sbi = EXFAT_SB(sb);
++	struct exfat_inode_info *ei = EXFAT_I(inode);
++	unsigned int clu_off = 0, need = exfat_bytes_to_cluster_round_up(sbi, len);
++	unsigned int written = 0;
++	int err;
++
++	if (!len || len > PATH_MAX)
++		return -ENAMETOOLONG;
++
++	while (written < len) {
++		unsigned int clu, count = need - clu_off;
++		sector_t blknr, last_blknr, i;
++		bool balloc = false;
++
++		mutex_lock(&sbi->s_lock);
++		err = exfat_map_cluster(inode, clu_off, &clu, &count, 1, &balloc);
++		mutex_unlock(&sbi->s_lock);
++		if (err)
++			return err;
++		if (clu == EXFAT_EOF_CLUSTER || !count) {
++			exfat_fs_error(sb, "symlink: no cluster mapped at %u", clu_off);
++			return -EIO;
++		}
++
++		/* one contiguous run of `count` clusters, sector by sector */
++		blknr = exfat_cluster_to_sector(sbi, clu);
++		last_blknr = blknr + ((sector_t)count << sbi->sect_per_clus_bits);
++		if (last_blknr > sbi->num_sectors && sbi->num_sectors > 0) {
++			exfat_fs_error(sb, "symlink: out of range(sect:%llu len:%u)",
++				       (unsigned long long)blknr, count);
++			return -EIO;
++		}
++		for (i = blknr; i < last_blknr && written < len; i++) {
++			unsigned int n = min_t(unsigned int, len - written,
++					       sb->s_blocksize);
++			struct buffer_head *bh = sb_getblk(sb, i);
++
++			if (!bh)
++				return -ENOMEM;
++			lock_buffer(bh);
++			memcpy(bh->b_data, symname + written, n);
++			if (n < sb->s_blocksize)
++				memset(bh->b_data + n, 0, sb->s_blocksize - n);
++			set_buffer_uptodate(bh);
++			unlock_buffer(bh);
++			mark_buffer_dirty(bh);
++			brelse(bh);
++			written += n;
++		}
++		/* the data must be on the device before the first get_link() */
++		err = sync_blockdev_range(sb->s_bdev,
++					  exfat_block_to_bytes(sb, blknr),
++					  exfat_block_to_bytes(sb, i) - 1);
++		if (err)
++			return err;
++		clu_off += count;
++	}
++
++	i_size_write(inode, len);
++	ei->valid_size = len;
++	ei->zeroed_size = len;
++	mark_inode_dirty(inode);
++	return 0;
++}
++
++/*
++ * Samsung-style symlink (MiSTer carried patch): an ordinary file dentry
++ * set whose attributes carry EXFAT_ATTR_SYMLINK (the DOS "system" bit)
++ * and whose data is the target path, not NUL-terminated
++ * (i_size == strlen(target)).  This is the on-disk format of the
++ * out-of-tree Samsung exfat driver that MiSTer's stock kernel shipped;
++ * cards written by either driver are interchangeable.
++ */
++static int exfat_symlink(struct mnt_idmap *idmap, struct inode *dir,
++			 struct dentry *dentry, const char *symname)
++{
++	/* the entry-creation prologue mirrors exfat_create(); keep in sync */
++	struct super_block *sb = dir->i_sb;
++	struct exfat_sb_info *sbi = EXFAT_SB(sb);
++	struct inode *inode;
++	struct exfat_dir_entry info;
++	struct exfat_entry_set_cache es;
++	loff_t i_pos;
++	loff_t size = i_size_read(dir);
++	int len = strlen(symname);
++	int err;
++
++	if (unlikely(exfat_forced_shutdown(sb)))
++		return -EIO;
++
++	mutex_lock(&sbi->s_lock);
++	exfat_set_volume_dirty(sb);
++	err = exfat_add_entry(dir, dentry->d_name.name, TYPE_SYMLINK, &info);
++	if (err)
++		goto unlock;
++
++	inode_inc_iversion(dir);
++	inode_set_mtime_to_ts(dir, inode_set_ctime_current(dir));
++	if (IS_DIRSYNC(dir) && size != i_size_read(dir))
++		exfat_sync_inode(dir);
++	else
++		mark_inode_dirty(dir);
++
++	i_pos = exfat_make_i_pos(&info);
++	inode = exfat_build_inode(sb, &info, i_pos);
++	err = PTR_ERR_OR_ZERO(inode);
++	if (err)
++		goto unlock;
++
++	inode_inc_iversion(inode);
++	EXFAT_I(inode)->i_crtime = simple_inode_init_ts(inode);
++	exfat_truncate_inode_atime(inode);
++
++	/*
++	 * exfat_map_cluster() wants s_lock and the helper takes it itself,
++	 * so the target is written with the lock dropped.  Exactly len
++	 * bytes: the path without its NUL, which is the Samsung format
++	 * (i_size == strlen).  [7.x re-anchor: was page_symlink(); see the
++	 * helper's comment for why that cannot work on iomap exfat.]
++	 */
++	mutex_unlock(&sbi->s_lock);
++	err = exfat_symlink_write_target(inode, symname, len);
++	if (!err && IS_DIRSYNC(dir))
++		err = write_inode_now(inode, 1);
++	if (err)
++		goto remove_entry;
++
++	d_instantiate(dentry, inode);
++	return 0;
++
++remove_entry:
++	mutex_lock(&sbi->s_lock);
++	exfat_set_volume_dirty(sb);
++	if (!exfat_get_dentry_set_by_ei(&es, sb, EXFAT_I(inode))) {
++		exfat_remove_entries(inode, &es, ES_IDX_FILE, true);
++		if (!exfat_put_dentry_set(&es, IS_DIRSYNC(dir))) {
++			EXFAT_I(inode)->dir.dir = DIR_DELETED;
++			/*
++			 * Entry removal reached the disk, so eviction may
++			 * free the clusters the target write allocated.  On
++			 * any removal failure keep nlink instead: a live
++			 * on-disk entry must never point at freed clusters
++			 * (same asymmetry exfat_unlink() accepts).
++			 */
++			clear_nlink(inode);
++		}
++	}
++	inode_inc_iversion(dir);
++	simple_inode_init_ts(dir);
++	exfat_truncate_inode_atime(dir);
++	mark_inode_dirty(dir);
++	exfat_unhash_inode(inode);
++	mutex_unlock(&sbi->s_lock);
++	iput(inode);
++	return err;
++
++unlock:
++	mutex_unlock(&sbi->s_lock);
++	return err;
++}
++
+ /* lookup a file */
+ static int exfat_find(struct inode *dir, const struct qstr *qname,
+ 		struct exfat_dir_entry *info)
+@@ -1327,6 +1522,7 @@
+ 	.create		= exfat_create,
+ 	.lookup		= exfat_lookup,
+ 	.unlink		= exfat_unlink,
++	.symlink	= exfat_symlink,
+ 	.mkdir		= exfat_mkdir,
+ 	.rmdir		= exfat_rmdir,
+ 	.rename		= exfat_rename,
+

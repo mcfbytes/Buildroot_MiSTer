@@ -361,10 +361,19 @@ ops (`fs/exfat/inode.c`, 7.2.3 vs 6.18.49). So 0031 as carried crashes on symlin
 CREATION on every 7.x kernel. The DE10's shipped 6.18 kernel is unaffected; the DE10's
 RT 7.2.3 kernel (`linux-patches-beta/0031` is a symlink to the same file) has the same
 latent crash and had never been exercised — the DE10 QEMU leg only ever boots the 6.18
-pin. Fix: a 7.x re-anchor of 0031 that writes the symlink data without `page_symlink`;
-tracked in `docs/de25-nano-tasks.md` and `docs/rt-beta-kernel.md`. This is precisely
-the class of bug the harness exists to catch, and the first one a second architecture
-caught for the first.
+pin. This is precisely the class of bug the harness exists to catch, and the first one a
+second architecture caught for the first.
+
+**Fixed the same day.** `linux-patches-beta/0031` is a real re-anchored copy again (the
+DE25 series links to it; the shared 6.18 patch is untouched): `exfat_symlink_write_target()`
+allocates the clusters with 7.x's `exfat_map_cluster()` under `s_lock`, writes the sectors
+through buffer heads, flushes them with `sync_blockdev_range()` (iomap `read_folio` reads the
+device directly and never sees a dirty bdev buffer), and does the `valid_size` /
+`zeroed_size` / `i_size` bookkeeping the write path would have done. Applies at `-F0` to
+pristine 7.2.3; compiles for arm with the RT `.config` and for arm64 with the DE25's; the
+aarch64 leg is **8/8** with the `symlink` case's full assertion set (hot+cold round-trip,
+`DT_LNK`, the create+unlink cluster-leak tripwire via `statvfs`, host-side fsck-clean). What
+remains unexecuted is 0031 on 32-bit 7.x — the RT kernel on a real board.
 
 ## 9. Known gaps (deliberate, not oversights)
 

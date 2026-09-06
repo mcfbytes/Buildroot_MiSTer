@@ -367,8 +367,11 @@ QEMU path that boots it — done sequentially in the main tree (owner request: s
 `a_ops->write_begin` = NULL → `Oops: pc 0x0`, kernel panic, on the first symlink created. 7.x
 exFAT is iomap-based and has no `write_begin`/`write_end` (6.18.49 has both). Not an aarch64 bug;
 not an `/init` bug; a 7.x carry bug in 0031 that the RT kernel shares and nothing had ever
-run. Recorded in ADR 0002 §8b, `docs/rt-beta-kernel.md` §6, the DE25 patch README; the fix is
-"What to do next" item 2.
+run. Recorded in ADR 0002 §8b, `docs/rt-beta-kernel.md` §6, the DE25 patch README.
+
+| Track | Deliverable | Result |
+|---|---|---|
+| 0031 re-anchor for 7.x | `linux-patches-beta/0031-exfat-samsung-symlinks.patch` is a real file again (the fifth re-anchor; the shared 6.18 patch untouched); `de25nano/linux-patches/0031` symlink → the beta copy; `series` note updated | `exfat_symlink_write_target()`: clusters via `exfat_map_cluster()` (7.x signature) under `s_lock`, sectors via buffer heads, `sync_blockdev_range()`, then `valid_size`/`zeroed_size`/`i_size`. Applies at `-F0` to pristine 7.2.3 (12/12); arm compile clean with `output-rt`'s `.config`; **aarch64 leg 8/8** from a fresh source tree (4 m 04 s). |
 
 ## What to do next — 2026-08-22
 
@@ -383,13 +386,15 @@ Remaining, in unblock order:
    test, SMMU-off first.
 2. ~~**`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
    initramfs itself, which the two-stage layout will need.~~ **DONE 2026-09-06** (wave 3).
-   What it surfaced is the new pre-hardware item: **patch 0031 (exFAT Samsung symlinks) Oopses
+   What it surfaced, and what the same PR fixed: **patch 0031 (exFAT Samsung symlinks) Oopsed
    on symlink creation on every 7.x kernel** — `page_symlink()` calls
-   `a_ops->write_begin`, which 7.x exFAT (iomap) no longer has (ADR 0002 §8b). Affects the DE25
-   AND the DE10's RT 7.2.3 kernel (same patch file by symlink). Re-anchor 0031 for 7.x (write the
-   link target without `page_symlink`), in `linux-patches-beta/` as a beta-local copy and
+   `a_ops->write_begin`, which 7.x exFAT (iomap) no longer has (ADR 0002 §8b). Affected the DE25
+   AND the DE10's RT 7.2.3 kernel (same patch file by symlink). ~~Re-anchor 0031 for 7.x (write
+   the link target without `page_symlink`), in `linux-patches-beta/` as a beta-local copy and
    pointed to from the DE25 series; the aarch64 leg's `symlink` case is the acceptance test —
-   it is the ONLY place 0031-on-7.x is executed rather than compiled.
+   it is the ONLY place 0031-on-7.x is executed rather than compiled.~~ **DONE 2026-09-06:**
+   beta-local copy, DE25 series relinked, aarch64 leg 8/8, arm compile clean on the RT config.
+   Remaining: the first `ln -s` on an RT-booted DE10 (32-bit 7.x is still compile-only).
 3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
    submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
    (ordered on return).

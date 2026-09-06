@@ -125,9 +125,9 @@ initramfs, `/media/fat` = p2. The interim shape above stays until a board has bo
 `/init` for aarch64 (`configs/fragments/initramfs-de25nano.fragment`; the `/init`, BusyBox config
 and post-build hook are shared under `board/mister/common/`) and verifies it; `scripts/
 test-initramfs.sh --board de25nano` boots it on `qemu-system-aarch64` through the DE10's eight
-cases with a test kernel built from THIS board's `linux.config`. Seven pass; the `symlink` case
-exposed that patch 0031 crashes on any 7.x kernel (ADR 0002 §8b) — fix that first. The switch
-itself is then one commit touching, together:
+cases with a test kernel built from THIS board's `linux.config`. All eight pass — the `symlink`
+case first exposed that patch 0031 crashed on any 7.x kernel, and the same PR re-anchored it
+(ADR 0002 §8b). The switch itself is one commit touching, together:
 
 | File | Change |
 |---|---|

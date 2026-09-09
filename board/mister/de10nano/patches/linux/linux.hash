@@ -90,4 +90,4 @@ sha256  ae826f33111fea6f1d279dde7299d7463c8dfd204aeb75a8fb5432bc60a28191  linux-
 # also the one case scripts/hash-sync-kernel.sh refuses to automate -- it
 # declines any value containing "-rc" and leaves this line alone, so the build
 # fails closed rather than blessing a snapshot nobody looked at.
-sha256  8ba259e8e7b13ec6ef0941c8a39ad90b24bd4a4d6c0010ba6bafb794550ecd03  linux-7.2.3.tar.xz
+sha256  01710ee01737dac492f1bae52becd057e08d20d11589089aa06accff415c28dd  linux-7.2.4.tar.xz

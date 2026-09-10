@@ -72,7 +72,7 @@ opposite of what the last five years suggested it ever would:
 | Joined archive (`cat .001 .002`) | n/a | 117,936,766 B, MD5 **`8cd4edca838fdc226390e3fb04f3ca79`**, sha256 `e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66`; `7z t` passes |
 | Official mirror of the joined file | n/a | `https://github.com/MiSTer-devel/Distribution_MiSTer/releases/download/all_releases/linux_release_20260907.7z` — fetched, **byte-identical** to our own join |
 | Archive method | `LZMA2:26 LZMA:20 BCJ2`, solid, 2 blocks | identical |
-| `linux.img` | 393,216,000 B, 13.6 % free | 393,216,000 B (same 375 MiB), **6.3 % free** (24.6 MB) — the 6.18 module set ate 29 MB |
+| `linux.img` | 393,216,000 B, 13.6 % free | 393,216,000 B (same 375 MiB), **6.3 % free** (24.6 MB) — the 6.18 module set (+21 MB) and larger firmware set (+7 MB) ate 29 MB |
 | ext4 | label `rootfs`, UUID `50ef310c…` | label `rootfs`, **new UUID** `7f78d538-13e3-4c8d-af95-292bf007d4a3`, same feature set |
 | `/MiSTer.version` | `250402` | `260907` |
 | `zImage_dtb` | 7,380,857 B (zImage 7,360,840 + DTB 20,017) | 8,564,005 B (zImage 8,543,776 + DTB 20,229); still plain concatenation, LZ4 payload, `IKCONFIG` embedded |

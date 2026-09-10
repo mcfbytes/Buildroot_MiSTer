@@ -19,14 +19,23 @@ opposite of what the last five years suggested it ever would:
 2. **The userland did NOT move.** Same Buildroot 2021.02.4 payload: glibc 2.31, BusyBox
    1.33.1, OpenSSL **1.1.1k**, OpenSSH 8.6p1, Python 3.9, wpa_supplicant 2.9, dhcpcd 9.4.0,
    eudev 3.2.9, p7zip 16.02, ProFTPD 1.3.6e, vim 8.2. The rootfs tarball was **rebuilt**
-   (2026-07-22 build stamps) but not upgraded: 38 binaries changed bytes, none changed
-   version. Same `/etc/inittab`, `fstab`, `profile`, `dhcpcd.conf`. Same four SSH host keys
-   as every stock image since 2016. Root password still `1`.
+   (2026-07-22 build stamps) but not upgraded: outside Python's `.pyc` cache, 38 files
+   changed bytes — 33 ELF binaries (none changed version), the two `perlbug`/`perlthanks`
+   stubs (a build date), `/MiSTer.version`, `/etc/shadow` (new salt; the hash still
+   verifies as `1` under `openssl passwd -5`), and **one script that really changed:
+   `usr/sbin/uartmode`** (§4.2). Two behavioural additions came through `addon.tar`:
+   that `uartmode` rewrite and a new 13th init script, `S39usb-coldplug`
+   ([`stock-userland-added.txt`](stock-reconciliation-20260907/stock-userland-added.txt)).
+   Same `/etc/inittab`, `fstab`, `profile`, `dhcpcd.conf`. Same four SSH host keys as
+   every stock image since 2016.
 3. **Stock converged on our Wi-Fi/Bluetooth model.** All six out-of-tree Realtek forks are
    gone; in their place mainline `rtw88` (8723DU/8812AU/8814AU/8821CU/8822BU/8822CU),
    `rtw89` (8851BU/8852BU), `mt7921u`/`mt7925u`, `rtl8192du`, `ath6kl_usb`, `carl9170`,
-   `btmtk`. 52 → 89 modules, 66 → 91 firmware files. Two of the additions are drivers we
-   deliberately left off (`ath10k_usb`, `ar5523`) — see §5.
+   `btmtk`. 52 → 89 modules, 66 → 91 firmware files on the rootfs (64 → 89 in
+   `firmware.tar.gz`; §3.2 explains the bases). Two of the additions are drivers we
+   deliberately left off (`ath10k_usb`, `ar5523`) — see §5. One removal has **no**
+   replacement in the shipped kernel: the `8821au` fork is gone and `RTW88_8821AU` was
+   only enabled the day after the cut (§2.6).
 4. **The archive format changed.** `release_20260907.7z` is committed to SD-Installer as
    **two split volumes** (`.7z.001` + `.7z.002`, 117,936,766 bytes joined). The Downloader
    cannot consume a split archive, so `Distribution_MiSTer` grew a joiner that mirrors one
@@ -47,7 +56,9 @@ opposite of what the last five years suggested it ever would:
    `hid-logitech-hidpp` / `hid-logitech-dj`** (Unifying receivers, K400 Fn fix), because
    both now depend on `LEDS_CLASS_MULTICOLOR`, which stock leaves unset — and the fork's
    own 230 lines of patches to those two drivers are compiled out. Also gone: the
-   cpufreq driver (port landed two days after the cut) and the iptables `filter` table.
+   cpufreq driver (port landed two days after the cut), the iptables `filter` table, and
+   **every driver for RTL8811AU/8821AU dongles** (fork removed, in-kernel replacement not
+   yet enabled — an Archer T2U Nano that worked on 20250402 has no Wi-Fi on 20260907).
    Our image has all of them.
 
 ---
@@ -88,7 +99,11 @@ suffix comes from the branch, and `/lib/modules/6.18.38-MiSTer` now **matches `u
 `MiSTer-devel/Linux-Kernel_MiSTer` HEAD is now branch **`MiSTer-v6.18`**
 (`c129b0fac34ad5d613bbec3f59d6036775e41c83`). Its history is a chain of squash-imports
 (`v5.13.12 → v5.14 → v5.14.5 → v5.15.1 → v6.18.38`, commit `d9ac12a6`) with **~60 MiSTer
-commits rebased on top** (all dated 2026-07-23, Sorgelig). So there is still no
+commits rebased on top** (all committed 2026-07-23 by Sorgelig's rebase; seven of them are
+authored by contributors — Martin Donlon, Aurora, James McCarthy, Alexey Melnikov, Michael
+Huang and Nolan Nicholson (2) — per
+[`stock-kernel-commits.txt`](stock-reconciliation-20260907/stock-kernel-commits.txt),
+which is the authorship the patch-provenance record must carry). So there is still no
 `merge-base` with mainline, but `git diff v6.18.38 MiSTer-v6.18` is now a clean, small
 delta: the squash-import tree equals `v6.18.38` except for a deleted
 `Documentation/.renames.txt`. Full commit list:
@@ -127,7 +142,10 @@ against `board/mister/de10nano/linux-patches/`:
   wiimote (`0023`), Keyrah Europe-1 (`0024`), usbhid jspoll (`0025`), mousedev/EVIOCGRAB
   (`0026`), mt76x2u Xbox IDs (`0027`), dwc2 unaligned IN (`0028`), leds-gpio (`0029`),
   i2c-designware (`0030`), exfat symlinks (`0031`), joy-con LED / DualSense player-ID /
-  mute-`BTN_Z` / NSO Genesis (`0032`–`0042`), CSR clones (`0036`), loop-root init (`0100`).
+  mute-`BTN_Z` / NSO Genesis (`0032`–`0042`), CSR clones (`0036`). Stock's "Support for
+  init loop device" (`do_mounts.c`) has a counterpart in `linux-patches-upstream/0100`,
+  but that directory is **not** applied to this image (README: replaced by the
+  initramfs); it exists only for the exported upstream tree.
 - **In stock 6.18, deliberately not in ours** (unchanged dispositions from
   `docs/patch-provenance.md`): `vt.h MAX_NR_CONSOLES 63→9`; `spidev` `altspi` compatible
   (we retarget the DTS to `rohm,dh2228fv`); `drivers/block/loop.c` `loop_max_part()` export
@@ -144,7 +162,7 @@ against `board/mister/de10nano/linux-patches/`:
 Stock 20250402 → 20260907 DTB: the 6.18 `socfpga.dtsi` modernisation only (node renames
 `serial0@` → `serial@`, `intc@` → `interrupt-controller@`, `dwmmc0@` → `mmc@`, new
 `stmmac-axi-config`, `clk-phase-sd-hs`, `intel,socfpga-qspi` compatible, dropped
-`#dma-channels`). Stock 20260907 → ours: 56 changed lines, all already documented in
+`#dma-channels`). Stock 20260907 → ours: 54 changed lines (28 added, 26 removed), all already documented in
 [`docs/dts-comparison.md`](../dts-comparison.md) — `terasic,de10-nano` compatible, the
 `altspi` → `rohm,dh2228fv` retarget, proper `nxp,`/`st,`/`microchip,` RTC compatibles,
 `accelerometer@53` with `INT1`, `bus@ff200000` for the UIO regions, `MiSTer_fb@22000000`.
@@ -182,7 +200,8 @@ with `scripts/extract-ikconfig` from any 6.18 tree).
 
 Symbols that were `y`/`m` in stock's 5.15.1 `IKCONFIG` and are **`n` or absent** in its
 6.18.38 one, ignoring pure renames (`CRYPTO_*_ARM`, `UNIX_SCM`, `FB_CMDLINE`,
-`CRYPTO_GF128MUL`) and the six vendor forks that were replaced on purpose:
+`CRYPTO_GF128MUL`) and five of the six vendor forks, which were replaced on purpose by an
+in-kernel driver that *is* built — the sixth is the last row of this table:
 
 | Lost | Mechanism | User-visible effect on stock 20260907 | Ours |
 |---|---|---|---|
@@ -191,6 +210,7 @@ Symbols that were `y`/`m` in stock's 5.15.1 `IKCONFIG` and are **`n` or absent**
 | `ARM_SOCFPGA_CPUFREQ=y` | port to 6.18 landed 2026-09-09, two days after the cut (§2.2) | no cpufreq driver: no `/sys/devices/system/cpu/cpufreq/`, CPU stays at U-Boot's 800 MHz; harmless unless something scripted `cpufreq-set` | `=y` (`0003`) |
 | `IP_NF_FILTER=y`, `IP_NF_TARGET_REJECT=y` | dropped in the defconfig regeneration (`NETFILTER`, `IP_NF_IPTABLES` kept) | `iptables -t filter` (the default table) fails with "table does not exist"; stock ships the `iptables` binaries but no init script uses them, so only user scripts notice | `IP_NF_FILTER=y`, `IP_NF_TARGET_REJECT=y`, `IP_NF_MANGLE=m` |
 | `EXFAT_DISCARD=y`, `EXFAT_DELAYED_SYNC=y` | options of the 5.15 fork's older exFAT driver; mainline exFAT has neither | none that is measurable from here | n/a (same mainline driver) |
+| `RTL8821AU=m` (the `8821au` vendor fork) | removed with the other five forks, but its in-kernel replacement `RTW88_8821AU` was only enabled in `33a0521f` on 2026-09-08, **after** the cut (§2.2); the shipped config has `RTW88_8812AU=m` and no `8821A` symbol | **RTL8811AU/RTL8821AU dongles (e.g. TP-Link Archer T2U Nano, 2357:011e) have no driver at all** on stock 20260907 — a regression from 20250402, where the fork drove them. The other five chips are covered (`rtl8xxxu`, `rtw88_8812au/8821cu/8822bu`) | `rtw88_8821au` built since ADR 0016 ✔ |
 
 The first two rows are the ones that matter: they are exactly the "silent regression"
 class `MISTER-KERNEL-PATCH-RECON.md` §0 was written to catch on **our** side, and upstream
@@ -218,6 +238,15 @@ drivers plus more), `ar5523`, `ath10k_core`, `ath10k_usb`, `bfusb` (§5).
 
 ### 3.2 Firmware: 66 → 91 files (89 in `firmware.tar.gz`)
 
+**Counting basis, because three numbers circulate for the old release.** Everything in
+this section counts regular files on the assembled rootfs, which is `firmware.tar.gz`
+plus the two `regulatory.db`/`regulatory.db.p7s` files `rootfs.tar.bz2` itself carries:
+20250402 = 64 (tarball) + 2 = **66**; 20260907 = 89 + 2 = **91**. The `69` in
+[`docs/stock-reconciliation.md`](../stock-reconciliation.md) is the tarball at creator commit
+`8aba321` (2026-07, three xone dongle blobs and two rtl8821c updates after the 20250402
+cut, never shipped in an image); the `72` in the 20250402 verification doc counts
+directories. The raw lists here are rootfs-basis on both sides.
+
 Added since 20250402 (25):
 [`stock-fw-added-since-20250402.txt`](stock-reconciliation-20260907/stock-fw-added-since-20250402.txt)
 — `rtw88/{rtw8812a,rtw8821a,rtw8821c,rtw8822b}_fw.bin`, `rtw89/{rtw8851b,rtw8852b,
@@ -225,8 +254,12 @@ rtw8852b_fw-1}`, `mediatek/{WIFI_MT7961_patch_mcu_1_2_hdr,WIFI_RAM_CODE_MT7961_1
 `mediatek/mt7925/*` (2), `ath10k/QCA9377/hw1.0/{board-2,firmware-6}`,
 `ath6k/AR6004/hw1.3/{bdata,fw-3}`, `rtlwifi/{rtl8188fufw,rtl8192dufw,rtl8192fufw,
 rtl8710bufw_SMIC,rtl8710bufw_UMC,rtl8723bu_bt}`, `xone_dongle_{02e6,02f9,02fe,091e}`.
-Nothing was removed. Stock still has **no** `mediatek/mt7663*`, no `rtl_bt/rtl8761b*`, no
-`ath3k-1.fw`/`ar3k/`, no `brcm/`, no `qca/`, no MT7961 **Bluetooth** patch — so every
+Nothing was removed. Stock still has **no** `mediatek/mt7663*`, no `ath3k-1.fw`/`ar3k/`,
+no `qca/`, no MT7961 **Bluetooth** patch, and its `brcm/` is still the single
+`BCM20702A1-0b05-17cb.hcd` (no `brcmfmac` Wi-Fi blobs). (An earlier draft of this
+sentence also listed `rtl_bt/rtl8761b*` and "no `brcm/`" — wrong on both counts: stock has
+shipped `rtl_bt/rtl8761bu_{fw,config}.bin` and that one `.hcd` since 20250402, as the
+raw list shows and as README l.99 / `bluetooth-parity.md` already say.) So every
 "stock has no X" row in [`bluetooth-parity.md` §9](../bluetooth-parity.md) and
 [`wifi-parity.md` §6](../wifi-parity.md) still holds, except that stock's *Wi-Fi* driver
 coverage is now roughly ours minus Broadcom/Redpine/ath9k_htc and minus the BT halves.
@@ -235,8 +268,10 @@ coverage is now roughly ours minus Broadcom/Redpine/ath9k_htc and minus the BT h
 
 ### 4.1 Where stock caught up (no action, but the comparison prose is stale)
 
-- Mainline-first Wi-Fi: stock now makes the same choice ADR 0016 made, for the same six
-  chips, and additionally ships `rtw89`/`mt7925u` Wi-Fi 6/6E and `rtl8192du`.
+- Mainline-first Wi-Fi: stock now makes the same choice ADR 0016 made, for five of the
+  six chips (the sixth, RTL8811AU/8821AU, is a regression until stock's next build picks
+  up `RTW88_8821AU` — §2.6), and additionally ships `rtw89`/`mt7925u` Wi-Fi 6/6E and
+  `rtl8192du`.
 - Kernel on an LTS line. (Whether stock will take `6.18.y` stable updates is unknown; it
   cut at `.38` while `.50` was current, and the 5.15 branch never took one.)
 - `xpad` as a module, `hid-vader4`, `btmtk`, `CONFIG_TUN`.
@@ -253,7 +288,8 @@ coverage is now roughly ours minus Broadcom/Redpine/ath9k_htc and minus the BT h
 | `ath10k/QCA9377/hw1.0/*` | no `ath10k` | deliberate (wifi-parity §7: upstream calls `ATH10K_USB` "will not fully work") | keep off; note stock now ships it |
 | `xone_dongle_02f9.bin`, `_091e.bin` | `02e6`, `02fe` only | ADR 0003: those two PIDs are laptop-internal dongles | keep |
 | `RTL8192E/*`, `mediatek/mt7662u*`, `rt2870_sw_ch_offload.bin`, `rtl_bt/rtl8192e{e,u}_fw.bin`, `rtlwifi/rtl8723defw.bin` | absent | all justified in `stock-reconciliation.md` §1 | keep |
-| `S39usb-coldplug` (`udevadm trigger --subsystem-match=usb --action=add` after `S30dbus`) | `S10udevd` already triggers all subsystems + devices at udev start | stock added a second USB replay, presumably because with 6.18's module set the first coldplug races module availability. Ours loads modules via udev's builtin kmod at coldplug, so no second pass is needed | verify on hardware that a USB Wi-Fi/BT dongle present at power-on binds without a replug; if it does, document; if not, add the same one-liner |
+| `S39usb-coldplug` (`udevadm trigger --subsystem-match=usb --action=add` + `settle` after `S30dbus`; the new 13th init script) | vendored **byte-identical** (#160) | A second USB replay after the one `S10udevd` already does. Stock gives no rationale. A first draft of this row declined it as a double-fire hazard for our USB `RUN+=` rules; that was wrong — `--subsystem-match=usb` re-emits only for devices whose own subsystem is `usb`, and none of our `RUN+=` rules match that (`scsi_device`, `net`, `block`). It re-runs only udev's idempotent kmod load and costs one empty-queue `settle` | **done** (#160) |
+| `usr/sbin/uartmode` rewritten (2375 → 2975 B; `fuser -k` on `/dev/ttyS1` instead of `killall` by name, `169.254.*` filtered from the PPP IP detection, `pppd` fatal exit codes end the respawn loop, new mode 6 respawning `/media/fat/snid`) | the `8aba321` copy | The one non-ELF file whose content changed in this release; an earlier draft of §1 bucketed it with the rebuilt binaries. Main invokes `uartmode <n>` from the OSD, so every stock user with the new Main gets the new modes | re-vendored byte-identical (#160) |
 | `MidiLink.INI` with `[NES]`, `[GBMIDI]`, `[X68000]` sections | 2020 file from the 20250402 pin | our `release_YYYYMMDD.7z` and `sdcard.img` `rsync` the **old** file over `/media/fat/linux/MidiLink.INI` on every update — a stock user who updates to us **loses** the three new sections (MidiLink needs them for those cores) | bump the stock pin (§6) or vendor the file |
 
 Full list: [`stock-fw-absent-in-ours.txt`](stock-reconciliation-20260907/stock-fw-absent-in-ours.txt).
@@ -265,7 +301,7 @@ still holds and is now *more* stark: stock rebuilt a 2021 Buildroot tree around 
 kernel, so it ships OpenSSL 1.1.1k (EOL 2023-09-11) next to Linux 6.18. Also unchanged:
 identical SSH host keys, no timezone detection, p7zip 16.02 as `7zr` **and** as the
 network-fetched `7za`, 375 MiB image now at 6.3 % free, no NTFS, no Broadcom/Redpine/
-ath9k_htc, no BT firmware for MT7961/QCA/ath3k/rtl8761b, no RT kernel, no SBOM, no
+ath9k_htc, no BT firmware for MT7961/QCA/ath3k, no RT kernel, no SBOM, no
 reproducibility, no published rootfs recipe.
 
 ## 5. Stock modules we do not build — decision check
@@ -380,19 +416,20 @@ Ordered by how wrong the reader is left.
    round-trip against **our** archive still runs in `release.yml` as before.
 4. **Docs** per §7 — userland side **done** across #158 (firmware), #159 (pin: `ci.md`,
    `renovate.md`, `downloader-contract.md` §11.1, `reference-materials.md`, README's
-   "stock does not move", the bug template) and #160 (`S39usb-coldplug` disposition in
-   `init-parity.md` and `stock-reconciliation.md` §3d, README image-size row). The
+   "stock does not move", the bug template) and #160 (the `uartmode` rewrite and
+   `S39usb-coldplug` vendored byte-identical, with the dispositions in `init-parity.md`
+   and `stock-reconciliation.md` §3d; README image-size row). The
    kernel-side rows of §7 (`version-delta.md` kernel line, `kernel-config-deltas.md`,
    `patch-provenance.md`, the kernel-recon set, `wifi-parity.md` §6-7's driver claims,
    ADR 0016's postscript, `stock-reconciliation.md` §2) are the kernel session's.
 5. **Watch**: `Distribution_MiSTer` `db_operator.py` for the `linux` entry's return, and
    `Linux-Kernel_MiSTer` for whether `MiSTer-v6.18` ever takes a `6.18.y` bump (it would be
    the first stable update stock has ever taken).
-6. **Hardware check** (cannot be done here): USB coldplug without `S39usb-coldplug` (§4.2),
-   and, on a stock 20260907 card, `/dev/fb0` mmap (§2.2) plus a DualSense and a Logitech
-   Unifying receiver (§2.6) — three regressions we can expect support threads about, and
-   for all three the answer is "this image has never had the problem" (`0001`,
-   `HID_PLAYSTATION`/`HID_LOGITECH` with `LEDS_CLASS_MULTICOLOR=y`).
+6. **Hardware check** (cannot be done here): on a stock 20260907 card, `/dev/fb0` mmap
+   (§2.2), a DualSense, a Logitech Unifying receiver and an RTL8811AU/8821AU dongle
+   (§2.6) — four regressions we can expect support threads about, and for all four the
+   answer is "this image has never had the problem" (`0001`, `HID_PLAYSTATION`/
+   `HID_LOGITECH` with `LEDS_CLASS_MULTICOLOR=y`, `rtw88_8821au`).
 7. **Upstream courtesy**: the §2.6 finding is a one-line fix in `MiSTer_defconfig`
    (`CONFIG_LEDS_CLASS_MULTICOLOR=y`, then re-`olddefconfig`). Worth an issue on
    `Linux-Kernel_MiSTer` with this document as evidence; it also protects the users who

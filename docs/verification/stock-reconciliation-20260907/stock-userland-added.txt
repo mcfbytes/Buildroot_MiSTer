@@ -1,0 +1,5 @@
+dir  ./etc/modprobe.d
+file ./etc/init.d/S39usb-coldplug
+file ./etc/jms583-phantom-guard.sh
+file ./etc/modprobe.d/rtw88-prefer.conf
+file ./etc/udev/rules.d/60-jms583-phantom.rules

@@ -27,7 +27,7 @@ BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
 # --- Kernel stanza (docs/buildroot-config.md §3.4) ---
 # Renovate bumps the version line (renovate.json, kernel-longterm-6.18);
 # the tarball hash follows via .github/workflows/renovate-hash-sync.yml.
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.49"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.50"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"

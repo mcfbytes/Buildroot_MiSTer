@@ -86,6 +86,18 @@ LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
 # "brcm/BCM%s.hcd" with %s = "-<vid>-<pid>" (btbcm.c), so this name is exactly
 # what a 0bb4:0306 dongle asks for. Distinct from brcm/BCM20702A1-0b05-17cb.hcd,
 # which upstream does NOT carry and which package/bcm20702-firmware fetches.
+#
+# rtlwifi/rtl8710bufw_{SMIC,UMC}.bin and rtlwifi/rtl8192fufw.bin (2026-09,
+# stock release_20260907 parity -- docs/verification/stock-release-20260907.md
+# §4.2): the in-tree rtl8xxxu driver we build (CONFIG_RTL8XXXU=m with
+# RTL8XXXU_UNTESTED=y) drives RTL8710BU and RTL8192FU and requests these
+# three by name (rtl8xxxu/8710b.c: rtl8710bu_load_firmware() picks SMIC or
+# UMC by the chip's vendor bits; rtl8xxxu/8192f.c: rtl8192fu_load_firmware()).
+# Buildroot's _RTL_81XX list predates both chips and installs neither, so
+# until now the driver bound and then failed at request_firmware() -- the
+# README's "RTL8710BU: in-kernel rtl8xxxu" row was hollow. Stock 20260907
+# ships all three; all three are in the pinned linux-firmware tree (WHENCE
+# "File: rtlwifi/rtl8710bufw_SMIC.bin" / "_UMC.bin" / "rtl8192fufw.bin").
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	brcm/BCM-0bb4-0306.hcd \
 	mediatek/mt7610u.bin \
@@ -96,7 +108,33 @@ LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7663pr2h_rebb.bin \
 	mediatek/mt7668pr2h.bin \
 	rtlwifi/rtl8192dufw.bin \
+	rtlwifi/rtl8192fufw.bin \
+	rtlwifi/rtl8710bufw_SMIC.bin \
+	rtlwifi/rtl8710bufw_UMC.bin \
 	rtlwifi/rtl8723befw_36.bin
+
+# Symlinks, "<link> <target>" pairs, created under $(TARGET_DIR)/lib/firmware
+# at install time (relative targets, same directory -- exactly the shape
+# linux-firmware's own WHENCE-driven install produces for its aliases).
+#
+# rtlwifi/rtl8723bu_bt.bin -> rtl8723bs_bt.bin (2026-09, stock 20260907
+# parity): rtl8xxxu/8723b.c's rtl8723bu_load_firmware() requests
+# "rtlwifi/rtl8723bu_bt.bin" whenever the RTL8723BU's Bluetooth half is
+# enabled (priv->enable_bluetooth) and "rtl8723bu_nic.bin" otherwise.
+# Upstream linux-firmware has NEVER carried a file by the _bt name (WHENCE
+# at the pinned snapshot: no "rtl8723bu_bt" entry, no Link: alias), so a
+# BT-combo 8723BU stick failed firmware load on every mainline kernel.
+# Stock 20260907 closed that by shipping rtlwifi/rtl8723bu_bt.bin, and its
+# copy is BYTE-IDENTICAL (sha256 774f6628...6aea, 9120 bytes) to upstream's
+# rtlwifi/rtl8723bs_bt.bin, which BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX
+# already installs on this image. So the stock file is reproduced from the
+# pinned, hash-verified upstream tarball as an alias of a file we already
+# ship -- no second source, no fabricated blob (project rule), and no
+# duplicate 9 KiB. The link is relative and lands in the same directory as
+# its target, so it survives the ext4 image, the release .7z and the
+# Downloader's rsync exactly like linux-firmware's own alias symlinks do.
+LINUX_FIRMWARE_EXTRA_SYMLINKS = \
+	rtlwifi/rtl8723bu_bt.bin:rtl8723bs_bt.bin
 
 # Copy the firmware members out of linux-firmware's extracted tree into our own
 # $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.
@@ -117,6 +155,8 @@ endef
 define LINUX_FIRMWARE_EXTRA_INSTALL_TARGET_CMDS
 	$(foreach f,$(LINUX_FIRMWARE_EXTRA_MEMBERS), \
 		$(INSTALL) -m 0644 -D $(@D)/$(f) $(TARGET_DIR)/lib/firmware/$(f)$(sep))
+	$(foreach l,$(LINUX_FIRMWARE_EXTRA_SYMLINKS), \
+		ln -sfn $(word 2,$(subst :, ,$(l))) $(TARGET_DIR)/lib/firmware/$(word 1,$(subst :, ,$(l)))$(sep))
 endef
 
 $(eval $(generic-package))

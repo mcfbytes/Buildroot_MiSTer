@@ -20,6 +20,12 @@ VENDOR_NOTES = {
 	"mediatek": ("mt76x0/mt7622 (mt76 family)", "P3.1 / P3.3"),
 	"rtl_bt": ("btrtl (Realtek Bluetooth USB)", "P3.3 (Bluetooth USB firmware)"),
 	"rtlwifi": ("rtlwifi (in-tree Realtek WiFi: 8188e/8192c/8192d/8192e/8723 family)", "P3.1 (class E where out-of-tree) / P3.3"),
+	# Directories first seen in stock release_20260907 (kernel 6.18.38,
+	# mainline-first WiFi -- docs/verification/stock-release-20260907.md §3.2).
+	"ath10k": ("ath10k_usb (QCA9377 USB; upstream marks the USB bus EXPERIMENTAL/non-working)", "docs/wifi-parity.md §7 (deliberately not built)"),
+	"ath6k": ("ath6kl_usb (AR6004 USB)", "P3.3 (linux-firmware ATHEROS_6004)"),
+	"rtw88": ("rtw88 (in-tree Realtek 802.11ac USB: 8812AU/8821AU/8821CU/8822BU)", "P3.3 (linux-firmware RTL_RTW88)"),
+	"rtw89": ("rtw89 (in-tree Realtek Wi-Fi 6/6E USB: 8851BU/8852BU)", "P3.3 (linux-firmware RTL_RTW89)"),
 }
 LOOSE_FILE_NOTES = {
 	"mt7601u.bin": ("rt2800usb/mt7601u (in-tree ralink/mt76 family)", "P3.1 / P3.3"),
@@ -31,6 +37,12 @@ LOOSE_FILE_NOTES = {
 	"regulatory.db": ("cfg80211 (wireless regulatory database, not a driver firmware blob)", "P3.3 (linux-firmware parity, not driver-specific)"),
 	"regulatory.db.p7s": ("cfg80211 (regulatory.db's detached signature)", "P3.3"),
 	"xow_dongle.bin": ("xone / xow (Xbox One wireless dongle firmware)", "P3.2 (xone package + redistribution decision)"),
+	# Per-PID xone dongle firmware, first shipped by stock in 2026 ("Add
+	# firmwares for different XBOX USB dongles", Linux_Image_creator d947f5f).
+	"xone_dongle_02e6.bin": ("xone (Xbox Wireless Adapter, PID 0x02e6 -- external USB dongle)", "P3.2 (package/xow-firmware ships it)"),
+	"xone_dongle_02fe.bin": ("xone (Xbox Wireless Adapter, PID 0x02fe -- external USB dongle)", "P3.2 (package/xow-firmware ships it)"),
+	"xone_dongle_02f9.bin": ("xone (PID 0x02f9 -- dongle soldered into laptop mainboards, not attachable to a DE10-Nano)", "ADR 0003 (deliberately not shipped)"),
+	"xone_dongle_091e.bin": ("xone (PID 0x091e -- Surface Book 2 internal dongle, not attachable to a DE10-Nano)", "ADR 0003 (deliberately not shipped)"),
 }
 
 
@@ -64,19 +76,33 @@ def main(argv: list[str]) -> int:
 
 	md: list[str] = []
 	md.append(f"**Regular files under `/{FW_DIR}`: {len(files)}**\n")
-	md.append("### Resolving the \"72 firmware files\" figure in PLAN.md §3/§4.1, TASKS.md A5, and the verification doc\n")
-	md.append(f"Those all say stock ships \"72 firmware files\". The actual count of")
-	md.append(f"**regular files** is **{len(files)}**. Reproducing the likely source of")
-	md.append(f"the \"72\": `find /usr/lib/firmware | wc -l` (i.e. *without* `-mindepth 1`)")
-	md.append(f"counts the firmware directory itself as one line, plus one line per entry")
-	md.append(f"under it -- {len(files)} files + {len(dirs)} subdirectories" +
-	           (f" + {len(symlinks)} symlinks" if symlinks else "") +
-	           f" + 1 (the dir itself) = **{find_no_mindepth_count}**, matching the")
-	md.append(f"documented figure exactly. So the existing docs are counting directories")
-	md.append(f"(and the top-level dir itself) as if they were firmware files. **This")
-	md.append(f"doc's {len(files)} is the corrected, authoritative count** (files only,")
-	md.append(f"via `find -type f`, cross-checked against `debugfs -R \"ls -l ...\"` on the")
-	md.append(f"raw ext4 image directly, not just the extracted tree).\n")
+	if find_no_mindepth_count == 72:
+		# The stock release_20250402 image -- the one PLAN.md/TASKS.md's
+		# "72 firmware files" figure was (mis)counted on. Keep the
+		# reconciliation paragraph exactly as the P0.3 run produced it.
+		md.append("### Resolving the \"72 firmware files\" figure in PLAN.md §3/§4.1, TASKS.md A5, and the verification doc\n")
+		md.append(f"Those all say stock ships \"72 firmware files\". The actual count of")
+		md.append(f"**regular files** is **{len(files)}**. Reproducing the likely source of")
+		md.append(f"the \"72\": `find /usr/lib/firmware | wc -l` (i.e. *without* `-mindepth 1`)")
+		md.append(f"counts the firmware directory itself as one line, plus one line per entry")
+		md.append(f"under it -- {len(files)} files + {len(dirs)} subdirectories" +
+		           (f" + {len(symlinks)} symlinks" if symlinks else "") +
+		           f" + 1 (the dir itself) = **{find_no_mindepth_count}**, matching the")
+		md.append(f"documented figure exactly. So the existing docs are counting directories")
+		md.append(f"(and the top-level dir itself) as if they were firmware files. **This")
+		md.append(f"doc's {len(files)} is the corrected, authoritative count** (files only,")
+		md.append(f"via `find -type f`, cross-checked against `debugfs -R \"ls -l ...\"` on the")
+		md.append(f"raw ext4 image directly, not just the extracted tree).\n")
+	else:
+		md.append("### How to read the count\n")
+		md.append(f"**{len(files)}** is the count of *regular files* (`find -type f`), the same")
+		md.append(f"basis every earlier inventory used. A bare `find /usr/lib/firmware | wc -l`")
+		md.append(f"would report {find_no_mindepth_count} ({len(files)} files + {len(dirs)} subdirectories" +
+		           (f" + {len(symlinks)} symlinks" if symlinks else "") +
+		           f" + 1 for the directory itself); that figure counts directories as if")
+		md.append(f"they were firmware and is not used anywhere in this repo. The previous")
+		md.append(f"stock release (release_20250402) had 66 regular files; see")
+		md.append(f"`docs/verification/stock-release-20260907.md` §3.2 for the delta.\n")
 
 	if symlinks:
 		md.append(f"Symlinks under `/{FW_DIR}`: **{len(symlinks)}** (none expected/found is also a valid, reported result).\n")

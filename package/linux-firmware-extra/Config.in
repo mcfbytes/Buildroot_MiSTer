@@ -3,16 +3,28 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	depends on BR2_PACKAGE_LINUX_FIRMWARE
 	default y
 	help
-	  Ten firmware files that a currently in-tree 6.18 kernel driver
-	  genuinely still requests, but that Buildroot's own linux-firmware
-	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
-	  has NO sub-option for -- upstream linux-firmware ships every one of
-	  these ten, Buildroot's curated Config.in list just never grew a
+	  Thirteen firmware files (plus one same-directory symlink) that a
+	  currently in-tree 6.18 kernel driver genuinely still requests, but
+	  that Buildroot's own linux-firmware package
+	  (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up) has NO
+	  sub-option for -- upstream linux-firmware ships every one of these
+	  thirteen, Buildroot's curated Config.in list just never grew a
 	  toggle for them.
 
-	  Four are stock-parity files (docs/stock-inventory/firmware.md).
-	  The other six are NOT -- stock ships none of them. The four
-	  mediatek/mt7663* back CONFIG_MT7663U=m, rtlwifi/rtl8192dufw.bin
+	  Seven are stock-parity files (docs/stock-inventory/firmware.md,
+	  re-based on stock release_20260907 in 2026-09): the four original
+	  ones plus rtlwifi/rtl8710bufw_SMIC.bin, rtlwifi/rtl8710bufw_UMC.bin
+	  and rtlwifi/rtl8192fufw.bin, which the in-tree rtl8xxxu driver
+	  (CONFIG_RTL8XXXU=m, RTL8XXXU_UNTESTED=y) requests for RTL8710BU and
+	  RTL8192FU and which no _RTL_81XX/_87XX list installs. The symlink,
+	  rtlwifi/rtl8723bu_bt.bin -> rtl8723bs_bt.bin, is also stock parity:
+	  rtl8xxxu asks for the _bt name when an RTL8723BU's Bluetooth half is
+	  on, upstream never shipped that name, and stock's file is
+	  byte-identical to upstream's rtl8723bs_bt.bin (already installed by
+	  _RTL_87XX) -- see the .mk for the hashes.
+
+	  The other six are NOT stock files -- stock ships none of them. The
+	  four mediatek/mt7663* back CONFIG_MT7663U=m, rtlwifi/rtl8192dufw.bin
 	  backs CONFIG_RTL8192DU=m, and brcm/BCM-0bb4-0306.hcd backs btbcm
 	  under btusb; each is enabled beyond stock, and without its firmware
 	  the driver probes and then fails at request_firmware(). See
@@ -27,7 +39,8 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	  files always match the rest of the firmware on the image and there
 	  is no separately pinned version to drift -- it previously did,
 	  sitting at 20251011 while linux-firmware moved to 20260410. The
-	  ten paths below were confirmed present in that extracted tree.
+	  paths below were confirmed present in that extracted tree (the three
+	  2026-09 rtlwifi additions against the 20260810 WHENCE).
 
 	  Covers: mediatek/mt7610u.bin (MT7610U -- only the "e" PCIe sibling
 	  mt7610e.bin has a toggle), mediatek/mt7622pr2h.bin and

@@ -643,7 +643,7 @@ SONAMEs, not `dlopen()`'d plugins, and `abi-contract.md` §2.2 explicitly warns
 imlib2's loaders are invisible to a DT_NEEDED/SONAME scan (they're dlopen'd
 from `usr/lib/imlib2/loaders/*.so` at runtime) and must be turned on by hand or
 `menu.png`/`menu.jpg` backgrounds silently fail to load. Verified against
-`docs/stock-inventory/shared-libraries.md`'s on-device loader list
+`docs/stock-inventory/20250402/shared-libraries.md`'s on-device loader list
 (argb/bmp/bz2/ff/gif/ico/id3/jpeg/lbm/png/pnm/tga/xpm/zlib) — everything
 except gif/id3/jpeg/png/tiff builds into imlib2 unconditionally with no
 Buildroot Config.in gate, so enabling those five reproduces stock's loader set
@@ -777,12 +777,12 @@ package — both authored under `package/`. See `docs/midi-mt32-parity.md`.
 `BR2_PACKAGE_MUNT=y`, `BR2_PACKAGE_MIDILINK=y`.
 
 alsa-utils MIDI tools — stock ships amidi/aplaymidi/arecordmidi/aseqdump/
-aseqnet/aconnect (`docs/stock-inventory/binaries-needed-full.txt`), the tooling
+aseqnet/aconnect (`docs/stock-inventory/20250402/binaries-needed-full.txt`), the tooling
 that exercises the ALSA-seq MIDI graph: `BR2_PACKAGE_ALSA_UTILS` +
 `_ACONNECT`, `_AMIDI`, `_APLAYMIDI`, `_ARECORDMIDI`, `_ASEQDUMP`, `_ASEQNET`.
 
 General (non-MIDI) ALSA CLI tools (P3.15) — stock ships all of these
-(`docs/stock-inventory/binaries-needed-full.txt`); the P3.8 MIDI pass
+(`docs/stock-inventory/20250402/binaries-needed-full.txt`); the P3.8 MIDI pass
 deliberately left them for this separate general-ALSA-parity pass. alsactl
 (mixer save/restore), alsamixer/amixer (volume), aplay/arecord (`APLAY`
 provides both), alsabat (`BAT`), alsaloop, alsatplg, alsaucm, iecset (S/PDIF
@@ -826,7 +826,7 @@ libcrypto/libssl, not GnuTLS).
 `BR2_PACKAGE_WGET=y` — GNU wget, stock parity restored (issue #130,
 2026-09-01). Stock ships a real GNU wget ELF at `usr/bin/wget` linked against
 `libgnutls.so.30`, `libnettle.so.8`, `libpcre.so.1`, `libuuid.so.1` and
-`libz.so.1` (`docs/stock-inventory/binaries-needed-full.txt:351`), plus GNU
+`libz.so.1` (`docs/stock-inventory/20250402/binaries-needed-full.txt:351`), plus GNU
 wget's own `/etc/wgetrc` — 4945 bytes, see `etc-configs.md:1097` — a file
 BusyBox's applet never reads. Stock's BusyBox 1.33.1 ALSO had the wget applet
 compiled in (`busybox-applets.md:278`), but the GNU ELF owned the path, so the
@@ -982,7 +982,7 @@ omits) ships in the rootfs-overlay and overrides the package's default — see
 manifest — discovered during P2.1 verification: DEPRECATED (below) `depends on
 BLUEZ5_UTILS_CLIENT || BLUEZ5_UTILS_TOOLS`, and stock ships
 `usr/bin/bluetoothctl` (needs CLIENT) + `usr/bin/gatttool` (also needs CLIENT),
-per `docs/stock-inventory/binaries-needed-full.txt`.
+per `docs/stock-inventory/20250402/binaries-needed-full.txt`.
 `BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y` — NOT in the manifest — the other half of
 DEPRECATED's prerequisite; stock also ships hciattach/l2ping which live under
 TOOLS. `BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y` — hciconfig/hcitool/sdptool/
@@ -1108,7 +1108,7 @@ controller/member): `BR2_PACKAGE_SAMBA4_AD_DC`, `BR2_PACKAGE_SAMBA4_ADS`,
 `BR2_PACKAGE_OPENSSH=y`. **`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`** —
 deliberately NOT set (Buildroot defaults it to y, i.e. `--with-sandbox`). Our
 kernel carries `# CONFIG_SECCOMP is not set` (`linux.config:48`), matching
-stock (`docs/stock-inventory/stock-linux.config:592`), so
+stock (`docs/stock-inventory/20250402/stock-linux.config:592`), so
 `prctl(PR_SET_SECCOMP)` returns EINVAL. Through openssh 10.3 that was only a
 `debug()` and sshd ran the pre-auth child unsandboxed — which is what this
 image has silently done for its entire life; the seccomp sandbox was never
@@ -1197,7 +1197,7 @@ shipped none of them — only BusyBox's built-in `vi`.
 size-budget call ("keep the light ones... if the community expects them"),
 left unresolved. Resolved: people SSH into a MiSTer to edit
 `wpa_supplicant.conf` / `MiSTer.ini`, and BusyBox vi is a hostile way to do
-that for most users. joe: ~0.65 MiB (`docs/stock-inventory/disk-usage.md`),
+that for most users. joe: ~0.65 MiB (`docs/stock-inventory/20250402/disk-usage.md`),
 needs MMU only. nano: small; needs wchar + ncurses (both already on). vim is
 NOT enabled — it is the heavy one, and its libgpm dependency is already
 satisfied (`BR2_PACKAGE_GPM=y`) if we ever want full parity.
@@ -1305,7 +1305,7 @@ libdevicemapper so we do not ship an unused volume manager on a games console.
 `BR2_PACKAGE_RSYNC=y`. `BR2_PACKAGE_BUSYBOX=y` — 1.38.0 in this Buildroot
 (`busybox.mk:7`; `output/build/busybox-1.38.0`), always on. Parity with STOCK's
 274-applet set — stock runs 1.33.1, count from its own `busybox --list` under
-qemu-arm, see `docs/stock-inventory/busybox-applets.md` — is a P2.3 config
+qemu-arm, see `docs/stock-inventory/20250402/busybox-applets.md` — is a P2.3 config
 concern, not a package-selection one; the applet set this image actually ships
 is decided by `board/mister/de10nano/busybox.fragment` on top of
 `package/busybox/busybox.config`.
@@ -1438,7 +1438,7 @@ medusalix/xone (the original, and what stock's fork vendored) is explicitly in
 fork-choice comparison. xow-firmware fetches and extracts the Xbox Wireless
 Dongle firmware from Microsoft's own driver package at BUILD TIME (never
 committed to git, G6) and installs it under both stock's literal filename
-(`xow_dongle.bin`, for parity — `docs/stock-inventory/firmware.md`) and the
+(`xow_dongle.bin`, for parity — `docs/stock-inventory/20250402/firmware.md`) and the
 name this driver fork actually requests (`xone_dongle_02fe.bin`, a symlink to
 the same bytes). ACCEPTED maintainer decision, 2026-07-13 —
 `docs/decisions/0003-xone-firmware.md`.
@@ -2004,7 +2004,7 @@ LC_ALL: cannot change locale (en_US.UTF-8)", and anything calling
 `locale.Error: unsupported locale setting` before doing any work.
 
 Stock's `/usr/lib/locale` is a single 2.9 MB locale-archive
-(`docs/stock-inventory/disk-usage.md`), which is exactly the artifact
+(`docs/stock-inventory/20250402/disk-usage.md`), which is exactly the artifact
 `support/misc/gen-glibc-locales.mk` produces. en_US.UTF-8 is what
 `/etc/profile` asks for and is already in `BR2_ENABLE_LOCALE_WHITELIST`
 ("C en_US"), so locale-purge keeps it. This lives in the *System
@@ -3272,7 +3272,7 @@ keep in step, and the boards take the same USB dongles.
 PLAN.md §3/§4.1, module loading & firmware infra — the
 module-autoload/depmod/kmod/xz-compress half is already done (§3.5, §5.30).
 Source of truth: `docs/firmware-parity.md` (the inventory -> sub-option mapping
-+ the built-vs-stock diff). Target: `docs/stock-inventory/firmware.md`'s
++ the built-vs-stock diff). Target: `docs/stock-inventory/20250402/firmware.md`'s
 66-file inventory (`xow_dongle.bin`, the 67th stock file, is P3.2's
 xow-firmware, §5.25, not repeated here).
 

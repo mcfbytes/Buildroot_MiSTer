@@ -1,0 +1,155 @@
+From 9854075c86455942c2ce57e0b7dc80e3e2c5b108 Mon Sep 17 00:00:00 2001
+From: Giancarlo Erra <105157948+giancarloerra@users.noreply.github.com>
+Date: Tue, 8 Sep 2026 23:07:43 +0100
+Subject: [PATCH 1/1] exfat: batch directory read-ahead with a block plug
+
+Batch directory read-ahead requests with a block plug, matching the
+allocation-bitmap implementation. Preserve the existing read-ahead
+window and validation.
+
+exfat_dir_readahead()'s sb_breadahead() loop dispatches and unplugs
+each block read individually. fs/exfat/balloc.c's
+exfat_allocate_bitmap() already batches its own read-ahead loop the
+same way:
+
+    blk_start_plug(&plug);
+    for (j = i; j < min(max_ra_count, sbi->map_sectors - i) + i; j++)
+            sb_breadahead(sb, sector + j);
+    blk_finish_plug(&plug);
+
+This applies the identical pattern to exfat_dir_readahead(), so
+directory scans over large clusters -- exactly the MiSTer file
+browser's workload, a games folder with hundreds or thousands of
+entries -- issue one merged I/O request per read-ahead window instead
+of one dispatch per sector. Nothing about which sectors are read or
+their order changes; only how the reads are batched at the block
+layer.
+
+Provenance
+----------
+Origin:       Two SHAs name this change, because the commit that
+              reached MiSTer-v6.18 does not carry the authorship of
+              the commit that actually wrote it:
+                - 97887b3413bf7cf0e58c63d9333ef9ac889d2c13, "exfat:
+                  batch directory read-ahead", MiSTer-devel/
+                  Linux-Kernel_MiSTer PR #88 head, Giancarlo Erra,
+                  2026-09-08. This is the origin of authorship: it
+                  carries Erra's own Signed-off-by and the real commit
+                  body reproduced above.
+                - 9854075c86455942c2ce57e0b7dc80e3e2c5b108, "exfat:
+                  speed-up dir read-ahead.", MiSTer-v6.18, Sorgelig,
+                  2026-09-09. This is the fork-branch delivery vehicle
+                  -- Sorgelig's re-commit of the PR #88 head onto
+                  MiSTer-v6.18 with a shortened, author-stripped
+                  message and no Signed-off-by. `git patch-id --stable`
+                  confirms the two commits' diffs are byte-identical
+                  (patch-id 6a080ee6d7bbbdfe57b54713fd5d17828fc49565),
+                  same parent (7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b)
+                  in both. This is what
+                  scripts/check-fork-sync.sh will flag on future runs,
+                  which is why it is also named here.
+Author:       Giancarlo Erra <105157948+giancarloerra@users.noreply.github.com>
+              (PR #88 head 97887b3413, Signed-off-by reproduced below).
+              Sorgelig's re-commit reproduces the identical diff under
+              his own authorship with no Signed-off-by and no body --
+              an attribution gap in the fork, not in this carry.
+Upstream:     Mainline achieves the same EFFECT -- plugged directory
+              read-ahead -- but via a completely different, larger
+              refactor that replaced exfat_dir_readahead() entirely, so
+              this is NOT a 0047-pattern mainline-attributed backport.
+              `grep -rn exfat_dir_readahead fs/exfat/` and `grep -rn
+              blk_start_plug fs/exfat/dir.c` against torvalds/linux
+              v7.3-rc2 (50d05c7c76c9) both return ZERO matches: the
+              function itself no longer exists there. Directory dentry
+              read-ahead was folded into exfat_get_dentry() (mainline
+              fs/exfat/dir.c ~648-663), which calls a new shared helper
+              exfat_blk_readahead(sb, sec, &ra, &cnt, end) defined in
+              fs/exfat/fatent.c:159-183 -- THAT helper, not
+              exfat_dir_readahead, is what wraps sb_breadahead() in
+              blk_start_plug/blk_finish_plug now (fatent.c:180,182).
+              v7.2.3 (linux-7.2.y head 58e7295cfecaddec94629160386412e0f2b1e8fe)
+              already carries this exact mainline shape verbatim: `git
+              -C linux-7.2 show HEAD:fs/exfat/dir.c` has no
+              exfat_dir_readahead and no blk_start_plug at all;
+              exfat_get_dentry() (v7.2.3 dir.c:630-663) calls
+              exfat_blk_readahead() at line 657, and fatent.c:159-183
+              is structurally identical to mainline's. There is no
+              mainline SHA that adds "blk_start_plug around
+              exfat_dir_readahead's sb_breadahead loop" because that
+              function does not exist upstream to add it to --
+              backporting 0047-style would mean either porting the
+              whole exfat directory-access rewrite (far beyond this
+              item's scope) or falsely claiming mainline authorship for
+              a hunk mainline never wrote in this shape. Carried as
+              fork code instead, crediting Erra as the actual author.
+6.18-ONLY:    This patch is scoped to the 6.18 series ONLY -- it is
+              deliberately absent from board/mister/de10nano/
+              linux-patches-beta/series and from
+              board/mister/de25nano/linux-patches/, both of which pin
+              7.x. MEASURED, not assumed: `patch -p1 -F0 --dry-run`
+              against pristine v7.2.3's fs/exfat/dir.c reports "Hunk #1
+              FAILED at 6. Hunk #2 FAILED at 682. 2 out of 2 hunks
+              FAILED" -- v7.2.3 has no exfat_dir_readahead() and no
+              bare sb_breadahead() loop to wrap; the 7.x tree already
+              has plugged read-ahead under a different name and shape
+              (exfat_blk_readahead in fs/exfat/fatent.c), so this hunk
+              cannot and must not be listed there. This is the 0047
+              precedent applied in the opposite direction: 0047 is a
+              mainline backport excluded from the 7.x series because
+              7.x already has the upstream commit; this is fork code
+              excluded from the 7.x series because 7.x already has
+              mainline's OWN independent solution to the same problem.
+              RETIRES the moment the 6.18.y pin leaves 6.18.y for 7.2 or
+              newer -- at that point mainline's own plugged read-ahead
+              is already in the tree and this patch would fail to
+              apply, exactly like 0047.
+0031 order:   fs/exfat/dir.c is also touched by
+              0031-exfat-samsung-symlinks.patch (hunks at
+              `@@ -268,8 +268,10 @@ get_new:` and
+              `@@ -396,6 +398,10 @@ static void exfat_set_entry_type`, both
+              far from exfat_dir_readahead() at line 659 and from the
+              top-of-file #include block, which 0031 never touches).
+              Applying 0031 then this patch to a fresh 6.18.49
+              fs/exfat/dir.c: 0031 applies with its own hunks
+              unaffected (0 offset on dir.c), then this patch's hunk 2
+              lands at a +6 line offset from 0031's earlier insertions,
+              zero fuzz. Numbered after 0031, consistent with the
+              existing series' roughly-chronological numbering.
+Forward-port: Verified at -F0 against 6.18.49's fs/exfat/dir.c: applied
+              standalone at zero offset (hunk 1 at line 6, hunk 2 at
+              line 683 -- exactly the @@ header below), and applied
+              after 0031 at a +6 line offset on hunk 2, zero fuzz.
+              6.18.50 is unreachable in the authoring session -- CI
+              applies against the real tarball.
+
+Signed-off-by: Giancarlo Erra <105157948+giancarloerra@users.noreply.github.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ fs/exfat/dir.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/fs/exfat/dir.c b/fs/exfat/dir.c
+index 1f6cb53..10c2197 100644
+--- a/fs/exfat/dir.c
++++ b/fs/exfat/dir.c
+@@ -6,6 +6,7 @@
+ #include <linux/slab.h>
+ #include <linux/compat.h>
+ #include <linux/bio.h>
++#include <linux/blkdev.h>
+ #include <linux/buffer_head.h>
+
+ #include "exfat_raw.h"
+@@ -682,9 +683,12 @@ static int exfat_dir_readahead(struct super_block *sb, sector_t sec)
+ 	bh = sb_find_get_block(sb, sec);
+ 	if (!bh || !buffer_uptodate(bh)) {
+ 		unsigned int i;
++		struct blk_plug plug;
+
++		blk_start_plug(&plug);
+ 		for (i = 0; i < ra_count; i++)
+ 			sb_breadahead(sb, (sector_t)(sec + i));
++		blk_finish_plug(&plug);
+ 	}
+ 	brelse(bh);
+ 	return 0;

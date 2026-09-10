@@ -1,8 +1,14 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-09-10 20:59 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-10 22:21 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
-**Total: 0 candidates** (of which 0 feature-loss).
+## `c129b0fac` Add AIC8800 WiFi/BT driver. — **feature-loss**
+
+- disposition not-evaluated; coupled: False; interface: None
+- effect if absent: A USB dongle built on the AICSemi AIC8800 family (AIC8800 / 8801 / 8800DC / 8800DW / 8800DE / 8800D80 / 8800D80X2 / 8800D80N / 8800DLN / 8800M80 and the Tenda- and TP-Link-branded variants of them) binds no driver at all on our image: mainline 6.18/7.2/7.3-rc has no aic8800 driver over any bus, so there is no fallback. No wlanN appears, no hci for the BT half. Nothing logs an error beyond the usual 'no driver' -- the dongle simply does nothing. NOTE the symmetric fact: on the STOCK image, where the driver IS built (MiSTer_defconfig CONFIG_AIC8800_WLAN_SUPPORT=m + CONFIG_AIC_LOADFW_SUPPORT=m), the dongle also does nothing today, because Release 20260907's firmware.tar.gz ships 0 of the ~60 firmware blobs the driver filp_open()s from /lib/firmware (104 entries, zero aic/fmacfw/fw_patch/fw_adid/8800 matches; sha256 8a6ab6730e5a4b0ee978cae98a15fd8505e5605074cd34018adac0ac43359f78). So absence costs nothing that stock currently delivers.
+- hardware: Tenda U2 (2604:0014), Tenda U11 (2604:001f), Tenda U11 Pro (2604:0020), Tenda (2604:0013) -- commodity Wi-Fi 6 USB dongles, Tenda TX1U Nano (3625:0110), TP-Link (2357:014e) and Mercury (2357:014b) AIC8800-based dongles, AICSemi reference/OEM AIC8800 family under VIDs a69c and 368b (chips AIC8800, 8801, 8800DC, 8800DW, 8800DE, 8800D40/D41, 8800D80/D81, 8800D80X2/D81X2/D89X2, 8800D80N/D40N/DLN/DWN, 8800M80 customer variants, 8800FC customer variants)
+
+**Total: 1 candidates** (of which 1 feature-loss).
 
 ## Protected (carried) silent-failure items
 
@@ -16,6 +22,7 @@ These WOULD regress silently if their patch were ever dropped — they are carri
 - `2ac0aa1e8` input: support for mouseX and mice in EVIOCGRAB mode. → 0026-input-mousedev-eviocgrab.patch
 - `333d49b95` Implement MiSTer audio driver. → 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
 - `3d72b9db7` Add cpufreq/overclock driver (#34) → 0003-cpufreq-cyclone5-de10nano-overclock.patch
+- `41c45f378` Adapt Classic2USB and RetroZord HID force feedback support … → 0048-hid-google-stadiaff-classic2usb-retrozord.patch
 - `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU comp… → 0032-hid-nintendo-joycon-combo-led.patch
 - `47dc53a22` wiimote: fix the buttons codes. → 0023-hid-wiimote-fixes.patch
 - `484f68172` input: Add support for the NSO Famicom controllers (no mic … → 0015-hid-nintendo-nso-famicom.patch

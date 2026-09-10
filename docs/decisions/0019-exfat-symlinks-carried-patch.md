@@ -26,7 +26,7 @@ The `find … -type l` scan itself had a false-negative flaw, so "0 symlinks"
 never meant what it appeared to mean:
 
 * Stock ships **GNU findutils** at `usr/bin/find`
-  (`docs/stock-inventory/binaries-needed-full.txt:103` — a real ELF, not a
+  (`docs/stock-inventory/20250402/binaries-needed-full.txt:103` — a real ELF, not a
   BusyBox link), which is what an interactive `find` resolves to.
 * GNU find's `-type l` trusts the `d_type` that `readdir()` reports and
   only falls back to `lstat()` on `DT_UNKNOWN`.

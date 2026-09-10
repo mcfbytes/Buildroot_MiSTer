@@ -1,5 +1,23 @@
 # Version delta — five years of upstream fixes (P2.10)
 
+> ⚠ **Stock moved to Release 20260907, re-measured 2026-09-10.** Every "Stock" cell in
+> the tables below was re-checked against the 20260907 rootfs (`rootfs.tar.bz2` +
+> `modules.tar.gz` + `firmware.tar.gz` + `addon.tar` overlaid per `create_img.sh`, the same
+> tree `docs/stock-inventory/20260907/` inventories) — see `README.md`'s "Stock vs. this
+> image" table for the full method and citations. **Every one re-measured turned out
+> unchanged**: Buildroot 2021.02.4, glibc 2.31, OpenSSL 1.1.1k, OpenSSH 8.6p1, Samba
+> 4.14.6, Python 3.9.6 — Release 20260907 replaced the kernel, modules and firmware only,
+> not the Buildroot userland. The kernel row is the one real change (5.15.1 → 6.18.38);
+> its "Stock" cell below is now stale and should read 6.18.38 (12 `.y` releases behind our
+> pin at time of writing — `docs/kernel-recon/fork-sync-2026-09/PLAN.md`), not 5.15.1.
+> BlueZ, wpa_supplicant and dbus were **not** re-measured this pass (no per-file version
+> string was checked for those three) — treat those rows as still 20250402-era. The SONAME
+> table (`docs/package-manifest.md`, "The full per-package mapping" below) **was** checked:
+> `docs/stock-inventory/20260907/shared-libraries.md` shows the 20260907 rootfs has the
+> identical shared-library counts as 20250402 (1,039 ELF shared objects, 534 SONAME-bearing,
+> 507 true-ABI libraries) — no headline SONAME-count change, consistent with the userland
+> being unchanged.
+
 Stock MiSTer froze its entire userland at **Buildroot 2021.02.4** (glibc 2.31,
 Linux 5.15.1) and has taken **no `.y` stable updates** on the kernel and few on the
 packages since. This project rebases the whole stack on **Buildroot 2026.08** —

@@ -33,8 +33,8 @@ or a named file in `docs/stock-inventory/`.
 | Kernel fork | `work/Linux-Kernel_MiSTer`, branch `MiSTer-v5.15`, **`f0fb626acadd07f0718934826b143b6e4c9ce81c`**. All `linux515:` citations are at this commit. |
 | Upstream 6.18 | `work/linux-stable`, `linux-6.18.y` @ **v6.18.38**. All `linux618:` citations are at this commit. |
 | Downloader | `work/Downloader_MiSTer`, **`915315668b9460b0fcdfc728be8254fe698c479f`**. All `dl:` citations are at this commit. |
-| Stock kernel `.config` | `docs/stock-inventory/stock-linux.config` (4,246 lines, IKCONFIG-extracted) |
-| Stock DTS | `docs/stock-inventory/stock.dts` |
+| Stock kernel `.config` | `docs/stock-inventory/20250402/stock-linux.config` (4,246 lines, IKCONFIG-extracted) |
+| Stock DTS | `docs/stock-inventory/20250402/stock.dts` |
 
 > **Evidence-quality caveat, stated once.** The shipped binary is from release **20250402**; the
 > Main_MiSTer source is at **HEAD (2026-07)**. They are not the same program. This document
@@ -528,7 +528,7 @@ Confirmed by exhaustive grep: Main_MiSTer touches **no** `/sys` path other than 
 | `FB_ADDR` | `0x20000000 + 32 MiB` = **`0x22000000`** | `Main:video.cpp:37` — *"512mb + 32mb (Core's fb)"* |
 | `FB_SIZE` | `1920 * 1080` = 2,073,600 **pixels** (×4 B = 8,294,400 B) | `Main:video.cpp:36` |
 | Main_MiSTer's mapping | `shmem_map(FB_ADDR, FB_SIZE * 4 * 3)` = **24,883,200 B** at `0x22000000` | `Main:video.cpp:2417` |
-| DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/stock.dts:993-997` |
+| DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/20250402/stock.dts:993-997` |
 | `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `linux515:drivers/video/fbdev/MiSTer_fb.c:265-266` |
 | Buffer *n* base (Main_MiSTer's view) | `FB_ADDR + (FB_SIZE*4*n) + (n ? 0 : 4096)` | `Main:video.cpp:3574` |
 
@@ -786,7 +786,7 @@ The bus is **discovered by scanning**, and the scan is **capped at bus 2**:
 > 	for (int bus = bus_first; bus <= bus_last; bus++) { sprintf(str, "/dev/i2c-%d", bus); … }
 > ```
 
-Stock creates exactly three I²C adapters — verified in `docs/stock-inventory/stock.dts`:
+Stock creates exactly three I²C adapters — verified in `docs/stock-inventory/20250402/stock.dts`:
 
 | DT node | Address | `status` | Children |
 |---|---|---|---|
@@ -1623,9 +1623,9 @@ The contract, at the level the *ABI* cares about (P3.3 owns the implementation):
 | # | Requirement | Evidence | Level |
 |---|---|---|---|
 | **K1** | `CONFIG_MODULES=y`, `CONFIG_MODULE_SIG` **not set** (out-of-tree modules) | `stock-linux.config:639`; no `CONFIG_MODULE_SIG=y` anywhere in it | **MUST** |
-| **K2** | `CONFIG_MODULE_COMPRESS_XZ=y` — modules are `.ko.xz`; `kmod`/`modprobe` must be built with xz support | `:648`; `docs/stock-inventory/modules.md` | **MUST** |
-| **K3** | **52** `.ko.xz` modules under `/usr/lib/modules/<kver>/`, 382 built-ins | `docs/stock-inventory/modules.md` | SHOULD (the *set* is a parity target, not an ABI) |
-| **K4** | **Autoload is table-driven**: `depmod` at image build → `modules.alias` (915 lines) → eudev matches the kernel's `MODALIAS` uevent → `modprobe`. **No hardcoded module list anywhere.** | `docs/stock-inventory/modules.md` | **MUST** |
+| **K2** | `CONFIG_MODULE_COMPRESS_XZ=y` — modules are `.ko.xz`; `kmod`/`modprobe` must be built with xz support | `:648`; `docs/stock-inventory/20250402/modules.md` | **MUST** |
+| **K3** | **52** `.ko.xz` modules under `/usr/lib/modules/<kver>/`, 382 built-ins | `docs/stock-inventory/20250402/modules.md` | SHOULD (the *set* is a parity target, not an ABI) |
+| **K4** | **Autoload is table-driven**: `depmod` at image build → `modules.alias` (915 lines) → eudev matches the kernel's `MODALIAS` uevent → `modprobe`. **No hardcoded module list anywhere.** | `docs/stock-inventory/20250402/modules.md` | **MUST** |
 | **K5** | `/usr/lib/firmware` — **66 regular files** | `docs/stock-inventory/firmware.md` | **MUST** (for the devices that need it) |
 
 > **Correction, already made by P0.3 and repeated here so it stops propagating:** PLAN §3, §4.1,
@@ -1667,7 +1667,7 @@ Every kernel-side item this contract depends on, and who owns it:
 |---|---|---|---|
 | `/dev/fb0`, `FBIO_WAITFORVSYNC`, `/sys/module/MiSTer_fb/parameters/*` | `0001-fbdev-add-MiSTer_fb-driver.patch` | **P1.4** | §5 |
 | `/dev/MrAudio` + the **patched `dummy.c`** | `0002-sound-add-MiSTer-audio-spi.patch` | **P1.5** | §5, N4 |
-| cpufreq/overclock sysfs (community scripts) — OC is via **`scaling_max_freq`** up to `cpuinfo_max_freq` = `1200000`; there is **no** `…/cpu/cpufreq/boost` file (see the P1.6 correction in `patch-provenance.md` §5) | `0003-cpufreq-cyclone5-de10nano-overclock.patch` | **P1.6** | §5 |
+| cpufreq/overclock sysfs (community scripts) — **[corrected 2026-09-11]** the `…/cpu/cpufreq/boost` file **DOES exist** (default `0`; PR #24 added `.set_boost`/`.boost_enabled = false` to `0003` to fix a field hard-hang); `scaling_max_freq` alone clamps to `800000` — a script must `echo 1 > /sys/devices/system/cpu/cpufreq/boost` before `scaling_max_freq` can exceed `800000` and reach `1200000` (identical contract on the fork's alternative `59bcae8eb` driver, keep-vs-adopt decision A — see `patch-provenance.md` §11's Q4/Q9 decision note and `docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md` §4 for the core-code evidence; the stale pre-PR#24 claim this row used to carry is corrected there too) | `0003-cpufreq-cyclone5-de10nano-overclock.patch` | **P1.6** | §5 |
 | `MiSTer_fb` DT node @ `0x22000000`/IRQ 40; `spi0` → `MiSTer,spi-audio`; `spi1` → spidev; `i2c0`/`i2c2`; `usb1`; bridges; `hps_led0` | `0004-dts-de10nano-MiSTer.patch` | **P1.7** | §5 |
 | `/dev/spidev1.0` | retarget the DTS `compatible` (preferred) **or** `0005-spidev-accept-altspi-compatible.patch` | **P1.8** | N2, §5 |
 | `EVIOCGRAB` + mousedev coexistence | `0026-input-mousedev-eviocgrab.patch` | **P1.9** [OPUS] | §6 |

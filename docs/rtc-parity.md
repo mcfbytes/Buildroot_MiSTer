@@ -27,7 +27,7 @@ script would guard nothing stock doesn't already handle, so it is not carried.
 
 ## 1. Stock's RTC path — cited evidence
 
-**No init script.** `docs/stock-inventory/etc-init-scripts-full.txt` is a verbatim dump of
+**No init script.** `docs/stock-inventory/20250402/etc-init-scripts-full.txt` is a verbatim dump of
 every `/etc/init.d/S*` script on the stock image plus `inittab`/`fstab`/etc. Its full list
 of `S`-scripts is:
 
@@ -36,13 +36,13 @@ S01syslogd  S02klogd  S10udev  S30dbus  S40network  S41dhcpcd
 S45bluetooth (symlink -> /bin/bluetoothd)  S49ntp  S50proftpd  S50sshd  S91smb  S99user
 ```
 
-(`docs/stock-inventory/etc-init-scripts-full.txt:1-616`, `docs/stock-inventory/README.md`'s
+(`docs/stock-inventory/20250402/etc-init-scripts-full.txt:1-616`, `docs/stock-inventory/README.md`'s
 per-file index.) Grepping `hwclock|rtc|clock|adjtime|systohc|hctosys` (case-insensitive)
 across `etc-init-scripts-full.txt` **and** `etc-configs.md` returns **zero matches**. There
 is no `hwclock --hctosys`/`hwclock -s` call anywhere in stock's boot sequence, no `/dev/rtc*`
 reference, and no `rtc-ds1307`/`rtc-pcf8563`/`rtc-m41t80` module-load line.
 
-**Kernel-side mechanism.** `docs/stock-inventory/stock-linux.config:3045-3050`:
+**Kernel-side mechanism.** `docs/stock-inventory/20250402/stock-linux.config:3045-3050`:
 
 ```
 CONFIG_RTC_LIB=y
@@ -62,7 +62,7 @@ into the kernel, not modules — see §3), well before `/sbin/init` execs, let a
 writeback). This is stock's *entire* RTC story: no init script needed or present, because
 the kernel does it before userspace exists.
 
-**Stock's RTC hardware.** `docs/stock-inventory/stock.dts:974-992` — the third and last i2c
+**Stock's RTC hardware.** `docs/stock-inventory/20250402/stock.dts:974-992` — the third and last i2c
 adapter, bit-banged (`compatible = "i2c-gpio"`), with three candidate RTC chip nodes, only
 one of which is populated on any given physical add-on board:
 

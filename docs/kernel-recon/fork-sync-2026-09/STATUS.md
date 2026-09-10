@@ -2,10 +2,10 @@
 
 **Run:** 2026-09-10, remote session, on branch `claude/kernel-6.18-patch-plan-l32pu9`.
 **Executed:** Wave 0 (bring-up + enumeration), Wave 1 (12 analysis agents), Wave 2 (4 refutation
-agents). **Not executed:** Wave 3 (no patch was authored, no config or doc changed, nothing
-regenerated), Wave 4, Wave 5. This file is written for the owner reading on a phone: every
-decision you need to make is in §3 with a recommendation and its single strongest reason; the
-evidence is in the memos and records linked from each row.
+agents), Wave 3 executed 2026-09-11 (validation pending — patches authored, records/ledger/docs
+updated; not yet re-verified end to end). **Not executed:** Wave 4, Wave 5. This file is written
+for the owner reading on a phone: every decision you need to make is in §3 with a recommendation
+and its single strongest reason; the evidence is in the memos and records linked from each row.
 
 ## 0. One-paragraph outcome
 
@@ -127,3 +127,41 @@ reachable. `_meta.vanilla_target` must not be advanced past the 6.18.49 release 
 | 1 — Opus (Q4, Q9) | 2 | ≈0.50 M (each ran ~20 min incl. a kernel `prepare` and an ARM build) |
 | 2 — Sonnet (covered, mainline, coupling, drift) | 4 | ≈0.63 M |
 | **Total** | **16** | **≈2.3 M** — well under the plan's 5–8 M estimate for these waves |
+
+## 7. Wave 3 — executed 2026-09-11 (orchestrator validation appended)
+
+Owner decisions applied: D1=A, D2=defer, D3=yes, D4=yes; exFAT = the fork's 4-line plug, 6.18 only
+(the 7.x refactor is a rewrite of `exfat_get_dentry()` plus a new shared helper and `balloc.c`
+changes, touching the same `dir.c` our `0031` patches — no user-visible gain over the plug).
+
+What landed: `0048`, `0049`, `0050` (new); `0017` delta 5; `0004` OCRAM `flags-sram` node;
+`0001` aligned to `fb_sys_read/write` (shared file and the beta copy); records finalised
+(Q4 dropped-deliberate, Q9 not-evaluated/deferred; `carried_patches` list support in
+`reduce.py` closes the pre-existing 0039–0042 orphan); `commits.jsonl` third increment with
+`vanilla_target` honestly at the 6.18.49 release commit; `fork-sync.conf` advanced to
+`c129b0fac`; `patch-provenance.md` §11, `abi-contract.md`, `docs/user/faq.md` boost fix;
+`kernel-config-deltas.md` new section against the shipped 6.18 config; the increment write-up
+`docs/kernel-recon/fork-sync-2026-09.md`; the stock inventory regenerated for Release 20260907
+(`docs/stock-inventory/20260907/`, the 5.15 set moved to `20250402/`); README, stock
+reconciliation, firmware/bluetooth/wifi parity docs re-measured.
+
+Validation on the final tree (this session, 6.18.49 / 7.2.3 — the pins are one release ahead;
+CI applies against the real tarballs):
+
+| Check | Result |
+|---|---|
+| `scripts/lint-kernel-patches.sh` (shared+upstream, beta, de25) | PASS 41/41, 42/42, 36/36 |
+| `-F0` replay, 6.18 shared series (40 patches) on 6.18.49 | 0 failures, 10 hunks at an offset, 0 fuzz |
+| `-F0` replay, beta `series` (42) on 7.2.3 | 0 failures, 74 hunks at an offset, 0 fuzz |
+| `-F0` replay, DE25 directory (36) on 7.2.3 | 0 failures, 71 hunks at an offset, 0 fuzz |
+| Object builds (`ARCH=arm LLVM=1 W=1`, patched 6.18.49, our config): `MiSTer_fb.o` (also on 7.2.3), `xpad.o`, `hid-google-stadiaff.o`, `hid-nintendo.o`, `fs/exfat/dir.o`, `socfpga_cyclone5_de10nano.dtb` | 0 new warnings (one pre-existing unrelated in hid-nintendo; DTB warnings identical to before) |
+| `docs/kernel-recon/reduce.py` | 136 records, **0 problems** (orphan invariant now clean) |
+| `scripts/check-kernel-defconfig-sync.sh` | OK |
+| `scripts/check-config-fragments.sh`, `check-kernel-fragment-noop.sh`, `ci-tests.sh` | **not runnable here** (need the Buildroot download / a built tree); CI |
+
+Follow-ups surfaced by Wave 3, not actioned: (1) Release 20260907's `addon.tar` is **not**
+unchanged — a new `S39usb-coldplug` init script and a changed `uartmode` (new mode 6); our
+vendored `uartmode` matches the *old* stock copy (`docs/stock-reconciliation.md` §0). (2) Three
+untriaged stock-firmware additions (`rtl8192fufw.bin`, `rtl8723bu_bt.bin`, `bfusb` module).
+(3) The 6.18.49→6.18.50 and 7.2.3→7.2.4 drift walk (`env.md`). (4) Hardware-gated list in §4.
+(5) Option B for cpufreq, bench-gated (memo §8). (6) Wave 4 audit and Wave 5 upstream PRs.

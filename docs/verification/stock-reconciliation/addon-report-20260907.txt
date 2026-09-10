@@ -1,0 +1,71 @@
+addon.tar, 20250402-era baseline (LIC 8aba321, 2026-07-17) vs. Release 20260907
+(LIC d4e3f51, 2026-09-07). Same sha256 method as SOURCE-20260907.txt.
+
+  38e420ce75d59f5a518aa540ec08a2429df1c34af690a45f9e9f91b0f186fbde  addon.tar (8aba321)
+  6dda768de80f1f197f8a07bb66534abde8e79be46182654d380867a4da2d92d4  addon.tar (d4e3f51)
+
+Same size (2,611,200 bytes), different sha256: addon.tar's *content* changed
+between these two commits, contradicting PLAN.md §1.1's "unchanged" note
+(which compares 20260907 to its own immediate predecessor commit, not to
+8aba321 -- see docs/stock-reconciliation.md §0.3).
+
+`tar tf` file-list diff: IDENTICAL (same 56 regular files, 29 directories,
+12 symlinks, same paths -- no file added or removed).
+
+Content diff (`diff -rq` on the two extracted trees):
+
+  etc/init.d/S39usb-coldplug                     NEW (not in 8aba321 addon.tar)
+  usr/sbin/uartmode                               CHANGED
+
+Every other file: BYTE-IDENTICAL between the two addon.tar copies (54 of 56
+regular files unchanged).
+
+--- etc/init.d/S39usb-coldplug (new file, full contents) ---
+#!/bin/sh
+case "$1" in
+    start)
+        printf "Reload USB drivers... "
+        udevadm trigger --subsystem-match=usb --action=add
+        udevadm settle --timeout=10
+        echo "done"
+        ;;
+    *)
+        echo "Usage: $0 {start}"
+        exit 1
+        ;;
+esac
+
+--- usr/sbin/uartmode (changed; see below) ---
+kill_all() no longer runs `killall agetty login pppd midilink`; instead it
+`fuser -k`s /dev/ttyS1 directly (TERM then KILL after 0.1s if still held),
+plus `killall -KILL fluidsynth mpg123 mt32d`. The PPP localip/remoteip sed
+pipeline gained a `169.254.*` (link-local) exclusion. pppd's exit status is
+now inspected and a fatal-status message printed for a named set of codes.
+A new mode "6" was added: launches /media/fat/snid under `RUST_LOG=info
+taskset 1`, respawning on exit, guarded by /tmp/uartmode6 -- a binary and
+mode this document has no other reference to. Full unified diff in
+docs/stock-reconciliation.md §0.3.
+
+One check WAS possible without a build: this repo vendors uartmode verbatim at
+board/mister/de10nano/rootfs-overlay/usr/sbin/uartmode. Diffed directly
+against both stock copies:
+
+  diff /tmp/addon-old-uartmode  board/.../rootfs-overlay/usr/sbin/uartmode  -> IDENTICAL
+  diff /tmp/addon-new-uartmode  board/.../rootfs-overlay/usr/sbin/uartmode  -> DIFFERS (the diff above)
+
+CONFIRMED: this repo's vendored uartmode is byte-identical to the OLD
+(8aba321 / 20250402) stock script, not the new (d4e3f51 / 20260907) one --
+i.e. this repo has NOT picked up stock's 20260907 uartmode update. S39usb-
+coldplug has no counterpart anywhere in this repo at all (grep for the
+filename finds nothing outside this evidence). Both are real, concrete gaps
+against the *current* stock addon.tar, distinct from the deliberate
+decisions §3 of docs/stock-reconciliation.md documents for the 20250402
+baseline -- these two were never evaluated because they didn't exist yet
+when §3 was written.
+
+NOT PERFORMED for this file: the full ABSENT/EXACT/PRESENT disposition this
+report's 20250402-era counterpart (addon-report-20250402.txt) carries for
+every item, which requires diffing against this project's own BUILT rootfs
+(output/target/) -- no build was run for this pass, and the two items above
+were checked by direct source comparison instead. Flagged as open work in
+docs/stock-reconciliation.md §0.3.

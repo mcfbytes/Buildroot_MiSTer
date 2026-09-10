@@ -237,7 +237,7 @@ ELF binary and works normally.
 ### 2.5 `CONFIG_COREDUMP`
 
 **A deliberate divergence from stock.** Stock's own config has
-`# CONFIG_COREDUMP is not set` (`docs/stock-inventory/stock-linux.config:721`),
+`# CONFIG_COREDUMP is not set` (`docs/stock-inventory/20250402/stock-linux.config:721`),
 and so did ours until now. Without it the kernel cannot dump core at all, so a
 crashing `MiSTer` binary leaves nothing for gdb to open — which would make
 shipping gdb close to pointless.

@@ -1,0 +1,108 @@
+From 41c45f378e8f433b56c4da9b80edcdfd67fcebfb Mon Sep 17 00:00:00 2001
+From: Porkchop Express <51079966+misteraddons@users.noreply.github.com>
+Date: Wed, 9 Sep 2026 03:32:35 -0600
+Subject: [PATCH 1/1] HID: google-stadiaff: bind Classic2USB and RetroZord for force feedback
+
+Add Classic2USB (Reflex Adapt, 16d0:1460) and RetroZord (1209:595a) to
+the existing Google Stadia force-feedback driver's device table using
+HID_GROUP_GENERIC. Both use the existing Stadia rumble output report
+in compatible firmware, so no other driver code changes are needed --
+this is purely two additional rows in stadia_devices[].
+
+CONFIG_HID_GOOGLE_STADIA_FF=y is already on in our linux.config; the
+driver is already built, and these two IDs are the entire gap.
+
+Without this, both adapters are unclaimed by any specialised driver
+and fall through to hid-generic's catch-all match
+(HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, HID_ANY_ID, HID_ANY_ID),
+drivers/hid/hid-generic.c). They still enumerate and work as plain
+input devices -- buttons and axes come through hidinput regardless of
+which driver binds -- but EV_FF/FF_RUMBLE is never registered, so
+force feedback silently does nothing on either adapter. No probe
+error is logged, because hid-generic's probe succeeds; the failure is
+purely a missing capability on an otherwise-working device.
+
+Main_MiSTer coupling. input.cpp special-cases exactly these two
+VID:PID pairs at several sites, independent of this patch but load-
+bearing for why the adapters must bind a real driver rather than
+hid-generic:
+  - input.cpp:52-53, the Reflex Adapt / RetroZord predicate:
+    `(vid == 0x16D0 && (pid == 0x127E || pid == 0x1460)) // Reflex Adapt
+     || (vid == 0x1209 && pid == 0x595A); // RetroZord`
+  - input.cpp:4176-4177, make_unique() dedup:
+    `make_unique(0x16D0, 0x1460, 1);  // Reflex Adapt Classic2USB`
+    `make_unique(0x1209, 0x595A, 1);  // RetroZord adapter`
+  - input.cpp:5102 and :5349, NeGcon/Guncon emulation match on
+    `input[i].vid == 0x1209 && input[i].pid == 0x595A` together with
+    `strstr(input[i].name, "RZordPsWheel")` / `strstr(uniq, "RZordPsGun")`.
+  - input.cpp:5496, RetroZord UNIQ-field mode differentiation re-checks
+    the same 0x16D0/0x1460 and 0x1209/0x595A pairs alongside
+    `strlen(uniq)`.
+None of those name/uniq matches change with this patch: stadia_probe()
+(drivers/hid/hid-google-stadiaff.c) calls
+`hid_hw_start(hdev, HID_CONNECT_DEFAULT & ~HID_CONNECT_FF)` -- it only
+masks off HID_CONNECT_FF (it wires its own memless FF instead of the
+generic hidinput FF path) and never writes hdev->name, hdev->uniq, or
+hidinput->input->name/->uniq itself; those strings come from hid-core's
+generic USB-descriptor connect path before any per-driver .probe runs,
+so binding stadiaff instead of hid-generic changes nothing Main_MiSTer
+matches on.
+
+Provenance
+----------
+Origin:       41c45f378e8f433b56c4da9b80edcdfd67fcebfb
+              "Adapt Classic2USB and RetroZord HID force feedback
+              support (#91)", MiSTer-devel/Linux-Kernel_MiSTer,
+              branch MiSTer-v6.18, PR #91, 2026-09-09.
+Author:       Porkchop Express <51079966+misteraddons@users.noreply.github.com>
+Upstream:     Absent everywhere reachable. `grep -n '1460\|595a\|16d0\|1209'
+              drivers/hid/hid-google-stadiaff.c` returns nothing (exit 1)
+              against torvalds/linux v7.3-rc2 (50d05c7c76c9), against
+              linux-6.18.y at the "Linux 6.18.49" release commit
+              1c732c6b94f0, and against linux-7.2.y head "Linux 7.2.3"
+              (`git show v7.2.3:drivers/hid/hid-google-stadiaff.c`).
+              `git log -S'0x1460' -- drivers/hid/` is empty against both
+              mainline and the 6.18.39..6.18.49 stable range -- no commit
+              ever added or removed either ID upstream. The 6.18.49 and
+              v7.2.3 copies of hid-google-stadiaff.c are byte-identical
+              (`diff`, exit 0), so this is one grounding fact covering
+              both series, not two independent absences.
+Disposition:  Carry as a new shared patch (docs/kernel-recon/fork-sync-2026-09/
+              PLAN.md section 2.8; record
+              docs/kernel-recon/records/41c45f378e8f433b56c4da9b80edcdfd67fcebfb.json).
+              The Main_MiSTer coupling above makes this "must not drop
+              silently" under the recon spec's userspace-coupling rule.
+Forward-port: Applies verbatim at offset 0 against both the 6.18.49 and
+              the v7.2.3 hid-google-stadiaff.c (they are byte-identical
+              files); by extension expected to apply cleanly to the
+              pinned 6.18.50/7.2.4 absent an intervening change to that
+              file, none of which is visible in the 6.18.39..6.18.49 or
+              7.2..7.2.3 windows. Verified at -F0 against 6.18.49; 6.18.50
+              is unreachable in the authoring session -- CI applies
+              against the real tarball. Also verified at -F0 against
+              v7.2.3 for the beta and DE25 series.
+Numbering:    0048 was unused in all three series at authoring time
+              (linux-patches/ last file was 0047-btusb-mercusys-ma530-
+              2c4e-0115.patch; linux-patches-beta/series ended at
+              0046-dts-ramoops.patch; de25nano/linux-patches/ highest
+              shared number was 0042).
+
+Signed-off-by: Porkchop Express <51079966+misteraddons@users.noreply.github.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/hid/hid-google-stadiaff.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/hid/hid-google-stadiaff.c b/drivers/hid/hid-google-stadiaff.c
+index 6b38d2421d..9aaa07ca39 100644
+--- a/drivers/hid/hid-google-stadiaff.c
++++ b/drivers/hid/hid-google-stadiaff.c
+@@ -143,6 +143,8 @@ static void stadia_remove(struct hid_device *hid)
+ static const struct hid_device_id stadia_devices[] = {
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_GOOGLE, USB_DEVICE_ID_GOOGLE_STADIA) },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_GOOGLE, USB_DEVICE_ID_GOOGLE_STADIA) },
++	{ HID_DEVICE(BUS_USB, HID_GROUP_GENERIC, 0x16d0, 0x1460) }, /* Classic2USB */
++	{ HID_DEVICE(BUS_USB, HID_GROUP_GENERIC, 0x1209, 0x595a) }, /* RetroZord */
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(hid, stadia_devices);

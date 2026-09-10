@@ -4,12 +4,15 @@ Evidence that this image is at parity **or better** with what MiSTer stock
 actually ships, item by item, and an explicit account of what we ship that
 stock does not.
 
-> **Measured against the 5.15-era stock inputs (LIC `8aba321`, 2026-07-17).** Release
-> 20260907 (LIC `d4e3f51`, 2026-09-07) replaced `modules.tar.gz` (52 → 89 modules, kernel
-> `6.18.38-MiSTer`, every out-of-tree Wi-Fi fork gone), `firmware.tar.gz` (69 → 89 files)
-> and `rootfs.tar.bz2`; `addon.tar` is unchanged. The new module and firmware lists are in
-> `docs/kernel-recon/fork-sync-2026-09/evidence/`; every count and table below is still the
-> July measurement until the re-run tracked in `fork-sync-2026-09/PLAN.md` §8/§9.
+> **Re-measured against Release 20260907 (LIC `d4e3f51`, 2026-09-07) on 2026-09-10 — see
+> §0.** §1–§5 below are the **original measurement against the 5.15-era stock inputs (LIC
+> `8aba321`, 2026-07-17)**, left in place as the detailed per-item audit (driver/firmware
+> reasoning, `addon.tar` bucket dispositions) that §0's headline numbers summarize and
+> mostly reconfirm — read §0 first for what changed, then the relevant §1–§5 subsection for
+> why an individual item is or isn't covered. `addon.tar` is **not** unchanged: PLAN.md
+> §1.1's "unchanged" note compares 20260907 to its own kernel-focused framing; a byte
+> comparison against the 8aba321 baseline this document was built from finds it changed
+> (same 2,611,200-byte size, different sha256) — see §0.3.
 
 ## Source of truth
 
@@ -19,19 +22,27 @@ previously-extracted snapshot:
 | | |
 |---|---|
 | Repo | `MiSTer-devel/Linux_Image_creator_MiSTer` |
-| Commit | `8aba321b2162e54b56522aa30758b22d97eec8da` (2026-07-17) |
+| Commit (§1–§5, "20250402" below) | `8aba321b2162e54b56522aa30758b22d97eec8da` (2026-07-17) |
 | `firmware.tar.gz` | `e4033440…89a3b` — 69 regular files |
 | `modules.tar.gz` | `62086a04…9f2fe` — 52 `.ko`, kernel `5.15.1-MiSTer` |
 | `addon.tar` | `38e420ce…6fbde` — 56 regular files |
+| Commit (§0, "20260907" below) | `d4e3f51ec7fdd18116562d38bace9ef7dffe0f38` ("Release 20260907.", 2026-09-07) |
+| `firmware.tar.gz` | sha256 `8a6ab673…33359f78` — 89 regular files, kernel `6.18.38-MiSTer` |
+| `modules.tar.gz` | sha256 `9a866063…9fad7edc94a5bdbab2a6c2a` — 89 `.ko.xz` |
+| `addon.tar` | sha256 `6dda768d…d92d4` — 56 regular files, **not byte-identical to the 8aba321 copy** (§0.3) |
 | Ours | `output/images/rootfs.tar`, kernel `6.18.40` |
 
 `create_img.sh` shows how the three are applied: `modules.tar.gz` →
 `/lib` (`--strip-components=2`), `firmware.tar.gz` → `/lib/firmware`,
 `addon.tar` → `/` as an overlay on `rootfs.tar.bz2`.
 
-Raw lists are in `docs/verification/stock-reconciliation/` (`stock-fw.txt`,
-`ours-fw.txt`, `stock-mods.txt`, `ours-mods.txt`, `addon-report.txt`,
-`SOURCE.txt`) so every count below can be re-derived with `comm`.
+Raw lists are in `docs/verification/stock-reconciliation/` so every count below can be
+re-derived with `comm`. The stock-side lists are per-release: `stock-fw-20250402.txt`,
+`stock-mods-20250402.txt`, `addon-report-20250402.txt`, `SOURCE-20250402.txt` (§1–§5, the
+`8aba321` baseline) and `stock-fw-20260907.txt`, `stock-mods-20260907.txt`,
+`addon-report-20260907.txt`, `SOURCE-20260907.txt` (§0, the `d4e3f51` baseline). `ours-fw.txt`
+/ `ours-mods.txt` are not release-specific — they are this repo's own shipped lists, and
+apply to both comparisons unchanged (no rebuild ran for the §0 re-measurement).
 
 > **Method note.** A first pass extracted our paths with `tar tvf | awk
 > '{print $NF}'`, which silently mis-reads symlinks — `tar` prints
@@ -41,7 +52,106 @@ Raw lists are in `docs/verification/stock-reconciliation/` (`stock-fw.txt`,
 > uses `tar tf` (names only). Recorded because the wrong number looked
 > entirely plausible.
 
-## Headline
+## 0. Re-measured against Release 20260907 (2026-09-10)
+
+**Method.** `ours-fw.txt`/`ours-mods.txt` (this repo's own shipped firmware/module lists)
+have not changed — no rebuild was run for this pass — so this re-run keeps them fixed and
+recomputes only the **stock** side, against
+`docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-{firmware,modules}.txt` (the
+same lists `README.md`/`docs/firmware-parity.md`/`docs/bluetooth-parity.md` cite), via the
+same `comm`-based method as §1/§2 below. Module names were stripped of their `.ko.xz`
+suffix before comparison (stock's list carries it; ours does not).
+
+### 0.1 `firmware.tar.gz`: 69 → **89** stock files
+
+| | 20250402 (§1, LIC `8aba321`) | 20260907 (LIC `d4e3f51`) |
+|---|---:|---:|
+| Stock files | 69 | **89** |
+| Present in ours | 58 | **72** |
+| Absent | 11 (all justified, §1) | **17** |
+
+The 17 absences: the same 11 from §1 (`RTL8192E/*`, `mediatek/mt7662u*` old names,
+`rt2870_sw_ch_offload.bin`, `rtl_bt/rtl8192e{e,u}_fw.bin`, `rtlwifi/rtl8723defw.bin`,
+`xone_dongle_{02f9,091e}.bin` — all still absent, same reasoning) **plus 6 newly appearing
+in stock's 20260907 list that we do not ship**:
+
+| New in stock's list | Why absent | Status |
+|---|---|---|
+| `ath10k/QCA9377/hw1.0/{board-2.bin,firmware-6.bin}` | We deliberately do not build `ATH10K_USB` (upstream: "Currently work in progress and will not fully work") | **Justified — same reasoning as the README's `ATH10K_USB` exclusion**, which stock's own 20260907 module list now contradicts (`ath10k_core`/`ath10k_usb` ship in stock; see §0.2) |
+| `rtlwifi/rtl8710bufw_{SMIC,UMC}.bin` | No driver in this image binds RTL8710B at all (README's Realtek row: RTL8710BU is "no driver at all" in both stock eras) | Justified — no consumer |
+| `rtlwifi/rtl8192fufw.bin` | RTL8192FU is not one of this image's built chips | **Untriaged** — not previously analysed; flag for `docs/wifi-parity.md` to confirm no driver claims this chip |
+| `rtlwifi/rtl8723bu_bt.bin` | `rtlwifi`'s own BT-coexistence firmware for RTL8723BU (distinct from `btrtl`'s `rtl_bt/rtl8723b_fw.bin`, which we do ship) | **Untriaged, genuine gap candidate** — this image ships `rtlwifi/rtl8723bu_{nic,ap_wowlan,wowlan}.bin` for RTL8723BU Wi-Fi but not this BT-coexistence sibling; needs a driver-request-path check before it can be justified or closed |
+
+### 0.2 `modules.tar.gz`: 52 → **89** stock modules
+
+| | 20250402 (§2, LIC `8aba321`) | 20260907 (LIC `d4e3f51`) |
+|---|---:|---:|
+| Stock modules | 52 | **89** |
+| Present, same name | 38 | **76** |
+| Absent | 0 functional (14 covered by rename/mainline, §2a/§2b) | **13**, see below |
+
+The jump from 38 to 76 same-name matches is exactly §2a's story completing: stock's own
+6.18 module list now **uses the mainline names** (`rtw88_8812au`, `rtw88_8821cu`, etc.)
+instead of the six out-of-tree fork names §2a mapped — so what was a *rename* in the
+20250402 comparison is now a *same-name match*. The 13 names in stock's 20260907 list
+absent from ours:
+
+| Absent | Disposition |
+|---|---|
+| `xone-dongle`, `xone-gip-bus`, `xone-gip-chatpad`, `xone-gip-gamepad`, `xone-gip-headset`, `xone-gip-madcatz_glam`, `xone-gip-madcatz_strat`, `xone-gip-pdp_jaguar`, `xone-wired` (9) | **Same naming difference as §2b** (`medusalix/xone` hyphens vs. our `dlundqvist/xone` underscores) — not a gap |
+| `ar5523` | **Justified** — deliberately not built, one of `wifi-parity.md` §7's six excluded symbols (~2004-era 802.11b/g chip) |
+| `ath10k_core`, `ath10k_usb` | **Justified** — deliberately not built (§0.1), same `ATH10K_USB` reasoning |
+| `bfusb` | **Untriaged** — an old (pre-2005) BFUSB-interface Bluetooth USB adapter driver, not one of stock's 5.15 modules, so genuinely new territory rather than a previously-dropped item; no realistic install base was the reasoning pattern for similarly-old Wi-Fi chips (§7), but this driver has not been checked against that same bar |
+
+**Functional module coverage is effectively unchanged: 76 same-name + 9 xone-naming = 85 of
+89 covered by the same patterns §2 already established; 3 are justified by existing
+project decisions (`ar5523`, `ath10k_core`/`ath10k_usb`); 1 (`bfusb`) is genuinely new and
+untriaged.**
+
+### 0.3 `addon.tar`: **not unchanged** — a real finding
+
+PLAN.md §1.1 lists `addon.tar` as "unchanged", but that compares 20260907 to whatever LIC
+commit immediately preceded it — not to `8aba321`, the commit this document's detailed §3
+audit was built from. A direct byte comparison finds real differences:
+
+- `git -C $S/lic diff --stat 8aba321 d4e3f51 -- addon.tar` → same size (2,611,200 bytes),
+  **different sha256** (`38e420ce…6fbde` → `6dda768d…d92d4`).
+- Extracting both and diffing: **one new file**, `etc/init.d/S39usb-coldplug` (a `start`-only
+  init script that runs `udevadm trigger --subsystem-match=usb --action=add` +
+  `udevadm settle --timeout=10` — a USB re-coldplug step not present in the 8aba321-era
+  `addon.tar` at all, and not accounted for anywhere in §3's disposition table).
+- **`usr/sbin/uartmode` changed** — the same script §3c-bis analyses in detail (its
+  `kill_all()` now uses `fuser -k` against `/dev/ttyS1` instead of `killall agetty login
+  pppd midilink …`; PPP's IP-detection `sed` gained a `169.254.*` (link-local) filter; PPP
+  exit-status handling is new; and a **new mode `"6"`** was added, launching a
+  `/media/fat/snid` binary this document has no other reference to). §3c-bis's analysis of
+  `uartmode`'s "confirmation poll" latent defect (lines 95-102 in the 8aba321 version) has
+  **not** been re-checked against this new version — the diff above does not touch that
+  region, so the defect most likely still stands, but this is not re-verified.
+
+**One check was possible without a build, and it found a real gap.** §3's `usr/sbin/uartmode`
+row says this repo vendors the file byte-identical (`board/mister/de10nano/rootfs-overlay/
+usr/sbin/uartmode`). Diffed directly against both stock copies: it matches the **old**
+(8aba321) script exactly and **differs** from the 20260907 one — i.e. **this repo has not
+picked up stock's 20260907 `uartmode` update**, and `S39usb-coldplug` has no counterpart
+anywhere in this repo (`grep` for the filename finds nothing outside the evidence above).
+Both are real, concrete gaps against the *current* stock `addon.tar`, distinct in kind from
+§3's documented decisions — these two didn't exist when §3 was written, so they were never
+evaluated at all, not evaluated and declined.
+
+**Neither is otherwise dispositioned in this document.** A full §3-style bucket audit
+(A/B/C/D, cross-checked against `Main_MiSTer` callers and the built target) for whether
+`S39usb-coldplug` is worth carrying, and whether the `uartmode` update should be — was not
+performed in this pass; flagged as the concrete remaining work for a future `addon.tar`
+re-reconciliation (`docs/verification/stock-reconciliation/addon-report-20260907.txt` has
+the full diff to start from). The rest of §3's 56 items were not re-diffed byte-for-byte
+against the 20260907 `addon.tar` beyond the two files above; nothing else showed up in the
+directory-tree diff, so the other 54 are presumed unchanged (`diff -rq` on the two
+extracted trees found no other content or filename difference).
+
+---
+
+## Headline (20250402 measurement — see §0 for the current 20260907 numbers)
 
 | Archive | Stock items | Present in ours | Absent | We add |
 |---|---|---|---|---|
@@ -54,11 +164,11 @@ Firmware and modules are at **parity or better with no functional gap**.
 them** — §3c is now a disposition table, not a gap list. The 17 remaining
 absences are the deliberate ones: §3a (we are better), §3b (documented drops),
 plus two documented declines (vgmplay) and one genuinely sourceless binary
-(`fpga`).
+(`fpga`). **This table and §1–§5 below are all still the 20250402 measurement — see §0.**
 
 ---
 
-## 1. `firmware.tar.gz` — 58/69 present, 11 justified, +213 added
+## 1. `firmware.tar.gz` (20250402 baseline) — 58/69 present, 11 justified, +213 added
 
 ### The 11 absences, each with its reason
 
@@ -88,7 +198,7 @@ upstream source.
 
 ---
 
-## 2. `modules.tar.gz` — 52/52 functionally covered, +62 added
+## 2. `modules.tar.gz` (20250402 baseline) — 52/52 functionally covered, +62 added
 
 38 of stock's 52 module names appear verbatim in our image. The other **14 are
 not gaps** — they fall into three groups:
@@ -165,12 +275,12 @@ that we do not. No consumer, so no gap.
 > does not bump +62 to +63 for it, because that would assert a module count
 > from a build that has not been run (`docs/wifi-parity.md` §8: "not built or
 > run yet"). Re-run the extraction in
-> `docs/verification/stock-reconciliation/SOURCE.txt` after the next real
+> `docs/verification/stock-reconciliation/SOURCE-20250402.txt` after the next real
 > build and fold it in then.
 
 ---
 
-## 3. `addon.tar` — 34/56 at the stock path, every absence a decision
+## 3. `addon.tar` (20250402 baseline) — 34/56 at the stock path, every absence a decision
 
 `addon.tar` is a rootfs *overlay* of configs and MiSTer helper binaries.
 Present since before T3: `etc/network/interfaces`, `etc/samba/smb.conf`,
@@ -209,7 +319,7 @@ exist only in the pinned `addon.tar`, which dates both `2026-07-02` — i.e.
 they *post-date* the 2025-04-02 release whose rootfs was extracted into
 `work/imgroot`, so their absence there is expected rather than a discrepancy.
 Their bytes were verified against that archive (`sha256 38e420ce…6fbde`,
-pinned in [`SOURCE.txt`](verification/stock-reconciliation/SOURCE.txt); the
+pinned in [`SOURCE.txt`](verification/stock-reconciliation/SOURCE-20250402.txt); the
 archive is **not** unpacked anywhere under `work/` — see `docs/wifi-parity.md`
 §9), so these are the only two rows whose sourcing cannot be re-derived from
 the checked-in tree alone.
@@ -257,7 +367,7 @@ omitting `S45bluetooth`):
 | 1–3 | `usr/bin/md` → `memtool`, `usr/bin/mw` → `memtool`, `usr/bin/play` → `aplay` | **Reproduced in the overlay.** Both targets ship. `play` is what mc's stock `sound.sh open common` branch execs for au/voc/snd files, and alsa-utils `aplay` natively plays voc/wav/raw/au — the alias is functional, not cosmetic. |
 | 4–8 | `etc/localtime`, `etc/ssl/cert.pem`, `usr/sbin/mount.ntfs`, `usr/lib/libfluidsynth.so`, `usr/lib/libfluidsynth.so.3` | **Already covered** (overlay or package). |
 | 9–10 | `usr/lib/libjack.so`, `usr/lib/libjack.so.0` | Fall with the §3b `libjack` drop. |
-| 11 | `etc/init.d/S45bluetooth` → `/bin/bluetoothd` | **Already covered** — see [`docs/init-parity.md`](init-parity.md), `S45bluetooth` row. Stock's init entry *is* this symlink; its target is `addon.tar`'s own `usr/bin/bluetoothd` (an `EXACT` row in `verification/stock-reconciliation/addon-report.txt`) because stock is usr-merged (`work/imgroot/bin -> usr/bin`; both paths and the overlay's copy hash to `db7c5095…`). The overlay reproduces that exact shape, plus a documented no-op stub at `etc/init.d/S40bluetoothd` so bluez's own init script cannot start a second `bluetoothd`. |
+| 11 | `etc/init.d/S45bluetooth` → `/bin/bluetoothd` | **Already covered** — see [`docs/init-parity.md`](init-parity.md), `S45bluetooth` row. Stock's init entry *is* this symlink; its target is `addon.tar`'s own `usr/bin/bluetoothd` (an `EXACT` row in `verification/stock-reconciliation/addon-report-20250402.txt`) because stock is usr-merged (`work/imgroot/bin -> usr/bin`; both paths and the overlay's copy hash to `db7c5095…`). The overlay reproduces that exact shape, plus a documented no-op stub at `etc/init.d/S40bluetoothd` so bluez's own init script cannot start a second `bluetoothd`. |
 | 12 | `usr/bin/mikmod` → `modplug123` | **Not shipped.** Its target does not exist on this image (`docs/package-manifest.md` §4b), and a dangling symlink is strictly worse than an absent one. |
 
 **`etc/udev/rules.d/70-persistent-net.rules` — CLOSED (T2).** Stock's rule is:

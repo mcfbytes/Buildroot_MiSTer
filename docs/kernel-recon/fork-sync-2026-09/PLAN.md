@@ -1,7 +1,7 @@
 # Fork-sync increment 2026-09 — plan: reconcile against the shipped stock 6.18 kernel
 
-**Status:** Waves 0–2 executed 2026-09-10 (see [`STATUS.md`](STATUS.md) — results, the two
-owner decisions with recommendations, and the grounding caveat). Waves 3–5 not started. Written
+**Status:** Waves 0–3 executed 2026-09-10/11 (see [`STATUS.md`](STATUS.md) §7 for the Wave 3
+validation table). Waves 4–5 not started. Written
 2026-09-10 on branch `claude/kernel-6.18-patch-plan-l32pu9`. Every fact in §1 was measured in this session from
 the live upstream repositories and the stock release artifacts; every disposition in §2 is a
 **hypothesis** for the Wave 1 workers to test, in the sense `MISTER-KERNEL-PATCH-RECON.md` §0
@@ -66,7 +66,7 @@ Extracted in this session with the repo's own tooling
 
 - `evidence/stock-20260907-linux.config` — the IKCONFIG `.config` of the shipped kernel
   (4,659 lines). **This is the new stock baseline for the config axis**, superseding
-  `docs/stock-inventory/stock-linux.config` (5.15) for every future parity question.
+  `docs/stock-inventory/20250402/stock-linux.config` (5.15) for every future parity question.
 - `evidence/stock-20260907-modules.txt` — `modules.tar.gz` contents: **89 modules** under
   `lib/modules/6.18.38-MiSTer/`. Notable: `xpad`, `hid-vader4`, the full `xone-*` set, the
   entire mainline `rtw88`/`rtw89`/`mt76`/`ath` USB set. Notable by absence: **no

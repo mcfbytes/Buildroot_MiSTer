@@ -76,7 +76,7 @@ Conclusions (each previously an assumption, now fact):
 Banner: `Linux version 5.15.1-MiSTer (saar@Gryphon) (arm-none-linux-gnueabihf-gcc …)`.
 zImage payload is **LZ4** (`CONFIG_KERNEL_LZ4=y`); `CONFIG_IKCONFIG=y` +
 `CONFIG_IKCONFIG_PROC=y`, so the exact build config is embedded — extracted to
-`docs/stock-inventory/stock-linux.config` (4,246 lines). Key facts:
+`docs/stock-inventory/20250402/stock-linux.config` (4,246 lines). Key facts:
 
 | Symbol | Stock value | Implication |
 |---|---|---|

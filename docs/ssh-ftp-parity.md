@@ -68,14 +68,14 @@ Confirmed present and consistent, no changes made:
 **Minor doc inconsistency noticed, not fixed (out of my lane — `docs/decisions/`
 isn't part of this task):** ADR 0015's prose refers to "an `S49sshd`-style
 overlay" in two places, but the actual (and correct, and consistent with
-stock's own `S50sshd` numbering — see `docs/stock-inventory/etc-configs.md`
+stock's own `S50sshd` numbering — see `docs/stock-inventory/20250402/etc-configs.md`
 line 10) filename has always been `S50sshd`. Cosmetic only; behavior is
 unaffected. Flagging for whoever next touches ADR 0015.
 
 ### 1.2 `sshd_config` audit for OpenSSH 10.x parity
 
 Compared line-by-line against stock's captured config
-(`docs/stock-inventory/etc-configs.md` §`/ssh/sshd_config`, `$OpenBSD:
+(`docs/stock-inventory/20250402/etc-configs.md` §`/ssh/sshd_config`, `$OpenBSD:
 sshd_config,v 1.103` — roughly OpenSSH 7.x-era) and against our build's actual
 version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 `OPENSSH_VERSION_MAJOR` in `work/buildroot/package/openssh/openssh.mk`).
@@ -177,7 +177,7 @@ had no `proftpd` entry at all — `proftpd` would never start.
 **Fix:** added `board/mister/de10nano/rootfs-overlay/etc/init.d/S50proftpd`,
 matching stock's own init-script name and number exactly (stock's real script,
 `work/imgroot/etc/init.d/S50proftpd`, confirmed via
-`docs/stock-inventory/etc-configs.md`: `S01syslogd S02klogd S10udev S30dbus
+`docs/stock-inventory/20250402/etc-configs.md`: `S01syslogd S02klogd S10udev S30dbus
 S40network S41dhcpcd S45bluetooth S49ntp S50proftpd S50sshd S91smb S99user`).
 Content is **byte-identical** to stock (`diff` exit 0 against
 `work/imgroot/etc/init.d/S50proftpd`), which is in turn byte-identical to
@@ -253,7 +253,7 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 ### 2.3 `proftpd.conf` audit
 
 **Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
-and against the doc-captured copy in `docs/stock-inventory/etc-configs.md`).
+and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
 No changes made. Notable existing content, confirmed intentional/stock-matching:
 
 - `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
@@ -268,7 +268,7 @@ No changes made. Notable existing content, confirmed intentional/stock-matching:
 Module set also matches stock: our defconfig sets only
 `BR2_PACKAGE_PROFTPD=y`, no `BR2_PACKAGE_PROFTPD_MOD_*` suboption (confirmed:
 `grep PROFTPD configs/fragments/de10nano-image.fragment` → exactly one line). Stock's
-own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/binaries-needed-full.txt`:
+own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/20250402/binaries-needed-full.txt`:
 `libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0` — no libssl, no sqlite, no
 pcre2) is consistent with the same bare/no-submodule build.
 
@@ -333,7 +333,7 @@ on this specific field.
 ### 3.2 PAM service file for FTP — audited, matches stock (nothing added)
 
 Stock's `usr/sbin/proftpd` links `libpam.so.0` (confirmed,
-`docs/stock-inventory/binaries-needed-full.txt`), and our build will too (PAM
+`docs/stock-inventory/20250402/binaries-needed-full.txt`), and our build will too (PAM
 auto-detected at `./configure` time whenever `BR2_PACKAGE_LINUX_PAM=y` is in
 the staging dir, which it is — no explicit `--enable-auth-pam`/`--disable-auth-pam`
 flag exists in `proftpd.mk` either way, so this isn't a config knob either

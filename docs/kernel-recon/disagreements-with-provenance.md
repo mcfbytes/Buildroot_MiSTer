@@ -1,6 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-09-10 20:59 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
+Generated 2026-09-10 22:21 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
 
@@ -85,6 +85,15 @@ WHAT WAS WRONG. The original pass graded this commit 'dropped-upstream' on the s
 
 FUNCTIONAL ASSESSMENT: This commit adds two RTC devices (&i2c1 rtc_at_68 and rtc_at_6F) using bare compatible strings ('m41t81' and 'mcp7941x', without vendor prefixes). Vanilla 6.18.38 supports these chips via rtc-m41t80.c and rtc-ds1307.c drivers. The bare compatible strings work via a fallback mechanism in of_i2c_register_de…
 
+## `59bcae8eb` Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo (#85)
+
+- disposition: **dropped-deliberate** | severity feature-loss | silent
+- doc ref: docs/patch-provenance.md:789-875 (P1.6 cpufreq entry) and :798-804 (the 'P1.6 correction'); docs/abi-contract.md:1670
+- notes: DISPOSITION IS DELIBERATELY 'needs-verification': this is the owner's A/B/C decision (PLAN.md 2.4). The full comparison is docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md; do NOT close this record without reading it. Do not read 'needs-verification' as 'we might be missing a feature' - we are not; 0003 ships the same capability today.
+
+THREE FINDINGS THAT REFUTE PARTS OF THE PLAN'S HYPOTHESIS.
+(1) PLAN.md 2.4 and the option-C row assume the fork's driver changes the sysfs contract for community overclock scripts ('on upstream's driver scaling_max_freq alone may not reach 1200 MHz until …
+
 ## `bbeff2c30` Enable Logitech D-Input drivers.
 
 - disposition: **dropped-deliberate** | severity feature-loss | silent
@@ -104,4 +113,4 @@ FUNCTIONAL ASSESSMENT: This commit adds two RTC devices (&i2c1 rtc_at_68 and rtc
 - notes: rtl8821au was vendored in the Linux-Kernel_MiSTer fork but is NOT present in vanilla 6.18.38. It has been extracted to an out-of-tree Buildroot package (rtl8821au-morrownr, sourced from morrownr's actively-maintained fork) in P3.1. The warning suppressions (-Wno-cast-function-type, -Wno-enum-conversion) added here are already present in the current morrownr upstream Makefile (confirmed by reading /mnt/source/Buildroot_MiSTer/output/build/rtl8821au-morrownr-3a7cdb591b64d99d2670e455bde67c8ab338525b/Makefile — has ccflags-y += -Wno-cast-function-type at one line and -Wno-enum-conversion at anothe…
 
 
-**Total: 15 disagreements.**
+**Total: 16 disagreements.**

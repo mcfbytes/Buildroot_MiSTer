@@ -35,6 +35,11 @@
 > is the current count: **one** out-of-tree WiFi driver, not zero and not
 > six. Anywhere else in this document that says "zero out-of-tree drivers"
 > is describing the v10 state and is superseded by this note.
+>
+> **Update (§10 below, 2026-09-11):** stock's `MiSTer-v6.18` fork HEAD added an AIC8800
+> Wi-Fi/BT out-of-tree driver. Owner decision **D2: defer, no package** — it compiles
+> clean, but is inert without ~60 unverified firmware blobs and ships no license file. The
+> out-of-tree count stays **one** (`rtl8852cu-morrownr`); AIC8800 is not packaged.
 
 ## 0. Correction to the task premise — there is no `wifi.sh` in the base image
 
@@ -145,7 +150,7 @@ Everything below is cited to the actual fetched script,
 
 | `wifi.sh` dependency | Where in the script | Stock provides | We provided before this task | Status |
 |---|---|---|---|---|
-| `bash` interpreter | `wifi.sh:1`, `#!/usr/bin/env bash` | `usr/bin/bash` (`docs/stock-inventory/binaries-needed-full.txt:25`) | **Nothing** — `BR2_PACKAGE_BASH` was not set anywhere in the defconfig | **Gap — fixed.** `BR2_PACKAGE_BASH=y` added. |
+| `bash` interpreter | `wifi.sh:1`, `#!/usr/bin/env bash` | `usr/bin/bash` (`docs/stock-inventory/20250402/binaries-needed-full.txt:25`) | **Nothing** — `BR2_PACKAGE_BASH` was not set anywhere in the defconfig | **Gap — fixed.** `BR2_PACKAGE_BASH=y` added. |
 | `dialog` (all its menus/inputboxes/infoboxes) | `wifi.sh:25` (`printMsgs`) and every interactive function | `usr/bin/dialog` (`binaries-needed-full.txt:76`) | **Nothing** | **Gap — fixed.** `BR2_PACKAGE_DIALOG=y` added. |
 | `ifup wlan0` / `ifdown wlan0` | v1.x: the primary bring-up/tear-down path (`wifi.sh:36-42`, `_set_interface_wifi()`). **v2.3.0 deliberately avoids it** and drives `wpa_supplicant` directly (`:2044`) | ifupdown-scripts | Already present (§1) | **No gap either way** — still shipped and still used by the boot path (`/etc/network/interfaces`), just no longer by `wifi.sh`. |
 | `ip link set wlan0 up/down` (fallback only if `ifup`/`ifdown` fail) | `wifi.sh:37,41`, same function | `usr/sbin/ip` (real iproute2, linked against `libcap.so.2` — `binaries-needed-full.txt:461`, not a BusyBox applet) | **Nothing** — no `BR2_PACKAGE_IPROUTE2` | **Gap — fixed.** `BR2_PACKAGE_IPROUTE2=y` added. |
@@ -231,7 +236,7 @@ Realtek packages —
   build-time confirmation.
 
 In-tree drivers (`rtlwifi`, `mwifiex`/`mwifiex_usb`, per
-`docs/stock-inventory/modules.md:37,64-65`) are mac80211/cfg80211 clients
+`docs/stock-inventory/20250402/modules.md:37,64-65`) are mac80211/cfg80211 clients
 by construction — `nl80211` is their native, primary control path in any
 kernel from this era; no separate check needed.
 
@@ -556,7 +561,7 @@ under-reports is exactly how a gap survives an audit.
 > drivers of exactly that vintage — `RT2500USB`, `RT73USB`, `RTL8187` (all
 > 802.11g, 2004–2005) and `LIBERTAS`. That is not an inconsistent standard: all
 > four are **stock-parity** items, present because MiSTer's 5.15 stock kernel
-> shipped them (`docs/stock-inventory/modules.md` lists `rt2500usb`, `rt73usb`,
+> shipped them (`docs/stock-inventory/20250402/modules.md` lists `rt2500usb`, `rt73usb`,
 > `rtl8187`, `rtl8192cu`). The four ancient drivers left off were never in stock
 > and have no other claim. If you would rather have blanket coverage of the
 > 802.11g era, `ZD1211RW` is the obvious one-line addition (~100 KB, no
@@ -745,11 +750,11 @@ against this image's actual `eudev`/kernel rather than assumed.
   `ifup`/`ifdown` dispatcher the rule's `RUN+=` calls (mode 755).
 
 **Where stock's copy was read, and what it actually contains.** The path is
-an `addon.tar` entry — `docs/verification/stock-reconciliation/addon-report.txt:25`
+an `addon.tar` entry — `docs/verification/stock-reconciliation/addon-report-20250402.txt:25`
 lists it among that tar's 56 files (marked `ABSENT` there, i.e. absent from
 *our* image when that report was generated — which is what this task changes),
 and the tar's `sha256` is recorded in
-`docs/verification/stock-reconciliation/SOURCE.txt`. `addon.tar` itself is
+`docs/verification/stock-reconciliation/SOURCE-20250402.txt`. `addon.tar` itself is
 **not** unpacked anywhere under `work/`, so the bytes below were read from
 the extracted stock rootfs instead:
 `work/imgroot/etc/udev/rules.d/70-persistent-net.rules` (450 bytes, mode
@@ -986,3 +991,82 @@ spellings resolve to those same two entries. `output/target/usr/sbin/iw` — a
   it, nothing should execute it); and the script is executable (any `-r?x`
   mode, since `RUN+=` `exec`s it directly and udev does not go through a
   shell). It does **not** pin the script to exactly 755.
+
+---
+
+## 10. AIC8800 (stock 6.18, 2026-09-11) — deferred by owner decision D2
+
+Stock's `MiSTer-v6.18` fork HEAD, commit `c129b0fac34ad5d613bbec3f59d6036775e41c83`
+("Add AIC8800 WiFi/BT driver.", Sorgelig, 2026-09-11), added an out-of-tree AIC8800
+Wi-Fi/Bluetooth combo driver — the RivieraWaves "rwnx" fullmac driver as re-badged by
+AICSemi, 142 files / 82,330 insertions across `drivers/net/wireless/aic8800/`. Full
+analysis: [`docs/kernel-recon/fork-sync-2026-09/memo-Q9-aic8800.md`](kernel-recon/fork-sync-2026-09/memo-Q9-aic8800.md).
+**Owner decision D2 (2026-09-11): defer — no package.** This image does not carry it.
+
+### Why defer, not package or decline
+
+The technical objection is gone: both kernel modules (`aic8800_fdrv`, `aic_load_fw`)
+**compile and modpost clean for 32-bit ARM** — zero errors, zero warnings, 206,828 bytes
+of `.ko.xz` — and the driver passes the ADR 0016 admissibility test cleanly (mainline has
+no AIC8800 HAL, no staging entry, no `MAINTAINERS` line, in any of the three trees this
+increment checked; zero USB-ID bind conflicts against the 46 VID:PIDs the two modules
+claim, checked one-by-one against `drivers/net/wireless/`, `drivers/bluetooth/`,
+`drivers/usb/` and `drivers/net/usb/`).
+
+The **supply objection is decisive and unresolved**:
+
+- **No firmware, and no way to source it.** The driver reads roughly 60 firmware blobs
+  from `/lib/firmware` at runtime, none of which exist in upstream `linux-firmware`, in
+  this project's pinned tree, or — checked directly for this increment — in **stock's own
+  Release 20260907 `firmware.tar.gz`** (89 files, none of them `fmacfw_*`/`fw_patch_*` or
+  any other AIC-matching name; see
+  [`docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-firmware.txt`](kernel-recon/fork-sync-2026-09/evidence/stock-20260907-firmware.txt)).
+  A package built today would ship a `.ko` that probes, fails at `request_firmware()`, and
+  never brings an interface up — precisely the "driver without firmware reads as broken
+  hardware" failure mode this document's §6 exists to prevent, except with **no known fix**
+  rather than a one-line Buildroot sub-option.
+- **No license.** 51 of 139 vendor source files carry neither a copyright line nor a
+  license grant; where a license does appear it is a bare `MODULE_LICENSE("GPL")` comment
+  with no accompanying `LICENSE` file for a Buildroot package's `*_LICENSE_FILES` to point
+  at; 2 files are Apache-2.0 (GPLv2-incompatible) mixed into an otherwise-GPL tree. The
+  vendor tree also carries no identified upstream repository to pin by commit SHA — the
+  fork's copy is an SDK snapshot with no `README`, no supported-kernel-range statement, and
+  no maintainer contact.
+
+Both blockers are answerable in principle — identify the real upstream repository and its
+firmware distribution — and neither needs hardware to resolve, which is why this is a
+**defer**, not a decline: declining now would mean amending ADR 0016's "mainline can't
+drive this chip" admissibility ground (which AIC8800 satisfies, same as `rtl8852cu` did),
+not applying it.
+
+### Hardware this leaves uncovered
+
+Resolved from the driver's own `#define`s (`aicwf_usb.h`), the most concrete demand
+signal available without shipping anything: **Tenda U2** (`2604:0014`), **Tenda U11**
+(`2604:001f`), **Tenda U11 Pro** (`2604:0020`), and **Tenda TX1U Nano** (`3625:0110`) —
+commodity ~£10 Wi-Fi 6 (AX) USB dongles with no driver anywhere in this image today (the
+§4/§7 audits above cover every mainline USB Wi-Fi driver and none claims these IDs). A
+MiSTer user who buys the current cheapest AX dongle on the market gets nothing from either
+stock's 6.18 kernel or this image.
+
+### What would unblock it
+
+Per the memo's stated re-open trigger: **either** (a) stock's own `firmware.tar.gz` gains
+`fmacfw_*`/`fw_patch_*`-style entries in a future release (cheap to re-check: one `tar tzf`
+against a new release, same evidence-list method this increment used), **or** (b) someone
+identifies the real upstream repository for this vendor tree and confirms it carries both
+a license file and the firmware blobs, redistributable. Either would turn packaging
+`package/aic8800` + a firmware package into a mechanical exercise — the hard technical
+question (does it build) is already answered — modelled on `package/rtl8852cu-morrownr/`,
+with the caveats the memo records for a future implementer: the two-module build needs
+ordered `M=` passes (`aic8800_fdrv` will not modpost without `aic_load_fw`'s
+`Module.symvers`), and hardware verification is still needed that the two modules' six
+overlapping USB IDs (disambiguated by interface class, not PID, for three of the six)
+don't race during the ROM-bootloader-to-application-firmware re-enumeration handoff.
+
+**Out-of-tree WiFi driver count in this image is unaffected: still one**
+(`package/rtl8852cu-morrownr`, §8). AIC8800 is not packaged, so it does not change that
+count, and stock does not ship it either (`c129b0fac` is on the fork's `MiSTer-v6.18`
+branch, ahead of Release 20260907's build point — stock's own shipped `modules.tar.gz`
+evidence has **no** `aic8800*.ko.xz`, confirmed against
+[`evidence/stock-20260907-modules.txt`](kernel-recon/fork-sync-2026-09/evidence/stock-20260907-modules.txt)).

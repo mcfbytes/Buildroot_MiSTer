@@ -76,6 +76,9 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | 40 | `0046-dts-ramoops` | board-specific / de10-only *(beta)* | **excluded** | Every number derives from `mem=511M`, MiSTer's `0x1FFFF000` mailbox and ARM32's HIGHMEM model. The *capability* is worth more on DE25, but the arithmetic must be re-derived (DRAM at `0x80000000`, `svcbuffer@0` already reserved, no HIGHMEM on arm64). |
 | — | `0047-btusb-mercusys-ma530-2c4e-0115` | *post-audit (added 2026-09-02)* | **excluded** | Not in the audit; it is a **backport of a mainline commit that is already in v7.2**. Its own header says "DELETE THIS PATCH the moment the kernel pin leaves 6.18.y for 7.2 or newer — at that point the ID is in-tree and re-adding it would collide." This board is on 7.2.2, so the ID is already present. (It is likewise absent from `linux-patches-beta/series`.) |
 | — | `0021` | — | n/a | No such patch; the DE10 series has never had one. |
+| — | `0048-hid-google-stadiaff-classic2usb-retrozord` | *post-audit (added 2026-09-11)* | **included** | Not in the audit; two `hid_device_id` rows (Classic2USB `16d0:1460`, RetroZord `1209:595a`) in `drivers/hid/hid-google-stadiaff.c`, matched with `HID_GROUP_GENERIC` — a USB ID table has no architecture. Main_MiSTer-coupled (`input.cpp:52-53`, `:4176-4177`, `:5102`, `:5349`, `:5496`), so it must not drop silently. Applies clean at `-F0` on 7.2.3 (offset 0). |
+| — | `0049-hid-nintendo-8bitdo-adapter-skip-baudrate` | *post-audit (added 2026-09-11)* | **included** | Not in the audit; carried from open PR #92 ahead of merge (owner decision D3) — reorders `joycon_init()`'s USB handshake/baudrate block after `joycon_read_info()` and skips it for 8BitDo-adapter MACs (`E4:17:D8` OUI). USB-generic HID probe-path logic, no architecture exposure. Applies clean at `-F0` on 7.2.3 (offsets only, zero fuzz) after this board's own `0015`/`0032`/`0034`/`0035`/`0038`-`0041` hid-nintendo stack. |
+| — | `0050-exfat-dir-readahead-plug` | *post-audit (added 2026-09-11)* | **excluded** — 7.2.3 already carries mainline's plugged read-ahead (`fs/exfat/fatent.c` `exfat_blk_readahead`); the 6.18 hunk fails at `-F0` there | A 4-line `blk_start_plug`/`blk_finish_plug` wrap of `exfat_dir_readahead()`'s `sb_breadahead()` loop — but that function does not exist on 7.x at all. `git show v7.2.3:fs/exfat/dir.c` has no `exfat_dir_readahead` and no `blk_start_plug`; the equivalent batching already lives in `exfat_get_dentry()` + `exfat_blk_readahead()` (`fs/exfat/fatent.c:159-183`). Measured: `patch -p1 -F0 --dry-run` against pristine v7.2.3 `fs/exfat/dir.c` reports "Hunk #1 FAILED at 6. Hunk #2 FAILED at 682. 2 out of 2 hunks FAILED". 6.18-series-only per this board's own `linux-patches-beta/series` exclusion (same reasoning, mirror image of `0047`); retires from `linux-patches/` outright when the 6.18.y pin leaves 6.18.y. |
 
 ### DE25-local patches (not in the audit — new work)
 
@@ -91,9 +94,9 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | Audit rows | 40 |
 | Included from the audit | **32** (all 32 `portable-as-is` + `shared` rows) |
 | Excluded from the audit | **8** — 7 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0045` `0046`) + `0002` (`portable-with-rework`, deferred) |
-| Post-audit patches considered | 1 (`0047`, excluded — already upstream at 7.2) |
+| Post-audit patches considered | 3 (`0047` excluded — already upstream at 7.2; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11) |
 | DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **34** |
+| **Total applied here** | **36** |
 
 ## Note for the DE25 DTS
 
@@ -150,3 +153,12 @@ all of them the expected `fpga-mgr` two-string ones from `docs/de25-dts-rational
 1–5; both `mmc@10808000` warnings are gone. `make dt_binding_check
 DT_SCHEMA_FILES=Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` is clean
 (CHKDT / LINT / STYLE / example DTC all pass).
+
+RE-VERIFIED AT 7.2.3 (2026-09-11), fork-sync increment 2026-09 Wave 3, after adding `0048` and
+`0049` (both post-audit, symlinks into `../../de10nano/linux-patches/`) and considering and
+excluding `0050` (see its row above). `patch -p1 -F0` replay of the full 36-entry directory
+against a pristine `linux-7.2.3` extract: **36/36 applied, 0 hunks with fuzz, 0 rejects** — `0048`
+at offset 0, `0049` at offsets only (20/21/21 lines across its three hunks, matching the offsets
+measured for the beta series' own hid-nintendo stack) — plus a separate dry-run confirming `0050`
+FAILS both hunks against the same pristine tree, exactly as its excluded row states.
+`scripts/lint-kernel-patches.sh` accepts the directory and passes with `0048`/`0049` included.

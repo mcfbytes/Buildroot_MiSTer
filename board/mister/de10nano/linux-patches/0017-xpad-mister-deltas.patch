@@ -1,9 +1,9 @@
 From f3c75eb0268277763955dbc6f6d9449cd32c43c5 Mon Sep 17 00:00:00 2001
 From: eniva <58012997+eniva@users.noreply.github.com>
 Date: Thu, 21 Nov 2019 11:40:21 -0500
-Subject: [PATCH 1/1] xpad: MiSTer deltas (cpoll, GIP exclusion, Vader 3/4/5 Pro, Qanba XInput)
+Subject: [PATCH 1/1] xpad: MiSTer deltas (cpoll, GIP exclusion, Vader 3/4/5 Pro, Qanba XInput, 8BitDo init bypass)
 
-Four independent deltas curated on top of 6.18's own (already very
+Five independent deltas curated on top of 6.18's own (already very
 different from the 5.15 base) xpad.c:
   1. `cpoll` module param overriding the USB interrupt-endpoint polling
      interval for XInput pads (both directions).
@@ -20,6 +20,17 @@ different from the 5.15 base) xpad.c:
      additionally gets a full "Flydigi V2" raw-mode client (a second USB
      interface, checksum-framed command/report protocol, toggled by a
      Circle+Turbo chord) implemented from scratch in this driver file.
+  5. `skip_8bitdo_init`: default-off bool module param. When a user or
+     script explicitly sets it to 1, xpad_start_input() skips the Xbox
+     360 vendor initialization control request for USB ID 2dc8:3106
+     only ("8BitDo Ultimate Wireless / Pro 2 Wired Controller" in
+     xpad_device[]) -- an experimental A/B switch for the reconnect
+     failure tracked in fork issue #84, not a permanent quirk. The
+     fork's own commit message cautions that some 8BitDo Ultimate
+     wireless RECEIVER dongles also enumerate as 2dc8:3106, so the
+     switch's scope is the USB ID, not the one device row it is named
+     after. Left at its default (false), behavior is byte-for-byte
+     unchanged for every device, 2dc8:3106 included.
 
 Provenance
 ----------
@@ -34,6 +45,16 @@ Origin:       f3c75eb0268277763955dbc6f6d9449cd32c43c5
                 "xpad: support for extra buttons on Flydigi Vader 3/4/5
                 Pro in wired and RF dongle modes.", Sorgelig, 2026-04-15
                 (delta 4).
+              + 7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b
+                "Input: xpad - add opt-in 8BitDo initialization bypass",
+                Kasper Olesen <kaspersolesen@gmail.com>, 2026-09-08, against
+                MiSTer-v6.18 (delta 5).
+                https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b
+                Duplicate wrapper: PR #86 head
+                ca8459023d1983ef888bd8923fa41f117b894700 carries an
+                identical diff for this file (`git diff 7c75b1b4..ca845902
+                -- drivers/input/joystick/xpad.c` is empty) -- the same
+                change reachable two ways in the fork repo, not two.
               NOT ported: af27afc4c2662d9b4673687c0279994914060d2a
                 "Update xpad driver (#63)", zakk4223, 2025-09-29 -- a
                 wholesale resync of xpad.c to a much newer upstream
@@ -47,9 +68,14 @@ Origin:       f3c75eb0268277763955dbc6f6d9449cd32c43c5
                 delta 2 this patch still adds itself is therefore the
                 xpad_device[] row { 0x2c22, 0x2303, ... }, which 6.18
                 does NOT have.
-Author:       eniva; Sorgelig (deltas 3, 4).
+Author:       eniva; Sorgelig (deltas 3, 4); Kasper Olesen (delta 5).
 Upstream:     No (cpoll, the GIP exclusion, Vader 3/4/5 Pro support and
               the Qanba entry are all absent from 6.18.38's xpad.c).
+              skip_8bitdo_init (delta 5) is likewise absent from vanilla
+              6.18.49 and v7.2.3 -- no skip_8bitdo_init/2dc8-specific
+              bypass in either tree, nor in mainline v7.3-rc2; fork-only,
+              no vanilla equivalence claim applies (see
+              docs/kernel-recon/records/7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b.json).
               Disposition "carry" (docs/patch-provenance.md class D).
 Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
               Curated by hand against 6.18's actual xpad.c (not diffed
@@ -92,12 +118,40 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
               exclusion/xone hand-off are unverified against real
               hardware -- ported from the fork's protocol implementation
               and structurally sound, but not bench-tested here.
+Delta 5 fold: 7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b -> 0017 (as delta
+              5), Michael C. Ferguson, 2026-09-10, per
+              docs/kernel-recon/records/7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b.json.
+              Verified by real apply, not just dry-run: deltas 1-4 (this
+              patch, unchanged) apply at -F0 against pristine 6.18.49
+              xpad.c with only line-number offsets (0-2 lines, zero
+              fuzz); the fork's own two-hunk diff then applies on top at
+              -F0 with zero fuzz -- the module_param block at 0 offset
+              (0017 already declares `cpoll`'s module_param immediately
+              above the fork's insertion point and does not edit between
+              that point and the top of the file) and the
+              xpad_start_input() XTYPE_XBOX360 guard at a 23-line offset
+              (0017 adds code earlier in the file -- MAP_VADER5/
+              MAP_VADER4 bit defines, the Flydigi V2 block -- but never
+              touches xpad_start_input()'s body, so the surrounding
+              context is byte-identical). The diff below was then
+              regenerated pristine->patched (not hand-merged) so every
+              @@ header is exact for 6.18.49; verified at -F0 against
+              6.18.49, and 6.18.50 is unreachable in the authoring
+              session -- CI applies against the real tarball. Default
+              kept `false`, matching the fork: the added condition
+              `xpad->xtype == XTYPE_XBOX360 && !(skip_8bitdo_init &&
+              idVendor==0x2dc8 && idProduct==0x3106)` is logically
+              equivalent to the prior unconditional XTYPE_XBOX360 branch
+              whenever skip_8bitdo_init is false, so no existing
+              behavior -- 2dc8:3106 included -- changes unless a user
+              opts in. 7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b carries
+              no Signed-off-by trailer; carried without one, below.
 
 Signed-off-by: eniva <58012997+eniva@users.noreply.github.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 diff --git a/drivers/input/joystick/xpad.c b/drivers/input/joystick/xpad.c
-index ebfb841aa..8e8347b7f 100644
+index 1b6f38f..5f2a572 100644
 --- a/drivers/input/joystick/xpad.c
 +++ b/drivers/input/joystick/xpad.c
 @@ -84,6 +84,8 @@
@@ -109,13 +163,18 @@ index ebfb841aa..8e8347b7f 100644
  
  #define DANCEPAD_MAP_CONFIG	(MAP_DPAD_TO_BUTTONS |			\
  				MAP_TRIGGERS_TO_BUTTONS | MAP_STICKS_TO_NULL)
-@@ -123,11 +125,15 @@ static bool auto_poweroff = true;
+@@ -123,11 +125,20 @@ static bool auto_poweroff = true;
  module_param(auto_poweroff, bool, S_IWUSR | S_IRUGO);
  MODULE_PARM_DESC(auto_poweroff, "Power off wireless controllers on suspend");
  
 +static unsigned int cpoll;
 +module_param(cpoll, uint, S_IWUSR | S_IRUGO);
 +MODULE_PARM_DESC(cpoll, "Polling interval of XInput controllers");
++
++static bool skip_8bitdo_init;
++module_param(skip_8bitdo_init, bool, 0644);
++MODULE_PARM_DESC(skip_8bitdo_init,
++		"Skip Xbox 360 initialization request for 2dc8:3106 (experimental)");
 +
  static const struct xpad_device {
  	u16 idVendor;
@@ -126,7 +185,7 @@ index ebfb841aa..8e8347b7f 100644
  	u8 xtype;
  	u8 flags;
  } xpad_device[] = {
-@@ -158,14 +164,20 @@ static const struct xpad_device {
+@@ -158,14 +169,20 @@ static const struct xpad_device {
  	{ 0x045e, 0x028f, "Microsoft X-Box 360 pad v2", 0, XTYPE_XBOX360 },
  	{ 0x045e, 0x0291, "Xbox 360 Wireless Receiver (XBOX)", MAP_DPAD_TO_BUTTONS, XTYPE_XBOX360W },
  	{ 0x045e, 0x02a9, "Xbox 360 Wireless Receiver (Unofficial)", MAP_DPAD_TO_BUTTONS, XTYPE_XBOX360W },
@@ -153,7 +212,7 @@ index ebfb841aa..8e8347b7f 100644
  	{ 0x046d, 0xc21d, "Logitech Gamepad F310", 0, XTYPE_XBOX360 },
  	{ 0x046d, 0xc21e, "Logitech Gamepad F510", 0, XTYPE_XBOX360 },
  	{ 0x046d, 0xc21f, "Logitech Gamepad F710", 0, XTYPE_XBOX360 },
-@@ -404,6 +416,8 @@ static const struct xpad_device {
+@@ -404,6 +421,8 @@ static const struct xpad_device {
  	{ 0x294b, 0x3303, "Snakebyte GAMEPAD BASE X", 0, XTYPE_XBOXONE },
  	{ 0x294b, 0x3404, "Snakebyte GAMEPAD RGB X", 0, XTYPE_XBOXONE },
  	{ 0x2993, 0x2001, "TECNO Pocket Go", 0, XTYPE_XBOX360 },
@@ -162,7 +221,7 @@ index ebfb841aa..8e8347b7f 100644
  	{ 0x2dc8, 0x2000, "8BitDo Pro 2 Wired Controller fox Xbox", 0, XTYPE_XBOXONE },
  	{ 0x2dc8, 0x200f, "8BitDo Ultimate 3-mode Controller for Xbox", MAP_SHARE_BUTTON, XTYPE_XBOXONE },
  	{ 0x2dc8, 0x3106, "8BitDo Ultimate Wireless / Pro 2 Wired Controller", 0, XTYPE_XBOX360 },
-@@ -434,6 +448,7 @@ static const struct xpad_device {
+@@ -435,6 +454,7 @@ static const struct xpad_device {
  	{ 0x3651, 0x1000, "CRKD SG", 0, XTYPE_XBOX360 },
  	{ 0x366c, 0x0005, "ByoWave Proteus Controller", MAP_SHARE_BUTTON, XTYPE_XBOXONE, FLAG_DELAY_INIT },
  	{ 0x3767, 0x0101, "Fanatec Speedster 3 Forceshock Wheel", 0, XTYPE_XBOX },
@@ -170,7 +229,7 @@ index ebfb841aa..8e8347b7f 100644
  	{ 0x37d7, 0x2501, "Flydigi Apex 5", 0, XTYPE_XBOX360 },
  	{ 0x413d, 0x2104, "Black Shark Green Ghost Gamepad", 0, XTYPE_XBOX360 },
  	{ 0xffff, 0xffff, "Chinese-made Xbox Controller", 0, XTYPE_XBOX },
-@@ -497,6 +512,22 @@ static const signed short xpad_btn_paddles[] = {
+@@ -498,6 +518,22 @@ static const signed short xpad_btn_paddles[] = {
  	-1						/* terminating entry */
  };
  
@@ -193,7 +252,7 @@ index ebfb841aa..8e8347b7f 100644
  /*
   * Xbox 360 has a vendor-specific class, so we cannot match it with only
   * USB_INTERFACE_INFO (also specifically refused by USB subsystem), so we
-@@ -811,6 +842,16 @@ struct usb_xpad {
+@@ -813,6 +849,16 @@ struct usb_xpad {
  	time64_t mode_btn_down_ts;
  	bool delay_init;		/* init packets should be delayed */
  	bool delayed_init_done;
@@ -210,7 +269,7 @@ index ebfb841aa..8e8347b7f 100644
  };
  
  static int xpad_init_input(struct usb_xpad *xpad);
-@@ -969,6 +1010,16 @@ static void xpad360_process_packet(struct usb_xpad *xpad, struct input_dev *dev,
+@@ -971,6 +1017,16 @@ static void xpad360_process_packet(struct usb_xpad *xpad, struct input_dev *dev,
  		input_report_abs(dev, ABS_RZ, data[5]);
  	}
  
@@ -227,7 +286,7 @@ index ebfb841aa..8e8347b7f 100644
  	input_sync(dev);
  
  	/* XBOX360W controllers can't be turned off without driver assistance */
-@@ -1260,6 +1311,13 @@ static void xpad_irq_in(struct urb *urb)
+@@ -1262,6 +1318,13 @@ static void xpad_irq_in(struct urb *urb)
  		goto exit;
  	}
  
@@ -241,7 +300,7 @@ index ebfb841aa..8e8347b7f 100644
  	switch (xpad->xtype) {
  	case XTYPE_XBOX360:
  		xpad360_process_packet(xpad, xpad->dev, 0, xpad->idata);
-@@ -1425,6 +1483,7 @@ static int xpad_init_output(struct usb_interface *intf, struct usb_xpad *xpad,
+@@ -1427,6 +1490,7 @@ static int xpad_init_output(struct usb_interface *intf, struct usb_xpad *xpad,
  			struct usb_endpoint_descriptor *ep_irq_out)
  {
  	int error;
@@ -249,7 +308,7 @@ index ebfb841aa..8e8347b7f 100644
  
  	if (xpad->xtype == XTYPE_UNKNOWN)
  		return 0;
-@@ -1444,10 +1503,12 @@ static int xpad_init_output(struct usb_interface *intf, struct usb_xpad *xpad,
+@@ -1446,10 +1510,12 @@ static int xpad_init_output(struct usb_interface *intf, struct usb_xpad *xpad,
  		goto err_free_coherent;
  	}
  
@@ -263,7 +322,7 @@ index ebfb841aa..8e8347b7f 100644
  	xpad->irq_out->transfer_dma = xpad->odata_dma;
  	xpad->irq_out->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
  
-@@ -1804,6 +1865,242 @@ static int xpad_led_probe(struct usb_xpad *xpad) { return 0; }
+@@ -1806,6 +1872,242 @@ static int xpad_led_probe(struct usb_xpad *xpad) { return 0; }
  static void xpad_led_disconnect(struct usb_xpad *xpad) { }
  #endif
  
@@ -506,7 +565,19 @@ index ebfb841aa..8e8347b7f 100644
  static int xpad_start_input(struct usb_xpad *xpad)
  {
  	int error;
-@@ -2023,6 +2320,22 @@ static int xpad_init_input(struct usb_xpad *xpad)
+@@ -1820,7 +2122,10 @@ static int xpad_start_input(struct usb_xpad *xpad)
+ 			return error;
+ 		}
+ 	}
+-	if (xpad->xtype == XTYPE_XBOX360) {
++	if (xpad->xtype == XTYPE_XBOX360 &&
++	    !(skip_8bitdo_init &&
++	      le16_to_cpu(xpad->udev->descriptor.idVendor) == 0x2dc8 &&
++	      le16_to_cpu(xpad->udev->descriptor.idProduct) == 0x3106)) {
+ 		/*
+ 		 * Some third-party controllers Xbox 360-style controllers
+ 		 * require this message to finish initialization.
+@@ -2025,6 +2330,22 @@ static int xpad_init_input(struct usb_xpad *xpad)
  			input_set_capability(input_dev, EV_KEY, xpad_btn_paddles[i]);
  	}
  
@@ -529,7 +600,7 @@ index ebfb841aa..8e8347b7f 100644
  	/*
  	 * This should be a simple else block. However historically
  	 * xbox360w has mapped DPAD to buttons while xbox360 did not. This
-@@ -2075,9 +2388,24 @@ static int xpad_init_input(struct usb_xpad *xpad)
+@@ -2077,9 +2398,24 @@ err_free_input:
  static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id)
  {
  	struct usb_device *udev = interface_to_usbdev(intf);
@@ -554,7 +625,7 @@ index ebfb841aa..8e8347b7f 100644
  
  	if (intf->cur_altsetting->desc.bNumEndpoints != 2)
  		return -ENODEV;
-@@ -2113,6 +2441,14 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
+@@ -2115,6 +2451,14 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
  	xpad->mapping = xpad_device[i].mapping;
  	xpad->xtype = xpad_device[i].xtype;
  	xpad->name = xpad_device[i].name;
@@ -569,7 +640,7 @@ index ebfb841aa..8e8347b7f 100644
  	if (xpad_device[i].flags & FLAG_DELAY_INIT)
  		xpad->delay_init = true;
  
-@@ -2173,10 +2509,12 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
+@@ -2175,10 +2519,12 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
  	if (error)
  		goto err_free_in_urb;
  
@@ -583,7 +654,7 @@ index ebfb841aa..8e8347b7f 100644
  	xpad->irq_in->transfer_dma = xpad->idata_dma;
  	xpad->irq_in->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
  
-@@ -2238,6 +2576,10 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
+@@ -2240,6 +2586,10 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
  		if (error)
  			goto err_deinit_output;
  	}
@@ -594,7 +665,7 @@ index ebfb841aa..8e8347b7f 100644
  	return 0;
  
  err_deinit_output:
-@@ -2255,6 +2597,15 @@ static void xpad_disconnect(struct usb_interface *intf)
+@@ -2257,6 +2607,15 @@ static void xpad_disconnect(struct usb_interface *intf)
  {
  	struct usb_xpad *xpad = usb_get_intfdata(intf);
  

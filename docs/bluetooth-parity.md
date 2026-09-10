@@ -1,5 +1,22 @@
 # Bluetooth parity (P3.5)
 
+> ⚠ **Stock moved to Release 20260907, checked 2026-09-10 (evidence-list check, not a
+> re-build).** Every "stock ships X / stock does not ship X" claim in §9 below was
+> re-checked against `docs/kernel-recon/fork-sync-2026-09/evidence/
+> stock-20260907-firmware.txt` (91 files). Confirmed still true: `ath3k-1.fw`/`ar3k/*.dfu`
+> still absent; the MediaTek `BT_RAM_CODE_*`-prefixed combo files this doc's "Gaps found and
+> closed" table lists are still absent (stock's new `WIFI_MT7961*`/`mediatek/mt7925/
+> WIFI_MT7925*` files are the *WiFi*-side blobs only — no `BT_`-prefixed MediaTek file
+> appears in stock's list, so the same WiFi-worked/BT-didn't asymmetry this document
+> describes for *our own* earlier build is, on this evidence, still true of stock);
+> `qca/rampatch_usb_00000302.bin`/`qca/nvm_usb_00000302.bin` still absent (no `qca/` prefix
+> at all in stock's list — `ath10k/QCA9377/*` that *is* new in stock's list is Wi-Fi board
+> data, unrelated). **One claim changes: `brcm/BCM20702A1-0b05-17cb.hcd`**, framed below
+> ("Already correct") as sourced entirely by `package/bcm20702-firmware` because upstream
+> linux-firmware doesn't carry it — **stock's own Release 20260907 now ships this exact
+> file too** (absent from the 20250402 set). See the note inline below and
+> `docs/firmware-parity.md`'s matching correction.
+>
 > Scope: `BR2_PACKAGE_BLUEZ5_UTILS` (+CLIENT, +TOOLS, +DEPRECATED,
 > +PLUGINS_SIXAXIS) was already enabled by P2.1, and `S40bluetoothd` /
 > `S45bluetooth` / `usr/bin/bluetoothd` were already authored by P2.3
@@ -13,7 +30,7 @@
 | | Stock | Ours |
 |---|---|---|
 | BlueZ version | unknown exact upstream version (image dated 2016-12-31; `libbluetooth.so.3.19.5`, a libtool version string, not a BlueZ release number) | **5.86** (`work/buildroot/package/bluez5_utils/bluez5_utils.mk:8`, Buildroot 2026.08's pinned version) |
-| `libbluetooth` SONAME | `libbluetooth.so.3` (verified: `docs/stock-inventory/shared-libraries-full.txt`, `docs/stock-inventory/binaries-needed.md` DT_NEEDED list) | `libbluetooth.so.3` |
+| `libbluetooth` SONAME | `libbluetooth.so.3` (verified: `docs/stock-inventory/20250402/shared-libraries-full.txt`, `docs/stock-inventory/20250402/binaries-needed.md` DT_NEEDED list) | `libbluetooth.so.3` |
 | `libbluetooth` real name | `libbluetooth.so.3.19.5` | `libbluetooth.so.3.19.16` |
 
 **SONAME match confirmed against an actual build artifact**, not inferred:
@@ -30,7 +47,7 @@ not the filename.
 
 Stock's `/etc/init.d/S45bluetooth` is a **symlink to `/bin/bluetoothd`**,
 which is itself a full start/stop/restart/reload/renew/hcireset control
-script (verbatim capture: `docs/stock-inventory/etc-init-scripts-full.txt`
+script (verbatim capture: `docs/stock-inventory/20250402/etc-init-scripts-full.txt`
 lines 302-396). It is the mechanism ADR 0015 (per-device SSH host keys)
 explicitly cites and mirrors.
 
@@ -111,7 +128,7 @@ it so it's a known, deliberate choice rather than an oversight.
 ## 4. Deltas found — main.conf (fixed in this task)
 
 Auditing `/etc/bluetooth/main.conf` (stock's full verbatim text is in
-`docs/stock-inventory/etc-configs.md` lines 767-898) against the
+`docs/stock-inventory/20250402/etc-configs.md` lines 767-898) against the
 bluez5_utils package's own compiled-in default (`src/main.conf` in the
 bluez tarball; audited against 5.79, re-checked against 5.86) found
 **two settings stock sets explicitly that our image was leaving at the
@@ -295,7 +312,12 @@ Total ≈1.7 MB.
   v10 MT7663U work and does double duty as that combo's BT companion).
 - **Atheros** — `ath3k-1.fw` + 18 `ar3k/*.dfu`, added in v10.
 - **Broadcom** — `brcm/BCM20702A1-0b05-17cb.hcd` via `package/bcm20702-firmware`
-  (upstream linux-firmware does not carry it).
+  (upstream linux-firmware does not carry it). **Update, 2026-09-10:** stock's own
+  Release 20260907 firmware set now ships this same file (it was absent from the
+  20250402 set this section was written against) — see
+  `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-firmware.txt` and
+  `docs/firmware-parity.md`'s matching note. `package/bcm20702-firmware`'s reasoning and
+  provenance (no upstream linux-firmware source, hash-pinned vendor fetch) are unaffected.
 - **Redpine** — the `rsi/*.rps` blobs added in v10.1 serve `btrsi` as well as
   `rsi_usb`; RS911x firmware is combined WLAN+BT.
 - **CSR** (`CSR8510` and friends, the other very common cheap dongle) needs no

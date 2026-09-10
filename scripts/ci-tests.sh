@@ -485,7 +485,7 @@ fi
 section "P3.3 — Firmware parity (docs/firmware-parity.md documented present-set)"
 # =============================================================================
 
-STOCK_FW_MD="$ROOT/docs/stock-inventory/firmware.md"
+STOCK_FW_MD="$ROOT/docs/stock-inventory/20250402/firmware.md"
 PARITY_FW_MD="$ROOT/docs/firmware-parity.md"
 
 if [ ! -f "$STOCK_FW_MD" ] || [ ! -f "$PARITY_FW_MD" ]; then
@@ -495,7 +495,7 @@ else
 	missing_fw="$WORKDIR/fw_missing10.txt"
 	present_fw="$WORKDIR/fw_present.txt"
 	# shellcheck disable=SC2016 # backticks are literal markdown code-span
-	# delimiters in docs/stock-inventory/firmware.md, not command substitution.
+	# delimiters in docs/stock-inventory/20250402/firmware.md, not command substitution.
 	grep -E '^\| `[^`]+` \|' "$STOCK_FW_MD" | sed -E 's/^\| `([^`]+)`.*/\1/' | grep -v '/$' | LC_ALL=C sort > "$all_fw"
 	awk '/\*\*Missing \([0-9]+\):\*\*/{f=1;next} f&&/^```/{c++;if(c==2)exit;next} f&&c==1{print}' "$PARITY_FW_MD" | LC_ALL=C sort > "$missing_fw"
 	comm -23 "$all_fw" "$missing_fw" > "$present_fw"
@@ -1323,7 +1323,7 @@ not_busybox_symlink "usr/bin/wget" "wget (GNU wget -- issue #130, https support)
 #   2. /etc/wgetrc -- installed by the GNU wget package only; the BusyBox applet
 #      neither ships nor reads it, so this distinguishes the two providers by
 #      something other than the binary itself -- stock has it, see
-#      docs/stock-inventory/etc-configs.md:1097
+#      docs/stock-inventory/20250402/etc-configs.md:1097
 require_present "etc/wgetrc" "/etc/wgetrc (GNU wget's config -- BusyBox's applet never reads one)"
 #   3. +https    -- the actual bug. GNU wget's --version banner prints a feature
 #      line of +/-flags; a wget built --without-ssl still installs, still owns
@@ -1724,7 +1724,7 @@ section "Locale data (BR2_GENERATE_LOCALE)"
 # update_all.sh died outright on setlocale(LC_CTYPE, "") ->
 #     locale.Error: unsupported locale setting
 # before doing any work. Stock's /usr/lib/locale is a single ~2.9 MB
-# locale-archive (docs/stock-inventory/disk-usage.md); so is ours.
+# locale-archive (docs/stock-inventory/20250402/disk-usage.md); so is ours.
 #
 # Assert the artifact, not the intent -- same rule as initramfs-verify.
 

@@ -5,7 +5,7 @@
 Stock's **kernel** supports **both** CIFS and NFS as filesystems (`CONFIG_CIFS=y`,
 `CONFIG_NFS_FS=y`), but stock ships **no kernel-mount userland helper for either**
 — there is no `mount.cifs` and no `mount.nfs` in the stock image (verified against
-`docs/stock-inventory/binaries-needed-full.txt`; neither appears). Stock's network
+`docs/stock-inventory/20250402/binaries-needed-full.txt`; neither appears). Stock's network
 *share* story is **Samba**: the `smbd` server (so other machines mount the MiSTer)
 plus the Samba **client** suite (`smbclient`, `smbget`, `smbtree`, `smbcacls`,
 `cifsdd`, …) — i.e. *userspace* SMB access, **not** kernel-mounting remote shares
@@ -126,9 +126,9 @@ finalize steps, so the on-image cost is lower.
 
 ## References
 
-- `docs/stock-inventory/binaries-needed-full.txt` — full ELF inventory; `mount.cifs`,
+- `docs/stock-inventory/20250402/binaries-needed-full.txt` — full ELF inventory; `mount.cifs`,
   `mount.nfs`, `rpcbind` all absent; Samba client suite present.
-- `docs/stock-inventory/stock-linux.config` — `CONFIG_CIFS=y`, `CONFIG_NFS_FS=y`,
+- `docs/stock-inventory/20250402/stock-linux.config` — `CONFIG_CIFS=y`, `CONFIG_NFS_FS=y`,
   `CONFIG_SUNRPC=y`.
 - `docs/kernel-config-deltas.md` §7 — network filesystems, built-in per stock.
 - `work/buildroot/package/cifs-utils/` — cifs-utils 7.4.

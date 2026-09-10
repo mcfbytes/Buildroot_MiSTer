@@ -25,6 +25,20 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.4.
               The origin commit also touched
               arch/arm/boot/dts/socfpga_cyclone5_de10_nano.dts; that hunk
               belongs to 0004-dts-de10nano-MiSTer.patch (P1.7), not here.
+Fork:         MiSTer-v6.18 independently hit the identical v6.8 regression
+              (Fixes: 8813e86f6d82, "fbdev: Remove default file-I/O
+              implementations") and fixed it as
+              ea2212221ad137cf26bf5caa7ad3dab7216435a6 ("fbdev: MiSTer_fb:
+              declare explicit fb_ops for read/write/mmap (#83)",
+              Takiiiiiiii, 2026-09-08). Owner decision D4, 2026-09-11
+              (docs/kernel-recon/fork-sync-2026-09/PLAN.md, STATUS.md):
+              align this file's read/write helper choice to the fork's —
+              see "6.18 API churn" item 1 below and
+              docs/kernel-recon/records/ea2212221ad137cf26bf5caa7ad3dab7216435a6.json,
+              which proves the switch is behaviour-preserving (byte-identical
+              machine code on 32-bit ARM) and carries zero userspace risk
+              (Main_MiSTer never read(2)/write(2)/mmap(2)s /dev/fb0). mmap is
+              unchanged — both patches already agreed on fb_io_mmap.
 
 ABI — unchanged by this forward-port (docs/abi-contract.md §4)
 --------------------------------------------------------------
@@ -54,13 +68,38 @@ Required — the 5.15 file does not build on 6.18 without these:
     fix.smem_start. v6.8 commit 8813e86f6d82 ("fbdev: Remove default
     file-I/O implementations") deleted that fallback; a driver with no
     .fb_mmap now gets a WARN and -ENODEV out of fb_mmap().
-    Resolved with __FB_DEFAULT_IOMEM_OPS_RDWR and __FB_DEFAULT_IOMEM_OPS_MMAP
-    (fb_io_read / fb_io_write / fb_io_mmap), which is precisely what the old
-    core fallback did — so behaviour is preserved, not invented.
-    It has to be the *iomem* variants: this window is FPGA memory above the
-    `mem=511M` line, has no struct pages, and can only be mapped by
-    vm_iomap_memory() on the physical fix.smem_start. (6.18 offers no sysmem
-    mmap helper at all — only __FB_DEFAULT_SYSMEM_OPS_{RDWR,DRAW}.)
+    mmap stays on __FB_DEFAULT_IOMEM_OPS_MMAP (fb_io_mmap), unchanged since
+    the original 2026-07-12 forward-port: this window is FPGA memory above
+    the `mem=511M` line, has no struct pages, and can only be mapped by
+    vm_iomap_memory() on the physical fix.smem_start. 6.18 offers no sysmem
+    mmap helper at all — only __FB_DEFAULT_SYSMEM_OPS_{RDWR,DRAW} — so the
+    iomem variant is the only option there.
+    read/write do NOT keep the original choice. The 2026-07-12 forward-port
+    (task P1.4) paired __FB_DEFAULT_IOMEM_OPS_RDWR (fb_io_read/fb_io_write)
+    with the mmap macro on the reasoning "it has to be the iomem variants" —
+    right for mmap, but that reasoning does not actually apply to read/write,
+    which never touch __iomem semantics beyond a type annotation on this
+    driver's window. Re-decided 2026-09-11 (owner decision D4,
+    docs/kernel-recon/fork-sync-2026-09/PLAN.md §2.3): this now uses
+    __FB_DEFAULT_SYSMEM_OPS_RDWR (fb_sys_read/fb_sys_write) instead, aligned
+    with MiSTer-v6.18's own, independent fix of the identical v6.8
+    regression, ea2212221ad137cf26bf5caa7ad3dab7216435a6 ("fbdev: MiSTer_fb:
+    declare explicit fb_ops for read/write/mmap (#83)", Takiiiiiiii,
+    2026-09-08). Per
+    docs/kernel-recon/records/ea2212221ad137cf26bf5caa7ad3dab7216435a6.json:
+    screen_base and screen_buffer are the same union storage
+    (include/linux/fb.h), so fb_sys_read/write dereference the exact same
+    memremap(MEMREMAP_WT) address fb_io_read/write did; and on 32-bit ARM,
+    memcpy_fromio()/memcpy_toio() (behind fb_io_read/write) resolve to
+    mmiocpy(), which arch/arm/lib/memcpy.S declares at the SAME ENTRY label
+    as plain memcpy() (behind fb_sys_read/write via copy_to_user/
+    copy_from_user) — byte-identical machine code, not merely equivalent
+    behaviour. There is also no userspace exposure either way: Main_MiSTer
+    opens /dev/fb0 only for ioctl(FBIO_WAITFORVSYNC) and never calls
+    read(2)/write(2)/mmap(2) on the fd (main/video.cpp:3773-3786). Choosing
+    sysmem for read/write also shrinks the line-for-line diff against
+    MiSTer-v6.18's fbdev/Kconfig and MiSTer_fb.c, lowering future
+    re-verification cost.
     The *drawing* ops stay on sys_fillrect/sys_copyarea/sys_imageblit exactly
     as in 5.15: memremap(MEMREMAP_WT) returns a normal-memory mapping, so the
     direct-deref helpers are correct there. Only fbcon consumes any of this;
@@ -79,11 +118,14 @@ Required — the 5.15 file does not build on 6.18 without these:
     the one warning the 5.15 file still produces on 6.18. fb_set() is
     file-local and was never meant to be a vmlinux-global symbol.
  5. Kconfig: FB_SYS_{FILLRECT,COPYAREA,IMAGEBLIT} all still exist in 6.18 and
-    are kept, *plus* FB_IOMEM_FOPS for the fops in (1). Deliberately not the
-    aggregate FB_SYSMEM_HELPERS that docs/kernel-config-deltas.md §4.1
-    suggested: that selects FB_SYSMEM_FOPS (fb_sys_read/fb_sys_write) and
-    still leaves the driver with no mmap. Also `depends on OF` — it is a
-    DT-only driver.
+    are kept, *plus* FB_IOMEM_FOPS (mmap) and, as of the 2026-09-11 read/write
+    switch in (1), FB_SYSMEM_FOPS too. Deliberately not the aggregate
+    FB_SYSMEM_HELPERS that docs/kernel-config-deltas.md §4.1 originally
+    suggested: that selects only FB_SYSMEM_FOPS (fb_sys_read/fb_sys_write)
+    and still leaves the driver with no mmap — both bare tristates
+    (drivers/video/fbdev/core/Kconfig) have to be selected explicitly, which
+    is exactly what MiSTer-v6.18's ea2212221 (#83) does too. Also
+    `depends on OF` — it is a DT-only driver.
 
 Not required, done anyway (both are pure hardening, zero behavioural change):
 
@@ -120,15 +162,15 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  parity with stock. Keep the two in lockstep when editing either.]
 
 ---
- drivers/video/fbdev/Kconfig     |  11 ++
+ drivers/video/fbdev/Kconfig     |  12 ++
  drivers/video/fbdev/Makefile    |   1 +
- drivers/video/fbdev/MiSTer_fb.c | 414 ++++++++++++++++++++++++++++++++
- 3 files changed, 426 insertions(+)
+ drivers/video/fbdev/MiSTer_fb.c | 430 ++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 443 insertions(+)
  create mode 100644 drivers/video/fbdev/MiSTer_fb.c
 
 --- a/drivers/video/fbdev/Kconfig
 +++ b/drivers/video/fbdev/Kconfig
-@@ -61,6 +61,17 @@
+@@ -61,6 +61,18 @@
  	tristate
  	depends on FB
  
@@ -139,6 +181,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	select FB_SYS_FILLRECT
 +	select FB_SYS_COPYAREA
 +	select FB_SYS_IMAGEBLIT
++	select FB_SYSMEM_FOPS
 +	select FB_IOMEM_FOPS
 +	help
 +	  This driver supports the MiSTer Frame Reader
@@ -158,7 +201,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  obj-$(CONFIG_FB_CLPS711X)	  += clps711x-fb.o
 --- /dev/null
 +++ b/drivers/video/fbdev/MiSTer_fb.c
-@@ -0,0 +1,414 @@
+@@ -0,0 +1,430 @@
 +/*
 + *  MiSTer_fb.c -- MiSTer Frame Reader driver
 + *
@@ -300,17 +343,33 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 + * whenever a driver left those callbacks NULL, using the __iomem accessors
 + * and vm_iomap_memory() on fix.smem_start. Commit 8813e86f6d82 ("fbdev:
 + * Remove default file-I/O implementations", v6.8) deleted that fallback, so
-+ * the fops now have to be named explicitly: __FB_DEFAULT_IOMEM_OPS_RDWR and
-+ * __FB_DEFAULT_IOMEM_OPS_MMAP reproduce the old behaviour exactly. They must
-+ * be the *iomem* variants - this window has no struct pages, so mmap() can
-+ * only go through vm_iomap_memory() on the physical fix.smem_start.
++ * the fops now have to be named explicitly.
++ *
++ * mmap keeps __FB_DEFAULT_IOMEM_OPS_MMAP (fb_io_mmap): this window has no
++ * struct pages, so mmap() can only go through vm_iomap_memory() on the
++ * physical fix.smem_start -- there is no sysmem mmap helper to switch to.
++ *
++ * read/write use __FB_DEFAULT_SYSMEM_OPS_RDWR (fb_sys_read/fb_sys_write),
++ * aligned 2026-09-11 (owner decision D4) with MiSTer-v6.18's independent
++ * fix of the same v6.8 regression, ea2212221ad137cf26bf5caa7ad3dab7216435a6
++ * ("fbdev: MiSTer_fb: declare explicit fb_ops for read/write/mmap (#83)",
++ * Takiiiiiiii, 2026-09-08). screen_base/screen_buffer are the same union
++ * storage (include/linux/fb.h) and both paths dereference the identical
++ * memremap(MEMREMAP_WT) address; on 32-bit ARM, memcpy_fromio/memcpy_toio's
++ * mmiocpy() (behind fb_io_read/fb_io_write) IS memcpy() (behind
++ * fb_sys_read/fb_sys_write) -- same ENTRY label, same body
++ * (arch/arm/lib/memcpy.S) -- so the two read paths execute byte-identical
++ * machine code here. Main_MiSTer never read(2)/write(2)/mmap(2)s /dev/fb0
++ * anyway -- it only ioctl(FBIO_WAITFORVSYNC)s the fd (main/video.cpp:3773-
++ * 3786) -- so this is zero userspace risk either way. Full analysis:
++ * docs/kernel-recon/records/ea2212221ad137cf26bf5caa7ad3dab7216435a6.json.
 + *
 + * The drawing ops stay on the sys_* helpers, as in 5.15: memremap() hands
 + * back a normal-memory mapping, so direct dereference is correct there.
 + */
 +static const struct fb_ops ops = {
 +	.owner = THIS_MODULE,
-+	__FB_DEFAULT_IOMEM_OPS_RDWR,
++	__FB_DEFAULT_SYSMEM_OPS_RDWR,
 +	.fb_fillrect = sys_fillrect,
 +	.fb_copyarea = sys_copyarea,
 +	.fb_imageblit = sys_imageblit,

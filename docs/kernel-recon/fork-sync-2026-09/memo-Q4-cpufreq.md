@@ -376,7 +376,7 @@ their revision fixes (`0003`'s bounded-wait is a **no-op** — the `wait_for_fsm
 
 plus reading osc1 from DT. So the 5.15 fork's own answer to instability was *bypass bracketing*,
 not OCRAM residency — and that answer shipped in every stock MiSTer image from 2022 until
-2026-09-07 (`docs/stock-inventory/stock-linux.config:500` `CONFIG_ARM_SOCFPGA_CPUFREQ=y`).
+2026-09-07 (`docs/stock-inventory/20250402/stock-linux.config:500` `CONFIG_ARM_SOCFPGA_CPUFREQ=y`).
 
 ### Do we have evidence `0003` works at 1000/1200 on 6.18 hardware?
 

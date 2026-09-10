@@ -71,9 +71,12 @@ if len(residue_full) != 15:
 patch_files = sorted(p.name for p in PATCH_DIR.glob("0*.patch"))
 mapped = defaultdict(list)
 for row in rows:
-    # a patch's origin may be a direct carry (carried_patch) or a capability
-    # re-implementation recorded in dependencies.superseded_by (e.g. 0031)
+    # a patch's origin may be a direct carry (carried_patch), a capability
+    # re-implementation recorded in dependencies.superseded_by (e.g. 0031), or one of
+    # several patches split out of a single origin commit's diff (carried_patches, plural
+    # -- e.g. one record's diff produced both 0038 and 0039; see fork-sync-2026-09.md)
     refs = [row["r"].get("carried_patch") or ""]
+    refs += [str(s) for s in row["r"].get("carried_patches") or []]
     refs += [str(s) for s in (row["r"].get("dependencies") or {}).get("superseded_by") or []]
     for cp in refs:
         for pf in patch_files:

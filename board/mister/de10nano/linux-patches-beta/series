@@ -3,19 +3,34 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: EXACTLY ONE, and it is the only kind of exclusion
-# that can ever be safe — 0047-btusb-mercusys-ma530-2c4e-0115.patch, which is
-# not fork code at all but a BACKPORT of mainline ce21a5cf3d1f, whose first
-# release is 7.2. This kernel IS 7.2, so it already has those two lines in
-# drivers/bluetooth/btusb.c. Measured, not assumed: at -F0 against pristine
-# v7.2 the hunk does not apply twice, it FAILS ("Hunk #1 FAILED at 786"), so
-# listing it here would break `make rt` at patch time. The 6.18 image needs it
-# because 6.18.y never got the commit (no Cc: stable) — see the patch's own
-# Upstream: block. When the pin for the STOCK kernel finally leaves 6.18.y,
-# that patch is deleted from linux-patches/ outright and this exclusion goes
-# with it.
-# The beta series therefore carries 36 of the 37 shared patches plus the 4
-# beta-local ones below — still 40 entries — so within the carried set the 7.x
+# Excluded vs the 6.18 set: TWO, and both are the only kind of exclusion that
+# can ever be safe —
+#   0047-btusb-mercusys-ma530-2c4e-0115.patch, which is not fork code at all
+#   but a BACKPORT of mainline ce21a5cf3d1f, whose first release is 7.2. This
+#   kernel IS 7.2, so it already has those two lines in drivers/bluetooth/
+#   btusb.c. Measured, not assumed: at -F0 against pristine v7.2 the hunk does
+#   not apply twice, it FAILS ("Hunk #1 FAILED at 786"), so listing it here
+#   would break `make rt` at patch time. The 6.18 image needs it because
+#   6.18.y never got the commit (no Cc: stable) — see the patch's own
+#   Upstream: block. When the pin for the STOCK kernel finally leaves 6.18.y,
+#   that patch is deleted from linux-patches/ outright and this exclusion
+#   goes with it.
+#   0050-exfat-dir-readahead-plug.patch, added 2026-09-11, which is fork code
+#   (Giancarlo Erra, PR #88) that plugs exfat_dir_readahead()'s sb_breadahead
+#   loop — a function that does not exist on 7.x. Mainline's OWN independent
+#   fix for the same problem (exfat_get_dentry() + exfat_blk_readahead() in
+#   fs/exfat/fatent.c) is already in v7.2.3, verified against the pristine
+#   tree: `git show v7.2.3:fs/exfat/dir.c` has no exfat_dir_readahead and no
+#   blk_start_plug at all. Measured, not assumed: at -F0 against pristine
+#   v7.2.3's fs/exfat/dir.c the hunk FAILS both hunks ("Hunk #1 FAILED at 6.
+#   Hunk #2 FAILED at 682. 2 out of 2 hunks FAILED") — listing it here would
+#   break `make rt` at patch time, same failure shape as 0047 but for the
+#   opposite reason: 0047 is excluded because 7.x already has the SAME
+#   mainline commit; 0050 is excluded because 7.x already has mainline's OWN
+#   DIFFERENT solution to the same problem. Retires from linux-patches/
+#   outright the moment the 6.18.y pin leaves 6.18.y, exactly like 0047.
+# The beta series therefore carries 38 of the 40 shared patches plus the 4
+# beta-local ones below — 42 entries — so within the carried set the 7.x
 # and 6.18 kernels diverge only where an upstream API forced a re-anchor.
 # 0038-0042 were the last gap: they landed in the shared dir on 2026-07-24,
 # went unlisted here for three weeks, and were closed on 2026-08-17 once
@@ -84,9 +99,15 @@
 # ONE NUMBERING NAMESPACE, TWO DIRECTORIES. 0043-0046 being beta-local is why
 # the next SHARED patch took 0047 rather than 0043: a number means one patch
 # across both directories, so a reader who sees "0044" never has to ask which
-# 0044. The shared dir therefore reads 0001-0042 then 0047, with the 0043-0046
-# hole reserved. Applying order is unaffected — the shared dir is globbed and
-# sorted, so 0047 simply applies last there, and it is not in this series at all.
+# 0044. The shared dir therefore reads 0001-0042 then 0047-0050, with the
+# 0043-0046 hole reserved. Applying order is unaffected — the shared dir is
+# globbed and sorted, so 0047-0050 simply apply in that order there. Of those
+# four, 0047 and 0050 are NOT in this series at all (both excluded above, for
+# mirror-image reasons); 0048 and 0049 ARE in this series, as plain symlinks,
+# listed below in their numeric position after the beta-local 0043-0046 block
+# (0048/0049 apply cleanly to both kernels unmodified, so they need no
+# re-anchored copy — see the NOT-symlink exceptions list just below, which
+# they are not on).
 #
 # NOT-symlink exceptions: five of the shared-patch entries are REAL FILES
 # re-anchored for 7.x (0043-0046 above are real files too, but they are
@@ -180,3 +201,5 @@
 0044-dts-uio-fpga-regions.patch
 0045-uio-writecombine.patch
 0046-dts-ramoops.patch
+0048-hid-google-stadiaff-classic2usb-retrozord.patch
+0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch

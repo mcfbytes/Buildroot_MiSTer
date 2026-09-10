@@ -45,6 +45,51 @@ Tool versions used to produce this manifest (recorded for reproducibility):
 - How to reproduce: `curl -LO <commit-pinned URL above>` and verify MD5/SHA-256 above.
 
 --------------------------------------------------------------------------------
+## 1a. Release 20260907 (added 2026-09-10 — stock's first 6.18 release)
+
+Stock moved to a 6.18 kernel with `MiSTer-devel/Linux_Image_creator_MiSTer` commit
+`d4e3f51ec7fdd18116562d38bace9ef7dffe0f38` ("Release 20260907.", Sorgelig, 2026-09-07).
+Unlike §1's 20250402 archive (a single `.7z` published by `SD-Installer-Win64_MiSTer`),
+this repo ships its six release artifacts as individual files committed directly to
+`Linux_Image_creator_MiSTer` at that commit — no `.7z`, no GitHub Release asset. Every
+hash below was computed directly (`sha256sum`) against the artifact as extracted from that
+exact commit in this session; `zImage_dtb`/`modules.tar.gz`/`firmware.tar.gz` also match
+`docs/kernel-recon/fork-sync-2026-09/PLAN.md` §1.1's independently-recorded values.
+
+| Artifact | Size (bytes) | SHA-256 |
+|---|---:|---|
+| `zImage_dtb` | 8,564,005 | `0bec449e365e757d14711bead76c5b1805d2b613a39e633fe7dc9f08e5687e73` |
+| `modules.tar.gz` | 45,546,423 | `9a866063e095f3527d20d69638e37ad011cafce979fad7edc94a5bdbab2a6c2a` |
+| `firmware.tar.gz` | 6,018,350 | `8a6ab6730e5a4b0ee978cae98a15fd8505e5605074cd34018adac0ac43359f78` |
+| `rootfs.tar.bz2` | 82,661,550 | `11da48f1ccb221726fdeb7c67fbbedb7a1d44aab46bb71eb86200e8efed95030` |
+| `addon.tar` | 2,611,200 | `6dda768de80f1f197f8a07bb66534abde8e79be46182654d380867a4da2d92d4` |
+| `uboot.img` | 515,141 | `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64` |
+
+- Commit-pinned URLs (each artifact, verified reachable by the same convention as §1's
+  single-file URL):
+  `https://raw.githubusercontent.com/MiSTer-devel/Linux_Image_creator_MiSTer/d4e3f51ec7fdd18116562d38bace9ef7dffe0f38/<artifact>`
+  for each of the six filenames above.
+- How to reproduce: `curl -LO <commit-pinned URL>` for each artifact, verify SHA-256 above;
+  or `git clone https://github.com/MiSTer-devel/Linux_Image_creator_MiSTer && git -C
+  Linux_Image_creator_MiSTer checkout d4e3f51ec7fdd18116562d38bace9ef7dffe0f38`.
+- `create_img.sh` (committed alongside the artifacts at that commit) is this release's own
+  documented assembly recipe: `rootfs.tar.bz2` → `mkfs.ext4` image, `modules.tar.gz` →
+  `/lib` (`--strip-components=2`), `firmware.tar.gz` → `/lib/firmware`, `addon.tar` → `/` —
+  the same overlay order `docs/stock-inventory/20260907/` and
+  `docs/stock-reconciliation.md` §0 replicate into a plain directory tree (no root, no
+  `mkfs.ext4`) to inventory and reconcile this release without a real image.
+- `rootfs.tar.bz2` and `addon.tar`'s hashes are **not** in `fork-sync-2026-09/PLAN.md`
+  §1.1 (that increment's scope was the kernel-facing three artifacts only) — both are
+  recorded here for the first time, since this document's scope is the full artifact set.
+  `addon.tar`'s hash differs from the one pinned for the 20250402-era reconciliation
+  baseline (`docs/verification/stock-reconciliation/SOURCE-20250402.txt`,
+  `38e420ce…6fbde`) even though both are 2,611,200 bytes — see
+  `docs/stock-reconciliation.md` §0.3 for what changed inside it.
+- `uboot.img` — not otherwise analysed by this increment; recorded for completeness since
+  it is part of the release's artifact set (see `docs/uboot-mainline-port.md` for this
+  project's own U-Boot work, which does not depend on stock's `uboot.img`).
+
+--------------------------------------------------------------------------------
 ## 2. Extracted release contents
 
 ### work/extracted/

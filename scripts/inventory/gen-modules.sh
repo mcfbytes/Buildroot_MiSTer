@@ -7,7 +7,7 @@
 # P0.4 class/disposition and owning Phase 3 task, plus the modules.alias
 # count and the udev-autoload mechanism (P3.3).
 #
-# Writes docs/stock-inventory/modules.md.
+# Writes docs/stock-inventory/<release>/modules.md.
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

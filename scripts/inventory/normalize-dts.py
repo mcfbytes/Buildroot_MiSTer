@@ -3,7 +3,7 @@
 text file for content-equivalence comparison (used by
 gen-kernel-config-dts.sh to tell "a real property/node changed" apart from
 "this dtc build renders whitespace/number literals differently than the one
-that produced the committed docs/stock-inventory/stock.dts").
+that produced the committed docs/stock-inventory/20250402/stock.dts").
 
 dtc's *tree content* is what P1.3/P1.7 actually depend on; its text
 pretty-printing is not part of any contract. Known cosmetic variance across

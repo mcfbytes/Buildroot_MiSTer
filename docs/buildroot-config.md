@@ -23,7 +23,7 @@ Contents:
 5. [`de10nano-image.fragment`](#5-de10nano-imagefragment)
 6. [`de25nano.fragment`](#6-de25nanofragment)
 7. [`mister_rt.fragment`](#7-mister_rtfragment)
-8. [`mister_initramfs_defconfig`](#8-mister_initramfs_defconfig)
+8. [The stage-1 initramfs stacks: `initramfs-common`, `initramfs-de10nano`, `initramfs-de25nano`](#8-the-stage-1-initramfs-stacks)
 9. [`mister_installer_defconfig`](#9-mister_installer_defconfig)
 10. [Placement decisions — what is common, what is board-only, and why](#10-placement-decisions)
 11. [Checks, golden hashes, and the identity proof](#11-checks-golden-hashes-and-the-identity-proof)
@@ -50,9 +50,11 @@ configs/
     de10nano-image.fragment  DE10-Nano shipped image: board hooks, ext4 contract, packages, system config
     kernel-only.fragment     turns a board stack into the kernel-only base variants build on
     de25nano.fragment        DE25-Nano developer OS (aarch64), layered on common + image-common
+    initramfs-common.fragment    stage-1 initramfs cpio, everything but the arch (§8)
+    initramfs-de10nano.fragment  stage-1 arch/ABI + headers series, DE10 (§8.1, §8.2)
+    initramfs-de25nano.fragment  stage-1 arch/ABI + headers series, DE25 (§8.1, §8.2)
     golden.sha256            sha256 of each stack's normalised resolved .config (§11)
   mister_rt.fragment         the RT / 7.2 kernel variant, layered on the kernel-only stack
-  mister_initramfs_defconfig stage-1 initramfs cpio (standalone Buildroot config, §8)
   mister_installer_defconfig SD-card installer cpio (standalone Buildroot config, §9)
 ```
 
@@ -64,6 +66,8 @@ configs/
 | `de10nano-kernel` | `common de10nano kernel-only` | — (base only) | used by every kernel variant |
 | `de25nano` | `common de25nano image-common` | `output-de25/` | `make de25nano-defconfig` (and `make de25`) |
 | `rt` (variant) | `de10nano-kernel` + `configs/mister_rt.fragment` | `output-rt/` | `make rt` |
+| `initramfs-de10nano` | `initramfs-common initramfs-de10nano` | `output-initramfs/` | `make initramfs` (regenerates when a fragment is newer; `make initramfs-defconfig` forces) |
+| `initramfs-de25nano` | `initramfs-common initramfs-de25nano` | `output-initramfs-de25/` | `make de25-initramfs` (likewise; `make de25-initramfs-defconfig`) |
 
 **Generation** is the idiom `make rt` has used since ADR 0021: Buildroot's own
 `support/kconfig/merge_config.sh -m` concatenates the stack's fragments into
@@ -97,17 +101,26 @@ produced — the only difference is `BR2_DEFCONFIG`, which is where
 - The kernel-only base shares `common` + `de10nano` with the image **by
   construction**. That replaces the old hand-mirrored copy; §4 and §11 say what
   the lockstep check still guards.
-- The two sharing axes are at right angles: `common` is shared by every stack
-  INCLUDING the kernel-only one, `image-common` by every IMAGE stack and by NO
-  kernel-only stack. A package both images want goes in `image-common` (§12),
-  never in `common` — rule 4 of §10 says why (`common` is in the kernel-only
-  stack's fingerprint text, and the kernel-only rootfs.tar ships modules, not
-  blobs).
+- The sharing axes are at right angles: `common` is shared by every image and
+  kernel stack INCLUDING the kernel-only one, `image-common` by every IMAGE
+  stack and by NO kernel-only stack. A package both images want goes in
+  `image-common` (§12), never in `common` — rule 4 of §10 says why (`common`
+  is in the kernel-only stack's fingerprint text, and the kernel-only
+  rootfs.tar ships modules, not blobs). The third axis, `initramfs-common`,
+  is in NO image or kernel stack at all: the stage-1 stacks build a cpio and
+  no kernel, so they deliberately do not include `common` (§8).
+- The stage-1 configs are the one place a fragment IS a file prerequisite of
+  the generated `.config`: a stage-1 config is generated, never iterated on
+  with `menuconfig`, so `make initramfs` regenerates it whenever a fragment is
+  newer — the behaviour the old standalone defconfig had.
 - Adding a board = a new `<board>.fragment` (+ optionally `<board>-image`), a
   `<BOARD>_FRAGMENTS` line in `stacks.mk` (with `image-common` in it if the
   board ships an image), a `BR_MAKE_<BOARD>` / `.config` rule
   pair in the Makefile mirroring the DE25's, a golden line (§11), and rows in
-  `scripts/lib/board-expectations.sh`. Adding a kernel variant is unchanged
+  `scripts/lib/board-expectations.sh`; if the board boots the two-stage way,
+  also an `initramfs-<board>.fragment` restating its arch/ABI + headers lines
+  (§8.1–§8.2; check (f) of §11 holds it to `<board>.fragment`) and an
+  `INITRAMFS_<BOARD>_FRAGMENTS` line. Adding a kernel variant is unchanged
   from ADR 0021: one `configs/mister_<name>.fragment`, its Makefile targets, and
   nothing else (CI derives the matrix from the fragment glob; the fragment
   check picks it up automatically and expects it to override only what
@@ -514,7 +527,7 @@ same `$(BR_DIR)`-relative path idiom as the post-image script (§3.6);
 `BR2_ROOTFS_OVERLAY` — P2.3, init & config parity overlay (`docs/init-parity.md`).
 Copied onto `TARGET_DIR` after every package installs, before the permission
 table and filesystem image are built (`system/system.mk`) — same
-`BR2_EXTERNAL_MISTER_PATH`-relative form as `mister_initramfs_defconfig`'s own
+`BR2_EXTERNAL_MISTER_PATH`-relative form as `initramfs-common.fragment`'s own
 `BR2_ROOTFS_OVERLAY`, just pointed at the full-rootfs overlay tree instead of
 the initramfs one.
 
@@ -2337,14 +2350,20 @@ complements; mainline's socdk board file was the placeholder before D2.3
 landed and is not the DE25-Nano (no mmc0, fpga-mgr or fpga-region). The
 Makefile asserts the .dtb by GLOB, not by name, for exactly this reason.
 
-NO STAGE-1 INITRAMFS ON THIS BOARD, and that is a design point rather than a
-gap. The DE10 embeds an armv7 BusyBox cpio into its zImage because U-Boot
-passes `-` for bootz's initrd argument and the real root is a loop-mounted
-ext4 image sitting on a FAT partition (`docs/boot-chain.md`). The DE25 boots a
-plain ext4 root partition directly (decision 3: p1 FAT, p2 everything else),
-so there is nothing for a stage-1 to do. `external.mk`'s initramfs-embedding
-kernel fixup is guarded off for this build (it keys on `BR2_arm`) — see the
-guard's comment there.
+NO STAGE-1 INITRAMFS IN THIS KERNEL — YET. The DE10 embeds an armv7 BusyBox
+cpio into its zImage because U-Boot passes `-` for bootz's initrd argument and
+the real root is a loop-mounted ext4 image sitting on a FAT partition
+(`docs/boot-chain.md`). ADR 0029 D11 (2026-09-03) makes that two-stage layout
+the DE25's TARGET too, while the shipped card keeps the interim plain-ext4
+root (`root=/dev/mmcblk0p2`, decision 3: p1 FAT, p2 everything else) until a
+board has booted it. So today `external.mk`'s initramfs-embedding kernel
+fixup is guarded off for this build (it keys on `BR2_arm`) — but the aarch64
+stage 1 itself already exists: the `initramfs-de25nano` stack (§8) builds the
+same `/init` for this board into `output-initramfs-de25/`, `make
+de25-initramfs` verifies it, and `scripts/test-initramfs.sh --board de25nano`
+boots it through all eight cases on `qemu-system-aarch64` — using THIS
+board's `linux.config` + the shared fragment as the test kernel's base. The
+guard's comment in `external.mk` spells out the one-commit switch.
 
 ### 6.6 Root filesystem — ext4 on p2, modest and plain
 
@@ -2742,18 +2761,49 @@ fragment, for the `linux-update-defconfig` reason in §3.4).
 
 ---
 
-## 8. `mister_initramfs_defconfig`
+## 8. The stage-1 initramfs stacks
 
 STAGE 1 of the two-stage build (TASKS.md P1.10 / A1, PLAN.md §5,
-`docs/decisions/0002-initramfs.md`). A standalone Buildroot config (not a
-fragment stack — nothing in it is shared with the image stacks; see §10),
-driven by the top-level Makefile's `initramfs` target into `output-initramfs/`.
+`docs/decisions/0002-initramfs.md`). Since 2026-09-06 a fragment stack per
+board, not a standalone defconfig — `initramfs-common` carries everything
+that is not the architecture, and a three-to-six-line `initramfs-<board>`
+fragment restates the board's arch/ABI + headers-series lines:
 
-This config builds ONE artifact: `output-initramfs/images/rootfs.cpio`, a few
-hundred KB of static BusyBox plus our `/init`. The main build (the de10nano
-stack) then embeds that cpio into the kernel via `CONFIG_INITRAMFS_SOURCE` —
-see `external.mk`, where the path is injected into the kernel .config, and
-the top-level Makefile, which sequences stage 1 before stage 2.
+| Stack | Fragments | Output dir | Cpio | Embedded in |
+|---|---|---|---|---|
+| `initramfs-de10nano` | `initramfs-common initramfs-de10nano` | `output-initramfs/` | armv7 static musl BusyBox + `/init` | every DE10 kernel (image, kernel-only, rt) via `external.mk` |
+| `initramfs-de25nano` | `initramfs-common initramfs-de25nano` | `output-initramfs-de25/` | aarch64 static musl BusyBox + the SAME `/init` | nothing yet — built and QEMU-proven ahead of ADR 0029 D11's card switch (§6.5) |
+
+The files the common fragment names are shared by path under
+`board/mister/common/`: `initramfs-overlay/init`, `initramfs-busybox.config`,
+`initramfs-post-build.sh`. `/init` has no architecture-specific line in it
+(ADR 0029 D11's evidence), the BusyBox config has no arch symbol, and the hook
+only deletes files — which is why one copy serves both boards and why the
+DE25's cpio differs from the DE10's only by the architecture it is compiled
+for.
+
+Why a stack now, when §10 recorded "left standalone" on 2026-09-02: that
+call weighed six saved lines against a new stack shape for ONE board. A
+second board changes the arithmetic — a DE25 stage 1 needs every line of the
+old defconfig except the arch tuple, and two hand-mirrored copies of a config
+whose `CONFIG_FEATURE_MOUNT_FLAGS`-class traps are documented at length is
+precisely the drift the fragment split exists to end. The cost noted then
+(the `BR_INITRAMFS_HOST_KEY` CI cache key moves) was paid once, on the PR
+that made the change: the key now hashes the stack's files through the same
+`config_stack_files` helper as the image/kernel keys.
+
+Each stack builds ONE artifact, `<output dir>/images/rootfs.cpio`, a few
+hundred KB of static BusyBox plus our `/init`. The DE10's main build (the
+de10nano stack) then embeds that cpio into the kernel via
+`CONFIG_INITRAMFS_SOURCE` — see `external.mk`, where the path is injected into
+the kernel .config, and the top-level Makefile, which sequences stage 1 before
+stage 2. The identity proof at the split (DE10 stage-1 resolved config before
+vs after) is in §11.
+
+The stage-1 stacks deliberately do NOT include `common.fragment`: it carries
+`BR2_LINUX_KERNEL=y`, and a stage-1 build must build no kernel. The one
+`common` line stage 1 also wants, `BR2_REPRODUCIBLE`, is restated in
+`initramfs-common` (§8.8).
 
 **NEVER set `BR2_TARGET_ROOTFS_INITRAMFS` in the MAIN config to do this.** That
 option embeds the entire ~300 MB target rootfs into the kernel image. It is
@@ -2770,18 +2820,27 @@ is a conflict: nothing in the initramfs is an ABI surface. It runs BusyBox,
 calls mount(2)/losetup, and is deleted from RAM by switch_root before
 `/sbin/init` starts. It never meets Main_MiSTer.
 
-### 8.1 Arch/ABI — same silicon as the main build (ADR 0001)
+### 8.1 Arch/ABI — same silicon as the board's main build (`initramfs-<board>.fragment`)
 
-`BR2_arm`, `BR2_cortex_a9`, `BR2_ARM_ENABLE_NEON`, `BR2_ARM_ENABLE_VFP`,
+DE10: `BR2_arm`, `BR2_cortex_a9`, `BR2_ARM_ENABLE_NEON`, `BR2_ARM_ENABLE_VFP`,
 `BR2_ARM_FPU_NEON` — not an ABI requirement here; it just has to run on a
-Cortex-A9 (§3.1).
+Cortex-A9 (§3.1). DE25: `BR2_aarch64`, `BR2_cortex_a76_a55` (§6.2; no
+NEON/VFP knobs exist on AArch64). These lines are RESTATED from the board
+fragment rather than shared with it, because a stage-1 stack cannot include
+`<board>.fragment` (kernel stanza, patch dir, image hooks). Check (f) of §11
+holds each restatement to its board fragment symbol-for-symbol, so a CPU
+tuning changed in one file and not the other fails CI instead of building a
+stage 1 for a different target than the kernel it rides in.
 
-### 8.2 Toolchain: musl, static-only — `BR2_TOOLCHAIN_BUILDROOT_MUSL`, `BR2_KERNEL_HEADERS_6_18`, `BR2_STATIC_LIBS`
+### 8.2 Toolchain: musl, static-only — `BR2_TOOLCHAIN_BUILDROOT_MUSL`, `BR2_STATIC_LIBS` (common); `BR2_KERNEL_HEADERS_6_18` / `_7_1` (per board)
 
 musl is chosen *because* it permits `BR2_STATIC_LIBS` (glibc does not) and
 because a static musl BusyBox is roughly half the size of a static glibc one.
 The main build stays on glibc; see the note above on why that is not an
-inconsistency. The headers series pin follows §3.2.
+inconsistency. The headers series pin is per board and follows §3.2 (DE10)
+and §6.2 (DE25) — the same series the board's kernel-header package uses, so
+the same 2026.08-bump trap (§6.2: a retired series symbol silently collapses
+the libc choice) applies here, and the golden hash is what would catch it.
 
 ### 8.3 No init system — `BR2_INIT_NONE`
 
@@ -2799,11 +2858,18 @@ The Makefile's `initramfs-verify` asserts `/dev/console` is in the cpio.
 
 ### 8.5 BusyBox config and `/init` — `BR2_PACKAGE_BUSYBOX_CONFIG`, `BR2_ROOTFS_OVERLAY`
 
-Our own minimal config, `board/mister/de10nano/initramfs-busybox.config` (see
+Our own minimal config, `board/mister/common/initramfs-busybox.config` (see
 the header of that file for how it was generated and which symbols are
 load-bearing — `CONFIG_FEATURE_MOUNT_FLAGS` above all). `BR2_STATIC_LIBS`
 makes `busybox.mk` force `CONFIG_STATIC` on top of it. The overlay
-`board/mister/de10nano/initramfs-overlay` is `/init` itself.
+`board/mister/common/initramfs-overlay` is `/init` itself. Both live under
+`board/mister/common/` (moved from `board/mister/de10nano/` on 2026-09-06,
+when the DE25 stack started using them by path): the BusyBox config names no
+architecture, and `/init` parses `/proc/cmdline` for everything it needs, so
+the same two files build the DE10's armv7 cpio and the DE25's aarch64 one.
+The Makefile's `initramfs-verify` (and `de25-initramfs-verify`, the same
+recipe re-pointed) parses `/init` with the BusyBox ash it just built for that
+board, under `qemu-arm` / `qemu-aarch64`.
 
 ### 8.6 fsck.exfat for the on-demand repair path (ADR 0026) — `BR2_PACKAGE_EXFATPROGS`, `BR2_ROOTFS_POST_BUILD_SCRIPT`
 
@@ -2826,7 +2892,7 @@ for why the dirty flag alone is not a usable trigger.
 
 The only dependency is `BR2_USE_WCHAR`, which musl satisfies; the installer
 config (§9) already builds this package on the same musl+static toolchain.
-`board/mister/de10nano/initramfs-post-build.sh` (`BR2_ROOTFS_POST_BUILD_SCRIPT`)
+`board/mister/common/initramfs-post-build.sh` (`BR2_ROOTFS_POST_BUILD_SCRIPT`)
 then deletes the five binaries we do not use (dump.exfat, exfat2img,
 exfatlabel, mkfs.exfat, tune.exfat — 476 KB of zImage for tools stage 1
 cannot invoke) — see there for why that is done in post-build. The Makefile's
@@ -2848,7 +2914,9 @@ the no-default choice trap.)
 
 The cpio is embedded in the zImage, so if the cpio is not byte-reproducible
 then `zImage_dtb` is not either, and P4.3's double-build job fails for a
-reason that has nothing to do with the kernel.
+reason that has nothing to do with the kernel. Restated in `initramfs-common`
+rather than inherited from `common.fragment` — see the top of §8 for why the
+stage-1 stacks do not include `common`.
 
 ---
 
@@ -2878,14 +2946,15 @@ to the real MiSTer. This config is that installer OS's rootfs. Its `/init`
 sfdisk/mkfs.exfat/copy-back/MAC-gen/dd-uboot.img/reboot dance described in ADR
 0020 §2.
 
-Relationship to `mister_initramfs_defconfig` (STAGE 1, §8): this is a SIBLING
-of stage 1, not a variant of the main target config: same static musl
-throwaway-cpio shape (`BR2_INIT_NONE`, `BR2_TARGET_ROOTFS_CPIO`, no shared
-libc), because the installer runs from RAM exactly like stage 1's `/init` does
-and is deleted the moment it reboots into the real system. It is deliberately
-BASED ON `mister_initramfs_defconfig` line-for-line
+Relationship to the stage-1 stacks (§8): this is a SIBLING of stage 1, not
+a variant of the main target config: same static musl throwaway-cpio shape
+(`BR2_INIT_NONE`, `BR2_TARGET_ROOTFS_CPIO`, no shared libc), because the
+installer runs from RAM exactly like stage 1's `/init` does and is deleted the
+moment it reboots into the real system. It was BASED ON the old
+`mister_initramfs_defconfig` line-for-line
 (arch/toolchain/init/device-creation/output/reproducibility all copied
-verbatim — §8 has the reasoning behind each) and adds exactly what the
+verbatim — §8 has the reasoning behind each; it is DE10-only and stayed a
+standalone defconfig when stage 1 became a stack) and adds exactly what the
 installer's job needs on top:
 
 - `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §2 step 3; `-n MiSTer_Data`).
@@ -3005,7 +3074,7 @@ The judgement calls, each recorded here:
 | DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_CUSTOM_CONFIG`, `CUSTOM_CONFIG_FILE`, `CONFIG_FRAGMENT_FILES`, `# USE_ARCH_DEFAULT_CONFIG is not set`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). The kernel-config pair names DE25 files; the *fragment* file it names is shared with the DE10 by path, but that sharing is a file, not a symbol (§6.5). |
 | The whole DE25 bootloader stanza (`BR2_TARGET_ARM_TRUSTED_FIRMWARE*`, `BR2_TARGET_UBOOT*`) | `de25nano` | The DE10 has no bootloader in its Buildroot config at all — its boot chain is the stock/Terasic one, assembled outside Buildroot (`docs/boot-chain.md`). Nothing to share, so no `common` question arises. |
 | `BR2_PACKAGE_HOST_UBOOT_TOOLS`, `_FIT_SUPPORT`, `BR2_PACKAGE_HOST_GENIMAGE`, `BR2_PACKAGE_HOST_MTOOLS`, `BR2_PACKAGE_HOST_DOSFSTOOLS` | `de25nano` | Host tooling for the FIT and the card image (§6.10, §6.11), and DE25-only in fact: the DE10 stack sets none of these five. Note the near-miss — `de10nano-image` sets `BR2_PACKAGE_DOSFSTOOLS` (+ `_FATLABEL`, `_FSCK_FAT`, `_MKFS_FAT`), the TARGET package that ships `mkfs.fat` on the board, which is a different symbol from `BR2_PACKAGE_HOST_DOSFSTOOLS`. Not a `common` candidate on either count, and rule 4 says so twice over: `common` is in the kernel-only stack, so a `BR2_PACKAGE_HOST_*` line added there would move the kernel-variant toolchain fingerprint and bust every variant's host-toolchain cache, exactly as recorded for `BR2_TARGET_GENERIC_ROOT_PASSWD` above. |
-| `mister_initramfs_defconfig`, `mister_installer_defconfig` | left standalone | They share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). Not worth it; their comments moved here (§8, §9) for the same reason as the others. |
+| ~~`mister_initramfs_defconfig`~~, `mister_installer_defconfig` | installer: left standalone. **Stage 1: a stack since 2026-09-06** (`initramfs-common` + `initramfs-<board>`, §8) | The 2026-09-02 call was "left standalone": they share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). **Reversed for stage 1 when the DE25 needed one** (ADR 0029 D11): a second board wants every line but the arch tuple, so the split is `initramfs-common` (everything) + a per-board arch fragment (restated, held to `<board>.fragment` by check (f)) rather than a shared arch micro-fragment — the arch lines are the part that DIFFERS per board, and what is shared is the rest. The cache-key cost was paid once. The installer is DE10-only (its `/init` runs `dd` of the DE10's `uboot.img`) and stays standalone. |
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
 Symbol counts (assignments + explicit not-set lines), re-measured 2026-09-03
@@ -3056,6 +3125,9 @@ compile; ~4 s warm; runs in `lint-config`): for each stack in `stacks.mk` plus
   `BR2_GDB_VERSION`, `BR2_DEFCONFIG`);
 - (d) the sha256 of the NORMALISED resolved `.config` equals
   `configs/fragments/golden.sha256` for the pinned `BUILDROOT_VERSION`;
+- (f) stage-1 arch lockstep: every symbol an `initramfs-<board>.fragment`
+  sets is set to the same value in `<board>.fragment` (text level, stripped
+  fragments; §8.1);
 - (e) path consumers: every `configs/fragments/<file>` named in the code/CI
   surface (`Makefile`, `scripts/`, `.github/`, `renovate.json` — not docs)
   exists, and `action.yml`'s two `hashFiles()` lists equal the `DE10NANO` /
@@ -3123,6 +3195,18 @@ moved. The same identity was checked for `mister_initramfs_defconfig` and
 `mister_installer_defconfig` after their comments moved here (only comments
 changed; the resolved configs are byte-identical, `BR2_DEFCONFIG` included,
 since the files kept their names).
+
+THE STAGE-1 SPLIT (2026-09-06, Buildroot 2026.08): `mister_initramfs_defconfig`
+became the `initramfs-de10nano` stack (§8). Its resolved `.config` from the old
+`make mister_initramfs_defconfig` path, diffed against the stack's
+merge_config.sh + olddefconfig output on the same Buildroot tree, differed in
+exactly three kinds of line: `BR2_DEFCONFIG` (as above), the git-describe
+`-dirty` suffix of the working tree, and the three `board/mister/de10nano/`
+→ `board/mister/common/` paths of the moved files (§8.5, §8.6) — 5,240 lines
+otherwise identical, toolchain (gcc 15.3.0, binutils 2.45.1, musl, headers
+6.18) included. The two new golden lines were then recorded; the four
+existing ones did not move. The `initramfs-de25nano` stack resolves to
+`BR2_aarch64` + `BR2_cortex_a76_a55`, musl, headers 7.1, the same gcc/binutils.
 
 SINCE THE SPLIT, the `de25nano` golden line has moved on purpose twice: once
 when the DE25 wave-2 work (§6.5's kernel-config switch and the §6.9–§6.11

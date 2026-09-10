@@ -88,7 +88,7 @@
 # hole reserved. Applying order is unaffected — the shared dir is globbed and
 # sorted, so 0047 simply applies last there, and it is not in this series at all.
 #
-# NOT-symlink exceptions: four of the shared-patch entries are REAL FILES
+# NOT-symlink exceptions: five of the shared-patch entries are REAL FILES
 # re-anchored for 7.x (0043-0046 above are real files too, but they are
 # beta-local originals, not re-anchors of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
@@ -97,16 +97,24 @@
 # each in lockstep with its ../linux-patches/ original (every copy carries
 # a bracketed re-anchor note).
 #
-# 0031 WAS a fifth; it is a symlink again as of 2026-07-25. Worth reading
-# before adding a sixth, because the same trick may apply: rather than
-# re-anchoring the 7.x copy around the drifted context, the SHARED patch
-# was moved to anchor somewhere both trees agree (it now defines
-# exfat_symlink_inode_operations *before* exfat_file_inode_operations
-# instead of after, because 7.x had both added a struct member and
-# retabbed the alignment, leaving no common trailing context). Same
-# resulting source, one file. A re-anchored copy is the fallback, not the
-# first move — ask first whether the shared patch can be anchored on
-# something stabler:
+# 0031 has been both. It became a symlink on 2026-07-25 by the trick worth
+# reading about before adding a sixth: rather than re-anchoring the 7.x
+# copy around the drifted context, the SHARED patch was moved to anchor
+# somewhere both trees agree (it defines exfat_symlink_inode_operations
+# *before* exfat_file_inode_operations instead of after, because 7.x had
+# both added a struct member and retabbed the alignment, leaving no common
+# trailing context). Same resulting source, one file. A re-anchored copy is
+# the fallback, not the first move — ask first whether the shared patch can
+# be anchored on something stabler. It is a REAL FILE again as of
+# 2026-09-06, for the OTHER reason: a real 7.x API delta that no anchoring
+# can paper over. 7.x exfat is iomap-based and has no write_begin/write_end,
+# so the shared patch's page_symlink() call is a NULL function call -- an
+# Oops on the first `ln -s` -- on every 7.x kernel. It applied and compiled
+# fine; the DE25's aarch64 QEMU initramfs leg (scripts/test-initramfs.sh
+# --board de25nano, `symlink` case) was the first thing to EXECUTE it on 7.x
+# and is its acceptance test. The copy differs from the shared patch only in
+# fs/exfat/namei.c (a buffer-head target writer replaces page_symlink);
+# the DE25 series links to THIS copy. The list:
 #   0001-fbdev-add-MiSTer_fb-driver     — one-line delta: 7.x removed
 #     <linux/fbcon.h>; fbcon_update_vcs() now comes from the fbdev-core
 #     header ("core/fbcon.h").

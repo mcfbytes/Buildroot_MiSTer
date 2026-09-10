@@ -30,14 +30,15 @@
 #
 # EXCLUDED ON PURPOSE: the board/common fragment stacks under
 # configs/fragments/ (the shared kernel-only BASE every variant builds against
-# lives there, configs/fragments/stacks.mk) and configs/mister_initramfs_defconfig
-# (the stage-1 initramfs config). The stacks live in a SUBDIRECTORY and the
-# initramfs defconfig carries no `.fragment` suffix, so the glob below already
+# lives there, configs/fragments/stacks.mk, and so do the two stage-1
+# initramfs stacks) and configs/mister_installer_defconfig (the SD-card
+# installer config). The stacks live in a SUBDIRECTORY and the installer
+# defconfig carries no `.fragment` suffix, so the glob below already
 # excludes both without any special-casing — the explicit denylist further
 # down exists only so that fact survives a future rename or move instead of
 # relying on an accident of path or extension.
 #
-# ALSO RESERVED: the variant name "main". Unlike the two defconfigs above,
+# ALSO RESERVED: the variant name "main". Unlike the files above,
 # a hypothetical configs/mister_main.fragment WOULD match the *.fragment glob
 # below -- but .github/actions/buildroot-build/action.yml's `case` matches
 # `main)` as its FULL-IMAGE build, not a kernel-only one, so that name reaching
@@ -68,9 +69,9 @@ variants=()
 shopt -s nullglob
 for f in configs/mister_*.fragment; do
 	case "$f" in
-	configs/fragments/* | configs/mister_initramfs_defconfig)
+	configs/fragments/* | configs/mister_installer_defconfig)
 		# Unreachable given the *.fragment glob above -- the stacks are in a
-		# subdirectory and the initramfs defconfig lacks the extension -- but
+		# subdirectory and the installer defconfig lacks the extension -- but
 		# kept explicit per the EXCLUDED ON PURPOSE note in the header, so
 		# this is documented in code, not just prose.
 		continue

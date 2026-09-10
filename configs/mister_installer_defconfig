@@ -2,7 +2,8 @@
 # docs/decisions/0020-sdcard-exfat-reformat-installer.md): output-installer/
 # images/rootfs.cpio, a static musl BusyBox + exfatprogs + util-linux(sfdisk)
 # rootfs that scripts/mk-sdcard.sh embeds into the installer's own zImage_dtb.
-# A SIBLING of mister_initramfs_defconfig (same shape, line-for-line), plus
+# A SIBLING of the stage-1 initramfs stack (configs/fragments/initramfs-common +
+# initramfs-de10nano; same shape, line-for-line), plus
 # exactly what the reformat-and-handoff /init needs. Standalone Buildroot
 # config, not a fragment stack. Rationale: docs/buildroot-config.md §9.
 #

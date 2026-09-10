@@ -16,7 +16,8 @@
 # edit with an unexpected knock-on — fails until the hash is deliberately
 # updated with a commit that explains why.
 #
-# What it asserts, per stack (de10nano, de10nano-kernel, de25nano, and
+# What it asserts, per stack (de10nano, de10nano-kernel, de25nano,
+# initramfs-de10nano, initramfs-de25nano, and
 # de10nano-kernel + configs/mister_<variant>.fragment for every kernel
 # variant):
 #   (a) NO REDEFINITION between fragments: a symbol defined by two fragments
@@ -65,6 +66,12 @@
 #       paste, .github/workflows/renovate-hash-sync.yml case 8 commits them
 #       on a Renovate bump PR, and the build is allowed to proceed so the
 #       bump PR still proves it builds.
+#   (f) STAGE-1 ARCH LOCKSTEP: every symbol an initramfs-<board> fragment
+#       sets is set to the same value in <board>.fragment (text-level, over
+#       the stripped fragments). The stage-1 cpio is built by its own stack,
+#       which cannot include the board fragment (that carries the kernel
+#       stanza), so the arch/ABI + headers-series lines are restated -- and
+#       a restated line that drifts builds a stage 1 for the wrong target.
 #
 # Cost: needs the pinned Buildroot tree (fetched/unpacked by `make
 # buildroot-unpack` if absent — a 10 MB download, no compile beyond
@@ -380,6 +387,40 @@ if [ -n "${RESOLVED[de10nano]+set}" ] && [ -n "${RESOLVED[de10nano-kernel]+set}"
 	fi
 elif [ "${#only[@]}" -eq 0 ]; then
 	fail "resolved-level lockstep: de10nano or de10nano-kernel stack missing from stacks.mk"
+fi
+
+# (f) stage-1 arch lockstep. Each initramfs-<board> fragment restates the
+# board's arch/ABI + headers-series lines (a stage-1 stack cannot include
+# <board>.fragment itself: that carries the kernel stanza). The restated
+# values must be the board's: a CPU-tuning or headers-series change made in
+# <board>.fragment and not here would build a stage 1 for a different target
+# than the kernel it is embedded in. Text-level, over the stripped fragments,
+# and symmetric in what it demands -- every symbol the initramfs-<board>
+# fragment sets must be set to the same value in <board>.fragment. (Symbols
+# the board sets and stage 1 does not are fine: stage 1 needs no kernel.)
+if [ "${#only[@]}" -eq 0 ]; then
+	for var in $(config_stack_vars); do
+		case "$var" in INITRAMFS_*) ;; *) continue ;; esac
+		board_var="${var#INITRAMFS_}"
+		board_lc=$(config_stack_label "$board_var")
+		ir_frag="$CONFIG_FRAGMENT_DIR/initramfs-$board_lc.fragment"
+		board_frag="$CONFIG_FRAGMENT_DIR/$board_lc.fragment"
+		[ -f "$ir_frag" ] || { fail "stage-1 arch lockstep: $var names no initramfs-$board_lc.fragment"; continue; }
+		[ -f "$board_frag" ] || { fail "stage-1 arch lockstep: $var has no board fragment $board_lc.fragment to agree with"; continue; }
+		bad=""
+		while IFS= read -r line; do
+			[ -n "$line" ] || continue
+			sym=$(config_line_symbol "$line")
+			if ! config_strip_fragment "$board_frag" | grep -qxF -- "$line"; then
+				bad="$bad $sym"
+			fi
+		done < <(config_strip_fragment "$ir_frag")
+		if [ -n "$bad" ]; then
+			fail "stage-1 arch lockstep: initramfs-$board_lc.fragment sets$bad differently from (or absent in) $board_lc.fragment -- the stage-1 cpio must be built for the same arch/ABI and headers series as the kernel it is embedded in; change both files in one commit"
+		else
+			echo "==> stage-1 arch lockstep: initramfs-$board_lc.fragment agrees with $board_lc.fragment on every symbol it sets ($(config_strip_fragment "$ir_frag" | grep -c .))"
+		fi
+	done
 fi
 
 # --- Path consumers outside stacks.mk -----------------------------------------

@@ -70,7 +70,7 @@ Mapping from Main's vendored `lib/` dirs to their replacements
   "Main_MiSTer shared libraries" section asserts presence-in-rootfs
   (wildcarded versions, so Renovate bumps don't go stale-red — the PR #35
   lesson, commit `1341c93`).
-- **`mister_initramfs_defconfig` / installer defconfigs are deliberately
+- **The stage-1 initramfs stacks / installer defconfig are deliberately
   unchanged** — static busybox, no ABI surface, nothing there links any of
   these.
 - Renovate manages both new pins (`lib-pin` label); hashes auto-refresh via

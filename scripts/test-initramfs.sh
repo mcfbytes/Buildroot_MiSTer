@@ -3,14 +3,13 @@
 # scripts/test-initramfs.sh — CI-runnable QEMU boot test of the initramfs /init
 # (TASKS.md P1.12; constraint A7; docs/decisions/0002-initramfs.md §8).
 #
-# QEMU has no Cyclone V SoC machine model, so this cannot boot the real
-# DE10-Nano product kernel. What it CAN do, and what /init actually needs
-# proven, is boot the REAL, unmodified stage-1 cpio
-# (output-initramfs/images/rootfs.cpio) inside a generic `qemu-system-arm -M
-# virt` kernel, attach a synthetic MBR disk shaped like a real MiSTer SD card
-# (a FAT/exFAT data partition containing linux/linux.img), and assert -- from
-# INSIDE the switched-root system -- every invariant /init is supposed to
-# have established. Eight cases:
+# QEMU has no Cyclone V (or Agilex 5) SoC machine model, so this cannot boot
+# either board's product kernel. What it CAN do, and what /init actually
+# needs proven, is boot the REAL, unmodified stage-1 cpio inside a generic
+# `-M virt` kernel, attach a synthetic MBR disk shaped like a real MiSTer SD
+# card (a FAT/exFAT data partition containing linux/linux.img), and assert --
+# from INSIDE the switched-root system -- every invariant /init is supposed
+# to have established. Eight cases:
 #
 #   fat32      FAT32 card:  exfat probe fails, falls back to vfat (utf8=1)
 #   exfat      exFAT card:  mounts on the first try
@@ -34,20 +33,50 @@
 # entry on it, so this synthetic test is the only place that regression can
 # ever be caught (see the case function below for the full argument).
 #
-# Usage: scripts/test-initramfs.sh [case ...]
-#   With no arguments, runs all eight cases. Exit 0 iff every requested case
-#   passed; nonzero otherwise (wired for P4.1's CI job).
+# Usage: scripts/test-initramfs.sh [--board de10nano|de25nano] [case ...]
+#   With no case arguments, runs all eight cases. Exit 0 iff every requested
+#   case passed; nonzero otherwise (wired for P4.1's CI job).
+#
+# TWO BOARDS, ONE /init (ADR 0029 D11, 2026-09-06). The stage-1 /init is
+# arch-neutral and is built for both boards from the same fragment stack base
+# (configs/fragments/initramfs-common.fragment); `--board` picks which built
+# cpio to boot and which machine to boot it on:
+#
+#   de10nano (default)  output-initramfs/images/rootfs.cpio, armv7, on
+#                       `qemu-system-arm -M virt` with a multi_v7_defconfig
+#                       kernel at the DE10's pinned version.
+#   de25nano            output-initramfs-de25/images/rootfs.cpio, aarch64, on
+#                       `qemu-system-aarch64 -M virt -cpu cortex-a76` with a
+#                       kernel built from the DE25's OWN product config
+#                       (board/mister/de25nano/linux.config + the shared
+#                       board/mister/common/linux-mister.fragment) at the
+#                       DE25's pinned version, plus this harness's virtio/
+#                       PL011 fragment. There is no arm64 "multi_v7" to lean
+#                       on, and the product config is minimal enough to build
+#                       in minutes -- so the DE25 leg also proves the product
+#                       config's own exfat/vfat/loop/ext4 choices, which the
+#                       DE10 leg deliberately does not (its product kernel
+#                       cannot run under QEMU at all).
+#
+#   Every case, cmdline and assertion is identical between the two legs. The
+#   cross compiler for the DE25 leg is the stage-1 build's own musl toolchain
+#   (output-initramfs-de25/host/bin), so `make de25-initramfs` is the only
+#   build prerequisite -- no `make de25` needed.
 #
 # Prerequisites (all checked explicitly, with an actionable message, before
 # anything runs):
-#   - `make initramfs` already run (output-initramfs/images/rootfs.cpio and
-#     output-initramfs/host/bin/{mcopy,mmd} must exist)
-#   - the Buildroot host cross toolchain on PATH or at output/host/bin
-#     (arm-buildroot-linux-gnueabihf-gcc)
-#   - qemu-system-arm, mkfs.vfat, mkfs.exfat, sfdisk, mke2fs, cpio
+#   - `make initramfs` (or `make de25-initramfs`) already run, so the cpio
+#     exists
+#   - the matching Buildroot cross toolchain on PATH or under the output dir
+#     the board uses (arm-buildroot-linux-gnueabihf-gcc from output/host/bin;
+#     aarch64-buildroot-linux-musl-gcc from output-initramfs-de25/host/bin)
+#   - qemu-system-arm / qemu-system-aarch64, mkfs.vfat, mkfs.exfat, sfdisk,
+#     mke2fs, cpio, mtools (mcopy, mmd)
 #   - a QEMU-bootable test kernel: reused from a cache
-#     (work/test-initramfs-kbuild/) if present, else built fresh from the
-#     pinned pristine source (work/linux-<pinned version>.tar.xz) and
+#     (work/test-initramfs[-de25]-kbuild/) if present, else built fresh from
+#     the pinned pristine source (dl/linux/linux-<pinned version>.tar.xz, the
+#     tarball the Buildroot kernel build already fetched; or
+#     work/linux-<pinned version>.tar.xz) and
 #     scripts/test-initramfs/qemu-test-kernel.config -- see ensure_qemu_kernel().
 
 set -uo pipefail  # deliberately not -e: run every requested case, then report
@@ -56,42 +85,116 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SUPPORT="$HERE/test-initramfs"
 
-CPIO="$ROOT/output-initramfs/images/rootfs.cpio"
-INIT_SRC="$ROOT/board/mister/de10nano/initramfs-overlay/init"
-MTOOLS_BIN="$ROOT/output-initramfs/host/bin"
+# --- Board selection -------------------------------------------------------
+# `--board` is consumed here, before any board-dependent path is derived; the
+# remaining arguments are case names for main(). TEST_INITRAMFS_BOARD in the
+# environment is the same switch for callers that cannot pass arguments
+# (ci-tests.sh's per-board legs use the flag).
+BOARD="${TEST_INITRAMFS_BOARD:-de10nano}"
+_args=()
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--board) shift; BOARD="${1:-}" ;;
+		--board=*) BOARD="${1#--board=}" ;;
+		*) _args+=("$1") ;;
+	esac
+	shift
+done
+set -- ${_args[@]+"${_args[@]}"}
+
+case "$BOARD" in
+de10nano)
+	CPIO="$ROOT/output-initramfs/images/rootfs.cpio"
+	CPIO_MAKE_TARGET="initramfs"
+	KARCH=arm
+	CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
+	TOOLCHAIN_BIN="$ROOT/output/host/bin"
+	QEMU_SYSTEM=qemu-system-arm
+	QEMU_MACHINE=(-M virt)
+	KERNEL_IMAGE_TARGET=zImage
+	KERNEL_IMAGE_REL=arch/arm/boot/zImage
+	# The generic ARM kernel: multi_v7_defconfig + this harness's fragment.
+	KERNEL_BASE_DEFCONFIG=multi_v7_defconfig
+	KERNEL_BASE_FILES=()
+	PIN_FRAGMENT="$ROOT/configs/fragments/de10nano.fragment"
+	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
+	CACHE_TAG=""
+	;;
+de25nano)
+	CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
+	CPIO_MAKE_TARGET="de25-initramfs"
+	KARCH=arm64
+	CROSS_COMPILE="${CROSS_COMPILE:-aarch64-buildroot-linux-musl-}"
+	TOOLCHAIN_BIN="$ROOT/output-initramfs-de25/host/bin"
+	QEMU_SYSTEM=qemu-system-aarch64
+	# `-M virt` has no default CPU on aarch64; cortex-a76 is the DE25's big
+	# core and what the stage-1 toolchain tunes for (BR2_cortex_a76_a55 --
+	# an armv8.2 target whose LSE atomics a cortex-a53 model would SIGILL on).
+	QEMU_MACHINE=(-M virt -cpu cortex-a76)
+	KERNEL_IMAGE_TARGET=Image
+	KERNEL_IMAGE_REL=arch/arm64/boot/Image
+	# The DE25's own product kernel config as the base (see the header).
+	KERNEL_BASE_DEFCONFIG=""
+	KERNEL_BASE_FILES=("$ROOT/board/mister/de25nano/linux.config"
+	                   "$ROOT/board/mister/common/linux-mister.fragment")
+	PIN_FRAGMENT="$ROOT/configs/fragments/de25nano.fragment"
+	# Resolved through the DE25's own patch dir, which links to the 7.x
+	# re-anchored copy in linux-patches-beta/ (since 2026-09-06 -- this
+	# very case found the shared 6.18 form Oopsing on 7.x, ADR 0002 §8b).
+	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de25nano/linux-patches/0031-exfat-samsung-symlinks.patch"
+	CACHE_TAG="-de25"
+	;;
+*)
+	printf 'test-initramfs.sh: FATAL: unknown --board %s (known: de10nano, de25nano)\n' "'$BOARD'" >&2
+	exit 2
+	;;
+esac
+
+INIT_SRC="$ROOT/board/mister/common/initramfs-overlay/init"
 MARKER_C="$SUPPORT/marker-init.c"
 TEST_SYMLINK_C="$SUPPORT/test-symlink.c"
 KERNEL_FRAGMENT="$SUPPORT/qemu-test-kernel.config"
-EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
 
-CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
-export PATH="$ROOT/output/host/bin:$MTOOLS_BIN:$PATH"
+export PATH="$TOOLCHAIN_BIN:$PATH"
 export MTOOLS_SKIP_CHECK=1
 
 # Cache locations. Overridable so CI can point these at a persistent cache
 # across runs (a full kernel build is the expensive part of this script by a
-# wide margin) or a scratch dir for a fully clean run.
-WORK="${TEST_INITRAMFS_WORK:-$ROOT/work/test-initramfs}"
-KBUILD="${TEST_INITRAMFS_KBUILD:-$ROOT/work/test-initramfs-kbuild}"
-KERNEL_SRC="${TEST_INITRAMFS_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
-# Derived from the product defconfig, NOT hardcoded: board patch 0031 (applied
+# wide margin) or a scratch dir for a fully clean run. The DE25 leg's caches
+# carry a -de25 tag so the two boards' kernel trees never share a directory.
+WORK="${TEST_INITRAMFS_WORK:-$ROOT/work/test-initramfs$CACHE_TAG}"
+KBUILD="${TEST_INITRAMFS_KBUILD:-$ROOT/work/test-initramfs$CACHE_TAG-kbuild}"
+KERNEL_SRC="${TEST_INITRAMFS_KERNEL_SRC:-$ROOT/work/test-initramfs$CACHE_TAG-kernel-src}"
+# Derived from the board's fragment, NOT hardcoded: board patch 0031 (applied
 # below) tracks the pinned kernel's APIs and will not compile against an older
 # one -- 6.18.40 gave exfat_remove_entries() a 4th arg, so a stale pin here
 # fails the QEMU kernel build with a confusing "too few arguments". Reading the
 # pin keeps this test kernel on the same version the image ships, which is what
 # this script's header already claims it does.
-KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/fragments/de10nano.fragment")}"
+KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$PIN_FRAGMENT")}"
 # Inline, not die() -- that is defined further down, and this block runs before
 # it. Under `set -uo pipefail` (no -e) an undefined-function call would print
 # "command not found" and CARRY ON, which is exactly the silent failure this
 # guard exists to prevent.
 [ -n "$KERNEL_VERSION" ] || {
 	printf 'test-initramfs.sh: FATAL: %s\n' \
-		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/fragments/de10nano.fragment" >&2
+		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from ${PIN_FRAGMENT#"$ROOT"/}" >&2
 	exit 2
 }
-KERNEL_TARBALL="${TEST_INITRAMFS_KERNEL_TARBALL:-$ROOT/work/linux-$KERNEL_VERSION.tar.xz}"
-QEMU_ZIMAGE="$KBUILD/arch/arm/boot/zImage"
+# The pristine source tarball. Buildroot's own kernel build fetches it into
+# dl/linux/ (BR2_DL_DIR), so that is where it is on any tree that has built
+# the board's image; work/ is the older convention and stays as the fallback
+# for a tarball dropped there by hand.
+if [ -z "${TEST_INITRAMFS_KERNEL_TARBALL:-}" ]; then
+	if [ -f "$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.xz" ]; then
+		KERNEL_TARBALL="$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.xz"
+	else
+		KERNEL_TARBALL="$ROOT/work/linux-$KERNEL_VERSION.tar.xz"
+	fi
+else
+	KERNEL_TARBALL="$TEST_INITRAMFS_KERNEL_TARBALL"
+fi
+QEMU_KERNEL="$KBUILD/$KERNEL_IMAGE_REL"
 
 BUILD="$WORK/run"
 MARKER_INIT="$WORK/marker-init"
@@ -102,6 +205,9 @@ TEST_SYMLINK_BIN="$WORK/test-symlink"
 # shell within a couple of seconds of real 6.18 kernel + qemu virt boot time;
 # 30s is generous headroom, not a tuned minimum. `-k 10` guarantees qemu is
 # actually gone even if it ignores SIGTERM (observed in sandboxed CI runners).
+# The aarch64 leg boots a 7.2 product-config kernel under TCG on a single
+# emulated cortex-a76; measured 2026-09-06 it reaches switch_root in well under
+# 10 s on a loaded 32-core host, so the same budget holds for both boards.
 BOOT_TIMEOUT=30
 BOOT_TIMEOUT_KILL=10
 
@@ -150,7 +256,7 @@ need() {
 
 # ---------------------------------------------------------------- prereqs
 check_prereqs() {
-	need qemu-system-arm       "install qemu-system-arm"
+	need "$QEMU_SYSTEM"        "install $QEMU_SYSTEM"
 	need mkfs.vfat             "install dosfstools"
 	need mkfs.exfat            "install exfatprogs (or exfat-utils)"
 	need fsck.exfat            "install exfatprogs (or exfat-utils)"
@@ -158,38 +264,52 @@ check_prereqs() {
 	need mke2fs                "install e2fsprogs"
 	need cpio                  "install cpio"
 	need patch                 "install patch"
-	need "${CROSS_COMPILE}gcc" "expected the Buildroot host toolchain on PATH (output/host/bin)"
-	need mcopy                 "run 'make initramfs' first (builds host mtools under output-initramfs/host/bin)"
-	need mmd                   "run 'make initramfs' first (builds host mtools under output-initramfs/host/bin)"
+	need "${CROSS_COMPILE}gcc" "expected the Buildroot cross toolchain on PATH (${TOOLCHAIN_BIN#"$ROOT"/}); run 'make $CPIO_MAKE_TARGET' first, or set CROSS_COMPILE"
+	need mcopy                 "install mtools"
+	need mmd                   "install mtools"
 
-	[ -f "$CPIO" ] || die "no $CPIO -- run 'make initramfs' first."
+	[ -f "$CPIO" ] || die "no $CPIO -- run 'make $CPIO_MAKE_TARGET' first."
 	[ -f "$INIT_SRC" ] || die "missing $INIT_SRC"
 	[ -f "$MARKER_C" ] || die "missing $MARKER_C"
 	[ -f "$TEST_SYMLINK_C" ] || die "missing $TEST_SYMLINK_C"
 	[ -f "$KERNEL_FRAGMENT" ] || die "missing $KERNEL_FRAGMENT"
 	[ -f "$EXFAT_SYMLINK_PATCH" ] || die "missing $EXFAT_SYMLINK_PATCH"
+	local f
+	for f in ${KERNEL_BASE_FILES[@]+"${KERNEL_BASE_FILES[@]}"}; do
+		[ -f "$f" ] || die "missing $f"
+	done
 }
 
 # ---------------------------------------------------------- the QEMU test kernel
-# NOT the DE10-Nano product kernel (board/mister/de10nano/linux.config) -- see
-# scripts/test-initramfs/qemu-test-kernel.config's header. Built out-of-tree
-# (O=) against a pristine source tree at the pinned kernel version so incremental rebuilds (e.g.
-# after /init changes -- see the re-point below) are cheap.
+# For the DE10 leg: NOT the product kernel (board/mister/de10nano/linux.config)
+# -- see scripts/test-initramfs/qemu-test-kernel.config's header. For the DE25
+# leg: the product config IS the base (see the file header for why). Either
+# way it is built out-of-tree (O=) against a pristine source tree at the
+# board's pinned kernel version so incremental rebuilds (e.g. after /init
+# changes -- see the re-point below) are cheap.
 ensure_qemu_kernel() {
 	if [ ! -f "$KBUILD/Makefile" ]; then
 		log "no cached QEMU test kernel at $KBUILD -- building from scratch"
 		[ -f "$KERNEL_TARBALL" ] || die \
 			"$KERNEL_TARBALL missing; cannot bootstrap the QEMU test kernel." \
-			"Fetch the pinned kernel source tarball (same one P1.3's kernel" \
-			"build already uses) to that path, or point TEST_INITRAMFS_KERNEL_TARBALL" \
-			"at it."
+			"Fetch the pinned kernel source tarball (same one the board's Buildroot" \
+			"kernel build already uses -- dl/linux/) to that path, or point" \
+			"TEST_INITRAMFS_KERNEL_TARBALL at it."
 		mkdir -p "$KERNEL_SRC"
 		log "extracting $KERNEL_TARBALL"
 		tar -C "$KERNEL_SRC" --strip-components=1 -xf "$KERNEL_TARBALL"
 		mkdir -p "$KBUILD"
-		log "configuring: multi_v7_defconfig + $KERNEL_FRAGMENT"
-		make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
-			multi_v7_defconfig
+		if [ -n "$KERNEL_BASE_DEFCONFIG" ]; then
+			log "configuring: $KERNEL_BASE_DEFCONFIG + $KERNEL_FRAGMENT"
+			make -C "$KERNEL_SRC" O="$KBUILD" ARCH=$KARCH CROSS_COMPILE="$CROSS_COMPILE" \
+				"$KERNEL_BASE_DEFCONFIG"
+		else
+			# A minimal product config as the base: seed .config with it and
+			# let merge_config.sh layer the rest on. The seed is the first
+			# base file; the others are merged like the harness fragment.
+			log "configuring: ${KERNEL_BASE_FILES[*]#"$ROOT"/} + $KERNEL_FRAGMENT"
+			cp "${KERNEL_BASE_FILES[0]}" "$KBUILD/.config"
+		fi
 		# merge_config.sh finishes with a BARE `make ... alldefconfig` in the
 		# CURRENT directory -- it has no -C. Run from this repo's root (the
 		# normal way to invoke this script) that `make` hits the wrapper
@@ -202,9 +322,11 @@ ensure_qemu_kernel() {
 		# nothing like this. So: cd into the kernel tree, give its make the
 		# ARCH it needs, and refuse to continue if the merge fails. The
 		# fragment-survival check after olddefconfig below is the backstop.
-		(cd "$KERNEL_SRC" && ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
+		(cd "$KERNEL_SRC" && ARCH=$KARCH CROSS_COMPILE="$CROSS_COMPILE" \
 			scripts/kconfig/merge_config.sh -O "$KBUILD" \
-				"$KBUILD/.config" "$KERNEL_FRAGMENT" >&2) \
+				"$KBUILD/.config" \
+				${KERNEL_BASE_FILES[@]+"${KERNEL_BASE_FILES[@]:1}"} \
+				"$KERNEL_FRAGMENT" >&2) \
 			|| die "merge_config.sh failed for $KERNEL_FRAGMENT"
 	elif [ ! -d "$KERNEL_SRC" ]; then
 		die "$KBUILD exists but its source tree $KERNEL_SRC does not." \
@@ -228,7 +350,7 @@ ensure_qemu_kernel() {
 	# straight to nothing-to-do), silently testing a STALE /init if skipped.
 	"$KERNEL_SRC/scripts/config" --file "$KBUILD/.config" \
 		--set-str CONFIG_INITRAMFS_SOURCE "$CPIO"
-	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
+	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=$KARCH CROSS_COMPILE="$CROSS_COMPILE" \
 		olddefconfig >&2
 
 	# Every `CONFIG_X=y` the fragment asks for must be in the resolved config,
@@ -248,16 +370,16 @@ ensure_qemu_kernel() {
 		"merge_config.sh cwd fix, remove it (rm -rf $KBUILD) and re-run to" \
 		"bootstrap a correct one."
 
-	log "building QEMU test kernel zImage (embedding $(basename "$CPIO"))"
-	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
-		-j"$(nproc)" zImage >&2
+	log "building QEMU test kernel $KERNEL_IMAGE_TARGET (embedding $(basename "$CPIO"))"
+	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=$KARCH CROSS_COMPILE="$CROSS_COMPILE" \
+		-j"$(nproc)" "$KERNEL_IMAGE_TARGET" >&2
 
-	[ -f "$QEMU_ZIMAGE" ] || die "kernel build finished but produced no $QEMU_ZIMAGE"
+	[ -f "$QEMU_KERNEL" ] || die "kernel build finished but produced no $QEMU_KERNEL"
 }
 
 # ---------------------------------------------------------------- marker-init
 # Compiled statically (no shared libs available in the tiny ext4 image it
-# ships in) for ARM, since it runs under the guest, not the host.
+# ships in) for the guest's architecture, since it runs there, not on the host.
 build_marker_inits() {
 	log "compiling marker-init (+ nonascii variant) with ${CROSS_COMPILE}gcc"
 	"${CROSS_COMPILE}gcc" -O2 -static -Wall -Wextra -o "$MARKER_INIT" "$MARKER_C" \
@@ -303,8 +425,8 @@ boot_qemu() {
 	local diskimg=$1 cmdline=$2 logfile=$3
 	shift 3
 	timeout -k "$BOOT_TIMEOUT_KILL" "$BOOT_TIMEOUT" \
-		qemu-system-arm -M virt -m 512 -nographic -no-reboot \
-		-kernel "$QEMU_ZIMAGE" \
+		"$QEMU_SYSTEM" "${QEMU_MACHINE[@]}" -m 512 -nographic -no-reboot \
+		-kernel "$QEMU_KERNEL" \
 		-drive file="$diskimg",format=raw,if=none,id=sd0 \
 		-device virtio-blk-device,drive=sd0 \
 		"$@" \
@@ -372,7 +494,7 @@ boot_qemu() {
 # Callers' commands may reference $DATADEV (the MBR disk's data partition)
 # and $IMGDEV (the raw imgfile's whole-disk device) -- both set by the time
 # any caller command runs. There is no grep, awk or sed in this BusyBox
-# config (allnoconfig-derived, board/mister/de10nano/initramfs-busybox.config
+# config (allnoconfig-derived, board/mister/common/initramfs-busybox.config
 # -- confirmed missing directly, not assumed), so the detection below is
 # plain `test`/`case` only.
 populate_in_guest() {
@@ -393,8 +515,8 @@ populate_in_guest() {
 	# `exec {fd}>` (the writer) rendezvous with it. Getting this order backwards
 	# deadlocks the whole script on the very first `exec` -- found exactly this
 	# way: it hung with wchan=wait_for_partner and no qemu process ever existed.
-	qemu-system-arm -M virt -m 512 -nographic -no-reboot \
-		-kernel "$QEMU_ZIMAGE" \
+	"$QEMU_SYSTEM" "${QEMU_MACHINE[@]}" -m 512 -nographic -no-reboot \
+		-kernel "$QEMU_KERNEL" \
 		-drive file="$diskimg",format=raw,if=none,id=sd0 \
 		-device virtio-blk-device,drive=sd0 \
 		-drive file="$imgfile",format=raw,if=none,id=img0 \
@@ -899,6 +1021,7 @@ main() {
 	ensure_qemu_kernel
 	build_marker_inits
 
+	log "board: $BOARD ($KARCH, $QEMU_SYSTEM ${QEMU_MACHINE[*]}, kernel $KERNEL_VERSION, cpio ${CPIO#"$ROOT"/})"
 	log "running ${#requested[@]} case(s): ${requested[*]}"
 	echo ""
 	local c
@@ -907,7 +1030,7 @@ main() {
 	done
 
 	echo ""
-	echo "==== scripts/test-initramfs.sh summary ($RAN case(s)) ===="
+	echo "==== scripts/test-initramfs.sh summary ($BOARD, $RAN case(s)) ===="
 	printf '%s\n' "${SUMMARY[@]}"
 	if [ "$FAILED" -ne 0 ]; then
 		echo "==== RESULT: FAIL ===="

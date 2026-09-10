@@ -16,7 +16,7 @@
 # This pin is a signed-manifest release, strictly stronger than the TOFU hash
 # the old -rc pins had: do NOT reintroduce a TOFU value here without moving
 # back to an -rc (the sync script refuses -rc values; only a hand pin can).
-BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.3"
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.2.4"
 
 # --- Beta patch set: the series-file-driven subset of linux-patches/ (§7.2) ---
 # WARNING: the series deliberately DROPS 0047 (already in 7.2; at -F0 its hunk

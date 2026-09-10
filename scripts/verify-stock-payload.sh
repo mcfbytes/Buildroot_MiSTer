@@ -24,10 +24,10 @@
 # loudly, not silently drift, if release.yml's env block and this script's
 # caller ever disagree). A local run therefore looks like:
 #
-#   export STOCK_RELEASE_URL=https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/b8531c7848526d9a8227841923cc4a493cb6e631/release_20250402.7z
-#   export STOCK_RELEASE_MD5=8dc3acae7d758a80a363fbd7ad31d95d
-#   export STOCK_RELEASE_SHA256=5d087d9c501b2bc50aaf918146e7bf30e5981c08268d5a0e67a3233a4da642ba
-#   export STOCK_RELEASE_SIZE=93727644
+#   export STOCK_RELEASE_URL="https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002"
+#   export STOCK_RELEASE_MD5=8cd4edca838fdc226390e3fb04f3ca79
+#   export STOCK_RELEASE_SHA256=e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66
+#   export STOCK_RELEASE_SIZE=117936766
 #   export STOCK_UBOOT_SHA256=e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64
 #   export STOCK_UBOOT_SIZE=515141
 #   export STOCK_UPDATEBOOT_SHA256=6ff2d50a080e26d7173b61c52083e9cc42ca658db0c5031b4da1c45c74a562f2
@@ -68,7 +68,17 @@
 #       curl-fetch $STOCK_RELEASE_URL to <out-archive>. No verification —
 #       that is `verify-stock`'s job, deliberately kept separate so a fetch
 #       failure (network) and a verify failure (wrong bytes) never share one
-#       error message.
+#       error message. $STOCK_RELEASE_URL may name MORE THAN ONE URL
+#       (whitespace-separated, in order): since release_20260907 upstream
+#       commits its archive as split 7z volumes (.7z.001, .7z.002, ...),
+#       which are consecutive byte slices of ONE archive. The volumes are
+#       concatenated, in the order given, into <out-archive>, so everything
+#       downstream (verify-stock's size/MD5/SHA-256 pins, `7z t`, extraction,
+#       the on-device 7za) sees exactly one flat .7z -- the same bytes
+#       Distribution_MiSTer's own joiner publishes. Per-volume hashes are
+#       deliberately NOT pinned: the joined-file hashes cover every byte of
+#       every volume, and a missing, truncated or reordered volume fails
+#       them just as loudly (docs/verification/stock-release-20260907.md §6.2).
 #
 #   verify-stock  <archive>
 #       Full whole-archive verification, IN ORDER: size, then MD5, then
@@ -228,8 +238,26 @@ cmd_fetch_stock() {
 	require_env STOCK_RELEASE_URL
 	need_cmd curl
 
-	curl -fL --retry 3 -o "$out" "$STOCK_RELEASE_URL"
-	echo "fetch-stock: fetched $STOCK_RELEASE_URL -> $out"
+	# One or more volume URLs, whitespace-separated, joined IN ORDER (see
+	# the fetch-stock entry in this script's header). Each volume is fetched
+	# to its own temp file and appended, so a curl failure mid-list leaves
+	# no half-written <out-archive> behind for a later step to mistake for a
+	# complete download -- the partial is only renamed once every volume is
+	# in. The unquoted expansion is the word-splitting this contract relies on.
+	local url part n=0
+	rm -f "$out" "$out.partial"
+	: > "$out.partial"
+	# shellcheck disable=SC2086 # deliberate word-splitting: a list of URLs
+	for url in $STOCK_RELEASE_URL; do
+		n=$((n + 1))
+		part="$out.vol$n"
+		curl -fL --retry 3 -o "$part" "$url"
+		cat "$part" >> "$out.partial"
+		rm -f "$part"
+		echo "fetch-stock: fetched volume $n: $url"
+	done
+	mv -f "$out.partial" "$out"
+	echo "fetch-stock: $n volume(s) joined -> $out"
 }
 
 # ============================================================================

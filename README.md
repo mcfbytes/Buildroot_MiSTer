@@ -123,7 +123,10 @@ Full detail with citations: [`docs/version-delta.md`](docs/version-delta.md) (th
 re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (the
 251-SONAME mapping, established against Buildroot 2026.02.3),
 [`docs/verification/stock-release-20250402.md`](docs/verification/stock-release-20250402.md)
-(the stock side, fixed forever — stock does not move).
+(the stock side as this table was written against) and
+[`docs/verification/stock-release-20260907.md`](docs/verification/stock-release-20260907.md)
+(stock **did** move in 2026-09: a 6.18.38 kernel on the same 2021 userland — that
+document records what changed and which rows here it dates).
 
 ---
 

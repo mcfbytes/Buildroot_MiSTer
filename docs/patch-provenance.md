@@ -1,5 +1,16 @@
 # Kernel patch provenance & triage (P0.4)
 
+> **Stock baseline of this document: the 5.15 kernel.** Every row below classifies a
+> commit of `MiSTer-v5.15` (Linux 5.15.1 — the kernel stock shipped from 2021-11 until
+> 2026-09-07) against vanilla 6.18. **On 2026-09-07 stock moved to 6.18.38** (Release
+> 20260907 = `MiSTer-v6.18` @ `aec7dc3aa`). This document remains the narrative map of the
+> 5.15 → 6.18 forward-port and the provenance of every carried patch, and its rows stay
+> valid as history; it is no longer where *stock parity* is decided. From this date,
+> stock-parity questions are measured against `MiSTer-v6.18` and the shipped 6.18 config
+> (`docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`), and each fork-sync increment adds its rows to §11. The first such increment is
+> planned in [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](kernel-recon/fork-sync-2026-09/PLAN.md)
+> and has not yet run.
+
 Every change in `MiSTer-devel/Linux-Kernel_MiSTer` (branch `MiSTer-v5.15`,
 HEAD `f0fb626acadd07f0718934826b143b6e4c9ce81c`, 2026-07-08) classified per `PLAN.md` §4.1,
 with upstream status verified against **real Linux 6.18.38 source** (not from memory), and a

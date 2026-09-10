@@ -1,5 +1,19 @@
 # MiSTer Kernel Patch Reconciliation
 
+> **ARCHIVED — this spec was executed in 2026-07 against the 5.15 stock kernel.**
+> Stock baseline: `MiSTer-v5.15` @ `f0fb626ac` (Linux 5.15.1, the kernel stock shipped
+> from 2021-11 until 2026-09-07); target: vanilla 6.18.38. **Stock moved to 6.18.38 on
+> 2026-09-07** (`MiSTer-v6.18` @ `aec7dc3aa`, Release 20260907), so the branch this
+> document reconciles is now frozen history. It is kept unchanged as the method the 126
+> records in `docs/kernel-recon/` were produced by, and because `phase0.py`, `reduce.py`,
+> `worker-instructions.md`, `fork-sync-2026-07.md`, `scripts/export-kernel-tree.sh` and
+> `docs/de25-readiness-ledger.md` cite it by this path. It is **not** the live process:
+> ongoing work runs as increments driven by `docs/kernel-recon/fork-sync.conf` +
+> `scripts/check-fork-sync.sh` with `docs/kernel-recon/worker-instructions.md` as the
+> worker contract, and the current increment — the first against stock's own 6.18 branch —
+> is planned in [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md).
+> Section numbers below are still referenced from those files; do not renumber.
+
 A parallelizable task spec for a **full, independent reconciliation of every commit** in
 `MiSTer-devel/Linux-Kernel_MiSTer` (the MiSTer kernel fork) against this repo
 (`Buildroot_MiSTer`), which is moving from the forked kernel to a **vanilla 6.18.38** kernel

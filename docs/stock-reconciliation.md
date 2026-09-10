@@ -4,6 +4,13 @@ Evidence that this image is at parity **or better** with what MiSTer stock
 actually ships, item by item, and an explicit account of what we ship that
 stock does not.
 
+> **Measured against the 5.15-era stock inputs (LIC `8aba321`, 2026-07-17).** Release
+> 20260907 (LIC `d4e3f51`, 2026-09-07) replaced `modules.tar.gz` (52 → 89 modules, kernel
+> `6.18.38-MiSTer`, every out-of-tree Wi-Fi fork gone), `firmware.tar.gz` (69 → 89 files)
+> and `rootfs.tar.bz2`; `addon.tar` is unchanged. The new module and firmware lists are in
+> `docs/kernel-recon/fork-sync-2026-09/evidence/`; every count and table below is still the
+> July measurement until the re-run tracked in `fork-sync-2026-09/PLAN.md` §8/§9.
+
 ## Source of truth
 
 Reconciled against the *authoritative upstream build inputs*, not against a

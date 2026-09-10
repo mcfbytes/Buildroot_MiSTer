@@ -30,6 +30,14 @@ this task found **three more** that would have shipped silently.
 > check that would actually catch it is `scripts/check-kernel-defconfig-sync.sh` plus the
 > build itself, both of which run in CI against the current pin.
 
+> **Stock baseline note (2026-09-10).** "Stock config" throughout this document means the
+> **5.15.1** config (`docs/stock-inventory/stock-linux.config`), which was stock until
+> 2026-09-07. Stock's current kernel is 6.18.38 and its shipped config is
+> `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config` (4,659 lines). The §4 audit — every symbol enabled in stock that is not enabled
+> in ours — has not been re-run against it; that re-run is a task of the 2026-09 increment
+> (`fork-sync-2026-09/PLAN.md` §9), and its first known deltas are already listed there
+> (§2.2, §2.3, §2.7 of the plan).
+
 ## Sources
 
 | Thing | Identity |

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+EM_DASH = "\u2014"  # kept out of the f-string: a backslash inside {} is a SyntaxError before Python 3.12
 RECORDS = HERE / "records"
 PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 
@@ -173,7 +174,9 @@ reconciled against our vanilla-{vanilla_label}-based build. The full evidence fo
 lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
-  branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
+  branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`
+  is upstream's own 6.18 port, **what stock ships since Release 20260907**, reconciled
+  incrementally (`fork-sync.conf`); `v5.14`/`v5.13.12` are older branches whose
   unique commits never reached stock (analyzed so nothing is lost *between* MiSTer's own
   branches either).
 - **Disposition** — what happened to the commit's functionality in this build:
@@ -287,7 +290,7 @@ directory is not capped at one.
     for row in rows:
         r = row["r"]
         f.write(f"| `{row['sha'][:9]}` | {row['branch'].replace('MiSTer-','')} "
-                f"| **{r.get('disposition')}** | {r.get('carried_patch') or '\u2014'} "
+                f"| **{r.get('disposition')}** | {r.get('carried_patch') or EM_DASH} "
                 f"| {why_of(r)} "
                 f"| {impact_today(r)} | {sev(r)}/{fm(r)} | {'Y' if coup(r) else '—'} "
                 f"| {'N' if r.get('agrees_with_provenance_doc') is False else 'Y' if r.get('agrees_with_provenance_doc') else '?'} "

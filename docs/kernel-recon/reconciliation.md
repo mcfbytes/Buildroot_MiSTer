@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-08-24 15:49 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
+Generated 2026-09-10 20:59 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
 
 ## How to read this table
 
@@ -9,7 +9,9 @@ reconciled against our vanilla-6.18.39-based build. The full evidence for a row
 lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
-  branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
+  branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`
+  is upstream's own 6.18 port, **what stock ships since Release 20260907**, reconciled
+  incrementally (`fork-sync.conf`); `v5.14`/`v5.13.12` are older branches whose
   unique commits never reached stock (analyzed so nothing is lost *between* MiSTer's own
   branches either).
 - **Disposition** — what happened to the commit's functionality in this build:

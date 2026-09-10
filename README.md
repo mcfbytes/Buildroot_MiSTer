@@ -65,9 +65,10 @@ core run on it unchanged.
 
 MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4 image**
 (93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
-5.15.1** — a kernel forked in November 2021 that has **never merged a single 5.15.y
-stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
-any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
+5.15.1** — a kernel forked in November 2021 that **never merged a single 5.15.y stable
+release** in the five years it shipped. (On 2026-09-07 stock moved to **6.18.38**, pinned
+the same way: one point release, no `.y` updates — see the note under the table below.)
+There is no public build recipe, no CI, no SBOM, and no update path for any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
 **mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
 signed-hash supply chain, a nine-workflow CI pipeline, and a per-commit reconciliation
 of the entire kernel fork — then ships it through the same update channel users already
@@ -85,8 +86,8 @@ mainline can hold it.
 
 | | Stock MiSTer | This project |
 |---|---|---|
-| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel** | 5.15.1 from Nov 2021 to 2026-09-07 with **zero** `5.15.y` stable updates ever merged; **6.18.38 since Release 20260907**, pinned the same way — 12 `6.18.y` releases behind our pin at the time of writing | **6.18 LTS**, on a live `.y` line with security backports |
+| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 | **2026.08** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era | **2.44 / 15.3.0** |
 | **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.4** |
@@ -108,6 +109,17 @@ mainline can hold it.
 
 Every number in that table is sourced. The versions come from the *shipped artifacts* on
 both sides — stock from the extracted stock `linux.img`, ours read off the built tree.
+
+**Stock moved on 2026-09-07.** Release 20260907 replaced stock's kernel (5.15.1 → 6.18.38,
+a fresh port on upstream's `MiSTer-v6.18` branch), its module set (the six out-of-tree
+Wi-Fi forks are gone in favour of the same mainline drivers this image uses) and its
+firmware set. Only the two **Kernel** rows above have been re-measured against it (from the
+shipped `zImage_dtb`'s embedded config — [`docs/kernel-recon/fork-sync-2026-09/evidence/`](docs/kernel-recon/fork-sync-2026-09/evidence/)).
+**Every other stock cell in this table and in the hardware tables below is still the
+release-20250402 (5.15) measurement** until the rootfs-side re-measure tracked in
+[`fork-sync-2026-09/PLAN.md` §9](docs/kernel-recon/fork-sync-2026-09/PLAN.md) runs. The
+kernel patch reconciliation described in §1 was performed against the 5.15 fork; the first
+increment against stock's 6.18 branch is planned there and not yet executed.
 
 **On version drift, since this table cites documents that can lag it.** The ground truth
 for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
@@ -300,7 +312,8 @@ make, use the download-and-read form above, or the by-hand route.
 ### 1. The kernel: five years of stable releases, and a way back to mainline
 
 Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
-stable release**. 5.15 itself reaches end-of-life in October 2026. This project tracks
+stable release** before replacing it, on 2026-09-07, with 6.18.38 — pinned at that one
+point release in exactly the same way, so the pattern is the fork's, not 5.15's. This project tracks
 **6.18 LTS** — the exact patch level is
 `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/fragments/de10nano.fragment`,
 and it is deliberately not repeated in prose here because stable `.y` releases
@@ -308,9 +321,13 @@ land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
 
 The interesting part is not the version number — it's the **shape of the delta**. The
-fork's **126 reconciled commits** (110 on the shipped `MiSTer-v5.15` branch, 1 on
-upstream's own `MiSTer-v6.18` branch, plus 15 residue commits that existed only on the
-older v5.14/v5.13.12 branches) are down to **36 carried patch files**. Every remaining
+fork's **126 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
+2026-09-07, 1 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — plus 15
+residue commits that existed only on the older v5.14/v5.13.12 branches) are down to
+**36 carried patch files**. That reconciliation was performed against the **5.15** stock
+kernel; the eight commits and one open PR stock's 6.18 branch has taken since our last
+sync point are queued, with a per-item plan, in
+[`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md). Every remaining
 drop is either verifiably in mainline 6.18, replaced by a maintained package, or
 recorded as a deliberate decision. A 37th file, `0047`, is not part of that delta at
 all — it backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the
@@ -435,7 +452,13 @@ method applied a second time to Bluetooth firmware
 
 **Read the last column before the rest — it says how far each row was
 actually checked**, and most of this table is newly added, unreleased
-hardware support that has not yet had a device plugged into it:
+hardware support that has not yet had a device plugged into it. The **Stock MiSTer**
+column was measured against the 5.15 image (release 20250402); stock's 6.18 kernel
+(Release 20260907) dropped every out-of-tree Wi-Fi fork for the same mainline `rtw88` /
+`rtw89` / `rtl8xxxu` / `mt76` drivers this image uses — still with no Broadcom driver, and
+with `rtw88_8821au` left unbuilt at release
+(`docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-modules.txt`) — and the
+column has not been re-measured against it yet:
 
 | If your dongle uses… | Stock MiSTer | This image | Checked how far? |
 |---|---|---|---|

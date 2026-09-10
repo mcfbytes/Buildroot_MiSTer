@@ -39,7 +39,7 @@ this whole plan:
 | **Carry candidates** | Stadia-FF device IDs for Classic2USB/RetroZord (#91, Main_MiSTer-coupled); exFAT dir read-ahead plug (#88); xpad `skip_8bitdo_init` param; **PR #92** (8BitDo adapter makes hid-nintendo reset-loop — "gamepad unusable", hardware-verified by its author); the OCRAM `flags-sram` DTS reservation buried inside the cpufreq commit. |
 | **Two real decisions** | (a) **cpufreq**: the fork replaced the driver we carry as `0003` with a new CCF-integrated, OCRAM-resident, opt-in-boost implementation (#85). Keep ours, adopt theirs, or hybrid — §2.4. (b) **AIC8800**: a 70 k-line vendored USB Wi-Fi/BT driver landed in-tree upstream with no firmware shipped yet and no SPDX headers. Package it, defer it, or decline — §2.9. |
 | **Retire candidates** | None retire outright this increment. `0047` retires by rule when the pin leaves 6.18.y. `0003` is *replaced*, not retired, if decision (a) goes upstream's way. The 6.18.39→6.18.50 stable-drift check (§3) is the only thing that could retire a patch, and it has never been run past .39. |
-| **Fan-out** | 5 waves, **~26 agent runs** (+8 conditional): 6 Haiku, 17 Sonnet, 2 Opus, 1 Opus/orchestrator audit. Cost table §5.4. Roughly a day of wall-clock with Waves 1–3 parallelised. |
+| **Fan-out** | 5 waves, **~27 agent runs** (+8 conditional): 6 Haiku, 18 Sonnet, 2 Opus, 1 Opus/orchestrator audit. Cost table §5.4. Roughly a day of wall-clock with Waves 1–3 parallelised. |
 | **Blocking owner decisions** | The two above, plus "carry an unmerged PR (#92) now?" — §7. Everything else proceeds on stated defaults. |
 
 ---
@@ -526,7 +526,7 @@ includes the §2 hypothesis **and the instruction to refute it**.
 
 Any refuted claim sends the item back to its W1 tier with the refutation attached.
 
-**Wave 3 — Implementation (parallel by item; 6 Sonnet + 0–1 Opus; ~2–3 h).**
+**Wave 3 — Implementation (parallel by item; 7 Sonnet + 0–1 Opus; ~2–3 h).**
 
 | ID | Tier | Work | Validation before commit |
 |---|---|---|---|
@@ -536,6 +536,7 @@ Any refuted claim sends the item back to its W1 tier with the refutation attache
 | W3-0017 | Sonnet | fold Q5 into `0017`, header delta 5 | same, both kernels |
 | W3-0004 | Sonnet | OCRAM reservation (+ compatible if needed) into `0004`; `dtc` compile of the resulting DTS | `scripts/check-zimage-dtb.sh` on a kernel-only build |
 | W3-config-docs | Sonnet | records for Q1/Q2/Q7; `linux.config` untouched unless a W1 record says otherwise; `docs/patch-provenance.md` §11 rows; `docs/kernel-config-deltas.md` banner (stock baseline is now the 6.18 config in `evidence/`); `docs/abi-contract.md` if cpufreq changes; `docs/wifi-parity.md` AIC8800 paragraph; `fork-sync.conf` advance (only after every Q has a record); `commits.jsonl` `_meta.increments` entry + `vanilla_target`; `python3 docs/kernel-recon/reduce.py` → 0 problems | `reduce.py` exit 0; `scripts/check-fork-sync.sh` would report reconciled (needs `gh`; state the manual equivalent) |
+| W3-docs-refresh | Sonnet | the §9 documentation refresh: re-measure every README stock claim that the 20260907 release changed, regenerate `docs/stock-inventory/` from the 6.18 image with per-file release labels, re-run `docs/stock-reconciliation.md` / `firmware-parity.md` / `bluetooth-parity.md` / `wifi-parity.md` module-and-firmware sections against `evidence/`, re-run `kernel-config-deltas.md` §4 against the 6.18 stock config | every changed number cites the evidence file or the command that produced it; no stock cell left as an unlabelled 5.15 measurement |
 | W3-cpufreq | Opus, **only if option B/C chosen** | port upstream's provider+driver as `0003` v2; `=y`; ABI doc | kernel-only build for de10 and rt; [HW] handoff list |
 | W3-aic8800 | Sonnet, **only if approved** | `package/aic8800` kernel-module package + firmware package, Renovate manager, hash file | `make` of the package; bind-conflict grep |
 
@@ -578,10 +579,10 @@ without those two and W4 records them as open.
 | W1 verification | 5 (Q3, Q5, Q6, Q10, Q8-verify) + 2 drift | Sonnet | 300–600 k | 3.5 M |
 | W1 design | 2 (Q4, Q9) | Opus | 1–2 M | 3 M |
 | W2 | 4 | Sonnet | 200–400 k | 1.2 M |
-| W3 | 6 (+2 conditional) | Sonnet (Opus ×1 cond.) | 300–800 k | 3–6 M |
+| W3 | 7 (+2 conditional) | Sonnet (Opus ×1 cond.) | 300–800 k | 3.5–6.5 M |
 | W4 | 1 | Opus / orchestrator | 1–1.5 M | 1.5 M |
 | W5 | 0–6 | Sonnet | 200 k | 0–1.2 M |
-| **Total** | **~26 (+8 cond.)** | | | **≈ 13–17 M tokens** |
+| **Total** | **~27 (+8 cond.)** | | | **≈ 13.5–17.5 M tokens** |
 
 The July campaign spent 103 Haiku workers + Sonnet tier-2 on 123 records; this increment is
 an order of magnitude smaller in records but heavier per record (two design items, three
@@ -635,7 +636,9 @@ carried items, the patch number this plan assigns. Nothing else on disk.
   `aic8800/`.
 - `docs/kernel-recon/fork-sync-2026-09.md` exists in the July shape; `patch-provenance.md`
   §11, `kernel-config-deltas.md`, `abi-contract.md` (if cpufreq changed), `wifi-parity.md`
-  (AIC8800 paragraph) updated in the same PR as the patches.
+  (AIC8800 paragraph) updated in the same PR as the patches; the §9 documentation refresh
+  is done, so no document still presents a 5.15 stock measurement as current without
+  saying so.
 - The two owner decisions are either executed or recorded as open with the Opus memos
   attached.
 - Hardware-gated items are listed for the human with exact test steps: cpufreq at
@@ -673,3 +676,50 @@ carried items, the patch number this plan assigns. Nothing else on disk.
 - **Stock has moved to 6.18.38 and will presumably sit there** the way 5.15 sat on 5.15.1.
   Our `.y` tracking is now a concrete, describable advantage (12 stable releases ahead as of
   this writing) — a README/version-delta sentence, not a kernel task.
+
+---
+
+## 9. Documentation: the 5.15-era recon is labelled, and what the increment must refresh
+
+Stock's move to 6.18 makes every "stock" claim in this repo a dated one. This section
+records what was **done now** (in the commit that added this plan) and what is **left for
+the increment** (`W3-docs-refresh`).
+
+### 9.1 Labelled now — the 5.15 reconciliation stays in place, marked as such
+
+Archiving by moving files was rejected: `phase0.py`, `reduce.py`, `worker-instructions.md`,
+`fork-sync-2026-07.md`, `scripts/export-kernel-tree.sh`, `docs/de25-readiness-ledger.md`
+and the README all cite the spec and the records by path, and `fork-sync.conf`'s whole
+mechanism keys on `records/<sha>.json` staying where it is. The records are also still the
+live evidence base — every new increment adds to them. So the artifacts stay put and each
+now says, at the top, which stock kernel it was measured against:
+
+| File | What was added |
+|---|---|
+| `MISTER-KERNEL-PATCH-RECON.md` | **ARCHIVED** banner: executed 2026-07 against `MiSTer-v5.15` @ `f0fb626ac`; not the live process; points here |
+| `docs/patch-provenance.md` | "Stock baseline of this document: the 5.15 kernel" banner; stock-parity is now measured against `MiSTer-v6.18` + the shipped 6.18 config |
+| `docs/kernel-recon/worker-instructions.md` | "Which fork branch" note (work items come from `MiSTer-v6.18`; `MiSTer-v5.15` frozen at `5fcfae369`); Resources table now lists both stock configs |
+| `docs/kernel-recon/fork-sync.conf` | "WHY BOTH BRANCHES" rewritten: the inversion, the `aec7dc3aa` identity of Release 20260907, the pending queue. Pointers **not** moved — nothing is dispositioned yet |
+| `docs/kernel-recon/reduce.py` → `reconciliation.md` | Branch legend now says `v5.15` = stock until 2026-09-07, `v6.18` = stock since Release 20260907. (`reduce.py` also gained a one-line fix so it parses on Python 3.11 — an em-dash escape inside an f-string expression was a `SyntaxError` there; outputs regenerated, content unchanged apart from the legend and timestamp) |
+| `docs/stock-inventory/README.md` | Banner: inventory is of release 20250402 (5.15); kernel-side 6.18 files are in `evidence/`; rootfs-side re-run pending |
+| `docs/kernel-config-deltas.md` | Stock-baseline note: "stock config" means 5.15; §4 audit to be re-run against the 6.18 config |
+| `docs/stock-reconciliation.md` | Banner: measured against LIC `8aba321` (5.15); what Release 20260907 replaced; re-run pending |
+| `README.md` | One-paragraph version, the two **Kernel** rows, §1 "The kernel", and the Wi-Fi hardware table intro updated to the 6.18 facts that are measured; a "Stock moved on 2026-09-07" note under the comparison table says every other stock cell is still the 20250402 measurement |
+
+### 9.2 Left for the increment (`W3-docs-refresh`, Sonnet)
+
+Everything below still presents a 5.15-era stock measurement. Each is now labelled as such
+(§9.1) or is a plan/task document where the history is the point; none is wrong, all are
+dated. In priority order:
+
+| Document | What to re-measure against | Notes |
+|---|---|---|
+| `README.md` — every non-kernel row of "Stock vs. this image", the Bluetooth/Wi-Fi/controller hardware tables, "What this improves" §3–§6, "the honest list" | Release 20260907's `rootfs.tar.bz2`, `firmware.tar.gz`, `modules.tar.gz` (`evidence/` has the last two as lists) | Buildroot/glibc/OpenSSL/OpenSSH/Samba/Python versions in stock's new rootfs are unknown until it is inventoried — do not guess them |
+| `docs/stock-inventory/` (all files) | 20260907 image via `scripts/inventory/run-all.sh` | Keep the 20250402 files, renamed with a release suffix, or move them to a `20250402/` subdirectory; README must name the release per file |
+| `docs/stock-reconciliation.md`, `docs/verification/stock-reconciliation/*.txt` | LIC `d4e3f51` | `stock-mods.txt`/`stock-fw.txt` are superseded by the `evidence/` lists; `addon.tar` is unchanged so §3 stands |
+| `docs/firmware-parity.md`, `docs/bluetooth-parity.md`, `docs/wifi-parity.md` | `evidence/stock-20260907-firmware.txt`, `-modules.txt` | The "stock ships no `ath3k-1.fw`" class of claims may have flipped — 89 firmware files now vs 69 |
+| `docs/kernel-config-deltas.md` §4, §7 | `evidence/stock-20260907-linux.config` resolved on v6.18.50 | This is the config-axis half of the increment proper (W1-Q2/Q7) |
+| `docs/version-delta.md`, `docs/package-manifest.md` | new stock rootfs | Only after the inventory; SONAME table may move |
+| `docs/abi-contract.md`, `docs/boot-chain.md` | `MiSTer-v6.18` @ `aec7dc3aa` source | Citations are to `MiSTer-v5.15` line numbers. The *contract* is unchanged unless stock's 6.18 kernel changed an ABI surface — the fb `mmap` regression (§1.2) is exactly such a change and should be recorded as "stock 6.18 breaks its own contract here; fixed by #83" |
+| `docs/reference-materials.md` | add the 20260907 artifacts with hashes (§1.1 has them) | `work/` manifest discipline: URL, commit, hash, reproduce command |
+| `PLAN.md`, `TASKS.md`, `docs/phase0-review.md`, ADRs 0010/0016 | — | Historical; add a one-line "stock was 5.15 when this was written" note at the top of `PLAN.md` and `TASKS.md` only |

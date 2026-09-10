@@ -1,5 +1,13 @@
 # Stock image inventory (P0.3)
 
+> **This inventory is of the 5.15-era stock image (release 20250402).** Stock moved to a
+> 6.18.38 kernel with Release 20260907 (2026-09-07). The 6.18 kernel's IKCONFIG config,
+> module list and firmware list are already extracted (same scripts) under
+> `docs/kernel-recon/fork-sync-2026-09/evidence/`; the rootfs-side items below (shared
+> libraries, binaries, `/etc`, BusyBox, disk usage) have **not** been re-run against the
+> 20260907 image. Regenerating this directory from that release, with each file labelled
+> by the release it came from, is tracked in `fork-sync-2026-09/PLAN.md` §8/§9.
+
 Full inventory of the shipped stock rootfs (`release_20250402.7z`'s
 `files/linux/linux.img`, a 375 MiB ext4 image running Buildroot
 2021.02.4 / glibc 2.31 / Linux 5.15.1-MiSTer), plus the kernel config and

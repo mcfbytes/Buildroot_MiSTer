@@ -3,12 +3,11 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	depends on BR2_PACKAGE_LINUX_FIRMWARE
 	default y
 	help
-	  Thirteen firmware files (plus one same-directory symlink) that a
-	  currently in-tree 6.18 kernel driver genuinely still requests, but
-	  that Buildroot's own linux-firmware package
-	  (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up) has NO
-	  sub-option for -- upstream linux-firmware ships every one of these
-	  thirteen, Buildroot's curated Config.in list just never grew a
+	  Thirteen firmware files that a currently in-tree 6.18 kernel driver
+	  genuinely still requests, but that Buildroot's own linux-firmware
+	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
+	  has NO sub-option for -- upstream linux-firmware ships every one of
+	  these thirteen, Buildroot's curated Config.in list just never grew a
 	  toggle for them.
 
 	  Seven are stock-parity files (docs/stock-inventory/firmware.md,
@@ -16,12 +15,10 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	  ones plus rtlwifi/rtl8710bufw_SMIC.bin, rtlwifi/rtl8710bufw_UMC.bin
 	  and rtlwifi/rtl8192fufw.bin, which the in-tree rtl8xxxu driver
 	  (CONFIG_RTL8XXXU=m, RTL8XXXU_UNTESTED=y) requests for RTL8710BU and
-	  RTL8192FU and which no _RTL_81XX/_87XX list installs. The symlink,
-	  rtlwifi/rtl8723bu_bt.bin -> rtl8723bs_bt.bin, is also stock parity:
-	  rtl8xxxu asks for the _bt name when an RTL8723BU's Bluetooth half is
-	  on, upstream never shipped that name, and stock's file is
-	  byte-identical to upstream's rtl8723bs_bt.bin (already installed by
-	  _RTL_87XX) -- see the .mk for the hashes.
+	  RTL8192FU and which no _RTL_81XX/_87XX list installs. (Stock 20260907
+	  also ships rtlwifi/rtl8723bu_bt.bin; deliberately not reproduced --
+	  the only code path naming it is behind a flag the driver never sets,
+	  see the .mk.)
 
 	  The other six are NOT stock files -- stock ships none of them. The
 	  four mediatek/mt7663* back CONFIG_MT7663U=m, rtlwifi/rtl8192dufw.bin

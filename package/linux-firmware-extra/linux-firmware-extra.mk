@@ -112,29 +112,18 @@ LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	rtlwifi/rtl8710bufw_SMIC.bin \
 	rtlwifi/rtl8710bufw_UMC.bin \
 	rtlwifi/rtl8723befw_36.bin
-
-# Symlinks, "<link> <target>" pairs, created under $(TARGET_DIR)/lib/firmware
-# at install time (relative targets, same directory -- exactly the shape
-# linux-firmware's own WHENCE-driven install produces for its aliases).
 #
-# rtlwifi/rtl8723bu_bt.bin -> rtl8723bs_bt.bin (2026-09, stock 20260907
-# parity): rtl8xxxu/8723b.c's rtl8723bu_load_firmware() requests
-# "rtlwifi/rtl8723bu_bt.bin" whenever the RTL8723BU's Bluetooth half is
-# enabled (priv->enable_bluetooth) and "rtl8723bu_nic.bin" otherwise.
-# Upstream linux-firmware has NEVER carried a file by the _bt name (WHENCE
-# at the pinned snapshot: no "rtl8723bu_bt" entry, no Link: alias), so a
-# BT-combo 8723BU stick failed firmware load on every mainline kernel.
-# Stock 20260907 closed that by shipping rtlwifi/rtl8723bu_bt.bin, and its
-# copy is BYTE-IDENTICAL (sha256 774f6628...6aea, 9120 bytes) to upstream's
-# rtlwifi/rtl8723bs_bt.bin, which BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX
-# already installs on this image. So the stock file is reproduced from the
-# pinned, hash-verified upstream tarball as an alias of a file we already
-# ship -- no second source, no fabricated blob (project rule), and no
-# duplicate 9 KiB. The link is relative and lands in the same directory as
-# its target, so it survives the ext4 image, the release .7z and the
-# Downloader's rsync exactly like linux-firmware's own alias symlinks do.
-LINUX_FIRMWARE_EXTRA_SYMLINKS = \
-	rtlwifi/rtl8723bu_bt.bin:rtl8723bs_bt.bin
+# Deliberately NOT here, although stock 20260907 ships it:
+# rtlwifi/rtl8723bu_bt.bin. rtl8xxxu/8723b.c names it as the alternative to
+# rtl8723bu_nic.bin when priv->enable_bluetooth is set -- but that flag is
+# declared (rtl8xxxu.h) and READ (8723a.c, 8723b.c) and never WRITTEN
+# anywhere in the driver, in v6.18.38 and in stock's own MiSTer-v6.18 alike.
+# The _bt branch is unreachable; the driver always requests
+# rtl8723bu_nic.bin, which _RTL_87XX already installs. Upstream
+# linux-firmware has never carried the _bt name either (stock's copy is a
+# byte-identical duplicate of rtlwifi/rtl8723bs_bt.bin). Shipping a file no
+# code path can request is dead weight, not parity -- documented in
+# docs/firmware-parity.md's 2026-09 section instead.
 
 # Copy the firmware members out of linux-firmware's extracted tree into our own
 # $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.
@@ -155,8 +144,6 @@ endef
 define LINUX_FIRMWARE_EXTRA_INSTALL_TARGET_CMDS
 	$(foreach f,$(LINUX_FIRMWARE_EXTRA_MEMBERS), \
 		$(INSTALL) -m 0644 -D $(@D)/$(f) $(TARGET_DIR)/lib/firmware/$(f)$(sep))
-	$(foreach l,$(LINUX_FIRMWARE_EXTRA_SYMLINKS), \
-		ln -sfn $(word 2,$(subst :, ,$(l))) $(TARGET_DIR)/lib/firmware/$(word 1,$(subst :, ,$(l)))$(sep))
 endef
 
 $(eval $(generic-package))

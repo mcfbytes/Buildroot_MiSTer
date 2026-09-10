@@ -22,13 +22,15 @@ was measured against. `docs/stock-inventory/firmware.md` has been **regenerated 
 right here is the one CI enforces; the original P3.3 block further down is kept as the
 historical record and is no longer parsed.
 
-Of the 25 files stock added, 21 were already on this image (the full `rtw88`/`rtw89`
-USB sets, `mediatek/mt7925/*`, the MT7961 Wi-Fi pair, `ath6k/AR6004/hw1.3/*`,
-`rtlwifi/rtl8188fufw.bin`, `rtlwifi/rtl8192dufw.bin`, `xone_dongle_{02e6,02fe}.bin`) —
-this project had shipped them since ADR 0016 / P3.3 / v10.x, stock caught up. Three were
-genuine gaps in **our** image, all in the `rtl8xxxu` family this project relies on for the
-chips whose vendor forks it dropped, and all closed by `package/linux-firmware-extra` in the
-same change as this section; the fourth looked like one and is not:
+Of the 25 files stock added, **17** were already on this image (the four `rtw88/` and
+three `rtw89/` blobs, `mediatek/mt7925/*` (2), the MT7961 Wi-Fi pair, `ath6k/AR6004/hw1.3/*`
+(2), `rtlwifi/rtl8188fufw.bin`, `rtlwifi/rtl8192dufw.bin`, `xone_dongle_{02e6,02fe}.bin`) —
+this project had shipped them since ADR 0016 / P3.3 / v10.x, stock caught up. Of the other
+eight, four are deliberate absences listed below (`ath10k/QCA9377/*`, the two
+laptop-internal xone PIDs), three were genuine gaps in **our** image — all in the
+`rtl8xxxu` family this project relies on for the chips whose vendor forks it dropped, and
+all closed by `package/linux-firmware-extra` in the same change as this section — and the
+last looked like a gap and is not:
 
 | Stock file | In-tree consumer (6.18) | Source here |
 |---|---|---|

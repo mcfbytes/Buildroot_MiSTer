@@ -76,33 +76,23 @@ def main(argv: list[str]) -> int:
 
 	md: list[str] = []
 	md.append(f"**Regular files under `/{FW_DIR}`: {len(files)}**\n")
-	if find_no_mindepth_count == 72:
-		# The stock release_20250402 image -- the one PLAN.md/TASKS.md's
-		# "72 firmware files" figure was (mis)counted on. Keep the
-		# reconciliation paragraph exactly as the P0.3 run produced it.
-		md.append("### Resolving the \"72 firmware files\" figure in PLAN.md §3/§4.1, TASKS.md A5, and the verification doc\n")
-		md.append(f"Those all say stock ships \"72 firmware files\". The actual count of")
-		md.append(f"**regular files** is **{len(files)}**. Reproducing the likely source of")
-		md.append(f"the \"72\": `find /usr/lib/firmware | wc -l` (i.e. *without* `-mindepth 1`)")
-		md.append(f"counts the firmware directory itself as one line, plus one line per entry")
-		md.append(f"under it -- {len(files)} files + {len(dirs)} subdirectories" +
-		           (f" + {len(symlinks)} symlinks" if symlinks else "") +
-		           f" + 1 (the dir itself) = **{find_no_mindepth_count}**, matching the")
-		md.append(f"documented figure exactly. So the existing docs are counting directories")
-		md.append(f"(and the top-level dir itself) as if they were firmware files. **This")
-		md.append(f"doc's {len(files)} is the corrected, authoritative count** (files only,")
-		md.append(f"via `find -type f`, cross-checked against `debugfs -R \"ls -l ...\"` on the")
-		md.append(f"raw ext4 image directly, not just the extracted tree).\n")
-	else:
-		md.append("### How to read the count\n")
-		md.append(f"**{len(files)}** is the count of *regular files* (`find -type f`), the same")
-		md.append(f"basis every earlier inventory used. A bare `find /usr/lib/firmware | wc -l`")
-		md.append(f"would report {find_no_mindepth_count} ({len(files)} files + {len(dirs)} subdirectories" +
-		           (f" + {len(symlinks)} symlinks" if symlinks else "") +
-		           f" + 1 for the directory itself); that figure counts directories as if")
-		md.append(f"they were firmware and is not used anywhere in this repo. The previous")
-		md.append(f"stock release (release_20250402) had 66 regular files; see")
-		md.append(f"`docs/verification/stock-release-20260907.md` §3.2 for the delta.\n")
+	# Release-independent on purpose: which release this was generated from is
+	# the header's `Source:` line (MRL_SOURCE_LABEL), and any narrative about a
+	# specific release belongs in the hand-written docs, not here -- a generator
+	# that hardcodes "the previous release had N" starts lying on the next
+	# re-baseline with no error to show for it.
+	md.append("### How to read the count\n")
+	md.append(f"**{len(files)}** is the count of *regular files* (`find -type f`), the basis")
+	md.append(f"every inventory in this directory uses, cross-checked against")
+	md.append(f"`debugfs -R \"ls -l ...\"` on the raw ext4 image. A bare")
+	md.append(f"`find /usr/lib/firmware | wc -l` would report {find_no_mindepth_count} ({len(files)} files +")
+	md.append(f"{len(dirs)} subdirectories" +
+	           (f" + {len(symlinks)} symlinks" if symlinks else "") +
+	           f" + 1 for the directory itself); that figure counts directories as if")
+	md.append(f"they were firmware and is not used anywhere in this repo. (Historical note:")
+	md.append(f"the \"72 firmware files\" in PLAN.md §3/§4.1 and TASKS.md A5 was exactly that")
+	md.append(f"no-`-mindepth` count on the release_20250402 image -- 66 files + 5")
+	md.append(f"subdirectories + 1 -- which is how the P0.3 inventory corrected it to 66.)\n")
 
 	if symlinks:
 		md.append(f"Symlinks under `/{FW_DIR}`: **{len(symlinks)}** (none expected/found is also a valid, reported result).\n")

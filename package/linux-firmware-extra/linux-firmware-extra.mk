@@ -8,7 +8,7 @@
 #
 # Installs the handful of firmware files that stock MiSTer ships, and that this
 # project's pinned kernel actually request_firmware()s, but that NO
-# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs (the four MEMBERS below).
+# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs (the MEMBERS below).
 #
 # It does NOT fetch or unpack a tarball of its own. It takes the files straight
 # out of the linux-firmware package's OWN already-extracted tree
@@ -19,7 +19,7 @@
 #   (a) DRIFTED -- it sat at 20251011 while the real linux-firmware package
 #       moved to 20260410 (a fork-sync of upstream Buildroot bumps
 #       linux-firmware automatically; this package is on renovate-hash-sync's
-#       "NEVER automated" list and nothing re-pinned it), so the four files
+#       "NEVER automated" list and nothing re-pinned it), so these files
 #       shipped a ~6-month-older snapshot than every other firmware file, and
 #   (b) DOUBLED the download + dl/ footprint for content that is a strict
 #       subset of what linux-firmware already fetched.
@@ -34,12 +34,12 @@
 # LEGAL-INFO: this package has no _SOURCE of its own, so Buildroot's legal-info
 # treats it as "part of Buildroot" and skips it entirely -- no manifest row, no
 # license collection (pkg-generic.mk guards the whole license/manifest block on
-# a non-empty _SOURCE). That is correct here: the four files ARE linux-firmware
+# a non-empty _SOURCE). That is correct here: the files ARE linux-firmware
 # files, and linux-firmware -- a hard dependency, always built when this package
 # is -- already records them under its own SBOM entry. Its
 # LINUX_FIRMWARE_LICENSE_FILES lists WHENCE + LICENCE.mediatek +
 # LICENCE.ralink_a_mediatek_company_firmware + LICENCE.rtlwifi_firmware.txt,
-# exactly the licenses our four files fall under, so the attribution is complete
+# exactly the licenses our files fall under, so the attribution is complete
 # via linux-firmware rather than duplicated here.
 LINUX_FIRMWARE_EXTRA_LICENSE = Proprietary
 

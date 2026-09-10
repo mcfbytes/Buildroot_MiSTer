@@ -9,12 +9,15 @@
 
 ### How to read the count
 
-**91** is the count of *regular files* (`find -type f`), the same
-basis every earlier inventory used. A bare `find /usr/lib/firmware | wc -l`
-would report 106 (91 files + 14 subdirectories + 1 for the directory itself); that figure counts directories as if
-they were firmware and is not used anywhere in this repo. The previous
-stock release (release_20250402) had 66 regular files; see
-`docs/verification/stock-release-20260907.md` §3.2 for the delta.
+**91** is the count of *regular files* (`find -type f`), the basis
+every inventory in this directory uses, cross-checked against
+`debugfs -R "ls -l ..."` on the raw ext4 image. A bare
+`find /usr/lib/firmware | wc -l` would report 106 (91 files +
+14 subdirectories + 1 for the directory itself); that figure counts directories as if
+they were firmware and is not used anywhere in this repo. (Historical note:
+the "72 firmware files" in PLAN.md §3/§4.1 and TASKS.md A5 was exactly that
+no-`-mindepth` count on the release_20250402 image -- 66 files + 5
+subdirectories + 1 -- which is how the P0.3 inventory corrected it to 66.)
 
 ### By vendor/subsystem directory
 

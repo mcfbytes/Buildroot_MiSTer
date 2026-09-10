@@ -239,24 +239,36 @@ cmd_fetch_stock() {
 	need_cmd curl
 
 	# One or more volume URLs, whitespace-separated, joined IN ORDER (see
-	# the fetch-stock entry in this script's header). Each volume is fetched
-	# to its own temp file and appended, so a curl failure mid-list leaves
-	# no half-written <out-archive> behind for a later step to mistake for a
-	# complete download -- the partial is only renamed once every volume is
-	# in. The unquoted expansion is the word-splitting this contract relies on.
+	# the fetch-stock entry in this script's header). Split with `read -a`
+	# rather than an unquoted expansion: the same word-splitting, but no
+	# pathname expansion, so a future URL carrying `?`, `*` or `[` (a
+	# `?ref=` query, say) can never be glob-matched against the cwd.
+	local -a urls
+	read -r -a urls <<< "$STOCK_RELEASE_URL"
+	[ "${#urls[@]}" -ge 1 ] || usage_die "fetch-stock: \$STOCK_RELEASE_URL contains no URLs"
+
+	# Each volume is fetched to its own temp file and appended, so a curl
+	# failure mid-list leaves no half-written <out-archive> behind for a
+	# later step to mistake for a complete download -- the partial is only
+	# renamed once every volume is in. The EXIT trap removes both temp names
+	# on ANY exit path (curl failure under `set -e`, a signal, ...) so a
+	# failed run cannot leave an 80 MB .vol1 in the caller's directory; it
+	# is cleared once the join has succeeded.
 	local url part n=0
-	rm -f "$out" "$out.partial"
+	rm -f "$out" "$out.partial" "$out".vol*
+	# shellcheck disable=SC2064 # $out is meant to expand now, not at exit
+	trap "rm -f '$out.partial' '$out'.vol*" EXIT
 	: > "$out.partial"
-	# shellcheck disable=SC2086 # deliberate word-splitting: a list of URLs
-	for url in $STOCK_RELEASE_URL; do
+	for url in "${urls[@]}"; do
 		n=$((n + 1))
 		part="$out.vol$n"
-		curl -fL --retry 3 -o "$part" "$url"
+		curl -fL --retry 3 --retry-connrefused -o "$part" "$url"
 		cat "$part" >> "$out.partial"
 		rm -f "$part"
 		echo "fetch-stock: fetched volume $n: $url"
 	done
 	mv -f "$out.partial" "$out"
+	trap - EXIT
 	echo "fetch-stock: $n volume(s) joined -> $out"
 }
 

@@ -1285,9 +1285,11 @@ the result as `linux_release_20260907.7z` on its `all_releases` release; that
 mirror was fetched and is byte-identical to our join
 (`docs/verification/stock-release-20260907.md` §1/§6). The previous pin,
 `release_20250402.7z` at `b8531c78…` (MD5 `8dc3acae…`, 93,727,644 bytes),
-differed from this one in `files/linux/` by exactly one file, `MidiLink.INI`;
-`uboot.img` and `updateboot` are byte-identical across the two, so the
-`STOCK_UBOOT_*`/`STOCK_UPDATEBOOT_*` pins did not move.
+differs from this one in `files/linux/` in three members — `linux.img` and
+`zImage_dtb`, which we replace with our own and never ship, and `MidiLink.INI`,
+the **one shipped file** that changed; `uboot.img` and `updateboot` are
+byte-identical across the two, so the `STOCK_UBOOT_*`/`STOCK_UPDATEBOOT_*` pins
+did not move.
 
 All three (MD5, SHA-256, size) are checked BEFORE anything is extracted from
 it. Individual `uboot.img`/`updateboot` hashes are re-checked too

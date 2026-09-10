@@ -211,25 +211,18 @@ fetch_verify_stock_archive() {
 	fi
 
 	# STOCK_RELEASE_URL is one or more volume URLs (whitespace-separated, in
-	# order); the volumes are consecutive slices of one archive and are
-	# joined into $archive here, exactly as scripts/verify-stock-payload.sh's
-	# fetch-stock does for release.yml. Each volume lands in its own temp
-	# file first so a mid-list curl failure cannot leave a truncated
-	# $archive that later looks like a complete (but wrong) download.
-	local url part n=0
-	rm -f "$archive.partial"
-	: > "$archive.partial"
-	# shellcheck disable=SC2086 # deliberate word-splitting: a list of URLs
-	for url in $STOCK_RELEASE_URL; do
-		n=$((n + 1))
-		part="$archive.vol$n"
-		log "downloading stock release volume $n from $url"
-		curl -fL --retry 3 --retry-connrefused -o "$part" "$url"
-		cat "$part" >> "$archive.partial"
-		rm -f "$part"
-	done
-	mv -f "$archive.partial" "$archive"
-	log "joined $n stock release volume(s) into $archive"
+	# order); the volumes are consecutive slices of one archive. The fetch +
+	# join is scripts/verify-stock-payload.sh's `fetch-stock` -- ONE
+	# implementation of the volume-order contract, shared with release.yml,
+	# rather than a second copy here that would drift (it already had, on a
+	# curl flag, before this call replaced the copy). That script reads the
+	# pins from the environment and never defaults them, so the value this
+	# script resolved above (env override or the default literal) is exported
+	# for the duration of the call; on any failure it exits nonzero having
+	# removed its own temp files, and `set -e` propagates that here.
+	log "downloading stock release archive (volumes: $STOCK_RELEASE_URL)"
+	STOCK_RELEASE_URL="$STOCK_RELEASE_URL" \
+		"$REPO_ROOT/scripts/verify-stock-payload.sh" fetch-stock "$archive"
 
 	local actual_size actual_md5 actual_sha256
 	actual_size="$(stat -c %s "$archive")"

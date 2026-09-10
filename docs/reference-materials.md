@@ -68,6 +68,16 @@ Tool versions used to produce this manifest (recorded for reproducibility):
   (+`[NES]`, `[GBMIDI]`, `[X68000]`); `uboot.img` and `updateboot` byte-identical to
   20250402. Outside it: `files/MiSTer` (Release 20260907), `files/menu.rbf`,
   `files/MiSTer_example.ini` (2026-08-07, LF line endings) are newer.
+- `files/MiSTer` (1,162,128 B; ships on `sdcard.img` via fetch-sdcard-payload.sh)
+  re-checked against the A-10 dynamic-link contract (docs/abi-contract.md) on
+  2026-09-10: identical DT_NEEDED set to the 20250402 binary (libc, libstdc++,
+  libm, librt, libfreetype.so.6, libbz2.so.1.0, libpng16.so.16, libz.so.1,
+  libImlib2.so.1, libbluetooth.so.3, libpthread, libgcc_s); symbol-version
+  requirements gained GLIBC_2.8 and GLIBCXX_3.4.20 (max GLIBC_2.28 /
+  GLIBCXX_3.4.21, unchanged), all satisfied by this image's glibc 2.43 /
+  libstdc++ GLIBCXX_3.4.33. `scripts/check-abi.sh`'s STOCK_MISTER lookup still
+  resolves a gitignored 20250402 extraction; point it at this binary when
+  re-seeding `work/`.
 - Full analysis: docs/verification/stock-release-20260907.md.
 
 --------------------------------------------------------------------------------

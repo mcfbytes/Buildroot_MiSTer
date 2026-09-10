@@ -1,7 +1,8 @@
 # Fork-sync increment 2026-09 — plan: reconcile against the shipped stock 6.18 kernel
 
-**Status:** plan, not yet executed. Written 2026-09-10 on branch
-`claude/kernel-6.18-patch-plan-l32pu9`. Every fact in §1 was measured in this session from
+**Status:** Waves 0–2 executed 2026-09-10 (see [`STATUS.md`](STATUS.md) — results, the two
+owner decisions with recommendations, and the grounding caveat). Waves 3–5 not started. Written
+2026-09-10 on branch `claude/kernel-6.18-patch-plan-l32pu9`. Every fact in §1 was measured in this session from
 the live upstream repositories and the stock release artifacts; every disposition in §2 is a
 **hypothesis** for the Wave 1 workers to test, in the sense `MISTER-KERNEL-PATCH-RECON.md` §0
 gives that word.

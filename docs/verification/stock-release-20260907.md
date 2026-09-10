@@ -362,16 +362,29 @@ Ordered by how wrong the reader is left.
 
 ## 8. Follow-ups, smallest first
 
-1. **Firmware**: add `rtlwifi/rtl8710bufw_SMIC.bin`, `rtl8710bufw_UMC.bin`,
-   `rtl8192fufw.bin`, `rtl8723bu_bt.bin` to `package/linux-firmware-extra` (all four are in
-   the pinned linux-firmware tarball; verify with the WHENCE-driven list).
-2. **Kernel**: carry `41c45f37` (Classic2USB/RetroZord FF, 2 lines) and `9854075c` (exfat
-   read-ahead, 4 lines) as `0048`/`0049`; read `59bcae8e` before the next cpufreq change.
-3. **Stock pin bump to 20260907** with two-volume fetch + join (§6.2). Payload delta is
-   `MidiLink.INI` only; `uboot.img` unchanged. Re-run `verify-stock-payload.sh` and the
-   qemu-arm `7za` round-trip against **our** archive — nothing about our archive changes,
-   but the test's stock reference input does.
-4. **Docs** per §7; regenerate `stock-reconciliation.md` from `d4e3f51`.
+1. **Firmware** — **done, PR #158.** `rtlwifi/rtl8710bufw_SMIC.bin`, `rtl8710bufw_UMC.bin`
+   and `rtl8192fufw.bin` added to `package/linux-firmware-extra` (all three are `File:`
+   entries in the pinned linux-firmware WHENCE). `rtl8723bu_bt.bin` turned out **not** to
+   exist upstream at all; stock's copy is byte-identical to upstream's `rtl8723bs_bt.bin`,
+   which we already ship, so the package creates a same-name symlink instead of sourcing a
+   second blob. `docs/stock-inventory/firmware.md` regenerated from this image (91 files);
+   `docs/firmware-parity.md`'s CI-parsed *Missing* block is now 13 → **78 of 91 present**.
+2. **Kernel** (handled in the separate kernel-reconciliation session): carry `41c45f37`
+   (Classic2USB/RetroZord FF, 2 lines) and `9854075c` (exfat read-ahead, 4 lines) as
+   `0048`/`0049`; read `59bcae8e` before the next cpufreq change.
+3. **Stock pin bump to 20260907** — **done, PR #159.** `STOCK_RELEASE_URL` is now a
+   two-URL list that `fetch-stock` and `fetch-sdcard-payload.sh` join; the MD5/SHA-256/size
+   pins are the joined file's. Run end to end against the new pins: join, hashes, `7z t`,
+   `uboot.img`/`updateboot` identity, the new `MidiLink.INI`, and the sdcard payload
+   (now carrying the 20260907 `MiSTer`/`menu.rbf`/`MiSTer_example.ini`). The qemu-arm `7za`
+   round-trip against **our** archive still runs in `release.yml` as before.
+4. **Docs** per §7 — userland side **done** across #158 (firmware), #159 (pin: `ci.md`,
+   `renovate.md`, `downloader-contract.md` §11.1, `reference-materials.md`, README's
+   "stock does not move", the bug template) and #160 (`S39usb-coldplug` disposition in
+   `init-parity.md` and `stock-reconciliation.md` §3d, README image-size row). The
+   kernel-side rows of §7 (`version-delta.md` kernel line, `kernel-config-deltas.md`,
+   `patch-provenance.md`, the kernel-recon set, `wifi-parity.md` §6-7's driver claims,
+   ADR 0016's postscript, `stock-reconciliation.md` §2) are the kernel session's.
 5. **Watch**: `Distribution_MiSTer` `db_operator.py` for the `linux` entry's return, and
    `Linux-Kernel_MiSTer` for whether `MiSTer-v6.18` ever takes a `6.18.y` bump (it would be
    the first stable update stock has ever taken).

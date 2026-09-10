@@ -249,7 +249,7 @@ coverage is now roughly ours minus Broadcom/Redpine/ath9k_htc and minus the BT h
 |---|---|---|---|
 | `rtlwifi/rtl8710bufw_SMIC.bin`, `rtl8710bufw_UMC.bin` | driver `rtl8xxxu` with `RTL8XXXU_UNTESTED=y` (8710B support is in `8710b.c`), **no firmware** | README's hardware table claims RTL8710BU is driven by our in-kernel `rtl8xxxu`; without these two blobs `rtl8xxxu_load_firmware()` fails and the dongle is dead | add both to `package/linux-firmware-extra`'s file list |
 | `rtlwifi/rtl8192fufw.bin` | same — `8192f.c` requests it, blob absent | RTL8192FU dongles bind and then fail at `request_firmware()` | add |
-| `rtlwifi/rtl8723bu_bt.bin` | we ship `rtl8723bu_nic.bin` but not the `_bt` variant | `8723b.c` picks `rtl8723bu_bt.bin` when the BT half is active (`vendor_info & BT_PRESENT`); absent → Wi-Fi fails on BT-combo 8723BU sticks | add |
+| `rtlwifi/rtl8723bu_bt.bin` | we ship `rtl8723bu_nic.bin` but not the `_bt` variant | **Correction (2026-09-10):** `8723b.c:489` names the `_bt` file only when `priv->enable_bluetooth` is set, and that flag is declared and read but **never written** anywhere in `rtl8xxxu`, in v6.18.38 and in stock's `MiSTer-v6.18` alike. The branch is unreachable; the driver always loads `rtl8723bu_nic.bin`. Stock's file is a byte-identical duplicate of `rtl8723bs_bt.bin`, which we ship, and nothing can request it | **decline** (documented omission, #158) |
 | `ath10k/QCA9377/hw1.0/*` | no `ath10k` | deliberate (wifi-parity §7: upstream calls `ATH10K_USB` "will not fully work") | keep off; note stock now ships it |
 | `xone_dongle_02f9.bin`, `_091e.bin` | `02e6`, `02fe` only | ADR 0003: those two PIDs are laptop-internal dongles | keep |
 | `RTL8192E/*`, `mediatek/mt7662u*`, `rt2870_sw_ch_offload.bin`, `rtl_bt/rtl8192e{e,u}_fw.bin`, `rtlwifi/rtl8723defw.bin` | absent | all justified in `stock-reconciliation.md` §1 | keep |
@@ -364,11 +364,11 @@ Ordered by how wrong the reader is left.
 
 1. **Firmware** — **done, PR #158.** `rtlwifi/rtl8710bufw_SMIC.bin`, `rtl8710bufw_UMC.bin`
    and `rtl8192fufw.bin` added to `package/linux-firmware-extra` (all three are `File:`
-   entries in the pinned linux-firmware WHENCE). `rtl8723bu_bt.bin` turned out **not** to
-   exist upstream at all; stock's copy is byte-identical to upstream's `rtl8723bs_bt.bin`,
-   which we already ship, so the package creates a same-name symlink instead of sourcing a
-   second blob. `docs/stock-inventory/firmware.md` regenerated from this image (91 files);
-   `docs/firmware-parity.md`'s CI-parsed *Missing* block is now 13 → **78 of 91 present**.
+   entries in the pinned linux-firmware WHENCE). `rtl8723bu_bt.bin` is **declined**: its
+   only consumer sits behind a flag the driver never sets (§4.2 row), and upstream never
+   shipped the name anyway. `docs/stock-inventory/firmware.md` regenerated from this
+   image (91 files); `docs/firmware-parity.md`'s CI-parsed *Missing* block is now 14 →
+   **77 of 91 present**.
 2. **Kernel** (handled in the separate kernel-reconciliation session): carry `41c45f37`
    (Classic2USB/RetroZord FF, 2 lines) and `9854075c` (exfat read-ahead, 4 lines) as
    `0048`/`0049`; read `59bcae8e` before the next cpufreq change.

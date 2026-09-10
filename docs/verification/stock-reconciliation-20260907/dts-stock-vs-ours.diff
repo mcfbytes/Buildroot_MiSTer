@@ -1,0 +1,168 @@
+--- stock-20260907.dts
++++ ours-v2026.09.04-beta.dts
+@@ -4,8 +4,8 @@
+ / {
+ 	#address-cells = <0x01>;
+ 	#size-cells = <0x01>;
+-	model = "Terasic DE10-nano";
+-	compatible = "altr,socfpga-cyclone5\0altr,socfpga";
++	model = "Terasic DE10-Nano";
++	compatible = "terasic,de10-nano\0altr,socfpga-cyclone5\0altr,socfpga";
+ 
+ 	aliases {
+ 		serial0 = "/soc/serial@ffc02000";
+@@ -727,20 +727,20 @@
+ 			clocks = <0x2a>;
+ 			interrupts = <0x00 0x9e 0x04>;
+ 			status = "okay";
+-			speed-mode = <0x00>;
++			clock-frequency = <0x186a0>;
+ 
+-			adxl345@53 {
++			accelerometer@53 {
+ 				compatible = "adi,adxl345";
+ 				reg = <0x53>;
+ 				interrupt-parent = <0x2b>;
+-				interrupts = <0x03 0x02>;
++				interrupts = <0x03 0x04>;
++				interrupt-names = "INT1";
+ 			};
+ 		};
+ 
+ 		i2c@ffc05000 {
+ 			#address-cells = <0x01>;
+ 			#size-cells = <0x00>;
+-			clock-frequency = <0x186a0>;
+ 			compatible = "snps,designware-i2c";
+ 			reg = <0xffc05000 0x1000>;
+ 			resets = <0x06 0x2d>;
+@@ -759,7 +759,6 @@
+ 			interrupts = <0x00 0xa0 0x04>;
+ 			status = "okay";
+ 			clock-frequency = <0x186a0>;
+-			speed-mode = <0x00>;
+ 		};
+ 
+ 		i2c@ffc07000 {
+@@ -908,7 +907,6 @@
+ 			resets = <0x06 0x32>;
+ 			reset-names = "spi";
+ 			status = "okay";
+-			timeouts = <0x03>;
+ 
+ 			spiusb@0 {
+ 				compatible = "MiSTer,spi-audio";
+@@ -916,7 +914,6 @@
+ 				spi-max-frequency = <0x989680>;
+ 				spi-cpha;
+ 				spi-cpol;
+-				status = "okay";
+ 			};
+ 		};
+ 
+@@ -931,13 +928,11 @@
+ 			resets = <0x06 0x33>;
+ 			reset-names = "spi";
+ 			status = "okay";
+-			timeouts = <0x03>;
+ 
+-			spibri@0 {
+-				status = "okay";
+-				compatible = "altspi";
+-				spi-max-frequency = <0x17d7840>;
++			spidev@0 {
++				compatible = "rohm,dh2228fv";
+ 				reg = <0x00>;
++				spi-max-frequency = <0x17d7840>;
+ 			};
+ 		};
+ 
+@@ -1003,7 +998,7 @@
+ 			reg-io-width = <0x04>;
+ 			clocks = <0x2a>;
+ 			resets = <0x06 0x30>;
+-			status = "okay";
++			clock-frequency = <0x5f5e100>;
+ 		};
+ 
+ 		serial@ffc03000 {
+@@ -1014,7 +1009,6 @@
+ 			reg-io-width = <0x04>;
+ 			clocks = <0x2a>;
+ 			resets = <0x06 0x31>;
+-			status = "okay";
+ 		};
+ 
+ 		usbphy {
+@@ -1048,8 +1042,8 @@
+ 			phys = <0x36>;
+ 			phy-names = "usb2-phy";
+ 			status = "okay";
+-			disable-over-current;
+ 			dr_mode = "host";
++			disable-over-current;
+ 		};
+ 
+ 		watchdog@ffd02000 {
+@@ -1069,6 +1063,14 @@
+ 			resets = <0x06 0x27>;
+ 			status = "disabled";
+ 		};
++
++		bus@ff200000 {
++			compatible = "simple-bus";
++			reg = <0xff200000 0x200000>;
++			ranges = <0x00 0xff200000 0x200000>;
++			#address-cells = <0x01>;
++			#size-cells = <0x01>;
++		};
+ 	};
+ 
+ 	chosen {
+@@ -1076,7 +1078,7 @@
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
+-	memory {
++	memory@0 {
+ 		device_type = "memory";
+ 		reg = <0x00 0x40000000>;
+ 	};
+@@ -1100,29 +1102,29 @@
+ 	};
+ 
+ 	i2c_gpio {
++		compatible = "i2c-gpio";
+ 		#address-cells = <0x01>;
+ 		#size-cells = <0x00>;
+-		compatible = "i2c-gpio";
+ 		gpios = <0x37 0x16 0x06 0x37 0x17 0x06>;
+ 		i2c-gpio,delay-us = <0x02>;
+ 
+-		rtc_at_51 {
+-			compatible = "pcf8563";
++		rtc@51 {
++			compatible = "nxp,pcf8563";
+ 			reg = <0x51>;
+ 		};
+ 
+-		rtc_at_68 {
+-			compatible = "m41t81";
++		rtc@68 {
++			compatible = "st,m41t81";
+ 			reg = <0x68>;
+ 		};
+ 
+-		rtc_at_6F {
+-			compatible = "mcp7941x";
++		rtc@6f {
++			compatible = "microchip,mcp7941x";
+ 			reg = <0x6f>;
+ 		};
+ 	};
+ 
+-	MiSTer_fb {
++	MiSTer_fb@22000000 {
+ 		compatible = "MiSTer_fb";
+ 		reg = <0x22000000 0x800000>;
+ 		interrupt-parent = <0x02>;

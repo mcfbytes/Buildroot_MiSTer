@@ -334,6 +334,16 @@ Precedent for how a real divergence gets made instead: ADR 0016's
 
 ---
 
+### 3d. New in stock `release_20260907` (`addon.tar` at `d4e3f51`, 2026-09)
+
+Stock's `addon.tar` gained exactly one member after the `8aba321` snapshot this
+section was reconciled against — the JMS583 guard and `rtw88-prefer.conf` above
+were already in `8aba321`'s tarball and are dispositioned there.
+
+| Stock addon file | Disposition | Why |
+|---|---|---|
+| `etc/init.d/S39usb-coldplug` | **Not reproduced — pending a hardware check** | A second USB `udevadm trigger --subsystem-match=usb --action=add` + `settle`, run after `S30dbus`. Stock's own `S10udev` (and our `S10udevd`) already replays every subsystem and device at udev start, and udev's built-in kmod loads modules from `modalias` on that pass, so on this image a device present at power-on should bind without it. Stock gives no rationale, and copying it blind would double-fire every USB `RUN+=` rule this image carries (JMS583 guard, `70-persistent-net.rules` `ifup`, USB-storage automount). Owed: verify on a board; details and the exact test in [`docs/init-parity.md`](init-parity.md) (`S39usb-coldplug` row) and [`docs/verification/stock-release-20260907.md` §4.2](verification/stock-release-20260907.md). |
+
 ## 4. Bottom line
 
 - **Firmware:** 58/69 stock files present; all 11 absences justified

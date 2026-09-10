@@ -165,3 +165,11 @@ vendored `uartmode` matches the *old* stock copy (`docs/stock-reconciliation.md`
 untriaged stock-firmware additions (`rtl8192fufw.bin`, `rtl8723bu_bt.bin`, `bfusb` module).
 (3) The 6.18.49→6.18.50 and 7.2.3→7.2.4 drift walk (`env.md`). (4) Hardware-gated list in §4.
 (5) Option B for cpufreq, bench-gated (memo §8). (6) Wave 4 audit and Wave 5 upstream PRs.
+
+**Added 2026-09-11 — the export tree.** `scripts/export-kernel-tree.sh` was fatally broken by
+the 2026-09 fragment split (it read package lines from a fragment that no longer holds them) and
+is fixed; it now also emits the fork's DTS filename as an alias and documents the stock-process
+build recipe; `scripts/check-export-tree.sh` proves the export is the kernel Buildroot builds
+(dry run PASS at 6.18.49). See `docs/kernel-export.md`, including §1.1: **the PR #75 review
+thread could not be read from the session — owner to check it against §1.2**. Not wired into CI
+yet; no PR was opened against the fork.

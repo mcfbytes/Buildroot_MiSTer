@@ -976,6 +976,7 @@ Start here if you want to run it: [**one-command install**](#install-it-on-a-rea
 | [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` / 7.x variant |
 | [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md) | Why the fork's `loop=` patch cannot be ported to 6.18, what porting it would cost, and what we did instead — written for whoever maintains the fork |
 | [`MISTER-KERNEL-PATCH-RECON.md`](MISTER-KERNEL-PATCH-RECON.md) | The task spec the reconciliation was executed from |
+| [`docs/kernel-export.md`](docs/kernel-export.md) | Rendering our pins + patches into a `Linux-Kernel_MiSTer`-style tree the fork's maintainer can build with his own process, what we know of that process, and the check that proves the export is the kernel we ship |
 | [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md) | The plan for reconciling against stock's first 6.18 kernel (Release 20260907): the post-release fix queue, the two owner decisions (cpufreq redesign, AIC8800), and the agent fan-out |
 
 **The contracts we must not break**

@@ -410,6 +410,7 @@ jobs:
       # snapshot names its manifest output/legal-info/manifest.csv, stable across
       # releases and self-describing in the graph UI.
       - name: Extract the SBOM manifest from legal-info.tar.gz
+        id: manifests
         run: |
           set -euo pipefail
           [ -f dist/legal-info.tar.gz ] || { echo "::error::dist/legal-info.tar.gz is missing from the release-dist bundle" >&2; exit 1; }

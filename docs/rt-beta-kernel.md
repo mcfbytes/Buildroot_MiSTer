@@ -187,7 +187,7 @@ Since ADR 0030 Phase C (2026-09-11) the RT kernel is `package/linux-rt`, built b
 `make all` that builds the image:
 
 ```sh
-make de10nano-defconfig       # once, or after a Buildroot pin move
+make mister_de10nano_defconfig  # once, or after a Buildroot pin move
 make all                      # -> output/images/zImage_dtb (6.18), zImage_dtb-rt (7.2 RT),
                               #    linux-rt.config, and ONE linux.img carrying both module trees
 make linux-rt                 # rebuild only the RT kernel package, if iterating on it

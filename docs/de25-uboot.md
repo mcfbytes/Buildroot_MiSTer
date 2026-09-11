@@ -68,7 +68,7 @@ item, and building green does not close it. Terasic and Altera document only ven
 
 | File | Role |
 |---|---|
-| `configs/fragments/de25nano.fragment` | the ATF/U-Boot/host-tools stanza (rationale: `docs/buildroot-config.md` §6.9, §6.10) |
+| `configs/mister_de25nano_defconfig` | the ATF/U-Boot/host-tools stanza (rationale: `docs/buildroot-config.md` §6.9, §6.10) |
 | `board/mister/de25nano/uboot.fragment` | the U-Boot Kconfig delta on `socfpga_agilex5_defconfig` (§4) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts` | U-Boot board device tree (§5) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano-u-boot.dtsi` | U-Boot additions: `stdout-path`, mmc caps, FIT tweaks (§5, §6) |
@@ -558,7 +558,7 @@ have nothing to bind to (§5).
 
 **Third lock, outside U-Boot:** §7 row 11 — a Linux-side `fw_setenv` with an `fw_env.config` naming
 an MTD device bypasses everything above. Nothing in this build ships `fw_setenv`
-(`configs/fragments/de25nano.fragment` has no packages at all), but that is an accident of scope, not
+(`configs/mister_de25nano_defconfig` has no packages at all), but that is an accident of scope, not
 a guard. §5's proposed release-blocking CI check ("the DE25 U-Boot config has `ENV_IS_IN_UBI` unset
 and ships no QSPI-write command set") is still **unimplemented**; this table is what it should
 assert.
@@ -747,7 +747,7 @@ this build; typing them should produce `Unknown command` — which is itself a u
 
 ## 12b. One change here that is not about U-Boot
 
-The DE25's Buildroot configuration (`configs/fragments/de25nano.fragment`) is shared by three
+The DE25's Buildroot configuration (`configs/mister_de25nano_defconfig`) is shared by three
 tracks working in parallel, and the kernel track deliberately did not touch it — the kernel-config
 commit's message says *"The defconfig switch (custom config + fragment, delete
 de25nano/linux.fragment) lands with the U-Boot track's defconfig edit."* So this pass also lands

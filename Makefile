@@ -34,7 +34,7 @@ HOSTSHIM   := $(ROOT_DIR)/work/.hostshim
 BR_MAKE     = PATH="$(HOSTSHIM):$$PATH" $(MAKE) -C $(BR_DIR) O=$(O) BR2_EXTERNAL=$(ROOT_DIR)
 
 .PHONY: all help hostshim buildroot-unpack buildroot-verify buildroot-showsig
-.PHONY: de10nano-defconfig de25nano-defconfig de25 sdcard clean distclean
+.PHONY: de25 sdcard clean distclean
 
 all: $(BR_STAMP) hostshim
 	@test -f $(O)/.config || { \
@@ -58,11 +58,7 @@ buildroot-showsig:
 hostshim:
 	@scripts/hostshim.sh $(HOSTSHIM)
 
-# Aliases kept for CI and muscle memory; the vanilla spellings are the rule.
-de10nano-defconfig: $(BR_STAMP) hostshim
-	$(BR_MAKE) mister_de10nano_defconfig
-de25nano-defconfig: $(BR_STAMP) hostshim
-	$(MAKE) O=$(ROOT_DIR)/output-de25 mister_de25nano_defconfig
+# The DE25-Nano builds in its own output tree; this is `make O=output-de25`.
 de25: $(BR_STAMP) hostshim
 	$(MAKE) O=$(ROOT_DIR)/output-de25 all
 

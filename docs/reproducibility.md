@@ -26,7 +26,7 @@ concrete reasons, not reproducibility as an abstract virtue:
 
 ## How this is delivered
 
-Four mechanisms combine, all landed in P2.5 (`configs/fragments/de10nano-image.fragment`):
+Four mechanisms combine, all landed in P2.5 (`configs/mister_de10nano_defconfig`):
 
 1. **`BR2_REPRODUCIBLE=y`.** Buildroot's own reproducible-build mode. Exports
    `SOURCE_DATE_EPOCH` pinned to Buildroot's own pinned-tree last-commit date (constant
@@ -139,7 +139,7 @@ this section should be updated with:
 
 ## Related
 
-- `configs/fragments/de10nano-image.fragment` — the `BR2_REPRODUCIBLE` + ext4-options block
+- `configs/mister_de10nano_defconfig` — the `BR2_REPRODUCIBLE` + ext4-options block
   (search `BR2_REPRODUCIBLE` / `BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS`).
 - `scripts/check-linux-img.sh` — asserts the pinned size/label/UUID/hash-seed/feature-set
   contract (and the ADR 0015 no-baked-keys invariant) on every build; runs automatically

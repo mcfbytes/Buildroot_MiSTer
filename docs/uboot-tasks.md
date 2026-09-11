@@ -16,6 +16,14 @@ verbatim from [`TASKS.md` §0](../TASKS.md).
 
 ---
 
+> **Layout note (2026-09-11, ADR 0030):** file and target names in this document predate the
+> refactor that replaced the fragment stacks with committed `configs/mister_*_defconfig` files and
+> Kconfig profiles, moved the RT kernel into `package/linux-rt` (`output/build/linux-rt-*`, no
+> `output-rt/`), the stage-1 initramfs into `package/mister-initramfs`, and retired the
+> kernel-variant CI matrix, `scripts/list-kernel-variants.sh`, `check-kernel-defconfig-sync.sh`
+> and `scripts/lib/board-expectations.sh`. Read the paths here as of their date; the current
+> layout is README "Building it yourself" and `docs/ci.md` "The pipeline today".
+
 ## The one-line summary
 
 Build mainline U-Boot **2026.04** for the DE10-Nano, configured to behave like stock's
@@ -64,7 +72,7 @@ silent-brick if omitted.
   `board/mister/de10nano/uboot-mister.env`, and the patches in
   `board/mister/de10nano/uboot-patches/` (picked up by `BR2_TARGET_UBOOT_PATCH`,
   `Config.in:103-113` / `uboot.mk:342-354`; honours a `series` file, applies at fuzz zero).
-  Head the fragment with the same "which layer is which" note `configs/mister_rt.fragment:19-21`
+  Head the fragment with the same "which layer is which" note `package/linux-rt/Config.in:19-21`
   uses for the kernel. Every patch carries a full CONTRIBUTING §2 provenance header — use
   `board/mister/de10nano/linux-patches/0001-fbdev-add-MiSTer_fb-driver.patch` as the
   template. Per ADR 0024 §Decision 3, behaviour changes **are** permitted here; each must be

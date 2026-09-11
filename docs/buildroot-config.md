@@ -108,8 +108,8 @@ produced — the only difference is `BR2_DEFCONFIG`, which is where
 - `output/.config` is generated once and then never touched by `make all` (no
   file prerequisites on the rule, so a `menuconfig` edit is not silently
   discarded — the Makefile's own comment explains). Regenerate deliberately
-  with `make de10nano-defconfig` / `make de25nano-defconfig` / `make rt-defconfig`
-  (`make rt-clean` instead when the rt fragment's kernel version moved). Two
+  with `make mister_de10nano_defconfig` / `make O=output-de25 mister_de25nano_defconfig`
+  (`make linux-rt-dirclean` after a change to the RT kernel version). Two
   things leave a stale config behind that nothing regenerates for you: `make
   clean` keeps every `.config` (Buildroot's definition), and a Buildroot pin
   move retires or adds Kconfig symbols under it. A config written on the

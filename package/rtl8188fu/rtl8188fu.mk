@@ -34,7 +34,7 @@
 # only touches the latter. Our kernel does not define CONFIG_WIRELESS_EXT
 # (P1.3 hazard — non-prompt, select-only symbol in 6.18), so the wext-only
 # code simply compiles out; no wrapper or kernel `select` hack is needed.
-RTL8188FU_VERSION = c8c95708b3756c67139c456a2a6576c1e6491d82
+RTL8188FU_VERSION = 799fa0beacadce84bef6514d5948b454a8037c96
 RTL8188FU_SITE = $(call github,kelebek333,rtl8188fu,$(RTL8188FU_VERSION))
 RTL8188FU_LICENSE = GPL-2.0
 RTL8188FU_LICENSE_FILES = LICENSE

@@ -600,12 +600,25 @@ else
 			# Symbols kconfig derives from whatever compiler is in front of it. A
 			# difference in these says the two builds used different toolchains, which is
 			# expected here and is not a configuration difference. Printed, never hidden.
-			readonly TOOLCHAIN_RE='^[-+#]* *#? *CONFIG_(CC_VERSION_TEXT|CC_IS_|GCC_VERSION|CLANG_VERSION|LD_VERSION|LD_IS_|LLD_VERSION|AS_VERSION|AS_IS_|RUSTC_VERSION|RUSTC_LLVM_VERSION|PAHOLE_VERSION|CC_HAS_|CC_CAN_|AS_HAS_|LD_HAS_|LD_CAN_|RUSTC_HAS_|TOOLS_SUPPORT_|GCC_ASM_GOTO|CC_NO_|CC_IMPLICIT_FALLTHROUGH|PAHOLE_HAS_)'
+			readonly TOOLCHAIN_RE='^[-+#]* *#? *CONFIG_(CC_VERSION_TEXT|CC_IS_|GCC_VERSION|CLANG_VERSION|LD_VERSION|LD_IS_|LLD_VERSION|AS_VERSION|AS_IS_|RUSTC_VERSION|RUSTC_LLVM_VERSION|PAHOLE_VERSION|CC_HAS_|CC_CAN_|AS_HAS_|LD_HAS_|LD_CAN_|RUSTC_HAS_|TOOLS_SUPPORT_|GCC_ASM_GOTO|CC_NO_|CC_IMPLICIT_FALLTHROUGH|PAHOLE_HAS_|GCC_PLUGIN|GCC_PLUGINS|RANDSTRUCT|KSTACK_ERASE)'
+			# Buildroot points CONFIG_INITRAMFS_SOURCE at the stage-1 cpio by ABSOLUTE
+			# path inside its own output tree. The export cannot carry that -- the path
+			# is wrong on every other machine, and a published tree that embedded it
+			# would be worse, not better. Its knock-on symbols (the compression choice,
+			# ROOT_UID/GID) only become visible because the source is non-empty, so they
+			# travel with it. This is the one configuration difference that is CORRECT
+			# by construction rather than merely expected, which is why it is named
+			# rather than silenced: `make MiSTer_defconfig` on the export yields a
+			# kernel with no built-in initramfs, and EXPORT.md's build recipe says so.
+			readonly INITRAMFS_RE='^[-+#]* *#? *CONFIG_INITRAMFS_(SOURCE|COMPRESSION_|ROOT_UID|ROOT_GID)'
 			grep -E '^[<>]' "$scratch/cfg.diff" | sed 's/^[<>] //' | sort -u >"$scratch/cfg.lines" || true
 			grep -E "$TOOLCHAIN_RE" "$scratch/cfg.lines" >"$scratch/cfg.toolchain" || true
-			grep -Ev "$TOOLCHAIN_RE" "$scratch/cfg.lines" >"$scratch/cfg.real" || true
+			grep -E "$INITRAMFS_RE" "$scratch/cfg.lines" >"$scratch/cfg.initramfs" || true
+			grep -Ev "$TOOLCHAIN_RE" "$scratch/cfg.lines" |
+				grep -Ev "$INITRAMFS_RE" >"$scratch/cfg.real" || true
 
 			n_tool="$(wc -l <"$scratch/cfg.toolchain")"
+			n_initramfs="$(wc -l <"$scratch/cfg.initramfs")"
 			n_real="$(wc -l <"$scratch/cfg.real")"
 			if ((n_real == 0)); then
 				ok "resolved configuration identical ($(wc -l <"$scratch/ours.cfg") symbols)"
@@ -618,6 +631,13 @@ else
 				note "$n_tool toolchain-derived symbols also differ; EXPECTED when the two"
 				note 'builds used different compilers, and not a configuration difference:'
 				sed 's/^/         /' "$scratch/cfg.toolchain" | head -12
+			fi
+			if ((n_initramfs)); then
+				note "$n_initramfs initramfs symbols also differ, which is CORRECT: Buildroot"
+				note 'embeds an absolute path to its stage-1 cpio that no published tree can'
+				note 'carry. Build the export per EXPORT.md and supply your own if you want'
+				note 'one built in:'
+				sed 's/^/         /' "$scratch/cfg.initramfs" | head -12
 			fi
 		else
 			bad "\`make ARCH=arm MiSTer_defconfig\` failed on the export; see $scratch/kconf.log"

@@ -208,7 +208,11 @@ normalization. **Nothing was pushed or opened upstream.**
    exists in the pinned linux-firmware snapshot, which that package's own rule requires and which
    needs the tarball (not reachable here).
 2. **[CLOSED by PR #160]** The `S39usb-coldplug` / `uartmode` addon.tar delta (STATUS §7): both vendored byte-identical; see `docs/stock-reconciliation.md` §3d.
-3. The 6.18.49→6.18.50 / 7.2.3→7.2.4 drift walk (`env.md`) and the real-tarball export run
-   (`docs/kernel-export.md` §5).
+3. **[6.18 HALF CLOSED 2026-09-11]** The real-tarball export run is done
+   (`docs/kernel-export.md` §6): 6.18.50 fetched and hash-verified, full local build, all
+   40 patches at `-F0` with zero fuzz, and the export proven byte-identical to the built
+   tree over 90,262 files. The **7.2.3→7.2.4** half of the drift walk is still open, as is
+   a re-read of the .49→.50 stable delta against the carried hunks (the build proves they
+   still APPLY, not that no stable fix silently changed the behaviour beside them).
 4. Wiring `scripts/check-export-tree.sh --no-build` into `build.yml` after the kernel leg.
 5. The PR #75 review thread (`docs/kernel-export.md` §1.1) — owner.

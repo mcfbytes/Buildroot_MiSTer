@@ -156,6 +156,11 @@ has clang but no GNU ARM toolchain). Wiring this into `build.yml` after the kern
 
 ## 4. Dry run, 2026-09-11 — why it is a stand-in
 
+> **Superseded by §6**, the first run against the real pinned tarball on a real build.
+> Kept because it is what the check was designed against, and because two of its passes
+> were false: a build dir that has never been compiled has none of the files a real one
+> grows, and one outside a git repo hides a path-resolution bug. See §6.
+
 The first end-to-end run (results in §5) was performed against
 **6.18.49**, not the 6.18.50 pin: the kernel.org tarball and the stable tag were unreachable
 from the session (`docs/kernel-recon/fork-sync-2026-09/env.md`), so a synthetic tarball was
@@ -187,3 +192,52 @@ driver sources; Buildroot's own `.config` (the check substituted `cp linux.confi
 make olddefconfig`, which is what Buildroot does); a `zImage` through `lz4`. All four are
 covered the first time the two commands in §2–§3 run on a machine that has built the image.
 Neither script is wired into CI yet (§3 says where it belongs).
+
+## 6. First real run — 2026-09-11, 6.18.50, on a full local build
+
+Everything in §4/§5 was a stand-in. This is the real thing: `linux-6.18.50.tar.xz` fetched
+from kernel.org and verified against `board/mister/de10nano/patches/linux/linux.hash`
+(`d2fc041d…0461`), a complete `make all` on a 32-core host (52 min cold), and the export
+rendered from that same pin onto the fork's `v6.18.38` spine point.
+
+| | |
+|---|---|
+| Kernel | **6.18.50**, all **40** carried patches applied by Buildroot at `-F0`, offsets only, **zero fuzz** (the only fuzz in the whole build is proftpd's bundled libtool) |
+| Export | tag `mister-6.18.50`, base commit `18979022cf` = pristine `v6.18.50` |
+| **Sameness** | **90,262 files compared, byte-identical** — the exported carried tip *is* the source Buildroot builds |
+| Config | identical apart from the two classes named below |
+| DTBs | `socfpga_cyclone5_de10_nano.dtb` (his name) and `socfpga_cyclone5_de10nano.dtb` (vanilla's) byte-identical, sha256 `199f14b1…3dae`, and equal to the one in the build dir |
+| zImage | builds (8,891,648 bytes) |
+| Result | **PASS — 20 checks, 0 failed, 0 skipped** |
+
+### What the real run found that the dry run could not
+
+1. **`git hash-object --stdin-paths` resolves relative paths against the repo root,
+   prefixed by the cwd's position in that repo** — not against the cwd — when run inside
+   a work tree. A build dir under `output/` is inside this repo, so the sameness check
+   died on its first file. Fixed by feeding absolute paths. Invisible in the dry run,
+   whose build dir was a temp directory outside any repo.
+2. **803 build artifacts were unignored**, because the dry run's "build dir" was a
+   tarball plus patches that had never been compiled: a `modules.order` per subdirectory,
+   the per-vendor `dtbs-list` files, `.checked-atomic-*.h`, Buildroot's
+   `.br_regen_dot_config`, asn1/flex/bison generator output, and the include trees perf
+   copies into place. Each is now named in `IGNORE_GLOBS`.
+3. **A real divergence: the exported tree had no device mapper.**
+   `BR2_PACKAGE_CRYPTSETUP` selects `BR2_PACKAGE_LVM2`, whose `LINUX_CONFIG_FIXUPS`
+   enables `CONFIG_MD` and `CONFIG_BLK_DEV_DM` *after* our fragments are merged, and the
+   export derives its defconfig from `linux.config`, never from Buildroot's resolved
+   `.config`. The image ships `/sbin/dmsetup` and `libdevmapper.so`; the exported tree
+   built a kernel that could not serve them. Both symbols are now stated in
+   `linux.config`, which makes Buildroot's fixup a no-op — the resolved `.config` is
+   byte-identical before and after, verified by rebuilding.
+
+### The two remaining config differences, both correct
+
+- **`CONFIG_INITRAMFS_SOURCE`** and its dependants (the compression choice,
+  `ROOT_UID`/`ROOT_GID`). Buildroot points it at its stage-1 cpio by absolute path. No
+  published tree can carry that; `make MiSTer_defconfig` on the export yields a kernel
+  with no built-in initramfs, and EXPORT.md's recipe says so.
+- **`CONFIG_GCC_PLUGINS`** and the `RANDSTRUCT`/`KSTACK_ERASE` symbols that depend on it
+  — a compiler-capability probe, the same class as `CC_VERSION_TEXT`.
+
+Both are classified and reported separately by the check rather than counted as drift.

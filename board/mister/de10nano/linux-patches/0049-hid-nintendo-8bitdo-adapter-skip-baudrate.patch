@@ -66,7 +66,7 @@ below. This commit carries no Signed-off-by from the original author,
 who has not been asked to certify it -- it is submitted here by the
 tester.
 
-Tested-by: Kasper Solesen <kaspersolesen@gmail.com>
+Tested-by: Kasper Olesen <kaspersolesen@gmail.com>
 Link: https://lore.kernel.org/linux-input/20250720143156.2563816-1-michal.kopec@3mdeb.com/
 Link: https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/issues/84
 
@@ -83,7 +83,7 @@ Author:       Michal Kopec <michal.kopec@3mdeb.com> (original
               patch author, linux-input, 2025-07-20; see Link above).
               The commit that reached MiSTer-v6.18 carries his authorship
               in its `Author:` field but no Signed-off-by from him -- it
-              was submitted by tester Kasper Solesen, whose own
+              was submitted by tester Kasper Olesen, whose own
               Tested-by/Signed-off-by is reproduced above. This is a DCO
               gap in the fork's commit, not something our carrying it
               fixes; worth flagging if this patch is ever proposed back
@@ -212,7 +212,7 @@ MERGES:       (1) add the merged commit's SHA to
               the merge changes the author/Signed-off-by chain, update
               this header to match.
 
-Signed-off-by: Kasper Solesen <kaspersolesen@gmail.com>
+Signed-off-by: Kasper Olesen <kaspersolesen@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 

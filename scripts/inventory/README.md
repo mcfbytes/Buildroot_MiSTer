@@ -15,13 +15,20 @@ scripts/inventory/run-all.sh <linux.img-or-extracted-root> [zImage_dtb] [MiSTer-
 Example, against the pre-seeded stock materials from P0.2:
 
 ```sh
-scripts/inventory/run-all.sh \
+MRL_RELEASE=20260907 scripts/inventory/run-all.sh \
   work/extracted/files/linux/linux.img \
   work/extracted/files/linux/zImage_dtb \
   work/extracted/files/MiSTer
 ```
 
-This regenerates every file under `docs/stock-inventory/` except
+**`MRL_RELEASE` (or `MRL_OUT_DIR`) is required**, not optional. Since the
+2026-09 split `docs/stock-inventory/` holds one subdirectory per stock release
+(`20250402/`, `20260907/`), so there is no single "the" output directory any
+more and `mrl_out_dir()` refuses to guess — it errors and lists the releases
+it can see. See `docs/stock-inventory/README.md` for what the old silent
+fallback did wrong.
+
+This regenerates every file under `docs/stock-inventory/<release>/` except
 `stock-linux.config`/`stock.dts` themselves, which item (f)'s script
 deliberately does **not** overwrite by default (see below) — it only
 verifies that regenerating them from the given `zImage_dtb` reproduces the
@@ -69,8 +76,9 @@ outside `linux.img`, in the release archive) get folded into the analysis.
 
 - `common.sh` — sourced by every `gen-*.sh`: image/dir resolution
   (`mrl_extract_root`), a markdown doc header helper (`mrl_header`), tool
-  presence checks (`mrl_require`), and the repo-root-relative output
-  directory resolver (`mrl_out_dir`).
+  presence checks (`mrl_require`), and the output directory resolver
+  (`mrl_out_dir`, which reads `MRL_OUT_DIR`/`MRL_RELEASE` and fails if neither
+  is set).
 - `elf_scan.py` — walks a rootfs once and classifies every ELF regular file
   (binary / library / dlopen plugin / other) via `readelf -h`/`-d`; used by
   both (a) and (b) so the classification logic (and its evidence method)
@@ -86,7 +94,7 @@ outside `linux.img`, in the release archive) get folded into the analysis.
   `kernel-config-dts.md` for why this matters for the stock DTS).
 - `build_*.py` — one per doc, doing the actual data processing; each
   `gen-*.sh` is a thin wrapper (argument handling, tool checks, doc header,
-  writing the file to `docs/stock-inventory/`).
+  writing the file to the release directory `mrl_out_dir()` resolves).
 
 ## Determinism
 

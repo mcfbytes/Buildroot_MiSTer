@@ -1021,10 +1021,37 @@ declare -A MODULE_PATH=(
 # Read over the WHOLE STACK, not one fragment. The package selections live in
 # de10nano-image.fragment since the 2026-09 split while the kernel pin stayed in
 # de10nano.fragment; reading only the latter finds zero packages (see the STACK_FILES
-# note near the top). `# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is
-# anchored at column 1 on the symbol -- so a disabled driver stays disabled.
+# note near the top).
+#
+# LAST DEFINITION WINS, the same rule defconfig_value() implements with `tail -1` and
+# the same rule kconfig itself applies when a later fragment redefines a symbol an
+# earlier one set. This used to be a bare `sed` for `=y` only, with a comment claiming
+# "`# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is anchored at column 1
+# on the symbol -- so a disabled driver stays disabled." That had it exactly backwards:
+# because the sed matched ONLY `=y`, a later fragment's not-set line was invisible, so a
+# symbol set `=y` early and disabled later still read as enabled. The export would then
+# vendor a driver the image does not ship, and emit a build-mister-modules.sh line for
+# it -- silently, because check-export-tree.sh compares only the carried tip, which is
+# before the vendoring commits.
+#
+# Nothing in the tree triggers it today (no kernel-module package carries a not-set line
+# in any DE10 fragment), so this is a latent bug being closed rather than a live one
+# being fixed. The awk tracks both forms in merge order and emits only symbols whose
+# FINAL state is enabled.
 mapfile -t enabled_kmods < <(
-	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y\([[:space:]].*\)\?$/\1/p' "${STACK_FILES[@]}" |
+	awk '
+		/^BR2_PACKAGE_[A-Z0-9_]+=y([ \t].*)?$/ {
+			sym = $0; sub(/=y.*$/, "", sym)
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 1; next
+		}
+		/^#[ \t]*BR2_PACKAGE_[A-Z0-9_]+[ \t]+is not set/ {
+			sym = $2
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 0; next
+		}
+		END { for (i = 1; i <= n; i++) if (state[order[i]]) print order[i] }
+	' "${STACK_FILES[@]}" |
 		while read -r sym; do
 			dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
 			mk="$REPO_ROOT/package/$dir/$dir.mk"

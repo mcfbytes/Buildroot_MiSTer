@@ -25,6 +25,14 @@ LINUX_EXTENSIONS += mister-initramfs
 
 ifeq ($(BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS),y)
 
+# LINUX_EXTENSIONS only orders the kernel's PATCH stage after the extension's
+# PATCH stage (linux.mk derives LINUX_PATCH_DEPENDENCIES from it -- enough for
+# xenomai, whose prepare-kernel needs sources, not a build). The cpio has to be
+# BUILT and installed before the kernel's kconfig fixup runs, so the package is
+# a full dependency as well. This file is included before linux.mk evaluates
+# the kernel package, which is the only place this line can take effect.
+LINUX_DEPENDENCIES += mister-initramfs
+
 # Overridable on the make command line: scripts/mk-sdcard.sh relinks the
 # kernel around the installer's cpio with MISTER_INITRAMFS_CPIO=<file>.
 MISTER_INITRAMFS_CPIO ?= $(BINARIES_DIR)/mister-initramfs.cpio

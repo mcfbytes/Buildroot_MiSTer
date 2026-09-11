@@ -548,7 +548,7 @@ jobs:
            env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
            env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1' ||
-           env.AZCOPY_HASH_CHANGED == '1' || env.GOLDEN_CHANGED == '1') &&
+           env.AZCOPY_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail
@@ -590,6 +590,12 @@ jobs:
               the only way this value can be derived, since no URL serves that
               file (see package/azcopy/azcopy.hash's header). LICENSE and
               NOTICE.txt were re-hashed from the same tarball
+          COMMITMSG
+          # Shell variable, NOT a workflow-expression interpolation --
+          # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
+          # vector otherwise). See docs/ci.md#branch-name-injection.
+          # "--" stops a branch named like an option from being parsed as one.
+          git push origin -- "HEAD:$TARGET_BRANCH"
 
       # --- Job summary + pass/fail gate over every pin's outcome -------------
       # `if: !cancelled()`, NOT `always()`: this table must survive an

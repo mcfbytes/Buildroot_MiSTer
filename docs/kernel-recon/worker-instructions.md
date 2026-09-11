@@ -38,8 +38,8 @@ If the diff is huge (thousands of lines, e.g. vendored drivers), do NOT read it 
 | Fork repo | `/mnt/source/Linux-Kernel_MiSTer` (branch `MiSTer-v6.18` since 2026-09; `MiSTer-v5.15` for the original campaign, frozen at `5fcfae369`) | your commit and its neighbors |
 | Carried patches | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031` with gaps) | is this commit carried? grep for symbols/strings from your diff |
 | Our kernel config | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux.config` | kconfig reconciliation |
-| Our Buildroot defconfig | `/mnt/source/Buildroot_MiSTer/configs/fragments/de10nano.fragment` | BR2 packages (some fork drivers now ship as out-of-tree kmod packages, e.g. xone, 8812au — grep `package/` and the defconfig) |
-| Stock kernel config | 6.18 (current stock, Release 20260907): `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`; 5.15 (stock until 2026-09-07): `docs/stock-inventory/stock-linux.config` | what stock shipped |
+| Our Buildroot defconfig | kernel pin: `/mnt/source/Buildroot_MiSTer/configs/fragments/de10nano.fragment`; **package selections: `.../configs/fragments/de10nano-image.fragment`** (they moved there in the 2026-09 split — grepping `de10nano.fragment` for `BR2_PACKAGE_*` finds none) | BR2 packages (some fork drivers ship as out-of-tree kmod packages, e.g. xone, rtl8852cu-morrownr — grep `package/` and the image fragment) |
+| Stock kernel config | 6.18 (current stock, Release 20260907): `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`; 5.15 (stock until 2026-09-07): `docs/stock-inventory/20250402/stock-linux.config` (the 2026-09 split moved it under a per-release directory) | what stock shipped |
 | Main_MiSTer userspace | `/mnt/source/Main_MiSTer` | userspace coupling: grep input event codes, ioctls, sysfs paths, /dev nodes |
 | Prior art (**may be wrong**) | `/mnt/source/Buildroot_MiSTer/docs/patch-provenance.md` | record what it claims, then re-derive INDEPENDENTLY |
 
@@ -82,7 +82,7 @@ other file writes. Schema (use `null` where inapplicable; keep every key):
   "files": ["..."], "added": 0, "removed": 0,
   "is_backport_of_vanilla": false,
 
-  "disposition": "carried | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
+  "disposition": "carried | carried-upstream-only | carried-as-package | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
   "carried_patch": "<00xx-*.patch or null>",
   "carried_mode": "clean-apply | re-implemented | null",
 

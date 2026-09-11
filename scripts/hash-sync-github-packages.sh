@@ -19,11 +19,19 @@
 # times while leaving a hash stale -- run 29669946883). See "Testing against
 # a fixture" below.
 #
-# Covers the 15 github-sourced packages (package/*/*.mk + their .hash): the
-# 12 driver/firmware pins, libchdr (a userspace shared library --
-# Main_MiSTer shared-lib refactor) and dualsensectl + ltunify (userspace
-# CLIs) -- the last three are not drivers, but have the exact same
-# $(call github,...) archive shape. Note that dualsensectl is pinned to a
+# Covers the 9 github-sourced packages named in HASH_SYNC_PACKAGES
+# (package/*/*.mk + their .hash): the 6 driver/firmware pins
+# (rtl8852cu-morrownr, aic8800, xone, midilink, munt, bcm20702-firmware),
+# libchdr (a userspace shared library -- Main_MiSTer shared-lib refactor) and
+# dualsensectl + ltunify (userspace CLIs) -- the last three are not drivers,
+# but have the exact same $(call github,...) archive shape.
+#
+# It was 15 packages / 12 driver pins until 2026-09-10, when the seven
+# deselected Realtek forks were deleted (mainline drives every one of their
+# chips; docs/wifi-parity.md §11) and aic8800 was added. Re-derive these two
+# numbers from HASH_SYNC_PACKAGES in .github/workflows/renovate-hash-sync.yml
+# rather than trusting them -- that list is the single source of truth, and
+# this comment has already gone stale once. Note that dualsensectl is pinned to a
 # "v"-prefixed TAG while ltunify is pinned to a commit SHA; the loop below is
 # indifferent to which, since it uses the literal *_VERSION string as both
 # the ref and the filename stem.
@@ -40,7 +48,7 @@
 # would otherwise type by hand is safe here.
 #
 # NOT COVERED, AND MUST NOT BE ADDED: package/azcopy. It is github-sourced and
-# looks like an obvious 15th entry, but it is a golang-package, so Buildroot
+# looks like an obvious tenth entry, but it is a golang-package, so Buildroot
 # sets AZCOPY_DOWNLOAD_POST_PROCESS = go and the file it actually hashes is the
 # post-`go mod vendor` -go2 tarball, NOT the GitHub archive. The `curl |
 # sha256sum` this script performs would therefore write the hash of the
@@ -80,7 +88,7 @@
 #
 # Required env:
 #   HASH_SYNC_PACKAGES        space-separated package directory names, e.g.
-#                             "rtl8812au xone libchdr". In production this is
+#                             "aic8800 xone libchdr". In production this is
 #                             the workflow's job-level env: block (single
 #                             source of truth shared with the job-summary
 #                             step's pin roster -- see that env var's own

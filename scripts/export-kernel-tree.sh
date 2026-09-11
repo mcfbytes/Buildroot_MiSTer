@@ -993,21 +993,43 @@ EOF
 # Package -> in-tree path. The only hand-maintained mapping here, kept declarative on
 # purpose. Every kernel-module package gets an entry, not just the currently-enabled ones,
 # so flipping one on in the defconfig needs no edit here.
+# The seven deselected Realtek fork rows this table used to carry (rtl8812au,
+# rtl8814au-morrownr, rtl8821au-morrownr, rtl8821cu-morrownr, rtl88x2bu,
+# rtl8188eu-aircrack-ng, rtl8188fu) went away with the packages on 2026-09-10.
+# They were the "just-in-case" half of the note above; with the packages gone
+# there is nothing for them to map. Every row below is now on the live path.
 declare -A MODULE_PATH=(
 	[xone]='drivers/hid/xone'
-	[rtl8812au]='drivers/net/wireless/realtek/rtl8812au'
-	[rtl8814au-morrownr]='drivers/net/wireless/realtek/rtl8814au'
-	[rtl8821au-morrownr]='drivers/net/wireless/realtek/rtl8821au'
-	[rtl8821cu-morrownr]='drivers/net/wireless/realtek/rtl8821cu'
-	# rtl8852cu-morrownr is the one WiFi fork the image currently SHIPS (v10.2,
-	# ADR 0016 — mainline rtw89 has no rtw8852cu.c), so unlike its neighbours
-	# this row is on the live path, not a just-in-case entry. Same naming rule
-	# as the rest: the fork suffix is a Buildroot package-name concern, and the
-	# in-tree path uses the plain chip name the 5.15 fork would have used.
+	# rtl8852cu-morrownr is a WiFi fork the image SHIPS (v10.2, ADR 0016 —
+	# mainline rtw89 has no rtw8852cu.c). Naming rule: the fork suffix is a
+	# Buildroot package-name concern, and the in-tree path uses the plain chip
+	# name the 5.15 fork would have used.
 	[rtl8852cu-morrownr]='drivers/net/wireless/realtek/rtl8852cu'
-	[rtl88x2bu]='drivers/net/wireless/realtek/rtl88x2bu'
-	[rtl8188eu-aircrack-ng]='drivers/net/wireless/realtek/rtl8188eu'
-	[rtl8188fu]='drivers/net/wireless/realtek/rtl8188fu'
+)
+
+# Packages deliberately NOT exported, with the reason. This is a separate set
+# from "has no MODULE_PATH" so that forgetting a mapping still fails closed --
+# the die below only accepts silence for a package named HERE.
+declare -A MODULE_EXPORT_SKIP=(
+	# aic8800 is the one driver where the fork went FIRST. Sorgelig vendored
+	# the same AICSemi SDK snapshot into MiSTer-v6.18 himself
+	# (c129b0fac34ad5d613bbec3f59d6036775e41c83, "Add AIC8800 WiFi/BT
+	# driver.", at drivers/net/wireless/aic8800), so exporting ours would
+	# hand upstream a copy of something it already has, at the same path, and
+	# collide there. The export exists to carry OUR delta; this is not one.
+	#
+	# It would also need machinery nothing else here has. Unlike every other
+	# kernel-module package, this one's sources are not at the tarball root:
+	# the tarball is radxa-pkg's whole 55 MiB multi-bus repository and the
+	# module tree lives at src/USB/driver_fw/drivers/aic8800 (hence
+	# AIC8800_MODULE_SUBDIRS). The `tar --strip-components=1` below would
+	# vendor the PCIE and SDIO drivers and the Debian packaging along with it.
+	# And the sources are only buildable AFTER upstream's own
+	# debian/patches/series is applied -- see package/aic8800/aic8800.mk --
+	# which the exporter has no notion of. If this ever does need exporting,
+	# teach the loop MODULE_SUBDIRS and the patch series first; do not just
+	# add a MODULE_PATH row.
+	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 
 # A package is a kernel module iff its .mk evals Buildroot's kernel-module infra. Detected
@@ -1021,10 +1043,37 @@ declare -A MODULE_PATH=(
 # Read over the WHOLE STACK, not one fragment. The package selections live in
 # de10nano-image.fragment since the 2026-09 split while the kernel pin stayed in
 # de10nano.fragment; reading only the latter finds zero packages (see the STACK_FILES
-# note near the top). `# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is
-# anchored at column 1 on the symbol -- so a disabled driver stays disabled.
+# note near the top).
+#
+# LAST DEFINITION WINS, the same rule defconfig_value() implements with `tail -1` and
+# the same rule kconfig itself applies when a later fragment redefines a symbol an
+# earlier one set. This used to be a bare `sed` for `=y` only, with a comment claiming
+# "`# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is anchored at column 1
+# on the symbol -- so a disabled driver stays disabled." That had it exactly backwards:
+# because the sed matched ONLY `=y`, a later fragment's not-set line was invisible, so a
+# symbol set `=y` early and disabled later still read as enabled. The export would then
+# vendor a driver the image does not ship, and emit a build-mister-modules.sh line for
+# it -- silently, because check-export-tree.sh compares only the carried tip, which is
+# before the vendoring commits.
+#
+# Nothing in the tree triggers it today (no kernel-module package carries a not-set line
+# in any DE10 fragment), so this is a latent bug being closed rather than a live one
+# being fixed. The awk tracks both forms in merge order and emits only symbols whose
+# FINAL state is enabled.
 mapfile -t enabled_kmods < <(
-	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y\([[:space:]].*\)\?$/\1/p' "${STACK_FILES[@]}" |
+	awk '
+		/^BR2_PACKAGE_[A-Z0-9_]+=y([ \t].*)?$/ {
+			sym = $0; sub(/=y.*$/, "", sym)
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 1; next
+		}
+		/^#[ \t]*BR2_PACKAGE_[A-Z0-9_]+[ \t]+is not set/ {
+			sym = $2
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 0; next
+		}
+		END { for (i = 1; i <= n; i++) if (state[order[i]]) print order[i] }
+	' "${STACK_FILES[@]}" |
 		while read -r sym; do
 			dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
 			mk="$REPO_ROOT/package/$dir/$dir.mk"
@@ -1044,7 +1093,26 @@ ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.
 If a fragment moved, fix configs/fragments/stacks.mk or this script's EXPORT_STACK;
 do NOT relax this check."
 
-say "Vendoring ${#enabled_kmods[@]} out-of-tree kernel modules: ${enabled_kmods[*]}"
+# Announce what will actually be vendored, not what was detected: the two differ
+# whenever MODULE_EXPORT_SKIP names something (aic8800 does today). Saying
+# "Vendoring 3" and then committing 2 is the same off-by-one the RESULT-line
+# arithmetic below exists to avoid.
+vendor_pkgs=()
+skip_pkgs=()
+for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		skip_pkgs+=("$pkg")
+	else
+		vendor_pkgs+=("$pkg")
+	fi
+done
+say "Vendoring ${#vendor_pkgs[@]} out-of-tree kernel modules: ${vendor_pkgs[*]-}"
+# `if`, not `((…)) && say`: this script runs under `set -o errexit`, and while bash
+# exempts the left-hand side of an && list from it, the idiom is a trap worth not
+# spelling out here (an empty skip list is the normal case).
+if ((${#skip_pkgs[@]})); then
+	say "  not vendored (MODULE_EXPORT_SKIP): ${skip_pkgs[*]}"
+fi
 module_build_lines=()
 module_doc_rows=()
 
@@ -1053,11 +1121,18 @@ for pkg in "${enabled_kmods[@]}"; do
 	mk="$REPO_ROOT/package/$pkg/$pkg.mk"
 	dest="${MODULE_PATH[$pkg]:-}"
 
+	# Deliberate, named omission -- announced, never silent.
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		say "  skipping $pkg: ${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
+
 	# Fail closed. Silently skipping an enabled driver is exactly the regression this
 	# whole section exists to prevent.
 	[[ -n $dest ]] || die "no in-tree path mapped for kernel-module package '$pkg'.
-Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}") — refusing to export a tree
-that silently omits a driver the image ships."
+Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}"), or -- if leaving it out is
+deliberate -- to MODULE_EXPORT_SKIP with the reason. Refusing to export a tree that
+silently omits a driver the image ships."
 
 	pkg_version="$(sed -n "s/^${upper}_VERSION = //p" "$mk" | tail -1)"
 	[[ -n $pkg_version ]] || die "no ${upper}_VERSION in $mk"
@@ -1449,7 +1524,7 @@ $upstream_section## What is here
 | Upstream-only patches | $upstream_applied $up_commit_noun, one per patch carried for this tree alone (see above) |
 | Config | \`arch/arm/configs/MiSTer_defconfig\` — $config_note |
 | DTB build-name alias | 1 commit — \`socfpga_cyclone5_de10_nano.dts\` \`#include\`s the patched \`socfpga_cyclone5_de10nano.dts\` so the .dtb filename Linux-Kernel_MiSTer uses still builds (see below) |
-| Vendored drivers | ${#enabled_kmods[@]} commits, one per out-of-tree kernel module (see below) |
+| Vendored drivers | ${#module_doc_rows[@]} commits, one per out-of-tree kernel module vendored here (see below) |
 | Tag | \`$tag\` |
 
 The base commit contains no MiSTer change, so the two deltas worth looking at are:
@@ -1720,6 +1795,10 @@ git diff --quiet && git diff --cached --quiet || die 'tree is dirty after export
 # the bug this section exists to prevent -- and which a too-strict defconfig parse already
 # caused once, vendoring xone alone.
 for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		printf '  %-52s skipped (%s)\n' "$pkg" "${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
 	dest="${MODULE_PATH[$pkg]}"
 	git cat-file -e "$tag:$dest" 2>/dev/null ||
 		die "$pkg is enabled but $dest is not in the exported tree"
@@ -1780,8 +1859,13 @@ printf '  tag      %s\n' "$tag"
 # concludes the series got applied twice. base_offset is the distance from the tag back to
 # the base (asserted against the real commit above), so it counts everything AFTER the
 # base -- hence the +1 to include the base that the "1 base" term names.
+#
+# module_doc_rows, NOT enabled_kmods, for the same reason: enabled_kmods counts every
+# kernel-module package the stack selects, including any named in MODULE_EXPORT_SKIP,
+# which produce no commit. module_doc_rows is appended only on the path that actually
+# commits, so it is the commit count by construction.
 printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + dtb alias + %s vendored drivers + build script + EXPORT.md)\n' \
-	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#enabled_kmods[@]}"
+	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#module_doc_rows[@]}"
 printf '  files touched vs pristine upstream: %s\n' "$touched"
 if ((upstream_applied)); then
 	# Said on stdout as well as in EXPORT.md, because this is the one fact about the

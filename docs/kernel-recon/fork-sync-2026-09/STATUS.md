@@ -16,6 +16,8 @@ carried patch**: 42 collisions, all disjoint or compatible, and both patch serie
 at `-F0` (37/37 on 6.18, 40/40 on 7.2). Wave 2 confirmed every disposition, corrected three
 citations, and refuted nothing. The two Opus memos both come down on the conservative side:
 **keep our cpufreq driver** (option A, with two amendments) and **defer AIC8800** (option D).
+*(D2 was reversed by the owner on 2026-09-10, after Wave 3: `package/aic8800` now ships the driver
+and its firmware — see §3 and `memo-Q9-aic8800.md` §10.)*
 One caveat runs through everything: the pinned kernels (6.18.50, 7.2.4) were **unreachable** from
 this session, so every vanilla quote is from 6.18.49 / 7.2.3 — one stable release short. See
 `env.md` for the one-command re-check that closes that gap.
@@ -92,7 +94,7 @@ patches as carried before they exist.
 | # | Decision | Recommendation (from the memo) | Strongest reason | Default applied if you say nothing |
 |---|---|---|---|---|
 | D1 | cpufreq: keep `0003` (A) / adopt the fork's port (B) / hybrid (C) | **A**, plus two amendments independent of the choice: fix the boost-ABI docs (§2.2) and add the OCRAM reservation to `0004` (§2.3). Track B as bench-gated. **Strike C** (premise refuted). | Our `0003` does two of the fork author's three suspected hang causes (DDR execution through PLL bypass; single-step VCO jump, +50 % at 1200) — but it is the code stock shipped for four years and the only cpufreq code ever observed at 1.2 GHz on our own board (`docs/testlogs/p1-first-boot.md:118`). The fork's port applies and compiles `W=1`-clean on our tree, `=y` is viable, but it has **zero** validation on our image and its author lists open issues. Swapping proven-in-the-field for better-designed-but-unproven, with no bench, on the one patch that can hang a board mid-transition, is the wrong trade today. | A |
-| D2 | AIC8800: package (P) / defer (D) / decline (X) | **D — defer.** | It compiles clean for 32-bit ARM (both `.ko`s link; the `rtl8852cu` `__aeabi_uldivmod` trap does not recur) and has zero USB-ID conflicts — but it is **inert without ~60 firmware blobs** that no source we can verify supplies (stock's 20260907 firmware tarball has none; the driver opens `/lib/firmware/…` with `filp_open`, not `request_firmware`), and the vendor tree ships **no license text**: 85 files with a bare copyright line and no grant, 51 with nothing, 2 Apache-2.0 (`aic_br_ext.{c,h}`), 1 SPDX tag (a third-party kprobes quirk that is dead code under our config anyway). Both blockers are answerable without hardware by identifying the upstream repo (the exact snapshot is stamped: `rwnx v6.4.3.0 - 1a4b0054d2M`, SDK `2026_0123_5f7be68d` — grep candidates in memo §1.2) and its firmware distribution. Packaging note for later: the two modules must be built in order with `KBUILD_EXTRA_SYMBOLS` (fdrv imports nine symbols from `aic_load_fw`), which Buildroot's single-`M=` kernel-module infrastructure cannot express as-is; measured cost ≈207 KB `.ko.xz`. | D |
+| D2 | AIC8800: package (P) / defer (D) / decline (X) | ~~**D — defer.**~~ **REVERSED 2026-09-10 → P — packaged.** Owner decision after Wave 3 (this repo's #163): `package/aic8800` builds the driver *and* ships all six firmware variants from `radxa-pkg/aic8800`, the same AICSemi SDK snapshot stock vendored, with radxa's `debian/patches` kernel-API fixes applied (the raw SDK does not build on 6.18). Licence ambiguity accepted rather than resolved; no hardware test yet; DE10 only. Record disposition `carried-as-package`. Memo §10 and `docs/wifi-parity.md` §10.1 have the reasoning; what follows is the defer analysis as it stood. | It compiles clean for 32-bit ARM (both `.ko`s link; the `rtl8852cu` `__aeabi_uldivmod` trap does not recur) and has zero USB-ID conflicts — but it is **inert without ~60 firmware blobs** that no source we can verify supplies (stock's 20260907 firmware tarball has none; the driver opens `/lib/firmware/…` with `filp_open`, not `request_firmware`), and the vendor tree ships **no license text**: 85 files with a bare copyright line and no grant, 51 with nothing, 2 Apache-2.0 (`aic_br_ext.{c,h}`), 1 SPDX tag (a third-party kprobes quirk that is dead code under our config anyway). Both blockers are answerable without hardware by identifying the upstream repo (the exact snapshot is stamped: `rwnx v6.4.3.0 - 1a4b0054d2M`, SDK `2026_0123_5f7be68d` — grep candidates in memo §1.2) and its firmware distribution. Packaging note for later: the two modules must be built in order with `KBUILD_EXTRA_SYMBOLS` (fdrv imports nine symbols from `aic_load_fw`), which Buildroot's single-`M=` kernel-module infrastructure cannot express as-is; measured cost ≈207 KB `.ko.xz`. | ~~D~~ **P** (2026-09-10) |
 | D3 | Carry the open PR #92 now | **Yes.** | "Gamepad unusable" class, hardware-verified A/B by its author on a DE10-Nano at 6.18.38, 32 lines, applies clean on top of our whole hid-nintendo stack on both kernels; Main_MiSTer hard-codes `057e_2009`. | yes |
 | D4 | Align `0001` to upstream's `fb_sys_read/write` | **Yes** (also the beta copy). | Proven identical machine code on ARM; Main_MiSTer only ioctls `/dev/fb0`; shrinks the export diff. | follow the memo: yes |
 | D5 | Run the two Opus workers | moot — they ran (≈0.50 M tokens total) | — | — |
@@ -130,7 +132,7 @@ reachable. `_meta.vanilla_target` must not be advanced past the 6.18.49 release 
 
 ## 7. Wave 3 — executed 2026-09-11 (orchestrator validation appended)
 
-Owner decisions applied: D1=A, D2=defer, D3=yes, D4=yes; exFAT = the fork's 4-line plug, 6.18 only
+Owner decisions applied: D1=A, D2=defer (reversed → packaged on 2026-09-10, §3), D3=yes, D4=yes; exFAT = the fork's 4-line plug, 6.18 only
 (the 7.x refactor is a rewrite of `exfat_get_dentry()` plus a new shared helper and `balloc.c`
 changes, touching the same `dir.c` our `0031` patches — no user-visible gain over the plug).
 
@@ -216,3 +218,7 @@ normalization. **Nothing was pushed or opened upstream.**
    still APPLY, not that no stable fix silently changed the behaviour beside them).
 4. Wiring `scripts/check-export-tree.sh --no-build` into `build.yml` after the kernel leg.
 5. The PR #75 review thread (`docs/kernel-export.md` §1.1) — owner.
+6. **[DONE 2026-09-10, owner]** AIC8800 packaged after all: #163 added `package/aic8800` (driver +
+   firmware) and deleted seven mainline-covered Realtek fork packages; #164/#165 review fixes. D2
+   in §3 is marked reversed; the ledger record is `carried-as-package` and `reduce.py` accepts it.
+   Still open from that: no hardware test, DE25 not enabled, licence ambiguity accepted.

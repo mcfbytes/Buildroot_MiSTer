@@ -402,7 +402,7 @@ Ordered by how wrong the reader is left.
    and `rtl8192fufw.bin` added to `package/linux-firmware-extra` (all three are `File:`
    entries in the pinned linux-firmware WHENCE). `rtl8723bu_bt.bin` is **declined**: its
    only consumer sits behind a flag the driver never sets (§4.2 row), and upstream never
-   shipped the name anyway. `docs/stock-inventory/firmware.md` regenerated from this
+   shipped the name anyway. `docs/stock-inventory/20260907/firmware.md` regenerated from this
    image (91 files); `docs/firmware-parity.md`'s CI-parsed *Missing* block is now 14 →
    **77 of 91 present**.
 2. **Kernel** (handled in the separate kernel-reconciliation session): carry `41c45f37`

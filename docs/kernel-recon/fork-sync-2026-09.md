@@ -21,7 +21,7 @@ external facts (Q9).**
 | 3 | A 2026-07-24 ledger defect — four carried patches (`0039`-`0042`) unreachable from any record's `carried_patch` — found by `reduce.py`'s own orphan invariant | pre-existing process gap, unrelated to this queue | fixed: `reduce.py` now reads a `carried_patches` (plural) list; four origin records updated (§5) |
 | 4 | An open PR (#92) carried ahead of its own merge, for the first time in this project | new pattern, deliberate (owner decision D3) | carried as `0049`, keyed on the PR head SHA with an explicit re-key procedure for when it merges (§2) |
 | 5 | A community re-implementation of the overclock driver (`59bcae8eb`, #85) — better-engineered, unvalidated on our image | decision required | **kept `0003`** (owner decision D1=A); DTS OCRAM hygiene hunk still carried; option B tracked bench-gated (§2) |
-| 6 | An 82k-line vendored Wi-Fi/BT driver (`c129b0fac`, AIC8800 — 142 files, 82,330 insertions) with no firmware and no license file | decision required | **deferred** (owner decision D2); compiles clean, zero USB-ID conflicts, but inert without ~60 firmware blobs stock does not ship either (§2) |
+| 6 | An 82k-line vendored Wi-Fi/BT driver (`c129b0fac`, AIC8800 — 142 files, 82,330 insertions) with no firmware and no license file | decision required | **deferred** (owner decision D2); compiles clean, zero USB-ID conflicts, but inert without ~60 firmware blobs stock does not ship either (§2). **Reversed 2026-09-10:** packaged as `package/aic8800` with firmware (§6.2) |
 
 ---
 
@@ -143,7 +143,8 @@ never touches device name/uniq strings, so none of Main_MiSTer's string matches 
 which driver binds. Applies clean at `-F0` on both 6.18.49 and 7.2.3 (the file is byte-identical
 across both trees).
 
-**Q9 `c129b0fac` (AIC8800 Wi-Fi/BT driver) — `not-evaluated`, owner decision D2=defer.** 142
+**Q9 `c129b0fac` (AIC8800 Wi-Fi/BT driver) — `not-evaluated`, owner decision D2=defer.**
+*(Overtaken 2026-09-10: D2 reversed, record now `carried-as-package` → `package/aic8800`; §6.2.)* 142
 files, 82,330 insertions — a RivieraWaves/AICSemi vendor "rwnx" fullmac driver re-badged for the
 AIC8800 chip family, needed for the Tenda U2/U11/U11 Pro and TX1U Nano AX dongles among others.
 Full sweep in `memo-Q9-aic8800.md`. The technical objection is gone: both kernel modules compile
@@ -267,6 +268,15 @@ option C — its premise (that the two drivers differ on the boost/`scaling_max_
 refuted (§3), and C would re-create the PR #24 auto-overclock bug.
 
 ### 6.2 AIC8800 — deferred, re-open trigger is two cheap checks
+
+> **Overtaken 2026-09-10:** the owner reversed D2 after Wave 3 (this repo's #163, merged into this
+> branch). `package/aic8800` builds both modules with the two ordered `M=` passes this section
+> asked for and ships all six firmware variants from `radxa-pkg/aic8800` — the same SDK snapshot
+> stock vendored (`2026_0123_5f7be68d`), which also answers trigger (b). Trigger (a) has still
+> not fired: stock ships neither the module nor the blobs. The licence question was accepted, not
+> resolved; there is no hardware test. `memo-Q9-aic8800.md` §9–§10 and `docs/wifi-parity.md`
+> §10.1 record the reversal; the ledger record is `carried-as-package`. The paragraph below is
+> kept as written.
 
 Per `memo-Q9-aic8800.md` §8, re-open the moment either (a) stock's `firmware.tar.gz` gains
 `fmacfw_*`/`fw_patch_*`/`fw_adid_*` entries, or (b) the upstream vendor repo is identified (grep

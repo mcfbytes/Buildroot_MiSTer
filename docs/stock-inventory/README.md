@@ -143,8 +143,11 @@ comparison table for where each of those numbers is cited from.
 
 ## Regenerating everything
 
+**Name the release.** Since the 2026-09 split this directory holds one subdirectory per
+release, so every invocation has to say which one it is writing:
+
 ```sh
-scripts/inventory/run-all.sh \
+MRL_RELEASE=20260907 scripts/inventory/run-all.sh \
   work/extracted/files/linux/linux.img \
   work/extracted/files/linux/zImage_dtb \
   work/extracted/files/MiSTer
@@ -156,7 +159,12 @@ directory `scripts/inventory/common.sh`'s `mrl_out_dir()` resolves, checked in t
 - `MRL_OUT_DIR=<dir>` — an explicit output directory, created if it doesn't exist.
 - `MRL_RELEASE=<release>` — writes into `docs/stock-inventory/<release>/` (created if it
   doesn't exist), e.g. `MRL_RELEASE=20260907` for the directory this file's table lists.
-- Neither set — the legacy top-level `docs/stock-inventory/` (pre-split behaviour).
+- **Neither set — a hard error.** It used to fall back to the legacy top-level
+  `docs/stock-inventory/`, and the recipe above used to be printed without the
+  `MRL_RELEASE=` prefix. That combination scattered eight regenerated documents into the
+  top level *and* then failed step (f) anyway, because `gen-kernel-config-dts.sh`
+  compares against a committed `stock-linux.config`/`stock.dts` that no longer exists
+  there. `mrl_out_dir()` now says so and names the existing releases instead of guessing.
 
 So regenerating a whole release directory in place is a single `run-all.sh` invocation, the
 way `20260907/` was produced (see `docs/kernel-recon/fork-sync-2026-09/PLAN.md` §9.2 for the

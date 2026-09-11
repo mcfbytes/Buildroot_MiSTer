@@ -558,12 +558,24 @@ mister-linux/
 │   ├── post-image.sh                  # assembles release_YYYYMMDD.7z
 │   └── readme.md
 ├── package/                            # Buildroot kernel-module packages (P3.1/P3.2)
-│   ├── rtl8812au/
-│   ├── rtl8821au-morrownr/             # "-morrownr": Buildroot upstream now ships
-│   ├── rtl8821cu-morrownr/             # its own same-named rtl8821au/rtl8821cu
-│   ├── rtl88x2bu/                      # (different forks) -- renamed to avoid
-│   ├── rtl8188eu-aircrack-ng/          # the Kconfig/Make collision; see each
-│   ├── rtl8188fu/                      # package's Config.in for the detail.
+│   │                                   # NOTE (2026-09-10): the seven deselected
+│   │                                   # Realtek forks this tree used to list here
+│   │                                   # -- rtl8812au, rtl8821au-morrownr,
+│   │                                   # rtl8821cu-morrownr, rtl88x2bu,
+│   │                                   # rtl8188eu-aircrack-ng, rtl8188fu and
+│   │                                   # rtl8814au-morrownr -- were DELETED. Mainline
+│   │                                   # drives every one of their chips, the image
+│   │                                   # never built them, and each still cost a
+│   │                                   # Renovate PR stream. docs/wifi-parity.md §11.
+│   ├── rtl8852cu-morrownr/             # RTL8852CU/8832CU Wi-Fi 6E -- one of the two
+│   │                                   # out-of-tree WiFi drivers the image SHIPS
+│   │                                   # (mainline rtw89 has the chip HAL but only a
+│   │                                   # PCIe bus file, and this board has no PCIe)
+│   ├── aic8800/                        # AICSemi AIC8800 Wi-Fi 6 + BT -- the other one.
+│   │                                   # Driver AND ~6.6 MiB of firmware from ONE pin
+│   │                                   # (radxa-pkg/aic8800, the same AICSemi SDK drop
+│   │                                   # stock vendored). Mainline has no aic8800
+│   │                                   # driver over any bus. docs/wifi-parity.md §10.1
 │   ├── xone/                           # dlundqvist/xone fork (P3.2) -- driver only,
 │   │                                   # unambiguously GPL-2.0-or-later
 │   ├── xow-firmware/                   # Xbox Wireless Dongle firmware, fetched from

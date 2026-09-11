@@ -1,0 +1,25 @@
+# Locally computed (GitHub does not publish signed hashes for commit tarballs --
+# standard practice for git/github-sourced Buildroot packages, per
+# pkg-download.mk / the Buildroot manual).
+#
+#   sha256sum aic8800-516e3b087763d80c44f5e3b6d2dd63e0d925c91d.tar.gz
+#
+# Produced on 2026-09-10 by fetching
+# https://github.com/radxa-pkg/aic8800/archive/<VERSION>.tar.gz twice, from a
+# cold cache, and confirming the two downloads agreed byte-for-byte
+# (55,400,140 bytes both times) -- GitHub generates commit tarballs on demand,
+# so a single fetch proves nothing about reproducibility. Recomputed by
+# Buildroot on every fetch, so a tampered or rewritten upstream ref fails the
+# build rather than being silently accepted.
+#
+# The tarball is large (55 MiB) because it carries the PCIE and SDIO driver
+# trees and the vendor documentation alongside the USB tree this package
+# builds. Only src/USB/ is used; nothing prunes the download.
+sha256  f79ff9b8b4dfed97c59fe6877b34406bbac042cc1091ada3bb17224fe62f1b39  aic8800-516e3b087763d80c44f5e3b6d2dd63e0d925c91d.tar.gz
+
+# Licence file. debian/copyright, not the repo's top-level LICENSE: the
+# top-level file is the plain GPL-3 text covering radxa's packaging, while
+# debian/copyright is the only document that says anything about the DRIVER
+# ("Files: src/*  License: GPL-2"). See aic8800.mk's licence section for why
+# that is the most authoritative statement available and still not a clean one.
+sha256  0dcfccac870fea3b920ec3b67f63f86869bda2f68d2263bdcb9e6b45b1a2f229  debian/copyright

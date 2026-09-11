@@ -177,8 +177,46 @@ boot** and passed traffic; no panic/oops/firmware-failure in dmesg;
   actively-maintained morrownr forks for chips mainline still omits.
   *(v10: now 6 → 0 — see the Update note at the top; mainline covers all three.
   v10.2: now 1, and it is not one of the original six — `rtl8852cu-morrownr`
-  for a Wi-Fi 6E chip mainline drives only over PCIe.)*
+  for a Wi-Fi 6E chip mainline drives only over PCIe.
+  **2026-09-10: now 2** — `package/aic8800` joined it, for a chip mainline has no
+  driver for over any bus. Same rule, unamended, applied to a new chip.)*
 - **WPA3 works** on the mainline-driven chips (mac80211 path).
 - **Broader dongle support** than stock (rtw89/mt76/ath USB families added).
-- **Rollback** is one defconfig line per chip (the disabled packages remain in
-  the tree). Full image rollback remains the `u-boot.txt` `_vN` switch.
+- **Rollback** is one defconfig line per chip. *(2026-09-10: the disabled packages
+  no longer "remain in the tree" — all seven were deleted, so rollback for those
+  chips is a git restore rather than a defconfig line. See the 2026-09-10 update
+  below and `docs/wifi-parity.md` §11.)* Full image rollback remains the
+  `u-boot.txt` `_vN` switch.
+
+## Update 2026-09-10 — AIC8800 added, the seven deselected packages deleted
+
+**The rule in this ADR is unchanged.** Both decisions below are applications of it,
+not amendments to it. Restating the rule so neither reads as drift: *use the
+in-kernel driver for every chip the kernel can drive; keep an out-of-tree driver
+only where mainline has no USB driver for the chip at all.*
+
+**1. `package/aic8800` added.** AICSemi AIC8800 family (Wi-Fi 6 + BT). Mainline has
+no aic8800 driver over **any** bus, in 6.18, 7.2 or 7.3-rc — no chip HAL, no staging
+entry, no `MAINTAINERS` line — so it satisfies the admissibility test more cleanly
+than `rtl8852cu-morrownr` does (which at least has a PCIe-only HAL). Zero USB-ID
+bind conflicts against the in-kernel drivers this image builds, checked across all
+46 IDs the two modules claim. It ships its own firmware, which the driver is inert
+without. The licence position is ambiguous and was accepted knowingly by the owner
+rather than resolved; `docs/wifi-parity.md` §10.1 carries the full reasoning, the
+verification, and what remains untested.
+
+This ADR's admissibility test is now **two-for-two on chips stock also cares about**:
+Sorgelig vendored the same AICSemi SDK snapshot into `MiSTer-v6.18` himself.
+
+**2. The seven deselected fork packages were deleted** — `rtl8188eu-aircrack-ng`,
+`rtl8188fu`, `rtl8812au`, `rtl8814au-morrownr`, `rtl8821au-morrownr`,
+`rtl8821cu-morrownr`, `rtl88x2bu`. Every one of their chips has had an in-kernel
+driver since v9/v10, so under this ADR's rule none of them was admissible any
+longer; they survived only as a "one-line revert" fallback. That fallback was never
+exercised and each package cost a standing Renovate PR stream, a hash-sync entry, a
+CI path filter and a `.hash` file for a driver the image does not build. Owner
+decision: delete them and let git history be the fallback.
+
+**Consequence for this ADR's Consequences list above:** the "rollback is one
+defconfig line per chip" bullet no longer holds for those seven. It still holds for
+anything currently enabled.

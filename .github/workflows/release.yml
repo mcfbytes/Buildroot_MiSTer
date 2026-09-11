@@ -312,7 +312,8 @@ jobs:
             [ -f "dist/$f" ] || { echo "::error::dist/$f is missing -- it went missing between the build job and this one" >&2; exit 1; }
           done
           ( cd dist && sha256sum -c SHA256SUMS )
-          [ "$(ls dist/azcopy-*-armv7.xz dist/azcopy-*-armv7.xz.sha256 2>/dev/null | wc -l)" -eq 2 ] || { echo "::error::expected dist/azcopy-<ver>-armv7.xz and its .sha256 from the build-azcopy job" >&2; exit 1; }
+          azc=(dist/azcopy-*-armv7.xz dist/azcopy-*-armv7.xz.sha256)
+          [ "${#azc[@]}" -eq 2 ] && [ -f "${azc[0]}" ] && [ -f "${azc[1]}" ] || { echo "::error::expected dist/azcopy-<ver>-armv7.xz and its .sha256 from the build-azcopy job" >&2; exit 1; }
 
       - name: Attest build provenance for the image assets
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

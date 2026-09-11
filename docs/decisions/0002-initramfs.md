@@ -414,10 +414,24 @@ initramfs host-toolchain cache in CI, and `external.mk`'s embedding block. The `
 becomes the extension symbol, which the `de10nano` fragment sets and the `de25nano` fragment does
 not (ADR 0029 D11 unchanged: enabling it there is the one-line switch).
 
-**Verification for this amendment:** a from-scratch `make all` on the branch; `zcat
-usr/initramfs_inc_data | cmp - images/mister-initramfs.cpio` in the built kernel tree; the eight
-`scripts/test-initramfs.sh` cases; a boot of the resulting `zImage_dtb` on the rig. Recorded in
-the PR that lands it.
+**Verification for this amendment (2026-09-11, branch `feat/vanilla-buildroot`, worktree
+build from scratch on Buildroot 2026.08):**
+- `make all` exit 0; `mister-initramfs: verify OK (44 entries, 1577984 bytes)`; `images/zImage_dtb`
+  9,717,297 bytes, `check-zimage-dtb.sh` headroom 7,059,919 bytes under the 16 MiB budget.
+- `zcat output/build/linux-6.18.50/usr/initramfs_inc_data | cmp - images/mister-initramfs.cpio`:
+  **identical** (§7's check, on the package cpio). Kernel `.config`: `CONFIG_BLK_DEV_INITRD=y`,
+  `CONFIG_INITRAMFS_SOURCE` = the package cpio, `CONFIG_INITRAMFS_COMPRESSION_GZIP=y`.
+- Content against the retired musl cpio (80 entries → 44): the applet symlink set is
+  **identical**, `/init` is byte-identical to the overlay, `/dev/console` present; the entries
+  gone are Buildroot's skeleton (`etc/*`, `lib/ld-musl*`, `dev/fd`, `var`, …), none of which
+  `/init` touches; the entries new are `mnt/fat` and `newroot`, which `/init` `mkdir -p`s anyway.
+  `bin/busybox` 942,660 B and `usr/sbin/fsck.exfat` 611,508 B, both static glibc.
+- `scripts/ci-tests.sh`: **366 pass, 0 fail, 6 skip**, including `initramfs embedding` and
+  `test-initramfs.sh` **8/8** QEMU boot cases on the new cpio (fat32, exfat, fsck-request,
+  symlink, label, nonascii, missing-image, rootwait).
+- Not yet done: a boot on the rig. The verify-before-switch protocol
+  (`docs/rt-beta-kernel.md` §5 shape: copy as `_vN`, `sha256sum` on device, then edit
+  `u-boot.txt` with a rollback copy) applies; the owner flashes.
 
 ## 9. Known gaps (deliberate, not oversights)
 

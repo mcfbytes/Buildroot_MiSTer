@@ -84,7 +84,7 @@ LINUX_IMG="$IMAGES/linux.img"
 # rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0 — that
 # example read "7.2.0-rc3*" until the pin reached 7.2 final on 2026-08-17; it
 # is illustrative either way, nothing here globs on it,
-# merged in via work/extra-modules-overlay), and those are deliberately out of
+# built by package/linux-rt in the same tree), and those are deliberately out of
 # scope here — their depmod health is asserted by check-abi.sh A-25 (every
 # tree), and their presence in CI by build.yml's merged-kver assert. Do not
 # "fix" these checks to glob across all trees; they would then pass on the
@@ -273,7 +273,13 @@ section "Initramfs (P1.10-P1.12, A7)"
 # inside the package build and failed it if anything was wrong.
 INITRAMFS_CPIO="$BUILD_DIR/images/mister-initramfs.cpio"
 printf -- '--- initramfs embedding (kernel .config: CONFIG_BLK_DEV_INITRD=y, CONFIG_INITRAMFS_SOURCE=images/mister-initramfs.cpio) ---\n'
-if [ ! -f "$INITRAMFS_CPIO" ]; then
+# The main kernel tree, uniqueness-guarded like every other kernel-tree glob
+# in this suite (linux-[0-9]* excludes linux-firmware-*/linux-headers-*).
+_ir_kc=("$BUILD_DIR"/build/linux-[0-9]*/.config)
+KCFG="${_ir_kc[0]}"
+if [ "${#_ir_kc[@]}" -ne 1 ] || [ ! -f "$KCFG" ]; then
+	fail "initramfs embedding" "expected exactly one $BUILD_DIR/build/linux-[0-9]*/.config, found ${#_ir_kc[@]}"
+elif [ ! -f "$INITRAMFS_CPIO" ]; then
 	fail "initramfs embedding" "no $INITRAMFS_CPIO -- package/mister-initramfs did not build"
 elif ! grep -qx 'CONFIG_BLK_DEV_INITRD=y' "$KCFG"; then
 	fail "initramfs embedding" "CONFIG_BLK_DEV_INITRD is not y in $KCFG"

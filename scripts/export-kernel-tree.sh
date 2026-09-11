@@ -1066,7 +1066,26 @@ ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.
 If a fragment moved, fix configs/fragments/stacks.mk or this script's EXPORT_STACK;
 do NOT relax this check."
 
-say "Vendoring ${#enabled_kmods[@]} out-of-tree kernel modules: ${enabled_kmods[*]}"
+# Announce what will actually be vendored, not what was detected: the two differ
+# whenever MODULE_EXPORT_SKIP names something (aic8800 does today). Saying
+# "Vendoring 3" and then committing 2 is the same off-by-one the RESULT-line
+# arithmetic below exists to avoid.
+vendor_pkgs=()
+skip_pkgs=()
+for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		skip_pkgs+=("$pkg")
+	else
+		vendor_pkgs+=("$pkg")
+	fi
+done
+say "Vendoring ${#vendor_pkgs[@]} out-of-tree kernel modules: ${vendor_pkgs[*]-}"
+# `if`, not `((…)) && say`: this script runs under `set -o errexit`, and while bash
+# exempts the left-hand side of an && list from it, the idiom is a trap worth not
+# spelling out here (an empty skip list is the normal case).
+if ((${#skip_pkgs[@]})); then
+	say "  not vendored (MODULE_EXPORT_SKIP): ${skip_pkgs[*]}"
+fi
 module_build_lines=()
 module_doc_rows=()
 
@@ -1478,7 +1497,7 @@ $upstream_section## What is here
 | Upstream-only patches | $upstream_applied $up_commit_noun, one per patch carried for this tree alone (see above) |
 | Config | \`arch/arm/configs/MiSTer_defconfig\` — $config_note |
 | DTB build-name alias | 1 commit — \`socfpga_cyclone5_de10_nano.dts\` \`#include\`s the patched \`socfpga_cyclone5_de10nano.dts\` so the .dtb filename Linux-Kernel_MiSTer uses still builds (see below) |
-| Vendored drivers | ${#enabled_kmods[@]} commits, one per out-of-tree kernel module (see below) |
+| Vendored drivers | ${#module_doc_rows[@]} commits, one per out-of-tree kernel module vendored here (see below) |
 | Tag | \`$tag\` |
 
 The base commit contains no MiSTer change, so the two deltas worth looking at are:
@@ -1813,8 +1832,13 @@ printf '  tag      %s\n' "$tag"
 # concludes the series got applied twice. base_offset is the distance from the tag back to
 # the base (asserted against the real commit above), so it counts everything AFTER the
 # base -- hence the +1 to include the base that the "1 base" term names.
+#
+# module_doc_rows, NOT enabled_kmods, for the same reason: enabled_kmods counts every
+# kernel-module package the stack selects, including any named in MODULE_EXPORT_SKIP,
+# which produce no commit. module_doc_rows is appended only on the path that actually
+# commits, so it is the commit count by construction.
 printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + dtb alias + %s vendored drivers + build script + EXPORT.md)\n' \
-	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#enabled_kmods[@]}"
+	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#module_doc_rows[@]}"
 printf '  files touched vs pristine upstream: %s\n' "$touched"
 if ((upstream_applied)); then
 	# Said on stdout as well as in EXPORT.md, because this is the one fact about the

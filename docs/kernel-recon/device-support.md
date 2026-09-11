@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-09-11 01:34 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-09-11 03:16 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -186,14 +186,14 @@ Generated 2026-09-11 01:34 UTC. VID:PID → commits and dispositions (how each d
 | `2357:012d` | `143ce187e` (dropped-deliberate) |
 | `2357:012e` | `143ce187e` (dropped-deliberate) |
 | `2357:0138` | `143ce187e` (dropped-deliberate) |
-| `2357:014b` | `c129b0fac` (not-evaluated) |
-| `2357:014e` | `c129b0fac` (not-evaluated) |
+| `2357:014b` | `c129b0fac` (carried-as-package) |
+| `2357:014e` | `c129b0fac` (carried-as-package) |
 | `2357:0604` | `3fb48dc16` (dropped-upstream) |
 | `24c6:*` | `5a7965488` (dropped-deliberate) |
-| `2604:0013` | `c129b0fac` (not-evaluated) |
-| `2604:0014` | `c129b0fac` (not-evaluated) |
-| `2604:001f` | `c129b0fac` (not-evaluated) |
-| `2604:0020` | `c129b0fac` (not-evaluated) |
+| `2604:0013` | `c129b0fac` (carried-as-package) |
+| `2604:0014` | `c129b0fac` (carried-as-package) |
+| `2604:001f` | `c129b0fac` (carried-as-package) |
+| `2604:0020` | `c129b0fac` (carried-as-package) |
 | `2717:4106` | `7436e2d6e` (dropped-deliberate) |
 | `2955:0001` | `7436e2d6e` (dropped-deliberate) |
 | `2955:1001` | `7436e2d6e` (dropped-deliberate) |
@@ -206,36 +206,36 @@ Generated 2026-09-11 01:34 UTC. VID:PID → commits and dispositions (how each d
 | `2c4e:0115` | `6332499e7` (carried) |
 | `2dc8:3106` | `7c75b1b46` (carried), `6eec2a515` (dropped-upstream) |
 | `2e24:*` | `5a7965488` (dropped-deliberate) |
-| `3625:0110` | `c129b0fac` (not-evaluated) |
-| `368b:8870` | `c129b0fac` (not-evaluated) |
-| `368b:8871` | `c129b0fac` (not-evaluated) |
-| `368b:88df` | `c129b0fac` (not-evaluated) |
-| `368b:88e0` | `c129b0fac` (not-evaluated) |
-| `368b:88e1` | `c129b0fac` (not-evaluated) |
-| `368b:88e2` | `c129b0fac` (not-evaluated) |
-| `368b:88e3` | `c129b0fac` (not-evaluated) |
-| `368b:88e5` | `c129b0fac` (not-evaluated) |
-| `368b:8d45` | `c129b0fac` (not-evaluated) |
-| `368b:8d46` | `c129b0fac` (not-evaluated) |
-| `368b:8d47` | `c129b0fac` (not-evaluated) |
-| `368b:8d48` | `c129b0fac` (not-evaluated) |
-| `368b:8d49` | `c129b0fac` (not-evaluated) |
-| `368b:8d4a` | `c129b0fac` (not-evaluated) |
-| `368b:8d81` | `c129b0fac` (not-evaluated) |
-| `368b:8d83` | `c129b0fac` (not-evaluated) |
-| `368b:8d84` | `c129b0fac` (not-evaluated) |
-| `368b:8d85` | `c129b0fac` (not-evaluated) |
-| `368b:8d86` | `c129b0fac` (not-evaluated) |
-| `368b:8d88` | `c129b0fac` (not-evaluated) |
-| `368b:8d89` | `c129b0fac` (not-evaluated) |
-| `368b:8d8a` | `c129b0fac` (not-evaluated) |
-| `368b:8d8b` | `c129b0fac` (not-evaluated) |
-| `368b:8d8c` | `c129b0fac` (not-evaluated) |
-| `368b:8d8d` | `c129b0fac` (not-evaluated) |
-| `368b:8d90` | `c129b0fac` (not-evaluated) |
-| `368b:8d91` | `c129b0fac` (not-evaluated) |
-| `368b:8d92` | `c129b0fac` (not-evaluated) |
-| `368b:8d99` | `c129b0fac` (not-evaluated) |
+| `3625:0110` | `c129b0fac` (carried-as-package) |
+| `368b:8870` | `c129b0fac` (carried-as-package) |
+| `368b:8871` | `c129b0fac` (carried-as-package) |
+| `368b:88df` | `c129b0fac` (carried-as-package) |
+| `368b:88e0` | `c129b0fac` (carried-as-package) |
+| `368b:88e1` | `c129b0fac` (carried-as-package) |
+| `368b:88e2` | `c129b0fac` (carried-as-package) |
+| `368b:88e3` | `c129b0fac` (carried-as-package) |
+| `368b:88e5` | `c129b0fac` (carried-as-package) |
+| `368b:8d45` | `c129b0fac` (carried-as-package) |
+| `368b:8d46` | `c129b0fac` (carried-as-package) |
+| `368b:8d47` | `c129b0fac` (carried-as-package) |
+| `368b:8d48` | `c129b0fac` (carried-as-package) |
+| `368b:8d49` | `c129b0fac` (carried-as-package) |
+| `368b:8d4a` | `c129b0fac` (carried-as-package) |
+| `368b:8d81` | `c129b0fac` (carried-as-package) |
+| `368b:8d83` | `c129b0fac` (carried-as-package) |
+| `368b:8d84` | `c129b0fac` (carried-as-package) |
+| `368b:8d85` | `c129b0fac` (carried-as-package) |
+| `368b:8d86` | `c129b0fac` (carried-as-package) |
+| `368b:8d88` | `c129b0fac` (carried-as-package) |
+| `368b:8d89` | `c129b0fac` (carried-as-package) |
+| `368b:8d8a` | `c129b0fac` (carried-as-package) |
+| `368b:8d8b` | `c129b0fac` (carried-as-package) |
+| `368b:8d8c` | `c129b0fac` (carried-as-package) |
+| `368b:8d8d` | `c129b0fac` (carried-as-package) |
+| `368b:8d90` | `c129b0fac` (carried-as-package) |
+| `368b:8d91` | `c129b0fac` (carried-as-package) |
+| `368b:8d92` | `c129b0fac` (carried-as-package) |
+| `368b:8d99` | `c129b0fac` (carried-as-package) |
 | `37d7:2401` | `c035c21c0` (carried) |
 | `37d7:xxxx (vader 3/4 detected by usb product string)` | `c035c21c0` (carried) |
 | `3823:6249` | `2371fb1aa` (dropped-obsolete) |
@@ -253,16 +253,16 @@ Generated 2026-09-11 01:34 UTC. VID:PID → commits and dispositions (how each d
 | `7392:d822` | `143ce187e` (dropped-deliberate) |
 | `7392:e822` | `143ce187e` (dropped-deliberate) |
 | `7392:f822` | `143ce187e` (dropped-deliberate) |
-| `a69c:8800` | `c129b0fac` (not-evaluated) |
-| `a69c:8801` | `c129b0fac` (not-evaluated) |
-| `a69c:88dc` | `c129b0fac` (not-evaluated) |
-| `a69c:88dd` | `c129b0fac` (not-evaluated) |
-| `a69c:88de` | `c129b0fac` (not-evaluated) |
-| `a69c:8d40` | `c129b0fac` (not-evaluated) |
-| `a69c:8d41` | `c129b0fac` (not-evaluated) |
-| `a69c:8d80` | `c129b0fac` (not-evaluated) |
-| `a69c:8d81` | `c129b0fac` (not-evaluated) |
-| `a69c:8d83` | `c129b0fac` (not-evaluated) |
+| `a69c:8800` | `c129b0fac` (carried-as-package) |
+| `a69c:8801` | `c129b0fac` (carried-as-package) |
+| `a69c:88dc` | `c129b0fac` (carried-as-package) |
+| `a69c:88dd` | `c129b0fac` (carried-as-package) |
+| `a69c:88de` | `c129b0fac` (carried-as-package) |
+| `a69c:8d40` | `c129b0fac` (carried-as-package) |
+| `a69c:8d41` | `c129b0fac` (carried-as-package) |
+| `a69c:8d80` | `c129b0fac` (carried-as-package) |
+| `a69c:8d81` | `c129b0fac` (carried-as-package) |
+| `a69c:8d83` | `c129b0fac` (carried-as-package) |
 | `d7d7:0041` | `b1b168eb6` (carried), `97a398176` (dropped-deliberate) |
 | `nxp:pcf8563` | `6827e7644` (carried) |
 | `portb:11` | `246984fce` (carried) |

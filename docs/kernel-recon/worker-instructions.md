@@ -82,7 +82,7 @@ other file writes. Schema (use `null` where inapplicable; keep every key):
   "files": ["..."], "added": 0, "removed": 0,
   "is_backport_of_vanilla": false,
 
-  "disposition": "carried | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
+  "disposition": "carried | carried-upstream-only | carried-as-package | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
   "carried_patch": "<00xx-*.patch or null>",
   "carried_mode": "clean-apply | re-implemented | null",
 

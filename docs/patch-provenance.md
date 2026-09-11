@@ -1692,7 +1692,12 @@ unexplained OSD-movement report) and the hardware test script that would flip th
 abandoned — `docs/kernel-recon/records/59bcae8ebc53933bc4729af25ae5cd94ade1f756.json`.
 
 **Q9 — AIC8800 Wi-Fi/BT driver (`c129b0fac`, "Add AIC8800 WiFi/BT driver.").**
-**Decision: D — defer.** The driver compiles and modposts clean for 32-bit ARM (the
+**Decision: D — defer** — **reversed 2026-09-10 → packaged.** The owner packaged the driver and
+its firmware after Wave 3 as `package/aic8800` (driver + all six firmware variants from
+`radxa-pkg/aic8800`, the same SDK snapshot stock vendored, built with radxa's kernel-API
+patches); the ledger record is `carried-as-package`, and it is still a Buildroot package, never
+an in-tree patch, exactly as the paragraph below requires. `docs/wifi-parity.md` §10.1 and
+`memo-Q9-aic8800.md` §10 hold the reversal; what follows is the defer analysis as it stood. The driver compiles and modposts clean for 32-bit ARM (the
 `rtl8852cu`-class `__aeabi_uldivmod` trap does not recur here) and has zero USB-ID bind conflicts
 against anything this repo already carries — but it is inert without roughly 60 firmware blobs
 that stock's own Release 20260907 `firmware.tar.gz` ships **none** of, and the 139-file vendored

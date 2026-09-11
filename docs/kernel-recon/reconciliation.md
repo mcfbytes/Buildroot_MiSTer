@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-11 01:34 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
+Generated 2026-09-11 03:16 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
 
 ## How to read this table
 
@@ -43,12 +43,13 @@ lives in `records/<full-sha>.json`.
   - `dropped-obsolete` — the code it changed no longer exists in any form we ship
     (e.g. fixes to a vendored driver that was replaced wholesale).
 - **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
-  carries it (`—` when not carried into the image — this includes `carried-upstream-only`
-  rows, which are carried into the *export* instead; see Why / replacement for that path).
+  carries it, or the `package/<name>` directory for `carried-as-package` rows (`—` when not
+  carried into the image — this includes `carried-upstream-only` rows, which are carried
+  into the *export* instead; see Why / replacement for that path).
 - **Impact today** — **read this column first.** It is what a user of *this build*
   actually experiences: `none (carried)` — the feature is present via our patch;
-  `none (in mainline)` — 6.18 already has it; `none (replaced)` — a named package/driver
-  provides it. Only rows marked **limitation** describe a real present-day difference,
+  `none (packaged)` — present via the named Buildroot package; `none (in mainline)` — 6.18
+  already has it; `none (replaced)` — a named package/driver provides it. Only rows marked **limitation** describe a real present-day difference,
   and each one is listed explicitly below the legend.
 - **Drop-risk** — a *hypothetical* used during triage: the worst effect **if this
   functionality had been left out with no replacement**, and whether that absence would
@@ -131,7 +132,6 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 
 | SHA | Branch | Disposition | Carried patch | Why / replacement | Impact today | Drop-risk | Coupled | Doc✓ | T2 | Subject |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `c129b0fac` | v6.18 | **not-evaluated** | — | see record | none (decided; see record) | feature-loss/silent | — | ? |  | Add AIC8800 WiFi/BT driver. |
 | `071d9092e` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | dts: fix warnings. |
 | `077c2c317` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Disable USB overcurrent signaling. |
 | `0d7778d1f` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: set uniq field. |
@@ -190,6 +190,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch, 0042-hid-playstation-stock-lightbar-led-names.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
 | `fc8f3c2c6` | v5.15 | **carried** | 0019-hidpp-k400-fn-inversion.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Logitech K400r: disable Fn swap. |
 | `3d95de58f` | v5.15 | **carried-upstream-only** | — | carried for export only: `board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`; → initramfs /init boot flow with loop= parameter p… | none (replaced) | feature-loss/silent | — | Y | ✓ | Support for init loop device. |
+| `c129b0fac` | v6.18 | **carried-as-package** | package/aic8800 | ships as a Buildroot package (buildroot-kernel-module-package), not a kernel patch | none (packaged) | feature-loss/silent | — | ? |  | Add AIC8800 WiFi/BT driver. |
 | `0d60c3482` | v5.15 | **dropped-upstream** | — | in mainline: `fc97b4d6a1a6`; → fc97b4d6a1a6 (HID: playstation: expose DualSense… | none (in mainline) | cosmetic/silent | — | N | ✓ | dualsense: add lightbar color control. |
 | `1412bd707` | v5.15 | **dropped-upstream** | — | in mainline: `74cb485f68eb`; → 74cb485f68eb (upstream HID: playstation: sanity … | none (in mainline) | boot-critical/loud | — | Y | ✓ | hid-sony: fix divide by 0 exception. |
 | `2799f8b94` | v5.15 | **dropped-upstream** | — | in mainline: `94f18bb19945`; → 94f18bb19945 (HID: nintendo: add support for nso… | none (in mainline) | feature-loss/silent | — | Y | ✓ | add support for NSO N64 controller (#49) |

@@ -2826,6 +2826,17 @@ fragment, for the `linux-update-defconfig` reason in §3.4).
 
 ## 8. The stage-1 initramfs stacks
 
+> **Superseded 2026-09-11 (ADR 0030).** There are no stage-1 stacks any more. The cpio is
+> `package/mister-initramfs` — a static glibc BusyBox (`mister-initramfs-busybox`, a
+> kconfig-package over `board/mister/common/initramfs-busybox.config`) plus a static
+> `fsck.exfat` (`mister-initramfs-exfatprogs`), built by the *main* configuration with the main
+> toolchain, verified by `package/mister-initramfs/verify.sh` inside the package build, and
+> embedded by the linux extension `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS`
+> (`linux/linux-ext-mister-initramfs.mk`), which the `de10nano` fragment sets. The musl-vs-glibc
+> size trade is measured in ADR 0030 §3.1. Everything below describes the retired layout and is
+> kept for the record; §8.4 (`/dev/console`), §8.6 (the exfatprogs trim) and §8.7 (compression)
+> still hold as *requirements*, now enforced by the package and the extension.
+
 STAGE 1 of the two-stage build (TASKS.md P1.10 / A1, PLAN.md §5,
 `docs/decisions/0002-initramfs.md`). Since 2026-09-06 a fragment stack per
 board, not a standalone defconfig — `initramfs-common` carries everything

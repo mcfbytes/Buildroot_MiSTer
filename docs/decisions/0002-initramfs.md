@@ -375,6 +375,50 @@ aarch64 leg is **8/8** with the `symlink` case's full assertion set (hot+cold ro
 `DT_LNK`, the create+unlink cluster-leak tripwire via `statvfs`, host-side fsck-clean). What
 remains unexecuted is 0031 on 32-bit 7.x — the RT kernel on a real board.
 
+## 8c. Amendment 2026-09-11 — stage 1 becomes a package of the main build (ADR 0030)
+
+The two-stage build's *mechanism* changes; nothing about what `/init` does, or the four
+kernel-side requirements (I1–I4), changes. The owner accepted ADR 0030's Phase B: stage 1 is no
+longer a second Buildroot configuration in `output-initramfs/` with its own musl toolchain. It is
+`package/mister-initramfs` in the main configuration:
+
+- `mister-initramfs-busybox` — a kconfig-package over the same
+  `board/mister/common/initramfs-busybox.config`, built with the **main glibc toolchain** and
+  linked `-static` by the package itself (`CONFIG_STATIC` pinned in its fixup), upstream's busybox
+  patches applied. §10's "glibc + `CONFIG_STATIC`" rejection was about a Buildroot
+  *configuration* (`BR2_STATIC_LIBS` is not offered with glibc, and the rootfs would carry the
+  shared libc): neither applies to a package that builds one static binary into its own
+  directory.
+- `mister-initramfs-exfatprogs` — the same for `fsck.exfat`; only that binary is copied, so
+  ADR 0026's trim of the other five tools is structural rather than a post-build deletion.
+- `mister-initramfs` — assembles the tree, the overlay's `/init` and `/dev/console` (under
+  `host-fakeroot`, as `fs/common.mk` does), packs the cpio with `--reproducible` and pinned
+  mtimes under `BR2_REPRODUCIBLE`, runs `verify.sh` (the applet, forbidden-binary, `/init` and
+  `ash -n` checks that were `make initramfs-verify`; a failure fails the package), and installs
+  `images/mister-initramfs.cpio`.
+- `linux/linux-ext-mister-initramfs.mk` + `linux/Config.ext.in` — a br2-external **linux
+  extension** (`BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS`). It is included by `linux/linux.mk`
+  before the kernel package is evaluated, which is the only hook early enough to make the kernel
+  *depend* on the package; the `CONFIG_INITRAMFS_SOURCE` fixup moved there from `external.mk`
+  unchanged. `MISTER_INITRAMFS_CPIO` stays overridable for `mk-sdcard.sh`'s installer relink.
+
+**Measured cost (2026-09-11):** static glibc BusyBox 942,660 B against the musl 263,308 B
+(§7's numbers); the static `fsck.exfat` adds a similar delta. Against the 16 MiB `zImage_dtb`
+budget (`docs/boot-chain.md` §7.3, a RAM-layout limit, not a card-size one) with ~7.4 MB of
+headroom on the RT kernel, accepted by the owner.
+
+**What this retires:** `output-initramfs/`, `output-initramfs-de25/`, the `initramfs-*`
+fragment stacks and their golden lines, `make initramfs` / `check-initramfs` /
+`initramfs-verify` / `de25-initramfs*`, `board/mister/common/initramfs-post-build.sh`, the
+initramfs host-toolchain cache in CI, and `external.mk`'s embedding block. The `BR2_arm` gate
+becomes the extension symbol, which the `de10nano` fragment sets and the `de25nano` fragment does
+not (ADR 0029 D11 unchanged: enabling it there is the one-line switch).
+
+**Verification for this amendment:** a from-scratch `make all` on the branch; `zcat
+usr/initramfs_inc_data | cmp - images/mister-initramfs.cpio` in the built kernel tree; the eight
+`scripts/test-initramfs.sh` cases; a boot of the resulting `zImage_dtb` on the rig. Recorded in
+the PR that lands it.
+
 ## 9. Known gaps (deliberate, not oversights)
 
 * **`root=PARTUUID=…` is not supported.** BusyBox's `resolve_mount_spec()`

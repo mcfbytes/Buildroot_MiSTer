@@ -269,14 +269,6 @@ runs:
         # this is shell, and both halves read the same env var either way.
         # See docs/ci.md#cache-keys.
         tc_hash=$(sha256sum .br-toolchain-fingerprint | cut -d' ' -f1)
-        # The stage-1 configuration is the initramfs-de10nano fragment stack
-        # (configs/fragments/stacks.mk), read through the same helper as the
-        # image/kernel stacks above so a fragment added to the stack moves this
-        # key without anyone editing a list here.
-        mapfile -t ir_files < <(config_stack_files INITRAMFS_DE10NANO)
-        [ "${#ir_files[@]}" -gt 0 ] || { echo "::error::configs/fragments/stacks.mk names no fragments for INITRAMFS_DE10NANO" >&2; exit 1; }
-        ir_hash=$(cat "${ir_files[@]}" | sha256sum | cut -d' ' -f1)
-        echo "BR_INITRAMFS_HOST_KEY=br-initramfs-host-${ws_fp}-${ver}-${ir_hash}" >> "$GITHUB_ENV"
 
         # Variant-resolved host-toolchain key + paths (main's key STRING
         # stays byte-identical for back-compat). Each variant gets its own
@@ -384,20 +376,6 @@ runs:
         path: ${{ env.BR_HOST_PATHS }}
         key: ${{ env.BR_HOST_KEY }}
 
-    # 4. The initramfs stage's separate static-musl toolchain. Shared across
-    # every variant (one key, one path) since the stage-1 cpio is embedded
-    # into every kernel this repo builds — so a kernel leg that runs first
-    # warms it for the main build that follows. Coupled to dl/ the same way
-    # as #3. See docs/ci.md#cache-coupling.
-    - name: Restore initramfs host toolchain
-      id: initramfs-host-cache
-      if: steps.dl-cache.outputs.cache-matched-key != '' || steps.dl-cache-variant.outputs.cache-matched-key != ''
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          output-initramfs/host
-          output-initramfs/build/host-*
-        key: ${{ env.BR_INITRAMFS_HOST_KEY }}
 
     # 5. ccache. CCACHE_DIR is exported here to match the BR2_CCACHE_DIR handed to
     # `make` below, so the action caches the exact directory Buildroot's compiler
@@ -471,11 +449,11 @@ runs:
       run: make de10nano-defconfig
 
     # `make all` builds both stages under one ccache (BR2_CCACHE propagates
-    # through MAKEFLAGS to the musl initramfs too — distinct ccache keys, so
+    # through MAKEFLAGS to every package, so
     # they coexist safely). MISTER_VERSION, if the caller exported it
     # (release.yml does, ADR 0018), is inherited and baked into
     # /MiSTer.version. See docs/ci.md#build-step.
-    - name: Build image (make all — initramfs + main rootfs, ccache both)
+    - name: Build image (make all)
       if: env.VARIANT == 'main'
       shell: bash
       run: |
@@ -484,7 +462,7 @@ runs:
           BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" \
           BR2_CCACHE_USE_BASEDIR=y
 
-    # A kernel variant: `make <name>` — stage-1 initramfs then the
+    # A kernel variant: `make <name>` — the
     # kernel-only build, sharing dl/ and ccache with main. The Makefile's
     # variant target hard-asserts the built kernel's config (e.g. rt's
     # CONFIG_PREEMPT_RT=y) — a fragment regression fails HERE, loudly, not
@@ -610,19 +588,6 @@ runs:
         path: ${{ env.BR_HOST_PATHS }}
         key: ${{ env.BR_HOST_KEY }}
 
-    # Every variant, like its restore: `make <variant>` builds the initramfs
-    # stage too (its cpio is embedded into every kernel), so output-initramfs/
-    # exists on green variant runs as well — and the key is variant-independent,
-    # so whichever variant builds it cold saves it for all.
-    - name: Save initramfs host toolchain
-      if: steps.initramfs-host-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          output-initramfs/host
-          output-initramfs/build/host-*
-        key: ${{ env.BR_INITRAMFS_HOST_KEY }}
-
     - name: Report disk & cache usage
       if: always()
       shell: bash
@@ -636,5 +601,4 @@ runs:
           echo "--- output-$VARIANT/host ---"; du -sh "output-$VARIANT/host" 2>/dev/null || true
           echo "--- output-$VARIANT (total) ---"; du -sh "output-$VARIANT" 2>/dev/null || true
         fi
-        echo "--- output-initramfs (total) ---"; du -sh output-initramfs 2>/dev/null || true
         echo "--- ccache ---"; du -sh "$GITHUB_WORKSPACE/.ccache" 2>/dev/null || true

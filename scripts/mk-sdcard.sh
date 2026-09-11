@@ -21,15 +21,16 @@
 # The seven steps (fixed interface — TASKS.md P5.3 "scripts/mk-sdcard.sh")
 # ---------------------------------------------------------------------------
 #  1. Build the INSTALLER initramfs cpio from configs/mister_installer_defconfig
-#     into output-installer/ (mirrors how the Makefile builds output-initramfs/
-#     and output-rt/: a separate Buildroot O= with its own static-musl config).
+#     into output-installer/ (a separate Buildroot O= with its own static-musl
+#     config, the way the Makefile builds output-rt/).
 #     Product: output-installer/images/rootfs.cpio.
 #
 #  2. Relink OUR kernel with that cpio embedded to produce the INSTALLER
 #     zImage_dtb, then RESTORE output/ so output/images/zImage_dtb (the real,
 #     Downloader-shipped kernel) is left exactly as `make all` produced it. This
 #     REUSES the completed main build in output/: a `linux-reconfigure all` that
-#     re-embeds step 1's cpio (via external.mk's MISTER_INITRAMFS_CPIO override) and
+#     re-embeds step 1's cpio (via linux/linux-ext-mister-initramfs.mk's
+#     MISTER_INITRAMFS_CPIO override) and
 #     re-links only the kernel on the ALREADY-BUILT toolchain (~15 min) -- NOT a
 #     fresh from-scratch build in a new O= (that would rebuild the whole internal
 #     glibc toolchain + rootfs, ~3 h, and blow the CI job's wall-clock cap; see
@@ -436,7 +437,7 @@ build_installer_kernel() {
 	# restores the shipped artifact from the pre-relink snapshot on any early exit,
 	# and disarm it once the normal restore has run. (The kernel build tree under
 	# output/build/linux-*/ still references the installer cpio after such a failure,
-	# but the next `make all` self-corrects via external.mk's default MISTER_INITRAMFS_CPIO;
+	# but the next `make all` self-corrects via linux-ext-mister-initramfs.mk's default MISTER_INITRAMFS_CPIO;
 	# what must never be left wrong is the shipped output/images/zImage_dtb, and this
 	# guarantees that.) Snapshot exists: snapshot_real_outputs ran before this.
 	_restore_output_zimage() {
@@ -448,7 +449,7 @@ build_installer_kernel() {
 	trap '_restore_output_zimage' EXIT
 
 	# Re-embed the installer cpio and re-link. `linux-reconfigure` re-runs the kernel
-	# kconfig-fixup (external.mk sets CONFIG_INITRAMFS_SOURCE=$INSTALLER_CPIO) then
+	# kconfig-fixup (linux-ext-mister-initramfs.mk sets CONFIG_INITRAMFS_SOURCE=$INSTALLER_CPIO) then
 	# rebuilds + reinstalls the kernel; the trailing `all` re-runs post-image.sh
 	# (BR2_ROOTFS_POST_IMAGE_SCRIPT) to reassemble output/images/zImage_dtb -- now the
 	# INSTALLER kernel. Everything else in output/ is already built, so `all` is fast.
@@ -461,8 +462,8 @@ build_installer_kernel() {
 	cp -f "$OUR_ZIMAGE_DTB" "$INSTALLER_ZIMAGE_DTB"
 
 	# Restore output/ to the real kernel: reconfigure back to the DEFAULT (stage-1)
-	# cpio -- external.mk's MISTER_INITRAMFS_CPIO default is output-initramfs/'s cpio,
-	# which the main build already produced -- and reassemble. Then, belt-and-
+	# cpio -- linux-ext-mister-initramfs.mk's MISTER_INITRAMFS_CPIO default is
+	# output/images/mister-initramfs.cpio, which package/mister-initramfs produced -- and reassemble. Then, belt-and-
 	# suspenders, drop our pre-relink snapshot back over output/images/zImage_dtb.
 	log "  restoring output/ to the real kernel ..."
 	br_make "$OUTPUT_DIR" linux-reconfigure all

@@ -169,4 +169,17 @@ menu "Off-device backup"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/azcopy/Config.in"
 endmenu
 
+menu "Stage-1 initramfs (ADR 0002)"
+	# The cpio the kernel embeds, built as a package of this configuration
+	# (ADR 0030): a static BusyBox and a static fsck.exfat from the main
+	# toolchain, plus board/mister/common/initramfs-overlay/init. The
+	# kernel side -- CONFIG_INITRAMFS_SOURCE pointing at the cpio -- is the
+	# linux extension BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS (Kernel ->
+	# Linux Kernel Extensions), which selects the package. The two
+	# sub-packages have no prompt of their own.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs-busybox/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs-exfatprogs/Config.in"
+endmenu
+
 endmenu

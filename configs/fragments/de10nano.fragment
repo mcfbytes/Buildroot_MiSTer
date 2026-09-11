@@ -31,6 +31,13 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.50"
 BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
+# Stage-1 initramfs INSIDE the zImage (ADR 0002): U-Boot passes `-` for
+# bootz's initrd and never loads one. This is a br2-external linux extension
+# (linux/linux-ext-mister-initramfs.mk): it selects package/mister-initramfs
+# and points CONFIG_INITRAMFS_SOURCE at its cpio at kconfig-fixup time. It
+# lives in THIS fragment, not de10nano-image, because every DE10 kernel --
+# the image's and the kernel-only RT variant's -- must embed it.
+BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y
 BR2_LINUX_KERNEL_LZ4=y
 BR2_LINUX_KERNEL_ZIMAGE=y
 BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"

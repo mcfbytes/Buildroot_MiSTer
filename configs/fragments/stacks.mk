@@ -25,14 +25,6 @@ DE10NANO_FRAGMENTS        := common de10nano image-common de10nano-image
 DE10NANO_KERNEL_FRAGMENTS := common de10nano kernel-only
 DE25NANO_FRAGMENTS        := common de25nano image-common
 #
-# The stage-1 initramfs stacks. `initramfs-common` is the third sharing axis:
-# it is in NO image stack and NO kernel-only stack — a stage-1 stack builds a
-# static musl BusyBox cpio and no kernel (it deliberately does not include
-# `common`, which carries BR2_LINUX_KERNEL=y). Per board, only the arch/ABI +
-# headers-series lines differ, and scripts/check-config-fragments.sh (f)
-# asserts each initramfs-<board> fragment agrees symbol-for-symbol with that
-# board's <board>.fragment. Output dirs: output-initramfs/ (DE10, embedded in
-# every DE10 kernel) and output-initramfs-de25/ (DE25, built and QEMU-proven,
-# not yet embedded — ADR 0029 D11).
-INITRAMFS_DE10NANO_FRAGMENTS := initramfs-common initramfs-de10nano
-INITRAMFS_DE25NANO_FRAGMENTS := initramfs-common initramfs-de25nano
+# There is no stage-1 initramfs stack any more (ADR 0030, 2026-09-11): the
+# cpio is package/mister-initramfs, built by the main configuration with the
+# main toolchain, and embedded by linux/linux-ext-mister-initramfs.mk.

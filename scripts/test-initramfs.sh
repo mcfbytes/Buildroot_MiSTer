@@ -39,13 +39,13 @@
 #
 # TWO BOARDS, ONE /init (ADR 0029 D11, 2026-09-06). The stage-1 /init is
 # arch-neutral and is built for both boards from the same fragment stack base
-# (configs/fragments/initramfs-common.fragment); `--board` picks which built
+# (package/mister-initramfs, built by each board's own configuration); `--board` picks which built
 # cpio to boot and which machine to boot it on:
 #
-#   de10nano (default)  output-initramfs/images/rootfs.cpio, armv7, on
+#   de10nano (default)  output/images/mister-initramfs.cpio, armv7, on
 #                       `qemu-system-arm -M virt` with a multi_v7_defconfig
 #                       kernel at the DE10's pinned version.
-#   de25nano            output-initramfs-de25/images/rootfs.cpio, aarch64, on
+#   de25nano            output-de25/images/mister-initramfs.cpio, aarch64, on
 #                       `qemu-system-aarch64 -M virt -cpu cortex-a76` with a
 #                       kernel built from the DE25's OWN product config
 #                       (board/mister/de25nano/linux.config + the shared
@@ -59,17 +59,17 @@
 #                       cannot run under QEMU at all).
 #
 #   Every case, cmdline and assertion is identical between the two legs. The
-#   cross compiler for the DE25 leg is the stage-1 build's own musl toolchain
-#   (output-initramfs-de25/host/bin), so `make de25-initramfs` is the only
+#   cross compiler for the DE25 leg is the DE25 build's own glibc toolchain
+#   (output-de25/host/bin), so `make de25` is the only
 #   build prerequisite -- no `make de25` needed.
 #
 # Prerequisites (all checked explicitly, with an actionable message, before
 # anything runs):
-#   - `make initramfs` (or `make de25-initramfs`) already run, so the cpio
+#   - `make mister-initramfs` (or `make de25`, with the DE25 stack enabling the extension) already run, so the cpio
 #     exists
 #   - the matching Buildroot cross toolchain on PATH or under the output dir
 #     the board uses (arm-buildroot-linux-gnueabihf-gcc from output/host/bin;
-#     aarch64-buildroot-linux-musl-gcc from output-initramfs-de25/host/bin)
+#     aarch64-buildroot-linux-gnu-gcc from output-de25/host/bin)
 #   - qemu-system-arm / qemu-system-aarch64, mkfs.vfat, mkfs.exfat, sfdisk,
 #     mke2fs, cpio, mtools (mcopy, mmd)
 #   - a QEMU-bootable test kernel: reused from a cache
@@ -104,8 +104,8 @@ set -- ${_args[@]+"${_args[@]}"}
 
 case "$BOARD" in
 de10nano)
-	CPIO="$ROOT/output-initramfs/images/rootfs.cpio"
-	CPIO_MAKE_TARGET="initramfs"
+	CPIO="$ROOT/output/images/mister-initramfs.cpio"
+	CPIO_MAKE_TARGET="mister-initramfs"
 	KARCH=arm
 	CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
 	TOOLCHAIN_BIN="$ROOT/output/host/bin"
@@ -121,11 +121,11 @@ de10nano)
 	CACHE_TAG=""
 	;;
 de25nano)
-	CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
-	CPIO_MAKE_TARGET="de25-initramfs"
+	CPIO="$ROOT/output-de25/images/mister-initramfs.cpio"
+	CPIO_MAKE_TARGET="de25   # with BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y in the DE25 stack (ADR 0029 D11)"
 	KARCH=arm64
-	CROSS_COMPILE="${CROSS_COMPILE:-aarch64-buildroot-linux-musl-}"
-	TOOLCHAIN_BIN="$ROOT/output-initramfs-de25/host/bin"
+	CROSS_COMPILE="${CROSS_COMPILE:-aarch64-buildroot-linux-gnu-}"
+	TOOLCHAIN_BIN="$ROOT/output-de25/host/bin"
 	QEMU_SYSTEM=qemu-system-aarch64
 	# `-M virt` has no default CPU on aarch64; cortex-a76 is the DE25's big
 	# core and what the stage-1 toolchain tunes for (BR2_cortex_a76_a55 --

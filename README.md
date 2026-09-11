@@ -651,20 +651,19 @@ shipped **byte-identical to stock's**, fetched by hash.
 
 ```
 Makefile                 wrapper: fetches + hash-verifies Buildroot, forwards targets
-Config.in / external.mk  BR2_EXTERNAL definition for the 16 in-tree packages
+Config.in / external.mk  BR2_EXTERNAL definition for the 18 in-tree packages
 configs/fragments/       stacks.mk                  (which fragments form which config)
                          common.fragment            (policy shared by every board + variant)
                          de10nano.fragment          (DE10 arch/ABI, headers, kernel stanza)
                          de10nano-image.fragment    (the shipped image: hooks, ext4, packages)
                          kernel-only.fragment       (kernel-only base, shared by variants)
                          de25nano.fragment          (DE25-Nano developer OS, aarch64)
-                         initramfs-common.fragment  (stage-1 cpio: everything but the arch)
-                         initramfs-de10nano.fragment / initramfs-de25nano.fragment
-                                                    (stage-1 arch/ABI + headers, per board)
                          golden.sha256              (resolved-config hashes CI asserts)
 configs/                 mister_rt.fragment         (PREEMPT_RT / 7.x delta)
                          mister_installer_defconfig (SD-card installer cpio)
                          -> docs/buildroot-config.md has the rationale for every line
+linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kernel
+                         extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
   linux-patches/         37 carried patches: 36 MiSTer + 1 mainline backport (0047)
@@ -803,7 +802,7 @@ Three things that will bite you otherwise:
 
 - **`make` on its own prints help rather than building.** A reflexive bare `make` in a
   Buildroot tree with no config starts a full **x86** toolchain build that nothing here
-  wants. Use `make all` — it runs the stage-1 initramfs build first, then the image.
+  wants. Use `make all`.
 - **Do not pass `-j`.** Buildroot's top level is not parallel-safe; it parallelises each
   package internally, defaulting to your CPU count. CI runs a bare `make all`.
 - **Configs are generated once and then left alone.** `make all` and `make rt` never
@@ -824,8 +823,7 @@ Three things that will bite you otherwise:
 | `make rt` | Kernel-only `PREEMPT_RT` build → `zImage_dtb-rt` + module overlay |
 | `make rt-defconfig` | Regenerate `output-rt/.config` from its stack — the rt twin of `de10nano-defconfig`; run it after a Buildroot pin move or a `make clean` |
 | `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all`. The card carries no variant kernel, so `make rt` is not required first; if you *do* build RT, run it before `make all` so its modules land in the image |
-| `make initramfs` | Stage-1 cpio only, and print its size |
-| `make de25-initramfs` | The same stage 1 built for aarch64 (`output-initramfs-de25/`), verified; boot-test it with `scripts/test-initramfs.sh --board de25nano` |
+| `make mister-initramfs` | Stage-1 cpio only (`output/images/mister-initramfs.cpio`); it is a package of the main build (ADR 0030), embedded in the kernel by the `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS` extension |
 | `make menuconfig` / `linux-menuconfig` | Interactive Buildroot / kernel config |
 | `make savedefconfig` | Write the config back to the defconfig (**always** do this after editing) |
 | `make buildroot-verify` | Download + SHA-256-verify the pinned Buildroot tarball |

@@ -265,23 +265,22 @@ run_script "check-size-budget.sh" "$ROOT/scripts/check-size-budget.sh" "$LINUX_I
 section "Initramfs (P1.10-P1.12, A7)"
 # =============================================================================
 
-if [ "$IS_DEFAULT_OUTPUT" -eq 1 ]; then
-	printf -- '--- check-initramfs (Makefile: main kernel .config has CONFIG_BLK_DEV_INITRD / CONFIG_INITRAMFS_SOURCE) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory check-initramfs ); then
-		pass "check-initramfs (main kernel config)"
-	else
-		fail "check-initramfs (main kernel config)"
-	fi
-
-	printf -- '--- initramfs-verify (Makefile: required BusyBox applets + /init + /dev/console present in the cpio, ash -n parses /init) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory initramfs-verify ); then
-		pass "initramfs-verify (cpio applet/structure check)"
-	else
-		fail "initramfs-verify (cpio applet/structure check)"
-	fi
+# Since ADR 0030 the cpio is package/mister-initramfs (images/mister-initramfs.cpio)
+# and the kernel embeds it through linux/linux-ext-mister-initramfs.mk, which
+# fails the kernel's kconfig-fixup if the cpio is absent. What is left to assert
+# here is the ARTIFACT: the built kernel config really names that cpio (I1/I2),
+# and the cpio is the one next to it. verify.sh's applet/structure checks ran
+# inside the package build and failed it if anything was wrong.
+INITRAMFS_CPIO="$BUILD_DIR/images/mister-initramfs.cpio"
+printf -- '--- initramfs embedding (kernel .config: CONFIG_BLK_DEV_INITRD=y, CONFIG_INITRAMFS_SOURCE=images/mister-initramfs.cpio) ---\n'
+if [ ! -f "$INITRAMFS_CPIO" ]; then
+	fail "initramfs embedding" "no $INITRAMFS_CPIO -- package/mister-initramfs did not build"
+elif ! grep -qx 'CONFIG_BLK_DEV_INITRD=y' "$KCFG"; then
+	fail "initramfs embedding" "CONFIG_BLK_DEV_INITRD is not y in $KCFG"
+elif ! grep -q "^CONFIG_INITRAMFS_SOURCE=\".*/mister-initramfs.cpio\"" "$KCFG"; then
+	fail "initramfs embedding" "CONFIG_INITRAMFS_SOURCE in $KCFG does not name mister-initramfs.cpio: $(grep '^CONFIG_INITRAMFS_SOURCE=' "$KCFG" || echo '(unset -- the kernel has NO initramfs and will panic on the FAT root)')"
 else
-	skip "check-initramfs (main kernel config)" "Makefile's OUTPUT_DIR is fixed to ./output, not parameterized; build dir here is $BUILD_DIR"
-	skip "initramfs-verify (cpio applet/structure check)" "same fixed-OUTPUT_DIR reason"
+	pass "initramfs embedding ($(grep '^CONFIG_INITRAMFS_SOURCE=' "$KCFG"), cpio $(stat -c %s "$INITRAMFS_CPIO") bytes)"
 fi
 
 if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
@@ -298,23 +297,15 @@ else
 	fi
 fi
 
-# The DE25-Nano's stage 1: the SAME /init built for aarch64 (`make
-# de25-initramfs`, ADR 0029 D11), checked the same two ways -- the Makefile's
-# structural cpio assertions and the eight QEMU cases, on qemu-system-aarch64.
-# Gated on the cpio EXISTING rather than on a board flag: this suite runs
-# against a DE10 image, and a tree that has never built the DE25 stage 1 has
-# nothing to check here -- but one that has must not skip it silently.
-DE25_INITRAMFS_CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
+# The DE25-Nano's stage 1: the SAME package built for aarch64 by the DE25
+# configuration -- once its stack enables BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS
+# (ADR 0029 D11 keeps that off until a board has booted). Gated on the cpio
+# EXISTING rather than on a board flag: a tree that has not built it has
+# nothing to check here, but one that has must not skip it silently.
+DE25_INITRAMFS_CPIO="$ROOT/output-de25/images/mister-initramfs.cpio"
 if [ ! -f "$DE25_INITRAMFS_CPIO" ]; then
-	skip "de25-initramfs-verify (aarch64 cpio applet/structure check)" "no $DE25_INITRAMFS_CPIO -- 'make de25-initramfs' not run in this tree"
-	skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "same: no DE25 stage-1 cpio built"
+	skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "no $DE25_INITRAMFS_CPIO -- the DE25 stack does not build package/mister-initramfs (D11)"
 else
-	printf -- '--- de25-initramfs-verify (Makefile: the DE10 initramfs-verify assertions, on the aarch64 cpio under qemu-aarch64) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory de25-initramfs-verify ); then
-		pass "de25-initramfs-verify (aarch64 cpio applet/structure check)"
-	else
-		fail "de25-initramfs-verify (aarch64 cpio applet/structure check)"
-	fi
 	if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
 		skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
 	elif ! have qemu-system-aarch64; then

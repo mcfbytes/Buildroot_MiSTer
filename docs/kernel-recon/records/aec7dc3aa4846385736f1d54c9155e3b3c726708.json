@@ -1,0 +1,80 @@
+{
+  "sha": "aec7dc3aa4846385736f1d54c9155e3b3c726708",
+  "subject": "config: enable CONFIG_TUN for tap device support (#76)",
+  "author": "Nigel Shearman",
+  "author_is_pr_contributor": true,
+  "date": "2026-07-24",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "net",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [
+      "1da177e4c3f41524e886b7f1b8a0c1fc7321cac2"
+    ],
+    "vanilla_file_line": "drivers/net/Kconfig:396 (v6.18.49)",
+    "vanilla_quote": "config TUN\n\ttristate \"Universal TUN/TAP device driver support\"\n\tdepends on INET\n\tselect CRC32",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": true,
+  "provenance_doc_ref": "none \u2014 this commit postdates docs/patch-provenance.md entirely (fork commit 2026-07-24; the doc's baseline is f0fb626ac). No prior claim exists to agree or disagree with; recorded true as 'no conflict', not as corroboration.",
+  "impact": {
+    "effect_if_absent": "/dev/net/tun is absent, so no tun or tap interface can be created and TUNSETIFF fails with ENODEV. Anything routing or NATing a private subnet on the MiSTer breaks. The concrete loss the fork commit names: a WiFi station cannot emit frames bearing a second source MAC, so CONFIG_MACVLAN (already carried, linux.config:168) cannot give an emulated NIC \u2014 e.g. the Amiga A2065 Ethernet card \u2014 its own address over wireless the way it can on wired eth0. A tap device is the only way out on WiFi. Wired users are unaffected; WiFi users lose emulated-NIC networking entirely.",
+    "affected_hardware": [
+      "any MiSTer on WiFi bridging an emulated NIC (Amiga A2065, ao486 NE2000, etc.)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/net/tun character device (TUNSETIFF ioctl, IFF_TAP mode); Main_MiSTer's own A2065 Amiga Ethernet emulation (support/minimig/minimig_a2065*.cpp, merged 2026-07-26, two days after this fork commit) opens the node directly -- this is not a community-script use case, it is first-party Main_MiSTer code built into the shipped binary via the Makefile's `wildcard ./support/*/*.cpp` rule",
+    "main_mister_ref": "support/minimig/minimig_a2065_ethernet.cpp:24 (#include <linux/if_tun.h>), :41 (open(\"/dev/net/tun\", O_RDWR | O_CLOEXEC)), :46 (ifr.ifr_flags = IFF_TAP | IFF_NO_PI;), :48 (ioctl(fd, TUNSETIFF, &ifr)); support/minimig/minimig_a2065.cpp:120 (int fd = open(\"/dev/net/tun\", O_RDWR); -- the A2065_TAP capability probe in a2065_mode_available())"
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "none \u2014 CONFIG_TUN exists in v6.18.49 under the same name with the same dependencies (depends on INET, select CRC32), both already =y in our resolved config, so the symbol needs no companion changes",
+    "effort": "low"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:175 (CONFIG_TUN=y) \u2014 our build's config file, which is what Buildroot actually consumes (configs/fragments/de10nano.fragment:33 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE); the fork's arch/arm/configs/MiSTer_defconfig edit itself is not applicable to us"
+    ],
+    "duplicate_of": [
+      "5fcfae36975b217f6ab82b501065f3b13173ae15 (MiSTer-v5.15, 2026-07-24, identical semantic change with different base-config context) \u2014 the same config symbol is enabled in both branches via cherry-pick, but with different line numbers in the base defconfig files, yielding different patch-ids (c2b38529\u2026 vs 7506a765\u2026) despite byte-identical commit message and hunk content (both change '# CONFIG_TUN is not set' to 'CONFIG_TUN=y')"
+    ]
+  },
+  "license_provenance": null,
+  "notes": "DUPLICATE OF 5.15 COMMIT WITH CONTEXT VARIANCE. This is the MiSTer-v6.18 re-application of the same config change already on MiSTer-v5.15 (record in this directory). Both commits have identical author (Nigel Shearman), identical date (2026-07-24), identical commit message, and identical diff hunk content (enable CONFIG_TUN=y). They differ in context lines only: aec7dc3aa edits line 1380 in the 6.18 defconfig while 5fcfae369 edits line 1307 in the 5.15 defconfig \u2014 both reference CONFIG_MACVLAN=y as context, but at different line numbers due to different intermediate changes between the kernel versions. Patch-ids thus differ (stable-form c2b38529\u2026 vs 7506a765\u2026) even though the semantic content is identical.\n\nDISPOSITION RATIONALE: 'dropped-deliberate' (same as 5fcfae369). The fork's defconfig edit is not carried as a patch file because our kernel config lives in board/mister/de10nano/linux.config rather than arch/arm/configs/MiSTer_defconfig, so a one-symbol fork defconfig change is mirrored as a config line in OUR config file, not a patch file. The fork commit itself is dropped; the FUNCTIONALITY is provided by dependencies.superseded_by. This disposition matches the identical pattern established by the 5.15 version of this same commit.\n\nVERIFICATION \u2014 RESOLVED AGAINST V6.18.49, NOT ASSUMED. linux.config is a MINIMAL defconfig, so a written symbol is not necessarily a resolved one. Copied linux.config to a scratch .config and ran `make -C <v6.18.49-linux> O=<scratch> ARCH=arm LLVM=1 olddefconfig`. Resolved output carries CONFIG_TUN=y at line 1416, with CONFIG_INET=y (line 861) satisfying 'depends on' and CONFIG_CRC32=y (line 4290) satisfying 'select'. A before/after diff shows exactly one changed line ('# CONFIG_TUN is not set' -> 'CONFIG_TUN=y') \u2014 no side effects, nothing else flipped on. This matches the experience from the 5.15 verification, indicating the symbol resolved identically across both kernel versions.\n\nSTOCK 6.18 CONFIG VERIFICATION. The shipped stock kernel (Release 20260907 at commit aec7dc3aa, kernel 6.18.38) carries CONFIG_TUN=y at line 1383 in the extracted IKCONFIG (docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config:1383). This confirms the commit was included in the shipped binary, since aec7dc3aa is the exact commit the stock image was built from (measured \u00a71.2 of PLAN.md by config diffing).\n\nVANILLA STATUS \u2014 NO FORWARD-PORT CHANGES NEEDED. CONFIG_TUN exists in v6.18.49 at drivers/net/Kconfig:396 under the same name with identical dependencies. The symbol is not new or renamed; no companion changes are required. The vanilla Kconfig reference is identical to the 5.15 analysis: the TUN driver predates git history, so 1da177e4c3f4 (the 2.6.12-rc2 initial import) is cited as the canonical source.\n\nGROUNDING CONSTRAINT NOTE: The vanilla version used for this verification is v6.18.49 (release commit 1c732c6b94f0faee1526bd375add2fe10cba2e26), one release short of the pinned v6.18.50, due to mirror lag (env.md grounding constraint). The forward_port conflict/effort assessment and the equivalence judgment remain unchanged because CONFIG_TUN is a stable symbol with no known regressions in the .49\u2013.50 release window; however, the grounding note must stand: a re-verification against the actual 6.18.50 tag once it is reachable would close the gap formally (PLAN \u00a73, env.md grounding-constraint procedure).",
+  "wave2_corrections": [
+    {
+      "by": "W2-coupling",
+      "field": "userspace_coupling.main_mister_ref",
+      "was": "null",
+      "now": "support/minimig/minimig_a2065_ethernet.cpp:24,41,46,48; support/minimig/minimig_a2065.cpp:120",
+      "evidence": "grep -rniE '/dev/net/tun|TUNSETIFF|IFF_TAP|IFF_TUN|if_tun\\.h' $S/main found real hits in Main_MiSTer's own A2065 Amiga Ethernet emulation (support/minimig/minimig_a2065_ethernet.cpp:24 #include <linux/if_tun.h>, :41 open(\"/dev/net/tun\",...), :46 IFF_TAP|IFF_NO_PI, :48 ioctl(fd,TUNSETIFF,&ifr); support/minimig/minimig_a2065.cpp:120 open(\"/dev/net/tun\",...) in a2065_mode_available()'s A2065_TAP probe). git log confirms this code was added 2026-07-26 (commit df0538ab4d9a), two days after this fork commit (2026-07-24), and is compiled into the shipped binary via the Makefile's `CPP_SRC += $(wildcard ./support/*/*.cpp)` rule -- not a community script. The Q1 test criterion supplied in this wave's task brief ('expected zero [grep hits], so coupled should be false; the tap use case is community scripts') is CONTRADICTED by the live $S/main tree: coupled=true (already correctly set in the Wave-1 record) is the evidence-backed value; only the missing main_mister_ref citation is corrected here. coupled is left unchanged."
+    },
+    {
+      "by": "W2-covered",
+      "field": "dependencies.superseded_by[0]",
+      "was": "configs/mister_de10nano_defconfig:133 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE",
+      "now": "configs/fragments/de10nano.fragment:33 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE",
+      "evidence": "configs/mister_de10nano_defconfig no longer exists in the repo (find /home/user/Buildroot_MiSTer -iname '*mister_de10nano_defconfig*' returns nothing). The 2026-09 fragment split moved the pin: grep -n BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE configs/fragments/de10nano.fragment -> line 33: BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE=\"$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config\". The de10nano.fragment file is real and is one of DE10NANO_FRAGMENTS in configs/fragments/stacks.mk."
+    }
+  ]
+}

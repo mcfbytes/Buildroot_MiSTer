@@ -1,0 +1,63 @@
+{
+  "sha": "33a0521fd46b3991ec3a882f659bceb2c1cb4399",
+  "subject": "config: enable CONFIG_RTW88_8821AU for Realtek 8821AU/8811AU USB adapters (#81)",
+  "author": "Julian Seitz",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-08",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "defconfig-enablement",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+  "impact": {
+    "effect_if_absent": "Realtek 8821AU/8811AU USB WiFi adapters such as TP-Link Archer T2U Nano bind no driver and produce no wlan interface. The rtw88_8821au kernel driver contains the USB device IDs but was not built because CONFIG_RTW88_8821AU was disabled.",
+    "affected_hardware": [
+      "TP-Link Archer T2U Nano",
+      "Realtek 8811AU/8821AU USB WiFi adapters"
+    ],
+    "device_ids": [
+      "2357:011e",
+      "2357:011f",
+      "2357:0120"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": null,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "HYPOTHESIS CONFIRMED: board/mister/de10nano/linux.config has had CONFIG_RTW88_8821AU=m since the v10 Wi-Fi expansion (docs/wifi-parity.md §6.4, ADR 0016). This commit enables the same setting in the fork's defconfig. Disposition: dropped-deliberate, identical to the CONFIG_MACVLAN/CONFIG_TUN precedent cited in PLAN.md §2.2.\n\nEVIDENCE: (1) Our linux.config line 623: CONFIG_RTW88_8821AU=m. After olddefconfig on v6.18.49 (the reachable pin; 6.18.50 unverified per env.md), resolved config shows: CONFIG_RTW88_8821AU=m, CONFIG_RTW88_8821A=m (auto-selected), CONFIG_RTW88_88XXA=m (auto-selected via RTW88_8821A), CONFIG_RTW88_USB=m (auto-selected). Kconfig chain in drivers/net/wireless/realtek/rtw88/Kconfig confirms: RTW88_8821AU selects RTW88_CORE, RTW88_USB, and RTW88_8821A; RTW88_8821A selects RTW88_88XXA. (2) Firmware rtw8821a_fw.bin is shipped via BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88 (already present in image-common.fragment and present in stock firmware inventory). (3) Device motivation: TP-Link Archer T2U Nano (2357:011e) is listed in v6.18.49 drivers/net/wireless/realtek/rtw88/rtw8821au.c line 48-49 with comment /* TP Link */. (4) Stock baseline evidence: stock-20260907-linux.config line 1682 has CONFIG_RTW88_8821AU disabled (# CONFIG_RTW88_8821AU is not set); stock-20260907-modules.txt contains NO rtw88_8821au.ko. (5) Userspace coupling: none expected; grep of Main_MiSTer for '8821AU', '8821au', 'rtw8821', '2357' yields no matches. No device-specific event codes, ioctls, sysfs paths, or /dev nodes in Main_MiSTer.\n\nIMPLICATION FOR STOCK USERS: Stock MiSTer 20260907 users with Archer T2U Nano adapters have no driver; our image has provided the driver since July 2026. This is a capability we already owned before the fork commit and the defconfig alignment."
+}

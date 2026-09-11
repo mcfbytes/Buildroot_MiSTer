@@ -13,7 +13,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+EM_DASH = "\u2014"  # kept out of the f-string: a backslash inside {} is a SyntaxError before Python 3.12
 RECORDS = HERE / "records"
+
+def carried_patches_str(r):
+    """The patch file(s) a record is carried in, for display. A record split across
+    several patches (carried_patches, plural -- e.g. one commit's diff produced both
+    0038 and 0039) renders every one of them, joined; a record's own comma-in-string
+    is impossible here since these are all bare patch filenames. Falls back to the
+    single carried_patch field, then EM_DASH, for records that predate the plural
+    field. No backslash inside the f-string expression (kept Py3.11-compatible, same
+    reason EM_DASH is a module constant above)."""
+    cps = [str(cp) for cp in (r.get("carried_patches") or [])]
+    return ", ".join(cps) if cps else (r.get("carried_patch") or EM_DASH)
+
 PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 
 # "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the
@@ -24,8 +37,15 @@ PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 # something it does not; folding it into "dropped-deliberate" would claim upstream's
 # kernel doesn't need it, when the whole reason the split exists is that upstream's own
 # boot flow depends on it. First case: 3d95de58f (the loop= boot parameter).
-DISP = {"carried", "carried-upstream-only", "dropped-upstream", "dropped-deliberate",
-        "dropped-obsolete", "not-evaluated", "needs-verification", "misclassified"}
+# "carried-as-package" (added 2026-09-10 for c129b0fac3, stock's vendored AIC8800 driver):
+# the functionality ships in the image, but as a Buildroot kernel-module PACKAGE built from a
+# pinned upstream tarball, not as a patch in linux-patches/. carried_patch then names the
+# package/<name> directory. Distinct from "carried" (Buildroot applies a patch) and from
+# "dropped-deliberate" (nothing we ship provides it). ADR 0016 and PLAN §2.9 forbid carrying
+# an 82k-line vendored driver as a patch, so this is the only honest value for that row.
+DISP = {"carried", "carried-upstream-only", "carried-as-package", "dropped-upstream",
+        "dropped-deliberate", "dropped-obsolete", "not-evaluated", "needs-verification",
+        "misclassified"}
 
 # ---------------------------------------------------------------- load work lists
 main_shas, meta = [], None
@@ -70,9 +90,12 @@ if len(residue_full) != 15:
 patch_files = sorted(p.name for p in PATCH_DIR.glob("0*.patch"))
 mapped = defaultdict(list)
 for row in rows:
-    # a patch's origin may be a direct carry (carried_patch) or a capability
-    # re-implementation recorded in dependencies.superseded_by (e.g. 0031)
+    # a patch's origin may be a direct carry (carried_patch), a capability
+    # re-implementation recorded in dependencies.superseded_by (e.g. 0031), or one of
+    # several patches split out of a single origin commit's diff (carried_patches, plural
+    # -- e.g. one record's diff produced both 0038 and 0039; see fork-sync-2026-09.md)
     refs = [row["r"].get("carried_patch") or ""]
+    refs += [str(s) for s in row["r"].get("carried_patches") or []]
     refs += [str(s) for s in (row["r"].get("dependencies") or {}).get("superseded_by") or []]
     for cp in refs:
         for pf in patch_files:
@@ -86,7 +109,8 @@ if orphans:
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 order = {d: i for i, d in enumerate(
     ["misclassified", "needs-verification", "not-evaluated", "carried",
-     "carried-upstream-only", "dropped-upstream", "dropped-deliberate", "dropped-obsolete"])}
+     "carried-upstream-only", "carried-as-package", "dropped-upstream", "dropped-deliberate",
+     "dropped-obsolete"])}
 rows.sort(key=lambda x: (order.get(x["r"].get("disposition"), 9), x["sha"]))
 
 with open(HERE / "reconciliation.jsonl", "w") as f:
@@ -111,6 +135,11 @@ def why_of(r):
         if up:
             parts.append(f"carried for export only: `board/mister/de10nano/"
                           f"linux-patches-upstream/{up}`")
+    if d == "carried-as-package":
+        # The Carried patch column already names package/<name>; say HOW it is built so the
+        # reader does not go looking for a .patch file.
+        mode = r.get("carried_mode") or "buildroot package"
+        parts.append(f"ships as a Buildroot package ({mode}), not a kernel patch")
     sup = (r.get("dependencies") or {}).get("superseded_by") or []
     comp = []
     for it in sup[:2]:
@@ -129,6 +158,8 @@ def impact_today(r):
     notes = (r.get("notes") or "").lower()
     if d == "carried":
         return "none (carried)"
+    if d == "carried-as-package":
+        return "none (packaged)"
     if "known limitation" in notes or "known regression" in notes:
         return "**limitation — see record**"
     if d == "dropped-upstream":
@@ -173,7 +204,9 @@ reconciled against our vanilla-{vanilla_label}-based build. The full evidence fo
 lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
-  branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
+  branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`
+  is upstream's own 6.18 port, **what stock ships since Release 20260907**, reconciled
+  incrementally (`fork-sync.conf`); `v5.14`/`v5.13.12` are older branches whose
   unique commits never reached stock (analyzed so nothing is lost *between* MiSTer's own
   branches either).
 - **Disposition** — what happened to the commit's functionality in this build:
@@ -187,6 +220,15 @@ lives in `records/<full-sha>.json`.
     that column tracks only what Buildroot applies. Used when upstream's own boot flow
     needs the commit but this build replaced it with something else (named in
     Why / replacement). See "The one `carried-upstream-only` row" below;
+  - `carried-as-package` — kept, but as a Buildroot **package** rather than a kernel
+    patch: the functionality ships in the image, built out-of-tree from a pinned upstream
+    tarball, and the **Carried patch** column names the `package/<name>` directory instead
+    of a `.patch` file. Added 2026-09-10 for `c129b0fac3` (stock's AIC8800 driver), whose
+    82 k lines ADR 0016 and PLAN §2.9 both forbid carrying as an in-tree patch — a patch
+    that size would make `scripts/export-kernel-tree.sh`'s per-patch replay and
+    `scripts/lint-kernel-patches.sh` meaningless for that entry. Distinct from `carried`
+    (Buildroot applies a patch to the kernel tree) and from `dropped-deliberate` (the
+    functionality is in no form we ship): here it ships, just not through the patch series;
   - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
     cites the upstream commit and quotes the matching code);
   - `dropped-deliberate` — intentionally not carried **anywhere**, with the replacement
@@ -196,12 +238,13 @@ lives in `records/<full-sha>.json`.
   - `dropped-obsolete` — the code it changed no longer exists in any form we ship
     (e.g. fixes to a vendored driver that was replaced wholesale).
 - **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
-  carries it (`—` when not carried into the image — this includes `carried-upstream-only`
-  rows, which are carried into the *export* instead; see Why / replacement for that path).
+  carries it, or the `package/<name>` directory for `carried-as-package` rows (`—` when not
+  carried into the image — this includes `carried-upstream-only` rows, which are carried
+  into the *export* instead; see Why / replacement for that path).
 - **Impact today** — **read this column first.** It is what a user of *this build*
   actually experiences: `none (carried)` — the feature is present via our patch;
-  `none (in mainline)` — 6.18 already has it; `none (replaced)` — a named package/driver
-  provides it. Only rows marked **limitation** describe a real present-day difference,
+  `none (packaged)` — present via the named Buildroot package; `none (in mainline)` — 6.18
+  already has it; `none (replaced)` — a named package/driver provides it. Only rows marked **limitation** describe a real present-day difference,
   and each one is listed explicitly below the legend.
 - **Drop-risk** — a *hypothetical* used during triage: the worst effect **if this
   functionality had been left out with no replacement**, and whether that absence would
@@ -287,7 +330,7 @@ directory is not capped at one.
     for row in rows:
         r = row["r"]
         f.write(f"| `{row['sha'][:9]}` | {row['branch'].replace('MiSTer-','')} "
-                f"| **{r.get('disposition')}** | {r.get('carried_patch') or '\u2014'} "
+                f"| **{r.get('disposition')}** | {carried_patches_str(r)} "
                 f"| {why_of(r)} "
                 f"| {impact_today(r)} | {sev(r)}/{fm(r)} | {'Y' if coup(r) else '—'} "
                 f"| {'N' if r.get('agrees_with_provenance_doc') is False else 'Y' if r.get('agrees_with_provenance_doc') else '?'} "
@@ -327,11 +370,11 @@ with open(HERE / "silent-regressions.md", "w") as f:
     f.write(f"**Total: {len(cands)} candidates** (of which "
             f"{sum(1 for c in cands if sev(c['r'])=='feature-loss')} feature-loss).\n\n")
     f.write("## Protected (carried) silent-failure items\n\nThese WOULD regress silently if their "
-            "patch were ever dropped — they are carried today:\n\n")
+            "patch (or, for `carried-as-package` rows, package) were ever dropped — they are carried today:\n\n")
     for row in rows:
         r = row["r"]
-        if r.get("disposition") == "carried" and fm(r) == "silent" and sev(r) in ("boot-critical", "feature-loss"):
-            f.write(f"- `{row['sha'][:9]}` {trunc(r.get('subject'))} → {r.get('carried_patch')}\n")
+        if r.get("disposition") in ("carried", "carried-as-package") and fm(r) == "silent" and sev(r) in ("boot-critical", "feature-loss"):
+            f.write(f"- `{row['sha'][:9]}` {trunc(r.get('subject'))} → {carried_patches_str(r)}\n")
 
 with open(HERE / "device-support.md", "w") as f:
     f.write(f"# Device-ID inventory\n\nGenerated {now}. VID:PID → commits and dispositions "

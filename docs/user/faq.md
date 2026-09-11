@@ -388,6 +388,30 @@ slots, and `unpair` frees one when the receiver is full. Full detail:
 
 ---
 
+## My overclock script sets scaling_max_freq to 1200000 but the CPU stays at 800 MHz
+
+This is expected on this image, and it takes one extra command.
+
+**The kernel has a `boost` switch that must be turned on before `scaling_max_freq` can go above
+800 MHz.** Community overclock scripts written for stock 5.15 (which never had this switch) or
+for this image before it added one write only `scaling_max_freq` and expect that alone to reach
+1000/1200 MHz. On this kernel, writing `scaling_max_freq` above `800000` is silently clamped back
+to `800000` until you also do:
+
+```sh
+echo 1 > /sys/devices/system/cpu/cpufreq/boost
+```
+
+After that, `scaling_max_freq` (or `scaling_setspeed` under the `userspace` governor) can reach
+`1000000`/`1200000` as before. This switch exists because of the auto-overclock bug mentioned
+above — **the fix for "the board silently overclocks itself and can hang"** was to make the
+1000/1200 MHz rows opt-in (`boost` off by default) rather than always available, and this is the
+one-line cost of that fix to a script that used to just write `scaling_max_freq`. If you maintain
+an overclock script, add the `echo 1 > .../cpufreq/boost` line once, before any
+`scaling_max_freq` write.
+
+---
+
 <a id="how-to-report-a-bug"></a>
 ## How do I report a bug?
 

@@ -1,0 +1,105 @@
+From 60e08955fe23c2a1d57834f7dc31860395542e4a Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 10 Jul 2021 16:39:05 +0800
+Subject: [PATCH] dualsense: scope BTN_Z to DualSense only
+
+This branch's ps_gamepad_buttons[] -- the button-capability table
+shared by ps_gamepad_create(), whose only two callers are
+dualsense_create() and dualshock4_create() -- lists BTN_Z alongside
+the standard face/shoulder/stick buttons. That gives DualShock 4 the
+BTN_Z capability bit too, even though nothing in the driver ever
+reports it for DS4: the only input_report_key(..., BTN_Z, ...) call
+site in the file is dualsense_parse_report(), gated on
+DS_BUTTONS2_MIC_MUTE, a DualSense-only report field that has no DS4
+equivalent. So every DualShock 4 on this branch currently advertises
+an EV_KEY capability bit it can never actually set -- a real, if minor,
+behavioural difference from stock 5.15.
+
+Stock's own table (MiSTer-v5.15 hid-playstation.c) never lists BTN_Z
+in the shared table; it declares the capability per-device in
+dualsense_create() instead, right after the DualSense gamepad input
+device is created. This patch restores that scoping: BTN_Z is removed
+from ps_gamepad_buttons[] and added back via a single
+input_set_capability(ds->gamepad, EV_KEY, BTN_Z) call in
+dualsense_create(). Nothing else about this branch's existing mic-mute
+-> BTN_Z reporting, the ":mute" LED classdev, or the in-kernel mute
+toggle removal changes -- all of that already matches stock's intent
+on this branch and is left untouched.
+
+Behavioural change for DualShock 4 users: after this patch, a DS4's
+evdev capability bitmap no longer advertises BTN_Z. Nothing in this
+driver or in Main_MiSTer ever reported or consumed that bit for DS4
+(grep confirms no DS4-side input_report_key(BTN_Z,...) exists, before
+or after), so no userspace-visible input the pad could actually
+produce goes away -- this removes a capability advertisement that was
+always a false promise for DS4, not a working feature.
+
+No Main_MiSTer coupling either way: BTN_Z-as-mute has no dedicated
+consumer in Main_MiSTer (grepped for BTN_Z, mute, and the DualSense
+PIDs; the only BTN_Z hit is an unrelated Xbox-pad remap). A user could
+still hand-bind DualSense mute to any core function via the generic
+"define joystick buttons" OSD screen, same as any other unclaimed
+button on any pad; that generic mechanism is untouched by this patch
+either way.
+
+Verified: `patch -p1 -F0` applies clean (0 offset) on a fresh
+c129b0fac extract; drivers/hid/hid-playstation.o cross-compiles with
+ARCH=arm LLVM=1 W=1 against MiSTer_defconfig with no new warnings (one
+pre-existing `-Wunused-label` on `err_free` is present before and
+after this patch, unrelated to it).
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/hid/hid-playstation.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
+index e159f38..7c58bbb 100644
+--- a/drivers/hid/hid-playstation.c
++++ b/drivers/hid/hid-playstation.c
+@@ -563,11 +586,22 @@ static const int ps_gamepad_buttons[] = {
+ 	BTN_SELECT, /* Create (PS5) / Share (PS4) */
+ 	BTN_START, /* Option */
+ 	BTN_THUMBL, /* L3 */
+ 	BTN_THUMBR, /* R3 */
+ 	BTN_MODE, /* PS Home */
+-	BTN_Z
++	/*
++	 * MiSTer: BTN_Z does NOT belong here. This table is shared by
++	 * ps_gamepad_create(), whose only two callers are dualsense_create()
++	 * and dualshock4_create() -- putting BTN_Z in the shared table gives
++	 * DualShock 4 the capability too, even though nothing ever reports it
++	 * for DS4 (grep the file: the only input_report_key(..., BTN_Z, ...)
++	 * site is dualsense_parse_report(), gated on DS_BUTTONS2_MIC_MUTE,
++	 * which does not exist on DS4's report format). Stock's own table
++	 * (MiSTer-v5.15 hid-playstation.c) never listed BTN_Z here either --
++	 * it declares it per-device in dualsense_create() instead. See the
++	 * input_set_capability() call added there.
++	 */
+ };
+ 
+ static const struct {int x; int y; } ps_gamepad_hat_mapping[] = {
+ 	{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1},
+ 	{0, 0},
+@@ -1828,10 +1910,20 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+ 	ds->gamepad = ps_gamepad_create(hdev, dualsense_play_effect);
+ 	if (IS_ERR(ds->gamepad)) {
+ 		ret = PTR_ERR(ds->gamepad);
+ 		goto err;
+ 	}
++
++	/*
++	 * MiSTer: extra mappable button -- mic-mute reported as BTN_Z, DualSense
++	 * only. Declared per-device here instead of in the shared
++	 * ps_gamepad_buttons[] table so DualShock 4 (the table's other caller,
++	 * via dualshock4_create()) does not also advertise a capability it never
++	 * reports (see the comment on the table itself).
++	 */
++	input_set_capability(ds->gamepad, EV_KEY, BTN_Z);
++
+ 	/* Use gamepad input device name as primary device name for e.g. LEDs */
+ 	ps_dev->input_dev_name = dev_name(&ds->gamepad->dev);
+ 
+ 	ds->sensors = ps_sensors_create(hdev, DS_ACC_RANGE, DS_ACC_RES_PER_G,
+ 					DS_GYRO_RANGE, DS_GYRO_RES_PER_DEG_S);

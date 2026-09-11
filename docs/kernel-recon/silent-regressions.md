@@ -1,12 +1,12 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-08-24 15:49 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-11 03:37 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
 ## Protected (carried) silent-failure items
 
-These WOULD regress silently if their patch were ever dropped — they are carried today:
+These WOULD regress silently if their patch (or, for `carried-as-package` rows, package) were ever dropped — they are carried today:
 
 - `077c2c317` Disable USB overcurrent signaling. → 0004-dts-de10nano-MiSTer.patch
 - `0d7778d1f` wiimote: set uniq field. → 0023-hid-wiimote-fixes.patch
@@ -16,7 +16,8 @@ These WOULD regress silently if their patch were ever dropped — they are carri
 - `2ac0aa1e8` input: support for mouseX and mice in EVIOCGRAB mode. → 0026-input-mousedev-eviocgrab.patch
 - `333d49b95` Implement MiSTer audio driver. → 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
 - `3d72b9db7` Add cpufreq/overclock driver (#34) → 0003-cpufreq-cyclone5-de10nano-overclock.patch
-- `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU comp… → 0032-hid-nintendo-joycon-combo-led.patch
+- `41c45f378` Adapt Classic2USB and RetroZord HID force feedback support … → 0048-hid-google-stadiaff-classic2usb-retrozord.patch
+- `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU comp… → 0032-hid-nintendo-joycon-combo-led.patch, 0040-hid-nintendo-imu-name-suffix.patch
 - `47dc53a22` wiimote: fix the buttons codes. → 0023-hid-wiimote-fixes.patch
 - `484f68172` input: Add support for the NSO Famicom controllers (no mic … → 0015-hid-nintendo-nso-famicom.patch
 - `52a56ae3d` mousedev: disable touch to click on DualShock4 and DualSens… → 0026-input-mousedev-eviocgrab.patch
@@ -31,7 +32,7 @@ These WOULD regress silently if their patch were ever dropped — they are carri
 - `9b9aebfac` hid-guncon3: fix warnings. → 0011-hid-guncon3.patch
 - `a2242dd85` xpad: exclude GIP-capable controllers. → 0017-xpad-mister-deltas.patch
 - `aa8afe109` Add de10-nano DT. → 0004-dts-de10nano-MiSTer.patch
-- `b00a72159` Add support for NSO Mega Drive Controller (#50) → 0038-hid-nintendo-nso-genesis-bt-pid.patch
+- `b00a72159` Add support for NSO Mega Drive Controller (#50) → 0038-hid-nintendo-nso-genesis-bt-pid.patch, 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch
 - `b02a4a011` btusb: support for more CSR clones. → 0036-btusb-csr-clone-lmp-subver-2512.patch
 - `b1b168eb6` input: add HID driver to fix Flydigi Vader 4 Pro mapping in… → 0013-hid-flydigi-vader.patch
 - `b62efee23` hps_led: enable brightness change notification. → 0029-leds-gpio-brightness-hw-changed.patch
@@ -47,5 +48,6 @@ These WOULD regress silently if their patch were ever dropped — they are carri
 - `e82a59280` Add Fanatec wheel driver (#24) → 0012-hid-fanatec.patch
 - `f0982bf2c` usbhid: apply jspoll for gamepad usage as well. → 0025-usbhid-jspoll-gamepad.patch
 - `f3c75eb02` XInput polling rate param + Qanba Obsidian XInput mode supp… → 0017-xpad-mister-deltas.patch
-- `f84543926` dualsense: add player id led control. → 0033-hid-playstation-dualsense-player-id-led.patch
+- `f84543926` dualsense: add player id led control. → 0033-hid-playstation-dualsense-player-id-led.patch, 0042-hid-playstation-stock-lightbar-led-names.patch
 - `fc8f3c2c6` Logitech K400r: disable Fn swap. → 0019-hidpp-k400-fn-inversion.patch
+- `c129b0fac` Add AIC8800 WiFi/BT driver. → package/aic8800

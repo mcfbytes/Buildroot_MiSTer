@@ -6,7 +6,7 @@
 # files"; that figure counts directories -- see the generated doc for the
 # reconciliation, which is now the authoritative count).
 #
-# Writes docs/stock-inventory/firmware.md.
+# Writes docs/stock-inventory/<release>/firmware.md.
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

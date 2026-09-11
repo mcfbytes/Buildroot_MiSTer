@@ -71,28 +71,39 @@
 # Linux-Kernel_MiSTer is not one chain. Its tarball commits form a SPINE —
 #
 #   e12ed6c19 v5.13.12 -> 137491a75 v5.14 -> b6f2ca1c4 v5.14.5 -> aba1ef4c1 v5.15.1
+#                                                                      |
+#                                                              d9ac12a69 v6.18.38
 #
 # — and each MiSTer-vX.Y branch hangs off a spine point with the MiSTer series replayed
 # on top (MiSTer-v5.15 = aba1ef4c1 + 112 commits). Every spine commit is a PRISTINE
-# tarball with no MiSTer code in it.
+# tarball with no MiSTer code in it, INCLUDING the newest one: upstream's own
+# MiSTer-v6.18 work starts from d9ac12a69 "v6.18.38", a pristine 6.18.38 tarball commit
+# whose parent is aba1ef4c1. A spine point is therefore not necessarily a leaf, and
+# --parent must accept one that already has a branch hanging off it.
 #
 # So the right shape for a new kernel is to extend the spine the same way, parenting the
-# base commit on the newest spine point (aba1ef4c1) rather than on a branch tip:
+# base commit on the NEWEST spine point rather than on a branch tip. For 6.18 that means
+# --parent d9ac12a691ead295c8bc6438754767b94c0f26a2, not aba1ef4c1:
 #
 #   aba1ef4c1 v5.15.1 --+-- [112 MiSTer commits] --> MiSTer-v5.15   (theirs, untouched)
 #                       |
-#                       +-- v6.18.38 -- [our commits] -> MiSTer-v6.18
+#                       +-- d9ac12a69 v6.18.38 --+-- [his commits] -> MiSTer-v6.18 (theirs)
+#                                                |
+#                                                +-- v6.18.50 -- [our commits] -> ours
 #
 # That buys three things at once:
-#   - shared ancestry with MiSTer-v5.15, so GitHub can compare and a PR is possible at
-#     all (across unrelated histories the compare API 404s: "No common ancestor");
-#   - a log with NO MiSTer-5.15 commits in it — they are siblings, not ancestors — so
-#     nothing lists a change that is absent from the tree. Parenting on the branch TIP
-#     instead would list ~112 commits whose changes this tree discards, and a reader
+#   - shared ancestry with MiSTer-v5.15 AND with upstream's own MiSTer-v6.18, so GitHub
+#     can compare and a PR is possible at all (across unrelated histories the compare
+#     API 404s: "No common ancestor");
+#   - a log with NO MiSTer commits of theirs in it — they are siblings, not ancestors —
+#     so nothing lists a change that is absent from the tree. Parenting on the branch TIP
+#     instead would list their commits whose changes this tree discards, and a reader
 #     would see "xone: update driver" and conclude xone is present when it is a
 #     Buildroot package now;
-#   - a base commit whose diff against its parent is PURE upstream 5.15.1 -> 6.18.38,
-#     with zero MiSTer noise, because both trees are pristine.
+#   - a base commit whose diff against its parent is PURE upstream — 6.18.38 -> 6.18.50
+#     stable, nothing else — because both trees are pristine tarballs. Parenting on
+#     aba1ef4c1 instead would still work, but that diff would then be the whole
+#     5.15.1 -> 6.18.50 delta and useless for review.
 #
 # Their branch is never touched: it becomes a sibling, exactly as MiSTer-v5.14 already
 # is. What each of its commits became — carried, superseded upstream, or dropped — is
@@ -123,7 +134,12 @@
 #   --output DIR      where to build the tree (must not already exist)
 #   --parent-repo R   clone R and work inside it, rather than starting a fresh root
 #   --parent C        spine commit to extend; a base commit is created on top of it
-#                     from the pinned tarball (requires --parent-repo)
+#                     from the pinned tarball (requires --parent-repo). Use the NEWEST
+#                     pristine tarball commit on the spine -- for 6.18 that is
+#                     d9ac12a691ead295c8bc6438754767b94c0f26a2 ("v6.18.38"), which
+#                     already has upstream's own MiSTer-v6.18 hanging off it; parenting
+#                     there is what makes the base commit's diff pure stable 6.18.38 ->
+#                     the pinned version.
 #   --onto COMMIT     replay onto COMMIT, which must ALREADY BE the pinned kernel
 #                     version -- no base commit is created and the tarball is not
 #                     used for the kernel. Use when upstream has published its own
@@ -156,8 +172,38 @@ set -o pipefail
 # (shellcheck SC2155), and the rest of scripts/ avoids that pattern.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
-readonly DEFCONFIG="$REPO_ROOT/configs/fragments/de10nano.fragment"
 readonly HASH_FILE="$REPO_ROOT/board/mister/de10nano/patches/linux/linux.hash"
+
+# WHICH FRAGMENTS THIS SCRIPT READS -- and why it is a STACK, not one file
+# -----------------------------------------------------------------------
+# This used to be `DEFCONFIG=configs/fragments/de10nano.fragment`, a single file, and
+# that was correct only for as long as one file held every symbol. The 2026-09 fragment
+# split ended that: configs/fragments/stacks.mk now composes the de10nano image from
+# `common de10nano image-common de10nano-image`, and the kernel-module package selections
+# (BR2_PACKAGE_XONE, BR2_PACKAGE_RTL8852CU_MORROWNR) moved into de10nano-image.fragment
+# while the kernel pin stayed in de10nano.fragment.
+#
+# Reading one file after that split is not a partial answer, it is a WRONG one, and it
+# fails in the worst possible direction: section 6b greps for BR2_PACKAGE_*=y, would have
+# found NONE of them in de10nano.fragment, and its "detected zero kernel-module packages"
+# guard would have aborted every export -- or, had that guard not existed, silently
+# shipped a tree with no Xbox controller and no WiFi. So the fragment list comes from
+# stacks.mk, which docs/buildroot-config.md §1 names as the single source of truth for
+# what a configuration is made of, parsed through the same helper the other checks use.
+# A future fragment move then needs no edit here.
+#
+# DE10NANO (the IMAGE stack), not DE10NANO_KERNEL: the exported tree is the kernel the
+# MiSTer image ships, and the kernel-only stack deliberately selects no packages at all
+# (stacks.mk: `image-common` is in every image stack and no kernel-only one), so reading
+# it would reintroduce exactly the zero-drivers bug from the other direction.
+readonly EXPORT_STACK=DE10NANO
+
+# config-stacks.sh addresses the repo through $ROOT; this script uses $REPO_ROOT. Same
+# directory, two names, because the helper is shared with scripts that predate this one.
+ROOT="$REPO_ROOT"
+readonly ROOT
+# shellcheck source=scripts/lib/config-stacks.sh
+. "$REPO_ROOT/scripts/lib/config-stacks.sh"
 
 # Committer identity for the generated commits. Patch AUTHORS are preserved by `git am`;
 # this only says who mechanically produced the tree, and it must be explicit so the
@@ -167,6 +213,18 @@ readonly EXPORT_EMAIL="${EXPORT_COMMITTER_EMAIL:-export@mister-devel.invalid}"
 
 die() { printf 'export-kernel-tree: %s\n' "$*" >&2; exit 1; }
 say() { printf '\n=== %s\n' "$*"; }
+
+# Resolved AFTER die(), which it uses. STACK_FILES is the merge-ordered list of fragment
+# files that make up the exported board's configuration; every read of a pinned value
+# below goes through all of them, last definition winning, exactly as kconfig would.
+mapfile -t STACK_FILES < <(config_stack_files "$EXPORT_STACK")
+readonly STACK_FILES
+((${#STACK_FILES[@]})) ||
+	die "no ${EXPORT_STACK}_FRAGMENTS line in $REPO_ROOT/configs/fragments/stacks.mk"
+for _frag in "${STACK_FILES[@]}"; do
+	[[ -f $_frag ]] || die "fragment named by stacks.mk does not exist: $_frag"
+done
+unset _frag
 
 # Only set when we download rather than use the dl/ cache. Cleaned on exit: it holds a
 # ~150MB kernel tarball, so leaking it on every run is not a rounding error. --output is
@@ -199,6 +257,12 @@ parent=''
 onto=''
 upstream_patch_dir=''
 skip_upstream=false
+
+# Filled in from the parent commit itself when --parent is used (section 3); EXPORT.md's
+# spine section is generated from them rather than naming a spine point that upstream has
+# since moved past.
+parent_short=''
+parent_subject=''
 
 while (($#)); do
 	case "$1" in
@@ -243,17 +307,21 @@ a base that already exists. Pick one.'
 [[ -n $upstream_patch_dir ]] && $skip_upstream &&
 	die '--upstream-patches and --no-upstream-patches are mutually exclusive.'
 
-# --- 1. Read the pinned inputs out of the defconfig -----------------------------------
-# The defconfig is the single source of truth for what we build; nothing here is
-# hardcoded, so a version bump is a one-line defconfig edit and this script follows.
+# --- 1. Read the pinned inputs out of the config fragments -----------------------------
+# The fragment stack is the single source of truth for what we build; nothing here is
+# hardcoded, so a version bump is a one-line fragment edit and this script follows.
 
 defconfig_value() {
 	# Values look like: BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.38"
 	#
-	# Do NOT anchor on the closing quote. This defconfig carries trailing comments on
+	# Do NOT anchor on the closing quote. These fragments carry trailing comments on
 	# some lines, and anchoring silently yields an empty value rather than failing --
 	# which for an optional setting (a config fragment) would mean quietly dropping it.
-	sed -n "s/^$1=\"\([^\"]*\)\".*$/\1/p" "$DEFCONFIG" | tail -1
+	#
+	# All stack files in MERGE ORDER, `tail -1` last: that is what kconfig does when a
+	# later fragment redefines a symbol an earlier one set, so a value moved or overridden
+	# across the 2026-09 split still resolves to the one the image is built with.
+	sed -n "s/^$1=\"\([^\"]*\)\".*$/\1/p" "${STACK_FILES[@]}" | tail -1
 }
 
 # Buildroot spells the external tree's own path as a make variable inside the defconfig;
@@ -262,10 +330,10 @@ resolve_br_path() {
 	printf '%s' "${1//\$(BR2_EXTERNAL_MISTER_PATH)/$REPO_ROOT}"
 }
 
-[[ -f $DEFCONFIG ]] || die "no defconfig at $DEFCONFIG"
-
 version="$(defconfig_value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE)"
-[[ -n $version ]] || die 'BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in defconfig'
+[[ -n $version ]] ||
+	die "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in the $(config_stack_label "$EXPORT_STACK") stack:
+  ${STACK_FILES[*]}"
 
 patch_dir="$(resolve_br_path "$(defconfig_value BR2_LINUX_KERNEL_PATCH)")"
 config_file="$(resolve_br_path "$(defconfig_value BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE)")"
@@ -526,6 +594,14 @@ elif [[ -n $parent_repo ]]; then
 	git -C "$output" rev-parse --verify --quiet "$parent^{commit}" >/dev/null ||
 		die "--parent $parent is not a commit in $parent_repo"
 
+	# Identify the spine point for EXPORT.md, from the commit itself rather than from a
+	# hardcoded name. The newest spine point moves with upstream -- it was aba1ef4c1
+	# "v5.15.1", it is d9ac12a69 "v6.18.38" now -- and a document that names the wrong
+	# one sends a reviewer to compute the wrong diff. Short SHA is asked for at 9 digits
+	# to match the width the rest of this repo's prose uses for this fork.
+	parent_short="$(git -C "$output" rev-parse --short=9 "$parent^{commit}")"
+	parent_subject="$(git -C "$output" log --format=%s -1 "$parent^{commit}")"
+
 	# Detach at the spine point, then replace the worktree wholesale with the new
 	# tarball. `git add --all` stages the deletions and the additions together, so the
 	# resulting commit's tree is the pristine tarball and its parent is the spine.
@@ -714,7 +790,162 @@ expanded one bakes in the generating toolchain (CONFIG_CC_VERSION_TEXT) and
 every default, which pins a config to one machine and buries the ~500 lines that
 are actually a decision under ~4000 that are not.
 
+Linux-Kernel_MiSTer ships the OTHER form -- its arch/arm/configs/MiSTer_defconfig
+is a full resolved .config, header and all ("Automatically generated file; DO
+NOT EDIT", CONFIG_CC_VERSION_TEXT naming that maintainer's
+arm-none-linux-gnueabihf-gcc 10.2.1). The two forms are not a disagreement about
+the configuration:
+
+    make ARCH=arm MiSTer_defconfig
+
+resolves this minimized file to the SAME .config his full form already spells
+out, for his toolchain -- that is what a defconfig IS, and it is why kconfig
+ships savedefconfig. The only lines that can differ are the ones kconfig
+derives from the compiler in front of it (CONFIG_CC_VERSION_TEXT,
+CONFIG_GCC_VERSION, CONFIG_AS_VERSION, CONFIG_LD_VERSION, the CONFIG_CC_HAS_*
+and CONFIG_TOOLS_SUPPORT_* probes), which is precisely the machine-pinning this
+form leaves out.
+
+If you want his form in this tree, generate it -- do not hand-edit it:
+
+    make ARCH=arm MiSTer_defconfig && cp .config arch/arm/configs/MiSTer_defconfig
+
 Generated by scripts/export-kernel-tree.sh in Buildroot_MiSTer.
+EOF
+
+# --- 6a. The DTB build-name alias upstream's Makefile expects ------------------------------
+# GENERATED HERE, NEVER APPLIED BY BUILDROOT -- same class as the defconfig commit above.
+#
+# WHY THIS EXISTS
+# ---------------
+# Linux-Kernel_MiSTer carries its OWN board DTS as
+# arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10_nano.dts -- note the underscore
+# between "de10" and "nano" -- and lists socfpga_cyclone5_de10_nano.dtb in that
+# directory's Makefile (verified on its MiSTer-v6.18 branch at c129b0fac, which lists BOTH
+# names -- mainline's socfpga_cyclone5_de10nano.dtb and its own
+# socfpga_cyclone5_de10_nano.dtb). That filename is upstream's build interface: the
+# maintainer builds the shipped DTB with
+#
+#     make ... intel/socfpga/socfpga_cyclone5_de10_nano.dtb
+#
+# and the DTB in the stock release is that file's output.
+#
+# We do not carry a second DTS. Our 0004 patch instead patches VANILLA's
+# socfpga_cyclone5_de10nano.dts (no underscore, added upstream in 144616a80889, v6.14),
+# which did not exist when the 5.15 branch was written -- that is the better shape,
+# because it keeps our delta a reviewable diff against a mainline file instead of a
+# 700-line vendor copy. The cost is exactly one thing: `make
+# intel/socfpga/socfpga_cyclone5_de10_nano.dtb` fails in our tree with "No rule to make
+# target", so the maintainer's own build command does not work on the tree we hand him.
+#
+# That is a one-line problem, so it gets a one-line fix rather than a policy argument: a
+# DTS whose entire body is `#include` of the patched vanilla file, under the name his
+# Makefile expects, plus the matching dtb- entry. Both names then build, byte-identical
+# output, and nothing in the shipped image changes -- Buildroot never sees this commit,
+# and BR2_LINUX_KERNEL_INTREE_DTS_NAME still names the vanilla file.
+#
+# scripts/check-export-tree.sh builds BOTH .dtb targets and fails if their bytes differ,
+# so the alias cannot silently drift into a second board description.
+
+say 'Adding the socfpga_cyclone5_de10_nano.dtb build-name alias'
+readonly ALIAS_DTS='arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10_nano.dts'
+readonly VANILLA_DTS='arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts'
+readonly SOCFPGA_DTS_MAKEFILE='arch/arm/boot/dts/intel/socfpga/Makefile'
+
+# Fail closed rather than emit an alias to a file that is not there. If 0004 ever moves
+# to a differently-named DTS, this commit would otherwise produce a tree in which the
+# maintainer's build command fails at the #include instead of at the missing target --
+# a strictly worse error, arriving later.
+[[ -f $VANILLA_DTS ]] ||
+	die "$VANILLA_DTS is not in the tree, so the
+$(basename "$ALIAS_DTS") build-name alias would #include a file that does not exist.
+Has the carried DTS patch (0004) changed which file it patches?"
+[[ ! -e $ALIAS_DTS ]] ||
+	die "$ALIAS_DTS already exists in the tree.
+The carried series now provides it, so this generated alias would overwrite someone
+else's file. Remove this section instead of shadowing it."
+grep -q "$(basename "$VANILLA_DTS" .dts)\.dtb" "$SOCFPGA_DTS_MAKEFILE" ||
+	die "no $(basename "$VANILLA_DTS" .dts).dtb line in $SOCFPGA_DTS_MAKEFILE --
+cannot place the alias next to it. Upstream restructured this Makefile; update this
+section rather than appending the entry somewhere arbitrary."
+
+cat >"$ALIAS_DTS" <<ALIASEOF
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * socfpga_cyclone5_de10_nano.dts -- build-name alias.
+ *
+ * Linux-Kernel_MiSTer keeps the MiSTer DE10-Nano board description in a file
+ * of THIS name (with the underscore) and builds the shipped DTB as
+ * socfpga_cyclone5_de10_nano.dtb. This tree instead patches mainline's
+ * socfpga_cyclone5_de10nano.dts (no underscore) -- same board, reviewable as a
+ * diff against upstream -- so this file exists purely so that the historical
+ * .dtb filename still builds, and builds the same bytes.
+ *
+ * There is no board content here and none may be added: put it in
+ * socfpga_cyclone5_de10nano.dts, which is what the MiSTer image actually ships.
+ *
+ * Generated by scripts/export-kernel-tree.sh in Buildroot_MiSTer.
+ */
+#include "$(basename "$VANILLA_DTS")"
+ALIASEOF
+
+# Insert the dtb- entry immediately after the vanilla one rather than appending. This is
+# ONE backslash-continued `dtb-$(CONFIG_ARCH_INTEL_SOCFPGA) +=` assignment, so a line
+# appended after the last entry lands after the line that has NO trailing backslash and
+# is silently not part of the list at all -- the file still parses, the target still does
+# not exist, and the only symptom is the failure this whole section exists to remove.
+# Duplicating the vanilla line and renaming the copy also preserves the leading tab and
+# the trailing " \" exactly, which is why the substitution is done on a copy of $0
+# rather than by printing a hand-built line.
+#
+# The `/\\$/` guard is the other half of that: it refuses to duplicate an entry that is
+# the LAST in the list, because the copy would then be the orphaned line described above.
+# awk rather than `sed -i`: -i needs an argument on BSD sed and this script runs on both.
+awk -v vanilla="$(basename "$VANILLA_DTS" .dts).dtb" \
+	-v alias="$(basename "$ALIAS_DTS" .dts).dtb" '
+	{ print }
+	!done && $1 == vanilla && /\\$/ {
+		line = $0
+		sub(vanilla, alias, line)
+		print line
+		done = 1
+	}
+	END { if (!done) exit 1 }
+' "$SOCFPGA_DTS_MAKEFILE" >"$SOCFPGA_DTS_MAKEFILE.new" ||
+	die "could not place $(basename "$ALIAS_DTS" .dts).dtb next to
+$(basename "$VANILLA_DTS" .dts).dtb in $SOCFPGA_DTS_MAKEFILE: no continued dtb- line
+carries it. Upstream restructured this Makefile -- update this section."
+mv "$SOCFPGA_DTS_MAKEFILE.new" "$SOCFPGA_DTS_MAKEFILE"
+
+grep -q "$(basename "$ALIAS_DTS" .dts)\.dtb" "$SOCFPGA_DTS_MAKEFILE" ||
+	die "failed to add $(basename "$ALIAS_DTS" .dts).dtb to $SOCFPGA_DTS_MAKEFILE"
+
+git add --force "$ALIAS_DTS" "$SOCFPGA_DTS_MAKEFILE"
+GIT_AUTHOR_DATE="$base_date" GIT_COMMITTER_DATE="$base_date" \
+	git commit --quiet --file=- <<EOF
+ARM: dts: socfpga: add socfpga_cyclone5_de10_nano.dts build-name alias
+
+Linux-Kernel_MiSTer carries its own board DTS as socfpga_cyclone5_de10_nano.dts
+(with the underscore) and builds the shipped device tree as
+socfpga_cyclone5_de10_nano.dtb:
+
+    make ARCH=arm CROSS_COMPILE=... intel/socfpga/socfpga_cyclone5_de10_nano.dtb
+
+This tree does not carry a second board DTS. It patches mainline's
+socfpga_cyclone5_de10nano.dts (no underscore, 144616a80889, v6.14) instead, so
+the MiSTer delta stays a reviewable diff against an upstream file rather than a
+vendor copy. Without this commit the build command above fails with "No rule to
+make target" on a tree that is otherwise complete.
+
+So: a one-line DTS that #includes the patched file, under the name the old
+Makefile entry expects, and the matching dtb-\$(CONFIG_ARCH_INTEL_SOCFPGA)
+entry next to the existing one. Both .dtb names now build and their output is
+byte-identical -- scripts/check-export-tree.sh builds both and compares them, so
+this cannot drift into a second, diverging board description.
+
+Not applied to the MiSTer image: Buildroot builds the vanilla name directly and
+never reads this commit. Generated by scripts/export-kernel-tree.sh in
+Buildroot_MiSTer.
 EOF
 
 # --- 6b. Vendor the out-of-tree kernel modules -------------------------------------------
@@ -762,32 +993,87 @@ EOF
 # Package -> in-tree path. The only hand-maintained mapping here, kept declarative on
 # purpose. Every kernel-module package gets an entry, not just the currently-enabled ones,
 # so flipping one on in the defconfig needs no edit here.
+# The seven deselected Realtek fork rows this table used to carry (rtl8812au,
+# rtl8814au-morrownr, rtl8821au-morrownr, rtl8821cu-morrownr, rtl88x2bu,
+# rtl8188eu-aircrack-ng, rtl8188fu) went away with the packages on 2026-09-10.
+# They were the "just-in-case" half of the note above; with the packages gone
+# there is nothing for them to map. Every row below is now on the live path.
 declare -A MODULE_PATH=(
 	[xone]='drivers/hid/xone'
-	[rtl8812au]='drivers/net/wireless/realtek/rtl8812au'
-	[rtl8814au-morrownr]='drivers/net/wireless/realtek/rtl8814au'
-	[rtl8821au-morrownr]='drivers/net/wireless/realtek/rtl8821au'
-	[rtl8821cu-morrownr]='drivers/net/wireless/realtek/rtl8821cu'
-	# rtl8852cu-morrownr is the one WiFi fork the image currently SHIPS (v10.2,
-	# ADR 0016 — mainline rtw89 has no rtw8852cu.c), so unlike its neighbours
-	# this row is on the live path, not a just-in-case entry. Same naming rule
-	# as the rest: the fork suffix is a Buildroot package-name concern, and the
-	# in-tree path uses the plain chip name the 5.15 fork would have used.
+	# rtl8852cu-morrownr is a WiFi fork the image SHIPS (v10.2, ADR 0016 —
+	# mainline rtw89 has no rtw8852cu.c). Naming rule: the fork suffix is a
+	# Buildroot package-name concern, and the in-tree path uses the plain chip
+	# name the 5.15 fork would have used.
 	[rtl8852cu-morrownr]='drivers/net/wireless/realtek/rtl8852cu'
-	[rtl88x2bu]='drivers/net/wireless/realtek/rtl88x2bu'
-	[rtl8188eu-aircrack-ng]='drivers/net/wireless/realtek/rtl8188eu'
-	[rtl8188fu]='drivers/net/wireless/realtek/rtl8188fu'
+)
+
+# Packages deliberately NOT exported, with the reason. This is a separate set
+# from "has no MODULE_PATH" so that forgetting a mapping still fails closed --
+# the die below only accepts silence for a package named HERE.
+declare -A MODULE_EXPORT_SKIP=(
+	# aic8800 is the one driver where the fork went FIRST. Sorgelig vendored
+	# the same AICSemi SDK snapshot into MiSTer-v6.18 himself
+	# (c129b0fac34ad5d613bbec3f59d6036775e41c83, "Add AIC8800 WiFi/BT
+	# driver.", at drivers/net/wireless/aic8800), so exporting ours would
+	# hand upstream a copy of something it already has, at the same path, and
+	# collide there. The export exists to carry OUR delta; this is not one.
+	#
+	# It would also need machinery nothing else here has. Unlike every other
+	# kernel-module package, this one's sources are not at the tarball root:
+	# the tarball is radxa-pkg's whole 55 MiB multi-bus repository and the
+	# module tree lives at src/USB/driver_fw/drivers/aic8800 (hence
+	# AIC8800_MODULE_SUBDIRS). The `tar --strip-components=1` below would
+	# vendor the PCIE and SDIO drivers and the Debian packaging along with it.
+	# And the sources are only buildable AFTER upstream's own
+	# debian/patches/series is applied -- see package/aic8800/aic8800.mk --
+	# which the exporter has no notion of. If this ever does need exporting,
+	# teach the loop MODULE_SUBDIRS and the patch series first; do not just
+	# add a MODULE_PATH row.
+	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 
 # A package is a kernel module iff its .mk evals Buildroot's kernel-module infra. Detected
 # rather than listed, so a new one cannot be missed by forgetting to update a list here.
 #
-# The `=y` is NOT anchored to end-of-line: this defconfig annotates most package lines
+# The `=y` is NOT anchored to end-of-line: these fragments annotate most package lines
 # with a trailing comment ("BR2_PACKAGE_RTL8812AU=y    # RTL8812AU 11ac -- ..."), and
 # anchoring matched only the one line without one, silently vendoring xone alone and
 # dropping all three WiFi drivers.
+#
+# Read over the WHOLE STACK, not one fragment. The package selections live in
+# de10nano-image.fragment since the 2026-09 split while the kernel pin stayed in
+# de10nano.fragment; reading only the latter finds zero packages (see the STACK_FILES
+# note near the top).
+#
+# LAST DEFINITION WINS, the same rule defconfig_value() implements with `tail -1` and
+# the same rule kconfig itself applies when a later fragment redefines a symbol an
+# earlier one set. This used to be a bare `sed` for `=y` only, with a comment claiming
+# "`# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is anchored at column 1
+# on the symbol -- so a disabled driver stays disabled." That had it exactly backwards:
+# because the sed matched ONLY `=y`, a later fragment's not-set line was invisible, so a
+# symbol set `=y` early and disabled later still read as enabled. The export would then
+# vendor a driver the image does not ship, and emit a build-mister-modules.sh line for
+# it -- silently, because check-export-tree.sh compares only the carried tip, which is
+# before the vendoring commits.
+#
+# Nothing in the tree triggers it today (no kernel-module package carries a not-set line
+# in any DE10 fragment), so this is a latent bug being closed rather than a live one
+# being fixed. The awk tracks both forms in merge order and emits only symbols whose
+# FINAL state is enabled.
 mapfile -t enabled_kmods < <(
-	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y\([[:space:]].*\)\?$/\1/p' "$DEFCONFIG" |
+	awk '
+		/^BR2_PACKAGE_[A-Z0-9_]+=y([ \t].*)?$/ {
+			sym = $0; sub(/=y.*$/, "", sym)
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 1; next
+		}
+		/^#[ \t]*BR2_PACKAGE_[A-Z0-9_]+[ \t]+is not set/ {
+			sym = $2
+			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
+			state[sym] = 0; next
+		}
+		END { for (i = 1; i <= n; i++) if (state[order[i]]) print order[i] }
+	' "${STACK_FILES[@]}" |
 		while read -r sym; do
 			dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
 			mk="$REPO_ROOT/package/$dir/$dir.mk"
@@ -799,11 +1085,34 @@ mapfile -t enabled_kmods < <(
 		done
 )
 
-((${#enabled_kmods[@]})) || die 'detected zero kernel-module packages in the defconfig.
+((${#enabled_kmods[@]})) || die "detected zero kernel-module packages in the
+$(config_stack_label "$EXPORT_STACK") fragment stack:
+  ${STACK_FILES[*]}
 That is almost certainly a parsing bug in this script rather than the truth — the image
-ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.'
+ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.
+If a fragment moved, fix configs/fragments/stacks.mk or this script's EXPORT_STACK;
+do NOT relax this check."
 
-say "Vendoring ${#enabled_kmods[@]} out-of-tree kernel modules: ${enabled_kmods[*]}"
+# Announce what will actually be vendored, not what was detected: the two differ
+# whenever MODULE_EXPORT_SKIP names something (aic8800 does today). Saying
+# "Vendoring 3" and then committing 2 is the same off-by-one the RESULT-line
+# arithmetic below exists to avoid.
+vendor_pkgs=()
+skip_pkgs=()
+for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		skip_pkgs+=("$pkg")
+	else
+		vendor_pkgs+=("$pkg")
+	fi
+done
+say "Vendoring ${#vendor_pkgs[@]} out-of-tree kernel modules: ${vendor_pkgs[*]-}"
+# `if`, not `((…)) && say`: this script runs under `set -o errexit`, and while bash
+# exempts the left-hand side of an && list from it, the idiom is a trap worth not
+# spelling out here (an empty skip list is the normal case).
+if ((${#skip_pkgs[@]})); then
+	say "  not vendored (MODULE_EXPORT_SKIP): ${skip_pkgs[*]}"
+fi
 module_build_lines=()
 module_doc_rows=()
 
@@ -812,11 +1121,18 @@ for pkg in "${enabled_kmods[@]}"; do
 	mk="$REPO_ROOT/package/$pkg/$pkg.mk"
 	dest="${MODULE_PATH[$pkg]:-}"
 
+	# Deliberate, named omission -- announced, never silent.
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		say "  skipping $pkg: ${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
+
 	# Fail closed. Silently skipping an enabled driver is exactly the regression this
 	# whole section exists to prevent.
 	[[ -n $dest ]] || die "no in-tree path mapped for kernel-module package '$pkg'.
-Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}") — refusing to export a tree
-that silently omits a driver the image ships."
+Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}"), or -- if leaving it out is
+deliberate -- to MODULE_EXPORT_SKIP with the reason. Refusing to export a tree that
+silently omits a driver the image ships."
 
 	pkg_version="$(sed -n "s/^${upper}_VERSION = //p" "$mk" | tail -1)"
 	[[ -n $pkg_version ]] || die "no ${upper}_VERSION in $mk"
@@ -1038,15 +1354,23 @@ EOF
 # is silent, embarrassing, and very easy: the number of commits between the base and the
 # tag is not just the patch count. It is
 #
-#     carried patches + upstream-only patches + defconfig + one per vendored driver
-#     + build-mister-modules.sh + EXPORT.md
+#     carried patches + upstream-only patches + defconfig + the DTB build-name alias
+#     + one per vendored driver + build-mister-modules.sh + EXPORT.md
 #
 # and three of those terms grow on their own -- a new kernel-module package changes it
 # without anyone touching this section. So it is MEASURED, not derived from a formula
 # that has to be kept in sync. (The previous hand-derived `$((applied + 1))` was already
 # wrong before the upstream-only series existed: with 31 carried patches it named a
 # mid-series commit rather than the base, because it counted neither the defconfig, the
-# three driver commits, the build script, nor EXPORT.md itself.)
+# three driver commits, the build script, nor EXPORT.md itself. Section 6a's alias commit
+# was added later still and needed no change here for exactly that reason.)
+#
+# WHERE A NEW GENERATED COMMIT MAY GO. base_offset is measured, so it absorbs anything.
+# shipped_offset is base_offset MINUS the carried count, so it only stays correct while
+# every generated commit sits AFTER the carried series -- which is why section 6a's alias
+# lands after the defconfig commit and not, say, next to the DTS patch it aliases.
+# Putting a generated commit before or inside either series silently redefines what both
+# EXPORT.md one-liners mean; section 8's assertions are what would catch it.
 #
 # HEAD is currently the build-script commit; EXPORT.md's own commit is not made yet, and
 # the tag will land on it. Hence the +1. Section 8 asserts both offsets resolve to the
@@ -1109,6 +1433,70 @@ the export was run with \`--no-upstream-patches\`.)
 "
 fi
 
+# The spine section, generated from the parent commit rather than written out. Upstream's
+# newest pristine tarball commit MOVES -- it was aba1ef4c1 "v5.15.1" when this script was
+# written and is d9ac12a69 "v6.18.38" now -- and the whole value of the section is that a
+# reviewer can run the `git diff` in it and get the pure upstream delta. A hardcoded SHA
+# there would be wrong the first time the spine grew, and wrong silently: the diff would
+# still be large and plausible, just against the wrong base.
+spine_section='## Where this branch hangs'
+if [[ -n $parent_short ]]; then
+	spine_section+="
+
+Linux-Kernel_MiSTer's tarball commits form a spine, and each \`MiSTer-vX.Y\` branch hangs
+off a spine point with its MiSTer series replayed on top. Every spine commit is a
+pristine upstream tarball with no MiSTer code in it. This branch extends that spine the
+same way, so it is the next entry rather than a foreign import:
+
+    e12ed6c19 v5.13.12 -> 137491a75 v5.14 -> b6f2ca1c4 v5.14.5 -> aba1ef4c1 v5.15.1
+                                                                       |
+              +--------------------------------------------------------+
+              |
+              +-- [MiSTer commits] -> MiSTer-v5.15         (theirs, untouched)
+              |
+              +-- $parent_short $parent_subject   <- this branch's parent, a pristine tarball
+                           |
+                           +-- [their MiSTer commits]      (theirs, untouched)
+                           |
+                           +-- v$version -> [$applied carried + $upstream_applied upstream-only
+                                              + generated] -> $branch
+
+The branches already hanging off those spine points are **not modified and not
+ancestors** — they are siblings. Nothing was lost.
+
+Two consequences worth knowing:
+
+- The base commit's parent, \`$parent_short\` (\`$parent_subject\`), is itself a pristine
+  tarball commit, so \`git diff $parent_short $tag~$base_offset\` is a **pure upstream
+  delta** — $parent_subject to $version, with no MiSTer code on either side. That is the
+  diff to read when the question is \"what did the stable series change\", and it is only
+  that clean because both ends are tarballs.
+- No MiSTer commit of theirs appears in this branch's log, which is the point: this tree
+  does not contain most of them, and a log listing changes that are absent from the
+  tree would be worse than no log at all.
+"
+elif [[ -n $onto ]]; then
+	spine_section+="
+
+This export was made with \`--onto\`: the base is upstream's own pristine
+$version commit, not one this export created, and the series here fast-forwards onto it.
+So there is no new spine entry to draw — this branch simply continues theirs, and a PR
+from it is exactly the MiSTer delta with nothing of theirs restated.
+"
+else
+	spine_section+="
+
+This export was made without \`--parent-repo\`, so its base commit is a **root commit**
+and this branch shares no ancestry with \`MiSTer-vX.Y\` in Linux-Kernel_MiSTer. It is a
+standalone tree: usable, buildable, and not PR-able, because GitHub's compare API needs a
+common ancestor and answers 404 without one (\"No common ancestor\").
+
+To get one, re-run the export with \`--parent-repo <a clone of the fork> --parent <the
+newest pristine tarball commit on its spine>\` — for the 6.18 series that is
+\`d9ac12a691ead295c8bc6438754767b94c0f26a2\` (\"v6.18.38\").
+"
+fi
+
 say 'Writing EXPORT.md'
 cat >EXPORT.md <<EOF
 # This tree is generated
@@ -1135,7 +1523,8 @@ $upstream_section## What is here
 | Carried patches | $applied commits, one per patch the MiSTer image applies, original authorship preserved |
 | Upstream-only patches | $upstream_applied $up_commit_noun, one per patch carried for this tree alone (see above) |
 | Config | \`arch/arm/configs/MiSTer_defconfig\` — $config_note |
-| Vendored drivers | ${#enabled_kmods[@]} commits, one per out-of-tree kernel module (see below) |
+| DTB build-name alias | 1 commit — \`socfpga_cyclone5_de10_nano.dts\` \`#include\`s the patched \`socfpga_cyclone5_de10nano.dts\` so the .dtb filename Linux-Kernel_MiSTer uses still builds (see below) |
+| Vendored drivers | ${#module_doc_rows[@]} commits, one per out-of-tree kernel module vendored here (see below) |
 | Tag | \`$tag\` |
 
 The base commit contains no MiSTer change, so the two deltas worth looking at are:
@@ -1151,8 +1540,22 @@ rather than from the kernel source.
 
 ## Building standalone
 
+There are **two** documented recipes below, and it is worth being blunt about how they
+relate: they compile the same source with the same configuration and differ in exactly
+one string — what \`LOCALVERSION\` is set to. That string is not cosmetic (it is the
+kernel's own version suffix, so it lands in \`uname -r\`, in the module install path, and
+in every module's **vermagic**), but it is the *only* difference. Nothing else about the
+kernel, the DTB or the drivers changes between them.
+
+Pick recipe 1 to build a kernel that is interchangeable with the one the MiSTer image in
+Buildroot_MiSTer ships. Pick recipe 2 to reproduce the way MiSTer-devel's own releases
+are built.
+
+### Recipe 1 — image-compatible (this is what Buildroot builds)
+
     make ARCH=arm MiSTer_defconfig
-    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION= zImage modules
+    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION= \\
+        zImage modules intel/socfpga/socfpga_cyclone5_de10nano.dtb
     ./build-mister-modules.sh
 
 Three details on that middle line, each of which will bite you otherwise.
@@ -1180,11 +1583,130 @@ calls every kernel symbol undefined
 (\`ERROR: modpost: "skb_pull" [8812au.ko] undefined!\`) — which looks like a broken driver
 and is not. \`build-mister-modules.sh\` checks for this and says so.
 
-**The third line at all** — the Xbox (xone) and 11ac WiFi drivers are out-of-tree, so
-\`zImage\` never builds them.
+**\`./build-mister-modules.sh\` at all** — the Xbox (xone) and 11ac WiFi drivers are
+out-of-tree, so \`zImage\` never builds them.
 
 Building the kernel also needs \`lz4\` on the host, since this config sets
 \`CONFIG_KERNEL_LZ4\`.
+
+### Recipe 2 — the stock process (how MiSTer-devel publishes a release)
+
+Same source, same config; \`LOCALVERSION=-MiSTer\` instead of empty, and the two
+artifacts a stock release takes from this tree:
+
+    make ARCH=arm MiSTer_defconfig
+    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION=-MiSTer \\
+        zImage modules intel/socfpga/socfpga_cyclone5_de10_nano.dtb
+
+    cat arch/arm/boot/zImage \\
+        arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10_nano.dtb > zImage_dtb
+
+    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION=-MiSTer \\
+        INSTALL_MOD_PATH=<staging> modules_install
+    tar czf modules.tar.gz -C <staging> ./lib
+
+**Why \`-MiSTer\`, stated as evidence rather than lore.** A stock MiSTer release
+(Release 20260907) installs its modules under \`lib/modules/6.18.38-MiSTer/\`, while the
+kernel configuration it ships has \`CONFIG_LOCALVERSION=""\` and
+\`CONFIG_LOCALVERSION_AUTO\` off. A suffix that is in \`uname -r\` but in neither of those
+can only have come from the make command line, so the published kernel is built with
+\`LOCALVERSION=-MiSTer\`.
+
+**\`socfpga_cyclone5_de10_nano.dtb\`** — the underscore name, which is the filename
+Linux-Kernel_MiSTer has always built. In this tree it is the alias commit described under
+*What is here*: it \`#include\`s the patched \`socfpga_cyclone5_de10nano.dts\`, so both
+names produce **byte-identical** DTBs. Recipe 1 names the other one only because that is
+the string Buildroot passes (\`BR2_LINUX_KERNEL_INTREE_DTS_NAME\`).
+
+**\`cat zImage dtb > zImage_dtb\`** — a plain concatenation, no padding and no
+alignment. Stock U-Boot finds the device tree by reading the zImage header's declared-end
+field at \`+0x2C\` and adding it to \`\$loadaddr\`, which is true only for an unpadded
+\`cat\`. (\`scripts/check-zimage-dtb.sh\` in Buildroot_MiSTer asserts exactly that
+contract on a built artifact.)
+
+**\`-C <staging> ./lib\`, with the leading \`./\`** — this is not a stylistic choice.
+The MiSTer image creator (\`Linux_Image_creator_MiSTer/create_img.sh\`) unpacks this
+tarball with
+
+    tar xfp modules.tar.gz --strip-components=2 -C /media/rootfs/lib
+
+and \`--strip-components\` counts \`.\` as a component. Members named
+\`./lib/modules/<ver>/…\` therefore land as \`modules/<ver>/…\` under \`/lib\`, which is
+right; members named \`lib/modules/<ver>/…\` (no \`./\`) lose \`lib\` **and** \`modules\`
+and land as \`/lib/<ver>/…\`, where modprobe will never find them. Stock's own
+\`modules.tar.gz\` is built the first way — every member in it begins \`./lib/\`.
+
+That same script also consumes \`rootfs.tar.bz2\`, \`firmware.tar.gz\` and \`addon.tar\`;
+none of those come from this tree. \`zImage_dtb\` is **not** consumed by it either — it is
+copied to the SD card's FAT partition as \`linux/zImage_dtb\` and loaded by U-Boot. Of the
+release's inputs, this tree produces exactly two: \`zImage_dtb\` and \`modules.tar.gz\`.
+
+### The two recipes, side by side
+
+| | recipe 1 | recipe 2 |
+|---|---|---|
+| \`LOCALVERSION\` | empty, but set | \`-MiSTer\` |
+| \`uname -r\` | \`$version\` | \`$version-MiSTer\` |
+| modules install to | \`lib/modules/$version/\` | \`lib/modules/$version-MiSTer/\` |
+| vermagic | \`$version …\` | \`$version-MiSTer …\` |
+| matches | the Buildroot_MiSTer image | a stock MiSTer-devel release |
+
+Nothing else differs. A module built by one is rejected by the other's kernel — that is
+the whole of the incompatibility, and it is a string comparison, not a code difference.
+
+## The two DTB filenames
+
+Linux-Kernel_MiSTer describes this board in its own
+\`arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10_nano.dts\` — with the underscore
+— and builds the shipped device tree as \`socfpga_cyclone5_de10_nano.dtb\`.
+
+This tree does it the other way round. Mainline gained a DE10-Nano DTS after that branch
+was written (\`socfpga_cyclone5_de10nano.dts\`, no underscore, 144616a80889 in v6.14), and
+the MiSTer board support here is a **patch on that file** rather than a second copy of
+it. That keeps the MiSTer delta a reviewable diff against upstream instead of a ~700-line
+vendor file that no one can diff against anything.
+
+The cost of that choice is one filename, so this tree pays it with one file:
+\`socfpga_cyclone5_de10_nano.dts\` exists here as a generated alias whose entire body is
+
+    #include "socfpga_cyclone5_de10nano.dts"
+
+plus the matching \`dtb-\$(CONFIG_ARCH_INTEL_SOCFPGA)\` entry next to the existing one. So
+
+    make ARCH=arm ... intel/socfpga/socfpga_cyclone5_de10_nano.dtb
+    make ARCH=arm ... intel/socfpga/socfpga_cyclone5_de10nano.dtb
+
+both work and produce **byte-identical** output, because there is only one board
+description and both names compile it. \`scripts/check-export-tree.sh\` in
+Buildroot_MiSTer builds both and fails if the bytes differ, so the alias cannot quietly
+become a second, diverging board.
+
+The MiSTer image does not use the alias: Buildroot builds
+\`BR2_LINUX_KERNEL_INTREE_DTS_NAME\`, which names the vanilla file. Like the defconfig
+commit, this one is generated by the export and is applied to no image.
+
+## About \`MiSTer_defconfig\`
+
+\`arch/arm/configs/MiSTer_defconfig\` here is the kernel's **minimized** defconfig form.
+Linux-Kernel_MiSTer ships the same configuration in the other form — a full resolved
+\`.config\`, "Automatically generated file; DO NOT EDIT" header and all, including a
+\`CONFIG_CC_VERSION_TEXT\` naming that maintainer's \`arm-none-linux-gnueabihf-gcc\`
+(4400 lines on MiSTer-v6.18 @ c129b0fac, against ~500 here).
+
+These are two spellings of one configuration, not two configurations.
+
+    make ARCH=arm MiSTer_defconfig
+
+resolves the file here to the same \`.config\` his full form already spells out, for his
+toolchain. The only lines that can differ are the ones kconfig derives from the compiler
+in front of it — \`CONFIG_CC_VERSION_TEXT\`, \`CONFIG_GCC_VERSION\`, \`CONFIG_AS_VERSION\`,
+\`CONFIG_LD_VERSION\` and the \`CONFIG_CC_HAS_*\` / \`CONFIG_TOOLS_SUPPORT_*\` probes —
+which is exactly the machine-pinning the minimized form leaves out. Everything a person
+actually decided is identical.
+
+If you want the full form in this tree, generate it; do not hand-write it:
+
+    make ARCH=arm MiSTer_defconfig && cp .config arch/arm/configs/MiSTer_defconfig
 
 ## Vendored out-of-tree drivers
 
@@ -1213,32 +1735,7 @@ Unlike \`MiSTer-v5.15\`, which vendors these in-tree, that means a driver bump d
 touch this tree's history by hand — and the Realtek drivers here track upstreams that
 build against 6.18 with **zero** compatibility patches.
 
-## Where this branch hangs
-
-This repo's tarball commits form a spine, and each \`MiSTer-vX.Y\` branch hangs off a
-spine point with the MiSTer series replayed on top. This branch extends that spine the
-same way, so it is the next entry rather than a foreign import:
-
-    e12ed6c19 v5.13.12 -> 137491a75 v5.14 -> b6f2ca1c4 v5.14.5 -> aba1ef4c1 v5.15.1
-                                                                       |
-                                          +----------------------------+
-                                          |
-       [112 MiSTer commits] -> MiSTer-v5.15        (untouched)
-                                          |
-       v$version -> [$applied carried + $upstream_applied upstream-only] -> $branch
-
-\`MiSTer-v5.15\` is **not modified and not an ancestor** — it is a sibling, exactly as
-\`MiSTer-v5.14\` already is. Nothing was lost.
-
-Two consequences worth knowing:
-
-- The base commit's parent is itself a pristine tarball commit, so
-  \`git diff aba1ef4c1 v$version\` is the **pure upstream 5.15.1 → $version delta**,
-  with no MiSTer code on either side.
-- No MiSTer-5.15 commit appears in this branch's log, which is the point: this tree
-  does not contain most of them, and a log listing changes that are absent from the
-  tree would be worse than no log at all.
-
+$spine_section
 What each 5.15 commit became — carried into the image, carried here only (the
 upstream-only series above), superseded by an upstream commit (with the vanilla commit
 cited), or deliberately dropped — is recorded per commit in
@@ -1261,7 +1758,11 @@ Reconciled against \`MiSTer-devel/Linux-Kernel_MiSTer\` at commit \`$fork_sync\`
 
 Commits added to the fork since then have **not** been triaged for backporting:
 
-    git log --oneline $fork_sync..MiSTer-v5.15
+    git log --oneline $fork_sync..$branch
+
+(in a clone of the FORK, not of this tree — \`$fork_sync\` is a commit of theirs. The
+branch name is the fork's own \`$branch\`, which is where this reconciliation was made;
+older reconciliations against the 5.15 series read \`MiSTer-v5.15\` there instead.)
 FORKSYNC
 fi)
 EOF
@@ -1294,6 +1795,10 @@ git diff --quiet && git diff --cached --quiet || die 'tree is dirty after export
 # the bug this section exists to prevent -- and which a too-strict defconfig parse already
 # caused once, vendoring xone alone.
 for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		printf '  %-52s skipped (%s)\n' "$pkg" "${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
 	dest="${MODULE_PATH[$pkg]}"
 	git cat-file -e "$tag:$dest" 2>/dev/null ||
 		die "$pkg is enabled but $dest is not in the exported tree"
@@ -1354,8 +1859,13 @@ printf '  tag      %s\n' "$tag"
 # concludes the series got applied twice. base_offset is the distance from the tag back to
 # the base (asserted against the real commit above), so it counts everything AFTER the
 # base -- hence the +1 to include the base that the "1 base" term names.
-printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + %s vendored drivers + build script + EXPORT.md)\n' \
-	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#enabled_kmods[@]}"
+#
+# module_doc_rows, NOT enabled_kmods, for the same reason: enabled_kmods counts every
+# kernel-module package the stack selects, including any named in MODULE_EXPORT_SKIP,
+# which produce no commit. module_doc_rows is appended only on the path that actually
+# commits, so it is the commit count by construction.
+printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + dtb alias + %s vendored drivers + build script + EXPORT.md)\n' \
+	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#module_doc_rows[@]}"
 printf '  files touched vs pristine upstream: %s\n' "$touched"
 if ((upstream_applied)); then
 	# Said on stdout as well as in EXPORT.md, because this is the one fact about the

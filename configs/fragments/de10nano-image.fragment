@@ -282,17 +282,24 @@ BR2_PACKAGE_NFS_UTILS_NFSV4=y
 BR2_PACKAGE_RSYNC=y
 BR2_PACKAGE_BUSYBOX=y
 
-# --- Realtek USB WiFi: mainline-first out-of-tree driver policy (§5.24, docs/wifi-parity.md) ---
-# WARNING: exactly ONE OOT fork is on (rtl8852cu-morrownr, no mainline USB
-# driver exists). Every other chip is driven in-kernel; enabling a fork too
-# would bind-fight on the same USB IDs.
-# BR2_PACKAGE_RTL8812AU is not set
-# BR2_PACKAGE_RTL8821AU_MORROWNR is not set
-# BR2_PACKAGE_RTL8188EU_AIRCRACK_NG is not set
-# BR2_PACKAGE_RTL8188FU is not set
-# BR2_PACKAGE_RTL8821CU_MORROWNR is not set
-# BR2_PACKAGE_RTL88X2BU is not set
+# --- USB WiFi: mainline-first out-of-tree driver policy (§5.24, docs/wifi-parity.md) ---
+# TWO out-of-tree USB WiFi drivers are on, and only these two. Both are for
+# chips mainline cannot drive over USB at all; every other chip in this image
+# is driven in-kernel, and enabling a fork alongside would bind-fight on the
+# same USB IDs.
+#
+# The six `is not set` lines that used to live here (RTL8812AU,
+# RTL8821AU_MORROWNR, RTL8188EU_AIRCRACK_NG, RTL8188FU, RTL8821CU_MORROWNR,
+# RTL88X2BU) are gone because the packages themselves are gone -- mainline had
+# caught up on all of them and they only generated Renovate noise. Removed
+# 2026-09-10; see Config.in and docs/wifi-parity.md §11.
 BR2_PACKAGE_RTL8852CU_MORROWNR=y
+# AIC8800: Wi-Fi 6 + BT, driver AND ~6.6 MiB of firmware. DE10-only on
+# purpose -- it is not in image-common (which both boards' image stacks pull
+# in) because the module has only been built and verified for 32-bit ARM. The
+# DE25 is aarch64 and would be building it untested. See docs/wifi-parity.md
+# §10 for what a DE25 enablement would have to show first.
+BR2_PACKAGE_AIC8800=y
 
 # --- xone: Xbox One/Series accessory driver + dongle firmware (P3.2, ADR 0003, §5.25) ---
 BR2_PACKAGE_XONE=y

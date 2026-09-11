@@ -1,11 +1,11 @@
 # T2: WiFi hotplug (docs/stock-reconciliation.md §3c "top follow-up").
 #
 # Stock ships this same path. It is an addon.tar entry -- docs/verification/
-# stock-reconciliation/addon-report.txt:25 lists it among addon.tar's 56
-# files (marked "ABSENT" there, meaning absent from OUR image at the time
+# stock-reconciliation/addon-report-20250402.txt:25 lists it among addon.tar's
+# 56 files (marked "ABSENT" there, meaning absent from OUR image at the time
 # that report was generated -- this file is what changes that), and the tar's
 # provenance (sha256 38e420ce...6fbde) is recorded in
-# docs/verification/stock-reconciliation/SOURCE.txt. addon.tar itself is NOT
+# docs/verification/stock-reconciliation/SOURCE-20250402.txt. addon.tar itself is NOT
 # unpacked anywhere under work/, so the bytes quoted below were read from the
 # extracted stock rootfs instead:
 # work/imgroot/etc/udev/rules.d/70-persistent-net.rules (450 bytes, mode 0666).

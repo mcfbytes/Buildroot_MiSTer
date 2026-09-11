@@ -1,0 +1,63 @@
+{
+  "sha": "e6f377e7d178c20a4c28b09e1f70c4b8d4cbffe2",
+  "subject": "Update defconfig.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-09-09",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": null,
+
+  "impact": {
+    "effect_if_absent": "none — the three config symbols added by Q7 are auto-selected by dependencies declared in Q2 (for RTW88_8821A) and Q3 (for FB_SYSMEM_FOPS and FB_IOMEM_FOPS); Q7 makes those implicit selections explicit in the defconfig, but does not change the resolved config.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "none",
+    "failure_mode": "none"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": null
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "33a0521fd4 (Q2, MiSTer-v6.18) — CONFIG_RTW88_8821AU=m enables RTW88_8821AU driver, which auto-selects RTW88_8821A=m in the Kconfig",
+      "ea2212221a (Q3, MiSTer-v6.18) — CONFIG_FB_MISTER Kconfig definition in fbdev/Kconfig now selects both FB_SYSMEM_FOPS and FB_IOMEM_FOPS"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "NO INDEPENDENT CONTENT — three lines, each the config-side of Q2 or Q3, adding nothing new.\n\nLINE 1: CONFIG_RTW88_8821A=m (after line 1671 in MiSTer_defconfig).\n  Q2 (33a0521fd) sets CONFIG_RTW88_8821AU=m at line 1682. In vanilla 6.18.50's rtw88 Kconfig, RTW88_8821AU selects RTW88_8821A as a dependency; olddefconfig therefore auto-sets RTW88_8821A=m whenever RTW88_8821AU=m is enabled. Evidence: OUR RESOLVED CONFIG on v6.18.50 with our linux.config (which has CONFIG_RTW88_8821AU=m) yields CONFIG_RTW88_8821A=m via auto-selection (no explicit line needed). STOCK CONFIG 20260907 has '# CONFIG_RTW88_8821AU is not set' (line 1682), so neither symbol appears.\n\nLINES 2–3: CONFIG_FB_SYSMEM_FOPS=y and CONFIG_FB_IOMEM_FOPS=y (after line 2752 in MiSTer_defconfig).\n  Q3 (ea2212221) modifies fbdev/Kconfig to add two lines to the FB_MISTER config block (lines 82–83 in patch 0001-fbdev-add-MiSTer_fb-driver.patch in our tree):\n    +\tselect FB_SYSMEM_FOPS\n    +\tselect FB_IOMEM_FOPS\n  (Note: OUR patch 0001 currently only selects FB_IOMEM_FOPS, not FB_SYSMEM_FOPS. Q3 upstream adds both; the equivalent behaviour on our tree requires explicit defconfig entries or patch 0001 revision.)\n  These symbols exist in vanilla v6.18.50's drivers/video/fbdev/core/Kconfig as abstract 'tristate' symbols ('config FB_SYSMEM_FOPS' and 'config FB_IOMEM_FOPS', both depending on FB_CORE). When FB_MISTER is enabled, the two select directives cause olddefconfig to set both to =y. STOCK CONFIG 20260907 (at aec7dc3aa, before Q2–Q4) has neither symbol mentioned: stock has no FB_MISTER driver, no Q3 changes, no explicit defconfig entries.\n\nGROUNDING: v6.18.49 (release commit 1c732c6b94f0, linux-6.18.y) used for RTW88 and FB symbol verification; v6.18.50 not available to this session (kernel.org blocked; used gregkh mirror per env.md note). Symbols rtw88_8821a.c and fbdev core Kconfig verified at v6.18.49; no breaking changes expected in .50 (stable line, same driver/kconfig structure). 6.18.50 grounding gap acknowledged per preamble.\n\nQ7 IS A PURE DEFCONFIG ENTRY: dropping it has ZERO effect on the build or boot. CONFIG_RTW88_8821A and both FB_* symbols will still be set to =y/=m by olddefconfig because the Kconfig selects are in place from Q2 and Q3. Making them explicit in the defconfig (as Q7 does) is a convenience for tree introspection and does not change kernel behaviour."
+}

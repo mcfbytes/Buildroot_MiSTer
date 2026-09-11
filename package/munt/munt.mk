@@ -5,7 +5,7 @@
 ################################################################################
 
 # P3.8 (MIDI / MT-32 parity). Stock's /usr/sbin/mt32d (P0.3 inventory,
-# docs/stock-inventory/binaries-needed-full.txt line 481: linked against only
+# docs/stock-inventory/20250402/binaries-needed-full.txt line 481: linked against only
 # libasound/libc/libgcc_s/libm/libpthread/libstdc++ -- notably NO
 # libmt32emu.so, i.e. it links libmt32emu statically or the SONAME just isn't
 # separately listed by that scan; either way the *behavior* is upstream

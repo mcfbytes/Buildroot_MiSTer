@@ -7,7 +7,7 @@ Mainline's socfpga_cyclone5_de10nano.dts (144616a80889, v6.14) describes a
 bare Terasic DE10-Nano: ethernet, the three GPIO banks, i2c0 + the on-board
 accelerometer, mmc0 and uart0. MiSTer needs considerably more of the SoC
 switched on. This adds, all of it diffed value-by-value against the DTB
-decompiled from a running stock MiSTer (docs/stock-inventory/stock.dts):
+decompiled from a running stock MiSTer (docs/stock-inventory/20250402/stock.dts):
 
   - usb1                 dr_mode = "host", disable-over-current
   - fpga_bridge0/1/2     lwhps2fpga, hps2fpga, fpga2hps (fpga2sdram stays off)
@@ -25,6 +25,10 @@ decompiled from a running stock MiSTer (docs/stock-inventory/stock.dts):
                          /sys/class/leds/hps_led0/brightness_hw_changed)
   - regulator_3_3v       + mmc0 vmmc-supply/vqmmc-supply
   - aliases/ethernet0    U-Boot's fdt_fixup_ethernet() needs it to inject $ethaddr
+  - ocram flags-sram@f000  reserve the last 4 KiB of OCRAM from the mmio-sram
+                         gen_pool; hygiene today, load-bearing only if a
+                         future in-kernel sram consumer needs a
+                         deterministic allocation (see below)
 
 A14 -- THE CONSTRAINT THIS PATCH MUST NOT BREAK
 -----------------------------------------------
@@ -55,6 +59,49 @@ still lands on SPI bus 1 CS 0 -> /dev/spidev1.0, which is what
 Main_MiSTer/brightness.cpp opens. spidev_of_check() only rejects the literal
 string "spidev" in DT and is satisfied by this compatible.
 
+OCRAM TAIL RESERVATION -- WHY, AND WHY NOT terasic,de10-nano
+--------------------------------------------------------------
+Fork commit 60e0d56bdd ("ARM: socfpga: reserve OCRAM tail for MiSTer
+persistent flags", an unsquashed sub-commit of PR #85) adds an &ocram
+override reserving the last 4 KiB of the 64 KiB mmio-sram block at
+0xffff0000 (socfpga.dtsi:785-788, "ocram: sram@ffff0000") as a plain
+reg-only child. drivers/misc/sram.c treats a child with "reg" but no
+export/pool/protect-exec as a reserved block: it is added to reserve_list
+and excluded from the parent gen_pool without being mapped, exported, or
+cleared (drivers/misc/sram.c:199-321). This costs nothing at runtime and
+makes future OCRAM allocation from this pool deterministic, so it is
+carried here. Every property is byte-identical to the fork's override
+(#address-cells/#size-cells/ranges and the flags-sram@f000 child with
+reg = <0xf000 0x1000>), so the two trees stay diffable on the node itself;
+the one difference is the explanatory comment block below, which the fork
+deliberately does NOT carry ("No source comments are added; rationale is
+recorded here as requested" -- 60e0d56bdd's own commit message). We carry
+it because the fork's stated rationale is wrong for this repo (see the next
+paragraph) and a reader of the DTS needs to know that.
+
+The fork's commit message says MiSTer keeps persistent flags in this OCRAM
+tail. That does not hold for Main_MiSTer at 6cda9cc546c4: the
+persistent-flags page is DDR at 0x1FFFF000, not OCRAM (fpga_io.cpp:397,
+595-600; user_io.cpp:1336,1370), and SOCFPGA_OCRAM_ADDRESS
+(fpga_base_addr_ac5.h:44) is defined and never referenced anywhere else in
+the tree. So this patch carries the node for a corrected reason: it is
+allocation hygiene for any future in-kernel sram consumer, and becomes
+load-bearing only if the fork's OCRAM-resident cpufreq port (59bcae8eb,
+PR #85) is ever adopted -- its allocator rejects any OCRAM allocation
+outside 0xffff0000-0xffffefff and disables PLL retuning rather than run
+from a bad address. Full analysis:
+docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md §6(ii).
+
+NOT carried from the same area: the `compatible = "terasic,de10-nano", ...`
+hunk the fork keeps against its own copy of the DTS. Nothing to carry --
+vanilla 6.18.49 already has it verbatim:
+
+    arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts:15
+        compatible = "terasic,de10-nano", "altr,socfpga-cyclone5", "altr,socfpga";
+
+and this patch carries that line as unchanged context (see the first hunk
+below), so their DTS-level hunk would be a no-op here.
+
 Provenance
 ----------
 Origin:       aa8afe109 "de10-nano dts" plus 12 follow-ups (e40563ae1,
@@ -82,12 +129,47 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.7.
 Divergences from stock, each with its justification, are tabulated in
 docs/dts-comparison.md. Verified: dtbs builds with zero new dtc warnings
 (default flags AND W=1); the built DTB was decompiled and compared node-by-node
-against docs/stock-inventory/stock.dts.
+against docs/stock-inventory/20250402/stock.dts.
+
+Additional origin (OCRAM tail reservation, appended 2026-09-11):
+Origin:       60e0d56bddc3eb1bdb0f3a08a5f755ade91b1f89 "ARM: socfpga:
+              reserve OCRAM tail for MiSTer persistent flags", an
+              unsquashed sub-commit of fork commit 59bcae8ebc53933bc4729af
+              25ae5cd94ade1f756 / PR #85 ("Port MiSTer CPUFreq to Linux
+              6.18 with opt-in turbo"), branch MiSTer-v6.18, 2026-09-08.
+              https://github.com/MiSTer-devel/Linux-Kernel_MiSTer
+Author:       Kasper Olesen <kaspersolesen@gmail.com>
+Upstream:     No; MiSTer/DE10-Nano-specific, and no Signed-off-by trailer
+              on the origin commit to carry forward.
+Disposition:  Carried, with a corrected rationale -- see "OCRAM TAIL
+              RESERVATION" above. The origin commit's stated reason
+              (persistent flags live in this OCRAM tail) does not verify
+              against Main_MiSTer 6cda9cc546c4 (flags are DDR at
+              0x1FFFF000; SOCFPGA_OCRAM_ADDRESS is defined and unused).
+              Carried anyway as zero-cost allocation hygiene via the
+              drivers/misc/sram.c reserved-child mechanism; becomes
+              load-bearing only if the fork's OCRAM-resident cpufreq port
+              is ever adopted (tracked, not decided --
+              docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md §8).
+Forward-port: Applied directly against 6.18.49; every property of the node
+              is carried verbatim from the fork's DTS (their &ocram
+              override, unchanged since the node itself predates this
+              commit) -- only an explanatory comment block, which the fork
+              deliberately omits, is added -- so no re-derivation was
+              needed. Verified -F0 against pristine
+              6.18.49 and (the vanilla DTS being byte-identical between
+              the two) against v7.2.3, which the beta series' symlink of
+              this file also relies on. 6.18.50/7.2.4 unreachable in the
+              authoring session; CI applies against the real tarballs.
+              Not carried from the same fork commit's neighbourhood: the
+              `compatible = "terasic,de10-nano", ...` hunk against their
+              own DTS copy -- vanilla already has it (see above), so it is
+              a no-op here and omitting it is not a divergence.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 227 ++++++++++++++--
- 1 file changed, 213 insertions(+), 14 deletions(-)
+ .../boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 209 +++++++++++++++++++--
+ 1 file changed, 202 insertions(+), 7 deletions(-)
 
 --- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
 +++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
@@ -98,7 +180,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 + *
 + * MiSTer additions (2026): the DE10-Nano as used by the MiSTer project.
 + * Every value here was diffed against the DTB decompiled from a running stock
-+ * MiSTer (docs/stock-inventory/stock.dts); the node-by-node comparison and the
++ * MiSTer (docs/stock-inventory/20250402/stock.dts); the node-by-node comparison and the
 + * reason for every divergence live in docs/dts-comparison.md.
   */
  /dts-v1/;
@@ -297,7 +379,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  };
  
  &uart0 {
-@@ -92,4 +240,31 @@
+@@ -92,4 +240,51 @@
  	 * no handshaking lines
  	 */
  	clock-frequency = <100000000>;
@@ -328,6 +410,26 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +
 +&fpga_bridge2 {
 +	status = "okay";
++};
++
++&ocram {
++	#address-cells = <1>;
++	#size-cells = <1>;
++	ranges = <0 0xffff0000 0x10000>;
++
++	/*
++	 * Reserve the last 4 KiB of OCRAM from the mmio-sram gen_pool.  A child
++	 * with only "reg" (no export/pool/protect-exec) is excluded from the
++	 * parent pool by drivers/misc/sram.c without creating a subpool or
++	 * clearing the memory.  Upstream MiSTer added this for persistent flags;
++	 * at Main_MiSTer 6cda9cc54 those flags actually live in DDR at
++	 * 0x1FFFF000 (fpga_io.cpp:397/595, user_io.cpp:1336/1370), so for us this
++	 * is allocation hygiene, and a hard requirement only if we ever adopt the
++	 * OCRAM-resident PLL retune (fork 59bcae8eb).
++	 */
++	flags-sram@f000 {
++		reg = <0xf000 0x1000>;
++	};
  };
 -- 
 2.51.0

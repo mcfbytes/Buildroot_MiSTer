@@ -10,7 +10,8 @@ config BR2_PACKAGE_MIDILINK
 	  FluidSynth), or a network peer (UDP/TCP, incl. a small Hayes "AT"
 	  command subset). Stock ships it as /usr/sbin/midilink plus a
 	  small companion tool /usr/sbin/mlinkutil (P0.3 inventory:
-	  docs/stock-inventory/binaries-needed-full.txt lines 470/480).
+	  docs/stock-inventory/20250402/binaries-needed-full.txt lines
+	  470/480).
 	  This is the actual ALSA-sequencer client that makes cores' MIDI
 	  ports appear at all -- see docs/midi-mt32-parity.md for why
 	  package-manifest.md's "driven directly by the MiSTer binary, not

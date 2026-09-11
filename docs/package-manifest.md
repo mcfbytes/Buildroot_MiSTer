@@ -1,5 +1,18 @@
 # Package manifest — stock SONAME/binary → Buildroot mapping
 
+> ⚠ **Stock moved to Release 20260907, checked 2026-09-10 — this document is still
+> 20250402-based and was not regenerated.** The 251-SONAME input set below is
+> `docs/stock-inventory/20250402/binaries-needed-union.txt`. It was **not** re-derived
+> against Release 20260907's rootfs for this pass — but the underlying evidence needed to
+> do so now exists: `docs/stock-inventory/20260907/binaries-needed-union.txt` (250 SONAMEs;
+> `docs/stock-inventory/20260907/shared-libraries.md` shows the same 1,039/534/507
+> shared-library counts as 20250402 — see `docs/version-delta.md`'s banner). Since the
+> Buildroot userland was independently found unchanged between the two releases
+> (`README.md`, `docs/stock-inventory/README.md`), this table's mappings are not expected
+> to need new entries, but that has not been confirmed by an actual `comm` re-run against
+> the new union list — treat every row below as a 20250402 measurement until that
+> comparison is done.
+
 Task: **P0.7**. Deliverable consumed directly by **P2.1** (full package set) and the
 version-jump risk owners **P3.6** (Samba), **P3.7** (SSH/FTP), **P3.9** (Python).
 
@@ -32,7 +45,7 @@ version jump could not be settled from the Buildroot tree alone (bluez, imlib2,
 libtiff, libffi), it was additionally cross-checked against current (2026) Arch/Debian
 package metadata — cited inline.
 
-Input set: the **251** distinct SONAMEs in `docs/stock-inventory/binaries-needed-union.txt`
+Input set: the **251** distinct SONAMEs in `docs/stock-inventory/20250402/binaries-needed-union.txt`
 (P0.3). **All 251 are accounted for below — zero unmapped.**
 
 ---
@@ -446,7 +459,7 @@ which MiSTer's standalone file-server role never uses.
 ## 2. User-facing binaries → packages
 
 The daemons and tools stock ships that users/scripts depend on directly (not just
-via SONAME), pulled from `docs/stock-inventory/etc-configs.md`'s init-script list and
+via SONAME), pulled from `docs/stock-inventory/20250402/etc-configs.md`'s init-script list and
 `binaries-needed-full.txt`'s `/usr/bin`, `/usr/sbin` paths — not guessed.
 
 Several versions in this table have since moved, across two Buildroot bumps. The
@@ -512,7 +525,7 @@ or the actual consumer source (`Downloader_MiSTer`), and an owning task.
 ### Samba 4.14.6 → 4.23.8 (owner: P3.6)
 
 Nine major releases apart. Read against the **verbatim stock `smb.conf`**
-(`docs/stock-inventory/etc-configs.md`):
+(`docs/stock-inventory/20250402/etc-configs.md`):
 
 - **SMB1 already off by default since Samba 4.11** (`client/server min protocol =
   SMB2_02`) — stock is already 4.14, so this is not a *new* regression from our jump.
@@ -648,7 +661,7 @@ community update scripts rely on.
 ### BusyBox 1.33.1 → 1.37.0 (owner: whoever owns rootfs-overlay, P2.3)
 
 Four years of BusyBox releases. No applet in the 274-applet stock list
-(`docs/stock-inventory/busybox-applets.md`) has been removed in that span; this is a
+(`docs/stock-inventory/20250402/busybox-applets.md`) has been removed in that span; this is a
 routine bump. The one item worth a deliberate look in P2.3: BusyBox `init`'s
 `inittab`/`rcS`/`rcK` semantics stock relies on (`::sysinit`, backgrounding with `&`,
 the `[ ! -f "$i" ]` symlink-following guard that makes `S45bluetooth`'s symlink trick
@@ -674,7 +687,7 @@ Every gap below has a disposition (task's done-when criterion).
 | `libhid` (`libhid.so.0`) | `libhid-detach-device` | **none** | Drop the tool. Legacy USB-HID-via-libusb-0.1 project, superseded everywhere by `libusb`/`hidapi`; nothing MiSTer-specific uses it | rootfs package list (P2.1) |
 | AdPlug (`libadplug.so`, `libbinio.so`) | `adplay` | **none** | Drop the tool. AdLib/OPL music player CLI; not part of any MiSTer audio path (FluidSynth + ALSA handle that) | rootfs package list (P2.1) |
 | `archivemount` | (itself, needs `libarchive.so.13`+`libfuse.so.2`) | **none** (both of its *dependencies*, `libarchive` and `libfuse`, DO exist in Buildroot — `BR2_PACKAGE_LIBARCHIVE` 3.8.7, `BR2_PACKAGE_LIBFUSE` 2.9.9 — but `archivemount` the tool itself is not packaged by Buildroot) | Drop. Already **dangling/non-functional in stock** per P0.3 — reproducing a broken binary faithfully is not a goal. If ever wanted, it's a straightforward `package/` addition (FUSE + libarchive glue, small C source) — file as a future community request, not a P0.7 blocker | Gaps list only, no Phase-3 task currently owns it |
-| Realtek out-of-tree WiFi — **stale row, kept for history; see the note below** (11ac: `8812au`, `8821au`) | kernel modules, class E | none (by design — morrownr forks) | **Not this task's gap** — owned by P3.1/v9 as Buildroot `kernel-module` packages sourced from morrownr. v9 moved `8188eu`/`rtl8188fu` (→ in-kernel `rtl8xxxu`), `8821cu` (→ `rtw88_8821cu`) and `88x2bu` (→ `rtw88_8822bu`) to mainline; PR #35 later moved `8814au` (→ in-kernel `rtw88_8814au`) the same way, ~~leaving only `8812au` and `8821au` out-of-tree (no mainline USB driver)~~. **Superseded twice**: v10 moved `8812au`/`8821au` to mainline too (`rtw88_88xxa` core, 6.13), taking the out-of-tree count to zero; v10.2 then added **one** new out-of-tree package for a chip that was never in this row at all — `rtl8852cu-morrownr` (RTL8852CU/RTL8832CU Wi-Fi 6E), because mainline's `rtw89` HAL for that chip has no USB bus file, only a PCI one this board can't reach. Current state: **one** out-of-tree WiFi kernel-module package, not the two named in this row's title. See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) (its v10.2 update has the full gap analysis) and `docs/wifi-parity.md` §8 | P3.1/v9 → v10.2 |
+| Realtek out-of-tree WiFi — **stale row, kept for history; see the note below** (11ac: `8812au`, `8821au`) | kernel modules, class E | none (by design — morrownr forks) | **Not this task's gap** — owned by P3.1/v9 as Buildroot `kernel-module` packages sourced from morrownr. v9 moved `8188eu`/`rtl8188fu` (→ in-kernel `rtl8xxxu`), `8821cu` (→ `rtw88_8821cu`) and `88x2bu` (→ `rtw88_8822bu`) to mainline; PR #35 later moved `8814au` (→ in-kernel `rtw88_8814au`) the same way, ~~leaving only `8812au` and `8821au` out-of-tree (no mainline USB driver)~~. **Superseded twice**: v10 moved `8812au`/`8821au` to mainline too (`rtw88_88xxa` core, 6.13), taking the out-of-tree count to zero; v10.2 then added **one** new out-of-tree package for a chip that was never in this row at all — `rtl8852cu-morrownr` (RTL8852CU/RTL8832CU Wi-Fi 6E), because mainline's `rtw89` HAL for that chip has no USB bus file, only a PCI one this board can't reach. ~~Current state: **one** out-of-tree WiFi kernel-module package, not the two named in this row's title.~~ **Superseded a third time (2026-09-10):** `package/aic8800` was added for the AICSemi AIC8800 family (Wi-Fi 6 + BT, driver **and** ~6.6 MiB of firmware, from `radxa-pkg/aic8800`) — mainline has no aic8800 driver over any bus — and the **seven deselected packages named in this row were deleted outright** (`rtl8188eu-aircrack-ng`, `rtl8188fu`, `rtl8812au`, `rtl8814au-morrownr`, `rtl8821au-morrownr`, `rtl8821cu-morrownr`, `rtl88x2bu`), because a package the image never builds still costs a Renovate PR stream, a hash-sync entry and a CI path filter. Current state: **two** out-of-tree WiFi kernel-module packages (`rtl8852cu-morrownr`, `aic8800`) and **zero** sourced-but-deselected ones. See [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md) (its v10.2 update has the gap analysis, its 2026-09-10 update the two changes above) and `docs/wifi-parity.md` §8, §10.1, §11, §12 | P3.1/v9 → 2026-09-10 |
 | `xone` (Xbox Wireless) | kernel modules, class D | none (out-of-tree upstream project) | **Closed by P3.2** — `package/xone` (driver, `dlundqvist/xone` fork) + `package/xow-firmware` + `package/cabextract` (dongle firmware, Microsoft-sourced at build time, `docs/decisions/0003-xone-firmware.md`) | P3.2 |
 | MT-32 ROM / soundfont data | `MiSTer` binary's built-in synth, via `libfluidsynth.so.3` | n/a — not software, it's asset data (`mt32-rom-data/`, `soundfonts/`) shipped under `files/linux/` | Carry forward unmodified as static assets, not a rootfs package concern | P3.8 |
 
@@ -823,7 +836,7 @@ image has existed. A user found it, not a build check.
 
 **What stock ships.** A real GNU wget ELF at `usr/bin/wget`, linked
 `libc.so.6, libgnutls.so.30, libnettle.so.8, libpcre.so.1, libuuid.so.1,
-libz.so.1` (`docs/stock-inventory/binaries-needed-full.txt:351`), plus GNU
+libz.so.1` (`docs/stock-inventory/20250402/binaries-needed-full.txt:351`), plus GNU
 wget's own `/etc/wgetrc` (`etc-configs.md:1097`, 4945 bytes — a file the BusyBox
 applet never reads). Stock's BusyBox 1.33.1 *also* had the applet compiled in
 (`busybox-applets.md:278`, one of its 274), but the GNU binary owned the path,
@@ -906,7 +919,7 @@ The rootfs is **93% full** (297/347 MiB per PLAN §4.2, confirmed 13.6% free by
 `docs/verification/stock-release-20250402.md`) and we must land ≥15% free in a 512 MiB
 image (PLAN §11/P2.7). A modern package set will not shrink on its own
 (PLAN §4.2), so every dropped package is real budget. From
-`docs/stock-inventory/disk-usage.md`:
+`docs/stock-inventory/20250402/disk-usage.md`:
 
 | Item | Size (stock) | Why drop | Disposition |
 |---|---|---|---|

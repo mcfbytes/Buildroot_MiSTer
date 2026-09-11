@@ -1,0 +1,9 @@
+c129b0fac34ad5d613bbec3f59d6036775e41c83	2026-09-11	Sorgelig	Add AIC8800 WiFi/BT driver.
+41c45f378e8f433b56c4da9b80edcdfd67fcebfb	2026-09-09	Porkchop Express	Adapt Classic2USB and RetroZord HID force feedback support (#91)
+e6f377e7d178c20a4c28b09e1f70c4b8d4cbffe2	2026-09-09	Sorgelig	Update defconfig.
+9854075c86455942c2ce57e0b7dc80e3e2c5b108	2026-09-09	Sorgelig	exfat: speed-up dir read-ahead.
+7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b	2026-09-08	Kasper Olesen	Input: xpad - add opt-in 8BitDo initialization bypass
+59bcae8ebc53933bc4729af25ae5cd94ade1f756	2026-09-08	Kasper Olesen	Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo (#85)
+ea2212221ad137cf26bf5caa7ad3dab7216435a6	2026-09-08	Takiiiiiiii	fbdev: MiSTer_fb: declare explicit fb_ops for read/write/mmap (#83)
+33a0521fd46b3991ec3a882f659bceb2c1cb4399	2026-09-08	Julian Seitz	config: enable CONFIG_RTW88_8821AU for Realtek 8821AU/8811AU USB adapters (#81)
+aec7dc3aa4846385736f1d54c9155e3b3c726708	2026-07-24	Nigel Shearman	config: enable CONFIG_TUN for tap device support (#76)

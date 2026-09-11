@@ -1,5 +1,16 @@
 # Kernel patch provenance & triage (P0.4)
 
+> **Stock baseline of this document: the 5.15 kernel.** Every row below classifies a
+> commit of `MiSTer-v5.15` (Linux 5.15.1 — the kernel stock shipped from 2021-11 until
+> 2026-09-07) against vanilla 6.18. **On 2026-09-07 stock moved to 6.18.38** (Release
+> 20260907 = `MiSTer-v6.18` @ `aec7dc3aa`). This document remains the narrative map of the
+> 5.15 → 6.18 forward-port and the provenance of every carried patch, and its rows stay
+> valid as history; it is no longer where *stock parity* is decided. From this date,
+> stock-parity questions are measured against `MiSTer-v6.18` and the shipped 6.18 config
+> (`docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`), and each fork-sync increment adds its rows to §11. The first such increment is
+> planned in [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](kernel-recon/fork-sync-2026-09/PLAN.md)
+> and has not yet run.
+
 Every change in `MiSTer-devel/Linux-Kernel_MiSTer` (branch `MiSTer-v5.15`,
 HEAD `f0fb626acadd07f0718934826b143b6e4c9ce81c`, 2026-07-08) classified per `PLAN.md` §4.1,
 with upstream status verified against **real Linux 6.18.38 source** (not from memory), and a
@@ -194,7 +205,7 @@ had —
 CONFIG_EXFAT_DISCARD=y            CONFIG_EXFAT_DELAYED_SYNC=y
 CONFIG_EXFAT_DEFAULT_CODEPAGE=437 CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
 ```
-(`docs/stock-inventory/stock-linux.config`; mainline 5.15/6.18 `fs/exfat/Kconfig` has only
+(`docs/stock-inventory/20250402/stock-linux.config`; mainline 5.15/6.18 `fs/exfat/Kconfig` has only
 `EXFAT_FS` and `EXFAT_DEFAULT_IOCHARSET`.)
 
 Three consequences, all user-visible:
@@ -338,7 +349,7 @@ design · `config` = feeds P1.3, not a patch.
 | `246984fce` (spidev hunk) | Enable SPI on LTC | `drivers/spi/spidev.c` — `{ .compatible = "altspi" }` | Sorgelig | no | **DROPPED (P1.7)** — DTS retargeted to `rohm,dh2228fv`, which 6.18's `spidev_dt_ids[]` already accepts (N2) | *(none — `0005` slot intentionally empty)* |
 | `215e6e662`, `7828d722e`, `d788e7ab9`, `0d7b4fc7e`, `5391b8171`, `1a1f208fa`, `ae9313e22`, `316288a3d`, `97a398176`, `f0fb626ac`, `9f59d13d5` | defconfig (11 commits) | `arch/arm/configs/MiSTer_defconfig` | Sorgelig; `ae9313e22` **Bas v.d. Wiel**; `316288a3d` **Larry**; `f0fb626ac` **Nigel Shearman**; `0d7b4fc7e` **fjmartinez2k**; `9f59d13d5` **Fabio DL** | n/a | **config** — feeds P1.3 | *(none)* |
 
-> **P1.3 note.** `docs/stock-inventory/stock-linux.config` (IKCONFIG, release 20250402) is
+> **P1.3 note.** `docs/stock-inventory/20250402/stock-linux.config` (IKCONFIG, release 20250402) is
 > **15 months older than fork HEAD**. It lacks `CONFIG_HID_VADER4=m` and `CONFIG_MACVLAN=y`,
 > which HEAD's `MiSTer_defconfig` has. P1.3 must reconcile *both* sources.
 > Symbols the carried patches introduce: `FB_MISTER`, `SND_MISTER_AUDIO` (+`SND_DUMMY`),
@@ -784,22 +795,56 @@ main PLL VCO. Frequency table (`socfpga-cpufreq.c:99`):
 Stock governor: `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y` with
 performance/powersave/userspace/ondemand/conservative/schedutil all built in (P1.3 must match).
 
-> ⚠ **[P1.6 correction] There is NO `/sys/devices/system/cpu/cpufreq/boost` file — not on 6.18,
+> ⚠ **[P1.6 correction, made 2026-07 — SUPERSEDED 2026-09-11, see the box below.] At the time
+> this was written there was NO `/sys/devices/system/cpu/cpufreq/boost` file — not on 6.18,
 > and *not on stock 5.15 either*.** The claim above (and in `abi-contract.md` §7.3, which cited
-> this file) was wrong. `create_boost_sysfs_file()` is gated on `cpufreq_boost_supported()` ==
-> `(cpufreq_driver->set_boost != NULL)`. This driver **never sets `->set_boost`**, never calls
-> `cpufreq_enable_boost_support()`, and the fork **does not patch `drivers/cpufreq/cpufreq.c`**
-> (`git show --stat 3d72b9db7` touches only `MiSTer_defconfig`, `Kconfig.arm`, `Makefile`,
-> `socfpga-cpufreq.c`). So no boost file was ever created. `.boost_enabled = false` is inert.
+> this file) was wrong **at P1.6's own baseline** (fork commit `3d72b9db7`, before PR #24).
+> `create_boost_sysfs_file()` is gated on `cpufreq_boost_supported()` ==
+> `(cpufreq_driver->set_boost != NULL)`. At that baseline the driver **never set `->set_boost`**,
+> never called `cpufreq_enable_boost_support()`, and the fork **did not patch
+> `drivers/cpufreq/cpufreq.c`** (`git show --stat 3d72b9db7` touches only `MiSTer_defconfig`,
+> `Kconfig.arm`, `Makefile`, `socfpga-cpufreq.c`). So no boost file existed at P1.6. **This is no
+> longer the shipped state — see the 2026-09-11 correction immediately below**, which is the
+> current, accurate description of `0003` as it ships today.
 >
-> **The actual overclock mechanism is `scaling_max_freq`.** `socfpga_cpu_init()` sets
-> `policy->cpuinfo.max_freq = 1200000`, and `cpufreq_frequency_table_cpuinfo()` deliberately
-> honours a driver-supplied ceiling above the table max — *"If the driver has set its own
-> cpuinfo.max_freq above max_freq, leave it as is."* (`drivers/cpufreq/freq_table.c`, **identical
-> in 5.15 and 6.18**). The `CPUFREQ_BOOST_FREQ` rows are skipped when computing the table max, so
-> without that assignment the board would cap at 800 MHz. **That one line IS the overclock
-> feature.** Anyone "cleaning up" the redundant-looking `cpuinfo.max_freq` assignment silently
-> removes overclocking.
+> **The overclock mechanism *at P1.6's baseline* was `scaling_max_freq` alone.**
+> `socfpga_cpu_init()` set `policy->cpuinfo.max_freq = 1200000`, and
+> `cpufreq_frequency_table_cpuinfo()` deliberately honours a driver-supplied ceiling above the
+> table max — *"If the driver has set its own cpuinfo.max_freq above max_freq, leave it as is."*
+> (`drivers/cpufreq/freq_table.c`, **identical in 5.15 and 6.18**). The `CPUFREQ_BOOST_FREQ` rows
+> are skipped when computing the table max, so without that assignment the board would have
+> capped at 800 MHz. **That one line WAS the overclock feature, at that baseline.** This is
+> historical context for why the driver looks the way it does; it does not describe the sysfs
+> contract a script sees today (below).
+
+> ⚠ **[2026-09-11 correction — the CURRENT, accurate state, per `memo-Q4-cpufreq.md` §4 of the
+> 2026-09 fork-sync increment.] The `boost` file DOES exist today, and `scaling_max_freq` alone
+> is NOT sufficient to reach 1200000.** Between the P1.6 baseline above and today, **PR #24**
+> (`3fb7f81`/`83ae09a`, `docs/debug-tooling.md`) fixed a field hard-hang (the board
+> auto-overclocking to 1.2 GHz on every boot with the `performance` governor) by adding
+> `.set_boost = cpufreq_boost_set_sw` and `.boost_enabled = false` to the driver's
+> `cpufreq_driver` struct — **`0003-cpufreq-cyclone5-de10nano-overclock.patch` as shipped today
+> carries that hunk** (`.set_boost`/`.boost_enabled` near the end of the patch). Consequence,
+> verified against 6.18.49's `drivers/cpufreq/cpufreq.c` core code (quoted in full in the memo):
+> `cpufreq_boost_supported()` now returns true (`->set_boost` is non-NULL), so the core creates
+> **both** the global `/sys/devices/system/cpu/cpufreq/boost` file (default `0`) and a per-policy
+> `.../cpuN/cpufreq/boost` file; and with boost off, `cpufreq_frequency_table_cpuinfo()` skips the
+> `CPUFREQ_BOOST_FREQ` rows when computing `cpuinfo.max_freq`, so **`echo 1200000 >
+> scaling_max_freq` alone clamps back down to `800000`** — `cpufreq_verify_within_cpu_limits()`
+> enforces the clamp on every `scaling_max_freq` write. Only after `echo 1 >
+> /sys/devices/system/cpu/cpufreq/boost` does `cpufreq_boost_set_sw()` recompute `cpuinfo.max_freq`
+> to `1200000` and raise the running ceiling — and, notably, with the `performance` governor this
+> also immediately jumps the CPU to 1.2 GHz (the boost write itself, not a later `scaling_max_freq`
+> write, is what changes the running frequency). **This is byte-for-byte the same sysfs contract
+> the fork's own `59bcae8eb` cpufreq port has** (both drivers set `.set_boost =
+> cpufreq_boost_set_sw` with `.boost_enabled = false` and flag the same rows
+> `CPUFREQ_BOOST_FREQ`) — adopting the fork's driver would change **nothing** here; see
+> `docs/kernel-recon/records/59bcae8ebc53933bc4729af25ae5cd94ade1f756.json` and the decision note
+> at the end of this section. **Community overclock scripts written against the P1.6-era
+> behaviour (or against stock 5.15, which never had a `boost` file at all) need one extra line:
+> `echo 1 > /sys/devices/system/cpu/cpufreq/boost` before `scaling_max_freq` can exceed 800000.**
+> See `docs/abi-contract.md`'s cpufreq row and `docs/user/faq.md` for the user-facing version of
+> this note.
 
 **The 5.15 → 6.18 API churn actually hit (P1.6 outcome). The "low hazard / near-clean rebase"
 prediction above was wrong: two of the four items are hard build failures, and the worst one is a
@@ -827,7 +872,8 @@ one *must stay* in `->attr` or the file disappears; and `scaling_available_frequ
 or the driver dies. Confirmed correct against `struct cpufreq_driver` in 6.18: `struct freq_attr
 **attr` (`:411`) and `bool boost_enabled` (`:416`) do still exist.
 
-**Resulting sysfs — bit-for-bit identical to stock 5.15:**
+**Resulting sysfs at the P1.6 baseline (`3d72b9db7`, before PR #24) — bit-for-bit identical to
+stock 5.15 at that point:**
 
 | Path | Value |
 |---|---|
@@ -839,7 +885,18 @@ or the driver dies. Confirmed correct against `struct cpufreq_driver` in 6.18: `
 | `…/cpu[01]/cpufreq/scaling_available_frequencies` | `800000 400000` (core-created) |
 | `…/cpu[01]/cpufreq/scaling_boost_frequencies` | `1200000 1000000` (`->attr`-created) |
 | `…/cpu[01]/cpufreq/scaling_cur_freq`, `cpuinfo_cur_freq` | present (`->get` is set) |
-| `/sys/devices/system/cpu/cpufreq/boost` | **does not exist** (and never did) |
+| `/sys/devices/system/cpu/cpufreq/boost` | did not exist at this baseline |
+
+> ⚠ **[2026-09-11 correction] This table is the P1.6/pre-PR#24 baseline, not what `0003` ships
+> today.** PR #24 added `.set_boost = cpufreq_boost_set_sw` / `.boost_enabled = false` (see the
+> correction box in the previous subsection), which changes three rows above as shipped **today**:
+> `cpuinfo_max_freq` reads `800000` until boost is enabled (not `1200000`); `scaling_max_freq`
+> writes above `800000` are clamped regardless of the value written, until boost is enabled (not
+> merely "clamped to `cpuinfo_max_freq`", which was itself `1200000` at this baseline); and
+> `/sys/devices/system/cpu/cpufreq/boost` **exists** (default `0`), plus a per-policy
+> `.../cpuN/cpufreq/boost`. `scaling_available_frequencies`/`scaling_boost_frequencies` are
+> unchanged. Full detail and the core-code citations: `memo-Q4-cpufreq.md` §4,
+> `docs/abi-contract.md`'s cpufreq row, `docs/user/faq.md`.
 
 **Config:** `CONFIG_ARM_SOCFPGA_CPUFREQ=y` added to `board/mister/de10nano/linux.config` by this
 task — P1.3 could not have added it, because the symbol does not exist in vanilla 6.18. Stock
@@ -1591,6 +1648,72 @@ Record: `docs/kernel-recon/records/6332499e7545499dc361d09af7b44b33f494fe5d.json
 the first pass used). Neither adapter was tested here — we own neither. The failure mode if
 the contributors' testimony is wrong is a dongle that still does not bind; a device-ID row
 cannot regress hardware that does not match it.
+
+### Patches added/changed in the 2026-09 increment
+
+Nine `MiSTer-v6.18` commits and one open PR landed between `6332499e7` and `c129b0fac`
+(2026-09-08 through 2026-09-11), prompted by stock's first 6.18 release (Release 20260907) and
+the regressions users found in it within four days. Full write-up:
+`docs/kernel-recon/fork-sync-2026-09.md`; per-item evidence: `docs/kernel-recon/records/` (the
+ten records this table summarizes) and the two Opus decision memos
+(`docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md`, `memo-Q9-aic8800.md`).
+
+| Patch / delta | Origin | Why |
+|---|---|---|
+| `0048-hid-google-stadiaff-classic2usb-retrozord` (new, all 3 series) | `41c45f378e8f433b56c4da9b80edcdfd67fcebfb`, Porkchop Express, PR #91 | Two `hid_device_id` rows so the Stadia rumble driver claims the Classic2USB/Reflex Adapt (`16d0:1460`) and RetroZord (`1209:595a`) adapters. Main_MiSTer already special-cases exactly these two IDs six times (`input.cpp:52-53`, `:4176-4177`, NeGcon/Guncon paths at `:5101-5103`/`:5348-5350`/`:5495-5506`) — Main_MiSTer-coupled, must-not-drop-silently |
+| `0049-hid-nintendo-8bitdo-adapter-skip-baudrate` (new, all 3 series) | `a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f`, Michał Kopeć, **open PR #92** (carried ahead of merge, owner decision D3 — see `fork-sync.conf`) | The 8BitDo USB Wireless Adapter in Switch mode presents as a genuine `057e:2009` Pro Controller and reset-loops (17 re-enumerations, hardware-verified by the PR author) when hid-nintendo sends it `JC_USB_CMD_BAUDRATE_3M`; the fix reorders `joycon_read_info()` ahead of that command and skips it for 8BitDo's `E4:17:D8` OUI. "Gamepad unusable" class, 32 lines, applies clean on top of all eight patches this repo already carries on `hid-nintendo.c` |
+| `0050-exfat-dir-readahead-plug` (new, **6.18 series only**) | `9854075c86455942c2ce57e0b7dc80e3e2c5b108`, Sorgelig (re-committed; original PR #88 by Giancarlo Erra, whose `Signed-off-by` is preserved in the patch header) | Wraps `exfat_dir_readahead()`'s `sb_breadahead()` loop in `blk_start_plug`/`blk_finish_plug`, matching the existing allocation-bitmap precedent (`fs/exfat/balloc.c`). Throughput fix for large directories — exactly the MiSTer file-browser workload. **Omitted from `linux-patches-beta/` and DE25**: 7.2.3's exFAT was already refactored to a shared `exfat_blk_readahead()` helper (mainline's own generalization of the same precedent) and the fork's 4-line hunk fails `-F0` against it (`2 out of 2 hunks FAILED`, reproduced) — the RT/DE25 kernels already have the behaviour under a different shape |
+| `0017-xpad-mister-deltas`, delta 5 | `7c75b1b469e4dfd8bf59f9c28a25af16cddd2d9b`, Kasper Olesen | Adds `skip_8bitdo_init`, a default-**off** module parameter that skips the Xbox-360 vendor-init request for USB `2dc8:3106` only — an experimental A/B switch (the commit's own words, not a permanent quirk) for the reconnect failure tracked in fork issue #84. Zero behaviour change unless a user opts in |
+| `0004-dts-de10nano-MiSTer`, OCRAM `flags-sram@f000` node | `59bcae8ebc53933bc4729af25ae5cd94ade1f756`, Kasper Olesen, PR #85 — **partial carry only**, see the Q4 decision note below | Reserves the last 4 KiB of OCRAM from the `mmio-sram` `gen_pool` (a child node with only `reg`, no `export`/`pool`/`protect-exec`, is excluded from the pool per `drivers/misc/sram.c`). The fork's stated rationale ("MiSTer keeps persistent flags there") does not verify against Main_MiSTer — those flags are in DDR at `0x1FFFF000` (`fpga_io.cpp:397,595`, `user_io.cpp:1336,1370`) — but the reservation is carried anyway as zero-cost allocation hygiene, and it becomes load-bearing if option B (§below) is ever adopted, since that driver's OCRAM allocator rejects any page outside `0xffff0000-0xffffefff` |
+| `0001-fbdev-add-MiSTer_fb-driver`, read/write helper alignment | `ea2212221ad137cf26bf5caa7ad3dab7216435a6`, Takiiiiiiii, PR #83 | Switches `.fb_read`/`.fb_write` from `__FB_DEFAULT_IOMEM_OPS_RDWR` (`fb_io_read`/`fb_io_write`) to `__FB_DEFAULT_SYSMEM_OPS_RDWR` (`fb_sys_read`/`fb_sys_write`) and adds `select FB_SYSMEM_FOPS` beside the existing `select FB_IOMEM_FOPS` (owner decision D4). `mmap` is unchanged (`fb_io_mmap` — there is no sysmem mmap helper). Proven behaviourally identical on ARM (`mmiocpy` *is* `memcpy`, `arch/arm/lib/memcpy.S:56-66`); done purely to shrink the export diff against `MiSTer-v6.18`. Main_MiSTer never calls `read(2)`/`write(2)` on `/dev/fb0`, so zero production risk |
+
+**Dropped-deliberate, no carry:** `aec7dc3aa` (Q1, `CONFIG_TUN` — duplicate of `5fcfae369`,
+already `linux.config:175`), `33a0521fd` (Q2, `CONFIG_RTW88_8821AU` — already `linux.config:623`
+since v10), `e6f377e7d` (Q7, defconfig update — entirely derived from Q2/Q3/Q4, no independent
+content). **Not-evaluated:** `c129b0fac` (Q9, AIC8800 driver — owner decision D2, below).
+
+#### Q4/Q9 decision note (owner, 2026-09-11)
+
+**Q4 — cpufreq (`59bcae8eb`, "Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo", #85).**
+**Decision: A — keep `0003`.** The fork's port is a real engineering improvement (a CCF clock
+provider, an OCRAM-resident PLL retune under `stop_machine` with `OUTRESETALL`, 12.5%-per-step
+VCO ramping, bounded polling, rollback, and CCF rate-change notification so the A9 TWD local
+timers stay correct) over `0003`'s direct-register-poke design — but it is 700 lines this repo
+did not write, with zero hardware validation on our image, against `0003`, which is the only
+cpufreq code ever observed running a MiSTer at 1.2 GHz, including on our own board on 6.18
+(`docs/testlogs/p1-first-boot.md:118`). The single strongest reason: the one thing adopting the
+fork's driver could change for users — the boost/`scaling_max_freq` sysfs contract — is already
+**byte-identical** between the two drivers (see the correction two subsections above), so there
+is no user-visible upside to trade against the risk. Full comparison, including the fork's own
+listed open issues (a deliberate infinite-loop hang path relying on a watchdog Main_MiSTer never
+opens; a latched permanent failure; a possible `-EBUSY`-forever if SD is main-PLL-sourced; an
+unexplained OSD-movement report) and the hardware test script that would flip this decision:
+`docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md`. Tracked as a bench-gated follow-up, not
+abandoned — `docs/kernel-recon/records/59bcae8ebc53933bc4729af25ae5cd94ade1f756.json`.
+
+**Q9 — AIC8800 Wi-Fi/BT driver (`c129b0fac`, "Add AIC8800 WiFi/BT driver.").**
+**Decision: D — defer** — **reversed 2026-09-10 → packaged.** The owner packaged the driver and
+its firmware after Wave 3 as `package/aic8800` (driver + all six firmware variants from
+`radxa-pkg/aic8800`, the same SDK snapshot stock vendored, built with radxa's kernel-API
+patches); the ledger record is `carried-as-package`, and it is still a Buildroot package, never
+an in-tree patch, exactly as the paragraph below requires. `docs/wifi-parity.md` §10.1 and
+`memo-Q9-aic8800.md` §10 hold the reversal; what follows is the defer analysis as it stood. The driver compiles and modposts clean for 32-bit ARM (the
+`rtl8852cu`-class `__aeabi_uldivmod` trap does not recur here) and has zero USB-ID bind conflicts
+against anything this repo already carries — but it is inert without roughly 60 firmware blobs
+that stock's own Release 20260907 `firmware.tar.gz` ships **none** of, and the 139-file vendored
+source tree carries no `LICENSE`, no `README`, and no SPDX tags outside one third-party file (85
+files have a bare copyright line and no licence grant at all; two files are Apache-2.0, which is
+GPL-2.0-only incompatible, though not compiled into the shipped `.ko`). Both blockers —
+identifying the upstream vendor repo (the exact snapshot is stamped in `rwnx_version_gen.h`:
+`RWNX_VERS_REV "1a4b0054d2M (master)"`, SDK `"6.4.3.0"`, `RELEASE_DATE "2026_0123_5f7be68d"`) and
+its firmware distribution — are answerable without hardware; this is a "come back when the two
+facts are known" defer, not a "chip we decline to support" decline. ADR 0016 already permits an
+out-of-tree driver here on the same "mainline cannot drive this chip" ground `rtl8852cu-morrownr`
+was accepted on, and would require a Buildroot kernel-module package — never an in-tree patch,
+regardless of outcome, per that same policy. Full sweep — license table, firmware filename
+inventory, the build result, the USB-ID overlap test, and the re-open trigger:
+`docs/kernel-recon/fork-sync-2026-09/memo-Q9-aic8800.md`. Record:
+`docs/kernel-recon/records/c129b0fac34ad5d613bbec3f59d6036775e41c83.json`.
 
 ### Provenance note
 

@@ -85,3 +85,27 @@ Records land in `records/<sha>.json`. Tier-2 = Sonnet 5 only (user directive: no
 - reduce.py: no-orphan scan extended to dependencies.superseded_by (0031 capability-carry).
 - Final: 49 carried / 44 dropped-deliberate / 21 dropped-upstream / 8 dropped-obsolete /
   1 misclassified (60e08955f mute — open user decision).
+
+
+## FORK-SYNC 2026-09 INCREMENT — WAVES 0-2 COMPLETE (2026-09-10, Fable orchestrator)
+- Plan: fork-sync-2026-09/PLAN.md. Status + owner decisions: fork-sync-2026-09/STATUS.md.
+- Queue: 9 MiSTer-v6.18 commits past 6332499e7 + open PR #92 (Q1-Q10); MiSTer-v5.15 frozen.
+- Wave 1: 12 agents (3 Haiku, 7 Sonnet, 2 Opus). Records written for all 10 items; Q4/Q9 are
+  needs-verification by design (owner decisions D1/D2, memos memo-Q4-cpufreq.md, memo-Q9-aic8800.md).
+- Wave 2: 4 Sonnet refutation agents. 0 dispositions refuted; 3 citation corrections (logged in
+  each record's wave2_corrections); Q1's coupled=true CONFIRMED against the July record's zero-hit
+  grep (Main_MiSTer A2065 Ethernet landed 2026-07-26 and uses /dev/net/tun).
+- Drift v6.18.39..6.18.49: 42 rows, 0 superseded, 0 conflicting; -F0 replay 37/37 (6.18) and
+  40/40 (7.2.3 beta series) clean. 6.18.50/7.2.4 NOT reachable this session (env.md).
+- reduce.py NOT re-run into the tree: planned patches 0048/0049/0050 do not exist yet, and a
+  PRE-EXISTING orphan-patch invariant violation (0039-0042 named by no record) surfaced — Wave 3.
+- Wave 3 defaults if the owner is silent: D1=A (+abi-contract fix, +OCRAM node in 0004),
+  D2=defer, D3=carry #92, D4=align 0001 to fb_sys_*.
+
+## WAVES 4-5 COMPLETE (2026-09-11)
+- Wave 4: Opus audit (112 claims, 28 corrections, 0 dispositions contradicted; audit-findings.md) + Sonnet
+  tree-diff backstop (tree-diff-2026-09.md; 1 new finding F1 in the fork's own MiSTer_fb.c).
+- Wave 5: six upstream candidate patches + PR drafts under fork-sync-2026-09/upstream-candidates/,
+  compiled against fork HEAD c129b0fac. NOT sent (owner decision after the PR #75 thread).
+- Export tree: export-kernel-tree.sh fixed (fragment split) + DTS alias + stock-process recipe;
+  check-export-tree.sh added; docs/kernel-export.md. Dry run PASS at 6.18.49.

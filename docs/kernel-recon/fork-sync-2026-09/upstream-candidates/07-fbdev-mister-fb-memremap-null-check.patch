@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Thu, 10 Sep 2026 00:00:00 +0000
+Subject: [PATCH] fbdev: fix memremap() failure check in MiSTer_fb probe
+
+fb_probe() maps the FPGA framebuffer window with memremap() and then
+checks the result with IS_ERR(), logging "devm_ioremap_resource fb
+failed" on failure.
+
+memremap() returns NULL on failure, not an ERR_PTR -- it is a plain
+`void *`, and nothing in its implementation (include/linux/io.h)
+ever returns an encoded error pointer. IS_ERR(NULL) is false and
+PTR_ERR(NULL) is 0, so this check can never actually catch a failed
+mapping: on a real memremap() failure, fb_probe() would return 0
+(success) with fbdev->fb_base left NULL, and the driver's later
+dereferences of it -- info->pseudo_palette, info->screen_base, and the
+memset() in fb_remove() -- would fault instead of the probe cleanly
+failing with a useful log line. The log message itself also names a
+function, devm_ioremap_resource(), that is not the one being called
+here; it reads like a leftover from an abandoned refactor toward that
+helper that changed the check and the message but not the actual
+allocator call.
+
+Severity is low in practice: the DE10-Nano's FPGA framebuffer window
+is a fixed reserved-memory region asserted by the DTB, so memremap()
+failing there at all is exceptional (OOM of the low-memory mapping
+space, or a misconfigured `reg`). This is a dead-in-normal-operation
+error path, not a live regression -- but it is a two-line, low-risk
+correctness fix for a driver this branch already carries in-tree.
+
+Buildroot_MiSTer's own port of this driver (0001-fbdev-add-MiSTer_fb-
+driver.patch) already uses the correct check -- `if (!fbdev->fb_base)`
+with a "memremap fb failed" message matching the function actually
+called -- documented as bug "B2" in that repository's README.md. This
+patch brings the same correction to this branch's independently
+forward-ported copy of the driver.
+
+No Main_MiSTer coupling: this is a kernel-internal robustness fix on
+an error path Main_MiSTer never observes either way.
+
+Verified: `patch -p1 -F0` applies clean (0 offset) on a fresh
+c129b0fac extract; drivers/video/fbdev/MiSTer_fb.o cross-compiles with
+ARCH=arm LLVM=1 W=1 against MiSTer_defconfig with zero warnings, before
+and after.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/video/fbdev/MiSTer_fb.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/fbdev/MiSTer_fb.c b/drivers/video/fbdev/MiSTer_fb.c
+index bcf06ad..03c8e38 100644
+--- a/drivers/video/fbdev/MiSTer_fb.c
++++ b/drivers/video/fbdev/MiSTer_fb.c
+@@ -256,15 +256,26 @@ static int fb_probe(struct platform_device *pdev)
+ 	fbdev->pdev = pdev;
+ 
+ 	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!fbdev->fb_res) return -ENODEV;
+ 
++	/*
++	 * MiSTer: memremap() returns NULL on failure, not an ERR_PTR -- it is a
++	 * plain void *, and nothing in its implementation ever returns an
++	 * encoded error pointer (include/linux/io.h). IS_ERR(NULL) is false and
++	 * PTR_ERR(NULL) is 0, so the check below never caught a real failure:
++	 * probe() would return 0 (success) with fbdev->fb_base left NULL, and
++	 * the driver's later dereferences (info->pseudo_palette, screen_base,
++	 * the close-time memset()) would fault instead of a clean probe error.
++	 * The log string also named a function ("devm_ioremap_resource") that
++	 * is not the one actually called here.
++	 */
+ 	fbdev->fb_base = memremap(fbdev->fb_res->start, resource_size(fbdev->fb_res), MEMREMAP_WT);
+-	if (IS_ERR(fbdev->fb_base))
++	if (!fbdev->fb_base)
+ 	{
+-		dev_err(&pdev->dev, "devm_ioremap_resource fb failed\n");
+-		return PTR_ERR(fbdev->fb_base);
++		dev_err(&pdev->dev, "memremap fb failed\n");
++		return -ENOMEM;
+ 	}
+ 
+ 	retval = setup_fb_info(fbdev);
+ 	fbdev->info.fix.smem_start = fbdev->fb_res->start+4096;
+ 	fbdev->info.screen_base = fbdev->fb_base+4096;

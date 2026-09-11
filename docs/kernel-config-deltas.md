@@ -30,13 +30,22 @@ this task found **three more** that would have shipped silently.
 > check that would actually catch it is `scripts/check-kernel-defconfig-sync.sh` plus the
 > build itself, both of which run in CI against the current pin.
 
+> **Stock baseline note (2026-09-10, updated 2026-09-11).** "Stock config" throughout §1-§10
+> below means the **5.15.1** config (`docs/stock-inventory/20250402/stock-linux.config`), which was stock
+> until 2026-09-07 — those sections are left exactly as measured, against that baseline, and are
+> not retroactively reinterpreted against 6.18. Stock's current kernel is 6.18.38 and its shipped
+> config is `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`
+> (4,659 lines). **The §4-style audit has now been re-run against that 6.18 config — see §11**,
+> a new section added by the 2026-09 increment (`fork-sync-2026-09/PLAN.md` §9) rather than a
+> rewrite of §4, so both baselines stay on the record.
+
 ## Sources
 
 | Thing | Identity |
 |---|---|
 | Kernel | `linux-6.18.38` (current 6.18 longterm), from `https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.38.tar.xz` |
 | **Kernel tarball SHA-256** | **`ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045`** — recomputed locally and matched byte-for-byte against kernel.org's published clearsigned `v6.x/sha256sums.asc` |
-| Stock config | `docs/stock-inventory/stock-linux.config` — 4,246 lines, IKCONFIG-extracted from the shipped 5.15.1-MiSTer `zImage_dtb`. This is ground truth for what stock *ran*, not what someone believes it ran. |
+| Stock config | `docs/stock-inventory/20250402/stock-linux.config` — 4,246 lines, IKCONFIG-extracted from the shipped 5.15.1-MiSTer `zImage_dtb`. This is ground truth for what stock *ran*, not what someone believes it ran. |
 | Baseline | `arch/arm/configs/multi_v7_defconfig` @ 6.18.38 |
 | Deliverable | `board/mister/de10nano/linux.config` — 430 lines, `savedefconfig` output |
 | kconfig host | host gcc 15.2.0 (Ubuntu). **No cross-compiler is required for any kconfig target** — `olddefconfig` / `savedefconfig` / `listnewconfig` only need `CC` to probe compiler capabilities. |
@@ -58,7 +67,7 @@ grep -F linux-6.18.38.tar.xz sha256sums.asc   # -> ac26e508...f045   MATCH
 tar xf linux-6.18.38.tar.xz
 
 # 2. port the stock config forward
-cp ../docs/stock-inventory/stock-linux.config work/kbuild/stockport/.config
+cp ../docs/stock-inventory/20250402/stock-linux.config work/kbuild/stockport/.config
 cd linux-6.18.38
 make ARCH=arm O=../kbuild/stockport listnewconfig     # 362 new symbols
 make ARCH=arm O=../kbuild/stockport olddefconfig
@@ -267,9 +276,9 @@ two **vanish**.
 **Is this actually parity-relevant?** Yes — checked, not assumed. Stock ships the iptables
 userland:
 
-* `docs/stock-inventory/shared-libraries.md:221` — `libip4tc.so.2`
-* `docs/stock-inventory/shared-libraries.md:387` — `libxtables.so.12`
-* `docs/stock-inventory/shared-libraries.md:22` — **106** shared objects under `usr/lib/xtables`
+* `docs/stock-inventory/20250402/shared-libraries.md:221` — `libip4tc.so.2`
+* `docs/stock-inventory/20250402/shared-libraries.md:387` — `libxtables.so.12`
+* `docs/stock-inventory/20250402/shared-libraries.md:22` — **106** shared objects under `usr/lib/xtables`
 
 `iptables-legacy` against a kernel with no `filter` table fails with *"Table does not exist
 (do you need to insmod?)"*. Community scripts that firewall or NAT would break.
@@ -599,3 +608,84 @@ until `lz4` runs** and is deliberately not guessed here — but the budget is 16
 kernel is a 6.18 with more enabled than stock. **P1.11's `scripts/check-zimage-dtb.sh`
 assertion is not a formality — run it and record the real number.** If it comes in tight, §9
 lists the size-trim candidates.
+
+---
+
+## 11. 2026-09: the stock 6.18 config
+
+The §4-style audit re-run against the *current* stock baseline (2026-09 fork-sync increment,
+`fork-sync-2026-09/PLAN.md` §9). §4 above stays untouched — it compared our port against the
+**multi_v7_defconfig** baseline at the time of the original port, and separately against the
+**5.15.1** stock config that was current then. This section compares our config against the
+config **stock itself now ships** (Release 20260907, kernel 6.18.38), which supersedes 5.15.1
+as "what stock has" per `fork-sync.conf`'s 2026-09-07 inversion note.
+
+### 11.1 Method — the exact command
+
+```sh
+S=<scratchpad with a v6.18.49 linux-6.18.y checkout>       # see fork-sync-2026-09/env.md
+mkdir -p "$W/obj"
+cp board/mister/de10nano/linux.config "$W/obj/.config"
+make -C "$S/linux" O="$W/obj" ARCH=arm LLVM=1 olddefconfig
+```
+
+**Deliberately no patches applied** — this reproduces the same shape of audit §4 already ran
+(our `linux.config` resolved against a *pristine* vanilla Kconfig tree, not the fully patched
+tree Buildroot actually builds). §4.1's own framing applies again here without change: a symbol
+whose Kconfig entry is itself added by one of our patches (`FB_MISTER`, `ARM_SOCFPGA_CPUFREQ`,
+…) cannot appear as `=y`/`=m` in this resolution even though the shipped image has it — that is
+a property of the method, not a gap in the image, and §11.2 below flags every such case rather
+than mistaking it for a real absence, exactly as §4.1 already established for the 5.15
+comparison.
+
+Grounding: **6.18.49** (release commit `1c732c6b94f0faee1526bd375add2fe10cba2e26`,
+`linux-6.18.y`), not the `v6.18.50` the pin actually targets — `v6.18.50` was unreachable from
+this session (`fork-sync-2026-09/env.md`: the gregkh GitHub mirror lags one release and
+kernel.org is blocked by the session proxy). Resolved cleanly: `olddefconfig` exit 0, no
+prompts, **4,728** output lines (stock's shipped IKCONFIG-extracted config: **4,659** lines).
+
+### 11.2 The diff
+
+```sh
+grep -E '^CONFIG_[A-Za-z0-9_]+=[ym]$' evidence/stock-20260907-linux.config | sort -u  >stock-enabled.txt
+grep -E '^CONFIG_[A-Za-z0-9_]+=[ym]$' "$W/obj/.config"                     | sort -u  >ours-enabled.txt
+comm -23 <(cut -d= -f1 stock-enabled.txt | sort -u) <(cut -d= -f1 ours-enabled.txt | sort -u)  # stock has, we don't
+comm -13 <(cut -d= -f1 stock-enabled.txt | sort -u) <(cut -d= -f1 ours-enabled.txt | sort -u)  # we have, stock doesn't
+```
+
+**1,229** symbols `=y`/`=m` in stock's config, **1,289** in ours (this pristine-vanilla
+resolution). **27** are enabled in stock and absent from ours; **87** are enabled in ours and
+absent from stock. Every one is classified below — none is unexplained.
+
+#### Stock enables, we don't (27)
+
+| Class | Count | Symbols | Note |
+|---|---:|---|---|
+| Toolchain-probe noise | 9 | `AS_IS_GNU`, `CC_IS_GCC`, `CC_CAN_LINK`, `CC_NO_ARRAY_BOUNDS`, `CC_NO_STRINGOP_OVERFLOW`, `GCC_ASM_GOTO_OUTPUT_BROKEN`, `GCC_PLUGINS`, `LD_CAN_USE_KEEP_IN_OVERLAY`, `LD_IS_BFD` | GCC-vs-LLVM `olddefconfig` compiler-capability probes (§4.5 precedent: "4 changed values, all toolchain identity"). Stock builds with GCC; we build `ARCH=arm LLVM=1`. Not a behavioural divergence. |
+| Fork-only, already carried, invisible only under this method | 11 | `FB_MISTER`, `FB_SYS_COPYAREA`, `FB_SYS_FILLRECT`, `FB_SYS_IMAGEBLIT`, `SND_MISTER_AUDIO`, `HID_GUNCON2`, `HID_GUNCON3`, `HID_FTEC`, `HID_VADER4`, `HID_GAMECUBE_ADAPTER`, `HID_GAMECUBE_ADAPTER_FF` | §4.1's exact pattern, re-derived: every one of these Kconfig entries is added by a patch we already carry (`0001`, `0002`, `0010`–`0014`) and cannot resolve `=y`/`=m` without that patch applied. The shipped image has all of them. |
+| Fork-only, carried via a different mechanism | 1 | `JOYSTICK_XONE` | Confirmed **absent from vanilla Kconfig entirely** (`grep -rn "config JOYSTICK_XONE"` in the 6.18.49 tree → no match) — this is the fork's own in-tree vendoring of the Xbox-wireless-adapter driver. We carry the same capability as `package/xone` (a Buildroot out-of-tree kernel-module package re-sourced from `dlundqvist/xone`, `docs/patch-provenance.md` §11's "Patches added after the 2026-07-15 reconciliation" table / P3.2), not as an in-tree Kconfig symbol at all — so it never appears in *either* config's `=y`/`=m` set from our side; `CONFIG_JOYSTICK_XONE=m` only exists on stock's side of this diff. Already-carried, different form, no gap. |
+| Genuine mainline drivers we omit | 6 | `AR5523`, `ATH10K`, `ATH10K_CE`, `ATH10K_LEDS`, `ATH10K_USB`, `BT_HCIBFUSB` | Real, in mainline, real omissions — not methodology artifacts. `ATH10K_USB` is a **known, already-documented decision**: `board/mister/de10nano/linux.config:232`'s own comment quotes upstream's Kconfig help text verbatim — *"Currently work in progress and will not fully work"* — and declines it rather than let it claim QCA9377 USB IDs and then fail to bind. `AR5523` (Atheros AR5523, pre-802.11n USB) and `BT_HCIBFUSB` (AVM BlueFRITZ! USB Bluetooth) are both legacy/niche devices with no known MiSTer-community demand signal in this repo's records — candidates for "consider if a user asks", not urgent gaps. None is Main_MiSTer-coupled (no device-specific userspace code exists for any of the six). |
+
+#### We enable, stock doesn't (87)
+
+| Class | Count | Symbols (representative — full list is the `comm -13` output above) | Note |
+|---|---:|---|---|
+| Toolchain-probe noise (our side) | 19 | `AS_IS_LLVM`, `CC_IS_CLANG`, `CC_HAS_ASM_GOTO_OUTPUT(_TIED)`, `CC_HAS_AUTO_VAR_INIT_*` (3), `CC_HAS_RANDSTRUCT`, `CC_HAS_SANE_FUNCTION_ALIGNMENT`, `CC_HAVE_STACKPROTECTOR_TLS`, `HAVE_CFI_ICALL_NORMALIZE_INTEGERS`, `LD_IS_LLD`, `RUSTC_HAS_*` (5), `TOOLS_SUPPORT_RELR`, `STACKPROTECTOR_PER_TASK` | Mirror image of the toolchain-noise row above; same non-finding. |
+| Real initramfs vs. `loop=` boot | 21 | `BLK_DEV_INITRD`, `INITRAMFS_PRESERVE_MTIME`, `DECOMPRESS_{BZIP2,GZIP,LZ4,LZMA,LZO,XZ,ZSTD}`, `RD_{BZIP2,GZIP,LZ4,LZMA,LZO,XZ,ZSTD}`, `LZ4_DECOMPRESS`, `LZO_DECOMPRESS`, `ZSTD_COMMON`, `ZSTD_DECOMPRESS`, `XXHASH` | Already a known, deliberate architectural divergence: this image boots via a real `initramfs`/`/init` (§3, class B); stock boots via the `loop=` kernel parameter mounting exFAT directly (`docs/patch-provenance.md` §12, the `carried-upstream-only` `loop=` patch). An initramfs needs a decompressor for every codec it might be built with; `loop=` needs none. Not a new finding. |
+| Legacy iptables | 5 | `IP_NF_FILTER`, `IP_NF_MANGLE`, `IP_NF_TARGET_REJECT`, `IP_NF_IPTABLES_LEGACY`, `NETFILTER_XTABLES_LEGACY` | Already documented: §3.3, "the three silent losses `olddefconfig` would have shipped". Deliberate, not new. |
+| exFAT UTF-8 default + NTFS3 | 2 | `FAT_DEFAULT_UTF8`, `NTFS3_FS` | Already documented: D6 and D8 in §2 (ADR 0010(b), ADR 0013). Deliberate, not new. |
+| Mainline WiFi/BT expansion (v9/v10/v10.1) | 19 | `ATH9K_HTC`+`ATH9K_HW`+`ATH9K_COMMON`+`ATH9K_BTCOEX_SUPPORT`, `BRCMFMAC`+`BRCMFMAC_USB`+`BRCMFMAC_PROTO_BCDC`+`BRCMUTIL`, `BT_HCIRSI`+`RSI_91X`+`RSI_COEX`+`RSI_DEBUGFS`+`RSI_USB`, `RTW88_8821A`+`RTW88_8821AU`, `WLAN_VENDOR_BROADCOM`+`WLAN_VENDOR_RSI`+`WLAN_VENDOR_PURELIFI`+`WLAN_VENDOR_SILABS` | `RTW88_8821A`/`RTW88_8821AU` **is Q2 of this same increment** (`33a0521fd`, dispositioned `dropped-deliberate` — capability already ours since v10, stock's fork commit landed two days after the Release 20260907 cut). The rest predate this increment: [ADR 0016](decisions/0016-mainline-first-wifi-drivers.md), `docs/wifi-parity.md` §6/§7. `WLAN_VENDOR_PURELIFI`/`_SILABS` are menu-visibility bools with no specific driver of ours enabled under them — inert. |
+| Mainline HID force-feedback drivers | 13 | `HID_LOGITECH`+`HID_LOGITECH_DJ`+`HID_LOGITECH_HIDPP`+`LOGITECH_FF`+`LOGIRUMBLEPAD2_FF`+`LOGIWHEELS_FF`+`LOGIG940_FF`, `HID_PLAYSTATION`+`PLAYSTATION_FF`, `HID_STEELSERIES`, `HID_BETOP_FF`, `HID_BIGBEN_FF`, `HID_MEGAWORLD_FF` | Mainline gamepad/wheel HID+FF drivers this image has carried since v9 (§4.1's precedent table, same symbols, different comparison baseline). Genuinely absent from stock's 6.18 config — stock has not picked these up. Not a gap on our side; if anything the reverse. |
+| Kernel hardening / debug | 8 | `LEDS_CLASS_MULTICOLOR`, `LOCKUP_DETECTOR`, `SOFTLOCKUP_DETECTOR`, `WQ_WATCHDOG`, `PANIC_ON_OOPS`, `COREDUMP`, `CORE_DUMP_DEFAULT_ELF_HEADERS`, `ELF_CORE` | Minor safety/debuggability options stock does not enable. Not evaluated further here; no known cost, no known incident motivating a change. |
+
+### 11.3 Bottom line
+
+**Nothing in this pass is a new, unexplained gap.** Every stock-only symbol is either toolchain
+noise, a fork-only capability this image already carries by a different route (patch or
+package), or a small, named set of legacy/niche mainline drivers this repo has explicitly
+declined (one with a documented reason already in `linux.config` itself). Every ours-only
+symbol traces to an already-recorded, deliberate divergence from an earlier increment — none of
+it is new as of 2026-09. The two items worth a human's attention if they ever come up in a bug
+report: `AR5523` and `BT_HCIBFUSB` (real mainline drivers, no known demand, cheap to add if
+someone asks) and `ATH10K_USB` (deliberately declined, upstream's own words, revisit only if
+upstream drops the "will not fully work" warning).

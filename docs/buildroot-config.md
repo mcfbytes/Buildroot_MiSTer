@@ -643,7 +643,7 @@ SONAMEs, not `dlopen()`'d plugins, and `abi-contract.md` §2.2 explicitly warns
 imlib2's loaders are invisible to a DT_NEEDED/SONAME scan (they're dlopen'd
 from `usr/lib/imlib2/loaders/*.so` at runtime) and must be turned on by hand or
 `menu.png`/`menu.jpg` backgrounds silently fail to load. Verified against
-`docs/stock-inventory/shared-libraries.md`'s on-device loader list
+`docs/stock-inventory/20250402/shared-libraries.md`'s on-device loader list
 (argb/bmp/bz2/ff/gif/ico/id3/jpeg/lbm/png/pnm/tga/xpm/zlib) — everything
 except gif/id3/jpeg/png/tiff builds into imlib2 unconditionally with no
 Buildroot Config.in gate, so enabling those five reproduces stock's loader set
@@ -777,12 +777,12 @@ package — both authored under `package/`. See `docs/midi-mt32-parity.md`.
 `BR2_PACKAGE_MUNT=y`, `BR2_PACKAGE_MIDILINK=y`.
 
 alsa-utils MIDI tools — stock ships amidi/aplaymidi/arecordmidi/aseqdump/
-aseqnet/aconnect (`docs/stock-inventory/binaries-needed-full.txt`), the tooling
+aseqnet/aconnect (`docs/stock-inventory/20250402/binaries-needed-full.txt`), the tooling
 that exercises the ALSA-seq MIDI graph: `BR2_PACKAGE_ALSA_UTILS` +
 `_ACONNECT`, `_AMIDI`, `_APLAYMIDI`, `_ARECORDMIDI`, `_ASEQDUMP`, `_ASEQNET`.
 
 General (non-MIDI) ALSA CLI tools (P3.15) — stock ships all of these
-(`docs/stock-inventory/binaries-needed-full.txt`); the P3.8 MIDI pass
+(`docs/stock-inventory/20250402/binaries-needed-full.txt`); the P3.8 MIDI pass
 deliberately left them for this separate general-ALSA-parity pass. alsactl
 (mixer save/restore), alsamixer/amixer (volume), aplay/arecord (`APLAY`
 provides both), alsabat (`BAT`), alsaloop, alsatplg, alsaucm, iecset (S/PDIF
@@ -826,7 +826,7 @@ libcrypto/libssl, not GnuTLS).
 `BR2_PACKAGE_WGET=y` — GNU wget, stock parity restored (issue #130,
 2026-09-01). Stock ships a real GNU wget ELF at `usr/bin/wget` linked against
 `libgnutls.so.30`, `libnettle.so.8`, `libpcre.so.1`, `libuuid.so.1` and
-`libz.so.1` (`docs/stock-inventory/binaries-needed-full.txt:351`), plus GNU
+`libz.so.1` (`docs/stock-inventory/20250402/binaries-needed-full.txt:351`), plus GNU
 wget's own `/etc/wgetrc` — 4945 bytes, see `etc-configs.md:1097` — a file
 BusyBox's applet never reads. Stock's BusyBox 1.33.1 ALSO had the wget applet
 compiled in (`busybox-applets.md:278`), but the GNU ELF owned the path, so the
@@ -982,7 +982,7 @@ omits) ships in the rootfs-overlay and overrides the package's default — see
 manifest — discovered during P2.1 verification: DEPRECATED (below) `depends on
 BLUEZ5_UTILS_CLIENT || BLUEZ5_UTILS_TOOLS`, and stock ships
 `usr/bin/bluetoothctl` (needs CLIENT) + `usr/bin/gatttool` (also needs CLIENT),
-per `docs/stock-inventory/binaries-needed-full.txt`.
+per `docs/stock-inventory/20250402/binaries-needed-full.txt`.
 `BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y` — NOT in the manifest — the other half of
 DEPRECATED's prerequisite; stock also ships hciattach/l2ping which live under
 TOOLS. `BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y` — hciconfig/hcitool/sdptool/
@@ -1108,7 +1108,7 @@ controller/member): `BR2_PACKAGE_SAMBA4_AD_DC`, `BR2_PACKAGE_SAMBA4_ADS`,
 `BR2_PACKAGE_OPENSSH=y`. **`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`** —
 deliberately NOT set (Buildroot defaults it to y, i.e. `--with-sandbox`). Our
 kernel carries `# CONFIG_SECCOMP is not set` (`linux.config:48`), matching
-stock (`docs/stock-inventory/stock-linux.config:592`), so
+stock (`docs/stock-inventory/20250402/stock-linux.config:592`), so
 `prctl(PR_SET_SECCOMP)` returns EINVAL. Through openssh 10.3 that was only a
 `debug()` and sshd ran the pre-auth child unsandboxed — which is what this
 image has silently done for its entire life; the seccomp sandbox was never
@@ -1197,7 +1197,7 @@ shipped none of them — only BusyBox's built-in `vi`.
 size-budget call ("keep the light ones... if the community expects them"),
 left unresolved. Resolved: people SSH into a MiSTer to edit
 `wpa_supplicant.conf` / `MiSTer.ini`, and BusyBox vi is a hostile way to do
-that for most users. joe: ~0.65 MiB (`docs/stock-inventory/disk-usage.md`),
+that for most users. joe: ~0.65 MiB (`docs/stock-inventory/20250402/disk-usage.md`),
 needs MMU only. nano: small; needs wchar + ncurses (both already on). vim is
 NOT enabled — it is the heavy one, and its libgpm dependency is already
 satisfied (`BR2_PACKAGE_GPM=y`) if we ever want full parity.
@@ -1305,7 +1305,7 @@ libdevicemapper so we do not ship an unused volume manager on a games console.
 `BR2_PACKAGE_RSYNC=y`. `BR2_PACKAGE_BUSYBOX=y` — 1.38.0 in this Buildroot
 (`busybox.mk:7`; `output/build/busybox-1.38.0`), always on. Parity with STOCK's
 274-applet set — stock runs 1.33.1, count from its own `busybox --list` under
-qemu-arm, see `docs/stock-inventory/busybox-applets.md` — is a P2.3 config
+qemu-arm, see `docs/stock-inventory/20250402/busybox-applets.md` — is a P2.3 config
 concern, not a package-selection one; the applet set this image actually ships
 is decided by `board/mister/de10nano/busybox.fragment` on top of
 `package/busybox/busybox.config`.
@@ -1321,7 +1321,21 @@ WiFi fork is selected any more"; that was true when written and is no longer.
 Every Realtek USB chip MiSTer's 5.15 stock drove with a vendor fork is still
 handled by an IN-KERNEL driver (`board/mister/de10nano/linux.config`) —
 enabling both would bind-fight on the same USB IDs, so each of THOSE forks'
-packages remains DISABLED (`# ... is not set`):
+packages remained DISABLED (`# ... is not set`).
+
+> **Update 2026-09-10 — the packages in this table no longer exist.** All seven
+> were **deleted** from the tree, along with their `is not set` lines, their
+> Renovate managers and their hash-sync entries: a package the image never
+> builds is not free, and the "one-line revert" it existed for was never used
+> (`docs/wifi-parity.md` §11). The mapping below is still correct about which
+> in-kernel driver took over each chip, and is kept for that; but the
+> `BR2_PACKAGE_*` symbols in the left column are **gone**, so the "to revert"
+> instructions further down cannot be followed as written. Reverting now means
+> restoring the package directory from version-control history first — search
+> the history for a deletion touching `package/rtl8812au/`, which brings back
+> the pin, hash and patches together — and re-adding the `source` line in
+> `Config.in`. The same goes for `docs/wifi-parity.md` §12's finding that this
+> arrangement left the image with no coverage gap for these chips: unchanged.
 
 | fork package (not set) | in-kernel driver |
 |---|---|
@@ -1387,8 +1401,9 @@ cadence (A9 reproducibility).
   fall back. See `docs/wifi-parity.md`.
 
 **RTL8852CU / RTL8832CU** (Wi-Fi 6E, 2x2, 2.4/5/6 GHz USB) —
-`BR2_PACKAGE_RTL8852CU_MORROWNR=y`, the ONE out-of-tree WiFi fork this image
-ships (v10.2). This reverses the "zero out-of-tree WiFi drivers" state v10
+`BR2_PACKAGE_RTL8852CU_MORROWNR=y`, ~~the ONE~~ one of the TWO out-of-tree WiFi
+drivers this image ships (v10.2; the other is `BR2_PACKAGE_AIC8800`, added
+2026-09-10 — see below). This reverses the "zero out-of-tree WiFi drivers" state v10
 reached, deliberately and under ADR 0016's own unchanged rule: keep a fork
 only where mainline has no USB driver for the chip. Mainline 6.18.40 has
 none. rtw89 carries the 8852C chip HAL (`rtw8852c.c`, `rtw8852c_rfk.c`,
@@ -1399,6 +1414,39 @@ symbol offered is `RTW89_8852CE`, "depends on PCI"
 (`CONFIG_PCI` unset), so even that is unreachable. Directory listing checked on
 the pinned tree, not assumed; note the same directory DOES ship `rtw8851bu.c`
 and `rtw8852bu.c`, so this is an 8852C-specific gap, not "rtw89 has no USB".
+
+**AICSemi AIC8800 family** (Wi-Fi 6 + Bluetooth, USB) — `BR2_PACKAGE_AIC8800=y`,
+the second out-of-tree WiFi driver this image ships (2026-09-10). Same ADR 0016
+rule, applied to a chip that satisfies it more cleanly than RTL8852CU does:
+mainline has no aic8800 driver over **any** bus, in 6.18, 7.2 or 7.3-rc — no chip
+HAL, no staging entry, no `MAINTAINERS` line — where 8852C at least has a
+PCIe-only HAL. Zero USB-ID bind conflicts across all 46 IDs the two modules claim.
+
+**This symbol lives in `de10nano-image.fragment`, not `image-common.fragment`,
+and that placement is deliberate** (§10 rule 4 territory). `image-common` is the
+"both boards want this" layer, and on the face of it a USB dongle driver belongs
+there. It is held back for the same reason the table further down gives for
+`BR2_PACKAGE_XONE` and `BR2_PACKAGE_RTL8852CU_MORROWNR`: an out-of-tree kernel
+module is code that has to build and bind, not data, and this one has only been
+built for 32-bit ARM. Promoting it to `image-common` would put an unbuilt aarch64
+module into `make de25` on the next build. radxa builds this driver for arm64
+Rockchip targets so it is expected to work — but expected is not measured, and
+the DE25 stack is not the place to find out.
+
+**Three things about this package that differ from every other one here**, all
+documented at length in `package/aic8800/aic8800.mk`:
+
+1. It installs **firmware as well as modules** — ~6.6 MiB across six per-chip
+   directories — from the same tarball and the same pin, so a firmware bump
+   cannot drift from the driver version it must match.
+2. The firmware goes in **`/lib/firmware/<chip-variant>/`, not flat**. The driver
+   does not use `request_firmware()`; it `filp_open()`s a self-built path. Flat
+   installation yields a driver that silently never binds.
+3. It applies **upstream's own `debian/patches/series`** in a `POST_EXTRACT` hook,
+   skipping four firmware-relocation patches. This is load-bearing: the raw vendor
+   SDK does not compile against 6.18 (cfg80211's `get_txpower` gained
+   `radio_idx`/`link_id` in 6.17). Stock does not need the series because its
+   vendored copy is pre-merged with the same fixes.
 Net effect before this line: an RTL8852CU dongle got NO driver whatsoever. It
 was the last open USB WiFi gap from the v10.1 audit (`docs/wifi-parity.md` §7).
 
@@ -1438,7 +1486,7 @@ medusalix/xone (the original, and what stock's fork vendored) is explicitly in
 fork-choice comparison. xow-firmware fetches and extracts the Xbox Wireless
 Dongle firmware from Microsoft's own driver package at BUILD TIME (never
 committed to git, G6) and installs it under both stock's literal filename
-(`xow_dongle.bin`, for parity — `docs/stock-inventory/firmware.md`) and the
+(`xow_dongle.bin`, for parity — `docs/stock-inventory/20250402/firmware.md`) and the
 name this driver fork actually requests (`xone_dongle_02fe.bin`, a symlink to
 the same bytes). ACCEPTED maintainer decision, 2026-07-13 —
 `docs/decisions/0003-xone-firmware.md`.
@@ -2004,7 +2052,7 @@ LC_ALL: cannot change locale (en_US.UTF-8)", and anything calling
 `locale.Error: unsupported locale setting` before doing any work.
 
 Stock's `/usr/lib/locale` is a single 2.9 MB locale-archive
-(`docs/stock-inventory/disk-usage.md`), which is exactly the artifact
+(`docs/stock-inventory/20250402/disk-usage.md`), which is exactly the artifact
 `support/misc/gen-glibc-locales.mk` produces. en_US.UTF-8 is what
 `/etc/profile` asks for and is already in `BR2_ENABLE_LOCALE_WHITELIST`
 ("C en_US"), so locale-purge keeps it. This lives in the *System
@@ -2716,16 +2764,24 @@ again — see the series header for why that is the preferred move over a
 re-anchored copy. The shared 6.18 patches are otherwise deliberately
 untouched, keeping them byte-identical to stock.
 
-The series drops exactly ONE shared patch, and only because 7.2 already has
-it: `0047-btusb-mercusys-ma530-2c4e-0115`, a backport of mainline ce21a5cf3d1f
-(Mercusys MA530/MA550H, USB 2c4e:0115) whose first release IS 7.2. The 6.18
-image needs it because 6.18.y never received the commit; this kernel does
-not, and listing it would not be harmlessly redundant — at -F0 against
-pristine v7.2 the hunk FAILS ("Hunk #1 FAILED at 786"), which would break the
-build. It goes away on its own the day the stock pin leaves 6.18.y. Nothing
-else is dropped: all 40 entries (the other 36 shared + the four beta-local
+The series drops exactly TWO shared patches, and each only because 7.2.x
+already has the same effect. `0047-btusb-mercusys-ma530-2c4e-0115` is a
+backport of mainline ce21a5cf3d1f (Mercusys MA530/MA550H, USB 2c4e:0115)
+whose first release IS 7.2. The 6.18 image needs it because 6.18.y never
+received the commit; this kernel does not, and listing it would not be
+harmlessly redundant — at -F0 against pristine v7.2 the hunk FAILS
+("Hunk #1 FAILED at 786"), which would break the build.
+`0050-exfat-dir-readahead-plug` (added 2026-09-11) is the mirror image: it
+wraps exfat_dir_readahead()'s sb_breadahead() loop in a block plug, and that
+function does not exist on 7.x at all — mainline's own differently-shaped fix
+(exfat_get_dentry() + exfat_blk_readahead() in fs/exfat/fatent.c) is already
+in v7.2.3, and at -F0 against pristine v7.2.3 both hunks FAIL. Both go away
+on their own the day the stock pin leaves 6.18.y. Nothing else is dropped:
+all 42 entries (the other 38 shared + the four beta-local
 patches 0043/0044/0045 — the UIO set — and 0046, the ramoops crash-record
-reservation) apply to 7.2 FINAL at -F0 — verified 2026-08-17 through
+reservation) apply at -F0 — verified 2026-09-11 against v7.2.3 with the two
+newly-shared patches 0048/0049 symlinked in (42/42, zero fuzz), and before
+that on the then-40-entry series on 7.2 FINAL, verified 2026-08-17 through
 Buildroot's own `apply-patches.sh` against a freshly extracted pristine
 `linux-7.2.tar.xz` whose sha256 matched the signed manifest: 40/40 applied,
 exit 0, ZERO hunks taking fuzz (80 hunks land at an offset, which -F0
@@ -3272,7 +3328,7 @@ keep in step, and the boards take the same USB dongles.
 PLAN.md §3/§4.1, module loading & firmware infra — the
 module-autoload/depmod/kmod/xz-compress half is already done (§3.5, §5.30).
 Source of truth: `docs/firmware-parity.md` (the inventory -> sub-option mapping
-+ the built-vs-stock diff). Target: `docs/stock-inventory/firmware.md`'s
++ the built-vs-stock diff). Target: `docs/stock-inventory/20250402/firmware.md`'s
 66-file inventory (`xow_dongle.bin`, the 67th stock file, is P3.2's
 xow-firmware, §5.25, not repeated here).
 
@@ -3362,7 +3418,7 @@ individually, plus the two neighbours that could plausibly have come along.
 | `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA` (ours) | **moved** | `depends on BR2_PACKAGE_LINUX_FIRMWARE` and installs out of that package's extracted tree (no source of its own), so it goes exactly where its parent goes or it is dead weight. Its files back in-tree drivers (`MT7663U`, `RTL8192DU`, btbcm) that the shared kernel fragment builds on both boards. Note its own `.mk` reasoning still holds unchanged on the other axis: it does not build in the kernel-only variants, because `linux-firmware` is not in that stack — which is precisely what keeping this fragment out of `kernel-only` preserves. |
 | `BR2_PACKAGE_BCM20702_FIRMWARE` (ours) | **moved** | A one-file firmware package for a USB Bluetooth dongle (`brcm/BCM20702A1-0b05-17cb.hcd`), uploaded by btbcm under btusb — both built by the shared kernel fragment. Same class as the rest: blobs for drivers this board already has, no binary a user runs, arch-neutral (it installs a blob; nothing is compiled). Kept out would leave the identical `request_firmware()` gap on the DE25 that P3.14 closed on the DE10. |
 | `BR2_PACKAGE_XOW_FIRMWARE` | **stayed** in `de10nano-image` | It is `depends on BR2_PACKAGE_XONE` (`package/xow-firmware/Config.in`), and `xone` is an out-of-tree kernel module the DE25 does not build. Moving it would not merely be wrong in principle — the symbol's dependency would be unmet in the `de25nano` stack and `olddefconfig` would silently drop it, which check (b) turns into a hard failure. The check makes this call for us. |
-| `BR2_PACKAGE_XONE`, `BR2_PACKAGE_RTL8852CU_MORROWNR` | **stayed** | Out-of-tree kernel modules: they compile against a specific kernel and have never been built on aarch64/7.2 (§5.24, §5.25). Firmware is data; a driver is code that has to build and bind. Not the same decision, and not this fragment's business until someone builds and tests them. |
+| `BR2_PACKAGE_XONE`, `BR2_PACKAGE_RTL8852CU_MORROWNR`, `BR2_PACKAGE_AIC8800` | **stayed** | Out-of-tree kernel modules: they compile against a specific kernel and have never been built on aarch64/7.2 (§5.24, §5.25). Firmware is data; a driver is code that has to build and bind. Not the same decision, and not this fragment's business until someone builds and tests them. `BR2_PACKAGE_AIC8800` joined this row on 2026-09-10 and is the interesting case, because it installs ~6.6 MiB of **firmware** too — which by the "firmware is data" half of this rule would belong in `image-common`. It stays here anyway: the firmware is useless without the module, and splitting them across two fragments would ship DE25 6.6 MiB of blobs for a driver that board does not build. |
 | `BR2_PACKAGE_KMOD_TOOLS` | **stayed** | Arch-neutral and a plausible "both images want it" candidate, but no owner decision has taken it for the DE25 (§10 rule 5), and the DE25 has no module-loading userland story yet — BusyBox's own `modprobe` covers its needs. A candidate for a later commit, not a side effect of this one. |
 
 ### 12.3 What the move did, and did not, change

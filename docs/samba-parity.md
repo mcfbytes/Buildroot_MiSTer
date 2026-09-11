@@ -38,12 +38,12 @@ build's package install doesn't pre-bake either — fixed in `etc/fstab`
 
 ## Method
 
-- Stock ground truth: `docs/stock-inventory/etc-configs.md` (P0.3, extracted
+- Stock ground truth: `docs/stock-inventory/20250402/etc-configs.md` (P0.3, extracted
   from `release_20250402.7z`'s `linux.img`, Buildroot 2021.02.4 / Samba
   ~4.14 per `docs/version-delta.md` line 39).
 - Our config: `board/mister/de10nano/rootfs-overlay/etc/samba/smb.conf` and
   `.../etc/init.d/S91smb`, confirmed byte-identical to stock's versions
-  (`diff` exit 0 against `docs/stock-inventory/etc-configs.md`'s embedded
+  (`diff` exit 0 against `docs/stock-inventory/20250402/etc-configs.md`'s embedded
   copies, both re-verified for this task).
 - Our Samba version: `SAMBA4_VERSION = 4.23.8` in
   `work/buildroot/package/samba4/samba4.mk`, built with

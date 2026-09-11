@@ -1,44 +1,51 @@
 menu "MiSTer external options"
 
-menu "Realtek USB WiFi drivers (out-of-tree, P3.1)"
+menu "USB WiFi drivers (out-of-tree)"
 	# MAINLINE-FIRST policy (ADR 0016). The rule is "use the in-kernel driver
-	# for every chip 6.18 can drive; keep an out-of-tree fork ONLY where
-	# mainline still has no USB driver". Applying it to today's kernel leaves
-	# exactly ONE fork ENABLED in the defconfig:
+	# for every chip the kernel can drive; keep an out-of-tree driver ONLY
+	# where mainline still has no USB driver for the chip at all". Exactly two
+	# chips meet that bar today, and both are ENABLED in the defconfig:
 	#
 	#   rtl8852cu-morrownr -- RTL8852CU/RTL8832CU (Wi-Fi 6E). rtw89 has the
 	#   8852C chip HAL but only a PCIe bus file (rtw8852ce.c; there is no
 	#   rtw8852cu.c), and RTW89_8852CE "depends on PCI" which this board has
-	#   not got. No in-kernel driver exists for the chip at all.
+	#   not got.
 	#
-	# Every other package in this menu is sourced but left DISABLED in the
-	# defconfig, because mainline covers its chip and enabling both would
-	# bind-fight on the same USB IDs:
-	#   8188eu/8188fu/8710bu -> rtl8xxxu; 8821cu -> rtw88_8821cu;
-	#   8822bu -> rtw88_8822bu; 8812au -> rtw88_8812au;
-	#   8811au/8821au -> rtw88_8821au; 8814au -> rtw88_8814au
-	# (all in board/mister/de10nano/linux.config). They stay here, selectable,
-	# as a one-line-revert fallback if a mainline driver ever disappoints on
-	# specific hardware.
+	#   aic8800 -- AICSemi AIC8800 family (Wi-Fi 6 + BT). Mainline has no
+	#   aic8800 driver over ANY bus, in any tree checked (6.18, 7.2, 7.3-rc):
+	#   no chip HAL, no staging entry, no MAINTAINERS line. Ships its own
+	#   firmware, which the driver is inert without.
 	#
-	# rtl8188eu-aircrack-ng / rtl8821au-morrownr / rtl8821cu-morrownr are NOT
-	# named "rtl8188eu"/"rtl8821au"/"rtl8821cu" -- Buildroot upstream
-	# already ships its own same-named packages (different forks; re-confirmed
-	# present on the pinned tree 2026-07-25). Same name
-	# here would collide on both the Kconfig symbol and the Make namespace;
-	# see each package's Config.in for the detail. rtl8188fu/rtl8812au/rtl88x2bu
-	# have no such collision and keep the plain names; rtl8814au-morrownr and
-	# rtl8852cu-morrownr take the suffix purely for a uniform morrownr naming
-	# scheme (upstream has no rtl8814au or rtl8852cu package to collide with --
-	# re-checked against the pinned tree 2026-07-27).
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188eu-aircrack-ng/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8188fu/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8812au/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8814au-morrownr/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821au-morrownr/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8821cu-morrownr/Config.in"
+	# THE DESELECTED REALTEK FORKS WERE REMOVED on 2026-09-10. Seven packages
+	# -- rtl8188eu-aircrack-ng, rtl8188fu, rtl8812au, rtl8814au-morrownr,
+	# rtl8821au-morrownr, rtl8821cu-morrownr and rtl88x2bu -- sat here sourced
+	# but permanently `is not set`, because mainline had caught up on every one
+	# of their chips (8188eu/8188fu/8710bu -> rtl8xxxu; 8821cu ->
+	# rtw88_8821cu; 8822bu -> rtw88_8822bu; 8812au -> rtw88_8812au;
+	# 8811au/8821au -> rtw88_8821au; 8814au -> rtw88_8814au, all enabled in
+	# board/mister/de10nano/linux.config). They were kept as a "one-line
+	# revert" fallback; in practice the fallback was never used and each one
+	# cost a Renovate PR stream, a hash-sync entry and a CI path filter for a
+	# package the image does not build. Owner decision, 2026-09-10: delete
+	# them. `git log -- package/rtl8812au` restores any of them in full if a
+	# mainline driver ever does disappoint on specific hardware -- that is the
+	# fallback now, and it costs nothing to keep.
+	#
+	# NAMING: rtl8852cu-morrownr takes its suffix for a uniform morrownr
+	# naming scheme; upstream Buildroot has no rtl8852cu package to collide
+	# with (re-checked against the pinned tree 2026-07-27). aic8800 needs no
+	# suffix -- upstream Buildroot has no aic8800 package either. Checked
+	# against the ACTUAL pinned tree on 2026-09-10: Buildroot 2026.08
+	# (Makefile's BUILDROOT_VERSION, and work/buildroot's own BR2_VERSION),
+	# whose only package/ai* entries are `aichat` (BR2_PACKAGE_AICHAT) and
+	# `aircrack-ng`. No BR2_PACKAGE_AIC8800 symbol and no AIC8800_ Make
+	# namespace to collide with.
+	#
+	# Note the 2026.05.1 dates further up this file are NOT stale in the same
+	# way: each records a check made while 2026.05.x really was the pin. This
+	# one is dated after the 2026.08 bump, so it has to name 2026.08.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8852cu-morrownr/Config.in"
-	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl88x2bu/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/aic8800/Config.in"
 endmenu
 
 menu "USB controller drivers (out-of-tree, P3.2)"

@@ -7,7 +7,8 @@ config BR2_PACKAGE_MUNT
 	  Munt: a multi-platform software synthesiser emulating Roland's
 	  pre-GM MIDI devices (MT-32, CM-32L, CM-64, LAPC-I). Stock ships
 	  its console ALSA-sequencer daemon as /usr/sbin/mt32d (P0.3
-	  inventory: docs/stock-inventory/binaries-needed-full.txt) --
+	  inventory: docs/stock-inventory/20250402/binaries-needed-full.txt,
+	  line 481) --
 	  spawned on demand by MidiLink (package/midilink) whenever a core
 	  requests MT-32/CM-32 emulation instead of a real MT-32 or a
 	  FluidSynth soundfont. Buildroot has no upstream "munt" package,

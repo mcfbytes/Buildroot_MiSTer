@@ -156,11 +156,65 @@ mrl_header() {
 	printf '\n'
 }
 
-# mrl_out_dir — resolve docs/stock-inventory relative to the repo root,
-# regardless of the caller's cwd. Requires this file to live at
+# mrl_out_dir — resolve the stock-inventory output directory, regardless of
+# the caller's cwd. Requires this file to live at
 # <repo>/scripts/inventory/common.sh.
+#
+# The 2026-09 split turned docs/stock-inventory/ from a single directory into
+# one per release (docs/stock-inventory/<release>/), so the fixed top-level
+# path this function used to return is stale for every gen-*.sh and for
+# run-all.sh. Two env vars, checked in order, pick where a run writes/reads:
+#   - MRL_OUT_DIR   explicit override -- any directory, created if missing.
+#   - MRL_RELEASE   write into docs/stock-inventory/<MRL_RELEASE>/ (created
+#                    if missing), e.g. MRL_RELEASE=20260907.
+#
+# NEITHER SET IS A HARD ERROR, deliberately. This used to fall back to the
+# legacy top-level docs/stock-inventory/, "kept so a caller that never heard of
+# the split still works" -- but after the split there is no such caller for it
+# to serve, and the fallback actively broke the two things it was meant to
+# protect:
+#
+#   1. run-all.sh sets NEITHER variable, so the unqualified recipe in
+#      docs/stock-inventory/README.md scattered eight regenerated documents
+#      back into the top level, next to the per-release directories rather
+#      than inside one. mkdir -p made that silent.
+#   2. Step (f) then failed outright anyway: gen-kernel-config-dts.sh's
+#      compare_one() now returns 1 when the committed file is absent, and
+#      stock-linux.config / stock.dts no longer exist at the top level, so
+#      run_step marked it FAILED and run-all.sh exited 1.
+#
+# A caller that does not say which release it is generating has not been
+# helped by guessing; it has been handed a wrong answer or a confusing
+# failure. Saying so costs one line and names the fix.
 mrl_out_dir() {
-	local here
+	local here repo_root dir inv known d
 	here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-	printf '%s\n' "$(cd "$here/../../docs/stock-inventory" && pwd)"
+	repo_root="$(cd "$here/../.." && pwd)"
+	if [ -n "${MRL_OUT_DIR:-}" ]; then
+		dir="$MRL_OUT_DIR"
+	elif [ -n "${MRL_RELEASE:-}" ]; then
+		dir="$repo_root/docs/stock-inventory/$MRL_RELEASE"
+	else
+		# Glob rather than `ls` (SC2012; CI runs shellcheck at default
+		# severity, which includes info-level findings).
+		inv="$repo_root/docs/stock-inventory"
+		known=""
+		for d in "$inv"/[0-9]*/; do
+			[ -d "$d" ] || continue
+			d="${d%/}"
+			known="$known ${d##*/}"
+		done
+		printf '%s\n' \
+			"error: neither MRL_RELEASE nor MRL_OUT_DIR is set, so there is no" \
+			"       output directory to write to. docs/stock-inventory/ is one" \
+			"       directory per release since the 2026-09 split; pick one:" \
+			"" \
+			"         MRL_RELEASE=<release> $0 ..." \
+			"         MRL_OUT_DIR=<dir>     $0 ..." \
+			"" \
+			"       Existing releases:${known:- (none found)}" >&2
+		return 1
+	fi
+	mkdir -p "$dir"
+	printf '%s\n' "$(cd "$dir" && pwd)"
 }

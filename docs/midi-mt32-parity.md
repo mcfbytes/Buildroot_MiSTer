@@ -16,7 +16,7 @@ confirm.
 
 ## 1. Stock's MIDI/MT-32 stack, traced to source
 
-`docs/stock-inventory/binaries-needed-full.txt` (P0.3) lists five MIDI-related
+`docs/stock-inventory/20250402/binaries-needed-full.txt` (P0.3) lists five MIDI-related
 `usr/{bin,sbin}` binaries in stock's rootfs:
 
 | Path | Links against | Role |
@@ -172,7 +172,7 @@ resolves as expected: `CONFIG_SND_TIMER=y`, `CONFIG_SND_SEQ_DEVICE=y`,
 `CONFIG_SND_RAWMIDI=y`, `CONFIG_SND_SEQUENCER=y`,
 `CONFIG_SND_SEQUENCER_OSS=y`, `CONFIG_SND_SEQ_MIDI_EVENT=y`,
 `CONFIG_SND_SEQ_MIDI=y` — a line-for-line match against
-`docs/stock-inventory/stock-linux.config`'s own `CONFIG_SND_*` block
+`docs/stock-inventory/20250402/stock-linux.config`'s own `CONFIG_SND_*` block
 (including both being built-in `=y`, not modules — so there is no
 `snd-seq`/`snd-seq-midi` module-autoload concern to wire up; it's always
 present). `CONFIG_SND_VIRMIDI` is `# not set` in both stock and ours too
@@ -202,7 +202,7 @@ BR2_PACKAGE_ALSA_UTILS_ASEQNET=y
 (non-MIDI) alsa-utils tools — `alsactl`, `alsamixer`, `aplay`/`arecord`
 (`APLAY`), `amixer`, `alsatplg`, `alsaucm`, `alsaloop`, `alsabat`
 (`BAT`), `iecset`, `speaker-test` — are present in stock
-(`docs/stock-inventory/binaries-needed-full.txt`) but are general ALSA
+(`docs/stock-inventory/20250402/binaries-needed-full.txt`) but are general ALSA
 audio parity, not MIDI parity. **P3.15 — General ALSA userland parity** subsequently owned and closed this:
 `configs/fragments/de10nano-image.fragment` now sets
 `BR2_PACKAGE_ALSA_UTILS_{ALSACTL,ALSALOOP,ALSAMIXER,ALSATPLG,ALSAUCM,AMIXER,APLAY,BAT,IECSET,SPEAKER_TEST}=y`

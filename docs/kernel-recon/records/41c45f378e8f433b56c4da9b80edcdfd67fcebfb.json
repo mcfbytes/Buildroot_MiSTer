@@ -1,0 +1,62 @@
+{
+  "sha": "41c45f378e8f433b56c4da9b80edcdfd67fcebfb",
+  "subject": "Adapt Classic2USB and RetroZord HID force feedback support (#91)",
+  "author": "Porkchop Express",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-09",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-google-stadiaff.c"
+  ],
+  "added": 2,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0048-hid-google-stadiaff-classic2usb-retrozord.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-google-stadiaff.c -- absent from $S/mainline (torvalds/linux v7.3-rc2, 50d05c7c76c9), $S/linux (gregkh/linux linux-6.18.y at release 6.18.49, 1c732c6b94f0), $S/linux-7.2 (linux-7.2.y head 'Linux 7.2.3'), and v7.2.3 as extracted with `git show v7.2.3:drivers/hid/hid-google-stadiaff.c` from $S/linux",
+    "vanilla_quote": null,
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": true
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- this commit postdates docs/patch-provenance.md's baseline by five years; dispositioned here first per PLAN.md section 2.8.",
+  "impact": {
+    "effect_if_absent": "A Classic2USB (Reflex Adapt) or RetroZord adapter enumerates as a plain hid-generic device instead of binding hid-google-stadiaff: it still shows up as an input device (buttons/axes work via hidinput), but EV_FF/FF_RUMBLE is never registered on it, so force feedback silently does not work on force-feedback-capable games/cores that would otherwise drive it. No error is logged -- hid-generic claims any unclaimed HID_GROUP_GENERIC device (hid-generic.c:74, `HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, HID_ANY_ID, HID_ANY_ID)`), so probing succeeds silently on the wrong (functionally poorer) driver.",
+    "affected_hardware": [
+      "Classic2USB / Reflex Adapt (16d0:1460)",
+      "RetroZord adapter (1209:595a)"
+    ],
+    "device_ids": [
+      "16d0:1460",
+      "1209:595a"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "VID:PID special-case predicate + make_unique() device dedup + NeGcon/Guncon name/uniq string matching",
+    "main_mister_ref": "$S/main/input.cpp:52-53 (`(vid == 0x16D0 && (pid == 0x127E || pid == 0x1460)) // Reflex Adapt || (vid == 0x1209 && pid == 0x595A); // RetroZord`); input.cpp:4176 `make_unique(0x16D0, 0x1460, 1);  // Reflex Adapt Classic2USB`; input.cpp:4177 `make_unique(0x1209, 0x595A, 1);  // RetroZord adapter`; input.cpp:5102 and :5349 match `input[i].vid == 0x1209 && input[i].pid == 0x595A` together with `strstr(input[i].name, \"RZordPsWheel\")` / `strstr(uniq, \"RZordPsGun\")` for NeGcon/Guncon emulation; input.cpp:5496 re-checks the same two VID:PID pairs (`0x16D0`/`0x1460` and `0x1209`/`0x595A`) alongside `strlen(uniq)` for RetroZord's UNIQ-field mode differentiation."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "trivial -- two lines, applies verbatim at offset 0 to both the 6.18.49 and the v7.2.3 hid-google-stadiaff.c (they are byte-identical files, confirmed with `diff`), and by extension expected to apply to the pinned 6.18.50/7.2.4 releases absent an intervening change to that file (none found in the 6.18.39..6.18.49 or 7.2..7.2.3 windows this session can see -- see notes for the grounding gap)."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0-or-later, two `hid_device_id` table rows added directly to Google's existing hid-google-stadiaff.c (file header: 'Copyright 2023 Google LLC', SPDX GPL-2.0-or-later). No new file, no vendored code; MODULE_LICENSE(\"GPL\") in the driver is unchanged.",
+  "notes": "HYPOTHESIS CONFIRMED, NOT REFUTED. PLAN.md section 2.8's disposition (carry as new shared patch 0048, userspace_coupling.coupled=true) holds against direct grounding.\n\nHUNK. `drivers/hid/hid-google-stadiaff.c` inside `stadia_devices[]`, immediately after the two existing USB/Bluetooth Google Stadia entries:\n```\n+\t{ HID_DEVICE(BUS_USB, HID_GROUP_GENERIC, 0x16d0, 0x1460) }, /* Classic2USB */\n+\t{ HID_DEVICE(BUS_USB, HID_GROUP_GENERIC, 0x1209, 0x595a) }, /* RetroZord */\n```\ncommit message: 'Both use the existing Stadia rumble output report in compatible firmware.'\n\nMAINLINE/VANILLA STATUS -- absent everywhere reachable. `grep -n '1460\\|595a\\|16d0\\|1209' <file>` returned nothing (exit 1) in: $S/mainline/drivers/hid/hid-google-stadiaff.c (torvalds/linux v7.3-rc2, 50d05c7c76c9), $S/linux/drivers/hid/hid-google-stadiaff.c (gregkh/linux linux-6.18.y at 'Linux 6.18.49' release commit 1c732c6b94f0), $S/linux-7.2/drivers/hid/hid-google-stadiaff.c (linux-7.2.y head 'Linux 7.2.3'), and `git -C $S/linux show v7.2.3:drivers/hid/hid-google-stadiaff.c | grep -n 1460` (exit 1). `git -C $S/mainline log -S'0x1460' -- drivers/hid/` and the same against $S/linux over the 6.18.39..HEAD range both returned empty -- no commit ever added or removed this string in the visible history, consistent with the file never having carried these IDs upstream. `diff`-ing the extracted 6.18.49 and v7.2.3 copies of the file showed them byte-identical (exit 0), so this is one grounding fact covering both series, not two independent absences.\n\nCONFIG. `board/mister/de10nano/linux.config:410` = `CONFIG_HID_GOOGLE_STADIA_FF=y` (verbatim). `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config:2893` = `CONFIG_HID_GOOGLE_STADIA_FF=y` (verbatim, same stock config the fork-sync baseline captured). The driver is built into stock and into our config already; the two device-ID rows are the entire functional gap, exactly as PLAN.md section 2.8 states.\n\nUSERSPACE COUPLING -- direct and multi-site, per userspace_coupling above. Main_MiSTer does not merely enumerate these VID:PIDs incidentally; input.cpp:52-53 is a named predicate function keyed on exactly these two pairs, :4176-4177 dedups them explicitly by comment name ('Reflex Adapt Classic2USB', 'RetroZord adapter'), and :5101-5103 / :5348-5350 / :5495-5506 gate NeGcon-wheel and Guncon-lightgun emulation paths on the same VID:PID pairs combined with name/uniq substrings ('RZordPsWheel', 'RZordPsGun'). This is exactly the kind of coupling PLAN.md flags as 'must not drop silently' under recon spec section 7.2.\n\nNAME/UNIQ STABILITY -- checked, and it does not change. `stadia_probe()` in $S/linux/drivers/hid/hid-google-stadiaff.c:104-120 calls `hid_hw_start(hdev, HID_CONNECT_DEFAULT & ~HID_CONNECT_FF)`, NOT bare `HID_CONNECT_DEFAULT` as PLAN.md section 2.8's prose paraphrases it (worth flagging: the plan's summary is slightly imprecise, though its conclusion is right) -- the driver only masks off HID_CONNECT_FF (it wires up its own memless FF instead of the generic hidinput FF path) and otherwise takes the default connect flags, which still include HIDINPUT. Neither `stadia_probe()` nor `stadiaff_init()` (same file, ~line 62-100) ever writes `hid->name`, `hid->uniq`, or `hidinput->input->name`/`->uniq` -- `stadiaff_init()` only calls `hid_validate_values()`, `devm_kzalloc()`, `hid_set_drvdata()`, `input_set_capability(dev, EV_FF, FF_RUMBLE)`, and `input_ff_create_memless()`. Device naming happens earlier and generically in hid-core's own connect path from the HID descriptor/USB strings, before any per-driver `.probe` runs, so binding stadiaff instead of hid-generic changes nothing that Main_MiSTer's name/uniq string matches (`RZordPsWheel`, `RZordPsGun`, etc., which come from firmware-reported UNIQ/name strings, not from the kernel driver) depend on.\n\nNO OTHER DRIVER CLAIMS THESE IDS. `grep -n '0x1460\\|0x595[aA]\\|0x16[dD]0\\|0x1209' $S/linux/drivers/hid/hid-ids.h` found only an unrelated `USB_VENDOR_ID_MCS 0x16d0` (different device, MCS is a distinct vendor at the same VID -- hid-ids.h has no entry for PID 0x1460 under it) and `grep -rn` across all `drivers/hid/*.c` found only an unrelated `HID_PRODUCT_ID_U1 0x1209` in hid-alps.c (0x1209 there is a *product* ID for a different vendor's device, not the pid.codes shared VID:PID 1209:595a in question -- confirmed by reading context, no `hid_device_id` row anywhere matches either full VID:PID pair). $S/linux/drivers/hid/hid-generic.c:74 has the catch-all `{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, HID_ANY_ID, HID_ANY_ID) }`, so absent stadiaff's claim these two devices bind hid-generic today, silently, with FF unavailable -- confirming the 'silent' failure_mode.\n\nAPPLY EVIDENCE. Extracted `hid-google-stadiaff.c` from $S/linux (6.18.49) and from `git -C $S/linux show v7.2.3:...` into two clean temp dirs (`$S/tmp-q8/linux618`, `$S/tmp-q8/v723`, both inside the session scratchpad, no tree under $S touched) and ran `patch -p1 -F0 --dry-run --verbose` with a minimal patch built from `git -C $S/fork-6.18 diff 41c45f378^ 41c45f378 -- drivers/hid/hid-google-stadiaff.c`. Both reported `Hunk #1 succeeded at 143.` -- zero offset, zero fuzz, clean apply against both series.\n\nTHE 6.18.49/7.2.3 GROUNDING GAP (env.md). All of the above 'absent from vanilla' and 'applies cleanly' findings are against 6.18.49 and 7.2.3, one stable point release short of the 6.18.50/7.2.4 this repo's pins target (env.md: gregkh mirror lag, kernel.org blocked from this session). Because the 6.18.49 and v7.2.3 copies of hid-google-stadiaff.c are byte-identical and the file has zero commits touching it anywhere in the visible 6.18.39..HEAD / v7.2..v7.2.3 history (the `-S'0x1460'` search covers that whole window, not just the endpoints), there is no evidence of any in-flight change to this file that a missing point release could have picked up -- the gap is real per env.md's general caveat but this file shows no signal of being affected by it.\n\nNUMBERING. 0048 is unused in board/mister/de10nano/linux-patches/ (last is 0047-btusb-mercusys-ma530-2c4e-0115.patch), unused in board/mister/de10nano/linux-patches-beta/ (series file ends at 0046-dts-ramoops.patch), and unused in board/mister/de25nano/linux-patches/ (highest present is 0030-i2c-designware-quiet-timeout.patch) -- no collision in any of the three series PLAN.md section 2.8 names.\n\nNOT AUTHORED THIS WAVE. Per WORKER-PREAMBLE.md and worker-instructions.md, this record sets carried_patch to the planned filename and carried_mode:\"planned\" only -- the .patch file itself is not created in board/mister/*/linux-patches*/ by this task.\n\nWAVE 3 (2026-09-11): carried_mode changed from 'planned' to 'clean-apply' -- 0048 is authored in Wave 3, 2026-09-11, by the concurrent W3-0048 patch-authoring task, as a verbatim carry of the fork's two-line hunk into all three series (de10, beta, de25)."
+}

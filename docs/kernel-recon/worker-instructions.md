@@ -11,6 +11,15 @@ exact failure mode this project exists to fix.
 > against **`v6.18.39`** (`docs/kernel-recon/fork-sync-2026-07.md` §5). Check the pin, then
 > `git -C /mnt/source/linux checkout v<that version>` before you quote anything.
 
+> **Which fork branch (updated 2026-09-10).** The original campaign and the 2026-07-24
+> increment reconciled `MiSTer-v5.15` — the branch stock shipped until 2026-09-07. Stock
+> now ships `MiSTer-v6.18` (Release 20260907 = `aec7dc3aa`, Linux 6.18.38) and
+> `MiSTer-v5.15` is frozen at `5fcfae369`. Work items therefore come from `MiSTer-v6.18`
+> (or a `refs/pull/N/head` the plan names), set `"source_branch"` accordingly, and answer
+> the *stock-parity* question against that branch and the shipped 6.18 config below. The
+> per-increment plan (currently `fork-sync-2026-09/PLAN.md`) supplies the tree paths for
+> the environment it runs in; `/mnt/source` below is the original campaign's layout.
+
 ## Get the diff
 
 ```
@@ -26,11 +35,11 @@ If the diff is huge (thousands of lines, e.g. vendored drivers), do NOT read it 
 |---|---|---|
 | Vanilla source + **full git history** | `/mnt/source/linux` (check out the version the defconfig pins — v6.18.39 as of 2026-07-24) | grep; `git log -S'<symbol>'`, `git log --grep`, `git log -- <path>` to find where functionality landed; the ONLY valid source of vanilla SHAs/quotes |
 | Vanilla 5.15.1 base snapshot | `/mnt/source/linux-5.15.1` | what the fork patched — context for the original change |
-| Fork repo | `/mnt/source/Linux-Kernel_MiSTer` (branch `MiSTer-v5.15`) | your commit and its neighbors |
+| Fork repo | `/mnt/source/Linux-Kernel_MiSTer` (branch `MiSTer-v6.18` since 2026-09; `MiSTer-v5.15` for the original campaign, frozen at `5fcfae369`) | your commit and its neighbors |
 | Carried patches | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031` with gaps) | is this commit carried? grep for symbols/strings from your diff |
 | Our kernel config | `/mnt/source/Buildroot_MiSTer/board/mister/de10nano/linux.config` | kconfig reconciliation |
-| Our Buildroot defconfig | `/mnt/source/Buildroot_MiSTer/configs/fragments/de10nano.fragment` | BR2 packages (some fork drivers now ship as out-of-tree kmod packages, e.g. xone, 8812au — grep `package/` and the defconfig) |
-| Stock kernel config | `/mnt/source/Buildroot_MiSTer/docs/stock-inventory/stock-linux.config` | what stock shipped |
+| Our Buildroot defconfig | kernel pin: `/mnt/source/Buildroot_MiSTer/configs/fragments/de10nano.fragment`; **package selections: `.../configs/fragments/de10nano-image.fragment`** (they moved there in the 2026-09 split — grepping `de10nano.fragment` for `BR2_PACKAGE_*` finds none) | BR2 packages (some fork drivers ship as out-of-tree kmod packages, e.g. xone, rtl8852cu-morrownr — grep `package/` and the image fragment) |
+| Stock kernel config | 6.18 (current stock, Release 20260907): `docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-linux.config`; 5.15 (stock until 2026-09-07): `docs/stock-inventory/20250402/stock-linux.config` (the 2026-09 split moved it under a per-release directory) | what stock shipped |
 | Main_MiSTer userspace | `/mnt/source/Main_MiSTer` | userspace coupling: grep input event codes, ioctls, sysfs paths, /dev nodes |
 | Prior art (**may be wrong**) | `/mnt/source/Buildroot_MiSTer/docs/patch-provenance.md` | record what it claims, then re-derive INDEPENDENTLY |
 
@@ -73,7 +82,7 @@ other file writes. Schema (use `null` where inapplicable; keep every key):
   "files": ["..."], "added": 0, "removed": 0,
   "is_backport_of_vanilla": false,
 
-  "disposition": "carried | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
+  "disposition": "carried | carried-upstream-only | carried-as-package | dropped-upstream | dropped-deliberate | dropped-obsolete | not-evaluated | needs-verification | misclassified",
   "carried_patch": "<00xx-*.patch or null>",
   "carried_mode": "clean-apply | re-implemented | null",
 

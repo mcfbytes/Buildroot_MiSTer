@@ -1,5 +1,19 @@
 # MiSTer Kernel Patch Reconciliation
 
+> **ARCHIVED — this spec was executed in 2026-07 against the 5.15 stock kernel.**
+> Stock baseline: `MiSTer-v5.15` @ `f0fb626ac` (Linux 5.15.1, the kernel stock shipped
+> from 2021-11 until 2026-09-07); target: vanilla 6.18.38. **Stock moved to 6.18.38 on
+> 2026-09-07** (`MiSTer-v6.18` @ `aec7dc3aa`, Release 20260907), so the branch this
+> document reconciles is now frozen history. It is kept unchanged as the method the 126
+> records in `docs/kernel-recon/` were produced by, and because `phase0.py`, `reduce.py`,
+> `worker-instructions.md`, `fork-sync-2026-07.md`, `scripts/export-kernel-tree.sh` and
+> `docs/de25-readiness-ledger.md` cite it by this path. It is **not** the live process:
+> ongoing work runs as increments driven by `docs/kernel-recon/fork-sync.conf` +
+> `scripts/check-fork-sync.sh` with `docs/kernel-recon/worker-instructions.md` as the
+> worker contract, and the current increment — the first against stock's own 6.18 branch —
+> is planned in [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md).
+> Section numbers below are still referenced from those files; do not renumber.
+
 A parallelizable task spec for a **full, independent reconciliation of every commit** in
 `MiSTer-devel/Linux-Kernel_MiSTer` (the MiSTer kernel fork) against this repo
 (`Buildroot_MiSTer`), which is moving from the forked kernel to a **vanilla 6.18.38** kernel
@@ -52,7 +66,7 @@ doc's failure mode was confident, uncited claims; do not reproduce it.
 |---|---|---|
 | **Fork** | `MiSTer-devel/Linux-Kernel_MiSTer` — the commits to reconcile | Local full clone: `/mnt/source/Linux-Kernel_MiSTer`. Pinned HEAD (`MiSTer-v5.15`): `f0fb626acadd07f0718934826b143b6e4c9ce81c`. Vanilla base: **v5.15.1** (see §1.1) |
 | **Vanilla** | Target kernel **6.18.38** | Local linux-stable clone: `/mnt/source/linux`. Pinned `v6.18.38` = `2aa1767b5e96f79560675d55bc0da08ea36fff29`; version also pinned in the Buildroot config (then `configs/mister_de10nano_defconfig`; since the 2026-09 fragment split `configs/fragments/de10nano.fragment`, `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`). **Must be unshallowed first** (see §1.2) |
-| **This repo** | Carried patches + prior-art doc | `board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031`, with gaps — see §8); `docs/patch-provenance.md`; `docs/stock-inventory/stock-linux.config` |
+| **This repo** | Carried patches + prior-art doc | `board/mister/de10nano/linux-patches/*.patch` (25 files, `0001`–`0031`, with gaps — see §8); `docs/patch-provenance.md`; `docs/stock-inventory/20250402/stock-linux.config` |
 | **Userspace** | `MiSTer-devel/Main_MiSTer` — for userspace-coupling cross-ref | https://github.com/MiSTer-devel/Main_MiSTer |
 
 **Grounding requirement:** every worker MUST have read access to a **real vanilla 6.18 source

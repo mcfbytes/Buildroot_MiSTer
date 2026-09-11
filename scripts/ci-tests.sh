@@ -485,7 +485,7 @@ fi
 section "P3.3 — Firmware parity (docs/firmware-parity.md documented present-set)"
 # =============================================================================
 
-STOCK_FW_MD="$ROOT/docs/stock-inventory/firmware.md"
+STOCK_FW_MD="$ROOT/docs/stock-inventory/20260907/firmware.md"
 PARITY_FW_MD="$ROOT/docs/firmware-parity.md"
 
 if [ ! -f "$STOCK_FW_MD" ] || [ ! -f "$PARITY_FW_MD" ]; then
@@ -495,7 +495,7 @@ else
 	missing_fw="$WORKDIR/fw_missing10.txt"
 	present_fw="$WORKDIR/fw_present.txt"
 	# shellcheck disable=SC2016 # backticks are literal markdown code-span
-	# delimiters in docs/stock-inventory/firmware.md, not command substitution.
+	# delimiters in docs/stock-inventory/20260907/firmware.md, not command substitution.
 	grep -E '^\| `[^`]+` \|' "$STOCK_FW_MD" | sed -E 's/^\| `([^`]+)`.*/\1/' | grep -v '/$' | LC_ALL=C sort > "$all_fw"
 	awk '/\*\*Missing \([0-9]+\):\*\*/{f=1;next} f&&/^```/{c++;if(c==2)exit;next} f&&c==1{print}' "$PARITY_FW_MD" | LC_ALL=C sort > "$missing_fw"
 	comm -23 "$all_fw" "$missing_fw" > "$present_fw"
@@ -573,9 +573,16 @@ fi
 # The REDUNDANT out-of-tree forks must NOT come back: if both an OOT fork and
 # the in-kernel driver for the same chip ship, they bind-fight on the same USB
 # IDs and which one wins is load-order dependent (ADR 0016's stated reason for
-# disabling, not merely not-enabling, them). Assert their absence so a
-# well-meaning re-enable of BR2_PACKAGE_RTL8812AU / _RTL8821AU_MORROWNR fails
-# loudly here.
+# disabling, not merely not-enabling, them).
+#
+# The packages themselves were DELETED on 2026-09-10 (Config.in,
+# docs/wifi-parity.md §11), so BR2_PACKAGE_RTL8812AU / _RTL8821AU_MORROWNR no
+# longer exist to be re-enabled and this assertion can no longer fire from a
+# defconfig edit. It is kept anyway, because the failure it describes does not
+# need a Buildroot package: vendoring these drivers into
+# board/mister/de10nano/linux-patches/, or restoring a package from git
+# history, reaches the same bind-fight by a different route. The assertion
+# costs one tar lookup and still names the real hazard.
 #
 # NOTE this list is specifically 8812au/8821au, and it is NOT a blanket "no
 # out-of-tree WiFi" rule -- v10.2 deliberately ships one such module, 8852cu,
@@ -616,6 +623,59 @@ if tar_has "usr/lib/modules/$KVER/updates/8852cu.ko.xz"; then
 else
 	fail "out-of-tree WiFi: 8852cu.ko.xz present under updates/ (RTL8852CU, ADR 0016 / v10.2)" \
 		"BR2_PACKAGE_RTL8852CU_MORROWNR dropped, the package built zero objects (CONFIG_RTL8852CU=m / KSRC= lost from MODULE_MAKE_OPTS), or a kernel bump left it stale (make rtl8852cu-morrownr-dirclean; make linux-rebuild all)"
+fi
+
+# The OTHER permitted out-of-tree WiFi driver: AICSemi AIC8800 (package/aic8800,
+# BR2_PACKAGE_AIC8800=y). TWO modules, and both are required -- aic8800_fdrv
+# alone is useless, because aic_load_fw is stage 1 of the bring-up (it claims
+# the ROM-bootloader device, pushes the firmware, and the device re-enumerates
+# for fdrv to claim) and exports the ten symbols fdrv links against. Mainline
+# has no aic8800 driver over any bus, so without these a Tenda U2/U11/U11 Pro
+# or TX1U Nano binds NOTHING. See docs/wifi-parity.md §10.
+#
+# NOTE THE SUBDIRECTORIES -- this is the one out-of-tree package here whose
+# modules do NOT land flat in updates/. Every other one (xone, rtl8852cu) has
+# its .ko at the root of the M= directory, so modules_install writes
+# updates/<name>.ko.xz. This package's M= directory is the PARENT of two
+# module subdirectories, and Makefile.modinst preserves each module's path
+# relative to M=, giving updates/aic_load_fw/aic_load_fw.ko.xz. Measured with
+# a real `modules_install` against 6.18.50, not assumed; an assertion written
+# to the flat shape passes vacuously never and fails forever.
+aic_missing=""
+for m in aic_load_fw aic8800_fdrv; do
+	tar_has "usr/lib/modules/$KVER/updates/$m/$m.ko.xz" || aic_missing="$aic_missing $m"
+done
+if [ -z "$aic_missing" ]; then
+	pass "out-of-tree WiFi: aic_load_fw + aic8800_fdrv .ko.xz present (AIC8800, ADR 0016)"
+else
+	fail "out-of-tree WiFi: aic_load_fw + aic8800_fdrv .ko.xz present (AIC8800, ADR 0016)" \
+		"missing:$aic_missing -- BR2_PACKAGE_AIC8800 dropped, the vendor patch series failed to apply (check the build log for 'aic8800: vendor series applied=23 skipped=4'), or a kernel bump left them stale (make aic8800-dirclean; make linux-rebuild all)"
+fi
+
+# AIC8800 firmware. Asserted SEPARATELY from the modules, and specifically at
+# the per-chip subdirectory, because this is the package's most breakable
+# assumption and it fails SILENTLY: the driver does not use request_firmware()
+# (CONFIG_USE_FW_REQUEST=n), so none of /lib/firmware's normal search behaviour
+# applies -- it filp_open()s "<aic_default_fw_path>/<variant>/<name>" built at
+# runtime from the USB chipid. Blobs installed flat in /lib/firmware/, which is
+# what every other firmware in this image does, would leave the driver probing
+# and failing with nothing but a `firmware path = ...` line in dmesg. One file
+# per variant is enough to catch a layout regression.
+aicfw_missing=""
+for f in \
+	aic8800D80/fmacfw_8800d80_u02.bin \
+	aic8800D80/fw_patch_table_8800d80_u02.bin \
+	aic8800DC/fw_patch_8800dc_u02.bin \
+	aic8800/fmacfw.bin \
+	aic8800D80N/lmacfw_rf_8800d80n.bin \
+	aic8800D80X2/fmacfw_8800d80x2.bin; do
+	tar_has "usr/lib/firmware/$f" || aicfw_missing="$aicfw_missing $f"
+done
+if [ -z "$aicfw_missing" ]; then
+	pass "AIC8800 firmware: per-chip blobs present under /lib/firmware/aic8800*/"
+else
+	fail "AIC8800 firmware: per-chip blobs present under /lib/firmware/aic8800*/" \
+		"missing:$aicfw_missing -- AIC8800_FW_VARIANTS trimmed, or the blobs landed flat in /lib/firmware/ where the driver will never look"
 fi
 
 # Broadcom/Cypress FullMAC USB (v10): brcmfmac + its brcmutil helper. New in
@@ -1323,7 +1383,7 @@ not_busybox_symlink "usr/bin/wget" "wget (GNU wget -- issue #130, https support)
 #   2. /etc/wgetrc -- installed by the GNU wget package only; the BusyBox applet
 #      neither ships nor reads it, so this distinguishes the two providers by
 #      something other than the binary itself -- stock has it, see
-#      docs/stock-inventory/etc-configs.md:1097
+#      docs/stock-inventory/20250402/etc-configs.md:1097
 require_present "etc/wgetrc" "/etc/wgetrc (GNU wget's config -- BusyBox's applet never reads one)"
 #   3. +https    -- the actual bug. GNU wget's --version banner prints a feature
 #      line of +/-flags; a wget built --without-ssl still installs, still owns
@@ -1724,7 +1784,7 @@ section "Locale data (BR2_GENERATE_LOCALE)"
 # update_all.sh died outright on setlocale(LC_CTYPE, "") ->
 #     locale.Error: unsupported locale setting
 # before doing any work. Stock's /usr/lib/locale is a single ~2.9 MB
-# locale-archive (docs/stock-inventory/disk-usage.md); so is ours.
+# locale-archive (docs/stock-inventory/20250402/disk-usage.md); so is ours.
 #
 # Assert the artifact, not the intent -- same rule as initramfs-verify.
 

@@ -12,9 +12,10 @@
 #
 # Evidence method: readelf -h/-d via scripts/inventory/elf_scan.py.
 #
-# Writes docs/stock-inventory/binaries-needed.md (summary + MiSTer/busybox
-# callouts + dangling-dep report), binaries-needed-full.txt (every binary's
-# NEEDED set), and binaries-needed-union.txt (deduplicated SONAME list).
+# Writes docs/stock-inventory/<release>/binaries-needed.md (summary +
+# MiSTer/busybox callouts + dangling-dep report),
+# binaries-needed-full.txt (every binary's NEEDED set), and
+# binaries-needed-union.txt (deduplicated SONAME list).
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

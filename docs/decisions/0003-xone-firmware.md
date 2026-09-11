@@ -1,7 +1,7 @@
 # ADR 0003 — xone / Xbox Wireless Dongle firmware (`xow_dongle.bin`)
 
 **Status:** Accepted (2026-07-13) — decided by @mcfbytes. This ADR number was
-reserved during P0 (`docs/stock-inventory/firmware.md:103`, TASKS.md P3.2) for
+reserved during P0 (`docs/stock-inventory/20250402/firmware.md:103`, TASKS.md P3.2) for
 exactly this decision; it went through a full options writeup before the
 maintainer ruled, so both the ruling and the rejected alternatives are
 recorded below.
@@ -19,7 +19,7 @@ radio. The dongle ships with no onboard firmware — the host must upload
 anything. Without that file, the dongle enumerates on USB but no wireless
 controller pairing works at all.
 
-**Stock bundles this file.** `docs/stock-inventory/firmware.md:103,107` — it
+**Stock bundles this file.** `docs/stock-inventory/20250402/firmware.md:103,107` — it
 is present at `/usr/lib/firmware/xow_dongle.bin` in the stock image, baked
 directly into `linux.img`, not fetched on demand. There is no stock
 "on-device fetch" behavior to reproduce; parity means the built image must
@@ -70,7 +70,7 @@ vendors the blob in their own git history:
   `65736a84ff4036645b8f8ec602bed91ab6353019c9cb3233decab9feec0f6f04`.
   Extracting it (`cabextract`) yields `FW_ACC_00U.bin`, 70,620 bytes, sha256
   `48084d9fa53b9bb04358f3bb127b7495dc8f7bb0b3ca1437bd24ef2b6eabdf66` — **the
-  size matches `docs/stock-inventory/firmware.md`'s documented stock
+  size matches `docs/stock-inventory/20250402/firmware.md`'s documented stock
   `xow_dongle.bin` size exactly**, and the hash matches `dlundqvist/xone`'s
   own `install/firmware.sh` manifest for USB PID `0x02fe`. (Not independently
   diffed against a byte-copy of the real stock blob — none was available in
@@ -178,7 +178,7 @@ tool with no `Config.in`, pulled in automatically):
      - `0x02fe` — the newer "Xbox Wireless Adapter for Windows" ("S"
        revision). Its firmware (70,620 bytes) installs as
        `/lib/firmware/xow_dongle.bin` (**stock's literal filename**, for
-       byte-for-byte parity, `docs/stock-inventory/firmware.md`) with
+       byte-for-byte parity, `docs/stock-inventory/20250402/firmware.md`) with
        `xone_dongle_02fe.bin` a symlink to it (same bytes → no duplicate copy).
        Shipping only the stock-parity name would satisfy a literal file diff
        but leave the driver unable to find its firmware

@@ -1,0 +1,23 @@
+upstream commit: d4e3f51ec7fdd18116562d38bace9ef7dffe0f38
+subject: Release 20260907.
+date: 2026-09-07T21:00:13+08:00
+0bec449e365e757d14711bead76c5b1805d2b613a39e633fe7dc9f08e5687e73  zImage_dtb
+9a866063e095f3527d20d69638e37ad011cafce979fad7edc94a5bdbab2a6c2a  modules.tar.gz
+8a6ab6730e5a4b0ee978cae98a15fd8505e5605074cd34018adac0ac43359f78  firmware.tar.gz
+11da48f1ccb221726fdeb7c67fbbedb7a1d44aab46bb71eb86200e8efed95030  rootfs.tar.bz2
+6dda768de80f1f197f8a07bb66534abde8e79be46182654d380867a4da2d92d4  addon.tar
+e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64  uboot.img
+
+NOTE (docs/kernel-recon/fork-sync-2026-09/PLAN.md §9.2, 2026-09-10):
+stock-fw-20260907.txt / stock-mods-20260907.txt are derived from
+docs/kernel-recon/fork-sync-2026-09/evidence/stock-20260907-{firmware,modules}.txt
+(modules with the .ko.xz suffix stripped, to match this directory's existing
+stock-mods-20250402.txt convention). addon-report-20260907.txt is a byte diff
+against the 20250402-era addon-report's source (LIC 8aba321), not a full re-run
+of gen_addon_report's item-by-item disposition method -- see that file's own
+header and docs/stock-reconciliation.md §0.3 for what is and is not covered.
+rootfs.tar.bz2's sha256 and uboot.img's sha256 are not cited in
+docs/kernel-recon/fork-sync-2026-09/PLAN.md §1.1 (out of scope for that
+kernel-focused increment); both are recorded here since this document's own
+scope includes the full rootfs side. See docs/reference-materials.md for the
+full artifact table with reproduce commands.

@@ -9,7 +9,7 @@ Three trees are compared:
 
 | Column | What it is |
 |---|---|
-| **STOCK** | `docs/stock-inventory/stock.dts` — decompiled from the **appended DTB of the running stock MiSTer kernel** (`work/stock.dtb`). Ground truth for "what the board actually runs today". Not the fork's source; the artifact. |
+| **STOCK** | `docs/stock-inventory/20250402/stock.dts` — decompiled from the **appended DTB of the running stock MiSTer kernel** (`work/stock.dtb`). Ground truth for "what the board actually runs today". Not the fork's source; the artifact. |
 | **MAINLINE** | `arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts` in pristine **linux-6.18.38** (introduced by `144616a80889`, v6.14) + the `socfpga_cyclone5.dtsi` / `socfpga.dtsi` it includes. |
 | **OURS** | MAINLINE + `board/mister/de10nano/linux-patches/0004-dts-de10nano-MiSTer.patch`. |
 
@@ -85,7 +85,7 @@ CONFIG_I2C_HID=y                     <- CLIENT driver. Registers no adapter.
 
 That is the complete list of `CONFIG_I2C_*` symbols set to `y`/`m`. No `I2C_MUX`, no
 DRM/DDC bus, no USB-I²C bridge. Identical adapter-creating set to stock
-(`docs/stock-inventory/stock-linux.config:1889,1891`). `I2C_HID` is new in 6.18 relative
+(`docs/stock-inventory/20250402/stock-linux.config:1889,1891`). `I2C_HID` is new in 6.18 relative
 to stock, and P1.3 already established it is a *client* driver — it binds to devices **on**
 an i²C bus and never calls `i2c_add_adapter()`.
 

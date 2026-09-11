@@ -50,7 +50,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | Buildroot release | `Makefile` (`BUILDROOT_VERSION`) | `customManagers` regex, `github-tags` datasource, `allowedVersions` locked to `2026.08.x` | `BUILDROOT_SHA256` — **auto-refreshed since 2026-08-24** by `renovate-hash-sync.yml` (`hash-sync-buildroot.sh`, case 6) from buildroot.org's GPG-signed `.sign` manifest; **manual** before that date (this row used to say so), and the `make buildroot-showsig` transcription remains the fallback — see below. **Since 2026-09-02 a second companion:** `configs/fragments/golden.sha256` — the resolved-config hashes `scripts/check-config-fragments.sh` asserts per Buildroot version — is recorded for the new version by case 8 (`hash-sync-golden.sh`) in the same PR; if that case skips, `lint-config` only *warns* on the missing lines and the manual step is `scripts/check-config-fragments.sh --update-golden` + commit |
 | Kernel (6.18.y longterm) | `configs/fragments/de10nano.fragment` (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`) — the ONE file both DE10 stacks share since the 2026-09 fragment split | one `customManagers` regex on that file + a `customDatasources` entry over `kernel.org/releases.json`, filtered to `moniker=longterm` and the `6.18.` prefix; `allowedVersions` locked to `6.18.y` as defense in depth. Same `depName` for both files, so Renovate emits **one PR touching both** | `board/mister/de10nano/patches/linux/linux.hash` — auto-refreshed by `renovate-hash-sync.yml` from kernel.org's signed `sha256sums.asc` |
 | Kernel (RT/beta, the **7.2 line**) | `configs/mister_rt.fragment` (same symbol, different line) | a **separate** `customManagers` regex + its own `kernelStable72` datasource; `allowedVersions` locked to `/^7\.2(\.\d+)?$/`. Labeled `rt-kernel-pin` + `needs-manual-version-check`. **Rewritten 2026-08-17** when 7.2 released: the datasource was `kernelMainline` (`moniker=mainline`) and the depName `kernel-mainline-rt`. Both were right while 7.2 was in `-rc` and wrong the moment it shipped — mainline moves to 7.3-rc1 about two weeks later, so the old filter would have dragged the variant straight back off the line it had just reached. The filter is now **moniker-agnostic and version-scoped**, because the 7.2 line changes moniker underneath us: today 7.2 is the `mainline` entry and no 7.2.y stable release exists yet, and once 7.2.1 ships it becomes the `stable` entry instead. The matchString accepts two- *and* three-component values for the same reason | `board/mister/de10nano/patches/linux/linux.hash` — **auto-refreshed since 2026-08-17** by `renovate-hash-sync.yml` (`hash-sync-kernel.sh --pin=rt`) from kernel.org's signed `sha256sums.asc`, same as the 6.18 pin. This row says the opposite of what it said before that date, and the reason is that the pin changed sides, not that the rule loosened: an `-rc` is fetched as a cgit `.tar.gz` snapshot upstream signs in no way, so its hash could only be hand-written TOFU; a 7.2.y release is an ordinary `.tar.xz` covered by the signed manifest. The script still **refuses** any `-rc` for either pin, leaving the build to fail closed |
-| 10 driver commit-SHA pins | `package/{rtl8812au,rtl8814au-morrownr,rtl8821au-morrownr,rtl8821cu-morrownr,rtl8188fu,rtl8188eu-aircrack-ng,rtl88x2bu,rtl8852cu-morrownr,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
+| 4 driver commit-SHA pins | `package/{rtl8852cu-morrownr,aic8800,xone,midilink}/*.mk` | `customManagers` regex per package, `git-refs` datasource tracking the upstream default branch's HEAD via `currentDigest` | matching `.hash` file — auto-refreshed by `renovate-hash-sync.yml` |
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
@@ -71,14 +71,36 @@ plus the two built-in managers
 (`docker` digests, `github-actions`), covering every version/commit/digest pin
 this repository maintains by hand except the four listed below.
 
-### `rtl8852cu-morrownr` is the one driver pin that is not a spare
+### Every driver pin is now live — there are no spares left
 
-Every other Realtek fork in the driver row is **sourced but deselected** — kept
-in `package/` as a one-line revert after ADR 0016 moved its chip to a mainline
-driver. `rtl8852cu-morrownr` (added v10.2) is the exception: the image
-**actually builds and ships** it, because `rtw89` carries the RTL8852C chip HAL
-but no `rtw8852cu.c` USB bus file, so mainline cannot drive the chip at all.
-Its pin rotting is therefore a live problem, not a dormant one.
+**Changed 2026-09-10.** This section used to read "`rtl8852cu-morrownr` is the
+one driver pin that is not a spare", because the driver row carried seven
+Realtek forks that were **sourced but deselected** — kept in `package/` as a
+one-line revert after ADR 0016 moved each chip to a mainline driver. Those seven
+(`rtl8812au`, `rtl8814au-morrownr`, `rtl8821au-morrownr`, `rtl8821cu-morrownr`,
+`rtl8188fu`, `rtl8188eu-aircrack-ng`, `rtl88x2bu`) were **deleted**: a Renovate PR
+stream for a driver the image does not build is a standing cost, and the revert
+they existed for was never used. Version-control history is the fallback now.
+See `docs/wifi-parity.md` §11.
+
+So the driver row is down from ten pins to four, and **all four are live** —
+every one is built and shipped, so a rotting pin is a real problem rather than a
+dormant one:
+
+- `rtl8852cu-morrownr` — `rtw89` carries the RTL8852C chip HAL but no
+  `rtw8852cu.c` USB bus file, so mainline cannot drive the chip at all;
+- `aic8800` — mainline has no AIC8800 driver over any bus. **This pin is
+  doubly live**: the same tarball supplies the kernel modules *and* the ~6.6 MiB
+  of firmware, deliberately, so that a firmware-only bump cannot drift away from
+  the driver version it has to match. There is no separate firmware package and
+  no second manager to keep in step. It carries one extra hazard no other pin
+  here has: the package applies upstream's own `debian/patches/series` with a
+  four-entry skip list, so a bump that reshuffles that series can change what is
+  applied without Renovate seeing anything. The build fails closed on the part
+  that matters (`AIC8800_CHECK_FW_PATH`), but read the
+  `aic8800: vendor series applied=N skipped=4` line on any bump — N was 23 at
+  pin time;
+- `xone`, `midilink` — unchanged.
 
 Three places move together for it, and **two of them fail silently**:
 
@@ -518,9 +540,13 @@ in roughly this priority order:
    `managerFilePatterns`; if Renovate auto-opens a `renovate/config-migration`
    PR renaming these keys, that is expected and safe to accept.
 3. **The `git-refs` `currentValueTemplate` branch names** (`main` vs
-   `master`, and `aircrack-ng/rtl8188eus`'s unusual `v5.3.9` default branch,
-   verified via `git ls-remote --symref` at authoring time, 2026-07-13). If
-   any of these upstreams ever renames its default branch, that one
+   `master`, verified with a `ls-remote --symref` at authoring time,
+   2026-07-13; re-verified for `radxa-pkg/aic8800` on 2026-09-10, whose
+   `default_branch` is `main`). The odd one out used to be
+   `aircrack-ng/rtl8188eus`, whose default branch was the tag-shaped `v5.3.9`;
+   that package was deleted on 2026-09-10 (see §11 of
+   `docs/wifi-parity.md`), so no pin here tracks a non-`main`/`master` branch
+   any more. If any of these upstreams ever renames its default branch, that one
    manager will silently stop finding new commits (not fail loudly) until
    this file is updated.
 4. ~~**`winterheart/broadcom-bt-firmware`'s tag ordering.**~~ **Resolved

@@ -207,8 +207,8 @@ Exit criterion: patch triage and ABI contract complete and human-reviewed (P0.9)
   (b) all binaries with their `NEEDED` sets; (c) `/etc` configs verbatim-listed
   (init scripts S01–S99, inittab, fstab, smb.conf, wpa_supplicant, sshd_config, …);
   (d) `/lib/firmware` contents (72 files, per A5); (e) BusyBox applet list; (f) kernel
-  config and DTS — **already extracted** to `docs/stock-inventory/stock-linux.config`
-  (via IKCONFIG) and `docs/stock-inventory/stock.dts`; script the regeneration;
+  config and DTS — **already extracted** to `docs/stock-inventory/20250402/stock-linux.config`
+  (via IKCONFIG) and `docs/stock-inventory/20250402/stock.dts`; script the regeneration;
   (g) disk usage by top-level dir; (h) the 52 `.ko.xz` module list with dependencies.
   **Done when:** each list is a checked-in text/markdown file with a generation script
   in `scripts/inventory/` so it can be re-run against any image.
@@ -308,7 +308,7 @@ boots to a serial console on real hardware (P1.13).
   binary runs under `qemu-arm`; decision doc explains the trade-off.
 
 - [x] **P1.3 — Kernel config derivation (A3, A4)** — [OPUS] — Size L — Depends: P0.8, P1.1
-  Port the **exact extracted stock config** (`docs/stock-inventory/stock-linux.config`,
+  Port the **exact extracted stock config** (`docs/stock-inventory/20250402/stock-linux.config`,
   4,246 lines from IKCONFIG) to 6.18 via `olddefconfig`, then audit every dropped/renamed
   symbol.
   **[P0 — A11, READ FIRST: `olddefconfig` of the stock config is a trap.]** Stock has
@@ -369,7 +369,7 @@ boots to a serial console on real hardware (P1.13).
   **Done 2026-07-12.** `board/mister/de10nano/linux-patches/0004-dts-de10nano-MiSTer.patch`;
   evidence in **`docs/dts-comparison.md`**. `dtbs` builds with **zero new `dtc` warnings**
   (default flags *and* `W=1`); the built DTB was decompiled and diffed node-by-node against
-  `docs/stock-inventory/stock.dts` with every divergence justified. **A14 proven**: exactly
+  `docs/stock-inventory/20250402/stock.dts` with every divergence justified. **A14 proven**: exactly
   three i²C adapters (`i2c0`, `i2c2`, `i2c_gpio` — stock's, byte-identical), **no `i2c`
   aliases** ⇒ `i2c_add_adapter()` allocates dynamically from `__i2c_first_dynamic_bus_num == 0`
   ⇒ the numbers can only be **{0,1,2}**; no adapter can be ≥ 3. The fork's shared
@@ -649,7 +649,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
 - [x] **P3.2 — xone package** — [SONNET] [NET] — Size M — Depends: P3.1
   Package `xone` similarly. Handle its firmware requirement explicitly: document the
   redistribution status. **[P0: stock BUNDLES it.** `xow_dongle.bin` is present in stock's
-  66-file firmware set (`docs/stock-inventory/firmware.md`) — there is no on-device fetch
+  66-file firmware set (`docs/stock-inventory/20250402/firmware.md`) — there is no on-device fetch
   to reproduce. Parity means shipping it; the open question is only whether *we* may
   redistribute it.**]**
   **Done when:** module builds; firmware path documented in
@@ -679,7 +679,7 @@ Exit criterion: hardware matrix (§11) green (P3.13).
   is unreachable from CI often enough to break the build) and `package/xow-firmware`
   (fetches, extracts, double-hash-verifies, installs).
   Installed under **two names**: `xow_dongle.bin` (stock's literal
-  filename, byte-for-byte parity — 70,620 bytes, matches `docs/stock-inventory/firmware.md`
+  filename, byte-for-byte parity — 70,620 bytes, matches `docs/stock-inventory/20250402/firmware.md`
   exactly) **and** a symlinked `xone_dongle_02fe.bin` (what the *actual driver packaged here*
   requests at runtime — `dlundqvist/xone` moved to a per-PID firmware-naming scheme stock's
   older fork never used; shipping only the stock name would satisfy a filename diff but leave

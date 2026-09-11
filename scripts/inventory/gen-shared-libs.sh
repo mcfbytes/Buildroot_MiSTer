@@ -9,9 +9,9 @@
 # Evidence method: `readelf -h` (ELF type) and `readelf -d` (SONAME) via
 # scripts/inventory/elf_scan.py, over every regular ELF file in the tree.
 #
-# Writes docs/stock-inventory/shared-libraries.md (summary) and
-# docs/stock-inventory/shared-libraries-full.txt (full sorted list +
-# symlink chains).
+# Writes docs/stock-inventory/<release>/shared-libraries.md (summary) and
+# docs/stock-inventory/<release>/shared-libraries-full.txt (full sorted list
+# + symlink chains).
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

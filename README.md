@@ -65,9 +65,10 @@ core run on it unchanged.
 
 MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4 image**
 (93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
-5.15.1** — a kernel forked in November 2021 that has **never merged a single 5.15.y
-stable release**. There is no public build recipe, no CI, no SBOM, and no update path for
-any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
+5.15.1** — a kernel forked in November 2021 that **never merged a single 5.15.y stable
+release** in the five years it shipped. (On 2026-09-07 stock moved to **6.18.38**, pinned
+the same way: one point release, no `.y` updates — see the note under the table below.)
+There is no public build recipe, no CI, no SBOM, and no update path for any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
 **mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
 signed-hash supply chain, a nine-workflow CI pipeline, and a per-commit reconciliation
 of the entire kernel fork — then ships it through the same update channel users already
@@ -85,19 +86,19 @@ mainline can hold it.
 
 | | Stock MiSTer | This project |
 |---|---|---|
-| **Kernel** | 5.15.1, forked Nov 2021, **zero** `5.15.y` stable updates ever merged; 5.15 EOL Oct 2026 | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
-| **Buildroot** | 2021.02.4 | **2026.08** (~5 years of upstream work) |
-| **glibc / gcc** | 2.31 / gcc 10-era | **2.44 / 15.3.0** |
-| **OpenSSL** | **1.1.1 — EOL since 2023-09-11**, no upstream fixes since | **3.6.4** |
-| **OpenSSH** | 8.6p1 | **10.5p1** |
-| **Samba** | ~4.14 | **4.24.6** |
-| **Python** | 3.9 | **3.14.7** |
-| **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
-| **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
-| **Wi-Fi chipset coverage** | Six out-of-tree vendor forks, plus in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine; several chips can't do WPA3 at all | **Mainline-first**: in-kernel `mac80211` (`rtl8xxxu`/`rtw88`/`rtw89`/`mt76`/`ath9k_htc`/`rsi`…) for every chip mainline can drive *that is worth building here* — six symbols are deliberately left off (one upstream itself calls non-working, four 2000s-era 802.11b/g parts, one that is optical LiFi rather than Wi-Fi; [`wifi-parity` §7](docs/wifi-parity.md)) — plus Broadcom/Cypress and Wi-Fi 6/6E support stock never had. **One** out-of-tree driver remains, for a Wi-Fi 6E chip mainline has no USB driver for at all. **WPA3/SAE hardware-verified**; see the [hardware-support table](#wi-fi-and-bluetooth-hardware-support) for the full build- vs. hardware-verified breakdown ([ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md)) |
-| **Bluetooth firmware** | `ath3k` shipped with **no `ath3k-1.fw` and no `ar3k/*.dfu` at all**; no MediaTek MT79xx and no Qualcomm QCA firmware (its Realtek combos *were* covered — `stock-fw.txt` carries `rtl8761bu`, `rtl8822b`, `rtl8822cu`, `rtl8821c`) | Firmware audited driver-by-driver against what each one actually requests at runtime, gaps closed (MediaTek combo, Qualcomm QCA Rome USB, one Broadcom `.hcd`, Atheros AR3011/AR3012) — **including one asymmetry this project itself introduced**: we shipped the MT7961 *Wi-Fi* blob without its *Bluetooth* sibling, so that combo dongle's Wi-Fi worked and its BT did not. Found and closed. Two built drivers still ship with **no** firmware, deliberately and on the record ([`bluetooth-parity` §9](docs/bluetooth-parity.md)) |
-| **The `.7z` extractor that unpacks every OS update** | **p7zip 16.02 — dated 2016-05-21**, in *two* places: `usr/bin/7zr` in the rootfs, and `/media/fat/linux/7za`, which the Downloader **downloads off the internet** the first time it updates and then reuses forever | **7-Zip 26.03**, built from source in-tree. The `/media/fat/linux/7za` copy is shipped by us — **statically linked**, so it survives a rollback to an older or even stock rootfs — so that download never happens ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
+| **Kernel** | 5.15.1 from Nov 2021 to 2026-09-07 with **zero** `5.15.y` stable updates ever merged; **6.18.38 since Release 20260907**, pinned the same way — 12 `6.18.y` releases behind our pin at the time of writing | **6.18 LTS**, on a live `.y` line with security backports |
+| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **40 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Buildroot** | 2021.02.4 — **unchanged by Release 20260907** (`/etc/os-release` `PRETTY_NAME`, both releases) | **2026.08** (~5 years of upstream work) |
+| **glibc / gcc** | 2.31 / gcc 10-era — **unchanged by Release 20260907** (`libc.so.6 → libc-2.31.so`; `strings` shows `GNU C Library (GNU) stable release version 2.31`) | **2.44 / 15.3.0** |
+| **OpenSSL** | **1.1.1k — EOL since 2023-09-11**, no upstream fixes since; **unchanged by Release 20260907** (`strings usr/lib/libssl.so.1.1`, both releases → `OpenSSL 1.1.1k  25 Mar 2021`) | **3.6.4** |
+| **OpenSSH** | 8.6p1 — **unchanged by Release 20260907** (`strings usr/sbin/sshd`, both releases → `OpenSSH_8.6p1`) | **10.5p1** |
+| **Samba** | 4.14.6 — **unchanged by Release 20260907** (`strings usr/sbin/smbd`, both releases → `SAMBA_4.14.6`) | **4.24.6** |
+| **Python** | 3.9.6 — **unchanged by Release 20260907** (`usr/lib/python3.9/lib-dynload/_sysconfigdata__linux_arm-linux-gnueabihf.pyc` embeds `3.9.6`, both releases) | **3.14.7** |
+| **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 — **still true in Release 20260907**: byte-identical `ssh_host_*_key.pub` fingerprints to 20250402 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
+| **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script — **still true in Release 20260907**: `/etc/localtime` is still a broken symlink to `/media/fat/linux/timezone` | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
+| **Wi-Fi chipset coverage** | 5.15 (until 2026-09-07): six out-of-tree vendor forks, plus in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine; several chips can't do WPA3 at all. **6.18 (since Release 20260907): all six out-of-tree forks dropped** in favour of mainline `rtw88`/`rtw89`/`rtl8xxxu`/`mt76`/`ath*` — a real expansion (RTL8812AU/8814AU/8822BU/8822CU/8723DU, **RTL8851BU/8852BU Wi-Fi 6, MT7921U/MT7925U Wi-Fi 6/7 with firmware, RTL8192DU** newly covered) — but **still no Broadcom/Cypress**, still no RTL8852CU/8832CU Wi-Fi 6E, and `rtw88_8821au` (RTL8811AU/8821AU) is still unbuilt (`evidence/stock-20260907-modules.txt`; full per-chip breakdown in the [hardware table](#wi-fi-and-bluetooth-hardware-support)) | **Mainline-first**: in-kernel `mac80211` (`rtl8xxxu`/`rtw88`/`rtw89`/`mt76`/`ath9k_htc`/`rsi`…) for every chip mainline can drive *that is worth building here* — six symbols are deliberately left off (one upstream itself calls non-working, four 2000s-era 802.11b/g parts, one that is optical LiFi rather than Wi-Fi; [`wifi-parity` §7](docs/wifi-parity.md)) — plus Broadcom/Cypress and Wi-Fi 6E support stock still does not have. **One** out-of-tree driver remains, for a Wi-Fi 6E chip mainline has no USB driver for at all. **WPA3/SAE hardware-verified**; see the [hardware-support table](#wi-fi-and-bluetooth-hardware-support) for the full build- vs. hardware-verified breakdown ([ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md)) |
+| **Bluetooth firmware** | 5.15 (until 2026-09-07): `ath3k` shipped with **no `ath3k-1.fw` and no `ar3k/*.dfu` at all**; no MediaTek MT79xx and no Qualcomm QCA firmware (its Realtek combos *were* covered). **6.18 (since Release 20260907): still no `ath3k-1.fw`/`ar3k/*.dfu`, still no Qualcomm QCA BT rampatch, Realtek combos still covered — but stock now ships one Broadcom `.hcd`** (`brcm/BCM20702A1-0b05-17cb.hcd`, new in this release) and the **Wi-Fi-side** MT7961/MT7925 patch/RAM-code blobs (no `BT_`-prefixed MediaTek blob appears, so the Bluetooth side of that combo is not evidently covered) (`evidence/stock-20260907-firmware.txt`) | Firmware audited driver-by-driver against what each one actually requests at runtime, gaps closed (MediaTek combo, Qualcomm QCA Rome USB, one Broadcom `.hcd`, Atheros AR3011/AR3012) — **including one asymmetry this project itself introduced**: we shipped the MT7961 *Wi-Fi* blob without its *Bluetooth* sibling, so that combo dongle's Wi-Fi worked and its BT did not. Found and closed. Two built drivers still ship with **no** firmware, deliberately and on the record ([`bluetooth-parity` §9](docs/bluetooth-parity.md)) |
+| **The `.7z` extractor that unpacks every OS update** | **p7zip 16.02 — dated 2016-05-21**, in *two* places: `usr/bin/7zr` in the rootfs, and `/media/fat/linux/7za`, which the Downloader **downloads off the internet** the first time it updates and then reuses forever. **Unchanged by Release 20260907** (`strings usr/bin/7zr`, both releases → `7-Zip (a) [32] 16.02`) | **7-Zip 26.03**, built from source in-tree. The `/media/fat/linux/7za` copy is shipped by us — **statically linked**, so it survives a rollback to an older or even stock rootfs — so that download never happens ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **NTFS** | Not supported at all | `ntfs3` in-kernel module + `ntfs-3g` automount |
 | **Image size** | 375 MiB — **13.6% free** ("93% full") on `release_20250402`, **6.3% free** on `release_20260907`, whose 6.18 module set (+21 MB) and larger firmware set (+7 MB) consumed another 29 MB of the same fixed image ([`stock-release-20260907` §1](docs/verification/stock-release-20260907.md)) | 512 MiB, **39.5% free** — 310 MiB used / 202 MiB free, temporary debug block included, measured by `./scripts/check-size-budget.sh output/images/linux.img` on the image built 2026-07-27 **with** this branch's full package set (the T5 utilities, 7-Zip, and the rtl8852cu driver all included). Floor is 15%. ⚠️ [`docs/size-budget.md`](docs/size-budget.md) still reports 60.6% free: it is a P3.3-vintage report and needs regenerating |
 | **Rootfs build recipe** | **Not published.** `MiSTer-devel/Linux_Image_creator_MiSTer` exists, but it is an *assembler*, not a builder: `create_img.sh` runs `mkfs.ext4` and untars a prebuilt **82 MiB `rootfs.tar.bz2` committed to git**. Nothing public turns source into that tarball, so the image can be re-packed but its contents cannot be changed, patched or audited beyond `ls` | This repository |
@@ -108,6 +109,27 @@ mainline can hold it.
 
 Every number in that table is sourced. The versions come from the *shipped artifacts* on
 both sides — stock from the extracted stock `linux.img`, ours read off the built tree.
+
+**Stock moved on 2026-09-07 — re-measured 2026-09-10.** Release 20260907 replaced stock's
+kernel (5.15.1 → 6.18.38, a fresh port on upstream's `MiSTer-v6.18` branch), its module set
+(89 modules, up from 52 — the six out-of-tree Wi-Fi forks are gone in favour of the same
+mainline drivers this image uses) and its firmware set (91 files, up from 66). The rootfs
+side (`rootfs.tar.bz2`) was extracted and overlaid with `modules.tar.gz` / `firmware.tar.gz`
+/ `addon.tar` exactly as the release's own `create_img.sh` does, then measured with
+`scripts/inventory/`, per
+[`fork-sync-2026-09/PLAN.md` §9.2](docs/kernel-recon/fork-sync-2026-09/PLAN.md) — full
+output in [`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/) (`busybox`'s
+applet list excepted — no `qemu-arm` in the authoring session, version string only). Every
+cell in the table above and the Wi-Fi/Bluetooth hardware tables below is now the 20260907
+measurement, each citing how; where a cell says "unchanged" that is a fresh comparison, not
+an old number left standing — **the entire Buildroot userland outside the kernel/modules/
+firmware turned out to be byte-for-byte unchanged** (same Buildroot/glibc/OpenSSL/OpenSSH/
+Samba/Python/p7zip versions, same 507 true-ABI shared libraries). The one thing still
+unmeasured is **Image size**: the release ships tarballs, not a formatted `linux.img`, and
+this pass did not run `create_img.sh` + `mkfs.ext4` to produce one — see that row. The
+kernel patch reconciliation described in §1 was performed against the 5.15 fork; the first
+increment against stock's 6.18 branch is [`fork-sync-2026-09/`](docs/kernel-recon/fork-sync-2026-09/),
+executed separately from this rootfs-side re-measurement.
 
 **On version drift, since this table cites documents that can lag it.** The ground truth
 for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
@@ -135,7 +157,7 @@ document records what changed and which rows here it dates).
 | Phase | State | What that means |
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 37 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
+| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 40 patches apply cleanly (re-measured 2026-09-11 at `patch -p1 -F0`, 40/40, zero fuzz); `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.08, glibc 2.44, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
@@ -303,7 +325,8 @@ make, use the download-and-read form above, or the by-hand route.
 ### 1. The kernel: five years of stable releases, and a way back to mainline
 
 Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
-stable release**. 5.15 itself reaches end-of-life in October 2026. This project tracks
+stable release** before replacing it, on 2026-09-07, with 6.18.38 — pinned at that one
+point release in exactly the same way, so the pattern is the fork's, not 5.15's. This project tracks
 **6.18 LTS** — the exact patch level is
 `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/fragments/de10nano.fragment`,
 and it is deliberately not repeated in prose here because stable `.y` releases
@@ -311,13 +334,21 @@ land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
 
 The interesting part is not the version number — it's the **shape of the delta**. The
-fork's **126 reconciled commits** (110 on the shipped `MiSTer-v5.15` branch, 1 on
-upstream's own `MiSTer-v6.18` branch, plus 15 residue commits that existed only on the
-older v5.14/v5.13.12 branches) are down to **36 carried patch files**. Every remaining
-drop is either verifiably in mainline 6.18, replaced by a maintained package, or
-recorded as a deliberate decision. A 37th file, `0047`, is not part of that delta at
-all — it backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the
-6.18.y line never received.
+fork's **136 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
+2026-09-07, 10 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — one
+still-open pull-request head carried ahead of its merge, plus 15 residue commits that
+existed only on the older v5.14/v5.13.12 branches) are down to **40 carried patch
+files**. The bulk of that reconciliation was performed against the **5.15** stock kernel
+and left **36** files; the nine commits and one open PR stock's 6.18 branch has taken
+since have now been reconciled too — executed, not just planned — in
+[`docs/kernel-recon/fork-sync-2026-09.md`](docs/kernel-recon/fork-sync-2026-09.md)
+(plan: [`fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md)),
+adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahead of its
+upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only). Every
+remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
+or recorded as a deliberate decision. `0047` is not part of that delta at all — it
+backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line
+never received.
 
 **Every commit in the fork was independently reconciled**, each with a machine-readable,
 evidence-backed disposition record, **100% of them verified by a second independent
@@ -423,7 +454,7 @@ but that was not all it had: it also carried in-kernel `mac80211` USB drivers
 for MediaTek (`mt7601u`, `mt76x0u`, `mt76x2u`, `mt7663u`), Ralink (`rt2500usb`,
 `rt73usb`, `rt2800usb`), Marvell (`mwifiex_usb`, `libertas`/`usb8xxx`) and
 older Realtek parts (`rtl8xxxu`, `rtl8192cu`, `rtl8187`), per
-[`stock-mods.txt`](docs/verification/stock-reconciliation/stock-mods.txt).
+[`stock-mods.txt`](docs/verification/stock-reconciliation/stock-mods-20250402.txt).
 What it had **none** of was Broadcom, Wi-Fi 6/6E, Atheros USB Wi-Fi, or Redpine — and
 for at least one chip it *did* have a driver for, it shipped no firmware, so
 the driver probed and then failed (MT7663U; same story for `ath3k` on the
@@ -438,27 +469,42 @@ method applied a second time to Bluetooth firmware
 
 **Read the last column before the rest — it says how far each row was
 actually checked**, and most of this table is newly added, unreleased
-hardware support that has not yet had a device plugged into it:
+hardware support that has not yet had a device plugged into it. The **Stock MiSTer**
+column below shows **both** eras: the 5.15 image (release 20250402, stock until
+2026-09-07) and 6.18 (Release 20260907, re-measured 2026-09-10 against the extracted
+`rootfs.tar.bz2` + `modules.tar.gz` + `firmware.tar.gz` overlay — see
+[`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/) and
+[`docs/kernel-recon/fork-sync-2026-09/evidence/`](docs/kernel-recon/fork-sync-2026-09/evidence/)).
+Stock's 6.18 kernel dropped every out-of-tree Wi-Fi fork for mainline `rtw88`/`rtw89`/
+`rtl8xxxu`/`mt76`, and it is a genuine expansion in several rows below — this is a
+module/firmware **presence** check only, the same "build-verified, not hardware-verified"
+caveat that applies to most of *this* image's own rows applies doubly to stock's, since
+nobody here has stock hardware to pair against:
 
 | If your dongle uses… | Stock MiSTer | This image | Checked how far? |
 |---|---|---|---|
-| Realtek 802.11n/ac — RTL8188EU/8188FU, RTL8710BU, RTL8811AU/8821AU, RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU/8822CU, RTL8723DU | Out-of-tree vendor fork for **six** of them (RTL8188EU, RTL8188FU, RTL8811AU/8821AU, RTL8812AU, RTL8821CU, RTL8822BU — [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md), `stock-mods.txt`); several of those can't do WPA3 at all. **No driver at all** for RTL8710BU, RTL8814AU, RTL8822CU, RTL8723DU: none of the six forks covers them, `stock-mods.txt` carries no `rtw88` module, and stock's own kernel branch (`MiSTer-v5.15`) has an `rtl8xxxu/` with only the 8192c/8192e/8723a/8723b chip files — no 8710b | In-kernel `rtl8xxxu` / `rtw88` (`mac80211`) | **Hardware-verified**: an RTL8822BU auto-connects to a WPA3-only 5 GHz network at boot. (The fork it replaced advertised SAE but failed WPA3-only association with `status_code=1` — hardware-verified regression the switch fixed, [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md).) Every other chip in this row builds the same way but has **not** been tested against real hardware. |
-| Realtek Wi-Fi 6 — RTL8851BU, RTL8852BU | Not supported | In-kernel `rtw89` | Build-verified only |
-| Realtek Wi-Fi 6E — RTL8852CU / RTL8832CU | Not supported | Out-of-tree `rtl8852cu-morrownr` — the *only* driver that exists for this chip on USB anywhere, in or out of tree: mainline's `rtw89` has the chip's radio HAL but only a PCIe bus file, and this board has no PCIe | **Not yet built, let alone tested** — added by reading the driver's source, not compiled ([`docs/wifi-parity.md` §8](docs/wifi-parity.md)) |
-| Broadcom / Cypress — BCM43xx, CYW43xx USB adapters | **Not supported at all** | In-kernel `brcmfmac` | Build-verified only |
-| MediaTek Wi-Fi 5 — MT7663U (802.11ac) | Driver **was** shipped (`mt7663u`, `mt7663-usb-sdio-common`, `mt7615-common` are all in `stock-mods.txt`) — but **none of the four firmware files it requests** (`stock-fw.txt` has no `mt7663*` at all), so it probed and then failed at `request_firmware()` | Same in-kernel `mt76` driver, plus the four `mediatek/mt7663*` blobs it actually loads ([`wifi-parity` §6.2](docs/wifi-parity.md)) | Build-verified only |
-| MediaTek Wi-Fi 6 / Wi-Fi 7 — MT7921U (802.11ax), MT7925U (802.11be, 6 GHz-capable) | Not supported | In-kernel `mt76` (`mt7921u` / `mt7925u`) | Build-verified only |
-| Atheros — AR6003/AR6004, AR9271/AR9287 (`ath9k_htc`), AR9170 (`carl9170`) | Not supported | In-kernel | Build-verified only |
-| Redpine RS9113 / RS9116 | Not supported | In-kernel `rsi` | Build-verified only |
-| RTL8192DU (dual-band 802.11n) | Not supported | In-kernel `rtlwifi` | Build-verified only |
-| Bluetooth — MediaTek MT7921/MT7925 combo, Qualcomm QCA Rome 6174A (USB), one Broadcom `.hcd`, Atheros AR3011/AR3012, plus Realtek RTL8761B/BU and every Wi-Fi+BT combo chip above | `ath3k` built with **no `ath3k-1.fw`, no `ar3k/*.dfu`**; no MediaTek MT79xx or Qualcomm QCA blobs. Its Realtek combos *were* covered | Firmware shipped for every Bluetooth driver here where an upstream blob exists and the hardware is reachable on this board. **Two built drivers deliberately ship without it**: Intel `btintel` (30 MiB of `intel/ibt-*` for silicon that only comes on M.2 cards this board cannot host — `CONFIG_BT_HCIBTUSB` `select`s the driver unconditionally, so it cannot be turned off) and `bcm203x` (a ~2003 BCM2033 whose `BCM2033-MD.hex`/`BCM2033-FW.bin` upstream linux-firmware does not carry at all). Both are recorded in [`bluetooth-parity` §9's "Deliberately NOT shipped"](docs/bluetooth-parity.md) | General Bluetooth pairing is **hardware-verified**; these specific chipset gaps were closed by reading each driver's firmware-request code, not by plugging one in |
+| Realtek 802.11n/ac — RTL8188EU/8188FU, RTL8710BU, RTL8811AU/8821AU, RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU/8822CU, RTL8723DU | **5.15:** out-of-tree vendor fork for **six** of them (RTL8188EU, RTL8188FU, RTL8811AU/8821AU, RTL8812AU, RTL8821CU, RTL8822BU — [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md), `stock-mods.txt`); several of those can't do WPA3 at all. **No driver at all** for RTL8710BU, RTL8814AU, RTL8822CU, RTL8723DU. **6.18 (20260907):** mainline `rtl8xxxu` covers RTL8188EU; mainline `rtw88` newly *builds* **RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU, RTL8822CU, RTL8723DU** (`rtw88_8812au`/`8814au`/`8821c`/`8821cu`/`8822bu`/`8822cu`/`8723du` all present — but see the firmware caveat below: only 8812AU, 8821CU and 8822BU have their blob). **Still no driver** for RTL8811AU/8821AU (**no `rtw88_8821au.ko`** — explicitly absent, even though the firmware `rtw88/rtw8821a_fw.bin` ships). **RTL8710BU and RTL8188FU *are* covered** in 6.18, by `rtl8xxxu.ko` (present): 6.18's `rtl8xxxu` links `8188f.o` and `8710b.o` unconditionally (`drivers/net/wireless/realtek/rtl8xxxu/Makefile`), binds both outside the `RTL8XXXU_UNTESTED` guard (`core.c:8060-8062`, `:8108-8112`), and stock ships `rtlwifi/rtl8188fufw.bin` + `rtl8710bufw_{SMIC,UMC}.bin`. Three of the newly-built `rtw88` modules ship **without their firmware**, so they load and then fail at `request_firmware()` the way `mt7663u` does: `rtw88/rtw8814a_fw.bin`, `rtw8822c_fw.bin` and `rtw8723d_fw.bin` are all absent from stock's set (`evidence/stock-20260907-{modules,firmware}.txt`; corrected by the Wave-4 audit 2026-09-11) | In-kernel `rtl8xxxu` / `rtw88` (`mac80211`) | **Hardware-verified**: an RTL8822BU auto-connects to a WPA3-only 5 GHz network at boot. (The fork it replaced advertised SAE but failed WPA3-only association with `status_code=1` — hardware-verified regression the switch fixed, [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md).) Every other chip in this row builds the same way but has **not** been tested against real hardware. |
+| Realtek Wi-Fi 6 — RTL8851BU, RTL8852BU | **5.15:** not supported. **6.18 (20260907):** now built — `rtw89_8851b`/`8851bu`, `rtw89_8852b`/`8852bu`/`8852b_common` all present (module presence only; no firmware cross-check done here) | In-kernel `rtw89` | Build-verified only |
+| Realtek Wi-Fi 6E — RTL8852CU / RTL8832CU | Not supported in either stock era | Out-of-tree `rtl8852cu-morrownr` — the *only* driver that exists for this chip on USB anywhere, in or out of tree: mainline's `rtw89` has the chip's radio HAL but only a PCIe bus file, and this board has no PCIe | **Not yet built, let alone tested** — added by reading the driver's source, not compiled ([`docs/wifi-parity.md` §8](docs/wifi-parity.md)) |
+| AICSemi Wi-Fi 6 — AIC8800 / 8800DC / 8800D80 / 8800D80N / 8800D80X2 / 8800DLN (the cheap AX sticks: **Tenda U2, U11, U11 Pro**, TP-Link/Mercury, TX1U Nano) | **Not supported in either stock era.** Stock's 6.18 fork *added the driver source* on 2026-09-11 (`MiSTer-v6.18` `c129b0fac3`, 82 k lines vendored at `drivers/net/wireless/aic8800`), but as of Release 20260907 it has shipped **neither the module nor the ~60 firmware blobs** the driver loads — and `Linux_Image_creator_MiSTer`'s newest commit pre-dates the driver commit. On stock today the chip binds nothing | Out-of-tree `package/aic8800` — driver **and** firmware, from `radxa-pkg/aic8800`, which packages the *same* AICSemi SDK snapshot stock vendored (`RELEASE_DATE "2026_0123_5f7be68d"` on both) and unlike stock also publishes the blobs. All six chip variants, 6.6 MiB, installed to `/lib/firmware/<variant>/` where this driver actually looks (it bypasses `request_firmware()` entirely) | Build-verified against the pinned 6.18.50 (0 errors); **no hardware test** — nobody has plugged one of these into a MiSTer yet. DE10 only; not enabled for DE25, whose aarch64 build is untried |
+| Broadcom / Cypress — BCM43xx, CYW43xx USB adapters | **Not supported at all, in either stock era** — no `brcmfmac`/`brcmutil` in `evidence/stock-20260907-modules.txt` either | In-kernel `brcmfmac` | Build-verified only |
+| MediaTek Wi-Fi 5 — MT7663U (802.11ac) | **5.15:** driver shipped (`mt7663u`, `mt7663-usb-sdio-common`, `mt7615-common` in `stock-mods.txt`) but **none of the four firmware files it requests**, so it probed and failed. **6.18 (20260907): unchanged failure mode** — `mt7663u`/`mt7663-usb-sdio-common`/`mt7615-common` still ship, and `evidence/stock-20260907-firmware.txt` still has no `mt7663*` file | Same in-kernel `mt76` driver, plus the four `mediatek/mt7663*` blobs it actually loads ([`wifi-parity` §6.2](docs/wifi-parity.md)) | Build-verified only |
+| MediaTek Wi-Fi 6 / Wi-Fi 7 — MT7921U (802.11ax), MT7925U (802.11be, 6 GHz-capable) | **5.15:** not supported. **6.18 (20260907): now built *and* fed** — `mt7921u`/`mt7921-common` + `mt7925u`/`mt7925-common`/`mt792x-lib`/`mt792x-usb` are all present, **and** stock's firmware set gained the Wi-Fi-side blobs each needs (`mediatek/WIFI_MT7961_patch_mcu_1_2_hdr.bin`+`WIFI_RAM_CODE_MT7961_1.bin` for the MT7921 family, `mediatek/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin`+`WIFI_RAM_CODE_MT7925_1_1.bin` for MT7925) — module and firmware presence only, not hardware-tested against stock | In-kernel `mt76` (`mt7921u` / `mt7925u`) | Build-verified only |
+| Atheros — AR6003/AR6004, AR9271/AR9287 (`ath9k_htc`), AR9170 (`carl9170`) | **5.15:** not supported. **6.18 (20260907): partially built** — `ath6kl_core`/`ath6kl_usb` (AR6003/AR6004) and `carl9170` (AR9170) are now present; **`ath9k_htc` is still absent** (AR9271/AR9287 still unsupported) | In-kernel | Build-verified only |
+| Redpine RS9113 / RS9116 | Not supported in either stock era — no `rsi`/`rsi_usb` in `evidence/stock-20260907-modules.txt` | In-kernel `rsi` | Build-verified only |
+| RTL8192DU (dual-band 802.11n) | **5.15:** not supported. **6.18 (20260907): now built** — `rtl8192du.ko.xz` present | In-kernel `rtlwifi` | Build-verified only |
+| Bluetooth — MediaTek MT7921/MT7925 combo, Qualcomm QCA Rome 6174A (USB), one Broadcom `.hcd`, Atheros AR3011/AR3012, plus Realtek RTL8761B/BU and every Wi-Fi+BT combo chip above | **5.15:** `ath3k` built with **no `ath3k-1.fw`, no `ar3k/*.dfu`**; no MediaTek MT79xx or Qualcomm QCA blobs; Realtek combos *were* covered. **6.18 (20260907):** still no `ath3k-1.fw`/`ar3k/*.dfu`, still no Qualcomm QCA BT rampatch (`ath10k/QCA9377/*` in the new firmware set is Wi-Fi board data, not a BT rampatch), Realtek combos still covered — **but stock now ships one Broadcom `.hcd`** (`brcm/BCM20702A1-0b05-17cb.hcd`, absent from the 5.15 set) and the MediaTek MT7961/MT7925 blobs added above are `WIFI_`-prefixed only — no `BT_`-prefixed MediaTek blob appears in `evidence/stock-20260907-firmware.txt`, so that combo's Bluetooth side is not evidently fed either (see [`docs/bluetooth-parity.md`](docs/bluetooth-parity.md)) | Firmware shipped for every Bluetooth driver here where an upstream blob exists and the hardware is reachable on this board. **Two built drivers deliberately ship without it**: Intel `btintel` (30 MiB of `intel/ibt-*` for silicon that only comes on M.2 cards this board cannot host — `CONFIG_BT_HCIBTUSB` `select`s the driver unconditionally, so it cannot be turned off) and `bcm203x` (a ~2003 BCM2033 whose `BCM2033-MD.hex`/`BCM2033-FW.bin` upstream linux-firmware does not carry at all). Both are recorded in [`bluetooth-parity` §9's "Deliberately NOT shipped"](docs/bluetooth-parity.md) | General Bluetooth pairing is **hardware-verified**; these specific chipset gaps were closed by reading each driver's firmware-request code, not by plugging one in |
 
 **One deliberate exclusion, not an oversight.** `ATH10K_USB` (Qualcomm/Atheros
 QCA9377 over USB — e.g. the Linksys WUSB6100M) is the one modern 802.11ac USB
 chip this image does not build a driver for. Upstream's own kernel Kconfig
 calls it out: *"Currently work in progress and will not fully work."* Binding
 a dongle to a driver that then fails is worse than binding it to nothing, so
-it stays off. Every other driver family the audit found — 30 of 36 — is
+it stays off. **Stock's Release 20260907 disagrees**: `evidence/stock-20260907-modules.txt`
+carries `ath10k_core`/`ath10k_usb`, and `evidence/stock-20260907-firmware.txt` carries the
+matching `ath10k/QCA9377/hw1.0/{board-2.bin,firmware-6.bin}` board data — so stock now
+ships exactly the driver upstream itself warns against, unchanged reasoning, our own
+choice to omit it. Every other driver family the audit found — 30 of 36 — is
 built. Of the six that are not, this is one; four are 2000s-era 802.11b/g parts
 (`AR5523` ~2004, `AT76C50X_USB` ~2001, `P54_USB` ~2004, `ZD1211RW` ~2005) with
 no realistic install base today; and the sixth, `PLFXLC`, is pureLiFi optical
@@ -938,6 +984,8 @@ Start here if you want to run it: [**one-command install**](#install-it-on-a-rea
 | [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` / 7.x variant |
 | [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md) | Why the fork's `loop=` patch cannot be ported to 6.18, what porting it would cost, and what we did instead — written for whoever maintains the fork |
 | [`MISTER-KERNEL-PATCH-RECON.md`](MISTER-KERNEL-PATCH-RECON.md) | The task spec the reconciliation was executed from |
+| [`docs/kernel-export.md`](docs/kernel-export.md) | Rendering our pins + patches into a `Linux-Kernel_MiSTer`-style tree the fork's maintainer can build with his own process, what we know of that process, and the check that proves the export is the kernel we ship |
+| [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md) | The plan for reconciling against stock's first 6.18 kernel (Release 20260907): the post-release fix queue, the two owner decisions (cpufreq redesign, AIC8800), and the agent fan-out |
 
 **The contracts we must not break**
 

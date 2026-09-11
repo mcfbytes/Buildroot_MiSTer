@@ -5,7 +5,7 @@
 # cut under /usr/lib, /usr/share, /usr/bin, /usr/sbin (feeds P2.7's size
 # budget and P0.7's "what should we drop").
 #
-# Writes docs/stock-inventory/disk-usage.md.
+# Writes docs/stock-inventory/<release>/disk-usage.md.
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

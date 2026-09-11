@@ -1,15 +1,17 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-08-24 15:49 UTC by `reduce.py` from 126 records (110 MiSTer-v5.15 + 1 MiSTer-v6.18 + 15 old-branch residue). Tier-2 verified: 126/126.
+Generated 2026-09-11 03:37 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
 
 ## How to read this table
 
 Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
-reconciled against our vanilla-6.18.39-based build. The full evidence for a row
+reconciled against our vanilla-6.18.49 (release commit; v6.18.50 tag unreachable when this increment ran)-based build. The full evidence for a row
 lives in `records/<full-sha>.json`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
-  branch stock MiSTer actually shipped; `v5.14`/`v5.13.12` are older branches whose
+  branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`
+  is upstream's own 6.18 port, **what stock ships since Release 20260907**, reconciled
+  incrementally (`fork-sync.conf`); `v5.14`/`v5.13.12` are older branches whose
   unique commits never reached stock (analyzed so nothing is lost *between* MiSTer's own
   branches either).
 - **Disposition** — what happened to the commit's functionality in this build:
@@ -23,6 +25,15 @@ lives in `records/<full-sha>.json`.
     that column tracks only what Buildroot applies. Used when upstream's own boot flow
     needs the commit but this build replaced it with something else (named in
     Why / replacement). See "The one `carried-upstream-only` row" below;
+  - `carried-as-package` — kept, but as a Buildroot **package** rather than a kernel
+    patch: the functionality ships in the image, built out-of-tree from a pinned upstream
+    tarball, and the **Carried patch** column names the `package/<name>` directory instead
+    of a `.patch` file. Added 2026-09-10 for `c129b0fac3` (stock's AIC8800 driver), whose
+    82 k lines ADR 0016 and PLAN §2.9 both forbid carrying as an in-tree patch — a patch
+    that size would make `scripts/export-kernel-tree.sh`'s per-patch replay and
+    `scripts/lint-kernel-patches.sh` meaningless for that entry. Distinct from `carried`
+    (Buildroot applies a patch to the kernel tree) and from `dropped-deliberate` (the
+    functionality is in no form we ship): here it ships, just not through the patch series;
   - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
     cites the upstream commit and quotes the matching code);
   - `dropped-deliberate` — intentionally not carried **anywhere**, with the replacement
@@ -32,12 +43,13 @@ lives in `records/<full-sha>.json`.
   - `dropped-obsolete` — the code it changed no longer exists in any form we ship
     (e.g. fixes to a vendored driver that was replaced wholesale).
 - **Carried patch** — the `board/mister/de10nano/linux-patches/00xx-*.patch` file that
-  carries it (`—` when not carried into the image — this includes `carried-upstream-only`
-  rows, which are carried into the *export* instead; see Why / replacement for that path).
+  carries it, or the `package/<name>` directory for `carried-as-package` rows (`—` when not
+  carried into the image — this includes `carried-upstream-only` rows, which are carried
+  into the *export* instead; see Why / replacement for that path).
 - **Impact today** — **read this column first.** It is what a user of *this build*
   actually experiences: `none (carried)` — the feature is present via our patch;
-  `none (in mainline)` — 6.18 already has it; `none (replaced)` — a named package/driver
-  provides it. Only rows marked **limitation** describe a real present-day difference,
+  `none (packaged)` — present via the named Buildroot package; `none (in mainline)` — 6.18
+  already has it; `none (replaced)` — a named package/driver provides it. Only rows marked **limitation** describe a real present-day difference,
   and each one is listed explicitly below the legend.
 - **Drop-risk** — a *hypothetical* used during triage: the worst effect **if this
   functionality had been left out with no replacement**, and whether that absence would
@@ -53,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/126
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/136
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -110,9 +122,10 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 126 rows, **2** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 136 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
+- `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
 - `fc09a292a` rtl8821cu: workaround for bad efuse in EDUP EP-AC1661. — see its record for the decision and affected hardware.
 
 ## The table
@@ -129,27 +142,31 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `2d39e76d1` | v5.15 | **carried** | 0020-mmc-no-led-on-send-status.patch | — | none (carried) | cosmetic/silent | Y | Y | ✓ | mmc: don't activate LED on status command. |
 | `333d49b95` | v5.15 | **carried** | 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Implement MiSTer audio driver. |
 | `3d72b9db7` | v5.15 | **carried** | 0003-cpufreq-cyclone5-de10nano-overclock.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add cpufreq/overclock driver (#34) |
-| `45283785a` | v5.15 | **carried** | 0032-hid-nintendo-joycon-combo-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | hid-nintendo: add virtual combo led, don't warn by IMU comp… |
+| `41c45f378` | v6.18 | **carried** | 0048-hid-google-stadiaff-classic2usb-retrozord.patch | — | none (carried) | feature-loss/silent | Y | ? |  | Adapt Classic2USB and RetroZord HID force feedback support … |
+| `45283785a` | v5.15 | **carried** | 0032-hid-nintendo-joycon-combo-led.patch, 0040-hid-nintendo-imu-name-suffix.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | hid-nintendo: add virtual combo led, don't warn by IMU comp… |
 | `47dc53a22` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: fix the buttons codes. |
 | `484f68172` | v5.15 | **carried** | 0015-hid-nintendo-nso-famicom.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: Add support for the NSO Famicom controllers (no mic … |
 | `52a56ae3d` | v5.15 | **carried** | 0026-input-mousedev-eviocgrab.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | mousedev: disable touch to click on DualShock4 and DualSens… |
 | `5bdbf2f7e` | v5.15 | **carried** | 0018-hid-controllable-quirk.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid: add quirk for ControllaBLE. |
 | `5c410e935` | v5.15 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | feature-loss/loud | — | Y | ✓ | hid-sony: fix for 3rd party DS4 failing to connect by wire. |
-| `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
+| `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch, 0041-hid-nintendo-stock-led-classdev-names.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
 | `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | cosmetic/silent | — | N | ✓ | dualsense: give mute button and led to system. |
 | `6332499e7` | v6.18 | **carried** | 0047-btusb-mercusys-ma530-2c4e-0115.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for RTC PCF8563 |
 | `70e391b81` | v5.15 | **carried** | 0024-hid-input-keyrah-europe1.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | HID: map key Europe 1(0x32) to F24 code (for Keyrah). |
 | `71c583074` | v5.15 | **carried** | 0030-i2c-designware-quiet-timeout.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | Disable RTC error messages. |
 | `77862a67f` | v5.15 | **carried** | 0014-hid-gamecube-adapter.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add support for official gamecube-adapter (#48) |
+| `7c75b1b46` | v6.18 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | none/silent | — | ? |  | Input: xpad - add opt-in 8BitDo initialization bypass |
 | `7d2df2d2d` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Disable DMA on UART0/1. DMA is broken on Designware UARTs. |
 | `8179ac736` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco Guncon 3 (#20) |
 | `817ace70b` | v5.15 | **carried** | 0027-mt76x2u-release-xbox-adapter-ids.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Remove XBox One Wireless Adapter USB IDs from mt76 driver t… |
 | `8908e0fe1` | v5.15 | **carried** | 0012-hid-fanatec.patch | — | none (carried) | feature-loss/loud | — | N | ✓ | Fix module compile for Fanatec driver (#25) |
+| `9854075c8` | v6.18 | **carried** | 0050-exfat-dir-readahead-plug.patch | — | none (carried) | cosmetic/silent | — | ? |  | exfat: speed-up dir read-ahead. |
 | `9b9aebfac` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid-guncon3: fix warnings. |
+| `a14b5e8e1` | refs/pull/92/head | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud-in-dmesg-silent-to-user -- kernel log fills with repeated 'Failed to set baudrate', 'Failed handshake', and USB disconnect/reconnect messages (loud, but only visible over a serial console or `dmesg`, which a MiSTer user at the OSD never sees), while the user-facing symptom is simply 'the gamepad does not work' with no on-screen diagnostic -- Main_MiSTer has no code path that surfaces a failed HID bind. Graded 'loud' per the schema's two-value axis because the failure is not silent at the kernel level (errors are logged, the device visibly re-enumerates) -- picking 'silent' would hide the fact that `dmesg` already contains the exact signature (13x -EPROTO/-71, 18x 'probe - fail') needed to diagnose this without re-deriving anything, which is the operationally relevant distinction for this schema field. | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters |
 | `a2242dd85` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | xpad: exclude GIP-capable controllers. |
 | `aa8afe109` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | boot-critical/silent | Y | Y | ✓ | Add de10-nano DT. |
-| `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
+| `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch, 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
 | `b02a4a011` | v5.15 | **carried** | 0036-btusb-csr-clone-lmp-subver-2512.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | btusb: support for more CSR clones. |
 | `b1b168eb6` | v5.15 | **carried** | 0013-hid-flydigi-vader.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: add HID driver to fix Flydigi Vader 4 Pro mapping in… |
 | `b62efee23` | v5.15 | **carried** | 0029-leds-gpio-brightness-hw-changed.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hps_led: enable brightness change notification. |
@@ -165,13 +182,15 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `e503d193c` | v5.15 | **carried** | 0010-hid-guncon2.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco GunCon 2 |
 | `e6df8e30e` | v5.15 | **carried** | 0003-cpufreq-cyclone5-de10nano-overclock.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Improve clock transition stability and get OSC1 freq from D… |
 | `e82a59280` | v5.15 | **carried** | 0012-hid-fanatec.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add Fanatec wheel driver (#24) |
+| `ea2212221` | v6.18 | **carried** | 0001-fbdev-add-MiSTer_fb-driver.patch | — | none (carried) | none/silent | — | Y |  | fbdev: MiSTer_fb: declare explicit fb_ops for read/write/mm… |
 | `ed8f8e6ce` | v5.15 | **carried** | 0012-hid-fanatec.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | Fix warning. |
 | `f0982bf2c` | v5.15 | **carried** | 0025-usbhid-jspoll-gamepad.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | usbhid: apply jspoll for gamepad usage as well. |
 | `f3c75eb02` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | XInput polling rate param + Qanba Obsidian XInput mode supp… |
 | `f52690120` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | dts: enable bridges. |
-| `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
+| `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch, 0042-hid-playstation-stock-lightbar-led-names.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
 | `fc8f3c2c6` | v5.15 | **carried** | 0019-hidpp-k400-fn-inversion.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Logitech K400r: disable Fn swap. |
 | `3d95de58f` | v5.15 | **carried-upstream-only** | — | carried for export only: `board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`; → initramfs /init boot flow with loop= parameter p… | none (replaced) | feature-loss/silent | — | Y | ✓ | Support for init loop device. |
+| `c129b0fac` | v6.18 | **carried-as-package** | package/aic8800 | ships as a Buildroot package (buildroot-kernel-module-package), not a kernel patch | none (packaged) | feature-loss/silent | — | ? |  | Add AIC8800 WiFi/BT driver. |
 | `0d60c3482` | v5.15 | **dropped-upstream** | — | in mainline: `fc97b4d6a1a6`; → fc97b4d6a1a6 (HID: playstation: expose DualSense… | none (in mainline) | cosmetic/silent | — | N | ✓ | dualsense: add lightbar color control. |
 | `1412bd707` | v5.15 | **dropped-upstream** | — | in mainline: `74cb485f68eb`; → 74cb485f68eb (upstream HID: playstation: sanity … | none (in mainline) | boot-critical/loud | — | Y | ✓ | hid-sony: fix divide by 0 exception. |
 | `2799f8b94` | v5.15 | **dropped-upstream** | — | in mainline: `94f18bb19945`; → 94f18bb19945 (HID: nintendo: add support for nso… | none (in mainline) | feature-loss/silent | — | Y | ✓ | add support for NSO N64 controller (#49) |
@@ -200,6 +219,7 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `215e6e662` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (6.18.38 succ… | none (replaced) | none/silent | — | Y | ✓ | Add defconfig. |
 | `2548c2978` | v5.15 | **dropped-deliberate** | — | → 0004-dts-de10nano-MiSTer.patch | none (replaced) | feature-loss/silent | — | N | ✓ | Support for i2c rtc mcp794xx. |
 | `316288a3d` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Enable NFS4 driver |
+| `33a0521fd` | v6.18 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | ? |  | config: enable CONFIG_RTW88_8821AU for Realtek 8821AU/8811A… |
 | `33ff5146a` | v5.15 | **dropped-deliberate** | — | → 3740d5b88 (in-fork: 'Backport rtl8812au rtl8821a…; package/rtl8812au (BR2_PACKAGE_RTL8812AU=y) -- R…; … | none (replaced) | none/silent | — | Y | ✓ | Add rtl8821au/rtl8812au, rtl88x2bu, rtl8821cu, rtl8188eu, r… |
 | `346cbf62b` | v5.14 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | ? | ✓ | defconfig: update. |
 | `3740d5b88` | v5.15 | **dropped-deliberate** | — | → BR2_PACKAGE_RTL8812AU (out-of-tree, morrownr for…; BR2_PACKAGE_RTL8821AU_MORROWNR (out-of-tree, mor…; … | none (replaced) | none/silent | — | Y | ✓ | Backport  rtl8812au  rtl8821au  rtl8821cu drivers from morr… |
@@ -209,6 +229,7 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `43fbb63ae` | v5.15 | **dropped-deliberate** | — | → package/rtl8812au (BR2_PACKAGE_RTL8812AU=y); package/rtl8821au-morrownr (BR2_PACKAGE_RTL8821A…; … | none (replaced) | none/silent | — | Y | ✓ | wireless: realtek: fix makefiles. |
 | `4ddd8ec3d` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Add xone (XBox wireless adapter) driver. |
 | `5391b8171` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (NFS_FS=y exp… | none (replaced) | none/silent | — | Y | ✓ | Update defconfig. |
+| `59bcae8eb` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux-patches/0003-cpufreq…; 3d72b9db7650bc27b0c4a9931adfb144e3b2850b (record…; … | none (replaced) | feature-loss/silent | Y | N |  | Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo (#85) |
 | `5a7965488` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/silent | Y | Y | ✓ | xone: fixed rumble. |
 | `5fcfae369` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | none (replaced) | feature-loss/silent | Y | Y | ✓ | config: enable CONFIG_TUN for tap device support (#76) |
 | `6c2d53934` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | Use 100kHz for i2c-1 for better compatibility with devices. |
@@ -225,6 +246,7 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `9f59d13d5` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | Y | ✓ | Enable force feedback on PS adapter (#56) |
 | `a547c18d0` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | remove unused files. |
 | `ae9313e22` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Enable the NFS filesystem in the kernel. (#45) |
+| `aec7dc3aa` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | **limitation — see record** | feature-loss/silent | Y | Y |  | config: enable CONFIG_TUN for tap device support (#76) |
 | `b2a04cbfd` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | Y | Y | ✓ | vt: reduce from 63 to 9 ttys. |
 | `bbeff2c30` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | N | ✓ | Enable Logitech D-Input drivers. |
 | `bdedb82d2` | v5.13.12 | **dropped-deliberate** | — | → CONFIG_RTL8XXXU=m (mainline rtl8xxxu, in-kernel)…; 33ff5146a (in-fork: 2021-11-08, combines rtl8188… | none (replaced) | feature-loss/silent | — | ? | ✓ | Add rtl8188eu, rtl8188fu WiFi drivers. |
@@ -235,6 +257,7 @@ Of 126 rows, **2** describe a real difference a user could notice on this build 
 | `d776ddb4e` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/loud | — | Y | ✓ | xone: use firmware according to PID. |
 | `d788e7ab9` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (CONFIG_LOGIG… | none (replaced) | feature-loss/silent | — | Y | ✓ | Update defconfig (enable logitech wheels). |
 | `e2eb39e6f` | v5.15 | **dropped-deliberate** | — | → BR2_PACKAGE_XONE (dlundqvist/xone@f2aa9fe01103d7… | none (replaced) | feature-loss/silent | — | Y | ✓ | xone: update driver. |
+| `e6f377e7d` | v6.18 | **dropped-deliberate** | — | → 33a0521fd4 (Q2, MiSTer-v6.18) — CONFIG_RTW88_882…; ea2212221a (Q3, MiSTer-v6.18) — CONFIG_FB_MISTER… | none (replaced) | none/none | — | ? |  | Update defconfig. |
 | `f0fb626ac` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | Y | ✓ | defconfig: enable macvlan support (#71) |
 | `fc09a292a` | v5.15 | **dropped-deliberate** | — | see record | **limitation — see record** | feature-loss/silent | — | ? | ✓ | rtl8821cu: workaround for bad efuse in EDUP EP-AC1661. |
 | `109599db7` | v5.13.12 | **dropped-obsolete** | — | → CONFIG_RTL8XXXU=m (mainline in-kernel driver, bo…; package/rtl8188eu-aircrack-ng -- present in tree… | none (replaced) | none/silent | — | Y | ✓ | Update rtl8188eu driver. |

@@ -1,0 +1,286 @@
+From a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Micha=C5=82=20Kope=C4=87?= <michal.kopec@3mdeb.com>
+Date: Thu, 10 Sep 2026 21:45:19 +0200
+Subject: [PATCH 1/1] HID: nintendo: skip baudrate setup for 8BitDo adapters
+
+The 8BitDo USB Wireless Adapter, when switched into Switch mode, presents
+itself with Nintendo's USB IDs (057e:2009) and is therefore claimed by
+hid-nintendo. It does not implement the JC_USB_CMD_BAUDRATE_3M command,
+and reacts to receiving it by entering an error state in which it resets
+constantly: the device disconnects and re-enumerates in a tight loop,
+every subsequent handshake fails with -EPROTO, and the probe eventually
+gives up leaving the HID device bound to no driver at all -- not even
+hid-generic, because hid_generic_match() declines while a specialised
+driver still matches the ID table. The gamepad is unusable.
+
+The adapter cannot be identified from its USB descriptors: the VID:PID,
+the manufacturer and the product strings are all copied from a genuine
+Switch Pro Controller, so a hid-quirks entry keyed on 057e:2009 would
+break real Pro Controllers. It can, however, be identified from its
+Bluetooth MAC address, which carries 8BitDo's E4:17:D8 OUI and is
+returned by the JC_SUBCMD_REQ_DEV_INFO subcommand.
+
+Move the joycon_read_info() call ahead of the USB baudrate/handshake
+block so the MAC address is known before the baudrate command would be
+sent, and skip that block entirely for devices whose MAC identifies them
+as 8BitDo hardware.
+
+Verified on hardware: DE10-Nano (MiSTer FPGA, arm/socfpga) running
+6.18.38, with a 1st-generation 8BitDo USB Wireless Adapter switched to
+Switch mode (057e:2009) and an 8BitDo SN30 Pro+ connected to it.
+Controlled A/B, identical hardware state in both arms (same adapter,
+same adapter firmware, controller powered on and paired at enumeration
+time, fresh replug before each arm); the kernel was the only variable:
+
+  without the patch: 17 USB disconnects / 17 re-enumerations ~512 ms
+                     apart, 13x "Failed to set baudrate (ret=-71)",
+                     13x "Failed handshake; ret=-71", 18x "probe - fail",
+                     HID device bound to no driver, no input device,
+                     gamepad unusable
+  with the patch:    0 disconnects / 1 enumeration, no failures,
+                     "controller MAC = E4:17:D8:F9:77:78", HID device
+                     bound to nintendo, Pro Controller and IMU input
+                     devices created, battery reports "Discharging" read
+                     over the air, gamepad works
+
+The MAC read back is the adapter's own address, not the address of the
+paired controller, which confirms the OUI prefix is a valid
+discriminator on this hardware.
+
+Note for anyone re-testing: an arm only exercises this patch if
+joycon_read_info() succeeded -- check the log for a "controller MAC"
+line. An arm that logs "Failed to get joycon info; ret=-110" never
+reached the baudrate command and measured nothing, so the patched and
+unpatched kernels look identical.
+
+What makes read_info time out has not been isolated. It is not simply
+the controller being powered off: across two reboots with the pad fully
+powered down, read_info still answered within 2.5 s and the driver bound
+normally. The MAC it returns is the adapter's own, so the adapter
+answers the device-info subcommand out of its own firmware whether or
+not the controller is awake.
+
+Patch originally posted to linux-input on 2025-07-20 by Michal Kopec,
+where it received no review. Authorship is preserved; see the Link
+below. This commit carries no Signed-off-by from the original author,
+who has not been asked to certify it -- it is submitted here by the
+tester.
+
+Tested-by: Kasper Olesen <kaspersolesen@gmail.com>
+Link: https://lore.kernel.org/linux-input/20250720143156.2563816-1-michal.kopec@3mdeb.com/
+Link: https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/issues/84
+
+Provenance
+----------
+Origin:       MiSTer-devel/Linux-Kernel_MiSTer PR #92, UNMERGED as of
+              2026-09-11, head a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f,
+              "HID: nintendo: skip baudrate setup for 8BitDo adapters",
+              fetched via refs/pull/92/head (fork HEAD at fetch time
+              c129b0fac34ad5d613bbec3f59d6036775e41c83). PR #92 is OPEN,
+              not merged, as of this patch. See notes below for what to
+              do when it merges.
+Author:       Michal Kopec <michal.kopec@3mdeb.com> (original
+              patch author, linux-input, 2025-07-20; see Link above).
+              The commit that reached MiSTer-v6.18 carries his authorship
+              in its `Author:` field but no Signed-off-by from him -- it
+              was submitted by tester Kasper Olesen, whose own
+              Tested-by/Signed-off-by is reproduced above. This is a DCO
+              gap in the fork's commit, not something our carrying it
+              fixes; worth flagging if this patch is ever proposed back
+              to mainline directly rather than carried downstream.
+Upstream:     Not in mainline. `grep -n "E4:17:D8\|8bitdo\|8BitDo"
+              drivers/hid/hid-nintendo.c` against torvalds/linux v7.3-rc2
+              (50d05c7c76c9) returns nothing, and mainline's
+              joycon_init() still has JC_USB_CMD_BAUDRATE_3M (line 2528)
+              running BEFORE joycon_read_info(ctlr) (line 2554) -- the
+              pre-patch order, unreordered. Not in mainline v7.3-rc2.
+Disposition:  Carry now rather than wait for the PR to merge
+              (docs/kernel-recon/fork-sync-2026-09/PLAN.md section 2.10,
+              owner decision D3). The failure mode is total for this
+              adapter class ("gamepad unusable"), Main_MiSTer hard-codes
+              057e_2009 (input.cpp:4733-4734) and has two further
+              8BitDo-specific paths (input.cpp:5852, :6130), so this
+              hardware is in active community use, and the diff is small
+              (20/-12) and applies clean in a driver we already patch
+              heavily. The conflict-absorption cost is ours whether we
+              carry now or wait for the merge.
+Rebased:      Re-anchored against our own hid-nintendo.c stack rather
+              than vanilla 6.18.49, per
+              docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json:
+              applied 0015, 0032, 0034, 0035, 0038, 0039, 0040, 0041 (in
+              that numeric order) to 6.18.49's hid-nintendo.c -- all
+              eight applied clean (0015 took a -4 line offset on its
+              hunk 5, matching the record; the other seven applied at
+              zero offset/zero fuzz). The hunks below are regenerated
+              from THAT stacked, already-patched tree against our own
+              corrected joycon_init() (see "Deviation from PR #92"
+              below), not from the raw PR #92 diff, so their @@ line
+              numbers are exact for our 6.18.49-plus-eight-patches
+              series and this patch applies at -F0 with zero offset when
+              it runs in its correct series position (immediately after
+              0041).
+Deviation
+from PR #92:  PR #92's own reorder, applied verbatim, regresses a case
+              vanilla handles correctly. Vanilla 6.18.49
+              ($S/linux HEAD, drivers/hid/hid-nintendo.c:2467-2468, and
+              identical at v6.18.38 in the fork base d9ac12a69):
+
+                /* if handshake command fails, assume ble pro controller */
+                if (joycon_using_usb(ctlr) && !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {
+                        hid_dbg(hdev, "detected USB controller\n");
+                        /* set baudrate for improved latency */
+                        ret = joycon_send_usb(ctlr, JC_USB_CMD_BAUDRATE_3M, HZ);
+                        ...
+
+              i.e. a USB-bus device (joycon_using_usb(ctlr) true) whose
+              FIRST JC_USB_CMD_HANDSHAKE times out simply
+              skips the whole baudrate/handshake-confirm/no-timeout
+              block -- the comment says it plainly, "assume ble pro
+              controller" -- and falls straight through to
+              joycon_read_info() at the default baud rate. Probe can
+              still succeed. PR #92 moves read_info earlier and re-gates
+              the same block as
+              `if (joycon_using_usb(ctlr) && !joycon_device_is_8bitdo(ctlr))`,
+              which drops the "did the first handshake actually
+              succeed" condition entirely: a USB-bus device is now
+              baudrate-switched and re-handshaken (fatally, on failure:
+              `hid_err(...); goto out_unlock;`) whenever it is not
+              8BitDo, REGARDLESS of whether the first handshake
+              answered. A device class this affects: any USB-bus
+              057e:2009/2017/200e device that does not answer
+              JC_USB_CMD_HANDSHAKE on the first try but would have
+              probed successfully at the default baud rate under
+              vanilla's fallback -- PR #92 now sends it
+              JC_USB_CMD_BAUDRATE_3M and a second, fatal handshake it
+              was never going to answer either, so probe fails where
+              vanilla succeeded. Confirmed against vanilla 6.18.49 and
+              the fork's refs/pr/92 diff directly (not inferred) --
+              orchestrator finding, code-review 2026-09-11, reproduced
+              independently in this patch's own authoring session by
+              diffing the pre-0049 (eight-patch) tree against PR #92's
+              diff applied on top. THIS patch keeps PR #92's intent
+              (read_info before baudrate; skip baudrate/handshake
+              entirely for the 8BitDo OUI) but restores vanilla's
+              fallback with one added local: `bool usb_handshook =
+              false;`, set true only inside the first handshake's
+              success body (`hid_dbg(hdev, "detected USB controller\n");
+              usb_handshook = true;`), with the `else if
+              (jc_type_is_chrggrip(ctlr))` failure path unchanged, then
+              read_info unconditionally, then the baudrate block gated
+              on `if (usb_handshook && !joycon_device_is_8bitdo(ctlr))`
+              -- so a USB device that never answered the first
+              handshake gets neither the 8BitDo carve-out nor a second,
+              fatal handshake attempt; it falls through exactly as
+              vanilla does. This deviation from PR #92's code (not its
+              intent) is a review finding to send upstream to PR #92 --
+              see docs/kernel-recon/fork-sync-2026-09/upstream-candidates/08-hid-nintendo-pr92-handshake-fallback.NOTE.md.
+Forward-port: Verified at -F0 against 6.18.49 as described above (zero
+              offset, zero fuzz -- the diff was generated directly
+              against that stacked tree); 6.18.50 is unreachable in the
+              authoring session -- CI applies against the real tarball.
+              Re-verified at -F0 (offsets only, zero fuzz -- offset
+              +20/+21/+21 against the beta series' own hid-nintendo
+              stack) on v7.2.3 after the beta versions of 0015, 0032,
+              0034, 0035, 0038, 0039, 0040, 0041 (0015 is a real
+              re-anchored copy in linux-patches-beta/, the other seven
+              are symlinks to these de10nano originals). Both apply
+              proofs, and the deviation described above, were
+              re-measured in Wave 4 (code-review 2026-09-11) against the
+              regenerated diff in this patch, not the original Wave 3
+              diff (which mirrored PR #92 exactly and carried its
+              regression) -- see the wave4_review entry in
+              docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json.
+WHEN #92
+MERGES:       (1) add the merged commit's SHA to
+              docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json's
+              `dependencies.duplicate_of` -- do not overwrite `sha`, the
+              record stays keyed on the PR head; (2) re-fetch the merged
+              form and diff it against this PR-head diff. MiSTer-devel
+              re-authors/re-commits PRs when landing them, with a
+              different SHA, a different author and a rewritten message
+              -- measured on the two precedents in this same increment:
+              PR #88 head 97887b3413 -> merged 9854075c8, and PR #91 head
+              9537eb33c0 -> merged 41c45f378. In BOTH cases `git patch-id
+              --stable` is IDENTICAL between head and merge
+              (6a080ee6d7bbbdfe57b54713fd5d17828fc49565 and
+              347bc8291a32de07463eabb1d965eec32ef71a0e respectively), i.e.
+              the DIFFS did not change, only the commit identity did. A
+              modified hunk is possible but has not been observed here, so
+              this is a cheap check, not an expected change;
+              (3) re-run the -F0 apply-order proof against the
+              merged hunk before considering this patch settled; (4) if
+              the merge changes the author/Signed-off-by chain, update
+              this header to match.
+
+Signed-off-by: Kasper Olesen <kaspersolesen@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+
+ drivers/hid/hid-nintendo.c | 34 ++++++++++++++++++++++------------
+ 1 file changed, 22 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index bb25344..ac39bdf 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -711,6 +711,11 @@ static inline bool joycon_device_is_chrggrip(struct joycon_ctlr *ctlr)
+ 	return ctlr->hdev->product == USB_DEVICE_ID_NINTENDO_CHRGGRIP;
+ }
+ 
++static inline bool joycon_device_is_8bitdo(struct joycon_ctlr *ctlr)
++{
++	return !strncmp(ctlr->mac_addr_str, "E4:17:D8", 8);
++}
++
+ /*
+  * Controller type helpers
+  *
+@@ -2603,12 +2608,29 @@ static int joycon_read_info(struct joycon_ctlr *ctlr)
+ static int joycon_init(struct hid_device *hdev)
+ {
+ 	struct joycon_ctlr *ctlr = hid_get_drvdata(hdev);
++	bool usb_handshook = false;
+ 	int ret = 0;
+ 
+ 	mutex_lock(&ctlr->output_mutex);
+ 	/* if handshake command fails, assume ble pro controller */
+ 	if (joycon_using_usb(ctlr) && !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {
+ 		hid_dbg(hdev, "detected USB controller\n");
++		usb_handshook = true;
++	} else if (jc_type_is_chrggrip(ctlr)) {
++		hid_err(hdev, "Failed charging grip handshake\n");
++		ret = -ETIMEDOUT;
++		goto out_unlock;
++	}
++
++	/* needed to retrieve the controller type */
++	ret = joycon_read_info(ctlr);
++	if (ret) {
++		hid_err(hdev, "Failed to retrieve controller info; ret=%d\n",
++			ret);
++		goto out_unlock;
++	}
++
++	if (usb_handshook && !joycon_device_is_8bitdo(ctlr)) {
+ 		/* set baudrate for improved latency */
+ 		ret = joycon_send_usb(ctlr, JC_USB_CMD_BAUDRATE_3M, HZ);
+ 		if (ret) {
+@@ -2629,18 +2651,6 @@ static int joycon_init(struct hid_device *hdev)
+ 		 * This doesn't send a response, so ignore the timeout.
+ 		 */
+ 		joycon_send_usb(ctlr, JC_USB_CMD_NO_TIMEOUT, HZ/10);
+-	} else if (jc_type_is_chrggrip(ctlr)) {
+-		hid_err(hdev, "Failed charging grip handshake\n");
+-		ret = -ETIMEDOUT;
+-		goto out_unlock;
+-	}
+-
+-	/* needed to retrieve the controller type */
+-	ret = joycon_read_info(ctlr);
+-	if (ret) {
+-		hid_err(hdev, "Failed to retrieve controller info; ret=%d\n",
+-			ret);
+-		goto out_unlock;
+ 	}
+ 
+ 	if (joycon_has_joysticks(ctlr)) {

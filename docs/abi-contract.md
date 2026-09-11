@@ -33,8 +33,8 @@ or a named file in `docs/stock-inventory/`.
 | Kernel fork | `work/Linux-Kernel_MiSTer`, branch `MiSTer-v5.15`, **`f0fb626acadd07f0718934826b143b6e4c9ce81c`**. All `linux515:` citations are at this commit. |
 | Upstream 6.18 | `work/linux-stable`, `linux-6.18.y` @ **v6.18.38**. All `linux618:` citations are at this commit. |
 | Downloader | `work/Downloader_MiSTer`, **`915315668b9460b0fcdfc728be8254fe698c479f`**. All `dl:` citations are at this commit. |
-| Stock kernel `.config` | `docs/stock-inventory/stock-linux.config` (4,246 lines, IKCONFIG-extracted) |
-| Stock DTS | `docs/stock-inventory/stock.dts` |
+| Stock kernel `.config` | `docs/stock-inventory/20250402/stock-linux.config` (4,246 lines, IKCONFIG-extracted) |
+| Stock DTS | `docs/stock-inventory/20250402/stock.dts` |
 
 > **Evidence-quality caveat, stated once.** The shipped binary is from release **20250402**; the
 > Main_MiSTer source is at **HEAD (2026-07)**. They are not the same program. This document
@@ -227,7 +227,7 @@ Dynamic section at offset 0xd9eb8 contains 36 entries:
  …
 ```
 
-Cross-check: `docs/stock-inventory/binaries-needed.md` § *"The stock `MiSTer` binary (THE ABI
+Cross-check: `docs/stock-inventory/20250402/binaries-needed.md` § *"The stock `MiSTer` binary (THE ABI
 contract…)"* lists the identical twelve.
 
 ### 2.2 The contract — **MUST, every row**
@@ -262,7 +262,7 @@ is the point of the project.
   20 years, but it also `dlopen`s loader plugins from `usr/lib/imlib2/loaders/*.so`
   (`png.so`, `jpeg.so`, `bmp.so`, …). Those are **not** `DT_NEEDED` and so will not be caught by
   a SONAME check — but `menu.png` / `menu.jpg` backgrounds silently stop working without them.
-  See `docs/stock-inventory/shared-libraries.md` (the "plugin/dlopen" breakdown). **SHOULD**:
+  See `docs/stock-inventory/20250402/shared-libraries.md` (the "plugin/dlopen" breakdown). **SHOULD**:
   ship the imlib2 loader set.
 
 **Not a hazard, but write it down — `libz.so.1`'s *provider* is not classic zlib.**
@@ -528,7 +528,7 @@ Confirmed by exhaustive grep: Main_MiSTer touches **no** `/sys` path other than 
 | `FB_ADDR` | `0x20000000 + 32 MiB` = **`0x22000000`** | `Main:video.cpp:37` — *"512mb + 32mb (Core's fb)"* |
 | `FB_SIZE` | `1920 * 1080` = 2,073,600 **pixels** (×4 B = 8,294,400 B) | `Main:video.cpp:36` |
 | Main_MiSTer's mapping | `shmem_map(FB_ADDR, FB_SIZE * 4 * 3)` = **24,883,200 B** at `0x22000000` | `Main:video.cpp:2417` |
-| DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/stock.dts:993-997` |
+| DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/20250402/stock.dts:993-997` |
 | `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `linux515:drivers/video/fbdev/MiSTer_fb.c:265-266` |
 | Buffer *n* base (Main_MiSTer's view) | `FB_ADDR + (FB_SIZE*4*n) + (n ? 0 : 4096)` | `Main:video.cpp:3574` |
 
@@ -786,7 +786,7 @@ The bus is **discovered by scanning**, and the scan is **capped at bus 2**:
 > 	for (int bus = bus_first; bus <= bus_last; bus++) { sprintf(str, "/dev/i2c-%d", bus); … }
 > ```
 
-Stock creates exactly three I²C adapters — verified in `docs/stock-inventory/stock.dts`:
+Stock creates exactly three I²C adapters — verified in `docs/stock-inventory/20250402/stock.dts`:
 
 | DT node | Address | `status` | Children |
 |---|---|---|---|
@@ -1170,7 +1170,7 @@ So the writer is **whatever process opens ALSA's default PCM**. On stock that is
 
 | Writer | Path | Links `libasound.so.2`? |
 |---|---|---|
-| **`midilink`** | `/usr/sbin/midilink` | yes (`docs/stock-inventory/binaries-needed-full.txt:470`) |
+| **`midilink`** | `/usr/sbin/midilink` | yes (`docs/stock-inventory/20250402/binaries-needed-full.txt:470`) |
 | **`mt32d`** (munt / MT-32 emulation) | `/usr/sbin/mt32d` | yes (`:481`) |
 | **`fluidsynth`** (General MIDI, SoundFonts) | `/usr/sbin/fluidsynth` | **no** — it links `libfluidsynth.so.3` (`:443`), which links libasound |
 | `aplay`, `amidi`, `speaker-test`, `timidity`, `mpg123`, `vgmplay`, `adplay`, … | `/usr/bin/*` | yes |
@@ -1413,7 +1413,7 @@ also runs every time**. See `docs/downloader-contract.md` §3.)*
 
 ### 10.2 Init, inittab, fstab — **MUST**
 
-**`/etc/inittab`** (verbatim, `docs/stock-inventory/etc-configs.md`). The load-bearing lines:
+**`/etc/inittab`** (verbatim, `docs/stock-inventory/20250402/etc-configs.md`). The load-bearing lines:
 
 ```
 ::sysinit:/bin/mount -t proc proc /proc
@@ -1467,7 +1467,7 @@ tmpfs		/var/db/dhcpcd	tmpfs	mode=0750	0	0
 
 **The init-script naming contract.** `/etc/init.d/rcS` runs every `/etc/init.d/S??*` in sorted
 order with `start`; `rcK` runs them in reverse with `stop`. The verified stock set
-(`docs/stock-inventory/etc-configs.md`, 14 entries):
+(`docs/stock-inventory/20250402/etc-configs.md`, 14 entries):
 
 ```
 S01syslogd  S02klogd  S10udev  S30dbus  S40network  S41dhcpcd
@@ -1509,7 +1509,7 @@ Fast link dest: "../tmp/resolv.conf"
 ```
 
 *(Independently re-verified for this document, directly against the raw ext4 image — not against
-the extracted tree. Same inode 112 P0.3 reports in `docs/stock-inventory/etc-configs.md`.)*
+the extracted tree. Same inode 112 P0.3 reports in `docs/stock-inventory/20250402/etc-configs.md`.)*
 
 | Destination | Type in stock | A8 says | Reality |
 |---|---|---|---|
@@ -1603,7 +1603,7 @@ P2.7's floor must not be one stock fails.
 ### 10.6 On-device Python (A6) — **MUST**
 
 Stock ships **Python 3.9** (`work/imgroot/usr/bin/python3.9`; 66 C extensions under
-`usr/lib/python3.9/`, per `docs/stock-inventory/shared-libraries.md`). Buildroot 2026.02 ships
+`usr/lib/python3.9/`, per `docs/stock-inventory/20250402/shared-libraries.md`). Buildroot 2026.02 ships
 3.13+.
 
 `Downloader_MiSTer` — the mechanism by which **our own update reaches users** — runs on the
@@ -1623,15 +1623,15 @@ The contract, at the level the *ABI* cares about (P3.3 owns the implementation):
 | # | Requirement | Evidence | Level |
 |---|---|---|---|
 | **K1** | `CONFIG_MODULES=y`, `CONFIG_MODULE_SIG` **not set** (out-of-tree modules) | `stock-linux.config:639`; no `CONFIG_MODULE_SIG=y` anywhere in it | **MUST** |
-| **K2** | `CONFIG_MODULE_COMPRESS_XZ=y` — modules are `.ko.xz`; `kmod`/`modprobe` must be built with xz support | `:648`; `docs/stock-inventory/modules.md` | **MUST** |
-| **K3** | **52** `.ko.xz` modules under `/usr/lib/modules/<kver>/`, 382 built-ins | `docs/stock-inventory/modules.md` | SHOULD (the *set* is a parity target, not an ABI) |
-| **K4** | **Autoload is table-driven**: `depmod` at image build → `modules.alias` (915 lines) → eudev matches the kernel's `MODALIAS` uevent → `modprobe`. **No hardcoded module list anywhere.** | `docs/stock-inventory/modules.md` | **MUST** |
-| **K5** | `/usr/lib/firmware` — **66 regular files** | `docs/stock-inventory/firmware.md` | **MUST** (for the devices that need it) |
+| **K2** | `CONFIG_MODULE_COMPRESS_XZ=y` — modules are `.ko.xz`; `kmod`/`modprobe` must be built with xz support | `:648`; `docs/stock-inventory/20250402/modules.md` | **MUST** |
+| **K3** | **52** `.ko.xz` modules under `/usr/lib/modules/<kver>/`, 382 built-ins | `docs/stock-inventory/20250402/modules.md` | SHOULD (the *set* is a parity target, not an ABI) |
+| **K4** | **Autoload is table-driven**: `depmod` at image build → `modules.alias` (915 lines) → eudev matches the kernel's `MODALIAS` uevent → `modprobe`. **No hardcoded module list anywhere.** | `docs/stock-inventory/20250402/modules.md` | **MUST** |
+| **K5** | `/usr/lib/firmware` — **66 regular files** | `docs/stock-inventory/20250402/firmware.md` | **MUST** (for the devices that need it) |
 
 > **Correction, already made by P0.3 and repeated here so it stops propagating:** PLAN §3, §4.1,
 > TASKS **A5**, and the verification doc all say **"72 firmware files"**. The real count of
 > regular files is **66**. The 72 comes from `find /usr/lib/firmware | wc -l` — 66 files + 5
-> subdirectories + the directory itself. `docs/stock-inventory/firmware.md` is authoritative.
+> subdirectories + the directory itself. `docs/stock-inventory/20250402/firmware.md` is authoritative.
 
 ---
 
@@ -1667,7 +1667,7 @@ Every kernel-side item this contract depends on, and who owns it:
 |---|---|---|---|
 | `/dev/fb0`, `FBIO_WAITFORVSYNC`, `/sys/module/MiSTer_fb/parameters/*` | `0001-fbdev-add-MiSTer_fb-driver.patch` | **P1.4** | §5 |
 | `/dev/MrAudio` + the **patched `dummy.c`** | `0002-sound-add-MiSTer-audio-spi.patch` | **P1.5** | §5, N4 |
-| cpufreq/overclock sysfs (community scripts) — OC is via **`scaling_max_freq`** up to `cpuinfo_max_freq` = `1200000`; there is **no** `…/cpu/cpufreq/boost` file (see the P1.6 correction in `patch-provenance.md` §5) | `0003-cpufreq-cyclone5-de10nano-overclock.patch` | **P1.6** | §5 |
+| cpufreq/overclock sysfs (community scripts) — **[corrected 2026-09-11]** the `…/cpu/cpufreq/boost` file **DOES exist** (default `0`; PR #24 added `.set_boost`/`.boost_enabled = false` to `0003` to fix a field hard-hang); `scaling_max_freq` alone clamps to `800000` — a script must `echo 1 > /sys/devices/system/cpu/cpufreq/boost` before `scaling_max_freq` can exceed `800000` and reach `1200000` (identical contract on the fork's alternative `59bcae8eb` driver, keep-vs-adopt decision A — see `patch-provenance.md` §11's Q4/Q9 decision note and `docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md` §4 for the core-code evidence; the stale pre-PR#24 claim this row used to carry is corrected there too) | `0003-cpufreq-cyclone5-de10nano-overclock.patch` | **P1.6** | §5 |
 | `MiSTer_fb` DT node @ `0x22000000`/IRQ 40; `spi0` → `MiSTer,spi-audio`; `spi1` → spidev; `i2c0`/`i2c2`; `usb1`; bridges; `hps_led0` | `0004-dts-de10nano-MiSTer.patch` | **P1.7** | §5 |
 | `/dev/spidev1.0` | retarget the DTS `compatible` (preferred) **or** `0005-spidev-accept-altspi-compatible.patch` | **P1.8** | N2, §5 |
 | `EVIOCGRAB` + mousedev coexistence | `0026-input-mousedev-eviocgrab.patch` | **P1.9** [OPUS] | §6 |
@@ -1863,7 +1863,7 @@ standing rules.
 | **X3** | **PLAN §11**, **TASKS P2.5** ("512 MiB ext4"), **P2.7** ("≥ 15 % free in the 512 MiB image") | 512 MiB, ≥ 15 % free | Stock `linux.img` is **375.00 MiB** (393,216,000 B) and has **13.56 %** free — **stock would fail P2.7's own check.** Pick a real size and a floor stock passes (§10.5). | MEDIUM |
 | **X4** | **PLAN §3 / A4** ("Modern defconfigs enable STRICT_DEVMEM by default") | ARM defconfigs turn it on | **False on 32-bit ARM.** `STRICT_DEVMEM` is `default y if PPC \|\| X86 \|\| ARM64 \|\| S390` (`linux618:lib/Kconfig.debug:1876`) and 6.18's `multi_v7_defconfig` has no `DEVMEM` line at all. The *assertion* stays; the *rationale* is wrong, and a P1.3 engineer will waste time hunting a symbol that isn't there. The real risk is a hardening patch, not the defconfig (§3.3). | MEDIUM |
 | **X5** | **PLAN §3** ("glibc … ≥ 2.31") | 2.31 floor | The **binary's** floor is **`GLIBC_2.28`**; 2.31 is merely what stock *ships*. The number is harmless, but the *reason* matters: what will actually break us is the **glibc ≥ 2.34 libpthread/librt merge** (§1.3), which the plan does not mention at all and which is the single highest-risk item in P2.1/P2.2. | MEDIUM |
-| **X6** | **PLAN §3 / §4.1 / A5**, verification doc ("72 firmware files") | 72 | **66** regular files. Already corrected by `docs/stock-inventory/firmware.md`; repeated here because three documents still say 72 (§10.7). | LOW |
+| **X6** | **PLAN §3 / §4.1 / A5**, verification doc ("72 firmware files") | 72 | **66** regular files. Already corrected by `docs/stock-inventory/20250402/firmware.md`; repeated here because three documents still say 72 (§10.7). | LOW |
 | **X7** | **`docs/patch-provenance.md` §5 (`0002-…`)** ("CMA sizing must be preserved") | there is CMA sizing to preserve | Stock has **`# CONFIG_DMA_CMA is not set`**. MrAudio's 512 KiB `dma_alloc_coherent()` comes from the page allocator. No CMA knob exists (§8.2). | LOW |
 | **X8** | **`docs/patch-provenance.md` §N2**, **TASKS P1.8** ("silent loss of **I/O-board** brightness") | I/O board | It is the **pi-top chassis hub** (lid/screen-off/shutdown/brightness over SPI1). The I/O board's LEDs and buttons go over the FPGA GPO/GPI, not spidev. Severity drops from "a MiSTer feature" to "a pi-top accessory feature" — but the *silence* of the failure is unchanged, so keep the P1.13 assertion (§5.1). | LOW |
 | **X9** | **`docs/patch-provenance.md` §6** ("Without the patch, grabbing starves `/dev/input/mice`") | `/dev/input/mice` | Main_MiSTer opens `/dev/input/**mouse**N` (`strncmp(de->d_name, "mouse", 5)` — `mice` does not match). `/dev/input/mice` is what **`gpm`** uses (from inittab). Both depend on the patch; the *primary* victim is Main_MiSTer's own OSD mouse (§7.1). Cosmetic wording fix. | LOW |

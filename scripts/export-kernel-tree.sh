@@ -993,21 +993,43 @@ EOF
 # Package -> in-tree path. The only hand-maintained mapping here, kept declarative on
 # purpose. Every kernel-module package gets an entry, not just the currently-enabled ones,
 # so flipping one on in the defconfig needs no edit here.
+# The seven deselected Realtek fork rows this table used to carry (rtl8812au,
+# rtl8814au-morrownr, rtl8821au-morrownr, rtl8821cu-morrownr, rtl88x2bu,
+# rtl8188eu-aircrack-ng, rtl8188fu) went away with the packages on 2026-09-10.
+# They were the "just-in-case" half of the note above; with the packages gone
+# there is nothing for them to map. Every row below is now on the live path.
 declare -A MODULE_PATH=(
 	[xone]='drivers/hid/xone'
-	[rtl8812au]='drivers/net/wireless/realtek/rtl8812au'
-	[rtl8814au-morrownr]='drivers/net/wireless/realtek/rtl8814au'
-	[rtl8821au-morrownr]='drivers/net/wireless/realtek/rtl8821au'
-	[rtl8821cu-morrownr]='drivers/net/wireless/realtek/rtl8821cu'
-	# rtl8852cu-morrownr is the one WiFi fork the image currently SHIPS (v10.2,
-	# ADR 0016 — mainline rtw89 has no rtw8852cu.c), so unlike its neighbours
-	# this row is on the live path, not a just-in-case entry. Same naming rule
-	# as the rest: the fork suffix is a Buildroot package-name concern, and the
-	# in-tree path uses the plain chip name the 5.15 fork would have used.
+	# rtl8852cu-morrownr is a WiFi fork the image SHIPS (v10.2, ADR 0016 —
+	# mainline rtw89 has no rtw8852cu.c). Naming rule: the fork suffix is a
+	# Buildroot package-name concern, and the in-tree path uses the plain chip
+	# name the 5.15 fork would have used.
 	[rtl8852cu-morrownr]='drivers/net/wireless/realtek/rtl8852cu'
-	[rtl88x2bu]='drivers/net/wireless/realtek/rtl88x2bu'
-	[rtl8188eu-aircrack-ng]='drivers/net/wireless/realtek/rtl8188eu'
-	[rtl8188fu]='drivers/net/wireless/realtek/rtl8188fu'
+)
+
+# Packages deliberately NOT exported, with the reason. This is a separate set
+# from "has no MODULE_PATH" so that forgetting a mapping still fails closed --
+# the die below only accepts silence for a package named HERE.
+declare -A MODULE_EXPORT_SKIP=(
+	# aic8800 is the one driver where the fork went FIRST. Sorgelig vendored
+	# the same AICSemi SDK snapshot into MiSTer-v6.18 himself
+	# (c129b0fac34ad5d613bbec3f59d6036775e41c83, "Add AIC8800 WiFi/BT
+	# driver.", at drivers/net/wireless/aic8800), so exporting ours would
+	# hand upstream a copy of something it already has, at the same path, and
+	# collide there. The export exists to carry OUR delta; this is not one.
+	#
+	# It would also need machinery nothing else here has. Unlike every other
+	# kernel-module package, this one's sources are not at the tarball root:
+	# the tarball is radxa-pkg's whole 55 MiB multi-bus repository and the
+	# module tree lives at src/USB/driver_fw/drivers/aic8800 (hence
+	# AIC8800_MODULE_SUBDIRS). The `tar --strip-components=1` below would
+	# vendor the PCIE and SDIO drivers and the Debian packaging along with it.
+	# And the sources are only buildable AFTER upstream's own
+	# debian/patches/series is applied -- see package/aic8800/aic8800.mk --
+	# which the exporter has no notion of. If this ever does need exporting,
+	# teach the loop MODULE_SUBDIRS and the patch series first; do not just
+	# add a MODULE_PATH row.
+	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 
 # A package is a kernel module iff its .mk evals Buildroot's kernel-module infra. Detected
@@ -1053,11 +1075,18 @@ for pkg in "${enabled_kmods[@]}"; do
 	mk="$REPO_ROOT/package/$pkg/$pkg.mk"
 	dest="${MODULE_PATH[$pkg]:-}"
 
+	# Deliberate, named omission -- announced, never silent.
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		say "  skipping $pkg: ${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
+
 	# Fail closed. Silently skipping an enabled driver is exactly the regression this
 	# whole section exists to prevent.
 	[[ -n $dest ]] || die "no in-tree path mapped for kernel-module package '$pkg'.
-Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}") — refusing to export a tree
-that silently omits a driver the image ships."
+Add it to MODULE_PATH in $(basename "${BASH_SOURCE[0]}"), or -- if leaving it out is
+deliberate -- to MODULE_EXPORT_SKIP with the reason. Refusing to export a tree that
+silently omits a driver the image ships."
 
 	pkg_version="$(sed -n "s/^${upper}_VERSION = //p" "$mk" | tail -1)"
 	[[ -n $pkg_version ]] || die "no ${upper}_VERSION in $mk"
@@ -1720,6 +1749,10 @@ git diff --quiet && git diff --cached --quiet || die 'tree is dirty after export
 # the bug this section exists to prevent -- and which a too-strict defconfig parse already
 # caused once, vendoring xone alone.
 for pkg in "${enabled_kmods[@]}"; do
+	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
+		printf '  %-52s skipped (%s)\n' "$pkg" "${MODULE_EXPORT_SKIP[$pkg]}"
+		continue
+	fi
 	dest="${MODULE_PATH[$pkg]}"
 	git cat-file -e "$tag:$dest" 2>/dev/null ||
 		die "$pkg is enabled but $dest is not in the exported tree"

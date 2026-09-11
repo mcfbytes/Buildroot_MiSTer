@@ -46,6 +46,29 @@
     "and its match are gone). By the model above that is fileCount 22 / depCount 22",
     "(the 6.18 manager went from 2 files / 3 matches to 1 / 1) -- DERIVED, not",
     "measured: re-measure with the dry-run above before trusting either number.",
+    "",
+    "MEASURED 2026-09-10, and the stats line no longer means what the note above",
+    "assumes, so read this before comparing numbers. On the branch that removed the",
+    "seven deselected Realtek packages and added aic8800 (18 customManagers), a real",
+    "`--platform=local --dry-run=full` under renovate 44.79.6 reports",
+    "  regex: {fileCount: 36, depCount: 36}",
+    "while the actual (manager, file) pairs, counted from the LOG_LEVEL=debug",
+    "packageFile lines, are EIGHTEEN: one per manager, 15 distinct .mk/fragment/",
+    "Makefile files plus scripts/fetch-sdcard-payload.sh counted three times. 36 is",
+    "exactly 2 x 18: this renovate version extracts twice in local dry-run mode and",
+    "the stats accumulate across both passes. The older recorded pair (23/24) was",
+    "measured under an earlier version that did not double, so the two numbers are",
+    "NOT comparable and 36 is not evidence the tree grew. Re-derive the same way --",
+    "count the debug packageFile lines, do not trust the summary -- and expect the",
+    "pair count to equal the manager count plus 2 (fetch-sdcard-payload.sh's two",
+    "extra managers).",
+    "",
+    "TWO THINGS THAT MADE THE FIRST MEASUREMENT LIE, both worth knowing: (a) the",
+    "local platform enumerates GIT-TRACKED files only, so a newly added package's",
+    ".mk matches nothing until it is `git add`ed -- the first run on this branch",
+    "silently extracted zero aic8800 deps and looked completely normal; (b) deleted",
+    "packages keep matching until the deletion is staged, for the same reason.",
+    "Stage the change, then measure.",
     "If `regex` is absent entirely, the custom managers are dead again. Grep the",
     "LOG_LEVEL=debug output for `no-result` to catch bug-2-style",
     "datasource failures, which do NOT show up in the extraction stats at all.",
@@ -140,104 +163,6 @@
     },
     {
       "customType": "regex",
-      "description": "RTL8812AU driver commit pin (morrownr/8812au-20210820, main branch). Hash: package/rtl8812au/rtl8812au.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8812au/rtl8812au\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8812AU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "morrownr/8812au-20210820",
-      "packageNameTemplate": "https://github.com/morrownr/8812au-20210820",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL8814AU driver commit pin (morrownr/8814au, main branch). Hash: package/rtl8814au-morrownr/rtl8814au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8814au-morrownr/rtl8814au-morrownr\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8814AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "morrownr/8814au",
-      "packageNameTemplate": "https://github.com/morrownr/8814au",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL8821AU driver commit pin (morrownr/8821au-20210708, main branch). Hash: package/rtl8821au-morrownr/rtl8821au-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8821au-morrownr/rtl8821au-morrownr\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8821AU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "morrownr/8821au-20210708",
-      "packageNameTemplate": "https://github.com/morrownr/8821au-20210708",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL8821CU driver commit pin (morrownr/8821cu-20210916, main branch). Hash: package/rtl8821cu-morrownr/rtl8821cu-morrownr.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8821cu-morrownr/rtl8821cu-morrownr\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8821CU_MORROWNR_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "morrownr/8821cu-20210916",
-      "packageNameTemplate": "https://github.com/morrownr/8821cu-20210916",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL8188FU driver commit pin (kelebek333/rtl8188fu, master branch). Hash: package/rtl8188fu/rtl8188fu.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8188fu/rtl8188fu\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8188FU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "master",
-      "depNameTemplate": "kelebek333/rtl8188fu",
-      "packageNameTemplate": "https://github.com/kelebek333/rtl8188fu",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL8188EU driver commit pin (aircrack-ng/rtl8188eus). NOTE: this repo's default branch is literally named 'v5.3.9' (verified via git ls-remote --symref at authoring time, not assumed) -- update currentValueTemplate if aircrack-ng ever renames it, or this manager will quietly stop finding new commits. Hash: package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL8188EU_AIRCRACK_NG_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "v5.3.9",
-      "depNameTemplate": "aircrack-ng/rtl8188eus",
-      "packageNameTemplate": "https://github.com/aircrack-ng/rtl8188eus",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "RTL88X2BU driver commit pin (morrownr/88x2bu-20210702, main branch). Hash: package/rtl88x2bu/rtl88x2bu.hash, refreshed by renovate-hash-sync.yml.",
-      "managerFilePatterns": [
-        "/^package/rtl88x2bu/rtl88x2bu\\.mk$/"
-      ],
-      "matchStrings": [
-        "RTL88X2BU_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
-      ],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "morrownr/88x2bu-20210702",
-      "packageNameTemplate": "https://github.com/morrownr/88x2bu-20210702",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
       "description": "RTL8852CU driver commit pin (morrownr/rtl8852cu-20251113, main branch). `main` is the right ref to track and was checked, not assumed: `git ls-remote https://github.com/morrownr/rtl8852cu-20251113` resolves HEAD and refs/heads/main to the same commit (1530c38e at pin time). Hash: package/rtl8852cu-morrownr/rtl8852cu-morrownr.hash, refreshed by renovate-hash-sync.yml's GENERIC loop -- this package needs no bespoke step: its site is a plain $(call github,morrownr,rtl8852cu-20251113,$(VERSION)) and Buildroot caches the tarball as dl/rtl8852cu-morrownr/rtl8852cu-morrownr-<sha>.tar.gz, i.e. exactly the <package-dir>-<VERSION>.tar.gz shape scripts/hash-sync-github-packages.sh assumes. UNLIKE every other Realtek fork pin in this block, this one is for a driver the image ACTUALLY SHIPS (ADR 0016's v10.2 update: rtw89 carries the 8852C chip HAL but no rtw8852cu.c USB bus file, and its only symbol RTW89_8852CE depends on PCI, which this board has not got -- so mainline cannot drive the chip at all). The others are kept sourced-but-deselected as a one-line revert. THREE places move together for this pin, and two of them fail SILENTLY if forgotten: this manager, `rtl8852cu-morrownr` in renovate-hash-sync.yml's HASH_SYNC_PACKAGES (absent = the hash is never refreshed and the build fails on a mismatch that reads like a tampered upstream), and this .mk in that same workflow's `paths:` trigger (absent = the workflow never fires at all -- no skipped job, no red X, nothing).",
       "managerFilePatterns": [
         "/^package/rtl8852cu-morrownr/rtl8852cu-morrownr\\.mk$/"
@@ -248,6 +173,20 @@
       "currentValueTemplate": "main",
       "depNameTemplate": "morrownr/rtl8852cu-20251113",
       "packageNameTemplate": "https://github.com/morrownr/rtl8852cu-20251113",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "AIC8800 Wi-Fi 6 + BT driver AND firmware commit pin (radxa-pkg/aic8800, main branch). ONE pin covers both: package/aic8800 builds the two kernel modules out of src/USB/ and installs the ~6.6 MiB of firmware out of src/USB/driver_fw/fw/ from the SAME tarball, so there is deliberately no separate aic8800-firmware package and no second manager -- a firmware-only bump cannot drift away from the driver it has to match. `main` is the right ref to track and was checked, not assumed: the repository's default_branch is `main` and its branches list resolves main to 516e3b08 at pin time. A COMMIT pin rather than the github-tags pin the tag scheme invites, for exactly the reason package/bcm20702-firmware switched to one: radxa tags Debian-style (`5.0+git20260123.5f7be68d-8`), where the trailing `-N` is a packaging revision ON TOP of the base version, so under `loose` the bare `5.0+git20260123.5f7be68d` would sort higher than `-8` and Renovate would propose a downgrade. A commit pin removes the ordering question instead of teaching `loose` a bespoke scheme. Hash: package/aic8800/aic8800.hash, refreshed by renovate-hash-sync.yml's GENERIC loop -- this package needs no bespoke step: its site is a plain $(call github,radxa-pkg,aic8800,$(VERSION)) and Buildroot caches the tarball as dl/aic8800/aic8800-<sha>.tar.gz, i.e. exactly the <package-dir>-<VERSION>.tar.gz shape scripts/hash-sync-github-packages.sh assumes. THE SAME THREE-PLACE RULE AS rtl8852cu-morrownr APPLIES, and two of the three fail SILENTLY if forgotten: this manager, `aic8800` in renovate-hash-sync.yml's HASH_SYNC_PACKAGES (absent = the hash is never refreshed and the build fails on a mismatch that reads like a tampered upstream), and this .mk in that same workflow's `paths:` trigger (absent = the workflow never fires at all -- no skipped job, no red X, nothing). A FOURTH thing to check by hand on any bump that Renovate cannot see: package/aic8800/aic8800.mk applies upstream's own debian/patches/series with a four-entry skip list, and its AIC8800_CHECK_FW_PATH hook fails the build closed if a reshuffled series moves the firmware path. Read the build log's `aic8800: vendor series applied=N skipped=4` line -- N was 23 at pin time.",
+      "managerFilePatterns": [
+        "/^package/aic8800/aic8800\\.mk$/"
+      ],
+      "matchStrings": [
+        "AIC8800_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "main",
+      "depNameTemplate": "radxa-pkg/aic8800",
+      "packageNameTemplate": "https://github.com/radxa-pkg/aic8800",
       "datasourceTemplate": "git-refs"
     },
     {

@@ -51,12 +51,16 @@ GROUPS: dict[str, tuple[str, str, str, str]] = {
 	# This is a STOCK inventory (gen-modules.sh runs it against work/imgroot, i.e.
 	# stock's linux.img), so these rows record stock's ORIGINAL P0.4 disposition
 	# and are uniform per group -- the grouped table below relies on that
-	# (`sample = next(...)`). v9 (ADR 0016) later moved 8188eu/8188fu -> in-kernel
-	# rtl8xxxu and 8821cu/88x2bu -> rtw88, keeping only 8812au/8821au (plus a new
-	# 8814au) out-of-tree in OUR image -- but that is a decision about our build,
-	# not about what stock shipped, so it lives in ADR 0016 + the current-state
-	# docs (wifi-parity / kernel-config-deltas / package-manifest), not in this
-	# stock snapshot. 8814au is intentionally absent here: it is not a stock module.
+	# (`sample = next(...)`). OUR image has since moved every one of these chips
+	# onto an in-kernel driver -- v9 (ADR 0016) took 8188eu/8188fu -> rtl8xxxu and
+	# 8821cu/88x2bu -> rtw88, v10 took 8812au/8821au -> rtw88_88xxa, and on
+	# 2026-09-10 the seven now-unused Buildroot packages were deleted outright.
+	# None of that changes these rows: this is a snapshot of what STOCK shipped
+	# and how it was first dispositioned, so it stays as recorded. The
+	# current-state decisions live in ADR 0016 + wifi-parity / kernel-config-deltas
+	# / package-manifest. 8814au is intentionally absent here: it is not a stock
+	# module. AIC8800 is absent for the same reason -- stock's 6.18 fork added the
+	# driver AFTER this snapshot's release and has still shipped no module for it.
 	"8188eu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188EU"),
 	"rtl8188fu": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8188FU"),
 	"8812au": ("Out-of-tree Realtek (class E)", "class E -- re-source from morrownr, do not vendor", "P3.1", "RTL8812AU"),

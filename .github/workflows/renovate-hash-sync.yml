@@ -128,20 +128,27 @@ on:
       # the workflow simply never runs and nobody is told the hash is stale.
       # See docs/ci.md#renovate-hash-sync-not-automated.
       - "configs/mister_rt.fragment"
-      - "package/rtl8812au/rtl8812au.mk"
-      - "package/rtl8814au-morrownr/rtl8814au-morrownr.mk"
-      - "package/rtl8821au-morrownr/rtl8821au-morrownr.mk"
-      - "package/rtl8821cu-morrownr/rtl8821cu-morrownr.mk"
-      - "package/rtl8188fu/rtl8188fu.mk"
-      - "package/rtl8188eu-aircrack-ng/rtl8188eu-aircrack-ng.mk"
-      - "package/rtl88x2bu/rtl88x2bu.mk"
-      # v10.2: the one out-of-tree WiFi driver the image actually ships
+      # The seven deselected Realtek fork pins that used to be listed here
+      # (rtl8812au, rtl8814au-morrownr, rtl8821au-morrownr,
+      # rtl8821cu-morrownr, rtl8188fu, rtl8188eu-aircrack-ng, rtl88x2bu) went
+      # away with the packages on 2026-09-10 -- mainline drives every one of
+      # their chips, the image never built them, and each one still cost a
+      # Renovate PR stream and an entry in all three of these lists. See
+      # Config.in and docs/wifi-parity.md §11.
+      #
+      # v10.2: the out-of-tree WiFi drivers the image actually ships
       # (ADR 0016). This list is a second, independent allow-list from
       # HASH_SYNC_PACKAGES below and BOTH must name a package: missing here,
       # the pull_request event is filtered out and this workflow never runs at
       # all on the bump PR -- no skipped job, no red X, no outcome row, just a
       # stale hash nobody was told about.
       - "package/rtl8852cu-morrownr/rtl8852cu-morrownr.mk"
+      # aic8800 (AICSemi Wi-Fi 6 + BT). ONE pin carries both the driver and
+      # its ~6.6 MiB of firmware -- they come out of the same tarball -- so
+      # there is no second firmware path to list here. Ordinary github
+      # archive pin, covered by the generic loop in step 1. Same
+      # both-lists-or-silent-failure note as rtl8852cu-morrownr above.
+      - "package/aic8800/aic8800.mk"
       - "package/xone/xone.mk"
       - "package/midilink/midilink.mk"
       # ADR 0023: 7-Zip, which pins the SAME ip7z/7zip release asset
@@ -273,7 +280,7 @@ jobs:
       # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
       # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
       # dualsensectl.hash.
-      HASH_SYNC_PACKAGES: "rtl8812au rtl8814au-morrownr rtl8821au-morrownr rtl8821cu-morrownr rtl8188fu rtl8188eu-aircrack-ng rtl88x2bu rtl8852cu-morrownr xone midilink munt bcm20702-firmware libchdr dualsensectl ltunify"
+      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr dualsensectl ltunify"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

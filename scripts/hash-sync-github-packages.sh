@@ -80,7 +80,7 @@
 #
 # Required env:
 #   HASH_SYNC_PACKAGES        space-separated package directory names, e.g.
-#                             "rtl8812au xone libchdr". In production this is
+#                             "aic8800 xone libchdr". In production this is
 #                             the workflow's job-level env: block (single
 #                             source of truth shared with the job-summary
 #                             step's pin roster -- see that env var's own

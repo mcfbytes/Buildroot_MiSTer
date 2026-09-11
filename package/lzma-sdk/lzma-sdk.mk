@@ -25,7 +25,14 @@
 # The Kconfig side never warns either: BR2_PACKAGE_LZMA does not exist
 # upstream (host packages have no prompt), so only the Make namespace
 # collides -- silently. Precedent for suffixing our way out of an upstream
-# squat: package/rtl8188eu-aircrack-ng (see its Config.in).
+# squat: package/rtl8188eu-aircrack-ng did exactly this (upstream Buildroot
+# ships its own differently-forked rtl8188eu, so ours took the
+# "-aircrack-ng" suffix to keep both the Kconfig symbol and the Make
+# namespace clear). That package was DELETED on 2026-09-10 along with the six
+# other deselected Realtek forks -- mainline's rtl8xxxu drives the chip -- so
+# the precedent now lives in git history: `git log --diff-filter=D -- \
+# package/rtl8188eu-aircrack-ng/Config.in`. The reasoning is unchanged and
+# still applies to this package; only the example moved.
 LZMA_SDK_VERSION = 26.03
 # 7z$(subst .,,26.03) = 7z2603-src.tar.xz -- the same versioning scheme
 # 7-zip.org itself uses for source drops. The GitHub ip7z/7zip release page

@@ -1,0 +1,130 @@
+
+==> mk-release: reading /MiSTer.version from /mnt/source/Buildroot_MiSTer-vanilla/output/images/linux.img
+    /MiSTer.version=260904 -> RELEASE_DATE=20260904
+
+==> mk-release: staging image assets into /mnt/source/Buildroot_MiSTer-vanilla/dist
+legal-info.tar.gz: 6923165 bytes (6 MiB)
+
+==> mk-release: fetching + verifying the pinned stock release
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0           00:01              0100 80.00M 100 80.00M   0      0 56.07M      0   00:01   00:01         56.10M100 80.00M 100 80.00M   0      0 56.07M      0   00:01   00:01         56.10M100 80.00M 100 80.00M   0      0 56.07M      0   00:01   00:01         56.10M
+fetch-stock: fetched volume 1: https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100 32.47M 100 32.47M   0      0 35.98M      0                              0100 32.47M 100 32.47M   0      0 35.97M      0                              0100 32.47M 100 32.47M   0      0 35.97M      0                              0
+fetch-stock: fetched volume 2: https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002
+fetch-stock: 2 volume(s) joined -> /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z
+verify-stock: /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z verified -- size/MD5/SHA-256/internal-CRC all match.
+
+7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12
+ 64-bit locale=C.UTF-8 Threads:32 OPEN_MAX:1048576, ASM
+
+Scanning the drive for archives:
+1 file, 117936766 bytes (113 MiB)
+
+Extracting archive: /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z
+--
+Path = /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z
+Type = 7z
+Physical Size = 117936766
+Headers Size = 765
+Method = LZMA2:26 LZMA:20 BCJ2
+Solid = +
+Blocks = 2
+
+Everything is Ok
+
+Folders: 3
+Files: 13
+Size:       402464951
+Compressed: 117936766
+extract-stock: extracted files/linux/* from /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z -> /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock-extract
+verify-uboot: uboot.img and updateboot confirmed byte-identical to stock.
+
+==> mk-release: assembling files/linux and packing release_20260904.7z
+    7za
+    MidiLink.INI
+    _samba.sh
+    _user-startup.sh
+    _wpa_supplicant.conf
+    gamecontrollerdb
+    linux
+    linux.img
+    mt32-rom-data
+    ppp_options
+    soundfonts
+    u-boot.txt_example
+    uboot.img
+    updateboot
+    zImage_dtb
+    wrote /mnt/source/Buildroot_MiSTer-vanilla/dist/release_20260904.7z (84632824 bytes)
+
+==> mk-release: round-tripping the archive under the pinned ARM 7za (qemu-arm)
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100 454.6k 100 454.6k   0      0 578.2k      0                              0100 454.6k 100 454.6k   0      0 578.1k      0                              0100 454.6k 100 454.6k   0      0 578.0k      0                              0
+fetch-7za: pinned ARM 7za fetched and verified -> /mnt/source/Buildroot_MiSTer-vanilla/release-work/7za
+
+7-Zip (a) [32] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21
+p7zip Version 16.02 (locale=C.UTF-8,Utf16=on,HugeFiles=on,32 bits,32 CPUs LE)
+
+Scanning the drive for archives:
+1 file, 84632824 bytes (81 MiB)
+
+Testing archive: /mnt/source/Buildroot_MiSTer-vanilla/dist/release_20260904.7z
+--
+Path = /mnt/source/Buildroot_MiSTer-vanilla/dist/release_20260904.7z
+Type = 7z
+Physical Size = 84632824
+Headers Size = 607
+Method = LZMA2:28
+Solid = +
+Blocks = 1
+
+Everything is Ok
+
+Folders: 5
+Files: 14
+Size:       550398955
+Compressed: 84632824
+
+7-Zip (a) [32] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21
+p7zip Version 16.02 (locale=C.UTF-8,Utf16=on,HugeFiles=on,32 bits,32 CPUs LE)
+
+Scanning the drive for archives:
+1 file, 84632824 bytes (81 MiB)
+
+Extracting archive: /mnt/source/Buildroot_MiSTer-vanilla/dist/release_20260904.7z
+--
+Path = /mnt/source/Buildroot_MiSTer-vanilla/dist/release_20260904.7z
+Type = 7z
+Physical Size = 84632824
+Headers Size = 607
+Method = LZMA2:28
+Solid = +
+Blocks = 1
+
+Everything is Ok
+
+Folders: 3
+Files: 14
+Size:       550398955
+Compressed: 84632824
+roundtrip: pinned ARM 7za: both 't' and 'x -y ... files/linux/*' succeeded.
+verify-uboot: uboot.img/updateboot survive our archive's create+pinned-7za-extract round trip unchanged.
+verify-layout: archive layout matches docs/downloader-contract.md / docs/reference-materials.md.
+
+==> mk-release: SHA256SUMS
+cbbc891b430fec1aa4e926f6cedfd129c66e934d8c312afd482f6fbb9c26a0e1  release_20260904.7z
+b10f7c33466af0f20b17b5d47062686a5f7775c4aa4053b51a4957fdcc4639ef  linux.img
+012a1dc459a6b3cbd3ef038abee2121eecd3b43fcc81e7c6454aaf22419d5eef  zImage_dtb
+d266dd5111edc581b1352c1b07847145c38686e896fadbcf898696c4eef9dd99  zImage_dtb-rt
+b5e9cc0cb85f6250eaf0e150b975fab5b1466c31f27f59fe917d9c86996d9ebc  buildroot.config
+7c0909f0e02084951e9347f3589fe9e2228d54833681d885d24c464d8f6a8a6b  linux.config
+907b63c0adb62aecf3344a12958a5b45caf8e56b78498eba180d6f0991bb5a48  linux-rt.config
+b6da2bf61e26858209e5936ea419bbcebe941dd4a604957c0a2f623a439c30a0  legal-info.tar.gz
+
+==> mk-release: done: /mnt/source/Buildroot_MiSTer-vanilla/dist ready; stock archive kept at /mnt/source/Buildroot_MiSTer-vanilla/release-work/stock_release.7z for mk-sdcard.sh
+exit=0

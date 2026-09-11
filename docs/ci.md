@@ -33,7 +33,7 @@ Nine workflows, two composite actions, one Buildroot recipe. A build is
 |---|---|---|
 | `build.yml` | push to master, PRs | `gate` (skip doc-only changes) → `lint-config` (kernel patch headers, `scripts/check-defconfigs.sh`) → `build` (the action below, then `scripts/ci-tests.sh` via `verify-image`) → `status` |
 | `lint.yml` | push, PRs | actionlint on the workflows, shellcheck on every script and on the composite actions' `run:` bodies |
-| `release.yml` | `v*` tags | the same build, then: stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, build `sdcard.img.xz`, publish a draft release with provenance, submit the SBOM to the dependency graph |
+| `release.yml` | `v*` tags | the same build, then `scripts/mk-release.sh` (stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, `SHA256SUMS`) and `scripts/mk-sdcard.sh`; then a draft release with provenance and the SBOM to the dependency graph. Runs locally: `MISTER_VERSION=… scripts/mk-release.sh` with the `STOCK_*` pins in the environment |
 | `reproducibility.yml` | manual | two independent builds of one commit, hashes compared |
 | `renovate-hash-sync.yml` | Renovate PRs | refresh the companion hash of whatever pin the PR bumped (each case is one `scripts/hash-sync-*.sh`) |
 | `renovate-validate.yml` | push, PRs | `renovate.json` validates |

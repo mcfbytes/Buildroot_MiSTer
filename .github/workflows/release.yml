@@ -57,72 +57,12 @@ permissions:
 
 jobs:
   # ============================================================================
-  # kernel-variants — derives the kernel-variant matrix from the filesystem
-  # registry; build.yml's `gate` job runs the identical script so the two
-  # workflows can't drift onto different matrix literals. Fails loudly on
-  # zero variants rather than skipping. See docs/ci.md#variants.
-  # ============================================================================
-  kernel-variants:
-    name: Derive kernel-variant matrix
-    runs-on: ubuntu-26.04
-    outputs:
-      kernel_variants: ${{ steps.variants.outputs.kernel_variants }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Derive kernel-variant matrix
-        id: variants
-        run: |
-          set -euo pipefail
-          json=$(scripts/list-kernel-variants.sh)
-          echo "kernel_variants=$json" >> "$GITHUB_OUTPUT"
-
-  # ============================================================================
-  # build-kernel — the kernel-variant matrix (ADR 0021 as amended 2026-07-18),
-  # run BEFORE `build` because `build` merges each leg's module tree into the
-  # one shipped linux.img. Each leg ships the FULL kernel GPL-source bundle,
-  # not build.yml's manifest-only SBOM — a release DISTRIBUTES the variant
-  # kernel binary, so the source obligation is real. No MISTER_VERSION
-  # derivation here: a kernel-only build has no rootfs to bake it into.
-  # Adding a variant, and what still needs a hand-edit: docs/ci.md#variants.
-  # Matrix design (per-leg artifact contents): docs/ci.md#kernel-variant-matrix.
-  # No `container:` — see docs/ci.md#no-container-disk-reclaim.
-  # ============================================================================
-  build-kernel:
-    name: Build kernel (${{ matrix.kernel }})
-    needs: kernel-variants
-    runs-on: ubuntu-26.04
-    strategy:
-      matrix:
-        kernel: ${{ fromJSON(needs.kernel-variants.outputs.kernel_variants) }}
-
-    # Same estimate as build.yml's build-kernel: cold = cross-toolchain (~1h)
-    # + stage-1 initramfs (~30 min) + one kernel build; 240 is ~2x that.
-    timeout-minutes: 240
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Shared leg recipe — see .github/actions/kernel-leg. full-legal-info
-      # ships the full GPL source bundle (docs/ci.md#kernel-variant-matrix);
-      # release-context swaps the summary for release-flavoured wording.
-      - name: Build kernel leg (${{ matrix.kernel }})
-        uses: ./.github/actions/kernel-leg
-        with:
-          kernel: ${{ matrix.kernel }}
-          full-legal-info: "true"
-          release-context: "true"
-
-  # ============================================================================
   # build — produces every release asset and the pinned-7za-verified archive.
   # Runs after the kernel matrix so it can merge each leg's module tree into
   # linux.img. No `container:` — see docs/ci.md#no-container-disk-reclaim.
   # ============================================================================
   build:
     name: Build image + assemble release_YYYYMMDD.7z
-    needs: build-kernel
     runs-on: ubuntu-26.04
 
     # Cold build measured at 3h19m (run 29300460591) plus stock-archive fetch,
@@ -191,14 +131,6 @@ jobs:
           echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
           echo "Release version (YYMMDD) = $v  ->  /MiSTer.version, release_20${v}.7z, db.json"
 
-      # Populates the extra-modules overlay before the build — see
-      # .github/actions/merge-kernel-modules for the mechanism. Also feeds
-      # dist/'s per-variant zImage_dtb/config/legal-info assets, staged later
-      # in this job.
-      - name: Download + populate kernel-variant module overlay
-        uses: ./.github/actions/merge-kernel-modules
-        with:
-          phase: download
 
       # Shared recipe (disk reclaim, caches, apt, defconfig, `make all`).
       # p7zip-full here is a DIFFERENT 7za than the pinned ARM dynamic one
@@ -214,13 +146,6 @@ jobs:
           extra-apt-packages: p7zip-full genimage mtools dosfstools xz-utils jq
           run-legal-info: "true"
 
-      # Assert every kernel-variant module tree merged into the image -- see
-      # .github/actions/merge-kernel-modules/action.yml for the silent-overlay-
-      # miss guard this runs.
-      - name: Assert kernel-variant module trees merged
-        uses: ./.github/actions/merge-kernel-modules
-        with:
-          phase: verify
 
       # Re-runs build.yml's non-hardware parity suite (ci-tests.sh) and ABI/
       # SONAME checker (check-abi.sh) against THIS EXACT rootfs — the tagged
@@ -247,7 +172,7 @@ jobs:
         run: |
           set -eu
           # nullglob keeps a zero-match glob's count truthful for the guard
-          # below (mirrors .github/actions/kernel-leg's staging step). See
+          # below. See
           # docs/ci.md#dist-layout.
           shopt -s nullglob
           cp -f output/.config dist/buildroot.config
@@ -291,11 +216,18 @@ jobs:
       # guard). Copied by glob so a future matrix entry needs no edit here;
       # each glob must match at least once — zero matches means the download
       # step above silently changed shape, and cp's own failure catches that.
-      - name: Stage kernel-variant assets into dist/
+      # Since ADR 0030 Phase C the RT kernel is package/linux-rt inside this
+      # same build: its zImage_dtb-rt and linux-rt.config land in output/images/
+      # and its module tree is in linux.img by construction. Its licence texts
+      # and patches are part of the ONE legal-info bundle above (the package
+      # is in output/legal-info/manifest.csv), so there is no legal-info-rt.
+      - name: Stage the RT kernel variant's assets into dist/
         run: |
           set -eu
-          cp -f kernel-artifacts/zImage_dtb-* kernel-artifacts/linux-*.config \
-                kernel-artifacts/legal-info-*.tar.gz dist/
+          for f in output/images/zImage_dtb-rt output/images/linux-rt.config; do
+            [ -f "$f" ] || { echo "::error::$f is missing -- package/linux-rt did not produce it (BR2_PACKAGE_LINUX_RT unset?)" >&2; exit 1; }
+          done
+          cp -f output/images/zImage_dtb-rt output/images/linux-rt.config dist/
           ls -la dist/
 
       ##########################################################################
@@ -463,7 +395,7 @@ jobs:
         run: |
           set -eu
           ( cd dist && sha256sum "release_${RELEASE_DATE}.7z" linux.img zImage_dtb buildroot.config linux.config legal-info.tar.gz \
-              zImage_dtb-* linux-*.config legal-info-*.tar.gz > SHA256SUMS )
+              zImage_dtb-* linux-*.config > SHA256SUMS )
           cat dist/SHA256SUMS
 
       ##########################################################################
@@ -792,7 +724,7 @@ jobs:
         run: ls -la dist/
 
       # Re-derives the variant registry from dist/SHA256SUMS (this checkout-
-      # less job has no scripts/list-kernel-variants.sh on disk — see
+      # less job derives the variant list from SHA256SUMS — see
       # docs/ci.md#variants) and asserts BY NAME that all three files exist
       # for EVERY variant. A glob-and-count check could only ever notice the
       # ALL-missing case; this backstops the attestation step below, which
@@ -809,14 +741,14 @@ jobs:
           # rows, and strip the prefix to leave the variant names.
           mapfile -t variants < <(awk '{ sub(/^\*/, "", $2); print $2 }' dist/SHA256SUMS | sed -n 's/^zImage_dtb-\(.*\)$/\1/p' | sort -u)
           if [ "${#variants[@]}" -eq 0 ]; then
-            echo "::error::dist/SHA256SUMS records no zImage_dtb-<variant> entries (expected at least \`rt\`) -- the build-kernel matrix runs on every trigger that reaches this job, so zero variants is a bug, not a valid empty state" >&2
+            echo "::error::dist/SHA256SUMS records no zImage_dtb-<variant> entries (expected at least \`rt\`) -- package/linux-rt is part of every build that reaches this job, so zero variants is a bug, not a valid empty state" >&2
             exit 1
           fi
           echo "kernel variants recorded in SHA256SUMS: ${variants[*]}"
           missing=0
           : > "$RUNNER_TEMP/variant-assets.txt"
           for v in "${variants[@]}"; do
-            for f in "dist/zImage_dtb-$v" "dist/linux-$v.config" "dist/legal-info-$v.tar.gz"; do
+            for f in "dist/zImage_dtb-$v" "dist/linux-$v.config"; do
               if [ ! -f "$f" ]; then
                 echo "::error::kernel-variant asset $f is missing from dist/ although SHA256SUMS records variant \`$v\` -- it went missing between the build job staging it and this job downloading release-dist-${{ github.sha }}" >&2
                 missing=1
@@ -878,7 +810,7 @@ jobs:
           # docs/ci.md#release-assets-array.
           mapfile -t variant_assets < "$RUNNER_TEMP/variant-assets.txt"
           if [ "${#variant_assets[@]}" -eq 0 ]; then
-            echo "::error::no kernel-variant assets listed in \$RUNNER_TEMP/variant-assets.txt (expected at least zImage_dtb-rt, linux-rt.config, legal-info-rt.tar.gz) -- the 'Verify every kernel variant's assets survived the artifact round trip' step should have written them and failed the job if it could not; refusing to publish a release missing its kernel-variant assets" >&2
+            echo "::error::no kernel-variant assets listed in \$RUNNER_TEMP/variant-assets.txt (expected at least zImage_dtb-rt, linux-rt.config) -- the 'Verify every kernel variant's assets survived the artifact round trip' step should have written them and failed the job if it could not; refusing to publish a release missing its kernel-variant assets" >&2
             exit 1
           fi
           assets+=("${variant_assets[@]}")
@@ -896,18 +828,18 @@ jobs:
             exit 1
           fi
           assets+=("${azcopy_assets[@]}")
-          # Added unconditionally (build-kernel always runs, so at least one
+          # Added unconditionally (package/linux-rt is in every build, so at least one
           # variant is guaranteed — the verify step above already failed the
           # job otherwise). The release-notes prose below is a hand-edit per
           # variant, same as mk-sdcard.sh's single bonus-kernel slot — see
           # docs/ci.md#variants for the full accounting.
           notes="Automated release build. Internal linux version (baked \`/MiSTer.version\`): ${RELEASE_DATE}. See SHA256SUMS for asset hashes and the attached build-provenance attestation (verify with \`gh attestation verify <asset> --owner ${{ github.repository_owner }}\`). The \`sdcard*.img.xz\` assets are standalone flashable installer images (ADR 0020); they are NOT part of release_${RELEASE_DATE}.7z and are not referenced by db.json.
 
-          **Complete corresponding source (GPL/LGPL):** every binary here is built from free/open-source software with Buildroot. \`legal-info.tar.gz\` (main image) and \`legal-info-rt.tar.gz\` (RT kernel) ship the SBOM — \`manifest.csv\` listing each package's exact version, license, and pinned upstream source URL+hash — plus every license text, all local patches we apply, and \`buildroot.config\`. The upstream source archives themselves are deliberately NOT bundled: they are the freely-available, hash-pinned upstreams \`manifest.csv\` points to, and re-bundling ~1.4 GiB of them (591 MiB of that the linux-firmware blob alone) into every release only duplicated what upstream + this repo already provide. The complete corresponding source for every GPL/LGPL component is (a) the upstream archives at the exact versions/URLs in \`manifest.csv\`, byte-verifiable against their recorded hashes, plus (b) this repository at tag \`${{ github.ref_name }}\`, which carries the full Buildroot configuration and all applied patches and rebuilds the identical images with \`make\`. **Written offer:** for at least three years from this release, we will additionally provide a complete machine-readable copy of the corresponding source for any component on request — open an issue at https://github.com/${{ github.repository }}.
+          **Complete corresponding source (GPL/LGPL):** every binary here is built from free/open-source software with Buildroot. \`legal-info.tar.gz\` (the main image AND the RT kernel, which is a package of the same build) ships the SBOM — \`manifest.csv\` listing each package's exact version, license, and pinned upstream source URL+hash — plus every license text, all local patches we apply, and \`buildroot.config\`. The upstream source archives themselves are deliberately NOT bundled: they are the freely-available, hash-pinned upstreams \`manifest.csv\` points to, and re-bundling ~1.4 GiB of them (591 MiB of that the linux-firmware blob alone) into every release only duplicated what upstream + this repo already provide. The complete corresponding source for every GPL/LGPL component is (a) the upstream archives at the exact versions/URLs in \`manifest.csv\`, byte-verifiable against their recorded hashes, plus (b) this repository at tag \`${{ github.ref_name }}\`, which carries the full Buildroot configuration and all applied patches and rebuilds the identical images with \`make\`. **Written offer:** for at least three years from this release, we will additionally provide a complete machine-readable copy of the corresponding source for any component on request — open an issue at https://github.com/${{ github.repository }}.
 
           **azcopy (optional, ARMv7):** \`azcopy-<version>-armv7.xz\` is Microsoft's Azure Storage CLI, for backing the card's \`saves\`/\`savestates\`/\`screenshots\`/\`config\` up to Azure Storage from the board itself. It is a STANDALONE DOWNLOAD and is deliberately **not** in \`linux.img\`: at 39 MiB installed it would be the second-largest thing in the image after Samba, for a tool most owners will never run — and almost all of that size is Google Cloud Storage support that a MiSTer never executes (an empty Go binary is 1.2 MB; +Azure SDK 5.5 MB; +GCS 27.6 MB). Statically linked on purpose, so it keeps working if you roll back to an older image or to stock. To use it: \`xz -d\` it onto \`/media/fat\`, \`chmod +x\`, and set \`AZCOPY_JOB_PLAN_LOCATION\`/\`AZCOPY_LOG_LOCATION\` under \`/media/fat\` plus \`AZCOPY_BUFFER_GB=0.125\` — that last one matters, because AzCopy otherwise sizes its buffer cache at 1 GiB on a board with 511 MiB of RAM. Microsoft does not build or test AzCopy for 32-bit ARM; this build carries two local patches to make it compile and to stop every \`azcopy login\` dying on SIGILL. See \`docs/azcopy.md\` for the full write-up and the on-hardware test record.
 
-          **PREEMPT_RT beta (Linux 7.2):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; \`legal-info-rt.tar.gz\` carries the RT kernel's applied patches + SBOM (license texts and manifest.csv with the pinned upstream source URL+hash) — the same patches-only form as the main \`legal-info.tar.gz\`, covered by the corresponding-source note above. It is a MANUAL download only: the sdcard installer image deliberately does NOT carry it (ADR 0021 item 4, reversed 2026-07-27 — an unvalidated real-time kernel does not belong on every user's card). Status: build-verified only. Earlier pins booted and ran MiSTer on one DE10-Nano — 7.2-rc4 on 2026-07-20 and 7.2-rc7 on 2026-08-14 — but boot is a per-version claim, so treat the kernel in THIS release as unvalidated on hardware unless a maintainer says otherwise. (This paragraph is hand-maintained prose and its version can go stale ahead of the pin; \`linux-rt.config\` in this same release is authoritative for what was actually built.) The pin tracks the 7.2.y line as of 2026-08-17 — it no longer follows mainline \`-rc\`, so this caveat is re-opened by a point release rather than weekly. No latency measurement has been taken on any version."
+          **PREEMPT_RT beta (Linux 7.2):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; its applied patches, licence texts and manifest row are inside \`legal-info.tar.gz\` (package \`linux-rt\`), covered by the corresponding-source note above. It is a MANUAL download only: the sdcard installer image deliberately does NOT carry it (ADR 0021 item 4, reversed 2026-07-27 — an unvalidated real-time kernel does not belong on every user's card). Status: build-verified only. Earlier pins booted and ran MiSTer on one DE10-Nano — 7.2-rc4 on 2026-07-20 and 7.2-rc7 on 2026-08-14 — but boot is a per-version claim, so treat the kernel in THIS release as unvalidated on hardware unless a maintainer says otherwise. (This paragraph is hand-maintained prose and its version can go stale ahead of the pin; \`linux-rt.config\` in this same release is authoritative for what was actually built.) The pin tracks the 7.2.y line as of 2026-08-17 — it no longer follows mainline \`-rc\`, so this caveat is re-opened by a point release rather than weekly. No latency measurement has been taken on any version."
           # Upsert, not create-only: a tagged push already created the draft,
           # so an opt-in full-sdcard dispatch (same tag) must ADD assets
           # rather than fail on already-exists. See
@@ -930,7 +862,7 @@ jobs:
           {
             echo "## 📦 Draft release created"
             echo ""
-            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\`, \`zImage_dtb\` and \`zImage_dtb-rt\`. The three \`*-rt\` assets are the PREEMPT_RT beta kernel (ADR 0021 as amended — its MODULES ride inside the one \`linux.img\`) — separate downloads, never in the 7z, never in db.json."
+            echo "Draft GitHub Release **${TAG}** created (internal version \`${RELEASE_DATE}\`); build provenance attested for \`linux.img\`, \`zImage_dtb\` and \`zImage_dtb-rt\`. The two \`*-rt\` assets are the PREEMPT_RT beta kernel (ADR 0021 as amended — its MODULES ride inside the one \`linux.img\`) — separate downloads, never in the 7z, never in db.json."
             echo ""
             echo "> ⚠️ **This is a draft.** It is not public, and db.json is **not** published while it stays a draft."
             echo "> Clicking **Publish release** — whether as a full release *or* a pre-release — fires \`publish-db.yml\`, which regenerates and publishes db.json to opted-in devices. **The pre-release flag does not prevent that** (the guard there checks draft, not pre-release). For a smoke test, leave it a draft and delete it when done."
@@ -988,7 +920,7 @@ jobs:
       # ci_lib_package_legal_info archives with `-C <output_dir> legal-info`,
       # so every bundle carries its manifest at exactly legal-info/manifest.csv.
       # Each is unpacked under the Buildroot output dir it came from
-      # (legal-info.tar.gz -> output/, legal-info-rt.tar.gz -> output-rt/) and
+      # (legal-info.tar.gz -> output/; since ADR 0030 Phase C there is no per-variant bundle) and
       # named that way in the snapshot, which is both stable across releases
       # and self-describing in the graph UI.
       #

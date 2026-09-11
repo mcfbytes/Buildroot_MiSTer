@@ -147,29 +147,17 @@ runs:
         esac
         echo "BOARD=$BOARD" >> "$GITHUB_ENV"
 
-        # --- Which variant this run builds (see the file header) ---------------
-        # Validated ONCE, here, before any cache/build work — fragment
-        # existence IS the registry, so a new variant needs no edit here.
-        # Everything variant-shaped downstream reads the env this step
-        # computes. See docs/ci.md#variants.
+        # --- Which variant this run builds ------------------------------------
+        # Since ADR 0030 Phase C there are no kernel-only variants: the RT
+        # kernel is package/linux-rt inside the main build, so `make all`
+        # produces every kernel and the one image. The input is kept so
+        # callers do not break; anything but "main" is an error with a
+        # pointer, never a silent fallback.
         case "$VARIANT" in
           main) ;;
-          *[!a-z0-9_-]*|'')
-            echo "::error::invalid variant name '$VARIANT' -- kernel-variant names must be non-empty [a-z0-9_-]" >&2
-            exit 1
-            ;;
           *)
-            if [ ! -f "configs/mister_${VARIANT}.fragment" ]; then
-              echo "::error::unknown variant '$VARIANT' -- .github/actions/buildroot-build accepts 'main' or any kernel variant with a fragment at configs/mister_<name>.fragment (looked for configs/mister_${VARIANT}.fragment)" >&2
-              exit 1
-            fi
-            # Kernel variants build on the de10nano-kernel fragment stack,
-            # which shares its toolchain/kernel fragments with main's stack by
-            # construction (configs/fragments/stacks.mk) — assert that
-            # structure still holds BEFORE any cache work, or a drift builds
-            # wrong under a cache key that then pins the wrong toolchain in.
-            # See docs/ci.md#variants.
-            scripts/check-kernel-defconfig-sync.sh
+            echo "::error::variant '$VARIANT' -- kernel-only variants were retired by ADR 0030 Phase C (the RT kernel is package/linux-rt, built by 'make all'); this action only builds 'main'" >&2
+            exit 1
             ;;
         esac
         echo "VARIANT=$VARIANT" >> "$GITHUB_ENV"
@@ -346,22 +334,6 @@ runs:
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 
-    # 2b. A kernel variant's dl/, under its OWN key — cache keys are
-    # immutable, so a shared key would let whichever variant saves first
-    # lock the others' gaps in forever. restore-keys falls back through the
-    # variant's own prefix to MAIN's dl/ prefix; that fallback is safe
-    # despite the #2/#3 coupling above. See docs/ci.md#variant-dl-fallback.
-    - name: Restore Buildroot dl/ download cache (kernel variant)
-      id: dl-cache-variant
-      if: env.VARIANT != 'main'
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: dl/
-        key: br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/kernel-only.fragment', format('configs/mister_{0}.fragment', env.VARIANT)) }}
-        restore-keys: |
-          br-dl-${{ env.VARIANT }}-${{ env.BUILDROOT_VERSION }}-
-          br-dl-${{ env.BUILDROOT_VERSION }}-
-
     # 3. The variant's cross-toolchain: <O>/host plus its build stamps — THE
     # big win, since restoring this is what skips rebuilding gcc/binutils/
     # glibc from scratch. Path/key are the variant-resolved env (never
@@ -370,7 +342,7 @@ runs:
     # goes cold. See docs/ci.md#cache-coupling.
     - name: Restore Buildroot host toolchain
       id: host-cache
-      if: steps.dl-cache.outputs.cache-matched-key != '' || steps.dl-cache-variant.outputs.cache-matched-key != ''
+      if: steps.dl-cache.outputs.cache-matched-key != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.BR_HOST_PATHS }}
@@ -554,11 +526,11 @@ runs:
     # ran, keeping a variant's save inside its own key namespace — it can
     # never write into main's. See docs/ci.md#dl-cache-save.
     - name: Save Buildroot dl/ download cache
-      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-cache-variant.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
+      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: ${{ steps.dl-cache.outputs.cache-primary-key || steps.dl-cache-variant.outputs.cache-primary-key }}
+        key: ${{ steps.dl-cache.outputs.cache-primary-key }}
 
     - name: Save Buildroot release tarball
       if: always() && steps.tarball-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.tarball == 'true'

@@ -687,13 +687,14 @@ RT must be a separately compiled kernel image. `PREEMPT_RT` for 32-bit ARM merge
 mainline in **Linux 7.1**, which means on 7.2 it is a plain kconfig option with **no
 out-of-tree RT patch to carry**.
 
-The design ([ADR 0021](docs/decisions/0021-rt-kernel-first-class-ci.md)): `make rt` runs a
-**kernel-only** Buildroot build into `output-rt/`, hard-asserting `CONFIG_PREEMPT_RT=y` in
-the result, then stages its depmod'd module tree into an overlay that the next `make all`
-folds into the **one shipped `linux.img`**. You get `zImage_dtb` and `zImage_dtb-rt` as
-separate boot images, both of whose modules live in the same rootfs, selected on-device
-via `u-boot.txt`. CI builds the variant on **every gated run**, so a PR that breaks
-`make rt` goes red instead of rotting silently.
+The design ([ADR 0021](docs/decisions/0021-rt-kernel-first-class-ci.md), as amended by
+[ADR 0030](docs/decisions/0030-makefile-toward-vanilla-buildroot.md)): the RT kernel is
+`package/linux-rt`, a **second kernel package inside the one build** (the same
+`board/mister/de10nano/linux.config` plus `linux-rt.fragment`, the beta patch series, the same
+embedded stage-1 initramfs). The package hard-asserts `CONFIG_PREEMPT_RT=y` in the configured
+kernel, installs its module tree into the **one shipped `linux.img`** next to the main kernel's,
+and emits `zImage_dtb-rt` and `linux-rt.config` into `output/images/`. One `make` produces both
+kernels; there is no separate tree, overlay or ordering rule any more.
 
 `zImage_dtb-rt` is a **manual download** from the Release page — it is deliberately not on
 the `sdcard.img` installer payload and has no `db.json` entry, so no device is ever pushed
@@ -794,7 +795,6 @@ inventoried against real mr-fusion output in
 ```sh
 make                            # prints help — deliberately NOT a build
 make de10nano-defconfig         # generate output/.config from the fragment stack
-make rt                         # OPTIONAL: the PREEMPT_RT kernel — before `make all`, so its module tree lands in linux.img
 make all                        # build (first run bootstraps a cross-toolchain — hours, not minutes)
 ```
 
@@ -805,24 +805,21 @@ Three things that will bite you otherwise:
   wants. Use `make all`.
 - **Do not pass `-j`.** Buildroot's top level is not parallel-safe; it parallelises each
   package internally, defaulting to your CPU count. CI runs a bare `make all`.
-- **Configs are generated once and then left alone.** `make all` and `make rt` never
-  regenerate `output/.config` or `output-rt/.config` (so `menuconfig` edits survive), and
-  `make clean` keeps both. After a `git pull` that moves the Buildroot pin
-  (`BUILDROOT_VERSION` in the Makefile), or after a `make clean`, regenerate every config
-  you build — `make de10nano-defconfig` **and** `make rt-defconfig` — before building. The
-  symptom of a stale one is Buildroot stopping at an interactive Kconfig prompt
-  ("Toolchain type", "Kernel Headers"): a config written on the previous pin no longer
-  matches the new tree's symbols. A Buildroot pin move is best followed by `make distclean`
-  outright; a kernel-version change in `configs/mister_rt.fragment` needs `make rt-clean`.
+- **The config is generated once and then left alone.** `make all` never regenerates
+  `output/.config` (so `menuconfig` edits survive), and `make clean` keeps it. After a `git pull`
+  that moves the Buildroot pin (`BUILDROOT_VERSION` in the Makefile), or after a `make clean`,
+  run `make de10nano-defconfig` before building. The symptom of a stale config is Buildroot
+  stopping at an interactive Kconfig prompt ("Toolchain type", "Kernel Headers"): a config
+  written on the previous pin no longer matches the new tree's symbols. A Buildroot pin move is
+  best followed by `make distclean` outright.
 
 ### Useful targets
 
 | Target | What it does |
 |---|---|
 | `make all` | The shipped image: `linux.img` + `zImage_dtb` |
-| `make rt` | Kernel-only `PREEMPT_RT` build → `zImage_dtb-rt` + module overlay |
-| `make rt-defconfig` | Regenerate `output-rt/.config` from its stack — the rt twin of `de10nano-defconfig`; run it after a Buildroot pin move or a `make clean` |
-| `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all`. The card carries no variant kernel, so `make rt` is not required first; if you *do* build RT, run it before `make all` so its modules land in the image |
+| `make linux-rt` | Rebuild only the `PREEMPT_RT` kernel package → `output/images/zImage_dtb-rt` (built by `make all` anyway) |
+| `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all` |
 | `make mister-initramfs` | Stage-1 cpio only (`output/images/mister-initramfs.cpio`); it is a package of the main build (ADR 0030), embedded in the kernel by the `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS` extension |
 | `make menuconfig` / `linux-menuconfig` | Interactive Buildroot / kernel config |
 | `make savedefconfig` | Write the config back to the defconfig (**always** do this after editing) |

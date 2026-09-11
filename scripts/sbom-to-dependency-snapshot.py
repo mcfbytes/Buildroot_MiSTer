@@ -20,7 +20,7 @@ package is not in the shipped tarball it is not in the graph either.
 
     scripts/sbom-to-dependency-snapshot.py \
         --manifest output/legal-info/manifest.csv \
-        --manifest output-rt/legal-info/manifest.csv \
+        --manifest output-de25/legal-info/manifest.csv \
         --sha "$GITHUB_SHA" --ref refs/heads/master \
         --job-id "$GITHUB_RUN_ID" --job-correlator Release_dependency-graph \
         --job-html-url "$RUN_URL" --detector-url "$REPO_URL" \

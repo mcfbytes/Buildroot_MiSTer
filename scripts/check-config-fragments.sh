@@ -116,30 +116,11 @@ PIN_HOSTCC_VERSION="${CHECK_CONFIG_HOSTCC_VERSION:-14}"
 # EXPECTED to redefine on top of the kernel-only stack. Anything else a
 # variant redefines is a failure, so a variant that starts overriding, say,
 # the toolchain has to come here and say so.
-declare -A ALLOWED_OVERRIDES=(
-	[rt]="BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE BR2_LINUX_KERNEL_PATCH"
-)
+declare -A ALLOWED_OVERRIDES=()
+# (empty since ADR 0030 Phase C: kernel variants are packages of the image
+# configuration -- package/linux-rt -- not fragment stacks, so no fragment
+# legitimately redefines another's symbol any more.)
 
-# Designed divergences for (c): symbol-name PREFIXES on which the resolved
-# de10nano and de10nano-kernel configs may differ. Everything else must be
-# identical. Keep this list short and specific — it is the definition of
-# "what a kernel variant is allowed not to share with the image".
-LOCKSTEP_DIVERGENCE_PREFIXES="
-BR2_PACKAGE_
-BR2_INIT_
-BR2_SYSTEM_
-BR2_ROOTFS_OVERLAY
-BR2_ROOTFS_POST_BUILD_SCRIPT
-BR2_ROOTFS_DEVICE_CREATION_
-BR2_TARGET_ROOTFS_
-BR2_TARGET_GENERIC_
-BR2_TARGET_TZ_
-BR2_TARGET_LOCALTIME
-BR2_GENERATE_LOCALE
-BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_
-BR2_GDB_VERSION
-BR2_DEFCONFIG
-"
 
 UPDATE_GOLDEN=false
 KEEP=false
@@ -187,14 +168,6 @@ while IFS= read -r var; do
 	STACK_FILES[$label]=$(config_stack_files "$var" | tr '\n' ' ')
 	stack_order+=("$label")
 done < <(config_stack_vars)
-[ -n "${STACK_FILES[de10nano-kernel]+set}" ] || die "stacks.mk defines no DE10NANO_KERNEL stack — kernel variants have no base"
-shopt -s nullglob
-for f in "$ROOT"/configs/mister_*.fragment; do
-	name="${f#"$ROOT"/configs/mister_}"; name="${name%.fragment}"
-	STACK_FILES[$name]="${STACK_FILES[de10nano-kernel]}$f "
-	stack_order+=("$name")
-done
-shopt -u nullglob
 
 if [ "${#only[@]}" -gt 0 ]; then
 	for s in "${only[@]}"; do
@@ -242,7 +215,6 @@ golden_lookup() { # $1 = stack -> recorded hash for BR_VERSION, or empty
 
 # --- Per-stack work -----------------------------------------------------------
 declare -A NEW_GOLDEN=()
-declare -A RESOLVED=()
 missing_golden=0
 for stack in "${stack_order[@]}"; do
 	# shellcheck disable=SC2206 # the file list is space-separated on purpose
@@ -297,7 +269,6 @@ for stack in "${stack_order[@]}"; do
 		die "$stack: olddefconfig failed"
 	fi
 	resolved="$odir/.config"
-	RESOLVED[$stack]="$resolved"
 
 	# (b) every effective fragment line survives. "Effective" = the LAST
 	# definition in merge order, so an allowed variant override is checked
@@ -357,30 +328,9 @@ for stack in "${stack_order[@]}"; do
 	fi
 done
 
-# (c) resolved-level lockstep between the image and the kernel-only base.
-if [ -n "${RESOLVED[de10nano]+set}" ] && [ -n "${RESOLVED[de10nano-kernel]+set}" ]; then
-	div=$(diff \
-		<(normalise_config "${RESOLVED[de10nano]}" | sort) \
-		<(normalise_config "${RESOLVED[de10nano-kernel]}" | sort) \
-		| sed -n 's/^[<>] //p' | sed -e 's/^# \(BR2_[A-Za-z0-9_]*\) is not set$/\1/' -e 's/=.*$//' | sort -u || true)
-	bad=""
-	while IFS= read -r sym; do
-		[ -n "$sym" ] || continue
-		ok=false
-		while IFS= read -r pfx; do
-			[ -n "$pfx" ] || continue
-			case "$sym" in "$pfx"*) ok=true; break ;; esac
-		done <<< "$LOCKSTEP_DIVERGENCE_PREFIXES"
-		[ "$ok" = true ] || bad="$bad $sym"
-	done <<< "$div"
-	if [ -n "$bad" ]; then
-		fail "resolved-level lockstep: de10nano and de10nano-kernel differ on:$bad — outside the designed divergences (LOCKSTEP_DIVERGENCE_PREFIXES in $(basename "$0")). A variant kernel would be built with different toolchain/kernel settings than the image (docs/buildroot-config.md §4)."
-	else
-		echo "==> resolved-level lockstep: de10nano and de10nano-kernel agree on every symbol outside the designed divergences ($(printf '%s\n' "$div" | grep -c . ) differing symbols, all allowed)"
-	fi
-elif [ "${#only[@]}" -eq 0 ]; then
-	fail "resolved-level lockstep: de10nano or de10nano-kernel stack missing from stacks.mk"
-fi
+# (c) retired 2026-09-11 (ADR 0030 Phase C): there is no kernel-only stack to
+# hold in lockstep with the image; package/linux-rt builds from the image
+# configuration itself.
 
 
 # (a)-(d) while all of those go stale. Two asserts:
@@ -413,7 +363,6 @@ if [ "${#only[@]}" -eq 0 ]; then
 			fi
 		}
 		check_hashfiles DE10NANO de10nano-image
-		check_hashfiles DE10NANO_KERNEL kernel-only
 	else
 		fail "path consumer: $action not found"
 	fi

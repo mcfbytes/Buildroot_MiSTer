@@ -8,21 +8,16 @@
 # See docs/buildroot-config.md §1 for the mechanism and §10 for why each
 # symbol lives where it does.
 #
-# The de10nano and de10nano-kernel stacks share `common` and `de10nano` BY
-# CONSTRUCTION — that is what keeps the kernel-only base (used by `make rt`
-# and every CI kernel leg) in lockstep with the shipped image without a
-# mirrored copy. scripts/check-kernel-defconfig-sync.sh asserts this.
+# There is no kernel-only stack any more (ADR 0030 Phase C, 2026-09-11): the
+# PREEMPT_RT variant is package/linux-rt, a second kernel package built by the
+# de10nano IMAGE configuration from the same board/mister/de10nano/linux.config,
+# so the "kernel variants build on the image's toolchain/kernel fragments"
+# property holds by construction -- there is only one configuration.
 #
-# `image-common` is the second sharing axis, at right angles to the first: it
-# is in the IMAGE stack of every board and in the kernel-only stack of NONE,
-# so a package both images want is selected once instead of mirrored per
-# board — and the kernel-only base keeps its no-packages shape (§10 rule 4:
-# `common` is in the kernel-only stack's fingerprint text, `image-common` is
-# not). Merge order within a stack is free here: no symbol may be defined
-# twice in one stack (scripts/check-config-fragments.sh (a)), so the board
-# layer and the shared image layer never race.
+# `image-common` is the sharing axis between boards: it is in the IMAGE stack
+# of every board, so a package both images want is selected once instead of
+# mirrored per board.
 DE10NANO_FRAGMENTS        := common de10nano image-common de10nano-image
-DE10NANO_KERNEL_FRAGMENTS := common de10nano kernel-only
 DE25NANO_FRAGMENTS        := common de25nano image-common
 #
 # There is no stage-1 initramfs stack any more (ADR 0030, 2026-09-11): the

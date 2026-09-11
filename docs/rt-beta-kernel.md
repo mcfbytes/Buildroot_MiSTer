@@ -65,6 +65,16 @@ alongside the main 6.18 image and selected on-device (§5).
 
 ## 2. Structure — a kernel-only base defconfig plus a per-variant fragment
 
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** There is no kernel-only stack or `output-rt/`
+> tree any more. The variant is `package/linux-rt` (`package/linux-rt/linux-rt.mk`), a
+> kconfig-package that reuses the main kernel's make flags, kconfig fixups and
+> `board/mister/de10nano/linux.config`, layers `linux-rt.fragment`, applies
+> `linux-patches-beta` through `BR2_GLOBAL_PATCH_DIR/linux-rt`, and is selected by
+> `BR2_PACKAGE_LINUX_RT=y` in `configs/fragments/de10nano-image.fragment` (with its version pin
+> `BR2_PACKAGE_LINUX_RT_VERSION`). The kernel-config layering described below (`linux.config`
+> + `linux-rt.fragment`, the PREEMPT_RT assertion) is unchanged; the Buildroot-config layering
+> (`configs/mister_rt.fragment` on the kernel-only stack) is what was retired.
+
 The main 6.18 image build is untouched. Since ADR 0021's **2026-07-18
 amendment** the variant is a **kernel-only** Buildroot build (no userland): the
 shared base is the `de10nano-kernel` fragment stack (`common` + `de10nano` +
@@ -173,18 +183,20 @@ version code so it stays inert on the shared 6.18 build.
 
 ## 5. Build & flash
 
+Since ADR 0030 Phase C (2026-09-11) the RT kernel is `package/linux-rt`, built by the same
+`make all` that builds the image:
+
 ```sh
-make rt-defconfig             # only if output-rt/.config predates a Buildroot pin move or
-                              #    survived a `make clean`; `make rt-clean` instead when the
-                              #    fragment's kernel version moved (stale sibling tree)
-make rt                       # -> output-rt/images/zImage_dtb (the RT kernel)
-                              #    + its module tree staged into the overlay
-make all                      # -> linux.img now carries BOTH module trees
+make de10nano-defconfig       # once, or after a Buildroot pin move
+make all                      # -> output/images/zImage_dtb (6.18), zImage_dtb-rt (7.2 RT),
+                              #    linux-rt.config, and ONE linux.img carrying both module trees
+make linux-rt                 # rebuild only the RT kernel package, if iterating on it
+make linux-rt-menuconfig      # its kernel config (linux.config + linux-rt.fragment)
 # 1. install THAT linux.img on the device first — the normal Linux update
 #    path (replace /media/fat/linux/linux.img): it is the rootfs the RT
 #    module tree lives in, and an older on-device image has only 6.18 modules
 # 2. then put the RT kernel next to it:
-cp output-rt/images/zImage_dtb  /media/fat/linux/zImage_dtb-rt
+cp output/images/zImage_dtb-rt  /media/fat/linux/zImage_dtb-rt
 ```
 
 Select it on-device with a one-line edit to `/media/fat/linux/u-boot.txt`

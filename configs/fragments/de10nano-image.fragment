@@ -14,12 +14,12 @@
 # citations: docs/buildroot-config.md §5. Section numbers below refer to it.
 
 # --- Board hooks: post-build script, rootfs overlays (§5.1) ---
-# WARNING: the SECOND overlay entry (work/extra-modules-overlay) is where
-# kernel variants stage their module trees; `make all` mkdir -p's it because
-# Buildroot hard-fails on a missing overlay path. Adding/changing this line
-# busts the CI toolchain cache once (it is not BR2_PACKAGE_/BR2_LINUX_KERNEL).
+# Since ADR 0030 Phase C there is ONE overlay entry again: the RT kernel
+# variant is package/linux-rt in this same tree, and its modules_install
+# lands in TARGET_DIR directly, so the work/extra-modules-overlay staging
+# directory (and the two-place stale-tree removal it forced) is gone.
 BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/post-build.sh"
-BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay $(BR2_EXTERNAL_MISTER_PATH)/work/extra-modules-overlay"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
 
 # --- Image generation: ext4 linux.img, reproducible (§5.2) ---
 # WARNING: MKFS_OPTIONS pins the feature set, UUID, hash seed and block size
@@ -416,3 +416,12 @@ BR2_GENERATE_LOCALE="en_US.UTF-8"
 BR2_TARGET_TZ_INFO=y
 BR2_TARGET_TZ_ZONELIST="default"
 BR2_TARGET_LOCALTIME="Etc/UTC"
+
+# The PREEMPT_RT kernel variant, built beside the main kernel in this same
+# tree (package/linux-rt, ADR 0021 as amended by ADR 0030): images/zImage_dtb-rt
+# + linux-rt.config, and its module tree in the one rootfs next to the main
+# kernel's. Its version pin lives here, next to the 6.18 pin's home in
+# de10nano.fragment, so Renovate manages both from configs/fragments/; the
+# tarball hash is package/linux-rt/linux-rt.hash (kernel.org's signed manifest).
+BR2_PACKAGE_LINUX_RT=y
+BR2_PACKAGE_LINUX_RT_VERSION="7.2.4"

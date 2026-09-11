@@ -21,11 +21,10 @@
 #     must run, qemu-user against output/target as the sysroot.
 #
 # Usage: scripts/ci-tests.sh [build-dir]
-#   build-dir defaults to "output" (repo-root-relative). Only the image-contract
-#   scripts and the Phase-3 artifact checks honor an override -- the Makefile-based
-#   initramfs checks and scripts/test-initramfs.sh use Buildroot's own fixed
-#   output/ + output-initramfs/ layout (Makefile: OUTPUT_DIR := $(CURDIR)/output,
-#   not parameterized) and are SKIPPED with an explicit reason if build-dir differs.
+#   build-dir defaults to "output" (repo-root-relative). The image-contract
+#   scripts and the artifact checks honor an override; scripts/test-initramfs.sh
+#   reads the stage-1 cpio from the fixed output/images/ path (the package
+#   installs it there).
 #
 # Output: one PASS/FAIL/SKIP line per check (grouped by phase/subsystem), full
 # detail from called scripts shown inline, then a summary. SKIP never fails the
@@ -70,8 +69,6 @@ case "$BUILD_DIR_ARG" in
 	/*) BUILD_DIR="$BUILD_DIR_ARG" ;;
 	*)  BUILD_DIR="$ROOT/$BUILD_DIR_ARG" ;;
 esac
-IS_DEFAULT_OUTPUT=0
-[ "$BUILD_DIR" = "$ROOT/output" ] && IS_DEFAULT_OUTPUT=1
 
 IMAGES="$BUILD_DIR/images"
 TARGET="$BUILD_DIR/target"

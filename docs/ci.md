@@ -132,6 +132,14 @@ distro does not leak into the target output.
 
 ## Part II — Variants and the kernel-only build
 
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The kernel-variant matrix (`build-kernel`),
+> the `kernel-leg` and `merge-kernel-modules` actions, the variant caches and
+> `scripts/list-kernel-variants.sh` are gone. The RT kernel is `package/linux-rt` inside the
+> one `make all`, so `build.yml` is `gate → lint-config → build → status` and `release.yml`
+> stages `zImage_dtb-rt` and `linux-rt.config` straight from `output/images/`; its patches and
+> licences are in the single `legal-info.tar.gz`. `.github/actions/buildroot-build`'s
+> `variant` input errors on anything but `main`. This Part is kept for the record.
+
 <a id="variants"></a>
 ### Variants: main vs kernel-only
 

@@ -169,6 +169,15 @@ menu "Off-device backup"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/azcopy/Config.in"
 endmenu
 
+menu "Kernel variants (ADR 0021)"
+	# A second kernel built beside the main one in this same tree (ADR 0030
+	# Phase C): PREEMPT_RT on the 7.2.y line -> images/zImage_dtb-rt, with
+	# its module tree in the ONE rootfs. Same shape as Buildroot's own
+	# barebox-aux. Requires the stage-1 extension below (it embeds the same
+	# cpio).
+	source "$BR2_EXTERNAL_MISTER_PATH/package/linux-rt/Config.in"
+endmenu
+
 menu "Stage-1 initramfs (ADR 0002)"
 	# The cpio the kernel embeds, built as a package of this configuration
 	# (ADR 0030): a static BusyBox and a static fsck.exfat from the main

@@ -199,11 +199,18 @@ done
 case "$PIN" in
 	stable)
 		VERSION_FILE="configs/fragments/de10nano.fragment"
+		VERSION_SYMBOL="BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE"
+		HASH_FILE="board/mister/de10nano/patches/linux/linux.hash"
 		OUTCOME_PIN="kernel"
 		CHANGED_VAR="PATCH_HASH_CHANGED"
 		;;
 	rt)
-		VERSION_FILE="configs/mister_rt.fragment"
+		# Since ADR 0030 Phase C the RT variant is package/linux-rt: its pin is
+		# BR2_PACKAGE_LINUX_RT_VERSION in the DE10 image fragment and its hash
+		# file is the package's own (same signed-manifest rule).
+		VERSION_FILE="configs/fragments/de10nano-image.fragment"
+		VERSION_SYMBOL="BR2_PACKAGE_LINUX_RT_VERSION"
+		HASH_FILE="package/linux-rt/linux-rt.hash"
 		OUTCOME_PIN="kernel-rt"
 		CHANGED_VAR="RT_PATCH_HASH_CHANGED"
 		;;
@@ -225,7 +232,7 @@ main() {
 	outcomes_file="$(hash_sync_resolve_outcomes_file "$HASH_SYNC_OUTCOMES_FILE")"
 
 	local defconfig="$VERSION_FILE"
-	local linuxhash="board/mister/de10nano/patches/linux/linux.hash"
+	local linuxhash="$HASH_FILE"
 
 	if [ ! -f "$defconfig" ] || [ ! -f "$linuxhash" ]; then
 		echo "::warning::$defconfig or $linuxhash not found in this checkout -- skipping $OUTCOME_PIN"
@@ -251,7 +258,7 @@ main() {
 	# explicit empty-check below would never run and the failure would be
 	# silent. Swallowing the status lets that check emit its diagnostic instead.
 	local kver
-	kver=$(grep -oE '^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="[^"]+"' "$defconfig" \
+	kver=$(grep -oE "^${VERSION_SYMBOL}=\"[^\"]+\"" "$defconfig" \
 	        | sed -E 's/.*"([^"]+)"/\1/' | tail -1 || true)
 	if [ -z "$kver" ]; then
 		echo "::error::could not extract BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from $defconfig" >&2

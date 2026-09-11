@@ -438,6 +438,10 @@ hard-links `rootfs.ext2` to `linux.img` for the image (§5.2).
 
 ## 4. `kernel-only.fragment`
 
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The fragment and the `de10nano-kernel` stack are
+> gone: kernel variants are packages of the image configuration (`package/linux-rt`), so there
+> is nothing to hold in lockstep. Kept for the record.
+
 Turns a board stack into the shared KERNEL-ONLY base that kernel variants
 (`make rt`, and any future sibling; CI's `build-kernel` legs) build against
 (`docs/rt-beta-kernel.md`, ADR 0021 as amended 2026-07-18).
@@ -2678,6 +2682,12 @@ DE10's is (§10): both boards set it, to different scripts. Without
 ---
 
 ## 7. `mister_rt.fragment`
+
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The fragment is gone. The RT variant's
+> Buildroot-side selection is two lines in `de10nano-image.fragment` (`BR2_PACKAGE_LINUX_RT=y`,
+> `BR2_PACKAGE_LINUX_RT_VERSION="7.2.4"`); its kernel-config layer
+> (`board/mister/de10nano/linux-rt.fragment`) and patch dir are unchanged and consumed by
+> `package/linux-rt/linux-rt.mk`. Kept for the record.
 
 The RT / Linux-7.2 "beta" kernel variant — the BUILDROOT-config layer of the
 variant, layered on the kernel-only stack (`common` + `de10nano` +

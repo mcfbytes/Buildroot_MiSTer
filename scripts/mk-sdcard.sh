@@ -4,8 +4,7 @@
 # (`sdcard.img` / `sdcard-full.img`; TASKS.md P5.3, PLAN.md §8, ADR 0017, ADR 0020).
 #
 # This is the ORCHESTRATOR that ties the individually-authored sdcard-image pieces
-# together into one release artifact. It runs AFTER a completed `make rt` THEN
-# `make all` — that order, so `all` folds rt's staged module tree into linux.img
+# together into one release artifact. It runs AFTER a completed `make all`
 # (it needs the real kernel + rootfs this repo builds) and produces
 # `output/images/sdcard.img.xz` (or `output/images/sdcard-full.img.xz` when
 # SDCARD_CORES=1), plus the raw `.img` beside it so `scripts/check-sdcard.sh` can
@@ -22,7 +21,7 @@
 # ---------------------------------------------------------------------------
 #  1. Build the INSTALLER initramfs cpio from configs/mister_installer_defconfig
 #     into output-installer/ (a separate Buildroot O= with its own static-musl
-#     config, the way the Makefile builds output-rt/).
+#     config).
 #     Product: output-installer/images/rootfs.cpio.
 #
 #  2. Relink OUR kernel with that cpio embedded to produce the INSTALLER
@@ -77,9 +76,8 @@
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
-#   make rt && make all            # prerequisites: RT kernel FIRST (so `all`
-#                                  # folds its modules into linux.img), then
-#                                  # the main kernel + rootfs
+#   make all                       # prerequisite: the main kernel + rootfs (linux.img
+#                                  # already carries every kernel variant's modules)
 #   scripts/mk-sdcard.sh           # -> output/images/sdcard.img(.xz)
 #   SDCARD_CORES=1 scripts/mk-sdcard.sh   # -> output/images/sdcard-full.img(.xz)
 #
@@ -156,15 +154,11 @@ readonly OUR_PAYLOAD_7ZA="$OUTPUT_DIR/images/7za"
 # matching modules. That is exactly what the build-ORDER coherence check in
 # require_prerequisites still guards.
 
-# The extra-modules overlay (same path as the Makefile's EXTRA_MODULES_OVERLAY):
-# where `make rt` (locally) or the CI kernel artifacts (release.yml) stage the
-# variant module trees that `make all` folds into linux.img. Read-only here —
-# require_prerequisites cross-checks every kver staged in it against the
-# linux.img actually being shipped, because this script snapshots that image
-# BEFORE its own step-2 relink regenerates it: a `make all` that ran before
-# `make rt` yields a snapshot with no RT modules, and nothing downstream would
-# ever notice.
-readonly EXTRA_MODULES_OVERLAY="$REPO_ROOT/work/extra-modules-overlay"
+# Since ADR 0030 Phase C the RT kernel (package/linux-rt) installs its module
+# tree into the rootfs as part of the same `make all` that produces linux.img,
+# so there is no overlay to cross-check against the snapshotted image: a
+# linux.img from `make all` carries every kernel variant's modules by
+# construction.
 
 # --- Staging + assembly scratch --------------------------------------------
 # STAGE_DIR is the SAME default fetch-sdcard-payload.sh uses, so a warm
@@ -306,41 +300,6 @@ require_prerequisites() {
 	# first Linux update, which is the exact behaviour ADR 0023 exists to end.
 	[ -f "$OUR_PAYLOAD_7ZA" ] || die "missing $OUR_PAYLOAD_7ZA — run 'make all' before 'make sdcard' (package/7zip installs it; the card ships linux/7za, docs/verification/sdcard-payload.md)"
 
-	# Build-ORDER coherence (the check nothing else can do this late): the card's
-	# linux.img must already contain every module tree the extra-modules overlay
-	# staged — i.e. `make all` must have run AFTER `make rt` staged it. Built
-	# the other way round (all → rt), the image predates the overlay and a
-	# variant kernel finds NO matching modules: docs/rt-beta-kernel.md §5's
-	# silent broken-peripherals failure, baked into a flashable card.
-	#
-	# This check OUTLIVED the thing that motivated it and is kept deliberately.
-	# The card no longer ships zImage_dtb-rt itself (ADR 0021 as amended
-	# 2026-07-27), but the RT MODULES still ride inside this linux.img, and the
-	# documented dev workflow is to download zImage_dtb-rt and drop it on a card
-	# built from exactly this image. A card whose rootfs lacks the matching
-	# module tree turns that supported workflow into the same silent failure —
-	# so the invariant still has a consumer, just a manual one.
-	#
-	# So: every kver staged in the overlay must exist inside linux.img (debugfs
-	# — read-only, no root, same tool check-linux-img.sh leans on). An overlay
-	# with no module trees is fine and is not an error: that is the plain
-	# `make all` case with no variant built (and CI's release job, which never
-	# runs `make rt` locally, populates the overlay from artifacts BEFORE its
-	# `make all` — so it passes here too).
-	local kdir kver listing dbg=""
-	for kdir in "$EXTRA_MODULES_OVERLAY"/usr/lib/modules/*/; do
-		[ -d "$kdir" ] || continue   # unmatched glob stays literal — skip it
-		kver=$(basename "$kdir")
-		[ -n "$dbg" ] || dbg=$(resolve_debugfs)
-		# debugfs -p prints one /ino/mode/uid/gid/name/... record per entry and
-		# exits 0 even when the lookup fails, so success is judged by the OUTPUT
-		# (records start '/<inode>'), not the exit status — same reasoning as
-		# check-linux-img.sh's ssh_keys listing.
-		listing=$("$dbg" -R "ls -p /usr/lib/modules/$kver" "$OUR_LINUX_IMG" 2>/dev/null || true)
-		printf '%s\n' "$listing" | grep -q '^/[0-9]' \
-			|| die "linux.img lacks /usr/lib/modules/$kver, which the extra-modules overlay stages — the image predates the overlay (was 'make all' run BEFORE 'make rt'?). Re-run 'make all' to fold the tree into linux.img, or a dev who drops the matching variant kernel onto this card boots it with no modules (docs/rt-beta-kernel.md §5)"
-		log "linux.img carries /usr/lib/modules/$kver (matches the overlay)"
-	done
 
 	# The installer pieces authored by the sibling tasks.
 	[ -f "$INSTALLER_DEFCONFIG_FILE" ] || die "missing installer defconfig: $INSTALLER_DEFCONFIG_FILE"

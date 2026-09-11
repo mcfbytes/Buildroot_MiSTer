@@ -49,7 +49,7 @@
 #   SDCARD_CORES=1 scripts/fetch-sdcard-payload.sh
 #
 # STAGE_DIR precedence: $1 wins over $STAGE_DIR wins over the default
-# "<repo-root>/output-sdcard-stage" (mirrors the output-rt/output-initramfs
+# "<repo-root>/output-sdcard-stage" (mirrors the output-installer
 # naming the top-level Makefile already uses for per-stage build dirs).
 #
 # Result: <STAGE_DIR>/mister-payload/ populated per docs/verification/

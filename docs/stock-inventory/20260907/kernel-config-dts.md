@@ -17,13 +17,13 @@ committed files for Release 20260907 (not a scratch/dry-run copy).
 ## Verification result (this run)
 
 The script's own "verification" step diffs its output against
-`docs/stock-inventory/stock-linux.config` / `stock.dts` (the top-level, undated path) — that
+`docs/stock-inventory/20260907/stock-linux.config` / `stock.dts` (the top-level, undated path) — that
 path no longer holds any file (the 5.15 copies moved to `docs/stock-inventory/20250402/`,
 and nothing is checked in at the top level), so both compares report "no committed file to
 compare against". That is expected and not a problem; see the real cross-release diff below.
 
-- [stock-linux.config] no committed file at docs/stock-inventory/stock-linux.config to compare against
-- [stock.dts] no committed file at docs/stock-inventory/stock.dts to compare against
+- [stock-linux.config] no committed file at docs/stock-inventory/20260907/stock-linux.config to compare against
+- [stock.dts] no committed file at docs/stock-inventory/20260907/stock.dts to compare against
 
 ## stock-linux.config: 20250402 → 20260907
 

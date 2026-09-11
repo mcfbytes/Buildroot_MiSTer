@@ -7,8 +7,8 @@
 # factually, without embedding password hashes or private SSH host keys
 # into this repo -- see the doc body for why).
 #
-# Writes docs/stock-inventory/etc-configs.md and
-# docs/stock-inventory/etc-init-scripts-full.txt.
+# Writes docs/stock-inventory/<release>/etc-configs.md and
+# docs/stock-inventory/<release>/etc-init-scripts-full.txt.
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

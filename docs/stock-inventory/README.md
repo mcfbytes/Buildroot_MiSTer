@@ -150,21 +150,42 @@ scripts/inventory/run-all.sh \
   work/extracted/files/MiSTer
 ```
 
-`run-all.sh` always writes to the top-level `docs/stock-inventory/` (its output-directory
-is not parameterized for items a–e/g–h; item f alone takes an `[output-dir]` argument) —
-move the resulting files into a new `docs/stock-inventory/<release>/` directory afterward,
-the way `20260907/` was produced (see `docs/kernel-recon/fork-sync-2026-09/PLAN.md` §9.2 for
-the exact commands used, including how a release's `rootfs.tar.bz2` +
-`modules.tar.gz` + `firmware.tar.gz` + `addon.tar` were overlaid into one directory tree
-first, replicating the release's own `create_img.sh`, since every `gen-*.sh` here accepts
-an already-extracted directory equally to a raw ext4 image).
+Every `gen-*.sh` (and `run-all.sh`, which just calls them in sequence) writes into the
+directory `scripts/inventory/common.sh`'s `mrl_out_dir()` resolves, checked in this order:
 
-To regenerate a **single** inventory for a different release, set `MRL_SOURCE_LABEL` so the
-generated header names the release rather than a bare filename (`run-all.sh` defaults it to the
-image's basename), e.g. the way `20260907/firmware.md` was produced:
+- `MRL_OUT_DIR=<dir>` — an explicit output directory, created if it doesn't exist.
+- `MRL_RELEASE=<release>` — writes into `docs/stock-inventory/<release>/` (created if it
+  doesn't exist), e.g. `MRL_RELEASE=20260907` for the directory this file's table lists.
+- Neither set — the legacy top-level `docs/stock-inventory/` (pre-split behaviour).
+
+So regenerating a whole release directory in place is a single `run-all.sh` invocation, the
+way `20260907/` was produced (see `docs/kernel-recon/fork-sync-2026-09/PLAN.md` §9.2 for the
+exact commands used, including how a release's `rootfs.tar.bz2` + `modules.tar.gz` +
+`firmware.tar.gz` + `addon.tar` were overlaid into one directory tree first, replicating the
+release's own `create_img.sh`, since every `gen-*.sh` here accepts an already-extracted
+directory equally to a raw ext4 image):
 
 ```sh
-MRL_SOURCE_LABEL="linux.img (stock release_20260907, MiSTer.version 260907)" \
+MRL_RELEASE=20260907 scripts/inventory/run-all.sh \
+  work/extracted-20260907/files/linux/linux.img \
+  work/extracted-20260907/files/linux/zImage_dtb \
+  work/extracted-20260907/files/MiSTer
+```
+
+Item (f)'s script (`gen-kernel-config-dts.sh`) additionally takes an `[output-dir]` argument
+that overrides both env vars for that one run; its committed-file comparison always reads
+`MRL_OUT_DIR`/`MRL_RELEASE` (i.e. the same release directory the rest of the run writes to),
+and now FAILS — rather than silently passing — if the committed file it should be comparing
+against isn't there.
+
+To regenerate a **single** item for a different release, set `MRL_RELEASE` (or `MRL_OUT_DIR`)
+the same way, and set `MRL_SOURCE_LABEL` so the generated header names the release rather
+than a bare filename (`run-all.sh` defaults it to the image's basename), e.g. the way
+`20260907/firmware.md` was produced:
+
+```sh
+MRL_RELEASE=20260907 \
+  MRL_SOURCE_LABEL="linux.img (stock release_20260907, MiSTer.version 260907)" \
   scripts/inventory/gen-firmware.sh work/extracted-20260907/files/linux/linux.img
 ```
 

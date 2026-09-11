@@ -337,7 +337,17 @@ readonly -a IGNORE_GLOBS=(
 	'*.o' '*.o.*' '*.ko' '*.mod' '*.mod.c' '*.mod.o' '*.a' '*.cmd' '*.d'
 	'*.symtypes' '*.tmp' '*.orig' '*.rej' '*.dtb' '*.dtbo' '*.dtb.S' '*.i' '*.lst'
 	'include/generated/*' 'include/config/*' '*/include/generated/*'
-	'arch/arm/boot/*'
+	# NOT a directory wildcard ('arch/arm/boot/*'): in `[[ $p == $g ]]`, '*'
+	# matches '/' too, so that pattern silently ignored every DTS under
+	# arch/arm/boot/dts/ and every compressed-boot .c/.S under
+	# arch/arm/boot/compressed/ -- exactly the source this check exists to
+	# compare. Named per arch/arm/boot/.gitignore and
+	# arch/arm/boot/compressed/.gitignore instead: only the actual build
+	# outputs kbuild writes there. (vmlinux.lds is `*.lds` below; the
+	# compressed dir's *.o are `*.o` below; DTBs are `*.dtb`/`*.dtb.S` below.)
+	'arch/arm/boot/Image' 'arch/arm/boot/zImage' 'arch/arm/boot/xipImage'
+	'arch/arm/boot/bootpImage' 'arch/arm/boot/uImage'
+	'arch/arm/boot/compressed/vmlinux' 'arch/arm/boot/compressed/piggy_data'
 	'.stamp_*' '.applied_patches_list' '.files-list*.txt'
 	'certs/x509.genkey' 'usr/initramfs_data.cpio*' 'usr/gen_init_cpio'
 	'.git/*' 'EXPORT.md' 'build-mister-modules.sh'
@@ -368,14 +378,32 @@ readonly -a ARTIFACT_DIRS=(scripts/ tools/ certs/ usr/ security/selinux/ securit
 # not be allowed to excuse it.
 readonly SOURCE_RE='\.(c|h|S|dts|dtsi|rs|sh|pl|py|awk|json|yaml|rst)$|(^|/)(Makefile|Kbuild|Kconfig)[^/]*$'
 
-path_ignored() {
-	local p="$1" g
-	for g in "${IGNORE_GLOBS[@]}"; do
-		# shellcheck disable=SC2053 # unquoted RHS is the POINT: glob match, not string ==
-		[[ $p == $g ]] && return 0
-	done
-	return 1
+# One ERE built once from IGNORE_GLOBS, instead of testing every path against
+# every glob in a bash loop: the tree comparison below runs this over every
+# path in a full kernel checkout (tens of thousands on each side), and a
+# ~70-glob bash loop per path was the dominant cost of a --no-build run.
+# `grep -Ev` against one alternation does the same ~70-way test per path, but
+# in one process instead of `${#IGNORE_GLOBS[@]}` `[[ ]]` evaluations per path.
+#
+# Semantics must match `[[ $p == $g ]]` exactly: a glob is a FULL-STRING
+# match, so each fragment is anchored, and '*' matches '/' just like it does
+# in that bash pattern match. Every entry in IGNORE_GLOBS uses only '*' and
+# '?' as wildcards (no '[...]' classes), so the translation is: escape ERE
+# metacharacters, then glob '*' -> regex '.*' and glob '?' -> regex '.'.
+glob_to_ere() {
+	local g="$1"
+	g="$(printf '%s' "$g" | sed -e 's/[][(){}.^$+|]/\\&/g')"
+	g="${g//\*/.*}"
+	g="${g//\?/.}"
+	printf '%s' "$g"
 }
+ignore_ere_parts=()
+for g in "${IGNORE_GLOBS[@]}"; do
+	ignore_ere_parts+=("$(glob_to_ere "$g")")
+done
+IFS='|'
+readonly ignore_ere="${ignore_ere_parts[*]}"
+unset IFS
 
 say 'Sameness: export carried tip vs Buildroot build dir'
 
@@ -389,19 +417,23 @@ elif [[ -z ${carried_tip:-} ]]; then
 else
 	# The export side: path + blob sha + mode, straight out of git. No extraction, so no
 	# 1.4GB copy and no chance of the copy itself introducing a difference.
+	# `grep -Ev` against the precomputed alternation, not a per-path bash loop
+	# (see the comment above ignore_ere): the path is field 1, so the pattern
+	# is anchored at line-start and requires the literal tab right after it,
+	# which reproduces a full-string match against just that field. `|| true`
+	# because grep exits 1 (not an error here) if every path happened to be
+	# ignored, which `set -o pipefail` would otherwise turn into a script abort.
 	git -C "$export_dir" ls-tree -r "$carried_tip" |
 		awk -F'\t' '{ split($1, a, " "); print $2 "\t" a[1] "\t" a[3] }' |
-		while IFS=$'\t' read -r path mode sha; do
-			path_ignored "$path" || printf '%s\t%s\t%s\n' "$path" "$mode" "$sha"
-		done | sort >"$scratch/export.tsv"
+		{ grep -Ev "^(${ignore_ere})"$'\t' || true; } |
+		sort >"$scratch/export.tsv"
 
 	# The build side: every regular file and symlink, relative, minus the ignore list.
 	# -printf is GNU find; this repo's scripts already require GNU coreutils behaviour
 	# (stat -c in export-kernel-tree.sh), so that is not a new constraint.
 	(cd "$build_dir" && find . \( -type f -o -type l \) -printf '%P\n') |
-		while IFS= read -r path; do
-			path_ignored "$path" || printf '%s\n' "$path"
-		done | sort >"$scratch/build.paths"
+		{ grep -Ev "^(${ignore_ere})\$" || true; } |
+		sort >"$scratch/build.paths"
 
 	cut -f1 "$scratch/export.tsv" >"$scratch/export.paths"
 

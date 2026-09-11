@@ -6,12 +6,18 @@
 # "Reproduction" recipe in docs/verification/stock-release-20250402.md.
 #
 # Output-dir defaults to a scratch temp directory (never overwrites the
-# committed docs/stock-inventory/{stock-linux.config,stock.dts} unless you
-# explicitly pass that path). After generating, this script always diffs its
-# output against the committed files if they exist, and reports:
+# committed docs/stock-inventory/<release>/{stock-linux.config,stock.dts}
+# unless you explicitly pass that path). <release> is resolved the same way
+# common.sh's mrl_out_dir() resolves it for every other generator: set
+# MRL_OUT_DIR to an explicit directory, or MRL_RELEASE to a release name
+# (docs/stock-inventory/<MRL_RELEASE>/); with neither set it falls back to
+# the legacy top-level docs/stock-inventory/. After generating, this script
+# always diffs its output against the committed files, and reports:
 #   - byte-identical
 #   - content-identical (cosmetic-only diff, e.g. dtc version formatting)
 #   - DIFFERS (a real content difference -- investigate)
+#   - FAIL: no committed file to compare against (exit nonzero -- a
+#     comparison against nothing is not a pass)
 #
 # Requires: python3, dtc. No root needed.
 #
@@ -90,15 +96,19 @@ mrl_diff_stable() {
 compare_one() {
 	local label="$1" generated="$2" committed="$3" normalizer="${4:-}"
 	if [ ! -f "$committed" ]; then
-		echo "[$label] no committed file at docs/stock-inventory/$label to compare against"
-		return 0
+		# FAIL, not a pass: a comparison against a file that isn't there proves
+		# nothing, and silently returning 0 here previously let a missing/
+		# misconfigured committed-file path (e.g. MRL_RELEASE pointing at a
+		# release directory that was never populated) look like success.
+		echo "[$label] FAIL: no committed file at $committed to compare against"
+		return 1
 	fi
 	if cmp -s "$generated" "$committed"; then
-		echo "[$label] byte-identical to the committed docs/stock-inventory/$label"
+		echo "[$label] byte-identical to the committed $committed"
 		return 0
 	fi
 	if [ -z "$normalizer" ]; then
-		echo "[$label] DIFFERS from the committed docs/stock-inventory/$label (real content difference):"
+		echo "[$label] DIFFERS from the committed $committed (real content difference):"
 		mrl_diff_stable "$committed" "$generated" | head -60 || true
 		return 1
 	fi
@@ -113,12 +123,12 @@ compare_one() {
 	python3 "$normalizer" "$generated" "$norm_a"
 	python3 "$normalizer" "$committed" "$norm_b"
 	if cmp -s "$norm_a" "$norm_b"; then
-		echo "[$label] content-identical to the committed docs/stock-inventory/$label (cosmetic-only diff -- see below)"
+		echo "[$label] content-identical to the committed $committed (cosmetic-only diff -- see below)"
 		mrl_diff_stable "$committed" "$generated" | head -20 || true
 		rm -f "$norm_a" "$norm_b"
 		return 0
 	else
-		echo "[$label] DIFFERS from the committed docs/stock-inventory/$label (real content difference):"
+		echo "[$label] DIFFERS from the committed $committed (real content difference):"
 		mrl_diff_stable "$committed" "$generated" | head -60 || true
 		rm -f "$norm_a" "$norm_b"
 		return 1
@@ -143,8 +153,9 @@ dtc_version="$(dtc -v 2>&1 | head -1)"
 	printf 'Regeneration script: `scripts/inventory/gen-kernel-config-dts.sh <zImage_dtb> [output-dir]`.\n'
 	printf 'By default it writes to a scratch temp dir and never touches the committed\n'
 	printf '`stock-linux.config` / `stock.dts` -- it only *compares* its fresh output\n'
-	printf 'against them. Point `output-dir` at `docs/stock-inventory` to actually\n'
-	printf 're-commit (e.g. after building a new image in P1+).\n\n'
+	printf 'against them. Point `output-dir` at `docs/stock-inventory/<release>` (or set\n'
+	printf '`MRL_RELEASE`/`MRL_OUT_DIR`, which is also what the comparison above reads\n'
+	printf 'against) to actually re-commit (e.g. after building a new image in P1+).\n\n'
 	printf '## Verification result (this run)\n\n'
 	printf -- '- %s\n' "$config_result"
 	printf -- '- %s\n' "$dts_result"

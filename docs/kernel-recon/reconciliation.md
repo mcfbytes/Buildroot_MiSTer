@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-11 00:05 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
+Generated 2026-09-11 01:34 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
 
 ## How to read this table
 
@@ -134,13 +134,13 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `333d49b95` | v5.15 | **carried** | 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Implement MiSTer audio driver. |
 | `3d72b9db7` | v5.15 | **carried** | 0003-cpufreq-cyclone5-de10nano-overclock.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add cpufreq/overclock driver (#34) |
 | `41c45f378` | v6.18 | **carried** | 0048-hid-google-stadiaff-classic2usb-retrozord.patch | — | none (carried) | feature-loss/silent | Y | ? |  | Adapt Classic2USB and RetroZord HID force feedback support … |
-| `45283785a` | v5.15 | **carried** | 0032-hid-nintendo-joycon-combo-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | hid-nintendo: add virtual combo led, don't warn by IMU comp… |
+| `45283785a` | v5.15 | **carried** | 0032-hid-nintendo-joycon-combo-led.patch, 0040-hid-nintendo-imu-name-suffix.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | hid-nintendo: add virtual combo led, don't warn by IMU comp… |
 | `47dc53a22` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: fix the buttons codes. |
 | `484f68172` | v5.15 | **carried** | 0015-hid-nintendo-nso-famicom.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: Add support for the NSO Famicom controllers (no mic … |
 | `52a56ae3d` | v5.15 | **carried** | 0026-input-mousedev-eviocgrab.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | mousedev: disable touch to click on DualShock4 and DualSens… |
 | `5bdbf2f7e` | v5.15 | **carried** | 0018-hid-controllable-quirk.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid: add quirk for ControllaBLE. |
 | `5c410e935` | v5.15 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | feature-loss/loud | — | Y | ✓ | hid-sony: fix for 3rd party DS4 failing to connect by wire. |
-| `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
+| `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch, 0041-hid-nintendo-stock-led-classdev-names.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
 | `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | cosmetic/silent | — | N | ✓ | dualsense: give mute button and led to system. |
 | `6332499e7` | v6.18 | **carried** | 0047-btusb-mercusys-ma530-2c4e-0115.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for RTC PCF8563 |
@@ -157,7 +157,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `a14b5e8e1` | refs/pull/92/head | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud-in-dmesg-silent-to-user -- kernel log fills with repeated 'Failed to set baudrate', 'Failed handshake', and USB disconnect/reconnect messages (loud, but only visible over a serial console or `dmesg`, which a MiSTer user at the OSD never sees), while the user-facing symptom is simply 'the gamepad does not work' with no on-screen diagnostic -- Main_MiSTer has no code path that surfaces a failed HID bind. Graded 'loud' per the schema's two-value axis because the failure is not silent at the kernel level (errors are logged, the device visibly re-enumerates) -- picking 'silent' would hide the fact that `dmesg` already contains the exact signature (13x -EPROTO/-71, 18x 'probe - fail') needed to diagnose this without re-deriving anything, which is the operationally relevant distinction for this schema field. | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters |
 | `a2242dd85` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | xpad: exclude GIP-capable controllers. |
 | `aa8afe109` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | boot-critical/silent | Y | Y | ✓ | Add de10-nano DT. |
-| `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
+| `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch, 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
 | `b02a4a011` | v5.15 | **carried** | 0036-btusb-csr-clone-lmp-subver-2512.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | btusb: support for more CSR clones. |
 | `b1b168eb6` | v5.15 | **carried** | 0013-hid-flydigi-vader.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: add HID driver to fix Flydigi Vader 4 Pro mapping in… |
 | `b62efee23` | v5.15 | **carried** | 0029-leds-gpio-brightness-hw-changed.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hps_led: enable brightness change notification. |
@@ -178,7 +178,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `f0982bf2c` | v5.15 | **carried** | 0025-usbhid-jspoll-gamepad.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | usbhid: apply jspoll for gamepad usage as well. |
 | `f3c75eb02` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | XInput polling rate param + Qanba Obsidian XInput mode supp… |
 | `f52690120` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | dts: enable bridges. |
-| `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
+| `f84543926` | v5.15 | **carried** | 0033-hid-playstation-dualsense-player-id-led.patch, 0042-hid-playstation-stock-lightbar-led-names.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | dualsense: add player id led control. |
 | `fc8f3c2c6` | v5.15 | **carried** | 0019-hidpp-k400-fn-inversion.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Logitech K400r: disable Fn swap. |
 | `3d95de58f` | v5.15 | **carried-upstream-only** | — | carried for export only: `board/mister/de10nano/linux-patches-upstream/0100-init-support-for-init-loop-device.patch`; → initramfs /init boot flow with loop= parameter p… | none (replaced) | feature-loss/silent | — | Y | ✓ | Support for init loop device. |
 | `0d60c3482` | v5.15 | **dropped-upstream** | — | in mainline: `fc97b4d6a1a6`; → fc97b4d6a1a6 (HID: playstation: expose DualSense… | none (in mainline) | cosmetic/silent | — | N | ✓ | dualsense: add lightbar color control. |

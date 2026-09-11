@@ -349,7 +349,7 @@ design · `config` = feeds P1.3, not a patch.
 | `246984fce` (spidev hunk) | Enable SPI on LTC | `drivers/spi/spidev.c` — `{ .compatible = "altspi" }` | Sorgelig | no | **DROPPED (P1.7)** — DTS retargeted to `rohm,dh2228fv`, which 6.18's `spidev_dt_ids[]` already accepts (N2) | *(none — `0005` slot intentionally empty)* |
 | `215e6e662`, `7828d722e`, `d788e7ab9`, `0d7b4fc7e`, `5391b8171`, `1a1f208fa`, `ae9313e22`, `316288a3d`, `97a398176`, `f0fb626ac`, `9f59d13d5` | defconfig (11 commits) | `arch/arm/configs/MiSTer_defconfig` | Sorgelig; `ae9313e22` **Bas v.d. Wiel**; `316288a3d` **Larry**; `f0fb626ac` **Nigel Shearman**; `0d7b4fc7e` **fjmartinez2k**; `9f59d13d5` **Fabio DL** | n/a | **config** — feeds P1.3 | *(none)* |
 
-> **P1.3 note.** `docs/stock-inventory/stock-linux.config` (IKCONFIG, release 20250402) is
+> **P1.3 note.** `docs/stock-inventory/20250402/stock-linux.config` (IKCONFIG, release 20250402) is
 > **15 months older than fork HEAD**. It lacks `CONFIG_HID_VADER4=m` and `CONFIG_MACVLAN=y`,
 > which HEAD's `MiSTer_defconfig` has. P1.3 must reconcile *both* sources.
 > Symbols the carried patches introduce: `FB_MISTER`, `SND_MISTER_AUDIO` (+`SND_DUMMY`),

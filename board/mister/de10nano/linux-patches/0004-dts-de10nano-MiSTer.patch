@@ -7,7 +7,7 @@ Mainline's socfpga_cyclone5_de10nano.dts (144616a80889, v6.14) describes a
 bare Terasic DE10-Nano: ethernet, the three GPIO banks, i2c0 + the on-board
 accelerometer, mmc0 and uart0. MiSTer needs considerably more of the SoC
 switched on. This adds, all of it diffed value-by-value against the DTB
-decompiled from a running stock MiSTer (docs/stock-inventory/stock.dts):
+decompiled from a running stock MiSTer (docs/stock-inventory/20250402/stock.dts):
 
   - usb1                 dr_mode = "host", disable-over-current
   - fpga_bridge0/1/2     lwhps2fpga, hps2fpga, fpga2hps (fpga2sdram stays off)
@@ -129,7 +129,7 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.7.
 Divergences from stock, each with its justification, are tabulated in
 docs/dts-comparison.md. Verified: dtbs builds with zero new dtc warnings
 (default flags AND W=1); the built DTB was decompiled and compared node-by-node
-against docs/stock-inventory/stock.dts.
+against docs/stock-inventory/20250402/stock.dts.
 
 Additional origin (OCRAM tail reservation, appended 2026-09-11):
 Origin:       60e0d56bddc3eb1bdb0f3a08a5f755ade91b1f89 "ARM: socfpga:
@@ -180,7 +180,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 + *
 + * MiSTer additions (2026): the DE10-Nano as used by the MiSTer project.
 + * Every value here was diffed against the DTB decompiled from a running stock
-+ * MiSTer (docs/stock-inventory/stock.dts); the node-by-node comparison and the
++ * MiSTer (docs/stock-inventory/20250402/stock.dts); the node-by-node comparison and the
 + * reason for every divergence live in docs/dts-comparison.md.
   */
  /dts-v1/;

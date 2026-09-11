@@ -15,6 +15,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EM_DASH = "\u2014"  # kept out of the f-string: a backslash inside {} is a SyntaxError before Python 3.12
 RECORDS = HERE / "records"
+
+def carried_patches_str(r):
+    """The patch file(s) a record is carried in, for display. A record split across
+    several patches (carried_patches, plural -- e.g. one commit's diff produced both
+    0038 and 0039) renders every one of them, joined; a record's own comma-in-string
+    is impossible here since these are all bare patch filenames. Falls back to the
+    single carried_patch field, then EM_DASH, for records that predate the plural
+    field. No backslash inside the f-string expression (kept Py3.11-compatible, same
+    reason EM_DASH is a module constant above)."""
+    cps = [str(cp) for cp in (r.get("carried_patches") or [])]
+    return ", ".join(cps) if cps else (r.get("carried_patch") or EM_DASH)
+
 PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 
 # "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the
@@ -293,7 +305,7 @@ directory is not capped at one.
     for row in rows:
         r = row["r"]
         f.write(f"| `{row['sha'][:9]}` | {row['branch'].replace('MiSTer-','')} "
-                f"| **{r.get('disposition')}** | {r.get('carried_patch') or EM_DASH} "
+                f"| **{r.get('disposition')}** | {carried_patches_str(r)} "
                 f"| {why_of(r)} "
                 f"| {impact_today(r)} | {sev(r)}/{fm(r)} | {'Y' if coup(r) else '—'} "
                 f"| {'N' if r.get('agrees_with_provenance_doc') is False else 'Y' if r.get('agrees_with_provenance_doc') else '?'} "
@@ -337,7 +349,7 @@ with open(HERE / "silent-regressions.md", "w") as f:
     for row in rows:
         r = row["r"]
         if r.get("disposition") == "carried" and fm(r) == "silent" and sev(r) in ("boot-critical", "feature-loss"):
-            f.write(f"- `{row['sha'][:9]}` {trunc(r.get('subject'))} → {r.get('carried_patch')}\n")
+            f.write(f"- `{row['sha'][:9]}` {trunc(r.get('subject'))} → {carried_patches_str(r)}\n")
 
 with open(HERE / "device-support.md", "w") as f:
     f.write(f"# Device-ID inventory\n\nGenerated {now}. VID:PID → commits and dispositions "

@@ -14,8 +14,8 @@ re-commit (e.g. after building a new image in P1+).
 
 ## Verification result (this run)
 
-- [stock-linux.config] byte-identical to the committed docs/stock-inventory/stock-linux.config
-- [stock.dts] content-identical to the committed docs/stock-inventory/stock.dts (cosmetic-only diff -- see below)
+- [stock-linux.config] byte-identical to the committed docs/stock-inventory/20250402/stock-linux.config
+- [stock.dts] content-identical to the committed docs/stock-inventory/20250402/stock.dts (cosmetic-only diff -- see below)
 --- committed/stock.dts
 +++ generated/stock.dts
 @@ -1,999 +1,1123 @@

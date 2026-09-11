@@ -10,7 +10,7 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	  these thirteen, Buildroot's curated Config.in list just never grew a
 	  toggle for them.
 
-	  Seven are stock-parity files (docs/stock-inventory/firmware.md,
+	  Seven are stock-parity files (docs/stock-inventory/20260907/firmware.md,
 	  re-based on stock release_20260907 in 2026-09): the four original
 	  ones plus rtlwifi/rtl8710bufw_SMIC.bin, rtlwifi/rtl8710bufw_UMC.bin
 	  and rtlwifi/rtl8192fufw.bin, which the in-tree rtl8xxxu driver

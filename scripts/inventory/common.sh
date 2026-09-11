@@ -156,11 +156,30 @@ mrl_header() {
 	printf '\n'
 }
 
-# mrl_out_dir — resolve docs/stock-inventory relative to the repo root,
-# regardless of the caller's cwd. Requires this file to live at
+# mrl_out_dir — resolve the stock-inventory output directory, regardless of
+# the caller's cwd. Requires this file to live at
 # <repo>/scripts/inventory/common.sh.
+#
+# The 2026-09 split turned docs/stock-inventory/ from a single directory into
+# one per release (docs/stock-inventory/<release>/), so the fixed top-level
+# path this function used to return is stale for every gen-*.sh and for
+# run-all.sh. Two env vars, checked in order, pick where a run writes/reads:
+#   - MRL_OUT_DIR   explicit override -- any directory, created if missing.
+#   - MRL_RELEASE   write into docs/stock-inventory/<MRL_RELEASE>/ (created
+#                    if missing), e.g. MRL_RELEASE=20260907.
+# Neither set: the legacy top-level docs/stock-inventory/ (pre-split
+# behaviour, kept so a caller that never heard of the split still works).
 mrl_out_dir() {
-	local here
+	local here repo_root dir
 	here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-	printf '%s\n' "$(cd "$here/../../docs/stock-inventory" && pwd)"
+	repo_root="$(cd "$here/../.." && pwd)"
+	if [ -n "${MRL_OUT_DIR:-}" ]; then
+		dir="$MRL_OUT_DIR"
+	elif [ -n "${MRL_RELEASE:-}" ]; then
+		dir="$repo_root/docs/stock-inventory/$MRL_RELEASE"
+	else
+		dir="$repo_root/docs/stock-inventory"
+	fi
+	mkdir -p "$dir"
+	printf '%s\n' "$(cd "$dir" && pwd)"
 }

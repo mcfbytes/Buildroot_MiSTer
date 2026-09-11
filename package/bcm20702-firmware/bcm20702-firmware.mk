@@ -9,7 +9,7 @@
 # BT dongles after power-up (the very common ASUS USB-BT400, model 0b05:17cb,
 # and compatible generics; kernel CONFIG_BT_HCIBTUSB_BCM=y). Without it those
 # dongles enumerate but never come up. Stock ships this exact file
-# (docs/stock-inventory/firmware.md, 35000 bytes); it is NOT in mainline
+# (docs/stock-inventory/20250402/firmware.md, 35000 bytes); it is NOT in mainline
 # linux-firmware, so P3.3 left it as a flagged gap (docs/firmware-parity.md).
 #
 # REDISTRIBUTION: this is Broadcom's proprietary BT firmware. It is handled the

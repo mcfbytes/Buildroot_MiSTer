@@ -7,7 +7,7 @@ Why this exists: `scripts/extract-ikconfig` (in the kernel tree) shells out
 to an `lz4` CLI binary for this format (`lz4 -d -l`). This environment does
 not have an `lz4` CLI or a `python3-lz4` module installed (only the runtime
 shared library, which isn't invocable from the shell) — see
-docs/stock-inventory/kernel-config-dts.md for the evidence. The legacy frame
+docs/stock-inventory/20250402/kernel-config-dts.md for the evidence. The legacy frame
 format is simple enough to reimplement directly, with no dependency beyond
 the standard library, so gen-kernel-config-dts.sh remains runnable anywhere
 python3 is.

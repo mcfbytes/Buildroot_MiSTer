@@ -276,9 +276,9 @@ two **vanish**.
 **Is this actually parity-relevant?** Yes — checked, not assumed. Stock ships the iptables
 userland:
 
-* `docs/stock-inventory/shared-libraries.md:221` — `libip4tc.so.2`
-* `docs/stock-inventory/shared-libraries.md:387` — `libxtables.so.12`
-* `docs/stock-inventory/shared-libraries.md:22` — **106** shared objects under `usr/lib/xtables`
+* `docs/stock-inventory/20250402/shared-libraries.md:221` — `libip4tc.so.2`
+* `docs/stock-inventory/20250402/shared-libraries.md:387` — `libxtables.so.12`
+* `docs/stock-inventory/20250402/shared-libraries.md:22` — **106** shared objects under `usr/lib/xtables`
 
 `iptables-legacy` against a kernel with no `filter` table fails with *"Table does not exist
 (do you need to insmod?)"*. Community scripts that firewall or NAT would break.

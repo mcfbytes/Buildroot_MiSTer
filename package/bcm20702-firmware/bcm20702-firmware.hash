@@ -21,4 +21,4 @@ sha256  995cc2b1f077fe4ef016f9fe50e61f71e582620b29785c3fcfccb435472d074a  bcm207
 # .hash mechanism only covers the downloaded tarball above, not a derived file.
 # For the record:
 #   02204ae0958e7af3ffa6193713f5b3847d4ad37b9b9b5064b56cd96f2fdd18d1  BCM20702A1-0b05-17cb.hcd
-# 35000 bytes -- matches docs/stock-inventory/firmware.md's documented stock size exactly.
+# 35000 bytes -- matches docs/stock-inventory/20250402/firmware.md's documented stock size exactly.

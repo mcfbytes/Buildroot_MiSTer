@@ -108,28 +108,88 @@ Rebased:      Re-anchored against our own hid-nintendo.c stack rather
               than vanilla 6.18.49, per
               docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json:
               applied 0015, 0032, 0034, 0035, 0038, 0039, 0040, 0041 (in
-              that numeric order) to 6.18.49's hid-nintendo.c, then this
-              PR's diff on top -- all eight prerequisites applied clean
-              (0015 took a -4 line offset on its hunk 5, matching the
-              record; the other seven applied at zero offset/zero fuzz),
-              and the PR diff itself applied clean with offsets only
-              (hunk 1 +20, hunk 2 +70, hunk 3 +70 lines) and zero
-              fuzz/zero rejects -- exactly the record's measurement. The
-              hunks below are regenerated from that stacked, already-
-              patched tree (not from the raw PR diff against vanilla
-              6.18.49), so their @@ line numbers are exact for our
-              6.18.49-plus-eight-patches series and this patch applies
-              at -F0 with zero offset when it runs in its correct series
-              position (immediately after 0041).
-Forward-port: Verified at -F0 against 6.18.49 as described above; 6.18.50
-              is unreachable in the authoring session -- CI applies
-              against the real tarball. Also verified at -F0 (offsets
-              only, zero fuzz -- offset +40/+91/+91 against the beta
-              series' own hid-nintendo stack, matching the record) on
-              v7.2.3 after the beta versions of 0015, 0032, 0034, 0035,
-              0038, 0039, 0040, 0041 (0015 is a real re-anchored copy in
-              linux-patches-beta/, the other seven are symlinks to these
-              de10nano originals).
+              that numeric order) to 6.18.49's hid-nintendo.c -- all
+              eight applied clean (0015 took a -4 line offset on its
+              hunk 5, matching the record; the other seven applied at
+              zero offset/zero fuzz). The hunks below are regenerated
+              from THAT stacked, already-patched tree against our own
+              corrected joycon_init() (see "Deviation from PR #92"
+              below), not from the raw PR #92 diff, so their @@ line
+              numbers are exact for our 6.18.49-plus-eight-patches
+              series and this patch applies at -F0 with zero offset when
+              it runs in its correct series position (immediately after
+              0041).
+Deviation
+from PR #92:  PR #92's own reorder, applied verbatim, regresses a case
+              vanilla handles correctly. Vanilla 6.18.49
+              ($S/linux HEAD, drivers/hid/hid-nintendo.c:2467-2468, and
+              identical at v6.18.38 in the fork base d9ac12a69):
+
+                /* if handshake command fails, assume ble pro controller */
+                if (joycon_using_usb(ctlr) && !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {
+                        hid_dbg(hdev, "detected USB controller\n");
+                        /* set baudrate for improved latency */
+                        ret = joycon_send_usb(ctlr, JC_USB_CMD_BAUDRATE_3M, HZ);
+                        ...
+
+              i.e. a USB-bus device (joycon_using_usb(ctlr) true) whose
+              FIRST JC_USB_CMD_HANDSHAKE times out simply
+              skips the whole baudrate/handshake-confirm/no-timeout
+              block -- the comment says it plainly, "assume ble pro
+              controller" -- and falls straight through to
+              joycon_read_info() at the default baud rate. Probe can
+              still succeed. PR #92 moves read_info earlier and re-gates
+              the same block as
+              `if (joycon_using_usb(ctlr) && !joycon_device_is_8bitdo(ctlr))`,
+              which drops the "did the first handshake actually
+              succeed" condition entirely: a USB-bus device is now
+              baudrate-switched and re-handshaken (fatally, on failure:
+              `hid_err(...); goto out_unlock;`) whenever it is not
+              8BitDo, REGARDLESS of whether the first handshake
+              answered. A device class this affects: any USB-bus
+              057e:2009/2017/200e device that does not answer
+              JC_USB_CMD_HANDSHAKE on the first try but would have
+              probed successfully at the default baud rate under
+              vanilla's fallback -- PR #92 now sends it
+              JC_USB_CMD_BAUDRATE_3M and a second, fatal handshake it
+              was never going to answer either, so probe fails where
+              vanilla succeeded. Confirmed against vanilla 6.18.49 and
+              the fork's refs/pr/92 diff directly (not inferred) --
+              orchestrator finding, code-review 2026-09-11, reproduced
+              independently in this patch's own authoring session by
+              diffing the pre-0049 (eight-patch) tree against PR #92's
+              diff applied on top. THIS patch keeps PR #92's intent
+              (read_info before baudrate; skip baudrate/handshake
+              entirely for the 8BitDo OUI) but restores vanilla's
+              fallback with one added local: `bool usb_handshook =
+              false;`, set true only inside the first handshake's
+              success body (`hid_dbg(hdev, "detected USB controller\n");
+              usb_handshook = true;`), with the `else if
+              (jc_type_is_chrggrip(ctlr))` failure path unchanged, then
+              read_info unconditionally, then the baudrate block gated
+              on `if (usb_handshook && !joycon_device_is_8bitdo(ctlr))`
+              -- so a USB device that never answered the first
+              handshake gets neither the 8BitDo carve-out nor a second,
+              fatal handshake attempt; it falls through exactly as
+              vanilla does. This deviation from PR #92's code (not its
+              intent) is a review finding to send upstream to PR #92 --
+              see docs/kernel-recon/fork-sync-2026-09/upstream-candidates/08-hid-nintendo-pr92-handshake-fallback.NOTE.md.
+Forward-port: Verified at -F0 against 6.18.49 as described above (zero
+              offset, zero fuzz -- the diff was generated directly
+              against that stacked tree); 6.18.50 is unreachable in the
+              authoring session -- CI applies against the real tarball.
+              Re-verified at -F0 (offsets only, zero fuzz -- offset
+              +20/+21/+21 against the beta series' own hid-nintendo
+              stack) on v7.2.3 after the beta versions of 0015, 0032,
+              0034, 0035, 0038, 0039, 0040, 0041 (0015 is a real
+              re-anchored copy in linux-patches-beta/, the other seven
+              are symlinks to these de10nano originals). Both apply
+              proofs, and the deviation described above, were
+              re-measured in Wave 4 (code-review 2026-09-11) against the
+              regenerated diff in this patch, not the original Wave 3
+              diff (which mirrored PR #92 exactly and carried its
+              regression) -- see the wave4_review entry in
+              docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json.
 WHEN #92
 MERGES:       (1) add the merged commit's SHA to
               docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json's
@@ -155,17 +215,18 @@ MERGES:       (1) add the merged commit's SHA to
 Signed-off-by: Kasper Solesen <kaspersolesen@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- drivers/hid/hid-nintendo.c | 35 ++++++++++++++++++++++-------------
- 1 file changed, 22 insertions(+), 13 deletions(-)
+
+ drivers/hid/hid-nintendo.c | 34 ++++++++++++++++++++++------------
+ 1 file changed, 22 insertions(+), 12 deletions(-)
 
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
-index bb25344..e1d6dcc 100644
+index bb25344..ac39bdf 100644
 --- a/drivers/hid/hid-nintendo.c
 +++ b/drivers/hid/hid-nintendo.c
 @@ -711,6 +711,11 @@ static inline bool joycon_device_is_chrggrip(struct joycon_ctlr *ctlr)
  	return ctlr->hdev->product == USB_DEVICE_ID_NINTENDO_CHRGGRIP;
  }
-
+ 
 +static inline bool joycon_device_is_8bitdo(struct joycon_ctlr *ctlr)
 +{
 +	return !strncmp(ctlr->mac_addr_str, "E4:17:D8", 8);
@@ -174,10 +235,18 @@ index bb25344..e1d6dcc 100644
  /*
   * Controller type helpers
   *
-@@ -2609,6 +2614,21 @@ static int joycon_init(struct hid_device *hdev)
+@@ -2603,12 +2608,29 @@ static int joycon_read_info(struct joycon_ctlr *ctlr)
+ static int joycon_init(struct hid_device *hdev)
+ {
+ 	struct joycon_ctlr *ctlr = hid_get_drvdata(hdev);
++	bool usb_handshook = false;
+ 	int ret = 0;
+ 
+ 	mutex_lock(&ctlr->output_mutex);
  	/* if handshake command fails, assume ble pro controller */
  	if (joycon_using_usb(ctlr) && !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {
  		hid_dbg(hdev, "detected USB controller\n");
++		usb_handshook = true;
 +	} else if (jc_type_is_chrggrip(ctlr)) {
 +		hid_err(hdev, "Failed charging grip handshake\n");
 +		ret = -ETIMEDOUT;
@@ -192,11 +261,11 @@ index bb25344..e1d6dcc 100644
 +		goto out_unlock;
 +	}
 +
-+	if (joycon_using_usb(ctlr) && !joycon_device_is_8bitdo(ctlr)) {
++	if (usb_handshook && !joycon_device_is_8bitdo(ctlr)) {
  		/* set baudrate for improved latency */
  		ret = joycon_send_usb(ctlr, JC_USB_CMD_BAUDRATE_3M, HZ);
  		if (ret) {
-@@ -2629,18 +2649,6 @@ static int joycon_init(struct hid_device *hdev)
+@@ -2629,18 +2651,6 @@ static int joycon_init(struct hid_device *hdev)
  		 * This doesn't send a response, so ignore the timeout.
  		 */
  		joycon_send_usb(ctlr, JC_USB_CMD_NO_TIMEOUT, HZ/10);
@@ -213,5 +282,5 @@ index bb25344..e1d6dcc 100644
 -			ret);
 -		goto out_unlock;
  	}
-
+ 
  	if (joycon_has_joysticks(ctlr)) {

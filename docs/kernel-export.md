@@ -81,6 +81,27 @@ Recorded so nobody "fixes" them backwards (details and evidence in
 - His tree keeps a second, separate DTS; ours patches vanilla's and provides his filename as an
   alias (row 3).
 
+### 1.4 Deficiencies observed in `MiSTer-devel/Linux-Kernel_MiSTer` — what to raise upstream
+
+Measured against `MiSTer-v6.18` @ `c129b0fac` and Release 20260907 during the 2026-09
+increment. "Prepared" means a ready-to-send patch or comment exists under
+`docs/kernel-recon/fork-sync-2026-09/upstream-candidates/`; nothing has been sent (owner decision).
+
+| # | Deficiency | Evidence | Status upstream | Our artefact / suggested action |
+|---|---|---|---|---|
+| 1 | **Shipped release regressions.** Release 20260907 (= `aec7dc3aa`) ships with `mmap(/dev/fb0)` returning `-ENODEV` (Console Mode / SDL fbcon cannot start), no driver for RTL8811AU/8821AU (`CONFIG_RTW88_8821AU` off), and no cpufreq/overclock driver at all | shipped config + module list (`fork-sync-2026-09/evidence/`) | all three fixed on the branch after the release (#83, #81, #85) but **not yet in any shipped release** | nothing to submit; worth asking for a point release. Users on stock are affected until then |
+| 2 | `MiSTer_fb.c` tests a `memremap()` result with `IS_ERR()`; `memremap()` returns NULL, so a failed mapping falls through to an oops with a stale `devm_ioremap_resource` message | `tree-diff-2026-09.md` F1; our `0001` has the correct check (README bug B2) | open | **prepared: `07-fbdev-mister-fb-memremap-null-check.patch`** |
+| 3 | **PR #92 (open) regresses USB controllers that do not answer the first handshake**: the moved baudrate block is gated on `using_usb && !8bitdo` instead of on the first handshake having succeeded, so vanilla's "assume BLE pro controller, run at default baud" fallback becomes a fatal second handshake | code review of our `0049` (2026-09-11); vanilla `joycon_init()` quoted in the note | open PR | **prepared: `08-hid-nintendo-pr92-handshake-fallback.NOTE.md`** (review comment + one-variable fix); our `0049` carries the corrected form |
+| 4 | Stock-5.15 controller behaviour the 6.18 port lost, all Main_MiSTer-coupled: NSO N64/Genesis button maps differ from stock (SDL `gamecontrollerdb` rows shift), IMU input device not named `" IMU"` (Main_MiSTer opens it as a phantom pad), LED classdevs not named `player1..4`/`home`, lightbar LEDs not named `:red/:green/:blue` | records `b00a72159`, `45283785a`, `60821059c`, `f84543926`; `tree-diff-2026-09.md` §b | open | **prepared: patches `02`–`05`** |
+| 5 | `BTN_Z` declared in the shared PlayStation button table, so DualShock 4 gains a button stock 5.15 never exposed on it | `fork-sync-2026-07.md` §3 | open | **prepared: `06-hid-playstation-dualsense-btn-z-scoping.patch`** (behaviour change for DS4 users stated in the draft) |
+| 6 | **AIC8800 driver vendored without a licence**: 139 files, 85 with a bare copyright line and no grant, 51 with nothing, 2 Apache-2.0 (`aic_br_ext.{c,h}`, GPLv2-incompatible), no `LICENSE`/`README`; needs ~60 firmware blobs that no shipped `firmware.tar.gz` contains; a `wext` shim; SDK snapshot `rwnx v6.4.3.0 - 1a4b0054d2M` | `memo-Q9-aic8800.md` §1.3, §2 | landed 2026-09-11 | not a patch: raise as an issue — name the upstream repo/commit, add its licence text, ship the firmware (or say where it comes from), consider out-of-tree packaging |
+| 7 | cpufreq port (#85) open items by its own author: 1200 MHz long-duration untested, MiSTer Pi/SuperStation untested, "OSD movement during scripts" unexplained, boost-off harness not re-run; and its OCRAM `flags-sram` rationale is wrong (Main_MiSTer's flags are in DDR at `0x1FFFF000`) | `memo-Q4-cpufreq.md` §2, §6 | landed | none to submit; worth a note that the reservation is hygiene, not a Main_MiSTer requirement |
+| 8 | Release 20260907's `firmware.tar.gz` ships modules without their firmware for RTL8814AU, RTL8822CU and RTL8723DU (`rtw88_*` modules present, `rtw8814a_fw.bin` / `rtw8822c_fw.bin` / `rtw8723d_fw.bin` absent) | Wave 4 audit (`audit-findings.md`) | shipped | a `Linux_Image_creator_MiSTer` issue, not a kernel patch |
+| 9 | No tags or releases on the kernel repository; the shipped kernel is identifiable only by fingerprinting its config against branch commits (this repo had to diff the IKCONFIG against every candidate) | `fork-sync-2026-09/PLAN.md` §1.2 | process | suggest tagging the commit each release is built from |
+| 10 | Pinned at 6.18.38 with no `.y` stable updates — the 5.15.1 pattern again (12 releases behind at time of writing) | `Makefile` `SUBLEVEL = 38` | process | suggest tracking `linux-6.18.y`; our export tree offers a ready 6.18.50 base (§2) |
+| 11 | Non-upstreamable hacks carried in-tree: `spidev` `altspi` compatible (a DTS retarget to `rohm,dh2228fv` does the same with no driver change), `vt.h` `MAX_NR_CONSOLES 63→9` (no consumer; Main_MiSTer uses VT 1–2 only) | records `246984fce`, `b2a04cbfd` | landed | low value; mention if a cleanup pass is ever welcome |
+| 12 | exFAT symlink support is a parallel implementation; ours reuses vanilla's `page_symlink()`/`page_get_link()` infrastructure with the same on-disk format | `0031` header; tree-diff exfat cluster (behaviourally identical) | landed | weaker candidate — offer only if he wants the smaller diff |
+
 ---
 
 ## 2. Regenerating the tree for the current pin

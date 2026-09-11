@@ -34,8 +34,8 @@
 # names don't participate in udev/modalias autoload matching (that's by
 # device ID, unaffected), and the firmware split is upstream's own fix for
 # using the wrong radio calibration on multi-PID dongle hardware. Flagged
-# here because docs/stock-inventory/modules.md's 7-module stock list and
-# docs/stock-inventory/firmware.md's "xow_dongle.bin" entry both predate this
+# here because docs/stock-inventory/20250402/modules.md's 7-module stock list and
+# docs/stock-inventory/20250402/firmware.md's "xow_dongle.bin" entry both predate this
 # rename and will not string-match the built module/firmware names -- expected,
 # not a bug. See docs/decisions/0003-xone-firmware.md for the firmware side.
 #

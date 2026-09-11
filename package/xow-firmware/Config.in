@@ -11,8 +11,9 @@ config BR2_PACKAGE_XOW_FIRMWARE
 
 	  This is a maintainer decision (ACCEPTED, 2026-07-13), not a
 	  default this package invented: stock bundles this exact firmware
-	  (docs/stock-inventory/firmware.md), so redistributing it is
-	  what parity requires. The firmware is covered by Microsoft's
+	  (docs/stock-inventory/20250402/firmware.md, the inventory that
+	  existed at decision time), so redistributing it is what parity
+	  requires. The firmware is covered by Microsoft's
 	  Terms of Use (https://www.microsoft.com/en-us/legal/terms-of-use),
 	  not GPL -- see docs/decisions/0003-xone-firmware.md for the full
 	  analysis, provenance, and the options that were weighed before

@@ -8,7 +8,7 @@
 # dependencies, e.g. libpam, resolve) rather than guessing from a build
 # config -- this is the same binary that runs on the real target.
 #
-# Writes docs/stock-inventory/busybox-applets.md.
+# Writes docs/stock-inventory/<release>/busybox-applets.md.
 #
 # shellcheck disable=SC2016,SC1091,SC2034
 set -euo pipefail

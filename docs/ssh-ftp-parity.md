@@ -28,6 +28,13 @@
 > document's claims about its defaults and its shipped `proftpd.conf` were read against
 > 1.3.8d. That has not been re-verified.
 >
+> **Posture change proposed (2026-09-11):** [ADR 0031](decisions/0031-secure-by-default-network-posture.md)
+> proposes moving from "parity of defaults" to "parity of capability" for sshd and
+> proftpd (anonymous FTP removed, FTP chrooted to `/media`, key-present ⇒ password auth
+> off, `/etc/shadow` persisted, seccomp on). Every claim in this document about the
+> *current* config remains true until that plan's tasks land; each task adds a
+> divergence row here.
+>
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`
 > expects. Nothing in CI asserts package versions, so this drift is caught by

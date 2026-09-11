@@ -1281,6 +1281,39 @@ the fallback is imaginary.
 That is a better fallback than a permanently-disabled package, because it cannot silently
 rot.
 
+### The deletion criterion, and the measurement that satisfies it
+
+The rule applied was narrow: **delete only a package whose chips are now fully driven by
+vanilla Linux**; keep anything that might still add value. "Fully driven" was measured,
+not assumed, because §6.4's subset proof covered only the 88xxa pair (8812au/8821au) and
+the same question was open for the other five.
+
+Method: extract each fork's USB ID table at its pinned commit, and compare against the IDs
+the image *actually builds* — taken from the modalias strings of the built `.ko` files in
+the pinned 6.18.50 tree, not from a source grep, so it reflects exactly which `CONFIG_*`
+are enabled. The image claims **972 distinct USB IDs across 85 built wireless/BT modules**.
+
+| Deleted package | IDs in its table | Claimed by nothing the image builds |
+|---|---:|---:|
+| `rtl8188eu-aircrack-ng` | 39 | **0** |
+| `rtl8188fu` | 1 | **0** |
+| `rtl8812au` | 44 | **0** |
+| `rtl8814au-morrownr` | 66 | **0** |
+| `rtl8821au-morrownr` | 55 | **0** |
+| `rtl8821cu-morrownr` | 31 | **0** |
+| `rtl88x2bu` | 31 | **0** |
+
+**Every ID every one of them claimed is claimed by a module this image builds.** Nothing
+is lost, for any dongle, by any of the seven deletions.
+
+`rtl8188fu` is worth a note because it nearly escaped the audit: its table does not use
+the `USB_DEVICE(0x…, 0x…)` shape the other six do, so a regex written for them extracted
+zero IDs and reported "inconclusive" rather than "covered" — the right failure, but only
+because the script distinguished the two. It carries exactly **one** entry,
+`USB_DEVICE_AND_INTERFACE_INFO(0x0BDA, 0xF179, …)`, and `rtl8xxxu.ko` claims `0bda:f179`
+(it links `8188f.o`, confirmed in the built tree alongside `8188e.o`, `8710b.o` and the
+rest). If you re-run this audit, do not trust a zero-ID extraction as a pass.
+
 **What this changes elsewhere:**
 
 | Where | Before | After |

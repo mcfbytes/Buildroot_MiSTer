@@ -402,7 +402,11 @@ Remaining, in unblock order:
    pointed to from the DE25 series; the aarch64 leg's `symlink` case is the acceptance test —
    it is the ONLY place 0031-on-7.x is executed rather than compiled.~~ **DONE 2026-09-06:**
    beta-local copy, DE25 series relinked, aarch64 leg 8/8, arm compile clean on the RT config.
-   Remaining: the first `ln -s` on an RT-booted DE10 (32-bit 7.x is still compile-only).
+   ~~Remaining: the first `ln -s` on an RT-booted DE10 (32-bit 7.x is still compile-only).~~
+   **2026-09-11:** executed as 32-bit ARM by `scripts/test-initramfs.sh --kernel rt` (7.2.4,
+   `symlink`/`exfat`/`fsck-request` pass; the 6.18-form patch on 7.2.4 reproduces the Oops),
+   after the rig, still on a pre-rewrite RT 7.2.3, panicked on the Arcade Organizer's first
+   symlink (ADR 0002 §8b). Hardware boot of the fixed RT kernel still owed.
 3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
    submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
    (ordered on return).

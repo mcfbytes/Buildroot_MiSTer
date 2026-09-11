@@ -300,6 +300,30 @@ else
 	fi
 fi
 
+# The same /init on the DE10's RT kernel series (7.2.y): the three cases that
+# exercise the exfat driver, because 7.x exfat is iomap-based and board patch
+# 0031 (Samsung-format symlinks, ADR 0019) is a separate re-anchored copy
+# there (linux-patches-beta/). Its only other executions are aarch64 (the
+# DE25 leg); the DE10-Nano runs it as 32-bit ARM, and the first field `ln -s`
+# on an RT-booted board Oopsed (2026-09-11) on the pre-rewrite copy. Gated
+# like the DE10 leg; a second multi_v7 kernel build, cached under
+# work/test-initramfs-rt*.
+if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
+elif ! have qemu-system-arm; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "qemu-system-arm not found on PATH"
+elif ! grep -q '^BR2_PACKAGE_LINUX_RT=y$' "$ROOT/configs/mister_de10nano_defconfig"; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "BR2_PACKAGE_LINUX_RT is not enabled in configs/mister_de10nano_defconfig"
+else
+	printf -- '--- test-initramfs.sh --kernel rt: exfat fsck-request symlink ---\n'
+	printf '  (builds/reuses a second QEMU test kernel at the RT pin -- can take several minutes)\n'
+	if "$ROOT/scripts/test-initramfs.sh" --kernel rt exfat fsck-request symlink; then
+		pass "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, 3 exfat cases)"
+	else
+		fail "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, 3 exfat cases)" "one or more of the 3 cases failed -- see output above"
+	fi
+fi
+
 # The DE25-Nano's stage 1: the SAME package built for aarch64 by the DE25
 # configuration -- once its stack enables BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS
 # (ADR 0029 D11 keeps that off until a board has booted). Gated on the cpio

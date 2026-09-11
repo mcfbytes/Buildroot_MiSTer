@@ -364,6 +364,34 @@ readonly -a IGNORE_GLOBS=(
 	'lib/crc32table.h' 'lib/crc64table.h' 'lib/oid_registry_data.c'
 	'kernel/config_data*' 'kernel/kheaders_data*' '.kernelrelease'
 	'*.export.c' '*.lds' '*.dt.yaml' '*.dtb.S' '*.s'
+	# Seen for the first time against a REALLY BUILT tree (6.18.50, 2026-09-11). The
+	# first dry run of this check pointed --build-dir at a tarball+patch tree that had
+	# never been compiled, so none of these existed and the list above looked complete.
+	# All are written by kbuild or by Buildroot, none is in the kernel source tree.
+	# 'modules.order' above is unanchored and so matched only the top-level one; kbuild
+	# writes one per subdirectory (647 of them here).
+	'*/modules.order'
+	'dtbs-list' '*/dtbs-list'
+	'.checked-atomic-*.h' '.br_regen_dot_config'
+	'*.asn1.c' '*.asn1.h'
+	'drivers/scsi/scsi_devinfo_tbl.c'
+	'drivers/tty/vt/conmakehash' 'drivers/tty/vt/ucs_*_table.h'
+	'init/utsversion-tmp.h'
+	'lib/crc/crc32table.h' 'lib/crc/gen_crc32table'
+	'lib/crypto/arm/sha*-core.S'
+	'net/wireless/shipped-certs.c'
+	# perf, which Buildroot's linux-tools package builds in-tree. Its flex/bison output
+	# is named "expr-flex.c"/"pmu-bison.c", which the *.lex.c/*.tab.c globs above do not
+	# match; beauty/generated/ is a directory called generated; and the four lib*/
+	# include trees are COPIED into place by perf's build -- verified absent from the
+	# exported source tree, so they can only ever be build output.
+	'tools/perf/util/*-flex.c' 'tools/perf/util/*-flex.h'
+	'tools/perf/util/*-bison.c' 'tools/perf/util/*-bison.h'
+	'tools/perf/util/intel-pt-decoder/inat-tables.c'
+	'tools/perf/trace/beauty/generated/*'
+	'tools/perf/libapi/*' 'tools/perf/libperf/*'
+	'tools/perf/libsubcmd/*' 'tools/perf/libsymbol/*'
+	'tools/perf/common-cmds.h' 'tools/perf/pmu-events/*'
 )
 
 # A path that is only in --build-dir and is not matched above is reported. Most such
@@ -477,8 +505,20 @@ else
 	done <"$scratch/both"
 
 	if [[ -s $scratch/regular.paths ]]; then
-		(cd "$build_dir" && git hash-object --no-filters --stdin-paths \
-			<"$scratch/regular.paths") >"$scratch/regular.sha"
+		# ABSOLUTE paths on stdin, deliberately. `git hash-object --stdin-paths`
+		# resolves a RELATIVE path against the repository root prefixed by the cwd's
+		# position in that repo -- not against the cwd -- whenever it is run inside a
+		# work tree. A build dir under output/ is inside this repo, so `cd $build_dir`
+		# plus a relative path became "output/build/linux-<ver>/<path>" resolved from
+		# the repo root and every file failed to open:
+		#     fatal: could not open '.clang-format' for reading: No such file or directory
+		# An absolute path is returned unchanged by git's prefix_filename(), so it is
+		# immune to where the build dir happens to live. (This did not show up in the
+		# first dry run because that build dir was a temp directory outside any repo,
+		# where the prefix is empty and the two spellings coincide.)
+		sed "s|^|$build_dir/|" "$scratch/regular.paths" >"$scratch/regular.abs"
+		git hash-object --no-filters --stdin-paths \
+			<"$scratch/regular.abs" >"$scratch/regular.sha"
 		paste "$scratch/regular.paths" "$scratch/regular.sha" | sort >"$scratch/build.tsv"
 		join -t$'\t' -j1 -o 0,1.3,2.2 "$scratch/export.tsv" "$scratch/build.tsv" |
 			awk -F'\t' '$2 != $3 { print $1 }' >>"$scratch/differ"

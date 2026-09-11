@@ -44,6 +44,42 @@ Tool versions used to produce this manifest (recorded for reproducibility):
   correct git blob for this exact filename/size in the source repo.
 - How to reproduce: `curl -LO <commit-pinned URL above>` and verify MD5/SHA-256 above.
 
+### work/release_20260907.7z (the current `release.yml` pin, since 2026-09)
+- Source repo:      MiSTer-devel/SD-Installer-Win64_MiSTer (branch: master)
+- Committed as TWO split 7z volumes (consecutive byte slices of one archive):
+  release_20260907.7z.001 (blob 9847e504acd304b469ac3b3fc8629216f0cb5262, 83,886,080 bytes,
+  MD5 a939a2b229fc7156f5d697aee4821f65) and
+  release_20260907.7z.002 (blob 2f622ee30778aff1184c48d0e3e802eeff7cb14f, 34,050,686 bytes,
+  MD5 06b9770e5247864e3a7ee5001fc38c5a)
+- Introduced by commit: 76fd6f4ced6350b0ad56a7013b41526f47e3a2fb ("Release 20260907.", 2026-09-08T04:12:03+08:00)
+- Commit-pinned URLs (verified HTTP 200 on 2026-09-10):
+  https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001
+  https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002
+- Joined (`cat release_20260907.7z.001 release_20260907.7z.002 > release_20260907.7z`):
+  Size:    117,936,766 bytes
+  MD5:     8cd4edca838fdc226390e3fb04f3ca79
+  SHA-256: e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66
+  `7z t` passes; method LZMA2:26 LZMA:20 BCJ2, solid, 2 blocks (same as 20250402).
+- Byte-identical to Distribution_MiSTer's own mirror of the joined file,
+  https://github.com/MiSTer-devel/Distribution_MiSTer/releases/download/all_releases/linux_release_20260907.7z
+  (fetched and `cmp`-ed 2026-09-10).
+- Contents: same 18-member layout as 20250402. Delta in `files/linux/`: `linux.img`
+  (kernel 6.18.38-MiSTer, `/MiSTer.version` = `260907`), `zImage_dtb`, `MidiLink.INI`
+  (+`[NES]`, `[GBMIDI]`, `[X68000]`); `uboot.img` and `updateboot` byte-identical to
+  20250402. Outside it: `files/MiSTer` (Release 20260907), `files/menu.rbf`,
+  `files/MiSTer_example.ini` (2026-08-07, LF line endings) are newer.
+- `files/MiSTer` (1,162,128 B; ships on `sdcard.img` via fetch-sdcard-payload.sh)
+  re-checked against the A-10 dynamic-link contract (docs/abi-contract.md) on
+  2026-09-10: identical DT_NEEDED set to the 20250402 binary (libc, libstdc++,
+  libm, librt, libfreetype.so.6, libbz2.so.1.0, libpng16.so.16, libz.so.1,
+  libImlib2.so.1, libbluetooth.so.3, libpthread, libgcc_s); symbol-version
+  requirements gained GLIBC_2.8 and GLIBCXX_3.4.20 (max GLIBC_2.28 /
+  GLIBCXX_3.4.21, unchanged), all satisfied by this image's glibc 2.43 /
+  libstdc++ GLIBCXX_3.4.33. `scripts/check-abi.sh`'s STOCK_MISTER lookup still
+  resolves a gitignored 20250402 extraction; point it at this binary when
+  re-seeding `work/`.
+- Full analysis: docs/verification/stock-release-20260907.md.
+
 --------------------------------------------------------------------------------
 ## 2. Extracted release contents
 

@@ -142,10 +142,22 @@ jobs:
       # --- Pinned stock reference archive --------------------------------
       # The ONLY source in this pipeline for uboot.img and the files/linux/
       # payload we do not vendor (G6). See docs/ci.md#stock-payload-sourcing.
-      STOCK_RELEASE_URL: https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/b8531c7848526d9a8227841923cc4a493cb6e631/release_20250402.7z
-      STOCK_RELEASE_MD5: 8dc3acae7d758a80a363fbd7ad31d95d
-      STOCK_RELEASE_SHA256: 5d087d9c501b2bc50aaf918146e7bf30e5981c08268d5a0e67a3233a4da642ba
-      STOCK_RELEASE_SIZE: "93727644"
+      #
+      # release_20260907 is committed upstream as TWO split 7z volumes
+      # (.7z.001 + .7z.002 -- consecutive byte slices of one archive, not
+      # two archives). STOCK_RELEASE_URL is therefore a whitespace-separated
+      # list, in volume order; `fetch-stock` downloads each and concatenates
+      # them into the single stock_release.7z every later step verifies, so
+      # MD5/SHA-256/SIZE below are those of the JOINED file -- the same bytes
+      # Distribution_MiSTer's own joiner mirrors as linux_release_20260907.7z
+      # and the only form the on-device 7za ever sees. Verified byte-identical
+      # to that mirror: docs/verification/stock-release-20260907.md §1/§6.
+      STOCK_RELEASE_URL: >-
+        https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001
+        https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002
+      STOCK_RELEASE_MD5: 8cd4edca838fdc226390e3fb04f3ca79
+      STOCK_RELEASE_SHA256: e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66
+      STOCK_RELEASE_SIZE: "117936766"
       STOCK_UBOOT_SHA256: e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64
       STOCK_UBOOT_SIZE: "515141"
       STOCK_UPDATEBOOT_SHA256: 6ff2d50a080e26d7173b61c52083e9cc42ca658db0c5031b4da1c45c74a562f2

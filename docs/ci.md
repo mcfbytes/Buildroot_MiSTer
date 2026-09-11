@@ -1263,11 +1263,33 @@ commit-pinned stock archive `docs/reference-materials.md` /
 
 ```
 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/
-  b8531c7848526d9a8227841923cc4a493cb6e631/release_20250402.7z
-MD5 8dc3acae7d758a80a363fbd7ad31d95d
-SHA-256 5d087d9c501b2bc50aaf918146e7bf30e5981c08268d5a0e67a3233a4da642ba
-93,727,644 bytes
+  76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001   (83,886,080 bytes)
+https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/
+  76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002   (34,050,686 bytes)
+joined, in that order, into stock_release.7z:
+MD5 8cd4edca838fdc226390e3fb04f3ca79
+SHA-256 e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66
+117,936,766 bytes
 ```
+
+**Two URLs, one archive (since the 2026-09 bump to `release_20260907`).**
+Upstream now commits each release as split 7z volumes — consecutive byte
+slices of a single archive, not two archives — so `STOCK_RELEASE_URL` is a
+whitespace-separated list in volume order and `fetch-stock` concatenates
+the volumes into the one `stock_release.7z` every later step reads. The
+three pins are those of the **joined** file: they cover every byte of every
+volume, so a missing, truncated or reordered volume fails them just as
+loudly as a wrong single file did, and they are exactly what the on-device
+`7za` sees. `Distribution_MiSTer` does the same join on its side and mirrors
+the result as `linux_release_20260907.7z` on its `all_releases` release; that
+mirror was fetched and is byte-identical to our join
+(`docs/verification/stock-release-20260907.md` §1/§6). The previous pin,
+`release_20250402.7z` at `b8531c78…` (MD5 `8dc3acae…`, 93,727,644 bytes),
+differs from this one in `files/linux/` in three members — `linux.img` and
+`zImage_dtb`, which we replace with our own and never ship, and `MidiLink.INI`,
+the **one shipped file** that changed; `uboot.img` and `updateboot` are
+byte-identical across the two, so the `STOCK_UBOOT_*`/`STOCK_UPDATEBOOT_*` pins
+did not move.
 
 All three (MD5, SHA-256, size) are checked BEFORE anything is extracted from
 it. Individual `uboot.img`/`updateboot` hashes are re-checked too

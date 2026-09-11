@@ -101,3 +101,11 @@ Records land in `records/<sha>.json`. Tier-2 = Sonnet 5 only (user directive: no
   PRE-EXISTING orphan-patch invariant violation (0039-0042 named by no record) surfaced — Wave 3.
 - Wave 3 defaults if the owner is silent: D1=A (+abi-contract fix, +OCRAM node in 0004),
   D2=defer, D3=carry #92, D4=align 0001 to fb_sys_*.
+
+## WAVES 4-5 COMPLETE (2026-09-11)
+- Wave 4: Opus audit (112 claims, 28 corrections, 0 dispositions contradicted; audit-findings.md) + Sonnet
+  tree-diff backstop (tree-diff-2026-09.md; 1 new finding F1 in the fork's own MiSTer_fb.c).
+- Wave 5: six upstream candidate patches + PR drafts under fork-sync-2026-09/upstream-candidates/,
+  compiled against fork HEAD c129b0fac. NOT sent (owner decision after the PR #75 thread).
+- Export tree: export-kernel-tree.sh fixed (fragment split) + DTS alias + stock-process recipe;
+  check-export-tree.sh added; docs/kernel-export.md. Dry run PASS at 6.18.49.

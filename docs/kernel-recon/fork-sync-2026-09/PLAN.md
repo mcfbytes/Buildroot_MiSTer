@@ -1,7 +1,7 @@
 # Fork-sync increment 2026-09 — plan: reconcile against the shipped stock 6.18 kernel
 
-**Status:** Waves 0–3 executed 2026-09-10/11 (see [`STATUS.md`](STATUS.md) §7 for the Wave 3
-validation table). Waves 4–5 not started. Written
+**Status:** Waves 0–5 executed 2026-09-10/11 (see [`STATUS.md`](STATUS.md) §7–§8). Wave 5 output is
+prepared, not sent. Written
 2026-09-10 on branch `claude/kernel-6.18-patch-plan-l32pu9`. Every fact in §1 was measured in this session from
 the live upstream repositories and the stock release artifacts; every disposition in §2 is a
 **hypothesis** for the Wave 1 workers to test, in the sense `MISTER-KERNEL-PATCH-RECON.md` §0

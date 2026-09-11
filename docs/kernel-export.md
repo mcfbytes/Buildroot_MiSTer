@@ -51,7 +51,7 @@ Every row is measured from `MiSTer-v6.18` @ `c129b0fac` (2026-09-11) and from th
 | # | His convention (evidence) | PR #75 export | Export since 2026-09-11 |
 |---|---|---|---|
 | 1 | **Spine of pristine tarball commits**: `v6.18.38` = `d9ac12a691`, parent `aba1ef4c1` (`v5.15.1`); MiSTer commits hang off the spine point | replayed *onto* `d9ac12a691` (`--onto`), because we were on the same version | our pin is 6.18.50, so the export creates a new spine point: `--parent-repo <fork> --parent d9ac12a691…` makes a `v6.18.50` base commit whose diff against his base is **pure stable 6.18.38 → 6.18.50**, then replays our series. Same shape as his `v5.15.1 → v6.18.38` step |
-| 2 | **One commit per feature**, original authorship where a contributor wrote it (53 of 62 commits are his; the rest carry Nolan Nicholson, Kasper Olesen, Michael Huang, …) | one commit per carried patch, original `From:` preserved by `git am` | unchanged; `scripts/lint-kernel-patches.sh` enforces `git am`-ability of every header |
+| 2 | **One commit per feature**, original authorship where a contributor wrote it (53 of the **67** commits between `d9ac12a691` and `c129b0fac` are his; the rest carry Nolan Nicholson ×2, Kasper Olesen ×2, and one each from Takiiiiiiii, Stanislav Ponomarev, Porkchop Express, Nigel Shearman, Michael Huang, Martin Donlon, Julian Seitz, James McCarthy, Aurora, Alexey Melnikov — recounted by the Wave-4 audit 2026-09-11, which found the denominator stale at 62) | one commit per carried patch, original `From:` preserved by `git am` | unchanged; `scripts/lint-kernel-patches.sh` enforces `git am`-ability of every header |
 | 3 | **DTS as his own file** `arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10_nano.dts` (underscore), listed in that `Makefile`; vanilla's `socfpga_cyclone5_de10nano.dts` left untouched. The shipped 20260907 DTB is that file (its `compatible` is the pre-#85 pair `altr,socfpga-cyclone5`, `altr,socfpga`) | our `0004` patches **vanilla's** file, so `make …/socfpga_cyclone5_de10_nano.dtb` — his build target — **failed** in our tree | the export adds a generated, export-only commit providing `socfpga_cyclone5_de10_nano.dts` as a one-line `#include` of the patched vanilla file plus the `Makefile` entry. His target builds a DTB byte-identical to ours; Buildroot never sees the alias. `0004` still patches vanilla's file, which is where the change belongs for mainline |
 | 4 | **Kernel version string `6.18.38-MiSTer`** (`lib/modules/6.18.38-MiSTer/` in `modules.tar.gz`) with `CONFIG_LOCALVERSION=""` in the shipped config — i.e. he passes `LOCALVERSION=-MiSTer` at build time | `EXPORT.md` documented `LOCALVERSION=` (empty), to match Buildroot's vermagic `6.18.38` | `EXPORT.md` now documents both: the **image-compatible** build (empty, modules interchangeable with our image) and the **stock-process** build (`-MiSTer`, producing the `zImage_dtb` + `modules.tar.gz` that `Linux_Image_creator_MiSTer/create_img.sh` consumes). They differ only in vermagic |
 | 5 | **`arch/arm/configs/MiSTer_defconfig` in full resolved form** (header `Automatically generated file`, `CONFIG_CC_VERSION_TEXT` of his `arm-none-linux-gnueabihf-gcc 10.2`) | minimized form (our `linux.config` verbatim) | still minimized, deliberately — a full form bakes in the generating toolchain and ~4,000 default lines; `make ARCH=arm MiSTer_defconfig` resolves to the same configuration for his toolchain. `EXPORT.md` says how to produce the full form in one command if he prefers it |
@@ -68,8 +68,12 @@ alone broke his `make` target). Now it is yes, modulo the review-thread items in
 Recorded so nobody "fixes" them backwards (details and evidence in
 `docs/kernel-recon/fork-sync-2026-07.md` §3 and `fork-sync-2026-09/STATUS.md`):
 
-- Our `0038`–`0042` (NSO Genesis PID, N64/Genesis button maps, IMU name suffix, LED classdev
-  names, lightbar names) restore **stock 5.15** behaviour that his 6.18 port does not carry.
+- Our `0039`–`0042` (N64/Genesis button maps, IMU name suffix, LED classdev names, lightbar
+  names) restore **stock 5.15** behaviour that his 6.18 port does not carry. (`0038`, the NSO
+  Genesis Bluetooth PID normalization, he *does* have — measured in Wave 5, correcting the
+  Wave 4 tree-diff's first reading.) Ready-to-send patches for the four, plus the `BTN_Z`
+  scoping and the framebuffer `memremap()` check, are prepared under
+  `docs/kernel-recon/fork-sync-2026-09/upstream-candidates/` — **prepared, not sent**.
 - `BTN_Z` is DualSense-only in ours (as in stock 5.15); his port declares it for DualShock 4 too.
 - His `spidev` `altspi` compatible and `vt.h` `MAX_NR_CONSOLES 63→9` are dropped in ours.
 - His cpufreq port (#85) is not adopted; we keep `0003` (decision D1) and carry only its OCRAM

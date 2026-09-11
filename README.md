@@ -87,7 +87,7 @@ mainline can hold it.
 | | Stock MiSTer | This project |
 |---|---|---|
 | **Kernel** | 5.15.1 from Nov 2021 to 2026-09-07 with **zero** `5.15.y` stable updates ever merged; **6.18.38 since Release 20260907**, pinned the same way — 12 `6.18.y` releases behind our pin at the time of writing | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **37 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **40 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 — **unchanged by Release 20260907** (`/etc/os-release` `PRETTY_NAME`, both releases) | **2026.08** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era — **unchanged by Release 20260907** (`libc.so.6 → libc-2.31.so`; `strings` shows `GNU C Library (GNU) stable release version 2.31`) | **2.44 / 15.3.0** |
 | **OpenSSL** | **1.1.1k — EOL since 2023-09-11**, no upstream fixes since; **unchanged by Release 20260907** (`strings usr/lib/libssl.so.1.1`, both releases → `OpenSSL 1.1.1k  25 Mar 2021`) | **3.6.4** |
@@ -154,7 +154,7 @@ re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (
 | Phase | State | What that means |
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 37 patches apply cleanly; `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
+| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 40 patches apply cleanly (re-measured 2026-09-11 at `patch -p1 -F0`, 40/40, zero fuzz); `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.08, glibc 2.44, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
@@ -331,17 +331,21 @@ land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
 
 The interesting part is not the version number — it's the **shape of the delta**. The
-fork's **126 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
-2026-09-07, 1 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — plus 15
-residue commits that existed only on the older v5.14/v5.13.12 branches) are down to
-**36 carried patch files**. That reconciliation was performed against the **5.15** stock
-kernel; the eight commits and one open PR stock's 6.18 branch has taken since our last
-sync point are queued, with a per-item plan, in
-[`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md). Every remaining
-drop is either verifiably in mainline 6.18, replaced by a maintained package, or
-recorded as a deliberate decision. A 37th file, `0047`, is not part of that delta at
-all — it backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the
-6.18.y line never received.
+fork's **136 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
+2026-09-07, 10 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — one
+still-open pull-request head carried ahead of its merge, plus 15 residue commits that
+existed only on the older v5.14/v5.13.12 branches) are down to **40 carried patch
+files**. The bulk of that reconciliation was performed against the **5.15** stock kernel
+and left **36** files; the nine commits and one open PR stock's 6.18 branch has taken
+since have now been reconciled too — executed, not just planned — in
+[`docs/kernel-recon/fork-sync-2026-09.md`](docs/kernel-recon/fork-sync-2026-09.md)
+(plan: [`fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md)),
+adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahead of its
+upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only). Every
+remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
+or recorded as a deliberate decision. `0047` is not part of that delta at all — it
+backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line
+never received.
 
 **Every commit in the fork was independently reconciled**, each with a machine-readable,
 evidence-backed disposition record, **100% of them verified by a second independent
@@ -476,7 +480,7 @@ nobody here has stock hardware to pair against:
 
 | If your dongle uses… | Stock MiSTer | This image | Checked how far? |
 |---|---|---|---|
-| Realtek 802.11n/ac — RTL8188EU/8188FU, RTL8710BU, RTL8811AU/8821AU, RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU/8822CU, RTL8723DU | **5.15:** out-of-tree vendor fork for **six** of them (RTL8188EU, RTL8188FU, RTL8811AU/8821AU, RTL8812AU, RTL8821CU, RTL8822BU — [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md), `stock-mods.txt`); several of those can't do WPA3 at all. **No driver at all** for RTL8710BU, RTL8814AU, RTL8822CU, RTL8723DU. **6.18 (20260907):** mainline `rtl8xxxu` covers RTL8188EU; mainline `rtw88` newly covers **RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU, RTL8822CU, RTL8723DU** (`rtw88_8812au`/`8814au`/`8821c`/`8821cu`/`8822bu`/`8822cu`/`8723du` all present). **Still no driver** for RTL8811AU/8821AU (**no `rtw88_8821au.ko`** — explicitly absent) or RTL8710BU or RTL8188FU (`evidence/stock-20260907-modules.txt`) | In-kernel `rtl8xxxu` / `rtw88` (`mac80211`) | **Hardware-verified**: an RTL8822BU auto-connects to a WPA3-only 5 GHz network at boot. (The fork it replaced advertised SAE but failed WPA3-only association with `status_code=1` — hardware-verified regression the switch fixed, [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md).) Every other chip in this row builds the same way but has **not** been tested against real hardware. |
+| Realtek 802.11n/ac — RTL8188EU/8188FU, RTL8710BU, RTL8811AU/8821AU, RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU/8822CU, RTL8723DU | **5.15:** out-of-tree vendor fork for **six** of them (RTL8188EU, RTL8188FU, RTL8811AU/8821AU, RTL8812AU, RTL8821CU, RTL8822BU — [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md), `stock-mods.txt`); several of those can't do WPA3 at all. **No driver at all** for RTL8710BU, RTL8814AU, RTL8822CU, RTL8723DU. **6.18 (20260907):** mainline `rtl8xxxu` covers RTL8188EU; mainline `rtw88` newly *builds* **RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU, RTL8822CU, RTL8723DU** (`rtw88_8812au`/`8814au`/`8821c`/`8821cu`/`8822bu`/`8822cu`/`8723du` all present — but see the firmware caveat below: only 8812AU, 8821CU and 8822BU have their blob). **Still no driver** for RTL8811AU/8821AU (**no `rtw88_8821au.ko`** — explicitly absent, even though the firmware `rtw88/rtw8821a_fw.bin` ships). **RTL8710BU and RTL8188FU *are* covered** in 6.18, by `rtl8xxxu.ko` (present): 6.18's `rtl8xxxu` links `8188f.o` and `8710b.o` unconditionally (`drivers/net/wireless/realtek/rtl8xxxu/Makefile`), binds both outside the `RTL8XXXU_UNTESTED` guard (`core.c:8060-8062`, `:8108-8112`), and stock ships `rtlwifi/rtl8188fufw.bin` + `rtl8710bufw_{SMIC,UMC}.bin`. Three of the newly-built `rtw88` modules ship **without their firmware**, so they load and then fail at `request_firmware()` the way `mt7663u` does: `rtw88/rtw8814a_fw.bin`, `rtw8822c_fw.bin` and `rtw8723d_fw.bin` are all absent from stock's set (`evidence/stock-20260907-{modules,firmware}.txt`; corrected by the Wave-4 audit 2026-09-11) | In-kernel `rtl8xxxu` / `rtw88` (`mac80211`) | **Hardware-verified**: an RTL8822BU auto-connects to a WPA3-only 5 GHz network at boot. (The fork it replaced advertised SAE but failed WPA3-only association with `status_code=1` — hardware-verified regression the switch fixed, [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md).) Every other chip in this row builds the same way but has **not** been tested against real hardware. |
 | Realtek Wi-Fi 6 — RTL8851BU, RTL8852BU | **5.15:** not supported. **6.18 (20260907):** now built — `rtw89_8851b`/`8851bu`, `rtw89_8852b`/`8852bu`/`8852b_common` all present (module presence only; no firmware cross-check done here) | In-kernel `rtw89` | Build-verified only |
 | Realtek Wi-Fi 6E — RTL8852CU / RTL8832CU | Not supported in either stock era | Out-of-tree `rtl8852cu-morrownr` — the *only* driver that exists for this chip on USB anywhere, in or out of tree: mainline's `rtw89` has the chip's radio HAL but only a PCIe bus file, and this board has no PCIe | **Not yet built, let alone tested** — added by reading the driver's source, not compiled ([`docs/wifi-parity.md` §8](docs/wifi-parity.md)) |
 | Broadcom / Cypress — BCM43xx, CYW43xx USB adapters | **Not supported at all, in either stock era** — no `brcmfmac`/`brcmutil` in `evidence/stock-20260907-modules.txt` either | In-kernel `brcmfmac` | Build-verified only |

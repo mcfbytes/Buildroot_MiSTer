@@ -6,12 +6,13 @@ kernel (`Linux_Image_creator_MiSTer` "Release 20260907", `MiSTer-v6.18` @ `aec7d
 `6.18.38-MiSTer`) — which inverts the baseline this whole reconciliation project has used since
 its first campaign: `MiSTer-v6.18` is now what every stock MiSTer runs, and `MiSTer-v5.15` is
 frozen history. Within four days of that release, users found regressions in it and the fork
-took eight commits and one still-open PR to address them; this document reconciles those nine
+took **nine** commits and one still-open PR to address them; this document reconciles those **ten**
 items against this repo's own 6.18 build.
 
-**Outcome: four items carried as new/changed patches, four dropped as already covered, one
-driver-replacement deliberately declined with a tracked bench-gated follow-up, and one 82,000-line
-out-of-tree driver deferred pending two answerable external facts.**
+**Outcome: five items carried as new/changed patches (Q3, Q5, Q6, Q8, Q10), three dropped as
+already covered (Q1, Q2, Q7), one driver-replacement deliberately declined with a tracked
+bench-gated follow-up (Q4), and one 82,000-line out-of-tree driver deferred pending two answerable
+external facts (Q9).**
 
 | # | Finding | Kind | Action |
 |---|---|---|---|
@@ -20,7 +21,7 @@ out-of-tree driver deferred pending two answerable external facts.**
 | 3 | A 2026-07-24 ledger defect — four carried patches (`0039`-`0042`) unreachable from any record's `carried_patch` — found by `reduce.py`'s own orphan invariant | pre-existing process gap, unrelated to this queue | fixed: `reduce.py` now reads a `carried_patches` (plural) list; four origin records updated (§5) |
 | 4 | An open PR (#92) carried ahead of its own merge, for the first time in this project | new pattern, deliberate (owner decision D3) | carried as `0049`, keyed on the PR head SHA with an explicit re-key procedure for when it merges (§2) |
 | 5 | A community re-implementation of the overclock driver (`59bcae8eb`, #85) — better-engineered, unvalidated on our image | decision required | **kept `0003`** (owner decision D1=A); DTS OCRAM hygiene hunk still carried; option B tracked bench-gated (§2) |
-| 6 | A 70k-line vendored Wi-Fi/BT driver (`c129b0fac`, AIC8800) with no firmware and no license file | decision required | **deferred** (owner decision D2); compiles clean, zero USB-ID conflicts, but inert without ~60 firmware blobs stock does not ship either (§2) |
+| 6 | An 82k-line vendored Wi-Fi/BT driver (`c129b0fac`, AIC8800 — 142 files, 82,330 insertions) with no firmware and no license file | decision required | **deferred** (owner decision D2); compiles clean, zero USB-ID conflicts, but inert without ~60 firmware blobs stock does not ship either (§2) |
 
 ---
 
@@ -236,8 +237,16 @@ respectively (the same subject-twinning `fork-sync.conf`'s 2026-07-24 note alrea
 57 other commits). Fixed minimally: `reduce.py` now also reads an optional `carried_patches`
 (plural) list per record for both the orphan check and the patch-mapping table, and the four
 origin records (`b00a72159`, `45283785a`, `60821059c`, `f84543926`) were given that field. Zero
-orphans remain (verified by re-deriving the mapping logic against the live `records/` directory
-without running `reduce.py`'s full regeneration, per this session's remit).
+orphans remain: `python3 docs/kernel-recon/reduce.py` reports **136 records, problems: 0**, and its
+regenerated outputs (`reconciliation.{md,jsonl}`, `device-support.md`, `silent-regressions.md`,
+`disagreements-with-provenance.md`) are committed alongside. **Precision note (Wave-4 audit,
+2026-09-11):** `carried_patches` is described above and in `reduce.py`'s comment as "patches split
+out of one origin commit's diff", which is literally true only for `b00a72159` → `0038`+`0039`.
+For `0040`, `0041` and `0042` the second patch restores a *stock ABI string* (`" IMU"` suffix,
+`player1..4`/`home` LED classdev names, `:red`/`:green`/`:blue` lightbar names) that no single fork
+commit's diff produced — each is attributed to the commit `patch-provenance.md` §11's table names
+as its origin, which is the authority used here, not to a hunk of that commit. The mapping matches
+§11 row for row; the mechanism's name overstates how tight the link is.
 
 ---
 
@@ -278,6 +287,16 @@ that task reports the rootfs-side re-inventory incomplete when it lands, it rema
 follow-up independent of everything in this document; this increment did not re-run it and does
 not claim to have.
 
+**Update (Wave-4 audit, 2026-09-11):** that task did land, in the same commit as this document
+(`docs/stock-inventory/20260907/`, `docs/stock-reconciliation.md` §0). It found the userland
+outside kernel/modules/firmware byte-for-byte unchanged — and **one thing PLAN.md §1.1 got
+wrong**: `addon.tar` is *not* unchanged against the `8aba321` baseline this repo's §3 audit was
+built from. Same size, different sha256; a **new** `etc/init.d/S39usb-coldplug`, and a **changed**
+`usr/sbin/uartmode` (new `fuser -k` kill path, a `169.254.*` filter in PPP IP detection, PPP
+exit-status handling, and a new mode `"6"` launching `/media/fat/snid`). Our vendored copy has not
+picked either up. That is a live follow-up owned by `docs/stock-reconciliation.md` §0.3, not by
+this kernel increment, and it is recorded here so it is not lost between the two.
+
 ### 6.4 The 6.18.50/7.2.4 pin gap — still open, restated
 
 Every vanilla-6.18 quote behind every disposition and memo in this increment is against the
@@ -296,3 +315,151 @@ evidence turns on a single point release between `.49` and `.50` (the previous i
 `v6.18.39→6.18.49` drift walk found 42 collisions across 37 patches, all disjoint or
 overlapping-compatible, zero superseded/conflicting — `stable-drift-6.18.39-49.md`), but per the
 grounding contract that is stated, not assumed, for the `.50` gap specifically.
+
+---
+
+## 7. Audit (Wave 4)
+
+Audited 2026-09-11 by an independent pass over `53a9a7c` (Waves 0–2), `b502662` (Wave 3) and
+`f7b59f5` (export), re-deriving every claim from the same trees `env.md` names. Full table, with
+the evidence for each row: [`fork-sync-2026-09/audit-findings.md`](fork-sync-2026-09/audit-findings.md)
+— **112 claims checked, 80 confirmed, 28 corrected, 2 unverifiable.**
+
+**Nothing contradicted a disposition.** Every one of the ten `disposition` values survives
+independent re-derivation, and every carried patch's hunks are the fork's own change with no
+accidental extra edit:
+
+- `0048` is byte-identical to `41c45f378`'s diff; `0050` to `9854075c8`'s; `0049`'s added and
+  removed lines are identical to `refs/pull/92/head`'s with only the `@@` anchors regenerated;
+  `0017` delta 5 reproduces `7c75b1b46`'s two hunks exactly; `0001`'s `fb_ops` now matches
+  `ea2212221`'s choice; `0004`'s new node reproduces every property of `60e0d56bdd`'s `&ocram`
+  override.
+- All 40 patches in `linux-patches/` replay into a pristine 6.18.49 tree at `patch -p1 -F0`:
+  **40/40, zero fuzz, zero rejects**. All 42 `linux-patches-beta/series` entries replay into a
+  pristine v7.2.3 tree the same way: **42/42**. `scripts/lint-kernel-patches.sh` passes.
+- All ten `commits.jsonl` rows were recomputed from the fork with `git show --numstat`: author,
+  email, date, subject, insertions and deletions match **exactly**, ten for ten.
+- `docs/kernel-config-deltas.md` §11's headline numbers were reproduced end to end from its own
+  stated command: **1,229 / 1,289 / 27 / 87**, and the 27-symbol stock-only list matches its four
+  classes name for name.
+- The boost-ABI correction is right: 6.18.49's `cpufreq.c:2845-2847` gates the `boost` file purely
+  on `->set_boost`, which `0003` sets — so the file exists and `scaling_max_freq` clamps to
+  800000 until boost is written, exactly as `abi-contract.md`, `patch-provenance.md` §11 and
+  `docs/user/faq.md` now say.
+
+### 7.1 Corrections made by this audit
+
+**Records** (the recurring pattern: Wave 3 flipped `disposition`/`carried_mode` but left Wave-1
+prose that described the older state):
+
+1. `records/59bcae8eb….json` (Q4) opened "DISPOSITION IS DELIBERATELY `needs-verification`" while
+   the field said `dropped-deliberate`. Opening rewritten; the body is untouched Wave-1/2 analysis
+   and now says so.
+2. `records/c129b0fac….json` (Q9) opened "Disposition is needs-verification, **NOT** not-evaluated"
+   while the field said `not-evaluated` — a direct self-contradiction. Opening rewritten.
+3. `records/7c75b1b46….json` (Q5) opened "CARRY, PLANNED, **NOT YET AUTHORED** … it does not itself
+   modify `0017`". It was authored in Wave 3. Rewritten.
+4. `records/ea2212221….json` (Q3)'s `recommendation` ended "advisory only — no patch file was
+   edited". D4 was taken and both `0001` copies were edited. Rewritten.
+5. `records/a14b5e8e1….json` (Q10) said `carried_mode='planned'` inside notes whose field reads
+   `re-implemented`, and cited "#88 and #91's merged commits differ from their PR heads" as
+   evidence that a merge may carry a modified hunk. Measured: `git patch-id --stable` is
+   **identical** head↔merge for both (`6a080ee6d7bb…`, `347bc8291a32…`) — they differ in SHA,
+   author and message only. Both corrected, here and in `0049`'s header and `fork-sync.conf`.
+
+**Patch headers** (headers only — no diff hunk was touched):
+
+6. `0004`'s "carried here verbatim (node text matches the fork's)" was not true: every *property*
+   is verbatim, but we add a 10-line comment the fork deliberately omits ("No source comments are
+   added" — `60e0d56bdd`'s own message). Both the prose block and the `Forward-port:` note now say
+   which half is verbatim and which is ours.
+7. `0049`'s "WHEN #92 MERGES" step (2) now states the measured patch-id result instead of implying
+   a modified hunk is the expected case.
+
+**Ledger:**
+
+8. `fork-sync.conf`'s branch-description paragraph still read "the queue past the pointer below
+   (**8 commits** + open PR #92) is planned, **not yet dispositioned**". It is 9 commits (measured
+   `git rev-list --count`), and it is dispositioned — the pointer was advanced in the same commit.
+9. `carried_patches` is described as "patches split out of one origin commit's diff". True for
+   `b00a72159` → `0038`+`0039`; **not** literally true for `0040`, `0041`, `0042`, which restore a
+   stock ABI string that no single fork commit's diff produced. §5 above now says so. The mapping
+   itself matches `patch-provenance.md` §11 row for row and is unchanged.
+
+**Shipped docs** — the two that are wrong about the product, not about process:
+
+10. **`README.md`'s hardware table said stock 6.18 has "no driver for RTL8710BU or RTL8188FU".**
+    False: 6.18's `rtl8xxxu` links `8188f.o` and `8710b.o` unconditionally and binds both outside
+    the `RTL8XXXU_UNTESTED` guard (`core.c:8060-8062`, `:8108-8112`); `rtl8xxxu.ko` is in stock's
+    module list and `rtlwifi/rtl8188fufw.bin` + `rtl8710bufw_{SMIC,UMC}.bin` are in its firmware
+    list. The same false premise justified a "no consumer" disposition in
+    `docs/stock-reconciliation.md` §0.1 — **we build `CONFIG_RTL8XXXU=m` too**, so that row is now
+    an untriaged firmware gap on our side, not a justified absence.
+11. **`README.md` credited stock 6.18 with "newly covering" RTL8814AU, RTL8822CU and RTL8723DU.**
+    The modules ship; `rtw88/rtw8814a_fw.bin`, `rtw8822c_fw.bin` and `rtw8723d_fw.bin` do not —
+    the same `request_firmware()` failure shape README already flags for `mt7663u`.
+
+**Counts** (all re-measured, not inferred):
+
+12. `README.md` "37 patch files" and "all 37 patches apply cleanly" → **40**.
+13. `README.md`'s delta paragraph: "126 reconciled commits (… 1 on `MiSTer-v6.18`)" → **136
+    records** (110 + 10 + 1 PR head + 15 residue, per `reduce.py`); "36 carried patch files … a
+    37th file `0047`" → 40 files, with `0048`/`0049`/`0050` named; and the sentence saying the
+    6.18 queue "are queued, with a per-item plan" now says it was executed.
+14. `docs/buildroot-config.md` still said the beta series "drops exactly ONE shared patch" and has
+    "all 40 entries (the other 36 shared + four beta-local)" → **two** omissions, **42 entries**,
+    38 shared, with the 42/42 `-F0` measurement.
+15. `linux-patches-beta/series` said five shared entries are real re-anchored files and then
+    "these **four** needed …" → five, named. Its "`make rt` is green on the whole 40" is now
+    scoped to the date it was measured, since the list is 42 and `make rt` has not been re-run.
+16. `de25nano/linux-patches/README.md` said "**Three** — `0015`, `0030`, `0037` — have a
+    7.x-re-anchored copy" while its own row 25 says `0031` links to the beta copy too → four, and
+    `0001` is the fifth divergent pair. Its `0047` row's "this board is on 7.2.2" is annotated
+    against the README's own 7.2.3 pin.
+17. `docs/kernel-export.md` §1.2 row 2's "53 of **62** commits are his" → 53 of **67** at the
+    baseline that row itself declares (`c129b0fac`); no point on the branch gives 62.
+18. `docs/firmware-parity.md` attributed "91 files" to
+    `evidence/stock-20260907-firmware.txt`, which lists **89**. Both numbers are right for their
+    own method (89 = `firmware.tar.gz`; 91 = the installed tree, i.e. those 89 plus
+    `regulatory.db`/`.p7s` from `rootfs.tar.bz2`); the header now says which is which.
+19. This document: "eight commits … those nine items" → nine and ten; the outcome line's "four
+    carried, four dropped" → **five** carried (Q3, Q5, Q6, Q8, Q10) and **three** dropped as
+    already covered (Q1, Q2, Q7); finding 6's "70k-line" → 82k (142 files, 82,330 insertions);
+    §5's "verified … without running `reduce.py`'s full regeneration" → it *was* run and its
+    outputs are committed (136 records, problems: 0); §6.3 now carries the `addon.tar` finding the
+    rootfs-side task actually produced.
+
+`python3 docs/kernel-recon/reduce.py` was re-run after every record edit above: **136 records,
+problems: 0.**
+
+20. **A Wave-3 artifact was left uncommitted.**
+    `fork-sync-2026-09/tree-diff-2026-09.md` — the export/tree-diff backstop PLAN.md §5.2 puts at
+    the tail of Wave 3, the same check that found the silent NSO-Genesis regression in July — is
+    **untracked** in the working tree and is not in `b502662`. It should be committed with the
+    increment. Its result was re-verified here and holds: of 55 distinct files differing between
+    our patched 6.18.38 tree and `MiSTer-v6.18` @ `c129b0fac` (excluding AIC8800, xone, configs,
+    Documentation and the fork's own DTS), every behavioural cluster is already dispositioned
+    except its finding **F1** — the fork's `MiSTer_fb.c` `probe()` checks `memremap()` with
+    `IS_ERR()`/`PTR_ERR()` and logs `devm_ioremap_resource`, a function it does not call
+    (`c129b0fac:drivers/video/fbdev/MiSTer_fb.c:261-265`). Since `memremap()` returns `NULL` and is
+    declared `void *` (`include/linux/io.h:158`), a failed mapping there would be reported as a
+    *successful* probe with `fb_base == NULL`. **Nothing to fix on our side** — `0001`'s header
+    item 7 already carries both halves of the correct check, and the shipped patch tests
+    `if (!fbdev->fb_base)`. Confirmed independently in this audit, and the scope-correction
+    addendum F1 recommends is now appended to `records/ea2212221….json`'s notes (that record
+    analysed only the five-line `fb_ops` hunk, not the rest of the file). Candidate two-line Wave-5
+    PR to the fork.
+
+### 7.2 What this audit could not verify
+
+- **`scripts/check-export-tree.sh`'s dry-run result** (`f7b59f5`: "PASS, 19 checks, 88,335 files
+  identical, both DTBs identical, two exports with identical inputs give identical SHAs").
+  Re-running it needs a full kernel build and the 6.18.50 tarball, which is unreachable here for
+  the same reason Wave 0 recorded. Nothing found contradicts it; it is simply not re-measured.
+- **Anything behind a GitHub PR or issue thread** — fork issue #84, PR #75's review, PR #85's
+  review, PR #92's comments. Blocked from this session exactly as from Waves 0–3. Every claim that
+  depends on one already says so and names what a human must paste; the audit adds no confidence
+  to those, in either direction.
+- The §3 stable-drift verdicts were **not** re-graded row by row. They are corroborated
+  indirectly — a missed `superseded`/`conflicting` verdict is what a failed `-F0` replay looks
+  like, and both series replay clean — and Wave 2 sampled 17 of the 42 independently.

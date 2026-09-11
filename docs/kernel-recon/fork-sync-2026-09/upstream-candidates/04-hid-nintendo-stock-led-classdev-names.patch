@@ -1,0 +1,110 @@
+From 60821059c0d3b28b26729fdbe2719e7b4186aaba Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Thu, 12 Aug 2021 12:00:00 +0800
+Subject: [PATCH] hid-nintendo: restore stock LED classdev names
+
+Every Nintendo Switch controller on this branch silently loses
+userspace control of its player-number LED row and its home LED.
+
+Stock registers "<hid-dev>:player1".."<hid-dev>:player4"
+(max_brightness 1) and "<hid-dev>:home" (max_brightness 0xF). This
+branch, like mainline, moved both to the LED class naming spec, giving
+"<hid-dev>:green:player-1".."-4" and -- not just a colour prefix but a
+different function entirely -- "<hid-dev>:blue:player-5" for the home
+LED, which is not a player indicator at all.
+
+Main_MiSTer opens these by exact path (input.cpp, update_num_hw():
+set_led(led_path, ":home", num ? 1 : 15) and ":player1"..":player4",
+input.cpp:2761), and its set_led() treats a failed fopen() as a silent
+no-op. So under the current names all five writes are discarded with
+nothing logged: the player row keeps whatever connect-order pattern
+the driver picked at probe and never follows the MiSTer player slot,
+and the home LED is never lit or dimmed. Reached on every
+assign/restore, for every Joy-Con/Pro Controller/NSO pad.
+
+The ":combo" node (joycon_leds_create(), a few lines below the
+player-LED loop in the same function) is the control case: it already
+uses stock's naming ("%s:combo") and demonstrably works, which is why
+only the two LED-class-renamed nodes going silent was easy to miss.
+
+max_brightness is left as-is: it already matches stock (1 and 0xF),
+and stock's `num ? 1 : 15` write for the home LED depends on the 0xF
+range.
+
+JC_NUM_LEDS is left deriving from joycon_player_led_names[]'s
+ARRAY_SIZE -- only the format string changes, not the table that sizes
+the LED array.
+
+Verified: `patch -p1 -F0` applies clean (0 offset) on a fresh
+c129b0fac extract; drivers/hid/hid-nintendo.o cross-compiles with
+ARCH=arm LLVM=1 W=1 against MiSTer_defconfig. One new warning appears
+after this patch, `-Wunneeded-internal-declaration` on
+joycon_player_led_names[] itself -- Clang notices the array's string
+contents are no longer read at runtime (only its ARRAY_SIZE, a
+compile-time constant, is), so it no longer needs to emit the backing
+storage. This is a compile-time-only observation with no functional
+effect; the same warning would appear on any tree keeping this exact
+"table still sizes JC_NUM_LEDS, format string no longer reads it"
+shape. NOT bench-verified -- needs a Switch pad.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/hid/hid-nintendo.c | 29 +++++++++++++++++++++--------
+ 1 file changed, 21 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index 4a55260..68b3afc 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -2312,14 +2339,17 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
+ 	ctlr->player_id = ret;
+ 	player_led_pattern = ret % JC_NUM_LED_PATTERNS;
+ 	hid_info(ctlr->hdev, "assigned player %d led pattern", player_led_pattern + 1);
+ 
+ 	for (i = 0; i < JC_NUM_LEDS; i++) {
+-		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s:%s",
+-				      d_name,
+-				      "green",
+-				      joycon_player_led_names[i]);
++		/*
++		 * MiSTer: stock names these "<hid-dev>:player1".."<hid-dev>:player4".
++		 * Mainline moved them to the LED-class spec ("<dev>:<colour>:<function>",
++		 * i.e. "<hid-dev>:green:player-1"), which Main_MiSTer cannot find --
++		 * see the home-LED comment further down this function.
++		 */
++		name = devm_kasprintf(dev, GFP_KERNEL, "%s:player%d", d_name, i + 1);
+ 		if (!name)
+ 			return -ENOMEM;
+ 
+ 		led = &ctlr->leds[i];
+ 		led->name = name;
+@@ -2349,14 +2379,24 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
+ 	}
+ 
+ home_led:
+ 	/* configure the home LED */
+ 	if (jc_type_has_right(ctlr)) {
+-		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s:%s",
+-				      d_name,
+-				      "blue",
+-				      LED_FUNCTION_PLAYER5);
++		/*
++		 * MiSTer: stock names this "<hid-dev>:home". Mainline renamed it to
++		 * "<hid-dev>:blue:player-5" -- not just a colour prefix but a different
++		 * function entirely, since the home LED is not a player indicator.
++		 *
++		 * Main_MiSTer opens these by exact path (input.cpp update_num_hw():
++		 * set_led(led_path, ":home", ...) and ":player1"..":player4"), and
++		 * set_led() treats a failed fopen() as a silent no-op -- so under the
++		 * mainline names every write is discarded with nothing logged: the
++		 * player row never follows the MiSTer player slot and the home LED
++		 * never lights. The ":combo" node is the control case: it uses
++		 * stock's naming and works.
++		 */
++		name = devm_kasprintf(dev, GFP_KERNEL, "%s:home", d_name);
+ 		if (!name)
+ 			return -ENOMEM;
+ 
+ 		led = &ctlr->home_led;
+ 		led->name = name;

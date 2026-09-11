@@ -2716,16 +2716,24 @@ again — see the series header for why that is the preferred move over a
 re-anchored copy. The shared 6.18 patches are otherwise deliberately
 untouched, keeping them byte-identical to stock.
 
-The series drops exactly ONE shared patch, and only because 7.2 already has
-it: `0047-btusb-mercusys-ma530-2c4e-0115`, a backport of mainline ce21a5cf3d1f
-(Mercusys MA530/MA550H, USB 2c4e:0115) whose first release IS 7.2. The 6.18
-image needs it because 6.18.y never received the commit; this kernel does
-not, and listing it would not be harmlessly redundant — at -F0 against
-pristine v7.2 the hunk FAILS ("Hunk #1 FAILED at 786"), which would break the
-build. It goes away on its own the day the stock pin leaves 6.18.y. Nothing
-else is dropped: all 40 entries (the other 36 shared + the four beta-local
+The series drops exactly TWO shared patches, and each only because 7.2.x
+already has the same effect. `0047-btusb-mercusys-ma530-2c4e-0115` is a
+backport of mainline ce21a5cf3d1f (Mercusys MA530/MA550H, USB 2c4e:0115)
+whose first release IS 7.2. The 6.18 image needs it because 6.18.y never
+received the commit; this kernel does not, and listing it would not be
+harmlessly redundant — at -F0 against pristine v7.2 the hunk FAILS
+("Hunk #1 FAILED at 786"), which would break the build.
+`0050-exfat-dir-readahead-plug` (added 2026-09-11) is the mirror image: it
+wraps exfat_dir_readahead()'s sb_breadahead() loop in a block plug, and that
+function does not exist on 7.x at all — mainline's own differently-shaped fix
+(exfat_get_dentry() + exfat_blk_readahead() in fs/exfat/fatent.c) is already
+in v7.2.3, and at -F0 against pristine v7.2.3 both hunks FAIL. Both go away
+on their own the day the stock pin leaves 6.18.y. Nothing else is dropped:
+all 42 entries (the other 38 shared + the four beta-local
 patches 0043/0044/0045 — the UIO set — and 0046, the ramoops crash-record
-reservation) apply to 7.2 FINAL at -F0 — verified 2026-08-17 through
+reservation) apply at -F0 — verified 2026-09-11 against v7.2.3 with the two
+newly-shared patches 0048/0049 symlinked in (42/42, zero fuzz), and before
+that on the then-40-entry series on 7.2 FINAL, verified 2026-08-17 through
 Buildroot's own `apply-patches.sh` against a freshly extracted pristine
 `linux-7.2.tar.xz` whose sha256 matched the signed manifest: 40/40 applied,
 exit 0, ZERO hunks taking fuzz (80 hunks land at an offset, which -F0

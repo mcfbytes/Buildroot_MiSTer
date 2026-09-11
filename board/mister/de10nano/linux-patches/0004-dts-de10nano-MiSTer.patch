@@ -70,8 +70,14 @@ export/pool/protect-exec as a reserved block: it is added to reserve_list
 and excluded from the parent gen_pool without being mapped, exported, or
 cleared (drivers/misc/sram.c:199-321). This costs nothing at runtime and
 makes future OCRAM allocation from this pool deterministic, so it is
-carried here verbatim (node text matches the fork's, so the two trees stay
-diffable).
+carried here. Every property is byte-identical to the fork's override
+(#address-cells/#size-cells/ranges and the flags-sram@f000 child with
+reg = <0xf000 0x1000>), so the two trees stay diffable on the node itself;
+the one difference is the explanatory comment block below, which the fork
+deliberately does NOT carry ("No source comments are added; rationale is
+recorded here as requested" -- 60e0d56bdd's own commit message). We carry
+it because the fork's stated rationale is wrong for this repo (see the next
+paragraph) and a reader of the DTS needs to know that.
 
 The fork's commit message says MiSTer keeps persistent flags in this OCRAM
 tail. That does not hold for Main_MiSTer at 6cda9cc546c4: the
@@ -145,10 +151,12 @@ Disposition:  Carried, with a corrected rationale -- see "OCRAM TAIL
               load-bearing only if the fork's OCRAM-resident cpufreq port
               is ever adopted (tracked, not decided --
               docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md §8).
-Forward-port: Applied directly against 6.18.49; the node text is carried
-              verbatim from the fork's DTS (their &ocram override,
-              unchanged since the node itself predates this commit), so
-              no re-derivation was needed. Verified -F0 against pristine
+Forward-port: Applied directly against 6.18.49; every property of the node
+              is carried verbatim from the fork's DTS (their &ocram
+              override, unchanged since the node itself predates this
+              commit) -- only an explanatory comment block, which the fork
+              deliberately omits, is added -- so no re-derivation was
+              needed. Verified -F0 against pristine
               6.18.49 and (the vanilla DTS being byte-identical between
               the two) against v7.2.3, which the beta series' symlink of
               this file also relies on. 6.18.50/7.2.4 unreachable in the

@@ -1,0 +1,117 @@
+From b00a72159aeb6996e1006d28383fdb8e2667746b Mon Sep 17 00:00:00 2001
+From: Shig <clockworkjb@gmail.com>
+Date: Sat, 2 Sep 2023 00:51:48 +1000
+Subject: [PATCH] hid-nintendo: use stock button mapping for NSO N64 and
+ Genesis pads
+
+MiSTer-v6.18 currently reports the NSO N64 and Genesis/Mega Drive pads
+with mainline's evdev code assignment, not stock's. For the N64, A and
+B are outright swapped (stock: A -> BTN_EAST, B -> BTN_SOUTH) and three
+of the four C-buttons move. For the Genesis, six of ten wire bits land
+on a different code (A, C, X, Y, Z and Mode); only B, Start, Home and
+Capture agree. The declared code sets are the same size (13 for the
+N64, 10 for the Genesis) but not the same members.
+
+This is a MiSTer-vs-mainline divergence stock deliberately made, not
+something mainline forgot: Linux-Kernel_MiSTer commits
+b00a72159aeb6996e1006d28383fdb8e2667746b ("Add support for NSO Mega
+Drive Controller (#50)", 2023-09-04) and
+2799f8b9478a67fffaa21f9cbeae886fa0a55b1e ("add support for NSO N64
+controller (#49)", 2023-09-02) shipped the mapping stock has run since
+5.15, in hid-nintendo.c's jc_type_is_mdcon()/jc_type_is_n64con() blocks.
+
+Main_MiSTer derives its gamecontrollerdb "bN" indices as a plain
+ascending ordinal over the EV_KEY bitmap
+(gamecontroller_db.cpp:207-217, get_ctrl_index_maps()), and .map files
+store the raw evdev code directly. A single moved code renumbers every
+button from that index on, or mis-resolves a stored .map -- silent on
+both counts. Users who set up an NSO N64 or Genesis pad against stock
+5.15/6.18 and bring their .map file (or rely on gamecontrollerdb) to
+this branch will find several buttons swapped.
+
+C-left needs no change on the N64 pad: stock's BTN_WEST and mainline's
+BTN_Y are the same wire value (0x134).
+
+Verified: the resulting code sets are byte-identical to stock
+hid-nintendo.c's n64con_button_inputs[]/mdcon_button_inputs[]
+declarations, and every wire bit maps to the same evdev code stock
+assigns it. `patch -p1 -F0` applies clean (0 offset) on a fresh
+c129b0fac extract; drivers/hid/hid-nintendo.o cross-compiles with
+ARCH=arm LLVM=1 W=1 against MiSTer_defconfig with no new warnings.
+
+Signed-off-by: Shig <clockworkjb@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/hid/hid-nintendo.c | 41 ++++++++++++++++++++++++++++-------------
+ 1 file changed, 29 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
+index 4a55260..68b3afc 100644
+--- a/drivers/hid/hid-nintendo.c
++++ b/drivers/hid/hid-nintendo.c
+@@ -475,36 +475,53 @@ static const struct joycon_ctlr_button_mapping snescon_button_mappings[] = {
+ 	{ BTN_SELECT,	JC_BTN_MINUS,	},
+ 	{ BTN_START,	JC_BTN_PLUS,	},
+ 	{ /* sentinel */ },
+ };
+ 
++/*
++ * MiSTer: stock's assignment, not mainline's. Six of the ten wire bits land on
++ * a different evdev code upstream (A, C, X, Y, Z and Mode); only B, Start, Home
++ * and Capture agree. Main_MiSTer derives gamecontrollerdb "bN" indices as an
++ * ascending ordinal over the EV_KEY bitmap, so a single moved code renumbers
++ * every button from that index on, and .map files store the raw code -- both
++ * paths silently mis-resolve.
++ * Stock: hid-nintendo.c jc_type_is_mdcon() block + the shared NSO block.
++ */
+ static const struct joycon_ctlr_button_mapping gencon_button_mappings[] = {
+-	{ BTN_WEST,	JC_BTN_A,	}, /* A */
++	{ BTN_EAST,	JC_BTN_A,	}, /* A */
+ 	{ BTN_SOUTH,	JC_BTN_B,	}, /* B */
+-	{ BTN_EAST,	JC_BTN_R,	}, /* C */
+-	{ BTN_TL,	JC_BTN_X,	}, /* X MD/GEN 6B Only */
+-	{ BTN_NORTH,	JC_BTN_Y,	}, /* Y MD/GEN 6B Only */
+-	{ BTN_TR,	JC_BTN_L,	}, /* Z MD/GEN 6B Only */
+-	{ BTN_SELECT,	JC_BTN_ZR,	}, /* Mode */
++	{ BTN_TR,	JC_BTN_R,	}, /* C */
++	{ BTN_NORTH,	JC_BTN_X,	}, /* X MD/GEN 6B Only */
++	{ BTN_WEST,	JC_BTN_Y,	}, /* Y MD/GEN 6B Only */
++	{ BTN_TL,	JC_BTN_L,	}, /* Z MD/GEN 6B Only */
++	{ BTN_TR2,	JC_BTN_ZR,	}, /* Mode */
+ 	{ BTN_START,	JC_BTN_PLUS,	},
+ 	{ BTN_MODE,	JC_BTN_HOME,	},
+ 	{ BTN_Z,	JC_BTN_CAP,	},
+ 	{ /* sentinel */ },
+ };
+ 
++/*
++ * MiSTer: stock's assignment, not mainline's -- see the gencon note above for
++ * why a moved code is a silent userspace break. Here A and B are outright
++ * swapped relative to mainline (stock A->BTN_EAST, B->BTN_SOUTH) and three of
++ * the four C-buttons move. C-left is BTN_WEST either way (mainline spells it
++ * BTN_Y, the same 0x134).
++ * Stock: hid-nintendo.c jc_type_is_n64con() block + the shared NSO block.
++ */
+ static const struct joycon_ctlr_button_mapping n64con_button_mappings[] = {
+-	{ BTN_A,		JC_BTN_A,	},
+-	{ BTN_B,		JC_BTN_B,	},
++	{ BTN_EAST,		JC_BTN_A,	},
++	{ BTN_SOUTH,		JC_BTN_B,	},
+ 	{ BTN_TL2,		JC_BTN_ZL,	}, /* Z */
+ 	{ BTN_TL,		JC_BTN_L,	},
+ 	{ BTN_TR,		JC_BTN_R,	},
+ 	{ BTN_TR2,		JC_BTN_LSTICK,	}, /* ZR */
+ 	{ BTN_START,		JC_BTN_PLUS,	},
+-	{ BTN_SELECT,		JC_BTN_Y,	}, /* C UP */
+-	{ BTN_X,		JC_BTN_ZR,	}, /* C DOWN */
+-	{ BTN_Y,		JC_BTN_X,	}, /* C LEFT */
+-	{ BTN_C,		JC_BTN_MINUS,	}, /* C RIGHT */
++	{ BTN_NORTH,		JC_BTN_Y,	}, /* C UP */
++	{ BTN_THUMBL,		JC_BTN_ZR,	}, /* C DOWN */
++	{ BTN_WEST,		JC_BTN_X,	}, /* C LEFT */
++	{ BTN_THUMBR,		JC_BTN_MINUS,	}, /* C RIGHT */
+ 	{ BTN_MODE,		JC_BTN_HOME,	},
+ 	{ BTN_Z,		JC_BTN_CAP,	},
+ 	{ /* sentinel */ },
+ };
+ 

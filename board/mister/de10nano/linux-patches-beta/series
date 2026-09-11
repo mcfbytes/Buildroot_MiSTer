@@ -36,8 +36,11 @@
 # went unlisted here for three weeks, and were closed on 2026-08-17 once
 # measured rather than assumed. They needed NO re-anchor — plain symlinks,
 # applied on 7.2 final at -F0 with offsets only (0038 1, 0039 1, 0040 1,
-# 0041 2, 0042 5 hunks at an offset, zero fuzz), and `make rt` is green on the
-# whole 40 from a clean tree. See docs/rt-beta-kernel.md §6.
+# 0041 2, 0042 5 hunks at an offset, zero fuzz), and `make rt` was green on the
+# whole 40-entry series of that date from a clean tree (the list is 42 entries
+# now; the 2026-09-11 addition of 0048/0049 was re-verified apply-only at -F0
+# against v7.2.3, 42/42, zero fuzz — `make rt` has not been re-run on 42).
+# See docs/rt-beta-kernel.md §6.
 # Keep it that way. The rule is unchanged and the 0047 exclusion above does not
 # soften it: if a patch will not apply to a newer 7.x release, RE-ANCHOR it here
 # rather than removing it from this list. "It does not apply" is never by itself
@@ -113,8 +116,9 @@
 # re-anchored for 7.x (0043-0046 above are real files too, but they are
 # beta-local originals, not re-anchors of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
-# Buildroot applies patches with `patch -F0` (fuzz zero), and these four
-# needed either re-anchored context or a real 7.x API/header delta. Keep
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these five
+# (0001, 0015, 0030, 0031, 0037 — 0031 rejoined the list on 2026-09-06, see
+# below) needed either re-anchored context or a real 7.x API/header delta. Keep
 # each in lockstep with its ../linux-patches/ original (every copy carries
 # a bracketed re-anchor note).
 #

@@ -1,6 +1,6 @@
 # Disagreements with docs/patch-provenance.md
 
-Generated 2026-09-10 22:21 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
+Generated 2026-09-11 00:05 UTC. Every record where independent re-derivation contradicts the prior doc — each was a candidate `60e08955f`-class error; all are tier-2 verified.
 
 ## `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU compensation.
 
@@ -89,10 +89,7 @@ FUNCTIONAL ASSESSMENT: This commit adds two RTC devices (&i2c1 rtc_at_68 and rtc
 
 - disposition: **dropped-deliberate** | severity feature-loss | silent
 - doc ref: docs/patch-provenance.md:789-875 (P1.6 cpufreq entry) and :798-804 (the 'P1.6 correction'); docs/abi-contract.md:1670
-- notes: DISPOSITION IS DELIBERATELY 'needs-verification': this is the owner's A/B/C decision (PLAN.md 2.4). The full comparison is docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md; do NOT close this record without reading it. Do not read 'needs-verification' as 'we might be missing a feature' - we are not; 0003 ships the same capability today.
-
-THREE FINDINGS THAT REFUTE PARTS OF THE PLAN'S HYPOTHESIS.
-(1) PLAN.md 2.4 and the option-C row assume the fork's driver changes the sysfs contract for community overclock scripts ('on upstream's driver scaling_max_freq alone may not reach 1200 MHz until …
+- notes: DISPOSITION IS 'dropped-deliberate', CLOSED BY OWNER DECISION D1=A ON 2026-09-11 (see the 'OWNER DECISION D1=A' paragraph below for what exactly was decided, and 'WHAT DROPPED-DELIBERATE MEANS HERE' for the driver/DTS split). The analysis in this record is the Wave-1/2 Opus pass, written while the disposition was still 'needs-verification' pending the owner's A/B/C choice (PLAN.md 2.4); it is unchanged, and it reads in places as if the decision were still open -- it is not. The full comparison is docs/kernel-recon/fork-sync-2026-09/memo-Q4-cpufreq.md; do NOT close this record without reading i…
 
 ## `bbeff2c30` Enable Logitech D-Input drivers.
 

@@ -6,15 +6,20 @@
 > "present in the built image" numbers were not recomputed, since that requires a real
 > build this pass did not run. What **was** checked: every "stock ships / does not ship"
 > **claim** below, against `docs/kernel-recon/fork-sync-2026-09/evidence/
-> stock-20260907-firmware.txt` (91 files; see `docs/stock-reconciliation.md` §0.1 for the
-> full recount against our shipped list). One claim changes:
+> stock-20260907-firmware.txt` (**89** paths — that file lists `firmware.tar.gz`'s contents;
+> the 91-regular-file figure in `docs/stock-inventory/20260907/firmware.md` is the *installed*
+> `/usr/lib/firmware` tree, i.e. those 89 plus `regulatory.db` and `regulatory.db.p7s`, which
+> come from `rootfs.tar.bz2` itself. Both numbers are right for their own method; this document
+> checks names against the 89-path list. Corrected by the Wave-4 audit, 2026-09-11 — it read
+> "91 files" here. See `docs/stock-reconciliation.md` §0.1 for the full recount against our
+> shipped list). One claim changes:
 > **`brcm/BCM20702A1-0b05-17cb.hcd`** — flagged below as a file with no confirmed upstream
 > source that P3.14 resolved with a maintainer-approved vendor fetch, framed throughout as
 > "stock never had this file at all" — **is now in stock's own firmware set as of Release
 > 20260907** (new; the 20250402 set never had it). Every other specific claim in this
 > document (`ath3k-1.fw`/`ar3k/*.dfu` absent from stock; `mt7663*` absent; `brcm/brcmfmac*`
 > and `cypress/*` absent — the "v10 additions" section's "stock ships none of them" list)
-> was re-checked against the 91-file 20260907 list and **still holds** — none of those
+> was re-checked against the 89-path 20260907 list and **still holds** — none of those
 > names appear in it either.
 >
 > ⚠ **Version staleness (noted 2026-08-01).** Every in-kernel-consumer check below was

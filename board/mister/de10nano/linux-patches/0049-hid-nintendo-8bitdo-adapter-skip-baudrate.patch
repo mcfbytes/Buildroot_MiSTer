@@ -135,10 +135,19 @@ MERGES:       (1) add the merged commit's SHA to
               docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json's
               `dependencies.duplicate_of` -- do not overwrite `sha`, the
               record stays keyed on the PR head; (2) re-fetch the merged
-              form and diff it against this PR-head diff, since
-              MiSTer-devel has re-authored/re-committed PRs before
-              landing them with a different SHA and sometimes a modified
-              hunk; (3) re-run the -F0 apply-order proof against the
+              form and diff it against this PR-head diff. MiSTer-devel
+              re-authors/re-commits PRs when landing them, with a
+              different SHA, a different author and a rewritten message
+              -- measured on the two precedents in this same increment:
+              PR #88 head 97887b3413 -> merged 9854075c8, and PR #91 head
+              9537eb33c0 -> merged 41c45f378. In BOTH cases `git patch-id
+              --stable` is IDENTICAL between head and merge
+              (6a080ee6d7bbbdfe57b54713fd5d17828fc49565 and
+              347bc8291a32de07463eabb1d965eec32ef71a0e respectively), i.e.
+              the DIFFS did not change, only the commit identity did. A
+              modified hunk is possible but has not been observed here, so
+              this is a cheap check, not an expected change;
+              (3) re-run the -F0 apply-order proof against the
               merged hunk before considering this patch settled; (4) if
               the merge changes the author/Signed-off-by chain, update
               this header to match.

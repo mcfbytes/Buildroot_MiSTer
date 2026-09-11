@@ -96,7 +96,7 @@ patches as carried before they exist.
 | D3 | Carry the open PR #92 now | **Yes.** | "Gamepad unusable" class, hardware-verified A/B by its author on a DE10-Nano at 6.18.38, 32 lines, applies clean on top of our whole hid-nintendo stack on both kernels; Main_MiSTer hard-codes `057e_2009`. | yes |
 | D4 | Align `0001` to upstream's `fb_sys_read/write` | **Yes** (also the beta copy). | Proven identical machine code on ARM; Main_MiSTer only ioctls `/dev/fb0`; shrinks the export diff. | follow the memo: yes |
 | D5 | Run the two Opus workers | moot — they ran (≈0.50 M tokens total) | — | — |
-| D6 | Wave 5 upstream PRs for `0038`–`0042` | unchanged: optional | — | prepare branches only when asked |
+| D6 | Wave 5 upstream PRs for `0039`–`0042` (+ `BTN_Z` scoping, + the fork's `memremap()` check) | **prepared, not sent** — six patches + PR drafts under `upstream-candidates/`; opening them is the owner's call after reading the PR #75 thread | — | nothing is sent |
 
 ## 4. Hardware-gated items (for when you are at the board)
 
@@ -173,3 +173,42 @@ build recipe; `scripts/check-export-tree.sh` proves the export is the kernel Bui
 (dry run PASS at 6.18.49). See `docs/kernel-export.md`, including §1.1: **the PR #75 review
 thread could not be read from the session — owner to check it against §1.2**. Not wired into CI
 yet; no PR was opened against the fork.
+
+## 8. Waves 4–5 — executed 2026-09-11
+
+**Wave 4 audit** (`audit-findings.md`, summarised in `fork-sync-2026-09.md` §7): 112 claims
+checked — 80 confirmed, 28 corrected, 2 unverifiable (a GitHub thread; the real 6.18.50 export
+run). **No disposition contradicted.** Every new patch's hunks match the fork/PR diff; the ledger
+is exact; `reduce.py` 0 problems; both series replay clean. The corrections that matter: README
+wrongly said stock 6.18 lacks drivers for RTL8710BU/RTL8188FU (`rtl8xxxu` binds both and stock
+ships their firmware); README over-credited stock with RTL8814AU/8822CU/8723DU (modules, no
+firmware); five records still carried Wave 1 prose contradicting their Wave 3 fields; stale
+series/patch counts in seven places.
+
+**Wave 4 tree-diff backstop** (`tree-diff-2026-09.md`): our full series applied at `-F0` onto
+the fork's pristine 6.18.38 base and diffed against the fork's HEAD: 58 sections, 53
+comment/style-only, 5 behavioural clusters — **all already dispositioned**; DTS node-by-node: 0
+findings. **One new finding, F1**: the fork's own `MiSTer_fb.c` tests a `memremap()` result with
+`IS_ERR()` (it returns NULL), a latent bug in stock's driver that our `0001` does not have.
+
+**Wave 5** (`upstream-candidates/`): six standalone patches re-anchored on the fork's HEAD
+`c129b0fac` — `0039` N64/Genesis stock button maps, `0040` IMU name suffix, `0041` stock LED
+classdev names, `0042` stock lightbar names, `0037`'s DualSense-only `BTN_Z` scoping, and the F1
+fix — each applying at `-F0`/`git am` alone and all together in order, each compiled `W=1`
+against his tree (one harmless unused-declaration warning on `0041`'s idiom, same as ours), with
+a PR title and body per patch. `0038` was withdrawn: his tree already has the identical PID
+normalization. **Nothing was pushed or opened upstream.**
+
+**Follow-ups surfaced (not actioned):**
+1. **Firmware gap on our side**, exposed by the audit's Realtek correction: we build
+   `CONFIG_RTL8XXXU=m` (+`_UNTESTED`), which drives RTL8710BU and RTL8192FU, but ship neither
+   `rtlwifi/rtl8710bufw_{SMIC,UMC}.bin` nor `rtlwifi/rtl8192fufw.bin` (nor `rtl8723bu_bt.bin`);
+   stock 20260907 ships all four. Fix shape: add them to `package/linux-firmware-extra/` (it
+   copies named files out of the pinned linux-firmware tree) — **after** confirming each file
+   exists in the pinned linux-firmware snapshot, which that package's own rule requires and which
+   needs the tarball (not reachable here).
+2. The `S39usb-coldplug` / `uartmode` addon.tar delta (STATUS §7).
+3. The 6.18.49→6.18.50 / 7.2.3→7.2.4 drift walk (`env.md`) and the real-tarball export run
+   (`docs/kernel-export.md` §5).
+4. Wiring `scripts/check-export-tree.sh --no-build` into `build.yml` after the kernel leg.
+5. The PR #75 review thread (`docs/kernel-export.md` §1.1) — owner.

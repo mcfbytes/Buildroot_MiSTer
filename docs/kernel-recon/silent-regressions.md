@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-09-10 22:21 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-11 00:05 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 ## `c129b0fac` Add AIC8800 WiFi/BT driver. — **feature-loss**
 

@@ -174,6 +174,9 @@ version code so it stays inert on the shared 6.18 build.
 ## 5. Build & flash
 
 ```sh
+make rt-defconfig             # only if output-rt/.config predates a Buildroot pin move or
+                              #    survived a `make clean`; `make rt-clean` instead when the
+                              #    fragment's kernel version moved (stale sibling tree)
 make rt                       # -> output-rt/images/zImage_dtb (the RT kernel)
                               #    + its module tree staged into the overlay
 make all                      # -> linux.img now carries BOTH module trees

@@ -92,7 +92,14 @@ produced — the only difference is `BR2_DEFCONFIG`, which is where
 - `output/.config` is generated once and then never touched by `make all` (no
   file prerequisites on the rule, so a `menuconfig` edit is not silently
   discarded — the Makefile's own comment explains). Regenerate deliberately
-  with `make de10nano-defconfig` / `make de25nano-defconfig` / `make rt-clean`.
+  with `make de10nano-defconfig` / `make de25nano-defconfig` / `make rt-defconfig`
+  (`make rt-clean` instead when the rt fragment's kernel version moved). Two
+  things leave a stale config behind that nothing regenerates for you: `make
+  clean` keeps every `.config` (Buildroot's definition), and a Buildroot pin
+  move retires or adds Kconfig symbols under it. A config written on the
+  previous pin then stops the next build at an interactive Kconfig prompt
+  ("Toolchain type", "Kernel Headers") — regenerate first, or `make distclean`
+  after a pin move.
 - A symbol belongs in **exactly one** fragment of a stack. A symbol set in
   `common` and overridden per board should have been board-only in the first
   place; `scripts/check-config-fragments.sh` fails on any redefinition (the

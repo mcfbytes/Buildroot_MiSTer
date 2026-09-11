@@ -795,16 +795,26 @@ inventoried against real mr-fusion output in
 ```sh
 make                            # prints help — deliberately NOT a build
 make de10nano-defconfig         # generate output/.config from the fragment stack
+make rt                         # OPTIONAL: the PREEMPT_RT kernel — before `make all`, so its module tree lands in linux.img
 make all                        # build (first run bootstraps a cross-toolchain — hours, not minutes)
 ```
 
-Two things that will bite you otherwise:
+Three things that will bite you otherwise:
 
 - **`make` on its own prints help rather than building.** A reflexive bare `make` in a
   Buildroot tree with no config starts a full **x86** toolchain build that nothing here
   wants. Use `make all` — it runs the stage-1 initramfs build first, then the image.
 - **Do not pass `-j`.** Buildroot's top level is not parallel-safe; it parallelises each
   package internally, defaulting to your CPU count. CI runs a bare `make all`.
+- **Configs are generated once and then left alone.** `make all` and `make rt` never
+  regenerate `output/.config` or `output-rt/.config` (so `menuconfig` edits survive), and
+  `make clean` keeps both. After a `git pull` that moves the Buildroot pin
+  (`BUILDROOT_VERSION` in the Makefile), or after a `make clean`, regenerate every config
+  you build — `make de10nano-defconfig` **and** `make rt-defconfig` — before building. The
+  symptom of a stale one is Buildroot stopping at an interactive Kconfig prompt
+  ("Toolchain type", "Kernel Headers"): a config written on the previous pin no longer
+  matches the new tree's symbols. A Buildroot pin move is best followed by `make distclean`
+  outright; a kernel-version change in `configs/mister_rt.fragment` needs `make rt-clean`.
 
 ### Useful targets
 
@@ -812,6 +822,7 @@ Two things that will bite you otherwise:
 |---|---|
 | `make all` | The shipped image: `linux.img` + `zImage_dtb` |
 | `make rt` | Kernel-only `PREEMPT_RT` build → `zImage_dtb-rt` + module overlay |
+| `make rt-defconfig` | Regenerate `output-rt/.config` from its stack — the rt twin of `de10nano-defconfig`; run it after a Buildroot pin move or a `make clean` |
 | `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all`. The card carries no variant kernel, so `make rt` is not required first; if you *do* build RT, run it before `make all` so its modules land in the image |
 | `make initramfs` | Stage-1 cpio only, and print its size |
 | `make de25-initramfs` | The same stage 1 built for aarch64 (`output-initramfs-de25/`), verified; boot-test it with `scripts/test-initramfs.sh --board de25nano` |

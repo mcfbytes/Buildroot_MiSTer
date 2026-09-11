@@ -389,7 +389,7 @@ endef
 .PHONY: initramfs initramfs-clean initramfs-menuconfig initramfs-busybox-menuconfig check-initramfs
 .PHONY: initramfs-defconfig de25-initramfs de25-initramfs-clean de25-initramfs-defconfig
 .PHONY: de25-initramfs-menuconfig de25-initramfs-busybox-menuconfig de25-initramfs-verify
-.PHONY: rt rt-clean rt-menuconfig rt-external-deps rt-legal-info
+.PHONY: rt rt-clean rt-defconfig rt-menuconfig rt-external-deps rt-legal-info
 .PHONY: de25 de25-clean de25-menuconfig de25-linux-menuconfig
 .PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
 .PHONY: sdcard
@@ -713,14 +713,28 @@ de25-initramfs-clean:
 # Order-only $(BR_STAMP), no file prerequisites — mirrors $(OUTPUT_DIR)/.config
 # above (and for the same reason: a defconfig/fragment listed as a normal
 # prerequisite is caught by the catch-all target-forwarding rule and would
-# re-run against O=$(OUTPUT_DIR)). Re-generate after editing the fragment with
-# `make rt-clean && make rt` (same manual step the main config's design implies).
+# re-run against O=$(OUTPUT_DIR)). Re-generate deliberately with
+# `make rt-defconfig` (below), or `make rt-clean && make rt` when the fragment's
+# kernel version moved -- the same manual step the main config's design implies.
 # The rt fragment is the ONE place a later fragment legitimately redefines
 # earlier symbols (kernel version + patch dir); scripts/check-config-fragments.sh
 # allowlists exactly those.
 $(RT_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
 	$(call merge_fragments,$(RT_OUTPUT_DIR),$(DE10NANO_KERNEL_STACK) $(RT_FRAGMENT))
 	$(BR_MAKE_RT) olddefconfig
+
+# Force-regenerate the RT configuration from its stack -- the rt twin of
+# `de10nano-defconfig`. Needed whenever output-rt/.config predates something it
+# cannot see: a Buildroot pin move (Kconfig symbols retire or appear, and
+# Buildroot's own syncconfig then stops `make rt` at an INTERACTIVE prompt --
+# "Toolchain type", "Kernel Headers" -- the moment it reaches the stale file),
+# or a `make clean`, which keeps every .config by Buildroot's definition. This
+# regenerates the config only; a kernel-version change in
+# configs/mister_rt.fragment still needs `make rt-clean` (stale sibling tree,
+# see the rt recipe below).
+rt-defconfig: | $(BR_STAMP) hostshim
+	@rm -f $(RT_OUTPUT_DIR)/.config
+	@$(MAKE) --no-print-directory $(RT_OUTPUT_DIR)/.config
 
 # `initramfs` is a hard prerequisite for the same reason it is on `all`:
 # external.mk's LINUX_KCONFIG_FIXUP_CMDS hook keys on BR2_LINUX_KERNEL=y (any
@@ -1151,6 +1165,11 @@ help:
 	@echo "                                    stage its module tree into the extra-modules"
 	@echo "                                    overlay so the next 'make all' ships it in"
 	@echo "                                    linux.img"
+	@echo "  make rt-defconfig               - (re)generate output-rt/.config from the kernel-only"
+	@echo "                                    stack + configs/mister_rt.fragment. Run it after a"
+	@echo "                                    Buildroot pin move or a 'make clean' (which keeps"
+	@echo "                                    .config): a stale config stops 'make rt' at an"
+	@echo "                                    interactive Kconfig prompt"
 	@echo "  make rt-menuconfig              - kernel menuconfig for the RT variant"
 	@echo "  make rt-external-deps           - list every download the RT config needs (CI's"
 	@echo "                                    dl/-completeness oracle)"

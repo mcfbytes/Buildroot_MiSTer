@@ -8,7 +8,7 @@
 #
 # Installs the handful of firmware files that stock MiSTer ships, and that this
 # project's pinned kernel actually request_firmware()s, but that NO
-# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs (the four MEMBERS below).
+# BR2_PACKAGE_LINUX_FIRMWARE_* sub-option installs (the MEMBERS below).
 #
 # It does NOT fetch or unpack a tarball of its own. It takes the files straight
 # out of the linux-firmware package's OWN already-extracted tree
@@ -19,7 +19,7 @@
 #   (a) DRIFTED -- it sat at 20251011 while the real linux-firmware package
 #       moved to 20260410 (a fork-sync of upstream Buildroot bumps
 #       linux-firmware automatically; this package is on renovate-hash-sync's
-#       "NEVER automated" list and nothing re-pinned it), so the four files
+#       "NEVER automated" list and nothing re-pinned it), so these files
 #       shipped a ~6-month-older snapshot than every other firmware file, and
 #   (b) DOUBLED the download + dl/ footprint for content that is a strict
 #       subset of what linux-firmware already fetched.
@@ -34,12 +34,12 @@
 # LEGAL-INFO: this package has no _SOURCE of its own, so Buildroot's legal-info
 # treats it as "part of Buildroot" and skips it entirely -- no manifest row, no
 # license collection (pkg-generic.mk guards the whole license/manifest block on
-# a non-empty _SOURCE). That is correct here: the four files ARE linux-firmware
+# a non-empty _SOURCE). That is correct here: the files ARE linux-firmware
 # files, and linux-firmware -- a hard dependency, always built when this package
 # is -- already records them under its own SBOM entry. Its
 # LINUX_FIRMWARE_LICENSE_FILES lists WHENCE + LICENCE.mediatek +
 # LICENCE.ralink_a_mediatek_company_firmware + LICENCE.rtlwifi_firmware.txt,
-# exactly the licenses our four files fall under, so the attribution is complete
+# exactly the licenses our files fall under, so the attribution is complete
 # via linux-firmware rather than duplicated here.
 LINUX_FIRMWARE_EXTRA_LICENSE = Proprietary
 
@@ -86,6 +86,18 @@ LINUX_FIRMWARE_EXTRA_EXTRACT_DEPENDENCIES = linux-firmware
 # "brcm/BCM%s.hcd" with %s = "-<vid>-<pid>" (btbcm.c), so this name is exactly
 # what a 0bb4:0306 dongle asks for. Distinct from brcm/BCM20702A1-0b05-17cb.hcd,
 # which upstream does NOT carry and which package/bcm20702-firmware fetches.
+#
+# rtlwifi/rtl8710bufw_{SMIC,UMC}.bin and rtlwifi/rtl8192fufw.bin (2026-09,
+# stock release_20260907 parity -- docs/verification/stock-release-20260907.md
+# §4.2): the in-tree rtl8xxxu driver we build (CONFIG_RTL8XXXU=m with
+# RTL8XXXU_UNTESTED=y) drives RTL8710BU and RTL8192FU and requests these
+# three by name (rtl8xxxu/8710b.c: rtl8710bu_load_firmware() picks SMIC or
+# UMC by the chip's vendor bits; rtl8xxxu/8192f.c: rtl8192fu_load_firmware()).
+# Buildroot's _RTL_81XX list predates both chips and installs neither, so
+# until now the driver bound and then failed at request_firmware() -- the
+# README's "RTL8710BU: in-kernel rtl8xxxu" row was hollow. Stock 20260907
+# ships all three; all three are in the pinned linux-firmware tree (WHENCE
+# "File: rtlwifi/rtl8710bufw_SMIC.bin" / "_UMC.bin" / "rtl8192fufw.bin").
 LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	brcm/BCM-0bb4-0306.hcd \
 	mediatek/mt7610u.bin \
@@ -96,7 +108,22 @@ LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7663pr2h_rebb.bin \
 	mediatek/mt7668pr2h.bin \
 	rtlwifi/rtl8192dufw.bin \
+	rtlwifi/rtl8192fufw.bin \
+	rtlwifi/rtl8710bufw_SMIC.bin \
+	rtlwifi/rtl8710bufw_UMC.bin \
 	rtlwifi/rtl8723befw_36.bin
+#
+# Deliberately NOT here, although stock 20260907 ships it:
+# rtlwifi/rtl8723bu_bt.bin. rtl8xxxu/8723b.c names it as the alternative to
+# rtl8723bu_nic.bin when priv->enable_bluetooth is set -- but that flag is
+# declared (rtl8xxxu.h) and READ (8723a.c, 8723b.c) and never WRITTEN
+# anywhere in the driver, in v6.18.38 and in stock's own MiSTer-v6.18 alike.
+# The _bt branch is unreachable; the driver always requests
+# rtl8723bu_nic.bin, which _RTL_87XX already installs. Upstream
+# linux-firmware has never carried the _bt name either (stock's copy is a
+# byte-identical duplicate of rtlwifi/rtl8723bs_bt.bin). Shipping a file no
+# code path can request is dead weight, not parity -- documented in
+# docs/firmware-parity.md's 2026-09 section instead.
 
 # Copy the firmware members out of linux-firmware's extracted tree into our own
 # $(@D) for INSTALL_TARGET_CMDS below. -D creates the parent directory.

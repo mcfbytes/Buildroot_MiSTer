@@ -53,6 +53,21 @@ plus two documented declines (vgmplay) and one genuinely sourceless binary
 
 ## 1. `firmware.tar.gz` — 58/69 present, 11 justified, +213 added
 
+> **Superseded for firmware by stock `release_20260907` (2026-09).** Stock's
+> `firmware.tar.gz` grew to 89 files (91 on the image) with its move to a 6.18
+> kernel; 17 of the 25 additions were already on this image, three
+> (`rtlwifi/rtl8710bufw_{SMIC,UMC}.bin`, `rtl8192fufw.bin`) are closed by
+> `package/linux-firmware-extra`, one (`rtlwifi/rtl8723bu_bt.bin`) is declined
+> because the only code path naming it sits behind a flag `rtl8xxxu` never sets,
+> and four (`ath10k/QCA9377/*`, the two laptop-internal `xone_dongle_*` PIDs) join
+> the deliberate-absence list. Current position: **77 of 91** present, 14 deliberate
+> absences: the 11 below (which already include the two xone PIDs) + 2 `ath10k` +
+> `rtl8723bu_bt.bin`.
+> The live list CI enforces is the `Missing (14)` block at the top of
+> [`docs/firmware-parity.md`](firmware-parity.md);
+> the full delta is in [`docs/verification/stock-release-20260907.md` §3.2](verification/stock-release-20260907.md).
+> The rest of this section is the 20250402/`8aba321` record, unchanged.
+
 ### The 11 absences, each with its reason
 
 | Stock file(s) | Why absent | Functionally covered? |

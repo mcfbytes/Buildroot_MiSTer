@@ -12,6 +12,77 @@
 > `rootfs.tar`. A `.y` bump on the same stable line does not normally add a driver, so
 > none of this is expected to have moved; nobody has re-derived it.
 
+## 2026-09 re-baseline: stock `release_20260907` (91 files)
+
+Stock moved. `release_20260907` (kernel 6.18.38, mainline-first Wi-Fi — see
+[`docs/verification/stock-release-20260907.md`](verification/stock-release-20260907.md))
+ships **91** regular files under `/usr/lib/firmware`, up from the 66 every section below
+was measured against. `docs/stock-inventory/firmware.md` has been **regenerated from the
+20260907 image** (it is the list `scripts/ci-tests.sh` reads), so the *Missing* block
+right here is the one CI enforces; the original P3.3 block further down is kept as the
+historical record and is no longer parsed.
+
+Of the 25 files stock added, **17** were already on this image (the four `rtw88/` and
+three `rtw89/` blobs, `mediatek/mt7925/*` (2), the MT7961 Wi-Fi pair, `ath6k/AR6004/hw1.3/*`
+(2), `rtlwifi/rtl8188fufw.bin`, `rtlwifi/rtl8192dufw.bin`, `xone_dongle_{02e6,02fe}.bin`) —
+this project had shipped them since ADR 0016 / P3.3 / v10.x, stock caught up. Of the other
+eight, four are deliberate absences listed below (`ath10k/QCA9377/*`, the two
+laptop-internal xone PIDs), three were genuine gaps in **our** image — all in the
+`rtl8xxxu` family this project relies on for the chips whose vendor forks it dropped, and
+all closed by `package/linux-firmware-extra` in the same change as this section — and the
+last looked like a gap and is not:
+
+| Stock file | In-tree consumer (6.18) | Source here |
+|---|---|---|
+| `rtlwifi/rtl8710bufw_SMIC.bin`, `rtlwifi/rtl8710bufw_UMC.bin` | `drivers/net/wireless/realtek/rtl8xxxu/8710b.c: rtl8710bu_load_firmware()` — picks SMIC or UMC from the chip's vendor bits | pinned linux-firmware tree (WHENCE `File:` entries at 20260810), via `linux-firmware-extra` |
+| `rtlwifi/rtl8192fufw.bin` | `rtl8xxxu/8192f.c: rtl8192fu_load_firmware()` | same |
+| `rtlwifi/rtl8723bu_bt.bin` | `rtl8xxxu/8723b.c:489` names it as the alternative to `rtl8723bu_nic.bin` when `priv->enable_bluetooth` is set — but that flag is declared (`rtl8xxxu.h:1839`), **read** (`8723a.c:247`, `8723b.c:489`) and **never written** anywhere in the driver, in v6.18.38 and in stock's own `MiSTer-v6.18` alike. The branch is unreachable: the driver always requests `rtl8723bu_nic.bin`, which `RTL_87XX` installs | **deliberately not reproduced.** Upstream linux-firmware has never carried the `_bt` name (no `File:`/`Link:` in WHENCE); stock's copy is a byte-identical duplicate (sha256 `774f6628…6aea`, 9120 B) of `rtlwifi/rtl8723bs_bt.bin`, which we already ship. A file no code path can request is dead weight, not parity. If a future kernel ever sets the flag, `request_firmware()` has no alias fallback (it tries exact `fw_path` entries plus `.zst`/`.xz` only), so this row is the reminder to revisit |
+
+Before this change an RTL8710BU or RTL8192FU dongle bound to `rtl8xxxu` and then died at
+`request_firmware()` — the README's "RTL8710BU: in-kernel `rtl8xxxu`" row was hollow.
+
+**Deliberately still not reproduced (14 of 91).** The nine P3.3 justifications below
+stand unchanged, plus five new ones:
+
+- `ath10k/QCA9377/hw1.0/board-2.bin`, `ath10k/QCA9377/hw1.0/firmware-6.bin` — stock now
+  builds `ath10k_usb`; we do not, on upstream's own word ("EXPERIMENTAL … will not fully
+  work", [`wifi-parity.md` §7](wifi-parity.md)). Shipping the firmware without the driver
+  would be dead weight.
+- `xone_dongle_02f9.bin`, `xone_dongle_091e.bin` — dongles soldered into laptop
+  mainboards, physically unattachable to a DE10-Nano ([ADR 0003](decisions/0003-xone-firmware.md)).
+  The two external adapters, `02e6` and `02fe`, ship via `package/xow-firmware`.
+- `rtlwifi/rtl8723bu_bt.bin` — unreachable consumer, see the table above.
+
+**Missing (14):**
+
+```
+RTL8192E/boot.img
+RTL8192E/data.img
+RTL8192E/main.img
+ath10k/QCA9377/hw1.0/board-2.bin
+ath10k/QCA9377/hw1.0/firmware-6.bin
+mediatek/mt7662u.bin
+mediatek/mt7662u_rom_patch.bin
+rt2870_sw_ch_offload.bin
+rtl_bt/rtl8192ee_fw.bin
+rtl_bt/rtl8192eu_fw.bin
+rtlwifi/rtl8723bu_bt.bin
+rtlwifi/rtl8723defw.bin
+xone_dongle_02f9.bin
+xone_dongle_091e.bin
+```
+
+So the current position is **77 of 91** stock files reproduced, every absence a
+documented decision. `scripts/ci-tests.sh` asserts the 77 against `rootfs.tar` on every
+build.
+
+> Everything from here down is the original P3.3 record against the **66-file**
+> `release_20250402` inventory. Its "57 / 66" figures, its `linux-6.18.33` greps and its
+> own "Missing (10)" block are left exactly as measured — they are the evidence for the
+> nine justifications the table above inherits — but that block is **no longer the one CI
+> parses** (the parser takes the first `Missing (N):` block in this file, which is now the
+> one above).
+
 This is the P3.3 deliverable for the **firmware population** half of
 "Module loading & firmware infra" (TASKS.md). The **module-autoload** half
 (kmod/depmod/eudev/xz-compression) was already done — see the P3.3 (core)
@@ -175,7 +246,9 @@ the per-file citation). `wireless-regdb` is a separate Buildroot package
 
 Four files land in no Buildroot `linux-firmware` Config.in sub-option
 despite being genuinely present in upstream linux-firmware **and** having a
-confirmed in-tree 6.18.33 kernel consumer:
+confirmed in-tree 6.18.33 kernel consumer (three more stock-parity files
+joined them in 2026-09 — see the re-baseline section at the top; the
+package's `.mk` carries the per-file citations for every member):
 
 | File | In-tree consumer |
 |---|---|
@@ -183,6 +256,8 @@ confirmed in-tree 6.18.33 kernel consumer:
 | `mediatek/mt7622pr2h.bin` | `drivers/bluetooth/btmtk.h: FIRMWARE_MT7622 "mediatek/mt7622pr2h.bin"` |
 | `mediatek/mt7668pr2h.bin` | `drivers/bluetooth/btmtk.h: FIRMWARE_MT7668 "mediatek/mt7668pr2h.bin"` |
 | `rtlwifi/rtl8723befw_36.bin` | `drivers/net/wireless/realtek/rtlwifi/rtl8723be/sw.c: fw_name = "rtlwifi/rtl8723befw_36.bin"` |
+| `rtlwifi/rtl8710bufw_SMIC.bin`, `rtlwifi/rtl8710bufw_UMC.bin` (2026-09) | `drivers/net/wireless/realtek/rtl8xxxu/8710b.c: rtl8710bu_load_firmware()` |
+| `rtlwifi/rtl8192fufw.bin` (2026-09) | `drivers/net/wireless/realtek/rtl8xxxu/8192f.c: rtl8192fu_load_firmware()` |
 
 Rather than patching `work/buildroot/package/linux-firmware/linux-firmware.mk`
 directly (that tree is gitignored/untracked — `work/` — so a hand-edit there

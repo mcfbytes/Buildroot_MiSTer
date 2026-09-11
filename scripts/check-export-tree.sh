@@ -125,6 +125,7 @@ fails=0
 skips=0
 
 scratch=''
+# shellcheck disable=SC2329 # invoked by the EXIT trap two lines below, not by name
 cleanup() {
 	# `if`, not `[[ ... ]] && rm`: as an EXIT trap this function's own status becomes the
 	# script's, and a false test would turn a clean run into exit 1. Same shape as
@@ -227,9 +228,9 @@ git -C "$export_dir" show "$tag:EXPORT.md" >"$export_md"
 #
 # The first pattern requires whitespace-then-# after the tag so it cannot also match the
 # second line, whose tag is followed by `~`.
-base_offset="$(sed -n "s|^[[:space:]]*git diff $tag~\([0-9]\{1,\}\) $tag[[:space:]]\{1,\}#.*|\1|p" \
+base_offset="$(sed -n "s|^[[:space:]]*git diff ${tag}~\([0-9]\{1,\}\) ${tag}[[:space:]]\{1,\}#.*|\1|p" \
 	"$export_md" | head -1)"
-shipped_offset="$(sed -n "s|^[[:space:]]*git diff $tag~[0-9]\{1,\} $tag~\([0-9]\{1,\}\).*|\1|p" \
+shipped_offset="$(sed -n "s|^[[:space:]]*git diff ${tag}~[0-9]\{1,\} ${tag}~\([0-9]\{1,\}\).*|\1|p" \
 	"$export_md" | head -1)"
 [[ -n $base_offset && -n $shipped_offset ]] ||
 	die "could not read the commit offsets out of EXPORT.md ($tag:EXPORT.md).
@@ -514,6 +515,7 @@ else
 		skip "config comparison — no .config in $build_dir (Buildroot has not
        configured the kernel there yet). Re-run after \`make linux-configure\`."
 	else
+		# shellcheck disable=SC2016 # the backticks are display text, not a substitution
 		say 'Config: Buildroot .config vs `make ARCH=arm MiSTer_defconfig` on the export'
 		# `make O=` rather than a copy of the export: same isolation, no 1.4GB copy, and
 		# the export tree is provably untouched afterwards (asserted below).
@@ -603,6 +605,7 @@ else
 					note "DTB differs from $build_dir's:"
 					note "  export     $(sha256sum "$vanilla_out" | cut -d' ' -f1)"
 					note "  build dir  $(sha256sum "$br_dtb" | cut -d' ' -f1)"
+					# shellcheck disable=SC2016 # the backticks are display text, not a substitution
 					note '  (different dtc versions can differ legitimately; compare `fdtdump` output)'
 				fi
 			elif [[ -n $build_dir ]]; then

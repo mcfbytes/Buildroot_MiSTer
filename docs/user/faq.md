@@ -50,7 +50,11 @@ reach your MiSTer's SSH or FTP port, has root.** On a home network you trust, th
 same posture the entire MiSTer community has run under for years. **If your MiSTer is
 reachable from an untrusted network — a shared network, a network you don't control, or
 anything exposed to the internet — changing the root password is strongly advised.**
-Change it the same way you would on stock: log in and run `passwd`.
+Change it the same way you would on stock: log in and run `passwd`. **Be aware that an
+image update currently puts the default back**: `/etc/shadow` lives inside `linux.img`,
+which an update replaces wholesale, so re-run `passwd` after every update until the
+persistence work in [ADR 0031](../decisions/0031-secure-by-default-network-posture.md)
+lands. If you use an SSH key (next entries), the key survives updates already.
 
 ---
 

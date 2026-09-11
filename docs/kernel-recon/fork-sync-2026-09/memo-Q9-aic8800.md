@@ -21,7 +21,10 @@ turns on a single stable release: the questions are "does mainline have this dri
 
 ## TL;DR — recommendation
 
-**DEFER (option D).** The technical objection is gone — both modules compile **and modpost
+**DEFER (option D).** ~~This was the recommendation and it was accepted as owner decision
+D2.~~ **REVERSED 2026-09-10 — see §10: the driver and its firmware are now packaged.**
+Read the rest of this memo as the analysis that produced the defer, not as current state.
+The technical objection is gone — both modules compile **and modpost
 clean** for 32-bit ARM (zero errors, zero warnings, `.ko`s in hand at 206,828 B of `.ko.xz`),
 and the `rtl8852cu` `__aeabi_uldivmod` trap does **not** recur — but the supply objection is
 decisive and unresolved:
@@ -36,6 +39,14 @@ decisive and unresolved:
 
 Both blockers are *answerable* — by identifying the upstream repo and its firmware
 distribution — and neither needs hardware. That is why this is defer, not decline.
+
+> **Addendum, 2026-09-10 (§9):** the network-gated questions have since been answered. The
+> recommendation is unchanged, but three facts are now settled: stock has shipped **no**
+> firmware and no release containing the module (§9.1), `linux-firmware` definitively does
+> not carry AIC blobs (§9.2), and the exact vendor snapshot *is* identifiable with D80
+> firmware publicly available — under a repackager's licence that does not resolve §1.3
+> (§9.3). §9.4 adds a packaging trap neither this memo nor stock has accounted for: the
+> blobs must live in `/lib/firmware/aic8800D80/`, **not** flat in `/lib/firmware/`.
 
 ---
 
@@ -116,6 +127,10 @@ session has no GitHub API/HTML and the preamble forbids it):
      `drivers/net/wireless/aic8800/` at the same paths.
 4. **Also grep for the firmware**: `fmacfw_8800d80_u02.bin` is the single most distinctive
    filename (§2). A repo that carries both that blob and this source is the pin candidate.
+
+> **Answered — see §9.3.** `goecho/aic8800_linux_drvier` is a byte-exact match on
+> `RWNX_VERS_REV "1a4b0054d2M (master)"` / `RWNX_VERS_MOD "6.4.3.0"` and carries the D80
+> firmware. `radxa/aic8800`, the first candidate listed below, is a 404.
 
 Nothing in the tree names a repo: there is **no README, no LICENSE, no build script, no
 `.txt`/`.md` of any kind** (`find . -iname '*readme*' -o -iname '*license*' -o -iname '*.sh'
@@ -345,6 +360,10 @@ commit** — no follow-up firmware commit exists yet on any fork branch.
 Sorgelig to ship the blobs in a later `firmware.tar.gz`; that has not happened yet.
 
 ### 2.4 Where firmware could come from — what I can and cannot verify here
+
+> **All three bullets answered — see §9.** `linux-firmware`: no (§9.2). The vendor tree:
+> found, D80 only, licence unresolved (§9.3). Stock, later: still the recommended path, and
+> still not yet happened (§9.1) — plus the layout requirement in §9.4.
 
 - **`linux-firmware` upstream: NOT VERIFIABLE FROM THIS SESSION.** The repo has no
   extracted Buildroot tree (`work/`, `output/`, `dl/` do not exist on this branch), so there
@@ -811,6 +830,191 @@ would be wrong: nothing here is disqualifying, several things are merely unknown
 > *technical* objection permanently and cheaply, which is exactly why deferring costs almost
 > nothing: when the firmware and the upstream pin appear, this becomes a mechanical
 > packaging job with the hard question already answered.
+
+---
+
+## 9. Addendum (2026-09-10) — the three network-gated questions, answered
+
+**The recommendation is unchanged: defer.** Two of this memo's open questions are now
+closed and a third is closed enough to change *why* we defer, not *whether*. The memo was
+written without network access and names several things "a human must do with network
+access"; they were done on 2026-09-10 from a session that has it. Findings in order of
+decisiveness.
+
+### 9.1 Stock ships nothing yet — the driver is inert on stock too
+
+`MiSTer-devel/Linux-Kernel_MiSTer` re-fetched: `MiSTer-v6.18` HEAD is **still
+`c129b0fac3`**, and `git log --all -i --grep=aic` over every ref returns that one commit.
+No firmware commit has followed it.
+
+`MiSTer-devel/Linux_Image_creator_MiSTer` — where stock's `firmware.tar.gz` actually lives
+— has its newest commit at **`d4e3f51ec` "Release 20260907." (2026-09-07)**, which
+*pre-dates* the driver commit. Nothing since.
+
+**So "stock added AIC8800" means stock added the *source*.** No stock release ships either
+the module or the blobs, and one that shipped the module today would behave exactly as §2.3
+predicts. We are not behind stock in any way a user can observe, and §7.1's parity argument
+therefore has no deadline attached to it.
+
+### 9.2 `linux-firmware` does not carry it — confirmed in both trees
+
+§2.4's first bullet is closed, with the answer the memo expected but could not check:
+
+```
+output/build/linux-firmware-20260410/WHENCE       0 hits  (aic8800|aicsemi|fmacfw|rwnx)
+gitlab.com/kernel-firmware/linux-firmware @ main  0 hits  (same four strings)
+torvalds/linux @ master  MAINTAINERS              0 hits  (aic8800)
+```
+
+There is no `aic8800/` directory in our pinned tree either. This will not change while
+mainline has no driver to `request_firmware()` it, so `package/linux-firmware`'s
+sub-options are permanently not the answer here.
+
+### 9.3 The vendor snapshot is identified, and the D80 firmware exists publicly
+
+§1.2 asked for a grep of `RWNX_VERS_REV` against candidate trees.
+`goecho/aic8800_linux_drvier` — this memo's own second candidate, 98 stars, pushed
+2026-09-07 — is a **revision match on the exact string**:
+
+```
+fork c129b0fac3  RWNX_VERS_REV "1a4b0054d2M (master)"  MOD "6.4.3.0"  RELEASE_DATE "2026_0123_5f7be68d"
+goecho    HEAD   RWNX_VERS_REV "1a4b0054d2M (master)"  MOD "6.4.3.0"  RELEASE_DATE "2024_0420_24c7777c"
+```
+
+Same vendor git revision `1a4b0054d2`, same SDK version 6.4.3.0, different SDK packaging
+date — the same rwnx snapshot re-released. Same layout, too
+(`drivers/aic8800/{Kconfig,Makefile,aic8800_fdrv,aic_load_fw}`).
+
+Its `fw/aic8800D80/` carries **every blob §2.2 names for the Tenda U11 / U11 Pro path**:
+
+| File | Bytes |
+|---|---:|
+| `fmacfw_8800d80_u02.bin` | 327,620 |
+| `fmacfw_8800d80_u02_ipc.bin` | 326,033 |
+| `lmacfw_rf_8800d80_u02.bin` | 227,839 |
+| `fw_patch_8800d80_u02.bin` | 25,300 |
+| `fw_patch_table_8800d80_u02.bin` | 984 |
+| `fw_adid_8800d80_u02.bin` | 1,708 |
+| `calibmode_8800d80.bin` | 17,076 |
+| `fw_ble_scan_ad_filter.bin` | 328,508 |
+| `aic_userconfig_8800d80.txt` | 2,448 |
+
+**`radxa/aic8800`, this memo's first-choice candidate, is a 404** — it does not exist.
+
+**This does not unblock option (P), for three reasons worth stating explicitly:**
+
+1. **The `LICENSE` is MIT, and that is a repackager's grant, not the vendor's.** §1.3's
+   findings stand unchanged — the sources declare `MODULE_LICENSE("GPL")`, many files carry
+   no grant at all, and two are Apache-2.0. A third party attaching MIT to an AICSemi SDK
+   snapshot gives `*_LICENSE_FILES` something to point at while making the provenance claim
+   *less* defensible, not more. The same objection applies to
+   `Kiborgik/aic8800dc-linux-patched` (GPL-3.0 at repo level, on a tree whose modules
+   declare GPLv2).
+2. **Coverage is one chip variant.** Nine D80 files against §2.2's ~60. `Kiborgik/…`
+   carries `fw/aic8800DC` and nothing else. Assembling a full set means pinning several
+   unrelated strangers' repos — the opposite of the single-SHA pin every other package in
+   this tree has.
+3. **Still no hardware.** §4's two-module USB-ID race is unchanged and not closable by
+   reading source.
+
+### 9.4 New finding — the blobs do **not** go flat in `/lib/firmware`
+
+Not asked by this memo; found while answering 9.1. It is a trap for whoever eventually
+packages this — us *or* Sorgelig.
+
+Because `CONFIG_USE_FW_REQUEST ?= n` in both Makefiles (§2.1) the driver never uses the
+kernel firmware loader, so none of `/lib/firmware`'s normal search behaviour applies. It
+`filp_open()`s a path it concatenates itself, and **both stages append a per-chip
+subdirectory**:
+
+- `aic_load_fw/aicbluetooth.c:145-150` — `CONFIG_PLATFORM_UBUNTU ?= y`
+  (`aic_load_fw/Makefile:26`), so the compiled-in default is
+  `aic_default_fw_path = "/lib/firmware"` (the `#else` is Android's
+  `/vendor/etc/firmware`).
+- `aic_load_fw/aicbluetooth.c:320-337` — `aic_fw_path` is a `module_param_string` that
+  defaults to empty, so the `strlen(aic_fw_path) > 0` test fails and the
+  `CONFIG_PLATFORM_UBUNTU` branch builds `"%s/%s/%s"` =
+  `/lib/firmware/aic8800D80/<name>`, switched on `usb_dev->chipid`.
+- `aic8800_fdrv/rwnx_utils.c:34-35` takes the bare `/lib/firmware` from `get_fw_path()`
+  (`aicbluetooth.c:868-874`) and the per-variant init `strcat`s the subdir itself —
+  `aicwf_compat_8800d80.c:43` `"/aic8800D80"`, `rwnx_platform.c:1672` `"/aic8800DC"`,
+  `:1811` `"/aic8800D80N"`, `:1841` `"/aic8800DLN"`,
+  `aicwf_compat_8800d80x2.c:44` `"/aic8800D80X2"`.
+
+Both stages converge on **`/lib/firmware/aic8800D80/fmacfw_8800d80_u02.bin`**, which is
+exactly goecho's `fw/aic8800D80/` layout.
+
+**Consequence.** Dropping the blobs flat into `/lib/firmware/` — what
+`package/linux-firmware-extra` and every other firmware in this image does, and the obvious
+thing for a `firmware.tar.gz` to do — yields a driver that still fails, silently, with only
+`firmware path = /lib/firmware/fmacfw_8800d80_u02.bin` in `dmesg` to say why. Any future
+`package/aic8800-firmware` must install into the per-chip subdirectory. Equally, if a stock
+release ships AIC blobs flat, that is a stock bug and not a layout to copy.
+
+### 9.5 What this changes
+
+Nothing in the recommendation. §8 deferred because a package built today ships dead code,
+and that is still exactly true. What changed is that the **cheapest unblock path is now
+concrete**:
+
+> Wait for a stock release whose `firmware.tar.gz` contains the AIC blobs, then mirror them
+> the way `package/linux-firmware-extra` mirrors `linux-firmware`, subject to 9.4's layout
+> requirement. That converts §1.3's licence question into the same redistribution posture
+> this image already accepts for every other blob it ships, rather than a novel one — and
+> waiting costs nothing, because stock's own driver does not work until that happens either.
+
+**Re-check trigger for the next fork sync:** `git -C <fork> log --all -i --grep=aic`
+returning more than one commit, **or** any new commit on
+`MiSTer-devel/Linux_Image_creator_MiSTer` after `d4e3f51ec`.
+
+---
+
+## 10. Decision REVERSED (2026-09-10) — packaged after all
+
+**This memo's recommendation no longer describes what the image does.** Owner decision,
+2026-09-10: package the driver and its firmware, licence ambiguity accepted rather than
+resolved. `package/aic8800` ships both. Everything above stands as the analysis that
+produced the original defer, and §9 stands as the follow-up that closed its open
+questions; this section records why the conclusion flipped anyway.
+
+**What the owner weighed**, neither of which is a §1.3 or §2 blocker being solved:
+
+1. Stock is clearly heading for shipping the chip — 82 k lines do not get vendored
+   speculatively — and §9.1 shows "wait for stock's `firmware.tar.gz`" had no visible end
+   date. The wait costs our users a driver for an unbounded period.
+2. MiSTer resellers bundle these dongles, so the failure mode is not "an unsupported
+   cheap stick" but "the WiFi that came in the box does not work".
+
+**What §9.3 got wrong, and it matters.** §9.3 named `goecho/aic8800_linux_drvier` as the
+firmware source and judged coverage "one chip variant, nine D80 files against §2.2's
+~60". That was the best source *found*, not the best source. The real one is
+**`radxa-pkg/aic8800`** — the repository §1.2 guessed at as `radxa/aic8800` and §9.3
+recorded as a 404, under a different org name. It carries:
+
+- the **identical** SDK snapshot to stock (`RELEASE_DATE "2026_0123_5f7be68d"`, and its
+  release tags spell `5.0+git20260123.5f7be68d-N`), so the file inventory matches stock's
+  at 111/110 and 24/23 — unlike goecho's, which is an older drop missing the 8800D80N,
+  8800D80X2 and 8800DLN variants entirely;
+- **all six** firmware variant directories, 84 files, 6.6 MiB, in the per-chip layout
+  §9.4 established the driver requires;
+- a `debian/copyright` that at least states a position on `src/*`, and org maintenance
+  with tagged releases rather than an individual's mirror.
+
+**And a blocker this memo never identified.** §6 reported that the driver "compiles and
+modpost clean for 32-bit ARM". That was measured against **stock's** copy, which is
+pre-merged with kernel-API compat fixes — 186 `LINUX_VERSION_CODE` guards covering 6.17,
+7.1 and 7.2. The **raw vendor SDK does not build on 6.18**: the cfg80211 `get_txpower` op
+gained `radio_idx`/`link_id` in 6.17, and a control build of the pristine radxa tree fails
+at `rwnx_main.c:6430` with an incompatible-pointer error. radxa keeps those fixes in
+`debian/patches/`, which the package therefore applies. Had this memo's §6 result been
+carried straight into a package built from any raw-SDK source, it would have been a green
+finding attached to a tree that does not compile. Details, and the four patches
+deliberately skipped: `docs/wifi-parity.md` §10.1.
+
+**Current state:** built clean against the pinned 6.18.50, 194,112 bytes of `.ko.xz` plus
+6.6 MiB of firmware, DE10 only, no hardware test yet. The record for this commit
+(`docs/kernel-recon/records/c129b0fac34ad5d613bbec3f59d6036775e41c83.json`) is
+dispositioned accordingly.
 
 ---
 

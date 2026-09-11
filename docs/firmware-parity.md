@@ -612,3 +612,50 @@ firmware table (`rsi_91x_hal.c:35`) requests `rsi/rs9116_wlan.rps`.
 Total v10.1 addition ≈1.5 MB, so the combined v10+v10.1 firmware growth is
 ≈17.5 MB. The size-budget caveat recorded under the v10 section still applies
 unchanged.
+
+### 2026-09-10 — AIC8800, and a firmware layout that breaks the rules
+
+`package/aic8800` (see `docs/wifi-parity.md` §10.1) adds **6.6 MiB over 84 files** —
+the largest single firmware addition this image has ever taken, about 38% of the
+combined v10+v10.1 growth on its own.
+
+| Added | Option | Backs | Size |
+|---|---|---|---|
+| `aic8800/*` (16 files) | `BR2_PACKAGE_AIC8800` | AIC8800 / 8801 (11ac) | 2.9 MB |
+| `aic8800D80/*` (15 files) | same | 8800D80 — Tenda U2/U11/U11 Pro | 2.1 MB |
+| `aic8800D80X2/*` (13 files) | same | 8800D80X2 | 828 KB |
+| `aic8800DC/*` (20 files) | same | 8800DC/DW — TX1U Nano class | 424 KB |
+| `aic8800D80N/*` (14 files) | same | 8800D80N | 400 KB |
+| `aic8800DLN/*` (2 files) | same | 8800DLN | 20 KB |
+
+**These blobs do NOT follow this document's normal rules, and that is deliberate.**
+Everything else catalogued here is installed flat under `/lib/firmware/` (or a
+vendor subdirectory like `rtlwifi/` that the kernel's firmware loader searches) and
+is requested through `request_firmware()`. AIC8800 does neither:
+
+- `CONFIG_USE_FW_REQUEST` is `n` in both vendor module Makefiles, so the driver
+  **never calls `request_firmware()`**. None of `/lib/firmware`'s normal search
+  behaviour applies — no fallback paths, no `firmware_class` at all.
+- It `filp_open()`s a path it concatenates itself, appending a **per-chip
+  subdirectory** chosen at runtime from the USB `chipid`
+  (`aic_load_fw/aicbluetooth.c:320-337`, plus per-variant `strcat`s in
+  `aic8800_fdrv`). So the file it actually opens is
+  `/lib/firmware/aic8800D80/fmacfw_8800d80_u02.bin`.
+
+**Installing these flat into `/lib/firmware/` — which is what every other entry in
+this document does — produces a driver that probes, fails, and brings up no
+interface**, with nothing in `dmesg` but a `firmware path = …` line. That is the
+exact failure mode §6 of `docs/wifi-parity.md` exists to prevent, reached by a route
+no previous firmware here could take. `scripts/ci-tests.sh` asserts one file per
+variant *at its subdirectory path* so a layout regression fails loudly.
+
+All six variants ship rather than only the two or three today's retail dongles use.
+Trimming would save ~4 MB, but the chip is selected at runtime from the USB ID and
+the point of the package is that an unidentified cheap AX stick works.
+
+**Size budget.** This takes the running firmware total to ≈24 MB of additions since
+v9. `docs/size-budget.md`'s caveat is unchanged and still unresolved: the recorded
+runs (287 MiB used / 225 MiB free, and 290/222) both predate this, and nobody has
+re-run `scripts/check-size-budget.sh` since. 6.6 MiB against ~222 MiB free is ~3%
+of headroom, so the budget is not in danger — but that is arithmetic on a stale
+measurement, not a measurement.

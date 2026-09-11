@@ -2631,13 +2631,27 @@ why, and PR #149 in the incident table for what the old rule cost.
 > by hand" half of this contract has the same delivery problem case 3 hit:
 > Buildroot verifies these extra lines only in `make legal-info`, at the end
 > of an ~80-minute image build, so the human finds out from a red *master*,
-> not a red PR. Twelve case-1 pins carry such a line. Two are the sharp ones:
-> `rtl8188eu-aircrack-ng` pins `core/rtw_cmd.c` and `ltunify` pins
-> `ltunify.c` as their `*_LICENSE_FILES` (the licence header lives inside the
-> source file). Both are `git-refs` commit-digest pins on active upstreams, so
-> **any** commit touching those two files reproduces the PR #149 failure —
-> and a source file changes far more often than a `DOC/readme.txt`. The other
-> ten pin a conventional `LICENSE`/`COPYING`, which moves rarely. Generalising
+> not a red PR.
+>
+> **Updated 2026-09-10.** This note used to name two sharp cases,
+> `rtl8188eu-aircrack-ng` (pinning `core/rtw_cmd.c`) and `ltunify` (pinning
+> `ltunify.c`), because in both the licence header lives inside a source file
+> that changes far more often than a `DOC/readme.txt`. `rtl8188eu-aircrack-ng`
+> was deleted with the other six deselected Realtek forks
+> (`docs/wifi-parity.md` §11), so **`ltunify` is now the only pin of that
+> shape** — and it is expected to be inert (upstream's last commit is
+> 2020-06-14).
+>
+> `aic8800`, added the same day, is a new case worth watching but not a third
+> sharp one. It pins `debian/copyright`, which is neither a conventional
+> top-level `LICENSE` nor a source file: it is packaging metadata in an
+> actively-maintained repository, so it moves more than a `LICENSE` and much
+> less than a `.c`. It is pinned there deliberately — the repo's top-level
+> `LICENSE` is the GPL-3 text covering radxa's *packaging*, and
+> `debian/copyright` is the only document that says anything about the driver
+> itself ("Files: src/* — License: GPL-2"). Every other pin here names a
+> conventional `LICENSE`/`COPYING`/`DOC/License.txt`, which moves rarely.
+> Generalising
 > case 3's approach (refresh `*_LICENSE_FILES` hashes, print a diff when one
 > changes) to the case-1 loop is the fix; it is deliberately not bundled with
 > the 26.03 repair.

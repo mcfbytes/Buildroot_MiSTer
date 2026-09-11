@@ -25,6 +25,15 @@ lives in `records/<full-sha>.json`.
     that column tracks only what Buildroot applies. Used when upstream's own boot flow
     needs the commit but this build replaced it with something else (named in
     Why / replacement). See "The one `carried-upstream-only` row" below;
+  - `carried-as-package` — kept, but as a Buildroot **package** rather than a kernel
+    patch: the functionality ships in the image, built out-of-tree from a pinned upstream
+    tarball, and the **Carried patch** column names the `package/<name>` directory instead
+    of a `.patch` file. Added 2026-09-10 for `c129b0fac3` (stock's AIC8800 driver), whose
+    82 k lines ADR 0016 and PLAN §2.9 both forbid carrying as an in-tree patch — a patch
+    that size would make `scripts/export-kernel-tree.sh`'s per-patch replay and
+    `scripts/lint-kernel-patches.sh` meaningless for that entry. Distinct from `carried`
+    (Buildroot applies a patch to the kernel tree) and from `dropped-deliberate` (the
+    functionality is in no form we ship): here it ships, just not through the patch series;
   - `dropped-upstream` — the same functionality is already in mainline 6.18 (the record
     cites the upstream commit and quotes the matching code);
   - `dropped-deliberate` — intentionally not carried **anywhere**, with the replacement

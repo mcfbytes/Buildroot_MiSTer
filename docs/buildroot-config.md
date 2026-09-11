@@ -1321,7 +1321,21 @@ WiFi fork is selected any more"; that was true when written and is no longer.
 Every Realtek USB chip MiSTer's 5.15 stock drove with a vendor fork is still
 handled by an IN-KERNEL driver (`board/mister/de10nano/linux.config`) —
 enabling both would bind-fight on the same USB IDs, so each of THOSE forks'
-packages remains DISABLED (`# ... is not set`):
+packages remained DISABLED (`# ... is not set`).
+
+> **Update 2026-09-10 — the packages in this table no longer exist.** All seven
+> were **deleted** from the tree, along with their `is not set` lines, their
+> Renovate managers and their hash-sync entries: a package the image never
+> builds is not free, and the "one-line revert" it existed for was never used
+> (`docs/wifi-parity.md` §11). The mapping below is still correct about which
+> in-kernel driver took over each chip, and is kept for that; but the
+> `BR2_PACKAGE_*` symbols in the left column are **gone**, so the "to revert"
+> instructions further down cannot be followed as written. Reverting now means
+> restoring the package directory from version-control history first — search
+> the history for a deletion touching `package/rtl8812au/`, which brings back
+> the pin, hash and patches together — and re-adding the `source` line in
+> `Config.in`. The same goes for `docs/wifi-parity.md` §12's finding that this
+> arrangement left the image with no coverage gap for these chips: unchanged.
 
 | fork package (not set) | in-kernel driver |
 |---|---|
@@ -1387,8 +1401,9 @@ cadence (A9 reproducibility).
   fall back. See `docs/wifi-parity.md`.
 
 **RTL8852CU / RTL8832CU** (Wi-Fi 6E, 2x2, 2.4/5/6 GHz USB) —
-`BR2_PACKAGE_RTL8852CU_MORROWNR=y`, the ONE out-of-tree WiFi fork this image
-ships (v10.2). This reverses the "zero out-of-tree WiFi drivers" state v10
+`BR2_PACKAGE_RTL8852CU_MORROWNR=y`, ~~the ONE~~ one of the TWO out-of-tree WiFi
+drivers this image ships (v10.2; the other is `BR2_PACKAGE_AIC8800`, added
+2026-09-10 — see below). This reverses the "zero out-of-tree WiFi drivers" state v10
 reached, deliberately and under ADR 0016's own unchanged rule: keep a fork
 only where mainline has no USB driver for the chip. Mainline 6.18.40 has
 none. rtw89 carries the 8852C chip HAL (`rtw8852c.c`, `rtw8852c_rfk.c`,
@@ -1399,6 +1414,39 @@ symbol offered is `RTW89_8852CE`, "depends on PCI"
 (`CONFIG_PCI` unset), so even that is unreachable. Directory listing checked on
 the pinned tree, not assumed; note the same directory DOES ship `rtw8851bu.c`
 and `rtw8852bu.c`, so this is an 8852C-specific gap, not "rtw89 has no USB".
+
+**AICSemi AIC8800 family** (Wi-Fi 6 + Bluetooth, USB) — `BR2_PACKAGE_AIC8800=y`,
+the second out-of-tree WiFi driver this image ships (2026-09-10). Same ADR 0016
+rule, applied to a chip that satisfies it more cleanly than RTL8852CU does:
+mainline has no aic8800 driver over **any** bus, in 6.18, 7.2 or 7.3-rc — no chip
+HAL, no staging entry, no `MAINTAINERS` line — where 8852C at least has a
+PCIe-only HAL. Zero USB-ID bind conflicts across all 46 IDs the two modules claim.
+
+**This symbol lives in `de10nano-image.fragment`, not `image-common.fragment`,
+and that placement is deliberate** (§10 rule 4 territory). `image-common` is the
+"both boards want this" layer, and on the face of it a USB dongle driver belongs
+there. It is held back for the same reason the table further down gives for
+`BR2_PACKAGE_XONE` and `BR2_PACKAGE_RTL8852CU_MORROWNR`: an out-of-tree kernel
+module is code that has to build and bind, not data, and this one has only been
+built for 32-bit ARM. Promoting it to `image-common` would put an unbuilt aarch64
+module into `make de25` on the next build. radxa builds this driver for arm64
+Rockchip targets so it is expected to work — but expected is not measured, and
+the DE25 stack is not the place to find out.
+
+**Three things about this package that differ from every other one here**, all
+documented at length in `package/aic8800/aic8800.mk`:
+
+1. It installs **firmware as well as modules** — ~6.6 MiB across six per-chip
+   directories — from the same tarball and the same pin, so a firmware bump
+   cannot drift from the driver version it must match.
+2. The firmware goes in **`/lib/firmware/<chip-variant>/`, not flat**. The driver
+   does not use `request_firmware()`; it `filp_open()`s a self-built path. Flat
+   installation yields a driver that silently never binds.
+3. It applies **upstream's own `debian/patches/series`** in a `POST_EXTRACT` hook,
+   skipping four firmware-relocation patches. This is load-bearing: the raw vendor
+   SDK does not compile against 6.18 (cfg80211's `get_txpower` gained
+   `radio_idx`/`link_id` in 6.17). Stock does not need the series because its
+   vendored copy is pre-merged with the same fixes.
 Net effect before this line: an RTL8852CU dongle got NO driver whatsoever. It
 was the last open USB WiFi gap from the v10.1 audit (`docs/wifi-parity.md` §7).
 
@@ -3370,7 +3418,7 @@ individually, plus the two neighbours that could plausibly have come along.
 | `BR2_PACKAGE_LINUX_FIRMWARE_EXTRA` (ours) | **moved** | `depends on BR2_PACKAGE_LINUX_FIRMWARE` and installs out of that package's extracted tree (no source of its own), so it goes exactly where its parent goes or it is dead weight. Its files back in-tree drivers (`MT7663U`, `RTL8192DU`, btbcm) that the shared kernel fragment builds on both boards. Note its own `.mk` reasoning still holds unchanged on the other axis: it does not build in the kernel-only variants, because `linux-firmware` is not in that stack — which is precisely what keeping this fragment out of `kernel-only` preserves. |
 | `BR2_PACKAGE_BCM20702_FIRMWARE` (ours) | **moved** | A one-file firmware package for a USB Bluetooth dongle (`brcm/BCM20702A1-0b05-17cb.hcd`), uploaded by btbcm under btusb — both built by the shared kernel fragment. Same class as the rest: blobs for drivers this board already has, no binary a user runs, arch-neutral (it installs a blob; nothing is compiled). Kept out would leave the identical `request_firmware()` gap on the DE25 that P3.14 closed on the DE10. |
 | `BR2_PACKAGE_XOW_FIRMWARE` | **stayed** in `de10nano-image` | It is `depends on BR2_PACKAGE_XONE` (`package/xow-firmware/Config.in`), and `xone` is an out-of-tree kernel module the DE25 does not build. Moving it would not merely be wrong in principle — the symbol's dependency would be unmet in the `de25nano` stack and `olddefconfig` would silently drop it, which check (b) turns into a hard failure. The check makes this call for us. |
-| `BR2_PACKAGE_XONE`, `BR2_PACKAGE_RTL8852CU_MORROWNR` | **stayed** | Out-of-tree kernel modules: they compile against a specific kernel and have never been built on aarch64/7.2 (§5.24, §5.25). Firmware is data; a driver is code that has to build and bind. Not the same decision, and not this fragment's business until someone builds and tests them. |
+| `BR2_PACKAGE_XONE`, `BR2_PACKAGE_RTL8852CU_MORROWNR`, `BR2_PACKAGE_AIC8800` | **stayed** | Out-of-tree kernel modules: they compile against a specific kernel and have never been built on aarch64/7.2 (§5.24, §5.25). Firmware is data; a driver is code that has to build and bind. Not the same decision, and not this fragment's business until someone builds and tests them. `BR2_PACKAGE_AIC8800` joined this row on 2026-09-10 and is the interesting case, because it installs ~6.6 MiB of **firmware** too — which by the "firmware is data" half of this rule would belong in `image-common`. It stays here anyway: the firmware is useless without the module, and splitting them across two fragments would ship DE25 6.6 MiB of blobs for a driver that board does not build. |
 | `BR2_PACKAGE_KMOD_TOOLS` | **stayed** | Arch-neutral and a plausible "both images want it" candidate, but no owner decision has taken it for the DE25 (§10 rule 5), and the DE25 has no module-loading userland story yet — BusyBox's own `modprobe` covers its needs. A candidate for a later commit, not a side effect of this one. |
 
 ### 12.3 What the move did, and did not, change

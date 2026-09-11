@@ -2,7 +2,6 @@ config BR2_PACKAGE_MISTER_INITRAMFS
 	bool "mister-initramfs (stage-1 initramfs cpio for the kernel)"
 	select BR2_PACKAGE_MISTER_INITRAMFS_BUSYBOX
 	select BR2_PACKAGE_MISTER_INITRAMFS_EXFATPROGS
-	select BR2_PACKAGE_HOST_FAKEROOT
 	help
 	  The MiSTer stage-1 initramfs (ADR 0002): a static BusyBox, a
 	  static fsck.exfat and board/mister/common/initramfs-overlay/init,

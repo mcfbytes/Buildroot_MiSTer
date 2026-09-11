@@ -1,798 +1,99 @@
-################################################################################
+# MiSTer Buildroot external -- thin wrapper. Everything past `make <name>_defconfig`
+# is plain Buildroot: `make`, `make menuconfig`, `make linux-menuconfig`,
+# `make legal-info`, `make <pkg>-rebuild`, ... are forwarded unchanged, with
+# BR2_EXTERNAL set to this tree and O= pointing at the output directory. The
+# only thing this wrapper adds is that the pinned Buildroot release is fetched
+# and hash-verified for you into work/buildroot (Buildroot is never vendored).
 #
-# Top-level wrapper for the MISTER BR2_EXTERNAL tree (P1.1, PLAN.md §6).
+#   make mister_de10nano_defconfig && make                 # the DE10-Nano image
+#   make O=output-de25 mister_de25nano_defconfig && make O=output-de25   # the DE25-Nano
+#   make linux-menuconfig  |  make linux-rt-menuconfig  |  make help
 #
-# Buildroot itself is NEVER vendored into this repository (G4/G6, TASKS.md
-# standing rule 1 — "No binaries in git. Ever."). This Makefile:
+# ONE DEPARTURE FROM A PLAIN BUILDROOT DEFCONFIG, for newcomers: the shared
+# package sets are Kconfig PROFILES (package/mister-userspace, -firmware,
+# -drivers) that the defconfig enables with one line each, so two boards
+# share a userspace without drifting apart. "Why is package X in my image?"
+# -> package/mister-userspace/Config.in. See docs/buildroot-config.md.
 #
-#   1. Downloads the pinned upstream Buildroot release tarball into an
-#      untracked cache directory (dl/).
-#   2. Verifies its SHA-256 against the pinned hash below and aborts loudly
-#      on any mismatch — it will NOT unpack an unverified tarball.
-#   3. Unpacks it to work/buildroot/ (idempotent: if a Buildroot tree of the
-#      pinned version is already present there, the download/verify/unpack
-#      step is skipped entirely and no network access is made).
-#   4. Generates each Buildroot configuration by layering the fragments under
-#      configs/fragments/ (configs/fragments/stacks.mk says which) with
-#      Buildroot's own merge_config.sh + olddefconfig -- there is no monolithic
-#      defconfig any more (docs/buildroot-config.md §1) -- and forwards every
-#      other target (menuconfig, olddefconfig, savedefconfig, ...) into that
-#      Buildroot tree with BR2_EXTERNAL set to this repo, O= pointed at an
-#      out-of-tree output directory, and BR2_DL_DIR pointed at the persistent
-#      download cache.
-#
-# work/, dl/, and output/ are all gitignored — see .gitignore.
-#
-# Reference: /mnt/source/sb-enema/Makefile (working 2026.02.3 pinned-tarball
-# wrapper this is modeled on). That reference has no hash verification; this
-# Makefile adds it, which is the whole point of P1.1.
-#
-################################################################################
+# Documentation: README.md "Building it yourself"; docs/decisions/0030.
 
-# --- Buildroot pin ------------------------------------------------------------
-# P4.6 wires a Renovate custom regex manager over BUILDROOT_VERSION /
-# BUILDROOT_SHA256 in this file (PLAN.md §9), the same way sb-enema's
-# renovate.json does for BUILDROOT_VERSION — keep this stanza regex-friendly.
-#
-# WHERE BUILDROOT_SHA256 COMES FROM — read before changing it.
-# The hash below is transcribed from Buildroot's GPG-clearsigned release
-# manifest for this exact version:
-#
-#     https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz.sign
-#
-# which contains a "SHA256: <hash>  buildroot-<version>.tar.gz" line signed by
-# the Buildroot maintainer. That signed file is the ONLY source of truth for
-# this value.
-#
-# Do NOT produce this hash by downloading the tarball and running sha256sum on
-# it. That is circular — it pins whatever bytes you happened to receive, and
-# certifies nothing. A bump (manual or Renovate) MUST take the new hash from
-# the .sign file for the new version. `make buildroot-showsig` prints it.
-#
-# Since 2026-08-24 a Renovate bump gets this transcription done FOR it:
-# .github/workflows/renovate-hash-sync.yml case 6
-# (scripts/hash-sync-buildroot.sh) fetches the same .sign manifest and
-# rewrites the hash below on the PR branch. That script transcribes the
-# signed manifest exactly as a human would — it never downloads the tarball,
-# so the prohibition above stands untouched. The manual `make
-# buildroot-showsig` transcription remains the procedure for a hand bump, and
-# the fallback whenever the sync run skipped (the PR then stays red at `make
-# buildroot-verify`, which is the safe failure mode).
+# --- Buildroot pin ----------------------------------------------------------
+# Renovate bumps BUILDROOT_VERSION; BUILDROOT_SHA256 is transcribed from the
+# GPG-clearsigned release manifest (`make buildroot-showsig`) by
+# scripts/hash-sync-buildroot.sh -- never from a downloaded tarball. Keep both
+# lines exactly this shape: four scripts and renovate.json parse them.
 BUILDROOT_VERSION  ?= 2026.08
 BUILDROOT_SHA256   ?= d678e810abf877d04513e03ca2c99f992dd49118b9c2e18d6e25f5f58fa8c5cd
-BUILDROOT_URL       = https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
-BUILDROOT_SIG_URL   = $(BUILDROOT_URL).sign
 
 ROOT_DIR   := $(CURDIR)
-WORK_DIR   := $(ROOT_DIR)/work
-DL_DIR     := $(ROOT_DIR)/dl
-OUTPUT_DIR := $(ROOT_DIR)/output
-
-# --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
-# A FOURTH Buildroot output dir, same trick as initramfs/RT above: the installer
-# that ships on sdcard.img's FAT32 partition is yet another Buildroot
-# *configuration* (static-musl BusyBox cpio, plus target packages — exfatprogs,
-# util-linux sfdisk — the initramfs stage doesn't need) and so needs its own O=.
-#
-# scripts/mk-sdcard.sh builds THIS SAME output dir itself, driving Buildroot
-# directly (its own br_make helper, shaped exactly like BR_MAKE_INSTALLER
-# below) as step 1/7 of assembling sdcard.img — it does not invoke the
-# `installer` target. These paths are defined here anyway so that target (a
-# standalone escape hatch for iterating on the installer config/overlay,
-# mirroring `initramfs`/`rt`) and `clean`/`distclean` agree with that script on
-# where things live. Keep in sync with scripts/mk-sdcard.sh's own
-# REPO_ROOT-relative constants if either changes.
-INSTALLER_OUTPUT_DIR        := $(ROOT_DIR)/output-installer
-INSTALLER_CPIO               := $(INSTALLER_OUTPUT_DIR)/images/rootfs.cpio
-INSTALLER_DEFCONFIG          := $(ROOT_DIR)/configs/mister_installer_defconfig
-
-# scripts/mk-sdcard.sh's OWN scratch dirs — mk-sdcard.sh drives its Buildroot
-# invocations itself (its own br_make helper), not any target below — but these are
-# still ours to clean up on clean/distclean. NONE of them is a Buildroot O= dir, so
-# all three are plain rm -rf'd (never Buildroot-cleaned):
-#   output-installer-kernel/ - scratch HOLDING dir for mk-sdcard.sh step 2: the
-#                              captured installer zImage_dtb plus the pre-relink
-#                              snapshots of our real zImage_dtb / gzipped linux.img.
-#                              Step 2 now relinks the kernel IN output/ (reusing the
-#                              completed main build, then restoring it) rather than
-#                              building a fourth full Buildroot tree here — a fresh
-#                              from-scratch O= would rebuild the whole toolchain and
-#                              blow the CI job's wall-clock cap. See mk-sdcard.sh's
-#                              build_installer_kernel.
-#   output-sdcard-stage/     - fetched/staged payload (mk-sdcard.sh's STAGE_DIR).
-#   output-sdcard-build/     - genimage's inputs/tmp/out working dirs.
-INSTALLER_KERNEL_OUTPUT_DIR := $(ROOT_DIR)/output-installer-kernel
-SDCARD_STAGE_DIR             := $(ROOT_DIR)/output-sdcard-stage
-SDCARD_BUILD_DIR             := $(ROOT_DIR)/output-sdcard-build
-# scripts/check-config-fragments.sh's scratch O= dirs (one per fragment
-# stack, config-only, never built). Not a Buildroot-cleanable tree either:
-# plain rm -rf'd below, like the three above.
-CONFIG_CHECK_DIR             := $(ROOT_DIR)/output-config-check
-
-# --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
-# A FIFTH Buildroot output dir, and by far the biggest departure of the five:
-# every directory above builds for the DE10-Nano's armv7 Cyclone V. This one
-# builds for a DIFFERENT BOARD — the Terasic DE25-Nano, an Intel/Altera
-# Agilex 5 whose HPS is aarch64 (2x Cortex-A76 + 2x Cortex-A55). Different
-# architecture, different toolchain, different kernel line (mainline 7.2.3),
-# different rootfs. It shares with the main build exactly two things: the
-# pinned Buildroot tree and the dl/ download cache.
-#
-# It follows the same trick as initramfs/rt/installer for the same reason: a
-# different Buildroot *configuration* needs a different O=. Sharing
-# $(OUTPUT_DIR) would clobber the DE10's armv7 toolchain with an aarch64 one —
-# and Buildroot cross-toolchains bake their absolute O= path in, so the two can
-# never share a host tree even if you wanted them to (ADR 0021 §3 makes the
-# same point about output-rt/).
-#
-# Its configuration is the de25nano fragment stack (common + de25nano,
-# configs/fragments/stacks.mk): it shares exactly the arch-neutral `common`
-# layer with the DE10 stacks and nothing else -- no DE10 toolchain, kernel or
-# package fragment is in its stack (docs/buildroot-config.md §6, §10).
-#
-# The DE25 embeds NO stage-1 initramfs yet (ADR 0029 D11): its stack does not
-# set BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS, so package/mister-initramfs is not
-# built for it and its kernel keeps the interim plain-ext4 root. The switch is
-# that one symbol in configs/fragments/de25nano.fragment.
-#
-# Scope reminder, because the target name invites the wrong assumption: this is
-# a BARE DEVELOPER OS. No MiSTer binaries, no DE10 packages. See ADR 0027
-# Decision 6 and the defconfig's header.
-DE25_OUTPUT_DIR := $(ROOT_DIR)/output-de25
-
-BR_TARBALL := $(DL_DIR)/buildroot-$(BUILDROOT_VERSION).tar.gz
-BR_DIR     := $(WORK_DIR)/buildroot
-# Two properties this path must have, both learned the hard way:
-#
-#  1. INSIDE $(BR_DIR), not a $(WORK_DIR) sibling. Make only reruns a file
-#     target's recipe when the target is missing or stale, so a stamp that
-#     outlives $(BR_DIR) (someone rm -rf's or mv's the tree away) would keep
-#     asserting "already present" forever. Living inside ties the stamp's
-#     lifetime to the tree it attests to.
-#
-#  2. VERSION-QUALIFIED. The $(BR_STAMP) rule has no prerequisites, so its
-#     recipe runs exactly once per distinct stamp filename, ever. With a
-#     constant name, bumping BUILDROOT_VERSION left the old stamp in place and
-#     Make said "Nothing to be done" — silently building against the OLD
-#     Buildroot tree and never even checking the new hash. That is precisely
-#     what P4.6's Renovate bump does, so it would have shipped broken.
-#     Putting the version in the filename makes a bump a different target,
-#     which is missing, which forces the re-fetch.
+O          ?= $(ROOT_DIR)/output
+export BR2_DL_DIR ?= $(ROOT_DIR)/dl
+BR_DIR     := $(ROOT_DIR)/work/buildroot
 BR_STAMP   := $(BR_DIR)/.mister-br2-stamp-$(BUILDROOT_VERSION)
+HOSTSHIM   := $(ROOT_DIR)/work/.hostshim
+BR_MAKE     = PATH="$(HOSTSHIM):$$PATH" $(MAKE) -C $(BR_DIR) O=$(O) BR2_EXTERNAL=$(ROOT_DIR)
 
-# --- Host `install` must be GNU install ---------------------------------------
-# Buildroot REFUSES to build if /usr/bin/install is uutils coreutils 0.8.0 —
-# see work/buildroot/support/dependencies/dependencies.sh:193-200, which pins
-# that exact version and links the upstream bug:
-#     https://github.com/uutils/coreutils/issues/12166
-# Debian/Ubuntu's `coreutils-from-uutils` package installs exactly that as the
-# default `install`, and ships GNU's as `gnuinstall`.
-#
-# Buildroot's own advice is `update-alternatives --install ... gnuinstall 100`,
-# which needs root and mutates the developer's system. We do NOT do that. We
-# instead build a tiny shim directory containing a single `install` symlink to
-# whatever GNU install we can find, and prepend it to PATH for Buildroot only.
-# That is self-contained, needs no root, is identical for every developer and
-# for CI, and touches nothing outside this repo. It is a no-op on a host whose
-# `install` is already GNU.
-#
-# [P1.10] The shim lives under work/, NOT under $(OUTPUT_DIR). It is a property of
-# the *host*, not of any one Buildroot output, and since P1.10 there are two output
-# directories that both need it. Keeping it in output/ would mean rebuilding it per
-# output dir and losing it to a `make clean` of the main build.
-HOSTSHIM_DIR := $(WORK_DIR)/.hostshim
-GNU_INSTALL  := $(shell if install --version 2>/dev/null | grep -q 'GNU coreutils'; then \
-                            command -v install; \
-                        else \
-                            command -v gnuinstall 2>/dev/null; \
-                        fi)
+.PHONY: all help hostshim buildroot-unpack buildroot-verify buildroot-showsig
+.PHONY: de10nano-defconfig de25nano-defconfig de25 sdcard clean distclean
 
-.PHONY: hostshim
-hostshim:
-	@if install --version 2>/dev/null | grep -q 'GNU coreutils'; then \
-		exit 0; \
-	fi; \
-	if [ -z "$(GNU_INSTALL)" ]; then \
-		echo "FATAL: your 'install' is not GNU coreutils:" >&2; \
-		install --version 2>&1 | head -1 | sed 's/^/    /' >&2; \
-		echo "" >&2; \
-		echo "Buildroot refuses to build with it (dependencies.sh:193; upstream bug" >&2; \
-		echo "https://github.com/uutils/coreutils/issues/12166), and no GNU 'install'" >&2; \
-		echo "was found to substitute. Install GNU coreutils, e.g.:" >&2; \
-		echo "    sudo apt-get install gnu-coreutils   # provides /usr/bin/gnuinstall" >&2; \
-		exit 1; \
-	fi; \
-	mkdir -p $(HOSTSHIM_DIR); \
-	ln -sf $(GNU_INSTALL) $(HOSTSHIM_DIR)/install; \
-	echo "==> host 'install' is not GNU; shimming $(GNU_INSTALL) into PATH for Buildroot"
-
-# Buildroot invocation shared by every forwarded target. BR2_EXTERNAL is passed
-# explicitly here rather than exported: a command-line assignment overrides the
-# environment anyway, so an export would just be a redundant second source of
-# truth that can drift out of sync with this one.
-#
-# $(HOSTSHIM_DIR) goes FIRST in PATH so the GNU `install` shim (see above) wins
-# over a uutils one. On a host with GNU install the directory is never created
-# and this prefix is inert.
-BR_MAKE = PATH="$(HOSTSHIM_DIR):$$PATH" \
-          $(MAKE) -C $(BR_DIR) O=$(OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
-
-# The same, aimed at the SD-card installer output directory. Only used by the
-# standalone `installer` target below — scripts/mk-sdcard.sh builds
-# $(INSTALLER_OUTPUT_DIR) itself with its own equivalent invocation.
-BR_MAKE_INSTALLER = PATH="$(HOSTSHIM_DIR):$$PATH" \
-          $(MAKE) -C $(BR_DIR) O=$(INSTALLER_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
-
-# The same, aimed at the DE25-Nano output directory (docs/de25-nano-tasks.md
-# D2.1). Byte-for-byte the same shape as the four above — same Buildroot tree,
-# same BR2_EXTERNAL, same dl/ cache; only O= and the fragment stack differ. The
-# aarch64-ness lives entirely in configs/fragments/de25nano.fragment, not here.
-BR_MAKE_DE25 = PATH="$(HOSTSHIM_DIR):$$PATH" \
-          $(MAKE) -C $(BR_DIR) O=$(DE25_OUTPUT_DIR) BR2_EXTERNAL=$(ROOT_DIR) BR2_DL_DIR=$(DL_DIR)
-
-# --- Config fragments (docs/buildroot-config.md §1) ---------------------------
-# There is no monolithic defconfig. Every Buildroot configuration in this tree
-# is a STACK of fragments under configs/fragments/, listed in merge order by
-# configs/fragments/stacks.mk (the single source of truth -- the check scripts
-# parse that same file). Generation is exactly the idiom `rt` has always used:
-# Buildroot's own support/kconfig/merge_config.sh -m concatenates the fragments
-# into <O>/.config (warning on any symbol a later fragment redefines -- there
-# must be none within a stack; scripts/check-config-fragments.sh enforces that
-# in CI), then `olddefconfig` resolves every unlisted symbol to its Kconfig
-# default. That resolves to the byte-identical .config the old
-# `make mister_<board>_defconfig` produced (proved at the split: only
-# BR2_DEFCONFIG, the savedefconfig OUTPUT path, differs).
-#
-# Consequence worth knowing: `make savedefconfig` now writes output/defconfig
-# (Buildroot's default when BR2_DEFCONFIG names no file) instead of clobbering a
-# tracked file. Fold a menuconfig experiment back by hand into the right
-# fragment -- savedefconfig output is unordered and comment-free, which is why
-# the old monolith kept losing its comments.
-FRAGMENT_DIR := $(ROOT_DIR)/configs/fragments
-include $(FRAGMENT_DIR)/stacks.mk
-# $(call stack_files,<names>) -> absolute fragment paths, in merge order.
-stack_files = $(addprefix $(FRAGMENT_DIR)/,$(addsuffix .fragment,$(1)))
-DE10NANO_STACK        := $(call stack_files,$(DE10NANO_FRAGMENTS))
-DE25NANO_STACK        := $(call stack_files,$(DE25NANO_FRAGMENTS))
-
-# $(call merge_fragments,<O dir>,<fragment paths...>) -- step 1 of 2; the
-# caller follows it with the matching `$(BR_MAKE_*) olddefconfig`. The first
-# fragment is merge_config.sh's base file, the rest are merged onto it.
-define merge_fragments
-	@mkdir -p $(1)
-	cd $(BR_DIR) && KCONFIG_CONFIG=$(1)/.config \
-		./support/kconfig/merge_config.sh -m -O $(1) $(2)
-endef
-
-# NOTE: there is no BR_MAKE_INSTALLER_KERNEL. mk-sdcard.sh's step 2 relink no longer
-# builds a fourth Buildroot tree in output-installer-kernel/ — it relinks the kernel
-# IN output/ (reusing the completed main build) and restores it. output-installer-
-# kernel/ is now just a scratch holding dir, plain rm -rf'd by `clean`/`distclean`.
-
-# Bare `make` must NOT be `all`. The P1.1 defconfig deliberately sets no arch or
-# toolchain, so Buildroot would fall back to its own defaults (BR2_i386 +
-# internal toolchain) and a reflexive `make` would spend an hour compiling an
-# x86 toolchain and rootfs that nothing in this project wants. P1.2 gives the
-# defconfig real content; until then, and arguably after, `help` is the right
-# thing to get for free.
-.DEFAULT_GOAL := help
-
-.PHONY: all help buildroot-fetch buildroot-verify buildroot-unpack buildroot-showsig require-tools
-.PHONY: clean distclean
-.PHONY: de25 de25-clean de25-menuconfig de25-linux-menuconfig
-.PHONY: installer installer-clean installer-menuconfig installer-busybox-menuconfig
-.PHONY: sdcard
-.PHONY: zimage-dtb
-
-# GNU Make always checks whether its own makefiles need remaking, using
-# whatever rule matches their name -- including the catch-all `%:` pattern
-# rule below. Without this explicit no-op rule, EVERY invocation (and, worse,
-# every recursive $(MAKE) call inside the $(BR_STAMP) recipe below) would
-# match "Makefile" against `%: $(BR_STAMP)` and try to rebuild $(BR_STAMP)
-# again before doing anything else -- which recurses without end the moment
-# $(BR_STAMP)'s own recipe invokes $(MAKE) (it does, for buildroot-verify).
-# An explicit rule always wins over a pattern rule for the same target name,
-# so this simple line is what breaks that cycle.
-Makefile: ;
-
-# The included configs/fragments/stacks.mk is a makefile too, so GNU Make
-# would try to remake it through the `%:` catch-all as well -- forwarding a
-# target named `/.../configs/fragments/stacks.mk` into Buildroot with
-# O=$(OUTPUT_DIR). Same explicit-empty-rule fix as `Makefile: ;` above.
-$(FRAGMENT_DIR)/stacks.mk: ;
-
-# Exactly the same landmine, for the SD-card installer defconfig (see the
-# comment above it, and INSTALLER_OUTPUT_DIR's header comment).
-$(INSTALLER_DEFCONFIG): ;
-
-# `make` with no target builds the full image, same as bare Buildroot.
-#
-# The stage-1 initramfs is a package of this build (package/mister-initramfs,
-# ADR 0030); linux/linux-ext-mister-initramfs.mk makes the kernel depend on it
-# and embeds its cpio, so `all` needs no ordering step of its own any more.
-#
-all: $(BR_STAMP) hostshim | $(OUTPUT_DIR)/.config
+all: $(BR_STAMP) hostshim
+	@test -f $(O)/.config || { \
+		echo "FATAL: $(O)/.config does not exist -- configure first:" >&2; \
+		echo "         make mister_de10nano_defconfig          # DE10-Nano image" >&2; \
+		echo "         make O=output-de25 mister_de25nano_defconfig   # DE25-Nano" >&2; exit 1; }
 	$(BR_MAKE) all
 
-# Self-heal a wiped output/ — and NOTHING else.
-#
-# Buildroot treats .config as build *input*, not output: its `all` refuses to run
-# without one (work/buildroot/Makefile:981) and its `clean` deliberately keeps
-# it. So `make clean && make all` was always fine, while `rm -rf output && make
-# all` died with "Please configure Buildroot first". This rule closes that hole.
-#
-# The empty prerequisite list is the load-bearing part: with no prerequisites, an
-# existing .config is always up to date and this recipe never fires again. Giving
-# it the shape stage 1 uses ($(INITRAMFS_OUTPUT_DIR)/.config: <the defconfig>)
-# would instead re-generate output/.config from the fragments every time one
-# of them looked newer — silently discarding `make menuconfig` edits that had
-# not been folded back into a fragment. Stage 1 can afford that; its config is
-# generated, not iterated on. Stage 2's is the one people edit. Regenerate
-# deliberately with `make de10nano-defconfig` (what CI does, every run).
-#
-# $(BR_STAMP) is order-only because a parallel `make -j all` gives no ordering
-# between all's own prerequisites, so this cannot rely on all's copy of it.
-# `hostshim` is order-only here too, so the Buildroot invocation below finds
-# the GNU `install` shim under `make -j`. The explicit rule also beats the `%:`
-# catch-all at the bottom of this file, same as `Makefile: ;` and
-# the stage-1 fragment rule above.
-$(OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
-	$(call merge_fragments,$(OUTPUT_DIR),$(DE10NANO_STACK))
-	$(BR_MAKE) olddefconfig
+# The pinned tree: fetched + SHA-256-verified + unpacked once per version (the
+# stamp carries the version, so a bump is a new target and re-fetches).
+$(BR_STAMP):
+	scripts/fetch-buildroot.sh $(BUILDROOT_VERSION) $(BUILDROOT_SHA256) $(BR2_DL_DIR) $(BR_DIR)
+	@touch $@
+buildroot-unpack: $(BR_STAMP)
+buildroot-verify:
+	scripts/fetch-buildroot.sh --verify-only $(BUILDROOT_VERSION) $(BUILDROOT_SHA256) $(BR2_DL_DIR)
+buildroot-showsig:
+	scripts/fetch-buildroot.sh --showsig $(BUILDROOT_VERSION)
 
-# Force-regenerate the DE10-Nano configuration from its fragment stack --
-# the replacement for the old `make mister_de10nano_defconfig`. CI runs this
-# unconditionally so a stale output/.config can never mask a fragment change.
-.PHONY: de10nano-defconfig
-de10nano-defconfig: | $(BR_STAMP) hostshim
-	@rm -f $(OUTPUT_DIR)/.config
-	@$(MAKE) --no-print-directory $(OUTPUT_DIR)/.config
+# GNU `install` shim for hosts whose install is uutils (no-op elsewhere).
+hostshim:
+	@scripts/hostshim.sh $(HOSTSHIM)
 
-# The three monolithic defconfigs were split into configs/fragments/ (see the
-# fragment block above). Anything still asking for them by name gets told
-# where to go instead of a confusing Buildroot "no rule" failure.
-.PHONY: mister_de10nano_defconfig mister_kernel_defconfig mister_de25nano_defconfig
-mister_de10nano_defconfig mister_kernel_defconfig mister_de25nano_defconfig:
-	@echo "FATAL: configs/$@ no longer exists -- the monolithic defconfigs were split into" >&2
-	@echo "       configs/fragments/ (docs/buildroot-config.md §1). Use instead:" >&2
-	@echo "         make de10nano-defconfig   # the DE10-Nano image (output/.config)" >&2
-	@echo "         make de25nano-defconfig   # the DE25-Nano developer OS (output-de25/.config)" >&2
-	@exit 1
+# Aliases kept for CI and muscle memory; the vanilla spellings are the rule.
+de10nano-defconfig: $(BR_STAMP) hostshim
+	$(BR_MAKE) mister_de10nano_defconfig
+de25nano-defconfig: $(BR_STAMP) hostshim
+	$(MAKE) O=$(ROOT_DIR)/output-de25 mister_de25nano_defconfig
+de25: $(BR_STAMP) hostshim
+	$(MAKE) O=$(ROOT_DIR)/output-de25 all
 
-# --- Cleaning -----------------------------------------------------------------
-# Buildroot's vocabulary, kept on purpose: `clean` deletes what the build
-# produced but KEEPS .config (work/buildroot/Makefile:1140); `distclean` also
-# drops the configuration itself (:1146). The only thing widened is the scope,
-# because P1.10 gave this tree two output directories and Buildroot assumes one.
-#
-# Without an explicit rule here, `clean` fell through the `%:` catch-all and was
-# forwarded with O=$(OUTPUT_DIR) only — stage 1 was left fully built. A tree that
-# is half-clean is worse than one that is not clean at all, because it looks
-# fresh. The `if -d` guards keep `make clean` from being the thing that downloads
-# and unpacks Buildroot just to have somewhere to run rm — which is what going
-# through the catch-all ($(BR_STAMP) is one of its prerequisites) used to mean.
-#
-# $(BR_DIR) can vanish independently of the output dirs — it is gitignored, and
-# `rm -rf work/` is how you force a re-download. Upstream cannot hit this case
-# because upstream's Makefile *is* the Buildroot tree; ours is not, so the check
-# is ours to make. Erroring rather than skipping is the point: Buildroot's clean
-# is the only thing that knows what to delete and what to keep, so skipping it
-# would report success over a still-dirty tree — this bug, again, one layer out.
-clean:
-	@if [ ! -d $(BR_DIR) ] && { [ -d $(OUTPUT_DIR) ] || [ -d $(INSTALLER_OUTPUT_DIR) ] || [ -d $(DE25_OUTPUT_DIR) ] || [ -d $(INSTALLER_KERNEL_OUTPUT_DIR) ] || [ -d $(SDCARD_STAGE_DIR) ] || [ -d $(SDCARD_BUILD_DIR) ]; }; then \
-		echo "FATAL: $(BR_DIR) is gone, so Buildroot's own 'clean' cannot run," >&2; \
-		echo "       but an output directory still holds build products. Skipping" >&2; \
-		echo "       would report success over a dirty tree." >&2; \
-		echo "" >&2; \
-		echo "Use 'make distclean' to remove all output directories outright." >&2; \
-		exit 1; \
-	fi
-	@if [ -d $(OUTPUT_DIR) ]; then $(BR_MAKE) clean; fi
-	@if [ -d $(INSTALLER_OUTPUT_DIR) ]; then $(BR_MAKE_INSTALLER) clean; fi
-	@if [ -d $(DE25_OUTPUT_DIR) ]; then $(BR_MAKE_DE25) clean; fi
-	@rm -rf $(INSTALLER_KERNEL_OUTPUT_DIR) $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR)
-
-# `rm -rf`, not a forwarded `$(BR_MAKE) distclean`, and deliberately not
-# `distclean: clean` the way upstream writes it (:1146).
-#
-# Upstream removes $(O) itself ONLY when O is the in-tree default (:1147). Ours
-# never is, so forwarding distclean would empty the directories but leave
-# .config behind — landing in precisely the state that makes `make all` fail.
-# Removing both output directories outright is what upstream's distclean *means*
-# for an out-of-tree layout, and it makes running `clean` first dead work: there
-# is nothing to preserve in a directory that is about to stop existing.
-#
-# dl/ deliberately survives. Upstream hardcodes `rm -rf $(TOPDIR)/dl` (:1150) and
-# never $(DL_DIR) (:203) — a custom BR2_DL_DIR like ours is a shared download
-# cache that distclean is not entitled to destroy. `git clean -xfd` is the real
-# nothing-but-the-clone hammer; it takes work/ and dl/ with it.
-distclean:
-	rm -rf $(OUTPUT_DIR) \
-	       $(INSTALLER_OUTPUT_DIR) $(DE25_OUTPUT_DIR) \
-	       $(INSTALLER_KERNEL_OUTPUT_DIR) \
-	       $(SDCARD_STAGE_DIR) $(SDCARD_BUILD_DIR) $(CONFIG_CHECK_DIR)
-# --- DE25-Nano developer OS (D2.1, docs/de25-nano-tasks.md) -------------------
-# Generates output-de25/.config from the de25nano fragment stack. Order-only
-# $(BR_STAMP) and NO file prerequisite on the fragments — same shape, same two
-# reasons, as $(OUTPUT_DIR)/.config and $(RT_OUTPUT_DIR)/.config above: a
-# fragment listed as a normal prerequisite gets caught by the `%:` catch-all
-# target-forwarding rule at the bottom of this file and would be "remade" with
-# O=$(OUTPUT_DIR) (i.e. loaded into the DE10's output dir — here that would
-# mean loading an AARCH64 config over the armv7 build, which is about as bad as
-# this class of bug gets), and with no prerequisites an existing .config is
-# always up to date, so `make de25-menuconfig` edits are not silently
-# discarded by the next `make de25`.
-#
-# Re-generate after editing a fragment with `make de25nano-defconfig` (or
-# `make de25-clean && make de25`), the same deliberate step the main and rt
-# configs imply.
-#
-# `hostshim` is an order-only prerequisite HERE, not only on `de25`: under
-# `make -j de25` the sibling prerequisites of `de25` run concurrently, so the
-# config recipe (which invokes Buildroot, whose dependency check needs the
-# shim's `install` on PATH) could otherwise start before the shim exists.
-$(DE25_OUTPUT_DIR)/.config: | $(BR_STAMP) hostshim
-	$(call merge_fragments,$(DE25_OUTPUT_DIR),$(DE25NANO_STACK))
-	$(BR_MAKE_DE25) olddefconfig
-
-# Force-regenerate the DE25 configuration -- the replacement for the old
-# `make mister_de25nano_defconfig`; mirrors de10nano-defconfig above.
-.PHONY: de25nano-defconfig
-de25nano-defconfig: | $(BR_STAMP) hostshim
-	@rm -f $(DE25_OUTPUT_DIR)/.config
-	@$(MAKE) --no-print-directory $(DE25_OUTPUT_DIR)/.config
-
-# Deliberately NOT `de25: initramfs ...` — see DE25_OUTPUT_DIR's header for why
-# the stage-1 cpio has no business in an aarch64 kernel.
-#
-# The post-build assertions are the DE25's equivalent of `rt`'s
-# CONFIG_PREEMPT_RT check and `initramfs`'s cpio check: Buildroot exits 0 on
-# plenty of configurations that produce no bootable artifact, and on a board
-# with no hardware validation yet the build must say so at the end rather than
-# leave someone to discover it at a dead serial console.
-#
-# The .dtb is asserted by GLOB rather than by name on purpose. The name is
-# owned by the defconfig (BR2_LINUX_KERNEL_CUSTOM_DTS_PATH names the board
-# file, board/mister/de25nano/socfpga_agilex5_de25nano.dts; it was mainline's
-# socdk placeholder until D2.3 landed). A hardcoded filename here would fail
-# the build on the day the DTS is renamed or a second variant is added, for a
-# reason that has nothing to do with what went wrong. Buildroot
-# installs the dtb into images/ under its BASENAME (linux/linux.mk:491-497,
-# `notdir` unless BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME), so a flat glob sees it
-# either way. Zero dtbs IS a failure: BR2_LINUX_KERNEL_DTS_SUPPORT is on, so an
-# empty images/*.dtb means the DTS silently did not build.
-de25: $(DE25_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_DE25) all
-	@test -f $(DE25_OUTPUT_DIR)/images/Image || { \
-		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/Image" >&2; \
-		echo "       (BR2_LINUX_KERNEL_IMAGE=y selects the uncompressed aarch64 'Image'" >&2; \
-		echo "       target -- if the defconfig was changed to Image.gz, change this" >&2; \
-		echo "       assertion in the same commit.)" >&2; exit 1; }
-	@set -- $$(ls $(DE25_OUTPUT_DIR)/images/*.dtb 2>/dev/null); \
-	if [ $$# -eq 0 ]; then \
-		echo "FATAL: de25 build finished but installed no device tree blob into" >&2; \
-		echo "       $(DE25_OUTPUT_DIR)/images/ -- BR2_LINUX_KERNEL_DTS_SUPPORT is set," >&2; \
-		echo "       so this means the DTS named by BR2_LINUX_KERNEL_INTREE_DTS_NAME /" >&2; \
-		echo "       BR2_LINUX_KERNEL_CUSTOM_DTS_PATH did not build." >&2; exit 1; \
-	fi; \
-	echo ""; \
-	echo "==> DE25 kernel: $(DE25_OUTPUT_DIR)/images/Image  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/Image) bytes)"; \
-	for d in "$$@"; do echo "==> DE25 dtb:    $$d  ($$(stat -L -c %s $$d) bytes)"; done; \
-	test -f $(DE25_OUTPUT_DIR)/images/rootfs.ext4 || { \
-		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/rootfs.ext4" >&2; \
-		echo "       (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4 select it -- a config that emits no" >&2; \
-		echo "       rootfs is not a green build, whatever the kernel did.)" >&2; exit 1; }; \
-	echo "==> DE25 rootfs: $(DE25_OUTPUT_DIR)/images/rootfs.ext4  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/rootfs.ext4) bytes)"; \
-	if [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
-		echo "==> DE25 bl31/FIT: SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb was built)"; \
-	else \
-		test -f $(DE25_OUTPUT_DIR)/images/bl31.bin || { \
-			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/bl31.bin" >&2; \
-			echo "       (BR2_TARGET_ARM_TRUSTED_FIRMWARE_BL31 + _IMAGES=\"bl31.bin\" select it.)" >&2; \
-			echo "       BL31 is what goes INSIDE u-boot.itb as the 'atf' image, so a missing" >&2; \
-			echo "       bl31.bin means the FIT below is either absent or built around a" >&2; \
-			echo "       binman-faked zero blob -- which boots nothing and says nothing." >&2; exit 1; }; \
-		echo "==> DE25 bl31:   $(DE25_OUTPUT_DIR)/images/bl31.bin  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/bl31.bin) bytes)"; \
-		test -f $(DE25_OUTPUT_DIR)/images/u-boot.itb || { \
-			echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/u-boot.itb" >&2; \
-			echo "       This is THE artifact of the bootloader half of the build: the factory" >&2; \
-			echo "       SPL in QSPI looks for a file of exactly that name on FAT partition 1" >&2; \
-			echo "       (SPL_FS_LOAD_PAYLOAD_NAME under SPL_LOAD_FIT, boot partition 1)." >&2; \
-			echo "       The usual cause is CONFIG_BINMAN having gone off: it is selected only" >&2; \
-			echo "       as 'select BINMAN if SPL_ATF' and it has no prompt, so anything that" >&2; \
-			echo "       turns CONFIG_SPL off takes the FIT with it, silently and with a green" >&2; \
-			echo "       U-Boot build. See board/mister/de25nano/uboot.fragment, SPL block." >&2; exit 1; }; \
-		echo "==> DE25 FIT:    $(DE25_OUTPUT_DIR)/images/u-boot.itb  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/u-boot.itb) bytes)"; \
-		echo "    Verify its shape against the factory SPL contract with:"; \
-		echo "      $(DE25_OUTPUT_DIR)/host/bin/dumpimage -l $(DE25_OUTPUT_DIR)/images/u-boot.itb"; \
-		echo "    Bare developer OS -- no MiSTer binaries."; \
-		echo ""; \
-	fi
-	@if [ -f $(DE25_OUTPUT_DIR)/images/sdcard-de25.img ]; then \
-		echo "==> DE25 card:   $(DE25_OUTPUT_DIR)/images/sdcard-de25.img  ($$(stat -L -c %s $(DE25_OUTPUT_DIR)/images/sdcard-de25.img) bytes)"; \
-		echo "                 dd it to a card; docs/de25-sdcard.md."; \
-		echo ""; \
-	elif [ "$${DE25_ALLOW_NO_UBOOT:-0}" = 1 ] && [ ! -f $(DE25_OUTPUT_DIR)/images/u-boot.itb ]; then \
-		echo "==> DE25 card:   SKIPPED (DE25_ALLOW_NO_UBOOT=1 and no u-boot.itb) -- nothing"; \
-		echo "                 this build produced can boot a board."; \
-		echo ""; \
-	else \
-		echo "FATAL: de25 build finished but produced no $(DE25_OUTPUT_DIR)/images/sdcard-de25.img" >&2; \
-		echo "       (BR2_ROOTFS_POST_IMAGE_SCRIPT runs board/mister/de25nano/post-image.sh," >&2; \
-		echo "       which assembles the card and hands it to scripts/check-sdcard-de25.sh." >&2; \
-		echo "       A build that emits no card is not a green build.)" >&2; exit 1; \
-	fi
-
-# Escape hatches for iterating without hand-editing the checked-in fragments.
-# Both write to output-de25/; fold the result back into
-# configs/fragments/de25nano.fragment by hand (a `savedefconfig` of
-# output-de25/ is unordered, comment-free and NOT tracked --
-# docs/buildroot-config.md §1), into board/mister/de25nano/linux.config, or --
-# carefully, it is SHARED with the DE10 and must stay a no-op there
-# (scripts/check-kernel-fragment-noop.sh) -- into
-# board/mister/common/linux-mister.fragment.
-#
-# de25-linux-menuconfig exists as its own target for the same reason
-# rt-menuconfig does: the `%:` catch-all would forward a bare
-# `make linux-menuconfig` with O=$(OUTPUT_DIR), i.e. against the DE10.
-de25-menuconfig: $(DE25_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_DE25) menuconfig
-
-de25-linux-menuconfig: $(DE25_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_DE25) linux-menuconfig
-
-# Plain rm -rf, like initramfs-clean/installer-clean and unlike rt-clean: this
-# build stages nothing into the extra-modules overlay and contributes nothing
-# to output/, so there is no second removal to pair with.
-de25-clean:
-	rm -rf $(DE25_OUTPUT_DIR)
-
-# --- SD-card installer (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
-# Builds ONLY the installer initramfs cpio, standalone. scripts/mk-sdcard.sh
-# builds this exact output dir itself as step 1/7 of `make sdcard` (see
-# INSTALLER_OUTPUT_DIR's header comment above) — this target is the escape
-# hatch for iterating on configs/mister_installer_defconfig or
-# board/mister/de10nano/installer-overlay/ without running the whole sdcard
-# pipeline, mirroring `initramfs` above.
-$(INSTALLER_OUTPUT_DIR)/.config: $(INSTALLER_DEFCONFIG) | $(BR_STAMP)
-	@mkdir -p $(INSTALLER_OUTPUT_DIR)
-	$(BR_MAKE_INSTALLER) mister_installer_defconfig
-
-installer: $(INSTALLER_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_INSTALLER) all
-	@test -f $(INSTALLER_CPIO) || { \
-		echo "FATAL: installer build finished but produced no $(INSTALLER_CPIO)" >&2; exit 1; }
-	@echo ""
-	@echo "==> installer cpio: $$(stat -c %s $(INSTALLER_CPIO)) bytes  ($(INSTALLER_CPIO))"
-	@echo ""
-
-installer-menuconfig: $(INSTALLER_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_INSTALLER) menuconfig
-
-installer-busybox-menuconfig: $(INSTALLER_OUTPUT_DIR)/.config hostshim
-	$(BR_MAKE_INSTALLER) busybox-menuconfig
-
-installer-clean:
-	rm -rf $(INSTALLER_OUTPUT_DIR)
-
-# Escape hatches for iterating on stage 1 without hand-editing the checked-in
-# configs. They write to output-initramfs/ (or output-initramfs-de25/);
-# remember to fold the result back into the initramfs-common / initramfs-<board>
-# fragment under configs/fragments/
-# or into board/mister/common/initramfs-busybox.config by hand -- and note that
-# the NEXT `make initramfs` regenerates the .config from the fragments if one
-# of them is newer (a stage-1 config is generated, not iterated on).
-
-
-
-
-# --- zImage_dtb (P1.11 / A3) ----------------------------------------------------
-# The REAL hook is BR2_ROOTFS_POST_IMAGE_SCRIPT in configs/fragments/de10nano.fragment
-# (board/mister/de10nano/post-image.sh), which Buildroot runs automatically at the
-# end of every `$(BR_MAKE) all` and which already fails the build on a contract
-# violation -- so `make all` needs no extra step here, unlike check-initramfs above
-# (nothing else asserts THAT one).
-#
-# This target exists for standalone use: iterating on post-image.sh / linux.config
-# without a full `make all`, or (until P1.3's Buildroot-level kernel wiring lands)
-# pointing it at any pre-built zImage+DTB pair via ZIMAGE_DTB_BINARIES_DIR=, e.g. a
-# scratch dir populated from a raw kbuild tree such as work/k-final:
-#   make zimage-dtb ZIMAGE_DTB_BINARIES_DIR=/path/to/scratch/images
-# (post-image.sh also searches BINARIES_DIR/../build/.../arch/arm/boot/ if the
-# image is not directly in BINARIES_DIR -- see its own header.)
-ZIMAGE_DTB_BINARIES_DIR ?= $(OUTPUT_DIR)/images
-zimage-dtb:
-	@mkdir -p $(ZIMAGE_DTB_BINARIES_DIR)
-	$(ROOT_DIR)/board/mister/de10nano/post-image.sh $(ZIMAGE_DTB_BINARIES_DIR)
-
-# --- Full SD-card image (P5.3, docs/decisions/0020-sdcard-exfat-reformat-installer.md) ---
-# Runs scripts/mk-sdcard.sh, the orchestrator that builds the installer cpio +
-# relinked installer kernel, fetches/stages the mr-fusion-parity payload, and
-# assembles + xz's the dd/Etcher-writable output/images/sdcard.img(.xz) (or
-# sdcard-full.img(.xz) when SDCARD_CORES=1). See that script's own header for
-# its seven steps — it drives Buildroot directly for the installer pieces and
-# does NOT go through the `installer` target above.
-#
-# Requires a COMPLETED `make rt` THEN `make all` first — the ORDER matters:
-# mk-sdcard.sh snapshots output/images/linux.img as-built, and only a `make
-# all` that runs AFTER `make rt` has folded the RT module tree (staged in the
-# extra-modules overlay) into that image. Built the other way round, the card
-# would stage zImage_dtb-rt next to a linux.img with no matching modules —
-# docs/rt-beta-kernel.md §5's silent broken-peripherals failure. mk-sdcard.sh
-# reads output/images/{linux.img,zImage_dtb} (the real, Downloader-shipped
-# outputs) plus output-rt/images/zImage_dtb (shipped on the card as
-# zImage_dtb-rt so one flashable card carries both kernels — override the
-# source with MISTER_RT_ZIMAGE=), fails loudly, by name, if any is missing,
-# and cross-checks linux.img against the overlay's staged kver(s) so an
-# out-of-order build dies there instead of shipping.
-# Deliberately NOT made an `all`/`rt`-dependent prerequisite here — those are
-# multi-hour builds, and a script that already checks its own prerequisites
-# should not have that check duplicated (and silently re-triggered) at the
-# Make level. Mirrors `rt`/`initramfs` in every other respect: a phony target,
-# hostshim ensured first, SDCARD_CORES passed straight through from the
-# environment/command line.
-SDCARD_CORES ?= 0
+# SD-card installer image (ADR 0020): a shell orchestrator, run after `make all`.
 sdcard: hostshim
 	SDCARD_CORES=$(SDCARD_CORES) $(ROOT_DIR)/scripts/mk-sdcard.sh
 
-# Deliberately does NOT depend on $(BR_STAMP): `make help` on a fresh clone (or
-# with no network) must print something useful rather than trying to fetch a
-# tarball first. Buildroot's own target list is behind `make br-help`, which
-# does need the tree.
-help:
-	@echo "MiSTer BR2_EXTERNAL wrapper (TASKS.md P1.1)"
+# Buildroot's own meanings: clean keeps .config, distclean removes the tree.
+# dl/ is a shared download cache and survives both; `git clean -xfd` takes it.
+clean: $(BR_STAMP)
+	@for o in $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer; do \
+		[ -f $$o/.config ] && $(MAKE) -C $(BR_DIR) O=$$o BR2_EXTERNAL=$(ROOT_DIR) clean; done; true
+	rm -rf $(ROOT_DIR)/output-installer-kernel $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
+distclean:
+	rm -rf $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer $(ROOT_DIR)/output-installer-kernel \
+	       $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
+
+help: $(BR_STAMP) hostshim
+	@echo "MiSTer Buildroot external (Buildroot $(BUILDROOT_VERSION), BR2_EXTERNAL=$(ROOT_DIR), O=$(O))"
+	@echo "  make mister_de10nano_defconfig && make                 the DE10-Nano image (output/)"
+	@echo "  make O=output-de25 mister_de25nano_defconfig && make O=output-de25   the DE25-Nano (or: make de25)"
+	@echo "  make sdcard                                             installer card image, after make all"
+	@echo "  make buildroot-unpack | buildroot-verify | buildroot-showsig"
+	@echo "Everything else is Buildroot's own (below), forwarded with O= and BR2_EXTERNAL set."
 	@echo ""
-	@echo "  make de10nano-defconfig         - (re)generate output/.config from the DE10-Nano"
-	@echo "                                    fragment stack (configs/fragments/, stacks.mk)"
-	@echo "  make menuconfig                 - interactive Buildroot config"
-	@echo "  make linux-menuconfig           - interactive kernel config"
-	@echo "  make savedefconfig              - save current config to output/defconfig (fold"
-	@echo "                                    it back into configs/fragments/ by hand)"
-	@echo "  make olddefconfig               - non-interactively resolve config to defaults"
-	@echo "  make list-defconfigs            - list built-in and external defconfigs"
-	@echo "                                    (only the installer one remains)"
-	@echo "  make buildroot-verify           - download (if needed) + SHA-256-verify the"
-	@echo "                                    pinned Buildroot tarball, without unpacking"
-	@echo "  make buildroot-showsig          - print upstream's GPG-signed release manifest"
-	@echo "                                    (the ONLY valid source for BUILDROOT_SHA256)"
-	@echo "  make br-help                    - Buildroot's own target list"
-	@echo "  make all                        - build the full image"
-	@echo ""
-	@echo "Cleaning (Buildroot's meanings, applied to ALL output dirs):"
-	@echo "  make clean                      - delete everything the build produced,"
-	@echo "                                    KEEPING all .config files"
-	@echo "  make distclean                  - rm -rf output/,"
-	@echo "                                    output-installer/, output-de25/,"
-	@echo "                                    the sdcard"
-	@echo "                                    staging dirs and"
-	@echo "                                    the extra-modules overlay, .config included;"
-	@echo "                                    dl/ is kept (it is a shared cache —"
-	@echo "                                    'git clean -xfd' takes it)"
-	@echo ""
-	@echo "Stage-1 initramfs (ADR 0002): a PACKAGE of the main build since ADR 0030 --"
-	@echo "  make mister-initramfs           - (re)build only the cpio: output/images/mister-initramfs.cpio"
-	@echo "  make mister-initramfs-busybox-menuconfig - the stage-1 BusyBox config"
-	@echo "  make linux-rebuild all          - re-embed a changed cpio into the kernel"
-	@echo ""
-	@echo "RT kernel variant (docs/rt-beta-kernel.md): a PACKAGE of the main build since ADR 0030 --"
-	@echo "  make linux-rt                   - (re)build only the RT kernel: output/images/zImage_dtb-rt"
-	@echo "  make linux-rt-menuconfig        - the RT kernel config (linux.config + linux-rt.fragment)"
-	@echo ""
-	@echo "DE25-Nano developer OS (aarch64 / Agilex 5 -- docs/de25-nano-tasks.md D2.1):"
-	@echo "  make de25                       - build the DE25-Nano image into output-de25/"
-	@echo "                                    (aarch64 toolchain + mainline 7.2.3 kernel +"
-	@echo "                                    minimal BusyBox ext4 rootfs + TF-A/U-Boot FIT +"
-	@echo "                                    the SD-card image; asserts images/Image, a .dtb,"
-	@echo "                                    bl31.bin, u-boot.itb and sdcard-de25.img exist)."
-	@echo "                                    BARE DEVELOPER OS: no MiSTer binaries. Does NOT"
-	@echo "                                    embed a stage-1 initramfs yet (ADR 0029 D11)."
-	@echo "                                    (built + QEMU-proven, not embedded yet: D11)."
-	@echo "  make de25nano-defconfig         - (re)generate output-de25/.config from its"
-	@echo "                                    fragment stack (common + de25nano)"
-	@echo "  make de25-menuconfig            - Buildroot menuconfig for the DE25 config"
-	@echo "  make de25-linux-menuconfig      - kernel menuconfig for the DE25 kernel"
-	@echo "  make de25-clean                 - rm -rf output-de25/"
-	@echo ""
-	@echo "zImage_dtb assembly (P1.11):"
-	@echo "  make zimage-dtb                 - cat zImage+DTB and run scripts/check-zimage-dtb.sh"
-	@echo "                                    (runs automatically at the end of 'make all' via"
-	@echo "                                    BR2_ROOTFS_POST_IMAGE_SCRIPT; override the source"
-	@echo "                                    dir with ZIMAGE_DTB_BINARIES_DIR=)"
-	@echo ""
-	@echo "SD-card installer image (P5.3, ADR 0020):"
-	@echo "  make sdcard                     - after 'make all', run scripts/mk-sdcard.sh to produce"
-	@echo "                                    scripts/mk-sdcard.sh to produce"
-	@echo "                                    output/images/sdcard.img(.xz)"
-	@echo "                                    (SDCARD_CORES=1 for sdcard-full.img(.xz))"
-	@echo "  make installer                  - build ONLY the installer stage-1 cpio and print"
-	@echo "                                    its size (escape hatch; mk-sdcard.sh builds this"
-	@echo "                                    same output-installer/ itself)"
-	@echo "  make installer-menuconfig       - Buildroot menuconfig for the installer config"
-	@echo "  make installer-busybox-menuconfig - BusyBox menuconfig for the installer BusyBox"
-	@echo "  make installer-clean            - rm -rf output-installer/"
-	@echo ""
-	@echo "Pinned Buildroot: $(BUILDROOT_VERSION) (BR2_EXTERNAL=$(ROOT_DIR))"
-	@echo "Any other target is forwarded verbatim into Buildroot's own Makefile."
+	@$(BR_MAKE) help
 
-br-help: $(BR_STAMP) hostshim
-	$(BR_MAKE) help
+# GNU make would otherwise try to remake this file through the catch-all.
+Makefile: ;
 
-# Print upstream's clearsigned release manifest, which carries the authoritative
-# SHA256 line. Use this — not `sha256sum` of a tarball you just downloaded —
-# whenever BUILDROOT_VERSION is bumped.
-buildroot-showsig:
-	@echo "==> $(BUILDROOT_SIG_URL)"
-	@curl -fsSL $(BUILDROOT_SIG_URL) || { \
-		echo "FATAL: could not fetch the release signature." >&2; exit 1; }
-
-# Fail fast and by name, the way scripts/inventory/common.sh's mrl_require does,
-# rather than dying deep inside a recipe with "curl: command not found".
-require-tools:
-	@for t in curl tar sha256sum; do \
-		command -v $$t >/dev/null 2>&1 || { \
-			echo "FATAL: required tool '$$t' not found in PATH." >&2; exit 1; }; \
-	done
-
-# --- Download, verify, unpack Buildroot ---------------------------------------
-
-# Plain file-based rule: only fetches if $(BR_TARBALL) isn't already on disk.
-# Download to .tmp and rename only on success, so an interrupted transfer can
-# never leave a truncated tarball parked at the real path.
-$(BR_TARBALL): | require-tools
-	@mkdir -p $(DL_DIR)
-	@echo "==> Downloading Buildroot $(BUILDROOT_VERSION) from $(BUILDROOT_URL)"
-	@curl -fSL --retry 3 -o $@.tmp $(BUILDROOT_URL)
-	@mv $@.tmp $@
-
-# Downloads (if needed) and checks the tarball against the pinned hash.
-# Standalone and directly invokable so the verification path can be exercised
-# (and its failure mode demonstrated) without touching work/buildroot.
-buildroot-fetch: $(BR_TARBALL)
-
-buildroot-verify: $(BR_TARBALL)
-	@echo "==> Verifying SHA-256 of $(BR_TARBALL)"
-	@echo "$(BUILDROOT_SHA256)  $(BR_TARBALL)" | sha256sum -c - >/dev/null 2>&1 || { \
-		echo "" >&2; \
-		echo "FATAL: SHA-256 mismatch for $(BR_TARBALL)" >&2; \
-		echo "  expected: $(BUILDROOT_SHA256)" >&2; \
-		echo "  actual:   $$(sha256sum $(BR_TARBALL) | cut -d' ' -f1)" >&2; \
-		echo "" >&2; \
-		echo "Refusing to unpack a Buildroot tarball that does not match the pinned hash." >&2; \
-		echo "" >&2; \
-		echo "The cached tarball is corrupt, truncated, or not what upstream published." >&2; \
-		echo "To recover, DELETE IT and let it re-download:" >&2; \
-		echo "    rm -f $(BR_TARBALL) && make buildroot-verify" >&2; \
-		echo "" >&2; \
-		echo "Do NOT 'fix' this by pasting the actual hash above into BUILDROOT_SHA256." >&2; \
-		echo "That defeats the entire check and would bless a bad tarball. A new hash is" >&2; \
-		echo "legitimate ONLY when it comes from upstream's GPG-signed release manifest:" >&2; \
-		echo "    make buildroot-showsig BUILDROOT_VERSION=<new-version>" >&2; \
-		exit 1; \
-	}
-	@echo "==> SHA-256 OK ($(BUILDROOT_SHA256))"
-
-# The stamp is the idempotency gate: if work/buildroot/ already holds the
-# pinned version (e.g. pre-seeded, as it is in this repo today) this never
-# touches the network. Otherwise it downloads, verifies, and unpacks.
-$(BR_STAMP):
-	@mkdir -p $(WORK_DIR)
-	@set -e; \
-	if [ -f $(BR_DIR)/Makefile ] && grep -qx 'export BR2_VERSION := $(BUILDROOT_VERSION)' $(BR_DIR)/Makefile 2>/dev/null; then \
-		echo "==> Buildroot $(BUILDROOT_VERSION) already present at $(BR_DIR); skipping download/unpack"; \
-	else \
-		$(MAKE) --no-print-directory buildroot-verify; \
-		echo "==> Unpacking Buildroot $(BUILDROOT_VERSION) to $(BR_DIR)"; \
-		rm -rf $(BR_DIR); \
-		mkdir -p $(BR_DIR); \
-		tar -C $(BR_DIR) --strip-components=1 -xf $(BR_TARBALL); \
-	fi
-	@touch $@
-
-buildroot-unpack: $(BR_STAMP)
-
-# --- Forward everything else into Buildroot ------------------------------------
-# make menuconfig, make linux-menuconfig, make savedefconfig, make
-# mister_installer_defconfig (Buildroot's own %_defconfig rule finds it under
-# this tree's configs/, since BR2_EXTERNAL is set above), etc.
+# Every other goal is Buildroot's: menuconfig, linux-menuconfig, savedefconfig,
+# legal-info, external-deps, <pkg>-rebuild, list-defconfigs, ...
 %: $(BR_STAMP) hostshim
 	$(BR_MAKE) $@

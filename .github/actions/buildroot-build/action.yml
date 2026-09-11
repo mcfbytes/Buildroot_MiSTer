@@ -29,7 +29,7 @@ name: Build the MiSTer image (Buildroot)
 description: >-
   Prepares a GitHub-hosted runner for a Buildroot build (disk reclaim, apt
   deps, five input caches), then builds the requested variant. main: configures
-  from the DE10-Nano fragment stack (configs/fragments/, stacks.mk) and runs
+  from configs/mister_de10nano_defconfig (ADR 0030) and runs
   `make all` — linux.img + zImage_dtb in output/images/. Any other name is a
   kernel-only variant (`make <name>` over the de10nano-kernel fragment stack
   + configs/mister_<name>.fragment) — the
@@ -177,33 +177,12 @@ runs:
         ws_fp=$(printf '%s' "$GITHUB_WORKSPACE" | sha256sum | cut -c1-8)
         echo "WS_FP=$ws_fp" >> "$GITHUB_ENV"
 
-        # --- Toolchain cache fingerprint: a DENY-list, not an ALLOW-list ---
-        # DENY-list, not ALLOW-list: an allow-list once silently missed
-        # BR2_cortex_a9=y (wrong -mcpu, no cache bust). Comments are stripped
-        # first so editing one can't evict the cross-toolchain either. See
-        # docs/ci.md#toolchain-fingerprint before changing this filter.
-        #
-        # Fingerprints the variant's own base STACK + fragment, not main's:
-        # main = the de10nano stack, a kernel variant = the de10nano-kernel
-        # stack (configs/fragments/stacks.mk, read through the same helper
-        # the check scripts use). The fragments are concatenated before the
-        # strip/filter/sort, so the residue is the same sorted set of lines
-        # the old single-file defconfig produced — the fingerprint, and
-        # therefore the cache key, did not move at the fragment split.
-        # See docs/ci.md#toolchain-fingerprint.
         TC_GEN=1
-        ROOT="$PWD"
         # shellcheck source=scripts/lib/config-stacks.sh
-        source scripts/lib/config-stacks.sh
-        if [ "$VARIANT" = "main" ]; then
-          mapfile -t fp_files < <(config_stack_files DE10NANO)
-        else
-          mapfile -t fp_files < <(config_stack_files DE10NANO_KERNEL)
-        fi
-        if [ "${#fp_files[@]}" -eq 0 ]; then
-          echo "::error::configs/fragments/stacks.mk names no fragments for this variant's stack" >&2
-          exit 1
-        fi
+        # The toolchain-relevant lines of the board defconfig (ADR 0030: one
+        # committed defconfig per board, no fragment stacks). Package and
+        # kernel lines are filtered out: they do not change the toolchain.
+        fp_files=("configs/mister_de10nano_defconfig")
         sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' \
           "${fp_files[@]}" \
           | grep -vE '^($|BR2_PACKAGE_|BR2_LINUX_KERNEL)' \
@@ -226,12 +205,6 @@ runs:
         # this step runs under pipefail — `|| [ $? -eq 1 ]` tolerates exactly
         # that exit while a real grep failure (exit >=2) still aborts. See
         # docs/ci.md#toolchain-fingerprint.
-        if [ "$VARIANT" != "main" ]; then
-          sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]\+#.*$//' -e 's/[[:space:]]*$//' \
-            "configs/mister_${VARIANT}.fragment" \
-            | { grep -vE '^($|BR2_PACKAGE_|BR2_LINUX_KERNEL)' || [ $? -eq 1 ]; } \
-            | sort >> .br-toolchain-fingerprint
-        fi
 
         # Fail loud if the defconfig is ever renamed/reformatted such that this
         # produces an empty or degenerate fingerprint: a frozen cache key is the
@@ -317,20 +290,16 @@ runs:
 
     # 2. dl/ — every package source tarball. Lives at repo root (survives
     # `make clean`) — NEVER move it under output/. Keyed on the full
-    # DE10-Nano fragment stack (the four files configs/fragments/stacks.mk
-    # lists for DE10NANO_FRAGMENTS — hashFiles() cannot read stacks.mk, so
-    # they are spelled out here; keep the two in step, which
-    # scripts/check-config-fragments.sh (e) asserts by comparing this list
-    # with the stack); restore-keys falls back to the version alone so an
-    # imperfect match still hydrates what didn't change. See
-    # docs/ci.md#dl-cache.
+    # Keyed on the DE10 defconfig: a package added there changes the download
+    # set, so it moves the key; restore-keys falls back to the version alone.
+    # See docs/ci.md#dl-cache.
     - name: Restore Buildroot dl/ download cache
       id: dl-cache
       if: env.VARIANT == 'main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/fragments/common.fragment', 'configs/fragments/de10nano.fragment', 'configs/fragments/image-common.fragment', 'configs/fragments/de10nano-image.fragment') }}
+        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 

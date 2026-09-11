@@ -104,10 +104,10 @@ LINUX_IMG="$IMAGES/linux.img"
 # symbol verbatim would otherwise match too -- the exact bug fixed in the
 # hash-sync workflow (#42).
 KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
-	"$ROOT/configs/fragments/de10nano.fragment" | tail -1)
+	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
 if [ -z "$KVER" ]; then
 	echo "FATAL: could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from" >&2
-	echo "       $ROOT/configs/fragments/de10nano.fragment" >&2
+	echo "       $ROOT/configs/mister_de10nano_defconfig" >&2
 	exit 1
 fi
 

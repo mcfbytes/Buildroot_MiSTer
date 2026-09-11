@@ -2,8 +2,10 @@
 
 **Status:** Accepted in direction (2026-09-11) — the owner accepted Phases B and C, the Makefile
 and CI rewrite, the Kconfig profile package in place of Buildroot-config fragments (§5.7), and
-Option G subject to its image-identity proof. Implementation proceeds on branch
-`feat/vanilla-buildroot` in that order; each phase is its own PR and re-verifies the artifacts.
+Option G subject to its image-identity proof. **Landed:** Phases B and C (PR #166), then the
+profiles + committed defconfigs + thin Makefile (branch `feat/vanilla-buildroot-defconfigs`);
+each verified resolved-config-identical and `ci-tests.sh` green. Open: rig boot of both kernels,
+Option G.
 **Supersedes nothing.** Would amend [ADR 0002](0002-initramfs.md) (Phase B) and
 [ADR 0021](0021-rt-kernel-first-class-ci.md) (Phase C) if those phases are accepted.
 **Constraint:** the shipped artifacts stay byte-for-byte what they are today (`linux.img`,

@@ -133,7 +133,7 @@ executed separately from this rootfs-side re-measurement.
 
 **On version drift, since this table cites documents that can lag it.** The ground truth
 for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
-the DE10-Nano fragment stack under `configs/fragments/` — plus whatever Buildroot's own `.mk` files resolve
+`configs/mister_de10nano_defconfig` and the profiles it enables under `package/mister-*/` — plus whatever Buildroot's own `.mk` files resolve
 to at that pin. The documents below are **dated analyses**, not a live mirror of those
 pins: a Renovate bump or a Buildroot line bump moves a package without rewriting the
 prose that reasoned about it. Where a document is behind the pin it now says so at the
@@ -328,7 +328,7 @@ Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 
 stable release** before replacing it, on 2026-09-07, with 6.18.38 — pinned at that one
 point release in exactly the same way, so the pattern is the fork's, not 5.15's. This project tracks
 **6.18 LTS** — the exact patch level is
-`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/fragments/de10nano.fragment`,
+`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`,
 and it is deliberately not repeated in prose here because stable `.y` releases
 land weekly. Pinned by version *and* SHA-256 against kernel.org, with
 Renovate opening a PR on every `.y` bump.
@@ -637,7 +637,7 @@ shipped **byte-identical to stock's**, fetched by hash.
   `board/mister/de10nano/patches/bluez5_utils/` was deleted outright; and Buildroot
   **retired the 7.0 kernel-headers series**, which silently collapsed the DE25 toolchain
   from glibc to uClibc until the headers pin was moved to 7.1 (see
-  [`buildroot-config`](docs/buildroot-config.md) §6.2 and the fragment's own comment).
+  [`buildroot-config`](docs/buildroot-config.md) §6.2).
   The defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
   For the kernel this is handled by not writing the number down: narrative prose says
   "6.18 LTS", and `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in the defconfig is the only
@@ -650,18 +650,15 @@ shipped **byte-identical to stock's**, fetched by hash.
 ### Repository layout
 
 ```
-Makefile                 wrapper: fetches + hash-verifies Buildroot, forwards targets
+Makefile                 thin wrapper (~100 lines): fetches + hash-verifies Buildroot, forwards everything else
 Config.in / external.mk  BR2_EXTERNAL definition for the 18 in-tree packages
-configs/fragments/       stacks.mk                  (which fragments form which config)
-                         common.fragment            (policy shared by every board + variant)
-                         de10nano.fragment          (DE10 arch/ABI, headers, kernel stanza)
-                         de10nano-image.fragment    (the shipped image: hooks, ext4, packages)
-                         kernel-only.fragment       (kernel-only base, shared by variants)
-                         de25nano.fragment          (DE25-Nano developer OS, aarch64)
-                         golden.sha256              (resolved-config hashes CI asserts)
-configs/                 mister_rt.fragment         (PREEMPT_RT / 7.x delta)
+configs/                 mister_de10nano_defconfig  (the DE10-Nano image -- Buildroot's own minimal form)
+                         mister_de25nano_defconfig  (the DE25-Nano developer OS, aarch64)
                          mister_installer_defconfig (SD-card installer cpio)
                          -> docs/buildroot-config.md has the rationale for every line
+package/mister-userspace/  \  Kconfig PROFILES (ADR 0030): one symbol each that selects
+package/mister-firmware/    > a documented package set, so both boards share it. This
+package/mister-drivers/    /  is the one departure from a plain Buildroot defconfig.
 linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kernel
                          extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
 board/mister/de10nano/
@@ -792,41 +789,59 @@ inventoried against real mr-fusion output in
 
 ## Building it yourself
 
+This is a plain Buildroot br2-external. The wrapper `Makefile` fetches and hash-verifies the
+pinned Buildroot into `work/buildroot` and forwards everything else to it with `BR2_EXTERNAL`
+and `O=` set, so the commands are the ones any Buildroot project uses:
+
 ```sh
-make                            # prints help — deliberately NOT a build
-make de10nano-defconfig         # generate output/.config from the fragment stack
-make all                        # build (first run bootstraps a cross-toolchain — hours, not minutes)
+make mister_de10nano_defconfig  # configure the DE10-Nano image into output/
+make                            # build it (first run bootstraps a cross-toolchain — hours, not minutes)
+make linux-menuconfig           # or: menuconfig, linux-rt-menuconfig, legal-info, <pkg>-rebuild, help ...
+make O=output-de25 mister_de25nano_defconfig && make O=output-de25   # the DE25-Nano (or: make de25)
+make sdcard                     # after make all: the SD-card installer image
 ```
 
-Three things that will bite you otherwise:
+`make` produces `output/images/linux.img`, `zImage_dtb`, `zImage_dtb-rt` (the PREEMPT_RT
+variant is a package of the same build) and `mister-initramfs.cpio` (the stage-1 initramfs, also
+a package, embedded in both kernels).
 
-- **`make` on its own prints help rather than building.** A reflexive bare `make` in a
-  Buildroot tree with no config starts a full **x86** toolchain build that nothing here
-  wants. Use `make all`.
+**The one thing that is not plain Buildroot:** package selection. `configs/mister_de10nano_defconfig`
+does not list two hundred packages; it enables three Kconfig **profiles** —
+`BR2_PACKAGE_MISTER_USERSPACE`, `_FIRMWARE`, `_DRIVERS` — whose `select` lists live in
+`package/mister-*/Config.in`, grouped and commented the way [`docs/buildroot-config.md`](docs/buildroot-config.md)
+§5 documents them. That is what lets the DE25-Nano share the userspace by enabling the same
+symbols. "Why is package X in my image?" → `package/mister-userspace/Config.in`.
+
+Things that will bite you otherwise:
+
 - **Do not pass `-j`.** Buildroot's top level is not parallel-safe; it parallelises each
-  package internally, defaulting to your CPU count. CI runs a bare `make all`.
-- **The config is generated once and then left alone.** `make all` never regenerates
-  `output/.config` (so `menuconfig` edits survive), and `make clean` keeps it. After a `git pull`
-  that moves the Buildroot pin (`BUILDROOT_VERSION` in the Makefile), or after a `make clean`,
-  run `make de10nano-defconfig` before building. The symptom of a stale config is Buildroot
-  stopping at an interactive Kconfig prompt ("Toolchain type", "Kernel Headers"): a config
-  written on the previous pin no longer matches the new tree's symbols. A Buildroot pin move is
-  best followed by `make distclean` outright.
+  package internally, defaulting to your CPU count. CI runs a bare `make`.
+- **The config is generated once and then left alone.** `make` never regenerates
+  `output/.config` (so `menuconfig` edits survive), and `make clean` keeps it. After a `git
+  pull` that moves the Buildroot pin (`BUILDROOT_VERSION` in the Makefile), or after a
+  `make clean`, run `make mister_de10nano_defconfig` again before building; a config written on
+  the previous pin stops Buildroot at an interactive Kconfig prompt. A pin move is best followed
+  by `make distclean`.
+- **Edit the defconfig, then keep it canonical.** `configs/mister_*_defconfig` are Buildroot's
+  own `savedefconfig` form; `scripts/check-defconfigs.sh` (CI's lint) asserts each one loads,
+  reproduces itself, and that every profile `select` really lands — a `select` of a kconfig
+  `choice` member is ignored silently, which is why e.g. `BR2_PACKAGE_ZLIB_NG` stays in the
+  defconfig rather than in a profile.
 
 ### Useful targets
 
 | Target | What it does |
 |---|---|
-| `make all` | The shipped image: `linux.img` + `zImage_dtb` |
-| `make linux-rt` | Rebuild only the `PREEMPT_RT` kernel package → `output/images/zImage_dtb-rt` (built by `make all` anyway) |
+| `make` / `make all` | The shipped image: `linux.img`, `zImage_dtb`, `zImage_dtb-rt`, `mister-initramfs.cpio` |
+| `make mister_<board>_defconfig` | Load a board configuration (Buildroot's own `<name>_defconfig`) |
+| `make linux-rt` | Rebuild only the `PREEMPT_RT` kernel package |
+| `make mister-initramfs` | Rebuild only the stage-1 cpio (then `make linux-rebuild all` to re-embed it) |
 | `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all` |
-| `make mister-initramfs` | Stage-1 cpio only (`output/images/mister-initramfs.cpio`); it is a package of the main build (ADR 0030), embedded in the kernel by the `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS` extension |
-| `make menuconfig` / `linux-menuconfig` | Interactive Buildroot / kernel config |
-| `make savedefconfig` | Write the config back to the defconfig (**always** do this after editing) |
-| `make buildroot-verify` | Download + SHA-256-verify the pinned Buildroot tarball |
-| `make buildroot-showsig` | Print upstream's GPG-signed manifest — the *only* valid hash source |
-| `make legal-info` | Generate the SBOM |
-| `make clean` / `distclean` | Buildroot's own meanings, applied across every output dir (`dl/` is kept — it's a shared cache) |
+| `make menuconfig` / `linux-menuconfig` / `linux-rt-menuconfig` | Interactive Buildroot / kernel config |
+| `make savedefconfig` | Write the config back to `configs/mister_<board>_defconfig` (**always** do this after editing) |
+| `make buildroot-verify` / `buildroot-showsig` | Verify the pinned Buildroot tarball / print upstream's GPG-signed manifest — the *only* valid hash source |
+| `make legal-info` | Generate the SBOM (covers both kernels and the stage-1 packages) |
+| `make clean` / `distclean` | Buildroot's own meanings, per `O=`; `dl/` is kept (a shared cache) |
 
 ### Host requirements
 

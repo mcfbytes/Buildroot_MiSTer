@@ -138,7 +138,10 @@ distro does not leak into the target output.
 > one `make all`, so `build.yml` is `gate → lint-config → build → status` and `release.yml`
 > stages `zImage_dtb-rt` and `linux-rt.config` straight from `output/images/`; its patches and
 > licences are in the single `legal-info.tar.gz`. `.github/actions/buildroot-build`'s
-> `variant` input errors on anything but `main`. This Part is kept for the record.
+> `variant` input errors on anything but `main`. This Part is kept for the record. The
+> fragment-stack lint (`check-config-fragments.sh`, golden hashes) is likewise replaced by
+> `scripts/check-defconfigs.sh` over the committed `configs/mister_*_defconfig` files (ADR 0030
+> Phase D).
 
 <a id="variants"></a>
 ### Variants: main vs kernel-only

@@ -116,7 +116,7 @@ de10nano)
 	# The generic ARM kernel: multi_v7_defconfig + this harness's fragment.
 	KERNEL_BASE_DEFCONFIG=multi_v7_defconfig
 	KERNEL_BASE_FILES=()
-	PIN_FRAGMENT="$ROOT/configs/fragments/de10nano.fragment"
+	PIN_FRAGMENT="$ROOT/configs/mister_de10nano_defconfig"
 	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
 	CACHE_TAG=""
 	;;
@@ -137,7 +137,7 @@ de25nano)
 	KERNEL_BASE_DEFCONFIG=""
 	KERNEL_BASE_FILES=("$ROOT/board/mister/de25nano/linux.config"
 	                   "$ROOT/board/mister/common/linux-mister.fragment")
-	PIN_FRAGMENT="$ROOT/configs/fragments/de25nano.fragment"
+	PIN_FRAGMENT="$ROOT/configs/mister_de25nano_defconfig"
 	# Resolved through the DE25's own patch dir, which links to the 7.x
 	# re-anchored copy in linux-patches-beta/ (since 2026-09-06 -- this
 	# very case found the shared 6.18 form Oopsing on 7.x, ADR 0002 §8b).

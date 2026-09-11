@@ -11,7 +11,7 @@
 #   --pin=stable   the 6.18.y longterm kernel that the SHIPPED image runs.
 #                  Version read from configs/fragments/de10nano.fragment.
 #   --pin=rt       the RT/beta kernel variant (docs/rt-beta-kernel.md).
-#                  Version read from configs/mister_rt.fragment.
+#                  Version read from configs/mister_de10nano_defconfig.
 #
 # WHY `rt` EXISTS NOW, HAVING BEEN FORBIDDEN BEFORE -- read this before
 # "restoring" the old prohibition, because the change is deliberate and the old
@@ -198,7 +198,7 @@ done
 # rt pin gets its own, which the .yml's gate must OR in (it does).
 case "$PIN" in
 	stable)
-		VERSION_FILE="configs/fragments/de10nano.fragment"
+		VERSION_FILE="configs/mister_de10nano_defconfig"
 		VERSION_SYMBOL="BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE"
 		HASH_FILE="board/mister/de10nano/patches/linux/linux.hash"
 		OUTCOME_PIN="kernel"
@@ -208,7 +208,7 @@ case "$PIN" in
 		# Since ADR 0030 Phase C the RT variant is package/linux-rt: its pin is
 		# BR2_PACKAGE_LINUX_RT_VERSION in the DE10 image fragment and its hash
 		# file is the package's own (same signed-manifest rule).
-		VERSION_FILE="configs/fragments/de10nano-image.fragment"
+		VERSION_FILE="configs/mister_de10nano_defconfig"
 		VERSION_SYMBOL="BR2_PACKAGE_LINUX_RT_VERSION"
 		HASH_FILE="package/linux-rt/linux-rt.hash"
 		OUTCOME_PIN="kernel-rt"

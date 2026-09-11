@@ -1,0 +1,8 @@
+8188eu.ko.xz
+8812au.ko.xz
+8821au.ko.xz
+8821cu.ko.xz
+88x2bu.ko.xz
+lib80211.ko.xz
+rtl8188fu.ko.xz
+xone-gip-common.ko.xz

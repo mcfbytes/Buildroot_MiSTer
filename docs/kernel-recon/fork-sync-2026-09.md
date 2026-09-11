@@ -279,6 +279,8 @@ assumption does not fit as-is) plus a separate firmware package.
 
 ### 6.3 Rootfs-side release delta — not this increment's scope
 
+> **Overtaken 2026-09-11:** the parallel workstream's PRs #157–#160 (stock release verification, the rtl8xxxu firmware, the release pin, and the vendored `uartmode`/`S39usb-coldplug`) landed on master the same day and are merged into this branch; the rootfs-side gaps this section anticipates are closed there (`docs/verification/stock-release-20260907.md`, `docs/stock-reconciliation.md` §3d).
+
 Release 20260907 also replaced `rootfs.tar.bz2` (82,617,954 → 82,661,550 bytes), which
 `PLAN.md` §1.1 explicitly flagged as out of scope for a *kernel* increment — that re-inventory
 belongs to `docs/stock-reconciliation.md` and is the concurrent Wave 3 documentation-refresh

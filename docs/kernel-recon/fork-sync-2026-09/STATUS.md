@@ -199,15 +199,15 @@ against his tree (one harmless unused-declaration warning on `0041`'s idiom, sam
 a PR title and body per patch. `0038` was withdrawn: his tree already has the identical PID
 normalization. **Nothing was pushed or opened upstream.**
 
-**Follow-ups surfaced (not actioned):**
-1. **Firmware gap on our side**, exposed by the audit's Realtek correction: we build
+**Follow-ups surfaced (not actioned here; items 1–2 were closed the same day by the parallel workstream's PRs #158 and #160, merged to master 2026-09-11 and merged into this branch):**
+1. **[CLOSED by PR #158]** **Firmware gap on our side**, exposed by the audit's Realtek correction: we build
    `CONFIG_RTL8XXXU=m` (+`_UNTESTED`), which drives RTL8710BU and RTL8192FU, but ship neither
    `rtlwifi/rtl8710bufw_{SMIC,UMC}.bin` nor `rtlwifi/rtl8192fufw.bin` (nor `rtl8723bu_bt.bin`);
    stock 20260907 ships all four. Fix shape: add them to `package/linux-firmware-extra/` (it
    copies named files out of the pinned linux-firmware tree) — **after** confirming each file
    exists in the pinned linux-firmware snapshot, which that package's own rule requires and which
    needs the tarball (not reachable here).
-2. The `S39usb-coldplug` / `uartmode` addon.tar delta (STATUS §7).
+2. **[CLOSED by PR #160]** The `S39usb-coldplug` / `uartmode` addon.tar delta (STATUS §7): both vendored byte-identical; see `docs/stock-reconciliation.md` §3d.
 3. The 6.18.49→6.18.50 / 7.2.3→7.2.4 drift walk (`env.md`) and the real-tarball export run
    (`docs/kernel-export.md` §5).
 4. Wiring `scripts/check-export-tree.sh --no-build` into `build.yml` after the kernel leg.

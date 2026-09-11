@@ -1,0 +1,72 @@
+c129b0fa 2026-09-11 02:15:57 +0800 Sorgelig | Add AIC8800 WiFi/BT driver.
+41c45f37 2026-09-09 17:32:35 +0800 Porkchop Express | Adapt Classic2USB and RetroZord HID force feedback support (#91)
+e6f377e7 2026-09-09 06:35:35 +0800 Sorgelig | Update defconfig.
+9854075c 2026-09-09 06:35:28 +0800 Sorgelig | exfat: speed-up dir read-ahead.
+7c75b1b4 2026-09-09 05:49:25 +0800 Kasper Olesen | Input: xpad - add opt-in 8BitDo initialization bypass
+59bcae8e 2026-09-09 04:58:18 +0800 Kasper Olesen | Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo (#85)
+ea221222 2026-09-08 23:16:57 +0800 Takiiiiiiii | fbdev: MiSTer_fb: declare explicit fb_ops for read/write/mmap (#83)
+33a0521f 2026-09-08 15:02:35 +0800 Julian Seitz | config: enable CONFIG_RTW88_8821AU for Realtek 8821AU/8811AU USB adapters (#81)
+aec7dc3a 2026-08-30 15:51:22 +0800 Nigel Shearman | config: enable CONFIG_TUN for tap device support (#76)
+6332499e 2026-08-24 19:59:18 +0800 Stanislav Ponomarev | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78)
+e8f065db 2026-07-23 05:43:43 +0800 Sorgelig | Add MiSTer_defconfig
+27c00bf0 2026-07-23 05:42:08 +0800 Martin Donlon | Fix for unaligned IN data. (#57)
+e000b730 2026-07-23 05:42:08 +0800 Sorgelig | xone: sysfs for software pairing.
+fc87de1c 2026-07-23 05:42:08 +0800 Sorgelig | xone: use firmware according to PID.
+861a4692 2026-07-23 05:42:08 +0800 Sorgelig | xone: backport the paddles from fork.
+43649122 2026-07-23 05:42:08 +0800 Sorgelig | Add xone (XBox wireless adapter) driver.
+726338d9 2026-07-23 05:42:08 +0800 Sorgelig | xpad: support for extra buttons on Flydigi Vader 3/4/5 Pro in wired and RF dongle modes.
+fc73213a 2026-07-23 05:42:08 +0800 Aurora | input: Add support for the NSO Famicom controllers (no mic for Famicom R) (#62)
+7f2384ee 2026-07-23 05:42:07 +0800 James McCarthy | Add support for official gamecube-adapter (#48)
+cbb095b1 2026-07-23 05:42:07 +0800 Sorgelig | Add support for NSO Mega Drive Controller (#50)
+4120d98a 2026-07-23 05:42:07 +0800 Alexey Melnikov | input: add HID driver to fix Flydigi Vader 4 Pro mapping in D-Input over Bluetooth.
+d041df72 2026-07-23 05:42:07 +0800 Sorgelig | xpad: exclude GIP-capable controllers.
+34219367 2026-07-23 05:42:07 +0800 Sorgelig | hid-microsoft: support for XBox Elite 2 paddles.
+83e8e721 2026-07-23 05:42:07 +0800 Sorgelig | fix for 3rd party DS4 failing to connect by wire.
+ac368d2e 2026-07-23 05:42:07 +0800 Michael Huang | Add Fanatec wheel driver (#24)
+d4ce5fd3 2026-07-23 05:42:07 +0800 Nolan Nicholson | Add driver for Namco Guncon 3 (#20)
+b5b12299 2026-07-23 05:42:07 +0800 Nolan Nicholson | Add driver for Namco GunCon 2
+d4cf048b 2026-07-23 05:42:07 +0800 Sorgelig | fix Logitech K400 Plus FN problem (#15)
+3a8edf0f 2026-07-23 05:42:07 +0800 Sorgelig | mmc: don't activate LED on status command.
+eb06377e 2026-07-23 05:42:07 +0800 Sorgelig | dts: enable bridges.
+9e3c324c 2026-07-23 05:42:07 +0800 Sorgelig | dts: fix warnings.
+613e71d1 2026-07-23 05:42:06 +0800 Sorgelig | Support for RTC PCF8563
+9925a691 2026-07-23 05:42:06 +0800 Sorgelig | btusb: support for more CSR clones.
+1c7510d5 2026-07-23 05:42:06 +0800 Sorgelig | Enable i2c2 device.
+e3d4ce95 2026-07-23 05:42:06 +0800 Sorgelig | hps_led: enable brightness change notification.
+d6b795ef 2026-07-23 05:42:06 +0800 Sorgelig | Implement MiSTer frame buffer device.
+110fa4dd 2026-07-23 05:42:06 +0800 Sorgelig | vt: reduce from 63 to 9 ttys.
+23d3977f 2026-07-23 05:42:06 +0800 Sorgelig | XInput polling rate param + Qanba Obsidian XInput mode support
+a7fa20ca 2026-07-23 05:42:06 +0800 Sorgelig | usbhid: apply jspoll for gamepad usage as well.
+4d87801b 2026-07-23 05:42:06 +0800 Sorgelig | Remove XBox One Wireless Adapter USB IDs from mt76 driver to allow 'xow' driver compatibility.
+10663b46 2026-07-23 05:42:06 +0800 Sorgelig | input: support for mouseX and mice in EVIOCGRAB mode.
+2a82bcfd 2026-07-23 05:42:06 +0800 Sorgelig | wiimote: fix analog ranges.
+6a7404eb 2026-07-23 05:42:06 +0800 Sorgelig | wiimote: fix the buttons codes.
+7ec3ccd4 2026-07-23 05:42:06 +0800 Sorgelig | wiimote: set uniq field.
+1392efd5 2026-07-23 05:42:05 +0800 Sorgelig | hid: add quirk for ControllaBLE.
+390df0ad 2026-07-23 05:42:05 +0800 Sorgelig | hid-nintendo: support for Switch NES and SNES controllers.
+a6b7e366 2026-07-23 05:42:05 +0800 Sorgelig | hid-nintendo: add virtual combo led, don't warn by IMU compensation.
+b0cca573 2026-07-23 05:42:05 +0800 Sorgelig | hid-nintendo: don't fail if home led is not present.
+560cae8e 2026-07-23 05:42:05 +0800 Sorgelig | dualsense: leds config for player 6.
+dcaca268 2026-07-23 05:42:05 +0800 Sorgelig | dualsense: give mute button and led to system.
+f123647e 2026-07-23 05:42:05 +0800 Sorgelig | dualsense: add player id led control.
+38bec5f7 2026-07-23 05:42:05 +0800 Sorgelig | mousedev: disable touch to click on DualShock4 and DualSense.
+7b868d31 2026-07-23 05:42:05 +0800 Sorgelig | HID: map key Europe 1(0x32) to F24 code (for Keyrah).
+8726d7b5 2026-07-23 05:42:05 +0800 Sorgelig | Logitech K400r: disable Fn swap.
+84deb02c 2026-07-23 05:42:05 +0800 Sorgelig | Implement MiSTer audio driver.
+0914232a 2026-07-23 05:42:05 +0800 Sorgelig | Disable DMA on UART0/1. DMA is broken on Designware UARTs.
+d7267d8e 2026-07-23 05:42:04 +0800 Sorgelig | Enable UART1.
+b25527fc 2026-07-23 05:42:04 +0800 Sorgelig | Switch to i2c-gpio driver for smbus compatibility.
+0a5bc092 2026-07-23 05:42:04 +0800 Sorgelig | Enable SPI on LTC. Use HPS LED for SD card activity.
+49c3228a 2026-07-23 05:42:04 +0800 Sorgelig | Use 100kHz for i2c-1 for better compatibility with devices.
+335bb83a 2026-07-23 05:42:04 +0800 Sorgelig | Disable USB overcurrent signaling.
+2a197b33 2026-07-23 05:42:04 +0800 Sorgelig | Disable RTC error messages.
+86b76102 2026-07-23 05:42:04 +0800 Sorgelig | Support for i2c rtc mcp794xx.
+917b449d 2026-07-23 05:42:04 +0800 Sorgelig | Support for i2c rtc m41t81.
+49b6ed87 2026-07-23 05:42:04 +0800 Sorgelig | Add de10-nano DT.
+baecde48 2026-07-23 05:39:14 +0800 Sorgelig | Support for init loop device.
+dab117f5 2026-07-23 05:39:14 +0800 Sorgelig | exfat: support for symlinks.
+d9ac12a6 2026-07-16 23:47:40 +0800 Sorgelig | v6.18.38
+aba1ef4c 2021-11-07 20:12:39 +0800 Sorgelig | v5.15.1
+b6f2ca1c 2021-09-17 01:39:23 +0800 Sorgelig | v5.14.5
+137491a7 2021-08-30 22:37:05 +0800 Sorgelig | v5.14
+e12ed6c1 2021-08-22 05:38:19 +0800 Sorgelig | v5.13.12

@@ -485,7 +485,7 @@ fi
 section "P3.3 — Firmware parity (docs/firmware-parity.md documented present-set)"
 # =============================================================================
 
-STOCK_FW_MD="$ROOT/docs/stock-inventory/20250402/firmware.md"
+STOCK_FW_MD="$ROOT/docs/stock-inventory/20260907/firmware.md"
 PARITY_FW_MD="$ROOT/docs/firmware-parity.md"
 
 if [ ! -f "$STOCK_FW_MD" ] || [ ! -f "$PARITY_FW_MD" ]; then
@@ -495,7 +495,7 @@ else
 	missing_fw="$WORKDIR/fw_missing10.txt"
 	present_fw="$WORKDIR/fw_present.txt"
 	# shellcheck disable=SC2016 # backticks are literal markdown code-span
-	# delimiters in docs/stock-inventory/20250402/firmware.md, not command substitution.
+	# delimiters in docs/stock-inventory/20260907/firmware.md, not command substitution.
 	grep -E '^\| `[^`]+` \|' "$STOCK_FW_MD" | sed -E 's/^\| `([^`]+)`.*/\1/' | grep -v '/$' | LC_ALL=C sort > "$all_fw"
 	awk '/\*\*Missing \([0-9]+\):\*\*/{f=1;next} f&&/^```/{c++;if(c==2)exit;next} f&&c==1{print}' "$PARITY_FW_MD" | LC_ALL=C sort > "$missing_fw"
 	comm -23 "$all_fw" "$missing_fw" > "$present_fw"

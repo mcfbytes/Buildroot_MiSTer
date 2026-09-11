@@ -1,0 +1,13 @@
+#!/bin/sh
+case "$1" in
+    start)
+        printf "Reload USB drivers... "
+        udevadm trigger --subsystem-match=usb --action=add
+        udevadm settle --timeout=10
+        echo "done"
+        ;;
+    *)
+        echo "Usage: $0 {start}"
+        exit 1
+        ;;
+esac

@@ -1,15 +1,14 @@
 #!/bin/bash
 
 kill_all() {
-	rm -f /tmp/uartmode*
-	rm -f /tmp/ML_BAUD
-	killall midilink
-	killall pppd
-	killall agetty
-	killall login
-	killall mt32d
-	killall fluidsynth
-	killall mpg123
+	rm -f /tmp/uartmode* /tmp/ML_BAUD
+	if fuser -k -TERM /dev/ttyS1 2>/dev/null; then
+		sleep 0.1
+		fuser -k -KILL /dev/ttyS1 2>/dev/null
+	fi
+
+	# TODO: Find a smarter way to kill only the pids spawned by midilink
+	killall -KILL fluidsynth mpg123 mt32d 2>/dev/null
 }
 
 conn_speed=115200
@@ -26,8 +25,8 @@ if [ "$1" == "1" ]; then
 			do
 				if [ -f /media/fat/linux/ppp_options ]; then
 					
-					localip=$(ifconfig 2>/dev/null | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
-					remoteip=$(ifconfig 2>/dev/null | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){2}[0-9]*).*/\2/p').254
+					localip=$(ifconfig 2>/dev/null | sed -En 's/127.0.0.1//;s/169.254.*//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
+					remoteip=$(ifconfig 2>/dev/null | sed -En 's/127.0.0.1//;s/169.254.*//;s/.*inet (addr:)?(([0-9]*\.){2}[0-9]*).*/\2/p').254
 
 					if [ -z $localip ]; then
 						echo cannot get local IP for PPP link.
@@ -42,6 +41,10 @@ if [ "$1" == "1" ]; then
 
 					echo 1 > /proc/sys/net/ipv4/ip_forward
 					taskset 1 pppd $conn_speed file /tmp/ppp_options
+					status=$?
+					case $status in
+						1|2|3|4|6|7|9|137) echo "pppd exited with fatal error $status"; exit 0;;
+					esac
 				else
 					echo "skip pppd"
 					exit 0
@@ -121,6 +124,25 @@ elif [ "$1" == "5" ]; then
 				sleep 1
 			done 
 		) &
+	fi
+elif [ "$1" == "6" ]; then
+	if [ ! -f /tmp/uartmode6 ]; then
+		kill_all
+		echo "1" >/tmp/uartmode6
+		if [ -f /media/fat/snid ]; then
+			(
+				while true
+				do
+					RUST_LOG=info taskset 1 /media/fat/snid > /tmp/snid.log 2>&1
+					wait $!
+
+					[ ! -f /tmp/uartmode6 ] && exit 0
+
+					echo respawn snid
+					sleep 1
+				done 
+			) &
+		fi
 	fi
 else
 	if [ -f /tmp/uartmode* ]; then

@@ -197,16 +197,22 @@ the image.
   unpacked Buildroot tree. Left manual.
 
 - **`release.yml`'s pinned stock reference archive**
-  (`b8531c7848526d9a8227841923cc4a493cb6e631` /
-  `release_20250402.7z`, referenced via a `raw.githubusercontent.com` URL in
-  the `STOCK_RELEASE_URL` env var) — this is **not a dependency to bump**.
-  It is a frozen compatibility pin: the whole point is that our
-  `uboot.img`/`files/linux/` payload stays byte-identical to *this specific*
-  stock release forever (see `release.yml`'s own header and
-  `docs/downloader-contract.md` §8/§12). No manager in `renovate.json`
-  matches a `raw.githubusercontent.com` URL, so this is excluded by
-  construction, not by an explicit ignore rule — documented here so nobody
-  "helpfully" wires one up later.
+  (`76fd6f4ced6350b0ad56a7013b41526f47e3a2fb` /
+  `release_20260907.7z.001` + `.002`, referenced via `raw.githubusercontent.com`
+  URLs in the `STOCK_RELEASE_URL` env var) — this is **not a dependency
+  Renovate bumps**. It is a compatibility pin that moves only by a deliberate,
+  reviewed change: `uboot.img`/`updateboot` must stay byte-identical to what
+  stock flashes (see `release.yml`'s own header and
+  `docs/downloader-contract.md` §8/§12), and the auxiliary `files/linux/`
+  payload moves only when stock's does (the 2026-09 bump from
+  `release_20250402` changed exactly one shipped file, `MidiLink.INI`, and left
+  `uboot.img`/`updateboot` unchanged —
+  `docs/verification/stock-release-20260907.md` §6.2 is the template for the
+  next such bump: re-verify both boot files, re-derive the joined-archive
+  hashes, re-run `verify-stock-payload.sh` end to end). No manager in
+  `renovate.json` matches a `raw.githubusercontent.com` URL, so this is
+  excluded by construction, not by an explicit ignore rule — documented here
+  so nobody "helpfully" wires one up later.
 
 ## The hash-sync mechanism (`.github/workflows/renovate-hash-sync.yml`)
 

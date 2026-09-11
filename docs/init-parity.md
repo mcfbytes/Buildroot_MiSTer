@@ -48,14 +48,15 @@ reflects the **second, corrected** build.
 
 | Status | Count | Meaning |
 |---|---|---|
-| identical | 8 | Byte-identical to stock, or functionally identical modulo cosmetic/tooling differences (documented per row) |
+| identical | 9 | Byte-identical to stock, or functionally identical modulo cosmetic/tooling differences (documented per row) |
 | adapted | 4 | Behavior intentionally differs from stock, for a stated reason |
 | dropped | 0 | — |
 
-All 12 of the verified stock S-scripts are represented in the built image, either
-directly or by an equivalent the package set already installs.
+All 13 stock S-scripts (the 12 verified at P2.3 plus `S39usb-coldplug`, which stock
+added in `release_20260907`) are represented in the built image, either directly or by
+an equivalent the package set already installs.
 
-## Per-script table (the 12 verified stock scripts)
+## Per-script table (the 12 verified stock scripts, plus the 13th added in 2026-09)
 
 | Script | Status | Notes |
 |---|---|---|
@@ -63,6 +64,7 @@ directly or by an equivalent the package set already installs.
 | `S02klogd` | **identical** | Same as above, for `klogd`. Not overlaid. |
 | `S10udev` | **adapted** (filename) | eudev's own package-generated `S10udevd` (confirmed present, `BR2_PACKAGE_EUDEV=y` + `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y`, both already set by P2.1 — **not** mdev) does the identical job: `udevd` + `udevadm trigger --type=subsystems/devices --action=add` + `udevadm settle --timeout=30`, line-for-line the same shape as stock's `S10udev`. We deliberately do **not** add a duplicate `S10udev` — that would start a second `udevd` instance racing the first over the same netlink socket. Not overlaid. |
 | `S30dbus` | **adapted** (filename) | dbus's own package script `S30dbus-daemon` does the same job (`dbus-uuidgen --ensure`, `mkdir -p /run/dbus /tmp/dbus`, `dbus-daemon --system`). Same reasoning as `S10udev` — not duplicated, to avoid a second `dbus-daemon --system` racing for the bus name. Not overlaid. |
+| `S39usb-coldplug` (**new in stock `release_20260907`**, a 13th script) | **identical** (overlaid, 2026-09) | Added by stock's 2026-09 `addon.tar` alongside its 6.18 kernel: `udevadm trigger --subsystem-match=usb --action=add` + `udevadm settle --timeout=10`, printed as "Reload USB drivers", sequenced after `S30dbus`. Vendored **byte-identical** (sha256 `10940825…`, mode 755) at `etc/init.d/S39usb-coldplug`. It is a *second* USB replay — stock's own `S10udev` already does the same `--type=subsystems` + `--type=devices` coldplug ours does (see the `S10udev` row) — and stock does not say what it fixes (the `addon.tar` commit message is "Release 20260907."; the only other userland change in that tarball is the `uartmode` rewrite, `docs/stock-reconciliation.md` §3d). A first draft of this row declined it on the theory that the replay would double-fire this image's USB `RUN+=` rules; that was wrong and is withdrawn: `--subsystem-match=usb` re-emits `add` only for devices whose *own* subsystem is `usb`, and every `RUN+=` rule on this image matches something else (`60-jms583-phantom.rules` is `scsi_device`, `70-persistent-net.rules` is `net`, `usbmount.rules` is `block`). What the replay actually re-runs is udev's built-in kmod `modalias` load, which is idempotent, and the cost is one `settle` of at most 10 s that returns immediately once the queue is empty. With no hazard and a 12-line script that is exactly stock's, parity wins over a guess about stock's motive. The residual open question — whether a USB device present at power-on ever *needs* the replay on this image — is now moot for the user (it binds either way) and is left as a curiosity, not a task. |
 | `S40network` | **identical** | Byte-for-byte identical to stock (`diff` exit 0) — `ifup -a` / `ifdown -a` via ifupdown. Not overlaid. |
 | `S41dhcpcd` | **identical** | Filename matches stock exactly. Content is functionally identical (same start/stop/reload logic); the only difference is `PIDFILE=/var/run/dhcpcd/pid` vs. stock's `/var/run/dhcpcd.pid`, which reflects this newer dhcpcd's own pidfile convention, not a P2.3 decision — reverting to stock's path would risk it not matching what this dhcpcd binary actually writes. Not overlaid. |
 | `S45bluetooth` | **adapted** (mechanism reproduced, package default neutralized) | Stock's real file is a **symlink** to `/bin/bluetoothd`, which does the ext4-image persistence trick for `/var/lib/bluetooth` (BT pairing keys) that ADR 0015 explicitly mirrors for SSH host keys. Reproduced **byte-identical** (`diff` exit 0) at `bin/bluetoothd`, with `etc/init.d/S45bluetooth` a symlink to it — exactly stock's shape. **Problem found and fixed:** `BR2_PACKAGE_BLUEZ5_UTILS` installs its own `S40bluetoothd`, which starts `bluetoothd` directly with **no** persistence step — on our read-only `/`, `/var/lib/bluetooth` (not in fstab, so not tmpfs) would be unwritable, and running it would race the real `S45bluetooth` over the D-Bus name and the HCI socket. `etc/init.d/S40bluetoothd` is overlaid to a documented no-op stub so bluetoothd starts exactly once, correctly. |

@@ -1,5 +1,10 @@
 # Verification of stock release `release_20250402.7z`
 
+> **Superseded as the pinned release (2026-09).** `release.yml` now pins
+> `release_20260907`; see [`stock-release-20260907.md`](stock-release-20260907.md) for
+> what changed. Everything below remains true of `release_20250402` itself and is the
+> baseline that document diffs against.
+
 Date: 2026-07-11. Verified against the shipped artifact downloaded from
 `MiSTer-devel/SD-Installer-Win64_MiSTer` (master), plus `Downloader_MiSTer` source (main).
 This pre-executes parts of P0.2/P0.3/P0.6/P0.8 and settles every boot-chain uncertainty in

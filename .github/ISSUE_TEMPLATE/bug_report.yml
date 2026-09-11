@@ -111,7 +111,7 @@ body:
         - Another version of this modernized image (which version?)
         - A modified config
       placeholder: |
-        Was working fine on stock release_20250402. Issue appeared immediately
+        Was working fine on stock release_20260907. Issue appeared immediately
         after flashing the modernized image built 2026-07-12.
     validations:
       required: true

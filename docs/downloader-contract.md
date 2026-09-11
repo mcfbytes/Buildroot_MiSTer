@@ -1026,9 +1026,30 @@ prevent.
 
 ### 11.1 — Ground truth: reproducing the official entry exactly
 
+> **2026-09-10 status.** The entry below was live from 2025-04 until 2026-09. Stock's
+> next release, `release_20260907`, is committed upstream as **two split 7z volumes**
+> (`.7z.001` + `.7z.002`), which this `LinuxUpdater` cannot consume (one `url`, one
+> `hash`, one `size`, one `7za t`). `Distribution_MiSTer` therefore grew a joiner
+> (`.github/db_operator.py`, commit `53ccdce`, 2026-09-07): it concatenates the volumes,
+> runs `7z t`, uploads the flat file as `linux_release_20260907.7z` on its `all_releases`
+> GitHub release, and publishes **that** URL with the joined file's MD5/size. That mirror
+> asset exists (fetched; byte-identical to our own join, MD5 `8cd4edca…`), but at the time
+> of writing `apply_linux_update()` is **commented out** (`6916c7e`, 2026-09-10) and the
+> live db.json has `"linux": null` — stock devices are not currently offered the update.
+> So the next live entry will be `{"hash": "8cd4edca838fdc226390e3fb04f3ca79", "size":
+> 117936766, "url": "https://github.com/MiSTer-devel/Distribution_MiSTer/releases/download/all_releases/linux_release_20260907.7z",
+> "version": "260907"}` once re-enabled. Nothing in this section's *mechanics* changes:
+> §2's MD5 scope, §3's `version[-6:]` inequality and §5's extraction pattern are all
+> unchanged in `linux_updater.py` (last touched 2026-07-20). Our own db.json
+> (`scripts/gen-db-json.py`) already publishes a single release asset, so the split
+> archive is a pipeline concern for us only where we *fetch* stock's archive
+> (`release.yml`'s `STOCK_RELEASE_URL`, now a two-URL list that `verify-stock-payload.sh`
+> joins) — see `docs/verification/stock-release-20260907.md` §6. Full analysis of the
+> release itself is in that document; the entry below is kept as the verified record.
+
 As a cross-check that every field above is understood correctly (not just asserted), here
-is the **actual, currently-live** `Distribution_MiSTer` `linux` entry, reproduced from
-PLAN §10 and independently re-verified this session:
+is the `Distribution_MiSTer` `linux` entry that was **live until 2026-09**, reproduced from
+PLAN §10 and independently re-verified at the time:
 
 ```json
 "linux": {

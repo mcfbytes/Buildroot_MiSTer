@@ -1,0 +1,17 @@
+RTL8192E/boot.img
+RTL8192E/data.img
+RTL8192E/main.img
+ath10k/QCA9377/hw1.0/board-2.bin
+ath10k/QCA9377/hw1.0/firmware-6.bin
+mediatek/mt7662u.bin
+mediatek/mt7662u_rom_patch.bin
+rt2870_sw_ch_offload.bin
+rtl_bt/rtl8192ee_fw.bin
+rtl_bt/rtl8192eu_fw.bin
+rtlwifi/rtl8192fufw.bin
+rtlwifi/rtl8710bufw_SMIC.bin
+rtlwifi/rtl8710bufw_UMC.bin
+rtlwifi/rtl8723bu_bt.bin
+rtlwifi/rtl8723defw.bin
+xone_dongle_02f9.bin
+xone_dongle_091e.bin

@@ -67,10 +67,12 @@ comparison table for where each of those numbers is cited from.
   vendor subdirectories as if they were files. Confirmed independently via
   `find -type f` on the extracted tree and cross-checked with
   `debugfs -R "ls -l /usr/lib/firmware"` directly against the raw ext4
-  image. **This doc's 66 is the authoritative count going forward** — see
-  `firmware.md`. `xow_dongle.bin` (xone/xow dongle firmware) is present in
-  stock's firmware set — see `firmware.md`'s redistribution callout for
-  P3.2.
+  image. **This doc's 66 is the authoritative count for `release_20250402`**;
+  `firmware.md` now inventories `release_20260907`, where the same
+  regular-files basis gives **91** (77 of which this image reproduces —
+  `docs/firmware-parity.md`). `xow_dongle.bin` (xone/xow dongle firmware) is
+  present in stock's firmware set — see `firmware.md`'s redistribution callout
+  for P3.2.
 - **`/etc/resolv.conf` is a symlink, not a regular file** — one of A8's six
   user-file-restore destinations. `/etc/resolv.conf -> ../tmp/resolv.conf`
   (`/tmp` is tmpfs). Traced through `Downloader_MiSTer`'s actual restore
@@ -156,6 +158,18 @@ the exact commands used, including how a release's `rootfs.tar.bz2` +
 `modules.tar.gz` + `firmware.tar.gz` + `addon.tar` were overlaid into one directory tree
 first, replicating the release's own `create_img.sh`, since every `gen-*.sh` here accepts
 an already-extracted directory equally to a raw ext4 image).
+
+To regenerate a **single** inventory for a different release, set `MRL_SOURCE_LABEL` so the
+generated header names the release rather than a bare filename (`run-all.sh` defaults it to the
+image's basename), e.g. the way `20260907/firmware.md` was produced:
+
+```sh
+MRL_SOURCE_LABEL="linux.img (stock release_20260907, MiSTer.version 260907)" \
+  scripts/inventory/gen-firmware.sh work/extracted-20260907/files/linux/linux.img
+```
+
+`scripts/ci-tests.sh` enforces firmware parity against `20260907/firmware.md` — the *current*
+stock release — so that file is the one to regenerate whenever stock's firmware set moves.
 
 See `scripts/inventory/README.md` for the full per-script breakdown, what
 each requires, and the determinism guarantees these files rely on to stay

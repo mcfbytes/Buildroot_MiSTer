@@ -64,6 +64,8 @@ suffix before comparison (stock's list carries it; ours does not).
 
 ### 0.1 `firmware.tar.gz`: 69 → **89** stock files
 
+> Two raw-list sets exist for this release and agree: `docs/verification/stock-reconciliation/*-20260907.txt` (this section; `firmware.tar.gz` contents, 89) and `docs/verification/stock-reconciliation-20260907/` (from `docs/verification/stock-release-20260907.md`; the installed `/usr/lib/firmware`, 91 = the same 89 plus `regulatory.db` and `regulatory.db.p7s` from `rootfs.tar.bz2`).
+
 | | 20250402 (§1, LIC `8aba321`) | 20260907 (LIC `d4e3f51`) |
 |---|---:|---:|
 | Stock files | 69 | **89** |
@@ -78,8 +80,8 @@ in stock's 20260907 list that we do not ship**:
 | New in stock's list | Why absent | Status |
 |---|---|---|
 | `ath10k/QCA9377/hw1.0/{board-2.bin,firmware-6.bin}` | We deliberately do not build `ATH10K_USB` (upstream: "Currently work in progress and will not fully work") | **Justified — same reasoning as the README's `ATH10K_USB` exclusion**, which stock's own 20260907 module list now contradicts (`ath10k_core`/`ath10k_usb` ship in stock; see §0.2) |
-| `rtlwifi/rtl8710bufw_{SMIC,UMC}.bin` | **Untriaged — genuine gap candidate (corrected by the Wave-4 audit, 2026-09-11).** The previous justification here ("no driver in this image binds RTL8710B at all") is **false**: 6.18's `rtl8xxxu` links `8710b.o` unconditionally (`drivers/net/wireless/realtek/rtl8xxxu/Makefile`) and binds `0bda:b711` / `0bda:2005` outside the `RTL8XXXU_UNTESTED` guard (`core.c:8108-8112`), and this image builds `CONFIG_RTL8XXXU=m`. So we ship the driver and not its firmware — the `mt7663u` failure shape. | **Untriaged** — needs a `linux-firmware` availability check and a `BR2_PACKAGE_LINUX_FIRMWARE_*` selection, or an explicit decline |
-| `rtlwifi/rtl8192fufw.bin` | RTL8192FU is not one of this image's built chips — **but note the `8710bufw` correction above applies here too**: 6.18's `rtl8xxxu` also links `8192f.o` unconditionally and binds `0bda:f192` and five more IDs (`core.c:8114-8129`) | **Untriaged** — not previously analysed; flag for `docs/wifi-parity.md` to confirm whether `rtl8xxxu` claims this chip in our build |
+| `rtlwifi/rtl8710bufw_{SMIC,UMC}.bin` | **CLOSED 2026-09-11 by PR #158 (`package/linux-firmware-extra` now ships both; see §1's note).** History of the finding: gap candidate (corrected by the Wave-4 audit, 2026-09-11). The previous justification here ("no driver in this image binds RTL8710B at all") is **false**: 6.18's `rtl8xxxu` links `8710b.o` unconditionally (`drivers/net/wireless/realtek/rtl8xxxu/Makefile`) and binds `0bda:b711` / `0bda:2005` outside the `RTL8XXXU_UNTESTED` guard (`core.c:8108-8112`), and this image builds `CONFIG_RTL8XXXU=m`. So we ship the driver and not its firmware — the `mt7663u` failure shape. | **Untriaged** — needs a `linux-firmware` availability check and a `BR2_PACKAGE_LINUX_FIRMWARE_*` selection, or an explicit decline |
+| `rtlwifi/rtl8192fufw.bin` | **CLOSED 2026-09-11 by PR #158** (shipped by `linux-firmware-extra`). Earlier text: RTL8192FU is not one of this image's built chips — **but note the `8710bufw` correction above applies here too**: 6.18's `rtl8xxxu` also links `8192f.o` unconditionally and binds `0bda:f192` and five more IDs (`core.c:8114-8129`) | **Untriaged** — not previously analysed; flag for `docs/wifi-parity.md` to confirm whether `rtl8xxxu` claims this chip in our build |
 | `rtlwifi/rtl8723bu_bt.bin` | `rtlwifi`'s own BT-coexistence firmware for RTL8723BU (distinct from `btrtl`'s `rtl_bt/rtl8723b_fw.bin`, which we do ship) | **Untriaged, genuine gap candidate** — this image ships `rtlwifi/rtl8723bu_{nic,ap_wowlan,wowlan}.bin` for RTL8723BU Wi-Fi but not this BT-coexistence sibling; needs a driver-request-path check before it can be justified or closed |
 
 ### 0.2 `modules.tar.gz`: 52 → **89** stock modules
@@ -139,7 +141,7 @@ Both are real, concrete gaps against the *current* stock `addon.tar`, distinct i
 §3's documented decisions — these two didn't exist when §3 was written, so they were never
 evaluated at all, not evaluated and declined.
 
-**Neither is otherwise dispositioned in this document.** A full §3-style bucket audit
+**Closed 2026-09-11 by PR #160**, which vendored stock's rewritten `uartmode` and the new `S39usb-coldplug` byte-identical — see §3d below for the per-item disposition. The text that follows records the gap as it stood when §0 was written. A full §3-style bucket audit
 (A/B/C/D, cross-checked against `Main_MiSTer` callers and the built target) for whether
 `S39usb-coldplug` is worth carrying, and whether the `uartmode` update should be — was not
 performed in this pass; flagged as the concrete remaining work for a future `addon.tar`
@@ -169,6 +171,21 @@ plus two documented declines (vgmplay) and one genuinely sourceless binary
 ---
 
 ## 1. `firmware.tar.gz` (20250402 baseline) — 58/69 present, 11 justified, +213 added
+
+> **Superseded for firmware by stock `release_20260907` (2026-09).** Stock's
+> `firmware.tar.gz` grew to 89 files (91 on the image) with its move to a 6.18
+> kernel; 17 of the 25 additions were already on this image, three
+> (`rtlwifi/rtl8710bufw_{SMIC,UMC}.bin`, `rtl8192fufw.bin`) are closed by
+> `package/linux-firmware-extra`, one (`rtlwifi/rtl8723bu_bt.bin`) is declined
+> because the only code path naming it sits behind a flag `rtl8xxxu` never sets,
+> and four (`ath10k/QCA9377/*`, the two laptop-internal `xone_dongle_*` PIDs) join
+> the deliberate-absence list. Current position: **77 of 91** present, 14 deliberate
+> absences: the 11 below (which already include the two xone PIDs) + 2 `ath10k` +
+> `rtl8723bu_bt.bin`.
+> The live list CI enforces is the `Missing (14)` block at the top of
+> [`docs/firmware-parity.md`](firmware-parity.md);
+> the full delta is in [`docs/verification/stock-release-20260907.md` §3.2](verification/stock-release-20260907.md).
+> The rest of this section is the 20250402/`8aba321` record, unchanged.
 
 ### The 11 absences, each with its reason
 
@@ -337,7 +354,7 @@ marked CLOSED here.
 |---|---|---|
 | `usr/sbin/btctl` | **B + A — CLOSED** | Vendored byte-identical (`python3 -m py_compile` clean). This is what makes the OSD's Bluetooth **Pair** button work at all: Main popen()s `/usr/sbin/btpair` (`work/Main_MiSTer/menu.cpp:7102`) and runs `btctl disconnect <mac>` (`input.cpp:5581`). Its imports (`dbus`, `dbus.service`, `dbus.mainloop.glib`, `gi.repository.GLib`) need dbus-python + PyGObject — exactly what stock ships for its python3.9 (verified in `work/imgroot/.../site-packages/`) — so `BR2_PACKAGE_DBUS_PYTHON=y` + `BR2_PACKAGE_PYTHON_GOBJECT=y` are now set (defconfig, Python section; gobject-introspection was already on, so the heavy part was pre-paid). Shebang `/usr/bin/python` resolves (`usr/bin/python -> python3` in the target). |
 | `usr/sbin/btpair` | **B — CLOSED** | Vendored byte-identical; bash (shipped), drives `btctl pair`. Called by absolute path from Main (above), so the stock path `/usr/sbin/btpair` is load-bearing. |
-| `usr/sbin/uartmode` | **B — CLOSED, one caveat** | Vendored byte-identical. Main invokes `uartmode %d` (`user_io.cpp:1175`) and stats `/tmp/uartmode*` (`user_io.cpp:1147-1152`) — without this script the OSD's UART/MIDI mode switch was a silent no-op. Every callee verified in the target: bash, killall, taskset, agetty, midilink, mt32d, fluidsynth, mpg123. **Caveat:** mode 1 (PPP) additionally needs `pppd`, which stock's *base rootfs* ships (`work/imgroot/usr/sbin/pppd`) but our package set does not — a `rootfs.tar.bz2`-level omission that `docs/package-manifest.md` never dispositioned (flagged there, out of §3c's addon scope). Modes 0/2–5 (kill/console/MIDI×2/UDP) are fully functional; mode 1 without `/media/fat/linux/ppp_options` cleanly prints "skip pppd" and exits. |
+| `usr/sbin/uartmode` | **B — CLOSED, one caveat** | Vendored byte-identical (re-vendored from `release_20260907` in 2026-09, which rewrote it — see §3d for the diff). Main invokes `uartmode %d` (`user_io.cpp:1175`) and stats `/tmp/uartmode*` (`user_io.cpp:1147-1152`) — without this script the OSD's UART/MIDI mode switch was a silent no-op. Every callee verified in the target: bash, killall, taskset, agetty, midilink, mt32d, fluidsynth, mpg123. **Caveat:** mode 1 (PPP) additionally needs `pppd`, which stock's *base rootfs* ships (`work/imgroot/usr/sbin/pppd`) but our package set does not — a `rootfs.tar.bz2`-level omission that `docs/package-manifest.md` never dispositioned (flagged there, out of §3c's addon scope). Modes 0/2–5 (kill/console/MIDI×2/UDP) are fully functional; mode 1 without `/media/fat/linux/ppp_options` cleanly prints "skip pppd" and exits. |
 | `usr/sbin/vmode` | **B — CLOSED** | Vendored byte-identical. Writes `fb_cmd0/fb_cmd1` to `/dev/MiSTer_cmd` — a FIFO **Main creates** (`input.cpp:4051`), commands handled at `input.cpp:6236` — and polls `/sys/module/MiSTer_fb/parameters/res_count`, which exists because `CONFIG_FB_MISTER=y` and `MiSTer_fb.c:38` declares `module_param(res_count, uint, 0444)`. bash + busybox `usleep` both present. |
 | `usr/bin/vhd_mount` | **B — CLOSED** | Vendored byte-identical. Mechanism verified end-to-end on *our* stack: busybox `losetup` attaches, the cmdline's `loop.max_part=8` (`docs/boot-chain.md:155`) makes `/dev/loop1p1` appear, busybox `mount` mounts it on `/media/rootfs` — which must pre-exist on a read-only `/`, so the overlay now ships `media/rootfs/` (`.gitkeep` idiom, same as `/media/fat`). Stock's image has the same dir (`work/imgroot/media/rootfs`). |
 | `usr/bin/m3u_play` | **B — CLOSED** | Vendored byte-identical. mp3 branch works (`mpg123` shipped); the vgm/vgz branches reference `vgmplay`, deliberately not shipped (below) — on a vgm playlist the script prints `vgmplay: not found`, exactly the graceful-degradation stock had for absent optional players. |
@@ -450,6 +467,18 @@ Precedent for how a real divergence gets made instead: ADR 0016's
 | `vmode:95-102` — the confirmation poll | Reviewer: the polling is inverted — on success the test goes false and `\|\| exit 1` fires, so the script exits non-zero on success and prints `failed!` regardless. | **Correct — a real bug in stock.** Traced: while `res_count` is *unchanged* the test is true and the script sleeps; the moment it *changes* (i.e. the mode switch is confirmed — the success case) the test goes false and `\|\| exit 1` fires. If it never changes, control falls through to the unconditional `exit 1` on the last line. So `vmode` exits `1` on **both** paths, and `echo -n . failed!` prints "failed!" as an argument on the fifth line either way. Harmless in practice only because callers ignore its status. **Worth reporting upstream to MiSTer-devel**; not ours to diverge on. |
 
 ---
+
+### 3d. New in stock `release_20260907` (`addon.tar` at `d4e3f51`, 2026-09)
+
+Stock's `addon.tar` changed in two places after the `8aba321` snapshot this
+section was reconciled against — one new member and one rewritten one. The
+JMS583 guard and `rtw88-prefer.conf` above were already in `8aba321`'s tarball
+and are dispositioned there.
+
+| Stock addon file | Disposition | Why |
+|---|---|---|
+| `etc/init.d/S39usb-coldplug` (new) | **B — CLOSED**, vendored byte-identical (sha256 `10940825…`, 755) | A second USB `udevadm trigger --subsystem-match=usb --action=add` + `settle --timeout=10`, run after `S30dbus`. Stock gives no rationale. A first draft here declined it as a double-fire hazard for this image's USB `RUN+=` rules; that was wrong — `--subsystem-match=usb` re-emits only for devices whose own subsystem is `usb`, and none of our `RUN+=` rules match that (`scsi_device`, `net`, `block`). The replay re-runs only udev's idempotent kmod load and costs one empty-queue `settle`. No hazard, exactly stock's script: reproduced. Full reasoning in [`docs/init-parity.md`](init-parity.md) (`S39usb-coldplug` row). |
+| `usr/sbin/uartmode` (rewritten, 2375 → 2975 B, sha256 `4539dfd8…` → `25f4580d…`) | **B — CLOSED**, re-vendored byte-identical to the 20260907 copy | Stock rewrote the script alongside its kernel move; our overlay carried the `8aba321` copy until 2026-09 (the §3c row above said "vendored byte-identical" and was true of that snapshot). The diff: `kill_all` now uses `fuser -k -TERM /dev/ttyS1` (then `-KILL`) instead of `killall` by process name, and `killall -KILL fluidsynth mpg123 mt32d`; the PPP local/remote-IP `sed` now filters out `169.254.*` link-local addresses; `pppd`'s exit status is checked and fatal codes (`1|2|3|4|6|7|9|137`) end the loop instead of respawning forever; and a new **mode 6** respawns `/media/fat/snid` (a user-supplied binary, `RUST_LOG=info taskset 1`) while `/tmp/uartmode6` exists, matching Main's `/tmp/uartmode1`…`6` contract (`docs/abi-contract.md`). Every callee is present on this image and comes from the same place as on stock — `fuser`, `killall`, `ifconfig` are BusyBox applets on both, `taskset` is util-linux on both, so `fuser -k -SIGNAL` semantics are identical. `scripts/ci-tests.sh`'s content marker for this file (`midilink MENU QUIET`) is unchanged by the rewrite and still asserts it. |
 
 ## 4. Bottom line
 

@@ -34,8 +34,16 @@ menu "USB WiFi drivers (out-of-tree)"
 	# NAMING: rtl8852cu-morrownr takes its suffix for a uniform morrownr
 	# naming scheme; upstream Buildroot has no rtl8852cu package to collide
 	# with (re-checked against the pinned tree 2026-07-27). aic8800 needs no
-	# suffix -- upstream Buildroot has no aic8800 package either (checked
-	# against the pinned 2026.05.2 tree, 2026-09-10).
+	# suffix -- upstream Buildroot has no aic8800 package either. Checked
+	# against the ACTUAL pinned tree on 2026-09-10: Buildroot 2026.08
+	# (Makefile's BUILDROOT_VERSION, and work/buildroot's own BR2_VERSION),
+	# whose only package/ai* entries are `aichat` (BR2_PACKAGE_AICHAT) and
+	# `aircrack-ng`. No BR2_PACKAGE_AIC8800 symbol and no AIC8800_ Make
+	# namespace to collide with.
+	#
+	# Note the 2026.05.1 dates further up this file are NOT stale in the same
+	# way: each records a check made while 2026.05.x really was the pin. This
+	# one is dated after the 2026.08 bump, so it has to name 2026.08.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/rtl8852cu-morrownr/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/aic8800/Config.in"
 endmenu

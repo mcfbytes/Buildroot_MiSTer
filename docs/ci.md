@@ -1311,16 +1311,18 @@ commit-pinned stock archive `docs/reference-materials.md` /
 
 ```
 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/
-  76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001   (83,886,080 bytes)
+  cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.001   (83,886,080 bytes)
 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/
-  76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002   (34,050,686 bytes)
+  cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.002   (42,660,398 bytes)
 joined, in that order, into stock_release.7z:
-MD5 8cd4edca838fdc226390e3fb04f3ca79
-SHA-256 e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66
-117,936,766 bytes
+MD5 7cec2206e2a1133aa307c541219aa08f
+SHA-256 35fcbaca57cd2471b1d353f3dd4bae7c7e67256f8c5c8b2d6d5cbcc78269a7ea
+126,546,478 bytes
 ```
 
-**Two URLs, one archive (since the 2026-09 bump to `release_20260907`).**
+**Two URLs, one archive (since the 2026-09 bump to `release_20260907`; the
+pin moved on to `release_20260912` on 2026-09-12 — see
+`docs/verification/stock-release-20260912.md`).**
 Upstream now commits each release as split 7z volumes — consecutive byte
 slices of a single archive, not two archives — so `STOCK_RELEASE_URL` is a
 whitespace-separated list in volume order and `fetch-stock` concatenates
@@ -1329,15 +1331,20 @@ three pins are those of the **joined** file: they cover every byte of every
 volume, so a missing, truncated or reordered volume fails them just as
 loudly as a wrong single file did, and they are exactly what the on-device
 `7za` sees. `Distribution_MiSTer` does the same join on its side and mirrors
-the result as `linux_release_20260907.7z` on its `all_releases` release; that
-mirror was fetched and is byte-identical to our join
-(`docs/verification/stock-release-20260907.md` §1/§6). The previous pin,
-`release_20250402.7z` at `b8531c78…` (MD5 `8dc3acae…`, 93,727,644 bytes),
-differs from this one in `files/linux/` in three members — `linux.img` and
-`zImage_dtb`, which we replace with our own and never ship, and `MidiLink.INI`,
-the **one shipped file** that changed; `uboot.img` and `updateboot` are
-byte-identical across the two, so the `STOCK_UBOOT_*`/`STOCK_UPDATEBOOT_*` pins
-did not move.
+the result as `linux_release_<date>.7z` on its `all_releases` release; the
+20260907 mirror was fetched and is byte-identical to our join
+(`docs/verification/stock-release-20260907.md` §1/§6), while no mirror of
+20260912 existed yet when the pin moved. The previous pin,
+`release_20260907.7z` at `76fd6f4c…` (MD5 `8cd4edca…`, 117,936,766 bytes),
+differs from this one in exactly three members — `files/linux/linux.img` and
+`files/linux/zImage_dtb`, which we replace with our own and never ship, and
+`files/MiSTer`, the **one shipped file** that changed (the Main_MiSTer
+20260912 build, which carries the Switch IMU/LED name fallbacks our kernel
+stopped patching in the same PR); nothing else in `files/linux/` moved, and
+`uboot.img` and `updateboot` are byte-identical across the two, so the
+`STOCK_UBOOT_*`/`STOCK_UPDATEBOOT_*` pins did not move. (The bump before
+that, 20250402 → 20260907, changed `MidiLink.INI` and the same two kernel
+files.)
 
 All three (MD5, SHA-256, size) are checked BEFORE anything is extracted from
 it. Individual `uboot.img`/`updateboot` hashes are re-checked too

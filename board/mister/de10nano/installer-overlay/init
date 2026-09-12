@@ -261,7 +261,8 @@ splash_elapsed() {
 
 # Find the HPS LED and take it off its DTS default trigger so brightness writes
 # stick. Restricted to hps_led* on purpose: other /sys/class/leds entries on a
-# MiSTer belong to USB gamepads (patches 0032/0033/0041/0042) and blinking a
+# MiSTer belong to USB gamepads (patches 0032/0033/0042, plus hid-nintendo's
+# mainline-named player LEDs) and blinking a
 # user's controller to report SD-card progress would be nonsense.
 splash_led_init() {
 	splash_led=""

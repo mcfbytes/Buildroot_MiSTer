@@ -213,11 +213,12 @@ Measured against the shipped Release 20260907 config/module list, not inferred (
 | `mmap(/dev/fb0)` → `-ENODEV`; Console Mode broken | fixed in `0001` (2026-07) | yes, #83 (Q3) |
 | No driver for RTL8811AU/8821AU dongles | `rtw88_8821au` since v10 | yes, #81 (Q2) |
 | No cpufreq/overclock at all | `0003` | yes, #85 (Q4), different design — kept ours |
-| NSO Genesis BT PID, N64/Genesis button maps, IMU name suffix, LED classdev names, DS lightbar names | `0038`-`0042` | **no** — upstream's port still lacks them |
+| NSO Genesis BT PID, N64/Genesis button maps, IMU name suffix, LED classdev names, DS lightbar names | `0038`-`0042` | **no** at the time — upstream's port still lacked them. *Update 2026-09-12:* `0038` he already had; `0039` merged as #95; `0040`/`0041` **closed** as #96/#97 in favour of Main_MiSTer #1307/#1308 and retired from our series; `0042` unsent |
 | 8BitDo USB Wireless Adapter reset loop | fixed this increment, `0049` | PR #92, still open |
 
 The `0038`-`0042` row remains the material for an optional Wave 5 (upstream PRs carrying what
-stock 6.18 users are missing) — not actioned in this increment.
+stock 6.18 users are missing) — not actioned in this increment. (Actioned 2026-09-12; see
+`fork-sync-2026-09/STATUS.md` D6 for the outcome.)
 
 ---
 

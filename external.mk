@@ -16,126 +16,13 @@
 
 include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
 
-################################################################################
-#
-# P1.10 — stage-2 half of the two-stage initramfs build (A1, PLAN.md §5,
-# docs/decisions/0002-initramfs.md).
-#
-# Stage 1 (the `initramfs-common initramfs-de10nano` fragment stack,
-# configs/fragments/stacks.mk, driven by the top-level Makefile's `initramfs`
-# target) produces output-initramfs/images/rootfs.cpio. This block is
-# what makes the MAIN build's kernel swallow it: it injects CONFIG_INITRAMFS_SOURCE
-# into the kernel .config at kconfig-fixup time, which is the same mechanism
-# Buildroot itself uses for BR2_TARGET_ROOTFS_INITRAMFS (linux/linux.mk:412-419) —
-# we just point it at a different, much smaller cpio.
-#
-# WHY HERE AND NOT IN THE DEFCONFIG. The obvious alternative is
-# BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES in configs/fragments/de10nano.fragment. Do
-# not: package/pkg-kconfig.mk:19-20 makes `make linux-update-defconfig` and
-# `make linux-savedefconfig` HARD-FAIL ("Unable to perform when fragment files are
-# set") as soon as any fragment is configured — and those are precisely the commands
-# P1.3 uses to regenerate board/mister/de10nano/linux.config. Doing it here keeps
-# that workflow intact and keeps an absolute build path out of a committed defconfig.
-#
-# Ordering is safe: Buildroot's Makefile includes linux/linux.mk (line 553) before
-# $(BR2_EXTERNAL_MKS) (line 564), and LINUX_KCONFIG_FIXUP_CMDS is expanded lazily
-# inside the .stamp_kconfig_fixup_done recipe, so appending to it here works.
-# $(sep) is Buildroot's newline (support/misc/utils.mk:103) — a bare `+=` would
-# splice our first command onto the tail of linux.mk's last one.
-#
-################################################################################
+# The stage-1 initramfs is embedded by linux/linux-ext-mister-initramfs.mk
+# (a Buildroot "linux extension", included by linux/linux.mk before the
+# kernel package is evaluated -- the only hook early enough to make the
+# kernel DEPEND on package/mister-initramfs). It used to live here as a
+# LINUX_KCONFIG_FIXUP_CMDS append against a cpio from a second Buildroot
+# tree; ADR 0030 moved both the cpio and the fixup into the main build.
 
-# WHY THE ARCH TEST — added with the DE25-Nano target (D2.1).
-#
-# BR2_LINUX_KERNEL=y alone was the right condition while every output directory
-# in this tree built for the same armv7 board. It no longer is:
-# the de25nano fragment stack (configs/fragments/de25nano.fragment) builds an AARCH64 kernel for a different
-# board (Agilex 5), in output-de25/, and this hook keys on the *symbol*, not on
-# which defconfig or which O= is in play — so without a second test it would
-# fire there too and try to embed $(MISTER_INITRAMFS_CPIO) into that kernel.
-#
-# Two things would go wrong, one loudly and one not:
-#   1. LOUDLY, and only by luck: the fixup hard-fails if the cpio is absent, so
-#      a DE25 build in a tree that had never run `make initramfs` would die with
-#      an error message telling the developer to build a stage-1 initramfs their
-#      board does not have and does not want.
-#   2. QUIETLY, which is the real hazard: in a tree that HAS run `make
-#      initramfs` (i.e. any tree that has built the DE10 image — so, every
-#      developer's, and CI's), the cpio exists and the fixup succeeds. The
-#      aarch64 kernel then ships an armv7 BusyBox as its initramfs, boots, runs
-#      /init, and fails at the first exec with a message about the *binary*
-#      rather than about the build. A green build that produces that is worse
-#      than no build.
-#
-# THE TEST IS ON THE ARCHITECTURE, not on a board name or a defconfig name, and
-# that is the point: the thing that makes this hook wrong for the DE25 is not
-# "it is the DE25", it is that the cpio is armv7 userspace. Every output dir
-# this hook is *meant* for -- the main DE10 image, the kernel-only stack
-# and the rt variant built on it -- is BR2_arm=y, and every one of them wants the
-# cpio. So `BR2_arm` names the actual precondition and needs no maintenance when
-# a fourth armv7 variant or a second aarch64 board appears.
-#
-# Considered and rejected: a BR2_EXTERNAL Config.in symbol (e.g. a
-# "BR2_PACKAGE_MISTER_EMBED_STAGE1_INITRAMFS" bool) would be more explicit, but
-# it would have to be added to configs/fragments/de10nano.fragment (the board
-# layer both DE10 stacks share) to keep them building — a toolchain-family
-# edit that changes the DE10's toolchain-fingerprint cache key, for zero
-# behavioural difference.
-#
-# THE DE25 SWITCH (ADR 0029 D11; docs/de25-sdcard.md §2). Since 2026-09-06 an
-# aarch64 stage 1 of the same /init exists -- `make de25-initramfs`, the
-# `initramfs-common initramfs-de25nano` stack, output-initramfs-de25/images/
-# rootfs.cpio, verified and booted through scripts/test-initramfs.sh --board
-# de25nano -- but it is deliberately NOT embedded while the shipped DE25 card
-# keeps D11's interim plain-ext4 root (the first hardware boot is meant to
-# answer the SPL/DTS/SD-controller questions with as few moving parts as
-# possible). When the card moves to the two-stage layout, the change HERE is
-# to make the cpio path follow the architecture instead of gating on it:
-#   ifeq ($(BR2_LINUX_KERNEL),y)
-#   ifeq ($(BR2_aarch64),y)
-#   MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs-de25/images/rootfs.cpio
-#   else
-#   MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs/images/rootfs.cpio
-#   endif
-# together with `de25: de25-initramfs ...` in the Makefile, the `loop=`
-# bootargs in board/mister/de25nano/post-image.sh, the exFAT p2 in its
-# genimage config and the checker -- one commit, as docs/de25-sdcard.md §2
-# lists. Until then the BR2_arm gate below stands, and the hazard it guards
-# (an armv7 cpio in an aarch64 kernel) is unchanged.
-ifeq ($(BR2_LINUX_KERNEL)$(BR2_arm),yy)
-
-# Overridable so CI can build the two stages in separate workspaces.
-MISTER_INITRAMFS_CPIO ?= $(BR2_EXTERNAL_MISTER_PATH)/output-initramfs/images/rootfs.cpio
-
-define MISTER_LINUX_INITRAMFS_FIXUP
-	@if [ ! -f "$(MISTER_INITRAMFS_CPIO)" ]; then \
-		echo "*** MISTER: stage-1 initramfs cpio not found:"; \
-		echo "***   $(MISTER_INITRAMFS_CPIO)"; \
-		echo "*** The kernel cannot be built without it — U-Boot never loads an"; \
-		echo "*** initrd (A3), so the cpio must be INSIDE the zImage. Build it with:"; \
-		echo "***   make initramfs"; \
-		echo "*** (the top-level 'make all' does this for you)."; \
-		exit 1; \
-	fi
-	@$(call MESSAGE,"Embedding stage-1 initramfs: $(MISTER_INITRAMFS_CPIO)")
-	$(call KCONFIG_ENABLE_OPT,CONFIG_BLK_DEV_INITRD)
-	$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_SOURCE,"$(MISTER_INITRAMFS_CPIO)")
-	$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_UID,0)
-	$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_GID,0)
-	$(call KCONFIG_ENABLE_OPT,CONFIG_RD_GZIP)
-	$(call KCONFIG_ENABLE_OPT,CONFIG_INITRAMFS_COMPRESSION_GZIP)
-endef
-
-# CONFIG_INITRAMFS_COMPRESSION_* is set explicitly rather than left to kconfig. The
-# choice in usr/Kconfig carries NO `default`, so it silently resolves to its first
-# visible entry — today that happens to be GZIP, but "whatever is listed first
-# upstream" is not something a boot path should depend on. We ship an UNCOMPRESSED
-# cpio (BR2_TARGET_ROOTFS_CPIO_NONE in stage 1) and let the kernel gzip it here:
-# compressing it twice would be pointless, and gzip beats leaving it raw for the
-# LZ4-compressed zImage to squeeze (LZ4 optimises for decode speed, not ratio).
-LINUX_KCONFIG_FIXUP_CMDS += $(sep)$(MISTER_LINUX_INITRAMFS_FIXUP)
-
-endif # BR2_LINUX_KERNEL && BR2_arm
 
 ################################################################################
 #

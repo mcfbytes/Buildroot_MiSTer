@@ -1,0 +1,22 @@
+# PROFILE PACKAGE (ADR 0030 §5.7): the out-of-tree kernel modules and their
+# firmware. Kept apart from mister-userspace because these are kernel-side and
+# each one is a mainline-first policy decision (ADR 0016, ADR 0003): a board
+# adopts the group deliberately, not as a side effect of wanting the userspace.
+# DE10-Nano today; the DE25-Nano opts in by owner decision (docs/buildroot-config.md
+# rule 5).
+
+config BR2_PACKAGE_MISTER_DRIVERS
+	bool "MiSTer out-of-tree drivers (USB WiFi and Xbox accessories)"
+	select BR2_PACKAGE_RTL8852CU_MORROWNR
+	select BR2_PACKAGE_AIC8800
+	select BR2_PACKAGE_XONE
+	select BR2_PACKAGE_XOW_FIRMWARE
+	help
+	  The out-of-tree kernel-module packages and their firmware: the two
+	  USB WiFi chips mainline still has no driver for (RTL8852CU via
+	  rtl8852cu-morrownr, the AICSemi AIC8800 family via aic8800) and the
+	  Xbox One/Series accessory driver xone with its dongle firmware
+	  (xow-firmware). Every other WiFi chip uses the in-kernel driver
+	  (ADR 0016, docs/wifi-parity.md).
+
+	  This is a PROFILE: selecting it selects the whole list below.

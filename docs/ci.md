@@ -8,9 +8,9 @@ imperative ("MUST", "NEVER", a trap warning) plus the run ID that makes it
 credible, and this document keeps the narrative, the measurements, and the
 "we tried X and it failed" reasoning behind it.
 
-Read top-to-bottom once: orientation, then the shared build recipe, then
-caching (the biggest trap cluster), then each workflow, then cross-cutting
-conventions, then the incident index.
+Start with "The pipeline today" just below — it is the whole current shape on
+one screen. The historical design notes after it are the reasoning and incident
+history behind the pieces that survived, read when a section is linked to.
 
 This file lives in `docs/` alongside two documents that cover adjacent but
 distinct ground and are deliberately not folded in here: `docs/renovate.md`
@@ -23,6 +23,43 @@ this document explains a workflow's mechanics, it cross-links the constraint
 or policy document rather than restating it.
 
 ---
+
+## The pipeline today (2026-09-11, after ADR 0030)
+
+Nine workflows, two composite actions, one Buildroot recipe. A build is
+`make mister_de10nano_defconfig && make`, and every check CI runs is a script you can run locally.
+
+| Workflow | Runs on | What it does |
+|---|---|---|
+| `build.yml` | push to master, PRs | `gate` (skip doc-only changes) → `lint-config` (kernel patch headers, `scripts/check-defconfigs.sh`) → `build` (the action below, then `scripts/ci-tests.sh` via `verify-image`) → `status` |
+| `lint.yml` | push, PRs | actionlint on the workflows, shellcheck on every script and on the composite actions' `run:` bodies |
+| `release.yml` | `v*` tags | the same build, then `scripts/mk-release.sh` (stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, `SHA256SUMS`) and `scripts/mk-sdcard.sh`; then a draft release with provenance and the SBOM to the dependency graph. Runs locally: `MISTER_VERSION=… scripts/mk-release.sh` with the `STOCK_*` pins in the environment |
+| `reproducibility.yml` | manual | two independent builds of one commit, hashes compared |
+| `renovate-hash-sync.yml` | Renovate PRs | refresh the companion hash of whatever pin the PR bumped (each case is one `scripts/hash-sync-*.sh`) |
+| `renovate-validate.yml` | push, PRs | `renovate.json` validates |
+| `publish-db.yml` | published release | regenerate + publish `db.json` to Pages |
+| `cache-prune.yml` | closed PRs, weekly | delete a closed PR's Actions caches |
+| `fork-sync.yml` | weekly | backport queue against the upstream kernel fork |
+
+**The build action** (`.github/actions/buildroot-build`, ~200 lines) is `make mister_de10nano_defconfig && make`
+with four caches: the Buildroot tarball, `dl/` (keyed on the defconfig), the cross toolchain (keyed on the
+workspace path plus the defconfig's toolchain lines), and ccache. Two rules keep them honest: `dl/` is saved only
+when `make external-deps` says it is complete, and the toolchain is restored only when `dl/` was. The comment
+block at the top of the action says why.
+
+**What a maintainer needs to know:** the RT kernel and the stage-1 initramfs are packages of the one build
+(`package/linux-rt`, `package/mister-initramfs`), so there is one output tree, one legal-info bundle and one
+`linux.img`; there is no kernel matrix, no module-merge step and no variant caches any more.
+
+---
+
+## Historical design notes (pre-ADR 0030)
+
+Everything below describes the pipeline as it was before 2026-09-11 — the kernel-variant matrix, the
+kernel-only builds, seven caches, the fragment stacks — and is kept because ADRs and docs link into
+these sections by anchor and because the reasoning behind the surviving pieces (cache coupling, dl/
+completeness, the doc-only gate, the stock-payload verification) is recorded here. Where a section
+describes something retired, its Part banner says so.
 
 ## Part I — Orientation
 
@@ -131,6 +168,17 @@ distro does not leak into the target output.
 ---
 
 ## Part II — Variants and the kernel-only build
+
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The kernel-variant matrix (`build-kernel`),
+> the `kernel-leg` and `merge-kernel-modules` actions, the variant caches and
+> `scripts/list-kernel-variants.sh` are gone. The RT kernel is `package/linux-rt` inside the
+> one `make all`, so `build.yml` is `gate → lint-config → build → status` and `release.yml`
+> stages `zImage_dtb-rt` and `linux-rt.config` straight from `output/images/`; its patches and
+> licences are in the single `legal-info.tar.gz`. `.github/actions/buildroot-build`'s
+> `variant` input errors on anything but `main`. This Part is kept for the record. The
+> fragment-stack lint (`check-config-fragments.sh`, golden hashes) is likewise replaced by
+> `scripts/check-defconfigs.sh` over the committed `configs/mister_*_defconfig` files (ADR 0030
+> Phase D).
 
 <a id="variants"></a>
 ### Variants: main vs kernel-only

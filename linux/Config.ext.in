@@ -1,0 +1,20 @@
+config BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS
+	bool "MiSTer stage-1 initramfs embedded in the kernel"
+	select BR2_PACKAGE_MISTER_INITRAMFS
+	help
+	  Embed package/mister-initramfs's cpio into the kernel
+	  (CONFIG_INITRAMFS_SOURCE). REQUIRED for a bootable MiSTer kernel:
+	  U-Boot passes `-` for bootz's initrd argument and never loads one,
+	  so the initramfs that mounts the SD card and loop-mounts
+	  linux/linux.img has to be INSIDE the zImage (ADR 0002, A3).
+
+	  This is a br2-external "linux extension": it makes the kernel
+	  depend on the package and sets CONFIG_INITRAMFS_SOURCE,
+	  CONFIG_BLK_DEV_INITRD and gzip compression in the kernel config at
+	  kconfig-fixup time -- the same mechanism Buildroot uses for
+	  BR2_TARGET_ROOTFS_INITRAMFS, which must NEVER be used here (it
+	  embeds the whole rootfs).
+
+	  Override the cpio for one build with MISTER_INITRAMFS_CPIO=<file>
+	  on the make command line (scripts/mk-sdcard.sh does this to relink
+	  the installer kernel).

@@ -15,6 +15,14 @@ hardware, §1 and §4 are discarded and everything else transfers.
 
 ---
 
+> **Layout note (2026-09-11, ADR 0030):** file and target names in this document predate the
+> refactor that replaced the fragment stacks with committed `configs/mister_*_defconfig` files and
+> Kconfig profiles, moved the RT kernel into `package/linux-rt` (`output/build/linux-rt-*`, no
+> `output-rt/`), the stage-1 initramfs into `package/mister-initramfs`, and retired the
+> kernel-variant CI matrix, `scripts/list-kernel-variants.sh`, `check-kernel-defconfig-sync.sh`
+> and `scripts/lib/board-expectations.sh`. Read the paths here as of their date; the current
+> layout is README "Building it yourself" and `docs/ci.md` "The pipeline today".
+
 ## 1. The board, and the delta from DE10-Nano
 
 | | DE10-Nano (today) | DE25-Nano | Notes |

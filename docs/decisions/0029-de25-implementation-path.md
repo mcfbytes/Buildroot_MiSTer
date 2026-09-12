@@ -281,7 +281,7 @@ isolates the factory-SPL, DTS and SD-controller questions the first boot has to 
   test kernel built from this board's own `linux.config`). 7/8 pass; the `symlink` case found
   that patch 0031 Oopses on every 7.x kernel (ADR 0002 §8b) — a fix is owed before the switch,
   and it applies to the DE10's RT kernel as well. The cpio is built and proven but NOT embedded
-  until the card switches (`external.mk` guard comment has the one-commit recipe).
+  until the card switches (`external.mk` guard comment had the one-commit recipe; since ADR 0030 (2026-09-11) the stage-1 cpio is `package/mister-initramfs` and the switch is `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` in the DE25 stack — `docs/de25-sdcard.md` §2).
 - **Re-open if.** The first hardware boot shows U-Boot cannot read the FAT boot files reliably,
   or Main_MiSTer's DE25 port needs a layout the loop root cannot provide.
 

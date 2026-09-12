@@ -121,22 +121,27 @@ config's p2 stanza and `check-sdcard-de25.sh`'s `EXPECT_ROOT_DEV` **in one commi
 data partition holding `linux/linux.img`, loop-mounted as the root by the embedded stage-1
 initramfs, `/media/fat` = p2. The interim shape above stays until a board has booted it.
 
-**The stage-1 half is already built (2026-09-06).** `make de25-initramfs` builds the DE10's
-`/init` for aarch64 (`configs/fragments/initramfs-de25nano.fragment`; the `/init`, BusyBox config
-and post-build hook are shared under `board/mister/common/`) and verifies it; `scripts/
-test-initramfs.sh --board de25nano` boots it on `qemu-system-aarch64` through the DE10's eight
-cases with a test kernel built from THIS board's `linux.config`. All eight pass — the `symlink`
+**The stage-1 half is already built (2026-09-06; re-shaped 2026-09-11 by ADR 0030).** The DE10's
+`/init` is arch-neutral and ships as `package/mister-initramfs`, a package of whichever board
+configuration selects it, built with that board's own toolchain (static glibc BusyBox + static
+`fsck.exfat`; `board/mister/common/` holds the `/init` and the BusyBox config). Under the
+pre-ADR-0030 layout it was built for aarch64 as a separate musl stack and boot-tested with
+`scripts/test-initramfs.sh --board de25nano` on `qemu-system-aarch64` through the DE10's eight
+cases with a test kernel built from THIS board's `linux.config`. All eight passed — the `symlink`
 case first exposed that patch 0031 crashed on any 7.x kernel, and the same PR re-anchored it
-(ADR 0002 §8b). The switch itself is one commit touching, together:
+(ADR 0002 §8b). That run predates the package shape; the aarch64 package build has not been
+exercised yet and is re-verified as part of the switch. The switch itself is one commit touching,
+together:
 
 | File | Change |
 |---|---|
-| `external.mk` | the embedding fixup keys on `BR2_LINUX_KERNEL` and picks the cpio path by architecture (the guard's comment carries the exact text) |
-| `Makefile` | `de25: de25-initramfs …`, and `check-initramfs` (or a DE25 twin) asserting the DE25 kernel's `CONFIG_INITRAMFS_SOURCE` |
+| `configs/mister_de25nano_defconfig` | `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` — selects `package/mister-initramfs` for the DE25 build and makes its kernel embed the cpio (`linux/linux-ext-mister-initramfs.mk`); regenerate `golden.sha256` |
 | `board/mister/de25nano/post-image.sh` | `BOOTARGS` → `root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait console=… earlycon` (the DE10's exact shape, p2 instead of p1) |
 | `board/mister/de25nano/genimage-sdcard.cfg` | p2 becomes an exFAT partition (type 0x07, label per the downloader contract) carrying `linux/linux.img` = `rootfs.ext4`; needs a host `mkfs.exfat` genimage can drive, or the DE10's installer route |
 | `scripts/check-sdcard-de25.sh` | `EXPECT_ROOT_DEV` + a `loop=` assert; p2 type/label/contents |
 | `docs/de25-boot-chain.md`, this file §1 | the layout table |
+
+Then `scripts/test-initramfs.sh --board de25nano` against `output-de25/images/mister-initramfs.cpio`.
 
 Nothing in `/init` changes: it takes `root=` and `loop=` from the command line and has no
 board-specific line, which is what the aarch64 leg proves.

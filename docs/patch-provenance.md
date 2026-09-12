@@ -1631,10 +1631,10 @@ from `v6.18.38`, `v6.18.44`, `v6.18.45`, `v7.0` and `v7.1`; present in `v7.2-rc1
 
 Three consequences follow, and each is written down where the reader who needs it will be:
 
-- **It is the one shared patch the RT/beta series omits.** `configs/mister_rt.fragment` pins
+- **It is the one shared patch the RT/beta series omits.** `package/linux-rt/Config.in` pins
   7.2, which already has the ID. That omission is forced, not tidy: at `-F0` against a
   pristine `v7.2` the hunk reports `Hunk #1 FAILED at 786`, so listing it would break
-  `make rt` at patch time rather than apply harmlessly twice.
+  `make linux-rt` at patch time rather than apply harmlessly twice.
   (`board/mister/de10nano/linux-patches-beta/series` header; `docs/rt-beta-kernel.md` §2.)
 - **It has an expiry date.** The day the stock kernel pin leaves `6.18.y` for 7.2 or newer,
   this patch is deleted outright — re-applying it would collide with the in-tree row. The

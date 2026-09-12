@@ -21,11 +21,10 @@
 #     must run, qemu-user against output/target as the sysroot.
 #
 # Usage: scripts/ci-tests.sh [build-dir]
-#   build-dir defaults to "output" (repo-root-relative). Only the image-contract
-#   scripts and the Phase-3 artifact checks honor an override -- the Makefile-based
-#   initramfs checks and scripts/test-initramfs.sh use Buildroot's own fixed
-#   output/ + output-initramfs/ layout (Makefile: OUTPUT_DIR := $(CURDIR)/output,
-#   not parameterized) and are SKIPPED with an explicit reason if build-dir differs.
+#   build-dir defaults to "output" (repo-root-relative). The image-contract
+#   scripts and the artifact checks honor an override; scripts/test-initramfs.sh
+#   reads the stage-1 cpio from the fixed output/images/ path (the package
+#   installs it there).
 #
 # Output: one PASS/FAIL/SKIP line per check (grouped by phase/subsystem), full
 # detail from called scripts shown inline, then a summary. SKIP never fails the
@@ -70,8 +69,6 @@ case "$BUILD_DIR_ARG" in
 	/*) BUILD_DIR="$BUILD_DIR_ARG" ;;
 	*)  BUILD_DIR="$ROOT/$BUILD_DIR_ARG" ;;
 esac
-IS_DEFAULT_OUTPUT=0
-[ "$BUILD_DIR" = "$ROOT/output" ] && IS_DEFAULT_OUTPUT=1
 
 IMAGES="$BUILD_DIR/images"
 TARGET="$BUILD_DIR/target"
@@ -84,7 +81,7 @@ LINUX_IMG="$IMAGES/linux.img"
 # rootfs may also carry kernel-VARIANT trees (e.g. the RT beta's 7.2.0 — that
 # example read "7.2.0-rc3*" until the pin reached 7.2 final on 2026-08-17; it
 # is illustrative either way, nothing here globs on it,
-# merged in via work/extra-modules-overlay), and those are deliberately out of
+# built by package/linux-rt in the same tree), and those are deliberately out of
 # scope here — their depmod health is asserted by check-abi.sh A-25 (every
 # tree), and their presence in CI by build.yml's merged-kver assert. Do not
 # "fix" these checks to glob across all trees; they would then pass on the
@@ -107,10 +104,10 @@ LINUX_IMG="$IMAGES/linux.img"
 # symbol verbatim would otherwise match too -- the exact bug fixed in the
 # hash-sync workflow (#42).
 KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
-	"$ROOT/configs/fragments/de10nano.fragment" | tail -1)
+	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
 if [ -z "$KVER" ]; then
 	echo "FATAL: could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from" >&2
-	echo "       $ROOT/configs/fragments/de10nano.fragment" >&2
+	echo "       $ROOT/configs/mister_de10nano_defconfig" >&2
 	exit 1
 fi
 
@@ -265,23 +262,28 @@ run_script "check-size-budget.sh" "$ROOT/scripts/check-size-budget.sh" "$LINUX_I
 section "Initramfs (P1.10-P1.12, A7)"
 # =============================================================================
 
-if [ "$IS_DEFAULT_OUTPUT" -eq 1 ]; then
-	printf -- '--- check-initramfs (Makefile: main kernel .config has CONFIG_BLK_DEV_INITRD / CONFIG_INITRAMFS_SOURCE) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory check-initramfs ); then
-		pass "check-initramfs (main kernel config)"
-	else
-		fail "check-initramfs (main kernel config)"
-	fi
-
-	printf -- '--- initramfs-verify (Makefile: required BusyBox applets + /init + /dev/console present in the cpio, ash -n parses /init) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory initramfs-verify ); then
-		pass "initramfs-verify (cpio applet/structure check)"
-	else
-		fail "initramfs-verify (cpio applet/structure check)"
-	fi
+# Since ADR 0030 the cpio is package/mister-initramfs (images/mister-initramfs.cpio)
+# and the kernel embeds it through linux/linux-ext-mister-initramfs.mk, which
+# fails the kernel's kconfig-fixup if the cpio is absent. What is left to assert
+# here is the ARTIFACT: the built kernel config really names that cpio (I1/I2),
+# and the cpio is the one next to it. verify.sh's applet/structure checks ran
+# inside the package build and failed it if anything was wrong.
+INITRAMFS_CPIO="$BUILD_DIR/images/mister-initramfs.cpio"
+printf -- '--- initramfs embedding (kernel .config: CONFIG_BLK_DEV_INITRD=y, CONFIG_INITRAMFS_SOURCE=images/mister-initramfs.cpio) ---\n'
+# The main kernel tree, uniqueness-guarded like every other kernel-tree glob
+# in this suite (linux-[0-9]* excludes linux-firmware-*/linux-headers-*).
+_ir_kc=("$BUILD_DIR"/build/linux-[0-9]*/.config)
+KCFG="${_ir_kc[0]}"
+if [ "${#_ir_kc[@]}" -ne 1 ] || [ ! -f "$KCFG" ]; then
+	fail "initramfs embedding" "expected exactly one $BUILD_DIR/build/linux-[0-9]*/.config, found ${#_ir_kc[@]}"
+elif [ ! -f "$INITRAMFS_CPIO" ]; then
+	fail "initramfs embedding" "no $INITRAMFS_CPIO -- package/mister-initramfs did not build"
+elif ! grep -qx 'CONFIG_BLK_DEV_INITRD=y' "$KCFG"; then
+	fail "initramfs embedding" "CONFIG_BLK_DEV_INITRD is not y in $KCFG"
+elif ! grep -q "^CONFIG_INITRAMFS_SOURCE=\".*/mister-initramfs.cpio\"" "$KCFG"; then
+	fail "initramfs embedding" "CONFIG_INITRAMFS_SOURCE in $KCFG does not name mister-initramfs.cpio: $(grep '^CONFIG_INITRAMFS_SOURCE=' "$KCFG" || echo '(unset -- the kernel has NO initramfs and will panic on the FAT root)')"
 else
-	skip "check-initramfs (main kernel config)" "Makefile's OUTPUT_DIR is fixed to ./output, not parameterized; build dir here is $BUILD_DIR"
-	skip "initramfs-verify (cpio applet/structure check)" "same fixed-OUTPUT_DIR reason"
+	pass "initramfs embedding ($(grep '^CONFIG_INITRAMFS_SOURCE=' "$KCFG"), cpio $(stat -c %s "$INITRAMFS_CPIO") bytes)"
 fi
 
 if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
@@ -298,23 +300,39 @@ else
 	fi
 fi
 
-# The DE25-Nano's stage 1: the SAME /init built for aarch64 (`make
-# de25-initramfs`, ADR 0029 D11), checked the same two ways -- the Makefile's
-# structural cpio assertions and the eight QEMU cases, on qemu-system-aarch64.
-# Gated on the cpio EXISTING rather than on a board flag: this suite runs
-# against a DE10 image, and a tree that has never built the DE25 stage 1 has
-# nothing to check here -- but one that has must not skip it silently.
-DE25_INITRAMFS_CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
-if [ ! -f "$DE25_INITRAMFS_CPIO" ]; then
-	skip "de25-initramfs-verify (aarch64 cpio applet/structure check)" "no $DE25_INITRAMFS_CPIO -- 'make de25-initramfs' not run in this tree"
-	skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "same: no DE25 stage-1 cpio built"
+# The same /init on the DE10's RT kernel series (7.2.y): the three cases that
+# exercise the exfat driver, because 7.x exfat is iomap-based and board patch
+# 0031 (Samsung-format symlinks, ADR 0019) is a separate re-anchored copy
+# there (linux-patches-beta/). Its only other executions are aarch64 (the
+# DE25 leg); the DE10-Nano runs it as 32-bit ARM, and the first field `ln -s`
+# on an RT-booted board Oopsed (2026-09-11) on the pre-rewrite copy. Gated
+# like the DE10 leg; a second multi_v7 kernel build, cached under
+# work/test-initramfs-rt*.
+if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
+elif ! have qemu-system-arm; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "qemu-system-arm not found on PATH"
+elif ! grep -q '^BR2_PACKAGE_LINUX_RT=y$' "$ROOT/configs/mister_de10nano_defconfig"; then
+	skip "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, exfat cases)" "BR2_PACKAGE_LINUX_RT is not enabled in configs/mister_de10nano_defconfig"
 else
-	printf -- '--- de25-initramfs-verify (Makefile: the DE10 initramfs-verify assertions, on the aarch64 cpio under qemu-aarch64) ---\n'
-	if ( cd "$ROOT" && make --no-print-directory de25-initramfs-verify ); then
-		pass "de25-initramfs-verify (aarch64 cpio applet/structure check)"
+	printf -- '--- test-initramfs.sh --kernel rt: exfat fsck-request symlink ---\n'
+	printf '  (builds/reuses a second QEMU test kernel at the RT pin -- can take several minutes)\n'
+	if "$ROOT/scripts/test-initramfs.sh" --kernel rt exfat fsck-request symlink; then
+		pass "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, 3 exfat cases)"
 	else
-		fail "de25-initramfs-verify (aarch64 cpio applet/structure check)"
+		fail "test-initramfs.sh --kernel rt (32-bit QEMU boot test on the RT kernel, 3 exfat cases)" "one or more of the 3 cases failed -- see output above"
 	fi
+fi
+
+# The DE25-Nano's stage 1: the SAME package built for aarch64 by the DE25
+# configuration -- once its stack enables BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS
+# (ADR 0029 D11 keeps that off until a board has booted). Gated on the cpio
+# EXISTING rather than on a board flag: a tree that has not built it has
+# nothing to check here, but one that has must not skip it silently.
+DE25_INITRAMFS_CPIO="$ROOT/output-de25/images/mister-initramfs.cpio"
+if [ ! -f "$DE25_INITRAMFS_CPIO" ]; then
+	skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "no $DE25_INITRAMFS_CPIO -- the DE25 stack does not build package/mister-initramfs (D11)"
+else
 	if [ "${CI_TESTS_SKIP_QEMU_SYSTEM:-0}" = "1" ]; then
 		skip "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "CI_TESTS_SKIP_QEMU_SYSTEM=1"
 	elif ! have qemu-system-aarch64; then

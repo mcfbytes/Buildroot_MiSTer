@@ -65,6 +65,16 @@ alongside the main 6.18 image and selected on-device (§5).
 
 ## 2. Structure — a kernel-only base defconfig plus a per-variant fragment
 
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** There is no kernel-only stack or `output-rt/`
+> tree any more. The variant is `package/linux-rt` (`package/linux-rt/linux-rt.mk`), a
+> kconfig-package that reuses the main kernel's make flags, kconfig fixups and
+> `board/mister/de10nano/linux.config`, layers `linux-rt.fragment`, applies
+> `linux-patches-beta` through `BR2_GLOBAL_PATCH_DIR/linux-rt`, and is selected by
+> `BR2_PACKAGE_LINUX_RT=y` in `configs/fragments/de10nano-image.fragment` (with its version pin
+> `BR2_PACKAGE_LINUX_RT_VERSION`). The kernel-config layering described below (`linux.config`
+> + `linux-rt.fragment`, the PREEMPT_RT assertion) is unchanged; the Buildroot-config layering
+> (`configs/mister_rt.fragment` on the kernel-only stack) is what was retired.
+
 The main 6.18 image build is untouched. Since ADR 0021's **2026-07-18
 amendment** the variant is a **kernel-only** Buildroot build (no userland): the
 shared base is the `de10nano-kernel` fragment stack (`common` + `de10nano` +
@@ -173,15 +183,20 @@ version code so it stays inert on the shared 6.18 build.
 
 ## 5. Build & flash
 
+Since ADR 0030 Phase C (2026-09-11) the RT kernel is `package/linux-rt`, built by the same
+`make all` that builds the image:
+
 ```sh
-make rt                       # -> output-rt/images/zImage_dtb (the RT kernel)
-                              #    + its module tree staged into the overlay
-make all                      # -> linux.img now carries BOTH module trees
+make mister_de10nano_defconfig  # once, or after a Buildroot pin move
+make all                      # -> output/images/zImage_dtb (6.18), zImage_dtb-rt (7.2 RT),
+                              #    linux-rt.config, and ONE linux.img carrying both module trees
+make linux-rt                 # rebuild only the RT kernel package, if iterating on it
+make linux-rt-menuconfig      # its kernel config (linux.config + linux-rt.fragment)
 # 1. install THAT linux.img on the device first — the normal Linux update
 #    path (replace /media/fat/linux/linux.img): it is the rootfs the RT
 #    module tree lives in, and an older on-device image has only 6.18 modules
 # 2. then put the RT kernel next to it:
-cp output-rt/images/zImage_dtb  /media/fat/linux/zImage_dtb-rt
+cp output/images/zImage_dtb-rt  /media/fat/linux/zImage_dtb-rt
 ```
 
 Select it on-device with a one-line edit to `/media/fat/linux/u-boot.txt`
@@ -234,7 +249,7 @@ card, and nothing on the card referenced it), and deliberately NOT inside
 | **Module-tree merge into the one linux.img** | ✅ **green** — the row's "first green run pending" was overtaken by CI run 29758320422 (2026-07-20, rc4: `build-kernel` + `build` both green, so the merge assert ran). Re-verified locally on rc5 (2026-07-28): after `make rt`, a `make all` produced `output/target/usr/lib/modules/` holding exactly `6.18.40` and `7.2.0-rc5` — two trees, no stale third — and `linux.img` passed every `check-linux-img.sh` assertion (512 MiB, pinned UUID/hash-seed, the 14-feature stock-derived set, ADR 0015 ssh-key checks) |
 | **RT kernel boots on the DE10-Nano** | ⚠️ **NOT on the currently pinned 7.2 — re-opened 2026-08-17 by the rc7 → 7.2 bump.** ✅ **CONFIRMED 2026-07-20 on 7.2-rc4**, which booted and ran MiSTer on real hardware. That retired the single biggest open risk on the variant, and it is how the `0037` DualSense regression was caught: booting far enough to use a controller is what exposed the shifted PS5 button map (§7 item 3). ✅ **RE-CONFIRMED 2026-08-14 on 7.2-rc7** — the Wave-1 hardware pass ran on a `7.2.0-rc7 SMP PREEMPT_RT` kernel carrying `0043`, and the doorbell nodes enumerated and delivered events (that pass is also where H-1 and H-2 were found). Boot is a **per-version claim** and every bump re-opens it, which is exactly the state this row is in now: 7.2 final is patch-verified (**40/40** at `-F0`), DTS-verified, and **built on the whole 40-entry series** (`make rt` green from clean, 2026-08-17 — see the build rows above), but it has **not been booted**. Everything that can be checked without hardware has been checked and passed; none of it is a boot. This ✅ covers rc4 and rc7 and nothing else. It also does **not** cover `0044`, `0045`, `0046` or the re-added `0038`–`0042`: none were in the series when the rc7 kernel was built, and all six have since been built but never booted — §2, §8, §9 |
 | **vsync/IRQ-40 latency under RT threaded IRQs** | ❌ **unproven** (the point of the exercise) — boot and general operation are confirmed, but the latency measurement that motivates RT has not been taken |
-| **Patch 0031 (exFAT Samsung symlinks) on 7.x** | ✅ **FIXED 2026-09-06 — after being found BROKEN the same day**, not by this variant but by the DE25's aarch64 initramfs QEMU leg (`scripts/test-initramfs.sh --board de25nano`), the first thing ever to EXECUTE 0031 on a 7.x kernel: `exfat_symlink()` → `page_symlink()` → `a_ops->write_begin` is NULL on 7.x exFAT (iomap; no `write_begin`/`write_end`) → Oops, `pc: 0x0`, on the first symlink created. `linux-patches-beta/0031` WAS a symlink to the shared 6.18 file, so this kernel had the same crash on any `ln -s` on `/media/fat` (reading existing links was fine). The "applies at -F0" and "compiles" rows above were true and insufficient. Now a **beta-local re-anchored copy** (the fifth): `exfat_symlink_write_target()` allocates clusters via 7.x's `exfat_map_cluster()`, writes the sectors through buffer heads, `sync_blockdev_range()`s them (iomap reads go straight to the device), and does the `valid_size`/`zeroed_size`/`i_size` bookkeeping; the DE25 series links to this copy. Verified: applies at `-F0` to pristine 7.2.3 (12/12 hunks), **compiles for arm with this variant's own `output-rt` `.config`** (`fs/exfat/`, zero warnings), and the aarch64 leg's `symlink` case passes — hot+cold round-trip, `DT_LNK`, the create+unlink cluster-leak tripwire, fsck-clean (ADR 0002 §8b). Still not executed on 32-bit ARM: the DE10 leg boots 6.18 only, so the first `ln -s` on an RT-booted board is the remaining proof. |
+| **Patch 0031 (exFAT Samsung symlinks) on 7.x** | ✅ **FIXED 2026-09-06 — after being found BROKEN the same day**, not by this variant but by the DE25's aarch64 initramfs QEMU leg (`scripts/test-initramfs.sh --board de25nano`), the first thing ever to EXECUTE 0031 on a 7.x kernel: `exfat_symlink()` → `page_symlink()` → `a_ops->write_begin` is NULL on 7.x exFAT (iomap; no `write_begin`/`write_end`) → Oops, `pc: 0x0`, on the first symlink created. `linux-patches-beta/0031` WAS a symlink to the shared 6.18 file, so this kernel had the same crash on any `ln -s` on `/media/fat` (reading existing links was fine). The "applies at -F0" and "compiles" rows above were true and insufficient. Now a **beta-local re-anchored copy** (the fifth): `exfat_symlink_write_target()` allocates clusters via 7.x's `exfat_map_cluster()`, writes the sectors through buffer heads, `sync_blockdev_range()`s them (iomap reads go straight to the device), and does the `valid_size`/`zeroed_size`/`i_size` bookkeeping; the DE25 series links to this copy. Verified: applies at `-F0` to pristine 7.2.3 (12/12 hunks), **compiles for arm with this variant's own `output-rt` `.config`** (`fs/exfat/`, zero warnings), and the aarch64 leg's `symlink` case passes — hot+cold round-trip, `DT_LNK`, the create+unlink cluster-leak tripwire, fsck-clean (ADR 0002 §8b). Still not executed on 32-bit ARM: the DE10 leg boots 6.18 only, so the first `ln -s` on an RT-booted board is the remaining proof. **2026-09-11: executed as 32-bit ARM** — the rig (still on a pre-rewrite RT 7.2.3 from 2026-09-05) panicked on `update_all.sh`'s first Arcade Organizer symlink (netconsole: `PC is at 0x0`, `LR is at page_symlink+0x90`; `CONFIG_PANIC_ON_OOPS=y` + `panic=15` rebooted it), and `scripts/test-initramfs.sh --kernel rt` now builds the DE10 QEMU leg at the RT pin with `linux-patches-beta/0031`: 7.2.4 passes `symlink`/`exfat`/`fsck-request`; the 6.18-form patch on the same source reproduces the Oops. Only a hardware boot of the fixed kernel remains. |
 | `rtw88_8814au` firmware (`rtw88/rtw8814a_fw.bin`) present | ✅ ships via `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88` |
 
 ## 7. What is left

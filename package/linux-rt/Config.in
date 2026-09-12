@@ -1,0 +1,50 @@
+config BR2_PACKAGE_LINUX_RT
+	bool "linux-rt (PREEMPT_RT kernel variant -> images/zImage_dtb-rt)"
+	depends on BR2_LINUX_KERNEL
+	depends on BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS
+	help
+	  A SECOND kernel built beside the main one (ADR 0021 as amended by
+	  ADR 0030): the 7.2.y line with CONFIG_PREEMPT_RT=y, from the same
+	  board/mister/de10nano/linux.config plus linux-rt.fragment, patched
+	  with board/mister/de10nano/linux-patches-beta (a `series` dir, via
+	  BR2_GLOBAL_PATCH_DIR/linux-rt), embedding the same stage-1 cpio.
+
+	  Products: images/zImage_dtb-rt (zImage + DTB, budget-checked by
+	  scripts/check-zimage-dtb.sh), images/linux-rt.config, and its
+	  depmod'd module tree in the ONE rootfs next to the main kernel's,
+	  so switching kernels on the device is a u-boot.txt line and never a
+	  rootfs flash (docs/rt-beta-kernel.md §5).
+
+	  The build hard-asserts CONFIG_PREEMPT_RT=y in the built kernel's
+	  .config: merge_config.sh only warns when a fragment symbol is
+	  dropped, so without it a plain 7.2 kernel could ship labeled RT.
+
+	  Same shape as Buildroot's own barebox-aux: one source, a second
+	  configuration, in one tree. `make linux-rt-menuconfig` edits it.
+
+	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/rt-beta-kernel.md
+
+if BR2_PACKAGE_LINUX_RT
+
+config BR2_PACKAGE_LINUX_RT_VERSION
+	string "kernel version"
+	default ""
+	help
+	  A kernel.org release on the 7.2.y line (PREEMPT_RT for 32-bit ARM
+	  landed in 7.1; docs/rt-beta-kernel.md). DELIBERATELY NO DEFAULT:
+	  the pin is a line in configs/mister_de10nano_defconfig, next to the
+	  6.18 pin, where Renovate bumps it and `savedefconfig` keeps it (a
+	  Kconfig default would be dropped from the saved defconfig and the
+	  pin would go unmanaged). The tarball's sha256 lives in
+	  package/linux-rt/linux-rt.hash, transcribed from kernel.org's
+	  PGP-signed sha256sums.asc -- never from a downloaded tarball. A bump
+	  must move both, or the download fails closed.
+
+config BR2_PACKAGE_LINUX_RT_CONFIG_FRAGMENT_FILES
+	string "kernel config fragment files"
+	default "$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-rt.fragment"
+	help
+	  Merged onto the main kernel's BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE.
+	  This is the layer that carries CONFIG_PREEMPT_RT=y.
+
+endif

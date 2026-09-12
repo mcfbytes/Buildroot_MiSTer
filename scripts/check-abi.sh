@@ -383,7 +383,7 @@ fi
 # A-25 — depmod must have regenerated modules.alias at image build, or udev
 # cannot autoload a driver by modalias. Since ADR 0021's 2026-07-18 amendment
 # the rootfs may legitimately carry MORE than one kernel-version tree (the
-# main 6.18 one plus kernel variants merged in via work/extra-modules-overlay,
+# main 6.18 one plus kernel variants built in the same tree (package/linux-rt),
 # e.g. the RT beta's 7.2 tree) — every tree present must be depmod'd, because
 # whichever kernel boots consults its own tree. At least one is required; a
 # local main-only build with exactly one is equally legitimate, so exactly-2

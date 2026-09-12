@@ -277,3 +277,50 @@ single hardcoded slot by that script's own design — one flashable card, one
 bonus kernel — not a variant list. See docs/rt-beta-kernel.md's "Adding a
 future kernel variant" paragraph for the same accounting kept in sync with
 the code.
+
+---
+
+## Amendment 2026-09-11 — the variant becomes a package of the main build (ADR 0030 Phase C)
+
+Accepted by the owner with ADR 0030. The RT kernel is no longer a kernel-only Buildroot tree
+(`output-rt/`) whose module tree the wrapper Makefile staged into an overlay for the next
+`make all`. It is `package/linux-rt`: a kconfig-package in this br2-external, the same shape as
+Buildroot's own `barebox-aux` (one source, a second configuration, one tree), reusing the main
+kernel's `LINUX_MAKE_FLAGS`/`LINUX_MAKE_ENV`/`LINUX_KCONFIG_FIXUP_CMDS`, `linux.config` and the
+stage-1 extension, layering `linux-rt.fragment`, and applying `linux-patches-beta` through
+`BR2_GLOBAL_PATCH_DIR/linux-rt`.
+
+What this keeps from §2's amended decision: one `linux.img` with every variant's module tree
+(now by `modules_install` into `TARGET_DIR`, with the package's own depmod hook and a
+non-empty `modules.alias` assertion); the `CONFIG_PREEMPT_RT=y` proof (a post-configure hook
+that fails in seconds, before the compile); `zImage_dtb-rt` and `linux-rt.config` as release
+assets, budget-checked by `scripts/check-zimage-dtb.sh`.
+
+What it retires: `output-rt/`, `work/extra-modules-overlay` and its stamps, `rt-clean`'s
+two-place removal (there is no overlay rsync to fight), the `make rt` before `make all` order,
+the `build-kernel` matrix with the `kernel-leg` and `merge-kernel-modules` actions, the variant
+dl/ and host caches, `scripts/list-kernel-variants.sh`, `scripts/check-kernel-defconfig-sync.sh`,
+`configs/mister_rt.fragment` and `configs/fragments/kernel-only.fragment`. The
+`legal-info-rt.tar.gz` asset folds into `legal-info.tar.gz` (the package has a manifest row
+there). The variant's version pin moves to `BR2_PACKAGE_LINUX_RT_VERSION` in
+`configs/fragments/de10nano-image.fragment`, its hash to `package/linux-rt/linux-rt.hash`;
+Renovate and `scripts/hash-sync-kernel.sh --pin=rt` follow.
+
+Why the owner wanted it serial in the first place: CI already serialised the kernel leg before
+the image job (19 min then 3 h 05 min on the last green master run), and every extra tree was
+another toolchain to cache or rebuild. One tree means at most one toolchain build on a cache
+miss.
+
+Verification (2026-09-11, branch `feat/vanilla-buildroot`, incremental `make all` on the
+Phase B tree): `package/linux-rt` extracted 7.2.4, applied all **42** series entries through
+`BR2_GLOBAL_PATCH_DIR/linux-rt`, took the shared kernel fixups (including the stage-1 cpio
+embedding), passed the `CONFIG_PREEMPT_RT=y` assertion at configure time, built, and produced
+`images/zImage_dtb-rt` **10,091,326 bytes** (headroom 6,685,890 under the 16 MiB budget) and
+`images/linux-rt.config`. `output/target/usr/lib/modules/` holds exactly `6.18.50` (103 modules)
+and `7.2.4` (**90 modules**, `modules.alias` 67,054 bytes, depmod'd by the package's own hook).
+`make legal-info`: the `linux-rt` row is in `manifest.csv` and all 42 patches are under
+`sources/linux-rt-7.2.4/`. `scripts/ci-tests.sh`: **366 pass, 0 fail, 6 skip**. The configured
+`linux-rt` `.config` diffed against the v2026.09.04-beta release's `linux-rt.config` differs only
+in the Buildroot bump's gcc 15.3 symbols, the device-mapper and `FB_SYSMEM_FOPS` symbols that
+landed on master after that beta, the cpio path, and host rustc probe values. Not yet booted on
+the rig.

@@ -39,7 +39,7 @@ authored in the board file, by reference (`&label`) or by path (`&{/firmware/svc
 Nothing here needs a cross compiler — DTB generation and schema checking are host-only.
 
 ```sh
-# 0. A private, writable copy of the pinned kernel.  Do NOT use output-rt/build/linux-7.2.1;
+# 0. A private, writable copy of the pinned kernel.  Do NOT use output/build/linux-rt-<version>;
 #    that is a live DE10 build tree.
 mkdir -p /mnt/source/de25-work/t3
 tar -xf dl/linux/linux-7.2.2.tar.xz -C /mnt/source/de25-work/t3/

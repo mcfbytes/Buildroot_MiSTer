@@ -196,14 +196,7 @@ readonly HASH_FILE="$REPO_ROOT/board/mister/de10nano/patches/linux/linux.hash"
 # MiSTer image ships, and the kernel-only stack deliberately selects no packages at all
 # (stacks.mk: `image-common` is in every image stack and no kernel-only one), so reading
 # it would reintroduce exactly the zero-drivers bug from the other direction.
-readonly EXPORT_STACK=DE10NANO
 
-# config-stacks.sh addresses the repo through $ROOT; this script uses $REPO_ROOT. Same
-# directory, two names, because the helper is shared with scripts that predate this one.
-ROOT="$REPO_ROOT"
-readonly ROOT
-# shellcheck source=scripts/lib/config-stacks.sh
-. "$REPO_ROOT/scripts/lib/config-stacks.sh"
 
 # Committer identity for the generated commits. Patch AUTHORS are preserved by `git am`;
 # this only says who mechanically produced the tree, and it must be explicit so the
@@ -217,13 +210,9 @@ say() { printf '\n=== %s\n' "$*"; }
 # Resolved AFTER die(), which it uses. STACK_FILES is the merge-ordered list of fragment
 # files that make up the exported board's configuration; every read of a pinned value
 # below goes through all of them, last definition winning, exactly as kconfig would.
-mapfile -t STACK_FILES < <(config_stack_files "$EXPORT_STACK")
+STACK_FILES=("$REPO_ROOT/configs/mister_de10nano_defconfig")
 readonly STACK_FILES
-((${#STACK_FILES[@]})) ||
-	die "no ${EXPORT_STACK}_FRAGMENTS line in $REPO_ROOT/configs/fragments/stacks.mk"
-for _frag in "${STACK_FILES[@]}"; do
-	[[ -f $_frag ]] || die "fragment named by stacks.mk does not exist: $_frag"
-done
+[ -f "${STACK_FILES[0]}" ] || die "no ${STACK_FILES[0]} -- the DE10 defconfig is the single source of the kernel pin (ADR 0030)"
 unset _frag
 
 # Only set when we download rather than use the dl/ cache. Cleaned on exit: it holds a
@@ -332,7 +321,7 @@ resolve_br_path() {
 
 version="$(defconfig_value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE)"
 [[ -n $version ]] ||
-	die "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in the $(config_stack_label "$EXPORT_STACK") stack:
+	die "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in the DE10 defconfig:
   ${STACK_FILES[*]}"
 
 patch_dir="$(resolve_br_path "$(defconfig_value BR2_LINUX_KERNEL_PATCH)")"
@@ -1086,11 +1075,11 @@ mapfile -t enabled_kmods < <(
 )
 
 ((${#enabled_kmods[@]})) || die "detected zero kernel-module packages in the
-$(config_stack_label "$EXPORT_STACK") fragment stack:
+DE10 defconfig (configs/mister_de10nano_defconfig):
   ${STACK_FILES[*]}
 That is almost certainly a parsing bug in this script rather than the truth — the image
 ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.
-If a fragment moved, fix configs/fragments/stacks.mk or this script's EXPORT_STACK;
+If the defconfig moved, fix STACK_FILES in this script;
 do NOT relax this check."
 
 # Announce what will actually be vendored, not what was detected: the two differ

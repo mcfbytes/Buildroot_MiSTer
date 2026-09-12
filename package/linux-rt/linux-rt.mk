@@ -25,6 +25,11 @@
 # time (PKG=LINUX_RT), so the shared fixup body needs no adaptation.
 
 LINUX_RT_VERSION = $(call qstrip,$(BR2_PACKAGE_LINUX_RT_VERSION))
+ifeq ($(BR2_PACKAGE_LINUX_RT),y)
+ifeq ($(LINUX_RT_VERSION),)
+$(error BR2_PACKAGE_LINUX_RT_VERSION is empty: the RT kernel pin must be a line in the defconfig (see package/linux-rt/Config.in))
+endif
+endif
 LINUX_RT_SOURCE = linux-$(LINUX_RT_VERSION).tar.xz
 LINUX_RT_SITE = $(call qstrip,$(BR2_KERNEL_MIRROR))/linux/kernel/v$(firstword $(subst ., ,$(LINUX_RT_VERSION))).x
 LINUX_RT_DL_SUBDIR = linux

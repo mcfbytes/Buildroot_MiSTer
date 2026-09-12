@@ -1,0 +1,52 @@
+# PROFILE PACKAGE (ADR 0030 §5.7): one symbol that selects the firmware set
+# both boards ship. A plain-Buildroot project would list every one of these in
+# the defconfig; here the defconfig says BR2_PACKAGE_MISTER_FIRMWARE=y and the
+# list lives HERE, so the DE10 and the DE25 cannot drift apart on it. To add a
+# firmware file for both boards, add its `select` below; a board-only one goes
+# in that board's configs/mister_<board>_defconfig instead. The reason for each
+# line is in docs/buildroot-config.md §12 and docs/firmware-parity.md.
+
+config BR2_PACKAGE_MISTER_FIRMWARE
+	bool "MiSTer firmware set (shared by every board)"
+	select BR2_PACKAGE_LINUX_FIRMWARE
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7601U
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7610E
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7650
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT76X2E
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925
+	select BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_81XX
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_87XX_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_88XX_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88
+	select BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW89
+	select BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9271
+	select BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_7010
+	select BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_9170
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7921_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7922_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_MEDIATEK_MT7925_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_QUALCOMM_6174A_BT
+	select BR2_PACKAGE_LINUX_FIRMWARE_ATHEROS_6004
+	select BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9113
+	select BR2_PACKAGE_LINUX_FIRMWARE_REDPINE_RS9116
+	select BR2_PACKAGE_LINUX_FIRMWARE_AR3011
+	select BR2_PACKAGE_LINUX_FIRMWARE_AR3012_USB
+	select BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XX
+	select BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XXX
+	select BR2_PACKAGE_WIRELESS_REGDB
+	select BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
+	select BR2_PACKAGE_BCM20702_FIRMWARE
+	help
+	  The /lib/firmware population both boards ship: Buildroot's
+	  linux-firmware with the WiFi/Bluetooth sub-options the in-kernel
+	  drivers request, wireless-regdb, and the two project packages for
+	  files upstream Buildroot has no toggle for (linux-firmware-extra) or
+	  that upstream linux-firmware does not carry (bcm20702-firmware).
+
+	  This is a PROFILE: selecting it selects the whole list below. It is
+	  the one place package selection differs from a plain Buildroot
+	  project, where each of these would be a line in the defconfig.
+	  See docs/buildroot-config.md.

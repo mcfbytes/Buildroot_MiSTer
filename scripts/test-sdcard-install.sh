@@ -64,10 +64,10 @@ CROSS_COMPILE="${CROSS_COMPILE:-$ROOT/output/host/bin/arm-buildroot-linux-gnueab
 # scripts/test-initramfs.sh (board patch 0031, applied below, tracks the pinned
 # kernel's APIs; 6.18.40 gave exfat_remove_entries() a 4th arg, so a stale pin
 # here fails the QEMU kernel build with a confusing "too few arguments").
-KERNEL_VERSION="${TEST_SDCARD_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/fragments/de10nano.fragment")}"
+KERNEL_VERSION="${TEST_SDCARD_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/mister_de10nano_defconfig")}"
 [ -n "$KERNEL_VERSION" ] || {
 	printf 'test-sdcard-install.sh: FATAL: %s\n' \
-		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/fragments/de10nano.fragment" >&2
+		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/mister_de10nano_defconfig" >&2
 	exit 2
 }
 KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-$ROOT/dl/linux-$KERNEL_VERSION.tar.xz}"

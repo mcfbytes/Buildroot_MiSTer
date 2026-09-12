@@ -1,5 +1,17 @@
 menu "MiSTer external options"
 
+menu "MiSTer profiles (ADR 0030 -- one symbol selects a documented package set)"
+	# THE ONE DEPARTURE FROM A PLAIN BUILDROOT DEFCONFIG. In a plain project
+	# every package is a line in configs/<board>_defconfig. Here the shared
+	# sets are Kconfig profiles that `select` their members, so two boards
+	# share a userspace by selecting one symbol and cannot drift apart on
+	# it. "Why is package X in my image?" -> the profile's Config.in, whose
+	# section headers mirror docs/buildroot-config.md §5.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-firmware/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-drivers/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-userspace/Config.in"
+endmenu
+
 menu "USB WiFi drivers (out-of-tree)"
 	# MAINLINE-FIRST policy (ADR 0016). The rule is "use the in-kernel driver
 	# for every chip the kernel can drive; keep an out-of-tree driver ONLY

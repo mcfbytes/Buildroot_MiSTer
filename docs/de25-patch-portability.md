@@ -154,8 +154,8 @@ construction. ⚠ marks a row where the deep dive overturned or materially corre
 | 31 | `0037-hid-playstation-dualsense-mute-btn-z` | hid | 🟢 | portable-as-is | shared | **Functional, not cosmetic.** `BTN_Z` (0x135) sits between `BTN_WEST` and `BTN_TL` and shifts every higher `EV_KEY` ordinal, so the shipped `gamecontrollerdb` `platform:MiSTer` rows depend on it. The RT beta drops it; that is a **known divergence, not a precedent**. Beta copy differs by hunk offsets only. | `patch-provenance.md:370`, `:1222`, `:1537` |
 | 32 | `0038-hid-nintendo-nso-genesis-bt-pid` | hid | 🟢 | portable-as-is | shared | 20-line `hdev->product` rewrite keyed off a controller-reported type byte, before `devm_input_allocate_device()`. | — |
 | 33 | `0039-hid-nintendo-nso-n64-genesis-stock-button-mapping` | hid | 🟢 | portable-as-is | shared | Reassigns evdev codes in two static mapping tables to stock's order. Not bench-verified against real pads — a testing gap, **not** a portability risk. | — |
-| 34 | `0040-hid-nintendo-imu-name-suffix` | hid | 🟢 | portable-as-is | shared | One format-string token (`"%s (IMU)"` → `"%s IMU"`) restoring the substring Main_MiSTer filters on. | — |
-| 35 | `0041-hid-nintendo-stock-led-classdev-names` | hid | 🟢 | portable-as-is | shared | `devm_kasprintf()` format change restoring stock's flat LED names so Main_MiSTer's hardcoded `fopen()` paths resolve. | — |
+| 34 | `0040-hid-nintendo-imu-name-suffix` | hid | 🟢 | portable-as-is | shared | One format-string token (`"%s (IMU)"` → `"%s IMU"`) restoring the substring Main_MiSTer filters on. **Retired 2026-09-12** — fixed in userspace instead (Main_MiSTer #1307, Release 20260912); no longer in any series. | — |
+| 35 | `0041-hid-nintendo-stock-led-classdev-names` | hid | 🟢 | portable-as-is | shared | `devm_kasprintf()` format change restoring stock's flat LED names so Main_MiSTer's hardcoded `fopen()` paths resolve. **Retired 2026-09-12** — fixed in userspace instead (Main_MiSTer #1308, Release 20260912); no longer in any series. | — |
 | 36 | `0042-hid-playstation-stock-lightbar-led-names` | hid | 🟢 | portable-as-is | shared | Adds stock-compatible R/G/B LED classdevs alongside mainline's multicolor device, using an explicit back-pointer+index instead of `container_of()`. LED-class/HID only. | — |
 | 37 | `0043-dts-uio-doorbells` ⚠ | dts (uio) | 🔴 | board-specific | de10-only *(beta)* | Eight interrupt-only `generic-uio` nodes on Cyclone V GIC SPI 48–55 (`f2h_irq8..15`). Triage said `drop`; **overturned — it ships on DE10.** Deep dive added: **`CONFIG_CMDLINE_EXTEND` does not exist on arm64**, so the DE10 binding recipe has no arm64 counterpart. Not ported to DE25 per DP-9. | **none exists** (see §1); `de25-nano-plan.md:211-218`; `de25-fpga-reconfig.md` §8 |
 | 38 | `0044-dts-uio-fpga-regions` ⚠ | dts (uio) | 🔴 | board-specific | de10-only *(beta)* | Two reg-bearing UIO nodes: the 2 MiB lwhps2fpga window at `0xff200000` (never write-combined) and the 512 MiB f2sdram DDR aperture at `0x20000000` (WC-capable). Triage said `drop`; **overturned.** Depends on the `mem=511M` bootarg. Not ported per DP-9. | **none exists**; `de25-nano-plan.md:213-219` |
@@ -602,6 +602,9 @@ sense — but it is the project's known trap for a *different* reason: `BTN_Z` (
 precedent.** It must be in the shared series on both boards, because the same Main_MiSTer
 userspace reads the same database on both. The same reasoning applies to `0034`, `0039`, `0040`,
 `0041` and `0042`: they *look* cosmetic (table swaps, format strings) and are **userspace ABI**.
+(`0040` and `0041` have since been retired, 2026-09-12: the ABI mismatch was closed from the
+other side, Main_MiSTer #1307/#1308 accepting the mainline names, which is the same argument
+resolved the other way — the stakes were real, the fix just did not have to be in the kernel.)
 An arch audit that filed them as "trivially portable, low value" would be right about the arch
 and wrong about the stakes.
 

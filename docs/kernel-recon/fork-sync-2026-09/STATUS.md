@@ -98,7 +98,7 @@ patches as carried before they exist.
 | D3 | Carry the open PR #92 now | **Yes.** | "Gamepad unusable" class, hardware-verified A/B by its author on a DE10-Nano at 6.18.38, 32 lines, applies clean on top of our whole hid-nintendo stack on both kernels; Main_MiSTer hard-codes `057e_2009`. | yes |
 | D4 | Align `0001` to upstream's `fb_sys_read/write` | **Yes** (also the beta copy). | Proven identical machine code on ARM; Main_MiSTer only ioctls `/dev/fb0`; shrinks the export diff. | follow the memo: yes |
 | D5 | Run the two Opus workers | moot — they ran (≈0.50 M tokens total) | — | — |
-| D6 | Wave 5 upstream PRs for `0039`–`0042` (+ `BTN_Z` scoping, + the fork's `memremap()` check) | **prepared, not sent** — six patches + PR drafts under `upstream-candidates/`; opening them is the owner's call after reading the PR #75 thread | — | nothing is sent |
+| D6 | Wave 5 upstream PRs for `0039`–`0042` (+ `BTN_Z` scoping, + the fork's `memremap()` check) | ~~**prepared, not sent**~~ **SENT 2026-09-12** as Linux-Kernel_MiSTer #95 (`0039`), #96 (`0040`), #97 (`0041`), #98 (`memremap()`), plus config PRs #93/#94. #93/#94/#95/#98 merged; **#96/#97 closed** — the maintainer took the Main_MiSTer alternatives (#1307/#1308, Release 20260912), so `0040`/`0041` were retired from our series the same day. `0042` and the `BTN_Z` scoping remain unsent. | — | see row |
 
 ## 4. Hardware-gated items (for when you are at the board)
 
@@ -199,7 +199,7 @@ classdev names, `0042` stock lightbar names, `0037`'s DualSense-only `BTN_Z` sco
 fix — each applying at `-F0`/`git am` alone and all together in order, each compiled `W=1`
 against his tree (one harmless unused-declaration warning on `0041`'s idiom, same as ours), with
 a PR title and body per patch. `0038` was withdrawn: his tree already has the identical PID
-normalization. **Nothing was pushed or opened upstream.**
+normalization. ~~**Nothing was pushed or opened upstream.**~~ **Sent 2026-09-12 — outcome in D6.**
 
 **Follow-ups surfaced (not actioned here; items 1–2 were closed the same day by the parallel workstream's PRs #158 and #160, merged to master 2026-09-11 and merged into this branch):**
 1. **[CLOSED by PR #158]** **Firmware gap on our side**, exposed by the audit's Realtek correction: we build

@@ -295,7 +295,7 @@ Cores and userland ABIs only: `I2C` + `I2C_CHARDEV` + `I2C_SMBUS` + `I2C_GPIO`
 (with `# CONFIG_I2C_HELPER_AUTO is not set`), `GPIOLIB` + `GPIO_SYSFS`,
 `WATCHDOG`, `REGULATOR` + `REGULATOR_FIXED_VOLTAGE`, `HW_RANDOM`, the LED class
 set (`LEDS_CLASS_MULTICOLOR` is what hid-playstation and hid-nintendo register
-player/lightbar LEDs through — patches 0032/0033/0041/0042;
+player/lightbar LEDs through — patches 0032/0033/0042 (0041 retired 2026-09-12);
 `LEDS_BRIGHTNESS_HW_CHANGED` is what 0029 teaches leds-gpio to report;
 `LEDS_USER` is `/dev/uleds`), and the three I2C RTC parts MiSTer add-on boards
 fit ([`rtc-parity.md`](rtc-parity.md)).

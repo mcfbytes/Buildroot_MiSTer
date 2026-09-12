@@ -7,7 +7,10 @@ with every MiSTer kernel patch carried in-tree as a plain `.patch` file applied 
 pristine, hash-verified kernel.org tarball.
 
 It is a **drop-in replacement**: the unmodified, stock `MiSTer` binary and every existing
-core run on it unchanged.
+core run on it unchanged. (Since 2026-09-12 that means **Main_MiSTer Release 20260912 or
+newer**: the Switch controller's IMU/LED naming fix moved from our kernel to Main_MiSTer
+#1307/#1308, so an older `MiSTer` binary on this image sees a phantom IMU pad and dark
+Switch player/home LEDs.)
 
 ## What ships
 
@@ -87,7 +90,7 @@ mainline can hold it.
 | | Stock MiSTer | This project |
 |---|---|---|
 | **Kernel** | 5.15.1 from Nov 2021 to 2026-09-07 with **zero** `5.15.y` stable updates ever merged; **6.18.38 since Release 20260907**, pinned the same way — 12 `6.18.y` releases behind our pin at the time of writing | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **40 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
+| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **38 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
 | **Buildroot** | 2021.02.4 — **unchanged by Release 20260907** (`/etc/os-release` `PRETTY_NAME`, both releases) | **2026.08** (~5 years of upstream work) |
 | **glibc / gcc** | 2.31 / gcc 10-era — **unchanged by Release 20260907** (`libc.so.6 → libc-2.31.so`; `strings` shows `GNU C Library (GNU) stable release version 2.31`) | **2.44 / 15.3.0** |
 | **OpenSSL** | **1.1.1k — EOL since 2023-09-11**, no upstream fixes since; **unchanged by Release 20260907** (`strings usr/lib/libssl.so.1.1`, both releases → `OpenSSL 1.1.1k  25 Mar 2021`) | **3.6.4** |
@@ -157,7 +160,7 @@ document records what changed and which rows here it dates).
 | Phase | State | What that means |
 |---|---|---|
 | **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 40 patches apply cleanly (re-measured 2026-09-11 at `patch -p1 -F0`, 40/40, zero fuzz); `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
+| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 38 patches apply cleanly (40/40 re-measured 2026-09-11 at `patch -p1 -F0`, zero fuzz; `0040`/`0041` retired 2026-09-12 and the surviving hid-nintendo stack re-measured 7/7 on 6.18.51); `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
 | **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.08, glibc 2.44, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
 | **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
 | **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
@@ -337,14 +340,16 @@ The interesting part is not the version number — it's the **shape of the delta
 fork's **136 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
 2026-09-07, 10 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — one
 still-open pull-request head carried ahead of its merge, plus 15 residue commits that
-existed only on the older v5.14/v5.13.12 branches) are down to **40 carried patch
+existed only on the older v5.14/v5.13.12 branches) are down to **38 carried patch
 files**. The bulk of that reconciliation was performed against the **5.15** stock kernel
 and left **36** files; the nine commits and one open PR stock's 6.18 branch has taken
 since have now been reconciled too — executed, not just planned — in
 [`docs/kernel-recon/fork-sync-2026-09.md`](docs/kernel-recon/fork-sync-2026-09.md)
 (plan: [`fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md)),
 adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahead of its
-upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only). Every
+upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only); on
+2026-09-12 `0040`/`0041` (Switch IMU and LED names) were retired when upstream chose the
+Main_MiSTer-side fix instead (36 + 3 + `0047` − 2 = 38). Every
 remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
 or recorded as a deliberate decision. `0047` is not part of that delta at all — it
 backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line
@@ -663,9 +668,9 @@ linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kern
                          extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         37 carried patches: 36 MiSTer + 1 mainline backport (0047)
-  linux-patches-beta/    36 of those (32 symlinks + 4 re-anchored 7.x copies; 0047 is
-                         already in 7.2) + 4 beta-local = the 40-entry series
+  linux-patches/         38 carried patches: 37 MiSTer + 1 mainline backport (0047)
+  linux-patches-beta/    36 of those (31 symlinks + 5 re-anchored 7.x copies; 0047 and
+                         0050 are already in 7.2) + 4 beta-local = the 40-entry series
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups

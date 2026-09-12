@@ -2810,10 +2810,12 @@ function does not exist on 7.x at all — mainline's own differently-shaped fix
 (exfat_get_dentry() + exfat_blk_readahead() in fs/exfat/fatent.c) is already
 in v7.2.3, and at -F0 against pristine v7.2.3 both hunks FAIL. Both go away
 on their own the day the stock pin leaves 6.18.y. Nothing else is dropped:
-all 42 entries (the other 38 shared + the four beta-local
+all 40 entries (the other 36 shared + the four beta-local
 patches 0043/0044/0045 — the UIO set — and 0046, the ramoops crash-record
 reservation) apply at -F0 — verified 2026-09-11 against v7.2.3 with the two
-newly-shared patches 0048/0049 symlinked in (42/42, zero fuzz), and before
+newly-shared patches 0048/0049 symlinked in (42/42, zero fuzz; 40 since the
+2026-09-12 retirement of 0040/0041, which are deleted, not excluded — the
+userspace side took the fix, Main_MiSTer #1307/#1308), and before
 that on the then-40-entry series on 7.2 FINAL, verified 2026-08-17 through
 Buildroot's own `apply-patches.sh` against a freshly extracted pristine
 `linux-7.2.tar.xz` whose sha256 matched the signed manifest: 40/40 applied,

@@ -68,12 +68,14 @@ alone broke his `make` target). Now it is yes, modulo the review-thread items in
 Recorded so nobody "fixes" them backwards (details and evidence in
 `docs/kernel-recon/fork-sync-2026-07.md` §3 and `fork-sync-2026-09/STATUS.md`):
 
-- Our `0039`–`0042` (N64/Genesis button maps, IMU name suffix, LED classdev names, lightbar
-  names) restore **stock 5.15** behaviour that his 6.18 port does not carry. (`0038`, the NSO
-  Genesis Bluetooth PID normalization, he *does* have — measured in Wave 5, correcting the
-  Wave 4 tree-diff's first reading.) Ready-to-send patches for the four, plus the `BTN_Z`
-  scoping and the framebuffer `memremap()` check, are prepared under
-  `docs/kernel-recon/fork-sync-2026-09/upstream-candidates/` — **prepared, not sent**.
+- Our `0039` and `0042` (N64/Genesis button maps, lightbar names) restore **stock 5.15**
+  behaviour his 6.18 port did not carry. (`0038`, the NSO Genesis Bluetooth PID normalization,
+  he *does* have — measured in Wave 5, correcting the Wave 4 tree-diff's first reading.)
+  Sent 2026-09-12: `0039` merged as Linux-Kernel_MiSTer #95 and the `memremap()` check as #98;
+  the IMU-name and LED-name patches (#96/#97) were **closed** for the Main_MiSTer-side fix
+  (#1307/#1308), and our `0040`/`0041` were retired the same day — so those two no longer
+  differ. `0042` and the `BTN_Z` scoping are still under
+  `docs/kernel-recon/fork-sync-2026-09/upstream-candidates/`, unsent.
 - `BTN_Z` is DualSense-only in ours (as in stock 5.15); his port declares it for DualShock 4 too.
 - His `spidev` `altspi` compatible and `vt.h` `MAX_NR_CONSOLES 63→9` are dropped in ours.
 - His cpufreq port (#85) is not adopted; we keep `0003` (decision D1) and carry only its OCRAM
@@ -86,14 +88,15 @@ Recorded so nobody "fixes" them backwards (details and evidence in
 
 Measured against `MiSTer-v6.18` @ `c129b0fac` and Release 20260907 during the 2026-09
 increment. "Prepared" means a ready-to-send patch or comment exists under
-`docs/kernel-recon/fork-sync-2026-09/upstream-candidates/`; nothing has been sent (owner decision).
+`docs/kernel-recon/fork-sync-2026-09/upstream-candidates/`. Rows 2, 4 (in part) and 5 were sent
+on 2026-09-12 — see each row's status.
 
 | # | Deficiency | Evidence | Status upstream | Our artefact / suggested action |
 |---|---|---|---|---|
 | 1 | **Shipped release regressions.** Release 20260907 (= `aec7dc3aa`) ships with `mmap(/dev/fb0)` returning `-ENODEV` (Console Mode / SDL fbcon cannot start), no driver for RTL8811AU/8821AU (`CONFIG_RTW88_8821AU` off), and no cpufreq/overclock driver at all | shipped config + module list (`fork-sync-2026-09/evidence/`) | all three fixed on the branch after the release (#83, #81, #85) but **not yet in any shipped release** | nothing to submit; worth asking for a point release. Users on stock are affected until then |
 | 2 | `MiSTer_fb.c` tests a `memremap()` result with `IS_ERR()`; `memremap()` returns NULL, so a failed mapping falls through to an oops with a stale `devm_ioremap_resource` message | `tree-diff-2026-09.md` F1; our `0001` has the correct check (README bug B2) | open | **prepared: `07-fbdev-mister-fb-memremap-null-check.patch`** |
 | 3 | **PR #92 (open) regresses USB controllers that do not answer the first handshake**: the moved baudrate block is gated on `using_usb && !8bitdo` instead of on the first handshake having succeeded, so vanilla's "assume BLE pro controller, run at default baud" fallback becomes a fatal second handshake | code review of our `0049` (2026-09-11); vanilla `joycon_init()` quoted in the note | open PR | **prepared: `08-hid-nintendo-pr92-handshake-fallback.NOTE.md`** (review comment + one-variable fix); our `0049` carries the corrected form |
-| 4 | Stock-5.15 controller behaviour the 6.18 port lost, all Main_MiSTer-coupled: NSO N64/Genesis button maps differ from stock (SDL `gamecontrollerdb` rows shift), IMU input device not named `" IMU"` (Main_MiSTer opens it as a phantom pad), LED classdevs not named `player1..4`/`home`, lightbar LEDs not named `:red/:green/:blue` | records `b00a72159`, `45283785a`, `60821059c`, `f84543926`; `tree-diff-2026-09.md` §b | open | **prepared: patches `02`–`05`** |
+| 4 | Stock-5.15 controller behaviour the 6.18 port lost, all Main_MiSTer-coupled: NSO N64/Genesis button maps differ from stock (SDL `gamecontrollerdb` rows shift), IMU input device not named `" IMU"` (Main_MiSTer opens it as a phantom pad), LED classdevs not named `player1..4`/`home`, lightbar LEDs not named `:red/:green/:blue` | records `b00a72159`, `45283785a`, `60821059c`, `f84543926`; `tree-diff-2026-09.md` §b | button maps **merged** (#95); IMU/LED names **closed** (#96/#97) — fixed in Main_MiSTer #1307/#1308 instead, our `0040`/`0041` retired; lightbar names open | `02` sent+merged; `03`/`04` sent+closed; **`05` still prepared, unsent** |
 | 5 | `BTN_Z` declared in the shared PlayStation button table, so DualShock 4 gains a button stock 5.15 never exposed on it | `fork-sync-2026-07.md` §3 | open | **prepared: `06-hid-playstation-dualsense-btn-z-scoping.patch`** (behaviour change for DS4 users stated in the draft) |
 | 6 | **AIC8800 driver vendored without a licence**: 139 files, 85 with a bare copyright line and no grant, 51 with nothing, 2 Apache-2.0 (`aic_br_ext.{c,h}`, GPLv2-incompatible), no `LICENSE`/`README`; needs ~60 firmware blobs that no shipped `firmware.tar.gz` contains; a `wext` shim; SDK snapshot `rwnx v6.4.3.0 - 1a4b0054d2M` | `memo-Q9-aic8800.md` §1.3, §2 | landed 2026-09-11 | not a patch: raise as an issue — name the upstream repo/commit, add its licence text, ship the firmware (or say where it comes from), consider out-of-tree packaging |
 | 7 | cpufreq port (#85) open items by its own author: 1200 MHz long-duration untested, MiSTer Pi/SuperStation untested, "OSD movement during scripts" unexplained, boost-off harness not re-run; and its OCRAM `flags-sram` rationale is wrong (Main_MiSTer's flags are in DDR at `0x1FFFF000`) | `memo-Q4-cpufreq.md` §2, §6 | landed | none to submit; worth a note that the reservation is hygiene, not a Main_MiSTer requirement |

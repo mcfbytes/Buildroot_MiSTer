@@ -3,6 +3,7 @@ work/
 output*/
 dl/
 dist/
+release-work/
 *.img
 *.7z
 venv/

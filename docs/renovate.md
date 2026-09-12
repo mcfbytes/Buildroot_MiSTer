@@ -215,8 +215,9 @@ the image.
   unpacked Buildroot tree. Left manual.
 
 - **`release.yml`'s pinned stock reference archive**
-  (`76fd6f4ced6350b0ad56a7013b41526f47e3a2fb` /
-  `release_20260907.7z.001` + `.002`, referenced via `raw.githubusercontent.com`
+  (`cd80db9c0ab64ba38be95071a090a80c367d63cf` /
+  `release_20260912.7z.001` + `.002` since 2026-09-12; before that `76fd6f4c…` /
+  `release_20260907`, referenced via `raw.githubusercontent.com`
   URLs in the `STOCK_RELEASE_URL` env var) — this is **not a dependency
   Renovate bumps**. It is a compatibility pin that moves only by a deliberate,
   reviewed change: `uboot.img`/`updateboot` must stay byte-identical to what
@@ -224,7 +225,9 @@ the image.
   `docs/downloader-contract.md` §8/§12), and the auxiliary `files/linux/`
   payload moves only when stock's does (the 2026-09 bump from
   `release_20250402` changed exactly one shipped file, `MidiLink.INI`, and left
-  `uboot.img`/`updateboot` unchanged —
+  `uboot.img`/`updateboot` unchanged; the 2026-09-12 bump to `release_20260912`
+  changed only `files/MiSTer` among what we ship, again leaving both boot files
+  unchanged —
   `docs/verification/stock-release-20260907.md` §6.2 is the template for the
   next such bump: re-verify both boot files, re-derive the joined-archive
   hashes, re-run `verify-stock-payload.sh` end to end). No manager in

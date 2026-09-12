@@ -13,7 +13,7 @@
 #
 # Sources staged, and why each is safe/necessary:
 #
-#   1. The pinned stock release_20260907 archive (SAME URL/MD5/SHA256/size as
+#   1. The pinned stock release_20260912 archive (SAME URL/MD5/SHA256/size as
 #      .github/workflows/release.yml — do not let these drift independently;
 #      if release.yml's STOCK_* values ever change, mirror the change here).
 #      Upstream commits it as split 7z volumes (.7z.001 + .7z.002), so
@@ -21,7 +21,9 @@
 #      are concatenated, in order, into one stock_release.7z; the MD5/
 #      SHA256/size pins are those of the JOINED file (the only form the
 #      on-device 7za ever sees -- docs/verification/stock-release-20260907.md
-#      §6.2). We verify it byte-for-byte BEFORE extracting anything from it, then
+#      §6.2; the 2026-09-12 move to release_20260912 is recorded in
+#      docs/verification/stock-release-20260912.md). We verify it byte-for-byte
+#      BEFORE extracting anything from it, then
 #      extract more members than release.yml does (which only takes
 #      files/linux/*): files/linux/*, files/MiSTer, files/menu.rbf,
 #      files/MiSTer_example.ini, files/Scripts/update.sh — the Windows-
@@ -101,10 +103,10 @@ readonly SDCARD_CORES
 # itself, once it wires this script in) can export its own copies instead
 # of us duplicating the literals — but the defaults below are the source of
 # truth if nothing overrides them.
-: "${STOCK_RELEASE_URL:=https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.001 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/76fd6f4ced6350b0ad56a7013b41526f47e3a2fb/release_20260907.7z.002}"
-: "${STOCK_RELEASE_MD5:=8cd4edca838fdc226390e3fb04f3ca79}"
-: "${STOCK_RELEASE_SHA256:=e5bea8413adc249f420e08a48e5cdab9b8c5da04bf52d81dc5261f0f350adf66}"
-: "${STOCK_RELEASE_SIZE:=117936766}"
+: "${STOCK_RELEASE_URL:=https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.001 https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.002}"
+: "${STOCK_RELEASE_MD5:=7cec2206e2a1133aa307c541219aa08f}"
+: "${STOCK_RELEASE_SHA256:=35fcbaca57cd2471b1d353f3dd4bae7c7e67256f8c5c8b2d6d5cbcc78269a7ea}"
+: "${STOCK_RELEASE_SIZE:=126546478}"
 : "${STOCK_UBOOT_SHA256:=e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e5736dc6d30b4e21fe62a64}"
 : "${STOCK_UBOOT_SIZE:=515141}"
 : "${STOCK_UPDATEBOOT_SHA256:=6ff2d50a080e26d7173b61c52083e9cc42ca658db0c5031b4da1c45c74a562f2}"

@@ -1,5 +1,13 @@
 # Wave 5 — upstream candidates for MiSTer-devel/Linux-Kernel_MiSTer
 
+> **Outcome (2026-09-12).** Sent as Linux-Kernel_MiSTer PRs #95 (candidate 2), #96 (3), #97 (4)
+> and #98 (7), plus config PRs #93/#94. #95 and #98 merged. **#96 and #97 were closed**: the
+> maintainer took the userspace alternatives instead (Main_MiSTer #1307/#1308, in Release
+> 20260912), so the source patches for candidates 3 and 4 — `0040`, `0041` — were **retired from
+> this repo's series** the same day. The `03-*`/`04-*` files below are kept as the record of what
+> was offered; the regeneration table's rows for them no longer resolve. Candidates 5 and 6 are
+> still unsent.
+
 **Purpose: these patches are PREPARED, not sent.** No network push, no PR was opened
 from this session (the environment has no `gh`/GitHub API access, and pushing is out of
 scope for this wave per `PLAN.md` §5.2). Everything here is a ready-to-apply artifact
@@ -85,8 +93,7 @@ cd /path/to/Linux-Kernel_MiSTer
 git checkout MiSTer-v6.18
 
 git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/02-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch
-git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/03-hid-nintendo-imu-name-suffix.patch
-git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/04-hid-nintendo-stock-led-classdev-names.patch
+# 03-/04- (IMU name, LED names): do NOT re-offer -- closed upstream as #96/#97, see the note at the top
 git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/05-hid-playstation-stock-lightbar-led-names.patch
 git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/06-hid-playstation-dualsense-btn-z-scoping.patch
 git am /path/to/Buildroot_MiSTer/docs/kernel-recon/fork-sync-2026-09/upstream-candidates/07-fbdev-mister-fb-memremap-null-check.patch

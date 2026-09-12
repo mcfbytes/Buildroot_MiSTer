@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-09-11 03:37 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-12 17:05 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -17,7 +17,7 @@ These WOULD regress silently if their patch (or, for `carried-as-package` rows, 
 - `333d49b95` Implement MiSTer audio driver. → 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
 - `3d72b9db7` Add cpufreq/overclock driver (#34) → 0003-cpufreq-cyclone5-de10nano-overclock.patch
 - `41c45f378` Adapt Classic2USB and RetroZord HID force feedback support … → 0048-hid-google-stadiaff-classic2usb-retrozord.patch
-- `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU comp… → 0032-hid-nintendo-joycon-combo-led.patch, 0040-hid-nintendo-imu-name-suffix.patch
+- `45283785a` hid-nintendo: add virtual combo led, don't warn by IMU comp… → 0032-hid-nintendo-joycon-combo-led.patch
 - `47dc53a22` wiimote: fix the buttons codes. → 0023-hid-wiimote-fixes.patch
 - `484f68172` input: Add support for the NSO Famicom controllers (no mic … → 0015-hid-nintendo-nso-famicom.patch
 - `52a56ae3d` mousedev: disable touch to click on DualShock4 and DualSens… → 0026-input-mousedev-eviocgrab.patch

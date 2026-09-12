@@ -31,7 +31,7 @@ rather than a local build.
 | Works, confirmed on hardware | |
 |---|---|
 | Boots to the MiSTer menu; cores load | ✅ |
-| The unmodified, stock `MiSTer` binary runs | ✅ |
+| The unmodified, stock `MiSTer` binary runs | ✅ — **Release 20260912 or newer** since 2026-09-12: the Switch controller IMU/LED naming fix moved from our kernel to Main_MiSTer (#1307/#1308); an older `MiSTer` on this image shows a phantom IMU pad and dark Switch player/home LEDs. `update_all.sh` brings the binary forward. |
 | All out-of-tree modules present; no kernel BUG/Oops/panic | ✅ |
 | Bluetooth — firmware loads, controller pairs | ✅ |
 | Wi-Fi — WPA3/SAE (PMF required), 5 GHz, auto-connect at boot, via mainline `rtw88` | ✅ |

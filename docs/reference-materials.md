@@ -44,7 +44,34 @@ Tool versions used to produce this manifest (recorded for reproducibility):
   correct git blob for this exact filename/size in the source repo.
 - How to reproduce: `curl -LO <commit-pinned URL above>` and verify MD5/SHA-256 above.
 
-### work/release_20260907.7z (the current `release.yml` pin, since 2026-09)
+### work/release_20260912.7z (the current `release.yml` pin, since 2026-09-12)
+- Source repo:      MiSTer-devel/SD-Installer-Win64_MiSTer (branch: master)
+- Committed as TWO split 7z volumes (consecutive byte slices of one archive):
+  release_20260912.7z.001 (blob 1b6bd927a33fbb282c636949088e3c12a0ae3ddb, 83,886,080 bytes,
+  MD5 2552d0d897b0ef043e8a7669239c123c) and
+  release_20260912.7z.002 (blob 85c7248963a2b61f4966f3f1b2ff3b33b42ca011, 42,660,398 bytes,
+  MD5 70cc944b99b8e2687d7df0fb168d7950)
+- Introduced by commit: cd80db9c0ab64ba38be95071a090a80c367d63cf ("Release 20260912.", Sorgelig, 2026-09-12T13:01:42Z)
+- Commit-pinned URLs (verified HTTP 200 on 2026-09-12):
+  https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.001
+  https://raw.githubusercontent.com/MiSTer-devel/SD-Installer-Win64_MiSTer/cd80db9c0ab64ba38be95071a090a80c367d63cf/release_20260912.7z.002
+- Joined (`cat release_20260912.7z.001 release_20260912.7z.002 > release_20260912.7z`):
+  Size:    126,546,478 bytes
+  MD5:     7cec2206e2a1133aa307c541219aa08f
+  SHA-256: 35fcbaca57cd2471b1d353f3dd4bae7c7e67256f8c5c8b2d6d5cbcc78269a7ea
+  `7z t` passes (`scripts/verify-stock-payload.sh verify-stock`: size/MD5/SHA-256/CRC).
+- No `Distribution_MiSTer` `all_releases` mirror (`linux_release_20260912.7z`) existed on
+  2026-09-12, and its live db.json still had `"linux": null`.
+- Contents: same 24-member layout as 20260907. Delta vs 20260907 is exactly three
+  members: `files/linux/linux.img` (still kernel 6.18.38-MiSTer modules,
+  `/MiSTer.version` = `260912`), `files/linux/zImage_dtb` (8,564,005 → 8,626,429 B —
+  rebuilt with Linux-Kernel_MiSTer PRs #93/#94/#95/#98 and the "Add missing firmwares"
+  image-creator commit), and `files/MiSTer` (1,162,128 → 1,166,224 B, the 20260912 Main
+  build carrying Main_MiSTer #1307/#1308 — the reason this pin moved). `uboot.img` and
+  `updateboot` byte-identical to 20260907 and 20250402 (`verify-uboot` PASS).
+- Full note: docs/verification/stock-release-20260912.md.
+
+### work/release_20260907.7z (the previous `release.yml` pin, 2026-09-10 → 2026-09-12)
 - Source repo:      MiSTer-devel/SD-Installer-Win64_MiSTer (branch: master)
 - Committed as TWO split 7z volumes (consecutive byte slices of one archive):
   release_20260907.7z.001 (blob 9847e504acd304b469ac3b3fc8629216f0cb5262, 83,886,080 bytes,

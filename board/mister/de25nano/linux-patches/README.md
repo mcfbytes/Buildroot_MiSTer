@@ -71,8 +71,8 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | 31 | `0037-hid-playstation-dualsense-mute-btn-z` | portable-as-is / shared | **included (beta copy)** | **Functional, not cosmetic**: `BTN_Z` shifts every higher `EV_KEY` ordinal, so the shipped `gamecontrollerdb` `platform:MiSTer` rows depend on it. Beta copy differs by hunk offsets only. |
 | 32 | `0038-hid-nintendo-nso-genesis-bt-pid` | portable-as-is / shared | **included** | `hdev->product` rewrite before `devm_input_allocate_device()`. |
 | 33 | `0039-hid-nintendo-nso-n64-genesis-stock-button-mapping` | portable-as-is / shared | **included** | Static mapping-table reassignment (userspace ABI). |
-| 34 | `0040-hid-nintendo-imu-name-suffix` | portable-as-is / shared | **included** | One format-string token Main_MiSTer filters on. |
-| 35 | `0041-hid-nintendo-stock-led-classdev-names` | portable-as-is / shared | **included** | `devm_kasprintf()` format restoring stock LED names. |
+| 34 | `0040-hid-nintendo-imu-name-suffix` | portable-as-is / shared | **retired 2026-09-12** | Was: one format-string token Main_MiSTer filters on. Upstream closed our kernel PR (Linux-Kernel_MiSTer #96) in favour of the userspace fix, Main_MiSTer #1307 (Release 20260912 onward), so the patch was deleted from the shared series and this link with it. |
+| 35 | `0041-hid-nintendo-stock-led-classdev-names` | portable-as-is / shared | **retired 2026-09-12** | Was: `devm_kasprintf()` format restoring stock LED names. Same outcome as `0040`: Linux-Kernel_MiSTer #97 closed, Main_MiSTer #1308 falls back to the mainline `:green:player-N`/`:blue:player-5` names. |
 | 36 | `0042-hid-playstation-stock-lightbar-led-names` | portable-as-is / shared | **included** | LED-class/HID only. |
 | 37 | `0043-dts-uio-doorbells` | board-specific / de10-only *(beta)* | **excluded** | Eight `generic-uio` nodes on Cyclone V GIC SPI 48–55; DP-9 adopts Agilex-native idioms instead. `CONFIG_CMDLINE_EXTEND` does not exist on arm64. |
 | 38 | `0044-dts-uio-fpga-regions` | board-specific / de10-only *(beta)* | **excluded** | Cyclone V lwhps2fpga/f2sdram apertures; depends on the `mem=511M` bootarg. |
@@ -81,7 +81,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0047-btusb-mercusys-ma530-2c4e-0115` | *post-audit (added 2026-09-02)* | **excluded** | Not in the audit; it is a **backport of a mainline commit that is already in v7.2**. Its own header says "DELETE THIS PATCH the moment the kernel pin leaves 6.18.y for 7.2 or newer — at that point the ID is in-tree and re-adding it would collide." This board is on 7.2.3 (7.2.2 when this row was written), so the ID is already present. (It is likewise absent from `linux-patches-beta/series`.) |
 | — | `0021` | — | n/a | No such patch; the DE10 series has never had one. |
 | — | `0048-hid-google-stadiaff-classic2usb-retrozord` | *post-audit (added 2026-09-11)* | **included** | Not in the audit; two `hid_device_id` rows (Classic2USB `16d0:1460`, RetroZord `1209:595a`) in `drivers/hid/hid-google-stadiaff.c`, matched with `HID_GROUP_GENERIC` — a USB ID table has no architecture. Main_MiSTer-coupled (`input.cpp:52-53`, `:4176-4177`, `:5102`, `:5349`, `:5496`), so it must not drop silently. Applies clean at `-F0` on 7.2.3 (offset 0). |
-| — | `0049-hid-nintendo-8bitdo-adapter-skip-baudrate` | *post-audit (added 2026-09-11)* | **included** | Not in the audit; carried from open PR #92 ahead of merge (owner decision D3) — reorders `joycon_init()`'s USB handshake/baudrate block after `joycon_read_info()` and skips it for 8BitDo-adapter MACs (`E4:17:D8` OUI). USB-generic HID probe-path logic, no architecture exposure. Applies clean at `-F0` on 7.2.3 (offsets only, zero fuzz) after this board's own `0015`/`0032`/`0034`/`0035`/`0038`-`0041` hid-nintendo stack. |
+| — | `0049-hid-nintendo-8bitdo-adapter-skip-baudrate` | *post-audit (added 2026-09-11)* | **included** | Not in the audit; carried from open PR #92 ahead of merge (owner decision D3) — reorders `joycon_init()`'s USB handshake/baudrate block after `joycon_read_info()` and skips it for 8BitDo-adapter MACs (`E4:17:D8` OUI). USB-generic HID probe-path logic, no architecture exposure. Applies clean at `-F0` on 7.2.3 (offsets only, zero fuzz) after this board's own `0015`/`0032`/`0034`/`0035`/`0038`/`0039` hid-nintendo stack (`0040`/`0041` were in that stack until their 2026-09-12 retirement; the remaining seven re-verified at `-F0` on v7.2.5, zero fuzz). |
 | — | `0050-exfat-dir-readahead-plug` | *post-audit (added 2026-09-11)* | **excluded** — 7.2.3 already carries mainline's plugged read-ahead (`fs/exfat/fatent.c` `exfat_blk_readahead`); the 6.18 hunk fails at `-F0` there | A 4-line `blk_start_plug`/`blk_finish_plug` wrap of `exfat_dir_readahead()`'s `sb_breadahead()` loop — but that function does not exist on 7.x at all. `git show v7.2.3:fs/exfat/dir.c` has no `exfat_dir_readahead` and no `blk_start_plug`; the equivalent batching already lives in `exfat_get_dentry()` + `exfat_blk_readahead()` (`fs/exfat/fatent.c:159-183`). Measured: `patch -p1 -F0 --dry-run` against pristine v7.2.3 `fs/exfat/dir.c` reports "Hunk #1 FAILED at 6. Hunk #2 FAILED at 682. 2 out of 2 hunks FAILED". 6.18-series-only per this board's own `linux-patches-beta/series` exclusion (same reasoning, mirror image of `0047`); retires from `linux-patches/` outright when the 6.18.y pin leaves 6.18.y. |
 
 ### DE25-local patches (not in the audit — new work)
@@ -96,11 +96,11 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | | |
 |---|---|
 | Audit rows | 40 |
-| Included from the audit | **32** (all 32 `portable-as-is` + `shared` rows) |
+| Included from the audit | **30** (32 `portable-as-is` + `shared` rows, minus the two retired on 2026-09-12 — `0040`, `0041`) |
 | Excluded from the audit | **8** — 7 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0045` `0046`) + `0002` (`portable-with-rework`, deferred) |
 | Post-audit patches considered | 3 (`0047` excluded — already upstream at 7.2; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11) |
 | DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **36** |
+| **Total applied here** | **34** |
 
 ## Note for the DE25 DTS
 

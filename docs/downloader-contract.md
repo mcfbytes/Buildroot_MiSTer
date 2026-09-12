@@ -1046,6 +1046,10 @@ prevent.
 > (`release.yml`'s `STOCK_RELEASE_URL`, now a two-URL list that `verify-stock-payload.sh`
 > joins) — see `docs/verification/stock-release-20260907.md` §6. Full analysis of the
 > release itself is in that document; the entry below is kept as the verified record.
+>
+> **2026-09-12:** stock released `release_20260912` (joined MD5 `7cec2206…`, 126,546,478 B —
+> now our `STOCK_RELEASE_*` pin, `docs/verification/stock-release-20260912.md`); no
+> `linux_release_20260912.7z` mirror asset existed and db.json still had `"linux": null`.
 
 As a cross-check that every field above is understood correctly (not just asserted), here
 is the `Distribution_MiSTer` `linux` entry that was **live until 2026-09**, reproduced from

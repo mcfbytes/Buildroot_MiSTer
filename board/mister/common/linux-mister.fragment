@@ -614,7 +614,8 @@ CONFIG_REGULATOR_FIXED_VOLTAGE=y
 # LEDs. LEDS_BRIGHTNESS_HW_CHANGED is what linux-patches/0029 teaches leds-gpio
 # to report; LEDS_USER is /dev/uleds, used by the controller LED tooling; the
 # multicolour class is what hid-playstation and hid-nintendo register their
-# player/lightbar LEDs through (patches 0032/0033/0041/0042).
+# player/lightbar LEDs through (patches 0032/0033/0042; hid-nintendo's own
+# player LEDs keep mainline's names since 0041 was retired on 2026-09-12).
 CONFIG_NEW_LEDS=y
 CONFIG_LEDS_CLASS=y
 CONFIG_LEDS_CLASS_MULTICOLOR=y

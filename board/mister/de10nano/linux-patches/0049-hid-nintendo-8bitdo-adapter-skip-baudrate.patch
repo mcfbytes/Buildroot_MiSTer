@@ -115,10 +115,12 @@ Rebased:      Re-anchored against our own hid-nintendo.c stack rather
               from THAT stacked, already-patched tree against our own
               corrected joycon_init() (see "Deviation from PR #92"
               below), not from the raw PR #92 diff, so their @@ line
-              numbers are exact for our 6.18.49-plus-eight-patches
-              series and this patch applies at -F0 with zero offset when
-              it runs in its correct series position (immediately after
-              0041).
+              numbers were exact for the 6.18.49-plus-eight-patches
+              series. 0040 and 0041 were RETIRED on 2026-09-12 (their
+              fix moved to Main_MiSTer #1307/#1308), so this patch now
+              runs directly after 0039 and lands at -F0 with a -23 line
+              offset on 6.18.51 (offsets only, zero fuzz) -- that offset
+              is the two missing patches, not rot.
 Deviation
 from PR #92:  PR #92's own reorder, applied verbatim, regresses a case
               vanilla handles correctly. Vanilla 6.18.49
@@ -183,7 +185,9 @@ Forward-port: Verified at -F0 against 6.18.49 as described above (zero
               stack) on v7.2.3 after the beta versions of 0015, 0032,
               0034, 0035, 0038, 0039, 0040, 0041 (0015 is a real
               re-anchored copy in linux-patches-beta/, the other seven
-              are symlinks to these de10nano originals). Both apply
+              were symlinks to these de10nano originals; 0040/0041 are
+              gone since 2026-09-12 and the six-patch stack re-verified
+              at -F0 on v7.2.5, zero fuzz). Both apply
               proofs, and the deviation described above, were
               re-measured in Wave 4 (code-review 2026-09-11) against the
               regenerated diff in this patch, not the original Wave 3

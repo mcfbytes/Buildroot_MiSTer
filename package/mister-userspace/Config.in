@@ -1,0 +1,277 @@
+# PROFILE PACKAGE (ADR 0030 §5.7): THE MiSTer userspace -- every package the
+# shipped rootfs carries beyond BusyBox and the toolchain, grouped exactly as
+# docs/buildroot-config.md §5 documents them (the section markers below are
+# that document's headings). A plain-Buildroot project would list all of these
+# in the defconfig; here configs/mister_de10nano_defconfig says
+# BR2_PACKAGE_MISTER_USERSPACE=y and the list lives HERE, so a second board
+# gets the identical userspace by selecting one symbol, and "why is package X
+# in my image" is answered by this file's section headers and §5's rationale.
+#
+# Not in here, on purpose: firmware (package/mister-firmware), out-of-tree
+# drivers (package/mister-drivers), the kernel variant (BR2_PACKAGE_LINUX_RT)
+# and the stage-1 initramfs (a linux extension) -- each is its own decision.
+# Package sub-options that are strings or `is not set` cannot be `select`ed
+# and stay in the defconfig (busybox fragment path, OPENSSH_SANDBOX, ...).
+#
+# `select` force-enables a package even when its own `depends on` is unmet
+# (kconfig warns), so a package that only builds on one architecture must NOT
+# go here -- it belongs in that board's defconfig. And a Kconfig `choice`
+# member (a PROVIDER choice such as BR2_PACKAGE_ZLIB_NG vs LIBZLIB, or the
+# jpeg/openssl providers) cannot be `select`ed at all: kconfig SILENTLY
+# ignores the select and the choice falls to its default. Those lines stay in
+# the defconfig; scripts/check-defconfigs.sh asserts every `select` below
+# really lands in the resolved config, so a silent drop fails CI.
+
+config BR2_PACKAGE_MISTER_USERSPACE
+	bool "MiSTer userspace (the shared package set)"
+	# --- compression (§5.4) ---
+	select BR2_PACKAGE_ZLIB
+	# (BR2_PACKAGE_ZLIB_NG is a `choice` member and cannot be selected -- it
+	#  stays in the defconfig; see the header.)
+	select BR2_PACKAGE_BZIP2
+	select BR2_PACKAGE_XZ
+	select BR2_PACKAGE_LZO
+	select BR2_PACKAGE_ZSTD
+	select BR2_PACKAGE_MINIZIP
+	select BR2_PACKAGE_MINIZIP_ZLIB
+	# --- Main_MiSTer shared libs (§5.5, docs/main-shared-libs.md) ---
+	select BR2_PACKAGE_LZMA_SDK
+	select BR2_PACKAGE_LIBCHDR
+	# --- graphics / fonts (§5.6) ---
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_JPEG
+	select BR2_PACKAGE_JPEG_TURBO
+	select BR2_PACKAGE_TIFF
+	select BR2_PACKAGE_GIFLIB
+	select BR2_PACKAGE_IMLIB2
+	select BR2_PACKAGE_IMLIB2_JPEG
+	select BR2_PACKAGE_IMLIB2_PNG
+	select BR2_PACKAGE_IMLIB2_GIF
+	select BR2_PACKAGE_IMLIB2_TIFF
+	select BR2_PACKAGE_IMLIB2_ID3
+	select BR2_PACKAGE_LIBXKBCOMMON
+	select BR2_PACKAGE_SDL2
+	# --- audio (§5.7) ---
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_LIBAO
+	select BR2_PACKAGE_LIBVORBIS
+	select BR2_PACKAGE_LIBOGG
+	select BR2_PACKAGE_MPG123
+	select BR2_PACKAGE_LIBID3TAG
+	select BR2_PACKAGE_LIBMODPLUG
+	select BR2_PACKAGE_FLUIDSYNTH
+	select BR2_PACKAGE_FLUIDSYNTH_ALSA_LIB
+	# --- MIDI / MT-32 (P3.8) + ALSA CLI tools (P3.15) (§5.8, docs/midi-mt32-parity.md) ---
+	select BR2_PACKAGE_MUNT
+	select BR2_PACKAGE_MIDILINK
+	select BR2_PACKAGE_ALSA_UTILS
+	select BR2_PACKAGE_ALSA_UTILS_ACONNECT
+	select BR2_PACKAGE_ALSA_UTILS_AMIDI
+	select BR2_PACKAGE_ALSA_UTILS_APLAYMIDI
+	select BR2_PACKAGE_ALSA_UTILS_ARECORDMIDI
+	select BR2_PACKAGE_ALSA_UTILS_ASEQDUMP
+	select BR2_PACKAGE_ALSA_UTILS_ASEQNET
+	select BR2_PACKAGE_ALSA_UTILS_ALSACTL
+	select BR2_PACKAGE_ALSA_UTILS_ALSALOOP
+	select BR2_PACKAGE_ALSA_UTILS_ALSAMIXER
+	select BR2_PACKAGE_ALSA_UTILS_ALSATPLG
+	select BR2_PACKAGE_ALSA_UTILS_ALSAUCM
+	select BR2_PACKAGE_ALSA_UTILS_AMIXER
+	select BR2_PACKAGE_ALSA_UTILS_APLAY
+	select BR2_PACKAGE_ALSA_UTILS_BAT
+	select BR2_PACKAGE_ALSA_UTILS_IECSET
+	select BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST
+	# --- crypto / TLS (§5.9) ---
+	select BR2_PACKAGE_OPENSSL
+	select BR2_PACKAGE_LIBOPENSSL
+	select BR2_PACKAGE_GNUTLS
+	select BR2_PACKAGE_LIBGCRYPT
+	select BR2_PACKAGE_LIBSSH2
+	select BR2_PACKAGE_CA_CERTIFICATES
+	# --- networking / D-Bus / GLib (§5.10) ---
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_LIBCURL_CURL
+	select BR2_PACKAGE_LIBCURL_OPENSSL
+	select BR2_PACKAGE_WGET
+	select BR2_PACKAGE_DBUS
+	select BR2_PACKAGE_DBUS_CPP
+	select BR2_PACKAGE_DBUS_GLIB
+	select BR2_PACKAGE_LIBEVENT
+	select BR2_PACKAGE_LIBNL
+	select BR2_PACKAGE_IPTABLES
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_GOBJECT_INTROSPECTION
+	# --- util-linux / e2fsprogs / disk & fs tools (§5.11, docs/util-linux-parity.md) ---
+	select BR2_PACKAGE_UTIL_LINUX
+	select BR2_PACKAGE_UTIL_LINUX_LIBBLKID
+	select BR2_PACKAGE_UTIL_LINUX_LIBFDISK
+	select BR2_PACKAGE_UTIL_LINUX_LIBMOUNT
+	select BR2_PACKAGE_UTIL_LINUX_LIBSMARTCOLS
+	select BR2_PACKAGE_UTIL_LINUX_LIBUUID
+	select BR2_PACKAGE_UTIL_LINUX_BINARIES
+	select BR2_PACKAGE_UTIL_LINUX_MOUNT
+	select BR2_PACKAGE_UTIL_LINUX_MOUNTPOINT
+	select BR2_PACKAGE_UTIL_LINUX_AGETTY
+	select BR2_PACKAGE_UTIL_LINUX_HWCLOCK
+	select BR2_PACKAGE_UTIL_LINUX_FSCK
+	select BR2_PACKAGE_UTIL_LINUX_PARTX
+	select BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS
+	select BR2_PACKAGE_UTIL_LINUX_IRQTOP
+	select BR2_PACKAGE_UTIL_LINUX_KILL
+	select BR2_PACKAGE_UTIL_LINUX_MORE
+	select BR2_PACKAGE_UTIL_LINUX_NEWGRP
+	select BR2_PACKAGE_UTIL_LINUX_NOLOGIN
+	select BR2_PACKAGE_UTIL_LINUX_RENAME
+	select BR2_PACKAGE_UTIL_LINUX_SETTERM
+	select BR2_PACKAGE_UTIL_LINUX_SWITCH_ROOT
+	select BR2_PACKAGE_E2FSPROGS
+	select BR2_PACKAGE_PARTED
+	select BR2_PACKAGE_NTFS_3G
+	select BR2_PACKAGE_NTFS_3G_NTFSPROGS
+	select BR2_PACKAGE_KMOD
+	select BR2_PACKAGE_INOTIFY_TOOLS
+	select BR2_PACKAGE_JQ
+	select BR2_PACKAGE_EXPAT
+	select BR2_PACKAGE_POPT
+	select BR2_PACKAGE_READLINE
+	select BR2_PACKAGE_NCURSES
+	select BR2_PACKAGE_NCURSES_WCHAR
+	select BR2_PACKAGE_SLANG
+	select BR2_PACKAGE_NEWT
+	select BR2_PACKAGE_GPM
+	select BR2_PACKAGE_LIBARCHIVE
+	select BR2_PACKAGE_LIBFUSE
+	# --- USB / input (§5.12, docs/usb-automount-parity.md) ---
+	select BR2_PACKAGE_LIBUSB
+	select BR2_PACKAGE_LIBUSB_COMPAT
+	select BR2_PACKAGE_LIBEVDEV
+	select BR2_PACKAGE_LIBINPUT
+	select BR2_PACKAGE_MTDEV
+	select BR2_PACKAGE_USBMOUNT
+	# --- Bluetooth (§5.13) ---
+	select BR2_PACKAGE_BLUEZ5_UTILS
+	select BR2_PACKAGE_BLUEZ5_UTILS_CLIENT
+	select BR2_PACKAGE_BLUEZ5_UTILS_TOOLS
+	select BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED
+	select BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_SIXAXIS
+	# --- PAM / capabilities (§5.14) ---
+	select BR2_PACKAGE_LINUX_PAM
+	select BR2_PACKAGE_LIBCAP
+	select BR2_PACKAGE_LIBCAP_NG
+	# --- misc small libraries / tools (§5.15) ---
+	select BR2_PACKAGE_DTC
+	select BR2_PACKAGE_DTC_PROGRAMS
+	select BR2_PACKAGE_SUDO
+	select BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+	select BR2_PACKAGE_I2C_TOOLS
+	select BR2_PACKAGE_JIMTCL
+	select BR2_PACKAGE_LIBLOCKFILE
+	select BR2_PACKAGE_LIBXML2
+	select BR2_PACKAGE_FILE
+	select BR2_PACKAGE_MEMTOOL
+	select BR2_PACKAGE_PCRE2
+	select BR2_PACKAGE_EUDEV
+	# --- lftp (§5.16) ---
+	select BR2_PACKAGE_LFTP
+	# --- Python (A6 / P3.9) + btctl runtime (§5.17, docs/python-compat.md) ---
+	select BR2_PACKAGE_PYTHON3
+	select BR2_PACKAGE_PYTHON3_SSL
+	select BR2_PACKAGE_PYTHON3_ZLIB
+	select BR2_PACKAGE_PYTHON3_BZIP2
+	select BR2_PACKAGE_PYTHON3_XZ
+	select BR2_PACKAGE_PYTHON3_PYEXPAT
+	select BR2_PACKAGE_PYTHON3_READLINE
+	select BR2_PACKAGE_PYTHON3_CURSES
+	select BR2_PACKAGE_DBUS_PYTHON
+	select BR2_PACKAGE_PYTHON_GOBJECT
+	# --- Samba: standalone file server only (§5.18) ---
+	select BR2_PACKAGE_SAMBA4
+	# --- daemons / user-facing binaries (§5.19, docs/ssh-ftp-parity.md, docs/wifi-parity.md) ---
+	select BR2_PACKAGE_OPENSSH
+	select BR2_PACKAGE_PROFTPD
+	select BR2_PACKAGE_WPA_SUPPLICANT
+	select BR2_PACKAGE_WPA_SUPPLICANT_NL80211
+	select BR2_PACKAGE_WPA_SUPPLICANT_WEXT
+	select BR2_PACKAGE_WPA_SUPPLICANT_DEBUG_SYSLOG
+	select BR2_PACKAGE_WPA_SUPPLICANT_WPA3
+	select BR2_PACKAGE_WPA_SUPPLICANT_CLI
+	select BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE
+	select BR2_PACKAGE_BASH
+	select BR2_PACKAGE_DIALOG
+	select BR2_PACKAGE_WIRELESS_TOOLS
+	select BR2_PACKAGE_WIRELESS_TOOLS_IWCONFIG
+	select BR2_PACKAGE_IW
+	select BR2_PACKAGE_IPROUTE2
+	# --- editors, ifupdown, BusyBox config fragment, dhcpcd, ntp, cifs (§5.20) ---
+	select BR2_PACKAGE_JOE
+	select BR2_PACKAGE_NANO
+	select BR2_PACKAGE_IFUPDOWN
+	select BR2_PACKAGE_DHCPCD
+	select BR2_PACKAGE_NTP
+	select BR2_PACKAGE_CIFS_UTILS
+	# --- Midnight Commander (T3, §5.21) ---
+	select BR2_PACKAGE_MC
+	# --- NFS client userland (ADR 0022, §5.22) ---
+	select BR2_PACKAGE_NFS_UTILS
+	select BR2_PACKAGE_NFS_UTILS_NFSV4
+	# --- rsync, BusyBox (§5.23) ---
+	select BR2_PACKAGE_RSYNC
+	select BR2_PACKAGE_BUSYBOX
+	# --- dualsensectl (§5.26, docs/dualsense-tooling.md) ---
+	select BR2_PACKAGE_DUALSENSECTL
+	# --- ltunify: Logitech Unifying pairing (§5.27, docs/logitech-pairing.md) ---
+	select BR2_PACKAGE_LTUNIFY
+	# --- kmod: target tools (§5.30; the HOST xz half is in de10nano.fragment) ---
+	select BR2_PACKAGE_KMOD_TOOLS
+	# --- T5: process / file / syscall inspection (§5.32) ---
+	select BR2_PACKAGE_HTOP
+	select BR2_PACKAGE_STRACE
+	select BR2_PACKAGE_LSOF
+	# --- T5: USB / input / joystick & force-feedback (§5.33) ---
+	select BR2_PACKAGE_USBUTILS
+	select BR2_PACKAGE_EVTEST
+	select BR2_PACKAGE_LINUXCONSOLETOOLS
+	select BR2_PACKAGE_LINUXCONSOLETOOLS_JOYSTICK
+	select BR2_PACKAGE_LINUXCONSOLETOOLS_FORCEFEEDBACK
+	# --- T5: filesystem tools, FAT/exFAT (§5.34) ---
+	select BR2_PACKAGE_DOSFSTOOLS
+	select BR2_PACKAGE_DOSFSTOOLS_FATLABEL
+	select BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT
+	select BR2_PACKAGE_DOSFSTOOLS_MKFS_FAT
+	select BR2_PACKAGE_EXFATPROGS
+	# --- T5: serial / terminal (§5.35) ---
+	select BR2_PACKAGE_PICOCOM
+	select BR2_PACKAGE_LRZSZ
+	select BR2_PACKAGE_TMUX
+	# --- T5: network diagnostics (§5.36) ---
+	select BR2_PACKAGE_ETHTOOL
+	select BR2_PACKAGE_SOCAT
+	select BR2_PACKAGE_TCPDUMP
+	select BR2_PACKAGE_IPERF3
+	# --- T5: archival — package/7zip (OURS), not upstream p7zip (ADR 0023, §5.37) ---
+	select BR2_PACKAGE_7ZIP
+	select BR2_PACKAGE_ZIP
+	select BR2_PACKAGE_LZOP
+	# --- T5: hardware buses (§5.39) ---
+	select BR2_PACKAGE_SPI_TOOLS
+	# --- T5: Bluetooth CLI (§5.40) ---
+	select BR2_PACKAGE_BLUEZ_TOOLS
+	# --- T5: console / keyboard (§5.41) ---
+	select BR2_PACKAGE_KBD
+	select BR2_PACKAGE_GDB
+	select BR2_PACKAGE_GDB_SERVER
+	select BR2_PACKAGE_GDB_DEBUGGER
+	select BR2_PACKAGE_LINUX_TOOLS_PERF
+	select BR2_PACKAGE_LINUX_TOOLS_PERF_NEEDS_HOST_PYTHON3
+	select BR2_PACKAGE_RT_TESTS
+	help
+	  The complete MiSTer userspace package set, as one symbol: shared
+	  libraries Main_MiSTer links against, audio/MIDI, networking, disk
+	  tools, Bluetooth, Python, Samba, SSH/FTP, WiFi userland, editors and
+	  the diagnostic tools (docs/buildroot-config.md §5, docs/package-manifest.md).
+
+	  This is a PROFILE: selecting it selects the whole list below.
+	  It is the one place this project differs from a plain Buildroot
+	  defconfig, where each package would be its own line -- see the
+	  comment at the top of package/mister-userspace/Config.in.

@@ -19,7 +19,7 @@ identically to the stock 2017.03 fork as the evidence allows, as a **build artif
   (515,141 B, sha256 `e2d46cf9…62ba64`), fetched by hash. ADR 0017 §Decision-5 stands.
 * `sdcard.img` keeps embedding that same stock blob. `scripts/mk-sdcard.sh` and
   `scripts/check-sdcard.sh` are untouched.
-* `configs/fragments/de10nano-image.fragment` gains **no** `BR2_TARGET_UBOOT*` line.
+* `configs/mister_de10nano_defconfig` gains **no** `BR2_TARGET_UBOOT*` line.
 * **No artifact this plan produces may ever be named `uboot.img`.** `updateboot` `dd`s
   `/media/fat/linux/uboot.img` over the `0xA2` partition on every Linux update with no
   version check, no hash check and no opt-out (boot-chain §5). The build output is
@@ -176,7 +176,7 @@ Measured against `work/buildroot` (2026.05.1), not recalled:
   (`uboot.mk:561-579`).
 * `BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES` exists (`Config.in:140-145`, `uboot.mk:401`) and
   applies via `merge_config.sh -m` + `olddefconfig` (`pkg-kconfig.mk:191-199`) — **the same
-  mechanism `make rt` uses**, and therefore **the same hazard**: dropped symbols only warn.
+  mechanism `make linux-rt` uses**, and therefore **the same hazard**: dropped symbols only warn.
   The `rt` recipe's `PREEMPT_RT` guard (`Makefile:504-521`) is the precedent for the
   resolved-`.config` assertion this build needs.
 * `BR2_TARGET_UBOOT_PATCH` (`Config.in:103-113`, `uboot.mk:342-354`) picks up

@@ -28,11 +28,15 @@ if BR2_PACKAGE_LINUX_RT
 
 config BR2_PACKAGE_LINUX_RT_VERSION
 	string "kernel version"
-	default "7.2.4"
+	default ""
 	help
 	  A kernel.org release on the 7.2.y line (PREEMPT_RT for 32-bit ARM
-	  landed in 7.1; docs/rt-beta-kernel.md). The tarball's sha256 lives
-	  in package/linux-rt/linux-rt.hash, transcribed from kernel.org's
+	  landed in 7.1; docs/rt-beta-kernel.md). DELIBERATELY NO DEFAULT:
+	  the pin is a line in configs/mister_de10nano_defconfig, next to the
+	  6.18 pin, where Renovate bumps it and `savedefconfig` keeps it (a
+	  Kconfig default would be dropped from the saved defconfig and the
+	  pin would go unmanaged). The tarball's sha256 lives in
+	  package/linux-rt/linux-rt.hash, transcribed from kernel.org's
 	  PGP-signed sha256sums.asc -- never from a downloaded tarball. A bump
 	  must move both, or the download fails closed.
 

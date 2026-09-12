@@ -147,7 +147,7 @@ jobs:
   # wrapper Makefile) and runs kconfig -- no toolchain, no package, no
   # compile. See docs/ci.md#lint-config.
   lint-config:
-    name: Lint configuration (patch headers, fragment stacks)
+    name: Lint configuration (patch headers, defconfigs)
     needs: gate
     if: needs.gate.outputs.build_needed == 'true'
     runs-on: ubuntu-26.04
@@ -162,8 +162,8 @@ jobs:
       - name: Lint kernel patch headers (git am-ability, both series)
         run: scripts/lint-kernel-patches.sh
 
-      - name: Check fragment stacks (regenerate + golden hashes)
-        run: scripts/check-config-fragments.sh
+      - name: Check defconfigs (load, canonical, every profile select lands)
+        run: scripts/check-defconfigs.sh
 
 
   build:
@@ -330,7 +330,7 @@ jobs:
           rc=0
           case "$LINT_RESULT" in
             success)
-              echo "lint-config: patch headers and fragment stacks are clean."
+              echo "lint-config: patch headers and defconfigs are clean."
               ;;
             skipped)
               if [ "$BUILD_NEEDED" = "true" ]; then

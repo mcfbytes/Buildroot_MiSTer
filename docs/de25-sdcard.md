@@ -135,7 +135,7 @@ together:
 
 | File | Change |
 |---|---|
-| `configs/fragments/de25nano.fragment` | `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` — selects `package/mister-initramfs` for the DE25 build and makes its kernel embed the cpio (`linux/linux-ext-mister-initramfs.mk`); regenerate `golden.sha256` |
+| `configs/mister_de25nano_defconfig` | `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` — selects `package/mister-initramfs` for the DE25 build and makes its kernel embed the cpio (`linux/linux-ext-mister-initramfs.mk`); regenerate `golden.sha256` |
 | `board/mister/de25nano/post-image.sh` | `BOOTARGS` → `root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait console=… earlycon` (the DE10's exact shape, p2 instead of p1) |
 | `board/mister/de25nano/genimage-sdcard.cfg` | p2 becomes an exFAT partition (type 0x07, label per the downloader contract) carrying `linux/linux.img` = `rootfs.ext4`; needs a host `mkfs.exfat` genimage can drive, or the DE10's installer route |
 | `scripts/check-sdcard-de25.sh` | `EXPECT_ROOT_DEV` + a `loop=` assert; p2 type/label/contents |

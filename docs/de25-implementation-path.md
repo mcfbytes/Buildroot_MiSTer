@@ -536,7 +536,7 @@ architecture-generic C, so confidence is high. ADR 0021's per-variant machinery 
 a DE25 pin at 7.2 is a **new instance of an existing pattern**, not new engineering.
 
 The real cost is the **bump treadmill**: 7.2 is not LTS, so the DE25 inherits the RT beta's
-discipline (`rt-clean`, TOFU-hash re-verification, boot re-proved per version) indefinitely. Pinning
+discipline (`make linux-rt-dirclean` on a version bump, TOFU-hash re-verification, boot re-proved per version) indefinitely. Pinning
 the DE25 to the same 7.x line the RT beta already tracks keeps that at **two** kernel lines in the
 repo rather than three, and lets one bump serve both.
 

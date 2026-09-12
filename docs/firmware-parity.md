@@ -108,7 +108,7 @@ build.
 This is the P3.3 deliverable for the **firmware population** half of
 "Module loading & firmware infra" (TASKS.md). The **module-autoload** half
 (kmod/depmod/eudev/xz-compression) was already done — see the P3.3 (core)
-commit and `configs/fragments/de10nano-image.fragment`'s `BR2_PACKAGE_HOST_KMOD_XZ` /
+commit and `configs/mister_de10nano_defconfig`'s `BR2_PACKAGE_HOST_KMOD_XZ` /
 `BR2_PACKAGE_KMOD_TOOLS` lines. This document covers only `/lib/firmware`.
 
 **Target:** `docs/stock-inventory/20250402/firmware.md` — the authoritative 66-file
@@ -154,7 +154,7 @@ Config.in reasoning:
 
 > The original P3.3 run measured 56 present / 10 missing. `brcm/BCM20702A1-0b05-17cb.hcd`
 > was subsequently sourced by `package/bcm20702-firmware` (P3.14,
-> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `configs/fragments/image-common.fragment`
+> `BR2_PACKAGE_BCM20702_FIRMWARE=y` at `package/mister-firmware/Config.in`
 > (it was in `de10nano-image.fragment` until 2026-09-03, `docs/buildroot-config.md` §12.2);
 > `scripts/ci-tests.sh` fails the build if it is absent from the image), which is what
 > moves present 56→57 and flagged 2→1. The obsolete count was independently a miscount:
@@ -234,9 +234,9 @@ driver exists to use them (harmless unused bytes, not a gap).
 
 ## defconfig changes
 
-These lines were added to `configs/fragments/de10nano-image.fragment` after
+These lines were added to `configs/mister_de10nano_defconfig` after
 the P3.2 block. **Since 2026-09-03 they live in
-`configs/fragments/image-common.fragment`** — the layer shared by every board's
+`package/mister-firmware/Config.in`** — the layer shared by every board's
 image stack — because the DE25-Nano image adopted the same set for parity
 (owner decision; `docs/buildroot-config.md` §12, and §12.1 for the full
 sub-option table this document feeds). The symbols and their rationale are

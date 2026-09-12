@@ -10,10 +10,15 @@ load-bearing comments were folded into this document when that file was deleted.
 |---|---|---|
 | [`board/mister/de25nano/linux.config`](../board/mister/de25nano/linux.config) | kernel `CONFIG_*` | the DE25's **base**: arm64 + Agilex 5 + boot path + FPGA stack + the "not a distro kernel" exclusions. A **minimal defconfig**, DE10 style. |
 | [`board/mister/common/linux-mister.fragment`](../board/mister/common/linux-mister.fragment) | kernel `CONFIG_*` | the **arch-neutral MiSTer personality**, shared: input/HID, Bluetooth, Wi-Fi, USB, sound, filesystems, netfilter, LEDs, RTC. |
-| [`configs/fragments/de25nano.fragment`](../configs/fragments/de25nano.fragment) | Buildroot `BR2_*` | names both of the above (§7); rationale in [`docs/buildroot-config.md`](buildroot-config.md) §6.5. |
+| [`configs/mister_de25nano_defconfig`](../configs/mister_de25nano_defconfig) | Buildroot `BR2_*` | names both of the above (§7); rationale in [`docs/buildroot-config.md`](buildroot-config.md) §6.5. |
 | [`scripts/check-kernel-fragment-noop.sh`](../scripts/check-kernel-fragment-noop.sh) | check | proves the fragment changes nothing on the DE10 (§6). |
 
 ---
+
+> **2026-09-11:** `scripts/check-kernel-fragment-noop.sh`, the proof that the shared kernel
+> fragment is a no-op on the DE10, had no caller and was removed with ADR 0030. The DE10 still
+> carries its own `linux.config`; the shared `board/mister/common/linux-mister.fragment` remains
+> the DE25's layer. Re-create the proof from git history if the DE10 adopts the fragment.
 
 ## 1. The problem this closes
 
@@ -142,10 +147,10 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
   killing every connection preauth**, password and key alike. The DE10 fixes
   that with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` in its own image
   fragment (commit `9824cd6`; the line is now
-  `configs/fragments/de10nano-image.fragment` and the rationale
+  `configs/mister_de10nano_defconfig` and the rationale
   `docs/buildroot-config.md` §5.19).
 
-  **Action for `configs/fragments/de25nano.fragment`:** it ships no `openssh`
+  **Action for `configs/mister_de25nano_defconfig`:** it ships no `openssh`
   today (the DE25 is a bare BusyBox developer OS, ADR 0027), so nothing is
   broken now — but the day `BR2_PACKAGE_OPENSSH=y` is added there,
   `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added with it. The
@@ -174,7 +179,7 @@ They are arch-neutral and both boards need exactly this value, and the project's
 standing rule is *one home per symbol* — duplicating a line into both files
 creates two places to change it and one place to forget. The consequence is
 stated at the top of the board file: **`linux.config` alone does not boot.** The
-two files are a pair and `configs/fragments/de25nano.fragment` always names both.
+two files are a pair and `configs/mister_de25nano_defconfig` always names both.
 
 ### 3.5 Networking core and netfilter (§5)
 The DE10's exact set: `NET`/`PACKET`/`UNIX`/`INET`, `NET_KEY`(+`_MIGRATE`),
@@ -490,10 +495,10 @@ How it was implemented — structurally, not by copying lines into
 `de25nano.fragment`:
 
 * The whole block moved OUT of `de10nano-image.fragment` and INTO a new
-  `configs/fragments/image-common.fragment`, the layer shared by every board's
+  `package/mister-firmware/Config.in`, the layer shared by every board's
   IMAGE stack and by no kernel-only stack. `DE25NANO_FRAGMENTS` gained it, so
   the DE25 gets the identical 31 symbols with no second copy to keep in step
-  (`configs/fragments/stacks.mk`; `docs/buildroot-config.md` §12, per-symbol
+  (`configs/mister_*_defconfig`; `docs/buildroot-config.md` §12, per-symbol
   calls in §12.2).
 * `xow-firmware` did NOT come along: it `depends on BR2_PACKAGE_XONE`, an
   out-of-tree module this board does not build (§12.2).
@@ -635,6 +640,6 @@ does **not** belong in the lint job, which runs on a bare checkout.
   trees under `output/build/` the script fails closed by design (the Makefile
   `rt` recipe's "never the first glob match" rule) and needs `--tree`. In CI
   there is exactly one tree.
-* **Optional second call** for the RT variant: `--tree output-rt/build/linux-*`,
+* **Optional second call** for the RT variant: `--tree output/build/linux-rt-*`,
   same argument shape. The fragment is not consumed there today, so this is only
   worth adding if the RT kernel ever adopts it.

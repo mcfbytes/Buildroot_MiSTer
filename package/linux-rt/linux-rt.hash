@@ -1,0 +1,8 @@
+# The RT/beta kernel pin (ADR 0021 / ADR 0030). Transcribed from kernel.org's
+# PGP-signed release manifest, https://cdn.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc,
+# NEVER from a downloaded tarball -- see board/mister/de10nano/patches/linux/linux.hash's
+# header for the full rule; this file carries the same value that file held for the RT
+# line until Phase C moved the variant into package/linux-rt. scripts/hash-sync-kernel.sh
+# --pin=rt rewrites this line on a version bump.
+sha256  01710ee01737dac492f1bae52becd057e08d20d11589089aa06accff415c28dd  linux-7.2.4.tar.xz
+sha256  fb5a425bd3b3cd6071a3a9aff9909a859e7c1158d54d32e07658398cd67eb6a0  COPYING

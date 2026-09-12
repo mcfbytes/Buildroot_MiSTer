@@ -1,0 +1,3 @@
+# Hidden: selected by BR2_PACKAGE_MISTER_INITRAMFS. See package/mister-initramfs/Config.in.
+config BR2_PACKAGE_MISTER_INITRAMFS_BUSYBOX
+	bool

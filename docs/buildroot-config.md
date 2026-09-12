@@ -37,6 +37,22 @@ every one of them for a cosmetic gain. Read §12 straight after §5.
 
 ---
 
+> **Layout change, 2026-09-11 (ADR 0030 Phase D).** The fragment stacks this document describes
+> in §1 and §11 are gone. Each board is one committed Buildroot defconfig —
+> `configs/mister_de10nano_defconfig`, `configs/mister_de25nano_defconfig` — in Buildroot's own
+> `savedefconfig` form, loaded with `make <name>_defconfig`. The shared package sets are Kconfig
+> **profiles**: `package/mister-userspace/Config.in` (the DE10 userspace, §5's list with §5's
+> section headings as comments), `package/mister-firmware/Config.in` (§12's firmware set, shared
+> by both boards) and `package/mister-drivers/Config.in` (the out-of-tree drivers, §5.24/§5.25).
+> The two boards agree on the old `common` layer's seven symbols by assertion
+> (`scripts/check-defconfigs.sh`, which also asserts every defconfig loads, is canonical, and that
+> every profile `select` really lands — a `select` of a kconfig `choice` member such as the zlib
+> provider is silently ignored, so those lines live in the defconfig). The resolved configurations
+> were proved identical to the fragment stacks' at the switch, plus only the profile symbols.
+> **The per-line rationale below is unchanged and still the reference**; only where a line lives
+> moved: §2-§4 → the defconfigs, §5 → `mister-userspace`, §6 → `mister_de25nano_defconfig`,
+> §12 → `mister-firmware`. §1, §7, §8, §11 are historical.
+
 ## 1. Layout and mechanism
 
 ```
@@ -92,7 +108,14 @@ produced — the only difference is `BR2_DEFCONFIG`, which is where
 - `output/.config` is generated once and then never touched by `make all` (no
   file prerequisites on the rule, so a `menuconfig` edit is not silently
   discarded — the Makefile's own comment explains). Regenerate deliberately
-  with `make de10nano-defconfig` / `make de25nano-defconfig` / `make rt-clean`.
+  with `make mister_de10nano_defconfig` / `make O=output-de25 mister_de25nano_defconfig`
+  (`make linux-rt-dirclean` after a change to the RT kernel version). Two
+  things leave a stale config behind that nothing regenerates for you: `make
+  clean` keeps every `.config` (Buildroot's definition), and a Buildroot pin
+  move retires or adds Kconfig symbols under it. A config written on the
+  previous pin then stops the next build at an interactive Kconfig prompt
+  ("Toolchain type", "Kernel Headers") — regenerate first, or `make distclean`
+  after a pin move.
 - A symbol belongs in **exactly one** fragment of a stack. A symbol set in
   `common` and overridden per board should have been board-only in the first
   place; `scripts/check-config-fragments.sh` fails on any redefinition (the
@@ -430,6 +453,10 @@ hard-links `rootfs.ext2` to `linux.img` for the image (§5.2).
 ---
 
 ## 4. `kernel-only.fragment`
+
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The fragment and the `de10nano-kernel` stack are
+> gone: kernel variants are packages of the image configuration (`package/linux-rt`), so there
+> is nothing to hold in lockstep. Kept for the record.
 
 Turns a board stack into the shared KERNEL-ONLY base that kernel variants
 (`make rt`, and any future sibling; CI's `build-kernel` legs) build against
@@ -2672,6 +2699,12 @@ DE10's is (§10): both boards set it, to different scripts. Without
 
 ## 7. `mister_rt.fragment`
 
+> **Superseded 2026-09-11 (ADR 0030 Phase C).** The fragment is gone. The RT variant's
+> Buildroot-side selection is two lines in `de10nano-image.fragment` (`BR2_PACKAGE_LINUX_RT=y`,
+> `BR2_PACKAGE_LINUX_RT_VERSION="7.2.4"`); its kernel-config layer
+> (`board/mister/de10nano/linux-rt.fragment`) and patch dir are unchanged and consumed by
+> `package/linux-rt/linux-rt.mk`. Kept for the record.
+
 The RT / Linux-7.2 "beta" kernel variant — the BUILDROOT-config layer of the
 variant, layered on the kernel-only stack (`common` + `de10nano` +
 `kernel-only`, §4) at build time by `make rt` (Buildroot's
@@ -2818,6 +2851,17 @@ fragment, for the `linux-update-defconfig` reason in §3.4).
 ---
 
 ## 8. The stage-1 initramfs stacks
+
+> **Superseded 2026-09-11 (ADR 0030).** There are no stage-1 stacks any more. The cpio is
+> `package/mister-initramfs` — a static glibc BusyBox (`mister-initramfs-busybox`, a
+> kconfig-package over `board/mister/common/initramfs-busybox.config`) plus a static
+> `fsck.exfat` (`mister-initramfs-exfatprogs`), built by the *main* configuration with the main
+> toolchain, verified by `package/mister-initramfs/verify.sh` inside the package build, and
+> embedded by the linux extension `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS`
+> (`linux/linux-ext-mister-initramfs.mk`), which the `de10nano` fragment sets. The musl-vs-glibc
+> size trade is measured in ADR 0030 §3.1. Everything below describes the retired layout and is
+> kept for the record; §8.4 (`/dev/console`), §8.6 (the exfatprogs trim) and §8.7 (compression)
+> still hold as *requirements*, now enforced by the package and the extension.
 
 STAGE 1 of the two-stage build (TASKS.md P1.10 / A1, PLAN.md §5,
 `docs/decisions/0002-initramfs.md`). Since 2026-09-06 a fragment stack per

@@ -33,19 +33,19 @@
 # entry on it, so this synthetic test is the only place that regression can
 # ever be caught (see the case function below for the full argument).
 #
-# Usage: scripts/test-initramfs.sh [--board de10nano|de25nano] [case ...]
+# Usage: scripts/test-initramfs.sh [--board de10nano|de25nano] [--kernel default|rt] [case ...]
 #   With no case arguments, runs all eight cases. Exit 0 iff every requested
 #   case passed; nonzero otherwise (wired for P4.1's CI job).
 #
 # TWO BOARDS, ONE /init (ADR 0029 D11, 2026-09-06). The stage-1 /init is
 # arch-neutral and is built for both boards from the same fragment stack base
-# (configs/fragments/initramfs-common.fragment); `--board` picks which built
+# (package/mister-initramfs, built by each board's own configuration); `--board` picks which built
 # cpio to boot and which machine to boot it on:
 #
-#   de10nano (default)  output-initramfs/images/rootfs.cpio, armv7, on
+#   de10nano (default)  output/images/mister-initramfs.cpio, armv7, on
 #                       `qemu-system-arm -M virt` with a multi_v7_defconfig
 #                       kernel at the DE10's pinned version.
-#   de25nano            output-initramfs-de25/images/rootfs.cpio, aarch64, on
+#   de25nano            output-de25/images/mister-initramfs.cpio, aarch64, on
 #                       `qemu-system-aarch64 -M virt -cpu cortex-a76` with a
 #                       kernel built from the DE25's OWN product config
 #                       (board/mister/de25nano/linux.config + the shared
@@ -58,18 +58,28 @@
 #                       DE10 leg deliberately does not (its product kernel
 #                       cannot run under QEMU at all).
 #
+# ONE BOARD, TWO KERNEL SERIES (2026-09-11). `--kernel rt` (de10nano only)
+# runs the same DE10 leg against the RT kernel's pin (BR2_PACKAGE_LINUX_RT_VERSION,
+# 7.2.y) with the RT series' own re-anchored board patch 0031
+# (board/mister/de10nano/linux-patches-beta/). 7.x exfat is iomap-based and
+# 0031 had to be rewritten for it; the DE25 leg executes that rewrite on
+# aarch64, but the DE10-Nano runs it as 32-bit ARM, which nothing else boots
+# -- the first field `ln -s` on an RT-booted board Oopsed (page_symlink ->
+# NULL write_begin, 2026-09-11, before the rewrite had shipped there). This
+# leg is the 32-bit proof; its caches live under work/test-initramfs-rt*.
+#
 #   Every case, cmdline and assertion is identical between the two legs. The
-#   cross compiler for the DE25 leg is the stage-1 build's own musl toolchain
-#   (output-initramfs-de25/host/bin), so `make de25-initramfs` is the only
+#   cross compiler for the DE25 leg is the DE25 build's own glibc toolchain
+#   (output-de25/host/bin), so `make de25` is the only
 #   build prerequisite -- no `make de25` needed.
 #
 # Prerequisites (all checked explicitly, with an actionable message, before
 # anything runs):
-#   - `make initramfs` (or `make de25-initramfs`) already run, so the cpio
+#   - `make mister-initramfs` (or `make de25`, with the DE25 stack enabling the extension) already run, so the cpio
 #     exists
 #   - the matching Buildroot cross toolchain on PATH or under the output dir
 #     the board uses (arm-buildroot-linux-gnueabihf-gcc from output/host/bin;
-#     aarch64-buildroot-linux-musl-gcc from output-initramfs-de25/host/bin)
+#     aarch64-buildroot-linux-gnu-gcc from output-de25/host/bin)
 #   - qemu-system-arm / qemu-system-aarch64, mkfs.vfat, mkfs.exfat, sfdisk,
 #     mke2fs, cpio, mtools (mcopy, mmd)
 #   - a QEMU-bootable test kernel: reused from a cache
@@ -91,11 +101,18 @@ SUPPORT="$HERE/test-initramfs"
 # environment is the same switch for callers that cannot pass arguments
 # (ci-tests.sh's per-board legs use the flag).
 BOARD="${TEST_INITRAMFS_BOARD:-de10nano}"
+# `--kernel` picks which of the board's kernel series the QEMU test kernel is
+# built at: `default` (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, the shipped
+# kernel) or `rt` (BR2_PACKAGE_LINUX_RT_VERSION with the RT series' own patch
+# 0031). TEST_INITRAMFS_KERNEL is the environment form.
+KERNEL="${TEST_INITRAMFS_KERNEL:-default}"
 _args=()
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--board) shift; BOARD="${1:-}" ;;
 		--board=*) BOARD="${1#--board=}" ;;
+		--kernel) shift; KERNEL="${1:-}" ;;
+		--kernel=*) KERNEL="${1#--kernel=}" ;;
 		*) _args+=("$1") ;;
 	esac
 	shift
@@ -104,8 +121,8 @@ set -- ${_args[@]+"${_args[@]}"}
 
 case "$BOARD" in
 de10nano)
-	CPIO="$ROOT/output-initramfs/images/rootfs.cpio"
-	CPIO_MAKE_TARGET="initramfs"
+	CPIO="$ROOT/output/images/mister-initramfs.cpio"
+	CPIO_MAKE_TARGET="mister-initramfs"
 	KARCH=arm
 	CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
 	TOOLCHAIN_BIN="$ROOT/output/host/bin"
@@ -116,16 +133,17 @@ de10nano)
 	# The generic ARM kernel: multi_v7_defconfig + this harness's fragment.
 	KERNEL_BASE_DEFCONFIG=multi_v7_defconfig
 	KERNEL_BASE_FILES=()
-	PIN_FRAGMENT="$ROOT/configs/fragments/de10nano.fragment"
+	PIN_FRAGMENT="$ROOT/configs/mister_de10nano_defconfig"
+	PIN_SYMBOL=BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE
 	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
 	CACHE_TAG=""
 	;;
 de25nano)
-	CPIO="$ROOT/output-initramfs-de25/images/rootfs.cpio"
-	CPIO_MAKE_TARGET="de25-initramfs"
+	CPIO="$ROOT/output-de25/images/mister-initramfs.cpio"
+	CPIO_MAKE_TARGET="de25   # with BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y in the DE25 stack (ADR 0029 D11)"
 	KARCH=arm64
-	CROSS_COMPILE="${CROSS_COMPILE:-aarch64-buildroot-linux-musl-}"
-	TOOLCHAIN_BIN="$ROOT/output-initramfs-de25/host/bin"
+	CROSS_COMPILE="${CROSS_COMPILE:-aarch64-buildroot-linux-gnu-}"
+	TOOLCHAIN_BIN="$ROOT/output-de25/host/bin"
 	QEMU_SYSTEM=qemu-system-aarch64
 	# `-M virt` has no default CPU on aarch64; cortex-a76 is the DE25's big
 	# core and what the stage-1 toolchain tunes for (BR2_cortex_a76_a55 --
@@ -137,7 +155,8 @@ de25nano)
 	KERNEL_BASE_DEFCONFIG=""
 	KERNEL_BASE_FILES=("$ROOT/board/mister/de25nano/linux.config"
 	                   "$ROOT/board/mister/common/linux-mister.fragment")
-	PIN_FRAGMENT="$ROOT/configs/fragments/de25nano.fragment"
+	PIN_FRAGMENT="$ROOT/configs/mister_de25nano_defconfig"
+	PIN_SYMBOL=BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE
 	# Resolved through the DE25's own patch dir, which links to the 7.x
 	# re-anchored copy in linux-patches-beta/ (since 2026-09-06 -- this
 	# very case found the shared 6.18 form Oopsing on 7.x, ADR 0002 §8b).
@@ -146,6 +165,23 @@ de25nano)
 	;;
 *)
 	printf 'test-initramfs.sh: FATAL: unknown --board %s (known: de10nano, de25nano)\n' "'$BOARD'" >&2
+	exit 2
+	;;
+esac
+
+case "$BOARD/$KERNEL" in
+*/default)
+	;;
+de10nano/rt)
+	# The RT series: its pin, its own 7.x-anchored 0031, its own caches (a
+	# 7.2.y source tree and O= build must never share work/ with the 6.18
+	# ones -- ensure_qemu_kernel() reuses whatever it finds there).
+	PIN_SYMBOL=BR2_PACKAGE_LINUX_RT_VERSION
+	EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches-beta/0031-exfat-samsung-symlinks.patch"
+	CACHE_TAG="-rt"
+	;;
+*)
+	printf 'test-initramfs.sh: FATAL: unknown --kernel %s for --board %s (known: default; rt on de10nano)\n' "'$KERNEL'" "$BOARD" >&2
 	exit 2
 	;;
 esac
@@ -171,14 +207,14 @@ KERNEL_SRC="${TEST_INITRAMFS_KERNEL_SRC:-$ROOT/work/test-initramfs$CACHE_TAG-ker
 # fails the QEMU kernel build with a confusing "too few arguments". Reading the
 # pin keeps this test kernel on the same version the image ships, which is what
 # this script's header already claims it does.
-KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$PIN_FRAGMENT")}"
+KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n "s/^$PIN_SYMBOL=\"\(.*\)\"\$/\1/p" "$PIN_FRAGMENT")}"
 # Inline, not die() -- that is defined further down, and this block runs before
 # it. Under `set -uo pipefail` (no -e) an undefined-function call would print
 # "command not found" and CARRY ON, which is exactly the silent failure this
 # guard exists to prevent.
 [ -n "$KERNEL_VERSION" ] || {
 	printf 'test-initramfs.sh: FATAL: %s\n' \
-		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from ${PIN_FRAGMENT#"$ROOT"/}" >&2
+		"could not read $PIN_SYMBOL from ${PIN_FRAGMENT#"$ROOT"/}" >&2
 	exit 2
 }
 # The pristine source tarball. Buildroot's own kernel build fetches it into
@@ -1021,7 +1057,7 @@ main() {
 	ensure_qemu_kernel
 	build_marker_inits
 
-	log "board: $BOARD ($KARCH, $QEMU_SYSTEM ${QEMU_MACHINE[*]}, kernel $KERNEL_VERSION, cpio ${CPIO#"$ROOT"/})"
+	log "board: $BOARD ($KARCH, $QEMU_SYSTEM ${QEMU_MACHINE[*]}, kernel $KERNEL_VERSION [$KERNEL series, $(basename "$(dirname "$EXFAT_SYMLINK_PATCH")")/0031], cpio ${CPIO#"$ROOT"/})"
 	log "running ${#requested[@]} case(s): ${requested[*]}"
 	echo ""
 	local c

@@ -372,8 +372,77 @@ device directly and never sees a dirty bdev buffer), and does the `valid_size` /
 `zeroed_size` / `i_size` bookkeeping the write path would have done. Applies at `-F0` to
 pristine 7.2.3; compiles for arm with the RT `.config` and for arm64 with the DE25's; the
 aarch64 leg is **8/8** with the `symlink` case's full assertion set (hot+cold round-trip,
-`DT_LNK`, the create+unlink cluster-leak tripwire via `statvfs`, host-side fsck-clean). What
-remains unexecuted is 0031 on 32-bit 7.x — the RT kernel on a real board.
+`DT_LNK`, the create+unlink cluster-leak tripwire via `statvfs`, host-side fsck-clean).
+
+**2026-09-11 — the 32-bit gap closed, the hard way first.** The maintainer's rig was still on
+an RT 7.2.3 kernel built 2026-09-05, before the rewrite shipped there; `update_all.sh`'s
+Arcade Organizer created its first `.mra` symlink on `/media/fat` and the board Oopsed
+exactly as above (`PC is at 0x0`, `LR is at page_symlink+0x90`, from `exfat_symlink`; captured
+by netconsole) and, with `CONFIG_PANIC_ON_OOPS=y` + `panic=15`, rebooted 17 s later. The
+same day `scripts/test-initramfs.sh --kernel rt` was added: the DE10 leg built at the RT pin
+(`BR2_PACKAGE_LINUX_RT_VERSION`) with `linux-patches-beta/0031`, on `qemu-system-arm`, so the
+rewrite is executed as 32-bit ARM. Result at 7.2.4: `symlink`, `exfat`, `fsck-request` pass;
+the negative control (the 6.18-form patch on the same 7.2.4 source) reproduces the rig's
+Oops in QEMU, so the leg detects the bug it exists for. `ci-tests.sh` runs it after the
+DE10 leg. What remains is the ordinary hardware claim: a board boot of the fixed RT kernel.
+
+## 8c. Amendment 2026-09-11 — stage 1 becomes a package of the main build (ADR 0030)
+
+The two-stage build's *mechanism* changes; nothing about what `/init` does, or the four
+kernel-side requirements (I1–I4), changes. The owner accepted ADR 0030's Phase B: stage 1 is no
+longer a second Buildroot configuration in `output-initramfs/` with its own musl toolchain. It is
+`package/mister-initramfs` in the main configuration:
+
+- `mister-initramfs-busybox` — a kconfig-package over the same
+  `board/mister/common/initramfs-busybox.config`, built with the **main glibc toolchain** and
+  linked `-static` by the package itself (`CONFIG_STATIC` pinned in its fixup), upstream's busybox
+  patches applied. §10's "glibc + `CONFIG_STATIC`" rejection was about a Buildroot
+  *configuration* (`BR2_STATIC_LIBS` is not offered with glibc, and the rootfs would carry the
+  shared libc): neither applies to a package that builds one static binary into its own
+  directory.
+- `mister-initramfs-exfatprogs` — the same for `fsck.exfat`; only that binary is copied, so
+  ADR 0026's trim of the other five tools is structural rather than a post-build deletion.
+- `mister-initramfs` — assembles the tree, the overlay's `/init` and `/dev/console` (under
+  `host-fakeroot`, as `fs/common.mk` does), packs the cpio with `--reproducible` and pinned
+  mtimes under `BR2_REPRODUCIBLE`, runs `verify.sh` (the applet, forbidden-binary, `/init` and
+  `ash -n` checks that were `make initramfs-verify`; a failure fails the package), and installs
+  `images/mister-initramfs.cpio`.
+- `linux/linux-ext-mister-initramfs.mk` + `linux/Config.ext.in` — a br2-external **linux
+  extension** (`BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS`). It is included by `linux/linux.mk`
+  before the kernel package is evaluated, which is the only hook early enough to make the kernel
+  *depend* on the package; the `CONFIG_INITRAMFS_SOURCE` fixup moved there from `external.mk`
+  unchanged. `MISTER_INITRAMFS_CPIO` stays overridable for `mk-sdcard.sh`'s installer relink.
+
+**Measured cost (2026-09-11):** static glibc BusyBox 942,660 B against the musl 263,308 B
+(§7's numbers); the static `fsck.exfat` adds a similar delta. Against the 16 MiB `zImage_dtb`
+budget (`docs/boot-chain.md` §7.3, a RAM-layout limit, not a card-size one) with ~7.4 MB of
+headroom on the RT kernel, accepted by the owner.
+
+**What this retires:** `output-initramfs/`, `output-initramfs-de25/`, the `initramfs-*`
+fragment stacks and their golden lines, `make initramfs` / `check-initramfs` /
+`initramfs-verify` / `de25-initramfs*`, `board/mister/common/initramfs-post-build.sh`, the
+initramfs host-toolchain cache in CI, and `external.mk`'s embedding block. The `BR2_arm` gate
+becomes the extension symbol, which the `de10nano` fragment sets and the `de25nano` fragment does
+not (ADR 0029 D11 unchanged: enabling it there is the one-line switch).
+
+**Verification for this amendment (2026-09-11, branch `feat/vanilla-buildroot`, worktree
+build from scratch on Buildroot 2026.08):**
+- `make all` exit 0; `mister-initramfs: verify OK (44 entries, 1577984 bytes)`; `images/zImage_dtb`
+  9,717,297 bytes, `check-zimage-dtb.sh` headroom 7,059,919 bytes under the 16 MiB budget.
+- `zcat output/build/linux-6.18.50/usr/initramfs_inc_data | cmp - images/mister-initramfs.cpio`:
+  **identical** (§7's check, on the package cpio). Kernel `.config`: `CONFIG_BLK_DEV_INITRD=y`,
+  `CONFIG_INITRAMFS_SOURCE` = the package cpio, `CONFIG_INITRAMFS_COMPRESSION_GZIP=y`.
+- Content against the retired musl cpio (80 entries → 44): the applet symlink set is
+  **identical**, `/init` is byte-identical to the overlay, `/dev/console` present; the entries
+  gone are Buildroot's skeleton (`etc/*`, `lib/ld-musl*`, `dev/fd`, `var`, …), none of which
+  `/init` touches; the entries new are `mnt/fat` and `newroot`, which `/init` `mkdir -p`s anyway.
+  `bin/busybox` 942,660 B and `usr/sbin/fsck.exfat` 611,508 B, both static glibc.
+- `scripts/ci-tests.sh`: **366 pass, 0 fail, 6 skip**, including `initramfs embedding` and
+  `test-initramfs.sh` **8/8** QEMU boot cases on the new cpio (fat32, exfat, fsck-request,
+  symlink, label, nonascii, missing-image, rootwait).
+- Not yet done: a boot on the rig. The verify-before-switch protocol
+  (`docs/rt-beta-kernel.md` §5 shape: copy as `_vN`, `sha256sum` on device, then edit
+  `u-boot.txt` with a rollback copy) applies; the owner flashes.
 
 ## 9. Known gaps (deliberate, not oversights)
 

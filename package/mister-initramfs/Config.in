@@ -1,0 +1,21 @@
+config BR2_PACKAGE_MISTER_INITRAMFS
+	bool "mister-initramfs (stage-1 initramfs cpio for the kernel)"
+	select BR2_PACKAGE_MISTER_INITRAMFS_BUSYBOX
+	select BR2_PACKAGE_MISTER_INITRAMFS_EXFATPROGS
+	help
+	  The MiSTer stage-1 initramfs (ADR 0002): a static BusyBox, a
+	  static fsck.exfat and board/mister/common/initramfs-overlay/init,
+	  packed into images/mister-initramfs.cpio. It replaces stock's
+	  in-kernel do_mounts.c patch: /init mounts the SD data partition,
+	  loop-mounts linux/linux.img off it and switch_roots into it.
+
+	  It is a PACKAGE of the main build (built with the main toolchain,
+	  statically linked) rather than a second Buildroot configuration,
+	  so one 'make' produces it and the kernel that embeds it. Enable
+	  the kernel side with BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS (Kernel
+	  -> Linux Kernel Extensions), which selects this package and points
+	  CONFIG_INITRAMFS_SOURCE at the cpio.
+
+	  Nothing from this package is installed into the rootfs.
+
+	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/decisions/0002-initramfs.md

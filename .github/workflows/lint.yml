@@ -141,9 +141,9 @@ jobs:
       # are bash (BR2_PACKAGE_BASH is on the target). The rootfs tools are named
       # by their SOURCE path and carry no .sh extension -- the recursive find
       # above only covers scripts/, so nothing else would ever check them.
-      # The initramfs /init and initramfs-post-build.sh are `sh`:
-      # stage 1 has BusyBox ash and nothing else. `make initramfs-verify`
-      # additionally parses /init with the very ash we just built -- shellcheck
+      # The initramfs /init is `sh`: stage 1 has BusyBox ash and nothing
+      # else. package/mister-initramfs/verify.sh additionally parses /init with
+      # the very ash we just built, inside the package build -- shellcheck
       # checks the language, that checks the interpreter we ship.
       #
       # package/azcopy/azcopy-profile.sh is `sh` for the same reason. It is

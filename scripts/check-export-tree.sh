@@ -93,16 +93,11 @@ export LC_ALL=C
 # (shellcheck SC2155), and the rest of scripts/ avoids that pattern.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
-ROOT="$REPO_ROOT"
-readonly ROOT
-# shellcheck source=scripts/lib/config-stacks.sh
-. "$REPO_ROOT/scripts/lib/config-stacks.sh"
 
 # The same stack scripts/export-kernel-tree.sh exports, for the same reason: since the
 # 2026-09 fragment split no single fragment holds both the kernel pin and the package
 # selections, and reading one file gives a confidently wrong answer. See that script's
 # STACK_FILES note.
-readonly CHECK_STACK=DE10NANO
 
 readonly ALIAS_DTB='intel/socfpga/socfpga_cyclone5_de10_nano.dtb'
 readonly VANILLA_DTB='intel/socfpga/socfpga_cyclone5_de10nano.dtb'
@@ -185,16 +180,15 @@ git -C "$export_dir" rev-parse --git-dir >/dev/null 2>&1 ||
 
 # mapfile, not an unquoted $(...): word-splitting a path list is a bug waiting for the
 # first directory with a space in it, and shellcheck flags it (SC2046).
-mapfile -t stack_files < <(config_stack_files "$CHECK_STACK")
-((${#stack_files[@]})) ||
-	die "no ${CHECK_STACK}_FRAGMENTS line in $REPO_ROOT/configs/fragments/stacks.mk"
+stack_files=("$REPO_ROOT/configs/mister_de10nano_defconfig")
+[ -f "${stack_files[0]}" ] || die "no ${stack_files[0]}"
 
 # All stack files in merge order, `tail -1` last: kconfig's own last-definition-wins rule,
 # so a symbol moved between fragments still resolves to the value the image is built with.
 pinned_version="$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
 	"${stack_files[@]}" | tail -1)"
 [[ -n $pinned_version ]] ||
-	die "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in the $(config_stack_label "$CHECK_STACK") stack"
+	die "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE not set in the DE10 defconfig"
 
 tag="mister-$pinned_version"
 git -C "$export_dir" rev-parse --verify --quiet "refs/tags/$tag" >/dev/null ||

@@ -13,6 +13,14 @@ DP-2 depends on).
 
 ---
 
+> **Layout note (2026-09-11, ADR 0030):** file and target names in this document predate the
+> refactor that replaced the fragment stacks with committed `configs/mister_*_defconfig` files and
+> Kconfig profiles, moved the RT kernel into `package/linux-rt` (`output/build/linux-rt-*`, no
+> `output-rt/`), the stage-1 initramfs into `package/mister-initramfs`, and retired the
+> kernel-variant CI matrix, `scripts/list-kernel-variants.sh`, `check-kernel-defconfig-sync.sh`
+> and `scripts/lib/board-expectations.sh`. Read the paths here as of their date; the current
+> layout is README "Building it yourself" and `docs/ci.md` "The pipeline today".
+
 ## 1. Why this document exists, and what it is *not*
 
 A fresh grep for `de10nano|BR2_arm|zImage` outside `board/mister/de10nano/` and `docs/` hits
@@ -89,10 +97,10 @@ in prose, no action or a one-word reword.
 > `renovate.json`, `renovate-hash-sync.yml`, `scripts/hash-sync-kernel.sh`,
 > `scripts/ci-tests.sh`, `scripts/test-initramfs.sh`, `scripts/test-sdcard-install.sh`,
 > `scripts/export-kernel-tree.sh` and `scripts/lint-kernel-patches.sh` read
-> `configs/fragments/de10nano.fragment`; `scripts/check-linux-img.sh` cites
-> `configs/fragments/de10nano-image.fragment`; `scripts/check-kernel-defconfig-sync.sh`
+> `configs/mister_de10nano_defconfig`; `scripts/check-linux-img.sh` cites
+> `configs/mister_de10nano_defconfig`; `scripts/check-kernel-defconfig-sync.sh`
 > compares the two DE10 stacks' merged text. The `Makefile` rows in §4 are superseded
-> by `make de10nano-defconfig` / `make de25nano-defconfig`. The line numbers below are
+> by `make mister_de10nano_defconfig` / `make O=output-de25 mister_de25nano_defconfig`. The line numbers below are
 > the pre-split ones and are kept as the record of what was verified.
 
 | file:line | coupling | sev | when you touch this, do this instead |
@@ -130,7 +138,7 @@ in prose, no action or a one-word reword.
 | `configs/mister_initramfs_defconfig:5,56,59,84` | Prose plus busybox-config / overlay / post-build-script paths under the board dir **[V]** | parameterize | Path substitution only — no arch semantics in any of the three. |
 | `configs/mister_installer_defconfig:60-64` | `BR2_arm=y` / `BR2_cortex_a9=y` / NEON / VFP / FPU_NEON for the throwaway installer OS **[V]** | cosmetic | Board-owned file: DE25 gets its own installer defconfig if and when its installer flow is designed (which DP-2 and coupling (b) gate anyway). |
 | `configs/mister_installer_defconfig:109,116` | Installer busybox config + installer overlay under the board dir **[V]** | cosmetic | Same — the DE25 copy repeats the pattern. |
-| `configs/mister_rt.fragment:23,62,100,105,108` | Kernel-patch dir, RT fragment path, and the hash coupling all name `board/mister/de10nano/`; `:100` records a `zImage_dtb` build check **[V]** | parameterize | Board-scope the three paths when the RT variant is next touched; note DP-6 says RT on big.LITTLE must be re-evaluated, not assumed to port. |
+| `package/linux-rt/Config.in:23,62,100,105,108` | Kernel-patch dir, RT fragment path, and the hash coupling all name `board/mister/de10nano/`; `:100` records a `zImage_dtb` build check **[V]** | parameterize | Board-scope the three paths when the RT variant is next touched; note DP-6 says RT on big.LITTLE must be re-evaluated, not assumed to port. |
 | `Makefile:69` | `INITRAMFS_INIT := $(ROOT_DIR)/board/mister/de10nano/initramfs-overlay/init` **[V]** | parameterize | Take the board dir from a `BOARD` make variable defaulting to `de10nano` — see §6.2. |
 | `Makefile:330` | `$(BR_MAKE) mister_de10nano_defconfig` in the `.config` recipe **[V]** | parameterize | Drive the defconfig name off the same `BOARD` variable so `make BOARD=de25nano` is the whole invocation surface — see §6.2. |
 | `Makefile:393,436,450,541,628,654,701,886` | Eight more board-dir paths and error strings, incl. `:701` invoking `board/mister/de10nano/post-image.sh` **[V]** | parameterize | Same `BOARD` substitution; `:701` is the one that actually *runs* something, so it moves with `:69`/`:330` in the same diff. |

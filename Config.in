@@ -1,5 +1,17 @@
 menu "MiSTer external options"
 
+menu "MiSTer profiles (ADR 0030 -- one symbol selects a documented package set)"
+	# THE ONE DEPARTURE FROM A PLAIN BUILDROOT DEFCONFIG. In a plain project
+	# every package is a line in configs/<board>_defconfig. Here the shared
+	# sets are Kconfig profiles that `select` their members, so two boards
+	# share a userspace by selecting one symbol and cannot drift apart on
+	# it. "Why is package X in my image?" -> the profile's Config.in, whose
+	# section headers mirror docs/buildroot-config.md §5.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-firmware/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-drivers/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-userspace/Config.in"
+endmenu
+
 menu "USB WiFi drivers (out-of-tree)"
 	# MAINLINE-FIRST policy (ADR 0016). The rule is "use the in-kernel driver
 	# for every chip the kernel can drive; keep an out-of-tree driver ONLY
@@ -167,6 +179,28 @@ menu "Off-device backup"
 	# pulls host-go into the build. See package/azcopy/azcopy.mk for what
 	# that costs and why host-go is left at its from-source default.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/azcopy/Config.in"
+endmenu
+
+menu "Kernel variants (ADR 0021)"
+	# A second kernel built beside the main one in this same tree (ADR 0030
+	# Phase C): PREEMPT_RT on the 7.2.y line -> images/zImage_dtb-rt, with
+	# its module tree in the ONE rootfs. Same shape as Buildroot's own
+	# barebox-aux. Requires the stage-1 extension below (it embeds the same
+	# cpio).
+	source "$BR2_EXTERNAL_MISTER_PATH/package/linux-rt/Config.in"
+endmenu
+
+menu "Stage-1 initramfs (ADR 0002)"
+	# The cpio the kernel embeds, built as a package of this configuration
+	# (ADR 0030): a static BusyBox and a static fsck.exfat from the main
+	# toolchain, plus board/mister/common/initramfs-overlay/init. The
+	# kernel side -- CONFIG_INITRAMFS_SOURCE pointing at the cpio -- is the
+	# linux extension BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS (Kernel ->
+	# Linux Kernel Extensions), which selects the package. The two
+	# sub-packages have no prompt of their own.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs-busybox/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/mister-initramfs-exfatprogs/Config.in"
 endmenu
 
 endmenu

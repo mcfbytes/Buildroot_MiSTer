@@ -1,0 +1,65 @@
+# MiSTer DE10-Nano image -- the shipped linux.img + zImage_dtb (and zImage_dtb-rt).
+#
+# Load with `make mister_de10nano_defconfig`, build with `make`. This file is
+# Buildroot's own minimal form (`make savedefconfig` reproduces it; scripts/
+# check-defconfigs.sh asserts that), so a diff here is the real change. The
+# rationale for every line is docs/buildroot-config.md (section numbers there).
+#
+# ONE DEPARTURE FROM A PLAIN BUILDROOT DEFCONFIG: the package sets are Kconfig
+# PROFILES -- BR2_PACKAGE_MISTER_USERSPACE / _FIRMWARE / _DRIVERS at the bottom
+# each select a documented list (package/mister-*/Config.in), so the DE25-Nano
+# shares them by selecting the same symbols. "Why is package X in my image?"
+# -> package/mister-userspace/Config.in.
+#
+# Decisions that leave no line because they are Buildroot's default, recorded
+# here so they are not "missing": passwordless root (BR2_TARGET_GENERIC_ROOT_PASSWD
+# is "", matching stock, ADR 0015); azcopy is packaged but NOT enabled
+# (docs/azcopy.md); zImage is the arm default image.
+#
+# Pins Renovate manages in THIS file: the 6.18.y kernel
+# (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, hash in board/mister/de10nano/patches/
+# linux/linux.hash) and the 7.2.y RT kernel (BR2_PACKAGE_LINUX_RT_VERSION, hash
+# in package/linux-rt/linux-rt.hash).
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+BR2_KERNEL_HEADERS_6_18=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/patches"
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+BR2_REPRODUCIBLE=y
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_ROOTFS_MERGED_USR=y
+BR2_SYSTEM_BIN_SH_BASH=y
+BR2_GENERATE_LOCALE="en_US.UTF-8"
+BR2_TARGET_TZ_INFO=y
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="../../board/mister/de10nano/post-image.sh"
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.50"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux-patches"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/linux.config"
+BR2_LINUX_KERNEL_LZ4=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="intel/socfpga/socfpga_cyclone5_de10nano"
+BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/busybox.fragment"
+# BR2_PACKAGE_NFS_UTILS_RPC_NFSD is not set
+# BR2_PACKAGE_LVM2_STANDARD_INSTALL is not set
+BR2_PACKAGE_ZLIB_NG=y
+# BR2_PACKAGE_OPENSSH_SANDBOX is not set
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+BR2_TARGET_ROOTFS_EXT2_MKFS_OPTIONS="-U 71916572-439f-448e-b8d8-12b0a032fa56 -E hash_seed=9afc615c-c310-4e03-ada9-613522e83ae6 -b 4096 -O has_journal,ext_attr,resize_inode,dir_index,filetype,extent,64bit,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize,metadata_csum,^metadata_csum_seed,^orphan_file"
+BR2_PACKAGE_HOST_KMOD_XZ=y
+BR2_PACKAGE_MISTER_FIRMWARE=y
+BR2_PACKAGE_MISTER_DRIVERS=y
+BR2_PACKAGE_MISTER_USERSPACE=y
+BR2_PACKAGE_LINUX_RT=y
+BR2_PACKAGE_LINUX_RT_VERSION="7.2.4"

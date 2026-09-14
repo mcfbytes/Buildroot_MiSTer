@@ -96,7 +96,7 @@ Answer in one line each; silence takes the recommendation.
 - [x] **U0 — ADR + redirects** — DONE (ADR 0024 landed 2026-07-28; amended 2026-09-14 with the
   version drift, the mirror-stock decisions and the ADR 0023 fold-in).
 
-- [ ] **U1 — Buildroot wiring** — [SONNET] — Size M — Depends: owner decision 1
+- [x] **U1 — Buildroot wiring** — [SONNET] — Size M — Depends: owner decision 1
   Assuming decision 1's recommendation: add to `configs/mister_de10nano_defconfig`
   `BR2_TARGET_UBOOT=y`, `BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG=y`,
   `BR2_TARGET_UBOOT_LATEST_VERSION=y` (2026.07 under Buildroot 2026.08 — the only source choice
@@ -125,7 +125,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** `make` from a configured tree emits `images/u-boot-with-spl.sfp`; `ci-tests.sh`
   passes; `check-defconfigs.sh` green; CI build time delta recorded in the PR.
 
-- [ ] **U2a — Patches 0001/0002, the two upstream fixes** — [SONNET] — Size S — Depends: —
+- [x] **U2a — Patches 0001/0002, the two upstream fixes** — [SONNET] — Size S — Depends: —
   `0001-arm-socfpga-fix-dead-raw-sector-hook-guard.patch`: `arch/arm/mach-socfpga/board.c:214-215`
   `CONFIG_TARGET_SOCFPGA_{ARRIA10,GEN5}` → `CONFIG_ARCH_SOCFPGA_{ARRIA10,GEN5}` (fallout of
   `62f7a94602`). `0002-fs-exfat-fix-64-bit-division-on-32-bit-arm.patch`: `fs/exfat/time.c:129,147-148`
@@ -137,7 +137,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** both apply at `-F0`; `nm spl/u-boot-spl` shows `board_spl_mmc_get_uboot_raw_sector`
   **[V]** (absent without 0001); the `FS_EXFAT` build links **[V]**.
 
-- [ ] **U2b — Patch 0003, the fork's QTS handoff** — [SONNET] — Size S — Depends: —
+- [x] **U2b — Patch 0003, the fork's QTS handoff** — [SONNET] — Size S — Depends: —
   `0003-board-terasic-de10-nano-mister-qts-handoff.patch`: the four `board/terasic/de10-nano/qts/*.h`
   from `work/U-Boot_MiSTer@8dcc3484`, `s/CONFIG_HPS_/CFG_HPS_/`, **values unmodified** (decided:
   `FPGAPORTRST=0x3FFF`, both s2f clock counts, the three pinmux bits, the 32 IOCSR words).
@@ -146,7 +146,7 @@ Answer in one line each; silence takes the recommendation.
   Provenance: fork `dadd1c8978` ("Use SPL config from DE10 FB project") and plan §3.2/§3.2a.
   **Done when:** the two `qtsdiff.py` runs say exactly that **[V]**, recorded in the patch header.
 
-- [ ] **U2c — Patch 0004, the fork's `mt`** — [SONNET] — Size S — Depends: —
+- [x] **U2c — Patch 0004, the fork's `mt`** — [SONNET] — Size S — Depends: —
   `0004-cmd-mem-add-mt-memory-test-against-value.patch`: port `do_mem_mt` + its `U_BOOT_CMD`
   from `work/U-Boot_MiSTer/cmd/mem.c:158-180,1259-1263` (`cmd_tbl_t` → `struct cmd_tbl`,
   `simple_strtoul` → `hextoul`); find the introducing fork commit with `git log -S do_mem_mt`
@@ -157,7 +157,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** the sandbox transcript is in the patch header **[V]**; the command table gains
   `mt` with stock's help string.
 
-- [ ] **U2d — Patch 0005, the warm-reboot bridge behaviour** — [OPUS] — Size M — Depends: —
+- [x] **U2d — Patch 0005, the warm-reboot bridge behaviour** — [OPUS] — Size M — Depends: —
   The fork's `d6010efe50` (Sorgelig, 2017-03-27) adds one line, `socfpga_bridges_reset(0);`, at
   the end of `arch_early_init_r` in the 2017.03 `misc.c`. Mainline's `misc_gen5.c:185-210`
   `arch_early_init_r` ends in `socfpga_bridges_reset(1)`. The line does not port; the
@@ -171,7 +171,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** the patch builds; `objdump -d u-boot` shows `arch_early_init_r` reaching the
   release path **[V]**; the argument survives U9.
 
-- [ ] **U2e — The fragment** — [SONNET] — Size M — Depends: —
+- [x] **U2e — The fragment** — [SONNET] — Size M — Depends: —
   `board/mister/de10nano/uboot.fragment`, headed like the DE25's (which layer is which; the
   merge_config comment-line rule). Every line a delta on `socfpga_de10_nano_defconfig`, each with
   its plan §3.1/§3.3 citation: `CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE=y`;
@@ -189,7 +189,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** the resolved `.config` carries every symbol U3 will assert **[V]**; the
   merge report shows zero dropped symbols.
 
-- [ ] **U2f — The environment file** — [SONNET] — Size S — Depends: —
+- [x] **U2f — The environment file** — [SONNET] — Size S — Depends: —
   `board/mister/de10nano/uboot.env`: stock's 21 entries, verbatim, in U-Boot's `.env` text
   format, with `mt` kept (U2c). Start from
   `/mnt/source/uboot-mainline/env-layout-parity/mister.env.txt` (it already built
@@ -202,7 +202,7 @@ Answer in one line each; silence takes the recommendation.
   file header that `CONFIG_ENV_SIZE=0x1000` (U2e) bounds it.
   **Done when:** `cmp` is silent **[V]**.
 
-- [ ] **U4a — `scripts/check-uboot-parity.sh`** — [OPUS] — Size M — Depends: —
+- [x] **U4a — `scripts/check-uboot-parity.sh`** — [OPUS] — Size M — Depends: —
   House style of `scripts/check-zimage-dtb.sh`: POSIX `sh`, `set -eu`, header naming the
   contract and citing boot-chain sections, `Usage: check-uboot-parity.sh <built.sfp> <stock-uboot.img>`,
   `Exit: 0 = pass, 1 = contract violation, 2 = usage/IO error`, `note()`/`ok()`/`bad()`. Structural
@@ -221,7 +221,7 @@ Answer in one line each; silence takes the recommendation.
   with the right message. Runs today against the stock blob alone; U2g points it at the build.
   **Done when:** fixtures pass/fail as listed **[V]**; shellcheck clean.
 
-- [ ] **U4b — `scripts/check-uboot-handoff.sh`** — [SONNET] — Size M — Depends: —
+- [x] **U4b — `scripts/check-uboot-handoff.sh`** — [SONNET] — Size M — Depends: —
   The plan §3.2a/§6 handoff-equality gate. Inputs: the carried `qts/*.h` (from the patch or the
   patched tree), the built `.sfp`, the stock `uboot.img`. Pack the seven tables (u32 LE for the
   `iocsr_scan_chain*`, `ac_rom_init`, `inst_rom_init` arrays; **raw bytes** for
@@ -234,23 +234,28 @@ Answer in one line each; silence takes the recommendation.
   run is the whole point, keep its transcript in `docs/verification/uboot-mainline.md`.
   **Done when:** both fixture runs behave **[V]**; shellcheck clean.
 
-- [ ] **U8 — Docs debt** — [HAIKU] — Size S — Depends: —
+- [x] **U8 — Docs debt** — [HAIKU] — Size S — Depends: —
   boot-chain §3.1's "20 entries, 1,149 bytes" → **21 entries, 1,150 bytes** (plan §6; the ELF
   symbol is 1,151); README phase-5 row (`README.md:167`) and the documentation-map rows
   (`README.md:1022-1023`) say "2026.07, in progress, ships nowhere"; `PLAN.md` §8 / `TASKS.md`
   P5.1-P5.2 pointers checked. No narrative copied anywhere.
   **Done when:** `git grep "2026.04"` finds only historical measurements in the plan.
 
-- [ ] **U7-prep — Upstream submissions, drafted** — [SONNET] — Size S — Depends: U2a
+- [x] **U7-prep — Upstream submissions, drafted** — [SONNET] — Size S — Depends: U2a
   Two `git format-patch` mails with cover text in U-Boot list style (`scripts/get_maintainer.pl`
   for the socfpga custodian Cc), one per fix, ready in `docs/verification/uboot-upstream/` or
   a PR comment. **Not sent** — owner decision 4. After a send, the carried patches' provenance
   headers gain the list URL.
   **Done when:** the two mails exist and `checkpatch.pl` is clean.
+  **Status 2026-09-14:** both mails are in `/mnt/source/uboot-wave-a/staging/upstream/`
+  (outside the repo, not sent). 0002 is checkpatch-clean; 0001 carries exactly one warning,
+  `PREFER_IF` on the pre-existing `#if defined(...)` line the fix renames. Accepted as
+  intrinsic: the submission is a symbol rename and rewriting the guard as `IS_ENABLED()`
+  would widen a two-symbol fix. Send as-is if ever sent.
 
 ### Wave B — integrate (one agent), then verify (three in parallel)
 
-- [ ] **U2g — Integration build** — [SONNET] — Size M — Depends: U1, U2a–U2f
+- [x] **U2g — Integration build** — [SONNET] — Size M — Depends: U1, U2a–U2f
   Drop the five patches into `board/mister/de10nano/patches/uboot/` (with a `series` file if
   ordering matters), replace the stubs with the real fragment and env, `make uboot-dirclean
   uboot-rebuild`. Record: applies at `-F0`; `nm` shows the hook; `spl/u-boot-spl.bin` size
@@ -261,7 +266,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** `check-uboot-parity.sh` and `check-uboot-handoff.sh` pass against the build
   and the stock blob **[V]**; the verification doc exists.
 
-- [ ] **U3 — Resolved-`.config` assertion inside the build** — [SONNET] — Size S — Depends: U2g
+- [x] **U3 — Resolved-`.config` assertion inside the build** — [SONNET] — Size S — Depends: U2g
   Not a checklist: an `UBOOT_POST_BUILD_HOOKS` append from `external.mk` (the same trick that
   fixed dhcpcd's `CONF_OPTS`) that greps `$(@D)/.config` and fails the build naming the delta
   and its plan §3.1 row. Assert at minimum
@@ -276,7 +281,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** deleting any one fragment line makes `make uboot-rebuild` fail with a message
   naming it **[V]** (do it for three of them and record the output).
 
-- [ ] **U5 — CI** — [SONNET] — Size S — Depends: U2g
+- [x] **U5 — CI** — [SONNET] — Size S — Depends: U2g
   With decision 1's recommendation there is **no new workflow**: the build already runs U-Boot,
   `verify-image` already runs `ci-tests.sh`. Add to `ci-tests.sh` a "U-Boot" section that runs
   both U4 scripts against `images/u-boot-with-spl.sfp` and the stock blob fetched by hash
@@ -289,7 +294,7 @@ Answer in one line each; silence takes the recommendation.
   **Done when:** a PR touching only U-Boot inputs runs the checks; the Actions-minutes delta is
   in the PR description.
 
-- [ ] **U9 — Adversarial review** — [FABLE] — Size M — Depends: U2g (runs alongside U3/U5)
+- [x] **U9 — Adversarial review** — [FABLE] — Size M — Depends: U2g (runs alongside U3/U5)
   Reads, does not edit. Against plan §8's failure taxonomy, patch by patch and symbol by symbol:
   can the built `.sfp` present as a boot on a board while being wrong? Specifically: the U2d
   bridge argument at cold boot and at warm reboot; whether the env `cmp` could pass while the
@@ -320,7 +325,7 @@ the rest.
 
 ### Wave A — fan out (runs with the DE10's wave A)
 
-- [ ] **DU1 — One U-Boot pin for both boards** — [HAIKU] — Size S — Depends: owner decision 2
+- [x] **DU1 — One U-Boot pin for both boards** — [HAIKU] — Size S — Depends: owner decision 2
   If recommended: in `configs/mister_de25nano_defconfig` replace
   `BR2_TARGET_UBOOT_CUSTOM_VERSION=y` + `_VALUE="2026.07"` with `BR2_TARGET_UBOOT_LATEST_VERSION=y`;
   `git rm board/mister/de25nano/patches/uboot/uboot.hash` (its header's reason — "Buildroot's
@@ -331,7 +336,7 @@ the rest.
   **Done when:** the two hashes match **[V]**; `check-defconfigs.sh` green; `de25-uboot.md` §2's
   version table updated.
 
-- [ ] **DU2 — The QSPI-write audit as a build assertion** — [SONNET] — Size S — Depends: —
+- [x] **DU2 — The QSPI-write audit as a build assertion** — [SONNET] — Size S — Depends: —
   `de25-uboot.md` §13 item 7 and `de25-boot-chain.md` §5's final bullet: the rule exists only
   as sentences. Encode §7's table as an `UBOOT_POST_BUILD_HOOKS` append in `external.mk`
   guarded on the DE25 defconfig: every §7 symbol **absent or unset** in the resolved `.config`
@@ -342,10 +347,21 @@ the rest.
   row 11 in `ci-tests.sh`'s DE25 section: no `fw_env.config` in the DE25 rootfs names an MTD
   device. Cite the two docs in the hook's error text.
   **Done when:** re-adding `CONFIG_ENV_IS_IN_UBI=y` to the fragment fails the build naming
-  `de25-uboot.md` §7 **[V]**; `de25-boot-chain.md` §5's final bullet and its §9.3 open-concern row flip to
-  [V] with the commit cited.
+  `de25-uboot.md` §7 **[V]**; `de25-boot-chain.md` §5's final bullet and its §9.3 open-concern row
+  record what is now enforced, with the commit cited.
+  **Status 2026-09-14 (933a2d2), two amendments learned by doing it:** (a) a bare
+  `CONFIG_ENV_IS_IN_UBI=y` never reaches the resolved `.config` (kconfig drops it — `MTD_UBI` and
+  `CMD_UBI` are off), so the hook audits the **fragment text first**, then the resolved config,
+  then `strings u-boot.itb`; the literal negative test fails on the first check. (b) The built
+  FIT unconditionally carries `linux_qspi_enable=if sf probe; …` from
+  `include/configs/socfpga_soc64_common.h` (§7 already dispositions it inert; its caller is
+  gated on `CADENCE_QSPI`, which the same hook proves absent), so the strings check pins exactly
+  one such line and fails on any other. The §5 bullet says "partially enforced": the build
+  assertion is (b) of that bullet's precondition; its (a), a runtime board-identity assertion in
+  the updater, is still unimplemented and out of this task's scope. Guarding
+  `linux_qspi_enable` under `CADENCE_QSPI` in the carried §8 patch is a follow-up for DU5.
 
-- [ ] **DU3 — FIT reproducibility across clean trees** — [SONNET] — Size S — Depends: DU1
+- [x] **DU3 — FIT reproducibility across clean trees** — [SONNET] — Size S — Depends: DU1
   `de25-uboot.md` §5b tags cross-tree identity [U]. Two clean `O=` trees on one commit, same
   toolchain, `sha256sum` of `u-boot.itb` and `bl31.bin`; if they differ, `dumpimage -l` and
   `diffoscope`-style section comparison to name the source (build path, timestamp,
@@ -353,7 +369,7 @@ the rest.
   budget); record the method so the D2.8 release lane can repeat it.
   **Done when:** §5b's [U] becomes [V] or a named cause.
 
-- [ ] **DU4 — §13 decisions dispositioned** — [HAIKU] — Size S — Depends: owner decision 5
+- [x] **DU4 — §13 decisions dispositioned** — [HAIKU] — Size S — Depends: owner decision 5
   Recommendations, one per `de25-uboot.md` §13 item: (1) keep the carried mtdids/mtdparts
   guard patch — one line, inert argument not needed; (2) `HANDOFF` off + declared 1 GiB as
   shipped; (3) `&mmc` at 25 MHz as shipped; (4) no seeded `uboot.env`; (5) keep `FS_EXFAT=y`
@@ -363,13 +379,13 @@ the rest.
   into §13 with the date; nothing else changes.
   **Done when:** §13 has a disposition line per item.
 
-- [ ] **DU5-prep — Upstream the mtdids guard** — [SONNET] — Size S — Depends: —
+- [x] **DU5-prep — Upstream the mtdids guard** — [SONNET] — Size S — Depends: —
   `0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch` (`de25-uboot.md` §8 calls it
   upstreamable, not submitted). Same shape as U7-prep: a list-ready mail, `checkpatch.pl`
   clean, **not sent** without the owner's go.
   **Done when:** the mail exists.
 
-- [ ] **DU6 — TF-A tag signature** — [SONNET] [NET] — Size S — Depends: —
+- [x] **DU6 — TF-A tag signature** — [SONNET] [NET] — Size S — Depends: —
   §12 says the v2.15.0 tag's signing key was on no reachable keyserver. Try the
   trustedfirmware.org release announcement / the project's published key file / a WKD lookup;
   if found, verify the tag and record the fingerprint in
@@ -379,7 +395,7 @@ the rest.
 
 ### Wave B
 
-- [ ] **DU7 — Boot-path re-review** — [FABLE] — Size S — Depends: DU1, DU2 (may run as part of U9)
+- [x] **DU7 — Boot-path re-review** — [FABLE] — Size S — Depends: DU1, DU2 (may run as part of U9)
   The wave-2 `fable` boot-path pass was against the custom-pin build. Re-run its checklist
   (`de25-nano-tasks.md` "What the boot-path fable pass established") against the DU1 artifact:
   no QSPI command or driver in U-Boot proper, unsigned-crc32 FIT at the factory SPL's addresses,
@@ -415,5 +431,20 @@ a serial cable, or network beyond the pinned tarball and the hash-fetched stock 
 
 ## Status
 
-**2026-09-14:** plan written; nothing below U0 started. Both boards' U-Boot work is desk-only by
-the owner's direction, and "it boots" remains a per-build claim that only hardware can make.
+**2026-09-14, waves B/C landed:** U2g (five patches + a sixth from U9 bounding the Linux boot map,
+the real fragment and env, gnutls line gone), U3 (DE10 resolved-`.config` hook in `external.mk`),
+U5 (offline checks in `ci-tests.sh`, the full stock comparison in `release.yml`, patch lint over
+both boards' U-Boot series — the DE25 patch's placeholder author line fixed by the orchestrator),
+U8, U9 (`docs/verification/uboot-mainline.md` §11), DU3 (three clean trees byte-identical), DU4,
+DU7 (wave-4 section in `de25-nano-tasks.md`). Added outside the plan the same day: the TF-A
+console patch (`patches/arm-trusted-firmware/0001-…uart1.patch`, `de25-uboot.md` §8) and the
+FIT-acceptance closure by reference (`de25-uboot.md` §12). Also landed the same day while gating the DE25 with a full `make de25`: the DE25 kernel pin
+moved to 7.2.5 and joined the 7.2 Renovate manager, and `package/linux-rt/linux-rt.mk` stopped
+registering its kconfig-file rule on trees where the package is off (`make de25` had been broken
+by it since ADR 0030). Remaining for either board: hardware.
+
+**2026-09-14, wave A landed (933a2d2):** U1, U2a–U2f, U4a, U4b, U7-prep, DU1, DU2, DU5-prep, DU6
+done and independently verified (13 build agents, 26 verify/fix agents; three tasks needed a
+second or third round). Owner decisions 1–5 resolved as recommended. Waves B/C (U2g → U3, U5, U8,
+U9; DU3 → DU4 → DU7) in progress. Both boards' U-Boot work is desk-only by the owner's direction,
+and "it boots" remains a per-build claim that only hardware can make.

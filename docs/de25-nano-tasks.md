@@ -302,7 +302,7 @@ promoted to [V].
 
 ### Testing on a borrowed board before we own one
 
-A friend's DE25-Nano can run our SD images, with one condition that follows directly from
+A borrowed DE25-Nano can run our SD images, with one condition that follows directly from
 [`de25-boot-chain.md`](de25-boot-chain.md) §2: **the QSPI must hold the factory phase-1
 image.** Our card ships `u-boot.itb` only and relies on the *factory SPL's* contract (FAT on
 partition 1, FIT at `0x82000000`, boot order `mmc0`). A modified QSPI carries a different SPL
@@ -313,7 +313,7 @@ so a boot failure there would tell us nothing about our image.
   USB-Blaster III, `quartus_pgm -m jtag -c 1 -o "pvi;golden_top_hps.jic"`, from the Resource
   Package (`…/GHRD/output_files/program_qspi_flash/`). Verify the file first:
   `golden_top_hps.jic` is 16,777,447 B, sha256 `e3d20c2d…38a4` (full hash in boot-chain §8).
-- **Doing this on his board also closes an open [U] of ours**: that the *published* JIC boots a
+- **Doing this on a borrowed board also closes an open [U] of ours**: that the *published* JIC boots a
   physical board at all (boot-chain §8, "an archived copy"). Record the board revision.
 - **Safety bar before any image reaches him** (rule 2 of this plan): a `fable` adversarial pass on
   the U-Boot env fragment proving `CONFIG_ENV_IS_IN_UBI` is off (implementation-path §6.2 —
@@ -339,8 +339,9 @@ No brick-class or boot-blocking finding. Verified in the built artefacts, not th
 command or driver in U-Boot proper; BL31 issues no QSPI/RSU command at boot; the kernel has no
 MTD/spi-nor/RSU driver and its DTB has no flash node; the FIT is unsigned-crc32 at the addresses
 the factory SPL expects; nothing writes anything a power cycle does not clear. First-boot
-expectations worth knowing: BL31 prints on UART0, so **no `NOTICE: BL31` lines on the header
-UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measurement); if
+expectations worth knowing: ~~BL31 prints on UART0, so **no `NOTICE: BL31` lines on the header
+UART** is normal~~ (superseded 2026-09-14: the carried TF-A console patch routes BL31 to the
+header UART, so its banner is now expected — `de25-uboot.md` §11); capture the SPL's `DDR:` lines (the only real DRAM-size measurement); if
 `Retrieving file: /Image` stalls, the SD PHY timing in `uboot-dts/` is the first knob
 (`de25-uboot.md` §5.1).
 
@@ -354,8 +355,16 @@ UART** is normal; capture the SPL's `DDR:` lines (the only real DRAM-size measur
   registry, so an rt bump replaces the 7.2.y hash line rather than adding one. **This happened on
   2026-09-02** (rt 7.2.2 -> 7.2.3): the DE25 pin was moved to 7.2.3 in the same series of commits
   and the series/config were re-verified there (34/34 patches at `-F0`, 460 symbols 0 dropped,
-  `docs/de25-kernel-config.md` §8). Still needs its own Renovate manager, or a hash-sync rule that
-  keeps every line a fragment still pins, so the next bump is not manual.
+  `docs/de25-kernel-config.md` §8). ~~Still needs its own Renovate manager, or a hash-sync rule that
+  keeps every line a fragment still pins, so the next bump is not manual.~~ **Done 2026-09-14:**
+  the DE25 pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, now **7.2.5**) is matched by the same
+  Renovate manager as the DE10's RT pin (`renovate.json`, depName `kernel-rt-7.2`), and
+  `board/mister/de25nano/patches/linux/linux.hash` is a symlink to `package/linux-rt/linux-rt.hash`,
+  so one PR moves both and the `rt` hash-sync case covers both. Found because `make de25` had been
+  failing closed since the RT bump to 7.2.5 (no 7.2.3 hash line) and, separately, since ADR 0030
+  (`package/linux-rt` registered a rule on the shared `linux.config` even when disabled — fixed in
+  `linux-rt.mk`). At 7.2.5 all 34 DE25 kernel patches apply with offsets and no fuzz; the full
+  `make de25` is green and `check-sdcard-de25.sh` passes.
 - ~~DE25 selects no `linux-firmware`~~ **Decided 2026-09-03 (ADR 0029 D12):** mirror the DE10
   set via a shared `image-common` fragment (PR in flight); seccomp stays off as on the DE10.
 - Patch 0002 (MiSTer audio) still excluded; `openssh` will need `_SANDBOX` off when added.
@@ -380,6 +389,126 @@ run. Recorded in ADR 0002 §8b, `docs/rt-beta-kernel.md` §6, the DE25 patch REA
 | Track | Deliverable | Result |
 |---|---|---|
 | 0031 re-anchor for 7.x | `linux-patches-beta/0031-exfat-samsung-symlinks.patch` is a real file again (the fifth re-anchor; the shared 6.18 patch untouched); `de25nano/linux-patches/0031` symlink → the beta copy; `series` note updated | `exfat_symlink_write_target()`: clusters via `exfat_map_cluster()` (7.x signature) under `s_lock`, sectors via buffer heads, `sync_blockdev_range()`, then `valid_size`/`zeroed_size`/`i_size`. Applies at `-F0` to pristine 7.2.3 (12/12); arm compile clean with `output-rt`'s `.config`; **aarch64 leg 8/8** from a fresh source tree (4 m 04 s). |
+
+## Wave 4 — 2026-09-14 (pre-hardware) — U-Boot desk work
+
+The DE25's remaining U-Boot desk work runs as the DU-series of
+[`docs/uboot-tasks.md`](uboot-tasks.md) (wave A landed as `933a2d2`). This section logs the DE25
+half of wave A (DU1, DU2, DU6, verbatim returns in the wave-A results file, outside the repo) and
+the **DU7 boot-path re-review** — the wave-2 `fable` checklist above, re-run against the
+`BR2_TARGET_UBOOT_LATEST_VERSION`-pinned artifact. No board, no rebuild: every claim is
+**[V]** (observed, where) or **[U]** (not observed, missing input named). The DU2 hook's
+wording of "verified" is a build-time assertion, not a boot.
+
+### Wave A — DE25 results (DU1, DU2, DU6)
+
+| Task | Deliverable | Result |
+|---|---|---|
+| DU1 — drop the redundant U-Boot pin | `configs/mister_de25nano_defconfig` → `BR2_TARGET_UBOOT_LATEST_VERSION=y`; `board/mister/de25nano/patches/uboot/uboot.hash` removed; `de25-uboot.md` §2 row rewritten | `u-boot.itb` byte-identical before and after the switch (`uboot-dirclean uboot` each side): 725,568 B, `sha256 f4e5c924dc20b51b2347dfd5786f7de23613ebfd445bd80009fcb19be6b1963e` **[V, DU1 + its verifier's independent clean-tree rebuild]**; after the board-local hash file went, Buildroot's own `boot/uboot/uboot.hash` line (`78e8bfc3…`) satisfied `BR2_DOWNLOAD_FORCE_CHECK_HASHES` **[V, build log]**; defconfig canonical by `savedefconfig` diff (LATEST_VERSION and `BUILD_SYSTEM_KCONFIG` are now defaults and drop out) **[V]**. `scripts/check-defconfigs.sh` itself was **not** run (shared-dir rule during the fan-out); its five assertions were replicated in scratch by the verifier **[U as the literal Done-when]**. Verifier also found the FIT timestamp moved with the Buildroot bump (`SOURCE_DATE_EPOCH` is `BR2_VERSION_EPOCH`), so `de25-uboot.md` §6.1's listing is stale — confirmed below. Doc drift still owed: `docs/buildroot-config.md` §6.9's "the pin has not moved yet" paragraph, `docs/uboot-mainline-port.md` §3.6's reference to the deleted hash file, `de25-uboot.md` §3's file-table row. |
+| DU2 — §7 as a build assertion | `external.mk` `MISTER_UBOOT_DE25_QSPI_AUDIT` (`UBOOT_POST_BUILD_HOOKS`, guarded on `BR2_TARGET_UBOOT_BOARD_DEFCONFIG=socfpga_agilex5`); `scripts/ci-tests.sh` "DE25-Nano — QSPI-write audit, Linux side" section | Three checks per build: the **fragment text**, the **resolved `.config`** (every §7 symbol absent or unset, `ENV_IS_IN_FAT=y`), and `strings u-boot.itb` (eleven erase/write/probe verbs, one pinned exemption). Round 1 failed verification on three counts, all fixed: the literal Done-when (`CONFIG_ENV_IS_IN_UBI=y` in the fragment) was vacuous because kconfig drops the request (`depends on MTD_UBI`/`CMD_UBI`) — hence the fragment-text check, which now fails it; the `linux_qspi_enable` carve-out was widened to "any line starting `linux_qspi_enable=`" and is now pinned to **one line, one verb, exact head**; and the `de25-boot-chain.md` §5 bullet was *not* flipped to [V] but to "partially enforced" (the board-identity assertion in the updater still has no code). Positive and negative builds are in the DU2 logs (`build-restore.log:170` PASS; `negative-test-run.log:623-630` FAILED naming both docs, `Error 1`/`Error 2`) **[V]**. |
+| DU6 — TF-A tag signature | `board/mister/de25nano/patches/arm-trusted-firmware/arm-trusted-firmware.hash` header (sha256 line byte-identical) | Round 1 concluded "no reachable channel, TOFU" and cited a WKD URL whose hu-part was **wrong** (fabricated); the verifier found the key itself. Fix round: key fetched from `https://github.com/odeprez.gpg`, `git tag -v v2.15.0` → *Good signature from "Olivier Deprez <olivier.deprez@arm.com>"*, RSA-4096 `5D6F 8960 43AD EFDF 7B76 BFAA 89C0 8CFD B867 3E0C`, in both the Buildroot download cache checkout and a fresh mirror clone **[V]**; GitHub reports the tag `verified: true`. Trust anchor stated honestly: the tagger's self-published GitHub key — **not** a project keyring, keyserver or WKD hit (both keyservers re-confirmed 404; the corrected WKD URLs redirect and return nothing) — so "the `odeprez` account is the real Olivier Deprez" is **[U]**. Bonus: the hashed `-git4` tarball is the signed tag's tree bar four uninitialised `contrib/` submodule gitlinks **[V, `diff -r`]**. Doc drift owed: `de25-uboot.md` §2's TF-A row and §12's "signature is authentic **[U]**" row still say unverifiable. |
+
+(DU3, wave B, has since landed in `de25-uboot.md` §5b: the FIT is byte-stable across clean trees
+and moves only with the toolchain's `git describe` banner. Not part of this pass.)
+
+### DU7 — the wave-2 boot-path checklist, re-run against `f4e5c924…`
+
+**Artifact identity.** `output-de25/images/u-boot.itb` 725,568 B
+`sha256 f4e5c924dc20b51b2347dfd5786f7de23613ebfd445bd80009fcb19be6b1963e`, byte-identical to
+`build/uboot-2026.07/u-boot.itb`; produced by the build in the DU2 restore log (`>>> uboot 2026.07
+Building` → hook PASS at `:170` → `Installing to images directory`; `.stamp_built` 13:05:44.75,
+the file 13:05:44.69) **[V]**. `images/bl31.bin` 53,304 B
+`sha256 2052e4c9a62c1a2a947ee20886c6419eb5f802a1338bd12e22a99c916cc0250c`, identical to the TF-A
+tree's `build/agilex5/release/bl31.bin` **[V]**. Resolved config
+`build/uboot-2026.07/.config` `sha256 ce84f68e…`.
+
+| Wave-2 claim | This pass | |
+|---|---|---|
+| No QSPI command or driver in U-Boot proper | **Resolved `.config`:** the hook's §7 regex (`^CONFIG_(ENV_IS_IN_UBI\|…\|BLOBLIST)=`) has zero hits; `# CONFIG_CADENCE_QSPI is not set`, `# CONFIG_MTD is not set`, `# CONFIG_CMD_UBI is not set`, `# CONFIG_BLOBLIST is not set`; `ENV_IS_IN_UBI`, `CMD_SF`, `SPI_FLASH*`, `DM_SPI_FLASH`, `MTD_UBI` have no line at all; `CONFIG_ENV_IS_IN_FAT=y`, `mmc` `0:1` `uboot.env`. **Linked binary** (`nm` on the ELF's linker lists): 104 commands, none named `sf`/`ubi`/`ubifs`/`mtd`/`mtdparts`/`nand`/`rsu`; 43 DM drivers, none matching `qspi`/`spi_flash`/`mtd`/`nand`; **the only env driver is `fat`**; the only symbol containing `qspi` is `cm_get_qspi_controller_clk_hz` — a clock-manager register read that `arch_misc_init()` (`misc_soc64.c:106`) folds into the `qspi_clock` env string. `strings` of the FIT has **0** lines equal to any of those command names. `sspi` (`CMD_SPI`) is present, but the only SPI bus driver is `dw_spi` (`spi_generic_drv` on top): the Cadence controller behind the SDM has no driver in the binary to be reached through. | **[V]** |
+| FIT is unsigned crc32 at the factory SPL's addresses | `dumpimage -l` (the build's own `tools/dumpimage`, 2026.07 — `host/bin/dumpimage` does not exist because the tree was rebuilt through `uboot` only): `uboot` Standalone Program, AArch64, **load `0x80200000`**, 647,448 B, crc32 `0559fc8a`; `atf` Firmware, OS ARM Trusted Firmware, **load `0x80000000`**, 53,304 B, crc32 `efc1cf2a` (`entry = <0x80000000>` in the decompiled FIT); `fdt-0` Flat Device Tree, description **`socfpga_agilex5_de25nano`**, 23,584 B, crc32 `64e75874`; default configuration **`board-0`**, `firmware = "atf"`, `loadables = "uboot"`, `fdt = "fdt-0"`, **`Sign algo: crc32:dev`, `Sign value: unavailable`**; `dtc -I dtb -O dts` → `grep -icE 'rsa\|required\|sha[0-9]'` = **0**. Every §6.2 contract term holds. **Drift from §6.1's listing:** `Created:` is now `Fri Sep  4 10:16:40 2026` (Buildroot 2026.08's epoch, not 2026.05.2's `Aug 23`) and the `uboot`/`fdt-0` payloads are 647,448/23,584 B (were 654,016/23,176) — a stale listing, not a changed contract. Address map recomputed: BL31 `0x8000_0000`–`0x8000_D038`; U-Boot `0x8020_0000`–`0x8029_E118`; FIT staging `0x8200_0000`+`0xB1240`; no overlap, `BL31_LIMIT` = staging base as before. | **[V]** |
+| BL31 issues no QSPI/RSU command at boot | `bl31_platform_setup()` (`plat/intel/soc/agilex5/bl31_plat_setup.c:166-191`) is the delay timer, the GICv3 init, `mailbox_init()` (`SIP_SVC_V3`) and `mailbox_hps_stage_notify(SSBL)`. The one QSPI string in `bl31.bin` (`MBOX: 0x%x: QSPI address not 4K aligned`) is `socfpga_sip_svc.c:1242`, inside an SMC handler. `mailbox_rsu_status` is linked, but its only callers are the SMC RSU-status/DCMF handlers; `mailbox_rsu_update` runs from the PSCI reset path **only** if `intel_rsu_update_address` was set by an `RSU_UPDATE` SMC first; `ros_qspi_get_ssbl_offset` is BL2-only and no `ros_` symbol is in `bl31.elf`. | **[V]** |
+| Kernel has no MTD/spi-nor/RSU driver; DTB has no flash node | **Not re-run.** `output-de25/` currently holds no `Image`, no `.dtb` and no `linux-7.x` build directory (DU1/DU2 rebuilt it through `uboot` only; `images/` is `u-boot.itb` + `bl31.bin`). Wave 2's [V] stands for the 2026-09-02 kernel; the next `make de25` should repeat the check (`board/mister/de25nano/linux.config` has not changed since wave 3, but that is a config, not a binary). | **[U]** — no kernel in the tree |
+| Nothing writes anything a power cycle does not clear | The only env driver is `fat` on our SD card (`mmc 0:1`, `uboot.env`) — not flash. `objdump`: `env_save` has exactly **one** caller, `do_env_save` (the interactive `saveenv`); `env_fat_save` is reached from nowhere else. The built default env is `bootcmd=run distro_bootcmd`, `boot_targets=mmc0 `, `bootcmd_mmc0=devnum=0; run mmc_boot`; `bootcmd_qspi`/`bootcmd_nand` absent; the string `saveenv` occurs once, as the command name beside its help text. `# CONFIG_EFI_LOADER is not set` (no `ubootefi.var` on the card), `# CONFIG_BOOTCOUNT_LIMIT is not set`, `# CONFIG_ENV_OVERWRITE is not set`. Precisely: nothing writes *unless a person types `saveenv`*, and then to the card's FAT, which a re-`dd` clears. | **[V]** |
+
+### The three additions DU7 asked for
+
+**1. Does the DU2 hook fire on the DE25 tree and not the DE10's?** Yes, by `make` evaluation
+with an **absolute** `O=` (see the finding below for why that matters), nothing built:
+
+```
+$ make O=/mnt/source/Buildroot_MiSTer/output-de25 printvars VARS='UBOOT_%_HOOKS MISTER_UBOOT_% UBOOT_KCONFIG_FRAGMENT_FILES BR2_TARGET_UBOOT_BOARD_DEFCONFIG'
+BR2_TARGET_UBOOT_BOARD_DEFCONFIG="socfpga_agilex5"
+MISTER_UBOOT_DE25_QSPI_AUDIT=	@set -eu; cfg='./.config'; itb='./u-boot.itb'; frags='…/board/mister/de25nano/uboot.fragment'; …
+UBOOT_KCONFIG_FRAGMENT_FILES=/mnt/source/Buildroot_MiSTer/board/mister/de25nano/uboot.fragment
+UBOOT_POST_BUILD_HOOKS=MISTER_UBOOT_DE25_QSPI_AUDIT
+$ make O=/mnt/source/Buildroot_MiSTer/output printvars VARS='…same…'
+BR2_TARGET_UBOOT_BOARD_DEFCONFIG="socfpga_de10_nano"
+MISTER_UBOOT_DE10_CONFIG_AUDIT=	@set -eu; …            ← U3's hook, working tree, not the DE25 one
+UBOOT_KCONFIG_FRAGMENT_FILES=/mnt/source/Buildroot_MiSTer/board/mister/de10nano/uboot.fragment
+UBOOT_POST_BUILD_HOOKS=MISTER_UBOOT_DE10_CONFIG_AUDIT
+```
+
+No `MISTER_UBOOT_DE25_*` variable exists on the DE10 tree and no `MISTER_UBOOT_DE10_*` on the DE25
+tree **[V]**. That the hook *executes* inside the stamp recipe, not merely that it is wired, is
+the DU2 restore log (PASS line between `Building` and `Installing`), and the current `external.mk`
+body is the one that ran there (`git diff HEAD -- external.mk` is a single appended hunk — the
+DE10 block; the DE25 block is as committed) **[V]**.
+
+**Finding (method, not product) — a relative `O=` evaluates an empty tree.** The wrapper
+`Makefile`'s `%:` rule forwards `O=$(O)` verbatim into `make -C work/buildroot`, and Buildroot
+canonicalises `O` against *its own* directory, so the documented form `make O=output-de25 …`
+(`Makefile:9`, `:82`) resolves to `work/buildroot/output-de25` — which exists, is empty, and has
+no `.config` (`make O=output-de25 printvars VARS=O` → `O=/mnt/source/Buildroot_MiSTer/work/buildroot/output-de25`;
+`BR2_DEFCONFIG` prints nothing). Every `printvars` claim gathered with a relative `O` — the
+"[V, evaluated 2026-09-14]" in `external.mk`'s DE25 comment, the DU2 verifier's DE10-inertness
+line, and by the timestamps (14:18) the U3 agent's own check — was therefore **vacuous: it prints
+nothing for *any* variable on either tree.** With an absolute `O` the real answer agrees on the
+point that matters (no DE25 hook on the DE10), but the comment's literal text ("prints neither
+`UBOOT_POST_BUILD_HOOKS` nor any `MISTER_UBOOT_*`") is now false on two counts. `make de25` and
+`make all` pass an absolute `O` and are unaffected. Owed: fix the wrapper (`$(abspath $(O))`) or
+the docs, and re-word that comment — outside DU7's file scope. The empty
+`work/buildroot/output{,-de25}/` directories are the footprint; left in place.
+
+**2. Is the `linux_qspi_enable` carve-out exactly one line with one verb?** Yes:
+`strings images/u-boot.itb | grep -E '<the 11 verbs>'` returns **one** line (4624,
+`linux_qspi_enable=if sf probe; then echo Enabling QSPI at Linux DTB...;fdt addr ${fdt_addr}; …`)
+and that line contains **one** verb (`sf probe`) **[V]**. The make-expanded hook body (lifted
+from `printvars`, run with `sh -c` in the real build directory — a verbatim execution, not a
+replica, and not a rebuild) prints `PASS -- fragment, resolved .config and u-boot.itb all clean`;
+four mutated scratch copies of the inputs each fail on the intended check: the fragment plus
+`CONFIG_ENV_IS_IN_UBI=y` (the literal DU2 Done-when) fails at check 1 naming the fragment and
+both docs; `.config` plus `CONFIG_CMD_SF=y` fails at check 2; the FIT plus an appended
+`bootcmd_qspi=… ubi part root` fails at check 3; the FIT plus a *second* line with the exempt
+head fails at check 3 (`nallowed > 1`) **[V]**. Two honest limits: the strings check is a tripwire,
+not the lock — `sf` is not a command in this binary, so any such string is inert, and the lock is
+check 2's proof that `CADENCE_QSPI`/`CMD_SF` are absent; and on the SPL side
+`CONFIG_SPL_SPI=y`, `CONFIG_SPL_SPI_FLASH_SUPPORT=y`, `CONFIG_SPL_SPI_FLASH_TINY=y` resolve **on**
+(outside the hook's `^CONFIG_` anchor by design, and contrary to the fragment's comment at
+lines 127-133 that the SPL block removes the stack), but `spl/u-boot-spl` links no
+`cadence_qspi`/`spi_flash` symbol and `images/` holds only `u-boot.itb` and `bl31.bin` — our SPL
+ships nowhere, as §4.5 already says **[V]**. Cosmetic; noted for DU4's fragment pass.
+
+**3. Does `scripts/ci-tests.sh`'s DE25 section behave on the real `output-de25/target`?** The
+section (helpers `:141-169` + the section `:480-520`, extracted verbatim) against the real target —
+a 7.7 MB skeleton from a `uboot`-only build, zero `fw_env.config`, no `fw_setenv`/`libubootenv` —
+prints `PASS  DE25 rootfs: no fw_env.config shipped -- nothing to audit`. Synthetic trees: a
+`/dev/mtd0` line → `FAIL … de25-boot-chain.md section 7 row 11 …` with the offending line
+echoed; a FAT-path file whose only `ubi` is in a `#` comment → PASS (the comment filter works);
+no tree → SKIP. `shellcheck` and `bash -n` clean **[V]**. Limit: the real target exercised only the
+trivial branch; the check has not yet seen a fully populated DE25 rootfs **[U until the next
+`make de25`]**.
+
+### Verdict and drift list
+
+No brick-class or boot-blocking finding. Every wave-2 U-Boot and BL31 claim re-verifies against
+`f4e5c924…` / `2052e4c9…`; the two kernel-side legs are **[U]** for want of a kernel in the tree,
+not for any contrary evidence; the DU2 hook fires where it should, executes where it should, and
+its carve-out is as narrow as its comment says. One method finding (relative `O=`) invalidates the
+*evidence* behind an `external.mk` comment without changing its conclusion. Documentation now
+behind the artifacts, for whoever next edits each file: `de25-uboot.md` §6.1 (timestamp, two
+payload sizes), §2 TF-A row and §12 TF-A row (DU6 verified the signature), §3 file table
+(`uboot.hash` gone); `external.mk` DE25 comment (relative-`O` evidence; the DE10 tree now has a
+hook); `docs/buildroot-config.md` §6.9; `docs/uboot-mainline-port.md` §3.6.
 
 ## What to do next — 2026-08-22
 

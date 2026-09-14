@@ -59,8 +59,8 @@ All retrieved or read **2026-08-22** unless stated.
 - Local kernel tree `output/build/linux-6.18.44` — cited as `linux:path:line`.
 - Mainline Linux at tags `v6.18`, `v6.19`, `v7.0`, `v7.1`, `v7.2` and at `master` (post-7.2, → 7.3),
   via `raw.githubusercontent.com/torvalds/linux/<ref>/…` — cited as `mainline@<ref>:path`.
-- Read-only reference fork `/mnt/source/de25-linux` (Linux 6.18.38, the friend's working board) —
-  cited as `de25-linux:path`. **Read only; never executed, modified, or checked out.**
+- A third-party DE25-Nano Linux port (Linux 6.18.38, a working board), consulted read-only; not
+  public — cited as `PORT tree, path`. **Read only; never executed, modified, or checked out.**
 - `github.com/altera-fpga/linux-socfpga` branch `socfpga-6.18.20-lts` (the org formerly
   `altera-opensource`), and `github.com/terasic/linux-socfpga` branch `de25-nano-6.12.11-lts`.
 - Mainline U-Boot at tag `v2026.07`; mainline TF-A at tag `v2.15.0`.
@@ -121,7 +121,9 @@ untested on hardware** — it is the second item on §2.6's bring-up test list, 
 
 - **Binding: yes, DTS-only, zero driver patches, on a 6.19-or-newer base [V].** A two-string
   fallback compatible binds the stock `stratix10-svc`, `stratix10-soc` and `sdhci-cadence` drivers.
-  The friend's driver commit `d1878a320` was avoidable and must not be copied.
+  The port's driver commit that hard-coded the `intel,agilex5-*` compatible strings directly
+  into the stock `stratix10-svc`/`stratix10-soc` match tables (see the table in §2.3) was
+  avoidable and must not be copied.
 - **Programming: not established, and one observed on-hardware failure argues against it [V].**
   See §2.6. This is the single largest risk in the DE25 plan and it is a hardware question.
 - **The only carried patch a 6.18 base would force is not the fpga-mgr patch at all — it is the
@@ -177,60 +179,62 @@ properties, not compatibles, so they are easy to lose when authoring by hand:
    `method = "smc"` or `"hvc"` **[V `linux:drivers/firmware/stratix10-svc.c:865-885`]**.
 
 Mainline's own Agilex 5 shape satisfies all three (`firmware { svc { method = "smc"; … } }`,
-`mainline@v7.2:arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi`) **[V]**, as does the friend's
-(`de25-linux:…/socfpga_agilex5.dtsi:213-218`) **[V]**. On a 6.18 base, where we would author the
+`mainline@v7.2:arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi`) **[V]**, as does the PORT tree's
+(`PORT tree, …/socfpga_agilex5.dtsi:213-218`) **[V]**. On a 6.18 base, where we would author the
 whole subtree, they must be met deliberately.
 
 ### 2.2 The independent empirical check — what it proves, and what it does not
 
-The friend's board boots from SD on real DE25 silicon. His `drivers/mmc/host/sdhci-cadence.c` is
-**byte-identical to stock 6.18.44** (`diff -q` → identical, re-run this pass) **[V]**, and his
+The PORT's board boots from SD on real DE25 silicon. Its `drivers/mmc/host/sdhci-cadence.c` is
+**byte-identical to stock 6.18.44** (`diff -q` → identical, re-run this pass) **[V]**, and its
 `mmc0` declares `compatible = "intel,agilex5-sd4hc", "cdns,sd4hc"`
-**[V `de25-linux:arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi:387`]**. That is the fallback idiom,
+**[V `PORT tree, arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi:387`]**. That is the fallback idiom,
 matching on the bare `cdns,sd4hc` entry, working on **real Agilex 5 hardware, with an unpatched
 mainline driver**.
 
 **The necessary qualifier, added under challenge:** that boot runs with `sdhci.debug_quirks=0x60`
 baked into the production `boot.scr.uimg` bootargs, which forces SDHCI into **PIO** instead of ADMA
-**[V `de25-reference-implementation.md` §3, commit `716559020`]**. So the empirical check proves
-**binding, probe and PIO operation through a fallback compatible on real silicon**. It does **not**
-prove the DMA path. §8 Q2 is where that lives, and §5.1 no longer treats it as a settled non-issue.
+**[V `de25-reference-implementation.md` §3 — the port's retraction of an earlier false-negative,
+reproduced via a genuine power-cycle through the unmodified production boot chain]**. So the
+empirical check proves **binding, probe and PIO operation through a fallback compatible on real
+silicon**. It does **not** prove the DMA path. §8 Q2 is where that lives, and §5.1 no longer treats
+it as a settled non-issue.
 
-Note in passing that his board `.dts` sets nine `cdns,phy-use-*` / `cdns,phy-io-mask-*` /
-`cdns,phy-sync-method` properties **[V `de25-linux:…/socfpga_agilex5_de25_nano.dts:127-135`]** that
+Note in passing that the PORT's board `.dts` sets nine `cdns,phy-use-*` / `cdns,phy-io-mask-*` /
+`cdns,phy-sync-method` properties **[V `PORT tree, …/socfpga_agilex5_de25_nano.dts:127-135`]** that
 the stock driver's property table **does not parse** — it knows only eleven
 `cdns,phy-input-delay-*` / `cdns,phy-dll-delay-*` names **[V `linux:drivers/mmc/host/sdhci-cadence.c:108-118`]**.
 Those are **dead devicetree on a mainline driver**; do not transcribe them. Their inertness also
-means his working SD path runs on the stock driver's **default** PHY configuration, which is what we
-would inherit.
+means the port's working SD path runs on the stock driver's **default** PHY configuration, which is
+what we would inherit.
 
 **A correction to an earlier draft of this section:** `altr,smmu_enable_quirk` was described as dead
-devicetree on the same footing. That is true **only** of the friend's mainline-based tree
-(`grep -rn smmu_enable_quirk /mnt/source/de25-linux/drivers/` → no hits) **[V]**. In Terasic's vendor
+devicetree on the same footing. That is true **only** of the PORT's mainline-based tree
+(`grep -rn smmu_enable_quirk` over the PORT tree's `drivers/` → no hits) **[V]**. In Terasic's vendor
 tree the property is **live and load-bearing**: `stratix10-svc.c:3508` reads it, and without it the
 agilex5-svc probe path returns `-ENODEV` **[V, fetched this pass]**. It is mainline-inert, not
 meaningless — and the fact that a vendor driver gates SDM DMA setup on it is evidence for §2.6, not
 against it.
 
-### 2.3 What the friend actually carries, counted
+### 2.3 What the PORT actually carries, counted
 
-Diffing `/mnt/source/de25-linux` (6.18.38) against `linux-6.18.44`, filtering 6.18.38→.44 stable
+Diffing the PORT tree (6.18.38) against `linux-6.18.44`, filtering 6.18.38→.44 stable
 churn **[V]**:
 
 | Carried change | Size | Avoidable? |
 |---|---|---|
-| `+{.compatible = "intel,agilex5-soc-fpga-mgr"},` in `s10_of_match` (`de25-linux:drivers/fpga/stratix10-soc.c:451`) | 1 line | **Yes** — declare the fallback in DT instead |
-| `+{.compatible = "intel,agilex5-svc"},` in `stratix10_svc_drv_match` (`de25-linux:drivers/firmware/stratix10-svc.c:1134`) | 1 line | **Yes** — same |
-| `drivers/clk/socfpga/clk-agilex5.c` + `Makefile:6` | **847 lines** (his vendor backport; the mainline v6.19 file is 561) | **Yes, by moving to ≥6.19** (§5) |
+| `+{.compatible = "intel,agilex5-soc-fpga-mgr"},` in `s10_of_match` (`PORT tree, drivers/fpga/stratix10-soc.c:451`) | 1 line | **Yes** — declare the fallback in DT instead |
+| `+{.compatible = "intel,agilex5-svc"},` in `stratix10_svc_drv_match` (`PORT tree, drivers/firmware/stratix10-svc.c:1134`) | 1 line | **Yes** — same |
+| `drivers/clk/socfpga/clk-agilex5.c` + `Makefile:6` | **847 lines** (the port's vendor backport; the mainline v6.19 file is 561) | **Yes, by moving to ≥6.19** (§5) |
 | `drivers/misc/de25_fpga_trigger.c` | 95 lines | **No** — see §7 |
 
 **[V** all four, `wc -l` and `grep` this pass.**]**
 
-He needed the two match-table lines only because his DT declares `intel,agilex5-svc` and
+The port needed the two match-table lines only because its DT declares `intel,agilex5-svc` and
 `intel,agilex5-soc-fpga-mgr` **with no fallback string**
-**[V `de25-linux:…/socfpga_agilex5.dtsi:215,224`]**. That is a DT authoring choice, not a kernel
-constraint. `of-fpga-region.c` and `fpga-mgr.c` are untouched in his tree **[V `diff`]** — he added
-no writable attribute; the trigger is the separate module.
+**[V `PORT tree, …/socfpga_agilex5.dtsi:215,224`]**. That is a DT authoring choice, not a kernel
+constraint. `of-fpga-region.c` and `fpga-mgr.c` are untouched in the port's tree **[V `diff`]** — it
+added no writable attribute; the trigger is the separate module.
 
 ### 2.4 What would falsify the "binds and works" reading
 
@@ -274,11 +278,11 @@ State it plainly, because it is the difference between a plan and a hope:
 
 | Question | Status | Evidence |
 |---|---|---|
-| Does a fallback compatible make `/sys/class/fpga_manager/fpga0` and `/sys/class/fpga_region/region0` appear, with stock drivers? | **Very likely yes** | OF core mechanism [V]; same idiom proven on this silicon for `sdhci-cadence` [V]; friend's board reaches probe with only string additions [V] |
+| Does a fallback compatible make `/sys/class/fpga_manager/fpga0` and `/sys/class/fpga_region/region0` appear, with stock drivers? | **Very likely yes** | OF core mechanism [V]; same idiom proven on this silicon for `sdhci-cadence` [V]; the PORT's board reaches probe with only string additions [V] |
 | Does mainline's `stratix10-svc` actually **program an Agilex 5 fabric**? | **Not established. One observed failure.** | Mainline svc hands the SDM raw `gen_pool` physical addresses with no IOMMU mapping and no offset (`linux:drivers/firmware/stratix10-svc.c:277,458,785-807,1007`) [V]. Terasic's vendor svc adds `+0x80000000`, attaches an IOMMU domain, and *disables the SDM remapper* for `intel,agilex5-svc` [V]. Mainline has none of this at 6.18.44 or v7.2 [V]. The single mainline-path attempt on hardware timed out on `RECONFIG_REQUEST` and wedged the board [V] |
 
 **Confidence: high on binding; low on end-to-end reconfiguration through stock mainline drivers.**
-The friend's board is **not** evidence that mainline svc can program this fabric — his own working
+The PORT's board is **not** evidence that mainline svc can program this fabric — its own working
 reconfigurations ran on Terasic's vendor 6.12.11 kernel, which has all of the above.
 
 **The on-hardware test that settles it, and it is cheap:**
@@ -418,7 +422,7 @@ That Altera itself has taken the DE25-Nano board file in-house — on its **curr
 pushed eleven days before this retrieval — is the most useful thing this survey found. It makes the
 following unnecessary: authoring the board `.dts` from first principles; guessing pinmux, PHY
 wiring, regulator GPIOs, QSPI partition layout, or the `temp_volt` hwmon channel map; and treating
-the friend's back-port as the only reference. It is a **better primary reference** than the friend's
+the PORT's back-port as the only reference. It is a **better primary reference** than the PORT's
 tree: newer, closer to our base, and traceable to a named vendor org.
 
 ### 4.1 But it is not drop-in, and the reason matters
@@ -432,7 +436,7 @@ calculation replacing static DT params, by Tanmay Kathpalia, Altera; visible in 
 **`cdns,sd6hc` does not exist anywhere in mainline** — not in 6.18.44, not at v7.2, not at `master`
 **[V `grep` of `drivers/mmc/` and `Documentation/devicetree/bindings/mmc/` on all three]**. Copying
 Altera's `mmc0` verbatim therefore **buys a carried driver patch** and violates decision 5. The
-older SD4HC form, which Terasic and the friend both use and which the friend's board demonstrably
+older SD4HC form, which Terasic and the PORT both use and which the PORT's board demonstrably
 boots on with an unpatched driver (§2.2), does not.
 
 **Rule for harvesting: take Altera's board `.dts` as the wiring reference — pinmux, PHY, regulators,
@@ -495,8 +499,8 @@ The 6.18 case rested on three supports. Two collapse and the third has been re-c
    `intel,agilex5-clkmgr` binding, the clock-ID header, and the DT node at `:144-148` — and no driver
    at all; the *only* `agilex5` compatible string in the whole of 6.18.44's `drivers/` is stmmac's
    **[V, `grep -rl` this pass]**. Every consumer of `&clkmgr` — `mmc0` included — would defer
-   forever. The friend confirms this by construction: he backported an 847-line vendor
-   `clk-agilex5.c` into his 6.18.38 tree and wired it into `drivers/clk/socfpga/Makefile:6` **[V]**.
+   forever. The PORT confirms this by construction: it backported an 847-line vendor
+   `clk-agilex5.c` into its 6.18.38 tree and wired it into `drivers/clk/socfpga/Makefile:6` **[V]**.
 
 Support 3 is decisive under decision 5. Basing on 6.18 means carrying a whole SoC clock driver when
 a mainline route plainly exists one release later. That is exactly the carried patch decision 5
@@ -629,7 +633,7 @@ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
 
 Mainline U-Boot now has real exFAT: `fs/exfat/`, `CONFIG_FS_EXFAT` ("read/write support",
 `imply CMD_FS_GENERIC if CMDLINE`), added by commit `b86a651b64` on **2025-03-17** — *after* the
-reference board's U-Boot 2025.01 base **[V]**. That is precisely why the friend had to hand-roll
+reference board's U-Boot 2025.01 base **[V]**. That is precisely why the PORT had to hand-roll
 `libexfat` and a custom exFAT-aware SPL; on current mainline the equivalent is one defconfig line.
 Note the stock defconfig enables `SPL_FS_FAT` (`:22`) but **not** `FS_FAT`/`CMD_FAT`/`FS_EXFAT` for
 U-Boot proper **[V, re-checked this pass]** — we set what we need either way.
@@ -654,7 +658,7 @@ loader.
 (`linux:drivers/fpga/fpga-region.c:175`). There is no writable attribute anywhere. `OF_CONFIGFS`
 **does not exist in mainline** — `linux:drivers/of/Kconfig` has only `OF_OVERLAY:105` and
 `OF_OVERLAY_KUNIT_TEST:116`, and there is no `drivers/of/configfs.c`. Altera's vendor 6.12-lts tree
-does carry it — i.e. the friend's original path was the vendor path.
+does carry it — i.e. the PORT's original path was the vendor path.
 
 **The only mainline trigger is an OF overlay carrying `firmware-name`**, caught by of-fpga-region's
 overlay notifier, registered at module init (`linux:drivers/fpga/of-fpga-region.c:340,455`).
@@ -673,9 +677,9 @@ closes Leg B's open unknown about a zero-out-of-tree-code path: **there isn't on
 
 **(a) is the recommendation.** `of_overlay_fdt_apply()` and `of_overlay_remove()` are
 `EXPORT_SYMBOL_GPL` (`linux:drivers/of/overlay.c:1090,1272`) **[V]**, so a small GPL module can drive
-reconfiguration without patching any mainline file. The friend's `de25_fpga_trigger.c` is 95 lines
+reconfiguration without patching any mainline file. The PORT's `de25_fpga_trigger.c` is 95 lines
 doing exactly this — `request_firmware()` → `of_overlay_fdt_apply()` → `DEVICE_ATTR_WO(trigger)` on a
-misc device **[V `de25-linux:drivers/misc/de25_fpga_trigger.c`, 95 lines by `wc -l`]**.
+misc device **[V `PORT tree, drivers/misc/de25_fpga_trigger.c`, 95 lines by `wc -l`]**.
 
 **What that module's hardware history actually shows — corrected.** An earlier draft said "it is
 running on real hardware." That overstates it. On real silicon the module **reached the fpga-mgr
@@ -724,7 +728,7 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 **Resolved disagreements.**
 
 1. **"No driver patch needed" vs "Altera's own tree carries the match entries."** Both observations
-   are true and they do not conflict *for binding*. Altera and the friend chose *exact* compatible
+   are true and they do not conflict *for binding*. Altera and the PORT chose *exact* compatible
    strings in their DT, which forces the match-table additions; the fallback route was simply not
    taken. The OF core makes a fallback binding-equivalent **[V]**, and we author our own DT, so the
    choice is ours. The salvaged doc's claim is **upheld in substance for binding**, with two
@@ -750,7 +754,7 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 
 **Corrections applied to this document's own earlier draft**, listed so the change is auditable:
 
-- §2.2 no longer presents the friend's SD boot as unqualified evidence — it runs in PIO.
+- §2.2 no longer presents the PORT's SD boot as unqualified evidence — it runs in PIO.
 - §2.2 no longer calls `altr,smmu_enable_quirk` dead devicetree without qualification; it is
   mainline-inert but vendor-live.
 - §7 no longer says the trigger module "is running on real hardware"; its one attempt failed.
@@ -759,7 +763,7 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 - §2.4/§8 Q1 confidence on end-to-end reconfiguration lowered from **medium** to **low**, with the
   vendor-driver evidence attached.
 - The lkml version label for the DTS companion corrected from v6 to v2 (the binding half is v6).
-- Line-number citations corrected: friend's `mmc0` compatible is at `socfpga_agilex5.dtsi:387`;
+- Line-number citations corrected: the PORT's `mmc0` compatible is at `socfpga_agilex5.dtsi:387`;
   6.18.44 `sdhci-cadence` match table at `:643-658`; `of_iommu`/OF base score function at
   `base.c:338-356`.
 - §8 gained Q10 (watch upstream for adopted vendor svc behaviour).
@@ -769,7 +773,7 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 | Proposed | Rejected because |
 |---|---|
 | "The v7.2 citation `stratix10-svc.c:1911-1915` is a wrong line number; the table sits near `:1133`." | **The citation is correct.** `:1133` is the **6.18.44** location, in a 1334-line file. The **v7.2** file has grown to 2113 lines (FCS command plumbing) and the table genuinely sits at `:1911-1915` **[V, `mainline@v7.2:drivers/firmware/stratix10-svc.c` fetched and grepped this pass]**. Both citations retained, each labelled with its base. |
-| "`clk-agilex5.c … 561 lines` is unconfirmed; the commit adds 736 lines across 7 files." | **The file is exactly 561 lines** **[V, `torvalds/linux@v6.19` fetched, `wc -l` = 561]**. The 736-line figure is the whole commit including Kconfig/Makefile/header churn — a different measure of a different thing. Kept 561 for the file, and now name the friend's 847-line vendor backport alongside it so the three numbers cannot be confused again. |
+| "`clk-agilex5.c … 561 lines` is unconfirmed; the commit adds 736 lines across 7 files." | **The file is exactly 561 lines** **[V, `torvalds/linux@v6.19` fetched, `wc -l` = 561]**. The 736-line figure is the whole commit including Kconfig/Makefile/header churn — a different measure of a different thing. Kept 561 for the file, and now name the PORT's 847-line vendor backport alongside it so the three numbers cannot be confused again. |
 
 **Never challenged by any leg**, and worth flagging as such: that `s10_init()`'s
 `of_find_node_by_name(NULL, "svc")` makes the parent node **name** load-bearing, that
@@ -795,7 +799,7 @@ primary source before it was applied. Nothing was accepted on a verifier's say-s
 `drivers/mmc/host/sdhci.c` (`sdhci_set_dma_mask`), `arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi`,
 `drivers/clk/socfpga/` (directory listing), and a tree-wide `grep -rl agilex5 drivers/`.
 
-**Read read-only from `/mnt/source/de25-linux`:** `drivers/clk/socfpga/clk-agilex5.c` (847 lines),
+**Read read-only from the PORT tree:** `drivers/clk/socfpga/clk-agilex5.c` (847 lines),
 `drivers/misc/de25_fpga_trigger.c` (95 lines), both patched match tables, `socfpga_agilex5.dtsi`
 (svc/fpga-mgr/mmc0 compatibles), `diff -q` of `sdhci-cadence.c` against ours (identical), and a
 `grep` for `smmu_enable_quirk` consumers (none).

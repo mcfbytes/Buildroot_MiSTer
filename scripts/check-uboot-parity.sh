@@ -66,18 +66,32 @@
 # for the third argument. Verified to give identical results under gawk, mawk,
 # the one-true awk (nawk) and this image's own BusyBox awk (via qemu-arm).
 #
-# Usage: scripts/check-uboot-parity.sh <built.sfp> <stock-uboot.img> [u-boot-elf]
+# Usage: scripts/check-uboot-parity.sh <built.sfp> [stock-uboot.img] [u-boot-elf]
 #   <built.sfp>       the image under test (u-boot-with-spl.sfp, or a uboot.img)
-#   <stock-uboot.img> the reference blob (scripts/fetch-sdcard-payload.sh fetches
-#                     it by hash as STOCK_UBOOT_SHA256)
+#   [stock-uboot.img] the reference blob (scripts/fetch-sdcard-payload.sh fetches
+#                     it by hash as STOCK_UBOOT_SHA256). OPTIONAL: when omitted,
+#                     the script runs STRUCTURAL-ONLY MODE -- sections [1]-[3]
+#                     only (uImage header/CRCs, the four SPL copies, the
+#                     socfpga SPL header/CRC/headroom), all of which are
+#                     properties of <built.sfp> alone. Sections [4] and [5]
+#                     (environment parity, command table), which are
+#                     inherently a comparison against stock, are skipped and
+#                     say so rather than compare <built.sfp> against itself
+#                     (docs/uboot-tasks.md U5: CI stays offline; the full
+#                     comparison against the stock blob is recorded once in
+#                     docs/verification/uboot-mainline.md and re-run by
+#                     release.yml, which already has the blob).
 #   [u-boot-elf]      optional: the built u-boot ELF, used to locate
 #                     default_environment[] exactly instead of by scan
+#                     (ignored in structural-only mode: no stock to compare it
+#                     against)
 # Env:
 #   NM               nm to use for the ELF (default: nm)
 #   SPL_SIZE_LIMIT   byte limit for the SPL payload, e.g. the output of the
 #                    U-Boot tree's tools/spl_size_limit (default: unset, only
 #                    the 64 KiB slot is enforced)
-# Exit:  0 = parity holds, 1 = a contract violation, 2 = usage/IO error.
+# Exit:  0 = parity holds (or, in structural-only mode, structural checks
+#        hold), 1 = a contract violation, 2 = usage/IO error.
 
 set -eu
 
@@ -100,7 +114,7 @@ prog=${0##*/}
 fail=0
 
 usage() {
-	echo "usage: $prog <built.sfp> <stock-uboot.img> [u-boot-elf]" >&2
+	echo "usage: $prog <built.sfp> [stock-uboot.img] [u-boot-elf]" >&2
 	exit 2
 }
 
@@ -361,12 +375,12 @@ payscan() {
 }
 
 # ---------------------------------------------------------------------------
-[ $# -eq 2 ] || [ $# -eq 3 ] || usage
+[ $# -ge 1 ] && [ $# -le 3 ] || usage
 built=$1
-stock=$2
+stock=${2:-}
 elf=${3:-}
 
-for f in "$built" "$stock" ${elf:+"$elf"}; do
+for f in "$built" ${stock:+"$stock"} ${elf:+"$elf"}; do
 	[ -f "$f" ] || die "no such file: $f"
 	[ -r "$f" ] || die "not readable: $f"
 done
@@ -375,25 +389,35 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/check-uboot-parity.XXXXXX") || die "mktemp fail
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 bsize=$(wc -c < "$built" | tr -d ' ')
-ssize=$(wc -c < "$stock" | tr -d ' ')
 printf '%s: built  %s (%s bytes)\n' "$prog" "$built" "$bsize"
-printf '%s: stock  %s (%s bytes)\n' "$prog" "$stock" "$ssize"
+if [ -n "$stock" ]; then
+	ssize=$(wc -c < "$stock" | tr -d ' ')
+	printf '%s: stock  %s (%s bytes)\n' "$prog" "$stock" "$ssize"
+else
+	printf '%s: stock  (none -- structural-only mode: [4] and [5] are skipped)\n' "$prog"
+fi
 if [ -n "$elf" ]; then printf '%s: elf    %s\n' "$prog" "$elf"; fi
 
 min=$((UIMG_OFF + UIMG_HDR))
 [ "$bsize" -gt "$min" ] || die "$built is $bsize bytes, too small to hold an SPL region and a uImage"
-[ "$ssize" -gt "$min" ] || die "$stock is $ssize bytes, too small to be the stock uboot.img"
+if [ -n "$stock" ]; then
+	[ "$ssize" -gt "$min" ] || die "$stock is $ssize bytes, too small to be the stock uboot.img"
+fi
 
 # --- 1. The legacy uImage at 0x40000 ----------------------------------------
 echo
 echo "[1] legacy uImage header at $(hx $UIMG_OFF)"
 
-smagic=$(u32be "$stock" "$UIMG_OFF")
-[ "$(printf '%08x' "$smagic")" = "$UIMG_MAGIC" ] ||
-	die "reference $stock has no uImage magic at $(hx $UIMG_OFF) — wrong file?"
-sload=$(u32be "$stock" $((UIMG_OFF + 16)))
-ssz=$(u32be "$stock" $((UIMG_OFF + 12)))
-note "stock: ih_size=$ssz ih_load=$(hx "$sload") ih_ep=$(hx "$(u32be "$stock" $((UIMG_OFF + 20)))")"
+if [ -n "$stock" ]; then
+	smagic=$(u32be "$stock" "$UIMG_OFF")
+	[ "$(printf '%08x' "$smagic")" = "$UIMG_MAGIC" ] ||
+		die "reference $stock has no uImage magic at $(hx $UIMG_OFF) — wrong file?"
+	sload=$(u32be "$stock" $((UIMG_OFF + 16)))
+	ssz=$(u32be "$stock" $((UIMG_OFF + 12)))
+	note "stock: ih_size=$ssz ih_load=$(hx "$sload") ih_ep=$(hx "$(u32be "$stock" $((UIMG_OFF + 20)))")"
+else
+	note "no stock reference given -- structural-only mode (sections [4]/[5] skipped below)"
+fi
 
 bmagic=$(u32be "$built" "$UIMG_OFF")
 if [ "$(printf '%08x' "$bmagic")" = "$UIMG_MAGIC" ]; then
@@ -552,126 +576,137 @@ else
 	note "SPL_SIZE_LIMIT unset: only the $SPL_SLOT-byte slot was enforced. Pass the U-Boot tree's \`tools/spl_size_limit\` output to check the link-time limit too (plan §3.5: stock's 45,820 B, mainline 57,006 B of 62,752 B)."
 fi
 
-# --- 4. Environment parity ---------------------------------------------------
-echo
-echo "[4] default_environment[] parity"
+if [ -n "$stock" ]; then
+	# --- 4. Environment parity ---------------------------------------------------
+	echo
+	echo "[4] default_environment[] parity"
 
-spay=$((UIMG_OFF + UIMG_HDR))
-bpay=$((UIMG_OFF + UIMG_HDR))
+	spay=$((UIMG_OFF + UIMG_HDR))
+	bpay=$((UIMG_OFF + UIMG_HDR))
 
-payscan "$stock" "$spay" "$ssz" "$sload" env > "$tmp/stock.env.txt" || die "env scan of $stock failed"
-if grep -q '^ENVERR' "$tmp/stock.env.txt"; then
-	die "$(sed -n 's/^ENVERR //p' "$tmp/stock.env.txt") in the reference $stock"
-fi
-sed -n 's/^ENVWARN /     warning: /p' "$tmp/stock.env.txt"
-sread=$(awk '$1=="ENV"{print $2}' "$tmp/stock.env.txt")
-slen=$(awk '$1=="ENV"{print $3}' "$tmp/stock.env.txt")
-scnt=$(awk '$1=="ENV"{print $4}' "$tmp/stock.env.txt")
-note "stock env: payload offset $(hx "$sread"), $slen bytes, $scnt entries (file offset $(hx $((spay + sread))))"
-if [ "$sread" -eq "$STOCK_ENV_OFF" ] && [ "$slen" -eq "$STOCK_ENV_LEN" ]; then
-	ok "stock env is where plan §6 says it is: $(hx $STOCK_ENV_OFF), $STOCK_ENV_LEN bytes"
-else
-	note "reference note: stock env is at $(hx "$sread")/$slen B, plan §6 records $(hx $STOCK_ENV_OFF)/$STOCK_ENV_LEN B — the reference blob is not the one the plan measured"
-fi
+	payscan "$stock" "$spay" "$ssz" "$sload" env > "$tmp/stock.env.txt" || die "env scan of $stock failed"
+	if grep -q '^ENVERR' "$tmp/stock.env.txt"; then
+		die "$(sed -n 's/^ENVERR //p' "$tmp/stock.env.txt") in the reference $stock"
+	fi
+	sed -n 's/^ENVWARN /     warning: /p' "$tmp/stock.env.txt"
+	sread=$(awk '$1=="ENV"{print $2}' "$tmp/stock.env.txt")
+	slen=$(awk '$1=="ENV"{print $3}' "$tmp/stock.env.txt")
+	scnt=$(awk '$1=="ENV"{print $4}' "$tmp/stock.env.txt")
+	note "stock env: payload offset $(hx "$sread"), $slen bytes, $scnt entries (file offset $(hx $((spay + sread))))"
+	if [ "$sread" -eq "$STOCK_ENV_OFF" ] && [ "$slen" -eq "$STOCK_ENV_LEN" ]; then
+		ok "stock env is where plan §6 says it is: $(hx $STOCK_ENV_OFF), $STOCK_ENV_LEN bytes"
+	else
+		note "reference note: stock env is at $(hx "$sread")/$slen B, plan §6 records $(hx $STOCK_ENV_OFF)/$STOCK_ENV_LEN B — the reference blob is not the one the plan measured"
+	fi
 
-bread=""
-esize=""
-if [ -n "$elf" ]; then
-	nmbin=${NM:-nm}
-	if nmline=$("$nmbin" -S "$elf" 2>/dev/null | awk '$4=="default_environment"{print $1" "$2; found=1} END{exit !found}'); then
-		eaddr=$((0x$(echo "$nmline" | cut -d' ' -f1)))
-		esize=$((0x$(echo "$nmline" | cut -d' ' -f2)))
-		bread=$((eaddr - bload))
-		if [ "$bread" -lt 0 ] || [ $((bread + esize)) -gt "$bsz" ]; then
-			bad "the ELF puts default_environment outside the uImage payload — $(hx "$eaddr") size $esize is not inside [$(hx "$bload"), +$bsz) — wrong ELF for this image?"
-			bread=""
-			esize=""
+	bread=""
+	esize=""
+	if [ -n "$elf" ]; then
+		nmbin=${NM:-nm}
+		if nmline=$("$nmbin" -S "$elf" 2>/dev/null | awk '$4=="default_environment"{print $1" "$2; found=1} END{exit !found}'); then
+			eaddr=$((0x$(echo "$nmline" | cut -d' ' -f1)))
+			esize=$((0x$(echo "$nmline" | cut -d' ' -f2)))
+			bread=$((eaddr - bload))
+			if [ "$bread" -lt 0 ] || [ $((bread + esize)) -gt "$bsz" ]; then
+				bad "the ELF puts default_environment outside the uImage payload — $(hx "$eaddr") size $esize is not inside [$(hx "$bload"), +$bsz) — wrong ELF for this image?"
+				bread=""
+				esize=""
+			else
+				note "$nmbin -S: default_environment at $(hx "$eaddr") size $esize -> payload offset $(hx "$bread")"
+			fi
 		else
-			note "$nmbin -S: default_environment at $(hx "$eaddr") size $esize -> payload offset $(hx "$bread")"
+			note "$nmbin -S found no default_environment in $elf (stripped, or a different link) — falling back to the scan"
 		fi
-	else
-		note "$nmbin -S found no default_environment in $elf (stripped, or a different link) — falling back to the scan"
 	fi
-fi
 
-payscan "$built" "$bpay" "$bsz" "$bload" env "${bread:--1}" > "$tmp/built.env.txt" || die "env scan of $built failed"
-if grep -q '^ENVERR' "$tmp/built.env.txt"; then
-	bad "$(sed -n 's/^ENVERR //p' "$tmp/built.env.txt") in $built — no environment blob to compare"
-else
-	boff=$(awk '$1=="ENV"{print $2}' "$tmp/built.env.txt")
-	blen=$(awk '$1=="ENV"{print $3}' "$tmp/built.env.txt")
-	bcnt=$(awk '$1=="ENV"{print $4}' "$tmp/built.env.txt")
-	note "built env: payload offset $(hx "$boff"), $blen bytes, $bcnt entries (file offset $(hx $((bpay + boff))))"
-	if [ -n "$bread" ]; then
-		note "located from the ELF symbol; the scan is only a cross-check"
-	fi
-	aoff=$(awk '$1=="ENVA"{print $2}' "$tmp/built.env.txt")
-	if [ -n "$aoff" ]; then
-		note "scan: $(awk '$1=="ENVA"{printf "anchored on \"%s\" (%d match(es) in the payload), blob at 0x%08x, %d bytes, %d entries", $5, $6, $2, $3, $4}' "$tmp/built.env.txt")"
-		if [ "$aoff" -ne "$boff" ]; then
-			note "the scan and the ELF disagree ($(hx "$aoff") vs $(hx "$boff")) — the ELF wins; a scan-only run of this image would compare the wrong bytes"
+	payscan "$built" "$bpay" "$bsz" "$bload" env "${bread:--1}" > "$tmp/built.env.txt" || die "env scan of $built failed"
+	if grep -q '^ENVERR' "$tmp/built.env.txt"; then
+		bad "$(sed -n 's/^ENVERR //p' "$tmp/built.env.txt") in $built — no environment blob to compare"
+	else
+		boff=$(awk '$1=="ENV"{print $2}' "$tmp/built.env.txt")
+		blen=$(awk '$1=="ENV"{print $3}' "$tmp/built.env.txt")
+		bcnt=$(awk '$1=="ENV"{print $4}' "$tmp/built.env.txt")
+		note "built env: payload offset $(hx "$boff"), $blen bytes, $bcnt entries (file offset $(hx $((bpay + boff))))"
+		if [ -n "$bread" ]; then
+			note "located from the ELF symbol; the scan is only a cross-check"
 		fi
-	elif [ -z "$bread" ]; then
-		note "scan: no usable anchor beyond the blob it found"
-	fi
-	if [ -n "$esize" ] && [ "$esize" -ne "$blen" ]; then
-		note "the ELF symbol is $esize B and the blob is $blen B — the symbol also covers the string literal's own trailing NUL and any alignment padding after the NUL-NUL terminator (plan §6: stock is 1,150 B of a 1,151 B symbol)"
+		aoff=$(awk '$1=="ENVA"{print $2}' "$tmp/built.env.txt")
+		if [ -n "$aoff" ]; then
+			note "scan: $(awk '$1=="ENVA"{printf "anchored on \"%s\" (%d match(es) in the payload), blob at 0x%08x, %d bytes, %d entries", $5, $6, $2, $3, $4}' "$tmp/built.env.txt")"
+			if [ "$aoff" -ne "$boff" ]; then
+				note "the scan and the ELF disagree ($(hx "$aoff") vs $(hx "$boff")) — the ELF wins; a scan-only run of this image would compare the wrong bytes"
+			fi
+		elif [ -z "$bread" ]; then
+			note "scan: no usable anchor beyond the blob it found"
+		fi
+		if [ -n "$esize" ] && [ "$esize" -ne "$blen" ]; then
+			note "the ELF symbol is $esize B and the blob is $blen B — the symbol also covers the string literal's own trailing NUL and any alignment padding after the NUL-NUL terminator (plan §6: stock is 1,150 B of a 1,151 B symbol)"
+		fi
+
+		dd if="$stock" bs=1 skip=$((spay + sread)) count="$slen" of="$tmp/stock.env.bin" 2>/dev/null
+		dd if="$built" bs=1 skip=$((bpay + boff)) count="$blen" of="$tmp/built.env.bin" 2>/dev/null
+		if [ "$blen" -ne "$slen" ]; then
+			bad "environment is $blen bytes, stock's is $slen bytes ($bcnt entries vs $scnt)"
+		fi
+		if cmp -s "$tmp/stock.env.bin" "$tmp/built.env.bin"; then
+			ok "environment is byte-identical to stock: $slen bytes, $scnt entries (\`mt\` carried, plan §3.4 — no allowed delta)"
+		else
+			bad "environment differs from stock's — every byte of default_environment[] is a forbidden diff (plan §6)"
+			cmp "$tmp/stock.env.bin" "$tmp/built.env.bin" 2>&1 | sed 's/^/     /' >&2 || true
+			echo "     entry-by-entry diagnostic (-stock +built):" >&2
+			sed -n 's/^ENTRY [0-9]* [0-9]* //p' "$tmp/stock.env.txt" > "$tmp/stock.entries"
+			sed -n 's/^ENTRY [0-9]* [0-9]* //p' "$tmp/built.env.txt" > "$tmp/built.entries"
+			diff -u "$tmp/stock.entries" "$tmp/built.entries" 2>&1 | sed 's/^/     /' >&2 || true
+		fi
 	fi
 
-	dd if="$stock" bs=1 skip=$((spay + sread)) count="$slen" of="$tmp/stock.env.bin" 2>/dev/null
-	dd if="$built" bs=1 skip=$((bpay + boff)) count="$blen" of="$tmp/built.env.bin" 2>/dev/null
-	if [ "$blen" -ne "$slen" ]; then
-		bad "environment is $blen bytes, stock's is $slen bytes ($bcnt entries vs $scnt)"
+	# --- 5. Command table --------------------------------------------------------
+	echo
+	echo "[5] command table"
+
+	payscan "$stock" "$spay" "$ssz" "$sload" cmd > "$tmp/stock.cmd.txt" || die "command scan of $stock failed"
+	if grep -q '^CMDERR' "$tmp/stock.cmd.txt"; then
+		die "no command table found in the reference $stock"
 	fi
-	if cmp -s "$tmp/stock.env.bin" "$tmp/built.env.bin"; then
-		ok "environment is byte-identical to stock: $slen bytes, $scnt entries (\`mt\` carried, plan §3.4 — no allowed delta)"
+	payscan "$built" "$bpay" "$bsz" "$bload" cmd > "$tmp/built.cmd.txt" || die "command scan of $built failed"
+
+	sed -n 's/^NAME //p' "$tmp/stock.cmd.txt" | sort -u > "$tmp/stock.names"
+	snames=$(wc -l < "$tmp/stock.names" | tr -d ' ')
+	note "stock: $(awk '$1=="TABLE"{print $2}' "$tmp/stock.cmd.txt") entries at payload offset $(hx "$(awk '$1=="TABLE"{print $3}' "$tmp/stock.cmd.txt")"), stride $(awk '$1=="TABLE"{print $4}' "$tmp/stock.cmd.txt") (allowed diff: offset and stride)"
+
+	if grep -q '^CMDERR' "$tmp/built.cmd.txt"; then
+		bad "no command table found in $built"
 	else
-		bad "environment differs from stock's — every byte of default_environment[] is a forbidden diff (plan §6)"
-		cmp "$tmp/stock.env.bin" "$tmp/built.env.bin" 2>&1 | sed 's/^/     /' >&2 || true
-		echo "     entry-by-entry diagnostic (-stock +built):" >&2
-		sed -n 's/^ENTRY [0-9]* [0-9]* //p' "$tmp/stock.env.txt" > "$tmp/stock.entries"
-		sed -n 's/^ENTRY [0-9]* [0-9]* //p' "$tmp/built.env.txt" > "$tmp/built.entries"
-		diff -u "$tmp/stock.entries" "$tmp/built.entries" 2>&1 | sed 's/^/     /' >&2 || true
+		sed -n 's/^NAME //p' "$tmp/built.cmd.txt" | sort -u > "$tmp/built.names"
+		bnames=$(wc -l < "$tmp/built.names" | tr -d ' ')
+		note "built: $(awk '$1=="TABLE"{print $2}' "$tmp/built.cmd.txt") entries at payload offset $(hx "$(awk '$1=="TABLE"{print $3}' "$tmp/built.cmd.txt")"), stride $(awk '$1=="TABLE"{print $4}' "$tmp/built.cmd.txt")"
+		comm -23 "$tmp/stock.names" "$tmp/built.names" > "$tmp/missing"
+		comm -13 "$tmp/stock.names" "$tmp/built.names" > "$tmp/extra"
+		if [ -s "$tmp/missing" ]; then
+			bad "$(wc -l < "$tmp/missing" | tr -d ' ') of stock's $snames commands are missing: $(tr '\n' ' ' < "$tmp/missing")"
+		else
+			ok "all $snames stock command names are present ($bnames total in the build)"
+		fi
+		if grep -qx 'mt' "$tmp/built.names"; then
+			ok "\`mt\` is present — stock's fpgacheck runs unmodified (plan §3.4)"
+		else
+			bad "\`mt\` is missing: stock's fpgacheck would fail on every boot (plan §3.4)"
+		fi
+		if [ -s "$tmp/extra" ]; then
+			note "extra commands, allowed: $(tr '\n' ' ' < "$tmp/extra")"
+		else
+			note "no extra commands beyond stock's $snames"
+		fi
 	fi
-fi
-
-# --- 5. Command table --------------------------------------------------------
-echo
-echo "[5] command table"
-
-payscan "$stock" "$spay" "$ssz" "$sload" cmd > "$tmp/stock.cmd.txt" || die "command scan of $stock failed"
-if grep -q '^CMDERR' "$tmp/stock.cmd.txt"; then
-	die "no command table found in the reference $stock"
-fi
-payscan "$built" "$bpay" "$bsz" "$bload" cmd > "$tmp/built.cmd.txt" || die "command scan of $built failed"
-
-sed -n 's/^NAME //p' "$tmp/stock.cmd.txt" | sort -u > "$tmp/stock.names"
-snames=$(wc -l < "$tmp/stock.names" | tr -d ' ')
-note "stock: $(awk '$1=="TABLE"{print $2}' "$tmp/stock.cmd.txt") entries at payload offset $(hx "$(awk '$1=="TABLE"{print $3}' "$tmp/stock.cmd.txt")"), stride $(awk '$1=="TABLE"{print $4}' "$tmp/stock.cmd.txt") (allowed diff: offset and stride)"
-
-if grep -q '^CMDERR' "$tmp/built.cmd.txt"; then
-	bad "no command table found in $built"
 else
-	sed -n 's/^NAME //p' "$tmp/built.cmd.txt" | sort -u > "$tmp/built.names"
-	bnames=$(wc -l < "$tmp/built.names" | tr -d ' ')
-	note "built: $(awk '$1=="TABLE"{print $2}' "$tmp/built.cmd.txt") entries at payload offset $(hx "$(awk '$1=="TABLE"{print $3}' "$tmp/built.cmd.txt")"), stride $(awk '$1=="TABLE"{print $4}' "$tmp/built.cmd.txt")"
-	comm -23 "$tmp/stock.names" "$tmp/built.names" > "$tmp/missing"
-	comm -13 "$tmp/stock.names" "$tmp/built.names" > "$tmp/extra"
-	if [ -s "$tmp/missing" ]; then
-		bad "$(wc -l < "$tmp/missing" | tr -d ' ') of stock's $snames commands are missing: $(tr '\n' ' ' < "$tmp/missing")"
-	else
-		ok "all $snames stock command names are present ($bnames total in the build)"
-	fi
-	if grep -qx 'mt' "$tmp/built.names"; then
-		ok "\`mt\` is present — stock's fpgacheck runs unmodified (plan §3.4)"
-	else
-		bad "\`mt\` is missing: stock's fpgacheck would fail on every boot (plan §3.4)"
-	fi
-	if [ -s "$tmp/extra" ]; then
-		note "extra commands, allowed: $(tr '\n' ' ' < "$tmp/extra")"
-	else
-		note "no extra commands beyond stock's $snames"
-	fi
+	echo
+	echo "[4] default_environment[] parity -- SKIPPED (structural-only mode)"
+	note "no stock reference given; the built/stock comparison is recorded once in"
+	note "docs/verification/uboot-mainline.md section 4 (U2g) and re-run by release.yml,"
+	note "which already has the pinned stock blob -- pass one here (\$2) to repeat it"
+	echo
+	echo "[5] command table -- SKIPPED (structural-only mode)"
+	note "no stock reference given; recorded once in docs/verification/uboot-mainline.md section 4"
 fi
 
 # --- 6. Verdict --------------------------------------------------------------
@@ -682,7 +717,11 @@ echo "    table offsets inside the SPL; extra commands. Everything else above is
 echo "    a hard contract."
 
 if [ "$fail" -eq 0 ]; then
-	echo "$prog: parity holds"
+	if [ -n "$stock" ]; then
+		echo "$prog: parity holds"
+	else
+		echo "$prog: structural checks hold (structural-only mode -- no stock reference given, [4]/[5] skipped)"
+	fi
 else
 	echo "$prog: CONTRACT VIOLATED" >&2
 fi

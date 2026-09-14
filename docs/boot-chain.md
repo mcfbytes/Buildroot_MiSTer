@@ -143,8 +143,11 @@ does not boot; that is the whole recovery story for Phase 5.
 ### 3.1 Result: zero divergence
 
 I re-extracted the built-in environment directly from the shipped binary
-(`work/uboot-proper.bin`, env blob at file offset `0x28018`–`0x28495`, 1,149 bytes of
-NUL-separated `k=v` strings) and compared it to what the source at `8dcc3484` produces.
+(`work/uboot-proper.bin`, env blob at file offset `0x28018`–`0x28495`, 1,150 bytes of
+NUL-separated `k=v` strings, 21 entries — `docs/uboot-mainline-port.md` §6 reconciles that
+against the "20 entries, 1,149 bytes" this section used to claim, and records the fork's
+`default_environment[]` ELF symbol as 1,151, one byte more than the blob) and compared it
+to what the source at `8dcc3484` produces.
 
 **Every variable, every value, and the ordering match exactly.** The order is dictated by
 `u-boot:include/env_default.h:31-84` (the fixed prefix) followed by `:107-109`
@@ -230,7 +233,7 @@ CI must fetch it and verify sha256 `e2d46cf9fe1ec40ca2c9c7409870249f267e06f70e57
 from-source build — same commit, `8dcc3484` — ships opt-in only and is validated by
 behavioural parity (P5.2), not byte identity.)*
 
-### 3.3 `mt` is a MiSTer-only U-Boot command (a Phase-5 blocker again under ADR 0024; solved with `itest.l`)
+### 3.3 `mt` is a MiSTer-only U-Boot command (a Phase-5 blocker again under ADR 0024; solved by carrying the command)
 
 `fpgacheck` uses `mt`, which is **not** an upstream U-Boot command. It was added by this fork
 (`u-boot` commit `c0ed23f52e` "Implement simple memory test against value"):
@@ -248,9 +251,15 @@ So `if mt <addr> <val>; then …` means *"if the word at `addr` equals `val`"*. 
 U-Boot port must re-implement `mt` or rewrite `fpgacheck` without it** (e.g.
 `setexpr` + `test`). *(ADR 0017 briefly dissolved this blocker by building the fork;
 **[ADR 0024](decisions/0024-mainline-uboot-capability-artifact.md) superseded that** —
-Phase 5 now builds **mainline U-Boot 2026.04**, so `mt` does **not** ship. The
-replacement is `itest.l *<addr> == <val>`, verified by execution in a U-Boot sandbox
-across all three warm-reboot dispatch cases — `docs/uboot-mainline-port.md` §3.4.)*
+Phase 5 builds **mainline U-Boot 2026.07** — and the owner's 2026-09-14 "mirror stock"
+decision took the first of those two routes: **the fork's `mt` is carried as a patch**
+(`board/mister/de10nano/patches/uboot/0004-cmd-mem-add-mt-memory-test-against-value.patch`,
+36 added lines in `cmd/mem.c`, `cmd_tbl_t` → `struct cmd_tbl`), so `fpgacheck` is kept
+verbatim and the built-in environment stays byte-identical to stock's —
+`docs/uboot-mainline-port.md` §3.4. The `itest.l *<addr> == <val>` rewrite stays documented
+but **unused**: it is the fallback if `mt` ever fails to port, and the free stock-hardware
+smoke test of that plan's §8. It was verified by execution in a U-Boot sandbox across all
+three warm-reboot dispatch cases.)*
 
 ---
 
@@ -934,8 +943,10 @@ Also preserved by construction, and worth stating so P1.10 does not "improve" th
 * **N4 — `mt` is a MiSTer-only U-Boot command.** Any mainline U-Boot port must
   re-implement it or rewrite `fpgacheck`. (§3.3) *(Live again under
   [ADR 0024](decisions/0024-mainline-uboot-capability-artifact.md), which builds mainline
-  — resolved not by re-implementing `mt` but with `itest.l *<addr> == <val>`, verified by
-  execution: `docs/uboot-mainline-port.md` §3.4.)*
+  — resolved on 2026-09-14 by re-implementing it: the fork's `mt` is carried as patch
+  `0004-cmd-mem-add-mt-memory-test-against-value.patch`, which keeps `fpgacheck` verbatim.
+  The `itest.l *<addr> == <val>` rewrite is the documented, verified-by-execution fallback:
+  `docs/uboot-mainline-port.md` §3.4.)*
 * **N5 — `uboot.img` cannot be rebuilt byte-identically** (compiled-in `+0800` timestamp, no
   `SOURCE_DATE_EPOCH`, pinned 2020 Arm toolchain). It must be *fetched by hash*, never built.
   (§3.2) *(Under ADR 0017 this holds for the default channel; the Phase-5 from-source

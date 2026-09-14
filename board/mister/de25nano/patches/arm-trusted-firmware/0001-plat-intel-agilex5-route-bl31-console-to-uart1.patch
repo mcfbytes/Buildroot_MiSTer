@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Sep 2026 16:00:00 -0500
+Subject: [PATCH] plat: intel: soc: route the BL31 boot and crash console to UART1
+
+On the DE25-Nano the header (console) UART is HPS UART1 at 0x10C02100; UART0
+is not brought out. TF-A's Intel SoCFPGA platform code hard-codes UART0 for
+both its boot console and its crash console, so on this board every
+NOTICE/ERROR line BL31 prints -- including the panic path -- goes to a port
+nothing is listening on, and a BL31 failure at bring-up is indistinguishable
+from a dead board. Point both at UART1.
+
+Provenance
+----------
+Origin:       Terasic's own TF-A build for this board makes exactly this
+              change and nothing else against Altera's socfpga_v2.12.0
+              branch: github.com/terasic/arm-trusted-firmware, branch
+              de25-nano-v2.12.0 (head 580dcb5), plat/intel/soc/common/
+              include/platform_def.h. The factory u-boot.itb's BL31 reports
+              "v2.12.0(release):de25_nano_revA_v1.0" and is that build.
+              Re-expressed here against upstream v2.15.0, whose
+              platform_def.h carries the same two defines at :155-156.
+Author:       this repo (the change is two macro values; Terasic's commit
+              carries no separate authorship).
+Upstream:     Not upstreamable as-is: mainline TF-A has no DE25-Nano board
+              and the value is per-board. A per-platform Kconfig for the
+              console UART would be; not pursued.
+Why carried:  visibility only. BL31's behaviour is unchanged; what changes is
+              where its text goes. docs/de25-uboot.md section 11 and
+              docs/de25-nano-tasks.md ("no NOTICE: BL31 lines on the header
+              UART is normal") predate this patch; with it, BL31's banner is
+              expected on the console and its absence IS a finding.
+Verified:     [V] applies at -F0 to v2.15.0; bl31.bin rebuilds; the resulting
+              u-boot.itb passes scripts/check-sdcard-de25.sh and the
+              MISTER_UBOOT_DE25_QSPI_AUDIT hook. [U] output on the header
+              UART -- needs the board.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ plat/intel/soc/common/include/platform_def.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/plat/intel/soc/common/include/platform_def.h b/plat/intel/soc/common/include/platform_def.h
+--- a/plat/intel/soc/common/include/platform_def.h
++++ b/plat/intel/soc/common/include/platform_def.h
+@@ -152,8 +152,8 @@
+ /*******************************************************************************
+  * UART related constants
+  ******************************************************************************/
+-#define CRASH_CONSOLE_BASE			PLAT_UART0_BASE
+-#define PLAT_INTEL_UART_BASE			PLAT_UART0_BASE
++#define CRASH_CONSOLE_BASE			PLAT_UART1_BASE
++#define PLAT_INTEL_UART_BASE			PLAT_UART1_BASE
+ 
+ #define PLAT_BAUDRATE				(115200)
+ #define PLAT_UART_CLOCK				(100000000)

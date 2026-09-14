@@ -6,11 +6,27 @@
 **Specification being reproduced:** [`docs/boot-chain.md`](boot-chain.md) — cited by section
 throughout; nothing from it is restated here.
 
+> **Revision 2026-09-14.** Three things changed since this plan was written, none of them
+> the verdict. (1) **The pin is 2026.07, not 2026.04:** Buildroot 2026.08 (the repo's pin)
+> bundles U-Boot 2026.07 with its own hash line, so `BR2_TARGET_UBOOT_LATEST_VERSION=y` now
+> resolves there — the same tarball the DE25-Nano already builds. Deltas #1–#4 were re-checked
+> in the 2026.07 tarball on 2026-09-14: the missing raw-mode line, the dead `TARGET_SOCFPGA_GEN5`
+> guard (`board.c:214-215`), the 64-bit `/` and `%` in `fs/exfat/time.c:129,147-148`, and
+> `FPGAPORTRST=0x1FF` are all still there. (2) **The owner decided the open questions by one
+> rule — mirror stock** (§9, items 2 and 3, and the `mt` question in §3.4): the warm-reboot
+> bridge behaviour is carried as the fork's C change, the fork's QTS values are carried
+> unmodified, and `mt` is carried as a command so the environment text is byte-identical to
+> stock's. (3) **§3.2a and §6 fold in the never-merged ADR 0023 draft** (branch
+> `docs/adr-0023-uboot-mainline-handoff`, commit `491c0d9`, 2026-07-25; its number was reused by
+> the 7-Zip ADR and the branch was deleted on 2026-09-14): the binary-level proof that the
+> shipped SPL carries the fork's handoff, and the no-hardware handoff-equality gate that proof
+> makes possible. Execution: [`docs/uboot-tasks.md`](uboot-tasks.md).
+
 ---
 
 ## 1. What this is, and what it is not
 
-Build **mainline U-Boot 2026.04** for the MiSTer, configured to behave as close to
+Build **mainline U-Boot 2026.07** (2026.04 when first written; see the revision note) for the MiSTer, configured to behave as close to
 identically to the stock 2017.03 fork as the evidence allows, as a **build artifact only**.
 
 **Not changing, and gated so it stays that way:**
@@ -97,6 +113,50 @@ not fight future churn. And the fork and mainline **imported the board independe
 (fork `c7ed0834ac` 2017-03-27; mainline `6bd041f00d` 2017-04-18) — v2017.03 has no
 DE10-Nano at all.
 
+### 3.2a The shipped SPL provably carries the fork's handoff — binary evidence
+
+*Folded in from the ADR 0023 draft (2026-07-25); reproduced there against the pinned stock
+`uboot.img`, sha256 `e2d46cf9…62a64`, SPL copy 0 = bytes `0x00000`–`0x0FFFF`.*
+
+§3.2 is a source-level diff. It leaves one inference open: that the stock binary was built
+from the fork's headers rather than from something else at the same path. The handoff is
+constant tables the SPL writes to registers verbatim, so that inference is directly
+checkable with no disassembler — pack each `qts/*.h` initialiser and search the SPL bytes:
+
+| Table | Fork bytes | Mainline bytes |
+|---|---|---|
+| `sys_mgr_init_table` (pinmux, `const u8[207]`) | **found @ `0x0AAC8`** | not found |
+| `iocsr_scan_chain0_table` (24 × u32) | **found @ `0x096B8`** | not found |
+| `iocsr_scan_chain1_table` (54 × u32) | **found @ `0x09718`** | not found |
+| `iocsr_scan_chain2_table` (30 × u32) | **found @ `0x097F0`** | not found |
+| `iocsr_scan_chain3_table` (524 × u32) | found @ `0x09868` | found — identical tables |
+| `ac_rom_init` (36 × u32) | found @ `0x090F8` | found — identical |
+| `inst_rom_init` (127 × u32) | found @ `0x094BC` | found — identical |
+
+Method, so this stays checkable: parse the `{…}` initialisers out of each header; pack the
+`iocsr_scan_chain*_table`, `ac_rom_init` and `inst_rom_init` arrays as **little-endian u32**;
+pack `sys_mgr_init_table` as **raw bytes** (it is `const u8[]` — packing it as u32 is why it
+appears absent on a naive first pass); search SPL copy 0 for each byte string. Normalise
+`CONFIG_HPS_*` → `CFG_HPS_*` before comparing define *names* across the two trees.
+
+What this does and does not establish, stated plainly:
+
+* It **proves** the four divergent tables in the shipped SPL are the fork's, which pins the
+  blob to the fork source a second, independent way (the first is boot-chain §3.1's env-blob
+  fingerprint). It also proves the DDR sequencer microcode has not diverged — only the data
+  fed to it.
+* It **does not** prove the scalar `#define`s (the PLL counts, `FPGAPORTRST`): those compile
+  to instruction immediates and are not greppable. They rest on the source diff plus the
+  double pin above.
+* It **does not** prove that a 2026 SPL consuming the same tables behaves as the 2017.03 SPL
+  did. The gen5 calibration path has nine years of upstream change; the risk is far narrower
+  than "unknown DDR configuration", not zero. Hardware only.
+
+The payoff is §6's **handoff-equality gate**: the same search run against *our* built SPL
+catches the whole class of "the build silently picked up the wrong `qts/*.h`" — the failure
+mode most likely to look like success on a board — with no hardware at all. That is the one
+delta of §3.1 whose omission a cold-boot smoke test could not catch.
+
 ### 3.3 Three further divergences, none previously documented
 
 * **uImage entry point.** Mainline sets `ih_ep = CONFIG_TEXT_BASE` (`0x01000040`) via
@@ -118,7 +178,15 @@ DE10-Nano at all.
 
 ### 3.4 `mt` — solved, and testable on stock hardware first
 
-Stock's `fpgacheck` uses `mt`, a MiSTer-only command (boot-chain §3.3). The replacement is
+> **Decided 2026-09-14 (mirror stock; amends ADR 0024 §Decision 5):** carry the fork's `mt`
+> command instead of rewriting `fpgacheck`. It is 23 lines of C in `cmd/mem.c` (fork
+> `8dcc3484`, `do_mem_mt` + one `U_BOOT_CMD`; port is `cmd_tbl_t` → `struct cmd_tbl`), it
+> never leaves the tree, and with it the environment text is **byte-identical to stock's**
+> (21 entries, 1,150 B), so §6's environment check becomes a plain `cmp` instead of an
+> allowed-delta list. The `itest` rewrite below stays documented for two reasons: it is the
+> fallback if `mt` ever fails to port, and it is the free stock-hardware smoke test in §8.
+
+Stock's `fpgacheck` uses `mt`, a MiSTer-only command (boot-chain §3.3). The alternative is
 **`itest.l *<addr> == <val>`** — verified *by execution*, not inference: a verifier built a
 real U-Boot 2026.04 sandbox binary and ran the rewritten `fpgacheck` through all three
 warm-reboot dispatch cases of boot-chain §6.1, confirming the exit-status sense matches
@@ -163,9 +231,11 @@ Measured against `work/buildroot` (2026.05.1), not recalled:
 
 * `BR2_TARGET_UBOOT_LATEST_VERSION=y` is the **only** choice for which Buildroot
   hash-verifies the tarball (`uboot.mk:41-43` adds `BR_NO_CHECK_HASH_FOR` for every
-  `CUSTOM_*`). It resolves to **2026.04** (`Config.in:88`), whose sha256
-  `ac7c04b8…f2fd` was confirmed byte-identical to `boot/uboot/uboot.hash`. This matches the
-  repo's hash-pinning convention for free.
+  `CUSTOM_*`). Under Buildroot 2026.05.1 it resolved to 2026.04 (sha256 `ac7c04b8…f2fd`,
+  confirmed byte-identical to `boot/uboot/uboot.hash`); under the repo's current Buildroot
+  2026.08 it resolves to **2026.07** (`Config.in:88`, sha256 `78e8bfc3…243e` — the same line
+  `board/mister/de25nano/patches/uboot/uboot.hash` carries, GPG-verified against the release
+  signature). This matches the repo's hash-pinning convention for free.
 * No `.sfp` format exists in the menu (`Config.in:373-551`) → `BR2_TARGET_UBOOT_FORMAT_CUSTOM`
   + `_CUSTOM_NAME="u-boot-with-spl.sfp"`. **No custom make target is needed**: upstream
   `Kconfig:528` sets `CONFIG_BUILD_TARGET="u-boot-with-spl.sfp"` for gen5 and folds it into
@@ -193,23 +263,27 @@ Measured against `work/buildroot` (2026.05.1), not recalled:
 
 ## 4. Design
 
-**Source.** Mainline U-Boot **2026.04** via `BR2_TARGET_UBOOT_LATEST_VERSION=y` — hash-verified
-by Buildroot, no submodule, no vendored tree, standing rule 1 satisfied trivially.
-**Pin deliberately, do not float:** 2026.04 is the last release where §3.1 delta #2 is a
-one-line fix in a *known* place. A U-Boot bump must re-verify deltas #1 and #2 against the
-resolved `.config`, because #1 is a Kconfig `choice` whose default can flip with no diff in
-our files.
+**Source.** Mainline U-Boot **2026.07** via `BR2_TARGET_UBOOT_LATEST_VERSION=y` — hash-verified
+by Buildroot, no submodule, no vendored tree, standing rule 1 satisfied trivially, and the
+same tarball the DE25-Nano builds.
+**The pin rides the Buildroot bump, and every bump re-opens deltas #1 and #2:** #1 is a
+Kconfig `choice` whose default can flip with no diff in our files, and #2 is a carried patch
+against a known line. That is why the resolved-`.config` assertion and the handoff gate of
+§6 run in the build recipe, not in a checklist: a Buildroot bump that moves U-Boot fails the
+build loudly instead of shipping a silently different bootloader.
 
-**Layering**, mirroring the RT kernel's two-layer model exactly:
+**Layering**, mirroring the DE25-Nano's U-Boot wiring (post-ADR 0030 layout; the original
+table named a separate `configs/mister_uboot_defconfig` + `output-uboot/`, which predates the
+committed-defconfig layout — see `docs/uboot-tasks.md` U1 for the placement decision):
 
 | Layer | File | Contents |
 |---|---|---|
-| Buildroot config | `configs/mister_uboot_defconfig` | `BR2_TARGET_UBOOT*`, toolchain, no rootfs |
-| U-Boot config | `board/mister/de10nano/uboot-mister.fragment` | the `CONFIG_*` deltas of §3.1/§3.3 |
-| Environment | `board/mister/de10nano/uboot-mister.env` | stock's env as text, `itest`-rewritten `fpgacheck` |
-| Patches | `board/mister/de10nano/uboot-patches/` | the two upstream fixes + the QTS headers |
+| Buildroot config | `BR2_TARGET_UBOOT*` lines in the DE10 defconfig (U1 decides which one) | source pin, board defconfig, fragment, env file, `FORMAT_CUSTOM` name |
+| U-Boot config | `board/mister/de10nano/uboot.fragment` | the `CONFIG_*` deltas of §3.1/§3.3, headed like `board/mister/de25nano/uboot.fragment` |
+| Environment | `board/mister/de10nano/uboot.env` | stock's 21 entries as text, byte-identical (via `BR2_TARGET_UBOOT_DEFAULT_ENV_FILE`) |
+| Patches | `board/mister/de10nano/patches/uboot/` | via `BR2_GLOBAL_PATCH_DIR`, exactly as the kernel's `patches/linux/` — the two upstream fixes, the QTS headers, `mt`, the bridge behaviour |
 
-**Output artifact:** `output-uboot/images/u-boot-with-spl.sfp`. Never `uboot.img` (§1).
+**Output artifact:** `images/u-boot-with-spl.sfp`. Never `uboot.img` (§1).
 
 **Patches carried** — each needs a CONTRIBUTING.md provenance header, using
 `board/mister/de10nano/linux-patches/0001-fbdev-add-MiSTer_fb-driver.patch` as the template:
@@ -218,9 +292,21 @@ our files.
    (§3.1 #2). **Upstream this.**
 2. `0002-fs-exfat-fix-64-bit-division-on-32-bit-arm.patch` — `do_div()` in `fs/exfat/time.c`
    (§3.1 #3). **Upstream this.**
-3. `0003-board-terasic-de10-nano-mister-qts-handoff.patch` — the four QTS headers (§3.2).
-   Never upstreamable; MiSTer is a different FPGA design on the same board.
-4. Warm-reboot bridge behaviour (§3.3) — **carrier undecided**, see §9.
+3. `0003-board-terasic-de10-nano-mister-qts-handoff.patch` — the four QTS headers (§3.2),
+   **the fork's values unmodified** (`FPGAPORTRST=0x3FFF`, both s2f clock counts, the three
+   pinmux bits, all 32 IOCSR words — decided 2026-09-14, mirror stock). Never upstreamable;
+   MiSTer is a different FPGA design on the same board. Gated by §6's handoff check.
+4. `0004-cmd-mem-add-mt-memory-test-against-value.patch` — the fork's `mt` (§3.4). Provenance:
+   fork commit that introduced `do_mem_mt` (find it with `git log -S do_mem_mt` in
+   `work/U-Boot_MiSTer`).
+5. `0005-arm-socfpga-gen5-release-bridges-after-reset-if-fpga-in-user-mode.patch` — the fork's
+   `d6010efe50` (Sorgelig, 2017-03-27, one line: `socfpga_bridges_reset(0)` at the end of
+   `arch_early_init_r`) re-expressed against mainline's `misc_gen5.c:185-210`, whose
+   `arch_early_init_r` ends in `socfpga_bridges_reset(1)`. **Decided 2026-09-14: carried as C,
+   mirror stock** — the env-script route was assessed as not equivalent (§3.3). The porting
+   agent must diff the fork's `socfpga_bridges_reset(0)` body (its user-mode test and which
+   bridges it releases) against mainline's `do_bridge_reset(1, mask)` and carry the *behaviour*,
+   not the line.
 
 Note that patches 1–3 are *behaviour* changes, not build fixes. ADR 0017 restricted
 `uboot-patches/` to build fixes only; that restriction was written for a fork build where
@@ -280,18 +366,31 @@ the SPL (assert on the resolved `.config` **and** on `nm`, not on the defconfig)
 
 **Environment parity.** Extract the raw `default_environment[]` symbol (locate with
 `nm -S u-boot`, read `u-boot.bin` at `addr - CONFIG_TEXT_BASE`) — **not**
-`u-boot-initial-env`, which is sorted and can be stale. Compare **entry by entry**, not with
-`cmp`: the two `itest` rewrites add 9 bytes each, so the blob is 1,168 B where stock's is
-1,150 B. A plain `cmp` is achievable only by emitting literal `mt` text that mainline cannot
-execute — that trade is rejected.
+`u-boot-initial-env`, which is sorted and can be stale. With `mt` carried (§3.4, decided
+2026-09-14) the blob must be **byte-identical to stock's** (21 entries, 1,150 B): a plain
+`cmp` against the blob extracted from the stock `uboot.img` at `0x28018`, and an entry-by-entry
+report only as the diagnostic when `cmp` fails. *(Original design, kept for the fallback: with
+the `itest` rewrite the blob is 1,168 B and the comparison is entry-by-entry against an
+allowed-delta list of exactly the two `fpgacheck` entries.)*
+
+**Handoff equality** (folded in from the ADR 0023 draft, §3.2a): extract SPL copy 0 from the
+built `.sfp` and from the stock `uboot.img`; pack the seven tables of §3.2a from the carried
+`qts/*.h` and assert every one is found in **both** SPLs. The offsets may differ (code layout);
+presence and byte-equality may not. This needs no hardware and catches the one silent-brick
+delta a cold-boot test cannot. The stock blob is fetched by hash the way `release.yml` already
+does (`scripts/fetch-sdcard-payload.sh`, `STOCK_UBOOT_SHA256`).
+
+**Command table.** Every one of stock's 69 commands present (boot-chain §3.3's list, `mt`
+included); extra mainline commands are allowed and listed.
 
 **Allowed diffs** (enumerate, explain individually, or fail): version string and build
 timestamp; uImage `ih_ep` `0x01000040` vs `0x00000000` (§3.3 — with the mixing hazard
-documented); the two `fpgacheck` entries rewritten `mt`→`itest`; total size; code layout.
+documented); total size; code layout; table offsets inside the SPL.
 
-**Forbidden diffs:** any other environment entry differing in name, value or order; a
-missing command from stock's 69-entry table; any layout/offset change; a load-address
-change; any SPL header field change; `USE_SECTOR` reappearing.
+**Forbidden diffs:** any environment byte; a missing command from stock's 69-entry table;
+any handoff table absent from or differing in the built SPL; any layout/offset change of
+the four SPL copies or the uImage; a load-address change; any SPL header field change;
+`USE_SECTOR` reappearing.
 
 Reconcile one doc nit while here: boot-chain §3.1 says the env blob is "20 entries, 1,149
 bytes"; direct extraction gives **21 entries, 1,150 bytes** (`0x28018–0x28495` inclusive is
@@ -354,12 +453,14 @@ serial output is `preloader_console_init()` at `:157`):
 
 1. **Nothing has been run on a DE10-Nano.** Every claim above is source-level or
    build-artifact-level. "It boots" is a per-build claim, exactly like the RT kernel pin.
-2. **The warm-reboot bridge fix (§3.3): carried C patch (`d6010efe50`) or `bridge enable` in
-   `fpgacheck`'s middle branch?** The env route keeps the delta out of C but was assessed as
-   *not equivalent*. Decide explicitly and write it down — a cold-boot test cannot catch this.
-3. **Does the `GENERALIO3`/`GENERALIO4` pinmux difference actually break anything?** And is
-   `FPGAPORTRST=0x3FFF` genuinely required, or merely what MiSTer's Quartus project emitted?
-   Both are unverified on hardware and must not be reported either way.
+2. ~~**The warm-reboot bridge fix (§3.3): carried C patch (`d6010efe50`) or `bridge enable` in
+   `fpgacheck`'s middle branch?**~~ **Decided 2026-09-14 by the owner: carried C patch, mirror
+   stock** (§4 patch 5). The env route was assessed as not equivalent, and a cold-boot test
+   cannot catch getting this wrong.
+3. ~~**Does the `GENERALIO3`/`GENERALIO4` pinmux difference actually break anything?** And is
+   `FPGAPORTRST=0x3FFF` genuinely required?~~ **Decided 2026-09-14 by the owner: carry the
+   fork's values unmodified, mirror stock** (§4 patch 3). Whether either is *required* stays
+   unverified and must not be reported either way; it no longer affects execution.
 4. **What size `0xA2` partition do mr-fusion and the Windows SD installer create?** Ours is
    4 MiB; the in-the-wild value is unknown and `updateboot` `dd`s with no size check.
 5. **Does mainline's exFAT driver handle the variant `mkfs.exfat -L MiSTer_Data` produces**
@@ -369,6 +470,13 @@ serial output is `preloader_console_init()` at `:157`):
    the 16 MB budget of boot-chain §7.3. Set it to `0x4000000` and move on, but confirm.
 7. **Will upstream take the two fixes?** Both are real mainline bugs. Landing them removes
    two carried patches from the highest-blast-radius component.
-8. **Renovate:** with `LATEST_VERSION=y` there is no version string to track — does the pin
+8. ~~**Renovate:** with `LATEST_VERSION=y` there is no version string to track — does the pin
    ride the Buildroot bump, or does it need its own manager plus a "re-verify deltas #1/#2"
-   gate?
+   gate?~~ **Answered 2026-09-14:** it rides the Buildroot bump (2026.08 already moved it to
+   2026.07), and the "re-verify" gate is the U3 resolved-`.config` assertion plus the §6
+   handoff check, both of which run inside the build. No separate manager.
+9. **Should the DE10 U-Boot build live in the shipping `mister_de10nano_defconfig`** (one image,
+   one CI build, the artifact built on every PR so it cannot rot; amends ADR 0024's "gains no
+   `BR2_TARGET_UBOOT*` line") **or in its own defconfig and output tree** (isolated, manual CI
+   lane, a second toolchain build)? Owner decision; `docs/uboot-tasks.md` U1 recommends the
+   former.

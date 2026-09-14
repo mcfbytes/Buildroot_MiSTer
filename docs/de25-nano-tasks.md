@@ -410,6 +410,10 @@ Remaining, in unblock order:
 3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
    submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
    (ordered on return).
+   **2026-09-14:** the DE25 U-Boot's remaining *desk* work (the §7 QSPI-audit CI check, the
+   redundant custom version pin now that Buildroot 2026.08 bundles 2026.07, FIT cross-tree
+   reproducibility, the TF-A signature, `docs/de25-uboot.md` §13's seven decisions) is planned
+   as the DU-series in [`docs/uboot-tasks.md`](uboot-tasks.md), alongside the DE10's.
 4. **Stand up D0.4** as a `/schedule` routine.
 
 Sequencing note learned the hard way on 2026-08-21: when a research phase feeds a claim set that a

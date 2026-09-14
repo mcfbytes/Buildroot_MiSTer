@@ -1,0 +1,175 @@
+From c0ed23f52e203d704c0b149408f2cc0b1bb48939 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Fri, 7 Apr 2017 12:46:47 +0800
+Subject: [PATCH] cmd: mem: add mt, memory test against value
+
+Add the fork's "mt" command: compare the value at a memory address
+against a given value and return 0 (shell "true") if equal, 1 (shell
+"false") if not. Standard U-Boot has no equivalent -- itest.l compares
+two operands with an explicit relational operator, but nothing in
+mainline does a bare equality test suitable for direct use in a hush
+"if" without an intervening setexpr/test pair.
+
+Stock's fpgacheck (include/configs/socfpga_de10_nano.h) depends on this
+exact command and this exact exit-status sense:
+
+    fpgacheck=if mt 0x1FFFFF08 0xBEEFB001;then mw 0x1FFFFF08 0;
+    if mt 0x1FFFF000 0x87654321;then mw 0x1FFFF000 0;
+    env import -t 0x1FFFF004;run fpgaload;fi;else run fpgaload;fi
+
+Carrying this command instead of rewriting fpgacheck around itest.l
+keeps the environment text byte-identical to stock's (21 entries,
+1,150 B -- docs/uboot-mainline-port.md 3.4), which turns the
+environment-parity check in docs/boot-chain.md 6 into a plain cmp
+instead of an allowed-delta list.
+
+Origin
+------
+Fork commit c0ed23f52e203d704c0b149408f2cc0b1bb48939, "Implement simple
+memory test against value.", Sorgelig <pour.garbage@gmail.com>,
+2017-04-07, MiSTer-devel/U-Boot_MiSTer (the checkout at
+work/U-Boot_MiSTer; 2017.03 base, fork head 8dcc3484aa).
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream status: Not merged, and not upstreamable as a generic U-Boot
+              command -- it exists only because stock's fpgacheck
+              script depends on this exact name and exit-status sense;
+              mainline's itest.l already covers the general case.
+Disposition:  Carry (owner decision 2026-09-14, "mirror stock" --
+              docs/uboot-mainline-port.md 3.4, amending ADR 0024
+              Decision 5). ADR 0024 had picked the itest.l rewrite of
+              fpgacheck instead; that path is kept documented as the
+              fallback and as the free stock-hardware smoke test
+              (docs/uboot-mainline-port.md 3.4, 8) but is not what
+              ships.
+
+Forward-port: 2017.03 -> 2026.07, Michael C. Ferguson, 2026-09-14, task
+              U2c. Two renames only, no behaviour change:
+                cmd_tbl_t              -> struct cmd_tbl   (typedef
+                                           retired between 2017.03 and
+                                           2026.07)
+                simple_strtoul(x,NULL,16) -> hextoul(x,NULL)  (thin
+                                           wrapper introduced later;
+                                           every other size/address/
+                                           value parse in this file's
+                                           do_mem_mw already uses it)
+              Placement mirrors the fork exactly: do_mem_mt right after
+              do_mem_md and before do_mem_mm, and the mt U_BOOT_CMD
+              right after md's and before mm's. Help strings are
+              stock's, unmodified: "memory test against value" /
+              "[.b, .w, .l] address value".
+
+Verified by execution -- U-Boot sandbox build
+----------------------------------------------
+Built as a throwaway host binary (not the target), against the
+2026.07 tarball plus only this patch: `make sandbox_defconfig && make
+NO_SDL=1` (mkeficapsule's gnutls host dependency and the sandbox EFI
+capsule-on-disk test images are irrelevant to this command and were
+disabled/allowed-missing for this scratch build only --
+CONFIG_TOOLS_MKEFICAPSULE, CONFIG_EFI_CAPSULE_ON_DISK,
+BINMAN_ALLOW_MISSING=1 -- nothing here touches the patch or the
+image this repo ships). Driven non-interactively with `./u-boot -c
+'<commands>'`; DRAM/device-model banner elided below.
+
+  => help mt
+  mt - memory test against value
+
+  Usage:
+  mt [.b, .w, .l] address value
+
+  => mw.l 1000 BEEFB001; mt.l 1000 BEEFB001; echo rc=$?
+  rc=0
+
+  => mw.l 1000 BEEFB001; mt.l 1000 12345678; echo rc=$?
+  rc=1
+
+  => mw.l 1000 BEEFB001; if mt.l 1000 BEEFB001; then echo T; else echo F; fi
+  T
+
+  => mw.l 1000 BEEFB001; if mt.l 1000 12345678; then echo T; else echo F; fi
+  F
+
+rc=0 on equality (memcmp() == 0, shell "true", hush THEN branch), rc=1
+on inequality (shell "false", hush ELSE branch) -- exactly the sense
+docs/boot-chain.md 6.1's three-way fpgacheck dispatch requires for both
+the outer 0x1FFFFF08/0xBEEFB001 check and the inner
+0x1FFFF000/0x87654321 check. Full build/run log:
+/mnt/source/uboot-wave-a/U2c/build5.log,
+/mnt/source/uboot-wave-a/U2c/transcript.txt.
+
+checkpatch.pl --strict flags four ERROR-level findings inside
+do_mem_mt itself: two single-line "if (...) return ...;" statements,
+one assignment inside an if condition (the same cmd_get_data_size()
+line as one of those), and "return (rc);"'s redundant parens. All four
+are carried unchanged from the fork's own 2017-04-07 code, not
+introduced by this port -- fixing them was out of scope for "port
+do_mem_mt", and "mirror stock wherever there is a choice" (this doc's
+header) argues for the byte-for-byte-equivalent port over a stylistic
+rewrite. (A fifth finding, a CHECK on the U_BOOT_CMD() line, is not
+specific to this hunk -- every other U_BOOT_CMD() invocation already in
+this file trips the same check.) Not a blocker: this patch is not
+upstream material (next paragraph), so checkpatch is informational
+here, not a gate.
+
+Not upstream: MiSTer-only command, drafts only per owner decision 4
+(nothing is sent to any mailing list).
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ cmd/mem.c | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/cmd/mem.c b/cmd/mem.c
+index 68eb6989..0a90f934 100644
+--- a/cmd/mem.c
++++ b/cmd/mem.c
+@@ -114,6 +114,36 @@ static int do_mem_md(struct cmd_tbl *cmdtp, int flag, int argc,
+ 	return (rc);
+ }
+ 
++/* Memory Test
++ *
++ * Syntax:
++ *	mt{.b, .w, .l, .q} {addr} {value}
++ */
++static int do_mem_mt(struct cmd_tbl *cmdtp, int flag, int argc,
++		     char *const argv[])
++{
++	ulong	addr, val;
++
++	int size;
++	int rc = 0;
++
++	if (argc < 3) return CMD_RET_USAGE;
++
++	if ((size = cmd_get_data_size(argv[0], 4)) < 0) return 1;
++
++	addr = hextoul(argv[1], NULL);
++	addr += base_address;
++
++	val = hextoul(argv[2], NULL);
++
++	const void *buf = map_sysmem(addr, size);
++
++	rc = memcmp(buf, &val, size) ? 1 : 0;
++
++	unmap_sysmem(buf);
++	return (rc);
++}
++
+ static int do_mem_mm(struct cmd_tbl *cmdtp, int flag, int argc,
+ 		     char *const argv[])
+ {
+@@ -1318,6 +1348,12 @@ U_BOOT_CMD(
+ 	"[.b, .w, .l" HELP_Q "] address [# of objects]"
+ );
+ 
++U_BOOT_CMD(
++	mt,	3,	1,	do_mem_mt,
++	"memory test against value",
++	"[.b, .w, .l] address value"
++);
++
+ U_BOOT_CMD(
+ 	mm,	2,	1,	do_mem_mm,
+ 	"memory modify (auto-incrementing address)",

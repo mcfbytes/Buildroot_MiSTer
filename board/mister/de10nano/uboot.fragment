@@ -1,27 +1,355 @@
 # uboot.fragment -- DE10-Nano deltas on mainline's socfpga_de10_nano_defconfig.
 #
-# Applied by Buildroot on top of BR2_TARGET_UBOOT_BOARD_DEFCONFIG
-# ("socfpga_de10_nano") via BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES:
-# merge_config.sh, then olddefconfig. Every line will be a DELTA -- if a value
-# matches what the board defconfig already resolves to, restate it only where
-# the restatement is the point (see `board/mister/de25nano/uboot.fragment`'s
-# environment block for the pattern).
+# WHICH LAYER IS WHICH
 #
-# STUB, wired by U1 (docs/uboot-tasks.md): this file carries no CONFIG_ lines
-# yet so BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES resolves to a real, mergeable
-# (empty) fragment and `make` is green before the real deltas land. The real
-# content -- SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE, FS_EXFAT, the
-# ENV_IS_IN_MMC/ENV_OFFSET/ENV_SIZE block, BOOTDELAY/AUTOBOOT, SYS_BOOTM_LEN,
-# TEXT_BASE, dropping TOOLS_MKEFICAPSULE, and the SPL SPI/QSPI headroom cut --
-# is U2e's deliverable (docs/uboot-mainline-port.md §3.1/§3.3/§3.5/§3.6),
-# integrated by U2g. Do not add deltas here.
+#   layer 1  configs/socfpga_de10_nano_defconfig -- 72 lines, shipped by U-Boot
+#            v2026.07 itself, named here by BR2_TARGET_UBOOT_BOARD_DEFCONFIG
+#            ("socfpga_de10_nano"). Nothing in this repo edits it.
+#   layer 2  THIS FILE -- named by BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES and
+#            merged on top of layer 1 by BUILDROOT'S OWN copy of the kconfig
+#            merge script: work/buildroot/package/pkg-kconfig.mk:67 runs
+#               support/kconfig/merge_config.sh -m -O <dir> <.config> \
+#                                                         <fragments>
+#            resolved against the BUILDROOT tree, not U-Boot's. (U-Boot ships
+#            the same script at scripts/kconfig/merge_config.sh; diffing the two
+#            shows they differ only in Buildroot's extra "-e <br2-external>"
+#            option, the mktemp location, a rewrap of the usage text about
+#            CONFIG_ (Buildroot :38-39 vs U-Boot :37) and the final make
+#            line. The merge and report logic quoted in the editing rules
+#            below is identical in both, so reproducing a merge locally
+#            with either one is valid.)
+#   layer 3  Buildroot again, AFTER the fragments -- pkg-kconfig.mk:177 runs
+#            UBOOT_KCONFIG_FIXUP_CMDS (boot/uboot/uboot.mk:586, defined at
+#            :416-423), which writes ENV_USE_DEFAULT_ENV_TEXT_FILE and
+#            ENV_DEFAULT_ENV_TEXT_FILE from BR2_TARGET_UBOOT_DEFAULT_ENV_FILE,
+#            and only then does olddefconfig run (pkg-kconfig.mk:178). Those two
+#            symbols are therefore DELIBERATELY ABSENT from this file: Buildroot
+#            owns them, setting them here would be overwritten, and the
+#            environment text itself lives in board/mister/de10nano/uboot.env
+#            (U2f).
 #
-# EDITING RULE, learned the hard way (carried from the DE25's fragment):
-# never start a COMMENT line with "# CONFIG_<something>" unless it really is
-# an "is not set" directive. support/kconfig/merge_config.sh greps this file
-# for every symbol it is changing and echoes the matching lines back at you,
-# so a prose line that begins that way turns the merge report into nonsense
-# -- and a line that happens to end in "is not set" would be parsed as a real
-# directive (SED_CONFIG_EXP2 is: caret, hash, space, the symbol name, then
-# the literal words "is not set" anchored to end of line). Indent such prose,
-# or lead with a word.
+# Every directive below is a DELTA on layer 1's resolved .config, with three
+# deliberate restatements -- ENV_IS_IN_MMC, TEXT_BASE, CMD_MEMORY -- each called
+# out where it appears. Layer 1 already resolves those three to exactly the
+# value written here; the lines exist so that a future U-Boot bump which moves a
+# Kconfig default breaks the U3 resolved-.config assertion loudly instead of
+# drifting silently.
+#
+# Design: docs/uboot-mainline-port.md sections 3.1 (the five must-carry deltas),
+#         3.3 (three further divergences), 3.5 (size and headroom), 3.6
+#         (Buildroot wiring) and 9 Q6 (the one still-open question a line here
+#         answers provisionally);
+#         docs/boot-chain.md sections 2.1 (the type-0xA2 SPL contract), 3.1 (the
+#         21-entry stock default environment), 4 (bootcmd / mmcload / mmcboot)
+#         and 5 (updateboot's sector-1 env wipe, Consequence (b)).
+#
+# EDITING RULE, part 1 -- carried from board/mister/de25nano/uboot.fragment.
+# Never start a COMMENT line with "# CONFIG_<something>" unless it really is an
+# "is not set" directive. merge_config.sh's SED_CONFIG_EXP2 is: caret, hash,
+# space, the symbol name, then the literal words "is not set" anchored to end of
+# line (Buildroot's copy, line 113), so a prose line shaped like that is parsed
+# as a real directive. Indent such prose, or lead it with a word.
+#
+# EDITING RULE, part 2 -- found while writing this file, not yet documented on
+# the de25nano copy. The rule is not only about line starts. To build its
+# "Previous value" / "New value" report, merge_config.sh runs a plain
+#      grep -w <symbol, WITH the CONFIG_ prefix> <this whole file>
+# (Buildroot's copy, line 132; its guard and the baseline-side read are at
+# :130-131), so a prose sentence ANYWHERE that spells
+# out, prefix and all, a symbol this file actually sets makes that grep return
+# two lines and the report glues them into a garbled "New value". The merged
+# .config is unaffected -- only the report is -- but a garbled report is exactly
+# the noise that could hide a genuinely dropped symbol, which is the one thing
+# the report exists to catch. So, throughout the prose below, every symbol this
+# file sets is written by its BARE name with no "CONFIG_" prefix; the prefix
+# appears only on the directive lines themselves.
+
+################################################################################
+# 1. SPL raw-mode selector -- plan section 3.1, delta #1
+################################################################################
+#
+# Layer 1 selects no member of the "Method for locating next phase of boot"
+# choice (common/spl/Kconfig:551-577), and that choice carries a default only
+# for MVEBU (:553), so kconfig falls through to its first visible member,
+# SYS_MMCSD_RAW_MODE_U_BOOT_USE_SECTOR. Observed in the baseline .config:
+#
+#     SYS_MMCSD_RAW_MODE_U_BOOT_USE_SECTOR=y
+#     SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x200
+#
+# (the value from common/spl/Kconfig:587, "default 0x200 if ARCH_SOCFPGA_GEN5
+# || ARCH_AT91" -- quoted in full; the AT91 arm is irrelevant here).
+# That is an absolute LBA: the MBR is ignored entirely and
+# mmc_load_image_raw_partition is not even linked in, which breaks the
+# type-0xA2 contract of boot-chain section 2.1.
+#
+#     PLAN DISCREPANCY, flagged for U9: section 3.1 row 1 states the
+#     fall-through lands at absolute LBA 0x400. In the pinned v2026.07 tree it
+#     is 0x200 -- the Kconfig line cited above, and the baseline .config value
+#     quoted above. The nature of the delta is unchanged (an absolute sector
+#     instead of an MBR scan); only the plan's number needs correcting.
+#
+# Selecting USE_PARTITION_TYPE instead makes the SPL scan the MBR for the first
+# partition of type 0xA2 -- which is what stock does. Three consequences, all
+# read out of the resolved .config rather than assumed:
+#
+#   * USE_SECTOR, the sibling member of the same choice, goes to
+#     "is not set". It is still PRESENT in the resolved .config, as n; it does
+#     not vanish. (U3 asserts it unset, which this satisfies.)
+#   * SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR and
+#     SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET, which both carry
+#     "depends on SYS_MMCSD_RAW_MODE_U_BOOT_USE_SECTOR" (common/spl/Kconfig:581
+#     and :598), DROP OUT of the resolved .config completely -- present in the
+#     baseline, absent afterwards. This is what plan section 3.1 means by "the
+#     SECTOR symbol disappears outright", and it is what makes the feared
+#     double-count to +0x400 unreachable.
+#   * SYS_MMCSD_RAW_MODE_U_BOOT_PARTITION_TYPE needs no line here. It is
+#     already 0xa2 in the baseline, from arch/arm/mach-socfpga/Kconfig:37-38
+#     ("config SYS_MMCSD_RAW_MODE_U_BOOT_PARTITION_TYPE / default 0xa2"), and
+#     it stays 0xa2 afterwards.
+#
+# The chosen member carries "depends on DOS_PARTITION" (common/spl/Kconfig:571);
+# DOS_PARTITION is already y in the baseline, so no extra line is needed.
+CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE=y
+
+################################################################################
+# 2. exFAT -- plan section 3.1, delta #3
+################################################################################
+#
+# Stock's U-Boot reads exFAT: the fork replaced the FAT driver with ChaN FatFs
+# and sets fs/fat/ffconf.h:212 "#define _FS_EXFAT 1"; the literal string EXFAT
+# is in the shipped binary. Mainline's fs/fat/fat.c:223-226 accepts only a
+# "FAT" or "FAT32" type string and rejects everything else, and ADR 0020's data
+# partition is exFAT -- so a mainline U-Boot
+# without this line cannot load zImage_dtb at all.
+#
+# FS_EXFAT has no Kconfig dependency (fs/exfat/Kconfig:1-5, a bare bool with an
+# "imply CMD_FS_GENERIC if CMDLINE"), so this one line is sufficient at config
+# time. Its real dependency is a BUILD-time one and lives outside this file:
+# mainline's fs/exfat/time.c does 64-bit division and fails to link on 32-bit
+# ARM (undefined reference to __aeabi_ldivmod), which the carried do_div()
+# patch fixes. No 32-bit board in tree enables this symbol, which is why nobody
+# upstream has hit it.
+CONFIG_FS_EXFAT=y
+
+################################################################################
+# 3. Environment location -- mirror stock exactly
+#    plan section 3.3 bullet 2; boot-chain section 5, Consequence (b)
+################################################################################
+#
+# Layer 1's values come from configs/socfpga_de10_nano_defconfig lines 7-8 and
+# nowhere else (arch/arm/mach-socfpga/Kconfig contains no ENV_SIZE or
+# ENV_OFFSET line at all):
+#
+#     ENV_SIZE=0x2000        defconfig:7
+#     ENV_OFFSET=0x4400      defconfig:8
+#
+# Stock instead lands on byte offset 512 -- sector 1, "just after the MBR" --
+# with size 4096, via socfpga_common.h:200-207 in the fork (quoted in
+# boot-chain section 5).
+#
+# This is not cosmetic. updateboot runs on EVERY Downloader linux update and
+# does exactly one thing to the raw card before reflashing the boot partition:
+#
+#     dd if=/dev/zero of=/dev/mmcblk0 bs=512 seek=1 count=1
+#
+# i.e. it zeroes bytes 512-1023. On stock that lands on the FIRST 512 bytes of
+# the environment blob, destroying the CRC32 in its first four bytes; the next
+# boot fails the CRC check and falls back to the compiled-in default
+# environment. That is what guarantees boot-chain section 5's Consequence (b):
+# "the effective U-Boot environment is always built-in defaults + u-boot.txt",
+# which /init and every Phase-5 design already rely on.
+#
+# With mainline's 0x4400 the environment occupies bytes 0x4400-0x63FF, so
+# updateboot's wipe of bytes 512-1023 MISSES IT ENTIRELY: a previously saved
+# environment would survive the update intact, quietly voiding Consequence (b)
+# and making the effective environment depend on whatever a user once ran
+# saveenv with. Mirroring stock's offset and size is what keeps the wipe
+# landing on the blob's head.
+#
+# ENV_IS_IN_MMC is already y in layer 1 (defconfig:45). Restated because the two
+# lines below are meaningless without it and because a bump that dropped it
+# would otherwise move the environment silently.
+CONFIG_ENV_IS_IN_MMC=y
+CONFIG_ENV_OFFSET=0x200
+CONFIG_ENV_SIZE=0x1000
+
+################################################################################
+# 4. Autoboot -- mirror stock's own defconfig
+#    plan section 3.1 delta #5 (the environment); boot-chain section 3.1 row 2
+################################################################################
+#
+# The fork's configs/socfpga_de10_nano_defconfig lines 57-59 are, verbatim,
+# BOOTDELAY=0 / AUTOBOOT_STOP_STR="\e" / AUTOBOOT_KEYED=y (written here without
+# the CONFIG_ prefix per editing rule part 2). Layer 1 sets none of them:
+# baseline resolves BOOTDELAY=2 (boot/Kconfig:1567) and AUTOBOOT_KEYED unset.
+#
+# BOOTDELAY is not merely behavioural, it is part of U2f's byte compare:
+# bootdelay=0 is entry #2 of stock's 21-entry default environment blob
+# (boot-chain section 3.1, which cites this very defconfig line as its source),
+# emitted into default_environment[] by include/env_default.h. A different
+# value here changes those bytes and fails U2f's cmp.
+#
+# AUTOBOOT_KEYED is required, not optional: AUTOBOOT_STOP_STR sits inside
+# "if AUTOBOOT_KEYED" in boot/Kconfig (the block opens at :1589, the symbol is
+# at :1653), so without it the string symbol is invisible and the value is
+# dropped. With the pair set, a delay of 0 does not mean "any keypress stops
+# autoboot" (mainline's un-keyed default, boot/Kconfig:1585-1587) -- only the
+# escape byte does, which is stock's behaviour and leaves /linux/u-boot.txt
+# (boot-chain sections 4 and 5) as the intended override path.
+#
+# Observed cascade, for the record: turning AUTOBOOT_KEYED on makes the whole
+# "if AUTOBOOT_KEYED" block visible, so AUTOBOOT_FLUSH_STDIN, AUTOBOOT_PROMPT,
+# AUTOBOOT_ENCRYPTION, AUTOBOOT_DELAY_STR and AUTOBOOT_KEYED_CTRLC appear in the
+# resolved .config at their defaults (all off or empty except the prompt
+# string), and AUTOBOOT_USE_MENUKEY -- which sits under "if !AUTOBOOT_KEYED"
+# (boot/Kconfig:1717-1719) -- drops out. None of those is a behaviour change we
+# rely on; they are listed here so the baseline-to-resolved diff has no
+# unexplained line.
+CONFIG_BOOTDELAY=0
+CONFIG_AUTOBOOT_KEYED=y
+CONFIG_AUTOBOOT_STOP_STR="\e"
+
+################################################################################
+# 5. OS decompression bound -- plan section 9, open question 6 (STILL OPEN)
+################################################################################
+#
+# Stock compiles 64 MiB: the fork's include/configs/socfpga_de10_nano.h:11
+# defines SYS_BOOTM_LEN as (64 << 20). Mainline has no socfpga-specific value,
+# so layer 1 falls to boot/Kconfig:1078's unqualified "default 0x800000"
+# (8 MiB) -- observed in the baseline.
+#
+# WHAT THIS IS NOT. It is not a uImage budget and it is not a limit today's
+# payload exceeds. Stock boots a RAW, self-decompressing zImage --
+# "bootz $loadaddr - $fdt_addr" in mmcboot, boot-chain section 4 -- and stock's
+# zImage_dtb is 7,380,857 B = 7.04 MiB (boot-chain section 7.3), already under
+# 8 MiB. Plan section 3.3 says nothing about this symbol; do not cite it here.
+#
+# WHAT THIS IS. Plan section 9 open question 6, which reads: "Does bootz on a
+# raw self-decompressing zImage consult SYS_BOOTM_LEN? It dropped from 64 MiB
+# (fork) to 8 MiB (mainline); zImage_dtb is ~7 MB and growing toward the 16 MB
+# budget of boot-chain section 7.3. Set it to 0x4000000 and move on, but
+# confirm." This line is the "set it and move on" half. The "confirm" half is
+# NOT closed by this file and nothing here should be read as closing it.
+#
+# Setting it is the conservative direction regardless of how Q6 resolves: the
+# symbol's own help text calls it "the maximum size of the buffer that is used
+# to decompress the OS image in to", so raising it can only widen a bound,
+# never narrow one -- and 64 MiB is what stock has, which is this port's
+# standing tie-breaker.
+CONFIG_SYS_BOOTM_LEN=0x4000000
+
+################################################################################
+# 6. Load address -- restated, not changed (plan section 3.6's wiring layer)
+################################################################################
+#
+# arch/arm/mach-socfpga/Kconfig:44-46 already defaults TEXT_BASE to 0x01000040
+# for ARCH_SOCFPGA_GEN5, and the baseline resolves to exactly that. It is the
+# uImage load/exec address boot-chain section 2 reads back out of the stock
+# blob, and the address scripts/check-uboot-parity.sh (U4a) checks. Pinned here
+# rather than left to a default so that a bump touching that Kconfig line fails
+# U3's resolved-.config assertion instead of silently relocating U-Boot proper.
+CONFIG_TEXT_BASE=0x01000040
+
+################################################################################
+# 7. Drop the host gnutls pull-in -- plan section 3.6, host deps
+################################################################################
+#
+# TOOLS_MKEFICAPSULE is "default y if EFI_LOADER" (tools/Kconfig:109-111) and
+# EFI_LOADER is y in the baseline, so layer 1 resolves it on without ever
+# naming it. Plan section 3.6 measured it as the ONLY reason host-gnutls enters
+# this build. The tool is host-side and cannot touch a target image, and this
+# board has no UEFI capsule update path, so turning it off removes a host
+# dependency for a capability nothing uses.
+# CONFIG_TOOLS_MKEFICAPSULE is not set
+
+################################################################################
+# 8. SPL headroom -- drop the unused SPI/QSPI stack (plan section 3.5)
+################################################################################
+#
+# None of these four is reachable on the DE10-Nano's boot path: the BootROM
+# hands the SPL an SD card, the SPL loads U-Boot proper raw from the 0xA2
+# partition (boot-chain section 2.1), and no SPI boot device exists in this
+# build. Layer 1 has them on because upstream's defconfig also targets a
+# QSPI-capable use of the same board (defconfig:30 sets SPL_SPI_LOAD outright;
+# the other three arrive as defaults). Plan section 3.5 measures the removal as
+# taking SPL headroom from 12.6 % to 30.4 %, restoring stock's margin -- which
+# matters because mainline enforces SPL_SIZE_CHECK as a hard build failure,
+# where the 2017.03 fork's tools/socfpgaimage.c silently truncates and exits 0.
+#
+# NOTE FOR U3's resolved-.config assertion: only two of these four come back as
+# an explicit "is not set" line. SPL_SPI_FLASH_SUPPORT carries
+# "depends on SPL_SPI" (common/spl/Kconfig:1539) and SPL_SPI_LOAD lives inside
+# "if SPL_SPI_FLASH_SUPPORT" (:1548-1579, the symbol at :1573), so once
+# SPL_SPI is off both become invisible and kconfig drops them from the .config
+# ENTIRELY rather than commenting them. Their effective state is off either
+# way, but an assertion must test "absent OR not set" for those two, not a
+# literal string match. SPL_SPI and SPL_DM_SPI do produce the explicit comment
+# form.
+#
+# Observed cascade, for the record: with SPL_SPI off, SPL_DM_SPI_FLASH,
+# SPL_SPI_FLASH_TINY, SPL_DESIGNWARE_SPI and SYS_SPI_U_BOOT_OFFS also drop out
+# of the resolved .config. The last of those is the one to notice: layer 1 sets
+# it explicitly at defconfig:31 (0x40000), but it carries
+# "depends on SPL_SPI_LOAD || SPL_SPI_SUNXI" (common/spl/Kconfig:1585) and is
+# the offset of a U-Boot payload in SPI FLASH -- unrelated to the +0x200 sector
+# offset inside the 0xA2 SD partition that block 1 is about. Losing it removes
+# nothing this boot path uses.
+# CONFIG_SPL_SPI is not set
+# CONFIG_SPL_SPI_FLASH_SUPPORT is not set
+# CONFIG_SPL_DM_SPI is not set
+# CONFIG_SPL_SPI_LOAD is not set
+
+################################################################################
+# 9. mt -- keep the command the stock environment calls (plan section 3.4)
+################################################################################
+#
+# Decided 2026-09-14 (mirror stock; amends ADR 0024 Decision 5): carry the
+# fork's "mt" command as a patch rather than rewrite fpgacheck around itest, so
+# that the environment text stays byte-identical to stock's 21 entries and
+# U2f's check is a plain cmp. Stock's fpgacheck calls mt twice (boot-chain
+# section 4).
+#
+# The ported mt lives in cmd/mem.c behind CMD_MEMORY, which is already y in the
+# baseline from cmd/Kconfig:965-967 ("bool ... default y"), so no new Kconfig
+# symbol is introduced. Restated here for the same drift-detection reason as
+# TEXT_BASE above: with CMD_MEMORY off, the patch would still apply and build
+# but mt would not exist, and the only symptom would be fpgacheck failing at
+# runtime on a board nobody has booted yet.
+CONFIG_CMD_MEMORY=y
+
+################################################################################
+# 10. The rest of stock's command table -- plan section 6, "forbidden diffs"
+################################################################################
+#
+# ADDED AT INTEGRATION (task U2g), not by U2e. U2e was told not to strip
+# mainline's extra commands to chase stock's 69; nobody expected mainline to be
+# SHORT of four of them. The first run of scripts/check-uboot-parity.sh against
+# a real build reported:
+#
+#     FAIL 4 of stock's 69 commands are missing: gzwrite loopw meminfo unzip
+#
+# and plan section 6 lists "a missing command from stock's 69-entry table"
+# among the FORBIDDEN diffs (extras are allowed, absences are not), so these
+# three lines close it. None is a MiSTer invention: all four commands exist in
+# mainline v2026.07 and are simply off in layer 1's defconfig.
+#
+#   CMD_UNZIP (cmd/Kconfig:1095, "bool unzip", selects GZIP which is already y)
+#     builds cmd/unzip.o, which carries BOTH U_BOOT_CMD records in one file --
+#     "unzip" at cmd/unzip.c:51 and "gzwrite" at :96. There is no separate
+#     gzwrite symbol in this tree (grep GZWRITE over Kconfig finds nothing), so
+#     this one line restores two of the four names.
+#   LOOPW (cmd/Kconfig:922, "bool loopw") un-#ifdefs the do_mem_loopw body and
+#     its U_BOOT_CMD inside cmd/mem.c (:645-740 and :1433-1439) -- the same file
+#     patch 0004 adds mt to, and it needs CMD_MEMORY, already y above.
+#   CMD_MEMINFO (cmd/Kconfig:940, "bool meminfo", default y only for SANDBOX
+#     and X86) builds cmd/meminfo.o. Its sub-option CMD_MEMINFO_MAP is left at
+#     its default (off for this board), which matches stock's one-line output.
+#
+# All three live in cmd/, i.e. in U-Boot proper, NOT in the SPL: the measured
+# SPL payload is unchanged by them, so this costs nothing against the 64 KiB
+# slot of plan section 3.5. Nothing in stock's environment calls any of the
+# four -- the reason to carry them is parity with the shipped table, which is
+# this port's specification (owner decision: mirror stock).
+CONFIG_CMD_UNZIP=y
+CONFIG_LOOPW=y
+CONFIG_CMD_MEMINFO=y

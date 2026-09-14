@@ -1086,7 +1086,8 @@ drilled recovery procedure. **The default channel keeps shipping the stock
   submodule** — the mainline build uses Buildroot's own hash-verified tarball, and
   `UBOOT_OVERRIDE_SRCDIR` (which the old P5.1 specified) would have silently skipped the
   patch step. Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).
-  Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md), tasks U0–U7.
+  Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md), tasks U0–U9 for the DE10-Nano
+  (and DU1–DU7 for the DE25-Nano's own `u-boot.itb`).
   **Unchanged:** the default channel keeps shipping the stock `uboot.img` byte-identical
   (P4.4), and `sdcard.img` keeps embedding that same stock blob (ADR 0017 §Decision 4/5
   still stand). P5.3 and P5.4 below are unaffected.

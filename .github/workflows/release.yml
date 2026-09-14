@@ -120,6 +120,53 @@ jobs:
           cp -f "output/images/$img.xz" dist/
           ls -la dist/
 
+      # docs/uboot-tasks.md U5: the DE10's mainline U-Boot ships nowhere and
+      # `scripts/ci-tests.sh` (the "Run parity suite" step above) only has
+      # the offline structural/built-SPL-only subset of check-uboot-parity.sh
+      # / check-uboot-handoff.sh -- the stock uboot.img does not exist on
+      # disk until the sdcard step just above fetches and verifies it. This
+      # is the one place that download is already paid for, so every tagged
+      # release proves FULL parity (environment + command table + handoff
+      # tables against the real stock blob) without a second fetch and
+      # without any PR paying for it.
+      #
+      # This step is ALSO the only place the "ships nowhere" half of owner
+      # decision 1 can actually be enforced in CI: dist/ is created by
+      # scripts/mk-release.sh, which runs AFTER verify-image, so ci-tests.sh's
+      # own release-stage assertion can only ever SKIP on a runner. Here dist/
+      # is fully populated (mk-release.sh's assets plus the sdcard image the
+      # step above copied in), so the grep has teeth.
+      - name: Verify U-Boot (DE10) parity against the stock blob (docs/uboot-tasks.md U5)
+        env:
+          STOCK_UBOOT_IMG: ${{ github.workspace }}/output-sdcard-stage/mister-payload/linux/uboot.img
+        run: |
+          set -eu
+          shopt -s nullglob   # so an unmatched glob counts 0, not 1 literal
+          uboot_trees=(output/build/uboot-*)
+          [ "${#uboot_trees[@]}" -eq 1 ] ||
+            { echo "::error::expected exactly one output/build/uboot-*, found ${#uboot_trees[@]}"; exit 1; }
+          uboot_tree=${uboot_trees[0]}
+          [ -f "$STOCK_UBOOT_IMG" ] ||
+            { echo "::error::no stock uboot.img at $STOCK_UBOOT_IMG -- the sdcard step above should have staged it"; exit 1; }
+
+          # "ships nowhere", asserted against the real, finished release stage.
+          echo "--- release stage (dist/) must carry no bootloader artifact ---"
+          ls -la dist/
+          stage_hits=$(find dist -maxdepth 1 \( -name 'uboot.img' -o -name '*.sfp' \))
+          [ -z "$stage_hits" ] ||
+            { echo "::error::owner decision 1 says the DE10's mainline U-Boot ships nowhere, but the release stage carries: $(echo "$stage_hits" | tr '\n' ' ')"; exit 1; }
+          echo "ok: no uboot.img/*.sfp in dist/"
+
+          spl_limit=$("$uboot_tree/tools/spl_size_limit")
+          SPL_SIZE_LIMIT="$spl_limit" scripts/check-uboot-parity.sh \
+            output/images/u-boot-with-spl.sfp \
+            "$STOCK_UBOOT_IMG" \
+            "$uboot_tree/u-boot"
+          scripts/check-uboot-handoff.sh \
+            "$uboot_tree/board/terasic/de10-nano/qts" \
+            output/images/u-boot-with-spl.sfp \
+            "$STOCK_UBOOT_IMG"
+
       - name: Release overview (job summary)
         env:
           RELEASE_DATE: ${{ steps.release.outputs.release_date }}

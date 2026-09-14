@@ -220,3 +220,101 @@ endef
 UBOOT_POST_BUILD_HOOKS += MISTER_UBOOT_DE25_QSPI_AUDIT
 
 endif # BR2_TARGET_UBOOT_BOARD_DEFCONFIG = socfpga_agilex5 (DE25-Nano)
+
+################################################################################
+#
+# U-Boot / DE10-Nano: the resolved-.config assertion inside the build.
+#
+# docs/uboot-mainline-port.md section 5 step 2 names this exact symbol list as
+# the acceptance test for "the five deltas" (section 3.1): a fragment line
+# ASKING for a symbol is not proof the symbol survived into the RESOLVED
+# .config. A future Buildroot bump, a U-Boot bump that moves a Kconfig
+# default out from under board/mister/de10nano/uboot.fragment, or a hand edit
+# of the fragment itself, could drop one of them silently -- nothing short of
+# reading $(@D)/.config after `olddefconfig` runs would notice. This hook is
+# that read, moved from a one-time manual check (plan section 6's "Structural
+# assertions") into every build, per docs/uboot-tasks.md task U3: "This is
+# what makes the Buildroot-bump-moves-U-Boot case fail loudly."
+#
+# Same mechanism as the DE25 QSPI-audit block above: BR2_EXTERNAL_MKS is
+# included by Buildroot's own Makefile AFTER every package/*.mk
+# (work/buildroot/Makefile: package includes first, then
+# $(BR2_EXTERNAL_MKS)), so UBOOT_POST_BUILD_HOOKS already carries its
+# Buildroot-default value here, and appending to it is legal. The hook body
+# is $(call)ed from $(BUILD_DIR)/%/.stamp_built's own recipe
+# (package/pkg-generic.mk), where $(@D) is the package's build directory
+# ($(BUILD_DIR)/uboot-<version>) -- no Buildroot patch, no U-Boot patch.
+#
+# Guarded on the DE10 U-Boot board defconfig specifically, the sibling of the
+# DE25 block's own guard above: `make O=output-de25 printvars
+# VARS='UBOOT_%_HOOKS MISTER_UBOOT_%'` on the DE25 tree must not print this
+# hook's name, the same way the DE25 block is inert on the DE10 tree.
+#
+# Each symbol below is cited to the plan section that actually derives it,
+# not forced onto section 3.1's five-row table where a symbol did not come
+# from there: ENV_IS_IN_MMC/ENV_OFFSET/ENV_SIZE are section 3.3's
+# environment-LOCATION divergence, not section 3.1 row 5 (which is the
+# environment TEXT content, i.e. ENV_USE_DEFAULT_ENV_TEXT_FILE);
+# TEXT_BASE is section 3.3's uImage-entry-point divergence and section 3.6's
+# wiring; SPL_PAD_TO is section 3.5's size/headroom (the four 64 KiB SPL
+# copies); CMD_MEMORY is section 3.4 (`mt`); ARCH_SOCFPGA_GEN5 is the Kconfig
+# precondition section 3.1 row 1's own citation (common/spl/Kconfig:587)
+# names by name.
+#
+################################################################################
+ifeq ($(call qstrip,$(BR2_TARGET_UBOOT_BOARD_DEFCONFIG)),socfpga_de10_nano)
+
+define MISTER_UBOOT_DE10_CONFIG_AUDIT
+	@set -eu; \
+	cfg='$(@D)/.config'; \
+	spl='$(@D)/spl/u-boot-spl'; \
+	nm='$(TARGET_NM)'; \
+	doc='docs/uboot-mainline-port.md'; \
+	if [ ! -f "$$cfg" ]; then \
+		echo "MiSTer DE10 U-Boot resolved-.config audit: $$cfg not found -- cannot check against $$doc section 5 step 2" >&2; \
+		exit 1; \
+	fi; \
+	fail=0; \
+	assert_eq() { \
+		sym=$$1; val=$$2; cite=$$3; \
+		got=$$(grep -E "^CONFIG_$${sym}=" "$$cfg" || true); \
+		want="CONFIG_$${sym}=$${val}"; \
+		if [ "$$got" != "$$want" ]; then \
+			echo "MiSTer DE10 U-Boot resolved-.config audit FAILED ($$doc): expected $$want in $$cfg, found '$${got:-<absent>}' -- $$cite" >&2; \
+			fail=1; \
+		fi; \
+	}; \
+	assert_unset() { \
+		sym=$$1; cite=$$2; \
+		got=$$(grep -E "^CONFIG_$${sym}=" "$$cfg" || true); \
+		if [ -n "$$got" ]; then \
+			echo "MiSTer DE10 U-Boot resolved-.config audit FAILED ($$doc): CONFIG_$${sym} must be unset in $$cfg, found '$$got' -- $$cite" >&2; \
+			fail=1; \
+		fi; \
+	}; \
+	assert_eq SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE y 'section 3.1 row 1, SPL raw-mode selector'; \
+	assert_eq SYS_MMCSD_RAW_MODE_U_BOOT_PARTITION_TYPE 0xa2 'section 3.1 row 1, SPL raw-mode selector (the type-0xA2 contract, boot-chain section 2.1)'; \
+	assert_unset SYS_MMCSD_RAW_MODE_U_BOOT_USE_SECTOR 'section 3.1 row 1 and section 6 forbidden diffs, USE_SECTOR reappearing'; \
+	assert_eq FS_EXFAT y 'section 3.1 row 3, exFAT'; \
+	assert_eq ENV_IS_IN_MMC y 'section 3.3 bullet 2, environment location; boot-chain section 5 Consequence (b)'; \
+	assert_eq ENV_OFFSET 0x200 'section 3.3 bullet 2, environment location; boot-chain section 5 Consequence (b)'; \
+	assert_eq ENV_SIZE 0x1000 'section 3.3 bullet 2, environment location; boot-chain section 5 Consequence (b)'; \
+	assert_eq ENV_USE_DEFAULT_ENV_TEXT_FILE y 'section 3.1 row 5, the entire environment'; \
+	assert_eq TEXT_BASE 0x01000040 'section 3.3 bullet 1, uImage entry point; section 3.6, Buildroot wiring'; \
+	assert_eq SPL_PAD_TO 0x10000 'section 3.5, size and headroom, the four SPL copies'; \
+	assert_eq ARCH_SOCFPGA_GEN5 y 'section 3.1 row 1, the Kconfig precondition common/spl/Kconfig:587 names'; \
+	assert_eq CMD_MEMORY y 'section 3.4, mt'; \
+	if [ ! -f "$$spl" ]; then \
+		echo "MiSTer DE10 U-Boot resolved-.config audit: $$spl not found -- cannot check for board_spl_mmc_get_uboot_raw_sector ($$doc section 3.1 row 2)" >&2; \
+		fail=1; \
+	elif ! "$$nm" "$$spl" 2>/dev/null | grep -q ' board_spl_mmc_get_uboot_raw_sector$$'; then \
+		echo "MiSTer DE10 U-Boot resolved-.config audit FAILED ($$doc): board_spl_mmc_get_uboot_raw_sector not linked into $$spl -- section 3.1 row 2, the dead +0x200 hook fix" >&2; \
+		fail=1; \
+	fi; \
+	if [ "$$fail" -ne 0 ]; then exit 1; fi; \
+	echo "MiSTer DE10 U-Boot resolved-.config audit ($$doc): PASS -- section 3.1/3.3/3.4/3.5/3.6 deltas all present in $$cfg, board_spl_mmc_get_uboot_raw_sector linked into $$spl"
+endef
+
+UBOOT_POST_BUILD_HOOKS += MISTER_UBOOT_DE10_CONFIG_AUDIT
+
+endif # BR2_TARGET_UBOOT_BOARD_DEFCONFIG = socfpga_de10_nano (DE10-Nano)

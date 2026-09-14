@@ -2581,33 +2581,56 @@ would copy whatever the platform's release directory happens to contain; naming
 the one file we ship keeps `images/` auditable and makes the Makefile's `de25`
 assertion and that line describe the same thing.
 
-**U-Boot.** `BR2_TARGET_UBOOT=y`, `_BUILD_SYSTEM_KCONFIG=y`,
-`_CUSTOM_VERSION=y`, `_CUSTOM_VERSION_VALUE="2026.07"`, `_USE_DEFCONFIG=y`,
+**U-Boot.** The literal lines in `configs/mister_de25nano_defconfig` (lines
+55-63 as of 933a2d2) are `BR2_TARGET_UBOOT=y`,
 `_BOARD_DEFCONFIG="socfpga_agilex5"`, `_CONFIG_FRAGMENT_FILES`,
-`_CUSTOM_DTS_PATH`, `_NEEDS_ATF_BL31=y`, `_NEEDS_ATF_BL31_BIN=y`,
-`_USE_BINMAN=y`, `_NEEDS_OPENSSL=y`, `_FORMAT_ITB=y`,
-`# BR2_TARGET_UBOOT_FORMAT_BIN is not set`.
+`_CUSTOM_DTS_PATH`, `_NEEDS_ATF_BL31=y`, `_USE_BINMAN=y`, `_NEEDS_OPENSSL=y`,
+`_FORMAT_ITB=y` and `# BR2_TARGET_UBOOT_FORMAT_BIN is not set`. The remaining
+U-Boot symbols the build resolves — `_USE_DEFCONFIG`, `_NEEDS_ATF_BL31_BIN`,
+`_BUILD_SYSTEM_KCONFIG` and `_LATEST_VERSION` (the one that pins 2026.07) —
+are all Kconfig-choice defaults, so none of the four is a literal line here.
+The `default` lines are `boot/uboot/Config.in:117`, `:267` and `:11`;
+`_LATEST_VERSION` has none, because it is the first entry of the version
+choice at `:38-44` and that is what makes it the choice's default. The version
+and build-system lines *used* to be spelled out; the next two paragraphs say
+why, and why they no longer are.
 
 Mainline v2026.07 (released 2026-07-07; v2026.10 was at -rc when this was
-written). Buildroot 2026.05.2 shipped 2026.04, so this had to be a custom
-version.
+written). Buildroot 2026.05.2 shipped 2026.04, so pinning it originally had to
+be a custom version: `_CUSTOM_VERSION=y` / `_CUSTOM_VERSION_VALUE="2026.07"`,
+with `_BUILD_SYSTEM_KCONFIG=y` also spelled out explicitly alongside it (see
+the next paragraph for why that second line was required).
 
-**THE 2026.08 BUMP CLOSED THAT GAP AND THE PIN HAS NOT MOVED YET.** Buildroot
-2026.08's `BR2_TARGET_UBOOT_LATEST_VERSION` is `2026.07`
-(`boot/uboot/Config.in:88`) — the exact version this fragment pins by hand. So
-the custom-version pin is now redundant *in version terms*, and switching to
-`LATEST` would also make the build-system line below unnecessary (see why in
-the next paragraph). Deliberately NOT changed as part of the 2026.08 bump: the
-DE25 stack is not built or booted in this repo's CI, so swapping the U-Boot
-source out from under an unbooted board belongs in its own commit, with a
-build, rather than riding along on a Buildroot bump. Left as a flagged
-simplification.
+**THE 2026.08 BUMP CLOSED THAT GAP AND TASK DU1 (2026-09-14) SWITCHED THE PIN,
+DONE.** Buildroot 2026.08's `BR2_TARGET_UBOOT_LATEST_VERSION` *is* `2026.07`
+(`boot/uboot/Config.in:44` for the prompt, `:88` for the version string it
+resolves to) — the exact version this fragment pinned by hand, and the first
+and therefore default entry of the "U-Boot Version" choice (`:38-44`). So the
+custom-version pin is gone, replaced by plain
+`BR2_TARGET_UBOOT_LATEST_VERSION=y` ([`docs/uboot-tasks.md`](uboot-tasks.md)
+task DU1) — which, being the choice's default, needs no line of its own
+either: `make O=output-de25 savedefconfig` drops it, and
+`configs/mister_de25nano_defconfig` as of 933a2d2 names no U-Boot version at
+all (`git grep UBOOT configs/mister_de25nano_defconfig` confirms it).
+`board/mister/de25nano/patches/uboot/uboot.hash` went with it: Buildroot's own
+`boot/uboot/uboot.hash` carries a line for `u-boot-2026.07.tar.bz2`, so the
+board-local override is no longer what keeps the download fail-closed. DU1
+proved nothing moved — `make O=output-de25 uboot-dirclean uboot-rebuild` with
+`BR2_REPRODUCIBLE=y`, before and after, produced the same `images/u-boot.itb`
+(725,568 B, sha256
+`f4e5c924dc20b51b2347dfd5786f7de23613ebfd445bd80009fcb19be6b1963e`) **[V,
+2026-09-14]**; the procedure is that task's own stanza.
 
-NOTE THE BUILD-SYSTEM LINE, it is not optional.
+THE BUILD-SYSTEM LINE IS GONE FOR THE SAME REASON.
 `BR2_TARGET_UBOOT_BUILD_SYSTEM` defaults to KCONFIG *only* if
 `BR2_TARGET_UBOOT_LATEST_VERSION` is set (`boot/uboot/Config.in:11-12`); on a
 custom version it falls back to LEGACY, which would try `make <board>_config`
-and fail on a tree that has had no such target for a decade.
+and fail on a tree that has had no such target for a decade — which is why,
+pre-DU1, `_BUILD_SYSTEM_KCONFIG=y` had to be spelled out explicitly to avoid
+that fallback. Now that `_LATEST_VERSION` is selected (as the choice default),
+`_BUILD_SYSTEM_KCONFIG` resolves to KCONFIG on its own and the explicit line
+is gone too: as of 933a2d2 `configs/mister_de25nano_defconfig` names neither
+`_CUSTOM_VERSION`/`_CUSTOM_VERSION_VALUE` nor `_BUILD_SYSTEM_KCONFIG`.
 
 Mainline has NO DE25-Nano board — `board/terasic/` has `de0-nano-soc`,
 `de1-soc`, `de10-nano`, `de10-standard` and `sockit`, and there is no

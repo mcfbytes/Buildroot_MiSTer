@@ -24,10 +24,11 @@
  *
  * Authored against mainline U-Boot v2026.07's arch/arm/dts/socfpga_agilex5.dtsi
  * (which this #includes out of the U-Boot tree, so this is a small delta, not a
- * from-scratch device tree). Cross-checked node by node against the reference
- * DE25 U-Boot tree at /mnt/source/de25-uboot-socfpga
- * (arch/arm/dts/socfpga_agilex5_de25_nano.dts) -- read for board WIRING only;
- * none of its SPL, RSU or exFAT-SPL work is carried.
+ * from-scratch device tree). Cross-checked node by node against the PORT
+ * tree's U-Boot fork (Terasic 2025.01 base plus exFAT-in-SPL patches;
+ * consulted read-only, not public), arch/arm/dts/socfpga_agilex5_de25_nano.dts
+ * -- read for board WIRING only; none of its SPL, RSU or exFAT-SPL work is
+ * carried.
  */
 
 #include "socfpga_agilex5.dtsi"

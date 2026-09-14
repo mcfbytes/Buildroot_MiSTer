@@ -27,7 +27,7 @@ Read alongside [`de25-implementation-path.md`](de25-implementation-path.md) §2�
 | **MAINLINE** | `linux-7.2.2` — `arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi` (951 lines) and the in-tree board file `socfpga_agilex5_socdk.dts`. The base we `#include` and the baseline we compare warnings against. |
 | **TERASIC** | `github.com/terasic/linux-socfpga` @ `de25-nano-6.12.11-lts` — `socfpga_agilex5_de25_nano.dts` (207 lines) + its 1255-line `.dtsi`. The board vendor's own BSP; the SD4HC form. |
 | **ALTERA** | `github.com/altera-fpga/linux-socfpga` @ `socfpga-6.18.20-lts` (default branch, `d8e46bd82a1e`) — `socfpga_agilex5_de25_nano.dts` (206 lines) + its `.dtsi`. Altera's in-house cleanup of Terasic's file; newest, and the best *wiring* reference (§4 of the implementation path). Its `mmc0` is **not** usable — see §3. |
-| **FRIEND** | `/mnt/source/de25-linux` (6.18.38 + vendor backports) — `socfpga_agilex5_de25_nano.dts` (262 lines) + its 1016-line `.dtsi`. TERASIC plus MiSTer-specific additions. The only tree with an *observed SD boot on real DE25 silicon*. |
+| **PORT** | A third-party DE25-Nano Linux port (6.18.38 + vendor backports), consulted read-only; not public — `socfpga_agilex5_de25_nano.dts` (262 lines) + its 1016-line `.dtsi`. TERASIC plus MiSTer-specific additions. The only tree with an *observed SD boot on real DE25 silicon*. |
 
 `OURS` = `MAINLINE` + the board file in this repo. No SoC `.dtsi` is patched: everything is
 authored in the board file, by reference (`&label`) or by path (`&{/firmware/svc}`).
@@ -41,9 +41,9 @@ Nothing here needs a cross compiler — DTB generation and schema checking are h
 ```sh
 # 0. A private, writable copy of the pinned kernel.  Do NOT use output/build/linux-rt-<version>;
 #    that is a live DE10 build tree.
-mkdir -p /mnt/source/de25-work/t3
-tar -xf dl/linux/linux-7.2.2.tar.xz -C /mnt/source/de25-work/t3/
-cd /mnt/source/de25-work/t3/linux-7.2.2
+mkdir -p /mnt/source/dts-check-work/t3
+tar -xf dl/linux/linux-7.2.2.tar.xz -C /mnt/source/dts-check-work/t3/
+cd /mnt/source/dts-check-work/t3/linux-7.2.2
 
 # 1. Drop the board file in and register it.
 cp /mnt/source/Buildroot_MiSTer/board/mister/de25nano/socfpga_agilex5_de25nano.dts \
@@ -63,7 +63,7 @@ make ARCH=arm64 HOSTCC=gcc W=2      intel/socfpga_agilex5_socdk.dtb
 
 # 4. dtbs_check.  Run it BOTH ways.  The carried patches change the *bindings*, so the
 #    result is meaningless unless you say which tree you measured.
-source /mnt/source/de25-work/venv/bin/activate        # dtschema 2026.6
+source /mnt/source/dts-check-work/venv/bin/activate        # dtschema 2026.6
 rm -f arch/arm64/boot/dts/intel/socfpga_agilex5_de25nano.dtb \
       Documentation/devicetree/bindings/processed-schema.json
 make ARCH=arm64 HOSTCC=gcc CHECK_DTBS=y intel/socfpga_agilex5_de25nano.dtb   # stock 7.2.2
@@ -109,7 +109,7 @@ arch/arm64/boot/dts/intel/socfpga_agilex5.dtsi:583.5-28: Warning (property_name_
 ```
 
 The `unit_address_vs_reg` warning that a naive transcription of the reference files *would*
-have introduced (`ethernet-phy@0 { reg = <1>; }` — present in TERASIC, ALTERA **and** FRIEND)
+have introduced (`ethernet-phy@0 { reg = <1>; }` — present in TERASIC, ALTERA **and** PORT)
 was fixed before it was committed; see §5 D3.
 
 ### 2.2 `dtbs_check`
@@ -297,13 +297,13 @@ file is named.
 | `#include "socfpga_agilex5.dtsi"` | all three | **kept** | The board file patches no SoC `.dtsi`. Everything is a reference or a path override. |
 | `model` | — | **changed** | `"Terasic DE25-Nano"`. All three references say `"SoCFPGA Agilex5 Terasic DE25-Nano"`; ours is the board name, which is what `/proc/device-tree/model` should read. |
 | root `compatible` | all three | **kept** (`intel,socfpga-agilex5-socdk`, `intel,socfpga-agilex5`) | Factually wrong — this is not an SoCDK — but `Documentation/devicetree/bindings/arm/altera.yaml:109-117` is a **closed five-value enum** for Agilex 5 boards, so `terasic,de25-nano` would fail dtbs_check for zero gain: arm64 has no `DT_MACHINE_START` table, so nothing matches on it. Board identity lives in `model`. The honest fix is a one-line upstream `altera.yaml` patch; see §7 U6. |
-| `aliases/serial0 = &uart1` | TERASIC + ALTERA + FRIEND | **kept** | See "Console UART" below. |
-| `aliases/ethernet0 = &gmac0` | TERASIC + ALTERA + FRIEND | **kept** | **Load-bearing.** U-Boot's `fdt_fixup_ethernet()` walks `/aliases` for `ethernetN` and writes `$ethaddr` into the node it names. Without it the MAC is never injected — the identical DE10 lesson, [`dts-comparison.md`](dts-comparison.md) §3.3. |
+| `aliases/serial0 = &uart1` | TERASIC + ALTERA + PORT | **kept** | See "Console UART" below. |
+| `aliases/ethernet0 = &gmac0` | TERASIC + ALTERA + PORT | **kept** | **Load-bearing.** U-Boot's `fdt_fixup_ethernet()` walks `/aliases` for `ethernetN` and writes `$ethaddr` into the node it names. Without it the MAC is never injected — the identical DE10 lesson, [`dts-comparison.md`](dts-comparison.md) §3.3. |
 | `aliases/i2c1 = &i2c1` | ALTERA only | **kept** | Pins the one enabled adapter to `/dev/i2c-1` instead of dynamic numbering. The DE10's A14 ([`dts-comparison.md`](dts-comparison.md) §2) is the standing lesson that i²C adapter numbering is worth making deterministic. Either way it lands inside `0..2`. |
 | `chosen/stdout-path` | all three | **kept** | `"serial0:115200n8"`. |
-| `chosen/bootargs` | TERASIC + FRIEND | **dropped** | Self-contradictory *and* dead. Their string sets `console=`/`earlycon=` to `0x10c02000` (= **uart0**) while their own `stdout-path` resolves to uart1, and U-Boot's `fdt_chosen()` overwrites `/chosen/bootargs` from `$bootargs` regardless. ALTERA's 2025 in-house file already dropped it. |
+| `chosen/bootargs` | TERASIC + PORT | **dropped** | Self-contradictory *and* dead. Their string sets `console=`/`earlycon=` to `0x10c02000` (= **uart0**) while their own `stdout-path` resolves to uart1, and U-Boot's `fdt_chosen()` overwrites `/chosen/bootargs` from `$bootargs` regardless. ALTERA's 2025 in-house file already dropped it. |
 | `leds { compatible = "gpio-leds" }` | all three | **kept** | |
-| LED child node name | ALTERA (`led-0`) | **changed** from TERASIC/FRIEND (`hps0`) | `leds-gpio.yaml`'s child pattern is `(^led-[0-9a-f]$|led)`; `hps0` matches neither, so the node is rejected by that binding's `additionalProperties: false`. Provably a no-op: the class-device name comes from `label`, so `/sys/class/leds/hps_led0` is unchanged — same ABI as the DE10. |
+| LED child node name | ALTERA (`led-0`) | **changed** from TERASIC/PORT (`hps0`) | `leds-gpio.yaml`'s child pattern is `(^led-[0-9a-f]$|led)`; `hps0` matches neither, so the node is rejected by that binding's `additionalProperties: false`. Provably a no-op: the class-device name comes from `label`, so `/sys/class/leds/hps_led0` is unchanged — same ABI as the DE10. |
 | `label = "hps_led0"`, `gpios = <&portb 17 GPIO_ACTIVE_LOW>` | all three | **kept** | Identical in all three. |
 | `linux,default-trigger = "mmc0"` | — (DE10 stock has it) | **not added** | Out of wave-1 scope (bare developer OS, no MiSTer binaries). One line to add later; the trigger resolves because the mmc core registers a simple trigger named after `dev_name(&host->class_dev)`. |
 | `memory@80000000` | — in MAINLINE dtsi | **authored** | See "Memory" below. |
@@ -315,28 +315,28 @@ file is named.
 | `fpga_mgr` child | TERASIC/ALTERA (single string) | **changed** | Two-string fallback `"intel,agilex5-soc-fpga-mgr", "intel,agilex-soc-fpga-mgr"`. Binds the **stock** driver: `s10_of_match[]` (`drivers/fpga/stratix10-soc.c:448-452`) carries no `.data` and never branches on which entry matched, and OF matching walks the whole list. Costs a transient dtbs_check warning (§2.5 of the implementation path); avoids a carried match-table line forever. |
 | `altr,smmu_enable_quirk` on svc / fpga_mgr | TERASIC | **dropped** | Vendor-live, mainline-inert: `grep -rn smmu_enable_quirk` over mainline 7.2.2 → zero hits. It gates SDM DMA setup in *Terasic's* `stratix10-svc.c`; carrying it onto a mainline driver does nothing. Its existence is evidence for implementation-path §2.6, not a property to copy. |
 | `interrupts`/`interrupt-parent` on svc | TERASIC | **dropped** | Not in `intel,stratix10-svc.yaml`, not read by mainline's `stratix10-svc.c`. |
-| `hwmon` / `temp_volt` child of svc | TERASIC + FRIEND | **dropped** | `compatible = "intel,soc64-hwmon"` exists nowhere in mainline (`drivers/hwmon/`, `Documentation/devicetree/bindings/hwmon/` → zero hits at 7.2.2). The whole `&temp_volt { voltage { … } temperature { … } }` block — 60 lines in both references — binds nothing. Revisit if an SDM hwmon driver lands. |
+| `hwmon` / `temp_volt` child of svc | TERASIC + PORT | **dropped** | `compatible = "intel,soc64-hwmon"` exists nowhere in mainline (`drivers/hwmon/`, `Documentation/devicetree/bindings/hwmon/` → zero hits at 7.2.2). The whole `&temp_volt { voltage { … } temperature { … } }` block — 60 lines in both references — binds nothing. Revisit if an SDM hwmon driver lands. |
 | `fcs-hal` / `fcs-crypto` children | TERASIC | **dropped** | `intel,agilex5-soc-fcs-hal` likewise absent from mainline. |
 | `&smmu` status | all three set `okay` | **changed → `disabled`** | The one design divergence from every reference. Mainline's svc layer hands the SDM **raw physical addresses** and never calls `iommu_map`/`dma_map`, while the inherited `iommus = <&smmu 10>` puts the svc device on a *translated* default domain — so SMMU-on cannot program the fabric on a mainline kernel. Full trace in §4.1. Also MAINLINE 7.2's own default. Every `iommus` property in the tree is kept and goes inert (§4.3), so the SMMU-on leg of the §2.6 test is a one-line change. |
-| **`mmc0`** — `compatible` | TERASIC + FRIEND | **kept exactly** | `"intel,agilex5-sd4hc", "cdns,sd4hc"`, vendor string **first**. That order is the `items: [enum, const]` form `0101` adds to `cdns,sdhci.yaml`, and with `0101` the first entry wins and installs the 40-bit DMA mask. ALTERA's `"altr,agilex5-sd6hc","cdns,sd6hc"` is unusable: `cdns,sd6hc` exists nowhere in mainline (implementation path §4.1). A lone `cdns,sd4hc` would still bind — `sdhci_cdns_probe()` falls back to `&sdhci_cdns_drv_data` when `of_device_get_match_data()` returns NULL (`sdhci-cadence.c:561-563`) — but **silently without the mask**, which is the §8 Q2 failure. |
-| `mmc0` `reg`, `interrupts` | TERASIC + ALTERA + FRIEND (identical) | **kept** | `0x10808000 0x1000`, `GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH`. |
+| **`mmc0`** — `compatible` | TERASIC + PORT | **kept exactly** | `"intel,agilex5-sd4hc", "cdns,sd4hc"`, vendor string **first**. That order is the `items: [enum, const]` form `0101` adds to `cdns,sdhci.yaml`, and with `0101` the first entry wins and installs the 40-bit DMA mask. ALTERA's `"altr,agilex5-sd6hc","cdns,sd6hc"` is unusable: `cdns,sd6hc` exists nowhere in mainline (implementation path §4.1). A lone `cdns,sd4hc` would still bind — `sdhci_cdns_probe()` falls back to `&sdhci_cdns_drv_data` when `of_device_get_match_data()` returns NULL (`sdhci-cadence.c:561-563`) — but **silently without the mask**, which is the §8 Q2 failure. |
+| `mmc0` `reg`, `interrupts` | TERASIC + ALTERA + PORT (identical) | **kept** | `0x10808000 0x1000`, `GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH`. |
 | `mmc0` node name | — | **changed** | `mmc@10808000`, not the references' `mmc0@10808000`. Generic node name per `mmc-controller.yaml`; the vendor name is not a legal generic-node name and buys nothing. |
-| `mmc0` `resets` | TERASIC + FRIEND | **kept** | `<&rst SDMMC_RESET>`. Inert on this board — `sdhci-cadence` takes the reset only under `MMC_CAP_HW_RESET` (eMMC) — but correct hardware description. ALTERA's three-entry list (`COMBOPHY_RESET`, `SDMMC_OCP_RESET`) targets their SD6HC rewrite. |
-| `mmc0` `reset-names = "reset"` | TERASIC + FRIEND | **dropped** | Not declared in `cdns,sdhci.yaml` (would trip `unevaluatedProperties`), and the driver looks the reset up with `id = NULL`, i.e. by index. |
-| `mmc0` `fifo-depth = <0x800>` | TERASIC + ALTERA + FRIEND | **dropped** | Dead. `grep fifo-depth drivers/mmc/host/sdhci-cadence.c` → zero hits; it is a `dw_mmc` property that travelled here by copy. Same class as the DE10's `speed-mode`/`timeouts` ([`dts-comparison.md`](dts-comparison.md) §4 D3/D4). |
+| `mmc0` `resets` | TERASIC + PORT | **kept** | `<&rst SDMMC_RESET>`. Inert on this board — `sdhci-cadence` takes the reset only under `MMC_CAP_HW_RESET` (eMMC) — but correct hardware description. ALTERA's three-entry list (`COMBOPHY_RESET`, `SDMMC_OCP_RESET`) targets their SD6HC rewrite. |
+| `mmc0` `reset-names = "reset"` | TERASIC + PORT | **dropped** | Not declared in `cdns,sdhci.yaml` (would trip `unevaluatedProperties`), and the driver looks the reset up with `id = NULL`, i.e. by index. |
+| `mmc0` `fifo-depth = <0x800>` | TERASIC + ALTERA + PORT | **dropped** | Dead. `grep fifo-depth drivers/mmc/host/sdhci-cadence.c` → zero hits; it is a `dw_mmc` property that travelled here by copy. Same class as the DE10's `speed-mode`/`timeouts` ([`dts-comparison.md`](dts-comparison.md) §4 D3/D4). |
 | `mmc0` `#address-cells`/`#size-cells` | all three | **dropped** | The node has no children. Pure `avoid_unnecessary_addr_size` noise. |
 | `mmc0` `clocks` + `clock-names` | all three (identical) | **kept, both entries** | `<&clkmgr AGILEX5_L4_MP_CLK>, <&clkmgr AGILEX5_SDMCLK>` / `"biu", "ciu"`. Mainline only ever uses index 0 — `devm_clk_get_enabled(dev, NULL)` (`sdhci-cadence.c:557`) — and on Agilex 5 the second is inert anyway: gate clocks register with `agilex_gateclk_ops` (`clk-gate-s10.c:279`, defined `:117`), which has **no `.enable`/`.disable`**, so `clk_prepare_enable()` is a no-op *and* `clk_disable_unused()` cannot turn `sdmclk` off. Kept because it is the truthful hardware description, it matches all three references including the one that boots, and the binding — not the DT — is what needs widening (§2.4). |
 | `mmc0` `iommus` | all three | **kept, inert as shipped** | `&smmu` is disabled, so `of_iommu_xlate()` returns `-ENODEV` and mmc0 DMAs physically. Kept because it is correct hardware description and mandatory the moment `&smmu` is flipped to `okay`. See §4.3. |
 | `mmc0` `dma-coherent` | all three | **kept, with [U2] re-opened** | Corroborated by MAINLINE's own `nand` node (`socfpga_agilex5.dtsi:315`). But the vendors assert it under SMMU-**on**, where cacheability comes from the STE/`IOMMU_CACHE` attributes rather than from this property, so their evidence does not transfer to the shipped SMMU-off shape. Must be re-verified by data-integrity test, not inherited. See §4.5. |
 | `mmc0` `bus-width = <4>`, `disable-wp` | all three | **kept** | 4-bit microSD, no write-protect switch wired. |
-| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (FRIEND drops it) | **kept** | Dropping it would be theatre, not caution: `sdhci.c:4572` sets `MMC_CAP_SD_HIGHSPEED` from the capability register's `SDHCI_CAN_DO_HISPD` (bit 21) **regardless of DT**, and our `sdhci-caps-mask` does not clear that bit. `max-frequency` above is the property that actually constrains the bus. If a bench test ever needs genuine default-speed-only, the real lever is widening the caps mask to `<0x00002000 0x0020ff00>`. |
-| `mmc0` `no-1-8-v` | TERASIC + FRIEND | **kept** | 3.3V-only signalling. Also the reason we can safely omit ALTERA's `vqmmc-supply` level-shifter regulator (below). |
-| `mmc0` `no-sdio` | TERASIC + FRIEND | **kept** | SD card slot only; MiSTer WiFi is USB. |
+| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (PORT drops it) | **kept** | Dropping it would be theatre, not caution: `sdhci.c:4572` sets `MMC_CAP_SD_HIGHSPEED` from the capability register's `SDHCI_CAN_DO_HISPD` (bit 21) **regardless of DT**, and our `sdhci-caps-mask` does not clear that bit. `max-frequency` above is the property that actually constrains the bus. If a bench test ever needs genuine default-speed-only, the real lever is widening the caps mask to `<0x00002000 0x0020ff00>`. |
+| `mmc0` `no-1-8-v` | TERASIC + PORT | **kept** | 3.3V-only signalling. Also the reason we can safely omit ALTERA's `vqmmc-supply` level-shifter regulator (below). |
+| `mmc0` `no-sdio` | TERASIC + PORT | **kept** | SD card slot only; MiSTer WiFi is USB. |
 | `mmc0` `sd-uhs-sdr50` | TERASIC | **dropped** | Contradicts `no-1-8-v` in the same node: every UHS mode needs 1.8V signalling, which `MMC_CAP2_NO_1_8_V` bars. Inert, and confusing to leave in. |
 | `mmc0` `sdhci-caps` / `sdhci-caps-mask` | TERASIC (ALTERA has a wider mask) | **kept, TERASIC's values** | **Live on mainline and probably load-bearing.** `__sdhci_read_caps()` (`drivers/mmc/host/sdhci.c:4161-4186`) applies them to `SDHCI_CAPABILITIES{,_1}`; the uint64 is `<caps1 caps>`. `0xc800` in caps bits 15:8 sets the base clock to `0xc8` = 200 MHz, and `sdhci_cdns_ops` has **no `.get_max_clock`**, so a zero base-clock field would fail probe outright with `"Hardware doesn't specify base clock frequency"` / `-ENODEV` (`sdhci.c:4448-4462`). Both vendors set it; treated as load-bearing rather than decorative. The caps1 mask clears bit 13 (`SDHCI_USE_SDR50_TUNING`). ALTERA masks `0x2007`, additionally removing SDR50/SDR104/DDR50 — moot under `no-1-8-v`. |
-| `mmc0` 40 × `cdns,phy-*` / `cdns,hrs*` | TERASIC + FRIEND | **dropped** | **Dead devicetree on a mainline driver.** `sdhci-cadence`'s property table knows only eleven `cdns,phy-input-delay-*` / `cdns,phy-dll-delay-*` names (`sdhci-cadence.c:108-119`); not one of the forty is among them. Implementation path §2.2 makes the same call, and notes the consequence: the friend's working SD path already runs on the driver's **default** PHY configuration, which is what we inherit. |
+| `mmc0` 40 × `cdns,phy-*` / `cdns,hrs*` | TERASIC + PORT | **dropped** | **Dead devicetree on a mainline driver.** `sdhci-cadence`'s property table knows only eleven `cdns,phy-input-delay-*` / `cdns,phy-dll-delay-*` names (`sdhci-cadence.c:108-119`); not one of the forty is among them. Implementation path §2.2 makes the same call, and notes the consequence: the port's working SD path already runs on the driver's **default** PHY configuration, which is what we inherit. |
 | `mmc0` `vmmc-supply` / `vqmmc-supply` + `sd_emmc_power` / `sd_io_1v8_reg` regulators | ALTERA only | **dropped** | Would mean authoring a `regulator-fixed` and a `regulator-gpio` (on `portb 3`) that no other reference has and no bench test has exercised. Under `no-1-8-v` the level shifter never has to switch, and U-Boot's own SD boot from the same card demonstrates the hardware default is the 3.3V state. Adding an untested GPIO-driven regulator to the SD path is precisely the change that turns a working boot into a non-booting one. Flagged §7 U4. |
-| `mmc0` `max-frequency` | FRIEND `25000000` (ALTERA `200000000`; TERASIC none) | **taken from FRIEND** | **First-boot risk control.** Mainline's `sdhci-cadence` programs **none** of the 40 `cdns,phy-*` values the vendor trees carry, so Linux inherits whatever PHY state U-Boot left rather than configuring it. The only boot of this board on a **mainline** sdhci-cadence driver — FRIEND, `socfpga_agilex5_de25_nano.dts:110-126` — reached that state only after dropping high-speed advertisement and capping the clock at 25 MHz, following corrupted SD SCR reads. Start where the one working data point is; lift once a sustained `dd` is clean ([U3]). ALTERA's `200000000` is a no-op ceiling. |
+| `mmc0` `max-frequency` | PORT `25000000` (ALTERA `200000000`; TERASIC none) | **taken from PORT** | **First-boot risk control.** Mainline's `sdhci-cadence` programs **none** of the 40 `cdns,phy-*` values the vendor trees carry, so Linux inherits whatever PHY state U-Boot left rather than configuring it. The only boot of this board on a **mainline** sdhci-cadence driver — PORT, `socfpga_agilex5_de25_nano.dts:110-126` — reached that state only after dropping high-speed advertisement and capping the clock at 25 MHz, following corrupted SD SCR reads. Start where the one working data point is; lift once a sustained `dd` is clean ([U3]). ALTERA's `200000000` is a no-op ceiling. |
 | `&gmac0` `status`, `phy-mode`, `phy-handle`, `max-frame-size` | all three (identical) | **kept** | `phy-mode = "rgmii"`, **not** `"rgmii-id"`: ALTERA's file states the TX/RX delays are on the PCB, so asking the PHY for internal delay too would double it — the same trap as the DE10's `gmac1` ([`dts-comparison.md`](dts-comparison.md) §3.2). |
 | `&gmac0` `mdio0` node name | all three **and MAINLINE's own socdk** (`socfpga_agilex5_socdk.dts:51`) | **kept** | Does not match `mdio.yaml`'s `$nodename` pattern, but it is what the in-tree board uses, so the shape is upstream's, not ours — and dtbs_check does not in fact flag it. Cosmetic at runtime: `stmmac_of_get_mdio()` (`stmmac_platform.c:295-318`) finds the node by scanning children for `compatible = "snps,dwmac-mdio"`, never by name. |
 | `ethernet-phy@0 { reg = <1>; }` | all three | **changed → `ethernet-phy@1`** | A unit-address/`reg` mismatch that dtc reports under `-Wunit_address_vs_reg`. PHY address **1** is the real value (all three agree on `reg`); only the unit address was wrong. Provably a no-op — `of_mdiobus_register()` addresses the PHY from `reg`. See §5 D3. |
@@ -346,10 +346,10 @@ file is named.
 | `&uart1 { status = "okay" }` | all three | **kept** | Console. `uart0` left disabled (MAINLINE default) — see "Console UART". |
 | `&usb0 { status = "okay"; disable-over-current }` | all three | **kept** | `disable-over-current` is live (`Documentation/devicetree/bindings/usb/dwc2.yaml:89`). No `dr_mode`: none of the three sets one, so dwc2 reads the OTG capability out of the hardware. Flagged §7 U5. |
 | `&watchdog0..4 { status = "okay" }` | all three | **kept, all five** | Deliberate parity with a safety argument: `dw_wdt` sets `WDOG_HW_RUNNING` when it finds the watchdog already started by firmware, and the watchdog core then pets it until userspace opens the device. A watchdog started by the SPL whose node is **disabled** in Linux is never petted and resets the board. Enabling costs a `/dev/watchdogN`; not enabling could cost a boot. |
-| `disable-over-current` on `&watchdog4` | TERASIC → ALTERA → FRIEND | **dropped** | A copy-paste of the `usb0` property onto a watchdog. Meaningless to `snps,dw-wdt`, absent from its binding, propagated unchanged through all three trees. |
+| `disable-over-current` on `&watchdog4` | TERASIC → ALTERA → PORT | **dropped** | A copy-paste of the `usb0` property onto a watchdog. Meaningless to `snps,dw-wdt`, absent from its binding, propagated unchanged through all three trees. |
 | `&osc1 { clock-frequency = <25000000> }` | all three | **kept** | MAINLINE declares `osc1` as a `fixed-clock` with `clock-frequency = <0>` (`socfpga_agilex5.dtsi:139-143`); it is the root of the peripheral clock tree, so leaving it at 0 gives a zero rate everywhere downstream. Exactly the `osc1` question [`dts-comparison.md`](dts-comparison.md) §4.1 asked for the DE10 — and here, unlike there, the answer is that it *does* need setting. |
-| `&qspi` + `flash@0` + partitions | ALTERA only | **dropped** | Not in the §3.1 node set; TERASIC and FRIEND both leave QSPI disabled. Enabling it exposes the **factory boot image** to `/dev/mtd` writes, and the QSPI contents are the board's un-recoverable-without-Quartus state ([`de25-boot-chain.md`](de25-boot-chain.md) §7 rows 14/15). Nothing in wave 1 needs it. |
-| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | FRIEND only | **dropped** | ADR 0027 scopes wave 1 to a bare developer OS with **no MiSTer binaries**. These describe a fabric/Main_MiSTer memory map that does not exist yet, and `de25-reference-implementation.md` already flags the friend's 2 GiB assumption underneath `x86ram@b0000000` as unverified. |
+| `&qspi` + `flash@0` + partitions | ALTERA only | **dropped** | Not in the §3.1 node set; TERASIC and PORT both leave QSPI disabled. Enabling it exposes the **factory boot image** to `/dev/mtd` writes, and the QSPI contents are the board's un-recoverable-without-Quartus state ([`de25-boot-chain.md`](de25-boot-chain.md) §7 rows 14/15). Nothing in wave 1 needs it. |
+| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **dropped** | ADR 0027 scopes wave 1 to a bare developer OS with **no MiSTer binaries**. These describe a fabric/Main_MiSTer memory map that does not exist yet, and `de25-reference-implementation.md` already flags the port's 2 GiB assumption underneath `x86ram@b0000000` as unverified. |
 | `&i2c1`'s vendor `status` whitespace, `&mmc` label | — | n/a | We define our own label `mmc0`; the references' `&mmc` label lives in a `.dtsi` we do not patch. |
 
 ### The svc node — a dependency, stated plainly
@@ -387,22 +387,23 @@ keeping the SoC-accurate string plus a one-line patch is the better shape.
 The task brief said "uart0 status okay (console)". **The file enables `uart1` instead**, and
 leaves `uart0` at MAINLINE's disabled default. The evidence:
 
-- TERASIC, ALTERA and FRIEND *all three* set `aliases { serial0 = &uart1; }` and
+- TERASIC, ALTERA and PORT *all three* set `aliases { serial0 = &uart1; }` and
   `&uart1 { status = "okay"; }`, and none of them enables uart0.
 - MAINLINE's `socfpga_agilex5_socdk.dts` uses uart0 — but that is a **different board**; HPS
   UART pinmux is board wiring, not SoC wiring.
-- The one apparent counter-evidence is TERASIC's/FRIEND's `bootargs` naming `0x10c02000`
+- The one apparent counter-evidence is TERASIC's/PORT's `bootargs` naming `0x10c02000`
   (uart0). It is self-contradictory with their own `stdout-path` in the same node, and ALTERA's
   2025 in-house rewrite **deleted the bootargs string entirely** while keeping
   `serial0 = &uart1` — the strongest single signal that the bootargs were stale SoCDK residue.
-- UART addresses are identical across MAINLINE, TERASIC and FRIEND (`uart0` = `serial@10c02000`,
+- UART addresses are identical across MAINLINE, TERASIC and PORT (`uart0` = `serial@10c02000`,
   `uart1` = `serial@10c02100`), so this is a pure wiring question, not an addressing one.
 
 **Settled `[V]`, not merely likely.** The DE25 **U-Boot** tree closes it independently of any
-Linux DTS: `de25-uboot-socfpga:arch/arm/dts/socfpga_agilex5_de25_nano.dts:11` has
-`serial0 = &uart1`, and `...-u-boot.dtsi` sets `stdout-path = "serial0:115200n8"` — and the
-friend booted Linux over that console. A board whose bootloader console is uart1 does not have
-its Linux console on uart0. Promoted from `[U]` in §7.
+Linux DTS: Terasic's public branch (`github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`,
+`arch/arm/dts/socfpga_agilex5_de25_nano.dts:11`) has `serial0 = &uart1`, and `...-u-boot.dtsi`
+sets `stdout-path = "serial0:115200n8"` — and the PORT booted Linux over that console. A board
+whose bootloader console is uart1 does not have its Linux console on uart0. Promoted from `[U]`
+in §7.
 
 ### Memory
 
@@ -410,12 +411,13 @@ MAINLINE's `.dtsi` has no memory node, so the board file must supply one.
 
 | Tree | value |
 |---|---|
-| TERASIC, FRIEND | `memory { reg = <0 0x80000000 0 0x80000000>; }` — 2 GiB, and a node name with no unit address |
+| TERASIC, PORT | `memory { reg = <0 0x80000000 0 0x80000000>; }` — 2 GiB, and a node name with no unit address |
 | ALTERA, MAINLINE socdk | `memory@80000000 { reg = <0x0 0x80000000 0x0 0x0>; }` — size 0, "we expect the bootloader to fill in the reg" |
 | **OURS** | `memory@80000000 { reg = <0x0 0x80000000 0x0 0x40000000>; }` — **1 GiB** |
 
-1 GiB at `0x8000_0000` matches the *UM* and the DE25 **U-Boot** DTS —
-`de25-uboot-socfpga:arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`, which carries
+1 GiB at `0x8000_0000` matches the *UM* and the DE25 **U-Boot** DTS — Terasic's public branch
+(`github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`,
+`arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`), which carries
 `memory { /* 1GB */ reg = <0 0x80000000 0 0x40000000>; }`.
 
 **Be precise about what that is.** It is a *declared constant in a bootloader device tree*, not
@@ -429,14 +431,14 @@ mismatch. U-Boot then rewrites Linux's node wholesale from `bi_dram` —
 (default `y`).
 
 So the value here only matters if that fixup does not run. It is still the right value to state:
-TERASIC and FRIEND's 2 GiB over-claims, ALTERA's and MAINLINE socdk's size 0 boots nothing
+TERASIC and PORT's 2 GiB over-claims, ALTERA's and MAINLINE socdk's size 0 boots nothing
 without the fixup, and under-claiming degrades gracefully where neither of those does.
 
 **First-boot action: capture U-Boot's `DDR:` lines.** They are the only authority on the real
 size, and a `DDR: Warning` there is the signal that any of these DTS constants is wrong.
 
-`de25-reference-implementation.md` asked this of the friend's tree ("Does the DE25-Nano HPS
-actually have 2 GiB of DRAM?"). Every DE25 bootloader source says 1 GiB, so his Linux node
+`de25-reference-implementation.md` asked this of the PORT tree ("Does the DE25-Nano HPS
+actually have 2 GiB of DRAM?"). Every DE25 bootloader source says 1 GiB, so the port's Linux node
 over-claims 2× — but "1 GiB" is itself a vendor declaration awaiting the IO96B readout, not a
 measurement, and this document should not launder one into the other.
 
@@ -498,7 +500,7 @@ Stated honestly: SMMU-off removes the *identified* fault, it does not establish 
 can program this fabric.
 
 - **For**: it is the only shape in which the svc layer's own addressing is self-consistent; it
-  is MAINLINE 7.2's shipped default; and the closest supporting data point is the friend's cold
+  is MAINLINE 7.2's shipped default; and the closest supporting data point is the PORT's cold
   boot with `iommu.passthrough=1` reaching a login prompt.
 - **Against**: Terasic's vendor driver *hard-fails* without the SMMU (its agilex5 probe path
   returns `-ENODEV` absent `altr,smmu_enable_quirk`), and mainline never touches the SDM
@@ -544,7 +546,7 @@ with the SMMU **on**, where the cacheability of an access is determined by the S
 attributes rather than by the master's own `dma-coherent` property. Their evidence therefore does
 **not** transfer unchanged to the SMMU-off shape, and the mainline `nand` precedent — which is
 about the SoC's interconnect rather than about translation — is now doing more of the work than
-it was. The friend's `SETUP.md:139-142` is a live warning in the same area: with
+it was. The port's setup guide (`SETUP.md:139-142`) is a live warning in the same area: with
 `iommu.passthrough=1`, SDHCI ADMA "can corrupt early SD init" after a JTAG full-SOF load, which
 is an SMMU-off ADMA integrity failure whatever its root cause.
 
@@ -556,7 +558,7 @@ slower; the converse silently corrupts.
 
 ## 5. Deliberate divergences from the reference files
 
-Every difference a node-by-node diff against TERASIC/ALTERA/FRIEND turns up, accounted for.
+Every difference a node-by-node diff against TERASIC/ALTERA/PORT turns up, accounted for.
 D1–D6 are changes of *form*; the content drops are in §3.
 
 | # | Divergence | Why |
@@ -568,7 +570,7 @@ D1–D6 are changes of *form*; the content drops are in §3.
 | D5 | `model` `"SoCFPGA Agilex5 Terasic DE25-Nano"` → **`"Terasic DE25-Nano"`** | Cosmetic; the board's name rather than a compilation of SoC and board. |
 | D6 | `&watchdog4` loses `disable-over-current` | A watchdog has no over-current line. Copy-paste from `usb0`, propagated through all three trees. |
 | D7 | `&smmu` `okay` → **`disabled`** | The one *design* divergence, not a form one. Mainline's svc layer cannot work under a translated domain (§4.1). Also MAINLINE 7.2's own default. All `iommus` properties retained so the reverse is one line. |
-| D8 | `mmc0` gains **`max-frequency = <25000000>`** | FRIEND's value. The only mainline-driver boot of this board needed it; mainline programs none of the PHY timing the vendors declare (§3, `max-frequency` row). Lift once [U3] clears. |
+| D8 | `mmc0` gains **`max-frequency = <25000000>`** | PORT's value. The only mainline-driver boot of this board needed it; mainline programs none of the PHY timing the vendors declare (§3, `max-frequency` row). Lift once [U3] clears. |
 
 ---
 
@@ -598,9 +600,9 @@ D1–D6 are changes of *form*; the content drops are in §3.
 
 | # | Question | Why it matters | How it is settled |
 |---|---|---|---|
-| ~~U1~~ | ~~Is the console really `uart1`?~~ | — | **Closed `[V]`.** The DE25 U-Boot tree sets `serial0 = &uart1` and `stdout-path = "serial0:…"` (`de25-uboot-socfpga:.../socfpga_agilex5_de25_nano.dts:11`, `...-u-boot.dtsi`), and the friend booted Linux on that console. Not to be re-litigated. |
-| **U2** | Is the SDMMC master really cache-coherent **with the SMMU off**? | `dma-coherent` on a non-coherent master is silent data corruption. The vendors' evidence is all SMMU-**on**, where cacheability comes from the STE/`IOMMU_CACHE` attributes, not this property — so it does not transfer to the shipped shape (§4.5). The friend's `SETUP.md:139-142` records ADMA corrupting early SD init under `iommu.passthrough=1`. | Sustained `dd` read/write + checksum in the **shipped SMMU-off** configuration. If corrupt, delete `dma-coherent` first — the non-coherent treatment is always correct, merely slower. |
-| **U3** | Can the 25 MHz clock cap be lifted? | Shipped capped, following the only mainline-driver boot of this board. Mainline programs none of the 40 vendor `cdns,phy-*` values, so PHY state is whatever U-Boot left. | Once a sustained `dd` read/write is clean at 25 MHz, raise in steps (or delete `max-frequency`) and re-run. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, which is the symptom the friend hit. |
+| ~~U1~~ | ~~Is the console really `uart1`?~~ | — | **Closed `[V]`.** The DE25 U-Boot tree sets `serial0 = &uart1` and `stdout-path = "serial0:…"` (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano.dts:11`, `...-u-boot.dtsi`), and the PORT booted Linux on that console. Not to be re-litigated. |
+| **U2** | Is the SDMMC master really cache-coherent **with the SMMU off**? | `dma-coherent` on a non-coherent master is silent data corruption. The vendors' evidence is all SMMU-**on**, where cacheability comes from the STE/`IOMMU_CACHE` attributes, not this property — so it does not transfer to the shipped shape (§4.5). The port's setup guide (`SETUP.md:139-142`) records ADMA corrupting early SD init under `iommu.passthrough=1`. | Sustained `dd` read/write + checksum in the **shipped SMMU-off** configuration. If corrupt, delete `dma-coherent` first — the non-coherent treatment is always correct, merely slower. |
+| **U3** | Can the 25 MHz clock cap be lifted? | Shipped capped, following the only mainline-driver boot of this board. Mainline programs none of the 40 vendor `cdns,phy-*` values, so PHY state is whatever U-Boot left. | Once a sustained `dd` read/write is clean at 25 MHz, raise in steps (or delete `max-frequency`) and re-run. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, which is the symptom the port hit. |
 | **U4** | Does the SD I/O rail need ALTERA's `regulator-gpio` on `portb 3`? | ALTERA wires `vqmmc-supply` to a 1.8V/3.3V level shifter; we rely on `no-1-8-v` plus the boot-default state. | Only matters if UHS is ever wanted. Until then the shifter never switches. |
 | **U5** | `dr_mode` for `usb0` | Unset in all three references, so dwc2 reads OTG capability from the hardware. A MiSTer image wants host mode. | Observe `/sys/class/udc` and whether hubs enumerate; add `dr_mode = "host"` if OTG guesses wrong. |
 | **U6** | Should the root compatible say `terasic,de25-nano`? | Currently claims to be an SoCDK. Nothing on arm64 reads it, but it is wrong. | A one-line upstream patch to `Documentation/devicetree/bindings/arm/altera.yaml`, then a one-line DTS change. |
@@ -616,8 +618,8 @@ D1–D6 are changes of *form*; the content drops are in §3.
 |---|---|---|
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | The authored node set overrides `/firmware/svc`'s compatible to `"intel,agilex-svc"` | Superseded. We keep MAINLINE's `"intel,agilex5-svc"` and carry `linux-patches/0102` (a one-line match-table addition) instead. The override is retained as the documented fallback. Rationale: the vendor treats the agilex5 string as semantic, so a kernel that will one day want that distinction should not have the DT lie about the SoC. |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §2.5 | The two-string fpga-mgr form "warns" under `dtbs_check` | Confirmed and quantified: **five** warning lines, from **two** schemas (`intel,stratix10-svc.yaml` validating the child in place, and `intel,stratix10-soc-fpga-mgr.yaml` validating it standalone), plus the "failed to match any schema" summary. Simulating Khairul's v6 `oneOf`/`items` shape clears all five (§2.4). |
-| [`de25-reference-implementation.md`](de25-reference-implementation.md) (open question, line ~664) | "Does the DE25-Nano HPS actually have 2 GiB of DRAM? His memory node hard-codes `reg = <0 0x80000000 0 0x80000000>`…" | **Answered as far as any desk source can: every DE25 bootloader source says 1 GiB.** His Linux node over-claims 2×, and his `x86ram@b0000000 + 0x10000000` would sit past the top of RAM. Our node states 1 GiB — but see the row below: "1 GiB" is a vendor *declaration*, not a measurement. |
-| [`de25-boot-chain.md`](de25-boot-chain.md) §3 | "the factory SPL DTB's memory node reads `reg = <0x0 0x80000000 0x0 0x40000000>` = 1 GiB at 0x8000_0000 **[V SPL-dtb]**" | **The `[V]` overstates it.** That is a *constant in Terasic's U-Boot device tree* (`de25-uboot-socfpga:arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`, commented `/* 1GB */`), not a readout. The authoritative size comes from the IO96B controller at runtime: `drivers/ddr/altera/sdram_agilex5.c` derives `hw_size` from `io96b_ctrl->overall_size`, caps the DT value at it, and prints `DDR: Warning …` on mismatch. Downgrade to `[V, vendor DTS constant] / [U, hardware]` and capture U-Boot's `DDR:` lines on first boot. |
+| [`de25-reference-implementation.md`](de25-reference-implementation.md) (open question, line ~664) | "Does the DE25-Nano HPS actually have 2 GiB of DRAM? The port's memory node hard-codes `reg = <0 0x80000000 0 0x80000000>`…" | **Answered as far as any desk source can: every DE25 bootloader source says 1 GiB.** The port's Linux node over-claims 2×, and its `x86ram@b0000000 + 0x10000000` would sit past the top of RAM. Our node states 1 GiB — but see the row below: "1 GiB" is a vendor *declaration*, not a measurement. |
+| [`de25-boot-chain.md`](de25-boot-chain.md) §3 | "the factory SPL DTB's memory node reads `reg = <0x0 0x80000000 0x0 0x40000000>` = 1 GiB at 0x8000_0000 **[V SPL-dtb]**" | **The `[V]` overstates it.** That is a *constant in Terasic's U-Boot device tree* (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`, commented `/* 1GB */`), not a readout. The authoritative size comes from the IO96B controller at runtime: `drivers/ddr/altera/sdram_agilex5.c` derives `hw_size` from `io96b_ctrl->overall_size`, caps the DT value at it, and prints `DDR: Warning …` on mismatch. Downgrade to `[V, vendor DTS constant] / [U, hardware]` and capture U-Boot's `DDR:` lines on first boot. |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 and §2.6 step 4 | `&smmu { status = "okay"; }` is part of the authored node set, and the two SMMU legs of the programming test are symmetric | **Both corrected.** Mainline's `stratix10-svc` hands the SDM raw physical addresses with no `iommu_map`/`dma_map` anywhere, while the inherited `iommus = <&smmu 10>` puts the svc device on a *translated* default domain — so **SMMU-on cannot program the fabric on a mainline kernel** (§4.1, traced at 7.2.2). Wave 1 ships `status = "disabled"`. The two legs are therefore **not** symmetric: SMMU-off must be run **first**, because a SMMU-on failure is predicted by source and carries no information. |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §8 Q2 | The `mmc0` DMA-width question is the leading first-boot risk | Still real, but **not reachable in the shipped configuration**: with the SMMU off there are no IOVAs to truncate and all DRAM is below 4 GiB (§4.4). `linux-patches/0101` remains correct and wanted — it is what makes the SMMU-on leg survivable — but it is not load-bearing for first boot. The *actual* leading first-boot SD risk is PHY timing, which mainline does not program at all; hence the 25 MHz cap ([U3]). |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | `memory-region = <&service_reserved>` is part of the svc contract | **It is inert on mainline.** `stratix10-svc.c:865-876` takes the buffer from the `FPGA_CONFIG_GET_MEM` SMC and `:952-960` `memremap`s that; the `no-map` reserved region is never consulted. Whether BL31 actually answers with `service_reserved`'s range is a **hardware check that must precede the first reconfiguration attempt** — [U9]. |

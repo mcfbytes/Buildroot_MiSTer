@@ -1,0 +1,524 @@
+From dadd1c89786c14b4b783f30279a0c8d76c5b6770 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Sat, 1 Apr 2017 08:07:48 +0800
+Subject: [PATCH] board: terasic: de10-nano: carry MiSTer's QTS handoff data
+
+Replace mainline's four Terasic DE10-Nano QTS handoff headers
+(board/terasic/de10-nano/qts/{sdram,pll,pinmux,iocsr}_config.h) with
+the MiSTer fork's, renaming CONFIG_HPS_ -> CFG_HPS_ to match
+mainline's board CONFIG_* -> CFG_* migration. Values are carried
+unmodified.
+
+MiSTer replaced the Quartus-generated HPS<->FPGA handoff it had
+imported with the board (c7ed0834ac, "Add DE10-nano board",
+2017-03-27) with its own five days later (dadd1c8978, "Use SPL
+config from DE10 FB project", Sorgelig, 2017-04-01) because
+MiSTer's FPGA fabric is a different Quartus project than Terasic's
+reference design on the same board. The two diverge only in the
+HPS<->FPGA interface: every DDR3 timing, geometry, ODT/PHY control and
+both DDR sequencer ROMs (ac_rom_init 36 words, inst_rom_init 127
+words) are identical, and iocsr_scan_chain3_table -- the 524-word
+DDR3 HPS I/O bank -- is identical too. So this is not a DDR bring-up
+hazard; it is the interface that lets MiSTer's fabric use the SDRAM
+controller and its GPIO/I2C/SPI pin muxing at all.
+
+Divergent, value-for-value (fork -> pristine mainline v2026.07, names
+already normalized to CFG_HPS_):
+
+  CFG_HPS_SDR_CTRLCFG_FPGAPORTRST      0x3FFF -> 0x1FF   (sdram_config.h)
+  REG_FILE_INIT_SEQ_SIGNATURE          0x555504a0 -> 0x555504a1 (sdram_config.h, write-only sequencer stamp; see below)
+  CFG_HPS_PERPLLGRP_S2FUSER1CLK_CNT    511 -> 19         (pll_config.h)
+  CFG_HPS_SDRPLLGRP_S2FUSER2CLK_CNT    4 -> 5            (pll_config.h)
+  sys_mgr_init_table[35]  GENERALIO3    0 -> 1           (pinmux_config.h)
+  sys_mgr_init_table[36]  GENERALIO4    0 -> 1           (pinmux_config.h)
+  sys_mgr_init_table[201] I2C3USEFPGA   0 -> 1           (pinmux_config.h)
+  iocsr_scan_chain0_table   12 of 24 words differ        (iocsr_config.h)
+  iocsr_scan_chain1_table   18 of 54 words differ        (iocsr_config.h)
+  iocsr_scan_chain2_table   2 of 30 words differ         (iocsr_config.h)
+  iocsr_scan_chain3_table   0 of 524 words differ        (iocsr_config.h -- DDR3 I/O bank, identical)
+
+That is 39 changed value lines and nothing else: this patch deliberately
+keeps mainline's line-1 SPDX tag form and mainline's whitespace rather
+than importing the fork's 2017-era in-comment tag, so every line it
+touches is a value. See "Non-value lines" below.
+
+FPGAPORTRST releases 14 FPGA->SDRAM port resets under the fork's value
+vs 9 under mainline's (0x3FFF = 14 bits set, 0x1FF = 9). It lives in
+sdram_config.h and reaches hardware on both sides of the handoff
+[V, v2026.07 source]: the SPL stashes it in
+SYSMGR.ISWGRP.HANDOFF.FPGA2SDR (drivers/ddr/altera/sdram_gen5.c:466)
+and, when the fabric is already programmed (fpgamgr_test_fpga_ready()),
+write-verifies it straight into the SDRAM controller's fpgaport_rst
+register (sdram_gen5.c:471-472); U-Boot proper then caches that same
+handoff word (arch/arm/mach-socfpga/misc_gen5.c:199-201) and
+do_bridge_reset() writes it back to fpgaport_rst whenever it re-enables
+the bridges (misc_gen5.c:262-263). So it is a controller register, not
+a DDR timing -- but accepting mainline's value would leave five fabric
+ports in reset and MiSTer cores could lose SDRAM access. (Plan S3.2
+cites sdram_gen5.c:466 for the SPL write; to be exact, :466 is the
+sysmgr stash and :471 the controller write, both in the SPL.) The
+pinmux and IOCSR divergence is the GPIO/I2C/SPI FPGA-vs-HPS routing
+MiSTer's fabric depends on.
+
+REG_FILE_INIT_SEQ_SIGNATURE is the Quartus generator's stamp, and it
+is *not* dead source: v2026.07's arch/arm/mach-socfpga/wrap_sdram_config.c:301
+feeds it into misc_config.reg_file_init_seq_signature, and
+drivers/ddr/altera/sequencer.c:3781-3785 initialize_reg_file() writes
+it verbatim to the DDR sequencer's register-file signature register
+(&sdr_reg_file->signature) on every SPL DDR bring-up. It is
+functionally inert only because nothing reads it back: that writel is
+the sole reference to sdr_reg_file->signature anywhere in drivers/ or
+arch/arm/mach-socfpga/ in this tree [V, grepped]. Carrying the fork's
+value therefore changes one word written to one status register and
+nothing else -- but "not consumed by the SPL" would be the wrong way
+to say it, because the SPL does consume and write it.
+
+Accepting mainline's values here would be silently wrong for this
+board's actual FPGA design, not a bug fix -- these headers can never
+be upstreamed; mainline correctly serves Terasic's own reference
+design on the same physical board. Gated by the boot-chain's
+handoff-equality check (docs/uboot-mainline-port.md S3.2a), which
+greps a built SPL for these exact byte patterns so a build that
+silently picks up the wrong qts/*.h fails loudly instead of looking
+like success on a board.
+
+Owner decision 2026-09-14 (mirror stock wherever the plan had a
+choice): carry the fork's values unmodified rather than reconcile
+them with mainline's Terasic defaults.
+
+Provenance
+----------
+Origin:       dadd1c89786c14b4b783f30279a0c8d76c5b6770
+              "Use SPL config from DE10 FB project."
+              MiSTer-devel U-Boot fork, 2017-04-01.
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, and not submittable: MiSTer's FPGA fabric is a
+              different Quartus project than Terasic's own reference
+              design on the same board, so mainline's headers are
+              correct for mainline's board and this repo's are
+              correct for MiSTer's.
+Disposition:  Carry (docs/uboot-mainline-port.md S3.1 item 4, S3.2,
+              S3.2a). Not a defect -- MiSTer-specific FPGA routing
+              data, carried unmodified per the 2026-09-14 owner
+              decision to mirror stock.
+
+Snapshot:     The four headers as they stand at fork HEAD
+              8dcc3484aac6f07314538e82530d446083085e12 ("Adjust flag
+              for cold boot.", 2021-11-12), copied from
+              work/U-Boot_MiSTer (this repo's read-only reference
+              copy of the fork) -- not the dadd1c8978 tree verbatim.
+              dadd1c8978 is cited as Origin because it is the commit
+              that replaced Terasic's handoff with MiSTer's own; the
+              bytes carried here are the fork's current ones, per the
+              pinned reference "the MiSTer fork at commit 8dcc3484".
+              Exactly three commits touch board/terasic/de10-nano/qts/
+              between the two, all in pinmux_config.h, and each was
+              diffed [V]:
+                f7d1761b89 ("Switch i2c to gpio mode for smbus
+                  compatibilty.", 2018-02-10) -- GENERALIO3, GENERALIO4
+                  1 -> 0. These are two of the three pinmux words that
+                  still differ from mainline, matching plan S3.2's
+                  attribution.
+                0130b494b1 ("Update pin mux config.", 2018-04-03) --
+                  UART1USEFPGA 0 -> 1, SPIM0USEFPGA 0 -> 1.
+                02ea7ac01f ("Enable i2c2 bridge.", 2021-03-15) --
+                  I2C2USEFPGA 0 -> 1.
+              The last three flips all converge ON mainline's values
+              (mainline v2026.07 has UART1USEFPGA=1, SPIM0USEFPGA=1,
+              I2C2USEFPGA=1 [V]), which is why they do not appear in
+              the divergence list. The third remaining pinmux delta,
+              I2C3USEFPGA, comes from NO fork commit: it is an
+              import-vs-import difference. The fork's import
+              c7ed0834ac ("Add DE10-nano board", 2017-03-27) has
+              sys_mgr_init_table[201] I2C3USEFPGA = 0, and that word
+              has never been touched since (0 at c7ed0834ac,
+              dadd1c8978^, dadd1c8978 and 8dcc3484 alike [V, git
+              show <c>:.../pinmux_config.h in work/U-Boot_MiSTer]);
+              mainline's independent import 6bd041f00d ("arm:
+              socfpga: add cyclone5 based de10-nano board",
+              2017-04-18) has 1, as does v2026.07 [V]. dadd1c8978's
+              own pinmux change was I2C2USEFPGA 1 -> 0 only, later
+              flipped back by 02ea7ac01f.
+Attribution:  Every delta in the list above, traced to the commit
+              that introduced it by running qtsdiff.py over the
+              renamed headers at c7ed0834ac, dadd1c8978 and 8dcc3484
+              against each other and against pristine v2026.07 [V]:
+                dadd1c8978 -- FPGAPORTRST (0x311 at the fork's
+                  import -> 0x3FFF), REG_FILE_INIT_SEQ_SIGNATURE
+                  (0x555504a1 -> 0x555504a0), PERPLLGRP_S2FUSER1CLK_CNT
+                  (19 -> 511), SDRPLLGRP_S2FUSER2CLK_CNT (5 -> 4),
+                  and all 32 divergent iocsr chain0/1/2 words
+                  (12/18/2; at the import those three chains equalled
+                  mainline's, and no later fork commit touches
+                  iocsr_config.h, pll_config.h or sdram_config.h).
+                  The same commit also rewrote 33 words of chain3,
+                  the DDR3 I/O bank, from the import's values TO
+                  mainline's -- which is why chain3 is identical
+                  today.
+                f7d1761b89 -- GENERALIO3, GENERALIO4 (1 -> 0).
+                c7ed0834ac vs 6bd041f00d, import vs import, no fork
+                  commit involved -- I2C3USEFPGA (0 vs 1).
+              Also re-verified here rather than taken from plan
+              S3.2: mainline's four headers have had no value change
+              since 6bd041f00d -- qtsdiff of that commit's headers
+              (renamed) against v2026.07 reports zero differing
+              defines and zero differing words in every array [V] --
+              so this carry forfeits no upstream fix stream.
+Rename:       CONFIG_HPS_ -> CFG_HPS_ everywhere a name has that
+              prefix (mainline's board CONFIG_* -> CFG_* migration).
+              Textual only, confirmed value-preserving by the
+              verification below. pinmux_config.h has no #define
+              with that prefix at all (it is an array, sys_mgr_init_table),
+              and 4 of iocsr_config.h's SCANCHAIN*_LENGTH defines
+              likewise carry no value change from the rename.
+Non-value lines: none. The fork's copies also differ from mainline's
+              in seven places that carry no value (11 fork-side
+              lines, 5 patched-side lines, 16 unified-diff lines) --
+              all four files put
+              the SPDX tag inside the comment block (the 2017 form)
+              where mainline has it on line 1, iocsr_config.h and
+              pll_config.h have an extra blank line before the closing
+              #endif, and pinmux_config.h has two spaces before the
+              SPIM0USEFPGA comment where mainline has one. None is
+              carried. Mainline's own generator for these headers,
+              arch/arm/mach-socfpga/qts-filter.sh:26,69,105,148, emits
+              the line-1 form, and u-boot's scripts/checkpatch.pl
+              flags the other one ("Misplaced SPDX-License-Identifier
+              tag - use line 1 instead"), so importing it would add
+              four checkpatch warnings for no value [V: the 4
+              "Misplaced SPDX" warnings before, 0 after -- totals
+              3 errors/7 warnings/0 checks to 3 errors/3 warnings/0
+              checks, remeasured at integration; the 3 remaining
+              errors are the Origin:/Snapshot: sha citations, which
+              follow this repo's 0001-patch template, not u-boot's
+              commit-reference style]. Both qtsdiff runs
+              below are byte-identical with or without these
+              lines -- qtsdiff parses defines and arrays, not comments.
+
+Verification [V] (docs/uboot-mainline-port.md S3.2/S3.2a; the
+normalization qtsdiff.py applies is exactly the CONFIG_HPS_ ->
+CFG_HPS_ rename, nothing else --
+/mnt/source/uboot-mainline/verify-qts/qtsdiff.py, unmodified.
+Transcripts are indented two spaces so that a later `git commit
+--amend` or interactive rebase, whose default cleanup=strip drops
+every line starting with '#', cannot silently delete the '### file'
+headings and with them this evidence.)
+----------------------------------------------------------------------
+
+1) Patched tree vs fork HEAD 8dcc3484 -- expect zero differences,
+   proving the rename alone (no value) separates the two trees:
+
+  $ python3 qtsdiff.py <patched>/qts <fork-8dcc3484>/qts PATCHED FORK-8dcc3484
+  ### sdram_config.h
+    PATCHED: 157 defines, 2 arrays ({'ac_rom_init': 36, 'inst_rom_init': 127})
+    FORK-8dcc3484: 157 defines, 2 arrays ({'ac_rom_init': 36, 'inst_rom_init': 127})
+    common defines: 157   DIFFERING: 0
+      array ac_rom_init: 36 words, 0 differ (0.00%)
+      array inst_rom_init: 127 words, 0 differ (0.00%)
+  
+  ### pll_config.h
+    PATCHED: 68 defines, 0 arrays ({})
+    FORK-8dcc3484: 68 defines, 0 arrays ({})
+    common defines: 68   DIFFERING: 0
+  
+  ### pinmux_config.h
+    PATCHED: 0 defines, 1 arrays ({'sys_mgr_init_table': 207})
+    FORK-8dcc3484: 0 defines, 1 arrays ({'sys_mgr_init_table': 207})
+    common defines: 0   DIFFERING: 0
+      array sys_mgr_init_table: 207 words, 0 differ (0.00%)
+  
+  ### iocsr_config.h
+    PATCHED: 4 defines, 4 arrays ({'iocsr_scan_chain0_table': 24, 'iocsr_scan_chain1_table': 54, 'iocsr_scan_chain2_table': 30, 'iocsr_scan_chain3_table': 524})
+    FORK-8dcc3484: 4 defines, 4 arrays ({'iocsr_scan_chain0_table': 24, 'iocsr_scan_chain1_table': 54, 'iocsr_scan_chain2_table': 30, 'iocsr_scan_chain3_table': 524})
+    common defines: 4   DIFFERING: 0
+      array iocsr_scan_chain0_table: 24 words, 0 differ (0.00%)
+      array iocsr_scan_chain1_table: 54 words, 0 differ (0.00%)
+      array iocsr_scan_chain2_table: 30 words, 0 differ (0.00%)
+      array iocsr_scan_chain3_table: 524 words, 0 differ (0.00%)
+  
+
+RESULT: zero differences in every define and every array, all four
+files -- the rename carried no value.
+
+2) Patched tree vs pristine mainline v2026.07 -- expect exactly plan
+   S3.2's divergence list:
+
+  $ python3 qtsdiff.py <patched>/qts <pristine-2026.07>/qts PATCHED PRISTINE-2026.07
+  ### sdram_config.h
+    PATCHED: 157 defines, 2 arrays ({'ac_rom_init': 36, 'inst_rom_init': 127})
+    PRISTINE-2026.07: 157 defines, 2 arrays ({'ac_rom_init': 36, 'inst_rom_init': 127})
+    common defines: 157   DIFFERING: 2
+      !! CFG_HPS_SDR_CTRLCFG_FPGAPORTRST: PATCHED=0x3FFF  PRISTINE-2026.07=0x1FF   (dec 16383 vs 511)
+      !! REG_FILE_INIT_SEQ_SIGNATURE: PATCHED=0x555504a0  PRISTINE-2026.07=0x555504a1   (dec 1431635104 vs 1431635105)
+      array ac_rom_init: 36 words, 0 differ (0.00%)
+      array inst_rom_init: 127 words, 0 differ (0.00%)
+  
+  ### pll_config.h
+    PATCHED: 68 defines, 0 arrays ({})
+    PRISTINE-2026.07: 68 defines, 0 arrays ({})
+    common defines: 68   DIFFERING: 2
+      !! CFG_HPS_PERPLLGRP_S2FUSER1CLK_CNT: PATCHED=511  PRISTINE-2026.07=19   (dec 511 vs 19)
+      !! CFG_HPS_SDRPLLGRP_S2FUSER2CLK_CNT: PATCHED=4  PRISTINE-2026.07=5   (dec 4 vs 5)
+  
+  ### pinmux_config.h
+    PATCHED: 0 defines, 1 arrays ({'sys_mgr_init_table': 207})
+    PRISTINE-2026.07: 0 defines, 1 arrays ({'sys_mgr_init_table': 207})
+    common defines: 0   DIFFERING: 0
+      array sys_mgr_init_table: 207 words, 3 differ (1.45%)
+          [35] PATCHED=0 PRISTINE-2026.07=1
+          [36] PATCHED=0 PRISTINE-2026.07=1
+          [201] PATCHED=0 PRISTINE-2026.07=1
+  
+  ### iocsr_config.h
+    PATCHED: 4 defines, 4 arrays ({'iocsr_scan_chain0_table': 24, 'iocsr_scan_chain1_table': 54, 'iocsr_scan_chain2_table': 30, 'iocsr_scan_chain3_table': 524})
+    PRISTINE-2026.07: 4 defines, 4 arrays ({'iocsr_scan_chain0_table': 24, 'iocsr_scan_chain1_table': 54, 'iocsr_scan_chain2_table': 30, 'iocsr_scan_chain3_table': 524})
+    common defines: 4   DIFFERING: 0
+      array iocsr_scan_chain0_table: 24 words, 12 differ (50.00%)
+          [6] PATCHED=0x00060180 PRISTINE-2026.07=0x00020080
+          [8] PATCHED=0x18000000 PRISTINE-2026.07=0x08000000
+          [9] PATCHED=0x00018060 PRISTINE-2026.07=0x00018020
+          [12] PATCHED=0x000300C0 PRISTINE-2026.07=0x00010040
+          [13] PATCHED=0x0C030000 PRISTINE-2026.07=0x04010000
+          [14] PATCHED=0x0C000000 PRISTINE-2026.07=0x04000000
+          [15] PATCHED=0x00000030 PRISTINE-2026.07=0x00000010
+          [16] PATCHED=0x0000C030 PRISTINE-2026.07=0x00004010
+          [19] PATCHED=0x06018000 PRISTINE-2026.07=0x02008000
+          [20] PATCHED=0x06000000 PRISTINE-2026.07=0x02000000
+          [21] PATCHED=0x00000018 PRISTINE-2026.07=0x00000008
+          [22] PATCHED=0x00006018 PRISTINE-2026.07=0x00002008
+      array iocsr_scan_chain1_table: 54 words, 18 differ (33.33%)
+          [1] PATCHED=0x300C0000 PRISTINE-2026.07=0x10040000
+          [2] PATCHED=0x300000C0 PRISTINE-2026.07=0x100000C0
+          [3] PATCHED=0x000000C0 PRISTINE-2026.07=0x00000040
+          [4] PATCHED=0x000300C0 PRISTINE-2026.07=0x00010040
+          [12] PATCHED=0x000300C0 PRISTINE-2026.07=0x00010040
+          [14] PATCHED=0x0C000000 PRISTINE-2026.07=0x04000000
+          [15] PATCHED=0x00000030 PRISTINE-2026.07=0x00000010
+          [16] PATCHED=0x0000C030 PRISTINE-2026.07=0x00004010
+          [37] PATCHED=0x00C03000 PRISTINE-2026.07=0x00401000
+          [42] PATCHED=0x00601806 PRISTINE-2026.07=0x00600802
+          [44] PATCHED=0x80600000 PRISTINE-2026.07=0x80200000
+          [45] PATCHED=0x80000601 PRISTINE-2026.07=0x80000600
+          ... 6 more
+      array iocsr_scan_chain2_table: 30 words, 2 differ (6.67%)
+          [4] PATCHED=0x000300C0 PRISTINE-2026.07=0x0C0300C0
+          [28] PATCHED=0x00C0300C PRISTINE-2026.07=0x00C01004
+      array iocsr_scan_chain3_table: 524 words, 0 differ (0.00%)
+  
+
+RESULT: matches plan S3.2's table exactly -- FPGAPORTRST, both
+S2FUSERnCLK counts, the same 3 pinmux bits at the same array indices
+(35/36/201 = GENERALIO3/GENERALIO4/I2C3USEFPGA), the same 32-of-108
+IOCSR word split across chains 0/1/2 (12+18+2 = 32 of 24+54+30 = 108),
+chain 3 untouched, and the REG_FILE_INIT_SEQ_SIGNATURE stamp (Quartus
+generator stamp; the SPL writes it verbatim to the DDR sequencer's
+register-file signature register -- sequencer.c initialize_reg_file()
+-- and nothing in the tree reads it back). No difference outside that
+list was observed, and the patch changes no line that is not one of
+these 39 values.
+
+Not proven by this (docs/uboot-mainline-port.md S3.2a, unchanged by
+this patch): that a 2026 SPL consuming these tables behaves as the
+2017.03 SPL did, and that the scalar #defines above (not greppable --
+they compile to instruction immediates) survive to the built SPL
+byte-for-byte. Both rest on this source diff plus S3.2a's binary
+search against the *stock* uboot.img; this task builds no SPL. [U]:
+handoff-equality against our own built SPL is U9/U6, not this task.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ board/terasic/de10-nano/qts/iocsr_config.h  | 64 ++++++++++-----------
+ board/terasic/de10-nano/qts/pinmux_config.h |  6 +-
+ board/terasic/de10-nano/qts/pll_config.h    |  4 +-
+ board/terasic/de10-nano/qts/sdram_config.h  |  4 +-
+ 4 files changed, 39 insertions(+), 39 deletions(-)
+
+diff --git a/board/terasic/de10-nano/qts/iocsr_config.h b/board/terasic/de10-nano/qts/iocsr_config.h
+index 1555500..f5a4823 100644
+--- a/board/terasic/de10-nano/qts/iocsr_config.h
++++ b/board/terasic/de10-nano/qts/iocsr_config.h
+@@ -18,32 +18,32 @@ const unsigned long iocsr_scan_chain0_table[] = {
+ 	0xC0000000,
+ 	0x0000003F,
+ 	0x00008000,
+-	0x00020080,
++	0x00060180,
+ 	0x18060000,
+-	0x08000000,
+-	0x00018020,
++	0x18000000,
++	0x00018060,
+ 	0x00000000,
+ 	0x00004000,
+-	0x00010040,
+-	0x04010000,
+-	0x04000000,
+-	0x00000010,
+-	0x00004010,
++	0x000300C0,
++	0x0C030000,
++	0x0C000000,
++	0x00000030,
++	0x0000C030,
+ 	0x00002000,
+ 	0x00020000,
+-	0x02008000,
+-	0x02000000,
+-	0x00000008,
+-	0x00002008,
++	0x06018000,
++	0x06000000,
++	0x00000018,
++	0x00006018,
+ 	0x00001000,
+ };
+ 
+ const unsigned long iocsr_scan_chain1_table[] = {
+ 	0x00100000,
+-	0x10040000,
+-	0x100000C0,
+-	0x00000040,
+-	0x00010040,
++	0x300C0000,
++	0x300000C0,
++	0x000000C0,
++	0x000300C0,
+ 	0x00008000,
+ 	0x00060180,
+ 	0x20000000,
+@@ -51,11 +51,11 @@ const unsigned long iocsr_scan_chain1_table[] = {
+ 	0x00000080,
+ 	0x00020000,
+ 	0x00004000,
+-	0x00010040,
++	0x000300C0,
+ 	0x10000000,
+-	0x04000000,
+-	0x00000010,
+-	0x00004010,
++	0x0C000000,
++	0x00000030,
++	0x0000C030,
+ 	0x00002000,
+ 	0x00020000,
+ 	0x06018000,
+@@ -76,22 +76,22 @@ const unsigned long iocsr_scan_chain1_table[] = {
+ 	0x00002000,
+ 	0x00000400,
+ 	0x00000000,
+-	0x00401000,
++	0x00C03000,
+ 	0x00000003,
+ 	0x00000000,
+ 	0x00000000,
+ 	0x00000200,
+-	0x00600802,
++	0x00601806,
+ 	0x00000000,
+-	0x80200000,
+-	0x80000600,
+-	0x00000200,
++	0x80600000,
++	0x80000601,
++	0x00000601,
+ 	0x00000100,
+-	0x00300401,
+-	0xC0100400,
+-	0x40100000,
+-	0x40000300,
+-	0x000C0100,
++	0x00300C03,
++	0xC0300C00,
++	0xC0300000,
++	0xC0000300,
++	0x000C0300,
+ 	0x00000080,
+ };
+ 
+@@ -100,7 +100,7 @@ const unsigned long iocsr_scan_chain2_table[] = {
+ 	0x00000000,
+ 	0x0FF00000,
+ 	0x00000000,
+-	0x0C0300C0,
++	0x000300C0,
+ 	0x00008000,
+ 	0x00080000,
+ 	0x18060000,
+@@ -124,7 +124,7 @@ const unsigned long iocsr_scan_chain2_table[] = {
+ 	0x00000000,
+ 	0x03000000,
+ 	0x0000800C,
+-	0x00C01004,
++	0x00C0300C,
+ 	0x00000800,
+ };
+ 
+diff --git a/board/terasic/de10-nano/qts/pinmux_config.h b/board/terasic/de10-nano/qts/pinmux_config.h
+index 6a9c415..7a375b0 100644
+--- a/board/terasic/de10-nano/qts/pinmux_config.h
++++ b/board/terasic/de10-nano/qts/pinmux_config.h
+@@ -42,8 +42,8 @@ const u8 sys_mgr_init_table[] = {
+ 	0, /* GENERALIO0 */
+ 	1, /* GENERALIO1 */
+ 	1, /* GENERALIO2 */
+-	1, /* GENERALIO3 */
+-	1, /* GENERALIO4 */
++	0, /* GENERALIO3 */
++	0, /* GENERALIO4 */
+ 	0, /* GENERALIO5 */
+ 	0, /* GENERALIO6 */
+ 	1, /* GENERALIO7 */
+@@ -208,7 +208,7 @@ const u8 sys_mgr_init_table[] = {
+ 	1, /* UART1USEFPGA */
+ 	0, /* CAN1USEFPGA */
+ 	0, /* USB1USEFPGA */
+-	1, /* I2C3USEFPGA */
++	0, /* I2C3USEFPGA */
+ 	1, /* I2C2USEFPGA */
+ 	0, /* I2C1USEFPGA */
+ 	0, /* SPIM1USEFPGA */
+diff --git a/board/terasic/de10-nano/qts/pll_config.h b/board/terasic/de10-nano/qts/pll_config.h
+index 794fa20..cf69bb8 100644
+--- a/board/terasic/de10-nano/qts/pll_config.h
++++ b/board/terasic/de10-nano/qts/pll_config.h
+@@ -34,7 +34,7 @@
+ #define CFG_HPS_PERPLLGRP_PERQSPICLK_CNT 511
+ #define CFG_HPS_PERPLLGRP_PERNANDSDMMCCLK_CNT 4
+ #define CFG_HPS_PERPLLGRP_PERBASECLK_CNT 4
+-#define CFG_HPS_PERPLLGRP_S2FUSER1CLK_CNT 19
++#define CFG_HPS_PERPLLGRP_S2FUSER1CLK_CNT 511
+ #define CFG_HPS_PERPLLGRP_DIV_USBCLK 0
+ #define CFG_HPS_PERPLLGRP_DIV_SPIMCLK 0
+ #define CFG_HPS_PERPLLGRP_DIV_CAN0CLK 4
+@@ -53,7 +53,7 @@
+ #define CFG_HPS_SDRPLLGRP_DDR2XDQSCLK_PHASE 0
+ #define CFG_HPS_SDRPLLGRP_DDRDQCLK_CNT 1
+ #define CFG_HPS_SDRPLLGRP_DDRDQCLK_PHASE 4
+-#define CFG_HPS_SDRPLLGRP_S2FUSER2CLK_CNT 5
++#define CFG_HPS_SDRPLLGRP_S2FUSER2CLK_CNT 4
+ #define CFG_HPS_SDRPLLGRP_S2FUSER2CLK_PHASE 0
+ 
+ #define CFG_HPS_CLK_OSC1_HZ 25000000
+diff --git a/board/terasic/de10-nano/qts/sdram_config.h b/board/terasic/de10-nano/qts/sdram_config.h
+index abf29f2..317072d 100644
+--- a/board/terasic/de10-nano/qts/sdram_config.h
++++ b/board/terasic/de10-nano/qts/sdram_config.h
+@@ -53,7 +53,7 @@
+ #define CFG_HPS_SDR_CTRLCFG_EXTRATIME1_CFG_EXTRA_CTL_CLK_RD_TO_WR_DIFF_CHIP 2
+ #define CFG_HPS_SDR_CTRLCFG_FIFOCFG_INCSYNC			0
+ #define CFG_HPS_SDR_CTRLCFG_FIFOCFG_SYNCMODE			0
+-#define CFG_HPS_SDR_CTRLCFG_FPGAPORTRST			0x1FF
++#define CFG_HPS_SDR_CTRLCFG_FPGAPORTRST			0x3FFF
+ #define CFG_HPS_SDR_CTRLCFG_LOWPWREQ_SELFRFSHMASK		3
+ #define CFG_HPS_SDR_CTRLCFG_LOWPWRTIMING_AUTOPDCYCLES	0
+ #define CFG_HPS_SDR_CTRLCFG_LOWPWRTIMING_CLKDISABLECYCLES	8
+@@ -149,7 +149,7 @@
+ #define IO_SHIFT_DQS_EN_WHEN_SHIFT_DQS	0
+ #define MAX_LATENCY_COUNT_WIDTH	5
+ #define READ_VALID_FIFO_SIZE	16
+-#define REG_FILE_INIT_SEQ_SIGNATURE	0x555504a1
++#define REG_FILE_INIT_SEQ_SIGNATURE	0x555504a0
+ #define RW_MGR_MEM_ADDRESS_MIRRORING	0
+ #define RW_MGR_MEM_DATA_MASK_WIDTH	4
+ #define RW_MGR_MEM_DATA_WIDTH	32

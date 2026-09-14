@@ -1,0 +1,148 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Sep 2026 00:00:00 +0000
+Subject: [PATCH] fs: exfat: fix 64-bit division on 32-bit arm
+
+CONFIG_FS_EXFAT fails to link on any 32-bit ARM target: fs/exfat/time.c
+divides and takes the modulus of a `time_t unix_time` directly, and
+time_t is `long long` -- a genuine 64-bit type -- even on 32-bit ARM
+(include/linux/types.h: `typedef long long time_t;`). U-Boot carries its
+own arch/arm/lib helpers rather than linking libgcc, and the set is
+incomplete: `__aeabi_uldivmod` (unsigned) is there, the SIGNED
+`__aeabi_ldivmod` a signed time_t needs is not, so every one of those
+operators becomes an undefined reference at link time:
+
+  arm-buildroot-linux-gnueabihf-ld: fs/exfat/time.o: in function
+  `exfat_unix2exfat': fs/exfat/time.c:129: undefined reference to
+  `__aeabi_ldivmod'
+  ... (and fs/exfat/time.c:147, :148, :149, one call per site)
+
+No 32-bit U-Boot board in the tree has ever enabled CONFIG_FS_EXFAT, so
+nobody has hit this; the only prior use of fs/exfat is on 64-bit
+targets, where these are native machine divisions. It matters here
+because ADR 0020 reformats the MiSTer's data partition to exFAT, so a
+mainline U-Boot needs exFAT read support on this 32-bit board
+(docs/uboot-mainline-port.md section 3.1 row 3).
+
+The fix is the standard one for a 64-by-constant division on a 32-bit
+target that must not pull in libgcc: do_div() (include/div64.h), used
+throughout U-Boot and Linux for exactly this. do_div(n, base) replaces
+its 64-bit first argument in place with the quotient and returns the
+32-bit remainder, entirely with 32-bit arithmetic -- no __aeabi_ldivmod
+call. exfat_unix2exfat() only ever needs one 64-bit divide (splitting
+`unix_time` into whole days and a remaining seconds-of-day count); doing
+that once with do_div() and deriving hour/minute/two-second-tick/
+centisecond from the resulting u32 remainder keeps every later
+division a plain 32-bit one, which this toolchain compiles inline.
+
+exfat_exfat2unix(), the other direction in this file, is untouched: its
+only division (`centisec / 100`) is already on a uint8_t promoted to
+plain `int`, not on a time_t, so it was never a 64-bit division and
+never failed to link.
+
+Verified by rebuild against u-boot-2026.07 (socfpga_de10_nano_defconfig
++ CONFIG_FS_EXFAT=y, this repo's arm-buildroot-linux-gnueabihf- cross
+toolchain), task U2a: without this patch the `u-boot`/`spl/u-boot-spl`
+link fails with the `__aeabi_ldivmod` errors above; with it, the build
+runs clean through `SOCBOOT u-boot-with-spl.sfp`. A first-cut version of
+this same do_div() approach was written and built green independently
+during the plan's research phase (docs/uboot-mainline-port.md section
+3.1 row 3; scratch tree /mnt/source/uboot-mainline/verify-behaviour/
+u-boot-2026.04-exfatfix, log .../exfat2.log) -- this patch is written
+fresh against 2026.07 for this task, not copied from that tree, but
+independently arrives at the same technique and confirms it still
+builds green on the newer tarball.
+
+Provenance
+----------
+Origin:       No existing upstream commit; a previously-unreported
+              upstream bug found during this project's mainline-U-Boot
+              research (docs/uboot-mainline-port.md section 3.1 row 3).
+              Written against u-boot-2026.07
+              (dl/uboot/u-boot-2026.07.tar.bz2) for this task.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Copyright:    fs/exfat/time.c carries "Free exFAT implementation,
+              Copyright (C) 2010-2023 Andrew Nayenko" (GPLv2+, per the
+              file's own header) for the surrounding code; this hunk
+              adds no new copyright claim.
+Upstream status: Not in mainline as of u-boot-2026.07 / HEAD
+              5c215cb75c3723cbf77c36cbac3e60b001721c79 (2026-07-27). To
+              be submitted upstream (U7): a submission is drafted under
+              docs/verification/uboot-upstream/ by task U7-prep but, per
+              owner decision 4, deliberately NOT sent to any mailing
+              list -- U7 itself is "send, on the owner's go only".
+Disposition:  Bug fix, brick-class for this port
+              (docs/uboot-mainline-port.md section 3.1 row 3): without
+              it, this repo's mainline U-Boot cannot read the exFAT
+              data partition ADR 0020 requires and cannot load
+              zImage_dtb. Carried until upstream picks it up.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ fs/exfat/time.c | 29 ++++++++++++++++++++++++-----
+ 1 file changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/fs/exfat/time.c b/fs/exfat/time.c
+index f2217dd..097ab54 100644
+--- a/fs/exfat/time.c
++++ b/fs/exfat/time.c
+@@ -20,6 +20,7 @@
+ 	51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+ 
++#include <div64.h>
+ #include "exfat.h"
+ 
+ /* timezone offset from UTC in seconds; positive for western timezones,
+@@ -118,6 +119,7 @@ void exfat_unix2exfat(time_t unix_time, le16_t* date, le16_t* time,
+ 	uint16_t day, month, year;
+ 	uint16_t twosec, min, hour;
+ 	int days;
++	u32 secs_today;
+ 	int i;
+ 
+ 	/* time before exFAT epoch cannot be represented */
+@@ -126,7 +128,24 @@ void exfat_unix2exfat(time_t unix_time, le16_t* date, le16_t* time,
+ 
+ 	unix_time -= shift;
+ 
+-	days = unix_time / SEC_IN_DAY;
++	/*
++	 * unix_time is a 64-bit time_t (include/linux/types.h: "typedef long
++	 * long time_t") even here on 32-bit ARM, and arch/arm/lib has only
++	 * the UNSIGNED __aeabi_uldivmod, not __aeabi_ldivmod, so a plain
++	 * signed 64-bit '/' or '%' is an undefined reference -- nothing
++	 * caught it before because no 32-bit U-Boot board previously enabled
++	 * CONFIG_FS_EXFAT. do_div() is the do_div()/div_u64-style 64-by-32
++	 * divide used throughout U-Boot/Linux for exactly this: it replaces
++	 * its first argument with the quotient and returns the 32-bit
++	 * remainder, without a libgcc call. Doing that split once here and
++	 * working only in u32 below keeps every remaining division 32-bit.
++	 */
++	{
++		u64 whole_days = (u64)unix_time;
++
++		secs_today = do_div(whole_days, SEC_IN_DAY);
++		days = (int)whole_days;
++	}
+ 	year = (4 * days) / (4 * 365 + 1);
+ 	days -= year * 365 + LEAP_YEARS(year);
+ 	month = 0;
+@@ -144,14 +163,14 @@ void exfat_unix2exfat(time_t unix_time, le16_t* date, le16_t* time,
+ 	}
+ 	day = days + 1;
+ 
+-	hour = (unix_time % SEC_IN_DAY) / SEC_IN_HOUR;
+-	min = (unix_time % SEC_IN_HOUR) / SEC_IN_MIN;
+-	twosec = (unix_time % SEC_IN_MIN) / 2;
++	hour = secs_today / SEC_IN_HOUR;
++	min = (secs_today % SEC_IN_HOUR) / SEC_IN_MIN;
++	twosec = (secs_today % SEC_IN_MIN) / 2;
+ 
+ 	*date = cpu_to_le16(day | (month << 5) | (year << 9));
+ 	*time = cpu_to_le16(twosec | (min << 5) | (hour << 11));
+ 	if (centisec)
+-		*centisec = (unix_time % 2) * 100;
++		*centisec = (secs_today % 2) * 100;
+ 
+ 	/* record our local timezone offset in exFAT (15 minute increment) format */
+ 	*tzoffset = (uint8_t)(-exfat_timezone / 60 / 15) | 0x80;

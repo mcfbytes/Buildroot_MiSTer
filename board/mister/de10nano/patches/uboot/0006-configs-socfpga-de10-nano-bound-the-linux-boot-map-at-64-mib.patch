@@ -1,0 +1,109 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Sep 2026 00:00:00 +0000
+Subject: [PATCH] configs: socfpga_de10_nano: bound the Linux boot map at
+ 64 MiB, as stock does
+
+bootz relocates the flattened device tree before jumping to the kernel
+(boot/image-fdt.c boot_relocate_fdt(), reached from
+arch/arm/lib/bootm.c boot_prep_linux() -> image_setup_linux()). With no
+`fdt_high` in the environment it asks the LMB for the highest free
+4 KiB-aligned block below env_get_bootm_mapsize() + env_get_bootm_low().
+That size is CFG_SYS_BOOTMAPSZ when a board defines it, and otherwise
+env_get_bootm_size(), i.e. the `bootm_size` variable or, failing that,
+gd->ram_size capped at gd->ram_top (boot/image-board.c:127-163).
+
+Stock's 2017.03 bootloader defines CONFIG_SYS_BOOTMAPSZ as 64 MiB
+(include/configs/socfpga_common.h:22 at v2017.03, carried unchanged in
+the MiSTer fork), so the DTB the MiSTer kernel receives has always been
+copied to just under 64 MiB -- inside the 511 MiB the kernel is told
+about with mem=511M (docs/boot-chain.md section 6.4), and in memory
+nothing in the fabric uses.
+
+Mainline removed the define in faea9e7a78 ("arm: socfpga: remove
+CONFIG_SYS_BOOTMAPSZ", Simon Goldschmidt, 2019-01-09) and replaced it
+with a `bootm_size=0xa000000` entry in socfpga_common.h's default
+environment so users could override it. This build replaces that
+default environment wholesale with stock's 21 entries, byte-identical
+(board/mister/de10nano/uboot.env), which carry neither `bootm_size` nor
+`fdt_high`; so on v2026.07 as configured here the bound silently falls
+to the whole 1 GiB and the DTB is placed at the top of DDR, just below
+U-Boot's own reserved region -- above the mem=511M line, inside the
+half of DDR that MiSTer cores own, and 60-odd MiB away from where every
+stock boot has put it. The kernel maps the blob through the fixed FDT
+fixmap (arch/arm/kernel/head.S, FDT_FIXED_BASE) so it can still parse
+it there, but the placement is a behaviour the environment parity
+check cannot see, and "mirror stock wherever there is a choice"
+(docs/uboot-tasks.md, owner decisions) says to put it back.
+
+Restoring the define is the one-line, environment-preserving fix: the
+board header is the layer upstream itself uses for this symbol (some
+65 board headers in v2026.07 still define CFG_SYS_BOOTMAPSZ) and it
+overrides the missing env entry without adding a byte to the
+environment. Effect on the boot path: bootz reserves the zImage at
+$loadaddr (bootz_setup() -> lmb_reserve) and the DTB then lands in the
+highest free block below 64 MiB, as on stock. No other consumer:
+CFG_SYS_BOOTMAPSZ is read only by env_get_bootm_mapsize(), whose other
+caller (boot_ramdisk_high) is inert without an initrd.
+
+Provenance
+----------
+Origin:       5095ee088df05bd49f87721fe244ae1b3972b546 ("arm: socfpga:
+              Split SoCFPGA configuration", Pavel Machek, 2014-09-08)
+              introduced the 64 MiB CONFIG_SYS_BOOTMAPSZ into
+              include/configs/socfpga_common.h; stock MiSTer builds from
+              the fork's v2017.03-based tree with that line in place
+              (work/U-Boot_MiSTer @ 8dcc3484, socfpga_common.h:18).
+              faea9e7a78d78b178a26198ab8459f6daf423792 removed it upstream
+              on 2019-01-09.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+              (the define's value is upstream's own 2014 line; the
+              placement in the board header and the comment are new).
+Upstream status: Not applicable. Upstream removed the define on purpose
+              in favour of an environment default; this patch exists
+              only because this build ships a fixed environment without
+              that entry. Never to be submitted.
+Disposition:  Carry -- owner decision 2026-09-14 (docs/uboot-tasks.md,
+              "mirror stock"): the DTB placement is a boot-path behaviour
+              the fork had and mainline-as-configured lost. Found by the
+              U9 adversarial review (docs/verification/uboot-mainline.md,
+              U9 section, finding on the effective environment).
+
+Verification, this build
+------------------------
+Read out of the built ELF, before and after (task U9, cross toolchain
+arm-buildroot-linux-gnueabihf- 15.3.0, v2026.07 plus patches 0001-0005):
+before, env_get_bootm_mapsize() is `env_get("bootm_mapsize")` then a
+tail branch to env_get_bootm_size(); after, it returns the constant
+0x04000000 when the variable is unset. The transcript is in the U9
+section of docs/verification/uboot-mainline.md. spl/u-boot-spl.bin is
+unaffected -- the symbol is consumed by U-Boot proper only.
+
+What this does NOT establish: that a kernel boots with the DTB at either
+address. No hardware session is planned (docs/uboot-tasks.md U6).
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ include/configs/socfpga_de10_nano.h | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/include/configs/socfpga_de10_nano.h b/include/configs/socfpga_de10_nano.h
+index dfc22cf..12b9e55 100644
+--- a/include/configs/socfpga_de10_nano.h
++++ b/include/configs/socfpga_de10_nano.h
+@@ -10,6 +10,16 @@
+ /* Memory configurations */
+ #define PHYS_SDRAM_1_SIZE		0x40000000	/* 1GiB */
+ 
++/*
++ * Bound the Linux boot map at 64 MiB, as stock's 2017.03 bootloader does
++ * (socfpga_common.h CONFIG_SYS_BOOTMAPSZ there). bootz relocates the DTB into
++ * this window, i.e. below the mem=511M line the MiSTer kernel is booted with,
++ * instead of to the top of the 1 GiB, inside the half of DDR the FPGA owns.
++ * Mainline dropped the define for a bootm_size default-environment entry
++ * (faea9e7a78) that the byte-identical stock environment cannot carry.
++ */
++#define CFG_SYS_BOOTMAPSZ		(64 * 1024 * 1024)
++
+ /* The rest of the configuration is shared */
+ #include <configs/socfpga_common.h>
+ 

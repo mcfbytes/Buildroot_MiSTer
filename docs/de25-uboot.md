@@ -35,7 +35,7 @@ danger is not `saveenv`, it is the environment **load** path.
 
 | Component | Pin | Why not Buildroot's own | Hash provenance |
 |---|---|---|---|
-| U-Boot | **v2026.07** (released 2026-07-07) | Buildroot 2026.05.2 ships 2026.04 | **Signed.** `ftp.denx.de/pub/u-boot/u-boot-2026.07.tar.bz2` + its `.sig`; `gpg --verify` → *Good signature from "Thomas Rini <trini@konsulko.com>"*, EDDSA key `F3CEA8743D60E0192F9B4C7A2BE2A0F50ABFE40A`, fetched by full fingerprint from keys.openpgp.org **[V, done 2026-09-02]** |
+| U-Boot | **v2026.07** (released 2026-07-07) | N/A as of **DU1 (2026-09-14)** -- switched to `BR2_TARGET_UBOOT_LATEST_VERSION=y`. Buildroot 2026.08 bundles 2026.07 as its own `LATEST_VERSION` default (`boot/uboot/Config.in:88`), the same version this file already pinned by hand, so the custom pin and `board/mister/de25nano/patches/uboot/uboot.hash` no longer buy anything -- removed in the same commit. (Historical reason, now stale: Buildroot 2026.05.2 shipped 2026.04.) | Buildroot's own `boot/uboot/uboot.hash` (header says "Locally computed") now carries the line `sha256 78e8bfc382fe388f9b55aa1daf8c563522a037779b5d4c349d1415e381f1243e u-boot-2026.07.tar.bz2` -- byte-identical to the value this repo independently GPG-verified against Thomas Rini's release signature on 2026-09-02 (EDDSA key `F3CEA8743D60E0192F9B4C7A2BE2A0F50ABFE40A`; the DE10 leg of the same fact is `docs/uboot-mainline-port.md` §3.6). `BR2_DOWNLOAD_FORCE_CHECK_HASHES=y` still fails closed on any future drift; it just checks against Buildroot's line instead of ours now. **[V, DU1 2026-09-14]** |
 | TF-A | **v2.15.0** | Buildroot 2026.05.2 tops out at v2.12, which has **no Agilex 5 platform** — a custom version is the only route, not a preference | **TOFU, honestly labelled.** trustedfirmware.org publishes no release tarballs and no signed manifest. Anchored on annotated tag `v2.15.0` (object `9ad327a8…`) → commit `da738d5eae93af342fdc4995dd3c05acb4c9d757`, confirmed from a **second, independent clone**. The tag *is* PGP-signed (RSA `5D6F8960…`, Olivier Deprez/Arm) but that key is on **neither** keys.openpgp.org nor keyserver.ubuntu.com (both 404, 2026-09-02), so the signature could **not** be verified **[V that it is unverifiable today]** |
 
 Both hash files live under the existing `BR2_GLOBAL_PATCH_DIR`
@@ -47,8 +47,9 @@ changing a value.
 `BR2_DOWNLOAD_FORCE_CHECK_HASHES=y` makes both **fail closed**, and the two failures have different
 shapes worth knowing:
 
-- **U-Boot**: `boot/uboot/uboot.hash` exists but only lists 2026.04, so `check-hash` finds a hash
-  *file* and no matching *line* → exit 3, `ERROR: No hash found for u-boot-2026.07.tar.bz2`.
+- **U-Boot**: ~~historically~~ `boot/uboot/uboot.hash` existed only for 2026.04, causing exit 3 on
+  2026.07. As of **DU1 (2026-09-14)**, the repo uses `BR2_TARGET_UBOOT_LATEST_VERSION=y` and
+  Buildroot's own hash line validates; the board-local hash file was removed.
 - **TF-A**: Buildroot ships no ATF hash file at all and explicitly excuses git-generated tarballs
   via `BR_NO_CHECK_HASH_FOR`. `BR2_DOWNLOAD_FORCE_CHECK_HASHES` **empties** that variable
   (`package/pkg-download.mk:119`), so the excuse does not apply and the same exit 3 results **[V]**.
@@ -62,6 +63,21 @@ build fails closed until both are re-derived **[V]**.
 item, and building green does not close it. Terasic and Altera document only vendor forks
 (`u-boot-socfpga socfpga_v2023.10` + `arm-trusted-firmware socfpga_v2.10.0`).
 
+**What the factory actually pairs (2026-09-14, read from the FIT on Terasic's factory SD image):**
+U-Boot `2025.01-gd0f8813fd6bf` — the head of Terasic's public `github.com/terasic/u-boot-socfpga`
+branch `de25-nano-v2025.01` — with TF-A `v2.12.0(release):de25_nano_revA_v1.0`, Terasic's public
+`arm-trusted-firmware` branch `de25-nano-v2.12.0`. That TF-A is Altera's downstream
+`socfpga_v2.12.0` plus **exactly one change**: the boot and crash console moved from UART0 to
+UART1 (`plat/intel/soc/common/include/platform_def.h`). We carry the same two-line change
+against v2.15.0 (`board/mister/de25nano/patches/arm-trusted-firmware/0001-…uart1.patch`) so
+BL31's banner and any panic are visible on the header UART at bring-up (§11). Upstream v2.15.0
+already contains the rest of Altera's Agilex 5 downstream work (the `mailbox_init()` re-init in
+`bl31_plat_setup.c`, the handoff offsets), which is why nothing else is carried. The factory
+SPL's own config, from the same public branch: `SPL_FIT_SIGNATURE=y` with no keys (hash-only),
+`SPL_LOAD_FIT_ADDRESS=0x82000000`, `SPL_ATF_NO_PLATFORM_PARAM=y`, `HANDOFF=y` +
+`BLOBLIST_ADDR=0x72000` (the value §4.4 guessed, confirmed), boot order mmc→flash0→nand, and
+`plat->dualport = 0` forced in `sdram_agilex5.c`.
+
 ---
 
 ## 3. Files
@@ -73,7 +89,6 @@ item, and building green does not close it. Terasic and Altera document only ven
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts` | U-Boot board device tree (§5) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano-u-boot.dtsi` | U-Boot additions: `stdout-path`, mmc caps, FIT tweaks (§5, §6) |
 | `board/mister/de25nano/patches/uboot/0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch` | the one carried U-Boot patch (§8) |
-| `board/mister/de25nano/patches/uboot/uboot.hash` | signed-provenance hash for the 2026.07 tarball |
 | `board/mister/de25nano/patches/arm-trusted-firmware/arm-trusted-firmware.hash` | TOFU hash for the v2.15.0 git tarball |
 | `Makefile` (`de25` recipe) | post-build assertions for `images/bl31.bin` and `images/u-boot.itb` |
 
@@ -274,6 +289,15 @@ the whole justification; everything else in our board file follows from keeping 
 
 Those are two different categories and the block splits them deliberately.
 
+**What Terasic's own board support does (2026-09-14, public branch `de25-nano-v2025.01`,
+`socfpga_agilex5_de25_nano-u-boot.dtsi`):** `bus-width = <4>; sd-uhs-sdr50; cap-mmc-highspeed;`
+with the 2025.01-era `&combophy0 cdns,phy-*` PHY knobs **identical to that tree's SoCDK file** — i.e.
+Terasic ran the dev kit's PHY values unchanged on this board, with no `vqmmc` regulator. That is
+the same decision this block makes in the 2026.07 driver's per-mode form (the two driver
+generations' properties are not directly comparable), and it is silicon evidence that the SoCDK
+values suit this board. The `sd-uhs-sdr50` line is *not* copied: without a voltage regulator
+U-Boot cannot switch to 1.8 V signalling, so it is inert at best.
+
 **BOARD facts we do not take from socdk.** socdk declares `sd-uhs-sdr50`/`sd-uhs-sdr104` with
 `vqmmc-supply = <&sd_io_1v8_reg>`, whose GPIO is `<&portb 3>` — a **SoC Development Kit wiring
 fact**. Driving the wrong GPIO to switch SD bus voltage is a way to break a card, not a way to go
@@ -363,15 +387,47 @@ produced byte-identical artifacts — `bl31.bin` is
 `sha256 863073b2c0a9489ae04cbf077b5496975f7aa7f925a8397fad705bcb3c390bf1` across every run, and
 `u-boot.itb` is byte-stable **within a build tree** — verified twice: two runs in the wave-2 tree
 (728,176 B) and, after a full `distclean`, two runs in the clean tree including a
-`uboot-dirclean` rebuild (728,168 B, `sha256 49f1c7dd…`) **[V]**. It is **not yet shown to be
-byte-stable across clean trees [U]**: the wave-2 tree's FIT and the clean tree's FIT differ by
-8 bytes, all of it inside the `uboot` payload (650,056 → 650,048 B; `atf` and `fdt-0` identical
-in size and BL31 identical in hash), with the same resolved Buildroot config. The version string
-is not the cause (it carries only the pinned `SOURCE_DATE_EPOCH` date). The boot contract is
-unaffected — load addresses, config node, crc32-only signature and DTB are what the checker
-asserts, not the hash — but the D2.8 release lane should pin this down with two clean CI builds
-before it publishes attested hashes. (History: 731,728 B before the review fixes, 728,176 B
-after `CONFIG_BLOBLIST` came out and the mmc node grew.)
+`uboot-dirclean` rebuild (728,168 B, `sha256 49f1c7dd…`) **[V]**. It is now also
+**byte-stable across clean trees [V, DU3, 2026-09-14]**. At one commit (`933a2d2`), three
+from-scratch `make O=<dir> mister_de25nano_defconfig && make O=<dir> BR2_JLEVEL=12 uboot` runs —
+two into same-length paths (`…/DU3/a`, `…/DU3/b`, 30 characters) and a third into a path 25
+characters deeper (`…/DU3/c-path-length-control-tree`, 55 characters), each rebuilding the aarch64
+toolchain, TF-A and U-Boot from scratch — produced one `u-boot.itb`, 725,568 B,
+`sha256 d5f487046ac9549349d918756c7bfc7611136d8966f8d047cfc484ca3a52ee97`, and one `bl31.bin`,
+53,304 B, `sha256 2052e4c9a62c1a2a947ee20886c6419eb5f802a1338bd12e22a99c916cc0250c`. The build
+path does not reach either artifact: `strings` finds no build path in any of the three FITs, and
+the deep-path tree is byte-equal to the two shallow ones **[V]**.
+
+The one input that does move the FIT is the **Buildroot version string baked into the cross
+compiler**, and it tracks *this repository's* `git describe` — not the tree, the clock or the path.
+`output-de25`, whose toolchain was built one commit earlier (`1b24868`), gives the same 725,568 B
+at `sha256 f4e5c924dc20b51b2347dfd5786f7de23613ebfd445bd80009fcb19be6b1963e`, differing in exactly
+**12 bytes [V, `cmp -l`]**: 8 ASCII bytes of the abbreviated commit hash inside the compiler banner
+(`…gcc.br_real (Buildroot v2026.09.11-beta-31-g933a2d2-dirty) 15.3.0` against
+`…-beta-30-g1b24868-dirty`), which U-Boot records verbatim as `CC_VERSION_STRING` for its `version`
+command, plus the 4-byte crc32 of the `uboot` FIT node that covers them. Nothing else moves:
+`dumpimage -l` reports the same `Created:` (`SOURCE_DATE_EPOCH`), the same three data sizes, the
+same `atf` (`efc1cf2a`) and `fdt-0` (`64e75874`) crc32s, the same load addresses and config node,
+and `U-Boot 2026.07 (Sep 04 2026 - 15:16:40 +0000)` is character-identical in all four builds.
+`bl31.bin` is `sha256 2052e4c9…` in all four — TF-A does not record the compiler banner. The chain
+is `work/buildroot/support/scripts/setlocalversion`, which — because `work/buildroot` carries no
+`.git` of its own — reports *this* repo's describe → `BR2_VERSION_FULL` → gcc's
+`--with-pkgversion` (`package/gcc/gcc.mk:78`) → U-Boot's `filechk_version.h` → the payload **[V]**.
+
+(The table above is the 2026-09-02 pass. Both artifacts have moved since, across DU1, DU6 and the
+intervening fragment and defconfig edits; the hashes in the two paragraphs here are the current
+ones **[V, measured 2026-09-14]**, and what changed between the two passes was not re-derived
+**[U]**.)
+
+So the FIT is reproducible **per commit**, and a published `u-boot.itb` hash is only meaningful
+beside the commit that produced it. **Method for the D2.8 release lane**, kept local — no DE25 leg
+was added to `reproducibility.yml`, the Actions budget says so: two `O=` trees off one commit, then
+`sha256sum images/u-boot.itb images/bl31.bin`; on a mismatch, `cmp -l` the two FITs, `dumpimage -l`
+both, and `dumpimage -T flat_dt -p 0 -o <out>` the `uboot` payload out of each. If the delta is
+confined to the compiler banner and the one crc32 that covers it, the cause is the toolchain's
+version stamp and nothing else. The boot contract is unaffected either way — load addresses, config
+node, crc32-only signature and DTB are what the checker asserts, not the hash. (History: 731,728 B
+before the review fixes, 728,176 B after `CONFIG_BLOBLIST` came out and the mmc node grew.)
 
 **Housekeeping done in the same pass:** `images/socfpga_agilex5_socdk.dtb` was a stale leftover from
 before D2.3 (mtime predating this build by hours, from when the defconfig still pointed at
@@ -389,6 +445,14 @@ have copied it. Deleted. **Worth a guard**: nothing in the build detects this cl
   silent.** `dumpimage -l u-boot.itb` printed *nothing* and exited **0** — a verification step that
   always passes and never checks anything. That is a worse failure than a crash. Found on the first
   build; the symbol is now in the defconfig with a comment saying why **[V]**.
+
+
+**Artifacts after the TF-A console patch (2026-09-14, this tree):** `bl31.bin` 53,304 B
+`sha256 f270b16f967998020fda69fe2caf3aac84d68d107a9446d19286aa9b827c6d42`, `u-boot.itb` 725,568 B
+`sha256 0bbe02da1aec5a3833cee880f54ff2a2d9b9f1268f2d0b695459bcde50f147f0` — same sizes as the
+unpatched build; the FIT's `atf` member changed, nothing else. The cross-tree identity measured
+above (DU3) predates the patch and holds for the method; it has not been re-measured on three
+clean trees since **[U, cheap: rerun DU3's recipe]**.
 
 ## 6. The FIT — checked against the factory SPL contract
 
@@ -565,7 +629,14 @@ assert.
 
 ---
 
-## 8. The one carried U-Boot patch
+## 8. The carried patches — one U-Boot, one TF-A
+
+TF-A carries `patches/arm-trusted-firmware/0001-plat-intel-agilex5-route-bl31-console-to-uart1.patch`
+(2026-09-14): two macro values, boot and crash console to UART1, the header UART. Terasic's own
+BL31 makes exactly this change (§2). Visibility only; `bl31.bin` and `u-boot.itb` hashes in §5b
+are from the patched build.
+
+The U-Boot one:
 
 `board/mister/de25nano/patches/uboot/0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch`.
 
@@ -710,7 +781,7 @@ Then, in order:
 | Expect | Means |
 |---|---|
 | any output at all on uart1 @115200 8N1 | the alias/`stdout-path` pair is right. **Silence here is the failure this board file exists to prevent** |
-| **NO `NOTICE:  BL31: v2.15.0…` lines** | **expected — absence is not failure.** TF-A's Agilex 5 platform registers its console at `PLAT_INTEL_UART_BASE`, which is `PLAT_UART0_BASE = 0x10C02000` **[V `plat/intel/soc/common/include/platform_def.h:156`, `plat/intel/soc/agilex5/include/socfpga_plat_def.h:154`, `bl31_plat_setup.c:61`]** — that is **uart0**, not the DE25's header UART at `0x10C02100`. So BL31 runs and says nothing on the cable you are watching. Do not read a missing BL31 banner as "BL31 did not run"; the thing that proves BL31 ran is the U-Boot banner on the next line, because U-Boot is BL33 and only BL31 gets there. (If you need BL31's own output, uart0 is exposed on the HPS header pins, or `PLAT_INTEL_UART_BASE` can be re-pointed in a TF-A rebuild — neither is needed for a normal bring-up.) |
+| **`NOTICE:  BL31: v2.15.0…` lines on the header UART** | **expected as of 2026-09-14 — their absence is now a finding.** The carried patch `patches/arm-trusted-firmware/0001-plat-intel-agilex5-route-bl31-console-to-uart1.patch` points TF-A's boot and crash consoles at UART1 (`0x10C02100`, the header), which is exactly the one change Terasic's own BL31 makes against Altera's downstream branch. *Historical text follows — it described the unpatched build:* absence was not failure because TF-A's Agilex 5 platform registers its console at `PLAT_INTEL_UART_BASE`, which is `PLAT_UART0_BASE = 0x10C02000` **[V `plat/intel/soc/common/include/platform_def.h:156`, `plat/intel/soc/agilex5/include/socfpga_plat_def.h:154`, `bl31_plat_setup.c:61`]** — that is **uart0**, not the DE25's header UART at `0x10C02100`. So BL31 runs and says nothing on the cable you are watching. Do not read a missing BL31 banner as "BL31 did not run"; the thing that proves BL31 ran is the U-Boot banner on the next line, because U-Boot is BL33 and only BL31 gets there. (If you need BL31's own output, uart0 is exposed on the HPS header pins, or `PLAT_INTEL_UART_BASE` can be re-pointed in a TF-A rebuild — neither is needed for a normal bring-up.) |
 | `U-Boot 2026.07 …` banner | the FIT parsed, BL31 ran, BL33 entered — i.e. the whole §2 pairing works. This is the [U] that only hardware closes |
 | `DRAM:  1 GiB` | `dram_init()` took the `fdtdec` branch (§4.4). If instead U-Boot dies before the banner with `Missing SPL hand-off info`, `CONFIG_HANDOFF` came back on |
 | `Loading Environment from FAT... ` then either `OK` or `Unable to read "uboot.env" from mmc0:1...` | §10. **`Loading Environment from UBI` must NEVER appear.** If it does, stop and do not boot again until the config is fixed — that message means the QSPI is being attached |
@@ -736,12 +807,12 @@ this build; typing them should produce `Unknown command` — which is itself a u
 | U-Boot's SD access uses socdk's silicon-validated Agilex 5 PHY timings, at default speed only | **[V, config-traced]** — §5.1. Whether those timings suit *this* board is **[U]** until hardware |
 | `# CONFIG_SPL is not set` does not work; SPL is compiled and nothing of it is shipped | **[V]** — §4.5, closes §8 Q6 |
 | `boot_targets` contains only `mmc0`, and `bootcmd_qspi`'s embedded `saveenv` is gone | **[V]** — built default env |
-| U-Boot 2026.07 + TF-A v2.15.0 boot this board under the factory SPL | **[U]** — needs hardware. ADR 0029 D4 |
-| The factory SPL accepts our unsigned crc32 FIT | **[U]** — the *published* SPL DTB has no keys **[V]**; the *programmed* flash is unread |
+| U-Boot 2026.07 + TF-A v2.15.0 boot this board under the factory SPL | **[U]** — needs hardware. ADR 0029 D4. Narrowed 2026-09-14: the factory pairing is U-Boot `2025.01-gd0f8813fd6bf` + TF-A `v2.12.0` (Terasic's build of Altera's downstream branch), read from the FIT in Terasic's factory SD image; the SPL→BL31→BL33 interfaces between those and ours are the generic FIT/`bl_params` ones, so this is a compatibility question, not a contract question |
+| The factory SPL accepts our unsigned crc32 FIT | **[V by reference, 2026-09-14]** — the `u-boot.itb` on Terasic's factory SD image (`de25_nano_revA_sdcard_console_v1.1.img`, partition 1) is itself crc32-only with **no signature value**: images `uboot`@`0x80200000` / `atf`@`0x80000000` / `fdt-0`, configuration `board-0`, "Sign algo crc32:dev" — byte-for-byte the shape `dumpimage -l` prints for ours (§6.1). Its U-Boot banner names the build (`2025.01-gd0f8813fd6bf`, the head of Terasic's public `de25-nano-v2025.01` branch), whose defconfig sets `SPL_FIT_SIGNATURE=y` with no keys in the SPL DTB, i.e. hash-only verification. Terasic's card boots on factory flash, so the factory SPL demonstrably accepts this shape. Residual [U]: nobody has booted a *third-party* FIT under an *untouched* factory flash — reports from another DE25-Nano port all involve a reflashed QSPI |
 | The SD controller works with our conservative `&mmc` block | **[U]** — needs hardware |
 | DRAM is 1 GiB at `0x8000_0000` | **[U, vendor declaration]** — the `DDR:` lines settle it |
-| The TF-A v2.15.0 tag signature is authentic | **[U]** — signing key not published on any reachable keyserver |
-| Nothing else in the release writes QSPI (Linux side, `fw_setenv`, updater) | **[policy, unenforced]** — `de25-boot-chain.md` §5 |
+| The TF-A v2.15.0 tag signature is authentic | **[V, DU6 2026-09-14]** — verified against the tagger's self-published key; the hash file header records the fingerprint and the trust anchor |
+| Nothing else in the release writes QSPI (Linux side, `fw_setenv`, updater) | **[policy, partially enforced]** — `de25-boot-chain.md` §5; `external.mk` hook + `ci-tests.sh` check (DU2, 2026-09-14) |
 
 ---
 
@@ -771,17 +842,30 @@ in the same commit.
 
 1. **The carried U-Boot patch (§8)** vs putting `CONFIG_MTD=y` back and arguing inertness. One line
    either way.
+   Disposition (2026-09-14): keep the carried mtdids/mtdparts guard patch — one line, inert argument not needed.
+
 2. **`CONFIG_HANDOFF` off + a declared 1 GiB (§4.4)** vs `CONFIG_BLOBLIST_ADDR=0x72000` and taking
    the measured size from the factory SPL. Recommendation: as shipped; revisit only if the board
    reports the wrong size.
+   Disposition (2026-09-14): HANDOFF off + declared 1 GiB as shipped.
+
 3. **The `&mmc` block (§5.1)** — socdk's silicon-validated PHY timings, but default speed only at
    25 MHz. It is the first knob to turn if the card misbehaves, and §5.1 has both the diagnosis
    order and the one-line lift back to 50 MHz high speed. Faster than that needs the DE25's real
    vqmmc GPIO, which is a hardware-session observation.
+   Disposition (2026-09-14): &mmc at 25 MHz as shipped.
+
 4. **No seeded `uboot.env` (§10).**
+   Disposition (2026-09-14): no seeded uboot.env.
+
 5. **`CONFIG_FS_EXFAT=y`** anticipates §8 Q7 resolving toward exFAT on p2. If p2 stays ext4 forever,
    this line can go.
+   Disposition (2026-09-14): keep FS_EXFAT=y (ADR 0029 D11 makes the two-stage exFAT layout the target).
+
 6. **`DISTRO_DEFAULTS` is deprecated upstream.** Migrating to `BOOTSTD_DEFAULTS` is a separate,
    testable change; doing it now would mean bring-up debugs two new things at once.
+   Disposition (2026-09-14): stay on DISTRO_DEFAULTS until first boot, naming BOOTSTD_DEFAULTS as the migration target.
+
 7. **The §5 CI check** ("`ENV_IS_IN_UBI` unset and no QSPI-write command set") is still
    unimplemented. §7 is the assertion list it should encode.
+   Disposition (2026-09-14): done — external.mk MISTER_UBOOT_DE25_QSPI_AUDIT (DU2, 2026-09-14).

@@ -677,7 +677,9 @@ one-line change, and CI tells us immediately if a patch stopped applying.
 
 > **[2026-07-28] This section is superseded from "Phase 5 path" onward by
 > [ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).** The from-source
-> bootloader is now built from **mainline U-Boot 2026.07** (2026.04 when first decided), not the 2017.03 fork, as a
+> bootloader is now built from **mainline U-Boot 2026.07** (2026.04 when first decided;
+> re-pinned to 2026.07 on 2026-09-14 — see `docs/uboot-mainline-port.md`'s revision note),
+> not the 2017.03 fork, as a
 > non-shipping capability artifact — the mainline port surface has been measured rather
 > than estimated, and it is smaller than this section assumed. **Do not add the `u-boot/`
 > submodule.** Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).

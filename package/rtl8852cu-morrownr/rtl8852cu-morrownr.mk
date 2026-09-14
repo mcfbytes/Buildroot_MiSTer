@@ -99,7 +99,7 @@
 #   non-prompt, select-only bool -- net/wireless/Kconfig:2-3 -- which is the
 #   P1.3 hazard. So the WEXT-only code above simply compiles out; no wrapper and
 #   no kernel `select` hack is needed.
-RTL8852CU_MORROWNR_VERSION = 6e4ee1322fdbdc35a2cbc79f1eff9168001742e3
+RTL8852CU_MORROWNR_VERSION = 08b136aa8c1322d4a4e10f2f4c8a542ea7b957c9
 RTL8852CU_MORROWNR_SITE = $(call github,morrownr,rtl8852cu-20251113,$(RTL8852CU_MORROWNR_VERSION))
 RTL8852CU_MORROWNR_LICENSE = GPL-2.0
 RTL8852CU_MORROWNR_LICENSE_FILES = LICENSE

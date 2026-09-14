@@ -303,17 +303,26 @@ the mismatch is QSPI-side. Release discipline that keeps this impossible:
   handoff is inside the QSPI bitstream **[V RB-boot]**. Any future need to change DDR settings is
   a posture-2 event (bitstream rebuild + bench flash), not a release.
 - **No release writes QSPI, by any mechanism, including the U-Boot environment (§7 row 5).**
-  This is the load-bearing rule of the document, and its exact status as of 2026-08-21 is:
-  **a policy, enforced by prose only.** The "guards" refutation lens verified, and this pass
-  re-states without softening, that **ADR 0027 Decision 4's board-identity assertion has no
-  implementation anywhere in the tree** — no shipped script reads `/proc/device-tree/compatible`
-  or otherwise checks board identity; `ADR 0027` lines 80-83, `de25-nano-tasks.md` 120/155 and
+  This is the load-bearing rule of the document. As of 2026-08-21 it was **a policy, enforced by
+  prose only**; as of 2026-09-14 (docs/uboot-tasks.md DU2) **half of that is now enforced by
+  code**: `external.mk`'s `MISTER_UBOOT_DE25_QSPI_AUDIT` (`UBOOT_POST_BUILD_HOOKS`) hook fails
+  `make uboot-rebuild` outright if the resolved U-Boot `.config` carries any of §7's QSPI-write
+  symbols, if `CONFIG_ENV_IS_IN_FAT` is not `y`, or if `strings u-boot.itb` contains `sf probe`
+  (outside the one documented, gate-closed `linux_qspi_enable` exception), `ubi part` or
+  `mtdparts`; `scripts/ci-tests.sh`'s DE25 section separately fails if the rootfs ships an
+  `fw_env.config` naming an MTD device (row 11). That closes item (b) below -- in fact more
+  strongly than "CI check", since it is a build failure, not a separate lane that can be skipped
+  or go unnoticed. **The "guards" refutation lens verified, and this pass re-states without
+  softening, that ADR 0027 Decision 4's board-identity assertion still has no implementation
+  anywhere in the tree** — no shipped script reads `/proc/device-tree/compatible` or otherwise
+  checks board identity; `ADR 0027` lines 80-83, `de25-nano-tasks.md` 120/155 and
   `downloader-contract.md` 1208-1215 are all design prose. Nothing today would stop DE10 flash
   semantics being cargo-culted onto a DE25 tree except the accident that no DE25 tree exists yet.
   **Before the first DE25 release:** (a) implement the identity assertion in the updater *and* in
-  any `updateboot` analogue; (b) add a release-blocking CI check that the DE25 U-Boot config has
-  `ENV_IS_IN_UBI` unset and ships no QSPI-write command set; (c) only then may "no release writes
-  QSPI" be tagged **[V]** rather than "[policy, unenforced]". If a QSPI update is ever shipped
+  any `updateboot` analogue -- **still open**; (b) a release-blocking build assertion that the
+  DE25 U-Boot config has `ENV_IS_IN_UBI` unset and ships no QSPI-write command set --
+  **DONE, docs/uboot-tasks.md DU2**; (c) only once (a) also lands may "no release writes QSPI" be
+  tagged **[V]** rather than "[policy, partially enforced]". If a QSPI update is ever shipped
   (posture 2/3) it is a separate, explicit, documented **bench** procedure — the `updateboot`
   analogue **must not** be a cargo-culted raw `dd`: the DE10 habit (whole-disk `dd` + env wipe,
   [`downloader-contract.md`](downloader-contract.md) §8) is release-fatal here even though, per
@@ -385,7 +394,7 @@ pass. No row has been deleted. Severity vocabulary: **brick-class** = needs JTAG
 | 3 | Porting DE10 `updateboot` semantics (raw `dd`, env wipe at fixed sectors) | **Strand-class, and the first synthesis overstated it.** *(Amended — all three lenses.)* The `dd` leg writes garbage at Agilex-meaningless offsets **on the SD card only**: `/dev/mmcblk*` is the HPS SD/MMC controller; QSPI is a physically separate Cadence controller behind the SDM (`linux:…/socfpga_agilex5.dtsi:476-488`, `spi@108d2000`). No sector arithmetic on `mmcblk0` can reach boot flash. The **env-wipe leg** is the one that can — via row 5 or row 11 | board-identity assertion before any flash step (ADR 0027 §Decision 4 — **unimplemented**, §5), plus rows 5 and 11 |
 | 4 | MSEL switched away from `001` by a user following DE10-era lore | No boot until switched back; no damage | docs: "switches stay at default". **Recorded objection** (guards lens): that sentence appears in **no user-facing document** — `docs/user/` has zero DE25 or MSEL content; today the rule lives only in this developer doc. Writing it into the DE25 user docs is a first-release blocker, not an existing guard |
 | 5 | **`saveenv` (or any env write) with `ENV_IS_IN_UBI` compiled in and no `uboot.env` on FAT** | **Brick-class.** `env_save()` targets the location the env *loaded* from; on FAT-miss that is the **UBI volume in QSPI** → a routine operation writes boot flash | build our U-Boot with `CONFIG_ENV_IS_IN_UBI=n`; ship a valid `uboot.env` on FAT; assert the boot log says `Saving Environment to FAT` (§8.5) |
-| 6 | **Factory SPL built with FIT signature required; we ship an unsigned `u-boot.itb`** | Every release strands at SPL on every board — indistinguishable from a bad card to the user | D2.2 first test before any release. **Recorded objection** (completeness lens, and this pass agrees on the evidence): the DTB carved from Terasic's *published* SPL carries **no `/signature` node and no keys** (*SPL-dtb*, inspected 2026-08-21), so this drops from "posture-1 killer" to a routine first-contact check. Residual is only the published-build-vs-factory-flash gap |
+| 6 | **Factory SPL built with FIT signature required; we ship an unsigned `u-boot.itb`** | Every release strands at SPL on every board — indistinguishable from a bad card to the user | D2.2 first test before any release. **Recorded objection** (completeness lens, and this pass agrees on the evidence): the DTB carved from Terasic's *published* SPL carries **no `/signature` node and no keys** (*SPL-dtb*, inspected 2026-08-21), so this drops from "posture-1 killer" to a routine first-contact check. Residual is only the published-build-vs-factory-flash gap. **Closed further 2026-09-14:** the `u-boot.itb` on Terasic's *factory SD image* is itself unsigned, crc32-only, same layout as ours (`de25-uboot.md` §12) — the factory loader demonstrably accepts that shape |
 | 7 | **Any QSPI write attempted with no archived known-good JIC** | *(Amended — all three lenses: the premise was false.)* The JTAG path is **not** empty-handed: `golden_top_hps.jic` is published (§5) and *GSG* documents the restore. The real exposures are vendor **link-rot**, **wrong-revision** substitution (row 14), and the fact that the published JIC's bootability is untested | archive both revisions' Resource Packages **with hashes** now, locally and durably; verify before erase (§6 ordering rule); never rely on the vendor URL staying live |
 | 8 | **Posture-2 QSPI flash performed as a field/OTA step** | **Brick-class today.** *(Amended — all three lenses: state the rule, not an impossibility.)* No power-loss-safe layout for 16 MB is **demonstrated or documented** (§8.4 residual; the measured ~2.87 MiB phase-1 payload makes a custom layout plausible but unproven), so a power cut mid-write leaves JTAG-only recovery for an end user | posture 2 is bench-only, PC-attached, documented one-time; never an update-channel artifact. Revisit only if §8.4's residual resolves in RSU's favour |
 | 9 | Assuming our `u-boot.itb` can set/repair DDR or pinmux | It cannot — the handoff is inside the QSPI bitstream **[V RB-boot]**; a "fix it in U-Boot" reflex produces silent misconfiguration or no boot | treat DDR/pinmux as QSPI-owned; any change is a bitstream rebuild + bench flash (§5) |
@@ -396,6 +405,21 @@ pass. No row has been deleted. Severity vocabulary: **brick-class** = needs JTAG
 | 14 | **Recovery or bench flash with the wrong board revision's or wrong OPN's JIC** | Programming succeeds (JTAG validates little beyond the die) but the DDR/pinmux handoff inside the bitstream is wrong for the board → no boot or subtly wrong DDR, **and the original factory image is now gone**. The recovery attempt manufactures row 7's state. Terasic ships revA and revB packages separately; *UM* prints OPN `…SR1` while the BSP record says `…SCS` (§3) | archive both revisions with hashes, keyed to device + board revision; read the OPN over JTAG (Quartus auto-detect) and the revision off the PCB before any write; forbid "any Agilex 5 JIC" substitution. Desk follow-up: diff the revA/revB GHRD projects |
 | 15 | **Shipping a phase-2 `core.rbf` from our own Quartus compilation against the factory phase-1 resident in QSPI** | Altera doctrine for split (HPS-first) configuration is that periphery and core images come from the **same** Quartus compilation. If that holds here, every boot-time fabric design we ship is pinned to Terasic's exact factory compile — a **project-shaping constraint on the whole core-switching model**, and a strand-at-U-Boot failure when violated. **[U]** — consistently reported across Altera-derived sources but the authoritative UG (813773) is 403-blocked | D0.2/D2.2: (a) test a self-recompiled GHRD `core.rbf` against the untouched factory QSPI; (b) test whether runtime `COMMAND_RECONFIG` full reconfiguration is compilation-independent — that decides whether core switching routes through U-Boot phase-2 at all or must be Linux-runtime-only. Until answered, treat boot-time phase-2 as pinned to the factory compilation |
 | 16 | **Running `flash_erase.bat` (or `flash_program.bat`, which erases) as the first act of a D2.2 bench session** | The factory content — never dumped, never compared — is destroyed first; if the published JIC then fails to boot this board, no known-good image has ever existed for it | the §6 ordering rule, written into the D2.2 task *before* hardware arrives: verify-only → readback/archive → only then write |
+
+### 7b. Field notes learned from another DE25-Nano port (2026-09-14)
+
+Reported behaviour on real DE25-Nano hardware, from a separate port of this board that took a
+different path (its own flash image, its own bootloader). Recorded here because each one either
+confirms a choice above or names a trap; none is verified by us **[V there, U here]**.
+
+| # | Observation | Bears on |
+|---|---|---|
+| F1 | Loading a fabric bitstream **from U-Boot** (`fpga load`) wedged the SDM; that launcher was retired in favour of loading from Linux | §2 step 5 (we do not load cores from U-Boot); `de25-fpga-reconfig.md` §3 option (c) |
+| F2 | A flash image whose phase-1 leaves the fabric **unconfigured** ("HPS-first") produced a fatal asynchronous bus error on the first fabric access after warm reboots; a flash image that configures a full design at every reset was stable | §4 posture 1 keeps Terasic's fully-configured factory image — the stable shape |
+| F3 | Booting after a JTAG load of a full `.sof` needs `sdhci.debug_quirks=0x60` on the kernel command line and must **not** use `iommu.passthrough=1`, or SD host ADMA corrupts early SD init; QSPI cold boots are unaffected | our SMMU-off DTS and default-speed SD posture; bench sessions that use JTAG |
+| F4 | The HPS MAC is unfused and **random on every boot** (`NET_RANDOM_ETHADDR` in the factory config); a persistent MAC has to be provisioned by the OS | first-boot MAC provisioning, the DE10's `u-boot.txt` `ethaddr` idea |
+| F5 | Unsigned, locally compiled bitstreams are accepted by the SDM (no VAB); full reconfiguration ~3 s SDM time, ~8 s end to end with settle windows; repeated switching works only with those windows | §7 row 15, `de25-fpga-reconfig.md` §5–§6 |
+| F6 | An "HPS-first launcher" flash image that holds the fabric in reset gives a dark board with zero serial; the recovery is reflashing the correct image over JTAG | §6 recovery; §7 row 14 |
 
 ## 8. Resolved questions (D0.1 close-out)
 
@@ -469,7 +493,7 @@ a **board's** image. Two candidate closures, both in §5, both **inheriting D2.2
 `quartus_pgm` verify-only against the published JIC, or an HPS-side MTD read from a QSPI-enabled
 DTB (weighing §7 row 10 first).
 
-### 8.3 Q3 — Will the factory SPL boot a mainline-built `u-boot.itb`? — **PARKED on hardware; structure resolved [V], and two of three blockers closed at the desk.**
+### 8.3 Q3 — Will the factory SPL boot a mainline-built `u-boot.itb`? — **PARKED on hardware; structure resolved [V], and all three desk-closable blockers closed (FIT acceptance closed by reference 2026-09-14 — `de25-uboot.md` §12).**
 
 Structure, mainline-defined **[V, `u-boot:` at `master`, re-fetched 2026-08-21]**:
 `configs/socfpga_agilex5_defconfig` sets `CONFIG_SPL_LOAD_FIT=y`,
@@ -651,7 +675,7 @@ against `/mnt/source/Buildroot_MiSTer/output/build/linux-6.18.44` by this pass.
 
 | Claim | Lens | Objection, recorded verbatim in substance |
 |---|---|---|
-| §5 no-release-writes-QSPI | Guards | The rule exists; **the guard does not, except as sentences.** No shipped script reads `/proc/device-tree/compatible`; ADR 0027 Decision 4, `de25-nano-tasks.md` and `downloader-contract.md` are all prose; no CI check pins a future DE25 U-Boot to `ENV_IS_IN_UBI=n`. Tag it [V] only after (a) the identity assertion exists as code and (b) a release-blocking CI check exists. **Carried in §5, final bullet.** |
+| §5 no-release-writes-QSPI | Guards | **Partially resolved 2026-09-14 (DU2).** The board-identity half of the guard still does not exist: no shipped script reads `/proc/device-tree/compatible`; ADR 0027 Decision 4, `de25-nano-tasks.md` and `downloader-contract.md` are all prose. The CI-check half now exists and is stronger than originally asked: `external.mk`'s `MISTER_UBOOT_DE25_QSPI_AUDIT` hook fails the DE25 U-Boot build itself (not just a separate CI lane) if `ENV_IS_IN_UBI` (or any other §7 symbol) resolves on, and `scripts/ci-tests.sh` fails if the rootfs ships an MTD-naming `fw_env.config`. Tag it [V] only once the identity assertion also exists as code. **Carried in §5, final bullet.** |
 | §7 row 2 | Guards | Consequence overstated (**strand-class**, card-recoverable, since QSPI is untouched) and the "per-release factory-QSPI test matrix" exists nowhere. **Carried in the row.** |
 | §7 row 4 | Guards | "Switches stay at default" appears in **no user-facing doc**; `docs/user/` has zero DE25/MSEL content. It is a task, not a guard. **Carried in the row.** |
 | §7 row 6 | Severity | Antecedent is desk-testable and tests **negative**: the published SPL's DTB has no signature keys, so this drops from posture-1 killer to a first-contact check. **Carried in the row** (this pass independently re-inspected the DTS and agrees). |

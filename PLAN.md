@@ -545,7 +545,7 @@ mister-linux/
 │   │   ├── 0012-hid-fanatec.patch
 │   │   ├── 0013-hid-flydigi-vader.patch
 │   │   └── 0020-usb-storage-blacklist-realtek-cdrom.patch
-│   ├── uboot-patches/                 # empty in v1; P5: build fixes ONLY, never
+│   ├── patches/uboot/                 # empty in v1; P5: build fixes ONLY, never
 │   │                                  # behaviour changes (ADR 0017)
 │   ├── rootfs-overlay/
 │   │   ├── etc/init.d/S??…            # BusyBox init scripts (parity with stock)
@@ -677,7 +677,9 @@ one-line change, and CI tells us immediately if a patch stopped applying.
 
 > **[2026-07-28] This section is superseded from "Phase 5 path" onward by
 > [ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).** The from-source
-> bootloader is now built from **mainline U-Boot 2026.04**, not the 2017.03 fork, as a
+> bootloader is now built from **mainline U-Boot 2026.07** (2026.04 when first decided;
+> re-pinned to 2026.07 on 2026-09-14 — see `docs/uboot-mainline-port.md`'s revision note),
+> not the 2017.03 fork, as a
 > non-shipping capability artifact — the mainline port surface has been measured rather
 > than estimated, and it is smaller than this section assumed. **Do not add the `u-boot/`
 > submodule.** Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).
@@ -731,7 +733,7 @@ so the full-image build stays reproducible even if the upstream branch moves or 
 * Buildroot builds it from the submodule: `BR2_TARGET_UBOOT` + `UBOOT_OVERRIDE_SRCDIR`
 pointing at `u-boot/` (via `BR2_PACKAGE_OVERRIDE_FILE`), starting from the fork's own
 `MiSTer_defconfig`; output `u-boot-with-spl.sfp`, renamed `uboot.img`. The
-`uboot-patches/` directory mirrors the kernel model but is reserved for **build fixes
+`patches/uboot/` directory mirrors the kernel model but is reserved for **build fixes
 only** — a 2017 codebase may need coaxing under a 2026 toolchain — never behaviour changes.
 * **A byte-identical rebuild is impossible and is not the goal** (`docs/boot-chain.md`
 §3.2: compiled-in non-UTC timestamp, exact 2020 Arm toolchain). The default Downloader
@@ -968,7 +970,7 @@ criteria — lives in `TASKS.md`.
 |Rootfs exceeds the image budget|Medium|Grow `linux.img` to 512 MiB; audit assumptions about 400 MB.|
 |Boot regression from the initramfs|Low|Measurable; budget in §11.|
 |Bricking via U-Boot|**Critical**|Deferred to P5, opt-in, recovery documented **and drilled**. ADR 0017 shrinks the exposure: P5 builds the same source commit stock already runs, not a mainline port.|
-|**[ADR 0017] 2017-era U-Boot fails to build under a 2026 toolchain**|Medium|Expected and contained: build fixes only in `uboot-patches/` (provenance-documented, never behaviour changes); worst case, pin the Arm GNU 10.2-2020.11 toolchain the stock binary used (`docs/boot-chain.md` §3.2).|
+|**[ADR 0017] 2017-era U-Boot fails to build under a 2026 toolchain**|Medium|Expected and contained: build fixes only in `patches/uboot/` (provenance-documented, never behaviour changes); worst case, pin the Arm GNU 10.2-2020.11 toolchain the stock binary used (`docs/boot-chain.md` §3.2).|
 |Community fragmentation / abandonment|**High**|Be strictly drop-in. Ship a working artifact before making an argument. **If nobody will commit to tracking 6.18.y stable for years, do not start.**|
 
 That last one is not a joke. A stale fork is worse than no fork, because it splits the

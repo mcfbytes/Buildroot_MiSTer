@@ -1,0 +1,236 @@
+From d6010efe50464c85ccec0fc4e020ca80251ed3d9 Mon Sep 17 00:00:00 2001
+From: Sorgelig <pour.garbage@gmail.com>
+Date: Mon, 27 Mar 2017 11:35:31 +0800
+Subject: [PATCH] arm: socfpga: gen5: release the FPGA bridges after reset
+ if the FPGA is in user mode
+
+MiSTer restarts the HPS without reconfiguring the fabric, and that is the
+normal case, not an edge case. `fpgacheck` (docs/boot-chain.md §6.1) has three
+dispatch outcomes; in the middle one — Main_MiSTer set the warm flag at
+`0x1FFFFF08` to `0xBEEFB001` but staged no new core at `0x1FFFF000` — U-Boot
+deliberately leaves the running core alone and never runs `fpgaload`. Since
+`bridge enable` lives only inside `fpgaload`, nothing in that path releases the
+HPS↔FPGA bridges. `arch_early_init_r()` has just put all three of them *into*
+reset (`socfpga_bridges_reset(1)`), so Linux and Main_MiSTer would come up to a
+fabric they cannot reach at `0xC0000000` / `0xFF200000`.
+
+Stock's bootloader closes this by calling `socfpga_bridges_reset(0)` at the end
+of `arch_early_init_r()`. Do the same here.
+
+A cold boot is unaffected: `socfpga_bridges_reset(0)` tests
+`fpgamgr_test_fpga_ready()` and returns before touching `brgmodrst` or the L3
+remap when the fabric is unconfigured, which is exactly the state a cold boot
+is in at this point — `fpga load` has not run yet.
+
+Provenance
+----------
+Origin:       d6010efe50464c85ccec0fc4e020ca80251ed3d9
+              "Enable bridges after reset if FPGA is in user mode."
+              MiSTer-devel/U-Boot_MiSTer, 2017-03-27, against v2017.03.
+              Local clone: work/U-Boot_MiSTer @ 8dcc3484.
+Author:       Sorgelig <pour.garbage@gmail.com>
+Upstream:     No, and never submitted. Upstream's gen5 `arch_early_init_r()`
+              has never called `socfpga_bridges_reset(0)`, before or after the
+              split: `git log -p --follow arch/arm/mach-socfpga/misc_gen5.c`
+              over that file's whole history (33 commits on the file itself
+              at v2026.07, 71 with --follow, reaching back through the
+              `d1c559af5f` split into misc.c) contains exactly one such
+              call and it is
+              `socfpga_bridges_reset(1)`, and the origin commit itself adds the
+              line as a `+` against upstream-derived v2017.03 code. That is why
+              the `enable == 0` arm of that function has **no caller at all** in
+              a pristine v2026.07 tree: all three call sites —
+              `misc_gen5.c:203`, `spl_gen5.c:98` and
+              `drivers/fpga/socfpga_gen5.c:209` — pass 1. This patch is
+              therefore not new code; it makes existing mainline code
+              reachable.
+Disposition:  Carry. It encodes a MiSTer boot-flow requirement — a warm HPS
+              reset that preserves the fabric — that no upstream SoCFPGA board
+              expresses, and stock's env (`fpgacheck`/`fpgaload`) is what makes
+              it load-bearing. U7 does not propose it upstream.
+Forward-port: 2017.03 → 2026.07, Michael C. Ferguson, 2026-09-14, task U2d
+              (docs/uboot-tasks.md). The origin commit is one line in
+              `arch/arm/mach-socfpga/misc.c`; upstream `d1c559af5f` ("arm:
+              socfpga: Restructure misc driver", Ley Foon Tan, 2017-04-26)
+              split the gen5 half of that file out to `misc_gen5.c`, so the
+              line lands there instead. The origin commit also deleted two
+              now-removed `CONFIG_` defines from
+              `include/configs/socfpga_de10_nano.h`; that hunk is 2017-era
+              Kconfig migration debris and is dropped. The explanatory comment
+              above the call is added by this forward-port and is not
+              Sorgelig's text.
+Decision:     Owner, 2026-09-14 (docs/uboot-tasks.md, "mirror stock"): carry
+              the fork's warm-reboot bridge behaviour rather than accept
+              mainline's. docs/uboot-mainline-port.md §3.3 records the
+              argument below.
+
+The equivalence argument
+------------------------
+The origin commit's *line* ports verbatim; what has to be proved is that
+2026.07's `socfpga_bridges_reset(0)` leaves the same machine state that
+2017.03's did. It does, and the two bodies are a near textual match.
+
+Fork, `arch/arm/mach-socfpga/reset_manager.c:93-119` (`8dcc3484`):
+
+    l3mask = LWHPS2FPGA|HPS2FPGA|OCRAM = 0x19
+    writel(0,      &sysmgr_regs->iswgrp_handoff[0]);
+    writel(l3mask, &sysmgr_regs->iswgrp_handoff[1]);
+    if (!fpgamgr_test_fpga_ready()) { printf("... FPGA not ready ..."); return; }
+    writel(0,      &reset_manager_base->brg_mod_reset);
+    writel(l3mask, SOCFPGA_L3REGS_ADDRESS);
+
+Mainline, `arch/arm/mach-socfpga/reset_manager_gen5.c:89-117` (v2026.07):
+
+    socfpga_bridges_set_handoff_regs(false, false, false);
+        → brgmask = 0
+        → l3rmask = OCRAM|HPS2FPGA|LWHPS2FPGA = 0x19
+        → writel(0,    sysmgr + SYSMGR_ISWGRP_HANDOFF_OFFSET(0));
+        → writel(0x19, sysmgr + SYSMGR_ISWGRP_HANDOFF_OFFSET(1));
+    if (!fpgamgr_test_fpga_ready()) { printf("... FPGA not ready ..."); return; }
+    writel(0,    rstmgr + RSTMGR_GEN5_BRGMODRST);
+    writel(0x19, SOCFPGA_L3REGS_ADDRESS);
+
+Same four registers, same four values, same guard, same order:
+
+  * `iswgrp_handoff[0..1]` are at sysmgr `+0x80`/`+0x84` in both trees
+    (fork `mach/system_manager.h:51` — `u32 iswgrp_handoff[8]` at 0x80;
+    mainline `mach/system_manager_gen5.h:22,37`).
+  * `brg_mod_reset` is rstmgr `+0x1c` in both (fork
+    `mach/reset_manager.h:26`; mainline `RSTMGR_GEN5_BRGMODRST 0x1c`).
+  * `SOCFPGA_L3REGS_ADDRESS` is `0xff800000` in both, and is the same register
+    as `nic301_regs->remap` (offset 0 of `struct nic301_registers`) in both.
+  * `fpgamgr_test_fpga_ready()`'s FUNCTION BODY is character-for-character
+    identical in the two trees (`arch/arm/mach-socfpga/fpga_manager.c`; the
+    files themselves differ in the SPDX line, `<common.h>` vs `<config.h>`
+    and DECLARE_GLOBAL_DATA_PTR): init_done sampled twice, then
+    `fpgamgr_get_mode() == FPGAMGRREGS_MODE_USERMODE`.
+
+Position in the boot flow is equivalent too. In both trees the call is the last
+statement of `arch_early_init_r()`, after the FPGA device is registered, and
+`arch_early_init_r` sits at the same point of the board_r init sequence
+relative to `console_init_r` (fork `common/board_r.c:818` vs `:866`; mainline
+`common/board_r.c:683` vs `:734`), so the "FPGA not ready" message reaches the
+console exactly as it does on stock.
+
+Three surrounding deltas exist between the two trees. None of them changes the
+state this patch produces, and none is introduced by this patch:
+
+ 1. `socfpga_bridges_reset(1)`, earlier in the same function, writes
+    `0xffffffff` to `brgmodrst` on the fork and `0x7` on mainline. `brgmodrst`
+    implements exactly three bits — HPS2FPGA, LWHPS2FPGA, FPGA2HPS, reset ids
+    96/97/98 = bank 3 bits 0/1/2 in
+    `dts/upstream/include/dt-bindings/reset/altr,rst-mgr.h:58-61` — so the
+    two writes set the same implemented state, and this patch then clears the
+    register to 0 in both cases anyway.
+ 2. Mainline's `socfpga_bridges_reset(1)` additionally writes
+    `L3REGS_REMAP_OCRAM_MASK` (0x1) to the L3 remap; the fork's does not. Both
+    trees then write 0x1 to that same register a few statements later
+    (mainline inside `socfpga_sdram_remap_zero()`, the fork inline in
+    `arch_early_init_r`), and on the path this patch adds it is overwritten
+    with 0x19. Transient only.
+ 3. Mainline's `socfpga_sdram_remap_zero()` ORs in `0x8` when
+    `socfpga_is_booting_from_fpga()`. That predicate is
+    `__image_copy_start >= 0xc0000000 && < 0xfc000000`; this build's
+    `__image_copy_start` is `0x01000040` (SDRAM), so it is false and the write
+    is the fork's plain `0x1`.
+
+At cold boot the patch is a no-op in the sense that matters — no register any
+later code reads is left in a state that changes behaviour:
+
+  * the early return fires before `brgmodrst` and the L3 remap are touched, so
+    the bridges stay in reset exactly as unpatched mainline leaves them;
+  * `iswgrp_handoff[0]`/`[1]` *are* written (0 and 0x19) before the guard, in
+    both trees. The only consumer of those two registers in the whole tree is
+    `do_bridge_reset(1, …)` — the `bridge enable` that `fpgaload` runs on the
+    cold path — and it calls `socfpga_bridges_set_handoff_regs()` itself and
+    then re-reads both registers (`misc_gen5.c:253-257`) before using them, so
+    it recomputes the identical values regardless;
+  * `iswgrp_handoff[2]`/`[3]` — the FPGAINTFGRP_MODULE and `fpgaport_rst`
+    values the SPL actually hands off, and the ones `bridge enable` consumes
+    unmodified — are not touched by `socfpga_bridges_reset()` at all.
+
+Verification, this build
+------------------------
+Cross toolchain `arm-buildroot-linux-gnueabihf-` (gcc 15.3.0),
+`socfpga_de10_nano_defconfig`, v2026.07 from `dl/uboot/u-boot-2026.07.tar.bz2`
+(`CONFIG_TOOLS_MKEFICAPSULE` off so the host build needs no gnutls — a host-tool
+symbol with no target effect; it is a `board/mister/de10nano/uboot.fragment`
+line anyway, task U2e). Built clean; `CONFIG_ARCH_EARLY_INIT_R=y` in the
+resolved config, so `arch_early_init_r()` is on the init sequence.
+
+`objdump -d u-boot --disassemble=arch_early_init_r`, patched:
+
+    100279a:  2000        movs   r0, #0
+    100279c:  f000 f8d0   bl     1002940 <socfpga_bridges_reset>
+    10027a0:  2000        movs   r0, #0
+    10027a2:  bd38        pop    {r3, r4, r5, pc}
+
+and the callee it reaches (unchanged by this patch):
+
+    1002940 <socfpga_bridges_reset>:
+    1002944:  b158        cbz    r0, 100295e            ; enable == 0 -> release
+    100295e:  4602        mov    r2, r0                 ; f2h   = false
+    1002960:  4601        mov    r1, r0                 ; lwh2f = false
+    1002962:  bl  1002908 <socfpga_bridges_set_handoff_regs>   ; h2f = false
+    1002966:  bl  1002af8 <fpgamgr_test_fpga_ready>
+    100296a:  cbnz   r0, 1002978                        ; ready -> release path
+    1002970:  ldr    r1, [pc, #28]                      ; not ready: printf, return
+    1002974:  b.w    104dbcc <printf>
+    1002978:  ...
+    100297c:  bl  10022b0 <socfpga_get_rstmgr_addr>
+    1002980:  str    r4, [r0, #28]                      ; brgmodrst (+0x1c) = 0
+    1002986:  movs   r2, #25                            ; 0x19
+    1002988:  ldr    r3, [pc, #0]                       ; 0xff800000
+    100298a:  b.n    100295a                            ; str r2,[r3] -> L3 remap = 0x19
+
+and `socfpga_bridges_set_handoff_regs` writes sysmgr `+0x80`/`+0x84`:
+
+    1002922:  str.w  r4, [r0, #128]   @ 0x80            ; brgmask = 0
+    100292e:  str.w  r5, [r0, #132]   @ 0x84            ; l3rmask = 0x19
+
+A normalised whole-binary disassembly diff (addresses and PC-relative literals
+stripped) of unpatched vs patched `u-boot` differs in exactly one function,
+`arch_early_init_r`: the added `bl socfpga_bridges_reset`, the re-materialised
+`movs r0, #0` return value, and one dropped alignment `nop`. Every other
+instruction in the 533,592-byte U-Boot proper is unchanged. `spl/u-boot-spl.bin`
+is byte-identical apart from the two digits of the build-time stamp, confirming
+this touches U-Boot proper only.
+
+What this does NOT establish
+----------------------------
+Everything above is source and object-code equality. It is not a boot. Only
+hardware can confirm (a) that a warm reset with the fabric preserved actually
+reaches this code with the FPGA still reporting user mode, (b) that a core is
+reachable from Linux across that reset, and (c) that a cold boot still prints
+nothing new and still loads `menu.rbf`. The DE10 hardware gate (docs/uboot-tasks.md
+U6) is deferred, so this patch ships in a build artifact that boots no board.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ arch/arm/mach-socfpga/misc_gen5.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm/mach-socfpga/misc_gen5.c b/arch/arm/mach-socfpga/misc_gen5.c
+index ae33051..4c2a1db 100644
+--- a/arch/arm/mach-socfpga/misc_gen5.c
++++ b/arch/arm/mach-socfpga/misc_gen5.c
+@@ -207,6 +207,18 @@ int arch_early_init_r(void)
+ 	/* Add device descriptor to FPGA device table */
+ 	socfpga_fpga_add(&altera_fpga[0]);
+ 
++	/*
++	 * If the fabric is already configured -- a warm reset with the FPGA
++	 * still in user mode -- take the bridges back out of reset and remap
++	 * them into the memory map before handing over, so that the design in
++	 * the fabric stays reachable across the reset. socfpga_bridges_reset(0)
++	 * tests fpgamgr_test_fpga_ready() itself and returns without touching
++	 * brgmodrst or the L3 remap when the fabric is unconfigured, so this is
++	 * a no-op on a cold boot, where the bridges stay in reset until the
++	 * FPGA is programmed and 'bridge enable' is issued.
++	 */
++	socfpga_bridges_reset(0);
++
+ 	return 0;
+ }
+ 

@@ -1072,7 +1072,7 @@ the U-Boot half re-decided 2026-07-28 per
 Phase 5 adds a **full flashable SD-card image** (kernel + `linux.img` + bootloader +
 mr-fusion-parity payload) so a fresh card can be written without mr-fusion or the Windows
 SD installer. That is what remains here. **The from-source bootloader moved out of this
-phase entirely** — it is now built from **mainline U-Boot 2026.04** (not the 2017.03 fork,
+phase entirely** — it is now built from **mainline U-Boot 2026.07** (not the 2017.03 fork,
 and with no `u-boot/` submodule) and tracked in
 [`docs/uboot-tasks.md`](docs/uboot-tasks.md). §8's posture is unchanged: highest blast
 radius, everything here is opt-in, separate from `linux.img` updates, gated on a
@@ -1081,12 +1081,13 @@ drilled recovery procedure. **The default channel keeps shipping the stock
 
 - [ ] **P5.1 / P5.2 — the from-source U-Boot → moved to [`docs/uboot-tasks.md`](docs/uboot-tasks.md)**
   **Superseded by [ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md).**
-  The from-source bootloader is now built from **mainline U-Boot 2026.04**, not the 2017.03
+  The from-source bootloader is now built from **mainline U-Boot 2026.07**, not the 2017.03
   fork, and it is a non-shipping capability artifact. **Do not add the `u-boot/`
   submodule** — the mainline build uses Buildroot's own hash-verified tarball, and
   `UBOOT_OVERRIDE_SRCDIR` (which the old P5.1 specified) would have silently skipped the
   patch step. Design and evidence: [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md).
-  Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md), tasks U0–U7.
+  Execution: [`docs/uboot-tasks.md`](docs/uboot-tasks.md), tasks U0–U9 for the DE10-Nano
+  (and DU1–DU7 for the DE25-Nano's own `u-boot.itb`).
   **Unchanged:** the default channel keeps shipping the stock `uboot.img` byte-identical
   (P4.4), and `sdcard.img` keeps embedding that same stock blob (ADR 0017 §Decision 4/5
   still stand). P5.3 and P5.4 below are unaffected.

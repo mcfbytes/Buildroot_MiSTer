@@ -131,7 +131,7 @@ both shapes; folding avoids a second file and keeps the ordering trivial to read
    commented/off in the package default).
 6. `etc/ssh_keys/.gitkeep` ships the empty mount point in the overlay (git cannot
    track empty directories; this repo's own convention — see
-   `uboot-patches/.gitkeep`, `linux-patches/.gitkeep`, `patches/.gitkeep` — already
+   `patches/uboot/.gitkeep`, `linux-patches/.gitkeep`, `patches/.gitkeep` — already
    uses marker files for exactly this).
 7. Verified **zero** `ssh_host_*` files anywhere in the built and extracted image
    (see the report's Check 3).

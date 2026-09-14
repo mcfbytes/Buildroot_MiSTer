@@ -33,8 +33,8 @@
 #
 # BOTH SERIES ARE LINTED
 # ----------------------
-# There are two patch directories, and the second one needs this check MORE than the
-# first, not less:
+# There are two kernel patch directories, and the second one needs this check MORE than
+# the first, not less:
 #
 #   <BR2_LINUX_KERNEL_PATCH>/            carried — applied by Buildroot to the shipped
 #                                        image and replayed by the export;
@@ -48,10 +48,24 @@
 # can sit for months. So the default here is both directories, and CI runs it with no
 # arguments.
 #
+# THE TWO U-BOOT SERIES, TOO (docs/uboot-tasks.md U5)
+# ----------------------------------------------------
+# board/mister/de10nano/patches/uboot/ and board/mister/de25nano/patches/uboot/ carry the
+# same kind of provenance header (CONTRIBUTING section 2) as the kernel series, resolved
+# by `patch -p1` the same blind way, and U7-prep/DU5-prep exist precisely to replay them
+# upstream as `git am` mail one day — so a malformed `From:` there is the identical latent
+# defect, just waiting on a different export. Each is resolved from its OWN defconfig's
+# `BR2_GLOBAL_PATCH_DIR` (Buildroot appends the package name, `uboot`, itself — U1) rather
+# than hardcoded, and treated exactly like the kernel's `-upstream` series: missing is
+# "not landed on this branch yet", present-but-empty gets a note, present-and-populated is
+# linted.
+#
 # Usage: scripts/lint-kernel-patches.sh [patch-dir...]
 #   With no arguments, lints the series named by BR2_LINUX_KERNEL_PATCH in
-#   configs/mister_de10nano_defconfig, plus the upstream-only series alongside it
-#   ("<that path>-upstream") when that directory exists.
+#   configs/mister_de10nano_defconfig, the upstream-only series alongside it
+#   ("<that path>-upstream") when that directory exists and holds patches, and
+#   board/mister/{de10nano,de25nano}/patches/uboot/ (each resolved from that board's own
+#   defconfig) when they exist and hold patches.
 #   A directory named on the command line must exist and contain patches.
 #
 # Exit: 0 = every patch is am-able; 1 = at least one is not (details on stderr).
@@ -101,6 +115,31 @@ if ((${#patch_dirs[@]} == 0)); then
 		printf 'note: %s holds no patches yet — nothing to lint there.\n' \
 			"${default_dir}-upstream"
 	fi
+
+	# The two U-Boot series (docs/uboot-tasks.md U5), same leniency as the kernel
+	# upstream-only series just above: resolved from each BOARD's own defconfig
+	# (BR2_GLOBAL_PATCH_DIR; Buildroot appends the package name -- "uboot" -- itself,
+	# same as it does "linux" for BR2_LINUX_KERNEL_PATCH), so a moved patch dir cannot
+	# silently go unlinted. Missing is "not landed on this branch yet"; present-but-empty
+	# gets a note, not a failure; present-and-populated is linted like everything else.
+	for ub_board in de10nano de25nano; do
+		ub_defconfig="$REPO_ROOT/configs/mister_${ub_board}_defconfig"
+		[[ -f $ub_defconfig ]] || continue
+
+		ub_global_patch_dir="$(sed -n 's/^BR2_GLOBAL_PATCH_DIR="\([^"]*\)".*$/\1/p' "$ub_defconfig" | tail -1)"
+		ub_global_patch_dir="${ub_global_patch_dir//\$(BR2_EXTERNAL_MISTER_PATH)/$REPO_ROOT}"
+		[[ -n $ub_global_patch_dir ]] || continue
+		ub_patch_dir="$ub_global_patch_dir/uboot"
+
+		shopt -s nullglob
+		ub_found=("$ub_patch_dir"/*.patch)
+		shopt -u nullglob
+		if ((${#ub_found[@]})); then
+			patch_dirs+=("$ub_patch_dir")
+		elif [[ -d $ub_patch_dir ]]; then
+			printf 'note: %s holds no patches yet — nothing to lint there.\n' "$ub_patch_dir"
+		fi
+	done
 fi
 
 for dir in "${patch_dirs[@]}"; do

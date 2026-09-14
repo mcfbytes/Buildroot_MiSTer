@@ -24,37 +24,134 @@
 # both change, and the build will fail closed until they are re-derived. That
 # is the intended behaviour; do not "fix" it by loosening the check.
 #
-# WHERE THIS HASH COMES FROM -- read before changing it, and note honestly
-# what it is and is not.
+# WHERE THIS HASH COMES FROM -- read before changing it.
 #
-# It is a TRUST-ON-FIRST-USE value, unlike the U-Boot hash next door.
 # trustedfirmware.org publishes no release tarballs and no signed checksum
-# manifest, so there is no signed artifact to transcribe from. What exists is
-# an annotated, PGP-SIGNED git tag, and the chain that value rests on is:
+# manifest, so there is no signed artifact to transcribe the way uboot.hash
+# next door does. What exists is an annotated, PGP-SIGNED git tag -- and as of
+# 2026-09-14 that signature VERIFIES. (This file used to say the key was
+# unfindable and the value trust-on-first-use. That was wrong; see "WHERE THE
+# KEY CAME FROM" below for where it actually lives and how far it goes.)
+#
+# The chain the value below rests on:
 #
 #   1. Buildroot cloned https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git
 #      over TLS and checked out tag v2.15.0
-#      (dl/arm-trusted-firmware/git, verified 2026-09-02).
+#      (dl/arm-trusted-firmware/git, 2026-09-02, re-checked 2026-09-14).
 #   2. That tag is annotated object 9ad327a8d124ce82002614c23e33992d4de6f7cf,
 #      tagged "Trusted Firmware-A release v2.15.0" by Olivier Deprez
-#      <olivier.deprez@arm.com>, and it points at commit
-#      da738d5eae93af342fdc4995dd3c05acb4c9d757.
-#   3. The SAME commit id was obtained from an INDEPENDENT clone made in a
-#      separate working directory on the same day, so the value below is not
-#      anchored on a single fetch.
-#   4. The tag carries a PGP signature by RSA key
-#      5D6F896043ADEFDF7B76BFAA89C08CFDB8673E0C. That signature could NOT be
-#      verified: the key is published on neither keys.openpgp.org nor
-#      keyserver.ubuntu.com (both returned 404 on 2026-09-02). Say so plainly
-#      rather than implying a verification that did not happen.
-#   5. sha256 of the tarball Buildroot then generated from that checkout.
+#      <olivier.deprez@arm.com>, pointing at commit
+#      da738d5eae93af342fdc4995dd3c05acb4c9d757. Two further independent
+#      clones -- a separate working directory on 2026-09-02, and a fresh
+#      GitHub-mirror clone (github.com/TrustedFirmware-A/trusted-firmware-a)
+#      on 2026-09-14 -- produced the same two object ids.
+#   3. The tag's PGP signature VERIFIES against RSA-4096 key
 #
-# TO UPGRADE THIS TO A VERIFIED CHAIN: obtain the TF-A release key through a
-# channel you trust (the trustedfirmware.org project pages, or an Arm-published
-# keyring), import it, run `git tag -v v2.15.0` in dl/arm-trusted-firmware/git,
-# and record the result here in place of item 4.
+#        5D6F 8960 43AD EFDF 7B76  BFAA 89C0 8CFD B867 3E0C
 #
-# ON A VERSION BUMP: re-derive both lines. The cheap, honest way is to set this
-# hash to all zeros, run `make de25`, and transcribe the "got" value the
-# check-hash error prints -- after re-doing steps 1-4 for the new tag.
+#      (short id 89C08CFDB8673E0C, created 2024-11-21, no expiry, uid
+#      "Olivier Deprez <olivier.deprez@arm.com>"). Transcript, run in
+#      dl/arm-trusted-firmware/git on 2026-09-14 against a keyring holding
+#      only that key, and reproduced identically in the fresh clone:
+#
+#        $ git tag -v v2.15.0
+#        gpg: Signature made Fri May 29 03:08:11 2026 CDT
+#        gpg:                using RSA key 5D6F896043ADEFDF7B76BFAA89C08CFDB8673E0C
+#        gpg: Good signature from "Olivier Deprez <olivier.deprez@arm.com>" [unknown]
+#        gpg: WARNING: This key is not certified with a trusted signature!
+#        gpg:          There is no indication that the signature belongs to the owner.
+#        Primary key fingerprint: 5D6F 8960 43AD EFDF 7B76  BFAA 89C0 8CFD B867 3E0C
+#        ... exit status 0
+#
+#      The WARNING is about local trust (the key is not certified in this
+#      keyring), not about the signature: "Good signature" is the verdict.
+#   4. The tarball hashed below is the signed tag's tree. Extracting
+#      arm-trusted-firmware-v2.15.0-git4.tar.gz and running
+#      `diff -r -q --exclude=.git <extracted> <v2.15.0 checkout>` reports
+#      exactly one line -- "Only in <checkout>: contrib" -- and no differing
+#      file. contrib/ holds four UNINITIALISED submodule gitlinks (mode
+#      160000: contrib/libtl, contrib/libeventlog, contrib/libtpm,
+#      contrib/mbed-tls) that `git archive` never packs. Every regular file is
+#      identical. Note the consequence: this hash covers the TF-A tree proper
+#      and NO submodule content.
+#   5. sha256 of that tarball, recomputed 2026-09-14, is still the value
+#      below, and dl/arm-trusted-firmware/git still resolves
+#      v2.15.0^{commit} to da738d5eae93af342fdc4995dd3c05acb4c9d757.
+#
+# WHERE THE KEY CAME FROM, AND HOW FAR TO TRUST IT -- the honest part.
+#
+# The key is NOT on a keyserver and NOT in a project keyring. Looked for and
+# not found on 2026-09-14:
+#
+#   - keys.openpgp.org: GET /vks/v1/by-fingerprint/5D6F8960...B8673E0C
+#     -> HTTP 404, body "No key found for fingerprint
+#     5D6F896043ADEFDF7B76BFAA89C08CFDB8673E0C".
+#   - keyserver.ubuntu.com: GET
+#     /pks/lookup?op=get&search=0x5D6F8960...B8673E0C&options=mr
+#     -> HTTP 404, body "Not Found".
+#   - WKD, advanced method: openpgpkey.arm.com does not resolve (NXDOMAIN,
+#     `getent hosts` exit 2) -- arm.com has no WKD subdomain delegation.
+#   - WKD, direct method: https://arm.com/.well-known/openpgpkey/hu/
+#     whq38t37sw5p3bk4y1en5k6dkdawy4j7?l=olivier.deprez -> HTTP 302 to
+#     https://www.arm.com/.well-known/openpgpkey/hu/whq38t37sw5p3bk4y1en5k6dkdawy4j7
+#     -- arm.com's generic bare-domain redirect, which also drops the ?l=
+#     parameter; a compliant WKD response is the key bytes, never a redirect
+#     -- and that target then times out having received zero bytes.
+#     The hu-part is the zbase32 SHA-1 of the lowercased local part
+#     "olivier.deprez", cross-checked two ways: an implementation that
+#     reproduces the RFC test vector joe.doe ->
+#     iy9q119eutrkn8s1mk4r39qejnbu3n5q, and `gpg --with-wkd-hash --list-keys`,
+#     which prints whq38t37sw5p3bk4y1en5k6dkdawy4j7@arm.com. (An earlier
+#     revision of this header quoted a different hu-part; it was not the WKD
+#     hash of any plausible local part and has been struck.)
+#   - The v2.15.0 release announcement
+#     (https://www.trustedfirmware.org/blog/tf-a-v2_15/) names no signing key,
+#     fingerprint or verification step.
+#   - The project's own tree: `git grep -l "BEGIN PGP PUBLIC KEY"` in the
+#     v2.15.0 checkout returns nothing, and neither docs/process/security.rst
+#     nor docs/about/release-information.rst carries a key or fingerprint.
+#
+# It IS published -- self-published by the tagger, on his GitHub account:
+#
+#     https://github.com/odeprez.gpg
+#     https://api.github.com/users/odeprez/gpg_keys
+#
+# Fetched 2026-09-14 (sha256 of the ASCII blob
+# 376b5e967b33832c31e89cb131147228aa209670e1be098c4f010d41b4f5a225). The blob
+# carries three keys for uid "Olivier Deprez <olivier.deprez@arm.com>"; the
+# 2020 and 2022 ones expired in 2022 and 2024, and 5D6F8960...B8673E0C is the
+# current one. The API reports it as key_id 89C08CFDB8673E0C, created
+# 2024-11-21, "expires_at": null, "can_sign": true, bound to the
+# GitHub-VERIFIED email olivier.deprez@arm.com.
+#
+# What that buys, and what it does not:
+#   + The signature verifies (step 3) and the tarball is that tag's tree
+#     (step 4). Whoever holds this key made the v2.15.0 release tag.
+#   + The account is corroborated: GitHub attributes Olivier Deprez's TF-A
+#     commits to login "odeprez" (checked ba3972a2, 3cbc3f96, fa5070b0 -- all
+#     three report "author": {"login": "odeprez"}), and he is a listed
+#     maintainer in docs/about/maintainers.rst. GitHub's own API also reports
+#     tag object 9ad327a8... as {"verified": true, "reason": "valid",
+#     "verified_at": "2026-05-29T09:11:19Z"}.
+#   - The trust anchor is GitHub account control plus TLS to github.com. It is
+#     NOT a trustedfirmware.org keyring, NOT a keyserver or WKD hit, and NOT a
+#     web-of-trust path: `gpg --list-sigs` shows the key carries only
+#     self-signatures, so no third party vouches for it.
+#
+# So this is a SIGNATURE-VERIFIED chain anchored on a self-published key: one
+# step weaker than uboot.hash's next door (a maintainer key pulled by full
+# fingerprint from keys.openpgp.org), one step stronger than the
+# trust-on-first-use value this file recorded before 2026-09-14. Do not move
+# the wording in either direction without re-running the commands above.
+#
+# TO STRENGTHEN IT FURTHER: a trustedfirmware.org-published release keyring,
+# or the key appearing on keys.openpgp.org under the verified arm.com address,
+# would replace the GitHub anchor. Neither exists today.
+#
+# ON A VERSION BUMP: re-derive both lines, and re-do steps 1-5 for the new tag
+# -- `git tag -v` included, which now has a key to check against (import
+# https://github.com/odeprez.gpg, or whatever key the new tagger publishes;
+# confirm the fingerprint above still matches). The cheap way to get the hash
+# value itself is to set it to all zeros, run `make de25`, and transcribe the
+# "got" value the check-hash error prints.
 sha256  b807d8bf190b7c46b4260729b4bbe2f7df83cd1086edcb181d66595ae6598d23  arm-trusted-firmware-v2.15.0-git4.tar.gz

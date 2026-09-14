@@ -1,4 +1,4 @@
-From: MiSTer Buildroot (DE25-Nano board support)
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 Subject: [PATCH] configs: socfpga_soc64: only define mtdids/mtdparts env when MTD exists
 
 CFG_EXTRA_ENV_SETTINGS in socfpga_soc64_common.h references
@@ -29,7 +29,7 @@ defined. No functional change for any board that has MTD or SPI_FLASH.
 Upstream status: not submitted yet. Local carry for
 board/mister/de25nano; see docs/de25-uboot.md.
 
-Signed-off-by: MiSTer Buildroot <noreply@example.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
 --- a/include/configs/socfpga_soc64_common.h
 +++ b/include/configs/socfpga_soc64_common.h

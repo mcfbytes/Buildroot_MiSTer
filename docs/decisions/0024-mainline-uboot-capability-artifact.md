@@ -1,6 +1,22 @@
 # ADR 0024 — The from-source U-Boot is built from **mainline**, not the 2017.03 fork, and exists as a non-shipping capability artifact (supersedes ADR 0017 §Decision 1–3)
 
-**Status:** Accepted (2026-07-28) — decided by @mcfbytes
+**Status:** Accepted (2026-07-28) — decided by @mcfbytes.
+**Amended (2026-09-14) by @mcfbytes, recorded in [`docs/uboot-mainline-port.md`](../uboot-mainline-port.md)
+(revision note) and executed by [`docs/uboot-tasks.md`](../uboot-tasks.md):** §Decision 1's pin
+is now **2026.07** — Buildroot 2026.08 bundles it, so `BR2_TARGET_UBOOT_LATEST_VERSION=y`
+resolves there and the pin rides the Buildroot bump, guarded by the resolved-`.config`
+assertion and a new handoff-equality check rather than by a frozen version (deltas 4a–4d
+re-verified in the 2026.07 tarball). §Decision 5 is amended: the fork's `mt` command is
+**carried** (23 lines), so the default environment is byte-identical to stock's and the parity
+check is a plain `cmp`; the `itest` rewrite is the documented fallback. The plan's open
+questions on the warm-reboot bridge behaviour and the QTS scalar values are decided by one
+rule — **mirror stock**: carry the fork's C change and the fork's values unmodified. The
+never-merged ADR 0023 draft (branch `docs/adr-0023-uboot-mainline-handoff`; its number was
+reused by the 7-Zip ADR) is folded into the plan's §3.2a/§6 and the branch deleted. The
+artifact still ships nowhere; the owner has said a custom DE10-Nano bootloader will likely
+never ship unless stock's stops working, and the hardware gate (§Decision 6) is deferred
+indefinitely, not waived. Whether the build joins `mister_de10nano_defconfig` (amending
+"What does not change", third bullet) is an open owner question — plan §9 item 9.
 **Supersedes:** [ADR 0017](0017-uboot-from-mister-fork-full-sd-image.md) §Decision items
 **1** (build the fork, not mainline), **2** (the `u-boot/` submodule pin), and **3**
 (behavioural parity against the fork as the acceptance test). ADR 0017 §Decision **4**

@@ -14,7 +14,8 @@
  *            arch/arm64/boot/dts/intel/socfpga_agilex5_de25_nano.dts (+ .dtsi)
  *   ALTERA   github.com/altera-fpga/linux-socfpga @ socfpga-6.18.20-lts
  *            arch/arm64/boot/dts/intel/socfpga_agilex5_de25_nano.dts (+ .dtsi)
- *   FRIEND   /mnt/source/de25-linux (6.18.38 + vendor backports)
+ *   PORT     a third-party DE25-Nano Linux port (6.18.38 + vendor backports),
+ *            consulted read-only; not public
  *            arch/arm64/boot/dts/intel/socfpga_agilex5_de25_nano.dts (+ .dtsi)
  *   MAINLINE linux-7.2.2 arch/arm64/boot/dts/intel/socfpga_agilex5{,_socdk}.dts
  *
@@ -26,7 +27,7 @@
 
 / {
 	/*
-	 * MAINLINE + TERASIC + ALTERA + FRIEND all use the SoCDK compatible.
+	 * MAINLINE + TERASIC + ALTERA + PORT all use the SoCDK compatible.
 	 * It is factually wrong for a DE25-Nano, but the Agilex 5 board list in
 	 * Documentation/devicetree/bindings/arm/altera.yaml is a closed five-value
 	 * enum, so a "terasic,de25-nano" string would fail dtbs_check and buy
@@ -37,14 +38,14 @@
 	compatible = "intel,socfpga-agilex5-socdk", "intel,socfpga-agilex5";
 
 	aliases {
-		/* Console UART: uart1 (serial@10c02100).  TERASIC, ALTERA and FRIEND
+		/* Console UART: uart1 (serial@10c02100).  TERASIC, ALTERA and PORT
 		 * all agree; MAINLINE's socdk board uses uart0, which is a different
 		 * board.  See docs/de25-dts-rationale.md §"Console UART". */
 		serial0 = &uart1;
 		/* ethernet0 is LOAD-BEARING, not cosmetic: U-Boot's
 		 * fdt_fixup_ethernet() walks /aliases for ethernetN and writes
 		 * $ethaddr into the node it names.  Same lesson as the DE10
-		 * (docs/dts-comparison.md §3.3).  TERASIC + ALTERA + FRIEND. */
+		 * (docs/dts-comparison.md §3.3).  TERASIC + ALTERA + PORT. */
 		ethernet0 = &gmac0;
 		/* ALTERA only.  Pins the sole enabled i2c adapter to /dev/i2c-1
 		 * instead of letting it float on dynamic numbering — the DE10's
@@ -54,9 +55,9 @@
 	};
 
 	chosen {
-		stdout-path = "serial0:115200n8";	/* TERASIC + ALTERA + FRIEND */
+		stdout-path = "serial0:115200n8";	/* TERASIC + ALTERA + PORT */
 		/*
-		 * No bootargs.  TERASIC and FRIEND carry a stale string whose
+		 * No bootargs.  TERASIC and PORT carry a stale string whose
 		 * console=/earlycon= name uart0's address (0x10c02000) while their
 		 * own stdout-path names uart1 — self-contradictory, and dead in any
 		 * case because U-Boot's fdt_chosen() overwrites /chosen/bootargs
@@ -68,7 +69,7 @@
 		compatible = "gpio-leds";
 
 		/*
-		 * Node name from ALTERA.  TERASIC/FRIEND call it "hps0", which does
+		 * Node name from ALTERA.  TERASIC/PORT call it "hps0", which does
 		 * not match leds-gpio.yaml's child pattern "(^led-[0-9a-f]$|led)"
 		 * and is therefore rejected by that binding's additionalProperties.
 		 * The class-device name comes from "label", not the node name, so
@@ -76,15 +77,17 @@
 		 */
 		led-0 {
 			label = "hps_led0";
-			gpios = <&portb 17 GPIO_ACTIVE_LOW>;	/* TERASIC + ALTERA + FRIEND */
+			gpios = <&portb 17 GPIO_ACTIVE_LOW>;	/* TERASIC + ALTERA + PORT */
 		};
 	};
 
 	/*
 	 * MAINLINE's socfpga_agilex5.dtsi has no memory node, so the board file
 	 * must supply one.  1 GiB at 0x8000_0000 matches the *UM* and the DE25
-	 * U-Boot DTS constant (de25-uboot-socfpga:.../socfpga_agilex5_de25_nano-
-	 * u-boot.dtsi, "/* 1GB *\/  reg = <0 0x80000000 0 0x40000000>").
+	 * U-Boot DTS constant Terasic's public branch declares
+	 * (github.com/terasic/u-boot-socfpga @ de25-nano-v2025.01,
+	 * arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi,
+	 * "/* 1GB *\/  reg = <0 0x80000000 0 0x40000000>").
 	 *
 	 * Be precise about what that is: a DECLARED CONSTANT, not a measurement.
 	 * The real size comes from the IO96B controller at runtime —
@@ -95,7 +98,7 @@
 	 * CONFIG_ARCH_FIXUP_FDT_MEMORY default y).  So this value is a fallback
 	 * that only matters if that fixup does not run.
 	 *
-	 * It is still the right value to state.  TERASIC and FRIEND hard-code
+	 * It is still the right value to state.  TERASIC and PORT hard-code
 	 * 2 GiB, which over-claims on a 1 GiB board; ALTERA and MAINLINE's socdk
 	 * declare size 0, which boots nothing if the fixup is skipped.
 	 * Under-claiming degrades gracefully where neither of those does.
@@ -179,7 +182,7 @@
 
 /*
  * SMMU: DISABLED for wave 1 — a deliberate divergence from TERASIC, ALTERA and
- * FRIEND, all three of which set status = "okay".  This is MAINLINE 7.2's own
+ * PORT, all three of which set status = "okay".  This is MAINLINE 7.2's own
  * default (the node is enabled at master), and it is not a convenience: with
  * the SMMU ON, mainline's FPGA-configuration path CANNOT work on this SoC.
  *
@@ -207,7 +210,7 @@
  * can possibly program this fabric.  It is not *proven* to work either — the
  * vendor driver hard-fails without the SMMU, and mainline never touches the
  * remapper — but it is the leg to test first (de25-implementation-path.md
- * §2.6 step 4), and the closest supporting evidence is the friend's
+ * §2.6 step 4), and the closest supporting evidence is the PORT's
  * iommu.passthrough=1 cold boot reaching a login prompt.
  *
  * Every iommus property in the tree is KEPT and simply goes inert:
@@ -236,7 +239,7 @@
 	 * the SD-boot gate.  Authored here in SD4HC form.
 	 *
 	 * reg / interrupts / resets / clocks / iommus / dma-coherent are
-	 * byte-identical in TERASIC (:851-865) and FRIEND (:384-398), and ALTERA
+	 * byte-identical in TERASIC (:851-865) and PORT (:384-398), and ALTERA
 	 * agrees on all of them except the reset list.  ALTERA's node is NOT
 	 * usable: it declares "altr,agilex5-sd6hc","cdns,sd6hc", and cdns,sd6hc
 	 * exists nowhere in mainline — it targets Altera's out-of-tree SD6HC
@@ -254,11 +257,11 @@
 	 */
 	mmc0: mmc@10808000 {
 		compatible = "intel,agilex5-sd4hc", "cdns,sd4hc";
-		reg = <0x10808000 0x1000>;			/* TERASIC + ALTERA + FRIEND */
-		interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;	/* TERASIC + ALTERA + FRIEND */
-		resets = <&rst SDMMC_RESET>;			/* TERASIC + FRIEND */
-		clocks = <&clkmgr AGILEX5_L4_MP_CLK>,		/* biu — TERASIC + ALTERA + FRIEND */
-			 <&clkmgr AGILEX5_SDMCLK>;		/* ciu — TERASIC + ALTERA + FRIEND */
+		reg = <0x10808000 0x1000>;			/* TERASIC + ALTERA + PORT */
+		interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;	/* TERASIC + ALTERA + PORT */
+		resets = <&rst SDMMC_RESET>;			/* TERASIC + PORT */
+		clocks = <&clkmgr AGILEX5_L4_MP_CLK>,		/* biu — TERASIC + ALTERA + PORT */
+			 <&clkmgr AGILEX5_SDMCLK>;		/* ciu — TERASIC + ALTERA + PORT */
 		clock-names = "biu", "ciu";
 
 		/*
@@ -273,7 +276,7 @@
 		 * is still correct and still wanted — it is what makes the SMMU-on leg
 		 * of the §2.6 test survivable — it is just not load-bearing here.
 		 */
-		iommus = <&smmu 5>;				/* TERASIC + ALTERA + FRIEND */
+		iommus = <&smmu 5>;				/* TERASIC + ALTERA + PORT */
 		/*
 		 * KEPT.  Corroborated inside MAINLINE itself: the sibling nand
 		 * controller on this same SoC carries dma-coherent in
@@ -295,7 +298,7 @@
 
 		/* ---- board wiring below this line ---- */
 
-		bus-width = <4>;			/* TERASIC + ALTERA + FRIEND */
+		bus-width = <4>;			/* TERASIC + ALTERA + PORT */
 
 		/*
 		 * FIRST-BOOT CLOCK CAP.  Mainline's sdhci-cadence programs NONE of the
@@ -303,17 +306,17 @@
 		 * only eleven cdns,phy-input-delay-* / cdns,phy-dll-delay-* names,
 		 * sdhci-cadence.c:108-119), so Linux inherits whatever PHY state U-Boot
 		 * left behind rather than configuring it.  The ONLY boot of this board
-		 * on a mainline sdhci-cadence driver — FRIEND,
+		 * on a mainline sdhci-cadence driver — PORT,
 		 * socfpga_agilex5_de25_nano.dts:110-126 — reached that state only after
 		 * dropping high-speed advertisement and capping the clock at 25 MHz,
 		 * following corrupted SD SCR reads.  Start where the one working data
 		 * point is.  Lift this once a sustained dd read/write is clean; see
 		 * docs/de25-dts-rationale.md [U3].
 		 */
-		max-frequency = <25000000>;		/* FRIEND */
+		max-frequency = <25000000>;		/* PORT */
 
 		/*
-		 * KEPT even though FRIEND drops it, because dropping it would be
+		 * KEPT even though PORT drops it, because dropping it would be
 		 * theatre: sdhci.c:4572 sets MMC_CAP_SD_HIGHSPEED from the capability
 		 * register's SDHCI_CAN_DO_HISPD (bit 21) regardless of DT, and our
 		 * sdhci-caps-mask does not clear that bit.  max-frequency above is the
@@ -322,9 +325,9 @@
 		 * mask to <0x00002000 0x0020ff00>, not deleting this line.
 		 */
 		cap-sd-highspeed;			/* TERASIC + ALTERA */
-		disable-wp;				/* TERASIC + ALTERA + FRIEND — no WP switch wired */
-		no-1-8-v;				/* TERASIC + FRIEND — 3.3V-only signalling */
-		no-sdio;				/* TERASIC + FRIEND — SD card slot only */
+		disable-wp;				/* TERASIC + ALTERA + PORT — no WP switch wired */
+		no-1-8-v;				/* TERASIC + PORT — 3.3V-only signalling */
+		no-sdio;				/* TERASIC + PORT — SD card slot only */
 
 		/*
 		 * sdhci-caps / sdhci-caps-mask are LIVE on mainline: sdhci.c's
@@ -348,13 +351,13 @@
 };
 
 &gmac0 {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND */
+	status = "okay";			/* TERASIC + ALTERA + PORT */
 	/* "rgmii", not "rgmii-id": ALTERA's file states the TX/RX delays are on
 	 * the PCB, so asking the PHY for internal delay as well would double it.
 	 * Same trap as the DE10's gmac1 (docs/dts-comparison.md §3.2). */
-	phy-mode = "rgmii";			/* TERASIC + ALTERA + FRIEND */
+	phy-mode = "rgmii";			/* TERASIC + ALTERA + PORT */
 	phy-handle = <&emac0_phy0>;
-	max-frame-size = <9000>;		/* TERASIC + ALTERA + FRIEND */
+	max-frame-size = <9000>;		/* TERASIC + ALTERA + PORT */
 
 	/*
 	 * Node name "mdio0" is kept deliberately.  It does not match mdio.yaml's
@@ -385,19 +388,19 @@
 };
 
 &gpio1 {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND — portb, used by led-0 */
+	status = "okay";			/* TERASIC + ALTERA + PORT — portb, used by led-0 */
 };
 
 &i2c1 {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND */
+	status = "okay";			/* TERASIC + ALTERA + PORT */
 };
 
 &uart1 {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND — console */
+	status = "okay";			/* TERASIC + ALTERA + PORT — console */
 };
 
 &usb0 {
-	status = "okay";			/* TERASIC + ALTERA + FRIEND */
+	status = "okay";			/* TERASIC + ALTERA + PORT */
 	/* dwc2 property, live on mainline (Documentation/.../usb/dwc2.yaml).
 	 * No dr_mode: none of the three reference files sets one, so dwc2 reads
 	 * the OTG capability out of the hardware.  Flagged [U] in the rationale. */
@@ -405,7 +408,7 @@
 };
 
 /*
- * Watchdogs.  MAINLINE leaves all five disabled; TERASIC, ALTERA and FRIEND all
+ * Watchdogs.  MAINLINE leaves all five disabled; TERASIC, ALTERA and PORT all
  * enable all five.  Kept at parity deliberately: dw_wdt sets WDOG_HW_RUNNING
  * when it finds the watchdog already started by firmware and the watchdog core
  * then pets it until userspace opens the device.  A watchdog started by the SPL
@@ -415,7 +418,7 @@
  * Dropped from all five: nothing.  Dropped from watchdog4: TERASIC's
  * "disable-over-current", which is a copy-paste of the usb0 property onto a
  * watchdog — meaningless to snps,dw-wdt, absent from its binding, and carried
- * unchanged into ALTERA and FRIEND.
+ * unchanged into ALTERA and PORT.
  */
 &watchdog0 {
 	status = "okay";
@@ -442,7 +445,7 @@
 	 * MAINLINE declares osc1 as a fixed-clock with clock-frequency = <0>;
 	 * it is the root of the whole peripheral clock tree, so leaving it at 0
 	 * yields a zero rate everywhere downstream.  25 MHz per TERASIC + ALTERA
-	 * + FRIEND (and the DE25-Nano's 25 MHz HPS oscillator).
+	 * + PORT (and the DE25-Nano's 25 MHz HPS oscillator).
 	 */
 	clock-frequency = <25000000>;
 };

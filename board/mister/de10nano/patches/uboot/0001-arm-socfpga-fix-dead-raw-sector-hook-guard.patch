@@ -1,0 +1,109 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Sep 2026 00:00:00 +0000
+Subject: [PATCH] arm: socfpga: fix dead raw-sector hook guard after the
+ TARGET->ARCH rename
+
+board_spl_mmc_get_uboot_raw_sector() is the hook that adds the +0x200
+sector offset a `u-boot-with-spl.sfp` image needs when U-Boot proper is
+loaded from a raw MMC partition (CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_
+PARTITION_TYPE=y, boot-chain.md section 2.1): the image is four 64 KiB
+SPL copies followed by U-Boot proper, and SPL loads U-Boot proper from
+that fixed offset inside the partition rather than from its start.
+
+The hook has been compiled out since 2026-02-13 for every Gen5/Arria10
+SoCFPGA board, DE10-Nano included, and nothing has noticed because the
+fallback it silently leaves in place -- common/spl/spl_mmc.c's __weak
+board_spl_mmc_get_uboot_raw_sector(), which just returns raw_sect
+unchanged -- still lets SPL locate *a* U-Boot proper image; it is just
+the wrong one (SPL copy 0 instead of the real payload after it), which
+is a boot-time brick, not a build-time failure.
+
+The break: commit 62f7a94602 ("Replace TARGET namespace and cleanup
+properly", 2026-02-13) renamed the SoCFPGA family Kconfig symbols from
+CONFIG_TARGET_SOCFPGA_* to CONFIG_ARCH_SOCFPGA_* across the tree, but
+missed the #if guard added ten weeks earlier by commit 1cf1b504f4
+("arch: arm: mach-socfpga: Adjust a raw sectors for MMC loading of
+U-Boot from SPL", 2025-12-11), which still reads:
+
+    #if (defined(CONFIG_TARGET_SOCFPGA_ARRIA10) || \
+         defined(CONFIG_TARGET_SOCFPGA_GEN5)) && defined(CONFIG_XPL_BUILD)
+
+CONFIG_TARGET_SOCFPGA_ARRIA10 and CONFIG_TARGET_SOCFPGA_GEN5 are gone
+from Kconfig -- these two lines are the only remaining references to
+either symbol in the whole tree -- so the #if is permanently false and
+board_spl_mmc_get_uboot_raw_sector() never compiles for any Gen5 or
+Arria10 target. Confirmed still present, byte-for-byte, at this
+repo's mainline-board-support mirror of u-boot/u-boot.git HEAD
+5c215cb75c3723cbf77c36cbac3e60b001721c79 (2026-07-27); the wider plan
+research (docs/uboot-mainline-port.md section 3.1 row 2) independently
+found it unfixed at v2026.10-rc1 too. One-line-per-symbol rename fix:
+s/CONFIG_TARGET_SOCFPGA_/CONFIG_ARCH_SOCFPGA_/ on both lines.
+
+Verified by rebuild against u-boot-2026.07 (socfpga_de10_nano_defconfig
++ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE=y, this repo's
+arm-buildroot-linux-gnueabihf- cross toolchain), task U2a:
+
+  * Without this patch: `nm spl/u-boot-spl` still lists the symbol --
+    the __weak fallback chain (spl_mmc_get_uboot_raw_sector :322 ->
+    board_spl_mmc_get_uboot_raw_sector :316 ->
+    arch_spl_mmc_get_uboot_raw_sector :310, all three __weak, all in
+    common/spl/spl_mmc.c) means the *name* is never absent -- but as
+    type W (weak). objdump shows
+    board_spl_mmc_get_uboot_raw_sector as a single `b.w` tail-branch
+    into arch_spl_mmc_get_uboot_raw_sector, whose body is `mov r0, r1;
+    bx lr`: raw_sect passes straight through unmodified and no +0x200
+    is ever added.
+  * With this patch: `nm spl/u-boot-spl` lists it as type T (this
+    board.c definition, strong, overriding the weak default) --
+    alongside the still-weak `W spl_mmc_get_uboot_raw_sector`, so an
+    assertion must match `T board_spl_mmc_get_uboot_raw_sector`
+    exactly, never a bare grep for "raw_sector" -- and
+    objdump of the function is `add.w r0, r1, #0x200; bx lr` --
+    (CONFIG_SPL_PAD_TO * 4) / 512 = (0x10000 * 4) / 512 = 0x200 with
+    this defconfig, matching boot-chain.md section 2.1 exactly.
+
+Provenance
+----------
+Origin:       No existing upstream commit -- this is a follow-up fix to
+              a gap left by 62f7a94602 and 1cf1b504f4 (both cited above
+              and unmodified by this patch). Written against
+              u-boot-2026.07 (dl/uboot/u-boot-2026.07.tar.bz2) for this
+              task; not derived from any other tree.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Copyright:    The surrounding file (arch/arm/mach-socfpga/board.c) is
+              upstream U-Boot, SPDX GPL-2.0+; this hunk carries no new
+              copyright claim, it corrects two macro names.
+Upstream status: Not in mainline. Two U-Boot commits away from being a
+              trivial fix (see "The break" above) that a socfpga
+              maintainer could merge in one line-for-line review. To be
+              submitted upstream (U7): a submission is drafted under
+              docs/verification/uboot-upstream/ by task U7-prep but, per
+              owner decision 4, deliberately NOT sent to any mailing
+              list -- U7 itself is "send, on the owner's go only".
+Disposition:  Bug fix, brick-class (docs/uboot-mainline-port.md section
+              3.1 row 2: "With #1 applied, raw_sect is 0 and the SPL
+              would load from the *start* of the 0xA2 partition -- i.e.
+              SPL copy 0"). Required for this repo's mainline U-Boot
+              build artifact (task U2g) to boot at all; carried until
+              upstream picks it up.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ arch/arm/mach-socfpga/board.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-socfpga/board.c b/arch/arm/mach-socfpga/board.c
+index 4d7f0b9..fd7f15b 100644
+--- a/arch/arm/mach-socfpga/board.c
++++ b/arch/arm/mach-socfpga/board.c
+@@ -211,8 +211,8 @@ void lmb_arch_add_memory(void)
+ }
+ #endif
+ 
+-#if (defined(CONFIG_TARGET_SOCFPGA_ARRIA10) || \
+-     defined(CONFIG_TARGET_SOCFPGA_GEN5)) && defined(CONFIG_XPL_BUILD)
++#if (defined(CONFIG_ARCH_SOCFPGA_ARRIA10) || \
++     defined(CONFIG_ARCH_SOCFPGA_GEN5)) && defined(CONFIG_XPL_BUILD)
+ unsigned long board_spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
+ 						 unsigned long raw_sect)
+ {

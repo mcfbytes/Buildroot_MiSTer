@@ -55,6 +55,18 @@
 #                                 (default: <build-dir>/ci-tests-results.txt). Best
 #                                 -effort: if the path is not writable the run still
 #                                 passes. Upload this as a CI artifact.
+#   STOCK_UBOOT_IMG=<path>        a local stock uboot.img (docs/uboot-tasks.md U5):
+#                                 when this exists, the U-Boot section runs the
+#                                 FULL check-uboot-parity.sh/check-uboot-handoff.sh
+#                                 comparison against it; otherwise it runs their
+#                                 offline (structural-only / built-SPL-only)
+#                                 subset and the full comparison is left to
+#                                 .github/workflows/release.yml, which already
+#                                 has the blob on every tagged release. Default,
+#                                 same as scripts/test-uboot-parity.sh's:
+#                                 <repo-root>/output-sdcard-stage/mister-payload/
+#                                 linux/uboot.img (scripts/fetch-sdcard-payload.sh's
+#                                 product path).
 
 set -u
 # Deliberately not -e: this script's entire job is "run every check, keep going,
@@ -345,6 +357,196 @@ else
 		else
 			fail "test-initramfs.sh --board de25nano (aarch64 QEMU boot test, 8 cases)" "one or more of the 8 cases failed -- see output above"
 		fi
+	fi
+fi
+
+# =============================================================================
+section "U-Boot (DE10-Nano, ships nowhere) -- docs/uboot-tasks.md U5"
+# =============================================================================
+# Owner decision 1: the DE10's mainline U-Boot builds inside
+# configs/mister_de10nano_defconfig and SHIPS NOWHERE -- never named uboot.img,
+# never staged into a release; the shipped bootloader stays the stock blob
+# (docs/verification/uboot-mainline.md). This section asserts that boundary
+# (always, offline, every PR) and then runs the two U4 gates
+# (scripts/check-uboot-parity.sh, scripts/check-uboot-handoff.sh) at whatever
+# depth the local tree supports:
+#   - offline (every run): structural-only parity (SPL/uImage headers, CRCs,
+#     the four SPL copies -- properties of the built .sfp alone, no stock
+#     needed) and the handoff tables' presence in the built SPL (the same
+#     image passed as both arguments -- scripts/check-uboot-handoff.sh's own
+#     header documents this as a legitimate call shape);
+#   - full (when a stock uboot.img is on disk -- STOCK_UBOOT_IMG, or a prior
+#     scripts/fetch-sdcard-payload.sh run): the complete environment/
+#     command-table comparison against stock. This is NOT required to pass in
+#     every PR -- CI stays offline by design (no 126 MB download per run) --
+#     it is what .github/workflows/release.yml runs unconditionally right
+#     after its own stock-payload fetch, so every tagged release proves it.
+
+UBOOT_SFP="$IMAGES/u-boot-with-spl.sfp"
+UBOOT_SHIPPED_IMG="$IMAGES/uboot.img"
+
+if [ -f "$UBOOT_SFP" ]; then
+	pass "images/u-boot-with-spl.sfp exists ($(wc -c < "$UBOOT_SFP" | tr -d ' ') bytes)"
+else
+	fail "images/u-boot-with-spl.sfp exists" "not found at $UBOOT_SFP -- owner decision 1 builds it into every configs/mister_de10nano_defconfig image"
+fi
+
+if [ -e "$UBOOT_SHIPPED_IMG" ]; then
+	fail "no images/uboot.img" "$UBOOT_SHIPPED_IMG exists -- the mainline build must never be named uboot.img (docs/uboot-tasks.md's naming rule; that name is reserved for the stock blob)"
+else
+	pass "no images/uboot.img (the mainline build ships nowhere)"
+fi
+
+# scripts/mk-release.sh stages named files only (linux.img, zImage_dtb[-rt],
+# buildroot.config, linux.config, linux-rt.config, legal-info.tar.gz,
+# release_<date>.7z, SHA256SUMS) -- asserted anyway, so a future edit that
+# widens the stage cannot silently pick up either bootloader artifact.
+#
+# NOTE ON WHERE THIS BITES IN CI: in BOTH workflows this suite runs BEFORE
+# scripts/mk-release.sh creates dist/ (build.yml never creates one at all;
+# release.yml runs verify-image first and mk-release.sh after), so in CI this
+# check always SKIPs -- it can only fire for a developer who runs the suite
+# after a local mk-release.sh. The CI-side teeth for the same invariant are in
+# .github/workflows/release.yml's "Verify U-Boot (DE10) parity against the
+# stock blob" step, which runs after dist/ exists and greps it there. Keep
+# both: this one catches it on the desk, that one catches it on a tag.
+UBOOT_RELEASE_STAGE="$ROOT/dist"
+if [ -d "$UBOOT_RELEASE_STAGE" ]; then
+	_ub_stage_hits=$(find "$UBOOT_RELEASE_STAGE" -maxdepth 1 \( -name 'uboot.img' -o -name '*.sfp' \) 2>/dev/null)
+	if [ -n "$_ub_stage_hits" ]; then
+		fail "no uboot.img/*.sfp in the release stage" "$UBOOT_RELEASE_STAGE has: $(printf '%s' "$_ub_stage_hits" | tr '\n' ' ')"
+	else
+		pass "no uboot.img/*.sfp in the release stage ($UBOOT_RELEASE_STAGE)"
+	fi
+else
+	skip "no uboot.img/*.sfp in the release stage" "no $UBOOT_RELEASE_STAGE yet -- this suite runs before scripts/mk-release.sh in both workflows, so the release-time assertion lives in .github/workflows/release.yml's U-Boot step instead"
+fi
+
+# The single build tree under this $BUILD_DIR -- uniqueness-guarded the same
+# way the initramfs section guards the kernel .config glob above, but under a
+# LOCAL `nullglob`: without it bash keeps an unmatched glob as its literal
+# string, so "no U-Boot build tree at all" reported itself as "found 1" in the
+# skip reason below. Saved and restored rather than set globally -- the rest of
+# this suite's globs are written for the default (literal) behaviour.
+if shopt -q nullglob; then _ub_nullglob_was_set=1; else _ub_nullglob_was_set=0; shopt -s nullglob; fi
+_ub_uboot_tree=("$BUILD_DIR"/build/uboot-*)
+[ "$_ub_nullglob_was_set" -eq 1 ] || shopt -u nullglob
+UBOOT_BUILD_TREE=""
+if [ "${#_ub_uboot_tree[@]}" -eq 1 ] && [ -d "${_ub_uboot_tree[0]}" ]; then
+	UBOOT_BUILD_TREE="${_ub_uboot_tree[0]}"
+fi
+UBOOT_QTS_DIR="$UBOOT_BUILD_TREE/board/terasic/de10-nano/qts"
+UBOOT_ELF="$UBOOT_BUILD_TREE/u-boot"
+
+echo
+printf -- '--- check-uboot-parity.sh (structural-only: no stock reference -- offline) ---\n'
+if [ -f "$UBOOT_SFP" ]; then
+	if "$ROOT/scripts/check-uboot-parity.sh" "$UBOOT_SFP"; then
+		pass "check-uboot-parity.sh (structural-only, offline)"
+	else
+		fail "check-uboot-parity.sh (structural-only, offline)" "'check-uboot-parity.sh $UBOOT_SFP' exited nonzero -- see output above"
+	fi
+else
+	skip "check-uboot-parity.sh (structural-only, offline)" "no $UBOOT_SFP to check"
+fi
+
+echo
+printf -- '--- check-uboot-handoff.sh (built SPL only: same image as both arguments -- offline) ---\n'
+if [ -f "$UBOOT_SFP" ] && [ -d "$UBOOT_QTS_DIR" ]; then
+	if "$ROOT/scripts/check-uboot-handoff.sh" "$UBOOT_QTS_DIR" "$UBOOT_SFP" "$UBOOT_SFP"; then
+		pass "check-uboot-handoff.sh (built SPL only, offline)"
+	else
+		fail "check-uboot-handoff.sh (built SPL only, offline)" "'check-uboot-handoff.sh $UBOOT_QTS_DIR $UBOOT_SFP $UBOOT_SFP' exited nonzero -- see output above"
+	fi
+elif [ ! -f "$UBOOT_SFP" ]; then
+	skip "check-uboot-handoff.sh (built SPL only, offline)" "no $UBOOT_SFP to check"
+elif [ -z "$UBOOT_BUILD_TREE" ]; then
+	skip "check-uboot-handoff.sh (built SPL only, offline)" "expected exactly one $BUILD_DIR/build/uboot-*/ to read the QTS headers from, found ${#_ub_uboot_tree[@]}"
+else
+	skip "check-uboot-handoff.sh (built SPL only, offline)" "no $UBOOT_QTS_DIR -- the U-Boot tree is there but carries no QTS headers (patch 0003 did not apply?)"
+fi
+
+echo
+# Two distinct reasons the full comparison can be unavailable, reported
+# separately: an image that was never built is a different problem from a
+# stock blob that was never fetched, and collapsing them into one message sent
+# a reader looking for STOCK_UBOOT_IMG when the real fault was upstream of it.
+UBOOT_STOCK_IMG="${STOCK_UBOOT_IMG:-$ROOT/output-sdcard-stage/mister-payload/linux/uboot.img}"
+_ub_full_why=""
+if [ ! -f "$UBOOT_SFP" ]; then
+	_ub_full_why="no $UBOOT_SFP to compare -- nothing was built (see the FAIL above); the stock reference is not the missing piece"
+elif [ ! -f "$UBOOT_STOCK_IMG" ]; then
+	_ub_full_why="no stock uboot.img at $UBOOT_STOCK_IMG -- set STOCK_UBOOT_IMG, run scripts/fetch-sdcard-payload.sh, or leave it to .github/workflows/release.yml, which runs this full comparison on every tagged release (CI stays offline by design: no 126 MB download per PR)"
+fi
+if [ -z "$_ub_full_why" ]; then
+	printf -- '--- check-uboot-parity.sh (full, against %s) ---\n' "$UBOOT_STOCK_IMG"
+	_ub_parity_cmd=("$ROOT/scripts/check-uboot-parity.sh" "$UBOOT_SFP" "$UBOOT_STOCK_IMG")
+	[ -f "$UBOOT_ELF" ] && _ub_parity_cmd+=("$UBOOT_ELF")
+	_ub_spl_limit=""
+	[ -x "$UBOOT_BUILD_TREE/tools/spl_size_limit" ] && _ub_spl_limit=$("$UBOOT_BUILD_TREE/tools/spl_size_limit" 2>/dev/null || true)
+	if SPL_SIZE_LIMIT="$_ub_spl_limit" "${_ub_parity_cmd[@]}"; then
+		pass "check-uboot-parity.sh (full, stock reference)"
+	else
+		fail "check-uboot-parity.sh (full, stock reference)" "'${_ub_parity_cmd[*]}' exited nonzero -- see output above"
+	fi
+
+	echo
+	printf -- '--- check-uboot-handoff.sh (full, against %s) ---\n' "$UBOOT_STOCK_IMG"
+	if [ -d "$UBOOT_QTS_DIR" ]; then
+		if "$ROOT/scripts/check-uboot-handoff.sh" "$UBOOT_QTS_DIR" "$UBOOT_SFP" "$UBOOT_STOCK_IMG"; then
+			pass "check-uboot-handoff.sh (full, stock reference)"
+		else
+			fail "check-uboot-handoff.sh (full, stock reference)" "'check-uboot-handoff.sh $UBOOT_QTS_DIR $UBOOT_SFP $UBOOT_STOCK_IMG' exited nonzero -- see output above"
+		fi
+	elif [ -z "$UBOOT_BUILD_TREE" ]; then
+		skip "check-uboot-handoff.sh (full, stock reference)" "expected exactly one $BUILD_DIR/build/uboot-*/ to read the QTS headers from, found ${#_ub_uboot_tree[@]}"
+	else
+		skip "check-uboot-handoff.sh (full, stock reference)" "no $UBOOT_QTS_DIR -- the U-Boot tree is there but carries no QTS headers (patch 0003 did not apply?)"
+	fi
+else
+	skip "check-uboot-parity.sh (full, stock reference)" "$_ub_full_why"
+	skip "check-uboot-handoff.sh (full, stock reference)" "$_ub_full_why"
+fi
+
+# =============================================================================
+section "DE25-Nano -- QSPI-write audit, Linux side (de25-boot-chain.md section 7 row 11)"
+# =============================================================================
+# The U-Boot-side half of this audit lives in external.mk's
+# MISTER_UBOOT_DE25_QSPI_AUDIT hook (docs/uboot-tasks.md DU2), which runs
+# inside the U-Boot build and asserts the resolved .config and the built
+# u-boot.itb. This is the half that hook cannot see: a rootfs-shipped
+# fw_env.config whose device line names an MTD device lets Linux-side
+# `fw_setenv`/libubootenv write QSPI directly, without U-Boot involved --
+# row 5's CONFIG_ENV_IS_IN_UBI=n guard does not protect this path, because
+# fw_setenv does not consult U-Boot's compiled-in env driver at all
+# (de25-boot-chain.md section 7 row 11: "Brick-class and silent").
+#
+# The grep is deliberately broad and fail-closed: any uncommented line naming
+# "mtd" OR "ubi" fails. A UBI volume (/dev/ubi0_0) is the Linux-side twin of
+# row 5's hazard -- fw_setenv writing a UBI volume attaches and writes the
+# same QSPI MTD -- so it is caught by the same check rather than left to a
+# second one.
+DE25_TARGET="$ROOT/output-de25/target"
+if [ ! -d "$DE25_TARGET" ]; then
+	skip "DE25 rootfs: no fw_env.config names an MTD or UBI device" "no $DE25_TARGET -- the DE25 stack has not been built"
+else
+	_de25_fwenv_n=0
+	_de25_bad_n=0
+	while IFS= read -r _de25_f; do
+		_de25_fwenv_n=$((_de25_fwenv_n + 1))
+		_de25_hits=$(grep -viE '^[[:space:]]*#' "$_de25_f" | grep -iE 'mtd|ubi' || true)
+		if [ -n "$_de25_hits" ]; then
+			note "$_de25_f:"
+			printf '%s\n' "$_de25_hits" | while IFS= read -r _de25_hl; do note "  $_de25_hl"; done
+			_de25_bad_n=$((_de25_bad_n + 1))
+		fi
+	done < <(find "$DE25_TARGET" -name 'fw_env.config' -type f 2>/dev/null)
+	if [ "$_de25_fwenv_n" -eq 0 ]; then
+		pass "DE25 rootfs: no fw_env.config shipped -- nothing to audit"
+	elif [ "$_de25_bad_n" -gt 0 ]; then
+		fail "DE25 rootfs: fw_env.config names an MTD or UBI device" "de25-boot-chain.md section 7 row 11 -- fw_setenv would reach QSPI directly, bypassing every U-Boot-side guard (and external.mk's MISTER_UBOOT_DE25_QSPI_AUDIT cannot see this file); see the file(s) noted above"
+	else
+		pass "DE25 rootfs: fw_env.config present but names no MTD or UBI device ($_de25_fwenv_n file(s))"
 	fi
 fi
 

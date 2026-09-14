@@ -49,7 +49,15 @@ LINUX_RT_MAKE_FLAGS = $(LINUX_MAKE_FLAGS)
 LINUX_RT_ARCH_PATH = $(@D)/arch/$(KERNEL_ARCH)
 
 # Base config = the main kernel's; the RT delta rides on top as a fragment.
+# Only name the kconfig file when the package is enabled. pkg-kconfig.mk
+# registers `$(KCONFIG_FILE): | linux-rt-patch` for EVERY package that names
+# one, enabled or not -- and this file is the board's shared linux.config, so
+# on a tree where linux-rt is off (the DE25-Nano) the main kernel's config
+# would still drag in linux-rt's download with an empty version and fail the
+# build (found 2026-09-14; `make de25` had been broken since ADR 0030).
+ifeq ($(BR2_PACKAGE_LINUX_RT),y)
 LINUX_RT_KCONFIG_FILE = $(call qstrip,$(BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE))
+endif
 LINUX_RT_KCONFIG_FRAGMENT_FILES = $(call qstrip,$(BR2_PACKAGE_LINUX_RT_CONFIG_FRAGMENT_FILES))
 LINUX_RT_KCONFIG_EDITORS = menuconfig nconfig
 LINUX_RT_KCONFIG_OPTS = $(LINUX_KCONFIG_OPTS)

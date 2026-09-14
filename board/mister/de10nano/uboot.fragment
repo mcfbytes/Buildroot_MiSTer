@@ -1,0 +1,27 @@
+# uboot.fragment -- DE10-Nano deltas on mainline's socfpga_de10_nano_defconfig.
+#
+# Applied by Buildroot on top of BR2_TARGET_UBOOT_BOARD_DEFCONFIG
+# ("socfpga_de10_nano") via BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES:
+# merge_config.sh, then olddefconfig. Every line will be a DELTA -- if a value
+# matches what the board defconfig already resolves to, restate it only where
+# the restatement is the point (see `board/mister/de25nano/uboot.fragment`'s
+# environment block for the pattern).
+#
+# STUB, wired by U1 (docs/uboot-tasks.md): this file carries no CONFIG_ lines
+# yet so BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES resolves to a real, mergeable
+# (empty) fragment and `make` is green before the real deltas land. The real
+# content -- SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION_TYPE, FS_EXFAT, the
+# ENV_IS_IN_MMC/ENV_OFFSET/ENV_SIZE block, BOOTDELAY/AUTOBOOT, SYS_BOOTM_LEN,
+# TEXT_BASE, dropping TOOLS_MKEFICAPSULE, and the SPL SPI/QSPI headroom cut --
+# is U2e's deliverable (docs/uboot-mainline-port.md §3.1/§3.3/§3.5/§3.6),
+# integrated by U2g. Do not add deltas here.
+#
+# EDITING RULE, learned the hard way (carried from the DE25's fragment):
+# never start a COMMENT line with "# CONFIG_<something>" unless it really is
+# an "is not set" directive. support/kconfig/merge_config.sh greps this file
+# for every symbol it is changing and echoes the matching lines back at you,
+# so a prose line that begins that way turns the merge report into nonsense
+# -- and a line that happens to end in "is not set" would be parsed as a real
+# directive (SED_CONFIG_EXP2 is: caret, hash, space, the symbol name, then
+# the literal words "is not set" anchored to end of line). Indent such prose,
+# or lead with a word.

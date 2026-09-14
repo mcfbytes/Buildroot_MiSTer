@@ -176,6 +176,42 @@ delta of §3.1 whose omission a cold-boot smoke test could not catch.
   mainline's `misc_gen5.c:188-214` calls only `socfpga_bridges_reset(1)`. **A cold-boot
   smoke test cannot catch this** — it is the warm-reboot core-handoff path.
 
+**2026-09-14 — the warm-reboot half is closed (task U2d, patch 0005).** The fork's one line
+ports verbatim after all: mainline's gen5 `socfpga_bridges_reset(int)` still takes the same
+argument, and its `enable == 0` arm is a near-textual match for the fork's, so
+`0005-arm-socfpga-gen5-release-bridges-after-reset-if-fpga-in-user-mode.patch` adds the same
+`socfpga_bridges_reset(0);` at the end of `arch_early_init_r()` — now in `misc_gen5.c`, which
+`d1c559af5f` split out of `misc.c` in 2017. Correcting a citation above: the fork's
+`misc.c:437-464` is `do_bridge` (the first half of this bullet); the fork's
+`socfpga_bridges_reset(int)` body is `reset_manager.c:93-119`, against mainline's
+`reset_manager_gen5.c:89-117`. **Equivalence [V], by source:** both write `0` to sysmgr
+`iswgrp_handoff[0]` and `0x19` (`LWHPS2FPGA|HPS2FPGA|OCRAM`) to `iswgrp_handoff[1]` (sysmgr
+`+0x80`/`+0x84` in both trees), both then test `fpgamgr_test_fpga_ready()` — character-identical
+in the two `fpga_manager.c` files — and on success both write `0` to `brgmodrst` (rstmgr `+0x1c`)
+and `0x19` to the L3 remap at `0xff800000`; mainline reaches the same values through
+`socfpga_bridges_set_handoff_regs(false, false, false)`. The call sits last in
+`arch_early_init_r()` in both, and `arch_early_init_r` precedes `console_init_r` in both
+`board_r.c` sequences, so the "FPGA not ready" message behaves as on stock. The three
+surrounding deltas are inert: `brgmodrst` implements only bits 2:0 (reset ids 96/97/98), so the
+fork's `0xffffffff` and mainline's `0x7` in the `enable == 1` arm are the same state and this
+patch clears the register anyway; mainline's extra `L3REGS = 0x1` write there is overwritten by
+the `0x1` both trees write moments later in the remap-zero step; and
+`socfpga_is_booting_from_fpga()` is false for this build (`__image_copy_start = 0x01000040`), so
+that step writes the fork's plain `0x1`. **Cold boot is a no-op [V]:** the ready test fires
+before `brgmodrst` and the remap are touched, and the only consumer of `iswgrp_handoff[0..1]`
+is `do_bridge_reset(1, …)`, which rewrites and re-reads both registers itself
+(`misc_gen5.c:253-257`) before using them — `[2]`/`[3]`, the values the SPL actually hands off,
+are never touched. **What this is not:** the `enable == 0` arm has no caller anywhere in a
+pristine v2026.07 (`misc_gen5.c:203`, `spl_gen5.c:98`, `socfpga_gen5.c:209` all pass 1), so the
+patch makes existing mainline code reachable rather than adding any. Build-checked with the
+repo cross toolchain on `socfpga_de10_nano_defconfig`: a normalised whole-binary disassembly
+diff differs in exactly one function, `arch_early_init_r`, which gains
+`movs r0, #0 / bl socfpga_bridges_reset`; `spl/u-boot-spl.bin` is byte-identical but for the
+build timestamp **[V]**. Hardware still owes all three boot claims — that a fabric-preserving
+warm reset reaches this code with the FPGA reporting user mode, that a core stays reachable
+from Linux across it, and that cold boot still loads `menu.rbf` unchanged **[U]**; U6 is
+deferred.
+
 ### 3.4 `mt` — solved, and testable on stock hardware first
 
 > **Decided 2026-09-14 (mirror stock; amends ADR 0024 §Decision 5):** carry the fork's `mt`

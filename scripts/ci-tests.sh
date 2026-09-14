@@ -349,6 +349,48 @@ else
 fi
 
 # =============================================================================
+section "DE25-Nano -- QSPI-write audit, Linux side (de25-boot-chain.md section 7 row 11)"
+# =============================================================================
+# The U-Boot-side half of this audit lives in external.mk's
+# MISTER_UBOOT_DE25_QSPI_AUDIT hook (docs/uboot-tasks.md DU2), which runs
+# inside the U-Boot build and asserts the resolved .config and the built
+# u-boot.itb. This is the half that hook cannot see: a rootfs-shipped
+# fw_env.config whose device line names an MTD device lets Linux-side
+# `fw_setenv`/libubootenv write QSPI directly, without U-Boot involved --
+# row 5's CONFIG_ENV_IS_IN_UBI=n guard does not protect this path, because
+# fw_setenv does not consult U-Boot's compiled-in env driver at all
+# (de25-boot-chain.md section 7 row 11: "Brick-class and silent").
+#
+# The grep is deliberately broad and fail-closed: any uncommented line naming
+# "mtd" OR "ubi" fails. A UBI volume (/dev/ubi0_0) is the Linux-side twin of
+# row 5's hazard -- fw_setenv writing a UBI volume attaches and writes the
+# same QSPI MTD -- so it is caught by the same check rather than left to a
+# second one.
+DE25_TARGET="$ROOT/output-de25/target"
+if [ ! -d "$DE25_TARGET" ]; then
+	skip "DE25 rootfs: no fw_env.config names an MTD or UBI device" "no $DE25_TARGET -- the DE25 stack has not been built"
+else
+	_de25_fwenv_n=0
+	_de25_bad_n=0
+	while IFS= read -r _de25_f; do
+		_de25_fwenv_n=$((_de25_fwenv_n + 1))
+		_de25_hits=$(grep -viE '^[[:space:]]*#' "$_de25_f" | grep -iE 'mtd|ubi' || true)
+		if [ -n "$_de25_hits" ]; then
+			note "$_de25_f:"
+			printf '%s\n' "$_de25_hits" | while IFS= read -r _de25_hl; do note "  $_de25_hl"; done
+			_de25_bad_n=$((_de25_bad_n + 1))
+		fi
+	done < <(find "$DE25_TARGET" -name 'fw_env.config' -type f 2>/dev/null)
+	if [ "$_de25_fwenv_n" -eq 0 ]; then
+		pass "DE25 rootfs: no fw_env.config shipped -- nothing to audit"
+	elif [ "$_de25_bad_n" -gt 0 ]; then
+		fail "DE25 rootfs: fw_env.config names an MTD or UBI device" "de25-boot-chain.md section 7 row 11 -- fw_setenv would reach QSPI directly, bypassing every U-Boot-side guard (and external.mk's MISTER_UBOOT_DE25_QSPI_AUDIT cannot see this file); see the file(s) noted above"
+	else
+		pass "DE25 rootfs: fw_env.config present but names no MTD or UBI device ($_de25_fwenv_n file(s))"
+	fi
+fi
+
+# =============================================================================
 section "ABI / stock-binary smoke (P2.2 + P2.8 core checks)"
 # =============================================================================
 # The stock `MiSTer` binary is a one-off P0.3-era extraction (work/, gitignored --

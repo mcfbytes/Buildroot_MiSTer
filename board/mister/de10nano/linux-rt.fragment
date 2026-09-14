@@ -46,7 +46,7 @@ CONFIG_UIO_PDRV_GENIRQ=y
 #
 # This fragment is also the RT line's ONLY bootargs surface. There is no
 # per-line U-Boot environment in this repo: U-Boot is stock and unmodified for
-# both kernels (uboot-patches/ is empty; docs/rt-beta-kernel.md §5), and
+# both kernels (patches/uboot/ is empty; docs/rt-beta-kernel.md §5), and
 # /media/fat/linux/u-boot.txt selects only WHICH zImage loads — it carries no
 # command-line content. The real cmdline arrives via U-Boot's stock
 # `setenv bootargs` plus its /chosen FDT fixup (docs/boot-chain.md §4.2).

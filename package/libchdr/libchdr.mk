@@ -77,7 +77,7 @@
 # project() still says 0.3.0, so this still produces libchdr.so.0.3 with
 # SONAME libchdr.so.0 (re-verified at the 2026-08-24 bump by cross-building
 # the pinned+patched source and reading the .so's SONAME).
-LIBCHDR_VERSION = 970a0ce060c0aa1012b1eebba1433c9a9e8ac8b9
+LIBCHDR_VERSION = 8e7b8bd32bc676b7e5c6b42fe7d2daca986c4a0d
 LIBCHDR_SITE = $(call github,rtissera,libchdr,$(LIBCHDR_VERSION))
 # LICENSE.txt is the standard BSD 3-clause text ("Copyright Romain
 # Tisserand", the three numbered conditions, the all-caps disclaimer --

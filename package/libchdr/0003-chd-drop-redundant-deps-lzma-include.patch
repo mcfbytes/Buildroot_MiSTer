@@ -2,7 +2,7 @@ libchdr_chd: drop the redundant vendored LzmaDec.h include
 
 Companion to patches 0001/0002, and the last hardcoded deps/ reference
 on the lzma path. src/libchdr_chd.c includes
-"../deps/lzma-26.02/include/LzmaDec.h" a second time at line 76, six
+"../deps/lzma-26.02/include/LzmaDec.h" a second time at line 77, six
 lines after it already pulled in "codec_lzma.h" (which provides
 LzmaDec.h itself -- system or vendored, correctly selected by patch
 0002). Under WITH_SYSTEM_LZMA this duplicate would re-open the vendored
@@ -25,7 +25,7 @@ sent.
 diff --git a/src/libchdr_chd.c b/src/libchdr_chd.c
 --- a/src/libchdr_chd.c
 +++ b/src/libchdr_chd.c
-@@ -73,8 +73,6 @@
+@@ -74,8 +74,6 @@
  #include "../include/libchdr/huffman.h"
  #include "../include/libchdr/macros.h"
  

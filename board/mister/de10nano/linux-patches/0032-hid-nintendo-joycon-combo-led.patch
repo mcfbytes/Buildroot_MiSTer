@@ -36,6 +36,21 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
               (set failure upstream; registration failure once 0035 makes
               it non-fatal) cannot skip it on a right Joy-Con
               (ultrareview finding, 2026-07-15).
+Context trim: 2026-09-14, Michael C. Ferguson. The stable fix that deletes
+              `ctlr->imu_timestamp_us += 1000 * ctlr->imu_avg_delta_ms;`
+              from joycon_parse_imu_report() landed in BOTH 6.18.52 and
+              7.2.6. That line was leading context in the hid_dbg hunk,
+              so the hunk failed at `patch -F0` on both bumps (CI runs
+              34904210029, 34904230953). The leading context is now the
+              single `if (dropped_pkts > JC_IMU_DROPPED_PKT_WARNING) {`
+              line, which is identical before and after that fix. It has
+              to be: this file is symlinked into linux-patches-beta/ and
+              de25nano/linux-patches/, whose pins move on SEPARATE
+              Renovate managers, so one copy must apply to both the old
+              and the new tree. Verified by replaying the full series at
+              Buildroot's own flags against 6.18.51, 6.18.52, 7.2.5 and
+              7.2.6 -- zero fuzz, offsets only, and byte-identical
+              output to the pre-trim patch on the two current pins.
 ---
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
 index 7baa0214e4eb..0762d4527854 100644
@@ -49,9 +64,7 @@ index 7baa0214e4eb..0762d4527854 100644
  	enum joycon_ctlr_state ctlr_state;
  	spinlock_t lock;
  	u8 mac_addr[6];
-@@ -1487,10 +1488,10 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
- 				ctlr->imu_avg_delta_ms;
- 		ctlr->imu_timestamp_us += 1000 * ctlr->imu_avg_delta_ms;
+@@ -1489,8 +1490,8 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
  		if (dropped_pkts > JC_IMU_DROPPED_PKT_WARNING) {
 -			hid_warn_ratelimited(ctlr->hdev,
 +			hid_dbg(ctlr->hdev,

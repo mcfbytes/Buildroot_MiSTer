@@ -1,3 +1,17 @@
+> **Outcome: POSTED AND ACCEPTED.** Posted to
+> [MiSTer-devel/Linux-Kernel_MiSTer#92](https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/pull/92)
+> by @mcfbytes on 2026-09-11. The submitter adopted the `usb_handshook` form in PR head
+> `fd682da6a5`, and that is what merged on 2026-09-12 as
+> [`66ba034e3`](https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/66ba034e3b5d362de108917ea9b6c92235ea4ec6),
+> whose message says "That regression was spotted in review by mcfbytes." Upstream and our
+> `0049` now carry the same code.
+>
+> One correction from the thread, re-verified against `git show c129b0fac:drivers/hid/hid-nintendo.c`:
+> on this base the *fatal* step is the **second handshake**, not the baudrate command — the
+> fork downgrades a `JC_USB_CMD_BAUDRATE_3M` failure to `hid_warn` and continues. The
+> conclusion below ("probe fails where vanilla succeeded") is unchanged. The text below is kept
+> as it was posted.
+
 **Title:** hid-nintendo: restore the no-first-handshake fallback this reorder drops
 
 **Body:**

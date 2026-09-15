@@ -145,6 +145,13 @@ Not required, done anyway (both are pure hardening, zero behavioural change):
         draw. Test for NULL, return -ENOMEM.
       - the accompanying dev_err() names devm_ioremap_resource(), a function
         this driver does not call. Say memremap.
+    UPSTREAM TOOK THIS (2026-09-12). Sent as Linux-Kernel_MiSTer PR #98 and
+    merged as 6a581bac47c32dfd2525f9874fd263cf08058610 -- see
+    docs/kernel-recon/records/6a581bac47c32dfd2525f9874fd263cf08058610.json and
+    docs/kernel-recon/fork-sync-2026-09-14.md. The merged commit added a
+    one-line comment above the memremap() call; it is carried below, so the
+    fb_probe() this patch produces is byte-identical to the fork's (measured
+    against a pristine 6.18.52 tree). No code change.
 
 CONFIG_FB_MISTER=y goes into board/mister/de10nano/linux.config in the same
 commit — P1.3 deferred the symbol to this task (docs/kernel-config-deltas.md
@@ -157,8 +164,8 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
  drivers/video/fbdev/Kconfig     |  12 ++
  drivers/video/fbdev/Makefile    |   1 +
- drivers/video/fbdev/MiSTer_fb.c | 430 ++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 443 insertions(+)
+ drivers/video/fbdev/MiSTer_fb.c | 431 ++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 444 insertions(+)
  create mode 100644 drivers/video/fbdev/MiSTer_fb.c
 
 --- a/drivers/video/fbdev/Kconfig
@@ -194,7 +201,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  obj-$(CONFIG_FB_CLPS711X)	  += clps711x-fb.o
 --- /dev/null
 +++ b/drivers/video/fbdev/MiSTer_fb.c
-@@ -0,0 +1,430 @@
+@@ -0,0 +1,431 @@
 +/*
 + *  MiSTer_fb.c -- MiSTer Frame Reader driver
 + *
@@ -484,6 +491,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 +	if (!fbdev->fb_res) return -ENODEV;
 +
++	/* MiSTer: memremap() returns NULL on failure, never an ERR_PTR */
 +	fbdev->fb_base = memremap(fbdev->fb_res->start, resource_size(fbdev->fb_res), MEMREMAP_WT);
 +	if (!fbdev->fb_base)
 +	{

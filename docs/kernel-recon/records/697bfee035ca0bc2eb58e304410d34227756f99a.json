@@ -1,0 +1,70 @@
+{
+  "sha": "697bfee035ca0bc2eb58e304410d34227756f99a",
+  "subject": "config: enable LEDS_CLASS_MULTICOLOR for hid-playstation and hid-logitech (#93)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 15,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/leds/Kconfig:39 (LEDS_CLASS_MULTICOLOR), drivers/hid/Kconfig:639-643 (HID_LOGITECH), drivers/hid/Kconfig:648-652 (HID_LOGITECH_DJ), drivers/hid/Kconfig:661 (HID_LOGITECH_HIDPP), drivers/hid/Kconfig:673 (LOGITECH_FF), :687 (LOGIRUMBLEPAD2_FF), :697 (LOGIG940_FF), :705-709 (LOGIWHEELS_FF), :991-994 (HID_PLAYSTATION), :1001 (PLAYSTATION_FF) -- all in linux-6.18.52",
+    "vanilla_quote": "config HID_LOGITECH\n\ttristate \"Logitech devices\"\n\tdepends on USB_HID\n\tdepends on LEDS_CLASS\n\tdepends on LEDS_CLASS_MULTICOLOR\n\tdefault !EXPERT\n---\nconfig HID_PLAYSTATION\n\ttristate \"PlayStation HID Driver\"\n\tdepends on LEDS_CLASS_MULTICOLOR\n\tselect CRC32\n\tselect POWER_SUPPLY\n---\nconfig LOGIWHEELS_FF\n\tbool \"Logitech wheels configuration and force feedback support\"\n\tdepends on HID_LOGITECH\n\tselect INPUT_FF_MEMLESS\n\tdefault LOGITECH_FF",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- postdates docs/patch-provenance.md's baseline. Our side of this is docs/kernel-config-deltas.md row D9 and docs/verification/stock-reconciliation-20260907/.",
+  "impact": {
+    "effect_if_absent": "On STOCK (which is what this commit changes), absent: HID_PLAYSTATION and HID_LOGITECH are unbuildable because their `depends on LEDS_CLASS_MULTICOLOR` is unmet, so DualShock 4 and DualSense fall back to hid-generic -- no rumble, no lightbar, no player LED, no mute button -- and Logitech Unifying/HID++ receivers and wheel force feedback disappear entirely. On OUR image: no effect, the symbols are already set (see superseded_by); this record changes nothing about what we ship.",
+    "affected_hardware": [
+      "Sony DualShock 4 (054c:05c4, 054c:09cc)",
+      "Sony DualSense (054c:0ce6, 054c:0df2)",
+      "Logitech Unifying / HID++ receivers and keyboards",
+      "Logitech G25/G27/G29/Driving Force wheels, G940 flight system, RumblePad 2"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "FF_RUMBLE force feedback over /dev/input/eventX (EVIOCRMFF / ff_effect), and the multicolor LED sysfs class under /sys/class/leds that hid-playstation's lightbar and player-id LEDs register into",
+    "main_mister_ref": "input.cpp:4871 (`ioctl(fd, EVIOCRMFF, ...)`), :4881 (`fef->type = FF_RUMBLE;`), :5228 (`test_bit(FF_RUMBLE, ff_features)`), :1503 (`int has_rumble;`) -- the same citations record bbeff2c30…json re-derived for the Logitech FF symbols; unchanged here."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- kconfig only, and already resolved in our tree"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:436 CONFIG_HID_LOGITECH=y",
+      "board/mister/de10nano/linux.config:437 CONFIG_HID_LOGITECH_DJ=y (selects HID_LOGITECH_HIDPP)",
+      "board/mister/de10nano/linux.config:438 CONFIG_LOGITECH_FF=y (LOGIWHEELS_FF follows by `default LOGITECH_FF`)",
+      "board/mister/de10nano/linux.config:439 CONFIG_LOGIRUMBLEPAD2_FF=y",
+      "board/mister/de10nano/linux.config:440 CONFIG_LOGIG940_FF=y",
+      "board/mister/de10nano/linux.config:453 CONFIG_HID_PLAYSTATION=y",
+      "board/mister/de10nano/linux.config:454 CONFIG_PLAYSTATION_FF=y",
+      "board/mister/de10nano/linux.config:513 CONFIG_LEDS_CLASS_MULTICOLOR=y",
+      "board/mister/common/linux-mister.fragment:481-482,496 (the shared profile fragment carries the same three)"
+    ]
+  },
+  "license_provenance": null,
+  "notes": "DIRECTION IS INVERTED, and that is the headline for this whole increment. Every fork-sync record before 2026-09-12 describes a commit that landed on the fork and had to be pulled IN. This commit went the other way: it was authored in THIS repo, sent upstream as MiSTer-devel/Linux-Kernel_MiSTer PR #93 from mcfbytes:config-leds-multicolor, and merged 2026-09-12T09:54:40Z. docs/kernel-recon/fork-sync-2026-09/upstream-candidates/README.md records the send. scripts/check-fork-sync.sh cannot tell the two directions apart -- it only knows the fork moved -- so an outbound commit still arrives in the backport queue and still needs a record. This record IS the evidence of direction, and the disposition question ('does our image have this?') is answered by construction rather than by a port.\n\nWHAT IT FIXES UPSTREAM, and why we found it: stock's 6.18 regeneration lost HID_PLAYSTATION and the whole HID_LOGITECH family because both gained `depends on LEDS_CLASS_MULTICOLOR` (HID_PLAYSTATION since 5.16, HID_LOGITECH since 6.15) and that symbol was left unset, so the dependency silently dropped the drivers out of the defconfig. Found by the 2026-09-07 stock-config reconciliation (docs/verification/stock-reconciliation-20260907/, docs/kernel-config-deltas.md row D9), not by a build failure -- a Kconfig dependency going unmet is the loudest-possible-silent failure: the defconfig regenerates cleanly, the kernel builds, and the driver is simply gone.\n\nOUR SIDE, re-derived rather than assumed: all eight symbols are set explicitly in board/mister/de10nano/linux.config (lines quoted in superseded_by). Two of the ten symbols the fork commit sets are NOT in our file and do not need to be -- HID_LOGITECH_HIDPP arrives by `select` from HID_LOGITECH_DJ=y, and LOGIWHEELS_FF by `default LOGITECH_FF` (both quoted from linux-6.18.52's drivers/hid/Kconfig above). That is the same default-resolution mechanism record d788e7ab9…json verified in a real resolved .config, so this is not a new claim, just the same one re-grounded on the currently pinned kernel.\n\nDISPOSITION CHOICE: dropped-deliberate, not carried -- 'carried' strictly means a 00xx-*.patch exists in linux-patches/ (worker-instructions, pilot lessons), and a kconfig commit whose symbols our config already sets is the dropped-deliberate/superseded_by shape used for Q1 (aec7dc3aa, TUN) and Q2 (33a0521fd, RTW88_8821AU) in the 2026-09 increment. Nothing to port."
+}

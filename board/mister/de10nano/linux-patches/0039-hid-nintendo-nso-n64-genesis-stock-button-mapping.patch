@@ -49,6 +49,17 @@ Author:       Shig <clockworkjb@gmail.com> (author of both origin
               commits; committed to Linux-Kernel_MiSTer by Sorgelig)
 Upstream:     No. Mainline has the devices but its own mapping; this is a
               deliberate MiSTer-vs-mainline divergence, not a backport.
+              SENT TO THE FORK AND MERGED (2026-09-12): offered as
+              Linux-Kernel_MiSTer PR #95 (the re-anchored copy in
+              docs/kernel-recon/fork-sync-2026-09/upstream-candidates/
+              02-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch)
+              and merged as d3aa7de23f0189b4a31e7779a98274abe4fdcde1, so
+              stock's 6.18 kernel now has this mapping too. The
+              resulting tables are byte-identical to ours, measured
+              against a pristine 6.18.52 tree; only the comment prose
+              differs (upstream took a one-liner, this patch keeps its
+              rationale). Record:
+              docs/kernel-recon/records/d3aa7de23f0189b4a31e7779a98274abe4fdcde1.json.
 Forward-port: 5.15 -> 6.18.39, Michael C. Ferguson, 2026-07-24, parity audit
               (docs/kernel-recon/fork-sync-2026-07.md). Re-expressed as
               mapping-table entries, which is how 6.18 structures this.

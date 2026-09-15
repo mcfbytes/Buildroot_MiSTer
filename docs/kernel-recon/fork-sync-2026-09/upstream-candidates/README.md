@@ -1,14 +1,25 @@
 # Wave 5 — upstream candidates for MiSTer-devel/Linux-Kernel_MiSTer
 
-> **Outcome (2026-09-12).** Sent as Linux-Kernel_MiSTer PRs #95 (candidate 2), #96 (3), #97 (4)
-> and #98 (7), plus config PRs #93/#94. #95 and #98 merged. **#96 and #97 were closed**: the
+> **Outcome (2026-09-12; merge status confirmed in the 2026-09-14 fork-sync increment,
+> `docs/kernel-recon/fork-sync-2026-09-14.md`).** Sent as Linux-Kernel_MiSTer PRs #95
+> (candidate 2), #96 (3), #97 (4) and #98 (7), plus config PRs #93/#94. **#93, #94, #95 and #98
+> all merged on 2026-09-12**, within three minutes of each other, as `697bfee03`, `b033b3335`,
+> `d3aa7de23` and `6a581bac4`; each has a record in `docs/kernel-recon/records/`. **#96 and #97
+> were closed**: the
 > maintainer took the userspace alternatives instead (Main_MiSTer #1307/#1308, in Release
 > 20260912), so the source patches for candidates 3 and 4 — `0040`, `0041` — were **retired from
 > this repo's series** the same day. The `03-*`/`04-*` files below are kept as the record of what
 > was offered; the regeneration table's rows for them no longer resolve. Candidates 5 and 6 are
 > still unsent.
 
-**Purpose: these patches are PREPARED, not sent.** No network push, no PR was opened
+> **And one that was not a patch.** The review comment in
+> `08-hid-nintendo-pr92-handshake-fallback.NOTE.md` was posted to PR #92 on 2026-09-11 and
+> **accepted**: the submitter adopted the `usb_handshook` form in head `fd682da6a5`, and the
+> merged commit `66ba034e3` credits it. So upstream now carries the fallback fix our `0049`
+> was already shipping. See `fork-sync-2026-09-14.md` §2.
+
+**Purpose (as written for Wave 5): these patches were PREPARED, not sent.** Candidates 5 and 6
+still are; the rest have since been sent and their outcomes are above. No network push, no PR was opened
 from this session (the environment has no `gh`/GitHub API access, and pushing is out of
 scope for this wave per `PLAN.md` §5.2). Everything here is a ready-to-apply artifact
 under this repo's own tree, for the owner to review and send at their discretion — in

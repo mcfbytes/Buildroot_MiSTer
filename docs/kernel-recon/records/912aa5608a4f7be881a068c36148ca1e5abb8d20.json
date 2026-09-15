@@ -1,0 +1,58 @@
+{
+  "sha": "912aa5608a4f7be881a068c36148ca1e5abb8d20",
+  "subject": "hid-playstation: fix warning.",
+  "author": "Sorgelig",
+  "author_is_pr_contributor": false,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-playstation.c"
+  ],
+  "added": 0,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0022-hid-playstation-ds4-mac-fix.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-playstation.c:2131-2132 (`hid_err(...); goto err_free;`) and :2152 (the `err_free:` label) in linux-6.18.52 -- vanilla still has BOTH, so vanilla is warning-free; the dangling label exists only on trees that took the MiSTer DS4 change",
+    "vanilla_quote": "\t\tif (ret) {\n\t\t\thid_err(hdev, \"Failed to retrieve DualShock4 pairing info: %d\\n\", ret);\n\t\t\tgoto err_free;\n\t\t}",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "records/5c410e935d4f9743d9d71a0d0d796258544eba91.json is the 5.15 origin of the DS4 change this label belongs to; docs/patch-provenance.md class D (the hid-sony -> hid-playstation retarget).",
+  "impact": {
+    "effect_if_absent": "A -Wunused-label warning on drivers/hid/hid-playstation.c at build time. Nothing else: the label is unreferenced, so it generates no code and its presence changes no behaviour. On OUR image: no effect -- the label has been gone since the 5.15->6.18 forward port of 0022 on 2026-07-12, two months before the fork removed it.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "cosmetic",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- nothing to port; the change is already the state of our tree"
+  },
+  "dependencies": {
+    "depends_on": [
+      "5c410e935d4f9743d9d71a0d0d796258544eba91"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "THE FORK CAUGHT UP WITH US. This commit deletes the now-unreferenced `err_free:` label from dualshock4_get_mac_address(), which became dangling on the fork when its own port of the MiSTer DS4 non-fatal-pairing-info change replaced `goto err_free;` with `ret = 0;` and left the label behind. Our 0022 removed the label in the SAME edit that made the read non-fatal, on 2026-07-12 -- 0022's own Forward-port block says so verbatim: 'Removed the resulting unreferenced `err_free:` label (-Wunused-label) now that nothing gotos it.' So there is nothing to backport; the disposition is carried, with 0022 named, and the record exists to say why the queue entry is already closed.\n\nMEASURED, not assumed: `git show c129b0fac:drivers/hid/hid-playstation.c` (the parent) does have a bare `err_free:` above `kfree(buf); return ret;` with no `goto err_free;` left anywhere in the function, and the de10nano series applied to pristine 6.18.52 produces a dualshock4_get_mac_address() with no label at all.\n\nONE REMAINING DIFFERENCE, unrelated to this commit and deliberately kept: on the failed ps_get_report() our 0022 logs `hid_warn(hdev, \"Failed to retrieve DualShock4 pairing info: %d; continuing without it\\n\", ret)` where the fork still logs the original `hid_err(hdev, \"Failed to retrieve DualShock4 pairing info: %d\\n\", ret)`. Ours is the honest level for a path that then sets `ret = 0` and continues -- an error message followed by a successful probe reads as a bug in the log. Recorded here so the next tree-diff does not re-discover it as an unexplained delta; it is NOT a candidate to send upstream on its own (docs/kernel-recon/fork-sync-2026-09/upstream-candidates/ already holds the ones worth sending).\n\nFirst commit in this queue authored by Sorgelig rather than arriving as a PR, and the only one of the six that did not originate in this repo."
+}

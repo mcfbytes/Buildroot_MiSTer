@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-12 17:05 UTC by `reduce.py` from 136 records (110 MiSTer-v5.15 + 10 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/136.
+Generated 2026-09-15 01:30 UTC by `reduce.py` from 142 records (110 MiSTer-v5.15 + 16 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/142.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/136
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/142
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 136 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 142 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -152,7 +152,9 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
 | `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | cosmetic/silent | — | N | ✓ | dualsense: give mute button and led to system. |
 | `6332499e7` | v6.18 | **carried** | 0047-btusb-mercusys-ma530-2c4e-0115.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
+| `66ba034e3` | v6.18 | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters (#92) |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for RTC PCF8563 |
+| `6a581bac4` | v6.18 | **carried** | 0001-fbdev-add-MiSTer_fb-driver.patch | — | none (carried) | boot-critical/loud | Y | ? |  | MiSTer_fb: fix memremap() failure check (#98) |
 | `70e391b81` | v5.15 | **carried** | 0024-hid-input-keyrah-europe1.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | HID: map key Europe 1(0x32) to F24 code (for Keyrah). |
 | `71c583074` | v5.15 | **carried** | 0030-i2c-designware-quiet-timeout.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | Disable RTC error messages. |
 | `77862a67f` | v5.15 | **carried** | 0014-hid-gamecube-adapter.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add support for official gamecube-adapter (#48) |
@@ -161,6 +163,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `8179ac736` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco Guncon 3 (#20) |
 | `817ace70b` | v5.15 | **carried** | 0027-mt76x2u-release-xbox-adapter-ids.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Remove XBox One Wireless Adapter USB IDs from mt76 driver t… |
 | `8908e0fe1` | v5.15 | **carried** | 0012-hid-fanatec.patch | — | none (carried) | feature-loss/loud | — | N | ✓ | Fix module compile for Fanatec driver (#25) |
+| `912aa5608` | v6.18 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | cosmetic/loud | — | ? |  | hid-playstation: fix warning. |
 | `9854075c8` | v6.18 | **carried** | 0050-exfat-dir-readahead-plug.patch | — | none (carried) | cosmetic/silent | — | ? |  | exfat: speed-up dir read-ahead. |
 | `9b9aebfac` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid-guncon3: fix warnings. |
 | `a14b5e8e1` | refs/pull/92/head | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud-in-dmesg-silent-to-user -- kernel log fills with repeated 'Failed to set baudrate', 'Failed handshake', and USB disconnect/reconnect messages (loud, but only visible over a serial console or `dmesg`, which a MiSTer user at the OSD never sees), while the user-facing symptom is simply 'the gamepad does not work' with no on-screen diagnostic -- Main_MiSTer has no code path that surfaces a failed HID bind. Graded 'loud' per the schema's two-value axis because the failure is not silent at the kernel level (errors are logged, the device visibly re-enumerates) -- picking 'silent' would hide the fact that `dmesg` already contains the exact signature (13x -EPROTO/-71, 18x 'probe - fail') needed to diagnose this without re-deriving anything, which is the operationally relevant distinction for this schema field. | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters |
@@ -177,6 +180,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `c5066763c` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Enable i2c2 device. |
 | `c784a6856` | v5.15 | **carried** | 0016-hid-microsoft-elite2-paddles.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | hid-microsoft: support for XBox Elite 2 paddles. |
 | `d1002ecd4` | v5.15 | **carried** | 0001-fbdev-add-MiSTer_fb-driver.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Implement MiSTer frame buffer device. |
+| `d3aa7de23` | v6.18 | **carried** | 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch | — | none (carried) | feature-loss/silent | Y | ? |  | hid-nintendo: restore MiSTer button mapping for NSO N64 and… |
 | `d7adb20b4` | v5.15 | **carried** | 0028-dwc2-fix-unaligned-in-split.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Fix for unaligned IN data. (#57) |
 | `e40563ae1` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for i2c rtc m41t81. |
 | `e503d193c` | v5.15 | **carried** | 0010-hid-guncon2.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco GunCon 2 |
@@ -232,6 +236,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `59bcae8eb` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux-patches/0003-cpufreq…; 3d72b9db7650bc27b0c4a9931adfb144e3b2850b (record…; … | none (replaced) | feature-loss/silent | Y | N |  | Port MiSTer CPUFreq to Linux 6.18 with opt-in turbo (#85) |
 | `5a7965488` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/silent | Y | Y | ✓ | xone: fixed rumble. |
 | `5fcfae369` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | none (replaced) | feature-loss/silent | Y | Y | ✓ | config: enable CONFIG_TUN for tap device support (#76) |
+| `697bfee03` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:436 CONFIG_HI…; board/mister/de10nano/linux.config:437 CONFIG_HI…; … | none (replaced) | feature-loss/silent | Y | ? |  | config: enable LEDS_CLASS_MULTICOLOR for hid-playstation an… |
 | `6c2d53934` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | Use 100kHz for i2c-1 for better compatibility with devices. |
 | `7436e2d6e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | mt7601u possible fix? |
 | `7828d722e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | — | ? | ✓ | defconfig: compile 80211 as a module. |
@@ -247,6 +252,7 @@ Of 136 rows, **3** describe a real difference a user could notice on this build 
 | `a547c18d0` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | remove unused files. |
 | `ae9313e22` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Enable the NFS filesystem in the kernel. (#45) |
 | `aec7dc3aa` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | **limitation — see record** | feature-loss/silent | Y | Y |  | config: enable CONFIG_TUN for tap device support (#76) |
+| `b033b3335` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:117 CONFIG_NE…; board/mister/de10nano/linux.config:127 CONFIG_IP…; … | none (replaced) | feature-loss/loud | Y | ? |  | config: restore IP_NF_FILTER for legacy iptables (#94) |
 | `b2a04cbfd` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | Y | Y | ✓ | vt: reduce from 63 to 9 ttys. |
 | `bbeff2c30` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | N | ✓ | Enable Logitech D-Input drivers. |
 | `bdedb82d2` | v5.13.12 | **dropped-deliberate** | — | → CONFIG_RTL8XXXU=m (mainline rtl8xxxu, in-kernel)…; 33ff5146a (in-fork: 2021-11-08, combines rtl8188… | none (replaced) | feature-loss/silent | — | ? | ✓ | Add rtl8188eu, rtl8188fu WiFi drivers. |

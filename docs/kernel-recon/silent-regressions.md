@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-09-12 17:05 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-15 01:30 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -41,6 +41,7 @@ These WOULD regress silently if their patch (or, for `carried-as-package` rows, 
 - `c5066763c` Enable i2c2 device. → 0004-dts-de10nano-MiSTer.patch
 - `c784a6856` hid-microsoft: support for XBox Elite 2 paddles. → 0016-hid-microsoft-elite2-paddles.patch
 - `d1002ecd4` Implement MiSTer frame buffer device. → 0001-fbdev-add-MiSTer_fb-driver.patch
+- `d3aa7de23` hid-nintendo: restore MiSTer button mapping for NSO N64 and… → 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch
 - `d7adb20b4` Fix for unaligned IN data. (#57) → 0028-dwc2-fix-unaligned-in-split.patch
 - `e40563ae1` Support for i2c rtc m41t81. → 0004-dts-de10nano-MiSTer.patch
 - `e503d193c` Add driver for Namco GunCon 2 → 0010-hid-guncon2.patch

@@ -1,0 +1,58 @@
+{
+  "sha": "6a581bac47c32dfd2525f9874fd263cf08058610",
+  "subject": "MiSTer_fb: fix memremap() failure check (#98)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "fbdev",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/video/fbdev/MiSTer_fb.c"
+  ],
+  "added": 4,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0001-fbdev-add-MiSTer_fb-driver.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- MiSTer_fb.c is fork code with no vanilla counterpart; the finding is F1 in docs/kernel-recon/fork-sync-2026-09/tree-diff-2026-09.md Sec 5.",
+  "impact": {
+    "effect_if_absent": "memremap() returns NULL on failure and never an ERR_PTR, so the original `if (IS_ERR(fbdev->fb_base))` can never fire. Probe continues with fb_base == NULL, register_framebuffer() succeeds, and the first fbcon takeover dereferences it in fb_setcolreg() -- an oops at boot. It has never triggered on a shipped MiSTer because mem=511M keeps System RAM below the 0x22000000 window; booting with more memory puts the window inside RAM, which memremap(MEMREMAP_WT) refuses (WARN_ONCE, returns NULL), and ioremap also returns NULL when vmalloc space is exhausted. On OUR image: no effect -- 0001 has shipped the NULL check since the 6.18 port.",
+    "affected_hardware": [
+      "DE10-Nano (MiSTer_fb platform device)"
+    ],
+    "device_ids": [],
+    "severity": "boot-critical",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "/dev/fb0 (the framebuffer this driver registers) and /sys/module/MiSTer_fb/parameters/mode",
+    "main_mister_ref": "video.cpp:3915 `int fb = open(\"/dev/fb0\", O_RDWR | O_CLOEXEC);`; video.cpp:3600 `FILE *fp = fopen(\"/sys/module/MiSTer_fb/parameters/mode\", \"wt\");`; video.cpp:4456 the `echo … >/sys/module/MiSTer_fb/parameters/mode` command build. Re-grepped in /mnt/source/Main_MiSTer at cb5dbda."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- already carried inside 0001 (and its beta twin). Re-verified at -F0 on pristine 6.18.52 and 7.2.6 after this increment's one-line comment alignment; both series apply with zero fuzz."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0. MiSTer_fb.c is fork code (Sorgelig, derived from Altera's simple framebuffer sample). The fix itself has no 5.15 origin -- it is our own finding, authored and signed by Michael C. Ferguson, which is why the upstream candidate carried only his Signed-off-by.",
+  "notes": "DIRECTION IS INVERTED, and that is the headline for this whole increment. Every fork-sync record before 2026-09-12 describes a commit that landed on the fork and had to be pulled IN. This commit went the other way: it was authored in THIS repo, sent upstream as MiSTer-devel/Linux-Kernel_MiSTer PR #98 from mcfbytes:fb-memremap-check, and merged 2026-09-12T09:57:13Z. docs/kernel-recon/fork-sync-2026-09/upstream-candidates/README.md records the send. scripts/check-fork-sync.sh cannot tell the two directions apart -- it only knows the fork moved -- so an outbound commit still arrives in the backport queue and still needs a record. This record IS the evidence of direction, and the disposition question ('does our image have this?') is answered by construction rather than by a port. The patch sent was docs/kernel-recon/fork-sync-2026-09/upstream-candidates/07-fbdev-mister-fb-memremap-null-check.patch. Unlike candidates 2-6 this one is not a stock-5.15 restoration at all: it is a bug in fork code that our tree-diff found (finding F1) and that our own 0001 had already fixed during the 5.15->6.18 forward port (0001's header, 'memremap() returns NULL on failure, not an ERR_PTR ... Test for NULL, return -ENOMEM'). So the fork was carrying a latent NULL-deref that our image never had.\n\nCODE IDENTITY MEASURED. Applying the de10nano series to pristine 6.18.52 and extracting fb_probe()'s resource/memremap block gives output byte-identical to `git show 6a581bac4:drivers/video/fbdev/MiSTer_fb.c`'s -- including the one-line comment '/* MiSTer: memremap() returns NULL on failure, never an ERR_PTR */', which the merged commit added and which 0001 did NOT have until this increment. That comment was adopted into BOTH copies of 0001 (board/mister/de10nano/linux-patches/ and linux-patches-beta/, which the beta copy's own header requires to stay in lockstep) so the export and the tree-diff have no delta left to re-explain here. Same alignment call as 0049 this increment and as 0001's fb_sys_read/write alignment under owner decision D4 in the 2026-09 increment. No code changed; a comment cannot alter codegen.\n\nSEVERITY is graded boot-critical because the latent failure is an oops during fbcon takeover, not a feature loss -- but note it is graded for the FORK's tree, where the bug lived. Our image was never exposed."
+}

@@ -4,10 +4,12 @@
 #
 # Diffs docs/kernel-recon/fork-sync.conf (the last reconciled commit per fork branch)
 # against MiSTer-devel/Linux-Kernel_MiSTer's live HEADs, and prints what has landed since.
-# That list is the backport queue: each commit needs a disposition in
-# docs/patch-provenance.md -- carried into board/mister/de10nano/linux-patches/, carried
-# into board/mister/de10nano/linux-patches-upstream/ (the exported tree needs it but our
-# image does not), or recorded as deliberately dropped with a reason.
+# That list is the backport queue: each commit needs a disposition -- carried into
+# board/mister/de10nano/linux-patches/, carried into
+# board/mister/de10nano/linux-patches-upstream/ (the exported tree needs it but our image
+# does not), or recorded as deliberately dropped with a reason. The disposition itself is a
+# record at docs/kernel-recon/records/<full-sha>.json; docs/patch-provenance.md is the
+# pre-2026-07 campaign's table and is history, not the destination for new work.
 #
 # Read fork-sync.conf's header for why this exists at all; the short version is that
 # nothing else ever forces the question, and the fork sat on 5.15.1 for 210 stable
@@ -96,8 +98,19 @@ Reconciled through [\`${sync:0:9}\`](https://github.com/$FORK/commit/$sync). Sin
 | commit | subject | author | date |
 |---|---|---|---|
 "
+		# Two rewrites on the subject, and the second one is not cosmetic. A subject
+		# ends "(#92)" because that is how GitHub spells a merged PR -- but this text is
+		# posted into an issue in THIS repo, where a bare #92 autolinks to THIS repo's
+		# #92, a completely unrelated PR of ours. The number belongs to the FORK, so
+		# qualify it into an explicit link there. Written as a markdown link rather than
+		# the `owner/repo#92` shorthand so the cell still reads "#92"; being already a
+		# link is also what stops GitHub autolinking it a second time. /issues/N is the
+		# right endpoint for either kind -- GitHub redirects it to /pull/N when N is a
+		# PR, so the script does not have to know which it is. "C#" and the like are
+		# untouched: the pattern requires digits.
+		# The pipe escape must stay FIRST -- an unescaped | ends the table cell.
 		report+="$(jq -r --arg f "$FORK" '.commits[] |
-			"| [`\(.sha[0:9])`](https://github.com/\($f)/commit/\(.sha)) | \(.commit.message | split("\n")[0] | gsub("\\|"; "\\\\|")) | \(.commit.author.name) | \(.commit.author.date[0:10]) |"' <<<"$cmp_json")
+			"| [`\(.sha[0:9])`](https://github.com/\($f)/commit/\(.sha)) | \(.commit.message | split("\n")[0] | gsub("\\|"; "\\\\|") | gsub("#(?<n>[0-9]+)"; "[#\(.n)](https://github.com/\($f)/issues/\(.n))")) | \(.commit.author.name) | \(.commit.author.date[0:10]) |"' <<<"$cmp_json")
 "
 	else
 		report+="
@@ -114,7 +127,9 @@ if $markdown; then
 
 - **carried** → a patch in \`board/mister/de10nano/linux-patches/\`, which Buildroot applies to the image *and* the export replays, or
 - **carried for upstream only** → a patch in \`board/mister/de10nano/linux-patches-upstream/\`, when the exported tree needs it but our image deliberately does not (see that directory's README), or
-- **dropped** → a row in \`docs/patch-provenance.md\` saying so, and why (superseded upstream, packaged separately, obsolete…).
+- **dropped** → a record saying so, and why (superseded upstream, packaged separately, obsolete…).
+
+Either way the disposition is a structured record at \`docs/kernel-recon/records/<full-sha>.json\` — that is the current mechanism and the one to use. (\`docs/patch-provenance.md\` holds the pre-2026-07 campaign's rows; it is history, not where new work goes.)
 
 Then advance the branch's line in \`docs/kernel-recon/fork-sync.conf\`.
 

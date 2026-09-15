@@ -2144,6 +2144,23 @@ A weekly job that opens a fresh issue is a job people mute, and a muted queue
 is the same as no queue. It finds its own open issue by label, edits it in
 place, and closes it when the queue empties.
 
+<a id="fork-sync-issue-links"></a>
+### `#92` in a fork subject is not `#92` here
+
+A fork commit subject ends `(#92)` because that is how GitHub spells the PR
+it merged. Posted verbatim into an issue in *this* repo, GitHub autolinks
+that bare `#92` to **our** #92 — an unrelated PR of ours — so the queue
+quietly pointed readers at the wrong repository for every row it ever
+listed. `scripts/check-fork-sync.sh` rewrites each `#N` in a subject into an
+explicit markdown link to the fork before the row is emitted.
+
+Two details worth keeping: it is written as `[#N](…)` rather than the
+`owner/repo#N` shorthand so the cell still reads `#92` and so that, being
+already a link, GitHub does not autolink it a second time; and the URL uses
+`/issues/N`, which GitHub redirects to `/pull/N` when the number is a PR —
+so the script never has to know which kind it is. The body lives entirely in
+that script, not in `fork-sync.yml`, which only posts what the script prints.
+
 <a id="fork-sync-exit-codes"></a>
 ### Exit-code semantics: 1 is normal, 2 is a bug
 

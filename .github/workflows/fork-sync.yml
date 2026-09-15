@@ -18,6 +18,15 @@
 # Update the existing issue in place -- do NOT open a new one per run (gets muted).
 # See docs/ci.md#fork-sync-issue-queue.
 #
+# THE ISSUE BODY IS NOT WRITTEN HERE. This job only posts what
+# `scripts/check-fork-sync.sh --markdown` prints; every line of the body, including the
+# commit table, comes from that script. So a body defect is fixed there, not in this file --
+# in particular the cross-repo link rewriting: a fork subject ends "(#92)", and a bare #92
+# posted into an issue in THIS repo autolinks to THIS repo's #92, which is somebody else's
+# PR entirely. The script qualifies those numbers into links on the fork. Keep the
+# "call the script exactly ONCE" rule below in mind if you ever want to post a different
+# body than the one that was logged: you cannot, by design.
+#
 ################################################################################
 
 name: Fork sync queue
@@ -124,7 +133,7 @@ jobs:
             fi
           elif [ -n "$existing" ]; then
             gh issue close "$existing" --repo "$REPO" \
-              --comment "Everything on the watched fork branches now has a disposition in \`docs/patch-provenance.md\`, and \`docs/kernel-recon/fork-sync.conf\` has been advanced past it. Reopening automatically if the fork moves again."
+              --comment "Everything on the watched fork branches now has a disposition in \`docs/kernel-recon/records/\`, and \`docs/kernel-recon/fork-sync.conf\` has been advanced past it. Reopening automatically if the fork moves again."
             echo "::notice title=Backport queue empty::Closed issue #$existing."
           else
             echo "::notice title=Backport queue empty::Fork fully reconciled; nothing to do."

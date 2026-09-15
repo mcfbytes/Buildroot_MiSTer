@@ -1715,6 +1715,102 @@ inventory, the build result, the USB-ID overlap test, and the re-open trigger:
 `docs/kernel-recon/fork-sync-2026-09/memo-Q9-aic8800.md`. Record:
 `docs/kernel-recon/records/c129b0fac34ad5d613bbec3f59d6036775e41c83.json`.
 
+### `0051` — the first REVERT, added 2026-09-14
+
+`0047` is carried because mainline has a change and our stable line does not. `0051` is the
+opposite failure and a new shape for this series: our stable line took *half* of a change,
+and the half it took does not compile.
+
+| Patch | Origin | Why carried |
+|---|---|---|
+| `0051-perf-revert-no-slang-al-addr-stub-mismatch` | reverts `e97bd4417010c648acf9b1e509cfb77fc506e09e` ("perf annotate: Fix build with NO_SLANG=1", Namhyung Kim, committed to `linux-6.18.y` by Sasha Levin via AUTOSEL; cherry-pick of mainline `0e6c07a3c30cdc45`) | 6.18.52 took that commit but **not** the commit it repairs, mainline `ad83f3b7155db28e82de24dbaa1af2b8f5d972a3` ("perf c2c annotate: Start from the contention line", Tianyou Li). That commit is what adds the `u64 al_addr` parameter to the `HAVE_SLANG_SUPPORT` prototypes, to the real definitions in `ui/browsers/annotate.c` and to every call site, and what puts `#define NO_ADDR 0` inside the `#ifdef`; the fix moves that `#define` out and adds `al_addr` to the two `#else`-side inline stubs. With only the fix applied, the move has nothing to move and the stubs are the sole things in the tree that believe in `al_addr`, so `perf` cannot be built with `NO_SLANG=1` — which is the only way this image ever builds it |
+
+**Why it reaches us at all.** Buildroot's `package/linux-tools/linux-tool-perf.mk.in` builds perf
+out of the kernel tree the `linux` package just built, and line 68 forces `NO_NEWT=1 NO_SLANG=1`
+whenever `BR2_PACKAGE_LINUX_TOOLS_PERF_TUI` is unset. It is unset here (enabling it would pull
+`slang` into the target image for a TUI nothing on a MiSTer uses), so `HAVE_SLANG_SUPPORT` is off
+and the broken stubs are exactly what gets compiled. `BR2_PACKAGE_LINUX_TOOLS_PERF` is selected
+unconditionally by `package/mister-userspace/Config.in` (T5 diagnostics), so this is not an
+optional leg that can be switched off to dodge the problem: it failed `make all` outright, at
+`linux-tools`, roughly 31 minutes into CI (run `34913787711`, job `104207140200`).
+
+**The evidence that 6.18.52 is internally inconsistent**, rather than us mis-building it:
+
+```
+$ grep -rn 'NO_ADDR' tools/                       # linux-6.18.52
+tools/perf/util/hist.h:712:#define NO_ADDR 0      # ... and that is the only line
+```
+
+Every declaration, every definition and every call site of `hist_entry__tui_annotate()` and
+`__hist_entry__tui_annotate()` in 6.18.52 is at the pre-`ad83f3b7` arity — `util/hist.h`
+lines 718 and 722 (the SLANG prototypes), `ui/browsers/annotate.c` lines 611, 1111, 1119 and 1122,
+`ui/browsers/hists.c` line 2488, and `builtin-annotate.c` line 523. Only the two stubs at
+`util/hist.h:748` and `:757` disagree.
+
+**Not inferred — compiled.** The CI failure was reproduced on a host build of the pristine
+6.18.52 tree using Buildroot's own perf flag set, giving the identical
+`builtin-annotate.c:523:31: error: too few arguments to function 'hist_entry__tui_annotate';
+expected 4, have 3` and `make` exit 2; with `0051` applied and nothing else changed, the same
+command reaches `LINK perf`, exit 0. The patched `tools/perf/util/hist.h` is byte-identical to
+pristine `v6.18.51`'s, which is the arity CI built green on every run up to the bump.
+
+**Three consequences, each written where its reader is:**
+
+- **It is the third shared patch the RT/beta and DE25 series omit, and the first one they omit
+  because 7.x was never broken.** `0047` is excluded because 7.x already has the same mainline
+  commit; `0050` because 7.x has mainline's own different fix; `0051` because 7.x took both halves
+  of the change and is self-consistent — applying the revert there would strip a parameter its
+  callers pass. Measured, not assumed: at `-F0` against pristine `v7.2.6`'s
+  `tools/perf/util/hist.h`, `Hunk #1 FAILED at 700. Hunk #2 succeeded at 741 (offset 2 lines).
+  1 out of 2 hunks FAILED`, exit 1. (`board/mister/de10nano/linux-patches-beta/series` header;
+  `docs/rt-beta-kernel.md` §2; `board/mister/de25nano/linux-patches/README.md`. For DE25 it is
+  moot twice over — that defconfig does not select `BR2_PACKAGE_MISTER_USERSPACE`, so nothing
+  there builds perf.)
+- **Its hunks are deliberately generated at `-U12`, not `-U3`.** That is the opposite of `449ce9a`
+  ("kernel: trim patch 0032 context so it survives the 6.18.52 / 7.2.6 bumps") and intentionally
+  so: `0032` is meant to survive bumps, `0051` is meant to *die* at the right one. The wide
+  context pulls the two `HAVE_SLANG_SUPPORT` prototypes into hunk 1, so the day 6.18.y repairs
+  itself, the patch stops applying and CI fails in the `linux-patch` step naming this file —
+  instead of applying cleanly and failing twenty minutes later as a perf compile error nobody
+  connects to it. Buildroot patches at `-F0`, so there is no fuzz to absorb the mismatch.
+- **When it stops applying, DELETE it — do not re-anchor it.** Every retirement path (6.18.y
+  backporting `ad83f3b7155db28e`, 6.18.y reverting `e97bd4417010`, or the pin leaving 6.18.y)
+  presents as the same failed apply, and in all three the tree has become correct without us.
+  Re-anchoring would re-break the build. This is the one patch in the series where "it does not
+  apply" is not a reason to re-anchor — the general rule is the beta `series` header's, and this
+  is its documented exception.
+
+**Not a fork-sync item.** There is no `docs/kernel-recon/records/` entry for `0051` and there
+should not be: that ledger reconciles commits on the MiSTer fork, and this defect is purely a
+`linux-6.18.y` stable-tree one that stock has never encountered (stock does not build perf).
+
+**A trap worth recording, because the obvious SHA is the wrong one.** `0e6c07a3`/`e97bd4417010` carries
+`Fixes: cd3466cd2639783d ("perf c2c: Add annotation support to perf c2c report")`, and that commit is
+**not** the missing prerequisite: it touches only `Documentation/perf-c2c.txt` and `builtin-c2c.c`, never
+`hist.h`, and the single annotate call it adds uses the three-argument form. `al_addr` and `NO_ADDR` come
+from its immediate follow-up in the same series, `ad83f3b7155db28e`. The skip is surgically narrow: 6.18.y
+took `f06ba25ec54a` ("perf annotate: Rename to `__hist_entry__tui_annotate()`"), the commit immediately
+*before* `ad83f3b7`, and `0e6c07a3`, the commit immediately *after* it — the one before and the one after,
+and only the middle one missing. Anyone re-deriving this from the `Fixes:` line alone will conclude the
+prerequisite is present and be wrong.
+
+**It will not self-heal at the next bump — checked, not assumed (2026-09-14).** `linux-6.18.y`
+HEAD, which is what 6.18.53 gets cut from, still carries the broken shape: `tools/perf/util/hist.h`
+has `NO_ADDR` at `:712` and `al_addr` on the two stubs at `:752`/`:760`, while
+`builtin-annotate.c:523` still calls the three-argument form. Nothing in `stable-queue.git`'s
+`queue-6.18` (567 patches at the time of writing) touches perf annotate, c2c or `hist.h`. That is
+not surprising: the defect is invisible to nearly everyone who builds perf, because distributions
+build it **with** slang and only `NO_SLANG=1` consumers — Buildroot, Yocto, embedded integrators —
+compile the `#else` branch at all. So this patch should be expected to live for several point
+releases, not one. It costs nothing to keep: it is a two-line arity revert of dead code, and by
+construction it stops applying the moment 6.18.y repairs itself (see the `-U12` note above), so the
+bump PR reports the retirement rather than us having to watch for it.
+
+**Worth reporting upstream, not yet reported.** `stable@vger.kernel.org` would want to know that
+`e97bd4417010` was picked into 6.18.y without `ad83f3b7155db28e`; the fix there is theirs to pick
+(revert, or take the prerequisite). Not sent — sending it is an owner decision, like every other
+outbound contribution in this repo.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

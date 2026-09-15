@@ -2820,8 +2820,8 @@ again — see the series header for why that is the preferred move over a
 re-anchored copy. The shared 6.18 patches are otherwise deliberately
 untouched, keeping them byte-identical to stock.
 
-The series drops exactly TWO shared patches, and each only because 7.2.x
-already has the same effect. `0047-btusb-mercusys-ma530-2c4e-0115` is a
+The series drops exactly THREE shared patches, and never because someone
+judged them unneeded. `0047-btusb-mercusys-ma530-2c4e-0115` is a
 backport of mainline ce21a5cf3d1f (Mercusys MA530/MA550H, USB 2c4e:0115)
 whose first release IS 7.2. The 6.18 image needs it because 6.18.y never
 received the commit; this kernel does not, and listing it would not be
@@ -2831,8 +2831,24 @@ harmlessly redundant — at -F0 against pristine v7.2 the hunk FAILS
 wraps exfat_dir_readahead()'s sb_breadahead() loop in a block plug, and that
 function does not exist on 7.x at all — mainline's own differently-shaped fix
 (exfat_get_dentry() + exfat_blk_readahead() in fs/exfat/fatent.c) is already
-in v7.2.3, and at -F0 against pristine v7.2.3 both hunks FAIL. Both go away
-on their own the day the stock pin leaves 6.18.y. Nothing else is dropped:
+in v7.2.3, and at -F0 against pristine v7.2.3 both hunks FAIL.
+`0051-perf-revert-no-slang-al-addr-stub-mismatch` (added 2026-09-14) is a third
+shape again, and the only one where 7.x was never broken: it reverts stable
+commit e97bd4417010 ("perf annotate: Fix build with NO_SLANG=1"), which 6.18.52
+cherry-picked WITHOUT the commit it repairs, ad83f3b7155db28e ("perf c2c
+annotate: Start from the contention line") -- not the cd3466cd2639783d named in
+its Fixes: line, which never touches hist.h. The result is that
+tools/perf/util/hist.h's two no-slang inline stubs take a `u64 al_addr`
+parameter that no caller, no definition and no other declaration in the 6.18.52
+tree has, so perf will not compile under the NO_SLANG=1 that
+package/linux-tools/linux-tool-perf.mk.in:68 forces whenever
+BR2_PACKAGE_LINUX_TOOLS_PERF_TUI is unset (it is unset here). 7.2.x took the
+prerequisite and both sides of its #ifdef agree, so there the revert would
+BREAK a correct tree rather than no-op: at -F0 against pristine v7.2.6,
+"Hunk #1 FAILED at 700. Hunk #2 succeeded at 741 (offset 2 lines). 1 out of 2
+hunks FAILED", exit 1. All three go away on their own the day the stock pin
+leaves 6.18.y, and 0051 also goes away the day 6.18.y repairs itself.
+Nothing else is dropped:
 all 40 entries (the other 36 shared + the four beta-local
 patches 0043/0044/0045 — the UIO set — and 0046, the ramoops crash-record
 reservation) apply at -F0 — verified 2026-09-11 against v7.2.3 with the two

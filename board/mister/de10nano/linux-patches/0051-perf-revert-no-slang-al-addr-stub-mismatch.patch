@@ -1,0 +1,233 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Mon, 14 Sep 2026 00:00:00 +0000
+Subject: [PATCH 1/1] Revert "perf annotate: Fix build with NO_SLANG=1"
+
+This reverts stable commit e97bd4417010c648acf9b1e509cfb77fc506e09e,
+which first shipped in 6.18.52 and which breaks every NO_SLANG=1 build
+of perf -- including Buildroot's, which is the only kind this image
+ever does.
+
+The reverted commit is a half-backport. In mainline it is correct: it
+repairs the `#else` (no-slang) side of tools/perf/util/hist.h after
+ad83f3b7155db28e82de24dbaa1af2b8f5d972a3 ("perf c2c annotate: Start
+from the contention line", Tianyou Li) gave __hist_entry__tui_annotate()
+and hist_entry__tui_annotate() a fifth/fourth `u64 al_addr` parameter on
+the HAVE_SLANG_SUPPORT side, put `#define NO_ADDR 0` INSIDE that #ifdef,
+and updated every caller to pass NO_ADDR or a real address.
+
+Mainline's repair is therefore two things: it MOVES `#define NO_ADDR 0`
+from inside `#ifdef HAVE_SLANG_SUPPORT` to above it, and it adds
+`al_addr` to the two `#else` stubs. 6.18.y took the repair and never
+took what it repairs, so the move had nothing to move -- it degenerated
+into a bare addition of a macro nothing uses -- and the two inline stubs
+became the only things in the whole tree that believe in `al_addr`:
+
+  $ grep -rn 'NO_ADDR' tools/            # linux-6.18.52
+  tools/perf/util/hist.h:712:#define NO_ADDR 0
+
+  $ grep -rn 'hist_entry__tui_annotate' tools/perf/
+  builtin-annotate.c:523:      key = hist_entry__tui_annotate(he, evsel, NULL);
+  ui/browsers/annotate.c:611:  __hist_entry__tui_annotate(browser->he, &target_ms, evsel, hbt);
+  ui/browsers/annotate.c:1111: int hist_entry__tui_annotate(struct hist_entry *he, struct evsel *evsel,
+  ui/browsers/annotate.c:1119:     return __hist_entry__tui_annotate(he, &he->ms, evsel, hbt);
+  ui/browsers/annotate.c:1122: int __hist_entry__tui_annotate(struct hist_entry *he, struct map_symbol *ms,
+  ui/browsers/hists.c:2488:    err = __hist_entry__tui_annotate(he, &act->ms, evsel, browser->hbt);
+  util/hist.h:718,722                     <- HAVE_SLANG_SUPPORT prototypes, 4 and 3 args
+  util/hist.h:748,757                     <- the #else stubs, 5 and 4 args
+
+NO_ADDR has exactly one line in the tree: its own definition. Every
+definition, every declaration and every call site is at the pre-ad83f3b7
+arity. So the SLANG build is self-consistent and the no-SLANG build
+cannot compile:
+
+  builtin-annotate.c: In function 'hists__find_annotations':
+  builtin-annotate.c:523:31: error: too few arguments to function
+      'hist_entry__tui_annotate'; expected 4, have 3
+    523 |     key = hist_entry__tui_annotate(he, evsel, NULL);
+        |           ^~~~~~~~~~~~~~~~~~~~~~~~
+  util/hist.h:757:19: note: declared here
+
+Buildroot's package/linux-tools/linux-tool-perf.mk.in builds perf out
+of the kernel tree it just built, and BR2_PACKAGE_SLANG is not set in
+this image, so HAVE_SLANG_SUPPORT is off and the stubs are what gets
+compiled. BR2_PACKAGE_LINUX_TOOLS_PERF is selected unconditionally by
+package/mister-userspace/Config.in (T5 diagnostics), so this is not an
+optional leg: it fails the whole `make all`.
+
+Reverting restores the 6.18.51 arity, which is the arity the rest of
+6.18.52 already uses. It is the smaller and safer of the two possible
+repairs -- the other being to backport ad83f3b7 itself (55 insertions
+across 5 files) plus the c2c feature commit its builtin-c2c.c hunks
+build on, cd3466cd2639783da563253f1f9e3fb2ba936317 ("perf c2c: Add
+annotation support to perf c2c report", 157 insertions), into a stable
+tree that took neither and has no use for perf c2c annotation.
+
+Provenance
+----------
+Origin:       e97bd4417010c648acf9b1e509cfb77fc506e09e, "perf annotate:
+              Fix build with NO_SLANG=1", linux-6.18.y, authored by
+              Namhyung Kim <namhyung@kernel.org>, committed by Sasha
+              Levin <sashal@kernel.org> (AUTOSEL). It is a cherry-pick
+              of mainline 0e6c07a3c30cdc4509fc5e7dc490d4cc6e5c241a.
+              NOTE its `Fixes:` tag, which is a trap for anyone
+              re-deriving this: it names cd3466cd2639783d ("perf c2c:
+              Add annotation support to perf c2c report"), and THAT
+              commit does not touch hist.h at all -- its two files are
+              Documentation/perf-c2c.txt and builtin-c2c.c, and the one
+              annotate call it adds uses the THREE-argument form. The
+              commit that actually introduces `al_addr` and `NO_ADDR` is
+              its immediate follow-up in the same series,
+              ad83f3b7155db28e82de24dbaa1af2b8f5d972a3. What 6.18.y
+              skipped is ad83f3b7; that is the SHA to check, not the one
+              in the Fixes: line.
+SKIPPED ONE:  6.18.y took mainline f06ba25ec54a3157c5b636483586f152f4478b9a
+              ("perf annotate: Rename to __hist_entry__tui_annotate()"),
+              the commit immediately BEFORE ad83f3b7, and it took
+              0e6c07a3, the commit immediately after it (one unrelated
+              commit, "perf report: Add comm_nodigit sort key", sits
+              between them in mainline). It took the one before and the
+              one after and skipped exactly the one in the middle --
+              which is why 6.18.52 has the renamed symbol, has the
+              repair, and has neither the parameter the repair repairs
+              nor any user of NO_ADDR.
+Author:       The reverted commit is Namhyung Kim's and is CORRECT where
+              it was written. This revert is not a disagreement with it;
+              it undoes a cherry-pick whose prerequisite is absent from
+              the branch it was picked into. Authored here.
+Upstream:     Mainline needs e97bd441/0e6c07a3 and must keep it --
+              verified on v7.2.6's tools/perf/util/hist.h, where BOTH
+              sides of the #ifdef agree at the al_addr arity (the
+              HAVE_SLANG_SUPPORT prototypes at :722 and :725 take
+              `u64 al_addr`, and so do the #else stubs at :754 and
+              :762). This revert must therefore NEVER be offered
+              upstream and must never be applied to a tree that has
+              ad83f3b7. It is scoped to 6.18.y, where the prerequisite
+              is absent.
+6.18-ONLY:    Deliberately absent from board/mister/de10nano/
+              linux-patches-beta/series and from board/mister/de25nano/
+              linux-patches/, both of which pin 7.2.x. MEASURED, not
+              assumed: `patch -p1 -F0 --dry-run` against pristine
+              v7.2.6's tools/perf/util/hist.h reports "Hunk #1 FAILED
+              at 700. Hunk #2 succeeded at 741 (offset 2 lines). 1 out
+              of 2 hunks FAILED", exit 1. Hunk 1's trailing context is
+              the HAVE_SLANG_SUPPORT prototypes, which on 7.2.6 already
+              carry `u64 al_addr`. Hunk 2 DOES apply there (7.2.6's
+              #else stubs are byte-identical to 6.18.52's), and that is
+              precisely why listing this patch in a 7.x series would be
+              a bug rather than a no-op: it would strip `al_addr` from
+              stubs whose callers pass it. `patch` exits non-zero on
+              the failed hunk 1, so Buildroot's apply-patches.sh stops
+              the build at patch time -- same fail-closed shape as 0047
+              and 0050, for a third distinct reason.
+CONTEXT IS    The hunks are generated at -U12, not the usual -U3, and
+DELIBERATE:   that is the opposite of what 449ce9a ("kernel: trim patch
+              0032 context so it survives the 6.18.52 / 7.2.6 bumps")
+              does, on purpose. 0032 is meant to SURVIVE bumps; this
+              patch is meant to DIE at the right one. The extra context
+              pulls the two HAVE_SLANG_SUPPORT prototypes into hunk 1,
+              so the day 6.18.y takes cd3466cd2639783d (or reverts
+              e97bd441 itself), this patch stops applying and CI fails
+              in the linux-patch step naming this file, instead of
+              applying cleanly and failing 20 minutes later as a perf
+              compile error nobody associates with it. Buildroot patches
+              at -F0, so there is no fuzz to absorb the mismatch.
+RETIRES WHEN: 6.18.y fixes this on its own -- either by backporting
+              ad83f3b7 or by reverting e97bd441 -- or when the pin
+              leaves 6.18.y. All three show up the same way: this
+              patch fails to apply. When that happens, DELETE IT; do not
+              re-anchor it. Re-anchoring would re-break the build.
+Forward-port: Verified at -F0 against 6.18.52's tools/perf/util/hist.h:
+              applies standalone at zero offset, zero fuzz, and no other
+              patch in this series touches tools/. The resulting file is
+              byte-identical to 6.18.51's tools/perf/util/hist.h
+              (`diff -u` between the patched 6.18.52 file and the
+              pristine v6.18.51 one is empty), which is the arity CI
+              built green on every run through 6.18.51.
+Build-proof:  Not inferred from the arity -- compiled. The exact CI
+              failure was first REPRODUCED on a host build of the
+              pristine 6.18.52 tree with Buildroot's own flag set
+              (NO_NEWT=1 NO_SLANG=1 NO_GTK2=1 NO_LIBPERL=1
+              NO_LIBPYTHON=1 NO_LIBBIONIC=1 NO_SHELLCHECK=1 NO_LIBELF=1
+              NO_DWARF=1 NO_LIBTRACEEVENT=1): same file, same line, same
+              message ("builtin-annotate.c:523:31: error: too few
+              arguments to function 'hist_entry__tui_annotate'; expected
+              4, have 3"), make exit 2. With this patch applied and
+              nothing else changed, the same command runs to
+              "LINK perf", exit 0. A host x86-64 build is not the ARM
+              cross-build CI does, but the failure is a C prototype
+              mismatch in a header -- arch-independent by construction,
+              and the arch-specific legs (arch/arm/, pmu-events) were
+              never what broke.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ tools/perf/util/hist.h | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+--- a/tools/perf/util/hist.h
++++ b/tools/perf/util/hist.h
+@@ -700,26 +700,24 @@
+ 	A_SOURCE
+ };
+ 
+ struct block_hist {
+ 	struct hists		block_hists;
+ 	struct perf_hpp_list	block_list;
+ 	struct perf_hpp_fmt	block_fmt;
+ 	int			block_idx;
+ 	bool			valid;
+ 	struct hist_entry	he;
+ };
+ 
+-#define NO_ADDR 0
+-
+ #ifdef HAVE_SLANG_SUPPORT
+ #include "../ui/keysyms.h"
+ void attr_to_script(char *buf, struct perf_event_attr *attr);
+ 
+ int __hist_entry__tui_annotate(struct hist_entry *he, struct map_symbol *ms,
+ 			       struct evsel *evsel,
+ 			       struct hist_browser_timer *hbt);
+ 
+ int hist_entry__tui_annotate(struct hist_entry *he, struct evsel *evsel,
+ 			     struct hist_browser_timer *hbt);
+ 
+ int evlist__tui_browse_hists(struct evlist *evlist, const char *help, struct hist_browser_timer *hbt,
+@@ -739,34 +737,32 @@
+ int evlist__tui_browse_hists(struct evlist *evlist __maybe_unused,
+ 			     const char *help __maybe_unused,
+ 			     struct hist_browser_timer *hbt __maybe_unused,
+ 			     float min_pcnt __maybe_unused,
+ 			     struct perf_env *env __maybe_unused,
+ 			     bool warn_lost_event __maybe_unused)
+ {
+ 	return 0;
+ }
+ static inline int __hist_entry__tui_annotate(struct hist_entry *he __maybe_unused,
+ 					     struct map_symbol *ms __maybe_unused,
+ 					     struct evsel *evsel __maybe_unused,
+-					     struct hist_browser_timer *hbt __maybe_unused,
+-					     u64 al_addr __maybe_unused)
++					     struct hist_browser_timer *hbt __maybe_unused)
+ {
+ 	return 0;
+ }
+ 
+ static inline int hist_entry__tui_annotate(struct hist_entry *he __maybe_unused,
+ 					   struct evsel *evsel __maybe_unused,
+-					   struct hist_browser_timer *hbt __maybe_unused,
+-					   u64 al_addr __maybe_unused)
++					   struct hist_browser_timer *hbt __maybe_unused)
+ {
+ 	return 0;
+ }
+ 
+ static inline int script_browse(const char *script_opt __maybe_unused,
+ 				struct evsel *evsel __maybe_unused)
+ {
+ 	return 0;
+ }
+ 
+ static inline int res_sample_browse(struct res_sample *res_samples __maybe_unused,
+ 				    int num_res __maybe_unused,

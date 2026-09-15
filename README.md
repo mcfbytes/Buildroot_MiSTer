@@ -349,7 +349,9 @@ since have now been reconciled too — executed, not just planned — in
 adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahead of its
 upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only); on
 2026-09-12 `0040`/`0041` (Switch IMU and LED names) were retired when upstream chose the
-Main_MiSTer-side fix instead (36 + 3 + `0047` − 2 = 38). Every
+Main_MiSTer-side fix instead, and on 2026-09-14 `0051` was added — a revert of a stable
+commit `6.18.52` cherry-picked without the commit it repairs, which breaks the `perf` build
+(36 + 3 + `0047` − 2 + `0051` = 39). Every
 remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
 or recorded as a deliberate decision. `0047` is not part of that delta at all — it
 backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line
@@ -668,9 +670,10 @@ linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kern
                          extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         38 carried patches: 37 MiSTer + 1 mainline backport (0047)
-  linux-patches-beta/    36 of those (31 symlinks + 5 re-anchored 7.x copies; 0047 and
-                         0050 are already in 7.2) + 4 beta-local = the 40-entry series
+  linux-patches/         39 carried patches: 37 MiSTer + 1 mainline backport (0047)
+                         + 1 stable-regression revert (0051)
+  linux-patches-beta/    36 of those (31 symlinks + 5 re-anchored 7.x copies; 7.2 needs
+                         none of 0047/0050/0051) + 4 beta-local = the 40-entry series
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups

@@ -3,8 +3,8 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: TWO, and both are the only kind of exclusion that
-# can ever be safe —
+# Excluded vs the 6.18 set: THREE, and all three are the only kind of exclusion
+# that can ever be safe —
 #   0047-btusb-mercusys-ma530-2c4e-0115.patch, which is not fork code at all
 #   but a BACKPORT of mainline ce21a5cf3d1f, whose first release is 7.2. This
 #   kernel IS 7.2, so it already has those two lines in drivers/bluetooth/
@@ -29,7 +29,30 @@
 #   mainline commit; 0050 is excluded because 7.x already has mainline's OWN
 #   DIFFERENT solution to the same problem. Retires from linux-patches/
 #   outright the moment the 6.18.y pin leaves 6.18.y, exactly like 0047.
-# The beta series therefore carries 36 of the 38 shared patches plus the 4
+#   0051-perf-revert-no-slang-al-addr-stub-mismatch.patch, added 2026-09-14,
+#   which reverts a stable commit (e97bd4417010, "perf annotate: Fix build
+#   with NO_SLANG=1") that 6.18.52 cherry-picked WITHOUT the commit it
+#   repairs, ad83f3b7155db28e ("perf c2c annotate: Start from the
+#   contention line") -- NOT the cd3466cd2639783d its Fixes: line names,
+#   which does not touch hist.h at all. On 6.18.52 that leaves
+#   tools/perf/util/hist.h's two
+#   no-slang inline stubs carrying a `u64 al_addr` parameter that no caller,
+#   no definition and no other declaration in the tree has, so perf fails to
+#   compile under Buildroot's NO_SLANG=1 (linux-tool-perf.mk.in:68). 7.x has
+#   the prerequisite and is self-consistent, so on 7.x the revert is not a
+#   no-op, it is WRONG. Measured, not assumed: at -F0 against pristine
+#   v7.2.6's tools/perf/util/hist.h, "Hunk #1 FAILED at 700. Hunk #2
+#   succeeded at 741 (offset 2 lines). 1 out of 2 hunks FAILED", exit 1 —
+#   so listing it here would break `make rt` at patch time, same fail-closed
+#   shape as 0047 and 0050. Note the third distinct reason: 0047 is excluded
+#   because 7.x already has the SAME mainline commit, 0050 because 7.x has
+#   mainline's OWN DIFFERENT fix, and 0051 because 7.x was never broken —
+#   the defect is 6.18.y's incomplete backport, not an upstream change.
+#   Retires the moment 6.18.y repairs itself (by taking ad83f3b7155db28e or
+#   by reverting e97bd4417010) or the 6.18.y pin moves; all three show up as
+#   this patch failing to apply, and the answer then is DELETE, not
+#   re-anchor. See the patch's own RETIRES WHEN block.
+# The beta series therefore carries 36 of the 39 shared patches plus the 4
 # beta-local ones below — 40 entries — so within the carried set the 7.x
 # and 6.18 kernels diverge only where an upstream API forced a re-anchor.
 # (0040 and 0041 are NOT exclusions: they were RETIRED from linux-patches/
@@ -108,11 +131,12 @@
 # ONE NUMBERING NAMESPACE, TWO DIRECTORIES. 0043-0046 being beta-local is why
 # the next SHARED patch took 0047 rather than 0043: a number means one patch
 # across both directories, so a reader who sees "0044" never has to ask which
-# 0044. The shared dir therefore reads 0001-0042 then 0047-0050, with the
+# 0044. The shared dir therefore reads 0001-0042 then 0047-0051, with the
 # 0043-0046 hole reserved. Applying order is unaffected — the shared dir is
-# globbed and sorted, so 0047-0050 simply apply in that order there. Of those
-# four, 0047 and 0050 are NOT in this series at all (both excluded above, for
-# mirror-image reasons); 0048 and 0049 ARE in this series, as plain symlinks,
+# globbed and sorted, so 0047-0051 simply apply in that order there. Of those
+# five, 0047, 0050 and 0051 are NOT in this series at all (all three excluded
+# above, for three different reasons); 0048 and 0049 ARE in this series, as
+# plain symlinks,
 # listed below in their numeric position after the beta-local 0043-0046 block
 # (0048/0049 apply cleanly to both kernels unmodified, so they need no
 # re-anchored copy — see the NOT-symlink exceptions list just below, which

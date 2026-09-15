@@ -1,0 +1,61 @@
+{
+  "sha": "b033b3335be5eaf1132dceece0a203df73ea8ba2",
+  "subject": "config: restore IP_NF_FILTER for legacy iptables (#94)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 9,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "net/netfilter/Kconfig:761-763 (NETFILTER_XTABLES_LEGACY), net/ipv4/netfilter/Kconfig:14-18 (IP_NF_IPTABLES_LEGACY), :130-133 (IP_NF_IPTABLES), :184-188 (IP_NF_FILTER), :195-198 (IP_NF_TARGET_REJECT) -- all in linux-6.18.52",
+    "vanilla_quote": "config NETFILTER_XTABLES_LEGACY\n\tbool \"Netfilter legacy tables support\"\n\tdepends on !PREEMPT_RT\n---\nconfig IP_NF_IPTABLES_LEGACY\n\ttristate \"Legacy IP tables support\"\n\tdepends on NETFILTER_XTABLES_LEGACY\n\tdepends on NETFILTER_XTABLES\n\tdefault\tm if NETFILTER_XTABLES_LEGACY\n---\nconfig IP_NF_FILTER\n\ttristate \"Packet filtering\"\n\tdefault m if NETFILTER_ADVANCED=n || IP_NF_IPTABLES_LEGACY\n\tdepends on IP_NF_IPTABLES_LEGACY",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- postdates docs/patch-provenance.md's baseline. Our side: docs/verification/stock-reconciliation-20260907/ and ADR 0031 (docs/decisions/0031-secure-by-default-network-posture.md).",
+  "impact": {
+    "effect_if_absent": "On STOCK: `iptables` (the legacy backend, which is what the shipped binary is) fails on the default table with 'iptables: Table does not exist (do you need to insmod?)' -- there is no filter table at all, so no firewall rule of any kind can be installed. On OUR 6.18 image: no effect, the four symbols are already set. On OUR RT/7.2 kernel: the filter table is genuinely absent and CANNOT be restored the same way -- see notes.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "iptables(8) legacy backend -> setsockopt(IPT_SO_SET_REPLACE)/getsockopt(IPT_SO_GET_INFO) on the 'filter' table",
+    "main_mister_ref": "none -- Main_MiSTer itself installs no firewall rules (no iptables invocation in the tree). The coupling is to the userspace iptables binary this image ships and to any user or script (docs/decisions/0031-secure-by-default-network-posture.md discusses the posture), not to Main_MiSTer. Recorded as coupled=true with the interface named rather than a Main_MiSTer path, because the kernel-side symbol is only ever reachable from userspace."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- kconfig only, and already resolved in our 6.18 tree"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:117 CONFIG_NETFILTER_XTABLES_LEGACY=y",
+      "board/mister/de10nano/linux.config:127 CONFIG_IP_NF_IPTABLES_LEGACY=y",
+      "board/mister/de10nano/linux.config:130 CONFIG_IP_NF_IPTABLES=y",
+      "board/mister/de10nano/linux.config:131 CONFIG_IP_NF_FILTER=y",
+      "board/mister/de10nano/linux.config:132 CONFIG_IP_NF_TARGET_REJECT=y"
+    ]
+  },
+  "license_provenance": null,
+  "notes": "DIRECTION IS INVERTED, and that is the headline for this whole increment. Every fork-sync record before 2026-09-12 describes a commit that landed on the fork and had to be pulled IN. This commit went the other way: it was authored in THIS repo, sent upstream as MiSTer-devel/Linux-Kernel_MiSTer PR #94 from mcfbytes:config-iptables-filter, and merged 2026-09-12T09:55:53Z. docs/kernel-recon/fork-sync-2026-09/upstream-candidates/README.md records the send. scripts/check-fork-sync.sh cannot tell the two directions apart -- it only knows the fork moved -- so an outbound commit still arrives in the backport queue and still needs a record. This record IS the evidence of direction, and the disposition question ('does our image have this?') is answered by construction rather than by a port.\n\nWHAT IT FIXES UPSTREAM: since 6.17, IP_NF_FILTER `depends on IP_NF_IPTABLES_LEGACY`, which in turn `depends on NETFILTER_XTABLES_LEGACY` (both quoted above from 6.18.52). Stock's regenerated 6.18 config kept IP_NF_IPTABLES but lost the legacy gate, so IP_NF_FILTER and IP_NF_TARGET_REJECT silently vanished and the shipped legacy iptables had no filter table to operate on.\n\nFINDING WORTH MORE THAN THE DISPOSITION -- why the RT kernel has no filter table, mechanically. ADR 0031 recorded as an observation that our RT kernel has no iptables filter table. The cause is in the Kconfig quoted above: `config NETFILTER_XTABLES_LEGACY ... depends on !PREEMPT_RT`. board/mister/de10nano/linux-rt.fragment sets CONFIG_PREEMPT_RT=y, so when Buildroot layers that fragment over linux.config and runs olddefconfig, NETFILTER_XTABLES_LEGACY is forced off and takes IP_NF_IPTABLES_LEGACY, IP_NF_FILTER and IP_NF_TARGET_REJECT with it -- silently, because a `depends on` that goes unmet drops the symbol without a warning. This is NOT a config oversight and it cannot be fixed by adding the symbols to the RT fragment: the dependency is upstream's and it is deliberate (legacy xtables' per-cpu seqcount/local_bh disable pattern is unsound under PREEMPT_RT). A firewall on the RT kernel has to go through nftables (iptables-nft or nft directly), which is a userspace-package question, not a kernel-config one. Flagged here rather than acted on -- ADR 0031 is still PROPOSED (PR #168), and this record does not pre-empt it.\n\nDISPOSITION CHOICE: same reasoning as 697bfee03 -- kconfig, symbols already ours, so dropped-deliberate with superseded_by naming the lines, not 'carried'."
+}

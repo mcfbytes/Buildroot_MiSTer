@@ -29,6 +29,25 @@ def carried_patches_str(r):
 
 PATCH_DIR = HERE / "../../board/mister/de10nano/linux-patches"
 
+# Patches in that directory with no ORIGINATING FORK COMMIT. The orphan invariant below asks
+# "which fork commit put this in the series?" and for these the honest answer is "none" -- they
+# are not backports or carries, they are our own repairs to a vanilla stable tree. That is not
+# an exemption from "every carried patch has a recorded reason"; it is an exemption from
+# "the reason lives in records/", which is keyed on fork SHAs these patches do not have. So
+# each entry MUST say where its reason does live, or it is just a silencer. And the invariant
+# runs in reverse too (see below): an entry naming a patch that no longer exists is itself
+# reported, because the day 6.18.y repairs itself and 0051 is deleted, this list has to go with
+# it -- a stale exemption would quietly re-open the hole it was opened for.
+NO_FORK_ORIGIN = {
+    "0051-perf-revert-no-slang-al-addr-stub-mismatch.patch":
+        "A linux-6.18.y stable defect, not a MiSTer fork commit: 6.18.52 cherry-picked "
+        "e97bd4417010 (\"perf annotate: Fix build with NO_SLANG=1\") without "
+        "ad83f3b7155db28e, the commit it repairs, which breaks every NO_SLANG=1 perf build -- "
+        "the only kind this image does. Reason, evidence and the delete-never-re-anchor rule "
+        "live in the patch's own header and in docs/patch-provenance.md. Added 2026-09-14 "
+        "(91e3fe6).",
+}
+
 # "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the
 # image Buildroot builds (BR2_LINUX_KERNEL_PATCH never sees it), only to the tree
 # scripts/export-kernel-tree.sh publishes to MiSTer-devel/Linux-Kernel_MiSTer, from
@@ -101,9 +120,13 @@ for row in rows:
         for pf in patch_files:
             if pf in cp or (cp and cp in pf):
                 mapped[pf].append(row["sha"][:9])
-orphans = [pf for pf in patch_files if pf not in mapped]
+orphans = [pf for pf in patch_files if pf not in mapped and pf not in NO_FORK_ORIGIN]
 if orphans:
     problems.append(f"ORPHAN carried patches (no originating commit): {orphans}")
+# The exemption list has to be able to expire, or it outlives the thing it excuses.
+stale_exempt = [pf for pf in sorted(NO_FORK_ORIGIN) if pf not in patch_files]
+if stale_exempt:
+    problems.append(f"NO_FORK_ORIGIN names patches that are gone -- drop them: {stale_exempt}")
 
 # ---------------------------------------------------------------- outputs
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

@@ -42,6 +42,18 @@ Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-12, task P1.9.
               hid-sony.c's sony_check_add() (which no longer handles DS4
               at all). Removed the resulting unreferenced `err_free:`
               label (-Wunused-label) now that nothing gotos it.
+              THE FORK REACHED THE SAME PLACE two months later:
+              912aa5608a4f7be881a068c36148ca1e5abb8d20
+              ("hid-playstation: fix warning.", 2026-09-12) deletes that
+              same dangling label from its own port. Nothing to
+              backport -- see
+              docs/kernel-recon/records/912aa5608a4f7be881a068c36148ca1e5abb8d20.json.
+              One difference remains and is deliberate: on the failed
+              read this patch logs hid_warn(... "; continuing without
+              it") where the fork still logs hid_err with the original
+              text. An error message followed by a successful probe
+              reads as a bug in the log; ours says what actually
+              happened.
 
 Signed-off-by: Sorgelig <pour.garbage@gmail.com>
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>

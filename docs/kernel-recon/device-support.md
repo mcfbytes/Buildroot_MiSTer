@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-09-12 17:05 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-09-15 01:30 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -52,13 +52,13 @@ Generated 2026-09-12 17:05 UTC. VID:PID → commits and dispositions (how each d
 | `057e:2006` | `45283785a` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
 | `057e:2007` | `45283785a` (carried), `484f68172` (carried), `60821059c` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
 | `057e:2007 (nesl/nesr — not a distinct pid; shared with the ordinary joy-con r id-table entry, disambiguated purely by an internal ctlr_type handshake byte read at runtime, report->subcmd_reply.data[2] == 0x09/0x0a; no new hid_device_id entry is added for nes at all, in either the fork or vanilla)` | `e155f6a2f` (dropped-upstream) |
-| `057e:2009` | `60821059c` (carried), `a14b5e8e1` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
+| `057e:2009` | `60821059c` (carried), `66ba034e3` (carried), `a14b5e8e1` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
 | `057e:200a` | `f9c64d8cd` (dropped-upstream) |
 | `057e:200e` | `60821059c` (carried), `9bdab534b` (dropped-upstream), `c4ec5cb40` (dropped-upstream), `f9c64d8cd` (dropped-upstream) |
 | `057e:2017` | `c4ec5cb40` (dropped-upstream) |
 | `057e:2017 (snescon — dedicated pid, own hid_usb_device + hid_bluetooth_device id-table entries)` | `e155f6a2f` (dropped-upstream) |
-| `057e:2019` | `2799f8b94` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
-| `057e:201e` | `b00a72159` (carried), `c4ec5cb40` (dropped-upstream) |
+| `057e:2019` | `d3aa7de23` (carried), `2799f8b94` (dropped-upstream), `c4ec5cb40` (dropped-upstream) |
+| `057e:201e` | `b00a72159` (carried), `d3aa7de23` (carried), `c4ec5cb40` (dropped-upstream) |
 | `0738:*` | `5a7965488` (dropped-deliberate) |
 | `07b8:8179` | `0d8641a2b` (dropped-deliberate) |
 | `0810:0001` | `0d7b4fc7e` (dropped-deliberate) |

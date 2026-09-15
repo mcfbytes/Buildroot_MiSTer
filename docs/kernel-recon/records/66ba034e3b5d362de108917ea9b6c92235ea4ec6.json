@@ -1,0 +1,64 @@
+{
+  "sha": "66ba034e3b5d362de108917ea9b6c92235ea4ec6",
+  "subject": "HID: nintendo: skip baudrate setup for 8BitDo adapters (#92)",
+  "author": "Kasper Olesen",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 29,
+  "removed": 12,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:2466-2467 (linux-6.18.52), :2487-2488 (linux-7.2.6)",
+    "vanilla_quote": "/* if handshake command fails, assume ble pro controller */\n\tif (joycon_using_usb(ctlr) && !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {",
+    "equivalence": null
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- postdates docs/patch-provenance.md's baseline. The PR-head record is docs/kernel-recon/records/a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f.json; the plan entry is docs/kernel-recon/fork-sync-2026-09/PLAN.md Sec 2.10 (Q10).",
+  "impact": {
+    "effect_if_absent": "See the PR-head record (a14b5e8e1...json) for the full account: an 8BitDo USB Wireless Adapter in Switch mode presents as 057e:2009, is claimed by hid-nintendo, is sent JC_USB_CMD_BAUDRATE_3M which it does not implement, and resets in a tight loop -- probe never completes, no input device is created, and hid_generic_match() declines to bind hid-generic while the specialised driver still matches, so the gamepad is bound to nothing and is unusable. This record's own scope is narrower: the behaviour is ALREADY in our image via 0049, so 'absent' here means only 'the merge is not reconciled', not 'the fix is missing'.",
+    "affected_hardware": [
+      "8BitDo USB Wireless Adapter (1st generation), in Switch mode, presenting as 057e:2009",
+      "any 8BitDo controller paired through that adapter"
+    ],
+    "device_ids": [
+      "057e:2009"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "evdev VID:PID + idstr matching on the Nintendo Switch controller family (057e:2xxx), which exists only once hid-nintendo has bound the device and created an input node",
+    "main_mister_ref": "input.cpp:4733-4734 (`strcpy(input[l].idstr, \"057e_2009\"); strcpy(input[r].idstr, \"057e_2009\");` in check_joycon()); input.cpp:2752 (the 057e:2xxx LED block). Re-derived in the PR-head record; not re-grepped here because this merge changes no userspace-visible behaviour relative to that record."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- already carried. Whole de10nano series (39 patches) replayed with `patch -p1 -F0` against a PRISTINE linux-6.18.52 tree -- the version configs/mister_de10nano_defconfig actually pins -- extracted from a tarball whose sha256 (2b69564f7d4fea0c859b1959ba33709ee6e9139bd100e30a853b57159a8221b8) matches board/mister/de10nano/patches/linux/linux.hash byte for byte, i.e. the kernel.org PGP-signed manifest value this repo records. 39/39 applied, offsets only (0002, 0015, 0019, 0031, 0032, 0035, 0036, 0038, 0047, 0049, 0050), zero fuzz, zero rejects. Beta series (40 entries, board/mister/de10nano/linux-patches-beta/series order) and the de25nano series (34 patches) both replayed with `patch -p1 -F0` against a pristine linux-7.2.6 tree -- the version configs/mister_de10nano_defconfig pins for BR2_PACKAGE_LINUX_RT_VERSION and configs/mister_de25nano_defconfig for the DE25 kernel -- sha256 039aef84f2b0994aeda3f4fcfc3d02ec9d7a9bbb9020ea264c43f446c860f606, matching package/linux-rt/linux-rt.hash. Both series applied in full, offsets only, zero fuzz, zero rejects. The resulting joycon_init() in the patched 6.18.52 tree is BYTE-IDENTICAL to `git show 66ba034e3:drivers/hid/hid-nintendo.c`'s (diffed function-for-function, empty diff) once 0049 picked up the merge's explanatory comment (below)."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": [
+      "a14b5e8e1c9c23f71b5d4cc300a7dab3083e546f",
+      "fd682da6a55d1b4056b2616696412ce0843b9af3"
+    ]
+  },
+  "license_provenance": "GPL-2.0 (same license as drivers/hid/hid-nintendo.c). THE MERGE CHANGED THE AUTHOR CHAIN, which is item (4) of the WHEN-#92-MERGES checklist in docs/kernel-recon/fork-sync.conf. At the PR head a14b5e8e1 the commit's Author: was Michal Kopec with no Signed-off-by from him and a Tested-by/Signed-off-by from the submitter. The merged commit 66ba034e3 has Author: Kasper Olesen <kaspersolesen@gmail.com>, Signed-off-by: Kasper Solesen <kaspersolesen@gmail.com> (same address, name spelled differently in the trailer), Co-authored-by: Michal Kopec <michal.kopec@3mdeb.com> and Co-authored-by: Claude Opus 5. So Kopec moved from Author: to Co-authored-by:, and a Co-authored-by is not a Signed-off-by -- the DCO gap the PR-head record flagged is unchanged in substance, only relocated. Our carried 0049 keeps `From: Michal Kopec` as the patch author (matching what upstream preserves via Co-authored-by) and carries Kasper Olesen's and Michael C. Ferguson's Signed-off-by. Original posting: lore.kernel.org/linux-input/20250720143156.2563816-1-michal.kopec@3mdeb.com/ (2025-07-20, no upstream review).",
+  "notes": "THE MERGE OF PR #92 (merged 2026-09-12T09:27:57Z, merge_commit_sha 66ba034e3). Carried already: 0049 was authored ahead of the merge under owner decision D3. This record exists to close the four-item WHEN-#92-MERGES checklist that docs/kernel-recon/fork-sync.conf and 0049's own header both carry.\n\n(1) DONE -- 66ba034e3 added to a14b5e8e1...json's dependencies.duplicate_of. That record stays keyed on the PR head per the worker-instructions' 'record source_branch exactly' rule; this one is keyed on the merge.\n\n(2) DONE, AND THE ANSWER IS THE INTERESTING PART. The merged hunk DIFFERS from the PR-head hunk this repo recorded -- 29/-12 versus 20/-12 -- and this is the FIRST observed case of that. The conf's own precedent said otherwise: on PR #88 (head 97887b3413 -> merged 9854075c8) and PR #91 (head 9537eb33c0 -> merged 41c45f378) `git patch-id --stable` was identical across head and merge, and both the conf and 0049's header wrote that up as 'a modified hunk is possible but has not been observed here'. It has now been observed. The mechanism is not the maintainer re-authoring on landing (which is what the precedent was about) -- it is that the PR ITSELF was revised mid-review: the recorded head a14b5e8e1 (20/-12, `git patch-id --stable` 6d984de7390ed86b0aebec0d4c791ab59e6a184f -- still fetchable by sha from the fork, so this is measured, not inferred) was superseded by head fd682da6a55d1b4056b2616696412ce0843b9af3 (29/-12, patch-id 5a72829339e3081ca644a831027f734c63fe8d3f), and 66ba034e3's diff is byte-identical to fd682da6's (verified: `diff <(git show --format='' refs/pull/92/head) <(git show --format='' 66ba034e3)` is empty, and both patch-ids are 5a72829339e3...). THE LESSON for the next increment: patch-id stability across head->merge says nothing about a PR that is revised while open. Re-fetch `refs/pull/N/head` at merge time and compare against the RECORDED head sha, not just against the merge.\n\nWHY IT CHANGED: the revision is OUR OWN REVIEW FINDING, adopted upstream. The Wave-4 code review (2026-09-11) found that PR #92's reorder dropped vanilla's 'first handshake failed -> skip the baudrate block entirely' fallback by re-guarding the moved block on `joycon_using_usb(ctlr) && !joycon_device_is_8bitdo(ctlr)`, so any USB-bus 057e:2009/2017/200e device that did not answer the first handshake would now be sent JC_USB_CMD_BAUDRATE_3M and a second, fatal handshake where vanilla fell through and probed at the default baud rate. That finding was written up as docs/kernel-recon/fork-sync-2026-09/upstream-candidates/08-hid-nintendo-pr92-handshake-fallback.NOTE.md, posted to PR #92 as a comment by @mcfbytes on 2026-09-11T02:03:20Z, and accepted: the submitter replied 'Fixed in fd682da6a5 using your `usb_handshook` form', and the merged commit message says 'That regression was spotted in review by mcfbytes.' The merged code therefore uses the exact construct 0049 already shipped -- `bool usb_handshook = false;` set true only in the first handshake's success body, gating `if (usb_handshook && !joycon_device_is_8bitdo(ctlr))`.\n\nONE CORRECTION TO OUR OWN WRITE-UP, from the same PR thread and re-verified here against `git show c129b0fac:drivers/hid/hid-nintendo.c`: on this fork base the FATAL step in that block is the SECOND HANDSHAKE, not the baudrate command. The fork's joycon_init() downgrades a JC_USB_CMD_BAUDRATE_3M failure to `hid_warn(hdev, \"Failed to set baudrate (ret=%d), continuing anyway\\n\", ret);` and continues; only the following `joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)` does `hid_err(...); goto out_unlock;`. The 08-*.NOTE.md phrasing ('gets JC_USB_CMD_BAUDRATE_3M and a second, fatal handshake') is correct as written; the conclusion -- probe fails where vanilla succeeded -- is unchanged.\n\n(3) DONE -- the -F0 apply-order proof was re-run against the MERGED hunk's shape, on the REAL pinned kernels rather than the 2026-09 increment's one-release-short stand-ins. See forward_port.effort.\n\n(4) DONE -- see license_provenance.\n\n0049 WAS EDITED THIS INCREMENT, by exactly one comment. Before this increment our carried 0049 produced a joycon_init() that differed from the merged upstream one ONLY by the 7-line explanatory comment the merge added above the `if (usb_handshook && ...)` guard (verified by diffing the patched 6.18.52 tree's function against `git show 66ba034e3:drivers/hid/hid-nintendo.c`). That comment is now carried too, so the two are byte-identical -- which is the same alignment call the 2026-09 increment made for 0001 under owner decision D4, and it keeps scripts/export-kernel-tree.sh's output and the tree-diff attribution free of a delta that would have to be re-explained every increment. No code changed: a comment cannot alter codegen, so the Wave-4 compile of this exact code (drivers/hid/hid-nintendo.o, ARCH=arm LLVM=1 W=1, 1 pre-existing unrelated warning) still stands.\n\nSTILL NOT EXERCISED ON HARDWARE HERE. The A/B in the commit message is the submitter's, on their 8BitDo adapter; we have neither the adapter nor a paired 8BitDo pad. Unchanged from the PR-head record's task-item-7 gap.\n\nGROUNDING (better than the 2026-09 increment's): every vanilla quote in this record is from the 6.18.52 / 7.2.6 trees this repo's defconfigs actually pin, downloaded from cdn.kernel.org in this session and hash-checked against the repo's own recorded signed-manifest values -- not from 6.18.49/7.2.3. docs/kernel-recon/fork-sync-2026-09/env.md's grounding caveat (kernel.org unreachable, gregkh mirror one release behind) did not apply here: cdn.kernel.org answered."
+}

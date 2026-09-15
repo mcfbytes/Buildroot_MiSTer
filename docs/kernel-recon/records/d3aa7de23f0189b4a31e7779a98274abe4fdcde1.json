@@ -1,0 +1,64 @@
+{
+  "sha": "d3aa7de23f0189b4a31e7779a98274abe4fdcde1",
+  "subject": "hid-nintendo: restore MiSTer button mapping for NSO N64 and Genesis pads (#95)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-12",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-nintendo.c"
+  ],
+  "added": 14,
+  "removed": 12,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-nintendo.c:460-472 (gencon_button_mappings[]) and :474-489 (n64con_button_mappings[]), linux-6.18.52 -- mainline's own tables",
+    "vanilla_quote": "static const struct joycon_ctlr_button_mapping gencon_button_mappings[] = {\n\t{ BTN_WEST,\tJC_BTN_A,\t}, /* A */\n\t{ BTN_SOUTH,\tJC_BTN_B,\t}, /* B */\n\t{ BTN_EAST,\tJC_BTN_R,\t}, /* C */",
+    "equivalence": "contradicted"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "the 5.15-origin commits (b00a72159 '#50', 2799f8b94 '#49') are dispositioned in records/b00a72159aeb6996e1006d28383fdb8e2667746b.json; this commit is our re-send of that carry back upstream.",
+  "impact": {
+    "effect_if_absent": "On STOCK: NSO N64 and NSO Genesis pads report mainline's evdev codes instead of the ones stock has shipped since 2023, so Main_MiSTer's gamecontrollerdb 'bN' indices -- a plain ascending ordinal over the EV_KEY bitmap -- renumber from the first moved code onward and every button on both pads resolves to the wrong function. On OUR image: no effect, 0039 has carried this since 2026-07-24.",
+    "affected_hardware": [
+      "Nintendo NSO N64 controller (057e:2019)",
+      "Nintendo NSO Mega Drive/Genesis controller (057e:201e)"
+    ],
+    "device_ids": [
+      "057e:2019",
+      "057e:201e"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "gamecontrollerdb 'bN' button indices, derived by userspace as an ascending ordinal over the device's EV_KEY bitmap -- so ANY moved evdev code renumbers every button from that index on; .map files additionally store the raw ev->code",
+    "main_mister_ref": "gamecontroller_db.cpp:198 `void get_ctrl_index_maps(int dev_fd, char *guid, uint16_t *btn_map, uint16_t *abs_map)`, :207-217 -- `ioctl(dev_fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits)` then `for (int i = BTN_JOYSTICK; i < KEY_MAX; i++) if (test_bit(i, keybits)) { btn_map[btn_cnt] = i; btn_cnt++; }`, i.e. the ordinal is the bitmap order; :278 is the call site. Re-grepped in /mnt/source/Main_MiSTer at cb5dbda, not copied from 0039's header."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- already carried in all three series (de10nano 0039, beta and de25nano as symlinks to it), re-verified at -F0 against pristine 6.18.52 (zero offset) and 7.2.6 (1 hunk offset, zero fuzz)."
+  },
+  "dependencies": {
+    "depends_on": [
+      "b00a72159aeb6996e1006d28383fdb8e2667746b"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0. The mapping originates with Shig <clockworkjb@gmail.com> (5.15 commits for PRs #49/#50); 0039 carries his Signed-off-by alongside Michael C. Ferguson's, and the upstream candidate 02-*.patch sent as PR #95 preserved the same From:/Signed-off-by chain.",
+  "notes": "DIRECTION IS INVERTED, and that is the headline for this whole increment. Every fork-sync record before 2026-09-12 describes a commit that landed on the fork and had to be pulled IN. This commit went the other way: it was authored in THIS repo, sent upstream as MiSTer-devel/Linux-Kernel_MiSTer PR #95 from mcfbytes:nso-n64-genesis-mapping, and merged 2026-09-12T09:56:36Z. docs/kernel-recon/fork-sync-2026-09/upstream-candidates/README.md records the send. scripts/check-fork-sync.sh cannot tell the two directions apart -- it only knows the fork moved -- so an outbound commit still arrives in the backport queue and still needs a record. This record IS the evidence of direction, and the disposition question ('does our image have this?') is answered by construction rather than by a port. The patch sent was docs/kernel-recon/fork-sync-2026-09/upstream-candidates/02-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch, which that directory's README names as a re-anchoring of our own 0039.\n\nCODE IDENTITY MEASURED, not assumed. Applying the full de10nano series to a pristine linux-6.18.52 tree and extracting gencon_button_mappings[] and n64con_button_mappings[] gives output byte-identical to `git show d3aa7de23:drivers/hid/hid-nintendo.c`'s two tables (empty diff). The two patches differ only in comment prose: 0039 carries a multi-line rationale above each table, the upstream commit a one-line '/* MiSTer: button mapping from MiSTer 5.15 (#50), not mainline's */'. That difference is deliberate on our side (our header has to carry the forward-port provenance) and is left as is -- unlike 0049/0001 this increment, where upstream's added comment was adopted because there our text was absent rather than longer.\n\nequivalence='contradicted' against VANILLA is the correct grade and does NOT pair with a dropped-upstream disposition: mainline has these two tables with different evdev codes, which is exactly why the patch exists. verification.contradiction stays FALSE -- per the worker-instructions' pilot lessons that flag is only for 'an upstream-coverage claim turned out not to match vanilla', and nobody claimed upstream coverage here.\n\nSTILL NOT BENCH-VERIFIED on our side: 0039's header records that it needs an NSO N64 and an NSO Genesis pad, which this environment does not have. Upstream merging it does not close that -- the maintainer merged a config/mapping restoration, not a hardware test."
+}

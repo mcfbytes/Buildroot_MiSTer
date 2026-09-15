@@ -31,21 +31,21 @@
 # recover it from git history at this file's 2026-08-24 change if it is
 # ever needed again.
 #
-# PATCH 0005 is a performance change, not a correctness one. crc16 is
-# byte-at-a-time and runs on EVERY hunk read (VERIFY_BLOCK_CRC defaults to 1),
-# which for a CD image is a 19,584-byte pass per hunk on top of the codec.
-# Slicing-by-4 folds four bytes per iteration from three derived tables; same
-# polynomial, same result, 1.5 kB more .rodata, plain C so every target gains.
-# Measured on the DE10-Nano: 299.6 -> 127.0 us per hunk (2.36x), and end to end
-# through chd_read() the audio hunks of a Sonic CD .chd go p50 2,212 -> 1,894 us
-# and p90 2,698 -> 2,176 us. Verified byte-exact: all 31,984 hunks decode with 0
-# failures and an unchanged FNV-1a over every decoded byte. Rebased 2026-08-24
-# onto this pin's crc16_update() split (upstream's CHDR_LOWRAM_MAP work made
-# the CRC continuable; the slicing loop is initial-value-agnostic so it drops
-# in unchanged -- see the patch's rebase note). Drop 0005 when upstream
-# carries it. The gap in the numbering is deliberate, not an error: 0004 was
-# dropped as upstreamed (above) and renaming this file would orphan its
-# history and every reference to it.
+# FORMER PATCH 0005 (crc16 slicing-by-4) WAS DROPPED 2026-09-15, exactly
+# as its own instruction said to ("Drop 0005 when upstream carries it"):
+# upstream landed the same four-bytes-per-iteration rewrite of
+# crc16_update() in commit e24e526be8 ("Fold four bytes per iteration in
+# the hunk CRC", merged via rtissera/libchdr PR #180), which this pin
+# carries.
+# Upstream's version keeps the three companion tables and the slicing
+# loop (with slightly different casts and an RV32-oriented comment), so
+# the hunk failed to apply rather than applying as already-applied. The
+# DE10-Nano timings (299.6 -> 127.0 us/hunk, Sonic CD audio p50 2,212 ->
+# 1,894 us) live in that patch's header; recover it from git history at
+# this file's 2026-09-15 change if it is ever needed again. The gaps in
+# the numbering (0004 and 0005) are deliberate, not an error: both were
+# dropped as upstreamed and renaming the remaining 0001-0003 files would
+# orphan their history and every reference to them.
 #
 # ONE DEP STAYS BUNDLED, DELIBERATELY: the header-only dr_flac decoder
 # (include/dr_libs/dr_flac.h) is compiled into the library by src/
@@ -64,16 +64,13 @@
 # expecting zstd's CMake config package -- which Buildroot's zstd package
 # (Makefile-installed, ships only libzstd.pc, no *.cmake) does not provide,
 # so configure FAILS at the tag. The pin (upstream master HEAD at bump time;
-# Renovate PR #115, 2026-08-24, previously 6cde534 of 2026-07-17) carries
-# everything the old pin did (798a4f7's chd_read_header_core_file_callbacks
-# fix included) plus, notably: the dictionary-clamp fix that used to be this
-# package's patch 0004 (see above), a vendored LZMA SDK bump 25.01 -> 26.02
-# -- now the SAME version as the system lzma-sdk package this build links
-# instead of it -- a vendored miniz bump (also unused here; system zlib),
-# and new CHDR_WANT_TESTS / CHDR_LOWRAM_MAP options, both left at their
-# defaults (tests build a non-installed benchmark, exactly what the old pin
-# built unconditionally; LOWRAM_MAP=OFF is the old pin's behavior).
-# Version/ABI are unchanged from the tag: CMake
+# this Renovate PR, 2026-09-15, previously 970a0ce) carries everything the
+# older pins did (798a4f7's chd_read_header_core_file_callbacks fix, the
+# dictionary-clamp fix that used to be patch 0004, vendored LZMA SDK 26.02)
+# plus, notably, the crc16 slicing-by-4 that used to be this package's
+# patch 0005 (see above). CHDR_WANT_TESTS / CHDR_LOWRAM_MAP stay at their
+# defaults (tests build a non-installed benchmark; LOWRAM_MAP=OFF is the
+# old pin's behavior). Version/ABI are unchanged from the tag: CMake
 # project() still says 0.3.0, so this still produces libchdr.so.0.3 with
 # SONAME libchdr.so.0 (re-verified at the 2026-08-24 bump by cross-building
 # the pinned+patched source and reading the .so's SONAME).

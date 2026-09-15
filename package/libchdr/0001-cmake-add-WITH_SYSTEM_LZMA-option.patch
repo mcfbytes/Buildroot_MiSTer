@@ -34,7 +34,7 @@ sent.
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -8,6 +8,7 @@ endif()
+@@ -8,6 +8,7 @@
  option(INSTALL_STATIC_LIBS "Install static libraries" OFF)
  option(WITH_SYSTEM_ZLIB "Use system provided zlib library" OFF)
  option(WITH_SYSTEM_ZSTD "Use system provided zstd library" OFF)
@@ -42,7 +42,7 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
  option(CHDR_WANT_RAW_DATA_SECTOR "Output ECC data and sync header" ON)
  option(CHDR_WANT_SUBCODE "Output CD subchannel data" ON)
  option(CHDR_VERIFY_BLOCK_CRC "Verify integrity of decoded data" ON)
-@@ -42,10 +43,17 @@ include(GNUInstallDirs)
+@@ -66,10 +67,17 @@
  #--------------------------------------------------
  
  # lzma

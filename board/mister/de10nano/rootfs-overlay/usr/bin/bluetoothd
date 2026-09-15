@@ -43,6 +43,52 @@ stop() {
 	else
 		echo "FAIL"
 	fi
+	# MiSTer deviation from stock (the ONLY one in this file): wait for
+	# bluetoothd to actually exit before unmounting its storage.
+	#
+	# start-stop-daemon -K only SIGTERMs and returns; it does not wait. Stock
+	# unmounts on the next line, so the umount races a daemon that still has
+	# /var/lib/bluetooth open -- it fails EBUSY and leaves the loop mount up
+	# with a possibly-dirty ext4 image. That is reachable from the OSD, not
+	# just at shutdown: `renew` (menu.cpp:7166) does stop -> umount ->
+	# `rm $BTIMG` -> start, so losing the race deletes the image file while it
+	# is still loop-mounted. Stock hedges with fixed sleeps -- `sleep 2` in
+	# renew, `sleep 1` in restart -- which is a guess, not a wait.
+	#
+	# This is upstream Buildroot's fix (package/bluez5_utils/S40bluetoothd's
+	# stop(), which polls `start-stop-daemon --stop --test` until the process
+	# is gone), with one change: it is BOUNDED. Upstream's loop is infinite,
+	# which on this board would hang an OSD menu item forever if bluetoothd
+	# ever ignored SIGTERM. 50 x 0.1s = 5s, then give up and unmount anyway --
+	# no worse than stock's behaviour today, and correct in every other case.
+	#
+	# Verified by RUNNING the binaries, not by reading them. start-stop-daemon
+	# is BusyBox's applet (output/target/sbin/start-stop-daemon -> ../bin/
+	# busybox); `-t` probes liveness with kill(pid, 0) rather than signalling
+	# (debianutils/start_stop_daemon.c:388) and is in the base option string,
+	# not behind CONFIG_FEATURE_START_STOP_DAEMON_FANCY. Measured: exit 0 while
+	# the pid is alive, exit 1 once it is gone.
+	#
+	# The 2>/dev/null is LOAD-BEARING, and this is the part that is easy to get
+	# wrong by reading the source: on the final probe -- the one that ends the
+	# loop -- start-stop-daemon writes
+	#     start-stop-daemon: warning: killing process N: No such process
+	# to stderr. It is not gated on -q, because busybox's pidfile reader does
+	# not check liveness before building found_procs, so the dead pid reaches
+	# the bb_perror_msg branch (:391) rather than the silent !G.found_procs
+	# path (:381-385). Confirmed by running BOTH vintages against a reaped pid:
+	# stock's BusyBox 1.33.1 and our 1.38.0 print it identically. Without the
+	# redirect every stop/restart/renew would emit a spurious warning.
+	#
+	# Fractional sleep works on both as well (CONFIG_FEATURE_FANCY_SLEEP), so
+	# this same code is valid on stock -- which matters, because the intent is
+	# to hand it upstream.
+	i=0
+	while [ $i -lt 50 ] && start-stop-daemon -K -t -q -p "$PIDFILE" 2>/dev/null; do
+		sleep 0.1
+		i=$((i + 1))
+	done
+	rm -f "$PIDFILE"
 	umount $MNTPATH
 	return "$status"
 }

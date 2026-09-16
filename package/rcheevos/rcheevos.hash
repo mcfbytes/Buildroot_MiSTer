@@ -1,0 +1,29 @@
+# Locally computed (GitHub does not publish signed hashes for tag-archive
+# tarballs -- standard practice for git/github-sourced Buildroot packages,
+# per pkg-download.mk / the Buildroot manual §18.5.2). Verified at pin time
+# against:
+#   https://github.com/RetroAchievements/rcheevos/archive/$(RCHEEVOS_VERSION)/rcheevos-$(RCHEEVOS_VERSION).tar.gz
+#
+#   sha256sum rcheevos-$(RCHEEVOS_VERSION).tar.gz
+#
+# Written with the .mk variable rather than a literal tag on purpose:
+# renovate-hash-sync.yml rewrites the sha256 DATA line below and can never
+# touch a comment, so a literal here goes stale on the first automatic bump.
+# See package/libchdr/libchdr.hash, whose comment had gone two pins stale
+# exactly this way before it was rewritten in the same style.
+sha256  e6df83de4e18f0a19206e711e1e589624dcfcf6bf529c14f6dd2bb2d1ced983f  rcheevos-v12.5.0.tar.gz
+# THE THREE LICENCE FILES. Only the FIRST sha256 line above (the tarball) is
+# ever auto-refreshed -- scripts/hash-sync-github-packages.sh rewrites that
+# line and leaves every later one alone, by design -- so if any of the three
+# below fails the build, upstream changed a licence text and that is a human
+# decision, not a hash to regenerate.
+#
+# LICENSE is the project's MIT text. The other two are the grants for the
+# vendored third-party code this package compiles into the shipped .so, and
+# they are hash-checked for that reason; see the RCHEEVOS_LICENSE comment in
+# the .mk for why MIT alone would have been wrong.
+sha256  bf820c034966a3b6be050bb85f94ec841a0b972bd5d477e362337d0574b5c219  LICENSE
+# src/rhash/md5.h -- L. Peter Deutsch's md5, under the zlib licence verbatim
+sha256  8341e2a307d7cfaeb816b261d92ce87a07be62e3eb58c98d2c769e75a6e2b959  src/rhash/md5.h
+# src/rhash/aes.h -- kokke/tiny-AES-c @ f06ac37, under the Unlicense
+sha256  cf769a50604be6d7a8d940675131c44ce834356ddf090419ae68abb2996b1f68  src/rhash/aes.h

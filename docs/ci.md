@@ -2421,13 +2421,20 @@ idiom** and should get the same treatment when next touched.
 <a id="renovate-hash-sync-safety-model"></a>
 ### Safety model, the refresh cases: where each refreshed value legitimately comes from
 
-1. **The 14 github-sourced packages** (`package/*/*.mk` + their `.hash`): the
-   12 driver/firmware pins plus `libchdr` (a userspace shared library — the
-   Main_MiSTer shared-lib refactor) and `dualsensectl` (a userspace CLI —
-   the DualSense operator tool). Neither of the last two is a driver, but
-   both have the exact same `$(call github,...)` archive shape;
-   `dualsensectl` differs only in pinning a `v`-prefixed tag rather than a
-   commit SHA, which the loop handles without special-casing. Their own `.hash` file
+1. **The github-sourced packages named in `HASH_SYNC_PACKAGES`**
+   (`package/*/*.mk` + their `.hash`): the driver/firmware pins plus
+   `libchdr` and `rcheevos` (userspace shared libraries — the first from the
+   Main_MiSTer shared-lib refactor, the second the RetroAchievements client
+   library) and `dualsensectl` + `ltunify` (userspace CLIs — the DualSense
+   operator tool and the Logitech pairing tool). None of the last four is a
+   driver, but all have the exact same `$(call github,...)` archive shape;
+   `dualsensectl` and `rcheevos` differ only in pinning a `v`-prefixed tag
+   rather than a commit SHA, which the loop handles without special-casing —
+   demonstrated on 2026-09-16, when the loop was run standalone against the
+   real `rcheevos` pin and derived the same URL, filename and sha256 the pin
+   was written with. Count the roster in `HASH_SYNC_PACKAGES` itself rather
+   than trusting a number here; that env var is the single source of truth
+   and a hardcoded count here has gone stale before. Their own `.hash` file
    headers already say the hash is "locally computed" — GitHub publishes no
    signed manifest for a commit/tag archive tarball, so `sha256sum` of a
    freshly-fetched tarball from the ACTUAL pinned owner/repo/ref IS the

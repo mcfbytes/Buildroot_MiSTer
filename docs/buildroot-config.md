@@ -762,8 +762,9 @@ glibc; it does not generate any locale *data*. That is a separate knob — §5.4
 The BR2_EXTERNAL half of the Main_MiSTer shared-lib refactor (no task ID —
 referenced by name): Main stops vendoring `lib/{lzma,zstd,miniz,libchdr}` and
 links Buildroot-provided shared libraries; the upstream half (zstd, minizip-ng)
-is §5.4. Both packages are authored under `package/`; see
-`docs/main-shared-libs.md`.
+is §5.4. All three packages are authored under `package/`; see
+`docs/main-shared-libs.md`. The third, rcheevos, shares the menu but not the
+refactor — it replaces no vendored code.
 
 - `BR2_PACKAGE_LZMA_SDK=y` — 7-Zip LZMA SDK 26.03 as `liblzma-sdk.so.<ver>`;
   the full-version SONAME is the deliberate loud-ABI-event policy: the Main
@@ -773,6 +774,20 @@ is §5.4. Both packages are authored under `package/`; see
   Findzstd pkg-config fallback (the tag cannot configure against Buildroot's
   zstd); system zlib/zstd/lzma-sdk via our 3 patches; exports `chd_*` ONLY
   (version script), so no symbol collisions with minizip-ng et al.
+- `BR2_PACKAGE_RCHEEVOS=y` — the RetroAchievements client library,
+  `librcheevos.so.12.5.0` (273 KiB stripped in the rootfs — 279,580 bytes). **NOTHING LINKS IT YET** — unlike the
+  two above it replaces no vendored Main code; it is shipped so a consumer
+  can link it, and its only CI cover is the presence assertion in
+  `scripts/ci-tests.sh` (a library with no consumer has no other way to fail
+  visibly). Full-version SONAME for the same loud-ABI-event reason as
+  lzma-sdk, but on harder evidence: upstream has changed caller-allocated
+  public struct layouts in *patch* releases (v10.7.1, v10.3.3, v6.0.1). Built
+  `-DRC_SHARED -fvisibility=hidden` so only the 264 `RC_EXPORT` entry points
+  escape rather than 477 — the suppressed ones include `md5_*` and `AES_*`,
+  which would otherwise interpose against Main's own `lib/md5`. A consumer
+  must keep the `-DRC_CLIENT_SUPPORTS_HASH` that `rcheevos.pc` supplies: it
+  gates public declarations in `rc_client.h`, not just implementation
+  (`package/rcheevos/rcheevos.mk`).
 
 ### 5.6 graphics / fonts
 

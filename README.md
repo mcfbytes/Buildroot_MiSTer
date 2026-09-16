@@ -678,7 +678,7 @@ board/mister/de10nano/
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups
   post-image.sh          linux.img assembly + contract checks
-package/                 16 packages: Realtek Wi-Fi, xone, libchdr, lzma-sdk, midilink, munt…
+package/                 23 packages: Wi-Fi/controller drivers, libchdr, lzma-sdk, rcheevos, midilink, munt…
 scripts/                 the verification suite, hash-sync, SD-card builder, kernel export
 docs/                    ADRs, parity audits, the kernel reconciliation, user docs
 .github/                 9 workflows + 4 composite actions

@@ -88,6 +88,27 @@
     "false positives -- the literal string appears inside the descriptions that",
     "warn about it, this one included. Read the hits, do not just count them.",
     "",
+    "RE-MEASURED 2026-09-16, when the rcheevos manager was added (19 custom",
+    "managers). A real `--platform=local --dry-run=extract` under renovate",
+    "44.x reports regex: {fileCount: 20, depCount: 20}. THIS VERSION DOES NOT",
+    "DOUBLE -- the 2026-09-10 note above recorded 36 = 2 x 18 because that",
+    "renovate extracted twice in local dry-run mode and accumulated; 20 here is",
+    "a single pass, so 20 and 36 are NOT comparable and the drop is not a",
+    "regression. Verified by counting the packageFile lines directly rather",
+    "than trusting the summary, which is the method the note above prescribes:",
+    "13 package/*.mk + Makefile + mister_de10nano_defconfig TWICE (the 6.18 and",
+    "RT managers share it) + mister_de25nano_defconfig + fetch-sdcard-payload.sh",
+    "THREE TIMES = 20 pairs, one dep each. Note this contradicts the",
+    "'the 6.18 manager matches ONE file' line further up: a kernel manager also",
+    "matches the DE25 defconfig. That predates this change and is left as found,",
+    "flagged rather than silently corrected.",
+    "",
+    "ONE MORE TRAP, met while adding rcheevos and worth writing down: four lines",
+    "in the debug log match 'Dependency extraction complete', and only one is a",
+    "real extraction. The other three are this very description block being",
+    "echoed back -- it quotes the phrase. Grep for the stats object, not the",
+    "sentence.",
+    "",
     "automerge is OFF everywhere, deliberately: every pin here is a supply-chain",
     "trust decision (kernel, Buildroot, out-of-tree driver commits, firmware), and",
     "several need a companion hash refreshed by .github/workflows/renovate-hash-sync.yml",
@@ -293,6 +314,19 @@
     },
     {
       "customType": "regex",
+      "description": "rcheevos tag pin (RetroAchievements/rcheevos) -- the RetroAchievements client library, shipped as librcheevos.so for Main_MiSTer to link. A TAG, not a branch-head commit like libchdr above: upstream tags every release and its README says to integrate against master, which IS the newest tag. The leading \"v\" is deliberately INSIDE the captured currentValue rather than reconstructed in the .mk's SITE line -- same reason as dualsensectl below: scripts/hash-sync-github-packages.sh takes the literal RHS of the first *_VERSION line and uses it both as the archive ref and as the <pkgdir>-<version>.tar.gz filename it writes into the .hash, so the two must agree character for character, and Renovate rewrites the captured group in place and therefore preserves the prefix. `loose` rather than `semver` for the same reason dualsensectl uses it: the captured value carries the \"v\", and this tree already standardises on loose for every v-in-place pin. READ THE BUMP DIFF FOR PUBLIC STRUCT CHANGES: rcheevos publishes no ABI guarantee and has changed caller-allocated public struct layouts in PATCH releases (v10.7.1, v10.3.3, v6.0.1 -- see package/rcheevos/rcheevos.mk). That is survivable only because the SONAME is the full version, so every bump renames the .so and a stale consumer refuses to load instead of corrupting memory; it also means every bump is an intentional rebuild-your-consumer event. Hash: package/rcheevos/rcheevos.hash, refreshed by renovate-hash-sync.yml's generic loop (standard $(call github,...) archive tarball).",
+      "managerFilePatterns": [
+        "/^package/rcheevos/rcheevos\\.mk$/"
+      ],
+      "matchStrings": [
+        "RCHEEVOS_VERSION\\s*=\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "RetroAchievements/rcheevos",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "7-Zip LZMA SDK tag pin (ip7z/7zip) for the Main_MiSTer shared-lib refactor. Only the LZMA_SDK_VERSION line needs managing -- LZMA_SDK_SOURCE derives from it via $(subst) in the .mk. Hash: package/lzma-sdk/lzma-sdk.hash, refreshed by renovate-hash-sync.yml's BESPOKE ip7z/7zip step (scripts/hash-sync-ip7z-src.sh -- release-asset URL with a dots-stripped filename, does not fit the generic $(call github,...) loop). That step is table-driven over BOTH packages that pin this asset: this one and package/7zip (ADR 0023).",
       "managerFilePatterns": [
         "/^package/lzma-sdk/lzma-sdk\\.mk$/"
@@ -433,13 +467,14 @@
       ]
     },
     {
-      "description": "Main_MiSTer shared-library pins (libchdr commit, LZMA SDK tag) -- distinct label per the established per-pin-class convention, so a reviewer knows these change a userspace library ABI Main_MiSTer links against (liblzma-sdk's SONAME is the full version, so an SDK bump IS an ABI event by design), not kernel-module source or a build tool. NOTE (ADR 0023): matchDepNames cannot separate the two ip7z/7zip consumers, because package/lzma-sdk and package/7zip deliberately share that depName so one PR bumps both. So an ip7z/7zip PR carrying this label changes BOTH the liblzma-sdk ABI AND the 7zz archiver / the /media/fat/linux/7za updater binary -- review it as both.",
+      "description": "Main_MiSTer shared-library pins (libchdr commit, LZMA SDK tag, rcheevos tag) -- distinct label per the established per-pin-class convention, so a reviewer knows these change a userspace library ABI Main_MiSTer links against (liblzma-sdk's SONAME is the full version, so an SDK bump IS an ABI event by design), not kernel-module source or a build tool. NOTE (ADR 0023): matchDepNames cannot separate the two ip7z/7zip consumers, because package/lzma-sdk and package/7zip deliberately share that depName so one PR bumps both. So an ip7z/7zip PR carrying this label changes BOTH the liblzma-sdk ABI AND the 7zz archiver / the /media/fat/linux/7za updater binary -- review it as both. rcheevos joined this label on 2026-09-16: its SONAME is also the full version, for a harder reason than lzma-sdk's (upstream has changed public struct layouts in PATCH releases), so the same \"a bump IS an ABI event\" reviewer contract applies -- with the caveat that nothing links it yet, so today the blast radius of a bad bump is a build failure rather than a runtime one.",
       "matchManagers": [
         "custom.regex"
       ],
       "matchDepNames": [
         "rtissera/libchdr",
-        "ip7z/7zip"
+        "ip7z/7zip",
+        "RetroAchievements/rcheevos"
       ],
       "addLabels": [
         "lib-pin"

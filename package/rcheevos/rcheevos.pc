@@ -1,0 +1,12 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: rcheevos
+Description: RetroAchievements client library (achievements, leaderboards, rich presence, game identification)
+URL: https://github.com/RetroAchievements/rcheevos
+Version: @RCHEEVOS_VERSION@
+Libs: -L${libdir} -lrcheevos
+Libs.private: -lm -pthread
+Cflags: -I${includedir}/rcheevos -DRC_IMPORT -DRC_CLIENT_SUPPORTS_HASH

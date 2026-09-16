@@ -24,8 +24,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-out=${1:-$ROOT/output}
-dist=${2:-$ROOT/dist}
+# Anchor both directories to the caller's cwd BEFORE anything changes directory:
+# step 4 packs the 7z from inside a `cd`-ed subshell, and release.yml passes
+# them relative (`scripts/mk-release.sh output dist`). 7z silently CREATES a
+# missing output directory and exits 0, so a relative $dist there does not fail
+# the pack -- it writes the archive into the staging tree and everything
+# downstream looks for a file that is not where it was asked to go.
+abspath() { case $1 in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$PWD/$1" ;; esac; }
+out=$(abspath "${1:-$ROOT/output}")
+dist=$(abspath "${2:-$ROOT/dist}")
 work=$ROOT/release-work
 # shellcheck source=scripts/ci-lib.sh
 source "$ROOT/scripts/ci-lib.sh"
@@ -82,6 +89,7 @@ cp -f "$out/images/linux.img" "$out/images/zImage_dtb" "$out/images/7za" "$work/
 find "$work/release-stage/files/linux" -maxdepth 1 -printf '    %f\n' | sort
 # Plain solid LZMA2, no BCJ2: the on-device 7za (2016) cannot read BCJ2 streams.
 ( cd "$work/release-stage" && 7z a -mx=9 -m0=lzma2 -mf=off -ms=on "$dist/release_$release_date.7z" files/ >/dev/null )
+[ -f "$dist/release_$release_date.7z" ] || die "7z exited 0 but $dist/release_$release_date.7z does not exist"
 echo "    wrote $dist/release_$release_date.7z ($(wc -c < "$dist/release_$release_date.7z") bytes)"
 
 # --- 5. round trip under the pinned ARM 7za ----------------------------------------

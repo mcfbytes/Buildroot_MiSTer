@@ -1054,10 +1054,30 @@ is), never whether it has been proven yet.
   because that check runs at the end of an ~80-minute image build. Fixed by teaching the
   step to refresh `*_LICENSE_FILES` hashes and diff any that changed; see
   `scripts/hash-sync-ip7z-src.sh`'s header.
-  Still unproven: the generic github-package loop (all 12 github-sourced pins, including
-  libchdr) and the sdcard-payload step have never run against a real PR — treat those
-  regexes/URLs as reviewed-by-hand, not proven. See `docs/renovate.md`'s "Unverified /
-  what to check on first run".
+  Still unproven **against a real PR**: the generic github-package loop (every
+  github-sourced pin in `HASH_SYNC_PACKAGES`, libchdr and rcheevos included) and the
+  sdcard-payload step. Partial credit for the loop as of 2026-09-16, when
+  `package/rcheevos` was added — it was exercised standalone, over the network, on BOTH
+  of its branches:
+  - *already-current*: against the real pin, it derived the archive URL and the
+    `<pkgdir>-<version>.tar.gz` filename and agreed with the hand-computed sha256.
+  - *refreshed*: against a fixture with the pin moved back to `v12.4.0` and a
+    deliberately wrong tarball hash, it followed the new ref and rewrote the line to
+    `7fb1a43b…`, independently confirmed by fetching Buildroot's own
+    `.../archive/<ref>/<name>.tar.gz` URL form, and it left the three licence-file
+    lines alone as documented. **This is the branch that matters**: an
+    `already-current` run never executes the rewrite at all, so it could not have
+    caught a stale-write bug of the kind that once left `linux.hash` untouched while
+    the job reported success three times.
+
+  So the loop's own URL/filename/hash/rewrite logic is no longer "reviewed-by-hand, not
+  proven". The `paths:` trigger is proven too, incidentally and on a real PR: #182 (the
+  PR that added `package/rcheevos`) changed exactly ONE file matching this workflow's
+  `paths:` filter — the new `package/rcheevos/rcheevos.mk` — and the workflow fired,
+  then correctly skipped itself as a non-Renovate branch. What remains unproven is the
+  rest of the workflow AROUND the loop — the commit-back and the outcomes gate —
+  which neither a skipped run nor a standalone run reaches, so the item stays open. See
+  `docs/renovate.md`'s "Unverified / what to check on first run".
   **Done when:** a real Renovate PR has exercised each of the two still-unproven paths
   at least once with a passing (or fixed-then-passing) run, and `docs/renovate.md` drops
   the "unverified" caveat for each path once proven.

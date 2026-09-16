@@ -1896,6 +1896,12 @@ section "Main_MiSTer shared libraries"
 # upstream Buildroot (defconfig), lzma-sdk + libchdr from this tree's
 # package/. See docs/main-shared-libs.md.
 #
+# librcheevos is the SIXTH entry and is NOT one of those five: it replaces no
+# vendored code and nothing links it yet (see package/rcheevos/rcheevos.mk).
+# It is asserted here anyway, and for a sharper reason than the others -- a
+# library with no consumer has NO other way to fail visibly. If it silently
+# stopped being installed, every other check in this suite would still pass.
+#
 # minizip and minizip-ng are ALTERNATIVES, not a pair: Main links the classic
 # libminizip.so.1 (zip.h/unzip.h API) today, while minizip-ng is staged for a
 # future native mz_zip.h port. Both are asserted because both are shipped --
@@ -1914,7 +1920,8 @@ for spec in \
 	"libminizip\.so\.1:libminizip.so.1* (minizip, classic)" \
 	"libminizip-ng\.so\.4:libminizip-ng.so.4* (minizip-ng)" \
 	"liblzma-sdk\.so\.:liblzma-sdk.so.* (lzma-sdk)" \
-	"libchdr\.so\.0:libchdr.so.0* (libchdr)"; do
+	"libchdr\.so\.0:libchdr.so.0* (libchdr)" \
+	"librcheevos\.so\.:librcheevos.so.* (rcheevos)"; do
 	lib_re="^\\./usr/lib/${spec%%:*}"
 	lib_name="${spec#*:}"
 	if grep -qE "$lib_re" "$TAR_LIST"; then

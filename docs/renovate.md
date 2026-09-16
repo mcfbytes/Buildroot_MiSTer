@@ -54,6 +54,7 @@ for the specific pieces most likely to need a fix on the first live run.
 | munt tag pin | `package/munt/munt.mk` | `github-tags` datasource, custom `regex:` versioning for the `munt_MAJOR_MINOR_PATCH` tag scheme | `package/munt/munt.hash` — auto-refreshed |
 | bcm20702-firmware **commit** pin | `package/bcm20702-firmware/bcm20702-firmware.mk` | `git-refs` datasource tracking `master` HEAD via `currentDigest`. **Was** a `github-tags`/`loose` tag pin until 2026-07-19 — see "Why this one is a commit pin" below | `package/bcm20702-firmware/bcm20702-firmware.hash` — auto-refreshed |
 | libchdr commit-SHA pin (Main_MiSTer shared-lib refactor; labeled `lib-pin`) | `package/libchdr/libchdr.mk` | `customManagers` regex, `git-refs` datasource tracking `rtissera/libchdr`'s `master` HEAD via `currentDigest` (a commit pin, not the stale `v0.3.0` tag — see the .mk's header) | `package/libchdr/libchdr.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
+| rcheevos tag pin (RetroAchievements client library; labeled `lib-pin`) | `package/rcheevos/rcheevos.mk` | `customManagers` regex, `github-tags` datasource over `RetroAchievements/rcheevos` with `loose` versioning. A **tag**, unlike the libchdr row above — upstream tags every release and its README says to integrate against `master`, which *is* the newest tag. The captured `currentValue` **includes the leading `v`**, same trick and same reason as the dualsensectl row below | `package/rcheevos/rcheevos.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball; **verified against the real package on 2026-09-16**, not just assumed to fit — the loop derived the same URL and hash and reported `already-current`). **Read every bump diff for public struct changes**: upstream has changed caller-allocated layouts in *patch* releases, which is survivable only because the SONAME is the full version — see `docs/main-shared-libs.md` |
 | 2 ip7z/7zip tag pins (`lzma-sdk` for the Main_MiSTer shared-lib refactor, `7zip` for the `7zz` archiver + the `/media/fat/linux/7za` updater binary — ADR 0023; both labeled `lib-pin`) | `package/lzma-sdk/lzma-sdk.mk`, `package/7zip/7zip.mk` | one `customManagers` regex **per file**, both `github-tags` over `ip7z/7zip` with `loose` versioning. **Same `depName` for both, so Renovate emits one PR touching both** — the two packages compile different halves of the identical release asset and must not drift apart. Only the `*_VERSION` line is managed in each — `*_SOURCE` derives from it via `$(subst)` in the .mk | `package/lzma-sdk/lzma-sdk.hash` and `package/7zip/7zip.hash` — both auto-refreshed by `renovate-hash-sync.yml`'s **bespoke ip7z/7zip step** (`scripts/hash-sync-ip7z-src.sh`, table-driven over both; release-*asset* URL, dots-stripped filename `7z2603-src.tar.xz`; does not fit the generic loop; also refreshes each package's `*_LICENSE_FILES` hashes and diffs any that changed — see case 3 below) |
 | dualsensectl tag pin (DualSense operator CLI; labeled `tool-pin`) | `package/dualsensectl/dualsensectl.mk` | `customManagers` regex, `github-tags` datasource over `nowrep/dualsensectl` with plain `loose` versioning — upstream tags ordinary `vMAJOR.MINOR` releases, so no bespoke scheme is needed (unlike munt). The captured `currentValue` **includes the leading `v`** on purpose: `scripts/hash-sync-github-packages.sh` reuses the literal `*_VERSION` string as both the archive ref and the `<pkgdir>-<version>.tar.gz` filename, so splitting the prefix off would desync the two | `package/dualsensectl/dualsensectl.hash` — auto-refreshed by `renovate-hash-sync.yml`'s generic loop (standard `$(call github,...)` archive tarball) |
 | azcopy release pin (Azure Storage CLI, off-device backup; labeled `tool-pin`) | `package/azcopy/azcopy.mk` | `customManagers` regex, `github-releases` datasource over `Azure/azure-storage-azcopy` with `semver` versioning and `extractVersionTemplate: ^v(?<version>.*)$`. Upstream tags are `v`-prefixed but `AZCOPY_VERSION` holds the **bare** version — the opposite of the dualsensectl row above, and deliberate: that row's `v`-inside-the-version trick exists only to keep `scripts/hash-sync-github-packages.sh`'s generic loop working, and azcopy is **not in that loop** (next column), so the constraint does not apply and the bare number that `azcopy --version` prints is the more useful thing to have in the variable | `package/azcopy/azcopy.hash` — **auto-refreshed since 2026-08-28, by a case of its own (7), never by the generic loop.** azcopy is a `golang-package`: Buildroot sets `DOWNLOAD_POST_PROCESS = go`, runs `go mod vendor`, and hashes the repacked `-go2` tarball, so the generic loop's `curl \| sha256sum` would write the hash of the *pre-vendoring* archive — a wrong value that looks right. azcopy is therefore permanently absent from `HASH_SYNC_PACKAGES`, but it **is** in the workflow's `paths:` filter (it has to be, or nothing fires on a bump): `scripts/hash-sync-azcopy.sh` **rebuilds** the `-go2` tarball with Buildroot's own `support/download/go-post-process` and Buildroot's own pinned Go, then hashes it — and re-derives the `LICENSE`/`NOTICE.txt` lines too. Before that date this row read "**NOT auto-refreshed, and cannot be**", and older commits still show it; the curl-and-hash *method* was what could not work. If case 7 skips, the stale pin is still caught: the image build cannot help (azcopy is off by default, so `build.yml` never compiles it), but the **`azcopy version/hash pin consistency` step in `lint.yml`** rejects any change where `AZCOPY_VERSION` and the filename on the `sha256` line disagree, and the manual recipe in `azcopy.hash` remains the fallback. See `docs/azcopy.md` §5 and `docs/ci.md#renovate-hash-sync-safety-model` |
@@ -61,12 +62,19 @@ for the specific pieces most likely to need a fix on the first live run.
 | CI container digests | **none today** — no workflow uses a `container:` block (see `docs/ci.md#no-container-disk-reclaim`; every build job runs bare on `ubuntu-26.04` so disk reclaim can reach the runner host). The `docker`/`pinDigests` rule is retained as a no-op in case one is ever reintroduced | Renovate's built-in `github-actions` manager, `docker` datasource, `pinDigests: true` | n/a — digest updates carry their own content-hash |
 | GitHub Actions | every SHA-pinned `uses:` line (with a `# vX.Y.Z` comment) across `build.yml`, `release.yml`, `reproducibility.yml`, `publish-db.yml` | Renovate's built-in `github-actions` manager (no custom config needed — it already understands "SHA-pinned + trailing semver comment" and updates both together) | n/a |
 
-That is **23 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
-kernel, 10 driver commits, munt, bcm20702-firmware — 11 commit pins in total
-once bcm20702 is counted — libchdr, lzma-sdk, 7zip, dualsensectl, azcopy, and
-the 3 sdcard payload
+That is **19 customManagers entries** (Buildroot, the 6.18 kernel, the RT/beta
+kernel, 4 driver commits, munt, bcm20702-firmware — 5 commit pins in total
+once bcm20702 is counted — libchdr, rcheevos, lzma-sdk, 7zip, dualsensectl,
+ltunify, azcopy, and the 3 sdcard payload
 pins; note lzma-sdk and 7zip are 2 entries but only **1** upstream dependency,
-so they raise a single PR)
+so they raise a single PR).
+This figure was **counted from `renovate.json`, not incremented**, on
+2026-09-16 when the rcheevos row above was added. It had read "23 ... 10
+driver commits" since before 2026-09-10, when the seven deselected Realtek
+fork packages were deleted and aic8800 added — a net −6 nobody applied here.
+So the number went *down* while a manager was being added; do not read the
+drop as a removal. Re-count rather than adjust:
+`python3 -c "import json;print(len(json.load(open('renovate.json'))['customManagers']))"`
 plus the two built-in managers
 (`docker` digests, `github-actions`), covering every version/commit/digest pin
 this repository maintains by hand except the four listed below.
@@ -317,11 +325,15 @@ docs/ci.md#renovate-hash-sync-outcomes-gate.
 
 **What it fixes automatically, and why each case is safe:**
 
-1. **The 14 github-archive `.hash` files** (the 10 driver commit pins + munt +
-   bcm20702-firmware + libchdr + dualsensectl — the last two userspace, from
-   the Main_MiSTer shared-lib refactor and the DualSense operator tooling
-   respectively, but both the exact same
-   `$(call github,...)` tarball shape as the driver pins). Every one of
+1. **The github-archive `.hash` files** named in `HASH_SYNC_PACKAGES` (the
+   driver commit pins + munt + bcm20702-firmware + libchdr + rcheevos +
+   dualsensectl + ltunify — the last four userspace, from the Main_MiSTer
+   shared-lib refactor, the RetroAchievements library, the DualSense operator
+   tooling and the Logitech pairing CLI respectively, but all the exact same
+   `$(call github,...)` tarball shape as the driver pins). `HASH_SYNC_PACKAGES`
+   in the workflow is the single source of truth for that list — count it
+   there rather than trusting a number here, which is why this line no longer
+   carries one. Every one of
    these `.hash` files' own header comment
    already documents that GitHub publishes no signed manifest for a
    commit/tag archive tarball, and that a **locally-computed** `sha256sum`

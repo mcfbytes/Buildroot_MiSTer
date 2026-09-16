@@ -1,0 +1,38 @@
+config BR2_PACKAGE_RCHEEVOS
+	bool "rcheevos"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  rcheevos: RetroAchievements' own client library. Four pieces
+	  in one .so -- rcheevos (evaluating achievement, leaderboard
+	  and rich-presence logic against emulated memory), rapi (the
+	  RetroAchievements web API request/response marshalling),
+	  rhash (game identification hashing, including disc images),
+	  and rc_client, the high-level state machine upstream
+	  recommends integrating against.
+
+	  It does NOT perform network I/O: the consumer is handed a URL
+	  to fetch and passes the response body back in. Nothing on this
+	  image links it yet -- it is shipped so a consumer can.
+
+	  Built as a shared library (librcheevos.so.<full version>)
+	  with upstream's own -DRC_SHARED plus -fvisibility=hidden, so
+	  ONLY the RC_EXPORT-annotated public API is exported -- 264
+	  symbols rather than 477. That matters here: the hidden 213
+	  include md5_init/md5_append/md5_finish and six AES_* entry
+	  points, which would otherwise interpose against a consumer's
+	  own md5 and AES code. Patch 0001 annotates rc_util.h, the one
+	  public header upstream left un-annotated.
+
+	  The SONAME is the FULL version, deliberately -- upstream gives
+	  no ABI guarantee and its caller-allocated public structs have
+	  changed layout in PATCH releases (v10.7.1 grew rc_runtime_t,
+	  v10.3.3 grew rc_api_login_response_t mid-struct, v6.0.1
+	  changed RC_ALIGNMENT). Since the Main_MiSTer binary lives on
+	  /media/fat and survives rootfs reflashes, a bump has to be a
+	  loud refuse-to-load rather than silent corruption. See
+	  package/rcheevos/rcheevos.mk.
+
+	  https://github.com/RetroAchievements/rcheevos
+
+comment "rcheevos needs a toolchain w/ threads"
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

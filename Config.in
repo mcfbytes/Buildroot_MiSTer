@@ -132,6 +132,16 @@ menu "Main_MiSTer shared libraries"
 	# independently selectable.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/lzma-sdk/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/libchdr/Config.in"
+	# rcheevos (RetroAchievements client library) is the ODD ONE OUT in this
+	# menu and is sourced last to keep that visible. lzma-sdk and libchdr are
+	# here to REPLACE code Main_MiSTer already vendors -- that is what "the
+	# Main_MiSTer shared-lib refactor" means. rcheevos replaces nothing:
+	# neither Main nor this tree references it yet. It is in this menu anyway
+	# because the menu's actual contract is "shared libraries this tree
+	# authors for Main_MiSTer to link, which upstream Buildroot does not
+	# carry", and a second menu holding one library would say less. It has no
+	# dependency on either sibling and toggles independently.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/rcheevos/Config.in"
 endmenu
 
 menu "Archival / on-device update tooling"

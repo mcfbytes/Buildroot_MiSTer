@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Tue, 16 Sep 2026 00:00:00 +0000
+Subject: [PATCH] rc_util: annotate the public helpers with RC_EXPORT/RC_CCONV
+
+rc_util.h is the ONLY public header in include/ whose function
+declarations carry neither RC_EXPORT nor RC_CCONV -- every other one
+(rc_client.h, rc_runtime.h, rc_api_*.h, rc_hash.h, rc_version.h, ...)
+annotates all nine of its own. Verified mechanically across all 16
+installed headers at v12.5.0, not sampled.
+
+That is harmless for the RC_STATIC default, but it makes an RC_SHARED
+build self-inconsistent: rc_export.h defines RC_EXPORT as
+__attribute__((visibility("default"))) precisely so a shared build can
+be compiled -fvisibility=hidden and export its documented API and
+nothing else. Built that way, the nine rc_buffer_*/rc_djb2/
+rc_format_md5 entry points declared in this public header become
+local symbols and cannot be linked against, so the header promises an
+API the .so does not provide.
+
+Annotating the declaration alone is sufficient and is upstream's own
+pattern: rc_version.h declares "RC_EXPORT uint32_t rc_version(void)"
+while src/rc_version.c defines a bare "uint32_t rc_version(void)".
+GCC propagates the visibility attribute from the declaration, so no
+.c file needs touching and no calling convention mismatch is
+introduced on any target.
+
+Provenance
+----------
+Origin:       Not upstream. Written for this repo against
+              RetroAchievements/rcheevos v12.5.0.
+Author:       Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Upstream:     NO -- not submitted yet. This is written to be sent as-is:
+              it is a nine-line consistency fix in upstream's own idiom,
+              with no behaviour change for the RC_STATIC default that
+              every current integrator uses, so it should be an easy take.
+              It has not been sent because this repo does not open
+              upstream pull requests without the owner asking first.
+              Drop this patch when upstream carries the annotations.
+Disposition:  LOAD-BEARING for this package, not cosmetic. The package
+              builds -DRC_SHARED -fvisibility=hidden (see rcheevos.mk for
+              why that pairing is the point). Without this patch the nine
+              entry points rc_util.h declares are compiled as local
+              symbols, so the installed header declares an API that
+              cannot be linked -- an undefined-reference at the
+              consumer's link step, not a build failure here.
+Behaviour:    No behaviour change on any target, and none for a static
+              consumer. RC_EXPORT under RC_STATIC and RC_IMPORT is
+              already visibility("default") -- the same value these
+              declarations get implicitly today -- so only an RC_SHARED
+              build compiled -fvisibility=hidden sees any difference.
+              RC_CCONV is empty on every target except Windows and i386.
+Verified:     Built for arm-buildroot-linux-gnueabihf and checked with
+              nm -D: all nine symbols move from local to exported (264
+              exported vs 255 without the patch), and a consumer calling
+              rc_buffer_init/rc_djb2/rc_format_md5 links and runs.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/include/rc_util.h b/include/rc_util.h
+index 18d27e0..6d28f08 100644
+--- a/include/rc_util.h
++++ b/include/rc_util.h
+@@ -34,17 +34,17 @@ typedef struct rc_buffer_t {
+ }
+ rc_buffer_t;
+ 
+-void rc_buffer_init(rc_buffer_t* buffer);
+-void rc_buffer_destroy(rc_buffer_t* buffer);
+-uint8_t* rc_buffer_reserve(rc_buffer_t* buffer, size_t amount);
+-void rc_buffer_consume(rc_buffer_t* buffer, const uint8_t* start, uint8_t* end);
+-void* rc_buffer_alloc(rc_buffer_t* buffer, size_t amount);
+-char* rc_buffer_strcpy(rc_buffer_t* buffer, const char* src);
+-char* rc_buffer_strncpy(rc_buffer_t* buffer, const char* src, size_t len);
++RC_EXPORT void RC_CCONV rc_buffer_init(rc_buffer_t* buffer);
++RC_EXPORT void RC_CCONV rc_buffer_destroy(rc_buffer_t* buffer);
++RC_EXPORT uint8_t* RC_CCONV rc_buffer_reserve(rc_buffer_t* buffer, size_t amount);
++RC_EXPORT void RC_CCONV rc_buffer_consume(rc_buffer_t* buffer, const uint8_t* start, uint8_t* end);
++RC_EXPORT void* RC_CCONV rc_buffer_alloc(rc_buffer_t* buffer, size_t amount);
++RC_EXPORT char* RC_CCONV rc_buffer_strcpy(rc_buffer_t* buffer, const char* src);
++RC_EXPORT char* RC_CCONV rc_buffer_strncpy(rc_buffer_t* buffer, const char* src, size_t len);
+ 
+-uint32_t rc_djb2(const char* input);
++RC_EXPORT uint32_t RC_CCONV rc_djb2(const char* input);
+ 
+-void rc_format_md5(char checksum[33], const uint8_t digest[16]);
++RC_EXPORT void RC_CCONV rc_format_md5(char checksum[33], const uint8_t digest[16]);
+ 
+ RC_END_C_DECLS
+ 
+-- 
+2.51.0

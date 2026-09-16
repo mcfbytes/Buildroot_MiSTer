@@ -37,6 +37,7 @@ config BR2_PACKAGE_MISTER_USERSPACE
 	# --- Main_MiSTer shared libs (§5.5, docs/main-shared-libs.md) ---
 	select BR2_PACKAGE_LZMA_SDK
 	select BR2_PACKAGE_LIBCHDR
+	select BR2_PACKAGE_RCHEEVOS
 	# --- graphics / fonts (§5.6) ---
 	select BR2_PACKAGE_FREETYPE
 	select BR2_PACKAGE_LIBPNG

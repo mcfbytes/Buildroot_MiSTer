@@ -161,6 +161,11 @@ on:
       - "package/bcm20702-firmware/bcm20702-firmware.mk"
       - "package/libchdr/libchdr.mk"
       - "package/lzma-sdk/lzma-sdk.mk"
+      # rcheevos (RetroAchievements client library). Ordinary github
+      # tag-archive pin, covered by the generic loop in step 1. Same
+      # both-lists-or-silent-failure note as rtl8852cu-morrownr above: it must
+      # appear HERE and in HASH_SYNC_PACKAGES below.
+      - "package/rcheevos/rcheevos.mk"
       # azcopy (case 7). ADDED 2026-08-28, when that case was added -- before
       # that an azcopy bump PR deliberately stayed red until a human ran
       # package/azcopy/azcopy.hash's regeneration recipe by hand. Same
@@ -280,7 +285,7 @@ jobs:
       # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
       # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
       # dualsensectl.hash.
-      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr dualsensectl ltunify"
+      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr rcheevos dualsensectl ltunify"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

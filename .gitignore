@@ -6,6 +6,7 @@ dist/
 release-work/
 *.img
 *.7z
+*.log
 venv/
 __pycache__/
 

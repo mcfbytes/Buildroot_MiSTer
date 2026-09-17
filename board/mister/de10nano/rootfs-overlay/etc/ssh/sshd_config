@@ -46,11 +46,24 @@ PermitRootLogin yes
 # The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
 # but this is overridden so installations will only check .ssh/authorized_keys
 #
-# SECOND PATH ADDED: /media/fat/linux/authorized_keys -- a user's key that
+# SECOND PATH ADDED: /media/fat/config/authorized_keys -- a user's key that
 # SURVIVES AN IMAGE UPDATE. An update replaces linux.img wholesale, so anything
 # under /root/.ssh -- which lives inside that file -- is destroyed by it. That
 # is the durable reason for this second path, and it holds regardless of how
 # the root filesystem happens to be mounted at the time.
+#
+# WHY /media/fat/config AND NOT /media/fat/linux: this is the location the
+# community already standardised on. security_fixes.sh in
+# MiSTer-devel/Scripts_MiSTer has read /media/fat/config/authorized_keys since
+# v2.1 (2021-12-17), copying it to /root/.ssh/authorized_keys when run. It also
+# matches what each directory is FOR: /media/fat/config holds user
+# configuration (device.bin, core .cfg files), while /media/fat/linux holds the
+# boot payload an update rewrites (linux.img, u-boot.img, the DTB). We shipped
+# /media/fat/linux/authorized_keys first (v2026.09.11-beta) and moved here after
+# Kreeblah pointed the prior art out on the forum -- issue #183. S50sshd
+# migrates the old file on first boot, so the change costs existing users
+# nothing; the old path is deliberately NOT kept listed here, because one
+# location is the entire point.
 #
 # Getting a key into the first path is awkward besides: / is mounted READ-ONLY
 # at boot (`ro` on the cmdline; inittab's remount-rw line is deliberately left
@@ -84,7 +97,7 @@ PermitRootLogin yes
 #
 # ORDER MATTERS ONLY FOR PRECEDENCE, NOT FUNCTION: sshd tries every listed
 # file, so a key in either location works.
-AuthorizedKeysFile	.ssh/authorized_keys /media/fat/linux/authorized_keys
+AuthorizedKeysFile	.ssh/authorized_keys /media/fat/config/authorized_keys
 
 #AuthorizedPrincipalsFile none
 

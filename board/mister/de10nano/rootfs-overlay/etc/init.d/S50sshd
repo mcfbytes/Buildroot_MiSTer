@@ -16,12 +16,122 @@
 KEYIMG=/media/fat/linux/ssh.ext4
 KEYDIR=/etc/ssh_keys
 
+# A USER's key, as opposed to the host keys above: sshd_config's second
+# AuthorizedKeysFile path, on the exFAT partition an update never touches.
+# AUTHKEYS_LEGACY is where we put it in v2026.09.11-beta, before issue #183
+# established that the community had already standardised on /media/fat/config
+# -- security_fixes.sh (MiSTer-devel/Scripts_MiSTer) has read it from there
+# since v2.1, 2021-12-17. migrate_authorized_keys() below moves it, once.
+AUTHKEYS=/media/fat/config/authorized_keys
+AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys
+
 # Make sure the ssh-keygen program exists
 [ -f /usr/bin/ssh-keygen ] || exit 0
 
 umask 077
 
+# Move a user's authorized_keys from the pre-#183 location to the standard one.
+# A no-op on every boot after the first, and on every box that never used the
+# old path (the -f test below is the whole cost in that case).
+#
+# This runs in init rather than being left to the user because the alternative
+# is silent: sshd would simply stop reading the file someone put on the card
+# after following our own FAQ, and key login would fail with nothing anywhere
+# saying why. The old path is NOT kept as a second AuthorizedKeysFile entry --
+# one location is the point of #183 -- so this migration is what makes dropping
+# it safe.
+#
+# COPY, VERIFY, THEN DELETE. Never mv: while this function runs, the legacy
+# file may be the user's only way into the box, so it is removed only once the
+# standard file provably contains every key it held.
+#
+# Returns 0 if there is nothing to do or the migration completed; 1 if the
+# legacy file is still the only copy, which start() answers by keeping sshd
+# reading it for this boot.
+migrate_authorized_keys() {
+	[ -f "$AUTHKEYS_LEGACY" ] || return 0
+
+	echo "Migrating $AUTHKEYS_LEGACY -> $AUTHKEYS"
+
+	# Intermediates on tmpfs, not on the card: a half-written merge must not be
+	# left behind next to the real file if the power goes at the wrong moment.
+	legacy_lines=/run/authorized_keys.lines.$$
+	legacy_keys=/run/authorized_keys.keys.$$
+	dest_lines=/run/authorized_keys.dest.$$
+	merged=/run/authorized_keys.merged.$$
+	rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged"
+
+	# Two views of the old file. Every non-blank line is what gets carried over
+	# -- a "# work laptop" comment is part of the user's file and should survive
+	# the move -- while the key lines alone answer "is there anything here worth
+	# keeping?" and give the count reported below.
+	grep -v '^[[:space:]]*$' "$AUTHKEYS_LEGACY" > "$legacy_lines"
+	grep -v '^[[:space:]]*#' "$legacy_lines" > "$legacy_keys"
+
+	if [ ! -s "$legacy_keys" ]; then
+		rm -f "$AUTHKEYS_LEGACY" "$legacy_lines" "$legacy_keys" "$dest_lines"
+		echo "  old file held no keys -- removed"
+		return 0
+	fi
+
+	# An EMPTY pattern file is the trap here: BusyBox grep (what this image
+	# ships) treats `-f <empty>` as matching EVERY line, where GNU grep matches
+	# none -- so `grep -F -x -v -f` against a zero-byte $AUTHKEYS silently
+	# selects nothing and the merge below would produce an empty file, throwing
+	# the user's key away. Testing $dest_lines for content, rather than testing
+	# $AUTHKEYS for existence, is what keeps the merge branch off an empty
+	# pattern file. (Found by scripts/test-authorized-keys-migration.sh case 12,
+	# running the real BusyBox; it is not reproducible with GNU grep.)
+	: > "$dest_lines"
+	[ -f "$AUTHKEYS" ] && grep -v '^[[:space:]]*$' "$AUTHKEYS" > "$dest_lines"
+
+	if [ -s "$dest_lines" ]; then
+		# Both files have content -- MERGE, never clobber. Someone can
+		# legitimately have a security_fixes.sh-era key in config/ and a
+		# different one in linux/ (two PCs, two keys), and either one being
+		# dropped here would lock a machine out. -F -x -v -f appends only the
+		# lines config/ does not already have, so re-running cannot duplicate
+		# a key either.
+		cat "$AUTHKEYS" > "$merged"
+		grep -F -x -v -f "$dest_lines" "$legacy_lines" >> "$merged"
+	else
+		mkdir -p "${AUTHKEYS%/*}"
+		cat "$legacy_lines" > "$merged"
+	fi
+
+	# Written under a temporary name and renamed, so a reader (sshd on a later
+	# start, or a concurrent one) never sees a partial file at $AUTHKEYS. The
+	# check is against what actually landed ON THE CARD, not against $merged.
+	# `[ -s ]` before the grep for the same empty-pattern-file reason as above:
+	# an empty result file can never be a correct migration of a non-empty key
+	# list, and must not be allowed to pass the check by matching everything.
+	if cp "$merged" "$AUTHKEYS.new" && mv "$AUTHKEYS.new" "$AUTHKEYS" &&
+	   [ -s "$AUTHKEYS" ] &&
+	   ! grep -F -x -v -f "$AUTHKEYS" "$legacy_lines" | grep -q .; then
+		rm -f "$AUTHKEYS_LEGACY"
+		sync
+		echo "  OK -- $(wc -l < "$legacy_keys") key(s) migrated"
+		rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged"
+		return 0
+	fi
+
+	echo "WARNING: could not migrate $AUTHKEYS_LEGACY to $AUTHKEYS." >&2
+	echo "WARNING: sshd will keep reading the OLD path for this boot, so key" >&2
+	echo "WARNING: login still works; move the file by hand to make it stick." >&2
+	# Best-effort cleanup, and quiet: whatever made the migration fail (a
+	# read-only card, a non-directory in the way) tends to make these fail
+	# too, and their errors would only bury the three lines above.
+	rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged" "$AUTHKEYS.new" 2>/dev/null
+	return 1
+}
+
 start() {
+	if migrate_authorized_keys; then
+		authkeys_fallback=
+	else
+		authkeys_fallback=yes
+	fi
+
 	echo 'Checking for SSH host key storage'
 
 	if [ ! -f "$KEYIMG" ]; then
@@ -61,10 +171,19 @@ start() {
 	# -o HostKey overrides sshd_config's compiled paths, so the tmpfs
 	# fallback above is actually honoured (otherwise sshd would read the
 	# persistent /etc/ssh_keys paths from the config and find nothing).
-	/usr/sbin/sshd \
-		-o "HostKey=$KEYDIR/ssh_host_rsa_key" \
+	set -- -o "HostKey=$KEYDIR/ssh_host_rsa_key" \
 		-o "HostKey=$KEYDIR/ssh_host_ecdsa_key" \
 		-o "HostKey=$KEYDIR/ssh_host_ed25519_key"
+
+	# Migration failed and the user's only key is still at the old path. An
+	# -o AuthorizedKeysFile REPLACES the config's list, so the two shipped
+	# paths have to be restated alongside it. Same principle as the host-key
+	# fallback above: a degraded outcome is fine, no way in is not.
+	if [ -n "$authkeys_fallback" ]; then
+		set -- "$@" -o "AuthorizedKeysFile=.ssh/authorized_keys $AUTHKEYS $AUTHKEYS_LEGACY"
+	fi
+
+	/usr/sbin/sshd "$@"
 	touch /var/lock/sshd
 	echo "OK"
 }

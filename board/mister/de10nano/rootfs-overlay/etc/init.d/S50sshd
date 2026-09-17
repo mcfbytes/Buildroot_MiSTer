@@ -16,6 +16,12 @@
 KEYIMG=/media/fat/linux/ssh.ext4
 KEYDIR=/etc/ssh_keys
 
+# Make sure the ssh-keygen program exists
+[ -f /usr/bin/ssh-keygen ] || exit 0
+
+umask 077
+
+# --------------------------------------------------------------------------
 # A USER's key, as opposed to the host keys above: sshd_config's second
 # AuthorizedKeysFile path, on the exFAT partition an update never touches.
 # AUTHKEYS_LEGACY is where we put it in v2026.09.11-beta, before issue #183
@@ -25,10 +31,37 @@ KEYDIR=/etc/ssh_keys
 AUTHKEYS=/media/fat/config/authorized_keys
 AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys
 
-# Make sure the ssh-keygen program exists
-[ -f /usr/bin/ssh-keygen ] || exit 0
+# The three lines every failure path prints. A failed migration is survivable
+# by design -- sshd still starts, and start() keeps the old path in its
+# AuthorizedKeysFile list for this boot -- so it costs a console warning, not
+# a login.
+migrate_warn() {
+	echo "WARNING: could not migrate $AUTHKEYS_LEGACY to $AUTHKEYS." >&2
+	echo "WARNING: sshd will keep reading the OLD path for this boot, so key" >&2
+	echo "WARNING: login still works; move the file by hand to make it stick." >&2
+}
 
-umask 077
+# grep into a file, distinguishing "matched nothing" from "went wrong".
+#
+# Status 1 is "no lines matched", a legitimate result here (an old file of
+# nothing but blank lines). Status 2 and up -- a read error, or the shell
+# failing to create the output file -- must NOT reach the caller as an empty
+# file, because "empty" is what its delete branch keys off: an unwritable
+# /run would otherwise read as "this file holds no keys" and take the user's
+# key with it.
+filter() { # <outfile> <grep args...>
+	_out=$1
+	shift
+	# The `else` is load-bearing: with a bare `if ... ; fi`, `$?` afterwards is
+	# the IF STATEMENT's status -- zero when the condition was false and there
+	# was no branch to run -- not grep's. Inside the else it is still grep's.
+	if grep "$@" > "$_out"; then
+		return 0
+	else
+		_st=$?
+		[ "$_st" -eq 1 ]
+	fi
+}
 
 # Move a user's authorized_keys from the pre-#183 location to the standard one.
 # A no-op on every boot after the first, and on every box that never used the
@@ -55,21 +88,33 @@ migrate_authorized_keys() {
 
 	# Intermediates on tmpfs, not on the card: a half-written merge must not be
 	# left behind next to the real file if the power goes at the wrong moment.
-	legacy_lines=/run/authorized_keys.lines.$$
-	legacy_keys=/run/authorized_keys.keys.$$
-	dest_lines=/run/authorized_keys.dest.$$
-	merged=/run/authorized_keys.merged.$$
-	rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged"
+	#
+	# A DIRECTORY, created first, because creating it is what proves /run is
+	# writable BEFORE anything below trusts an empty file -- see filter().
+	scratch=/run/authorized_keys.$$
+	if ! mkdir "$scratch"; then
+		migrate_warn
+		return 1
+	fi
+	legacy_lines="$scratch/legacy-lines"
+	legacy_keys="$scratch/legacy-keys"
+	dest_lines="$scratch/dest-lines"
+	merged="$scratch/merged"
 
 	# Two views of the old file. Every non-blank line is what gets carried over
 	# -- a "# work laptop" comment is part of the user's file and should survive
 	# the move -- while the key lines alone answer "is there anything here worth
 	# keeping?" and give the count reported below.
-	grep -v '^[[:space:]]*$' "$AUTHKEYS_LEGACY" > "$legacy_lines"
-	grep -v '^[[:space:]]*#' "$legacy_lines" > "$legacy_keys"
+	if ! filter "$legacy_lines" -v '^[[:space:]]*$' "$AUTHKEYS_LEGACY" ||
+	   ! filter "$legacy_keys" -v '^[[:space:]]*#' "$legacy_lines"; then
+		migrate_warn
+		rm -rf "$scratch"
+		return 1
+	fi
 
 	if [ ! -s "$legacy_keys" ]; then
-		rm -f "$AUTHKEYS_LEGACY" "$legacy_lines" "$legacy_keys" "$dest_lines"
+		rm -f "$AUTHKEYS_LEGACY"
+		rm -rf "$scratch"
 		echo "  old file held no keys -- removed"
 		return 0
 	fi
@@ -83,7 +128,12 @@ migrate_authorized_keys() {
 	# pattern file. (Found by scripts/test-authorized-keys-migration.sh case 12,
 	# running the real BusyBox; it is not reproducible with GNU grep.)
 	: > "$dest_lines"
-	[ -f "$AUTHKEYS" ] && grep -v '^[[:space:]]*$' "$AUTHKEYS" > "$dest_lines"
+	if [ -f "$AUTHKEYS" ] &&
+	   ! filter "$dest_lines" -v '^[[:space:]]*$' "$AUTHKEYS"; then
+		migrate_warn
+		rm -rf "$scratch"
+		return 1
+	fi
 
 	if [ -s "$dest_lines" ]; then
 		# Both files have content -- MERGE, never clobber. Someone can
@@ -92,7 +142,13 @@ migrate_authorized_keys() {
 		# dropped here would lock a machine out. -F -x -v -f appends only the
 		# lines config/ does not already have, so re-running cannot duplicate
 		# a key either.
-		cat "$AUTHKEYS" > "$merged"
+		#
+		# The base is $dest_lines, NOT `cat "$AUTHKEYS"`: grep output is always
+		# newline-terminated, while the file on the card need not be -- Notepad
+		# does not add a final newline, and that is the exact workflow the FAQ
+		# describes. Copying it raw would splice the first migrated key onto
+		# the end of the user's existing one, destroying both.
+		cat "$dest_lines" > "$merged"
 		grep -F -x -v -f "$dest_lines" "$legacy_lines" >> "$merged"
 	else
 		mkdir -p "${AUTHKEYS%/*}"
@@ -108,20 +164,25 @@ migrate_authorized_keys() {
 	if cp "$merged" "$AUTHKEYS.new" && mv "$AUTHKEYS.new" "$AUTHKEYS" &&
 	   [ -s "$AUTHKEYS" ] &&
 	   ! grep -F -x -v -f "$AUTHKEYS" "$legacy_lines" | grep -q .; then
-		rm -f "$AUTHKEYS_LEGACY"
+		# sync BEFORE the delete, not after. exFAT here is mounted without
+		# `sync` (unlike the host-key image above, which asks for it
+		# explicitly), so a power cut between these two lines could otherwise
+		# commit the unlink while the new file is still only in page cache --
+		# the one ordering this whole copy-verify-delete dance exists to rule
+		# out.
 		sync
+		rm -f "$AUTHKEYS_LEGACY"
 		echo "  OK -- $(wc -l < "$legacy_keys") key(s) migrated"
-		rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged"
+		rm -rf "$scratch"
 		return 0
 	fi
 
-	echo "WARNING: could not migrate $AUTHKEYS_LEGACY to $AUTHKEYS." >&2
-	echo "WARNING: sshd will keep reading the OLD path for this boot, so key" >&2
-	echo "WARNING: login still works; move the file by hand to make it stick." >&2
+	migrate_warn
 	# Best-effort cleanup, and quiet: whatever made the migration fail (a
 	# read-only card, a non-directory in the way) tends to make these fail
 	# too, and their errors would only bury the three lines above.
-	rm -f "$legacy_lines" "$legacy_keys" "$dest_lines" "$merged" "$AUTHKEYS.new" 2>/dev/null
+	rm -rf "$scratch" 2>/dev/null
+	rm -f "$AUTHKEYS.new" 2>/dev/null
 	return 1
 }
 

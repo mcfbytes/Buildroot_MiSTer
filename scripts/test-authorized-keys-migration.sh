@@ -55,14 +55,15 @@ log "script = $S50"
 log "shell  = $SH"
 
 # ---------------------------------------------------------------- extraction
-# From the AUTHKEYS constants through the end of migrate_authorized_keys() --
-# the first `}` in column 1 closes that function. Taking the constants too
-# means the test uses the SHIPPED paths rather than a copy of them that could
-# drift.
-sed -n '/^AUTHKEYS=/,/^}/p' "$S50" > "$WORK/migrate.sh"
-grep -q '^migrate_authorized_keys()' "$WORK/migrate.sh" || die "migrate_authorized_keys() not found in $S50"
-grep -q '^}$'                        "$WORK/migrate.sh" || die "extraction did not reach the end of the function"
-grep -q '^start()'                   "$WORK/migrate.sh" && die "extraction ran past the function into start()"
+# The AUTHKEYS constants through the last helper, stopping at start(). Taking
+# the constants too means the test uses the SHIPPED paths rather than a copy of
+# them that could drift; stopping at start() rather than at the first `}` is
+# what lets the migration be split across helper functions.
+sed -n '/^AUTHKEYS=/,/^start()/p' "$S50" | sed '$d' > "$WORK/migrate.sh"
+for want in '^AUTHKEYS=' '^migrate_authorized_keys()' '^migrate_warn()' '^filter()'; do
+	grep -q "$want" "$WORK/migrate.sh" || die "$want not found in the extracted section of $S50"
+done
+grep -q '^start()' "$WORK/migrate.sh" && die "extraction ran past the helpers into start()"
 log "extracted $(wc -l < "$WORK/migrate.sh") lines"
 
 # Retarget the three absolute paths at the sandbox. Each rewrite is asserted,
@@ -77,7 +78,7 @@ rewrite() { # <sed-expr> <description>
 }
 rewrite "s#^AUTHKEYS=/media/fat/config/authorized_keys#AUTHKEYS=$WORK/card/config/authorized_keys#"      "AUTHKEYS"
 rewrite "s#^AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys#AUTHKEYS_LEGACY=$WORK/card/linux/authorized_keys#" "AUTHKEYS_LEGACY"
-rewrite "s#/run/authorized_keys\.#$WORK/run/authorized_keys.#g"                                          "/run intermediates"
+rewrite "s#/run/authorized_keys\.#$WORK/run/authorized_keys.#g"                                          "/run scratch dir"
 
 # ------------------------------------------------------------------- harness
 K1='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1 one@pc'
@@ -209,6 +210,28 @@ run_suite() {
 	if [ "$rc" -eq 0 ] && [ "$(keycount "$C")" = 2 ] &&
 	   grep -qxF "$K1" "$C" && grep -qxF "$K2" "$C"
 	then pass; else fail; fi
+	# The destination file written by Notepad: no final newline. `cat`ing it
+	# as the merge base spliced the first migrated key onto the end of the
+	# existing one -- destroying BOTH keys, and doing it before the
+	# verification could veto anything, since the copy had already landed.
+	desc="15 destination without a trailing newline -> no spliced line"
+	reset; mkdir -p "$WORK/card/config"
+	printf '%s' "$K2" > "$C"; printf '%s\n' "$K1" > "$L"; run
+	if [ "$rc" -eq 0 ] && [ ! -e "$L" ] && [ "$(keycount "$C")" = 2 ] &&
+	   grep -qxF "$K1" "$C" && grep -qxF "$K2" "$C"
+	then pass; else fail; fi
+
+	# /run unusable. A grep that cannot write its output produces an empty
+	# file, which used to be indistinguishable from "this file holds no keys"
+	# -- the one branch that deletes. A regular file where the scratch
+	# directory must go reproduces it regardless of privilege.
+	desc="16 scratch dir unusable -> rc=1, legacy KEPT, nothing deleted"
+	reset; printf '%s\n' "$K1" > "$L"; rm -rf "$WORK/run"; : > "$WORK/run"; run
+	if [ "$rc" -eq 1 ] && [ "$(cat "$L")" = "$K1" ] &&
+	   printf '%s' "$out" | grep -q WARNING
+	then pass; else fail; fi
+	rm -f "$WORK/run"
+
 }
 
 # ------------------------------------------------------- pass 1: host applets

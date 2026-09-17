@@ -91,7 +91,7 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 |---|---|---|---|
 | `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
-| `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/linux/authorized_keys`** | **intentional divergence, added 2026-09-05** — see §1.3 |
+| `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/config/authorized_keys`** | **intentional divergence, added 2026-09-05; the FAT path moved from `linux/` to `config/` on 2026-09-17 (issue #183)** — see §1.3 |
 | `PermitUserEnvironment` | `yes` | `yes` (comment added: MiSTer scripts rely on it) | identical |
 | `Subsystem sftp` | `/usr/libexec/sftp-server` | same | identical |
 | `HostKey` lines | commented defaults (`/etc/ssh/ssh_host_{rsa,dsa,ecdsa,ed25519}_key`) | uncommented, repointed at `/etc/ssh_keys/...`, **no DSA entry** | intentional divergence — ADR 0015, not new |
@@ -141,9 +141,40 @@ when the key *is* the login method, and it still does not survive the next updat
 > only the reasoning needed to be right.
 
 **The fix.** `sshd` accepts multiple `AuthorizedKeysFile` paths and tries each in turn, so
-the shipped config now lists the stock path *plus* `/media/fat/linux/authorized_keys`.
-Nothing else changes: no init script, no bind-mount, no `user-startup.sh` hook, no new
-persistence image.
+the shipped config now lists the stock path *plus* `/media/fat/config/authorized_keys`.
+Nothing else changes: no bind-mount, no `user-startup.sh` hook, no new persistence image.
+
+**Which FAT directory — `config/`, not `linux/` (issue #183, 2026-09-17).** This shipped
+first as `/media/fat/linux/authorized_keys`, chosen for local consistency: `ssh.ext4`
+(ADR 0015), `wpa_supplicant.conf` and the boot payload all live in `linux/`. That was
+decided without checking the community's prior art, and the prior art is five years
+older: `security_fixes.sh` in `MiSTer-devel/Scripts_MiSTer` has read
+`/media/fat/config/authorized_keys` since **v2.1 (2021-12-17)**, copying it to
+`/root/.ssh/authorized_keys` when run. Raised on the forum by Kreeblah, who reasonably
+asked that there be *one* location rather than two. `config/` also matches what the
+directories are for: `config/` is user configuration (`device.bin`, core `.cfg` files),
+`linux/` is the boot payload an update rewrites. Everything in this section holds
+identically for either directory — same partition, same mount options, same
+`StrictModes` argument — so only the path moved.
+
+Note what stock's script does with that file: it *copies* it into `/root/.ssh`, i.e.
+into `linux.img`, so on stock it has to be re-run after every OS update. We read it in
+place, so the same file needs no script at all. Sharing the location means a user who
+set up keys for stock is already set up here.
+
+**Migration.** `S50sshd` moves an existing `/media/fat/linux/authorized_keys` to the new
+path before starting sshd, once: it merges rather than clobbers if both files exist,
+verifies the destination holds every key the old file had, and only then deletes the old
+file. The old path is deliberately **not** kept as a third `AuthorizedKeysFile` entry —
+one location is the point — so the migration is what makes dropping it safe. If the move
+cannot be completed (a card mounted read-only, no free space), sshd starts with the
+legacy path appended via `-o AuthorizedKeysFile` for that boot and warns on the console;
+a failed migration must never be the reason someone cannot log in. Unit-tested by
+`scripts/test-authorized-keys-migration.sh`, which runs every case twice — once with the
+host's GNU coreutils and once with BusyBox applets, because `grep -F -x -v -f` against an
+*empty* pattern file matches nothing under GNU and everything under BusyBox, and only the
+BusyBox reading is the one the image ships. That divergence was a real key-destroying bug
+caught by the test (case 12), not a hypothetical.
 
 **Why not reuse ADR 0015's `ssh.ext4`?** It was considered and rejected. That mechanism is
 right for *host* keys because the **device** writes them: an ext4 image inside a file on
@@ -164,13 +195,18 @@ this cannot be invalidated by a card mounted differently elsewhere. Disabling
 
 **Verified on hardware**, not reasoned about: a second `sshd` on port 2223 configured with
 *only* the FAT path and `StrictModes yes` accepted a key login (OpenSSH 10.5p1, exFAT,
-real board). The shipped config additionally passes `sshd -t` and reports both paths under
+real board). That test predates #183 and used `linux/`; the directory change does not
+affect what it proved (same partition, same mount options), but a rig re-run against
+`config/` is owed and is listed as such in the PR. The shipped config additionally passes `sshd -t` and reports both paths under
 `sshd -T` on the device.
 
-**CI:** `scripts/ci-tests.sh` asserts the FAT path is present in the **shipped**
-`sshd_config` (not the overlay source) and that `StrictModes no` is absent — dropping
-either would otherwise return every user to "your key is gone after each update" with
-nothing failing. User-facing instructions are in
+**CI:** `scripts/ci-tests.sh` asserts, against the **shipped** artifacts rather than the
+overlay sources, that `sshd_config` lists `/media/fat/config/authorized_keys`, that it no
+longer lists the pre-#183 `linux/` path (two live locations is the confusion #183 exists
+to end), that `StrictModes no` is absent, and that `S50sshd` still carries the migration.
+Dropping any of those would otherwise return some set of users to "your key is gone" with
+nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migration's
+behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
 

@@ -89,7 +89,8 @@ Everything below was verified on 2026-09-11 against the HIL rig (beta `260904`, 
   the MiSTer update ecosystem; that is a parity fact, not a gap this project can close
   alone.
 - `authorized_keys` on the FAT partition already survives updates, satisfies `StrictModes`,
-  and is CI-asserted (`docs/ssh-ftp-parity.md` §1.3).
+  and is CI-asserted (`docs/ssh-ftp-parity.md` §1.3). Since issue #183 it lives at
+  `/media/fat/config/authorized_keys`, the location `security_fixes.sh` already used.
 
 ### The tension
 
@@ -110,7 +111,7 @@ the owner's answer to Q1 below; Tier 3 is recorded so it is not re-discovered.
 
 ### Tier 1 — invisible to a stock-style user
 
-1. **Key present ⇒ password auth off.** If `/media/fat/linux/authorized_keys` (or
+1. **Key present ⇒ password auth off.** If `/media/fat/config/authorized_keys` (or
    `/root/.ssh/authorized_keys`) is non-empty at sshd start, `S50sshd` passes
    `-o PasswordAuthentication=no -o KbdInteractiveAuthentication=no`. Implemented in the
    init script, not `sshd_config`, because a `Match` block cannot test for a file. Lockout

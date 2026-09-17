@@ -415,11 +415,15 @@ Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](doc
   update discards it. (The root filesystem is read-only at boot and only becomes writable
   once you log in, so putting a key there also means logging in first, which is circular
   when the key *is* the login method.) `sshd` here also
-  reads **`/media/fat/linux/authorized_keys`**, on the exFAT partition an update never
+  reads **`/media/fat/config/authorized_keys`**, on the exFAT partition an update never
   touches: drop your `.pub` file there from any PC with a card reader and key login keeps
   working across every future update. No shell access, no script to edit, and
   `StrictModes` stays on — the initramfs mounts that partition `fmask=0022,dmask=0022`,
-  which is exactly what `sshd` requires. ([FAQ](docs/user/faq.md#ssh-key-persist))
+  which is exactly what `sshd` requires. That is the same file
+  [`security_fixes.sh`](https://github.com/MiSTer-devel/Scripts_MiSTer) has read since
+  2021, so a key set up for stock already works here — the difference is that stock
+  copies it *into* `linux.img` and so needs the script re-run after every update, while
+  this image reads it in place. ([FAQ](docs/user/faq.md#ssh-key-persist))
 - **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.6**, **BlueZ → 5.86**,
   **wpa_supplicant 2.9 → 2.12** — the network-facing surface, several release cycles of
   hardening each.

@@ -29,7 +29,8 @@ Re-run its three login tests before starting; if any result differs, update the 
 
 ### S1 — Key present ⇒ password auth off — Size S — Depends: none
 
-`S50sshd`: before starting sshd, if `/media/fat/linux/authorized_keys` or
+`S50sshd`: before starting sshd, if `/media/fat/config/authorized_keys` (the standard
+location since issue #183; `S50sshd` migrates the old `linux/` one) or
 `/root/.ssh/authorized_keys` exists and contains at least one non-comment line, and
 `/media/fat/linux/sshd_allow_password` does **not** exist, append
 `-o PasswordAuthentication=no -o KbdInteractiveAuthentication=no` to the sshd invocation.

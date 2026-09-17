@@ -93,13 +93,13 @@ running this image.
 <a id="ssh-key-persist"></a>
 ## How do I log in with an SSH key, and make it survive image updates?
 
-Put your **public** key in a file called `authorized_keys` in the `linux` folder on the
+Put your **public** key in a file called `authorized_keys` in the `config` folder on the
 card's main (exFAT) partition — the same partition you see when you put the card in your
 PC:
 
 ```
-/media/fat/linux/authorized_keys      # on the box
-<card>\linux\authorized_keys          # from Windows/macOS with a card reader
+/media/fat/config/authorized_keys      # on the box
+<card>\config\authorized_keys          # from Windows/macOS with a card reader
 ```
 
 Paste in the contents of your **`.pub`** file (e.g. `~/.ssh/id_ed25519.pub`) — one key
@@ -118,6 +118,21 @@ to be logged in first, which is awkward when the key is how you wanted to log in
 is gone again after the next update.) The exFAT partition is never reflashed, so a key
 kept there is picked up again after every update. `sshd` reads both locations, so you do
 not have to choose.
+
+It is also the file the community's `security_fixes.sh` script has used since 2021, so a
+key you already set up for stock MiSTer works here as-is — with one difference in your
+favour: that script *copies* the key into `linux.img` and therefore has to be re-run
+after every OS update, while this image reads the card file directly and never needs it
+re-run.
+
+> **This location moved.** Beta releases up to and including `v2026.09.16-beta` read
+> `/media/fat/`**`linux`**`/authorized_keys` instead. If that is where your key is, you do
+> not have to do anything: the first boot after updating moves it to
+> `/media/fat/config/authorized_keys` for you (merging it in if you already had keys
+> there), prints a line to the console saying so, and removes the old file. Nothing is
+> deleted until the new file is confirmed to hold every key the old one had, and if the
+> move cannot be completed, that boot keeps reading the old location so key login still
+> works.
 
 This is the same principle as the per-device host keys above: anything that must outlive
 an update lives on the data partition, not in the image.

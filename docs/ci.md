@@ -2191,11 +2191,22 @@ line — which, for a `runs-on:` typo or an unquoted glob in a rarely-hit
 branch, can be months. Cheap (a two-binary download, no build) and scoped by
 `paths:` so it never fires on the 3-hour image build's pushes.
 
-It has since picked up one non-shell job for the same reason: the last step
-runs `scripts/sbom-to-dependency-snapshot.py --self-test`. That script is
-pure logic over a CSV that `release.yml` only exercises on a tag, so this is
-the only place a regression in it surfaces on the PR that caused it. See
-[`#dependency-graph-submission`](#dependency-graph-submission).
+It has since picked up three jobs that are not linting at all, for the same
+reason — each is pure logic that nothing else reaches on a PR, and each is
+fast enough to belong in the cheap workflow rather than the 3-hour one:
+
+- `scripts/sbom-to-dependency-snapshot.py --self-test` — logic over a CSV that
+  `release.yml` only exercises on a tag. See
+  [`#dependency-graph-submission`](#dependency-graph-submission).
+- `scripts/test-installer-splash.sh` — the SD-installer's first-boot splash,
+  whose only other coverage needs a built `sdcard.img` and two QEMU boots.
+- `scripts/test-authorized-keys-migration.sh` — `S50sshd`'s one-time move of a
+  user's `authorized_keys` to `/media/fat/config` (issue #183). The step
+  installs `busybox-static` if the runner image has no BusyBox, because the
+  migration's sharpest edge (`grep -f` against an empty pattern file) behaves
+  the *opposite* way under GNU grep, and the BusyBox reading is the one the
+  image ships. The test prints a loud SKIP rather than a pass if BusyBox is
+  unavailable.
 
 <a id="push-pr-trigger-split"></a>
 ### push/pull_request split, applied even though this job is cheap

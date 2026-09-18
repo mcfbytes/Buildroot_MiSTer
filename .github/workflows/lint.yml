@@ -18,6 +18,7 @@
 #   shellcheck -s sh -x package/azcopy/azcopy-profile.sh
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
+#   scripts/test-authorized-keys-migration.sh  # S50sshd's authorized_keys move (#183)
 #
 ################################################################################
 
@@ -371,3 +372,24 @@ jobs:
         run: |
           set -euo pipefail
           scripts/test-installer-splash.sh
+
+      # Same shape again, for S50sshd's one-time authorized_keys migration
+      # (issue #183). It deletes the user's old key file once it has copied it,
+      # so a bug there does not mean "the migration did not run", it means "the
+      # key is gone" on a box whose password nobody remembers.
+      #
+      # BusyBox is installed if the runner image lacks it, because the sharpest
+      # edge in that function -- `grep -F -x -v -f` against an EMPTY pattern
+      # file -- behaves the OPPOSITE way under BusyBox and GNU grep, and only
+      # the BusyBox reading is the one the image ships. Without it, case 12
+      # cannot fail. The test reports a loud SKIP rather than a pass if the
+      # install does not work out, so a broken package name degrades the check
+      # visibly instead of silently.
+      - name: authorized_keys migration unit test (scripts/test-authorized-keys-migration.sh)
+        run: |
+          set -euo pipefail
+          if ! command -v busybox >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq busybox-static \
+              || echo "::warning::could not install busybox -- the BusyBox pass of the authorized_keys migration test will be SKIPPED"
+          fi
+          scripts/test-authorized-keys-migration.sh

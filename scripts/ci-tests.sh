@@ -1835,18 +1835,33 @@ require_present "etc/init.d/S50sshd" "S50sshd"
 # read-only at boot and a fresh image ships no /root/.ssh at all; it becomes
 # writable only via /etc/profile's remount on interactive login, so putting a
 # key there by hand needs a login first -- circular when the key IS the login
-# method.) /media/fat/linux/authorized_keys is the only location a user can
+# method.) /media/fat/config/authorized_keys is the only location a user can
 # write from an ordinary PC (card reader, any OS) that the update process does
 # not touch. Dropping this line would silently return every user to "your key
 # is gone after each update", with nothing else failing.
+#
+# WHY /media/fat/config AND NOT /media/fat/linux: it is where the community
+# already puts this file -- security_fixes.sh (MiSTer-devel/Scripts_MiSTer) has
+# read it from there since v2.1, 2021-12-17. We shipped the linux/ path first
+# and moved in issue #183; S50sshd migrates the old file once, on boot. The
+# checks below pin BOTH halves of that: the new path must be listed, and the
+# old one must NOT be (two live locations is the confusion #183 exists to end),
+# and the migration must still be present in the shipped init script.
 if tar_has "etc/ssh/sshd_config"; then
 	sshd_conf="$WORKDIR/sshd_config"
 	tar xOf "$ROOTFS_TAR" ./etc/ssh/sshd_config > "$sshd_conf" 2>/dev/null
-	if grep -qE '^AuthorizedKeysFile[[:space:]].*[[:space:]]/media/fat/linux/authorized_keys[[:space:]]*$' "$sshd_conf"; then
-		pass "sshd_config: AuthorizedKeysFile includes /media/fat/linux/authorized_keys (key survives an image update)"
+	if grep -qE '^AuthorizedKeysFile[[:space:]].*[[:space:]]/media/fat/config/authorized_keys[[:space:]]*$' "$sshd_conf"; then
+		pass "sshd_config: AuthorizedKeysFile includes /media/fat/config/authorized_keys (key survives an image update)"
 	else
-		fail "sshd_config: AuthorizedKeysFile includes /media/fat/linux/authorized_keys" \
+		fail "sshd_config: AuthorizedKeysFile includes /media/fat/config/authorized_keys" \
 			"absent -- a user key placed on the FAT partition would be ignored, so SSH key access would be lost on every image update. Actual: $(grep -E '^AuthorizedKeysFile' "$sshd_conf" || echo '<no AuthorizedKeysFile line>')"
+	fi
+
+	if grep -qE '^AuthorizedKeysFile[[:space:]].*/media/fat/linux/authorized_keys' "$sshd_conf"; then
+		fail "sshd_config: the pre-#183 /media/fat/linux path is not listed" \
+			"still present -- #183 standardised on /media/fat/config, and keeping both live recreates exactly the 'which file does my key go in?' confusion the change removes. S50sshd migrates the old file; it must not also be read."
+	else
+		pass "sshd_config: the pre-#183 /media/fat/linux path is gone (one FAT location, not two)"
 	fi
 
 	# StrictModes must stay at its default (yes). The FAT path above satisfies it
@@ -1861,6 +1876,25 @@ if tar_has "etc/ssh/sshd_config"; then
 	fi
 else
 	fail "sshd_config present" "etc/ssh/sshd_config not in rootfs.tar"
+fi
+
+# The other half of #183: the shipped S50sshd must still carry the one-time
+# move of a pre-#183 key. Without it, anyone who followed the old FAQ silently
+# loses key login on the update that lands this change -- sshd would simply
+# stop reading the file they put on the card, with nothing to say why.
+# Behaviour is unit-tested by scripts/test-authorized-keys-migration.sh; this
+# only asserts the code reached the image.
+if tar_has "etc/init.d/S50sshd"; then
+	s50="$WORKDIR/S50sshd"
+	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50sshd > "$s50" 2>/dev/null
+	if grep -q 'migrate_authorized_keys' "$s50" &&
+		grep -q '^AUTHKEYS=/media/fat/config/authorized_keys' "$s50" &&
+		grep -q '^AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys' "$s50"; then
+		pass "S50sshd: carries the one-time /media/fat/linux -> /media/fat/config authorized_keys migration"
+	else
+		fail "S50sshd: carries the one-time authorized_keys migration" \
+			"migrate_authorized_keys and/or its AUTHKEYS/AUTHKEYS_LEGACY paths are missing from the shipped init script -- existing users' keys would not be moved, and sshd no longer reads the old location"
+	fi
 fi
 
 # =============================================================================

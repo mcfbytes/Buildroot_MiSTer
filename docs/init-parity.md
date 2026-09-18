@@ -70,7 +70,7 @@ an equivalent the package set already installs.
 | `S45bluetooth` | **adapted** (mechanism reproduced, package default neutralized) | Stock's real file is a **symlink** to `/bin/bluetoothd`, which does the ext4-image persistence trick for `/var/lib/bluetooth` (BT pairing keys) that ADR 0015 explicitly mirrors for SSH host keys. Reproduced **byte-identical** (`diff` exit 0) at `bin/bluetoothd`, with `etc/init.d/S45bluetooth` a symlink to it — exactly stock's shape. **Problem found and fixed:** `BR2_PACKAGE_BLUEZ5_UTILS` installs its own `S40bluetoothd`, which starts `bluetoothd` directly with **no** persistence step — on our read-only `/`, `/var/lib/bluetooth` (not in fstab, so not tmpfs) would be unwritable, and running it would race the real `S45bluetooth` over the D-Bus name and the HCI socket. `etc/init.d/S40bluetoothd` is overlaid to a documented no-op stub so bluetoothd starts exactly once, correctly. |
 | `S49ntp` | **identical** (overlaid to fix a real bug) | Byte-identical to stock's script (`ntpd -g`, runs as root). **Problem found and fixed:** the package's own default `S49ntp` runs `ntpd -u ntp:ntp -g` — dropping privileges to an `ntp` user that **does not exist** in this build's `/etc/passwd` (verified: `grep '^ntp:' output/target/etc/passwd` → no match). Left as the package default, `ntpd` would fail to start on every boot, silently breaking time sync forever. Reverted to stock's root-run form via the overlay. |
 | `S50proftpd` | **identical** | Byte-for-byte identical to stock (`diff` exit 0). Not overlaid. |
-| `S50sshd` | **adapted** (ADR 0015) | Stock's simple shape (`ssh-keygen -A`; bare `/usr/sbin/sshd`; `touch /var/lock/sshd`) is kept, but `ssh-keygen -A` is replaced with the ADR 0015 per-device mechanism: create/mount `/media/fat/linux/ssh.ext4` at `/etc/ssh_keys` (mirrors `bin/bluetoothd`'s own ext4-image idiom almost line for line), then generate the three key types individually into it if missing. See "SSH host keys" below for the full mechanism and why. |
+| `S50sshd` | **adapted** (ADR 0015) | Stock's simple shape (`ssh-keygen -A`; bare `/usr/sbin/sshd`; `touch /var/lock/sshd`) is kept, but `ssh-keygen -A` is replaced with the ADR 0015 per-device mechanism: create/mount `/media/fat/linux/ssh.ext4` at `/etc/ssh_keys` (mirrors `bin/bluetoothd`'s own ext4-image idiom almost line for line), then generate the three key types individually into it if missing. Since issue #183 it also performs one further step before starting sshd: a **one-time move** of a user's `authorized_keys` from the pre-#183 `/media/fat/linux/` to `/media/fat/config/`, the location the community's `security_fixes.sh` already used. See "SSH host keys" below for the host-key mechanism and `docs/ssh-ftp-parity.md` §1.3 for the user-key one. |
 | `S91smb` | **identical** (overlaid to restore stock's opt-in gate) | Byte-identical to stock. **Problem found and fixed:** the package's own default `S91smb` only guards on `/etc/samba/smb.conf` existing; stock has a **second** guard, `[ -f /media/fat/linux/samba.sh ] \|\| exit 0`. Without it, shipping `/etc/samba/smb.conf` (done for config parity, see below) would make Samba **auto-start on every boot** — stock's actual behavior is opt-in (Samba only starts once the user/Downloader drops `samba.sh` onto the FAT partition). Reverted to stock's double-guard form, plus its extra `mkdir -p` calls and the `samba.sh` trailer call. |
 | `S99user` | **identical** | Not present as a package default (no package provides a MiSTer-specific user hook). Added byte-identical to stock: calls `/media/fat/linux/user-startup.sh` if present. |
 
@@ -135,6 +135,15 @@ both shapes; folding avoids a second file and keeps the ordering trivial to read
    uses marker files for exactly this).
 7. Verified **zero** `ssh_host_*` files anywhere in the built and extracted image
    (see the report's Check 3).
+8. **Persistence is best-effort; sshd starting is not.** If the `mount` does not take
+   (no `/media/fat`, corrupt image, no free loop device), `$KEYDIR` is still the
+   *read-only* rootfs, `ssh-keygen` cannot write there, and sshd would come up with no
+   host key and refuse every connection — with serial the only way back in. So
+   `S50sshd` falls back to a tmpfs `$KEYDIR` and says so loudly on the console: keys
+   are then regenerated each boot, which is a tolerable degradation where "no way in"
+   is not. The fallback only works because sshd is invoked with `-o HostKey=…` for
+   each type: an `-o` overrides `sshd_config`'s paths, which otherwise still point at
+   `/etc/ssh_keys` and would find nothing.
 
 On CRNG timing: not re-verified on this build (that requires hardware, P2.9's job);
 ADR 0015 cites a hardware-measured `crng init done` at ~2.17 s on this same kernel,

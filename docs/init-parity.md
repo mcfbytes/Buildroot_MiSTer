@@ -135,6 +135,15 @@ both shapes; folding avoids a second file and keeps the ordering trivial to read
    uses marker files for exactly this).
 7. Verified **zero** `ssh_host_*` files anywhere in the built and extracted image
    (see the report's Check 3).
+8. **Persistence is best-effort; sshd starting is not.** If the `mount` does not take
+   (no `/media/fat`, corrupt image, no free loop device), `$KEYDIR` is still the
+   *read-only* rootfs, `ssh-keygen` cannot write there, and sshd would come up with no
+   host key and refuse every connection — with serial the only way back in. So
+   `S50sshd` falls back to a tmpfs `$KEYDIR` and says so loudly on the console: keys
+   are then regenerated each boot, which is a tolerable degradation where "no way in"
+   is not. The fallback only works because sshd is invoked with `-o HostKey=…` for
+   each type: an `-o` overrides `sshd_config`'s paths, which otherwise still point at
+   `/etc/ssh_keys` and would find nothing.
 
 On CRNG timing: not re-verified on this build (that requires hardware, P2.9's job);
 ADR 0015 cites a hardware-measured `crng init done` at ~2.17 s on this same kernel,

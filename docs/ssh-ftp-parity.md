@@ -200,6 +200,38 @@ affect what it proved (same partition, same mount options), but a rig re-run aga
 `config/` is owed and is listed as such in the PR. The shipped config additionally passes `sshd -t` and reports both paths under
 `sshd -T` on the device.
 
+**Implementation notes.** `S50sshd` is a file that ships to every device, so it carries
+two-line comments and points here instead. What its migration is actually defending
+against, in the order the code meets it:
+
+- **Order in `AuthorizedKeysFile` is precedence, not function.** sshd tries every listed
+  file, so a key in either the `.ssh/` or the FAT path works.
+- **The scratch area is a directory under `/run`, created up front.** Creating it is what
+  proves `/run` is writable *before* anything trusts an empty intermediate file. A grep
+  that cannot write its output produces nothing, which is indistinguishable from a grep
+  that found nothing — and "found nothing" is the one branch that deletes the user's
+  file. For the same reason the greps go through `filter()`, which treats status 1 (no
+  match) as success and 2+ (read error, failed redirect) as a failed migration.
+- **`filter()` needs its explicit `else`.** After a bare `if cmd; then …; fi`, `$?` is the
+  *if statement's* status — zero when the condition was false — not the command's. Inside
+  an `else` it is still the command's. Getting this wrong made every "no match" look like
+  an error.
+- **An empty `-f` pattern file behaves oppositely under the two greps.** BusyBox (what
+  this image ships) matches *every* line; GNU matches none. So a zero-byte
+  `config/authorized_keys` turned `grep -F -x -v -f` into "select nothing", produced an
+  empty merge, and satisfied a naive "is anything missing?" check — deleting the key it
+  was migrating. Both the merge branch and the verification therefore test for *content*
+  (`[ -s ]`), never for existence.
+- **The merge base is grep output, never `cat` of the card file.** Notepad does not write
+  a final newline, and appending newline-terminated lines to a file that lacks one splices
+  the first migrated key onto the end of the existing one, destroying both.
+- **`sync` goes between the copy and the delete.** exFAT is not mounted `sync` here, so a
+  power cut after the unlink could otherwise commit the deletion while the new file is
+  still only in page cache.
+- **The failure path restates all three paths.** `-o AuthorizedKeysFile` *replaces* the
+  config's list rather than adding to it, so the fallback passes `.ssh/authorized_keys`
+  and both FAT paths.
+
 **CI:** `scripts/ci-tests.sh` asserts, against the **shipped** artifacts rather than the
 overlay sources, that `sshd_config` lists `/media/fat/config/authorized_keys`, that it no
 longer lists the pre-#183 `linux/` path (two live locations is the confusion #183 exists

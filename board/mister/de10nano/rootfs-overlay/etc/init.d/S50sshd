@@ -2,15 +2,8 @@
 #
 # sshd        Starts sshd.
 #
-# P2.3 / ADR 0015: SSH host keys are NOT shipped in this image. Every stock
-# MiSTer bakes the SAME ssh_host_* private keys into a read-only rootfs (all
-# dated 2016-12-31) -- a real vulnerability: trivial host impersonation,
-# and no host-key-mismatch warning to tip a user off, since every box's key
-# "matches". We generate a unique key set per device, on first boot, and
-# persist it to a small ext4 image on the FAT data partition -- mirroring
-# stock's OWN mechanism for exactly this shape of problem (Bluetooth
-# pairing keys also need real Unix permissions on a permission-less FAT
-# card): see bin/bluetoothd and docs/decisions/0015-per-device-ssh-host-keys.md.
+# Per-device host keys (ADR 0015) + the one-time user authorized_keys move
+# (#183). Full reasoning: docs/init-parity.md, docs/ssh-ftp-parity.md §1.3.
 #
 
 KEYIMG=/media/fat/linux/ssh.ext4
@@ -21,40 +14,26 @@ KEYDIR=/etc/ssh_keys
 
 umask 077
 
-# --------------------------------------------------------------------------
-# A USER's key, as opposed to the host keys above: sshd_config's second
-# AuthorizedKeysFile path, on the exFAT partition an update never touches.
-# AUTHKEYS_LEGACY is where we put it in v2026.09.11-beta, before issue #183
-# established that the community had already standardised on /media/fat/config
-# -- security_fixes.sh (MiSTer-devel/Scripts_MiSTer) has read it from there
-# since v2.1, 2021-12-17. migrate_authorized_keys() below moves it, once.
+# A USER's key, on the exFAT partition an update never touches. AUTHKEYS_LEGACY
+# is the pre-#183 location, migrated below. See docs/ssh-ftp-parity.md §1.3.
 AUTHKEYS=/media/fat/config/authorized_keys
 AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys
 
-# The three lines every failure path prints. A failed migration is survivable
-# by design -- sshd still starts, and start() keeps the old path in its
-# AuthorizedKeysFile list for this boot -- so it costs a console warning, not
-# a login.
+# A failed migration is survivable: sshd still starts, and start() keeps the old
+# path in its AuthorizedKeysFile list for this boot.
 migrate_warn() {
 	echo "WARNING: could not migrate $AUTHKEYS_LEGACY to $AUTHKEYS." >&2
 	echo "WARNING: sshd will keep reading the OLD path for this boot, so key" >&2
 	echo "WARNING: login still works; move the file by hand to make it stick." >&2
 }
 
-# grep into a file, distinguishing "matched nothing" from "went wrong".
-#
-# Status 1 is "no lines matched", a legitimate result here (an old file of
-# nothing but blank lines). Status 2 and up -- a read error, or the shell
-# failing to create the output file -- must NOT reach the caller as an empty
-# file, because "empty" is what its delete branch keys off: an unwritable
-# /run would otherwise read as "this file holds no keys" and take the user's
-# key with it.
+# grep into a file, distinguishing "matched nothing" (status 1, fine) from "went
+# wrong" (2+), which must never reach the caller as an empty file -- see §1.3.
 filter() { # <outfile> <grep args...>
 	_out=$1
 	shift
-	# The `else` is load-bearing: with a bare `if ... ; fi`, `$?` afterwards is
-	# the IF STATEMENT's status -- zero when the condition was false and there
-	# was no branch to run -- not grep's. Inside the else it is still grep's.
+	# The `else` is load-bearing: after a bare `if ...; fi`, `$?` is the IF
+	# STATEMENT's status, not grep's. Inside the else it is still grep's.
 	if grep "$@" > "$_out"; then
 		return 0
 	else
@@ -63,34 +42,15 @@ filter() { # <outfile> <grep args...>
 	fi
 }
 
-# Move a user's authorized_keys from the pre-#183 location to the standard one.
-# A no-op on every boot after the first, and on every box that never used the
-# old path (the -f test below is the whole cost in that case).
-#
-# This runs in init rather than being left to the user because the alternative
-# is silent: sshd would simply stop reading the file someone put on the card
-# after following our own FAQ, and key login would fail with nothing anywhere
-# saying why. The old path is NOT kept as a second AuthorizedKeysFile entry --
-# one location is the point of #183 -- so this migration is what makes dropping
-# it safe.
-#
-# COPY, VERIFY, THEN DELETE. Never mv: while this function runs, the legacy
-# file may be the user's only way into the box, so it is removed only once the
-# standard file provably contains every key it held.
-#
-# Returns 0 if there is nothing to do or the migration completed; 1 if the
-# legacy file is still the only copy, which start() answers by keeping sshd
-# reading it for this boot.
+# Move a user's authorized_keys to the #183 location, once. COPY, VERIFY, THEN
+# DELETE -- never mv: that file may be the only way into the box.
 migrate_authorized_keys() {
 	[ -f "$AUTHKEYS_LEGACY" ] || return 0
 
 	echo "Migrating $AUTHKEYS_LEGACY -> $AUTHKEYS"
 
-	# Intermediates on tmpfs, not on the card: a half-written merge must not be
-	# left behind next to the real file if the power goes at the wrong moment.
-	#
-	# A DIRECTORY, created first, because creating it is what proves /run is
-	# writable BEFORE anything below trusts an empty file -- see filter().
+	# Scratch on tmpfs, as a DIRECTORY: creating it proves /run is writable
+	# before anything below trusts an empty file.
 	scratch=/run/authorized_keys.$$
 	if ! mkdir "$scratch"; then
 		migrate_warn
@@ -101,10 +61,8 @@ migrate_authorized_keys() {
 	dest_lines="$scratch/dest-lines"
 	merged="$scratch/merged"
 
-	# Two views of the old file. Every non-blank line is what gets carried over
-	# -- a "# work laptop" comment is part of the user's file and should survive
-	# the move -- while the key lines alone answer "is there anything here worth
-	# keeping?" and give the count reported below.
+	# Non-blank lines are what gets carried over (a user's comments included);
+	# the key lines alone decide whether there is anything worth keeping.
 	if ! filter "$legacy_lines" -v '^[[:space:]]*$' "$AUTHKEYS_LEGACY" ||
 	   ! filter "$legacy_keys" -v '^[[:space:]]*#' "$legacy_lines"; then
 		migrate_warn
@@ -119,14 +77,8 @@ migrate_authorized_keys() {
 		return 0
 	fi
 
-	# An EMPTY pattern file is the trap here: BusyBox grep (what this image
-	# ships) treats `-f <empty>` as matching EVERY line, where GNU grep matches
-	# none -- so `grep -F -x -v -f` against a zero-byte $AUTHKEYS silently
-	# selects nothing and the merge below would produce an empty file, throwing
-	# the user's key away. Testing $dest_lines for content, rather than testing
-	# $AUTHKEYS for existence, is what keeps the merge branch off an empty
-	# pattern file. (Found by scripts/test-authorized-keys-migration.sh case 12,
-	# running the real BusyBox; it is not reproducible with GNU grep.)
+	# Test $dest_lines for content, not $AUTHKEYS for existence: an EMPTY
+	# pattern file matches every line under BusyBox grep and none under GNU.
 	: > "$dest_lines"
 	if [ -f "$AUTHKEYS" ] &&
 	   ! filter "$dest_lines" -v '^[[:space:]]*$' "$AUTHKEYS"; then
@@ -136,18 +88,8 @@ migrate_authorized_keys() {
 	fi
 
 	if [ -s "$dest_lines" ]; then
-		# Both files have content -- MERGE, never clobber. Someone can
-		# legitimately have a security_fixes.sh-era key in config/ and a
-		# different one in linux/ (two PCs, two keys), and either one being
-		# dropped here would lock a machine out. -F -x -v -f appends only the
-		# lines config/ does not already have, so re-running cannot duplicate
-		# a key either.
-		#
-		# The base is $dest_lines, NOT `cat "$AUTHKEYS"`: grep output is always
-		# newline-terminated, while the file on the card need not be -- Notepad
-		# does not add a final newline, and that is the exact workflow the FAQ
-		# describes. Copying it raw would splice the first migrated key onto
-		# the end of the user's existing one, destroying both.
+		# MERGE, never clobber: two PCs can mean two keys. Base is $dest_lines,
+		# not `cat "$AUTHKEYS"`, which splices when the card file lacks a \n.
 		cat "$dest_lines" > "$merged"
 		grep -F -x -v -f "$dest_lines" "$legacy_lines" >> "$merged"
 	else
@@ -155,21 +97,13 @@ migrate_authorized_keys() {
 		cat "$legacy_lines" > "$merged"
 	fi
 
-	# Written under a temporary name and renamed, so a reader (sshd on a later
-	# start, or a concurrent one) never sees a partial file at $AUTHKEYS. The
-	# check is against what actually landed ON THE CARD, not against $merged.
-	# `[ -s ]` before the grep for the same empty-pattern-file reason as above:
-	# an empty result file can never be a correct migration of a non-empty key
-	# list, and must not be allowed to pass the check by matching everything.
+	# Rename so no reader sees a partial file, then verify what landed ON THE
+	# CARD. `-s` guards the empty-pattern-file trap described above.
 	if cp "$merged" "$AUTHKEYS.new" && mv "$AUTHKEYS.new" "$AUTHKEYS" &&
 	   [ -s "$AUTHKEYS" ] &&
 	   ! grep -F -x -v -f "$AUTHKEYS" "$legacy_lines" | grep -q .; then
-		# sync BEFORE the delete, not after. exFAT here is mounted without
-		# `sync` (unlike the host-key image above, which asks for it
-		# explicitly), so a power cut between these two lines could otherwise
-		# commit the unlink while the new file is still only in page cache --
-		# the one ordering this whole copy-verify-delete dance exists to rule
-		# out.
+		# sync BEFORE the delete: exFAT is not mounted sync, so the new data
+		# must reach the card before the old file's unlink can.
 		sync
 		rm -f "$AUTHKEYS_LEGACY"
 		echo "  OK -- $(wc -l < "$legacy_keys") key(s) migrated"
@@ -178,9 +112,8 @@ migrate_authorized_keys() {
 	fi
 
 	migrate_warn
-	# Best-effort cleanup, and quiet: whatever made the migration fail (a
-	# read-only card, a non-directory in the way) tends to make these fail
-	# too, and their errors would only bury the three lines above.
+	# Quiet: whatever failed the migration tends to fail these too, and the
+	# errors would only bury the warning above.
 	rm -rf "$scratch" 2>/dev/null
 	rm -f "$AUTHKEYS.new" 2>/dev/null
 	return 1
@@ -202,15 +135,8 @@ start() {
 	mkdir -p "$KEYDIR"
 	mount -o sync,dirsync,noatime,nodiratime "$KEYIMG" "$KEYDIR"
 
-	# Persistence is best-effort; sshd starting is NOT. If the ext4 mount did
-	# not take (missing /media/fat, corrupt image, no free loop device), then
-	# $KEYDIR is the READ-ONLY rootfs and ssh-keygen below cannot write there
-	# -- sshd would then come up with no host key and refuse every connection.
-	# That is the one outcome we must never ship, because serial is then the
-	# only way back in. Fall back to a tmpfs keydir so sshd ALWAYS starts;
-	# keys are non-persistent in that mode (regenerated each boot), which is a
-	# tolerable degradation, and we say so loudly on the console so it is
-	# diagnosable rather than silent.
+	# Persistence is best-effort; sshd starting is NOT. No mount means $KEYDIR
+	# is the read-only rootfs, so fall back to tmpfs and say so loudly.
 	if ! mountpoint -q "$KEYDIR"; then
 		echo "WARNING: could not mount $KEYIMG at $KEYDIR -- SSH host keys" >&2
 		echo "WARNING: will be EPHEMERAL this boot (regenerated, not persisted)." >&2
@@ -218,28 +144,22 @@ start() {
 		mkdir -p "$KEYDIR"
 	fi
 
-	# Create any missing keys -- first boot only, each type generated
-	# individually so it lands FLAT in $KEYDIR (ssh-keygen -A -f instead
-	# uses its argument as a prefix ahead of the whole compiled-in
-	# /etc/ssh/... path, not a replacement for it, which would not match
-	# the flat HostKey paths below in sshd_config).
+	# First boot only, per type: `ssh-keygen -A -f` treats its argument as a
+	# PREFIX, so keys would not land flat in $KEYDIR (docs/init-parity.md).
 	for kt in rsa ecdsa ed25519; do
 		key="$KEYDIR/ssh_host_${kt}_key"
 		[ -f "$key" ] || ssh-keygen -q -t "$kt" -N '' -f "$key"
 	done
 
 	printf "Starting sshd: "
-	# -o HostKey overrides sshd_config's compiled paths, so the tmpfs
-	# fallback above is actually honoured (otherwise sshd would read the
-	# persistent /etc/ssh_keys paths from the config and find nothing).
+	# -o HostKey overrides sshd_config's paths, so the tmpfs fallback above is
+	# actually honoured.
 	set -- -o "HostKey=$KEYDIR/ssh_host_rsa_key" \
 		-o "HostKey=$KEYDIR/ssh_host_ecdsa_key" \
 		-o "HostKey=$KEYDIR/ssh_host_ed25519_key"
 
-	# Migration failed and the user's only key is still at the old path. An
-	# -o AuthorizedKeysFile REPLACES the config's list, so the two shipped
-	# paths have to be restated alongside it. Same principle as the host-key
-	# fallback above: a degraded outcome is fine, no way in is not.
+	# Migration failed, so keep reading the old path this boot. -o REPLACES the
+	# config's list, hence both shipped paths are restated.
 	if [ -n "$authkeys_fallback" ]; then
 		set -- "$@" -o "AuthorizedKeysFile=.ssh/authorized_keys $AUTHKEYS $AUTHKEYS_LEGACY"
 	fi

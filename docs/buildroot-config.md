@@ -3190,7 +3190,7 @@ standalone Buildroot config, built into `output-installer/` by
 `scripts/mk-sdcard.sh` (step 1/7) or the Makefile's `installer` escape hatch.
 
 This config builds ONE artifact: `output-installer/images/rootfs.cpio`, a
-static BusyBox + exfatprogs + util-linux(sfdisk) rootfs that
+static BusyBox + exfatprogs + util-linux(sfdisk) + itsalive rootfs that
 `scripts/mk-sdcard.sh` embeds into a SECOND, dedicated kernel build to produce
 the installer's `zImage_dtb`. That image ships as `linux/zImage_dtb` on the
 shipped `sdcard.img`'s FAT32 partition — it is NEVER `output/images/zImage_dtb`
@@ -3236,7 +3236,37 @@ installer's job needs on top:
   final handoff), blockdev and hexdump (MAC-address generation from
   `/dev/urandom`). See `board/mister/de10nano/installer-busybox.config`'s
   header for exactly which `CONFIG_` symbols that required and why —
-  `BR2_PACKAGE_BUSYBOX_CONFIG` names that file.
+  `BR2_PACKAGE_BUSYBOX_CONFIG` names that file. **`timeout` joined them on
+  2026-09-21** for the HDMI splash (next bullet): every `itsalive` call in
+  `/init` runs under it, so a wedged tool can never hold the install.
+- `BR2_PACKAGE_ITSALIVE` (**2026-09-21**, ADR 0020 §9, issue #185) -> the HDMI
+  splash: `itsalive up` + `itsalive image` put "installing, do not power off"
+  on screen for the minute the card is being reformatted, on the `menu.rbf`
+  that ADR 0020 §7 already ships. `package/itsalive` is the first
+  `cargo-package` in this tree and the only Rust in it; it pulls
+  `host-rust-bin` (a prebuilt download, not a compile) into THIS configuration
+  only, and it is why two toolchain lines below exist. ~445 KB static in the
+  cpio. Its artwork is not in the package: `BR2_ROOTFS_POST_BUILD_SCRIPT` =
+  `board/mister/de10nano/installer-post-build.sh` renders the two frames into
+  `/usr/share/mister-installer/` from the PNGs in `installer-splash/` at build
+  time (pure-Python converter, no host dependency), so no derived binary is
+  committed. The DE10 image's `post-build.sh` is a different script for a
+  different rootfs; nothing in it applies to a throwaway cpio.
+- `BR2_TOOLCHAIN_BUILDROOT_CXX` (**2026-09-21**) -> ONLY because Rust's
+  target-arch gate needs libstdc++ on musl
+  (`BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS` depends on
+  `BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL`). With an internal
+  toolchain `BR2_INSTALL_LIBSTDCPP` is not user-settable — this symbol selects
+  it, and a defconfig line for the former is silently dropped (found the hard
+  way). Nothing in the cpio links C++; `BR2_STATIC_LIBS` keeps the `.a` out of
+  the rootfs. Toolchain build time, not image bytes.
+- `BR2_DOWNLOAD_FORCE_CHECK_HASHES` (**2026-09-21**) -> the same posture the
+  two board defconfigs have had all along, added with the first
+  externally-sourced package in this cpio. Without it a tarball whose
+  filename has no line in the package's `.hash` is only WARNED about, so a
+  bumped `ITSALIVE_VERSION` carrying a stale `.hash` would fetch unverified
+  and build green. `lint.yml`'s `itsalive version/hash pin consistency` step
+  is the cheap gate; this is the one that holds at download time.
 
 What it deliberately does NOT add: e2fsprogs. The installer only ever `cp`'s
 `linux/linux.img` as an opaque byte blob (never fscks or resizes its ext4

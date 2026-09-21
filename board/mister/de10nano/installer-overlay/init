@@ -121,8 +121,9 @@
 # every byte twice, against an old ordering whose window was the entire ~1-minute
 # install. Do not put anything slow inside either one.
 #
-# HDMI visibility is NOT addressed here and stays open under issue #185: this
-# change shrinks the consequence of pulling the power, not the temptation to.
+# HDMI visibility is addressed separately -- THE HDMI SPLASH in the splash
+# section below (2026-09-21, ADR 0020 section 9): this ordering shrinks the
+# consequence of pulling the power; the picture shrinks the temptation to.
 #
 # ---------------------------------------------------------------------------
 # The load-bearing facts (get one wrong and you brick a card)
@@ -183,10 +184,13 @@
 # From the installer Buildroot config (configs/mister_installer_defconfig):
 #   sfdisk                    (BR2_PACKAGE_UTIL_LINUX + _BINARIES)
 #   mkfs.exfat                (BR2_PACKAGE_EXFATPROGS)
+#   itsalive                  (BR2_PACKAGE_ITSALIVE -- the HDMI splash. OPTIONAL at
+#                              run time: probed for, every call under `timeout`,
+#                              every status only logged; see the splash section)
 # Provided by busybox in EITHER stage-1's set or installer-busybox.config:
 #   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
 #   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
-#   cp du dd cut reboot blkid blockdev hexdump rm mv         (installer must add)
+#   cp du dd cut reboot blkid blockdev hexdump rm mv timeout (installer must add)
 # The applet budget is real but it is NOT fixed: `rm` was added in PR #76 because
 # /init genuinely needed it (step 10) and it costs ~1 KB, and `mv` was added for
 # the recoverable ordering above (the .part rename and the commit renames are the
@@ -204,10 +208,13 @@
 # built -- /init uses POSIX ${var%/*}/${var##*/} parameter expansion in their place,
 # and hexdump instead of od for the MAC. Everything here is POSIX sh / busybox ash;
 # no bashisms.
-# The first-boot splash (see its own section below) deliberately adds NOTHING to
-# this list: it is built entirely from shell builtins plus printf and sleep, both
-# of which are already here. Read that section's "APPLET BUDGET" note before
-# editing it -- several obvious implementations need applets we do not ship.
+# The console/LED half of the first-boot splash (see its own section below)
+# deliberately adds NOTHING to this list: it is built entirely from shell
+# builtins plus printf and sleep, both of which are already here. The HDMI half
+# (2026-09-21) adds exactly two things: the `itsalive` binary, and BusyBox
+# `timeout`, which brackets every call to it so a wedged tool can never hold the
+# install. Read that section's "APPLET BUDGET" note before editing it -- several
+# obvious implementations need applets we do not ship.
 #
 set -u
 
@@ -253,65 +260,80 @@ fat_type=""; stage="starting up"; cores_skipped="no"
 stop_after_stage=""
 
 # ===========================================================================
-#  FIRST-BOOT SPLASH -- console progress UI + hps_led0 heartbeat
+#  FIRST-BOOT SPLASH -- HDMI picture + console progress UI + hps_led0 heartbeat
 # ===========================================================================
 # WHY THIS EXISTS
 # ---------------
 # On a pristine card everything below takes tens of seconds during which the
-# board looks completely dead: no HDMI picture, no menu, and -- without a serial
-# adapter -- no output whatsoever. A user reasonably concludes it has hung and
-# pulls the power, and the window they pull it in is very likely to be the
-# reformat, which is exactly the window that leaves an unbootable card. Every
-# line in this section exists to make "it is working, wait" observable.
+# board looks completely dead: no menu, and -- without a serial adapter -- no
+# output whatsoever. A user reasonably concludes it has hung and pulls the
+# power, and the window they pull it in is very likely to be the reformat,
+# which is exactly the window that leaves an unbootable card. Every line in
+# this section exists to make "it is working, wait" observable.
 #
-# WHY THERE IS NO HDMI SPLASH -- do not "fix" this without reading this first
-# --------------------------------------------------------------------------
-# mr-fusion shows a PNG on HDMI (`fbv -fr /mnt/release/splash.png`). We cannot,
-# because we do not boot mr-fusion's stack. Mr-fusion ships its OWN U-Boot
-# (vendor/bootloader.img), the *Terasic* DTB, and a *Terasic* framebuffer
-# BITSTREAM (vendor/support/de10-nano.rbf) plus an ADV7513 register dump -- i.e.
-# an FPGA core whose frame reader scans DDR out to HDMI entirely by itself,
-# which is what gives it a self-sufficient /dev/fb0 for fbv to write to.
+# THE HDMI SPLASH (2026-09-21, ADR 0020 section 9, issue #185)
+# ------------------------------------------------------------
+# Until 2026-09-21 this header said "WHY THERE IS NO HDMI SPLASH" and listed
+# three blockers; the reasoning is kept because two of the three are what the
+# picture still depends on. mr-fusion shows a PNG with `fbv` because it ships
+# its OWN U-Boot, a Terasic DTB and a Terasic framebuffer BITSTREAM whose frame
+# reader scans DDR out to HDMI by itself. We boot the STOCK uboot.img
+# byte-identical (ADR 0017) with our kernel, and on that stack:
 #
-# Our installer boots the STOCK MiSTer uboot.img byte-identical (ADR 0017) with
-# our MiSTer kernel and DTS. On that stack there are three independent blockers:
+#   1. The fabric needs a bitstream or the ADV7513 never gets a pixel clock.
+#      SOLVED by ADR 0020 section 7: menu.rbf ships at the FAT root, so U-Boot's
+#      `fpgaload` puts it in the fabric before Linux starts. Step 7 below keeps
+#      it there on a re-run. This is the precondition; on its own it puts the
+#      menu core's static on screen and nothing else.
+#   2. /dev/fb0 (MiSTer_fb, docs/abi-contract.md section 4) is a window on DDR
+#      that the FPGA frame reader only scans out once something programs it,
+#      which used to mean Main_MiSTer (fb_cmd0/fb_cmd1 via /dev/MiSTer_cmd, a
+#      FIFO Main itself creates) -- and Main cannot run in this initramfs.
+#      SOLVED by `itsalive` (package/itsalive, github.com/mcfbytes/ItsAlive_MiSTer):
+#      a static tool that runs Main's own register sequences -- video PLL and
+#      timings over the fabric mailbox, the ADV7513 over i2c, then UIO_SET_FBUF
+#      to point the frame reader at /dev/fb0 -- transcribed from Main_MiSTer and
+#      needing only the menu.rbf from (1). One call, `itsalive up`, and the
+#      framebuffer is live. Verified on a DE10-Nano on 2026-09-21 with no Main
+#      on the card (ItsAlive_MiSTer docs/testlogs/2026-09-21-rig-first-light.md).
+#   3. The kernel console is `console=ttyS0,115200` only, so the CONSOLE text
+#      never reaches the screen. IRRELEVANT for the picture: the artwork is
+#      blitted straight into /dev/fb0 (`itsalive image`), and the few lines the
+#      terminal states show are written to /dev/tty1 (`itsalive say`), which
+#      fbcon paints whatever console= says.
 #
-#   1. The FPGA is not configured AT ALL during install. U-Boot's `fpgaload` runs
-#      `load mmc 0:1 $fpgadata menu.rbf` against the FAT partition ROOT
-#      (docs/boot-chain.md §6.1), and the shipped installer card deliberately has
-#      no menu.rbf there -- its root holds only mister-payload/ and
-#      linux/zImage_dtb (scripts/mk-sdcard.sh step 4b). With no bitstream in the
-#      fabric the ADV7513 transmitter never gets a pixel clock, so HDMI is "no
-#      signal" for the whole install, full stop.
-#   2. Even WITH a core loaded, /dev/fb0 (MiSTer_fb, docs/abi-contract.md §4) is
-#      inert on its own. The FPGA frame reader only scans that DDR window out
-#      once Main_MiSTer programs it, via the fb_cmd0/fb_cmd1 messages that
-#      /usr/sbin/vmode writes to /dev/MiSTer_cmd -- a FIFO **Main_MiSTer itself
-#      creates** (Main:input.cpp:4051). Main_MiSTer does not, and cannot, run in
-#      this throwaway initramfs. Writing pixels to /dev/fb0 from here paints DDR
-#      that nothing on the board ever reads.
-#   3. The kernel console is `console=ttyS0,115200` only (docs/boot-chain.md §4),
-#      so even a live framebuffer would not carry this text without also adding
-#      console=tty0 to a bootargs string the stock uboot.img hardcodes.
+# What is drawn: a full-screen 1280x720 image -- MiSTer Kun, "INSTALLING...",
+# "DO NOT POWER OFF", "it reboots itself when done" -- rendered per mode as
+# gzipped raw BGRX8888 into /usr/share/mister-installer/ at build time by
+# installer-post-build.sh from the PNGs in board/mister/de10nano/
+# installer-splash/ (sources and licence there). It goes up right after the kernel
+# command line is parsed, i.e. seconds after power-on and long before the
+# point of no return, and stays until the reboot. The three terminal states
+# (failed / already installed / done) replace it with a few lines of text.
+# Progress is NOT mirrored to the screen: the console UI and a blit fight over
+# the same pixels, and "do not power off, wait a minute" is the whole message.
 #
-# Reproducing mr-fusion's picture therefore means shipping a bitstream + a second
-# DTB + our own U-Boot: megabytes added to the card and a whole new brick surface,
-# to decorate a process that finishes in well under a minute. Deliberately not
-# done. See docs/decisions/0020-sdcard-exfat-reformat-installer.md §6, which also
-# records the one honest limitation of what we ship instead: HPS_LED is an
-# ON-BOARD LED, so a fully-enclosed case cannot see it, and no externally-facing
-# indicator exists that does not go through the fabric.
+# HDMI IS AS OPTIONAL AS THE LED. The binary may be absent (a config without
+# BR2_PACKAGE_ITSALIVE), the fabric may hold no bitstream (QEMU; a card whose
+# menu.rbf went missing -- exit 10), the sink may want a mode we do not send
+# (`mister_installer_video=480p` on the cmdline picks the other one), or the
+# tool may fail in a way nobody predicted. Every call is probed first, runs
+# under `timeout`, and has its status LOGGED and nothing else. A missing
+# picture costs the user a minute of doubt; a splash that could hang PID 1
+# would cost them the card. Read "A SPLASH MUST NEVER BE ABLE TO FAIL AN
+# INSTALL" below; it applies to every line of the HDMI half.
 #
-# WHAT WE DO INSTEAD
-# ------------------
+# WHAT WE DO
+# ----------
 #  1. A progress UI on the serial console -- the documented triage channel:
 #     banner, numbered steps, a bar, percentage, elapsed time and a spinner.
 #  2. The DE10-Nano's HPS LED at /sys/class/leds/hps_led0 (DTS `gpio-leds hps0`,
 #     &portb 24, linux-patches/0004-dts-de10nano-MiSTer.patch). This is HPS-side
 #     GPIO driven by the kernel's gpio-leds driver, so unlike the eight LED0-7
-#     user LEDs -- which hang off the FPGA fabric and are therefore as dead as
-#     HDMI here -- it needs no bitstream. It is the ONLY install-time signal a
-#     user with no serial cable can see, so it carries the state:
+#     user LEDs -- which hang off the FPGA fabric and which nothing in this
+#     initramfs drives -- it needs no bitstream. It is the only install-time
+#     signal a user with no serial cable AND no picture can see (a dark HDMI,
+#     or any installer before 2026-09-21), so it carries the state:
 #
 #         blinking ~0.5 Hz .. installing; all is well, leave it alone
 #         solid on ......... STOPPED and wants attention: either the install
@@ -331,10 +353,14 @@ stop_after_stage=""
 #     not. Nothing here persists -- `linux,default-trigger = "mmc0"` is a DTS
 #     property re-applied at probe, so the installed card gets its normal SD
 #     activity light back on the very next boot.
+#  3. The HDMI picture described above, via itsalive -- see the "HDMI splash"
+#     functions at the end of this section.
 #
 # A SPLASH MUST NEVER BE ABLE TO FAIL AN INSTALL. There is no `set -e` here; all
-# LED writes are guarded and the sysfs paths are probed, never assumed. If none
-# of this can draw, the install still runs to completion exactly as before.
+# LED writes are guarded and the sysfs paths are probed, never assumed; every
+# itsalive call is bracketed by `timeout` and its exit status is only logged.
+# If none of this can draw, the install still runs to completion exactly as
+# before.
 #
 # APPLET BUDGET -- read before editing. The installer busybox
 # (installer-busybox.config) ships NO rm, touch, kill, usleep, date, seq or tr,
@@ -350,6 +376,11 @@ stop_after_stage=""
 #   * ASCII art is emitted as `printf '%s\n' 'line' 'line' ...` (printf reuses the
 #     format for each argument), so no line is ever escape-processed. Do not
 #     switch it to a heredoc or to escapes in a format string.
+#   * the HDMI half is the one deliberate exception to "no applets": it needs
+#     `timeout` (CONFIG_TIMEOUT, on since 2026-09-21 -- see installer-busybox.
+#     config's header for the costing) and `zcat`, which the linux.img expansion
+#     already ships. Every itsalive invocation goes through splash_hdmi_run,
+#     which is where the timeout lives; do not call the binary directly.
 # >>> SPLASH SECTION BEGIN -- scripts/test-installer-splash.sh extracts everything
 # between these two markers VERBATIM and sources it under a POSIX shell against a
 # stubbed /proc/uptime and /sys/class/leds. Keep the section self-contained: it
@@ -551,12 +582,147 @@ splash_done() {
 '================================================================' \
 ''
 	splash_led_set 0
+	splash_hdmi_say --clear 'MiSTer first-time setup: DONE' '' 'Rebooting into MiSTer now.'
 }
 
 # Both terminal states leave the LED SOLID ON: the board has stopped and wants a
-# human. Which of the two it is, is what the console banner is for.
-splash_fail()    { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
-splash_halt_ok() { splash_pulse_stop; splash_clear_line; splash_led_set 1; }
+# human. Which of the two it is, is what the console banner is for -- and, since
+# the HDMI splash, what the screen says too: the "installing" picture must not
+# outlive the install, or a user with no serial cable is told to keep waiting
+# for a board that has stopped.
+splash_fail() {
+	splash_pulse_stop; splash_clear_line; splash_led_set 1
+	splash_hdmi_say --clear \
+		'MiSTer first-time setup: FAILED' \
+		'' \
+		'Nothing was installed. The board itself is fine.' \
+		'Re-flash sdcard.img to this card and try again.' \
+		'Details are on the serial console.'
+}
+splash_halt_ok() {
+	splash_pulse_stop; splash_clear_line; splash_led_set 1
+	splash_hdmi_say --clear \
+		'MiSTer first-time setup' \
+		'' \
+		'This card is already set up.' \
+		'Power the board off and on again to start MiSTer.' \
+		'(Re-flash sdcard.img only if you want to reinstall.)'
+}
+
+# ---------------------------------------------------------------------------
+# HDMI splash -- itsalive (ADR 0020 section 9). Read THE HDMI SPLASH above.
+# ---------------------------------------------------------------------------
+# Every path here ends in a log line and a return 0. The binary is probed for,
+# every call runs under `timeout`, and no exit status is ever acted on beyond
+# deciding whether to try the next call.
+SPLASH_HDMI_BIN=/usr/bin/itsalive
+SPLASH_HDMI_IMAGE_DIR=/usr/share/mister-installer   # splash-<WxH>.raw.gz, gzipped raw BGRX8888
+SPLASH_HDMI_CURSOR=/sys/class/graphics/fbcon/cursor_blink
+SPLASH_HDMI_OUT=/run/splash-hdmi.out  # the tool's own stderr, replayed as log lines
+SPLASH_HDMI_TIMEOUT=15                # seconds per call. itsalive bounds its own
+                                      # mailbox wait far tighter (exit 11); this is
+                                      # the belt for the failure it did not foresee
+splash_hdmi=0                         # 1 once `itsalive up` has succeeded this boot
+splash_hdmi_mode=720p                 # 720p (default) or 480p; see the cmdline parse
+
+# The tool writes its diagnostics to stderr -- "adv7513: 92 registers written",
+# "no bitstream in the fabric" -- and they are exactly what a serial-console
+# user wants when the screen stays dark. Replay them as installer lines so they
+# land in the log in order and never tear the animated status line.
+splash_hdmi_log() { splash_clear_line; printf '[installer] hdmi: %s\n' "$*"; splash_line; }
+splash_hdmi_replay() {
+	[ -s "$SPLASH_HDMI_OUT" ] || return 0
+	while read -r _l; do splash_hdmi_log "$_l"; done < "$SPLASH_HDMI_OUT"
+}
+
+# splash_hdmi_run ARGS... -- the ONLY way this file invokes itsalive. 127 when
+# the binary is absent, otherwise the tool's exit status (or timeout's).
+splash_hdmi_run() {
+	[ -x "$SPLASH_HDMI_BIN" ] || return 127
+	timeout "$SPLASH_HDMI_TIMEOUT" "$SPLASH_HDMI_BIN" "$@"
+}
+
+# The image file for the mode: the artwork is pre-rendered per mode because the
+# tool blits raw pixels and neither scales nor decodes (ADR 0020 section 9).
+splash_hdmi_image() {
+	case "$splash_hdmi_mode" in
+	480p) printf '%s/splash-640x480.raw.gz'  "$SPLASH_HDMI_IMAGE_DIR" ;;
+	*)    printf '%s/splash-1280x720.raw.gz' "$SPLASH_HDMI_IMAGE_DIR" ;;
+	esac
+}
+
+# splash_hdmi_say [--clear] LINE... -- one `itsalive say` per LINE, which fbcon
+# paints into the live framebuffer. A no-op until `up` has succeeded: before
+# that /dev/tty1 is a console nothing is scanning out. `--clear` erases the
+# picture first, so it is only passed by the terminal states.
+splash_hdmi_say() {
+	[ "$splash_hdmi" = 1 ] || return 0
+	_clear=""
+	if [ "${1:-}" = "--clear" ]; then _clear="--clear"; shift; fi
+	for _line in "$@"; do
+		# shellcheck disable=SC2086  # $_clear is empty or exactly one flag
+		splash_hdmi_run say $_clear "$_line" > /dev/null 2>&1 || true
+		_clear=""
+	done
+	return 0
+}
+
+# Bring the screen up and put the artwork on it. Called ONCE, right after the
+# kernel command line has been parsed (the mode knob lives there): the fabric
+# already holds menu.rbf from U-Boot, so nothing later in the install makes
+# this more likely to succeed, and the whole point is to be on screen BEFORE
+# the point of no return. probe first: it writes nothing and its one line per
+# finding is the diagnosis ("no bitstream", "ADV7513 not found") a serial user
+# needs when the screen stays dark; `up` would fail the same way but say less.
+splash_hdmi_init() {
+	splash_hdmi=0
+	if ! [ -x "$SPLASH_HDMI_BIN" ]; then
+		splash_hdmi_log "$SPLASH_HDMI_BIN not present -- no HDMI splash this boot"
+		return 0
+	fi
+	splash_hdmi_run probe > "$SPLASH_HDMI_OUT" 2>&1
+	_rc=$?
+	splash_hdmi_replay
+	if [ "$_rc" -ne 0 ]; then
+		splash_hdmi_log "probe exit $_rc -- no HDMI splash this boot (the install is unaffected)"
+		return 0
+	fi
+	splash_hdmi_run up --mode "$splash_hdmi_mode" > "$SPLASH_HDMI_OUT" 2>&1
+	_rc=$?
+	splash_hdmi_replay
+	if [ "$_rc" -ne 0 ]; then
+		splash_hdmi_log "up exit $_rc -- no HDMI splash this boot (the install is unaffected)"
+		return 0
+	fi
+	splash_hdmi=1
+	# fbcon would otherwise repaint a blinking cursor block over the artwork
+	# about once a second. The knob does not survive the reboot, so it is set
+	# every boot and never restored.
+	printf '0' > "$SPLASH_HDMI_CURSOR" 2>/dev/null || true
+	_img="$(splash_hdmi_image)"
+	if [ -f "$_img" ]; then
+		# zcat | image -: the raw frame (3.6 MB at 720p) never exists
+		# uncompressed anywhere but the tool's stdin. `image` exiting 0 means the
+		# bytes reached /dev/fb0, which after a successful `up` is the screen.
+		zcat "$_img" 2> /dev/null | splash_hdmi_run image - > "$SPLASH_HDMI_OUT" 2>&1
+		_rc=$?
+		splash_hdmi_replay
+		if [ "$_rc" -eq 0 ]; then
+			splash_hdmi_log "splash on screen ($splash_hdmi_mode)"
+			return 0
+		fi
+		splash_hdmi_log "image exit $_rc -- screen is up but blank; showing text instead"
+	else
+		splash_hdmi_log "no $_img -- screen is up; showing text instead"
+	fi
+	splash_hdmi_say --clear \
+		'MiSTer first-time setup' \
+		'' \
+		'INSTALLING...  Reformatting your SD card.' \
+		'DO NOT POWER OFF.' \
+		'It reboots itself when it is done. Give it about a minute.'
+	return 0
+}
 # >>> SPLASH SECTION END <<<
 
 log() {
@@ -680,10 +846,24 @@ for tok in "$@"; do
 	# cmdline via u-boot.txt's $v, so parsing it is not what enables it --
 	# stop_after() refuses to act without the initramfs marker file.
 	mister_installer_stop_after=*) stop_after_stage="${tok#mister_installer_stop_after=}" ;;
+	# The HDMI splash's one knob: 480p for a sink that will not take 720p. A
+	# user reaches it through linux/u-boot.txt's $v on the shipped card
+	# (docs/user/sdcard-flashing.md). Harmless by construction -- it picks
+	# between two video modes and nothing else -- so, unlike the test hook
+	# above, the cmdline alone is an acceptable gate for it.
+	mister_installer_video=*) splash_hdmi_mode="${tok#mister_installer_video=}" ;;
 	esac
 done
 set +f
 [ -n "$root_arg" ] || rescue "no root= on the kernel command line"
+case "$splash_hdmi_mode" in
+720p|480p) ;;
+*) log "ignoring mister_installer_video=\"$splash_hdmi_mode\" (720p or 480p); using 720p"
+   splash_hdmi_mode=720p ;;
+esac
+# Picture first, before anything that can take seconds: from here on a user
+# with no serial cable is told what is happening and what not to do.
+splash_hdmi_init
 if [ -n "$stop_after_stage" ]; then
 	if [ -e /.installer-test-hook ]; then
 		log "TEST HOOK ACTIVE: will stop after \"$stop_after_stage\""

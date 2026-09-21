@@ -246,6 +246,20 @@
     },
     {
       "customType": "regex",
+      "description": "itsalive commit pin (mcfbytes/ItsAlive_MiSTer, master branch) -- the SD-card installer's HDMI splash tool (package/itsalive, ADR 0020 section 9, issue #185). A commit pin on master like the driver pins above, because the project cuts no releases. THE HASH IS NOT AUTO-REFRESHED, and this time that is a statement about today's tooling rather than about possibility: itsalive is a cargo-package, so Buildroot hashes the post-`cargo vendor` itsalive-<sha>-cargoN.tar.gz, which scripts/hash-sync-github-packages.sh's `curl | sha256sum` cannot produce (it would write the pre-vendoring archive's hash -- a wrong value that looks right), so itsalive is deliberately ABSENT from HASH_SYNC_PACKAGES and from renovate-hash-sync.yml's paths: filter both -- do not add it to either. Unlike azcopy there is no rebuild case (a cargo analogue of case 7) yet, so a bump PR from this manager carries needs-manual-hash and FAILS CLOSED at lint.yml's 'itsalive version/hash pin consistency' step until a human runs package/itsalive/itsalive.hash's recipe -- the same posture azcopy had before 2026-08-28. Hash: package/itsalive/itsalive.hash.",
+      "managerFilePatterns": [
+        "/^package/itsalive/itsalive\\.mk$/"
+      ],
+      "matchStrings": [
+        "ITSALIVE_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "mcfbytes/ItsAlive_MiSTer",
+      "packageNameTemplate": "https://github.com/mcfbytes/ItsAlive_MiSTer",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
       "description": "munt MT-32 emulator tag pin. Non-standard tag format (munt_MAJOR_MINOR_PATCH) needs a regex versioning scheme so Renovate orders releases correctly instead of treating the whole string as an opaque blob. Hash: package/munt/munt.hash, refreshed by renovate-hash-sync.yml.",
       "managerFilePatterns": [
         "/^package/munt/munt\\.mk$/"
@@ -493,6 +507,12 @@
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["Azure/azure-storage-azcopy"],
       "addLabels": ["tool-pin"]
+    },
+    {
+      "description": "itsalive (SD-card installer HDMI splash tool, package/itsalive). tool-pin: one self-contained static CLI binary, and one that ONLY the installer initramfs runs -- a bad bump costs a first-boot picture, never a boot (/init probes for it, brackets every call in `timeout`, and only logs its exit status; ADR 0020 section 9). needs-manual-hash is BACK IN USE with this rule (nothing carried it between 2026-08-28 and 2026-09-21) and means exactly what it meant on azcopy before case 7: no automated step refreshes this package's .hash -- it is a cargo-package whose hashed artifact is the post-`cargo vendor` tarball, and renovate-hash-sync.yml has no cargo rebuild case. WHAT NEEDS A HUMAN on an itsalive bump: (a) run package/itsalive/itsalive.hash's recipe and commit the two refreshed sha256 lines on the PR branch -- until then lint.yml's 'itsalive version/hash pin consistency' step keeps the PR red, deliberately; (b) read the upstream diff for exit-code or subcommand changes, because /init's splash section keys on `probe`/`up --mode`/`image -`/`say --clear` and on exit 10 meaning 'no bitstream' (scripts/test-installer-splash.sh's stub encodes the current contract; a changed contract must change both); (c) a hardware run of the installer is the only proof the picture still comes up -- the unit test proves /init's handling of the tool's answers, not the answers.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["mcfbytes/ItsAlive_MiSTer"],
+      "addLabels": ["tool-pin", "needs-manual-hash"]
     },
     {
       "description": "SD-card payload pins (update_all.sh, wifi.sh, and the _Console cores snapshot fetched by scripts/fetch-sdcard-payload.sh). Label distinctly so a reviewer knows these change what a freshly-flashed sdcard.img installs, not a build tool or kernel-module source.",

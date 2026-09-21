@@ -113,12 +113,16 @@ Concretely, it:
 
 Two things to know while it runs:
 
-- **The screen stays blank the whole time.** U-Boot loads the menu core into the FPGA
-  before Linux starts (same as any boot), but nothing configures video output until the
-  MiSTer software runs — and the installer never runs it. So there is nothing to
-  show during the install. This is normal. If you have a
-  [serial console](serial-recovery.md) attached you can watch every step, but you don't
-  need one.
+- **Watch for the splash screen.** Within a few seconds of power-on the installer puts a
+  full-screen "INSTALLING… DO NOT POWER OFF" picture on HDMI and leaves it there until it
+  reboots; when it has finished, or if it stops for any reason, the picture is replaced by
+  a few lines of text saying what happened. **If the screen stays dark, the install is
+  still running** — the picture is a courtesy, not a step, and nothing in the install
+  depends on it. Two known reasons for a dark screen: a display that will not accept 720p
+  (put `v=mister_installer_video=480p` in a pre-seeded `linux/u-boot.txt` to send 640×480
+  instead), and a card whose `menu.rbf` is missing from the root (re-flash the image). If
+  you have a [serial console](serial-recovery.md) attached you can watch every step,
+  including why the picture did not come up, but you don't need one.
 - **It takes a few minutes — please don't power off.** Larger cards and the `-full`
   variant take a little longer. The board reboots by itself when it's done; the first
   thing you'll see on screen is the MiSTer menu.

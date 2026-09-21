@@ -36,7 +36,7 @@
 # A kernel bump (manual, or Renovate under P4.7) MUST update this line from the
 # signed manifest for the new version, or the build will fail closed -- which is
 # the intended behaviour.
-sha256  2b69564f7d4fea0c859b1959ba33709ee6e9139bd100e30a853b57159a8221b8  linux-6.18.52.tar.xz
+sha256  4d6fba95c2244b08a7b4144a4d38b9be4fb31abb5e7682ae40bb5cb11374cfe0  linux-6.18.53.tar.xz
 
 # The RT / beta kernel's hash is NOT here any more: since ADR 0030 Phase C the
 # variant is package/linux-rt and its tarball hash lives in

@@ -98,15 +98,18 @@ Insert the card, connect the board, and power on. **The first boot is special**:
 one-time installer runs instead of MiSTer, and it rebuilds the card to its full size.
 Concretely, it:
 
-1. copies its payload into RAM,
+1. copies its payload into RAM, along with its own copy of the installer,
 2. re-partitions the card to use **all** of its capacity,
-3. formats the data partition as **exFAT**, labelled `MiSTer_Data` (the standard MiSTer
+3. **writes the bootloader straight away**, so the card can boot again within seconds,
+4. formats the data partition as **exFAT**, labelled `MiSTer_Data` (the standard MiSTer
    layout — the finished card is exactly what mr-fusion would have produced),
-4. copies everything back, merges any [pre-seeded files](#pre-seed),
-5. generates a **unique network MAC address** for your board (stock's fallback is the
-   same shared address on every device, which causes conflicts when two MiSTers share a
-   network),
-6. writes the bootloader, and reboots itself into the real MiSTer.
+5. puts the installer itself back on the card, so that if it is interrupted from here
+   on, the next power-on simply runs the install again,
+6. copies everything back and expands the system image,
+7. merges any [pre-seeded files](#pre-seed) and generates a **unique network MAC
+   address** for your board (stock's fallback is the same shared address on every device,
+   which causes conflicts when two MiSTers share a network),
+8. swaps in the real MiSTer kernel as its very last act, and reboots into it.
 
 Two things to know while it runs:
 
@@ -116,9 +119,17 @@ Two things to know while it runs:
   show during the install. This is normal. If you have a
   [serial console](serial-recovery.md) attached you can watch every step, but you don't
   need one.
-- **It takes a few minutes — do not power off.** Larger cards and the `-full` variant
-  take a little longer. The board reboots by itself when it's done; the first thing
-  you'll see on screen is the MiSTer menu.
+- **It takes a few minutes — please don't power off.** Larger cards and the `-full`
+  variant take a little longer. The board reboots by itself when it's done; the first
+  thing you'll see on screen is the MiSTer menu.
+
+**If you do lose power part-way through** (or pull the card), you have not ruined it.
+Step 3 above means the card can still boot, and step 5 means it boots back into the
+installer, which starts over by itself — you lose a couple of minutes, nothing else. In
+the one narrow case where the interruption landed while the files were still being
+copied, the installer tells you so on the serial console and asks you to re-flash
+`sdcard.img`; re-flashing is all that is ever needed, and the board itself is never at
+risk.
 
 Why a reformat instead of a resize: MiSTer's data partition is exFAT, and exFAT cannot
 be grown in place. The rebuild-through-RAM approach is the same mechanism mr-fusion has

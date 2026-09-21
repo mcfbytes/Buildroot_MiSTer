@@ -59,6 +59,13 @@ reusing a proven reference implementation over writing new code in a boot-path c
 
 2. **First boot reformats in RAM, then reboots into the real system.** The installer
    `/init`:
+
+   > **Superseded in its ORDER by §8 (2026-09-21, issue #185).** Every operation listed
+   > below still happens and still means what it says; what changed is *when*. `dd
+   > uboot.img` moved from last to immediately after `sfdisk`, the installer writes its
+   > own kernel onto the fresh partition before any payload byte, and the copy-back lands
+   > in `mister-payload.part/` before being renamed. Read §8 for the order that ships.
+
    - copies `mister-payload/*` off the shipped FAT32 partition into tmpfs (RAM) in full,
      before touching any partition table — the source data must survive the
      repartition it is about to trigger. `linux.img` travels as the small
@@ -84,7 +91,8 @@ reusing a proven reference implementation over writing new code in a boot-path c
      freshly-formatted exFAT partition** (the installed card's only `linux/u-boot.txt`) —
      so no installed board ever carries forward the compiled-in shared fallback
      `02:03:04:05:06:07` (boot-chain §3.1 entry 14);
-   - `dd`s `uboot.img` onto the (unchanged-geometry) `0xA2` partition, `sync`s, reboots.
+   - `dd`s `uboot.img` onto the re-created `0xA2` partition, `sync`s, reboots. (§8: this
+     is now the *first* write after `sfdisk`, not the last of the install.)
 
    Every step follows the defensive idiom already established by
    `board/mister/common/initramfs-overlay/init`: on any fatal error, print a clear
@@ -97,11 +105,17 @@ reusing a proven reference implementation over writing new code in a boot-path c
 Because the reformat **replaces** the FAT32 installer partition's `linux/zImage_dtb` with
 a fresh exFAT partition holding the real `linux/zImage_dtb`, the installer kernel simply
 does not exist anywhere on an installed card — U-Boot's `mmcload` finds the real kernel on
-the next boot and the installer init never runs again. The explicit guard (skip if `p1` is
-already exFAT, labelled `MiSTer_Data`, and contains `linux/linux.img`) is
+the next boot and the installer init never runs again. The explicit guard is
 belt-and-suspenders on top of that structural fact, not the primary defense — worth
 recording because a future change to the reformat step must not silently remove the thing
 that makes re-runs actually safe.
+
+**Amended by §8.4:** that guard was "`p1` is exFAT, labelled `MiSTer_Data`, and contains
+`linux/linux.img`", and under §8's ordering those three conditions are *also* true of a
+card interrupted mid-commit. It now additionally requires no payload directory under
+either name. The structural argument above is unchanged — indeed §8 sharpens it, by
+making the kernel swap a single `mv` at a nameable instant rather than a side effect of
+the copy-back.
 
 ## 3. The RAM-transit constraint, and the finding that resolves it
 
@@ -263,7 +277,8 @@ process that finishes in well under a minute. **Rejected.**
 **What ships instead**, both in `board/mister/de10nano/installer-overlay/init`:
 
 - **A console progress UI** on the serial console — the documented triage channel: banner,
-  nine numbered steps, a progress bar, percentage, an elapsed clock and a spinner. It
+  ten numbered steps (nine until §8 renumbered them), a progress bar, percentage, an
+  elapsed clock and a spinner. It
   animates in place with `\r` on a tty and degrades to one plain line per step when stdout
   is not a terminal, so captured logs stay readable.
 - **The HPS LED**, `/sys/class/leds/hps_led0` (DTS `gpio-leds hps0`, `&portb 24`,
@@ -335,6 +350,133 @@ anything of its own before Main_MiSTer attaches is **unverified and needs hardwa
 is the specific question P5.4 should answer, because it determines whether a custom
 bitstream (§6's rejected option) has any remaining justification.
 
+## 8. The install is reordered so the card is recoverable in seconds, not at the end
+
+**Added 2026-09-21 (issue #185).** §6 argued the trade as "how do we tell the user the
+board is alive". A hardware run then measured the other side of it, and the number
+changes the answer: on a new 64 GB card the install takes **about a minute**, and for
+that whole minute a user with an enclosed case sees nothing whatsoever. HDMI stays dark
+(§6 blocker 2 — `menu.rbf` gets the fabric a pixel clock, §7, but nothing programs the
+frame reader), and `hps_led0` is inside the case. A blank minute on a brand-new device is
+exactly the prompt that makes a first-time user reach for the power switch.
+
+### 8.1 The window was the whole install, not just the reformat
+
+The ordering this ADR originally specified (§2) was: repartition → `mkfs.exfat` →
+copy-back → expand → pre-seed → MAC → **`dd uboot.img`** → reboot. Every one of those
+steps was inside the brick window, for two independent reasons:
+
+* **`sfdisk` moves the `0xA2` partition.** It is re-created at the *tail* of the actual
+  medium, which on a 64 GB card is nowhere near where it was, and it is created empty.
+  The BootROM scans the MBR for the first `0xA2` entry and reads the SPL from its start
+  (`docs/boot-chain.md` §2.1). From `sfdisk` until the final `dd`, **there is no SPL
+  anywhere the BootROM looks** — the card cannot reach U-Boot at all, never mind Linux.
+* **There was no kernel on `p1` either.** The real `linux/zImage_dtb` only arrived with
+  the copy-back, and the installer's *own* `zImage_dtb` — which lives at the shipped
+  card's FAT root, outside `mister-payload/` — was never copied to RAM and never written
+  back. So even a card that could reach U-Boot had nothing for `mmcload` to load.
+
+The honest description of the old behaviour is therefore: *the entire install was one
+unbroken window in which a power cut produced an unbootable card*, and it coincided
+exactly with the minute in which the board looks dead. §6's hard rule protected the
+install from the splash; nothing protected the install from the user.
+
+### 8.2 Decision: attack the harm, not the visibility
+
+**Reorder the install so the card is self-recovering within seconds of the repartition,
+and concentrate everything irreversible into a single commit point at the end.** The
+visibility half of #185 is deliberately *not* addressed here and stays open on that
+issue; this section makes pulling the power cheap, it does not remove the temptation.
+
+The order `board/mister/de10nano/installer-overlay/init` now runs:
+
+| # | Step | Why here |
+|---|---|---|
+| 1–3 | mount `p1` ro, assess the card, copy `mister-payload/` to the RAM tmpfs — **plus the FAT root's own `linux/zImage_dtb` and `menu.rbf`** | those two extra files (~15 MB) are what make an interrupted card bootable; they are measured into the RAM budget and, unlike the `_Console` cores, never skipped |
+| 4 | `sfdisk` | unchanged |
+| 5 | **`dd uboot.img` → the new `0xA2` p2** | moved from last to first-after-`sfdisk`. The BootROM can find an SPL again seconds after the table changed |
+| 6 | `mkfs.exfat` + mount | unchanged |
+| 7 | **write the INSTALLER's `zImage_dtb` and `menu.rbf` onto the fresh `p1`** | new. From this instant a power cut boots straight back into this installer |
+| 8 | copy the payload back into **`mister-payload.part/`**, then rename it to `mister-payload/` | the rename is a directory-entry update, and it is what makes a partial copy detectable rather than indistinguishable from a complete one |
+| 9 | `zcat linux.img.gz` → `linux/linux.img` | the payload dir is left **complete and untouched** for the whole decompression, so the longest step in the install is fully re-runnable |
+| 10 | commit: `mv` the payload's entries to the root, pre-seed, MAC, and **last of all `mv` the real kernel over `linux/zImage_dtb`** | renames only; nothing is written twice |
+
+### 8.3 The invariant
+
+At any instant a power cut can happen, the card is in exactly one of three
+self-describing states, and the installer's next boot reads which:
+
+| On the card | Next boot does |
+|---|---|
+| `mister-payload/` present and complete | **re-installs, unattended.** Costs the user one more run and nothing else |
+| `mister-payload.part/` instead | **halts** with "the previous install was INTERRUPTED … re-flash `sdcard.img`". The bytes it was copying from were in RAM and are gone, so there is nothing to repair and a reboot here would loop forever |
+| neither, and `linux/linux.img` present | **halts** with the "already provisioned" banner |
+
+**The commit point is the single `mv` of the real `linux/zImage_dtb` over the
+installer's own.** Before it the card boots this installer; after it the card boots
+MiSTer. That rename is the *definition* of "installed"; everything else is arranged
+around it.
+
+The window is reduced, not eliminated, and this ADR should say so plainly: between the
+first rename of the commit phase and that last one, the card is neither re-runnable nor
+installed. That phase is directory-entry updates on an already-written filesystem —
+fractions of a second, against the ~60 seconds the old ordering was exposed for. Getting
+it to zero would mean writing every byte twice, which is a worse trade. **Nothing slow
+may be added to the commit phase**, which is why the `zcat` is deliberately outside it.
+
+### 8.4 The re-run guard had to be re-keyed
+
+The old guard was "`p1` is exFAT, labelled `MiSTer_Data`, and `linux/linux.img` exists".
+Under the new ordering that **misfires mid-commit**: from the moment `linux.img` is
+expanded until the kernel rename, an interrupted card matches all three conditions while
+its `linux/zImage_dtb` is still the installer's. The old guard would have called such a
+card "installed" and halted — on a card that still had a complete payload sitting on it
+and would have finished by itself. The guard now additionally requires **no payload
+directory under either name**. Its non-destructive halt behaviour is unchanged.
+
+The payload cleanup (`rm -rf mister-payload/`) runs strictly **after** the commit rename
+for the same reason, and the two are not interchangeable: doing it before would open a
+window in which the card looks provisioned to the guard while still booting the
+installer, which is a worse state than the stray directory a failed `rm` leaves behind.
+After the commit the card boots MiSTer and never runs this code again, so that stray
+directory is clutter rather than a defect — it is logged, not treated as a failure.
+
+### 8.5 What this cost
+
+* **One BusyBox applet.** `CONFIG_MV` (~10 kb by BusyBox's own Kconfig costing, in a
+  ~376 KB binary inside a 13 MB RAM-resident initramfs). The applet budget is a budget,
+  not a freeze — the same reasoning the `CONFIG_RM` bullet below records — and the
+  justification lives in `installer-busybox.config`'s header with the others. One
+  non-obvious behaviour is relied on and documented there: `mv` cannot rename over an
+  existing **non-empty directory**, so `/init` descends the one directory that collides
+  (`linux/`) and moves its children individually.
+* **~15 MB more through RAM and onto the card**, once: the installer's own kernel and
+  `menu.rbf`. Both are accounted for in §3's budget and are the last things the RAM
+  safety valve would drop, not the first.
+* **Ten user-visible steps instead of nine** in §6's splash, renumbered with the order.
+
+### 8.6 How it is tested
+
+* `scripts/test-installer-recovery.sh` — new. Interrupts the install at named points via
+  a `mister_installer_stop_after=<tag>` kernel-command-line hook that `/init` honours and
+  the stock `uboot.img` can never emit (it builds `bootargs` from a compiled-in literal,
+  `docs/boot-chain.md` §4), then boots the card again and asserts each row of the §8.3
+  table. It synthesises a card with the shipped *shape* and miniature contents rather
+  than requiring `make all` + `make sdcard`, because the installer never looks inside the
+  payload's files — so it runs in minutes and can gate an edit to `/init`.
+* `scripts/test-sdcard-install.sh` — extended to assert the **order** (`uboot.img` before
+  `mkfs.exfat`, the installer kernel before the payload, the real kernel last) by byte
+  offset in the console log, not merely that each step happened. An edit that moved the
+  `dd` back to the end would otherwise still pass every check that harness had before.
+* `scripts/test-installer-splash.sh` — now also asserts `SPLASH_TOTAL` matches the
+  highest `splash_step` call in `/init`, which is exactly what a renumbering breaks
+  silently.
+
+**Still open on #185, unchanged by this section:** a user with a fully-enclosed case and
+no serial adapter still cannot see that the board is working. The five directions that
+issue lists are all still on the table. What changed is only that pulling the power now
+costs a re-run instead of a card.
+
 ## Consequences
 
 - A fourth Buildroot output directory, `output-installer/`, joins `output/`,
@@ -379,11 +521,20 @@ bitstream (§6's rejected option) has any remaining justification.
   logged and asserted by `scripts/test-sdcard-install.sh`. The applet budget is a budget,
   not a freeze: needed applets get turned on and justified in
   `installer-busybox.config`'s header rather than worked around in shell.
+- **`CONFIG_MV` was added for §8's recoverable ordering.** The `.part` rename is what
+  makes a partial copy-back detectable on the next boot, and the commit phase's renames
+  are what keep it from re-writing 150+ MiB of payload it has already written once. Same
+  budget reasoning as `CONFIG_RM` above, costed in §8.5 and justified in
+  `installer-busybox.config`'s header. `/init` relies on one behaviour worth knowing
+  before editing it: `mv` will not rename over an existing non-empty directory, so the
+  one directory that collides (`linux/`, already holding the installer's own kernel) is
+  descended and its children moved individually.
 - This ADR does not change any risk already recorded against the stock-blob U-Boot path
   in ADR 0017; it adds one new risk of its own — a botched `sfdisk`/`mkfs.exfat` sequence
   on first boot is now the single point where an install can go wrong on an otherwise-good
   card. The defensive-init requirement in §2 (banner + rescue shell, never a silent panic)
-  is this ADR's mitigation, not a separate task.
+  is this ADR's mitigation, not a separate task; §8 narrows the exposure from the whole
+  install to the commit phase, and §8.6 is how that is kept true.
 - `scripts/mk-sdcard.sh` ships `mister-payload/linux/linux.img` **gzip-compressed** as
   `linux.img.gz` (§3); the installer stream-decompresses it onto the reformatted card. It
   does **not** ship a `p1` `linux/u-boot.txt` — only two `u-boot.txt`-shaped files exist in

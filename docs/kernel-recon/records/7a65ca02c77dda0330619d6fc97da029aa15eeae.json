@@ -1,0 +1,58 @@
+{
+  "sha": "7a65ca02c77dda0330619d6fc97da029aa15eeae",
+  "subject": "mmc: dw_mmc-pltfm: socfpga: restore maximum data timeout (#105)",
+  "author": "Kasper Olesen",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-17",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "mmc",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/mmc/host/dw_mmc-pltfm.c"
+  ],
+  "added": 11,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0052-mmc-dw-mmc-socfpga-max-data-timeout.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/mmc/host/dw_mmc-pltfm.c:99-101 (linux-6.18.52) and :89-91 (linux-7.2.6) -- socfpga_drv_data, both trees",
+    "vanilla_quote": "static const struct dw_mci_drv_data socfpga_drv_data = {\n\t.init\t\t= dw_mci_socfpga_priv_init,\n};",
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Not a provenance-doc row: this is new fork work, not a 5.15 carry. The vanilla behaviour it restores IS 5.15's, but via a hook (drv_data->set_data_timeout) that 5.15's dw_mmc did not have and did not need -- pre-v5.17 __dw_mci_start_request() wrote the maximum TMOUT unconditionally for everyone.",
+  "impact": {
+    "effect_if_absent": "On a card slow enough to miss the ~110 ms per-request budget that 6.18/7.2 derive from mmc_set_data_timeout()'s 100 ms, every SD READ request that overruns is retried, then the card is hardware-reset and the request re-read one sector at a time (CMD17 + CMD13 each). Throughput collapses -- the PR measures 22 MB/s -> 0.9 MB/s with the budget artificially shortened to 30 ms. Nothing prints -110, dw_mmc does not touch its debugfs err_stats on this path, and the only dmesg trace is a repeated 'Bus speed (slot 0) = 50000000Hz (slot req 400000Hz ...)' from card re-init. A user sees stutter and long loads, not an error. NOT REPRODUCED at the stock 100 ms setting on any card either side has: the author estimates a card would have to be slower than ~9 MB/s on 1 MB requests, or show ~100 ms internal latency spikes, to trigger it as shipped, and the fork's issue #103 (PSX CHD stutter / slow N64 loads) is only a SUSPECTED instance, unconfirmed on the reporter's card.",
+    "affected_hardware": [
+      "DE10-Nano SD/MMC (Cyclone V DesignWare dw_mmc, altr,socfpga-dw-mshc, 50 MHz controller clock)"
+    ],
+    "device_ids": [],
+    "severity": "performance",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": "None. The change is entirely inside the block layer's view of the controller; no evdev code, no sysfs name, no ioctl. Main_MiSTer sees only faster or slower reads."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- applied as authored in BOTH kernels. Measured at patch -p1 -F0 with the full series in order: 6.18.52 offset 0 ('patching file drivers/mmc/host/dw_mmc-pltfm.c', no offset line), 7.2.6 'Hunk #1 succeeded at 86 (offset -10 lines)'. Zero fuzz, zero rejects in both. board/mister/de10nano/linux-patches-beta/ carries a symlink rather than a re-anchored copy because the anchor text is byte-identical across 6.18 and 7.2 -- 7.x rewrote dw_mci_socfpga_priv_init()'s clock-phase parsing ABOVE it and left socfpga_drv_data alone."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0-or-later (the file's own SPDX tag). Author Kasper Olesen <kaspersolesen@gmail.com>, GitHub @kblood (`gh api users/kblood` -> name 'Kasper Olesen'), who opened PR #105 himself, so PR author and commit author are the same person. The fork commit's trailer spells the surname 'Kasper Solesen' -- a typo in his own sign-off, same address; 0052 reproduces the Signed-off-by exactly as written rather than silently correcting it, and names the discrepancy in its Author: block. The commit also carries 'Co-authored-by: Claude Opus 5 <noreply@anthropic.com>' and a 'Claude-Session:' link, both reproduced in 0052; a Co-authored-by is not a Signed-off-by, so the DCO chain here rests on Olesen's alone.",
+  "notes": "NOT a backport and not a revert. The reflex on reading 'restore' is to hunt for the mainline commit that broke it and check whether a stable release has already fixed it. The breaking commit is real -- 6a8c2018e872 ('mmc: dw_mmc: Allow lower TMOUT value than maximum', v5.17) -- but it was a deliberate behaviour change, not a regression anyone upstream has repaired, and there is no fix to backport. What exists instead is a per-platform escape hatch the same generation of work added: drv_data->set_data_timeout (linux-6.18.52 drivers/mmc/host/dw_mmc.h:597,617; 7.2.6 :517,:537), consulted first thing in dw_mci_set_data_timeout() (6.18.52 dw_mmc.c:1285-1293 'if (drv_data && drv_data->set_data_timeout) return drv_data->set_data_timeout(host, timeout_ns);'). Exynos is the only in-tree user in either kernel (dw_mmc-exynos.c:577, :649). So the carry adds a socfpga user of an upstream hook; no core code changes.\n\nMEASURED ABSENT FROM BOTH PINS, not inferred from one. `grep -n set_data_timeout drivers/mmc/host/dw_mmc-pltfm.c` returns nothing (exit 1) in linux-6.18.52 AND in linux-7.2.6, both extracted from tarballs checked against this repo's own recorded signed-manifest hashes before use (board/mister/de10nano/patches/linux/linux.hash sha256 2b69564f...; package/linux-rt/linux-rt.hash sha256 039aef84...). That matters because 'in mainline' is not the question -- 'in the kernel WE BUILD' is, the lesson 6332499e7's record records.\n\nWHY THE SOFTWARE TIMER FOLLOWS THE REGISTER, which is the part of the mechanism that makes a one-line writel sufficient: dw_mci_set_drto() does not keep its own budget, it reads TMOUT back -- 6.18.52 dw_mmc.c:2003-2025, 'drto_clks = mci_readl(host, TMOUT) >> 8;' then 'drto_ms += 10;'. Programming the maximum in the hook therefore lengthens both the hardware timeout and the software data-read timer, which is exactly the 5.15 shape.\n\nSOURCE IDENTITY MEASURED. With the full series applied in order to pristine 6.18.52 and to pristine 7.2.6, the region from 'static void dw_mci_socfpga_set_data_timeout' to 'static const struct of_device_id dw_mci_pltfm_match' diffs EMPTY against `git show 7a65ca02c:drivers/mmc/host/dw_mmc-pltfm.c` in both trees.\n\nDE25 DELIBERATELY EXCLUDED, and this is the first mmc patch where the two boards genuinely diverge. socfpga_drv_data is reached only via `{ .compatible = \"altr,socfpga-dw-mshc\", .data = &socfpga_drv_data, }` (dw_mmc-pltfm.c:105 / :95); the Agilex 5 SD controller is a Cadence SDHCI part (board/mister/de25nano/linux-patches/0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask.patch), and board/mister/de25nano/linux.config has no CONFIG_MMC_DW at all -- its MMC block is CONFIG_MMC_SDHCI/_PLTFM/_CADENCE=y at lines 178-180 -- so dw_mmc-pltfm.c is not even compiled there. board/mister/de10nano/linux.config:510 has CONFIG_MMC_DW=y. Contrast 0020-mmc-no-led-on-send-status, which IS on all three series because it changes the mmc CORE. Recorded as a row in board/mister/de25nano/linux-patches/README.md.\n\nWHAT IS NOT PROVEN, carried forward deliberately rather than rounded off: the failure mode is demonstrated with an artificially shortened (30 ms) budget, not with a card that fails at the stock 100 ms. The cost of carrying is bounded and stated -- a genuinely unresponsive card now takes ~346 ms instead of ~110 ms to fail a read, and writes are unaffected because their 3 s limit already clamped to the maximum. Boot-tested by the author on a DE10-Nano (TMOUT reads back 0xFFFFFFFF, exFAT ~22 MB/s and raw ~23 MB/s unchanged, 19584-byte random reads p50 1.73 ms); NOT exercised on this project's rig, which is the open item for this row."
+}

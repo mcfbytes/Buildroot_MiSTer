@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-09-15 01:30 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-09-21 07:07 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -9,6 +9,7 @@ Generated 2026-09-15 01:30 UTC. Rows where the functionality is NOT covered in o
 These WOULD regress silently if their patch (or, for `carried-as-package` rows, package) were ever dropped — they are carried today:
 
 - `077c2c317` Disable USB overcurrent signaling. → 0004-dts-de10nano-MiSTer.patch
+- `0b2ffdd1d` HID: playstation: restrict mute button capability to DualSe… → 0037-hid-playstation-dualsense-mute-btn-z.patch
 - `0d7778d1f` wiimote: set uniq field. → 0023-hid-wiimote-fixes.patch
 - `1337de1fd` Switch to i2c-gpio driver for smbus compatibility. → 0004-dts-de10nano-MiSTer.patch
 - `15968bc26` wiimote: fix analog ranges. → 0023-hid-wiimote-fixes.patch

@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-15 01:30 UTC by `reduce.py` from 142 records (110 MiSTer-v5.15 + 16 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/142.
+Generated 2026-09-21 07:07 UTC by `reduce.py` from 145 records (110 MiSTer-v5.15 + 19 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/145.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/142
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/145
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 142 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 145 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -134,6 +134,7 @@ Of 142 rows, **3** describe a real difference a user could notice on this build 
 |---|---|---|---|---|---|---|---|---|---|---|
 | `071d9092e` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | dts: fix warnings. |
 | `077c2c317` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Disable USB overcurrent signaling. |
+| `0b2ffdd1d` | v6.18 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | feature-loss/silent | Y | ? |  | HID: playstation: restrict mute button capability to DualSe… |
 | `0d7778d1f` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: set uniq field. |
 | `1337de1fd` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Switch to i2c-gpio driver for smbus compatibility. |
 | `15968bc26` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: fix analog ranges. |
@@ -158,6 +159,7 @@ Of 142 rows, **3** describe a real difference a user could notice on this build 
 | `70e391b81` | v5.15 | **carried** | 0024-hid-input-keyrah-europe1.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | HID: map key Europe 1(0x32) to F24 code (for Keyrah). |
 | `71c583074` | v5.15 | **carried** | 0030-i2c-designware-quiet-timeout.patch | — | none (carried) | cosmetic/silent | — | Y | ✓ | Disable RTC error messages. |
 | `77862a67f` | v5.15 | **carried** | 0014-hid-gamecube-adapter.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add support for official gamecube-adapter (#48) |
+| `7a65ca02c` | v6.18 | **carried** | 0052-mmc-dw-mmc-socfpga-max-data-timeout.patch | — | none (carried) | performance/silent | — | ? |  | mmc: dw_mmc-pltfm: socfpga: restore maximum data timeout (#… |
 | `7c75b1b46` | v6.18 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | none/silent | — | ? |  | Input: xpad - add opt-in 8BitDo initialization bypass |
 | `7d2df2d2d` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Disable DMA on UART0/1. DMA is broken on Designware UARTs. |
 | `8179ac736` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco Guncon 3 (#20) |
@@ -169,6 +171,7 @@ Of 142 rows, **3** describe a real difference a user could notice on this build 
 | `a14b5e8e1` | refs/pull/92/head | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud-in-dmesg-silent-to-user -- kernel log fills with repeated 'Failed to set baudrate', 'Failed handshake', and USB disconnect/reconnect messages (loud, but only visible over a serial console or `dmesg`, which a MiSTer user at the OSD never sees), while the user-facing symptom is simply 'the gamepad does not work' with no on-screen diagnostic -- Main_MiSTer has no code path that surfaces a failed HID bind. Graded 'loud' per the schema's two-value axis because the failure is not silent at the kernel level (errors are logged, the device visibly re-enumerates) -- picking 'silent' would hide the fact that `dmesg` already contains the exact signature (13x -EPROTO/-71, 18x 'probe - fail') needed to diagnose this without re-deriving anything, which is the operationally relevant distinction for this schema field. | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters |
 | `a2242dd85` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | xpad: exclude GIP-capable controllers. |
 | `aa8afe109` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | boot-critical/silent | Y | Y | ✓ | Add de10-nano DT. |
+| `ae4cafc03` | v6.18 | **carried** | 0053-exfat-dir-count-readahead-one-page.patch | — | none (carried) | performance/silent | — | ? |  | exfat: limit directory-count read-ahead to one page (#106) |
 | `b00a72159` | v5.15 | **carried** | 0038-hid-nintendo-nso-genesis-bt-pid.patch, 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | Add support for NSO Mega Drive Controller (#50) |
 | `b02a4a011` | v5.15 | **carried** | 0036-btusb-csr-clone-lmp-subver-2512.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | btusb: support for more CSR clones. |
 | `b1b168eb6` | v5.15 | **carried** | 0013-hid-flydigi-vader.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | input: add HID driver to fix Flydigi Vader 4 Pro mapping in… |

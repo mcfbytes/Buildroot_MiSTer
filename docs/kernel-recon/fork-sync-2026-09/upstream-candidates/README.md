@@ -9,8 +9,12 @@
 > maintainer took the userspace alternatives instead (Main_MiSTer #1307/#1308, in Release
 > 20260912), so the source patches for candidates 3 and 4 — `0040`, `0041` — were **retired from
 > this repo's series** the same day. The `03-*`/`04-*` files below are kept as the record of what
-> was offered; the regeneration table's rows for them no longer resolve. Candidates 5 and 6 are
-> still unsent.
+> was offered; the regeneration table's rows for them no longer resolve. Candidate 5 is still
+> unsent. **Candidate 6 was never sent and is now moot (2026-09-21):** a third party
+> (misteraddons, PR #107, closing the fork's issue #101) landed the same DualSense-only `BTN_Z`
+> scoping as `0b2ffdd1d` on 2026-09-17, reaching this repo's conclusion independently. The
+> `06-*` files stay as the record of what was prepared; `0037` was realigned to the merged
+> shape in the 2026-09-21 increment (`docs/kernel-recon/fork-sync-2026-09-21.md`).
 
 > **And one that was not a patch.** The review comment in
 > `08-hid-nintendo-pr92-handshake-fallback.NOTE.md` was posted to PR #92 on 2026-09-11 and
@@ -18,8 +22,8 @@
 > merged commit `66ba034e3` credits it. So upstream now carries the fallback fix our `0049`
 > was already shipping. See `fork-sync-2026-09-14.md` §2.
 
-**Purpose (as written for Wave 5): these patches were PREPARED, not sent.** Candidates 5 and 6
-still are; the rest have since been sent and their outcomes are above. No network push, no PR was opened
+**Purpose (as written for Wave 5): these patches were PREPARED, not sent.** Candidate 5 still
+is, candidate 6 was overtaken upstream (above); the rest have since been sent and their outcomes are above. No network push, no PR was opened
 from this session (the environment has no `gh`/GitHub API access, and pushing is out of
 scope for this wave per `PLAN.md` §5.2). Everything here is a ready-to-apply artifact
 under this repo's own tree, for the owner to review and send at their discretion — in
@@ -44,7 +48,7 @@ independently forward-ported drivers have different surrounding context than our
 | 3 | IMU input-device name suffix | Weak/cosmetic (naming only) | Clean, 0 offset | Clean, 0 new warnings | Shares `hid-nintendo.c` with 2, 4 |
 | 4 | Stock LED classdev names (player1-4/home) | Weak/cosmetic (naming only) | Clean, 0 offset | 1 new warning, harmless (see below) | Shares `hid-nintendo.c` with 2, 3 |
 | 5 | Stock lightbar LED names + probe-time clear | Weak/cosmetic (naming; player-LED clear was already present on his tree) | Clean, 0 offset | Clean, 0 new warnings | Shares `hid-playstation.c` with 6 |
-| 6 | BTN_Z scoped to DualSense only | Strong (stock-parity correctness; DS4 behavioural change, see its `.PR.md`) | Clean, 0 offset | Clean, 0 new warnings | Shares `hid-playstation.c` with 5 |
+| 6 | BTN_Z scoped to DualSense only | Strong (stock-parity correctness; DS4 behavioural change, see its `.PR.md`) | Clean, 0 offset | Clean, 0 new warnings | Shares `hid-playstation.c` with 5. **Overtaken by PR #107 (2026-09-17), never sent** |
 | 7 | `MiSTer_fb.c` `memremap()`/`IS_ERR` bug (F1) | N/A — bug-fix quality, not a stock-5.15 restoration | Clean, 0 offset | Clean, 0 warnings | Independent (`MiSTer_fb.c`) |
 
 **All six patches (2–7) also verified applying together, in this numbered order, in one

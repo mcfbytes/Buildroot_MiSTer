@@ -1,0 +1,58 @@
+{
+  "sha": "ae4cafc03fdc8ad719d5d528cbbe2a61ce09f44d",
+  "subject": "exfat: limit directory-count read-ahead to one page (#106)",
+  "author": "Nigel Breslaw",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-17",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "fs",
+  "change_type": "in-tree-code",
+  "files": [
+    "fs/exfat/dir.c"
+  ],
+  "added": 16,
+  "removed": 6,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0053-exfat-dir-count-readahead-one-page.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "fs/exfat/dir.c:658-666 (linux-6.18.52) -- the single 128 KiB window this commit parameterises; fs/exfat/dir.c:645-658 + fs/exfat/fatent.c:159-185 + fs/exfat/exfat_fs.h:84-86 (linux-7.2.6) -- the refactored path that replaced it",
+    "vanilla_quote": "#define EXFAT_MAX_RA_SIZE     (128*1024)\nstatic int exfat_dir_readahead(struct super_block *sb, sector_t sec)\n{\n\tstruct exfat_sb_info *sbi = EXFAT_SB(sb);\n\tstruct buffer_head *bh;\n\tunsigned int max_ra_count = EXFAT_MAX_RA_SIZE >> sb->s_blocksize_bits;\n\tunsigned int page_ra_count = PAGE_SIZE >> sb->s_blocksize_bits;\n\tunsigned int adj_ra_count = max(sbi->sect_per_clus, page_ra_count);\n\tunsigned int ra_count = min(adj_ra_count, max_ra_count);",
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Not a provenance-doc row -- new fork work (2026-09), post-dating that document entirely. Its nearest relative in records/ is 9854075c86455942c2ce57e0b7dc80e3e2c5b108 (fork Q6, carried as 0050), which touches the same function.",
+  "impact": {
+    "effect_if_absent": "exfat_count_dir_entries() (6.18.52 fs/exfat/dir.c:1242-1284) walks a directory only to count sub-directories and returns at the first TYPE_UNUSED entry -- usually inside the first page. Every page-aligned entry on that walk calls exfat_get_dentry(), which triggers exfat_dir_readahead() sized for a real directory read: up to 128 KiB of physical SD reads per counted directory, for metadata nobody consumes. The MiSTer workload counts thousands of directories in a row, so the amplification is the whole cost. PR #106's measurements on a frozen 1,896-file / 4.86 GB Arcade workload: Update All installed-files pass 77.677 s / 181.2 MB of SD reads on stock 6.18 vs 26.817 s / 39.5 MB patched (5.15 was 39.006 s / 41.5 MB); a third-party catalog build 305.545 s / 1436.9 MB vs 65.866 s / 72.7 MB. Nothing fails; the image is just slow, and slower than the 5.15 it replaced.",
+    "affected_hardware": [],
+    "device_ids": [],
+    "severity": "performance",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": "None. exfat_get_dentry()'s external signature and its 128 KiB limit are deliberately preserved by the commit; only an internal callee gains a bound. No syscall, ioctl or on-disk behaviour changes -- the same sectors are read in the same order, fewer of them are read speculatively."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "6.18-ONLY. Fails at -F0 against the pinned 7.2.6 and MUST NOT be listed in linux-patches-beta/series or symlinked into de25nano/linux-patches/.",
+    "effort": "none on 6.18 -- applied as authored, added lines byte-identical to the fork commit's. Measured with the full de10nano series in order on pristine 6.18.52: 'Hunk #1 succeeded at 663 (offset 7 lines). Hunk #2 succeeded at 701 (offset 10 lines). Hunk #3 succeeded at 720 (offset 10 lines). Hunk #4 succeeded at 729 (offset 10 lines). Hunk #5 succeeded at 1276 (offset 10 lines).' -- offsets only, zero fuzz, zero rejects. The offsets come from 0031 (earlier in the same file) and 0050 (+3 lines inside the same function, +1 at the #include block)."
+  },
+  "dependencies": {
+    "depends_on": [
+      "9854075c86455942c2ce57e0b7dc80e3e2c5b108"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (fs/exfat). Author Nigel Breslaw <nigel.breslaw@slint.dev>, GitHub @NigelBreslaw, who opened PR #106 himself; his Signed-off-by is on the merged fork commit and is reproduced verbatim in 0053 alongside the carrier's. The PR body states the patch 'was developed with Codex' and that the description is the author's own; no co-author trailer is present on the commit, so the DCO chain is Breslaw's alone and 0053 does not invent one.",
+  "notes": "IT IS A FOLLOW-UP TO 0050, IN THE SAME FUNCTION, AND THE TWO COMPOSE CLEANLY. 0050 (fork Q6, 9854075c8 / PR #88 head 97887b3413, Giancarlo Erra) wraps exfat_dir_readahead()'s sb_breadahead() loop in blk_start_plug()/blk_finish_plug(); this commit changes the same function's signature and the max_ra_count initialiser and adds an exfat_get_dentry_ra() wrapper. No hunk overlaps. MEASURED, not assumed: applying 0050 then 0053 to a pristine linux-6.18.52 fs/exfat/dir.c yields a region from '#define EXFAT_MAX_RA_SIZE' to 'enum exfat_validate_dentry_mode' that diffs EMPTY against `git show ae4cafc03:fs/exfat/dir.c`, and so does exfat_count_dir_entries(). The fork commit's own message ('existing block plugging ... preserved') confirms it was written on top of the plug.\n\nNOT A MAINLINE BACKPORT, and there is no SHA to attribute. `grep -n exfat_dir_readahead fs/exfat/dir.c` returns nothing (exit 1) against the pinned linux-7.2.6: the function does not exist upstream any more. 7.x folded directory read-ahead into exfat_get_dentry() (7.2.6 dir.c:645-658) calling the shared exfat_blk_readahead() (fatent.c:159-185). Same conclusion 0050's header reaches for the same reason -- fork code, credited to its author, not a 0047-style mainline carry.\n\n7.x IS NOT ALREADY FIXED. This is the one thing a future reader is most likely to get wrong, because the 7.x EXCLUSION looks identical to 0050's and 0050's reason was 'mainline already solved it'. Here mainline solved a DIFFERENT problem. 7.2.6's exfat_get_dentry() still read-aheads on the count path, with ra_count = sect_per_clus capped by EXFAT_BLK_RA_SIZE(sb) = min(bdi->ra_pages, bdi->io_pages) -- 128 KiB at the default read_ahead_kb (exfat_fs.h:84-86) -- and exfat_count_dir_entries() (7.2.6 dir.c:1175-1215) goes through it unchanged. So the SAME read amplification is present on the 7.2.x beta kernel and on the DE25, in a different shape. A 7.x fix would be ORIGINAL code, not a re-anchor of this hunk, which means it has no fork commit to trace to and would trip reduce.py's orphan invariant; it is recorded as an open item in docs/kernel-recon/fork-sync-2026-09-21.md section 5 (and as an upstream-candidate suggestion) rather than invented in this increment.\n\nTHE 7.x EXCLUSION FAILS DIFFERENTLY FROM 0047/0050/0051 AND THAT IS WORTH KNOWING. Measured at -F0 against pristine 7.2.6: 'Hunk #1 FAILED at 656. Hunk #2 FAILED at 690. Hunk #3 FAILED at 707. Hunk #4 succeeded at 664 (offset -52 lines). Hunk #5 succeeded at 1196 (offset -67 lines). 3 out of 5 hunks FAILED', exit 1. Two hunks SUCCEED -- the new public exfat_get_dentry() wrapper, whose context survived the 7.x refactor, and the exfat_count_dir_entries() call site. A forced apply would therefore leave a tree in which exfat_get_dentry() recurses into itself and calls an exfat_get_dentry_ra() that does not exist. Buildroot's -F0 applier exits 1 and stops the build before that, which is why the exclusion is safe, but this is the first entry on that list where 'just force it' would produce a broken tree rather than a no-op. Recorded in linux-patches-beta/series, in the DE25 README row, and in 0053's own header.\n\nRETIRES WITH 0050, the moment the 6.18.y pin leaves 6.18.y: at that point neither function exists and both patches fail to apply. The answer then is DELETE both, not re-anchor -- and, if the 7.x amplification above still matters, open it as new work with its own provenance.\n\nNOT MEASURED HERE: the speedups above are the submitter's, on his hardware and his workload. Nothing in this environment has an SD card or an exFAT volume, so this increment carries his numbers as cited evidence, not as a reproduction."
+}

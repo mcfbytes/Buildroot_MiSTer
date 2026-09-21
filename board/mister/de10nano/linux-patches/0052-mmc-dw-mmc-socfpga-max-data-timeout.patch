@@ -1,0 +1,152 @@
+From 7a65ca02c77dda0330619d6fc97da029aa15eeae Mon Sep 17 00:00:00 2001
+From: Kasper Olesen <kaspersolesen@gmail.com>
+Date: Thu, 17 Sep 2026 00:13:46 +0200
+Subject: [PATCH 1/1] mmc: dw_mmc-pltfm: socfpga: restore maximum data timeout
+
+Install a socfpga-only `set_data_timeout` hook that always programs
+TMOUT = 0xFFFFFFFF, restoring what MiSTer's 5.15 kernel did for every
+data transfer.
+
+WHAT CHANGED UNDER US
+Mainline 6a8c2018e872 ("mmc: dw_mmc: Allow lower TMOUT value than
+maximum", v5.17) stopped writing the maximum TMOUT unconditionally and
+started deriving TMOUT[31:8] from `data->timeout_ns`:
+
+    linux-6.18.52 drivers/mmc/host/dw_mmc.c:1285-1314
+        static void dw_mci_set_data_timeout(struct dw_mci *host,
+                                            unsigned int timeout_ns)
+        {
+                const struct dw_mci_drv_data *drv_data = host->drv_data;
+                ...
+                if (drv_data && drv_data->set_data_timeout)
+                        return drv_data->set_data_timeout(host, timeout_ns);
+                ...
+                if (!tmp || tmp > 0xFFFFFF)
+                        tmout |= (0xFFFFFF << 8);
+                else
+                        tmout |= (tmp & 0xFFFFFF) << 8;
+                mci_writel(host, TMOUT, tmout);
+
+`mmc_set_data_timeout()` asks for 100 ms on an SD read, so on the
+DE10-Nano's 50 MHz controller clock TMOUT reads back 0x4C4B40FF. The
+software read timer is armed from that same register:
+
+    linux-6.18.52 drivers/mmc/host/dw_mmc.c:2003-2025
+        static void dw_mci_set_drto(struct dw_mci *host)
+        ...
+                drto_clks = mci_readl(host, TMOUT) >> 8;
+        ...
+                drto_ms += 10;   /* add a bit spare time */
+
+and with IDMAC there is no intermediate progress interrupt, so that
+~110 ms budget has to cover an entire multi-block request -- up to 1 MB
+at `read_ahead_kb=1024`. 5.15's maximum TMOUT gave ~346 ms.
+
+WHY THE FAILURE IS SILENT
+When a request misses the budget `mmc_blk_mq_rw_recovery()` retries it,
+then resets the card and re-reads the request one sector at a time
+(CMD17 + CMD13 per sector). dw_mmc does not update its debugfs
+`err_stats` on this path and nothing prints -110; the only trace in
+dmesg is a repeated
+
+    Bus speed (slot 0) = 50000000Hz (slot req 400000Hz, actual 400000HZ ...)
+
+from the card re-initialising. A user sees stutter, not an error.
+
+Provenance
+----------
+Origin:       7a65ca02c77dda0330619d6fc97da029aa15eeae
+              "mmc: dw_mmc-pltfm: socfpga: restore maximum data timeout
+              (#105)", MiSTer-devel/Linux-Kernel_MiSTer, branch
+              MiSTer-v6.18, PR #105, 2026-09-17. Refs the fork's own
+              issue #103 (PSX CHD stutter / slow N64 loads), NOT
+              confirmed as its cause -- see "What this does not prove"
+              below.
+Author:       Kasper Olesen <kaspersolesen@gmail.com> (GitHub @kblood).
+              The fork commit's own Signed-off-by spells the surname
+              "Kasper Solesen"; same person, same address -- reproduced
+              below as he wrote it rather than silently corrected.
+Upstream:     ABSENT from both kernels this repo builds, measured
+              against the pinned, hash-verified tarballs rather than a
+              mirror. `grep -n set_data_timeout drivers/mmc/host/
+              dw_mmc-pltfm.c` returns nothing (exit 1) in linux-6.18.52
+              and in linux-7.2.6; in both trees the only in-tree user of
+              the hook is Exynos (dw_mmc-exynos.c:577 and :649), and
+              socfpga_drv_data carries `.init` alone --
+                  linux-6.18.52 drivers/mmc/host/dw_mmc-pltfm.c:99-101
+                  linux-7.2.6  drivers/mmc/host/dw_mmc-pltfm.c:89-91
+                      static const struct dw_mci_drv_data socfpga_drv_data = {
+                              .init           = dw_mci_socfpga_priv_init,
+                      };
+              So this is not a backport: nothing upstream has ever
+              carried it, and there is no mainline SHA to attribute.
+              The hook itself IS upstream (dw_mmc.h:597,617 in 6.18.52;
+              :517,:537 in 7.2.6), which is why no core change is
+              needed.
+Applies to:   BOTH series. The added lines are byte-identical on 6.18
+              and 7.2; only the line numbers move, because 7.x rewrote
+              dw_mci_socfpga_priv_init()'s clock-phase parsing ABOVE the
+              anchor and left the anchor itself untouched. Measured: the
+              hunk lands at offset 0 on 6.18.52 and at offset -10 on
+              7.2.6, zero fuzz, so board/mister/de10nano/
+              linux-patches-beta/ carries a SYMLINK to this file rather
+              than a re-anchored copy.
+DE25 exclusion: deliberately absent from board/mister/de25nano/
+              linux-patches/. `socfpga_drv_data` is reached only through
+              `{ .compatible = "altr,socfpga-dw-mshc", .data =
+              &socfpga_drv_data, }` (dw_mmc-pltfm.c:105 / :95), and the
+              Agilex 5 SD controller is a Cadence SDHCI part, not a
+              DesignWare one -- see board/mister/de25nano/linux-patches/
+              0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask.patch and
+              board/mister/de25nano/linux.config:178-180
+              (CONFIG_MMC_SDHCI / _PLTFM / _CADENCE=y). That config has
+              no CONFIG_MMC_DW at all, so dw_mmc-pltfm.c is not even
+              compiled for that board; the DE10 config has it at
+              board/mister/de10nano/linux.config:510. Excluding it keeps
+              the DE25 series honest rather than carrying inert code.
+Forward-port: None needed -- applied as authored. The unused
+              `timeout_ns` parameter matches the hook's prototype and
+              the kernel does not build with -Wunused-parameter.
+What this
+does not
+prove:        The PR reproduces the failure mode with an artificially
+              shortened budget (30 ms), not with a card that fails at
+              the stock 100 ms; the author estimates a card would have
+              to be slower than ~9 MB/s on 1 MB requests, or show
+              ~100 ms internal latency spikes, to trigger it as shipped.
+              The cost of carrying it is bounded and known: a genuinely
+              unresponsive card now takes ~346 ms instead of ~110 ms to
+              fail a read. Boot-tested by the author on a DE10-Nano
+              (TMOUT reads back 0xFFFFFFFF, exFAT ~22 MB/s and raw
+              ~23 MB/s unchanged); NOT yet exercised on this project's
+              rig.
+
+Signed-off-by: Kasper Solesen <kaspersolesen@gmail.com>
+Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/mmc/host/dw_mmc-pltfm.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+--- a/drivers/mmc/host/dw_mmc-pltfm.c
++++ b/drivers/mmc/host/dw_mmc-pltfm.c
+@@ -96,8 +96,18 @@ static int dw_mci_socfpga_priv_init(struct dw_mci *host)
+ 	return 0;
+ }
+ 
++static void dw_mci_socfpga_set_data_timeout(struct dw_mci *host,
++					    unsigned int timeout_ns)
++{
++	/*
++	 * Pre-v5.17 behaviour: 100 ms is too short for a whole SD read request.
++	 */
++	mci_writel(host, TMOUT, 0xFFFFFFFF);
++}
++
+ static const struct dw_mci_drv_data socfpga_drv_data = {
+-	.init		= dw_mci_socfpga_priv_init,
++	.init			= dw_mci_socfpga_priv_init,
++	.set_data_timeout	= dw_mci_socfpga_set_data_timeout,
+ };
+ 
+ static const struct of_device_id dw_mci_pltfm_match[] = {

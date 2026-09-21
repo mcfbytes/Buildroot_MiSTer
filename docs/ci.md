@@ -2360,24 +2360,26 @@ to the same PR) are harmless no-ops once the hash is already correct.
 [`#renovate-hash-sync-dispatch-trap`](#renovate-hash-sync-dispatch-trap) for
 why this escape hatch has to exist at all and the trap in how to use it.
 
-The 6.18 kernel pin lives in `configs/fragments/de10nano.fragment` alone since
-the 2026-09 fragment split (the kernel-only stack shares that file, so there
-is no mirrored copy any more) — that file is what `paths:` lists. Before the
-split the main defconfig and its copy `configs/mister_kernel_defconfig` were
-both listed, since one Renovate PR touched both.
-
-`configs/mister_rt.fragment` **is listed too, as of 2026-08-17** — and it was
-deliberately absent before that, so a reader coming from an older commit
-should know the reason changed rather than the rule bending. While the RT/beta
-pin tracked mainline `-rc`, Buildroot fetched a cgit snapshot that kernel.org
-publishes no signed manifest for; that hash could only be hand-written TOFU,
-so triggering this workflow for it would have done nothing but burn a runner.
-Linux 7.2 released on 2026-08-16 and the pin moved onto the 7.2 line, where
-the artifact is an ordinary `linux-7.2.tar.xz` covered by the signed
-`sha256sums.asc` exactly like the stable pin — so case 2 now refreshes both,
-as two steps over one shared `linux.hash`, and this path filter is what lets
-an RT bump PR reach them. An `-rc` is still never refreshed for either pin;
-see
+Both kernel pins live in `configs/mister_de10nano_defconfig` since ADR 0030
+(`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` for 6.18.y, `BR2_PACKAGE_LINUX_RT_VERSION`
+for the RT/beta 7.2 line), so that one committed defconfig is the kernel path
+`paths:` lists. Older commits list other files and the history is worth one
+paragraph, because the reason changed rather than the rule bending: before the
+2026-09 fragment split the main defconfig and its hand-mirrored copy
+`configs/mister_kernel_defconfig` were both listed (one Renovate PR touched
+both); during the fragment stacks it was `configs/fragments/de10nano.fragment`;
+and the RT pin was deliberately NOT a trigger at all while it tracked mainline
+`-rc` — Buildroot fetched a cgit snapshot that kernel.org publishes no signed
+manifest for, so that hash could only be hand-written TOFU and running this
+workflow for it would have done nothing but burn a runner. Linux 7.2 released
+on 2026-08-16, the pin moved onto the 7.2 line where the artifact is an
+ordinary signed-manifest release, and `configs/mister_rt.fragment` joined the
+filter on 2026-08-17; that entry outlived the file by ten days (harmless — a
+path that matches nothing) and was folded into the defconfig entry on
+2026-09-21. Case 2 refreshes both pins as two steps, each over its own hash
+file (`board/mister/de10nano/patches/linux/linux.hash` and
+`package/linux-rt/linux-rt.hash`). An `-rc` is still never refreshed for
+either pin; see
 [`#renovate-hash-sync-not-automated`](#renovate-hash-sync-not-automated).
 
 <a id="renovate-hash-sync-cores-pin"></a>
@@ -2907,6 +2909,32 @@ not-yet-published release asset) and does not by itself fail the job;
 Buildroot's own hash check still fails THE BUILD closed on that one stale
 hash either way, so a single skipped pin is safe to leave for the next push
 to retry, not safe to leave invisible.
+
+**`stale` — a fifth outcome, added 2026-09-21.** The paragraph above has a
+hole, and PR #197 (6.18.52 → 6.18.53) fell through it. Renovate polls
+kernel.org's `releases.json`, which listed 6.18.53 more than an hour before
+the signed `v6.x/sha256sums.asc` did; the sync ran 12 seconds after the PR
+opened, `scripts/hash-sync-kernel.sh` found no entry, recorded the kernel
+pin `skipped`, and the job went green (other pins were `already-current`, so
+neither gate condition fired). The image build failed closed on
+`No hash found for linux-6.18.53.tar.xz` — 20 minutes after the PR had been
+merged, master being unprotected. "Skipped" was the wrong word for that row:
+nothing else on the branch could retry it, and the PR could not survive it.
+So the kernel script now distinguishes the two cases a manifest miss can
+leave behind. If the hash file **already carries** the pinned version's line
+(a re-run after a hand fix, a PR that moved some other pin), nothing is
+stale and the row stays `skipped`. If it does **not** — the pin moved and
+its hash did not — the row is `stale`, and the gate fails the run with the
+re-dispatch instruction in the error. `stale` deliberately does **not**
+suppress the push (only `failed` does): another pin's refresh on the same
+branch is still correct and should land. Two things keep this case rare:
+`renovate.json` now passes `releases.json`'s release timestamp through both
+kernel datasources as `releaseTimestamp` and holds each kernel pin with
+`minimumReleaseAge: 6 hours`, so a kernel PR is not opened until the signed
+manifest has had time to catch up; and after a merge nothing re-fires this
+workflow (dispatch refuses the default branch), so the fix for a stale line
+that reached master is a one-line hand commit transcribed from the manifest
+— see `d235fd7` for the shape.
 
 **Follow-up hardening (same day)**: the kernel step's three `exit 1` aborts
 (empty `$kver`, malformed `$kver`, ambiguous `linux.hash`) were converted to

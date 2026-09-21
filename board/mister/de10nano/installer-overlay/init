@@ -21,23 +21,108 @@
 # grow -- it is a REFORMAT, exactly like mr-fusion (MiSTer-devel/mr-fusion,
 # builder/scripts/S99install-MiSTer.sh, which this file is adapted from). We:
 #
-#   1. mount the shipped FAT32 data partition (p1) read-only,
-#   2. copy its /mister-payload/ tree into a RAM tmpfs,
-#   3. sfdisk-repartition the WHOLE card to full size: p1 = exFAT data filling the
+#   1. mount the shipped FAT32 data partition (p1) read-only and work out which
+#      state the card is in (see RECOVERABILITY),
+#   2. read the payload: check it is complete, and capture any user pre-seed the
+#      user dropped at the FAT root before first boot,
+#   3. copy /mister-payload/ into a RAM tmpfs, ALONGSIDE the installer's own
+#      /linux/zImage_dtb and the FAT root's /menu.rbf -- the two files that let a
+#      half-finished card boot back into this installer,
+#   4. sfdisk-repartition the WHOLE card to full size: p1 = exFAT data filling the
 #      card minus a small reserved tail, p2 = type 0xA2 for U-Boot,
-#   4. mkfs.exfat -n MiSTer_Data on the new p1 (in-kernel exfat driver, ADR 0019 --
+#   5. dd uboot.img raw to the new 0xA2 p2 IMMEDIATELY -- seconds after the
+#      repartition the card can reach U-Boot again,
+#   6. mkfs.exfat -n MiSTer_Data on the new p1 (in-kernel exfat driver, ADR 0019 --
 #      we mount it with `mount -t exfat`, NO fuse, unlike mr-fusion),
-#   5. copy the payload back out of RAM onto the new full-size exFAT p1, then
-#      `zcat` linux/linux.img.gz -> linux/linux.img directly onto that partition
-#      (the 512 MiB image lands on DISK, never in RAM -- see the MEMORY note below),
-#   6. merge any user pre-seed dropped on the FAT partition before first boot,
-#   7. write a UNIQUE per-board MAC into <data>/linux/u-boot.txt,
-#   8. dd uboot.img raw to the new 0xA2 p2,
-#   9. sync + reboot.
+#   7. write the INSTALLER's own zImage_dtb and menu.rbf onto that fresh p1 FIRST,
+#      before any payload byte -- from this instant a power cut boots straight back
+#      into this installer rather than into nothing,
+#   8. copy the payload back out of RAM into mister-payload.part/ and, once it is
+#      complete, RENAME that directory to mister-payload/ (a directory-entry
+#      update, which is what makes a partial copy detectable on the next boot),
+#   9. `zcat` mister-payload/linux/linux.img.gz -> linux/linux.img directly onto
+#      the card (the 512 MiB image lands on DISK, never in RAM -- see the MEMORY
+#      note below), with the payload left complete for the whole decompression,
+#  10. COMMIT: drop the now-redundant .gz, rename the payload's entries into their
+#      final places at the root, apply the pre-seed, write a UNIQUE per-board MAC
+#      into <data>/linux/u-boot.txt, rename the REAL kernel over linux/zImage_dtb
+#      as the very last act, then sync + reboot.
+#
+# Those ten are exactly the steps the console splash counts off (1/10 .. 10/10),
+# so they are what a user with a serial cable sees. There is ONE numbering in this
+# file; keep every reference below on it.
 #
 # The reformat writes the REAL /linux/zImage_dtb (from the payload) onto p1, so the
 # next boot loads the real MiSTer kernel, not this installer. That kernel-swap is
-# the primary re-run guard; the exFAT/MiSTer_Data/linux.img check below is belt.
+# the primary re-run guard; the payload-dir/linux.img check below is belt.
+#
+# ---------------------------------------------------------------------------
+# RECOVERABILITY -- why steps 5 and 7 sit where they do (issue #185)
+# ---------------------------------------------------------------------------
+# Until 2026-09 the order was: repartition, format, copy back, expand, pre-seed,
+# MAC, dd uboot.img. From mkfs.exfat onwards -- which is very nearly the whole of
+# a ~1-minute install on a real card -- a power cut left a card that could not
+# boot at all: sfdisk had moved the 0xA2 partition to the tail of the medium with
+# no SPL in it, and the format had just destroyed the only kernel on p1, with the
+# replacement not written until the very last step. The installer is also visually
+# silent for that whole minute (see WHY THERE IS NO HDMI SPLASH below), so the
+# window in which a user is most likely to pull the power was exactly the window
+# that destroyed the card. Issue #185 reported precisely that.
+#
+# The order above attacks the harm rather than the visibility. Two writes are
+# hoisted to the front so the card becomes self-recovering almost immediately:
+#
+#   * uboot.img goes into the new p2 the moment that partition exists (step 5), so
+#     the BootROM can find an SPL again seconds after the table changed;
+#   * the installer's OWN kernel and menu.rbf go onto the fresh p1 before any
+#     payload byte does (step 7), so U-Boot's `load mmc 0:1 ... zImage_dtb` finds
+#     something to boot -- this installer, which simply runs again.
+#
+# Everything after that is arranged so that at any moment a power cut can happen
+# the card is in exactly one of four self-describing states:
+#
+#   mister-payload/ present and complete
+#       -> a full, unattended re-install on the next boot. This is the normal
+#          interrupted state and the whole point of the reorder; it costs the user
+#          one more run and nothing else.
+#   mister-payload.part/ present instead
+#       -> the copy-back was cut short. The bytes it was copying from lived in RAM
+#          and are gone, so there is nothing left on the card to install from:
+#          halt with an honest message, never a reboot loop.
+#   neither present, and no linux/linux.img either
+#       -> formatted but never populated: the cut landed between mkfs.exfat and
+#          the copy-back. Same verdict as above and for the same reason -- the
+#          source lived in RAM. Halt and say to re-flash.
+#   neither present, linux/linux.img there
+#       -> installed. Stop and say so (the "already provisioned" guard).
+#
+# The COMMIT POINT is the single `mv` of the real linux/zImage_dtb over the
+# installer's own, at the very end. Before it the card boots this installer; after
+# it the card boots MiSTer.
+#
+# TWO windows are left where a power cut still costs a re-flash, and they are both
+# short because of where the writes above were moved to:
+#
+#   * mkfs.exfat until the installer kernel lands on the new p1 -- a few seconds on
+#     a real card. This is the only HARD one: for that moment the card has a
+#     bootloader but no kernel on p1, so it cannot get to Linux at all. Note what
+#     is NOT in it: sfdisk only rewrites the MBR, and the new p1 still starts at
+#     LBA 2048, so between sfdisk and mkfs.exfat the shipped FAT32 filesystem --
+#     installer kernel, payload and all -- is still there and still readable under
+#     the enlarged partition entry. An interrupt in THAT window simply re-runs
+#     (scripts/test-installer-recovery.sh proves it).
+#   * the commit phase, from the `rm` of linux/linux.img.gz (which is what first
+#     makes mister-payload/ incomplete -- it precedes every rename) to the final
+#     `mv`. The installer still boots and still says what happened; it just has no
+#     source left to finish from. Directory-entry updates on an already-written
+#     filesystem, so fractions of a second.
+#
+# Neither is zero; together they are the smallest this can be made without writing
+# every byte twice, against an old ordering whose window was the entire ~1-minute
+# install. Do not put anything slow inside either one.
+#
+# HDMI visibility is NOT addressed here and stays open under issue #185: this
+# change shrinks the consequence of pulling the power, not the temptation to.
 #
 # ---------------------------------------------------------------------------
 # The load-bearing facts (get one wrong and you brick a card)
@@ -52,6 +137,8 @@
 #   Until `dd uboot.img -> p2` succeeds the card CANNOT boot. That dd is the single
 #   most brick-critical step; it is verified and, if it fails, we scream and hand the
 #   user a recovery hint (re-flash sdcard.img) rather than rebooting into a brick.
+#   It is also the FIRST thing done after sfdisk, for the reason in RECOVERABILITY
+#   above -- do not let a later edit push it back down the file.
 # * uboot.txt MUST END IN A NEWLINE. U-Boot's `env import -t` (no size arg) scans for
 #   '\n' followed by '\0' (docs/boot-chain.md §4, u-boot cmd/nvedit.c:1049-1066). We
 #   printf a trailing newline.
@@ -60,18 +147,29 @@
 #   interpolates a `mem=` env var (docs/boot-chain.md §4). So this installer sees
 #   ~511 MiB, NOT the full 1 GiB of physical DDR, and NO shipped `linux/u-boot.txt`
 #   can lift that cap -- only rebuilding U-Boot could, which is out of scope. The
-#   payload transits RAM (step 2), so it MUST fit under ~511 MiB. The single item
+#   payload transits RAM (step 3), so it MUST fit under ~511 MiB. The single item
 #   that would blow that budget is linux.img: a 512 MiB apparent-size ext4 image,
 #   stored NON-sparse on FAT32, i.e. bigger than the whole address space. So it does
 #   NOT transit RAM as a 512 MiB blob -- scripts/mk-sdcard.sh ships it GZIPPED
 #   (linux/linux.img.gz, ~80 MiB of real data); we copy that small .gz through RAM
 #   like everything else and, only AFTER copy-back, `zcat` it straight onto the
-#   exFAT card (step 5b below), so the full 512 MiB is written to DISK, never held
+#   exFAT card (step 9 below), so the full 512 MiB is written to DISK, never held
 #   in RAM. The rest of the base (~60 MB: MiSTer, menu.rbf, soundfonts, scripts, the
-#   installer kernel) fits with wide margin; the optional _Console cores (~150-200
+#   real kernel) fits with wide margin; the optional _Console cores (~150-200
 #   MB) may NOT, so we measure free RAM first and, if the full payload will not fit,
 #   copy the base and SKIP the cores with a loud message rather than OOM-bricking.
 #   update_all.sh on the installed card fetches cores anyway.
+#   Two files that are NOT part of mister-payload/ ride in the same tmpfs: the FAT
+#   root's own linux/zImage_dtb (THIS installer's kernel, ~13 MB) and menu.rbf
+#   (~2.4 MB), staged so step 7 can put the card back on its feet. Both are
+#   measured into the budget below; together they are ~15 MB against ~400 MB of
+#   headroom, and they are never skipped -- the cores are what gives way first.
+#   One wrinkle in that measurement, harmless but worth knowing: `du` reports
+#   ALLOCATED blocks, and a RE-RUN reads the payload off the full-size exFAT this
+#   installer made (128 KiB clusters on a 64 GB card) rather than the shipped
+#   FAT32 (32 KiB), so the same tree measures bigger on the second pass. The error
+#   is in the safe direction -- it can only make a re-run skip cores a first run
+#   kept, never the reverse -- and update_all.sh fetches them anyway.
 # * DEFENSIVE LIKE THE STAGE-1 init. Same contract as
 #   board/mister/common/initramfs-overlay/init: early proc/sys/dev mounts, parse
 #   the cmdline (never hardcode the device), and on ANY fatal error print a banner
@@ -88,9 +186,12 @@
 # Provided by busybox in EITHER stage-1's set or installer-busybox.config:
 #   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
 #   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
-#   cp du dd cut reboot blkid blockdev hexdump rm            (installer must add)
+#   cp du dd cut reboot blkid blockdev hexdump rm mv         (installer must add)
 # The applet budget is real but it is NOT fixed: `rm` was added in PR #76 because
-# /init genuinely needed it (step 5b) and it costs ~1 KB. If a future revision
+# /init genuinely needed it (step 10) and it costs ~1 KB, and `mv` was added for
+# the recoverable ordering above (the .part rename and the commit renames are the
+# whole reason a partial copy is detectable, and a rename is also what keeps the
+# commit from re-writing 150+ MiB). If a future revision
 # needs an applet, turn its CONFIG_ symbol on in installer-busybox.config and
 # document why in that file's header -- do not contort the shell around its
 # absence. Do check the symbol actually exists in the BusyBox being built:
@@ -112,6 +213,12 @@ set -u
 
 # --- Tunables ---------------------------------------------------------------
 PAYLOAD_DIR="mister-payload"           # subdir on the shipped p1 holding the real card
+PAYLOAD_PART_DIR="mister-payload.part" # the SAME tree while it is still being written.
+                                       # The copy-back lands here and is renamed to
+                                       # PAYLOAD_DIR only once complete, so "an interrupted
+                                       # copy" and "a payload worth re-installing from" are
+                                       # two different directory names rather than a guess
+                                       # (see RECOVERABILITY in the header).
 CORES_DIR="_Console"                   # payload top-level dir skipped first under RAM pressure
 DATA_LABEL="MiSTer_Data"               # exFAT volume label the final card must carry
 RESERVED_SECTORS=8192                  # 512-byte sectors given to the 0xA2 boot partition
@@ -126,9 +233,24 @@ RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel 
                                        # working set; the payload tmpfs may use the rest.
 DEV_WAIT=30                            # seconds to wait for a block device to enumerate
 
+# --- where the RAM copy lives ----------------------------------------------
+# One tmpfs with two subdirectories, because two unrelated things are staged in
+# it. RAM_PAYLOAD is mister-payload/ verbatim and its contents are iterated with a
+# glob; RAM_INSTALLER holds the two recovery files, which must NOT appear in that
+# glob. Separate directories, not a naming convention, so the glob cannot pick
+# them up by accident.
+RAM_DIR="/tmp/stage"
+RAM_PAYLOAD="$RAM_DIR/payload"
+RAM_INSTALLER="$RAM_DIR/installer"
+
 # --- rescue-banner state (all pre-initialised so `set -u` is safe in rescue) --
 cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
 fat_type=""; stage="starting up"; cores_skipped="no"
+
+# TEST-ONLY interruption knob; see stop_after() far below. Inert unless the kernel
+# command line carries mister_installer_stop_after=, which the stock U-Boot's
+# compiled-in bootargs never does.
+stop_after_stage=""
 
 # ===========================================================================
 #  FIRST-BOOT SPLASH -- console progress UI + hps_led0 heartbeat
@@ -232,7 +354,7 @@ fat_type=""; stage="starting up"; cores_skipped="no"
 # between these two markers VERBATIM and sources it under a POSIX shell against a
 # stubbed /proc/uptime and /sys/class/leds. Keep the section self-contained: it
 # must not reference anything defined outside it, or that test stops working.
-SPLASH_TOTAL=9                # user-visible steps; keep in sync with splash_step calls
+SPLASH_TOTAL=10               # user-visible steps; keep in sync with splash_step calls
 SPLASH_BAR_CELLS=28           # bar width -- the whole status line must fit 80 cols
 SPLASH_FLAG=/run/splash.run   # non-empty => the heartbeat child should keep running
 
@@ -485,9 +607,55 @@ rescue() {
 	respawn_shell
 }
 
+# ------------------------------------------------------------------ TEST HOOK
+# stop_after TAG -- simulate a power cut at a named point in the install, so that
+# scripts/test-installer-recovery.sh can prove the RECOVERABILITY invariants in
+# the header actually hold. It flushes what we have written so far and reboots
+# immediately, leaving the card in exactly the state that point is supposed to
+# leave it in.
+#
+# THE CMDLINE IS NOT A SAFE GATE ON ITS OWN, so it is not the gate. An earlier
+# revision of this hook fired on the cmdline token alone and called that "inert on
+# real hardware". It is not: `mmcboot` interpolates $v into bootargs
+# (docs/boot-chain.md §4), `scrtest` `env import -t`s /linux/u-boot.txt off p1
+# BEFORE mmcboot runs, and $v is the documented user knob (boot-chain §5 spells
+# out that arbitrary extra tokens can therefore appear in /proc/cmdline). The
+# shipped installer p1 is a plain FAT32 partition any user can write to, and
+# scripts/mk-sdcard.sh documents dropping a u-boot.txt on it as supported. So a
+# hand-written `v=loglevel=4 mister_installer_stop_after=recoverable` really does
+# reach this script -- and stopping at `recoverable` or `payload-partial` leaves
+# a card needing a re-flash, i.e. exactly the harm this ordering exists to remove.
+#
+# THE GATE IS A MARKER FILE IN THE INITRAMFS, /.installer-test-hook, which no
+# shipped image contains: scripts/lib/installer-qemu-kernel.sh appends it as a
+# second cpio archive when it builds the harness kernel, leaving the installer
+# cpio and this file byte-for-byte unchanged. A user can write anything they like
+# to the card and never obtain it -- changing the initramfs means rebuilding the
+# kernel. The cmdline token then only chooses WHICH point to stop at.
+#
+# The tags, all five of them exercised by that harness (keep it that way; a tag
+# nothing stops at is a branch nothing tests):
+#   bootloader      after uboot.img is in the new 0xA2 partition
+#   recoverable     after this installer's own kernel is back on the new p1
+#   payload-partial part-way through the copy-back, so mister-payload.part/ stays
+#   payload-copied  after the copy-back is renamed to mister-payload/
+#   expanded        after linux/linux.img exists -- the state that used to fool
+#                   the old re-run guard
+stop_after() {
+	[ -e /.installer-test-hook ] || return 0
+	[ "$stop_after_stage" = "$1" ] || return 0
+	sync
+	splash_pulse_stop
+	splash_clear_line
+	printf '[installer] TEST-STOP after "%s" -- simulating a power cut here\n' "$1"
+	sync
+	reboot -f
+	rescue "reboot returned after the test stop at $1"
+}
+
 # ------------------------------------------------------------- early mounts
 # devtmpfs is not auto-mounted for an initramfs; everything below needs /dev.
-mkdir -p /proc /sys /dev /mnt/src /mnt/dst /tmp/payload /run/preseed
+mkdir -p /proc /sys /dev /mnt/src /mnt/dst "$RAM_DIR" /run/preseed
 mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount /proc"
 mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
 mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
@@ -508,10 +676,21 @@ set -- $cmdline
 for tok in "$@"; do
 	case "$tok" in
 	root=*) root_arg="${tok#root=}" ;;
+	# The test hook (stop_after above). A user CAN get this token onto the
+	# cmdline via u-boot.txt's $v, so parsing it is not what enables it --
+	# stop_after() refuses to act without the initramfs marker file.
+	mister_installer_stop_after=*) stop_after_stage="${tok#mister_installer_stop_after=}" ;;
 	esac
 done
 set +f
 [ -n "$root_arg" ] || rescue "no root= on the kernel command line"
+if [ -n "$stop_after_stage" ]; then
+	if [ -e /.installer-test-hook ]; then
+		log "TEST HOOK ACTIVE: will stop after \"$stop_after_stage\""
+	else
+		log "ignoring mister_installer_stop_after=\"$stop_after_stage\": this is not a test image"
+	fi
+fi
 
 # --------------------------------------------------- resolve the data partition
 # root= points at the FAT data partition (p1). Support a device path, or
@@ -586,23 +765,43 @@ else
 fi
 log "source mounted ($fat_type)"
 
-# ---------------------------------------------------------------- re-run guard
-# Belt-and-suspenders (the primary guard is that the reformat replaces this
-# installer kernel with the real one, so we normally never run twice). If the data
-# partition is ALREADY the finished article -- exFAT, labelled MiSTer_Data, with a
-# real linux/linux.img at its root (the installer's own /linux holds only
-# zImage_dtb, never linux.img) -- then re-running would DESTROY a good card. Do NOT
-# reformat. We cannot "boot MiSTer" from this throwaway installer OS, so the safe,
-# non-destructive action is to stop and say so clearly rather than risk the user's
-# data or spin a reboot loop.
+# ------------------------------------------------------ what is on this card?
+# One decision point, because the three interesting answers are mutually exclusive
+# and only one of them may reformat. The states are the ones the header's
+# RECOVERABILITY section defines; read that before changing any condition here.
+#
+# The PRIMARY re-run guard is still structural: a finished install replaces this
+# installer's linux/zImage_dtb with the real kernel, so on a good card U-Boot never
+# loads us again. Everything below is belt for the cards that DID get interrupted.
+stage="assessing the card"
+SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
+SRC_PAYLOAD_PART="/mnt/src/$PAYLOAD_PART_DIR"
 label="$(blkid -o value -s LABEL "$DATA_PART" 2>/dev/null || true)"
-if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/linux/linux.img ]; then
+
+# 1. ALREADY PROVISIONED. exFAT, labelled MiSTer_Data, no payload directory under
+#    EITHER name, and a real linux/linux.img at the root. Re-running would DESTROY
+#    a good card, so do not reformat.
+#
+#    The "no payload directory" clause is load-bearing and was added with the
+#    recoverable ordering. Without it this guard fires MID-COMMIT: from the moment
+#    linux/linux.img has been expanded until the real kernel is renamed into place,
+#    an interrupted card is exFAT, labelled, and has linux.img -- while its
+#    linux/zImage_dtb is still the installer's. The old guard would have called
+#    that card "installed" and halted, on a card that in fact still had a complete
+#    payload sitting right there and would have finished on its own.
+#
+#    We cannot "boot MiSTer" from this throwaway installer OS, so the safe,
+#    non-destructive action is to stop and say so clearly rather than risk the
+#    user's data or spin a reboot loop.
+if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] &&
+   [ ! -d "$SRC_PAYLOAD" ] && [ ! -d "$SRC_PAYLOAD_PART" ] && [ -f /mnt/src/linux/linux.img ]; then
 	umount /mnt/src 2>/dev/null || true
 	splash_halt_ok
 	printf '\n################################################################\n'
 	printf '#  MiSTer INSTALLER: card already provisioned -- NOT reformatting\n'
 	printf '################################################################\n'
-	printf '  %s is exFAT "%s" and already contains linux/linux.img.\n' "$DATA_PART" "$DATA_LABEL"
+	printf '  %s is exFAT "%s" and already contains linux/linux.img,\n' "$DATA_PART" "$DATA_LABEL"
+	printf '  with no installer payload left on it.\n'
 	printf '  Refusing to reformat an installed card (your data is safe).\n'
 	printf '  If you meant to reinstall, re-flash sdcard.img first.\n\n'
 	# NOT rescue(): this is a benign, correct halt, not a failure. rescue()'s
@@ -615,19 +814,73 @@ if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] && [ -f /mnt/src/li
 	respawn_shell
 fi
 
+# 2. INTERRUPTED DURING THE COPY-BACK. mister-payload.part/ is the name the
+#    copy-back writes under; it is renamed to mister-payload/ only once every byte
+#    is on the card. Seeing .part and no finished payload therefore means the
+#    install was cut short while copying -- and the bytes it was copying FROM lived
+#    in the RAM tmpfs of a machine that has since been power-cycled. There is
+#    nothing left on this card to install from and nothing we can repair. Say so
+#    honestly and stop; a reboot here would loop forever.
+if [ -d "$SRC_PAYLOAD_PART" ] && [ ! -d "$SRC_PAYLOAD" ]; then
+	umount /mnt/src 2>/dev/null || true
+	splash_fail
+	printf '\n################################################################\n'
+	printf '#  MiSTer INSTALLER: the previous install was INTERRUPTED\n'
+	printf '################################################################\n'
+	printf '  %s holds %s/, a partial copy.\n' "$DATA_PART" "$PAYLOAD_PART_DIR"
+	printf '  The install was cut short while writing files to the card, and\n'
+	printf '  the files it was copying from were held in RAM -- they are gone.\n'
+	printf '  There is nothing left on this card to install from.\n\n'
+	printf 'RECOVERY: re-flash sdcard.img to this card with Etcher or dd and boot\n'
+	printf 'again. Nothing else is needed, and nothing on the board was harmed.\n\n'
+	printf 'Dropping to a console shell. Nothing is installed.\n\n'
+	respawn_shell
+fi
+
 # --------------------------------------------- locate the payload on the source
 splash_step 2 "reading the payload"
 stage="locating the payload"
-SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
-[ -d "$SRC_PAYLOAD" ] || rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
+if [ ! -d "$SRC_PAYLOAD" ]; then
+	# No payload under either name. Three ways to get here, and they want three
+	# different sentences -- "wrong card?" on a card that is plainly ours, halfway
+	# through our own install, is the kind of message that sends a user hunting
+	# for a hardware fault. Ordered most-specific first.
+	if [ -f /mnt/src/linux/linux.img ]; then
+		rescue "no /$PAYLOAD_DIR on $DATA_PART but linux/linux.img is there -- an install was interrupted at its very last step; re-flash sdcard.img"
+	fi
+	if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ]; then
+		rescue "no /$PAYLOAD_DIR on an already-reformatted $DATA_PART -- an install was interrupted before the payload was copied; re-flash sdcard.img"
+	fi
+	rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
+fi
 # The files without which the reformatted card cannot boot at all. linux.img ships
 # GZIPPED (linux/linux.img.gz) -- see the MEMORY note in the header; it is expanded to
-# linux/linux.img onto the exFAT card after copy-back (step 5b).
+# linux/linux.img onto the exFAT card once the payload is safely on it (step 9).
 for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
-	[ -f "$SRC_PAYLOAD/$f" ] || rescue "payload is missing $f -- refusing to reformat"
+	[ -f "$SRC_PAYLOAD/$f" ] && continue
+	if [ -f /mnt/src/linux/linux.img ]; then
+		rescue "/$PAYLOAD_DIR is missing $f and linux/linux.img is already there -- an install was interrupted while finishing; re-flash sdcard.img"
+	fi
+	rescue "payload is missing $f -- refusing to reformat"
 done
 
-# --------------------------------------------- stash any user pre-seed (step 6)
+# ------------------------------------ the two files that make the card recover
+# NOT part of mister-payload/: the FAT root's own linux/zImage_dtb is the kernel
+# running this very script, and menu.rbf is what U-Boot's fpgaload puts in the
+# fabric (ADR 0020 §7). Step 6 writes both onto the freshly formatted partition
+# before anything else, which is what turns "the card is mid-install" from a brick
+# into a card that simply runs the installer again. Neither is fatal by absence --
+# a card without them still installs correctly, it just cannot recover from an
+# interruption -- so both are probed and warned about, never assumed.
+stage="checking the installer's own kernel"
+SRC_INSTALLER_KERNEL="/mnt/src/linux/zImage_dtb"
+SRC_MENU_RBF="/mnt/src/menu.rbf"
+[ -f "$SRC_INSTALLER_KERNEL" ] ||
+	log "WARNING: no linux/zImage_dtb at the card root -- an interruption below will need a re-flash"
+[ -f "$SRC_MENU_RBF" ] ||
+	log "WARNING: no menu.rbf at the card root -- the fabric stays unconfigured on a re-run"
+
+# --------------------------------------------------- stash any user pre-seed (2)
 # Optional files a user dropped at the root of the FAT card before first boot,
 # mirroring mr-fusion's pre-seed hooks. Copied to RAM now (before we unmount the
 # source) and laid onto the finished card later. All optional; absence is normal.
@@ -642,11 +895,11 @@ for item in wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts 
 	fi
 done
 
-# ------------------------------------------- copy the payload into RAM (step 2)
-# Peak RAM use = size of the tmpfs payload copy (the copy-back target is the SD
-# card, not RAM). Size a tmpfs to (MemAvailable - reserve) so a mis-estimate
-# fails with a clean ENOSPC instead of OOM-hanging the box. Then decide, from a
-# real du of the source, whether the FULL payload fits or we must skip cores.
+# ------------------------------------------------ copy the payload into RAM (3)
+# Peak RAM use = size of the tmpfs copy (the copy-back target is the SD card, not
+# RAM). Size a tmpfs to (MemAvailable - reserve) so a mis-estimate fails with a
+# clean ENOSPC instead of OOM-hanging the box. Then decide, from a real du of the
+# source, whether the FULL payload fits or we must skip cores.
 stage="measuring RAM"
 avail_kb=0
 while read -r key val _; do
@@ -656,16 +909,29 @@ case "$avail_kb" in ''|*[!0-9]*) avail_kb=0 ;; esac
 budget_kb=$((avail_kb - RAM_RESERVE_KB))
 [ "$budget_kb" -gt 0 ] || rescue "not enough free RAM to stage the payload (avail=${avail_kb}KB)"
 
-mount -t tmpfs -o "size=${budget_kb}k" tmpfs /tmp/payload ||
+mount -t tmpfs -o "size=${budget_kb}k" tmpfs "$RAM_DIR" ||
 	rescue "cannot mount the payload tmpfs (${budget_kb}KB)"
+mkdir -p "$RAM_PAYLOAD" "$RAM_INSTALLER" || rescue "cannot create the RAM staging dirs"
 
-full_kb="$(du -sk "$SRC_PAYLOAD" 2>/dev/null | cut -f1)"
+# du each piece separately. The two recovery files are NOT under $SRC_PAYLOAD, so
+# they have to be measured and budgeted for explicitly -- they are small (~15 MB
+# together) but they are also the ones we refuse to drop, so they belong in the
+# base figure the cores are weighed against.
+payload_kb="$(du -sk "$SRC_PAYLOAD" 2>/dev/null | cut -f1)"
 cores_kb=0
 [ -d "$SRC_PAYLOAD/$CORES_DIR" ] && cores_kb="$(du -sk "$SRC_PAYLOAD/$CORES_DIR" 2>/dev/null | cut -f1)"
-case "$full_kb"  in ''|*[!0-9]*) full_kb=0 ;;  esac
-case "$cores_kb" in ''|*[!0-9]*) cores_kb=0 ;; esac
+recover_kb=0
+[ -f "$SRC_INSTALLER_KERNEL" ] && recover_kb="$(du -sk "$SRC_INSTALLER_KERNEL" 2>/dev/null | cut -f1)"
+rbf_kb=0
+[ -f "$SRC_MENU_RBF" ] && rbf_kb="$(du -sk "$SRC_MENU_RBF" 2>/dev/null | cut -f1)"
+case "$payload_kb" in ''|*[!0-9]*) payload_kb=0 ;; esac
+case "$cores_kb"   in ''|*[!0-9]*) cores_kb=0 ;;   esac
+case "$recover_kb" in ''|*[!0-9]*) recover_kb=0 ;; esac
+case "$rbf_kb"     in ''|*[!0-9]*) rbf_kb=0 ;;     esac
+recover_kb=$((recover_kb + rbf_kb))
+full_kb=$((payload_kb + recover_kb))
 base_kb=$((full_kb - cores_kb))
-log "payload: full=${full_kb}KB (cores=${cores_kb}KB, base=${base_kb}KB); RAM budget=${budget_kb}KB"
+log "payload: full=${full_kb}KB (cores=${cores_kb}KB, recovery=${recover_kb}KB, base=${base_kb}KB); RAM budget=${budget_kb}KB"
 
 skip_cores=0
 if [ "$full_kb" -gt "$budget_kb" ]; then
@@ -692,8 +958,16 @@ copy_payload_to_ram() {
 			log "skipping cores dir $name (RAM)"
 			continue
 		fi
-		cp -a "$entry" /tmp/payload/ || return 1
+		cp -a "$entry" "$RAM_PAYLOAD"/ || return 1
 	done
+	# The recovery pair, into their own directory so the copy-back glob above can
+	# never see them. Missing files were already warned about; not fatal.
+	if [ -f "$SRC_INSTALLER_KERNEL" ]; then
+		cp -a "$SRC_INSTALLER_KERNEL" "$RAM_INSTALLER/zImage_dtb" || return 1
+	fi
+	if [ -f "$SRC_MENU_RBF" ]; then
+		cp -a "$SRC_MENU_RBF" "$RAM_INSTALLER/menu.rbf" || return 1
+	fi
 	return 0
 }
 # One long, silent, blocking command: bracket it with the heartbeat child so the
@@ -705,11 +979,16 @@ splash_pulse_stop
 # Verify the RAM copy is complete for the boot-critical files BEFORE we destroy
 # anything on disk. If this trips, the card is still a bootable installer. linux.img
 # is present here only in its gzipped form (linux/linux.img.gz); it is expanded onto
-# the card after copy-back (step 5b).
+# the card once the payload is safely there (step 9).
 for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
-	[ -f "/tmp/payload/$f" ] || rescue "RAM payload is missing $f after copy -- aborting before reformat"
+	[ -f "$RAM_PAYLOAD/$f" ] || rescue "RAM payload is missing $f after copy -- aborting before reformat"
 done
 log "payload staged in RAM OK"
+if [ -f "$RAM_INSTALLER/zImage_dtb" ]; then
+	log "installer kernel staged in RAM -- an interruption below re-runs this installer"
+else
+	log "WARNING: installer kernel NOT staged -- an interruption below will need a re-flash"
+fi
 
 # We are done reading the card. Everything destructive is below this line.
 stage="unmounting the source"
@@ -720,7 +999,7 @@ sync
 #  POINT OF NO RETURN -- from here the card is being rewritten.
 # ============================================================================
 
-# ------------------------------------------------- repartition to full size (3)
+# ------------------------------------------------- repartition to full size (4)
 # p1 = exFAT data from the 1 MiB-aligned start to the reserved tail; p2 = 0xA2 boot,
 # EXACTLY RESERVED_SECTORS at the very end. Adapted from mr-fusion's
 # S99install-MiSTer.sh, but with EXPLICIT starts+sizes instead of its
@@ -761,8 +1040,28 @@ while :; do
 done
 log "new partitions present: $P1 (data), $P2 (boot)"
 
-# --------------------------------------------------- mkfs.exfat on new p1 (4)
-splash_step 5 "formatting (exFAT)"
+# ------------------------------------- dd uboot.img to the new 0xA2 p2 (5)
+# THE most brick-critical step, and the FIRST thing done after the table changes.
+# sfdisk has just moved the 0xA2 partition to the tail of the medium, and until
+# this dd succeeds there is no SPL where the BootROM looks (docs/boot-chain.md
+# §2.1) -- the card cannot reach U-Boot at all. This used to be the LAST step of
+# the install, which made the whole ~1-minute run one unbroken brick window
+# (issue #185, header RECOVERABILITY). It is here now; keep it here.
+#
+# We dd from the RAM copy (guaranteed present -- verified above) and check the
+# exit status; failure is a loud rescue, NOT a reboot.
+splash_step 5 "writing the bootloader"
+stage="writing uboot.img to the boot partition ($P2)"
+splash_pulse_start
+dd if="$RAM_PAYLOAD/linux/uboot.img" of="$P2" bs=64k 2>/dev/null ||
+	rescue "dd of uboot.img to $P2 FAILED -- card is NOT bootable; re-flash sdcard.img"
+sync; sync
+splash_pulse_stop
+log "uboot.img written to $P2 -- the card can reach U-Boot again"
+stop_after bootloader
+
+# --------------------------------------------------- mkfs.exfat on new p1 (6)
+splash_step 6 "formatting (exFAT)"
 stage="formatting $P1 as exFAT"
 mkfs.exfat -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
 sync
@@ -770,33 +1069,108 @@ sync
 stage="mounting the new data partition"
 mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount new exFAT $P1"
 
-# --------------------------------------------- copy the payload back out of RAM (5)
-splash_step 6 "writing files to the card"
+# ------------------------------- put THIS installer back on the card first (7)
+# The second half of the recoverability pair. U-Boot reads $core (menu.rbf) and
+# then linux/zImage_dtb from p1's root; writing the installer's own copies of both
+# here, before a single payload byte, means every power cut from this line until
+# the commit point lands the user back in this installer rather than nowhere.
+#
+# Cost: ~15 MB written once. The real kernel is renamed over this one at the very
+# end (the commit point), so nothing here survives a completed install.
+splash_step 7 "making the card recoverable"
+stage="writing the installer kernel onto $P1"
+mkdir -p /mnt/dst/linux || rescue "cannot create linux/ on $P1"
+if [ -f "$RAM_INSTALLER/zImage_dtb" ]; then
+	cp -a "$RAM_INSTALLER/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
+		rescue "cannot write the installer kernel to linux/zImage_dtb on $P1"
+	log "installer kernel on $P1 -- from here a power cut re-runs the installer"
+else
+	log "WARNING: no installer kernel to write; a power cut from here needs a re-flash"
+fi
+if [ -f "$RAM_INSTALLER/menu.rbf" ]; then
+	if cp -a "$RAM_INSTALLER/menu.rbf" /mnt/dst/menu.rbf; then
+		log "menu.rbf on $P1 (the core U-Boot fpgaload puts in the fabric)"
+	else
+		log "WARNING: could not write menu.rbf (ignored -- it configures the fabric, nothing more)"
+	fi
+fi
+sync
+stop_after recoverable
+
+# ------------------------------------------- copy the payload back out of RAM (8)
+# Into mister-payload.part/ first, renamed to mister-payload/ only once every
+# entry is on the card. That rename is one directory-entry update on exFAT and it
+# is the ONLY thing that distinguishes "this card has a payload worth installing
+# from" from "this card has half a payload and no source left" on the next boot.
+# Copying straight to the final name would make the two indistinguishable.
+splash_step 8 "writing files to the card"
 stage="writing the payload to the card"
+DST_PAYLOAD="/mnt/dst/$PAYLOAD_DIR"
+DST_PAYLOAD_PART="/mnt/dst/$PAYLOAD_PART_DIR"
+mkdir -p "$DST_PAYLOAD_PART" || rescue "cannot create $PAYLOAD_PART_DIR on $P1"
 splash_pulse_start
-for entry in /tmp/payload/* /tmp/payload/.[!.]*; do
+for entry in "$RAM_PAYLOAD"/* "$RAM_PAYLOAD"/.[!.]*; do
 	[ -e "$entry" ] || continue
-	cp -a "$entry" /mnt/dst/ || rescue "copying ${entry##*/} onto $P1 failed"
+	cp -a "$entry" "$DST_PAYLOAD_PART/" || rescue "copying ${entry##*/} onto $P1 failed"
+	stop_after payload-partial
 done
 sync
 splash_pulse_stop
 
-# ------------------------------------ expand linux.img.gz onto the card (5b)
+# Only rename once the files that matter are demonstrably there. A partial copy
+# that kept the finished name would send the next boot into a reformat with an
+# incomplete source -- the one outcome this whole ordering exists to prevent.
+for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
+	[ -f "$DST_PAYLOAD_PART/$f" ] || rescue "$f missing on $P1 after copy-back"
+done
+stage="committing the payload directory"
+mv "$DST_PAYLOAD_PART" "$DST_PAYLOAD" ||
+	rescue "cannot rename $PAYLOAD_PART_DIR to $PAYLOAD_DIR on $P1"
+sync
+log "payload written to $P1 as $PAYLOAD_DIR/ -- this card can now finish on its own"
+stop_after payload-copied
+
+# ------------------------------------ expand linux.img.gz onto the card (9)
 # linux.img ships GZIPPED so the 512 MiB image never has to fit the mem=511M RAM
-# tmpfs (header MEMORY note). The small .gz is now on the exFAT card; stream-
-# decompress it to the real linux/linux.img -- zcat reads the .gz and writes the
-# expansion straight to DISK, so the full 512 MiB is never held in RAM -- then drop
-# the .gz so the finished card carries only linux/linux.img (what U-Boot loop-mounts).
-splash_step 7 "expanding the system image"
+# tmpfs (header MEMORY note). The small .gz is now on the exFAT card, inside the
+# payload dir; stream-decompress it to its FINAL linux/linux.img -- zcat reads the
+# .gz and writes the expansion straight to DISK, so the full 512 MiB is never held
+# in RAM.
+#
+# Note what is deliberately NOT done here: the .gz is not moved or deleted yet. It
+# is the longest step in the install by a wide margin, so the payload directory is
+# left complete and untouched for its whole duration -- a power cut anywhere in
+# here re-runs the install unattended on the next boot. The cleanup belongs with
+# the other renames, in the commit phase below.
+splash_step 9 "expanding the system image"
 stage="expanding linux.img onto the card"
-[ -f /mnt/dst/linux/linux.img.gz ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
+[ -f "$DST_PAYLOAD/linux/linux.img.gz" ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
 # The longest single command in the whole install: 512 MiB decompressed straight
 # onto SD, with no progress of its own. This is THE step users would otherwise
 # sit through wondering whether the board had died.
 splash_pulse_start
-zcat /mnt/dst/linux/linux.img.gz > /mnt/dst/linux/linux.img ||
+zcat "$DST_PAYLOAD/linux/linux.img.gz" > /mnt/dst/linux/linux.img ||
 	rescue "decompressing linux/linux.img.gz onto $P1 failed (card out of space, or corrupt payload)"
 splash_pulse_stop
+sync
+stop_after expanded
+
+# ===========================================================================
+#  COMMIT PHASE (10) -- everything below is renames, and the LAST of them is
+#  what turns this card from an installer into a MiSTer.
+# ===========================================================================
+# The window opens at the `rm` of linux/linux.img.gz immediately below -- NOT at
+# the first rename. That `rm` is what first makes mister-payload/ incomplete, and
+# incomplete is what the next boot's completeness probe keys on, so from there
+# until the final `mv` the card is neither re-runnable nor installed: it still
+# boots this installer, which halts honestly without touching anything. That is
+# one of the two windows named in the header, and it is why every operation in
+# this phase is a directory-entry update rather than a copy -- the whole phase is
+# fractions of a second, against the ~1 minute the old ordering was exposed for.
+# Do not put anything slow in here, and do not add a write above that `rm`
+# expecting it to be outside the window; it would not be.
+splash_step 10 "finishing the install"
+
 # Delete the now-redundant .gz so the finished card carries only linux/linux.img
 # (what U-Boot loop-mounts). Until PR #76 this `rm -f` was a silent
 # command-not-found no-op -- installer-busybox.config had `# CONFIG_RM is not
@@ -810,23 +1184,56 @@ splash_pulse_stop
 # noticed for a whole release". An unchecked cleanup command that silently
 # no-ops is exactly what put 80 MiB on every card. If the applet ever goes away
 # again this now says so on the console AND still releases the blocks.
-rm -f /mnt/dst/linux/linux.img.gz 2>/dev/null
-if [ -e /mnt/dst/linux/linux.img.gz ]; then
-	: > /mnt/dst/linux/linux.img.gz
+stage="removing the compressed system image"
+rm -f "$DST_PAYLOAD/linux/linux.img.gz" 2>/dev/null
+if [ -e "$DST_PAYLOAD/linux/linux.img.gz" ]; then
+	: > "$DST_PAYLOAD/linux/linux.img.gz"
 	log "WARNING: could not delete linux/linux.img.gz (no rm applet?) -- truncated it instead"
 else
 	log "removed linux/linux.img.gz"
 fi
+
+# ------------------------------- move the payload into its final places (10)
+# `mv`, never `cp`: these bytes are already on this filesystem and rewriting
+# 150+ MiB of them would hand back every second the reorder just bought.
+#
+# Two collisions are expected, both because step 7 already wrote there:
+#   linux/    -- an existing NON-EMPTY directory. rename(2) refuses that
+#                (ENOTEMPTY), and BusyBox mv does not fall back for it, so this
+#                one directory is descended and its children moved individually.
+#   menu.rbf  -- an existing regular FILE. rename(2) replaces it silently, and
+#                it is byte-identical anyway (ADR 0020 §7: the FAT root copy is a
+#                copy of the payload's). `mv -f` so BusyBox never prompts.
+# linux/zImage_dtb is skipped here on purpose: it IS the commit point and moves
+# last, on its own, below.
+stage="moving the payload into place"
+commit_payload() {
+	for entry in "$DST_PAYLOAD"/* "$DST_PAYLOAD"/.[!.]*; do
+		[ -e "$entry" ] || continue
+		name="${entry##*/}"
+		if [ "$name" = "linux" ]; then
+			for sub in "$entry"/* "$entry"/.[!.]*; do
+				[ -e "$sub" ] || continue
+				[ "${sub##*/}" = "zImage_dtb" ] && continue
+				mv -f "$sub" /mnt/dst/linux/ || return 1
+			done
+			continue
+		fi
+		mv -f "$entry" /mnt/dst/ || return 1
+	done
+	return 0
+}
+commit_payload || rescue "moving the payload into place on $P1 failed"
 sync
 
-# Verify the boot-critical files really landed (linux.img is the expanded one above).
-for f in linux/linux.img linux/zImage_dtb linux/uboot.img; do
-	[ -f "/mnt/dst/$f" ] || rescue "$f missing on $P1 after copy-back"
+# Verify what has landed so far (linux.img is the expanded one above; the real
+# zImage_dtb is still in the payload dir and is checked at the commit point).
+for f in linux/linux.img linux/uboot.img; do
+	[ -f "/mnt/dst/$f" ] || rescue "$f missing on $P1 after the commit moves"
 done
-log "payload written to $P1"
+log "payload moved into place on $P1"
 
-# ------------------------------------------------- apply user pre-seed (6)
-splash_step 8 "applying your settings"
+# ------------------------------------------------- apply user pre-seed (10)
 stage="applying user pre-seed"
 apply_preseed() {
 	# $1 = name under /run/preseed ; $2 = destination path under /mnt/dst
@@ -853,7 +1260,7 @@ if [ -d /run/preseed/config ]; then
 	if cp -a /run/preseed/config /mnt/dst/; then log "pre-seed applied: config/"; else log "pre-seed: WARNING config/ failed (ignored)"; fi
 fi
 
-# --------------------------------------- per-board MAC into u-boot.txt (7)
+# -------------------------------------- per-board MAC into u-boot.txt (10)
 # Every board otherwise shares the compiled-in fallback ethaddr 02:03:04:05:06:07
 # (docs/boot-chain.md §3.1 entry 14). Generate a random LOCALLY-ADMINISTERED,
 # UNICAST MAC: first octet |= 0x02 (local-admin bit set) and &= 0xFE (multicast bit
@@ -886,26 +1293,42 @@ else
 	log "WARNING: could not generate a MAC; board will use the shared fallback"
 fi
 
+# ====================== THE COMMIT POINT ===================================
+# One rename. Before it, linux/zImage_dtb is this installer and the card runs the
+# installer again on any boot. After it, linux/zImage_dtb is the real MiSTer
+# kernel and the installer is gone from the card for good. Everything else is
+# already in place and flushed; nothing slow, nothing conditional, nothing that
+# can half-succeed goes between the sync above and the sync below.
+stage="installing the real kernel"
+sync
+[ -f "$DST_PAYLOAD/linux/zImage_dtb" ] ||
+	rescue "the payload's linux/zImage_dtb is gone before the commit -- card is NOT installed"
+mv -f "$DST_PAYLOAD/linux/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
+	rescue "cannot install the real kernel over linux/zImage_dtb on $P1"
+sync
+log "real kernel installed -- this card is a MiSTer now, not an installer"
+
+# Housekeeping, strictly AFTER the commit: the payload dir should now be empty.
+# Deliberately not before -- between "payload dir gone" and "real kernel in place"
+# the card would look provisioned to the guard above while still booting the
+# installer, and that is a worse state than the stray directory this risks. If the
+# remove fails the card is already a working MiSTer and never runs this again, so
+# a leftover directory is clutter, not a defect. Say so and carry on.
+stage="removing the staged payload"
+rm -rf "$DST_PAYLOAD" 2>/dev/null
+if [ -e "$DST_PAYLOAD" ]; then
+	log "WARNING: could not remove $PAYLOAD_DIR/ from $P1 (harmless -- the card is installed)"
+else
+	log "removed $PAYLOAD_DIR/ from $P1"
+fi
+
 # --------------------------------------------------- flush + unmount the data fs
 stage="flushing the data partition"
 sync
 umount /mnt/dst || rescue "cannot unmount $P1 (data not fully flushed)"
 sync
 
-# ------------------------------------- dd uboot.img to the new 0xA2 p2 (8)
-# THE most brick-critical step. Until this succeeds the card has NO bootloader in
-# its 0xA2 partition and will not boot. We dd from the RAM copy (guaranteed present)
-# and verify the exit status; failure here is a loud rescue, NOT a reboot.
-splash_step 9 "writing the bootloader"
-stage="writing uboot.img to the boot partition ($P2)"
-splash_pulse_start
-dd if=/tmp/payload/linux/uboot.img of="$P2" bs=64k 2>/dev/null ||
-	rescue "dd of uboot.img to $P2 FAILED -- card is NOT bootable; re-flash sdcard.img"
-sync; sync
-splash_pulse_stop
-log "uboot.img written to $P2"
-
-# ------------------------------------------------------------------- reboot (9)
+# ------------------------------------------------------------------ reboot (10)
 stage="rebooting into the installed MiSTer"
 # Draws the completion banner and puts the LED out: from here the next thing that
 # lights it is the installed system's own mmc0 trigger, one boot from now.

@@ -654,7 +654,7 @@ read any evaluative wording with that in mind.
 - **What forced the port's choice:** The port's stated reason (comment in the .nmconnection file) is purely pragmatic: get a deterministic DHCP lease for a single development board without touching U-Boot env/QSPI at all, given the HPS has no fused MAC and CONFIG_NET_RANDOM_ETHADDR randomizes it every cold boot.
 - **Cost of the port's way:** Every board flashed from the port's released rootfs image collides on the same MAC and the same DHCP lease if two are ever on the same network -- fine for one dev unit, not viable as a multi-user distribution default.
 - **Cost of our way:** Requires either reusing the DE10's flash-time random-MAC-into-u-boot.txt mechanism (needs a persisted env location on the exFAT/loop-root layout, which is a different boot flow than DE10's) or a first-boot systemd/udev generator writing a per-device NetworkManager profile -- undesigned, not yet costed.
-- **Our doc:** board/mister/de10nano/installer-overlay/init:856-885; memory: ssh-host-keys-shared-across-all-misters (ADR 0015 philosophy)
+- **Our doc:** board/mister/de10nano/installer-overlay/init:1197-1228; memory: ssh-host-keys-shared-across-all-misters (ADR 0015 philosophy)
 
 ---
 

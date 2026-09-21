@@ -10,8 +10,13 @@ addition, removal, or rename here as a breaking change to that script and to
 This is **not** the final installed card's layout. `p1`'s `mister-payload/*` subtree is
 what the installer `/init` (`board/mister/de10nano/installer-overlay/init`) copies onto
 the freshly reformatted exFAT partition **with the `mister-payload/` prefix stripped** —
-see ADR 0020 §2. `p1`'s own `linux/zImage_dtb` (the installer kernel) never reaches the
-installed card at all; it is discarded when the reformat replaces `p1` outright.
+see ADR 0020 §2/§8. `p1`'s own `linux/zImage_dtb` (the installer kernel) and the root
+`menu.rbf` are copied to RAM and written back onto the reformatted partition *first*, so
+that an install interrupted after that point boots back into the installer (ADR 0020 §8).
+Neither of those two copies survives: the payload's own `menu.rbf` is renamed over the
+root one (they are byte-identical), and the real `linux/zImage_dtb` is renamed over the
+installer's as the install's very last act — which is what makes that rename the commit
+point.
 
 Directories are listed with a trailing `/`; everything else is a regular file. Paths are
 relative to `p1`'s root.

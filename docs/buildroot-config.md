@@ -3099,8 +3099,8 @@ write, small download) and an on-device first-boot installer OS repartitions
 + reformats it to fill whatever medium the user actually has, then hands off
 to the real MiSTer. This config is that installer OS's rootfs. Its `/init`
 (`board/mister/de10nano/installer-overlay/init`) does the
-sfdisk/mkfs.exfat/copy-back/MAC-gen/dd-uboot.img/reboot dance described in ADR
-0020 §2.
+sfdisk/dd-uboot.img/mkfs.exfat/copy-back/MAC-gen/reboot dance described in ADR
+0020 §2, in the recoverable order ADR 0020 §8 fixed it into.
 
 Relationship to the stage-1 stacks (§8): this is a SIBLING of stage 1, not
 a variant of the main target config: same static musl throwaway-cpio shape
@@ -3113,7 +3113,7 @@ verbatim — §8 has the reasoning behind each; it is DE10-only and stayed a
 standalone defconfig when stage 1 became a stack) and adds exactly what the
 installer's job needs on top:
 
-- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §2 step 3; `-n MiSTer_Data`).
+- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §8 step 6; `-n MiSTer_Data`).
   Depends on `BR2_USE_WCHAR`, which the musl toolchain choice already selects.
 - `BR2_PACKAGE_UTIL_LINUX` + `_BINARIES` -> sfdisk (repartition to the real
   medium size) and blkid (belt-and-suspenders re-run guard, ADR 0020 §2.1:

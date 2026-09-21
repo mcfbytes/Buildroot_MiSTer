@@ -454,6 +454,60 @@ at all.
 
 ---
 
+## Can the MiSTer download torrents by itself?
+
+Yes, but you have to switch it on — and on a fresh card **nothing is running and nothing
+is listening**. The image ships `transmission-daemon`; it stays off until you make one
+directory:
+
+```sh
+mkdir -p /media/fat/linux/transmission
+/etc/init.d/S92transmission start
+```
+
+From then on it starts at every boot, and everything it remembers — settings, which
+torrents you have, how far each one got, what you are seeding — lives in that directory on
+the card, so **an OS update does not touch it**. Delete or rename the directory and the
+feature is gone again, completely.
+
+Why it is here: a lot of freely redistributable material — homebrew, public-domain
+collections, large preservation archives — is only published over BitTorrent, because the
+people publishing it cannot pay for the bandwidth to hand it out directly. A MiSTer is a
+good machine for that: it is often left on, it already has the big card in it, and it can
+keep sharing back what it fetched. If you have more than one MiSTer on the same network,
+they will find each other and swap pieces at LAN speed instead of each pulling the same
+files over your internet connection.
+
+**Driving it.** Everything goes through `transmission-remote` over SSH. The habit worth
+learning on a big collection is to add it *paused*, look at what is in it, and pick:
+
+```sh
+transmission-remote --start-paused -a '<magnet or .torrent URL>'
+transmission-remote -l                 # list, with id numbers
+transmission-remote -t 1 --files       # what is in torrent 1
+transmission-remote -t 1 -G all -g 3,7 # deselect all, then take files 3 and 7
+transmission-remote -t 1 -s            # start
+```
+
+Added *running*, it fetches the whole thing, which on a collection torrent can be hundreds
+of gigabytes.
+
+**The web interface** is deliberately not reachable from other machines — the daemon only
+listens on the board itself. To use it, forward the port from your PC:
+
+```sh
+ssh -L 9091:127.0.0.1:9091 root@mister.lan
+```
+
+then open `http://127.0.0.1:9091/`. That is on purpose: a remote-control port with no
+password on it should not be sitting on your network, and it is also why the board does
+**not** ask your router to open a port for it. Everything still works — it just shares a
+little more slowly than a machine with an open port would.
+
+Full details, including what this does and does not support: [`../bittorrent.md`](../bittorrent.md).
+
+---
+
 ## See also
 
 - [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose
@@ -461,6 +515,7 @@ at all.
 - [`serial-recovery.md`](serial-recovery.md) — recovering a box that won't boot
 - [`beta-testing.md`](beta-testing.md) — the broader personal-use/beta posture
 - [`../logitech-pairing.md`](../logitech-pairing.md) — which Logitech receivers can be paired on-box, and why the others cannot
+- [`../bittorrent.md`](../bittorrent.md) — the BitTorrent client: turning it on, driving it, and its limits
 - [ADR 0014](../decisions/0014-sustainability-deferred-not-waived.md),
   [ADR 0015](../decisions/0015-per-device-ssh-host-keys.md),
   [ADR 0018](../decisions/0018-db-json-version-is-release-date-driven.md),

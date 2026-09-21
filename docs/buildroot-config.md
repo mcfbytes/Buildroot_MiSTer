@@ -907,6 +907,102 @@ zero-cost parity), `BR2_PACKAGE_DBUS_GLIB`, `BR2_PACKAGE_LIBEVENT`,
 `BR2_PACKAGE_LIBNL`, `BR2_PACKAGE_IPTABLES`, `BR2_PACKAGE_LIBGLIB2`,
 `BR2_PACKAGE_GOBJECT_INTROSPECTION`.
 
+`BR2_PACKAGE_TRANSMISSION=y` + `BR2_PACKAGE_TRANSMISSION_DAEMON=y` — a
+BitTorrent client (issue #186, 2026-09-21). **A STOCK CAPABILITY RESTORED, by a
+different package** — worth stating precisely, because the obvious assumption is
+the wrong one: stock ships `usr/bin/rtorrent` + `libtorrent.so.21`
+(`docs/stock-inventory/20250402/binaries-needed-full.txt:278` and the identical
+line in `20260907/`), and this image dropped both in P2.1 on the reasoning
+"nothing in MiSTer's ecosystem uses a BitTorrent client on-device"
+(`docs/package-manifest.md` §5). Issue #186 overturned that use-case premise —
+a growing amount of freely redistributable preservation and homebrew material
+is published over BitTorrent and nowhere else, and until now the image could
+fetch over HTTP, FTP, SMB, NFS and rsync (§5.10, §5.16, §5.20, §5.22, §5.23) and
+over none of the peer-to-peer protocols, so that material needed a PC in the
+middle. The SONAME half of the drop reasoning still stands, which is why the
+answer is not to un-drop rtorrent: **this restores the capability and not the
+ABI**. Nothing here provides `libtorrent.so.21`; transmission links its own
+static `libtransmission` and shares no code with rakshasa's libtorrent. Full
+reasoning, recipe and layout: `docs/bittorrent.md`.
+
+WHY TRANSMISSION AND NOT THE OBVIOUS ANSWER. The requirement that decided it is
+**Local Peer Discovery** — several boards in one house should fetch a set over
+the WAN once and get it from each other afterwards. Of the four BitTorrent
+packages in Buildroot 2026.08, `rtorrent` 0.15.3 is the obvious "CLI BitTorrent
+client" choice and **cannot do LPD at all**: rakshasa's libtorrent has a full
+`src/dht/` and the standard LPD group `239.192.152.143` appears nowhere in its
+source tree. `ctorrent` is a 2008 release with neither LPD, DHT nor magnet
+support. `libtorrent-rasterbar` is a library with no CLI client packaged on top
+of it, and Buildroot pins the v1-only 1.2 branch. `aria2` is not in Buildroot at
+all. Transmission 4.1.3 has LPD, DHT, PEX and µTP all default-on
+(`libtransmission/session.h:424-447`) and per-file selection through
+`transmission-remote -g/-G`, and it is upstream-packaged — so this adds no
+hash-sync case, no Renovate stream and no patch series of ours.
+
+`_DAEMON` is the only sub-option set. **`_CLI` is deliberately NOT set**:
+`libtransmission` is a static library, so every binary links its own full copy
+of the engine, and `transmission-cli` has no file-selection options whatsoever
+(`cli/cli.cc`) — it downloads the entire torrent. We would pay for a second copy
+of the engine to get the one tool that cannot do the thing the package is for.
+`_GTK` is unbuildable here anyway (`depends on BR2_PACKAGE_LIBGTK3`), so it
+leaves no `is not set` line. The useful CLI comes for free either way:
+Buildroot never passes `-DENABLE_UTILS`, upstream defaults it `ON`
+(`CMakeLists.txt:64`), and `utils/CMakeLists.txt:1` builds `create`, `edit`,
+**`remote`** and `show` from that one option — so `transmission-remote`, which
+is the whole headless interface, belongs to the base package.
+
+SIZE: **12,493,614 bytes = 11.91 MiB installed**, measured off this branch's
+own build (Buildroot's `packages-file-list.txt` attributes every file to its
+package; the numbers are `stat` on what landed in `output/target`). The image
+went from 337 MiB used / 175 MiB free (34.3%) to **349 MiB used / 163 MiB free
+(32.0%)** — `scripts/check-size-budget.sh` on both builds, same day, against
+the 15% threshold. Where it goes is the interesting part:
+
+| | bytes | |
+|---|---:|---|
+| `transmission-daemon` | 2,355,228 | |
+| `transmission-remote` | 2,428,952 | |
+| `transmission-create` | 2,338,836 | |
+| `transmission-edit` | 2,293,780 | |
+| `transmission-show` | 2,310,164 | |
+| the five binaries | **11,726,960** | 11.18 MiB, i.e. **94%** of the total |
+| `public_html` (the web UI) | 238,122 | 232.5 KiB, prebuilt in the tarball |
+| `libidn2` | 193,836 | |
+| `libpsl` | 103,079 | |
+| `libdeflate` | 98,052 | |
+| `libutp` | 60,040 | |
+| `libminiupnpc` | 50,529 | |
+| `libnatpmp` | 18,872 | |
+| `dht`, `libb64` | 0 | static libs -- nothing reaches the target |
+| all eight new deps | **524,408** | 512.1 KiB |
+
+The five near-identical 2.3 MiB binaries ARE the static-`libtransmission`
+argument, in numbers: each one links its own full copy of the engine, so a
+sixth binary is another ~2.3 MiB. That is what `_CLI` would cost, for the one
+tool that cannot select files.
+
+DEPENDENCIES: seven new packages plus one transitive — `dht`, `libb64`,
+`libdeflate`, `libminiupnpc`, `libnatpmp`, `libpsl` (→ `libidn2`), `libutp`.
+Verified against the resolved config, not predicted: all eight were
+`is not set` before this change. openssl, libcurl, libevent, zlib and
+libunistring (via gnutls, §5.9) were already `=y` in their own right and stay
+explicitly set there. Toolchain prerequisites are all already met — MMU, gcc
+15.3.0 (needs ≥ 7 for C++17), wchar, libstdcpp, threads, dynamic libs — so the
+`select` lands with no defconfig edit (`scripts/check-defconfigs.sh` check (d)
+asserts exactly that).
+
+THE DAEMON IS OFF BY DEFAULT, and that is an init-script decision, not a
+Kconfig one. `board/mister/de10nano/rootfs-overlay/etc/init.d/S92transmission`
+overlays the one `package/transmission` installs and exits 0 unless
+`/media/fat/linux/transmission` exists, so a fresh image runs nothing and
+listens on nothing. The package's own script is wrong here twice over — it runs
+as a `transmission` user that cannot write the card (mounted with no `uid=`),
+and it puts the config dir inside `linux.img`, which every OS update replaces
+wholesale, taking `resume/` and `torrents/` with it. The security disposition
+(RPC bound to loopback rather than upstream's `0.0.0.0`, port forwarding off)
+is the 2026-09-21 amendment to
+[ADR 0031](decisions/0031-secure-by-default-network-posture.md).
+
 ### 5.11 util-linux / e2fsprogs / disk & fs tools
 
 `BR2_PACKAGE_UTIL_LINUX` + `_LIBBLKID`, `_LIBFDISK`, `_LIBMOUNT`,

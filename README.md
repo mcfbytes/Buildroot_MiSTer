@@ -449,6 +449,7 @@ plain-language version of what that means on an untrusted network.
 | **USB automount** | Debian `usbmount` 0.0.24 | Buildroot `usbmount`, functionally identical, **plus NTFS** ([`docs/usb-automount-parity.md`](docs/usb-automount-parity.md)) |
 | **Archive extraction** | `7zr` = p7zip 16.02 (2016); the updater additionally fetches the same 2016 build over the network as `/media/fat/linux/7za` | **7-Zip 26.03** as `7zz` (+`7za`), and a static copy shipped to `/media/fat/linux/7za` so nothing is fetched ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **CIFS kernel mounts** | No `mount.cifs` shipped | `cifs-utils` included — a deliberate, documented **beyond-parity** addition for community storage scripts ([`docs/netfs-parity.md`](docs/netfs-parity.md)) |
+| **BitTorrent** | `rtorrent` + `libtorrent.so.21` — a foreground TUI client, started by hand, with a **full DHT but no Local Peer Discovery at all** | `transmission-daemon` + `transmission-remote`, **off until you `mkdir /media/fat/linux/transmission`**: LPD, DHT, PEX and per-file selection, state on the card so an update never destroys it, RPC on loopback only and no UPnP port mapping ([`docs/bittorrent.md`](docs/bittorrent.md)) |
 | **Wi-Fi** | Six out-of-tree vendor forks *plus* in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine | Mainline drivers for every chip mainline can drive that is worth building here (six symbols deliberately left off — see below), plus chipset families stock never supported at all. **One** out-of-tree driver left — see below |
 
 ### Wi-Fi and Bluetooth hardware support
@@ -1064,6 +1065,7 @@ coverage numbers above
 | [`docs/dualsense-tooling.md`](docs/dualsense-tooling.md) | `dualsensectl`, and why the DualSense kernel patches are not replaceable by udev/userspace |
 | [`docs/logitech-pairing.md`](docs/logitech-pairing.md) | `ltunify` + `mister-pair-logitech` — the one Logitech gap the kernel has no interface for, and why not Solaar |
 | [`docs/azcopy.md`](docs/azcopy.md) | `azcopy` for off-device backup — what it costs in image space, and what building it for an architecture Microsoft does not support took |
+| [`docs/bittorrent.md`](docs/bittorrent.md) | `transmission-daemon` — the headless recipe, the FAT-backed layout, and what exFAT does to preallocation |
 | [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
 | [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |
 

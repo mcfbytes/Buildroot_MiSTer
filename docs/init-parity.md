@@ -95,6 +95,23 @@ documented reason" — these aren't a P2.3 divergence at all, they're P2.1's bro
 package manifest showing up in `/etc/init.d`, and are out of this task's remit (its
 constraint is explicitly "do NOT disturb ... the package set").
 
+**`S92transmission` (issue #186, 2026-09-21) is the one that is *not* left as a package
+default.** `BR2_PACKAGE_TRANSMISSION_DAEMON` installs its own `S92transmission`, and it
+is wrong here in the two ways this table's `S49ntp` and `S91smb` rows are each wrong in
+one: it runs the daemon as a `transmission` user that cannot write the card (exFAT is
+mounted with no `uid=`/`gid=`, so everything on `/media/fat` is root's), *and* it puts
+`TRANSMISSION_HOME` at `/var/config/transmission-daemon`, inside `linux.img` — which an
+OS update replaces wholesale, taking `resume/` and `torrents/` with it and turning every
+update into a full re-verify of every torrent. The overlay replaces it with the same
+filename: runs as root, config dir at `/media/fat/linux/transmission`, and **exits 0
+unless that directory exists**, so on a fresh image it is a no-op at every boot and
+nothing new listens (the `S91smb` opt-in shape, and ADR 0031's 2026-09-21 amendment).
+It also carries its own shutdown wait, because BusyBox's `start-stop-daemon` *accepts and
+ignores* `-R`/`--retry` — upstream's `--retry=TERM/10/KILL/5` is a silent no-op on this
+image. Details: `docs/bittorrent.md`. This is a **divergence from stock**, which ships
+no `S92` and no BitTorrent init script at all even though it ships `rtorrent` — stock's
+client is a foreground TUI, started by hand.
+
 ## SSH host keys — ADR 0015, as implemented
 
 Folded into `etc/init.d/S50sshd` rather than a separate `S49sshd` (ADR 0015 offers

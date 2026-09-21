@@ -219,3 +219,78 @@ Each Tier 1 item is claimed only after the corresponding check in
 **both** the 6.18 and RT kernels. The three tests in the table above are the regression
 oracle: after Tier 1 with Q1 answered "gate", all three must fail on a fresh card; with
 Q1 answered "keep", the anonymous row must fail and the other two must still pass.
+
+---
+
+## Amendment, 2026-09-21 — `transmission-daemon` (issue #186)
+
+**Status of this amendment:** the disposition below is *implemented*; the rest of this
+ADR remains Proposed and nothing in Tier 1-3 is acted on by it. A new listening daemon
+arriving while the posture decision is still open is exactly the case where a quiet
+`select` would be wrong, so it is dispositioned here instead.
+
+`BR2_PACKAGE_TRANSMISSION` + `_DAEMON` are now in the userspace profile
+(`docs/buildroot-config.md` §5.10, `docs/bittorrent.md`). Transmission is a BitTorrent
+client: it wants an RPC port, a peer port, and a UPnP/NAT-PMP port mapping, and its
+upstream defaults hand it all three.
+
+**What upstream would have shipped.** Read from the source, not from the manual:
+
+- `rpc-bind-address` defaults to **`0.0.0.0`** (`libtransmission/rpc-server.h:67`), not to
+  loopback. The `rpc-whitelist` default of `127.0.0.1,::1` (`transmission.h:136`) is a
+  *rejection* at the HTTP layer, not an absence — the socket is open on every interface
+  and a scan finds it. `daemon/daemon.cc:407` turns RPC on unconditionally for the daemon.
+- `rpc-authentication-required` defaults to `false` (`rpc-server.h:61`), which is exactly
+  as safe as the bind address it sits behind, and no safer.
+- `port-forwarding-enabled` defaults to `true` (`session.h:429`), i.e. the box asks the
+  router for a WAN mapping on first run.
+
+**Disposition.** The daemon ships **off**, and when it is on it is closed:
+
+1. **Off by default, opened by a file on the card.** The overlay `S92transmission` exits 0
+   unless `/media/fat/linux/transmission` exists. On a fresh image nothing runs and the
+   listening-socket set is unchanged from the audit above (`22`, `21`, `123`, `68`). This
+   is the `samba.sh` pattern this ADR's Decision section already names, and it adds no new
+   mechanism.
+2. **RPC bound to `127.0.0.1`**, seeded into `settings.json` on first opt-in. The whitelist
+   is kept as well, belt and braces, but the bind is what makes the acceptance item
+   "nothing new listens on a non-loopback interface unless the user explicitly enables it"
+   true rather than nearly true. Remote control is over SSH, or an SSH port-forward for the
+   web UI.
+3. **Authentication off, and that is deliberate** — it is safe *only* because of item 2,
+   and the two are documented as moving together. Note the reason a password would be poor
+   protection here anyway: `settings.json` lives on exFAT, mounted `fmask=0022`, so it is
+   world-readable with no modes available — the same constraint that put `/etc/shadow` on
+   `ssh.ext4` in Tier 1 item 2 rather than on the card.
+4. **Port forwarding off.** A games console should not punch a hole in its owner's router
+   because a daemon was switched on. DHT, LPD and PEX all still work without it; what is
+   lost is inbound peers, i.e. seeding throughput.
+5. **Peer limits cut to 120 global / 30 per torrent** (upstream 200/50). Not a security
+   item — the kernel is booted `mem=511M`, so this is resource containment on a box where
+   Main_MiSTer is the tenant that matters.
+
+**What this does not close, and is accepted.** Once the operator opts in, the daemon adds
+**three** listening sockets, and only the first is loopback (measured, not predicted —
+`netstat -tuln` on the rig, 2026-09-21):
+
+```
+tcp  127.0.0.1:9091   RPC          <- the one this disposition moved off 0.0.0.0
+tcp  0.0.0.0:51413    peer port
+udp  0.0.0.0:51413    peer port (uTP)
+udp  0.0.0.0:6771     Local Peer Discovery, the 239.192.152.143 group
+```
+
+The peer port and the LPD socket are **genuine listening sockets on every interface**. That
+is not avoidable for a BitTorrent client, it is the feature — LPD in particular is the
+requirement that chose this package over rtorrent, and it is a LAN multicast listener by
+definition. It is also the first service this image ships
+that *wants* unsolicited inbound traffic, which sharpens Tier 1 item 6 and Tier 2: there is
+no filter table on the RT kernel to put in front of it, and when nftables lands the default
+ruleset will need a hole for this port that is present only while the daemon is opted in.
+Recorded here so that lands as a decision rather than as a surprise.
+
+**Regression oracle.** On a fresh image, `netstat -tuln` must be unchanged from the table in
+"What the image does today". After `mkdir /media/fat/linux/transmission` and a start, the
+only additions must be the four sockets above, and `9091` must be bound to `127.0.0.1` —
+never `0.0.0.0:9091`, which is what an unseeded `settings.json` would give. Verified on the
+rig 2026-09-21 (`docs/testlogs/2026-09-21-transmission-rig.md` §6).

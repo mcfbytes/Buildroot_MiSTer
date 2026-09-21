@@ -50,6 +50,24 @@ grep -q '^splash_init()'       "$WORK/splash.sh" || die "extracted section has n
 grep -q '^# >>> SPLASH SECTION END' "$WORK/splash.sh" || die "extraction ran past the END marker"
 log "extracted $(wc -l < "$WORK/splash.sh") lines of splash section"
 
+# ------------------------------------------------- SPLASH_TOTAL vs /init
+# The one thing the sourced section below cannot check about itself: whether
+# SPLASH_TOTAL still matches the steps /init actually calls. The header of that
+# constant says "keep in sync with splash_step calls" and nothing enforced it,
+# so a reorder that renumbers the steps -- which is exactly what ADR 0020 §8 did
+# -- could leave the bar stalling at 90% or claiming 110%. Compare the declared
+# total against the highest N in any `splash_step N` call outside the section
+# (step 0 is splash_init's "starting up" and never the highest).
+declared_total="$(sed -n 's/^SPLASH_TOTAL=\([0-9]*\).*/\1/p' "$INIT")"
+[ -n "$declared_total" ] || die "no SPLASH_TOTAL= in $INIT"
+highest_step="$(sed -n 's/^[[:space:]]*splash_step \([0-9]\{1,\}\) .*/\1/p' "$INIT" | sort -n | tail -1)"
+[ -n "$highest_step" ] || die "no numbered splash_step calls in $INIT"
+if [ "$declared_total" = "$highest_step" ]; then
+	log "ok   SPLASH_TOTAL=$declared_total matches the highest splash_step call"
+else
+	die "SPLASH_TOTAL=$declared_total but the highest splash_step call is $highest_step -- renumbering left the progress bar lying"
+fi
+
 # ------------------------------------------------------------------- stubs
 mkdir -p "$WORK/leds/hps_led0" "$WORK/run"
 printf '0\n'           > "$WORK/leds/hps_led0/brightness"
@@ -95,20 +113,28 @@ ck "found the hps LED"                  "${splash_led##*/}" "hps_led0"
 ck "non-tty stdout disables animation"  "$splash_tty" "0"
 
 # --- steps -----------------------------------------------------------------
+# The expected numbers are derived from SPLASH_TOTAL rather than hardcoded: the
+# step count changed once already (9 -> 10, with the recoverable reorder of
+# ADR 0020 §8) and hardcoding it made every one of these a two-line edit for no
+# added coverage. What IS asserted literally is the arithmetic itself -- integer
+# truncation of the bar fill, and a full bar exactly at the last step.
 splash_step 1 "checking the card"   >/dev/null
-ck "step 1 percentage" "$splash_pct" "11"
-splash_step 5 "formatting (exFAT)"  >/dev/null
-ck "step 5 percentage" "$splash_pct" "55"
-ck "step 5 bar fill"   "$splash_bar" "###############............."
-splash_step 9 "writing the bootloader" >/dev/null
-ck "step 9 percentage" "$splash_pct" "100"
-ck "step 9 bar is full" "$splash_bar" "############################"
+ck "step 1 percentage" "$splash_pct" "$(( 100 / SPLASH_TOTAL ))"
+splash_step 5 "writing the bootloader"  >/dev/null
+ck "step 5 percentage" "$splash_pct" "$(( 5 * 100 / SPLASH_TOTAL ))"
+ck "step 5 bar fill"   "${#splash_bar}" "$SPLASH_BAR_CELLS"
+ck "step 5 bar is part-filled" \
+	"$(printf '%s' "$splash_bar" | tr -dc '#' | wc -c | tr -d ' ')" \
+	"$(( 5 * SPLASH_BAR_CELLS / SPLASH_TOTAL ))"
+splash_step "$SPLASH_TOTAL" "finishing the install" >/dev/null
+ck "last step percentage" "$splash_pct" "100"
+ck "last step bar is full" "$splash_bar" "############################"
 ck "bar is always exactly SPLASH_BAR_CELLS wide" "${#splash_bar}" "$SPLASH_BAR_CELLS"
 
 # A non-tty must emit one plain line per step, so captured logs stay readable.
 splash_step 4 "repartitioning the card" > "$W/step.txt"
 ck "non-tty step prints a plain line" \
-	"$(cat "$W/step.txt")" "[installer] step 4/9: repartitioning the card"
+	"$(cat "$W/step.txt")" "[installer] step 4/$SPLASH_TOTAL: repartitioning the card"
 ck "non-tty step emits no carriage return" \
 	"$(tr -dc '\r' < "$W/step.txt" | wc -c | tr -d ' ')" "0"
 

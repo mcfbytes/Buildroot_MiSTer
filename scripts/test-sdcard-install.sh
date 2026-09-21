@@ -9,15 +9,18 @@
 #   FAT32-payload + 0xA2-boot image. Its /linux/zImage_dtb is the INSTALLER kernel
 #   (our 6.18 kernel relinked with board/mister/de10nano/installer-overlay/init as
 #   its initramfs). On first boot that /init reformats the whole card to a
-#   full-size exFAT "MiSTer_Data" partition, installs the real payload, writes a
-#   per-board MAC, dd's uboot.img to the new 0xA2 partition, and reboots. This
-#   harness exercises that end to end:
+#   full-size exFAT "MiSTer_Data" partition, dd's uboot.img to the new 0xA2
+#   partition, restores itself onto p1 so an interrupted card can boot again,
+#   installs the real payload, writes a per-board MAC and reboots. This harness
+#   exercises that end to end:
 #
 #     1. Flash the shipped sdcard.img onto a LARGER "card" (a sparse image
 #        truncated up to $SDCARD_TEST_SIZE) so there is room to auto-expand into.
 #     2. Boot the installer kernel under `qemu-system-arm -M virt`, the card on
 #        virtio-blk as /dev/vda (exactly scripts/test-initramfs.sh's approach; QEMU
-#        has no Cyclone V model). Assert the installer ran every stage and rebooted.
+#        has no Cyclone V model). Assert the installer ran every stage and rebooted,
+#        AND that it ran them in the recoverable order ADR 0020 §8 requires --
+#        bootloader before format, installer kernel before payload.
 #     3. Verify the RESULT on the host (no privilege needed): partition table
 #        (p1 exFAT filling the card, p2 0xA2 == RESERVED_SECTORS at the tail), the
 #        0xA2 head is byte-for-byte uboot.img, and p1 carries the exFAT signature.
@@ -36,9 +39,16 @@
 # -- QEMU can't do socfpga). It tests the one new, brick-critical thing that has no
 # other automated coverage: the installer /init's reformat+install logic.
 #
+# SIBLING: scripts/test-installer-recovery.sh proves the other half of ADR 0020 §8 --
+# that an install interrupted PART-WAY leaves a card that either re-installs itself
+# or says honestly that it cannot. It synthesises its own card rather than needing
+# `make all`, so it is the one to reach for while iterating on the installer; this
+# harness is what proves the SHIPPED article.
+#
 # Prereqs: qemu-system-arm, sfdisk, cmp, truncate, plus a completed `make sdcard`
 # (output/images/sdcard.img + output-installer/images/rootfs.cpio) and the pinned
-# kernel source (dl/linux-<pinned version>.tar.xz, same tarball the main build uses).
+# kernel source (dl/linux/linux-<pinned version>.tar.xz, same tarball the main build
+# uses; scripts/lib/installer-qemu-kernel.sh also accepts the flat dl/ layout).
 # The ARM cross toolchain comes from output/host/bin (a completed `make all`).
 #
 # Usage:
@@ -60,22 +70,20 @@ UBOOT_REF="${UBOOT_REF:-$ROOT/output-sdcard-stage/mister-payload/linux/uboot.img
 CROSS_COMPILE="${CROSS_COMPILE:-$ROOT/output/host/bin/arm-buildroot-linux-gnueabihf-}"
 
 # --- QEMU test kernel (shares scripts/test-initramfs.sh's source tree + config) ---
-# Derived from the product board fragment, NOT hardcoded -- same reason as
-# scripts/test-initramfs.sh (board patch 0031, applied below, tracks the pinned
-# kernel's APIs; 6.18.40 gave exfat_remove_entries() a 4th arg, so a stale pin
-# here fails the QEMU kernel build with a confusing "too few arguments").
-KERNEL_VERSION="${TEST_SDCARD_KERNEL_VERSION:-$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\(.*\)"$/\1/p' "$ROOT/configs/mister_de10nano_defconfig")}"
-[ -n "$KERNEL_VERSION" ] || {
-	printf 'test-sdcard-install.sh: FATAL: %s\n' \
-		"could not read BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE from configs/mister_de10nano_defconfig" >&2
-	exit 2
-}
-KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-$ROOT/dl/linux-$KERNEL_VERSION.tar.xz}"
-KERNEL_SRC="${TEST_SDCARD_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
-KBUILD="${TEST_SDCARD_KBUILD:-$ROOT/work/test-sdcard-install-kbuild}"
-KERNEL_FRAGMENT="$ROOT/scripts/test-initramfs/qemu-test-kernel.config"
-EXFAT_SYMLINK_PATCH="$ROOT/board/mister/de10nano/linux-patches/0031-exfat-samsung-symlinks.patch"
-QEMU_ZIMAGE="$KBUILD/arch/arm/boot/zImage"
+# The recipe itself lives in scripts/lib/installer-qemu-kernel.sh, because
+# scripts/test-installer-recovery.sh needs exactly the same kernel and a fix here
+# must not have to be remembered there. The env knobs below keep their historical
+# TEST_SDCARD_* names; empty means "let the library resolve it".
+# shellcheck source=scripts/lib/installer-qemu-kernel.sh
+. "$ROOT/scripts/lib/installer-qemu-kernel.sh"
+IQK_ROOT="$ROOT"
+IQK_CROSS_COMPILE="$CROSS_COMPILE"
+IQK_KERNEL_VERSION="${TEST_SDCARD_KERNEL_VERSION:-}"
+IQK_KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-}"
+IQK_KERNEL_SRC="${TEST_SDCARD_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
+IQK_KBUILD="${TEST_SDCARD_KBUILD:-$ROOT/work/test-sdcard-install-kbuild}"
+IQK_CPIO="$INSTALLER_CPIO"
+IQK_ZIMAGE=""
 
 # --- knobs ------------------------------------------------------------------
 SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"   # simulated card size to auto-expand into
@@ -117,50 +125,15 @@ need truncate        "install coreutils"
 [ -x "${CROSS_COMPILE}gcc" ] || die "ARM cross gcc not found at ${CROSS_COMPILE}gcc -- run 'make all'"
 
 # ------------------------------------------------------------ the QEMU test kernel
-# Same recipe as scripts/test-initramfs.sh's ensure_qemu_kernel, but embedding the
-# INSTALLER cpio. Built out-of-tree in its OWN $KBUILD so it never fights the
-# test-initramfs harness's CONFIG_INITRAMFS_SOURCE. O= MUST be absolute (a relative
-# O= is resolved against $KERNEL_SRC, silently building into a nested dir).
-ensure_kernel() {
-	case "$KBUILD" in /*) : ;; *) die "TEST_SDCARD_KBUILD must be an absolute path" ;; esac
-	if [ ! -f "$KBUILD/.config" ]; then
-		[ -d "$KERNEL_SRC/scripts/kconfig" ] || {
-			[ -f "$KERNEL_TARBALL" ] || die "kernel source missing: neither $KERNEL_SRC nor $KERNEL_TARBALL"
-			log "extracting $KERNEL_TARBALL -> $KERNEL_SRC"
-			mkdir -p "$KERNEL_SRC"
-			tar -C "$KERNEL_SRC" --strip-components=1 -xf "$KERNEL_TARBALL"
-		}
-		# fs/exfat symlink support (ADR 0019, board patch 0031) -- idempotent.
-		if [ -f "$EXFAT_SYMLINK_PATCH" ] && ! grep -q EXFAT_ATTR_SYMLINK "$KERNEL_SRC/fs/exfat/exfat_raw.h" 2>/dev/null; then
-			log "applying $(basename "$EXFAT_SYMLINK_PATCH")"
-			patch -p1 -s -d "$KERNEL_SRC" < "$EXFAT_SYMLINK_PATCH" || die "board patch 0031 failed to apply"
-		fi
-		mkdir -p "$KBUILD"
-		log "configuring: multi_v7_defconfig + qemu-test-kernel.config"
-		make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" multi_v7_defconfig >&2
-		# `-m` = MERGE ONLY. Without it, merge_config.sh runs a bare `make alldefconfig`
-		# (no -C) whose `make` resolves to this repo's ROOT wrapper Makefile (which
-		# forwards to Buildroot and dies "Can't read seed configuration"). We reconcile
-		# ourselves below with `make -C "$KERNEL_SRC" ... olddefconfig` (proper -C + ARCH).
-		"$KERNEL_SRC/scripts/kconfig/merge_config.sh" -m -O "$KBUILD" "$KBUILD/.config" "$KERNEL_FRAGMENT" >&2
-	fi
-	# Point at the installer cpio and (re)build. Nuke the cached initramfs object so a
-	# changed /init is never silently embedded stale (the kernel's own dep tracking
-	# can miss a same-path cpio-content change).
-	"$KERNEL_SRC/scripts/config" --file "$KBUILD/.config" --set-str CONFIG_INITRAMFS_SOURCE "$INSTALLER_CPIO"
-	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" olddefconfig >&2
-	rm -f "$KBUILD"/usr/initramfs_data.cpio* "$KBUILD/arch/arm/boot/zImage"
-	log "building QEMU test kernel (embedding the installer initramfs)"
-	make -C "$KERNEL_SRC" O="$KBUILD" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j"$(nproc)" zImage >&2
-	[ -f "$QEMU_ZIMAGE" ] || die "kernel build produced no $QEMU_ZIMAGE"
-}
+# Thin wrapper: the library does the work and sets IQK_ZIMAGE.
+ensure_kernel() { iqk_ensure_kernel; }
 
 # boot_installer LOGFILE TIMEOUT -- boot the installer kernel with $DISK on virtio-blk.
 # root=/dev/vda1 tells the installer which partition is the data partition.
 boot_installer() {
 	local logf=$1 tmo=$2
 	timeout "$tmo" qemu-system-arm -M virt -m "$QEMU_MEM" -nographic -no-reboot \
-		-kernel "$QEMU_ZIMAGE" \
+		-kernel "$IQK_ZIMAGE" \
 		-drive file="$DISK",format=raw,if=none,id=sd0 \
 		-device virtio-blk-device,drive=sd0 \
 		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1" \
@@ -185,14 +158,46 @@ main() {
 	for stage in \
 		'source mounted' \
 		'payload staged in RAM OK' \
-		'payload written to' \
+		'installer kernel staged in RAM' \
+		'the card can reach U-Boot again' \
+		'from here a power cut re-runs the installer' \
+		'this card can now finish on its own' \
 		'per-board MAC = ' \
 		'removed linux/linux.img.gz' \
-		'uboot.img written to' \
+		'this card is a MiSTer now' \
 		'install complete'; do
 		if grep -q "$stage" "$INSTALL_LOG"; then pass "installer stage: '$stage'"; else fail "installer never reached: '$stage'"; fi
 	done
 	if grep -q 'INSTALLER: FAILED' "$INSTALL_LOG"; then fail "installer dropped to the FAILURE rescue path"; else pass "no installer failure banner"; fi
+
+	# --- 2a. the ORDER, not just the steps (ADR 0020 §8) --------------------
+	# The whole point of the reorder is which write happens first, so assert the
+	# order rather than the mere presence of each stage -- a future edit that
+	# moves `dd uboot.img` back to the end would otherwise still pass every check
+	# above while restoring the minute-long brick window of issue #185.
+	#
+	# Byte offsets, not line numbers: the guest console is a tty, the splash
+	# rewrites its status line with \r, and several of these markers share a line.
+	# `|| true` is load-bearing: this script runs under `set -o pipefail`, so a
+	# marker that is ABSENT makes grep fail, fails the pipeline, and -- because the
+	# result is captured into a variable -- `set -e` would abort the harness instead
+	# of reporting the FAIL. An empty offset is the answer we want here.
+	at() { grep -abo -m1 "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1 || true; }
+	local o_part o_uboot o_mkfs o_recov o_payload o_commit
+	o_part=$(at    "$INSTALL_LOG" 'new partitions present')
+	o_uboot=$(at   "$INSTALL_LOG" 'the card can reach U-Boot again')
+	o_mkfs=$(at    "$INSTALL_LOG" 'formatting (exFAT)')
+	o_recov=$(at   "$INSTALL_LOG" 'from here a power cut re-runs the installer')
+	o_payload=$(at "$INSTALL_LOG" 'this card can now finish on its own')
+	o_commit=$(at  "$INSTALL_LOG" 'this card is a MiSTer now')
+	order_ok() { # order_ok A B DESC -- assert offset A < offset B
+		if [ -n "$1" ] && [ -n "$2" ] && [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (offsets '$1' vs '$2')"; fi
+	}
+	order_ok "$o_part"    "$o_uboot"   "order: uboot.img lands right after the repartition, not at the end"
+	order_ok "$o_uboot"   "$o_mkfs"    "order: the bootloader is written BEFORE the filesystem is made"
+	order_ok "$o_mkfs"    "$o_recov"   "order: the installer kernel is restored right after the format"
+	order_ok "$o_recov"   "$o_payload" "order: the card is self-recovering before the payload copy-back"
+	order_ok "$o_payload" "$o_commit"  "order: the real kernel is the LAST thing installed (the commit point)"
 
 	# --- 2b. the first-boot splash ------------------------------------------
 	# During the install there is no HDMI and no menu (the FPGA has no bitstream
@@ -212,11 +217,12 @@ main() {
 		'reading the payload' \
 		'copying to memory' \
 		'repartitioning the card' \
+		'writing the bootloader' \
 		'formatting (exFAT)' \
+		'making the card recoverable' \
 		'writing files to the card' \
 		'expanding the system image' \
-		'applying your settings' \
-		'writing the bootloader'; do
+		'finishing the install'; do
 		has "$INSTALL_LOG" "$step" "splash: reached step '$step'"
 	done
 	has "$INSTALL_LOG" '] 100%'          "splash: progress bar reached 100%"

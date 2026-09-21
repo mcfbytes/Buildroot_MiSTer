@@ -112,22 +112,25 @@ on:
       # here, the workflow never runs on a Buildroot bump at all -- no skipped
       # job, no red X, no outcome row.
       - "Makefile"
-      # The DE10 kernel pin (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE) lives in
-      # the board fragment since the 2026-09 fragment split; the kernel-only
-      # stack shares that same file, so there is no second copy to list.
-      - "configs/mister_de10nano_defconfig"
-      # The RT/beta kernel pin. ADDED 2026-08-17: this file used to be
-      # deliberately ABSENT here, because while that pin tracked mainline -rc
-      # its hash could not be auto-refreshed at all (no signed manifest exists
-      # for a cgit snapshot). Linux 7.2 released, the pin moved onto the 7.2
-      # line, and its tarball is now covered by kernel.org's signed manifest
-      # like any other release -- so step 2's `--pin=rt` invocation can do the
-      # work and this path has to let the event through for it to run.
-      # Same both-lists-or-silent-failure note as rtl8852cu-morrownr below: a
+      # BOTH kernel pins live in this one committed defconfig since ADR 0030
+      # (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE for the stable 6.18.y kernel,
+      # BR2_PACKAGE_LINUX_RT_VERSION for the RT/beta 7.2 line), so it is the
+      # only kernel path that has to let a Renovate kernel PR through. (An RT
+      # bump PR also touches configs/mister_de25nano_defconfig, whose 7.2 pin
+      # moves in the same PR; it needs no entry of its own because this file
+      # is always in the same diff.) The RT pin's history matters for a
+      # reader coming from an older commit: it was deliberately NOT triggering
+      # this workflow while it tracked mainline -rc (no signed manifest exists
+      # for a cgit snapshot), joined on 2026-08-17 when Linux 7.2 released and
+      # its tarball became an ordinary signed-manifest release, and was listed
+      # here as `configs/mister_rt.fragment` until 2026-09-21 -- a file that
+      # stopped existing with the fragment stacks on 2026-09-11 (a stale path
+      # entry is harmless, it just matches nothing). Same
+      # both-lists-or-silent-failure note as rtl8852cu-morrownr below: a
       # missing path filter means no skipped job, no red X, no outcome row --
       # the workflow simply never runs and nobody is told the hash is stale.
       # See docs/ci.md#renovate-hash-sync-not-automated.
-      - "configs/mister_rt.fragment"
+      - "configs/mister_de10nano_defconfig"
       # The seven deselected Realtek fork pins that used to be listed here
       # (rtl8812au, rtl8814au-morrownr, rtl8821au-morrownr,
       # rtl8821cu-morrownr, rtl8188fu, rtl8188eu-aircrack-ng, rtl88x2bu) went
@@ -664,7 +667,10 @@ jobs:
             echo "payload script) was NOT refreshed for this PR. That is only safe"
             echo "because Buildroot's own hash check fails the BUILD closed on a stale"
             echo "hash -- it is never silently accepted -- but a skip should still be"
-            echo "investigated, not just left for the build to catch."
+            echo "investigated, not just left for the build to catch. A \`stale\` row"
+            echo "is that build failure announced early: the pin moved on this branch"
+            echo "and its hash did not. Re-dispatch this workflow on the branch once"
+            echo "the upstream manifest lists the new version."
             echo
             echo "| Pin | Outcome | Reason |"
             echo "|---|---|---|"
@@ -680,7 +686,8 @@ jobs:
           n_refreshed=$(awk -F'\t' '$2 == "refreshed" { c++ } END { print c+0 }' "$complete_file")
           n_current=$(awk -F'\t' '$2 == "already-current" { c++ } END { print c+0 }' "$complete_file")
           n_skipped=$(awk -F'\t' '$2 == "skipped" { c++ } END { print c+0 }' "$complete_file")
-          echo "totals: refreshed=$n_refreshed already-current=$n_current skipped=$n_skipped not-run=$n_notrun failed=$n_failed"
+          n_stale=$(awk -F'\t' '$2 == "stale" { c++ } END { print c+0 }' "$complete_file")
+          echo "totals: refreshed=$n_refreshed already-current=$n_current skipped=$n_skipped stale=$n_stale not-run=$n_notrun failed=$n_failed"
 
           fail=0
 
@@ -696,6 +703,27 @@ jobs:
           # as above. See docs/ci.md#renovate-hash-sync-outcomes-gate.
           if [ "$n_notrun" -gt 0 ]; then
             echo "::error::$n_notrun pin(s) never ran -- an earlier step aborted before reaching them -- see the job summary table." >&2
+            fail=1
+          fi
+
+          # Case 1c: `stale` (ADDED 2026-09-21) -- a pin MOVED on this branch
+          # but its companion hash could not be refreshed (kernel.org's
+          # signed manifest did not list the release yet, or could not be
+          # fetched), so the build WILL fail closed at the download. Distinct
+          # from `skipped` (nothing was left stale) and from `failed` (a bug
+          # here): it is an upstream timing condition, but one this PR cannot
+          # survive, so the run goes red NOW instead of 30 minutes later in
+          # build.yml. The 6.18.53 bump (PR #197) was merged on exactly this
+          # gap -- its sync run was green with the kernel row `skipped`, and
+          # the image build was the first red thing anyone saw, 20 minutes
+          # after the merge. `stale` does NOT suppress the push (only `failed`
+          # does; see the check step above): another pin's refresh on the
+          # same branch is still correct. Fix: re-dispatch this workflow on
+          # the branch once the manifest has caught up. renovate.json's
+          # minimumReleaseAge on both kernel pins exists so this case is
+          # rarely reached. See docs/ci.md#renovate-hash-sync-outcomes-gate.
+          if [ "$n_stale" -gt 0 ]; then
+            echo "::error::$n_stale pin(s) moved on this branch but their companion hash could not be refreshed -- the build will fail closed. Re-dispatch this workflow (workflow_dispatch, branch=$TARGET_BRANCH) once the upstream manifest lists the new version. See the job summary table." >&2
             fail=1
           fi
 

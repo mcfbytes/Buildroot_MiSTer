@@ -121,10 +121,14 @@ hash_sync_resolve_outcomes_file() {
 
 # hash_sync_record OUTCOMES_FILE PIN OUTCOME REASON
 #   Appends one "<pin>\t<outcome>\t<reason>" row. OUTCOME is one of
-#   refreshed | already-current | skipped | failed -- the same four values
-#   the workflow's job-summary step has always tabulated; this extraction
-#   does not add, remove, or rename any of them (item J is not being
-#   re-litigated here).
+#   refreshed | already-current | skipped | failed -- the four values the
+#   workflow's job-summary step has always tabulated (this extraction did not
+#   add, remove, or rename any of them; item J is not being re-litigated
+#   here) -- plus `stale`, ADDED 2026-09-21 and recorded only by
+#   hash-sync-kernel.sh so far: the pin MOVED on this branch but its companion
+#   hash could not be refreshed, so the build will fail closed. The gate turns
+#   it red (unlike `skipped`) but it does not suppress the push (unlike
+#   `failed`). See docs/ci.md#renovate-hash-sync-outcomes-gate.
 hash_sync_record() {
 	local outcomes_file="$1" pin="$2" outcome="$3" reason="$4"
 	printf '%s\t%s\t%s\n' "$pin" "$outcome" "$reason" >> "$outcomes_file"

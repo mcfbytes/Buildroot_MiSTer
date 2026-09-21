@@ -531,7 +531,17 @@ in roughly this priority order:
    (`{"releases": [{"version": "...", "moniker": "longterm", ...}, ...]}`);
    **Resolved** — evaluated by a real Renovate run; it produced PRs #41 (6.18.38 → 6.18.39)
    and #66 (→ 6.18.41). If the kernel PR ever *stops* appearing, still check this first — the Renovate Dependency Dashboard issue will
-   show a lookup error if the transform is malformed.
+   show a lookup error if the transform is malformed. **Since 2026-09-21 the
+   transform (and `kernelStable72`'s) also emits `releaseTimestamp`** from
+   `releases.json`'s `released.timestamp`, and both kernel `packageRules` carry
+   `minimumReleaseAge: "6 hours"`: a fresh release sits as *pending* on the
+   dashboard for six hours before a PR opens, which is how long kernel.org's
+   signed `sha256sums.asc` is given to catch up with `releases.json` (it lagged
+   by more than an hour on 6.18.53, PR #197, and the hash-sync came up empty).
+   A kernel update that shows on the dashboard but opens no PR for a few hours
+   is therefore expected; one that never opens is the tripwire above. If the
+   `$fromMillis(...)` clause is ever dropped, the age rule silently stops
+   working — Renovate cannot age a release with no timestamp.
 2. **`fileMatch` vs `managerFilePatterns`.** This config follows the
    `/mnt/source/sb-enema/renovate.json` reference template's use of
    `fileMatch` for `customManagers`. Renovate has been migrating this key to

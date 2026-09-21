@@ -9,7 +9,7 @@
 # had when it took no options at all:
 #
 #   --pin=stable   the 6.18.y longterm kernel that the SHIPPED image runs.
-#                  Version read from configs/fragments/de10nano.fragment.
+#                  Version read from configs/mister_de10nano_defconfig.
 #   --pin=rt       the RT/beta kernel variant (docs/rt-beta-kernel.md).
 #                  Version read from configs/mister_de10nano_defconfig.
 #
@@ -136,8 +136,9 @@
 #
 # Testing against a fixture: point REPO_ROOT at a scratch directory
 # containing a fake version file for the pin under test -- configs/
-# fragments/de10nano.fragment for `stable`, configs/mister_rt.fragment for `rt`
-# (each just needs the one BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="..." line;
+# mister_de10nano_defconfig, which carries BOTH pins (the symbol is
+# BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE for `stable`, BR2_PACKAGE_LINUX_RT_VERSION
+# for `rt`; each just needs its one symbol="..." line;
 # including a SECOND, unanchored-looking copy in a comment is exactly the
 # bug-#42 regression test this case wants) -- plus a fake linux.hash carrying
 # BOTH pins' lines, which is what exercises the major-series scoping. The
@@ -221,6 +222,41 @@ case "$PIN" in
 esac
 
 REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+# record_unrefreshed OUTCOMES_FILE HASH_FILE KVER REASON
+#   Both "could not refresh from the manifest" branches in main() end here,
+#   and the outcome depends on whether HASH_FILE ALREADY carries this exact
+#   version's line:
+#     - it does     -> `skipped`. The manifest hiccup cost nothing: the
+#                      build has a correct hash to check against (a re-run
+#                      after a hand fix, a PR that moved some OTHER pin).
+#     - it does not -> `stale`. The pin moved and its hash did not, so the
+#                      build WILL fail closed at the kernel download. The
+#                      job-summary gate turns `stale` into a red run -- the
+#                      signal PR #197 (6.18.53, 2026-09-21) never got: this
+#                      script ran 12 s after Renovate opened the PR, kernel.org's
+#                      signed manifest did not list the release yet, the row
+#                      said `skipped`, the job went green, and the 30-minute
+#                      image build was the first red thing anyone saw -- 20
+#                      minutes after the PR had been merged.
+#   `stale` does NOT suppress the push (only `failed` does): another pin's
+#   refresh on the same branch is still correct and should land. The fix is
+#   to re-dispatch the workflow on the branch once the manifest has caught
+#   up; renovate.json's minimumReleaseAge on both kernel pins exists so this
+#   branch is rarely reached at all. Always exits 0, like every other handled
+#   path in this script.
+record_unrefreshed() {
+	local outcomes_file="$1" hashfile="$2" kver="$3" reason="$4"
+	if grep -qE "  linux-${kver//./\\.}\.tar\.xz\$" "$hashfile"; then
+		echo "::warning::$reason -- $hashfile already carries linux-${kver}.tar.xz, so nothing is stale; leaving it untouched"
+		hash_sync_record "$outcomes_file" "$OUTCOME_PIN" skipped "$reason (hash already current for $kver)"
+	else
+		echo "::error::$reason -- and $hashfile has NO line for linux-${kver}.tar.xz, so the build will fail closed at the kernel download. Re-dispatch this workflow on the branch once the manifest lists it." >&2
+		hash_sync_record "$outcomes_file" "$OUTCOME_PIN" stale "$reason; $hashfile has no line for linux-${kver}.tar.xz -- re-dispatch once the manifest lists it"
+	fi
+	hash_sync_set_env "$CHANGED_VAR" 0
+	exit 0
+}
 [ -d "$REPO_ROOT" ] || { echo "::error::REPO_ROOT '$REPO_ROOT' is not a directory" >&2; exit 2; }
 
 : "${HASH_SYNC_OUTCOMES_FILE:?HASH_SYNC_OUTCOMES_FILE must be set}"
@@ -334,29 +370,28 @@ main() {
 	echo "==> $OUTCOME_PIN $kver: fetching $manifest_url"
 
 	# An upstream fetch failure is a legitimate network blip against
-	# kernel.org, not a bug in this script -- stays warn-and-continue.
+	# kernel.org, not a bug in this script -- never `failed`. Whether it is
+	# `skipped` or `stale` depends on what the hash file already holds; see
+	# record_unrefreshed above.
 	local manifest
-	manifest=$(curl -fsSL --retry 3 "$manifest_url") || {
-		echo "::warning::could not fetch $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
-		hash_sync_record "$outcomes_file" "$OUTCOME_PIN" skipped "could not fetch $manifest_url"
-		hash_sync_set_env "$CHANGED_VAR" 0
-		exit 0
-	}
+	manifest=$(curl -fsSL --retry 3 "$manifest_url") || \
+		record_unrefreshed "$outcomes_file" "$linuxhash" "$kver" "could not fetch $manifest_url"
 
 	# kernel.org's manifest lines look like:
 	#   <sha256hash>  linux-6.18.38.tar.xz
 	local matchline
 	matchline=$(echo "$manifest" | grep -E "  linux-${kver//./\\.}\.tar\.xz\$" | head -1 || true)
 	if [ -z "$matchline" ]; then
-		# No entry for this exact version is an external/upstream condition
-		# (the release tarball may simply not be published to kernel.org
-		# yet), not evidence this script mis-parsed anything -- $kver already
-		# passed the strict version-format check above. Stays
-		# warn-and-continue.
-		echo "::warning::no entry for linux-${kver}.tar.xz in $manifest_url -- leaving $linuxhash untouched, build will fail closed on a stale hash instead"
-		hash_sync_record "$outcomes_file" "$OUTCOME_PIN" skipped "no entry for linux-${kver}.tar.xz in $manifest_url"
-		hash_sync_set_env "$CHANGED_VAR" 0
-		exit 0
+		# No entry for this exact version is an external/upstream condition,
+		# not evidence this script mis-parsed anything -- $kver already
+		# passed the strict version-format check above -- so never `failed`.
+		# It is ALSO the normal shape of a Renovate kernel PR that beat the
+		# signed manifest: kernel.org's releases.json (what renovate.json's
+		# custom datasource polls) listed 6.18.53 more than an hour before
+		# sha256sums.asc did (PR #197, 2026-09-21). record_unrefreshed
+		# decides between `skipped` and `stale` from the hash file's state.
+		record_unrefreshed "$outcomes_file" "$linuxhash" "$kver" \
+			"no entry for linux-${kver}.tar.xz in $manifest_url"
 	fi
 
 	local newhash newline

@@ -2450,6 +2450,7 @@ else
 	# OFF BY DEFAULT is the ADR 0031 (2026-09-21 amendment) regression oracle:
 	# on a fresh card that directory does not exist, so the script must exit 0
 	# before it starts anything.
+	# shellcheck disable=SC2016 # the pattern matches a literal $HOME_DIR in the script
 	if printf '%s' "$tm_init_body" | grep -qE '^\[ -d "\$HOME_DIR" \] \|\| exit 0'; then
 		pass "$TM_INIT is off by default (opt-in directory gate)"
 	else

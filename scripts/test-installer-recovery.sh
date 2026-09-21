@@ -30,6 +30,15 @@
 #      -> the bootloader and the installer's own kernel are on the card, and the
 #         next boot stops cleanly rather than reformatting with no payload.
 #   D. The finished card from (A) still trips the "already provisioned" guard.
+#   E. Interrupted after linux/linux.img was expanded
+#      -> the card matches every condition the OLD re-run guard used while still
+#         booting the installer, so this is the case ADR 0020 §8.4 re-keyed that
+#         guard for. The next boot must finish the install, not declare the card
+#         installed. (A) cannot cover this: it stops before the expansion.
+#   F. Interrupted between sfdisk and mkfs.exfat
+#      -> fully recoverable, and worth pinning: sfdisk only rewrites the MBR and
+#         the new p1 still starts at LBA 2048, so the shipped FAT32 is still
+#         readable under the enlarged entry and the install just runs again.
 #
 # It also runs a plain, uninterrupted install first (scenario 0), because that is
 # the only place the PRISTINE FAT32 first boot is exercised without a `make all`,
@@ -40,9 +49,19 @@
 # HOW THE INTERRUPTION IS DONE
 # ----------------------------
 # The installer honours `mister_installer_stop_after=<tag>` on its kernel command
-# line and reboots at that exact point (see its stop_after() -- the token can never
-# appear on a stock-U-Boot boot). We pass it on the first boot of each scenario and
-# then boot the same card again with a clean command line.
+# line and reboots at that exact point. It does NOT trust that token on its own:
+# a user can get arbitrary tokens onto the cmdline through u-boot.txt's $v
+# (docs/boot-chain.md §4/§5), and stopping a real install at `recoverable` or
+# `payload-partial` would cost that user a re-flash. The hook is gated on
+# /.installer-test-hook existing in the INITRAMFS, which no shipped image has and
+# no amount of writing to the card can produce. This harness asks
+# scripts/lib/installer-qemu-kernel.sh to append that marker as a second cpio
+# archive (IQK_EXTRA_INITRAMFS), leaving the installer cpio and /init unchanged.
+#
+# Scenario 0 below is therefore run against a kernel built WITHOUT the marker,
+# with the stop token on its cmdline: if the gate ever regressed to trusting the
+# cmdline, that install would stop early instead of completing, and the scenario
+# fails. Every later scenario uses the marker kernel.
 #
 # WHAT IT CANNOT TELL YOU
 # -----------------------
@@ -55,7 +74,7 @@
 # SPL) is P5.4's, on hardware.
 #
 # Prereqs: qemu-system-arm, sfdisk, mkfs.vfat+mcopy (dosfstools/mtools), cmp,
-# truncate, gzip; the installer cpio (output-installer/images/rootfs.cpio, from
+# truncate, gzip, cpio; the installer cpio (output-installer/images/rootfs.cpio, from
 # `make sdcard`, or any Buildroot build of configs/mister_installer_defconfig); an
 # ARM cross gcc; and the pinned kernel tarball under dl/.
 #
@@ -64,7 +83,7 @@
 # Env knobs: INSTALLER_CPIO, CROSS_COMPILE, TEST_SDCARD_KBUILD (shared with
 #   test-sdcard-install.sh, so running one makes the other cheap),
 #   TEST_SDCARD_KERNEL_TARBALL, SDCARD_TEST_SIZE (default 2G),
-#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 180), QEMU_MEM (default 512).
+#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 120), QEMU_MEM (default 512).
 
 set -o errexit
 set -o nounset
@@ -86,6 +105,7 @@ IQK_KERNEL_TARBALL="${TEST_SDCARD_KERNEL_TARBALL:-}"
 IQK_KERNEL_SRC="${TEST_SDCARD_KERNEL_SRC:-$ROOT/work/test-initramfs-kernel-src}"
 IQK_KBUILD="${TEST_SDCARD_KBUILD:-$ROOT/work/test-sdcard-install-kbuild}"
 IQK_CPIO="$INSTALLER_CPIO"
+IQK_EXTRA_INITRAMFS=""   # set per-kernel in main(); see HOW THE INTERRUPTION IS DONE
 IQK_ZIMAGE=""
 
 SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"
@@ -104,7 +124,13 @@ SYNTH_P1_MIB=128
 # compresses to ~64 KiB, so this costs nothing and still exercises the zcat path.
 SYNTH_LINUX_IMG_MIB=64
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/installer-recovery-test.XXXXXX")"
+# Default the scratch dir under work/, next to the kbuild tree, NOT under /tmp:
+# the card below is a 2 GB sparse file and /tmp is a tmpfs on plenty of machines
+# (it is on the maintainer's), so a run would be charged to RAM and shared with
+# whatever else is using it. TMPDIR still overrides, for anyone who wants that.
+WORK_BASE="${TMPDIR:-$ROOT/work}"
+mkdir -p "$WORK_BASE" || { printf '[test-recovery] FATAL: cannot create %s\n' "$WORK_BASE" >&2; exit 2; }
+WORK="$(mktemp -d "$WORK_BASE/installer-recovery-test.XXXXXX")"
 CARD="$WORK/synth-sdcard.img"
 DISK="$WORK/test-disk.img"
 trap 'rm -rf "$WORK"' EXIT
@@ -129,6 +155,7 @@ need mcopy           "install mtools"
 need cmp             "install diffutils"
 need truncate        "install coreutils"
 need gzip            "install gzip"
+need cpio            "install cpio (the test-hook marker archive)"
 [ -f "$INSTALLER_CPIO" ] || die "no installer cpio at $INSTALLER_CPIO -- build configs/mister_installer_defconfig, or set INSTALLER_CPIO="
 [ -x "${CROSS_COMPILE}gcc" ] || die "ARM cross gcc not found at ${CROSS_COMPILE}gcc (set CROSS_COMPILE=)"
 
@@ -291,7 +318,14 @@ scenario_clean_install() {
 	log "--- 0. a clean install on a pristine (FAT32) card ----------------------"
 	flash_fresh_card
 	local dev_sectors; dev_sectors=$(( $(stat -c %s "$DISK") / 512 ))
-	boot "$WORK/z1.log" "$INSTALL_TIMEOUT"
+	# The stop token IS on this cmdline, and this kernel has NO marker file. A
+	# user really can get that token onto a real board's cmdline through
+	# u-boot.txt's $v, so "the installer ignores it" has to be a test, not a
+	# claim: if the gate regressed to trusting the cmdline, the install below
+	# would stop at payload-copied instead of finishing.
+	boot "$WORK/z1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=payload-copied"
+	has   "$WORK/z1.log" 'this is not a test image' "0: the cmdline hook was refused (no initramfs marker)"
+	hasnt "$WORK/z1.log" 'TEST-STOP'                "0: and it did not stop"
 	has   "$WORK/z1.log" 'source mounted (vfat)'  "0: the shipped FAT32 partition mounted as vfat"
 	has   "$WORK/z1.log" 'INSTALL COMPLETE'       "0: the install finished"
 	hasnt "$WORK/z1.log" 'INSTALLER: FAILED'      "0: no failure banner"
@@ -366,6 +400,48 @@ scenario_interrupted_after_payload() {
 	hasnt "$WORK/d1.log" 'INSTALL COMPLETE'     "D: the benign halt did not claim an install"
 }
 
+scenario_interrupted_after_expand() {
+	log "--- E. interrupted after linux.img was expanded ------------------------"
+	# THE case the re-keyed guard exists for (ADR 0020 §8.4). At this point the
+	# card is exFAT, labelled MiSTer_Data, and HAS linux/linux.img -- all three
+	# conditions the OLD guard used -- while its linux/zImage_dtb is still the
+	# installer's and a complete payload is sitting right there. The old guard
+	# would have called this card "installed" and halted on it. Scenario A cannot
+	# catch that: it stops BEFORE the zcat, so no linux.img exists and the old
+	# guard would not have fired either.
+	flash_fresh_card
+	boot "$WORK/e1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=expanded"
+	has   "$WORK/e1.log" 'TEST-STOP after "expanded"' "E: the run stopped after the expansion"
+	hasnt "$WORK/e1.log" 'INSTALL COMPLETE'           "E: the interrupted run did NOT finish"
+
+	log "    re-booting (the old guard would have called this card installed) ..."
+	boot "$WORK/e2.log" "$INSTALL_TIMEOUT"
+	hasnt "$WORK/e2.log" 'already provisioned' "E: the re-keyed guard did NOT misfire on a mid-commit card"
+	hasnt "$WORK/e2.log" 'INSTALLER: FAILED'   "E: no failure banner"
+	has   "$WORK/e2.log" 'INSTALL COMPLETE'    "E: it finished the install instead"
+}
+
+scenario_interrupted_after_bootloader() {
+	log "--- F. interrupted between sfdisk and mkfs.exfat -----------------------"
+	# Worth its own scenario because the answer is better than it looks. sfdisk
+	# only rewrites the MBR, and the new p1 still starts at LBA 2048, so the
+	# SHIPPED FAT32 filesystem -- installer kernel, payload and all -- is still
+	# sitting there, readable under the enlarged partition entry. An interrupt
+	# here is therefore FULLY recoverable, which is why the header puts the hard
+	# window at mkfs.exfat and not at sfdisk.
+	flash_fresh_card
+	boot "$WORK/f1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=bootloader"
+	has   "$WORK/f1.log" 'TEST-STOP after "bootloader"' "F: the run stopped after the bootloader write"
+	hasnt "$WORK/f1.log" 'formatting (exFAT)'           "F: it stopped BEFORE mkfs.exfat"
+	assert_bootloader_present "F: uboot.img is in the new 0xA2 partition already"
+
+	log "    re-booting the repartitioned-but-unformatted card ..."
+	boot "$WORK/f2.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/f2.log" 'source mounted (vfat)' "F: the shipped FAT32 survived the repartition"
+	hasnt "$WORK/f2.log" 'INSTALLER: FAILED'     "F: no failure banner"
+	has   "$WORK/f2.log" 'INSTALL COMPLETE'      "F: the install simply ran again and finished"
+}
+
 scenario_interrupted_mid_copy() {
 	log "--- B. interrupted mid copy-back ---------------------------------------"
 	flash_fresh_card
@@ -403,10 +479,24 @@ scenario_interrupted_at_recoverable() {
 
 # ============================================================================
 main() {
+	# Kernel 1: NO test-hook marker. Scenario 0 runs on this one, which is what
+	# makes its "the cmdline alone does nothing" assertion mean anything.
+	IQK_EXTRA_INITRAMFS=""
 	iqk_ensure_kernel
 	build_synth_card
 	scenario_clean_install
+
+	# Kernel 2: same installer cpio with /.installer-test-hook appended as a
+	# second archive, so stop_after() will act. Rebuilding is ~a minute and it is
+	# the price of the hook not being reachable from a real card.
+	log "rebuilding the test kernel WITH the /.installer-test-hook marker ..."
+	mkdir -p "$WORK/hook" && : > "$WORK/hook/.installer-test-hook"
+	IQK_EXTRA_INITRAMFS="$WORK/hook"
+	iqk_ensure_kernel
+
 	scenario_interrupted_after_payload
+	scenario_interrupted_after_expand
+	scenario_interrupted_after_bootloader
 	scenario_interrupted_mid_copy
 	scenario_interrupted_at_recoverable
 

@@ -21,6 +21,21 @@ BR2_ARM_FPU_NEON=y
 BR2_TOOLCHAIN_BUILDROOT_MUSL=y
 BR2_KERNEL_HEADERS_6_18=y
 BR2_STATIC_LIBS=y
+# Same posture as the two board defconfigs. Added 2026-09-21 with the first
+# externally-sourced package in this cpio (itsalive): without it a download
+# whose filename has no line in the package's .hash is only WARNED about, so a
+# bumped ITSALIVE_VERSION carrying a stale .hash would fetch unverified and
+# build green. lint.yml's "itsalive version/hash pin consistency" step is the
+# cheap gate; this is the one that holds at download time.
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+# C++ is enabled in the toolchain ONLY because Rust's target-arch gate needs
+# libstdc++ on musl (BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS `depends on
+# BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL`, package/rustc/
+# Config.in.host; for an internal toolchain that symbol is selected by THIS
+# one, and writing BR2_INSTALL_LIBSTDCPP=y here is silently dropped). Nothing
+# in this cpio links it; BR2_STATIC_LIBS keeps the .a out of the rootfs. Costs
+# toolchain build time, not image bytes.
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
 
 # --- No init system: /init reformats and calls reboot directly (§8.3, §9) ---
 BR2_INIT_NONE=y
@@ -38,10 +53,20 @@ BR2_INIT_NONE=y
 BR2_PACKAGE_EXFATPROGS=y
 BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+# The HDMI splash (ADR 0020 §9, issue #185): `itsalive up` + `itsalive image`
+# in /init's splash section put "installing, do not power off" on screen while
+# the card is reformatted. Static Rust, ~400 KB in the cpio; pulls the prebuilt
+# host-rust-bin download into this configuration only. Its artwork is rendered
+# into the cpio by installer-post-build.sh (above), not by this package.
+BR2_PACKAGE_ITSALIVE=y
 
 # --- BusyBox: stage 1's config PLUS the installer applets; /init overlay (§9) ---
 BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-busybox.config"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-overlay"
+# Renders the HDMI splash frames (ADR 0020 §9) into the cpio from the PNGs in
+# installer-splash/, so no derived binary is committed. Same relative-path form
+# as the DE10 defconfig's hook; Buildroot runs it from work/buildroot.
+BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/installer-post-build.sh"
 
 # --- Output: a cpio, uncompressed (§8.7, §9) ---
 BR2_TARGET_ROOTFS_CPIO=y

@@ -2551,6 +2551,19 @@ idiom** and should get the same treatment when next touched.
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
 
+- **`package/itsalive/itsalive.hash`** (the SD-card installer's HDMI splash tool,
+  ADR 0020 §9; **added 2026-09-21**). Tracked by `renovate.json` (a `git-refs`
+  commit pin), but its hash is of the post-`cargo vendor` tarball Buildroot
+  repacks — the same "nothing serves this file" situation as azcopy's `-go2`
+  tarball, without a rebuild case to match. Case 1's `curl | sha256sum` would
+  write a confidently wrong value, so the package is in **neither**
+  `HASH_SYNC_PACKAGES` nor the workflow's `paths:` filter, its bump PRs carry
+  `needs-manual-hash`, and `lint.yml`'s `itsalive version/hash pin
+  consistency` step keeps them red until a human runs the recipe in the
+  `.hash`. "Not automated" here means *not yet*: a cargo analogue of case 7
+  (run Buildroot's own `support/download/cargo-post-process` with the pinned
+  `host-rust-bin`, hash the result) is the obvious next step if the pin ever
+  moves often enough to matter.
 - **`cabextract`, `linux-firmware-extra`, `xow-firmware`** — not tracked by
   `renovate.json` at all (no machine-readable upstream release feed for the
   first two; `xow-firmware` pins opaque Microsoft Update `.cab` GUIDs, not a

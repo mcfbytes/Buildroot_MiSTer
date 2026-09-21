@@ -12,11 +12,20 @@
 # /sys/class/leds tree, and asserts the behaviour directly. It runs in about a
 # second, so it can gate every PR.
 #
+# THE HDMI HALF (ADR 0020 §9, 2026-09-21) is tested the same way: /init only
+# ever reaches `itsalive` through one wrapper and four retargetable paths, so
+# the binary is replaced by a RECORDING STUB whose exit status per subcommand
+# the test sets, and the assertions are on what /init did with each answer --
+# absent binary, `probe` exit 10 (no bitstream), `up` failing, `up` HANGING
+# (the `timeout` bracket is the load-bearing line), the happy path, the 480p
+# knob, a missing frame, and the three terminal states replacing the picture.
+#
 # WHAT IT CANNOT TELL YOU. It exercises the splash in isolation, not the install
 # flow that calls it. That the steps fire in the right order, against real
-# hardware, with a real LED, is test-sdcard-install.sh's job and ultimately
-# P5.4's. See ADR 0020 §6 for what the splash is and why it is a console UI plus
-# one LED rather than the picture mr-fusion draws.
+# hardware, with a real LED -- and that the stub's answers are the ones the real
+# itsalive gives on a DE10-Nano -- is test-sdcard-install.sh's job and
+# ultimately P5.4's. See ADR 0020 §6 for what the splash is and §9 for the
+# picture.
 #
 # Usage: scripts/test-installer-splash.sh [path/to/init]
 set -euo pipefail
@@ -69,19 +78,54 @@ else
 fi
 
 # ------------------------------------------------------------------- stubs
-mkdir -p "$WORK/leds/hps_led0" "$WORK/run"
+mkdir -p "$WORK/leds/hps_led0" "$WORK/run" "$WORK/hdmi/share"
 printf '0\n'           > "$WORK/leds/hps_led0/brightness"
 printf 'mmc0\n'        > "$WORK/leds/hps_led0/trigger"
 printf '12.34 56.78\n' > "$WORK/uptime"
 
-# Retarget the three absolute paths at the stubs. Anchored on the exact strings
-# the section uses; if /init ever stops using one of them this rewrite silently
-# does nothing, so each is asserted below by behaviour, not by grep.
+# The itsalive stand-in. Records every invocation (one line of arguments per
+# call), answers each subcommand with the exit status in $WORK/hdmi/rc.<sub>
+# (0 when unset; the word `hang` sleeps past the timeout instead), counts the
+# bytes `image -` was fed, and -- like the real tool -- says one thing on
+# stderr, so the replay-to-log path is exercised too.
+cat > "$WORK/hdmi/itsalive" <<'STUB_EOF'
+#!/bin/sh
+d="$(dirname "$0")"
+printf '%s\n' "$*" >> "$d/calls"
+sub="$1"
+printf 'stub: %s\n' "$sub" >&2
+if [ "$sub" = image ]; then wc -c < /dev/stdin | tr -d ' ' > "$d/image.bytes"; fi
+rc="$(cat "$d/rc.$sub" 2>/dev/null || echo 0)"
+if [ "$rc" = hang ]; then sleep 30; exit 0; fi
+exit "$rc"
+STUB_EOF
+chmod +x "$WORK/hdmi/itsalive"
+# Two "frames" of different, recognisable sizes so the test can tell which one
+# was fed to the tool. The real ones are 3.6 MB and 1.2 MB; the section does
+# not care.
+head -c 16 /dev/zero | gzip -n > "$WORK/hdmi/share/splash-1280x720.raw.gz"
+head -c 8  /dev/zero | gzip -n > "$WORK/hdmi/share/splash-640x480.raw.gz"
+printf '1\n' > "$WORK/hdmi/cursor_blink"
+
+# Retarget the absolute paths at the stubs. Anchored on the exact strings the
+# section uses; if /init ever stops using one of them this rewrite silently
+# does nothing, so each is asserted below by behaviour, not by grep. The HDMI
+# timeout is cut to one second so the hang case costs the test a second, not
+# fifteen.
 sed -i \
 	-e "s#/proc/uptime#$WORK/uptime#g" \
 	-e "s#/sys/class/leds#$WORK/leds#g" \
 	-e "s#^SPLASH_FLAG=.*#SPLASH_FLAG=$WORK/run/splash.run#" \
+	-e "s#^SPLASH_HDMI_BIN=.*#SPLASH_HDMI_BIN=$WORK/hdmi/itsalive#" \
+	-e "s#^SPLASH_HDMI_IMAGE_DIR=.*#SPLASH_HDMI_IMAGE_DIR=$WORK/hdmi/share#" \
+	-e "s#^SPLASH_HDMI_CURSOR=.*#SPLASH_HDMI_CURSOR=$WORK/hdmi/cursor_blink#" \
+	-e "s#^SPLASH_HDMI_OUT=.*#SPLASH_HDMI_OUT=$WORK/run/splash-hdmi.out#" \
+	-e "s#^SPLASH_HDMI_TIMEOUT=.*#SPLASH_HDMI_TIMEOUT=1#" \
 	"$WORK/splash.sh"
+for v in SPLASH_HDMI_BIN SPLASH_HDMI_IMAGE_DIR SPLASH_HDMI_CURSOR SPLASH_HDMI_OUT SPLASH_HDMI_TIMEOUT; do
+	grep -q "^$v=$WORK" "$WORK/splash.sh" || grep -q "^$v=1\$" "$WORK/splash.sh" \
+		|| die "retargeting $v did not take -- did /init rename it?"
+done
 
 # ------------------------------------------------------------------ the test
 # Written as a script run BY $SH (not sourced by bash) so the splash section is
@@ -194,6 +238,104 @@ splash_tick   >/dev/null 2>&1
 splash_step 2 "reading the payload" >/dev/null 2>&1
 splash_done   >/dev/null 2>&1
 printf '  ok   no-LED board: every LED path degraded to a no-op\n'
+
+# --- HDMI splash (ADR 0020 §9) --------------------------------------------
+# Every scenario below must leave splash_hdmi_init returning 0 -- the rule is
+# that the picture can never fail an install -- and must leave a log line a
+# serial-console user could act on.
+H="$W/hdmi"
+hdmi_reset() { : > "$H/calls"; rm -f "$H"/rc.* "$H/image.bytes"; printf '1\n' > "$H/cursor_blink"; splash_hdmi_mode=720p; }
+hdmi_calls() { tr '\n' ';' < "$H/calls"; }
+saved_bin="$SPLASH_HDMI_BIN"
+
+# (a) binary absent: a config without BR2_PACKAGE_ITSALIVE, or a stripped cpio
+hdmi_reset; SPLASH_HDMI_BIN="$H/does-not-exist"
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "no itsalive: init returns 0"           "$?" "0"
+ck "no itsalive: screen not marked up"     "$splash_hdmi" "0"
+ck "no itsalive: says so in the log"       "$(grep -c 'not present -- no HDMI splash' "$H/out.txt")" "1"
+splash_hdmi_say --clear 'x' >/dev/null 2>&1
+ck "no itsalive: say is a silent no-op"    "$(hdmi_calls)" ""
+SPLASH_HDMI_BIN="$saved_bin"
+
+# (b) probe says no bitstream (exit 10): QEMU, or a card that lost menu.rbf
+hdmi_reset; printf '10\n' > "$H/rc.probe"
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "probe exit 10: init returns 0"         "$?" "0"
+ck "probe exit 10: nothing after probe"    "$(hdmi_calls)" "probe;"
+ck "probe exit 10: screen not marked up"   "$splash_hdmi" "0"
+ck "probe exit 10: tool's stderr reached the log" "$(grep -c '^\[installer\] hdmi: stub: probe$' "$H/out.txt")" "1"
+ck "probe exit 10: verdict in the log"     "$(grep -c 'probe exit 10 -- no HDMI splash' "$H/out.txt")" "1"
+ck "probe exit 10: cursor knob untouched"  "$(cat "$H/cursor_blink")" "1"
+
+# (c) up fails (exit 12, say, an i2c error): probe passed, so the board is a
+#     real MiSTer with a bitstream -- still no picture, still no harm
+hdmi_reset; printf '12\n' > "$H/rc.up"
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "up exit 12: init returns 0"            "$?" "0"
+ck "up exit 12: probe then up, then stop"  "$(hdmi_calls)" "probe;up --mode 720p;"
+ck "up exit 12: screen not marked up"      "$splash_hdmi" "0"
+ck "up exit 12: verdict in the log"        "$(grep -c 'up exit 12 -- no HDMI splash' "$H/out.txt")" "1"
+
+# (d) up HANGS: the one the `timeout` bracket exists for. With the timeout cut
+#     to 1 s the stub's 30 s sleep must be cut short and init must return.
+hdmi_reset; printf 'hang\n' > "$H/rc.up"
+t0="$(date +%s)"
+splash_hdmi_init > "$H/out.txt" 2>&1
+rc=$?
+t1="$(date +%s)"
+ck "up hangs: init still returns 0"        "$rc" "0"
+ck "up hangs: timeout cut it short (<10 s)" "$(( t1 - t0 < 10 ))" "1"
+ck "up hangs: screen not marked up"        "$splash_hdmi" "0"
+ck "up hangs: exit 124 (timeout) in the log" "$(grep -c 'up exit 124 -- no HDMI splash' "$H/out.txt")" "1"
+
+# (e) the happy path
+hdmi_reset
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "happy: init returns 0"                 "$?" "0"
+ck "happy: probe, up, image -- in that order" "$(hdmi_calls)" "probe;up --mode 720p;image -;"
+ck "happy: screen marked up"               "$splash_hdmi" "1"
+ck "happy: the 720p frame was fed, decompressed" "$(cat "$H/image.bytes")" "16"
+ck "happy: fbcon cursor blink switched off" "$(cat "$H/cursor_blink")" "0"
+ck "happy: on-screen verdict in the log"   "$(grep -c 'splash on screen (720p)' "$H/out.txt")" "1"
+ck "happy: no text fallback was drawn"     "$(grep -c '^say' "$H/calls")" "0"
+
+# (f) the terminal states replace the picture with text -- ONLY now that the
+#     screen is up, and --clear only on the first line of each
+: > "$H/calls"
+splash_fail >/dev/null 2>&1
+ck "fail: first line clears the picture"   "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup: FAILED"
+ck "fail: later lines do not clear again"  "$(grep -c -- '--clear' "$H/calls")" "1"
+ck "fail: tells the user what to do"       "$(grep -c 'Re-flash sdcard.img' "$H/calls")" "1"
+: > "$H/calls"
+splash_halt_ok >/dev/null 2>&1
+ck "already installed: clears then explains" "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup"
+ck "already installed: says to power-cycle" "$(grep -c 'Power the board off and on' "$H/calls")" "1"
+: > "$H/calls"
+splash_done >/dev/null 2>&1
+ck "done: clears then says rebooting"      "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup: DONE"
+ck "done: LED still put out"               "$(led)" "0"
+
+# (g) the 480p knob picks the other mode AND the other frame
+hdmi_reset; splash_hdmi_mode=480p
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "480p: up asked for 480p"               "$(sed -n 2p "$H/calls")" "up --mode 480p"
+ck "480p: the 640x480 frame was fed"       "$(cat "$H/image.bytes")" "8"
+ck "480p: verdict names the mode"          "$(grep -c 'splash on screen (480p)' "$H/out.txt")" "1"
+
+# (h) screen up but the frame is missing (or refused): text fallback, no harm
+hdmi_reset; mv "$H/share/splash-1280x720.raw.gz" "$H/share/frame.bak"
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "no frame: init returns 0"              "$?" "0"
+ck "no frame: screen still marked up"      "$splash_hdmi" "1"
+ck "no frame: text fallback drawn, cleared once" "$(grep -c -- '^say --clear MiSTer first-time setup$' "$H/calls")" "1"
+ck "no frame: fallback carries the warning" "$(grep -c 'DO NOT POWER OFF' "$H/calls")" "1"
+ck "no frame: log names the missing file"  "$(grep -c 'splash-1280x720.raw.gz -- screen is up' "$H/out.txt")" "1"
+mv "$H/share/frame.bak" "$H/share/splash-1280x720.raw.gz"
+hdmi_reset; printf '3\n' > "$H/rc.image"
+splash_hdmi_init > "$H/out.txt" 2>&1
+ck "image refused: text fallback drawn"    "$(grep -c '^say --clear' "$H/calls")" "1"
+ck "image refused: verdict in the log"     "$(grep -c 'image exit 3 -- screen is up but blank' "$H/out.txt")" "1"
 
 exit "$fail"
 TEST_EOF

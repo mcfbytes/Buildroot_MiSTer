@@ -1145,6 +1145,11 @@ drilled recovery procedure. **The default channel keeps shipping the stock
   (a) Flash `sdcard.img` (stock-blob variant) to a fresh card → boots to menu;
   first-boot `ethaddr` provisioning verified (unique MAC, survives reboot);
   `update_all.sh` completes a run.
+  (b) *(added 2026-09-21, ADR 0020 §9 / #185)* the HDMI splash comes up within
+  seconds of power-on on the installer boot, stays through the reformat, and is
+  replaced by the "DONE" text before the reboot; the re-run boot shows the "already
+  set up" text. Note the serial log's `[installer] hdmi:` lines either way. The
+  unit test proves `/init`'s handling of `itsalive`'s answers, not the answers.
   **Done when:** matrix logged in `docs/testlogs/p5-uboot.md`.
   *(The built-U-Boot hardware matrix and the brick-recovery drill moved to
   [`docs/uboot-tasks.md`](docs/uboot-tasks.md) U6, which gates them behind a measured

@@ -1,0 +1,64 @@
+# THE FIRST LINE BELOW IS NOT THE HASH OF THE GITHUB TARBALL. Read this before
+# "correcting" it against https://github.com/mcfbytes/ItsAlive_MiSTer.
+#
+# itsalive is a cargo-package, so Buildroot sets
+#   ITSALIVE_DOWNLOAD_POST_PROCESS = cargo    (package/pkg-cargo.mk)
+# which means the file that lands in $(BR2_DL_DIR)/itsalive/ -- and therefore
+# the only file whose hash is ever checked -- is NOT what GitHub served.
+# Buildroot downloads the commit archive, runs support/download/
+# cargo-post-process on it (`cargo vendor` into VENDOR/, a rewritten
+# .cargo/config.toml pointing at it -- ~1.5 MB for the one dependency, the
+# `libc` crate), and repacks the result DETERMINISTICALLY via mk_tar_gz in
+# support/download/helpers -- POSIX format, sorted file list, fixed mtime,
+# --owner=0 --group=0, gzip -6 -n. The output is itsalive-<sha>-cargo6.tar.gz;
+# "-cargo6" is BR_FMT_VERSION_cargo in Buildroot's package/pkg-download.mk, the
+# post-process FORMAT version, and a Buildroot bump can move it (then this
+# line's filename must follow, with a re-derived value). The intermediate
+# GitHub archive is never hashed at all. Same situation as package/azcopy's
+# -go2 tarball; that file's header is the long form of this one.
+#
+# So the hash is "locally computed" in a stronger sense than usual -- it
+# certifies the vendored dependency set (Cargo.lock: libc) as much as the
+# itsalive sources, and it cannot be derived by fetching a URL.
+# BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in configs/mister_installer_defconfig is
+# what makes it load-bearing rather than decorative: without it a filename
+# with no line here is only WARNED about.
+#
+# HOW TO REGENERATE IT ON A VERSION BUMP. Nothing automated does this today:
+# renovate-hash-sync.yml has no cargo analogue of azcopy's case 7, so a
+# Renovate bump of ITSALIVE_VERSION carries the needs-manual-hash label and
+# stays red at lint.yml's "itsalive version/hash pin consistency" step until
+# these lines are refreshed by hand. NEVER add itsalive to that workflow's
+# HASH_SYNC_PACKAGES: the generic loop's `curl | sha256sum` would write the
+# hash of the pre-vendoring archive -- a plausible-looking wrong value.
+#
+#     # 1. bump ITSALIVE_VERSION in itsalive.mk, then, from the repo root:
+#     make mister_installer_defconfig O=output-installer
+#     make O=output-installer itsalive-source
+#     #    On a warm tree this is a minute (host-rust-bin is a download, not a
+#     #    build; `cargo vendor` fetches one crate). On a cold tree it first
+#     #    builds the cross toolchain, because host-rustc depends on it.
+#     #    EXPECTED TO FAIL, on the missing/stale hash below:
+#     #      ERROR: No hash found for itsalive-<sha>-cargo6.tar.gz     (new name)
+#     #    or
+#     #      ERROR: itsalive-<sha>-cargo6.tar.gz has wrong sha256 hash:
+#     #      ERROR: expected: <the stale value>
+#     #      ERROR: got     : <THE VALUE YOU WANT>
+#     # 2. In the "No hash found" case the file survives in dl/itsalive/ and
+#     #    `sha256sum dl/itsalive/itsalive-<sha>-cargo6.tar.gz` is the value;
+#     #    in the "wrong hash" case Buildroot DELETES the file and the error
+#     #    message is the only place the value survives. Paste it, update the
+#     #    filename on the line, re-run step 1 and this time it must pass.
+#     # 3. Re-check LICENSE (upstream can relicense; the download check never
+#     #    looks at licence lines, only `make legal-info` does):
+#     tar -xzOf dl/itsalive/itsalive-<sha>-cargo6.tar.gz itsalive-<sha>/LICENSE | sha256sum
+#
+# First derived 2026-09-21 on the first build of the package, with Buildroot
+# 2026.08 and host-rust-bin 1.97.1. That build also measured what itsalive.mk's
+# point 2 claims: `file` on the installed binary reports "ELF 32-bit LSB
+# executable, ARM, EABI5 ... statically linked, stripped", 444,964 bytes.
+sha256  29941ab81ae2fd75cd5d7696937841165f7586ce5b8ef93c588b51564f1825e8  itsalive-ac13a064672e0408f2ad1055d64f60ec726deffb-cargo6.tar.gz
+# LICENSE at the tree root: the GPL-3.0 text. Unaffected by the vendoring
+# above, so unlike the tarball this IS an ordinary `sha256sum` of a file you
+# can fetch and check.
+sha256  e57f1c320b8cf8798a7d2ff83a6f9e06a33a03585f6e065fea97f1d86db84052  LICENSE

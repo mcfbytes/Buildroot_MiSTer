@@ -1,0 +1,42 @@
+config BR2_PACKAGE_ITSALIVE
+	bool "itsalive"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_RUSTC
+	help
+	  Brings up HDMI and the Linux framebuffer on a MiSTer without
+	  Main_MiSTer running: programs the video PLL, the timings and
+	  the ADV7513 over the fabric mailbox and i2c, then points the
+	  fabric's frame reader at /dev/fb0 -- the same register
+	  sequences Main_MiSTer runs, transcribed from it, needing only
+	  the menu.rbf U-Boot has already loaded.
+
+	  Its job in this tree is the SD-card installer's first-boot
+	  splash (ADR 0020 section 9, issue #185): for the minute the
+	  card is being reformatted the board otherwise shows nothing on
+	  HDMI, and a first-time user reaches for the power switch at
+	  exactly the moment that bricks the card. `itsalive up` then
+	  `itsalive image` put "installing, do not power off" on screen.
+	  It is also a rescue tool: a shell on a MiSTer with a core
+	  loaded gets a screen back with two commands.
+
+	  About 400 KB static; it is the only Rust package in this tree
+	  and pulls host-rustc (a prebuilt download, not a compile) into
+	  whichever configuration selects it. Today that is
+	  configs/mister_installer_defconfig only. Never run it while
+	  Main_MiSTer is up: two writers on the mailbox corrupt each
+	  other.
+
+	  https://github.com/mcfbytes/ItsAlive_MiSTer
+
+# Rust's target-arch gate has one clause that is easy to trip on a musl
+# configuration: BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS `depends on
+# BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL` (package/rustc/
+# Config.in.host). With an internal toolchain BR2_INSTALL_LIBSTDCPP is not
+# user-settable -- BR2_TOOLCHAIN_BUILDROOT_CXX selects it, and a defconfig line
+# for the former is silently dropped -- so the installer defconfig sets the
+# latter, for exactly this reason: nothing in that cpio links libstdc++. This
+# comment names the knob so the next musl configuration does not have to
+# rediscover it.
+comment "itsalive needs a Rust-supported toolchain (on musl: BR2_TOOLCHAIN_BUILDROOT_CXX=y)"
+	depends on BR2_arm
+	depends on !BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS

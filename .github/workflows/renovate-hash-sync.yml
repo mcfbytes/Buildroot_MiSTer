@@ -174,6 +174,15 @@ on:
       # HASH_SYNC_PACKAGES below (case 1's curl-and-hash method would write a
       # confidently wrong value for a golang-package -- see the header).
       - "package/azcopy/azcopy.mk"
+      # itsalive (the SD-card installer's HDMI splash tool, ADR 0020 §9) is
+      # DELIBERATELY IN NEITHER LIST. It is a cargo-package, so the hashed
+      # artifact is the post-`cargo vendor` itsalive-<sha>-cargoN.tar.gz and
+      # case 1's curl-and-hash method would write a confidently wrong value,
+      # exactly as for azcopy -- but unlike azcopy it has no rebuild case of
+      # its own yet. Its bump PRs carry needs-manual-hash and fail closed at
+      # lint.yml's "itsalive version/hash pin consistency" step until a human
+      # runs package/itsalive/itsalive.hash's recipe. If a cargo analogue of
+      # case 7 is ever written, add the .mk HERE (and only here) then.
       # dualsensectl (DualSense operator CLI). Ordinary github tag-archive pin,
       # covered by the generic loop in step 1. Same both-lists-or-silent-failure
       # note as rtl8852cu-morrownr above: it must appear HERE and in

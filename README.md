@@ -666,7 +666,7 @@ shipped **byte-identical to stock's**, fetched by hash.
 
 ```
 Makefile                 thin wrapper (~100 lines): fetches + hash-verifies Buildroot, forwards everything else
-Config.in / external.mk  BR2_EXTERNAL definition for the 18 in-tree packages
+Config.in / external.mk  BR2_EXTERNAL definition for the 19 in-tree packages
 configs/                 mister_de10nano_defconfig  (the DE10-Nano image -- Buildroot's own minimal form)
                          mister_de25nano_defconfig  (the DE25-Nano developer OS, aarch64)
                          mister_installer_defconfig (SD-card installer cpio)
@@ -686,7 +686,10 @@ board/mister/de10nano/
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups
   post-image.sh          linux.img assembly + contract checks
-package/                 23 packages: Wi-Fi/controller drivers, libchdr, lzma-sdk, rcheevos, midilink, munt…
+  installer-overlay/     the SD-card installer's /init (ADR 0020)
+  installer-splash/      its HDMI splash artwork (MiSTer Kun; PNGs + build.py + png2raw.py)
+  installer-post-build.sh  renders that artwork into the installer cpio at build time
+package/                 24 packages: Wi-Fi/controller drivers, libchdr, lzma-sdk, rcheevos, midilink, munt…
 scripts/                 the verification suite, hash-sync, SD-card builder, kernel export
 docs/                    ADRs, parity audits, the kernel reconciliation, user docs
 .github/                 9 workflows + 4 composite actions
@@ -1094,3 +1097,4 @@ behind the gate.
 - **Repository code** (Buildroot external tree, scripts, overlays) — **GPLv3**, see [`LICENSE`](LICENSE)
 - **Kernel patches** (`board/mister/de10nano/linux-patches*/`) — **GPLv2**, because they modify the Linux kernel
 - **Packages** in `package/` — inherit their upstream licenses (GPLv2, BSD, MIT, …); the `legal-info` artifact in each release is the complete, authoritative SBOM
+- **MiSTer Kun artwork** (`board/mister/de10nano/installer-splash/`, the SD-card installer's HDMI splash) — the mascot created by GitHub user **HeWhoisRed** as a gift to the MiSTer community, remastered in 8-bit form by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun); free to use and remix with attribution appreciated, see `installer-splash/upstream/LICENSE`. Not GPLv3 — the composition script around it is

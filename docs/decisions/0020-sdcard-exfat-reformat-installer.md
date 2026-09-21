@@ -238,6 +238,12 @@ release build.
 
 ## 6. First-boot feedback: a console UI plus one LED, deliberately not a picture
 
+> **Amended by §9 (2026-09-21).** The picture this section rejects is now drawn, by a
+> different means than the one rejected here: §7 supplied the bitstream and `itsalive`
+> replaced the Main_MiSTer dependency in blocker 2. Blockers 1–3 below are kept as written
+> because §9 stands on them; the console UI and the LED are unchanged and remain the
+> fallback for every board on which the picture cannot come up.
+
 The install below takes tens of seconds on a board that, during those seconds, looks
 completely dead — no HDMI picture, no menu, and no output at all unless a serial adapter
 is attached. The failure mode this invites is a user concluding the board has hung and
@@ -342,13 +348,14 @@ kernel still loaded and the install still worked.)
   while `check-sdcard.sh`'s inventory contract still gates the shipped article.
 
 **What this does and does not buy.** It gets the fabric configured and HDMI synced, and it
-is a precondition for anything else appearing on that output. It does **not** put a picture
-on screen: as §6 blocker 2 records, `/dev/fb0` is only scanned out once **Main_MiSTer**
-programs the frame reader via `/dev/MiSTer_cmd`, and Main_MiSTer cannot run in the
-installer initramfs. Whether the menu core lights the I/O board's Power LED or paints
-anything of its own before Main_MiSTer attaches is **unverified and needs hardware** — it
-is the specific question P5.4 should answer, because it determines whether a custom
-bitstream (§6's rejected option) has any remaining justification.
+is a precondition for anything else appearing on that output. On its own it does **not**
+put a picture on screen: as §6 blocker 2 records, `/dev/fb0` is only scanned out once
+something programs the frame reader, which at the time this section was written meant
+**Main_MiSTer** via `/dev/MiSTer_cmd`, and Main_MiSTer cannot run in the installer
+initramfs. §9 is what closes that gap, and it needs exactly this file in exactly this
+place. Whether the menu core lights the I/O board's Power LED or paints anything of its
+own before anything attaches remains unverified; it is no longer load-bearing, because
+§9 paints over whatever the core shows.
 
 ## 8. The install is reordered so the card is recoverable in seconds, not at the end
 
@@ -530,10 +537,119 @@ at is a branch nothing tests. `bootloader` and `recoverable` pin the two ends of
 window in §8.3.1, `payload-partial` and `payload-copied` the two halves of the copy-back,
 and `expanded` the guard re-key in §8.4.
 
-**Still open on #185, unchanged by this section:** a user with a fully-enclosed case and
-no serial adapter still cannot see that the board is working. The five directions that
-issue lists are all still on the table. What changed is only that pulling the power now
-costs a re-run instead of a card.
+**Still open on #185 after this section, closed by §9:** a user with a fully-enclosed case
+and no serial adapter still could not see that the board was working. What this section
+changed is only that pulling the power costs a re-run instead of a card; §9 is what gives
+that user something to look at.
+
+## 9. The HDMI splash: `itsalive` paints the picture §6 said we could not
+
+**Status: implemented 2026-09-21 (PR pending); the on-hardware run of the *installer*
+with the picture is still owed** — the tool itself was verified on a DE10-Nano, the
+integration has so far been proven only by the unit test in §9.4.
+
+### 9.1 What changed since §6
+
+§6 listed three blockers and rejected the only fix it could see — shipping mr-fusion's
+stack. Two of the three have since fallen without shipping anything of the kind:
+
+1. **The bitstream.** §7 put `menu.rbf` at the FAT root, so U-Boot configures the fabric
+   before Linux starts and the ADV7513 has a pixel clock. That was done for a different
+   reason (a plain defect), and its "what this does not buy" paragraph correctly noted that
+   it left the screen blank.
+2. **The frame reader.** [`ItsAlive_MiSTer`](https://github.com/mcfbytes/ItsAlive_MiSTer)
+   (`package/itsalive`) is a small static Rust tool that performs, without Main_MiSTer,
+   the register sequences Main performs to light HDMI: the video PLL and timing writes
+   over the fabric mailbox, the ADV7513 initialisation over I²C, then `UIO_SET_FBUF` to
+   point the frame reader at `/dev/fb0`. It is a transcription of Main_MiSTer's own code
+   paths against the menu core, and it was brought up on a DE10-Nano with no Main on the
+   card on 2026-09-21 (`docs/testlogs/2026-09-21-rig-first-light.md` in that repository).
+   With it, blocker 2 is one command: `itsalive up`.
+3. **The console.** Still `ttyS0` only, and irrelevant: the picture is blitted straight
+   into `/dev/fb0` (`itsalive image`), and the few lines of text the terminal states show
+   go to `/dev/tty1` (`itsalive say`), which fbcon paints regardless of `console=`.
+
+Nothing §6 rejected was adopted: same stock `uboot.img`, same DTB, no second bitstream,
++445 KB of static binary and +33 KB of compressed artwork in the RAM-resident cpio, and
+nothing at all on the shipped card beyond what §7 already put there.
+
+### 9.2 Decision
+
+**`/init` brings the screen up and paints a full-screen "installing, do not power off"
+picture as its first act after parsing the kernel command line, and replaces it with a few
+lines of text in the three terminal states.** Concretely (`installer-overlay/init`, the
+`HDMI splash` functions inside the `SPLASH SECTION`):
+
+- `itsalive probe` (writes nothing; its per-finding diagnostics are what a serial user
+  needs when the screen stays dark) → `itsalive up --mode 720p` → fbcon's cursor blink
+  off → `zcat splash-1280x720.raw.gz | itsalive image -`. Every call is bracketed by
+  BusyBox `timeout`; every exit status is logged and nothing else.
+- The picture goes up **before** the copy-to-RAM, i.e. seconds after power-on and long
+  before §8's commit phase. It is not progress; it is the one message that matters
+  ("wait, do not power off, it reboots itself"), and it stays until the reboot. Progress
+  is deliberately **not** mirrored to the screen: the console UI and a blit fight over the
+  same pixels, and §6's console UI already serves the user who can see progress.
+- `splash_fail`, `splash_halt_ok` and `splash_done` clear the picture and say what
+  happened (`itsalive say --clear …`), because an "installing" picture that outlives the
+  install tells a user with no serial cable to keep waiting for a board that has stopped.
+- **One knob:** `mister_installer_video=480p` on the kernel command line (reachable via
+  `linux/u-boot.txt`'s `$v` on the shipped card, `docs/user/sdcard-flashing.md`) selects
+  `--mode 480p` and the 640×480 frame, for a sink that will not take 720p. Any other value
+  is logged and ignored.
+- **The artwork** is MiSTer Kun (HeWhoisRed's mascot, baxysquare's 8-bit remaster; its
+  own permissive terms, credited in `README.md`'s licence layering), composed by
+  `board/mister/de10nano/installer-splash/build.py` into two committed PNGs (one per
+  mode), which `installer-post-build.sh` converts at build time into the gzipped raw
+  BGRX8888 frames the tool blits (it neither decodes nor scales), via a dependency-free
+  Python converter — so no derived binary lives in git next to its source. Both frames
+  go into the cpio (under 20 KB each) rather than choosing at build time.
+
+### 9.3 The hard rule, extended
+
+§6's rule — **a splash must never be able to fail an install** — now covers a tool that
+talks to the fabric over a mailbox and to the ADV7513 over I²C, i.e. one with far more
+ways to wedge than a `printf`. So, in addition to "no `set -e`, every path guarded":
+
+- The binary is **probed for**, never assumed: a config without `BR2_PACKAGE_ITSALIVE`
+  logs one line and carries on.
+- **Every invocation runs under `timeout`** (`CONFIG_TIMEOUT`, the one applet this
+  section adds; costed in `installer-busybox.config`'s header). `itsalive` bounds its own
+  mailbox wait (exit 11); the bracket is the belt for the failure it did not foresee, such
+  as a driver that never returns from an ioctl. `/init` reaches the binary through one
+  wrapper, and the timeout lives there.
+- **Exit statuses are logged, never acted on** beyond "try the next call or stop". Exit
+  10 (no bitstream — QEMU, or a card whose `menu.rbf` went missing) is expected and
+  routine; so is a hang cut short at 124.
+- The text fallbacks (`say`) are no-ops until `up` has succeeded, because before that
+  `/dev/tty1` is a console nothing is scanning out.
+
+### 9.4 How it is tested
+
+`scripts/test-installer-splash.sh` (§8.6's unit test, extended) replaces the binary with a
+**recording stub** whose exit status per subcommand the test sets, and asserts what
+`/init` did with each answer: absent binary, `probe` exit 10, `up` failing, `up`
+*hanging* (the timeout is cut to a second and the test asserts `init` returned with 124 in
+the log), the happy path (call order, the decompressed frame's byte count reaching the
+tool, cursor blink off), the 480p knob selecting both the mode and the other frame, a
+missing or refused frame degrading to text, and each terminal state clearing the picture
+exactly once. It proves `/init`'s handling of the tool's answers, not the answers — that
+the stub's exit codes are the real tool's is fixed by the tool's own documentation and the
+rig session above, and the picture actually appearing during an install is P5.4's to
+confirm.
+
+### 9.5 What it costs and what it does not do
+
+- A Rust toolchain in the installer build (`host-rust-bin`: a ~200 MB prebuilt download,
+  no compile) and C++ in the installer's musl toolchain (`BR2_TOOLCHAIN_BUILDROOT_CXX`),
+  which Buildroot's Rust support requires on musl and nothing in the cpio links. Build
+  time, not image bytes. `package/itsalive` is the first cargo-package in this tree; its
+  `.hash` is of the post-`cargo vendor` tarball and is **not** auto-refreshed (no cargo
+  analogue of `renovate-hash-sync.yml`'s case 7 yet) — a bump fails closed at `lint.yml`
+  until a human runs the recipe in that file, the posture `azcopy` had before 2026-08-28.
+- The picture is not progress, not localised, and not shown on any output but HDMI (the
+  analog/VGA path needs the I/O board's DAC and a scaler mode this tool does not set).
+- A dark screen is still possible — a sink that rejects both modes, an I/O-board-less
+  setup with no HDMI at all — and for it §6's console UI and LED are unchanged.
 
 ## Consequences
 
@@ -555,9 +671,13 @@ costs a re-run instead of a card.
   none of it depends on the DE10-Nano SoC — only on `losetup`/`sfdisk`/`exfatprogs`
   existing on the runner. Real on-hardware boot (unique MAC survives reboot, `update_all`
   completes) stays P5.4, human-gated, exactly as ADR 0017 already scoped it.
-- The first-boot splash (§6) adds **no** new target package, no new applet and no bytes to
-  the shipped card: it is built entirely from shell builtins plus `printf` and `sleep`,
-  both of which the installer BusyBox already ships. That image has no `touch`, `kill`,
+- The first-boot splash's console/LED half (§6) adds **no** new target package, no new
+  applet and no bytes to the shipped card: it is built entirely from shell builtins plus
+  `printf` and `sleep`, both of which the installer BusyBox already ships. **Its HDMI half
+  (§9, 2026-09-21) adds exactly two things:** the `itsalive` package (a static Rust binary,
+  445 KB) plus 33 KB of artwork in the cpio, and the `timeout` applet that brackets every
+  call to it — still nothing on the shipped card beyond §7's `menu.rbf`. The Rust
+  toolchain it pulls into the *installer* build is a prebuilt download, not a compile. That image has no `touch`, `kill`,
   `usleep`, `date`, `seq` or `tr`, and its `sleep` is integer-only
   (`CONFIG_FEATURE_FANCY_SLEEP` is off, so `sleep 0.2` would parse as `0` and busy-spin a
   core) — so the heartbeat child is stopped by **truncating** a flag file with `: >` and

@@ -3,7 +3,7 @@
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
 #
-# Excluded vs the 6.18 set: THREE, and all three are the only kind of exclusion
+# Excluded vs the 6.18 set: FOUR, and all four are the only kind of exclusion
 # that can ever be safe —
 #   0047-btusb-mercusys-ma530-2c4e-0115.patch, which is not fork code at all
 #   but a BACKPORT of mainline ce21a5cf3d1f, whose first release is 7.2. This
@@ -52,8 +52,30 @@
 #   by reverting e97bd4417010) or the 6.18.y pin moves; all three show up as
 #   this patch failing to apply, and the answer then is DELETE, not
 #   re-anchor. See the patch's own RETIRES WHEN block.
-# The beta series therefore carries 36 of the 39 shared patches plus the 4
-# beta-local ones below — 40 entries — so within the carried set the 7.x
+#   0053-exfat-dir-count-readahead-one-page.patch, added 2026-09-21, which
+#   bounds exfat_count_dir_entries()'s read-ahead to one page by giving the
+#   internal dentry reader a max_ra_bytes argument (fork commit ae4cafc03,
+#   PR #106, Nigel Breslaw). It is 0050's neighbour in the same function and
+#   is excluded for the same reason 0050 is: 7.x has neither
+#   exfat_dir_readahead() nor EXFAT_MAX_RA_SIZE. Measured, not assumed: at
+#   -F0 against pristine v7.2.6's fs/exfat/dir.c, "Hunk #1 FAILED at 656.
+#   Hunk #2 FAILED at 690. Hunk #3 FAILED at 707. Hunk #4 succeeded at 664
+#   (offset -52 lines). Hunk #5 succeeded at 1196 (offset -67 lines). 3 out
+#   of 5 hunks FAILED", exit 1. READ THAT CAREFULLY: unlike 0047/0050/0051
+#   this one PARTIALLY applies, and a forced apply would leave the tree with
+#   a public exfat_get_dentry() recursing into itself and a call to an
+#   exfat_get_dentry_ra() that does not exist. -F0 stops the build first,
+#   which is why the exclusion is safe, but this is the one entry on this
+#   list where "just force it" would produce a broken tree rather than a
+#   no-op. A FOURTH distinct reason, too: 7.x is NOT already fixed here —
+#   7.2.6 reads ahead min(sect_per_clus, EXFAT_BLK_RA_SIZE(sb)) on the same
+#   count path (fs/exfat/dir.c:645-658, fatent.c:159-185,
+#   exfat_fs.h:84-86), so the amplification exists there in a different
+#   shape and a 7.x fix would be ORIGINAL code with no fork commit behind
+#   it. Recorded as open in docs/kernel-recon/fork-sync-2026-09-21.md §5
+#   rather than invented. Retires together with 0050.
+# The beta series therefore carries 37 of the 41 shared patches plus the 4
+# beta-local ones below — 41 entries — so within the carried set the 7.x
 # and 6.18 kernels diverge only where an upstream API forced a re-anchor.
 # (0040 and 0041 are NOT exclusions: they were RETIRED from linux-patches/
 # outright on 2026-09-12 -- upstream chose the userspace fix, Main_MiSTer
@@ -235,3 +257,4 @@
 0046-dts-ramoops.patch
 0048-hid-google-stadiaff-classic2usb-retrozord.patch
 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch
+0052-mmc-dw-mmc-socfpga-max-data-timeout.patch

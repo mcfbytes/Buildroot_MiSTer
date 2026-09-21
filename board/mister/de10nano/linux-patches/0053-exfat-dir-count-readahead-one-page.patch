@@ -1,0 +1,180 @@
+From ae4cafc03fdc8ad719d5d528cbbe2a61ce09f44d Mon Sep 17 00:00:00 2001
+From: Nigel Breslaw <nigel.breslaw@slint.dev>
+Date: Thu, 17 Sep 2026 08:36:37 +0300
+Subject: [PATCH 1/1] exfat: limit directory-count read-ahead to one page
+
+Directory counts often stop at an unused entry in the first page. Avoid
+reading up to 128 KiB for this metadata-only scan by allowing the
+internal directory-entry reader to accept a read-ahead limit. Use
+PAGE_SIZE only in exfat_count_dir_entries(). The public
+exfat_get_dentry() interface, its 128 KiB limit, and the existing block
+plugging and sync semantics are preserved.
+
+WHY IT MATTERS HERE
+exfat_count_dir_entries() walks a directory only to count sub-directory
+entries and returns the moment it meets a TYPE_UNUSED entry
+(linux-6.18.52 fs/exfat/dir.c:1242-1284) -- usually inside the FIRST
+page. Every page-aligned entry on that walk goes through
+exfat_get_dentry(), which triggers exfat_dir_readahead() with the
+128 KiB window sized for a real directory read:
+
+    linux-6.18.52 fs/exfat/dir.c:658-666
+        #define EXFAT_MAX_RA_SIZE     (128*1024)
+        static int exfat_dir_readahead(struct super_block *sb, sector_t sec)
+        {
+                ...
+                unsigned int max_ra_count = EXFAT_MAX_RA_SIZE >> sb->s_blocksize_bits;
+                unsigned int page_ra_count = PAGE_SIZE >> sb->s_blocksize_bits;
+                unsigned int adj_ra_count = max(sbi->sect_per_clus, page_ra_count);
+                unsigned int ra_count = min(adj_ra_count, max_ra_count);
+
+On a cold card that is up to 128 KiB of physical reads per counted
+directory, for metadata nobody reads. The MiSTer workload is exactly
+the pathological one -- `update.sh`/Downloader and file-browser catalog
+builds count thousands of directories in a row. PR #106 measures the
+shipped Update All installed-files pass at 77.677 s / 181.2 MB of SD
+reads on stock 6.18 against 26.817 s / 39.5 MB with this patch (5.15
+was 39.006 s / 41.5 MB), and a full third-party catalog build at
+305.545 s / 1436.9 MB against 65.866 s / 72.7 MB.
+
+Provenance
+----------
+Origin:       ae4cafc03fdc8ad719d5d528cbbe2a61ce09f44d
+              "exfat: limit directory-count read-ahead to one page
+              (#106)", MiSTer-devel/Linux-Kernel_MiSTer, branch
+              MiSTer-v6.18, PR #106, 2026-09-17.
+Author:       Nigel Breslaw <nigel.breslaw@slint.dev> (GitHub
+              @NigelBreslaw), Signed-off-by reproduced below.
+Upstream:     ABSENT, and not attributable to any mainline SHA -- the
+              function it parameterises does not exist upstream. `grep -n
+              exfat_dir_readahead fs/exfat/dir.c` returns nothing (exit 1)
+              against the pinned linux-7.2.6 tree: 7.x replaced the whole
+              path with exfat_blk_readahead() in fs/exfat/fatent.c:159-185,
+              called inline from exfat_get_dentry() (7.2.6 dir.c:645-658).
+              This is the same situation 0050 documents, and the same
+              conclusion: fork code, credited to its author, NOT a
+              0047-style mainline backport.
+Depends on:   0050-exfat-dir-readahead-plug.patch. Same function, no hunk
+              overlap: 0050 adds `#include <linux/blkdev.h>` and wraps the
+              sb_breadahead() loop inside `if (!bh || !buffer_uptodate(bh))`
+              in blk_start_plug()/blk_finish_plug(); this patch changes the
+              signature, the max_ra_count initialiser, and the callers.
+              MEASURED identity, not asserted: applying 0050 then this
+              patch to a pristine linux-6.18.52 fs/exfat/dir.c yields a
+              region from `#define EXFAT_MAX_RA_SIZE` to
+              `enum exfat_validate_dentry_mode` that diffs EMPTY against
+              `git show ae4cafc03:fs/exfat/dir.c`. Numbered after 0050
+              accordingly.
+0031 order:   0031-exfat-samsung-symlinks.patch also touches
+              fs/exfat/dir.c, at `@@ -268,8 +268,10 @@ get_new:` and
+              `@@ -396,6 +398,10 @@ static void exfat_set_entry_type` --
+              both far above exfat_dir_readahead(), so the only effect is
+              a line offset on this patch's hunks.
+6.18-ONLY:    Scoped to the 6.18 series, exactly like 0050 and for the
+              same reason: it is deliberately absent from
+              board/mister/de10nano/linux-patches-beta/series and from
+              board/mister/de25nano/linux-patches/. MEASURED against the
+              pinned linux-7.2.6 tree: `patch -p1 -F0 --dry-run` reports
+              "Hunk #1 FAILED at 656. Hunk #2 FAILED at 690. Hunk #3
+              FAILED at 707. Hunk #4 succeeded at 664 (offset -52 lines).
+              Hunk #5 succeeded at 1196 (offset -67 lines). 3 out of 5
+              hunks FAILED", exit 1 -- 7.x has neither
+              exfat_dir_readahead() nor the 128 KiB EXFAT_MAX_RA_SIZE
+              constant to bound. NOTE THE SHAPE, it is worse than 0050's:
+              two hunks would SUCCEED there (the public wrapper, whose
+              context survives the 7.x refactor, and the
+              exfat_count_dir_entries() call site), so a forced apply
+              would leave exfat_get_dentry() calling a nonexistent
+              exfat_get_dentry_ra() and the public wrapper recursing into
+              itself -- a compile error at best. Buildroot's -F0 applier
+              exits 1 and stops the build first, which is the fail-closed
+              behaviour this exclusion relies on. Retires together with
+              0050 the moment the 6.18.y pin leaves 6.18.y.
+7.x IS NOT
+FIXED:        Read this before assuming the 7.x exclusion means 7.x is
+              fine. It is not the 0047 situation (7.x already has the
+              same commit) nor quite the 0050 situation (7.x has
+              mainline's own equivalent). 7.2.6's exfat_get_dentry()
+              reads ahead `ra_count = sect_per_clus`, capped by
+              EXFAT_BLK_RA_SIZE(sb) = min(bdi->ra_pages, bdi->io_pages)
+              -- 128 KiB at the default read_ahead_kb (7.2.6
+              fs/exfat/exfat_fs.h:84-86, fatent.c:159-185, dir.c:645-658)
+              -- and exfat_count_dir_entries() (7.2.6 dir.c:1175-1215)
+              still goes through that same unbounded-for-its-purpose
+              path. So the SAME read amplification exists on 7.x in a
+              different shape. A 7.x fix would be ORIGINAL code, not a
+              re-anchor of this hunk, and therefore has no fork commit to
+              trace to; it is recorded as an open item in
+              docs/kernel-recon/fork-sync-2026-09-21.md rather than
+              invented here.
+Forward-port: None needed on 6.18 -- applied as authored, added lines
+              byte-identical to the fork commit's.
+
+Signed-off-by: Nigel Breslaw <nigel.breslaw@slint.dev>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ fs/exfat/dir.c | 22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+--- a/fs/exfat/dir.c
++++ b/fs/exfat/dir.c
+@@ -656,11 +656,12 @@
+ }
+ 
+ #define EXFAT_MAX_RA_SIZE     (128*1024)
+-static int exfat_dir_readahead(struct super_block *sb, sector_t sec)
++static int exfat_dir_readahead(struct super_block *sb, sector_t sec,
++			       unsigned int max_ra_bytes)
+ {
+ 	struct exfat_sb_info *sbi = EXFAT_SB(sb);
+ 	struct buffer_head *bh;
+-	unsigned int max_ra_count = EXFAT_MAX_RA_SIZE >> sb->s_blocksize_bits;
++	unsigned int max_ra_count = max_ra_bytes >> sb->s_blocksize_bits;
+ 	unsigned int page_ra_count = PAGE_SIZE >> sb->s_blocksize_bits;
+ 	unsigned int adj_ra_count = max(sbi->sect_per_clus, page_ra_count);
+ 	unsigned int ra_count = min(adj_ra_count, max_ra_count);
+@@ -690,8 +691,10 @@
+ 	return 0;
+ }
+ 
+-struct exfat_dentry *exfat_get_dentry(struct super_block *sb,
+-		struct exfat_chain *p_dir, int entry, struct buffer_head **bh)
++static struct exfat_dentry *exfat_get_dentry_ra(struct super_block *sb,
++						struct exfat_chain *p_dir, int entry,
++						struct buffer_head **bh,
++						unsigned int max_ra_bytes)
+ {
+ 	unsigned int dentries_per_page = EXFAT_B_TO_DEN(PAGE_SIZE);
+ 	int off;
+@@ -707,7 +710,7 @@
+ 
+ 	if (p_dir->dir != EXFAT_FREE_CLUSTER &&
+ 			!(entry & (dentries_per_page - 1)))
+-		exfat_dir_readahead(sb, sec);
++		exfat_dir_readahead(sb, sec, max_ra_bytes);
+ 
+ 	*bh = sb_bread(sb, sec);
+ 	if (!*bh)
+@@ -716,6 +719,13 @@
+ 	return (struct exfat_dentry *)((*bh)->b_data + off);
+ }
+ 
++struct exfat_dentry *exfat_get_dentry(struct super_block *sb,
++				      struct exfat_chain *p_dir, int entry,
++				      struct buffer_head **bh)
++{
++	return exfat_get_dentry_ra(sb, p_dir, entry, bh, EXFAT_MAX_RA_SIZE);
++}
++
+ enum exfat_validate_dentry_mode {
+ 	ES_MODE_GET_FILE_ENTRY,
+ 	ES_MODE_GET_STRM_ENTRY,
+@@ -1256,7 +1266,7 @@
+ 
+ 	while (clu.dir != EXFAT_EOF_CLUSTER) {
+ 		for (i = 0; i < dentries_per_clu; i++) {
+-			ep = exfat_get_dentry(sb, &clu, i, &bh);
++			ep = exfat_get_dentry_ra(sb, &clu, i, &bh, PAGE_SIZE);
+ 			if (!ep)
+ 				return -EIO;
+ 			entry_type = exfat_get_entry_type(ep);

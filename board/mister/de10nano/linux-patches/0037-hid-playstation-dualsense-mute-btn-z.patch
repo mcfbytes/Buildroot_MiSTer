@@ -11,6 +11,29 @@ a writable "<hid-dev>:mute" LED class device so userspace owns it. The
 in-kernel toggle is removed (nothing on MiSTer records from the
 controller microphone).
 
+BTN_Z IS DUALSENSE-ONLY, AND THAT IS LOAD-BEARING
+BTN_Z is 0x135, between BTN_WEST (0x134) and BTN_TL (0x136), so
+declaring it shifts every higher gamepad button up one index in the
+device's EV_KEY capability bitmap. Main_MiSTer derives SDL-style `bN`
+indices by walking that bitmap --
+
+    Main_MiSTer gamecontroller_db.cpp:198,207-217
+        void get_ctrl_index_maps(int dev_fd, char *guid, uint16_t *btn_map, ...)
+        ...
+        if (ioctl(dev_fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits) >= 0)
+                for (int i = BTN_JOYSTICK; i < KEY_MAX; i++)
+                        if (test_bit(i, keybits)) { btn_map[btn_cnt] = i; btn_cnt++; }
+
+-- so the shipped gamecontrollerdb.txt "platform:MiSTer" PS5 rows
+(guide:b11, leftshoulder:b5, back:b9, start:b10) are written for the
+BTN_Z-present layout, and the DS4 rows for the BTN_Z-absent one. Declare
+it on the wrong device and that device's whole map slides by one: on a
+DualSense without it, PS/Home acts as Start and L3 opens the OSD; on a
+DualShock 4 with it, Options is read as Guide. Both halves matter, which
+is why the capability is declared per-device rather than by adding
+BTN_Z to the ps_gamepad_buttons[] table that 6.18 shares with
+DualShock 4.
+
 Provenance
 ----------
 Origin:       60e08955fe23c2a1d57834f7dc31860395542e4a
@@ -18,7 +41,7 @@ Origin:       60e08955fe23c2a1d57834f7dc31860395542e4a
               MiSTer-devel/Linux-Kernel_MiSTer, 2021-07-10, against v5.15.
               https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/commit/60e08955fe23c2a1d57834f7dc31860395542e4a
 Author:       Sorgelig <pour.garbage@gmail.com>
-Upstream:     No. v6.18.38 still toggles the mic in-kernel
+Upstream:     No. v6.18.52 still toggles the mic in-kernel
               (hid-playstation.c: last_btn_mic_state) with no BTN_Z and no
               writable mute LED. patch-provenance.md's original Class-C
               "drop" grouping for this commit was the canary
@@ -26,17 +49,64 @@ Upstream:     No. v6.18.38 still toggles the mic in-kernel
               (docs/kernel-recon, sonnet-verified).
 Forward-port: 5.15 -> 6.18.38, Michael C. Ferguson, 2026-07-15, kernel patch
               reconciliation carry decision. BTN_Z capability is declared
-              per-device via input_set_capability() instead of editing the
-              ps_gamepad_buttons[] table, which 6.18 shares with
-              DualShock 4 (the fork's 5.15 table was DualSense-only).
-              Mute-LED handler uses 6.18's scoped_guard locking and
-              dualsense_schedule_work().
+              per-device instead of editing the ps_gamepad_buttons[] table,
+              which 6.18 shares with DualShock 4 (the fork's 5.15 table was
+              DualSense-only). Mute-LED handler uses 6.18's scoped_guard
+              locking and dualsense_schedule_work().
+Realigned:    2026-09-21, fork-sync increment (docs/kernel-recon/
+              fork-sync-2026-09-21.md; record
+              docs/kernel-recon/records/0b2ffdd1d13b3a1b92b6732ed04366e06866ea33.json).
+              The fork hit the DualShock-4 half of the problem above and
+              fixed it in 0b2ffdd1d ("HID: playstation: restrict mute
+              button capability to DualSense (#107)", PR #107, Porkchop
+              Express) -- arriving at this patch's per-device conclusion
+              from the opposite direction, after shipping the shared-table
+              form since its 6.18 port. This patch's declaration was moved
+              to the shape that merged there: a `bool has_mute_button`
+              parameter on ps_gamepad_create(), true for DualSense and
+              false for DualShock 4.
+              WHY IT IS NOT COSMETIC. The previous form called
+              input_set_capability() on ds->gamepad AFTER
+              ps_gamepad_create() returned -- i.e. after that function's
+              own input_register_device() (linux-6.18.52
+              drivers/hid/hid-playstation.c:783). evdev reads the bitmap
+              live at EVIOCGBIT, so Main_MiSTer was unaffected and the
+              hardware verification of the old form still stands; joydev
+              does NOT. joydev_connect() snapshots dev->keybit into its
+              keymap/keypam when the handler attaches, which happens
+              inside input_register_device() (6.18.52
+              drivers/input/joydev.c, `for (i = BTN_JOYSTICK - BTN_MISC;
+              i < KEY_MAX - BTN_MISC + 1; i++) if (test_bit(i + BTN_MISC,
+              dev->keybit))`), so with the old ordering /dev/input/jsN on
+              a DualSense reported 13 buttons and no BTN_Z where stock
+              5.15 reported 14. CONFIG_INPUT_JOYDEV=y
+              (board/mister/de10nano/linux.config:344), so that interface
+              ships. Declaring the capability before registration closes
+              it.
+              MEASURED identity: with this patch applied to a pristine
+              linux-6.18.52 tree, ps_gamepad_create() and
+              ps_gamepad_buttons[] diff EMPTY against
+              `git show 0b2ffdd1d:drivers/hid/hid-playstation.c`, and both
+              call sites match. The EV_KEY bitmap is unchanged on every
+              pad -- DualSense keeps BTN_Z, DualShock 4 never had it here
+              -- so no gamecontrollerdb `bN` index moves for any device.
+KEEP IN
+LOCKSTEP:     board/mister/de10nano/linux-patches-beta/0037-*.patch is a
+              7.x-re-anchored copy of this file (7.x inserts the DualSense
+              Edge paddle blocks at two of these anchors) and
+              board/mister/de25nano/linux-patches/0037-*.patch symlinks to
+              that copy. The added lines are byte-identical between the
+              two; edit both or neither.
+
+Signed-off-by: Sorgelig <pour.garbage@gmail.com>
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
-diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
-index 3c2e9b8116ae..a4e92b2140ed 100644
+ drivers/hid/hid-playstation.c | 64 +++++++++++++++++++++++++-----------
+ 1 file changed, 43 insertions(+), 21 deletions(-)
+
 --- a/drivers/hid/hid-playstation.c
 +++ b/drivers/hid/hid-playstation.c
-@@ -211,7 +211,7 @@ struct dualsense {
+@@ -211,7 +211,7 @@
  	/* Microphone */
  	bool update_mic_mute;
  	bool mic_muted;
@@ -45,7 +115,27 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  
  	/* Player leds */
  	bool update_player_leds;
-@@ -1404,7 +1404,6 @@ static int dualsense_parse_report(struct ps_device *ps_dev, struct hid_report *r
+@@ -742,7 +742,7 @@
+ }
+ 
+ static struct input_dev *
+-ps_gamepad_create(struct hid_device *hdev,
++ps_gamepad_create(struct hid_device *hdev, bool has_mute_button,
+ 		  int (*play_effect)(struct input_dev *, void *, struct ff_effect *))
+ {
+ 	struct input_dev *gamepad;
+@@ -771,6 +771,10 @@
+ 	for (i = 0; i < ARRAY_SIZE(ps_gamepad_buttons); i++)
+ 		input_set_capability(gamepad, EV_KEY, ps_gamepad_buttons[i]);
+ 
++	/* The microphone mute button exists only on DualSense. */
++	if (has_mute_button)
++		input_set_capability(gamepad, EV_KEY, BTN_Z);
++
+ #if IS_ENABLED(CONFIG_PLAYSTATION_FF)
+ 	if (play_effect) {
+ 		input_set_capability(gamepad, EV_FF, FF_RUMBLE);
+@@ -1404,7 +1408,6 @@
  	u8 battery_data, battery_capacity, charging_status, value;
  	int battery_status;
  	u32 sensor_timestamp;
@@ -53,7 +143,7 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  	int i;
  
  	/*
-@@ -1457,24 +1456,14 @@ static int dualsense_parse_report(struct ps_device *ps_dev, struct hid_report *r
+@@ -1457,24 +1460,14 @@
  	input_report_key(ds->gamepad, BTN_THUMBL, ds_report->buttons[1] & DS_BUTTONS1_L3);
  	input_report_key(ds->gamepad, BTN_THUMBR, ds_report->buttons[1] & DS_BUTTONS1_R3);
  	input_report_key(ds->gamepad, BTN_MODE,   ds_report->buttons[2] & DS_BUTTONS2_PS_HOME);
@@ -84,7 +174,7 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  
  	/*
  	 * Parse HP/MIC plugged state data for USB use case, since Bluetooth
-@@ -1699,6 +1688,20 @@ static int dualsense_player_id_led_set_brightness(struct led_classdev *led,
+@@ -1699,6 +1692,20 @@
  	return 0;
  }
  
@@ -105,17 +195,16 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  static struct ps_device *dualsense_create(struct hid_device *hdev)
  {
  	struct dualsense *ds;
-@@ -1775,6 +1778,9 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
- 		ret = PTR_ERR(ds->gamepad);
+@@ -1770,7 +1777,7 @@
  		goto err;
  	}
-+
-+	/* Extra mappable button: mic-mute reported as BTN_Z (stock MiSTer). */
-+	input_set_capability(ds->gamepad, EV_KEY, BTN_Z);
- 	/* Use gamepad input device name as primary device name for e.g. LEDs */
- 	ps_dev->input_dev_name = dev_name(&ds->gamepad->dev);
  
-@@ -1839,6 +1845,21 @@ static struct ps_device *dualsense_create(struct hid_device *hdev)
+-	ds->gamepad = ps_gamepad_create(hdev, dualsense_play_effect);
++	ds->gamepad = ps_gamepad_create(hdev, true, dualsense_play_effect);
+ 	if (IS_ERR(ds->gamepad)) {
+ 		ret = PTR_ERR(ds->gamepad);
+ 		goto err;
+@@ -1839,6 +1846,21 @@
  	if (ret)
  		goto err;
  
@@ -137,3 +226,12 @@ index 3c2e9b8116ae..a4e92b2140ed 100644
  	ret = ps_device_set_player_id(ps_dev);
  	if (ret) {
  		hid_err(hdev, "Failed to assign player id for DualSense: %d\n", ret);
+@@ -2762,7 +2784,7 @@
+ 		hid_warn(hdev, "Gyroscope and accelerometer will be inaccurate.\n");
+ 	}
+ 
+-	ds4->gamepad = ps_gamepad_create(hdev, dualshock4_play_effect);
++	ds4->gamepad = ps_gamepad_create(hdev, false, dualshock4_play_effect);
+ 	if (IS_ERR(ds4->gamepad)) {
+ 		ret = PTR_ERR(ds4->gamepad);
+ 		goto err;

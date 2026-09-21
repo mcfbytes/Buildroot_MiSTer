@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-09-15 01:30 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-09-21 07:07 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -36,11 +36,11 @@ Generated 2026-09-15 01:30 UTC. VID:PID → commits and dispositions (how each d
 | `046d:ca03` | `8a100f2ed` (dropped-deliberate) |
 | `04bb:0953` | `2371fb1aa` (dropped-obsolete) |
 | `04ca:8602` | `143ce187e` (dropped-deliberate) |
-| `054c:05c4` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
-| `054c:09cc` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
+| `054c:05c4` | `0b2ffdd1d` (carried), `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
+| `054c:09cc` | `0b2ffdd1d` (carried), `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
 | `054c:0ba0` | `52a56ae3d` (carried), `5c410e935` (carried), `1412bd707` (dropped-upstream) |
-| `054c:0ce6` | `52a56ae3d` (carried), `60e08955f` (carried), `b76b4bc6a` (carried), `f84543926` (carried), `0d60c3482` (dropped-upstream) |
-| `054c:0df2` | `60e08955f` (carried), `b76b4bc6a` (carried), `0d60c3482` (dropped-upstream) |
+| `054c:0ce6` | `0b2ffdd1d` (carried), `52a56ae3d` (carried), `60e08955f` (carried), `b76b4bc6a` (carried), `f84543926` (carried), `0d60c3482` (dropped-upstream) |
+| `054c:0df2` | `0b2ffdd1d` (carried), `60e08955f` (carried), `b76b4bc6a` (carried), `0d60c3482` (dropped-upstream) |
 | `056e:4007` | `2371fb1aa` (dropped-obsolete) |
 | `056e:4008` | `0d8641a2b` (dropped-deliberate) |
 | `056e:400e` | `2371fb1aa` (dropped-obsolete) |

@@ -1,0 +1,67 @@
+{
+  "sha": "0b2ffdd1d13b3a1b92b6732ed04366e06866ea33",
+  "subject": "HID: playstation: restrict mute button capability to DualSense (#107)",
+  "author": "Porkchop Express",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-17",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-playstation.c"
+  ],
+  "added": 7,
+  "removed": 4,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0037-hid-playstation-dualsense-mute-btn-z.patch",
+  "carried_mode": "already-carried",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/hid/hid-playstation.c:554-567 (linux-6.18.52) and :563-576 (linux-7.2.6) -- ps_gamepad_buttons[], which in vanilla has no BTN_Z at all",
+    "vanilla_quote": "static const int ps_gamepad_buttons[] = {\n\tBTN_WEST, /* Square */\n\tBTN_NORTH, /* Triangle */\n\tBTN_EAST, /* Circle */\n\tBTN_SOUTH, /* Cross */\n\tBTN_TL, /* L1 */\n\tBTN_TR, /* R1 */\n\tBTN_TL2, /* L2 */\n\tBTN_TR2, /* R2 */\n\tBTN_SELECT, /* Create (PS5) / Share (PS4) */\n\tBTN_START, /* Option */\n\tBTN_THUMBL, /* L3 */\n\tBTN_THUMBR, /* R3 */\n\tBTN_MODE, /* PS Home */\n};",
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "The 5.15 origin of the BTN_Z behaviour is 60e08955fe23c2a1d57834f7dc31860395542e4a ('dualsense: give mute button and led to system.'), the commit docs/patch-provenance.md originally grouped as a Class-C drop -- the canary misclassification that motivated the whole kernel-recon campaign. It is carried as 0037. See also docs/kernel-recon/disagreements-with-provenance.md.",
+  "impact": {
+    "effect_if_absent": "On the FORK's tree, absent: DualShock 4 advertises BTN_Z, a button it does not have. BTN_Z is 0x135, between BTN_WEST (0x134) and BTN_TL (0x136), so it shifts every higher gamepad button up one index in the EV_KEY bitmap that Main_MiSTer walks to resolve gamecontrollerdb 'bN' names -- the DS4 rows, written for the BTN_Z-absent layout, then resolve one button low and Options is read as Guide (the fork's issue #101). On OUR image, no effect whatsoever: 0037 has declared BTN_Z per-device since the 2026-07-15 forward-port and has never put it in the shared table, so DualShock 4 here never advertised it. The fork reached this repo's conclusion two months later and from the opposite direction.",
+    "affected_hardware": [
+      "Sony DualShock 4 (054c:05c4 / 054c:09cc, hid-playstation)",
+      "Sony DualSense (054c:0ce6)",
+      "Sony DualSense Edge (054c:0df2)"
+    ],
+    "device_ids": [
+      "054c:05c4",
+      "054c:09cc",
+      "054c:0ce6",
+      "054c:0df2"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "gamecontrollerdb 'bN' button indices, derived by userspace as an ascending ordinal over the device's EV_KEY bitmap, so any added or removed EV_KEY capability renumbers every button from that code onward. Second, narrower interface: /dev/input/jsN's button map, which the kernel snapshots once at handler-attach time rather than reading live.",
+    "main_mister_ref": "gamecontroller_db.cpp:198 `void get_ctrl_index_maps(int dev_fd, char *guid, uint16_t *btn_map, uint16_t *abs_map)`, :207-217 -- `ioctl(dev_fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits)` then `for (int i = BTN_JOYSTICK; i < KEY_MAX; i++) if (test_bit(i, keybits)) { btn_map[btn_cnt] = i; btn_cnt++; }`; call sites gamecontroller_db.cpp:278, :378 and input.cpp:7626. Re-grepped in /mnt/source/Main_MiSTer for this record, not copied from 0037's header. EVIOCGBIT reads dev->keybit LIVE, which is why the pre-realignment 0037 worked for Main_MiSTer at all."
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none as a carry -- the content is already in 0037 in all three series (de10nano, a 7.x-re-anchored beta copy, and the de25nano symlink to that copy). 0037 WAS EDITED this increment to adopt the merged SHAPE (see notes): the resulting patch applies at -F0 with zero offset on both pinned trees, and full-series replays are 41/41 on 6.18.52, 41/41 on the beta series on 7.2.6 and 34/34 on the de25nano series on 7.2.6, offsets only, zero fuzz, zero rejects."
+  },
+  "dependencies": {
+    "depends_on": [
+      "60e08955fe23c2a1d57834f7dc31860395542e4a"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (drivers/hid/hid-playstation.c). Author Porkchop Express <51079966+misteraddons@users.noreply.github.com>, GitHub @misteraddons -- the same contributor as 41c45f378 (0048). THE COMMIT CARRIES NO Signed-off-by: neither the merged fork commit nor the PR #107 head has one, so there is no DCO chain to reproduce and 0037 does not claim one. That is why the merged shape is adopted into 0037 (which carries Sorgelig's and the carrier's sign-offs for the 5.15 origin) rather than added as a separate patch attributed to this commit: a new patch file would have to state an authorship trail that does not exist upstream. Same class of gap as 0049's Co-authored-by, recorded rather than papered over.",
+  "notes": "THE FORK CONVERGED ON A CONCLUSION THIS REPO REACHED FIRST, AND THAT IS THE HEADLINE. 0037's header has said since 2026-07-15 that BTN_Z is declared 'per-device via input_set_capability() instead of editing the ps_gamepad_buttons[] table, which 6.18 shares with DualShock 4 (the fork's 5.15 table was DualSense-only)'. The fork's own 6.18 port did edit the shared table, shipped that, and hit exactly the DS4 renumbering that sentence predicted -- fork issue #101, fixed by this commit. The direction is neither inbound nor outbound: nobody sent anything. It is independent agreement, and the value of the row is the confirmation that the 2026-07 reasoning was right on hardware somebody else owns ('DS4 Options acts as Start, and the PS button correctly opens the OSD', per the commit message).\n\nNO ORDINAL MOVES ON ANY PAD, MEASURED. Adopting this commit's shape changes which line of C declares BTN_Z, not which devices have it. Before and after, on our image: DualShock 4 = vanilla's 13 codes, no BTN_Z; DualSense and DualSense Edge = those 13 plus BTN_Z. With the full series applied to pristine 6.18.52, ps_gamepad_buttons[] diffs EMPTY against `git show 0b2ffdd1d:drivers/hid/hid-playstation.c` and so does ps_gamepad_create(), in the 6.18 tree and in both 7.2.6 trees. So no gamecontrollerdb row, .map file or bN index changes for any device, and no owner decision is required on that axis. For the record, the DualSense layout this preserves is: BTN_SOUTH b0, BTN_EAST b1, BTN_NORTH b2, BTN_WEST b3, BTN_Z b4, BTN_TL b5, BTN_TR b6, BTN_TL2 b7, BTN_TR2 b8, BTN_SELECT b9, BTN_START b10, BTN_MODE b11, BTN_THUMBL b12, BTN_THUMBR b13 -- which is where the shipped 'platform:MiSTer' PS5 rows' guide:b11 / leftshoulder:b5 / back:b9 / start:b10 come from. DS4 is the same list minus BTN_Z, every index from b4 on one lower.\n\nWHAT THE CARRY ACTUALLY ADDED, because 'already ours' would have been the lazy answer. This commit declares the capability INSIDE ps_gamepad_create() via a new `bool has_mute_button` parameter -- that is, BEFORE that function's own input_register_device() (6.18.52 drivers/hid/hid-playstation.c:783). 0037 declared it on ds->gamepad AFTER ps_gamepad_create() returned. For evdev that is indistinguishable: EVIOCGBIT reads dev->keybit live, which is why Main_MiSTer was unaffected and 0037's hardware verification still stands. For joydev it is not. joydev_connect() copies dev->keybit into its keymap/keypam once, when the handler attaches -- 'for (i = BTN_JOYSTICK - BTN_MISC; i < KEY_MAX - BTN_MISC + 1; i++) if (test_bit(i + BTN_MISC, dev->keybit)) { joydev->keymap[i] = joydev->nkey; ... }' (6.18.52 drivers/input/joydev.c) -- and input_attach_handler() runs inside input_register_device() (6.18.52 drivers/input/input.c). So with the old ordering /dev/input/jsN on a DualSense reported 13 buttons and no BTN_Z where stock 5.15 reported 14. CONFIG_INPUT_JOYDEV=y (board/mister/de10nano/linux.config:344), so that interface ships. 0037 was therefore realigned to the merged shape in BOTH copies, which fixes a real stock-parity gap AND leaves our source byte-identical to the fork's in that function. Same alignment call as 0049/0001 on 2026-09-14, but unlike those two this one IS a code change, not a comment -- stated plainly so a reviewer prices it correctly.\n\nSECONDARY, AND NOT A REASON ON ITS OWN: the initial 'add' uevent's KEY= variable is also a snapshot taken during device_add(), so it lacked BTN_Z before. udev's input_id builtin reads capabilities/key from sysfs live, so ID_INPUT_* properties were never affected; this is noted only so the next reader does not re-derive it as a separate finding.\n\nNOT A CANDIDATE FOR THE 'USERSPACE SHOULD ACCEPT MAINLINE NAMES' CLASS. The maintainer's stated preference (upstream PRs #96/#97 closed in favour of Main_MiSTer #1307/#1308) applies to kernel-side RESTORATIONS of stock strings that userspace could just as well accept. This is the opposite: it REMOVES a capability the fork's own port added on top of mainline, restoring vanilla's DS4 bitmap. Nothing in userspace could have fixed it -- the bN ordinal is derived from the kernel's bitmap by construction.\n\nDOES NOT SUPERSEDE 0032, 0033 OR 0037. 0032 is hid-nintendo (different file). 0033 (DualSense player-id LED) and 0042 (stock lightbar LED names) touch dualsense_create() and the LED block, not ps_gamepad_create() or the button table; all four coexist and the full-series replays above are the proof. 0037 remains the only source of BTN_Z, of the BTN_Z report in dualsense_parse_report(), and of the userspace-owned ':mute' LED class device -- none of which this commit touches."
+}

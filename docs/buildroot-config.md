@@ -3113,7 +3113,7 @@ verbatim — §8 has the reasoning behind each; it is DE10-only and stayed a
 standalone defconfig when stage 1 became a stack) and adds exactly what the
 installer's job needs on top:
 
-- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §2 step 3; `-n MiSTer_Data`).
+- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §8 step 6; `-n MiSTer_Data`).
   Depends on `BR2_USE_WCHAR`, which the musl toolchain choice already selects.
 - `BR2_PACKAGE_UTIL_LINUX` + `_BINARIES` -> sfdisk (repartition to the real
   medium size) and blkid (belt-and-suspenders re-run guard, ADR 0020 §2.1:

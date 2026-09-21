@@ -381,6 +381,13 @@ unbroken window in which a power cut produced an unbootable card*, and it coinci
 exactly with the minute in which the board looks dead. §6's hard rule protected the
 install from the splash; nothing protected the install from the user.
 
+One refinement, found while testing the new ordering and worth recording because it
+sharpens §8.3.1: the window did not actually open at `sfdisk`. `sfdisk` rewrites only the
+MBR, and both the old and new tables put `p1` at LBA 2048, so until `mkfs.exfat` ran the
+shipped FAT32 filesystem — installer kernel and payload included — was still intact and
+still readable. The old window opened at `mkfs.exfat` and stayed open until the final
+`dd`; the new one closes a few seconds later.
+
 ### 8.2 Decision: attack the harm, not the visibility
 
 **Reorder the install so the card is self-recovering within seconds of the repartition,
@@ -399,17 +406,18 @@ The order `board/mister/de10nano/installer-overlay/init` now runs:
 | 7 | **write the INSTALLER's `zImage_dtb` and `menu.rbf` onto the fresh `p1`** | new. From this instant a power cut boots straight back into this installer |
 | 8 | copy the payload back into **`mister-payload.part/`**, then rename it to `mister-payload/` | the rename is a directory-entry update, and it is what makes a partial copy detectable rather than indistinguishable from a complete one |
 | 9 | `zcat linux.img.gz` → `linux/linux.img` | the payload dir is left **complete and untouched** for the whole decompression, so the longest step in the install is fully re-runnable |
-| 10 | commit: `mv` the payload's entries to the root, pre-seed, MAC, and **last of all `mv` the real kernel over `linux/zImage_dtb`** | renames only; nothing is written twice |
+| 10 | commit: `rm` the now-redundant `.gz`, `mv` the payload's entries to the root, pre-seed, MAC, and **last of all `mv` the real kernel over `linux/zImage_dtb`** | one delete and then renames; nothing is written twice. That first `rm` is where the second window of §8.3.1 opens |
 
 ### 8.3 The invariant
 
-At any instant a power cut can happen, the card is in exactly one of three
+At any instant a power cut can happen, the card is in exactly one of four
 self-describing states, and the installer's next boot reads which:
 
 | On the card | Next boot does |
 |---|---|
 | `mister-payload/` present and complete | **re-installs, unattended.** Costs the user one more run and nothing else |
 | `mister-payload.part/` instead | **halts** with "the previous install was INTERRUPTED … re-flash `sdcard.img`". The bytes it was copying from were in RAM and are gone, so there is nothing to repair and a reboot here would loop forever |
+| neither, and no `linux/linux.img` either | **halts.** Formatted but never populated — the cut landed between `mkfs.exfat` and the copy-back. Same verdict, same reason: the source was in RAM |
 | neither, and `linux/linux.img` present | **halts** with the "already provisioned" banner |
 
 **The commit point is the single `mv` of the real `linux/zImage_dtb` over the
@@ -417,12 +425,33 @@ installer's own.** Before it the card boots this installer; after it the card bo
 MiSTer. That rename is the *definition* of "installed"; everything else is arranged
 around it.
 
-The window is reduced, not eliminated, and this ADR should say so plainly: between the
-first rename of the commit phase and that last one, the card is neither re-runnable nor
-installed. That phase is directory-entry updates on an already-written filesystem —
-fractions of a second, against the ~60 seconds the old ordering was exposed for. Getting
-it to zero would mean writing every byte twice, which is a worse trade. **Nothing slow
-may be added to the commit phase**, which is why the `zcat` is deliberately outside it.
+### 8.3.1 What is left, stated exactly
+
+Two windows still cost a re-flash, and it is worth being precise about where they start,
+because the obvious answer is wrong in both cases.
+
+* **`mkfs.exfat` until the installer kernel lands on the new `p1`** — a few seconds on a
+  real card. This is the only *hard* window: the card has a bootloader but no kernel on
+  `p1`, so it cannot reach Linux at all and nothing can report the problem.
+
+  It does **not** start at `sfdisk`, which is the intuitive guess. `sfdisk` rewrites only
+  the MBR, and the new `p1` still starts at LBA 2048, so the **shipped FAT32 filesystem —
+  installer kernel, payload and all — is still sitting there**, readable under the
+  enlarged partition entry. An interrupt between `sfdisk` and `mkfs.exfat` simply
+  re-runs. `scripts/test-installer-recovery.sh` scenario F pins that.
+
+* **The commit phase**, which begins at the `rm` of `linux/linux.img.gz` — **not** at the
+  first rename. That `rm` is what first makes `mister-payload/` incomplete, and
+  incomplete is what the next boot's completeness probe keys on, so the window is already
+  open before anything is renamed. It ends at the final `mv`. The installer still boots
+  and still says what happened; it just has no source left to finish from. Directory-entry
+  updates on an already-written filesystem, so fractions of a second.
+
+Neither is zero. Together they are the smallest this can be made without writing every
+byte twice, against an old ordering whose window was the whole ~1-minute install.
+**Nothing slow may be added to either**, which is why the `zcat` sits deliberately
+outside the commit phase, and why a write added *above* that `rm` would not be outside
+the window however it looks.
 
 ### 8.4 The re-run guard had to be re-keyed
 
@@ -433,6 +462,13 @@ its `linux/zImage_dtb` is still the installer's. The old guard would have called
 card "installed" and halted — on a card that still had a complete payload sitting on it
 and would have finished by itself. The guard now additionally requires **no payload
 directory under either name**. Its non-destructive halt behaviour is unchanged.
+
+That re-key is covered by `scripts/test-installer-recovery.sh` **scenario E**, which is
+the only scenario that can cover it: it stops the install *after* the expansion, so the
+card genuinely matches all three of the old guard's conditions, and then requires the
+next boot to finish the install rather than declare the card provisioned. The
+interrupted-after-copy-back scenario cannot stand in for it — it stops before the `zcat`,
+so no `linux/linux.img` exists and the old guard would not have fired either.
 
 The payload cleanup (`rm -rf mister-payload/`) runs strictly **after** the commit rename
 for the same reason, and the two are not interchangeable: doing it before would open a
@@ -458,19 +494,41 @@ directory is clutter rather than a defect — it is logged, not treated as a fai
 ### 8.6 How it is tested
 
 * `scripts/test-installer-recovery.sh` — new. Interrupts the install at named points via
-  a `mister_installer_stop_after=<tag>` kernel-command-line hook that `/init` honours and
-  the stock `uboot.img` can never emit (it builds `bootargs` from a compiled-in literal,
-  `docs/boot-chain.md` §4), then boots the card again and asserts each row of the §8.3
-  table. It synthesises a card with the shipped *shape* and miniature contents rather
-  than requiring `make all` + `make sdcard`, because the installer never looks inside the
-  payload's files — so it runs in minutes and can gate an edit to `/init`.
+  a `mister_installer_stop_after=<tag>` kernel-command-line hook, then boots the card
+  again and asserts each row of the §8.3 table. It synthesises a card with the shipped
+  *shape* and miniature contents rather than requiring `make all` + `make sdcard`,
+  because the installer never looks inside the payload's files — so it runs in minutes
+  and can gate an edit to `/init`.
+
+  **That hook is not gated on the command line, and the first draft of this section was
+  wrong to say it could be.** `mmcboot` interpolates `$v` into `bootargs`, `scrtest`
+  `env import -t`s `/linux/u-boot.txt` off `p1` *before* `mmcboot` runs, and `$v` is the
+  documented user knob — `docs/boot-chain.md` §5 says in as many words that arbitrary
+  extra tokens can therefore appear in `/proc/cmdline`. The shipped installer `p1` is
+  plain FAT32 that any user can write to, and `scripts/mk-sdcard.sh` documents dropping a
+  `u-boot.txt` on it as supported. A hand-written
+  `v=loglevel=4 mister_installer_stop_after=recoverable` would really have reached
+  `/init`, and stopping there costs a re-flash — the exact harm this section removes.
+  The gate is instead **a marker file in the initramfs**, `/.installer-test-hook`, that
+  no shipped image contains; `scripts/lib/installer-qemu-kernel.sh` appends it as a
+  second cpio archive when it builds the harness kernel, so the installer cpio and
+  `/init` are unchanged byte-for-byte and obtaining the marker means rebuilding a kernel.
+  The harness proves the gate rather than asserting it: scenario 0 runs a full install on
+  a kernel built *without* the marker, with the stop token on its command line, and
+  requires the install to complete.
 * `scripts/test-sdcard-install.sh` — extended to assert the **order** (`uboot.img` before
   `mkfs.exfat`, the installer kernel before the payload, the real kernel last) by byte
   offset in the console log, not merely that each step happened. An edit that moved the
   `dd` back to the end would otherwise still pass every check that harness had before.
 * `scripts/test-installer-splash.sh` — now also asserts `SPLASH_TOTAL` matches the
   highest `splash_step` call in `/init`, which is exactly what a renumbering breaks
-  silently.
+  silently. (There is one step numbering in this design: the splash's. `/init`'s header
+  list, its section markers and §8.2's table all use it.)
+
+Every one of the five stop tags is exercised, and deliberately so — a tag nothing stops
+at is a branch nothing tests. `bootloader` and `recoverable` pin the two ends of the hard
+window in §8.3.1, `payload-partial` and `payload-copied` the two halves of the copy-back,
+and `expanded` the guard re-key in §8.4.
 
 **Still open on #185, unchanged by this section:** a user with a fully-enclosed case and
 no serial adapter still cannot see that the board is working. The five directions that

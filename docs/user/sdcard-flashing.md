@@ -123,13 +123,16 @@ Two things to know while it runs:
   variant take a little longer. The board reboots by itself when it's done; the first
   thing you'll see on screen is the MiSTer menu.
 
-**If you do lose power part-way through** (or pull the card), you have not ruined it.
-Step 3 above means the card can still boot, and step 5 means it boots back into the
-installer, which starts over by itself — you lose a couple of minutes, nothing else. In
-the one narrow case where the interruption landed while the files were still being
-copied, the installer tells you so on the serial console and asks you to re-flash
-`sdcard.img`; re-flashing is all that is ever needed, and the board itself is never at
-risk.
+**If you do lose power part-way through** (or pull the card), you have most likely not
+ruined it. Step 3 above puts the bootloader back almost immediately and step 5 puts the
+installer itself back on the card, so for most of the run the board simply boots into the
+installer again and starts over — you lose a couple of minutes and nothing else.
+
+If the interruption lands in one of two narrow windows — while the card is being
+formatted, or while the files are being copied — the card will need re-flashing. Where
+the installer can still run, it says so on the serial console and tells you to re-flash;
+where it cannot, the board shows nothing at all. Either way, re-flashing `sdcard.img` is
+the whole fix, and the board itself is never at risk.
 
 Why a reformat instead of a resize: MiSTer's data partition is exFAT, and exFAT cannot
 be grown in place. The rebuild-through-RAM approach is the same mechanism mr-fusion has

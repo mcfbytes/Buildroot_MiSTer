@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-21 07:07 UTC by `reduce.py` from 145 records (110 MiSTer-v5.15 + 19 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/145.
+Generated 2026-09-21 15:20 UTC by `reduce.py` from 145 records (110 MiSTer-v5.15 + 19 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/145.
 
 ## How to read this table
 
@@ -152,7 +152,6 @@ Of 145 rows, **3** describe a real difference a user could notice on this build 
 | `5c410e935` | v5.15 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | feature-loss/loud | — | Y | ✓ | hid-sony: fix for 3rd party DS4 failing to connect by wire. |
 | `60821059c` | v5.15 | **carried** | 0035-hid-nintendo-home-led-nonfatal.patch | — | none (carried) | feature-loss/loud | Y | N | ✓ | hid-nintendo: don't fail if home led is not present. |
 | `60e08955f` | v5.15 | **carried** | 0037-hid-playstation-dualsense-mute-btn-z.patch | — | none (carried) | cosmetic/silent | — | N | ✓ | dualsense: give mute button and led to system. |
-| `6332499e7` | v6.18 | **carried** | 0047-btusb-mercusys-ma530-2c4e-0115.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
 | `66ba034e3` | v6.18 | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters (#92) |
 | `6827e7644` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Support for RTC PCF8563 |
 | `6a581bac4` | v6.18 | **carried** | 0001-fbdev-add-MiSTer_fb-driver.patch | — | none (carried) | boot-critical/loud | Y | ? |  | MiSTer_fb: fix memremap() failure check (#98) |
@@ -205,6 +204,7 @@ Of 145 rows, **3** describe a real difference a user could notice on this build 
 | `3fb48dc16` | v5.15 | **dropped-upstream** | — | in mainline: `4fd6d4907961` | none (in mainline) | feature-loss/silent | — | Y | ✓ | Add support for TP-Link UB500 Adapter (#33) |
 | `40120d090` | v5.15 | **dropped-upstream** | — | in mainline: `27f4d1f214ae` | none (in mainline) | feature-loss/silent | — | ? | ✓ | drivers: bluetooth: backport some drivers from upstream. |
 | `552f9f197` | v5.15 | **dropped-upstream** | — | in mainline: `f7cbce60a38a`; → f7cbce60a38a (Bluetooth: hci_sync: Fix UAF on cr…; 881559af5f5c (Bluetooth: hci_sync: Attempt to de… | none (in mainline) | boot-critical/loud | — | Y | ✓ | hci_conn: prevent call with NULL pointer. |
+| `6332499e7` | v6.18 | **dropped-upstream** | — | in mainline: `ce21a5cf3d1f` | none (in mainline) | feature-loss/silent | — | Y | ✓ | Bluetooth: btusb: add Mercusys 2c4e:0115 support (#78) |
 | `6eec2a515` | v5.15 | **dropped-upstream** | — | in mainline: `21617de3b464` | none (in mainline) | feature-loss/silent | — | Y | ✓ | xpad: Add 8BitDo Ultimate Controller ID (#36) |
 | `794e6f002` | v5.15 | **dropped-upstream** | — | in mainline; → mainline rtw88 driver in vanilla v6.18.39 (drive… | none (in mainline) | feature-loss/silent | — | Y | ✓ | New driver for RTL8821CU |
 | `9521b003c` | v5.15 | **dropped-upstream** | — | in mainline: `24175157b852`; → 24175157b852 (upstream HID: hid-google-stadiaff:… | none (in mainline) | feature-loss/silent | Y | Y | ✓ | Add support for Google Stadia controller w/ rumble (#52) |

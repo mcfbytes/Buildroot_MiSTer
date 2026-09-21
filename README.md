@@ -340,7 +340,7 @@ The interesting part is not the version number — it's the **shape of the delta
 fork's **136 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
 2026-09-07, 10 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — one
 still-open pull-request head carried ahead of its merge, plus 15 residue commits that
-existed only on the older v5.14/v5.13.12 branches) are down to **38 carried patch
+existed only on the older v5.14/v5.13.12 branches) are down to **40 carried patch
 files**. The bulk of that reconciliation was performed against the **5.15** stock kernel
 and left **36** files; the nine commits and one open PR stock's 6.18 branch has taken
 since have now been reconciled too — executed, not just planned — in
@@ -350,12 +350,15 @@ adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahea
 upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only); on
 2026-09-12 `0040`/`0041` (Switch IMU and LED names) were retired when upstream chose the
 Main_MiSTer-side fix instead, and on 2026-09-14 `0051` was added — a revert of a stable
-commit `6.18.52` cherry-picked without the commit it repairs, which breaks the `perf` build
-(36 + 3 + `0047` − 2 + `0051` = 39). Every
+commit `6.18.52` cherry-picked without the commit it repairs, which breaks the `perf` build,
+and on 2026-09-21 `0052`/`0053` (an SD-card data-timeout hook and an exFAT directory-scan
+read-ahead bound) were added (36 + 3 − 2 + `0051` + 2 = 40). Every
 remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
-or recorded as a deliberate decision. `0047` is not part of that delta at all — it
-backports a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line
-never received.
+or recorded as a deliberate decision. `0047` was never part of that delta — it backported
+a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line had not
+received — and it was carried from 2026-08-24 until 2026-09-21, when `6.18.53` took the
+same commit as a stable backport and the patch was deleted, as its own header said it
+would be.
 
 **Every commit in the fork was independently reconciled**, each with a machine-readable,
 evidence-backed disposition record, **100% of them verified by a second independent
@@ -675,10 +678,10 @@ linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kern
                          extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
 board/mister/de10nano/
   linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         39 carried patches: 37 MiSTer + 1 mainline backport (0047)
-                         + 1 stable-regression revert (0051)
-  linux-patches-beta/    36 of those (31 symlinks + 5 re-anchored 7.x copies; 7.2 needs
-                         none of 0047/0050/0051) + 4 beta-local = the 40-entry series
+  linux-patches/         40 carried patches: 39 MiSTer + 1 stable-regression revert (0051)
+                         (0047, a mainline backport, retired 2026-09-21 once 6.18.53 had it)
+  linux-patches-beta/    37 of those (32 symlinks + 5 re-anchored 7.x copies; 7.2 needs
+                         none of 0050/0051/0053) + 4 beta-local = the 41-entry series
   linux-patches-upstream/what the exported tree carries but our image must not
   rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
   post-build.sh          /MiSTer.version stamping, parity fixups

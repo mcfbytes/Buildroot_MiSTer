@@ -2932,12 +2932,13 @@ re-anchored copy. The shared 6.18 patches are otherwise deliberately
 untouched, keeping them byte-identical to stock.
 
 The series drops exactly THREE shared patches, and never because someone
-judged them unneeded. `0047-btusb-mercusys-ma530-2c4e-0115` is a
-backport of mainline ce21a5cf3d1f (Mercusys MA530/MA550H, USB 2c4e:0115)
-whose first release IS 7.2. The 6.18 image needs it because 6.18.y never
-received the commit; this kernel does not, and listing it would not be
-harmlessly redundant — at -F0 against pristine v7.2 the hunk FAILS
-("Hunk #1 FAILED at 786"), which would break the build.
+judged them unneeded. (A fourth, `0047-btusb-mercusys-ma530-2c4e-0115`, was
+the first: a backport of mainline ce21a5cf3d1f (Mercusys MA530/MA550H, USB
+2c4e:0115) whose first release IS 7.2, so at -F0 against pristine v7.2 the
+hunk FAILED ("Hunk #1 FAILED at 786") and listing it would have broken the
+build. It retired on 2026-09-21 when 6.18.53 took the same commit as stable
+backport 0f7f58ea6299 and the hunk failed the same way on the stock kernel —
+deleted from linux-patches/ outright, not merely excluded here.)
 `0050-exfat-dir-readahead-plug` (added 2026-09-11) is the mirror image: it
 wraps exfat_dir_readahead()'s sb_breadahead() loop in a block plug, and that
 function does not exist on 7.x at all — mainline's own differently-shaped fix
@@ -2957,10 +2958,16 @@ BR2_PACKAGE_LINUX_TOOLS_PERF_TUI is unset (it is unset here). 7.2.x took the
 prerequisite and both sides of its #ifdef agree, so there the revert would
 BREAK a correct tree rather than no-op: at -F0 against pristine v7.2.6,
 "Hunk #1 FAILED at 700. Hunk #2 succeeded at 741 (offset 2 lines). 1 out of 2
-hunks FAILED", exit 1. All three go away on their own the day the stock pin
-leaves 6.18.y, and 0051 also goes away the day 6.18.y repairs itself.
+hunks FAILED", exit 1. `0053-exfat-dir-count-readahead-one-page` (added
+2026-09-21) is the third: it bounds exfat_count_dir_entries()'s read-ahead
+through exfat_dir_readahead(), which 7.x does not have — at -F0 against
+pristine v7.2.6, 3 of 5 hunks FAIL, and the two that succeed would leave a
+broken tree, so -F0 stopping the build is the only reason the exclusion is
+safe (the series header has the full write-up). All three go away on their
+own the day the stock pin leaves 6.18.y, and 0051 also goes away the day
+6.18.y repairs itself.
 Nothing else is dropped:
-all 40 entries (the other 36 shared + the four beta-local
+all 41 entries (the other 37 shared + the four beta-local
 patches 0043/0044/0045 — the UIO set — and 0046, the ramoops crash-record
 reservation) apply at -F0 — verified 2026-09-11 against v7.2.3 with the two
 newly-shared patches 0048/0049 symlinked in (42/42, zero fuzz; 40 since the
@@ -2989,7 +2996,10 @@ when those two were re-anchored and re-included; 0037 in particular is NOT
 cosmetic — see the series header. It then read "drops NOTHING, full stop" from
 2026-08-17 until 2026-08-24, when 0047 landed in the shared dir. The 40/40
 measurement is unaffected: 0047 was never in the series, so the run that
-produced it is still a run of the whole series.)
+produced it is still a run of the whole series. 0047 itself retired on
+2026-09-21 — 6.18.53 backported it — leaving the exclusion list at
+0050/0051/0053; the same day the 41-entry series applied 41/41 at -F0 on
+pristine v7.2.7 through Buildroot's own `make linux-rt-patch`.)
 
 ### 7.3 RT + 7.x kernel-config delta — `BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`
 

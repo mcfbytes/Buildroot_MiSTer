@@ -302,9 +302,11 @@ Total ≈1.7 MB.
   name each one before `btrtl` is ever reached to load the firmware above. A
   missing row looks exactly like a dead dongle and logs nothing. First
   instance, 2026-08-24: `2c4e:0115` (Mercusys MA530 / MA550H) — in mainline
-  since 7.2, never backported to 6.18.y, so we carry
+  since 7.2 but not in 6.18.y, so we carried
   `board/mister/de10nano/linux-patches/0047-btusb-mercusys-ma530-2c4e-0115.patch`
-  (`docs/patch-provenance.md`, "`0047` — the first BACKPORT"). Expect more of
+  until `6.18.53` backported it (stable `0f7f58ea6299`, 2026-09-21) and the
+  patch was retired (`docs/patch-provenance.md`, "`0047` — the first
+  BACKPORT"). Expect more of
   these, and expect them to arrive as user reports rather than as build
   failures.
 - **MediaTek legacy** — `mt7622pr2h.bin`, `mt7663pr2h.bin`, `mt7668pr2h.bin`

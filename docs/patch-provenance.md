@@ -1614,14 +1614,23 @@ carries a self-documenting provenance header; this doc only needs the row.
 | `0042-hid-playstation-stock-lightbar-led-names` | `f123647ef` (Sorgelig) | stock lightbar LED names (`:red`/`:green`/`:blue`) plus probe-time player-LED clear; without them both PlayStation pads lose lightbar colour control | Config parity: `CONFIG_MACVLAN=y`,
 `CONFIG_JOYSTICK_XPAD=m`. All verified via full `linux-dirclean` rebuild.
 
-### `0047` — the first BACKPORT, added 2026-08-24
+### `0047` — the first BACKPORT, added 2026-08-24, **RETIRED 2026-09-21**
 
-Every patch above exists because mainline does **not** have the change. `0047` is the first
-one that exists because mainline **does** — and the stable line we pin does not.
+**Retired 2026-09-21 — slot intentionally empty.** `linux-6.18.53` took `ce21a5cf3d1f` as
+stable backport `0f7f58ea6299` (autosel; the commit had no `Cc: stable`, so the "no `.y` bump
+will bring it in" below was a prediction, and it was wrong). The fail-closed design did its
+job: at `-F0` against pristine `v6.18.53` the hunk reports `Hunk #1 FAILED at 786`, with the
+row already present at `btusb.c:803`. The patch was deleted from `linux-patches/` outright,
+exactly as its `Upstream:` block said, and its record flipped to `dropped-upstream` — the
+disposition the paragraph after the table refused while it was false, and the right one now
+that the functionality is in the kernel we build. The rest of this section is kept as written.
+
+Every patch above exists because mainline does **not** have the change. `0047` was the first
+one that existed because mainline **did** — and the stable line we pin did not.
 
 | Patch | Origin | Why carried |
 |---|---|---|
-| `0047-btusb-mercusys-ma530-2c4e-0115` | `ce21a5cf3d1f` (Hrvoje Nuic, mainline) — landed independently on the fork as `6332499e7` (Stanislav Ponomarev) | adds USB `2c4e:0115` (Mercusys MA530 / MA550H, Realtek RTL8761BUV) to `btusb`'s `quirks_table`. Without the row the adapter binds no driver, never reaches `btrtl`, never loads `rtl8761bu_fw.bin`, and no `hci0` appears — every Bluetooth feature on the box is silently absent for a user who owns that dongle and no other |
+| `0047-btusb-mercusys-ma530-2c4e-0115` | `ce21a5cf3d1f` (Hrvoje Nuic, mainline) — landed independently on the fork as `6332499e7` (Stanislav Ponomarev); in 6.18.y since `6.18.53` as `0f7f58ea6299` | **RETIRED 2026-09-21 — slot intentionally empty.** Was: adds USB `2c4e:0115` (Mercusys MA530 / MA550H, Realtek RTL8761BUV) to `btusb`'s `quirks_table`. Without the row the adapter binds no driver, never reaches `btrtl`, never loads `rtl8761bu_fw.bin`, and no `hci0` appears — every Bluetooth feature on the box is silently absent for a user who owns that dongle and no other |
 
 The disposition that looks right and is not is `dropped-upstream`. That disposition asserts
 the functionality is present in **the kernel we build**, and it is not: the commit first
@@ -1717,7 +1726,8 @@ inventory, the build result, the USB-ID overlap test, and the re-open trigger:
 
 ### `0051` — the first REVERT, added 2026-09-14
 
-`0047` is carried because mainline has a change and our stable line does not. `0051` is the
+`0047` was carried because mainline had a change and our stable line did not (until `6.18.53`
+took it and the patch retired). `0051` is the
 opposite failure and a new shape for this series: our stable line took *half* of a change,
 and the half it took does not compile.
 
@@ -1757,8 +1767,8 @@ pristine `v6.18.51`'s, which is the arity CI built green on every run up to the 
 **Three consequences, each written where its reader is:**
 
 - **It is the third shared patch the RT/beta and DE25 series omit, and the first one they omit
-  because 7.x was never broken.** `0047` is excluded because 7.x already has the same mainline
-  commit; `0050` because 7.x has mainline's own different fix; `0051` because 7.x took both halves
+  because 7.x was never broken.** `0047` was excluded because 7.x already had the same mainline
+  commit (retired 2026-09-21); `0050` because 7.x has mainline's own different fix; `0051` because 7.x took both halves
   of the change and is self-consistent — applying the revert there would strip a parameter its
   callers pass. Measured, not assumed: at `-F0` against pristine `v7.2.6`'s
   `tools/perf/util/hist.h`, `Hunk #1 FAILED at 700. Hunk #2 succeeded at 741 (offset 2 lines).
@@ -1862,7 +1872,7 @@ This doc does not restate the mechanics of the new directory or the export scrip
 are self-documenting and would drift out of sync with a third copy of the same rules here:
 
 - **What belongs in the new directory, and what must never** — numbering (`0100` up, a
-  separate namespace from `0001`–`0047` above), the mandatory reason a patch is absent from
+  separate namespace from `0001`–`0053` above), the mandatory reason a patch is absent from
   the image, provenance-header format: `board/mister/de10nano/linux-patches-upstream/README.md`.
 - **How the export applies it, and what it prints** — `scripts/export-kernel-tree.sh`'s
   "TWO SERIES" header comment, and the table the script generates in `EXPORT.md` naming

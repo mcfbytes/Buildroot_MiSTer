@@ -14,11 +14,13 @@ see `linux.hash`), and the kernel release string (`7.2.0-rc7` → **`7.2.0`**,
 which is the module directory name too). From here the pin tracks **7.2.y**
 point releases rather than mainline; it does not follow 7.3-rc1. See §10.
 
-The variant builds end-to-end (`make rt`, **36 of the 39 shared + 4 beta-local**
-carried patches — **40 entries; the three omissions are `0047`, `0050` and
-`0051`, and 7.2.x needs none of them — the first two it already has in-tree in
-one form or another, and the third repairs a 6.18.y-only backport defect that
-never reached 7.x, see §2**; three of the
+The variant builds end-to-end (`make rt`, **37 of the 40 shared + 4 beta-local**
+carried patches — **41 entries; the three omissions are `0050`, `0051` and
+`0053`, and 7.2.x needs none of them — the first it already has in-tree in a
+different shape, the second repairs a 6.18.y-only backport defect that never
+reached 7.x, and the third bounds a function 7.x does not have, see §2 and the
+series header** (`0047`, a fourth omission from 2026-08-24, retired on
+2026-09-21 when 6.18.53 took the same mainline commit); three of the
 beta-local four are the UIO set (§8) and the fourth is the ramoops crash-record
 reservation (§9)) and **boots and runs MiSTer on a
 real DE10-Nano — confirmed 2026-07-20 on 7.2-rc4, and again 2026-08-14 on
@@ -259,8 +261,9 @@ card, and nothing on the card referenced it), and deliberately NOT inside
 0. ~~Build the pinned 7.2 final.~~ **Done 2026-08-17, twice** — `make rt` green
    from clean on the 34 series entries that existed that morning, and again on
    the full **40** after `0046` and `0038`–`0042` landed (§6). Nothing about the
-   series is now unbuilt. (`0047` landed in the shared dir on 2026-08-24 and is
-   deliberately **not** in this series — §2 — so it changes none of these figures.) **Booting it is still open**, and it is now
+   series is now unbuilt. (`0047` landed in the shared dir on 2026-08-24, was
+   deliberately **not** in this series — §2 — and retired on 2026-09-21 when 6.18.53
+   took the same commit, so it changed none of these figures.) **Booting it is still open**, and it is now
    the only thing standing between this variant and the same status it had on rc7.
    `make rt-clean` is mandatory before `make rt` on a version bump — the old
    kernel tree survives in `output-rt/build/` otherwise and the `rt` recipe
@@ -299,10 +302,10 @@ card, and nothing on the card referenced it), and deliberately NOT inside
    added too: a series that drops nothing is far easier to reason about and to
    defend upstream than one that drops "only the harmless ones", and the
    `0037` episode is the standing evidence that we cannot always tell which
-   those are. (`0047`, the series' one omission since 2026-08-24, is not a
-   counterexample and does not reopen this: it is not a judgement that the
-   patch is harmless here, it is the observation that 7.2 already contains it
-   — §2.) Both re-anchored copies now live in `linux-patches-beta/`.
+   those are. (`0047`, the series' one omission from 2026-08-24 until its
+   2026-09-21 retirement, was not a counterexample and did not reopen this: it
+   was not a judgement that the patch was harmless here, it was the observation
+   that 7.2 already contained it — §2.) Both re-anchored copies now live in `linux-patches-beta/`.
    **Rule this established:** any patch that adds or removes an `EV_KEY`/
    `EV_ABS` capability is load-bearing for every SDL-style index map — never
    classify one as cosmetic on a symbol grep alone. Default to re-anchoring

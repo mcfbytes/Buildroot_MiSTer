@@ -2400,6 +2400,69 @@ require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
 
 # =============================================================================
+section "BitTorrent (transmission, issue #186)"
+# =============================================================================
+
+# The daemon plus the four utils. transmission-remote is the one that matters
+# most and is the easiest to lose: it comes from the BASE package's ENABLE_UTILS
+# (default ON, never passed by Buildroot), not from _DAEMON, so a future
+# Buildroot that starts passing -DENABLE_UTILS=OFF would take the entire
+# headless interface away while the daemon still built and this file still
+# passed -- unless remote is asserted separately. See docs/bittorrent.md §1.
+require_present "usr/bin/transmission-daemon" "transmission-daemon"
+require_present "usr/bin/transmission-remote" "transmission-remote (base package, ENABLE_UTILS)"
+require_present "usr/bin/transmission-create" "transmission-create"
+require_present "usr/bin/transmission-edit" "transmission-edit"
+require_present "usr/bin/transmission-show" "transmission-show"
+
+# Asserted ABSENT, deliberately: libtransmission is a static library, so
+# transmission-cli would be a second full copy of the engine -- for the one
+# binary that has no file-selection options at all (docs/buildroot-config.md
+# §5.10). The way it comes back is somebody turning on BR2_PACKAGE_TRANSMISSION_CLI
+# "for completeness", at which point this fails and says why.
+require_absent "usr/bin/transmission-cli" \
+	"transmission-cli (deliberately not built -- static libtransmission, no file selection)"
+require_absent "usr/bin/transmission-gtk" "transmission-gtk (no X on this image)"
+
+# THE INIT SCRIPT MUST BE OURS, not the one package/transmission installs.
+# Filename-only presence proves nothing here: both files are called
+# S92transmission and Buildroot's overlay copy is what decides which one lands.
+# Upstream's runs as the `transmission` user out of /var/config -- i.e. inside
+# linux.img, which every OS update replaces wholesale, taking resume/ and
+# torrents/ with it. The two markers below are the two things that must be
+# true of ours (docs/init-parity.md, docs/bittorrent.md §2).
+TM_INIT="etc/init.d/S92transmission"
+if ! tar_has "$TM_INIT"; then
+	fail "$TM_INIT is the MiSTer overlay script" "$TM_INIT not in rootfs.tar"
+else
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$TM_INIT" 2>/dev/null | awk '{print $1; exit}')
+	tm_init_body=$(tar xOf "$ROOTFS_TAR" "./$TM_INIT" 2>/dev/null || true)
+	case "$mode" in
+	-rwx*) : ;;
+	*) fail "$TM_INIT is the MiSTer overlay script" "mode is '$mode', not executable" ;;
+	esac
+	if printf '%s' "$tm_init_body" | grep -qF "/media/fat/linux/transmission"; then
+		pass "$TM_INIT keeps its state on /media/fat (survives an OS update)"
+	else
+		fail "$TM_INIT keeps its state on /media/fat (survives an OS update)" \
+			"no /media/fat/linux/transmission in the shipped script -- package/transmission's own S92transmission (TRANSMISSION_HOME=/var/config/...) overwrote the overlay?"
+	fi
+	# OFF BY DEFAULT is the ADR 0031 (2026-09-21 amendment) regression oracle:
+	# on a fresh card that directory does not exist, so the script must exit 0
+	# before it starts anything.
+	if printf '%s' "$tm_init_body" | grep -qE '^\[ -d "\$HOME_DIR" \] \|\| exit 0'; then
+		pass "$TM_INIT is off by default (opt-in directory gate)"
+	else
+		fail "$TM_INIT is off by default (opt-in directory gate)" \
+			"the '[ -d \$HOME_DIR ] || exit 0' guard is gone -- the daemon would auto-start and listen on every boot (ADR 0031 amendment, 2026-09-21)"
+	fi
+	# And it must not ship a settings.json of its own: the seed is written on
+	# the CARD at first opt-in, never into the read-only rootfs.
+	require_absent "var/config/transmission-daemon/settings.json" \
+		"a settings.json inside linux.img (state belongs on /media/fat)"
+fi
+
+# =============================================================================
 section "Summary"
 # =============================================================================
 

@@ -1,0 +1,122 @@
+#!/bin/sh
+#
+# transmission-daemon -- OFF unless the user creates the FAT config directory.
+#
+# Replaces the one package/transmission ships, which runs as the `transmission`
+# user out of /var/config on a read-only root that is reflashed whole by every
+# OS update. Recipe, defaults and layout: docs/bittorrent.md. Security
+# disposition: docs/decisions/0031-secure-by-default-network-posture.md.
+#
+
+DAEMON=/usr/bin/transmission-daemon
+HOME_DIR=/media/fat/linux/transmission
+SETTINGS="$HOME_DIR/settings.json"
+DOWNLOAD_DIR="$HOME_DIR/downloads"
+PIDFILE=/var/run/transmission-daemon.pid
+
+# The opt-in gate, same shape as S91smb's `samba.sh`: no directory on the card,
+# no daemon. A fresh image has none, so nothing here runs and nothing listens.
+[ -d "$HOME_DIR" ] || exit 0
+[ -x "$DAEMON" ] || exit 0
+
+# Written ONCE, and never over a file that exists -- this is a seed, not a
+# policy the daemon re-applies. Every value the user then edits survives, and
+# so does the daemon's own rewrite of this file at shutdown.
+#
+# The four that are not transmission's defaults are the whole point of seeding
+# it (libtransmission/rpc-server.h, libtransmission/session.h):
+#   rpc-bind-address   upstream binds 0.0.0.0 and relies on the whitelist to
+#                      reject; that is an open socket on every interface. We
+#                      bind loopback, so there is nothing to reject.
+#   port-forwarding    upstream maps a WAN port via UPnP/NAT-PMP on first run.
+#   preallocation      upstream is Sparse (1). exFAT has no sparse files, and
+#                      on the 6.18 kernel it has no fallocate either, so Sparse
+#                      degrades to zero-filling the whole file to the card
+#                      before the first piece arrives (docs/bittorrent.md 6).
+#   peer-limit-*       200/50 is a desktop's budget. This kernel is booted
+#                      mem=511M, so Linux has 488 MiB for everything.
+seed_settings() {
+	[ -f "$SETTINGS" ] && return 0
+
+	mkdir -p "$DOWNLOAD_DIR" || return 1
+	cat > "$SETTINGS.new" <<-EOF
+	{
+	    "dht-enabled": true,
+	    "download-dir": "$DOWNLOAD_DIR",
+	    "lpd-enabled": true,
+	    "peer-limit-global": 120,
+	    "peer-limit-per-torrent": 30,
+	    "peer-port": 51413,
+	    "pex-enabled": true,
+	    "port-forwarding-enabled": false,
+	    "preallocation": 0,
+	    "rpc-authentication-required": false,
+	    "rpc-bind-address": "127.0.0.1",
+	    "rpc-enabled": true,
+	    "rpc-port": 9091,
+	    "rpc-whitelist": "127.0.0.1,::1",
+	    "rpc-whitelist-enabled": true,
+	    "utp-enabled": true
+	}
+	EOF
+	mv "$SETTINGS.new" "$SETTINGS" && sync
+}
+
+start() {
+	if ! seed_settings; then
+		echo "FAIL (could not write $SETTINGS)"
+		return 1
+	fi
+
+	printf "Starting transmission-daemon: "
+	# Root, because the card is root's: exFAT is mounted without uid=/gid=,
+	# so the `transmission` user the package creates cannot write a byte of
+	# $HOME_DIR. Same reason proftpd and smbd run as root here.
+	start-stop-daemon -S -q -x "$DAEMON" -- \
+		--config-dir "$HOME_DIR" --pid-file "$PIDFILE"
+	status=$?
+	[ "$status" -eq 0 ] && echo "OK" || echo "FAIL"
+	return "$status"
+}
+
+stop() {
+	printf "Stopping transmission-daemon: "
+	start-stop-daemon -K -q -p "$PIDFILE" -x "$DAEMON"
+
+	# The wait is here because BusyBox's start-stop-daemon "accepts and
+	# ignores -R <param>/--retry" (debianutils/start_stop_daemon.c), so the
+	# upstream script's --retry=TERM/10/KILL/5 would be a no-op. It has to
+	# be waited out: on SIGTERM the daemon flushes resume/ and removes its
+	# own pidfile, and a kill before that costs a full re-verify of every
+	# torrent -- hours, on a card.
+	i=0
+	while [ -f "$PIDFILE" ] && [ "$i" -lt 20 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+
+	if [ -f "$PIDFILE" ]; then
+		# Deliberately NOT escalated to SIGKILL: a daemon killed part-way
+		# through writing resume/ costs the re-verify this wait exists to
+		# avoid. Leave it running and say so; syslog has the reason.
+		echo "STILL RUNNING after ${i}s"
+		return 1
+	fi
+	echo "OK"
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		stop
+		start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac

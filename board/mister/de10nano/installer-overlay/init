@@ -161,9 +161,9 @@
 #   copy the base and SKIP the cores with a loud message rather than OOM-bricking.
 #   update_all.sh on the installed card fetches cores anyway.
 #   Two files that are NOT part of mister-payload/ ride in the same tmpfs: the FAT
-#   root's own linux/zImage_dtb (THIS installer's kernel, ~13 MB) and menu.rbf
+#   root's own linux/zImage_dtb (THIS installer's kernel, ~11 MB) and menu.rbf
 #   (~2.4 MB), staged so step 7 can put the card back on its feet. Both are
-#   measured into the budget below; together they are ~15 MB against ~400 MB of
+#   measured into the budget below; together they are ~13 MB against ~400 MB of
 #   headroom, and they are never skipped -- the cores are what gives way first.
 #   One wrinkle in that measurement, harmless but worth knowing: `du` reports
 #   ALLOCATED blocks, and a RE-RUN reads the payload off the full-size exFAT this
@@ -306,9 +306,10 @@ stop_after_stage=""
 # "DO NOT POWER OFF", "it reboots itself when done" -- rendered per mode as
 # gzipped raw BGRX8888 into /usr/share/mister-installer/ at build time by
 # installer-post-build.sh from the PNGs in board/mister/de10nano/
-# installer-splash/ (sources and licence there). It goes up right after the kernel
-# command line is parsed, i.e. seconds after power-on and long before the
-# point of no return, and stays until the reboot. The three terminal states
+# installer-splash/ (sources and licence there). It is the first thing /init
+# does once /proc, /sys and /dev are mounted -- ahead of the serial banner and
+# the LED -- so it is on screen as soon as the kernel hands over, long before
+# the point of no return, and stays until the reboot. The three terminal states
 # (failed / already installed / done) replace it with a few lines of text.
 # Progress is NOT mirrored to the screen: the console UI and a blit fight over
 # the same pixels, and "do not power off, wait a minute" is the whole message.
@@ -667,24 +668,23 @@ splash_hdmi_say() {
 	return 0
 }
 
-# Bring the screen up and put the artwork on it. Called ONCE, right after the
-# kernel command line has been parsed (the mode knob lives there): the fabric
-# already holds menu.rbf from U-Boot, so nothing later in the install makes
-# this more likely to succeed, and the whole point is to be on screen BEFORE
-# the point of no return. probe first: it writes nothing and its one line per
-# finding is the diagnosis ("no bitstream", "ADV7513 not found") a serial user
-# needs when the screen stays dark; `up` would fail the same way but say less.
+# Bring the screen up and put the artwork on it. Called ONCE, as the first
+# thing /init does after the three early mounts -- ahead of the serial banner
+# and the LED, because every moment before `up` is black screen for a user
+# with no serial cable. The fabric already holds menu.rbf from U-Boot, so
+# nothing later in the install makes this more likely to succeed.
+# `up` goes first and ALONE on the happy path: it carries the same bitstream
+# guard and the same exit codes as probe (ItsAlive_MiSTer ARCHITECTURE.md §7
+# guards hdmi, fb and up), so a probe in front of it would only be a second
+# exec and a second i2c bus scan between power-on and the picture. probe runs
+# AFTER a failed `up` instead, because its one line per finding ("no
+# bitstream", "ADV7513 not found") is the diagnosis a serial user needs when
+# the screen stays dark and `up` says less. Not after a timeout (124): a
+# wedged tool gets one SPLASH_HDMI_TIMEOUT of the install's time, not two.
 splash_hdmi_init() {
 	splash_hdmi=0
 	if ! [ -x "$SPLASH_HDMI_BIN" ]; then
 		splash_hdmi_log "$SPLASH_HDMI_BIN not present -- no HDMI splash this boot"
-		return 0
-	fi
-	splash_hdmi_run probe > "$SPLASH_HDMI_OUT" 2>&1
-	_rc=$?
-	splash_hdmi_replay
-	if [ "$_rc" -ne 0 ]; then
-		splash_hdmi_log "probe exit $_rc -- no HDMI splash this boot (the install is unaffected)"
 		return 0
 	fi
 	splash_hdmi_run up --mode "$splash_hdmi_mode" > "$SPLASH_HDMI_OUT" 2>&1
@@ -692,6 +692,10 @@ splash_hdmi_init() {
 	splash_hdmi_replay
 	if [ "$_rc" -ne 0 ]; then
 		splash_hdmi_log "up exit $_rc -- no HDMI splash this boot (the install is unaffected)"
+		if [ "$_rc" -ne 124 ]; then
+			splash_hdmi_run probe > "$SPLASH_HDMI_OUT" 2>&1
+			splash_hdmi_replay
+		fi
 		return 0
 	fi
 	splash_hdmi=1
@@ -826,14 +830,11 @@ mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount 
 mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
 mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
 
-# The splash needs /proc (uptime), /sys (the LED) and /run (the heartbeat flag,
-# created by the mkdir above), so it can only come up once those exist. Before
-# this point every drawing routine is a deliberate no-op -- see splash_tty.
-splash_init
-
 # ------------------------------------------------------- parse /proc/cmdline
 # Same discipline as stage-1: cmdline-driven, never positional, never globbing.
-splash_step 1 "checking the card"
+# Parsed BEFORE anything is drawn because the HDMI splash's mode knob lives
+# here; the parse is pure shell and costs nothing, and the checks that can fail
+# on its result (root=) wait until the console splash is up to say so.
 stage="parsing the kernel command line"
 cmdline="$(cat /proc/cmdline)"
 set -f
@@ -855,15 +856,25 @@ for tok in "$@"; do
 	esac
 done
 set +f
-[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
 case "$splash_hdmi_mode" in
 720p|480p) ;;
 *) log "ignoring mister_installer_video=\"$splash_hdmi_mode\" (720p or 480p); using 720p"
    splash_hdmi_mode=720p ;;
 esac
-# Picture first, before anything that can take seconds: from here on a user
-# with no serial cable is told what is happening and what not to do.
+
+# Picture FIRST -- before the serial banner, the LED and anything that can take
+# seconds. It needs only /dev and /sys (mounted above) and the mode (parsed
+# above); from here on a user with no serial cable is told what is happening
+# and what not to do. Its log lines print plain (splash_tty is still 0).
 splash_hdmi_init
+
+# The console splash needs /proc (uptime), /sys (the LED) and /run (the
+# heartbeat flag, created by the mkdir above), so it can only come up once
+# those exist. Before this point every drawing routine is a deliberate no-op
+# -- see splash_tty.
+splash_init
+splash_step 1 "checking the card"
+[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
 if [ -n "$stop_after_stage" ]; then
 	if [ -e /.installer-test-hook ]; then
 		log "TEST HOOK ACTIVE: will stop after \"$stop_after_stage\""

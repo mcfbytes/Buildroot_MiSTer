@@ -22,11 +22,29 @@
 # width x height x 4 for each mode, or `itsalive image` refuses the frame at
 # run time -- a failure the unit test cannot see and a user would only meet as
 # "the screen came up blank". Better to fail the build.
+#
+# AND WHY IT TRIMS UTIL-LINUX -- the black screen before the splash.
+# /init needs util-linux for sfdisk, and Buildroot has no finer knob than
+# BR2_PACKAGE_UTIL_LINUX_BINARIES, which is `--enable-all-programs`: ~60 static
+# binaries (lsns, lscpu, swapon, ...) and ~10 MB of this cpio's ~13 MB. Every
+# byte of it sits between power-on and the picture twice over -- U-Boot reads
+# it off the card inside zImage_dtb, then the kernel inflates it before /init
+# can run -- and nothing in the installer ever executes it. Measured on a
+# DE10-Nano (2026-09-22): gunzipping the cpio took 1.0 s of CPU as built and
+# 0.27 s trimmed (6.7 MB -> 1.7 MB gzipped). So every util-linux file NOT in
+# UTIL_LINUX_KEEP goes. The keep list is exactly the util-linux programs /init
+# runs; several shadow a BusyBox applet of the same name, so dropping one would
+# silently swap implementations under /init rather than fail. A kept name that
+# is missing fails the build.
+UTIL_LINUX_KEEP="sfdisk blkid blockdev findfs hexdump dmesg setsid"
 
 set -e
 
 TARGET_DIR="${1:?installer-post-build.sh: target dir argument missing}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Written by Buildroot just before the post-build scripts run: one
+# "package,./path" line per file each package installed into TARGET_DIR.
+FILE_LIST="${BUILD_DIR:?installer-post-build.sh: BUILD_DIR not set (run from Buildroot)}/packages-file-list.txt"
 SPLASH_SRC="$HERE/installer-splash"
 SPLASH_DST="$TARGET_DIR/usr/share/mister-installer"
 
@@ -48,3 +66,20 @@ for spec in "1280x720 3686400" "640x480 1228800"; do
 	chmod 0644 "$out"
 done
 echo "installer-post-build.sh: rendered the HDMI splash frames into /usr/share/mister-installer"
+
+[ -f "$FILE_LIST" ] || { echo "installer-post-build.sh: ERROR: $FILE_LIST not found" >&2; exit 1; }
+trimmed=0
+while IFS=, read -r pkg path; do
+	[ "$pkg" = util-linux ] || continue
+	case " $UTIL_LINUX_KEEP " in *" ${path##*/} "*) continue ;; esac
+	f="$TARGET_DIR/${path#./}"
+	if [ -e "$f" ] || [ -L "$f" ]; then rm -f "$f"; trimmed=$((trimmed + 1)); fi
+done < "$FILE_LIST"
+for p in $UTIL_LINUX_KEEP; do
+	for d in bin sbin usr/bin usr/sbin; do
+		[ -f "$TARGET_DIR/$d/$p" ] && continue 2
+	done
+	echo "installer-post-build.sh: ERROR: util-linux $p not in the target -- /init runs it" >&2
+	exit 1
+done
+echo "installer-post-build.sh: removed $trimmed util-linux file(s) /init never runs; kept: $UTIL_LINUX_KEEP"

@@ -49,7 +49,8 @@ BR2_INIT_NONE=y
 
 # --- Target packages: the installer-only additions on top of BusyBox (§9) ---
 # mkfs.exfat (ADR 0020 §2 step 3); sfdisk + blkid via util-linux's one
-# non-sub-selectable "basic set". No e2fsprogs, deliberately.
+# non-sub-selectable "basic set" -- trimmed back to the programs /init runs by
+# installer-post-build.sh (UTIL_LINUX_KEEP). No e2fsprogs, deliberately.
 BR2_PACKAGE_EXFATPROGS=y
 BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_BINARIES=y

@@ -16,8 +16,9 @@
 # ever reaches `itsalive` through one wrapper and four retargetable paths, so
 # the binary is replaced by a RECORDING STUB whose exit status per subcommand
 # the test sets, and the assertions are on what /init did with each answer --
-# absent binary, `probe` exit 10 (no bitstream), `up` failing, `up` HANGING
-# (the `timeout` bracket is the load-bearing line), the happy path, the 480p
+# absent binary, `up` exit 10 (no bitstream) and `up` failing otherwise (each
+# followed by a diagnostic `probe`), `up` HANGING (the `timeout` bracket is the
+# load-bearing line, and no probe may follow it), the happy path, the 480p
 # knob, a missing frame, and the three terminal states replacing the picture.
 #
 # WHAT IT CANNOT TELL YOU. It exercises the splash in isolation, not the install
@@ -258,22 +259,24 @@ splash_hdmi_say --clear 'x' >/dev/null 2>&1
 ck "no itsalive: say is a silent no-op"    "$(hdmi_calls)" ""
 SPLASH_HDMI_BIN="$saved_bin"
 
-# (b) probe says no bitstream (exit 10): QEMU, or a card that lost menu.rbf
-hdmi_reset; printf '10\n' > "$H/rc.probe"
+# (b) no bitstream (exit 10): QEMU, or a card that lost menu.rbf. `up` goes
+#     first and alone; only its failure earns the diagnostic probe, whose
+#     findings are what a serial user reads
+hdmi_reset; printf '10\n' > "$H/rc.up"; printf '10\n' > "$H/rc.probe"
 splash_hdmi_init > "$H/out.txt" 2>&1
-ck "probe exit 10: init returns 0"         "$?" "0"
-ck "probe exit 10: nothing after probe"    "$(hdmi_calls)" "probe;"
-ck "probe exit 10: screen not marked up"   "$splash_hdmi" "0"
-ck "probe exit 10: tool's stderr reached the log" "$(grep -c '^\[installer\] hdmi: stub: probe$' "$H/out.txt")" "1"
-ck "probe exit 10: verdict in the log"     "$(grep -c 'probe exit 10 -- no HDMI splash' "$H/out.txt")" "1"
-ck "probe exit 10: cursor knob untouched"  "$(cat "$H/cursor_blink")" "1"
+ck "up exit 10: init returns 0"            "$?" "0"
+ck "up exit 10: up, then probe to diagnose, then stop" "$(hdmi_calls)" "up --mode 720p;probe;"
+ck "up exit 10: screen not marked up"      "$splash_hdmi" "0"
+ck "up exit 10: probe's stderr reached the log" "$(grep -c '^\[installer\] hdmi: stub: probe$' "$H/out.txt")" "1"
+ck "up exit 10: verdict in the log"        "$(grep -c 'up exit 10 -- no HDMI splash' "$H/out.txt")" "1"
+ck "up exit 10: cursor knob untouched"     "$(cat "$H/cursor_blink")" "1"
 
-# (c) up fails (exit 12, say, an i2c error): probe passed, so the board is a
-#     real MiSTer with a bitstream -- still no picture, still no harm
+# (c) up fails otherwise (exit 12, say, an i2c error) -- still no picture,
+#     still no harm, still a probe for the log
 hdmi_reset; printf '12\n' > "$H/rc.up"
 splash_hdmi_init > "$H/out.txt" 2>&1
 ck "up exit 12: init returns 0"            "$?" "0"
-ck "up exit 12: probe then up, then stop"  "$(hdmi_calls)" "probe;up --mode 720p;"
+ck "up exit 12: up, then probe, then stop" "$(hdmi_calls)" "up --mode 720p;probe;"
 ck "up exit 12: screen not marked up"      "$splash_hdmi" "0"
 ck "up exit 12: verdict in the log"        "$(grep -c 'up exit 12 -- no HDMI splash' "$H/out.txt")" "1"
 
@@ -288,12 +291,13 @@ ck "up hangs: init still returns 0"        "$rc" "0"
 ck "up hangs: timeout cut it short (<10 s)" "$(( t1 - t0 < 10 ))" "1"
 ck "up hangs: screen not marked up"        "$splash_hdmi" "0"
 ck "up hangs: exit 124 (timeout) in the log" "$(grep -c 'up exit 124 -- no HDMI splash' "$H/out.txt")" "1"
+ck "up hangs: no probe after a timeout"    "$(hdmi_calls)" "up --mode 720p;"
 
 # (e) the happy path
 hdmi_reset
 splash_hdmi_init > "$H/out.txt" 2>&1
 ck "happy: init returns 0"                 "$?" "0"
-ck "happy: probe, up, image -- in that order" "$(hdmi_calls)" "probe;up --mode 720p;image -;"
+ck "happy: up, image -- and no probe in front" "$(hdmi_calls)" "up --mode 720p;image -;"
 ck "happy: screen marked up"               "$splash_hdmi" "1"
 ck "happy: the 720p frame was fed, decompressed" "$(cat "$H/image.bytes")" "16"
 ck "happy: fbcon cursor blink switched off" "$(cat "$H/cursor_blink")" "0"
@@ -319,7 +323,7 @@ ck "done: LED still put out"               "$(led)" "0"
 # (g) the 480p knob picks the other mode AND the other frame
 hdmi_reset; splash_hdmi_mode=480p
 splash_hdmi_init > "$H/out.txt" 2>&1
-ck "480p: up asked for 480p"               "$(sed -n 2p "$H/calls")" "up --mode 480p"
+ck "480p: up asked for 480p"               "$(sed -n 1p "$H/calls")" "up --mode 480p"
 ck "480p: the 640x480 frame was fed"       "$(cat "$H/image.bytes")" "8"
 ck "480p: verdict names the mode"          "$(grep -c 'splash on screen (480p)' "$H/out.txt")" "1"
 

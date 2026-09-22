@@ -3234,11 +3234,12 @@ installer's job needs on top:
 - A few extra BusyBox applets stage 1 does not need: cp (for the payload ->
   tmpfs -> exFAT copies), dd (uboot.img -> the 0xA2 partition), reboot (the
   final handoff), blockdev and hexdump (MAC-address generation from
-  `/dev/urandom`). See `board/mister/de10nano/installer-busybox.config`'s
-  header for exactly which `CONFIG_` symbols that required and why —
-  `BR2_PACKAGE_BUSYBOX_CONFIG` names that file. **`timeout` joined them on
-  2026-09-21** for the HDMI splash (next bullet): every `itsalive` call in
-  `/init` runs under it, so a wedged tool can never hold the install.
+  `/dev/urandom`). See `docs/installer-build.md` for exactly which `CONFIG_`
+  symbols that required and why (`board/mister/de10nano/installer-busybox.config`,
+  named by `BR2_PACKAGE_BUSYBOX_CONFIG`, carries only a short pointer there).
+  **`timeout` joined them on 2026-09-21** for the HDMI splash (next bullet):
+  every `itsalive` call in `/init` runs under it, so a wedged tool can never
+  hold the install.
 - `BR2_PACKAGE_ITSALIVE` (**2026-09-21**, ADR 0020 §9, issue #185) -> the HDMI
   splash: `itsalive up` + `itsalive image` put "installing, do not power off"
   on screen for the minute the card is being reformatted, on the `menu.rbf`
@@ -3298,7 +3299,11 @@ Per-symbol notes beyond §8's:
   for exactly that reason).
 - Device nodes (§8.4): same load-bearing reasoning — `/dev/console` must exist
   before `/init` runs, or there is no stdin/stdout/stderr and a rescue shell
-  is unreachable.
+  is unreachable. The defconfig carries no explicit
+  `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y` line for it — dynamic
+  devtmpfs is Buildroot's own default, so `savedefconfig` omits it, and
+  `scripts/check-defconfigs.sh` is what keeps that omission canonical rather
+  than a drift risk.
 - `BR2_ROOTFS_OVERLAY` = `board/mister/de10nano/installer-overlay`: `/init`
   itself. A SEPARATE overlay from stage 1's — this is a different program
   with a different job (reformat-and-handoff, not mount-and-switch_root).

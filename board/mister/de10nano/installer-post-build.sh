@@ -1,41 +1,10 @@
 #!/bin/sh
-#
-# installer-post-build.sh <target-dir> [args...]
-#
-# Runs after the INSTALLER target filesystem is assembled, before the cpio is
-# generated (BR2_ROOTFS_POST_BUILD_SCRIPT in configs/mister_installer_defconfig).
-# Reproducible: no timestamps, no randomness. The sibling for the DE10-Nano
-# image is post-build.sh; nothing there applies to a throwaway cpio with no
-# /etc/shadow and no /MiSTer.version, which is why this is a separate file
-# rather than a branch in that one.
-#
-# WHY THIS EXISTS — the HDMI splash frames.
-# /init's splash section (ADR 0020 §9) feeds `itsalive image` a gzipped raw
-# BGRX8888 frame per video mode from /usr/share/mister-installer/. Those frames
-# are pure derivations of the PNGs in board/mister/de10nano/installer-splash/,
-# so they are produced HERE at build time rather than committed next to their
-# source: two fewer binaries in git, and a change to a PNG cannot ship with a
-# stale frame. The converter is pure Python 3 (which Buildroot already needs on
-# the host), so this adds no host dependency.
-#
-# Hard-checked, not merely hoped: the raw byte count must be exactly
-# width x height x 4 for each mode, or `itsalive image` refuses the frame at
-# run time -- a failure the unit test cannot see and a user would only meet as
-# "the screen came up blank". Better to fail the build.
-#
-# AND WHY IT TRIMS UTIL-LINUX -- the black screen before the splash.
-# /init needs util-linux for sfdisk, and Buildroot has no finer knob than
-# BR2_PACKAGE_UTIL_LINUX_BINARIES, which is `--enable-all-programs`: ~60 static
-# binaries (lsns, lscpu, swapon, ...) and ~10 MB of this cpio's ~13 MB. Every
-# byte of it sits between power-on and the picture twice over -- U-Boot reads
-# it off the card inside zImage_dtb, then the kernel inflates it before /init
-# can run -- and nothing in the installer ever executes it. Measured on a
-# DE10-Nano (2026-09-22): gunzipping the cpio took 1.0 s of CPU as built and
-# 0.27 s trimmed (6.7 MB -> 1.7 MB gzipped). So every util-linux file NOT in
-# UTIL_LINUX_KEEP goes. The keep list is exactly the util-linux programs /init
-# runs; several shadow a BusyBox applet of the same name, so dropping one would
-# silently swap implementations under /init rather than fail. A kept name that
-# is missing fails the build.
+
+# installer-post-build.sh <target-dir> [args...] -- runs after the INSTALLER
+# rootfs is assembled, before the cpio is built. Rationale: docs/installer-build.md.
+
+# Kept util-linux programs -- everything else of --enable-all-programs is cut
+# from the cpio below. Rationale + measurements: docs/installer-build.md.
 UTIL_LINUX_KEEP="sfdisk blkid blockdev findfs hexdump dmesg setsid"
 
 set -e

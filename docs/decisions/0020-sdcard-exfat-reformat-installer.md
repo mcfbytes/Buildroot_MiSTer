@@ -489,7 +489,7 @@ directory is clutter rather than a defect — it is logged, not treated as a fai
 * **One BusyBox applet.** `CONFIG_MV` (~10 kb by BusyBox's own Kconfig costing, in a
   ~376 KB binary inside a 13 MB RAM-resident initramfs). The applet budget is a budget,
   not a freeze — the same reasoning the `CONFIG_RM` bullet below records — and the
-  justification lives in `installer-busybox.config`'s header with the others. One
+  justification lives in `docs/installer-build.md` (BusyBox section) with the others. One
   non-obvious behaviour is relied on and documented there: `mv` cannot rename over an
   existing **non-empty directory**, so `/init` descends the one directory that collides
   (`linux/`) and moves its children individually.
@@ -622,7 +622,7 @@ ways to wedge than a `printf`. So, in addition to "no `set -e`, every path guard
 - The binary is **probed for**, never assumed: a config without `BR2_PACKAGE_ITSALIVE`
   logs one line and carries on.
 - **Every invocation runs under `timeout`** (`CONFIG_TIMEOUT`, the one applet this
-  section adds; costed in `installer-busybox.config`'s header). `itsalive` bounds its own
+  section adds; costed in `docs/installer-build.md` (BusyBox section)). `itsalive` bounds its own
   mailbox wait (exit 11); the bracket is the belt for the failure it did not foresee, such
   as a driver that never returns from an ioctl. `/init` reaches the binary through one
   wrapper, and the timeout lives there.
@@ -708,12 +708,12 @@ confirm.
   that an unchecked cleanup command silently no-opped for a whole release; the result is
   logged and asserted by `scripts/test-sdcard-install.sh`. The applet budget is a budget,
   not a freeze: needed applets get turned on and justified in
-  `installer-busybox.config`'s header rather than worked around in shell.
+  `docs/installer-build.md` (BusyBox section) rather than worked around in shell.
 - **`CONFIG_MV` was added for §8's recoverable ordering.** The `.part` rename is what
   makes a partial copy-back detectable on the next boot, and the commit phase's renames
   are what keep it from re-writing 150+ MiB of payload it has already written once. Same
   budget reasoning as `CONFIG_RM` above, costed in §8.5 and justified in
-  `installer-busybox.config`'s header. `/init` relies on one behaviour worth knowing
+  `docs/installer-build.md` (BusyBox section). `/init` relies on one behaviour worth knowing
   before editing it: `mv` will not rename over an existing non-empty directory, so the
   one directory that collides (`linux/`, already holding the installer's own kernel) is
   descended and its children moved individually.

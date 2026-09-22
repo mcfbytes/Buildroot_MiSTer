@@ -1,12 +1,6 @@
-# mister_installer_defconfig — the THROWAWAY INSTALLER OS (TASKS.md P5.3,
-# docs/decisions/0020-sdcard-exfat-reformat-installer.md): output-installer/
-# images/rootfs.cpio, a static musl BusyBox + exfatprogs + util-linux(sfdisk)
-# rootfs that scripts/mk-sdcard.sh embeds into the installer's own zImage_dtb.
-# A SIBLING of the stage-1 initramfs stack (configs/fragments/initramfs-common +
-# initramfs-de10nano; same shape, line-for-line), plus
-# exactly what the reformat-and-handoff /init needs. Standalone Buildroot
-# config, not a fragment stack. Rationale: docs/buildroot-config.md §9.
-#
+# mister_installer_defconfig -- the throwaway installer OS's rootfs.cpio
+# (ADR 0020; standalone, not a fragment stack). Full rationale: docs/buildroot-config.md §9.
+
 # WARNING: NOT BR2_TARGET_ROOTFS_INITRAMFS, NOT the main config with a flag —
 # a fourth small cpio in its own O=, never the ~300 MB target rootfs.
 
@@ -21,51 +15,33 @@ BR2_ARM_FPU_NEON=y
 BR2_TOOLCHAIN_BUILDROOT_MUSL=y
 BR2_KERNEL_HEADERS_6_18=y
 BR2_STATIC_LIBS=y
-# Same posture as the two board defconfigs. Added 2026-09-21 with the first
-# externally-sourced package in this cpio (itsalive): without it a download
-# whose filename has no line in the package's .hash is only WARNED about, so a
-# bumped ITSALIVE_VERSION carrying a stale .hash would fetch unverified and
-# build green. lint.yml's "itsalive version/hash pin consistency" step is the
-# cheap gate; this is the one that holds at download time.
+# Hash-verified downloads: itsalive is the first externally-sourced package
+# in this cpio. docs/buildroot-config.md §9 has the why.
 BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
-# C++ is enabled in the toolchain ONLY because Rust's target-arch gate needs
-# libstdc++ on musl (BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS `depends on
-# BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL`, package/rustc/
-# Config.in.host; for an internal toolchain that symbol is selected by THIS
-# one, and writing BR2_INSTALL_LIBSTDCPP=y here is silently dropped). Nothing
-# in this cpio links it; BR2_STATIC_LIBS keeps the .a out of the rootfs. Costs
-# toolchain build time, not image bytes.
+# C++ only because Rust's musl target-arch gate needs libstdc++; nothing here
+# links it. docs/buildroot-config.md §9 has the why.
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 
 # --- No init system: /init reformats and calls reboot directly (§8.3, §9) ---
 BR2_INIT_NONE=y
 
-# --- Device nodes: dynamic/devtmpfs (§8.4) ---
-# WARNING: STATIC would leave /dev/console out of the cpio (no stdio for /init).
-# (BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS is Buildroot's default and so
-#  leaves no line here -- it is load-bearing all the same: fs/cpio only mknods
-#  /dev/console in the non-static branch. scripts/check-defconfigs.sh keeps this
-#  file canonical, which is why the explicit line is gone.)
+# --- Device nodes: dynamic/devtmpfs, Buildroot's default so no line here ---
+# WARNING load-bearing: STATIC drops /dev/console (no /init stdio). docs/buildroot-config.md §9.
 
-# --- Target packages: the installer-only additions on top of BusyBox (§9) ---
-# mkfs.exfat (ADR 0020 §2 step 3); sfdisk + blkid via util-linux's one
-# non-sub-selectable "basic set". No e2fsprogs, deliberately.
+# --- Target packages, on top of BusyBox: mkfs.exfat + sfdisk/blkid (util-linux
+# basic set, trimmed post-build). No e2fsprogs; docs/buildroot-config.md §9.
 BR2_PACKAGE_EXFATPROGS=y
 BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_BINARIES=y
-# The HDMI splash (ADR 0020 §9, issue #185): `itsalive up` + `itsalive image`
-# in /init's splash section put "installing, do not power off" on screen while
-# the card is reformatted. Static Rust, ~400 KB in the cpio; pulls the prebuilt
-# host-rust-bin download into this configuration only. Its artwork is rendered
-# into the cpio by installer-post-build.sh (above), not by this package.
+# HDMI splash (ADR 0020 §9, issue #185): itsalive up/image via /init.
+# docs/buildroot-config.md §9 has the size/toolchain/artwork rationale.
 BR2_PACKAGE_ITSALIVE=y
 
 # --- BusyBox: stage 1's config PLUS the installer applets; /init overlay (§9) ---
 BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-busybox.config"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-overlay"
-# Renders the HDMI splash frames (ADR 0020 §9) into the cpio from the PNGs in
-# installer-splash/, so no derived binary is committed. Same relative-path form
-# as the DE10 defconfig's hook; Buildroot runs it from work/buildroot.
+# Renders the HDMI splash frames + trims util-linux at build time (ADR 0020
+# §9); how and why: docs/installer-build.md.
 BR2_ROOTFS_POST_BUILD_SCRIPT="../../board/mister/de10nano/installer-post-build.sh"
 
 # --- Output: a cpio, uncompressed (§8.7, §9) ---

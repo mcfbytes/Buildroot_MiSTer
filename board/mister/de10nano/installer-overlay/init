@@ -1,251 +1,24 @@
 #!/bin/sh
-#
-# MiSTer FIRST-BOOT INSTALLER /init  (TASKS.md P5.3; PLAN §8; ADR 0017 §4; ADR 0020)
-#
-# THIS FILE CAN BRICK THE BOARD. Read this whole header, ADR 0020, and
-# docs/boot-chain.md §2.1/§3.1/§5 before touching a single line.
-#
-# ---------------------------------------------------------------------------
-# What this is
-# ---------------------------------------------------------------------------
-# The shipped sdcard.img is a *small* dd/Etcher-writable card. On the very first
-# boot the stock U-Boot (uboot.img, byte-identical, in the 0xA2 boot partition)
-# loads /linux/zImage_dtb off the FAT32 data partition (p1). On the pristine card
-# that zImage_dtb is the INSTALLER kernel: our 6.18 kernel relinked with THIS
-# initramfs embedded. So this /init runs, as PID 1, entirely from RAM (the
-# initramfs is a ramfs; nothing we do to the SD card pulls the rug out from under
-# the running system -- that is the whole reason the reformat-in-place trick works).
-#
-# MiSTer's data partition is exFAT, which Linux cannot grow in place (no resize
-# tool exists for exFAT). So "auto-expand to fill the card" is NOT a filesystem
-# grow -- it is a REFORMAT, exactly like mr-fusion (MiSTer-devel/mr-fusion,
-# builder/scripts/S99install-MiSTer.sh, which this file is adapted from). We:
-#
-#   1. mount the shipped FAT32 data partition (p1) read-only and work out which
-#      state the card is in (see RECOVERABILITY),
-#   2. read the payload: check it is complete, and capture any user pre-seed the
-#      user dropped at the FAT root before first boot,
-#   3. copy /mister-payload/ into a RAM tmpfs, ALONGSIDE the installer's own
-#      /linux/zImage_dtb and the FAT root's /menu.rbf -- the two files that let a
-#      half-finished card boot back into this installer,
-#   4. sfdisk-repartition the WHOLE card to full size: p1 = exFAT data filling the
-#      card minus a small reserved tail, p2 = type 0xA2 for U-Boot,
-#   5. dd uboot.img raw to the new 0xA2 p2 IMMEDIATELY -- seconds after the
-#      repartition the card can reach U-Boot again,
-#   6. mkfs.exfat -n MiSTer_Data on the new p1 (in-kernel exfat driver, ADR 0019 --
-#      we mount it with `mount -t exfat`, NO fuse, unlike mr-fusion),
-#   7. write the INSTALLER's own zImage_dtb and menu.rbf onto that fresh p1 FIRST,
-#      before any payload byte -- from this instant a power cut boots straight back
-#      into this installer rather than into nothing,
-#   8. copy the payload back out of RAM into mister-payload.part/ and, once it is
-#      complete, RENAME that directory to mister-payload/ (a directory-entry
-#      update, which is what makes a partial copy detectable on the next boot),
-#   9. `zcat` mister-payload/linux/linux.img.gz -> linux/linux.img directly onto
-#      the card (the 512 MiB image lands on DISK, never in RAM -- see the MEMORY
-#      note below), with the payload left complete for the whole decompression,
-#  10. COMMIT: drop the now-redundant .gz, rename the payload's entries into their
-#      final places at the root, apply the pre-seed, write a UNIQUE per-board MAC
-#      into <data>/linux/u-boot.txt, rename the REAL kernel over linux/zImage_dtb
-#      as the very last act, then sync + reboot.
-#
-# Those ten are exactly the steps the console splash counts off (1/10 .. 10/10),
-# so they are what a user with a serial cable sees. There is ONE numbering in this
-# file; keep every reference below on it.
-#
-# The reformat writes the REAL /linux/zImage_dtb (from the payload) onto p1, so the
-# next boot loads the real MiSTer kernel, not this installer. That kernel-swap is
-# the primary re-run guard; the payload-dir/linux.img check below is belt.
-#
-# ---------------------------------------------------------------------------
-# RECOVERABILITY -- why steps 5 and 7 sit where they do (issue #185)
-# ---------------------------------------------------------------------------
-# Until 2026-09 the order was: repartition, format, copy back, expand, pre-seed,
-# MAC, dd uboot.img. From mkfs.exfat onwards -- which is very nearly the whole of
-# a ~1-minute install on a real card -- a power cut left a card that could not
-# boot at all: sfdisk had moved the 0xA2 partition to the tail of the medium with
-# no SPL in it, and the format had just destroyed the only kernel on p1, with the
-# replacement not written until the very last step. The installer is also visually
-# silent for that whole minute (see WHY THERE IS NO HDMI SPLASH below), so the
-# window in which a user is most likely to pull the power was exactly the window
-# that destroyed the card. Issue #185 reported precisely that.
-#
-# The order above attacks the harm rather than the visibility. Two writes are
-# hoisted to the front so the card becomes self-recovering almost immediately:
-#
-#   * uboot.img goes into the new p2 the moment that partition exists (step 5), so
-#     the BootROM can find an SPL again seconds after the table changed;
-#   * the installer's OWN kernel and menu.rbf go onto the fresh p1 before any
-#     payload byte does (step 7), so U-Boot's `load mmc 0:1 ... zImage_dtb` finds
-#     something to boot -- this installer, which simply runs again.
-#
-# Everything after that is arranged so that at any moment a power cut can happen
-# the card is in exactly one of four self-describing states:
-#
-#   mister-payload/ present and complete
-#       -> a full, unattended re-install on the next boot. This is the normal
-#          interrupted state and the whole point of the reorder; it costs the user
-#          one more run and nothing else.
-#   mister-payload.part/ present instead
-#       -> the copy-back was cut short. The bytes it was copying from lived in RAM
-#          and are gone, so there is nothing left on the card to install from:
-#          halt with an honest message, never a reboot loop.
-#   neither present, and no linux/linux.img either
-#       -> formatted but never populated: the cut landed between mkfs.exfat and
-#          the copy-back. Same verdict as above and for the same reason -- the
-#          source lived in RAM. Halt and say to re-flash.
-#   neither present, linux/linux.img there
-#       -> installed. Stop and say so (the "already provisioned" guard).
-#
-# The COMMIT POINT is the single `mv` of the real linux/zImage_dtb over the
-# installer's own, at the very end. Before it the card boots this installer; after
-# it the card boots MiSTer.
-#
-# TWO windows are left where a power cut still costs a re-flash, and they are both
-# short because of where the writes above were moved to:
-#
-#   * mkfs.exfat until the installer kernel lands on the new p1 -- a few seconds on
-#     a real card. This is the only HARD one: for that moment the card has a
-#     bootloader but no kernel on p1, so it cannot get to Linux at all. Note what
-#     is NOT in it: sfdisk only rewrites the MBR, and the new p1 still starts at
-#     LBA 2048, so between sfdisk and mkfs.exfat the shipped FAT32 filesystem --
-#     installer kernel, payload and all -- is still there and still readable under
-#     the enlarged partition entry. An interrupt in THAT window simply re-runs
-#     (scripts/test-installer-recovery.sh proves it).
-#   * the commit phase, from the `rm` of linux/linux.img.gz (which is what first
-#     makes mister-payload/ incomplete -- it precedes every rename) to the final
-#     `mv`. The installer still boots and still says what happened; it just has no
-#     source left to finish from. Directory-entry updates on an already-written
-#     filesystem, so fractions of a second.
-#
-# Neither is zero; together they are the smallest this can be made without writing
-# every byte twice, against an old ordering whose window was the entire ~1-minute
-# install. Do not put anything slow inside either one.
-#
-# HDMI visibility is addressed separately -- THE HDMI SPLASH in the splash
-# section below (2026-09-21, ADR 0020 section 9): this ordering shrinks the
-# consequence of pulling the power; the picture shrinks the temptation to.
-#
-# ---------------------------------------------------------------------------
-# The load-bearing facts (get one wrong and you brick a card)
-# ---------------------------------------------------------------------------
-# * PARTITION SLOTS ARE FIXED. Both the shipped card and the final card use
-#   p1 = data, p2 = 0xA2 boot -- because the stock U-Boot's compiled-in env has
-#   `mmcroot=/dev/mmcblk0p1` and `load mmc 0:1 ... $bootimage`, i.e. it ALWAYS reads
-#   the kernel from partition 1 (docs/boot-chain.md §3.1 entries 16-17, §4). BootROM
-#   independently scans the MBR for the first 0xA2 partition (§2.1), which is p2.
-#   The final sfdisk table below MUST reproduce this or the reformatted card is dead.
-# * THE 0xA2 PARTITION MOVES. Repartitioning creates a NEW p2 with no SPL in it.
-#   Until `dd uboot.img -> p2` succeeds the card CANNOT boot. That dd is the single
-#   most brick-critical step; it is verified and, if it fails, we scream and hand the
-#   user a recovery hint (re-flash sdcard.img) rather than rebooting into a brick.
-#   It is also the FIRST thing done after sfdisk, for the reason in RECOVERABILITY
-#   above -- do not let a later edit push it back down the file.
-# * uboot.txt MUST END IN A NEWLINE. U-Boot's `env import -t` (no size arg) scans for
-#   '\n' followed by '\0' (docs/boot-chain.md §4, u-boot cmd/nvedit.c:1049-1066). We
-#   printf a trailing newline.
-# * MEMORY IS CAPPED AT 511 MiB. We boot on the STOCK uboot.img, whose compiled-in
-#   `mmcboot` hardcodes `mem=511M memmap=513M$511M` as a LITERAL string and never
-#   interpolates a `mem=` env var (docs/boot-chain.md §4). So this installer sees
-#   ~511 MiB, NOT the full 1 GiB of physical DDR, and NO shipped `linux/u-boot.txt`
-#   can lift that cap -- only rebuilding U-Boot could, which is out of scope. The
-#   payload transits RAM (step 3), so it MUST fit under ~511 MiB. The single item
-#   that would blow that budget is linux.img: a 512 MiB apparent-size ext4 image,
-#   stored NON-sparse on FAT32, i.e. bigger than the whole address space. So it does
-#   NOT transit RAM as a 512 MiB blob -- scripts/mk-sdcard.sh ships it GZIPPED
-#   (linux/linux.img.gz, ~80 MiB of real data); we copy that small .gz through RAM
-#   like everything else and, only AFTER copy-back, `zcat` it straight onto the
-#   exFAT card (step 9 below), so the full 512 MiB is written to DISK, never held
-#   in RAM. The rest of the base (~60 MB: MiSTer, menu.rbf, soundfonts, scripts, the
-#   real kernel) fits with wide margin; the optional _Console cores (~150-200
-#   MB) may NOT, so we measure free RAM first and, if the full payload will not fit,
-#   copy the base and SKIP the cores with a loud message rather than OOM-bricking.
-#   update_all.sh on the installed card fetches cores anyway.
-#   Two files that are NOT part of mister-payload/ ride in the same tmpfs: the FAT
-#   root's own linux/zImage_dtb (THIS installer's kernel, ~13 MB) and menu.rbf
-#   (~2.4 MB), staged so step 7 can put the card back on its feet. Both are
-#   measured into the budget below; together they are ~15 MB against ~400 MB of
-#   headroom, and they are never skipped -- the cores are what gives way first.
-#   One wrinkle in that measurement, harmless but worth knowing: `du` reports
-#   ALLOCATED blocks, and a RE-RUN reads the payload off the full-size exFAT this
-#   installer made (128 KiB clusters on a 64 GB card) rather than the shipped
-#   FAT32 (32 KiB), so the same tree measures bigger on the second pass. The error
-#   is in the safe direction -- it can only make a re-run skip cores a first run
-#   kept, never the reverse -- and update_all.sh fetches them anyway.
-# * DEFENSIVE LIKE THE STAGE-1 init. Same contract as
-#   board/mister/common/initramfs-overlay/init: early proc/sys/dev mounts, parse
-#   the cmdline (never hardcode the device), and on ANY fatal error print a banner
-#   and drop to a RESPAWNING rescue shell. PID 1 must NEVER exit (that is an instant
-#   kernel panic). A half-reformatted card must give a diagnosable message, not a
-#   black brick.
-#
-# ---------------------------------------------------------------------------
-# External programs this init needs (beyond the stage-1 busybox applet set)
-# ---------------------------------------------------------------------------
-# From the installer Buildroot config (configs/mister_installer_defconfig):
-#   sfdisk                    (BR2_PACKAGE_UTIL_LINUX + _BINARIES)
-#   mkfs.exfat                (BR2_PACKAGE_EXFATPROGS)
-#   itsalive                  (BR2_PACKAGE_ITSALIVE -- the HDMI splash. OPTIONAL at
-#                              run time: probed for, every call under `timeout`,
-#                              every status only logged; see the splash section)
-# Provided by busybox in EITHER stage-1's set or installer-busybox.config:
-#   sh(ash+test+math) mount umount mkdir printf sleep sync   (already in stage-1)
-#   findfs setsid cttyhack cat ls tail dmesg                 (already in stage-1)
-#   cp du dd cut reboot blkid blockdev hexdump rm mv timeout (installer must add)
-# The applet budget is real but it is NOT fixed: `rm` was added in PR #76 because
-# /init genuinely needed it (step 10) and it costs ~1 KB, and `mv` was added for
-# the recoverable ordering above (the .part rename and the commit renames are the
-# whole reason a partial copy is detectable, and a rename is also what keeps the
-# commit from re-writing 150+ MiB). If a future revision
-# needs an applet, turn its CONFIG_ symbol on in installer-busybox.config and
-# document why in that file's header -- do not contort the shell around its
-# absence. Do check the symbol actually exists in the BusyBox being built:
-# kconfig silently discards unknown symbols, so a typo reads as "not set".
-# Note the budget applies to APPLETS only -- `true` and `false` are unconditional
-# ash BUILTINS (shell/ash.c builtintab, outside any #if), so `|| true` is safe
-# here even though CONFIG_TRUE is off; that symbol governs only /bin/true.
-# (blkid/blockdev/hexdump may come from busybox or util-linux; only sfdisk+mkfs.exfat
-# must be real external binaries.) NOTE: basename/dirname/od are deliberately NOT
-# built -- /init uses POSIX ${var%/*}/${var##*/} parameter expansion in their place,
-# and hexdump instead of od for the MAC. Everything here is POSIX sh / busybox ash;
-# no bashisms.
-# The console/LED half of the first-boot splash (see its own section below)
-# deliberately adds NOTHING to this list: it is built entirely from shell
-# builtins plus printf and sleep, both of which are already here. The HDMI half
-# (2026-09-21) adds exactly two things: the `itsalive` binary, and BusyBox
-# `timeout`, which brackets every call to it so a wedged tool can never hold the
-# install. Read that section's "APPLET BUDGET" note before editing it -- several
-# obvious implementations need applets we do not ship.
-#
+# MiSTer first-boot SD-card installer /init (PID 1). THIS FILE CAN BRICK THE BOARD:
+# read docs/installer-init.md and ADR 0020 before touching a line.
 set -u
 
 # --- Tunables ---------------------------------------------------------------
 PAYLOAD_DIR="mister-payload"           # subdir on the shipped p1 holding the real card
-PAYLOAD_PART_DIR="mister-payload.part" # the SAME tree while it is still being written.
-                                       # The copy-back lands here and is renamed to
-                                       # PAYLOAD_DIR only once complete, so "an interrupted
-                                       # copy" and "a payload worth re-installing from" are
-                                       # two different directory names rather than a guess
-                                       # (see RECOVERABILITY in the header).
+PAYLOAD_PART_DIR="mister-payload.part" # the SAME tree while still being written;
+                                       # renamed to PAYLOAD_DIR once complete
 CORES_DIR="_Console"                   # payload top-level dir skipped first under RAM pressure
 DATA_LABEL="MiSTer_Data"               # exFAT volume label the final card must carry
-RESERVED_SECTORS=8192                  # 512-byte sectors given to the 0xA2 boot partition
-                                       # (8192*512 = 4 MiB; uboot.img is ~503 KiB, so ample).
-                                       # This is the EXACT p2 size, matching genimage-sdcard.cfg's
-                                       # `size = 4M` on the shipped image -- see the sfdisk step.
-P1_START_SECTORS=2048                  # p1's start LBA = 1 MiB alignment, matching sfdisk's own
-                                       # default AND genimage-sdcard.cfg's `align = 1M`. Named
-                                       # explicitly so the sfdisk layout is deterministic and p2
-                                       # ends up EXACTLY RESERVED_SECTORS (not RESERVED-2048).
+RESERVED_SECTORS=8192                  # 512-byte sectors for the 0xA2 p2: EXACTLY 4 MiB,
+                                       # matching genimage-sdcard.cfg's `size = 4M`
+P1_START_SECTORS=2048                  # 1 MiB-aligned p1 start LBA, as genimage-sdcard.cfg;
+                                       # explicit so p2 is EXACTLY RESERVED_SECTORS
 RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel + our own
                                        # working set; the payload tmpfs may use the rest.
 DEV_WAIT=30                            # seconds to wait for a block device to enumerate
 
 # --- where the RAM copy lives ----------------------------------------------
-# One tmpfs with two subdirectories, because two unrelated things are staged in
-# it. RAM_PAYLOAD is mister-payload/ verbatim and its contents are iterated with a
-# glob; RAM_INSTALLER holds the two recovery files, which must NOT appear in that
-# glob. Separate directories, not a naming convention, so the glob cannot pick
-# them up by accident.
+# Separate dirs, so the payload glob can never pick up the two recovery files.
 RAM_DIR="/tmp/stage"
 RAM_PAYLOAD="$RAM_DIR/payload"
 RAM_INSTALLER="$RAM_DIR/installer"
@@ -254,144 +27,18 @@ RAM_INSTALLER="$RAM_DIR/installer"
 cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
 fat_type=""; stage="starting up"; cores_skipped="no"
 
-# TEST-ONLY interruption knob; see stop_after() far below. Inert unless the kernel
-# command line carries mister_installer_stop_after=, which the stock U-Boot's
-# compiled-in bootargs never does.
+# TEST-ONLY interruption knob; see stop_after().
 stop_after_stage=""
 
-# ===========================================================================
-#  FIRST-BOOT SPLASH -- HDMI picture + console progress UI + hps_led0 heartbeat
-# ===========================================================================
-# WHY THIS EXISTS
-# ---------------
-# On a pristine card everything below takes tens of seconds during which the
-# board looks completely dead: no menu, and -- without a serial adapter -- no
-# output whatsoever. A user reasonably concludes it has hung and pulls the
-# power, and the window they pull it in is very likely to be the reformat,
-# which is exactly the window that leaves an unbootable card. Every line in
-# this section exists to make "it is working, wait" observable.
-#
-# THE HDMI SPLASH (2026-09-21, ADR 0020 section 9, issue #185)
-# ------------------------------------------------------------
-# Until 2026-09-21 this header said "WHY THERE IS NO HDMI SPLASH" and listed
-# three blockers; the reasoning is kept because two of the three are what the
-# picture still depends on. mr-fusion shows a PNG with `fbv` because it ships
-# its OWN U-Boot, a Terasic DTB and a Terasic framebuffer BITSTREAM whose frame
-# reader scans DDR out to HDMI by itself. We boot the STOCK uboot.img
-# byte-identical (ADR 0017) with our kernel, and on that stack:
-#
-#   1. The fabric needs a bitstream or the ADV7513 never gets a pixel clock.
-#      SOLVED by ADR 0020 section 7: menu.rbf ships at the FAT root, so U-Boot's
-#      `fpgaload` puts it in the fabric before Linux starts. Step 7 below keeps
-#      it there on a re-run. This is the precondition; on its own it puts the
-#      menu core's static on screen and nothing else.
-#   2. /dev/fb0 (MiSTer_fb, docs/abi-contract.md section 4) is a window on DDR
-#      that the FPGA frame reader only scans out once something programs it,
-#      which used to mean Main_MiSTer (fb_cmd0/fb_cmd1 via /dev/MiSTer_cmd, a
-#      FIFO Main itself creates) -- and Main cannot run in this initramfs.
-#      SOLVED by `itsalive` (package/itsalive, github.com/mcfbytes/ItsAlive_MiSTer):
-#      a static tool that runs Main's own register sequences -- video PLL and
-#      timings over the fabric mailbox, the ADV7513 over i2c, then UIO_SET_FBUF
-#      to point the frame reader at /dev/fb0 -- transcribed from Main_MiSTer and
-#      needing only the menu.rbf from (1). One call, `itsalive up`, and the
-#      framebuffer is live. Verified on a DE10-Nano on 2026-09-21 with no Main
-#      on the card (ItsAlive_MiSTer docs/testlogs/2026-09-21-rig-first-light.md).
-#   3. The kernel console is `console=ttyS0,115200` only, so the CONSOLE text
-#      never reaches the screen. IRRELEVANT for the picture: the artwork is
-#      blitted straight into /dev/fb0 (`itsalive image`), and the few lines the
-#      terminal states show are written to /dev/tty1 (`itsalive say`), which
-#      fbcon paints whatever console= says.
-#
-# What is drawn: a full-screen 1280x720 image -- MiSTer Kun, "INSTALLING...",
-# "DO NOT POWER OFF", "it reboots itself when done" -- rendered per mode as
-# gzipped raw BGRX8888 into /usr/share/mister-installer/ at build time by
-# installer-post-build.sh from the PNGs in board/mister/de10nano/
-# installer-splash/ (sources and licence there). It goes up right after the kernel
-# command line is parsed, i.e. seconds after power-on and long before the
-# point of no return, and stays until the reboot. The three terminal states
-# (failed / already installed / done) replace it with a few lines of text.
-# Progress is NOT mirrored to the screen: the console UI and a blit fight over
-# the same pixels, and "do not power off, wait a minute" is the whole message.
-#
-# HDMI IS AS OPTIONAL AS THE LED. The binary may be absent (a config without
-# BR2_PACKAGE_ITSALIVE), the fabric may hold no bitstream (QEMU; a card whose
-# menu.rbf went missing -- exit 10), the sink may want a mode we do not send
-# (`mister_installer_video=480p` on the cmdline picks the other one), or the
-# tool may fail in a way nobody predicted. Every call is probed first, runs
-# under `timeout`, and has its status LOGGED and nothing else. A missing
-# picture costs the user a minute of doubt; a splash that could hang PID 1
-# would cost them the card. Read "A SPLASH MUST NEVER BE ABLE TO FAIL AN
-# INSTALL" below; it applies to every line of the HDMI half.
-#
-# WHAT WE DO
-# ----------
-#  1. A progress UI on the serial console -- the documented triage channel:
-#     banner, numbered steps, a bar, percentage, elapsed time and a spinner.
-#  2. The DE10-Nano's HPS LED at /sys/class/leds/hps_led0 (DTS `gpio-leds hps0`,
-#     &portb 24, linux-patches/0004-dts-de10nano-MiSTer.patch). This is HPS-side
-#     GPIO driven by the kernel's gpio-leds driver, so unlike the eight LED0-7
-#     user LEDs -- which hang off the FPGA fabric and which nothing in this
-#     initramfs drives -- it needs no bitstream. It is the only install-time
-#     signal a user with no serial cable AND no picture can see (a dark HDMI,
-#     or any installer before 2026-09-21), so it carries the state:
-#
-#         blinking ~0.5 Hz .. installing; all is well, leave it alone
-#         solid on ......... STOPPED and wants attention: either the install
-#                            failed, or the card was already installed. Either
-#                            way the console says which. This is the ONLY state
-#                            that means trouble, which is why nothing on the
-#                            healthy path is allowed to park the LED lit.
-#         off .............. between two long phases, or finished and rebooting.
-#                            Only the long steps carry a heartbeat, so brief dark
-#                            gaps mid-install are normal; a dark LED never means
-#                            trouble, and the reboot into MiSTer is what tells
-#                            you the "finished" case apart.
-#
-#     We take the LED over (trigger=none), which costs the DTS default `mmc0`
-#     activity flicker for the duration. That is the entire point: erratic
-#     activity flicker is indistinguishable from an ordinary boot, a metronome is
-#     not. Nothing here persists -- `linux,default-trigger = "mmc0"` is a DTS
-#     property re-applied at probe, so the installed card gets its normal SD
-#     activity light back on the very next boot.
-#  3. The HDMI picture described above, via itsalive -- see the "HDMI splash"
-#     functions at the end of this section.
-#
-# A SPLASH MUST NEVER BE ABLE TO FAIL AN INSTALL. There is no `set -e` here; all
-# LED writes are guarded and the sysfs paths are probed, never assumed; every
-# itsalive call is bracketed by `timeout` and its exit status is only logged.
-# If none of this can draw, the install still runs to completion exactly as
-# before.
-#
-# APPLET BUDGET -- read before editing. The installer busybox
-# (installer-busybox.config) ships NO rm, touch, kill, usleep, date, seq or tr,
-# and its `sleep` is integer-only: CONFIG_FEATURE_FANCY_SLEEP is off, so a
-# `sleep 0.2` would parse as 0 and BUSY-SPIN a core for the whole install.
-# Consequently:
-#   * the heartbeat child is stopped by TRUNCATING a flag file with `: >` (a pure
-#     shell redirection) and reaped with the ash builtin `wait` -- not kill (no
-#     applet, and ash's builtin kill is gated behind CONFIG_KILL) and not rm.
-#   * elapsed time is read from /proc/uptime with the `read` builtin -- not date.
-#   * the bar is built by string concatenation in a loop -- not seq/tr/printf.
-#   * every frame delay is a whole number of seconds.
-#   * ASCII art is emitted as `printf '%s\n' 'line' 'line' ...` (printf reuses the
-#     format for each argument), so no line is ever escape-processed. Do not
-#     switch it to a heredoc or to escapes in a format string.
-#   * the HDMI half is the one deliberate exception to "no applets": it needs
-#     `timeout` (CONFIG_TIMEOUT, on since 2026-09-21 -- see installer-busybox.
-#     config's header for the costing) and `zcat`, which the linux.img expansion
-#     already ships. Every itsalive invocation goes through splash_hdmi_run,
-#     which is where the timeout lives; do not call the binary directly.
+# First-boot splash (HDMI, console UI, hps_led0): docs/installer-init.md#first-boot-splash.
 # >>> SPLASH SECTION BEGIN -- scripts/test-installer-splash.sh extracts everything
-# between these two markers VERBATIM and sources it under a POSIX shell against a
-# stubbed /proc/uptime and /sys/class/leds. Keep the section self-contained: it
-# must not reference anything defined outside it, or that test stops working.
+# between the markers VERBATIM and sources it alone: keep it self-contained.
 SPLASH_TOTAL=10               # user-visible steps; keep in sync with splash_step calls
 SPLASH_BAR_CELLS=28           # bar width -- the whole status line must fit 80 cols
 SPLASH_FLAG=/run/splash.run   # non-empty => the heartbeat child should keep running
 
-# All pre-initialised so `set -u` is safe even if rescue() fires during the early
-# mounts, i.e. before splash_init has run. splash_tty=0 until proven otherwise
-# keeps every drawing routine a no-op until then.
+# Pre-initialised so `set -u` is safe if rescue() fires before splash_init;
+# splash_tty=0 keeps every drawing routine a no-op until then.
 splash_n=0; splash_label="starting up"; splash_bar=""; splash_pct=0
 splash_frame=0; splash_t0=0; splash_tty=0
 splash_led=""; splash_led_on=0; splash_pulsing=0
@@ -412,11 +59,8 @@ splash_elapsed() {
 	printf '%dm%02ds' "$((_e / 60))" "$((_e % 60))"
 }
 
-# Find the HPS LED and take it off its DTS default trigger so brightness writes
-# stick. Restricted to hps_led* on purpose: other /sys/class/leds entries on a
-# MiSTer belong to USB gamepads (patches 0032/0033/0042, plus hid-nintendo's
-# mainline-named player LEDs) and blinking a
-# user's controller to report SD-card progress would be nonsense.
+# Take the HPS LED off its DTS trigger. hps_led* only: the other /sys/class/leds
+# entries belong to USB gamepads.
 splash_led_init() {
 	splash_led=""
 	for _c in /sys/class/leds/hps_led0 /sys/class/leds/hps_led*; do
@@ -449,10 +93,8 @@ splash_render_bar() {
 	done
 }
 
-# Always `printf '%s' <char>`, never a bare format string: '-' would otherwise be
-# eaten as an option and the backslash frame would be escape-processed. The
-# backslash is written "\\" (double quotes) rather than '\' -- both are a single
-# literal backslash in POSIX sh, but the quoted form does not trip SC1003.
+# Always `printf '%s' <char>`: '-' would be eaten as an option and '\' escaped.
+# "\\" rather than '\' only to keep SC1003 quiet.
 splash_spin_char() {
 	case $((splash_frame % 4)) in
 	0) printf '%s' '|'  ;;
@@ -502,10 +144,8 @@ splash_init() {
 	splash_step 0 "starting up"
 }
 
-# splash_step N "label" -- advance the user-visible progress. Always stops the
-# heartbeat first so the child can never interleave with what we are about to
-# print. On a non-tty (a captured log) we emit one plain line per step instead of
-# animating, so log files stay readable.
+# splash_step N "label" -- stops the heartbeat first. On a non-tty it prints one
+# plain line per step, so captured logs stay readable.
 splash_step() {
 	splash_pulse_stop
 	splash_n="$1"
@@ -519,9 +159,8 @@ splash_step() {
 	fi
 }
 
-# One animation frame. Called two ways: inline from the polling loops that
-# already sleep 1 (so they animate for free, with no child process), and from the
-# heartbeat child that brackets the long blocking commands.
+# One animation frame: inline from the polling loops that already sleep 1, and
+# from the heartbeat child around the long blocking commands.
 splash_tick() {
 	splash_frame=$((splash_frame + 1))
 	splash_led_toggle
@@ -542,25 +181,16 @@ splash_pulse_start() {
 	splash_heartbeat &
 }
 
-# Truncating the flag ends the child's loop within one frame. We only `wait` if
-# the truncation is OBSERVED to have worked: if it somehow did not, the child
-# would never exit and a bare `wait` would hang the installer forever -- a
-# cosmetic bug must not be able to do that. /run is ramfs, so the fallback path
-# is close to unreachable; it costs one `[` to be certain.
+# `wait` only once the truncation is OBSERVED to have worked: a bare wait on a
+# child that never exits would hang PID 1 forever.
 splash_pulse_stop() {
 	[ "$splash_pulsing" = 1 ] || return 0
 	splash_pulsing=0
 	if : > "$SPLASH_FLAG" 2>/dev/null && [ ! -s "$SPLASH_FLAG" ]; then
 		wait
 	fi
-	# The child toggled the LED in a subshell, so our copy of splash_led_on is
-	# stale. Re-assert a known state or the next toggle can be a no-op frame.
-	#
-	# That state must be OFF, not on. The short steps between two long ones are
-	# not bracketed by a heartbeat, so whatever we park here is what the LED shows
-	# across them -- and a SUSTAINED solid-on is the one signal reserved for "the
-	# board has stopped and wants a human" (splash_fail / splash_halt_ok). Parking
-	# on would light that signal in the middle of a perfectly healthy install.
+	# The child's toggles were in a subshell. Park the LED OFF, never on: solid on
+	# means "stopped, wants a human" (docs/installer-init.md#led).
 	splash_led_set 0
 }
 
@@ -585,11 +215,8 @@ splash_done() {
 	splash_hdmi_say --clear 'MiSTer first-time setup: DONE' '' 'Rebooting into MiSTer now.'
 }
 
-# Both terminal states leave the LED SOLID ON: the board has stopped and wants a
-# human. Which of the two it is, is what the console banner is for -- and, since
-# the HDMI splash, what the screen says too: the "installing" picture must not
-# outlive the install, or a user with no serial cable is told to keep waiting
-# for a board that has stopped.
+# Terminal states: LED solid on, and the screen says what happened -- the
+# "installing" picture must never outlive the install.
 splash_fail() {
 	splash_pulse_stop; splash_clear_line; splash_led_set 1
 	splash_hdmi_say --clear \
@@ -609,26 +236,19 @@ splash_halt_ok() {
 		'(Re-flash sdcard.img only if you want to reinstall.)'
 }
 
-# ---------------------------------------------------------------------------
-# HDMI splash -- itsalive (ADR 0020 section 9). Read THE HDMI SPLASH above.
-# ---------------------------------------------------------------------------
-# Every path here ends in a log line and a return 0. The binary is probed for,
-# every call runs under `timeout`, and no exit status is ever acted on beyond
-# deciding whether to try the next call.
+# --- HDMI splash via itsalive (docs/installer-init.md#hdmi-splash) ---
+# Every path logs and returns 0; the binary is probed, every call is under timeout.
 SPLASH_HDMI_BIN=/usr/bin/itsalive
 SPLASH_HDMI_IMAGE_DIR=/usr/share/mister-installer   # splash-<WxH>.raw.gz, gzipped raw BGRX8888
 SPLASH_HDMI_CURSOR=/sys/class/graphics/fbcon/cursor_blink
 SPLASH_HDMI_OUT=/run/splash-hdmi.out  # the tool's own stderr, replayed as log lines
-SPLASH_HDMI_TIMEOUT=15                # seconds per call. itsalive bounds its own
-                                      # mailbox wait far tighter (exit 11); this is
-                                      # the belt for the failure it did not foresee
+SPLASH_HDMI_TIMEOUT=15                # seconds per call: the belt over itsalive's
+                                      # own mailbox bound (exit 11)
 splash_hdmi=0                         # 1 once `itsalive up` has succeeded this boot
 splash_hdmi_mode=720p                 # 720p (default) or 480p; see the cmdline parse
 
-# The tool writes its diagnostics to stderr -- "adv7513: 92 registers written",
-# "no bitstream in the fabric" -- and they are exactly what a serial-console
-# user wants when the screen stays dark. Replay them as installer lines so they
-# land in the log in order and never tear the animated status line.
+# Replay the tool's stderr diagnostics as installer log lines, in order and
+# without tearing the status line.
 splash_hdmi_log() { splash_clear_line; printf '[installer] hdmi: %s\n' "$*"; splash_line; }
 splash_hdmi_replay() {
 	[ -s "$SPLASH_HDMI_OUT" ] || return 0
@@ -651,10 +271,8 @@ splash_hdmi_image() {
 	esac
 }
 
-# splash_hdmi_say [--clear] LINE... -- one `itsalive say` per LINE, which fbcon
-# paints into the live framebuffer. A no-op until `up` has succeeded: before
-# that /dev/tty1 is a console nothing is scanning out. `--clear` erases the
-# picture first, so it is only passed by the terminal states.
+# splash_hdmi_say [--clear] LINE... -- one `itsalive say` per LINE; a no-op until
+# `up` has succeeded. --clear erases the picture (terminal states only).
 splash_hdmi_say() {
 	[ "$splash_hdmi" = 1 ] || return 0
 	_clear=""
@@ -667,24 +285,12 @@ splash_hdmi_say() {
 	return 0
 }
 
-# Bring the screen up and put the artwork on it. Called ONCE, right after the
-# kernel command line has been parsed (the mode knob lives there): the fabric
-# already holds menu.rbf from U-Boot, so nothing later in the install makes
-# this more likely to succeed, and the whole point is to be on screen BEFORE
-# the point of no return. probe first: it writes nothing and its one line per
-# finding is the diagnosis ("no bitstream", "ADV7513 not found") a serial user
-# needs when the screen stays dark; `up` would fail the same way but say less.
+# Called once, right after the early mounts. `up` alone on the happy path; `probe`
+# only after a failed `up` that did not time out (docs/installer-init.md#hdmi-splash).
 splash_hdmi_init() {
 	splash_hdmi=0
 	if ! [ -x "$SPLASH_HDMI_BIN" ]; then
 		splash_hdmi_log "$SPLASH_HDMI_BIN not present -- no HDMI splash this boot"
-		return 0
-	fi
-	splash_hdmi_run probe > "$SPLASH_HDMI_OUT" 2>&1
-	_rc=$?
-	splash_hdmi_replay
-	if [ "$_rc" -ne 0 ]; then
-		splash_hdmi_log "probe exit $_rc -- no HDMI splash this boot (the install is unaffected)"
 		return 0
 	fi
 	splash_hdmi_run up --mode "$splash_hdmi_mode" > "$SPLASH_HDMI_OUT" 2>&1
@@ -692,18 +298,19 @@ splash_hdmi_init() {
 	splash_hdmi_replay
 	if [ "$_rc" -ne 0 ]; then
 		splash_hdmi_log "up exit $_rc -- no HDMI splash this boot (the install is unaffected)"
+		if [ "$_rc" -ne 124 ]; then
+			splash_hdmi_run probe > "$SPLASH_HDMI_OUT" 2>&1
+			splash_hdmi_replay
+		fi
 		return 0
 	fi
 	splash_hdmi=1
-	# fbcon would otherwise repaint a blinking cursor block over the artwork
-	# about once a second. The knob does not survive the reboot, so it is set
-	# every boot and never restored.
+	# Stop fbcon's cursor blinking over the artwork (not persistent, never restored).
 	printf '0' > "$SPLASH_HDMI_CURSOR" 2>/dev/null || true
 	_img="$(splash_hdmi_image)"
 	if [ -f "$_img" ]; then
-		# zcat | image -: the raw frame (3.6 MB at 720p) never exists
-		# uncompressed anywhere but the tool's stdin. `image` exiting 0 means the
-		# bytes reached /dev/fb0, which after a successful `up` is the screen.
+		# The raw frame is never uncompressed outside the tool's stdin; exit 0 means the
+		# bytes reached /dev/fb0.
 		zcat "$_img" 2> /dev/null | splash_hdmi_run image - > "$SPLASH_HDMI_OUT" 2>&1
 		_rc=$?
 		splash_hdmi_replay
@@ -731,23 +338,18 @@ log() {
 	splash_line
 }
 
-# PID 1 must never exit (that is an instant kernel panic), so every terminal
-# path -- the failure path AND the benign "already installed" halt -- ends by
-# respawning a console shell forever. Factored out so the two callers share it.
+# PID 1 must never exit (instant kernel panic): every terminal path respawns a shell.
 respawn_shell() {
 	while :; do
 		setsid cttyhack /bin/sh || /bin/sh || sleep 5
 	done
 }
 
-# Any fatal error lands here. Never panic silently. Print everything a
-# serial-console user needs to tell WHERE in the install we died (the $stage
-# string), what the card looks like now, and how to get back to a known-good
-# state, then respawn a shell forever. The system is NOT installed.
+# Any fatal error lands here: say where we died ($stage), what the card looks
+# like and how to recover, then respawn a shell forever. Nothing is installed.
 rescue() {
-	# Stop the heartbeat and park the LED solid-on BEFORE printing: a still-running
-	# child would otherwise redraw its status line over this banner, and the LED
-	# would keep cheerfully blinking "all is well" next to a failed install.
+	# splash_fail first, so the heartbeat cannot redraw over this banner and the
+	# LED stops blinking "all is well".
 	splash_fail
 	printf '\n'
 	printf '################################################################\n'
@@ -774,39 +376,7 @@ rescue() {
 }
 
 # ------------------------------------------------------------------ TEST HOOK
-# stop_after TAG -- simulate a power cut at a named point in the install, so that
-# scripts/test-installer-recovery.sh can prove the RECOVERABILITY invariants in
-# the header actually hold. It flushes what we have written so far and reboots
-# immediately, leaving the card in exactly the state that point is supposed to
-# leave it in.
-#
-# THE CMDLINE IS NOT A SAFE GATE ON ITS OWN, so it is not the gate. An earlier
-# revision of this hook fired on the cmdline token alone and called that "inert on
-# real hardware". It is not: `mmcboot` interpolates $v into bootargs
-# (docs/boot-chain.md §4), `scrtest` `env import -t`s /linux/u-boot.txt off p1
-# BEFORE mmcboot runs, and $v is the documented user knob (boot-chain §5 spells
-# out that arbitrary extra tokens can therefore appear in /proc/cmdline). The
-# shipped installer p1 is a plain FAT32 partition any user can write to, and
-# scripts/mk-sdcard.sh documents dropping a u-boot.txt on it as supported. So a
-# hand-written `v=loglevel=4 mister_installer_stop_after=recoverable` really does
-# reach this script -- and stopping at `recoverable` or `payload-partial` leaves
-# a card needing a re-flash, i.e. exactly the harm this ordering exists to remove.
-#
-# THE GATE IS A MARKER FILE IN THE INITRAMFS, /.installer-test-hook, which no
-# shipped image contains: scripts/lib/installer-qemu-kernel.sh appends it as a
-# second cpio archive when it builds the harness kernel, leaving the installer
-# cpio and this file byte-for-byte unchanged. A user can write anything they like
-# to the card and never obtain it -- changing the initramfs means rebuilding the
-# kernel. The cmdline token then only chooses WHICH point to stop at.
-#
-# The tags, all five of them exercised by that harness (keep it that way; a tag
-# nothing stops at is a branch nothing tests):
-#   bootloader      after uboot.img is in the new 0xA2 partition
-#   recoverable     after this installer's own kernel is back on the new p1
-#   payload-partial part-way through the copy-back, so mister-payload.part/ stays
-#   payload-copied  after the copy-back is renamed to mister-payload/
-#   expanded        after linux/linux.img exists -- the state that used to fool
-#                   the old re-run guard
+# stop_after TAG -- simulated power cut (docs/installer-init.md#test-hook).
 stop_after() {
 	[ -e /.installer-test-hook ] || return 0
 	[ "$stop_after_stage" = "$1" ] || return 0
@@ -826,14 +396,8 @@ mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount 
 mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
 mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
 
-# The splash needs /proc (uptime), /sys (the LED) and /run (the heartbeat flag,
-# created by the mkdir above), so it can only come up once those exist. Before
-# this point every drawing routine is a deliberate no-op -- see splash_tty.
-splash_init
-
 # ------------------------------------------------------- parse /proc/cmdline
-# Same discipline as stage-1: cmdline-driven, never positional, never globbing.
-splash_step 1 "checking the card"
+# Before anything is drawn: the HDMI mode knob lives here. Pure shell, never globs.
 stage="parsing the kernel command line"
 cmdline="$(cat /proc/cmdline)"
 set -f
@@ -842,28 +406,28 @@ set -- $cmdline
 for tok in "$@"; do
 	case "$tok" in
 	root=*) root_arg="${tok#root=}" ;;
-	# The test hook (stop_after above). A user CAN get this token onto the
-	# cmdline via u-boot.txt's $v, so parsing it is not what enables it --
-	# stop_after() refuses to act without the initramfs marker file.
+	# Test hook: user-reachable via u-boot.txt's $v, so stop_after() also requires
+	# the initramfs marker file.
 	mister_installer_stop_after=*) stop_after_stage="${tok#mister_installer_stop_after=}" ;;
-	# The HDMI splash's one knob: 480p for a sink that will not take 720p. A
-	# user reaches it through linux/u-boot.txt's $v on the shipped card
-	# (docs/user/sdcard-flashing.md). Harmless by construction -- it picks
-	# between two video modes and nothing else -- so, unlike the test hook
-	# above, the cmdline alone is an acceptable gate for it.
+	# HDMI mode knob: 480p for a sink that refuses 720p. User-reachable via $v and
+	# harmless by construction, so the cmdline alone may gate it.
 	mister_installer_video=*) splash_hdmi_mode="${tok#mister_installer_video=}" ;;
 	esac
 done
 set +f
-[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
 case "$splash_hdmi_mode" in
 720p|480p) ;;
 *) log "ignoring mister_installer_video=\"$splash_hdmi_mode\" (720p or 480p); using 720p"
    splash_hdmi_mode=720p ;;
 esac
-# Picture first, before anything that can take seconds: from here on a user
-# with no serial cable is told what is happening and what not to do.
+
+# Picture FIRST: needs only /dev, /sys and the mode. Its logs print plain.
 splash_hdmi_init
+
+# The console splash needs /proc, /sys and /run; until now drawing was a no-op.
+splash_init
+splash_step 1 "checking the card"
+[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
 if [ -n "$stop_after_stage" ]; then
 	if [ -e /.installer-test-hook ]; then
 		log "TEST HOOK ACTIVE: will stop after \"$stop_after_stage\""
@@ -873,8 +437,7 @@ if [ -n "$stop_after_stage" ]; then
 fi
 
 # --------------------------------------------------- resolve the data partition
-# root= points at the FAT data partition (p1). Support a device path, or
-# LABEL=/UUID= via findfs (mirrors stage-1). Wait for slow SD/USB enumeration.
+# root= is p1: a device path, or LABEL=/UUID= via findfs (as stage-1).
 resolve_data_part() {
 	case "$root_arg" in
 	UUID=*|LABEL=*) findfs "$root_arg" 2>/dev/null ;;
@@ -894,18 +457,13 @@ done
 log "data partition = $DATA_PART (after ${waited}s)"
 
 # ------------------------------------------------- derive the WHOLE-DISK device
-# NEVER repartition the wrong disk. Find the parent disk of DATA_PART via sysfs:
-# the disk is the /sys/block/<disk>/ directory that CONTAINS the partition's dir.
-# This is authoritative across mmcblk/sd/nvme/usb and needs no name parsing.
+# NEVER repartition the wrong disk: the parent is the sysfs dir containing p1.
 stage="identifying the boot disk"
 partname="${DATA_PART#/dev/}"
 disk_name=""
 for cand in /sys/block/*/"$partname"; do
 	[ -d "$cand" ] || continue
-	# cand = /sys/block/<disk>/<partname>. basename/dirname are NOT built into the
-	# installer busybox (installer-busybox.config), so peel the path with POSIX
-	# parameter expansion instead: strip the trailing /<partname>, then keep the
-	# final path element (the whole-disk name).
+	# No basename/dirname applets: peel /sys/block/<disk>/<part> by expansion.
 	cand_disk="${cand%/*}"
 	disk_name="${cand_disk##*/}"
 	break
@@ -924,17 +482,12 @@ partdev() {
 }
 P1="$(partdev "$DISK" 1)"
 P2="$(partdev "$DISK" 2)"
-# Sanity: the data partition we were handed must actually be p1 of this disk.
-# The stock U-Boot only ever boots from partition 1, so anything else means the
-# card is not laid out the way this installer requires -- refuse rather than guess.
+# Stock U-Boot only boots partition 1: refuse any other layout rather than guess.
 [ "$DATA_PART" = "$P1" ] || rescue "data partition $DATA_PART is not p1 ($P1) of $DISK"
 log "disk=$DISK  p1(data)=$P1  p2(boot)=$P2"
 
 # --------------------------------------------------- mount the source read-only
-# READ-ONLY: we only ever read /mister-payload from here, and we must not dirty a
-# partition we are about to destroy. exfat first then vfat (stock-init ordering);
-# the shipped card is FAT32 so vfat wins, but exfat-first also lets the re-run
-# guard below recognise an already-installed card.
+# Read-only; exfat first so the re-run guard can recognise an installed card.
 stage="mounting the source data partition"
 if mount -t exfat -o ro "$DATA_PART" /mnt/src 2>/dev/null; then
 	fat_type="exfat"
@@ -946,33 +499,14 @@ fi
 log "source mounted ($fat_type)"
 
 # ------------------------------------------------------ what is on this card?
-# One decision point, because the three interesting answers are mutually exclusive
-# and only one of them may reformat. The states are the ones the header's
-# RECOVERABILITY section defines; read that before changing any condition here.
-#
-# The PRIMARY re-run guard is still structural: a finished install replaces this
-# installer's linux/zImage_dtb with the real kernel, so on a good card U-Boot never
-# loads us again. Everything below is belt for the cards that DID get interrupted.
+# One decision over the four card states (docs/installer-init.md#recoverability).
 stage="assessing the card"
 SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
 SRC_PAYLOAD_PART="/mnt/src/$PAYLOAD_PART_DIR"
 label="$(blkid -o value -s LABEL "$DATA_PART" 2>/dev/null || true)"
 
-# 1. ALREADY PROVISIONED. exFAT, labelled MiSTer_Data, no payload directory under
-#    EITHER name, and a real linux/linux.img at the root. Re-running would DESTROY
-#    a good card, so do not reformat.
-#
-#    The "no payload directory" clause is load-bearing and was added with the
-#    recoverable ordering. Without it this guard fires MID-COMMIT: from the moment
-#    linux/linux.img has been expanded until the real kernel is renamed into place,
-#    an interrupted card is exFAT, labelled, and has linux.img -- while its
-#    linux/zImage_dtb is still the installer's. The old guard would have called
-#    that card "installed" and halted, on a card that in fact still had a complete
-#    payload sitting right there and would have finished on its own.
-#
-#    We cannot "boot MiSTer" from this throwaway installer OS, so the safe,
-#    non-destructive action is to stop and say so clearly rather than risk the
-#    user's data or spin a reboot loop.
+# 1. ALREADY PROVISIONED: stop, never reformat. The no-payload-dir clause is
+#    load-bearing (docs/installer-init.md#the-re-run-guard).
 if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] &&
    [ ! -d "$SRC_PAYLOAD" ] && [ ! -d "$SRC_PAYLOAD_PART" ] && [ -f /mnt/src/linux/linux.img ]; then
 	umount /mnt/src 2>/dev/null || true
@@ -984,23 +518,15 @@ if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] &&
 	printf '  with no installer payload left on it.\n'
 	printf '  Refusing to reformat an installed card (your data is safe).\n'
 	printf '  If you meant to reinstall, re-flash sdcard.img first.\n\n'
-	# NOT rescue(): this is a benign, correct halt, not a failure. rescue()'s
-	# "INSTALLER: FAILED / Nothing is installed" banner would be actively wrong
-	# here (the card IS installed). We just can't hand off to MiSTer from this
-	# throwaway installer OS, so drop to a console shell with the accurate
-	# message above rather than reboot-looping into this same installer.
+	# NOT rescue(): a correct halt, the card IS installed. A reboot would loop
+	# into this installer, so drop to a shell.
 	printf 'Dropping to a console shell. The card is fine -- power-cycle into it,\n'
 	printf 'or re-flash sdcard.img only if you actually want to reinstall.\n\n'
 	respawn_shell
 fi
 
-# 2. INTERRUPTED DURING THE COPY-BACK. mister-payload.part/ is the name the
-#    copy-back writes under; it is renamed to mister-payload/ only once every byte
-#    is on the card. Seeing .part and no finished payload therefore means the
-#    install was cut short while copying -- and the bytes it was copying FROM lived
-#    in the RAM tmpfs of a machine that has since been power-cycled. There is
-#    nothing left on this card to install from and nothing we can repair. Say so
-#    honestly and stop; a reboot here would loop forever.
+# 2. INTERRUPTED DURING THE COPY-BACK: its source was in RAM and is gone.
+#    Nothing to repair; halt (a reboot would loop forever).
 if [ -d "$SRC_PAYLOAD_PART" ] && [ ! -d "$SRC_PAYLOAD" ]; then
 	umount /mnt/src 2>/dev/null || true
 	splash_fail
@@ -1021,10 +547,7 @@ fi
 splash_step 2 "reading the payload"
 stage="locating the payload"
 if [ ! -d "$SRC_PAYLOAD" ]; then
-	# No payload under either name. Three ways to get here, and they want three
-	# different sentences -- "wrong card?" on a card that is plainly ours, halfway
-	# through our own install, is the kind of message that sends a user hunting
-	# for a hardware fault. Ordered most-specific first.
+	# No payload under either name: three causes, three messages, most specific first.
 	if [ -f /mnt/src/linux/linux.img ]; then
 		rescue "no /$PAYLOAD_DIR on $DATA_PART but linux/linux.img is there -- an install was interrupted at its very last step; re-flash sdcard.img"
 	fi
@@ -1033,9 +556,7 @@ if [ ! -d "$SRC_PAYLOAD" ]; then
 	fi
 	rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
 fi
-# The files without which the reformatted card cannot boot at all. linux.img ships
-# GZIPPED (linux/linux.img.gz) -- see the MEMORY note in the header; it is expanded to
-# linux/linux.img onto the exFAT card once the payload is safely on it (step 9).
+# Files the reformatted card cannot boot without; linux.img ships gzipped.
 for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
 	[ -f "$SRC_PAYLOAD/$f" ] && continue
 	if [ -f /mnt/src/linux/linux.img ]; then
@@ -1045,13 +566,7 @@ for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
 done
 
 # ------------------------------------ the two files that make the card recover
-# NOT part of mister-payload/: the FAT root's own linux/zImage_dtb is the kernel
-# running this very script, and menu.rbf is what U-Boot's fpgaload puts in the
-# fabric (ADR 0020 §7). Step 6 writes both onto the freshly formatted partition
-# before anything else, which is what turns "the card is mid-install" from a brick
-# into a card that simply runs the installer again. Neither is fatal by absence --
-# a card without them still installs correctly, it just cannot recover from an
-# interruption -- so both are probed and warned about, never assumed.
+# Written back first in step 7. Absence is warned about, never fatal.
 stage="checking the installer's own kernel"
 SRC_INSTALLER_KERNEL="/mnt/src/linux/zImage_dtb"
 SRC_MENU_RBF="/mnt/src/menu.rbf"
@@ -1061,9 +576,7 @@ SRC_MENU_RBF="/mnt/src/menu.rbf"
 	log "WARNING: no menu.rbf at the card root -- the fabric stays unconfigured on a re-run"
 
 # --------------------------------------------------- stash any user pre-seed (2)
-# Optional files a user dropped at the root of the FAT card before first boot,
-# mirroring mr-fusion's pre-seed hooks. Copied to RAM now (before we unmount the
-# source) and laid onto the finished card later. All optional; absence is normal.
+# Optional files at the FAT root (mr-fusion's hooks), stashed in RAM for step 10.
 stage="collecting user pre-seed"
 for item in wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts config; do
 	if [ -e "/mnt/src/$item" ]; then
@@ -1076,10 +589,7 @@ for item in wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts 
 done
 
 # ------------------------------------------------ copy the payload into RAM (3)
-# Peak RAM use = size of the tmpfs copy (the copy-back target is the SD card, not
-# RAM). Size a tmpfs to (MemAvailable - reserve) so a mis-estimate fails with a
-# clean ENOSPC instead of OOM-hanging the box. Then decide, from a real du of the
-# source, whether the FULL payload fits or we must skip cores.
+# tmpfs sized so a mis-estimate is ENOSPC, not OOM (docs/installer-init.md#ram-budget).
 stage="measuring RAM"
 avail_kb=0
 while read -r key val _; do
@@ -1093,10 +603,8 @@ mount -t tmpfs -o "size=${budget_kb}k" tmpfs "$RAM_DIR" ||
 	rescue "cannot mount the payload tmpfs (${budget_kb}KB)"
 mkdir -p "$RAM_PAYLOAD" "$RAM_INSTALLER" || rescue "cannot create the RAM staging dirs"
 
-# du each piece separately. The two recovery files are NOT under $SRC_PAYLOAD, so
-# they have to be measured and budgeted for explicitly -- they are small (~15 MB
-# together) but they are also the ones we refuse to drop, so they belong in the
-# base figure the cores are weighed against.
+# The recovery files live outside $SRC_PAYLOAD and are never dropped, so they
+# are budgeted into the base explicitly.
 payload_kb="$(du -sk "$SRC_PAYLOAD" 2>/dev/null | cut -f1)"
 cores_kb=0
 [ -d "$SRC_PAYLOAD/$CORES_DIR" ] && cores_kb="$(du -sk "$SRC_PAYLOAD/$CORES_DIR" 2>/dev/null | cut -f1)"
@@ -1156,10 +664,7 @@ splash_pulse_start
 copy_payload_to_ram || rescue "copying the payload into RAM failed (out of space?)"
 splash_pulse_stop
 
-# Verify the RAM copy is complete for the boot-critical files BEFORE we destroy
-# anything on disk. If this trips, the card is still a bootable installer. linux.img
-# is present here only in its gzipped form (linux/linux.img.gz); it is expanded onto
-# the card once the payload is safely there (step 9).
+# Verify the RAM copy BEFORE destroying anything; the card is still an installer.
 for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
 	[ -f "$RAM_PAYLOAD/$f" ] || rescue "RAM payload is missing $f after copy -- aborting before reformat"
 done
@@ -1175,20 +680,10 @@ stage="unmounting the source"
 umount /mnt/src || rescue "cannot unmount $DATA_PART before repartitioning"
 sync
 
-# ============================================================================
-#  POINT OF NO RETURN -- from here the card is being rewritten.
-# ============================================================================
+# =========== POINT OF NO RETURN -- from here the card is being rewritten ===========
 
 # ------------------------------------------------- repartition to full size (4)
-# p1 = exFAT data from the 1 MiB-aligned start to the reserved tail; p2 = 0xA2 boot,
-# EXACTLY RESERVED_SECTORS at the very end. Adapted from mr-fusion's
-# S99install-MiSTer.sh, but with EXPLICIT starts+sizes instead of its
-# empty-field "; size; 07" / "; ; a2" form. That form let sfdisk auto-place p1
-# at LBA 2048 and gave p2 "the rest" -- which is RESERVED_SECTORS *minus* p1's
-# 2048-sector start offset (6144, not 8192), so the 0xA2 boot partition came out
-# 3 MiB instead of the intended 4 MiB and its size drifted with p1's alignment.
-# Computing all three numbers here makes the layout deterministic and makes p2
-# match genimage-sdcard.cfg's `size = 4M` on the shipped image byte-for-byte.
+# Explicit starts and sizes, unlike mr-fusion (docs/installer-init.md#partition-layout).
 splash_step 4 "repartitioning the card"
 stage="repartitioning $DISK"
 dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)"
@@ -1198,9 +693,7 @@ p2_start=$((dev_sectors - RESERVED_SECTORS))
 [ "$data_sectors" -gt 0 ] || rescue "device too small: $dev_sectors sectors"
 log "card=$dev_sectors sectors; p1=[$P1_START_SECTORS,+$data_sectors) exfat; p2=[$p2_start,+$RESERVED_SECTORS) 0xA2"
 
-# `label: dos` forces a fresh MBR (never GPT), regardless of what the shipped
-# card carried. `type=7` = exFAT/NTFS (mr-fusion parity), `type=a2` = the SPL
-# boot partition. Explicit start+size on BOTH lines -> no auto-placement drift.
+# `label: dos` forces a fresh MBR; type=7 is exFAT, type=a2 the SPL partition.
 sfdisk --force "$DISK" <<EOF || rescue "sfdisk failed -- card partition table may be inconsistent"
 label: dos
 start=${P1_START_SECTORS}, size=${data_sectors}, type=7
@@ -1221,15 +714,7 @@ done
 log "new partitions present: $P1 (data), $P2 (boot)"
 
 # ------------------------------------- dd uboot.img to the new 0xA2 p2 (5)
-# THE most brick-critical step, and the FIRST thing done after the table changes.
-# sfdisk has just moved the 0xA2 partition to the tail of the medium, and until
-# this dd succeeds there is no SPL where the BootROM looks (docs/boot-chain.md
-# §2.1) -- the card cannot reach U-Boot at all. This used to be the LAST step of
-# the install, which made the whole ~1-minute run one unbroken brick window
-# (issue #185, header RECOVERABILITY). It is here now; keep it here.
-#
-# We dd from the RAM copy (guaranteed present -- verified above) and check the
-# exit status; failure is a loud rescue, NOT a reboot.
+# THE most brick-critical step, deliberately FIRST after sfdisk. Keep it here.
 splash_step 5 "writing the bootloader"
 stage="writing uboot.img to the boot partition ($P2)"
 splash_pulse_start
@@ -1250,13 +735,7 @@ stage="mounting the new data partition"
 mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount new exFAT $P1"
 
 # ------------------------------- put THIS installer back on the card first (7)
-# The second half of the recoverability pair. U-Boot reads $core (menu.rbf) and
-# then linux/zImage_dtb from p1's root; writing the installer's own copies of both
-# here, before a single payload byte, means every power cut from this line until
-# the commit point lands the user back in this installer rather than nowhere.
-#
-# Cost: ~15 MB written once. The real kernel is renamed over this one at the very
-# end (the commit point), so nothing here survives a completed install.
+# U-Boot loads menu.rbf and zImage_dtb off p1: from here a power cut re-runs us.
 splash_step 7 "making the card recoverable"
 stage="writing the installer kernel onto $P1"
 mkdir -p /mnt/dst/linux || rescue "cannot create linux/ on $P1"
@@ -1278,11 +757,7 @@ sync
 stop_after recoverable
 
 # ------------------------------------------- copy the payload back out of RAM (8)
-# Into mister-payload.part/ first, renamed to mister-payload/ only once every
-# entry is on the card. That rename is one directory-entry update on exFAT and it
-# is the ONLY thing that distinguishes "this card has a payload worth installing
-# from" from "this card has half a payload and no source left" on the next boot.
-# Copying straight to the final name would make the two indistinguishable.
+# Into .part/, renamed when complete: the rename is what the next boot tests.
 splash_step 8 "writing files to the card"
 stage="writing the payload to the card"
 DST_PAYLOAD="/mnt/dst/$PAYLOAD_DIR"
@@ -1297,9 +772,7 @@ done
 sync
 splash_pulse_stop
 
-# Only rename once the files that matter are demonstrably there. A partial copy
-# that kept the finished name would send the next boot into a reformat with an
-# incomplete source -- the one outcome this whole ordering exists to prevent.
+# Rename only once the boot-critical files are there: never a partial "complete".
 for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
 	[ -f "$DST_PAYLOAD_PART/$f" ] || rescue "$f missing on $P1 after copy-back"
 done
@@ -1311,23 +784,11 @@ log "payload written to $P1 as $PAYLOAD_DIR/ -- this card can now finish on its 
 stop_after payload-copied
 
 # ------------------------------------ expand linux.img.gz onto the card (9)
-# linux.img ships GZIPPED so the 512 MiB image never has to fit the mem=511M RAM
-# tmpfs (header MEMORY note). The small .gz is now on the exFAT card, inside the
-# payload dir; stream-decompress it to its FINAL linux/linux.img -- zcat reads the
-# .gz and writes the expansion straight to DISK, so the full 512 MiB is never held
-# in RAM.
-#
-# Note what is deliberately NOT done here: the .gz is not moved or deleted yet. It
-# is the longest step in the install by a wide margin, so the payload directory is
-# left complete and untouched for its whole duration -- a power cut anywhere in
-# here re-runs the install unattended on the next boot. The cleanup belongs with
-# the other renames, in the commit phase below.
+# To disk, never RAM; the payload stays intact, so a cut here re-installs.
 splash_step 9 "expanding the system image"
 stage="expanding linux.img onto the card"
 [ -f "$DST_PAYLOAD/linux/linux.img.gz" ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
-# The longest single command in the whole install: 512 MiB decompressed straight
-# onto SD, with no progress of its own. This is THE step users would otherwise
-# sit through wondering whether the board had died.
+# The longest command of the install, with no progress of its own.
 splash_pulse_start
 zcat "$DST_PAYLOAD/linux/linux.img.gz" > /mnt/dst/linux/linux.img ||
 	rescue "decompressing linux/linux.img.gz onto $P1 failed (card out of space, or corrupt payload)"
@@ -1335,35 +796,12 @@ splash_pulse_stop
 sync
 stop_after expanded
 
-# ===========================================================================
-#  COMMIT PHASE (10) -- everything below is renames, and the LAST of them is
-#  what turns this card from an installer into a MiSTer.
-# ===========================================================================
-# The window opens at the `rm` of linux/linux.img.gz immediately below -- NOT at
-# the first rename. That `rm` is what first makes mister-payload/ incomplete, and
-# incomplete is what the next boot's completeness probe keys on, so from there
-# until the final `mv` the card is neither re-runnable nor installed: it still
-# boots this installer, which halts honestly without touching anything. That is
-# one of the two windows named in the header, and it is why every operation in
-# this phase is a directory-entry update rather than a copy -- the whole phase is
-# fractions of a second, against the ~1 minute the old ordering was exposed for.
-# Do not put anything slow in here, and do not add a write above that `rm`
-# expecting it to be outside the window; it would not be.
+# =========== COMMIT PHASE (10) -- renames; the LAST one makes this a MiSTer ===========
+# Window opens at the `rm` below; nothing slow here (docs/installer-init.md#commit-phase).
 splash_step 10 "finishing the install"
 
-# Delete the now-redundant .gz so the finished card carries only linux/linux.img
-# (what U-Boot loop-mounts). Until PR #76 this `rm -f` was a silent
-# command-not-found no-op -- installer-busybox.config had `# CONFIG_RM is not
-# set` -- so every installed card kept the whole ~80 MiB gzip forever, and once
-# there was a splash it also printed "rm: not found" across it. CONFIG_RM is now
-# on (see that file's header for the costing: ~1 KB in a 13 MB RAM-resident
-# initramfs).
-#
-# Then VERIFY, and fall back to truncating. That is the real lesson of this bug:
-# the failure mode was not "rm was missing", it was "rm was missing and nothing
-# noticed for a whole release". An unchecked cleanup command that silently
-# no-ops is exactly what put 80 MiB on every card. If the applet ever goes away
-# again this now says so on the console AND still releases the blocks.
+# Drop the redundant .gz, then VERIFY and fall back to truncating: an unchecked
+# `rm` once silently no-opped for a release (docs/installer-init.md#commit-phase).
 stage="removing the compressed system image"
 rm -f "$DST_PAYLOAD/linux/linux.img.gz" 2>/dev/null
 if [ -e "$DST_PAYLOAD/linux/linux.img.gz" ]; then
@@ -1374,18 +812,7 @@ else
 fi
 
 # ------------------------------- move the payload into its final places (10)
-# `mv`, never `cp`: these bytes are already on this filesystem and rewriting
-# 150+ MiB of them would hand back every second the reorder just bought.
-#
-# Two collisions are expected, both because step 7 already wrote there:
-#   linux/    -- an existing NON-EMPTY directory. rename(2) refuses that
-#                (ENOTEMPTY), and BusyBox mv does not fall back for it, so this
-#                one directory is descended and its children moved individually.
-#   menu.rbf  -- an existing regular FILE. rename(2) replaces it silently, and
-#                it is byte-identical anyway (ADR 0020 §7: the FAT root copy is a
-#                copy of the payload's). `mv -f` so BusyBox never prompts.
-# linux/zImage_dtb is skipped here on purpose: it IS the commit point and moves
-# last, on its own, below.
+# mv, never cp. linux/ is merged per child; zImage_dtb waits for the commit point.
 stage="moving the payload into place"
 commit_payload() {
 	for entry in "$DST_PAYLOAD"/* "$DST_PAYLOAD"/.[!.]*; do
@@ -1441,20 +868,11 @@ if [ -d /run/preseed/config ]; then
 fi
 
 # -------------------------------------- per-board MAC into u-boot.txt (10)
-# Every board otherwise shares the compiled-in fallback ethaddr 02:03:04:05:06:07
-# (docs/boot-chain.md §3.1 entry 14). Generate a random LOCALLY-ADMINISTERED,
-# UNICAST MAC: first octet |= 0x02 (local-admin bit set) and &= 0xFE (multicast bit
-# cleared). This is the direct arithmetic equivalent of mr-fusion's b="2,6,a,e"
-# low-nibble trick, but readable and awk-free. u-boot.txt MUST end in a newline (see
-# header) -- printf provides it.
+# Random locally-administered unicast MAC; u-boot.txt must end in a newline.
 stage="writing per-board MAC"
 gen_mac() {
-	# 6 random bytes as space-separated hex from hexdump; force the first octet's
-	# bits. hexdump is the applet the installer busybox actually ships for exactly
-	# this (installer-busybox.config header: "Picked over CONFIG_AWK ... hexdump -e
-	# is the standard idiom for N random bytes as hex octets"); od is NOT built.
-	# Word-splitting hexdump's output into $1..$6 is the whole point; it emits only
-	# hex digits and spaces, so there is nothing to glob or expand.
+	# hexdump -e is the installer's random-bytes idiom (no od, no awk); splitting
+	# its hex-only output into $1..$6 is the point.
 	# shellcheck disable=SC2046
 	set -- $(hexdump -n6 -e '6/1 "%02x "' /dev/urandom)
 	[ $# -eq 6 ] || return 1
@@ -1474,11 +892,7 @@ else
 fi
 
 # ====================== THE COMMIT POINT ===================================
-# One rename. Before it, linux/zImage_dtb is this installer and the card runs the
-# installer again on any boot. After it, linux/zImage_dtb is the real MiSTer
-# kernel and the installer is gone from the card for good. Everything else is
-# already in place and flushed; nothing slow, nothing conditional, nothing that
-# can half-succeed goes between the sync above and the sync below.
+# One rename: before it the card boots this installer, after it MiSTer.
 stage="installing the real kernel"
 sync
 [ -f "$DST_PAYLOAD/linux/zImage_dtb" ] ||
@@ -1488,12 +902,8 @@ mv -f "$DST_PAYLOAD/linux/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
 sync
 log "real kernel installed -- this card is a MiSTer now, not an installer"
 
-# Housekeeping, strictly AFTER the commit: the payload dir should now be empty.
-# Deliberately not before -- between "payload dir gone" and "real kernel in place"
-# the card would look provisioned to the guard above while still booting the
-# installer, and that is a worse state than the stray directory this risks. If the
-# remove fails the card is already a working MiSTer and never runs this again, so
-# a leftover directory is clutter, not a defect. Say so and carry on.
+# Strictly AFTER the commit; a leftover dir on an installed card is clutter,
+# not a defect (docs/installer-init.md#commit-phase).
 stage="removing the staged payload"
 rm -rf "$DST_PAYLOAD" 2>/dev/null
 if [ -e "$DST_PAYLOAD" ]; then

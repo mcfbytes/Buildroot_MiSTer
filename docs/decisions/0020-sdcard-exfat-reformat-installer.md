@@ -489,7 +489,7 @@ directory is clutter rather than a defect — it is logged, not treated as a fai
 * **One BusyBox applet.** `CONFIG_MV` (~10 kb by BusyBox's own Kconfig costing, in a
   ~376 KB binary inside a 13 MB RAM-resident initramfs). The applet budget is a budget,
   not a freeze — the same reasoning the `CONFIG_RM` bullet below records — and the
-  justification lives in `installer-busybox.config`'s header with the others. One
+  justification lives in `docs/installer-build.md` (BusyBox section) with the others. One
   non-obvious behaviour is relied on and documented there: `mv` cannot rename over an
   existing **non-empty directory**, so `/init` descends the one directory that collides
   (`linux/`) and moves its children individually.
@@ -576,14 +576,23 @@ nothing at all on the shipped card beyond what §7 already put there.
 ### 9.2 Decision
 
 **`/init` brings the screen up and paints a full-screen "installing, do not power off"
-picture as its first act after parsing the kernel command line, and replaces it with a few
-lines of text in the three terminal states.** Concretely (`installer-overlay/init`, the
+picture as its first act — right after the `/proc`, `/sys` and `/dev` mounts and the
+kernel command line parse (the mode knob lives there), ahead of the serial banner and the
+LED — and replaces it with a few lines of text in the three terminal states.** Concretely (`installer-overlay/init`, the
 `HDMI splash` functions inside the `SPLASH SECTION`):
 
-- `itsalive probe` (writes nothing; its per-finding diagnostics are what a serial user
-  needs when the screen stays dark) → `itsalive up --mode 720p` → fbcon's cursor blink
-  off → `zcat splash-1280x720.raw.gz | itsalive image -`. Every call is bracketed by
-  BusyBox `timeout`; every exit status is logged and nothing else.
+- `itsalive up --mode 720p` → fbcon's cursor blink off → `zcat splash-1280x720.raw.gz |
+  itsalive image -`. `up` carries the same bitstream guard and exit codes as `probe`, so
+  `probe` (writes nothing; its per-finding diagnostics are what a serial user needs when
+  the screen stays dark) runs only **after a failed `up`**, never in front of the picture,
+  and not after a timeout. Every call is bracketed by BusyBox `timeout`; every exit status
+  is logged and nothing else.
+- **Black-screen time is a budget.** Everything between power-on and `up` is dark, so
+  the installer cpio carries only the util-linux programs `/init` runs:
+  `installer-post-build.sh` deletes the rest of the `--enable-all-programs` basic set
+  (13.3 MB → 3.3 MB cpio, 6.7 MB → 1.7 MB gzipped), which U-Boot would otherwise read off
+  the card and the kernel inflate before `/init` starts — ~1.0 s vs ~0.27 s of gunzip on
+  a DE10-Nano.
 - The picture goes up **before** the copy-to-RAM, i.e. seconds after power-on and long
   before §8's commit phase. It is not progress; it is the one message that matters
   ("wait, do not power off, it reboots itself"), and it stays until the reboot. Progress
@@ -613,7 +622,7 @@ ways to wedge than a `printf`. So, in addition to "no `set -e`, every path guard
 - The binary is **probed for**, never assumed: a config without `BR2_PACKAGE_ITSALIVE`
   logs one line and carries on.
 - **Every invocation runs under `timeout`** (`CONFIG_TIMEOUT`, the one applet this
-  section adds; costed in `installer-busybox.config`'s header). `itsalive` bounds its own
+  section adds; costed in `docs/installer-build.md` (BusyBox section)). `itsalive` bounds its own
   mailbox wait (exit 11); the bracket is the belt for the failure it did not foresee, such
   as a driver that never returns from an ioctl. `/init` reaches the binary through one
   wrapper, and the timeout lives there.
@@ -627,9 +636,10 @@ ways to wedge than a `printf`. So, in addition to "no `set -e`, every path guard
 
 `scripts/test-installer-splash.sh` (§8.6's unit test, extended) replaces the binary with a
 **recording stub** whose exit status per subcommand the test sets, and asserts what
-`/init` did with each answer: absent binary, `probe` exit 10, `up` failing, `up`
-*hanging* (the timeout is cut to a second and the test asserts `init` returned with 124 in
-the log), the happy path (call order, the decompressed frame's byte count reaching the
+`/init` did with each answer: absent binary, `up` exit 10 and `up` failing otherwise (each
+followed by exactly one diagnostic `probe`), `up` *hanging* (the timeout is cut to a
+second and the test asserts `init` returned with 124 in the log and no `probe` followed),
+the happy path (call order — `up` then `image`, no `probe` — the decompressed frame's byte count reaching the
 tool, cursor blink off), the 480p knob selecting both the mode and the other frame, a
 missing or refused frame degrading to text, and each terminal state clearing the picture
 exactly once. It proves `/init`'s handling of the tool's answers, not the answers — that
@@ -698,12 +708,12 @@ confirm.
   that an unchecked cleanup command silently no-opped for a whole release; the result is
   logged and asserted by `scripts/test-sdcard-install.sh`. The applet budget is a budget,
   not a freeze: needed applets get turned on and justified in
-  `installer-busybox.config`'s header rather than worked around in shell.
+  `docs/installer-build.md` (BusyBox section) rather than worked around in shell.
 - **`CONFIG_MV` was added for §8's recoverable ordering.** The `.part` rename is what
   makes a partial copy-back detectable on the next boot, and the commit phase's renames
   are what keep it from re-writing 150+ MiB of payload it has already written once. Same
   budget reasoning as `CONFIG_RM` above, costed in §8.5 and justified in
-  `installer-busybox.config`'s header. `/init` relies on one behaviour worth knowing
+  `docs/installer-build.md` (BusyBox section). `/init` relies on one behaviour worth knowing
   before editing it: `mv` will not rename over an existing non-empty directory, so the
   one directory that collides (`linux/`, already holding the installer's own kernel) is
   descended and its children moved individually.

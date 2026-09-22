@@ -1,41 +1,16 @@
 #!/usr/bin/env bash
-#
-# Unit test for the SD-card installer's first-boot splash
-# (board/mister/de10nano/installer-overlay/init, ADR 0020 §6).
-#
-# WHY A SEPARATE TEST. The splash lives inside a PID-1 /init that can brick a
-# board, and its only other coverage is scripts/test-sdcard-install.sh -- which
-# needs a fully built sdcard.img and boots QEMU twice. That is far too slow and
-# too heavy to catch an ordinary shell mistake. This test needs no build
-# artifacts, no QEMU and no privilege: it extracts the splash section verbatim
-# from /init, sources it under a POSIX shell against a STUBBED /proc/uptime and
-# /sys/class/leds tree, and asserts the behaviour directly. It runs in about a
-# second, so it can gate every PR.
-#
-# THE HDMI HALF (ADR 0020 §9, 2026-09-21) is tested the same way: /init only
-# ever reaches `itsalive` through one wrapper and four retargetable paths, so
-# the binary is replaced by a RECORDING STUB whose exit status per subcommand
-# the test sets, and the assertions are on what /init did with each answer --
-# absent binary, `probe` exit 10 (no bitstream), `up` failing, `up` HANGING
-# (the `timeout` bracket is the load-bearing line), the happy path, the 480p
-# knob, a missing frame, and the three terminal states replacing the picture.
-#
-# WHAT IT CANNOT TELL YOU. It exercises the splash in isolation, not the install
-# flow that calls it. That the steps fire in the right order, against real
-# hardware, with a real LED -- and that the stub's answers are the ones the real
-# itsalive gives on a DE10-Nano -- is test-sdcard-install.sh's job and
-# ultimately P5.4's. See ADR 0020 §6 for what the splash is and §9 for the
-# picture.
-#
+
+# Unit test for the installer's first-boot splash (installer-overlay/init,
+# ADR 0020 §6/§9). Why a separate test, and what it can't tell you: docs/installer-build.md.
+
 # Usage: scripts/test-installer-splash.sh [path/to/init]
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 INIT="${1:-$ROOT/board/mister/de10nano/installer-overlay/init}"
 
-# The shell the target actually runs is BusyBox ash. `dash` is the closest thing
-# a CI runner ships and is the far stricter POSIX check of the two; fall back to
-# `sh` so this still runs somewhere dash is absent.
+# BusyBox ash is the real target shell; dash is the stricter POSIX check most
+# CI runners have, with a plain sh fallback where dash is absent.
 SH="$(command -v dash || command -v sh)"
 
 WORK="$(mktemp -d)"
@@ -49,24 +24,16 @@ die()  { printf '[test-splash] FATAL: %s\n' "$*" >&2; exit 2; }
 log "init  = $INIT"
 log "shell = $SH"
 
-# ---------------------------------------------------------------- extraction
-# The markers are a documented contract in /init itself -- see the comment on
-# ">>> SPLASH SECTION BEGIN". Fail loudly rather than silently testing nothing if
-# somebody renames or drops them.
+# --- extraction --- the markers are a documented contract in /init itself;
+# fail loudly if they're renamed/dropped rather than silently testing nothing.
 sed -n '/^# >>> SPLASH SECTION BEGIN/,/^# >>> SPLASH SECTION END/p' "$INIT" > "$WORK/splash.sh"
 [ -s "$WORK/splash.sh" ] || die "could not find the SPLASH SECTION markers in $INIT"
 grep -q '^splash_init()'       "$WORK/splash.sh" || die "extracted section has no splash_init"
 grep -q '^# >>> SPLASH SECTION END' "$WORK/splash.sh" || die "extraction ran past the END marker"
 log "extracted $(wc -l < "$WORK/splash.sh") lines of splash section"
 
-# ------------------------------------------------- SPLASH_TOTAL vs /init
-# The one thing the sourced section below cannot check about itself: whether
-# SPLASH_TOTAL still matches the steps /init actually calls. The header of that
-# constant says "keep in sync with splash_step calls" and nothing enforced it,
-# so a reorder that renumbers the steps -- which is exactly what ADR 0020 §8 did
-# -- could leave the bar stalling at 90% or claiming 110%. Compare the declared
-# total against the highest N in any `splash_step N` call outside the section
-# (step 0 is splash_init's "starting up" and never the highest).
+# --- SPLASH_TOTAL vs /init --- the one thing the sourced section cannot check
+# about itself: it must match the highest `splash_step N` call outside it (step 0 excluded; ADR 0020 §8 already renumbered these once).
 declared_total="$(sed -n 's/^SPLASH_TOTAL=\([0-9]*\).*/\1/p' "$INIT")"
 [ -n "$declared_total" ] || die "no SPLASH_TOTAL= in $INIT"
 highest_step="$(sed -n 's/^[[:space:]]*splash_step \([0-9]\{1,\}\) .*/\1/p' "$INIT" | sort -n | tail -1)"
@@ -83,11 +50,8 @@ printf '0\n'           > "$WORK/leds/hps_led0/brightness"
 printf 'mmc0\n'        > "$WORK/leds/hps_led0/trigger"
 printf '12.34 56.78\n' > "$WORK/uptime"
 
-# The itsalive stand-in. Records every invocation (one line of arguments per
-# call), answers each subcommand with the exit status in $WORK/hdmi/rc.<sub>
-# (0 when unset; the word `hang` sleeps past the timeout instead), counts the
-# bytes `image -` was fed, and -- like the real tool -- says one thing on
-# stderr, so the replay-to-log path is exercised too.
+# The itsalive stand-in: records every call, answers per-subcommand from
+# $WORK/hdmi/rc.<sub> (0 default, `hang` sleeps), counts image bytes fed, logs to stderr like the real tool.
 cat > "$WORK/hdmi/itsalive" <<'STUB_EOF'
 #!/bin/sh
 d="$(dirname "$0")"
@@ -100,18 +64,14 @@ if [ "$rc" = hang ]; then sleep 30; exit 0; fi
 exit "$rc"
 STUB_EOF
 chmod +x "$WORK/hdmi/itsalive"
-# Two "frames" of different, recognisable sizes so the test can tell which one
-# was fed to the tool. The real ones are 3.6 MB and 1.2 MB; the section does
-# not care.
+# Two "frames" of different, recognisable sizes (the real ones are 3.6 MB and
+# 1.2 MB; the section does not care) so the test can tell which one was fed.
 head -c 16 /dev/zero | gzip -n > "$WORK/hdmi/share/splash-1280x720.raw.gz"
 head -c 8  /dev/zero | gzip -n > "$WORK/hdmi/share/splash-640x480.raw.gz"
 printf '1\n' > "$WORK/hdmi/cursor_blink"
 
-# Retarget the absolute paths at the stubs. Anchored on the exact strings the
-# section uses; if /init ever stops using one of them this rewrite silently
-# does nothing, so each is asserted below by behaviour, not by grep. The HDMI
-# timeout is cut to one second so the hang case costs the test a second, not
-# fifteen.
+# Retarget the absolute paths at the stubs (asserted below by behaviour, not
+# grep, in case /init stops using one). HDMI timeout cut to 1s so a hang costs a second, not fifteen.
 sed -i \
 	-e "s#/proc/uptime#$WORK/uptime#g" \
 	-e "s#/sys/class/leds#$WORK/leds#g" \
@@ -127,9 +87,8 @@ for v in SPLASH_HDMI_BIN SPLASH_HDMI_IMAGE_DIR SPLASH_HDMI_CURSOR SPLASH_HDMI_OU
 		|| die "retargeting $v did not take -- did /init rename it?"
 done
 
-# ------------------------------------------------------------------ the test
-# Written as a script run BY $SH (not sourced by bash) so the splash section is
-# parsed by a POSIX shell, which is the whole point.
+# --- the test --- run BY $SH, not sourced by bash, so the splash section is
+# parsed by a POSIX shell -- which is the whole point.
 cat > "$WORK/run-test.sh" <<'TEST_EOF'
 set -u
 W="$1"
@@ -156,12 +115,8 @@ ck "LED starts dark"                    "$(led)"     "0"
 ck "found the hps LED"                  "${splash_led##*/}" "hps_led0"
 ck "non-tty stdout disables animation"  "$splash_tty" "0"
 
-# --- steps -----------------------------------------------------------------
-# The expected numbers are derived from SPLASH_TOTAL rather than hardcoded: the
-# step count changed once already (9 -> 10, with the recoverable reorder of
-# ADR 0020 §8) and hardcoding it made every one of these a two-line edit for no
-# added coverage. What IS asserted literally is the arithmetic itself -- integer
-# truncation of the bar fill, and a full bar exactly at the last step.
+# --- steps --- expected numbers are derived from SPLASH_TOTAL, not hardcoded
+# (ADR 0020 §8 renumbered these once already); the arithmetic itself IS asserted literally.
 splash_step 1 "checking the card"   >/dev/null
 ck "step 1 percentage" "$splash_pct" "$(( 100 / SPLASH_TOTAL ))"
 splash_step 5 "writing the bootloader"  >/dev/null
@@ -198,10 +153,8 @@ splash_frame=2; ck "spinner frame 2" "$(splash_spin_char)" '-'
 splash_frame=3; ck "spinner frame 3" "$(splash_spin_char)" '\'
 splash_frame=4; ck "spinner wraps"   "$(splash_spin_char)" '|'
 
-# --- heartbeat child lifecycle --------------------------------------------
-# The load-bearing one: this child is stopped by TRUNCATING a flag file and
-# reaped with `wait`, because the installer BusyBox has neither kill nor rm.
-# If this regresses, the installer hangs forever mid-reformat.
+# --- heartbeat child lifecycle --- load-bearing: stopped by TRUNCATING a flag
+# file and reaped with `wait` (installer BusyBox has neither kill nor rm); a regression here hangs the installer forever mid-reformat.
 splash_pulse_start >/dev/null 2>&1
 ck "pulse marks itself running"  "$splash_pulsing" "1"
 ck "flag file is non-empty"      "$([ -s "$W/run/splash.run" ] && echo yes || echo no)" "yes"
@@ -228,9 +181,8 @@ ck "completion banner drew" "$(grep -c 'INSTALL COMPLETE' "$W/done.txt")" "1"
 ck "completion bar reads 100%" "$(grep -c '] 100%' "$W/done.txt")" "1"
 ck "handing off puts the LED out" "$(led)" "0"
 
-# --- degradation: a board with no such LED --------------------------------
-# QEMU and any non-DE10-Nano host have no hps_led0. A splash must NEVER be able
-# to fail an install, so every one of these must be a silent no-op.
+# --- degradation: a board with no such LED --- QEMU and non-DE10-Nano hosts
+# have no hps_led0; every one of these must be a silent no-op.
 splash_led=""
 splash_led_set 1
 splash_led_toggle
@@ -239,10 +191,8 @@ splash_step 2 "reading the payload" >/dev/null 2>&1
 splash_done   >/dev/null 2>&1
 printf '  ok   no-LED board: every LED path degraded to a no-op\n'
 
-# --- HDMI splash (ADR 0020 §9) --------------------------------------------
-# Every scenario below must leave splash_hdmi_init returning 0 -- the rule is
-# that the picture can never fail an install -- and must leave a log line a
-# serial-console user could act on.
+# --- HDMI splash (ADR 0020 §9) --- every scenario below must leave
+# splash_hdmi_init returning 0 and a log line a serial-console user can act on.
 H="$W/hdmi"
 hdmi_reset() { : > "$H/calls"; rm -f "$H"/rc.* "$H/image.bytes"; printf '1\n' > "$H/cursor_blink"; splash_hdmi_mode=720p; }
 hdmi_calls() { tr '\n' ';' < "$H/calls"; }
@@ -258,22 +208,23 @@ splash_hdmi_say --clear 'x' >/dev/null 2>&1
 ck "no itsalive: say is a silent no-op"    "$(hdmi_calls)" ""
 SPLASH_HDMI_BIN="$saved_bin"
 
-# (b) probe says no bitstream (exit 10): QEMU, or a card that lost menu.rbf
-hdmi_reset; printf '10\n' > "$H/rc.probe"
+# (b) no bitstream (exit 10): QEMU, or a card that lost menu.rbf. `up` goes
+#     first and alone; only its failure earns the diagnostic probe.
+hdmi_reset; printf '10\n' > "$H/rc.up"; printf '10\n' > "$H/rc.probe"
 splash_hdmi_init > "$H/out.txt" 2>&1
-ck "probe exit 10: init returns 0"         "$?" "0"
-ck "probe exit 10: nothing after probe"    "$(hdmi_calls)" "probe;"
-ck "probe exit 10: screen not marked up"   "$splash_hdmi" "0"
-ck "probe exit 10: tool's stderr reached the log" "$(grep -c '^\[installer\] hdmi: stub: probe$' "$H/out.txt")" "1"
-ck "probe exit 10: verdict in the log"     "$(grep -c 'probe exit 10 -- no HDMI splash' "$H/out.txt")" "1"
-ck "probe exit 10: cursor knob untouched"  "$(cat "$H/cursor_blink")" "1"
+ck "up exit 10: init returns 0"            "$?" "0"
+ck "up exit 10: up, then probe to diagnose, then stop" "$(hdmi_calls)" "up --mode 720p;probe;"
+ck "up exit 10: screen not marked up"      "$splash_hdmi" "0"
+ck "up exit 10: probe's stderr reached the log" "$(grep -c '^\[installer\] hdmi: stub: probe$' "$H/out.txt")" "1"
+ck "up exit 10: verdict in the log"        "$(grep -c 'up exit 10 -- no HDMI splash' "$H/out.txt")" "1"
+ck "up exit 10: cursor knob untouched"     "$(cat "$H/cursor_blink")" "1"
 
-# (c) up fails (exit 12, say, an i2c error): probe passed, so the board is a
-#     real MiSTer with a bitstream -- still no picture, still no harm
+# (c) up fails otherwise (exit 12, say, an i2c error) -- still no picture,
+#     still no harm, still a probe for the log
 hdmi_reset; printf '12\n' > "$H/rc.up"
 splash_hdmi_init > "$H/out.txt" 2>&1
 ck "up exit 12: init returns 0"            "$?" "0"
-ck "up exit 12: probe then up, then stop"  "$(hdmi_calls)" "probe;up --mode 720p;"
+ck "up exit 12: up, then probe, then stop" "$(hdmi_calls)" "up --mode 720p;probe;"
 ck "up exit 12: screen not marked up"      "$splash_hdmi" "0"
 ck "up exit 12: verdict in the log"        "$(grep -c 'up exit 12 -- no HDMI splash' "$H/out.txt")" "1"
 
@@ -288,12 +239,13 @@ ck "up hangs: init still returns 0"        "$rc" "0"
 ck "up hangs: timeout cut it short (<10 s)" "$(( t1 - t0 < 10 ))" "1"
 ck "up hangs: screen not marked up"        "$splash_hdmi" "0"
 ck "up hangs: exit 124 (timeout) in the log" "$(grep -c 'up exit 124 -- no HDMI splash' "$H/out.txt")" "1"
+ck "up hangs: no probe after a timeout"    "$(hdmi_calls)" "up --mode 720p;"
 
 # (e) the happy path
 hdmi_reset
 splash_hdmi_init > "$H/out.txt" 2>&1
 ck "happy: init returns 0"                 "$?" "0"
-ck "happy: probe, up, image -- in that order" "$(hdmi_calls)" "probe;up --mode 720p;image -;"
+ck "happy: up, image -- and no probe in front" "$(hdmi_calls)" "up --mode 720p;image -;"
 ck "happy: screen marked up"               "$splash_hdmi" "1"
 ck "happy: the 720p frame was fed, decompressed" "$(cat "$H/image.bytes")" "16"
 ck "happy: fbcon cursor blink switched off" "$(cat "$H/cursor_blink")" "0"
@@ -319,7 +271,7 @@ ck "done: LED still put out"               "$(led)" "0"
 # (g) the 480p knob picks the other mode AND the other frame
 hdmi_reset; splash_hdmi_mode=480p
 splash_hdmi_init > "$H/out.txt" 2>&1
-ck "480p: up asked for 480p"               "$(sed -n 2p "$H/calls")" "up --mode 480p"
+ck "480p: up asked for 480p"               "$(sed -n 1p "$H/calls")" "up --mode 480p"
 ck "480p: the 640x480 frame was fed"       "$(cat "$H/image.bytes")" "8"
 ck "480p: verdict names the mode"          "$(grep -c 'splash on screen (480p)' "$H/out.txt")" "1"
 

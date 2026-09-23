@@ -318,6 +318,12 @@ the mismatch is QSPI-side. Release discipline that keeps this impossible:
   checks board identity; `ADR 0027` lines 80-83, `de25-nano-tasks.md` 120/155 and
   `downloader-contract.md` 1208-1215 are all design prose. Nothing today would stop DE10 flash
   semantics being cargo-culted onto a DE25 tree except the accident that no DE25 tree exists yet.
+  **2026-09-23: implemented for the DE10 side.** `install.sh` and the DE10 updater now refuse
+  any device tree without `altr,socfpga-cyclone5` before doing anything
+  (`downloader-contract.md` §13, last bullet; `scripts/test-board-identity.sh`). So a DE10
+  archive can no longer reach a DE25 through our updater. The reverse direction needs the DE25
+  updater, which does not exist yet; it must carry the same block keyed on
+  `intel,socfpga-agilex5`.
   **Before the first DE25 release:** (a) implement the identity assertion in the updater *and* in
   any `updateboot` analogue -- **still open**; (b) a release-blocking build assertion that the
   DE25 U-Boot config has `ENV_IS_IN_UBI` unset and ships no QSPI-write command set --
@@ -675,7 +681,7 @@ against `/mnt/source/Buildroot_MiSTer/output/build/linux-6.18.44` by this pass.
 
 | Claim | Lens | Objection, recorded verbatim in substance |
 |---|---|---|
-| §5 no-release-writes-QSPI | Guards | **Partially resolved 2026-09-14 (DU2).** The board-identity half of the guard still does not exist: no shipped script reads `/proc/device-tree/compatible`; ADR 0027 Decision 4, `de25-nano-tasks.md` and `downloader-contract.md` are all prose. The CI-check half now exists and is stronger than originally asked: `external.mk`'s `MISTER_UBOOT_DE25_QSPI_AUDIT` hook fails the DE25 U-Boot build itself (not just a separate CI lane) if `ENV_IS_IN_UBI` (or any other §7 symbol) resolves on, and `scripts/ci-tests.sh` fails if the rootfs ships an MTD-naming `fw_env.config`. Tag it [V] only once the identity assertion also exists as code. **Carried in §5, final bullet.** |
+| §5 no-release-writes-QSPI | Guards | **Partially resolved 2026-09-14 (DU2).** The board-identity half of the guard still does not exist: no shipped script reads `/proc/device-tree/compatible`; ADR 0027 Decision 4, `de25-nano-tasks.md` and `downloader-contract.md` are all prose. The CI-check half now exists and is stronger than originally asked: `external.mk`'s `MISTER_UBOOT_DE25_QSPI_AUDIT` hook fails the DE25 U-Boot build itself (not just a separate CI lane) if `ENV_IS_IN_UBI` (or any other §7 symbol) resolves on, and `scripts/ci-tests.sh` fails if the rootfs ships an MTD-naming `fw_env.config`. Tag it [V] only once the identity assertion also exists as code. **Carried in §5, final bullet.** **2026-09-23:** the assertion now exists as code on the DE10 side (install.sh + updater, fixture-tested); the DE25 side waits for the DE25 updater. Still not [V] on a real board. |
 | §7 row 2 | Guards | Consequence overstated (**strand-class**, card-recoverable, since QSPI is untouched) and the "per-release factory-QSPI test matrix" exists nowhere. **Carried in the row.** |
 | §7 row 4 | Guards | "Switches stay at default" appears in **no user-facing doc**; `docs/user/` has zero DE25/MSEL content. It is a task, not a guard. **Carried in the row.** |
 | §7 row 6 | Severity | Antecedent is desk-testable and tests **negative**: the published SPL's DTB has no signature keys, so this drops from posture-1 killer to a first-contact check. **Carried in the row** (this pass independently re-inspected the DTS and agrees). |
@@ -714,3 +720,4 @@ A reader must be able to tell survival from silence. **Not covered by any lens t
   RSU layout" as its explicit revisit trigger — **not** as forced by impossibility (§4, §9.2).
 - ADR 0027 Decision 4's board-identity assertion needs an implementation task with a release-block
   attached, not another restatement (§5, §9.3).
+  *2026-09-23: done for the DE10 installer and updater; `lint.yml` runs its test on every PR.*

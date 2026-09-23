@@ -1239,3 +1239,16 @@ contract is what the reservation rules out, not what it adds:
   is board-fatal, not merely a failed update — this is exactly why Decision 4 requires a
   board-identity assertion to exist *before* any future DE25 flash step reuses this code
   path.
+* **The assertion exists (2026-09-23).** `install.sh` (`preflight()`) and
+  `update_linux_modernization.sh` (`do_update()`) call `assert_board` before anything
+  else. It reads `/proc/device-tree/compatible` and refuses, having changed nothing,
+  unless `altr,socfpga-cyclone5` is one of its entries. It matches the SoC rather than
+  `terasic,de10-nano` because stock's DE10 DTB carries only
+  `"altr,socfpga-cyclone5", "altr,socfpga"` (`docs/stock-inventory/20250402/stock.dts:11`),
+  and users opt in from stock. The two copies must stay byte-identical;
+  `scripts/test-board-identity.sh` (run by `lint.yml`) checks that and runs the
+  block against DE10-ours, DE10-stock, DE25, prefix, empty and missing fixtures.
+  **The DE25 updater, when it is written, carries the same block with
+  `MLM_BOARD_SOC="intel,socfpga-agilex5"`.** The DE25's root `compatible` is the
+  SoCDK's (`docs/de25-dts-rationale.md`, root `compatible` row), so the SoC string is
+  also the only reliable discriminator on that side.

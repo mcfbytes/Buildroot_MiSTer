@@ -19,6 +19,7 @@
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #   scripts/test-authorized-keys-migration.sh  # S50sshd's authorized_keys move (#183)
+#   scripts/test-board-identity.sh      # install.sh/updater board check (ADR 0027 D4)
 #
 ################################################################################
 
@@ -432,3 +433,10 @@ jobs:
               || echo "::warning::could not install busybox -- the BusyBox pass of the authorized_keys migration test will be SKIPPED"
           fi
           scripts/test-authorized-keys-migration.sh
+
+      # install.sh and the updater refuse a non-Cyclone V device tree before any
+      # step that can reach a flash; this runs that check against DT fixtures.
+      - name: Board identity unit test (scripts/test-board-identity.sh)
+        run: |
+          set -euo pipefail
+          scripts/test-board-identity.sh

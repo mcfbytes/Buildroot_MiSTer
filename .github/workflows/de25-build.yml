@@ -1,0 +1,118 @@
+################################################################################
+#
+# de25-build.yml — build the DE25-Nano card by hand (`make de25`) and run the
+# DE25 checks against it. Manual only (ADR 0027 Decision 5): no push/PR/cron
+# trigger, cold build, and no cache is ever SAVED from here, so it takes no
+# slice of the cache budget. It only restores the DE10's dl/ for the sources
+# both boards share. Rationale: docs/ci.md#de25-manual-lane.
+#
+################################################################################
+
+name: DE25-Nano build (manual)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: de25-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  de25:
+    name: make de25 + DE25 checks
+    runs-on: ubuntu-26.04
+    # Cold every time (no toolchain cache): aarch64 toolchain + kernel + U-Boot/TF-A + rootfs.
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Free disk space on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/local/share/boost \
+            /usr/local/graalvm || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Resolve Buildroot version
+        run: |
+          set -eu
+          ver=$(sed -n -e 's/[[:space:]]*$//' -e 's/^BUILDROOT_VERSION[[:space:]]*?=[[:space:]]*//p' Makefile | head -1)
+          [ -n "$ver" ] || { echo "::error::could not read BUILDROOT_VERSION from Makefile" >&2; exit 1; }
+          echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
+
+      # Restore only: whatever the DE10 build last saved. The DE25-only
+      # sources (aarch64 toolchain bits, 7.2 kernel, TF-A) are fetched fresh.
+      - name: Restore dl/ download cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dl/
+          key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
+          restore-keys: |
+            br-dl-${{ env.BUILDROOT_VERSION }}-
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo -E apt-get install -y --no-install-recommends \
+            build-essential bash bc bison flex gawk \
+            git patch gzip bzip2 xz-utils cpio unzip rsync \
+            file wget curl ca-certificates perl \
+            python3 python3-dev \
+            libssl-dev libncurses-dev pkg-config texinfo \
+            qemu-system-arm dosfstools exfatprogs mtools e2fsprogs fdisk
+          sudo rm -rf /var/lib/apt/lists/*
+
+      - name: Verify host `install` is GNU coreutils
+        run: make hostshim
+
+      - name: Configure
+        run: make O=output-de25 mister_de25nano_defconfig
+
+      - name: Build (make de25)
+        run: make de25
+
+      - name: Static card check (check-sdcard-de25.sh)
+        run: scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25.img output-de25/images
+
+      - name: aarch64 stage-1 QEMU leg (test-initramfs.sh --board de25nano)
+        run: scripts/test-initramfs.sh --board de25nano
+
+      - name: Build overview (job summary)
+        if: always()
+        run: |
+          set -u
+          kver=$(find output-de25/target/usr/lib/modules -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | paste -sd', ' - || true)
+          {
+            echo "## DE25-Nano build"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
+            echo "| Kernel module tree | \`${kver:-n/a}\` |"
+            for f in sdcard-de25.img u-boot.itb bl31.bin Image; do
+              p=output-de25/images/$f
+              if [ -f "$p" ]; then echo "| $f | $(stat -c %s "$p") B, sha256 \`$(sha256sum "$p" | cut -c1-16)…\` |"; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the card image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: de25-images-${{ github.sha }}
+          path: |
+            output-de25/images/sdcard-de25.img
+            output-de25/images/u-boot.itb
+            output-de25/images/bl31.bin
+            output-de25/images/Image
+            output-de25/images/*.dtb
+          if-no-files-found: error
+          retention-days: 14

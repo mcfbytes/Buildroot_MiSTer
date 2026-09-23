@@ -118,9 +118,8 @@
 # changes under a RENEW/REBIND needs no kick anyway: ntpd already holds peers by
 # then, and the HAVE_RTNETLINK path above reattaches them within ~3s.
 #
-# The *6 reasons cannot fire on this kernel -- it is built without IPv6
-# (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
-# correct the day that changes.
+# The *6 reasons fire only once the card opts in to IPv6 (etc/sysctl.d/ipv6.conf,
+# issue #188); until then IPv6 is off on every interface but loopback.
 
 case "$reason" in
 BOUND|REBOOT|BOUND6|REBOOT6)

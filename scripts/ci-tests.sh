@@ -2326,6 +2326,58 @@ else
 fi
 
 # =============================================================================
+section "IPv6 — built in, off at boot until the card opts in (issue #188, ADR 0031)"
+# =============================================================================
+# Both kernels carry IPv6; the sysctl.d file is what keeps exposure unchanged.
+
+for _kc in "${kconfigs[0]:-}" "$BUILD_DIR/images/linux-rt.config"; do
+	if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
+		skip "CONFIG_IPV6=y in ${_kc:-the 6.18 kernel}" "no resolved kernel config"
+	elif grep -qx 'CONFIG_IPV6=y' "$_kc"; then
+		pass "CONFIG_IPV6=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
+	else
+		fail "CONFIG_IPV6=y in $_kc" "$(grep -E '^(# )?CONFIG_IPV6[ =]' "$_kc" || echo 'no CONFIG_IPV6 line')"
+	fi
+done
+if [ -n "${kconfigs[0]:-}" ] && grep -qx 'CONFIG_IP6_NF_FILTER=y' "${kconfigs[0]}"; then
+	pass "CONFIG_IP6_NF_FILTER=y in the 6.18 kernel (ip6tables filter table)"
+else
+	fail "CONFIG_IP6_NF_FILTER=y in the 6.18 kernel (ip6tables filter table)" "not set in ${kconfigs[0]:-<no config>}"
+fi
+
+V6_SYSCTL="etc/sysctl.d/ipv6.conf"
+if tar_has "$V6_SYSCTL"; then
+	v6_conf=$(tar xOf "$ROOTFS_TAR" "./$V6_SYSCTL" | sed 's/[[:space:]]//g')
+	for _l in net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 net.ipv6.conf.lo.disable_ipv6=0; do
+		if printf '%s\n' "$v6_conf" | grep -qxF "$_l"; then
+			pass "$V6_SYSCTL sets $_l"
+		else
+			fail "$V6_SYSCTL sets $_l" "line missing -- IPv6 exposure would change without the card opting in"
+		fi
+	done
+else
+	fail "$V6_SYSCTL present" "not in rootfs.tar -- IPv6 would be live on every interface"
+fi
+v6_link=$(tar tvf "$ROOTFS_TAR" ./etc/sysctl.conf 2>/dev/null | sed -n 's/.* -> //p')
+if [ "$v6_link" = "/media/fat/linux/sysctl.conf" ]; then
+	pass "/etc/sysctl.conf -> /media/fat/linux/sysctl.conf (the opt-in hook)"
+else
+	fail "/etc/sysctl.conf -> /media/fat/linux/sysctl.conf (the opt-in hook)" "link target is '${v6_link:-<absent>}'"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/hosts 2>/dev/null | grep -qE '^::1[[:space:]]+localhost'; then
+	pass "/etc/hosts maps ::1 to localhost"
+else
+	fail "/etc/hosts maps ::1 to localhost" "no '::1 localhost' line"
+fi
+require_present "usr/bin/ping6" "ping6"
+require_present "usr/bin/traceroute6" "traceroute6"
+if tar xOf "$ROOTFS_TAR" ./etc/proftpd.conf 2>/dev/null | grep -qE '^UseIPv6[[:space:]]+off'; then
+	pass "proftpd.conf keeps UseIPv6 off (FTP stays IPv4-only, docs/ssh-ftp-parity.md)"
+else
+	fail "proftpd.conf keeps UseIPv6 off" "anonymous-writable FTP must not follow an IPv6 opt-in"
+fi
+
+# =============================================================================
 section "P3.11 — RTC parity"
 # =============================================================================
 

@@ -347,6 +347,14 @@ own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/20250402/binaries-
 `libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0` — no libssl, no sqlite, no
 pcre2) is consistent with the same bare/no-submodule build.
 
+### IPv6 (issue #188)
+
+Both kernels have `CONFIG_IPV6=y` now, but IPv6 is off on every interface except `lo`
+until the card opts in (ADR 0031, amendment 2026-09-23). After an opt-in, sshd listens on
+both families by default, since `AddressFamily` and `ListenAddress` stay commented out as in
+stock. proftpd does **not**: `UseIPv6 off` is kept on purpose, because anonymous FTP is
+writable. CI asserts that line.
+
 ## 3. Default-credential auth posture
 
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted

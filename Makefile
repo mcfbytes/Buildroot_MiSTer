@@ -27,6 +27,8 @@ BUILDROOT_SHA256   ?= d678e810abf877d04513e03ca2c99f992dd49118b9c2e18d6e25f5f58f
 
 ROOT_DIR   := $(CURDIR)
 O          ?= $(ROOT_DIR)/output
+# Buildroot resolves a relative O= against its own directory (work/buildroot).
+override O := $(abspath $(O))
 export BR2_DL_DIR ?= $(ROOT_DIR)/dl
 BR_DIR     := $(ROOT_DIR)/work/buildroot
 BR_STAMP   := $(BR_DIR)/.mister-br2-stamp-$(BUILDROOT_VERSION)

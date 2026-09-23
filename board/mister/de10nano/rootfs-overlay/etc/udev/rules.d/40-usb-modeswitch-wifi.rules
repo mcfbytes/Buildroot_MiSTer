@@ -1,0 +1,15 @@
+# ZeroCD WiFi dongles: eject the fake driver CD so the NIC enumerates (issue #189).
+# Exact VID:PID only; the configs are /usr/share/usb_modeswitch/, see docs/wifi-parity.md §13.
+ACTION!="add", GOTO="mister_modeswitch_end"
+SUBSYSTEM!="usb", GOTO="mister_modeswitch_end"
+ENV{DEVTYPE}!="usb_device", GOTO="mister_modeswitch_end"
+
+ATTR{idVendor}=="0bda", ATTR{idProduct}=="1a2b", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="0bda", ATTR{idProduct}=="a192", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="0e8d", ATTR{idProduct}=="2870", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="148f", ATTR{idProduct}=="2878", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="057c", ATTR{idProduct}=="62ff", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="057c", ATTR{idProduct}=="84ff", RUN+="usb_modeswitch '/%k'"
+ATTR{idVendor}=="0cf3", ATTR{idProduct}=="20ff", RUN+="usb_modeswitch '/%k'"
+
+LABEL="mister_modeswitch_end"

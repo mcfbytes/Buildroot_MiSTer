@@ -1128,6 +1128,33 @@ else
 fi
 
 # =============================================================================
+section "ZeroCD WiFi dongles — usb_modeswitch (docs/wifi-parity.md §13, issue #189)"
+# =============================================================================
+# The binary without the data package: every rule needs its config and vice versa.
+
+require_present "usr/sbin/usb_modeswitch" "usb_modeswitch"
+require_present "usr/sbin/usb_modeswitch_dispatcher" "usb_modeswitch_dispatcher"
+require_present "usr/lib/udev/usb_modeswitch" "usb_modeswitch udev wrapper"
+require_absent "usr/share/usb_modeswitch/configPack.tar.gz" "usb_modeswitch_data config pack" \
+	"BR2_PACKAGE_USB_MODESWITCH_DATA is deliberately off (docs/wifi-parity.md §13)"
+require_absent "usr/lib/udev/rules.d/40-usb_modeswitch.rules" "usb_modeswitch_data udev rules" \
+	"its ttyUSB* rule forks usb_modeswitch on every USB-serial add"
+MS_RULE="etc/udev/rules.d/40-usb-modeswitch-wifi.rules"
+if tar_has "$MS_RULE"; then
+	ms_rule_ids=$(tar xOf "$ROOTFS_TAR" "./$MS_RULE" \
+		| sed -n 's/^ATTR{idVendor}=="\([0-9a-f]*\)", ATTR{idProduct}=="\([0-9a-f]*\)", RUN+="usb_modeswitch .*/\1:\2/p' | sort)
+	ms_conf_ids=$(sed -n 's|^\./usr/share/usb_modeswitch/\([0-9a-f]\{4\}:[0-9a-f]\{4\}\)$|\1|p' "$TAR_LIST" | sort)
+	if [ -n "$ms_rule_ids" ] && [ "$ms_rule_ids" = "$ms_conf_ids" ]; then
+		pass "40-usb-modeswitch-wifi.rules and /usr/share/usb_modeswitch/ list the same $(echo "$ms_rule_ids" | wc -l) IDs"
+	else
+		fail "40-usb-modeswitch-wifi.rules and /usr/share/usb_modeswitch/ list the same IDs" \
+			"rules: $(echo $ms_rule_ids) / configs: $(echo $ms_conf_ids)"
+	fi
+else
+	fail "40-usb-modeswitch-wifi.rules present" "$MS_RULE not in rootfs.tar"
+fi
+
+# =============================================================================
 section "T3 — addon.tar §3c closure (helpers, console/UX config, mc)"
 # =============================================================================
 # docs/stock-reconciliation.md §3c. The seven stock helper scripts are vendored

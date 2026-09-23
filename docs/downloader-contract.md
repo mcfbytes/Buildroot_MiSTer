@@ -1242,12 +1242,20 @@ contract is what the reservation rules out, not what it adds:
 * **The assertion exists (2026-09-23).** `install.sh` (`preflight()`) and
   `update_linux_modernization.sh` (`do_update()`) call `assert_board` before anything
   else. It reads `/proc/device-tree/compatible` and refuses, having changed nothing,
-  unless `altr,socfpga-cyclone5` is one of its entries. It matches the SoC rather than
-  `terasic,de10-nano` because stock's DE10 DTB carries only
-  `"altr,socfpga-cyclone5", "altr,socfpga"` (`docs/stock-inventory/20250402/stock.dts:11`),
-  and users opt in from stock. The two copies must stay byte-identical;
-  `scripts/test-board-identity.sh` (run by `lint.yml`) checks that and runs the
-  block against DE10-ours, DE10-stock, DE25, prefix, empty and missing fixtures.
+  unless `altr,socfpga-cyclone5` is one of its entries. Users opt in from stock, so the
+  check has to accept every stock DTB. Those appended to stock's `zImage_dtb` read:
+
+  | Kernel | root `compatible` |
+  |---|---|
+  | stock 20250402 (`docs/stock-inventory/20250402/stock.dts:11`) and 20260907 | `"altr,socfpga-cyclone5", "altr,socfpga"` |
+  | stock 20260912, and ours | `"terasic,de10-nano", "altr,socfpga-cyclone5", "altr,socfpga"` |
+
+  So the check matches the SoC string, not `terasic,de10-nano`: matching the board string
+  would refuse any card still on stock 20260907 or older. Checked 2026-09-23 under stock's own
+  `/bin/sh` (bash) and `tr` in the extracted stock rootfs, and on the rig. The two copies must stay
+  byte-identical. `scripts/test-board-identity.sh` (run by `lint.yml`) checks that, then
+  runs the block against our DE10, stock DE10, DE25, prefix, empty, missing and
+  no-trailing-NUL fixtures and checks the refusal message exactly.
   **The DE25 updater, when it is written, carries the same block with
   `MLM_BOARD_SOC="intel,socfpga-agilex5"`.** The DE25's root `compatible` is the
   SoCDK's (`docs/de25-dts-rationale.md`, root `compatible` row), so the SoC string is

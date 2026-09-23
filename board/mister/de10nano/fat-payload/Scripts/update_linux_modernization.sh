@@ -115,16 +115,16 @@ say() { echo "$*"; }
 die() { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
 
 # --- board identity (ADR 0027 Decision 4; docs/downloader-contract.md §13) ---
-# Stock's DE10 DTB carries only the SoC string, so the SoC is what is matched.
+# Stock DTBs before Release 20260912 have no board string, so match the SoC.
 MLM_BOARD_SOC="altr,socfpga-cyclone5"
 assert_board() {
 	_mlm_dt="${MLM_DT_COMPATIBLE:-/proc/device-tree/compatible}"
 	[ -r "$_mlm_dt" ] ||
 		die "cannot read $_mlm_dt, so this board cannot be identified. Nothing was changed."
-	_mlm_compat=" $(tr '\0' ' ' <"$_mlm_dt") "
-	case "$_mlm_compat" in
+	_mlm_compat=$(tr '\0' ' ' <"$_mlm_dt")
+	case " $_mlm_compat " in
 	*" $MLM_BOARD_SOC "*) ;;
-	*) die "this image is for the DE10-Nano, but this board's device tree says:$_mlm_compat Nothing was changed." ;;
+	*) die "this image is for the DE10-Nano, but this board's device tree says: ${_mlm_compat% }. Nothing was changed." ;;
 	esac
 }
 # --- end board identity ---

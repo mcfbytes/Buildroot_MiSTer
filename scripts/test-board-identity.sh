@@ -49,6 +49,7 @@ fx de10-stock 'altr,socfpga-cyclone5\0altr,socfpga\0'
 fx de25       'intel,socfpga-agilex5-socdk\0intel,socfpga-agilex5\0'
 fx prefix     'altr,socfpga-cyclone5x\0altr,socfpga\0'
 fx empty      ''
+fx no-trailing-nul 'terasic,de10-nano\0altr,socfpga-cyclone5'
 
 # run_case <label> <fixture> <pass|die> <shell and its flags...>
 run_case() {
@@ -79,6 +80,12 @@ for sh in "${shells[@]}"; do
 		run_case "$sh" prefix     die  $sh
 		run_case "$sh" empty      die  $sh
 		run_case "$sh" missing    die  $sh
+		run_case "$sh" no-trailing-nul pass $sh
+		# shellcheck disable=SC2016  # expanded by the shell under test
+		msg=$(MLM_DT_COMPATIBLE="$WORK/de25" $sh -c 'die() { echo "$*"; }; . "$0"; assert_board' "$WORK/install.blk")
+		want="this image is for the DE10-Nano, but this board's device tree says: intel,socfpga-agilex5-socdk intel,socfpga-agilex5. Nothing was changed."
+		if [ "$msg" = "$want" ]; then ok "$sh: refusal message is exact"
+		else bad "$sh: refusal message is [$msg]"; fi
 	}
 done
 

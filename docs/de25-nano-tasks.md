@@ -510,6 +510,23 @@ payload sizes), §2 TF-A row and §12 TF-A row (DU6 verified the signature), §3
 (`uboot.hash` gone); `external.mk` DE25 comment (relative-`O` evidence; the DE10 tree now has a
 hook); `docs/buildroot-config.md` §6.9; `docs/uboot-mainline-port.md` §3.6.
 
+## Wave 5 — 2026-09-23 (pre-hardware): re-verify at 7.2.7, identity check, manual CI lane
+
+Branch `feat/de25-prehw-verify`. Evidence is from a from-scratch `make de25` on the workstation
+(24 min; logs outside the repo).
+
+| Item | Result |
+|---|---|
+| `make de25` at the current pin (kernel **7.2.7**, after #203's IPv6 change) | Green. **34/34** patches in `.applied_patches_list`, no fuzz or failed hunks; 92 modules **[V]** |
+| DU7's two kernel legs, [U] above for want of a kernel | Resolved `.config`: `MTD`, `SPI_CADENCE_QUADSPI`, `INTEL_STRATIX10_RSU` not set; `MTD_SPI_NOR`, `MTD_UBI` absent; no mtd/spi-nor/quadspi/rsu module. DTB: `spi@108d2000` `status = "disabled"` with no child, zero `jedec,spi-nor`/`partition` nodes; `svc` → `fpga-mgr` ← `fpga-region` wired. **[V]** — both legs closed |
+| `check-sdcard-de25.sh` | All assertions pass on `sdcard-de25.img` (537,919,488 B) **[V]** |
+| `ci-tests.sh` DE25 section on a *populated* rootfs | `PASS DE25 rootfs: no fw_env.config shipped` against the real 71 MB target (DU7 addition 3's [U] closed); whole suite 211/0/6 **[V]** |
+| `test-initramfs.sh --board de25nano` | **8/8** on 7.2.7, with the stage-1 package built alone (the card still does not embed it, D11) **[V]** |
+| FIT | `u-boot.itb` 725,560 B: uboot@`0x80200000`, atf@`0x80000000`, `fdt-0`, `board-0`, `crc32:dev`, unsigned — contract unchanged; hashes move with the toolchain banner as §5b says |
+| ADR 0027 Decision 4 | **Code now exists, on the DE10 side:** `assert_board` in `install.sh` and the updater (see `downloader-contract.md` §13). It was run on the DE10 rig (7.2.6), where it reads `terasic,de10-nano`/`altr,socfpga-cyclone5`/`altr,socfpga` and accepts. The DE25 updater must carry the same block keyed on `intel,socfpga-agilex5` |
+| DU7's relative-`O=` finding | Fixed in the wrapper (`override O := $(abspath $(O))`); `make O=output-de25 printvars` now evaluates the real tree |
+| CI | `de25-build.yml`, `workflow_dispatch` only ([`ci.md#de25-manual-lane`](ci.md#de25-manual-lane)). D1.2 (a board parameter for `buildroot-build`) is deliberately **not** done: the manual lane does not use the action |
+
 ## What to do next — 2026-08-22
 
 D0 and D1 are done; the opening move this section used to describe has been executed. The live

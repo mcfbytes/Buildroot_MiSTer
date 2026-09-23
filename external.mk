@@ -92,10 +92,8 @@ endif
 # but BR2_TARGET_UBOOT_BOARD_DEFCONFIG says directly "this is the DE25 U-Boot
 # build", which is the fact this hook actually depends on. It is therefore
 # inert on the DE10 tree, where that symbol is "socfpga_de10_nano": `make
-# O=output printvars VARS='UBOOT_%_HOOKS MISTER_UBOOT_%'` on the DE10 tree
-# prints neither UBOOT_POST_BUILD_HOOKS nor any MISTER_UBOOT_* variable, so
-# the hook is never appended there [V, evaluated 2026-09-14; the DE10 tree was
-# not rebuilt].
+# O=output printvars VARS='UBOOT_%_HOOKS MISTER_UBOOT_%'` there lists only the
+# DE10 hook below [V, 2026-09-14, docs/de25-nano-tasks.md DU7 addition 1].
 #
 # THREE THINGS ARE AUDITED, and the first exists because of a trap:
 #

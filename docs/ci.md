@@ -26,7 +26,7 @@ or policy document rather than restating it.
 
 ## The pipeline today (2026-09-11, after ADR 0030)
 
-Nine workflows, two composite actions, one Buildroot recipe. A build is
+Ten workflows, two composite actions, one Buildroot recipe. A build is
 `make mister_de10nano_defconfig && make`, and every check CI runs is a script you can run locally.
 
 | Workflow | Runs on | What it does |
@@ -35,6 +35,7 @@ Nine workflows, two composite actions, one Buildroot recipe. A build is
 | `lint.yml` | push, PRs | actionlint on the workflows, shellcheck on every script and on the composite actions' `run:` bodies |
 | `release.yml` | `v*` tags | the same build, then `scripts/mk-release.sh` (stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, `SHA256SUMS`) and `scripts/mk-sdcard.sh`; then a draft release with provenance and the SBOM to the dependency graph. Runs locally: `MISTER_VERSION=… scripts/mk-release.sh` with the `STOCK_*` pins in the environment |
 | `reproducibility.yml` | manual | two independent builds of one commit, hashes compared |
+| `de25-build.yml` | manual | `make de25` cold, then `check-sdcard-de25.sh` and the aarch64 QEMU leg; uploads the card ([why manual](#de25-manual-lane)) |
 | `renovate-hash-sync.yml` | Renovate PRs | refresh the companion hash of whatever pin the PR bumped (each case is one `scripts/hash-sync-*.sh`) |
 | `renovate-validate.yml` | push, PRs | `renovate.json` validates |
 | `publish-db.yml` | published release | regenerate + publish `db.json` to Pages |
@@ -1239,6 +1240,30 @@ matrix grows to.
 fold "skipped" into the wrong bucket — the whole table above exists because
 skipped needs its own honest branch, not "pass" or "fail" by accident of
 which helper function was used.
+
+<a id="de25-manual-lane"></a>
+### The DE25-Nano lane (`de25-build.yml`): manual, cold, restore-only
+
+`de25-build.yml` runs `make de25`, then `check-sdcard-de25.sh` and
+`test-initramfs.sh --board de25nano`, and uploads the card image (14 days).
+The DE25 card does not embed stage 1 yet (ADR 0029 D11). So after the card is
+built, the lane turns on `BR2_PACKAGE_MISTER_INITRAMFS` and builds only that
+package, which gives the QEMU leg its cpio without touching the card.
+It exists because the DE25 build broke silently twice while nothing built it:
+a kernel bump dropped the 7.2.3 hash line, and ADR 0030's `linux-rt.mk`
+registered a rule on the shared `linux.config`.
+
+Its shape is ADR 0027 Decision 5, confirmed by the owner on 2026-09-23:
+
+- **`workflow_dispatch` only.** No push, PR or cron trigger; it never enters
+  the per-PR path or the `status` check.
+- **No cache is saved.** It restores the DE10's `dl/` read-only (most sources
+  are shared) and builds the aarch64 toolchain cold. So it takes nothing from
+  the [cache budget](#cache-budget-and-sizing).
+- **It does not use `buildroot-build`.** That action's toolchain fingerprint
+  asserts `BR2_arm=y` and its keys hash the DE10 defconfig. Making it take a
+  board parameter (readiness-ledger D1.2) is only worth doing once the DE25
+  needs caches, which is when it becomes a per-PR target.
 
 ---
 

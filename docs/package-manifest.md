@@ -1054,6 +1054,8 @@ BR2_PACKAGE_LIBUSB_COMPAT=y                 # legacy libusb-0.1 API shim -- stil
 BR2_PACKAGE_LIBEVDEV=y
 BR2_PACKAGE_LIBINPUT=y
 BR2_PACKAGE_MTDEV=y
+BR2_PACKAGE_USB_MODESWITCH=y                # ZeroCD WiFi dongles, NOT stock; _DATA stays
+                                            # off (docs/wifi-parity.md §13, issue #189)
 
 # --- Bluetooth ---
 BR2_PACKAGE_BLUEZ5_UTILS=y
@@ -1073,7 +1075,7 @@ BR2_PACKAGE_DTC=y                            # libfdt
 BR2_PACKAGE_SUDO=y
 BR2_PACKAGE_I2C_TOOLS=y                       # for the i2c-gpio RTC add-on, P3.11
 BR2_PACKAGE_JIMTCL=y                          # NOT just an obscure shell -- usb_modeswitch's
-                                              # dispatcher (3G/LTE modem support) needs it
+                                              # dispatcher links it
 BR2_PACKAGE_LIBLOCKFILE=y
 BR2_PACKAGE_LIBXML2=y
 BR2_PACKAGE_FILE=y                            # libmagic

@@ -1377,3 +1377,77 @@ carried AIC8800 (§10.1) does not transfer.
 the chip. Everything else a MiSTer user is likely to buy — Realtek 8188/8192/8812/8814/
 8821/8822/8852B/8851B, MediaTek MT7601U/MT76x0/MT76x2/MT7663/MT7921/MT7925, Broadcom
 FullMAC, Ralink rt2x00, Marvell mwifiex — is driven in-kernel today.
+
+> **§12's method has a blind spot, closed in §13.** It asked *which chips have drivers*,
+> never *whether the dongle ever reaches its driver's USB ID*. A ZeroCD dongle passes the
+> first test and fails the second.
+
+## 13. ZeroCD dongles — `usb_modeswitch` without its data package (issue #189, 2026-09-23)
+
+Many cheap dongles first enumerate as USB mass storage presenting a virtual CD of Windows
+drivers, and only re-enumerate as a NIC after the host sends an eject. Until then they
+never show the USB ID their driver waits for. Mainline deliberately leaves this to
+userspace: `drivers/usb/storage/unusual_devs.h` marks `0bda:1a2b` and `0bda:a192`
+`US_FL_IGNORE_DEVICE` ("otherwise usb_modeswitch may fail to switch the device into Wi-Fi
+mode"), so no `/dev/sr0` exists and the BusyBox `eject` applet has nothing to act on.
+Neither stock nor this image shipped `usb_modeswitch` before this change (stock's
+`addon.tar` at Release 20260912 has no `modeswitch` member).
+
+### What ships
+
+- `BR2_PACKAGE_USB_MODESWITCH` (2.6.2), selected in `package/mister-userspace/Config.in`:
+  `/usr/sbin/usb_modeswitch`, the jimtcl-linked `usb_modeswitch_dispatcher`, the udev
+  wrapper `/lib/udev/usb_modeswitch` and `/etc/usb_modeswitch.conf`. Its two libraries,
+  `libusb-1.0` and `libjim`, were already in the image. Installed cost: **94,147 bytes**
+  including the files below.
+- **Not** `BR2_PACKAGE_USB_MODESWITCH_DATA`. It is 2.1 MB of 513 configs, nearly all 3G/4G
+  modems, and its rules file forks `usb_modeswitch` on **every** `ttyUSB*` add event, a
+  per-hotplug cost on a board where USB serial (`uartmode`, MIDI) is a first-class feature.
+  CI asserts it stays out.
+- Seven configs, copied verbatim from usb-modeswitch-data 20251207 into the DE10 overlay at
+  `/usr/share/usb_modeswitch/` (the dispatcher's database directory, so there is no
+  "overriding config" syslog nag as `/etc/usb_modeswitch.d/` would cause), plus
+  `etc/udev/rules.d/40-usb-modeswitch-wifi.rules` with one exact VID:PID line each. CI
+  asserts the rule list and the config list name the same IDs.
+
+### The seven — every WiFi ZeroCD entry whose post-switch ID we drive
+
+Each target ID was checked against the device table of the driver in the 6.18.53 tree,
+and the driver's firmware against `output/target/lib/firmware`. The RT kernel builds the
+same modules from the same `linux.config`.
+
+| ZeroCD ID | switches to | driver | firmware |
+|---|---|---|---|
+| `0bda:1a2b` D-Link DWA-171 / AC600 class | `2001:331d` | `rtw88_8821cu` | `rtw88/rtw8821c_fw.bin` |
+| `0bda:a192` RTL8192FU | `0bda:f192` | `rtl8xxxu` | `rtlwifi/rtl8192fufw.bin` |
+| `0e8d:2870` COMFAST CF-WU782AC | `0e8d:7612` | `mt76x2u` | `mediatek/mt7662*.bin` |
+| `148f:2878` MT7601U | `148f:7601` | `mt7601u` | `mediatek/mt7601u.bin` |
+| `057c:62ff` AVM FRITZ!WLAN | `057c:8501` / `8502` | `rt2800usb` / `mt76x0u` | `rt2870.bin` / `mediatek/mt7610u.bin` |
+| `057c:84ff` AVM FRITZ!WLAN N | `057c:8401` | `carl9170` | `carl9170-1.fw` |
+| `0cf3:20ff` Netgear WNDA3200 | `0cf3:7010` | `ath9k_htc` | `htc_7010.fw` |
+
+The issue listed the first four; the last three came from a second pass over every config
+whose comment names WiFi/WLAN. AVM's `62ff` also lists `8602`, which no driver claims,
+harmlessly. **Left out, with reasons:** `148f:2578` (Motorola, switches to `148f:9021`,
+which `rt73usb` claims, but `rt73.bin` is not in the image); `0ace:2011`/`20ff` (ZyDAS: we
+build no `zd1211rw`, and that driver ejects its own installer mode anyway).
+
+### Wiring, verified rather than read off the Makefile
+
+The udev rule runs `usb_modeswitch '/%k'` (eudev resolves a bare `RUN+=` name in
+`/lib/udev`). Not systemd and no upstart, so the wrapper closes its fds and backgrounds
+`usb_modeswitch_dispatcher --switch-mode 1-1`. The dispatcher globs
+`/etc/usb_modeswitch.d/<vid:pid>*` and then `/usr/share/usb_modeswitch/<vid:pid>*`, and
+needs only one of the two directories to exist. Exercised on the built ARM userland
+(`unshare -r chroot` over `rootfs.tar`, qemu-arm, a fake sysfs node for `0bda:1a2b` with
+interface class 08): the dispatcher found and matched `/usr/share/usb_modeswitch/0bda:1a2b`
+and ran `usb_modeswitch -W -D -v 0bda -p 1a2b` with `StandardEject=1`, and stopped only
+at libusb finding no real device. `udevadm test` loads the rules file without complaint.
+
+### Still owed
+
+- **A hardware test with a real ZeroCD dongle.** None was available. Until then this is
+  the same class of claim §8 records against `8852cu.ko`: built and wired, not proven on
+  a device.
+- The DE25-Nano has no rootfs overlay and does not select the userspace profile, so none
+  of this reaches it. That is consistent with its bare-developer-OS scope (ADR 0027).

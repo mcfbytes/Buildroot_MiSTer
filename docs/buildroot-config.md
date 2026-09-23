@@ -1114,6 +1114,12 @@ exfat/ntfs/fuseblk + NTFS/fuseblk mount opts, which upstream 0.0.22's default
 omits) ships in the rootfs-overlay and overrides the package's default — see
 `docs/usb-automount-parity.md`.
 
+`BR2_PACKAGE_USB_MODESWITCH=y` — ejects the fake driver CD of ZeroCD WiFi dongles so
+they re-enumerate as a NIC (issue #189). A divergence from stock, which ships nothing
+here. `BR2_PACKAGE_USB_MODESWITCH_DATA` is deliberately **not** set: seven vendored
+configs and an exact-VID:PID rules file in the DE10 overlay replace its 2.1 MB and its
+fork-per-`ttyUSB*` rule. See `docs/wifi-parity.md` §13.
+
 ### 5.13 Bluetooth
 
 `BR2_PACKAGE_BLUEZ5_UTILS=y`. `BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y` — NOT in the
@@ -1155,7 +1161,7 @@ the eudev choice (§5.15). See `docs/bluetooth-parity.md`.
 - `BR2_PACKAGE_I2C_TOOLS=y` — for the i2c-gpio RTC add-on, P3.11
   (`docs/rtc-parity.md`). No sub-options gate any of its tools.
 - `BR2_PACKAGE_JIMTCL=y` — NOT just an obscure shell — usb_modeswitch's
-  dispatcher (3G/LTE modem support) needs it.
+  dispatcher (§5.12) links it.
 - `BR2_PACKAGE_LIBLOCKFILE=y`, `BR2_PACKAGE_LIBXML2=y`, `BR2_PACKAGE_FILE=y` (libmagic).
 - `BR2_PACKAGE_MEMTOOL=y` — memtool (T3, addon.tar §3c): stock's
   `usr/bin/memtool` looked like an unsourceable ARM blob in the first

@@ -62,9 +62,8 @@
 # could answer it -- the blast radius is a wrong timezone, and the answer is
 # validated against the zoneinfo we ship before it is used. See ADR 0025.
 #
-# The *6 reasons cannot fire on this kernel -- it is built without IPv6
-# (linux.config: "# CONFIG_IPV6 is not set") -- but they cost nothing and are
-# correct the day that changes.
+# The *6 reasons fire only once the card opts in to IPv6 (etc/sysctl.d/ipv6.conf,
+# issue #188); until then IPv6 is off on every interface but loopback.
 
 case "$reason" in
 BOUND|REBOOT|REBIND|RENEW|BOUND6|REBOOT6|REBIND6|RENEW6)

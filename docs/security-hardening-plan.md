@@ -135,9 +135,10 @@ same PR as ADR 0031 so the doc is honest even if nothing else lands.
 
 New `S35nftables` (before network): `inet filter input` with `ct state established,
 related accept`, `iif lo accept`, accept from `10/8`, `172.16/12`, `192.168/16`,
-`169.254/16`, ICMP echo, DHCP replies, NTP replies; default `drop`. IPv6 is off in the
-kernel today, so no v6 rules yet; add them the day `CONFIG_IPV6` turns on (CI assertion
-tying the two).
+`169.254/16`, ICMP echo, DHCP replies, NTP replies; default `drop`. Both kernels have
+`CONFIG_IPV6=y` since issue #188, but IPv6 is administratively off until the card opts in
+(`etc/sysctl.d/ipv6.conf`, ADR 0031 amendment 2026-09-23). The v6 half of this ruleset
+(`inet` covers both families) is the prerequisite for ever flipping that default.
 
 **Done when:** from the LAN everything works unchanged; from a non-RFC1918 source
 (simulate with a second interface or a `nft` counter) inbound `22` is dropped. CI

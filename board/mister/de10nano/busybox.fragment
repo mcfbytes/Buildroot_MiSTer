@@ -248,3 +248,8 @@ CONFIG_NC_110_COMPAT=y
 # is gone. Nothing calls it by that spelling; the `wget` name, which is what
 # scripts use, is answered by a strictly more capable binary.
 # CONFIG_WGET is not set
+
+# ping6/traceroute6 for IPv6 (issue #188); `ping -6` alone misses the names forum advice uses.
+# FEATURE_IFUPDOWN_IPV6 stays off: BusyBox ifup is disabled above, the ifupdown package does inet6.
+CONFIG_PING6=y
+CONFIG_TRACEROUTE6=y

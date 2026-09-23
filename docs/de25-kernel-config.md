@@ -183,7 +183,8 @@ two files are a pair and `configs/mister_de25nano_defconfig` always names both.
 
 ### 3.5 Networking core and netfilter (§5)
 The DE10's exact set: `NET`/`PACKET`/`UNIX`/`INET`, `NET_KEY`(+`_MIGRATE`),
-`IP_MULTICAST`, `IP_PNP{,_DHCP,_BOOTP,_RARP}`, `# CONFIG_IPV6 is not set`,
+`IP_MULTICAST`, `IP_PNP{,_DHCP,_BOOTP,_RARP}`, `CONFIG_IPV6=y` (+ `# CONFIG_IPV6_SIT is not set` and the
+`IP6_NF_*` legacy filter set, issue #188),
 `NETWORK_PHY_TIMESTAMPING`, `VLAN_8021Q`(+`_GVRP`), and the legacy-iptables
 netfilter block (conntrack + FTP/IRC/SIP helpers + the `xt_*` matches/targets +
 `IP_NF_FILTER` + `IP_NF_TARGET_REJECT`).

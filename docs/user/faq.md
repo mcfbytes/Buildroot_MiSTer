@@ -508,6 +508,28 @@ Full details, including what this does and does not support: [`../bittorrent.md`
 
 ---
 
+## Does my MiSTer do IPv6?
+
+It can, but it is off unless you turn it on. Stock MiSTer has no IPv6 at all. This image
+builds it into the kernel, then disables it on every network interface at boot, so a
+fresh card behaves exactly like stock.
+
+Why off? Your router's NAT is most likely what keeps your MiSTer unreachable from the
+internet today. IPv6 usually gives the box a public address, and there is no IPv6
+firewall yet. SSH (root password `1` unless you changed it) would then be reachable from
+anywhere your router allows.
+
+To turn it on, create `/media/fat/linux/sysctl.conf` with these two lines and reboot:
+
+```
+net.ipv6.conf.all.disable_ipv6 = 0
+net.ipv6.conf.default.disable_ipv6 = 0
+```
+
+dhcpcd then configures a stable-private SLAAC address. FTP stays IPv4-only either way.
+`ping6` and `traceroute6` are available for troubleshooting. Delete the file and reboot
+to turn it back off. The OSD still shows only your IPv4 address.
+
 ## See also
 
 - [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose

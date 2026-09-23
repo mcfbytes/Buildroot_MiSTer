@@ -294,3 +294,55 @@ Recorded here so that lands as a decision rather than as a surprise.
 only additions must be the four sockets above, and `9091` must be bound to `127.0.0.1` —
 never `0.0.0.0:9091`, which is what an unseeded `settings.json` would give. Verified on the
 rig 2026-09-21 (`docs/testlogs/2026-09-21-transmission-rig.md` §6).
+
+---
+
+## Amendment, 2026-09-23 — IPv6 (issue #188)
+
+**Status of this amendment:** step 1 below is *implemented*; step 2 waits on Tier 1 item 6
+and on the owner. The rest of this ADR remains Proposed.
+
+**The finding.** IPv6 was absent from every kernel this repo builds because stock had it
+off, not because anyone decided so. Stock sets `# CONFIG_IPV6 is not set` against a
+`default y`. Almost everything else was already v6-ready: BusyBox `FEATURE_IPV6`,
+`dhcpcd.conf`'s `slaac private`, `sshd_config` on both families, and the `ip6tables`
+userland.
+
+**Why this belongs in this ADR.** Today the board is shielded from the internet largely
+by accident, through IPv4 NAT. SLAAC hands out a globally routable address as soon as any
+router on the segment advertises a prefix. Turning IPv6 on without a firewall would change
+"unreachable because of NAT" into "reachable from the internet" for every item in *What the
+image does today*, and users would not know it had happened.
+
+**Decision — dual-stack, never v6-only, in two steps.**
+
+1. **Capable but administratively off (implemented).** `CONFIG_IPV6=y` in both DE10
+   kernels and the shared DE25 fragment, plus the legacy `ip6tables` filter set that
+   mirrors the v4 one (`docs/kernel-config-deltas.md` D11). `etc/sysctl.d/ipv6.conf` sets
+   `disable_ipv6=1` on `all` and `default` and `0` on `lo`, so `::1` works and no other
+   interface ever gets an address, including hot-plugged dongles. The opt-in is a card
+   file, which is this ADR's existing pattern: `/etc/sysctl.conf` is a symlink to
+   `/media/fat/linux/sysctl.conf`, applied by the stock `S02sysctl` after `sysctl.d/`, and
+   silently skipped when absent. **FTP stays IPv4-only** (`UseIPv6 off`, unchanged) even
+   after an opt-in, because anonymous FTP is writable. sshd, Samba and ntpd follow the
+   opt-in. The DE25-Nano has no overlay, so its kernel's IPv6 is live, but that image runs
+   no network daemon and does not bring `eth0` up, so nothing is exposed.
+2. **Default-on (not implemented).** This needs a default-deny inbound v6 ruleset first.
+   The 6.18 kernel has the `ip6tables` filter table from step 1. The RT kernel cannot have
+   one: `NETFILTER_XTABLES_LEGACY` `depends on !PREEMPT_RT` upstream, which is the same
+   reason it has no v4 filter table. So flipping the default is gated on Tier 1 item 6
+   (nftables, whose `inet` family covers both), and on the owner.
+
+**Why dual-stack.** Main_MiSTer's OSD shows only `AF_INET` addresses
+(`menu.cpp:680-681`), and `mister.lan` exists only because the router registers the
+DHCPv4 hostname. On a v6-only network both would go blank. Dual-stack keeps both working,
+and the change stays purely additive. The `menu.cpp` filter is an upstream report, to send
+only when the owner approves.
+
+**Regression oracle.** On a fresh image with no card file, `ip -6 addr` shows only
+`::1/128` on `lo`, and `netstat -tuln` is unchanged from the table above. CI asserts the
+sysctl file, the symlink, `::1` in `/etc/hosts`, `ping6`/`traceroute6`, `UseIPv6 off`, and
+`CONFIG_IPV6=y` in both resolved kernel configs. Checked in a private network namespace
+on the image's own userland: the stock `S02sysctl` leaves `lo=0 eth0=1 wlan0=1` by default
+and `0 0 0` with an opt-in file, including a CRLF-terminated one. **Not yet checked on the
+rig.**

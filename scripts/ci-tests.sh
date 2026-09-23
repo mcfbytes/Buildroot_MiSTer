@@ -1148,7 +1148,7 @@ if tar_has "$MS_RULE"; then
 		pass "40-usb-modeswitch-wifi.rules and /usr/share/usb_modeswitch/ list the same $(echo "$ms_rule_ids" | wc -l) IDs"
 	else
 		fail "40-usb-modeswitch-wifi.rules and /usr/share/usb_modeswitch/ list the same IDs" \
-			"rules: $(echo $ms_rule_ids) / configs: $(echo $ms_conf_ids)"
+			"rules: $(printf %s "$ms_rule_ids" | tr "\n" " ") / configs: $(printf %s "$ms_conf_ids" | tr "\n" " ")"
 	fi
 else
 	fail "40-usb-modeswitch-wifi.rules present" "$MS_RULE not in rootfs.tar"

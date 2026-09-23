@@ -1246,6 +1246,9 @@ which helper function was used.
 
 `de25-build.yml` runs `make de25`, then `check-sdcard-de25.sh` and
 `test-initramfs.sh --board de25nano`, and uploads the card image (14 days).
+The DE25 card does not embed stage 1 yet (ADR 0029 D11). So after the card is
+built, the lane turns on `BR2_PACKAGE_MISTER_INITRAMFS` and builds only that
+package, which gives the QEMU leg its cpio without touching the card.
 It exists because the DE25 build broke silently twice while nothing built it:
 a kernel bump dropped the 7.2.3 hash line, and ADR 0030's `linux-rt.mk`
 registered a rule on the shared `linux.config`.

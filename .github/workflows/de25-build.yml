@@ -83,6 +83,15 @@ jobs:
       - name: Static card check (check-sdcard-de25.sh)
         run: scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25.img output-de25/images
 
+      # The DE25 card does not embed stage 1 yet (ADR 0029 D11), so build the
+      # package alone for the test; the card built above is already final.
+      - name: Build the stage-1 cpio for the QEMU leg
+        run: |
+          set -eu
+          echo 'BR2_PACKAGE_MISTER_INITRAMFS=y' >> output-de25/.config
+          make O=output-de25 olddefconfig
+          make O=output-de25 mister-initramfs
+
       - name: aarch64 stage-1 QEMU leg (test-initramfs.sh --board de25nano)
         run: scripts/test-initramfs.sh --board de25nano
 

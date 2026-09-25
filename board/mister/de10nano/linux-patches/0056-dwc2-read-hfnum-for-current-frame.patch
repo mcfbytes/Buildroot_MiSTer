@@ -1,0 +1,68 @@
+From d396cd41f699d25c20f4e5a4b0a7fe14d26fde0a Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:18:05 -0500
+Subject: [PATCH 3/6] usb: dwc2: read HFNUM when comparing against the current
+ frame
+
+hsotg->frame_number is a cached copy of HFNUM. It is refreshed at the
+top of the common interrupt handler and by the SOF handler, so it is
+only reliably current while SOF is unmasked, and only for code running
+right after the common handler in the same interrupt.
+
+Two places compare it with the frame the controller is at now but can
+run outside those conditions:
+
+- dwc2_schedule_periodic() decides whether next_active_frame of a QH
+  with a pending unreserve is already in the past. It is reached from
+  dwc2_hcd_urb_enqueue() in process context, where the cached value is
+  as old as the last interrupt.
+- dwc2_complete_isoc_xfer_ddma() uses it as the frame list index the
+  controller is currently at. In descriptor DMA mode, periodic transfers
+  do not need SOF, and with threaded interrupts (forced threading or
+  PREEMPT_RT) the common handler and the HCD handler run as separate
+  threads, so the value can be older than the transfer being completed.
+
+Read HFNUM through dwc2_hcd_get_frame_number() in both places, as
+dwc2_pick_first_frame() already does. The value is never older than the
+cached one, so in buffer DMA mode this only makes the past-frame check
+in dwc2_schedule_periodic() more accurate.
+
+This prepares for not unmasking SOF in descriptor DMA mode, after which
+the cached value is no longer refreshed every (micro)frame.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd_ddma.c  | 3 ++-
+ drivers/usb/dwc2/hcd_queue.c | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 5ec6e79..30ea50b 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -1029,7 +1029,8 @@ static void dwc2_complete_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 				goto stop_scan;
+ 
+ 			qh->td_first = idx;
+-			cur_idx = dwc2_frame_list_idx(hsotg->frame_number);
++			cur_idx = dwc2_hcd_get_frame_number(hsotg);
++			cur_idx = dwc2_frame_list_idx(cur_idx);
+ 			qtd_next = list_first_entry(&qh->qtd_list,
+ 						    struct dwc2_qtd,
+ 						    qtd_list_entry);
+diff --git a/drivers/usb/dwc2/hcd_queue.c b/drivers/usb/dwc2/hcd_queue.c
+index 4f00ff1..b9b253e 100644
+--- a/drivers/usb/dwc2/hcd_queue.c
++++ b/drivers/usb/dwc2/hcd_queue.c
+@@ -1324,7 +1324,7 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 		 * tightly and we might need to hurry and queue things up.
+ 		 */
+ 		if (dwc2_frame_num_le(qh->next_active_frame,
+-				      hsotg->frame_number))
++				      dwc2_hcd_get_frame_number(hsotg)))
+ 			dwc2_pick_first_frame(hsotg, qh);
+ 	}
+ 
+-- 
+2.53.0
+

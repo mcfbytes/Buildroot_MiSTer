@@ -1,0 +1,110 @@
+From c23b2c9edf13ea996f966894dcaedb6f7500d24e Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:34:21 -0500
+Subject: [PATCH 6/6] usb: dwc2: add fs_ddma param to cap the host to full
+ speed with DDMA
+
+MiSTer-local knob, not intended for upstream in this form.
+
+In buffer DMA mode the host core raises a SOF interrupt every
+(micro)frame while any periodic endpoint is scheduled, which on the
+DE10-Nano (Cyclone V, DWC_otg 2.93a) is a steady 8-9k interrupts per
+second with only a hub and a gamepad attached. Descriptor DMA does not
+need SOF, but it cannot perform split transactions, so it is useless
+with the default high-speed port: every FS/LS device sits behind the
+board's high-speed hub and would need splits.
+
+Capping the root port to full speed removes splits altogether. With
+params.speed == DWC2_SPEED_PARAM_FULL, dwc2_core_host_init() sets
+HCFG_FSLSSUPP, HPRT0 never reports high speed, the hub enumerates at
+full speed with its transaction translator unused, and dwc2_qh_init()
+never sets do_split. The core then qualifies for descriptor DMA, whose
+init gate (snpsid >= 2.90a, GHWCFG4 DESC_DMA, host-capable op_mode)
+accepts 2.93a.
+
+Users of this board edit the kernel command line, not the device tree,
+so add a dwc2 module parameter, fs_ddma (dwc2.fs_ddma=1 when built in),
+default off, so high speed stays the default. When set on a core with
+dr_mode "host" it caps params.speed to full speed and sets
+dma_desc_enable after the platform and 'maximum-speed' adjustments and
+before dwc2_check_params(). OTG and peripheral cores are left alone,
+since params.speed is shared with the gadget side. The parameter is
+global, so on SoCs with several host-only dwc2 cores it applies to all
+of them; the DE10-Nano has one.
+
+It deliberately uses dma_desc_enable rather than dma_desc_fs_enable:
+the latter never enables descriptor DMA for an LS or HS root connection
+and drops it again on a port disable, falling back to buffer DMA with
+SOF.
+
+If the core cannot do descriptor DMA (host_dma off, no GHWCFG4 DESC_DMA
+or a core older than 2.90a) the knob warns with the reason and changes
+nothing: the speed cap alone would only lose bandwidth while keeping
+the SOF load.
+
+The trade-off is that USB storage and other high-speed devices run at
+12 Mbit/s. Low-speed devices, directly attached or behind the now
+full-speed hub, run under descriptor DMA, which upstream's
+dma_desc_fs_enable path avoids for LS root connections; this needs
+hardware testing before the knob is recommended.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/params.c | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/drivers/usb/dwc2/params.c b/drivers/usb/dwc2/params.c
+index 091bfcf..92cad6a 100644
+--- a/drivers/usb/dwc2/params.c
++++ b/drivers/usb/dwc2/params.c
+@@ -1050,6 +1050,39 @@ static int dwc2_limit_speed(struct dwc2_hsotg *hsotg)
+ 	return 0;
+ }
+ 
++static bool fs_ddma;
++module_param(fs_ddma, bool, 0444);
++MODULE_PARM_DESC(fs_ddma,
++		 "Limit all host-only dwc2 cores to full speed with descriptor DMA (no SOF interrupts)");
++
++static void dwc2_set_fs_ddma(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_hw_params *hw = &hsotg->hw_params;
++	struct dwc2_core_params *p = &hsotg->params;
++	const char *why = NULL;
++
++	if (!fs_ddma || hsotg->dr_mode != USB_DR_MODE_HOST)
++		return;
++
++	/* Without descriptor DMA the speed cap alone only costs bandwidth */
++	if (!p->host_dma)
++		why = "host DMA disabled";
++	else if (!hw->dma_desc_enable)
++		why = "no descriptor DMA in GHWCFG4";
++	else if (hw->snpsid < DWC2_CORE_REV_2_90a)
++		why = "core older than 2.90a";
++	if (why) {
++		dev_warn(hsotg->dev, "fs_ddma ignored: %s\n", why);
++		return;
++	}
++
++	if (p->speed == DWC2_SPEED_PARAM_HIGH)
++		p->speed = DWC2_SPEED_PARAM_FULL;
++	p->dma_desc_enable = true;
++	dev_info(hsotg->dev, "fs_ddma: host speed limit %s, descriptor DMA on\n",
++		 p->speed == DWC2_SPEED_PARAM_FULL ? "full" : "low");
++}
++
+ typedef void (*set_params_cb)(struct dwc2_hsotg *data);
+ 
+ int dwc2_init_params(struct dwc2_hsotg *hsotg)
+@@ -1077,6 +1110,7 @@ int dwc2_init_params(struct dwc2_hsotg *hsotg)
+ 	if (ret)
+ 		return ret;
+ 
++	dwc2_set_fs_ddma(hsotg);
+ 	dwc2_check_params(hsotg);
+ 
+ 	return 0;
+-- 
+2.53.0
+

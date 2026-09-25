@@ -1,0 +1,40 @@
+From 508d66375c2ab03f279c4cb6893ad9762780b1c0 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:05:28 -0500
+Subject: [PATCH 2/6] usb: dwc2: hcd_ddma: unmap the frame list with the
+ direction it was mapped
+
+The descriptor DMA frame list is only written by the CPU and read by
+the controller, and dwc2_frame_list_alloc() maps it DMA_TO_DEVICE, as
+do the dma_sync_single_for_device() calls in dwc2_update_frame_list().
+dwc2_frame_list_free() however unmaps it DMA_FROM_DEVICE.
+
+The DMA API requires the unmap direction to match the mapping, and
+CONFIG_DMA_API_DEBUG reports the mismatch. On non-coherent systems an
+unmap for DMA_FROM_DEVICE also invalidates the CPU cache over the
+buffer, which is pointless for memory the device never writes.
+
+Use DMA_TO_DEVICE for the unmap as well.
+
+Fixes: 95105a998dff ("usb: dwc2: host: avoid usage of dma_alloc_coherent with irqs disabled")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd_ddma.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index ce40a4f..5ec6e79 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -140,7 +140,7 @@ static void dwc2_frame_list_free(struct dwc2_hsotg *hsotg)
+ 	}
+ 
+ 	dma_unmap_single(hsotg->dev, hsotg->frame_list_dma,
+-			 hsotg->frame_list_sz, DMA_FROM_DEVICE);
++			 hsotg->frame_list_sz, DMA_TO_DEVICE);
+ 
+ 	kfree(hsotg->frame_list);
+ 	hsotg->frame_list = NULL;
+-- 
+2.53.0
+

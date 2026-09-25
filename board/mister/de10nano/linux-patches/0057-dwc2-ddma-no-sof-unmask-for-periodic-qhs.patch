@@ -1,0 +1,121 @@
+From 39a6e5536f25cd6cad9ff9feb94c9b1f0d4e2ca3 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:18:37 -0500
+Subject: [PATCH 4/6] usb: dwc2: do not unmask SOF for periodic QHs in
+ descriptor DMA mode
+
+In descriptor DMA mode the controller walks the periodic frame list on
+its own, and periodic QHs are put straight on periodic_sched_ready
+instead of waiting on SOF to promote them. Commit 907a444718b8
+("usb: dwc2: Fixed SOF interrupt enabling/disabling") set out to stop
+unmasking SOF in this mode, but only guarded the mask-off in
+dwc2_hcd_qh_unlink(). dwc2_hcd_qh_add() still unmasks SOF whenever
+periodic_qh_count goes from 0 to 1, so the first periodic endpoint
+leaves SOF unmasked for good: one interrupt per frame, 8000 per second
+on a high-speed port, that does nothing useful. An interrupt QH in
+descriptor DMA mode is unlinked and re-added on every completion, so
+the 0 -> 1 transition is hit all the time.
+
+Only unmask SOF in dwc2_hcd_qh_add() when descriptor DMA is off, so
+that SOF is unmasked exactly while periodic QHs exist in buffer DMA
+mode.
+
+hsotg->params.dma_desc_enable is the driver's view of HCFG.DescDMA,
+which dma_desc_fs_enable flips at runtime, so keep the SOF mask in step
+at both flips:
+
+- On port disable the core drops back to buffer DMA. Periodic QHs may
+  still be linked at that point (URBs killed on disconnect leave their
+  QHs in the schedule), and periodic_qh_count will not go through
+  0 -> 1 again, so SOF would stay masked while they exist. Unmask SOF
+  there if periodic QHs remain, to keep the buffer DMA invariant. This
+  does not make such QHs usable in buffer DMA mode; they still sit where
+  descriptor DMA placed them, which is an older problem of that path.
+- When a full-speed device connects and descriptor DMA is enabled, mask
+  SOF, as dwc2_hcd_qh_unlink() no longer does it in this mode. This
+  path runs from hub_control without hsotg->lock, so take the lock for
+  the flip, as GINTMSK is also updated from the interrupt handler.
+  Clear new_connection under the lock too, as dwc2_port_intr() sets it
+  there.
+
+With SOF masked, dwc2_hcd_urb_enqueue() selects and queues transactions
+inline. That is how descriptor DMA already runs before the first
+periodic QH is added, and nothing in this mode depends on the SOF
+handler: dwc2_hcd_qh_deactivate() and the inactive periodic list are
+only used in buffer DMA mode, and descriptor DMA completions release
+the channel and select new transactions themselves.
+
+Fixes: 907a444718b8 ("usb: dwc2: Fixed SOF interrupt enabling/disabling")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd.c       |  9 ++++++++-
+ drivers/usb/dwc2/hcd_intr.c  | 11 +++++++++--
+ drivers/usb/dwc2/hcd_queue.c |  3 ++-
+ 3 files changed, 19 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index 2414291..9e69f10 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -3593,14 +3593,21 @@ static int dwc2_hcd_hub_control(struct dwc2_hsotg *hsotg, u16 typereq,
+ 			       USB_PORT_STAT_HIGH_SPEED |
+ 			       USB_PORT_STAT_LOW_SPEED)) ==
+ 			       USB_PORT_STAT_CONNECTION)) {
+-				u32 hcfg;
++				unsigned long flags;
++				u32 hcfg, gintmsk;
+ 
+ 				dev_info(hsotg->dev, "Enabling descriptor DMA mode\n");
++				spin_lock_irqsave(&hsotg->lock, flags);
+ 				hsotg->params.dma_desc_enable = true;
+ 				hcfg = dwc2_readl(hsotg, HCFG);
+ 				hcfg |= HCFG_DESCDMA;
+ 				dwc2_writel(hsotg, hcfg, HCFG);
++				/* Descriptor DMA does not need SOF */
++				gintmsk = dwc2_readl(hsotg, GINTMSK);
++				gintmsk &= ~GINTSTS_SOF;
++				dwc2_writel(hsotg, gintmsk, GINTMSK);
+ 				hsotg->new_connection = false;
++				spin_unlock_irqrestore(&hsotg->lock, flags);
+ 			}
+ 		}
+ 
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index c10a6ab..a1a5988 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -372,8 +372,15 @@ static void dwc2_port_intr(struct dwc2_hsotg *hsotg)
+ 		} else {
+ 			hsotg->flags.b.port_enable_change = 1;
+ 			if (hsotg->params.dma_desc_fs_enable) {
+-				u32 hcfg;
+-
++				u32 hcfg, gintmsk;
++
++				/* Linked periodic QHs need SOF in buffer DMA */
++				if (hsotg->params.dma_desc_enable &&
++				    hsotg->periodic_qh_count) {
++					gintmsk = dwc2_readl(hsotg, GINTMSK);
++					gintmsk |= GINTSTS_SOF;
++					dwc2_writel(hsotg, gintmsk, GINTMSK);
++				}
+ 				hsotg->params.dma_desc_enable = false;
+ 				hsotg->new_connection = false;
+ 				hcfg = dwc2_readl(hsotg, HCFG);
+diff --git a/drivers/usb/dwc2/hcd_queue.c b/drivers/usb/dwc2/hcd_queue.c
+index b9b253e..3da952e 100644
+--- a/drivers/usb/dwc2/hcd_queue.c
++++ b/drivers/usb/dwc2/hcd_queue.c
+@@ -1686,7 +1686,8 @@ int dwc2_hcd_qh_add(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	status = dwc2_schedule_periodic(hsotg, qh);
+ 	if (status)
+ 		return status;
+-	if (!hsotg->periodic_qh_count) {
++	if (!hsotg->periodic_qh_count &&
++	    !hsotg->params.dma_desc_enable) {
+ 		intr_mask = dwc2_readl(hsotg, GINTMSK);
+ 		intr_mask |= GINTSTS_SOF;
+ 		dwc2_writel(hsotg, intr_mask, GINTMSK);
+-- 
+2.53.0
+

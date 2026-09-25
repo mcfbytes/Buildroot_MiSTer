@@ -1,0 +1,169 @@
+From f426d24fd334c794523e2d03341b2415f885124a Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:25:07 -0500
+Subject: [PATCH 5/6] usb: dwc2: host: serve the HCD from the common interrupt
+ handler
+
+The platform glue requests the IRQ line for dwc2_handle_common_intr()
+and usb_add_hcd() then requests the same line a second time, with
+IRQF_SHARED, for usb_hcd_irq(). Every interrupt therefore runs two
+actions. With threaded interrupts, as on PREEMPT_RT, that is two IRQ
+threads, and each interrupt wakes both of them. In buffer DMA mode a
+host port takes a SOF interrupt every (micro)frame while periodic
+transfers are queued, so the second thread doubles the context
+switches for no gain: both handlers take hsotg->lock and serialise on
+it anyway.
+
+Pass irqnum 0 to usb_add_hcd(), as chipidea does, and have the common
+handler call usb_hcd_irq() for the HCD once it has dropped the lock.
+Calling usb_hcd_irq() rather than the dwc2 HCD handler keeps the USB
+core's HCD_DEAD() and HCD_HW_ACCESSIBLE() checks, so hibernation and
+removal behave as before. The common handler is called for every
+interrupt, as before, and the HCD handler still returns IRQ_NONE when
+the core is in device mode, so dual-role operation is unchanged apart
+from the HCD now running before the gadget handler instead of after
+it; both read the current mode from GINTSTS first.
+
+hcd->irq is now 0, so _dwc2_hcd_stop() synchronises on hsotg->irq.
+Because free_irq() in usb_remove_hcd() no longer fences the handler,
+dwc2_hcd_remove() and the dwc2_hcd_init() error paths clear
+hsotg->priv and call synchronize_irq() before the HCD state is freed.
+On a usb_add_hcd() failure this happens before the kmem caches and
+channels are released, since HCD_FLAG_HW_ACCESSIBLE may be left set.
+
+Visible changes: the "dwc2_hsotg:usbN" action and its thread are gone
+from /proc/interrupts, and usbcore no longer prints its "irq N, io mem"
+line for this HCD, as usb_hcd_request_irqs() is skipped for irqnum 0.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h      |  3 +++
+ drivers/usb/dwc2/core_intr.c |  7 +++++++
+ drivers/usb/dwc2/hcd.c       | 31 ++++++++++++++++++++++++++-----
+ 3 files changed, 36 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index 88e47d4..d0b0905 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -1508,6 +1508,7 @@ int dwc2_hcd_get_future_frame_number(struct dwc2_hsotg *hsotg, int us);
+ void dwc2_hcd_connect(struct dwc2_hsotg *hsotg);
+ void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force);
+ void dwc2_hcd_start(struct dwc2_hsotg *hsotg);
++irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg);
+ int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup);
+ int dwc2_port_suspend(struct dwc2_hsotg *hsotg, u16 windex);
+ int dwc2_port_resume(struct dwc2_hsotg *hsotg);
+@@ -1535,6 +1536,8 @@ static inline int dwc2_hcd_get_future_frame_number(struct dwc2_hsotg *hsotg,
+ static inline void dwc2_hcd_connect(struct dwc2_hsotg *hsotg) {}
+ static inline void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force) {}
+ static inline void dwc2_hcd_start(struct dwc2_hsotg *hsotg) {}
++static inline irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg)
++{ return IRQ_NONE; }
+ static inline void dwc2_hcd_remove(struct dwc2_hsotg *hsotg) {}
+ static inline int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup)
+ { return 0; }
+diff --git a/drivers/usb/dwc2/core_intr.c b/drivers/usb/dwc2/core_intr.c
+index 7d3e641..f9f8f08 100644
+--- a/drivers/usb/dwc2/core_intr.c
++++ b/drivers/usb/dwc2/core_intr.c
+@@ -840,6 +840,9 @@ static int dwc2_handle_gpwrdn_intr(struct dwc2_hsotg *hsotg)
+  * - Session Request Interrupt
+  * - Resume / Remote Wakeup Detected Interrupt
+  * - Suspend Interrupt
++ *
++ * It then hands the interrupt to the HCD, which does not request the IRQ line
++ * itself, so that one handler (one IRQ thread when threaded) serves both.
+  */
+ irqreturn_t dwc2_handle_common_intr(int irq, void *dev)
+ {
+@@ -905,5 +908,9 @@ irqreturn_t dwc2_handle_common_intr(int irq, void *dev)
+ 
+ out:
+ 	spin_unlock(&hsotg->lock);
++
++	if (dwc2_hcd_handle_irq(hsotg) == IRQ_HANDLED)
++		retval = IRQ_HANDLED;
++
+ 	return retval;
+ }
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index 9e69f10..cb1df0a 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -4310,7 +4310,7 @@ static void _dwc2_hcd_stop(struct usb_hcd *hcd)
+ 	dwc2_disable_host_interrupts(hsotg);
+ 
+ 	/* Wait for interrupt processing to finish */
+-	synchronize_irq(hcd->irq);
++	synchronize_irq(hsotg->irq);
+ 
+ 	spin_lock_irqsave(&hsotg->lock, flags);
+ 	hprt0 = dwc2_read_hprt0(hsotg);
+@@ -4898,6 +4898,20 @@ static irqreturn_t _dwc2_hcd_irq(struct usb_hcd *hcd)
+ 	return dwc2_handle_hcd_intr(hsotg);
+ }
+ 
++/*
++ * Called by dwc2_handle_common_intr(), which owns the IRQ line for the HCD.
++ * usb_hcd_irq() keeps the USB core's HCD_DEAD() and HW_ACCESSIBLE checks.
++ */
++irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg)
++{
++	struct usb_hcd *hcd = READ_ONCE(hsotg->priv);
++
++	if (!hcd)
++		return IRQ_NONE;
++
++	return usb_hcd_irq(hsotg->irq, hcd);
++}
++
+ /*
+  * Creates Status Change bitmap for the root hub and root port. The bitmap is
+  * returned in buf. Bit 0 is the status change indicator for the root hub. Bit 1
+@@ -5331,10 +5345,10 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 
+ 	/*
+ 	 * Finish generic HCD initialization and start the HCD. This function
+-	 * allocates the DMA buffer pool, registers the USB bus, requests the
+-	 * IRQ line, and calls hcd_start method.
++	 * allocates the DMA buffer pool, registers the USB bus and calls
++	 * hcd_start method. The IRQ line is owned by the common handler.
+ 	 */
+-	retval = usb_add_hcd(hcd, hsotg->irq, IRQF_SHARED);
++	retval = usb_add_hcd(hcd, 0, 0);
+ 	if (retval < 0)
+ 		goto error4;
+ 
+@@ -5347,12 +5361,17 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 	return 0;
+ 
+ error4:
++	/* usb_add_hcd() leaves HW_ACCESSIBLE set; fence the handler first */
++	WRITE_ONCE(hsotg->priv, NULL);
++	synchronize_irq(hsotg->irq);
+ 	kmem_cache_destroy(hsotg->unaligned_cache);
+ 	kmem_cache_destroy(hsotg->desc_hsisoc_cache);
+ 	kmem_cache_destroy(hsotg->desc_gen_cache);
+ error3:
+ 	dwc2_hcd_release(hsotg);
+ error2:
++	WRITE_ONCE(hsotg->priv, NULL);
++	synchronize_irq(hsotg->irq);
+ 	usb_put_hcd(hcd);
+ error1:
+ 
+@@ -5388,7 +5407,9 @@ void dwc2_hcd_remove(struct dwc2_hsotg *hsotg)
+ 		otg_set_host(hsotg->uphy->otg, NULL);
+ 
+ 	usb_remove_hcd(hcd);
+-	hsotg->priv = NULL;
++	/* Stop the common handler dispatching to the HCD before it is freed */
++	WRITE_ONCE(hsotg->priv, NULL);
++	synchronize_irq(hsotg->irq);
+ 
+ 	kmem_cache_destroy(hsotg->unaligned_cache);
+ 	kmem_cache_destroy(hsotg->desc_hsisoc_cache);
+-- 
+2.53.0
+

@@ -50,8 +50,9 @@ de10nano series replays at `-F0` on pristine 6.18.53 (53/53) and the beta series
 Which kernel benefits: `0058` and `0062` are PREEMPT_RT wins (they save IRQ-thread wakes; on a
 non-RT kernel they only trim hard-IRQ work, unmeasured). Everything else is kernel-independent.
 `0054`, `0055`, `0057` and `0063`–`0066` only matter when descriptor DMA is on, which on MiSTer
-means `fs_ddma=1`. Not in the DE25-Nano series yet (same `snps,dwc2` core; to be
-qualified on hardware).
+means `fs_ddma=1`. The DE25-Nano (same `snps,dwc2` driver, non-RT kernel) carries `0056`, `0060` and `0061`, which
+run in its default buffer-DMA mode; the rest wait for hardware qualification (see
+`board/mister/de25nano/linux-patches/README.md`).
 
 `fs_ddma` can be flipped at runtime; it is sampled once per probe:
 
@@ -136,7 +137,7 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 | **M5** hardening: lockdep + raw-lock nesting, 12 h soak, debugfs kill switch | ~80 LOC + scripts, low | — | ships with whichever of M2+ lands |
 | **M6** lazy SOF on a hard hrtimer | 250–300 LOC, 2 weeks, medium–high | ~3–4% floor; the only way below 8k IRQ/s at high speed | the SOF hard-IRQ floor is still ≥ 1.5 points after M5, or the IRQ rate itself becomes a requirement |
 | **PREEMPT_RT tuning** for dwc2 IRQ thread / softirq | unknown | RT pays the thread cost hardest | after M1 (its ONESHOT primary is the base) |
-| **DE25-Nano** qualification | ~0 if the core revision matches | same plan applies | hardware arrives; also check whether an Agilex 5 USB 3 (dwc3/xHCI) port reaches a connector, which would do splits in hardware |
+| **DE25-Nano** qualification (it already carries `0056`, `0060`, `0061`) | ~0 if the core revision matches | same plan applies; then add `0058`/`0062` (for its RT kernel) and the `fs_ddma` set | hardware arrives; also check whether an Agilex 5 USB 3 (dwc3/xHCI) port reaches a connector, which would do splits in hardware |
 | **usbhid: two interrupt-IN URBs in flight** | small usbhid patch; upstream-sensitive | makes the `fs_ddma` channel chaining pay off for every HID device: 500 → ~1,000/s | owner wants 1 kHz HID under `fs_ddma`; needs the chaining patches carried first |
 | **`fs_ddma` interrupt-channel chaining** (parked patches in `dwc2-usb-irq/parked/`) | 3 patches, ~1,000 lines; medium | rig: 2 URBs in flight 500 → ~964/s, 4 URBs 666 → 1,000/s; 1 URB unchanged (hardware prefetch) | a driver with several interrupt-IN URBs in flight matters under `fs_ddma`: USB MIDI on interrupt endpoints (`snd-usb-midi` keeps 7) or the usbhid option below. Retest on the rig before carrying |
 | **Automatic `fs_ddma`** (userspace: udev + unbind/rebind) | ~100 lines + testing; low–medium | ~7 points of CPU0 over M1 for all-full-speed setups (7.7% → ~0.7%) | CPU0 still matters after M1. Switch only at boot or in the menu: every switch drops all USB for 1–2 s. Detect high-speed-capable devices plugged in while capped with a `DEVICE_QUALIFIER` request (full-speed-only devices stall it) or by class (storage, network) |

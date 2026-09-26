@@ -1,0 +1,46 @@
+From 565cc1378b492a7423fc53141d62a5099b59cc53 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 20:19:46 -0500
+Subject: [PATCH 5/8] usb: dwc2: host: do not mask XferCompl after a descriptor
+ DMA completion
+
+In descriptor DMA mode dwc2_hc_xfercomp_intr() hands a non-isochronous
+completion to dwc2_hcd_complete_xfer_ddma() and then masks XferCompl
+on the channel. By then the channel has been released, which already
+cleared HCINTMSK, and the transaction queueing at the end of
+dwc2_hcd_complete_xfer_ddma() may have assigned the same channel to
+another QH and set its interrupt mask. If that QH is isochronous, its
+XferCompl is masked, and a descriptor DMA isochronous channel is only
+serviced on XferCompl until its session ends, so the stream stalls.
+
+XferCompl is only unmasked for isochronous channels in this mode, and
+isochronous completions already return without touching the mask.
+Return for every descriptor DMA completion.
+
+Fixes: dc4c76e7b22c ("staging: HCD descriptor DMA support for the DWC2 driver")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd_intr.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index a1a5988..ae2829e 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -977,11 +977,9 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
+ 	pipe_type = dwc2_hcd_get_pipe_type(&urb->pipe_info);
+ 
+ 	if (hsotg->params.dma_desc_enable) {
++		/* The channel may already serve another QH: leave its mask */
+ 		dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum, halt_status);
+-		if (pipe_type == USB_ENDPOINT_XFER_ISOC)
+-			/* Do not disable the interrupt, just clear it */
+-			return;
+-		goto handle_xfercomp_done;
++		return;
+ 	}
+ 
+ 	/* Handle xfer complete on CSPLIT */
+-- 
+2.53.0
+

@@ -1,0 +1,58 @@
+From c5a0e0ae6df6ab91cfa17fabec2ff5401d877038 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 17:48:13 -0500
+Subject: [PATCH] usb: dwc2: host: keep the cadence of a periodic QH
+ resubmitted in time
+
+A full-speed interrupt IN endpoint with bInterval 1 on a full-speed root
+port is polled only every other frame in buffer DMA mode: a 1 kHz HID
+mouse delivers 500 reports/s, every gap about 2 ms.
+
+The URB is given back through HCD_BH, after dwc2_hcd_qh_deactivate() has
+moved next_active_frame to the next period and, with the qtd_list empty,
+unlinked the QH. When the class driver resubmits, dwc2_schedule_periodic()
+finds the reservation still pending and re-picks the start frame if
+next_active_frame is not after the current frame. next_active_frame is
+one frame before the QH goes on the wire, so it being the current frame
+means the QH is exactly on time. For the transfer on the wire in frame N
+that is next_active_frame == N, the usual case when the resubmit lands in
+the same frame, and dwc2_pick_first_frame() then chooses N + 1, which
+puts the next transfer on the wire in N + 2.
+
+Only re-pick once the current frame has moved past next_active_frame.
+The QH then keeps the cadence dwc2_next_periodic_start() computed, which
+already accounts for EO misses, and a resubmit that is really late still
+gets a fresh frame from dwc2_pick_first_frame().
+
+The same off-by-one costs a period for any interval when the resubmit
+lands in the frame (or high-speed microframe) that next_active_frame
+names; with a 1 frame interval it happens on every poll.
+
+Fixes: fb616e3f837e ("usb: dwc2: host: Manage frame nums better in scheduler")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd_queue.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd_queue.c b/drivers/usb/dwc2/hcd_queue.c
+index 3da952e..ad5137c 100644
+--- a/drivers/usb/dwc2/hcd_queue.c
++++ b/drivers/usb/dwc2/hcd_queue.c
+@@ -1322,9 +1322,12 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 		 * is still good.  Note: we could also try to use the similar
+ 		 * dwc2_next_periodic_start() but that schedules much more
+ 		 * tightly and we might need to hurry and queue things up.
++		 *
++		 * next_active_frame is one frame before our frame on the wire,
++		 * so it is still good while it is the current frame.
+ 		 */
+-		if (dwc2_frame_num_le(qh->next_active_frame,
+-				      dwc2_hcd_get_frame_number(hsotg)))
++		if (dwc2_frame_num_gt(dwc2_hcd_get_frame_number(hsotg),
++				      qh->next_active_frame))
+ 			dwc2_pick_first_frame(hsotg, qh);
+ 	}
+ 
+-- 
+2.53.0
+

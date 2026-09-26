@@ -1,0 +1,696 @@
+From 7134f3f02fd545fcdfb1baacd687763bfcd5b531 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 20:00:29 -0500
+Subject: [PATCH 8/8] usb: dwc2: host: keep a full-speed interrupt channel
+ running across URBs
+
+In descriptor DMA mode an interrupt QH gets a channel when a URB is
+queued, its list ends in EOL, and the channel halts and is released on
+every completion. The next URB is armed on a new channel. On a DWC_otg
+2.93a with the root port capped to full speed (fs_ddma), a 1 kHz mouse
+(bInterval 1, one URB in flight) is polled every other frame, 500
+reports/s, and four URBs in flight only reach 667/s. The descriptor
+retires about 74 us into frame N, the halt and giveback take about
+40 us and the resubmit about 60 us more, and the re-armed channel is
+only served in frame N+2: the core has committed frame N+1 by the time
+the re-arm lands.
+
+With dma_desc_int_chain, keep the channel of a full- or low-speed
+interrupt QH running instead:
+
+- Arm the list without EOL, one descriptor per URB, each with IOC, and
+  NTD covering all 64 slots. Unmask XferCompl and BNA for the channel.
+- On enqueue, write the URB into the next free slot of the running
+  list: buf, dma_wmb(), then the status word with A set. Only slots at
+  or after qh->td_last are written, never a descriptor the core owns,
+  and only while the channel is started with no halt pending and
+  HCCHAR.CHENA still reads set, under the lock.
+- On XferCompl without a halt, give back the QTDs whose descriptors
+  were retired without error, in order, and leave the channel running.
+- When the list runs dry the core fetches a descriptor without A set,
+  latches BNA and disables the channel, with no CHHLTD. BNA with CHENA
+  clear is taken as the channel having stopped: the retired QTDs are
+  given back, the toggle is saved from HCTSIZ, and the channel is
+  re-armed from slot 0 with the QTDs still queued, or released if none
+  is. A descriptor still marked active was not serviced, so an append
+  that lost the race with the fetch is re-armed as well. An append that
+  finds the channel already stopped writes nothing and leaves its QTD
+  to the pending BNA or CHHLTD interrupt, which re-arms from qtd_list.
+- The last slot carries EOL and closes the list, as does a URB that
+  needs more than one descriptor, which is armed the old way.
+
+The halt handling changes to go with this, for chained channels only. A
+CHHLTD with XferCompl is scanned once, from the halt path, and as an
+error halt if an error cause is latched too: every slot has IOC, so the
+XferCompl may be an earlier slot's. A halt with no error cause completes
+the list instead of being taken for an incomplete periodic transfer, and
+re-arms the channel from slot 0 if URBs are queued, which also restarts
+the ring after its EOL. A halt that arrives after the last QTD was given
+back releases the channel instead of only masking the interrupt, which
+would leak it. chan->qh is set before dwc2_hc_init() so that the
+interrupt setup can see the QH.
+
+dwc2_hc_halt() does not touch a channel that is already disabled, so
+a dequeue halt of a channel stopped by BNA would wait for a CHHLTD
+that never comes, the channel stays assigned and the endpoint never
+runs again. When no CHHLTD is latched, a dequeue or an endpoint reset
+completes the halt at once. While a dequeue halt is pending BNA stays
+unmasked, since the channel may stop on BNA before it acts on CHDIS;
+the channel is then only released once a trailing CHHLTD has had a
+few microseconds to land, so that it cannot hit the next owner.
+
+A chained channel with no URB queued stays enabled until the core
+fetches the next slot, so three places stop it: endpoint disable,
+through dwc2_hcd_qh_free_ddma(), which halts the QH's channel before
+freeing the list; an endpoint reset, which halts the channel so that
+it restarts from DATA0, since the running channel holds the PID and
+the halt would otherwise save it over the reset toggle; and a bus or
+port suspend that powers the core down and loses the channel state,
+which halts and releases such channels first.
+
+On the 2.93a, with a full-speed hub, a gamepad and a mouse behind it:
+- a descriptor fetched without A set stops the channel with BNA and
+  CHENA clear but no CHHLTD. Waiting for the halt, as the first version
+  of this change did, left every chained endpoint stopped after one
+  report with its URB outstanding;
+- the hub's status endpoint, whose 1-byte reports fill the descriptor,
+  got XferCompl without a halt for a mid-list IOC descriptor and kept
+  its channel enabled across URBs. The gamepad and mouse IN endpoints,
+  with short reports, and the gamepad's OUT endpoint had BNA latched
+  together with XferCompl: the core fetched the next slot right after
+  retiring one, so with one URB in flight these stop on every URB and
+  run as before;
+- after one packet from DATA0, HCTSIZ.PID read DATA1 once the channel
+  had stopped on BNA.
+
+What this can gain therefore depends on when the core reads the next
+descriptor. With two or more URBs in flight, the slot after the one
+being served is normally already active, so the endpoint should be
+polled every frame, apart from one restart per 64 URBs at the end of
+the ring. With one URB in flight, as usbhid runs, the channel is only
+kept when the core fetches the next slot late enough for the resubmit
+to land first.
+
+Still not verified on hardware:
+- no write-back of the status word of a descriptor fetched with A
+  clear. If the core does write it back, an append that loses the race
+  can have its A bit cleared, and the scan would complete the IN URB
+  with stale NBYTES;
+- at most one descriptor served per scheduled frame on a full-speed
+  interrupt channel in scatter-gather mode. A core that walks all
+  active descriptors in one frame, as for bulk, would issue several IN
+  tokens per frame with more than one URB in flight;
+- which of BNA and a CHHLTD the core raises when the list runs dry
+  while a CHDIS is pending.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd.c      |  36 ++++-
+ drivers/usb/dwc2/hcd.h      |  11 ++
+ drivers/usb/dwc2/hcd_ddma.c | 280 +++++++++++++++++++++++++++++++++++-
+ drivers/usb/dwc2/hcd_intr.c |  42 +++++-
+ 4 files changed, 364 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index feeb648..0d3d732 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -587,8 +587,12 @@ static void dwc2_hc_enable_dma_ints(struct dwc2_hsotg *hsotg,
+ 	} else {
+ 		if (dbg_hc(chan))
+ 			dev_vdbg(hsotg->dev, "desc DMA enabled\n");
+-		if (chan->ep_type == USB_ENDPOINT_XFER_ISOC)
++		if (chan->ep_type == USB_ENDPOINT_XFER_ISOC ||
++		    chan->qh->int_chain)
+ 			hcintmsk |= HCINTMSK_XFERCOMPL;
++		/* The core stops a chained list on BNA without a CHHLTD */
++		if (chan->qh->int_chain)
++			hcintmsk |= HCINTMSK_BNA;
+ 	}
+ 
+ 	if (chan->error_state && !chan->do_split &&
+@@ -802,6 +806,10 @@ void dwc2_hc_halt(struct dwc2_hsotg *hsotg, struct dwc2_host_chan *chan,
+ 		 */
+ 		u32 hcintmsk = HCINTMSK_CHHLTD;
+ 
++		/* A chained INT channel may stop on BNA instead */
++		if (chan->qh && chan->qh->int_chain)
++			hcintmsk |= HCINTMSK_BNA;
++
+ 		dev_vdbg(hsotg->dev, "dequeue/error\n");
+ 		dwc2_writel(hsotg, hcintmsk, HCINTMSK(chan->hc_num));
+ 
+@@ -1882,6 +1890,9 @@ static int dwc2_hcd_urb_enqueue(struct dwc2_hsotg *hsotg,
+ 		return retval;
+ 	}
+ 
++	if (qh->int_chain)
++		dwc2_hcd_append_xfer_ddma(hsotg, qh);
++
+ 	intr_mask = dwc2_readl(hsotg, GINTMSK);
+ 	if (!(intr_mask & GINTSTS_SOF)) {
+ 		enum dwc2_transaction_type tr_type;
+@@ -1906,6 +1917,7 @@ static int dwc2_hcd_urb_enqueue(struct dwc2_hsotg *hsotg,
+ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
+ 				struct dwc2_hcd_urb *urb)
+ {
++	struct dwc2_host_chan *chan = NULL;
+ 	struct dwc2_qh *qh;
+ 	struct dwc2_qtd *urb_qtd;
+ 
+@@ -1937,6 +1949,7 @@ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
+ 			 */
+ 			dwc2_hc_halt(hsotg, qh->channel,
+ 				     DWC2_HC_XFER_URB_DEQUEUE);
++		chan = qh->channel;
+ 	}
+ 
+ 	/*
+@@ -1955,6 +1968,9 @@ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
+ 		}
+ 	} else {
+ 		dwc2_hcd_qtd_unlink_and_free(hsotg, urb_qtd, qh);
++		if (chan && qh->int_chain &&
++		    hsotg->flags.b.port_connect_status)
++			dwc2_hcd_int_chain_dequeued(hsotg, chan);
+ 	}
+ 
+ 	return 0;
+@@ -2025,12 +2041,22 @@ static int dwc2_hcd_endpoint_reset(struct dwc2_hsotg *hsotg,
+ 				   struct usb_host_endpoint *ep)
+ {
+ 	struct dwc2_qh *qh = ep->hcpriv;
++	struct dwc2_host_chan *chan;
+ 
+ 	if (!qh)
+ 		return -EINVAL;
+ 
+ 	qh->data_toggle = DWC2_HC_PID_DATA0;
+ 
++	/* A running chained channel holds the PID: restart it from DATA0 */
++	chan = qh->channel;
++	if (qh->int_chain && chan && chan->qh == qh && chan->xfer_started &&
++	    hsotg->flags.b.port_connect_status) {
++		qh->toggle_reset = 1;
++		dwc2_hc_halt(hsotg, chan, DWC2_HC_XFER_URB_DEQUEUE);
++		dwc2_hcd_int_chain_dequeued(hsotg, chan);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -2666,8 +2692,8 @@ static int dwc2_assign_and_init_hc(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 		chan->desc_list_sz = qh->desc_list_sz;
+ 	}
+ 
+-	dwc2_hc_init(hsotg, chan);
+ 	chan->qh = qh;
++	dwc2_hc_init(hsotg, chan);
+ 
+ 	return 0;
+ }
+@@ -3289,6 +3315,9 @@ int dwc2_port_suspend(struct dwc2_hsotg *hsotg, u16 windex)
+ 		hsotg->op_state = OTG_STATE_A_SUSPEND;
+ 	}
+ 
++	if (hsotg->params.power_down != DWC2_POWER_DOWN_PARAM_NONE)
++		dwc2_hcd_int_chain_stop_idle(hsotg);
++
+ 	switch (hsotg->params.power_down) {
+ 	case DWC2_POWER_DOWN_PARAM_PARTIAL:
+ 		ret = dwc2_enter_partial_power_down(hsotg);
+@@ -4358,6 +4387,9 @@ static int _dwc2_hcd_suspend(struct usb_hcd *hcd)
+ 	if (!(dwc2_read_hprt0(hsotg) & HPRT0_CONNSTS))
+ 		goto skip_power_saving;
+ 
++	if (hsotg->params.power_down != DWC2_POWER_DOWN_PARAM_NONE)
++		dwc2_hcd_int_chain_stop_idle(hsotg);
++
+ 	switch (hsotg->params.power_down) {
+ 	case DWC2_POWER_DOWN_PARAM_PARTIAL:
+ 		/* Enter partial_power_down */
+diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
+index ea7a066..fe5beb9 100644
+--- a/drivers/usb/dwc2/hcd.h
++++ b/drivers/usb/dwc2/hcd.h
+@@ -304,6 +304,9 @@ struct dwc2_hs_transfer_time {
+  * @wait_timer_cancel:  Set to true to cancel the wait_timer.
+  * @desc_list_coherent: True if desc_list is in coherent memory and needs no
+  *                      cache maintenance.
++ * @int_chain:          Keep this INT QH's channel running and append URBs at
++ *                      td_last (MAX_DMA_DESC_NUM_GENERIC: the list is closed)
++ * @toggle_reset:       The endpoint was reset while its chained channel ran
+  *
+  * @tt_buffer_dirty:	True if EP's TT buffer is not clean.
+  * A Queue Head (QH) holds the static characteristics of an endpoint and
+@@ -351,6 +354,8 @@ struct dwc2_qh {
+ 	unsigned want_wait:1;
+ 	unsigned wait_timer_cancel:1;
+ 	unsigned desc_list_coherent:1;
++	unsigned int_chain:1;
++	unsigned toggle_reset:1;
+ };
+ 
+ /**
+@@ -562,6 +567,12 @@ static inline void dwc2_hcd_qtd_unlink_and_free(struct dwc2_hsotg *hsotg,
+ }
+ 
+ /* Descriptor DMA support functions */
++void dwc2_hcd_append_xfer_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
++bool dwc2_hcd_int_chain_settle(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan);
++void dwc2_hcd_int_chain_dequeued(struct dwc2_hsotg *hsotg,
++				 struct dwc2_host_chan *chan);
++void dwc2_hcd_int_chain_stop_idle(struct dwc2_hsotg *hsotg);
+ void dwc2_hcd_start_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 			      struct dwc2_qh *qh);
+ void dwc2_hcd_complete_xfer_ddma(struct dwc2_hsotg *hsotg,
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index ae34cbf..dbf34c9 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -13,6 +13,7 @@
+ #include <linux/spinlock.h>
+ #include <linux/interrupt.h>
+ #include <linux/dma-mapping.h>
++#include <linux/delay.h>
+ #include <linux/dmapool.h>
+ #include <linux/io.h>
+ #include <linux/slab.h>
+@@ -360,6 +361,9 @@ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 	if (retval)
+ 		goto err0;
+ 
++	/* Only FS/LS INT lists with dma_desc_int_chain are coherent */
++	qh->int_chain = qh->desc_list_coherent;
++
+ 	if (qh->ep_type == USB_ENDPOINT_XFER_ISOC ||
+ 	    qh->ep_type == USB_ENDPOINT_XFER_INT) {
+ 		if (!hsotg->frame_list) {
+@@ -847,6 +851,108 @@ static void dwc2_init_non_isoc_dma_desc(struct dwc2_hsotg *hsotg,
+ 	}
+ }
+ 
++/*
++ * Puts one QTD in the next free slot of a chained INT list. Returns false if
++ * the list is full; a QTD that needs several descriptors also closes it.
++ */
++static bool dwc2_int_chain_add(struct dwc2_qh *qh, struct dwc2_qtd *qtd)
++{
++	struct dwc2_hcd_urb *urb = qtd->urb;
++	struct dwc2_dma_desc *dma_desc;
++	u16 idx = qh->td_last;
++	u32 len, status;
++
++	if (idx >= MAX_DMA_DESC_NUM_GENERIC || !urb)
++		return false;
++
++	len = urb->length - urb->actual_length;
++	if (len > HOST_DMA_NBYTES_LIMIT - (qh->maxp - 1)) {
++		qh->td_last = MAX_DMA_DESC_NUM_GENERIC;
++		return false;
++	}
++
++	/* Always program an integral # of packets for IN transfers */
++	if (qh->ep_is_in && qh->maxp)
++		len = max_t(u32, DIV_ROUND_UP(len, qh->maxp), 1) * qh->maxp;
++
++	status = (len << HOST_DMA_NBYTES_SHIFT & HOST_DMA_NBYTES_MASK) |
++		 HOST_DMA_A | HOST_DMA_IOC;
++	/* The core halts at the end of the ring and the list is re-armed */
++	if (idx == MAX_DMA_DESC_NUM_GENERIC - 1)
++		status |= HOST_DMA_EOL;
++
++	qh->n_bytes[idx] = len;
++	dma_desc = &qh->desc_list[idx];
++	dma_desc->buf = (u32)(urb->dma + urb->actual_length);
++	/* The A bit hands the descriptor over; buf must be visible first */
++	dma_wmb();
++	WRITE_ONCE(dma_desc->status, status);
++
++	qtd->desc_idx = idx;
++	qtd->n_desc = 1;
++	qtd->in_process = 1;
++	qh->td_last = idx + 1;
++
++	return true;
++}
++
++/*
++ * Builds a chained INT list without EOL, one descriptor per QTD, each with
++ * IOC. Returns false if the first QTD does not fit, to build it the old way.
++ */
++static bool dwc2_init_int_chain_desc(struct dwc2_qh *qh)
++{
++	struct dwc2_qtd *qtd;
++	bool closed = false;
++	int n = 0;
++
++	qh->td_last = 0;
++	list_for_each_entry(qtd, &qh->qtd_list, qtd_list_entry) {
++		if (!closed && dwc2_int_chain_add(qh, qtd)) {
++			n++;
++			continue;
++		}
++		closed = true;
++		qtd->in_process = 0;
++	}
++
++	if (!n)
++		return false;
++
++	/* NTD covers the whole ring so that appended descriptors are fetched */
++	qh->channel->ntd = MAX_DMA_DESC_NUM_GENERIC;
++	return true;
++}
++
++/**
++ * dwc2_hcd_append_xfer_ddma() - Appends queued URBs to a running INT list
++ *
++ * @hsotg: The HCD state structure for the DWC OTG controller
++ * @qh:    The QH, with int_chain set
++ *
++ * Only slots at or after td_last are written, and only while the channel is
++ * enabled. Once the core has stopped it, on BNA or with a halt, the pending
++ * BNA or CHHLTD interrupt re-arms the QTDs left in qtd_list.
++ */
++void dwc2_hcd_append_xfer_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
++{
++	struct dwc2_host_chan *chan = qh->channel;
++	struct dwc2_qtd *qtd;
++
++	if (!chan || chan->qh != qh || !chan->xfer_started ||
++	    chan->halt_status != DWC2_HC_XFER_NO_HALT_STATUS ||
++	    chan->halt_pending || qh->td_last >= MAX_DMA_DESC_NUM_GENERIC ||
++	    !(dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA))
++		return;
++
++	list_for_each_entry(qtd, &qh->qtd_list, qtd_list_entry) {
++		if (qtd->in_process)
++			continue;
++		if (!dwc2_int_chain_add(qh, qtd))
++			break;
++	}
++}
++
+ /**
+  * dwc2_hcd_start_xfer_ddma() - Starts a transfer in Descriptor DMA mode
+  *
+@@ -879,7 +985,11 @@ void dwc2_hcd_start_xfer_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 		dwc2_hc_start_transfer_ddma(hsotg, chan);
+ 		break;
+ 	case USB_ENDPOINT_XFER_INT:
+-		dwc2_init_non_isoc_dma_desc(hsotg, qh);
++		if (!qh->int_chain || !dwc2_init_int_chain_desc(qh)) {
++			dwc2_init_non_isoc_dma_desc(hsotg, qh);
++			/* An EOL list takes no appends */
++			qh->td_last = MAX_DMA_DESC_NUM_GENERIC;
++		}
+ 		dwc2_update_frame_list(hsotg, qh, 1);
+ 		dwc2_hc_start_transfer_ddma(hsotg, chan);
+ 		break;
+@@ -1309,10 +1419,11 @@ static void dwc2_complete_non_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 		 * Resetting the data toggle for bulk and interrupt endpoints
+ 		 * in case of stall. See handle_hc_stall_intr().
+ 		 */
+-		if (halt_status == DWC2_HC_XFER_STALL)
++		if (halt_status == DWC2_HC_XFER_STALL || qh->toggle_reset)
+ 			qh->data_toggle = DWC2_HC_PID_DATA0;
+ 		else
+ 			dwc2_hcd_save_data_toggle(hsotg, chan, chnum, NULL);
++		qh->toggle_reset = 0;
+ 	}
+ 
+ 	if (halt_status == DWC2_HC_XFER_COMPLETE) {
+@@ -1327,6 +1438,131 @@ static void dwc2_complete_non_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 	}
+ }
+ 
++/* Gives back the QTDs a running chained INT channel has retired so far */
++static void dwc2_complete_int_chain_ddma(struct dwc2_hsotg *hsotg,
++					 struct dwc2_host_chan *chan,
++					 int chnum)
++{
++	struct dwc2_qh *qh = chan->qh;
++	struct dwc2_qtd *qtd, *qtd_tmp;
++	int xfer_done, idx, n, i;
++
++	list_for_each_entry_safe(qtd, qtd_tmp, &qh->qtd_list, qtd_list_entry) {
++		if (!qtd->in_process)
++			return;
++
++		idx = qtd->desc_idx;
++		n = qtd->n_desc;
++		for (i = 0; i < n; i++) {
++			/* Errors halt the channel and are handled there */
++			if (!dwc2_non_isoc_desc_done(hsotg, qh, idx + i))
++				return;
++		}
++
++		xfer_done = 0;
++		for (i = 0; i < n && !xfer_done; i++) {
++			if (dwc2_process_non_isoc_desc(hsotg, chan, chnum, qtd,
++						       idx + i,
++						       DWC2_HC_XFER_COMPLETE,
++						       &xfer_done))
++				return;
++		}
++		if (!xfer_done)
++			return;
++	}
++}
++
++/*
++ * Re-arms a chained INT channel the core has stopped, from slot 0, with the
++ * QTDs left in qtd_list. Returns false if it is to be released instead.
++ */
++static bool dwc2_int_chain_restart(struct dwc2_hsotg *hsotg,
++				   struct dwc2_host_chan *chan)
++{
++	struct dwc2_qh *qh = chan->qh;
++
++	if (list_empty(&qh->qtd_list) || chan->halt_pending ||
++	    chan->halt_status != DWC2_HC_XFER_NO_HALT_STATUS ||
++	    !hsotg->flags.b.port_connect_status ||
++	    (dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA))
++		return false;
++
++	/* Stale slots may still have A set: clear them all first */
++	memset(qh->desc_list, 0,
++	       sizeof(struct dwc2_dma_desc) * dwc2_max_desc_num(qh));
++	if (!dwc2_init_int_chain_desc(qh))
++		return false;
++
++	chan->data_pid_start = qh->data_toggle;
++	/* Raw bits outside the mask are only cleared here and on init */
++	dwc2_writel(hsotg, ~HCINTMSK_RESERVED14_31, HCINT(chan->hc_num));
++	dwc2_hc_start_transfer_ddma(hsotg, chan);
++	return true;
++}
++
++/**
++ * dwc2_hcd_int_chain_settle() - Waits for a chained INT channel stopping on
++ * BNA to settle
++ *
++ * @hsotg: The HCD state structure for the DWC OTG controller
++ * @chan:  The channel
++ *
++ * Return: false if CHENA stays set. With a CHDIS pending, also waits for a
++ * trailing CHHLTD, so that it cannot hit the channel's next owner.
++ */
++bool dwc2_hcd_int_chain_settle(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan)
++{
++	int us;
++
++	for (us = 0; dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA;
++	     us++) {
++		if (us >= 10)
++			return false;
++		udelay(1);
++	}
++	for (us = 0; chan->halt_pending && us < 10; us++) {
++		if (dwc2_readl(hsotg, HCINT(chan->hc_num)) & HCINTMSK_CHHLTD)
++			break;
++		udelay(1);
++	}
++	return true;
++}
++
++/**
++ * dwc2_hcd_int_chain_dequeued() - Completes a dequeue halt of a chained INT
++ * channel that the core had already stopped
++ *
++ * @hsotg: The HCD state structure for the DWC OTG controller
++ * @chan:  The channel dwc2_hc_halt() was called on for a dequeue
++ *
++ * Called with the lock held. The core stops a chained channel on BNA with no
++ * CHHLTD, and dwc2_hc_halt() leaves a disabled channel alone.
++ */
++void dwc2_hcd_int_chain_dequeued(struct dwc2_hsotg *hsotg,
++				 struct dwc2_host_chan *chan)
++{
++	struct dwc2_qh *qh = chan->qh;
++
++	if (!qh || !qh->int_chain || qh->channel != chan ||
++	    !chan->xfer_started ||
++	    chan->halt_status != DWC2_HC_XFER_URB_DEQUEUE)
++		return;
++	/* Read CHENA first: a halt clears it and latches CHHLTD */
++	if ((dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA) ||
++	    (dwc2_readl(hsotg, HCINT(chan->hc_num)) & HCINTMSK_CHHLTD))
++		return;
++	/* A CHDIS was pending if the core stopped it after dwc2_hc_halt() */
++	if (chan->halt_pending) {
++		dwc2_hcd_int_chain_settle(hsotg, chan);
++		if (dwc2_readl(hsotg, HCINT(chan->hc_num)) & HCINTMSK_CHHLTD)
++			return;
++	}
++
++	dwc2_hcd_complete_xfer_ddma(hsotg, chan, chan->hc_num,
++				    DWC2_HC_XFER_URB_DEQUEUE);
++}
++
+ /**
+  * dwc2_hcd_complete_xfer_ddma() - Scans the descriptor list, updates URB's
+  * status and calls completion routine for the URB if it's done. Called from
+@@ -1393,6 +1629,11 @@ void dwc2_hcd_complete_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 		 * Todo: Consider the case when period exceeds FrameList size.
+ 		 * Frame Rollover interrupt should be used.
+ 		 */
++	} else if (qh->int_chain && halt_status == DWC2_HC_XFER_COMPLETE &&
++		   !(chan->hcint & (HCINTMSK_CHHLTD | HCINTMSK_BNA))) {
++		/* XferCompl on a running chained list: it keeps the channel */
++		dwc2_complete_int_chain_ddma(hsotg, chan, chnum);
++		return;
+ 	} else {
+ 		/*
+ 		 * Scan descriptor list to complete the URB(s), then release
+@@ -1400,6 +1641,9 @@ void dwc2_hcd_complete_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 		 */
+ 		dwc2_complete_non_isoc_xfer_ddma(hsotg, chan, chnum,
+ 						 halt_status);
++		if (qh->int_chain && halt_status == DWC2_HC_XFER_COMPLETE &&
++		    dwc2_int_chain_restart(hsotg, chan))
++			return;
+ 		dwc2_release_channel_ddma(hsotg, qh);
+ 		dwc2_hcd_qh_unlink(hsotg, qh);
+ 
+@@ -1423,3 +1667,35 @@ void dwc2_hcd_complete_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 		dwc2_hcd_queue_transactions(hsotg, tr_type);
+ 	}
+ }
++
++/**
++ * dwc2_hcd_int_chain_stop_idle() - Stops the chained INT channels with no URB
++ *
++ * @hsotg: The HCD state structure for the DWC OTG controller
++ *
++ * Called with the lock held before a power down, which loses the channel
++ * state: the channels are halted and released without waiting for the halt.
++ */
++void dwc2_hcd_int_chain_stop_idle(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_host_chan *chan;
++	struct dwc2_qh *qh;
++	int i;
++
++	if (!hsotg->params.dma_desc_int_chain)
++		return;
++
++	for (i = 0; i < hsotg->params.host_channels; i++) {
++		chan = hsotg->hc_ptr_array[i];
++		qh = chan ? chan->qh : NULL;
++		if (!qh || !qh->int_chain || !chan->xfer_started ||
++		    !list_empty(&qh->qtd_list))
++			continue;
++		dwc2_hc_halt(hsotg, chan, DWC2_HC_XFER_URB_DEQUEUE);
++		/* Saves the toggle; there is no QTD to give back */
++		dwc2_complete_non_isoc_xfer_ddma(hsotg, chan, i,
++						 DWC2_HC_XFER_URB_DEQUEUE);
++		dwc2_release_channel_ddma(hsotg, qh);
++		dwc2_hcd_qh_unlink(hsotg, qh);
++	}
++}
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index ae2829e..b58e8fa 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -1905,6 +1905,10 @@ static void dwc2_hc_chhltd_intr_dma(struct dwc2_hsotg *hsotg,
+ 		dwc2_hc_babble_intr(hsotg, chan, chnum, qtd);
+ 	} else if (chan->hcint & HCINTMSK_FRMOVRUN) {
+ 		dwc2_hc_frmovrun_intr(hsotg, chan, chnum, qtd);
++	} else if (chan->qh->int_chain) {
++		/* A chained list hit EOL, or halted as well as stopping on BNA */
++		dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
++					    DWC2_HC_XFER_COMPLETE);
+ 	} else if (!out_nak_enh) {
+ 		if (chan->hcint & HCINTMSK_NYET) {
+ 			/*
+@@ -2075,11 +2079,17 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 	 * In this case, take a shortcut and just release the channel.
+ 	 */
+ 	if (chan->halt_status == DWC2_HC_XFER_URB_DEQUEUE) {
++		/* A chained channel may stop on BNA instead of halting */
++		if (hcint == HCINTMSK_BNA) {
++			if (!dwc2_hcd_int_chain_settle(hsotg, chan))
++				return;
++		}
+ 		/*
+ 		 * If the channel was halted, this should be the only
+ 		 * interrupt unmasked
+ 		 */
+-		WARN_ON(hcint != HCINTMSK_CHHLTD);
++		WARN_ON(hcint != HCINTMSK_CHHLTD &&
++			!(chan->qh->int_chain && (hcint & HCINTMSK_BNA)));
+ 		if (hsotg->params.dma_desc_enable)
+ 			dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
+ 						    chan->halt_status);
+@@ -2089,7 +2099,27 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 		return;
+ 	}
+ 
++	/* A chained INT channel stops on BNA with CHENA clear, no CHHLTD */
++	if (chan->qh->int_chain && (hcint & HCINTMSK_BNA) &&
++	    !(hcint & HCINTMSK_CHHLTD)) {
++		if (!dwc2_hcd_int_chain_settle(hsotg, chan))
++			dwc2_hc_halt(hsotg, chan, DWC2_HC_XFER_COMPLETE);
++		else
++			dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
++						    DWC2_HC_XFER_COMPLETE);
++		chan->hcint = 0;
++		return;
++	}
++
+ 	if (list_empty(&chan->qh->qtd_list)) {
++		/* A chained INT channel runs dry after its last giveback */
++		if (chan->qh->int_chain) {
++			if (hcint & HCINTMSK_CHHLTD)
++				dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
++							    DWC2_HC_XFER_COMPLETE);
++			chan->hcint = 0;
++			return;
++		}
+ 		/*
+ 		 * TODO: Will this ever happen with the
+ 		 * DWC2_HC_XFER_URB_DEQUEUE handling above?
+@@ -2113,6 +2143,16 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 			hcint &= ~HCINTMSK_CHHLTD;
+ 	}
+ 
++	/* The halt handler completes a chained list; do not scan it twice */
++	if (chan->qh->int_chain && (hcint & HCINTMSK_CHHLTD)) {
++		hcint &= ~HCINTMSK_XFERCOMPL;
++		/* Every slot has IOC: an error halt must not look like one */
++		if (chan->hcint & (HCINTMSK_STALL | HCINTMSK_XCS_XACT |
++				   HCINTMSK_AHBERR | HCINTMSK_BBLERR |
++				   HCINTMSK_FRMOVRUN))
++			chan->hcint &= ~HCINTMSK_XFERCOMPL;
++	}
++
+ 	if (hcint & HCINTMSK_XFERCOMPL) {
+ 		dwc2_hc_xfercomp_intr(hsotg, chan, chnum, qtd);
+ 		/*
+-- 
+2.53.0
+

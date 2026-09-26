@@ -262,3 +262,16 @@
 0048-hid-google-stadiaff-classic2usb-retrozord.patch
 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch
 0052-mmc-dw-mmc-socfpga-max-data-timeout.patch
+0054-dwc2-ddma-keep-frame-list-while-periodic-qhs-remain.patch
+0055-dwc2-ddma-frame-list-unmap-direction.patch
+0056-dwc2-read-hfnum-for-current-frame.patch
+0057-dwc2-ddma-no-sof-unmask-for-periodic-qhs.patch
+0058-dwc2-host-single-irq-action.patch
+0059-dwc2-fs-ddma-param.patch
+0060-dwc2-host-keep-periodic-qh-cadence.patch
+0061-dwc2-host-debugfs-hcd-stats.patch
+0062-dwc2-host-sof-holdoff-in-hardirq.patch
+0063-dwc2-ddma-desc-list-bidirectional.patch
+0064-dwc2-ddma-giveback-on-dequeue-halt.patch
+0065-dwc2-ddma-halt-before-freeing-desc-list.patch
+0066-dwc2-ddma-keep-xfercompl-unmasked.patch

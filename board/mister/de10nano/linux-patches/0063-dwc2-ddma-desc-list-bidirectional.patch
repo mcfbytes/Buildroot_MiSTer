@@ -1,0 +1,58 @@
+From 17937ddcb68ac5b92b7a5f62cd98e18135fb2ae2 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 19:53:20 -0500
+Subject: [PATCH 2/8] usb: dwc2: hcd_ddma: map the descriptor list
+ bidirectionally
+
+The controller writes back the status word of every descriptor it
+processes, and the completion path reads it after
+dma_sync_single_for_cpu(..., DMA_FROM_DEVICE). dwc2_desc_list_alloc()
+nevertheless maps the list DMA_TO_DEVICE, and both unmaps, the error
+path in dwc2_desc_list_alloc() and dwc2_desc_list_free(), use
+DMA_FROM_DEVICE.
+
+The DMA API requires the unmap direction to match the mapping, and a
+DMA_TO_DEVICE mapping may not be synced for the CPU to read what the
+device wrote. CONFIG_DMA_API_DEBUG reports both.
+
+Map and unmap the list DMA_BIDIRECTIONAL. The existing per-descriptor
+syncs keep their directions, which a bidirectional mapping permits.
+
+Fixes: 95105a998dff ("usb: dwc2: host: avoid usage of dma_alloc_coherent with irqs disabled")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd_ddma.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 30ea50b..0b4b7c0 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -75,13 +75,13 @@ static int dwc2_desc_list_alloc(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 
+ 	qh->desc_list_dma = dma_map_single(hsotg->dev, qh->desc_list,
+ 					   qh->desc_list_sz,
+-					   DMA_TO_DEVICE);
++					   DMA_BIDIRECTIONAL);
+ 
+ 	qh->n_bytes = kcalloc(dwc2_max_desc_num(qh), sizeof(u32), flags);
+ 	if (!qh->n_bytes) {
+ 		dma_unmap_single(hsotg->dev, qh->desc_list_dma,
+ 				 qh->desc_list_sz,
+-				 DMA_FROM_DEVICE);
++				 DMA_BIDIRECTIONAL);
+ 		kmem_cache_free(desc_cache, qh->desc_list);
+ 		qh->desc_list = NULL;
+ 		return -ENOMEM;
+@@ -102,7 +102,7 @@ static void dwc2_desc_list_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 
+ 	if (qh->desc_list) {
+ 		dma_unmap_single(hsotg->dev, qh->desc_list_dma,
+-				 qh->desc_list_sz, DMA_FROM_DEVICE);
++				 qh->desc_list_sz, DMA_BIDIRECTIONAL);
+ 		kmem_cache_free(desc_cache, qh->desc_list);
+ 		qh->desc_list = NULL;
+ 	}
+-- 
+2.53.0
+

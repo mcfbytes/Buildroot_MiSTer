@@ -1,0 +1,1933 @@
+From e458192a3485f2b2890048bb17cdec849e6ea041 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 17:05:09 -0500
+Subject: [PATCH] usb: dwc2: LAB ONLY: descriptor DMA split probe
+
+Lab instrument, never for a shipped kernel or the Buildroot patch series.
+
+It answers one question without a USB analyzer: when dwc2 lets a split
+QH through in descriptor (scatter/gather) DMA mode with HCSPLT.SpltEna
+set, what does the DWC_otg 2.93a engine do? Everything sits behind
+CONFIG_USB_DWC2_DDMA_PROBE (default n, PREEMPT_RT or EXPERT). With every
+parameter at 0 it behaves like the track-1 driver; the only differences
+are about 1.1 MB of ring and sampler buffers and one warning at init.
+
+Mode knobs (dwc2.* module parameters, all 0644, default off):
+- ddma_force: descriptor DMA without the fs_ddma speed cap.
+- ddma_split_probe: EP-type mask whose split QHs pass the refusal in
+  dwc2_hcd_qh_init_ddma(); isoc is always refused, since its descriptor
+  indexing still counts full-speed frames.
+- ddma_split_schinfo: SCHED_INFO for periodic split channels.
+- ddma_split_desc_maxp: one max packet per split descriptor, as buffer
+  DMA does per split.
+- ddma_split_retries, ddma_probe_log, ddma_probe_halt_us,
+  ddma_probe_trip, ddma_probe_cpu.
+
+A permitted split channel gets SpltEna set, and CompSplt cleared, just
+before CHENA in dwc2_hc_start_transfer_ddma(). An interrupt split gets
+EC=3, as buffer DMA gives it; a control or bulk split gets SCHED_INFO
+0xff instead of whatever its channel last carried. Split QHs get the
+frame list increment of a high-speed QH, since their host_interval is
+in microframes.
+
+Observation, in debugfs next to regdump:
+- ddma_probe: a ring of per-event records holding raw HCINT before the
+  driver clears it, the channel registers (HCDMAB at both 0x51C and the
+  TRM's 0x518), HPTXSTS/GNPTXSTS queue tops and descriptor status words.
+- ddma_sampler: a CPU-pinned hard hrtimer that records channel or
+  global registers on change, started by hand or on the next split
+  channel start; "nob" leaves the RAM-backed HCDMAB alone.
+- ddma_probe_ctl: "kill" and "untrip".
+
+Safety net, for probe split QHs only:
+- halts a descriptor DMA split channel would route to buffer-DMA split
+  handlers are completed as transaction errors instead;
+- consecutive error halts (a STALL is not one) are bounded, then the
+  head URB fails with -EPROTO and an F record keeps the halt reason; a
+  rate trip refuses new split QHs;
+- a sticky NYET no longer arms PING for a split channel;
+- a dequeued or disconnected split channel that stays enabled (for at
+  most 20 ms), a halt with CHENA still set, and a descriptor list freed
+  under a live channel soft-reset the core so no further DMA can happen;
+  if that reset times out the probe says so and leaks descriptor lists
+  from then on;
+- an unaligned split IN buffer is refused before the channel starts and
+  recorded once per QH.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/usb/dwc2/Kconfig      |   14 +
+ drivers/usb/dwc2/Makefile     |    1 +
+ drivers/usb/dwc2/core.h       |    4 +
+ drivers/usb/dwc2/ddma_probe.c | 1293 +++++++++++++++++++++++++++++++++
+ drivers/usb/dwc2/ddma_probe.h |  113 +++
+ drivers/usb/dwc2/debugfs.c    |    2 +
+ drivers/usb/dwc2/hcd.c        |   45 +-
+ drivers/usb/dwc2/hcd.h        |   10 +
+ drivers/usb/dwc2/hcd_ddma.c   |   14 +-
+ drivers/usb/dwc2/hcd_intr.c   |    6 +
+ drivers/usb/dwc2/params.c     |   51 +-
+ 11 files changed, 1535 insertions(+), 18 deletions(-)
+ create mode 100644 drivers/usb/dwc2/ddma_probe.c
+ create mode 100644 drivers/usb/dwc2/ddma_probe.h
+
+diff --git a/drivers/usb/dwc2/Kconfig b/drivers/usb/dwc2/Kconfig
+index d7af55a..93b1424 100644
+--- a/drivers/usb/dwc2/Kconfig
++++ b/drivers/usb/dwc2/Kconfig
+@@ -94,4 +94,18 @@ config USB_DWC2_DEBUG_PERIODIC
+ 	  non-periodic transfers, but of course the debug logs will be
+ 	  incomplete. Note that this also disables some debug messages
+ 	  for which the transfer type cannot be deduced.
++
++config USB_DWC2_DDMA_PROBE
++	bool "LAB ONLY: descriptor DMA split probe"
++	depends on USB_DWC2_HOST || USB_DWC2_DUAL_ROLE
++	depends on DEBUG_FS
++	depends on PREEMPT_RT || EXPERT
++	help
++	  Lab instrument that lets split transfers run in descriptor DMA
++	  mode and records what the core does with them, through module
++	  parameters and debugfs files. It is not safe for normal use.
++
++	  Its halt watchdog busy-waits up to 20 ms under the driver lock,
++	  which is sleepable on PREEMPT_RT but has interrupts off
++	  otherwise. If in doubt, say N.
+ endif
+diff --git a/drivers/usb/dwc2/Makefile b/drivers/usb/dwc2/Makefile
+index 2bcd694..6c998b0 100644
+--- a/drivers/usb/dwc2/Makefile
++++ b/drivers/usb/dwc2/Makefile
+@@ -9,6 +9,7 @@ dwc2-y					+= params.o
+ ifneq ($(filter y,$(CONFIG_USB_DWC2_HOST) $(CONFIG_USB_DWC2_DUAL_ROLE)),)
+ 	dwc2-y				+= hcd.o hcd_intr.o
+ 	dwc2-y				+= hcd_queue.o hcd_ddma.o
++	dwc2-$(CONFIG_USB_DWC2_DDMA_PROBE)	+= ddma_probe.o
+ endif
+ 
+ ifneq ($(filter y,$(CONFIG_USB_DWC2_PERIPHERAL) $(CONFIG_USB_DWC2_DUAL_ROLE)),)
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index d0b0905..805bda6 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -1033,6 +1033,7 @@ struct dwc2_hregs_backup {
+  *			a pointer to an array of register definitions, the
+  *			array size and the base address where the register bank
+  *			is to be found.
++ * @probe:		LAB ONLY descriptor DMA split probe state
+  * @last_frame_num:	Number of last frame. Range from 0 to  32768
+  * @frame_num_array:    Used only  if CONFIG_USB_DWC2_TRACK_MISSED_SOFS is
+  *			defined, for missed SOFs tracking. Array holds that
+@@ -1106,6 +1107,9 @@ struct dwc2_hsotg {
+ 
+ 	struct dentry *debug_root;
+ 	struct debugfs_regset32 *regset;
++#ifdef CONFIG_USB_DWC2_DDMA_PROBE
++	struct dwc2_ddma_probe *probe;
++#endif
+ 	bool needs_byte_swap;
+ 
+ 	/* DWC OTG HW Release versions */
+diff --git a/drivers/usb/dwc2/ddma_probe.c b/drivers/usb/dwc2/ddma_probe.c
+new file mode 100644
+index 0000000..f1262af
+--- /dev/null
++++ b/drivers/usb/dwc2/ddma_probe.c
+@@ -0,0 +1,1293 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
++/*
++ * ddma_probe.c - LAB ONLY: lets split QHs run in descriptor DMA and records
++ * what the core does with them. Never part of a shipped kernel.
++ */
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
++#include <linux/hrtimer.h>
++#include <linux/smp.h>
++#include <linux/cpumask.h>
++#include <linux/spinlock.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/slab.h>
++#include <linux/vmalloc.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
++#include <linux/usb.h>
++#include <linux/usb/hcd.h>
++
++#include "core.h"
++#include "hcd.h"
++
++static unsigned int ddma_split_probe;
++module_param(ddma_split_probe, uint, 0644);
++MODULE_PARM_DESC(ddma_split_probe,
++		 "LAB ONLY: EP types whose split QHs may use descriptor DMA (1 ctrl, 2 bulk, 4 int; isoc is always refused); read per new QH");
++
++static unsigned int ddma_split_schinfo;
++module_param(ddma_split_schinfo, uint, 0644);
++MODULE_PARM_DESC(ddma_split_schinfo,
++		 "LAB ONLY: SCHED_INFO for periodic split channels (0 driver default, 1-255 literal, 256 derived from the TT schedule)");
++
++static bool ddma_split_desc_maxp;
++module_param(ddma_split_desc_maxp, bool, 0644);
++MODULE_PARM_DESC(ddma_split_desc_maxp,
++		 "LAB ONLY: cap each split descriptor at one max packet, as buffer DMA caps each split; read per descriptor fill");
++
++static unsigned int ddma_split_retries = 3;
++module_param(ddma_split_retries, uint, 0644);
++MODULE_PARM_DESC(ddma_split_retries,
++		 "LAB ONLY: consecutive error halts (STALL excluded) of a split QH before its head URB fails with -EPROTO (max 200)");
++
++static unsigned int ddma_probe_log;
++module_param(ddma_probe_log, uint, 0644);
++MODULE_PARM_DESC(ddma_probe_log,
++		 "LAB ONLY: ring logging mask (1 DDMA channel irqs, 2 buffer-DMA split irqs, 4 split channel starts)");
++
++static unsigned int ddma_probe_halt_us = 3000;
++module_param(ddma_probe_halt_us, uint, 0644);
++MODULE_PARM_DESC(ddma_probe_halt_us,
++		 "LAB ONLY: microseconds a dequeued split channel may stay enabled before the core is reset (plus 1000 per frame of INT interval; total capped at 20000)");
++
++static unsigned int ddma_probe_trip = 4000;
++module_param(ddma_probe_trip, uint, 0644);
++MODULE_PARM_DESC(ddma_probe_trip,
++		 "LAB ONLY: split error halts per second that trip the probe (0 never trips)");
++
++static unsigned int ddma_probe_cpu;
++module_param(ddma_probe_cpu, uint, 0644);
++MODULE_PARM_DESC(ddma_probe_cpu, "LAB ONLY: CPU the register sampler runs on");
++
++#define PROBE_RING_LEN		4096
++#define PROBE_SAMPLES		16384
++#define PROBE_PERIOD_MIN_US	20
++#define PROBE_PERIOD_DEF_US	20
++#define PROBE_DUR_MAX_US	200000
++#define PROBE_HALT_TAIL_NS	(500 * NSEC_PER_USEC)
++#define PROBE_RETRIES_MAX	200
++#define PROBE_HALT_US_MAX	20000
++#define PROBE_NO_CHAN		0xff
++
++#define PROBE_F_SPLIT		BIT(0)
++#define PROBE_F_PSPLIT		BIT(1)
++#define PROBE_F_DDMA		BIT(2)
++#define PROBE_F_PING		BIT(3)
++#define PROBE_F_ERRSTATE	BIT(4)
++#define PROBE_F_DESC		BIT(5)
++
++#define PROBE_TYPE_IN		BIT(7)
++
++/* The TRM puts HCDMAB at 0x518, Linux and the vendor driver at 0x51C */
++#define PROBE_HCDMAB_TRM(_ch)	HSOTG_REG(0x518 + 0x20 * (_ch))
++
++struct dwc2_probe_rec {
++	u64 t_ns;
++	u32 hfnum, hcint, hcintmsk, hcsplt, hcchar, hctsiz, hcdma, hcdmab;
++	u32 hcdmab518, hptxsts, gnptxsts;
++	u32 desc[4];
++	u32 x;
++	u8 kind, chan, dev_addr, ep;
++	u8 type_dir, flags, ctd, halt_status;
++};
++
++struct dwc2_probe_sample {
++	u32 dt_ns, hfnum, hcchar, hcsplt, hcint, hctsiz, hcdma, hcdmab;
++	u32 hcdmab518, ptx, nptx;
++};
++
++enum dwc2_probe_smp_state {
++	SMP_IDLE,
++	SMP_ARMED,
++	SMP_STARTING,
++	SMP_RUNNING,
++	SMP_DONE,
++};
++
++static const char * const dwc2_probe_smp_names[] = {
++	[SMP_IDLE] = "idle",
++	[SMP_ARMED] = "armed",
++	[SMP_STARTING] = "starting",
++	[SMP_RUNNING] = "running",
++	[SMP_DONE] = "done",
++};
++
++struct dwc2_probe_sampler {
++	struct hrtimer timer;
++	raw_spinlock_t lock;
++	call_single_data_t csd;
++	struct dwc2_hsotg *hsotg;
++	struct dwc2_probe_sample *buf;
++	u32 n;
++	int state;
++	int chan;
++	int cpu;
++	int csd_cpu;
++	bool global;
++	bool stop_on_halt;
++	bool no_dmab;
++	bool halt_seen;
++	bool have_prev;
++	u32 typemask;
++	u64 period_ns, dur_ns, t0, halt_ns;
++	u64 ticks, overruns;
++	const char *stop_reason;
++	u32 prev[9];
++};
++
++struct dwc2_ddma_probe {
++	raw_spinlock_t ring_lock;
++	struct dwc2_probe_rec *ring;
++	u64 seq, clear_seq;
++	atomic_t split_allowed, split_refused, err_halts, failed_urbs;
++	atomic_t trips, wedges, kills, kill_fails, unaligned, stalls;
++	bool tripped, dead, reset_failed;
++	u64 trip_t0;
++	u32 trip_n;
++	struct dwc2_probe_sampler smp;
++};
++
++static u32 dwc2_probe_type_bit(u8 ep_type)
++{
++	switch (ep_type) {
++	case USB_ENDPOINT_XFER_CONTROL:
++		return 1;
++	case USB_ENDPOINT_XFER_BULK:
++		return 2;
++	case USB_ENDPOINT_XFER_INT:
++		return 4;
++	default:
++		return 8;
++	}
++}
++
++static const char *dwc2_probe_type_name(u8 ep_type)
++{
++	static const char * const names[] = { "ctrl", "iso", "bulk", "int" };
++
++	return names[ep_type & 3];
++}
++
++/* ---- per-event ring ---- */
++
++static void dwc2_probe_descs(struct dwc2_hsotg *hsotg,
++			     struct dwc2_probe_rec *r, struct dwc2_qh *qh)
++{
++	u32 idx[4];
++	int i;
++
++	if (!hsotg->params.dma_desc_enable || !qh->desc_list ||
++	    (qh->ep_type == USB_ENDPOINT_XFER_ISOC &&
++	     qh->dev_speed == USB_SPEED_HIGH))
++		return;
++
++	r->ctd = (r->hcdma >> 3) & (MAX_DMA_DESC_NUM_GENERIC - 1);
++	idx[0] = 0;
++	idx[1] = 1;
++	idx[2] = 2;
++	idx[3] = r->ctd;
++	for (i = 0; i < ARRAY_SIZE(idx); i++) {
++		dma_sync_single_for_cpu(hsotg->dev, qh->desc_list_dma +
++					idx[i] * sizeof(struct dwc2_dma_desc),
++					sizeof(struct dwc2_dma_desc),
++					DMA_FROM_DEVICE);
++		r->desc[i] = qh->desc_list[idx[i]].status;
++	}
++	r->flags |= PROBE_F_DESC;
++}
++
++static void dwc2_probe_fill(struct dwc2_hsotg *hsotg, struct dwc2_probe_rec *r,
++			    char kind, int chnum, struct dwc2_host_chan *chan,
++			    struct dwc2_qh *qh, u32 hcint)
++{
++	memset(r, 0, sizeof(*r));
++	r->t_ns = ktime_get_ns();
++	r->kind = kind;
++	r->chan = chnum;
++	r->hfnum = dwc2_readl(hsotg, HFNUM);
++	r->hptxsts = dwc2_readl(hsotg, HPTXSTS);
++	r->gnptxsts = dwc2_readl(hsotg, GNPTXSTS);
++	if (hsotg->params.dma_desc_enable)
++		r->flags |= PROBE_F_DDMA;
++	if (chnum == PROBE_NO_CHAN)
++		return;
++
++	r->hcint = hcint;
++	r->hcintmsk = dwc2_readl(hsotg, HCINTMSK(chnum));
++	r->hcsplt = dwc2_readl(hsotg, HCSPLT(chnum));
++	r->hcchar = dwc2_readl(hsotg, HCCHAR(chnum));
++	r->hctsiz = dwc2_readl(hsotg, HCTSIZ(chnum));
++	r->hcdma = dwc2_readl(hsotg, HCDMA(chnum));
++	r->hcdmab = dwc2_readl(hsotg, HCDMAB(chnum));
++	r->hcdmab518 = dwc2_readl(hsotg, PROBE_HCDMAB_TRM(chnum));
++
++	if (chan) {
++		r->dev_addr = chan->dev_addr;
++		r->ep = chan->ep_num;
++		r->type_dir = chan->ep_type | (chan->ep_is_in ? PROBE_TYPE_IN : 0);
++		r->halt_status = chan->halt_status;
++		if (chan->do_split)
++			r->flags |= PROBE_F_SPLIT;
++		if (chan->do_ping)
++			r->flags |= PROBE_F_PING;
++		if (chan->error_state)
++			r->flags |= PROBE_F_ERRSTATE;
++	}
++	if (qh) {
++		if (qh->probe_split)
++			r->flags |= PROBE_F_PSPLIT;
++		dwc2_probe_descs(hsotg, r, qh);
++	}
++}
++
++static void dwc2_probe_push(struct dwc2_ddma_probe *p,
++			    const struct dwc2_probe_rec *r)
++{
++	unsigned long flags;
++
++	raw_spin_lock_irqsave(&p->ring_lock, flags);
++	p->ring[(u32)p->seq & (PROBE_RING_LEN - 1)] = *r;
++	p->seq++;
++	raw_spin_unlock_irqrestore(&p->ring_lock, flags);
++}
++
++static void dwc2_probe_record(struct dwc2_hsotg *hsotg, char kind, int chnum,
++			      u32 x)
++{
++	struct dwc2_host_chan *chan = NULL;
++	struct dwc2_probe_rec r;
++	u32 hcint = 0;
++
++	if (chnum != PROBE_NO_CHAN) {
++		chan = hsotg->hc_ptr_array[chnum];
++		hcint = dwc2_readl(hsotg, HCINT(chnum));
++	}
++	dwc2_probe_fill(hsotg, &r, kind, chnum, chan, chan ? chan->qh : NULL,
++			hcint);
++	r.x = x;
++	dwc2_probe_push(hsotg->probe, &r);
++}
++
++static bool dwc2_probe_want(struct dwc2_hsotg *hsotg,
++			    struct dwc2_host_chan *chan)
++{
++	unsigned int log = READ_ONCE(ddma_probe_log);
++
++	if (hsotg->params.dma_desc_enable)
++		return log & 1;
++	return (log & 2) && chan->do_split;
++}
++
++/* ---- register sampler ---- */
++
++static void dwc2_probe_smp_stop(struct dwc2_probe_sampler *s,
++				const char *reason)
++{
++	if (s->state == SMP_IDLE || s->state == SMP_DONE)
++		return;
++	s->state = SMP_DONE;
++	s->stop_reason = reason;
++}
++
++static void dwc2_probe_smp_take(struct dwc2_probe_sampler *s, u64 now)
++{
++	struct dwc2_hsotg *hsotg = s->hsotg;
++	struct dwc2_probe_sample v = {};
++	u32 key[9];
++	int ch = s->chan;
++
++	v.dt_ns = now - s->t0;
++	v.hfnum = dwc2_readl(hsotg, HFNUM);
++	v.ptx = dwc2_readl(hsotg, HPTXSTS);
++	v.nptx = dwc2_readl(hsotg, GNPTXSTS);
++	if (s->global) {
++		v.hcint = dwc2_readl(hsotg, HAINT);
++	} else {
++		v.hcchar = dwc2_readl(hsotg, HCCHAR(ch));
++		v.hcsplt = dwc2_readl(hsotg, HCSPLT(ch));
++		v.hcint = dwc2_readl(hsotg, HCINT(ch));
++		v.hctsiz = dwc2_readl(hsotg, HCTSIZ(ch));
++		v.hcdma = dwc2_readl(hsotg, HCDMA(ch));
++		/* The TRM says HCDMAB is RAM-backed: "nob" keeps it unperturbed */
++		if (!s->no_dmab) {
++			v.hcdmab = dwc2_readl(hsotg, HCDMAB(ch));
++			v.hcdmab518 = dwc2_readl(hsotg, PROBE_HCDMAB_TRM(ch));
++		}
++	}
++
++	/* HFNUM counts continuously and FIFO space is noise: keep queue state */
++	key[0] = v.hcchar;
++	key[1] = v.hcsplt;
++	key[2] = v.hcint;
++	key[3] = v.hctsiz;
++	key[4] = v.hcdma;
++	key[5] = v.hcdmab;
++	key[6] = v.hcdmab518;
++	key[7] = v.ptx & 0xffff0000;
++	key[8] = v.nptx & 0xffff0000;
++	if (s->have_prev && !memcmp(key, s->prev, sizeof(key)))
++		return;
++	memcpy(s->prev, key, sizeof(key));
++	s->have_prev = true;
++
++	s->buf[s->n++] = v;
++	if (s->n >= PROBE_SAMPLES)
++		dwc2_probe_smp_stop(s, "full");
++}
++
++static enum hrtimer_restart dwc2_probe_sample_fn(struct hrtimer *t)
++{
++	struct dwc2_probe_sampler *s =
++		container_of(t, struct dwc2_probe_sampler, timer);
++	enum hrtimer_restart ret = HRTIMER_NORESTART;
++	u64 now = ktime_get_ns();
++	u64 ov;
++
++	raw_spin_lock(&s->lock);
++	if (s->state != SMP_RUNNING)
++		goto out;
++	s->ticks++;
++	dwc2_probe_smp_take(s, now);
++	if (s->state != SMP_RUNNING)
++		goto out;
++	if ((s64)(now - s->t0) >= (s64)s->dur_ns) {
++		dwc2_probe_smp_stop(s, "time");
++		goto out;
++	}
++	if (s->halt_seen && (s64)(now - s->halt_ns) >= PROBE_HALT_TAIL_NS) {
++		dwc2_probe_smp_stop(s, "halt");
++		goto out;
++	}
++	ov = hrtimer_forward_now(t, ns_to_ktime(s->period_ns));
++	if (ov > 1)
++		s->overruns += ov - 1;
++	ret = HRTIMER_RESTART;
++out:
++	raw_spin_unlock(&s->lock);
++	return ret;
++}
++
++/* Runs on the sampler CPU: PINNED timers are queued where they are started */
++static void dwc2_probe_arm_fn(void *info)
++{
++	struct dwc2_probe_sampler *s = info;
++	unsigned long flags;
++
++	raw_spin_lock_irqsave(&s->lock, flags);
++	if (s->state == SMP_STARTING) {
++		if (!s->have_prev) {
++			s->t0 = ktime_get_ns();
++			dwc2_probe_smp_take(s, s->t0);
++		}
++		if (s->state == SMP_STARTING) {
++			s->state = SMP_RUNNING;
++			hrtimer_start(&s->timer, ns_to_ktime(s->period_ns),
++				      HRTIMER_MODE_REL_PINNED_HARD);
++		}
++	}
++	raw_spin_unlock_irqrestore(&s->lock, flags);
++}
++
++static void dwc2_probe_nop_fn(void *info)
++{
++}
++
++/* Stops a run, then waits out a queued arm IPI and a running callback */
++static void dwc2_probe_smp_quiesce(struct dwc2_probe_sampler *s,
++				   const char *reason)
++{
++	unsigned long flags;
++	int cpu, csd_cpu;
++
++	raw_spin_lock_irqsave(&s->lock, flags);
++	dwc2_probe_smp_stop(s, reason);
++	cpu = s->cpu;
++	csd_cpu = s->csd_cpu;
++	raw_spin_unlock_irqrestore(&s->lock, flags);
++	/* A flush runs SYNC csds before ASYNC ones: the 2nd nop needs a new flush */
++	smp_call_function_single(csd_cpu, dwc2_probe_nop_fn, NULL, 1);
++	smp_call_function_single(csd_cpu, dwc2_probe_nop_fn, NULL, 1);
++	if (cpu != csd_cpu)
++		smp_call_function_single(cpu, dwc2_probe_nop_fn, NULL, 1);
++	hrtimer_cancel(&s->timer);
++}
++
++static void dwc2_probe_auto_arm(struct dwc2_probe_sampler *s,
++				struct dwc2_host_chan *chan)
++{
++	unsigned long flags;
++	int cpu;
++
++	if (READ_ONCE(s->state) != SMP_ARMED)
++		return;
++
++	raw_spin_lock_irqsave(&s->lock, flags);
++	if (s->state != SMP_ARMED ||
++	    !(s->typemask & dwc2_probe_type_bit(chan->ep_type))) {
++		raw_spin_unlock_irqrestore(&s->lock, flags);
++		return;
++	}
++	s->chan = chan->hc_num;
++	s->state = SMP_STARTING;
++	s->t0 = ktime_get_ns();
++	dwc2_probe_smp_take(s, s->t0);
++	cpu = s->cpu;
++	s->csd_cpu = cpu;
++	raw_spin_unlock_irqrestore(&s->lock, flags);
++
++	/* Callers hold hsotg->lock, so this task cannot migrate here */
++	if (cpu == smp_processor_id()) {
++		dwc2_probe_arm_fn(s);
++	} else if (smp_call_function_single_async(cpu, &s->csd)) {
++		raw_spin_lock_irqsave(&s->lock, flags);
++		if (s->state == SMP_STARTING)
++			dwc2_probe_smp_stop(s, "ipi-fail");
++		raw_spin_unlock_irqrestore(&s->lock, flags);
++	}
++}
++
++static void dwc2_probe_note_halt(struct dwc2_probe_sampler *s, int chnum)
++{
++	unsigned long flags;
++
++	if (!READ_ONCE(s->stop_on_halt))
++		return;
++
++	raw_spin_lock_irqsave(&s->lock, flags);
++	if ((s->state == SMP_RUNNING || s->state == SMP_STARTING) &&
++	    !s->global && s->chan == chnum && !s->halt_seen) {
++		s->halt_seen = true;
++		s->halt_ns = ktime_get_ns();
++	}
++	raw_spin_unlock_irqrestore(&s->lock, flags);
++}
++
++/* ---- safety net ---- */
++
++/* Caller holds hsotg->lock. A core soft reset ends all AHB master traffic */
++static int dwc2_probe_kill(struct dwc2_hsotg *hsotg, int chnum,
++			   const char *why)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	int ch = chnum == PROBE_NO_CHAN ? -1 : chnum;
++	unsigned long flags;
++	int ret;
++
++	WRITE_ONCE(p->dead, true);
++	dwc2_probe_record(hsotg, 'K', chnum, dwc2_readl(hsotg, HPRT0));
++	atomic_inc(&p->kills);
++	ret = dwc2_core_reset(hsotg, true);
++	if (ret) {
++		WRITE_ONCE(p->reset_failed, true);
++		atomic_inc(&p->kill_fails);
++		dwc2_probe_record(hsotg, 'X', chnum, ret);
++		dev_crit(hsotg->dev,
++			 "ddma_probe: core soft reset FAILED (%s, ch %d, ret %d); DMA may still run, power-cycle the board\n",
++			 why, ch, ret);
++	} else {
++		dev_err(hsotg->dev,
++			"ddma_probe: core soft reset (%s, ch %d); DMA stopped, rebind to recover\n",
++			why, ch);
++	}
++
++	raw_spin_lock_irqsave(&p->smp.lock, flags);
++	dwc2_probe_smp_stop(&p->smp, "kill");
++	raw_spin_unlock_irqrestore(&p->smp.lock, flags);
++	return ret;
++}
++
++static void dwc2_probe_trip_check(struct dwc2_hsotg *hsotg, int chnum)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	u32 lim = READ_ONCE(ddma_probe_trip);
++	u64 now = ktime_get_ns();
++
++	if (now - p->trip_t0 > NSEC_PER_SEC) {
++		p->trip_t0 = now;
++		p->trip_n = 0;
++	}
++	if (++p->trip_n <= lim || !lim || p->tripped)
++		return;
++
++	WRITE_ONCE(p->tripped, true);
++	atomic_inc(&p->trips);
++	dwc2_probe_record(hsotg, 'T', chnum, p->trip_n);
++	dev_warn(hsotg->dev,
++		 "ddma_probe: tripped at %u split error halts/s; new split QHs refused\n",
++		 p->trip_n);
++}
++
++/* ---- hooks ---- */
++
++bool dwc2_ddma_probe_allow(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	u32 mask = READ_ONCE(ddma_split_probe);
++
++	if (!p)
++		return false;
++	/* Isoc descriptor indexing still counts FS frames for a split QH */
++	if (!(mask & dwc2_probe_type_bit(qh->ep_type)) ||
++	    qh->ep_type == USB_ENDPOINT_XFER_ISOC ||
++	    READ_ONCE(p->dead) || READ_ONCE(p->tripped))
++		goto refuse;
++
++	qh->probe_split = 1;
++	qh->probe_errs = 0;
++	atomic_inc(&p->split_allowed);
++	dev_info(hsotg->dev,
++		 "ddma_probe: split %s %s QH allowed (maxp %u x%u, interval %u)\n",
++		 dwc2_probe_type_name(qh->ep_type), qh->ep_is_in ? "in" : "out",
++		 qh->maxp, qh->maxp_mult, qh->host_interval);
++	return true;
++
++refuse:
++	atomic_inc(&p->split_refused);
++	return false;
++}
++
++int dwc2_ddma_probe_desc_len(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan, int len)
++{
++	if (!dwc2_ddma_probe_split_chan(hsotg, chan) ||
++	    !READ_ONCE(ddma_split_desc_maxp) || !chan->max_packet)
++		return len;
++	return min_t(int, len, chan->max_packet);
++}
++
++u8 dwc2_ddma_probe_schinfo(struct dwc2_qh *qh, u8 schinfo)
++{
++	u32 v = READ_ONCE(ddma_split_schinfo);
++	u8 mask = 0;
++	int i;
++
++	if (!v)
++		return schinfo;
++	if (v < 256)
++		return v;
++
++	/* Union of the uframes dwc2's own TT schedule gave this QH */
++	for (i = 0; i < qh->num_hs_transfers && i < DWC2_HS_SCHEDULE_UFRAMES;
++	     i++)
++		mask |= BIT((qh->hs_transfers[i].start_schedule_us /
++			     DWC2_HS_PERIODIC_US_PER_UFRAME) %
++			    DWC2_HS_SCHEDULE_UFRAMES);
++	return mask ? mask : schinfo;
++}
++
++void dwc2_ddma_probe_start(struct dwc2_hsotg *hsotg,
++			   struct dwc2_host_chan *chan)
++{
++	if (hsotg->probe && chan->do_split)
++		dwc2_probe_auto_arm(&hsotg->probe->smp, chan);
++}
++
++void dwc2_ddma_probe_started(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan)
++{
++	unsigned int log = READ_ONCE(ddma_probe_log);
++
++	if (!hsotg->probe || !chan->do_split)
++		return;
++	if ((log & 4) && (hsotg->params.dma_desc_enable || (log & 2)))
++		dwc2_probe_record(hsotg, 'S', chan->hc_num, chan->schinfo);
++}
++
++void dwc2_ddma_probe_irq(struct dwc2_hsotg *hsotg, int chnum, u32 hcintraw,
++			 u32 hcintmsk)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	struct dwc2_host_chan *chan;
++	struct dwc2_probe_rec r;
++
++	if (!p)
++		return;
++	if (hcintraw & HCINTMSK_CHHLTD)
++		dwc2_probe_note_halt(&p->smp, chnum);
++
++	chan = hsotg->hc_ptr_array[chnum];
++	if (!chan || !chan->qh || !dwc2_probe_want(hsotg, chan))
++		return;
++	dwc2_probe_fill(hsotg, &r, 'H', chnum, chan, chan->qh, hcintraw);
++	r.hcintmsk = hcintmsk;
++	dwc2_probe_push(p, &r);
++}
++
++void dwc2_ddma_probe_dequeue(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan)
++{
++	if (!hsotg->probe ||
++	    !(dwc2_ddma_probe_split_chan(hsotg, chan) ||
++	      dwc2_probe_want(hsotg, chan)))
++		return;
++	dwc2_probe_record(hsotg, 'D', chan->hc_num, chan->halt_status);
++}
++
++/* An INT split channel may only see CHDIS when the frame list next lists it */
++static u32 dwc2_probe_halt_frames(struct dwc2_host_chan *chan)
++{
++	if (!chan->qh || chan->ep_type != USB_ENDPOINT_XFER_INT)
++		return 0;
++	return DIV_ROUND_UP(chan->qh->host_interval, 8);
++}
++
++void dwc2_ddma_probe_wait_halt(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	u32 frames, limit, us;
++
++	if (!p || !chan || !dwc2_ddma_probe_split_chan(hsotg, chan))
++		return;
++	/* A kill already reset the core: nothing left to wait for */
++	if (READ_ONCE(p->dead))
++		return;
++
++	frames = dwc2_probe_halt_frames(chan);
++	limit = min_t(u32, READ_ONCE(ddma_probe_halt_us), PROBE_HALT_US_MAX);
++	limit = min_t(u32, limit + frames * USEC_PER_MSEC, PROBE_HALT_US_MAX);
++	for (us = 0; ; us++) {
++		if (!(dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA))
++			return;
++		if (us >= limit)
++			break;
++		udelay(1);
++	}
++
++	atomic_inc(&p->wedges);
++	dwc2_probe_record(hsotg, 'W', chan->hc_num,
++			  min_t(u32, frames, 0xffff) << 16 | us);
++	dwc2_probe_kill(hsotg, chan->hc_num, "channel ignored CHDIS");
++}
++
++bool dwc2_ddma_probe_unaligned(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan,
++			       struct dwc2_qh *qh)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	struct dwc2_probe_rec r;
++
++	if (!hsotg->params.dma_desc_enable)
++		return false;
++	if (p) {
++		atomic_inc(&p->unaligned);
++		/* The refusal repeats on every scheduling pass: record it once */
++		if (!qh->probe_unaligned) {
++			qh->probe_unaligned = 1;
++			dwc2_probe_fill(hsotg, &r, 'U', chan->hc_num, chan, qh, 0);
++			r.x = (u32)chan->xfer_dma;
++			dwc2_probe_push(p, &r);
++		}
++	}
++	return true;
++}
++
++enum dwc2_halt_status
++dwc2_ddma_probe_complete(struct dwc2_hsotg *hsotg,
++			 struct dwc2_host_chan *chan,
++			 enum dwc2_halt_status halt_status)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	struct dwc2_qh *qh = chan->qh;
++	u32 retries = min_t(u32, READ_ONCE(ddma_split_retries),
++			    PROBE_RETRIES_MAX);
++	struct dwc2_qtd *qtd;
++	bool killed = false;
++	u32 sts;
++
++	if (!p || !qh || !qh->probe_split ||
++	    halt_status == DWC2_HC_XFER_URB_DEQUEUE ||
++	    chan->halt_status == DWC2_HC_XFER_URB_DEQUEUE)
++		return halt_status;
++
++	if (!READ_ONCE(p->dead) &&
++	    (dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA)) {
++		atomic_inc(&p->wedges);
++		dwc2_probe_record(hsotg, 'W', chan->hc_num, halt_status);
++		dwc2_probe_kill(hsotg, chan->hc_num, "halt with CHENA set");
++		killed = true;
++		goto fail;
++	}
++
++	/* Only a CSPLIT can bring a STALL back through the TT: evidence, not error */
++	if (halt_status == DWC2_HC_XFER_STALL) {
++		atomic_inc(&p->stalls);
++		qh->probe_errs = 0;
++		return halt_status;
++	}
++
++	if (halt_status == DWC2_HC_XFER_COMPLETE) {
++		dma_sync_single_for_cpu(hsotg->dev, qh->desc_list_dma,
++					sizeof(struct dwc2_dma_desc),
++					DMA_FROM_DEVICE);
++		sts = qh->desc_list[0].status;
++		if (!(sts & (HOST_DMA_A | HOST_DMA_STS_MASK))) {
++			qh->probe_errs = 0;
++			return halt_status;
++		}
++	}
++
++	atomic_inc(&p->err_halts);
++	dwc2_probe_trip_check(hsotg, chan->hc_num);
++	if (++qh->probe_errs <= retries && !READ_ONCE(p->tripped))
++		return halt_status;
++
++fail:
++	/* x = raw HCINT at the halt, halt status, consecutive error count */
++	dwc2_probe_record(hsotg, 'F', chan->hc_num,
++			  (chan->hcint & 0xffff) << 16 |
++			  (halt_status & 0xff) << 8 | qh->probe_errs);
++	qh->probe_errs = 0;
++	/* The dequeue branch below skips the toggle save a normal halt does */
++	if (!killed && chan->ep_type != USB_ENDPOINT_XFER_CONTROL)
++		dwc2_hcd_save_data_toggle(hsotg, chan, chan->hc_num, NULL);
++	qtd = list_first_entry_or_null(&qh->qtd_list, struct dwc2_qtd,
++				       qtd_list_entry);
++	if (qtd) {
++		if (qtd->urb) {
++			atomic_inc(&p->failed_urbs);
++			dwc2_host_complete(hsotg, qtd, -EPROTO);
++		}
++		dwc2_hcd_qtd_unlink_and_free(hsotg, qtd, qh);
++	}
++	/* Reuse the dequeue branch: release the channel, keep other QTDs */
++	chan->halt_status = DWC2_HC_XFER_URB_DEQUEUE;
++	return DWC2_HC_XFER_URB_DEQUEUE;
++}
++
++void dwc2_ddma_probe_free_guard(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	unsigned long flags;
++	bool leak = false;
++	u32 base;
++	int i;
++
++	if (!p || !qh->probe_split || !qh->desc_list)
++		return;
++
++	base = (u32)qh->desc_list_dma & ~0x1ff;
++	spin_lock_irqsave(&hsotg->lock, flags);
++	/* After a good reset no channel runs; after a failed one trust none */
++	if (READ_ONCE(p->reset_failed))
++		leak = true;
++	for (i = 0; !READ_ONCE(p->dead) && i < hsotg->params.host_channels;
++	     i++) {
++		if (!(dwc2_readl(hsotg, HCCHAR(i)) & HCCHAR_CHENA) ||
++		    (dwc2_readl(hsotg, HCDMA(i)) & ~0x1ff) != base)
++			continue;
++		atomic_inc(&p->wedges);
++		dwc2_probe_record(hsotg, 'W', i, 0);
++		if (dwc2_probe_kill(hsotg, i, "descriptor list freed while live"))
++			leak = true;
++		break;
++	}
++	if (leak) {
++		/* The engine may still own the list: leak it instead of freeing it */
++		dwc2_probe_record(hsotg, 'L', PROBE_NO_CHAN, base);
++		qh->desc_list = NULL;
++	}
++	spin_unlock_irqrestore(&hsotg->lock, flags);
++}
++
++/* ---- debugfs ---- */
++
++struct dwc2_probe_iter {
++	struct dwc2_hsotg *hsotg;
++	u64 first, last, cur;
++};
++
++static u64 dwc2_probe_oldest(struct dwc2_ddma_probe *p)
++{
++	u64 lo = p->seq > PROBE_RING_LEN ? p->seq - PROBE_RING_LEN : 0;
++
++	return max(lo, p->clear_seq);
++}
++
++static void *dwc2_probe_ring_start(struct seq_file *m, loff_t *pos)
++{
++	struct dwc2_probe_iter *it = m->private;
++
++	if (!*pos)
++		return SEQ_START_TOKEN;
++	it->cur = it->first + *pos - 1;
++	return it->cur < it->last ? it : NULL;
++}
++
++static void *dwc2_probe_ring_next(struct seq_file *m, void *v, loff_t *pos)
++{
++	++*pos;
++	return dwc2_probe_ring_start(m, pos);
++}
++
++static void dwc2_probe_ring_stop(struct seq_file *m, void *v)
++{
++}
++
++static void dwc2_probe_ev(char *buf, size_t len, u32 hcint)
++{
++	static const char * const names[] = {
++		"XFERCOMPL", "CHHLTD", "AHBERR", "STALL", "NAK", "ACK", "NYET",
++		"XACTERR", "BBLERR", "FRMOVRUN", "DATATGLERR", "BNA",
++		"XCS_XACT", "DESC_ROLL",
++	};
++	size_t n = 0;
++	int i;
++
++	buf[0] = '\0';
++	for (i = 0; i < ARRAY_SIZE(names); i++)
++		if (hcint & BIT(i))
++			n += scnprintf(buf + n, len - n, "%s%s", n ? "|" : "",
++				       names[i]);
++	if (!n)
++		strscpy(buf, "-", len);
++}
++
++static void dwc2_probe_show_header(struct seq_file *m,
++				   struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	u64 seq, clear;
++	u32 chena = 0;
++	int i;
++
++	seq_printf(m,
++		   "params split_probe=%u schinfo=%u desc_maxp=%d retries=%u log=%u halt_us=%u trip=%u cpu=%u desc_dma=%d speed=%d\n",
++		   READ_ONCE(ddma_split_probe), READ_ONCE(ddma_split_schinfo),
++		   READ_ONCE(ddma_split_desc_maxp), READ_ONCE(ddma_split_retries),
++		   READ_ONCE(ddma_probe_log), READ_ONCE(ddma_probe_halt_us),
++		   READ_ONCE(ddma_probe_trip), READ_ONCE(ddma_probe_cpu),
++		   hsotg->params.dma_desc_enable, hsotg->params.speed);
++
++	raw_spin_lock_irq(&p->ring_lock);
++	seq = p->seq;
++	clear = p->clear_seq;
++	raw_spin_unlock_irq(&p->ring_lock);
++	seq_printf(m,
++		   "counters records=%llu overwritten=%llu split_allowed=%d split_refused=%d err_halts=%d stalls=%d failed_urbs=%d trips=%d wedges=%d kills=%d kill_fails=%d unaligned=%d tripped=%d dead=%d reset_failed=%d\n",
++		   seq - clear,
++		   seq - clear > PROBE_RING_LEN ? seq - clear - PROBE_RING_LEN : 0,
++		   atomic_read(&p->split_allowed), atomic_read(&p->split_refused),
++		   atomic_read(&p->err_halts), atomic_read(&p->stalls),
++		   atomic_read(&p->failed_urbs), atomic_read(&p->trips),
++		   atomic_read(&p->wedges), atomic_read(&p->kills),
++		   atomic_read(&p->kill_fails), atomic_read(&p->unaligned),
++		   READ_ONCE(p->tripped), READ_ONCE(p->dead),
++		   READ_ONCE(p->reset_failed));
++
++	/* A suspended port may have HCLK gated: skip the register reads */
++	if (hsotg->lx_state == DWC2_L2) {
++		seq_puts(m, "hcdmab518 skipped: port suspended\n");
++		return;
++	}
++	seq_puts(m, "hcdmab518");
++	for (i = 0; i < hsotg->params.host_channels; i++) {
++		seq_printf(m, " 0x%08x",
++			   dwc2_readl(hsotg, HSOTG_REG(0x518 + 0x20 * i)));
++		if (dwc2_readl(hsotg, HCCHAR(i)) & HCCHAR_CHENA)
++			chena |= BIT(i);
++	}
++	seq_printf(m, "\nchena_mask=0x%04x\n", chena);
++}
++
++static int dwc2_probe_ring_show(struct seq_file *m, void *v)
++{
++	struct dwc2_probe_iter *it = m->private;
++	struct dwc2_ddma_probe *p = it->hsotg->probe;
++	struct dwc2_probe_rec r;
++	char ev[160];
++	bool ok;
++
++	if (v == SEQ_START_TOKEN) {
++		dwc2_probe_show_header(m, it->hsotg);
++		return 0;
++	}
++
++	raw_spin_lock_irq(&p->ring_lock);
++	ok = it->cur >= dwc2_probe_oldest(p);
++	if (ok)
++		r = p->ring[(u32)it->cur & (PROBE_RING_LEN - 1)];
++	raw_spin_unlock_irq(&p->ring_lock);
++	if (!ok)
++		return SEQ_SKIP;
++
++	dwc2_probe_ev(ev, sizeof(ev), r.hcint);
++	seq_printf(m,
++		   "t=%llu k=%c ch=%u dev=%u ep=%u type=%s dir=%s split=%u psplit=%u ddma=%u ping=%u errst=%u hs=%u hfnum=0x%08x hcint=0x%08x ev=%s msk=0x%x hcsplt=0x%08x hcchar=0x%08x hctsiz=0x%08x hcdma=0x%08x hcdmab=0x%08x hcdmab518=0x%08x ptx=0x%08x nptx=0x%08x pq=%u:%u nq=%u:%u",
++		   r.t_ns, r.kind, r.chan, r.dev_addr, r.ep,
++		   dwc2_probe_type_name(r.type_dir),
++		   r.type_dir & PROBE_TYPE_IN ? "in" : "out",
++		   !!(r.flags & PROBE_F_SPLIT), !!(r.flags & PROBE_F_PSPLIT),
++		   !!(r.flags & PROBE_F_DDMA), !!(r.flags & PROBE_F_PING),
++		   !!(r.flags & PROBE_F_ERRSTATE), r.halt_status,
++		   r.hfnum, r.hcint, ev, r.hcintmsk, r.hcsplt, r.hcchar,
++		   r.hctsiz, r.hcdma, r.hcdmab, r.hcdmab518, r.hptxsts,
++		   r.gnptxsts,
++		   (r.hptxsts & TXSTS_QTOP_TOKEN_MASK) >> TXSTS_QTOP_TOKEN_SHIFT,
++		   (r.hptxsts & TXSTS_QTOP_CHNEP_MASK) >> TXSTS_QTOP_CHNEP_SHIFT,
++		   (r.gnptxsts & TXSTS_QTOP_TOKEN_MASK) >> TXSTS_QTOP_TOKEN_SHIFT,
++		   (r.gnptxsts & TXSTS_QTOP_CHNEP_MASK) >> TXSTS_QTOP_CHNEP_SHIFT);
++	if (r.flags & PROBE_F_DESC)
++		seq_printf(m,
++			   " ctd=%u d0=0x%08x d1=0x%08x d2=0x%08x dc=0x%08x",
++			   r.ctd, r.desc[0], r.desc[1], r.desc[2], r.desc[3]);
++	seq_printf(m, " x=0x%08x\n", r.x);
++	return 0;
++}
++
++static const struct seq_operations dwc2_probe_ring_sops = {
++	.start = dwc2_probe_ring_start,
++	.next = dwc2_probe_ring_next,
++	.stop = dwc2_probe_ring_stop,
++	.show = dwc2_probe_ring_show,
++};
++
++static int dwc2_probe_ring_open(struct inode *inode, struct file *file)
++{
++	struct dwc2_hsotg *hsotg = inode->i_private;
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	struct dwc2_probe_iter *it;
++
++	it = __seq_open_private(file, &dwc2_probe_ring_sops, sizeof(*it));
++	if (!it)
++		return -ENOMEM;
++	it->hsotg = hsotg;
++	raw_spin_lock_irq(&p->ring_lock);
++	it->first = dwc2_probe_oldest(p);
++	it->last = p->seq;
++	raw_spin_unlock_irq(&p->ring_lock);
++	return 0;
++}
++
++static ssize_t dwc2_probe_ring_write(struct file *file, const char __user *ubuf,
++				     size_t count, loff_t *ppos)
++{
++	struct seq_file *m = file->private_data;
++	struct dwc2_probe_iter *it = m->private;
++	struct dwc2_ddma_probe *p = it->hsotg->probe;
++
++	raw_spin_lock_irq(&p->ring_lock);
++	p->clear_seq = p->seq;
++	raw_spin_unlock_irq(&p->ring_lock);
++	atomic_set(&p->split_allowed, 0);
++	atomic_set(&p->split_refused, 0);
++	atomic_set(&p->err_halts, 0);
++	atomic_set(&p->failed_urbs, 0);
++	atomic_set(&p->trips, 0);
++	atomic_set(&p->wedges, 0);
++	atomic_set(&p->kills, 0);
++	atomic_set(&p->kill_fails, 0);
++	atomic_set(&p->unaligned, 0);
++	atomic_set(&p->stalls, 0);
++	return count;
++}
++
++static const struct file_operations dwc2_probe_ring_fops = {
++	.owner = THIS_MODULE,
++	.open = dwc2_probe_ring_open,
++	.read = seq_read,
++	.write = dwc2_probe_ring_write,
++	.llseek = seq_lseek,
++	.release = seq_release_private,
++};
++
++struct dwc2_probe_smp_iter {
++	struct dwc2_hsotg *hsotg;
++	u32 cur;
++};
++
++static void *dwc2_probe_smp_start(struct seq_file *m, loff_t *pos)
++{
++	struct dwc2_probe_smp_iter *it = m->private;
++	struct dwc2_probe_sampler *s = &it->hsotg->probe->smp;
++	u32 n;
++
++	if (!*pos)
++		return SEQ_START_TOKEN;
++	raw_spin_lock_irq(&s->lock);
++	n = s->n;
++	raw_spin_unlock_irq(&s->lock);
++	it->cur = *pos - 1;
++	return it->cur < n ? it : NULL;
++}
++
++static void *dwc2_probe_smp_next(struct seq_file *m, void *v, loff_t *pos)
++{
++	++*pos;
++	return dwc2_probe_smp_start(m, pos);
++}
++
++static int dwc2_probe_smp_show(struct seq_file *m, void *v)
++{
++	struct dwc2_probe_smp_iter *it = m->private;
++	struct dwc2_probe_sampler *s = &it->hsotg->probe->smp;
++	struct dwc2_probe_sample x = {};
++	const char *state, *reason;
++	u64 t0, period, dur, ticks, ov;
++	int chan, cpu, st;
++	bool global, halt, nob;
++	u32 n, mask;
++
++	raw_spin_lock_irq(&s->lock);
++	st = s->state;
++	reason = s->stop_reason;
++	chan = s->chan;
++	cpu = s->cpu;
++	global = s->global;
++	halt = s->stop_on_halt;
++	nob = s->no_dmab;
++	mask = s->typemask;
++	t0 = s->t0;
++	period = s->period_ns;
++	dur = s->dur_ns;
++	ticks = s->ticks;
++	ov = s->overruns;
++	n = s->n;
++	if (v != SEQ_START_TOKEN && it->cur < n)
++		x = s->buf[it->cur];
++	raw_spin_unlock_irq(&s->lock);
++
++	if (v == SEQ_START_TOKEN) {
++		state = dwc2_probe_smp_names[st];
++		if (st == SMP_DONE && reason && !strcmp(reason, "full"))
++			state = "full";
++		seq_printf(m,
++			   "state=%s chan=%d mode=%s cpu=%d t0=%llu period_ns=%llu dur_ns=%llu samples=%u ticks=%llu overruns=%llu stop_reason=%s h=%d nob=%d m=0x%x\n",
++			   state, global ? -1 : chan, global ? "g" : "chan",
++			   cpu, t0, period, dur, n, ticks, ov,
++			   reason ? reason : "-", halt, nob, mask);
++		seq_puts(m, global ? "# dt_ns hfnum ptx nptx haint\n" :
++			 "# dt_ns hfnum hcchar hcsplt hcint hctsiz hcdma hcdmab hcdmab518 ptx nptx\n");
++		return 0;
++	}
++	if (it->cur >= n)
++		return SEQ_SKIP;
++
++	if (global)
++		seq_printf(m, "%u 0x%08x 0x%08x 0x%08x 0x%08x\n", x.dt_ns,
++			   x.hfnum, x.ptx, x.nptx, x.hcint);
++	else
++		seq_printf(m,
++			   "%u 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n",
++			   x.dt_ns, x.hfnum, x.hcchar, x.hcsplt, x.hcint,
++			   x.hctsiz, x.hcdma, x.hcdmab, x.hcdmab518, x.ptx,
++			   x.nptx);
++	return 0;
++}
++
++static const struct seq_operations dwc2_probe_smp_sops = {
++	.start = dwc2_probe_smp_start,
++	.next = dwc2_probe_smp_next,
++	.stop = dwc2_probe_ring_stop,
++	.show = dwc2_probe_smp_show,
++};
++
++static int dwc2_probe_smp_open(struct inode *inode, struct file *file)
++{
++	struct dwc2_probe_smp_iter *it;
++
++	it = __seq_open_private(file, &dwc2_probe_smp_sops, sizeof(*it));
++	if (!it)
++		return -ENOMEM;
++	it->hsotg = inode->i_private;
++	return 0;
++}
++
++static int dwc2_probe_parse_u32(const char *tok, u32 *val)
++{
++	return tok ? kstrtou32(tok, 0, val) : -EINVAL;
++}
++
++static ssize_t dwc2_probe_smp_write(struct file *file, const char __user *ubuf,
++				    size_t count, loff_t *ppos)
++{
++	struct seq_file *m = file->private_data;
++	struct dwc2_probe_smp_iter *it = m->private;
++	struct dwc2_hsotg *hsotg = it->hsotg;
++	struct dwc2_probe_sampler *s = &hsotg->probe->smp;
++	u32 dur, period = PROBE_PERIOD_DEF_US, mask = 0xf, chan = 0;
++	bool is_auto = false, global = false, halt = false, nob = false;
++	unsigned int cpu = READ_ONCE(ddma_probe_cpu);
++	char buf[128], *cur, *tok;
++	int ret;
++
++	if (count >= sizeof(buf))
++		return -EINVAL;
++	if (copy_from_user(buf, ubuf, count))
++		return -EFAULT;
++	buf[count] = '\0';
++	cur = strim(buf);
++
++	tok = strsep(&cur, " \t");
++	if (!tok || !*tok)
++		return -EINVAL;
++	if (!strcmp(tok, "stop")) {
++		dwc2_probe_smp_quiesce(s, "stop");
++		return count;
++	}
++
++	if (!strcmp(tok, "auto"))
++		is_auto = true;
++	else if (!strcmp(tok, "g"))
++		global = true;
++	else if (kstrtou32(tok, 0, &chan) || chan >= hsotg->params.host_channels)
++		return -EINVAL;
++
++	ret = dwc2_probe_parse_u32(strsep(&cur, " \t"), &dur);
++	if (ret || !dur || dur > PROBE_DUR_MAX_US)
++		return -EINVAL;
++	while ((tok = strsep(&cur, " \t"))) {
++		if (!*tok)
++			continue;
++		if (!strcmp(tok, "h"))
++			halt = !global;
++		else if (!strcmp(tok, "nob"))
++			nob = true;
++		else if (!strncmp(tok, "m=", 2) && is_auto)
++			ret = kstrtou32(tok + 2, 0, &mask);
++		else
++			ret = kstrtou32(tok, 0, &period);
++		if (ret)
++			return ret;
++	}
++	if (period < PROBE_PERIOD_MIN_US || period > dur || !(mask & 0xf))
++		return -EINVAL;
++	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
++		return -EINVAL;
++
++	dwc2_probe_smp_quiesce(s, "stop");
++	raw_spin_lock_irq(&s->lock);
++	s->global = global;
++	s->chan = global ? 0 : chan;
++	s->stop_on_halt = halt;
++	s->no_dmab = nob;
++	s->halt_seen = false;
++	s->typemask = mask;
++	s->cpu = cpu;
++	s->period_ns = (u64)period * NSEC_PER_USEC;
++	s->dur_ns = (u64)dur * NSEC_PER_USEC;
++	s->n = 0;
++	s->have_prev = false;
++	s->ticks = 0;
++	s->overruns = 0;
++	s->t0 = 0;
++	s->stop_reason = NULL;
++	s->state = is_auto ? SMP_ARMED : SMP_STARTING;
++	raw_spin_unlock_irq(&s->lock);
++
++	if (!is_auto && smp_call_function_single(cpu, dwc2_probe_arm_fn, s, 1)) {
++		raw_spin_lock_irq(&s->lock);
++		dwc2_probe_smp_stop(s, "ipi-fail");
++		raw_spin_unlock_irq(&s->lock);
++		return -ENXIO;
++	}
++	return count;
++}
++
++static const struct file_operations dwc2_probe_smp_fops = {
++	.owner = THIS_MODULE,
++	.open = dwc2_probe_smp_open,
++	.read = seq_read,
++	.write = dwc2_probe_smp_write,
++	.llseek = seq_lseek,
++	.release = seq_release_private,
++};
++
++static ssize_t dwc2_probe_ctl_write(struct file *file, const char __user *ubuf,
++				    size_t count, loff_t *ppos)
++{
++	struct dwc2_hsotg *hsotg = file->private_data;
++	struct dwc2_ddma_probe *p = hsotg->probe;
++	unsigned long flags;
++	char buf[16];
++
++	if (count >= sizeof(buf))
++		return -EINVAL;
++	if (copy_from_user(buf, ubuf, count))
++		return -EFAULT;
++	buf[count] = '\0';
++
++	if (sysfs_streq(buf, "kill")) {
++		spin_lock_irqsave(&hsotg->lock, flags);
++		dwc2_probe_kill(hsotg, PROBE_NO_CHAN, "manual");
++		spin_unlock_irqrestore(&hsotg->lock, flags);
++	} else if (sysfs_streq(buf, "untrip")) {
++		spin_lock_irqsave(&hsotg->lock, flags);
++		WRITE_ONCE(p->tripped, false);
++		p->trip_n = 0;
++		p->trip_t0 = ktime_get_ns();
++		spin_unlock_irqrestore(&hsotg->lock, flags);
++	} else {
++		return -EINVAL;
++	}
++	return count;
++}
++
++static const struct file_operations dwc2_probe_ctl_fops = {
++	.owner = THIS_MODULE,
++	.open = simple_open,
++	.write = dwc2_probe_ctl_write,
++	.llseek = noop_llseek,
++};
++
++void dwc2_ddma_probe_debugfs(struct dwc2_hsotg *hsotg, struct dentry *root)
++{
++	if (!hsotg->probe)
++		return;
++	debugfs_create_file("ddma_probe", 0600, root, hsotg,
++			    &dwc2_probe_ring_fops);
++	debugfs_create_file("ddma_sampler", 0600, root, hsotg,
++			    &dwc2_probe_smp_fops);
++	debugfs_create_file("ddma_probe_ctl", 0200, root, hsotg,
++			    &dwc2_probe_ctl_fops);
++}
++
++/* ---- lifetime ---- */
++
++void dwc2_ddma_probe_init(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_ddma_probe *p;
++
++	p = kzalloc_obj(*p, GFP_KERNEL);
++	if (!p)
++		goto fail;
++	p->ring = kvcalloc(PROBE_RING_LEN, sizeof(*p->ring), GFP_KERNEL);
++	p->smp.buf = vzalloc(array_size(PROBE_SAMPLES, sizeof(*p->smp.buf)));
++	if (!p->ring || !p->smp.buf)
++		goto fail;
++
++	raw_spin_lock_init(&p->ring_lock);
++	raw_spin_lock_init(&p->smp.lock);
++	hrtimer_setup(&p->smp.timer, dwc2_probe_sample_fn, CLOCK_MONOTONIC,
++		      HRTIMER_MODE_REL_PINNED_HARD);
++	INIT_CSD(&p->smp.csd, dwc2_probe_arm_fn, &p->smp);
++	p->smp.hsotg = hsotg;
++	p->smp.typemask = 0xf;
++	hsotg->probe = p;
++	dev_warn(hsotg->dev, "ddma_probe: LAB ONLY descriptor DMA split probe built in\n");
++	return;
++
++fail:
++	if (p) {
++		vfree(p->smp.buf);
++		kvfree(p->ring);
++		kfree(p);
++	}
++	dev_err(hsotg->dev, "ddma_probe: no memory, probe disabled\n");
++}
++
++void dwc2_ddma_probe_exit(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_ddma_probe *p = hsotg->probe;
++
++	if (!p)
++		return;
++	dwc2_probe_smp_quiesce(&p->smp, "exit");
++	hsotg->probe = NULL;
++	vfree(p->smp.buf);
++	kvfree(p->ring);
++	kfree(p);
++}
+diff --git a/drivers/usb/dwc2/ddma_probe.h b/drivers/usb/dwc2/ddma_probe.h
+new file mode 100644
+index 0000000..16dff0d
+--- /dev/null
++++ b/drivers/usb/dwc2/ddma_probe.h
+@@ -0,0 +1,113 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
++/*
++ * ddma_probe.h - LAB ONLY hooks that let split QHs run in descriptor DMA
++ */
++#ifndef __DWC2_DDMA_PROBE_H__
++#define __DWC2_DDMA_PROBE_H__
++
++struct dentry;
++
++#ifdef CONFIG_USB_DWC2_DDMA_PROBE
++
++void dwc2_ddma_probe_init(struct dwc2_hsotg *hsotg);
++void dwc2_ddma_probe_exit(struct dwc2_hsotg *hsotg);
++void dwc2_ddma_probe_debugfs(struct dwc2_hsotg *hsotg, struct dentry *root);
++bool dwc2_ddma_probe_allow(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
++u8 dwc2_ddma_probe_schinfo(struct dwc2_qh *qh, u8 schinfo);
++int dwc2_ddma_probe_desc_len(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan, int len);
++void dwc2_ddma_probe_start(struct dwc2_hsotg *hsotg,
++			   struct dwc2_host_chan *chan);
++void dwc2_ddma_probe_started(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan);
++void dwc2_ddma_probe_irq(struct dwc2_hsotg *hsotg, int chnum, u32 hcintraw,
++			 u32 hcintmsk);
++void dwc2_ddma_probe_dequeue(struct dwc2_hsotg *hsotg,
++			     struct dwc2_host_chan *chan);
++void dwc2_ddma_probe_wait_halt(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan);
++bool dwc2_ddma_probe_unaligned(struct dwc2_hsotg *hsotg,
++			       struct dwc2_host_chan *chan,
++			       struct dwc2_qh *qh);
++enum dwc2_halt_status
++dwc2_ddma_probe_complete(struct dwc2_hsotg *hsotg,
++			 struct dwc2_host_chan *chan,
++			 enum dwc2_halt_status halt_status);
++void dwc2_ddma_probe_free_guard(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
++
++static inline bool dwc2_ddma_probe_split_qh(struct dwc2_qh *qh)
++{
++	return qh->probe_split;
++}
++
++/* True only for a channel the probe let through in descriptor DMA mode */
++static inline bool dwc2_ddma_probe_split_chan(struct dwc2_hsotg *hsotg,
++					      struct dwc2_host_chan *chan)
++{
++	return hsotg->params.dma_desc_enable && chan->do_split;
++}
++
++#else /* CONFIG_USB_DWC2_DDMA_PROBE */
++
++static inline void dwc2_ddma_probe_init(struct dwc2_hsotg *hsotg) {}
++static inline void dwc2_ddma_probe_exit(struct dwc2_hsotg *hsotg) {}
++static inline void dwc2_ddma_probe_debugfs(struct dwc2_hsotg *hsotg,
++					   struct dentry *root) {}
++static inline bool dwc2_ddma_probe_allow(struct dwc2_hsotg *hsotg,
++					 struct dwc2_qh *qh)
++{
++	return false;
++}
++
++static inline u8 dwc2_ddma_probe_schinfo(struct dwc2_qh *qh, u8 schinfo)
++{
++	return schinfo;
++}
++
++static inline int dwc2_ddma_probe_desc_len(struct dwc2_hsotg *hsotg,
++					   struct dwc2_host_chan *chan, int len)
++{
++	return len;
++}
++
++static inline void dwc2_ddma_probe_start(struct dwc2_hsotg *hsotg,
++					 struct dwc2_host_chan *chan) {}
++static inline void dwc2_ddma_probe_started(struct dwc2_hsotg *hsotg,
++					   struct dwc2_host_chan *chan) {}
++static inline void dwc2_ddma_probe_irq(struct dwc2_hsotg *hsotg, int chnum,
++				       u32 hcintraw, u32 hcintmsk) {}
++static inline void dwc2_ddma_probe_dequeue(struct dwc2_hsotg *hsotg,
++					   struct dwc2_host_chan *chan) {}
++static inline void dwc2_ddma_probe_wait_halt(struct dwc2_hsotg *hsotg,
++					     struct dwc2_host_chan *chan) {}
++static inline bool dwc2_ddma_probe_unaligned(struct dwc2_hsotg *hsotg,
++					     struct dwc2_host_chan *chan,
++					     struct dwc2_qh *qh)
++{
++	return false;
++}
++
++static inline enum dwc2_halt_status
++dwc2_ddma_probe_complete(struct dwc2_hsotg *hsotg,
++			 struct dwc2_host_chan *chan,
++			 enum dwc2_halt_status halt_status)
++{
++	return halt_status;
++}
++
++static inline void dwc2_ddma_probe_free_guard(struct dwc2_hsotg *hsotg,
++					      struct dwc2_qh *qh) {}
++
++static inline bool dwc2_ddma_probe_split_qh(struct dwc2_qh *qh)
++{
++	return false;
++}
++
++static inline bool dwc2_ddma_probe_split_chan(struct dwc2_hsotg *hsotg,
++					      struct dwc2_host_chan *chan)
++{
++	return false;
++}
++
++#endif /* CONFIG_USB_DWC2_DDMA_PROBE */
++#endif /* __DWC2_DDMA_PROBE_H__ */
+diff --git a/drivers/usb/dwc2/debugfs.c b/drivers/usb/dwc2/debugfs.c
+index 3116ac7..fa4c529 100644
+--- a/drivers/usb/dwc2/debugfs.c
++++ b/drivers/usb/dwc2/debugfs.c
+@@ -12,6 +12,7 @@
+ #include <linux/uaccess.h>
+ 
+ #include "core.h"
++#include "hcd.h"
+ #include "debug.h"
+ 
+ #if IS_ENABLED(CONFIG_USB_DWC2_PERIPHERAL) || \
+@@ -799,6 +800,7 @@ int dwc2_debugfs_init(struct dwc2_hsotg *hsotg)
+ 	hsotg->regset->base = hsotg->regs;
+ 
+ 	debugfs_create_regset32("regdump", 0444, root, hsotg->regset);
++	dwc2_ddma_probe_debugfs(hsotg, root);
+ 
+ 	return 0;
+ err:
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index cb1df0a..34df15d 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -809,6 +809,7 @@ void dwc2_hc_halt(struct dwc2_hsotg *hsotg, struct dwc2_host_chan *chan,
+ 		 * pending. Handling another interrupt could cause a crash due
+ 		 * to the QTD and QH state.
+ 		 */
++		dwc2_ddma_probe_dequeue(hsotg, chan);
+ 		dwc2_writel(hsotg, ~hcintmsk, HCINT(chan->hc_num));
+ 
+ 		/*
+@@ -1355,6 +1356,7 @@ static void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
+ 
+ 		hcsplt |= HCSPLT_SPLTENA;
+ 		dwc2_writel(hsotg, hcsplt, HCSPLT(chan->hc_num));
++		dwc2_ddma_probe_start(hsotg, chan);
+ 	}
+ 
+ 	hcchar = dwc2_readl(hsotg, HCCHAR(chan->hc_num));
+@@ -1377,6 +1379,7 @@ static void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
+ 			 HCCHAR_MULTICNT_SHIFT);
+ 
+ 	dwc2_writel(hsotg, hcchar, HCCHAR(chan->hc_num));
++	dwc2_ddma_probe_started(hsotg, chan);
+ 	if (dbg_hc(chan))
+ 		dev_vdbg(hsotg->dev, "Wrote %08x to HCCHAR(%d)\n", hcchar,
+ 			 chan->hc_num);
+@@ -1407,10 +1410,11 @@ static void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
+ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
+ 				 struct dwc2_host_chan *chan)
+ {
++	u32 ec_mc = chan->multi_count;
+ 	u32 hcchar;
+ 	u32 hctsiz = 0;
+ 
+-	if (chan->do_ping)
++	if (chan->do_ping && !dwc2_ddma_probe_split_chan(hsotg, chan))
+ 		hctsiz |= TSIZ_DOPNG;
+ 
+ 	if (chan->ep_type == USB_ENDPOINT_XFER_ISOC)
+@@ -1423,6 +1427,12 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
+ 	/* 0 - 1 descriptor, 1 - 2 descriptors, etc */
+ 	hctsiz |= (chan->ntd - 1) << TSIZ_NTD_SHIFT & TSIZ_NTD_MASK;
+ 
++	/* Lab probe: a non-periodic split channel gets a fixed, not a stale, value */
++	if (dwc2_ddma_probe_split_chan(hsotg, chan) &&
++	    (chan->ep_type == USB_ENDPOINT_XFER_CONTROL ||
++	     chan->ep_type == USB_ENDPOINT_XFER_BULK))
++		chan->schinfo = 0xff;
++
+ 	/* Non-zero only for high-speed interrupt endpoints */
+ 	hctsiz |= chan->schinfo << TSIZ_SCHINFO_SHIFT & TSIZ_SCHINFO_MASK;
+ 
+@@ -1445,10 +1455,21 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
+ 		dev_vdbg(hsotg->dev, "Wrote %pad to HCDMA(%d)\n",
+ 			 &chan->desc_list_addr, chan->hc_num);
+ 
++	if (dwc2_ddma_probe_split_chan(hsotg, chan)) {
++		u32 hcsplt = dwc2_readl(hsotg, HCSPLT(chan->hc_num));
++
++		/* Lab probe: always start with a start-split */
++		hcsplt &= ~HCSPLT_COMPSPLT;
++		dwc2_writel(hsotg, hcsplt | HCSPLT_SPLTENA, HCSPLT(chan->hc_num));
++		dwc2_ddma_probe_start(hsotg, chan);
++		/* As buffer DMA does: 3 immediate retries for a periodic split */
++		if (chan->ep_type == USB_ENDPOINT_XFER_INT)
++			ec_mc = 3;
++	}
++
+ 	hcchar = dwc2_readl(hsotg, HCCHAR(chan->hc_num));
+ 	hcchar &= ~HCCHAR_MULTICNT_MASK;
+-	hcchar |= chan->multi_count << HCCHAR_MULTICNT_SHIFT &
+-		  HCCHAR_MULTICNT_MASK;
++	hcchar |= ec_mc << HCCHAR_MULTICNT_SHIFT & HCCHAR_MULTICNT_MASK;
+ 
+ 	if (hcchar & HCCHAR_CHDIS)
+ 		dev_warn(hsotg->dev,
+@@ -1465,6 +1486,7 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
+ 			 HCCHAR_MULTICNT_SHIFT);
+ 
+ 	dwc2_writel(hsotg, hcchar, HCCHAR(chan->hc_num));
++	dwc2_ddma_probe_started(hsotg, chan);
+ 	if (dbg_hc(chan))
+ 		dev_vdbg(hsotg->dev, "Wrote %08x to HCCHAR(%d)\n", hcchar,
+ 			 chan->hc_num);
+@@ -1692,6 +1714,7 @@ static void dwc2_hcd_cleanup_channels(struct dwc2_hsotg *hsotg)
+ 			/* Halt the channel */
+ 			hcchar |= HCCHAR_CHDIS;
+ 			dwc2_writel(hsotg, hcchar, HCCHAR(i));
++			dwc2_ddma_probe_wait_halt(hsotg, channel);
+ 		}
+ 
+ 		dwc2_hc_cleanup(hsotg, channel);
+@@ -1925,7 +1948,7 @@ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
+ 		dwc2_dump_channel_info(hsotg, qh->channel);
+ 
+ 		/* The QTD is in process (it has been assigned to a channel) */
+-		if (hsotg->flags.b.port_connect_status)
++		if (hsotg->flags.b.port_connect_status) {
+ 			/*
+ 			 * If still connected (i.e. in host mode), halt the
+ 			 * channel so it can be used for other transfers. If
+@@ -1935,6 +1958,8 @@ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
+ 			 */
+ 			dwc2_hc_halt(hsotg, qh->channel,
+ 				     DWC2_HC_XFER_URB_DEQUEUE);
++			dwc2_ddma_probe_wait_halt(hsotg, qh->channel);
++		}
+ 	}
+ 
+ 	/*
+@@ -2628,9 +2653,12 @@ static int dwc2_assign_and_init_hc(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	if (hsotg->params.host_dma && qh->do_split &&
+ 	    chan->ep_is_in && (chan->xfer_dma & 0x3)) {
+ 		dev_vdbg(hsotg->dev, "Non-aligned buffer\n");
+-		if (dwc2_alloc_split_dma_aligned_buf(hsotg, qh, chan)) {
+-			dev_err(hsotg->dev,
+-				"Failed to allocate memory to handle non-aligned buffer\n");
++		if (dwc2_ddma_probe_unaligned(hsotg, chan, qh) ||
++		    dwc2_alloc_split_dma_aligned_buf(hsotg, qh, chan)) {
++			/* The lab probe records its refusal once per QH instead */
++			if (!dwc2_ddma_probe_split_chan(hsotg, chan))
++				dev_err(hsotg->dev,
++					"Failed to allocate memory to handle non-aligned buffer\n");
+ 			/* Add channel back to free list */
+ 			chan->align_buf = 0;
+ 			chan->multi_count = 0;
+@@ -5348,6 +5376,7 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 	 * allocates the DMA buffer pool, registers the USB bus and calls
+ 	 * hcd_start method. The IRQ line is owned by the common handler.
+ 	 */
++	dwc2_ddma_probe_init(hsotg);
+ 	retval = usb_add_hcd(hcd, 0, 0);
+ 	if (retval < 0)
+ 		goto error4;
+@@ -5364,6 +5393,7 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 	/* usb_add_hcd() leaves HW_ACCESSIBLE set; fence the handler first */
+ 	WRITE_ONCE(hsotg->priv, NULL);
+ 	synchronize_irq(hsotg->irq);
++	dwc2_ddma_probe_exit(hsotg);
+ 	kmem_cache_destroy(hsotg->unaligned_cache);
+ 	kmem_cache_destroy(hsotg->desc_hsisoc_cache);
+ 	kmem_cache_destroy(hsotg->desc_gen_cache);
+@@ -5410,6 +5440,7 @@ void dwc2_hcd_remove(struct dwc2_hsotg *hsotg)
+ 	/* Stop the common handler dispatching to the HCD before it is freed */
+ 	WRITE_ONCE(hsotg->priv, NULL);
+ 	synchronize_irq(hsotg->irq);
++	dwc2_ddma_probe_exit(hsotg);
+ 
+ 	kmem_cache_destroy(hsotg->unaligned_cache);
+ 	kmem_cache_destroy(hsotg->desc_hsisoc_cache);
+diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
+index b7254d9..484991b 100644
+--- a/drivers/usb/dwc2/hcd.h
++++ b/drivers/usb/dwc2/hcd.h
+@@ -302,6 +302,9 @@ struct dwc2_hs_transfer_time {
+  * @want_wait:          We should wait before re-queuing; only matters for non-
+  *                      periodic transfers and is ignored for periodic ones.
+  * @wait_timer_cancel:  Set to true to cancel the wait_timer.
++ * @probe_split:        LAB ONLY: split QH let through to descriptor DMA
++ * @probe_errs:         LAB ONLY: consecutive error halts of that QH
++ * @probe_unaligned:    LAB ONLY: an unaligned split IN was already recorded
+  *
+  * @tt_buffer_dirty:	True if EP's TT buffer is not clean.
+  * A Queue Head (QH) holds the static characteristics of an endpoint and
+@@ -348,6 +351,11 @@ struct dwc2_qh {
+ 	unsigned schedule_low_speed:1;
+ 	unsigned want_wait:1;
+ 	unsigned wait_timer_cancel:1;
++#ifdef CONFIG_USB_DWC2_DDMA_PROBE
++	unsigned probe_split:1;
++	unsigned probe_unaligned:1;
++	u8 probe_errs;
++#endif
+ };
+ 
+ /**
+@@ -784,4 +792,6 @@ int dwc2_host_get_speed(struct dwc2_hsotg *hsotg, void *context);
+ void dwc2_host_complete(struct dwc2_hsotg *hsotg, struct dwc2_qtd *qtd,
+ 			int status);
+ 
++#include "ddma_probe.h"
++
+ #endif /* __DWC2_HCD_H__ */
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 30ea50b..6a69654 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -51,7 +51,9 @@ static u16 dwc2_max_desc_num(struct dwc2_qh *qh)
+ 
+ static u16 dwc2_frame_incr_val(struct dwc2_qh *qh)
+ {
+-	return qh->dev_speed == USB_SPEED_HIGH ?
++	/* A split QH's host_interval is in uframes, like a high-speed QH's */
++	return (qh->dev_speed == USB_SPEED_HIGH ||
++		dwc2_ddma_probe_split_qh(qh)) ?
+ 	       (qh->host_interval + 8 - 1) / 8 : qh->host_interval;
+ }
+ 
+@@ -259,6 +261,8 @@ static void dwc2_update_frame_list(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 	} else {
+ 		chan->schinfo = 0xff;
+ 	}
++	if (dwc2_ddma_probe_split_qh(qh))
++		chan->schinfo = dwc2_ddma_probe_schinfo(qh, chan->schinfo);
+ }
+ 
+ static void dwc2_release_channel_ddma(struct dwc2_hsotg *hsotg,
+@@ -315,7 +319,7 @@ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 	unsigned long flags;
+ 	int retval;
+ 
+-	if (qh->do_split) {
++	if (qh->do_split && !dwc2_ddma_probe_allow(hsotg, qh)) {
+ 		dev_err(hsotg->dev,
+ 			"SPLIT Transfers are not supported in Descriptor DMA mode.\n");
+ 		retval = -EINVAL;
+@@ -364,6 +368,7 @@ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	unsigned long flags;
+ 	bool last = false;
+ 
++	dwc2_ddma_probe_free_guard(hsotg, qh);
+ 	dwc2_desc_list_free(hsotg, qh);
+ 
+ 	/*
+@@ -671,6 +676,7 @@ static void dwc2_fill_host_dma_desc(struct dwc2_hsotg *hsotg,
+ 
+ 	if (len > HOST_DMA_NBYTES_LIMIT - (chan->max_packet - 1))
+ 		len = HOST_DMA_NBYTES_LIMIT - (chan->max_packet - 1);
++	len = dwc2_ddma_probe_desc_len(hsotg, chan, len);
+ 
+ 	if (chan->ep_is_in) {
+ 		int num_packets;
+@@ -1250,7 +1256,8 @@ static void dwc2_complete_non_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 			dwc2_hcd_save_data_toggle(hsotg, chan, chnum, NULL);
+ 	}
+ 
+-	if (halt_status == DWC2_HC_XFER_COMPLETE) {
++	if (halt_status == DWC2_HC_XFER_COMPLETE &&
++	    !dwc2_ddma_probe_split_chan(hsotg, chan)) {
+ 		if (chan->hcint & HCINTMSK_NYET) {
+ 			/*
+ 			 * Got a NYET on the last transaction of the transfer.
+@@ -1287,6 +1294,7 @@ void dwc2_hcd_complete_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 	int continue_isoc_xfer = 0;
+ 	enum dwc2_transaction_type tr_type;
+ 
++	halt_status = dwc2_ddma_probe_complete(hsotg, chan, halt_status);
+ 	if (chan->ep_type == USB_ENDPOINT_XFER_ISOC) {
+ 		dwc2_complete_isoc_xfer_ddma(hsotg, chan, halt_status);
+ 
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index a1a5988..83acb1a 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -1905,6 +1905,11 @@ static void dwc2_hc_chhltd_intr_dma(struct dwc2_hsotg *hsotg,
+ 		dwc2_hc_ahberr_intr(hsotg, chan, chnum, qtd);
+ 	} else if (chan->hcint & HCINTMSK_BBLERR) {
+ 		dwc2_hc_babble_intr(hsotg, chan, chnum, qtd);
++	} else if (dwc2_ddma_probe_split_chan(hsotg, chan)) {
++		/* Lab probe: other halts go to the DDMA completion, not split handlers */
++		dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
++		dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
++					    DWC2_HC_XFER_XACT_ERR);
+ 	} else if (chan->hcint & HCINTMSK_FRMOVRUN) {
+ 		dwc2_hc_frmovrun_intr(hsotg, chan, chnum, qtd);
+ 	} else if (!out_nak_enh) {
+@@ -2045,6 +2050,7 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 	hcintraw = dwc2_readl(hsotg, HCINT(chnum));
+ 	hcintmsk = dwc2_readl(hsotg, HCINTMSK(chnum));
+ 	hcint = hcintraw & hcintmsk;
++	dwc2_ddma_probe_irq(hsotg, chnum, hcintraw, hcintmsk);
+ 	dwc2_writel(hsotg, hcint, HCINT(chnum));
+ 
+ 	if (!chan) {
+diff --git a/drivers/usb/dwc2/params.c b/drivers/usb/dwc2/params.c
+index e5243fc..80fbafc 100644
+--- a/drivers/usb/dwc2/params.c
++++ b/drivers/usb/dwc2/params.c
+@@ -1055,23 +1055,28 @@ module_param(fs_ddma, bool, 0644);
+ MODULE_PARM_DESC(fs_ddma,
+ 		 "Limit all host-only dwc2 cores to full speed with descriptor DMA (no SOF interrupts); read at probe, rebind the device to apply a change");
+ 
++static const char *dwc2_ddma_unusable(struct dwc2_hsotg *hsotg)
++{
++	if (!hsotg->params.host_dma)
++		return "host DMA disabled";
++	if (!hsotg->hw_params.dma_desc_enable)
++		return "no descriptor DMA in GHWCFG4";
++	if (hsotg->hw_params.snpsid < DWC2_CORE_REV_2_90a)
++		return "core older than 2.90a";
++	return NULL;
++}
++
+ static void dwc2_set_fs_ddma(struct dwc2_hsotg *hsotg)
+ {
+-	struct dwc2_hw_params *hw = &hsotg->hw_params;
+ 	struct dwc2_core_params *p = &hsotg->params;
+-	const char *why = NULL;
++	const char *why;
+ 
+ 	/* Writable at runtime; sampled once per probe */
+ 	if (!READ_ONCE(fs_ddma) || hsotg->dr_mode != USB_DR_MODE_HOST)
+ 		return;
+ 
+ 	/* Without descriptor DMA the speed cap alone only costs bandwidth */
+-	if (!p->host_dma)
+-		why = "host DMA disabled";
+-	else if (!hw->dma_desc_enable)
+-		why = "no descriptor DMA in GHWCFG4";
+-	else if (hw->snpsid < DWC2_CORE_REV_2_90a)
+-		why = "core older than 2.90a";
++	why = dwc2_ddma_unusable(hsotg);
+ 	if (why) {
+ 		dev_warn(hsotg->dev, "fs_ddma ignored: %s\n", why);
+ 		return;
+@@ -1084,6 +1089,35 @@ static void dwc2_set_fs_ddma(struct dwc2_hsotg *hsotg)
+ 		 p->speed == DWC2_SPEED_PARAM_FULL ? "full" : "low");
+ }
+ 
++#ifdef CONFIG_USB_DWC2_DDMA_PROBE
++static bool ddma_force;
++module_param(ddma_force, bool, 0644);
++MODULE_PARM_DESC(ddma_force,
++		 "LAB ONLY: descriptor DMA on host-only cores at the configured speed; read at probe");
++
++static void dwc2_set_ddma_force(struct dwc2_hsotg *hsotg)
++{
++	const char *why;
++
++	if (!READ_ONCE(ddma_force) || hsotg->dr_mode != USB_DR_MODE_HOST)
++		return;
++	if (READ_ONCE(fs_ddma)) {
++		dev_warn(hsotg->dev, "ddma_force ignored: fs_ddma set\n");
++		return;
++	}
++	why = dwc2_ddma_unusable(hsotg);
++	if (why) {
++		dev_warn(hsotg->dev, "ddma_force ignored: %s\n", why);
++		return;
++	}
++	hsotg->params.dma_desc_enable = true;
++	dev_warn(hsotg->dev, "ddma_force: LAB ONLY descriptor DMA at speed param %d\n",
++		 hsotg->params.speed);
++}
++#else
++static inline void dwc2_set_ddma_force(struct dwc2_hsotg *hsotg) {}
++#endif
++
+ typedef void (*set_params_cb)(struct dwc2_hsotg *data);
+ 
+ int dwc2_init_params(struct dwc2_hsotg *hsotg)
+@@ -1112,6 +1146,7 @@ int dwc2_init_params(struct dwc2_hsotg *hsotg)
+ 		return ret;
+ 
+ 	dwc2_set_fs_ddma(hsotg);
++	dwc2_set_ddma_force(hsotg);
+ 	dwc2_check_params(hsotg);
+ 
+ 	return 0;
+-- 
+2.53.0
+

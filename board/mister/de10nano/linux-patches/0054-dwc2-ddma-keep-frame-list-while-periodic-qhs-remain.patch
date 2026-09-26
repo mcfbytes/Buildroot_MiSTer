@@ -1,0 +1,114 @@
+From 82c3e126868f1e18bde6dac31631ad086bdd36d9 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 15:05:01 -0500
+Subject: [PATCH 1/6] usb: dwc2: hcd_ddma: keep the frame list while periodic
+ QHs remain
+
+In descriptor DMA mode the frame list and HCFG.PerSchedEna are set up
+when the first periodic QH is created, and dwc2_hcd_qh_free_ddma() is
+meant to tear them down again when the last one is freed. The test it
+uses for "last" is
+
+	(hsotg->params.uframe_sched || !hsotg->periodic_channels)
+
+uframe_sched is true by default, so the frame list is freed and periodic
+scheduling disabled as soon as any periodic QH goes away. Descriptor DMA
+refuses split transfers, so this is hit on a full-speed root port (a
+core limited to full speed, or dma_desc_fs_enable) with more than one
+periodic endpoint: for example when one of two full-speed HID devices is
+unplugged, or when a composite device disables one of its interrupt or
+isochronous endpoints on an altsetting change.
+
+The frame list is only ever allocated in dwc2_hcd_qh_init_ddma(), so the
+surviving periodic QHs are left with hsotg->frame_list == NULL:
+dwc2_update_frame_list() logs an error and returns, and with PerSchedEna
+clear their channels are not serviced again until a new periodic
+endpoint is set up.
+
+Without uframe_sched the test is not right either: periodic_channels
+counts bandwidth reservations, which are dropped a few ms after a QH
+goes idle, while the QH (and its need for the frame list) lives until
+the endpoint is disabled. periodic_qh_count cannot be used for the same
+reason, as idle QHs are unlinked from the schedule.
+
+Count the periodic QHs that hold descriptor DMA resources instead, and
+tear the frame list down only when that count drops to zero.
+
+Fixes: 20f2eb9c4cf8 ("staging: dwc2: add microframe scheduler from downstream Pi kernel")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h     |  3 +++
+ drivers/usb/dwc2/hcd_ddma.c | 13 +++++++++----
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index 767251a..88e47d4 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -997,6 +997,8 @@ struct dwc2_hregs_backup {
+  * @frame_list:         Frame list
+  * @frame_list_dma:     Frame list DMA address
+  * @frame_list_sz:      Frame list size
++ * @frame_list_users:   Number of periodic QHs holding descriptor DMA
++ *                      resources. The frame list is freed when it drops to 0.
+  * @desc_gen_cache:     Kmem cache for generic descriptors
+  * @desc_hsisoc_cache:  Kmem cache for hs isochronous descriptors
+  * @unaligned_cache:    Kmem cache for DMA mode to handle non-aligned buf
+@@ -1188,6 +1190,7 @@ struct dwc2_hsotg {
+ 	u32 *frame_list;
+ 	dma_addr_t frame_list_dma;
+ 	u32 frame_list_sz;
++	u16 frame_list_users;
+ 	struct kmem_cache *desc_gen_cache;
+ 	struct kmem_cache *desc_hsisoc_cache;
+ 	struct kmem_cache *unaligned_cache;
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 994a78a..ce40a4f 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -312,6 +312,7 @@ static void dwc2_release_channel_ddma(struct dwc2_hsotg *hsotg,
+ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 			  gfp_t mem_flags)
+ {
++	unsigned long flags;
+ 	int retval;
+ 
+ 	if (qh->do_split) {
+@@ -334,6 +335,9 @@ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 			/* Enable periodic schedule on first periodic QH */
+ 			dwc2_per_sched_enable(hsotg, HCFG_FRLISTEN_64);
+ 		}
++		spin_lock_irqsave(&hsotg->lock, flags);
++		hsotg->frame_list_users++;
++		spin_unlock_irqrestore(&hsotg->lock, flags);
+ 	}
+ 
+ 	qh->ntd = 0;
+@@ -358,6 +362,7 @@ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ {
+ 	unsigned long flags;
++	bool last = false;
+ 
+ 	dwc2_desc_list_free(hsotg, qh);
+ 
+@@ -371,12 +376,12 @@ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	spin_lock_irqsave(&hsotg->lock, flags);
+ 	if (qh->channel)
+ 		dwc2_release_channel_ddma(hsotg, qh);
++	if (qh->ep_type == USB_ENDPOINT_XFER_ISOC ||
++	    qh->ep_type == USB_ENDPOINT_XFER_INT)
++		last = !--hsotg->frame_list_users;
+ 	spin_unlock_irqrestore(&hsotg->lock, flags);
+ 
+-	if ((qh->ep_type == USB_ENDPOINT_XFER_ISOC ||
+-	     qh->ep_type == USB_ENDPOINT_XFER_INT) &&
+-	    (hsotg->params.uframe_sched ||
+-	     !hsotg->periodic_channels) && hsotg->frame_list) {
++	if (last && hsotg->frame_list) {
+ 		dwc2_per_sched_disable(hsotg);
+ 		dwc2_frame_list_free(hsotg);
+ 	}
+-- 
+2.53.0
+

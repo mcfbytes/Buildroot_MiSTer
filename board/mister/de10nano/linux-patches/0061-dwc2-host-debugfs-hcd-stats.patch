@@ -1,0 +1,279 @@
+From 4920a0e5f8499d7d4d458e2fa003f8927bae3899 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 20:29:16 -0500
+Subject: [PATCH 1/2] usb: dwc2: host: count interrupt and scheduling events in
+ debugfs
+
+There is no way to see from outside the driver where the host
+interrupt load goes: how many SOF passes find nothing to do, which
+endpoints the channel halts come from, how often a split is NAKed, or
+how often the scheduler gives up on a complete split because its
+window has closed. The last one is a silent data loss path for
+periodic splits and has no counter at all.
+
+Add a struct dwc2_hcd_stats to the host state and count, under the
+existing hsotg->lock:
+
+ - HCD passes that found a host interrupt, SOF passes, and SOF passes
+   that moved no periodic QH and selected no transaction;
+ - complete splits abandoned past the end of their window (the
+   "past_end" path in dwc2_hc_nyet_intr());
+ - NAKs on split transactions;
+ - QHs given a channel from the periodic and non-periodic schedules;
+ - channel halts per channel and by endpoint type, split and
+   direction.
+
+The counters are shown in a new "hcd_stats" debugfs file next to
+"params". Writing anything to it restarts the counts: the write takes a
+snapshot that later reads subtract, so the live counters are never
+written outside the paths that count. Nothing else changes.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h     | 30 ++++++++++++++
+ drivers/usb/dwc2/debugfs.c  | 78 +++++++++++++++++++++++++++++++++++++
+ drivers/usb/dwc2/hcd.c      |  2 +
+ drivers/usb/dwc2/hcd_intr.c | 13 +++++++
+ 4 files changed, 123 insertions(+)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index 6407c57..eabdf12 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -848,6 +848,32 @@ struct dwc2_hregs_backup {
+ #define DWC2_LS_SCHEDULE_SLICES	(DWC2_LS_SCHEDULE_FRAMES * \
+ 				 DWC2_LS_PERIODIC_SLICES_PER_FRAME)
+ 
++/**
++ * struct dwc2_hcd_stats - Host interrupt counters, read through debugfs
++ * @hcd_passes:     HCD interrupt passes that found a host interrupt pending
++ * @sof_passes:     Passes that serviced a SOF
++ * @sof_idle:       SOF passes that found no periodic QH due and selected nothing
++ * @cs_miss:        Complete splits given up because their window had closed
++ * @split_nak:      NAKs received on a split transaction
++ * @sel_periodic:   QHs given a channel from the periodic ready schedule
++ * @sel_np:         QHs given a channel from the non-periodic schedule
++ * @halts:          Channel interrupts, per host channel
++ * @halts_by:       Channel interrupts by endpoint type, split and direction
++ *
++ * All fields are u32 counters, updated under hsotg->lock, that wrap freely.
++ */
++struct dwc2_hcd_stats {
++	u32 hcd_passes;
++	u32 sof_passes;
++	u32 sof_idle;
++	u32 cs_miss;
++	u32 split_nak;
++	u32 sel_periodic;
++	u32 sel_np;
++	u32 halts[MAX_EPS_CHANNELS];
++	u32 halts_by[4][2][2];
++};
++
+ /**
+  * struct dwc2_hsotg - Holds the state of the driver, including the non-periodic
+  * and periodic schedules
+@@ -976,6 +1002,8 @@ struct dwc2_hregs_backup {
+  *                      stored elsewhere since we need one per TT.
+  * @periodic_qh_count:  Count of periodic QHs, if using several eps. Used for
+  *                      SOF enable/disable.
++ * @hcd_stats:          Host interrupt counters, see struct dwc2_hcd_stats
++ * @hcd_stats_base:     Counter values at the last debugfs reset
+  * @free_hc_list:       Free host channels in the controller. This is a list of
+  *                      struct dwc2_host_chan items.
+  * @periodic_channels:  Number of host channels assigned to periodic transfers.
+@@ -1168,6 +1196,8 @@ struct dwc2_hsotg {
+ 	DECLARE_BITMAP(hs_periodic_bitmap, DWC2_HS_SCHEDULE_US);
+ 	u16 periodic_qh_count;
+ 	bool new_connection;
++	struct dwc2_hcd_stats hcd_stats;
++	struct dwc2_hcd_stats hcd_stats_base;
+ 
+ 	u16 last_frame_num;
+ 
+diff --git a/drivers/usb/dwc2/debugfs.c b/drivers/usb/dwc2/debugfs.c
+index 0319d2d..faadb48 100644
+--- a/drivers/usb/dwc2/debugfs.c
++++ b/drivers/usb/dwc2/debugfs.c
+@@ -773,6 +773,83 @@ static int dr_mode_show(struct seq_file *seq, void *v)
+ }
+ DEFINE_SHOW_ATTRIBUTE(dr_mode);
+ 
++#if IS_ENABLED(CONFIG_USB_DWC2_HOST) || IS_ENABLED(CONFIG_USB_DWC2_DUAL_ROLE)
++static int hcd_stats_show(struct seq_file *seq, void *v)
++{
++	static const char * const type[] = { "ctrl", "isoc", "bulk", "intr" };
++	struct dwc2_hsotg *hsotg = seq->private;
++	struct dwc2_hcd_stats st, base;
++	u32 *cnt = (u32 *)&st;
++	unsigned long flags;
++	int i, j;
++
++	spin_lock_irqsave(&hsotg->lock, flags);
++	st = hsotg->hcd_stats;
++	base = hsotg->hcd_stats_base;
++	spin_unlock_irqrestore(&hsotg->lock, flags);
++
++	BUILD_BUG_ON(sizeof(st) % sizeof(u32));
++	for (i = 0; i < sizeof(st) / sizeof(u32); i++)
++		cnt[i] -= ((u32 *)&base)[i];
++
++	seq_printf(seq, "hcd_passes %u\n", st.hcd_passes);
++	seq_printf(seq, "sof_passes %u\n", st.sof_passes);
++	seq_printf(seq, "sof_idle %u\n", st.sof_idle);
++	seq_printf(seq, "cs_miss %u\n", st.cs_miss);
++	seq_printf(seq, "split_nak %u\n", st.split_nak);
++	seq_printf(seq, "sel_periodic %u\n", st.sel_periodic);
++	seq_printf(seq, "sel_np %u\n", st.sel_np);
++	seq_puts(seq, "halts");
++	for (i = 0; i < hsotg->params.host_channels; i++)
++		seq_printf(seq, " %u", st.halts[i]);
++	seq_putc(seq, '\n');
++	for (i = 0; i < ARRAY_SIZE(type); i++)
++		for (j = 0; j < 4; j++)
++			seq_printf(seq, "halts_%s_%s_%s %u\n", type[i],
++				   j & 2 ? "split" : "nosplit",
++				   j & 1 ? "in" : "out",
++				   st.halts_by[i][j >> 1][j & 1]);
++	return 0;
++}
++
++static int hcd_stats_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, hcd_stats_show, inode->i_private);
++}
++
++/* Any write restarts the counts; the live counters are never written */
++static ssize_t hcd_stats_write(struct file *file, const char __user *ubuf,
++			       size_t count, loff_t *ppos)
++{
++	struct seq_file *s = file->private_data;
++	struct dwc2_hsotg *hsotg = s->private;
++	unsigned long flags;
++
++	spin_lock_irqsave(&hsotg->lock, flags);
++	hsotg->hcd_stats_base = hsotg->hcd_stats;
++	spin_unlock_irqrestore(&hsotg->lock, flags);
++	return count;
++}
++
++static const struct file_operations hcd_stats_fops = {
++	.owner		= THIS_MODULE,
++	.open		= hcd_stats_open,
++	.write		= hcd_stats_write,
++	.read		= seq_read,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
++
++static void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg)
++{
++	if (hsotg->hcd_enabled)
++		debugfs_create_file("hcd_stats", 0644, hsotg->debug_root,
++				    hsotg, &hcd_stats_fops);
++}
++#else
++static inline void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg) {}
++#endif
++
+ int dwc2_debugfs_init(struct dwc2_hsotg *hsotg)
+ {
+ 	int			ret;
+@@ -787,6 +864,7 @@ int dwc2_debugfs_init(struct dwc2_hsotg *hsotg)
+ 
+ 	/* Add gadget debugfs nodes */
+ 	dwc2_hsotg_create_debug(hsotg);
++	dwc2_hcd_create_debug(hsotg);
+ 
+ 	hsotg->regset = devm_kzalloc(hsotg->dev, sizeof(*hsotg->regset),
+ 								GFP_KERNEL);
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index f4bff8f..e2e81fb 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -2729,6 +2729,7 @@ enum dwc2_transaction_type dwc2_hcd_select_transactions(
+ 		qh_ptr = qh_ptr->next;
+ 		list_move_tail(&qh->qh_list_entry,
+ 			       &hsotg->periodic_sched_assigned);
++		hsotg->hcd_stats.sel_periodic++;
+ 		ret_val = DWC2_TRANSACTION_PERIODIC;
+ 	}
+ 
+@@ -2766,6 +2767,7 @@ enum dwc2_transaction_type dwc2_hcd_select_transactions(
+ 		qh_ptr = qh_ptr->next;
+ 		list_move_tail(&qh->qh_list_entry,
+ 			       &hsotg->non_periodic_sched_active);
++		hsotg->hcd_stats.sel_np++;
+ 
+ 		if (ret_val == DWC2_TRANSACTION_NONE)
+ 			ret_val = DWC2_TRANSACTION_NON_PERIODIC;
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index 683d866..5bd81d4 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -112,9 +112,11 @@ static void dwc2_sof_intr(struct dwc2_hsotg *hsotg)
+ 	struct list_head *qh_entry;
+ 	struct dwc2_qh *qh;
+ 	enum dwc2_transaction_type tr_type;
++	bool moved = false;
+ 
+ 	/* Clear interrupt */
+ 	dwc2_writel(hsotg, GINTSTS_SOF, GINTSTS);
++	hsotg->hcd_stats.sof_passes++;
+ 
+ #ifdef DEBUG_SOF
+ 	dev_vdbg(hsotg->dev, "--Start of Frame Interrupt--\n");
+@@ -141,11 +143,14 @@ static void dwc2_sof_intr(struct dwc2_hsotg *hsotg)
+ 			 */
+ 			list_move_tail(&qh->qh_list_entry,
+ 				       &hsotg->periodic_sched_ready);
++			moved = true;
+ 		}
+ 	}
+ 	tr_type = dwc2_hcd_select_transactions(hsotg);
+ 	if (tr_type != DWC2_TRANSACTION_NONE)
+ 		dwc2_hcd_queue_transactions(hsotg, tr_type);
++	else if (!moved)
++		hsotg->hcd_stats.sof_idle++;
+ }
+ 
+ /*
+@@ -1234,6 +1239,7 @@ static void dwc2_hc_nak_intr(struct dwc2_hsotg *hsotg,
+ 	 * affects that code path too.
+ 	 */
+ 	if (chan->do_split) {
++		hsotg->hcd_stats.split_nak++;
+ 		if (chan->complete_split)
+ 			qtd->error_count = 0;
+ 		qtd->complete_split = 0;
+@@ -1472,6 +1478,7 @@ static void dwc2_hc_nyet_intr(struct dwc2_hsotg *hsotg,
+ 				qtd->error_count++;
+ #endif
+ 				qtd->complete_split = 0;
++				hsotg->hcd_stats.cs_miss++;
+ 				dwc2_halt_channel(hsotg, chan, qtd,
+ 						  DWC2_HC_XFER_XACT_ERR);
+ 				/* Todo: add support for isoc release */
+@@ -2072,6 +2079,11 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 	}
+ 
+ 	chan->hcint = hcintraw;
++	if (hcint & HCINTMSK_CHHLTD) {
++		hsotg->hcd_stats.halts[chnum]++;
++		hsotg->hcd_stats.halts_by[chan->ep_type][!!chan->do_split]
++					 [chan->ep_is_in]++;
++	}
+ 
+ 	/*
+ 	 * If the channel was halted due to a dequeue, the qtd list might
+@@ -2259,6 +2271,7 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
+ 		}
+ 
+ 		retval = IRQ_HANDLED;
++		hsotg->hcd_stats.hcd_passes++;
+ 
+ 		dbg_gintsts = gintsts;
+ #ifndef DEBUG_SOF
+-- 
+2.53.0
+

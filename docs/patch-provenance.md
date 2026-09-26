@@ -1821,6 +1821,16 @@ bump PR reports the retirement rather than us having to watch for it.
 (revert, or take the prerequisite). Not sent — sending it is an owner decision, like every other
 outbound contribution in this repo.
 
+### `0054`–`0066` — original dwc2 host work, added 2026-09-25 (#205)
+
+Not from the fork and not backports: original patches by the repo owner against mainline
+`drivers/usb/dwc2`, written to cut the host port's interrupt load. Carried in the de10nano
+series and, by symlink, the beta series; not in de25nano. Each patch's header carries its
+rationale and `Fixes:` tag; the per-patch table, measurements, the closed descriptor-DMA-with-splits
+question and the options ledger are in [`dwc2-usb-irq.md`](dwc2-usb-irq.md). None has been
+sent upstream yet (owner decision, after rig soak). Parked patches and lab-only
+instrumentation from the same work live in [`dwc2-usb-irq/`](dwc2-usb-irq/README.md) and are not applied.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

@@ -74,11 +74,24 @@ Reopen only with new evidence (for example the licensed databook describing an S
 ## Plan
 
 1. **Done:** `0054`–`0058` (−21% CPU), `0060` (2 ms repoll).
-2. **In progress:** `fs_ddma` still delivers a 1 kHz FS mouse at 500 reports/s under DDMA.
-   - Every poll is exactly 2 frames apart: the driver halts the channel on each completion, and the re-arm lands after the core has already scheduled the next frame.
-   - Fix under development: keep an FS interrupt channel running and append descriptors to the live list.
-   - First rig run: each chained channel delivered one report and then stopped. On a descriptor with A=0 this core raises `XferCompl|BNA` and clears `CHENA`, but **never raises `ChHltd`**; the driver waited for the halt forever.
-   - The fix is being reworked to treat BNA with `CHENA` clear as the stop.
+2. **`fs_ddma` 1 kHz: rig-tested, not yet carried.**
+   - Cause: the driver halts an FS interrupt channel on every completion. The re-arm lands after the core has built the next frame's schedule, so a bInterval-1 endpoint is polled every other frame.
+   - Fix (7 patches):
+     - 4 general DDMA fixes: descriptor-list DMA direction, completed descriptors lost on a dequeue, a channel freed while still enabled, and XferCompl masked on a channel already handed to another QH;
+     - a gated "keep an FS interrupt channel running" feature that appends to the live descriptor list.
+   - Hardware facts learned on the rig:
+     - On an A=0 descriptor the core raises `XferCompl|BNA` and clears `CHENA`, with **no `ChHltd`**. The first version stalled after one report on exactly this.
+     - After a short packet the core fetches the next descriptor at once.
+   - Result with the fixed version, full-speed mouse at 1 kHz:
+
+     | URBs in flight | before | after |
+     |---|---|---|
+     | 1 (usbhid, xpad) | 500/s | 500/s (every gap 2.0 ms; hardware limit, see above) |
+     | 2 | 500/s | ~964/s, median gap 999.7 µs |
+     | 4 | 666/s | 1,000/s, median gap 999.7 µs |
+
+   - Five authorize cycles and 30 evdev open/close rounds per device passed with no stall, leak or warning.
+   - Because usbhid keeps one URB in flight, ordinary HID devices see no rate change under `fs_ddma` without a usbhid change (ledger). For a 1 kHz mouse, buffer mode with `0060` already gives 984/s.
 3. **Done: M0 + M1 (`0061`, `0062`).** Rig result, RT 7.2.7 lab kernel, high-speed buffer DMA:
 
    | Topology | M1 off | M1 on |
@@ -110,6 +123,7 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 | **M6** lazy SOF on a hard hrtimer | 250–300 LOC, 2 weeks, medium–high | ~3–4% floor; the only way below 8k IRQ/s at high speed | the SOF hard-IRQ floor is still ≥ 1.5 points after M5, or the IRQ rate itself becomes a requirement |
 | **PREEMPT_RT tuning** for dwc2 IRQ thread / softirq | unknown | RT pays the thread cost hardest | after M1 (its ONESHOT primary is the base) |
 | **DE25-Nano** qualification | ~0 if the core revision matches | same plan applies | hardware arrives; also check whether an Agilex 5 USB 3 (dwc3/xHCI) port reaches a connector, which would do splits in hardware |
+| **usbhid: two interrupt-IN URBs in flight** | small usbhid patch; upstream-sensitive | makes the `fs_ddma` channel chaining pay off for every HID device: 500 → ~1,000/s | owner wants 1 kHz HID under `fs_ddma`; needs the chaining patches carried first |
 | FS cap by default | — | — | **declined**: high speed stays the default, `fs_ddma` is opt-in |
 
 ## Side issues found along the way

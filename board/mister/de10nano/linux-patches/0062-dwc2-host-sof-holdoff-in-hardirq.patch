@@ -1,0 +1,504 @@
+From 62ef2098bc6b0776cfd83fda4c44c482b4d4425c Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 20:31:45 -0500
+Subject: [PATCH 2/2] usb: dwc2: host: acknowledge a SOF with nothing due in
+ hard IRQ context
+
+In buffer DMA mode the host unmasks the SOF interrupt as long as any
+periodic QH is scheduled, so the handler runs every (micro)frame: 8000
+times a second behind a high-speed hub. Most of those passes find no
+periodic QH due and no QH waiting for a channel, and do nothing. With
+threaded interrupts, as on PREEMPT_RT, each of them still wakes the IRQ
+thread and costs two context switches.
+
+Have the HCD publish, under hsotg->lock, what the next SOF has to do:
+a "kick" when a non-periodic QH is inactive, a periodic QH is ready or
+assigned but has no channel yet (dwc2_sof_intr() selects transactions
+for both schedules, not only the periodic one) or an inactive periodic
+QH is already due, else the next_active_frame of the inactive periodic
+QH nearest to the current frame. It is updated at the end of every HCD
+pass, when a QH is added or deactivated, and after the NAK wait timer
+has run. dwc2_hcd_hold_sof() reads it without the lock and, when SOF is
+the only pending interrupt and nothing is due by the current
+(micro)frame, clears the SOF itself and reports it handled. It then
+reads HFNUM back, which flushes the write before the line is unmasked;
+if a new frame began meanwhile, the SOF it may have cleared is handed
+to the thread instead. One SOF in 64 is always let through, so a missed
+update costs at most 64 frames of latency (8 ms behind a high-speed
+port, 64 ms at full speed) instead of a stall, and is counted.
+
+On PREEMPT_RT a host-only core now requests its line with a hard
+primary handler and IRQF_ONESHOT, as forced threading would set, so the
+line is masked and unmasked as before; the thread disables bottom
+halves around the handler as the forced thread does. Dual-role and
+peripheral cores keep the plain request: the gadget's handler on the
+same line would be force-threaded and wake its thread on every SOF,
+which would cancel the saving. Elsewhere the check runs at the top of
+the plain handler, which saves the SOF pass and its
+select_transactions() call. The primary returns IRQ_NONE when nothing
+is pending, rather than waking the thread for an empty pass.
+
+The SOF mask is untouched, so urb_enqueue() still reads GINTMSK.SOF to
+decide whether to select transactions inline. Descriptor DMA, a
+suspended or hibernated port and device mode are passed through. While
+the hold-off is on, held SOFs are not reported as missed ones by
+dwc2_track_missed_sofs().
+
+The hold-off is on by default and can be switched off per controller at
+run time through a "sof_holdoff" debugfs file. Its decisions are counted
+in "hcd_stats".
+
+This needs "usb: dwc2: host: serve the HCD from the common interrupt
+handler", which leaves one action on the line: with the HCD's own
+usb_hcd_irq() action also there, its forced thread would still wake on
+every SOF. It builds on the counters added by the previous patch.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h      | 40 +++++++++++++++++-
+ drivers/usb/dwc2/core_intr.c | 50 ++++++++++++++++++++++
+ drivers/usb/dwc2/debugfs.c   | 19 +++++++--
+ drivers/usb/dwc2/hcd.c       |  1 +
+ drivers/usb/dwc2/hcd.h       |  1 +
+ drivers/usb/dwc2/hcd_intr.c  | 80 +++++++++++++++++++++++++++++++++++-
+ drivers/usb/dwc2/hcd_queue.c | 42 +++++++++++++++++++
+ drivers/usb/dwc2/platform.c  | 18 ++++++--
+ 8 files changed, 243 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index eabdf12..92d1c7d 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -859,8 +859,18 @@ struct dwc2_hregs_backup {
+  * @sel_np:         QHs given a channel from the non-periodic schedule
+  * @halts:          Channel interrupts, per host channel
+  * @halts_by:       Channel interrupts by endpoint type, split and direction
++ * @sof_hardirq:    SOFs seen by dwc2_hcd_hold_sof()
++ * @sof_held:       SOFs it acknowledged without running the handler
++ * @wake_other:     SOFs passed on because another interrupt was pending
++ * @wake_kick:      SOFs passed on because a QH was waiting or already due
++ * @wake_due:       SOFs passed on because a periodic QH was due
++ * @sof_net:        SOFs passed on by the safety net
++ * @sof_net_found:  Safety net passes that found work to schedule
++ * @sof_race:       SOFs passed on because a frame began while clearing one
++ * @irq_none:       Primary handler calls that found no interrupt pending
+  *
+- * All fields are u32 counters, updated under hsotg->lock, that wrap freely.
++ * All fields are u32 counters that wrap freely. Those written by
++ * dwc2_hcd_hold_sof() are updated without hsotg->lock, all others under it.
+  */
+ struct dwc2_hcd_stats {
+ 	u32 hcd_passes;
+@@ -872,6 +882,15 @@ struct dwc2_hcd_stats {
+ 	u32 sel_np;
+ 	u32 halts[MAX_EPS_CHANNELS];
+ 	u32 halts_by[4][2][2];
++	u32 sof_hardirq;
++	u32 sof_held;
++	u32 wake_other;
++	u32 wake_kick;
++	u32 wake_due;
++	u32 sof_net;
++	u32 sof_net_found;
++	u32 sof_race;
++	u32 irq_none;
+ };
+ 
+ /**
+@@ -1004,6 +1023,11 @@ struct dwc2_hcd_stats {
+  *                      SOF enable/disable.
+  * @hcd_stats:          Host interrupt counters, see struct dwc2_hcd_stats
+  * @hcd_stats_base:     Counter values at the last debugfs reset
++ * @sof_due:            Work due at a SOF, published by dwc2_hcd_publish_due()
++ * @sof_held_run:       SOFs held in a row by dwc2_hcd_hold_sof()
++ * @sof_net_wake:       The safety net let the current SOF through
++ * @sof_redo:           The primary cleared a SOF the thread must still service
++ * @sof_holdoff:        Let dwc2_hcd_hold_sof() hold SOFs, set through debugfs
+  * @free_hc_list:       Free host channels in the controller. This is a list of
+  *                      struct dwc2_host_chan items.
+  * @periodic_channels:  Number of host channels assigned to periodic transfers.
+@@ -1198,6 +1222,14 @@ struct dwc2_hsotg {
+ 	bool new_connection;
+ 	struct dwc2_hcd_stats hcd_stats;
+ 	struct dwc2_hcd_stats hcd_stats_base;
++	u32 sof_due;
++#define DWC2_SOF_DUE_KICK	BIT(31)
++#define DWC2_SOF_DUE_VALID	BIT(30)
++	u8 sof_held_run;
++#define DWC2_SOF_HOLDOFF_MAX	64
++	bool sof_net_wake;
++	bool sof_redo;
++	bool sof_holdoff;
+ 
+ 	u16 last_frame_num;
+ 
+@@ -1393,6 +1425,9 @@ void dwc2_wakeup_from_lpm_l1(struct dwc2_hsotg *hsotg, bool remotewakeup);
+ 
+ /* This function should be called on every hardware interrupt. */
+ irqreturn_t dwc2_handle_common_intr(int irq, void *dev);
++irqreturn_t dwc2_handle_intr(int irq, void *dev);
++irqreturn_t dwc2_handle_hardirq(int irq, void *dev);
++irqreturn_t dwc2_handle_thread(int irq, void *dev);
+ 
+ /* The device ID match table */
+ extern const struct of_device_id dwc2_of_match_table[];
+@@ -1545,6 +1580,7 @@ void dwc2_hcd_connect(struct dwc2_hsotg *hsotg);
+ void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force);
+ void dwc2_hcd_start(struct dwc2_hsotg *hsotg);
+ irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg);
++irqreturn_t dwc2_hcd_hold_sof(struct dwc2_hsotg *hsotg);
+ int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup);
+ int dwc2_port_suspend(struct dwc2_hsotg *hsotg, u16 windex);
+ int dwc2_port_resume(struct dwc2_hsotg *hsotg);
+@@ -1574,6 +1610,8 @@ static inline void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force) {}
+ static inline void dwc2_hcd_start(struct dwc2_hsotg *hsotg) {}
+ static inline irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg)
+ { return IRQ_NONE; }
++static inline irqreturn_t dwc2_hcd_hold_sof(struct dwc2_hsotg *hsotg)
++{ return IRQ_WAKE_THREAD; }
+ static inline void dwc2_hcd_remove(struct dwc2_hsotg *hsotg) {}
+ static inline int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup)
+ { return 0; }
+diff --git a/drivers/usb/dwc2/core_intr.c b/drivers/usb/dwc2/core_intr.c
+index f9f8f08..5112329 100644
+--- a/drivers/usb/dwc2/core_intr.c
++++ b/drivers/usb/dwc2/core_intr.c
+@@ -914,3 +914,53 @@ out:
+ 
+ 	return retval;
+ }
++
++/**
++ * dwc2_handle_intr() - Interrupt handler when the IRQ line is not split
++ *
++ * @irq: IRQ number
++ * @dev: The struct dwc2_hsotg
++ */
++irqreturn_t dwc2_handle_intr(int irq, void *dev)
++{
++	irqreturn_t retval = dwc2_hcd_hold_sof(dev);
++
++	if (retval != IRQ_WAKE_THREAD)
++		return retval;
++
++	return dwc2_handle_common_intr(irq, dev);
++}
++
++/**
++ * dwc2_handle_hardirq() - Primary handler when the IRQ line is threaded
++ *
++ * @irq: IRQ number
++ * @dev: The struct dwc2_hsotg
++ *
++ * Wakes dwc2_handle_thread() unless dwc2_hcd_hold_sof() took the SOF or
++ * found nothing pending. The line is IRQF_ONESHOT, as when force-threaded.
++ */
++irqreturn_t dwc2_handle_hardirq(int irq, void *dev)
++{
++	return dwc2_hcd_hold_sof(dev);
++}
++
++/**
++ * dwc2_handle_thread() - Threaded handler paired with dwc2_handle_hardirq()
++ *
++ * @irq: IRQ number
++ * @dev: The struct dwc2_hsotg
++ *
++ * Bottom halves are disabled as in a forced thread, so URB givebacks raised
++ * here still run at the end of the pass.
++ */
++irqreturn_t dwc2_handle_thread(int irq, void *dev)
++{
++	irqreturn_t retval;
++
++	local_bh_disable();
++	retval = dwc2_handle_common_intr(irq, dev);
++	local_bh_enable();
++
++	return retval;
++}
+diff --git a/drivers/usb/dwc2/debugfs.c b/drivers/usb/dwc2/debugfs.c
+index faadb48..20c833e 100644
+--- a/drivers/usb/dwc2/debugfs.c
++++ b/drivers/usb/dwc2/debugfs.c
+@@ -799,6 +799,16 @@ static int hcd_stats_show(struct seq_file *seq, void *v)
+ 	seq_printf(seq, "split_nak %u\n", st.split_nak);
+ 	seq_printf(seq, "sel_periodic %u\n", st.sel_periodic);
+ 	seq_printf(seq, "sel_np %u\n", st.sel_np);
++	seq_printf(seq, "sof_hardirq %u\n", st.sof_hardirq);
++	seq_printf(seq, "sof_held %u\n", st.sof_held);
++	seq_printf(seq, "wake_other %u\n", st.wake_other);
++	seq_printf(seq, "wake_kick %u\n", st.wake_kick);
++	seq_printf(seq, "wake_due %u\n", st.wake_due);
++	seq_printf(seq, "sof_net %u\n", st.sof_net);
++	seq_printf(seq, "sof_net_found %u\n", st.sof_net_found);
++	seq_printf(seq, "sof_race %u\n", st.sof_race);
++	seq_printf(seq, "irq_none %u\n", st.irq_none);
++	seq_printf(seq, "sof_due 0x%08x\n", READ_ONCE(hsotg->sof_due));
+ 	seq_puts(seq, "halts");
+ 	for (i = 0; i < hsotg->params.host_channels; i++)
+ 		seq_printf(seq, " %u", st.halts[i]);
+@@ -842,9 +852,12 @@ static const struct file_operations hcd_stats_fops = {
+ 
+ static void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg)
+ {
+-	if (hsotg->hcd_enabled)
+-		debugfs_create_file("hcd_stats", 0644, hsotg->debug_root,
+-				    hsotg, &hcd_stats_fops);
++	if (!hsotg->hcd_enabled)
++		return;
++	debugfs_create_file("hcd_stats", 0644, hsotg->debug_root, hsotg,
++			    &hcd_stats_fops);
++	debugfs_create_bool("sof_holdoff", 0644, hsotg->debug_root,
++			    &hsotg->sof_holdoff);
+ }
+ #else
+ static inline void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg) {}
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index e2e81fb..56b3381 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -5158,6 +5158,7 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 		return -ENODEV;
+ 
+ 	dev_dbg(hsotg->dev, "DWC OTG HCD INIT\n");
++	hsotg->sof_holdoff = true;
+ 
+ 	retval = -ENOMEM;
+ 
+diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
+index eb2ab64..0b832e4 100644
+--- a/drivers/usb/dwc2/hcd.h
++++ b/drivers/usb/dwc2/hcd.h
+@@ -549,6 +549,7 @@ struct dwc2_qh *dwc2_hcd_qh_create(struct dwc2_hsotg *hsotg,
+ 					  gfp_t mem_flags);
+ void dwc2_hcd_qh_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
+ int dwc2_hcd_qh_add(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
++void dwc2_hcd_publish_due(struct dwc2_hsotg *hsotg);
+ void dwc2_hcd_qh_unlink(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
+ void dwc2_hcd_qh_deactivate(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 			    int sched_csplit);
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index 5bd81d4..97ada27 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -124,7 +124,11 @@ static void dwc2_sof_intr(struct dwc2_hsotg *hsotg)
+ 
+ 	hsotg->frame_number = dwc2_hcd_get_frame_number(hsotg);
+ 
+-	dwc2_track_missed_sofs(hsotg);
++	/* SOFs held in hard IRQ context are not missed ones */
++	if (READ_ONCE(hsotg->sof_holdoff) && !hsotg->params.dma_desc_enable)
++		hsotg->last_frame_num = hsotg->frame_number;
++	else
++		dwc2_track_missed_sofs(hsotg);
+ 
+ 	/* Determine whether any periodic QHs should be executed */
+ 	qh_entry = hsotg->periodic_sched_inactive.next;
+@@ -151,6 +155,73 @@ static void dwc2_sof_intr(struct dwc2_hsotg *hsotg)
+ 		dwc2_hcd_queue_transactions(hsotg, tr_type);
+ 	else if (!moved)
+ 		hsotg->hcd_stats.sof_idle++;
++
++	if (hsotg->sof_net_wake) {
++		hsotg->sof_net_wake = false;
++		if (moved || tr_type != DWC2_TRANSACTION_NONE)
++			hsotg->hcd_stats.sof_net_found++;
++	}
++}
++
++/**
++ * dwc2_hcd_hold_sof() - Acknowledge a SOF that has nothing to schedule
++ *
++ * @hsotg: Programming view of the DWC_otg controller
++ *
++ * Hard IRQ context, no lock: clears a lone SOF when hsotg->sof_due has nothing
++ * due. One in DWC2_SOF_HOLDOFF_MAX is let through as a safety net.
++ *
++ * Return: IRQ_HANDLED if the SOF was acknowledged and nothing else is pending,
++ * IRQ_NONE if no interrupt is pending, else IRQ_WAKE_THREAD.
++ */
++irqreturn_t dwc2_hcd_hold_sof(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_hcd_stats *st = &hsotg->hcd_stats;
++	u32 gintsts, due;
++	u16 frame;
++
++	if (!READ_ONCE(hsotg->sof_holdoff) || hsotg->params.dma_desc_enable ||
++	    !READ_ONCE(hsotg->priv) || READ_ONCE(hsotg->lx_state) != DWC2_L0 ||
++	    hsotg->hibernated)
++		return IRQ_WAKE_THREAD;
++
++	gintsts = dwc2_readl(hsotg, GINTSTS);
++	if (!(gintsts & GINTSTS_CURMODE_HOST))
++		return IRQ_WAKE_THREAD;
++	gintsts &= dwc2_readl(hsotg, GINTMSK);
++	if (!gintsts) {
++		st->irq_none++;
++		return IRQ_NONE;
++	}
++	if (!(gintsts & GINTSTS_SOF))
++		return IRQ_WAKE_THREAD;
++
++	st->sof_hardirq++;
++	due = READ_ONCE(hsotg->sof_due);
++	frame = dwc2_hcd_get_frame_number(hsotg);
++	if (gintsts != GINTSTS_SOF) {
++		st->wake_other++;
++	} else if (due & DWC2_SOF_DUE_KICK) {
++		st->wake_kick++;
++	} else if ((due & DWC2_SOF_DUE_VALID) &&
++		   dwc2_frame_num_le(due & HFNUM_MAX_FRNUM, frame)) {
++		st->wake_due++;
++	} else if (++hsotg->sof_held_run >= DWC2_SOF_HOLDOFF_MAX) {
++		st->sof_net++;
++		hsotg->sof_net_wake = true;
++	} else {
++		/* Reading HFNUM back flushes the W1C and shows a SOF it ate */
++		dwc2_writel(hsotg, GINTSTS_SOF, GINTSTS);
++		if (dwc2_hcd_get_frame_number(hsotg) == frame) {
++			st->sof_held++;
++			return IRQ_HANDLED;
++		}
++		st->sof_race++;
++		hsotg->sof_redo = true;
++	}
++
++	hsotg->sof_held_run = 0;
++	return IRQ_WAKE_THREAD;
+ }
+ 
+ /*
+@@ -2265,6 +2336,12 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
+ 	/* Check if HOST Mode */
+ 	if (dwc2_is_host_mode(hsotg)) {
+ 		gintsts = dwc2_read_core_intr(hsotg);
++		if (hsotg->sof_redo) {
++			hsotg->sof_redo = false;
++			gintsts |= GINTSTS_SOF;
++		}
++		if (!(gintsts & GINTSTS_SOF))
++			hsotg->sof_net_wake = false;
+ 		if (!gintsts) {
+ 			spin_unlock(&hsotg->lock);
+ 			return retval;
+@@ -2299,6 +2376,7 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
+ 			dwc2_hc_intr(hsotg);
+ 		if (gintsts & GINTSTS_PTXFEMP)
+ 			dwc2_perio_tx_fifo_empty_intr(hsotg);
++		dwc2_hcd_publish_due(hsotg);
+ 
+ 		if (dbg_gintsts) {
+ 			dev_vdbg(hsotg->dev,
+diff --git a/drivers/usb/dwc2/hcd_queue.c b/drivers/usb/dwc2/hcd_queue.c
+index ad5137c..cf873b4 100644
+--- a/drivers/usb/dwc2/hcd_queue.c
++++ b/drivers/usb/dwc2/hcd_queue.c
+@@ -1427,6 +1427,7 @@ static enum hrtimer_restart dwc2_wait_timer_fn(struct hrtimer *t)
+ 		tr_type = dwc2_hcd_select_transactions(hsotg);
+ 		if (tr_type != DWC2_TRANSACTION_NONE)
+ 			dwc2_hcd_queue_transactions(hsotg, tr_type);
++		dwc2_hcd_publish_due(hsotg);
+ 	}
+ 
+ 	spin_unlock_irqrestore(&hsotg->lock, flags);
+@@ -1644,6 +1645,43 @@ void dwc2_hcd_qh_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	kfree(qh);
+ }
+ 
++/**
++ * dwc2_hcd_publish_due() - Publish the work the next SOF has to schedule
++ *
++ * @hsotg: The HCD state structure for the DWC OTG controller
++ *
++ * Kick if a QH waits for a channel or is already due, else the nearest
++ * inactive periodic next_active_frame. Called under hsotg->lock.
++ */
++void dwc2_hcd_publish_due(struct dwc2_hsotg *hsotg)
++{
++	struct dwc2_qh *qh;
++	u16 now, dist, best = 0;
++	u32 due = 0;
++
++	if (!list_empty(&hsotg->non_periodic_sched_inactive) ||
++	    !list_empty(&hsotg->periodic_sched_ready) ||
++	    !list_empty(&hsotg->periodic_sched_assigned)) {
++		due = DWC2_SOF_DUE_KICK;
++	} else if (!list_empty(&hsotg->periodic_sched_inactive)) {
++		now = dwc2_hcd_get_frame_number(hsotg);
++		list_for_each_entry(qh, &hsotg->periodic_sched_inactive,
++				    qh_list_entry) {
++			if (dwc2_frame_num_le(qh->next_active_frame, now)) {
++				due = DWC2_SOF_DUE_KICK;
++				break;
++			}
++			/* From now, not pairwise: a far QH must not hide a near one */
++			dist = (qh->next_active_frame - now) & HFNUM_MAX_FRNUM;
++			if (!due || dist < best) {
++				best = dist;
++				due = DWC2_SOF_DUE_VALID | qh->next_active_frame;
++			}
++		}
++	}
++	WRITE_ONCE(hsotg->sof_due, due);
++}
++
+ /**
+  * dwc2_hcd_qh_add() - Adds a QH to either the non periodic or periodic
+  * schedule if it is not already in the schedule. If the QH is already in
+@@ -1683,12 +1721,15 @@ int dwc2_hcd_qh_add(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 			list_add_tail(&qh->qh_list_entry,
+ 				      &hsotg->non_periodic_sched_inactive);
+ 		}
++		dwc2_hcd_publish_due(hsotg);
+ 		return 0;
+ 	}
+ 
+ 	status = dwc2_schedule_periodic(hsotg, qh);
+ 	if (status)
+ 		return status;
++	/* Publish before SOF is unmasked, so the first SOF sees the QH */
++	dwc2_hcd_publish_due(hsotg);
+ 	if (!hsotg->periodic_qh_count &&
+ 	    !hsotg->params.dma_desc_enable) {
+ 		intr_mask = dwc2_readl(hsotg, GINTMSK);
+@@ -1967,6 +2008,7 @@ void dwc2_hcd_qh_deactivate(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 	else
+ 		list_move_tail(&qh->qh_list_entry,
+ 			       &hsotg->periodic_sched_inactive);
++	dwc2_hcd_publish_due(hsotg);
+ }
+ 
+ /**
+diff --git a/drivers/usb/dwc2/platform.c b/drivers/usb/dwc2/platform.c
+index ef0d730..bb161d8 100644
+--- a/drivers/usb/dwc2/platform.c
++++ b/drivers/usb/dwc2/platform.c
+@@ -523,9 +523,21 @@ static int dwc2_driver_probe(struct platform_device *dev)
+ 
+ 	dev_dbg(hsotg->dev, "registering common handler for irq%d\n",
+ 		hsotg->irq);
+-	retval = devm_request_irq(hsotg->dev, hsotg->irq,
+-				  dwc2_handle_common_intr, IRQF_SHARED,
+-				  dev_name(hsotg->dev), hsotg);
++	/*
++	 * On PREEMPT_RT a hard primary keeps idle SOFs off the IRQ thread. Host
++	 * only: a gadget on the line is force-threaded and wakes on every SOF.
++	 */
++	if (IS_ENABLED(CONFIG_PREEMPT_RT) &&
++	    hsotg->dr_mode == USB_DR_MODE_HOST)
++		retval = devm_request_threaded_irq(hsotg->dev, hsotg->irq,
++						   dwc2_handle_hardirq,
++						   dwc2_handle_thread,
++						   IRQF_SHARED | IRQF_ONESHOT,
++						   dev_name(hsotg->dev), hsotg);
++	else
++		retval = devm_request_irq(hsotg->dev, hsotg->irq,
++					  dwc2_handle_intr, IRQF_SHARED,
++					  dev_name(hsotg->dev), hsotg);
+ 	if (retval)
+ 		goto error;
+ 
+-- 
+2.53.0
+

@@ -269,3 +269,5 @@
 0058-dwc2-host-single-irq-action.patch
 0059-dwc2-fs-ddma-param.patch
 0060-dwc2-host-keep-periodic-qh-cadence.patch
+0061-dwc2-host-debugfs-hcd-stats.patch
+0062-dwc2-host-sof-holdoff-in-hardirq.patch

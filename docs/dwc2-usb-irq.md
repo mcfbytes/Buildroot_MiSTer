@@ -1,6 +1,6 @@
 # dwc2 host: interrupt load, descriptor DMA and split transactions
 
-Tracking issue: #205. Status as of 2026-09-25: patches `0054`–`0060` carried, runtime work in progress.
+Tracking issue: #205. Status as of 2026-09-25: patches `0054`–`0062` carried; M1 verified on hardware; the `fs_ddma` 1 kHz fix is in progress.
 
 The DE10-Nano's only USB host is the Cyclone V HPS `snps,dwc2` core (DWC_otg 2.93a,
 `ffb40000.usb`, IRQ 42 on CPU0). Every MiSTer USB device sits behind the on-board high-speed
@@ -34,6 +34,8 @@ exists: 8,000 interrupts/s on the high-speed root port, whatever is plugged in.
 | `0058-dwc2-host-single-irq-action` | yes | one IRQ action (common handler calls the HCD), so PREEMPT_RT wakes one IRQ thread, not two (−21% CPU) |
 | `0059-dwc2-fs-ddma-param` | MiSTer-local | `dwc2.fs_ddma=1` opt-in: caps the port to full speed and enables descriptor DMA. High speed stays the default |
 | `0060-dwc2-host-keep-periodic-qh-cadence` | yes (Fixes: fb616e3f837e) | a 1 kHz FS interrupt endpoint was polled every 2 ms in buffer mode; rig-measured 500 → 984 reports/s |
+| `0061-dwc2-host-debugfs-hcd-stats` | with 0062 | M0: `hcd_stats` debugfs counters (SOF passes with and without work, complete-split window misses, split NAKs, halts per channel and type). Behaviour unchanged |
+| `0062-dwc2-host-sof-holdoff-in-hardirq` | yes (needs 0058) | M1: the primary handler acks a SOF with nothing due and does not wake the IRQ thread. Buffer DMA only. Off switch: `echo 0 > /sys/kernel/debug/usb/ffb40000.usb/sof_holdoff` |
 
 All carried in both the 6.18 and the RT/beta series (beta entries are symlinks), replayed at
 `-F0` on 6.18.53 and 7.2.7. Not in the DE25-Nano series yet (same `snps,dwc2` core; to be
@@ -72,14 +74,23 @@ Reopen only with new evidence (for example the licensed databook describing an S
 ## Plan
 
 1. **Done:** `0054`–`0058` (−21% CPU), `0060` (2 ms repoll).
-2. **In progress:** `fs_ddma` still delivers a 1 kHz FS mouse at 500 reports/s under DDMA
-   (each poll exactly 2 frames apart); the fix is being validated on the rig.
-3. **Next: M0 + M1.**
-   - M0 adds debugfs counters: SOF work vs no-work, split NAK retries, and complete-split window misses
-     (today's driver drops these silently; this is the baseline for anything later).
-   - M1 acks SOF in the hard IRQ and does not wake the thread when no periodic QH is due and
-     no non-periodic work is pending. It has a runtime off switch for A/B testing.
-   - Expected 16.2% → 11–14%. Small, low risk, upstream candidate.
+2. **In progress:** `fs_ddma` still delivers a 1 kHz FS mouse at 500 reports/s under DDMA.
+   - Every poll is exactly 2 frames apart: the driver halts the channel on each completion, and the re-arm lands after the core has already scheduled the next frame.
+   - Fix under development: keep an FS interrupt channel running and append descriptors to the live list.
+   - First rig run: each chained channel delivered one report and then stopped. On a descriptor with A=0 this core raises `XferCompl|BNA` and clears `CHENA`, but **never raises `ChHltd`**; the driver waited for the halt forever.
+   - The fix is being reworked to treat BNA with `CHENA` clear as the stop.
+3. **Done: M0 + M1 (`0061`, `0062`).** Rig result, RT 7.2.7 lab kernel, high-speed buffer DMA:
+
+   | Topology | M1 off | M1 on |
+   |---|---|---|
+   | hub + wired pad, idle: IRQ-thread CPU | 13.2% | **7.7%** |
+   | same: context switches/s | 26.2k | 18.3k |
+   | hub + pad + idle HS 8 kHz mouse: IRQ-thread CPU | 24.8% | 25.0% |
+
+   - Half of all SOFs are acked in the hard IRQ with the pad attached (M0 showed 75% of thread SOF passes had no work).
+   - Report rates and gaps for the pad and mouse are the same with M1 on and off. `cs_miss`, safety-net and race counters stayed 0; no warnings.
+   - An HS mouse with five interrupt endpoints keeps a channel busy almost every microframe, so M1 cannot help there (M4b in the ledger).
+   - The rig module also carried the in-progress `fs_ddma` chain patches (inert in buffer mode). `0061`/`0062` apply at `-F0` on `0054`–`0060` for 6.18.53 and 7.2.7.
 4. **Gate for anything bigger:** on the M1 kernel with several devices on the hub, compare
    user-visible work (CD-streaming stutter, CHD/ROM load time, `update_all` duration) against
    "no USB load" (`fs_ddma=1` or devices unplugged). No visible difference → stop.

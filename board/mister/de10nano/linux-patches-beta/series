@@ -268,3 +268,4 @@
 0057-dwc2-ddma-no-sof-unmask-for-periodic-qhs.patch
 0058-dwc2-host-single-irq-action.patch
 0059-dwc2-fs-ddma-param.patch
+0060-dwc2-host-keep-periodic-qh-cadence.patch

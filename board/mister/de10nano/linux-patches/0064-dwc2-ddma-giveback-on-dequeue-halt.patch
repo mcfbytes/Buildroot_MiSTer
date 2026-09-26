@@ -1,0 +1,157 @@
+From 8f702077577efecc8a064f54f9cafec126010205 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 19:54:15 -0500
+Subject: [PATCH 3/8] usb: dwc2: hcd_ddma: give back completed descriptors on a
+ dequeue halt
+
+In descriptor DMA mode every QTD queued on a non-isochronous QH is
+chained into one descriptor list when the channel is armed. When one
+of those URBs is dequeued, dwc2_hcd_urb_dequeue() halts the channel and
+frees the QTD at once. On the halt, dwc2_complete_non_isoc_xfer_ddma()
+then only clears in_process on the remaining QTDs and returns, before
+it scans the list and before it saves the data toggle.
+
+Any other URB whose descriptor the core already retired is re-armed
+and transferred again: an IN report the device already delivered is
+lost, and qh->data_toggle still holds the PID from before the list ran,
+so the re-armed transfer starts with a stale toggle.
+
+The scan cannot simply run on a dequeue either: it maps descriptors to
+QTDs by counting n_desc from index 0, which is wrong once a QTD has
+been freed from the middle of the list.
+
+Record the first descriptor of each QTD in qtd->desc_idx when the list
+is built and index the scan by it, stopping at the first QTD that was
+not armed. On a dequeue halt, give back the QTDs whose descriptors the
+core retired without error, stop at the first one it did not, and then
+save the toggle from HCTSIZ as a normal halt does.
+
+The scan also went on with a QTD's next descriptor after
+dwc2_process_non_isoc_desc() had given the QTD back and freed it, for
+example on a short IN packet before its last descriptor, and passed the
+freed QTD back in, which reads qtd->urb. That takes a QTD of more than
+one descriptor, a bulk IN URB of over about 128 KB, and the indexing by
+qtd->desc_idx adds a read of its own. Stop at the QTD whose transfer is
+done.
+
+Fixes: dc4c76e7b22c ("staging: HCD descriptor DMA support for the DWC2 driver")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd.h      |  3 +++
+ drivers/usb/dwc2/hcd_ddma.c | 42 ++++++++++++++++++++++++++++++-------
+ 2 files changed, 37 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
+index b7254d9..60a7154 100644
+--- a/drivers/usb/dwc2/hcd.h
++++ b/drivers/usb/dwc2/hcd.h
+@@ -376,6 +376,8 @@ struct dwc2_qh {
+  * @error_count:        Holds the number of bus errors that have occurred for
+  *                      a transaction within this transfer
+  * @n_desc:             Number of DMA descriptors for this QTD
++ * @desc_idx:           Index of the first DMA descriptor of this QTD, used
++ *                      in descriptor DMA mode for non-isochronous transfers
+  * @isoc_frame_index_last: Last activated frame (packet) index, used in
+  *                      descriptor DMA mode only
+  * @num_naks:           Number of NAKs received on this QTD.
+@@ -412,6 +414,7 @@ struct dwc2_qtd {
+ 	u32 ssplit_out_xfer_count;
+ 	u8 error_count;
+ 	u8 n_desc;
++	u8 desc_idx;
+ 	u16 isoc_frame_index_last;
+ 	u16 num_naks;
+ 	struct dwc2_hcd_urb *urb;
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 0b4b7c0..448af78 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -744,6 +744,7 @@ static void dwc2_init_non_isoc_dma_desc(struct dwc2_hsotg *hsotg,
+ 		}
+ 
+ 		qtd->n_desc = 0;
++		qtd->desc_idx = n_desc;
+ 		do {
+ 			if (n_desc > 1) {
+ 				qh->desc_list[n_desc - 1].status |= HOST_DMA_A;
+@@ -1201,32 +1202,50 @@ static int dwc2_process_non_isoc_desc(struct dwc2_hsotg *hsotg,
+ 	return 0;
+ }
+ 
++/* True if the core has retired the descriptor without an error */
++static bool dwc2_non_isoc_desc_done(struct dwc2_hsotg *hsotg,
++				    struct dwc2_qh *qh, int desc_num)
++{
++	dma_sync_single_for_cpu(hsotg->dev,
++				qh->desc_list_dma +
++				desc_num * sizeof(struct dwc2_dma_desc),
++				sizeof(struct dwc2_dma_desc), DMA_FROM_DEVICE);
++
++	return !(qh->desc_list[desc_num].status &
++		 (HOST_DMA_A | HOST_DMA_STS_MASK));
++}
++
+ static void dwc2_complete_non_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 					     struct dwc2_host_chan *chan,
+ 					     int chnum,
+ 					     enum dwc2_halt_status halt_status)
+ {
++	bool dequeue = chan->halt_status == DWC2_HC_XFER_URB_DEQUEUE;
+ 	struct list_head *qtd_item, *qtd_tmp;
+ 	struct dwc2_qh *qh = chan->qh;
+ 	struct dwc2_qtd *qtd = NULL;
+ 	int xfer_done;
+-	int desc_num = 0;
+-
+-	if (chan->halt_status == DWC2_HC_XFER_URB_DEQUEUE) {
+-		list_for_each_entry(qtd, &qh->qtd_list, qtd_list_entry)
+-			qtd->in_process = 0;
+-		return;
+-	}
++	int desc_num;
+ 
+ 	list_for_each_safe(qtd_item, qtd_tmp, &qh->qtd_list) {
+ 		int i;
+ 		int qtd_desc_count;
+ 
+ 		qtd = list_entry(qtd_item, struct dwc2_qtd, qtd_list_entry);
++		if (!qtd->in_process)
++			break;
++
+ 		xfer_done = 0;
+ 		qtd_desc_count = qtd->n_desc;
+ 
+ 		for (i = 0; i < qtd_desc_count; i++) {
++			desc_num = qtd->desc_idx + i;
++
++			/* On a dequeue halt, give back only what completed */
++			if (dequeue && !dwc2_non_isoc_desc_done(hsotg, qh,
++								desc_num))
++				goto stop_scan;
++
+ 			if (dwc2_process_non_isoc_desc(hsotg, chan, chnum, qtd,
+ 						       desc_num, halt_status,
+ 						       &xfer_done)) {
+@@ -1234,11 +1253,18 @@ static void dwc2_complete_non_isoc_xfer_ddma(struct dwc2_hsotg *hsotg,
+ 				goto stop_scan;
+ 			}
+ 
+-			desc_num++;
++			/* The QTD may have been given back and freed */
++			if (xfer_done)
++				break;
+ 		}
+ 	}
+ 
+ stop_scan:
++	if (dequeue) {
++		list_for_each_entry(qtd, &qh->qtd_list, qtd_list_entry)
++			qtd->in_process = 0;
++	}
++
+ 	if (qh->ep_type != USB_ENDPOINT_XFER_CONTROL) {
+ 		/*
+ 		 * Resetting the data toggle for bulk and interrupt endpoints
+-- 
+2.53.0
+

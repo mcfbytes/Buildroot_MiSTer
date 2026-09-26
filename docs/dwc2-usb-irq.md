@@ -1,6 +1,8 @@
 # dwc2 host: interrupt load, descriptor DMA and split transactions
 
-Tracking issue: #205. Status as of 2026-09-25: patches `0054`–`0062` carried; M1 verified on hardware; the `fs_ddma` 1 kHz fix is in progress.
+Tracking issue: #205. Status as of 2026-09-25: patches `0054`–`0066` carried, M1 and the `fs_ddma` fixes verified on hardware (RT 7.2.7),
+the `fs_ddma` interrupt-channel chaining feature parked. Research record, parked patches and lab tools:
+[`dwc2-usb-irq/`](dwc2-usb-irq/README.md).
 
 The DE10-Nano's only USB host is the Cyclone V HPS `snps,dwc2` core (DWC_otg 2.93a,
 `ffb40000.usb`, IRQ 42 on CPU0). Every MiSTer USB device sits behind the on-board high-speed
@@ -36,9 +38,19 @@ exists: 8,000 interrupts/s on the high-speed root port, whatever is plugged in.
 | `0060-dwc2-host-keep-periodic-qh-cadence` | yes (Fixes: fb616e3f837e) | a 1 kHz FS interrupt endpoint was polled every 2 ms in buffer mode; rig-measured 500 → 984 reports/s |
 | `0061-dwc2-host-debugfs-hcd-stats` | with 0062 | M0: `hcd_stats` debugfs counters (SOF passes with and without work, complete-split window misses, split NAKs, halts per channel and type). Behaviour unchanged |
 | `0062-dwc2-host-sof-holdoff-in-hardirq` | yes (needs 0058) | M1: the primary handler acks a SOF with nothing due and does not wake the IRQ thread. Buffer DMA only. Off switch: `echo 0 > /sys/kernel/debug/usb/ffb40000.usb/sof_holdoff` |
+| `0063-dwc2-ddma-desc-list-bidirectional` | yes (Fixes: 95105a998dff) | the descriptor list was mapped `DMA_TO_DEVICE` but unmapped and synced as `DMA_FROM_DEVICE` |
+| `0064-dwc2-ddma-giveback-on-dequeue-halt` | yes (Fixes: dc4c76e7b22c) | a dequeue halt dropped descriptors the core had already completed, and the data toggle went stale, with more than one URB queued |
+| `0065-dwc2-ddma-halt-before-freeing-desc-list` | yes (Fixes: dc4c76e7b22c) | a QH's descriptor list was freed while its channel could still be enabled; now halted and waited for (bounded) first |
+| `0066-dwc2-ddma-keep-xfercompl-unmasked` | yes (Fixes: dc4c76e7b22c) | after a DDMA completion XferCompl was masked on a channel that may already belong to another QH (an isochronous one then stalls) |
 
-All carried in both the 6.18 and the RT/beta series (beta entries are symlinks), replayed at
-`-F0` on 6.18.53 and 7.2.7. Not in the DE25-Nano series yet (same `snps,dwc2` core; to be
+All carried in both the 6.18 and the RT/beta series (beta entries are symlinks). The whole
+de10nano series replays at `-F0` on pristine 6.18.53 (53/53) and the beta series on 7.2.7
+(54/54); `drivers/usb/dwc2` builds W=1-clean on both.
+
+Which kernel benefits: `0058` and `0062` are PREEMPT_RT wins (they save IRQ-thread wakes; on a
+non-RT kernel they only trim hard-IRQ work, unmeasured). Everything else is kernel-independent.
+`0054`, `0055`, `0057` and `0063`–`0066` only matter when descriptor DMA is on, which on MiSTer
+means `fs_ddma=1`. Not in the DE25-Nano series yet (same `snps,dwc2` core; to be
 qualified on hardware).
 
 `fs_ddma` can be flipped at runtime; it is sampled once per probe:
@@ -74,7 +86,7 @@ Reopen only with new evidence (for example the licensed databook describing an S
 ## Plan
 
 1. **Done:** `0054`–`0058` (−21% CPU), `0060` (2 ms repoll).
-2. **`fs_ddma` 1 kHz: rig-tested, not yet carried.**
+2. **`fs_ddma` 1 kHz: fixes carried (`0063`–`0066`), chaining feature parked.**
    - Cause: the driver halts an FS interrupt channel on every completion. The re-arm lands after the core has built the next frame's schedule, so a bInterval-1 endpoint is polled every other frame.
    - Fix (7 patches):
      - 4 general DDMA fixes: descriptor-list DMA direction, completed descriptors lost on a dequeue, a channel freed while still enabled, and XferCompl masked on a channel already handed to another QH;
@@ -92,6 +104,8 @@ Reopen only with new evidence (for example the licensed databook describing an S
 
    - Five authorize cycles and 30 evdev open/close rounds per device passed with no stall, leak or warning.
    - Because usbhid keeps one URB in flight, ordinary HID devices see no rate change under `fs_ddma` without a usbhid change (ledger). For a 1 kHz mouse, buffer mode with `0060` already gives 984/s.
+   - Only the 4 general fixes are carried. The chaining feature (3 patches) is parked, with its patches and rig evidence in [`dwc2-usb-irq/`](dwc2-usb-irq/README.md).
+   - The rig ran the fixes together with the chaining patches and M1 on an earlier base. The carried set was replayed and compiled, but not rerun on hardware in exactly this combination.
 3. **Done: M0 + M1 (`0061`, `0062`).** Rig result, RT 7.2.7 lab kernel, high-speed buffer DMA:
 
    | Topology | M1 off | M1 on |
@@ -124,6 +138,9 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 | **PREEMPT_RT tuning** for dwc2 IRQ thread / softirq | unknown | RT pays the thread cost hardest | after M1 (its ONESHOT primary is the base) |
 | **DE25-Nano** qualification | ~0 if the core revision matches | same plan applies | hardware arrives; also check whether an Agilex 5 USB 3 (dwc3/xHCI) port reaches a connector, which would do splits in hardware |
 | **usbhid: two interrupt-IN URBs in flight** | small usbhid patch; upstream-sensitive | makes the `fs_ddma` channel chaining pay off for every HID device: 500 → ~1,000/s | owner wants 1 kHz HID under `fs_ddma`; needs the chaining patches carried first |
+| **`fs_ddma` interrupt-channel chaining** (parked patches in `dwc2-usb-irq/parked/`) | 3 patches, ~1,000 lines; medium | rig: 2 URBs in flight 500 → ~964/s, 4 URBs 666 → 1,000/s; 1 URB unchanged (hardware prefetch) | a driver with several interrupt-IN URBs in flight matters under `fs_ddma`: USB MIDI on interrupt endpoints (`snd-usb-midi` keeps 7) or the usbhid option below. Retest on the rig before carrying |
+| **Automatic `fs_ddma`** (userspace: udev + unbind/rebind) | ~100 lines + testing; low–medium | ~7 points of CPU0 over M1 for all-full-speed setups (7.7% → ~0.7%) | CPU0 still matters after M1. Switch only at boot or in the menu: every switch drops all USB for 1–2 s. Detect high-speed-capable devices plugged in while capped with a `DEVICE_QUALIFIER` request (full-speed-only devices stall it) or by class (storage, network) |
+| **Measure on 6.18 (non-RT)** | one lab-kernel boot | tells whether `0058`/`0062` matter off RT | before offering them to the MiSTer 6.18 kernel |
 | FS cap by default | — | — | **declined**: high speed stays the default, `fs_ddma` is opt-in |
 
 ## Side issues found along the way
@@ -131,5 +148,15 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 - `btrtl`: NULL dereference in `btrtl_download_firmware` after a vendor command 0xfc61 timeout,
   hit while hot-swapping `dwc2.ko` with a Realtek BT dongle attached. To report upstream separately.
 - Under `fs_ddma=1` the first interrupt URB of a device can complete with Babble. Unexplained.
-- Upstream: `0054`–`0058` and `0060` go to linux-usb as a series only after sustained rig time
-  and owner approval.
+
+## Upstreaming
+
+Nothing has been sent; every submission needs the owner's approval.
+
+- **Mainline (linux-usb), after more rig time:** the fixes `0054`, `0055`, `0057`, `0060` and
+  `0063`–`0066` carry `Fixes:` tags and would reach 6.18.y through stable. `0056`, `0058` and
+  `0062` (with `0061`'s counters split into their own patch) are improvements, not stable material.
+- **MiSTer 6.18 kernel (Linux-Kernel_MiSTer)**, which is non-RT and runs high-speed buffer DMA by default:
+  - `0060`: small, generic, and helps any 1 kHz full-speed device. Measured only on a full-speed root port so far; confirm behind the high-speed hub on 6.18 first.
+  - The `fs_ddma` bundle (`0054`, `0055`, `0057`, `0059`, `0063`–`0066`): an opt-in that removes the SOF storm on any kernel. The DDMA fixes are only reachable through `0059`, so they go together or not at all. Offer it after a 6.18 measurement.
+  - Not `0058`, `0061`, `0062` until 6.18 numbers show they matter off RT. Not `0056` on its own.

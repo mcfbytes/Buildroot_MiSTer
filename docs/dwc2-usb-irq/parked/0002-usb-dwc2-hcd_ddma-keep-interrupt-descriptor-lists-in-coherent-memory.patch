@@ -1,0 +1,328 @@
+From 1b7f1b02807576e73e8a58c292456c5213409e8b Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 19:56:04 -0500
+Subject: [PATCH 7/8] usb: dwc2: hcd_ddma: keep interrupt descriptor lists in
+ coherent memory
+
+Descriptor lists are kmem cache objects with a streaming mapping. Each
+descriptor is 8 bytes, so one 32-byte cache line on ARMv7 holds four
+of them, and the driver does cache maintenance per descriptor while
+the core writes back the status word of every descriptor it retires.
+
+That is only safe while the CPU never touches a line the channel is
+still using. Once software writes a descriptor next to one the core is
+processing, the clean for the new descriptor can write the CPU's stale
+copy of its neighbour back over the core's write-back, and the
+invalidate done before reading a completion (dma_sync_single_for_cpu()
+with DMA_FROM_DEVICE) can discard what software just wrote to the line.
+
+With dma_desc_int_chain, full- and low-speed interrupt endpoints are
+about to keep a channel running while new descriptors are added. For
+those, allocate the lists from a dma_pool in coherent memory, 512 bytes
+aligned to 512 as the core requires, and skip the per-descriptor and
+whole-list syncs for such lists. The pool is only created when the
+parameter is set, so every other configuration, high-speed interrupt
+endpoints included, keeps the kmem cache and its streaming mapping.
+The pool is device managed and optional: if it cannot be created, the
+lists stay in the kmem cache and the endpoint is not chained.
+
+Coherent memory is mapped Normal non-cacheable on ARM, so ordering is
+still needed. The CHENA write that starts a list goes through writel(),
+which orders the descriptor writes before it; descriptors added to a
+running list need dma_wmb() before the word that hands them over.
+
+Isochronous lists share the hazard in principle, since their
+completion path also rewrites descriptors of a running channel under a
+streaming mapping. They are left alone here.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h     |   3 +
+ drivers/usb/dwc2/hcd.c      |  14 ++++-
+ drivers/usb/dwc2/hcd.h      |   3 +
+ drivers/usb/dwc2/hcd_ddma.c | 121 ++++++++++++++++++++----------------
+ 4 files changed, 84 insertions(+), 57 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index dd7badb..6407c57 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -1004,6 +1004,8 @@ struct dwc2_hregs_backup {
+  *                      resources. The frame list is freed when it drops to 0.
+  * @desc_gen_cache:     Kmem cache for generic descriptors
+  * @desc_hsisoc_cache:  Kmem cache for hs isochronous descriptors
++ * @desc_int_pool:      Coherent DMA pool for full and low speed interrupt
++ *                      descriptor lists, created with dma_desc_int_chain
+  * @unaligned_cache:    Kmem cache for DMA mode to handle non-aligned buf
+  *
+  * These are for peripheral mode:
+@@ -1196,6 +1198,7 @@ struct dwc2_hsotg {
+ 	u16 frame_list_users;
+ 	struct kmem_cache *desc_gen_cache;
+ 	struct kmem_cache *desc_hsisoc_cache;
++	struct dma_pool *desc_int_pool;
+ 	struct kmem_cache *unaligned_cache;
+ #define DWC2_KMEM_UNALIGNED_BUF_SIZE 1024
+ 
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index fa5824f..feeb648 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -15,6 +15,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/platform_device.h>
+ #include <linux/dma-mapping.h>
++#include <linux/dmapool.h>
+ #include <linux/delay.h>
+ #include <linux/io.h>
+ #include <linux/slab.h>
+@@ -1436,8 +1437,9 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
+ 
+ 	dwc2_writel(hsotg, hctsiz, HCTSIZ(chan->hc_num));
+ 
+-	dma_sync_single_for_device(hsotg->dev, chan->desc_list_addr,
+-				   chan->desc_list_sz, DMA_TO_DEVICE);
++	if (!chan->qh->desc_list_coherent)
++		dma_sync_single_for_device(hsotg->dev, chan->desc_list_addr,
++					   chan->desc_list_sz, DMA_TO_DEVICE);
+ 
+ 	dwc2_writel(hsotg, chan->desc_list_addr, HCDMA(chan->hc_num));
+ 
+@@ -5311,6 +5313,14 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
+ 			hsotg->params.dma_desc_enable = false;
+ 			hsotg->params.dma_desc_fs_enable = false;
+ 		}
++
++		/* Optional: without it INT lists stay in the kmem cache */
++		if (hsotg->params.dma_desc_int_chain)
++			hsotg->desc_int_pool =
++				dmam_pool_create("dwc2-int-desc", hsotg->dev,
++						 sizeof(struct dwc2_dma_desc) *
++						 MAX_DMA_DESC_NUM_GENERIC,
++						 512, 0);
+ 	}
+ 
+ 	if (hsotg->params.host_dma) {
+diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
+index 60a7154..ea7a066 100644
+--- a/drivers/usb/dwc2/hcd.h
++++ b/drivers/usb/dwc2/hcd.h
+@@ -302,6 +302,8 @@ struct dwc2_hs_transfer_time {
+  * @want_wait:          We should wait before re-queuing; only matters for non-
+  *                      periodic transfers and is ignored for periodic ones.
+  * @wait_timer_cancel:  Set to true to cancel the wait_timer.
++ * @desc_list_coherent: True if desc_list is in coherent memory and needs no
++ *                      cache maintenance.
+  *
+  * @tt_buffer_dirty:	True if EP's TT buffer is not clean.
+  * A Queue Head (QH) holds the static characteristics of an endpoint and
+@@ -348,6 +350,7 @@ struct dwc2_qh {
+ 	unsigned schedule_low_speed:1;
+ 	unsigned want_wait:1;
+ 	unsigned wait_timer_cancel:1;
++	unsigned desc_list_coherent:1;
+ };
+ 
+ /**
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index dba435c..ae34cbf 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -13,6 +13,7 @@
+ #include <linux/spinlock.h>
+ #include <linux/interrupt.h>
+ #include <linux/dma-mapping.h>
++#include <linux/dmapool.h>
+ #include <linux/io.h>
+ #include <linux/slab.h>
+ #include <linux/usb.h>
+@@ -55,6 +56,31 @@ static u16 dwc2_frame_incr_val(struct dwc2_qh *qh)
+ 	       (qh->host_interval + 8 - 1) / 8 : qh->host_interval;
+ }
+ 
++static void dwc2_desc_list_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
++{
++	struct kmem_cache *desc_cache;
++
++	if (qh->ep_type == USB_ENDPOINT_XFER_ISOC &&
++	    qh->dev_speed == USB_SPEED_HIGH)
++		desc_cache = hsotg->desc_hsisoc_cache;
++	else
++		desc_cache = hsotg->desc_gen_cache;
++
++	if (qh->desc_list && qh->desc_list_coherent) {
++		dma_pool_free(hsotg->desc_int_pool, qh->desc_list,
++			      qh->desc_list_dma);
++		qh->desc_list = NULL;
++	} else if (qh->desc_list) {
++		dma_unmap_single(hsotg->dev, qh->desc_list_dma,
++				 qh->desc_list_sz, DMA_BIDIRECTIONAL);
++		kmem_cache_free(desc_cache, qh->desc_list);
++		qh->desc_list = NULL;
++	}
++
++	kfree(qh->n_bytes);
++	qh->n_bytes = NULL;
++}
++
+ static int dwc2_desc_list_alloc(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 				gfp_t flags)
+ {
+@@ -69,46 +95,54 @@ static int dwc2_desc_list_alloc(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+ 	qh->desc_list_sz = sizeof(struct dwc2_dma_desc) *
+ 						dwc2_max_desc_num(qh);
+ 
+-	qh->desc_list = kmem_cache_zalloc(desc_cache, flags | GFP_DMA);
+-	if (!qh->desc_list)
+-		return -ENOMEM;
++	/* The core writes back descriptors the CPU may append next to */
++	if (qh->ep_type == USB_ENDPOINT_XFER_INT &&
++	    qh->dev_speed != USB_SPEED_HIGH && hsotg->desc_int_pool) {
++		qh->desc_list = dma_pool_zalloc(hsotg->desc_int_pool, flags,
++						&qh->desc_list_dma);
++		if (!qh->desc_list)
++			return -ENOMEM;
++		qh->desc_list_coherent = 1;
++	} else {
++		qh->desc_list = kmem_cache_zalloc(desc_cache, flags | GFP_DMA);
++		if (!qh->desc_list)
++			return -ENOMEM;
+ 
+-	qh->desc_list_dma = dma_map_single(hsotg->dev, qh->desc_list,
+-					   qh->desc_list_sz,
+-					   DMA_BIDIRECTIONAL);
++		qh->desc_list_dma = dma_map_single(hsotg->dev, qh->desc_list,
++						   qh->desc_list_sz,
++						   DMA_BIDIRECTIONAL);
++	}
+ 
+ 	qh->n_bytes = kcalloc(dwc2_max_desc_num(qh), sizeof(u32), flags);
+ 	if (!qh->n_bytes) {
+-		dma_unmap_single(hsotg->dev, qh->desc_list_dma,
+-				 qh->desc_list_sz,
+-				 DMA_BIDIRECTIONAL);
+-		kmem_cache_free(desc_cache, qh->desc_list);
+-		qh->desc_list = NULL;
++		dwc2_desc_list_free(hsotg, qh);
+ 		return -ENOMEM;
+ 	}
+ 
+ 	return 0;
+ }
+ 
+-static void dwc2_desc_list_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
++static void dwc2_desc_sync_for_device(struct dwc2_hsotg *hsotg,
++				      struct dwc2_qh *qh, int idx)
+ {
+-	struct kmem_cache *desc_cache;
++	if (qh->desc_list_coherent)
++		return;
+ 
+-	if (qh->ep_type == USB_ENDPOINT_XFER_ISOC &&
+-	    qh->dev_speed == USB_SPEED_HIGH)
+-		desc_cache = hsotg->desc_hsisoc_cache;
+-	else
+-		desc_cache = hsotg->desc_gen_cache;
++	dma_sync_single_for_device(hsotg->dev, qh->desc_list_dma +
++				   idx * sizeof(struct dwc2_dma_desc),
++				   sizeof(struct dwc2_dma_desc),
++				   DMA_TO_DEVICE);
++}
+ 
+-	if (qh->desc_list) {
+-		dma_unmap_single(hsotg->dev, qh->desc_list_dma,
+-				 qh->desc_list_sz, DMA_BIDIRECTIONAL);
+-		kmem_cache_free(desc_cache, qh->desc_list);
+-		qh->desc_list = NULL;
+-	}
++static void dwc2_desc_sync_for_cpu(struct dwc2_hsotg *hsotg,
++				   struct dwc2_qh *qh, int idx)
++{
++	if (qh->desc_list_coherent)
++		return;
+ 
+-	kfree(qh->n_bytes);
+-	qh->n_bytes = NULL;
++	dma_sync_single_for_cpu(hsotg->dev, qh->desc_list_dma +
++				idx * sizeof(struct dwc2_dma_desc),
++				sizeof(struct dwc2_dma_desc), DMA_FROM_DEVICE);
+ }
+ 
+ static int dwc2_frame_list_alloc(struct dwc2_hsotg *hsotg, gfp_t mem_flags)
+@@ -723,11 +757,7 @@ static void dwc2_fill_host_dma_desc(struct dwc2_hsotg *hsotg,
+ 
+ 	dma_desc->buf = (u32)chan->xfer_dma;
+ 
+-	dma_sync_single_for_device(hsotg->dev,
+-				   qh->desc_list_dma +
+-				   (n_desc * sizeof(struct dwc2_dma_desc)),
+-				   sizeof(struct dwc2_dma_desc),
+-				   DMA_TO_DEVICE);
++	dwc2_desc_sync_for_device(hsotg, qh, n_desc);
+ 
+ 	/*
+ 	 * Last (or only) descriptor of IN transfer with actual size less
+@@ -780,12 +810,7 @@ static void dwc2_init_non_isoc_dma_desc(struct dwc2_hsotg *hsotg,
+ 					 "set A bit in desc %d (%p)\n",
+ 					 n_desc - 1,
+ 					 &qh->desc_list[n_desc - 1]);
+-				dma_sync_single_for_device(hsotg->dev,
+-							   qh->desc_list_dma +
+-					((n_desc - 1) *
+-					sizeof(struct dwc2_dma_desc)),
+-					sizeof(struct dwc2_dma_desc),
+-					DMA_TO_DEVICE);
++				dwc2_desc_sync_for_device(hsotg, qh, n_desc - 1);
+ 			}
+ 			dwc2_fill_host_dma_desc(hsotg, chan, qtd, qh, n_desc);
+ 			dev_vdbg(hsotg->dev,
+@@ -811,19 +836,12 @@ static void dwc2_init_non_isoc_dma_desc(struct dwc2_hsotg *hsotg,
+ 				HOST_DMA_IOC | HOST_DMA_EOL | HOST_DMA_A;
+ 		dev_vdbg(hsotg->dev, "set IOC/EOL/A bits in desc %d (%p)\n",
+ 			 n_desc - 1, &qh->desc_list[n_desc - 1]);
+-		dma_sync_single_for_device(hsotg->dev,
+-					   qh->desc_list_dma + (n_desc - 1) *
+-					   sizeof(struct dwc2_dma_desc),
+-					   sizeof(struct dwc2_dma_desc),
+-					   DMA_TO_DEVICE);
++		dwc2_desc_sync_for_device(hsotg, qh, n_desc - 1);
+ 		if (n_desc > 1) {
+ 			qh->desc_list[0].status |= HOST_DMA_A;
+ 			dev_vdbg(hsotg->dev, "set A bit in desc 0 (%p)\n",
+ 				 &qh->desc_list[0]);
+-			dma_sync_single_for_device(hsotg->dev,
+-						   qh->desc_list_dma,
+-					sizeof(struct dwc2_dma_desc),
+-					DMA_TO_DEVICE);
++			dwc2_desc_sync_for_device(hsotg, qh, 0);
+ 		}
+ 		chan->ntd = n_desc;
+ 	}
+@@ -1176,11 +1194,7 @@ static int dwc2_process_non_isoc_desc(struct dwc2_hsotg *hsotg,
+ 	if (!urb)
+ 		return -EINVAL;
+ 
+-	dma_sync_single_for_cpu(hsotg->dev,
+-				qh->desc_list_dma + (desc_num *
+-				sizeof(struct dwc2_dma_desc)),
+-				sizeof(struct dwc2_dma_desc),
+-				DMA_FROM_DEVICE);
++	dwc2_desc_sync_for_cpu(hsotg, qh, desc_num);
+ 
+ 	dma_desc = &qh->desc_list[desc_num];
+ 	n_bytes = qh->n_bytes[desc_num];
+@@ -1234,10 +1248,7 @@ static int dwc2_process_non_isoc_desc(struct dwc2_hsotg *hsotg,
+ static bool dwc2_non_isoc_desc_done(struct dwc2_hsotg *hsotg,
+ 				    struct dwc2_qh *qh, int desc_num)
+ {
+-	dma_sync_single_for_cpu(hsotg->dev,
+-				qh->desc_list_dma +
+-				desc_num * sizeof(struct dwc2_dma_desc),
+-				sizeof(struct dwc2_dma_desc), DMA_FROM_DEVICE);
++	dwc2_desc_sync_for_cpu(hsotg, qh, desc_num);
+ 
+ 	return !(qh->desc_list[desc_num].status &
+ 		 (HOST_DMA_A | HOST_DMA_STS_MASK));
+-- 
+2.53.0
+

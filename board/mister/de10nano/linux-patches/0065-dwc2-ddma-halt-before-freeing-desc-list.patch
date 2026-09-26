@@ -1,0 +1,115 @@
+From aeb98cb7101c61b8300a6fd8dbb855bc83ef3c61 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 19:54:57 -0500
+Subject: [PATCH 4/8] usb: dwc2: hcd_ddma: halt a QH's channel before freeing
+ its descriptors
+
+dwc2_hcd_qh_free_ddma() frees the descriptor list first and only then
+releases a channel that is still assigned to the QH, a case its own
+comment says is seen after an isochronous dequeue. If that channel is
+still enabled the core keeps fetching descriptors from the freed
+memory, and the release that follows does not stop it:
+dwc2_release_channel_ddma() clears the frame list bits and
+dwc2_hc_cleanup() only clears the channel interrupt registers.
+
+dwc2_hcd_endpoint_disable() also clears chan->qh before the QH is
+freed, so the release then skips the channel cleanup as if the channel
+had already been freed by a disconnect, and the channel never goes
+back to free_hc_list.
+
+Halt a channel that is still started for this QH and wait for CHENA to
+clear, or for the halt interrupt to release the channel, before the
+list is freed. A periodic channel only acts on the disable in one of
+its scheduled frames, so wait up to host_interval + 2 ms, sleeping
+with the lock dropped: a started channel that is still this QH's is
+only found here from dwc2_hcd_endpoint_disable(), which may sleep. If
+the channel is still enabled after that, warn and leak the list
+rather than free memory the core may still read.
+
+Leave chan->qh set in dwc2_hcd_endpoint_disable() when the QH has a
+descriptor list, so that dwc2_hcd_qh_free_ddma() can tell its own
+channel from one a disconnect has already cleaned up.
+
+Fixes: dc4c76e7b22c ("staging: HCD descriptor DMA support for the DWC2 driver")
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/hcd.c      |  3 ++-
+ drivers/usb/dwc2/hcd_ddma.c | 32 ++++++++++++++++++++++++++++++--
+ 2 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+index cb1df0a..fa5824f 100644
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -2001,7 +2001,8 @@ static int dwc2_hcd_endpoint_disable(struct dwc2_hsotg *hsotg,
+ 
+ 	ep->hcpriv = NULL;
+ 
+-	if (qh->channel && qh->channel->qh == qh)
++	/* A descriptor DMA channel is halted in dwc2_hcd_qh_free_ddma() */
++	if (qh->channel && qh->channel->qh == qh && !qh->desc_list)
+ 		qh->channel->qh = NULL;
+ 
+ 	spin_unlock_irqrestore(&hsotg->lock, flags);
+diff --git a/drivers/usb/dwc2/hcd_ddma.c b/drivers/usb/dwc2/hcd_ddma.c
+index 448af78..dba435c 100644
+--- a/drivers/usb/dwc2/hcd_ddma.c
++++ b/drivers/usb/dwc2/hcd_ddma.c
+@@ -361,10 +361,11 @@ int dwc2_hcd_qh_init_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
+  */
+ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ {
++	struct dwc2_host_chan *chan;
+ 	unsigned long flags;
++	bool leak = false;
+ 	bool last = false;
+-
+-	dwc2_desc_list_free(hsotg, qh);
++	int ms;
+ 
+ 	/*
+ 	 * Channel still assigned due to some reasons.
+@@ -374,6 +375,26 @@ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 	 * channel remains assigned.
+ 	 */
+ 	spin_lock_irqsave(&hsotg->lock, flags);
++	chan = qh->channel;
++	if (chan && chan->qh == qh && chan->xfer_started &&
++	    hsotg->flags.b.port_connect_status) {
++		/* A periodic channel only halts in one of its own frames */
++		ms = dwc2_qh_is_non_per(qh) ? 2 : qh->host_interval + 2;
++		dwc2_hc_halt(hsotg, chan, DWC2_HC_XFER_URB_DEQUEUE);
++		while (ms-- && qh->channel && chan->qh == qh &&
++		       dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA) {
++			spin_unlock_irqrestore(&hsotg->lock, flags);
++			fsleep(1000);
++			spin_lock_irqsave(&hsotg->lock, flags);
++		}
++		/* The core may still fetch from the list: never free it */
++		if (qh->channel && chan->qh == qh &&
++		    dwc2_readl(hsotg, HCCHAR(chan->hc_num)) & HCCHAR_CHENA) {
++			dev_warn(hsotg->dev, "%s: channel %d did not halt\n",
++				 __func__, chan->hc_num);
++			leak = true;
++		}
++	}
+ 	if (qh->channel)
+ 		dwc2_release_channel_ddma(hsotg, qh);
+ 	if (qh->ep_type == USB_ENDPOINT_XFER_ISOC ||
+@@ -381,6 +402,13 @@ void dwc2_hcd_qh_free_ddma(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+ 		last = !--hsotg->frame_list_users;
+ 	spin_unlock_irqrestore(&hsotg->lock, flags);
+ 
++	if (leak) {
++		kfree(qh->n_bytes);
++		qh->n_bytes = NULL;
++	} else {
++		dwc2_desc_list_free(hsotg, qh);
++	}
++
+ 	if (last && hsotg->frame_list) {
+ 		dwc2_per_sched_disable(hsotg);
+ 		dwc2_frame_list_free(hsotg);
+-- 
+2.53.0
+

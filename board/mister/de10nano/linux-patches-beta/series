@@ -271,3 +271,7 @@
 0060-dwc2-host-keep-periodic-qh-cadence.patch
 0061-dwc2-host-debugfs-hcd-stats.patch
 0062-dwc2-host-sof-holdoff-in-hardirq.patch
+0063-dwc2-ddma-desc-list-bidirectional.patch
+0064-dwc2-ddma-giveback-on-dequeue-halt.patch
+0065-dwc2-ddma-halt-before-freeing-desc-list.patch
+0066-dwc2-ddma-keep-xfercompl-unmasked.patch

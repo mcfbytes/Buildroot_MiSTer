@@ -1,0 +1,71 @@
+From 2a0078cfa30ce9b2515159e1499be36066271ad8 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 25 Sep 2026 20:20:12 -0500
+Subject: [PATCH 6/8] usb: dwc2: add the dma_desc_int_chain parameter
+
+Add a core parameter that lets a full- or low-speed interrupt endpoint
+keep its descriptor DMA channel running across URBs, instead of halting
+and releasing it after each one. The next two patches put interrupt
+descriptor lists in coherent memory and implement the chaining, both
+only when the parameter is set.
+
+No platform sets it: nothing else in the DWC2 host code appends to a
+running interrupt list, so it is opt-in. The fs_ddma mode sets it,
+since it exists to run full-speed devices under descriptor DMA. Show
+it in the debugfs params file.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/usb/dwc2/core.h    | 3 +++
+ drivers/usb/dwc2/debugfs.c | 1 +
+ drivers/usb/dwc2/params.c  | 1 +
+ 3 files changed, 5 insertions(+)
+
+diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
+index d0b0905..dd7badb 100644
+--- a/drivers/usb/dwc2/core.h
++++ b/drivers/usb/dwc2/core.h
+@@ -228,6 +228,8 @@ enum dwc2_ep0_state {
+  *                      value for this if none is specified.
+  *                       0 - Address DMA
+  *                       1 - Descriptor DMA (default, if available)
++ * @dma_desc_int_chain: In descriptor DMA mode, keep the channel of a full or
++ *                      low speed interrupt endpoint running across URBs.
+  * @dma_desc_fs_enable: When DMA mode is enabled, specifies whether to use
+  *                      address DMA mode or descriptor DMA mode for accessing
+  *                      the data FIFOs in Full Speed mode only. The driver
+@@ -488,6 +490,7 @@ struct dwc2_core_params {
+ 	/* Host parameters */
+ 	bool host_dma;
+ 	bool dma_desc_enable;
++	bool dma_desc_int_chain;
+ 	bool dma_desc_fs_enable;
+ 	bool host_support_fs_ls_low_power;
+ 	bool host_ls_low_power_phy_clk;
+diff --git a/drivers/usb/dwc2/debugfs.c b/drivers/usb/dwc2/debugfs.c
+index 3116ac7..0319d2d 100644
+--- a/drivers/usb/dwc2/debugfs.c
++++ b/drivers/usb/dwc2/debugfs.c
+@@ -674,6 +674,7 @@ static int params_show(struct seq_file *seq, void *v)
+ 	print_param(seq, p, otg_caps.srp_support);
+ 	print_param(seq, p, otg_caps.otg_rev);
+ 	print_param(seq, p, dma_desc_enable);
++	print_param(seq, p, dma_desc_int_chain);
+ 	print_param(seq, p, dma_desc_fs_enable);
+ 	print_param(seq, p, speed);
+ 	print_param(seq, p, enable_dynamic_fifo);
+diff --git a/drivers/usb/dwc2/params.c b/drivers/usb/dwc2/params.c
+index e5243fc..308b0ca 100644
+--- a/drivers/usb/dwc2/params.c
++++ b/drivers/usb/dwc2/params.c
+@@ -1080,6 +1080,7 @@ static void dwc2_set_fs_ddma(struct dwc2_hsotg *hsotg)
+ 	if (p->speed == DWC2_SPEED_PARAM_HIGH)
+ 		p->speed = DWC2_SPEED_PARAM_FULL;
+ 	p->dma_desc_enable = true;
++	p->dma_desc_int_chain = true;
+ 	dev_info(hsotg->dev, "fs_ddma: host speed limit %s, descriptor DMA on\n",
+ 		 p->speed == DWC2_SPEED_PARAM_FULL ? "full" : "low");
+ }
+-- 
+2.53.0
+

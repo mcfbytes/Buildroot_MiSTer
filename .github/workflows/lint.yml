@@ -46,6 +46,8 @@ on:
       # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
       # directory feeds the version/hash consistency gate.
       - 'package/azcopy/**'
+      # package/itsalive: feeds the version/hash gate; #210 bypassed it.
+      - 'package/itsalive/**'
       - 'install.sh'
       - 'uninstall.sh'
   pull_request:
@@ -56,6 +58,8 @@ on:
       # package/azcopy: azcopy-profile.sh is shellchecked below, and the whole
       # directory feeds the version/hash consistency gate.
       - 'package/azcopy/**'
+      # package/itsalive: feeds the version/hash gate; #210 bypassed it.
+      - 'package/itsalive/**'
       - 'install.sh'
       - 'uninstall.sh'
   workflow_dispatch:

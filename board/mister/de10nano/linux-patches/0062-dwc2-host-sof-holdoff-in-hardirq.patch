@@ -1,4 +1,4 @@
-From 62ef2098bc6b0776cfd83fda4c44c482b4d4425c Mon Sep 17 00:00:00 2001
+From cbc0164b35559447f19841c7e2924e0ba89217bf Mon Sep 17 00:00:00 2001
 From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
 Date: Fri, 25 Sep 2026 20:31:45 -0500
 Subject: [PATCH 2/2] usb: dwc2: host: acknowledge a SOF with nothing due in
@@ -44,9 +44,16 @@ suspended or hibernated port and device mode are passed through. While
 the hold-off is on, held SOFs are not reported as missed ones by
 dwc2_track_missed_sofs().
 
-The hold-off is on by default and can be switched off per controller at
+The hold-off is off by default and can be switched on per controller at
 run time through a "sof_holdoff" debugfs file. Its decisions are counted
 in "hcd_stats".
+
+On a PREEMPT_RT 7.2 kernel with a hub and a full-speed pad idle, it cut
+the IRQ thread's CPU time from 13.2% to 7.7%. On a non-RT 6.18 kernel it
+gained nothing when idle, and with about 195 Mbit/s of receive traffic
+through a USB WiFi adapter on the same host port, a fixed CPU0 workload
+ran slower in six of six runs and complete-split misses rose by about
+10-15%. It stays off until that is understood.
 
 This needs "usb: dwc2: host: serve the HCD from the common interrupt
 handler", which leaves one action on the line: with the HCD's own
@@ -58,18 +65,17 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  drivers/usb/dwc2/core.h      | 40 +++++++++++++++++-
  drivers/usb/dwc2/core_intr.c | 50 ++++++++++++++++++++++
  drivers/usb/dwc2/debugfs.c   | 19 +++++++--
- drivers/usb/dwc2/hcd.c       |  1 +
  drivers/usb/dwc2/hcd.h       |  1 +
  drivers/usb/dwc2/hcd_intr.c  | 80 +++++++++++++++++++++++++++++++++++-
  drivers/usb/dwc2/hcd_queue.c | 42 +++++++++++++++++++
  drivers/usb/dwc2/platform.c  | 18 ++++++--
- 8 files changed, 243 insertions(+), 8 deletions(-)
+ 7 files changed, 242 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/usb/dwc2/core.h b/drivers/usb/dwc2/core.h
-index eabdf12..92d1c7d 100644
+index df6c49c..5f4a2b4 100644
 --- a/drivers/usb/dwc2/core.h
 +++ b/drivers/usb/dwc2/core.h
-@@ -859,8 +859,18 @@ struct dwc2_hregs_backup {
+@@ -855,8 +855,18 @@ struct dwc2_hregs_backup {
   * @sel_np:         QHs given a channel from the non-periodic schedule
   * @halts:          Channel interrupts, per host channel
   * @halts_by:       Channel interrupts by endpoint type, split and direction
@@ -89,7 +95,7 @@ index eabdf12..92d1c7d 100644
   */
  struct dwc2_hcd_stats {
  	u32 hcd_passes;
-@@ -872,6 +882,15 @@ struct dwc2_hcd_stats {
+@@ -868,6 +878,15 @@ struct dwc2_hcd_stats {
  	u32 sel_np;
  	u32 halts[MAX_EPS_CHANNELS];
  	u32 halts_by[4][2][2];
@@ -105,7 +111,7 @@ index eabdf12..92d1c7d 100644
  };
  
  /**
-@@ -1004,6 +1023,11 @@ struct dwc2_hcd_stats {
+@@ -1000,6 +1019,11 @@ struct dwc2_hcd_stats {
   *                      SOF enable/disable.
   * @hcd_stats:          Host interrupt counters, see struct dwc2_hcd_stats
   * @hcd_stats_base:     Counter values at the last debugfs reset
@@ -117,7 +123,7 @@ index eabdf12..92d1c7d 100644
   * @free_hc_list:       Free host channels in the controller. This is a list of
   *                      struct dwc2_host_chan items.
   * @periodic_channels:  Number of host channels assigned to periodic transfers.
-@@ -1198,6 +1222,14 @@ struct dwc2_hsotg {
+@@ -1192,6 +1216,14 @@ struct dwc2_hsotg {
  	bool new_connection;
  	struct dwc2_hcd_stats hcd_stats;
  	struct dwc2_hcd_stats hcd_stats_base;
@@ -132,7 +138,7 @@ index eabdf12..92d1c7d 100644
  
  	u16 last_frame_num;
  
-@@ -1393,6 +1425,9 @@ void dwc2_wakeup_from_lpm_l1(struct dwc2_hsotg *hsotg, bool remotewakeup);
+@@ -1386,6 +1418,9 @@ void dwc2_wakeup_from_lpm_l1(struct dwc2_hsotg *hsotg, bool remotewakeup);
  
  /* This function should be called on every hardware interrupt. */
  irqreturn_t dwc2_handle_common_intr(int irq, void *dev);
@@ -142,7 +148,7 @@ index eabdf12..92d1c7d 100644
  
  /* The device ID match table */
  extern const struct of_device_id dwc2_of_match_table[];
-@@ -1545,6 +1580,7 @@ void dwc2_hcd_connect(struct dwc2_hsotg *hsotg);
+@@ -1538,6 +1573,7 @@ void dwc2_hcd_connect(struct dwc2_hsotg *hsotg);
  void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force);
  void dwc2_hcd_start(struct dwc2_hsotg *hsotg);
  irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg);
@@ -150,7 +156,7 @@ index eabdf12..92d1c7d 100644
  int dwc2_core_init(struct dwc2_hsotg *hsotg, bool initial_setup);
  int dwc2_port_suspend(struct dwc2_hsotg *hsotg, u16 windex);
  int dwc2_port_resume(struct dwc2_hsotg *hsotg);
-@@ -1574,6 +1610,8 @@ static inline void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force) {}
+@@ -1567,6 +1603,8 @@ static inline void dwc2_hcd_disconnect(struct dwc2_hsotg *hsotg, bool force) {}
  static inline void dwc2_hcd_start(struct dwc2_hsotg *hsotg) {}
  static inline irqreturn_t dwc2_hcd_handle_irq(struct dwc2_hsotg *hsotg)
  { return IRQ_NONE; }
@@ -163,7 +169,7 @@ diff --git a/drivers/usb/dwc2/core_intr.c b/drivers/usb/dwc2/core_intr.c
 index f9f8f08..5112329 100644
 --- a/drivers/usb/dwc2/core_intr.c
 +++ b/drivers/usb/dwc2/core_intr.c
-@@ -914,3 +914,53 @@ out:
+@@ -914,3 +914,53 @@ irqreturn_t dwc2_handle_common_intr(int irq, void *dev)
  
  	return retval;
  }
@@ -218,10 +224,10 @@ index f9f8f08..5112329 100644
 +	return retval;
 +}
 diff --git a/drivers/usb/dwc2/debugfs.c b/drivers/usb/dwc2/debugfs.c
-index faadb48..20c833e 100644
+index 8396a27..43c6bde 100644
 --- a/drivers/usb/dwc2/debugfs.c
 +++ b/drivers/usb/dwc2/debugfs.c
-@@ -799,6 +799,16 @@ static int hcd_stats_show(struct seq_file *seq, void *v)
+@@ -798,6 +798,16 @@ static int hcd_stats_show(struct seq_file *seq, void *v)
  	seq_printf(seq, "split_nak %u\n", st.split_nak);
  	seq_printf(seq, "sel_periodic %u\n", st.sel_periodic);
  	seq_printf(seq, "sel_np %u\n", st.sel_np);
@@ -238,7 +244,7 @@ index faadb48..20c833e 100644
  	seq_puts(seq, "halts");
  	for (i = 0; i < hsotg->params.host_channels; i++)
  		seq_printf(seq, " %u", st.halts[i]);
-@@ -842,9 +852,12 @@ static const struct file_operations hcd_stats_fops = {
+@@ -841,9 +851,12 @@ static const struct file_operations hcd_stats_fops = {
  
  static void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg)
  {
@@ -254,23 +260,11 @@ index faadb48..20c833e 100644
  }
  #else
  static inline void dwc2_hcd_create_debug(struct dwc2_hsotg *hsotg) {}
-diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
-index e2e81fb..56b3381 100644
---- a/drivers/usb/dwc2/hcd.c
-+++ b/drivers/usb/dwc2/hcd.c
-@@ -5158,6 +5158,7 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg)
- 		return -ENODEV;
- 
- 	dev_dbg(hsotg->dev, "DWC OTG HCD INIT\n");
-+	hsotg->sof_holdoff = true;
- 
- 	retval = -ENOMEM;
- 
 diff --git a/drivers/usb/dwc2/hcd.h b/drivers/usb/dwc2/hcd.h
-index eb2ab64..0b832e4 100644
+index b7254d9..36e7f27 100644
 --- a/drivers/usb/dwc2/hcd.h
 +++ b/drivers/usb/dwc2/hcd.h
-@@ -549,6 +549,7 @@ struct dwc2_qh *dwc2_hcd_qh_create(struct dwc2_hsotg *hsotg,
+@@ -538,6 +538,7 @@ struct dwc2_qh *dwc2_hcd_qh_create(struct dwc2_hsotg *hsotg,
  					  gfp_t mem_flags);
  void dwc2_hcd_qh_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
  int dwc2_hcd_qh_add(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh);
@@ -279,7 +273,7 @@ index eb2ab64..0b832e4 100644
  void dwc2_hcd_qh_deactivate(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
  			    int sched_csplit);
 diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
-index 5bd81d4..97ada27 100644
+index d172dfa..60e62df 100644
 --- a/drivers/usb/dwc2/hcd_intr.c
 +++ b/drivers/usb/dwc2/hcd_intr.c
 @@ -124,7 +124,11 @@ static void dwc2_sof_intr(struct dwc2_hsotg *hsotg)
@@ -369,7 +363,7 @@ index 5bd81d4..97ada27 100644
  }
  
  /*
-@@ -2265,6 +2336,12 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
+@@ -2249,6 +2320,12 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
  	/* Check if HOST Mode */
  	if (dwc2_is_host_mode(hsotg)) {
  		gintsts = dwc2_read_core_intr(hsotg);
@@ -382,7 +376,7 @@ index 5bd81d4..97ada27 100644
  		if (!gintsts) {
  			spin_unlock(&hsotg->lock);
  			return retval;
-@@ -2299,6 +2376,7 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
+@@ -2283,6 +2360,7 @@ irqreturn_t dwc2_handle_hcd_intr(struct dwc2_hsotg *hsotg)
  			dwc2_hc_intr(hsotg);
  		if (gintsts & GINTSTS_PTXFEMP)
  			dwc2_perio_tx_fifo_empty_intr(hsotg);
@@ -391,7 +385,7 @@ index 5bd81d4..97ada27 100644
  		if (dbg_gintsts) {
  			dev_vdbg(hsotg->dev,
 diff --git a/drivers/usb/dwc2/hcd_queue.c b/drivers/usb/dwc2/hcd_queue.c
-index ad5137c..cf873b4 100644
+index 5aec13c..17d3af1 100644
 --- a/drivers/usb/dwc2/hcd_queue.c
 +++ b/drivers/usb/dwc2/hcd_queue.c
 @@ -1427,6 +1427,7 @@ static enum hrtimer_restart dwc2_wait_timer_fn(struct hrtimer *t)

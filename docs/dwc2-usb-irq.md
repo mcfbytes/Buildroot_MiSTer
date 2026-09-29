@@ -1,6 +1,6 @@
 # dwc2 host: interrupt load, descriptor DMA and split transactions
 
-Tracking issue: #205. Status as of 2026-09-25: patches `0054`–`0066` carried, M1 and the `fs_ddma` fixes verified on hardware (RT 7.2.7),
+Tracking issue: #205. Status as of 2026-09-28: patches `0054`–`0066` carried (the `0062` SOF hold-off ships **off** by default), M1 and the `fs_ddma` fixes verified on hardware (RT 7.2.7),
 the `fs_ddma` interrupt-channel chaining feature parked. Research record, parked patches and lab tools:
 [`dwc2-usb-irq/`](dwc2-usb-irq/README.md).
 
@@ -37,7 +37,7 @@ exists: 8,000 interrupts/s on the high-speed root port, whatever is plugged in.
 | `0059-dwc2-fs-ddma-param` | MiSTer-local | `dwc2.fs_ddma=1` opt-in: caps the port to full speed and enables descriptor DMA. High speed stays the default |
 | `0060-dwc2-host-keep-periodic-qh-cadence` | yes (Fixes: fb616e3f837e) | a 1 kHz FS interrupt endpoint was polled every 2 ms in buffer mode; rig-measured 500 → 984 reports/s |
 | `0061-dwc2-host-debugfs-hcd-stats` | with 0062 | M0: `hcd_stats` debugfs counters (SOF passes with and without work, complete-split window misses, split NAKs, halts per channel and type). Behaviour unchanged |
-| `0062-dwc2-host-sof-holdoff-in-hardirq` | yes (needs 0058) | M1: the primary handler acks a SOF with nothing due and does not wake the IRQ thread. Buffer DMA only. Off switch: `echo 0 > /sys/kernel/debug/usb/ffb40000.usb/sof_holdoff` |
+| `0062-dwc2-host-sof-holdoff-in-hardirq` | yes (needs 0058) | M1: the primary handler acks a SOF with nothing due and does not wake the IRQ thread. Buffer DMA only. **Off by default** since 2026-09-28 (regresses under bulk USB receive on 6.18, see Plan 3). On switch: `echo 1 > /sys/kernel/debug/usb/ffb40000.usb/sof_holdoff` |
 | `0063-dwc2-ddma-desc-list-bidirectional` | yes (Fixes: 95105a998dff) | the descriptor list was mapped `DMA_TO_DEVICE` but unmapped and synced as `DMA_FROM_DEVICE` |
 | `0064-dwc2-ddma-giveback-on-dequeue-halt` | yes (Fixes: dc4c76e7b22c) | a dequeue halt dropped descriptors the core had already completed, and the data toggle went stale, with more than one URB queued |
 | `0065-dwc2-ddma-halt-before-freeing-desc-list` | yes (Fixes: dc4c76e7b22c) | a QH's descriptor list was freed while its channel could still be enabled; now halted and waited for (bounded) first |
@@ -119,6 +119,15 @@ Reopen only with new evidence (for example the licensed databook describing an S
    - Report rates and gaps for the pad and mouse are the same with M1 on and off. `cs_miss`, safety-net and race counters stayed 0; no warnings.
    - An HS mouse with five interrupt endpoints keeps a channel busy almost every microframe, so M1 cannot help there (M4b in the ledger).
    - The rig module also carried the in-progress `fs_ddma` chain patches (inert in buffer mode). `0061`/`0062` apply at `-F0` on `0054`–`0060` for 6.18.53 and 7.2.7.
+   - **Non-RT 6.18.54, 2026-09-28** (production image with the series; hold-off switched live through debugfs; hub + wired pad + BT dongle + an `rtw88_8822bu` USB WiFi adapter; iperf3 from a PC over WiFi; CPU0 cost read as the median time of a fixed CPU0 workload, since that kernel has no IRQ time accounting):
+
+     | Load | CPU0 workload, hold-off on vs off | `cs_miss`, on vs off |
+     |---|---|---|
+     | idle | 1,380 vs 1,384 ms | 0 vs 0 |
+     | WiFi send, 126 Mbit/s | 4.7–5.0 vs 5.2 s | same |
+     | WiFi receive, ~195 Mbit/s | 8.6–13.8 vs 5.1–9.5 s (worse in 6 of 6 pairs) | 673–730 vs 553–660 per 40 s |
+
+   - So off RT the hold-off gains nothing idle and **regresses under heavy USB receive**, and RT was never tested under bulk load. It now ships **off by default**; the debugfs switch stays for testing. Test notes: with Ethernet and WiFi on one subnet, traffic for the WiFi address arrives on `eth0` (ARP flux) unless `arp_ignore=1`/`arp_announce=2` and a gratuitous ARP on `wlan0`; replies leave by the default route unless the rig's iperf3 server uses `--bind-dev wlan0`. Check `/sys/class/net/*/statistics` before trusting a number.
 4. **Gate for anything bigger:** on the M1 kernel with several devices on the hub, compare
    user-visible work (CD-streaming stutter, CHD/ROM load time, `update_all` duration) against
    "no USB load" (`fs_ddma=1` or devices unplugged). No visible difference → stop.
@@ -141,7 +150,8 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 | **usbhid: two interrupt-IN URBs in flight** | small usbhid patch; upstream-sensitive | makes the `fs_ddma` channel chaining pay off for every HID device: 500 → ~1,000/s | owner wants 1 kHz HID under `fs_ddma`; needs the chaining patches carried first |
 | **`fs_ddma` interrupt-channel chaining** (parked patches in `dwc2-usb-irq/parked/`) | 3 patches, ~1,000 lines; medium | rig: 2 URBs in flight 500 → ~964/s, 4 URBs 666 → 1,000/s; 1 URB unchanged (hardware prefetch) | a driver with several interrupt-IN URBs in flight matters under `fs_ddma`: USB MIDI on interrupt endpoints (`snd-usb-midi` keeps 7) or the usbhid option below. Retest on the rig before carrying |
 | **Automatic `fs_ddma`** (userspace: udev + unbind/rebind) | ~100 lines + testing; low–medium | ~7 points of CPU0 over M1 for all-full-speed setups (7.7% → ~0.7%) | CPU0 still matters after M1. Switch only at boot or in the menu: every switch drops all USB for 1–2 s. Detect high-speed-capable devices plugged in while capped with a `DEVICE_QUALIFIER` request (full-speed-only devices stall it) or by class (storage, network) |
-| **Measure on 6.18 (non-RT)** | one lab-kernel boot | tells whether `0058`/`0062` matter off RT | before offering them to the MiSTer 6.18 kernel |
+| **Hold-off under bulk receive** (why `0062` costs CPU0 and split completions under WiFi receive) | investigation, then a fix | makes `0062` default-on material again | before re-enabling it or offering it upstream. First suspect: the rule that wakes the thread for pending non-periodic work, which constantly re-triggers under bulk traffic. Then retest RT and non-RT under WiFi receive with a Bluetooth pad paired |
+| **Measure `0058` on 6.18 (non-RT)** | one boot of a kernel without `0058` | whether the single IRQ action pays off off RT | before offering it to the MiSTer 6.18 kernel. About a day of normal use on 6.18.54 with the series showed no problems, but no gain was measured |
 | FS cap by default | — | — | **declined**: high speed stays the default, `fs_ddma` is opt-in |
 
 ## Side issues found along the way
@@ -160,4 +170,5 @@ Nothing has been sent; every submission needs the owner's approval.
 - **MiSTer 6.18 kernel (Linux-Kernel_MiSTer)**, which is non-RT and runs high-speed buffer DMA by default:
   - `0060`: small, generic, and helps any 1 kHz full-speed device. Measured only on a full-speed root port so far; confirm behind the high-speed hub on 6.18 first.
   - The `fs_ddma` bundle (`0054`, `0055`, `0057`, `0059`, `0063`–`0066`): an opt-in that removes the SOF storm on any kernel. The DDMA fixes are only reachable through `0059`, so they go together or not at all. Offer it after a 6.18 measurement.
-  - Not `0058`, `0061`, `0062` until 6.18 numbers show they matter off RT. Not `0056` on its own.
+  - Not `0062`/`0061`: measured on 6.18.54 (2026-09-28), no gain idle and a regression under bulk USB receive. Not `0058` until a 6.18 A/B shows a gain. Not `0056` on its own.
+  - Nothing is ready to offer yet (owner decision 2026-09-28: fix our own tree first).

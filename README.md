@@ -73,8 +73,8 @@ Stock figures are from Release 20260907, re-measured 2026-09-10 from the extract
 | **SSH host keys** | The same keys on every MiSTer, in the public download | Generated per device on first boot ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
 | **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | 7-Zip 26.03, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
-| **Wi-Fi** | Mainline drivers since 6.18, but several ship without firmware; no Broadcom, Redpine, AIC8800 or Wi-Fi 6E | Mainline-first, firmware audited per driver, plus those families ([details](#wi-fi-and-bluetooth)) |
-| **Bluetooth firmware** | Gaps: Atheros AR3011/3012, Qualcomm QCA, MediaTek BT | Audited per driver, gaps closed |
+| **Wi-Fi** | Mainline drivers with firmware for most USB chips; no Broadcom, Redpine, `ath9k_htc` or Wi-Fi 6E | The same, plus those four families ([details](#wi-fi-and-bluetooth)) |
+| **Bluetooth firmware** | Broad; missing the Realtek Wi-Fi 6 combo chips' Bluetooth | Broad; each side ships a few blobs the other lacks ([details](#wi-fi-and-bluetooth)) |
 | **Filesystems** | Mainline exFAT and FAT; no NTFS; no way to repair exFAT | Same exFAT and FAT, plus NTFS and an on-device exFAT check and repair |
 | **Timezone on a fresh card** | UTC until the user runs `timezone.sh` | Detected once, on the first network connection ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
 | **Image headroom** | 6.3% free in a 375 MiB image | 512 MiB image; CI fails a build that leaves under 15% free |
@@ -256,34 +256,37 @@ secure-by-default network posture is proposed in
 <a id="wi-fi-and-bluetooth"></a>
 ### Wi-Fi and Bluetooth
 
-**If your dongle is Realtek, Broadcom/Cypress, MediaTek, Atheros, Redpine or AICSemi, this
-image builds a driver for it, with its firmware.** The driver set comes from a 36-symbol
-audit of every USB Wi-Fi driver in Linux 6.18, cross-checked against the kernel's device-ID
-tables ([`docs/wifi-parity.md`](docs/wifi-parity.md)). The same method was applied to
-Bluetooth firmware ([`docs/bluetooth-parity.md`](docs/bluetooth-parity.md)).
+Both images now use mainline drivers, and stock has closed most of its firmware gaps since
+6.18 (Releases 20260907 and 20260912). The comparison below is per driver: for every Wi-Fi
+and Bluetooth module in each image, does the firmware it requests actually ship? Stock is
+measured from Release 20260912's `modules.tar.gz`, `firmware.tar.gz`, kernel config and base
+rootfs (re-checked 2026-10-01). Background audits: [`docs/wifi-parity.md`](docs/wifi-parity.md),
+[`docs/bluetooth-parity.md`](docs/bluetooth-parity.md).
 
-**Most rows are build-verified only**: one Realtek chip has been tested on hardware. See the
-last column.
+**Most rows are build-verified only**: one Realtek chip has been tested on hardware.
 
-| Chip family | Stock (20260907) | This image | Verified |
+| Chip family | Stock | This image | Verified |
 |---|---|---|---|
-| Realtek 802.11n/ac (RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | `rtl8xxxu`/`rtw88`; no 8821AU driver; 8814AU, 8822CU, 8723DU lack firmware | `rtl8xxxu`/`rtw88`, all with firmware | **Hardware** (RTL8822BU, WPA3 5 GHz) |
-| Realtek Wi-Fi 6 (RTL8851BU, 8852BU) | `rtw89` | `rtw89` | Build |
+| Realtek 802.11n/ac (`rtl8xxxu`, `rtw88`: RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | With firmware | Same | **Hardware** (RTL8822BU, WPA3 5 GHz) |
+| Realtek Wi-Fi 6 (RTL8851BU, 8852BU) | `rtw89` with firmware | Same | Build |
 | Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr`, the only USB driver that exists | Build |
-| AICSemi Wi-Fi 6 (AIC8800 family: Tenda U2/U11, TX1U Nano…) | Source added to the fork, no module or firmware shipped | `package/aic8800`, driver and firmware | Build |
-| Broadcom / Cypress (BCM43xx, CYW43xx) | None | `brcmfmac` | Build |
-| MediaTek MT7663U | Driver without its firmware, so it fails | `mt76` plus firmware | Build |
-| MediaTek MT7921U, MT7925U (Wi-Fi 6/7) | `mt76` plus Wi-Fi firmware | Same | Build |
-| Atheros (AR9271/9287, AR9170, AR6003/6004) | No `ath9k_htc` | `ath9k_htc`, `carl9170`, `ath6kl` | Build |
-| Redpine RS9113/RS9116 | None | `rsi` | Build |
-| RTL8192DU | `rtlwifi` | `rtlwifi` | Build |
-| Bluetooth (MediaTek, Qualcomm QCA, Atheros AR3011/3012, Broadcom, Realtek) | No Atheros, Qualcomm or MediaTek BT firmware | Firmware for every reachable driver | Pairing: **hardware**; firmware: by code reading |
+| AICSemi AIC8800 family (Tenda U2/U11, TX1U Nano…) | Driver and firmware | Same | Build |
+| MediaTek (MT7601U, MT76x0U/x2U, MT7663U, MT7921U, MT7925U) | `mt76` with firmware | Same | Build |
+| RTL8192DU | With firmware | Same | Build |
+| Broadcom / Cypress (BCM43xx, CYW43xx) | None | `brcmfmac` with firmware | Build |
+| Atheros AR9271/AR7010 | None | `ath9k_htc` with firmware | Build |
+| Atheros AR9170 | `carl9170` without its firmware, so it fails | With firmware | Build |
+| Atheros AR6003/AR6004 | `ath6kl`, partial firmware | Same | Build |
+| Redpine RS9113/RS9116 | None | `rsi` with firmware | Build |
+| Ralink RT73, Marvell (`mwifiex`, `libertas`) | Driver without firmware | Same (gap on both sides) | — |
+| Bluetooth: Realtek | Missing the Wi-Fi 6 combo chips (RTL8851BU, 8852AU/BU/CU) | Has those; missing RTL8761CU and RTL8922AU | Pairing: **hardware** |
+| Bluetooth: Qualcomm / Atheros | `ath3k` plus AR3012 configs; the full USB QCA rampatch set | `ath3k`; QCA Rome (6174A) only | Build |
+| Bluetooth: MediaTek | MT7961, MT7925; no MT7922 | MT7961, MT7925; no MT7961 `1a` variant | Build |
 
-Deliberate omissions: Qualcomm QCA9377 over USB (`ath10k_usb`), which upstream's Kconfig
-says "will not fully work" (stock ships it); four 2000s-era 802.11b/g drivers; and a LiFi
-driver that is not Wi-Fi. Two Bluetooth drivers build without firmware because none exists
-for hardware this board can host. The full list is in `wifi-parity` §7 and
-`bluetooth-parity` §9.
+Deliberate omissions: Qualcomm QCA9377 over USB (`ath10k_usb`), whose upstream Kconfig says
+it "will not fully work" (stock ships it), plus four 2000s-era 802.11b/g drivers and a LiFi
+driver. Two Bluetooth drivers (Intel, BCM2033) build without firmware because none exists
+for hardware this board can host.
 
 ### The real-time kernel
 

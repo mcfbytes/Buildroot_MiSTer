@@ -1,239 +1,127 @@
 # MiSTer Linux Modernization
 
-**A complete, reproducible operating system for the MiSTer DE10-Nano — kernel, root
+**A complete, reproducible operating system for the MiSTer DE10-Nano:** kernel, root
 filesystem, a real-time kernel variant, a flashable SD-card image, and the update channel
-that delivers them.** Built in the open from a modern Buildroot and a mainline LTS kernel,
-with every MiSTer kernel patch carried in-tree as a plain `.patch` file applied to a
+that delivers them. It is built in the open from a current Buildroot and a mainline LTS
+kernel, with every MiSTer kernel change carried as a plain `.patch` file against a
 pristine, hash-verified kernel.org tarball.
 
-It is a **drop-in replacement**: the unmodified, stock `MiSTer` binary and every existing
-core run on it unchanged. (Since 2026-09-12 that means **Main_MiSTer Release 20260912 or
-newer**: the Switch controller's IMU/LED naming fix moved from our kernel to Main_MiSTer
-#1307/#1308, so an older `MiSTer` binary on this image sees a phantom IMU pad and dark
-Switch player/home LEDs.)
+It is a **drop-in replacement.** The unmodified stock `MiSTer` binary and every existing core
+run on it unchanged. (One requirement: **Main_MiSTer Release 20260912 or newer.** The
+Switch controller's IMU/LED naming moved from the kernel into Main_MiSTer #1307/#1308, so an
+older binary sees a phantom IMU pad and dark Switch LEDs.)
 
-## What ships
-
-| Artifact | What it is |
-|---|---|
-| `linux.img` + `zImage_dtb` | The OS itself — rootfs and kernel, delivered as a normal update through the **stock on-device Downloader** |
-| `zImage_dtb-rt` | A **`PREEMPT_RT` kernel variant**, built by CI. Its modules ride inside the same `linux.img`, so switching kernels is a one-line `u-boot.txt` edit in either direction — no rootfs flash |
-| `sdcard.img.xz` | A **complete, flashable SD card** that self-expands to the card's real size on first boot — no mr-fusion, no Windows SD installer |
-| `release_YYYYMMDD.7z` | The stock-layout release archive, byte-compatible with the Downloader's expectations |
-| `legal-info.tar.gz` | A **full SBOM** — every package, version, license, and upstream source tarball |
-| `SHA256SUMS` + attestations | Build provenance for the image assets |
-| `db.json` | The **opt-in update channel**, served from GitHub Pages — drop one script into `Scripts/`, run it, and releases arrive through the standard on-device Downloader |
-| An exportable kernel tree | The carried series, rendered deterministically into `Linux-Kernel_MiSTer` layout so upstream can consume the work without a second fork |
-
-> **Status — personal use only.** Phases 0–3 are complete with hardware validation on a
-> real DE10-Nano; Phase 4 (release engineering & sustainability) is in progress. Nothing
-> here will be offered publicly until the sustainability commitment in
-> [ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md) is signed by a
-> named maintainer. If you are trying it anyway, read
-> [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.
-
----
+> **Status: personal use only.** It is validated on one real DE10-Nano. Nothing here is
+> offered publicly until a named maintainer signs the sustainability commitment in
+> [ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md). If you try it
+> anyway, read [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.
 
 ## Contents
 
-- [What ships](#what-ships)
-- [The one-paragraph version](#the-one-paragraph-version)
-- [Stock vs. this image, at a glance](#stock-vs-this-image-at-a-glance)
-- [Project status](#project-status)
+- [Why this exists](#why-this-exists)
+- [Stock vs. this image](#stock-vs-this-image)
 - [**Install it on a real MiSTer**](#install-it-on-a-real-mister)
-- [What this improves](#what-this-improves)
-  - [1. The kernel: five years of stable releases, and a way back to mainline](#1-the-kernel-five-years-of-stable-releases-and-a-way-back-to-mainline)
-  - [2. Six latent bugs found and fixed](#2-six-latent-bugs-found-and-fixed)
-  - [3. Security posture](#3-security-posture)
-  - [4. Storage, filesystems, and networking](#4-storage-filesystems-and-networking)
-  - [5. Build, release, and supply-chain engineering](#5-build-release-and-supply-chain-engineering)
-  - [6. Things that are deliberately identical to stock](#6-things-that-are-deliberately-identical-to-stock)
-- [What is *not* better — the honest list](#what-is-not-better--the-honest-list)
-- [How it is put together](#how-it-is-put-together)
-  - [Repository layout](#repository-layout)
-  - [Two kernels, one image](#two-kernels-one-image)
-  - [The initramfs that deleted a kernel patch](#the-initramfs-that-deleted-a-kernel-patch)
-  - [The full SD-card image](#the-full-sd-card-image)
+- [What is different, in detail](#what-is-different-in-detail)
+- [What has been verified, and what has not](#what-has-been-verified-and-what-has-not)
+- [Updates and the release channel](#updates-and-the-release-channel)
 - [Building it yourself](#building-it-yourself)
-- [Verification & CI](#verification--ci)
-- [Releases & distribution](#releases--distribution)
-- [Goals](#goals)
+- [How it is put together](#how-it-is-put-together)
+- [Verification and CI](#verification-and-ci)
 - [Documentation map](#documentation-map)
-- [Contributing](#contributing)
-- [License layering](#license-layering)
+- [Contributing and licensing](#contributing-and-licensing)
 
 ---
 
-## The one-paragraph version
+## Why this exists
 
-MiSTer's operating system ships as an opaque archive containing a **375 MiB ext4 image**
-(93% full) built from **Buildroot 2021.02.4** with **glibc 2.31**, running **Linux
-5.15.1** — a kernel forked in November 2021 that **never merged a single 5.15.y stable
-release** in the five years it shipped. (On 2026-09-07 stock moved to **6.18.38**, pinned
-the same way: one point release, no `.y` updates — see the note under the table below.)
-There is no public build recipe, no CI, no SBOM, and no update path for any of it. This project rebuilds the whole thing from **Buildroot 2026.08** and a
-**mainline 6.18 LTS kernel** in a public repository, with reproducible builds, a
-signed-hash supply chain, a nine-workflow CI pipeline, and a per-commit reconciliation
-of the entire kernel fork — then ships it through the same update channel users already
-have, alongside a real-time kernel variant and a flashable card image that stock has no
-equivalent of. All of it boots the **unmodified, stock `MiSTer` binary** and every
-existing core.
+Stock MiSTer's OS ships as prebuilt tarballs. Its userland comes from **Buildroot
+2021.02.4** (glibc 2.31, OpenSSL 1.1.1k), and nothing public turns source into those
+tarballs. Release 20260907 moved stock's kernel from 5.15.1 to **6.18.38**, but it is pinned
+at that one point release, the way 5.15.1 was for five years with no `.y` updates. The
+userland outside the kernel, modules and firmware was byte-for-byte unchanged by that
+release. There is no build recipe, no CI, no SBOM and no update path.
 
-The core posture: **prove parity first, then improve.** Carry the smallest possible delta
-against a pristine kernel.org tree, and hand each subsystem back to mainline as soon as
-mainline can hold it.
+This project rebuilds all of it from **a current Buildroot release** and a **6.18 LTS kernel
+that tracks the `.y` stable line**. It has reproducible builds, a signed-hash supply chain and a
+per-commit reconciliation of the MiSTer kernel fork. It ships through the update channel
+users already have, plus a real-time kernel and a flashable card image that stock has no
+equivalent of.
 
----
+The posture is **prove parity first, then improve**:
 
-## Stock vs. this image, at a glance
+- Boot the unmodified stock `MiSTer` binary, and match stock's behaviour, not just its file list.
+- Carry the smallest possible kernel delta, and hand each piece back to mainline when
+  mainline can hold it. There is no separate kernel repository: the kernel is
+  `{pinned tarball + ordered patch series}`.
+- Make builds fully reproducible: pinned Buildroot, kernel and every source by hash, and an
+  SBOM with every release.
+- Never commit binaries to git; releases are GitHub Release assets.
+- Distribute opt-in, through the stock on-device Downloader, with nobody's cooperation required.
 
-| | Stock MiSTer | This project |
+## Stock vs. this image
+
+Stock figures are from Release 20260907, re-measured 2026-09-10 from the extracted release
+([`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/)).
+
+| | Stock MiSTer | This image |
 |---|---|---|
-| **Kernel** | 5.15.1 from Nov 2021 to 2026-09-07 with **zero** `5.15.y` stable updates ever merged; **6.18.38 since Release 20260907**, pinned the same way — 12 `6.18.y` releases behind our pin at the time of writing | **6.18 LTS**, on a live `.y` line with security backports |
-| **Kernel delta** | 5.15: 110 commits on a squashed-import fork with no shared ancestry with mainline — so no `merge-base`, and no per-commit disposition. 6.18: a fresh ~70-commit re-port onto a squashed `v6.18.38` import, same shape | **38 patch files** against a pristine tarball, each with provenance, upstream status, and an evidence-backed record |
-| **Buildroot** | 2021.02.4 — **unchanged by Release 20260907** (`/etc/os-release` `PRETTY_NAME`, both releases) | **2026.08** (~5 years of upstream work) |
-| **glibc / gcc** | 2.31 / gcc 10-era — **unchanged by Release 20260907** (`libc.so.6 → libc-2.31.so`; `strings` shows `GNU C Library (GNU) stable release version 2.31`) | **2.44 / 15.3.0** |
-| **OpenSSL** | **1.1.1k — EOL since 2023-09-11**, no upstream fixes since; **unchanged by Release 20260907** (`strings usr/lib/libssl.so.1.1`, both releases → `OpenSSL 1.1.1k  25 Mar 2021`) | **3.6.4** |
-| **OpenSSH** | 8.6p1 — **unchanged by Release 20260907** (`strings usr/sbin/sshd`, both releases → `OpenSSH_8.6p1`) | **10.5p1** |
-| **Samba** | 4.14.6 — **unchanged by Release 20260907** (`strings usr/sbin/smbd`, both releases → `SAMBA_4.14.6`) | **4.24.6** |
-| **Python** | 3.9.6 — **unchanged by Release 20260907** (`usr/lib/python3.9/lib-dynload/_sysconfigdata__linux_arm-linux-gnueabihf.pyc` embeds `3.9.6`, both releases) | **3.14.7** |
-| **SSH host keys** | **Identical on every MiSTer on Earth**, baked into the public download, dated 2016 — **still true in Release 20260907**: byte-identical `ssh_host_*_key.pub` fingerprints to 20250402 | **Generated per device on first boot**, persisted to the FAT card ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
-| **Timezone on a fresh card** | Unset — `/media/fat/linux/timezone` does not exist, so glibc falls back to **UTC** and stays there until the user finds the community `timezone.sh` script — **still true in Release 20260907**: `/etc/localtime` is still a broken symlink to `/media/fat/linux/timezone` | **Detected once**, from the box's public IP, using the same provider and the same destination file as `timezone.sh` so the two are interchangeable. It is one dhcpcd hook, firing on the first connection the box makes — so a card that was offline on its first boot still gets it once Wi-Fi is set up, and a box with no network does nothing at all. Never overwrites a timezone you set, and it is opt-out-able before it ever runs ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
-| **Wi-Fi chipset coverage** | 5.15 (until 2026-09-07): six out-of-tree vendor forks, plus in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine; several chips can't do WPA3 at all. **6.18 (since Release 20260907): all six out-of-tree forks dropped** in favour of mainline `rtw88`/`rtw89`/`rtl8xxxu`/`mt76`/`ath*` — a real expansion (RTL8812AU/8814AU/8822BU/8822CU/8723DU, **RTL8851BU/8852BU Wi-Fi 6, MT7921U/MT7925U Wi-Fi 6/7 with firmware, RTL8192DU** newly covered) — but **still no Broadcom/Cypress**, still no RTL8852CU/8832CU Wi-Fi 6E, and `rtw88_8821au` (RTL8811AU/8821AU) is still unbuilt (`evidence/stock-20260907-modules.txt`; full per-chip breakdown in the [hardware table](#wi-fi-and-bluetooth-hardware-support)) | **Mainline-first**: in-kernel `mac80211` (`rtl8xxxu`/`rtw88`/`rtw89`/`mt76`/`ath9k_htc`/`rsi`…) for every chip mainline can drive *that is worth building here* — six symbols are deliberately left off (one upstream itself calls non-working, four 2000s-era 802.11b/g parts, one that is optical LiFi rather than Wi-Fi; [`wifi-parity` §7](docs/wifi-parity.md)) — plus Broadcom/Cypress and Wi-Fi 6E support stock still does not have. **One** out-of-tree driver remains, for a Wi-Fi 6E chip mainline has no USB driver for at all. **WPA3/SAE hardware-verified**; see the [hardware-support table](#wi-fi-and-bluetooth-hardware-support) for the full build- vs. hardware-verified breakdown ([ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md)) |
-| **Bluetooth firmware** | 5.15 (until 2026-09-07): `ath3k` shipped with **no `ath3k-1.fw` and no `ar3k/*.dfu` at all**; no MediaTek MT79xx and no Qualcomm QCA firmware (its Realtek combos *were* covered). **6.18 (since Release 20260907): still no `ath3k-1.fw`/`ar3k/*.dfu`, still no Qualcomm QCA BT rampatch, Realtek combos still covered — but stock now ships one Broadcom `.hcd`** (`brcm/BCM20702A1-0b05-17cb.hcd`, new in this release) and the **Wi-Fi-side** MT7961/MT7925 patch/RAM-code blobs (no `BT_`-prefixed MediaTek blob appears, so the Bluetooth side of that combo is not evidently covered) (`evidence/stock-20260907-firmware.txt`) | Firmware audited driver-by-driver against what each one actually requests at runtime, gaps closed (MediaTek combo, Qualcomm QCA Rome USB, one Broadcom `.hcd`, Atheros AR3011/AR3012) — **including one asymmetry this project itself introduced**: we shipped the MT7961 *Wi-Fi* blob without its *Bluetooth* sibling, so that combo dongle's Wi-Fi worked and its BT did not. Found and closed. Two built drivers still ship with **no** firmware, deliberately and on the record ([`bluetooth-parity` §9](docs/bluetooth-parity.md)) |
-| **The `.7z` extractor that unpacks every OS update** | **p7zip 16.02 — dated 2016-05-21**, in *two* places: `usr/bin/7zr` in the rootfs, and `/media/fat/linux/7za`, which the Downloader **downloads off the internet** the first time it updates and then reuses forever. **Unchanged by Release 20260907** (`strings usr/bin/7zr`, both releases → `7-Zip (a) [32] 16.02`) | **7-Zip 26.03**, built from source in-tree. The `/media/fat/linux/7za` copy is shipped by us — **statically linked**, so it survives a rollback to an older or even stock rootfs — so that download never happens ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
-| **NTFS** | Not supported at all | `ntfs3` in-kernel module + `ntfs-3g` automount |
-| **Image size** | 375 MiB — **13.6% free** ("93% full") on `release_20250402`, **6.3% free** on `release_20260907`, whose 6.18 module set (+21 MB) and larger firmware set (+7 MB) consumed another 29 MB of the same fixed image ([`stock-release-20260907` §1](docs/verification/stock-release-20260907.md)) | 512 MiB, **39.5% free** — 310 MiB used / 202 MiB free, temporary debug block included, measured by `./scripts/check-size-budget.sh output/images/linux.img` on the image built 2026-07-27 **with** this branch's full package set (the T5 utilities, 7-Zip, and the rtl8852cu driver all included). Floor is 15%. ⚠️ [`docs/size-budget.md`](docs/size-budget.md) still reports 60.6% free: it is a P3.3-vintage report and needs regenerating |
-| **Rootfs build recipe** | **Not published.** `MiSTer-devel/Linux_Image_creator_MiSTer` exists, but it is an *assembler*, not a builder: `create_img.sh` runs `mkfs.ext4` and untars a prebuilt **82 MiB `rootfs.tar.bz2` committed to git**. Nothing public turns source into that tarball, so the image can be re-packed but its contents cannot be changed, patched or audited beyond `ls` | This repository |
-| **Reproducible** | No published recipe, so unverifiable | **Byte-identical across independent builds**, proven by CI ([`docs/reproducibility.md`](docs/reproducibility.md)) |
-| **SBOM / license manifest** | None published | Full `legal-info` bundle published with every release |
-| **Dependency updates** | Manual, ad-hoc | **Renovate**, covering kernel pins, firmware, and every package hash |
-| **Real-time kernel** | No | **`PREEMPT_RT` variant** built by CI, booted on hardware |
+| **Kernel** | 6.18.38, pinned with no `.y` updates (5.15.1 from 2021 until 2026-09-07, likewise never updated) | 6.18 LTS, tracking every `.y` stable release via Renovate |
+| **Kernel source** | A squashed-import fork with no shared history with mainline | Pristine kernel.org tarball plus a series of documented patch files |
+| **Userland** | Buildroot 2021.02.4, glibc 2.31, gcc 10 era | The current Buildroot release, with its glibc and gcc |
+| **OpenSSL** | 1.1.1k, end-of-life since 2023-09-11 | Current 3.x |
+| **OpenSSH / Samba / Python** | 8.6p1 / 4.14.6 / 3.9.6 | Current releases |
+| **SSH host keys** | The same keys on every MiSTer, in the public download | Generated per device on first boot ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
+| **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
+| **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | Current 7-Zip, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
+| **Wi-Fi** | Mainline drivers since 6.18, but several ship without firmware; no Broadcom, Redpine, AIC8800 or Wi-Fi 6E | Mainline-first, firmware audited per driver, plus those families ([details](#wi-fi-and-bluetooth)) |
+| **Bluetooth firmware** | Gaps: Atheros AR3011/3012, Qualcomm QCA, MediaTek BT | Audited per driver, gaps closed |
+| **Filesystems** | exFAT and FAT; no NTFS; no way to repair exFAT | Mainline exFAT, NTFS, and an on-device exFAT check and repair |
+| **Timezone on a fresh card** | UTC until the user runs `timezone.sh` | Detected once, on the first network connection ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
+| **Image headroom** | 6.3% free in a 375 MiB image | 512 MiB image; CI fails a build that leaves under 15% free |
+| **Build recipe** | Not published (`Linux_Image_creator_MiSTer` only re-packs a prebuilt tarball) | This repository |
+| **Reproducible / SBOM** | No / none | Byte-identical builds, proven in CI; full `legal-info` with each release |
+| **Dependency updates** | Manual | Renovate, for kernel, firmware and every package hash |
+| **Real-time kernel** | No | `PREEMPT_RT` variant, built by CI, booted on hardware |
+| **Fresh-card install** | Mr. Fusion or the Windows SD installer | `sdcard.img.xz`: flash it, and it expands to the card on first boot |
 
-Every number in that table is sourced. The versions come from the *shipped artifacts* on
-both sides — stock from the extracted stock `linux.img`, ours read off the built tree.
-
-**Stock moved on 2026-09-07 — re-measured 2026-09-10.** Release 20260907 replaced stock's
-kernel (5.15.1 → 6.18.38, a fresh port on upstream's `MiSTer-v6.18` branch), its module set
-(89 modules, up from 52 — the six out-of-tree Wi-Fi forks are gone in favour of the same
-mainline drivers this image uses) and its firmware set (91 files, up from 66). The rootfs
-side (`rootfs.tar.bz2`) was extracted and overlaid with `modules.tar.gz` / `firmware.tar.gz`
-/ `addon.tar` exactly as the release's own `create_img.sh` does, then measured with
-`scripts/inventory/`, per
-[`fork-sync-2026-09/PLAN.md` §9.2](docs/kernel-recon/fork-sync-2026-09/PLAN.md) — full
-output in [`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/) (`busybox`'s
-applet list excepted — no `qemu-arm` in the authoring session, version string only). Every
-cell in the table above and the Wi-Fi/Bluetooth hardware tables below is now the 20260907
-measurement, each citing how; where a cell says "unchanged" that is a fresh comparison, not
-an old number left standing — **the entire Buildroot userland outside the kernel/modules/
-firmware turned out to be byte-for-byte unchanged** (same Buildroot/glibc/OpenSSL/OpenSSH/
-Samba/Python/p7zip versions, same 507 true-ABI shared libraries). The one thing still
-unmeasured is **Image size**: the release ships tarballs, not a formatted `linux.img`, and
-this pass did not run `create_img.sh` + `mkfs.ext4` to produce one — see that row. The
-kernel patch reconciliation described in §1 was performed against the 5.15 fork; the first
-increment against stock's 6.18 branch is [`fork-sync-2026-09/`](docs/kernel-recon/fork-sync-2026-09/),
-executed separately from this rootfs-side re-measurement.
-
-**On version drift, since this table cites documents that can lag it.** The ground truth
-for "ours" is always the build pins — `BUILDROOT_VERSION` in the `Makefile` and
-`configs/mister_de10nano_defconfig` and the profiles it enables under `package/mister-*/` — plus whatever Buildroot's own `.mk` files resolve
-to at that pin. The documents below are **dated analyses**, not a live mirror of those
-pins: a Renovate bump or a Buildroot line bump moves a package without rewriting the
-prose that reasoned about it. Where a document is behind the pin it now says so at the
-top, and lists what has and has not been re-checked. **Nothing in CI asserts package
-versions**, so that gap is closed by reading, not by a test — see
-[the honest list](#what-is-not-better--the-honest-list).
-
-Full detail with citations: [`docs/version-delta.md`](docs/version-delta.md) (the stack,
-re-read most recently), [`docs/package-manifest.md`](docs/package-manifest.md) (the
-251-SONAME mapping, established against Buildroot 2026.02.3),
-[`docs/verification/stock-release-20250402.md`](docs/verification/stock-release-20250402.md)
-(the stock side as this table was written against) and
+More detail, with citations: [`docs/version-delta.md`](docs/version-delta.md),
 [`docs/verification/stock-release-20260907.md`](docs/verification/stock-release-20260907.md)
-(stock **did** move in 2026-09: a 6.18.38 kernel on the same 2021 userland — that
-document records what changed and which rows here it dates).
-
----
-
-## Project status
-
-| Phase | State | What that means |
-|---|---|---|
-| **0 — Recon & decisions** | ✅ Complete | Patch triage, ABI-contract verification, five open questions decided (ADRs 0010–0014) |
-| **1 — Kernel & initramfs** | ✅ Complete | 6.18 LTS pinned; all 38 patches apply cleanly (40/40 re-measured 2026-09-11 at `patch -p1 -F0`, zero fuzz; `0040`/`0041` retired 2026-09-12 and the surviving hid-nintendo stack re-measured 7/7 on 6.18.51); `zImage_dtb` builds warning-free, boots under QEMU **and on real hardware** — from the **CI-built artifact**, not a local build |
-| **2 — Rootfs & testing** | ✅ Complete | Buildroot 2026.08, glibc 2.44, reproducible ext4 image with full SBOM; menu and cores load on hardware — the ABI contract holds *in practice*, not just on paper |
-| **3 — Module packages & HW matrix** | ✅ Complete | Wi-Fi, Bluetooth, controllers and special devices packaged; hardware-validated **for the chips actually present on the one test board**. The v10/v10.1/v10.2 driver + firmware expansion (Broadcom, Wi-Fi 6/6E, MediaTek, Atheros USB, Redpine) is packaged and mostly CI-asserted but **not** hardware-validated — see the [ledger](#hardware-validation-ledger) and the [chipset table](#wi-fi-and-bluetooth-hardware-support). The remaining matrix rows (Samba, MIDI) are build/CI-verified only |
-| **4 — Release & sustainability** | 🔄 In progress | CI/CD, `db.json` distribution, beta program, governance, publication gate |
-| **5 — Full SD image & U-Boot** | 🔄 Partially landed | `sdcard.img` builds, and `release.yml` verifies it with `scripts/check-sdcard.sh` ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md)); U-Boot from source is now building on every DE10 build, **mainline 2026.07**, ships nowhere ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md), [plan](docs/uboot-mainline-port.md), [tasks](docs/uboot-tasks.md), [verification](docs/verification/uboot-mainline.md)) — and the SD image has not been flashed to a fresh card on hardware (P5.4) |
-
-### Hardware validation ledger
-
-Validated on **one real DE10-Nano**, booting CI-built artifacts:
-
-| Subsystem | Status |
-|---|---|
-| Boot to MiSTer menu, cores load | ✅ Confirmed |
-| All out-of-tree modules present, no BUG/Oops/panic | ✅ Confirmed |
-| Bluetooth — firmware load + controller pairing | ✅ Confirmed |
-| Wi-Fi — **WPA3/SAE (PMF required)** 5 GHz auto-connect via mainline `rtw88` | ✅ Confirmed |
-| Downloader over HTTPS | ✅ Confirmed |
-| **`PREEMPT_RT` kernel boots and runs MiSTer** | ✅ Confirmed on **7.2-rc4** (2026-07-20) and **7.2-rc7** (2026-08-14). The pin has since moved to **7.2 final**, which builds green (`make linux-rt`, 2026-08-17) but has **not been booted** — boot is a per-version claim |
-| Samba, MIDI | ⚠️ Build/CI-verified only — **not** exercised on hardware |
-| RT latency measurement | ⏳ Not yet taken |
-
-Test logs live in [`docs/testlogs/`](docs/testlogs/). Anything not listed above should be
-treated as unverified in practice — that includes most of the
-[Wi-Fi/Bluetooth chipset table](#wi-fi-and-bluetooth-hardware-support) below: this ledger's
-"all out-of-tree modules present" row is a snapshot from **before** the current branch's
-driver/firmware expansion (Broadcom, Wi-Fi 6/6E, and the rest), which has not yet had its
-own hardware pass.
+and [`docs/stock-reconciliation.md`](docs/stock-reconciliation.md). The build pins
+(`BUILDROOT_VERSION` in the `Makefile`, the defconfigs, Buildroot's own `.mk` files) are the
+ground truth for our versions, and each release's `legal-info` manifest lists them exactly;
+the documents are dated readings.
 
 ---
 
 <a id="install-it-on-a-real-mister"></a>
 ## Install it on a real MiSTer
 
-**One command, on the MiSTer itself, over SSH.** This converts an ordinary install —
-including one flashed with Mr. Fusion — to this image. It works on a stock card; you do
-not need to reflash anything.
+**One command, run on the MiSTer over SSH.** It converts an ordinary install, including one
+made with Mr. Fusion, without reflashing anything.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh | bash
 ```
 
 <a id="if-the-one-liner-seems-to-do-nothing"></a>
-> **On a stock card the one-liner above will fail, and fail quietly.** Verified on real
-> hardware: stock's `curl` cannot verify GitHub (`curl: (60)`), `bash` gets an empty pipe,
-> and the pipeline still **exits 0** — so it looks like nothing happened at all.
->
-> The cause is not an expired bundle. Stock ships exactly one file in `/etc/ssl/certs/`,
-> `cacert.pem`, and it works fine — it simply is not in the hashed-symlink layout curl
-> searches by default, so curl finds no issuer. Passing `--cacert` explicitly fixes it,
-> which is what `Scripts/update.sh` has always done.
->
-> So fetch the installer with `-k` for that one request and let it take over — it detects
-> this, **verifies the card's own bundle actually works before adopting it**, and uses it
-> for everything afterwards:
+> **On a stock card that command fails silently**, and the pipeline still exits 0. Stock's
+> `curl` cannot verify GitHub (`curl: (60)`): its one CA file, `cacert.pem`, works but is not
+> in the layout curl searches by default. So fetch the installer with `-k` for that one
+> request. The installer then checks the card's own CA bundle works and uses it for
+> everything afterwards:
 >
 > ```sh
 > curl -fsSLk https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o /tmp/mlm.sh \
 >   && sh /tmp/mlm.sh
 > ```
 >
-> If you would rather not use `-k` at all, download `install.sh` on a machine whose TLS
-> works, check its `sha256sum` against the repo, and copy it onto the card. And if a card
-> ever turns up whose bundle is genuinely broken rather than merely mislocated,
-> `install.sh --bootstrap-ca` fetches a fresh one to `/tmp` for a single run — it explains
-> that trade-off in full before doing anything.
->
-> You only need any of this once: this image ships a current CA bundle in the layout curl
-> expects, and refreshes it on every release.
->
-> **`wget` is not an alternative.** The `wget` on a MiSTer is the BusyBox applet with no
-> TLS support at all — it answers every `https://` URL with `not an http or ftp url`.
-> Stock ships a real `curl`, and MiSTer's own `update.sh` uses it exclusively.
+> To avoid `-k` entirely, download `install.sh` on another machine, check its `sha256sum`,
+> and copy it to the card. `install.sh --bootstrap-ca` handles a card whose bundle is
+> genuinely broken, and explains the trade-off first. **`wget` is not an alternative**: the
+> MiSTer's BusyBox `wget` has no TLS. You only need this once, because this image ships a CA
+> bundle in the layout curl expects.
 
-Prefer to read before you run — the better habit, and this script is written to be read:
+To read before you run:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/install.sh -o mlm.sh
@@ -241,860 +129,468 @@ less mlm.sh
 sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 ```
 
-`--dry-run` prints the full plan and exits. `--yes` skips the 10-second countdown,
-`--no-reboot` leaves the reboot to you.
+`--yes` skips the 10-second countdown; `--no-reboot` leaves the reboot to you.
 
-> **Read [`docs/user/beta-testing.md`](docs/user/beta-testing.md) first.** This is a
-> personal project with an unmet sustainability gate ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md)),
-> validated on one board. The ledger directly above is the honest account of what has and
-> has not been tested on hardware.
+**What it changes.** The installer prints this and pauses before doing anything.
 
-### What it changes
-
-The installer prints all of this and pauses before doing anything.
-
-| | |
+| File | Change |
 |---|---|
-| `linux/linux.img`, `linux/zImage_dtb` | **Replaced** — the root filesystem and kernel. This is the point |
-| `linux/7za` | **Replaced** — 7-Zip 26.03 instead of the 2016 p7zip |
-| `downloader.ini` | **One key changed:** `[MiSTer] update_linux = false`. A surgical edit; your comments, sections and databases are left alone, and the original is saved to `linux/.mlm-backup/downloader.ini.orig`. Created (declaring the official database) only if you don't have one |
-| `Scripts/update_linux_modernization.sh` | **Installed** — this is what updates the image from now on |
-| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh` | **Installed** — two small launchers for tools that live in the image ([exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md)) |
+| `linux/linux.img`, `linux/zImage_dtb` | Replaced: the root filesystem and kernel |
+| `linux/7za` | Replaced: current 7-Zip instead of the 2016 p7zip |
+| `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
+| `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md) and [Logitech pairing](docs/logitech-pairing.md) launchers |
 
-**Everything else under `linux/` is rewritten with byte-identical content.** Our release
-archive *is* the stock archive with those three files swapped in, so `MidiLink.INI`,
-`ppp_options`, `uboot.img`, `updateboot`, the `_`-prefixed templates, `mt32-rom-data/` and
-`soundfonts/` come back exactly as they were. It is a no-op unless you had customised one
-— and the small ones are copied to `linux/.mlm-backup/` first in case you had.
+Everything else under `linux/` is rewritten with byte-identical content, because the release
+archive *is* stock's archive with those files swapped in; small files are backed up to
+`linux/.mlm-backup/` first anyway. Expect two side effects that any Linux update causes:
+the saved U-Boot environment is wiped by `updateboot`, and the SSH host key changes once (to
+this device's own key).
 
-Two side effects, both caused by *any* Linux update rather than by this one: the saved
-U-Boot environment (first 512 bytes of the card) is wiped by `updateboot`, and SSH host
-keys change, because this image generates them per device instead of shipping one set to
-everybody ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) — expect a
-one-time host-key warning.
+**What it leaves alone:** `MiSTer.ini` and every core `.ini`, games, saves, `config/`, cores,
+`linux/gamecontrollerdb/`, your live `u-boot.txt`, `wpa_supplicant.conf`,
+`user-startup.sh` and `samba.sh`. Network identity (`linux/{hostname,hosts,interfaces,
+resolv.conf,dhcpcd.conf,fstab}`) is copied into the new image before it goes live.
 
-**Afterwards, routine updates stop touching `/media/fat/linux/` altogether.**
-`update_linux = false` means no Linux update runs unless you run the updater, so these
-files end up *more* stable than on stock, where every official Linux update rewrites them.
-
-### What it leaves alone
-
-- **`MiSTer.ini` and every core `.ini` — not touched.** Nor `games/`, ROMs, saves, states,
-  `config/`, cores or `_Arcade/`.
-- **`linux/gamecontrollerdb/`** — explicitly excluded from the sync.
-- **Your live `u-boot.txt`** (holds this card's MAC), **`wpa_supplicant.conf`**,
-  **`user-startup.sh`**, **`samba.sh`** — only the `_`-prefixed templates ship, so the real
-  ones survive.
-- **`linux/{hostname,hosts,interfaces,resolv.conf,dhcpcd.conf,fstab}`** — copied *into* the
-  new image before it goes live, so your network identity carries over.
-
-### Afterwards
-
-Your cores keep updating normally — `update_all.sh` and `Scripts/update.sh` simply stop
-touching the Linux image, in either direction. That is what stops the official image
-overwriting this one; see [ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md).
-Updating *this* image is one deliberate action:
+**Afterwards,** cores keep updating normally; `update_all.sh` and `Scripts/update.sh` just
+stop touching the Linux image ([ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md)).
+Updating this image is one deliberate action:
 
 ```sh
 /media/fat/Scripts/update_linux_modernization.sh            # update
 /media/fat/Scripts/update_linux_modernization.sh --status   # where am I?
+/media/fat/Scripts/update_linux_modernization.sh --restore-stock   # undo, then run a normal update
 ```
 
-**To undo, at any time:** `update_linux_modernization.sh --restore-stock`, then run your
-normal update. Full procedure in [`docs/user/rollback.md`](docs/user/rollback.md).
+Full rollback procedure: [`docs/user/rollback.md`](docs/user/rollback.md).
 
-### The other two ways in
+**Other ways in:**
 
-- **A fresh card:** flash `sdcard.img.xz` from a [release](https://github.com/mcfbytes/Buildroot_MiSTer/releases).
-  It self-expands on first boot and arrives already configured, with Jotego's cores
-  enabled. See [`docs/user/sdcard-flashing.md`](docs/user/sdcard-flashing.md).
-- **By hand:** [`docs/user/onboarding.md`](docs/user/onboarding.md) walks through the same
-  steps individually, if you would rather not run an installer at all.
+- **A fresh card:** flash `sdcard.img.xz` from a
+  [release](https://github.com/mcfbytes/Buildroot_MiSTer/releases). It arrives configured,
+  with Jotego's cores enabled ([`docs/user/sdcard-flashing.md`](docs/user/sdcard-flashing.md)).
+- **By hand:** [`docs/user/onboarding.md`](docs/user/onboarding.md) walks through the same steps.
 
-### On `curl | bash`
-
-You are piping a remote script into a shell as root, which is worth a moment's thought.
-It is the same trust model MiSTer's own `Scripts/update.sh` already uses — it fetches
-`dont_download.sh` from `raw.githubusercontent.com` and executes it — and the anchor is
-HTTPS to GitHub. The installer does **not** pin a hash of the updater it downloads: both
-come from the same repository over the same TLS connection, so a pin would add no real
-assurance while guaranteeing the file goes stale. If that trade isn't one you want to
-make, use the download-and-read form above, or the by-hand route.
+**On `curl | bash`:** you are running a remote script as root. It is the same trust model
+MiSTer's own `update.sh` uses (HTTPS to GitHub). If that is not a trade you want, use the
+download-and-read form or the by-hand route.
 
 ---
 
-## What this improves
+## What is different, in detail
 
-### 1. The kernel: five years of stable releases, and a way back to mainline
+### The kernel
 
-Stock forked Linux 5.15.1 in November 2021 and **never took a single subsequent 5.15.y
-stable release** before replacing it, on 2026-09-07, with 6.18.38 — pinned at that one
-point release in exactly the same way, so the pattern is the fork's, not 5.15's. This project tracks
-**6.18 LTS** — the exact patch level is
-`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`,
-and it is deliberately not repeated in prose here because stable `.y` releases
-land weekly. Pinned by version *and* SHA-256 against kernel.org, with
-Renovate opening a PR on every `.y` bump.
+The 6.18 LTS kernel is pinned by version and SHA-256 against kernel.org, and Renovate opens
+a PR for every `.y` release. The exact patch level lives only in
+`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in `configs/mister_de10nano_defconfig`, because it
+changes weekly.
 
-The interesting part is not the version number — it's the **shape of the delta**. The
-fork's **136 reconciled commits** (110 on the `MiSTer-v5.15` branch stock shipped until
-2026-09-07, 10 on upstream's own `MiSTer-v6.18` branch — which stock ships *now* — one
-still-open pull-request head carried ahead of its merge, plus 15 residue commits that
-existed only on the older v5.14/v5.13.12 branches) are down to **40 carried patch
-files**. The bulk of that reconciliation was performed against the **5.15** stock kernel
-and left **36** files; the nine commits and one open PR stock's 6.18 branch has taken
-since have now been reconciled too — executed, not just planned — in
-[`docs/kernel-recon/fork-sync-2026-09.md`](docs/kernel-recon/fork-sync-2026-09.md)
-(plan: [`fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md)),
-adding `0048` (Stadia-FF device IDs), `0049` (an 8BitDo adapter fix carried ahead of its
-upstream PR merging) and `0050` (an exFAT read-ahead plug, 6.18-series only); on
-2026-09-12 `0040`/`0041` (Switch IMU and LED names) were retired when upstream chose the
-Main_MiSTer-side fix instead, and on 2026-09-14 `0051` was added — a revert of a stable
-commit `6.18.52` cherry-picked without the commit it repairs, which breaks the `perf` build,
-and on 2026-09-21 `0052`/`0053` (an SD-card data-timeout hook and an exFAT directory-scan
-read-ahead bound) were added (36 + 3 − 2 + `0051` + 2 = 40). Every
-remaining drop is either verifiably in mainline 6.18, replaced by a maintained package,
-or recorded as a deliberate decision. `0047` was never part of that delta — it backported
-a mainline commit (`ce21a5cf3d1f`, first released in 7.2) that the 6.18.y line had not
-received — and it was carried from 2026-08-24 until 2026-09-21, when `6.18.53` took the
-same commit as a stable backport and the patch was deleted, as its own header said it
-would be.
+**Every MiSTer kernel change is a reviewed patch file.** Every commit of the MiSTer kernel
+fork (the 5.15 history, upstream's `MiSTer-v6.18` branch and older residue) was reconciled
+one by one. Each has an evidence-backed disposition record, and each record was checked by
+a second, independent review ([`docs/kernel-recon/`](docs/kernel-recon/)). What survives is a
+series of patch files in `board/mister/de10nano/linux-patches/`. Everything else is either
+already in mainline, replaced by a maintained package, or dropped by a recorded decision.
+The reconciliation also caught gaps the original triage had missed (Joy-Con combining,
+DualSense player-ID and mic-mute, stock NES/Famicom button mapping, fake-CSR Bluetooth
+dongles), and those are now carried. A weekly workflow diffs upstream's fork and keeps an
+issue updated with what is new. The series also carries this project's own fixes, for
+example the dwc2 USB host work below and an rtw88 Wi-Fi fix. Some of these have been
+contributed upstream to `Linux-Kernel_MiSTer`.
 
-**Every commit in the fork was independently reconciled**, each with a machine-readable,
-evidence-backed disposition record, **100% of them verified by a second independent
-review pass** ([`docs/kernel-recon/`](docs/kernel-recon/)). That reconciliation caught and
-closed several silent gaps the original triage had misclassified — Joy-Con combining, the
-DualSense player-ID and mic-mute/`BTN_Z` interfaces, stock NES/Famicom A/B button mapping,
-Pro-Controller-clone tolerance, fake-CSR Bluetooth dongle detection, and two config drifts
-(macvlan, `xpad`-as-module) — now carried as patches `0032`–`0037` plus config parity.
+**The kernel can be exported back.** [`scripts/export-kernel-tree.sh`](scripts/export-kernel-tree.sh)
+renders the pinned tarball plus series into a `Linux-Kernel_MiSTer`-style git tree,
+deterministically, so upstream can consume the work without a second fork
+([`docs/kernel-export.md`](docs/kernel-export.md)).
 
-Because the kernel is *stored* as `{pinned tarball + ordered series}` rather than as a
-materialized tree, [`scripts/export-kernel-tree.sh`](scripts/export-kernel-tree.sh) can
-render it back into a `Linux-Kernel_MiSTer`-style git tree deterministically — the export
-is a **build output**, not a second source of truth, so upstream can consume the work
-without this repo forking the kernel a second time. A separate
-`linux-patches-upstream/` series carries what that exported tree needs but our image
-deliberately does not (the `loop=` boot patch — see below).
+**Six latent bugs, found by reading the code.** All of them exist verbatim in every MiSTer
+image shipped to date, and all are in MiSTer-original or fork-modified code, none in
+mainline code.
 
-### 2. Six latent bugs found and fixed
-
-These are **not** forward-porting regressions. Every one is present verbatim in the 5.15
-fork, and therefore in **every MiSTer image shipped to date**. They surfaced only because
-forward-porting forces you to actually read code that has been copied forward untouched
-since 2021.
-
-| | Where | The bug | Status |
+| | Where | Bug | Status |
 |---|---|---|---|
-| **B1** | GameCube adapter | **Use-after-free on unplug.** Teardown cancels the rumble work item but never the four per-port `work_connect` items, then `kfree()`s the adapter the handler `container_of()`s back into. Same defect on the probe error path. | ✅ Fixed |
-| **B2** | `MiSTer_fb` | **`memremap()` returns `NULL` on failure, not an `ERR_PTR`** — the code tests `IS_ERR()`, which is false for NULL, so a failed mapping falls through with `screen_base` unset. Oops on the first fbcon draw. | ✅ Fixed |
-| **B3** | MiSTer audio SPI | `class_create()`/`device_create()` return `ERR_PTR`, never `NULL` — so the `== NULL` checks are dead code and a *failed* `device_create()` was treated as success. | ✅ Fixed |
-| **B4** | MiSTer audio SPI | Bogus diagnostics on SPI failure: the ring length is computed from a `-1` read, so the status string you read to diagnose a broken SPI link is itself wrong — precisely when you need it. | ✅ Fixed |
-| **B5** | Logitech K400 Fn | The fork's own patch reuses `SetFeature` at the wrong feature index, writing the wrong HID++ feature. | ✅ Fixed |
-| **B6** | Cyclone V cpufreq | `wait_for_fsm()` passes a *mask* where `wait_on_bit()` wants a *bit number*, so it polls bit 1 instead of bit 0 — and does a plain `test_bit()` on `__iomem`. Harmless today only because the call returns immediately. | ⚠️ **Carried verbatim, deliberately** |
+| B1 | GameCube adapter | Use-after-free on unplug: per-port work items never cancelled | Fixed |
+| B2 | `MiSTer_fb` | `memremap()` failure checked with `IS_ERR()`; NULL falls through to an Oops | Fixed |
+| B3 | MiSTer audio SPI | `ERR_PTR` returns checked against `NULL`; failures treated as success | Fixed |
+| B4 | MiSTer audio SPI | Diagnostic string computed from a failed read | Fixed |
+| B5 | Logitech K400 Fn | `SetFeature` sent to the wrong HID++ feature index | Fixed |
+| B6 | Cyclone V cpufreq | `wait_for_fsm()` polls the wrong bit | Carried verbatim on purpose: fixing it changes live PLL timing |
 
-B6 is not fixed on purpose: making it actually *wait* changes the timing of a live PLL
-reprogramming sequence, and a forward-port is the wrong place to smuggle in an untested
-change to clock sequencing. It is recorded, not hidden.
+Write-ups: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
 
-Notably, **all six live in MiSTer-original or fork-modified code. None is in mainline
-code.** That is the sharpest argument for the small-delta posture this project takes.
+### Security
 
-Full write-up with the reasoning for each: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
+- **OpenSSL 1.1.1k → current 3.x.** Stock's TLS library has been end-of-life since September 2023.
+- **Per-device SSH host keys.** Every stock MiSTer shares one set of host keys from the
+  public download, so impersonating one produces no host-key warning. This image generates
+  keys on first boot and keeps them on the FAT card
+  ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)).
+- **SSH key login survives updates.** `sshd` also reads `/media/fat/config/authorized_keys`,
+  which an OS update never touches. That is the same file `security_fixes.sh` uses, so an
+  existing key keeps working ([FAQ](docs/user/faq.md#ssh-key-persist)).
+- **Current network-facing software:** OpenSSH, Samba, BlueZ, wpa_supplicant and Python
+  all track current releases ([Python compatibility notes](docs/python-compat.md)).
+- **An update path.** Renovate tracks the kernel, firmware and every pinned package, and CI
+  proves each bump still builds and passes the parity suite.
+- **IPv6 is built in but off** until you opt in on the card (stock has none).
 
-### 3. Security posture
+Deliberately unchanged: **the root password is still `1`**, for stock parity
+([FAQ](docs/user/faq.md#whats-the-default-root-password-and-is-that-a-problem)). A
+secure-by-default network posture is proposed in
+[ADR 0031](docs/decisions/0031-secure-by-default-network-posture.md) and not yet adopted.
 
-- **OpenSSL 1.1.1 → 3.6.4.** Stock ships a TLS library that has been **end-of-life since
-  2023-09-11** and has received no upstream fixes since. This is the single strongest
-  security argument for the whole project, and it is a plain, checkable fact.
-- **Per-device SSH host keys.** Every stock MiSTer ships the *same* host keys, baked into
-  the public release archive, dated 2016-12-31, on a read-only root that makes
-  `ssh-keygen -A` a no-op. The private host key of every MiSTer on Earth is public and
-  identical — so SSH server impersonation is trivial and produces **no host-key warning**.
-  This image generates unique keys on first boot and persists them to an ext4 image on the
-  FAT partition, **reusing stock's own proven mechanism** for Bluetooth pairing keys.
-  ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md))
-- **SSH key login that survives an update.** An OS update replaces `linux.img` wholesale,
-  and `/root/.ssh/authorized_keys` — the usual place for a key — lives inside it, so every
-  update discards it. (The root filesystem is read-only at boot and only becomes writable
-  once you log in, so putting a key there also means logging in first, which is circular
-  when the key *is* the login method.) `sshd` here also
-  reads **`/media/fat/config/authorized_keys`**, on the exFAT partition an update never
-  touches: drop your `.pub` file there from any PC with a card reader and key login keeps
-  working across every future update. No shell access, no script to edit, and
-  `StrictModes` stays on — the initramfs mounts that partition `fmask=0022,dmask=0022`,
-  which is exactly what `sshd` requires. That is the same file
-  [`security_fixes.sh`](https://github.com/MiSTer-devel/Scripts_MiSTer) has read since
-  2021, so a key set up for stock already works here — the difference is that stock
-  copies it *into* `linux.img` and so needs the script re-run after every update, while
-  this image reads it in place. ([FAQ](docs/user/faq.md#ssh-key-persist))
-- **OpenSSH 8.6p1 → 10.5p1**, **Samba ~4.14 → 4.24.6**, **BlueZ → 5.86**,
-  **wpa_supplicant 2.9 → 2.12** — the network-facing surface, several release cycles of
-  hardening each.
-- **Python 3.9 → 3.14.7** — the on-device interpreter that runs the Downloader and
-  community scripts (compatibility tested; see [`docs/python-compat.md`](docs/python-compat.md)).
-- **An actual update path.** Renovate tracks the kernel, firmware, and every pinned
-  package; CI proves each bump still builds and still passes the parity suite. Stock's
-  security model is "the image is frozen."
+### Storage and everyday features
 
-What has *not* changed: **the root password is still `1`**, deliberately, for stock
-parity. That is publicly known and always has been. See
-[the FAQ](docs/user/faq.md#whats-the-default-root-password-and-is-that-a-problem) for the
-plain-language version of what that means on an untrusted network.
-
-### 4. Storage, filesystems, and networking
-
-| Capability | Stock | Here |
+| Feature | Stock | This image |
 |---|---|---|
-| **exFAT** | Out-of-tree Samsung driver (also handled FAT12/16/32) | **Mainline `exfat`**, with the Samsung symlink extension carried as patch `0031` ([ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [ADR 0019](docs/decisions/0019-exfat-symlinks-carried-patch.md)) |
-| **exFAT repair** | None. exFAT has no journal, the card is never cleanly unmounted (even the OSD's "Reboot" is a raw HPS reset-controller write), so lost clusters accumulate and nothing ever checks | **Scripts > check_storage.sh** — a read-only scan while running, and, only if it finds something and you confirm, a one-shot `fsck.exfat` on the next boot from the initramfs, the only place a repair can run ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
-| **Logitech pairing** | None. `hid-logitech-dj` drives every *already-paired* device, but the pairing handshake has no kernel interface, so a replacement or second-hand Unifying receiver cannot be bound to a device on-box at all | **Scripts > pair_logitech.sh** — enumerates every receiver, refuses the families it cannot drive (Bolt, Lightspeed) by name, and confirms the result from the receiver's own slot table ([`docs/logitech-pairing.md`](docs/logitech-pairing.md)) |
-| **NTFS** | Not supported | `ntfs3` module + `ntfs-3g` automount via util-linux `mount` ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
-| **USB automount** | Debian `usbmount` 0.0.24 | Buildroot `usbmount`, functionally identical, **plus NTFS** ([`docs/usb-automount-parity.md`](docs/usb-automount-parity.md)) |
-| **Archive extraction** | `7zr` = p7zip 16.02 (2016); the updater additionally fetches the same 2016 build over the network as `/media/fat/linux/7za` | **7-Zip 26.03** as `7zz` (+`7za`), and a static copy shipped to `/media/fat/linux/7za` so nothing is fetched ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
-| **CIFS kernel mounts** | No `mount.cifs` shipped | `cifs-utils` included — a deliberate, documented **beyond-parity** addition for community storage scripts ([`docs/netfs-parity.md`](docs/netfs-parity.md)) |
-| **BitTorrent** | `rtorrent` + `libtorrent.so.21` — a foreground TUI client, started by hand, with a **full DHT but no Local Peer Discovery at all** | `transmission-daemon` + `transmission-remote`, **off until you `mkdir /media/fat/linux/transmission`**: LPD, DHT, PEX and per-file selection, state on the card so an update never destroys it, RPC on loopback only and no UPnP port mapping ([`docs/bittorrent.md`](docs/bittorrent.md)) |
-| **Wi-Fi** | Six out-of-tree vendor forks *plus* in-kernel `mac80211` USB drivers for MediaTek/Ralink/Marvell/older Realtek; no Broadcom, no Wi-Fi 6/6E, no Atheros USB Wi-Fi, no Redpine | Mainline drivers for every chip mainline can drive that is worth building here (six symbols deliberately left off — see below), plus chipset families stock never supported at all. **One** out-of-tree driver left — see below |
+| exFAT | Out-of-tree Samsung driver | Mainline `exfat`, with Samsung's symlink extension carried ([ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [0019](docs/decisions/0019-exfat-symlinks-carried-patch.md)) |
+| exFAT repair | None, though the card is never cleanly unmounted | **Scripts > check_storage.sh**: read-only scan, then a confirmed repair on next boot ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
+| NTFS | Not supported | `ntfs3` plus `ntfs-3g`, with USB automount ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
+| Logitech Unifying pairing | Not possible on the device | **Scripts > pair_logitech.sh** ([doc](docs/logitech-pairing.md)) |
+| CIFS mounts | No `mount.cifs` | `cifs-utils` ([doc](docs/netfs-parity.md)) |
+| BitTorrent | `rtorrent`, foreground TUI, no local peer discovery | `transmission-daemon`, off until you opt in on the card, state kept on the card ([doc](docs/bittorrent.md)) |
+| ZeroCD Wi-Fi dongles | No `usb_modeswitch`, so they stay in CD mode | `usb_modeswitch` with the configs these dongles need |
+| USB controller polling | A 1 kHz full-speed device is polled every 2 ms | Fixed in the dwc2 host driver: 500 → 984 reports/s measured ([doc](docs/dwc2-usb-irq.md)) |
+| Off-device backup | None | `azcopy` packaged, not enabled by default ([doc](docs/azcopy.md)) |
 
-### Wi-Fi and Bluetooth hardware support
+<a id="wi-fi-and-bluetooth"></a>
+### Wi-Fi and Bluetooth
 
-The short version: **if your dongle is Realtek, Broadcom/Cypress, MediaTek,
-Atheros/Qualcomm, or Redpine, a driver for it is almost certainly built into
-this image** — with **two** named exceptions, both called out below: the newest
-Realtek Wi-Fi 6E chip (RTL8852CU — a driver is in the tree, but it is not even
-build-verified yet) and Qualcomm/Atheros QCA9377 over USB (no driver built at
-all, deliberately, because upstream says its own driver does not work).
+**If your dongle is Realtek, Broadcom/Cypress, MediaTek, Atheros, Redpine or AICSemi, this
+image builds a driver for it, with its firmware.** The driver set comes from a 36-symbol
+audit of every USB Wi-Fi driver in Linux 6.18, cross-checked against the kernel's device-ID
+tables ([`docs/wifi-parity.md`](docs/wifi-parity.md)). The same method was applied to
+Bluetooth firmware ([`docs/bluetooth-parity.md`](docs/bluetooth-parity.md)).
 
-Stock's *out-of-tree* set was six Realtek chips, each via its own vendor fork —
-but that was not all it had: it also carried in-kernel `mac80211` USB drivers
-for MediaTek (`mt7601u`, `mt76x0u`, `mt76x2u`, `mt7663u`), Ralink (`rt2500usb`,
-`rt73usb`, `rt2800usb`), Marvell (`mwifiex_usb`, `libertas`/`usb8xxx`) and
-older Realtek parts (`rtl8xxxu`, `rtl8192cu`, `rtl8187`), per
-[`stock-mods.txt`](docs/verification/stock-reconciliation/stock-mods-20250402.txt).
-What it had **none** of was Broadcom, Wi-Fi 6/6E, Atheros USB Wi-Fi, or Redpine — and
-for at least one chip it *did* have a driver for, it shipped no firmware, so
-the driver probed and then failed (MT7663U; same story for `ath3k` on the
-Bluetooth side).
+**Most rows are build-verified only**: one Realtek chip has been tested on hardware. See the
+last column.
 
-Getting there was a from-scratch, 36-symbol audit of
-every USB Wi-Fi driver Linux 6.18 offers, cross-checked against every USB
-device-ID table in `drivers/net/wireless/` so the answer is evidence, not
-recollection ([`docs/wifi-parity.md` §7](docs/wifi-parity.md)), plus the same
-method applied a second time to Bluetooth firmware
-([`docs/bluetooth-parity.md` §9](docs/bluetooth-parity.md)).
-
-**Read the last column before the rest — it says how far each row was
-actually checked**, and most of this table is newly added, unreleased
-hardware support that has not yet had a device plugged into it. The **Stock MiSTer**
-column below shows **both** eras: the 5.15 image (release 20250402, stock until
-2026-09-07) and 6.18 (Release 20260907, re-measured 2026-09-10 against the extracted
-`rootfs.tar.bz2` + `modules.tar.gz` + `firmware.tar.gz` overlay — see
-[`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/) and
-[`docs/kernel-recon/fork-sync-2026-09/evidence/`](docs/kernel-recon/fork-sync-2026-09/evidence/)).
-Stock's 6.18 kernel dropped every out-of-tree Wi-Fi fork for mainline `rtw88`/`rtw89`/
-`rtl8xxxu`/`mt76`, and it is a genuine expansion in several rows below — this is a
-module/firmware **presence** check only, the same "build-verified, not hardware-verified"
-caveat that applies to most of *this* image's own rows applies doubly to stock's, since
-nobody here has stock hardware to pair against:
-
-| If your dongle uses… | Stock MiSTer | This image | Checked how far? |
+| Chip family | Stock (20260907) | This image | Verified |
 |---|---|---|---|
-| Realtek 802.11n/ac — RTL8188EU/8188FU, RTL8710BU, RTL8811AU/8821AU, RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU/8822CU, RTL8723DU | **5.15:** out-of-tree vendor fork for **six** of them (RTL8188EU, RTL8188FU, RTL8811AU/8821AU, RTL8812AU, RTL8821CU, RTL8822BU — [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md), `stock-mods.txt`); several of those can't do WPA3 at all. **No driver at all** for RTL8710BU, RTL8814AU, RTL8822CU, RTL8723DU. **6.18 (20260907):** mainline `rtl8xxxu` covers RTL8188EU; mainline `rtw88` newly *builds* **RTL8812AU, RTL8814AU, RTL8821CU, RTL8822BU, RTL8822CU, RTL8723DU** (`rtw88_8812au`/`8814au`/`8821c`/`8821cu`/`8822bu`/`8822cu`/`8723du` all present — but see the firmware caveat below: only 8812AU, 8821CU and 8822BU have their blob). **Still no driver** for RTL8811AU/8821AU (**no `rtw88_8821au.ko`** — explicitly absent, even though the firmware `rtw88/rtw8821a_fw.bin` ships). **RTL8710BU and RTL8188FU *are* covered** in 6.18, by `rtl8xxxu.ko` (present): 6.18's `rtl8xxxu` links `8188f.o` and `8710b.o` unconditionally (`drivers/net/wireless/realtek/rtl8xxxu/Makefile`), binds both outside the `RTL8XXXU_UNTESTED` guard (`core.c:8060-8062`, `:8108-8112`), and stock ships `rtlwifi/rtl8188fufw.bin` + `rtl8710bufw_{SMIC,UMC}.bin`. Three of the newly-built `rtw88` modules ship **without their firmware**, so they load and then fail at `request_firmware()` the way `mt7663u` does: `rtw88/rtw8814a_fw.bin`, `rtw8822c_fw.bin` and `rtw8723d_fw.bin` are all absent from stock's set (`evidence/stock-20260907-{modules,firmware}.txt`; corrected by the Wave-4 audit 2026-09-11) | In-kernel `rtl8xxxu` / `rtw88` (`mac80211`) | **Hardware-verified**: an RTL8822BU auto-connects to a WPA3-only 5 GHz network at boot. (The fork it replaced advertised SAE but failed WPA3-only association with `status_code=1` — hardware-verified regression the switch fixed, [ADR 0016](docs/decisions/0016-mainline-first-wifi-drivers.md).) Every other chip in this row builds the same way but has **not** been tested against real hardware. |
-| Realtek Wi-Fi 6 — RTL8851BU, RTL8852BU | **5.15:** not supported. **6.18 (20260907):** now built — `rtw89_8851b`/`8851bu`, `rtw89_8852b`/`8852bu`/`8852b_common` all present (module presence only; no firmware cross-check done here) | In-kernel `rtw89` | Build-verified only |
-| Realtek Wi-Fi 6E — RTL8852CU / RTL8832CU | Not supported in either stock era | Out-of-tree `rtl8852cu-morrownr` — the *only* driver that exists for this chip on USB anywhere, in or out of tree: mainline's `rtw89` has the chip's radio HAL but only a PCIe bus file, and this board has no PCIe | **Not yet built, let alone tested** — added by reading the driver's source, not compiled ([`docs/wifi-parity.md` §8](docs/wifi-parity.md)) |
-| AICSemi Wi-Fi 6 — AIC8800 / 8800DC / 8800D80 / 8800D80N / 8800D80X2 / 8800DLN (the cheap AX sticks: **Tenda U2, U11, U11 Pro**, TP-Link/Mercury, TX1U Nano) | **Not supported in either stock era.** Stock's 6.18 fork *added the driver source* on 2026-09-11 (`MiSTer-v6.18` `c129b0fac3`, 82 k lines vendored at `drivers/net/wireless/aic8800`), but as of Release 20260907 it has shipped **neither the module nor the ~60 firmware blobs** the driver loads — and `Linux_Image_creator_MiSTer`'s newest commit pre-dates the driver commit. On stock today the chip binds nothing | Out-of-tree `package/aic8800` — driver **and** firmware, from `radxa-pkg/aic8800`, which packages the *same* AICSemi SDK snapshot stock vendored (`RELEASE_DATE "2026_0123_5f7be68d"` on both) and unlike stock also publishes the blobs. All six chip variants, 6.6 MiB, installed to `/lib/firmware/<variant>/` where this driver actually looks (it bypasses `request_firmware()` entirely) | Build-verified against the pinned 6.18.50 (0 errors); **no hardware test** — nobody has plugged one of these into a MiSTer yet. DE10 only; not enabled for DE25, whose aarch64 build is untried |
-| Broadcom / Cypress — BCM43xx, CYW43xx USB adapters | **Not supported at all, in either stock era** — no `brcmfmac`/`brcmutil` in `evidence/stock-20260907-modules.txt` either | In-kernel `brcmfmac` | Build-verified only |
-| MediaTek Wi-Fi 5 — MT7663U (802.11ac) | **5.15:** driver shipped (`mt7663u`, `mt7663-usb-sdio-common`, `mt7615-common` in `stock-mods.txt`) but **none of the four firmware files it requests**, so it probed and failed. **6.18 (20260907): unchanged failure mode** — `mt7663u`/`mt7663-usb-sdio-common`/`mt7615-common` still ship, and `evidence/stock-20260907-firmware.txt` still has no `mt7663*` file | Same in-kernel `mt76` driver, plus the four `mediatek/mt7663*` blobs it actually loads ([`wifi-parity` §6.2](docs/wifi-parity.md)) | Build-verified only |
-| MediaTek Wi-Fi 6 / Wi-Fi 7 — MT7921U (802.11ax), MT7925U (802.11be, 6 GHz-capable) | **5.15:** not supported. **6.18 (20260907): now built *and* fed** — `mt7921u`/`mt7921-common` + `mt7925u`/`mt7925-common`/`mt792x-lib`/`mt792x-usb` are all present, **and** stock's firmware set gained the Wi-Fi-side blobs each needs (`mediatek/WIFI_MT7961_patch_mcu_1_2_hdr.bin`+`WIFI_RAM_CODE_MT7961_1.bin` for the MT7921 family, `mediatek/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin`+`WIFI_RAM_CODE_MT7925_1_1.bin` for MT7925) — module and firmware presence only, not hardware-tested against stock | In-kernel `mt76` (`mt7921u` / `mt7925u`) | Build-verified only |
-| Atheros — AR6003/AR6004, AR9271/AR9287 (`ath9k_htc`), AR9170 (`carl9170`) | **5.15:** not supported. **6.18 (20260907): partially built** — `ath6kl_core`/`ath6kl_usb` (AR6003/AR6004) and `carl9170` (AR9170) are now present; **`ath9k_htc` is still absent** (AR9271/AR9287 still unsupported) | In-kernel | Build-verified only |
-| Redpine RS9113 / RS9116 | Not supported in either stock era — no `rsi`/`rsi_usb` in `evidence/stock-20260907-modules.txt` | In-kernel `rsi` | Build-verified only |
-| RTL8192DU (dual-band 802.11n) | **5.15:** not supported. **6.18 (20260907): now built** — `rtl8192du.ko.xz` present | In-kernel `rtlwifi` | Build-verified only |
-| Bluetooth — MediaTek MT7921/MT7925 combo, Qualcomm QCA Rome 6174A (USB), one Broadcom `.hcd`, Atheros AR3011/AR3012, plus Realtek RTL8761B/BU and every Wi-Fi+BT combo chip above | **5.15:** `ath3k` built with **no `ath3k-1.fw`, no `ar3k/*.dfu`**; no MediaTek MT79xx or Qualcomm QCA blobs; Realtek combos *were* covered. **6.18 (20260907):** still no `ath3k-1.fw`/`ar3k/*.dfu`, still no Qualcomm QCA BT rampatch (`ath10k/QCA9377/*` in the new firmware set is Wi-Fi board data, not a BT rampatch), Realtek combos still covered — **but stock now ships one Broadcom `.hcd`** (`brcm/BCM20702A1-0b05-17cb.hcd`, absent from the 5.15 set) and the MediaTek MT7961/MT7925 blobs added above are `WIFI_`-prefixed only — no `BT_`-prefixed MediaTek blob appears in `evidence/stock-20260907-firmware.txt`, so that combo's Bluetooth side is not evidently fed either (see [`docs/bluetooth-parity.md`](docs/bluetooth-parity.md)) | Firmware shipped for every Bluetooth driver here where an upstream blob exists and the hardware is reachable on this board. **Two built drivers deliberately ship without it**: Intel `btintel` (30 MiB of `intel/ibt-*` for silicon that only comes on M.2 cards this board cannot host — `CONFIG_BT_HCIBTUSB` `select`s the driver unconditionally, so it cannot be turned off) and `bcm203x` (a ~2003 BCM2033 whose `BCM2033-MD.hex`/`BCM2033-FW.bin` upstream linux-firmware does not carry at all). Both are recorded in [`bluetooth-parity` §9's "Deliberately NOT shipped"](docs/bluetooth-parity.md) | General Bluetooth pairing is **hardware-verified**; these specific chipset gaps were closed by reading each driver's firmware-request code, not by plugging one in |
+| Realtek 802.11n/ac (RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | `rtl8xxxu`/`rtw88`; no 8821AU driver; 8814AU, 8822CU, 8723DU lack firmware | `rtl8xxxu`/`rtw88`, all with firmware | **Hardware** (RTL8822BU, WPA3 5 GHz) |
+| Realtek Wi-Fi 6 (RTL8851BU, 8852BU) | `rtw89` | `rtw89` | Build |
+| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr`, the only USB driver that exists | Build |
+| AICSemi Wi-Fi 6 (AIC8800 family: Tenda U2/U11, TX1U Nano…) | Source added to the fork, no module or firmware shipped | `package/aic8800`, driver and firmware | Build |
+| Broadcom / Cypress (BCM43xx, CYW43xx) | None | `brcmfmac` | Build |
+| MediaTek MT7663U | Driver without its firmware, so it fails | `mt76` plus firmware | Build |
+| MediaTek MT7921U, MT7925U (Wi-Fi 6/7) | `mt76` plus Wi-Fi firmware | Same | Build |
+| Atheros (AR9271/9287, AR9170, AR6003/6004) | No `ath9k_htc` | `ath9k_htc`, `carl9170`, `ath6kl` | Build |
+| Redpine RS9113/RS9116 | None | `rsi` | Build |
+| RTL8192DU | `rtlwifi` | `rtlwifi` | Build |
+| Bluetooth (MediaTek, Qualcomm QCA, Atheros AR3011/3012, Broadcom, Realtek) | No Atheros, Qualcomm or MediaTek BT firmware | Firmware for every reachable driver | Pairing: **hardware**; firmware: by code reading |
 
-**One deliberate exclusion, not an oversight.** `ATH10K_USB` (Qualcomm/Atheros
-QCA9377 over USB — e.g. the Linksys WUSB6100M) is the one modern 802.11ac USB
-chip this image does not build a driver for. Upstream's own kernel Kconfig
-calls it out: *"Currently work in progress and will not fully work."* Binding
-a dongle to a driver that then fails is worse than binding it to nothing, so
-it stays off. **Stock's Release 20260907 disagrees**: `evidence/stock-20260907-modules.txt`
-carries `ath10k_core`/`ath10k_usb`, and `evidence/stock-20260907-firmware.txt` carries the
-matching `ath10k/QCA9377/hw1.0/{board-2.bin,firmware-6.bin}` board data — so stock now
-ships exactly the driver upstream itself warns against, unchanged reasoning, our own
-choice to omit it. Every other driver family the audit found — 30 of 36 — is
-built. Of the six that are not, this is one; four are 2000s-era 802.11b/g parts
-(`AR5523` ~2004, `AT76C50X_USB` ~2001, `P54_USB` ~2004, `ZD1211RW` ~2005) with
-no realistic install base today; and the sixth, `PLFXLC`, is pureLiFi optical
-hardware that happens to live under `drivers/net/wireless/` without being Wi-Fi
-at all ([`docs/wifi-parity.md` §7](docs/wifi-parity.md)).
+Deliberate omissions: Qualcomm QCA9377 over USB (`ath10k_usb`), which upstream's Kconfig
+says "will not fully work" (stock ships it); four 2000s-era 802.11b/g drivers; and a LiFi
+driver that is not Wi-Fi. Two Bluetooth drivers build without firmware because none exists
+for hardware this board can host. The full list is in `wifi-parity` §7 and
+`bluetooth-parity` §9.
 
-**Why "build-verified" and "hardware-verified" are called out separately, and
-not glossed over**: this table represents a large, single-branch expansion —
-several new chip vendors, a new Wi-Fi generation, and a Bluetooth firmware
-pass — landed and documented before a second device could be sourced and
-tested against most of it. The driver source and firmware request paths were
-read line-by-line for every entry above (file:line citations in
-[`docs/wifi-parity.md`](docs/wifi-parity.md) and
-[`docs/bluetooth-parity.md`](docs/bluetooth-parity.md)), and `scripts/ci-tests.sh`
-asserts that **the newly-added** modules and firmware land in the built image:
-the seven `rtw88` USB modules, `brcmfmac`+`brcmutil`, `rtl8192du`/`ath6kl_usb`/
-`rsi_usb`, the one permitted out-of-tree `8852cu.ko`, and a fixed blob list
-(MT7663's four files, `ath3k-1.fw`, the four `brcmfmac*.bin`, `rtl8192dufw.bin`,
-two `rsi/*.rps`, the three MediaTek BT ram-codes, the QCA USB pair, both
-`.hcd`s, `rtl8761b`/`rtl8761bu`). It does **not** yet assert `rtw89_8851bu`/
-`rtw89_8852bu`, `mt7663u`/`mt7921u`/`mt7925u`, `ath9k_htc` or `carl9170`, nor
-the `rtw89/*.bin`, `htc_9271.fw`/`htc_7010.fw`, `carl9170-1.fw` and `ar3k/*.dfu`
-blobs those need — all of which do ship, but unguarded. Concretely: the Realtek
-Wi-Fi 6 row has **no** CI presence check at all; the MediaTek Wi-Fi 5 row has its
-firmware checked but not its module; the MediaTek Wi-Fi 6/7 row has neither; and
-the Atheros row is covered only for `ath6kl_usb`, not for `ath9k_htc`/`carl9170`.
-And even where CI does check, a file landing in the image is not the same thing as
-a dongle actually associating on this board.
-The [hardware validation ledger](#hardware-validation-ledger) is the single
-current source of what has been touched with real hardware; treat anything
-not listed there as unverified in practice, exactly as that section says.
+### The real-time kernel
 
-### 5. Build, release, and supply-chain engineering
+`zImage_dtb-rt` is a `PREEMPT_RT` kernel on the 7.2.y line. 32-bit ARM RT is mainline since
+7.1, so no out-of-tree RT patch is carried. It is built by the same `make` as the main
+kernel, from the same config plus a fragment, and its modules ride inside the same
+`linux.img`. Switching kernels is therefore a one-line `u-boot.txt` edit, with no rootfs
+flash. It is a manual download from the Release page, never pushed by `db.json`. No
+latency measurement has been taken yet, so it is for testing, not daily use
+([ADR 0021](docs/decisions/0021-rt-kernel-first-class-ci.md),
+[`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md)).
 
-This is the half of the project that has no stock counterpart at all, because stock
-publishes no build recipe.
+### The SD-card image
 
-- **No vendored Buildroot, ever.** The `Makefile` downloads the pinned release, verifies
-  its SHA-256 against **upstream's GPG-signed release manifest**, unpacks it under
-  `work/`, and forwards every target into it. A hash mismatch refuses to unpack and tells
-  you — at length — why pasting the new hash in is the wrong fix.
-- **Byte-identical reproducible builds.** Two independent builds of the same commit
-  produce identical `linux.img` and `zImage_dtb`, and a dedicated CI workflow exists to
-  prove it. This is what makes the four layered build caches trustworthy as *inputs only*.
-  ([`docs/reproducibility.md`](docs/reproducibility.md))
-- **Full SBOM.** Every release ships `legal-info.tar.gz`: `manifest.csv` (package,
-  version, license, upstream URL), license texts, and the upstream source tarball of
-  every package conveyed — the GPL accompanying-source obligation, discharged properly.
-  The same manifest is submitted to GitHub's dependency graph on release, so the package
-  list is browsable at
-  [Insights → Dependency graph](https://github.com/mcfbytes/Buildroot_MiSTer/network/dependencies)
-  without downloading anything ([`docs/ci.md#dependency-graph-submission`](docs/ci.md#dependency-graph-submission)).
-- **Provenance attestation** on the release images.
-- **No binaries in git. Ever.** Firmware, payloads, and stock blobs are fetched at build
-  time, pinned by commit or release **and** hash.
-- **Renovate** ([`renovate.json`](renovate.json), [`docs/renovate.md`](docs/renovate.md))
-  with a companion hash-sync workflow, because several pins need a *companion* hash that
-  a naive version bump would leave stale. Kernel `-rc` bumps **fail closed** on a missing
-  hash by design, requiring a human pin.
+`sdcard.img.xz` is a complete, `dd`-able card. It ships small and uses mr-fusion's own
+mechanism: a throwaway installer reformats the card to exFAT at its real size on first boot,
+because Linux cannot grow exFAT in place. Install time depends on the card's write speed, not
+its size. The installer shows progress on HDMI (using
+[`itsalive`](https://github.com/mcfbytes/ItsAlive_MiSTer) to light the display without
+Main_MiSTer) and on the serial console. It is reordered so an interrupted install is
+recoverable rather than a brick. It is a separate release asset, never referenced by
+`db.json`, because it writes the bootloader
+([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md),
+[payload inventory](docs/verification/sdcard-payload.md)).
 
-### 6. Things that are deliberately identical to stock
+### Deliberately identical to stock
 
-Parity is a feature, and most of the work is invisible for exactly that reason. This image
-reproduces stock's behaviour — not merely its file list — for: the `MiSTer` binary's ABI
-and every SONAME it links, the boot chain and U-Boot contract, `/media/fat` mount flags
-(`sync,dirsync,noatime,nodiratime` — mounting async would be a real power-off corruption
-regression), the read-only root with the login-time `remount,rw`, the Bluetooth key store,
-the firmware set, the init-script set, `busybox` applet coverage, the RTC, MIDI/MT-32,
-Samba, SSH/FTP, `/MiSTer.version` semantics, and the Downloader's update contract.
+Most of the work is invisible because parity is the goal. This image reproduces stock's
+behaviour for:
 
-Each of those has its own audited parity document — see the
-[documentation map](#documentation-map). The `uboot.img` in the default release channel is
-shipped **byte-identical to stock's**, fetched by hash.
+- the `MiSTer` binary's ABI and every SONAME it links;
+- the boot chain and the `uboot.img` (shipped byte-identical, fetched by hash);
+- `/media/fat` mount flags (`sync,dirsync`: async would corrupt on power-off);
+- the read-only root with its login-time `remount,rw`;
+- the Bluetooth key store and RTC;
+- MIDI/MT-32, Samba and SSH/FTP;
+- BusyBox applet coverage and the init scripts;
+- `/MiSTer.version` semantics and the Downloader contract.
+
+Each has its own parity audit (see the [documentation map](#documentation-map)).
 
 ---
 
-## What is *not* better — the honest list
+## What has been verified, and what has not
 
-- **One known regression.** The Logitech **G923 *PlayStation* variant** loses force
-  feedback and range control; steering, pedals and buttons still work as a plain joystick.
-  The G923 **Xbox** variant and all G29/G27/G25 wheels are fully supported with force
-  feedback intact. ([`docs/patch-provenance.md` §9.3](docs/patch-provenance.md))
-- **Not all hardware is validated.** Samba and MIDI are build- and CI-verified only. One
-  board, one set of peripherals. The same is true of most of the [Wi-Fi/Bluetooth chipset
-  table](#wi-fi-and-bluetooth-hardware-support) — one chip family (Realtek `rtw88`) has
-  actually associated on hardware; the rest, including the whole Broadcom, MediaTek, and
-  Wi-Fi 6/6E additions, compile but have not had a dongle plugged into this board — and
-  CI's presence checks do not even cover all of them (`rtw89_885*bu`, `mt7663u`,
-  `mt7921u`/`mt7925u`, `ath9k_htc`, `carl9170` and their firmware are unasserted; see the
-  paragraph under that table). The matrix in
-  [`docs/testlogs/p3-matrix.md`](docs/testlogs/p3-matrix.md) is the truth; this README is
-  a summary of it.
-- **This forward-port has already shipped one real bug, on hardware.** Early builds
-  **auto-overclocked the board to 1.2 GHz on boot** and produced hard hangs. The carried
-  socfpga overclock patch was written against 5.15, where `CPUFREQ_BOOST_FREQ` kept the
-  governor off the boost rows by default; on 6.18 the default `policy->max` resolves
-  differently, so the overclock became default-**on**. It applied cleanly, compiled clean,
-  and behaved differently. Fixed in PR #24 — proper `->set_boost`, boost-only 1000/1200 MHz
-  rows, 800 MHz default — and the board has been stable since. **The lesson generalises:
-  any other 5.15-era patch we carry can have the same class of defect**, and no amount of
-  CI catches a silent semantic change to a kernel flag. This is the strongest argument
-  for the small-delta posture, and the reason the hardware list stays short.
-- **RT is a developer variant.** `PREEMPT_RT` boots and runs on hardware, but **no latency
-  measurement has been taken yet** — so there is currently *no evidence* it improves
-  anything for a normal user. It exists for testing, not for daily driving.
-- **Debug tooling is temporarily in-tree.** `gdb`/`strace`/`perf`/`rt-tests` and
-  `CONFIG_COREDUMP` are enabled for two investigations. One of them — a field hard-hang —
-  **closed on 2026-07-21**; the RT latency measurement has not been taken, so the block
-  stays for now. It costs image size and diverges from stock's config, and is designed to
-  revert as one unit. ([`docs/debug-tooling.md`](docs/debug-tooling.md))
-- **The sustainability gate is not met.** Nobody has yet signed up, in writing, to track
-  `6.18.y` security releases through end-of-life. Until that happens this is a personal
-  project, and saying otherwise would be the one claim that undermines all the others.
-  ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md))
-- **Version numbers drift, and two parity analyses are currently behind the pins.**
-  Every figure here was read off the built tree at the time of writing, but **nothing in
-  CI asserts a package version**, so a Renovate or Buildroot-line bump can move a package
-  out from under the document that reasoned about it. That has already happened twice.
-  The Buildroot 2026.05.1 bump moved **Samba 4.23.8 → 4.24.3** and **ProFTPD 1.3.8d →
-  1.3.9a** without re-running the P3.6 / P3.7 audits that gated those packages. The
-  2026.05.2 bump then moved **OpenSSH 10.3p1 → 10.5p1**, crossing the skipped 10.4
-  release where upstream made a failed seccomp `prctl()` fatal rather than a `debug()` —
-  which **broke every SSH connection on the shipped image** and forced a release to be
-  pulled. Buildroot classified that bump as `openssh: (no CVE assigned)`. Both parity
-  documents now say so at the top, with the specific unchecked question named. The
-  **2026.08 line bump** then moved the compiler itself — **gcc 14.4.0 → 15.3.0**, glibc
-  2.43 → 2.44, gdb 15.2 → 16.3 — plus **bluez 5.79 → 5.86**, Samba 4.24.5 → 4.24.6 and
-  OpenSSL 3.6.3 → 3.6.4. Two of those had consequences a version table cannot show: bluez
-  5.86 already contains the CablePairing series this repo had been backporting, so
-  `board/mister/de10nano/patches/bluez5_utils/` was deleted outright; and Buildroot
-  **retired the 7.0 kernel-headers series**, which silently collapsed the DE25 toolchain
-  from glibc to uClibc until the headers pin was moved to 7.1 (see
-  [`buildroot-config`](docs/buildroot-config.md) §6.2).
-  The defconfig and `Makefile` pins are the ground truth; the prose is a dated reading of it.
-  For the kernel this is handled by not writing the number down: narrative prose says
-  "6.18 LTS", and `BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE` in the defconfig is the only
-  place the `.y` lives.
+| Phase | State |
+|---|---|
+| 0: Recon and decisions | ✅ Complete |
+| 1: Kernel and initramfs | ✅ Complete; boots on hardware from the CI-built artifact |
+| 2: Rootfs and testing | ✅ Complete; menu and cores load on hardware |
+| 3: Driver packages and hardware matrix | ✅ Complete for the hardware on the test board; the wider Wi-Fi/Bluetooth set is build-verified |
+| 4: Release and sustainability | 🔄 In progress: CI/CD and `db.json` done; sustainability gate open |
+| 5: Full SD image and U-Boot | 🔄 `sdcard.img` is built and CI-checked, not yet flashed on hardware; mainline U-Boot builds but ships nowhere ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md)) |
+
+<a id="hardware-validation-ledger"></a>
+### Hardware validation ledger
+
+This is everything tested on the one DE10-Nano. Anything not listed should be treated as
+unverified. Logs are in [`docs/testlogs/`](docs/testlogs/).
+
+| Subsystem | Status |
+|---|---|
+| Boot to the MiSTer menu, cores load | ✅ |
+| Bluetooth firmware load and controller pairing | ✅ |
+| Wi-Fi WPA3/SAE 5 GHz auto-connect (`rtw88`, RTL8822BU) | ✅ |
+| Downloader over HTTPS, and a full `update_all.sh` run leaving the image untouched | ✅ |
+| `PREEMPT_RT` kernel boots and runs MiSTer | ✅ on 7.2-rc4, rc7, 7.2.3 and 7.2.7. Boot is a per-version claim; later pins are build-verified |
+| dwc2 USB polling fix (1 kHz input) | ✅ measured on the RT kernel |
+| Samba, MIDI, most Wi-Fi/Bluetooth chips | ⚠️ Build/CI-verified only |
+| SD-card installer with the HDMI splash | ⏳ Not yet run on hardware |
+| RT latency | ⏳ Not yet measured |
+
+### Known limitations
+
+- **One known regression:** the Logitech **G923 PlayStation variant** loses force feedback
+  and range control (it still works as a joystick). The G923 Xbox variant and G29/G27/G25
+  are fully supported ([`patch-provenance` §9](docs/patch-provenance.md)).
+- **Forward-ported patches can change meaning silently.** Early builds auto-overclocked
+  the board to 1.2 GHz and hung: a 5.15-era cpufreq patch applied and compiled cleanly on
+  6.18, but a kernel flag's semantics had changed. That was fixed in PR #24, and it is why
+  the delta is kept small and the hardware list honest.
+- **RT has no latency evidence yet.**
+- **Debug tooling is temporarily in the image** (`gdb`, `strace`, `perf`, `rt-tests`,
+  core dumps). It costs image space and is designed to revert as one unit
+  ([`docs/debug-tooling.md`](docs/debug-tooling.md)).
+- **The sustainability gate is not met.** Nobody has yet committed in writing to tracking
+  `6.18.y` through end-of-life ([ADR 0014](docs/decisions/0014-sustainability-deferred-not-waived.md)).
+- **Package versions are not asserted by CI.** A Buildroot bump can move a package under a
+  parity audit. That has happened: OpenSSH 10.4's fatal seccomp change once broke SSH on a
+  shipped image. Parity documents note at the top when they are behind the pins.
 
 ---
 
-## How it is put together
+## Updates and the release channel
 
-### Repository layout
+Releases are GitHub Release assets:
 
-```
-Makefile                 thin wrapper (~100 lines): fetches + hash-verifies Buildroot, forwards everything else
-Config.in / external.mk  BR2_EXTERNAL definition for the 19 in-tree packages
-configs/                 mister_de10nano_defconfig  (the DE10-Nano image -- Buildroot's own minimal form)
-                         mister_de25nano_defconfig  (the DE25-Nano developer OS, aarch64)
-                         mister_installer_defconfig (SD-card installer cpio)
-                         -> docs/buildroot-config.md has the rationale for every line
-package/mister-userspace/  \  Kconfig PROFILES (ADR 0030): one symbol each that selects
-package/mister-firmware/    > a documented package set, so both boards share it. This
-package/mister-drivers/    /  is the one departure from a plain Buildroot defconfig.
-linux/                   Config.ext.in + linux-ext-mister-initramfs.mk: the kernel
-                         extension that embeds package/mister-initramfs's cpio (ADR 0002/0030)
-board/mister/de10nano/
-  linux.config           minimal kernel defconfig  (an absent CONFIG_X is NOT "off")
-  linux-patches/         40 carried patches: 39 MiSTer + 1 stable-regression revert (0051)
-                         (0047, a mainline backport, retired 2026-09-21 once 6.18.53 had it)
-  linux-patches-beta/    37 of those (32 symlinks + 5 re-anchored 7.x copies; 7.2 needs
-                         none of 0050/0051/0053) + 4 beta-local = the 41-entry series
-  linux-patches-upstream/what the exported tree carries but our image must not
-  rootfs-overlay/        init scripts, sshd wiring, MiSTer-specific files
-  post-build.sh          /MiSTer.version stamping, parity fixups
-  post-image.sh          linux.img assembly + contract checks
-  installer-overlay/     the SD-card installer's /init (ADR 0020)
-  installer-splash/      its HDMI splash artwork (MiSTer Kun; PNGs + build.py + png2raw.py)
-  installer-post-build.sh  renders that artwork into the installer cpio at build time
-package/                 24 packages: Wi-Fi/controller drivers, libchdr, lzma-sdk, rcheevos, midilink, munt…
-scripts/                 the verification suite, hash-sync, SD-card builder, kernel export
-docs/                    ADRs, parity audits, the kernel reconciliation, user docs
-.github/                 9 workflows + 4 composite actions
-```
+- the Downloader set: `release_YYYYMMDD.7z`, `linux.img`, `zImage_dtb`, the kernel `.config`s,
+  `legal-info.tar.gz`, `SHA256SUMS`;
+- the `-rt` kernel files;
+- `sdcard.img.xz`, which is published separately.
 
-### Two kernels, one image
+Updates come from a community `db.json` on GitHub Pages, read by the stock on-device
+Downloader.
 
-The DE10-Nano's Cyclone V is a dual-core **Cortex-A9 (ARMv7-A, 32-bit)** — there is no
-AArch64 path on this silicon, and `PREEMPT_RT` cannot be a boot-time toggle on ARM32. So
-RT must be a separately compiled kernel image. `PREEMPT_RT` for 32-bit ARM merged into
-mainline in **Linux 7.1**, which means on 7.2 it is a plain kconfig option with **no
-out-of-tree RT patch to carry**.
+**Coexisting with the official channel** ([ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md)):
+the Downloader applies at most one Linux image per run, and when databases compete, the
+official one wins. So rather than compete, the installer:
 
-The design ([ADR 0021](docs/decisions/0021-rt-kernel-first-class-ci.md), as amended by
-[ADR 0030](docs/decisions/0030-makefile-toward-vanilla-buildroot.md)): the RT kernel is
-`package/linux-rt`, a **second kernel package inside the one build** (the same
-`board/mister/de10nano/linux.config` plus `linux-rt.fragment`, the beta patch series, the same
-embedded stage-1 initramfs). The package hard-asserts `CONFIG_PREEMPT_RT=y` in the configured
-kernel, installs its module tree into the **one shipped `linux.img`** next to the main kernel's,
-and emits `zImage_dtb-rt` and `linux-rt.config` into `output/images/`. One `make` produces both
-kernels; there is no separate tree, overlay or ordering rule any more.
+- sets `update_linux = false`, so no normal run applies any Linux image (cores, ROMs and
+  MRAs still update);
+- installs `update_linux_modernization.sh`, which runs the Downloader against a private ini
+  naming only this project's database.
 
-`zImage_dtb-rt` is a **manual download** from the Release page — it is deliberately not on
-the `sdcard.img` installer payload and has no `db.json` entry, so no device is ever pushed
-an unvalidated real-time kernel. Because its modules are already in the shipped `linux.img`,
-opting in is: download it, drop it in `/media/fat/linux/`, add one `u-boot.txt` line.
+There is no daemon or boot script involved. On hardware, a full `update_all.sh` run
+installed 379 cores and left `linux.img` and `zImage_dtb` byte-identical.
 
-### The initramfs that deleted a kernel patch
+Versioning: the Downloader compares versions by string inequality, and reproducible builds
+pin `SOURCE_DATE_EPOCH`, so `/MiSTer.version` is derived from the release date instead
+([ADR 0018](docs/decisions/0018-db-json-version-is-release-date-driven.md)).
 
-Stock patches `init/do_mounts.c` so the **kernel itself** parses a `loop=` boot parameter,
-mounts `/media/fat`, and loop-mounts `linux/linux.img` as the root filesystem. That is a
-patch to the most delicate part of early boot, carried forever, for a job userspace does
-better.
-
-This project replaces it with a **two-stage boot**: a tiny BusyBox initramfs, embedded in
-the kernel via `CONFIG_INITRAMFS_SOURCE`, does the mount dance in a shell script — with
-`rootwait` retries, vfat-then-exfat probing, and a rescue shell on failure. One patch
-deleted, one whole class of boot failure made debuggable.
-
-The details matter more than they look: `-o sync,dirsync` is not a tuning choice (async
-would be a real power-off-corruption regression), the loop **device** must stay writable
-even though the rootfs is mounted read-only (or `/etc/profile`'s login-time
-`remount,rw` breaks), and `mount -o move` is required because BusyBox `mount` has no long
-options. All of it is annotated in [`PLAN.md` §5](PLAN.md) and
-[`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md).
-
-**Forward-looking: the stock patch is 32-bit-ARM-only by construction.** Stock's
-`loop_setup()` issues the loop attach as a direct call into the syscall entry points —
-`sys_ioctl(device_fd, LOOP_SET_FD, file_fd)` then `sys_close()` — from inside
-`init/do_mounts.c`. That compiles on the DE10-Nano's Cortex-A9 only because 32-bit ARM
-still defines `sys_ioctl()` as an ordinary C function. Every 64-bit ARM kernel since 4.19
-selects `ARCH_HAS_SYSCALL_WRAPPER`, which turns each syscall into
-`__arm64_sys_ioctl(const struct pt_regs *)` and drops the C-callable `sys_*` prototypes
-altogether (`include/linux/syscalls.h` declares them only under
-`#ifndef CONFIG_ARCH_HAS_SYSCALL_WRAPPER`). On aarch64 the stock patch does not merely
-misbehave; it has no symbol to call and cannot build. The kernel's sanctioned
-replacements for init-time work — the `init_mount()`, `init_mkdir()`, `init_chdir()`
-family in `fs/init.c` — deliberately include no `init_ioctl()`, because an ioctl is
-driver-defined and there is nothing generic to wrap, and the internal `vfs_ioctl()` /
-`blkdev_ioctl()` paths are private to `fs/` and `block/`. So the only way to keep `loop=`
-in-kernel on a 64-bit ARM SoC is the rewrite this project already had to do for 6.18:
-export a purpose-built attach helper from the loop driver itself and call it with
-`filp_open()`ed files instead of descriptors (`linux-patches-upstream/0100-…`, carried
-for the upstream fork, not shipped in this image). That rewrite contains no syscall and
-no architecture-specific line, and it does compile for aarch64: applied to a pristine
-6.18.48 tree with an arm64 toolchain, `init/do_mounts.o` and `drivers/block/loop.o`
-build clean, referencing only `filp_open()`, `init_mount()` and the two exported loop
-helpers. So the *rewritten* patch is portable; it is the *stock* patch that is not, and
-the rewrite still has to be re-anchored on every kernel line it is carried to (it
-already needs a context refresh for 7.x, where the `load_ramdisk=` block it sits next
-to was removed). The initramfs design, by contrast,
-contains no architecture-specific line at all: `mount`, `losetup`, and
-`switch_root` behave identically on any CPU the kernel runs on. Should this image ever
-need to boot something that is not a Cyclone V, the boot path comes along unchanged, and
-the kernel carries one patch fewer than it otherwise would.
-
-### The full SD-card image
-
-`make sdcard` produces a complete, `dd`-able `sdcard.img` — a two-partition MBR with the
-data partition on `p1` and a type-`0xA2` partition carrying `uboot.img` raw at its start,
-per the SPL contract. The image ships **small**, so the compressed asset stays small and
-the write is fast; a throwaway installer OS then **reformats the card to exFAT at the
-device's real size on first boot** — because Linux cannot grow exFAT in place, and exFAT
-is what every mr-fusion'd card in the wild uses. That is not an invention: it is
-mr-fusion's own mechanism, adopted rather than replaced, per the standing principle of
-reusing a proven reference implementation in anything on the boot path.
-([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md))
-
-**What that first boot looks like.** The installer draws a progress splash — banner, nine
-numbered steps, a bar and an elapsed clock — on the **serial console**, and blinks the
-DE10-Nano's on-board `HPS_LED` at about 0.5 Hz through the long steps. Solid on is the only
-state that means trouble (stopped — failed, or the card was already installed); a dark LED
-is just a gap between phases, or the reboot. Note `HPS_LED` is on the board itself, so a
-fully-enclosed case will not show it.
-
-The card also carries `menu.rbf` at the FAT **root**, which is what U-Boot loads into the
-FPGA before Linux starts — without it the fabric is never configured and HDMI reads "no
-signal" for the whole install ([ADR 0020 §7](docs/decisions/0020-sdcard-exfat-reformat-installer.md)).
-There is still deliberately **no splash picture** on that output: `/dev/fb0` is only scanned
-out once Main_MiSTer programs the frame reader, and Main_MiSTer does not run in the
-installer. Painting a picture there would mean shipping mr-fusion's entire stack — its
-U-Boot, a second DTB and a framebuffer bitstream — a trade [ADR 0020 §6](docs/decisions/0020-sdcard-exfat-reformat-installer.md)
-explains and declines.
-
-Install time does **not** scale with card capacity — a 1 TiB card formats as fast as an
-8 GiB one (`mkfs.exfat` writes 88 KiB–1.15 MiB of metadata either way, in ~10 ms). The
-dominant cost is the fixed 512 MiB `linux.img` expansion, so what matters is the card's
-**write speed**, not its size.
-
-It ships as a **separate release asset**, never inside `release_*.7z` and never referenced
-by `db.json`, because its blast radius is the bootloader. The payload it installs is
-inventoried against real mr-fusion output in
-[`docs/verification/sdcard-payload.md`](docs/verification/sdcard-payload.md).
+User docs: [onboarding](docs/user/onboarding.md) · [rollback](docs/user/rollback.md) ·
+[FAQ](docs/user/faq.md) · [serial recovery](docs/user/serial-recovery.md) ·
+[beta testing](docs/user/beta-testing.md)
 
 ---
 
 ## Building it yourself
 
-This is a plain Buildroot br2-external. The wrapper `Makefile` fetches and hash-verifies the
-pinned Buildroot into `work/buildroot` and forwards everything else to it with `BR2_EXTERNAL`
-and `O=` set, so the commands are the ones any Buildroot project uses:
+This is a plain Buildroot br2-external. The wrapper `Makefile` fetches the pinned Buildroot
+into `work/buildroot`, verifies it against upstream's GPG-signed manifest, and forwards
+every target with `BR2_EXTERNAL` and `O=` set:
 
 ```sh
 make mister_de10nano_defconfig  # configure the DE10-Nano image into output/
-make                            # build it (first run bootstraps a cross-toolchain — hours, not minutes)
-make linux-menuconfig           # or: menuconfig, linux-rt-menuconfig, legal-info, <pkg>-rebuild, help ...
+make                            # build (the first run bootstraps a toolchain: hours, not minutes)
+make linux-menuconfig           # or menuconfig, linux-rt-menuconfig, legal-info, <pkg>-rebuild, help…
+make sdcard                     # after make: the SD-card installer image
 make O=output-de25 mister_de25nano_defconfig && make O=output-de25   # the DE25-Nano (or: make de25)
-make sdcard                     # after make all: the SD-card installer image
 ```
 
-`make` produces `output/images/linux.img`, `zImage_dtb`, `zImage_dtb-rt` (the PREEMPT_RT
-variant is a package of the same build) and `mister-initramfs.cpio` (the stage-1 initramfs, also
-a package, embedded in both kernels).
+`make` produces `output/images/linux.img`, `zImage_dtb`, `zImage_dtb-rt` and the stage-1
+`mister-initramfs.cpio`.
 
-**The one thing that is not plain Buildroot:** package selection. `configs/mister_de10nano_defconfig`
-does not list two hundred packages; it enables three Kconfig **profiles** —
-`BR2_PACKAGE_MISTER_USERSPACE`, `_FIRMWARE`, `_DRIVERS` — whose `select` lists live in
-`package/mister-*/Config.in`, grouped and commented the way [`docs/buildroot-config.md`](docs/buildroot-config.md)
-§5 documents them. That is what lets the DE25-Nano share the userspace by enabling the same
-symbols. "Why is package X in my image?" → `package/mister-userspace/Config.in`.
+**The one non-standard part is package selection.** The defconfig enables three Kconfig
+profiles (`BR2_PACKAGE_MISTER_USERSPACE`, `_FIRMWARE`, `_DRIVERS`), and their `select` lists
+live in `package/mister-*/Config.in`, so both boards share one package set. To answer "why
+is package X in my image?", look in `package/mister-userspace/Config.in`
+([`docs/buildroot-config.md`](docs/buildroot-config.md)).
 
 Things that will bite you otherwise:
 
-- **Do not pass `-j`.** Buildroot's top level is not parallel-safe; it parallelises each
-  package internally, defaulting to your CPU count. CI runs a bare `make`.
-- **The config is generated once and then left alone.** `make` never regenerates
-  `output/.config` (so `menuconfig` edits survive), and `make clean` keeps it. After a `git
-  pull` that moves the Buildroot pin (`BUILDROOT_VERSION` in the Makefile), or after a
-  `make clean`, run `make mister_de10nano_defconfig` again before building; a config written on
-  the previous pin stops Buildroot at an interactive Kconfig prompt. A pin move is best followed
-  by `make distclean`.
-- **Edit the defconfig, then keep it canonical.** `configs/mister_*_defconfig` are Buildroot's
-  own `savedefconfig` form; `scripts/check-defconfigs.sh` (CI's lint) asserts each one loads,
-  reproduces itself, and that every profile `select` really lands — a `select` of a kconfig
-  `choice` member is ignored silently, which is why e.g. `BR2_PACKAGE_ZLIB_NG` stays in the
-  defconfig rather than in a profile.
-
-### Useful targets
+- **Don't pass `-j`.** Buildroot's top level is not parallel-safe; packages build in
+  parallel internally.
+- **Re-run `make mister_de10nano_defconfig`** after `make clean` or after a pull that moves
+  `BUILDROOT_VERSION`; a stale config stops at an interactive prompt. A pin move is best
+  followed by `make distclean`.
+- **Keep defconfigs canonical.** After editing, run `make savedefconfig`;
+  `scripts/check-defconfigs.sh` (a CI lint) checks each defconfig reproduces itself and that
+  every profile `select` lands.
 
 | Target | What it does |
 |---|---|
-| `make` / `make all` | The shipped image: `linux.img`, `zImage_dtb`, `zImage_dtb-rt`, `mister-initramfs.cpio` |
-| `make mister_<board>_defconfig` | Load a board configuration (Buildroot's own `<name>_defconfig`) |
-| `make linux-rt` | Rebuild only the `PREEMPT_RT` kernel package |
-| `make mister-initramfs` | Rebuild only the stage-1 cpio (then `make linux-rebuild all` to re-embed it) |
-| `make sdcard` | Full `sdcard.img(.xz)` — run **after** `make all` |
-| `make menuconfig` / `linux-menuconfig` / `linux-rt-menuconfig` | Interactive Buildroot / kernel config |
-| `make savedefconfig` | Write the config back to `configs/mister_<board>_defconfig` (**always** do this after editing) |
-| `make buildroot-verify` / `buildroot-showsig` | Verify the pinned Buildroot tarball / print upstream's GPG-signed manifest — the *only* valid hash source |
-| `make legal-info` | Generate the SBOM (covers both kernels and the stage-1 packages) |
-| `make clean` / `distclean` | Buildroot's own meanings, per `O=`; `dl/` is kept (a shared cache) |
+| `make linux-rt` | Rebuild only the RT kernel |
+| `make mister-initramfs` | Rebuild the stage-1 cpio (then `make linux-rebuild all` to re-embed it) |
+| `make savedefconfig` | Write the config back to `configs/` |
+| `make buildroot-verify` / `buildroot-showsig` | Verify the Buildroot tarball / show upstream's signed manifest |
+| `make legal-info` | Generate the SBOM |
+| `make clean` / `distclean` | Buildroot's meanings, per `O=`; `dl/` is kept |
 
-### Host requirements
-
-Standard build tools (`gcc`, `make`, `bc`, `flex`, `bison`, `cpio`, `rsync`, `unzip`,
-`wget`/`curl`, `python3`), plus `dtc`, `qemu-user`/`qemu-system-arm`, and `shellcheck` for
-the test and inventory scripts.
-
-**One sharp edge.** Buildroot refuses to build if `/usr/bin/install` is **uutils coreutils
-0.8.0** — it detects that exact version and rejects it (upstream bug
-[uutils/coreutils#12166](https://github.com/uutils/coreutils/issues/12166)).
-Debian/Ubuntu's `coreutils-from-uutils` package installs precisely that as the default
-`install`. You do **not** need to fix this yourself and you should not need `sudo`: the
-Makefile detects it and transparently shims a GNU `install` into `PATH` for Buildroot only
-(`work/.hostshim/`), touching nothing outside this repo. It is inert on a host whose
-`install` is already GNU, and fails fast with a clear message if no GNU `install` exists
-at all.
+**Host requirements:** standard build tools (`gcc`, `make`, `bc`, `flex`, `bison`, `cpio`,
+`rsync`, `unzip`, `wget`/`curl`, `python3`), plus `dtc`, `qemu-user`/`qemu-system-arm` and
+`shellcheck` for the tests. If `/usr/bin/install` is uutils 0.8.0, which Buildroot rejects,
+the Makefile shims GNU `install` in for Buildroot only; no `sudo` is needed.
 
 ---
 
-## Verification & CI
+## How it is put together
 
-Nothing here is asserted by hand. The parity claims above are backed by scripts that run
-on every push and pull request.
+```
+Makefile                   thin wrapper: fetch + verify Buildroot, forward everything else
+configs/                   mister_de10nano_defconfig, mister_de25nano_defconfig,
+                           mister_installer_defconfig  (rationale: docs/buildroot-config.md)
+package/mister-{userspace,firmware,drivers}/   Kconfig profiles shared by both boards (ADR 0030)
+package/                   drivers (Wi-Fi, xone…), libraries (libchdr, rcheevos…), linux-rt,
+                           the stage-1 initramfs, itsalive, 7zip, munt, midilink…
+linux/                     kernel extension that embeds the stage-1 initramfs
+board/mister/de10nano/
+  linux.config             minimal kernel defconfig (an absent CONFIG_X is not "off")
+  linux-patches/           the carried 6.18 series
+  linux-patches-beta/      the 7.2 (RT) series: symlinks into linux-patches/ plus re-anchored copies
+  linux-patches-upstream/  what the exported tree needs but this image must not carry
+  rootfs-overlay/          init scripts, sshd wiring, MiSTer-specific files
+  installer-*/             the SD-card installer's /init and HDMI splash
+board/mister/de25nano/     the DE25-Nano developer OS (aarch64)
+scripts/                   test suite, hash sync, SD-card builder, kernel export
+docs/                      ADRs, parity audits, kernel reconciliation, user docs
+```
 
-### The test suite
+**Two kernels, one image.** The Cyclone V is 32-bit ARM, where `PREEMPT_RT` cannot be a
+boot-time switch, so RT is a second kernel package (`package/linux-rt`) in the same build.
+It hard-asserts `CONFIG_PREEMPT_RT=y` and installs its modules into the one `linux.img`.
 
-[`scripts/ci-tests.sh`](scripts/ci-tests.sh) is one command that runs the whole
-non-hardware suite and prints a self-contained digest last (`| tail -n 30` tells you what
-broke and why, without grepping):
+**An initramfs instead of the `loop=` kernel patch.** Stock patches `init/do_mounts.c` so the
+kernel itself mounts `/media/fat` and loop-mounts `linux.img`. Here, a small BusyBox
+initramfs embedded in the kernel does that in a shell script. It retries with `rootwait`,
+probes vfat then exFAT, and drops to a rescue shell on failure, so it is debuggable and is
+one kernel patch fewer. It is also architecture-neutral: stock's patch calls `sys_ioctl()`
+directly, which does not exist on arm64. Details:
+[`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md), [`PLAN.md` §5](PLAN.md).
 
-- the image-contract checks — `check-zimage-dtb.sh`, `check-linux-img.sh`,
-  `check-size-budget.sh`
-- the structural initramfs checks, plus a **full QEMU boot test of the initramfs `/init`**
-  (eight cases, across the failure paths — and the same eight again on
-  `qemu-system-aarch64` for the aarch64 build of the same `/init`, when it has been built)
-- an ABI smoke test running the **stock `MiSTer` binary** under `qemu-user` against the
-  built rootfs: dynamic linking must resolve clean, and it must die at FPGA access and not
-  one instruction earlier
-- per-service parity assertions harvested from each Phase 3 parity document, checked
-  against the shipped `rootfs.tar` — not against `output/target/`
-- a sandboxed functional test of the timezone autodetect dhcpcd hook
-  ([`scripts/test-timezone.sh`](scripts/test-timezone.sh)) — it turns a string off the
-  network into a filesystem path, so every class of hostile answer is asserted rejected,
-  run three times: under the host shell, under the target's own `bash --posix` via `qemu-arm`
-  (what `/bin/sh` is on the box, as on stock), and under the target's BusyBox `ash`
+**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.2 kernel) builds
+from the same tree and shares the userspace profiles and most kernel patches. It has no
+MiSTer binaries yet and its own manual CI lane. Start at
+[`docs/de25-nano-overview.md`](docs/de25-nano-overview.md).
 
-Alongside it, [`scripts/check-abi.sh`](scripts/check-abi.sh) runs the full
-SONAME/loader checklist from [`docs/abi-contract.md`](docs/abi-contract.md). The overlap on
-the two highest-value gates is deliberate.
+---
 
-### The pipeline
+## Verification and CI
+
+[`scripts/ci-tests.sh`](scripts/ci-tests.sh) runs the whole non-hardware suite and prints a
+digest last. It covers:
+
+- image contract checks (kernel, `linux.img`, size budget);
+- QEMU boot tests of the initramfs `/init` across its failure paths, on both kernels;
+- an ABI smoke test that runs the **stock `MiSTer` binary** under `qemu-user` against the
+  built rootfs (it must link cleanly and die only at FPGA access);
+- per-service parity assertions against the shipped `rootfs.tar`;
+- a functional test of the timezone hook against hostile network answers.
+
+[`scripts/check-abi.sh`](scripts/check-abi.sh) runs the full SONAME/loader checklist from
+[`docs/abi-contract.md`](docs/abi-contract.md).
 
 | Workflow | Trigger | Job |
 |---|---|---|
-| `build.yml` | push to `master`, every PR | Kernel-variant matrix, then the image, then the parity + ABI suite — plus the patch-header lint and the kernel-defconfig sync check |
-| `release.yml` | `v*` tags | Rebuilds from scratch (never adopts a CI run), assembles `release_YYYYMMDD.7z`, drafts the GitHub Release |
-| `publish-db.yml` | release *published* | Regenerates `db.json`, schema-checks it, deploys it to GitHub Pages |
-| `reproducibility.yml` | manual dispatch | Proves two independent builds are byte-identical. Manual on purpose: it is a double build, and its input caches are only warm after `build.yml` has run |
-| `renovate-hash-sync.yml` | Renovate PRs | Refreshes companion hashes a version bump leaves stale; validates the one pin that has none (the `_Console` cores snapshot) |
-| `renovate-validate.yml` | config changes | An invalid Renovate config makes Renovate skip the repo **silently** — this is the only signal you would ever get |
-| `fork-sync.yml` | weekly | Diffs the last-reconciled fork commits against upstream's live HEADs and keeps one issue updated with the backport queue |
-| `lint.yml` | push, PR | `actionlint` over the workflows, `shellcheck` over `scripts/**` and the composite actions' `run:` bodies |
-| `cache-prune.yml` | PR closed, daily | Deletes the ~5 GB Actions cache scope a closed PR leaves behind — dead PRs were evicting master's warm `dl/` under GitHub's 10 GB LRU ceiling |
+| `build.yml` | push to `master`, PRs | Both kernels, the image, the parity and ABI suite, patch and defconfig lints |
+| `release.yml` | `v*` tags | Clean rebuild, release archive, draft Release |
+| `publish-db.yml` | release published | Regenerate and deploy `db.json` |
+| `reproducibility.yml` | manual | Two independent builds must be byte-identical |
+| `de25-build.yml` | manual | The DE25-Nano build |
+| `renovate-hash-sync.yml` | Renovate PRs | Refresh companion hashes a version bump leaves stale |
+| `renovate-validate.yml` | config changes | Catch an invalid Renovate config, which Renovate would otherwise skip silently |
+| `fork-sync.yml` | weekly | Track new commits on upstream's kernel fork |
+| `lint.yml` | push, PRs | `actionlint` and `shellcheck` |
+| `cache-prune.yml` | PR closed, daily | Free the Actions cache a closed PR leaves behind |
 
-The full rationale, incident history, and measured numbers live in
-[`docs/ci.md`](docs/ci.md) — the workflows keep the imperative and the run ID, that
-document keeps the narrative and the "we tried X and it failed."
-
----
-
-## Releases & distribution
-
-Release artifacts are published as **GitHub Release assets**; no binaries live in git.
-The main set is seven files (the Downloader-contract set: the `release_YYYYMMDD.7z`,
-`linux.img`, `zImage_dtb`, both `.config`s, `legal-info.tar.gz`, `SHA256SUMS`), plus three
-`-rt` files per kernel variant, plus the separately contracted `sdcard.img.xz`.
-
-Distribution is **opt-in and requires zero cooperation from anyone**: a community
-`db.json`, served from GitHub Pages, that the standard on-device Downloader reads.
-
-**Coexistence with the official channel is the hard part, and it is solved**
-([ADR 0025](docs/decisions/0025-update-linux-kill-switch-and-private-updater.md)). The
-Downloader applies at most **one** Linux image per run, and `distribution_mister` always
-offers one too. When several databases offer one, it sorts the candidates by their
-**position in `downloader.ini`** and takes the first — and since drop-in databases are
-merged *after* the base ini's own sections, and Update All pins `[distribution_mister]` to
-the top on every rewrite, the official image wins **whenever that database is actually processed** — which is most real runs, since its content changes whenever any core does. (A run where nothing changed skips the database entirely and applies no Linux image at all: `can_skip_db` returns true when `file_checking` is `FASTEST`, the steady-state default, and a skipped database's `linux` entry is never looked at.) Not a race that might go
-our way: a loss whenever it is contested, silently reverting the user on a routine core
-update.
-
-So this project doesn't compete for that slot; it closes it:
-
-- `[MiSTer] update_linux = false` in `downloader.ini` stops **every** normal run from
-  applying **any** Linux image. Cores, ROMs, MRAs and Jotego keep updating untouched.
-- `Scripts/update_linux_modernization.sh` runs the Downloader against its **own private
-  ini** naming one database, so there is nothing to sort and nothing to lose.
-- That is the entire mechanism. No boot script, no daemon, no state files: the running
-  system already tells you what you need (`/MiSTer.version` says which image, and
-  `update_linux` says whether it is protected), and nothing re-applies the setting behind
-  you — the updater is the only thing that writes it, and only when you run it. Which is
-  also why reverting is one edit, with nothing to opt out of.
-
-Verified on hardware: a full `update_all.sh` run installed 379 cores, rebooted, and came
-back with `linux.img` and `zImage_dtb` **byte-identical**, the Downloader's own config
-dump recording `update_linux: false` and `UPDATE_LINUX: undefined` — Update All never
-overrides it. The shipped `downloader.ini` also reproduces Update All's default database
-set plus **Jotego**, so a fresh `sdcard.img` flash
-needs no user action at all. Rolling back is one command,
-`update_linux_modernization.sh --restore-stock` — see
-[`docs/user/rollback.md`](docs/user/rollback.md).
-
-One subtlety worth calling out because getting it wrong bricks the update loop: stock's
-Downloader compares versions with a **strict string inequality**, not an ordering, and
-`/MiSTer.version` is derived from `SOURCE_DATE_EPOCH` — which reproducible builds pin to a
-constant. Two releases from the same Buildroot pin would therefore have carried an
-*identical* version string, and a user would never be offered the newer one. Both the
-image stamp and the published version now derive from the tagged release date instead.
-([ADR 0018](docs/decisions/0018-db-json-version-is-release-date-driven.md),
-[`docs/db-json-versioning.md`](docs/db-json-versioning.md))
-
-Start here if you want to run it: [**one-command install**](#install-it-on-a-real-mister) ·
-[`docs/user/onboarding.md`](docs/user/onboarding.md) ·
-[`docs/user/rollback.md`](docs/user/rollback.md) ·
-[`docs/user/faq.md`](docs/user/faq.md) ·
-[`docs/user/serial-recovery.md`](docs/user/serial-recovery.md)
-
----
-
-## Goals
-
-| # | Goal |
-|---|------|
-| G1 | A `linux.img` + `zImage_dtb` that boots the **unmodified, stock** `MiSTer` binary |
-| G2 | Modern kernel on a supported LTS with a real security-update path |
-| G3 | Modern package set (Buildroot 2026.08) with a real security-update path |
-| G4 | **No separate kernel repo.** All kernel patches live as `.patch` files in the Buildroot external tree, applied to a pristine kernel.org tarball |
-| G5 | Fully reproducible: pinned Buildroot, pinned kernel + hash, checked-in `.config`, published SBOM |
-| G6 | Release artifacts published as **GitHub Release assets**. No binaries in git. Ever. |
-| G7 | Opt-in distribution via a community `db.json` — zero cooperation required |
+Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
+[`docs/reproducibility.md`](docs/reproducibility.md). Renovate:
+[`docs/renovate.md`](docs/renovate.md).
 
 ---
 
 ## Documentation map
 
-**Start here**
-
-| Document | Read it when |
+| Start here | |
 |---|---|
-| [`PLAN.md`](PLAN.md) | You want the goals, the ABI contract, the design rationale, and the risk analysis |
-| [`TASKS.md`](TASKS.md) | You want the phase-by-phase execution plan with acceptance criteria |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | You are about to change something |
-| [`docs/user/`](docs/user/) | You are running this on real hardware |
+| [`PLAN.md`](PLAN.md) | Goals, ABI contract, design rationale, risks |
+| [`TASKS.md`](TASKS.md) | Phase-by-phase plan with acceptance criteria |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Before changing anything |
+| [`docs/user/`](docs/user/) | Running it on real hardware |
+| [`docs/decisions/`](docs/decisions/) | The ADRs |
 
-**The kernel**
-
-| Document | Contents |
+| Kernel | |
 |---|---|
 | [`docs/patch-provenance.md`](docs/patch-provenance.md) | Every carried patch: origin, upstream status, disposition |
-| [`docs/kernel-recon/`](docs/kernel-recon/) | The full per-commit reconciliation — 123 evidence-backed records, the ledger, the silent-regression triage, and the reproducible pipeline that produced them |
-| [`docs/kernel-config-deltas.md`](docs/kernel-config-deltas.md) | Every kernel-config divergence from stock, and why |
-| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` / 7.x variant |
-| [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md) | Why the fork's `loop=` patch cannot be ported to 6.18, what porting it would cost, and what we did instead — written for whoever maintains the fork |
-| [`MISTER-KERNEL-PATCH-RECON.md`](MISTER-KERNEL-PATCH-RECON.md) | The task spec the reconciliation was executed from |
-| [`docs/kernel-export.md`](docs/kernel-export.md) | Rendering our pins + patches into a `Linux-Kernel_MiSTer`-style tree the fork's maintainer can build with his own process, what we know of that process, and the check that proves the export is the kernel we ship |
-| [`docs/kernel-recon/fork-sync-2026-09/PLAN.md`](docs/kernel-recon/fork-sync-2026-09/PLAN.md) | The plan for reconciling against stock's first 6.18 kernel (Release 20260907): the post-release fix queue, the two owner decisions (cpufreq redesign, AIC8800), and the agent fan-out |
+| [`docs/kernel-recon/`](docs/kernel-recon/) | The per-commit reconciliation and its pipeline |
+| [`docs/kernel-config-deltas.md`](docs/kernel-config-deltas.md) | Every kernel-config divergence from stock |
+| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.2 variant |
+| [`docs/kernel-export.md`](docs/kernel-export.md) | Exporting to a `Linux-Kernel_MiSTer`-style tree |
+| [`docs/dwc2-usb-irq.md`](docs/dwc2-usb-irq.md) | USB host interrupt load and polling fixes |
 
-**The contracts we must not break**
-
-| Document | Contents |
+| Contracts | |
 |---|---|
-| [`docs/abi-contract.md`](docs/abi-contract.md) | What the kernel and rootfs must honor for the stock binary to run |
-| [`docs/boot-chain.md`](docs/boot-chain.md) | U-Boot contract and its kernel-config implications |
-| [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md) | The plan for a mainline U-Boot (2026.07) built to behave like stock's — design, measured port surface, brick modes; in progress, ships nowhere |
-| [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md) | **DE25-Nano, start here** — how the board boots, what we build for it, what is verified, what could still stop it; links to every DE25 document |
-| [`docs/uboot-tasks.md`](docs/uboot-tasks.md) | Execution tasks for both boards (U0–U9 for the DE10, DU1–DU7 for the DE25), split out of `TASKS.md` |
-| [`docs/verification/uboot-mainline.md`](docs/verification/uboot-mainline.md) | Mainline U-Boot 2026.07 for the DE10-Nano: built artifact measurements, structural checks against stock, allowed diffs, and verification evidence |
-| [`docs/downloader-contract.md`](docs/downloader-contract.md) | How the on-device Downloader decides to update |
-| [`docs/package-manifest.md`](docs/package-manifest.md) | All 251 stock SONAMEs mapped to a package, with major-bump flags |
-| [`docs/stock-inventory/`](docs/stock-inventory/) | The audited inventory of the stock image everything above is measured against |
+| [`docs/abi-contract.md`](docs/abi-contract.md) | What the stock binary needs from kernel and rootfs |
+| [`docs/boot-chain.md`](docs/boot-chain.md) | The U-Boot contract |
+| [`docs/downloader-contract.md`](docs/downloader-contract.md) | How the Downloader decides to update |
+| [`docs/package-manifest.md`](docs/package-manifest.md) | Stock's SONAMEs mapped to packages |
+| [`docs/stock-inventory/`](docs/stock-inventory/) | The audited stock inventory |
+| [`docs/uboot-mainline-port.md`](docs/uboot-mainline-port.md) | Mainline U-Boot (in progress, ships nowhere) |
+| [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md) | DE25-Nano entry point |
 
-**Parity audits** — one per subsystem:
-[bluetooth](docs/bluetooth-parity.md) ·
-[wifi](docs/wifi-parity.md) ·
-[firmware](docs/firmware-parity.md) ·
-[init](docs/init-parity.md) ·
-[usb-automount](docs/usb-automount-parity.md) ·
-[netfs](docs/netfs-parity.md) ·
-[samba](docs/samba-parity.md) ·
-[ssh-ftp](docs/ssh-ftp-parity.md) ·
-[midi/mt32](docs/midi-mt32-parity.md) ·
-[rtc](docs/rtc-parity.md) ·
-[util-linux](docs/util-linux-parity.md) ·
-[**stock reconciliation**](docs/stock-reconciliation.md) — the cross-subsystem
-one, diffed file-by-file against stock's actual `firmware.tar.gz`/
-`modules.tar.gz`/`addon.tar` and the base rootfs, source of the hardware
-coverage numbers above
+**Parity audits:** [stock reconciliation](docs/stock-reconciliation.md) ·
+[wifi](docs/wifi-parity.md) · [bluetooth](docs/bluetooth-parity.md) ·
+[firmware](docs/firmware-parity.md) · [init](docs/init-parity.md) ·
+[usb-automount](docs/usb-automount-parity.md) · [netfs](docs/netfs-parity.md) ·
+[samba](docs/samba-parity.md) · [ssh-ftp](docs/ssh-ftp-parity.md) ·
+[midi/mt32](docs/midi-mt32-parity.md) · [rtc](docs/rtc-parity.md) ·
+[util-linux](docs/util-linux-parity.md)
 
-**Engineering**
-
-| Document | Contents |
-|---|---|
-| [`docs/ci.md`](docs/ci.md) | The pipeline, the caching traps, and the incident index |
-| [`docs/reproducibility.md`](docs/reproducibility.md) | What byte-identical means here, and the four mechanisms that deliver it |
-| [`docs/renovate.md`](docs/renovate.md) | What Renovate manages, the automerge posture, the hash rules a human must follow |
-| [`docs/size-budget.md`](docs/size-budget.md) | Image headroom and where the bytes go |
-| [`docs/version-delta.md`](docs/version-delta.md) | Five years of upstream movement, package by package |
-| [`docs/main-shared-libs.md`](docs/main-shared-libs.md) | Shared-library coverage for `Main_MiSTer` |
-| [`docs/dualsense-tooling.md`](docs/dualsense-tooling.md) | `dualsensectl`, and why the DualSense kernel patches are not replaceable by udev/userspace |
-| [`docs/logitech-pairing.md`](docs/logitech-pairing.md) | `ltunify` + `mister-pair-logitech` — the one Logitech gap the kernel has no interface for, and why not Solaar |
-| [`docs/azcopy.md`](docs/azcopy.md) | `azcopy` for off-device backup — what it costs in image space, and what building it for an architecture Microsoft does not support took |
-| [`docs/bittorrent.md`](docs/bittorrent.md) | `transmission-daemon` — the headless recipe, the FAT-backed layout, and what exFAT does to preallocation |
-| [`docs/debug-tooling.md`](docs/debug-tooling.md) | ⚠ **temporary** — the debug block and how to revert it as one unit |
-| [`docs/decisions/`](docs/decisions/) | The ADRs: the open questions, the trade-offs, and who decided what |
+**Engineering:** [version delta](docs/version-delta.md) · [size budget](docs/size-budget.md) ·
+[Main_MiSTer shared libs](docs/main-shared-libs.md) · [DualSense tooling](docs/dualsense-tooling.md) ·
+[debug tooling (temporary)](docs/debug-tooling.md)
 
 ---
 
-## Contributing
+## Contributing and licensing
 
-Contributions are welcome **once the Phase 4 publication gate is passed**. Until then this
-is a personal-use project.
+Contributions open **once the Phase 4 publication gate is passed**. When they do, they
+follow [`CONTRIBUTING.md`](CONTRIBUTING.md): patch provenance, DCO sign-off, reproducibility,
+no vendored binaries, hash-pinned sources, and no behaviour changes hidden in build fixes
+([`PLAN.md` §13](PLAN.md)).
 
-When it opens, all contributions must follow the discipline in
-[`CONTRIBUTING.md`](CONTRIBUTING.md): patch provenance tracking, developer sign-off (DCO),
-and the standing rules from `TASKS.md` — reproducibility, no vendored binaries,
-hash-pinned upstream sources, and no behaviour changes smuggled into build fixes.
-
-See [`PLAN.md` §13](PLAN.md) for the sustainability requirements and the risk discussion
-behind the gate.
-
----
-
-## License layering
-
-- **Repository code** (Buildroot external tree, scripts, overlays) — **GPLv3**, see [`LICENSE`](LICENSE)
-- **Kernel patches** (`board/mister/de10nano/linux-patches*/`) — **GPLv2**, because they modify the Linux kernel
-- **Packages** in `package/` — inherit their upstream licenses (GPLv2, BSD, MIT, …); the `legal-info` artifact in each release is the complete, authoritative SBOM
-- **MiSTer Kun artwork** (`board/mister/de10nano/installer-splash/`, the SD-card installer's HDMI splash) — the mascot created by GitHub user **HeWhoisRed** as a gift to the MiSTer community, remastered in 8-bit form by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun); free to use and remix with attribution appreciated, see `installer-splash/upstream/LICENSE`. Not GPLv3 — the composition script around it is
+- **Repository code:** GPLv3 ([`LICENSE`](LICENSE)).
+- **Kernel patches** (`board/mister/*/linux-patches*/`): GPLv2.
+- **Packages:** their upstream licenses; each release's `legal-info` is the authoritative SBOM.
+- **MiSTer Kun artwork** (`installer-splash/`): the mascot by **HeWhoisRed**, remastered in
+  8-bit form by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun). It is
+  free to use and remix with attribution; see `installer-splash/upstream/LICENSE`. It is not
+  GPLv3.

@@ -1839,6 +1839,16 @@ question and the options ledger are in [`dwc2-usb-irq.md`](dwc2-usb-irq.md). Non
 sent upstream yet (owner decision, after rig soak). Parked patches and lab-only
 instrumentation from the same work live in [`dwc2-usb-irq/`](dwc2-usb-irq/README.md) and are not applied.
 
+### `0067` — rtw88 RTL8821C RFE type 7, added 2026-09-30
+
+Original fix by the repo owner, not from the fork. A forum user's RTL8811CU dongle (`0bda:c811`)
+reports RFE type 7, which `rtw8821c_rfe_defs[]` has no entry for, so probe fails with
+"rfe 7 isn't supported" on stock's kernel and ours alike. The patch adds the entry and extends the
+2.4 GHz path-B power-index copy from types 2/4 to 7, following Realtek's vendor driver
+(`morrownr/8821cu-20210916`, which groups 2/4/7 as BTG); the patch header has the details. Type 7
+was still missing from wireless, wireless-next and rtw-next on 2026-09-30. Carried in all three
+series (beta and de25nano by symlink). Not yet tested on the hardware, not sent upstream (owner decision).
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

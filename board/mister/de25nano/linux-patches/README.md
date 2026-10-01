@@ -99,6 +99,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0064-dwc2-ddma-giveback-on-dequeue-halt` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0065-dwc2-ddma-halt-before-freeing-desc-list` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0066-dwc2-ddma-keep-xfercompl-unmasked` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
+| — | `0067-wifi-rtw88-8821c-support-rfe-type-7` | *post-audit (added 2026-09-30)* | **included** | Adds the missing RFE type 7 definition to rtw88's RTL8821C driver; USB-generic, no architecture exposure. |
 
 ### DE25-local patches (not in the audit — new work)
 
@@ -116,8 +117,9 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | Excluded from the audit | **8** — 7 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0045` `0046`) + `0002` (`portable-with-rework`, deferred) |
 | Post-audit patches considered | 6 (`0047` excluded — already upstream at 7.2, and retired 2026-09-21 when 6.18.53 took it too; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11; `0051` excluded — a revert of a 6.18.y-only backport defect 7.x never had, 2026-09-14; `0052` excluded — DesignWare MMC hook, this board is Cadence SDHCI, 2026-09-21; `0053` excluded — 7.x has no `exfat_dir_readahead()` to bound, 2026-09-21) |
 | dwc2 series `0054`–`0066` (#205) | 13 considered, **3** included (`0056`, `0060`, `0061`); 10 held: the descriptor-DMA set and `0058`/`0059`/`0062` wait for hardware qualification (`docs/dwc2-usb-irq.md`) |
+| rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **37** |
+| **Total applied here** | **38** |
 
 ## Note for the DE25 DTS
 

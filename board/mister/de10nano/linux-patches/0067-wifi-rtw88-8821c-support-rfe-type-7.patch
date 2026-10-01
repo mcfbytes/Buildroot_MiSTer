@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Wed, 30 Sep 2026 21:04:31 -0500
+Subject: [PATCH] wifi: rtw88: 8821c: support RFE type 7
+
+Some RTL8811CU USB adapters (0bda:c811) are programmed with RFE type 7
+and fail to probe:
+
+  rtw88_8821cu 1-1:1.0: rfe 7 isn't supported
+  rtw88_8821cu 1-1:1.0: failed to setup chip efuse info
+  rtw88_8821cu 1-1:1.0: failed to setup chip information
+
+The driver already knows RFE type 7 is a BTG board: the efuse parser
+sets rfe_btg for it and the coex code describes it as "2-Ant, DPDT,
+BTG". Only the RFE definition is missing.
+
+Realtek's vendor driver handles type 7 the same way as types 2 and 4.
+phydm_init_hw_info_by_rfe_type_8821c() puts 2, 4 and 7 on SWITCH_TO_BTG,
+all three use the default PHY_REG_PG and TXPWR_LMT tables plus the BTG
+AGC diff table (rtw8821c_agc_btg_type2 is identical to the vendor's
+agc_tab_diff_btg), and rtl8821c_set_tx_power_level() takes the 2.4 GHz
+TX power index from path B on every BTG board, with the comment
+"(RFEType == 2) || (RFEType == 4) || (RFEType == 7)".
+
+Add the RFE definition and take the 2.4 GHz power index from path B
+for type 7 too, as is already done for 2 and 4.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw88/rtw8821c.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw88/rtw8821c.c b/drivers/net/wireless/realtek/rtw88/rtw8821c.c
+index 2078b06..a1654ad 100644
+--- a/drivers/net/wireless/realtek/rtw88/rtw8821c.c
++++ b/drivers/net/wireless/realtek/rtw88/rtw8821c.c
+@@ -87,7 +87,8 @@ static int rtw8821c_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
+ 	for (i = 0; i < 4; i++)
+ 		efuse->txpwr_idx_table[i] = map->txpwr_idx_table[i];
+ 
+-	if (rtwdev->efuse.rfe_option == 2 || rtwdev->efuse.rfe_option == 4)
++	if (rtwdev->efuse.rfe_option == 2 || rtwdev->efuse.rfe_option == 4 ||
++	    rtwdev->efuse.rfe_option == 7)
+ 		efuse->txpwr_idx_table[0].pwr_idx_2g = map->txpwr_idx_table[1].pwr_idx_2g;
+ 
+ 	switch (rtw_hci_type(rtwdev)) {
+@@ -1943,6 +1944,7 @@ static const struct rtw_rfe_def rtw8821c_rfe_defs[] = {
+ 	[2] = RTW_DEF_RFE_EXT(8821c, 0, 0, 0, 2),
+ 	[4] = RTW_DEF_RFE_EXT(8821c, 0, 0, 0, 2),
+ 	[6] = RTW_DEF_RFE(8821c, 0, 0, 0),
++	[7] = RTW_DEF_RFE_EXT(8821c, 0, 0, 0, 2),
+ };
+ 
+ static const struct rtw_reg_domain coex_info_hw_regs_8821c[] = {
+-- 
+2.53.0
+

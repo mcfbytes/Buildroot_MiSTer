@@ -78,8 +78,8 @@
 #   shape and a 7.x fix would be ORIGINAL code with no fork commit behind
 #   it. Recorded as open in docs/kernel-recon/fork-sync-2026-09-21.md §5
 #   rather than invented. Retires together with 0050.
-# The beta series therefore carries 37 of the 41 shared patches plus the 4
-# beta-local ones below — 41 entries — so within the carried set the 7.x
+# The beta series therefore carries 51 of the 53 shared patches plus the 4
+# beta-local ones below — 55 entries — so within the carried set the 7.x
 # and 6.18 kernels diverge only where an upstream API forced a re-anchor.
 # (0040 and 0041 are NOT exclusions: they were RETIRED from linux-patches/
 # outright on 2026-09-12 -- upstream chose the userspace fix, Main_MiSTer
@@ -276,3 +276,4 @@
 0064-dwc2-ddma-giveback-on-dequeue-halt.patch
 0065-dwc2-ddma-halt-before-freeing-desc-list.patch
 0066-dwc2-ddma-keep-xfercompl-unmasked.patch
+0067-wifi-rtw88-8821c-support-rfe-type-7.patch

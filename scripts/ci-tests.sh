@@ -972,6 +972,42 @@ else
 		"missing:$v101_missing -- a CONFIG_ symbol was dropped, or the module tree is stale"
 fi
 
+# rtw89 USB drivers that exist only on 7.x, enabled on both 7.2 kernels (docs/wifi-parity.md section 14).
+# Asserted on the module trees because olddefconfig drops a fragment symbol silently.
+RTW89_7X_MODS="rtw89_8852au rtw89_8852cu rtw89_8922au"
+RT_KVER=$(sed -n 's/^BR2_PACKAGE_LINUX_RT_VERSION="\([^"]*\)".*$/\1/p' \
+	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
+rt89_missing=""
+for m in $RTW89_7X_MODS; do
+	tar_has "usr/lib/modules/$RT_KVER/kernel/drivers/net/wireless/realtek/rtw89/$m.ko.xz" \
+		|| rt89_missing="$rt89_missing $m"
+done
+if [ -z "$RT_KVER" ]; then
+	fail "RT kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present" "could not read BR2_PACKAGE_LINUX_RT_VERSION"
+elif [ -z "$rt89_missing" ]; then
+	pass "RT kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($RT_KVER)"
+else
+	fail "RT kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($RT_KVER)" \
+		"missing:$rt89_missing -- dropped from board/mister/de10nano/linux-rt.fragment, or linux-rt is stale"
+fi
+DE25_KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
+	"$ROOT/configs/mister_de25nano_defconfig" | tail -1)
+DE25_MODDIR="$ROOT/output-de25/target/lib/modules/$DE25_KVER/kernel/drivers/net/wireless/realtek/rtw89"
+if [ ! -d "$ROOT/output-de25/target/lib/modules/$DE25_KVER" ]; then
+	skip "DE25 kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present" "no output-de25 module tree for ${DE25_KVER:-?} -- the DE25 stack has not been built"
+else
+	de25_89_missing=""
+	for m in $RTW89_7X_MODS; do
+		[ -f "$DE25_MODDIR/$m.ko.xz" ] || de25_89_missing="$de25_89_missing $m"
+	done
+	if [ -z "$de25_89_missing" ]; then
+		pass "DE25 kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($DE25_KVER)"
+	else
+		fail "DE25 kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($DE25_KVER)" \
+			"missing:$de25_89_missing -- dropped from board/mister/de25nano/linux.config, or the DE25 kernel is stale"
+	fi
+fi
+
 # The SDIO bus drivers for the three vendors whose USB driver we build are all
 # `default y`/`default m` under CONFIG_MMC=y, so each needs an explicit `is not
 # set` in linux.config or olddefconfig silently builds a second bus driver for a

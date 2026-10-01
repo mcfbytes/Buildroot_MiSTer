@@ -61,7 +61,8 @@ The posture is **prove parity first, then improve**:
 ## Stock vs. this image
 
 Stock figures are from Release 20260907, re-measured 2026-09-10 from the extracted release
-([`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/)).
+([`docs/stock-inventory/20260907/`](docs/stock-inventory/20260907/)). The Wi-Fi and Bluetooth
+rows are newer: they were re-measured against Release 20260912 on 2026-10-01.
 
 | | Stock MiSTer | This image |
 |---|---|---|

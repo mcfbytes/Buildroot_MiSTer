@@ -659,3 +659,42 @@ runs (287 MiB used / 225 MiB free, and 290/222) both predate this, and nobody ha
 re-run `scripts/check-size-budget.sh` since. 6.6 MiB against ~222 MiB free is ~3%
 of headroom, so the budget is not in danger — but that is arithmetic on a stale
 measurement, not a measurement.
+
+### 2026-10-01 — parity re-measured against stock Release 20260912
+
+Stock 20260912 was compared per driver: for every Wi-Fi/Bluetooth module in each image,
+`modinfo -F firmware` against the files that ship (stock: `modules.tar.gz`,
+`firmware.tar.gz`, the zImage's IKCONFIG, and the base rootfs, which is where its
+`regulatory.db` lives). Stock had closed most of its gaps. These are the files it shipped
+and we did not, plus gaps on both sides, and what this change does with each. The cut-off
+is chips under ~15 years old, or anything free when its driver is already built.
+
+| Added | Driver | Chip, year | Size |
+|---|---|---|---|
+| `qca/rampatch_usb_*`, `qca/nvm_usb_*` (all upstream USB names) + `qca/QCA2066/` | btusb (no `CONFIG_BT_QCA` needed) | Rome 2.0–3.2 (2014–16), WCN6855/QCA2066 (2020–21), WCN785x (2023) | ~1.3 MB |
+| `rtl_bt/rtl8761cu_{fw,config}.bin` | btrtl | RTL8761CU USB dongle (2023) | 10 KB |
+| `rtl_bt/rtl8922au_{fw,config}.bin` | btrtl | RTL8922AU Wi-Fi 7 combo, BT half (2024) | 71 KB |
+| `mediatek/BT_RAM_CODE_MT7961_1a_2_hdr.bin` (`_MEDIATEK_MT7920_BT`) | btmtk | MT7920 BT half (2023) | 483 KB |
+| `mrvl/usb8797_uapsta.bin`, `usb8801_uapsta.bin` (`_MWIFIEX_USB8797/8801`), `mrvl/usbusb8997_combo_v4.bin` | mwifiex_usb | 88W8797 (2012), 88W8801 (2014), 88W8997 (2016) | 1.4 MB |
+| `rt73.bin` (`_RALINK_RT73`) | rt73usb | RT73 (2005): over the cut-off, but 2 KB and the driver is already built | 2 KB |
+
+Checked and **not** added:
+
+- `ar3k/<id>/{PS_ASIC.pst,RamPatch.txt,ar3kbdaddr.pst}` (stock ships them): only the UART
+  `hci_ath` path reads these; USB `ath3k.c` loads `ar3k/AthrBT_*.dfu` and `ramps_*.dfu`,
+  which already ship.
+- `rtlwifi/rtl8723bu_bt.bin` (stock ships it): stock's copy is byte-identical to
+  linux-firmware's `rtlwifi/rtl8723bs_bt.bin` (the SDIO part, renamed), and 6.18's
+  `rtl8xxxu` never requests it: `enable_bluetooth` is read but never set, so RTL8723BU
+  always loads `rtl8723bu_nic.bin`.
+- `mrvl/usb8766_uapsta.bin` (2011), `libertas/usb8388*`, `lbtf_usb.bin` (2006–07): ancient.
+  Their drivers still build without firmware, as on stock.
+- `xone_dongle_02f9.bin`, `xone_dongle_091e.bin` (stock ships them): xone's own table marks
+  both PIDs as adapters built into laptops (ASUS/Lenovo, Surface Book 2).
+
+Stock-side findings for upstream (not changes here): stock lacks BT firmware for the Realtek
+Wi-Fi 6 combos (`rtl8851bu`, `rtl8852au/bu/btu/cu`) and `carl9170-1.fw`, and builds no
+`brcmfmac`, `ath9k_htc` or `rsi`. Several of its blobs are older than linux-firmware:
+`rtl_bt/rtl8761bu_fw.bin` (2021; upstream 2023), `rtl_bt/rtl8822cu_fw.bin` and
+`rtl8723d_fw.bin` (2018), `rtlwifi/rtl8188eufw.bin` and `rtl8192cu/eu*` (2018), and
+`regulatory.db` (2022). It does not need `rtl_bt/rtl8761b_fw.bin`, which is the UART variant.

@@ -175,3 +175,9 @@ CONFIG_PSTORE_PMSG=y
 CONFIG_NETCONSOLE=y
 CONFIG_NETCONSOLE_DYNAMIC=y
 
+
+# --- rtw89 USB drivers new in 7.x (not in 6.18; firmware already ships) -------
+# RTL8852AU (Wi-Fi 6), RTL8852CU (Wi-Fi 6E; 6.18 uses out-of-tree rtl8852cu-morrownr), RTL8922AU (Wi-Fi 7).
+CONFIG_RTW89_8852AU=m
+CONFIG_RTW89_8852CU=m
+CONFIG_RTW89_8922AU=m

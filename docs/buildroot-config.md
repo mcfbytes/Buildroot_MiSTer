@@ -3613,10 +3613,13 @@ build installs nothing and exits 0 — `make linux-firmware-dirclean` first.
 | `_MEDIATEK_MT7921_BT` | v10.2 Bluetooth firmware for combo/BT dongles whose driver we already build (`docs/bluetooth-parity.md`); same class of gap as ath3k below — the driver binds, then dies at `request_firmware()`. `mediatek/BT_RAM_CODE_MT7961_1_2_hdr.bin` — the BT half of the MT7921AU combo dongle whose WiFi half we already ship. Requested by `btmtk.c`; without it WiFi works and BT does not |
 | `_MEDIATEK_MT7922_BT` | `mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin` — btusb carries MT7922 USB IDs, so this is a reachable USB path, not just the M.2 part |
 | `_MEDIATEK_MT7925_BT` | `mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin` — BT half of the MT7925U combo |
+| `_MEDIATEK_MT7920_BT` | `mediatek/BT_RAM_CODE_MT7961_1a_2_hdr.bin` — btmtk's `FIRMWARE_MT7920`, BT half of the MT7920 (2026-10, `docs/firmware-parity.md`) |
 | `_QUALCOMM_6174A_BT` | `qca/rampatch_usb_00000302.bin` + `qca/nvm_usb_00000302.bin` — QCA ROME 6174A over USB. btusb requests exactly the "_usb_" names (`btusb.c`: "qca/rampatch_usb_%08x.bin"), and its QCA path is self-contained — it needs no `CONFIG_BT_QCA`, so this firmware is the only missing piece. 132 KiB |
 | `_ATHEROS_6004` | `ath6k/AR6004/hw1.2` + `hw1.3` (132 KiB) — ath6kl_usb (`CONFIG_ATH6KL_USB=m`, new in v10.1; AR6003/AR6004 802.11n USB) |
 | `_REDPINE_RS9113` | `rsi/rs9113_*.rps` — rsi_usb |
 | `_REDPINE_RS9116` | `rsi/rs9116_wlan.rps`, requested by `rsi_91x_hal.c:35` (both toggles needed; `CONFIG_RSI_USB=m`) |
+| `_RALINK_RT73` | `rt73.bin` — rt73usb was built without it; 2 KB (2026-10) |
+| `_MWIFIEX_USB8797`, `_MWIFIEX_USB8801` | `mrvl/usb8797_uapsta.bin`, `usb8801_uapsta.bin` — mwifiex_usb (2026-10; `usbusb8997_combo_v4.bin` comes from linux-firmware-extra) |
 | `_AR3011` | `ath3k-1.fw` — the ath3k driver (`CONFIG_BT_ATH3K=m`, already on) for AR3011 USB Bluetooth. The driver was built but its firmware was NEVER installed, so every AR3011 dongle failed at `request_firmware()`; this closes that gap |
 | `_AR3012_USB` | `ar3k/*.dfu` — AR3012 USB Bluetooth patch/config RAM images, loaded by the same ath3k driver (and by btusb for the newer AR3012 IDs) |
 | `_BRCM_BCM43XX` | `brcm/brcmfmac4373.bin` + the 43xx SDIO/PCIe siblings — brcmfmac (`CONFIG_BRCMFMAC=m`, new). Implicitly `select`s `BR2_PACKAGE_LINUX_FIRMWARE_CYPRESS_CYW43XX` (`cypress/cyfmac*`, the same silicon post-acquisition) |

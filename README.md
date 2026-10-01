@@ -74,7 +74,7 @@ Stock figures are from Release 20260907, re-measured 2026-09-10 from the extract
 | **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
 | **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | 7-Zip 26.03, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **Wi-Fi** | Mainline drivers with firmware for most USB chips; no Broadcom, Redpine, `ath9k_htc` or Wi-Fi 6E | The same, plus those four families ([details](#wi-fi-and-bluetooth)) |
-| **Bluetooth firmware** | Broad; missing the Realtek Wi-Fi 6 combo chips' Bluetooth | Broad; each side ships a few blobs the other lacks ([details](#wi-fi-and-bluetooth)) |
+| **Bluetooth firmware** | Broad; missing the Realtek Wi-Fi 6 combo chips' Bluetooth | Everything stock ships that a driver loads, plus those ([details](#wi-fi-and-bluetooth)) |
 | **Filesystems** | Mainline exFAT and FAT; no NTFS; no way to repair exFAT | Same exFAT and FAT, plus NTFS and an on-device exFAT check and repair |
 | **Timezone on a fresh card** | UTC until the user runs `timezone.sh` | Detected once, on the first network connection ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
 | **Image headroom** | 6.3% free in a 375 MiB image | 512 MiB image; CI fails a build that leaves under 15% free |
@@ -268,8 +268,9 @@ rootfs (re-checked 2026-10-01). Background audits: [`docs/wifi-parity.md`](docs/
 | Chip family | Stock | This image | Verified |
 |---|---|---|---|
 | Realtek 802.11n/ac (`rtl8xxxu`, `rtw88`: RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | With firmware | Same | **Hardware** (RTL8822BU, WPA3 5 GHz) |
-| Realtek Wi-Fi 6 (RTL8851BU, 8852BU) | `rtw89` with firmware | Same | Build |
-| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr`, the only USB driver that exists | Build |
+| Realtek Wi-Fi 6 (RTL8851BU, 8852BU; RTL8852AU on the 7.2 kernels) | `rtw89` with firmware (no 8852AU) | Same, plus 8852AU | Build |
+| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr` on 6.18; mainline `rtw89` on the 7.2 kernels | Build |
+| Realtek Wi-Fi 7 (RTL8922AU) | None | Mainline `rtw89`, 7.2 kernels only | Build |
 | AICSemi AIC8800 family (Tenda U2/U11, TX1U Nano…) | Driver and firmware | Same | Build |
 | MediaTek (MT7601U, MT76x0U/x2U, MT7663U, MT7921U, MT7925U) | `mt76` with firmware | Same | Build |
 | RTL8192DU | With firmware | Same | Build |
@@ -278,15 +279,16 @@ rootfs (re-checked 2026-10-01). Background audits: [`docs/wifi-parity.md`](docs/
 | Atheros AR9170 | `carl9170` without its firmware, so it fails | With firmware | Build |
 | Atheros AR6003/AR6004 | `ath6kl`, partial firmware | Same | Build |
 | Redpine RS9113/RS9116 | None | `rsi` with firmware | Build |
-| Ralink RT73, Marvell (`mwifiex`, `libertas`) | Driver without firmware | Same (gap on both sides) | — |
-| Bluetooth: Realtek | Missing the Wi-Fi 6 combo chips (RTL8851BU, 8852AU/BU/CU) | Has those; missing RTL8761CU and RTL8922AU | Pairing: **hardware** |
-| Bluetooth: Qualcomm / Atheros | `ath3k` plus AR3012 configs; the full USB QCA rampatch set | `ath3k`; QCA Rome (6174A) only | Build |
-| Bluetooth: MediaTek | MT7961, MT7925; no MT7922 | MT7961, MT7925; no MT7961 `1a` variant | Build |
+| Ralink RT73, Marvell 88W8797/8801/8997 (`mwifiex`) | Driver without firmware | With firmware | Build |
+| Bluetooth: Realtek | Missing the Wi-Fi 6 combo chips (RTL8851BU, 8852AU/BU/CU) | Has those, plus RTL8761CU and RTL8922AU | Pairing: **hardware** |
+| Bluetooth: Qualcomm / Atheros | `ath3k`; the USB QCA rampatch set | Same, plus the QCA2066 board variant | Build |
+| Bluetooth: MediaTek | MT7961, MT7925 | MT7920, MT7922, MT7961, MT7925 | Build |
 
 Deliberate omissions: Qualcomm QCA9377 over USB (`ath10k_usb`), whose upstream Kconfig says
 it "will not fully work" (stock ships it), plus four 2000s-era 802.11b/g drivers and a LiFi
 driver. Two Bluetooth drivers (Intel, BCM2033) build without firmware because none exists
-for hardware this board can host.
+for hardware this board can host. Marvell `libertas` (2006–07) still builds without firmware,
+as on stock. Per-file detail: [`docs/firmware-parity.md`](docs/firmware-parity.md).
 
 ### The real-time kernel
 

@@ -1451,3 +1451,18 @@ at libusb finding no real device. `udevadm test` loads the rules file without co
   a device.
 - The DE25-Nano has no rootfs overlay and does not select the userspace profile, so none
   of this reaches it. That is consistent with its bare-developer-OS scope (ADR 0027).
+
+## 14. USB drivers new in 7.2 (2026-10-01)
+
+A diff of every Kconfig symbol under `drivers/net/wireless` and `drivers/bluetooth`,
+6.18.54 against 7.2.8, finds three new USB Wi-Fi drivers and no new Bluetooth ones:
+`RTW89_8852AU` (RTL8852AU, Wi-Fi 6), `RTW89_8852CU` (RTL8852CU, Wi-Fi 6E) and
+`RTW89_8922AU` (RTL8922AU, Wi-Fi 7). None is in 6.18.y. All three are enabled on both 7.2
+kernels: `board/mister/de10nano/linux-rt.fragment` for the DE10 RT kernel, and
+`board/mister/de25nano/linux.config` for the DE25. They are not in the shared fragment,
+which must stay a no-op against the DE10's 6.18 config. Their firmware (`rtw89/rtw8852a_fw*`,
+`rtw8852c_fw*`, `rtw8922a_fw*`) already ships via `_RTL_RTW89`.
+
+On 6.18, RTL8852CU stays on the out-of-tree `rtl8852cu-morrownr`, which is built only
+against the 6.18 kernel, so the two drivers never compete for the same device IDs. The 7.2
+removals are PCMCIA Bluetooth cards and non-wireless staging drivers, none of them built here.

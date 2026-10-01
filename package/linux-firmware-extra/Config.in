@@ -3,12 +3,15 @@ config BR2_PACKAGE_LINUX_FIRMWARE_EXTRA
 	depends on BR2_PACKAGE_LINUX_FIRMWARE
 	default y
 	help
-	  Thirteen firmware files that a currently in-tree 6.18 kernel driver
+	  Firmware files that a currently in-tree 6.18 kernel driver
 	  genuinely still requests, but that Buildroot's own linux-firmware
 	  package (BR2_PACKAGE_LINUX_FIRMWARE, see the Config.in one menu up)
 	  has NO sub-option for -- upstream linux-firmware ships every one of
-	  these thirteen, Buildroot's curated Config.in list just never grew a
-	  toggle for them.
+	  them, Buildroot's curated Config.in list just never grew a toggle.
+
+	  2026-10 additions (docs/firmware-parity.md, "2026-10-01"): btusb's
+	  Qualcomm USB rampatch/NVM set (Rome, WCN6855/QCA2066, WCN785x),
+	  btrtl's rtl8761cu and rtl8922au, and mwifiex_usb's 8997 blob.
 
 	  Seven are stock-parity files (docs/stock-inventory/20260907/firmware.md,
 	  re-based on stock release_20260907 in 2026-09): the four original

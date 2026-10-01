@@ -107,6 +107,50 @@ LINUX_FIRMWARE_EXTRA_MEMBERS = \
 	mediatek/mt7663pr2h.bin \
 	mediatek/mt7663pr2h_rebb.bin \
 	mediatek/mt7668pr2h.bin \
+	mrvl/usbusb8997_combo_v4.bin \
+	qca/QCA2066/nvm_usb_00130201_030a.bin \
+	qca/QCA2066/nvm_usb_00130201_gf_030a.bin \
+	qca/QCA2066/rampatch_usb_00130201.bin \
+	qca/nvm_usb_00000200.bin \
+	qca/nvm_usb_00000201.bin \
+	qca/nvm_usb_00000300.bin \
+	qca/nvm_usb_00000302_eu.bin \
+	qca/nvm_usb_00130200.bin \
+	qca/nvm_usb_00130200_0104.bin \
+	qca/nvm_usb_00130200_0105.bin \
+	qca/nvm_usb_00130200_0106.bin \
+	qca/nvm_usb_00130200_0107.bin \
+	qca/nvm_usb_00130200_0109.bin \
+	qca/nvm_usb_00130200_0110.bin \
+	qca/nvm_usb_00130201.bin \
+	qca/nvm_usb_00130201_010a.bin \
+	qca/nvm_usb_00130201_010b.bin \
+	qca/nvm_usb_00130201_0303.bin \
+	qca/nvm_usb_00130201_gf.bin \
+	qca/nvm_usb_00130201_gf_010a.bin \
+	qca/nvm_usb_00130201_gf_010b.bin \
+	qca/nvm_usb_00130201_gf_0303.bin \
+	qca/nvm_usb_00190200.bin \
+	qca/nvm_usb_00190200_0104.bin \
+	qca/nvm_usb_00190200_0106.bin \
+	qca/nvm_usb_00190200_0108.bin \
+	qca/nvm_usb_00190200_0109.bin \
+	qca/nvm_usb_00190200_010a.bin \
+	qca/nvm_usb_00190200_010c.bin \
+	qca/nvm_usb_00190200_010e.bin \
+	qca/nvm_usb_00190200_0110.bin \
+	qca/nvm_usb_00190200_0111.bin \
+	qca/nvm_usb_00190200_0112.bin \
+	qca/rampatch_usb_00000200.bin \
+	qca/rampatch_usb_00000201.bin \
+	qca/rampatch_usb_00000300.bin \
+	qca/rampatch_usb_00130200.bin \
+	qca/rampatch_usb_00130201.bin \
+	qca/rampatch_usb_00190200.bin \
+	rtl_bt/rtl8761cu_config.bin \
+	rtl_bt/rtl8761cu_fw.bin \
+	rtl_bt/rtl8922au_config.bin \
+	rtl_bt/rtl8922au_fw.bin \
 	rtlwifi/rtl8192dufw.bin \
 	rtlwifi/rtl8192fufw.bin \
 	rtlwifi/rtl8710bufw_SMIC.bin \

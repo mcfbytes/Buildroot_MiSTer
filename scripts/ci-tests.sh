@@ -937,14 +937,19 @@ for f in \
 	mediatek/mt7925/BT_RAM_CODE_MT7925_1_1_hdr.bin \
 	qca/rampatch_usb_00000302.bin qca/nvm_usb_00000302.bin \
 	brcm/BCM-0bb4-0306.hcd brcm/BCM20702A1-0b05-17cb.hcd \
-	rtl_bt/rtl8761b_fw.bin rtl_bt/rtl8761bu_fw.bin
+	rtl_bt/rtl8761b_fw.bin rtl_bt/rtl8761bu_fw.bin \
+	rtl_bt/rtl8761cu_fw.bin rtl_bt/rtl8922au_fw.bin \
+	qca/rampatch_usb_00130201.bin qca/rampatch_usb_00190200.bin \
+	qca/QCA2066/rampatch_usb_00130201.bin \
+	mediatek/BT_RAM_CODE_MT7961_1a_2_hdr.bin rt73.bin \
+	mrvl/usb8797_uapsta.bin mrvl/usb8801_uapsta.bin mrvl/usbusb8997_combo_v4.bin
 do
 	tar_has "usr/lib/firmware/$f" || fw_missing="$fw_missing $f"
 done
 if [ -z "$fw_missing" ]; then
-	pass "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present"
+	pass "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi/rt73/mwifiex + MTK-BT/QCA-BT/brcm-hcd/rtl_bt present"
 else
-	fail "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi + MTK-BT/QCA-BT/brcm-hcd/rtl8761b present" \
+	fail "WiFi/BT firmware: mt7663/ath3k/brcmfmac/rtl8192du/rsi/rt73/mwifiex + MTK-BT/QCA-BT/brcm-hcd/rtl_bt present" \
 		"missing:$fw_missing -- a driver would probe then fail at request_firmware()"
 fi
 

@@ -41,8 +41,8 @@ at that one point release, the way 5.15.1 was for five years with no `.y` update
 userland outside the kernel, modules and firmware was byte-for-byte unchanged by that
 release. There is no build recipe, no CI, no SBOM and no update path.
 
-This project rebuilds all of it from **a current Buildroot release** and a **6.18 LTS kernel
-that tracks the `.y` stable line**. It has reproducible builds, a signed-hash supply chain and a
+This project rebuilds all of it from **Buildroot 2026.08** and a **6.18 LTS kernel that
+tracks the `.y` stable line**. It has reproducible builds, a signed-hash supply chain and a
 per-commit reconciliation of the MiSTer kernel fork. It ships through the update channel
 users already have, plus a real-time kernel and a flashable card image that stock has no
 equivalent of.
@@ -67,15 +67,15 @@ Stock figures are from Release 20260907, re-measured 2026-09-10 from the extract
 |---|---|---|
 | **Kernel** | 6.18.38, pinned with no `.y` updates (5.15.1 from 2021 until 2026-09-07, likewise never updated) | 6.18 LTS, tracking every `.y` stable release via Renovate |
 | **Kernel source** | A squashed-import fork with no shared history with mainline | Pristine kernel.org tarball plus a series of documented patch files |
-| **Userland** | Buildroot 2021.02.4, glibc 2.31, gcc 10 era | The current Buildroot release, with its glibc and gcc |
-| **OpenSSL** | 1.1.1k, end-of-life since 2023-09-11 | Current 3.x |
-| **OpenSSH / Samba / Python** | 8.6p1 / 4.14.6 / 3.9.6 | Current releases |
+| **Userland** | Buildroot 2021.02.4, glibc 2.31, gcc 10 era | Buildroot 2026.08, glibc 2.44, gcc 15.3 |
+| **OpenSSL** | 1.1.1k, end-of-life since 2023-09-11 | 3.6.4 |
+| **OpenSSH / Samba / Python** | 8.6p1 / 4.14.6 / 3.9.6 | 10.5p1 / 4.24.6 / 3.14.7 |
 | **SSH host keys** | The same keys on every MiSTer, in the public download | Generated per device on first boot ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
-| **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | Current 7-Zip, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
+| **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | 7-Zip 26.03, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **Wi-Fi** | Mainline drivers since 6.18, but several ship without firmware; no Broadcom, Redpine, AIC8800 or Wi-Fi 6E | Mainline-first, firmware audited per driver, plus those families ([details](#wi-fi-and-bluetooth)) |
 | **Bluetooth firmware** | Gaps: Atheros AR3011/3012, Qualcomm QCA, MediaTek BT | Audited per driver, gaps closed |
-| **Filesystems** | exFAT and FAT; no NTFS; no way to repair exFAT | Mainline exFAT, NTFS, and an on-device exFAT check and repair |
+| **Filesystems** | Mainline exFAT and FAT; no NTFS; no way to repair exFAT | Same exFAT and FAT, plus NTFS and an on-device exFAT check and repair |
 | **Timezone on a fresh card** | UTC until the user runs `timezone.sh` | Detected once, on the first network connection ([ADR 0025](docs/decisions/0025-first-boot-timezone-autodetect.md)) |
 | **Image headroom** | 6.3% free in a 375 MiB image | 512 MiB image; CI fails a build that leaves under 15% free |
 | **Build recipe** | Not published (`Linux_Image_creator_MiSTer` only re-packs a prebuilt tarball) | This repository |
@@ -136,7 +136,7 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 | File | Change |
 |---|---|
 | `linux/linux.img`, `linux/zImage_dtb` | Replaced: the root filesystem and kernel |
-| `linux/7za` | Replaced: current 7-Zip instead of the 2016 p7zip |
+| `linux/7za` | Replaced: 7-Zip 26.03 instead of the 2016 p7zip |
 | `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
 | `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
 | `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md) and [Logitech pairing](docs/logitech-pairing.md) launchers |
@@ -221,7 +221,7 @@ Write-ups: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
 
 ### Security
 
-- **OpenSSL 1.1.1k → current 3.x.** Stock's TLS library has been end-of-life since September 2023.
+- **OpenSSL 1.1.1k → 3.6.4.** Stock's TLS library has been end-of-life since September 2023.
 - **Per-device SSH host keys.** Every stock MiSTer shares one set of host keys from the
   public download, so impersonating one produces no host-key warning. This image generates
   keys on first boot and keeps them on the FAT card
@@ -229,8 +229,8 @@ Write-ups: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
 - **SSH key login survives updates.** `sshd` also reads `/media/fat/config/authorized_keys`,
   which an OS update never touches. That is the same file `security_fixes.sh` uses, so an
   existing key keeps working ([FAQ](docs/user/faq.md#ssh-key-persist)).
-- **Current network-facing software:** OpenSSH, Samba, BlueZ, wpa_supplicant and Python
-  all track current releases ([Python compatibility notes](docs/python-compat.md)).
+- **Current network-facing software:** OpenSSH 10.5p1, Samba 4.24.6, BlueZ 5.86,
+  wpa_supplicant 2.12, Python 3.14.7 ([compatibility notes](docs/python-compat.md)).
 - **An update path.** Renovate tracks the kernel, firmware and every pinned package, and CI
   proves each bump still builds and passes the parity suite.
 - **IPv6 is built in but off** until you opt in on the card (stock has none).
@@ -244,7 +244,6 @@ secure-by-default network posture is proposed in
 
 | Feature | Stock | This image |
 |---|---|---|
-| exFAT | Out-of-tree Samsung driver | Mainline `exfat`, with Samsung's symlink extension carried ([ADR 0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [0019](docs/decisions/0019-exfat-symlinks-carried-patch.md)) |
 | exFAT repair | None, though the card is never cleanly unmounted | **Scripts > check_storage.sh**: read-only scan, then a confirmed repair on next boot ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
 | NTFS | Not supported | `ntfs3` plus `ntfs-3g`, with USB automount ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
 | Logitech Unifying pairing | Not possible on the device | **Scripts > pair_logitech.sh** ([doc](docs/logitech-pairing.md)) |
@@ -319,6 +318,7 @@ behaviour for:
 - the boot chain and the `uboot.img` (shipped byte-identical, fetched by hash);
 - `/media/fat` mount flags (`sync,dirsync`: async would corrupt on power-off);
 - the read-only root with its login-time `remount,rw`;
+- mainline exFAT with the symlink extension (ADRs [0010](docs/decisions/0010-drop-out-of-tree-exfat.md), [0019](docs/decisions/0019-exfat-symlinks-carried-patch.md));
 - the Bluetooth key store and RTC;
 - MIDI/MT-32, Samba and SSH/FTP;
 - BusyBox applet coverage and the init scripts;
@@ -337,7 +337,7 @@ Each has its own parity audit (see the [documentation map](#documentation-map)).
 | 2: Rootfs and testing | ✅ Complete; menu and cores load on hardware |
 | 3: Driver packages and hardware matrix | ✅ Complete for the hardware on the test board; the wider Wi-Fi/Bluetooth set is build-verified |
 | 4: Release and sustainability | 🔄 In progress: CI/CD and `db.json` done; sustainability gate open |
-| 5: Full SD image and U-Boot | 🔄 `sdcard.img` is built and CI-checked, not yet flashed on hardware; mainline U-Boot builds but ships nowhere ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md)) |
+| 5: Full SD image and U-Boot | 🔄 `sdcard.img` done and tested on hardware; mainline U-Boot builds but ships nowhere ([ADR 0024](docs/decisions/0024-mainline-uboot-capability-artifact.md)) |
 
 <a id="hardware-validation-ledger"></a>
 ### Hardware validation ledger
@@ -351,10 +351,10 @@ unverified. Logs are in [`docs/testlogs/`](docs/testlogs/).
 | Bluetooth firmware load and controller pairing | ✅ |
 | Wi-Fi WPA3/SAE 5 GHz auto-connect (`rtw88`, RTL8822BU) | ✅ |
 | Downloader over HTTPS, and a full `update_all.sh` run leaving the image untouched | ✅ |
-| `PREEMPT_RT` kernel boots and runs MiSTer | ✅ on 7.2-rc4, rc7, 7.2.3 and 7.2.7. Boot is a per-version claim; later pins are build-verified |
+| `PREEMPT_RT` kernel boots and runs MiSTer | ✅ |
 | dwc2 USB polling fix (1 kHz input) | ✅ measured on the RT kernel |
 | Samba, MIDI, most Wi-Fi/Bluetooth chips | ⚠️ Build/CI-verified only |
-| SD-card installer with the HDMI splash | ⏳ Not yet run on hardware |
+| `sdcard.img` flashed to a fresh card: installer, HDMI splash, first boot | ✅ |
 | RT latency | ⏳ Not yet measured |
 
 ### Known limitations

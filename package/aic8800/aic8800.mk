@@ -102,7 +102,7 @@
 # ambiguity is recorded here rather than resolved, because it cannot be
 # resolved from outside AICSemi.
 
-AIC8800_VERSION = 516e3b087763d80c44f5e3b6d2dd63e0d925c91d
+AIC8800_VERSION = d13d07963cd15d731e2895e8288a04cca6152ac9
 AIC8800_SITE = $(call github,radxa-pkg,aic8800,$(AIC8800_VERSION))
 AIC8800_LICENSE = GPL-2.0 (driver, per debian/copyright + MODULE_LICENSE), PROPRIETARY (AICSemi firmware blobs, redistributed)
 AIC8800_LICENSE_FILES = debian/copyright

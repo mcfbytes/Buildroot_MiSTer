@@ -1,0 +1,4 @@
+# Locally computed (GitHub publishes no hashes for commit archives)
+sha256  3646323af35645fcd90124d1fb65d92bba8f31b89a1aa2a80c52c0a4c33758e3  zaparoo-scanout-9fd408d2cd6fe8b27cee1df9d3aa8b946f0a8bc3.tar.gz
+# No LICENSE file upstream; the unpatched UAPI header's SPDX line stands in for one
+sha256  59cd03debe025d68d8f11f8cebe766d29c09038bcd93b8f839f7231676af5bd2  kernel/scanout-slots/zaparoo_scanout_uapi.h

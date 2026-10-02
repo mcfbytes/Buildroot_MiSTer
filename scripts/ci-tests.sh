@@ -758,6 +758,16 @@ else
 	fail "xone: all 9 .ko.xz modules present" "missing:$xone_missing"
 fi
 
+# =============================================================================
+section "zaparoo-scanout (docs/zaparoo-scanout.md)"
+# =============================================================================
+
+if tar_has "usr/lib/modules/$KVER/updates/zaparoo_scanout.ko.xz"; then
+	pass "zaparoo-scanout: zaparoo_scanout.ko.xz present"
+else
+	fail "zaparoo-scanout: zaparoo_scanout.ko.xz present" "missing usr/lib/modules/$KVER/updates/zaparoo_scanout.ko.xz"
+fi
+
 # In-kernel USB WiFi (ADR 0016 as updated in v10, docs/wifi-parity.md §6).
 #
 # This assertion USED to check the opposite thing: that the out-of-tree

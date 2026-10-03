@@ -1057,7 +1057,8 @@ bottom, which always reports (see
 
 `gate`'s `is_doc()` classifies **only** paths that provably cannot affect a
 compile as doc-only (`docs/*`, `*.md`, `LICENSE`, `.editorconfig`,
-`.gitignore`). Everything else — `board/`, `configs/`, `package/`,
+`.gitignore`, and the README mascot art: `art/*` plus its generator
+`art-src/*`). Everything else — `board/`, `configs/`, `package/`,
 `scripts/`, `Makefile`, `external.*`, `Config.in`, and `.github/` itself —
 builds.
 
@@ -1071,7 +1072,11 @@ looks tested and isn't is worse than one that obviously wasn't.
 This was verified once, by hand, before writing the list: no `.md` is read by
 the Makefile, `external.mk`, `Config.in` or `post-build.sh`. **Re-verify that
 claim before trusting this list again** if the build's own file-reading
-surface ever changes.
+surface ever changes. `art/` and `art-src/` were added on 2026-10-03 on the
+same check: nothing under `Makefile`, `external.*`, `Config.in`, `board/`,
+`package/` or `scripts/` references either directory. `lint.yml` and
+`renovate-hash-sync.yml` already trigger only on their own path lists, which
+leave both out.
 
 <a id="kernel-leg-timeout"></a>
 ### Kernel leg timeout: an estimate, not a measurement

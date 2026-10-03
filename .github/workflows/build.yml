@@ -85,12 +85,13 @@ jobs:
           set -euo pipefail
 
           # Denylist: only paths that provably cannot affect a compile are
-          # skipped (docs/*, *.md, LICENSE, .editorconfig, .gitignore).
+          # skipped (docs/*, *.md, LICENSE, .editorconfig, .gitignore, and the
+          # mascot art in art/ + its generator in art-src/).
           # Verified once that no .md is read by the build -- re-verify
           # before trusting this list again. See docs/ci.md#gate-denylist.
           is_doc() {
             case "$1" in
-              docs/*|*.md|LICENSE|.editorconfig|.gitignore) return 0 ;;
+              docs/*|*.md|LICENSE|.editorconfig|.gitignore|art/*|art-src/*) return 0 ;;
               *) return 1 ;;
             esac
           }

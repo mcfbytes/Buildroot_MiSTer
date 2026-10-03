@@ -598,7 +598,7 @@ runs as root. (The other MiSTer Kun projects are named after what Kun is doing, 
 
 | | | |
 |:-:|:-:|:-:|
-| <img src="art/root-kun.png" width="200" alt="Root Kun: MiSTer Kun in a yellow hard hat with a # on the front, a hi-vis vest and a pencil behind the ear"> | <img src="art/root-kun-built.png" width="200" alt="Root Kun wide-eyed beside a terminal reading # make, BUILD OK"> | <img src="art/root-kun-crane.png" width="200" alt="Root Kun with a crane lowering a block labelled rootfs"> |
+| <img src="art/root-kun.png" width="200" alt="Root Kun: MiSTer Kun in a yellow hard hat with a # on the front, a hi-vis vest and a pencil behind the ear"> | <img src="art/root-kun-built.png" width="200" alt="Root Kun beside a terminal reading # make, BUILD OK"> | <img src="art/root-kun-crane.png" width="200" alt="Root Kun with a crane lowering a block labelled rootfs"> |
 | **Site foreman** | **BUILD OK** | **Topping out** |
 | <img src="art/root-kun-blueprint.png" width="200" alt="Root Kun with a defconfig blueprint"> | <img src="art/root-kun-kernel.png" width="200" alt="Root Kun with a corn kernel marked LTS"> | <img src="art/root-kun-patches.png" width="200" alt="Root Kun with a stack of .patch files"> |
 | **defconfig** | **LTS kernel** | **Every patch in-tree** |
@@ -611,8 +611,9 @@ comes as SVG and PNG in [`art/`](art/), along with the [banner](art/banner.png) 
 [social preview](art/social-preview.png); small icons
 (<img src="art/icons/hardhat-48.png" width="20" alt=""> <img src="art/icons/cone-48.png" width="20" alt="">
 <img src="art/icons/brick-48.png" width="20" alt="">) live in [`art/icons/`](art/icons/). The generator
-is [`art-src/gen.py`](art-src/gen.py): it needs Inkscape, Open Sans ExtraBold Italic, Noto Sans JP,
-DejaVu Sans Mono and the upstream `mister_kun_fullcolor.svg` (pass its path in `KUN_SVG`).
+is [`art-src/gen.py`](art-src/gen.py): it needs Inkscape, Open Sans ExtraBold Italic, Noto Sans JP
+and DejaVu Sans Mono, and draws on the upstream `mister_kun_fullcolor.svg` vendored (hash-checked, at a
+pinned commit) in [`art-src/upstream/`](art-src/upstream/).
 Changes under `art/` and `art-src/` don't trigger an image build
 ([`docs/ci.md`](docs/ci.md#gate-denylist)).
 
@@ -628,7 +629,10 @@ no vendored binaries, hash-pinned sources, and no behaviour changes hidden in bu
 - **Repository code:** GPLv3 ([`LICENSE`](LICENSE)).
 - **Kernel patches** (`board/mister/*/linux-patches*/`): GPLv2.
 - **Packages:** their upstream licenses; each release's `legal-info` is the authoritative SBOM.
-- **MiSTer Kun artwork** (`installer-splash/`, `art/`): the mascot by **HeWhoisRed**,
+- **MiSTer Kun artwork** ([`board/mister/de10nano/installer-splash/`](board/mister/de10nano/installer-splash/),
+  [`art/`](art/), [`art-src/upstream/`](art-src/upstream/)): the mascot by **HeWhoisRed**,
   remastered by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun). It is
-  free to use and remix with attribution; see `installer-splash/upstream/LICENSE`. Root Kun
-  in `art/` is derived from that remaster and shared on the same terms. None of it is GPLv3.
+  free to use and remix with attribution; see
+  [`board/mister/de10nano/installer-splash/upstream/LICENSE`](board/mister/de10nano/installer-splash/upstream/LICENSE).
+  Root Kun in `art/` is derived from that remaster and shared on the same terms. None of it
+  is GPLv3.

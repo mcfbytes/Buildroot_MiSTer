@@ -3,16 +3,22 @@
 Same pipeline as the Tasty, Seedy and ItsAlive art: MiSTer Kun's paths from the upstream remaster,
 hand-written SVG props on top, inkscape for PNGs.
 Run: python3 art-src/gen.py  (writes ../art and ../art/icons)
-Needs mister_kun_fullcolor.svg from https://github.com/baxysquare/mister_kun (set KUN_SVG to its path).
+upstream/mister_kun_fullcolor.svg is vendored from baxysquare/mister_kun at KUN_COMMIT and hash-checked,
+because the path extraction below depends on its exact path order.
 """
-import re, subprocess, os
+import hashlib, re, subprocess, os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "..", "art")
 ICONS = os.path.join(ART, "icons")
-KUN_SRC = os.environ.get("KUN_SVG") or exit("set KUN_SVG to the path of mister_kun_fullcolor.svg")
+KUN_SRC = os.environ.get("KUN_SVG", os.path.join(HERE, "upstream", "mister_kun_fullcolor.svg"))
+KUN_COMMIT = "97df77b74f15e767e698293e04be559c7e8b788b"
+KUN_SHA256 = "03a820c50a06fb7cb477bcd3004f3146e638f629503539128c357e13ff68bd80"
 
-src = open(KUN_SRC).read()
+raw = open(KUN_SRC, "rb").read()
+if hashlib.sha256(raw).hexdigest() != KUN_SHA256:
+    exit(f"{KUN_SRC}: sha256 mismatch, expected mister_kun_fullcolor.svg from baxysquare/mister_kun@{KUN_COMMIT}")
+src = raw.decode()
 PATHS = [p for p in re.findall(r'<path [^>]*/>', src) if 'm-81.806' not in p]
 OUTLINE, FILL, FACE = PATHS[0], PATHS[1], PATHS[2:]
 FILL_D = re.search(r'd="([^"]*)"', FILL).group(1)
@@ -77,15 +83,9 @@ def pencil_ear():
             f'<rect x="-110" y="-16" width="26" height="32" fill="{PINK}" {S10}/></g>')
 
 
-def kun(eyes="sleepy"):
+def kun():
     face = "".join(FACE)
-    out = f'<g id="kun">{OUTLINE}{FILL}{vest()}{face}'
-    if eyes == "wide":
-        # the build went green: eyes open, pupils up
-        for cx in (322, 678):
-            out += f'<circle cx="{cx}" cy="430" r="84" fill="#fff" stroke="#000" stroke-width="18"/>'
-            out += f'<circle cx="{cx}" cy="414" r="30" fill="#000"/><circle cx="{cx + 10}" cy="404" r="9" fill="#fff"/>'
-    return out + pencil_ear() + hardhat() + '</g>'
+    return f'<g id="kun">{OUTLINE}{FILL}{vest()}{face}{pencil_ear()}{hardhat()}</g>'
 
 
 # --- props (centred on 0,0, about +-150) ------------------------------------------------------------
@@ -201,13 +201,13 @@ ICON_ONLY = {
 }
 
 
-def with_prop(name, x=880, y=830, s=1.25, **kw):
-    return DEFS + kun(**kw) + f'<g transform="translate({x} {y}) scale({s})">{PROP[name]}</g>'
+def with_prop(name, x=880, y=830, s=1.25):
+    return DEFS + kun() + f'<g transform="translate({x} {y}) scale({s})">{PROP[name]}</g>'
 
 
 def built():
-    """The build went green: wide eyes and a terminal reading BUILD OK."""
-    return with_prop("terminal", 900, 830, 1.2, eyes="wide")
+    """The build went green: a terminal reading BUILD OK."""
+    return with_prop("terminal", 900, 830, 1.2)
 
 
 # --- output helpers (same as the Tasty, Seedy and ItsAlive pipeline) --------------------------------

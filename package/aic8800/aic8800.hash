@@ -15,7 +15,7 @@
 # The tarball is large (55 MiB) because it carries the PCIE and SDIO driver
 # trees and the vendor documentation alongside the USB tree this package
 # builds. Only src/USB/ is used; nothing prunes the download.
-sha256  f79ff9b8b4dfed97c59fe6877b34406bbac042cc1091ada3bb17224fe62f1b39  aic8800-516e3b087763d80c44f5e3b6d2dd63e0d925c91d.tar.gz
+sha256  8885bda125037cbaefd58828ac907a4036316a012cc72b5b1ae87a48f852113d  aic8800-d13d07963cd15d731e2895e8288a04cca6152ac9.tar.gz
 
 # Licence file. debian/copyright, not the repo's top-level LICENSE: the
 # top-level file is the plain GPL-3 text covering radxa's packaging, while

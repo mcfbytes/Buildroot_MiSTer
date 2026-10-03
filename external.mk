@@ -316,3 +316,9 @@ endef
 UBOOT_POST_BUILD_HOOKS += MISTER_UBOOT_DE10_CONFIG_AUDIT
 
 endif # BR2_TARGET_UBOOT_BOARD_DEFCONFIG = socfpga_de10_nano (DE10-Nano)
+
+# Tune the DE10 kernel (and its out-of-tree modules) for the A9; the kernel's own -march=armv7-a
+# otherwise defaults GCC 15's scheduling to Cortex-A53. See docs/de10-kernel-tuning.md.
+ifeq ($(BR2_cortex_a9),y)
+LINUX_CFLAGS += -mtune=cortex-a9
+endif

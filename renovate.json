@@ -232,6 +232,20 @@
     },
     {
       "customType": "regex",
+      "description": "zaparoo_scanout kernel module commit pin (ZaparooProject/Menu_MiSTer, master branch; the module is kernel/scanout-slots/). Monthly cadence via the packageRule below. Hash: package/zaparoo-scanout/zaparoo-scanout.hash, refreshed by renovate-hash-sync.yml.",
+      "managerFilePatterns": [
+        "/^package/zaparoo-scanout/zaparoo-scanout\\.mk$/"
+      ],
+      "matchStrings": [
+        "ZAPAROO_SCANOUT_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "master",
+      "depNameTemplate": "ZaparooProject/Menu_MiSTer",
+      "packageNameTemplate": "https://github.com/ZaparooProject/Menu_MiSTer",
+      "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
       "description": "MidiLink_MiSTer commit pin (MiSTer-devel/MidiLink_MiSTer, master branch). Hash: package/midilink/midilink.hash, refreshed by renovate-hash-sync.yml.",
       "managerFilePatterns": [
         "/^package/midilink/midilink\\.mk$/"
@@ -424,6 +438,18 @@
   ],
   "packageRules": [
     {
+      "description": "zaparoo_scanout tracks a busy FPGA-core repository whose kernel/scanout-slots/ subdirectory rarely changes; take its commits monthly instead of weekly.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "ZaparooProject/Menu_MiSTer"
+      ],
+      "schedule": [
+        "* 0-5 1 * *"
+      ]
+    },
+    {
       "description": "Constrain the Buildroot pin to the 2026.08.x line -- do not let Renovate jump to a new Buildroot major/minor; P1.1's whole toolchain/config pin assumes the pinned line. (2026.08 is NOT an LTS; 2025.02 was the last LTS and 2027.02 is expected to be the next -- see docs. This is the interim non-LTS line until 2027.02 ships.) THIS REGEX IS WHY A LINE BUMP NEVER ARRIVES AS A RENOVATE PR, and that is deliberate, not a bug in the manager: `loose` versioning orders 2026.08 above 2026.05.2 correctly ([2026,8] vs [2026,5,2]), the github-tags datasource sees the tag, and allowedVersions then filters it out -- so a line bump stays a human decision. Moved 2026.05.x -> 2026.08.x by hand on 2026-09-05, the same way PR #54 moved 2026.02.x -> 2026.05.x. Bump this WITH the Makefile pin, never separately: leaving it behind silently freezes the pin, and moving it ahead invites a line jump nobody reviewed.",
       "matchManagers": [
         "custom.regex"
@@ -474,6 +500,7 @@
         "morrownr/rtl8852cu-20251113",
         "radxa-pkg/aic8800",
         "dlundqvist/xone",
+        "ZaparooProject/Menu_MiSTer",
         "MiSTer-devel/MidiLink_MiSTer",
         "munt/munt",
         "winterheart/broadcom-bt-firmware"

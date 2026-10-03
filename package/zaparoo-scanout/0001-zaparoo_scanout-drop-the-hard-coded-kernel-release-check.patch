@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 2 Oct 2026 16:35:16 -0500
+Subject: [PATCH] zaparoo_scanout: drop the hard-coded kernel release check
+
+validate_platform() refuses to load unless utsname()->release equals the
+literal "6.18.38-MiSTer", so the module returns -ENODEV on any other
+kernel even when it was built against that kernel. Module vermagic
+already ties a .ko to the kernel it was compiled for, and the remaining
+machine-compatible and MiSTer_fb device-tree checks still pin the
+platform and the physical layout the slots depend on.
+
+Upstream: not submitted
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ kernel/scanout-slots/zaparoo_scanout.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/kernel/scanout-slots/zaparoo_scanout.c b/kernel/scanout-slots/zaparoo_scanout.c
+index eac3033..47811b3 100644
+--- a/kernel/scanout-slots/zaparoo_scanout.c
++++ b/kernel/scanout-slots/zaparoo_scanout.c
+@@ -54,8 +54,7 @@ static int validate_platform(void)
+ 	const __be32 *cells;
+ 	int len, ret = -ENODEV;
+ 
+-	if (strcmp(utsname()->release, ZAPAROO_SCANOUT_KERNEL_RELEASE) ||
+-	    !of_machine_is_compatible(ZAPAROO_SCANOUT_MACHINE))
++	if (!of_machine_is_compatible(ZAPAROO_SCANOUT_MACHINE))
+ 		return -ENODEV;
+ 	cells = of_get_property(of_root, "#address-cells", &len);
+ 	if (!cells || len != 4 || be32_to_cpup(cells) != 1)
+-- 
+2.53.0
+

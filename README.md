@@ -1,3 +1,5 @@
+<p align="center"><img src="art/banner.png" alt="MiSTer Buildroot: Root Kun in a hard hat and hi-vis vest" width="100%"></p>
+
 # MiSTer Linux Modernization
 
 **A complete, reproducible operating system for the MiSTer DE10-Nano:** kernel, root
@@ -28,6 +30,7 @@ older binary sees a phantom IMU pad and dark Switch LEDs.)
 - [How it is put together](#how-it-is-put-together)
 - [Verification and CI](#verification-and-ci)
 - [Documentation map](#documentation-map)
+- [Meet Root Kun](#meet-root-kun)
 - [Contributing and licensing](#contributing-and-licensing)
 
 ---
@@ -586,6 +589,36 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 
 ---
 
+## Meet Root Kun
+
+MiSTer Kun, in a hard hat and a hi-vis vest, running the site where this OS gets built.
+The `#` on the hat is a root prompt: Buildroot builds the root filesystem, and the board
+runs as root. (The other MiSTer Kun projects are named after what Kun is doing, and
+"Buildroot Kun" didn't have the same ring to it, so it is Root Kun.)
+
+| | | |
+|:-:|:-:|:-:|
+| <img src="art/root-kun.png" width="200" alt="Root Kun: MiSTer Kun in a yellow hard hat with a # on the front, a hi-vis vest and a pencil behind the ear"> | <img src="art/root-kun-built.png" width="200" alt="Root Kun beside a terminal reading # make, BUILD OK"> | <img src="art/root-kun-crane.png" width="200" alt="Root Kun with a crane lowering a block labelled rootfs"> |
+| **Site foreman** | **BUILD OK** | **Topping out** |
+| <img src="art/root-kun-blueprint.png" width="200" alt="Root Kun with a defconfig blueprint"> | <img src="art/root-kun-kernel.png" width="200" alt="Root Kun with a corn kernel marked LTS"> | <img src="art/root-kun-patches.png" width="200" alt="Root Kun with a stack of .patch files"> |
+| **defconfig** | **LTS kernel** | **Every patch in-tree** |
+| <img src="art/root-kun-tarball.png" width="200" alt="Root Kun with a .tar box sealed with a green sha256 check"> | <img src="art/root-kun-stopwatch.png" width="200" alt="Root Kun with an RT stopwatch"> | <img src="art/root-kun-sdcard.png" width="200" alt="Root Kun with an SD card marked FRESH"> |
+| **Hash-verified** | **PREEMPT_RT** | **Fresh SD card** |
+
+There is a pixel version too: <img src="art/root-kun-8bit-32x32.png" width="32" alt="8-bit Root Kun"> at
+32x32 ([big](art/root-kun-8bit.png)), and a [toolchain wrench](art/root-kun-wrench.png). Every variant
+comes as SVG and PNG in [`art/`](art/), along with the [banner](art/banner.png) and the
+[social preview](art/social-preview.png); small icons
+(<img src="art/icons/hardhat-48.png" width="20" alt=""> <img src="art/icons/cone-48.png" width="20" alt="">
+<img src="art/icons/brick-48.png" width="20" alt="">) live in [`art/icons/`](art/icons/). The generator
+is [`art-src/gen.py`](art-src/gen.py): it needs Inkscape, Open Sans ExtraBold Italic, Noto Sans JP
+and DejaVu Sans Mono, and draws on the upstream `mister_kun_fullcolor.svg` vendored (hash-checked, at a
+pinned commit) in [`art-src/upstream/`](art-src/upstream/).
+Changes under `art/` and `art-src/` don't trigger an image build
+([`docs/ci.md`](docs/ci.md#gate-denylist)).
+
+---
+
 ## Contributing and licensing
 
 Contributions open **once the Phase 4 publication gate is passed**. When they do, they
@@ -596,7 +629,10 @@ no vendored binaries, hash-pinned sources, and no behaviour changes hidden in bu
 - **Repository code:** GPLv3 ([`LICENSE`](LICENSE)).
 - **Kernel patches** (`board/mister/*/linux-patches*/`): GPLv2.
 - **Packages:** their upstream licenses; each release's `legal-info` is the authoritative SBOM.
-- **MiSTer Kun artwork** (`installer-splash/`): the mascot by **HeWhoisRed**, remastered in
-  8-bit form by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun). It is
-  free to use and remix with attribution; see `installer-splash/upstream/LICENSE`. It is not
-  GPLv3.
+- **MiSTer Kun artwork** ([`board/mister/de10nano/installer-splash/`](board/mister/de10nano/installer-splash/),
+  [`art/`](art/), [`art-src/upstream/`](art-src/upstream/)): the mascot by **HeWhoisRed**,
+  remastered by [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun). It is
+  free to use and remix with attribution; see
+  [`board/mister/de10nano/installer-splash/upstream/LICENSE`](board/mister/de10nano/installer-splash/upstream/LICENSE).
+  Root Kun in `art/` is derived from that remaster and shared on the same terms. None of it
+  is GPLv3.

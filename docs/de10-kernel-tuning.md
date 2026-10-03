@@ -77,8 +77,8 @@ unaffected.
 
 | Build | Source | Test-only additions (not shipped) |
 |---|---|---|
-| **A** | `origin/master` | `CONFIG_CRYPTO_TEST=m` |
-| **B** | this branch | `CONFIG_CRYPTO_TEST=m`, `CONFIG_CRYPTO_AES_ARM_BS=m`, `CONFIG_CRYPTO_GHASH_ARM_CE=m` |
+| **A** | `origin/master` | `CONFIG_CRYPTO_BENCHMARK=m` |
+| **B** | this branch | `CONFIG_CRYPTO_BENCHMARK=m`, `CONFIG_CRYPTO_AES_ARM_BS=m`, `CONFIG_CRYPTO_GHASH_ARM_CE=m` |
 
 Both builds use the same kernel version (6.18.55), toolchain and `output/`. The test-only
 symbols go in through `BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES` in `output/.config`, so no

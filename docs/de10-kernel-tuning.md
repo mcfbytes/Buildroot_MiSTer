@@ -54,8 +54,16 @@ default build is byte-different from `cortex-a9`, `cortex-a8` and `generic-armv7
 - **`-mtune` changes scheduling and cost decisions only.** It never adds instructions the
   `-march` does not allow, so the binary stays valid on any ARMv7-A core.
 - **`-march` chooses the instruction set**, so it decides where the binary can run.
-- **`-mcpu=X` means `-march=<X's ISA>` plus `-mtune=X`.** It is not used here because the
-  kernel deliberately controls its own `-march` (and keeps the FPU out of general code).
+- **`-mcpu=X` means `-march=<X's ISA>` plus `-mtune=X`.** It is not used here. When an
+  explicit `-march` is also present, GCC keeps that `-march` and uses `-mcpu` only for
+  tuning, so it adds nothing over `-mtune`. Measured on the same three objects:
+  `-mcpu=cortex-a9` and `-march=armv7-a+mp+sec -mtune=cortex-a9` both produce `.text`
+  byte-identical to `-mtune=cortex-a9`. The `-mcpu` build also prints
+  `switch '-mcpu=cortex-a9' conflicts with switch '-march=armv7-a'` for every file. The A9's
+  extra ISA bits (`mp` = `pldw`, `sec` = `smc`, fp16) gain nothing here. The compiler never
+  emits the first two itself, and the kernel uses them in its own inline asm
+  (`arch/arm/include/asm/processor.h`). fp16 does nothing in a soft-float kernel.
+  Userspace already gets `-mcpu=cortex-a9` from the Buildroot toolchain wrapper.
 
 `KCFLAGS` comes after the kernel's own flags. Buildroot passes it through
 `LINUX_MAKE_FLAGS`, which `pkg-kernel-module.mk` (out-of-tree modules) and

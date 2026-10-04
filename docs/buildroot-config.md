@@ -1573,12 +1573,11 @@ there. It is held back for the same reason the table further down gives for
 `BR2_PACKAGE_XONE` and `BR2_PACKAGE_RTL8852CU_MORROWNR`: an out-of-tree kernel
 module is code that has to build and bind, not data, and this one has only been
 built for 32-bit ARM. Promoting it to `image-common` would put an unbuilt aarch64
-module into `make de25` on the next build. radxa builds this driver for arm64
-Rockchip targets so it is expected to work — but expected is not measured, and
-the DE25 stack is not the place to find out.
+module into `make de25` on the next build. It is expected to work on arm64 too —
+but expected is not measured, and the DE25 stack is not the place to find out.
 
 **Three things about this package that differ from every other one here**, all
-documented at length in `package/aic8800/aic8800.mk`:
+documented in `docs/wifi-parity.md` §10.1–§10.2:
 
 1. It installs **firmware as well as modules** — ~6.6 MiB across six per-chip
    directories — from the same tarball and the same pin, so a firmware bump
@@ -1586,11 +1585,11 @@ documented at length in `package/aic8800/aic8800.mk`:
 2. The firmware goes in **`/lib/firmware/<chip-variant>/`, not flat**. The driver
    does not use `request_firmware()`; it `filp_open()`s a self-built path. Flat
    installation yields a driver that silently never binds.
-3. It applies **upstream's own `debian/patches/series`** in a `POST_EXTRACT` hook,
-   skipping four firmware-relocation patches. This is load-bearing: the raw vendor
-   SDK does not compile against 6.18 (cfg80211's `get_txpower` gained
-   `radio_idx`/`link_id` in 6.17). Stock does not need the series because its
-   vendored copy is pre-merged with the same fixes.
+3. Its kbuild runs over the **parent of two module directories**, so both modules
+   land in subdirectories of `updates/`, not flat. The source is the same
+   `shenmintao/aic8800d80` tree stock vendored, with the kernel-API fixes already
+   folded in, so no vendor patch series is applied (until 2026-10-04 the package
+   used radxa-pkg and had to apply its `debian/patches/series`).
 Net effect before this line: an RTL8852CU dongle got NO driver whatsoever. It
 was the last open USB WiFi gap from the v10.1 audit (`docs/wifi-parity.md` §7).
 

@@ -2777,6 +2777,8 @@ why, and PR #149 in the incident table for what the old rule cost.
 > shape** — and it is expected to be inert (upstream's last commit is
 > 2020-06-14).
 >
+> *(2026-10-04: no longer applies. `aic8800` moved to `shenmintao/aic8800d80`,
+> which publishes no licence file, so it pins none; `docs/wifi-parity.md` §10.2.)*
 > `aic8800`, added the same day, is a new case worth watching but not a third
 > sharp one. It pins `debian/copyright`, which is neither a conventional
 > top-level `LICENSE` nor a source file: it is packaging metadata in an

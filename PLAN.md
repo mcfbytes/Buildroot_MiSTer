@@ -573,8 +573,8 @@ mister-linux/
 │   │                                   # PCIe bus file, and this board has no PCIe)
 │   ├── aic8800/                        # AICSemi AIC8800 Wi-Fi 6 + BT -- the other one.
 │   │                                   # Driver AND ~6.6 MiB of firmware from ONE pin
-│   │                                   # (radxa-pkg/aic8800, the same AICSemi SDK drop
-│   │                                   # stock vendored). Mainline has no aic8800
+│   │                                   # (shenmintao/aic8800d80, the tree stock
+│   │                                   # vendored). Mainline has no aic8800
 │   │                                   # driver over any bus. docs/wifi-parity.md §10.1
 │   ├── xone/                           # dlundqvist/xone fork (P3.2) -- driver only,
 │   │                                   # unambiguously GPL-2.0-or-later

@@ -550,7 +550,7 @@ in roughly this priority order:
    PR renaming these keys, that is expected and safe to accept.
 3. **The `git-refs` `currentValueTemplate` branch names** (`main` vs
    `master`, verified with a `ls-remote --symref` at authoring time,
-   2026-07-13; re-verified for `radxa-pkg/aic8800` on 2026-09-10, whose
+   2026-07-13; re-verified for `shenmintao/aic8800d80` on 2026-10-04, whose
    `default_branch` is `main`). The odd one out used to be
    `aircrack-ng/rtl8188eus`, whose default branch was the tag-shaped `v5.3.9`;
    that package was deleted on 2026-09-10 (see §11 of

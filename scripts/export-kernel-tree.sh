@@ -1000,24 +1000,8 @@ declare -A MODULE_PATH=(
 # from "has no MODULE_PATH" so that forgetting a mapping still fails closed --
 # the die below only accepts silence for a package named HERE.
 declare -A MODULE_EXPORT_SKIP=(
-	# aic8800 is the one driver where the fork went FIRST. Sorgelig vendored
-	# the same AICSemi SDK snapshot into MiSTer-v6.18 himself
-	# (c129b0fac34ad5d613bbec3f59d6036775e41c83, "Add AIC8800 WiFi/BT
-	# driver.", at drivers/net/wireless/aic8800), so exporting ours would
-	# hand upstream a copy of something it already has, at the same path, and
-	# collide there. The export exists to carry OUR delta; this is not one.
-	#
-	# It would also need machinery nothing else here has. Unlike every other
-	# kernel-module package, this one's sources are not at the tarball root:
-	# the tarball is radxa-pkg's whole 55 MiB multi-bus repository and the
-	# module tree lives at src/USB/driver_fw/drivers/aic8800 (hence
-	# AIC8800_MODULE_SUBDIRS). The `tar --strip-components=1` below would
-	# vendor the PCIE and SDIO drivers and the Debian packaging along with it.
-	# And the sources are only buildable AFTER upstream's own
-	# debian/patches/series is applied -- see package/aic8800/aic8800.mk --
-	# which the exporter has no notion of. If this ever does need exporting,
-	# teach the loop MODULE_SUBDIRS and the patch series first; do not just
-	# add a MODULE_PATH row.
+	# Stock already vendors this exact tree (shenmintao/aic8800d80) at the same path, so
+	# exporting ours would collide; see docs/wifi-parity.md §10.2.
 	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 

@@ -23,11 +23,12 @@ NEON at runtime:
 - `CONFIG_CRC32_ARCH=y` is the only symbol `olddefconfig` adds. The Cortex-A9 has neither
   the ARMv8 CRC32 instructions nor PMULL, so it falls back to the generic code at runtime.
 
-Separate opt-in drivers that are **not** enabled here. Each is a measurement question
-(§3.3), because the faster NEON path is not guaranteed on the A9's 64-bit NEON:
-`CRYPTO_AES_ARM_BS` (bit-sliced AES; ECB/CBC/CTR/XTS) and `CRYPTO_GHASH_ARM_CE` (whose
-NEON `vmull.p8` GHASH fallback runs on v7). Together they are the GCM/CCM half of SMB3
-encryption (`seal`) and of software Wi-Fi CCMP/GCMP.
+Two more drivers are enabled because the rig showed a clear win (§3.4). Neither turns on
+by itself: `CRYPTO_AES_ARM_BS` (bit-sliced NEON AES for ECB/CBC/CTR/XTS) and
+`CRYPTO_GHASH_ARM_CE` (despite the name, it also has a NEON `vmull.p8` GHASH that runs on
+ARMv7). Together they speed up the GCM/CCM half of SMB3 encryption (`seal`) and of
+software Wi-Fi CCMP/GCMP. CMAC (SMB3 signing) still uses scalar `aes-arm`, because the
+bit-sliced driver provides only block modes and no single-block cipher.
 
 Cost: when the kernel uses NEON it saves the user's VFP state lazily, and it runs with
 softirqs off (or with preemption off on PREEMPT_RT, `arch/arm/vfp/vfpmodule.c`). Nothing
@@ -111,9 +112,55 @@ None of 6–8 calls NEON code, so a difference there is the `-mtune` effect. 1�
 NEON. 4–5 mix both and are the ones a user would notice.
 
 **Ship rule:** keep each change unless it measurably loses. A tie keeps both, because both
-match what the hardware is. `AES_ARM_BS`/`GHASH_ARM_CE` are added (as `=y`, because a
-module the crypto API never asks for is never loaded) only if 2–3 show a clear win.
+match what the hardware is. `AES_ARM_BS`/`GHASH_ARM_CE` are added only if 2–3 show a
+clear win. They go in as `=y`. As modules they would also work: both declare
+`crypto-gcm(aes)`/`crypto-ctr(aes)`/`crypto-ghash` aliases, and the crypto API
+`request_module()`s them the first time an algorithm is instantiated, which is how round B
+used them. But an algorithm instantiated before the rootfs is mounted would bind to the
+scalar driver for good.
 
-### 3.4 Results
+### 3.4 Results (2026-10-03, rig 192.168.0.160, 6.18.55, menu core idle)
 
-_Not yet run._
+Medians of 5 runs; round order A1 → B → A2. A1 and A2 agree on every metric, so the B
+deltas are not drift. In round B the crypto API loaded the two test-only modules
+(`aes-arm-bs`, `ghash-arm-ce`) on demand. "B, no drivers" is the same B boot after
+unloading them and setting `kernel.modules_disabled=1`, which is the PR as first written.
+
+| Metric | A1 | A2 | B | B, no drivers | B vs A |
+|---|---|---|---|---|---|
+| CIFS 3.1.1 `seal`, 256 MiB read | 26.88 s | 26.73 s | **17.37 s** | 26.85 s | **+54%** (drivers only) |
+| CIFS 2.1 `sign`, 256 MiB read | 14.86 s | 14.78 s | **12.28 s** | 12.41 s | **+20%** (NEON SHA-256) |
+| CIFS 3.1.1 `sign`, 256 MiB read | 19.23 s | 19.23 s | 18.97 s | — | +1% (AES-CMAC stays scalar) |
+| CIFS 3.1.1 guest, 256 MiB read | 4.73 s | 4.78 s | 4.69 s | — | +1% |
+| `iperf3` into rig | 505 Mbit/s | 506 Mbit/s | 515 Mbit/s | — | +2% |
+| `iperf3` out of rig | 430 Mbit/s | 430 Mbit/s | 437 Mbit/s | — | +2% |
+| `perf bench sched messaging` | 5.69 s | 5.62 s | 5.59 s | — | +1% |
+| `perf bench sched pipe` | 15.5 µs | 17.9 µs | 16.2 µs | — | noise (A1/A2 differ by 15%) |
+| SD read, 256 MiB | 11.30 s | 11.31 s | 11.32 s | — | 0 |
+| exFAT `find` (34k files, cold) | 13.53 s | 13.54 s | 13.54 s | — | 0 |
+
+`tcrypt`, 1-second samples at the largest block size (single runs, about ±10%):
+
+| Algorithm | A1 | A2 | B |
+|---|---|---|---|
+| sha1 (`sha1-lib`) | 58 MB/s | 52 MB/s | **98 MB/s** |
+| sha256 (`sha256-lib`) | 36 MB/s | 32 MB/s | **51 MB/s** |
+| ghash: generic → `ghash-ce` (NEON p8) | 35 MB/s | 35 MB/s | **80 MB/s** |
+| ctr(aes): `aes-arm` → `ctr-aes-neonbs` | 14–16 MB/s | 14–15 MB/s | **24–27 MB/s** |
+| gcm(aes) | 10–12 MB/s | 10–12 MB/s | **17–20 MB/s** |
+| ccm(aes) (CBC-MAC half stays scalar) | 10 MB/s | 9–10 MB/s | 12–13 MB/s |
+
+**Disposition:**
+- **Ship `KERNEL_MODE_NEON`.** SHA-1/SHA-256 are +40–80%, which shows up as +20% on
+  SMB2-signed reads.
+- **Ship `AES_ARM_BS` and `GHASH_ARM_CE`.** On this A9, bit-sliced AES beats the scalar
+  driver, and they carry the whole +54% on SMB3 encrypted reads.
+- **Ship `-mtune=cortex-a9`.** There is no regression anywhere, and B is ahead of both A
+  rounds on network throughput (about +2%). That gain is small but holds in every run.
+- **What does not change:** SMB 3.1.1 *signed* mounts, which Windows 11 24H2 now requires by
+  default. The CIFS client signs those with AES-CMAC, a single-block cipher that stays on
+  scalar `aes-arm`. AES-GMAC signing, which the GHASH driver would accelerate, was not
+  negotiated.
+
+Scripts and raw data: `bench.sh`, `run-round.sh` and `compare.py` (kept out of tree,
+`/mnt/source/kernel-ab/` on the dev box).

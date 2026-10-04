@@ -123,6 +123,11 @@ scripts/export-kernel-tree.sh \
     --fork-sync "$(awk '$1=="MiSTer-v6.18"{print $2}' docs/kernel-recon/fork-sync.conf)"
 ```
 
+Prerequisites: `dl/` holds `linux-<pin>.tar.xz` and every vendored package's tarball (any
+machine that has built the image has them; otherwise `make <pkg>-source`), and the pinned
+Buildroot tree is unpacked (`make buildroot-unpack`; the script runs it if `work/buildroot` is
+missing). No toolchain is needed to export (§7).
+
 The result is a branch `MiSTer-v6.18` and a tag `mister-<pin>` in `work/export`, with the
 layout `EXPORT.md` describes. Re-running with unchanged inputs yields identical SHAs (the
 script's determinism promise; verified in the dry run below). To publish, fetch that branch
@@ -152,7 +157,10 @@ It verifies, and fails closed on:
 3. `make ARCH=arm MiSTer_defconfig` in the export resolves to Buildroot's `.config`
    (compiler-identity symbols reported separately when the compilers differ);
 4. unless `--no-build`: `zImage`, vanilla-named and alias-named DTBs build, and the two DTBs
-   are byte-identical.
+   are byte-identical;
+5. the vendored drivers are exactly the defconfig's kernel-module packages — literal `=y`
+   lines plus the `select`s of every enabled `mister-*` profile — less those `EXPORT.md`
+   names as "Not vendored", and each carries one commit per package patch (§7).
 
 `--llvm` substitutes `LLVM=1` for a GNU cross prefix (the environment this was first run in
 has clang but no GNU ARM toolchain). Wiring this into `build.yml` after the kernel leg, with
@@ -245,3 +253,54 @@ rendered from that same pin onto the fork's `v6.18.38` spine point.
   — a compiler-capability probe, the same class as `CC_VERSION_TEXT`.
 
 Both are classified and reported separately by the check rather than counted as drift.
+
+## 7. The package set comes from the resolved config — 2026-10-04 (issue #195)
+
+**What broke.** ADR 0030 Phase D (4e7ff01) replaced the literal `BR2_PACKAGE_XONE=y` /
+`BR2_PACKAGE_RTL8852CU_MORROWNR=y` lines with the profile `BR2_PACKAGE_MISTER_DRIVERS=y`,
+which reaches them through `select`s in `package/mister-drivers/Config.in`. Section 6b grepped
+the defconfig for literal `=y` lines, found no kernel-module package, and its fail-closed guard
+aborted every export from `master`.
+
+**The fix.** Section 6b now runs `make mister_de10nano_defconfig` against the pinned Buildroot
+tree into a throwaway `O=` and reads the **resolved** `.config` — the same thing
+`scripts/check-defconfigs.sh` does, so kconfig (not this script) decides what a `select`, a
+`depends on` or a later `is not set` means. That replaced the hand-written last-definition-wins
+`awk`. The literal pins (kernel version, patch dir, `linux.config`) still come from the
+committed defconfig, where they are stated outright.
+
+`check-export-tree.sh` derives the expected set a **second, independent way** — literal `=y`
+lines plus the unconditional `select`s of every enabled `mister-*` profile — and compares it with
+the `<pkg>: vendor …` commits and the "Not vendored" lines `EXPORT.md` now prints for each
+`MODULE_EXPORT_SKIP` entry (aic8800 today). A package that is enabled but silently absent, or
+vendored but not enabled, fails the check.
+
+**Found on the way: the vendored 8852cu never built.** The export vendored each package's
+tarball verbatim, but Buildroot also applies `package/<pkg>/*.patch` (and
+`BR2_GLOBAL_PATCH_DIR/<pkg>/`). `rtl8852cu-morrownr`'s `0001-mac_ax-use-div_u64…` is what makes
+it link on ARM32; without it `build-mister-modules.sh` died at modpost with
+`"__aeabi_uldivmod" [8852cu.ko] undefined!`. The export now applies each package patch the
+way Buildroot does (`<dir>/<version>` if present, else `<dir>`; `patch -F0 -g0 -p1 -t -N`)
+as its own commit after the verbatim vendor commit, and fails closed on a `series` file or a
+downloaded `<PKG>_PATCH`, which it does not reproduce. `check-export-tree.sh` asserts the
+commit count per driver.
+
+**Run, 2026-10-04, pin 6.18.55, standalone (no `--parent-repo`):** export PASS, 62 commits
+(1 base + 53 carried + 1 upstream-only + defconfig + DTB alias + 2 vendored drivers + 1 package
+patch + build script + `EXPORT.md`); a second run produced the same tag SHA. `check-export-tree.sh`
+with `--build-dir output/build/linux-6.18.55` and the Buildroot cross compiler: **21/21, 0
+skipped** — carried tip byte-identical to Buildroot's patched source (90,297 files), resolved
+configuration identical (3,833 symbols), `zImage` and both DTBs built. From a clone of the export,
+`make MiSTer_defconfig zImage modules` then `./build-mister-modules.sh` built all ten vendored
+modules (nine `xone_*`, `8852cu`), vermagic `6.18.55 SMP mod_unload ARMv7 p2v8`. Negative
+checks: dropping the xone vendor commit, or the 8852cu patch commit, each fails
+`check-export-tree.sh`.
+
+Recipe fix from the same run: the generated build recipes (`EXPORT.md` recipes 1 and 2, the
+`build-mister-modules.sh` header) now pass `CROSS_COMPILE` to `make MiSTer_defconfig` too.
+Resolving the defconfig with the host compiler and building with the cross one made kconfig
+re-ask the compiler-capability symbols (`RANDSTRUCT`, §6) interactively.
+
+Not run: the `--parent-repo … --parent d9ac12a691…` form against a clone of the fork. Section 6b
+is identical in both modes; the spine/parent logic is unchanged since §6.
+

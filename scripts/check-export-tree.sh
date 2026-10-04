@@ -290,6 +290,71 @@ for subject in \
 	fi
 done
 
+# Vendored drivers vs the defconfig's own package set (literal =y plus enabled profiles'
+# unconditional selects): an independent derivation, so issue #195 cannot recur silently.
+expected_kmods=()
+while read -r sym; do
+	dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
+	# shellcheck disable=SC2016 # literal Makefile text, matched with grep -F
+	if [[ -f $REPO_ROOT/package/$dir/$dir.mk ]] &&
+		grep -qF '$(eval $(kernel-module))' "$REPO_ROOT/package/$dir/$dir.mk"; then
+		expected_kmods+=("$dir")
+	fi
+done < <(
+	{
+		sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y.*$/\1/p' "${stack_files[@]}"
+		for cfgin in "$REPO_ROOT"/package/mister-*/Config.in; do
+			prof="$(sed -n 's/^config \(BR2_PACKAGE_MISTER_[A-Z_]*\)$/\1/p' "$cfgin" | head -1)"
+			if [[ -n $prof ]] && grep -qx "$prof=y" "${stack_files[@]}"; then
+				sed -n 's/^[[:space:]]*select \(BR2_PACKAGE_[A-Z0-9_]*\)[[:space:]]*$/\1/p' "$cfgin"
+			fi
+		done
+	} | sort -u
+)
+# base..tag only, so a parent repo's own history cannot supply a match.
+git -C "$export_dir" log --format=%s "${base_commit:+$base_commit..}$tag" >"$scratch/own-subjects"
+mapfile -t vendored_kmods < <(sed -n 's/^\([a-z0-9-]*\): vendor .* at .*$/\1/p' "$scratch/own-subjects" | sort -u)
+# shellcheck disable=SC2016 # the backticks are literal Markdown in EXPORT.md
+mapfile -t skipped_kmods < <(sed -n 's/^Not vendored: `\([a-z0-9-]*\)`.*$/\1/p' "$export_md" | sort -u)
+if ((${#expected_kmods[@]} == 0)); then
+	bad "the DE10 defconfig enables no kernel-module package, directly or via a profile select"
+elif ((${#vendored_kmods[@]} == 0)); then
+	bad "no vendored out-of-tree driver commits in $tag (expected: ${expected_kmods[*]})"
+else
+	kmods_ok=true
+	for k in "${expected_kmods[@]}"; do
+		if ! printf '%s\n' "${vendored_kmods[@]}" "${skipped_kmods[@]}" | grep -Fxq -- "$k"; then
+			bad "kernel-module package $k is enabled but neither vendored nor named 'Not vendored' in EXPORT.md"
+			kmods_ok=false
+		fi
+	done
+	for k in "${vendored_kmods[@]}"; do
+		if ! printf '%s\n' "${expected_kmods[@]}" | grep -Fxq -- "$k"; then
+			bad "$k is vendored in $tag but the DE10 defconfig does not enable it"
+			kmods_ok=false
+		fi
+	done
+	# Each vendored driver must also carry every package patch the image build applies.
+	global_dirs="$(sed -n 's/^BR2_GLOBAL_PATCH_DIR="\([^"]*\)".*$/\1/p' "${stack_files[@]}" | tail -1)"
+	global_dirs="${global_dirs//\$(BR2_EXTERNAL_MISTER_PATH)/$REPO_ROOT}"
+	for k in "${vendored_kmods[@]}"; do
+		want=0
+		for d in "$REPO_ROOT/package/$k" $global_dirs; do
+			[[ $d == "$REPO_ROOT/package/$k" ]] || d="$d/$k"
+			[[ -d $d ]] || continue
+			want=$((want + $(find "$d" -maxdepth 2 -name '*.patch' | wc -l)))
+		done
+		have="$(grep -c "^$k: " "$scratch/own-subjects" || true)"
+		if ((have - 1 != want)); then
+			bad "$k: $((have - 1)) package-patch commit(s) in $tag, but the image build applies $want"
+			kmods_ok=false
+		fi
+	done
+	if $kmods_ok; then
+		ok "vendored drivers match the defconfig's package set: ${vendored_kmods[*]}${skipped_kmods[*]:+ (not vendored: ${skipped_kmods[*]})}"
+	fi
+fi
+
 for f in EXPORT.md build-mister-modules.sh arch/arm/configs/MiSTer_defconfig \
 	"$ALIAS_DTS" "$VANILLA_DTS"; do
 	if git -C "$export_dir" cat-file -e "$tag:$f" 2>/dev/null; then

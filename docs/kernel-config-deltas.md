@@ -123,7 +123,7 @@ gives the reason that actually *forced* the decision.
 
 ## 2. Intentional divergences from the stock config
 
-Eleven changes. Every one is deliberate; every one is cited. **D10 is the only
+Twelve changes. Every one is deliberate; every one is cited. **D10 is the only
 *temporary* one** — it belongs to the debug-tooling work and is expected to be
 reverted; see `docs/debug-tooling.md`.
 
@@ -140,6 +140,7 @@ reverted; see `docs/debug-tooling.md`.
 | **D9** | `CONFIG_HID_LOGITECH{,_DJ,_HIDPP}`, `LOGITECH_FF`, `LOGIG940_FF`, `LOGIRUMBLEPAD2_FF`, `LOGIWHEELS_FF`, `HID_PLAYSTATION`, `PLAYSTATION_FF` | `y` | `y` | Stock parity — but they only survive because of D4. See §3.2. | stock config; §3.2 |
 | **D10** ⚠ *temporary* | `CONFIG_COREDUMP` (and, for free, `CONFIG_ELF_CORE`) | **not set** | **`y`** | Without it the kernel cannot dump core at all, so the `gdb` now shipped in the image would have nothing to open. Enabled for the field hard-hang and RT-latency investigations; **revert with the rest of the debug-tooling block.** (The hard-hang half **closed 2026-07-21** — root-caused to the 5.15-era overclock patch defaulting the board to 1.2 GHz on 6.18, fixed in PR #24 — so only RT latency still holds this open.) `ELF_CORE` (`init/Kconfig:1735`, `depends on COREDUMP`, `default y`) comes on by itself and must **not** get a line of its own — it is invisible to kconfig while `COREDUMP` is off, so `savedefconfig` would drop it. | `docs/debug-tooling.md` §2.5; stock config `:721`; `fs/Kconfig.binfmt:171` |
 | **D11** | `CONFIG_IPV6`, plus `IP6_NF_IPTABLES{,_LEGACY}`, `IP6_NF_FILTER`, `IP6_NF_TARGET_REJECT`, `NF_LOG_IPV6`; `# CONFIG_IPV6_SIT is not set` | **not set** | **`y`** | Issue #188: stock's IPv6-off was inherited, never decided. Built in (`=y`: `net/ipv6/Kconfig` warns an unloaded module crashes) but **administratively off** at boot by `etc/sysctl.d/ipv6.conf` on every interface except `lo`, so exposure is unchanged until the card opts in with `/media/fat/linux/sysctl.conf`. The v6 netfilter set mirrors D5's v4 set. `IPV6_SIT` is `default y` and is turned off so no `sit0` appears. Cost: zImage **+262,696 B** (6.18.53), **+266,056 B** (RT 7.2.7); the RT kernel gets no ip6tables filter table for the same `!PREEMPT_RT` reason it has no v4 one (ADR 0031 Tier 1.6). | ADR 0031 amendment 2026-09-23 |
+| **D12** | `CONFIG_KERNEL_MODE_NEON`, `CONFIG_CRYPTO_AES_ARM_BS`, `CONFIG_CRYPTO_GHASH_ARM_CE` (plus `CRYPTO_CRYPTD` and `CRC32_ARCH`, which come on with them) | **not set** | **`y`** | Lets the kernel use the A9's NEON unit for crypto: NEON SHA-1/SHA-256 in `lib/crypto/arm`, bit-sliced NEON AES, and NEON GHASH. Rig A/B on 6.18.55: SMB3 encrypted reads +54%, SMB2 signed reads +20%, no regressions. `memcpy` is unaffected. Built in (`=y`) so an algorithm instantiated before the rootfs mounts cannot bind to the scalar driver for good. Shared with the RT kernel; `scripts/ci-tests.sh` asserts all three on both resolved configs. The same change adds the build flag `-mtune=cortex-a9` (`external.mk`), which is not a Kconfig symbol. | `docs/de10-kernel-tuning.md` §1, §3.4 |
 
 **D1 is the one the task text warned about. D2, D4/D9 and D5 are three more of the same
 shape that nobody had found**, and they are the substance of this task. They are written up
@@ -690,3 +691,6 @@ it is new as of 2026-09. The two items worth a human's attention if they ever co
 report: `AR5523` and `BT_HCIBFUSB` (real mainline drivers, no known demand, cheap to add if
 someone asks) and `ATH10K_USB` (deliberately declined, upstream's own words, revisit only if
 upstream drops the "will not fully work" warning).
+
+*Since this pass:* D12 (2026-10, kernel-mode NEON and the NEON AES/GHASH drivers) adds three
+more ours-only symbols, recorded in §2.

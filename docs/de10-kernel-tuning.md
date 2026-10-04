@@ -72,6 +72,10 @@ default build is byte-different from `cortex-a9`, `cortex-a8` and `generic-armv7
 (`mister_installer_defconfig`, also `BR2_cortex_a9`) does too. The DE25 (`aarch64`) is
 unaffected.
 
+**Guarded in CI.** The "DE10 kernel tuning" section of `scripts/ci-tests.sh` asserts the three
+symbols `=y` in both resolved configs (6.18 and RT), and `-mtune=cortex-a9` on a compile
+line in both kernel trees.
+
 ## 3. A/B test plan
 
 ### 3.1 Builds (main clone, one commit, one toolchain)

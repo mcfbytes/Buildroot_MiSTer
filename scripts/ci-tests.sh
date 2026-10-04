@@ -2460,7 +2460,7 @@ for _kc in "$k618" "$BUILD_DIR/images/linux-rt.config"; do
 		elif grep -qx "CONFIG_$_sym=y" "$_kc"; then
 			pass "CONFIG_$_sym=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
 		else
-			fail "CONFIG_$_sym=y in $_kc" "$(grep -E "^(# )?CONFIG_$_sym[ =]" "$_kc" || echo "no CONFIG_$_sym line")"
+			fail "CONFIG_$_sym=y in $_kc" "$(grep -E "^(# )?CONFIG_${_sym}[ =]" "$_kc" || echo "no CONFIG_$_sym line")"
 		fi
 	done
 done

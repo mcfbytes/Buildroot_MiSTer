@@ -2446,6 +2446,39 @@ else
 fi
 
 # =============================================================================
+section "DE10 kernel tuning — NEON crypto + -mtune=cortex-a9 (docs/de10-kernel-tuning.md)"
+# =============================================================================
+# olddefconfig drops a symbol silently when a dependency moves, and a renamed
+# BR2_cortex_a9 guard in external.mk would drop the tune just as quietly.
+
+# Same exactly-one rule as the NFSD check: a second tree is stale from a version bump.
+k618=""; [ "${#kconfigs[@]}" -eq 1 ] && k618=${kconfigs[0]}
+for _kc in "$k618" "$BUILD_DIR/images/linux-rt.config"; do
+	for _sym in KERNEL_MODE_NEON CRYPTO_AES_ARM_BS CRYPTO_GHASH_ARM_CE; do
+		if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
+			skip "CONFIG_$_sym=y in ${_kc:-the 6.18 kernel}" "no single resolved kernel config (found ${#kconfigs[@]} 6.18 trees)"
+		elif grep -qx "CONFIG_$_sym=y" "$_kc"; then
+			pass "CONFIG_$_sym=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
+		else
+			fail "CONFIG_$_sym=y in $_kc" "$(grep -E "^(# )?CONFIG_${_sym}[ =]" "$_kc" || echo "no CONFIG_$_sym line")"
+		fi
+	done
+done
+rt_cmds=()
+for _c in "$BUILD_DIR"/build/linux-rt-[0-9]*/kernel/sched/.core.o.cmd; do
+	[ -f "$_c" ] && rt_cmds+=("$_c")
+done
+for _cmd in "${k618:+$(dirname "$k618")/kernel/sched/.core.o.cmd}" "$([ "${#rt_cmds[@]}" -eq 1 ] && echo "${rt_cmds[0]}")"; do
+	if [ -z "$_cmd" ] || [ ! -f "$_cmd" ]; then
+		skip "kernel compiled with -mtune=cortex-a9" "no single kernel build tree (${_cmd:-6.18: ${#kconfigs[@]}, RT: ${#rt_cmds[@]} found})"
+	elif grep -q -- '-mtune=cortex-a9' "$_cmd"; then
+		pass "kernel compiled with -mtune=cortex-a9 ($(basename "$(dirname "$(dirname "$(dirname "$_cmd")")")"))"
+	else
+		fail "kernel compiled with -mtune=cortex-a9" "absent from $_cmd -- LINUX_CFLAGS tune in external.mk not applied"
+	fi
+done
+
+# =============================================================================
 section "P3.11 — RTC parity"
 # =============================================================================
 

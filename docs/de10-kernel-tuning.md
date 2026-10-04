@@ -162,5 +162,5 @@ unloading them and setting `kernel.modules_disabled=1`, which is the PR as first
   scalar `aes-arm`. AES-GMAC signing, which the GHASH driver would accelerate, was not
   negotiated.
 
-Scripts and raw data: `bench.sh`, `run-round.sh` and `compare.py` (kept out of tree,
-`/mnt/source/kernel-ab/` on the dev box).
+The bench is the procedure in §3.2–3.3. It is driven by a throwaway script that is not
+in the tree.

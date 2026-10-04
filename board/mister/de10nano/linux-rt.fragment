@@ -181,3 +181,7 @@ CONFIG_NETCONSOLE_DYNAMIC=y
 CONFIG_RTW89_8852AU=m
 CONFIG_RTW89_8852CU=m
 CONFIG_RTW89_8922AU=m
+
+# --- Cache-aware load balancing (new in 7.x): dormant on a single-LLC SoC -----
+# Both A9s share one PL310 L2, so it never activates; drop its per-mm cost (docs/rt-beta-kernel.md §11).
+# CONFIG_SCHED_CACHE is not set

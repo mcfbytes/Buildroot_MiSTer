@@ -812,5 +812,35 @@ Three consequences worth having written down:
    assuming upstream has been quiet; that is the moment to choose the next
    line deliberately.
 
+## 11. `CONFIG_SCHED_CACHE` is off
+
+Linux 7.x added cache-aware load balancing (`init/Kconfig`, `default y`,
+`depends on SMP`). It tries to keep a process's threads on one last-level-cache
+domain. `linux-rt.fragment` turns it off. That is clean-up, not a tuning change:
+on a Cyclone V the feature can never do anything.
+
+- **It only switches on when there is more than one LLC.** `build_sched_domains()`
+  sets `has_multi_llcs` only when the topmost `SD_SHARE_LLC` domain has a parent
+  domain above it, and that value drives the `sched_cache_present` static key.
+  Both Cortex-A9 cores share the one PL310 L2, so the MC domain covering both
+  CPUs is the top domain. There is no parent, the key stays off, and every
+  scheduler hot path (`account_mm_sched()`, `task_tick_cache()`, the load-balance
+  hooks) returns at a patched-out branch.
+- **Some of it still costs something while dormant.** `mm_alloc_sched()` runs an
+  `alloc_percpu()` for every new `mm` (each `fork`/`exec`) whether or not the key
+  is on. The feature also adds fields to every `task_struct`, `mm_struct` and
+  `rq`, and adds code to `fair.c`. Turning it off removes all of that.
+- **It is 7.x-only.** The 6.18 tree has no such symbol, so the line lives in the
+  RT fragment, next to the other 7.x-only lines (the rtw89 USB drivers). When the
+  main kernel leaves 6.18.y, move it into `linux.config`.
+
+Verified 2026-10-03: the symbol and its Kconfig are identical in 7.2.7 and
+7.2.8. Merging `linux.config` + `linux-rt.fragment` and running `olddefconfig` on
+7.2.7 changes `SCHED_CACHE` and nothing else (apart from the usual Buildroot
+initramfs/GCC-plugin fixups). A pristine 7.2.8 built with this config compiles
+with no warnings. Turning the feature off saves 7.1 KB of `vmlinux` text,
+0.6 KB of data and 4.6 KB of `zImage`. Those numbers are small; the point of the
+change is the per-`fork`/`exec` allocation the feature does even while dormant.
+
 See also: the RT-feasibility and 7.2-port findings in the project memory / the
 session that produced this scaffold.

@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-[ -f "$BR_DIR/Makefile" ] || make -C "$ROOT" --no-print-directory buildroot-unpack
+make -s -C "$ROOT" --no-print-directory buildroot-unpack   # stamp no-op once the pin is current
 [ -x "$ROOT/work/.hostshim/install" ] && export PATH="$ROOT/work/.hostshim:$PATH"
 
 # Symbols every board defconfig must agree on (the retired `common` layer).

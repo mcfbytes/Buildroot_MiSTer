@@ -988,12 +988,10 @@ declare -A MODULE_EXPORT_SKIP=(
 	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 
-# A package is a kernel module iff its .mk evals Buildroot's kernel-module infra; the
-# enabled set is read from the RESOLVED .config so profile selects count (issue #195).
-# Needs the pinned Buildroot tree, no toolchain -- same as scripts/check-defconfigs.sh.
+# Kernel-module packages enabled in the RESOLVED .config, so profile selects count
+# (docs/kernel-export.md §7). buildroot-unpack is a stamp no-op once the pin is current.
 defconfig_name="$(basename "${STACK_FILES[0]}")"
-[[ -f $REPO_ROOT/work/buildroot/Makefile ]] ||
-	make -C "$REPO_ROOT" --no-print-directory buildroot-unpack >&2 ||
+make -s -C "$REPO_ROOT" --no-print-directory buildroot-unpack >&2 ||
 	die 'could not unpack the pinned Buildroot tree (make buildroot-unpack)'
 resolved_dir="$(mktemp -d "${TMPDIR:-/tmp}/export-kernel-tree-config.XXXXXX")" ||
 	die 'could not create a temporary directory'
@@ -1003,10 +1001,15 @@ resolved_dir="$(mktemp -d "${TMPDIR:-/tmp}/export-kernel-tree-config.XXXXXX")" |
 	fi
 	make -s -C "$REPO_ROOT/work/buildroot" O="$resolved_dir" BR2_EXTERNAL="$REPO_ROOT" \
 		BR2_DL_DIR="$REPO_ROOT/dl" "$defconfig_name"
-) >"$resolved_dir/load.log" 2>&1 ||
-	die "make $defconfig_name failed:
-$(tail -20 "$resolved_dir/load.log")"
-[[ -s $resolved_dir/.config ]] || die "make $defconfig_name produced no .config"
+) >"$resolved_dir/load.log" 2>&1 || {
+	keep="$resolved_dir"; resolved_dir=''
+	die "make $defconfig_name failed (kept $keep):
+$(tail -20 "$keep/load.log")"
+}
+if [[ ! -s $resolved_dir/.config ]]; then
+	keep="$resolved_dir"; resolved_dir=''
+	die "make $defconfig_name produced no .config (kept $keep)"
+fi
 
 mapfile -t enabled_kmods < <(
 	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y$/\1/p' "$resolved_dir/.config" |
@@ -1021,10 +1024,13 @@ mapfile -t enabled_kmods < <(
 		done
 )
 
-((${#enabled_kmods[@]})) || die "detected zero kernel-module packages in the resolved
-$defconfig_name ($resolved_dir/.config). The image ships xone and the Realtek WiFi
+if ((${#enabled_kmods[@]} == 0)); then
+	keep="$resolved_dir"; resolved_dir=''
+	die "detected zero kernel-module packages in the resolved
+$defconfig_name (kept $keep/.config). The image ships xone and the Realtek WiFi
 drivers, so this is a resolution bug, not the truth. Refusing to export a tree missing
 them; do NOT relax this check."
+fi
 
 # Announce what will actually be vendored, not what was detected: the two differ
 # whenever MODULE_EXPORT_SKIP names something (aic8800 does today). Saying
@@ -1156,7 +1162,7 @@ EOF
 
 	# Then this repo's package patches, one commit each, found and applied the way Buildroot
 	# does (pkg-patches-dirs + apply-patches.sh); without them 8852cu fails modpost on ARM32.
-	if grep -q "^${upper}_PATCH[[:space:]]*[+:]\?=" "$mk"; then
+	if grep -Eq "^[[:space:]]*${upper}_PATCH[[:space:]]*([+:?]|::)?=" "$mk"; then
 		die "${upper}_PATCH (downloaded patches) is not supported by this export: $mk"
 	fi
 	pkg_patches=()
@@ -1176,9 +1182,22 @@ EOF
 			die "package patch does not apply to the vendored $pkg: $pp"
 		pkg_patch_commits=$((pkg_patch_commits + 1))
 		git add --force "$dest"
-		GIT_AUTHOR_DATE="$base_date" GIT_COMMITTER_DATE="$base_date" \
+		if git diff --cached --quiet; then
+			die "package patch applied but changed nothing in the vendored $pkg: $pp"
+		fi
+		# git mailinfo for a format-patch file (subject + author); a plain patch has no
+		# headers, so its first line is the subject and the export committer the author.
+		pp_info="$(git mailinfo /dev/null /dev/null <"$pp")"
+		pp_subject="$(sed -n 's/^Subject: //p' <<<"$pp_info")"
+		pp_author="$(sed -n 's/^Author: //p' <<<"$pp_info")"
+		pp_email="$(sed -n 's/^Email: //p' <<<"$pp_info")"
+		[[ -n $pp_subject ]] || pp_subject="$(head -1 "$pp")"
+		pp_date="$(sed -n 's/^Date: //p' <<<"$pp_info")"
+		[[ -n $pp_author && -n $pp_email ]] || { pp_author="$EXPORT_NAME"; pp_email="$EXPORT_EMAIL"; }
+		GIT_AUTHOR_NAME="$pp_author" GIT_AUTHOR_EMAIL="$pp_email" \
+			GIT_AUTHOR_DATE="${pp_date:-$base_date}" GIT_COMMITTER_DATE="$base_date" \
 			git commit --quiet --file=- <<EOF
-$pkg: $(sed -n '1{s/^Subject: *//;s/^\[PATCH[^]]*\] *//;p;q}' "$pp")
+$pkg: $pp_subject
 
 Applied on top of the verbatim $pkg_version sources above, as Buildroot_MiSTer's
 image build applies it. Source: ${pp#"$REPO_ROOT"/} there.
@@ -1323,7 +1342,7 @@ EOF
 # tag is not just the patch count. It is
 #
 #     carried patches + upstream-only patches + defconfig + the DTB build-name alias
-#     + one per vendored driver + build-mister-modules.sh + EXPORT.md
+#     + one per vendored driver + one per package patch + build-mister-modules.sh + EXPORT.md
 #
 # and three of those terms grow on their own -- a new kernel-module package changes it
 # without anyone touching this section. So it is MEASURED, not derived from a formula

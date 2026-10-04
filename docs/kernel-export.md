@@ -301,6 +301,17 @@ Recipe fix from the same run: the generated build recipes (`EXPORT.md` recipes 1
 Resolving the defconfig with the host compiler and building with the cross one made kconfig
 re-ask the compiler-capability symbols (`RANDSTRUCT`, §6) interactively.
 
+**Review follow-ups (same PR).** A `git format-patch` package patch keeps its own subject,
+author and date (via `git mailinfo`); a plain patch takes its first line as the subject and the
+export committer as author. A patch that applies but changes nothing, and a downloaded
+`<PKG>_PATCH` in any assignment form, both fail closed; on any 6b failure the resolved
+`.config` directory is kept and named. `buildroot-unpack` now always runs (a stamp no-op once
+current) here and in `check-defconfigs.sh`, so a Buildroot bump cannot resolve against the
+old tree. The check follows nested profiles, ignores `#` comments on `select` lines, treats
+`select X if Y` as allowed-not-required (only kconfig can evaluate `Y`), counts patches by
+Buildroot's `<dir>/<version>` rule, and refuses to run rather than scan a parent repo's history
+when the base commit cannot be resolved.
+
 Not run: the `--parent-repo … --parent d9ac12a691…` form against a clone of the fork. Section 6b
 is identical in both modes; the spine/parent logic is unchanged since §6.
 

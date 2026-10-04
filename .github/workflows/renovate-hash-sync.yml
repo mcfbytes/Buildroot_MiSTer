@@ -153,6 +153,7 @@ on:
       # both-lists-or-silent-failure note as rtl8852cu-morrownr above.
       - "package/aic8800/aic8800.mk"
       - "package/xone/xone.mk"
+      - "package/zaparoo-scanout/zaparoo-scanout.mk"
       - "package/midilink/midilink.mk"
       # ADR 0023: 7-Zip, which pins the SAME ip7z/7zip release asset
       # package/lzma-sdk does. Renovate raises ONE PR touching both .mk files
@@ -297,7 +298,7 @@ jobs:
       # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
       # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
       # dualsensectl.hash.
-      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr rcheevos dualsensectl ltunify"
+      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone zaparoo-scanout midilink munt bcm20702-firmware libchdr rcheevos dualsensectl ltunify"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

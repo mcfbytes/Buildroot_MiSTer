@@ -2248,6 +2248,13 @@ first time the box gets an address, from a geo-IP lookup (ADR 0025). It needs
 the full zonelist to have a zone to copy, and the `posix/` subtree
 specifically — the same path the community `timezone.sh` copies from.
 
+### 5.46 zaparoo-scanout (out-of-tree display module)
+
+`BR2_PACKAGE_ZAPAROO_SCANOUT=y`, in the DE10-Nano defconfig directly rather
+than in the `mister-drivers` profile: the module validates the Cyclone V
+machine compatible and the DE10's `MiSTer_fb` aperture, so it is DE10-only by
+construction. See [`docs/zaparoo-scanout.md`](zaparoo-scanout.md).
+
 ---
 
 ## 6. `de25nano.fragment`

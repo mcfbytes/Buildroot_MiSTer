@@ -10,8 +10,8 @@ config BR2_PACKAGE_AIC8800
 	  Covers the commodity cheap-AX dongle market that has no driver at
 	  all in this image today: Tenda U2 (2604:0014), U11 (2604:001f),
 	  U11 Pro (2604:0020), TX1U Nano (3625:0110), the TP-Link/Mercury
-	  pair (2357:014b, 2357:014e) and 41 AICSemi-branded IDs under
-	  a69c: and 368b:.
+	  pair (2357:014b, 2357:014e) and the AICSemi-branded IDs under
+	  a69c: and 368b: -- 41 IDs in all.
 
 	  Mainline has NO aic8800 driver over any bus, in any tree checked
 	  (6.18, 7.2, 7.3-rc) -- no chip HAL, no staging entry, no
@@ -19,14 +19,12 @@ config BR2_PACKAGE_AIC8800
 	  ADR 0016 permits an out-of-tree fork. There are zero USB-ID bind
 	  conflicts against the in-kernel drivers this image builds.
 
-	  Sourced from radxa-pkg/aic8800, which packages the SAME AICSemi
-	  SDK snapshot that MiSTer stock vendored into its 6.18 kernel fork
-	  (RELEASE_DATE "2026_0123_5f7be68d"), and unlike stock also ships
-	  the firmware. See package/aic8800/aic8800.mk for the provenance
-	  chain, the vendor-patch policy, and the licence position; see
-	  docs/wifi-parity.md section 10 for the decision record.
+	  Sourced from shenmintao/aic8800d80, the tree MiSTer stock
+	  vendored into its 6.18 kernel fork and whose firmware stock
+	  ships. See docs/wifi-parity.md section 10.2 for the provenance
+	  and the licence position.
 
-	  https://github.com/radxa-pkg/aic8800
+	  https://github.com/shenmintao/aic8800d80
 
 comment "aic8800 needs a Linux kernel to be built"
 	depends on !BR2_LINUX_KERNEL

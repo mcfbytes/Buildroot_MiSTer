@@ -204,7 +204,7 @@
     },
     {
       "customType": "regex",
-      "description": "AIC8800 Wi-Fi 6 + BT driver AND firmware commit pin (radxa-pkg/aic8800, main branch). ONE pin covers both: package/aic8800 builds the two kernel modules out of src/USB/ and installs the ~6.6 MiB of firmware out of src/USB/driver_fw/fw/ from the SAME tarball, so there is deliberately no separate aic8800-firmware package and no second manager -- a firmware-only bump cannot drift away from the driver it has to match. `main` is the right ref to track and was checked, not assumed: the repository's default_branch is `main` and its branches list resolves main to 516e3b08 at pin time. A COMMIT pin rather than the github-tags pin the tag scheme invites, for exactly the reason package/bcm20702-firmware switched to one: radxa tags Debian-style (`5.0+git20260123.5f7be68d-8`), where the trailing `-N` is a packaging revision ON TOP of the base version, so under `loose` the bare `5.0+git20260123.5f7be68d` would sort higher than `-8` and Renovate would propose a downgrade. A commit pin removes the ordering question instead of teaching `loose` a bespoke scheme. Hash: package/aic8800/aic8800.hash, refreshed by renovate-hash-sync.yml's GENERIC loop -- this package needs no bespoke step: its site is a plain $(call github,radxa-pkg,aic8800,$(VERSION)) and Buildroot caches the tarball as dl/aic8800/aic8800-<sha>.tar.gz, i.e. exactly the <package-dir>-<VERSION>.tar.gz shape scripts/hash-sync-github-packages.sh assumes. THE SAME THREE-PLACE RULE AS rtl8852cu-morrownr APPLIES, and two of the three fail SILENTLY if forgotten: this manager, `aic8800` in renovate-hash-sync.yml's HASH_SYNC_PACKAGES (absent = the hash is never refreshed and the build fails on a mismatch that reads like a tampered upstream), and this .mk in that same workflow's `paths:` trigger (absent = the workflow never fires at all -- no skipped job, no red X, nothing). A FOURTH thing to check by hand on any bump that Renovate cannot see: package/aic8800/aic8800.mk applies upstream's own debian/patches/series with a four-entry skip list, and its AIC8800_CHECK_FW_PATH hook fails the build closed if a reshuffled series moves the firmware path. Read the build log's `aic8800: vendor series applied=N skipped=4` line -- N was 23 at pin time.",
+      "description": "AIC8800 Wi-Fi 6 + BT driver AND firmware commit pin (shenmintao/aic8800d80, main branch) -- the tree MiSTer stock vendored into its kernel and whose fw/ stock ships (docs/wifi-parity.md section 10.2). ONE pin covers both: package/aic8800 builds the two kernel modules out of drivers/aic8800/ and installs the ~6.6 MiB of firmware out of fw/ from the SAME tarball, so there is deliberately no separate aic8800-firmware package and no second manager -- a firmware-only bump cannot drift away from the driver it has to match. A commit pin because upstream cuts no release tags (its three tags are archive/fix markers); `main` is its default branch (legacy-mcu1 is a separate hardware branch, intentionally not tracked). Hash: package/aic8800/aic8800.hash, refreshed by renovate-hash-sync.yml's GENERIC loop -- its site is a plain $(call github,shenmintao,aic8800d80,$(VERSION)) and Buildroot caches the tarball as dl/aic8800/aic8800-<sha>.tar.gz, the <package-dir>-<VERSION>.tar.gz shape scripts/hash-sync-github-packages.sh assumes. THE SAME THREE-PLACE RULE AS rtl8852cu-morrownr APPLIES, and two of the three fail SILENTLY if forgotten: this manager, `aic8800` in renovate-hash-sync.yml's HASH_SYNC_PACKAGES (absent = the hash is never refreshed and the build fails on a mismatch that reads like a tampered upstream), and this .mk in that same workflow's `paths:` trigger (absent = the workflow never fires at all). On any bump, also check by hand that AIC8800_CHECK_FW_PATH still passes and that the module ID tables have not grown an ID an in-kernel driver claims (ADR 0016 bind-conflict rule).",
       "managerFilePatterns": [
         "/^package/aic8800/aic8800\\.mk$/"
       ],
@@ -212,8 +212,8 @@
         "AIC8800_VERSION\\s*=\\s*(?<currentDigest>[0-9a-f]{40})"
       ],
       "currentValueTemplate": "main",
-      "depNameTemplate": "radxa-pkg/aic8800",
-      "packageNameTemplate": "https://github.com/radxa-pkg/aic8800",
+      "depNameTemplate": "shenmintao/aic8800d80",
+      "packageNameTemplate": "https://github.com/shenmintao/aic8800d80",
       "datasourceTemplate": "git-refs"
     },
     {
@@ -472,7 +472,7 @@
       ],
       "matchDepNames": [
         "morrownr/rtl8852cu-20251113",
-        "radxa-pkg/aic8800",
+        "shenmintao/aic8800d80",
         "dlundqvist/xone",
         "MiSTer-devel/MidiLink_MiSTer",
         "munt/munt",

@@ -44,11 +44,11 @@
 >
 > **Update (2026-09-10, §10.1 and §11):** two decisions reversed the state above.
 > (1) **D2 is REVERSED**: `package/aic8800` now ships the driver *and* its firmware,
-> sourced from `radxa-pkg/aic8800` — the same AICSemi SDK snapshot stock vendored, which
-> unlike stock also publishes the blobs. (2) The seven **deselected** Realtek fork
-> packages were **deleted**. So the out-of-tree WiFi driver count is **two**
-> (`rtl8852cu-morrownr`, `aic8800`) and the count of out-of-tree WiFi packages that exist
-> but are not built is **zero**, down from seven.
+> sourced from `radxa-pkg/aic8800`. *(Since 2026-10-04 the source is
+> `shenmintao/aic8800d80`, the tree stock actually vendored, firmware included: §10.2.)*
+> (2) The seven **deselected** Realtek fork packages were **deleted**. So the out-of-tree
+> WiFi driver count is **two** (`rtl8852cu-morrownr`, `aic8800`) and the count of
+> out-of-tree WiFi packages that exist but are not built is **zero**, down from seven.
 
 ## 0. Correction to the task premise — there is no `wifi.sh` in the base image
 
@@ -1133,6 +1133,12 @@ either. **Re-check trigger:** more than one `-i --grep=aic` hit in the fork, or 
 
 ## 10.1 AIC8800 — decision D2 REVERSED, packaged (2026-09-10)
 
+> **Source superseded 2026-10-04 — see §10.2.** The provenance claim below ("radxa-pkg
+> carries the same tree stock vendored") was wrong: the two trees share a version header
+> but not a device table. The package now builds from `shenmintao/aic8800d80`, which *is*
+> stock's tree. The decision record, licence discussion and install-layout notes here
+> still stand; the radxa patch-series mechanics are history.
+
 **Owner decision, 2026-09-10: package it, licence ambiguity and all.** The reasoning is
 recorded here because it overrides what §10 above says, and §10 is left standing as the
 analysis that produced the original defer.
@@ -1256,6 +1262,97 @@ paths; an assertion written to the flat shape would fail forever.
   ours would collide and offer upstream something it has. It would also need the exporter
   to learn `MODULE_SUBDIRS` and the patch series, which nothing else there uses.
 
+## 10.2 AIC8800 — source switched to `shenmintao/aic8800d80`, stock parity (2026-10-04)
+
+**Why.** §10.1 matched radxa-pkg to stock on the generated version header
+(`RWNX_VERS_REV "1a4b0054d2M (master)"`, `RELEASE_DATE "2026_0123_5f7be68d"`) and the
+file inventory. Both are true, and both are shared by every tree built from that SDK
+drop. The driver *source* tells a different story:
+
+| comparison (CRLF-normalised `.c`/`.h`, Makefiles excluded) | result |
+|---|---|
+| stock `c129b0fac3` vs `shenmintao/aic8800d80` `31b726a` (2026-09-10) | **12 changed lines**: Sorgelig's `sprintf(path, "%s/%s", path, …)` → `strcat` firmware-path fix, plus one empty `#ifdef` |
+| stock `c129b0fac3` vs radxa-pkg `d13d0796` with its patch series applied | 20 differing files |
+| stock's `aic_zlp_quirk/` and its `Kconfig` `depends on KPROBES` | present in shenmintao, absent from radxa |
+| stock Release 20260912 `firmware.tar.gz`, `aic8800*/` members | **byte-identical to shenmintao `fw/`**, 89 files (radxa: 84) |
+
+Stock vendored shenmintao's tree one day before committing it. The difference that
+mattered is the `aic8800_fdrv` USB ID table under `CONFIG_USB_BT=y`: **41 entries in
+shenmintao (and stock), 15 in radxa.** radxa's table has none of the retail IDs that
+`package/aic8800/Config.in` advertised. Those IDs had been read off stock's copy. They
+are the Tenda `2604:0013/0014/001f/0020` and `3625:0110`, TP-Link `2357:014e`, Mercury
+`2357:014b`, UGREEN `368b:8d88`, the 8800DE `a69c:88de` and the M80/FC customer PIDs.
+Under radxa, every one of those dongles bound nothing. The five extra firmware files are
+Tenda `aic_userconfig_*.txt` power tables that no code path opens, so they are carried for
+parity rather than function.
+
+**Credit.** The switch was first made by **In-hwan Ryu** (`pasteur90`) in a fork of this
+repository (`pasteur90/Buildroot_MiSTer` `2fb42339`). Comparing that commit against
+master is what exposed the mistake above.
+
+**What the package does now.**
+
+- `AIC8800_SITE` is `$(call github,shenmintao,aic8800d80,…)`, pinned to `main` at
+  `b72eea95` (2026-09-24). The tarball is 4.6 MiB, against radxa's 55 MiB, because it
+  carries only the USB driver.
+- **No vendor patch series.** shenmintao folds the kernel-API fixes into the source
+  itself, as stock's copy does, so §10.1's `POST_EXTRACT` patch loop, CRLF normalisation
+  and four-patch skip list are gone. `AIC8800_CHECK_FW_PATH` stays: the driver still
+  `filp_open()`s `/lib/firmware/<variant>/` itself.
+- `AIC8800_MODULE_SUBDIRS = drivers/aic8800`, still one kbuild pass over the parent
+  directory, so the nested `updates/aic_load_fw/` and `updates/aic8800_fdrv/` install
+  paths that `scripts/ci-tests.sh` asserts are unchanged.
+- `CONFIG_AIC_ZLP_QUIRK=n`. The Bluetooth ZLP companion module hooks `btusb` with
+  kprobes, and `CONFIG_KPROBES` is off in our kernel and in stock's (`stock.config`), so
+  stock does not build it either.
+- **Ahead of stock** by the commits after `31b726a`: the Linux 7.3 cfg80211 API
+  (`2c4ab4b`), a spurious `WARN` in `rwnx_close` during USB teardown (`9cf132d`), and the
+  firmware-path fix done as `strlcat` with a bounds check (`27af5ad`) rather than stock's
+  `strcat`. The 6.12-stable monitor-channel fix (`264f29d`) and the Allwinner SUN60IW2P1
+  transfer settings (`9594c5c`) are inert here.
+- **Same log level as stock.** `aic_load_fw` defaults to
+  `LOGERROR|LOGINFO|LOGDEBUG|LOGTRACE` and `aic8800_fdrv` to `LOGERROR|LOGINFO|LOGFW`.
+  radxa's series had lowered both to `LOGERROR`. `aic_load_fw` has only 8 debug/trace call
+  sites, all in the firmware-upload path and none per packet, so this costs a few dmesg
+  lines per plug. `aicwf_dbg_level` is a module parameter if that ever matters.
+- **Pandora `1111:1111` mode switch**, as stock 20260912's new
+  `etc/udev/rules.d/61-aic-flash.rules` does: two vendor CBWs ending `f3` then `f2`, after
+  which the stick re-enumerates as `a69c:8d80`, which `aic_load_fw` claims. It is carried
+  in the §13 mechanism (rule line plus `/usr/share/usb_modeswitch/1111:1111`), not as a
+  second rules file. Neither stock nor this image ships shenmintao's `aic.rules`
+  `a69c:57xx` storage-mode `eject` rules.
+
+**Licence: one step weaker than §10.1, and the same as stock's.** shenmintao publishes
+no licence file at all, so there is no `debian/copyright` to point `AIC8800_LICENSE_FILES`
+at. The only grant is the two `MODULE_LICENSE("GPL")` declarations. The firmware
+position is unchanged. Stock carries this same tree inside its GPL-2 kernel on the same
+footing.
+
+### Verified (2026-10-04)
+
+Built in a fresh output tree against the **pinned 6.18.55** with the image's own
+toolchain, through the real package (`make aic8800`; hash check, `POST_PATCH` hook,
+`modules_install`, firmware install):
+
+| | |
+|---|---|
+| build | exit 0, **0 errors**, 9 warnings, all `-Wimplicit-fallthrough` in vendor code (radxa: 15) |
+| modules | `aic_load_fw.ko.xz` 28,460 B + `aic8800_fdrv.ko.xz` 170,500 B = **198,960 B** |
+| aliases | `aic_load_fw` 11, `aic8800_fdrv` 41, including `v2604p0013/0014/001F/0020`, `v2357p014B/014E`, `v3625p0110` |
+| `aic_zlp_quirk` | not built (`# CONFIG_KPROBES is not set`) |
+| firmware | 89 files, 6,648,611 B, under the six `/lib/firmware/aic8800*/` directories |
+| bind conflicts, 6.18.55 | no USB device-table entry anywhere in `drivers/` for VIDs `368b`, `a69c`, `1111` or the Tenda/TP-Link/`3625` PIDs |
+| `1111:1111` config | parsed by the image's own `usb_modeswitch` 2.6.2 under qemu-arm (`-W -c`): both messages and the target ID read back |
+| full DE10 image | `scripts/ci-tests.sh`: **461 PASS, 0 FAIL**, including both AIC8800 assertions and the rule/config pairing check (now 8 IDs) |
+
+### Still owed
+
+- **A hardware test.** This remains unproven on a device, as in §10.1.
+- **`chip_mcu_id=1` hardware.** shenmintao's README sends AIC8800D80 and DC/DW parts that
+  report `chip_id=7, chip_mcu_id=1` to a separate `legacy-mcu1` branch with different
+  firmware. `main` (and therefore stock) times out uploading firmware to them. Not
+  packaged. Revisit only if such a dongle turns up.
+
 ---
 
 ## 11. The deselected Realtek fork packages were deleted (2026-09-10)
@@ -1368,8 +1465,8 @@ Wi-Fi 5 1x1 part; mainline has nothing for it in any spelling. But every out-of-
 driver is an individually-maintained low-star fork (`libc0607/rtl8733bu-20230626` 8
 stars, `OpenIPC/realtek-wlan` 9, `wirenboard/rtl8733bu` 4; **no morrownr fork exists**),
 with no tagged releases and no vendor-org packaging. That is far weaker provenance than
-either driver this image ships — `radxa-pkg/aic8800` is an org with tagged releases and
-210 stars, and morrownr is the established Realtek fork maintainer. The chip also shows
+either driver this image ships — the AIC8800 source is the tree stock itself vendored
+(§10.2), and morrownr is the established Realtek fork maintainer. The chip also shows
 up mainly in FPV modules rather than the retail dongle aisle, so the demand argument that
 carried AIC8800 (§10.1) does not transfer.
 
@@ -1390,8 +1487,10 @@ never show the USB ID their driver waits for. Mainline deliberately leaves this 
 userspace: `drivers/usb/storage/unusual_devs.h` marks `0bda:1a2b` and `0bda:a192`
 `US_FL_IGNORE_DEVICE` ("otherwise usb_modeswitch may fail to switch the device into Wi-Fi
 mode"), so no `/dev/sr0` exists and the BusyBox `eject` applet has nothing to act on.
-Neither stock nor this image shipped `usb_modeswitch` before this change (stock's
-`addon.tar` at Release 20260912 has no `modeswitch` member).
+This image did not ship `usb_modeswitch` before this change. Stock always has: its base
+`rootfs.tar.bz2` carries `usb_modeswitch` and the whole data package (521 members in every
+release since 20211112). Only `addon.tar` lacks it. *(Corrected 2026-10-04; this paragraph
+first said stock had none.)*
 
 ### What ships
 
@@ -1409,8 +1508,11 @@ Neither stock nor this image shipped `usb_modeswitch` before this change (stock'
   "overriding config" syslog nag as `/etc/usb_modeswitch.d/` would cause), plus
   `etc/udev/rules.d/40-usb-modeswitch-wifi.rules` with one exact VID:PID line each. CI
   asserts the rule list and the config list name the same IDs.
+- An eighth, `1111:1111`, for the AIC8800 "Pandora" clone (added 2026-10-04, §10.2). It is
+  not in usb-modeswitch-data; it transcribes stock 20260912's `61-aic-flash.rules`
+  command line. The installed-cost figure above predates it.
 
-### The seven — every WiFi ZeroCD entry whose post-switch ID we drive
+### The eight — every WiFi ZeroCD entry whose post-switch ID we drive
 
 Each target ID was checked against the device table of the driver in the 6.18.53 tree,
 and the driver's firmware against `output/target/lib/firmware`. The RT kernel builds the
@@ -1425,12 +1527,14 @@ same modules from the same `linux.config`.
 | `057c:62ff` AVM FRITZ!WLAN | `057c:8501` / `8502` | `rt2800usb` / `mt76x0u` | `rt2870.bin` / `mediatek/mt7610u.bin` |
 | `057c:84ff` AVM FRITZ!WLAN N | `057c:8401` | `carl9170` | `carl9170-1.fw` |
 | `0cf3:20ff` Netgear WNDA3200 | `0cf3:7010` | `ath9k_htc` | `htc_7010.fw` |
+| `1111:1111` AIC8800D80 "Pandora" | `a69c:8d80` | `aic_load_fw` → `aic8800_fdrv` (§10.2) | `aic8800D80/*` |
 
-The issue listed the first four; the last three came from a second pass over every config
-whose comment names WiFi/WLAN. AVM's `62ff` also lists `8602`, which no driver claims,
-harmlessly. **Left out, with reasons:** `148f:2578` (Motorola, switches to `148f:9021`,
-which `rt73usb` claims, but `rt73.bin` is not in the image); `0ace:2011`/`20ff` (ZyDAS: we
-build no `zd1211rw`, and that driver ejects its own installer mode anyway).
+The issue listed the first four; the next three came from a second pass over every config
+whose comment names WiFi/WLAN, and `1111:1111` came with the AIC8800 parity work. AVM's
+`62ff` also lists `8602`, which no driver claims, harmlessly. **Left out, with reasons:**
+`148f:2578` (Motorola, switches to `148f:9021`, which `rt73usb` claims, but `rt73.bin` is
+not in the image); `0ace:2011`/`20ff` (ZyDAS: we build no `zd1211rw`, and that driver
+ejects its own installer mode anyway).
 
 ### Wiring, verified rather than read off the Makefile
 

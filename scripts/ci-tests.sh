@@ -869,7 +869,7 @@ if [ -z "$aic_missing" ]; then
 	pass "out-of-tree WiFi: aic_load_fw + aic8800_fdrv .ko.xz present (AIC8800, ADR 0016)"
 else
 	fail "out-of-tree WiFi: aic_load_fw + aic8800_fdrv .ko.xz present (AIC8800, ADR 0016)" \
-		"missing:$aic_missing -- BR2_PACKAGE_AIC8800 dropped, the vendor patch series failed to apply (check the build log for 'aic8800: vendor series applied=23 skipped=4'), or a kernel bump left them stale (make aic8800-dirclean; make linux-rebuild all)"
+		"missing:$aic_missing -- BR2_PACKAGE_AIC8800 dropped, the source moved away from drivers/aic8800 (AIC8800_MODULE_SUBDIRS), or a kernel bump left them stale (make aic8800-dirclean; make linux-rebuild all)"
 fi
 
 # AIC8800 firmware. Asserted SEPARATELY from the modules, and specifically at

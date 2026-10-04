@@ -270,6 +270,9 @@ refuted (§3), and C would re-create the PR #24 auto-overclock bug.
 
 ### 6.2 AIC8800 — deferred, re-open trigger is two cheap checks
 
+> **Source corrected 2026-10-04:** stock vendored `shenmintao/aic8800d80`, not a radxa-equivalent
+> tree; the package now builds from it (`docs/wifi-parity.md` §10.2).
+>
 > **Overtaken 2026-09-10:** the owner reversed D2 after Wave 3 (this repo's #163, merged into this
 > branch). `package/aic8800` builds both modules with the two ordered `M=` passes this section
 > asked for and ships all six firmware variants from `radxa-pkg/aic8800` — the same SDK snapshot

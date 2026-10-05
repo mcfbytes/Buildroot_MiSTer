@@ -2611,20 +2611,21 @@ require_absent "usr/bin/read-dev-usbmon" \
 # =============================================================================
 section "USB full-speed mode (mister-usb-full-speed, docs/dwc2-usb-irq.md)"
 # =============================================================================
-# Scripts/usb_full_speed_mode.sh launches the tool; S09 reapplies it only when the card flag exists.
+# Scripts/usb_full_speed_mode.sh launches the tool; S09 runs its `boot` verb, which acts only on the card flag.
 
 require_present "usr/sbin/mister-usb-full-speed" "mister-usb-full-speed tool"
 FS_INIT="etc/init.d/S09usb-full-speed"
-if grep -qxF "./$FS_INIT" "$TAR_LIST"; then
+if tar_has "$FS_INIT"; then
 	mode=$(tar tvf "$ROOTFS_TAR" -- "./$FS_INIT" 2>/dev/null | awk '{print $1; exit}')
 	case "$mode" in
 	-rwx*|-r-x*) pass "$FS_INIT present and executable ($mode)" ;;
 	*) fail "$FS_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
 	esac
-	if tar xOf "$ROOTFS_TAR" "./$FS_INIT" | grep -qxF 'BOOT_FLAG=/media/fat/linux/usb_full_speed'; then
-		pass "$FS_INIT acts only on the /media/fat/linux/usb_full_speed flag"
+	# shellcheck disable=SC2016 # matches a literal $TOOL in the script
+	if tar xOf "$ROOTFS_TAR" "./$FS_INIT" | grep -qF '"$TOOL" boot'; then
+		pass "$FS_INIT runs mister-usb-full-speed boot"
 	else
-		fail "$FS_INIT acts only on the /media/fat/linux/usb_full_speed flag" "flag path changed; the tool writes that path"
+		fail "$FS_INIT runs mister-usb-full-speed boot" "the every-boot choice would do nothing"
 	fi
 else
 	fail "$FS_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"

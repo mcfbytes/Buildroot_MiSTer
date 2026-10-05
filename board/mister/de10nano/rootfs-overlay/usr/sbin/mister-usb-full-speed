@@ -11,13 +11,15 @@
 # version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
 #
 # Scripts/usb_full_speed_mode.sh is its launcher; /etc/init.d/S09usb-full-speed
-# reapplies it at boot only if the user chose "every boot". See docs/dwc2-usb-irq.md.
+# runs `boot`, which applies it only if the user chose "every boot". See docs/dwc2-usb-irq.md.
 
 set -uo pipefail
 
 readonly PARAM="/sys/module/dwc2/parameters/fs_ddma"
 readonly DRV="/sys/bus/platform/drivers/dwc2"
 readonly BOOT_FLAG="/media/fat/linux/usb_full_speed"
+# Written after a verified switch on; /run is a tmpfs, so a reboot clears it.
+readonly RUN_MARK="/run/usb-full-speed"
 readonly DIALOG="/usr/bin/dialog"
 # Prompts time out to "change nothing".
 readonly PROMPT_TIMEOUT=120
@@ -40,6 +42,7 @@ mister-usb-full-speed -- USB full-speed mode (fewer USB interrupts)
   mister-usb-full-speed on           turn it on now, until the next reboot
   mister-usb-full-speed on --boot    same, and turn it on at every boot
   mister-usb-full-speed off          turn it off now and stop the boot-time one
+  mister-usb-full-speed boot         turn it on if "every boot" was chosen (S09)
 
 Every switch disconnects all USB devices for a second or two.
 EOF
@@ -49,7 +52,7 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-h|--help)     usage; exit 0 ;;
 		--boot)        PERSIST=1 ;;
-		status|on|off) MODE="$1" ;;
+		status|on|off|boot) MODE="$1" ;;
 		*) warn "mister-usb-full-speed: unknown argument: $1"; usage >&2; exit 2 ;;
 	esac
 	shift
@@ -59,30 +62,42 @@ done
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-# The parameter is only read at probe; this tool always rebinds after writing it.
+# The parameter alone proves nothing: it is read only at probe, and probe can ignore it.
 running_state() {
-	case "$(cat "$PARAM" 2>/dev/null)" in
-		Y|y|1) echo on ;;
-		*)     echo off ;;
-	esac
+	if [ -e "$RUN_MARK" ]; then echo on; else echo off; fi
 }
 
 boot_state() {
 	if [ -e "$BOOT_FLAG" ]; then echo on; else echo off; fi
 }
 
-# The bound dwc2 controller(s): ffb40000.usb on the DE10-Nano.
+# The dwc2 controller(s) on the platform bus: ffb40000.usb on the DE10-Nano.
 controllers() {
 	local d
-	for d in "$DRV"/*; do
-		[ -L "$d" ] && [ -e "$d/driver" ] && echo "${d##*/}"
+	for d in /sys/bus/platform/devices/*; do
+		tr '\0' '\n' <"$d/of_node/compatible" 2>/dev/null | grep -qx 'snps,dwc2' && echo "${d##*/}"
 	done
 }
 
-# USB storage in use: unbinding the controller under it loses data.
+# Whether block device $1 (a name under /sys/class/block) sits on USB, through dm/md slaves too.
+is_usb_block() {
+	local sys s
+	sys="$(readlink -f "/sys/class/block/$1" 2>/dev/null)" || return 1
+	case "$sys" in */usb[0-9]*) return 0 ;; esac
+	for s in "/sys/class/block/$1/slaves"/*; do
+		[ -e "$s" ] && is_usb_block "${s##*/}" && return 0
+	done
+	return 1
+}
+
+# USB block devices mounted or used for swap, as list lines: unbinding cuts them off.
 usb_storage_in_use() {
-	awk '$1 ~ /^\/dev\/sd/ { print "  " $1 " on " $2 }' /proc/mounts
-	awk 'NR > 1 && $1 ~ /^\/dev\/sd/ { print "  " $1 " (swap)" }' /proc/swaps 2>/dev/null
+	local src what dev
+	while read -r src what; do
+		case "$src" in /dev/*) ;; *) continue ;; esac
+		dev="$(readlink -f "$src")"
+		is_usb_block "${dev##*/}" && echo "  $src $what"
+	done < <(awk '{ print $1, "on " $2 }' /proc/mounts; awk 'NR > 1 { print $1, "(swap)" }' /proc/swaps 2>/dev/null)
 }
 
 # Non-hub USB devices linked at 480 Mbit/s, as list lines: the ones the cap would slow down.
@@ -137,9 +152,23 @@ require_root() {
 	[ "$(id -u)" -eq 0 ] || die "must run as root."
 }
 
-# Write the parameter and rebind every dwc2 controller so probe reads it.
+# Unbind then bind every controller; returns non-zero if any did not come back.
+rebind() {
+	local c ok=0
+	for c in "$@"; do
+		[ -e "$DRV/$c" ] && echo "$c" >"$DRV/unbind" 2>/dev/null
+	done
+	for c in "$@"; do
+		echo "$c" >"$DRV/bind" 2>/dev/null && continue
+		sleep 1
+		echo "$c" >"$DRV/bind" 2>/dev/null || ok=1
+	done
+	return "$ok"
+}
+
+# Write the parameter and rebind so probe reads it; probe logs one fs_ddma line when on.
 switch_to() {
-	local want="$1" val=0 busy c ok=1
+	local want="$1" val=0 busy last
 	[ "$want" = "on" ] && val=1
 	require_root
 
@@ -152,23 +181,31 @@ switch_to() {
 
 	local -a ctl
 	mapfile -t ctl < <(controllers)
-	[ "${#ctl[@]}" -gt 0 ] || die "no USB controller is bound to the dwc2 driver."
+	[ "${#ctl[@]}" -gt 0 ] || die "no dwc2 USB controller found."
 
 	echo "$val" >"$PARAM" || die "could not write $PARAM"
-	for c in "${ctl[@]}"; do
-		echo "$c" >"$DRV/unbind" 2>/dev/null || true
-		if ! echo "$c" >"$DRV/bind" 2>/dev/null; then
-			sleep 1
-			echo "$c" >"$DRV/bind" 2>/dev/null || ok=0
-		fi
-	done
-
-	if [ "$ok" -eq 0 ]; then
-		# A controller that will not come back leaves the box without USB: undo.
+	if ! rebind "${ctl[@]}"; then
+		rm -f "$RUN_MARK"
 		echo 0 >"$PARAM" 2>/dev/null
-		for c in "${ctl[@]}"; do echo "$c" >"$DRV/bind" 2>/dev/null; done
-		die "the USB controller did not come back in $want mode; full-speed mode is off."
+		rebind "${ctl[@]}" ||
+			die "the USB controller did not come back. USB is not working: reboot the MiSTer."
+		die "the USB controller did not come back in $want mode; it is back in normal mode."
 	fi
+
+	if [ "$want" = "off" ]; then
+		rm -f "$RUN_MARK"
+		return 0
+	fi
+	last="$(dmesg 2>/dev/null | grep 'fs_ddma' | tail -n 1)"
+	case "$last" in
+		*"host speed limit"*)
+			: >"$RUN_MARK" ;;
+		*)
+			echo 0 >"$PARAM" 2>/dev/null
+			rebind "${ctl[@]}" ||
+				die "the USB controller did not come back. USB is not working: reboot the MiSTer."
+			die "the kernel did not enable full-speed mode${last:+: ${last#*] }}" ;;
+	esac
 }
 
 set_boot_flag() {
@@ -177,8 +214,10 @@ set_boot_flag() {
 		[ -d "${BOOT_FLAG%/*}" ] || die "${BOOT_FLAG%/*} is not there; is the data partition mounted?"
 		echo "Written by Scripts/usb_full_speed_mode.sh. Delete this file to stop full-speed mode at boot." \
 			>"$BOOT_FLAG" || die "could not write $BOOT_FLAG"
+		say "Full-speed mode will be turned on at every boot ($BOOT_FLAG)."
 	else
 		rm -f "$BOOT_FLAG" || die "could not remove $BOOT_FLAG"
+		say "Full-speed mode will no longer be turned on at boot."
 	fi
 	sync
 }
@@ -190,10 +229,7 @@ do_on() {
 		switch_to on
 		say "Full-speed mode is ON until the next reboot."
 	fi
-	if [ "$PERSIST" -eq 1 ]; then
-		set_boot_flag on
-		say "It will also be turned on at every boot ($BOOT_FLAG)."
-	fi
+	[ "$PERSIST" -eq 0 ] || set_boot_flag on
 }
 
 do_off() {
@@ -203,10 +239,12 @@ do_off() {
 		switch_to off
 		say "Full-speed mode is OFF."
 	fi
-	if [ "$(boot_state)" = "on" ]; then
-		set_boot_flag off
-		say "It will no longer be turned on at boot."
-	fi
+	[ "$(boot_state)" = "off" ] || set_boot_flag off
+}
+
+do_boot() {
+	[ "$(boot_state)" = "on" ] || return 0
+	do_on
 }
 
 do_status() {
@@ -238,23 +276,32 @@ do_menu() {
 		return 0
 	fi
 
-	run="$(running_state)"; boot="$(boot_state)"
-	if [ "$run" = "off" ]; then
-		items=(now "Turn ON until the next reboot" boot "Turn ON now and at every boot")
-	elif [ "$boot" = "off" ]; then
-		items=(off "Turn OFF" boot "Keep ON at every boot")
-	else
-		items=(off "Turn OFF (and stop turning it on at boot)")
+	# Two screens, so each fits a small framebuffer terminal: the explanation, then the choice.
+	"$DIALOG" --clear --title " USB full-speed mode " --timeout "$PROMPT_TIMEOUT" \
+		--cr-wrap --no-collapse --msgbox "$(explain)" 0 0 || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		clear 2>/dev/null || printf '\033[2J\033[H'
+		say "Nothing changed. $(state_text)"
+		return 0
 	fi
 
-	text="$(state_text)\n\n$(explain)"
+	run="$(running_state)"; boot="$(boot_state)"
+	case "$run/$boot" in
+		off/off) items=(now "Turn ON until the next reboot" boot "Turn ON now and at every boot") ;;
+		off/on)  items=(now "Turn ON now" noboot "Stop turning it on at boot") ;;
+		on/off)  items=(off "Turn OFF" persist "Keep ON at every boot") ;;
+		on/on)   items=(off "Turn OFF, and stop turning it on at boot" noboot "Keep ON for now, stop at boot") ;;
+	esac
+
+	text="$(state_text)"
 	devs="$(high_speed_devices)"
 	if [ -n "$devs" ]; then
 		text="$text\n\nRunning at high speed now, and would slow down:\n$devs"
 	fi
 
 	choice="$("$DIALOG" --clear --title " USB full-speed mode " --timeout "$PROMPT_TIMEOUT" \
-		--cr-wrap --no-collapse --no-tags --cancel-label "Cancel" --menu "$text" 0 0 0 "${items[@]}" 3>&1 1>&2 2>&3)" || rc=$?
+		--cr-wrap --no-collapse --no-tags --cancel-label "Cancel" \
+		--menu "$text" 0 0 0 "${items[@]}" 3>&1 1>&2 2>&3)" || rc=$?
 	clear 2>/dev/null || printf '\033[2J\033[H'
 
 	if [ "$rc" -ne 0 ] || [ -z "$choice" ]; then
@@ -262,9 +309,11 @@ do_menu() {
 		return 0
 	fi
 	case "$choice" in
-		now)  do_on ;;
-		boot) PERSIST=1; do_on ;;
-		off)  do_off ;;
+		now)     do_on ;;
+		boot)    PERSIST=1; do_on ;;
+		off)     do_off ;;
+		persist) set_boot_flag on ;;
+		noboot)  set_boot_flag off ;;
 	esac
 }
 
@@ -273,5 +322,6 @@ case "$MODE" in
 	status) do_status ;;
 	on)     do_on ;;
 	off)    do_off ;;
+	boot)   do_boot ;;
 	menu)   do_menu ;;
 esac

@@ -73,13 +73,17 @@ devices currently linked at high speed, and offers:
 
 - **on until the next reboot** (the default kind of switch: a reboot always comes back at high speed);
 - **on now and at every boot**: writes `/media/fat/linux/usb_full_speed`, and
-  `/etc/init.d/S09usb-full-speed` runs `mister-usb-full-speed on` before udev when it exists;
+  `/etc/init.d/S09usb-full-speed` runs `mister-usb-full-speed boot` before udev, which switches on only when that file exists;
 - **off**, which also deletes that file.
 
 Over SSH: `mister-usb-full-speed status | on | on --boot | off`.
 
-- It refuses to switch while any `/dev/sd*` is mounted or used for swap, since the unbind cuts
-  USB storage off. A card booted from USB storage therefore cannot use it.
+- It refuses to switch while any block device on USB (directly, or under dm/md) is mounted or
+  used for swap, since the unbind cuts it off. A card booted from USB storage cannot use it.
+- "Now: ON" means the last switch was verified: the probe logged `fs_ddma: host speed limit`
+  and the tool wrote `/run/usb-full-speed`. The parameter alone is not trusted, because probe
+  ignores it on a core without descriptor DMA. If the controller does not come back, the tool
+  rebinds in normal mode, and says to reboot if even that fails.
 - `u-boot.txt` is never edited: a wrong `v=` or `mmcboot=` line leaves the board at the U-Boot
   prompt ([rollback.md](user/rollback.md)), and the rebind gives the same result without one.
 - It does not switch the `0062` SOF hold-off. That is a debugfs test switch, and off RT it

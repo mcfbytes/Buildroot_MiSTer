@@ -292,7 +292,7 @@ EOF
 # above -- repair the card's configuration on every run, so a user who only ever
 # runs this script ends up correct.
 #
-# Needed because both companion shims drive tools that live in the ROOTFS, and a
+# Needed because every companion shim drives a tool that lives in the ROOTFS, and a
 # Linux update replaces the rootfs without ever writing to the FAT partition. A
 # user who onboarded before one of those tools existed would otherwise have the
 # whole mechanism installed and no way to launch it from the Scripts menu. That
@@ -327,7 +327,7 @@ ensure_companion_scripts() {
 
 		default_url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
 		# Indirect expansion, so each entry keeps its own documented override
-		# (MLM_CHECK_STORAGE_URL, MLM_PAIR_LOGITECH_URL) rather than one shared
+		# (MLM_CHECK_STORAGE_URL, MLM_PAIR_LOGITECH_URL, MLM_USB_FULL_SPEED_URL) rather than one shared
 		# variable that could only ever point at a single file.
 		url="${!override:-$default_url}"
 		tmp="/tmp/$name.$$"

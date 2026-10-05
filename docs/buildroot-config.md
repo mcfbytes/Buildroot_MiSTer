@@ -1139,7 +1139,9 @@ the eudev choice (§5.15). See `docs/bluetooth-parity.md`.
 
 ### 5.14 PAM / capabilities
 
-`BR2_PACKAGE_LINUX_PAM`, `BR2_PACKAGE_LIBCAP`, `BR2_PACKAGE_LIBCAP_NG`.
+`BR2_PACKAGE_LINUX_PAM`, `BR2_PACKAGE_LIBCAP`, `BR2_PACKAGE_LIBCAP_NG`,
+`BR2_PACKAGE_MINIJAIL` (our `package/minijail`; the sandbox `S92transmission` and mistarr
+use, see `docs/minijail.md`).
 
 ### 5.15 misc small libraries / tools
 

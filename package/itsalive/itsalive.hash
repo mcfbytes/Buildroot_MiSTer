@@ -56,7 +56,7 @@
 # 2026.08 and host-rust-bin 1.97.1. That build also measured what itsalive.mk's
 # point 2 claims: `file` on the installed binary reports "ELF 32-bit LSB
 # executable, ARM, EABI5 ... statically linked, stripped", 444,964 bytes.
-sha256  cc31af9df0acfab2058113d64cc7e3ac116603f6f576def80cd1aca9d32fe53a  itsalive-1aa4d830b05633a2a11882bf0ed4a4e7df5231ab-cargo6.tar.gz
+sha256  fb1396ba42926aa67fa57635f1cd5de2849c45e648da21d7660b0dbc63931ddf  itsalive-797378a7d06f9e1175151a18b98e64d17aa79a77-cargo6.tar.gz
 # LICENSE at the tree root: the GPL-3.0 text. Unaffected by the vendoring
 # above, so unlike the tarball this IS an ordinary `sha256sum` of a file you
 # can fetch and check.

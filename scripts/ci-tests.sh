@@ -2553,6 +2553,20 @@ require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
 
 # =============================================================================
+section "Process sandboxing (minijail, docs/minijail.md)"
+# =============================================================================
+
+require_present "usr/bin/minijail0" "minijail0"
+require_present "usr/lib/libminijailpreload.so" "libminijailpreload.so (the -T dynamic preload)"
+# LIBDIR=/usr/lib is what puts this path in the binary; -T dynamic loads it from there.
+if tar xOf "$ROOTFS_TAR" ./usr/bin/minijail0 2>/dev/null | grep -aqF /usr/lib/libminijailpreload.so; then
+	pass "minijail0's compiled-in preload path is /usr/lib/libminijailpreload.so"
+else
+	fail "minijail0's compiled-in preload path is /usr/lib/libminijailpreload.so" \
+		"string not found in usr/bin/minijail0 -- was LIBDIR=/usr/lib dropped from minijail.mk?"
+fi
+
+# =============================================================================
 section "BitTorrent (transmission, issue #186)"
 # =============================================================================
 

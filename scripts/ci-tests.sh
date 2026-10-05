@@ -2446,6 +2446,35 @@ else
 fi
 
 # =============================================================================
+section "Compaction — kept off mlocked RT pages (etc/sysctl.d/10-compaction.conf)"
+# =============================================================================
+# A migrated mlocked page is a minor fault on the RT thread that owns it; the
+# non-RT kernel's defaults (1 / 20) allow that. Both knobs need CONFIG_COMPACTION.
+
+for _kc in "${kconfigs[0]:-}" "$BUILD_DIR/images/linux-rt.config"; do
+	if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
+		skip "CONFIG_COMPACTION=y in ${_kc:-the 6.18 kernel}" "no resolved kernel config"
+	elif grep -qx 'CONFIG_COMPACTION=y' "$_kc"; then
+		pass "CONFIG_COMPACTION=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
+	else
+		fail "CONFIG_COMPACTION=y in $_kc" "the vm.compact* sysctls would not exist; the boot-time sysctl run would FAIL"
+	fi
+done
+CMP_SYSCTL="etc/sysctl.d/10-compaction.conf"
+if tar_has "$CMP_SYSCTL"; then
+	cmp_conf=$(tar xOf "$ROOTFS_TAR" "./$CMP_SYSCTL" | sed 's/[[:space:]]//g')
+	for _l in vm.compact_unevictable_allowed=0 vm.compaction_proactiveness=0; do
+		if printf '%s\n' "$cmp_conf" | grep -qxF "$_l"; then
+			pass "$CMP_SYSCTL sets $_l"
+		else
+			fail "$CMP_SYSCTL sets $_l" "line missing -- compaction could migrate an RT thread's locked pages"
+		fi
+	done
+else
+	fail "$CMP_SYSCTL present" "not in rootfs.tar -- compaction could migrate an RT thread's locked pages"
+fi
+
+# =============================================================================
 section "DE10 kernel tuning — NEON crypto + -mtune=cortex-a9 (docs/de10-kernel-tuning.md)"
 # =============================================================================
 # olddefconfig drops a symbol silently when a dependency moves, and a renamed

@@ -2553,6 +2553,14 @@ require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
 
 # =============================================================================
+section "Process sandboxing (minijail, docs/minijail.md)"
+# =============================================================================
+
+require_present "usr/bin/minijail0" "minijail0"
+require_present "usr/lib/libminijail.so" "libminijail.so"
+require_present "usr/lib/libminijailpreload.so" "libminijailpreload.so (the -T dynamic preload)"
+
+# =============================================================================
 section "BitTorrent (transmission, issue #186)"
 # =============================================================================
 

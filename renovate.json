@@ -286,6 +286,19 @@
     },
     {
       "customType": "regex",
+      "description": "minijail tag pin (google/minijail) -- the sandbox S92transmission and mistarr use (package/minijail/minijail.mk, docs/minijail.md). Upstream's current tags are linux-vYYYY.MM.DD; the regex versioning ignores the older linux-vN tags. Hash: package/minijail/minijail.hash, refreshed by renovate-hash-sync.yml's generic loop.",
+      "managerFilePatterns": [
+        "/^package/minijail/minijail\\.mk$/"
+      ],
+      "matchStrings": [
+        "MINIJAIL_VERSION\\s*=\\s*(?<currentValue>linux-v[\\d.]+)"
+      ],
+      "depNameTemplate": "google/minijail",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "regex:^linux-v(?<major>\\d{4})\\.(?<minor>\\d{2})\\.(?<patch>\\d{2})$"
+    },
+    {
+      "customType": "regex",
       "description": "ltunify commit pin (Lekensteyn/ltunify, master branch) -- the Logitech Unifying pairing CLI (see package/ltunify/ltunify.mk and docs/logitech-pairing.md). A COMMIT pin, not the v0.3 tag: master HEAD is v0.3 plus one commit that silences a warn_unused_result warning, and pinning the tag would emit that warning in every build. git-refs on master rather than github-tags for exactly that reason -- the useful state is one commit ahead of the newest tag, which a tag datasource can never see. THIS MANAGER IS EXPECTED TO BE INERT: upstream's last commit is 2020-06-14T20:59:19Z and the project is finished, so it should never raise a PR. It exists so the pin has a refresh path if the repository ever wakes up, rather than being the one github-sourced package here with no manager. Hash: package/ltunify/ltunify.hash, refreshed by renovate-hash-sync.yml's generic loop (standard $(call github,...) archive tarball). Note the .hash carries a SECOND sha256 line for ltunify.c, which that loop deliberately does not touch -- it is the licence file (upstream ships no LICENSE), so a changed ltunify.c means a human re-reads the header before re-deriving it.",
       "managerFilePatterns": [
         "/^package/ltunify/ltunify\\.mk$/"

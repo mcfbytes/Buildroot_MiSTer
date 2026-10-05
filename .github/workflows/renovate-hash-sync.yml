@@ -191,6 +191,8 @@ on:
       # note as rtl8852cu-morrownr above: it must appear HERE and in
       # HASH_SYNC_PACKAGES below.
       - "package/dualsensectl/dualsensectl.mk"
+      # minijail: ordinary github tag-archive pin; both lists, as above.
+      - "package/minijail/minijail.mk"
       # ltunify (Logitech Unifying pairing CLI). Ordinary github archive pin --
       # a commit SHA rather than a tag, which the generic loop in step 1 is
       # indifferent to. Same both-lists-or-silent-failure note as above.
@@ -297,7 +299,7 @@ jobs:
       # tarballs from the loop's .../archive/<ref>.tar.gz form and Buildroot's
       # .../archive/<ref>/<name>.tar.gz form -- see package/dualsensectl/
       # dualsensectl.hash.
-      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr rcheevos dualsensectl ltunify"
+      HASH_SYNC_PACKAGES: "rtl8852cu-morrownr aic8800 xone midilink munt bcm20702-firmware libchdr rcheevos dualsensectl ltunify minijail"
 
     steps:
       # A manual run pushes commits to whatever branch it is pointed at, so

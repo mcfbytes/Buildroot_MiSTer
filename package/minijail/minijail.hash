@@ -1,0 +1,3 @@
+# Locally computed: upstream publishes no checksums for its release tags.
+sha256  d6276177133059380227cc4fb6c18c796483f0c3ed5c9d458e4ac1231342373a  minijail-linux-v2026.05.18.tar.gz
+sha256  dc1433a79c832fe103c3eec62610d3e530cdbb6ab60a9c0dfb165e0edd8f2fbb  LICENSE

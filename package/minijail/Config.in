@@ -1,0 +1,20 @@
+config BR2_PACKAGE_MINIJAIL
+	bool "minijail"
+	depends on BR2_USE_MMU # fork()
+	depends on !BR2_STATIC_LIBS # libminijailpreload.so
+	select BR2_PACKAGE_LIBCAP
+	help
+	  Google's process sandboxing tool: minijail0 runs a program
+	  as another uid inside mount/PID/IPC/UTS namespaces with a
+	  bind-mount allow-list, a reduced capability set and
+	  no_new_privs. libminijailpreload.so is installed for the
+	  default (-T dynamic) mode.
+
+	  These kernels have no seccomp, Landlock or user namespaces,
+	  so never pass -S or --fs-path-*. See docs/minijail.md.
+
+	  https://google.github.io/minijail/
+
+comment "minijail needs a toolchain w/ dynamic library"
+	depends on BR2_USE_MMU
+	depends on BR2_STATIC_LIBS

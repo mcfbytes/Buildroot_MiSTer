@@ -2468,9 +2468,9 @@ idiom** and should get the same treatment when next touched.
    (`package/*/*.mk` + their `.hash`): the driver/firmware pins plus
    `libchdr` and `rcheevos` (userspace shared libraries — the first from the
    Main_MiSTer shared-lib refactor, the second the RetroAchievements client
-   library) and `dualsensectl` + `ltunify` (userspace CLIs — the DualSense
-   operator tool and the Logitech pairing tool). None of the last four is a
-   driver, but all have the exact same `$(call github,...)` archive shape;
+   library) and `dualsensectl` + `ltunify` + `minijail` (userspace CLIs — the
+   DualSense operator tool, the Logitech pairing tool and the process sandbox).
+   None of the last five is a driver, but all have the exact same `$(call github,...)` archive shape;
    `dualsensectl` and `rcheevos` differ only in pinning a `v`-prefixed tag
    rather than a commit SHA, which the loop handles without special-casing —
    demonstrated on 2026-09-16, when the loop was run standalone against the

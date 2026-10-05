@@ -191,6 +191,11 @@ menu "Off-device backup"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/azcopy/Config.in"
 endmenu
 
+menu "Process sandboxing"
+	# minijail0 confines daemons such as transmission-daemon (docs/minijail.md).
+	source "$BR2_EXTERNAL_MISTER_PATH/package/minijail/Config.in"
+endmenu
+
 menu "SD-card installer (ADR 0020)"
 	# Packages that exist for the throwaway first-boot installer cpio
 	# (configs/mister_installer_defconfig) and nothing else. itsalive draws

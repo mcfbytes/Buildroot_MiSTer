@@ -19,11 +19,11 @@
 # times while leaving a hash stale -- run 29669946883). See "Testing against
 # a fixture" below.
 #
-# Covers the 9 github-sourced packages named in HASH_SYNC_PACKAGES
+# Covers the github-sourced packages named in HASH_SYNC_PACKAGES
 # (package/*/*.mk + their .hash): the 6 driver/firmware pins
 # (rtl8852cu-morrownr, aic8800, xone, midilink, munt, bcm20702-firmware),
-# libchdr (a userspace shared library -- Main_MiSTer shared-lib refactor) and
-# dualsensectl + ltunify (userspace CLIs) -- the last three are not drivers,
+# libchdr + rcheevos (userspace shared libraries) and dualsensectl + ltunify +
+# minijail (userspace CLIs) -- the last five are not drivers,
 # but have the exact same $(call github,...) archive shape.
 #
 # It was 15 packages / 12 driver pins until 2026-09-10, when the seven

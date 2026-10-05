@@ -75,7 +75,8 @@ boot_state() {
 controllers() {
 	local d
 	for d in /sys/bus/platform/devices/*; do
-		tr '\0' '\n' <"$d/of_node/compatible" 2>/dev/null | grep -qx 'snps,dwc2' && echo "${d##*/}"
+		[ -r "$d/of_node/compatible" ] || continue
+		tr '\0' '\n' <"$d/of_node/compatible" | grep -qx 'snps,dwc2' && echo "${d##*/}"
 	done
 }
 

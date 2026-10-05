@@ -143,7 +143,7 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 | `linux/7za` | Replaced: 7-Zip 26.03 instead of the 2016 p7zip |
 | `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
 | `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
-| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/usb_full_speed_mode.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md) and [USB full-speed mode](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu) launchers |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/usb_full_speed_mode.sh`, `Scripts/cpu_isolation.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md), [USB full-speed mode](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu) and [CPU isolation](docs/cpu-isolation.md) launchers |
 
 Everything else under `linux/` is rewritten with byte-identical content, because the release
 archive *is* stock's archive with those files swapped in; small files are backed up to
@@ -256,6 +256,7 @@ secure-by-default network posture is proposed in
 | ZeroCD Wi-Fi dongles | No `usb_modeswitch`, so they stay in CD mode | `usb_modeswitch` with the configs these dongles need |
 | USB controller polling | A 1 kHz full-speed device is polled every 2 ms | Fixed in the dwc2 host driver: 500 → 984 reports/s measured ([doc](docs/dwc2-usb-irq.md)) |
 | USB interrupt load | About 9,000 interrupts/s on CPU0 with a pad plugged in | Same by default; **Scripts > usb_full_speed_mode.sh** caps USB at 12 Mbit/s and drops it to about 100/s ([doc](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu)) |
+| CPU1 for the main program | Linux work can land on the main program's CPU | **Scripts > cpu_isolation.sh** keeps it on CPU0, live or via `isolcpus=` ([doc](docs/cpu-isolation.md)) |
 | Off-device backup | None | `azcopy` packaged, not enabled by default ([doc](docs/azcopy.md)) |
 
 <a id="wi-fi-and-bluetooth"></a>
@@ -565,6 +566,7 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 | [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.2 variant |
 | [`docs/kernel-export.md`](docs/kernel-export.md) | Exporting to a `Linux-Kernel_MiSTer`-style tree |
 | [`docs/dwc2-usb-irq.md`](docs/dwc2-usb-irq.md) | USB host interrupt load and polling fixes |
+| [`docs/cpu-isolation.md`](docs/cpu-isolation.md) | Keeping Linux work off the main program's CPU |
 
 | Contracts | |
 |---|---|

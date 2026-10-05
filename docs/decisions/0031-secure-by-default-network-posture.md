@@ -378,8 +378,12 @@ remains Proposed.
    feature, on the 6.18 kernel. Upstream ARM removes it under `PREEMPT_RT` on SMP
    (`arch/arm/Kconfig:87` in 7.2.9) because each branch flip patches kernel text under
    `stop_machine()`, a latency spike RT exists to avoid. So the RT kernel builds without
-   it. On the 6.18 kernel the same mechanism means a flip pauses both cores briefly; flips
-   happen at boot and on rare configuration events, not in steady state.
+   it. On the 6.18 kernel the same mechanism pauses both cores, including Main_MiSTer's
+   CPU1, once per patched site when a key flips. Outside tracing, the keys a running board
+   can flip are few and one-off (first iptables use, a timestamping socket, delay
+   accounting; counts in D13). **Release gate:** a rig cyclictest on CPU1 while each of
+   those flips must show no stall worth a frame; if it does, this item is reverted on its
+   own.
 
 **Not taken, deliberately.**
 

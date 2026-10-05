@@ -2546,7 +2546,7 @@ for _kc in "$k618" "$BUILD_DIR/images/linux-rt.config"; do
 	[ "$_kc" = "$k618" ] && _syms="$_syms JUMP_LABEL"
 	for _sym in $_syms; do
 		if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
-			skip "CONFIG_$_sym=y in ${_kc:-the 6.18 kernel}" "no single resolved kernel config (found ${#kconfigs[@]} 6.18 trees)"
+			skip "CONFIG_$_sym=y in ${_kc:-the 6.18 kernel}" "${_kc:+$_kc not built}${_kc:-no single resolved 6.18 config (found ${#kconfigs[@]} trees)}"
 		elif grep -qx "CONFIG_$_sym=y" "$_kc"; then
 			pass "CONFIG_$_sym=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
 		else
@@ -2570,6 +2570,12 @@ if tar xOf "$ROOTFS_TAR" ./usr/libexec/sshd-auth 2>/dev/null | grep -aq 'prepari
 	pass "sshd-auth carries the seccomp filter sandbox"
 else
 	fail "sshd-auth carries the seccomp filter sandbox" "built SANDBOX_NULL? (stale openssh stamp -- make openssh-dirclean)"
+fi
+if tar xOf "$ROOTFS_TAR" ./usr/libexec/sshd-auth 2>/dev/null | grep -aq 'kernel lacks seccomp'; then
+	pass "sshd-auth tolerates a kernel without seccomp (patches/openssh/0001)"
+else
+	fail "sshd-auth tolerates a kernel without seccomp (patches/openssh/0001)" \
+		"patch not applied: this rootfs on an older kernel would drop every SSH login"
 fi
 if tar xOf "$ROOTFS_TAR" ./etc/fstab 2>/dev/null | grep -qE '^cgroup2[[:space:]]+/sys/fs/cgroup[[:space:]]+cgroup2[[:space:]]'; then
 	pass "fstab mounts cgroup2 at /sys/fs/cgroup (S92transmission's pids limit)"

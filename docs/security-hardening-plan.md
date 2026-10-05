@@ -93,10 +93,13 @@ fails; CI asserts `^DefaultRoot[[:space:]]+/media$`.
 
 ### S5 — `CONFIG_SECCOMP=y` + OpenSSH sandbox — Size S — Depends: none — **DONE 2026-10-04** (D13; rig boot still owed)
 
-Both `linux.config` files (de10nano, de25nano) and the RT fragment if it overrides;
-`BR2_PACKAGE_OPENSSH_SANDBOX=y` in `de10nano-image.fragment`; delete the "must stay off"
-warnings in both fragments and in `ssh-ftp-parity.md` and replace them with the reason
-it is now on. This is one PR, both symbols, or it ships a listening-but-dead sshd.
+As done: `CONFIG_SECCOMP=y` in `board/mister/de10nano/linux.config` (both DE10 kernels
+read it) and in the shared `board/mister/common/linux-mister.fragment` (DE25); the
+`# BR2_PACKAGE_OPENSSH_SANDBOX is not set` line deleted from
+`configs/mister_de10nano_defconfig`, so Buildroot's default `y` applies; the "must stay
+off" warnings replaced with the reason it is now on. One PR, both symbols, or it ships a
+listening-but-dead sshd. A carried patch (`board/mister/de10nano/patches/openssh/0001`)
+keeps sshd usable if this rootfs is booted on a kernel with no seccomp at all.
 
 **Done when:** rig boots both kernels; `ssh` works; `dmesg`/`logread` shows no sandbox
 failure; `sshd -T` unchanged; `zcat /proc/config.gz | grep SECCOMP=y`; CI asserts both

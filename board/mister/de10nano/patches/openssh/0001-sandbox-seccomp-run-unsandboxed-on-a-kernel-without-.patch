@@ -1,0 +1,51 @@
+From 64f361f0055c3b922b010753280758efbd7621b5 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Sun, 4 Oct 2026 21:22:05 -0500
+Subject: [PATCH] sandbox-seccomp: run unsandboxed on a kernel without seccomp
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Since 10.4 (upstream 7ab700f) a failed PR_SET_SECCOMP is fatal(). On
+a kernel built without CONFIG_SECCOMP that makes sshd bind and listen
+while every connection dies before authentication.
+
+This image's kernels have seccomp (kernel delta D13), but linux.img and
+zImage_dtb are separate files on the card, so an older or stock kernel
+can be paired with this rootfs. Fall back to the pre-10.4 behaviour
+only when the kernel has no seccomp at all (PR_GET_SECCOMP also fails
+with EINVAL), and log it. Every other failure stays fatal.
+
+Upstream: not submitted; MiSTer-specific downgrade safety
+(docs/buildroot-config.md §5.19).
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ sandbox-seccomp-filter.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/sandbox-seccomp-filter.c b/sandbox-seccomp-filter.c
+index bf753ee..10f96c9 100644
+--- a/sandbox-seccomp-filter.c
++++ b/sandbox-seccomp-filter.c
+@@ -560,8 +560,18 @@ ssh_sandbox_child(struct ssh_sandbox *box)
+ 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+ 		fatal_f("prctl(PR_SET_NO_NEW_PRIVS): %s", strerror(errno));
+ 	debug3_f("attaching seccomp filter program");
+-	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &preauth_program) == -1)
+-		fatal_f("prctl(PR_SET_SECCOMP): %s", strerror(errno));
++	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &preauth_program) == -1) {
++		int saved_errno = errno;
++
++		/* No seccomp in the kernel at all: PR_GET_SECCOMP fails too. */
++		if (saved_errno == EINVAL &&
++		    prctl(PR_GET_SECCOMP, 0, 0, 0, 0) == -1 && errno == EINVAL) {
++			error_f("kernel lacks seccomp; pre-auth child is "
++			    "NOT sandboxed");
++			return;
++		}
++		fatal_f("prctl(PR_SET_SECCOMP): %s", strerror(saved_errno));
++	}
+ }
+ 
+ #endif /* SANDBOX_SECCOMP_FILTER */

@@ -1266,7 +1266,12 @@ Kernel delta D13 (`docs/kernel-config-deltas.md`) turned seccomp on in both DE10
 the line was deleted in the same commit; `sshd-auth` now runs as `sshd` with
 `NoNewPrivs 1` and `Seccomp 2`, verified in a QEMU boot of the image's own `linux.img`.
 `scripts/ci-tests.sh` asserts the Buildroot symbol, the kernel symbols and the sandbox
-string in `sshd-auth` together, so neither half can move alone again. NB: configure-time
+string in `sshd-auth` together, so neither half can move alone again. A carried patch,
+`board/mister/de10nano/patches/openssh/0001`, keeps the image usable when this rootfs is
+booted on a kernel with no seccomp at all (`linux.img` and `zImage_dtb` are separate files
+on the card): only when `PR_GET_SECCOMP` also fails with `EINVAL` does the pre-auth child
+log the fact and run unsandboxed, as before openssh 10.4; any other failure stays fatal.
+NB: configure-time
 flag — changing it requires `make openssh-dirclean`, or the stale stamp ships the old sshd.
 See `docs/ssh-ftp-parity.md`.
 

@@ -20,6 +20,8 @@ RUN_DIR=/run/transmission
 ROOT_DIR="$RUN_DIR/root"
 PIDFILE="$RUN_DIR/jail.pid"
 POLICY="$RUN_DIR/seccomp.policy"
+# Writable binds are re-mounted with these, so nothing on them can be executed or mapped executable.
+RW_FLAGS="MS_BIND|MS_REMOUNT|MS_NOEXEC|MS_NOSUID|MS_NODEV"
 CGROUP=/sys/fs/cgroup/transmission
 PIDS_MAX=64
 TM_UID=8422
@@ -32,7 +34,8 @@ move_mount open_tree open_tree_attr fsopen fsconfig fsmount fspick unshare setns
 swapon swapoff reboot kexec_load kexec_file_load init_module finit_module
 delete_module acct quotactl quotactl_fd syslog settimeofday clock_settime
 clock_settime64 adjtimex clock_adjtime clock_adjtime64 sethostname setdomainname
-personality vhangup name_to_handle_at open_by_handle_at fanotify_init"
+personality vhangup name_to_handle_at open_by_handle_at fanotify_init memfd_create
+execveat"
 CR=$(printf '\r')
 
 # The opt-in gate, same shape as S91smb's `samba.sh`: no directory on the card,
@@ -104,7 +107,7 @@ $dir"
 prepare_root() {
 	mkdir -p "$RUN_DIR" && chmod 0700 "$RUN_DIR" && mkdir -p "$ROOT_DIR" || return 1
 	if mountpoint -q "$ROOT_DIR"; then umount "$ROOT_DIR" || return 1; fi
-	mount -t tmpfs -o mode=0755,size=256k,nosuid,nodev tmpfs "$ROOT_DIR" || return 1
+	mount -t tmpfs -o mode=0755,size=256k,nosuid,nodev,noexec tmpfs "$ROOT_DIR" || return 1
 	for l in bin lib sbin; do ln -s "usr/$l" "$ROOT_DIR/$l" || return 1; done
 	mkdir "$ROOT_DIR/dev" || return 1 # -d does not create its own mount point
 	[ -e /run/resolv.conf ] || : >/run/resolv.conf
@@ -118,6 +121,12 @@ write_policy() {
 			print $1 (($1 in D) ? ": return 1" : ": 1"); c++
 		}
 		END { exit c < 300 }' >"$POLICY"
+}
+
+# Fails unless Landlock is enforced: without it the jail root is writable via DAC override.
+check_landlock() {
+	# Succeeds only if the jail ran and the write was refused; a jail that failed fails too.
+	JAIL_EXTRA="" jail /bin/sh -c '! printf "" >/etc/.landlock-probe' 2>/dev/null
 }
 
 # The daemon's own cgroup2 group, with a ceiling on processes plus threads.
@@ -138,14 +147,16 @@ jail() {
 		-b /run/resolv.conf,/etc/resolv.conf \
 		-k 'proc,/proc,proc,MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC' -d \
 		-k 'tmpfs,/tmp,tmpfs,MS_NOSUID|MS_NODEV|MS_NOEXEC,size=16m' \
-		-b "$STATE_DIR,$HOME_DIR,1" -R RLIMIT_CORE,0,0 -S "$POLICY" \
+		-k "$STATE_DIR,$HOME_DIR,none,MS_BIND" -k "$HOME_DIR,$HOME_DIR,none,$RW_FLAGS" \
+		-R RLIMIT_CORE,0,0 -S "$POLICY" \
 		--fs-path-rx /usr --fs-path-ro /etc --fs-path-ro /proc --fs-path-rw /dev \
 		--fs-path-rw /tmp --fs-path-advanced-rw "$HOME_DIR"
 	if [ -f /media/fat/linux/timezone ] && [ ! -L /media/fat/linux/timezone ]; then
 		set -- "$@" -b /media/fat/linux/timezone,/etc/localtime
 	fi
 	while IFS= read -r dir; do
-		[ -n "$dir" ] && set -- "$@" -b "$dir,$dir,1" --fs-path-advanced-rw "$dir"
+		[ -n "$dir" ] && set -- "$@" -k "$dir,$dir,none,MS_BIND" \
+			-k "$dir,$dir,none,$RW_FLAGS" --fs-path-advanced-rw "$dir"
 	done <<-EOF
 	$RW_BINDS
 	EOF
@@ -258,12 +269,18 @@ start() {
 		echo "FAIL (could not prepare $ROOT_DIR)"
 		return 1
 	fi
-	if ! write_policy; then
+	# /run is per boot and minijail0 only changes with the image, so once per boot is enough.
+	if [ ! -s "$POLICY" ] && ! write_policy; then
+		rm -f "$POLICY"
 		echo "FAIL (could not build the seccomp policy from $MINIJAIL -H)"
 		return 1
 	fi
 	if ! prepare_cgroup; then
 		echo "FAIL (no cgroup2 pids controller at /sys/fs/cgroup)"
+		return 1
+	fi
+	if ! check_landlock; then
+		echo "FAIL (Landlock is not enforced; see docs/bittorrent.md §8.1)"
 		return 1
 	fi
 	if ! seed_settings; then
@@ -297,7 +314,7 @@ start() {
 	rm -f "$PIDFILE.new"
 	if ! check_jail "$pid"; then
 		kill -TERM "$pid"
-		echo "FAIL (jail self-check: uid, NoNewPrivs or CapEff not as configured)"
+		echo "FAIL (jail self-check: uid/gid, groups, NoNewPrivs, seccomp, cgroup or CapEff not as configured)"
 		return 1
 	fi
 	echo "$pid $(starttime "$pid")" >"$PIDFILE"

@@ -457,18 +457,31 @@ start from minijail0's own syscall table (`minijail0 -H`), so it always matches 
 that compiles it: every syscall is allowed except the `SECCOMP_DENY` list in the script,
 which return `EPERM`. That list is kernel attack surface the daemon never uses: io_uring,
 `perf_event_open`, `bpf`, the keyring calls, `ptrace` and the cross-process memory calls,
-every mount, namespace and module call, `reboot`/`kexec`, and setting the clock or hostname.
+every mount, namespace and module call, `reboot`/`kexec`, setting the clock or hostname, and
+`memfd_create`/`execveat` (running code from an anonymous file).
 It is a deny-list rather than an allow-list on purpose. minijail can only *kill* on a syscall
 outside an allow-list, and this kernel has no audit subsystem to log one, so a syscall
 nobody recorded — a rare error path, a libc upgrade — would kill the daemon mid-download with
 no trace. `EPERM` on a short list of calls it never makes cannot.
 
+**No execution from anything writable.** The state directory and every granted directory
+are bound and then re-mounted `noexec,nosuid,nodev` inside the jail, and so are `/tmp` and
+the jail's tmpfs root. `noexec` refuses both `execve` and an executable `mmap` of a file
+there, so a dropped binary cannot be started directly or through the dynamic loader
+(`ld.so ./payload`). The bind is per-mount: the same directories stay executable outside the
+jail, as the card always was.
+
 **Landlock** (`--fs-path-*`). Applied after the pivot, so the rules name jail paths:
 execute only under `/usr`; read-only `/etc` and `/proc`; read-write `/dev` and `/tmp`;
 full read-write (including cross-directory rename) on the state directory and each granted
-directory. The mount view already hides everything else; what Landlock adds is that
-nothing in a writable directory can be executed, which the card's mount flags would allow,
-and that the jail's own tmpfs root cannot be written, which `CAP_DAC_OVERRIDE` would allow.
+directory. It is a second layer under the mount view: `execve` outside `/usr` is refused even
+where a mount would allow it, and the jail's tmpfs root cannot be written, which
+`CAP_DAC_OVERRIDE` would otherwise allow. minijail skips Landlock silently when the kernel
+lacks it, so `start` first runs a probe jail that must fail to write `/etc`; if the write
+succeeds, the daemon is not started.
+
+None of this stops code that is already running inside the daemon's own address space; it
+limits what that code can reach and leave behind.
 
 **The pids cgroup.** `/etc/fstab` mounts cgroup2 at `/sys/fs/cgroup`; the script enables the
 pids controller there and runs the daemon in `/sys/fs/cgroup/transmission` with
@@ -501,7 +514,8 @@ daemon first; until then, download to the card and move files afterwards.
 **The script checks its own work.** After the start it reads `/proc/<pid>/status` and
 refuses to report success unless all four `Uid` and `Gid` fields are 8422, `Groups` holds
 nothing else, `NoNewPrivs` is 1, `Seccomp` is 2 (a filter is installed), the process is in
-the `transmission` cgroup and `CapEff` is exactly `0x2`. If minijail is missing, the policy
+the `transmission` cgroup and `CapEff` is exactly `0x2`; Landlock, which `/proc` does not
+show, is covered by the probe above. If minijail is missing, the policy
 cannot be built or the pids controller is absent, it refuses to start the daemon at all
 rather than fall back to something weaker. It also refuses if a `transmission-daemon` it did not start is already running, and a start
 that times out terminates whatever it launched rather than leave an unmanaged daemon.
@@ -523,8 +537,6 @@ before `SIGTERM`, so a frozen daemon still shuts down cleanly.
 - A pids limit but no memory limit: the memory controller charges every page-cache page on
   the box, Main_MiSTer's included, which is a system-wide cost for one daemon's limit (ADR
   0031, 2026-10-04 amendment). `oom_score_adj` stands in.
-- `rw=` binds keep the card's mount flags rather than being remounted `noexec,nosuid`;
-  Landlock denies execution there instead, and `no_new_privs` makes a setuid file inert.
 - Seccomp is a deny-list, not the allow-list the plan implies, for the reason given above.
 - mistarr's own uid (8420) and its jail, the sysctl hardening and the exFAT symlink behaviour
   are separate work and not part of this change.

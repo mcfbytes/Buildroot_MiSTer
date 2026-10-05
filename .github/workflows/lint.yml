@@ -348,14 +348,9 @@ jobs:
 
       # Same gate, same reasoning, for the SD-card installer's HDMI splash tool
       # (ADR 0020 §9). itsalive is a cargo-package: Buildroot vendors the crate
-      # graph and hashes the repacked itsalive-<sha>-cargoN.tar.gz, so NO
-      # hash-sync case refreshes package/itsalive/itsalive.hash today -- there
-      # is no cargo equivalent of case 7 yet, and the package is deliberately
-      # absent from HASH_SYNC_PACKAGES (the curl-and-hash loop would write the
-      # pre-vendoring archive's hash, a wrong value that looks right). A
-      # Renovate bump of ITSALIVE_VERSION therefore arrives with a stale .hash
-      # by construction, carries the needs-manual-hash label, and this step is
-      # what keeps it red until a human runs the recipe in that .hash file.
+      # graph and hashes the repacked itsalive-<sha>-cargoN.tar.gz. Since
+      # 2026-10-04 hash-sync case 9 rebuilds that and refreshes the .hash; this
+      # step keeps a PR red whenever case 9 skips, or on a hand edit.
       # build.yml cannot stand in: it builds the DE10 image, and itsalive
       # lives only in the installer cpio, which nothing builds before
       # release.yml's mk-sdcard.sh run -- far too late to learn the pin is bad.
@@ -378,7 +373,7 @@ jobs:
           want="itsalive-${ver}"
           got=$(awk '$1 == "sha256" && $3 ~ /-cargo[0-9]+\.tar\.gz$/ { print $3 }' "$hash")
           if [ "${got%-cargo*}" != "$want" ]; then
-            echo "::error file=$hash::stale hash pin -- ITSALIVE_VERSION is '$ver' so this file must pin '${want}-cargoN.tar.gz', but it pins '${got:-<nothing>}'. No hash-sync case refreshes this package (cargo vendoring; see the .hash header): regenerate by hand with the recipe in $hash. Do NOT add itsalive to HASH_SYNC_PACKAGES."
+            echo "::error file=$hash::stale hash pin -- ITSALIVE_VERSION is '$ver' so this file must pin '${want}-cargoN.tar.gz', but it pins '${got:-<nothing>}'. On a Renovate PR, renovate-hash-sync.yml case 9 (scripts/hash-sync-itsalive.sh) should have refreshed it -- read that run's log; otherwise regenerate with the recipe in $hash. Do NOT add itsalive to HASH_SYNC_PACKAGES."
             exit 1
           fi
           echo "itsalive pin consistent: $got"

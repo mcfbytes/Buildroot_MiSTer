@@ -24,11 +24,10 @@
 # what makes it load-bearing rather than decorative: without it a filename
 # with no line here is only WARNED about.
 #
-# HOW TO REGENERATE IT ON A VERSION BUMP. Nothing automated does this today:
-# renovate-hash-sync.yml has no cargo analogue of azcopy's case 7, so a
-# Renovate bump of ITSALIVE_VERSION carries the needs-manual-hash label and
-# stays red at lint.yml's "itsalive version/hash pin consistency" step until
-# these lines are refreshed by hand. NEVER add itsalive to that workflow's
+# HOW TO REGENERATE IT ON A VERSION BUMP. On a Renovate PR,
+# renovate-hash-sync.yml case 9 (scripts/hash-sync-itsalive.sh) does it: it
+# reruns cargo-post-process with the pinned cargo and rewrites both lines.
+# By hand, or when case 9 skips, use the recipe below. NEVER add itsalive to that workflow's
 # HASH_SYNC_PACKAGES: the generic loop's `curl | sha256sum` would write the
 # hash of the pre-vendoring archive -- a plausible-looking wrong value.
 #

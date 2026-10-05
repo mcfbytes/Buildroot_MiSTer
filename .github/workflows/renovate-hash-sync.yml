@@ -9,7 +9,7 @@
 # (safe, but red and useless without a human redoing the hash by hand). See
 # docs/ci.md#renovate-hash-sync-overview.
 #
-# Six REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
+# Seven REFRESH cases: (1) the 14 github-sourced package pins, (2) the kernel
 # tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
 # RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
 # bespoke ip7z/7zip release-asset AND license-file hashes (lzma-sdk AND
@@ -17,9 +17,10 @@
 # payload single-file pins, (6) -- numbered after validate-only case 5,
 # which predates it -- the Buildroot tarball hash (BUILDROOT_SHA256 in the
 # root Makefile), transcribed from buildroot.org's GPG-clearsigned .sign
-# manifest, and (7) azcopy's post-`go mod vendor` tarball hash, which is
-# REBUILT rather than fetched. Why a locally-computed sha256sum is a
-# legitimate source for cases 1/3/4 (not a shortcut), why cases 2 and 6
+# manifest, (7) azcopy's post-`go mod vendor` tarball hash, which is
+# REBUILT rather than fetched, and (9) itsalive's post-`cargo vendor`
+# tarball hash, rebuilt the same way (case 8 is retired). Why a
+# locally-computed sha256sum is a legitimate source for cases 1/3/4 (not a shortcut), why cases 2 and 6
 # transcribe a signed manifest instead, and why case 7 is a third kind
 # altogether: docs/ci.md#renovate-hash-sync-safety-model.
 #
@@ -87,8 +88,8 @@
 # docs/ci.md#renovate-hash-sync-outcomes-gate.
 #
 # NOTE: scripts/hash-sync-{github-packages,kernel,ip7z-src,sdcard-payload,
-# cores-pin,buildroot,azcopy}.sh + scripts/lib/hash-sync-common.sh are the
-# seven cases below -- each step
+# cores-pin,buildroot,azcopy,itsalive}.sh + scripts/lib/hash-sync-common.sh
+# are the eight cases below -- each step
 # just invokes its script (see the second checkout, below, for where the
 # scripts come from). Fix bugs IN THE SCRIPTS; this file only wires them up
 # and owns the per-pin outcome ledger / push-gate / job-summary steps that
@@ -177,15 +178,9 @@ on:
       # HASH_SYNC_PACKAGES below (case 1's curl-and-hash method would write a
       # confidently wrong value for a golang-package -- see the header).
       - "package/azcopy/azcopy.mk"
-      # itsalive (the SD-card installer's HDMI splash tool, ADR 0020 §9) is
-      # DELIBERATELY IN NEITHER LIST. It is a cargo-package, so the hashed
-      # artifact is the post-`cargo vendor` itsalive-<sha>-cargoN.tar.gz and
-      # case 1's curl-and-hash method would write a confidently wrong value,
-      # exactly as for azcopy -- but unlike azcopy it has no rebuild case of
-      # its own yet. Its bump PRs carry needs-manual-hash and fail closed at
-      # lint.yml's "itsalive version/hash pin consistency" step until a human
-      # runs package/itsalive/itsalive.hash's recipe. If a cargo analogue of
-      # case 7 is ever written, add the .mk HERE (and only here) then.
+      # itsalive (case 9, 2026-10-04): HERE, and like azcopy NEVER in
+      # HASH_SYNC_PACKAGES -- it is a cargo-package (docs/ci.md#renovate-hash-sync-itsalive).
+      - "package/itsalive/itsalive.mk"
       # dualsensectl (DualSense operator CLI). Ordinary github tag-archive pin,
       # covered by the generic loop in step 1. Same both-lists-or-silent-failure
       # note as rtl8852cu-morrownr above: it must appear HERE and in
@@ -543,6 +538,11 @@ jobs:
       # stacks -- ADR 0030: the committed defconfigs are checked by
       # scripts/check-defconfigs.sh, which needs no per-version record.)
 
+      # --- 9. itsalive's post-`cargo vendor` tarball hash ---------------------
+      # Case 7's method with cargo-post-process; cheap already-current check first.
+      - name: Rebuild and refresh the itsalive vendored-tarball hash
+        run: .hash-sync-tools/scripts/hash-sync-itsalive.sh "$GITHUB_WORKSPACE"
+
       # Gate the push: ANY pin recorded "failed" (from any of the steps
       # above) suppresses the commit/push below. MUST run and be evaluated
       # BEFORE the push -- the summary/gate step at the end of the job
@@ -567,7 +567,7 @@ jobs:
            env.RT_PATCH_HASH_CHANGED == '1' ||
            env.LZMA_SDK_HASH_CHANGED == '1' || env.SEVENZIP_HASH_CHANGED == '1' ||
            env.PAYLOAD_HASH_CHANGED == '1' || env.BUILDROOT_HASH_CHANGED == '1' ||
-           env.AZCOPY_HASH_CHANGED == '1') &&
+           env.AZCOPY_HASH_CHANGED == '1' || env.ITSALIVE_HASH_CHANGED == '1') &&
           env.HASH_SYNC_FAILED == '0'
         run: |
           set -euo pipefail
@@ -609,6 +609,10 @@ jobs:
               the only way this value can be derived, since no URL serves that
               file (see package/azcopy/azcopy.hash's header). LICENSE and
               NOTICE.txt were re-hashed from the same tarball
+            - itsalive pin: REBUILT the same way, with Buildroot's own
+              support/download/cargo-post-process and the cargo from the
+              rust-bin tarball the pinned tree pins; LICENSE re-hashed from
+              the result
           COMMITMSG
           # Shell variable, NOT a workflow-expression interpolation --
           # TARGET_BRANCH is attacker-controlled text on a PR (command-injection
@@ -655,7 +659,8 @@ jobs:
           # named here separately, exactly like the four pins before it.
           #
           # (`golden`, case 8, was retired 2026-09-11 with the fragment stacks.)
-          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot azcopy PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
+          # `itsalive` joined 2026-10-04 with case 9, named here for azcopy's reason.
+          all_pins="$HASH_SYNC_PACKAGES kernel kernel-rt lzma-sdk 7zip buildroot azcopy itsalive PINNED_UPDATE_ALL PINNED_WIFI_SH PINNED_CORES"
 
           complete_file=$(mktemp)
           cp "$outcomes_file" "$complete_file"

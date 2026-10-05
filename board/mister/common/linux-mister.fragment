@@ -565,6 +565,15 @@ CONFIG_USB_SERIAL_CH341=y
 CONFIG_USB_SERIAL_CP210X=y
 CONFIG_USB_SERIAL_FTDI_SIO=y
 CONFIG_USB_SERIAL_PL2303=y
+# USB video class, modular. The Sinden Lightgun streams its camera over UVC;
+# the snapshot-button input device is off so Main sees no extra gun-PID device.
+CONFIG_MEDIA_SUPPORT=m
+CONFIG_MEDIA_SUPPORT_FILTER=y
+# CONFIG_MEDIA_SUBDRV_AUTOSELECT is not set
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_MEDIA_USB_SUPPORT=y
+CONFIG_USB_VIDEO_CLASS=m
+# CONFIG_USB_VIDEO_CLASS_INPUT_EVDEV is not set
 # PHY plumbing. NOP_USB_XCEIV is required by BOTH boards' USB DT: the DE10's
 # dwc2 and the DE25's usb0 both reference a `usb-nop-xceiv` node.
 CONFIG_USB_ULPI_BUS=y

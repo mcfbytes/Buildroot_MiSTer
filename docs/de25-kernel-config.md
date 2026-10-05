@@ -150,6 +150,10 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
   Verified with `merge_config.sh` + `olddefconfig` on 7.2.9 with the de25nano series:
   the resolved config gains exactly these symbols plus the two LSM hook symbols Landlock
   selects.
+* **nftables: `NF_TABLES`, `NF_TABLES_INET`, `NFT_CT`, `NFT_LIMIT`, `NFT_LOG`,
+  `NFT_REJECT`** (2026-10-04, the DE10's delta D14). The resolved 7.2.9 config gains these,
+  the `NF_TABLES_IPV4`/`IPV6` and `NFT_REJECT_*` helpers they bring, and `NET_CRC32C`, and
+  nothing else.
 
 ### 3.2 Modules and the `.ko.xz` layout (§2)
 `MODULES`, `MODULE_UNLOAD`, `MODULE_COMPRESS`, `MODULE_COMPRESS_XZ`.

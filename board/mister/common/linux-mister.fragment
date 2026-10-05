@@ -192,7 +192,7 @@ CONFIG_IPV6=y
 # CONFIG_IPV6_SIT is not set
 CONFIG_NETWORK_PHY_TIMESTAMPING=y
 
-# --- netfilter: exactly the DE10's set (iptables-legacy + conntrack helpers) --
+# --- netfilter: exactly the DE10's set (iptables-legacy, nftables, conntrack helpers) --
 CONFIG_NETFILTER=y
 CONFIG_NF_CONNTRACK=y
 CONFIG_NF_CONNTRACK_PROCFS=y
@@ -201,6 +201,13 @@ CONFIG_NF_CONNTRACK_FTP=y
 CONFIG_NF_CONNTRACK_IRC=y
 CONFIG_NF_CONNTRACK_SIP=y
 CONFIG_NF_CT_NETLINK=y
+# nftables beside legacy iptables, no ruleset shipped (D14, docs/kernel-config-deltas.md).
+CONFIG_NF_TABLES=y
+CONFIG_NF_TABLES_INET=y
+CONFIG_NFT_CT=y
+CONFIG_NFT_LOG=y
+CONFIG_NFT_LIMIT=y
+CONFIG_NFT_REJECT=y
 CONFIG_NETFILTER_XTABLES_LEGACY=y
 CONFIG_NETFILTER_XT_MARK=y
 CONFIG_NETFILTER_XT_TARGET_LOG=y

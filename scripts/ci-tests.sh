@@ -2535,13 +2535,14 @@ for _cmd in "${k618:+$(dirname "$k618")/kernel/sched/.core.o.cmd}" "$([ "${#rt_c
 done
 
 # =============================================================================
-section "Kernel sandboxing — seccomp, Landlock, pids, jump labels (D13, ADR 0031)"
+section "Kernel sandboxing and nftables — seccomp, Landlock, pids, jump labels (D13/D14, ADR 0031)"
 # =============================================================================
 # The OpenSSH sandbox and minijail -S need seccomp; with only one of the pair,
 # sshd listens but drops every connection (docs/buildroot-config.md §5.19).
 
 for _kc in "$k618" "$BUILD_DIR/images/linux-rt.config"; do
 	_syms="SECCOMP SECCOMP_FILTER SECURITY SECURITY_LANDLOCK CGROUP_PIDS"
+	_syms="$_syms NF_TABLES NF_TABLES_INET NFT_CT NFT_LIMIT NFT_LOG NFT_REJECT"
 	# Upstream ARM drops jump labels under PREEMPT_RT on SMP (arch/arm/Kconfig).
 	[ "$_kc" = "$k618" ] && _syms="$_syms JUMP_LABEL"
 	for _sym in $_syms; do
@@ -2571,11 +2572,22 @@ if tar xOf "$ROOTFS_TAR" ./usr/libexec/sshd-auth 2>/dev/null | grep -aq 'prepari
 else
 	fail "sshd-auth carries the seccomp filter sandbox" "built SANDBOX_NULL? (stale openssh stamp -- make openssh-dirclean)"
 fi
-if tar xOf "$ROOTFS_TAR" ./usr/libexec/sshd-auth 2>/dev/null | grep -aq 'kernel lacks seccomp'; then
-	pass "sshd-auth tolerates a kernel without seccomp (patches/openssh/0001)"
+for _f in usr/sbin/nft etc/init.d/S35nftables; do
+	if tar_has "$_f"; then
+		pass "/$_f in the rootfs (nftables, Tier 1 item 6)"
+	else
+		fail "/$_f in the rootfs" "BR2_PACKAGE_NFTABLES dropped from the mister-userspace profile?"
+	fi
+done
+if tar xOf "$ROOTFS_TAR" ./etc/default/nftables 2>/dev/null | grep -qx 'NFTABLES_CONFIG=/media/fat/linux/nftables.conf'; then
+	pass "S35nftables reads its ruleset from the card"
 else
-	fail "sshd-auth tolerates a kernel without seccomp (patches/openssh/0001)" \
-		"patch not applied: this rootfs on an older kernel would drop every SSH login"
+	fail "S35nftables reads its ruleset from the card" "etc/default/nftables missing or changed: a ruleset in read-only /etc cannot be added by a user"
+fi
+if tar_has etc/nftables.conf; then
+	fail "no ruleset ships" "/etc/nftables.conf is in the rootfs, but ADR 0031 ships nftables without a policy"
+else
+	pass "no nftables ruleset ships (ADR 0031: no policy by default)"
 fi
 if tar xOf "$ROOTFS_TAR" ./etc/fstab 2>/dev/null | grep -qE '^cgroup2[[:space:]]+/sys/fs/cgroup[[:space:]]+cgroup2[[:space:]]'; then
 	pass "fstab mounts cgroup2 at /sys/fs/cgroup (S92transmission's pids limit)"

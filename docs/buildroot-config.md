@@ -907,6 +907,14 @@ zero-cost parity), `BR2_PACKAGE_DBUS_GLIB`, `BR2_PACKAGE_LIBEVENT`,
 `BR2_PACKAGE_LIBNL`, `BR2_PACKAGE_IPTABLES`, `BR2_PACKAGE_LIBGLIB2`,
 `BR2_PACKAGE_GOBJECT_INTROSPECTION`.
 
+`BR2_PACKAGE_NFTABLES` (2026-10-04, ADR 0031 Tier 1 item 6; kernel delta D14) — `nft` and
+Buildroot's `S35nftables`, beside legacy `iptables`, which stays for scripts that call it.
+No ruleset ships. `/etc/default/nftables` points `S35nftables` at
+`/media/fat/linux/nftables.conf`, so a user can opt in with a card file
+(`docs/user/faq.md`, "Can I run a firewall?"); without that file the script prints
+"does not exist, nothing to do" and exits 0. Not taken: `NFTABLES_JSON` (jansson, no user)
+and `IPTABLES_NFTABLES` (the `iptables-nft` shim; the legacy tables are still built in).
+
 `BR2_PACKAGE_TRANSMISSION=y` + `BR2_PACKAGE_TRANSMISSION_DAEMON=y` — a
 BitTorrent client (issue #186, 2026-09-21). **A STOCK CAPABILITY RESTORED, by a
 different package** — worth stating precisely, because the obvious assumption is
@@ -1266,11 +1274,9 @@ Kernel delta D13 (`docs/kernel-config-deltas.md`) turned seccomp on in both DE10
 the line was deleted in the same commit; `sshd-auth` now runs as `sshd` with
 `NoNewPrivs 1` and `Seccomp 2`, verified in a QEMU boot of the image's own `linux.img`.
 `scripts/ci-tests.sh` asserts the Buildroot symbol, the kernel symbols and the sandbox
-string in `sshd-auth` together, so neither half can move alone again. A carried patch,
-`board/mister/de10nano/patches/openssh/0001`, keeps the image usable when this rootfs is
-booted on a kernel with no seccomp at all (`linux.img` and `zImage_dtb` are separate files
-on the card): only when `PR_GET_SECCOMP` also fails with `EINVAL` does the pre-auth child
-log the fact and run unsandboxed, as before openssh 10.4; any other failure stays fatal.
+string in `sshd-auth` together, so neither half can move alone again. No compatibility
+patch: the kernel and the rootfs ship together in every release and every SD card, so an
+image booting a seccomp-less kernel is not a supported state (owner decision, 2026-10-04).
 NB: configure-time
 flag — changing it requires `make openssh-dirclean`, or the stale stamp ships the old sshd.
 See `docs/ssh-ftp-parity.md`.

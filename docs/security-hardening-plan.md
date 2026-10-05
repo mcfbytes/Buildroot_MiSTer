@@ -98,14 +98,21 @@ read it) and in the shared `board/mister/common/linux-mister.fragment` (DE25); t
 `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` line deleted from
 `configs/mister_de10nano_defconfig`, so Buildroot's default `y` applies; the "must stay
 off" warnings replaced with the reason it is now on. One PR, both symbols, or it ships a
-listening-but-dead sshd. A carried patch (`board/mister/de10nano/patches/openssh/0001`)
-keeps sshd usable if this rootfs is booted on a kernel with no seccomp at all.
+listening-but-dead sshd.
 
 **Done when:** rig boots both kernels; `ssh` works; `dmesg`/`logread` shows no sandbox
 failure; `sshd -T` unchanged; `zcat /proc/config.gz | grep SECCOMP=y`; CI asserts both
 the kernel symbol and the Buildroot symbol are set together (fail if only one is).
 
-### S6 — nftables in both kernels + `nftables` package — Size S — Depends: none
+### S6 — nftables in both kernels + `nftables` package — Size S — Depends: none — **DONE 2026-10-04** (D14; rig check still owed)
+
+As done: `NF_TABLES`, `NF_TABLES_INET`, `NFT_CT`, `NFT_LIMIT`, `NFT_LOG`, `NFT_REJECT` in
+`board/mister/de10nano/linux.config` and the shared fragment, `BR2_PACKAGE_NFTABLES` in the
+userspace profile, no ruleset, and a card-file opt-in (`/media/fat/linux/nftables.conf`,
+read by Buildroot's `S35nftables`). `NFT_COMPAT` not taken. Verified in QEMU: an empty
+`nft list ruleset`, the add/delete round trip, and the FAQ's example ruleset loading at boot.
+The original task text follows.
+
 
 Kernel: `CONFIG_NF_TABLES`, `NFT_CT`, `NFT_LIMIT`, `NFT_REJECT`, `NF_TABLES_INET`,
 `NFT_COMPAT` optional. Buildroot: `BR2_PACKAGE_NFTABLES=y`. Keep `iptables` for now;

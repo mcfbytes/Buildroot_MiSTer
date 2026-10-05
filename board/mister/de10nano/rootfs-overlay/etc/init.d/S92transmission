@@ -20,6 +20,7 @@ RUN_DIR=/run/transmission
 ROOT_DIR="$RUN_DIR/root"
 PIDFILE="$RUN_DIR/jail.pid"
 TM_UID=8422
+CR=$(printf '\r')
 
 # The opt-in gate, same shape as S91smb's `samba.sh`: no directory on the card,
 # no daemon. A fresh image has none, so nothing here runs and nothing listens.
@@ -37,23 +38,25 @@ allowed_rw() {
 	case "$1" in *[!A-Za-z0-9._/@+-]* | */../* | */..) return 1 ;; esac
 	case "$1" in
 	/media/fat/games | /media/fat/games/* | /media/fat/mistarr/* | \
-		/media/fat/downloads | /media/fat/downloads/* | /media/usb[0-9] | /media/usb[0-9]/*)
+		/media/fat/downloads | /media/fat/downloads/*)
 		real_dir "$1" ;;
 	*) return 1 ;;
 	esac
 }
 
-# Moves the pre-jail state (written by the old root daemon) into $STATE_DIR, once.
+# Moves the pre-jail state into $STATE_DIR, once. It is gathered in jail.new and
+# renamed at the end, so an interrupted move resumes on the next start.
 migrate_state() {
-	[ -L "$STATE_DIR" ] && return 1
+	tmp="$STATE_DIR.new"
+	if [ -L "$STATE_DIR" ] || [ -L "$tmp" ]; then return 1; fi
 	[ -d "$STATE_DIR" ] && return 0
-	mkdir "$STATE_DIR" || return 1
+	[ -d "$tmp" ] || mkdir "$tmp" || return 1
 	for f in "$HOME_DIR"/* "$HOME_DIR"/.[!.]* "$HOME_DIR"/..?*; do
 		[ -e "$f" ] || [ -L "$f" ] || continue
-		[ "$f" = "$STATE_DIR" ] && continue
-		mv "$f" "$STATE_DIR/" || return 1
+		[ "$f" = "$tmp" ] && continue
+		mv "$f" "$tmp/" || return 1
 	done
-	sync
+	sync && mv "$tmp" "$STATE_DIR" && sync
 }
 
 # Sets RW_BINDS: newline-separated directories bound read-write at their own path.
@@ -66,7 +69,8 @@ collect_rw() {
 	if [ ! -f "$JAIL_CONF" ] || [ -L "$JAIL_CONF" ]; then
 		return 0
 	fi
-	while IFS= read -r line; do
+	while IFS= read -r line || [ -n "$line" ]; do
+		line=${line%"$CR"}
 		case "$line" in
 		rw=* | staging=*)
 			dir="${line#*=}"
@@ -74,7 +78,9 @@ collect_rw() {
 				RW_BINDS="$RW_BINDS
 $dir"
 			else
-				echo "S92transmission: ignoring '$line' in $JAIL_CONF (not an allowed directory)" >&2
+				msg="ignoring '$line' in $JAIL_CONF (not an allowed directory)"
+				echo "S92transmission: $msg" >&2
+				logger -t S92transmission "$msg"
 			fi
 			;;
 		esac
@@ -136,13 +142,14 @@ jail() {
 #                      before the first piece arrives (docs/bittorrent.md 6).
 #   peer-limit-*       200/50 is a desktop's budget. This kernel is booted
 #                      mem=511M, so Linux has 488 MiB for everything.
-# Written inside the jail as uid 8422 with `set -C` (O_EXCL), so a planted
-# symlink is refused instead of followed as root.
+# Written inside the jail as uid 8422, O_EXCL to a .new file then renamed, so a
+# planted symlink is never followed and a torn write is never taken for a seed.
 seed_settings() {
 	[ -f "$STATE_DIR/settings.json" ] && return 0
 	# shellcheck disable=SC2016 # $1/$2 expand in the jailed sh, not here
-	JAIL_EXTRA="" jail /bin/sh -c 'mkdir -p "$1" && umask 022 && set -C && cat > "$2"' \
-		sh "$DOWNLOAD_DIR" "$SETTINGS" <<-EOF
+	JAIL_EXTRA="" jail /bin/sh -c \
+		'mkdir -p "$1" && umask 022 && rm -f "$2.new" && set -C && cat >"$2.new" && mv -f "$2.new" "$2"' \
+		sh "$DOWNLOAD_DIR" "$SETTINGS" <<-EOF || return 1
 	{
 	    "dht-enabled": true,
 	    "download-dir": "$DOWNLOAD_DIR",
@@ -181,10 +188,13 @@ running() {
 	PID=$p
 }
 
-# Reads the jail's claims back from the kernel: uid, no_new_privs, CapEff.
+# Reads the jail's claims back from the kernel: all four uids and gids, no
+# supplementary group but its own, no_new_privs, CapEff.
 check_jail() {
 	s="/proc/$1/status"
-	grep -q "^Uid:[[:space:]]*${TM_UID}[[:space:]]" "$s" &&
+	ids="[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]*$"
+	grep -Eq "^Uid:$ids" "$s" && grep -Eq "^Gid:$ids" "$s" &&
+		grep -Eq "^Groups:[[:space:]]*(${TM_UID}[[:space:]]*)?$" "$s" &&
 		grep -q '^NoNewPrivs:[[:space:]]*1$' "$s" &&
 		grep -q '^CapEff:[[:space:]]*0000000000000002$' "$s"
 }
@@ -214,17 +224,15 @@ start() {
 		return 1
 	fi
 	if ! seed_settings; then
-		echo "FAIL (could not write $SETTINGS)"
+		echo "FAIL (could not write $STATE_DIR/settings.json)"
 		return 1
 	fi
 
-	# Foreground: with -I the daemon is its namespace's init and must not fork
-	# away. Its output reaches syslog through logger; neither keeps the caller's fds.
+	# In a session of its own (`run` below), so nothing that signals the caller's
+	# process group reaches the daemon; and no fd of the caller's is kept.
 	rm -f "$PIDFILE.new"
-	(
-		echo 800 >/proc/self/oom_score_adj
-		JAIL_EXTRA="-i -f $PIDFILE.new" jail "$DAEMON" --foreground --config-dir "$HOME_DIR"
-	) </dev/null 2>&1 | logger -t transmission-daemon >/dev/null 2>&1 &
+	RW_BINDS="$RW_BINDS" setsid "$0" run </dev/null >/dev/null 2>&1 &
+	leader=$!
 
 	i=0
 	pid=""
@@ -235,11 +243,15 @@ start() {
 		sleep 0.2
 		i=$((i + 1))
 	done
-	rm -f "$PIDFILE.new"
 	if [ -z "$pid" ]; then
+		# A late start must not leave an unmanaged daemon behind.
+		kill -TERM "-$leader" 2>/dev/null
+		[ -s "$PIDFILE.new" ] && read -r pid <"$PIDFILE.new" && kill -TERM "$pid" 2>/dev/null
+		rm -f "$PIDFILE.new"
 		echo "FAIL (jailed daemon did not start; see syslog)"
 		return 1
 	fi
+	rm -f "$PIDFILE.new"
 	if ! check_jail "$pid"; then
 		kill -TERM "$pid"
 		echo "FAIL (jail self-check: uid, NoNewPrivs or CapEff not as configured)"
@@ -256,7 +268,8 @@ stop() {
 		echo "not running"
 		return 0
 	fi
-	# A frozen daemon (mistarr's SIGSTOP core gate) cannot act on SIGTERM.
+	# A frozen daemon (mistarr's SIGSTOP core gate) cannot act on SIGTERM, so it
+	# is thawed again on every pass in case the gate re-freezes it.
 	kill -CONT "$PID" 2>/dev/null
 	kill -TERM "$PID"
 
@@ -265,6 +278,7 @@ stop() {
 	i=0
 	while running && [ "$i" -lt 20 ]; do
 		sleep 1
+		kill -CONT "$PID" 2>/dev/null
 		i=$((i + 1))
 	done
 	if running; then
@@ -285,6 +299,14 @@ case "$1" in
 	restart|reload)
 		stop
 		start
+		;;
+	run)
+		# Internal, from start(): with -I the daemon is its namespace's init and
+		# stays in the foreground; its output reaches syslog through logger.
+		(
+			echo 800 >/proc/self/oom_score_adj
+			JAIL_EXTRA="-i -f $PIDFILE.new" jail "$DAEMON" --foreground --config-dir "$HOME_DIR"
+		) 2>&1 | logger -t transmission-daemon
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart}"

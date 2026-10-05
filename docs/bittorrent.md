@@ -145,7 +145,9 @@ its own path, so `-w /media/fat/games/NES` means the same thing on both sides.
 
 **Upgrading from a root-daemon image** is automatic: the first jailed start moves
 everything already in `/media/fat/linux/transmission/` into `jail/`, once, so torrents,
-progress and settings carry over. A `download-dir` you had changed to somewhere outside
+progress and settings carry over. The move collects into `jail.new/` and renames it to
+`jail/` only when every entry is across, so a power cut part-way resumes on the next start
+instead of leaving half the state behind. A `download-dir` you had changed to somewhere outside
 that directory needs a `rw=` line, or those torrents report their data missing. Going back
 to an older image is safe rather than seamless: its root daemon sees only an empty-looking
 directory, seeds a fresh `settings.json` beside `jail/` and starts with no torrents, and the
@@ -171,8 +173,9 @@ Two consequences of exFAT worth knowing before you point `download-dir` somewher
 ## 4. `settings.json` — what the init script seeds, and why
 
 On the first start where no `settings.json` exists, the script writes one, from inside the
-jail as uid 8422 and with `O_EXCL`, so a symlink planted in its place is refused rather
-than followed. It never writes over a file that is already there: this is a seed, not a policy re-applied at every boot,
+jail as uid 8422: `O_EXCL` to `settings.json.new`, then renamed into place, so a symlink
+planted in its place is never followed and a torn write is never mistaken for a seed (a
+failed write fails the start). It never writes over a file that is already there: this is a seed, not a policy re-applied at every boot,
 so anything you edit afterwards stands — including the daemon's own rewrite of the file
 when it shuts down.
 
@@ -232,7 +235,9 @@ it through `transmission-remote`, which applies immediately and is written back 
 
 **Logging** goes to syslog, tagged `transmission-daemon`. The jailed daemon runs in the
 foreground (it is its PID namespace's init, §8.1) and writes to stderr, which the init
-script pipes into `logger`; the jail has no `/dev/log` of its own. This image runs BusyBox
+script pipes into `logger`; the jail has no `/dev/log` of its own. Daemon and `logger` run
+in a session of their own (`setsid`), so a caller that signals its own process group — a
+`timeout`, a supervisor's kill on a slow start — does not reach them. This image runs BusyBox
 `syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages land in
 `/tmp/messages` on tmpfs and cost the card nothing.
 
@@ -449,20 +454,28 @@ kernel takes it before Main_MiSTer.
 
 ```
 rw=/media/fat/games/NES
-staging=/media/usb0/incoming
+staging=/media/fat/downloads/incoming
 ```
 
 `rw=` and `staging=` are the same thing today — a read-write bind at the directory's own
 path; `staging=` is mistarr's name for a directory it moves finished downloads out of. A
 line is honoured only for an existing, symlink-free directory under `/media/fat/games`,
-`/media/fat/mistarr/`, `/media/fat/downloads` or `/media/usb0`–`9`, whose path uses only
-`A-Za-z0-9._/@+-`; anything else is logged and ignored. The file lives *outside* `jail/`,
+`/media/fat/mistarr/` or `/media/fat/downloads`, whose path uses only `A-Za-z0-9._/@+-`;
+anything else is logged to syslog and ignored. CRLF line endings and a last line with no
+newline are both accepted, since the file is usually written from Windows.
+
+**USB drives are not grantable.** The jail's mount view is fixed when the daemon starts:
+a stick mounted later never appears in it, and one mounted earlier stays pinned inside the
+jail after `usbmount` unmounts it on the host, so pulling it would lose cached writes.
+Doing this safely needs mount propagation into the jail and an unmount hook that stops the
+daemon first; until then, download to the card and move files afterwards. The file lives *outside* `jail/`,
 so the daemon cannot grant itself more. A change takes effect on the next start.
 
 **The script checks its own work.** After the start it reads `/proc/<pid>/status` and
-refuses to report success unless `Uid` is 8422, `NoNewPrivs` is 1 and `CapEff` is exactly
-`0x2`; if minijail is missing it refuses to start the daemon at all rather than fall back to
-root. It also refuses if a `transmission-daemon` it did not start is already running.
+refuses to report success unless all four `Uid` and `Gid` fields are 8422, `Groups` holds
+nothing else, `NoNewPrivs` is 1 and `CapEff` is exactly `0x2`; if minijail is missing it refuses to start the daemon at all rather than fall back to
+root. It also refuses if a `transmission-daemon` it did not start is already running, and a start
+that times out terminates whatever it launched rather than leave an unmanaged daemon.
 
 **mistarr** drives this daemon with nothing changed on its side: it opts in by creating
 the directory and running `S92transmission start`, talks RPC to `127.0.0.1:9091` (the jail
@@ -567,7 +580,8 @@ Upstream's init script stops the daemon with `--retry=TERM/10/KILL/5`. BusyBox's
 (`debianutils/start_stop_daemon.c`: *"We accept and ignore -R <param> / --retry <param>"*),
 so that would be a no-op here and the daemon would be left to race its own shutdown. Our
 `stop()` sends `SIGCONT` then `SIGTERM` and waits up to 20 seconds for the process to be
-gone, and never escalates to `SIGKILL`. It identifies the process by the host pid and start
+gone, sending `SIGCONT` again every second in case mistarr's core gate re-freezes it, and
+never escalates to `SIGKILL`. It identifies the process by the host pid and start
 time that `start()` recorded in `/run/transmission/jail.pid`, so a recycled pid is never
 taken for the daemon. Cutting the wait short costs a full re-verify of every torrent on the
 next start, which on a card is hours.

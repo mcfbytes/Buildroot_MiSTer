@@ -2624,6 +2624,23 @@ else
 		fail "$TM_INIT is off by default (opt-in directory gate)" \
 			"the '[ -d \$HOME_DIR ] || exit 0' guard is gone -- the daemon would auto-start and listen on every boot (ADR 0031 amendment, 2026-09-21)"
 	fi
+	# JAILED, never root (docs/bittorrent.md §8.1): minijail0, uid 8422, DAC override only.
+	if printf '%s' "$tm_init_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
+		printf '%s' "$tm_init_body" | grep -qxF 'TM_UID=8422' &&
+		printf '%s' "$tm_init_body" | grep -qF -- '-c 0x2 --ambient' &&
+		printf '%s' "$tm_init_body" | grep -qF 'refusing to run unjailed'; then
+		pass "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it"
+	else
+		fail "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it" \
+			"MINIJAIL=/usr/bin/minijail0, TM_UID=8422, '-c 0x2 --ambient' or the fail-closed branch is gone"
+	fi
+	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
+	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then
+		pass "the transmission user is pinned to uid 8422 (board/mister/de10nano/users.table)"
+	else
+		fail "the transmission user is pinned to uid 8422 (board/mister/de10nano/users.table)" \
+			"etc/passwd has '${tm_passwd:-no transmission line}' -- BR2_ROOTFS_USERS_TABLES dropped?"
+	fi
 	# And it must not ship a settings.json of its own: the seed is written on
 	# the CARD at first opt-in, never into the read-only rootfs.
 	require_absent "var/config/transmission-daemon/settings.json" \

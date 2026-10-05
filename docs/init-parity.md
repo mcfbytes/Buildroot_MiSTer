@@ -103,7 +103,8 @@ mounted with no `uid=`/`gid=`, so everything on `/media/fat` is root's), *and* i
 `TRANSMISSION_HOME` at `/var/config/transmission-daemon`, inside `linux.img` — which an
 OS update replaces wholesale, taking `resume/` and `torrents/` with it and turning every
 update into a full re-verify of every torrent. The overlay replaces it with the same
-filename: runs as root, config dir at `/media/fat/linux/transmission`, and **exits 0
+filename: runs the daemon jailed (uid 8422, `CAP_DAC_OVERRIDE` only, minijail mount view;
+`docs/bittorrent.md` §8.1), config dir at `/media/fat/linux/transmission`, and **exits 0
 unless that directory exists**, so on a fresh image it is a no-op at every boot and
 nothing new listens (the `S91smb` opt-in shape, and ADR 0031's 2026-09-21 amendment).
 It also carries its own shutdown wait, because BusyBox's `start-stop-daemon` *accepts and

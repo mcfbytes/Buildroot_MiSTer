@@ -268,6 +268,11 @@ upstream defaults hand it all three.
 5. **Peer limits cut to 120 global / 30 per torrent** (upstream 200/50). Not a security
    item — the kernel is booted `mem=511M`, so this is resource containment on a box where
    Main_MiSTer is the tenant that matters.
+6. **Not root (2026-10-04).** The daemon runs in a minijail as uid 8422 with
+   `CAP_DAC_OVERRIDE` only, `no_new_privs`, and a mount view holding its own state and the
+   directories the operator grants; the script refuses to start it unjailed
+   (`docs/bittorrent.md` §8.1). The socket set below is unchanged — the jail shares the host
+   network namespace — but what a compromised daemon can reach is bounded.
 
 **What this does not close, and is accepted.** Once the operator opts in, the daemon adds
 **three** listening sockets, and only the first is loopback (measured, not predicted —

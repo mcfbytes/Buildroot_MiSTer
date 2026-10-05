@@ -998,7 +998,9 @@ overlays the one `package/transmission` installs and exits 0 unless
 listens on nothing. The package's own script is wrong here twice over — it runs
 as a `transmission` user that cannot write the card (mounted with no `uid=`),
 and it puts the config dir inside `linux.img`, which every OS update replaces
-wholesale, taking `resume/` and `torrents/` with it. The security disposition
+wholesale, taking `resume/` and `torrents/` with it. Ours runs that user, pinned
+to uid 8422 by `board/mister/de10nano/users.table`, inside a minijail with
+`CAP_DAC_OVERRIDE` only and an allow-list mount view (`docs/bittorrent.md` §8.1). The security disposition
 (RPC bound to loopback rather than upstream's `0.0.0.0`, port forwarding off)
 is the 2026-09-21 amendment to
 [ADR 0031](decisions/0031-secure-by-default-network-posture.md).

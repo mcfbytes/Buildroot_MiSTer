@@ -2508,8 +2508,8 @@ idiom** and should get the same treatment when next touched.
    bespoke step.
 
    **This case also refreshes license-file hashes** (since 2026-09-04), which
-   cases 1, 2 and 4 have no equivalent of — only case 7 (azcopy) does the
-   same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
+   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy) and 9
+   (itsalive) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
    files are hashed out of the tarball the step just fetched. The reason is a
    real incident: on the 26.03 bump (PR #149) the tarball hash refreshed
    perfectly, but 26.03 had rewrapped `DOC/readme.txt` — which `lzma-sdk`
@@ -2580,22 +2580,32 @@ idiom** and should get the same treatment when next touched.
    `scripts/hash-sync-azcopy.sh`'s header for the moved-tag incident that
    made the override necessary.
 
+<a id="renovate-hash-sync-itsalive"></a>
+9. **The itsalive vendored-tarball hash** (`package/itsalive/itsalive.hash`),
+   refreshed by `scripts/hash-sync-itsalive.sh` (**added 2026-10-04**; 8 is
+   the retired golden-config case). Case 7's kind of source, for a
+   `cargo-package`: the hashed file is `itsalive-<sha>-cargoN.tar.gz`, the
+   GitHub archive with `cargo vendor --locked` run inside it and repacked by
+   Buildroot's helpers, so again no URL serves it. The script runs **Buildroot's
+   own `support/download/cargo-post-process`** from the pinned tree, with the
+   `cargo` component of the `rust-<ver>-x86_64-unknown-linux-gnu.tar.xz` that
+   tree's `package/rust-bin` pins, verified against that tree's
+   `rust-bin.hash` (a verified copy already in `dl/rust-bin/` is reused). The
+   `-cargoN` suffix is read from that tree's `BR_FMT_VERSION_cargo`, so a
+   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor` never
+   runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
+   checksums are verified as usual. `LICENSE` is re-hashed from the result,
+   with a `::warning::` if it changed.
+
+   Verified at authoring time by re-deriving master's existing value for
+   `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a deliberately
+   stale filename, then used to produce the hash for PR #230's bump to
+   `797378a7`. Cost: a ~200 MB toolchain download plus one crate on a real
+   bump; seconds (`already-current`) on every other pin's PR.
+
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
 
-- **`package/itsalive/itsalive.hash`** (the SD-card installer's HDMI splash tool,
-  ADR 0020 §9; **added 2026-09-21**). Tracked by `renovate.json` (a `git-refs`
-  commit pin), but its hash is of the post-`cargo vendor` tarball Buildroot
-  repacks — the same "nothing serves this file" situation as azcopy's `-go2`
-  tarball, without a rebuild case to match. Case 1's `curl | sha256sum` would
-  write a confidently wrong value, so the package is in **neither**
-  `HASH_SYNC_PACKAGES` nor the workflow's `paths:` filter, its bump PRs carry
-  `needs-manual-hash`, and `lint.yml`'s `itsalive version/hash pin
-  consistency` step keeps them red until a human runs the recipe in the
-  `.hash`. "Not automated" here means *not yet*: a cargo analogue of case 7
-  (run Buildroot's own `support/download/cargo-post-process` with the pinned
-  `host-rust-bin`, hash the result) is the obvious next step if the pin ever
-  moves often enough to matter.
 - **`cabextract`, `linux-firmware-extra`, `xow-firmware`** — not tracked by
   `renovate.json` at all (no machine-readable upstream release feed for the
   first two; `xow-firmware` pins opaque Microsoft Update `.cab` GUIDs, not a
@@ -3074,6 +3084,11 @@ one package, on purpose: `paths:` yes, `HASH_SYNC_PACKAGES` never.
 See `docs/azcopy.md` §5 for the manual regeneration recipe, which case 7
 automates but does not retire — it is still the local procedure, and the
 fallback whenever case 7 skips.
+
+**`itsalive` is the same exception, for the same reason** (a `cargo-package`,
+since 2026-10-04 refreshed by case 9): `paths:` yes, `HASH_SYNC_PACKAGES`
+never. Its `lint.yml` consistency step is the gate behind a case-9 skip, and
+the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
 
 ---
 

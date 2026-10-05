@@ -308,7 +308,7 @@ stage_stock_payload() {
 # Staged AFTER stage_stock_payload() on purpose: that function does a
 # `cp -a "$extract_dir/linux/."` and writes MiSTer.ini/Scripts/update.sh from
 # the stock archive, and these files must survive that rather than be
-# overwritten by it. No stock payload member carries these three names today,
+# overwritten by it. No stock payload member carries these names today,
 # but ordering it this way means a future stock release that does cannot
 # silently win.
 #
@@ -357,6 +357,11 @@ stage_stock_payload() {
 #       because the user reaching for it may have no working keyboard to type a
 #       command with.
 #
+#   Scripts/usb_full_speed_mode.sh
+#       Switches USB full-speed mode (dwc2.fs_ddma, docs/dwc2-usb-irq.md). Same
+#       shim shape: the tool is /usr/sbin/mister-usb-full-speed, shipped with the
+#       kernel option it drives.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -382,7 +387,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

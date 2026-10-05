@@ -583,6 +583,23 @@ left alone. To go back to the default, add this line to `/media/fat/linux/user-s
 echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
 ```
 
+## What does Scripts > usb_full_speed_mode.sh do?
+
+It switches the MiSTer's USB port to *full speed* (12 Mbit/s). At that speed the USB
+controller schedules transfers itself, and its interrupts drop from about 9,000 a second
+to about 100. That frees CPU 0, which loads files, streams CD images and runs the network.
+The MiSTer main program runs on CPU 1, so input lag does not change.
+
+The cost is that every USB device runs at 12 Mbit/s or less. USB drives get very slow,
+USB Wi-Fi and Ethernet adapters slow down or stop working, and 1000 Hz controllers and mice
+are read at 500 Hz. Pads, keyboards, mice and Bluetooth dongles otherwise work as before.
+
+Pick the entry with a gamepad. Switching disconnects all USB devices for a second or two.
+By default the change lasts until the next reboot. Choose "every boot" to keep it; that
+writes `/media/fat/linux/usb_full_speed`, and deleting the file turns it off again. The
+script will not switch while a USB drive is mounted. Details:
+[`dwc2-usb-irq.md`](../dwc2-usb-irq.md#switching-it-from-the-scripts-menu).
+
 ## See also
 
 - [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose

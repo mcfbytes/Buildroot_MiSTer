@@ -1,0 +1,20 @@
+#!/bin/sh
+# Turn on USB full-speed mode (dwc2.fs_ddma) at boot, only if the user chose "every boot"
+# in Scripts/usb_full_speed_mode.sh. Runs before udev; delete the flag file to stop it.
+
+BOOT_FLAG=/media/fat/linux/usb_full_speed
+TOOL=/usr/sbin/mister-usb-full-speed
+
+case "$1" in
+	start|restart)
+		if [ -e "$BOOT_FLAG" ] && [ -x "$TOOL" ]; then
+			"$TOOL" on
+		fi
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+exit 0

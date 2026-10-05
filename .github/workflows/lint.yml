@@ -187,8 +187,10 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/usb_full_speed_mode.sh
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
+            rootfs-overlay/usr/sbin/mister-usb-full-speed
           )
           sh_relpaths=(
             post-build.sh
@@ -256,6 +258,7 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/usb_full_speed_mode.sh
             post-build.sh
             post-image.sh
             initramfs-post-build.sh
@@ -263,6 +266,7 @@ jobs:
             initramfs-overlay/init
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
+            rootfs-overlay/usr/sbin/mister-usb-full-speed
           )
 
           board_files=()

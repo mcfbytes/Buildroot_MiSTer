@@ -2609,6 +2609,28 @@ require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
 
 # =============================================================================
+section "USB full-speed mode (mister-usb-full-speed, docs/dwc2-usb-irq.md)"
+# =============================================================================
+# Scripts/usb_full_speed_mode.sh launches the tool; S09 reapplies it only when the card flag exists.
+
+require_present "usr/sbin/mister-usb-full-speed" "mister-usb-full-speed tool"
+FS_INIT="etc/init.d/S09usb-full-speed"
+if grep -qxF "./$FS_INIT" "$TAR_LIST"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$FS_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$FS_INIT present and executable ($mode)" ;;
+	*) fail "$FS_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	if tar xOf "$ROOTFS_TAR" "./$FS_INIT" | grep -qxF 'BOOT_FLAG=/media/fat/linux/usb_full_speed'; then
+		pass "$FS_INIT acts only on the /media/fat/linux/usb_full_speed flag"
+	else
+		fail "$FS_INIT acts only on the /media/fat/linux/usb_full_speed flag" "flag path changed; the tool writes that path"
+	fi
+else
+	fail "$FS_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"
+fi
+
+# =============================================================================
 section "Process sandboxing (minijail, docs/minijail.md)"
 # =============================================================================
 

@@ -65,6 +65,28 @@ echo ffb40000.usb > /sys/bus/platform/drivers/dwc2/bind
 Full speed on the root port means USB storage and high-speed devices run at 12 Mbit/s,
 so it stays opt-in.
 
+### Switching it from the Scripts menu
+
+`Scripts/usb_full_speed_mode.sh` launches `/usr/sbin/mister-usb-full-speed`, which does the
+rebind above behind a `dialog` menu a gamepad can drive. It explains the trade-off, lists the
+devices currently linked at high speed, and offers:
+
+- **on until the next reboot** (the default kind of switch: a reboot always comes back at high speed);
+- **on now and at every boot**: writes `/media/fat/linux/usb_full_speed`, and
+  `/etc/init.d/S09usb-full-speed` runs `mister-usb-full-speed on` before udev when it exists;
+- **off**, which also deletes that file.
+
+Over SSH: `mister-usb-full-speed status | on | on --boot | off`.
+
+- It refuses to switch while any `/dev/sd*` is mounted or used for swap, since the unbind cuts
+  USB storage off. A card booted from USB storage therefore cannot use it.
+- `u-boot.txt` is never edited: a wrong `v=` or `mmcboot=` line leaves the board at the U-Boot
+  prompt ([rollback.md](user/rollback.md)), and the rebind gives the same result without one.
+- It does not switch the `0062` SOF hold-off. That is a debugfs test switch, and off RT it
+  measured as a regression under bulk USB receive (Plan 3).
+- 1 kHz HID devices are read at 500 Hz under `fs_ddma` (usbhid keeps one URB in flight, Plan 2),
+  against 984/s in the default mode with `0060`. The menu says so.
+
 ## Descriptor DMA with split transactions: closed
 
 The original goal was descriptor (scatter/gather) DMA at high speed, with the hub's splits
@@ -149,7 +171,7 @@ Parked work, with the trigger that would reopen each. Update this table instead 
 | **DE25-Nano** qualification (it already carries `0056`, `0060`, `0061`) | ~0 if the core revision matches | same plan applies; then add `0058`/`0062` (for its RT kernel) and the `fs_ddma` set | hardware arrives; also check whether an Agilex 5 USB 3 (dwc3/xHCI) port reaches a connector, which would do splits in hardware |
 | **usbhid: two interrupt-IN URBs in flight** | small usbhid patch; upstream-sensitive | makes the `fs_ddma` channel chaining pay off for every HID device: 500 → ~1,000/s | owner wants 1 kHz HID under `fs_ddma`; needs the chaining patches carried first |
 | **`fs_ddma` interrupt-channel chaining** (parked patches in `dwc2-usb-irq/parked/`) | 3 patches, ~1,000 lines; medium | rig: 2 URBs in flight 500 → ~964/s, 4 URBs 666 → 1,000/s; 1 URB unchanged (hardware prefetch) | a driver with several interrupt-IN URBs in flight matters under `fs_ddma`: USB MIDI on interrupt endpoints (`snd-usb-midi` keeps 7) or the usbhid option below. Retest on the rig before carrying |
-| **Automatic `fs_ddma`** (userspace: udev + unbind/rebind) | ~100 lines + testing; low–medium | ~7 points of CPU0 over M1 for all-full-speed setups (7.7% → ~0.7%) | CPU0 still matters after M1. Switch only at boot or in the menu: every switch drops all USB for 1–2 s. Detect high-speed-capable devices plugged in while capped with a `DEVICE_QUALIFIER` request (full-speed-only devices stall it) or by class (storage, network) |
+| **Automatic `fs_ddma`** (userspace: udev + unbind/rebind) | ~100 lines + testing; low–medium | ~7 points of CPU0 over M1 for all-full-speed setups (7.7% → ~0.7%) | The manual switch ships (Scripts menu, above). CPU0 still matters after M1. Switch only at boot or in the menu: every switch drops all USB for 1–2 s. Detect high-speed-capable devices plugged in while capped with a `DEVICE_QUALIFIER` request (full-speed-only devices stall it) or by class (storage, network) |
 | **Hold-off under bulk receive** (why `0062` costs CPU0 and split completions under WiFi receive) | investigation, then a fix | makes `0062` default-on material again | before re-enabling it or offering it upstream. First suspect: the rule that wakes the thread for pending non-periodic work, which constantly re-triggers under bulk traffic. Then retest RT and non-RT under WiFi receive with a Bluetooth pad paired |
 | **Measure `0058` on 6.18 (non-RT)** | one boot of a kernel without `0058` | whether the single IRQ action pays off off RT | before offering it to the MiSTer 6.18 kernel. About a day of normal use on 6.18.54 with the series showed no problems, but no gain was measured |
 | FS cap by default | — | — | **declined**: high speed stays the default, `fs_ddma` is opt-in |

@@ -19,6 +19,9 @@
 # defconfig and any patches to gcc/binutils/glibc — a package added to the image
 # does not move it, a compiler change does.
 #
+# Only master SAVES: PRs, tags and branch dispatches restore master's set read-only
+# (a PR-scoped save is unreadable elsewhere and LRU-evicts master). docs/ci.md#cache-prune
+#
 ################################################################################
 
 name: Build the MiSTer image (Buildroot)
@@ -114,6 +117,7 @@ runs:
         key: ${{ env.BUILDROOT_VERSION }}
         max-size: 4G
         update-package-index: true
+        save: ${{ github.ref == 'refs/heads/master' }}
 
     - name: Install build dependencies
       shell: bash
@@ -180,21 +184,21 @@ runs:
         fi
 
     - name: Save dl/ download cache
-      if: always() && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
+      if: always() && github.ref == 'refs/heads/master' && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
         key: ${{ steps.dl-cache.outputs.cache-primary-key }}
 
     - name: Save Buildroot release tarball
-      if: always() && steps.tarball-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.tarball == 'true'
+      if: always() && github.ref == 'refs/heads/master' && steps.tarball-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.tarball == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/buildroot-${{ env.BUILDROOT_VERSION }}.tar.gz
         key: ${{ steps.tarball-cache.outputs.cache-primary-key }}
 
     - name: Save host toolchain
-      if: steps.host-cache.outputs.cache-hit != 'true'
+      if: github.ref == 'refs/heads/master' && steps.host-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |

@@ -383,9 +383,18 @@ GitHub's cache scoping is asymmetric, and both halves matter here:
   nothing else. (PRs are barred from writing parent scopes on purpose: it is
   what stops an untrusted contributor poisoning master's cache.)
 
-So every PR run mints a private ~5 GB set (`dl/` + `br-host` +
+So every PR run used to mint a private ~5 GB set (`dl/` + `br-host` +
 `br-initramfs-host` + ccache) that no other run will ever read, and that
 GitHub keeps until it goes **7 days without an access** — long past the merge.
+
+**Since 2026-10-05 only master saves.** Every save step in
+`buildroot-build` (and the ccache action's `save:` input) is gated on
+`github.ref == 'refs/heads/master'`; PRs, tag builds and branch dispatches
+restore master's set and write nothing back. The cost is deliberate: a PR
+that moves a cache key (a Buildroot bump, a toolchain-fingerprint change)
+rebuilds that cache cold on every push until it merges, and master's first
+post-merge run re-seeds it. A cold toolchain is ~1 h of runner time; an
+evicted master `dl/` is the outage below.
 
 That is what broke run **33098842073**. Three same-day Renovate PRs took the
 repo to **14.2 GB** against the 10 GB ceiling, LRU evicted every
@@ -438,14 +447,13 @@ GitHub's own 7-day expiry. Widening the sweep to `refs/heads/*` would mean
 teaching it which branch refs are safe, and getting that wrong deletes
 master's set: the narrow rule is worth more than the few GB it leaves behind.
 
-Be clear about what this buys. Steady state is master's ~7 GB plus one open
-PR's ~5 GB, which is still over the ceiling: the prune stops **dead** PRs from
-spending the budget, it does not create headroom for concurrent live ones. If
+With PR saves gated off, the prune is a safety net: it clears scopes saved
+before the gate landed, and anything a future save step forgets to gate.
+Steady state is master's ~7 GB alone. If
 master's `dl/` starts getting evicted again with the prune in place, the
-levers in [`#cache-budget-and-sizing`](#cache-budget-and-sizing) are next,
-plus deleting superseded `ccache-<version>-<timestamp>` generations — the
-ccache action mints a new ~2 GB entry every run by design (see
-[`#ccache-key`](#ccache-key)) and only the newest is ever restored.
+levers in [`#cache-budget-and-sizing`](#cache-budget-and-sizing) are next.
+Superseded ccache generations are already pruned (see
+[`#ccache-prune`](#ccache-prune)).
 
 <a id="cache-prune-trigger"></a>
 ### Why the prune runs on `pull_request_target`
@@ -715,6 +723,15 @@ write a NEW key; with the timestamp off, the first save would own
 existing, and the cache would freeze at its first contents while the hit rate
 decayed. The timestamped key is a prefix match on restore (hence "Cache hit
 for restore-key" in the logs), so the newest entry always wins.
+
+<a id="ccache-prune"></a>
+The flip side is that every master build adds a ~1.4 GB generation and only
+the newest is ever restored. `cache-prune.yml` therefore also runs after each
+master `Build` (`workflow_run`) and in the daily sweep, and deletes every
+`ccache-<version>-<timestamp>` entry on `refs/heads/master` except the newest
+per `<version>`. Same response-side guard as the PR prune: an entry whose
+returned `.ref` is not master, or whose key does not start `ccache-`, is
+refused. An older version's single generation is left to LRU.
 
 <a id="dl-completeness"></a>
 ### dl/ completeness before save

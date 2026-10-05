@@ -510,9 +510,9 @@
       ]
     },
     {
-      "description": "Userspace input-device tooling pins (dualsensectl, ltunify). Their own label rather than driver-pin, per the established one-label-per-pin-class convention: driver-pin's reviewer contract is \"this changes out-of-tree kernel-module source\", and neither of these changes kernel-module source nor a library ABI Main_MiSTer links against (lib-pin's contract). Each ships one self-contained CLI binary that nothing on the image invokes automatically, so the blast radius of a bad bump is an operator typing a command, not a boot or a link failure. One extra thing for an ltunify reviewer specifically: /usr/sbin/mister-pair-logitech drives its command-line grammar and works around its always-exit-0 behaviour, so a bump that changed either would break the wrapper silently -- re-read docs/logitech-pairing.md section 4 before merging one.",
+      "description": "Userspace tooling pins (dualsensectl, ltunify, minijail). minijail joined 2026-10-04: also one self-contained CLI, but it is the jail S92transmission builds, so read its bump diff for mount/capability behaviour changes and re-run the jail self-check on the rig. Their own label rather than driver-pin, per the established one-label-per-pin-class convention: driver-pin's reviewer contract is \"this changes out-of-tree kernel-module source\", and neither of these changes kernel-module source nor a library ABI Main_MiSTer links against (lib-pin's contract). Each ships one self-contained CLI binary that nothing on the image invokes automatically, so the blast radius of a bad bump is an operator typing a command, not a boot or a link failure. One extra thing for an ltunify reviewer specifically: /usr/sbin/mister-pair-logitech drives its command-line grammar and works around its always-exit-0 behaviour, so a bump that changed either would break the wrapper silently -- re-read docs/logitech-pairing.md section 4 before merging one.",
       "matchManagers": ["custom.regex"],
-      "matchDepNames": ["nowrep/dualsensectl", "Lekensteyn/ltunify"],
+      "matchDepNames": ["nowrep/dualsensectl", "Lekensteyn/ltunify", "google/minijail"],
       "addLabels": [
         "tool-pin"
       ]

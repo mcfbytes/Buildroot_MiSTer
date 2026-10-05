@@ -1,7 +1,7 @@
 # minijail
 
 `package/minijail` ships Google's [minijail](https://google.github.io/minijail/):
-`/usr/bin/minijail0`, `/usr/lib/libminijail.so` and `/usr/lib/libminijailpreload.so`. It is in
+`/usr/bin/minijail0` and `/usr/lib/libminijailpreload.so`. It is in
 the `mister-userspace` profile, so the DE10 image carries it. Its first users are the jailed
 `S92transmission` and mistarr, whose design is mistarr's `docs/NONROOT-PLAN.md`.
 
@@ -33,7 +33,14 @@ Mount, PID, IPC and UTS namespaces, ambient capabilities and `no_new_privs` are 
   sources).
 - The toolchain goes in through the environment, not the make command line, because the
   Makefile appends `-DPRELOADPATH` to `CPPFLAGS`.
-- About 490 KB stripped for the three files; links only libcap and libc.
+- Upstream's `common.mk` adds `-O2`, `-ggdb3` and `-D_FORTIFY_SOURCE=3` after Buildroot's
+  flags, so this package ignores `BR2_OPTIMIZE_*` and `BR2_FORTIFY_SOURCE_*` (Buildroot still
+  strips it). Its hard-coded `-Werror` is removed in a post-patch hook, so a newer GCC's
+  warnings cannot fail the image build.
+- `libminijail.so` is built but not installed, and nothing is staged: `minijail0` and
+  `libminijailpreload.so` each link the core objects statically, so no binary would load it.
+  A future package that links libminijail should add a staging install with a SONAME.
+- About 330 KB stripped for the two files; links only libcap and libc.
 
 Callers should use `-T static` (jail set up in `minijail0`, then `execve`), which works the same
 on stock's static musl build and needs no preload library inside the jail.

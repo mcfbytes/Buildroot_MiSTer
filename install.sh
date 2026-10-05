@@ -21,7 +21,8 @@
 # 3. Installs this project's Scripts onto the card:
 #    update_linux_modernization.sh (updates the image from now on),
 #    check_storage.sh (checks the exFAT data partition for damage, ADR 0026)
-#    and pair_logitech.sh (pairs a Logitech device to a Unifying receiver).
+#    pair_logitech.sh (pairs a Logitech device to a Unifying receiver)
+#    and sinden_lightgun.sh (downloads and enables the Sinden Lightgun driver).
 # 4. Runs it, which sets the `update_linux = false` kill switch, fetches this
 #    project's image through the stock on-device Downloader, and reboots.
 #
@@ -41,6 +42,7 @@
 #   MLM_UPDATER_URL        override where the updater script is fetched from
 #   MLM_CHECK_STORAGE_URL  override where check_storage.sh is fetched from
 #   MLM_PAIR_LOGITECH_URL  override where pair_logitech.sh is fetched from
+#   MLM_SINDEN_URL         override where sinden_lightgun.sh is fetched from
 #
 # ---------------------------------------------------------------------------
 # ON `curl | bash`
@@ -72,6 +74,7 @@ UPDATER_URL="${MLM_UPDATER_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Sc
 CHECK_STORAGE_URL="${MLM_CHECK_STORAGE_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
 # Same override shape again, same two reasons.
 PAIR_LOGITECH_URL="${MLM_PAIR_LOGITECH_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh}"
+SINDEN_URL="${MLM_SINDEN_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/sinden_lightgun.sh}"
 DB_URL="https://mcfbytes.github.io/Buildroot_MiSTer/db.json"
 
 FAT="/media/fat"
@@ -79,6 +82,7 @@ SCRIPTS_DIR="$FAT/Scripts"
 UPDATER="$SCRIPTS_DIR/update_linux_modernization.sh"
 CHECK_STORAGE="$SCRIPTS_DIR/check_storage.sh"
 PAIR_LOGITECH="$SCRIPTS_DIR/pair_logitech.sh"
+SINDEN="$SCRIPTS_DIR/sinden_lightgun.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
 # These three are ONE SET, and every path that touches them treats them as one:
@@ -390,6 +394,7 @@ show_plan() {
 	say "  /media/fat/Scripts/update_linux_modernization.sh   <- installed"
 	say "  /media/fat/Scripts/check_storage.sh                <- installed"
 	say "  /media/fat/Scripts/pair_logitech.sh                <- installed"
+	say "  /media/fat/Scripts/sinden_lightgun.sh              <- installed"
 	say ""
 	say "  That is the whole of it. Our release archive IS the stock archive with"
 	say "  those first three files swapped in, so everything else under linux/ --"
@@ -505,6 +510,7 @@ install_scripts() {
 	install_one_script "$UPDATER_URL"       "$UPDATER"       'mister_linux_modernization'
 	install_one_script "$CHECK_STORAGE_URL" "$CHECK_STORAGE" 'mister-fsck-exfat'
 	install_one_script "$PAIR_LOGITECH_URL" "$PAIR_LOGITECH" 'mister-pair-logitech'
+	install_one_script "$SINDEN_URL"        "$SINDEN"        'mister-sinden-lightgun'
 }
 
 # ---------------------------------------------------------------------------

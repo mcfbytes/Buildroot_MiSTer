@@ -286,13 +286,13 @@ EOF
 # ---------------------------------------------------------------------------
 # Companion Scripts
 # ---------------------------------------------------------------------------
-# This project ships three Scripts/ entries and they arrive by ONE route:
+# This project's Scripts/ entries all arrive by ONE route:
 # install.sh puts them all on the card, and this function replaces any that
 # later go missing (ADR 0026). It is the same shape as ensure_kill_switch
 # above -- repair the card's configuration on every run, so a user who only ever
 # runs this script ends up correct.
 #
-# Needed because both companion shims drive tools that live in the ROOTFS, and a
+# Needed because the companion shims drive tools that live in the ROOTFS, and a
 # Linux update replaces the rootfs without ever writing to the FAT partition. A
 # user who onboarded before one of those tools existed would otherwise have the
 # whole mechanism installed and no way to launch it from the Scripts menu. That
@@ -316,7 +316,8 @@ ensure_companion_scripts() {
 	local entry name override marker url tmp default_url
 	for entry in \
 		"check_storage.sh|MLM_CHECK_STORAGE_URL|mister-fsck-exfat" \
-		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech"
+		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech" \
+		"sinden_lightgun.sh|MLM_SINDEN_URL|mister-sinden-lightgun"
 	do
 		name="${entry%%|*}"
 		override="${entry#*|}"; override="${override%%|*}"

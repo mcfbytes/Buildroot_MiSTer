@@ -94,6 +94,10 @@ menu "Input-device userspace tooling"
 	# this is a genuine gap and not a duplicate of anything in the kernel.
 	# See docs/logitech-pairing.md.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/ltunify/Config.in"
+	# sinden-lightgun: runtime + hotplug glue for Sinden's camera light gun driver,
+	# which is fetched on the device. libjpeg62 first: it exists only for it.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/libjpeg62/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/sinden-lightgun/Config.in"
 endmenu
 
 menu "Firmware infra gap-fill (P3.3, P3.14)"

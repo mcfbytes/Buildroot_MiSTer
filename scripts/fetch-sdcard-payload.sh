@@ -357,6 +357,11 @@ stage_stock_payload() {
 #       because the user reaching for it may have no working keyboard to type a
 #       command with.
 #
+#   Scripts/sinden_lightgun.sh
+#       Downloads Sinden's Lightgun driver onto this partition and enables it
+#       (docs/sinden-lightgun.md). Same shim shape: the tool is
+#       /usr/sbin/mister-sinden-lightgun in the rootfs.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -382,7 +387,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/sinden_lightgun.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

@@ -1,0 +1,15 @@
+config BR2_PACKAGE_LIBJPEG62
+	bool "libjpeg62 (libjpeg-turbo, 6.2 ABI)"
+	depends on !BR2_STATIC_LIBS
+	help
+	  libjpeg.so.62 alongside the system libjpeg.so.8. Buildroot's
+	  jpeg-turbo is always built with the 8 ABI; prebuilt binaries
+	  linked against Debian's libjpeg62-turbo need the 6.2 one.
+
+	  Same jpeg-turbo source and version; only the shared library
+	  is installed, never headers, so nothing in the build links it.
+
+	  https://libjpeg-turbo.org/
+
+comment "libjpeg62 needs a toolchain w/ dynamic library"
+	depends on BR2_STATIC_LIBS

@@ -123,18 +123,14 @@ CONFIG_HZ_1000=y
 # has no PSCI idle-states in its DTS and the DE10 has no PM hardware at all.
 # CONFIG_SUSPEND is not set
 CONFIG_PM=y
-# SECCOMP OFF IS LOAD-BEARING, AND IT REACHES INTO THE BUILDROOT DEFCONFIG.
-# It is `default y` on arm64 and matches stock on the DE10, so this is a real
-# change on any arm64 base. The coupling: Buildroot's BR2_PACKAGE_OPENSSH_SANDBOX
-# is `default y`, and since openssh 10.4 a failed prctl(PR_SET_SECCOMP) is
-# fatal() rather than debug() — so an image with SECCOMP off and the sandbox on
-# gets an sshd that BINDS AND LISTENS while killing every connection preauth,
-# password and key alike. The DE10 fixes that in its own defconfig with
-# `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` (see its comment there, commit
-# 9824cd6). ANY BOARD THAT ADOPTS THIS FRAGMENT AND SHIPS OPENSSH MUST CARRY
-# THAT DEFCONFIG LINE TOO. (Note it is a configure-time flag: changing it needs
-# `make openssh-dirclean` or the stale stamp ships the same broken sshd.)
-# CONFIG_SECCOMP is not set
+# Sandboxing (D13 on the DE10, docs/de25-kernel-config.md): seccomp, Landlock as the
+# only LSM, the pids controller, and patched-out unlikely branches.
+CONFIG_SECCOMP=y
+CONFIG_JUMP_LABEL=y
+CONFIG_CGROUP_PIDS=y
+CONFIG_SECURITY=y
+CONFIG_SECURITY_LANDLOCK=y
+# CONFIG_INTEGRITY is not set
 
 # =============================================================================
 # 2. Modules and the .ko.xz layout

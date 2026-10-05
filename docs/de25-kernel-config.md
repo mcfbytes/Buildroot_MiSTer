@@ -138,25 +138,18 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
   any base.
 * `# CONFIG_SUSPEND is not set` — `SUSPEND` is `default y` wherever
   `ARCH_SUSPEND_POSSIBLE`, so the explicit off is required, not decorative.
-* **`# CONFIG_SECCOMP is not set` is load-bearing, and it reaches into the
-  Buildroot configuration.** It is `default y` on arm64 (wave 1 had `SECCOMP=y`) and
-  matches stock on the DE10. The coupling: `BR2_PACKAGE_OPENSSH_SANDBOX` is
-  `default y` in Buildroot, and since openssh 10.4 a failed
-  `prctl(PR_SET_SECCOMP)` is `fatal()` rather than `debug()` — so an image with
-  SECCOMP off and the sandbox on gets an `sshd` that **binds and listens while
-  killing every connection preauth**, password and key alike. The DE10 fixes
-  that with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` in its own image
-  fragment (commit `9824cd6`; the line is now
-  `configs/mister_de10nano_defconfig` and the rationale
-  `docs/buildroot-config.md` §5.19).
-
-  **Action for `configs/mister_de25nano_defconfig`:** it ships no `openssh`
-  today (the DE25 is a bare BusyBox developer OS, ADR 0027), so nothing is
-  broken now — but the day `BR2_PACKAGE_OPENSSH=y` is added there,
-  `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added with it. The
-  fragment carries a WARNING at its package section saying exactly that
-  (`docs/buildroot-config.md` §6.8). It is a configure-time flag, so changing it later
-  also needs `make openssh-dirclean` or the stale stamp ships the broken sshd.
+* **Sandboxing: `SECCOMP`, `SECURITY` + `SECURITY_LANDLOCK`, `CGROUP_PIDS`, `JUMP_LABEL`
+  on; `INTEGRITY` off** (2026-10-04, the DE10's delta D13 in
+  `docs/kernel-config-deltas.md`). Until then the fragment carried
+  `# CONFIG_SECCOMP is not set` to match stock, which obliged any board that shipped
+  openssh to disable Buildroot's `default y` OpenSSH sandbox (openssh ≥ 10.4 kills
+  every pre-auth connection when seccomp is missing). With seccomp on, that obligation
+  is gone. On the DE25 `SECCOMP` and `JUMP_LABEL` are `default y` / already on from the
+  arm64 base, so only Landlock and the pids controller are real changes there;
+  `INTEGRITY` is `default y` under `SECURITY` and turned off because nothing uses it.
+  Verified with `merge_config.sh` + `olddefconfig` on 7.2.9 with the de25nano series:
+  the resolved config gains exactly these symbols plus the two LSM hook symbols Landlock
+  selects.
 
 ### 3.2 Modules and the `.ko.xz` layout (§2)
 `MODULES`, `MODULE_UNLOAD`, `MODULE_COMPRESS`, `MODULE_COMPRESS_XZ`.

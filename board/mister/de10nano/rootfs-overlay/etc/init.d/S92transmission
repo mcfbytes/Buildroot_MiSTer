@@ -19,7 +19,20 @@ MISTARR_STAGING=/media/fat/mistarr/staging
 RUN_DIR=/run/transmission
 ROOT_DIR="$RUN_DIR/root"
 PIDFILE="$RUN_DIR/jail.pid"
+POLICY="$RUN_DIR/seccomp.policy"
+CGROUP=/sys/fs/cgroup/transmission
+PIDS_MAX=64
 TM_UID=8422
+# Syscalls that return EPERM in the jail; every other one minijail0 knows is
+# allowed (docs/bittorrent.md §8.1).
+SECCOMP_DENY="io_uring_setup io_uring_enter io_uring_register perf_event_open bpf
+userfaultfd keyctl add_key request_key ptrace process_vm_readv process_vm_writev
+process_madvise kcmp pidfd_getfd mount umount2 pivot_root chroot mount_setattr
+move_mount open_tree open_tree_attr fsopen fsconfig fsmount fspick unshare setns
+swapon swapoff reboot kexec_load kexec_file_load init_module finit_module
+delete_module acct quotactl quotactl_fd syslog settimeofday clock_settime
+clock_settime64 adjtimex clock_adjtime clock_adjtime64 sethostname setdomainname
+personality vhangup name_to_handle_at open_by_handle_at fanotify_init"
 CR=$(printf '\r')
 
 # The opt-in gate, same shape as S91smb's `samba.sh`: no directory on the card,
@@ -97,6 +110,24 @@ prepare_root() {
 	[ -e /run/resolv.conf ] || : >/run/resolv.conf
 }
 
+# Writes $POLICY from minijail0's own syscall table: allow all, deny SECCOMP_DENY.
+write_policy() {
+	"$MINIJAIL" -H 2>/dev/null | DENY="$SECCOMP_DENY" awk '
+		BEGIN { n = split(ENVIRON["DENY"], d); for (i = 1; i <= n; i++) D[d[i]] = 1 }
+		$1 ~ /^[A-Za-z0-9_]+$/ && $2 ~ /^\[[0-9]+\]$/ {
+			print $1 (($1 in D) ? ": return 1" : ": 1"); c++
+		}
+		END { exit c < 300 }' >"$POLICY"
+}
+
+# The daemon's own cgroup2 group, with a ceiling on processes plus threads.
+prepare_cgroup() {
+	c=/sys/fs/cgroup
+	grep -qw pids "$c/cgroup.controllers" 2>/dev/null || return 1
+	grep -qw pids "$c/cgroup.subtree_control" || echo +pids >"$c/cgroup.subtree_control" || return 1
+	mkdir -p "$CGROUP" && echo "$PIDS_MAX" >"$CGROUP/pids.max"
+}
+
 # Runs "$@" inside the jail view, with $JAIL_EXTRA as extra minijail0 options.
 jail() {
 	n=$#
@@ -107,12 +138,14 @@ jail() {
 		-b /run/resolv.conf,/etc/resolv.conf \
 		-k 'proc,/proc,proc,MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC' -d \
 		-k 'tmpfs,/tmp,tmpfs,MS_NOSUID|MS_NODEV|MS_NOEXEC,size=16m' \
-		-b "$STATE_DIR,$HOME_DIR,1" -R RLIMIT_CORE,0,0
+		-b "$STATE_DIR,$HOME_DIR,1" -R RLIMIT_CORE,0,0 -S "$POLICY" \
+		--fs-path-rx /usr --fs-path-ro /etc --fs-path-ro /proc --fs-path-rw /dev \
+		--fs-path-rw /tmp --fs-path-advanced-rw "$HOME_DIR"
 	if [ -f /media/fat/linux/timezone ] && [ ! -L /media/fat/linux/timezone ]; then
 		set -- "$@" -b /media/fat/linux/timezone,/etc/localtime
 	fi
 	while IFS= read -r dir; do
-		[ -n "$dir" ] && set -- "$@" -b "$dir,$dir,1"
+		[ -n "$dir" ] && set -- "$@" -b "$dir,$dir,1" --fs-path-advanced-rw "$dir"
 	done <<-EOF
 	$RW_BINDS
 	EOF
@@ -189,13 +222,15 @@ running() {
 }
 
 # Reads the jail's claims back from the kernel: all four uids and gids, no
-# supplementary group but its own, no_new_privs, CapEff.
+# supplementary group but its own, no_new_privs, a seccomp filter, the cgroup, CapEff.
 check_jail() {
 	s="/proc/$1/status"
 	ids="[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]*$"
 	grep -Eq "^Uid:$ids" "$s" && grep -Eq "^Gid:$ids" "$s" &&
 		grep -Eq "^Groups:[[:space:]]*(${TM_UID}[[:space:]]*)?$" "$s" &&
 		grep -q '^NoNewPrivs:[[:space:]]*1$' "$s" &&
+		grep -q '^Seccomp:[[:space:]]*2$' "$s" &&
+		grep -qx "0::/${CGROUP#/sys/fs/cgroup/}" "/proc/$1/cgroup" &&
 		grep -q '^CapEff:[[:space:]]*0000000000000002$' "$s"
 }
 
@@ -221,6 +256,14 @@ start() {
 	collect_rw
 	if ! prepare_root; then
 		echo "FAIL (could not prepare $ROOT_DIR)"
+		return 1
+	fi
+	if ! write_policy; then
+		echo "FAIL (could not build the seccomp policy from $MINIJAIL -H)"
+		return 1
+	fi
+	if ! prepare_cgroup; then
+		echo "FAIL (no cgroup2 pids controller at /sys/fs/cgroup)"
 		return 1
 	fi
 	if ! seed_settings; then
@@ -303,6 +346,7 @@ case "$1" in
 	run)
 		# Internal, from start(): with -I the daemon is its namespace's init and
 		# stays in the foreground; its output reaches syslog through logger.
+		echo $$ >"$CGROUP/cgroup.procs" || exit 1
 		(
 			echo 800 >/proc/self/oom_score_adj
 			JAIL_EXTRA="-i -f $PIDFILE.new" jail "$DAEMON" --foreground --config-dir "$HOME_DIR"

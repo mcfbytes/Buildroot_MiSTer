@@ -2535,6 +2535,49 @@ for _cmd in "${k618:+$(dirname "$k618")/kernel/sched/.core.o.cmd}" "$([ "${#rt_c
 done
 
 # =============================================================================
+section "Kernel sandboxing — seccomp, Landlock, pids, jump labels (D13, ADR 0031)"
+# =============================================================================
+# The OpenSSH sandbox and minijail -S need seccomp; with only one of the pair,
+# sshd listens but drops every connection (docs/buildroot-config.md §5.19).
+
+for _kc in "$k618" "$BUILD_DIR/images/linux-rt.config"; do
+	_syms="SECCOMP SECCOMP_FILTER SECURITY SECURITY_LANDLOCK CGROUP_PIDS"
+	# Upstream ARM drops jump labels under PREEMPT_RT on SMP (arch/arm/Kconfig).
+	[ "$_kc" = "$k618" ] && _syms="$_syms JUMP_LABEL"
+	for _sym in $_syms; do
+		if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
+			skip "CONFIG_$_sym=y in ${_kc:-the 6.18 kernel}" "no single resolved kernel config (found ${#kconfigs[@]} 6.18 trees)"
+		elif grep -qx "CONFIG_$_sym=y" "$_kc"; then
+			pass "CONFIG_$_sym=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
+		else
+			fail "CONFIG_$_sym=y in $_kc" "$(grep -E "^(# )?CONFIG_${_sym}[ =]" "$_kc" || echo "no CONFIG_$_sym line")"
+		fi
+	done
+	if [ -n "$_kc" ] && [ -f "$_kc" ]; then
+		if grep -qE '^CONFIG_LSM="([^"]*,)?landlock[,"]' "$_kc"; then
+			pass "Landlock is in CONFIG_LSM ($(basename "$_kc"))"
+		else
+			fail "Landlock is in CONFIG_LSM ($_kc)" "$(grep '^CONFIG_LSM=' "$_kc" || echo "no CONFIG_LSM line") -- built but never initialised"
+		fi
+	fi
+done
+if grep -qx 'BR2_PACKAGE_OPENSSH_SANDBOX=y' "$BUILD_DIR/.config" 2>/dev/null; then
+	pass "BR2_PACKAGE_OPENSSH_SANDBOX=y (pairs with CONFIG_SECCOMP_FILTER above)"
+else
+	fail "BR2_PACKAGE_OPENSSH_SANDBOX=y" "the kernel has seccomp but sshd's pre-auth child is unsandboxed"
+fi
+if tar xOf "$ROOTFS_TAR" ./usr/libexec/sshd-auth 2>/dev/null | grep -aq 'preparing seccomp filter sandbox'; then
+	pass "sshd-auth carries the seccomp filter sandbox"
+else
+	fail "sshd-auth carries the seccomp filter sandbox" "built SANDBOX_NULL? (stale openssh stamp -- make openssh-dirclean)"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/fstab 2>/dev/null | grep -qE '^cgroup2[[:space:]]+/sys/fs/cgroup[[:space:]]+cgroup2[[:space:]]'; then
+	pass "fstab mounts cgroup2 at /sys/fs/cgroup (S92transmission's pids limit)"
+else
+	fail "fstab mounts cgroup2 at /sys/fs/cgroup" "S92transmission refuses to start without the pids controller"
+fi
+
+# =============================================================================
 section "P3.11 — RTC parity"
 # =============================================================================
 
@@ -2736,6 +2779,17 @@ else
 	else
 		fail "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it" \
 			"MINIJAIL=/usr/bin/minijail0, TM_UID=8422, '-c 0x2 --ambient' or the fail-closed branch is gone"
+	fi
+	# Seccomp, Landlock and the pids cgroup on top (docs/bittorrent.md §8.1).
+	# shellcheck disable=SC2016 # matched literally in the script text
+	if printf '%s' "$tm_init_body" | grep -qF -- '-S "$POLICY"' &&
+		printf '%s' "$tm_init_body" | grep -qF -- '--fs-path-rx /usr' &&
+		printf '%s' "$tm_init_body" | grep -qF 'pids.max' &&
+		printf '%s' "$tm_init_body" | grep -qF "^Seccomp:"; then
+		pass "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them"
+	else
+		fail "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them" \
+			"-S \"\$POLICY\", --fs-path-rx /usr, pids.max or the Seccomp self-check is gone"
 	fi
 	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
 	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then

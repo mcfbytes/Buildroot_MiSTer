@@ -91,7 +91,7 @@ writable over FTP as root, and that `/etc` is not.
 **Done when:** `curl ftp://root:PW@rig/fat/` lists the card; `ftp://root:PW@rig/../etc/`
 fails; CI asserts `^DefaultRoot[[:space:]]+/media$`.
 
-### S5 — `CONFIG_SECCOMP=y` + OpenSSH sandbox — Size S — Depends: none
+### S5 — `CONFIG_SECCOMP=y` + OpenSSH sandbox — Size S — Depends: none — **DONE 2026-10-04** (D13; rig boot still owed)
 
 Both `linux.config` files (de10nano, de25nano) and the RT fragment if it overrides;
 `BR2_PACKAGE_OPENSSH_SANDBOX=y` in `de10nano-image.fragment`; delete the "must stay off"

@@ -1253,29 +1253,22 @@ controller/member): `BR2_PACKAGE_SAMBA4_AD_DC`, `BR2_PACKAGE_SAMBA4_ADS`,
 
 ### 5.19 daemons / user-facing binaries (manifest §2)
 
-`BR2_PACKAGE_OPENSSH=y`. **`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`** —
-deliberately NOT set (Buildroot defaults it to y, i.e. `--with-sandbox`). Our
-kernel carries `# CONFIG_SECCOMP is not set` (`linux.config:48`), matching
-stock (`docs/stock-inventory/20250402/stock-linux.config:592`), so
-`prctl(PR_SET_SECCOMP)` returns EINVAL. Through openssh 10.3 that was only a
-`debug()` and sshd ran the pre-auth child unsandboxed — which is what this
-image has silently done for its entire life; the seccomp sandbox was never
-once active here. openssh 10.4 (upstream 7ab700f, "Make failure to set SECCOMP
-or NO_NEW_PRIVS fatal") turned it into `fatal()`. The LISTENER still binds and
-listens normally, but the pre-auth privsep child of sshd-session then dies
-status 255 on every single connection, before any auth — so the box looks
-like it is serving SSH while refusing every client, password and key alike.
-That regression reached us via Buildroot 2026.05.1 -> 2026.05.2, which bumped
-openssh 10.3p1 -> 10.5p1 and so crossed the 10.4 boundary. `--without-sandbox`
-selects `SANDBOX_NULL` — verified on the rebuild: `config.h` gets
-`#define SANDBOX_NULL 1` and none of sshd, sshd-session or sshd-auth carries a
-seccomp string any more. That restores the posture the image actually had all
-along (the sandbox never engaged). Setting `CONFIG_SECCOMP=y` instead is the
-beyond-parity fix (`post-build.sh:22` already lists it as such), but it would
-arm that armhf/glibc syscall allowlist for the first time ever and needs a
-real build-and-SSH test, not a hotfix. NB: configure-time flag — changing it
-requires `make openssh-dirclean` before the rebuild, or the stale
-`--with-sandbox` stamp ships the same broken sshd. See `docs/ssh-ftp-parity.md`.
+`BR2_PACKAGE_OPENSSH=y`, with `BR2_PACKAGE_OPENSSH_SANDBOX` at Buildroot's default `y`
+(so it has no line). **The sandbox is only as good as the kernel's seccomp, and the two must
+move together.** From 2026-08-24 to 2026-10-04 this defconfig carried
+`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`: the kernel had `# CONFIG_SECCOMP is not set`
+(stock parity), and openssh 10.4 (upstream 7ab700f, "Make failure to set SECCOMP or
+NO_NEW_PRIVS fatal") turned the failed `prctl(PR_SET_SECCOMP)` from a `debug()` into a
+`fatal()`. The listener still bound and listened, but the pre-auth child died on every
+connection before any auth, password and key alike. That reached us with Buildroot
+2026.05.2 (openssh 10.3p1 -> 10.5p1). Before 10.4 the sandbox had silently never engaged.
+Kernel delta D13 (`docs/kernel-config-deltas.md`) turned seccomp on in both DE10 kernels and
+the line was deleted in the same commit; `sshd-auth` now runs as `sshd` with
+`NoNewPrivs 1` and `Seccomp 2`, verified in a QEMU boot of the image's own `linux.img`.
+`scripts/ci-tests.sh` asserts the Buildroot symbol, the kernel symbols and the sandbox
+string in `sshd-auth` together, so neither half can move alone again. NB: configure-time
+flag — changing it requires `make openssh-dirclean`, or the stale stamp ships the old sshd.
+See `docs/ssh-ftp-parity.md`.
 
 `BR2_PACKAGE_PROFTPD=y`.
 
@@ -2635,21 +2628,12 @@ is not a repeal of the bare-developer-OS scope — no binary a user invokes was
 added — and the rootfs measurement §6.6 records is what keeps that claim
 honest.
 
-ONE STANDING OBLIGATION IS ALREADY BOOKED AGAINST THAT EMPTY LIST, and the
-fragment carries it as a WARNING so it cannot be missed at the moment it
-matters. `board/mister/de25nano/linux.config` carries
-`# CONFIG_SECCOMP is not set` (a MiSTer posture, matching stock and the DE10 —
-`docs/de25-kernel-config.md` §3.1; `SECCOMP` is `default y` on arm64, so wave 1
-had it on). `BR2_PACKAGE_OPENSSH_SANDBOX` is `default y` in Buildroot, and
-since openssh 10.4 a failed `prctl(PR_SET_SECCOMP)` is `fatal()` rather than
-`debug()`. The combination is an `sshd` that binds and listens while killing
-every connection preauth, password and key alike — the DE10 hit exactly this
-and fixes it with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` (§5.19 has the
-full write-up). Nothing is broken on the DE25 today, because it ships no
-openssh; but the day `BR2_PACKAGE_OPENSSH=y` is added to `de25nano.fragment`,
-`# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added in the same commit.
-It is a configure-time flag, so flipping it later also needs
-`make openssh-dirclean` or the stale stamp ships the broken sshd.
+THE SECCOMP OBLIGATION THIS LIST USED TO CARRY IS GONE (2026-10-04). The shared
+kernel fragment turned `SECCOMP` off and the DE25 had to remember to disable the
+OpenSSH sandbox the day it shipped openssh (§5.19 has why). The fragment now turns
+seccomp **on** (D13, `docs/de25-kernel-config.md` §3.1), so Buildroot's default
+`BR2_PACKAGE_OPENSSH_SANDBOX=y` is correct on both boards and adding openssh to the
+DE25 needs no companion line.
 
 ### 6.9 Bootloader — ATF BL31 + mainline U-Boot, packaged as `u-boot.itb`
 

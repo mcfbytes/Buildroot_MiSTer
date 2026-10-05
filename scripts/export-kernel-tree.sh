@@ -174,29 +174,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
 readonly HASH_FILE="$REPO_ROOT/board/mister/de10nano/patches/linux/linux.hash"
 
-# WHICH FRAGMENTS THIS SCRIPT READS -- and why it is a STACK, not one file
-# -----------------------------------------------------------------------
-# This used to be `DEFCONFIG=configs/fragments/de10nano.fragment`, a single file, and
-# that was correct only for as long as one file held every symbol. The 2026-09 fragment
-# split ended that: configs/fragments/stacks.mk now composes the de10nano image from
-# `common de10nano image-common de10nano-image`, and the kernel-module package selections
-# (BR2_PACKAGE_XONE, BR2_PACKAGE_RTL8852CU_MORROWNR) moved into de10nano-image.fragment
-# while the kernel pin stayed in de10nano.fragment.
-#
-# Reading one file after that split is not a partial answer, it is a WRONG one, and it
-# fails in the worst possible direction: section 6b greps for BR2_PACKAGE_*=y, would have
-# found NONE of them in de10nano.fragment, and its "detected zero kernel-module packages"
-# guard would have aborted every export -- or, had that guard not existed, silently
-# shipped a tree with no Xbox controller and no WiFi. So the fragment list comes from
-# stacks.mk, which docs/buildroot-config.md §1 names as the single source of truth for
-# what a configuration is made of, parsed through the same helper the other checks use.
-# A future fragment move then needs no edit here.
-#
-# DE10NANO (the IMAGE stack), not DE10NANO_KERNEL: the exported tree is the kernel the
-# MiSTer image ships, and the kernel-only stack deliberately selects no packages at all
-# (stacks.mk: `image-common` is in every image stack and no kernel-only one), so reading
-# it would reintroduce exactly the zero-drivers bug from the other direction.
-
+# WHAT CONFIG THIS SCRIPT READS: the DE10 defconfig for literal pins, and its RESOLVED
+# Buildroot .config for the package set (profile selects; docs/kernel-export.md §7).
 
 # Committer identity for the generated commits. Patch AUTHORS are preserved by `git am`;
 # this only says who mechanically produced the tree, and it must be explicit so the
@@ -213,7 +192,6 @@ say() { printf '\n=== %s\n' "$*"; }
 STACK_FILES=("$REPO_ROOT/configs/mister_de10nano_defconfig")
 readonly STACK_FILES
 [ -f "${STACK_FILES[0]}" ] || die "no ${STACK_FILES[0]} -- the DE10 defconfig is the single source of the kernel pin (ADR 0030)"
-unset _frag
 
 # Only set when we download rather than use the dl/ cache. Cleaned on exit: it holds a
 # ~150MB kernel tarball, so leaking it on every run is not a rounding error. --output is
@@ -226,11 +204,16 @@ unset _frag
 # 1 despite printing PASS.
 # scratch_dir holds `git mailinfo` output while we read the upstream-only patches'
 # Subject: lines; it is tiny but there is no reason to leak one per run.
+# resolved_dir holds the throwaway Buildroot .config section 6b reads.
 download_dir=''
 scratch_dir=''
+resolved_dir=''
 cleanup() {
 	if [[ -n $download_dir ]]; then
 		rm -rf "$download_dir"
+	fi
+	if [[ -n $resolved_dir ]]; then
+		rm -rf "$resolved_dir"
 	fi
 	if [[ -n $scratch_dir ]]; then
 		rm -rf "$scratch_dir"
@@ -1005,48 +988,31 @@ declare -A MODULE_EXPORT_SKIP=(
 	[aic8800]='stock vendors its own copy at the same path (MiSTer-v6.18 c129b0fac3)'
 )
 
-# A package is a kernel module iff its .mk evals Buildroot's kernel-module infra. Detected
-# rather than listed, so a new one cannot be missed by forgetting to update a list here.
-#
-# The `=y` is NOT anchored to end-of-line: these fragments annotate most package lines
-# with a trailing comment ("BR2_PACKAGE_RTL8812AU=y    # RTL8812AU 11ac -- ..."), and
-# anchoring matched only the one line without one, silently vendoring xone alone and
-# dropping all three WiFi drivers.
-#
-# Read over the WHOLE STACK, not one fragment. The package selections live in
-# de10nano-image.fragment since the 2026-09 split while the kernel pin stayed in
-# de10nano.fragment; reading only the latter finds zero packages (see the STACK_FILES
-# note near the top).
-#
-# LAST DEFINITION WINS, the same rule defconfig_value() implements with `tail -1` and
-# the same rule kconfig itself applies when a later fragment redefines a symbol an
-# earlier one set. This used to be a bare `sed` for `=y` only, with a comment claiming
-# "`# BR2_PACKAGE_X is not set` lines cannot match -- the pattern is anchored at column 1
-# on the symbol -- so a disabled driver stays disabled." That had it exactly backwards:
-# because the sed matched ONLY `=y`, a later fragment's not-set line was invisible, so a
-# symbol set `=y` early and disabled later still read as enabled. The export would then
-# vendor a driver the image does not ship, and emit a build-mister-modules.sh line for
-# it -- silently, because check-export-tree.sh compares only the carried tip, which is
-# before the vendoring commits.
-#
-# Nothing in the tree triggers it today (no kernel-module package carries a not-set line
-# in any DE10 fragment), so this is a latent bug being closed rather than a live one
-# being fixed. The awk tracks both forms in merge order and emits only symbols whose
-# FINAL state is enabled.
+# Kernel-module packages enabled in the RESOLVED .config, so profile selects count
+# (docs/kernel-export.md §7). buildroot-unpack is a stamp no-op once the pin is current.
+defconfig_name="$(basename "${STACK_FILES[0]}")"
+make -s -C "$REPO_ROOT" --no-print-directory buildroot-unpack >&2 ||
+	die 'could not unpack the pinned Buildroot tree (make buildroot-unpack)'
+resolved_dir="$(mktemp -d "${TMPDIR:-/tmp}/export-kernel-tree-config.XXXXXX")" ||
+	die 'could not create a temporary directory'
+(
+	if [[ -x $REPO_ROOT/work/.hostshim/install ]]; then
+		export PATH="$REPO_ROOT/work/.hostshim:$PATH"
+	fi
+	make -s -C "$REPO_ROOT/work/buildroot" O="$resolved_dir" BR2_EXTERNAL="$REPO_ROOT" \
+		BR2_DL_DIR="$REPO_ROOT/dl" "$defconfig_name"
+) >"$resolved_dir/load.log" 2>&1 || {
+	keep="$resolved_dir"; resolved_dir=''
+	die "make $defconfig_name failed (kept $keep):
+$(tail -20 "$keep/load.log")"
+}
+if [[ ! -s $resolved_dir/.config ]]; then
+	keep="$resolved_dir"; resolved_dir=''
+	die "make $defconfig_name produced no .config (kept $keep)"
+fi
+
 mapfile -t enabled_kmods < <(
-	awk '
-		/^BR2_PACKAGE_[A-Z0-9_]+=y([ \t].*)?$/ {
-			sym = $0; sub(/=y.*$/, "", sym)
-			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
-			state[sym] = 1; next
-		}
-		/^#[ \t]*BR2_PACKAGE_[A-Z0-9_]+[ \t]+is not set/ {
-			sym = $2
-			if (!(sym in seen)) { order[++n] = sym; seen[sym] = 1 }
-			state[sym] = 0; next
-		}
-		END { for (i = 1; i <= n; i++) if (state[order[i]]) print order[i] }
-	' "${STACK_FILES[@]}" |
+	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y$/\1/p' "$resolved_dir/.config" |
 		while read -r sym; do
 			dir="$(tr 'A-Z_' 'a-z-' <<<"${sym#BR2_PACKAGE_}")"
 			mk="$REPO_ROOT/package/$dir/$dir.mk"
@@ -1058,13 +1024,13 @@ mapfile -t enabled_kmods < <(
 		done
 )
 
-((${#enabled_kmods[@]})) || die "detected zero kernel-module packages in the
-DE10 defconfig (configs/mister_de10nano_defconfig):
-  ${STACK_FILES[*]}
-That is almost certainly a parsing bug in this script rather than the truth — the image
-ships xone and the Realtek WiFi drivers. Refusing to export a tree missing them.
-If the defconfig moved, fix STACK_FILES in this script;
-do NOT relax this check."
+if ((${#enabled_kmods[@]} == 0)); then
+	keep="$resolved_dir"; resolved_dir=''
+	die "detected zero kernel-module packages in the resolved
+$defconfig_name (kept $keep/.config). The image ships xone and the Realtek WiFi
+drivers, so this is a resolution bug, not the truth. Refusing to export a tree missing
+them; do NOT relax this check."
+fi
 
 # Announce what will actually be vendored, not what was detected: the two differ
 # whenever MODULE_EXPORT_SKIP names something (aic8800 does today). Saying
@@ -1088,6 +1054,9 @@ if ((${#skip_pkgs[@]})); then
 fi
 module_build_lines=()
 module_doc_rows=()
+module_skip_rows=()
+pkg_patch_commits=0
+global_patch_dirs="$(resolve_br_path "$(defconfig_value BR2_GLOBAL_PATCH_DIR)")"
 
 for pkg in "${enabled_kmods[@]}"; do
 	upper="$(tr 'a-z-' 'A-Z_' <<<"$pkg")"
@@ -1097,6 +1066,7 @@ for pkg in "${enabled_kmods[@]}"; do
 	# Deliberate, named omission -- announced, never silent.
 	if [[ -n ${MODULE_EXPORT_SKIP[$pkg]:-} ]]; then
 		say "  skipping $pkg: ${MODULE_EXPORT_SKIP[$pkg]}"
+		module_skip_rows+=("Not vendored: \`$pkg\` — ${MODULE_EXPORT_SKIP[$pkg]}")
 		continue
 	fi
 
@@ -1190,8 +1160,52 @@ Generated by scripts/export-kernel-tree.sh in Buildroot_MiSTer; the pin lives in
 package/$pkg/$pkg.mk there.
 EOF
 
+	# Then this repo's package patches, one commit each, found and applied the way Buildroot
+	# does (pkg-patches-dirs + apply-patches.sh); without them 8852cu fails modpost on ARM32.
+	if grep -Eq "^[[:space:]]*${upper}_PATCH[[:space:]]*([+:?]|::)?=" "$mk"; then
+		die "${upper}_PATCH (downloaded patches) is not supported by this export: $mk"
+	fi
+	pkg_patches=()
+	for pdir in "$REPO_ROOT/package/$pkg" $global_patch_dirs; do
+		[[ $pdir == "$REPO_ROOT/package/$pkg" ]] || pdir="$pdir/$pkg"
+		if [[ -d $pdir/$pkg_version ]]; then
+			pdir="$pdir/$pkg_version"
+		fi
+		[[ -d $pdir ]] || continue
+		[[ ! -e $pdir/series ]] || die "series files are not supported by this export: $pdir/series"
+		shopt -s nullglob
+		pkg_patches+=("$pdir"/*.patch)
+		shopt -u nullglob
+	done
+	for pp in "${pkg_patches[@]}"; do
+		patch -F0 -g0 -p1 --no-backup-if-mismatch -d "$dest" -t -N -s <"$pp" ||
+			die "package patch does not apply to the vendored $pkg: $pp"
+		pkg_patch_commits=$((pkg_patch_commits + 1))
+		git add --force "$dest"
+		if git diff --cached --quiet; then
+			die "package patch applied but changed nothing in the vendored $pkg: $pp"
+		fi
+		# git mailinfo for a format-patch file (subject + author); a plain patch has no
+		# headers, so its first line is the subject and the export committer the author.
+		pp_info="$(git mailinfo /dev/null /dev/null <"$pp")"
+		pp_subject="$(sed -n 's/^Subject: //p' <<<"$pp_info")"
+		pp_author="$(sed -n 's/^Author: //p' <<<"$pp_info")"
+		pp_email="$(sed -n 's/^Email: //p' <<<"$pp_info")"
+		[[ -n $pp_subject ]] || pp_subject="$(head -1 "$pp")"
+		pp_date="$(sed -n 's/^Date: //p' <<<"$pp_info")"
+		[[ -n $pp_author && -n $pp_email ]] || { pp_author="$EXPORT_NAME"; pp_email="$EXPORT_EMAIL"; }
+		GIT_AUTHOR_NAME="$pp_author" GIT_AUTHOR_EMAIL="$pp_email" \
+			GIT_AUTHOR_DATE="${pp_date:-$base_date}" GIT_COMMITTER_DATE="$base_date" \
+			git commit --quiet --file=- <<EOF
+$pkg: $pp_subject
+
+Applied on top of the verbatim $pkg_version sources above, as Buildroot_MiSTer's
+image build applies it. Source: ${pp#"$REPO_ROOT"/} there.
+EOF
+	done
+
 	module_build_lines+=("build_module $dest${pkg_opts:+ $pkg_opts}")
-	module_doc_rows+=("| \`$dest\` | $pkg_version | ${pkg_opts:-—} |")
+	module_doc_rows+=("| \`$dest\` | $pkg_version | ${#pkg_patches[@]} | ${pkg_opts:-—} |")
 done
 
 # --- 6c. The build script, emitted from the .mk recipes ------------------------------------
@@ -1203,7 +1217,7 @@ cat >build-mister-modules.sh <<'MODEOF'
 # build-mister-modules.sh — build the out-of-tree drivers this tree vendors.
 #
 # The kernel builds with:
-#     make ARCH=arm MiSTer_defconfig
+#     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- MiSTer_defconfig
 #     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage
 #
 # These drivers do NOT build from that, by design. They are vendored at the paths the
@@ -1223,7 +1237,7 @@ cat >build-mister-modules.sh <<'MODEOF'
 #
 # REQUIRES A FULLY BUILT KERNEL FIRST -- not just `modules_prepare`:
 #
-#     make ARCH=arm MiSTer_defconfig
+#     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- MiSTer_defconfig
 #     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION= zImage modules
 #     ./build-mister-modules.sh
 #
@@ -1328,7 +1342,7 @@ EOF
 # tag is not just the patch count. It is
 #
 #     carried patches + upstream-only patches + defconfig + the DTB build-name alias
-#     + one per vendored driver + build-mister-modules.sh + EXPORT.md
+#     + one per vendored driver + one per package patch + build-mister-modules.sh + EXPORT.md
 #
 # and three of those terms grow on their own -- a new kernel-module package changes it
 # without anyone touching this section. So it is MEASURED, not derived from a formula
@@ -1497,7 +1511,7 @@ $upstream_section## What is here
 | Upstream-only patches | $upstream_applied $up_commit_noun, one per patch carried for this tree alone (see above) |
 | Config | \`arch/arm/configs/MiSTer_defconfig\` — $config_note |
 | DTB build-name alias | 1 commit — \`socfpga_cyclone5_de10_nano.dts\` \`#include\`s the patched \`socfpga_cyclone5_de10nano.dts\` so the .dtb filename Linux-Kernel_MiSTer uses still builds (see below) |
-| Vendored drivers | ${#module_doc_rows[@]} commits, one per out-of-tree kernel module vendored here (see below) |
+| Vendored drivers | ${#module_doc_rows[@]} commits, one per out-of-tree kernel module vendored here, plus ${pkg_patch_commits} package-patch commits (see below) |
 | Tag | \`$tag\` |
 
 The base commit contains no MiSTer change, so the two deltas worth looking at are:
@@ -1526,7 +1540,7 @@ are built.
 
 ### Recipe 1 — image-compatible (this is what Buildroot builds)
 
-    make ARCH=arm MiSTer_defconfig
+    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- MiSTer_defconfig
     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION= \\
         zImage modules intel/socfpga/socfpga_cyclone5_de10nano.dtb
     ./build-mister-modules.sh
@@ -1567,7 +1581,7 @@ Building the kernel also needs \`lz4\` on the host, since this config sets
 Same source, same config; \`LOCALVERSION=-MiSTer\` instead of empty, and the two
 artifacts a stock release takes from this tree:
 
-    make ARCH=arm MiSTer_defconfig
+    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- MiSTer_defconfig
     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOCALVERSION=-MiSTer \\
         zImage modules intel/socfpga/socfpga_cyclone5_de10_nano.dtb
 
@@ -1683,11 +1697,14 @@ If you want the full form in this tree, generate it; do not hand-write it:
 
 ## Vendored out-of-tree drivers
 
-| path | pin | build override |
-|---|---|---|
+| path | pin | package patches | build override |
+|---|---|---|---|
 $(printf '%s\n' "${module_doc_rows[@]}")
-
-Sources are verbatim upstream at the paths \`MiSTer-v5.15\` uses, so the layout matches.
+${module_skip_rows[*]:+
+$(printf '%s\n\n' "${module_skip_rows[@]}")
+}
+Sources are verbatim upstream at the paths \`MiSTer-v5.15\` uses, so the layout matches,
+plus the package patches the image build applies, one commit each after the vendor commit.
 They are deliberately **not** wired into Kconfig. Their own Makefiles do parse-time work
 keyed off \`\$(shell pwd)\`:
 
@@ -1837,8 +1854,8 @@ printf '  tag      %s\n' "$tag"
 # kernel-module package the stack selects, including any named in MODULE_EXPORT_SKIP,
 # which produce no commit. module_doc_rows is appended only on the path that actually
 # commits, so it is the commit count by construction.
-printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + dtb alias + %s vendored drivers + build script + EXPORT.md)\n' \
-	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#module_doc_rows[@]}"
+printf '  commits  %s (1 base + %s carried + %s upstream-only + defconfig + dtb alias + %s vendored drivers + %s package patches + build script + EXPORT.md)\n' \
+	"$((base_offset + 1))" "$applied" "$upstream_applied" "${#module_doc_rows[@]}" "$pkg_patch_commits"
 printf '  files touched vs pristine upstream: %s\n' "$touched"
 if ((upstream_applied)); then
 	# Said on stdout as well as in EXPORT.md, because this is the one fact about the

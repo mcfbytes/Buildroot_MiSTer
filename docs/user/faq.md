@@ -530,7 +530,7 @@ dhcpcd then configures a stable-private SLAAC address. FTP stays IPv4-only eithe
 `ping6` and `traceroute6` are available for troubleshooting. Delete the file and reboot
 to turn it back off. The OSD still shows only your IPv4 address.
 
-## Why does this image change the kernel's memory-compaction settings?
+## Why does this image change the kernel's memory-compaction and writeback settings?
 
 When free memory gets fragmented, the kernel *compacts* it: it moves pages around to make
 larger contiguous blocks. By default it will also move pages a program has locked in RAM.
@@ -561,6 +561,27 @@ vm.compaction_proactiveness = 20
 ```
 
 That file is applied after everything in `/etc/sysctl.d/`, so its values win.
+
+The same thread is also held up by *writeback*, the kernel work that flushes written files
+out to their disk or share. The DE10-Nano has two CPUs, and a real-time main binary keeps
+its time-critical thread on CPU 1. When a program writes to a network share (a CIFS/SMB
+mount), the kernel's writeback worker can run on that same CPU for tens of milliseconds at
+a time: 25-39 ms was measured, again longer than a frame. Moving writeback to CPU 0 alone
+removed it in all three runs. This setting is not a sysctl, so the image applies it at boot from
+`/etc/init.d/S02writeback-cpumask`, which runs:
+
+```
+echo 1 > /sys/bus/workqueue/devices/writeback/cpumask
+```
+
+The value is a CPU bitmask: `1` is CPU 0 only, `3` (the kernel default) is both. Writeback
+to a local SD card or USB drive is still done, just on CPU 0. A kernel without the file is
+left alone. To go back to the default, add this line to `/media/fat/linux/user-startup.sh`
+(create it if it does not exist), which runs after the boot script:
+
+```
+echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
+```
 
 ## See also
 

@@ -2475,6 +2475,33 @@ else
 fi
 
 # =============================================================================
+section "Writeback — kept off the RT CPU (etc/init.d/S02writeback-cpumask)"
+# =============================================================================
+# A sysfs knob, not a sysctl: the unbound writeback workers flushing to a network share
+# held a thread pinned to CPU 1 off for tens of ms. The boot script must be executable and
+# write mask 1 (CPU 0) behind a [ -w ] guard, so a kernel without the file boots clean.
+
+WB_INIT="etc/init.d/S02writeback-cpumask"
+if grep -qxF "./$WB_INIT" "$TAR_LIST"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$WB_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$WB_INIT present and executable ($mode)" ;;
+	*) fail "$WB_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	wb_script=$(tar xOf "$ROOTFS_TAR" "./$WB_INIT")
+	# shellcheck disable=SC2016 # the patterns match a literal $WB_CPUMASK in the script
+	if printf '%s\n' "$wb_script" | grep -qxF 'WB_CPUMASK=/sys/bus/workqueue/devices/writeback/cpumask' \
+		&& printf '%s\n' "$wb_script" | grep -qF 'echo 1 > "$WB_CPUMASK"' \
+		&& printf '%s\n' "$wb_script" | grep -qF '[ -w "$WB_CPUMASK" ]'; then
+		pass "$WB_INIT writes mask 1 to the writeback cpumask, guarded by [ -w ]"
+	else
+		fail "$WB_INIT writes mask 1 to the writeback cpumask, guarded by [ -w ]" "path, value or guard changed"
+	fi
+else
+	fail "$WB_INIT present and executable" "not in rootfs.tar -- writeback could run on the RT CPU"
+fi
+
+# =============================================================================
 section "DE10 kernel tuning — NEON crypto + -mtune=cortex-a9 (docs/de10-kernel-tuning.md)"
 # =============================================================================
 # olddefconfig drops a symbol silently when a dependency moves, and a renamed

@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-09-21 15:20 UTC by `reduce.py` from 145 records (110 MiSTer-v5.15 + 19 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/145.
+Generated 2026-10-04 21:09 UTC by `reduce.py` from 146 records (110 MiSTer-v5.15 + 20 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/146.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/145
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/146
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 145 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 146 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -243,6 +243,7 @@ Of 145 rows, **3** describe a real difference a user could notice on this build 
 | `6c2d53934` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | Use 100kHz for i2c-1 for better compatibility with devices. |
 | `7436e2d6e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | mt7601u possible fix? |
 | `7828d722e` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | cosmetic/silent | — | ? | ✓ | defconfig: compile 80211 as a module. |
+| `794ad00d1` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:373 CONFIG_JO…; board/mister/common/linux-mister.fragment:445 CO… | none (replaced) | feature-loss/silent | Y | ? |  | Fix xpad controller not detected on cold boot (config: m → … |
 | `7f7148c1f` | v5.15 | **dropped-deliberate** | — | → 0031-exfat-samsung-symlinks.patch | none (replaced) | none/silent | — | Y | ✓ | exfat: remove exfat_config.h messing kernel config. |
 | `8270e78f4` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/silent | — | Y | ✓ | xone: backport the paddles from fork. |
 | `858322ce6` | v5.15 | **dropped-deliberate** | — | → vanilla-exfat-6.18 | none (replaced) | none/silent | — | Y | ✓ | exfat: fix memory mapped file ops. |

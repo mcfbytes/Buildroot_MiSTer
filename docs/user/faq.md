@@ -530,6 +530,59 @@ dhcpcd then configures a stable-private SLAAC address. FTP stays IPv4-only eithe
 `ping6` and `traceroute6` are available for troubleshooting. Delete the file and reboot
 to turn it back off. The OSD still shows only your IPv4 address.
 
+## Why does this image change the kernel's memory-compaction and writeback settings?
+
+When free memory gets fragmented, the kernel *compacts* it: it moves pages around to make
+larger contiguous blocks. By default it will also move pages a program has locked in RAM.
+A real-time program locks its memory precisely so it never waits on the kernel. When one
+of its locked pages is moved, the program stalls until the move finishes.
+
+A main binary that runs a real-time thread to feed the core is exactly that kind of program.
+With forced compaction running, such a thread was measured stalling for 21 ms, longer than a
+whole frame, and a TAS replay lost sync. So the image ships
+`/etc/sysctl.d/10-compaction.conf`, which sets:
+
+```
+vm.compact_unevictable_allowed = 0
+vm.compaction_proactiveness = 0
+```
+
+The first stops compaction from moving locked pages. The second stops the kernel compacting
+in the background on its own. Compaction still runs when something actually needs a large
+block. Real-time (PREEMPT_RT) kernels already default the first setting to 0 for this
+reason. Stock MiSTer's own binary does not lock its memory, so it is unaffected either way.
+
+To go back to the kernel defaults, add these two lines to `/media/fat/linux/sysctl.conf`
+(create it if it does not exist, or add them below your IPv6 lines) and reboot:
+
+```
+vm.compact_unevictable_allowed = 1
+vm.compaction_proactiveness = 20
+```
+
+That file is applied after everything in `/etc/sysctl.d/`, so its values win.
+
+The same thread is also held up by *writeback*, the kernel work that flushes written files
+out to their disk or share. The DE10-Nano has two CPUs, and a real-time main binary keeps
+its time-critical thread on CPU 1. When a program writes to a network share (a CIFS/SMB
+mount), the kernel's writeback worker can run on that same CPU for tens of milliseconds at
+a time: 25-39 ms was measured, again longer than a frame. Moving writeback to CPU 0 alone
+removed it in all three runs. This setting is not a sysctl, so the image applies it at boot from
+`/etc/init.d/S02writeback-cpumask`, which runs:
+
+```
+echo 1 > /sys/bus/workqueue/devices/writeback/cpumask
+```
+
+The value is a CPU bitmask: `1` is CPU 0 only, `3` (the kernel default) is both. Writeback
+to a local SD card or USB drive is still done, just on CPU 0. A kernel without the file is
+left alone. To go back to the default, add this line to `/media/fat/linux/user-startup.sh`
+(create it if it does not exist), which runs after the boot script:
+
+```
+echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
+```
+
 ## See also
 
 - [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose

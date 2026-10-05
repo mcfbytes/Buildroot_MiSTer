@@ -1,0 +1,23 @@
+#!/bin/sh
+# Keep the kernel's unbound writeback workers on CPU 0. A realtime thread pinned to CPU 1
+# was measured held off for 25-39 ms by a writeback worker flushing to a network (CIFS)
+# share; with the mask at CPU 0 only, none in three runs. This is a sysfs file, not a
+# sysctl, so it cannot live in /etc/sysctl.d. Kernels without the file are left alone.
+# Revert: echo 3 > /sys/bus/workqueue/devices/writeback/cpumask in
+# /media/fat/linux/user-startup.sh (docs/user/faq.md), which S99user runs after this.
+
+WB_CPUMASK=/sys/bus/workqueue/devices/writeback/cpumask
+
+case "$1" in
+	start|restart)
+		if [ -w "$WB_CPUMASK" ]; then
+			echo 1 > "$WB_CPUMASK"
+		fi
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+exit 0

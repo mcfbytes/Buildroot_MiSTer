@@ -1,6 +1,6 @@
-# Slint and Noto Sans
+# Slint and the Noto fonts
 
-Three packages, none of which upstream Buildroot 2026.08 carries (checked against
+Four packages, none of which upstream Buildroot 2026.08 carries (checked against
 `work/buildroot/package/`: the only font packages there are dejavu, font-awesome,
 ghostscript-fonts, googlefontdirectory and similar; nothing named slint, noto or corrosion):
 
@@ -11,9 +11,9 @@ ghostscript-fonts, googlefontdirectory and similar; nothing named slint, noto or
 | `package/font-noto-sans-jp` (`BR2_PACKAGE_FONT_NOTO_SANS_JP`) | Noto Sans JP OTFs in `/usr/share/fonts/noto-sans-jp` |
 | `package/corrosion` (host only, no Kconfig symbol) | the Corrosion CMake modules slint's build needs |
 
-Neither image selects them yet. To use them, select both symbols from a profile or defconfig.
+Neither image selects them yet. To use them, select `BR2_PACKAGE_SLINT` and one or both font symbols from a profile or defconfig.
 
-All three are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
+All four are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
 bump branch: corrosion by hash-sync case 1, slint by case 9, both Noto fonts by case 10
 (`docs/renovate.md`). Because no image builds them, a green bump PR proves only that the
 hash moved; build them as described in [Building and testing a bump](#building-and-testing-a-bump)

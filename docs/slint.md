@@ -12,6 +12,11 @@ ghostscript-fonts, googlefontdirectory and similar; nothing named slint, noto or
 
 Neither image selects them yet. To use them, select both symbols from a profile or defconfig.
 
+All three are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
+bump branch: corrosion by hash-sync case 1, slint by case 9, Noto Sans by case 10
+(`docs/renovate.md`). Because no image builds them, a green bump PR proves only that the
+hash moved; build them as described below before merging one.
+
 ## Slint: what is built
 
 Only the **C++ API**. A Rust program that uses Slint needs no package, because cargo
@@ -35,10 +40,12 @@ must be installed. `font-noto-sans` is the intended one.
 - The package is a `cmake-package` whose source is vendored like a `cargo-package`
   (`SLINT_DOWNLOAD_POST_PROCESS = cargo`). The hashed file is therefore
   `slint-<ver>-cargo6.tar.gz`, about 180 MB with every crate in the workspace's
-  `Cargo.lock`, not GitHub's 11 MB archive. Regenerate it the way
-  `package/itsalive/itsalive.hash` describes: bump the version, run `make slint-source`,
-  and paste the value from the error message. Never add slint to `renovate-hash-sync.yml`'s
-  `HASH_SYNC_PACKAGES`, because the generic loop would hash the wrong file.
+  `Cargo.lock`, not GitHub's 11 MB archive. On a Renovate bump, hash-sync case 9
+  (`scripts/hash-sync-cargo.sh`) rebuilds that file and refreshes the hash and the four
+  licence lines. By hand, use the recipe in `package/itsalive/itsalive.hash`: bump the
+  version, run `make slint-source`, and paste the value from the error message. Never add
+  slint to `renovate-hash-sync.yml`'s `HASH_SYNC_PACKAGES`, because the generic loop would
+  hash the wrong file.
 - Slint's CMake fetches Corrosion with `FetchContent` (a `git clone` at configure time)
   unless `find_package(Corrosion)` succeeds. `host-corrosion` installs it into
   `$(HOST_DIR)`, and `-DCorrosion_DIR` points at it, so the build stays offline.

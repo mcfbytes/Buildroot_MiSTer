@@ -17,8 +17,8 @@ define SINDEN_LIGHTGUN_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/etc/udev/rules.d/61-sinden-lightgun.rules
 endef
 
-# Buildroot's mono ships every profile and tool (~200 MB); keep the runtime and
-# LightgunMono.exe's reference closure, in the GAC where mono resolves it.
+# Mono ships ~200 MB; keep the runtime and LightgunMono.exe's closure, in the GAC
+# where mono resolves it. Breaks other mono users, hence the option.
 SINDEN_LIGHTGUN_MONO_ASSEMBLIES = mscorlib System System.Core System.Configuration \
 	System.Xml System.Security System.Numerics Mono.Security
 
@@ -38,6 +38,8 @@ define SINDEN_LIGHTGUN_TRIM_MONO
 		$(TARGET_DIR)/etc/mono/browscap.ini $(TARGET_DIR)/etc/mono/mconfig
 	find $(TARGET_DIR)/etc/mono/4.5 -mindepth 1 ! -name machine.config -exec rm -rf {} +
 endef
+ifeq ($(BR2_PACKAGE_SINDEN_LIGHTGUN_TRIM_MONO),y)
 SINDEN_LIGHTGUN_TARGET_FINALIZE_HOOKS += SINDEN_LIGHTGUN_TRIM_MONO
+endif
 
 $(eval $(generic-package))

@@ -45,13 +45,25 @@ count_guns() {
 	echo "$n"
 }
 
+# A stale pidfile's PID may have been reused, so also require it to be the driver.
 running() {
-	[ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+	[ -f "$PIDFILE" ] || return 1
+	pid=$(cat "$PIDFILE")
+	kill -0 "$pid" 2>/dev/null && grep -qa LightgunMono.exe "/proc/$pid/cmdline"
 }
 
+# Only the driver's own switches pass; anything else is logged, not mangled.
 read_args() {
 	args=""
-	[ -f "$ARGS_FILE" ] && args=$(head -n 1 "$ARGS_FILE" | tr -cd 'a-z ')
+	if [ -f "$ARGS_FILE" ]; then
+		for w in $(head -n 1 "$ARGS_FILE"); do
+			case "$w" in
+				joystick|lowresource|mediumresource|sdl) args="$args $w" ;;
+				*) logger -t sinden-lightgun "ignoring unknown argument '$w' in $ARGS_FILE" ;;
+			esac
+		done
+	fi
+	args="${args# }"
 	echo "${args:-$DEFAULT_ARGS}"
 }
 
@@ -63,20 +75,21 @@ do_stop() {
 		kill -0 "$pid" 2>/dev/null || break
 		sleep 1
 	done
-	kill -9 "$pid" 2>/dev/null
+	running && kill -9 "$pid" 2>/dev/null
 	rm -f "$PIDFILE"
 }
 
 # Pinned to CPU0: Main_MiSTer pins itself to CPU1 and must keep it to itself.
+# The log lives in RAM (/var/log is tmpfs), so each start replaces it.
 do_start() {
 	installed || { logger -t sinden-lightgun "driver not installed; run Scripts/sinden_lightgun.sh"; return 1; }
 	do_stop
 	args=$(read_args)
-	echo "=== $(date) starting: mono LightgunMono.exe $args" >>"$LOG"
+	echo "=== $(date) starting: mono LightgunMono.exe $args" >"$LOG"
 	cd "$DIR" || return 1
 	# shellcheck disable=SC2086  # args is a word list by design
 	LD_LIBRARY_PATH="$DIR" setsid taskset -c 0 mono LightgunMono.exe $args \
-		</dev/null >>"$LOG" 2>&1 &
+		</dev/null >>"$LOG" 2>&1 9>&- &
 	echo $! >"$PIDFILE"
 }
 
@@ -97,7 +110,7 @@ reconcile() {
 # udev waits on RUN's stdio, so detach completely; the sleep lets the gun's
 # ttyACM and second video node arrive and coalesces their events.
 do_hotplug() {
-	setsid sh -c "sleep 2; exec '$0' reconcile" </dev/null >/dev/null 2>&1 &
+	setsid sh -c "sleep 2; exec '$0' reconcile" </dev/null >/dev/null 2>&1 9>&- &
 }
 
 do_install() {
@@ -113,6 +126,11 @@ do_install() {
 	mkdir -p "$tmp"
 	unzip -q -o "$zip" "$ZIP_APPDIR/*" "$ZIP_LICENSE" -d "$tmp" || { rm -rf "$tmp" "$zip"; die "unzip failed"; }
 	app="$tmp/$ZIP_APPDIR"
+	# A running driver has these files mapped; never rewrite them under it.
+	exec 9>"$LOCK"
+	flock 9
+	do_stop
+	rm -f "$GUNSFILE"
 	for f in LightgunMono.exe libCameraInterface.so libSdlInterface.so test.bmp; do
 		cp -f "$app/$f" "$DIR/$f" || { rm -rf "$tmp" "$zip"; die "missing $f in the zip"; }
 	done
@@ -124,6 +142,7 @@ do_install() {
 	cp -f "$tmp/$ZIP_LICENSE" "$DIR/License.txt"
 	[ -f "$ARGS_FILE" ] || echo "$DEFAULT_ARGS" >"$ARGS_FILE"
 	rm -rf "$tmp" "$zip"
+	exec 9>&-
 
 	say ""
 	say "Installed to $DIR. Sinden's licence is in License.txt there."

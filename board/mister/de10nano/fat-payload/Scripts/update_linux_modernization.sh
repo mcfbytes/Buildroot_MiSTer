@@ -327,7 +327,7 @@ ensure_companion_scripts() {
 
 		default_url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
 		# Indirect expansion, so each entry keeps its own documented override
-		# (MLM_CHECK_STORAGE_URL, MLM_PAIR_LOGITECH_URL) rather than one shared
+		# (MLM_CHECK_STORAGE_URL, MLM_PAIR_LOGITECH_URL, ...) rather than one shared
 		# variable that could only ever point at a single file.
 		url="${!override:-$default_url}"
 		tmp="/tmp/$name.$$"

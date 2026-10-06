@@ -85,7 +85,7 @@ PAIR_LOGITECH="$SCRIPTS_DIR/pair_logitech.sh"
 SINDEN="$SCRIPTS_DIR/sinden_lightgun.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
-# These three are ONE SET, and every path that touches them treats them as one:
+# These are ONE SET, and every path that touches them treats them as one:
 # install.sh installs all of them, `update_linux_modernization.sh --setup-only`
 # replaces any that went missing, `uninstall.sh --remove-script` removes them
 # all, and scripts/fetch-sdcard-payload.sh stages them all into sdcard.img.
@@ -499,7 +499,7 @@ install_one_script() {
 # Deliberately straight-line calls rather than a loop over a list variable: a
 # `... | while read` loop runs in a SUBSHELL, where install_one_script's die()
 # exits only that subshell and the install would carry on past a failure it had
-# already reported. Three calls do not need a parser.
+# already reported. A handful of calls do not need a parser.
 #
 # The third argument is a content marker -- a string that must appear in the
 # downloaded file. It is the name of the rootfs tool each shim launches, which

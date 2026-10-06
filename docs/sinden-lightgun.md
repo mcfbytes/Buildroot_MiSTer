@@ -107,7 +107,9 @@ Flattening the symlinks into real files and deleting `gac/` fails at startup
 with `Could not load file or assembly 'System, Version=4.0.0.0'`. That was
 found by running the app, and is why the run test below matters. If a future
 Sinden release references another assembly, add it to
-`SINDEN_LIGHTGUN_MONO_ASSEMBLIES`.
+`SINDEN_LIGHTGUN_MONO_ASSEMBLIES`. The trim breaks any other mono user, so it
+is an option (`BR2_PACKAGE_SINDEN_LIGHTGUN_TRIM_MONO`, default y) to turn off
+if something else ever needs mono.
 
 ## 5. Runtime
 
@@ -117,7 +119,10 @@ Sinden release references another assembly, add it to
   `/media/fat/linux/sinden/`. `LightgunMono.exe.config` is written once, with
   `CameraRes` set to `320,240` (Sinden's own advice for weak hosts), and is
   never overwritten, so it keeps the user's settings. `args` holds the driver
-  arguments, default `joystick mediumresource`.
+  arguments, default `joystick mediumresource`. Only the driver's own switches
+  (`joystick`, `lowresource`, `mediumresource`, `sdl`) pass; anything else is
+  logged to syslog and dropped. Re-running the install stops a running driver
+  first, because it has the `.so` files mapped.
 - **Hotplug:** `/etc/udev/rules.d/61-sinden-lightgun.rules` calls
   `mister-sinden-lightgun hotplug` when a gun's camera appears and on any v4l
   removal. That detaches at once (udev waits on `RUN`'s stdio) and, 2 s
@@ -129,8 +134,17 @@ Sinden release references another assembly, add it to
 - **CPU0:** the driver runs under `taskset -c 0`. Main_MiSTer pins itself to
   CPU1 (`main.cpp:42-48`, [abi-contract](abi-contract.md)), and the driver must
   not compete with it.
-- **Logs:** `/var/log/sinden-lightgun.log`. `mister-sinden-lightgun status`
+- **Logs:** `/var/log/sinden-lightgun.log`, replaced on each start because
+  `/var/log` is RAM. `mister-sinden-lightgun status`
   shows the install, gun count, PID and affinity.
+
+- **Uninstall:** `mister-sinden-lightgun uninstall` removes
+  `/media/fat/linux/sinden/`. `uninstall.sh --remove-script` does the same
+  when going back to stock.
+- **Locking:** every state change runs under `flock` on
+  `/run/sinden-lightgun.lock`. The driver is started with that fd closed. If
+  it inherited the lock, the next udev event would block until the driver
+  exited.
 
 The driver shells out to `sh -c "udevadm info ... | grep ..."` and `ls` to find
 guns. All of those are on the image.

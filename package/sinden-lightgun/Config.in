@@ -23,6 +23,21 @@ config BR2_PACKAGE_SINDEN_LIGHTGUN
 
 	  https://www.sindenlightgun.com/
 
+if BR2_PACKAGE_SINDEN_LIGHTGUN
+
+config BR2_PACKAGE_SINDEN_LIGHTGUN_TRIM_MONO
+	bool "trim mono to what the Sinden driver needs"
+	default y
+	help
+	  Buildroot's mono installs every profile, reference assembly
+	  and tool (~200 MB). This keeps only the runtime and the
+	  assemblies LightgunMono.exe references (~20 MB).
+
+	  Say n if anything else on the image runs mono: it would fail
+	  at run time with "Could not load file or assembly".
+
+endif
+
 comment "sinden-lightgun needs a 32-bit ARM toolchain w/ C++, NPTL, dynamic library"
 	depends on BR2_PACKAGE_MONO_ARCH_SUPPORTS
 	depends on !BR2_arm || !BR2_INSTALL_LIBSTDCPP || \

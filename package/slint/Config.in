@@ -1,0 +1,50 @@
+config BR2_PACKAGE_SLINT
+	bool "slint"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_11 # C++20
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS # cdylib
+	select BR2_PACKAGE_HOST_RUSTC
+	select BR2_PACKAGE_FONTCONFIG
+	help
+	  Slint declarative GUI toolkit: the C++ library
+	  (libslint_cpp.so), its headers and CMake package for
+	  find_package(Slint), plus slint-compiler on the host to
+	  turn .slint files into C++ at build time.
+
+	  Built with the software renderer and the LinuxKMS backend
+	  only, which draws to DRM or, without it, /dev/fb0. Needs at
+	  least one font that fontconfig can find, e.g.
+	  BR2_PACKAGE_FONT_NOTO_SANS. See docs/slint.md.
+
+	  https://slint.dev/
+
+if BR2_PACKAGE_SLINT
+
+config BR2_PACKAGE_SLINT_LIBINPUT
+	bool "libinput support"
+	default y
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LIBINPUT
+	select BR2_PACKAGE_LIBXKBCOMMON
+	help
+	  Mouse, touch and keyboard input through libinput. Without
+	  it the LinuxKMS backend renders but receives no input.
+
+comment "libinput support needs udev /dev management"
+	depends on !BR2_PACKAGE_HAS_UDEV
+
+config BR2_PACKAGE_SLINT_INTERPRETER
+	bool "interpreter"
+	help
+	  Load .slint files at run time (slint::interpreter) instead
+	  of only compiling them to C++ ahead of time. Adds several
+	  MB to libslint_cpp.so.
+
+endif
+
+comment "slint needs a Rust-supported toolchain w/ C++, threads, dynamic library, gcc >= 11"
+	depends on !BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS || \
+		!BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_GCC_AT_LEAST_11 || \
+		!BR2_TOOLCHAIN_HAS_THREADS || BR2_STATIC_LIBS

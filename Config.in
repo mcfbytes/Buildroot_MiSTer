@@ -200,6 +200,7 @@ menu "GUI toolkit and fonts"
 	# Neither exists in upstream Buildroot 2026.08; see docs/slint.md.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/slint/Config.in"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans-jp/Config.in"
 endmenu
 
 menu "SD-card installer (ADR 0020)"

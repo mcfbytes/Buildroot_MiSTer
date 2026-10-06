@@ -22,11 +22,13 @@ SLINT_DOWNLOAD_DEPENDENCIES = host-rustc
 SLINT_DL_ENV = CARGO_HOME=$(BR_CARGO_HOME)
 SLINT_DEPENDENCIES = host-rustc host-corrosion host-slint fontconfig
 
-# Corrosion runs cargo at build time, so the cargo environment goes on MAKE_ENV.
-SLINT_MAKE_ENV = \
+# Corrosion runs cargo at configure (metadata) and build time, so both get the env.
+SLINT_CARGO_ENV = \
 	$(PKG_CARGO_ENV) \
 	CARGO_NET_OFFLINE=true \
 	PKG_CONFIG_ALLOW_CROSS=1
+SLINT_CONF_ENV = $(SLINT_CARGO_ENV)
+SLINT_MAKE_ENV = $(SLINT_CARGO_ENV)
 
 SLINT_CONF_OPTS = \
 	-DCorrosion_DIR=$(HOST_DIR)/lib/cmake/Corrosion \
@@ -34,6 +36,7 @@ SLINT_CONF_OPTS = \
 	-DRust_CARGO=$(HOST_DIR)/bin/cargo \
 	-DRust_CARGO_TARGET=$(RUSTC_TARGET_NAME) \
 	-DSLINT_COMPILER=$(HOST_DIR)/bin/slint-compiler \
+	-DSLINT_LIBRARY_CARGO_FLAGS=--locked \
 	-DSLINT_BUILD_TESTING=OFF \
 	-DSLINT_BUILD_EXAMPLES=OFF \
 	-DSLINT_FEATURE_BACKEND_WINIT=OFF \
@@ -47,7 +50,7 @@ SLINT_CONF_OPTS = \
 	-DSLINT_FEATURE_TESTING=OFF
 
 ifeq ($(BR2_PACKAGE_SLINT_LIBINPUT),y)
-SLINT_DEPENDENCIES += libinput libxkbcommon udev
+SLINT_DEPENDENCIES += libinput libxkbcommon libudev
 SLINT_CONF_OPTS += -DSLINT_FEATURE_BACKEND_LINUXKMS_LIBINPUT=ON
 else
 SLINT_CONF_OPTS += -DSLINT_FEATURE_BACKEND_LINUXKMS_LIBINPUT=OFF

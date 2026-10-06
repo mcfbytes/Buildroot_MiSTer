@@ -8,14 +8,16 @@ ghostscript-fonts, googlefontdirectory and similar; nothing named slint, noto or
 |---|---|
 | `package/slint` (`BR2_PACKAGE_SLINT`) | `libslint_cpp.so` on the target; headers + `lib/cmake/Slint` in staging; `host/bin/slint-compiler` |
 | `package/font-noto-sans` (`BR2_PACKAGE_FONT_NOTO_SANS`) | Noto Sans TTFs in `/usr/share/fonts/noto-sans` |
+| `package/font-noto-sans-jp` (`BR2_PACKAGE_FONT_NOTO_SANS_JP`) | Noto Sans JP OTFs in `/usr/share/fonts/noto-sans-jp` |
 | `package/corrosion` (host only, no Kconfig symbol) | the Corrosion CMake modules slint's build needs |
 
 Neither image selects them yet. To use them, select both symbols from a profile or defconfig.
 
 All three are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
-bump branch: corrosion by hash-sync case 1, slint by case 9, Noto Sans by case 10
+bump branch: corrosion by hash-sync case 1, slint by case 9, both Noto fonts by case 10
 (`docs/renovate.md`). Because no image builds them, a green bump PR proves only that the
-hash moved; build them as described below before merging one.
+hash moved; build them as described in [Building and testing a bump](#building-and-testing-a-bump)
+before merging one.
 
 ## Slint: what is built
 
@@ -33,7 +35,8 @@ program such as Main_MiSTer would link.
 | Accessibility, system tray, testing | off | they need D-Bus/AT-SPI or a desktop, and the image has neither |
 
 Slint finds fonts through fontconfig, so `fontconfig` is selected and at least one font
-must be installed. `font-noto-sans` is the intended one.
+must be installed. `font-noto-sans` is the intended one, and `font-noto-sans-jp` adds
+Japanese (kana and kanji); fontconfig falls back to it for characters Noto Sans lacks.
 
 ### Build mechanics
 
@@ -73,7 +76,64 @@ must be installed. `font-noto-sans` is the intended one.
   owed.** On a MiSTer, `/dev/fb0` exists only after the video path is up (Main_MiSTer or
   `itsalive up`), and nothing else may write to it at the same time.
 
-## Noto Sans
+## Building and testing a bump
+
+No image selects these packages, so CI never builds them. Build them by hand in a small
+tree that reuses the toolchain of an existing DE10 build (`output/host`) as a
+pre-installed external toolchain. This takes a few minutes and about 9 GB, not a full
+image build.
+
+```sh
+mkdir -p /mnt/source/slint-test
+cat > /mnt/source/slint-test/defconfig <<'EOF'
+BR2_arm=y
+BR2_cortex_a9=y
+BR2_ARM_ENABLE_NEON=y
+BR2_ARM_ENABLE_VFP=y
+BR2_ARM_FPU_NEON=y
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
+BR2_TOOLCHAIN_EXTERNAL_PREINSTALLED=y
+BR2_TOOLCHAIN_EXTERNAL_PATH="/path/to/Buildroot_MiSTer/output/host"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="arm-buildroot-linux-gnueabihf"
+BR2_TOOLCHAIN_EXTERNAL_GCC_15=y
+BR2_TOOLCHAIN_EXTERNAL_HEADERS_6_18=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
+# BR2_TOOLCHAIN_EXTERNAL_INET_RPC is not set
+BR2_TOOLCHAIN_EXTERNAL_CXX=y
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_PACKAGE_SLINT=y
+BR2_PACKAGE_FONT_NOTO_SANS=y
+BR2_PACKAGE_FONT_NOTO_SANS_JP=y
+# BR2_TARGET_ROOTFS_TAR is not set
+EOF
+make O=/mnt/source/slint-test/out BR2_DEFCONFIG=/mnt/source/slint-test/defconfig defconfig
+make O=/mnt/source/slint-test/out slint font-noto-sans font-noto-sans-jp
+```
+
+The GCC and headers lines must match `output/.config` (`BR2_GCC_VERSION`,
+`BR2_KERNEL_HEADERS_*`); after a Buildroot or toolchain bump, check them before blaming the
+package. Then cross-build a minimal consumer against the staging tree:
+
+```sh
+# CMakeLists.txt: find_package(Slint REQUIRED); add_executable(hello main.cpp)
+#                 slint_target_sources(hello hello.slint); target_link_libraries(hello PRIVATE Slint::Slint)
+cmake -S app -B app/build \
+  -DCMAKE_TOOLCHAIN_FILE=/mnt/source/slint-test/out/host/share/buildroot/toolchainfile.cmake
+cmake --build app/build
+```
+
+Finally, run it on the ARM userland: copy the binary into `out/target/usr/bin/` and run
+`unshare -r chroot out/target /usr/bin/<app>`. Without a framebuffer it must reach the
+LinuxKMS probe (`Error using /dev/fb0 ...`). Anything earlier, such as a missing library,
+is a packaging bug.
+
+For a slint bump, also re-check the `SLINT_FEATURE_*` names that `slint.mk` passes against
+`api/cpp/cmake/SlintFeatures.cmake` (CMake ignores an unknown `-D`, so a renamed feature
+silently falls back to its default), and the `find_package(Rust <min>)` line in
+`api/cpp/CMakeLists.txt` against Buildroot's rust-bin pin.
+
+## Noto Sans and Noto Sans JP
 
 The upstream release is `notofonts/latin-greek-cyrillic` `NotoSans-v2.015.zip` (OFL-1.1).
 The package installs the **unhinted static TTFs**:
@@ -84,3 +144,15 @@ The package installs the **unhinted static TTFs**:
 Unhinted fonts suit both FreeType and Slint's own rasteriser. The variable-font files in
 the same zip would be smaller for the full family, but the static files are what every
 consumer handles.
+
+Noto Sans JP (`font-noto-sans-jp`) is the Japanese region subset of Noto Sans CJK, from
+`notofonts/noto-cjk` release `Sans2.004`, asset `16_NotoSansJP.zip` (OFL-1.1). Its family
+name is exactly `Noto Sans JP`, the one `art-src/gen.py` uses. The files are OpenType/CFF
+(`.otf`), the only format that asset ships. FreeType renders CFF, and so does Slint's font
+stack (skrifa).
+
+- By default, Regular and Bold: 9 MB.
+- With `BR2_PACKAGE_FONT_NOTO_SANS_JP_ALL_WEIGHTS`, all 7 weights (Thin to Black): 31 MB.
+
+This is the expensive font: Regular alone is 4.5 MB, because it carries about 18,000
+glyphs. Budget for it in `docs/size-budget.md` before enabling it.

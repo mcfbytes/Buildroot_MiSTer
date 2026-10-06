@@ -287,7 +287,7 @@
     },
     {
       "customType": "regex",
-      "description": "Noto Sans release pin (notofonts/latin-greek-cyrillic) -- package/font-noto-sans. That repository releases several families under one tag namespace (NotoSans-v*, NotoSerif-v*, NotoSansMono-v*); extractVersionTemplate keeps only NotoSans-v* releases and strips the prefix, so FONT_NOTO_SANS_VERSION holds the bare version. The source is a release ASSET, not a $(call github,...) archive, so it is refreshed by renovate-hash-sync.yml case 10 (scripts/hash-sync-font-noto-sans.sh), not the generic loop. Hash: package/font-noto-sans/font-noto-sans.hash.",
+      "description": "Noto Sans release pin (notofonts/latin-greek-cyrillic) -- package/font-noto-sans. That repository releases several families under one tag namespace (NotoSans-v*, NotoSerif-v*, NotoSansMono-v*); extractVersionTemplate keeps only NotoSans-v* releases and strips the prefix, so FONT_NOTO_SANS_VERSION holds the bare version. The source is a release ASSET, not a $(call github,...) archive, so it is refreshed by renovate-hash-sync.yml case 10 (scripts/hash-sync-noto-fonts.sh), not the generic loop. Hash: package/font-noto-sans/font-noto-sans.hash.",
       "managerFilePatterns": [
         "/^package/font-noto-sans/font-noto-sans\\.mk$/"
       ],
@@ -296,7 +296,21 @@
       ],
       "depNameTemplate": "notofonts/latin-greek-cyrillic",
       "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^NotoSans-v(?<version>[0-9.]+)$",
+      "extractVersionTemplate": "^NotoSans-v(?<version>[0-9]+\\.[0-9]+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Noto Sans JP release pin (notofonts/noto-cjk) -- package/font-noto-sans-jp, the 16_NotoSansJP.zip asset of a Sans<ver> release. extractVersionTemplate keeps only the Sans<ver> releases (the repository also releases Serif<ver>) and strips the prefix. The asset name carries no version, so the .hash records it on a '# hashed version:' line that renovate-hash-sync.yml case 10 (scripts/hash-sync-noto-fonts.sh) rewrites and lint.yml checks. Hash: package/font-noto-sans-jp/font-noto-sans-jp.hash.",
+      "managerFilePatterns": [
+        "/^package/font-noto-sans-jp/font-noto-sans-jp\\.mk$/"
+      ],
+      "matchStrings": [
+        "FONT_NOTO_SANS_JP_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "notofonts/noto-cjk",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^Sans(?<version>[0-9]+\\.[0-9]+)$",
       "versioningTemplate": "loose"
     },
     {
@@ -571,9 +585,9 @@
       "addLabels": ["tool-pin"]
     },
     {
-      "description": "GUI toolkit and font pins (slint, corrosion, Noto Sans; docs/slint.md). Their own label because their reviewer contract matches none of the others: NO image selects these packages yet, so build.yml never compiles them and a green PR proves only that the hash moved (lint.yml's pin-consistency steps). WHAT NEEDS A HUMAN on a bump: build them (docs/slint.md describes the external-toolchain test tree) and, for slint, re-check the CMake feature names slint.mk passes (SLINT_FEATURE_*) and the Rust minimum in api/cpp/CMakeLists.txt against the rust-bin pin.",
+      "description": "GUI toolkit and font pins (slint, corrosion, Noto Sans, Noto Sans JP; docs/slint.md). Their own label because their reviewer contract matches none of the others: NO image selects these packages yet, so build.yml never compiles them and a green PR proves only that the hash moved (lint.yml's pin-consistency steps). WHAT NEEDS A HUMAN on a bump: build them (docs/slint.md describes the external-toolchain test tree) and, for slint, re-check the CMake feature names slint.mk passes (SLINT_FEATURE_*) and the Rust minimum in api/cpp/CMakeLists.txt against the rust-bin pin.",
       "matchManagers": ["custom.regex"],
-      "matchDepNames": ["slint-ui/slint", "corrosion-rs/corrosion", "notofonts/latin-greek-cyrillic"],
+      "matchDepNames": ["slint-ui/slint", "corrosion-rs/corrosion", "notofonts/latin-greek-cyrillic", "notofonts/noto-cjk"],
       "addLabels": ["gui-pin"]
     },
     {

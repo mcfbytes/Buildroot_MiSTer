@@ -367,9 +367,11 @@ jobs:
             hash=package/$pkg/$pkg.hash
             var="$(echo "$pkg" | tr 'a-z-' 'A-Z_')_VERSION"
             ver=$(sed -n "s/^${var}[[:space:]]*=[[:space:]]*//p" "$mk" | tr -d '[:space:]')
+            # Mirrors CARGO_PINS / version_ok() in scripts/hash-sync-cargo.sh.
             case "$pkg" in
               itsalive) re='^[0-9a-f]{40}$' ;;
               slint) re='^[0-9]+\.[0-9]+\.[0-9]+$' ;;
+              *) echo "::error::no version regex for $pkg in this step"; exit 1 ;;
             esac
             if ! [[ "$ver" =~ $re ]]; then
               echo "::error file=$mk::$var must match $re (got '${ver:-<nothing>}')"
@@ -384,9 +386,9 @@ jobs:
             echo "$pkg pin consistent: $got"
           done
 
-      # corrosion and font-noto-sans are refreshed by hash-sync case 1 and case 10,
+      # corrosion and the Noto fonts are refreshed by hash-sync case 1 and case 10,
       # but no image selects them, so no build would catch a stale hash; this does.
-      - name: unbuilt package version/hash pin consistency (corrosion, font-noto-sans)
+      - name: unbuilt package version/hash pin consistency (corrosion, Noto fonts)
         run: |
           set -euo pipefail
           check() { # PKG WANTED-FILENAME
@@ -400,6 +402,14 @@ jobs:
           check corrosion "corrosion-${ver}.tar.gz"
           ver=$(sed -n 's/^FONT_NOTO_SANS_VERSION[[:space:]]*=[[:space:]]*//p' package/font-noto-sans/font-noto-sans.mk | tr -d '[:space:]')
           check font-noto-sans "NotoSans-v${ver}.zip"
+          # 16_NotoSansJP.zip carries no version; its .hash records one (scripts/hash-sync-noto-fonts.sh).
+          ver=$(sed -n 's/^FONT_NOTO_SANS_JP_VERSION[[:space:]]*=[[:space:]]*//p' package/font-noto-sans-jp/font-noto-sans-jp.mk | tr -d '[:space:]')
+          check font-noto-sans-jp 16_NotoSansJP.zip
+          got=$(sed -n 's/^# hashed version:[[:space:]]*//p' package/font-noto-sans-jp/font-noto-sans-jp.hash | tr -d '[:space:]')
+          if [ "$got" != "$ver" ]; then
+            echo "::error file=package/font-noto-sans-jp/font-noto-sans-jp.hash::stale hash pin -- FONT_NOTO_SANS_JP_VERSION is '$ver' but this file's '# hashed version:' line says '${got:-<nothing>}'. Read renovate-hash-sync.yml's run for a 'font-noto-sans-jp' row and re-dispatch it."
+            exit 1
+          fi
 
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the

@@ -25,15 +25,15 @@ if BR2_PACKAGE_SLINT
 config BR2_PACKAGE_SLINT_LIBINPUT
 	bool "libinput support"
 	default y
-	depends on BR2_PACKAGE_HAS_UDEV
+	depends on BR2_PACKAGE_HAS_LIBUDEV # libinput
 	select BR2_PACKAGE_LIBINPUT
 	select BR2_PACKAGE_LIBXKBCOMMON
 	help
 	  Mouse, touch and keyboard input through libinput. Without
 	  it the LinuxKMS backend renders but receives no input.
 
-comment "libinput support needs udev /dev management"
-	depends on !BR2_PACKAGE_HAS_UDEV
+comment "libinput support needs libudev"
+	depends on !BR2_PACKAGE_HAS_LIBUDEV
 
 config BR2_PACKAGE_SLINT_INTERPRETER
 	bool "interpreter"

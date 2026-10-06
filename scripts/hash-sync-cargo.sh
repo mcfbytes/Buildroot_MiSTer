@@ -33,7 +33,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # The cargo-vendored pins: package, then the GitHub archive URL Buildroot fetches
 # ($(call github,...) plus the wget backend's "/<file>"), with @V@ for *_VERSION
-# and @B@ for <pkg>-<ver>. A new cargo-package needs a line here and a regex below.
+# and @B@ for <pkg>-<ver>. A new cargo-package needs a line here, a regex below, and
+# the same two in lint.yml's 'cargo-vendored package version/hash pin consistency' step.
 CARGO_PINS=(
 	"itsalive https://github.com/mcfbytes/ItsAlive_MiSTer/archive/@V@/@B@.tar.gz"
 	"slint https://github.com/slint-ui/slint/archive/v@V@/@B@.tar.gz"
@@ -123,7 +124,11 @@ prepare_toolchain() {
 		fi
 	fi
 	# Only the cargo component: `cargo vendor` never invokes rustc.
-	tar -C "$SCRATCH" -xJf "$rust_file" "rust-${RUST_VERSION}-${RUST_HOST}/cargo"
+	if ! tar -C "$SCRATCH" -xJf "$rust_file" "rust-${RUST_VERSION}-${RUST_HOST}/cargo"; then
+		echo "::error::could not extract the cargo component from $rust_tarball"
+		TOOLCHAIN_ERR="failed|could not extract rust-${RUST_VERSION}-${RUST_HOST}/cargo from the verified $rust_tarball -- upstream changed the tarball layout"
+		return 0
+	fi
 	CARGO_BIN="$SCRATCH/rust-${RUST_VERSION}-${RUST_HOST}/cargo/bin"
 }
 
@@ -201,17 +206,24 @@ sync_pin() {
 	echo "==> $asset: $newhash ($(stat -c '%s' "$out") bytes)"
 
 	# Every other sha256 line names a licence file: re-hash each from the tarball
-	# just built (the download check never reads those lines).
-	local newfile="$hashfile.tmp" f h old
+	# just built (the download check never reads those lines). One tar pass for all.
+	local -a lics=()
+	local f h old
+	mapfile -t lics < <(awk '$1 == "sha256" && $3 !~ /-cargo[0-9]+\.tar\.gz$/ { print $3 }' "$hashfile")
+	mkdir -p "$work/lic"
+	if [ "${#lics[@]}" -gt 0 ]; then
+		tar -C "$work/lic" -xzf "$out" "${lics[@]/#/$base_name/}" 2>/dev/null || true
+	fi
+	local newfile="$hashfile.tmp"
 	cp "$hashfile" "$newfile"
-	while read -r f; do
-		if ! tar -tzf "$out" "$base_name/$f" >/dev/null 2>&1; then
+	for f in "${lics[@]}"; do
+		if [ ! -f "$work/lic/$base_name/$f" ]; then
 			rm -f "$newfile"
 			echo "::error::$pkg $version's tarball has no $f"
 			result failed "$f missing from $base_name -- the package's _LICENSE_FILES and .hash need a human before this pin can move" 0
 			return 0
 		fi
-		h=$(tar -xzOf "$out" "$base_name/$f" | sha256sum | cut -d' ' -f1)
+		h=$(sha256sum "$work/lic/$base_name/$f" | cut -d' ' -f1)
 		old=$(awk -v f="$f" '$1 == "sha256" && $3 == f { print $2 }' "$hashfile")
 		if [ "$old" != "$h" ]; then
 			echo "::warning::$pkg's $f changed ($old -> $h) -- read the upstream diff before merging"
@@ -219,7 +231,7 @@ sync_pin() {
 		awk -v f="$f" -v l="sha256  $h  $f" '$1 == "sha256" && $3 == f { print l; next } { print }' \
 			"$newfile" >"$newfile.2"
 		mv "$newfile.2" "$newfile"
-	done < <(awk '$1 == "sha256" && $3 !~ /-cargo[0-9]+\.tar\.gz$/ { print $3 }' "$hashfile")
+	done
 
 	# Rewrite the tarball line in place by filename, so the header comments survive.
 	local newline="sha256  ${newhash}  ${asset}"

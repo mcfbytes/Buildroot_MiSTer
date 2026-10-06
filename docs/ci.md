@@ -2633,16 +2633,30 @@ idiom** and should get the same treatment when next touched.
    (`already-current`) on every other pin's PR.
 
 <a id="renovate-hash-sync-font-noto-sans"></a>
-10. **The Noto Sans release-asset zip** (`package/font-noto-sans/font-noto-sans.hash`),
-    refreshed by `scripts/hash-sync-font-noto-sans.sh` (**added 2026-10-06**).
-    The source is `NotoSans-v<ver>.zip`, a release **asset** under a
-    `NotoSans-v<ver>` tag of `notofonts/latin-greek-cyrillic`, so case 1's
-    `$(call github,...)` archive URL cannot reach it. The trust model is case 1's
-    and case 3's: upstream publishes no checksums, so a locally computed
-    `sha256sum` of the freshly fetched asset is the source. `OFL.txt` is
-    re-hashed from the same zip, with a `::warning::` if it changed; a zip
-    without one is `failed`. Verified at authoring time from a stale filename
-    and a corrupted `OFL.txt` line (re-derived `0c34df07…` for 2.015).
+10. **The Noto font release-asset zips** (`package/font-noto-sans/font-noto-sans.hash`
+    and `package/font-noto-sans-jp/font-noto-sans-jp.hash`), refreshed by
+    `scripts/hash-sync-noto-fonts.sh` (**added 2026-10-06**), table-driven over
+    `FONT_PINS`. The sources are release **assets**: `NotoSans-v<ver>.zip` under a
+    `NotoSans-v<ver>` tag of `notofonts/latin-greek-cyrillic`, and
+    `16_NotoSansJP.zip` under a `Sans<ver>` tag of `notofonts/noto-cjk`. Case
+    1's `$(call github,...)` archive URL cannot reach either. The trust model is
+    case 1's and case 3's: upstream publishes no checksums, so a locally computed
+    `sha256sum` of the freshly fetched asset is the source. Each licence file
+    (`OFL.txt`, `LICENSE`) is re-hashed from the same zip, with a `::warning::`
+    if it changed; a zip without one is `failed`.
+
+    `16_NotoSansJP.zip` has the same name in every release, so the filename
+    cannot say which version a hash belongs to. That `.hash` carries a
+    `# hashed version: <ver>` line instead. The script keys its
+    `already-current` check on that line and rewrites it, and `lint.yml`
+    compares it with `FONT_NOTO_SANS_JP_VERSION`. A `.hash` that lost the line
+    is `failed`, not silently re-hashed.
+
+    Verified at authoring time with fixtures: all-current (`already-current`
+    ×2); a stale Noto Sans filename plus a stale JP version line and a corrupted
+    JP `LICENSE` line (both refreshed, files restored byte-for-byte:
+    `0c34df07…` for 2.015, `2bbdd2c2…` for 2.004); and a JP `.hash` with no
+    version line (`failed`, file untouched).
 
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
@@ -3133,7 +3147,7 @@ the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
 
 **`slint` is the third** (a `cmake-package` vendored like a `cargo-package`,
 refreshed by case 9 since 2026-10-06), with the same rules and the same
-fallback recipe. No image selects slint, corrosion or font-noto-sans, so
+fallback recipe. No image selects slint, corrosion or the Noto fonts, so
 `build.yml` never fetches them; `lint.yml`'s two pin-consistency steps are the
 only CI gate on their hashes.
 

@@ -27,16 +27,47 @@ program such as Main_MiSTer would link.
 
 | Choice | Setting | Why |
 |---|---|---|
-| Backend | LinuxKMS only (`winit`, Qt off) | no X11/Wayland on the image; LinuxKMS tries DRM dumb buffers, then the legacy framebuffer `/dev/fb0`..`fb9` |
+| Library | shared, `BUILD_SHARED_LIBS=ON` | one `libslint_cpp.so` in the image for every program that links it |
+| Backend | **none by default**; LinuxKMS optional (`BR2_PACKAGE_SLINT_LINUXKMS`) | the intended caller supplies its own `slint::platform::Platform` and renders into its own buffer. `winit` and Qt are off: the image has no X11 or Wayland |
 | Renderer | software only (FemtoVG, Skia off) | the DE10-Nano has no GPU |
-| Input | libinput + xkbcommon (`BR2_PACKAGE_SLINT_LIBINPUT`, default y) | without it the backend draws but receives no input |
-| libseat | off | MiSTer userspace runs as root |
-| Interpreter | off (`BR2_PACKAGE_SLINT_INTERPRETER`) | `.slint` files are compiled to C++ at build time; the interpreter adds several MB |
-| Accessibility, system tray, testing | off | they need D-Bus/AT-SPI or a desktop, and the image has neither |
+| Input | libinput + xkbcommon, only with LinuxKMS (`BR2_PACKAGE_SLINT_LINUXKMS_LIBINPUT`) | without it LinuxKMS draws but receives no input |
+| Interpreter, live preview | off (`BR2_PACKAGE_SLINT_INTERPRETER` for the first) | `.slint` files are compiled to C++ at build time; the interpreter adds several MB |
+| Experimental, gettext, accessibility, system tray, testing | off | not needed, and accessibility and the tray need D-Bus or a desktop |
+| Rust codegen | `-Ctarget-cpu=cortex-a9 -Ctarget-feature=+neon` | derived from `BR2_GCC_TARGET_CPU` and `BR2_ARM_CPU_HAS_NEON`, so rustc tunes for the same CPU GCC does; Buildroot's cargo environment sets neither |
 
-Slint finds fonts through fontconfig, so `fontconfig` is selected and at least one font
-must be installed. `font-noto-sans` is the intended one, and `font-noto-sans-jp` adds
-Japanese (kana and kanji); fontconfig falls back to it for characters Noto Sans lacks.
+### Carried patches
+
+| Patch | What it does |
+|---|---|
+| `0001-api-cpp-dlopen-libfontconfig-instead-of-linking-it` | enables fontique's `fontconfig-dlopen` for the C++ library, so `libslint_cpp.so` does not need `libfontconfig.so.1` to load. Setting `RUST_FONTCONFIG_DLOPEN=on` alone breaks the build (E0432) |
+| `0002-api-cpp-add-an-ARGB8888-software-renderer-target` | adds `slint_software_renderer_render_argb8888()`: render straight into a `u32` 0xAARRGGBB buffer (the framebuffer's scanout format) with `Rgb8Pixel`'s blend arithmetic. Stock C++ renders only RGB888 or RGB565 and needs a swizzle pass |
+| `0003-api-cpp-let-the-caller-drive-the-animation-clock` | adds `slint_hdosd_set_scene_time(ms)`: advance animations and timers to a caller-owned clock. In a std build `Platform::duration_since_start()` is compiled out, so animations otherwise follow the wall clock |
+
+None has been submitted upstream. Both new entry points are C symbols with no C++
+wrapper, so a caller declares them itself. The ARGB8888 entry point takes the
+`SoftwareRenderer`'s opaque handle, so a caller reaching it from C++ depends on that
+class's layout. On a slint bump, re-check all three patches against
+`api/cpp/platform.rs` and `api/cpp/Cargo.toml` (`Cargo.lock` too: 0001 adds `fontique` to
+`slint-cpp`'s dependency list, and the build runs `--locked`).
+
+### Fonts
+
+fontconfig is optional at run time, which matters because the DE10 image does not ship it:
+
+- **Without fontconfig**, a program sees no system fonts. Text in a family imported in
+  `.slint` renders, but fonts imported in `.slint` never become fallbacks. Glyphs missing
+  from that family (◀ ▶ are not in Noto Sans) and implicit CJK render blank unless
+  `SLINT_FONT_PATH` names a fallback font, e.g.
+  `SLINT_FONT_PATH=/usr/share/fonts/noto-sans-jp/NotoSansJP-Regular.otf`.
+- **With fontconfig present but configuring no fonts**, fontique panics. Enable
+  fontconfig only together with at least one font package.
+- A consumer can compile its fonts into its own binary
+  (`set_property(TARGET app PROPERTY SLINT_EMBED_RESOURCES embed-files)`), which costs
+  their size again in the binary (4.5 MB for Noto Sans JP Regular) but needs no font files
+  on the card at all.
+
+`font-noto-sans` is the intended UI face. `font-noto-sans-jp` adds Japanese (kana and
+kanji) and is also the natural `SLINT_FONT_PATH` fallback.
 
 ### Build mechanics
 
@@ -50,11 +81,17 @@ Japanese (kana and kanji); fontconfig falls back to it for characters Noto Sans 
   slint to `renovate-hash-sync.yml`'s `HASH_SYNC_PACKAGES`, because the generic loop would
   hash the wrong file.
 - Slint's CMake fetches Corrosion with `FetchContent` (a `git clone` at configure time)
-  unless `find_package(Corrosion)` succeeds. `host-corrosion` installs it into
-  `$(HOST_DIR)`, and `-DCorrosion_DIR` points at it, so the build stays offline.
-- Corrosion runs cargo during the **build** step, so Buildroot's `PKG_CARGO_ENV` (profile,
-  linker, the ARM `--allow-multiple-definition` rustflag) goes on `SLINT_MAKE_ENV` together
-  with `CARGO_NET_OFFLINE=true`.
+  unless `find_package(Corrosion)` succeeds. Corrosion is therefore vendored as its own
+  package: `host-corrosion` is an ordinary hash-checked download (so `make source` fetches
+  it with everything else, and an offline build works from `dl/`) installed into
+  `$(HOST_DIR)`, and `-DCorrosion_DIR` points at it. `-DFETCHCONTENT_FULLY_DISCONNECTED=ON`
+  makes any remaining fetch attempt fail instead of going to the network.
+- Corrosion runs cargo at configure time (`cargo metadata`) and during the build, so
+  Buildroot's `PKG_CARGO_ENV` (profile, linker, `CARGO_HOME`), `CARGO_NET_OFFLINE=true`
+  and the rustflags above go on both `SLINT_CONF_ENV` and `SLINT_MAKE_ENV`. The rustflags
+  variable replaces `PKG_CARGO_ENV`'s own ARM one, so it repeats that one's
+  `--allow-multiple-definition`. `-DSLINT_LIBRARY_CARGO_FLAGS=--locked` makes Corrosion's
+  `cargo build` honour `Cargo.lock`, as `cargo-package` does.
 - Upstream's CMake would build `slint-compiler` for the host and install it into the
   target's `/usr/bin`. Instead, `host-slint` builds it with cargo (the same feature set
   upstream uses when cross-compiling) and `-DSLINT_COMPILER` points at it. The installed
@@ -63,18 +100,26 @@ Japanese (kana and kanji); fontconfig falls back to it for characters Noto Sans 
 
 ### Measured (2026-10-06, Buildroot 2026.08, rust-bin 1.97.1, glibc/GCC 15 armv7 toolchain)
 
-- `host-slint`: 40 s; `slint` (cargo via Corrosion): 41 s, both on a 32-thread host.
-- `libslint_cpp.so`: 17.6 MB as installed, **13.5 MB stripped** (`BR2_STRIP_strip` does
-  this in the image). It links libxkbcommon, libudev, libinput, libfontconfig, libgcc_s and
-  libc. Weigh it against `docs/size-budget.md` before enabling it.
-- A minimal C++ consumer (`find_package(Slint)` + `slint_target_sources` + one `.slint`
-  window) configured, compiled and linked against the staging tree using Buildroot's
-  `toolchainfile.cmake`.
-- Run on the target userland (`unshare -r chroot` with qemu-arm): the library loads, the
-  component is created, and the LinuxKMS backend probes DRM, then `/dev/fb0`..`fb9`. It
-  aborts only because the chroot has no framebuffer. **Rendering on a board is still
-  owed.** On a MiSTer, `/dev/fb0` exists only after the video path is up (Main_MiSTer or
-  `itsalive up`), and nothing else may write to it at the same time.
+- `host-slint`: about 40 s; `slint` (cargo via Corrosion): under a minute, both on a
+  32-thread host.
+- `libslint_cpp.so` with the default options: 16.9 MB as installed, **13.1 MB stripped**
+  (`BR2_STRIP_strip` does this in the image). It needs only `libgcc_s`, `libm`, `libc` and
+  `ld-linux-armhf`; libfontconfig is dlopened. ELF attributes: `Tag_CPU_name: 7-A`,
+  `Tag_Advanced_SIMD_arch: NEONv1`. Weigh the size against `docs/size-budget.md` before
+  enabling it.
+- **End-to-end check.** A C++ program with its own `Platform` was cross-built with
+  `find_package(Slint)` and `slint_target_sources()` against this package's staging
+  tree. The program renders through the ARGB8888 entry point, drives time through the
+  scene clock, and embeds its fonts. It was run on the target userland
+  (`unshare -r chroot` with qemu-arm, libfontconfig hidden, `SLINT_FONT_PATH` set) at
+  1080p and 720p, with and without CJK text. All four PNGs were **byte-identical** to the
+  same program built earlier against a statically linked, separately configured Slint
+  1.18.1 with the same patch.
+- With `BR2_PACKAGE_SLINT_LINUXKMS` (an earlier configuration of this package), a minimal
+  `slint::Window` program loads, and the backend probes DRM, then `/dev/fb0`..`fb9`.
+- **Nothing has rendered on a board yet.** On a MiSTer, `/dev/fb0` exists only once the
+  video path is up (Main_MiSTer or `itsalive up`), and nothing else may write to it at the
+  same time.
 
 ## Building and testing a bump
 
@@ -124,11 +169,14 @@ cmake --build app/build
 ```
 
 Finally, run it on the ARM userland: copy the binary into `out/target/usr/bin/` and run
-`unshare -r chroot out/target /usr/bin/<app>`. Without a framebuffer it must reach the
-LinuxKMS probe (`Error using /dev/fb0 ...`). Anything earlier, such as a missing library,
-is a packaging bug.
+`unshare -r chroot out/target /usr/bin/<app>`. A program with its own `Platform` that
+renders into a buffer can write a PNG, which can be compared byte-for-byte with the
+previous version's output. With `BR2_PACKAGE_SLINT_LINUXKMS`, a plain `slint::Window`
+program must reach the backend's probe (`Error using /dev/fb0 ...`). Anything earlier,
+such as a missing library, is a packaging bug.
 
-For a slint bump, also re-check the `SLINT_FEATURE_*` names that `slint.mk` passes against
+For a slint bump, rebase the three carried patches first (see above). Also re-check the
+`SLINT_FEATURE_*` names that `slint.mk` passes against
 `api/cpp/cmake/SlintFeatures.cmake` (CMake ignores an unknown `-D`, so a renamed feature
 silently falls back to its default), and the `find_package(Rust <min>)` line in
 `api/cpp/CMakeLists.txt` against Buildroot's rust-bin pin.

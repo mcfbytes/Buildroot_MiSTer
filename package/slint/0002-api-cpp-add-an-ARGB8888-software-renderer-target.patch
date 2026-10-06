@@ -1,0 +1,62 @@
+From 60804d2931f412d309c96cb606f0b06fb9939f33 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Tue, 6 Oct 2026 18:02:29 -0500
+Subject: [PATCH] api/cpp: add an ARGB8888 software-renderer target
+
+Add slint_software_renderer_render_argb8888(), which renders into a
+caller-owned buffer of u32 0xAARRGGBB pixels, the framebuffer's scanout
+format, using Rgb8Pixel's blend arithmetic. The stock C++ API renders
+only RGB888 or RGB565, which costs a separate swizzle pass.
+
+Upstream: not submitted
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ api/cpp/platform.rs | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/api/cpp/platform.rs b/api/cpp/platform.rs
+index ea21591..3f367f0 100644
+--- a/api/cpp/platform.rs
++++ b/api/cpp/platform.rs
+@@ -576,6 +576,41 @@ pub extern "C" fn slint_software_renderer_new(buffer_age: u32) -> SoftwareRender
+         }
+     }
+ 
++    /// hdosd-bake: a native ARGB8888 target (u32 0xAARRGGBB; B,G,R,A in memory on little-endian),
++    /// so the renderer writes the scanout format directly and no swizzle pass is needed.
++    #[repr(transparent)]
++    #[derive(Clone, Copy, Default)]
++    pub struct Argb8888Pixel(pub u32);
++    impl i_slint_renderer_software::TargetPixel for Argb8888Pixel {
++        #[inline]
++        fn blend(&mut self, c: i_slint_renderer_software::PremultipliedRgbaColor) {
++            let a = (u8::MAX - c.alpha) as u32;
++            let v = self.0;
++            let r = ((v >> 16) & 0xff) * a / 255 + c.red as u32;
++            let g = ((v >> 8) & 0xff) * a / 255 + c.green as u32;
++            let b = (v & 0xff) * a / 255 + c.blue as u32;
++            self.0 = 0xff00_0000 | (r << 16) | (g << 8) | b;
++        }
++        #[inline]
++        fn from_rgb(r: u8, g: u8, b: u8) -> Self {
++            Self(0xff00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | b as u32)
++        }
++    }
++
++    #[unsafe(no_mangle)]
++    pub unsafe extern "C" fn slint_software_renderer_render_argb8888(
++        r: SoftwareRendererOpaque,
++        buffer: *mut u32,
++        buffer_len: usize,
++        pixel_stride: usize,
++    ) -> PhysicalRegion {
++        unsafe {
++            let buffer = core::slice::from_raw_parts_mut(buffer as *mut Argb8888Pixel, buffer_len);
++            let renderer = &*(r as *const SoftwareRenderer);
++            renderer.render(buffer, pixel_stride)
++        }
++    }
++
+     #[cfg(feature = "experimental")]
+     #[unsafe(no_mangle)]
+     pub unsafe extern "C" fn slint_software_renderer_render_accel_rgb8(

@@ -585,7 +585,7 @@
       "addLabels": ["tool-pin"]
     },
     {
-      "description": "GUI toolkit and font pins (slint, corrosion, Noto Sans, Noto Sans JP; docs/slint.md). Their own label because their reviewer contract matches none of the others: NO image selects these packages yet, so build.yml never compiles them and a green PR proves only that the hash moved (lint.yml's pin-consistency steps). WHAT NEEDS A HUMAN on a bump: build them (docs/slint.md describes the external-toolchain test tree) and, for slint, re-check the CMake feature names slint.mk passes (SLINT_FEATURE_*) and the Rust minimum in api/cpp/CMakeLists.txt against the rust-bin pin.",
+      "description": "GUI toolkit and font pins (slint, corrosion, Noto Sans, Noto Sans JP; docs/slint.md). Their own label because their reviewer contract matches none of the others: NO image selects these packages yet, so build.yml never compiles them and a green PR proves only that the hash moved (lint.yml's pin-consistency steps). WHAT NEEDS A HUMAN on a bump: build them (docs/slint.md describes the external-toolchain test tree) and, for slint, rebase the three carried patches (package/slint/000[1-3]-*.patch: fontconfig dlopen, ARGB8888 target, scene clock), re-check the CMake feature names slint.mk passes (SLINT_FEATURE_*) and the Rust minimum in api/cpp/CMakeLists.txt against the rust-bin pin.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["slint-ui/slint", "corrosion-rs/corrosion", "notofonts/latin-greek-cyrillic", "notofonts/noto-cjk"],
       "addLabels": ["gui-pin"]

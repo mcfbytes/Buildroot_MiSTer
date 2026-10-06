@@ -6,25 +6,35 @@ config BR2_PACKAGE_SLINT
 	depends on BR2_TOOLCHAIN_HAS_THREADS
 	depends on !BR2_STATIC_LIBS # cdylib
 	select BR2_PACKAGE_HOST_RUSTC
-	select BR2_PACKAGE_FONTCONFIG
 	help
 	  Slint declarative GUI toolkit: the C++ library
 	  (libslint_cpp.so), its headers and CMake package for
 	  find_package(Slint), plus slint-compiler on the host to
 	  turn .slint files into C++ at build time.
 
-	  Built with the software renderer and the LinuxKMS backend
-	  only, which draws to DRM or, without it, /dev/fb0. Needs at
-	  least one font that fontconfig can find, e.g.
-	  BR2_PACKAGE_FONT_NOTO_SANS. See docs/slint.md.
+	  Software renderer only. Carries three patches: fontconfig
+	  is dlopened rather than linked, an ARGB8888 render target
+	  (slint_software_renderer_render_argb8888) and a caller-
+	  driven animation clock (slint_hdosd_set_scene_time).
+	  Without fontconfig, font fallback needs SLINT_FONT_PATH.
+	  See docs/slint.md.
 
 	  https://slint.dev/
 
 if BR2_PACKAGE_SLINT
 
-config BR2_PACKAGE_SLINT_LIBINPUT
+config BR2_PACKAGE_SLINT_LINUXKMS
+	bool "LinuxKMS backend"
+	help
+	  Slint's own full-screen backend, drawing to DRM dumb
+	  buffers or, without DRM, /dev/fb0. Not needed by a program
+	  that supplies its own slint::platform::Platform and renders
+	  into its own buffer.
+
+config BR2_PACKAGE_SLINT_LINUXKMS_LIBINPUT
 	bool "libinput support"
 	default y
+	depends on BR2_PACKAGE_SLINT_LINUXKMS
 	depends on BR2_PACKAGE_HAS_LIBUDEV # libinput
 	select BR2_PACKAGE_LIBINPUT
 	select BR2_PACKAGE_LIBXKBCOMMON
@@ -33,6 +43,7 @@ config BR2_PACKAGE_SLINT_LIBINPUT
 	  it the LinuxKMS backend renders but receives no input.
 
 comment "libinput support needs libudev"
+	depends on BR2_PACKAGE_SLINT_LINUXKMS
 	depends on !BR2_PACKAGE_HAS_LIBUDEV
 
 config BR2_PACKAGE_SLINT_INTERPRETER

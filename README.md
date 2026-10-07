@@ -143,7 +143,7 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 | `linux/7za` | Replaced: 7-Zip 26.03 instead of the 2016 p7zip |
 | `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
 | `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
-| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md) and [Logitech pairing](docs/logitech-pairing.md) launchers |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/sinden_lightgun.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md) and [Sinden Lightgun](docs/sinden-lightgun.md) launchers |
 
 Everything else under `linux/` is rewritten with byte-identical content, because the release
 archive *is* stock's archive with those files swapped in; small files are backed up to
@@ -251,6 +251,7 @@ secure-by-default network posture is proposed in
 | exFAT repair | None, though the card is never cleanly unmounted | **Scripts > check_storage.sh**: read-only scan, then a confirmed repair on next boot ([ADR 0026](docs/decisions/0026-user-driven-exfat-fsck.md)) |
 | NTFS | Not supported | `ntfs3` plus `ntfs-3g`, with USB automount ([ADR 0013](docs/decisions/0013-ntfs3-and-all-ext4-variant.md)) |
 | Logitech Unifying pairing | Not possible on the device | **Scripts > pair_logitech.sh** ([doc](docs/logitech-pairing.md)) |
+| Sinden Lightgun | No camera driver; needs a replacement kernel | `uvcvideo` and the driver runtime built in; **Scripts > sinden_lightgun.sh** downloads Sinden's driver, which then starts when a gun is plugged in ([doc](docs/sinden-lightgun.md)) |
 | CIFS mounts | No `mount.cifs` | `cifs-utils` ([doc](docs/netfs-parity.md)) |
 | BitTorrent | `rtorrent`, foreground TUI, no local peer discovery | `transmission-daemon`, off until you opt in on the card, state kept on the card ([doc](docs/bittorrent.md)) |
 | ZeroCD Wi-Fi dongles | No `usb_modeswitch`, so they stay in CD mode | `usb_modeswitch` with the configs these dongles need |

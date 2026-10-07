@@ -31,13 +31,13 @@
 # HOW IT GETS ONTO A CARD
 # ---------------------------------------------------------------------------
 # By exactly the same route as Scripts/update_linux_modernization.sh, which is
-# the point -- two Scripts this project ships should not arrive by two different
+# the point -- the Scripts this project ships should not arrive by different
 # mechanisms:
 #
-#   * install.sh                        -- onboarding, fetches both
-#   * update_linux_modernization.sh     -- replaces either if it went missing
-#   * scripts/fetch-sdcard-payload.sh   -- stages both into sdcard.img
-#   * uninstall.sh --remove-script      -- removes both
+#   * install.sh                        -- onboarding, fetches all of them
+#   * update_linux_modernization.sh     -- replaces any that went missing
+#   * scripts/fetch-sdcard-payload.sh   -- stages all of them into sdcard.img
+#   * uninstall.sh --remove-script      -- removes all of them
 #
 # An earlier revision had an /etc/init.d script copy this out of the rootfs on
 # boot. It worked, but it invented a rootfs-to-exFAT sync convention that

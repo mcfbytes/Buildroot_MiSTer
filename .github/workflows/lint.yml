@@ -15,7 +15,7 @@
 #   actionlint                              # from repo root; auto-finds .github/workflows
 #   shellcheck -x $(find scripts -name '*.sh')
 #   shellcheck -x board/mister/*/fat-payload/Scripts/*.sh
-#   shellcheck -s sh -x package/azcopy/azcopy-profile.sh
+#   shellcheck -s sh -x package/azcopy/azcopy-profile.sh package/sinden-lightgun/mister-sinden-lightgun
 #   scripts/shellcheck-composite-actions.sh # .github/actions/*/action.yml run: bodies
 #   scripts/test-installer-splash.sh        # SD-installer first-boot splash (ADR 0020 §6)
 #   scripts/test-authorized-keys-migration.sh  # S50sshd's authorized_keys move (#183)
@@ -48,6 +48,8 @@ on:
       - 'package/azcopy/**'
       # package/itsalive: feeds the version/hash gate; #210 bypassed it.
       - 'package/itsalive/**'
+      # package/sinden-lightgun: mister-sinden-lightgun is shellchecked below.
+      - 'package/sinden-lightgun/**'
       - 'install.sh'
       - 'uninstall.sh'
   pull_request:
@@ -60,6 +62,8 @@ on:
       - 'package/azcopy/**'
       # package/itsalive: feeds the version/hash gate; #210 bypassed it.
       - 'package/itsalive/**'
+      # package/sinden-lightgun: mister-sinden-lightgun is shellchecked below.
+      - 'package/sinden-lightgun/**'
       - 'install.sh'
       - 'uninstall.sh'
   workflow_dispatch:
@@ -187,6 +191,7 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/sinden_lightgun.sh
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
           )
@@ -223,7 +228,7 @@ jobs:
           if [ "${#bash_files[@]}" -gt 0 ]; then
             shellcheck -x "${bash_files[@]}"
           fi
-          shellcheck -s sh -x install.sh uninstall.sh package/azcopy/azcopy-profile.sh "${sh_files[@]}"
+          shellcheck -s sh -x install.sh uninstall.sh package/azcopy/azcopy-profile.sh package/sinden-lightgun/mister-sinden-lightgun "${sh_files[@]}"
 
       # Executable bits on shipped scripts, checked against GIT's recorded mode.
       #
@@ -256,6 +261,7 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/sinden_lightgun.sh
             post-build.sh
             post-image.sh
             initramfs-post-build.sh

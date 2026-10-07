@@ -1,0 +1,170 @@
+#!/bin/sh
+# Sinden Lightgun support: fetch Sinden's Linux driver onto the card and run it
+# while a gun is plugged in. See docs/sinden-lightgun.md.
+
+ZIP_URL="https://www.sindenlightgun.com/software/SindenLightgunSoftwareReleaseV2.08b.zip"
+ZIP_SHA256="60261a5a913c80d7a409336a5bc591272ac64ed7351fc6a726e8bd35fd7a8db5"
+ZIP_APPDIR="SindenLightgunSoftwareReleaseV2.08b/SindenLightgunLinuxSoftwareV2.05/ARMversion/Pi/Lightgun/Application"
+ZIP_LICENSE="SindenLightgunSoftwareReleaseV2.08b/SindenLightgunLinuxSoftwareV2.05/PCversion/Standard/Lightgun/License.txt"
+
+DIR="/media/fat/linux/sinden"
+ARGS_FILE="$DIR/args"
+DEFAULT_ARGS="joystick mediumresource"
+PIDFILE="/run/sinden-lightgun.pid"
+GUNSFILE="/run/sinden-lightgun.guns"
+LOCK="/run/sinden-lightgun.lock"
+LOG="/var/log/sinden-lightgun.log"
+
+# Every VID:PID Main_MiSTer treats as a Sinden gun (input.cpp, "Sinden Lightgun").
+is_sinden_id() {
+	case "$1:$2" in
+		16c0:0f01|16c0:0f02|16c0:0f38|16c0:0f39) return 0 ;;
+		16d0:0f01|16d0:0f02|16d0:0f38|16d0:0f39) return 0 ;;
+	esac
+	return 1
+}
+
+say() { echo "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+installed() {
+	[ -f "$DIR/LightgunMono.exe" ] && [ -f "$DIR/libCameraInterface.so" ] &&
+		[ -f "$DIR/libSdlInterface.so" ] && [ -f "$DIR/LightgunMono.exe.config" ]
+}
+
+# Count guns by their UVC capture node (index 0; index 1 is UVC metadata).
+count_guns() {
+	n=0
+	for v in /sys/class/video4linux/video*; do
+		[ -e "$v/device" ] || continue
+		[ "$(cat "$v/index" 2>/dev/null)" = "0" ] || continue
+		usb=$(readlink -f "$v/device/..")
+		is_sinden_id "$(cat "$usb/idVendor" 2>/dev/null)" "$(cat "$usb/idProduct" 2>/dev/null)" &&
+			n=$((n + 1))
+	done
+	echo "$n"
+}
+
+# A stale pidfile's PID may have been reused, so also require it to be the driver.
+running() {
+	[ -f "$PIDFILE" ] || return 1
+	pid=$(cat "$PIDFILE")
+	kill -0 "$pid" 2>/dev/null && grep -qa LightgunMono.exe "/proc/$pid/cmdline"
+}
+
+# Only the driver's own switches pass; anything else is logged, not mangled.
+read_args() {
+	args=""
+	if [ -f "$ARGS_FILE" ]; then
+		for w in $(head -n 1 "$ARGS_FILE"); do
+			case "$w" in
+				joystick|lowresource|mediumresource|sdl) args="$args $w" ;;
+				*) logger -t sinden-lightgun "ignoring unknown argument '$w' in $ARGS_FILE" ;;
+			esac
+		done
+	fi
+	args="${args# }"
+	echo "${args:-$DEFAULT_ARGS}"
+}
+
+do_stop() {
+	running || { rm -f "$PIDFILE"; return 0; }
+	pid=$(cat "$PIDFILE")
+	kill "$pid" 2>/dev/null
+	for _ in 1 2 3; do
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 1
+	done
+	running && kill -9 "$pid" 2>/dev/null
+	rm -f "$PIDFILE"
+}
+
+# Pinned to CPU0: Main_MiSTer pins itself to CPU1 and must keep it to itself.
+# The log lives in RAM (/var/log is tmpfs), so each start replaces it.
+do_start() {
+	installed || { logger -t sinden-lightgun "driver not installed; run Scripts/sinden_lightgun.sh"; return 1; }
+	do_stop
+	args=$(read_args)
+	echo "=== $(date) starting: mono LightgunMono.exe $args" >"$LOG"
+	cd "$DIR" || return 1
+	# shellcheck disable=SC2086  # args is a word list by design
+	LD_LIBRARY_PATH="$DIR" setsid taskset -c 0 mono LightgunMono.exe $args \
+		</dev/null >>"$LOG" 2>&1 9>&- &
+	echo $! >"$PIDFILE"
+}
+
+# Converge on "running iff a gun is plugged in"; restart when the gun count
+# changes, because the driver enumerates guns only at startup.
+reconcile() {
+	exec 9>"$LOCK"
+	flock 9
+	guns=$(count_guns)
+	if [ "$guns" -eq 0 ]; then
+		do_stop
+		rm -f "$GUNSFILE"
+	elif ! running || [ "$(cat "$GUNSFILE" 2>/dev/null)" != "$guns" ]; then
+		do_start && echo "$guns" >"$GUNSFILE"
+	fi
+}
+
+# udev waits on RUN's stdio, so detach completely; the sleep lets the gun's
+# ttyACM and second video node arrive and coalesces their events.
+do_hotplug() {
+	setsid sh -c "sleep 2; exec '$0' reconcile" </dev/null >/dev/null 2>&1 9>&- &
+}
+
+do_install() {
+	mkdir -p "$DIR" || die "cannot create $DIR"
+	zip="$DIR/.download.zip"
+	say "Downloading Sinden Lightgun software V2.08b from sindenlightgun.com ..."
+	curl -fL --retry 2 --connect-timeout 20 -o "$zip" "$ZIP_URL" || { rm -f "$zip"; die "download failed"; }
+	say "Verifying ..."
+	echo "$ZIP_SHA256  $zip" | sha256sum -c -s || { rm -f "$zip"; die "checksum mismatch: $ZIP_URL changed"; }
+
+	tmp="$DIR/.unpack"
+	rm -rf "$tmp"
+	mkdir -p "$tmp"
+	unzip -q -o "$zip" "$ZIP_APPDIR/*" "$ZIP_LICENSE" -d "$tmp" || { rm -rf "$tmp" "$zip"; die "unzip failed"; }
+	app="$tmp/$ZIP_APPDIR"
+	# A running driver has these files mapped; never rewrite them under it.
+	exec 9>"$LOCK"
+	flock 9
+	do_stop
+	rm -f "$GUNSFILE"
+	for f in LightgunMono.exe libCameraInterface.so libSdlInterface.so test.bmp; do
+		cp -f "$app/$f" "$DIR/$f" || { rm -rf "$tmp" "$zip"; die "missing $f in the zip"; }
+	done
+	# The config holds the user's settings, so an update never overwrites it.
+	if [ ! -f "$DIR/LightgunMono.exe.config" ]; then
+		sed 's|key="CameraRes" value="[^"]*"|key="CameraRes" value="320,240"|' \
+			"$app/LightgunMono.exe.config" >"$DIR/LightgunMono.exe.config"
+	fi
+	cp -f "$tmp/$ZIP_LICENSE" "$DIR/License.txt"
+	[ -f "$ARGS_FILE" ] || echo "$DEFAULT_ARGS" >"$ARGS_FILE"
+	rm -rf "$tmp" "$zip"
+	exec 9>&-
+
+	say ""
+	say "Installed to $DIR. Sinden's licence is in License.txt there."
+	say "The driver starts by itself whenever a Sinden Lightgun is plugged in."
+	say "Driver options: $ARGS_FILE   Settings: $DIR/LightgunMono.exe.config"
+	do_hotplug
+}
+
+do_status() {
+	if installed; then say "Driver: installed in $DIR (args: $(read_args))"; else say "Driver: NOT installed"; fi
+	say "Guns plugged in: $(count_guns)"
+	if running; then say "Daemon: running, pid $(cat "$PIDFILE"), CPU affinity $(taskset -cp "$(cat "$PIDFILE")" 2>/dev/null | sed 's/.*: //')"; else say "Daemon: not running"; fi
+	say "Log: $LOG"
+}
+
+case "$1" in
+	install)   do_install; do_status ;;
+	hotplug)   do_hotplug ;;
+	reconcile) reconcile ;;
+	start)     exec 9>"$LOCK"; flock 9; do_start ;;
+	stop)      exec 9>"$LOCK"; flock 9; do_stop; rm -f "$GUNSFILE" ;;
+	status)    do_status ;;
+	uninstall) exec 9>"$LOCK"; flock 9; do_stop; rm -rf "$DIR"; say "Removed $DIR" ;;
+	*)         echo "Usage: $0 {install|status|start|stop|uninstall}" >&2; exit 1 ;;
+esac

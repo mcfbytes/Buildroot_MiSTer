@@ -196,6 +196,13 @@ menu "Process sandboxing"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/minijail/Config.in"
 endmenu
 
+menu "GUI toolkit and fonts"
+	# Neither exists in upstream Buildroot 2026.08; see docs/slint.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/slint/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans-jp/Config.in"
+endmenu
+
 menu "SD-card installer (ADR 0020)"
 	# Packages that exist for the throwaway first-boot installer cpio
 	# (configs/mister_installer_defconfig) and nothing else. itsalive draws

@@ -1,0 +1,43 @@
+From 8a8b9aee9ae8a4373c26652ae5dc078d862d07fe Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Tue, 6 Oct 2026 18:02:29 -0500
+Subject: [PATCH] api/cpp: dlopen libfontconfig instead of linking it
+
+Enable fontique's fontconfig-dlopen feature for the C++ library, so
+libslint_cpp.so does not need libfontconfig.so.1 at load time and a
+system without fontconfig still runs (font fallback then needs
+SLINT_FONT_PATH). Setting RUST_FONTCONFIG_DLOPEN=on alone breaks the
+build (E0432), hence the explicit dependency.
+
+Upstream: not submitted
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ Cargo.lock         | 1 +
+ api/cpp/Cargo.toml | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 8159831..229e864 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -7666,6 +7666,7 @@ dependencies = [
+  "cbindgen",
+  "esp-backtrace",
+  "esp-println",
++ "fontique",
+  "i-slint-backend-android-activity",
+  "i-slint-backend-selector",
+  "i-slint-backend-testing",
+diff --git a/api/cpp/Cargo.toml b/api/cpp/Cargo.toml
+index 291df09..93c5720 100644
+--- a/api/cpp/Cargo.toml
++++ b/api/cpp/Cargo.toml
+@@ -84,6 +84,8 @@ raw-window-handle = { version = "0.6", optional = true }
+ esp-backtrace = { version = "0.20.0", features = ["panic-handler", "println"], optional = true }
+ esp-println = { version = "0.18.0", default-features = false, features = ["auto", "log-04"], optional = true }
+ unicode-segmentation = { workspace = true }
++# hdosd-bake: dlopen libfontconfig instead of linking it (the rig image has no fontconfig)
++fontique = { workspace = true, features = ["fontconfig-dlopen"] }
+ 
+ [target.'cfg(target_os = "android")'.dependencies]
+ i-slint-backend-android-activity = { workspace = true, features = ["native-activity", "aa-06"] }

@@ -246,7 +246,7 @@
     },
     {
       "customType": "regex",
-      "description": "itsalive commit pin (mcfbytes/ItsAlive_MiSTer, master branch) -- the SD-card installer's HDMI splash tool (package/itsalive, ADR 0020 section 9, issue #185). A commit pin on master like the driver pins above, because the project cuts no releases. itsalive is a cargo-package, so Buildroot hashes the post-`cargo vendor` itsalive-<sha>-cargoN.tar.gz, which scripts/hash-sync-github-packages.sh's `curl | sha256sum` cannot produce (it would write the pre-vendoring archive's hash -- a wrong value that looks right), so itsalive must NEVER join HASH_SYNC_PACKAGES. Since 2026-10-04 renovate-hash-sync.yml case 9 (scripts/hash-sync-itsalive.sh) rebuilds that tarball with Buildroot's own cargo-post-process and refreshes the hash on the bump branch, exactly as case 7 does for azcopy; lint.yml's 'itsalive version/hash pin consistency' step keeps the PR red if it skips. Hash: package/itsalive/itsalive.hash.",
+      "description": "itsalive commit pin (mcfbytes/ItsAlive_MiSTer, master branch) -- the SD-card installer's HDMI splash tool (package/itsalive, ADR 0020 section 9, issue #185). A commit pin on master like the driver pins above, because the project cuts no releases. itsalive is a cargo-package, so Buildroot hashes the post-`cargo vendor` itsalive-<sha>-cargoN.tar.gz, which scripts/hash-sync-github-packages.sh's `curl | sha256sum` cannot produce (it would write the pre-vendoring archive's hash -- a wrong value that looks right), so itsalive must NEVER join HASH_SYNC_PACKAGES. Since 2026-10-04 renovate-hash-sync.yml case 9 (scripts/hash-sync-cargo.sh, which also covers slint since 2026-10-06) rebuilds that tarball with Buildroot's own cargo-post-process and refreshes the hash on the bump branch, exactly as case 7 does for azcopy; lint.yml's 'cargo-vendored package version/hash pin consistency' step keeps the PR red if it skips. Hash: package/itsalive/itsalive.hash.",
       "managerFilePatterns": [
         "/^package/itsalive/itsalive\\.mk$/"
       ],
@@ -257,6 +257,61 @@
       "depNameTemplate": "mcfbytes/ItsAlive_MiSTer",
       "packageNameTemplate": "https://github.com/mcfbytes/ItsAlive_MiSTer",
       "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "slint release pin (slint-ui/slint) -- the Slint C++ GUI library and its host slint-compiler (package/slint, docs/slint.md). SLINT_VERSION holds the BARE version and slint.mk reconstructs the tag's \"v\" in its SITE line, like azcopy; extractVersionTemplate strips it. slint is a cmake-package vendored like a cargo-package, so Buildroot hashes the post-`cargo vendor` slint-<ver>-cargoN.tar.gz and slint must NEVER join HASH_SYNC_PACKAGES (the curl-and-hash loop would write the pre-vendoring archive's hash). renovate-hash-sync.yml case 9 (scripts/hash-sync-cargo.sh) rebuilds that tarball and re-hashes the four licence files; lint.yml's 'cargo-vendored package version/hash pin consistency' step keeps the PR red if it skips. Hash: package/slint/slint.hash.",
+      "managerFilePatterns": [
+        "/^package/slint/slint\\.mk$/"
+      ],
+      "matchStrings": [
+        "SLINT_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "slint-ui/slint",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "corrosion tag pin (corrosion-rs/corrosion) -- the host-only CMake modules slint's build needs (package/corrosion). The leading \"v\" is INSIDE the captured currentValue, like dualsensectl and rcheevos, because scripts/hash-sync-github-packages.sh uses the literal *_VERSION as both the archive ref and the <pkgdir>-<version>.tar.gz filename. Slint's CMake requires Corrosion >= 0.6 (find_package(Corrosion 0.6)); a major-series bump should be checked against the slint pin. Hash: package/corrosion/corrosion.hash, refreshed by renovate-hash-sync.yml's generic loop.",
+      "managerFilePatterns": [
+        "/^package/corrosion/corrosion\\.mk$/"
+      ],
+      "matchStrings": [
+        "CORROSION_VERSION\\s*=\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "corrosion-rs/corrosion",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Noto Sans release pin (notofonts/latin-greek-cyrillic) -- package/font-noto-sans. That repository releases several families under one tag namespace (NotoSans-v*, NotoSerif-v*, NotoSansMono-v*); extractVersionTemplate keeps only NotoSans-v* releases and strips the prefix, so FONT_NOTO_SANS_VERSION holds the bare version. The source is a release ASSET, not a $(call github,...) archive, so it is refreshed by renovate-hash-sync.yml case 10 (scripts/hash-sync-noto-fonts.sh), not the generic loop. Hash: package/font-noto-sans/font-noto-sans.hash.",
+      "managerFilePatterns": [
+        "/^package/font-noto-sans/font-noto-sans\\.mk$/"
+      ],
+      "matchStrings": [
+        "FONT_NOTO_SANS_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "notofonts/latin-greek-cyrillic",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^NotoSans-v(?<version>[0-9]+\\.[0-9]+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Noto Sans JP release pin (notofonts/noto-cjk) -- package/font-noto-sans-jp, the 16_NotoSansJP.zip asset of a Sans<ver> release. extractVersionTemplate keeps only the Sans<ver> releases (the repository also releases Serif<ver>) and strips the prefix. The asset name carries no version, so the .hash records it on a '# hashed version:' line that renovate-hash-sync.yml case 10 (scripts/hash-sync-noto-fonts.sh) rewrites and lint.yml checks. Hash: package/font-noto-sans-jp/font-noto-sans-jp.hash.",
+      "managerFilePatterns": [
+        "/^package/font-noto-sans-jp/font-noto-sans-jp\\.mk$/"
+      ],
+      "matchStrings": [
+        "FONT_NOTO_SANS_JP_VERSION\\s*=\\s*(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "notofonts/noto-cjk",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^Sans(?<version>[0-9]+\\.[0-9]+)$",
+      "versioningTemplate": "loose"
     },
     {
       "customType": "regex",
@@ -524,10 +579,16 @@
       "addLabels": ["tool-pin"]
     },
     {
-      "description": "itsalive (SD-card installer HDMI splash tool, package/itsalive). tool-pin: one self-contained static CLI binary, and one that ONLY the installer initramfs runs -- a bad bump costs a first-boot picture, never a boot (/init probes for it, brackets every call in `timeout`, and only logs its exit status; ADR 0020 section 9). It carried needs-manual-hash from 2026-09-21 until 2026-10-04, when renovate-hash-sync.yml case 9 began refreshing its .hash -- the same retirement azcopy's label had with case 7. WHAT NEEDS A HUMAN on an itsalive bump: (a) if case 9 recorded a skip, run package/itsalive/itsalive.hash's recipe by hand -- lint.yml's 'itsalive version/hash pin consistency' step keeps the PR red until the hash matches; (b) read the upstream diff for exit-code or subcommand changes, because /init's splash section keys on `probe`/`up --mode`/`image -`/`say --clear` and on exit 10 meaning 'no bitstream' (scripts/test-installer-splash.sh's stub encodes the current contract; a changed contract must change both); (c) a hardware run of the installer is the only proof the picture still comes up -- the unit test proves /init's handling of the tool's answers, not the answers.",
+      "description": "itsalive (SD-card installer HDMI splash tool, package/itsalive). tool-pin: one self-contained static CLI binary, and one that ONLY the installer initramfs runs -- a bad bump costs a first-boot picture, never a boot (/init probes for it, brackets every call in `timeout`, and only logs its exit status; ADR 0020 section 9). It carried needs-manual-hash from 2026-09-21 until 2026-10-04, when renovate-hash-sync.yml case 9 began refreshing its .hash -- the same retirement azcopy's label had with case 7. WHAT NEEDS A HUMAN on an itsalive bump: (a) if case 9 recorded a skip, run package/itsalive/itsalive.hash's recipe by hand -- lint.yml's 'cargo-vendored package version/hash pin consistency' step keeps the PR red until the hash matches; (b) read the upstream diff for exit-code or subcommand changes, because /init's splash section keys on `probe`/`up --mode`/`image -`/`say --clear` and on exit 10 meaning 'no bitstream' (scripts/test-installer-splash.sh's stub encodes the current contract; a changed contract must change both); (c) a hardware run of the installer is the only proof the picture still comes up -- the unit test proves /init's handling of the tool's answers, not the answers.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["mcfbytes/ItsAlive_MiSTer"],
       "addLabels": ["tool-pin"]
+    },
+    {
+      "description": "GUI toolkit and font pins (slint, corrosion, Noto Sans, Noto Sans JP; docs/slint.md). Their own label because their reviewer contract matches none of the others: NO image selects these packages yet, so build.yml never compiles them and a green PR proves only that the hash moved (lint.yml's pin-consistency steps). WHAT NEEDS A HUMAN on a bump: build them (docs/slint.md describes the external-toolchain test tree) and, for slint, rebase the three carried patches (package/slint/000[1-3]-*.patch: fontconfig dlopen, ARGB8888 target, scene clock), re-check the CMake feature names slint.mk passes (SLINT_FEATURE_*) and the Rust minimum in api/cpp/CMakeLists.txt against the rust-bin pin.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["slint-ui/slint", "corrosion-rs/corrosion", "notofonts/latin-greek-cyrillic", "notofonts/noto-cjk"],
+      "addLabels": ["gui-pin"]
     },
     {
       "description": "SD-card payload pins (update_all.sh, wifi.sh, and the _Console cores snapshot fetched by scripts/fetch-sdcard-payload.sh). Label distinctly so a reviewer knows these change what a freshly-flashed sdcard.img installs, not a build tool or kernel-module source.",

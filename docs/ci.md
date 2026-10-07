@@ -2525,8 +2525,8 @@ idiom** and should get the same treatment when next touched.
    bespoke step.
 
    **This case also refreshes license-file hashes** (since 2026-09-04), which
-   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy) and 9
-   (itsalive) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
+   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy), 9
+   (itsalive, slint) and 10 (Noto Sans) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
    files are hashed out of the tarball the step just fetched. The reason is a
    real incident: on the 26.03 bump (PR #149) the tarball hash refreshed
    perfectly, but 26.03 had rewrapped `DOC/readme.txt` — which `lzma-sdk`
@@ -2598,27 +2598,65 @@ idiom** and should get the same treatment when next touched.
    made the override necessary.
 
 <a id="renovate-hash-sync-itsalive"></a>
-9. **The itsalive vendored-tarball hash** (`package/itsalive/itsalive.hash`),
-   refreshed by `scripts/hash-sync-itsalive.sh` (**added 2026-10-04**; 8 is
-   the retired golden-config case). Case 7's kind of source, for a
-   `cargo-package`: the hashed file is `itsalive-<sha>-cargoN.tar.gz`, the
-   GitHub archive with `cargo vendor --locked` run inside it and repacked by
-   Buildroot's helpers, so again no URL serves it. The script runs **Buildroot's
+9. **The cargo-vendored tarball hashes** (`package/itsalive/itsalive.hash`
+   since **2026-10-04**, `package/slint/slint.hash` since **2026-10-06**),
+   refreshed by `scripts/hash-sync-cargo.sh` (named `hash-sync-itsalive.sh`
+   until slint joined; 8 is the retired golden-config case). Case 7's kind of
+   source, for cargo vendoring: the hashed file is `<pkg>-<ver>-cargoN.tar.gz`,
+   the GitHub archive with `cargo vendor --locked` run inside it and repacked by
+   Buildroot's helpers, so again no URL serves it. (itsalive is a
+   `cargo-package`; slint is a `cmake-package` that sets
+   `DOWNLOAD_POST_PROCESS = cargo` itself, which produces the same kind of
+   file.) The script is table-driven over `CARGO_PINS` and runs **Buildroot's
    own `support/download/cargo-post-process`** from the pinned tree, with the
    `cargo` component of the `rust-<ver>-x86_64-unknown-linux-gnu.tar.xz` that
    tree's `package/rust-bin` pins, verified against that tree's
    `rust-bin.hash` (a verified copy already in `dl/rust-bin/` is reused). The
+   toolchain is prepared once and shared by every pin that moved. The
    `-cargoN` suffix is read from that tree's `BR_FMT_VERSION_cargo`, so a
-   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor` never
-   runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
-   checksums are verified as usual. `LICENSE` is re-hashed from the result,
-   with a `::warning::` if it changed.
+   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor`
+   never runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
+   checksums are verified as usual. Every other `sha256` line in the `.hash`
+   names a licence file, and each one is re-hashed from the result, with a
+   `::warning::` if it changed. One outcome row per package, one
+   `CARGO_HASH_CHANGED` flag.
 
    Verified at authoring time by re-deriving master's existing value for
-   `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a deliberately
-   stale filename, then used to produce the hash for PR #230's bump to
-   `797378a7`. Cost: a ~200 MB toolchain download plus one crate on a real
-   bump; seconds (`already-current`) on every other pin's PR.
+   itsalive `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a
+   deliberately stale filename, then used to produce the hash for PR #230's
+   bump to `797378a7`. Re-verified on 2026-10-06 after the table-driven rewrite:
+   from stale filenames (and a corrupted `LICENSE.md` line) it re-derived
+   itsalive `797378a7` (`fb1396ba…`) and slint 1.18.1 (`d444ebc9…`, 188 MB)
+   byte-for-byte, and the re-run returned `already-current` for both in
+   milliseconds. Cost on a real bump: a ~200 MB toolchain download, plus one
+   crate for itsalive or ~180 MB of crates for slint; seconds
+   (`already-current`) on every other pin's PR.
+
+<a id="renovate-hash-sync-font-noto-sans"></a>
+10. **The Noto font release-asset zips** (`package/font-noto-sans/font-noto-sans.hash`
+    and `package/font-noto-sans-jp/font-noto-sans-jp.hash`), refreshed by
+    `scripts/hash-sync-noto-fonts.sh` (**added 2026-10-06**), table-driven over
+    `FONT_PINS`. The sources are release **assets**: `NotoSans-v<ver>.zip` under a
+    `NotoSans-v<ver>` tag of `notofonts/latin-greek-cyrillic`, and
+    `16_NotoSansJP.zip` under a `Sans<ver>` tag of `notofonts/noto-cjk`. Case
+    1's `$(call github,...)` archive URL cannot reach either. The trust model is
+    case 1's and case 3's: upstream publishes no checksums, so a locally computed
+    `sha256sum` of the freshly fetched asset is the source. Each licence file
+    (`OFL.txt`, `LICENSE`) is re-hashed from the same zip, with a `::warning::`
+    if it changed; a zip without one is `failed`.
+
+    `16_NotoSansJP.zip` has the same name in every release, so the filename
+    cannot say which version a hash belongs to. That `.hash` carries a
+    `# hashed version: <ver>` line instead. The script keys its
+    `already-current` check on that line and rewrites it, and `lint.yml`
+    compares it with `FONT_NOTO_SANS_JP_VERSION`. A `.hash` that lost the line
+    is `failed`, not silently re-hashed.
+
+    Verified at authoring time with fixtures: all-current (`already-current`
+    ×2); a stale Noto Sans filename plus a stale JP version line and a corrupted
+    JP `LICENSE` line (both refreshed, files restored byte-for-byte:
+    `0c34df07…` for 2.015, `2bbdd2c2…` for 2.004); and a JP `.hash` with no
+    version line (`failed`, file untouched).
 
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
@@ -3106,6 +3144,12 @@ fallback whenever case 7 skips.
 since 2026-10-04 refreshed by case 9): `paths:` yes, `HASH_SYNC_PACKAGES`
 never. Its `lint.yml` consistency step is the gate behind a case-9 skip, and
 the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
+
+**`slint` is the third** (a `cmake-package` vendored like a `cargo-package`,
+refreshed by case 9 since 2026-10-06), with the same rules and the same
+fallback recipe. No image selects slint, corrosion or the Noto fonts, so
+`build.yml` never fetches them; `lint.yml`'s two pin-consistency steps are the
+only CI gate on their hashes.
 
 ---
 

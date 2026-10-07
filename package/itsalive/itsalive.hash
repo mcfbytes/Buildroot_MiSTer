@@ -25,7 +25,7 @@
 # with no line here is only WARNED about.
 #
 # HOW TO REGENERATE IT ON A VERSION BUMP. On a Renovate PR,
-# renovate-hash-sync.yml case 9 (scripts/hash-sync-itsalive.sh) does it: it
+# renovate-hash-sync.yml case 9 (scripts/hash-sync-cargo.sh) does it: it
 # reruns cargo-post-process with the pinned cargo and rewrites both lines.
 # By hand, or when case 9 skips, use the recipe below. NEVER add itsalive to that workflow's
 # HASH_SYNC_PACKAGES: the generic loop's `curl | sha256sum` would write the

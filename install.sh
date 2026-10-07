@@ -20,8 +20,10 @@
 #    update overwrites (see BACKUP_FILES below) into /media/fat/linux/.mlm-backup/.
 # 3. Installs this project's Scripts onto the card:
 #    update_linux_modernization.sh (updates the image from now on),
-#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026)
-#    and pair_logitech.sh (pairs a Logitech device to a Unifying receiver).
+#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026),
+#    pair_logitech.sh (pairs a Logitech device to a Unifying receiver),
+#    usb_full_speed_mode.sh (switches USB full-speed mode, docs/dwc2-usb-irq.md)
+#    and cpu_isolation.sh (keeps Linux work off CPU1, docs/cpu-isolation.md).
 # 4. Runs it, which sets the `update_linux = false` kill switch, fetches this
 #    project's image through the stock on-device Downloader, and reboots.
 #
@@ -41,6 +43,8 @@
 #   MLM_UPDATER_URL        override where the updater script is fetched from
 #   MLM_CHECK_STORAGE_URL  override where check_storage.sh is fetched from
 #   MLM_PAIR_LOGITECH_URL  override where pair_logitech.sh is fetched from
+#   MLM_USB_FULL_SPEED_URL override where usb_full_speed_mode.sh is fetched from
+#   MLM_CPU_ISOLATION_URL  override where cpu_isolation.sh is fetched from
 #
 # ---------------------------------------------------------------------------
 # ON `curl | bash`
@@ -72,6 +76,8 @@ UPDATER_URL="${MLM_UPDATER_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Sc
 CHECK_STORAGE_URL="${MLM_CHECK_STORAGE_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
 # Same override shape again, same two reasons.
 PAIR_LOGITECH_URL="${MLM_PAIR_LOGITECH_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh}"
+USB_FULL_SPEED_URL="${MLM_USB_FULL_SPEED_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/usb_full_speed_mode.sh}"
+CPU_ISOLATION_URL="${MLM_CPU_ISOLATION_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/cpu_isolation.sh}"
 DB_URL="https://mcfbytes.github.io/Buildroot_MiSTer/db.json"
 
 FAT="/media/fat"
@@ -79,9 +85,11 @@ SCRIPTS_DIR="$FAT/Scripts"
 UPDATER="$SCRIPTS_DIR/update_linux_modernization.sh"
 CHECK_STORAGE="$SCRIPTS_DIR/check_storage.sh"
 PAIR_LOGITECH="$SCRIPTS_DIR/pair_logitech.sh"
+USB_FULL_SPEED="$SCRIPTS_DIR/usb_full_speed_mode.sh"
+CPU_ISOLATION="$SCRIPTS_DIR/cpu_isolation.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
-# These three are ONE SET, and every path that touches them treats them as one:
+# These are ONE SET, and every path that touches them treats them as one:
 # install.sh installs all of them, `update_linux_modernization.sh --setup-only`
 # replaces any that went missing, `uninstall.sh --remove-script` removes them
 # all, and scripts/fetch-sdcard-payload.sh stages them all into sdcard.img.
@@ -390,6 +398,8 @@ show_plan() {
 	say "  /media/fat/Scripts/update_linux_modernization.sh   <- installed"
 	say "  /media/fat/Scripts/check_storage.sh                <- installed"
 	say "  /media/fat/Scripts/pair_logitech.sh                <- installed"
+	say "  /media/fat/Scripts/usb_full_speed_mode.sh          <- installed"
+	say "  /media/fat/Scripts/cpu_isolation.sh                <- installed"
 	say ""
 	say "  That is the whole of it. Our release archive IS the stock archive with"
 	say "  those first three files swapped in, so everything else under linux/ --"
@@ -494,7 +504,7 @@ install_one_script() {
 # Deliberately straight-line calls rather than a loop over a list variable: a
 # `... | while read` loop runs in a SUBSHELL, where install_one_script's die()
 # exits only that subshell and the install would carry on past a failure it had
-# already reported. Three calls do not need a parser.
+# already reported. Five calls do not need a parser.
 #
 # The third argument is a content marker -- a string that must appear in the
 # downloaded file. It is the name of the rootfs tool each shim launches, which
@@ -505,6 +515,8 @@ install_scripts() {
 	install_one_script "$UPDATER_URL"       "$UPDATER"       'mister_linux_modernization'
 	install_one_script "$CHECK_STORAGE_URL" "$CHECK_STORAGE" 'mister-fsck-exfat'
 	install_one_script "$PAIR_LOGITECH_URL" "$PAIR_LOGITECH" 'mister-pair-logitech'
+	install_one_script "$USB_FULL_SPEED_URL" "$USB_FULL_SPEED" 'mister-usb-full-speed'
+	install_one_script "$CPU_ISOLATION_URL" "$CPU_ISOLATION" 'mister-cpu-isolation'
 }
 
 # ---------------------------------------------------------------------------

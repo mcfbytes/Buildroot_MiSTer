@@ -2609,6 +2609,53 @@ require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
 
 # =============================================================================
+section "USB full-speed mode (mister-usb-full-speed, docs/dwc2-usb-irq.md)"
+# =============================================================================
+# Scripts/usb_full_speed_mode.sh launches the tool; S09 runs its `boot` verb, which acts only on the card flag.
+
+require_present "usr/sbin/mister-usb-full-speed" "mister-usb-full-speed tool"
+FS_INIT="etc/init.d/S09usb-full-speed"
+if tar_has "$FS_INIT"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$FS_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$FS_INIT present and executable ($mode)" ;;
+	*) fail "$FS_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	# shellcheck disable=SC2016 # matches a literal $TOOL in the script
+	if tar xOf "$ROOTFS_TAR" "./$FS_INIT" | grep -qF '"$TOOL" boot'; then
+		pass "$FS_INIT runs mister-usb-full-speed boot"
+	else
+		fail "$FS_INIT runs mister-usb-full-speed boot" "the every-boot choice would do nothing"
+	fi
+else
+	fail "$FS_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"
+fi
+
+# =============================================================================
+section "CPU isolation (mister-cpu-isolation, docs/cpu-isolation.md)"
+# =============================================================================
+# Scripts/cpu_isolation.sh launches the tool; S03 runs its `boot` verb, and taskset does the work.
+
+require_present "usr/sbin/mister-cpu-isolation" "mister-cpu-isolation tool"
+require_present "usr/bin/taskset" "taskset (mister-cpu-isolation moves threads with it)"
+CI_INIT="etc/init.d/S03cpu-isolation"
+if tar_has "$CI_INIT"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$CI_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$CI_INIT present and executable ($mode)" ;;
+	*) fail "$CI_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	# shellcheck disable=SC2016 # matches a literal $TOOL in the script
+	if tar xOf "$ROOTFS_TAR" "./$CI_INIT" | grep -qF '"$TOOL" boot'; then
+		pass "$CI_INIT runs mister-cpu-isolation boot"
+	else
+		fail "$CI_INIT runs mister-cpu-isolation boot" "the every-boot choice would do nothing"
+	fi
+else
+	fail "$CI_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"
+fi
+
+# =============================================================================
 section "Process sandboxing (minijail, docs/minijail.md)"
 # =============================================================================
 

@@ -133,6 +133,8 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
 * `IKCONFIG_PROC` gives `/proc/config.gz`, the only way to answer "what is
   actually in the kernel on this board" from the board itself — this project
   leans on it repeatedly.
+* `IRQ_TIME_ACCOUNTING` is not stock and not a default; it is shared with the
+  DE10 and the RT kernel ([`kernel-config-deltas.md`](kernel-config-deltas.md) D15).
 * `HZ_1000` is a **MiSTer latency posture, not a default**: the generic
   `kernel/Kconfig.hz` choice defaults to `HZ_250`, so this is a real change on
   any base.

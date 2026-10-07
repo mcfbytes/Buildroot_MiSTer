@@ -33,7 +33,7 @@
 # the precedent now lives in git history: `git log --diff-filter=D -- \
 # package/rtl8188eu-aircrack-ng/Config.in`. The reasoning is unchanged and
 # still applies to this package; only the example moved.
-LZMA_SDK_VERSION = 26.03
+LZMA_SDK_VERSION = 26.04
 # 7z$(subst .,,26.03) = 7z2603-src.tar.xz -- the same versioning scheme
 # 7-zip.org itself uses for source drops. The GitHub ip7z/7zip release page
 # is the project's own release channel (7-zip.org's download page links

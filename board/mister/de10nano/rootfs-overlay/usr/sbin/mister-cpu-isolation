@@ -1,0 +1,341 @@
+#!/bin/bash
+# mister-cpu-isolation -- keep Linux work off CPU1, which the MiSTer main program
+# pins itself to: live (task affinity) or, advanced, via isolcpus= in u-boot.txt.
+#
+# Part of MiSTer Linux Modernization.
+# https://github.com/mcfbytes/Buildroot_MiSTer
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
+#
+# Scripts/cpu_isolation.sh is its launcher; /etc/init.d/S03cpu-isolation runs `boot`.
+# Design, and why irqaffinity=0 changes nothing on this GIC: docs/cpu-isolation.md.
+
+set -uo pipefail
+
+readonly BOOT_FLAG="/media/fat/linux/cpu_isolation"
+# Written after a live switch on; /run is a tmpfs, so a reboot clears it.
+readonly RUN_MARK="/run/cpu-isolation"
+readonly WQ_MASK="/sys/devices/virtual/workqueue/cpumask"
+readonly ISOLATED="/sys/devices/system/cpu/isolated"
+readonly UBOOT_TXT="/media/fat/linux/u-boot.txt"
+readonly UBOOT_BAK="/media/fat/linux/u-boot.txt.before-cpu-isolation"
+# The kernel command-line form, as requested; see the doc for what each part does here.
+readonly CMDLINE_TOKENS="isolcpus=domain,managed_irq,1 irqaffinity=0"
+# U-Boot's built-in v= (uboot.env); a v= line in u-boot.txt replaces it, so restate it.
+readonly DEFAULT_V="loglevel=4"
+readonly DIALOG="/usr/bin/dialog"
+readonly PROMPT_TIMEOUT=120
+
+MODE="menu"
+PERSIST=0
+
+say()  { echo "$*"; }
+warn() { echo "$*" >&2; }
+die()  { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
+rule() { echo "======================================================================"; }
+upper() { tr '[:lower:]' '[:upper:]' <<<"$1"; }
+
+usage() {
+	cat <<'EOF'
+mister-cpu-isolation -- keep Linux work off CPU1, the MiSTer main program's CPU
+
+  mister-cpu-isolation              explain, show the state, offer a choice
+  mister-cpu-isolation status       show the state and change nothing
+  mister-cpu-isolation on           move Linux work to CPU0 now, until reboot
+  mister-cpu-isolation on --boot    same, and at every boot
+  mister-cpu-isolation off          undo it now and stop the boot-time one
+  mister-cpu-isolation boot         turn it on if "every boot" was chosen (S03)
+  mister-cpu-isolation cmdline-on   add isolcpus= to linux/u-boot.txt (next boot)
+  mister-cpu-isolation cmdline-off  remove it again (next boot)
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-h|--help) usage; exit 0 ;;
+		--boot)    PERSIST=1 ;;
+		status|on|off|boot|cmdline-on|cmdline-off) MODE="$1" ;;
+		*) warn "mister-cpu-isolation: unknown argument: $1"; usage >&2; exit 2 ;;
+	esac
+	shift
+done
+[ "$PERSIST" -eq 0 ] || [ "$MODE" = "on" ] || die "--boot goes with 'on'."
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+running_state() { if [ -e "$RUN_MARK" ]; then echo on; else echo off; fi; }
+boot_state()    { if [ -e "$BOOT_FLAG" ]; then echo on; else echo off; fi; }
+
+# Whether the running kernel was booted with CPU1 isolated.
+kernel_state() {
+	case ",$(cat "$ISOLATED" 2>/dev/null)," in *,1,*|*-1,*) echo on ;; *) echo off ;; esac
+}
+
+# Whether the last v= line in u-boot.txt (the one U-Boot keeps) carries every token.
+cmdline_state() {
+	local v t
+	[ -f "$UBOOT_TXT" ] || { echo off; return; }
+	v=" $(tr -d '\r' <"$UBOOT_TXT" | sed -n 's/^v=//p' | tail -n 1) "
+	for t in $CMDLINE_TOKENS; do
+		case "$v" in *" $t "*) ;; *) echo off; return ;; esac
+	done
+	echo on
+}
+
+# A u-boot.txt mmcboot= that drops $v never passes v= to the kernel.
+mmcboot_drops_v() {
+	[ -f "$UBOOT_TXT" ] || return 1
+	grep -q '^mmcboot=' "$UBOOT_TXT" || return 1
+	# shellcheck disable=SC2016 # a literal $v in the U-Boot script
+	! grep '^mmcboot=' "$UBOOT_TXT" | tail -n 1 | grep -qF '$v'
+}
+
+# ---------------------------------------------------------------------------
+# Live switch: task affinity
+# ---------------------------------------------------------------------------
+# User-space threads to move, one TID per line: not kernel threads, not the MiSTer
+# main program's (it manages its own CPUs), and not ones someone pinned to CPU1 alone.
+movable_threads() {
+	local main="" t stat rest flags
+	main=" $(pidof MiSTer 2>/dev/null) "
+	for t in /proc/[0-9]*/task/[0-9]*; do
+		case "$main" in *" $(cut -d/ -f3 <<<"$t") "*) continue ;; esac
+		stat="$(cat "$t/stat" 2>/dev/null)" || continue
+		rest="${stat##*) }"
+		flags="$(cut -d' ' -f7 <<<"$rest")"
+		# PF_KTHREAD
+		(( (flags & 0x00200000) == 0 )) || continue
+		[ "$(awk '/^Cpus_allowed_list/ { print $2 }' "$t/status" 2>/dev/null)" = "$1" ] && echo "${t##*/}"
+	done
+}
+
+set_affinity() {
+	local from="$1" to="$2" tid n=0
+	while read -r tid; do
+		taskset -p -c "$to" "$tid" >/dev/null 2>&1 && n=$((n + 1))
+	done < <(movable_threads "$from")
+	echo "$n"
+}
+
+switch_to() {
+	local n
+	[ "$(id -u)" -eq 0 ] || die "must run as root."
+	if [ "$1" = "on" ]; then
+		n="$(set_affinity 0-1 0)"
+		[ -w "$WQ_MASK" ] && echo 1 >"$WQ_MASK"
+		: >"$RUN_MARK"
+		say "Moved $n Linux threads to CPU0. New programs start there too."
+	else
+		n="$(set_affinity 0 0-1)"
+		[ -w "$WQ_MASK" ] && echo 3 >"$WQ_MASK"
+		rm -f "$RUN_MARK"
+		say "Let $n Linux threads use both CPUs again."
+	fi
+}
+
+set_boot_flag() {
+	[ "$(id -u)" -eq 0 ] || die "must run as root."
+	if [ "$1" = "on" ]; then
+		[ -d "${BOOT_FLAG%/*}" ] || die "${BOOT_FLAG%/*} is not there; is the data partition mounted?"
+		echo "Written by Scripts/cpu_isolation.sh. Delete this file to stop it at boot." \
+			>"$BOOT_FLAG" || die "could not write $BOOT_FLAG"
+		say "It will be turned on at every boot ($BOOT_FLAG)."
+	else
+		rm -f "$BOOT_FLAG" || die "could not remove $BOOT_FLAG"
+		say "It will no longer be turned on at boot."
+	fi
+	sync
+}
+
+do_on() {
+	if [ "$(running_state)" = "on" ]; then
+		say "CPU1 is already kept for the MiSTer main program."
+	else
+		switch_to on
+		say "ON until the next reboot."
+	fi
+	[ "$PERSIST" -eq 0 ] || set_boot_flag on
+}
+
+do_off() {
+	if [ "$(running_state)" = "off" ]; then
+		say "The live switch is already off."
+	else
+		switch_to off
+	fi
+	[ "$(boot_state)" = "off" ] || set_boot_flag off
+}
+
+do_boot() {
+	[ "$(boot_state)" = "on" ] || return 0
+	do_on
+}
+
+# ---------------------------------------------------------------------------
+# Advanced: u-boot.txt v= line
+# ---------------------------------------------------------------------------
+# Touches only v= lines: drops our exact tokens, then (for "on") appends them to the
+# last v= line, or adds "v=loglevel=4 <tokens>". CRLF line endings are kept.
+write_cmdline() {
+	local want="$1" tmp="$UBOOT_TXT.new" before after
+	[ "$(id -u)" -eq 0 ] || die "must run as root."
+	[ -d "${UBOOT_TXT%/*}" ] || die "${UBOOT_TXT%/*} is not there; is the data partition mounted?"
+	[ -f "$UBOOT_TXT" ] || : >"$UBOOT_TXT" || die "could not create $UBOOT_TXT"
+
+	awk -v want="$want" -v toks="$CMDLINE_TOKENS" -v defv="$DEFAULT_V" '
+		BEGIN { nt = split(toks, tok, " "); for (k = 1; k <= nt; k++) ours[tok[k]] = 1 }
+		{ line[NR] = $0 }
+		/^v=/ { lastv = NR }
+		END {
+			for (i = 1; i <= NR; i++) {
+				l = line[i]; cr = ""
+				if (sub(/\r$/, "", l)) cr = "\r"
+				if (l ~ /^v=/) {
+					n = split(substr(l, 3), t, " "); v = ""
+					for (j = 1; j <= n; j++)
+						if (!(t[j] in ours)) v = v (v == "" ? "" : " ") t[j]
+					if (want == "on" && i == lastv) v = v (v == "" ? "" : " ") toks
+					l = "v=" v
+				}
+				print l cr
+			}
+			if (want == "on" && !lastv) print "v=" defv " " toks
+		}' "$UBOOT_TXT" >"$tmp" || { rm -f "$tmp"; die "could not write $tmp"; }
+
+	# Every line except v= must survive byte for byte (docs/user/rollback.md).
+	if ! cmp -s <(grep -v '^v=' "$UBOOT_TXT") <(grep -v '^v=' "$tmp"); then
+		rm -f "$tmp"
+		die "refusing to save: the edit would change more than the v= line. $UBOOT_TXT is unchanged."
+	fi
+	before="$(grep -c '' "$UBOOT_TXT")"; after="$(grep -c '' "$tmp")"
+	if [ "$after" -ne "$before" ] && [ "$after" -ne $((before + 1)) ]; then
+		rm -f "$tmp"
+		die "refusing to save: line count would go from $before to $after. $UBOOT_TXT is unchanged."
+	fi
+
+	cp -f "$UBOOT_TXT" "$UBOOT_BAK" 2>/dev/null
+	sync
+	mv -f "$tmp" "$UBOOT_TXT" || { rm -f "$tmp"; die "could not replace $UBOOT_TXT"; }
+	sync
+	[ "$(cmdline_state)" = "$want" ] || die "$UBOOT_TXT did not take the change; the old copy is $UBOOT_BAK."
+	say "linux/u-boot.txt updated (old copy: $UBOOT_BAK). Takes effect after a reboot."
+	if [ "$want" = "on" ] && mmcboot_drops_v; then
+		warn "WARNING: u-boot.txt has its own mmcboot= without \$v, so the kernel will not see it."
+	fi
+}
+
+do_cmdline() {
+	if [ "$(cmdline_state)" = "$1" ]; then
+		say "The kernel command line setting is already $1 in linux/u-boot.txt."
+		return 0
+	fi
+	write_cmdline "$1"
+}
+
+# ---------------------------------------------------------------------------
+# Text and menu
+# ---------------------------------------------------------------------------
+explain() {
+	cat <<'EOF'
+The MiSTer main program runs on CPU1. Linux can still put other work
+there (updates, unpacking, file transfers, Samba, SSH), and while it
+does, the main program gets only part of CPU1.
+
+This keeps every other Linux program on CPU0 and leaves CPU1 to the
+main program.
+
+Benefit: background work can no longer take CPU time from the main
+program, so it may stop occasional stutter while something runs in
+the background.
+
+Cost: Linux work gets one CPU instead of two. Updates, unpacking and
+file transfers can take longer while the CPU is busy.
+
+Two ways to do it:
+  * Now: moves running programs to CPU0. Until the next reboot, or
+    at every boot if you pick that. No reboot needed.
+  * Advanced: adds isolcpus=domain,managed_irq,1 irqaffinity=0 to the
+    kernel command line in linux/u-boot.txt. Applies after a reboot.
+EOF
+}
+
+state_text() {
+	echo "Now: $(upper "$(running_state)")    At boot: $(upper "$(boot_state)")"
+	echo "Kernel command line: $(upper "$(kernel_state)") now, $(upper "$(cmdline_state)") after reboot"
+}
+
+do_status() {
+	rule
+	say " CPU1 for the MiSTer main program"
+	rule
+	say ""
+	state_text
+	say ""
+	explain
+}
+
+do_menu() {
+	local choice rc=0
+	local -a items
+
+	# Without a tty and dialog (no fb_terminal, or a pipe) a gamepad cannot answer.
+	if [ ! -x "$DIALOG" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+		do_status
+		say ""
+		say "Nothing changed. Over SSH: mister-cpu-isolation on | on --boot | off | cmdline-on | cmdline-off"
+		return 0
+	fi
+
+	"$DIALOG" --clear --title " CPU1 for MiSTer " --timeout "$PROMPT_TIMEOUT" \
+		--cr-wrap --no-collapse --msgbox "$(explain)" 0 0 || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		clear 2>/dev/null || printf '\033[2J\033[H'
+		say "Nothing changed."
+		return 0
+	fi
+
+	case "$(running_state)/$(boot_state)" in
+		off/off) items=(now "Now: turn ON until the next reboot" boot "Now: turn ON, and at every boot") ;;
+		off/on)  items=(now "Now: turn ON" noboot "Stop turning it on at boot") ;;
+		on/off)  items=(off "Now: turn OFF" persist "Keep ON at every boot") ;;
+		on/on)   items=(off "Now: turn OFF, and stop at boot" noboot "Keep ON for now, stop at boot") ;;
+	esac
+	if [ "$(cmdline_state)" = "off" ]; then
+		items+=(clon "Advanced: add isolcpus to the kernel command line")
+	else
+		items+=(cloff "Advanced: remove isolcpus from the kernel command line")
+	fi
+
+	choice="$("$DIALOG" --clear --title " CPU1 for MiSTer " --timeout "$PROMPT_TIMEOUT" \
+		--cr-wrap --no-collapse --no-tags --cancel-label "Cancel" \
+		--menu "$(state_text)" 0 0 0 "${items[@]}" 3>&1 1>&2 2>&3)" || rc=$?
+	clear 2>/dev/null || printf '\033[2J\033[H'
+
+	if [ "$rc" -ne 0 ] || [ -z "$choice" ]; then
+		say "Nothing changed."
+		return 0
+	fi
+	case "$choice" in
+		now)     do_on ;;
+		boot)    PERSIST=1; do_on ;;
+		off)     do_off ;;
+		persist) set_boot_flag on ;;
+		noboot)  set_boot_flag off ;;
+		clon)    do_cmdline on ;;
+		cloff)   do_cmdline off ;;
+	esac
+}
+
+case "$MODE" in
+	status)      do_status ;;
+	on)          do_on ;;
+	off)         do_off ;;
+	boot)        do_boot ;;
+	cmdline-on)  do_cmdline on ;;
+	cmdline-off) do_cmdline off ;;
+	menu)        do_menu ;;
+esac

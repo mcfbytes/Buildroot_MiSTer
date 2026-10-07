@@ -187,8 +187,12 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/usb_full_speed_mode.sh
+            fat-payload/Scripts/cpu_isolation.sh
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
+            rootfs-overlay/usr/sbin/mister-usb-full-speed
+            rootfs-overlay/usr/sbin/mister-cpu-isolation
           )
           sh_relpaths=(
             post-build.sh
@@ -256,6 +260,8 @@ jobs:
             fat-payload/Scripts/update_linux_modernization.sh
             fat-payload/Scripts/check_storage.sh
             fat-payload/Scripts/pair_logitech.sh
+            fat-payload/Scripts/usb_full_speed_mode.sh
+            fat-payload/Scripts/cpu_isolation.sh
             post-build.sh
             post-image.sh
             initramfs-post-build.sh
@@ -263,6 +269,8 @@ jobs:
             initramfs-overlay/init
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
+            rootfs-overlay/usr/sbin/mister-usb-full-speed
+            rootfs-overlay/usr/sbin/mister-cpu-isolation
           )
 
           board_files=()
@@ -346,42 +354,70 @@ jobs:
           fi
           echo "azcopy pin consistent: $want"
 
-      # Same gate, same reasoning, for the SD-card installer's HDMI splash tool
-      # (ADR 0020 §9). itsalive is a cargo-package: Buildroot vendors the crate
-      # graph and hashes the repacked itsalive-<sha>-cargoN.tar.gz, so NO
-      # hash-sync case refreshes package/itsalive/itsalive.hash today -- there
-      # is no cargo equivalent of case 7 yet, and the package is deliberately
-      # absent from HASH_SYNC_PACKAGES (the curl-and-hash loop would write the
-      # pre-vendoring archive's hash, a wrong value that looks right). A
-      # Renovate bump of ITSALIVE_VERSION therefore arrives with a stale .hash
-      # by construction, carries the needs-manual-hash label, and this step is
-      # what keeps it red until a human runs the recipe in that .hash file.
-      # build.yml cannot stand in: it builds the DE10 image, and itsalive
-      # lives only in the installer cpio, which nothing builds before
-      # release.yml's mk-sdcard.sh run -- far too late to learn the pin is bad.
+      # Same gate, same reasoning, for the cargo-vendored packages: itsalive (the
+      # SD-card installer's HDMI splash tool, ADR 0020 §9) and slint (2026-10-06).
+      # Buildroot vendors the crate graph and hashes the repacked
+      # <pkg>-<ver>-cargoN.tar.gz; hash-sync case 9 (scripts/hash-sync-cargo.sh)
+      # rebuilds that and refreshes the .hash, and this step keeps a PR red
+      # whenever case 9 skips, or on a hand edit. build.yml cannot stand in:
+      # itsalive lives only in the installer cpio, which nothing builds before
+      # release.yml's mk-sdcard.sh run, and no image selects slint at all.
       #
       # Compared on the filename's prefix, not its whole: the -cargoN suffix is
       # Buildroot's post-process format version and moves with a Buildroot
       # bump, which is a different event from a version bump and is caught at
-      # download time (BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in the installer
-      # defconfig) rather than here.
-      - name: itsalive version/hash pin consistency
+      # download time rather than here.
+      - name: cargo-vendored package version/hash pin consistency (itsalive, slint)
         run: |
           set -euo pipefail
-          mk=package/itsalive/itsalive.mk
-          hash=package/itsalive/itsalive.hash
-          ver=$(sed -n 's/^ITSALIVE_VERSION[[:space:]]*=[[:space:]]*//p' "$mk" | tr -d '[:space:]')
-          if ! [[ "$ver" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error file=$mk::ITSALIVE_VERSION must be a 40-hex commit SHA (got '${ver:-<nothing>}')"
+          for pkg in itsalive slint; do
+            mk=package/$pkg/$pkg.mk
+            hash=package/$pkg/$pkg.hash
+            var="$(echo "$pkg" | tr 'a-z-' 'A-Z_')_VERSION"
+            ver=$(sed -n "s/^${var}[[:space:]]*=[[:space:]]*//p" "$mk" | tr -d '[:space:]')
+            # Mirrors CARGO_PINS / version_ok() in scripts/hash-sync-cargo.sh.
+            case "$pkg" in
+              itsalive) re='^[0-9a-f]{40}$' ;;
+              slint) re='^[0-9]+\.[0-9]+\.[0-9]+$' ;;
+              *) echo "::error::no version regex for $pkg in this step"; exit 1 ;;
+            esac
+            if ! [[ "$ver" =~ $re ]]; then
+              echo "::error file=$mk::$var must match $re (got '${ver:-<nothing>}')"
+              exit 1
+            fi
+            want="${pkg}-${ver}"
+            got=$(awk '$1 == "sha256" && $3 ~ /-cargo[0-9]+\.tar\.gz$/ { print $3 }' "$hash")
+            if [ "${got%-cargo*}" != "$want" ]; then
+              echo "::error file=$hash::stale hash pin -- $var is '$ver' so this file must pin '${want}-cargoN.tar.gz', but it pins '${got:-<nothing>}'. On a Renovate PR, renovate-hash-sync.yml case 9 (scripts/hash-sync-cargo.sh) should have refreshed it -- read that run's log; otherwise regenerate with the recipe in package/itsalive/itsalive.hash. Do NOT add $pkg to HASH_SYNC_PACKAGES."
+              exit 1
+            fi
+            echo "$pkg pin consistent: $got"
+          done
+
+      # corrosion and the Noto fonts are refreshed by hash-sync case 1 and case 10,
+      # but no image selects them, so no build would catch a stale hash; this does.
+      - name: unbuilt package version/hash pin consistency (corrosion, Noto fonts)
+        run: |
+          set -euo pipefail
+          check() { # PKG WANTED-FILENAME
+            if ! awk -v f="$2" '$1 == "sha256" && $3 == f { found=1 } END { exit !found }' "package/$1/$1.hash"; then
+              echo "::error file=package/$1/$1.hash::stale hash pin -- package/$1/$1.mk wants '$2', which this file does not hash. Read renovate-hash-sync.yml's run for a '$1' row of 'skipped'/'failed' and re-dispatch it."
+              exit 1
+            fi
+            echo "$1 pin consistent: $2"
+          }
+          ver=$(sed -n 's/^CORROSION_VERSION[[:space:]]*=[[:space:]]*//p' package/corrosion/corrosion.mk | tr -d '[:space:]')
+          check corrosion "corrosion-${ver}.tar.gz"
+          ver=$(sed -n 's/^FONT_NOTO_SANS_VERSION[[:space:]]*=[[:space:]]*//p' package/font-noto-sans/font-noto-sans.mk | tr -d '[:space:]')
+          check font-noto-sans "NotoSans-v${ver}.zip"
+          # 16_NotoSansJP.zip carries no version; its .hash records one (scripts/hash-sync-noto-fonts.sh).
+          ver=$(sed -n 's/^FONT_NOTO_SANS_JP_VERSION[[:space:]]*=[[:space:]]*//p' package/font-noto-sans-jp/font-noto-sans-jp.mk | tr -d '[:space:]')
+          check font-noto-sans-jp 16_NotoSansJP.zip
+          got=$(sed -n 's/^# hashed version:[[:space:]]*//p' package/font-noto-sans-jp/font-noto-sans-jp.hash | tr -d '[:space:]')
+          if [ "$got" != "$ver" ]; then
+            echo "::error file=package/font-noto-sans-jp/font-noto-sans-jp.hash::stale hash pin -- FONT_NOTO_SANS_JP_VERSION is '$ver' but this file's '# hashed version:' line says '${got:-<nothing>}'. Read renovate-hash-sync.yml's run for a 'font-noto-sans-jp' row and re-dispatch it."
             exit 1
           fi
-          want="itsalive-${ver}"
-          got=$(awk '$1 == "sha256" && $3 ~ /-cargo[0-9]+\.tar\.gz$/ { print $3 }' "$hash")
-          if [ "${got%-cargo*}" != "$want" ]; then
-            echo "::error file=$hash::stale hash pin -- ITSALIVE_VERSION is '$ver' so this file must pin '${want}-cargoN.tar.gz', but it pins '${got:-<nothing>}'. No hash-sync case refreshes this package (cargo vendoring; see the .hash header): regenerate by hand with the recipe in $hash. Do NOT add itsalive to HASH_SYNC_PACKAGES."
-            exit 1
-          fi
-          echo "itsalive pin consistent: $got"
 
       # Closes the gap at docs/ci.md#actionlint-composite-action-gap; see
       # scripts/shellcheck-composite-actions.sh's own header for the

@@ -383,9 +383,18 @@ GitHub's cache scoping is asymmetric, and both halves matter here:
   nothing else. (PRs are barred from writing parent scopes on purpose: it is
   what stops an untrusted contributor poisoning master's cache.)
 
-So every PR run mints a private ~5 GB set (`dl/` + `br-host` +
+So every PR run used to mint a private ~5 GB set (`dl/` + `br-host` +
 `br-initramfs-host` + ccache) that no other run will ever read, and that
 GitHub keeps until it goes **7 days without an access** — long past the merge.
+
+**Since 2026-10-05 only master saves.** Every save step in
+`buildroot-build` (and the ccache action's `save:` input) is gated on
+`github.ref == 'refs/heads/master'`; PRs, tag builds and branch dispatches
+restore master's set and write nothing back. The cost is deliberate: a PR
+that moves a cache key (a Buildroot bump, a toolchain-fingerprint change)
+rebuilds that cache cold on every push until it merges, and master's first
+post-merge run re-seeds it. A cold toolchain is ~1 h of runner time; an
+evicted master `dl/` is the outage below.
 
 That is what broke run **33098842073**. Three same-day Renovate PRs took the
 repo to **14.2 GB** against the 10 GB ceiling, LRU evicted every
@@ -438,14 +447,13 @@ GitHub's own 7-day expiry. Widening the sweep to `refs/heads/*` would mean
 teaching it which branch refs are safe, and getting that wrong deletes
 master's set: the narrow rule is worth more than the few GB it leaves behind.
 
-Be clear about what this buys. Steady state is master's ~7 GB plus one open
-PR's ~5 GB, which is still over the ceiling: the prune stops **dead** PRs from
-spending the budget, it does not create headroom for concurrent live ones. If
+With PR saves gated off, the prune is a safety net: it clears scopes saved
+before the gate landed, and anything a future save step forgets to gate.
+Steady state is master's ~7 GB alone. If
 master's `dl/` starts getting evicted again with the prune in place, the
-levers in [`#cache-budget-and-sizing`](#cache-budget-and-sizing) are next,
-plus deleting superseded `ccache-<version>-<timestamp>` generations — the
-ccache action mints a new ~2 GB entry every run by design (see
-[`#ccache-key`](#ccache-key)) and only the newest is ever restored.
+levers in [`#cache-budget-and-sizing`](#cache-budget-and-sizing) are next.
+Superseded ccache generations are already pruned (see
+[`#ccache-prune`](#ccache-prune)).
 
 <a id="cache-prune-trigger"></a>
 ### Why the prune runs on `pull_request_target`
@@ -715,6 +723,15 @@ write a NEW key; with the timestamp off, the first save would own
 existing, and the cache would freeze at its first contents while the hit rate
 decayed. The timestamped key is a prefix match on restore (hence "Cache hit
 for restore-key" in the logs), so the newest entry always wins.
+
+<a id="ccache-prune"></a>
+The flip side is that every master build adds a ~1.4 GB generation and only
+the newest is ever restored. `cache-prune.yml` therefore also runs after each
+master `Build` (`workflow_run`) and in the daily sweep, and deletes every
+`ccache-<version>-<timestamp>` entry on `refs/heads/master` except the newest
+per `<version>`. Same response-side guard as the PR prune: an entry whose
+returned `.ref` is not master, or whose key does not start `ccache-`, is
+refused. An older version's single generation is left to LRU.
 
 <a id="dl-completeness"></a>
 ### dl/ completeness before save
@@ -2508,8 +2525,8 @@ idiom** and should get the same treatment when next touched.
    bespoke step.
 
    **This case also refreshes license-file hashes** (since 2026-09-04), which
-   cases 1, 2 and 4 have no equivalent of — only case 7 (azcopy) does the
-   same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
+   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy), 9
+   (itsalive, slint) and 10 (Noto Sans) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
    files are hashed out of the tarball the step just fetched. The reason is a
    real incident: on the 26.03 bump (PR #149) the tarball hash refreshed
    perfectly, but 26.03 had rewrapped `DOC/readme.txt` — which `lzma-sdk`
@@ -2580,22 +2597,70 @@ idiom** and should get the same treatment when next touched.
    `scripts/hash-sync-azcopy.sh`'s header for the moved-tag incident that
    made the override necessary.
 
+<a id="renovate-hash-sync-itsalive"></a>
+9. **The cargo-vendored tarball hashes** (`package/itsalive/itsalive.hash`
+   since **2026-10-04**, `package/slint/slint.hash` since **2026-10-06**),
+   refreshed by `scripts/hash-sync-cargo.sh` (named `hash-sync-itsalive.sh`
+   until slint joined; 8 is the retired golden-config case). Case 7's kind of
+   source, for cargo vendoring: the hashed file is `<pkg>-<ver>-cargoN.tar.gz`,
+   the GitHub archive with `cargo vendor --locked` run inside it and repacked by
+   Buildroot's helpers, so again no URL serves it. (itsalive is a
+   `cargo-package`; slint is a `cmake-package` that sets
+   `DOWNLOAD_POST_PROCESS = cargo` itself, which produces the same kind of
+   file.) The script is table-driven over `CARGO_PINS` and runs **Buildroot's
+   own `support/download/cargo-post-process`** from the pinned tree, with the
+   `cargo` component of the `rust-<ver>-x86_64-unknown-linux-gnu.tar.xz` that
+   tree's `package/rust-bin` pins, verified against that tree's
+   `rust-bin.hash` (a verified copy already in `dl/rust-bin/` is reused). The
+   toolchain is prepared once and shared by every pin that moved. The
+   `-cargoN` suffix is read from that tree's `BR_FMT_VERSION_cargo`, so a
+   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor`
+   never runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
+   checksums are verified as usual. Every other `sha256` line in the `.hash`
+   names a licence file, and each one is re-hashed from the result, with a
+   `::warning::` if it changed. One outcome row per package, one
+   `CARGO_HASH_CHANGED` flag.
+
+   Verified at authoring time by re-deriving master's existing value for
+   itsalive `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a
+   deliberately stale filename, then used to produce the hash for PR #230's
+   bump to `797378a7`. Re-verified on 2026-10-06 after the table-driven rewrite:
+   from stale filenames (and a corrupted `LICENSE.md` line) it re-derived
+   itsalive `797378a7` (`fb1396ba…`) and slint 1.18.1 (`d444ebc9…`, 188 MB)
+   byte-for-byte, and the re-run returned `already-current` for both in
+   milliseconds. Cost on a real bump: a ~200 MB toolchain download, plus one
+   crate for itsalive or ~180 MB of crates for slint; seconds
+   (`already-current`) on every other pin's PR.
+
+<a id="renovate-hash-sync-font-noto-sans"></a>
+10. **The Noto font release-asset zips** (`package/font-noto-sans/font-noto-sans.hash`
+    and `package/font-noto-sans-jp/font-noto-sans-jp.hash`), refreshed by
+    `scripts/hash-sync-noto-fonts.sh` (**added 2026-10-06**), table-driven over
+    `FONT_PINS`. The sources are release **assets**: `NotoSans-v<ver>.zip` under a
+    `NotoSans-v<ver>` tag of `notofonts/latin-greek-cyrillic`, and
+    `16_NotoSansJP.zip` under a `Sans<ver>` tag of `notofonts/noto-cjk`. Case
+    1's `$(call github,...)` archive URL cannot reach either. The trust model is
+    case 1's and case 3's: upstream publishes no checksums, so a locally computed
+    `sha256sum` of the freshly fetched asset is the source. Each licence file
+    (`OFL.txt`, `LICENSE`) is re-hashed from the same zip, with a `::warning::`
+    if it changed; a zip without one is `failed`.
+
+    `16_NotoSansJP.zip` has the same name in every release, so the filename
+    cannot say which version a hash belongs to. That `.hash` carries a
+    `# hashed version: <ver>` line instead. The script keys its
+    `already-current` check on that line and rewrites it, and `lint.yml`
+    compares it with `FONT_NOTO_SANS_JP_VERSION`. A `.hash` that lost the line
+    is `failed`, not silently re-hashed.
+
+    Verified at authoring time with fixtures: all-current (`already-current`
+    ×2); a stale Noto Sans filename plus a stale JP version line and a corrupted
+    JP `LICENSE` line (both refreshed, files restored byte-for-byte:
+    `0c34df07…` for 2.015, `2bbdd2c2…` for 2.004); and a JP `.hash` with no
+    version line (`failed`, file untouched).
+
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
 
-- **`package/itsalive/itsalive.hash`** (the SD-card installer's HDMI splash tool,
-  ADR 0020 §9; **added 2026-09-21**). Tracked by `renovate.json` (a `git-refs`
-  commit pin), but its hash is of the post-`cargo vendor` tarball Buildroot
-  repacks — the same "nothing serves this file" situation as azcopy's `-go2`
-  tarball, without a rebuild case to match. Case 1's `curl | sha256sum` would
-  write a confidently wrong value, so the package is in **neither**
-  `HASH_SYNC_PACKAGES` nor the workflow's `paths:` filter, its bump PRs carry
-  `needs-manual-hash`, and `lint.yml`'s `itsalive version/hash pin
-  consistency` step keeps them red until a human runs the recipe in the
-  `.hash`. "Not automated" here means *not yet*: a cargo analogue of case 7
-  (run Buildroot's own `support/download/cargo-post-process` with the pinned
-  `host-rust-bin`, hash the result) is the obvious next step if the pin ever
-  moves often enough to matter.
 - **`cabextract`, `linux-firmware-extra`, `xow-firmware`** — not tracked by
   `renovate.json` at all (no machine-readable upstream release feed for the
   first two; `xow-firmware` pins opaque Microsoft Update `.cab` GUIDs, not a
@@ -3074,6 +3139,17 @@ one package, on purpose: `paths:` yes, `HASH_SYNC_PACKAGES` never.
 See `docs/azcopy.md` §5 for the manual regeneration recipe, which case 7
 automates but does not retire — it is still the local procedure, and the
 fallback whenever case 7 skips.
+
+**`itsalive` is the same exception, for the same reason** (a `cargo-package`,
+since 2026-10-04 refreshed by case 9): `paths:` yes, `HASH_SYNC_PACKAGES`
+never. Its `lint.yml` consistency step is the gate behind a case-9 skip, and
+the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
+
+**`slint` is the third** (a `cmake-package` vendored like a `cargo-package`,
+refreshed by case 9 since 2026-10-06), with the same rules and the same
+fallback recipe. No image selects slint, corrosion or the Noto fonts, so
+`build.yml` never fetches them; `lint.yml`'s two pin-consistency steps are the
+only CI gate on their hashes.
 
 ---
 

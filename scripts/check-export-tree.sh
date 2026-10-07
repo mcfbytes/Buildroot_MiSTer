@@ -217,7 +217,7 @@ git -C "$export_dir" show "$tag:EXPORT.md" >"$export_md"
 # disagree: if the offsets are wrong, they are wrong in both places and this script says
 # so, rather than quietly checking a range no reviewer will ever look at. The alternative
 # — counting commits back from the tag — would need a hardcoded number of generated
-# commits (defconfig + DTB alias + one per vendored driver + build script + EXPORT.md),
+# commits (defconfig + DTB alias + one per vendored driver and package patch + build script + EXPORT.md),
 # which is precisely the thing that grows on its own.
 #
 # The first pattern requires whitespace-then-# after the tag so it cannot also match the
@@ -289,6 +289,89 @@ for subject in \
 		bad "no generated commit \"$subject\" in $tag"
 	fi
 done
+
+# Vendored drivers vs the defconfig's package set, derived independently of the export:
+# literal =y lines plus the selects of every enabled mister-* profile, nested (§7).
+kmod_dir() {
+	local dir
+	dir="$(tr 'A-Z_' 'a-z-' <<<"${1#BR2_PACKAGE_}")"
+	# shellcheck disable=SC2016 # literal Makefile text, matched with grep -F
+	[[ -f $REPO_ROOT/package/$dir/$dir.mk ]] &&
+		grep -qF '$(eval $(kernel-module))' "$REPO_ROOT/package/$dir/$dir.mk" &&
+		printf '%s\n' "$dir"
+}
+declare -A sel_req=() sel_opt=() expanded=()
+while read -r sym; do sel_req[$sym]=1; done < <(
+	sed -n 's/^\(BR2_PACKAGE_[A-Z0-9_]*\)=y.*$/\1/p' "${stack_files[@]}")
+# A conditional `select X if Y` only kconfig can evaluate: X is allowed, not required.
+grown=true
+while $grown; do
+	grown=false
+	for cfgin in "$REPO_ROOT"/package/mister-*/Config.in; do
+		prof="$(sed -n 's/^config \(BR2_PACKAGE_MISTER_[A-Z_]*\)$/\1/p' "$cfgin" | head -1)"
+		[[ -n $prof && -n ${sel_req[$prof]:-} && -z ${expanded[$prof]:-} ]] || continue
+		expanded[$prof]=1
+		grown=true
+		while read -r kind sym; do
+			if [[ $kind == req ]]; then sel_req[$sym]=1; else sel_opt[$sym]=1; fi
+		done < <(awk '/^[ \t]*select[ \t]+BR2_[A-Za-z0-9_]+/ {
+			rest = $0; sub(/#.*/, "", rest)
+			print ((rest ~ /[ \t]if[ \t]/) ? "opt" : "req"), $2 }' "$cfgin")
+	done
+done
+mapfile -t expected_kmods < <(for sym in "${!sel_req[@]}"; do kmod_dir "$sym" || true; done | sort -u)
+mapfile -t allowed_kmods < <(for sym in "${!sel_req[@]}" "${!sel_opt[@]}"; do kmod_dir "$sym" || true; done | sort -u)
+# shellcheck disable=SC2016 # the backticks are literal Markdown in EXPORT.md
+mapfile -t skipped_kmods < <(sed -n 's/^Not vendored: `\([a-z0-9-]*\)`.*$/\1/p' "$export_md" | sort -u)
+
+# base..tag only: without the base a parent repo's own history could supply a match.
+vendored_kmods=()
+if [[ -n ${base_commit:-} ]]; then
+	git -C "$export_dir" log --format=%s "$base_commit..$tag" >"$scratch/own-subjects"
+	mapfile -t vendored_kmods < <(sed -n 's/^\([a-z0-9-]*\): vendor .* at .*$/\1/p' "$scratch/own-subjects" | sort -u)
+fi
+if [[ -z ${base_commit:-} ]]; then
+	bad "vendored-driver check not run: the base commit could not be resolved (see above)"
+elif ((${#expected_kmods[@]} == 0)); then
+	bad "the DE10 defconfig enables no kernel-module package, directly or via a profile select"
+elif ((${#vendored_kmods[@]} == 0)); then
+	bad "no vendored out-of-tree driver commits in $tag (expected: ${expected_kmods[*]})"
+else
+	kmods_ok=true
+	for k in "${expected_kmods[@]}"; do
+		if ! printf '%s\n' "${vendored_kmods[@]}" "${skipped_kmods[@]}" | grep -Fxq -- "$k"; then
+			bad "kernel-module package $k is enabled but neither vendored nor named 'Not vendored' in EXPORT.md"
+			kmods_ok=false
+		fi
+	done
+	for k in "${vendored_kmods[@]}"; do
+		if ! printf '%s\n' "${allowed_kmods[@]}" | grep -Fxq -- "$k"; then
+			bad "$k is vendored in $tag but the DE10 defconfig does not enable it"
+			kmods_ok=false
+		fi
+	done
+	# One commit per package patch, found by Buildroot's rule: <dir>/<version> if it exists.
+	global_dirs="$(sed -n 's/^BR2_GLOBAL_PATCH_DIR="\([^"]*\)".*$/\1/p' "${stack_files[@]}" | tail -1)"
+	global_dirs="${global_dirs//\$(BR2_EXTERNAL_MISTER_PATH)/$REPO_ROOT}"
+	for k in "${vendored_kmods[@]}"; do
+		kver="$(sed -n "s/^$(tr 'a-z-' 'A-Z_' <<<"$k")_VERSION = //p" "$REPO_ROOT/package/$k/$k.mk" | tail -1)"
+		want=0
+		for d in "$REPO_ROOT/package/$k" $global_dirs; do
+			[[ $d == "$REPO_ROOT/package/$k" ]] || d="$d/$k"
+			if [[ -n $kver && -d $d/$kver ]]; then d="$d/$kver"; fi
+			[[ -d $d ]] || continue
+			want=$((want + $(find "$d" -maxdepth 1 -name '*.patch' | wc -l)))
+		done
+		have="$(grep -c "^$k: " "$scratch/own-subjects" || true)"
+		if ((have - 1 != want)); then
+			bad "$k: $((have - 1)) package-patch commit(s) in $tag, but the image build applies $want"
+			kmods_ok=false
+		fi
+	done
+	if $kmods_ok; then
+		ok "vendored drivers match the defconfig's package set: ${vendored_kmods[*]}${skipped_kmods[*]:+ (not vendored: ${skipped_kmods[*]})}"
+	fi
+fi
 
 for f in EXPORT.md build-mister-modules.sh arch/arm/configs/MiSTer_defconfig \
 	"$ALIAS_DTS" "$VANILLA_DTS"; do

@@ -2446,6 +2446,62 @@ else
 fi
 
 # =============================================================================
+section "Compaction — kept off mlocked RT pages (etc/sysctl.d/10-compaction.conf)"
+# =============================================================================
+# A migrated mlocked page is a minor fault on the RT thread that owns it; the
+# non-RT kernel's defaults (1 / 20) allow that. Both knobs need CONFIG_COMPACTION.
+
+for _kc in "${kconfigs[0]:-}" "$BUILD_DIR/images/linux-rt.config"; do
+	if [ -z "$_kc" ] || [ ! -f "$_kc" ]; then
+		skip "CONFIG_COMPACTION=y in ${_kc:-the 6.18 kernel}" "no resolved kernel config"
+	elif grep -qx 'CONFIG_COMPACTION=y' "$_kc"; then
+		pass "CONFIG_COMPACTION=y in $(basename "$(dirname "$_kc")")/$(basename "$_kc")"
+	else
+		fail "CONFIG_COMPACTION=y in $_kc" "the vm.compact* sysctls would not exist; the boot-time sysctl run would FAIL"
+	fi
+done
+CMP_SYSCTL="etc/sysctl.d/10-compaction.conf"
+if tar_has "$CMP_SYSCTL"; then
+	cmp_conf=$(tar xOf "$ROOTFS_TAR" "./$CMP_SYSCTL" | sed 's/[[:space:]]//g')
+	for _l in vm.compact_unevictable_allowed=0 vm.compaction_proactiveness=0; do
+		if printf '%s\n' "$cmp_conf" | grep -qxF "$_l"; then
+			pass "$CMP_SYSCTL sets $_l"
+		else
+			fail "$CMP_SYSCTL sets $_l" "line missing -- compaction could migrate an RT thread's locked pages"
+		fi
+	done
+else
+	fail "$CMP_SYSCTL present" "not in rootfs.tar -- compaction could migrate an RT thread's locked pages"
+fi
+
+# =============================================================================
+section "Writeback — kept off the RT CPU (etc/init.d/S02writeback-cpumask)"
+# =============================================================================
+# A sysfs knob, not a sysctl: the unbound writeback workers flushing to a network share
+# held a thread pinned to CPU 1 off for tens of ms. The boot script must be executable and
+# write mask 1 (CPU 0) behind a [ -w ] guard, so a kernel without the file boots clean.
+
+WB_INIT="etc/init.d/S02writeback-cpumask"
+if grep -qxF "./$WB_INIT" "$TAR_LIST"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$WB_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$WB_INIT present and executable ($mode)" ;;
+	*) fail "$WB_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	wb_script=$(tar xOf "$ROOTFS_TAR" "./$WB_INIT")
+	# shellcheck disable=SC2016 # the patterns match a literal $WB_CPUMASK in the script
+	if printf '%s\n' "$wb_script" | grep -qxF 'WB_CPUMASK=/sys/bus/workqueue/devices/writeback/cpumask' \
+		&& printf '%s\n' "$wb_script" | grep -qF 'echo 1 > "$WB_CPUMASK"' \
+		&& printf '%s\n' "$wb_script" | grep -qF '[ -w "$WB_CPUMASK" ]'; then
+		pass "$WB_INIT writes mask 1 to the writeback cpumask, guarded by [ -w ]"
+	else
+		fail "$WB_INIT writes mask 1 to the writeback cpumask, guarded by [ -w ]" "path, value or guard changed"
+	fi
+else
+	fail "$WB_INIT present and executable" "not in rootfs.tar -- writeback could run on the RT CPU"
+fi
+
+# =============================================================================
 section "DE10 kernel tuning — NEON crypto + -mtune=cortex-a9 (docs/de10-kernel-tuning.md)"
 # =============================================================================
 # olddefconfig drops a symbol silently when a dependency moves, and a renamed
@@ -2551,6 +2607,53 @@ require_absent "etc/udev/rules.d/42-logitech-unify-permissions.rules" \
 # CONFIG_USB_MON (not enabled) and its helper is documented upstream as broken.
 require_absent "usr/bin/read-dev-usbmon" \
 	"ltunify's read-dev-usbmon debug tool (deliberately not built)"
+
+# =============================================================================
+section "USB full-speed mode (mister-usb-full-speed, docs/dwc2-usb-irq.md)"
+# =============================================================================
+# Scripts/usb_full_speed_mode.sh launches the tool; S09 runs its `boot` verb, which acts only on the card flag.
+
+require_present "usr/sbin/mister-usb-full-speed" "mister-usb-full-speed tool"
+FS_INIT="etc/init.d/S09usb-full-speed"
+if tar_has "$FS_INIT"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$FS_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$FS_INIT present and executable ($mode)" ;;
+	*) fail "$FS_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	# shellcheck disable=SC2016 # matches a literal $TOOL in the script
+	if tar xOf "$ROOTFS_TAR" "./$FS_INIT" | grep -qF '"$TOOL" boot'; then
+		pass "$FS_INIT runs mister-usb-full-speed boot"
+	else
+		fail "$FS_INIT runs mister-usb-full-speed boot" "the every-boot choice would do nothing"
+	fi
+else
+	fail "$FS_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"
+fi
+
+# =============================================================================
+section "CPU isolation (mister-cpu-isolation, docs/cpu-isolation.md)"
+# =============================================================================
+# Scripts/cpu_isolation.sh launches the tool; S03 runs its `boot` verb, and taskset does the work.
+
+require_present "usr/sbin/mister-cpu-isolation" "mister-cpu-isolation tool"
+require_present "usr/bin/taskset" "taskset (mister-cpu-isolation moves threads with it)"
+CI_INIT="etc/init.d/S03cpu-isolation"
+if tar_has "$CI_INIT"; then
+	mode=$(tar tvf "$ROOTFS_TAR" -- "./$CI_INIT" 2>/dev/null | awk '{print $1; exit}')
+	case "$mode" in
+	-rwx*|-r-x*) pass "$CI_INIT present and executable ($mode)" ;;
+	*) fail "$CI_INIT present and executable" "mode is '$mode', not executable -- rcS would skip it" ;;
+	esac
+	# shellcheck disable=SC2016 # matches a literal $TOOL in the script
+	if tar xOf "$ROOTFS_TAR" "./$CI_INIT" | grep -qF '"$TOOL" boot'; then
+		pass "$CI_INIT runs mister-cpu-isolation boot"
+	else
+		fail "$CI_INIT runs mister-cpu-isolation boot" "the every-boot choice would do nothing"
+	fi
+else
+	fail "$CI_INIT present and executable" "not in rootfs.tar -- the every-boot choice would do nothing"
+fi
 
 # =============================================================================
 section "Process sandboxing (minijail, docs/minijail.md)"

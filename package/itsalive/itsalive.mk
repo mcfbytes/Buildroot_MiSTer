@@ -44,7 +44,7 @@
 # renovate.json's git-refs manager for it tracks master's HEAD exactly like the
 # out-of-tree driver pins. The pinned commit is the one the 2026-09-21 rig
 # session verified on a DE10-Nano (ItsAlive_MiSTer docs/testlogs/).
-ITSALIVE_VERSION = 1aa4d830b05633a2a11882bf0ed4a4e7df5231ab
+ITSALIVE_VERSION = 797378a7d06f9e1175151a18b98e64d17aa79a77
 ITSALIVE_SITE = $(call github,mcfbytes,ItsAlive_MiSTer,$(ITSALIVE_VERSION))
 ITSALIVE_LICENSE = GPL-3.0+
 ITSALIVE_LICENSE_FILES = LICENSE

@@ -1,0 +1,61 @@
+{
+  "sha": "794ad00d1be5ae272c508c0663e5665656f3bb7a",
+  "subject": "Fix xpad controller not detected on cold boot (config: m → y) (#108)",
+  "author": "ssxpatrick",
+  "author_is_pr_contributor": true,
+  "date": "2026-09-25",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/input/joystick/Kconfig:294-297 (linux-6.18.55)",
+    "vanilla_quote": "config JOYSTICK_XPAD\n\ttristate \"Xbox gamepad support\"\n\tdepends on USB_ARCH_HAS_HCD\n\tselect USB",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Reverses docs/patch-provenance.md Q10 (2026-07-15), which switched our CONFIG_JOYSTICK_XPAD from =y to =m to match the fork-HEAD MiSTer_defconfig of the day. Stock has now moved back to =y and we follow it.",
+  "impact": {
+    "effect_if_absent": "With xpad as a module it binds roughly 2 s after USB enumeration, which on a cold boot or reboot lands after Main_MiSTer's start-up input scan; per MiSTer-devel/Main_MiSTer#1324 an already-plugged 8BitDo Pro 2 Wired (and, by the same mechanism, any pad xpad drives) is not recognised until it is unplugged and replugged. Regression on stock since Release 20260907; on our image since Q10 (2026-07-15). Not reproduced on our image -- hardware test owed.",
+    "affected_hardware": [
+      "any USB pad driven by xpad that is plugged in at boot (Xbox / Xbox 360 / Xbox One wired pads and the third-party pads in xpad_device[], e.g. 8BitDo Pro 2 Wired)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": true,
+    "interface": "timing of the /dev/input/eventN node appearing relative to Main_MiSTer's start-up input scan",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "low -- one config line, mirrored in board/mister/de10nano/linux.config and board/mister/common/linux-mister.fragment"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:373 CONFIG_JOYSTICK_XPAD=y (both DE10 kernels: the stock-track kernel and linux-rt read this file)",
+      "board/mister/common/linux-mister.fragment:445 CONFIG_JOYSTICK_XPAD=y (DE25; the fragment must stay a no-op on the DE10's resolved config)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "ACTED ON, same shape as 5fcfae369 (CONFIG_TUN): our kernel config is a linux.config rather than an arch/arm/configs defconfig, so the fork's hunk is dropped and the symbol is mirrored as a config line. 'dropped-deliberate' follows the rule that 'carried' strictly means a 00xx-*.patch exists.\n\nVERIFIED AGAINST THE REAL PINS. DE10: linux.config before/after through `make ARCH=arm olddefconfig` on pristine linux-6.18.55 with all 53 linux-patches applied at -F0; the resolved configs differ in exactly one line (CONFIG_JOYSTICK_XPAD=m -> =y). Its companions already resolve built-in: CONFIG_USB=y, CONFIG_LEDS_CLASS=y (JOYSTICK_XPAD_LEDS needs LEDS_CLASS=y once xpad is =y), CONFIG_INPUT_FF_MEMLESS=y. zImage + modules built with the Buildroot cross toolchain: xpad appears in modules.builtin, no xpad.ko is produced, no new warnings. Every line of linux-mister.fragment is still present verbatim in the DE10's resolved config (the fragment's no-op invariant). DE25: merge_config.sh of board/mister/de25nano/linux.config + the fragment, then `make ARCH=arm64 olddefconfig` on linux-7.2.9 with the de25nano series applied; again exactly one line differs, with JOYSTICK_XPAD_FF and JOYSTICK_XPAD_LEDS still =y.\n\nMODULE PARAMETERS STILL WORK. u-boot.txt's documented knob `xpad.cpoll=1` (docs/boot-chain.md) is a kernel command-line parameter, which a built-in driver reads directly.\n\nNOT TESTED ON HARDWARE: the cold-boot detection improvement is the upstream reporter's claim (Main_MiSTer#1324, closed); our image was not booted with this change."
+}

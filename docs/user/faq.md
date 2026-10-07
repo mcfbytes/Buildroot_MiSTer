@@ -530,6 +530,96 @@ dhcpcd then configures a stable-private SLAAC address. FTP stays IPv4-only eithe
 `ping6` and `traceroute6` are available for troubleshooting. Delete the file and reboot
 to turn it back off. The OSD still shows only your IPv4 address.
 
+## Why does this image change the kernel's memory-compaction and writeback settings?
+
+When free memory gets fragmented, the kernel *compacts* it: it moves pages around to make
+larger contiguous blocks. By default it will also move pages a program has locked in RAM.
+A real-time program locks its memory precisely so it never waits on the kernel. When one
+of its locked pages is moved, the program stalls until the move finishes.
+
+A main binary that runs a real-time thread to feed the core is exactly that kind of program.
+With forced compaction running, such a thread was measured stalling for 21 ms, longer than a
+whole frame, and a TAS replay lost sync. So the image ships
+`/etc/sysctl.d/10-compaction.conf`, which sets:
+
+```
+vm.compact_unevictable_allowed = 0
+vm.compaction_proactiveness = 0
+```
+
+The first stops compaction from moving locked pages. The second stops the kernel compacting
+in the background on its own. Compaction still runs when something actually needs a large
+block. Real-time (PREEMPT_RT) kernels already default the first setting to 0 for this
+reason. Stock MiSTer's own binary does not lock its memory, so it is unaffected either way.
+
+To go back to the kernel defaults, add these two lines to `/media/fat/linux/sysctl.conf`
+(create it if it does not exist, or add them below your IPv6 lines) and reboot:
+
+```
+vm.compact_unevictable_allowed = 1
+vm.compaction_proactiveness = 20
+```
+
+That file is applied after everything in `/etc/sysctl.d/`, so its values win.
+
+The same thread is also held up by *writeback*, the kernel work that flushes written files
+out to their disk or share. The DE10-Nano has two CPUs, and a real-time main binary keeps
+its time-critical thread on CPU 1. When a program writes to a network share (a CIFS/SMB
+mount), the kernel's writeback worker can run on that same CPU for tens of milliseconds at
+a time: 25-39 ms was measured, again longer than a frame. Moving writeback to CPU 0 alone
+removed it in all three runs. This setting is not a sysctl, so the image applies it at boot from
+`/etc/init.d/S02writeback-cpumask`, which runs:
+
+```
+echo 1 > /sys/bus/workqueue/devices/writeback/cpumask
+```
+
+The value is a CPU bitmask: `1` is CPU 0 only, `3` (the kernel default) is both. Writeback
+to a local SD card or USB drive is still done, just on CPU 0. A kernel without the file is
+left alone. To go back to the default, add this line to `/media/fat/linux/user-startup.sh`
+(create it if it does not exist), which runs after the boot script:
+
+```
+echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
+```
+
+## What does Scripts > usb_full_speed_mode.sh do?
+
+It switches the MiSTer's USB port to *full speed* (12 Mbit/s). At that speed the USB
+controller schedules transfers itself, and its interrupts drop from about 9,000 a second
+to about 100. That frees CPU 0, which loads files, streams CD images and runs the network.
+The MiSTer main program runs on CPU 1, so input lag does not change.
+
+The cost is that every USB device runs at 12 Mbit/s or less. USB drives get very slow,
+USB Wi-Fi and Ethernet adapters slow down or stop working, and 1000 Hz controllers and mice
+are read at 500 Hz. Pads, keyboards, mice and Bluetooth dongles otherwise work as before.
+
+Pick the entry with a gamepad. Switching disconnects all USB devices for a second or two.
+By default the change lasts until the next reboot. Choose "every boot" to keep it; that
+writes `/media/fat/linux/usb_full_speed`, and deleting the file turns it off again. The
+script will not switch while a USB drive is mounted. Details:
+[`dwc2-usb-irq.md`](../dwc2-usb-irq.md#switching-it-from-the-scripts-menu).
+
+## What does Scripts > cpu_isolation.sh do?
+
+The MiSTer main program runs on CPU 1. Linux can still put other work there, such as an
+update, unpacking, a file transfer or Samba, and while it does the main program gets only
+part of that CPU. This script keeps every other Linux program on CPU 0.
+
+That may stop occasional stutter while something runs in the background. The cost is that
+Linux work gets one CPU instead of two, so updates and file transfers can take longer.
+
+There are two ways to switch it on:
+
+- **Now**: moves the running programs to CPU 0. It lasts until the next reboot, or pick
+  "every boot", which writes `/media/fat/linux/cpu_isolation` (delete it to stop).
+- **Advanced**: adds `isolcpus=domain,managed_irq,1 irqaffinity=0` to the kernel command
+  line in `/media/fat/linux/u-boot.txt` and applies after a reboot. Only the `v=` line is
+  changed, and the old file is kept as `u-boot.txt.before-cpu-isolation`.
+
+Details, including why `irqaffinity=0` changes nothing on this board:
+[`cpu-isolation.md`](../cpu-isolation.md).
+
 ## See also
 
 - [`onboarding.md`](onboarding.md) — how to opt in, and why there is no longer a multi-database race to lose

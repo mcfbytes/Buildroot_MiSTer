@@ -3276,7 +3276,7 @@ installer's job needs on top:
   externally-sourced package in this cpio. Without it a tarball whose
   filename has no line in the package's `.hash` is only WARNED about, so a
   bumped `ITSALIVE_VERSION` carrying a stale `.hash` would fetch unverified
-  and build green. `lint.yml`'s `itsalive version/hash pin consistency` step
+  and build green. `lint.yml`'s `cargo-vendored package version/hash pin consistency` step
   is the cheap gate; this is the one that holds at download time.
 
 What it deliberately does NOT add: e2fsprogs. The installer only ever `cp`'s

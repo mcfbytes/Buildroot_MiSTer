@@ -113,6 +113,16 @@ image. Details: `docs/bittorrent.md`. This is a **divergence from stock**, which
 no `S92` and no BitTorrent init script at all even though it ships `rtorrent` — stock's
 client is a foreground TUI, started by hand.
 
+**`S02writeback-cpumask` (2026-10) is added by the overlay, a divergence from stock.** It
+writes `1` (CPU 0 only) to `/sys/bus/workqueue/devices/writeback/cpumask`, guarded by
+`[ -w ]` so a kernel without the file boots unchanged, and always exits 0. Reason: a
+realtime thread pinned to CPU 1 was measured held off 25-39 ms by the unbound writeback
+worker flushing to a CIFS share; with the mask at CPU 0, none in three runs. The knob is
+sysfs, not a sysctl, so `/etc/sysctl.d/` cannot carry it; numbering it `S02` keeps it with
+`S02sysctl`'s kernel tuning. A card reverts it from `user-startup.sh` (`S99user` runs
+later); `docs/user/faq.md` says how. Shellcheck-clean; `ci-tests.sh` asserts the mode,
+the path, the value and the guard.
+
 ## SSH host keys — ADR 0015, as implemented
 
 Folded into `etc/init.d/S50sshd` rather than a separate `S49sshd` (ADR 0015 offers

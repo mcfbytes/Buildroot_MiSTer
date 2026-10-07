@@ -1,0 +1,20 @@
+config BR2_PACKAGE_FONT_NOTO_SANS_JP
+	bool "font-noto-sans-jp"
+	help
+	  Noto Sans JP: the Japanese region subset of Google's Noto
+	  Sans CJK (kana, kanji and Latin), installed as OpenType
+	  (CFF) files under /usr/share/fonts/noto-sans-jp for
+	  fontconfig to find.
+
+	  By default only Regular and Bold (about 9 MB).
+
+	  https://github.com/notofonts/noto-cjk
+
+if BR2_PACKAGE_FONT_NOTO_SANS_JP
+
+config BR2_PACKAGE_FONT_NOTO_SANS_JP_ALL_WEIGHTS
+	bool "all weights"
+	help
+	  Install all 7 weights (Thin to Black), about 32 MB.
+
+endif

@@ -124,7 +124,7 @@ readonly SDCARD_CORES
 # payload.sh` is the bump record; deliberately NOT restated as an "as of
 # <date>" comment here, which Renovate cannot update and which would
 # therefore start lying on the first automatic bump.
-readonly PINNED_UPDATE_ALL_COMMIT="487e2ad08263d6da7a20217bd472fb165b88ccc7"
+readonly PINNED_UPDATE_ALL_COMMIT="356b12ebf114d4c2cbcc6afd706e7debafc94aab"
 readonly PINNED_UPDATE_ALL_URL="https://raw.githubusercontent.com/theypsilon/Update_All_MiSTer/${PINNED_UPDATE_ALL_COMMIT}/update_all.sh"
 readonly PINNED_UPDATE_ALL_SHA256="15db3c6050b5ee1960391344afe248ee49f25bdaae311051baeb7e77ab8c68f4"
 readonly PINNED_UPDATE_ALL_SIZE="8628"
@@ -158,7 +158,7 @@ readonly PINNED_WIFI_SH_SIZE="96637"
 # Any "as of <date>" note is deliberately absent -- Renovate cannot update a
 # comment, so it would start lying on the first automatic bump. `git log --
 # scripts/fetch-sdcard-payload.sh` is the bump record.
-readonly PINNED_CORES_COMMIT="5cf0c5c4c8315bd18038600dbe21560427cd8f1d"
+readonly PINNED_CORES_COMMIT="15afafc1f9fd78d9b399cdf73acc2a99a835a78e"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------
@@ -308,7 +308,7 @@ stage_stock_payload() {
 # Staged AFTER stage_stock_payload() on purpose: that function does a
 # `cp -a "$extract_dir/linux/."` and writes MiSTer.ini/Scripts/update.sh from
 # the stock archive, and these files must survive that rather than be
-# overwritten by it. No stock payload member carries these three names today,
+# overwritten by it. No stock payload member carries these names today,
 # but ordering it this way means a future stock release that does cannot
 # silently win.
 #
@@ -357,6 +357,15 @@ stage_stock_payload() {
 #       because the user reaching for it may have no working keyboard to type a
 #       command with.
 #
+#   Scripts/usb_full_speed_mode.sh
+#       Switches USB full-speed mode (dwc2.fs_ddma, docs/dwc2-usb-irq.md). Same
+#       shim shape: the tool is /usr/sbin/mister-usb-full-speed, shipped with the
+#       kernel option it drives.
+#
+#   Scripts/cpu_isolation.sh
+#       Keeps Linux work off CPU1 (docs/cpu-isolation.md). Same shim shape: the
+#       tool is /usr/sbin/mister-cpu-isolation.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -382,7 +391,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

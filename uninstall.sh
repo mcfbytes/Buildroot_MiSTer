@@ -50,8 +50,9 @@
 #
 # Options:
 #   --remove-script    also delete this project's Scripts entries
-#                      (update_linux_modernization.sh, check_storage.sh and
-#                      pair_logitech.sh)
+#                      (update_linux_modernization.sh, check_storage.sh,
+#                      pair_logitech.sh, usb_full_speed_mode.sh and
+#                      cpu_isolation.sh)
 #   --restore-backups  put the files in linux/.mlm-backup/ back (see below)
 #   --yes              skip the 10-second countdown
 #
@@ -85,6 +86,8 @@ BASE_INI="$FAT/downloader.ini"
 UPDATER="$FAT/Scripts/update_linux_modernization.sh"
 CHECK_STORAGE="$FAT/Scripts/check_storage.sh"
 PAIR_LOGITECH="$FAT/Scripts/pair_logitech.sh"
+USB_FULL_SPEED="$FAT/Scripts/usb_full_speed_mode.sh"
+CPU_ISOLATION="$FAT/Scripts/cpu_isolation.sh"
 PRIVATE_INI="/tmp/mister_linux_modernization.ini"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 BASE_INI_BACKUP="$BACKUP_DIR/downloader.ini.orig"
@@ -137,8 +140,10 @@ say ""
 say "  Your cores, ROMs, saves, config and MiSTer.ini are not touched."
 if [ "$REMOVE_SCRIPT" -eq 1 ]; then
 	say "  --remove-script: $UPDATER,"
-	say "                   $CHECK_STORAGE and"
-	say "                   $PAIR_LOGITECH will also be deleted."
+	say "                   $CHECK_STORAGE,"
+	say "                   $PAIR_LOGITECH,"
+	say "                   $USB_FULL_SPEED and"
+	say "                   $CPU_ISOLATION will also be deleted."
 fi
 say ""
 rule
@@ -272,12 +277,12 @@ if [ "$RESTORE_BACKUPS" -eq 1 ]; then
 fi
 
 # All of this project's Scripts, together -- install.sh installs them as one
-# set, so --remove-script takes them as one too (ADR 0026). check_storage.sh and
-# pair_logitech.sh are only launchers for rootfs tools that are about to be
-# replaced by the stock image anyway, so leaving them behind would just be menu
-# entries that print "this needs the MiSTer Linux Modernization image".
+# set, so --remove-script takes them as one too (ADR 0026). All but the updater
+# are only launchers for rootfs tools that are about to be replaced by the stock
+# image anyway, so leaving them behind would just be menu entries that print
+# "this needs the MiSTer Linux Modernization image".
 if [ "$REMOVE_SCRIPT" -eq 1 ]; then
-	for _f in "$UPDATER" "$CHECK_STORAGE" "$PAIR_LOGITECH"; do
+	for _f in "$UPDATER" "$CHECK_STORAGE" "$PAIR_LOGITECH" "$USB_FULL_SPEED" "$CPU_ISOLATION"; do
 		[ -e "$_f" ] || continue
 		rm -f "$_f" && say "Removed $_f"
 	done

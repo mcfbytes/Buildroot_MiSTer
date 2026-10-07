@@ -241,7 +241,7 @@ controller-mapping tool open, plus the node the pairing/remap helpers write
 through. `MOUSE_PS2` and `KEYBOARD_ATKBD` are off (no PS/2 controller on either
 board; Keyrah adapters arrive over USB HID). The classic serial/USB joystick set
 (`iforce`, `warrior`, `magellan`, `spaceorb`, `spaceball`, `stinger`, `twidjoy`,
-`zhenhua`) and `JOYSTICK_XPAD=m` with FF + LEDs.
+`zhenhua`) and `JOYSTICK_XPAD=y` (built in, like stock since fork #108) with FF + LEDs.
 `linux-patches/0026` (mousedev `EVIOCGRAB`) and `0025` (usbhid jspoll) ride here.
 
 ### 3.10 HID (§11) — every `hid-*` the DE10 enables

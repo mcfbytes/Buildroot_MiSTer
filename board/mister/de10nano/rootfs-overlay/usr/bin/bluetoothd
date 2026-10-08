@@ -1,46 +1,33 @@
 #!/bin/sh
 #
 # Stock's /bin/bluetoothd control script (S45bluetooth links here), with the
-# daemon run in a minijail: uid 8423, CAP_NET_ADMIN + CAP_NET_BIND_SERVICE only,
-# an allow-list mount view. The jail: docs/bluetooth-parity.md §11.
+# daemon run in a minijail: /etc/minijail/bluetoothd.conf, docs/bluetooth-parity.md §11.
 #
 
 DAEMON="bluetoothd"
-EXEC=/usr/libexec/bluetooth/$DAEMON
-MINIJAIL=/usr/bin/minijail0
 
 BTIMG=/media/fat/linux/bluetooth
 MNTPATH=/var/lib/bluetooth
 
-RUN_DIR=/run/bluetoothd
-ROOT_DIR="$RUN_DIR/root"
-# Bound at /run in the jail, so -C's /var/run/sdp socket lands here; /run/sdp links to it.
-JAIL_RUN="$RUN_DIR/run"
-PIDFILE="$RUN_DIR/jail.pid"
-POLICY="$RUN_DIR/seccomp.policy"
-RW_FLAGS="MS_BIND|MS_REMOUNT|MS_NOEXEC|MS_NOSUID|MS_NODEV"
-CGROUP=/sys/fs/cgroup/bluetoothd
-PIDS_MAX=16
-BT_UID=8423
-# CAP_NET_BIND_SERVICE (10) | CAP_NET_ADMIN (12): upstream bluetooth.service's bounding set.
-BT_CAPS=0x1400
-# Syscalls that return EPERM in the jail; every other one minijail0 knows is allowed.
-SECCOMP_DENY="io_uring_setup io_uring_enter io_uring_register perf_event_open bpf
-userfaultfd keyctl add_key request_key ptrace process_vm_readv process_vm_writev
-process_madvise kcmp pidfd_getfd mount umount2 pivot_root chroot mount_setattr
-move_mount open_tree open_tree_attr fsopen fsconfig fsmount fspick unshare setns
-swapon swapoff reboot kexec_load kexec_file_load init_module finit_module
-delete_module acct quotactl quotactl_fd syslog settimeofday clock_settime
-clock_settime64 adjtimex clock_adjtime clock_adjtime64 sethostname setdomainname
-personality vhangup name_to_handle_at open_by_handle_at fanotify_init memfd_create
-execveat"
-
 BLUETOOTHD_ARGS="-n -E -C"
-# The jail's mount points must be traversable by its uid; a login shell's umask is 077.
-umask 022
 
 # shellcheck source=/dev/null
 [ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+# shellcheck source=SCRIPTDIR/../lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=$DAEMON
+JAIL_EXEC=/usr/libexec/bluetooth/$DAEMON
+JAIL_PIDS_MAX=4
+JAIL_PROBE=/tmp/.landlock-probe
+JAIL_STOP_WAIT=12
+JAIL_STOP_KILL=1
+# Sockets: AF_UNIX, AF_BLUETOOTH, and AF_NETLINK only for udev's uevents; else EAFNOSUPPORT.
+JAIL_SECCOMP_RULES="socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15; return 97
+socketpair: arg0 == 1; return 97"
+jail_init
+# Bound at /run in the jail, so -C's /var/run/sdp socket lands here; /run/sdp links to it.
+JAIL_RUN="$JAIL_RUN_DIR/run"
 
 # Stock's storage step, plus nosuid/nodev/noexec, and the tree handed to the daemon's uid.
 mount_storage() {
@@ -55,204 +42,57 @@ mount_storage() {
 		mount -o sync,dirsync,nodiratime,noatime,nosuid,nodev,noexec $BTIMG $MNTPATH
 	if mountpoint -q $MNTPATH; then
 		# -h: a symlink the daemon planted is re-owned itself, never its target.
-		chown -hR "$BT_UID:$BT_UID" $MNTPATH
+		chown -hR "$JAIL_UID:$JAIL_GID" $MNTPATH
 	else
 		logger -t bluetoothd "$BTIMG not mounted; pairings will not be saved"
 	fi
 }
 
-# A fresh tmpfs root with the merged-usr links; minijail adds the other mount points.
+# The jail's /var/run link and its own /run, with root-owned points for the read-only binds.
 prepare_root() {
-	mkdir -p "$RUN_DIR" && chmod 0700 "$RUN_DIR" && mkdir -p "$ROOT_DIR" || return 1
-	if mountpoint -q "$ROOT_DIR"; then umount "$ROOT_DIR" || return 1; fi
-	mount -t tmpfs -o mode=0755,size=256k,nosuid,nodev,noexec tmpfs "$ROOT_DIR" || return 1
-	for l in bin lib sbin; do ln -s "usr/$l" "$ROOT_DIR/$l" || return 1; done
-	mkdir "$ROOT_DIR/var" && ln -s ../run "$ROOT_DIR/var/run" || return 1
-	# The daemon's own /run, with root-owned mount points for the two read-only binds.
+	jail_prepare_root || return 1
+	mkdir "$JAIL_ROOT/var" && ln -s ../run "$JAIL_ROOT/var/run" || return 1
 	rm -rf "$JAIL_RUN" && mkdir -p "$JAIL_RUN/dbus" "$JAIL_RUN/udev" || return 1
-	chown "$BT_UID:$BT_UID" "$JAIL_RUN" && chmod 0755 "$JAIL_RUN" || return 1
+	chown "$JAIL_UID:$JAIL_GID" "$JAIL_RUN" && chmod 0755 "$JAIL_RUN" || return 1
 	ln -sfn bluetoothd/run/sdp /run/sdp
 }
 
-# Writes $POLICY from minijail0's own syscall table: allow all, deny SECCOMP_DENY.
-write_policy() {
-	"$MINIJAIL" -H 2>/dev/null | DENY="$SECCOMP_DENY" awk '
-		BEGIN { n = split(ENVIRON["DENY"], d); for (i = 1; i <= n; i++) D[d[i]] = 1 }
-		$1 ~ /^[A-Za-z0-9_]+$/ && $2 ~ /^\[[0-9]+\]$/ {
-			print $1 (($1 in D) ? ": return 1" : ": 1"); c++
-		}
-		END { exit c < 300 }' >"$POLICY"
-}
-
-# Fails unless Landlock is enforced: /tmp is a 1777 tmpfs with no Landlock grant.
-check_landlock() {
-	# Succeeds only if the jail ran and the write was refused; a jail that failed fails too.
-	JAIL_EXTRA="" jail /bin/sh -c '! printf "" >/tmp/.landlock-probe' 2>/dev/null
-}
-
-# The daemon's own cgroup2 group, with a ceiling on processes plus threads.
-prepare_cgroup() {
-	c=/sys/fs/cgroup
-	grep -qw pids "$c/cgroup.controllers" 2>/dev/null || return 1
-	grep -qw pids "$c/cgroup.subtree_control" || echo +pids >"$c/cgroup.subtree_control" || return 1
-	mkdir -p "$CGROUP" && echo "$PIDS_MAX" >"$CGROUP/pids.max"
-}
-
-# Runs "$@" inside the jail view, with $JAIL_EXTRA as extra minijail0 options.
-# No -e: AF_BLUETOOTH exists only in the initial network namespace. No --uts:
-# the hostname plugin follows the host's name.
-jail() {
-	n=$#
-	# shellcheck disable=SC2086 # JAIL_EXTRA is fixed options and space-free paths
-	set -- "$@" $JAIL_EXTRA -T static -u "$BT_UID" -g "$BT_UID" -c "$BT_CAPS" --ambient \
-		-n -I -l -v -P "$ROOT_DIR" -b /usr \
-		-b /etc/bluetooth -b /etc/passwd -b /etc/group \
-		-k 'proc,/proc,proc,MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC' -b /sys \
-		-k '/dev,/dev,none,MS_BIND' -k '/dev,/dev,none,MS_BIND|MS_REMOUNT|MS_RDONLY|MS_NOSUID|MS_NOEXEC' \
-		-k "$JAIL_RUN,/run,none,MS_BIND" -k "/run,/run,none,$RW_FLAGS" \
-		-b /run/dbus -b /run/udev \
-		-k "$MNTPATH,$MNTPATH,none,MS_BIND" -k "$MNTPATH,$MNTPATH,none,$RW_FLAGS" \
-		-k 'tmpfs,/tmp,tmpfs,MS_NOSUID|MS_NODEV|MS_NOEXEC,size=64k' \
-		-R RLIMIT_CORE,0,0 -S "$POLICY" \
-		--fs-path-rx /usr --fs-path-ro /etc --fs-path-ro /proc --fs-path-ro /sys \
-		--fs-path-rw /dev --fs-path-advanced-rw /run --fs-path-advanced-rw "$MNTPATH"
-	# Syslog takes the daemon's own timestamps, so it needs the host's zone.
-	if [ -f /media/fat/linux/timezone ] && [ ! -L /media/fat/linux/timezone ]; then
-		set -- "$@" -b /media/fat/linux/timezone,/etc/localtime
-	fi
-	set -- "$@" --
-	# Rotate the caller's n arguments (the command) to after the `--`.
-	while [ "$n" -gt 0 ]; do
-		set -- "$@" "$1"
-		shift
-		n=$((n - 1))
-	done
-	"$MINIJAIL" "$@"
-}
-
-# The start time from /proc/<pid>/stat (field 22), so a recycled pid is never taken for ours.
-starttime() {
-	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f20
-}
-
-# Sets PID to the jailed daemon's host pid when the pidfile still names it.
-running() {
-	PID=""
-	[ -f "$PIDFILE" ] && read -r p s <"$PIDFILE" || return 1
-	[ -n "$p" ] && [ -n "$s" ] && [ "$(starttime "$p")" = "$s" ] || return 1
-	[ "$(readlink "/proc/$p/exe" 2>/dev/null)" = "$EXEC" ] || return 1
-	PID=$p
-}
-
-# True if any process runs $EXEC (pidof would also match this script, same name).
-any_daemon() {
-	for e in /proc/[0-9]*/exe; do
-		[ "$(readlink "$e" 2>/dev/null)" = "$EXEC" ] && return 0
-	done
-	return 1
-}
-
-# Reads the jail's claims back from the kernel: all four uids and gids, no
-# supplementary group but its own, no_new_privs, a seccomp filter, the cgroup, CapEff.
-check_jail() {
-	s="/proc/$1/status"
-	ids="[[:space:]]+${BT_UID}[[:space:]]+${BT_UID}[[:space:]]+${BT_UID}[[:space:]]+${BT_UID}[[:space:]]*$"
-	grep -Eq "^Uid:$ids" "$s" && grep -Eq "^Gid:$ids" "$s" &&
-		grep -Eq "^Groups:[[:space:]]*(${BT_UID}[[:space:]]*)?$" "$s" &&
-		grep -q '^NoNewPrivs:[[:space:]]*1$' "$s" &&
-		grep -q '^Seccomp:[[:space:]]*2$' "$s" &&
-		grep -qx "0::/${CGROUP#/sys/fs/cgroup/}" "/proc/$1/cgroup" &&
-		grep -q '^CapEff:[[:space:]]*0000000000001400$' "$s"
-}
-
 start() {
-	if running; then
+	if jail_running; then
 		echo "$DAEMON already running"
 		return 0
+	fi
+	# Checked before the storage step, whose chown must not race a daemon writing the tree.
+	if jail_any_daemon; then
+		echo "Starting $DAEMON: FAIL (a $DAEMON this script did not start is running)"
+		return 1
 	fi
 	mount_storage
 
 	printf 'Starting %s: ' "$DAEMON"
-	if any_daemon; then
-		echo "FAIL (a $DAEMON this script did not start is running)"
-		return 1
-	fi
-	# Fail closed: never fall back to running the daemon as root.
-	if [ ! -x "$MINIJAIL" ]; then
-		echo "FAIL ($MINIJAIL missing; refusing to run unjailed)"
-		return 1
-	fi
 	if ! prepare_root; then
-		echo "FAIL (could not prepare $RUN_DIR)"
+		echo "FAIL (could not prepare $JAIL_RUN_DIR)"
 		return 1
 	fi
-	# /run is per boot and minijail0 only changes with the image, so once per boot is enough.
-	if [ ! -s "$POLICY" ] && ! write_policy; then
-		rm -f "$POLICY"
-		echo "FAIL (could not build the seccomp policy from $MINIJAIL -H)"
+	if ! jail_prepare || ! jail_launch; then
+		echo "FAIL ($JAIL_ERR)"
 		return 1
 	fi
-	if ! prepare_cgroup; then
-		echo "FAIL (no cgroup2 pids controller at /sys/fs/cgroup)"
-		return 1
-	fi
-	if ! check_landlock; then
-		echo "FAIL (Landlock is not enforced)"
-		return 1
-	fi
-
-	# In a session of its own (`run` below), so nothing that signals the caller's
-	# process group reaches the daemon; and no fd of the caller's is kept.
-	rm -f "$PIDFILE.new"
-	setsid "$0" run </dev/null >/dev/null 2>&1 &
-	leader=$!
-
-	i=0
-	pid=""
-	while [ "$i" -lt 50 ]; do
-		[ -s "$PIDFILE.new" ] && read -r pid <"$PIDFILE.new"
-		[ -n "$pid" ] && [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$EXEC" ] && break
-		pid=""
-		sleep 0.2
-		i=$((i + 1))
-	done
-	if [ -z "$pid" ]; then
-		# A late start must not leave an unmanaged daemon behind.
-		kill -TERM "-$leader" 2>/dev/null
-		[ -s "$PIDFILE.new" ] && read -r pid <"$PIDFILE.new" && kill -TERM "$pid" 2>/dev/null
-		rm -f "$PIDFILE.new"
-		echo "FAIL (jailed daemon did not start; see syslog)"
-		return 1
-	fi
-	rm -f "$PIDFILE.new"
-	if ! check_jail "$pid"; then
-		kill -TERM "$pid"
-		echo "FAIL (jail self-check: uid/gid, groups, NoNewPrivs, seccomp, cgroup or CapEff not as configured)"
-		return 1
-	fi
-	echo "$pid $(starttime "$pid")" >"$PIDFILE"
 	echo "OK"
 }
 
 stop() {
 	printf 'Stopping %s: ' "$DAEMON"
-	if running; then
-		kill -TERM "$PID"
-		i=0
-		while running && [ "$i" -lt 50 ]; do
-			sleep 0.1
-			i=$((i + 1))
-		done
-		# Pairings are on a sync mount, so nothing is lost by not waiting longer.
-		running && kill -KILL "$PID"
-		while running; do sleep 0.1; done
-		rm -f "$PIDFILE"
+	if ! jail_running; then
+		echo "FAIL"
+		status=1
+	elif jail_stop; then
 		echo "OK"
 		status=0
 	else
-		rm -f "$PIDFILE"
-		echo "FAIL"
-		status=1
+		# Its jail still holds the storage mount; leave it.
+		echo "FAIL (still running after SIGKILL)"
+		return 1
 	fi
 	umount $MNTPATH
 	return "$status"
@@ -272,14 +112,10 @@ renew() {
 	start
 }
 
+# bluetoothd does not handle SIGHUP and is its PID namespace's init, which
+# drops the signal; re-reading the configuration means restarting it.
 reload() {
-	printf 'Reloading %s: ' "$DAEMON"
-	if running && kill -HUP "$PID"; then
-		echo "OK"
-		return 0
-	fi
-	echo "FAIL"
-	return 1
+	restart
 }
 
 hcireset() {
@@ -295,13 +131,18 @@ hcireset() {
 }
 
 case "$1" in
-	start|stop|restart|reload|renew|hcireset)
+	start|stop|restart|reload|renew)
+		if ! jail_lock; then
+			echo "$0 $1: another $DAEMON command did not finish"
+			exit 1
+		fi
+		"$1";;
+	hcireset)
 		"$1";;
 	run)
-		# Internal, from start(): with -I the daemon is its namespace's init.
-		echo $$ >"$CGROUP/cgroup.procs" || exit 1
+		# Internal, from jail_launch.
 		# shellcheck disable=SC2086 # we need the word splitting
-		JAIL_EXTRA="-i -f $PIDFILE.new" jail "$EXEC" $BLUETOOTHD_ARGS
+		jail_run -- "$JAIL_EXEC" $BLUETOOTHD_ARGS
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart|reload|renew|hcireset}"

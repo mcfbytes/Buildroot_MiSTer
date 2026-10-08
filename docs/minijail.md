@@ -29,6 +29,57 @@ needs none of the kernel features this image lacks.
 Mount, PID, IPC and UTS namespaces, ambient capabilities and `no_new_privs` are all present.
 The DE25 kernel has the same set through the shared fragment.
 
+## Jailing a daemon
+
+An init script that jails a daemon declares the jail in
+`/etc/minijail/<name>.conf` and sources `/usr/lib/mister/jail.sh` for the rest.
+`/usr/bin/bluetoothd` is the first script written this way
+(`docs/bluetooth-parity.md` §11).
+
+**The config file** is minijail0's own `--config` format (`% minijail-config-file
+v0`, then one long or short option per line; `minijail0 --gen-config <file>
+<options>` writes one from a working command line). It holds what is
+particular to the daemon: `u`, `g` and `c` (numeric, since the helper reads
+them back for its self-check), the namespaces, the rlimits, the mounts and the
+Landlock rules. Everything every jail gets is on the helper's command line:
+`-T static -n --ambient`, the tmpfs root (`-P /run/<name>/root`), the seccomp
+policy, `RLIMIT_CORE` 0, and `/media/fat/linux/timezone` at `/etc/localtime`
+when it is a plain file (syslog takes each daemon's own timestamps).
+
+**The script** sets `JAIL_NAME`, `JAIL_EXEC`, `JAIL_PIDS_MAX` and
+`JAIL_PROBE`, optionally `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
+`JAIL_STOP_KILL`, `JAIL_LOG_TAG` and `JAIL_OOM_SCORE_ADJ` (the header of
+`jail.sh` lists them), calls `jail_init`, and then:
+
+| Step | Helper | What it does |
+|---|---|---|
+| verbs | `jail_lock` | `flock` on `/run/<name>.lock`, so `start`/`stop`/`restart` never interleave; the daemon does not inherit it |
+| start | `jail_running`, `jail_any_daemon` | ours is running (pidfile, start time and exe all match), or some other copy of the binary is |
+| | `jail_prepare_root` | fresh tmpfs root with the merged-usr links; the script adds its own mount points after it |
+| | `jail_prepare` | the seccomp policy (once per boot), the pids cgroup, and the Landlock probe; sets `JAIL_ERR` on failure |
+| | `jail_launch` | `setsid "$0" run`, waits for the daemon, runs the `/proc` self-check, writes the pidfile; on failure kills what it started |
+| `run` verb | `jail_run -- <command>` | joins the cgroup, closes every inheritable fd above 2, then `minijail0 ... -i -f` |
+| stop | `jail_stop` | `SIGTERM` with `SIGCONT` alongside, `JAIL_STOP_WAIT` seconds, then `SIGKILL` if `JAIL_STOP_KILL=1` |
+| any | `jail_exec <options> -- <command>` | one-off commands in the same view, e.g. writing a seed file as the daemon's uid |
+
+**The seccomp policy** is generated from `minijail0 -H`, minijail's own
+syscall table: every syscall is allowed except a shared deny list (mount and
+namespace calls, ptrace, bpf, io_uring, keyrings, module and kexec loading,
+clock setting, ...), which return `EPERM`. `JAIL_SECCOMP_RULES` replaces the
+line for a named syscall with an argument filter, e.g. bluetoothd's socket
+family list; a rule naming a syscall the table lacks fails the start. The
+policy is cached in `/run/<name>/` for the boot, so a changed rule needs
+`rm /run/<name>/seccomp.policy` (or a reboot) on a running system.
+
+**The Landlock probe.** minijail silently skips Landlock when the kernel lacks
+it, so `JAIL_PROBE` names a path inside the jail that the daemon's uid could
+write by its file modes but no Landlock rule grants; the start writes it from
+inside the jail and fails if the write succeeds.
+
+**Umask.** `jail_init` sets `umask 022`: a root login's umask on this image is
+077, and the mount points the script and minijail create must be traversable
+by the jail's uid.
+
 ## Build options
 
 - `LIBDIR=/usr/lib`, so the compiled-in preload path is `/usr/lib/libminijailpreload.so`.

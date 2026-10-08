@@ -1455,33 +1455,46 @@ else
 fi
 
 # -- bluetoothd runs jailed, never root (docs/bluetooth-parity.md §11). The
-# control script, its uid, the D-Bus policy that lets that uid own org.bluez,
-# and the udev rule that gives it /dev/uhid all have to land together.
+# control script, the shared jail helper, its minijail config, its uid, the
+# D-Bus policy and the udev rule all have to land together.
 BT_INIT="usr/bin/bluetoothd"
-if ! tar_has "$BT_INIT"; then
-	fail "$BT_INIT runs the daemon in minijail0" "$BT_INIT not in rootfs.tar"
+JAIL_LIB="usr/lib/mister/jail.sh"
+BT_CONF="etc/minijail/bluetoothd.conf"
+bt_init_body=$(tar xOf "$ROOTFS_TAR" "./$BT_INIT" 2>/dev/null || true)
+jail_lib_body=$(tar xOf "$ROOTFS_TAR" "./$JAIL_LIB" 2>/dev/null || true)
+bt_conf_body=$(tar xOf "$ROOTFS_TAR" "./$BT_CONF" 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$jail_lib_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
+	printf '%s' "$jail_lib_body" | grep -qF 'refusing to run unjailed' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-T static -n --ambient' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-S "$JAIL_POLICY"' &&
+	printf '%s' "$jail_lib_body" | grep -qF "^Seccomp:" &&
+	printf '%s' "$jail_lib_body" | grep -qF 'pids.max'; then
+	pass "$JAIL_LIB: no_new_privs, seccomp, pids cgroup, the /proc self-check, and no unjailed fallback"
 else
-	bt_init_body=$(tar xOf "$ROOTFS_TAR" "./$BT_INIT" 2>/dev/null || true)
-	# shellcheck disable=SC2016 # matched literally in the script text
-	if printf '%s' "$bt_init_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
-		printf '%s' "$bt_init_body" | grep -qxF 'BT_UID=8423' &&
-		printf '%s' "$bt_init_body" | grep -qxF 'BT_CAPS=0x1400' &&
-		printf '%s' "$bt_init_body" | grep -qF 'refusing to run unjailed' &&
-		printf '%s' "$bt_init_body" | grep -qF -- '-S "$POLICY"' &&
-		printf '%s' "$bt_init_body" | grep -qF -- '--fs-path-rx /usr' &&
-		printf '%s' "$bt_init_body" | grep -qF "^Seccomp:"; then
-		pass "$BT_INIT runs bluetoothd in minijail0 as uid 8423 (NET_ADMIN+NET_BIND_SERVICE, seccomp, Landlock) and fails closed"
-	else
-		fail "$BT_INIT runs bluetoothd in minijail0 as uid 8423 (NET_ADMIN+NET_BIND_SERVICE, seccomp, Landlock) and fails closed" \
-			"MINIJAIL, BT_UID=8423, BT_CAPS=0x1400, -S \"\$POLICY\", --fs-path-rx /usr, the Seccomp self-check or the fail-closed branch is gone"
-	fi
-	# Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
-	if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew|hcireset)'; then
-		pass "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs"
-	else
-		fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
-			"the case arm is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
-	fi
+	fail "$JAIL_LIB: no_new_privs, seccomp, pids cgroup, the /proc self-check, and no unjailed fallback" \
+		"$JAIL_LIB missing, or MINIJAIL, the fail-closed branch, '-T static -n --ambient', -S \"\$JAIL_POLICY\", pids.max or the Seccomp self-check is gone"
+fi
+if printf '%s' "$bt_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$bt_init_body" | grep -qF 'socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'u = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'g = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'c = 0x1400' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'fs-path-rx = /usr'; then
+	pass "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock"
+else
+	fail "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock" \
+		"$BT_INIT no longer sources $JAIL_LIB or lost its socket rule, or $BT_CONF lost u/g = 8423, c = 0x1400 or its Landlock rules"
+fi
+# jail_lock serialises the verbs with util-linux's flock (BusyBox's is off).
+require_present "usr/bin/flock" "flock (util-linux; $JAIL_LIB's jail_lock)"
+# Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
+if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew)' &&
+	printf '%s' "$bt_init_body" | grep -qE '^[[:space:]]+hcireset\)'; then
+	pass "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs"
+else
+	fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
+		"a verb is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
 fi
 bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
 if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
@@ -1490,19 +1503,22 @@ else
 	fail "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)" \
 		"etc/passwd has '${bt_passwd:-no bluetooth line}'"
 fi
-if tar xOf "$ROOTFS_TAR" ./etc/dbus-1/system.d/bluetoothd-jail.conf 2>/dev/null |
-	grep -qF '<policy user="bluetooth">'; then
+bt_dbus=$(tar xOf "$ROOTFS_TAR" ./etc/dbus-1/system.d/bluetoothd-jail.conf 2>/dev/null || true)
+if printf '%s' "$bt_dbus" | grep -qF '<policy user="bluetooth">' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow own="org.bluez"/>' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow send_interface="org.bluez.Agent1"/>'; then
 	pass "D-Bus lets the bluetooth user own org.bluez (etc/dbus-1/system.d/bluetoothd-jail.conf)"
 else
 	fail "D-Bus lets the bluetooth user own org.bluez" \
 		"etc/dbus-1/system.d/bluetoothd-jail.conf missing or has no bluetooth policy -- the jailed daemon cannot get on the bus"
 fi
-if tar xOf "$ROOTFS_TAR" ./etc/udev/rules.d/62-bluetoothd-jail.rules 2>/dev/null |
-	grep -qF 'KERNEL=="uhid", GROUP="bluetooth"'; then
-	pass "udev gives /dev/uhid to the bluetooth group (BLE HID under the jail)"
+bt_udev=$(tar xOf "$ROOTFS_TAR" ./etc/udev/rules.d/62-bluetoothd-jail.rules 2>/dev/null || true)
+if printf '%s' "$bt_udev" | grep -qxF 'KERNEL=="uhid", GROUP="bluetooth", MODE="0660"' &&
+	printf '%s' "$bt_udev" | grep -qF 'SUBSYSTEM=="hidraw", SUBSYSTEMS=="usb", ATTRS{idVendor}=="054c"'; then
+	pass "udev gives the bluetooth group /dev/uhid (BLE HID) and USB Sony hidraw (sixaxis cable pairing)"
 else
-	fail "udev gives /dev/uhid to the bluetooth group" \
-		"etc/udev/rules.d/62-bluetoothd-jail.rules missing or changed -- BLE pads cannot connect"
+	fail "udev gives the bluetooth group /dev/uhid and USB Sony hidraw" \
+		"etc/udev/rules.d/62-bluetoothd-jail.rules missing or changed -- BLE pads or DS3 cable pairing break under the jail"
 fi
 
 # =============================================================================

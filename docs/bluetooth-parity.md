@@ -580,27 +580,29 @@ pad must be re-paired: `bluetoothctl remove <MAC>`, then cable-pair again.
 `usr/bin/bluetoothd` is no longer byte-identical to stock (§2, §3 describe the
 P2.3 state). It keeps stock's verbs, `BLUETOOTHD_ARGS`, the ext4 image and the
 `renew`/`hcireset` behaviour that Main_MiSTer calls (`menu.cpp`: `/bin/bluetoothd
-renew`, `/bin/bluetoothd hcireset`), but the daemon no longer runs as root. It
-is the second jailed daemon after `S92transmission` (`docs/bittorrent.md` §8.1)
-and uses the same pieces; `docs/minijail.md` lists what the kernels provide.
+renew`, `/bin/bluetoothd hcireset`), but the daemon no longer runs as root. The
+jail is declared in `etc/minijail/bluetoothd.conf` and run by the shared helper
+`usr/lib/mister/jail.sh` (`docs/minijail.md`, "Jailing a daemon"); the script
+adds only what is particular to Bluetooth.
 
 ### Identity and privileges
 
 | | Value | Why |
 |---|---|---|
 | uid/gid | 8423 `bluetooth`, pinned in `board/mister/de10nano/users.table` | A fixed number, so ownership in the ext4 image means the same thing on every image |
-| Capabilities | `CAP_NET_ADMIN` + `CAP_NET_BIND_SERVICE` (`-c 0x1400 --ambient`) | Upstream's own `bluetooth.service` bounding set. NET_ADMIN opens the mgmt control channel and adds kernel HIDP connections; NET_BIND_SERVICE binds L2CAP PSMs below 0x1001 (SDP, HID control/interrupt) |
+| Capabilities | `CAP_NET_ADMIN` + `CAP_NET_BIND_SERVICE` (`c = 0x1400`, ambient) | BlueZ 5.86's own `bluetooth.service` bounding set. NET_ADMIN opens the mgmt control channel and adds kernel HIDP connections; NET_BIND_SERVICE binds L2CAP PSMs below 0x1001 (SDP, HID control/interrupt) |
 | No `CAP_DAC_OVERRIDE` | | The daemon needs `/dev/uhid` and Sony `hidraw` nodes, which appear on hotplug, so the jail binds the host `/dev`. With DAC override that would include `/dev/mmcblk0`. Without it, the daemon opens only what its group is given |
-| `no_new_privs`, seccomp | the deny list `S92transmission` uses (mount, ptrace, bpf, io_uring, module and kexec calls, ...) | Every other syscall is allowed; the policy is generated from `minijail0 -H` once per boot |
-| pids cgroup | `/sys/fs/cgroup/bluetoothd`, `pids.max` 16 | bluetoothd is single-threaded |
-| Namespaces | mount, PID (`-I`, the daemon is init), IPC | **No network namespace**: `AF_BLUETOOTH` sockets exist only in the initial one. **No UTS namespace**: the hostname plugin follows the host's name |
+| Seccomp | the shared deny list (mount, ptrace, bpf, io_uring, module and kexec calls, ...), plus `socket` limited to `AF_UNIX`, `AF_BLUETOOTH` and `AF_NETLINK`/`NETLINK_KOBJECT_UEVENT`, `socketpair` to `AF_UNIX`; anything else gets `EAFNOSUPPORT` | Those are the only families 5.86 opens with our plugins (mgmt/L2CAP/SDP, D-Bus and syslog, libudev's monitor). `CAP_NET_ADMIN` applies to the host network, so without the filter a compromised daemon could open rtnetlink or nfnetlink and rewrite routes or flush the nftables ruleset. `AF_INET` is used only by the BNEP code, and `CONFIG_BT_BNEP` is off |
+| rlimits | `RLIMIT_NPROC` 1, `RLIMIT_RTPRIO` 0, `RLIMIT_CORE` 0 | Upstream's `LimitNPROC=1` and `RestrictRealtime`; bluetoothd never forks |
+| pids cgroup | `/sys/fs/cgroup/bluetoothd`, `pids.max` 4 | The launching shell, `minijail0` and the daemon |
+| Namespaces | mount, PID (the daemon is init), IPC | **No network namespace**: `AF_BLUETOOTH` sockets exist only in the initial one. **No UTS namespace**: the hostname plugin follows the host's name (`/proc/sys/kernel/hostname`; hostname1 is not running) |
 
-After the start the script reads the daemon's `/proc/<pid>/status` and
+After the start the helper reads the daemon's `/proc/<pid>/status` and
 `cgroup` back (all four uids and gids, no other groups, `NoNewPrivs`,
 `Seccomp: 2`, the cgroup, `CapEff 0x1400`) and kills it if any is wrong. It
-refuses to start the daemon at all without `minijail0`, a pids controller or
-working Landlock, so a broken jail means no Bluetooth rather than a root
-bluetoothd.
+refuses to start the daemon at all without `minijail0`, the config file, a
+pids controller or working Landlock, so a broken jail means no Bluetooth
+rather than a root bluetoothd.
 
 ### Mount view
 
@@ -621,9 +623,12 @@ The root is a 256 KiB tmpfs at `/run/bluetoothd/root`.
 | `/tmp` | 64 KiB tmpfs | | **none** |
 
 Device nodes on a read-only mount still open read-write, so `/dev` being ro
-only stops new files. `/tmp` has no Landlock grant on purpose: the start
-writes a file there from inside the jail and refuses to continue if the write
-works, which would mean Landlock is not enforced.
+only stops new files. The world-writable nodes left are the usual ones
+(`null`, `zero`, `tty`, `ptmx`, ...), `/dev/log`, `/dev/fuse` (mounting is
+refused by seccomp) and `/dev/gpmctl`; Main_MiSTer's `/dev/MiSTer_cmd` is
+`0600 root`. `/tmp` has no Landlock grant on purpose: the start writes a file
+there from inside the jail and refuses to continue if the write works, which
+would mean Landlock is not enforced.
 
 The `-C` compatibility SDP socket is created as `/var/run/sdp` inside the
 jail, which is `/run/bluetoothd/run/sdp` on the host; the script links
@@ -636,33 +641,68 @@ jail, which is `/run/bluetoothd/run/sdp` on the host; the script links
   and call agents (`btctl`'s `Agent1`) and the other callback interfaces.
 - **udev.** `etc/udev/rules.d/62-bluetoothd-jail.rules` sets group
   `bluetooth`, mode 0660, on `/dev/uhid` (BLE HID; classic HID stays on kernel
-  HIDP, §10), `/dev/rfkill` (absent from these kernels today), and `hidraw`
-  nodes of Sony (054c) pads, the only vendor the sixaxis cable-pairing plugin
-  handles.
+  HIDP, §10), `/dev/rfkill` (absent from these kernels today), and the `hidraw`
+  nodes of USB-attached Sony pads with the four product ids the sixaxis
+  plugin cable-pairs (`plugins/sixaxis.h`), the same scope as ChromeOS's rule.
 - **Storage.** The ext4 image is mounted with `nosuid,nodev,noexec` added to
-  stock's options, then `chown -hR 8423:8423` on every start. `-h` matters:
-  the daemon can create symlinks in its own storage, and a plain `chown`
-  would follow them as root. Root still reads the files, so an older image or
-  stock can use the same card.
-- **umask.** The script sets `umask 022`. A root login's umask is 077, and the
-  mount points it creates must be traversable by uid 8423.
+  stock's options, then `chown -hR 8423:8423` on every start, after the check
+  that no other bluetoothd is running. `-h` matters: the daemon can create
+  symlinks in its own storage, and a plain `chown` would follow them as root.
+  Root still reads the files, so an older image or stock can use the same card.
+
+### Behaviour that differs from stock's script
+
+- **`reload` restarts the daemon.** bluetoothd 5.86 neither handles nor
+  blocks `SIGHUP`, and as its PID namespace's init the kernel drops a signal
+  it has no handler for. Stock's root `reload` sent `SIGHUP` to a non-init
+  daemon, which killed it and started nothing.
+- **`stop` waits 12 s for `SIGTERM`** (bluetoothd's own shutdown grace is
+  10 s), then `SIGKILL`s and waits up to 5 s more. Stock's returned at once.
+- **The verbs are serialised** with `flock` on `/run/bluetoothd.lock`, so a
+  `renew` from the OSD and a `restart` from a shell cannot interleave.
+- **No fd of the caller reaches the daemon**: the helper closes every fd
+  above 2 that would survive `exec` before starting `minijail0`.
+
+### Compared with distributions (2026-10)
+
+| Item | Upstream unit | ChromeOS | Fedora, Debian, Arch, Alpine | Ours |
+|---|---|---|---|---|
+| Runs as | root, bounding set | `bluetooth` user, minijail0 | root (upstream's unit; plain root on OpenRC) | uid 8423 |
+| Capabilities | NET_ADMIN, NET_BIND_SERVICE (NET_RAW added after 5.86) | SETPCAP, NET_ADMIN, NET_BIND_SERVICE, NET_RAW | upstream's | NET_ADMIN, NET_BIND_SERVICE |
+| no_new_privs, LimitNPROC=1, RestrictRealtime | yes | `-n` only | upstream's | all three |
+| Filesystem | ProtectSystem=strict, ProtectHome, PrivateTmp | full host view | upstream's | allow-list root, Landlock |
+| MemoryDenyWriteExecute | yes | no | upstream's | no (minijail cannot express it short of seccomp argument filters) |
+| Seccomp / socket families | none | none | none | deny list + family filter |
+| Namespaces | none | none | none | mount, PID, IPC |
+
+Sources: bluez `src/bluetooth.service.in` (5.86 and master), ChromiumOS
+`chromiumos-overlay/net-wireless/bluez/files/` (`start_bluetoothd.sh`,
+`bluez-upstart.conf`, `99-uhid.rules`, `99-ps3-gamepad.rules`), Fedora's
+`bluez.spec`, Alpine's `bluetooth.initd`. **Re-check on the next bluez bump:**
+upstream added `CAP_NET_RAW` to its unit in April 2026 for Channel Sounding
+(raw HCI LE events). 5.86 has no raw-HCI user, and the self-check would not
+notice the feature failing, only the next bump's review would.
 
 ### Verification
 
 - **[VERIFIED, rig, 2026-10-08]** 7.2.9 kernel, master `002e31e` image with the
   new files staged over it. Starts from a 077 login; `/proc` shows uid/gid
   8423, `CapEff`/`CapBnd 0x1400`, `NoNewPrivs 1`, `Seccomp 2`,
-  `0::/bluetoothd`. Adapter `MiSTer`, powered, over D-Bus; `btctl pair`
+  `0::/bluetoothd`, `Max processes 1`, `Max realtime priority 0`, and no fd
+  of the caller's. Adapter `MiSTer`, powered, over D-Bus; `btctl pair`
   registers its agent and discovery finds devices; `sdptool browse local`
-  answers through `/run/sdp`; `reload`, `restart` and `renew` (on a copy of
-  the image) work; the paired DualSense's record survives a restart. Log
-  output matches the root daemon's, including bluez's existing "Failed to set
-  default system config for hci0".
+  answers through `/run/sdp`; `reload` (a restart), `restart` and `renew` (on
+  a copy of the image) work; concurrent verbs run one after the other; a
+  failed self-check leaves nothing running. Log output matches the root
+  daemon's, including bluez's existing "Failed to set default system config
+  for hci0".
+- **[VERIFIED, rig]** The paired DualSense reconnected through the jailed
+  daemon over kernel HIDP (`playstation 0005:054C:0CE6`, three input nodes).
 - **[VERIFIED, rig]** From inside the jail: `/dev/uhid` opens read-write;
   `/dev/mmcblk0`, `/dev/mem`, `/etc/shadow`, `/media/fat` and writes to
   `/sys`, `/dev`, `/dev/shm`, `/run/dbus` and `/tmp` are refused; a binary
   copied into `/var/lib/bluetooth` does not run; `/proc` lists only the
-  jail's processes.
-- **[HW — NOT DONE]** A pad actually connecting through the jailed daemon:
-  DualSense reconnect, a new pairing from the OSD, a BLE pad (uhid), and DS3
+  jail's processes; `nc` over TCP, UDP, and `ip link`/`ip route` all fail
+  at `socket()`.
+- **[HW — NOT DONE]** A new pairing from the OSD, a BLE pad (uhid), and DS3
   cable pairing (Sony `hidraw`).

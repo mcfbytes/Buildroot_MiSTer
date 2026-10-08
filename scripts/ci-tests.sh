@@ -1569,6 +1569,24 @@ else
 	fail "syslogd's jail has no /tmp, klogd's syslog() is filtered, /tmp protections are on" \
 		"S01syslogd lost -O \$SOCK_DIR/messages, syslogd.conf binds /tmp again, S02klogd's syslog rule changed, or etc/sysctl.d/10-protected-tmp.conf lost a value"
 fi
+# gpm runs jailed with CAP_SYS_ADMIN only, TIOCSTI refused (docs/minijail.md "gpm").
+gpm_body=$(tar xOf "$ROOTFS_TAR" ./usr/libexec/mister/gpm-jail 2>/dev/null || true)
+gpm_conf=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/gpm.conf 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if tar xOf "$ROOTFS_TAR" ./etc/inittab 2>/dev/null | grep -qxF '::sysinit:/usr/libexec/mister/gpm-jail start' &&
+	printf '%s' "$gpm_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$gpm_body" | grep -qxF 'ioctl: arg1 != 0x5412; return 1"' &&
+	printf '%s' "$gpm_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC" $GPM_ARGS' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'u = 8427' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'c = 0x200000' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'e' &&
+	tar xOf "$ROOTFS_TAR" ./usr/sbin/gpm 2>/dev/null | grep -aqF GPM_FOREGROUND &&
+	tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^gpm:x:8427:'; then
+	pass "inittab starts gpm through gpm-jail as uid 8427, CAP_SYS_ADMIN only, TIOCSTI refused"
+else
+	fail "inittab starts gpm through gpm-jail as uid 8427, CAP_SYS_ADMIN only, TIOCSTI refused" \
+		"etc/inittab, usr/libexec/mister/gpm-jail, etc/minijail/gpm.conf or etc/passwd changed, or usr/sbin/gpm lacks patches/gpm/0001 (no GPM_FOREGROUND)"
+fi
 bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
 if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
 	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"

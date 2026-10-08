@@ -1585,7 +1585,7 @@ cgroup, `/run/wpa_supplicant-<ifname>/`. The helper tells two interfaces' daemon
 | | Value | Why |
 |---|---|---|
 | uid/gid | 8426 `wpa` | `users.table` |
-| Capabilities | `CAP_NET_ADMIN`, `CAP_NET_RAW`, `CAP_DAC_OVERRIDE` | The first two are what hostap's README names as the minimum, and what ChromeOS, NixOS and Android grant. DAC override: see below |
+| Capabilities | `CAP_NET_ADMIN`, `CAP_NET_RAW` | what hostap's README names as the minimum, and what ChromeOS, NixOS and Android grant |
 | Namespaces | mount, PID, IPC; **no** network namespace | it manages the host's interfaces |
 | Sockets | `AF_UNIX`, `AF_INET`, `AF_INET6`, `AF_NETLINK`, `AF_PACKET`; others `EAFNOSUPPORT` | NixOS's `RestrictAddressFamilies` list |
 | Writable | `/run/wpa_supplicant` (noexec; owned 8426, 0750), `/proc/sys/net` | control sockets; the per-interface sysctls it sets on association (`drop_unicast_in_l2_multicast` and its neighbours), as NixOS grants |
@@ -1593,14 +1593,24 @@ cgroup, `/run/wpa_supplicant-<ifname>/`. The helper tells two interfaces' daemon
 | Landlock | rx `/usr`; ro `/etc`, `/proc`, `/sys`, `/dev/urandom`, `/dev/random`, `/media/fat/linux`; rw `/dev/null`, `/proc/sys/net`; full `/run/wpa_supplicant` | |
 | pids | 8 | |
 
-**`CAP_DAC_OVERRIDE`.** `wpa_cli` binds its reply socket in `/tmp` (the compiled-in
-`CONFIG_CTRL_IFACE_CLIENT_DIR`), and a root `wpa_cli`, which is what `wifi.sh` runs, makes
-it root's and not writable by others (`src/common/wpa_ctrl.c` fixes the mode only under
-`#ifdef ANDROID`). Without DAC override the daemon cannot answer, so `wpa_cli` and `wifi.sh`
-hang. NixOS avoids the cap by giving its users a client directory the daemon's group owns;
-`wifi.sh` is third-party and passes no `-s`, so that route needs an upstream change.
-Inside this jail the cap reaches little: every mount except `/run/wpa_supplicant`,
-`/proc/sys/net` and `/dev/null` is read-only, and Landlock applies whatever the cap.
+**Replies to `wpa_cli`: patch 0001.** `wpa_cli` binds its reply socket in `/tmp` (the
+compiled-in `CONFIG_CTRL_IFACE_CLIENT_DIR`) with the caller's umask, so a root `wpa_cli`,
+which is what `wifi.sh` runs, makes it `srwx------ root root` under a root login's 077, and
+a daemon without `CAP_DAC_OVERRIDE` cannot answer: `wpa_cli` and `wifi.sh` hang (measured).
+Upstream's `src/common/wpa_ctrl.c` already solves this, for Android only: it creates the
+socket group-writable and gives it to `AID_WIFI`.
+`board/mister/de10nano/patches/wpa_supplicant/0001-wpa_ctrl-give-the-client-socket-to-group-wpa.patch`
+does the same everywhere else: it binds under a umask of 007 and `lchown`s the socket to
+group `wpa`, so it is `srwxrwx--- root wpa` whatever the caller's umask. The patch is in
+the client library, so every caller is covered: `wifi.sh`, a user over SSH, any later
+script. Without the group, or against a root daemon, nothing changes. NixOS solves the same
+problem with a client directory the daemon's group owns, which needs `wpa_cli -s`, and
+`wifi.sh` passes none.
+
+Nothing else the daemon touches needs DAC override: the card's files and `/dev/random`,
+`/dev/urandom` and `/dev/null` are world-readable (the FAT is mounted `fmask=0022`), and
+`CAP_NET_ADMIN` alone lets it write the network sysctls (`net_ctl_permissions()` gives it
+the owner's mode bits).
 
 **`/media/fat/linux` is bound as a directory**, read-only, because `wifi.sh` replaces
 `wpa_supplicant.conf` with `mv`, and a bind of the file would keep the old inode. The daemon
@@ -1616,9 +1626,9 @@ root process reads.
 | ChromeOS (minijail0) | `wpa` | `NET_ADMIN`, `NET_RAW` | the published upstart job (an old branch) restricts no paths; shill talks to it over D-Bus, not `wpa_cli` |
 | NixOS (`enableHardening`, default on) | `wpa_supplicant` | `NET_ADMIN`, `NET_RAW` | new root, `ProtectSystem=strict`, `PrivateTmp`, writable `/run/wpa_supplicant`, `/proc/sys/net`, `/dev/rfkill`; `@system-service` syscall filter |
 | Android | `wifi` | `NET_ADMIN`, `NET_RAW` | SELinux `wpa` domain |
-| this image | `wpa` | `NET_ADMIN`, `NET_RAW`, `DAC_OVERRIDE` | as above |
+| this image | `wpa` | `NET_ADMIN`, `NET_RAW` | as above |
 
-NixOS is the closest; the differences are the DAC override above, no `/dev/rfkill` (the
+NixOS is the closest; the differences are the `wpa_cli` patch above, no `/dev/rfkill` (the
 kernel here has none, so the daemon logs "Cannot open RFKILL control device" either way) and
 `MemoryDenyWriteExecute`, which minijail has no equivalent of.
 
@@ -1634,9 +1644,10 @@ daemon as root, as stock does, since a box that loses Wi-Fi may be unreachable. 
 `/media/fat/linux/wpa_supplicant.nojail` forces that on purpose.
 
 **Measured on the rig** (DE10, 6.18, staged from `/run`): WPA3-SAE association in 8 s,
-uid 8426, `CapEff` `0x3002`, `Seccomp: 2`, cgroup `wpa_supplicant-wlan0`; `wpa_cli` from a
-root shell with umask 077 (`ping`, `status`, `disconnect`/`reconnect`, a `wifi.sh`-style `mv`
-of the config plus `reconfigure`); no `daemon.err` from the daemon while associated; from
+uid 8426, `CapEff` `0x3000`, `Seccomp: 2`, cgroup `wpa_supplicant-wlan0`; the patched
+`wpa_cli` (cross-built from the same 2.12 tree) from a root shell with umask 077 and 022
+(`ping`, `status`, `disconnect`/`reconnect`, a `wifi.sh`-style `mv` of the config plus
+`reconfigure`), while the unpatched one times out; no `daemon.err` from the daemon while associated; from
 inside the jail, writes to `/media/fat/linux`, `/tmp` and `/var/empty`, reading
 `/etc/shadow` or `/media/fat/games`, and executing a file from `/run/wpa_supplicant` all
 fail; `stop` leaves no process; the `.nojail` file starts it as root.

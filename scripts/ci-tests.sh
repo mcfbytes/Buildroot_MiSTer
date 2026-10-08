@@ -2877,6 +2877,13 @@ else
 		fail "$TM_INIT runs the daemon through $JAIL_LIB as uid 8422 with CAP_DAC_OVERRIDE only" \
 			"$TM_INIT no longer sources $JAIL_LIB, or etc/minijail/transmission.conf lost u/g = 8422 or c = 0x2"
 	fi
+	# Opt-in and network-facing, so it stays fail-closed: never the unjailed start.
+	if printf '%s' "$tm_init_body" | grep -qF 'jail_launch_unjailed'; then
+		fail "$TM_INIT never starts the daemon unjailed" \
+			"it calls jail_launch_unjailed -- transmission must fail closed (docs/minijail.md, \"When the jail fails\")"
+	else
+		pass "$TM_INIT never starts the daemon unjailed"
+	fi
 	# Landlock, and the writable state bound noexec (docs/bittorrent.md §8.1).
 	if printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-rx = /usr' &&
 		printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-advanced-rw = /media/fat/linux/transmission' &&

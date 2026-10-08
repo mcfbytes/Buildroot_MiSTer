@@ -411,6 +411,10 @@ reports success (`docs/bittorrent.md` §8.1).
 pids pieces. Unlike transmission it falls back to stock's root start when the jail fails,
 loudly, since losing it loses the controllers (`docs/bluetooth-parity.md` §11).
 
+**wpa_supplicant (2026-10-08).** One jail per interface, uid 8426, `CAP_NET_ADMIN`,
+`CAP_NET_RAW` and `CAP_DAC_OVERRIDE` (for replying to a root `wpa_cli`), no network
+namespace; falls back to the root start (`docs/wifi-parity.md` §15).
+
 **Tier 1 item 6, as written** (decided with the acceptance above, same branch; kernel
 delta D14). `NF_TABLES` with the `inet` family, conntrack, limit, log and reject in every
 kernel, and the `nftables` package, beside the legacy tables, which stay. No ruleset

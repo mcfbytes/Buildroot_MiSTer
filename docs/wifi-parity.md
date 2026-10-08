@@ -112,7 +112,7 @@ path (stock's own README-level instructions) both depend on.
 
 | Contract element | Stock (`work/imgroot`) | Ours | Status |
 |---|---|---|---|
-| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9, revised).** Stock's content, plus a header comment and two `pre-up` lines per `wlan` stanza: a `[ -e /sys/class/net/$IFACE ]` device-presence guard and the `i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop behind it — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly 47 added lines (43 comment + 4 code) and zero removals. Every stock directive is reproduced unchanged; nothing is removed. Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); the guard was added later to stop `S40network`'s `ifup -a` burning the full 20 s on an absent `wlan1` (§9). `docs/init-parity.md:150` carries the same row. |
+| `/etc/network/interfaces` | `wlan0`/`wlan1` `iface … inet manual` with `pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, `post_up sleep 2`, `post-down killall -q wpa_supplicant` | `board/mister/de10nano/rootfs-overlay/etc/network/interfaces` | **Adapted (v9, revised).** Stock's content, plus a header comment and two `pre-up` lines per `wlan` stanza: a `[ -e /sys/class/net/$IFACE ]` device-presence guard and the `i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info …` wait loop behind it — `diff` against `work/imgroot/etc/network/interfaces` exits 1 with exactly 47 added lines (43 comment + 4 code) and zero removals. Every stock directive is reproduced unchanged; nothing is removed. Since 2026-10-08 the `pre-up wpa_supplicant …` line is `pre-up /usr/libexec/mister/wpa-jail start $IFACE`, with a matching `post-down … stop` (§15). Authored by P2.3 (then byte-identical), diverged by `4cf2fc7` (v9); the guard was added later to stop `S40network`'s `ifup -a` burning the full 20 s on an absent `wlan1` (§9). `docs/init-parity.md:150` carries the same row. |
 | `/etc/init.d/S40network` | `ifup -a` / `ifdown -a` (ifupdown-scripts package default) | Not overlaid — `BR2_PACKAGE_IFUPDOWN_SCRIPTS`'s own Kconfig default (`default y if BR2_ROOTFS_SKELETON_DEFAULT`, `work/buildroot/package/ifupdown-scripts/Config.in`) auto-selects it; our defconfig sets neither `BR2_PACKAGE_SYSTEMD_NETWORKD` nor `BR2_PACKAGE_NETIFRC` (the two symbols that would suppress it) and leaves `BR2_ROOTFS_SKELETON_DEFAULT` at Buildroot's own default (y) | **Identical**, confirmed byte-for-byte by P2.3 (`docs/init-parity.md:63`); re-confirmed the selecting conditions still hold in this defconfig. |
 | `/etc/init.d/S41dhcpcd` | starts `dhcpcd` globally (no `-i`) | Package default, not overlaid; `BR2_PACKAGE_DHCPCD=y` (defconfig line 807, P2.1) | **Functionally identical** (P2.3 finding, `docs/init-parity.md:64`) — only the PID-file path differs, an artifact of the newer dhcpcd release, not a decision point. |
 | `/etc/dhcpcd.conf` | `hostname`, `clientid`, `option rapid_commit`, etc. enabled | `board/mister/de10nano/rootfs-overlay/etc/dhcpcd.conf` | **Identical.** `diff` exit 0 (re-verified this task). Authored by P2.3. |
@@ -1570,3 +1570,73 @@ which must stay a no-op against the DE10's 6.18 config. Their firmware (`rtw89/r
 On 6.18, RTL8852CU stays on the out-of-tree `rtl8852cu-morrownr`, which is built only
 against the 6.18 kernel, so the two drivers never compete for the same device IDs. The 7.2
 removals are PCMCIA Bluetooth cards and non-wireless staging drivers, none of them built here.
+
+## 15. wpa_supplicant in a minijail (2026-10-08)
+
+Stock and our image before this change ran one `wpa_supplicant` per interface as root, from
+the `pre-up` lines in `/etc/network/interfaces`. Those lines now call
+`/usr/libexec/mister/wpa-jail start $IFACE`, which runs the same command line (`-s -i $IFACE
+-D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf`, without `-B`/`-P`, since the
+helper keeps the pidfile) through the shared helper (`docs/minijail.md`). The jail is
+`/etc/minijail/wpa_supplicant.conf`; each interface gets its own state directory and
+cgroup, `/run/wpa_supplicant-<ifname>/`. The helper tells two interfaces' daemons apart by
+`JAIL_ARGS_MATCH`, the `-i <ifname>` on their command lines.
+
+| | Value | Why |
+|---|---|---|
+| uid/gid | 8426 `wpa` | `users.table` |
+| Capabilities | `CAP_NET_ADMIN`, `CAP_NET_RAW`, `CAP_DAC_OVERRIDE` | The first two are what hostap's README names as the minimum, and what ChromeOS, NixOS and Android grant. DAC override: see below |
+| Namespaces | mount, PID, IPC; **no** network namespace | it manages the host's interfaces |
+| Sockets | `AF_UNIX`, `AF_INET`, `AF_INET6`, `AF_NETLINK`, `AF_PACKET`; others `EAFNOSUPPORT` | NixOS's `RestrictAddressFamilies` list |
+| Writable | `/run/wpa_supplicant` (noexec; owned 8426, 0750), `/proc/sys/net` | control sockets; the per-interface sysctls it sets on association (`drop_unicast_in_l2_multicast` and its neighbours), as NixOS grants |
+| Read-only | `/usr`, `/etc/ssl`, `/sys`, `/proc`, `/media/fat/linux`, `/tmp`, `/dev/{null,urandom,random}` | |
+| Landlock | rx `/usr`; ro `/etc`, `/proc`, `/sys`, `/dev/urandom`, `/dev/random`, `/media/fat/linux`; rw `/dev/null`, `/proc/sys/net`; full `/run/wpa_supplicant` | |
+| pids | 8 | |
+
+**`CAP_DAC_OVERRIDE`.** `wpa_cli` binds its reply socket in `/tmp` (the compiled-in
+`CONFIG_CTRL_IFACE_CLIENT_DIR`), and a root `wpa_cli`, which is what `wifi.sh` runs, makes
+it root's and not writable by others (`src/common/wpa_ctrl.c` fixes the mode only under
+`#ifdef ANDROID`). Without DAC override the daemon cannot answer, so `wpa_cli` and `wifi.sh`
+hang. NixOS avoids the cap by giving its users a client directory the daemon's group owns;
+`wifi.sh` is third-party and passes no `-s`, so that route needs an upstream change.
+Inside this jail the cap reaches little: every mount except `/run/wpa_supplicant`,
+`/proc/sys/net` and `/dev/null` is read-only, and Landlock applies whatever the cap.
+
+**`/media/fat/linux` is bound as a directory**, read-only, because `wifi.sh` replaces
+`wpa_supplicant.conf` with `mv`, and a bind of the file would keep the old inode. The daemon
+can read the other files there; they are the card's Linux settings and the same files every
+root process reads.
+
+**How other distributions run it.**
+
+| | User | Capabilities | Filesystem |
+|---|---|---|---|
+| hostap's own systemd unit | root | all | unrestricted |
+| openSUSE | root | all | `ProtectSystem=full`, `ProtectHome=read-only`, kernel tunables/modules/logs protected |
+| ChromeOS (minijail0) | `wpa` | `NET_ADMIN`, `NET_RAW` | the published upstart job (an old branch) restricts no paths; shill talks to it over D-Bus, not `wpa_cli` |
+| NixOS (`enableHardening`, default on) | `wpa_supplicant` | `NET_ADMIN`, `NET_RAW` | new root, `ProtectSystem=strict`, `PrivateTmp`, writable `/run/wpa_supplicant`, `/proc/sys/net`, `/dev/rfkill`; `@system-service` syscall filter |
+| Android | `wifi` | `NET_ADMIN`, `NET_RAW` | SELinux `wpa` domain |
+| this image | `wpa` | `NET_ADMIN`, `NET_RAW`, `DAC_OVERRIDE` | as above |
+
+NixOS is the closest; the differences are the DAC override above, no `/dev/rfkill` (the
+kernel here has none, so the daemon logs "Cannot open RFKILL control device" either way) and
+`MemoryDenyWriteExecute`, which minijail has no equivalent of.
+
+**Left as they were.** `post-down killall -q wpa_supplicant` stays after the new
+`wpa-jail stop`, so the stanza still stops a daemon it did not start. `wifi.sh` (v2.3.0)
+starts its own root `wpa_supplicant -B` when `wpa_cli ping` finds none running; that copy is
+not jailed, and changing it would mean a change to `Scripts_MiSTer`. On stop the daemon logs
+`rmdir[ctrl_interface=/run/wpa_supplicant]: Permission denied`: the directory is shared by
+both interfaces and stays.
+
+**When the jail fails** the start logs at `daemon.err` (tag `wpa-jail`) and runs the
+daemon as root, as stock does, since a box that loses Wi-Fi may be unreachable. A file
+`/media/fat/linux/wpa_supplicant.nojail` forces that on purpose.
+
+**Measured on the rig** (DE10, 6.18, staged from `/run`): WPA3-SAE association in 8 s,
+uid 8426, `CapEff` `0x3002`, `Seccomp: 2`, cgroup `wpa_supplicant-wlan0`; `wpa_cli` from a
+root shell with umask 077 (`ping`, `status`, `disconnect`/`reconnect`, a `wifi.sh`-style `mv`
+of the config plus `reconfigure`); no `daemon.err` from the daemon while associated; from
+inside the jail, writes to `/media/fat/linux`, `/tmp` and `/var/empty`, reading
+`/etc/shadow` or `/media/fat/games`, and executing a file from `/run/wpa_supplicant` all
+fail; `stop` leaves no process; the `.nojail` file starts it as root.

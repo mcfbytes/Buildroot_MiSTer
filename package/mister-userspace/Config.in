@@ -11,7 +11,7 @@
 # drivers (package/mister-drivers), the kernel variant (BR2_PACKAGE_LINUX_RT)
 # and the stage-1 initramfs (a linux extension) -- each is its own decision.
 # Package sub-options that are strings or `is not set` cannot be `select`ed
-# and stay in the defconfig (busybox fragment path, OPENSSH_SANDBOX, ...).
+# and stay in the defconfig (busybox fragment path, NFS_UTILS_RPC_NFSD, ...).
 #
 # `select` force-enables a package even when its own `depends on` is unmet
 # (kconfig warns), so a package that only builds on one architecture must NOT
@@ -101,6 +101,7 @@ config BR2_PACKAGE_MISTER_USERSPACE
 	select BR2_PACKAGE_LIBEVENT
 	select BR2_PACKAGE_LIBNL
 	select BR2_PACKAGE_IPTABLES
+	select BR2_PACKAGE_NFTABLES
 	select BR2_PACKAGE_LIBGLIB2
 	select BR2_PACKAGE_GOBJECT_INTROSPECTION
 	select BR2_PACKAGE_TRANSMISSION

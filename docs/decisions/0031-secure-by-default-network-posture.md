@@ -1,7 +1,9 @@
 # ADR 0031 — Secure-by-default network posture: capability parity, closed defaults
 
-**Status:** Proposed (2026-09-11) — for @mcfbytes to accept, amend, or reject. Nothing in
-the build changes until accepted; the plan that acts on it is
+**Status:** Provisionally accepted (2026-10-04, @mcfbytes; proposed 2026-09-11). Tier 1
+items 5 and 6 and the amendments below are implemented. The other Tier 1 items, Tier 2
+and Q1-Q3 are paused, to be picked up later under this acceptance; each still needs its
+rig check before it is claimed. The plan that acts on it is
 [`docs/security-hardening-plan.md`](../security-hardening-plan.md).
 **Supersedes:** the "keep parity, note the risk in the FAQ rather than silently hardening"
 posture recorded against P3.7 in `TASKS.md`, and the same sentiment in
@@ -304,8 +306,8 @@ rig 2026-09-21 (`docs/testlogs/2026-09-21-transmission-rig.md` §6).
 
 ## Amendment, 2026-09-23 — IPv6 (issue #188)
 
-**Status of this amendment:** step 1 below is *implemented*; step 2 waits on Tier 1 item 6
-and on the owner. The rest of this ADR remains Proposed.
+**Status of this amendment:** step 1 below is *implemented*; step 2 waits on a default-deny
+ruleset and on the owner (Tier 1 item 6, nftables, landed 2026-10-04).
 
 **The finding.** IPv6 was absent from every kernel this repo builds because stock had it
 off, not because anyone decided so. Stock sets `# CONFIG_IPV6 is not set` against a
@@ -351,3 +353,69 @@ sysctl file, the symlink, `::1` in `/etc/hosts`, `ping6`/`traceroute6`, `UseIPv6
 on the image's own userland: the stock `S02sysctl` leaves `lo=0 eth0=1 wlan0=1` by default
 and `0 0 0` with an opt-in file, including a CRLF-terminated one. **Not yet checked on the
 rig.**
+
+---
+
+## Amendment, 2026-10-04 — kernel sandboxing and nftables (Tier 1 items 5 and 6, plus three additions)
+
+**Status of this amendment:** *implemented* (branch `feat/kernel-hardening`; kernel deltas
+D13 and D14 in `docs/kernel-config-deltas.md`). Verified by build, `scripts/ci-tests.sh` and
+a QEMU boot of the image's own `linux.img` on the new 6.18.55 kernel; **the rig boot this
+ADR's Verification section requires is still owed**.
+
+**Decision.** In both DE10 kernels and the shared DE25 fragment:
+
+1. **Tier 1 item 5, as written.** `CONFIG_SECCOMP=y` (with `SECCOMP_FILTER`) and
+   `BR2_PACKAGE_OPENSSH_SANDBOX` back to Buildroot's `y`, in one change. OpenSSH's pre-auth
+   child now runs seccomp-filtered as the `sshd` user for the first time on this image, and
+   dhcpcd's privilege-separated processes, which filter themselves when the kernel allows,
+   do too. CI asserts the pair together. No compatibility patch for a kernel without
+   seccomp: kernel and rootfs always ship together, so that pairing is not supported.
+2. **Added: Landlock** (`SECURITY` + `SECURITY_LANDLOCK`, the only LSM; `INTEGRITY` off). A
+   process that does not create a ruleset pays one early-return check per file hook.
+3. **Added: the pids cgroup controller**, with cgroup2 mounted at `/sys/fs/cgroup` by
+   `/etc/fstab`. Nothing is placed in a child group unless its init script does so.
+4. **Added: `CONFIG_JUMP_LABEL`**, a general kernel optimisation rather than a security
+   feature, on the 6.18 kernel. Upstream ARM removes it under `PREEMPT_RT` on SMP
+   (`arch/arm/Kconfig:87` in 7.2.9) because each branch flip patches kernel text under
+   `stop_machine()`, a latency spike RT exists to avoid. So the RT kernel builds without
+   it. On the 6.18 kernel the same mechanism pauses both cores, including Main_MiSTer's
+   CPU1, once per patched site when a key flips. Outside tracing, the keys a running board
+   can flip are few and one-off (first iptables use, a timestamping socket, delay
+   accounting; counts in D13). **Release gate:** a rig cyclictest on CPU1 while each of
+   those flips must show no stall worth a frame; if it does, this item is reverted on its
+   own.
+
+**Not taken, deliberately.**
+
+- **Memory cgroup controller.** It charges every page-cache and slab allocation on the
+  box, so Main_MiSTer's ROM and CHD reads pay for one daemon's limit. `oom_score_adj` and
+  rlimits stand in.
+- **User namespaces.** Unprivileged user namespaces are a large, repeatedly exploited
+  attack surface, and nothing here needs them: minijail runs as root and drops to a uid.
+- **Tier 3's hardening options** (`HARDENED_USERCOPY`, `INIT_ON_ALLOC_DEFAULT_ON`, ...)
+  stay in Tier 3, unchanged.
+
+**Main_MiSTer.** Seccomp and Landlock act only on a process that installs a filter or a
+ruleset, and Main installs neither; the pids controller acts only on members of a child
+cgroup, and Main is in the root group. None of the three adds work to Main's loop on CPU1.
+The kernel grows by about 58 KB compressed. A before/after measurement on the rig (boot
+time, cyclictest on both CPUs, a core load) is owed with the rig boot above.
+
+**First user.** `S92transmission` now adds a seccomp deny-list policy, Landlock rules and a
+`pids.max` 64 cgroup to its jail, and checks the filter and the cgroup in `/proc` before it
+reports success (`docs/bittorrent.md` §8.1).
+
+**Tier 1 item 6, as written** (decided with the acceptance above, same branch; kernel
+delta D14). `NF_TABLES` with the `inet` family, conntrack, limit, log and reject in every
+kernel, and the `nftables` package, beside the legacy tables, which stay. No ruleset
+ships. A card file, `/media/fat/linux/nftables.conf`, is loaded by Buildroot's
+`S35nftables` when present (`docs/user/faq.md`). The RT motivation lapsed: on 2026-10-04
+the owner decided to retire the PREEMPT_RT kernel. nftables is still the base for Tier 2
+and for the IPv6 default-on step, because one `inet` table covers both families and
+upstream now gates the legacy tables behind `NETFILTER_XTABLES_LEGACY`.
+
+**What this changes elsewhere in the ADR.** Tier 1 items 5 and 6 are done. With the RT
+kernel retired, read "both kernels" in the Verification section and in the plan as the
+6.18 kernel plus whichever newer kernel line is built beside it. The IPv6 amendment's step
+2 now waits only on a default-deny ruleset and on the owner.

@@ -515,9 +515,9 @@ builds it into the kernel, then disables it on every network interface at boot, 
 fresh card behaves exactly like stock.
 
 Why off? Your router's NAT is most likely what keeps your MiSTer unreachable from the
-internet today. IPv6 usually gives the box a public address, and there is no IPv6
-firewall yet. SSH (root password `1` unless you changed it) would then be reachable from
-anywhere your router allows.
+internet today. IPv6 usually gives the box a public address, and no firewall ruleset
+ships by default (see the next question). SSH (root password `1` unless you changed it)
+would then be reachable from anywhere your router allows.
 
 To turn it on, create `/media/fat/linux/sysctl.conf` with these two lines and reboot:
 
@@ -619,6 +619,33 @@ There are two ways to switch it on:
 
 Details, including why `irqaffinity=0` changes nothing on this board:
 [`cpu-isolation.md`](../cpu-isolation.md).
+
+## Can I run a firewall?
+
+Yes. The image ships `nft` (nftables) and the legacy `iptables`/`ip6tables`, but no rules:
+a fresh card accepts the same connections as stock. To load a ruleset at every boot, put
+it in `/media/fat/linux/nftables.conf`. This example accepts everything from your local
+network and drops unsolicited traffic from anywhere else, over IPv4 and IPv6 alike:
+
+```
+flush ruleset
+table inet filter {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif lo accept
+		meta l4proto { icmp, ipv6-icmp } accept
+		ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } accept
+		ip6 saddr { fe80::/10, fc00::/7 } accept
+	}
+}
+```
+
+Check it before you reboot with `nft -c -f /media/fat/linux/nftables.conf`, and apply it
+straight away with `/etc/init.d/S35nftables restart`. A mistake can lock you out of SSH
+and FTP. If it does, delete the file from the card on another computer, or log in on the
+serial console. Run `nft flush ruleset` to remove the rules until the next boot.
 
 ## See also
 

@@ -10,8 +10,8 @@ config BR2_PACKAGE_MINIJAIL
 	  no_new_privs. libminijailpreload.so is installed for the
 	  default (-T dynamic) mode.
 
-	  These kernels have no seccomp, Landlock or user namespaces,
-	  so never pass -S or --fs-path-*. See docs/minijail.md.
+	  The DE10 and DE25 kernels have seccomp (-S) and Landlock
+	  (--fs-path-*) but no user namespaces. See docs/minijail.md.
 
 	  https://google.github.io/minijail/
 

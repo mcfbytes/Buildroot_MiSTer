@@ -1651,3 +1651,12 @@ uid 8426, `CapEff` `0x3000`, `Seccomp: 2`, cgroup `wpa_supplicant-wlan0`; the pa
 inside the jail, writes to `/media/fat/linux`, `/tmp` and `/var/empty`, reading
 `/etc/shadow` or `/media/fat/games`, and executing a file from `/run/wpa_supplicant` all
 fail; `stop` leaves no process; the `.nojail` file starts it as root.
+
+**Hotplug, measured the same day.** With the jail's `interfaces` bind-mounted over the
+image's, de-authorizing and re-authorizing the rig's USB dongle (`7392:b822`,
+`rtw88_8822bu`) removed and re-created `wlan0`: `70-persistent-net.rules` →
+`wifi-hotplug.sh` → `ifup` → `wpa-jail start wlan0` had the jailed daemon (uid 8426,
+`CapEff 0x3000`, cgroup `wpa_supplicant-wlan0`) running 5 s after the replug, associated
+and with a DHCP address; the unplug ran `wpa-jail stop` and left no process, pidfile or
+cgroup member. Each interface gets its own jail, so a second adapter starts its own; that
+was not measured, as only one dongle was at hand.

@@ -697,7 +697,9 @@ notice the feature failing, only the next bump's review would.
   daemon's, including bluez's existing "Failed to set default system config
   for hci0".
 - **[VERIFIED, rig]** The paired DualSense reconnected through the jailed
-  daemon over kernel HIDP (`playstation 0005:054C:0CE6`, three input nodes).
+  daemon over kernel HIDP (`playstation 0005:054C:0CE6`, three input nodes),
+  on the first version of this jail (before the helper, the socket filter and
+  the rlimits); **not yet repeated on the current one**.
 - **[VERIFIED, rig]** From inside the jail: `/dev/uhid` opens read-write;
   `/dev/mmcblk0`, `/dev/mem`, `/etc/shadow`, `/media/fat` and writes to
   `/sys`, `/dev`, `/dev/shm`, `/run/dbus` and `/tmp` are refused; a binary

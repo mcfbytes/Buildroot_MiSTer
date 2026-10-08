@@ -698,8 +698,8 @@ notice the feature failing, only the next bump's review would.
   for hci0".
 - **[VERIFIED, rig]** The paired DualSense reconnected through the jailed
   daemon over kernel HIDP (`playstation 0005:054C:0CE6`, three input nodes),
-  on the first version of this jail (before the helper, the socket filter and
-  the rlimits); **not yet repeated on the current one**.
+  both on the first version of this jail and again on the current one (helper,
+  socket filter, `RLIMIT_NPROC` 1).
 - **[VERIFIED, rig]** From inside the jail: `/dev/uhid` opens read-write;
   `/dev/mmcblk0`, `/dev/mem`, `/etc/shadow`, `/media/fat` and writes to
   `/sys`, `/dev`, `/dev/shm`, `/run/dbus` and `/tmp` are refused; a binary

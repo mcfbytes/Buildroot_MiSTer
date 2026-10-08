@@ -1505,6 +1505,34 @@ else
 	fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
 		"a verb is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
 fi
+# -- syslogd and klogd run jailed (docs/minijail.md, "syslogd and klogd"):
+# no capabilities / CAP_SYSLOG only, no network, and the unjailed fallback.
+for d in syslogd:S01syslogd:8424:0x0 klogd:S02klogd:8425:0x400000000; do
+	name=${d%%:*}; rest=${d#*:}; init=${rest%%:*}; rest=${rest#*:}; uid=${rest%%:*}; caps=${rest#*:}
+	init_body=$(tar xOf "$ROOTFS_TAR" "./etc/init.d/$init" 2>/dev/null || true)
+	conf_body=$(tar xOf "$ROOTFS_TAR" "./etc/minijail/$name.conf" 2>/dev/null || true)
+	# shellcheck disable=SC2016 # matched literally in the script text
+	if printf '%s' "$init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+		printf '%s' "$init_body" | grep -qxF "JAIL_COMM=\$DAEMON" &&
+		printf '%s' "$init_body" | grep -qF 'jail_launch_unjailed /sbin/$DAEMON' &&
+		printf '%s' "$conf_body" | grep -qxF "u = $uid" &&
+		printf '%s' "$conf_body" | grep -qxF "c = $caps" &&
+		printf '%s' "$conf_body" | grep -qxF 'e' &&
+		tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q "^[a-z]*:x:$uid:"; then
+		pass "$init runs $name jailed as uid $uid, caps $caps, no network, with the unjailed fallback"
+	else
+		fail "$init runs $name jailed as uid $uid, caps $caps, no network, with the unjailed fallback" \
+			"etc/init.d/$init no longer sources the helper or lost its fallback, etc/minijail/$name.conf lost u = $uid, c = $caps or 'e', or uid $uid is not in etc/passwd"
+	fi
+done
+# The socket must stay out of the helper's root-only /run/syslogd.
+if tar xOf "$ROOTFS_TAR" ./etc/init.d/S01syslogd 2>/dev/null | grep -qxF 'SOCK_DIR=/run/log' &&
+	tar xOf "$ROOTFS_TAR" ./etc/minijail/bluetoothd.conf 2>/dev/null | grep -qxF 'bind-mount = /run/log'; then
+	pass "/dev/log points into /run/log, and bluetoothd's jail can reach it"
+else
+	fail "/dev/log points into /run/log, and bluetoothd's jail can reach it" \
+		"S01syslogd's SOCK_DIR or bluetoothd.conf's /run/log bind changed -- jailed daemons lose syslog"
+fi
 bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
 if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
 	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"

@@ -429,7 +429,9 @@ is `root:root 0755` and a non-root user could write nothing. So the daemon runs 
 **8422** with `CAP_DAC_OVERRIDE` as its only capability — enough to write the card — and
 the boundary is what it can *see*. `minijail0 -T static -u 8422 -g 8422 -c 0x2 --ambient`
 with `no_new_privs` (`-n`) and new PID (`-I`, the daemon as its init), IPC, UTS and mount
-namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. Three kernel
+namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. The jail is
+declared in `/etc/minijail/transmission.conf` and run by the shared helper
+`/usr/lib/mister/jail.sh` (`docs/minijail.md`, "Jailing a daemon"). Three kernel
 features added for it (D13 in `docs/kernel-config-deltas.md`) narrow that further: a seccomp
 filter, Landlock rules, and a cgroup with a process ceiling, each described below the
 table.
@@ -452,9 +454,10 @@ Not in it: the rest of the card, `/media/fat/linux` (so not `ssh.ext4`, `samba.s
 are off (`RLIMIT_CORE` 0) and the daemon's `oom_score_adj` is 800, so on this 488 MiB box the
 kernel takes it before Main_MiSTer.
 
-**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` at every
-start from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
-that compiles it: every syscall is allowed except the `SECCOMP_DENY` list in the script,
+**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` once per
+boot from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
+that compiles it: every syscall is allowed except the deny list shared by every jail in
+`/usr/lib/mister/jail.sh`,
 which return `EPERM`. That list is kernel attack surface the daemon never uses: io_uring,
 `perf_event_open`, `bpf`, the keyring calls, `ptrace` and the cross-process memory calls,
 every mount, namespace and module call, `reboot`/`kexec`, setting the clock or hostname, and
@@ -518,7 +521,9 @@ the `transmission` cgroup and `CapEff` is exactly `0x2`; Landlock, which `/proc`
 show, is covered by the probe above. If minijail is missing, the policy
 cannot be built or the pids controller is absent, it refuses to start the daemon at all
 rather than fall back to something weaker. It also refuses if a `transmission-daemon` it did not start is already running, and a start
-that times out terminates whatever it launched rather than leave an unmanaged daemon.
+that times out or fails the check terminates whatever it launched rather than leave an
+unmanaged daemon. `start`, `stop` and `restart` are serialised with `flock`, and no file
+descriptor of the caller's reaches the daemon.
 
 **mistarr** drives this daemon with nothing changed on its side: it opts in by creating
 the directory and running `S92transmission start`, talks RPC to `127.0.0.1:9091` (the jail

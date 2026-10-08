@@ -2864,26 +2864,27 @@ else
 		fail "$TM_INIT is off by default (opt-in directory gate)" \
 			"the '[ -d \$HOME_DIR ] || exit 0' guard is gone -- the daemon would auto-start and listen on every boot (ADR 0031 amendment, 2026-09-21)"
 	fi
-	# JAILED, never root (docs/bittorrent.md §8.1): minijail0, uid 8422, DAC override only.
-	if printf '%s' "$tm_init_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
-		printf '%s' "$tm_init_body" | grep -qxF 'TM_UID=8422' &&
-		printf '%s' "$tm_init_body" | grep -qF -- '-c 0x2 --ambient' &&
-		printf '%s' "$tm_init_body" | grep -qF 'refusing to run unjailed'; then
-		pass "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it"
+	# JAILED, never root (docs/bittorrent.md §8.1): the shared helper (checked
+	# with bluetoothd above), uid 8422 and DAC override only from its config file.
+	tm_conf_body=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/transmission.conf 2>/dev/null || true)
+	if printf '%s' "$tm_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+		printf '%s' "$tm_init_body" | grep -qxF 'JAIL_NAME=transmission' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'u = 8422' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'g = 8422' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'c = 0x2'; then
+		pass "$TM_INIT runs the daemon through $JAIL_LIB as uid 8422 with CAP_DAC_OVERRIDE only"
 	else
-		fail "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it" \
-			"MINIJAIL=/usr/bin/minijail0, TM_UID=8422, '-c 0x2 --ambient' or the fail-closed branch is gone"
+		fail "$TM_INIT runs the daemon through $JAIL_LIB as uid 8422 with CAP_DAC_OVERRIDE only" \
+			"$TM_INIT no longer sources $JAIL_LIB, or etc/minijail/transmission.conf lost u/g = 8422 or c = 0x2"
 	fi
-	# Seccomp, Landlock and the pids cgroup on top (docs/bittorrent.md §8.1).
-	# shellcheck disable=SC2016 # matched literally in the script text
-	if printf '%s' "$tm_init_body" | grep -qF -- '-S "$POLICY"' &&
-		printf '%s' "$tm_init_body" | grep -qF -- '--fs-path-rx /usr' &&
-		printf '%s' "$tm_init_body" | grep -qF 'pids.max' &&
-		printf '%s' "$tm_init_body" | grep -qF "^Seccomp:"; then
-		pass "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them"
+	# Landlock, and the writable state bound noexec (docs/bittorrent.md §8.1).
+	if printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-rx = /usr' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-advanced-rw = /media/fat/linux/transmission' &&
+		printf '%s' "$tm_conf_body" | grep -qF 'MS_REMOUNT|MS_NOEXEC'; then
+		pass "etc/minijail/transmission.conf: Landlock rules and a noexec state mount"
 	else
-		fail "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them" \
-			"-S \"\$POLICY\", --fs-path-rx /usr, pids.max or the Seccomp self-check is gone"
+		fail "etc/minijail/transmission.conf: Landlock rules and a noexec state mount" \
+			"fs-path-rx = /usr, the state directory's Landlock rule or its noexec remount is gone"
 	fi
 	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
 	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then

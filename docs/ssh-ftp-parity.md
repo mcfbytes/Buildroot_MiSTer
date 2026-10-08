@@ -37,6 +37,9 @@
 > *current* config remains true until that plan's tasks land; each task adds a
 > divergence row here.
 >
+> **2026-10-08:** root password login over SSH and FTP is now opt-in (§1.4), and SSH
+> forwarding is limited to Transmission's web UI.
+>
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`
 > expects. Nothing in CI asserts package versions, so this drift is caught by
@@ -91,7 +94,10 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 
 | Directive | Stock | Ours | Verdict |
 |---|---|---|---|
-| `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
+| `PermitRootLogin` | `yes` (uncommented) | `prohibit-password`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — ADR 0031, see §1.4 |
+| `PasswordAuthentication`, `KbdInteractiveAuthentication` | commented (compiled-in `yes`) | `no`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — see §1.4 |
+| `AllowTcpForwarding`, `PermitOpen`, `AllowStreamLocalForwarding` | commented (`yes`, `any`, `yes`) | `local`, `127.0.0.1:9091 localhost:9091`, `no` | **intentional divergence, 2026-10-08** — ADR 0031 Tier 1 item 7, see §1.4 |
+| `X11Forwarding` | commented (`no`) | `no`, explicit | same behaviour, stated |
 | pre-auth sandbox (build-time, not a directive) | built `--with-sandbox` but never engaged: stock's kernel has no seccomp | `SANDBOX_SECCOMP_FILTER`, engaged: `sshd-auth` runs as `sshd` with `NoNewPrivs 1`, `Seccomp 2` | **intentional divergence, 2026-10-04** — ADR 0031 Tier 1.5, kernel delta D13; CI asserts the Buildroot symbol, the kernel symbols and the sandbox string in `sshd-auth` together |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
 | `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/config/authorized_keys`** | **intentional divergence, added 2026-09-05; the FAT path moved from `linux/` to `config/` on 2026-09-17 (issue #183)** — see §1.3 |
@@ -101,7 +107,8 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 | `ChallengeResponseAuthentication` | present (commented, old OpenSSH 7.x directive name) | absent; `KbdInteractiveAuthentication` (commented) used instead | **not a gap** — `ChallengeResponseAuthentication` is a deprecated *alias* for `KbdInteractiveAuthentication` since OpenSSH 8.7, still accepted, not removed; both are commented (no override) in both configs, so there is no behavioral difference either way |
 | `UsePrivilegeSeparation` | present (commented) | absent | **not a gap** — the directive itself was made a compiled-in no-op in OpenSSH ≥7.5 and is fully **removed** in modern sshd (an *uncommented* `UsePrivilegeSeparation` line would be a fatal config-parse error on 10.x); stock's copy was already commented out (inert), so dropping the dead line entirely is strictly safer and changes nothing at runtime |
 
-**Bottom line: no directive stock relied on was silently changed, and nothing
+**Bottom line (P3.7 audit; the 2026-10-08 rows above are deliberate, see §1.4): no
+directive stock relied on was silently changed, and nothing
 in stock's config would hit a removed/renamed keyword if pasted as-is into
 10.2p1** (everything stock left *uncommented* — `PermitRootLogin`,
 `AuthorizedKeysFile`, `UsePAM`, `PermitUserEnvironment`, `Subsystem sftp` — is
@@ -244,6 +251,77 @@ nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migratio
 behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
+### 1.4 Root password login is opt-in — SSH and FTP (ADR 0031, 2026-10-08)
+
+**Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), amendment
+2026-10-08 (the owner's answer to Q1). On a fresh card neither SSH nor FTP accepts
+root's password. One card file turns stock's behaviour back on for both:
+`/media/fat/linux/password_login`.
+
+| | Default (no card file) | With `linux/password_login` |
+|---|---|---|
+| SSH, key in `config/authorized_keys` | works | works |
+| SSH, root password | refused: the server offers `publickey` only | works (stock) |
+| FTP, root | `530 Login incorrect` | works (stock) |
+| Serial console (`agetty` on `ttyS0`), F9 terminal, OSD Scripts | unchanged | unchanged |
+
+**How it is switched.**
+
+- `sshd_config` ships the closed values (`PermitRootLogin prohibit-password`,
+  `PasswordAuthentication no`, `KbdInteractiveAuthentication no`), so a bare
+  `/usr/sbin/sshd` is safe. `S50sshd` adds `-o PermitRootLogin=yes -o
+  PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes` when the card file
+  exists. Command-line `-o` wins over the file. `UsePAM yes` stays: with both password
+  methods off, PAM runs only its account and session stacks.
+- `proftpd.conf` has no ungated `RootLogin on`. It sits inside
+  `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>`, and `S50proftpd` passes
+  `-D MISTER_ROOT_PASSWORD_LOGIN` when the card file exists. Every later FTP option
+  (anonymous off, chroot, a non-root user) can be another define in the same place,
+  without a second copy of the config.
+- `/usr/sbin/mister-password-login` writes or deletes the card file, `sync`s, and
+  restarts both services. `/media/fat/Scripts/password_login.sh` is its launcher,
+  delivered the same way as the other Scripts (install.sh, the sdcard image, and
+  `update_linux_modernization.sh`'s create-only repair). Restarting `sshd` kills only the
+  listener: OpenSSH 10's sessions are `sshd-session` processes, which `killall sshd`
+  does not match, so a user who runs the tool over SSH keeps the session.
+
+**Why not lock root's shadow entry instead.** That would also close the console, and the
+console is the recovery path for someone who has a keyboard and no key. Physical access
+already wins on this board (the card is removable, and the OSD runs any script as
+root), so a console password protects nothing extra. The shadow entry stays as
+`post-build.sh` pins it.
+
+**Why the flag is on the card.** Writing to the card already means root at next boot
+(`user-startup.sh`, `Scripts/`), so the flag adds no new way in. Being world-readable
+on exFAT does not matter: it holds no secret. The password hash stays out of it.
+
+**Boot log.** `S50sshd` prints which mode it started in. With no flag and no key line
+in `config/authorized_keys` or `/root/.ssh/authorized_keys`, sshd still starts (a key
+dropped on the card later works without a reboot), and the line reads
+`NO REMOTE LOGIN`, followed by the two ways in. `S50proftpd` prints `root login off` or
+`root password login ON`.
+
+**Forwarding (Tier 1 item 7).** `AllowTcpForwarding local` with `PermitOpen
+127.0.0.1:9091 localhost:9091`, not `no`: the documented way to reach Transmission's web
+UI is `ssh -L 9091:127.0.0.1:9091` ([bittorrent.md](bittorrent.md)), and `no` would break
+it. Any other `-L`/`-D` destination gets `administratively prohibited`; `-R` and Unix
+socket forwarding are refused. A logged-in root can still reconfigure the box, so this
+stops casual pivoting, not an attacker who already has root.
+
+**Not done here.** A password that survives an update (ADR 0031 Tier 1 item 2, Q3) is
+still open: with the flag on, the password is `1` again after every update. Anonymous
+FTP is unchanged; it is part of the FTP options being prepared separately.
+
+**Verified (2026-10-08):** the shipped `S50sshd` and `S50proftpd` were run on the
+image's own ARM userland (`unshare` + `chroot` + qemu-arm) in five card states, with
+`sshd -T` and real FTP logins on loopback; and on the rig, a throwaway `sshd` on port
+2222 and `proftpd` on port 2121 with the new configs: key login worked and password
+`1` was refused by default, password `1` worked with the opt-in arguments, a `-W` to a
+LAN address was `administratively prohibited`, `-R` was refused, and FTP root:`1`
+returned `530` by default and `226` with the define. **A rig boot of a built image is
+still owed.** CI asserts the shipped files and runs the target's own `sshd -T` in both
+modes under qemu-arm.
+
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
 
@@ -330,12 +408,14 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 
 ### 2.3 `proftpd.conf` audit
 
-**Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
-and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
-No changes made. Notable existing content, confirmed intentional/stock-matching:
+**Byte-identical to stock** at the P3.7 audit (`diff` exit 0 against
+`work/imgroot/etc/proftpd.conf` and against the doc-captured copy in
+`docs/stock-inventory/20250402/etc-configs.md`). **One change since, 2026-10-08:**
+`RootLogin on` moved inside `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>` (§1.4). Notable
+content, otherwise stock-matching:
 
-- `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
-  allowed, same as stock.
+- `<Global> RequireValidShell off </Global>`, with `RootLogin on` only under the
+  define — root FTP login is off unless the card opts in (§1.4).
 - `DefaultRoot /` — no chroot jail; a logged-in user (including root) sees the
   whole filesystem, same as stock.
 - `<Anonymous ~ftp>` block present — anonymous FTP is enabled, same as stock
@@ -359,6 +439,8 @@ stock. proftpd does **not**: `UseIPv6 off` is kept on purpose, because anonymous
 writable. CI asserts that line.
 
 ## 3. Default-credential auth posture
+
+Since 2026-10-08 the password below works remotely only after the card opts in (§1.4).
 
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted
 

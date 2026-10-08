@@ -27,7 +27,13 @@ Re-run its three login tests before starting; if any result differs, update the 
 
 ## Tier 1 — invisible to a stock-style user
 
-### S1 — Key present ⇒ password auth off — Size S — Depends: none
+### S1 — Key present ⇒ password auth off — Size S — Depends: none — **SUPERSEDED 2026-10-08**
+
+Replaced by a stronger default (ADR 0031 amendment 2026-10-08, `ssh-ftp-parity.md` §1.4):
+password auth is off whether or not a key is present, and the card file
+`/media/fat/linux/password_login` (written by `Scripts/password_login.sh`) turns it on
+for SSH and FTP together. There is no `sshd_allow_password`. The original task text
+follows.
 
 `S50sshd`: before starting sshd, if `/media/fat/config/authorized_keys` (the standard
 location since issue #183; `S50sshd` migrates the old `linux/` one) or
@@ -124,7 +130,13 @@ call it. Ship **no ruleset** in this task; a permissive `nft` install is the del
 `CONFIG_NF_TABLES=y` in both resolved kernel configs and `usr/sbin/nft` in `rootfs.tar`.
 `kernel-config-deltas.md` gains the rows. Note the RT-channel regression as fixed.
 
-### S7 — sshd: forwarding off — Size XS — Depends: none
+### S7 — sshd: forwarding off — Size XS — Depends: none — **DONE 2026-10-08, changed** (rig boot still owed)
+
+As done: `AllowTcpForwarding local` with `PermitOpen 127.0.0.1:9091 localhost:9091`,
+`AllowStreamLocalForwarding no`, `X11Forwarding no`, because the Transmission web UI is
+reached by `ssh -L 9091:127.0.0.1:9091`. Checked with a throwaway sshd on the rig: `-W`
+to a LAN address is "administratively prohibited", `-R` is refused, `127.0.0.1:9091`
+works. CI asserts the lines. The original task text follows.
 
 `AllowTcpForwarding no`, `X11Forwarding no` explicit in `sshd_config`. Keep
 `PermitUserEnvironment yes` (MiSTer scripts rely on it, per the parity doc).
@@ -166,7 +178,13 @@ three ADR login tests all fail with the marker present; removing the marker and
 rebooting restores every service. One FAQ entry, "Locking down a MiSTer on a network
 you don't trust", covers S1, S2, and S10 together.
 
-### S11 — Gate password logins on a changed password (Q1, if accepted) — Size S — Depends: S2
+### S11 — Gate password logins on a changed password (Q1, if accepted) — Size S — Depends: S2 — **DONE 2026-10-08 as a card switch**
+
+Q1 was answered "gate it". Done as an explicit switch rather than a hash comparison, so it
+does not depend on S2: SSH key-only and no root FTP login unless
+`/media/fat/linux/password_login` exists; `Scripts/password_login.sh` writes or deletes it
+(ADR 0031 amendment 2026-10-08). S2 remains open: with the switch on, the password is `1`
+again after every update. The original task text follows.
 
 At boot, if root's hash in the (restored) `/etc/shadow` equals the shipped
 `$5$MiSTer618$...` value and `sshd_allow_password` is absent: sshd key-only, and

@@ -352,6 +352,9 @@ After rebooting:
 - Expect a **one-time SSH host-key warning** the next time you connect over SSH — this
   image generates a unique host key per device on first boot, unlike stock's shared key.
   See [`faq.md`](faq.md#ssh-host-keys-changed) for the one-line fix.
+- **SSH and FTP no longer accept root's password** unless you allow it: run
+  **Scripts > password_login.sh**, or log in over SSH with a key in
+  `config/authorized_keys`. See [`faq.md`](faq.md#remote-login).
 - You can confirm the update actually took by checking `/MiSTer.version` (its content
   should now be a 6-digit `YYMMDD` matching the release you expected — see the release's
   GitHub page for that date).

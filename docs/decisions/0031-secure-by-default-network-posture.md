@@ -1,9 +1,10 @@
 # ADR 0031 — Secure-by-default network posture: capability parity, closed defaults
 
 **Status:** Provisionally accepted (2026-10-04, @mcfbytes; proposed 2026-09-11). Tier 1
-items 5 and 6 and the amendments below are implemented. The other Tier 1 items, Tier 2
-and Q1-Q3 are paused, to be picked up later under this acceptance; each still needs its
-rig check before it is claimed. The plan that acts on it is
+items 5 and 6 and the amendments below are implemented; the 2026-10-08 amendment answers
+Q1 ("gate it") and does Tier 1 items 1 and 7 in a changed form. The other Tier 1 items,
+Tier 2, Q2 and Q3 are paused, to be picked up later under this acceptance; each still
+needs its rig check before it is claimed. The plan that acts on it is
 [`docs/security-hardening-plan.md`](../security-hardening-plan.md).
 **Supersedes:** the "keep parity, note the risk in the FAQ rather than silently hardening"
 posture recorded against P3.7 in `TASKS.md`, and the same sentiment in
@@ -183,7 +184,9 @@ still RFC1918; that is what the marker is for.
 
 ## Open questions for the owner
 
-- **Q1 — the one visible break.** With Tier 1 only, a fresh card still accepts
+- **Q1 — the one visible break. ANSWERED 2026-10-08: gate it**, by a card switch rather
+  than by comparing hashes; see the amendment of that date. The original question follows.
+  With Tier 1 only, a fresh card still accepts
   root:`1` over FTP and SSH, because that is what a first-time user expects. The
   alternative is to also gate *password* logins on the password having been changed from
   the default (compare root's hash against the well-known `$5$MiSTer618$...` value at
@@ -419,3 +422,81 @@ upstream now gates the legacy tables behind `NETFILTER_XTABLES_LEGACY`.
 kernel retired, read "both kernels" in the Verification section and in the plan as the
 6.18 kernel plus whichever newer kernel line is built beside it. The IPv6 amendment's step
 2 now waits only on a default-deny ruleset and on the owner.
+
+---
+
+## Amendment, 2026-10-08 — remote root password login is opt-in (Q1 answered; Tier 1 items 1 and 7)
+
+**Status of this amendment:** *implemented* (branch `feat/root-login-opt-in`). Verified on
+the image's own userland under qemu-arm and with throwaway `sshd`/`proftpd` instances on
+the rig (details in `docs/ssh-ftp-parity.md` §1.4). **A rig boot of a built image is
+still owed.**
+
+**The owner's answer to Q1** (2026-10-08): "make the default wide-open configuration (root
+login with password `1`) opt-in via script. root can default to ssh only auth or as you see
+fit, maybe mandatory ssh key on the exfat partition and no login if it's not there."
+
+**Decision.**
+
+1. **A fresh card accepts no remote root password.** `sshd_config` ships
+   `PermitRootLogin prohibit-password`, `PasswordAuthentication no` and
+   `KbdInteractiveAuthentication no`. SSH takes a key from
+   `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key,
+   sshd still runs and nobody can log in remotely; `S50sshd` prints `NO REMOTE LOGIN` and
+   the two ways in. `proftpd.conf`'s `RootLogin on` moved inside
+   `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>`, so FTP refuses root (`530`).
+2. **One card file brings stock back for both:** `/media/fat/linux/password_login`.
+   `S50sshd` then adds `-o PermitRootLogin=yes -o PasswordAuthentication=yes -o
+   KbdInteractiveAuthentication=yes`, and `S50proftpd` passes
+   `-D MISTER_ROOT_PASSWORD_LOGIN`. SSH and FTP are switched together, as this ADR's
+   Context requires: FTP write access to the card is root at next boot.
+3. **The script.** `/usr/sbin/mister-password-login` (in the image, versioned with the
+   init scripts it drives) writes or deletes the file and restarts both services; it also
+   reports how many keys the card holds and whether root's hash is still the default.
+   `Scripts/password_login.sh` is its launcher on the card, delivered like the other
+   Scripts (ADR 0026: install.sh, the sdcard image, and the updater's create-only repair,
+   which is how an existing installation gets it on the update that brings this change).
+4. **The console keeps `root:1`.** Root's shadow entry is not locked. The serial console
+   is the recovery path for someone with a keyboard and no key; physical access already
+   wins on this board, because the card is removable and the OSD runs any script as root.
+5. **Tier 1 item 7, changed:** `AllowTcpForwarding local` with
+   `PermitOpen 127.0.0.1:9091 localhost:9091`, `AllowStreamLocalForwarding no`,
+   `X11Forwarding no`. Not `AllowTcpForwarding no`, because the 2026-09-21 amendment made
+   an SSH port-forward the way to reach Transmission's loopback-only web UI. Any other
+   forward destination is refused, so the box is no longer a pivot.
+
+**Why a switch, not Q1's hash comparison.** Gating on "the hash is still the default"
+would turn password login back on for anyone who ran `passwd`, and `passwd` is undone by
+the next update (Tier 1 item 2 is not done), so the gate would close again silently on
+every update. A switch is explicit, survives updates, and is the card-file pattern this
+ADR already uses.
+
+**What this supersedes.** Tier 1 item 1 ("key present ⇒ password off", with an
+`sshd_allow_password` opt-out) is replaced by the stronger default above; there is no
+`sshd_allow_password` file. Plan task S11 is done in this form, without its dependency on
+S2.
+
+**Visible changes, stated for release notes.**
+
+- Anyone who logs in with root:`1` over SSH or FTP, including existing users on their
+  next update, must run **Scripts > password_login.sh** once, or put a key on the card.
+- **FTP is unusable by default** until the owner picks one of the FTP options being
+  prepared separately, or the user runs the script. SFTP with a key needs neither.
+- Anonymous FTP is **unchanged** (Tier 1 item 3 is part of those FTP options).
+
+**Follow-up, not done here.**
+
+- **A password that survives an update** (Tier 1 item 2, Q3). With the switch on, the
+  password is `1` again after every update. The natural next step is for
+  `mister-password-login` to offer "set a new password" and store the hash on
+  `ssh.ext4`, never on exFAT (`fmask=0022`), with the boot-time restore and the
+  `rename()` constraint described in item 2.
+- Samba keeps its own password database and is untouched; `S91smb` is opt-in already.
+
+**Regression oracle.** On a fresh card the three tests in "What the image does today"
+give: `ssh root@rig` with password `1` — refused (`publickey` only); `ftp://root:1@rig/` —
+`530`; anonymous FTP — unchanged until the FTP options land. With
+`/media/fat/linux/password_login` present, the first two pass again. CI
+(`scripts/ci-tests.sh`, section "ADR 0031 — root password login is opt-in") asserts the
+shipped `sshd_config`, both init scripts and `proftpd.conf`, and runs the target's own
+`sshd -T` under qemu-arm in both modes.

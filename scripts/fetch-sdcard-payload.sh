@@ -366,6 +366,10 @@ stage_stock_payload() {
 #       Keeps Linux work off CPU1 (docs/cpu-isolation.md). Same shim shape: the
 #       tool is /usr/sbin/mister-cpu-isolation.
 #
+#   Scripts/password_login.sh
+#       Turns root password login over SSH and FTP on or off (ADR 0031). Same
+#       shim shape: the tool is /usr/sbin/mister-password-login.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -391,7 +395,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh Scripts/password_login.sh"
 
 	local f
 	for f in downloader.ini $scripts; do

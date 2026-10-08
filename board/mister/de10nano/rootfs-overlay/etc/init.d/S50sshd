@@ -2,8 +2,9 @@
 #
 # sshd        Starts sshd.
 #
-# Per-device host keys (ADR 0015) + the one-time user authorized_keys move
-# (#183). Full reasoning: docs/init-parity.md, docs/ssh-ftp-parity.md §1.3.
+# Per-device host keys (ADR 0015), the one-time user authorized_keys move (#183)
+# and the password-login card switch (ADR 0031). Full reasoning:
+# docs/init-parity.md, docs/ssh-ftp-parity.md §1.3 and §1.4.
 #
 
 KEYIMG=/media/fat/linux/ssh.ext4
@@ -18,6 +19,8 @@ umask 077
 # is the pre-#183 location, migrated below. See docs/ssh-ftp-parity.md §1.3.
 AUTHKEYS=/media/fat/config/authorized_keys
 AUTHKEYS_LEGACY=/media/fat/linux/authorized_keys
+# Written by Scripts/password_login.sh; restores stock's root password login.
+PASSWORD_LOGIN=/media/fat/linux/password_login
 
 # A failed migration is survivable: sshd still starts, and start() keeps the old
 # path in its AuthorizedKeysFile list for this boot.
@@ -119,6 +122,14 @@ migrate_authorized_keys() {
 	return 1
 }
 
+# True if any of the given files holds a key line (not blank, not a comment).
+has_key() {
+	for _f in "$@"; do
+		[ -f "$_f" ] && grep -q '^[[:space:]]*[^#[:space:]]' "$_f" && return 0
+	done
+	return 1
+}
+
 start() {
 	if migrate_authorized_keys; then
 		authkeys_fallback=
@@ -133,7 +144,8 @@ start() {
 		mkfs.ext4 "$KEYIMG"
 	fi
 	mkdir -p "$KEYDIR"
-	mount -o sync,dirsync,noatime,nodiratime "$KEYIMG" "$KEYDIR"
+	mountpoint -q "$KEYDIR" ||
+		mount -o sync,dirsync,noatime,nodiratime "$KEYIMG" "$KEYDIR"
 
 	# Persistence is best-effort; sshd starting is NOT. No mount means $KEYDIR
 	# is the read-only rootfs, so fall back to tmpfs and say so loudly.
@@ -164,9 +176,22 @@ start() {
 		set -- "$@" -o "AuthorizedKeysFile=.ssh/authorized_keys $AUTHKEYS $AUTHKEYS_LEGACY"
 	fi
 
+	if [ -e "$PASSWORD_LOGIN" ]; then
+		set -- "$@" -o PermitRootLogin=yes -o PasswordAuthentication=yes \
+			-o KbdInteractiveAuthentication=yes
+		login_mode="root password login ON ($PASSWORD_LOGIN)"
+	elif has_key "$AUTHKEYS" /root/.ssh/authorized_keys ${authkeys_fallback:+"$AUTHKEYS_LEGACY"}; then
+		login_mode="key login only"
+	else
+		login_mode="NO REMOTE LOGIN: no key in $AUTHKEYS and password login is off"
+	fi
+
 	/usr/sbin/sshd "$@"
 	touch /var/lock/sshd
-	echo "OK"
+	echo "OK ($login_mode)"
+	case "$login_mode" in
+	NO*) echo "sshd: add your public key to $AUTHKEYS, or run Scripts/password_login.sh" >&2 ;;
+	esac
 }
 stop() {
 	printf "Stopping sshd: "

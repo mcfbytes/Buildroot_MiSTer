@@ -5,14 +5,22 @@ trap "" TERM
 [ ! -d /var/run/proftpd ] && mkdir /var/run/proftpd
 [ ! -f /var/log/wtmp ] && touch /var/log/wtmp
 
+# Written by Scripts/password_login.sh; each card switch adds one -D define.
+PASSWORD_LOGIN=/media/fat/linux/password_login
+
 start() {
+	set --
+	mode="root login off"
+	if [ -e "$PASSWORD_LOGIN" ]; then
+		set -- "$@" -D MISTER_ROOT_PASSWORD_LOGIN
+		mode="root password login ON"
+	fi
 	printf "Starting ProFTPD: "
-	/usr/sbin/proftpd
-	if [ $? != 0 ]; then
+	if ! /usr/sbin/proftpd "$@"; then
 		echo "FAILED"
 		exit 1
 	else
-		echo "done"
+		echo "done ($mode)"
 	fi
 }
 

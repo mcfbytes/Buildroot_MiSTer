@@ -21,8 +21,10 @@ JAIL_PIDS_MAX=4
 JAIL_PROBE=/var/empty/.landlock-probe
 JAIL_STOP_WAIT=5
 JAIL_STOP_KILL=1
-# klogctl() is the syslog syscall, which the shared deny list refuses.
-JAIL_SECCOMP_RULES="syslog: 1"
+# klogctl() is the syslog syscall: only BusyBox's close/open/read/console-level actions.
+JAIL_SECCOMP_RULES="syslog: arg0 == 0 || arg0 == 1 || arg0 == 2 || arg0 == 7 || arg0 == 8; return 1
+socket: arg0 == 1; return 97
+socketpair: arg0 == 1; return 97"
 jail_init
 
 # /dev/log in the jail, a link into syslogd's directory (S01syslogd makes the host's).

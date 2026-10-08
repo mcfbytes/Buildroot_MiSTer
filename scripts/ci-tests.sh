@@ -1533,6 +1533,22 @@ else
 	fail "/dev/log points into /run/log, and bluetoothd's jail can reach it" \
 		"S01syslogd's SOCK_DIR or bluetoothd.conf's /run/log bind changed -- jailed daemons lose syslog"
 fi
+# syslogd keeps no /tmp in its jail (the logs live in /run/log, linked from /tmp), klogd
+# cannot clear the kernel log, and root ignores what another user plants in /tmp.
+sl_init=$(tar xOf "$ROOTFS_TAR" ./etc/init.d/S01syslogd 2>/dev/null || true)
+kl_init=$(tar xOf "$ROOTFS_TAR" ./etc/init.d/S02klogd 2>/dev/null || true)
+tmp_ctl=$(tar xOf "$ROOTFS_TAR" ./etc/sysctl.d/10-protected-tmp.conf 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$sl_init" | grep -qF -- '-n -O "$SOCK_DIR/messages"' &&
+	! tar xOf "$ROOTFS_TAR" ./etc/minijail/syslogd.conf 2>/dev/null | grep -q '^[^#]*/tmp' &&
+	printf '%s' "$kl_init" | grep -qxF 'JAIL_SECCOMP_RULES="syslog: arg0 == 0 || arg0 == 1 || arg0 == 2 || arg0 == 7 || arg0 == 8; return 1' &&
+	printf '%s' "$tmp_ctl" | grep -qxF 'fs.protected_regular = 2' &&
+	printf '%s' "$tmp_ctl" | grep -qxF 'fs.protected_symlinks = 1'; then
+	pass "syslogd's jail has no /tmp, klogd's syslog() is filtered, /tmp protections are on"
+else
+	fail "syslogd's jail has no /tmp, klogd's syslog() is filtered, /tmp protections are on" \
+		"S01syslogd lost -O \$SOCK_DIR/messages, syslogd.conf binds /tmp again, S02klogd's syslog rule changed, or etc/sysctl.d/10-protected-tmp.conf lost a value"
+fi
 bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
 if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
 	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"

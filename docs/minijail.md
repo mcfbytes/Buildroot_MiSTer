@@ -110,10 +110,11 @@ exists.
 | | syslogd (`S01syslogd`) | klogd (`S02klogd`) |
 |---|---|---|
 | uid/gid | 8424 `syslog` | 8425 `klog` |
-| Capabilities | none | `CAP_SYSLOG`, to read the kernel log with `klogctl()`; the `syslog` syscall is let through the shared deny list for it |
+| Capabilities | none | `CAP_SYSLOG`, to read the kernel log with `klogctl()` |
+| Seccomp, beyond the shared list | `socket`/`socketpair`: `AF_UNIX` only | the same, and `syslog` only for actions 0, 1, 2, 7 and 8 (close, open, read, console on, console level: BusyBox's own calls), so it cannot read all of the buffer or clear it |
 | Namespaces | mount, PID, IPC, **network** | the same |
-| Writable | `/tmp` (noexec), `/run/log` | nothing |
-| Landlock | rx `/usr`, ro `/etc`, rw `/dev/null` and `/tmp`, full `/run/log` | rx `/usr`, ro `/etc` and `/run/log`, rw `/dev/null` |
+| Writable | `/run/log` (noexec) | nothing |
+| Landlock | rx `/usr`, ro `/etc`, rw `/dev/null`, full `/run/log` | rx `/usr`, ro `/etc` and `/run/log`, rw `/dev/null` |
 
 **The socket.** syslogd binds `/dev/log` after following symlinks, so the scripts make
 `/dev/log` on the host a link to `/run/log/log`, in a directory the `syslog` user owns
@@ -122,11 +123,17 @@ exists.
 which holds the seccomp policy and pidfile and must never be writable from the jail.
 bluetoothd's jail binds `/run/log` too, since its `/dev/log` is the same link.
 
-**The log files** stay where stock has them: `/var/log` is a link to `/tmp`, and
-`messages` rotates to `messages.0` there. The start re-owns both to `syslog` (with
-`chown -h`, and only regular files, since `/tmp` is shared), so a root syslogd's files from
-earlier in the boot remain writable. `/tmp` is bound noexec, and its other files (Main's
-`CORENAME`, `OSD_VISIBLE`, ...) are root's 0644, which the `syslog` user cannot change.
+**The log files** are `/run/log/messages` and `messages.0` (`syslogd -O`, created 0600
+under a 077 umask), and stock's paths, `/tmp/messages` and `/tmp/messages.0` (`/var/log`
+is a link to `/tmp`), are root-owned links to them. Reading `/var/log/messages` works as
+before; rotation renames inside `/run/log`, so the links stay valid. The jail has no `/tmp`
+at all. Before, it needed all of `/tmp` writable for two files, since Landlock grants
+directories, not names; a compromised syslogd could then create files under names a root
+process opens later (Main writes `/tmp/script` and has agetty run it). The start moves any
+regular `/tmp/messages{,.0}` a root syslogd left into `/run/log` (removing the destination
+first, so a link planted there is not followed) and re-owns them with `chown -h`. The root
+fallback writes through `-O /run/log/messages` too once the links exist, since its
+rotation would otherwise rename the links.
 
 **Network namespace.** `/dev/log` is a path, and a path socket works across network
 namespaces, so neither daemon needs the network. Remote logging (`syslogd -R`) would; it is
@@ -134,6 +141,27 @@ not configured, and `/etc/default/syslogd` is on the read-only root.
 
 Both fall back to the root start when the jail fails (`/media/fat/linux/syslogd.nojail`
 and `klogd.nojail` force it), logged at `syslog.err`.
+
+## Shared /tmp
+
+`/tmp` is shared by root and, since the daemons left root, by other users. The kernel's
+protections against planting files there were all off (kernel defaults);
+`/etc/sysctl.d/10-protected-tmp.conf` turns them on, at the values systemd-based
+distributions ship:
+
+| Sysctl | Value | Effect |
+|---|---|---|
+| `fs.protected_symlinks` | 1 | a link in a sticky world-writable directory is followed only by its owner, or when the directory's owner owns it |
+| `fs.protected_hardlinks` | 1 | no hard links to files the caller cannot read and write |
+| `fs.protected_regular` | 2 | `O_CREAT` does not open an existing file another user owns in a sticky world- or group-writable directory |
+| `fs.protected_fifos` | 2 | the same for FIFOs |
+
+Nothing on the image is affected: every file in `/tmp` on the rig, and every `/tmp` path in
+Main_MiSTer's source (`CORENAME`, `FILESELECT`, `script`, ...), is root's, and the checks
+only fire on another user's file. Measured on the rig: with the values set, root's
+`open("/tmp/x", "w")` on a file uid 8424 created fails `EACCES`. `/dev/shm` is 0777 without
+the sticky bit and is not covered. `/media/fat/linux/sysctl.conf` is applied after
+`sysctl.d/` and can change them back.
 
 ## Build options
 

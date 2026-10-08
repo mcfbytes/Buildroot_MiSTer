@@ -115,7 +115,7 @@ two ways that both cost data rather than convenience:
 
 The overlay file has the same name, and Buildroot copies overlays in `target-finalize`
 *after* every package has installed (`work/buildroot/Makefile:756`, `:816`), so ours is the
-one that lands. Same idiom as `S49ntp` and `S91smb`, both of which overlay a
+one that lands. Same idiom as `S91smb`, which overlays a
 package-installed script for a similar reason (`docs/init-parity.md`).
 
 ---

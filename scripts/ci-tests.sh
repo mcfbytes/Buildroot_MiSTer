@@ -1454,6 +1454,57 @@ else
 	fail "/var/lib/bluetooth ships in the image" "bluetoothd's mount point is missing on a read-only root"
 fi
 
+# -- bluetoothd runs jailed, never root (docs/bluetooth-parity.md §11). The
+# control script, its uid, the D-Bus policy that lets that uid own org.bluez,
+# and the udev rule that gives it /dev/uhid all have to land together.
+BT_INIT="usr/bin/bluetoothd"
+if ! tar_has "$BT_INIT"; then
+	fail "$BT_INIT runs the daemon in minijail0" "$BT_INIT not in rootfs.tar"
+else
+	bt_init_body=$(tar xOf "$ROOTFS_TAR" "./$BT_INIT" 2>/dev/null || true)
+	# shellcheck disable=SC2016 # matched literally in the script text
+	if printf '%s' "$bt_init_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
+		printf '%s' "$bt_init_body" | grep -qxF 'BT_UID=8423' &&
+		printf '%s' "$bt_init_body" | grep -qxF 'BT_CAPS=0x1400' &&
+		printf '%s' "$bt_init_body" | grep -qF 'refusing to run unjailed' &&
+		printf '%s' "$bt_init_body" | grep -qF -- '-S "$POLICY"' &&
+		printf '%s' "$bt_init_body" | grep -qF -- '--fs-path-rx /usr' &&
+		printf '%s' "$bt_init_body" | grep -qF "^Seccomp:"; then
+		pass "$BT_INIT runs bluetoothd in minijail0 as uid 8423 (NET_ADMIN+NET_BIND_SERVICE, seccomp, Landlock) and fails closed"
+	else
+		fail "$BT_INIT runs bluetoothd in minijail0 as uid 8423 (NET_ADMIN+NET_BIND_SERVICE, seccomp, Landlock) and fails closed" \
+			"MINIJAIL, BT_UID=8423, BT_CAPS=0x1400, -S \"\$POLICY\", --fs-path-rx /usr, the Seccomp self-check or the fail-closed branch is gone"
+	fi
+	# Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
+	if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew|hcireset)'; then
+		pass "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs"
+	else
+		fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
+			"the case arm is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
+	fi
+fi
+bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
+if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
+	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"
+else
+	fail "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)" \
+		"etc/passwd has '${bt_passwd:-no bluetooth line}'"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/dbus-1/system.d/bluetoothd-jail.conf 2>/dev/null |
+	grep -qF '<policy user="bluetooth">'; then
+	pass "D-Bus lets the bluetooth user own org.bluez (etc/dbus-1/system.d/bluetoothd-jail.conf)"
+else
+	fail "D-Bus lets the bluetooth user own org.bluez" \
+		"etc/dbus-1/system.d/bluetoothd-jail.conf missing or has no bluetooth policy -- the jailed daemon cannot get on the bus"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/udev/rules.d/62-bluetoothd-jail.rules 2>/dev/null |
+	grep -qF 'KERNEL=="uhid", GROUP="bluetooth"'; then
+	pass "udev gives /dev/uhid to the bluetooth group (BLE HID under the jail)"
+else
+	fail "udev gives /dev/uhid to the bluetooth group" \
+		"etc/udev/rules.d/62-bluetoothd-jail.rules missing or changed -- BLE pads cannot connect"
+fi
+
 # =============================================================================
 section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c)"
 # =============================================================================

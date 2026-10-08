@@ -1,0 +1,5 @@
+# The device nodes the jailed bluetoothd (uid 8423, no DAC override) opens:
+# uhid for BLE HID, rfkill, and Sony pads' hidraw for sixaxis cable pairing.
+KERNEL=="uhid", GROUP="bluetooth", MODE="0660"
+KERNEL=="rfkill", GROUP="bluetooth", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", GROUP="bluetooth", MODE="0660"

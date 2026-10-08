@@ -2,8 +2,10 @@
 
 `package/minijail` ships Google's [minijail](https://google.github.io/minijail/):
 `/usr/bin/minijail0` and `/usr/lib/libminijailpreload.so`. It is in
-the `mister-userspace` profile, so the DE10 image carries it. Its first users are the jailed
-`S92transmission` and mistarr, whose design is mistarr's `docs/NONROOT-PLAN.md`.
+the `mister-userspace` profile, so the DE10 image carries it. Its users are the jailed
+`S92transmission`, `/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11) and mistarr, whose
+design is mistarr's `docs/NONROOT-PLAN.md`. Their fixed uids are in
+`board/mister/de10nano/users.table`.
 
 ## Why minijail
 

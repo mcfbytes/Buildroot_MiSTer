@@ -92,11 +92,14 @@
 # =============================================================================
 # SYSVIPC: required by several MiSTer userland pieces and by Buildroot's
 # default init. TASK*/TASKSTATS/PROFILING/RELAY: stock-parity accounting.
+# IRQ_TIME_ACCOUNTING is NOT stock: it bills hard/softirq time as irq, not to
+# the interrupted task (docs/kernel-config-deltas.md D15).
 # IKCONFIG_PROC: /proc/config.gz — the only way to answer "what is actually in
 # the kernel on this board" from the board itself, which this project relies on
 # repeatedly (see docs/kernel-config-deltas.md).
 CONFIG_SYSVIPC=y
 CONFIG_HIGH_RES_TIMERS=y
+CONFIG_IRQ_TIME_ACCOUNTING=y
 CONFIG_TASKSTATS=y
 CONFIG_TASK_DELAY_ACCT=y
 CONFIG_TASK_XACCT=y

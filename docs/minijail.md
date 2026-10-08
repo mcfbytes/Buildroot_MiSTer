@@ -76,6 +76,24 @@ it, so `JAIL_PROBE` names a path inside the jail that the daemon's uid could
 write by its file modes but no Landlock rule grants; the start writes it from
 inside the jail and fails if the write succeeds.
 
+**When the jail fails.** Each script decides, by what losing the daemon costs:
+
+- **A daemon the user depends on falls back.** `bluetoothd` is how most people reach the
+  OSD; a jail that cannot be built, a probe that fails or a self-check that does not match
+  starts it with `jail_launch_unjailed`, as root and exactly as stock does, logs the reason
+  at `daemon.err` and prints `OK (UNJAILED: <reason>)`. A file on the card
+  (`/media/fat/linux/bluetooth.nojail`) does the same on purpose, for a jail that starts but
+  breaks a feature. Seccomp and Landlock requirements move with every upstream release, and
+  a controller that stops working is a worse outcome than a daemon running as stock does.
+- **An opt-in network service fails closed.** `S92transmission` listens on the network
+  only because the user created its directory; if its jail cannot be built it does not
+  start, and `ci-tests.sh` checks it never calls `jail_launch_unjailed`.
+
+For the same reason a jail asks only for limits that cannot break a working daemon:
+deny-list seccomp rules return an errno rather than kill, and the process ceiling is the
+pids cgroup with headroom, not `RLIMIT_NPROC` 1 (it counts threads, so a release that adds
+one would fail to start).
+
 **Umask.** `jail_init` sets `umask 022`: a root login's umask on this image is
 077, and the mount points the script and minijail create must be traversable
 by the jail's uid.

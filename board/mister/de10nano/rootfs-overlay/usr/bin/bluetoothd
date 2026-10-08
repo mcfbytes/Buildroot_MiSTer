@@ -8,6 +8,8 @@ DAEMON="bluetoothd"
 
 BTIMG=/media/fat/linux/bluetooth
 MNTPATH=/var/lib/bluetooth
+# Its presence starts the daemon unjailed, as stock does (docs/bluetooth-parity.md §11).
+NOJAIL=/media/fat/linux/bluetooth.nojail
 
 BLUETOOTHD_ARGS="-n -E -C"
 
@@ -18,7 +20,7 @@ BLUETOOTHD_ARGS="-n -E -C"
 . /usr/lib/mister/jail.sh
 JAIL_NAME=$DAEMON
 JAIL_EXEC=/usr/libexec/bluetooth/$DAEMON
-JAIL_PIDS_MAX=4
+JAIL_PIDS_MAX=8
 JAIL_PROBE=/tmp/.landlock-probe
 JAIL_STOP_WAIT=12
 JAIL_STOP_KILL=1
@@ -40,13 +42,14 @@ mount_storage() {
 	mkdir -p $MNTPATH
 	mountpoint -q $MNTPATH ||
 		mount -o sync,dirsync,nodiratime,noatime,nosuid,nodev,noexec $BTIMG $MNTPATH
-	if mountpoint -q $MNTPATH; then
+	if ! mountpoint -q $MNTPATH; then
+		logger -t bluetoothd "$BTIMG not mounted; pairings will not be saved"
+	elif [ -n "$JAIL_UID" ] && [ -n "$JAIL_GID" ]; then
 		# -h: a symlink the daemon planted is re-owned itself, never its target.
 		chown -hR "$JAIL_UID:$JAIL_GID" $MNTPATH
-	else
-		logger -t bluetoothd "$BTIMG not mounted; pairings will not be saved"
 	fi
 }
+
 
 # The jail's /var/run link and its own /run, with root-owned points for the read-only binds.
 prepare_root() {
@@ -70,15 +73,25 @@ start() {
 	mount_storage
 
 	printf 'Starting %s: ' "$DAEMON"
-	if ! prepare_root; then
-		echo "FAIL (could not prepare $JAIL_RUN_DIR)"
-		return 1
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $JAIL_RUN_DIR"
+	elif jail_prepare && jail_launch; then
+		echo "OK"
+		return 0
 	fi
-	if ! jail_prepare || ! jail_launch; then
-		echo "FAIL ($JAIL_ERR)"
-		return 1
+	# Controllers matter more than the jail: any failure costs the jail, never the daemon.
+	logger -p daemon.err -t bluetoothd "starting UNJAILED, as root: $JAIL_ERR"
+	# shellcheck disable=SC2086 # we need the word splitting
+	if jail_launch_unjailed "$JAIL_EXEC" $BLUETOOTHD_ARGS; then
+		echo "OK (UNJAILED: $JAIL_ERR)"
+		return 0
 	fi
-	echo "OK"
+	echo "FAIL ($JAIL_ERR; the unjailed start failed too)"
+	return 1
 }
 
 stop() {

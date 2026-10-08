@@ -593,16 +593,23 @@ adds only what is particular to Bluetooth.
 | Capabilities | `CAP_NET_ADMIN` + `CAP_NET_BIND_SERVICE` (`c = 0x1400`, ambient) | BlueZ 5.86's own `bluetooth.service` bounding set. NET_ADMIN opens the mgmt control channel and adds kernel HIDP connections; NET_BIND_SERVICE binds L2CAP PSMs below 0x1001 (SDP, HID control/interrupt) |
 | No `CAP_DAC_OVERRIDE` | | The daemon needs `/dev/uhid` and Sony `hidraw` nodes, which appear on hotplug, so the jail binds the host `/dev`. With DAC override that would include `/dev/mmcblk0`. Without it, the daemon opens only what its group is given |
 | Seccomp | the shared deny list (mount, ptrace, bpf, io_uring, module and kexec calls, ...), plus `socket` limited to `AF_UNIX`, `AF_BLUETOOTH` and `AF_NETLINK`/`NETLINK_KOBJECT_UEVENT`, `socketpair` to `AF_UNIX`; anything else gets `EAFNOSUPPORT` | Those are the only families 5.86 opens with our plugins (mgmt/L2CAP/SDP, D-Bus and syslog, libudev's monitor). `CAP_NET_ADMIN` applies to the host network, so without the filter a compromised daemon could open rtnetlink or nfnetlink and rewrite routes or flush the nftables ruleset. `AF_INET` is used only by the BNEP code, and `CONFIG_BT_BNEP` is off |
-| rlimits | `RLIMIT_NPROC` 1, `RLIMIT_RTPRIO` 0, `RLIMIT_CORE` 0 | Upstream's `LimitNPROC=1` and `RestrictRealtime`; bluetoothd never forks |
-| pids cgroup | `/sys/fs/cgroup/bluetoothd`, `pids.max` 4 | The launching shell, `minijail0` and the daemon |
+| rlimits | `RLIMIT_RTPRIO` 0, `RLIMIT_CORE` 0 | Upstream's `RestrictRealtime`. Upstream's `LimitNPROC=1` is left out on purpose: it counts threads, so a bluez that adds one would fail to start |
+| pids cgroup | `/sys/fs/cgroup/bluetoothd`, `pids.max` 8 | The launching shell, `minijail0` and the daemon, with headroom for threads |
 | Namespaces | mount, PID (the daemon is init), IPC | **No network namespace**: `AF_BLUETOOTH` sockets exist only in the initial one. **No UTS namespace**: the hostname plugin follows the host's name (`/proc/sys/kernel/hostname`; hostname1 is not running) |
 
 After the start the helper reads the daemon's `/proc/<pid>/status` and
 `cgroup` back (all four uids and gids, no other groups, `NoNewPrivs`,
-`Seccomp: 2`, the cgroup, `CapEff 0x1400`) and kills it if any is wrong. It
-refuses to start the daemon at all without `minijail0`, the config file, a
-pids controller or working Landlock, so a broken jail means no Bluetooth
-rather than a root bluetoothd.
+`Seccomp: 2`, the cgroup, `CapEff 0x1400`) and kills it if any is wrong.
+
+**A failed jail never costs the controllers.** If `minijail0` or the config
+file is missing, the pids controller is absent, Landlock is not enforced, the
+jail cannot be built or the self-check fails, the script starts bluetoothd as
+root, exactly as stock does, logs `starting UNJAILED, as root: <reason>` at
+`daemon.err` and prints `OK (UNJAILED: <reason>)`. `stop`, `renew` and the
+rest manage it the same way. Creating `/media/fat/linux/bluetooth.nojail`
+does this on purpose, for a jail that starts but breaks some feature; delete
+the file and restart to go back. The policy behind this (and why transmission
+is the opposite) is in `docs/minijail.md`, "When the jail fails".
 
 ### Mount view
 
@@ -669,7 +676,7 @@ jail, which is `/run/bluetoothd/run/sdp` on the host; the script links
 |---|---|---|---|---|
 | Runs as | root, bounding set | `bluetooth` user, minijail0 | root (upstream's unit; plain root on OpenRC) | uid 8423 |
 | Capabilities | NET_ADMIN, NET_BIND_SERVICE (NET_RAW added after 5.86) | SETPCAP, NET_ADMIN, NET_BIND_SERVICE, NET_RAW | upstream's | NET_ADMIN, NET_BIND_SERVICE |
-| no_new_privs, LimitNPROC=1, RestrictRealtime | yes | `-n` only | upstream's | all three |
+| no_new_privs, LimitNPROC=1, RestrictRealtime | yes | `-n` only | upstream's | no_new_privs and RLIMIT_RTPRIO 0; pids cgroup instead of NPROC |
 | Filesystem | ProtectSystem=strict, ProtectHome, PrivateTmp | full host view | upstream's | allow-list root, Landlock |
 | MemoryDenyWriteExecute | yes | no | upstream's | no (minijail cannot express it short of seccomp argument filters) |
 | Seccomp / socket families | none | none | none | deny list + family filter |
@@ -688,7 +695,7 @@ notice the feature failing, only the next bump's review would.
 - **[VERIFIED, rig, 2026-10-08]** 7.2.9 kernel, master `002e31e` image with the
   new files staged over it. Starts from a 077 login; `/proc` shows uid/gid
   8423, `CapEff`/`CapBnd 0x1400`, `NoNewPrivs 1`, `Seccomp 2`,
-  `0::/bluetoothd`, `Max processes 1`, `Max realtime priority 0`, and no fd
+  `0::/bluetoothd`, `Max realtime priority 0`, and no fd
   of the caller's. Adapter `MiSTer`, powered, over D-Bus; `btctl pair`
   registers its agent and discovery finds devices; `sdptool browse local`
   answers through `/run/sdp`; `reload` (a restart), `restart` and `renew` (on
@@ -699,7 +706,7 @@ notice the feature failing, only the next bump's review would.
 - **[VERIFIED, rig]** The paired DualSense reconnected through the jailed
   daemon over kernel HIDP (`playstation 0005:054C:0CE6`, three input nodes),
   both on the first version of this jail and again on the current one (helper,
-  socket filter, `RLIMIT_NPROC` 1).
+  socket filter).
 - **[VERIFIED, rig]** From inside the jail: `/dev/uhid` opens read-write;
   `/dev/mmcblk0`, `/dev/mem`, `/etc/shadow`, `/media/fat` and writes to
   `/sys`, `/dev`, `/dev/shm`, `/run/dbus` and `/tmp` are refused; a binary

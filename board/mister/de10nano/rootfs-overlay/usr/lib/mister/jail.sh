@@ -99,15 +99,24 @@ jail_check_landlock() {
 	jail_exec -- /bin/sh -c '! printf "" >"$1"' sh "$JAIL_PROBE" 2>/dev/null
 }
 
+# minijail0 and a config file with numeric ids; on failure JAIL_ERR says why.
+jail_ready() {
+	if [ ! -x "$MINIJAIL" ] || [ ! -f "$JAIL_CONF" ]; then
+		JAIL_ERR="$MINIJAIL or $JAIL_CONF missing"
+	elif [ -z "$JAIL_UID" ] || [ -z "$JAIL_GID" ] || [ -z "$JAIL_CAPS" ]; then
+		JAIL_ERR="$JAIL_CONF has no numeric u, g and c"
+	else
+		return 0
+	fi
+	return 1
+}
+
 # Root, policy, cgroup and the Landlock probe, after the caller's jail_prepare_root
 # additions. On failure JAIL_ERR says why.
 jail_prepare() {
-	if [ ! -x "$MINIJAIL" ] || [ ! -f "$JAIL_CONF" ]; then
-		JAIL_ERR="$MINIJAIL or $JAIL_CONF missing; refusing to run unjailed"
-	elif [ -z "$JAIL_UID" ] || [ -z "$JAIL_GID" ] || [ -z "$JAIL_CAPS" ]; then
-		JAIL_ERR="$JAIL_CONF has no numeric u, g and c"
+	jail_ready || return 1
 	# /run is per boot and minijail0 only changes with the image, so once per boot is enough.
-	elif [ ! -s "$JAIL_POLICY" ] && ! jail_write_policy; then
+	if [ ! -s "$JAIL_POLICY" ] && ! jail_write_policy; then
 		rm -f "$JAIL_POLICY"
 		JAIL_ERR="could not build the seccomp policy from $MINIJAIL -H"
 	elif ! jail_prepare_cgroup; then
@@ -189,6 +198,19 @@ jail_launch() {
 		JAIL_ERR="jail self-check: uid/gid, groups, NoNewPrivs, seccomp, cgroup or CapEff not as configured"
 		return 1
 	fi
+}
+
+# Starts "$@" as root with no jail, recorded in the pidfile so jail_running and
+# jail_stop manage it the same way. For daemons whose loss costs more than their jail.
+jail_launch_unjailed() {
+	rm -f "$JAIL_PIDFILE" "$JAIL_PIDFILE.new"
+	mkdir -p "$JAIL_RUN_DIR" && chmod 0700 "$JAIL_RUN_DIR" || return 1
+	exe=$1
+	shift
+	start-stop-daemon -S -q -b -m -p "$JAIL_PIDFILE.new" -x "$exe" -- "$@" 9>&- || return 1
+	read -r pid <"$JAIL_PIDFILE.new" && rm -f "$JAIL_PIDFILE.new" || return 1
+	echo "$pid $(jail_starttime "$pid")" >"$JAIL_PIDFILE"
+	jail_running
 }
 
 # SIGTERM, then up to JAIL_STOP_WAIT seconds; SIGCONT throughout, so a frozen

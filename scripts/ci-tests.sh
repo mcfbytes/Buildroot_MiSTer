@@ -1465,15 +1465,14 @@ jail_lib_body=$(tar xOf "$ROOTFS_TAR" "./$JAIL_LIB" 2>/dev/null || true)
 bt_conf_body=$(tar xOf "$ROOTFS_TAR" "./$BT_CONF" 2>/dev/null || true)
 # shellcheck disable=SC2016 # matched literally in the script text
 if printf '%s' "$jail_lib_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
-	printf '%s' "$jail_lib_body" | grep -qF 'refusing to run unjailed' &&
 	printf '%s' "$jail_lib_body" | grep -qF -- '-T static -n --ambient' &&
 	printf '%s' "$jail_lib_body" | grep -qF -- '-S "$JAIL_POLICY"' &&
 	printf '%s' "$jail_lib_body" | grep -qF "^Seccomp:" &&
 	printf '%s' "$jail_lib_body" | grep -qF 'pids.max'; then
-	pass "$JAIL_LIB: no_new_privs, seccomp, pids cgroup, the /proc self-check, and no unjailed fallback"
+	pass "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check"
 else
-	fail "$JAIL_LIB: no_new_privs, seccomp, pids cgroup, the /proc self-check, and no unjailed fallback" \
-		"$JAIL_LIB missing, or MINIJAIL, the fail-closed branch, '-T static -n --ambient', -S \"\$JAIL_POLICY\", pids.max or the Seccomp self-check is gone"
+	fail "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check" \
+		"$JAIL_LIB missing, or MINIJAIL, '-T static -n --ambient', -S \"\$JAIL_POLICY\", pids.max or the Seccomp self-check is gone"
 fi
 if printf '%s' "$bt_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
 	printf '%s' "$bt_init_body" | grep -qF 'socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15' &&
@@ -1488,6 +1487,16 @@ else
 fi
 # jail_lock serialises the verbs with util-linux's flock (BusyBox's is off).
 require_present "usr/bin/flock" "flock (util-linux; $JAIL_LIB's jail_lock)"
+# Controllers matter more than the jail: a jail failure must start bluetoothd unjailed
+# (docs/minijail.md, "When the jail fails"), loudly.
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$bt_init_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC"' &&
+	printf '%s' "$bt_init_body" | grep -qF 'logger -p daemon.err -t bluetoothd "starting UNJAILED'; then
+	pass "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails"
+else
+	fail "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails" \
+		"the fallback or its syslog line is gone -- a jail failure would leave users with no controllers"
+fi
 # Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
 if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew)' &&
 	printf '%s' "$bt_init_body" | grep -qE '^[[:space:]]+hcireset\)'; then

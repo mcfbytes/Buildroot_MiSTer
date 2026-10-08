@@ -1281,7 +1281,12 @@ NB: configure-time
 flag — changing it requires `make openssh-dirclean`, or the stale stamp ships the old sshd.
 See `docs/ssh-ftp-parity.md`.
 
-`BR2_PACKAGE_PROFTPD=y`.
+`BR2_PACKAGE_PROFTPD=y`; `_MOD_CAP=y` (since 2026-10-08, selects libcap, which the image
+already has) — builds `mod_cap`, used only when the card's `security.conf` says
+`ftp_drop_caps=yes`: the session keeps CHOWN, DAC_OVERRIDE, FOWNER and NET_BIND_SERVICE.
+**Once compiled in, mod_cap is on by default**, so `proftpd.conf` sets
+`CapabilitiesEngine off` for every other mode to stay stock. Configure-time flag: changing
+it needs `make proftpd-dirclean`. See `docs/ssh-ftp-parity.md` §1.5.
 
 `BR2_PACKAGE_WPA_SUPPLICANT=y`; `_NL80211=y` (default y already, listed for
 clarity); `_WEXT=y` (stock's interfaces file passes "-D nl80211,wext" — both

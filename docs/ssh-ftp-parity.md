@@ -314,7 +314,7 @@ socket forwarding are refused. A logged-in root can still reconfigure the box, s
 stops casual pivoting, not an attacker who already has root.
 
 **Not done here.** A password that survives an update (ADR 0031 Tier 1 item 2, Q3) is
-still open. FTP modes beyond `stock` and `off` come with the ProFTPD hardening change.
+still open. The FTP modes are in §1.5.
 
 **Verified (2026-10-08):**
 
@@ -333,6 +333,76 @@ still open. FTP modes beyond `stock` and `off` come with the ProFTPD hardening c
   `-R` was refused, `127.0.0.1:9091` worked.
 - **A rig boot of a built image is still owed.**
 
+
+### 1.5 FTP modes: `ftp`, `ftp_allow_any`, `ftp_drop_caps` (ADR 0031, second 2026-10-08 amendment)
+
+**Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), second
+amendment of 2026-10-08, which records the owner's answers. `S50proftpd` reads three keys
+from the card's `security.conf` (§1.4) and passes `-D` defines to the one shipped
+`proftpd.conf`; with none of them set, the config is stock.
+
+| Key = value | Define | Effect |
+|---|---|---|
+| `ftp=off` | (not started) | Port 21 closed. `S50proftpd` prints `ProFTPD: not started`. A new SD card ships this. |
+| `ftp=stock` (or no key) | none | Stock: `User root`, `Umask 000`, root and anonymous login, whole filesystem. Two invisible additions: `ServerIdent on "MiSTer FTP"`, `MaxLoginAttempts 3` (the default, made explicit). `CapabilitiesEngine off` unless `ftp_drop_caps=yes`. |
+| `ftp=lan` | `MISTER_FTP_LAN` | Root with the system password. No `<Anonymous>` block. `Umask 022`, `PassivePorts 50000 50099`, `TimeoutLogin 60`, `MaxClientsPerHost 10`, `AllowStoreRestart on`, `WtmpLog off`, `<Limit SITE_CHMOD> DenyAll`. Whole filesystem, as stock (no chroot, no read-deny). |
+| `ftp=lan`, `ftp_allow_any` not `yes` | `MISTER_FTP_LAN_ONLY` | `<Limit LOGIN>`: allow 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16; deny the rest. A refused address is disconnected before the banner. |
+| `ftp_drop_caps=yes` | `MISTER_FTP_DROP_CAPS` | Started as `minijail0 -c 0x4cb -B 0x2c -- proftpd …`; `User nobody`/`Group nobody`; `CapabilitiesEngine on`, `CapabilitiesSet +CAP_DAC_OVERRIDE +CAP_FOWNER -CAP_SETUID`. Works with `stock` and `lan`. |
+
+**The capability set, and why each one is there.** Measured on the rig with a throwaway
+instance (below), `/proc/<pid>/status`:
+
+| Process | Uid (r e s f) | CapEff | CapBnd | NoNewPrivs |
+|---|---|---|---|---|
+| Listener, and a connection before login | `0 65534 0 65534` | `0` | `0x4cb` | 1 |
+| Session after root login | `0 0 0 0` | `0x40b` (CHOWN, DAC_OVERRIDE, FOWNER, NET_BIND_SERVICE) | `0x4cb` | 1 |
+| Without `ftp_drop_caps` (stock) | `0 0 0 0` | `0x1ffffffffff` (all) | all | 0 |
+
+- **NET_BIND_SERVICE:** active mode. The data connection comes from the control port
+  minus one (20 on the real server); checked with the test server on port 991, so its
+  active data port 990 needed the capability too.
+- **DAC_OVERRIDE, FOWNER:** a USB stick with a Unix filesystem has files owned by other
+  uids. Without them, a root session could not create, overwrite, delete or `MFMT`
+  files in a directory owned by uid 1000 (`550 Permission denied`); with them it could,
+  as on stock. The exFAT card itself needs neither (every file is owned by uid 0).
+- **CHOWN:** mod_cap's default; kept.
+- **SETUID, SETGID:** only in the bounding set, for the listener's switches between root
+  and `nobody`; the session drops them (`-CAP_SETUID`), and nothing broke without them,
+  because a root session's uid never changes.
+- **`-B 0x2c`:** minijail by default also locks `KEEP_CAPS` and sets `NO_SETUID_FIXUP`.
+  The first made every login log `mod_cap: prctl(PR_SET_KEEPCAPS) failed`; the second
+  left the `nobody` listener with effective capabilities. Skipping those two bits keeps
+  `SECBIT_NOROOT` (and its lock), which is the one that stops an exec from regaining
+  root's capabilities.
+- **`CapabilitiesSet` is load-bearing.** Without it, mod_cap adds CAP_AUDIT_WRITE (because
+  `mod_auth_pam` is built in), that capability is outside the bounding set, `cap_set_proc`
+  fails, and the session silently keeps every capability it had (measured: `0x4cf`). CI
+  asserts the exact line.
+
+**What it does not buy.** The session is still uid 0 and owns everything on the card;
+`/media/fat/MiSTer` runs as root at the next start. The credential (root's password, in
+clear text) and the network scope are the real boundaries. The cap drop takes away module
+loading, raw device access, mount, network administration and the like from a hijacked
+session and from anything it executes.
+
+**Verified on the rig (2026-10-08)** with proftpd 1.3.9d cross-compiled with `mod_cap`
+from the build tree, the shipped `proftpd.conf` with the port changed to 991 and the passive
+range to 50100-50199, the shipped `S50proftpd` with paths pointed at `/run/ftptest`, and a
+test `security.conf`. The owner's proftpd on port 21 and sshd were not touched.
+
+- `ftp=stock`: root:`1` and anonymous log in; active and passive transfers; session has all
+  capabilities. 128 MiB upload 23.5 MiB/s, download 59.7 MiB/s (from a PC on the LAN).
+- `ftp=stock` + `ftp_drop_caps=yes`: the capability table above; active and passive
+  transfers; four wrong passwords on one connection: three `530`, then the server closed
+  it.
+- `ftp=lan` + `ftp_drop_caps=yes`: 128 MiB upload 28.8 MiB/s, download 59.2 MiB/s,
+  SHA-256 matched; anonymous `530`; `SITE CHMOD` `550`; active (from the rig's loopback,
+  since the PC's WSL network takes no inbound data connections) and passive transfers;
+  `PASV` ports 50154, 50118, 50198. From a second address on `lo` (`100.64.0.1`, not in the
+  list) the connection was closed before the banner; with `ftp_allow_any=yes` it logged in.
+- `ftp=lan` without `ftp_drop_caps`: 128 MiB upload 24.4 MiB/s.
+- Everything under `/run/ftptest`, `/media/fat/ftptest-tmp`, the test tmpfs and the `lo`
+  address was removed afterwards.
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
 
@@ -421,8 +491,10 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 
 **Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
 and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
-No changes made; with `ftp=off` in the card's `security.conf` (§1.4) proftpd is simply
-not started. Notable existing content, confirmed intentional/stock-matching:
+Since 2026-10-08 the file carries the `-D` blocks of §1.5; with no define set (no
+`security.conf`, or `ftp=stock` and `ftp_drop_caps=no`) the active directives are stock's
+plus `ServerIdent on "MiSTer FTP"`, `MaxLoginAttempts 3` and `CapabilitiesEngine off`.
+Notable stock content:
 
 - `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
   allowed, same as stock.
@@ -433,12 +505,11 @@ not started. Notable existing content, confirmed intentional/stock-matching:
   reachable; unchanged from stock either way).
 - No PAM-related directives (`AuthPAMConfig`, `AuthPAM off`, etc.) — see §3.2.
 
-Module set also matches stock: our defconfig sets only
-`BR2_PACKAGE_PROFTPD=y`, no `BR2_PACKAGE_PROFTPD_MOD_*` suboption (confirmed:
-`grep PROFTPD configs/mister_de10nano_defconfig` → exactly one line). Stock's
+Module set matches stock plus `mod_cap` (`BR2_PACKAGE_PROFTPD_MOD_CAP`, selected by the
+`mister-userspace` profile since 2026-10-08, §1.5), which links `libcap.so.2`. Stock's
 own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/20250402/binaries-needed-full.txt`:
 `libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0` — no libssl, no sqlite, no
-pcre2) is consistent with the same bare/no-submodule build.
+pcre2) is consistent with the same bare build.
 
 ### IPv6 (issue #188)
 

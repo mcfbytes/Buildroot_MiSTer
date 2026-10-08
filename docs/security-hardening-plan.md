@@ -81,7 +81,12 @@ exactly like host keys.
 - `check-linux-img.sh` still asserts no private key material in the image.
 - FAQ: replace "log in and run `passwd`" with `mister-passwd` and say why.
 
-### S3 — Remove anonymous FTP — Size XS — Depends: none
+### S3 — Remove anonymous FTP — Size XS — Depends: none — **DONE 2026-10-08 in `ftp=lan` and `ftp=off`**
+
+As done (ADR 0031, second 2026-10-08 amendment; `ssh-ftp-parity.md` §1.5): the block is
+inside `<IfDefine !MISTER_FTP_LAN>`, so `ftp=lan` has no anonymous login and `ftp=off`
+has no server; `ftp=stock` (and a card with no `security.conf`) keeps it, as stock. CI
+checks the active directives per mode. The original task text follows.
 
 Delete the `<Anonymous ~ftp>` block from `proftpd.conf`. Leave the `ftp` system user
 (Buildroot creates it; removing it is a different diff with no benefit).
@@ -89,7 +94,13 @@ Delete the `<Anonymous ~ftp>` block from `proftpd.conf`. Leave the `ftp` system 
 **Done when:** `curl ftp://anonymous:x@rig/` returns `530`; CI asserts the shipped
 `proftpd.conf` contains no `<Anonymous`.
 
-### S4 — Chroot FTP to `/media` — Size XS — Depends: S3
+### S4 — Chroot FTP to `/media` — Size XS — Depends: S3 — **DECLINED 2026-10-08**
+
+The owner: write access to the card is root at the next start (`MiSTer`,
+`user-startup.sh`), so a chroot keeps out nothing that matters; FTP sees the whole
+filesystem in every mode. A path-preserving variant (`DefaultRoot /run/ftproot` over an
+`rbind` of `/media`) was tested under qemu and works, if it is ever wanted. The original
+task text follows.
 
 `DefaultRoot /media`. Verify that `/media/fat` and `/media/usb0` are both reachable and
 writable over FTP as root, and that `/etc` is not.

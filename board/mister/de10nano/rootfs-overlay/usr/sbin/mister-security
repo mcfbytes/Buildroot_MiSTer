@@ -27,8 +27,8 @@ readonly DIALOG="/usr/bin/dialog"
 readonly PROMPT_TIMEOUT=120
 
 # The two presets. Hardened is what a fresh SD card ships.
-readonly PRESET_HARDENED="ssh_password=no ssh_forwarding=limited ftp=off"
-readonly PRESET_STOCK="ssh_password=yes ssh_forwarding=stock ftp=stock"
+readonly PRESET_HARDENED="ssh_password=no ssh_forwarding=limited ftp=off ftp_drop_caps=yes"
+readonly PRESET_STOCK="ssh_password=yes ssh_forwarding=stock ftp=stock ftp_drop_caps=no"
 
 say()  { echo "$*"; }
 warn() { echo "$*" >&2; }
@@ -229,6 +229,9 @@ Hardened:
 Stock:
   * SSH and FTP accept root with the root password.
   * FTP sends that password unencrypted.
+
+FTP can also be set to "lan": root with the password, from
+home-network addresses only, no anonymous login.
 
 The console and the Scripts menu work as always.
 EOF

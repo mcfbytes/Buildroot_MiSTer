@@ -196,6 +196,7 @@ config BR2_PACKAGE_MISTER_USERSPACE
 	# --- daemons / user-facing binaries (§5.19, docs/ssh-ftp-parity.md, docs/wifi-parity.md) ---
 	select BR2_PACKAGE_OPENSSH
 	select BR2_PACKAGE_PROFTPD
+	select BR2_PACKAGE_PROFTPD_MOD_CAP
 	select BR2_PACKAGE_WPA_SUPPLICANT
 	select BR2_PACKAGE_WPA_SUPPLICANT_NL80211
 	select BR2_PACKAGE_WPA_SUPPLICANT_WEXT

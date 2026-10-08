@@ -2020,13 +2020,13 @@ else
 	sec_get() { # <conf file> -- prints key=value for every key
 		# shellcheck disable=SC2016 # expanded by the target shell
 		MISTER_SECURITY_CONF="$1" qemu_target "$TARGET/bin/busybox" sh -c \
-			'. "$0"; for k in ssh_password ssh_forwarding ftp; do printf "%s=%s " "$k" "$(security_get "$k" 2>/dev/null)"; done' \
+			'. "$0"; for k in ssh_password ssh_forwarding ftp ftp_allow_any ftp_drop_caps; do printf "%s=%s " "$k" "$(security_get "$k" 2>/dev/null)"; done' \
 			"$WORKDIR/security.sh"
 	}
 	printf 'ssh_password = NO # comment\r\nftp=bogus\n' > "$WORKDIR/sec-odd.conf"
-	for spec in "/nonexistent|ssh_password=yes ssh_forwarding=stock ftp=stock " \
-		"$SEC_CARD|ssh_password=no ssh_forwarding=limited ftp=off " \
-		"$WORKDIR/sec-odd.conf|ssh_password=no ssh_forwarding=stock ftp=stock "; do
+	for spec in "/nonexistent|ssh_password=yes ssh_forwarding=stock ftp=stock ftp_allow_any=no ftp_drop_caps=no " \
+		"$SEC_CARD|ssh_password=no ssh_forwarding=limited ftp=off ftp_allow_any=no ftp_drop_caps=yes " \
+		"$WORKDIR/sec-odd.conf|ssh_password=no ssh_forwarding=stock ftp=stock ftp_allow_any=no ftp_drop_caps=no "; do
 		got=$(sec_get "${spec%%|*}")
 		if [ "$got" = "${spec#*|}" ]; then
 			pass "parser: ${spec%%|*} -> $got"
@@ -2068,6 +2068,91 @@ else
 	else
 		fail "sshd -T hardened is key-only, forwarding limited" "got:$got_hard"
 	fi
+fi
+
+section "ADR 0031 — proftpd per security.conf mode (ftp, ftp_allow_any, ftp_drop_caps)"
+# =============================================================================
+# S50proftpd turns the card's keys into -D defines; ftp_conf_for prints the
+# directives proftpd.conf leaves active for a define set (docs/ssh-ftp-parity.md §1.5).
+
+ftp_conf="$WORKDIR/proftpd.conf"
+tar xOf "$ROOTFS_TAR" ./etc/proftpd.conf > "$ftp_conf" 2>/dev/null
+ftp_conf_for() { # "<define> ..." -- active lines, whitespace squeezed
+	awk -v defs=" $* " '
+		/^[[:space:]]*<IfDefine[[:space:]]/ {
+			d = $0; sub(/^[[:space:]]*<IfDefine[[:space:]]+/, "", d); sub(/>.*/, "", d)
+			neg = sub(/^!/, "", d); on = (index(defs, " " d " ") > 0); if (neg) on = !on
+			stack[++n] = on; next
+		}
+		/^[[:space:]]*<\/IfDefine>/ { n--; next }
+		{ for (i = 1; i <= n; i++) if (!stack[i]) next; print }
+	' "$ftp_conf" | sed 's/#.*//; s/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//' | grep -v '^$'
+}
+ftp_mode_check() { # <label> <defines> <want|!unwanted>...
+	local label=$1 defs=$2 w active bad=""
+	shift 2
+	active=$(ftp_conf_for "$defs")
+	for w in "$@"; do
+		case "$w" in
+		!*) printf '%s\n' "$active" | grep -qxF -- "${w#!}" && bad="$bad [has: ${w#!}]" ;;
+		*) printf '%s\n' "$active" | grep -qxF -- "$w" || bad="$bad [lacks: $w]" ;;
+		esac
+	done
+	if [ -z "$bad" ]; then
+		pass "proftpd.conf, $label"
+	else
+		fail "proftpd.conf, $label" "$bad"
+	fi
+}
+if [ ! -s "$ftp_conf" ]; then
+	fail "proftpd.conf present" "etc/proftpd.conf not in rootfs.tar"
+else
+	ftp_mode_check "ftp=stock (no defines) is stock" "" \
+		"User root" "Umask 000" "RootLogin on" "<Anonymous ~ftp>" "CapabilitiesEngine off" \
+		"!PassivePorts 50000 50099" "!Deny from all" "!CapabilitiesEngine on"
+	ftp_mode_check "ftp=lan" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY" \
+		"RootLogin on" "Umask 022" "PassivePorts 50000 50099" "MaxLoginAttempts 3" \
+		"<Limit SITE_CHMOD>" "<Limit LOGIN>" \
+		"Allow from 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16" "Deny from all" \
+		"!<Anonymous ~ftp>" "!Umask 000"
+	ftp_mode_check "ftp=lan + ftp_allow_any=yes" "MISTER_FTP_LAN" "Umask 022" "!Deny from all" "!<Anonymous ~ftp>"
+	ftp_mode_check "ftp_drop_caps=yes" "MISTER_FTP_DROP_CAPS" \
+		"CapabilitiesEngine on" "CapabilitiesSet +CAP_DAC_OVERRIDE +CAP_FOWNER -CAP_SETUID" \
+		"User nobody" "!User root" "!CapabilitiesEngine off"
+fi
+
+s50ftp="$WORKDIR/S50proftpd"
+tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd > "$s50ftp" 2>/dev/null
+# shellcheck disable=SC2016 # literal init-script text
+for want in '-D MISTER_FTP_LAN' '-D MISTER_FTP_LAN_ONLY' '-D MISTER_FTP_DROP_CAPS' \
+	'security_get ftp_allow_any' 'security_get ftp_drop_caps' \
+	'/usr/bin/minijail0 -c "$FTP_CAPS" -B 0x2c --' 'FTP_CAPS=0x4cb'; do
+	if grep -qF -- "$want" "$s50ftp"; then
+		pass "S50proftpd: $want"
+	else
+		fail "S50proftpd: $want" "missing -- the card's ftp keys would not take effect as documented"
+	fi
+done
+require_present "usr/bin/minijail0" "minijail0 (ftp_drop_caps)"
+
+# The target's own proftpd: mod_cap built in, and every mode's config parses.
+if [ -z "$QEMU_ARM" ] || [ ! -x "$TARGET/usr/sbin/proftpd" ] || [ ! -s "$ftp_conf" ]; then
+	skip "proftpd -l / -t per mode" "qemu-arm, target proftpd or proftpd.conf not available"
+else
+	if qemu_target "$TARGET/usr/sbin/proftpd" -l 2>&1 | grep -qx '[[:space:]]*mod_cap.c'; then
+		pass "proftpd has mod_cap.c (BR2_PACKAGE_PROFTPD_MOD_CAP)"
+	else
+		fail "proftpd has mod_cap.c (BR2_PACKAGE_PROFTPD_MOD_CAP)" "ftp_drop_caps=yes would drop nothing"
+	fi
+	for defs in "" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY MISTER_FTP_DROP_CAPS" "MISTER_FTP_DROP_CAPS"; do
+		set --
+		for d in $defs; do set -- "$@" -D "$d"; done
+		if out=$(qemu_target "$TARGET/usr/sbin/proftpd" -t -c "$ftp_conf" "$@" 2>&1); then
+			pass "proftpd -t ${defs:-(stock)}"
+		else
+			fail "proftpd -t ${defs:-(stock)}" "$(printf '%s' "$out" | tail -n 2)"
+		fi
+	done
 fi
 
 # =============================================================================

@@ -2,7 +2,8 @@
 
 **Status:** Provisionally accepted (2026-10-04, @mcfbytes; proposed 2026-09-11). Tier 1
 items 5 and 6 and the amendments below are implemented; the 2026-10-08 amendment answers
-Q1 ("gate it") and does Tier 1 items 1 and 7 in a changed form. The other Tier 1 items,
+Q1 ("gate it") with a card state file (absent is stock, a new SD card is hardened) and
+does Tier 1 items 1 and 7 in a changed form. The other Tier 1 items,
 Tier 2, Q2 and Q3 are paused, to be picked up later under this acceptance; each still
 needs its rig check before it is claimed. The plan that acts on it is
 [`docs/security-hardening-plan.md`](../security-hardening-plan.md).
@@ -184,8 +185,8 @@ still RFC1918; that is what the marker is for.
 
 ## Open questions for the owner
 
-- **Q1 — the one visible break. ANSWERED 2026-10-08: gate it**, by a card switch rather
-  than by comparing hashes; see the amendment of that date. The original question follows.
+- **Q1 — the one visible break. ANSWERED 2026-10-08: gate it** on new SD cards only, by a
+  card state file rather than by comparing hashes; see the amendment of that date. The original question follows.
   With Tier 1 only, a fresh card still accepts
   root:`1` over FTP and SSH, because that is what a first-time user expects. The
   alternative is to also gate *password* logins on the password having been changed from
@@ -425,80 +426,96 @@ kernel retired, read "both kernels" in the Verification section and in the plan 
 
 ---
 
-## Amendment, 2026-10-08 — remote root password login is opt-in (Q1 answered; Tier 1 items 1 and 7)
+## Amendment, 2026-10-08 — one card state file; absent is stock, a new SD card is hardened (Q1 answered; Tier 1 items 1 and 7; Tier 2's marker, generalised)
 
 **Status of this amendment:** *implemented* (branch `feat/root-login-opt-in`). Verified on
 the image's own userland under qemu-arm and with throwaway `sshd`/`proftpd` instances on
 the rig (details in `docs/ssh-ftp-parity.md` §1.4). **A rig boot of a built image is
 still owed.**
 
-**The owner's answer to Q1** (2026-10-08): "make the default wide-open configuration (root
+**The owner's answers** (2026-10-08). Q1: "make the default wide-open configuration (root
 login with password `1`) opt-in via script. root can default to ssh only auth or as you see
-fit, maybe mandatory ssh key on the exfat partition and no login if it's not there."
+fit, maybe mandatory ssh key on the exfat partition and no login if it's not there." Then,
+the same day, on how it reaches users: "this update needs to hit the sdcard only by
+default and regular users will have to keep their existing configuration if they upgrade
+to this Buildroot_MiSTer. Perhaps we need a generic security script which stores its
+state -- by default if state is absent it can be assumed to be unhardened and follow
+stock. sdcard will ship with a hardened state."
 
 **Decision.**
 
-1. **A fresh card accepts no remote root password.** `sshd_config` ships
-   `PermitRootLogin prohibit-password`, `PasswordAuthentication no` and
-   `KbdInteractiveAuthentication no`. SSH takes a key from
-   `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key,
-   sshd still runs and nobody can log in remotely; `S50sshd` prints `NO REMOTE LOGIN` and
-   the two ways in. `proftpd.conf`'s `RootLogin on` moved inside
-   `<IfDefine MISTER_UNHARDENED>`, so FTP refuses root (`530`).
-2. **One card file brings stock back for both:** `/media/fat/linux/unharden`.
-   `S50sshd` then adds `-o PermitRootLogin=yes -o PasswordAuthentication=yes -o
-   KbdInteractiveAuthentication=yes`, and `S50proftpd` passes
-   `-D MISTER_UNHARDENED`. SSH and FTP are switched together, as this ADR's
-   Context requires: FTP write access to the card is root at next boot.
-3. **The script.** The owner calls the opt-in "the `unharden` script", so it is named
-   that way: a card is *hardened* by default and *unhardened* by the switch.
-   `/usr/sbin/mister-unharden` (in the image, versioned with the
-   init scripts it drives) writes or deletes the file and restarts both services; it also
-   reports how many keys the card holds and whether root's hash is still the default.
-   `Scripts/unharden.sh` is its launcher on the card, delivered like the other
-   Scripts (ADR 0026: install.sh, the sdcard image, and the updater's create-only repair,
-   which is how an existing installation gets it on the update that brings this change).
-4. **The console keeps `root:1`.** Root's shadow entry is not locked. The serial console
+1. **One state file on the card:** `/media/fat/linux/security.conf`, plain `key=value`
+   lines. It is **parsed, never sourced**, by one shared reader,
+   `/usr/lib/mister/security.sh` (`security_get KEY`), so any later daemon can use the
+   same file. The last line for a key wins; `#` starts a comment; values are
+   case-insensitive; CRLF is tolerated (the file is edited from Windows PCs).
+2. **Absent means stock, everywhere.** No file, no key, or a value that is not allowed
+   (with a `WARNING` in the boot log) gives the key's stock value. An existing user who
+   updates has no file, so nothing changes: root password login over SSH and FTP exactly
+   as before. The image's own `sshd_config` and `proftpd.conf` stay stock for the same
+   reason; every hardened behaviour is a command-line addition made by the init script.
+3. **The SD card image ships the hardened state.** `fetch-sdcard-payload.sh` stages
+   `board/mister/de10nano/fat-payload/linux/security.conf` into the card payload. That is
+   the only place it is shipped: `install.sh`, `update_linux_modernization.sh`, the
+   Downloader database, the release archive and `linux.img` never carry or write it, and
+   CI asserts that the rootfs does not contain it and that the update-path scripts do not
+   mention it.
+4. **Keys, first value stock:**
+
+   | Key | Values | Not stock means |
+   |---|---|---|
+   | `ssh_password` | `yes` \| `no` | `S50sshd` adds `-o PermitRootLogin=prohibit-password -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no`. SSH takes a key from `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key sshd still runs and prints `NO REMOTE LOGIN`. |
+   | `ssh_forwarding` | `stock` \| `limited` | `-o AllowTcpForwarding=local -o "PermitOpen=127.0.0.1:9091 localhost:9091" -o AllowStreamLocalForwarding=no -o X11Forwarding=no`: only Transmission's loopback web UI can be forwarded (Tier 1 item 7, changed; not `no`, because the 2026-09-21 amendment made `ssh -L 9091:…` the way to reach it). |
+   | `ftp` | `stock` \| `off` | `S50proftpd` does not start proftpd, so port 21 is closed. More FTP modes are added by the ProFTPD hardening change. |
+
+   A new SD card ships `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`.
+5. **One tool.** `/usr/sbin/mister-security` (in the image, versioned with the init
+   scripts it drives): `status`, `harden`, `stock`, `set KEY VALUE`, and a gamepad dialog
+   with the two presets and each key on its own. It validates the value, rewrites the file
+   through a same-directory rename, `sync`s, and restarts only the services whose keys
+   changed. `Scripts/security.sh` is its launcher on the card, delivered like the other
+   Scripts (ADR 0026: install.sh, the sdcard image, and the updater's create-only repair).
+   The launcher only runs the tool; it never writes the state file by itself.
+6. **The console keeps `root:1`.** Root's shadow entry is not locked. The serial console
    is the recovery path for someone with a keyboard and no key; physical access already
    wins on this board, because the card is removable and the OSD runs any script as root.
-5. **Tier 1 item 7, changed:** `AllowTcpForwarding local` with
-   `PermitOpen 127.0.0.1:9091 localhost:9091`, `AllowStreamLocalForwarding no`,
-   `X11Forwarding no`. Not `AllowTcpForwarding no`, because the 2026-09-21 amendment made
-   an SSH port-forward the way to reach Transmission's loopback-only web UI. Any other
-   forward destination is refused, so the box is no longer a pivot.
 
-**Why a switch, not Q1's hash comparison.** Gating on "the hash is still the default"
-would turn password login back on for anyone who ran `passwd`, and `passwd` is undone by
-the next update (Tier 1 item 2 is not done), so the gate would close again silently on
-every update. A switch is explicit, survives updates, and is the card-file pattern this
-ADR already uses.
+**Why a state file, not Q1's hash comparison or one marker.** Gating on "the hash is still
+the default" would turn password login back on for anyone who ran `passwd`, and `passwd` is
+undone by the next update (Tier 1 item 2 is not done). An earlier draft of this amendment
+used one marker file that turned stock *on*, with hardening as the image default; that
+changed every upgrader's login on the update that brought it, which the owner rejected.
+Keys in one file can grow (Tier 2's `hardened` marker becomes "the hardened preset") and
+make "absent" mean the same thing for every key.
+
+**Why invalid values fall back to stock.** Consistency with "absent is stock": the boot log
+and `mister-security status` show the warning. The other choice, falling back to the
+hardened value, could lock a user out of SSH over a typo. Recorded as an owner question.
 
 **What this supersedes.** Tier 1 item 1 ("key present ⇒ password off", with an
-`sshd_allow_password` opt-out) is replaced by the stronger default above; there is no
+`sshd_allow_password` opt-out) is replaced by `ssh_password`; there is no
 `sshd_allow_password` file. Plan task S11 is done in this form, without its dependency on
-S2.
+S2. Tier 2's `/media/fat/linux/hardened` marker becomes the `harden` preset of this file.
 
 **Visible changes, stated for release notes.**
 
-- Anyone who logs in with root:`1` over SSH or FTP, including existing users on their
-  next update, must run **Scripts > unharden.sh** once, or put a key on the card.
-- **FTP is unusable by default** until the owner picks one of the FTP options being
-  prepared separately, or the user runs the script. SFTP with a key needs neither.
-- Anonymous FTP is **unchanged** (Tier 1 item 3 is part of those FTP options).
+- **Updating:** none. With no `security.conf` everything is stock.
+- **New SD card:** SSH is key-only, forwarding is limited and there is no FTP server until
+  the user runs **Scripts > security.sh** and picks *Stock* (or changes one key), or puts a
+  key on the card for SSH.
 
 **Follow-up, not done here.**
 
-- **A password that survives an update** (Tier 1 item 2, Q3). With the switch on, the
-  password is `1` again after every update. The natural next step is for
-  `mister-unharden` to offer "set a new password" and store the hash on
-  `ssh.ext4`, never on exFAT (`fmask=0022`), with the boot-time restore and the
-  `rename()` constraint described in item 2.
+- **A password that survives an update** (Tier 1 item 2, Q3). The natural next step is a
+  `mister-security` action that sets a new password and stores the hash on `ssh.ext4`,
+  never on exFAT (`fmask=0022`), with the boot-time restore and the `rename()` constraint
+  described in item 2.
 - Samba keeps its own password database and is untouched; `S91smb` is opt-in already.
 
-**Regression oracle.** On a fresh card the three tests in "What the image does today"
-give: `ssh root@rig` with password `1` — refused (`publickey` only); `ftp://root:1@rig/` —
-`530`; anonymous FTP — unchanged until the FTP options land. With
-`/media/fat/linux/unharden` present, the first two pass again. CI
-(`scripts/ci-tests.sh`, section "ADR 0031 — hardened by default") asserts the
-shipped `sshd_config`, both init scripts and `proftpd.conf`, and runs the target's own
-`sshd -T` under qemu-arm in both modes.
+**Regression oracle.** With no `security.conf` the three tests in "What the image does
+today" all pass, as on stock. With the SD card's file: `ssh root@rig` with password `1` —
+refused (`publickey` only); `ftp://root:1@rig/` — connection refused (no server);
+anonymous FTP — connection refused. CI (`scripts/ci-tests.sh`, section "ADR 0031 —
+security.conf") asserts the stock `sshd_config`, both init scripts, the parser's results
+under the target's BusyBox for an absent, the shipped and a malformed file, and runs the
+target's own `sshd -T` under qemu-arm in both states.

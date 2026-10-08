@@ -31,9 +31,9 @@ HostKey /etc/ssh_keys/ssh_host_ed25519_key
 # Authentication:
 
 #LoginGraceTime 2m
-# Root by key only. /media/fat/linux/unharden makes S50sshd restore stock's
-# root password login (ADR 0031, docs/ssh-ftp-parity.md §1.4).
-PermitRootLogin prohibit-password
+# Stock parity: MiSTer's whole SSH workflow assumes root login (there is no
+# sudo-based alternative account model). Kept as stock had it.
+PermitRootLogin yes
 #StrictModes yes
 #MaxAuthTries 6
 #MaxSessions 10
@@ -61,13 +61,13 @@ AuthorizedKeysFile	.ssh/authorized_keys /media/fat/config/authorized_keys
 #IgnoreRhosts yes
 
 # To disable tunneled clear text passwords, change to "no" here!
-PasswordAuthentication no
+#PasswordAuthentication yes
 #PermitEmptyPasswords no
 
 # Change to "no" to disable keyboard-interactive authentication.  Depending on
 # the system's configuration, this may involve passwords, challenge-response,
 # one-time passwords or some combination of these and other methods.
-KbdInteractiveAuthentication no
+#KbdInteractiveAuthentication yes
 
 # Kerberos options
 #KerberosAuthentication no
@@ -91,12 +91,9 @@ KbdInteractiveAuthentication no
 UsePAM yes
 
 #AllowAgentForwarding yes
-# No pivot into the LAN: local forwards only, and only to Transmission's web UI.
-AllowTcpForwarding local
-PermitOpen 127.0.0.1:9091 localhost:9091
-AllowStreamLocalForwarding no
+#AllowTcpForwarding yes
 #GatewayPorts no
-X11Forwarding no
+#X11Forwarding no
 #X11DisplayOffset 10
 #X11UseLocalhost yes
 #PermitTTY yes

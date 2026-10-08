@@ -17,8 +17,10 @@
 #
 # The hash below is SHA-256 crypt of "1" with a fixed salt (openssl passwd -5
 # -salt MiSTer618 1). "1" is STOCK PARITY -- the stock MiSTer image ships root
-# password "1". It works on the console; SSH and FTP accept it only after the
-# card opts in (Scripts/unharden.sh, ADR 0031 amendment 2026-10-08).
+# password "1" -- so nothing changes for existing users, and SSH/console login
+# is root:1 exactly as on stock. This is deliberately weak, matching stock;
+# hardening it (and proftpd) is the beyond-parity security
+# pass tracked separately, to be done AFTER parity is proven, not during it.
 
 set -e
 

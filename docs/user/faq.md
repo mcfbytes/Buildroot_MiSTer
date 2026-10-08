@@ -40,39 +40,45 @@ deliberately short.
 <a id="remote-login"></a>
 ## How do I log in over SSH or FTP? What's the root password?
 
-**On a fresh card, nobody can log in as root over the network with a password.** Stock
-MiSTer lets anyone on your network log in as root over SSH and FTP with the password
-`1`, which is printed in every guide. This image does not, unless you turn it on. You
-have two ways in:
+**It depends on how the card was set up.** Stock MiSTer lets anyone on your network log
+in as root over SSH and FTP with the password `1`, which is printed in every guide.
 
-1. **An SSH key (recommended).** Put your public key in `config/authorized_keys` on the
-   card ([how](#ssh-key-persist)). SSH and SFTP then work with the key, and keep working
-   after every update. Most "FTP" programs (WinSCP, FileZilla, Cyberduck) also speak
-   SFTP, which uses the same key and encrypts everything.
-2. **Unharden: turn stock's password login back on.** Run **Scripts > unharden.sh** from the
-   MiSTer menu and choose *Unharden*. SSH and FTP then accept root with the root
-   password, exactly as on stock. Run it again and choose *Harden* to undo it. Over
-   SSH the same tool is `mister-unharden on` / `off` / `status`. All it does is
-   create or delete the file `linux/unharden` on the card and restart the two
-   servers, so creating that file from a PC and rebooting does the same.
+- **Updated from stock or from an earlier release of this image:** nothing changes.
+  SSH and FTP accept root with the root password, as before.
+- **Flashed from this project's SD card image:** the card starts **hardened**. SSH
+  accepts only a key, SSH forwarding reaches only Transmission's web UI, and there is no
+  FTP server at all.
 
-**FTP needs option 2.** On a hardened card the FTP server does not accept root.
-Use SFTP with your key instead, or unharden.
+The difference is one file on the card, `linux/security.conf`. The SD card image ships
+it; an update never creates or changes it, and **no file means stock behaviour**.
 
-**Without a key and without option 2, sshd still runs but nobody can log in.** The boot
-messages say `NO REMOTE LOGIN` when that is the case. Adding a key to the card is
-enough; you do not need to reboot.
+**Change it with Scripts > security.sh** from the MiSTer menu. It shows the current
+settings and offers two presets, *Hardened* and *Stock*, plus each setting on its own.
+Over SSH the same tool is `mister-security status`, `mister-security harden`,
+`mister-security stock`, or `mister-security set <setting> <value>`. It rewrites the
+file and restarts SSH and FTP, so you do not need to reboot. You can also edit the file
+from a PC and reboot; deleting it gives you stock behaviour.
+
+| Setting | Stock (no file) | Hardened (new SD card) |
+|---|---|---|
+| `ssh_password` | `yes`: root can log in with the password | `no`: SSH and SFTP take only a key |
+| `ssh_forwarding` | `stock`: any SSH port forward | `limited`: only Transmission's web UI (port 9091) |
+| `ftp` | `stock`: root FTP with the password | `off`: no FTP server |
+
+**With `ssh_password=no` you need a key.** Put your public key in
+`config/authorized_keys` on the card ([how](#ssh-key-persist)). SSH and SFTP then work
+with the key, and keep working after every update. Most "FTP" programs (WinSCP,
+FileZilla, Cyberduck) also speak SFTP, which uses the same key and encrypts everything.
+Without a key, sshd still runs but nobody can log in; the boot messages say
+`NO REMOTE LOGIN`. Adding a key is enough; you do not need to reboot.
+
+**FTP sends the password unencrypted.** Use SFTP when you can.
 
 **The console is not affected.** The root password is still stock's `1` on the serial
 console, and the MiSTer menu and its Scripts work as always. Someone who can touch the
 board can already pull the card, so a password there would protect nothing.
 
-**Updating from an earlier release?** This applies to you too, from the update that
-brings it. If you log in with a password over SSH or FTP, run
-**Scripts > unharden.sh** once after updating. `update_linux_modernization.sh`
-puts that script in your Scripts folder if it is missing.
-
-**If you unharden, change the password** on any network you do not fully
+**If root can log in with a password, change it** on any network you do not fully
 control: log in and run `passwd`. **An image update puts it back to `1`**, because
 `/etc/shadow` lives inside `linux.img`, which an update replaces. Re-run `passwd` after
 every update until the persistence work in
@@ -162,8 +168,8 @@ an update lives on the data partition, not in the image.
 
 > **Note:** the key file is read by the SSH server as root, so treat the card as you would
 > any machine you can log into. Put only your **public** key there — never a private key.
-> SSH is key-only unless you unhardened with
-> [Scripts > unharden.sh](#remote-login); with it on, both the key and the password
+> With `ssh_password=no` ([Scripts > security.sh](#remote-login)) SSH is key-only;
+> otherwise both the key and the password
 > work.
 
 ---

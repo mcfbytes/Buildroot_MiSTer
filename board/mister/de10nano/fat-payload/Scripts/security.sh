@@ -1,5 +1,5 @@
 #!/bin/bash
-# unharden.sh -- restore stock-style root login over SSH and FTP, or harden again.
+# security.sh -- SSH and FTP security settings: hardened, stock, or per setting.
 #
 # Part of MiSTer Linux Modernization.
 # https://github.com/mcfbytes/Buildroot_MiSTer
@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-TOOL="/usr/sbin/mister-unharden"
+TOOL="/usr/sbin/mister-security"
 
 if [ ! -x "$TOOL" ]; then
 	cat >&2 <<EOF

@@ -5,28 +5,27 @@ trap "" TERM
 [ ! -d /var/run/proftpd ] && mkdir /var/run/proftpd
 [ ! -f /var/log/wtmp ] && touch /var/log/wtmp
 
-# Written by Scripts/unharden.sh; each card switch adds one -D define.
-UNHARDEN=/media/fat/linux/unharden
+# security_get reads /media/fat/linux/security.conf; absent means stock.
+# shellcheck source=board/mister/de10nano/rootfs-overlay/usr/lib/mister/security.sh
+. /usr/lib/mister/security.sh
 
 start() {
-	set --
-	mode="hardened: no root login"
-	if [ -e "$UNHARDEN" ]; then
-		set -- "$@" -D MISTER_UNHARDENED
-		mode="UNHARDENED: root login on"
+	if [ "$(security_get ftp)" = "off" ]; then
+		echo "ProFTPD: not started (ftp=off in $MISTER_SECURITY_CONF; Scripts/security.sh turns it on)"
+		return 0
 	fi
 	printf "Starting ProFTPD: "
-	if ! /usr/sbin/proftpd "$@"; then
+	if ! /usr/sbin/proftpd; then
 		echo "FAILED"
 		exit 1
 	else
-		echo "done ($mode)"
+		echo "done"
 	fi
 }
 
 stop() {
 	printf "Stopping ProFTPD: "
-	killall proftpd
+	killall proftpd 2>/dev/null
         echo "done"
 }
 

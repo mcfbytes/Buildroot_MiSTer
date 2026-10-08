@@ -40,6 +40,7 @@ mister-payload/linux/u-boot.txt_example
 mister-payload/linux/_samba.sh
 mister-payload/linux/_user-startup.sh
 mister-payload/linux/_wpa_supplicant.conf
+mister-payload/linux/security.conf
 mister-payload/linux/gamecontrollerdb/
 mister-payload/linux/mt32-rom-data/
 mister-payload/linux/soundfonts/
@@ -51,7 +52,7 @@ mister-payload/Scripts/
 mister-payload/Scripts/check_storage.sh
 mister-payload/Scripts/cpu_isolation.sh
 mister-payload/Scripts/pair_logitech.sh
-mister-payload/Scripts/unharden.sh
+mister-payload/Scripts/security.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
@@ -59,7 +60,7 @@ mister-payload/Scripts/usb_full_speed_mode.sh
 mister-payload/Scripts/wifi.sh
 ```
 
-That is **33 entries** (7 directories, 26 files) for the base inventory. `check-sdcard.sh`
+That is **34 entries** (7 directories, 27 files) for the base inventory. `check-sdcard.sh`
 asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 > **Changed 2026-08-01** — `menu.rbf` **added at the FAT root** (ADR 0020 §7). This is a
@@ -119,12 +120,19 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > either if it later goes missing (which is how users who onboarded before this feature
 > existed get the menu entry).
 
-> **Changed 2026-10-08** — one entry **added**, taking the base inventory from 32 to 33:
-> `mister-payload/Scripts/unharden.sh`
+> **Changed 2026-10-08** — two entries **added**, taking the base inventory from 32 to 34
 > ([ADR 0031](../decisions/0031-secure-by-default-network-posture.md), amendment
-> 2026-10-08), staged by `stage_update_channel()` with the other Scripts. Same shim shape:
-> the tool is `/usr/sbin/mister-unharden` in the rootfs. On a fresh card it is the
-> way to unharden: turn root password login over SSH and FTP back on.
+> 2026-10-08), both staged by `stage_update_channel()`:
+>
+> - `mister-payload/Scripts/security.sh`, with the other Scripts. Same shim shape: the
+>   tool is `/usr/sbin/mister-security` in the rootfs. It shows and changes the card's
+>   SSH and FTP security settings.
+> - `mister-payload/linux/security.conf`, from
+>   `board/mister/de10nano/fat-payload/linux/security.conf`: the **hardened** state a new
+>   card starts in (`ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`). This is the
+>   only place the file is shipped. `install.sh`, the updater, the Downloader database,
+>   the release archive and `linux.img` never carry it, so an updated card has no file
+>   and keeps stock behaviour.
 
 > **Changed 2026-10-05** — two entries **added**, taking the base inventory from 30 to 32:
 > `mister-payload/Scripts/cpu_isolation.sh` ([docs/cpu-isolation.md](../cpu-isolation.md)) and
@@ -172,6 +180,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
 | `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
 | `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |
+| `mister-payload/linux/security.conf` | **Ours**, `board/mister/de10nano/fat-payload/linux/security.conf` | In-tree, not fetched. The hardened state a new card starts in (ADR 0031): `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`. Shipped **only** here; an updated card has no file, which means stock behaviour |
 | `mister-payload/linux/{uboot.img,updateboot,MidiLink.INI,ppp_options,u-boot.txt_example,_samba.sh,_user-startup.sh,_wpa_supplicant.conf}` and `{gamecontrollerdb,mt32-rom-data,soundfonts}/` (full subtrees) | `files/linux/*` inside the pinned stock archive | `STOCK_RELEASE_URL`/`STOCK_RELEASE_MD5`/`STOCK_RELEASE_SHA256`/`STOCK_RELEASE_SIZE` (`.github/workflows/release.yml`); `uboot.img`/`updateboot` additionally re-verified against `STOCK_UBOOT_SHA256`/`STOCK_UPDATEBOOT_SHA256` per `docs/reference-materials.md` |
 | `mister-payload/MiSTer` | `files/MiSTer` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin as above (member the Downloader itself never extracts — `docs/downloader-contract.md` §5 — but this image is not the Downloader path) |
 | `mister-payload/menu.rbf` | `files/menu.rbf` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin |
@@ -182,7 +191,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares the core databases explicitly — `distribution_mister` (canonical URL from the Downloader's own `constants.py`), `jtcores` and `update_all_mister` — because shipping the file suppresses Update All's own default seeding. `distribution_mister` **must** be explicit here: `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some. Deliberately comment-free beyond a two-line header pointing at the docs; the explanation lives in `docs/user/onboarding.md`, since tooling rewrites this file and comments on database sections do not survive |
 | `mister-payload/Scripts/pair_logitech.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-pair-logitech` in the rootfs, which in turn drives `/usr/bin/ltunify` (`BR2_PACKAGE_LTUNIFY`). Passes no arguments deliberately: the tool's no-argument default is "pair", and it completes without asking anything when exactly one usable receiver is present — which matters because the person running this may have no keyboard, the one being paired being the only one. See [docs/logitech-pairing.md](../logitech-pairing.md) |
 | `mister-payload/Scripts/cpu_isolation.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/cpu_isolation.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-cpu-isolation`, which keeps Linux work off CPU1, live or through `isolcpus=` in `u-boot.txt`. See [docs/cpu-isolation.md](../cpu-isolation.md) |
-| `mister-payload/Scripts/unharden.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/unharden.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-unharden`, which unhardens (root password login over SSH and FTP) or hardens again by writing or deleting `/media/fat/linux/unharden` and restarting `sshd` and `proftpd`. See [ADR 0031](../decisions/0031-secure-by-default-network-posture.md) and [docs/ssh-ftp-parity.md](../ssh-ftp-parity.md) §1.4 |
+| `mister-payload/Scripts/security.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/security.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-security`, which shows and changes the SSH and FTP settings in `/media/fat/linux/security.conf` and restarts `sshd`/`proftpd` as needed. See [ADR 0031](../decisions/0031-secure-by-default-network-posture.md) and [docs/ssh-ftp-parity.md](../ssh-ftp-parity.md) §1.4 |
 | `mister-payload/Scripts/usb_full_speed_mode.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/usb_full_speed_mode.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-usb-full-speed`, which switches USB full-speed mode (`dwc2.fs_ddma`) until the next reboot, or at every boot on request. See [docs/dwc2-usb-irq.md](../dwc2-usb-irq.md) |
 | `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 

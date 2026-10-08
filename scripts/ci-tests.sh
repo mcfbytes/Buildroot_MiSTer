@@ -1966,88 +1966,107 @@ if tar_has "etc/init.d/S50sshd"; then
 fi
 
 # =============================================================================
-section "ADR 0031 — hardened by default; Scripts/unharden.sh restores root login"
+section "ADR 0031 — security.conf: absent is stock, a new card is hardened"
 # =============================================================================
-# Fresh card: SSH by key only, no root FTP login. /media/fat/linux/unharden
-# brings stock's root:1 back over both (docs/ssh-ftp-parity.md §1.4).
+# /media/fat/linux/security.conf is parsed by /usr/lib/mister/security.sh. No
+# file means stock (upgraders); only the sdcard payload ships the hardened one.
 
-UNHARDEN_FLAG=/media/fat/linux/unharden
-require_present "usr/sbin/mister-unharden" "mister-unharden tool"
+SEC_LIB=usr/lib/mister/security.sh
+SEC_CARD="$ROOT/board/mister/de10nano/fat-payload/linux/security.conf"
+require_present "usr/sbin/mister-security" "mister-security tool"
+require_present "$SEC_LIB" "security.conf parser"
+require_absent "media/fat/linux/security.conf" "security.conf in the rootfs" \
+	"the image must never carry the card's state: an update would change an upgrader's settings"
+
+# Nothing on the update path may write the state file.
+sec_writers=$(cd "$ROOT" && grep -l 'security\.conf' install.sh \
+	board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh \
+	board/mister/de10nano/post-build.sh scripts/mk-release.sh 2>/dev/null)
+if [ -z "$sec_writers" ]; then
+	pass "update path (install.sh, updater, post-build, mk-release) never touches security.conf"
+else
+	fail "update path never touches security.conf" "mentioned in: $sec_writers"
+fi
 
 if tar_has "etc/ssh/sshd_config"; then
 	sshd_conf="$WORKDIR/sshd_config"
 	tar xOf "$ROOTFS_TAR" ./etc/ssh/sshd_config > "$sshd_conf" 2>/dev/null
-	for want in 'PermitRootLogin prohibit-password' 'PasswordAuthentication no' \
-		'KbdInteractiveAuthentication no' 'AllowTcpForwarding local' \
-		'PermitOpen 127.0.0.1:9091 localhost:9091' 'X11Forwarding no'; do
-		if grep -qE "^${want// /[[:space:]]+}[[:space:]]*\$" "$sshd_conf"; then
-			pass "sshd_config: $want"
+	if grep -qE '^PermitRootLogin[[:space:]]+yes[[:space:]]*$' "$sshd_conf" &&
+		! grep -qiE '^(PasswordAuthentication|KbdInteractiveAuthentication|AllowTcpForwarding)[[:space:]]+no' "$sshd_conf"; then
+		pass "sshd_config: stock root password login when security.conf is absent"
+	else
+		fail "sshd_config: stock root password login when security.conf is absent" \
+			"an upgrader with no security.conf would lose root:1 over SSH"
+	fi
+fi
+
+for spec in "S50sshd:security_get ssh_password" "S50sshd:security_get ssh_forwarding" \
+	"S50sshd:-o PermitRootLogin=prohibit-password -o PasswordAuthentication=no" \
+	"S50sshd:-o AllowTcpForwarding=local -o \"PermitOpen=127.0.0.1:9091 localhost:9091\"" \
+	"S50proftpd:security_get ftp" "S50proftpd:. /usr/lib/mister/security.sh" \
+	"S50sshd:. /usr/lib/mister/security.sh"; do
+	if tar xOf "$ROOTFS_TAR" "./etc/init.d/${spec%%:*}" 2>/dev/null | grep -qF -- "${spec#*:}"; then
+		pass "${spec%%:*}: ${spec#*:}"
+	else
+		fail "${spec%%:*}: ${spec#*:}" "missing -- the card's security.conf would not take effect"
+	fi
+done
+
+# The shipped parser, under the target's own busybox sh.
+if [ -z "$QEMU_ARM" ] || [ ! -x "$TARGET/bin/busybox" ] || ! tar_has "$SEC_LIB"; then
+	skip "security.conf parser under the target shell" "qemu-arm, target busybox or the parser not available"
+else
+	tar xOf "$ROOTFS_TAR" "./$SEC_LIB" > "$WORKDIR/security.sh"
+	sec_get() { # <conf file> -- prints key=value for every key
+		# shellcheck disable=SC2016 # expanded by the target shell
+		MISTER_SECURITY_CONF="$1" qemu_target "$TARGET/bin/busybox" sh -c \
+			'. "$0"; for k in ssh_password ssh_forwarding ftp; do printf "%s=%s " "$k" "$(security_get "$k" 2>/dev/null)"; done' \
+			"$WORKDIR/security.sh"
+	}
+	printf 'ssh_password = NO # comment\r\nftp=bogus\n' > "$WORKDIR/sec-odd.conf"
+	for spec in "/nonexistent|ssh_password=yes ssh_forwarding=stock ftp=stock " \
+		"$SEC_CARD|ssh_password=no ssh_forwarding=limited ftp=off " \
+		"$WORKDIR/sec-odd.conf|ssh_password=no ssh_forwarding=stock ftp=stock "; do
+		got=$(sec_get "${spec%%|*}")
+		if [ "$got" = "${spec#*|}" ]; then
+			pass "parser: ${spec%%|*} -> $got"
 		else
-			fail "sshd_config: $want" "absent -- a fresh card would accept root:1 over SSH or be a TCP pivot. Actual: $(grep -E "^${want%% *}" "$sshd_conf" || echo '<unset>')"
+			fail "parser: ${spec%%|*}" "want '${spec#*|}', got '$got'"
 		fi
 	done
 fi
 
-if tar_has "etc/init.d/S50sshd"; then
-	s50="$WORKDIR/S50sshd"
-	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50sshd > "$s50" 2>/dev/null
-	if grep -qxF "UNHARDEN=$UNHARDEN_FLAG" "$s50" &&
-		grep -qF 'set -- "$@" -o PermitRootLogin=yes -o PasswordAuthentication=yes' "$s50"; then
-		pass "S50sshd: unharden card flag re-enables root password login"
-	else
-		fail "S50sshd: unharden card flag re-enables root password login" \
-			"the flag or the -o overrides are missing -- Scripts/unharden.sh would switch nothing on"
-	fi
-fi
-
-# RootLogin may appear only inside the <IfDefine> that S50proftpd's flag turns on.
-if tar_has "etc/proftpd.conf"; then
-	ungated=$(tar xOf "$ROOTFS_TAR" ./etc/proftpd.conf | awk '
-		/^[[:space:]]*<IfDefine[[:space:]]+MISTER_UNHARDENED>/ { g++ }
-		/^[[:space:]]*<\/IfDefine>/ && g { g--; next }
-		/^[[:space:]]*RootLogin[[:space:]]+on/ && !g { print NR": "$0 }')
-	if [ -z "$ungated" ]; then
-		pass "proftpd.conf: RootLogin on only under <IfDefine MISTER_UNHARDENED>"
-	else
-		fail "proftpd.conf: RootLogin on only under <IfDefine MISTER_UNHARDENED>" \
-			"ungated: $ungated -- a fresh card would accept root:1 over cleartext FTP"
-	fi
-fi
-if tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd 2>/dev/null | grep -qxF "UNHARDEN=$UNHARDEN_FLAG" &&
-	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd | grep -qF -- '-D MISTER_UNHARDENED'; then
-	pass "S50proftpd: unharden card flag passes -D MISTER_UNHARDENED"
-else
-	fail "S50proftpd: unharden card flag passes -D MISTER_UNHARDENED" \
-		"missing -- the opt-in would leave FTP root login off"
-fi
-
-# The effective config, from the target's own sshd, in both modes.
+# The effective sshd config, from the target's own sshd: absent state and hardened.
 if [ -z "$QEMU_ARM" ] || ! have ssh-keygen; then
-	skip "sshd -T: key-only by default, password with the opt-in" "qemu-arm or ssh-keygen not found on PATH"
+	skip "sshd -T: stock when absent, key-only when hardened" "qemu-arm or ssh-keygen not found on PATH"
 elif [ ! -x "$TARGET/usr/sbin/sshd" ] || [ ! -f "${sshd_conf:-}" ]; then
-	skip "sshd -T: key-only by default, password with the opt-in" "target sshd or shipped sshd_config not available"
+	skip "sshd -T: stock when absent, key-only when hardened" "target sshd or shipped sshd_config not available"
 else
-	ssh-keygen -q -t ed25519 -N '' -f "$WORKDIR/unh_hostkey" </dev/null
-	unh_t() {
-		qemu_target "$TARGET/usr/sbin/sshd" -T -f "$sshd_conf" -o "HostKey=$WORKDIR/unh_hostkey" "$@" 2>&1 |
-			grep -iE '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) ' | tr 'A-Z\n' 'a-z '
+	ssh-keygen -q -t ed25519 -N '' -f "$WORKDIR/sec_hostkey" </dev/null
+	sec_t() {
+		qemu_target "$TARGET/usr/sbin/sshd" -T -f "$sshd_conf" -o "HostKey=$WORKDIR/sec_hostkey" "$@" 2>&1 |
+			grep -iE '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|allowtcpforwarding|permitopen) ' |
+			tr 'A-Z\n' 'a-z '
 	}
-	got_off=" $(unh_t) "
-	got_on=" $(unh_t -o PermitRootLogin=yes -o PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes) "
-	unh_has() { # <got> <setting value>...
+	sec_has() { # <got> <setting value>...
 		local got=$1 w
 		shift
 		for w in "$@"; do case "$got" in *" $w "*) ;; *) return 1 ;; esac; done
 	}
-	if unh_has "$got_off" "permitrootlogin prohibit-password" "passwordauthentication no" "kbdinteractiveauthentication no"; then
-		pass "sshd -T default is key-only:$got_off"
+	got_stock=" $(sec_t) "
+	got_hard=" $(sec_t -o PermitRootLogin=prohibit-password -o PasswordAuthentication=no \
+		-o KbdInteractiveAuthentication=no -o AllowTcpForwarding=local \
+		-o "PermitOpen=127.0.0.1:9091 localhost:9091") "
+	if sec_has "$got_stock" "permitrootlogin yes" "passwordauthentication yes" "kbdinteractiveauthentication yes" "allowtcpforwarding yes" "permitopen any"; then
+		pass "sshd -T with no security.conf is stock:$got_stock"
 	else
-		fail "sshd -T default is key-only" "got:$got_off"
+		fail "sshd -T with no security.conf is stock" "got:$got_stock"
 	fi
-	if unh_has "$got_on" "permitrootlogin yes" "passwordauthentication yes" "kbdinteractiveauthentication yes"; then
-		pass "sshd -T with the opt-in allows root password login:$got_on"
+	if sec_has "$got_hard" "permitrootlogin without-password" "passwordauthentication no" "kbdinteractiveauthentication no" "allowtcpforwarding local" "permitopen 127.0.0.1:9091 localhost:9091" ||
+		sec_has "$got_hard" "permitrootlogin prohibit-password" "passwordauthentication no" "kbdinteractiveauthentication no" "allowtcpforwarding local" "permitopen 127.0.0.1:9091 localhost:9091"; then
+		pass "sshd -T hardened is key-only, forwarding limited:$got_hard"
 	else
-		fail "sshd -T with the opt-in allows root password login" "got:$got_on"
+		fail "sshd -T hardened is key-only, forwarding limited" "got:$got_hard"
 	fi
 fi
 

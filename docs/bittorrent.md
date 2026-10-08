@@ -399,8 +399,9 @@ the RPC port is loopback-only and no router hole is opened.
 - `rpc-bind-address: 127.0.0.1`. Control the daemon over SSH (`ssh root@mister
   transmission-remote ...`) or forward the port for the web UI
   (`ssh -L 9091:127.0.0.1:9091 root@mister`, then open `http://127.0.0.1:9091/`).
-  `sshd` allows local forwards to `127.0.0.1:9091` and nothing else (ADR 0031, amendment
-  2026-10-08), so a changed `rpc-port` also needs `PermitOpen` changed.
+  With `ssh_forwarding=limited` in the card's `security.conf` (a new SD card's default,
+  ADR 0031 amendment 2026-10-08) `sshd` allows local forwards to `127.0.0.1:9091` and
+  nothing else, so a changed `rpc-port` also needs `S50sshd`'s `PermitOpen` changed.
 - `rpc-authentication-required: false` is safe *only* because of the line above, and the two
   must move together. If you ever set `rpc-bind-address` to `0.0.0.0` to reach the web UI
   from another machine, you must also set `rpc-authentication-required`, `rpc-username` and

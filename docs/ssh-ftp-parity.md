@@ -37,8 +37,8 @@
 > *current* config remains true until that plan's tasks land; each task adds a
 > divergence row here.
 >
-> **2026-10-08:** SSH and FTP are hardened by default; root password login is opt-in via `Scripts/unharden.sh` (§1.4), and SSH
-> forwarding is limited to Transmission's web UI.
+> **2026-10-08:** a card state file, `linux/security.conf`, can make SSH key-only, limit
+> forwarding and turn FTP off; no file means stock, and only a new SD card ships it (§1.4).
 >
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`
@@ -251,36 +251,40 @@ nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migratio
 behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
-### 1.4 Hardened by default; `unharden` restores root login — SSH and FTP (ADR 0031, 2026-10-08)
+### 1.4 The card's security state: absent is stock, a new SD card is hardened (ADR 0031, 2026-10-08)
 
 **Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), amendment
-2026-10-08 (the owner's answer to Q1). On a fresh card neither SSH nor FTP accepts
-root's password (the card is *hardened*). One card file *unhardens* it, turning stock's
-behaviour back on for both: `/media/fat/linux/unharden`.
+2026-10-08. `/media/fat/linux/security.conf` holds `key=value` lines that the init scripts
+read through `/usr/lib/mister/security.sh` (parsed, never sourced). **No file means
+stock**, so an updated card behaves exactly as before. The SD card image ships the
+hardened file (`board/mister/de10nano/fat-payload/linux/security.conf`); nothing on the
+update path creates or changes it.
 
-| | Hardened (default, no card file) | Unhardened (`linux/unharden`) |
+| | Stock (no file, or `stock` values) | Hardened (new SD card) |
 |---|---|---|
 | SSH, key in `config/authorized_keys` | works | works |
-| SSH, root password | refused: the server offers `publickey` only | works (stock) |
-| FTP, root | `530 Login incorrect` | works (stock) |
+| SSH, root password | works (stock) | refused: the server offers `publickey` only (`ssh_password=no`) |
+| SSH `-L`/`-D`, `-R` | anything | only `127.0.0.1:9091`; `-R` refused (`ssh_forwarding=limited`) |
+| FTP | root with the password (stock) | no server, port 21 closed (`ftp=off`) |
 | Serial console (`agetty` on `ttyS0`), F9 terminal, OSD Scripts | unchanged | unchanged |
 
-**How it is switched.**
+**How it is applied.**
 
-- `sshd_config` ships the closed values (`PermitRootLogin prohibit-password`,
-  `PasswordAuthentication no`, `KbdInteractiveAuthentication no`), so a bare
-  `/usr/sbin/sshd` is safe. `S50sshd` adds `-o PermitRootLogin=yes -o
-  PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes` when the card file
-  exists. Command-line `-o` wins over the file. `UsePAM yes` stays: with both password
-  methods off, PAM runs only its account and session stacks.
-- `proftpd.conf` has no ungated `RootLogin on`. It sits inside
-  `<IfDefine MISTER_UNHARDENED>`, and `S50proftpd` passes
-  `-D MISTER_UNHARDENED` when the card file exists. Every later FTP option
-  (anonymous off, chroot, a non-root user) can be another define in the same place,
-  without a second copy of the config.
-- `/usr/sbin/mister-unharden` writes or deletes the card file, `sync`s, and
-  restarts both services. `/media/fat/Scripts/unharden.sh` is its launcher,
-  delivered the same way as the other Scripts (install.sh, the sdcard image, and
+- `sshd_config` and `proftpd.conf` are stock. `S50sshd` adds command-line `-o` options
+  for each non-stock key (command-line `-o` wins over the file):
+  `ssh_password=no` → `PermitRootLogin=prohibit-password`, `PasswordAuthentication=no`,
+  `KbdInteractiveAuthentication=no`; `ssh_forwarding=limited` →
+  `AllowTcpForwarding=local`, `PermitOpen=127.0.0.1:9091 localhost:9091`,
+  `AllowStreamLocalForwarding=no`, `X11Forwarding=no`. `UsePAM yes` stays: with both
+  password methods off, PAM runs only its account and session stacks.
+- `S50proftpd` with `ftp=off` prints `ProFTPD: not started (ftp=off …)` and returns.
+- `security_get` returns the stock value for a missing file, a missing key, or a value
+  that is not allowed (with a `WARNING` on stderr, so it lands in the boot log). The last
+  line for a key wins; `#` comments, upper case and CRLF are accepted.
+- `/usr/sbin/mister-security` (`status`, `harden`, `stock`, `set KEY VALUE`, gamepad
+  dialog) validates, rewrites the file through a same-directory rename, `sync`s, and
+  restarts only the services whose keys changed. `/media/fat/Scripts/security.sh` is its
+  launcher, delivered the same way as the other Scripts (install.sh, the sdcard image, and
   `update_linux_modernization.sh`'s create-only repair). Restarting `sshd` kills only the
   listener: OpenSSH 10's sessions are `sshd-session` processes, which `killall sshd`
   does not match, so a user who runs the tool over SSH keeps the session.
@@ -291,17 +295,18 @@ already wins on this board (the card is removable, and the OSD runs any script a
 root), so a console password protects nothing extra. The shadow entry stays as
 `post-build.sh` pins it.
 
-**Why the flag is on the card.** Writing to the card already means root at next boot
-(`user-startup.sh`, `Scripts/`), so the flag adds no new way in. Being world-readable
-on exFAT does not matter: it holds no secret. The password hash stays out of it.
+**Why the state is on the card.** Writing to the card already means root at next boot
+(`user-startup.sh`, `Scripts/`), so the file adds no new way in. Being world-readable on
+exFAT does not matter: it holds no secret. The password hash stays out of it. It also
+survives every image update, which is what keeps an upgrader's settings.
 
-**Boot log.** `S50sshd` prints which mode it started in. With no flag and no key line
-in `config/authorized_keys` or `/root/.ssh/authorized_keys`, sshd still starts (a key
-dropped on the card later works without a reboot), and the line reads
-`NO REMOTE LOGIN`, followed by the two ways in. `S50proftpd` prints `hardened: no root login` or
-`UNHARDENED: root login on`.
+**Boot log.** `S50sshd` prints its mode: `root password login on`, `key login only`, or
+`NO REMOTE LOGIN` (no key line in `config/authorized_keys` or
+`/root/.ssh/authorized_keys` and `ssh_password=no`), plus `forwarding limited` when set.
+With `NO REMOTE LOGIN` sshd still starts, so a key dropped on the card later works
+without a reboot.
 
-**Forwarding (Tier 1 item 7).** `AllowTcpForwarding local` with `PermitOpen
+**Forwarding (Tier 1 item 7).** `limited` is `AllowTcpForwarding local` with `PermitOpen
 127.0.0.1:9091 localhost:9091`, not `no`: the documented way to reach Transmission's web
 UI is `ssh -L 9091:127.0.0.1:9091` ([bittorrent.md](bittorrent.md)), and `no` would break
 it. Any other `-L`/`-D` destination gets `administratively prohibited`; `-R` and Unix
@@ -309,18 +314,24 @@ socket forwarding are refused. A logged-in root can still reconfigure the box, s
 stops casual pivoting, not an attacker who already has root.
 
 **Not done here.** A password that survives an update (ADR 0031 Tier 1 item 2, Q3) is
-still open: with the flag on, the password is `1` again after every update. Anonymous
-FTP is unchanged; it is part of the FTP options being prepared separately.
+still open. FTP modes beyond `stock` and `off` come with the ProFTPD hardening change.
 
-**Verified (2026-10-08):** the shipped `S50sshd` and `S50proftpd` were run on the
-image's own ARM userland (`unshare` + `chroot` + qemu-arm) in five card states, with
-`sshd -T` and real FTP logins on loopback; and on the rig, a throwaway `sshd` on port
-2222 and `proftpd` on port 2121 with the new configs: key login worked and password
-`1` was refused by default, password `1` worked with the opt-in arguments, a `-W` to a
-LAN address was `administratively prohibited`, `-R` was refused, and FTP root:`1`
-returned `530` by default and `226` with the define. **A rig boot of a built image is
-still owed.** CI asserts the shipped files and runs the target's own `sshd -T` in both
-modes under qemu-arm.
+**Verified (2026-10-08):**
+
+- The shipped `S50sshd`, `S50proftpd` and `mister-security` were run on the image's own
+  ARM userland (`unshare` + `chroot` + qemu-arm): no file, `harden`, `set ftp stock`,
+  `stock`, a hand-edited invalid value, the no-tty menu path, and a "boot" with the SD
+  card's file. sshd's command line carried exactly the key-only and forwarding options in
+  the hardened states and none in the stock ones; proftpd was not started with `ftp=off`;
+  invalid keys and values were refused by the tool, and a bad hand-edit fell back to
+  stock with a warning.
+- CI runs the shipped parser under the target's BusyBox and the target's own `sshd -T`
+  under qemu-arm in both states.
+- On the rig (an earlier draft that used the same `-o` values the other way round): a
+  throwaway `sshd` on port 2222 refused password `1` with the key-only options and
+  accepted it without them; a `-W` to a LAN address was `administratively prohibited`,
+  `-R` was refused, `127.0.0.1:9091` worked.
+- **A rig boot of a built image is still owed.**
 
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
@@ -408,14 +419,13 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 
 ### 2.3 `proftpd.conf` audit
 
-**Byte-identical to stock** at the P3.7 audit (`diff` exit 0 against
-`work/imgroot/etc/proftpd.conf` and against the doc-captured copy in
-`docs/stock-inventory/20250402/etc-configs.md`). **One change since, 2026-10-08:**
-`RootLogin on` moved inside `<IfDefine MISTER_UNHARDENED>` (§1.4). Notable
-content, otherwise stock-matching:
+**Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
+and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
+No changes made; with `ftp=off` in the card's `security.conf` (§1.4) proftpd is simply
+not started. Notable existing content, confirmed intentional/stock-matching:
 
-- `<Global> RequireValidShell off </Global>`, with `RootLogin on` only under the
-  define — root FTP login is off unless the card opts in (§1.4).
+- `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
+  allowed, same as stock.
 - `DefaultRoot /` — no chroot jail; a logged-in user (including root) sees the
   whole filesystem, same as stock.
 - `<Anonymous ~ftp>` block present — anonymous FTP is enabled, same as stock
@@ -440,7 +450,8 @@ writable. CI asserts that line.
 
 ## 3. Default-credential auth posture
 
-Since 2026-10-08 the password below works remotely only after the card opts in (§1.4).
+Since 2026-10-08 a card's `security.conf` can refuse the password below over SSH and turn
+FTP off; a new SD card ships that way, an updated card does not (§1.4).
 
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted
 

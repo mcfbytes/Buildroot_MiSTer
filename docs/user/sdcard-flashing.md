@@ -173,7 +173,7 @@ Also expected on a fresh card:
   keys), so your SSH client may warn about a changed key if it has talked to a MiSTer
   before. See [`faq.md`](faq.md#ssh-host-keys-changed) for the one-line fix.
 - **SSH and FTP do not accept root's password** until you allow it with
-  **Scripts > password_login.sh**; SSH works at once with a key in
+  **Scripts > unharden.sh**; SSH works at once with a key in
   `config/authorized_keys`. See [`faq.md`](faq.md#remote-login).
 
 ---

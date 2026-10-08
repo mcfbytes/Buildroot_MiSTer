@@ -5,15 +5,15 @@ trap "" TERM
 [ ! -d /var/run/proftpd ] && mkdir /var/run/proftpd
 [ ! -f /var/log/wtmp ] && touch /var/log/wtmp
 
-# Written by Scripts/password_login.sh; each card switch adds one -D define.
-PASSWORD_LOGIN=/media/fat/linux/password_login
+# Written by Scripts/unharden.sh; each card switch adds one -D define.
+UNHARDEN=/media/fat/linux/unharden
 
 start() {
 	set --
-	mode="root login off"
-	if [ -e "$PASSWORD_LOGIN" ]; then
-		set -- "$@" -D MISTER_ROOT_PASSWORD_LOGIN
-		mode="root password login ON"
+	mode="hardened: no root login"
+	if [ -e "$UNHARDEN" ]; then
+		set -- "$@" -D MISTER_UNHARDENED
+		mode="UNHARDENED: root login on"
 	fi
 	printf "Starting ProFTPD: "
 	if ! /usr/sbin/proftpd "$@"; then

@@ -1,5 +1,5 @@
 #!/bin/bash
-# password_login.sh -- turn root password login over SSH and FTP on or off.
+# unharden.sh -- restore stock-style root login over SSH and FTP, or harden again.
 #
 # Part of MiSTer Linux Modernization.
 # https://github.com/mcfbytes/Buildroot_MiSTer
@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-TOOL="/usr/sbin/mister-password-login"
+TOOL="/usr/sbin/mister-unharden"
 
 if [ ! -x "$TOOL" ]; then
 	cat >&2 <<EOF

@@ -31,7 +31,7 @@ HostKey /etc/ssh_keys/ssh_host_ed25519_key
 # Authentication:
 
 #LoginGraceTime 2m
-# Root by key only. /media/fat/linux/password_login makes S50sshd restore stock's
+# Root by key only. /media/fat/linux/unharden makes S50sshd restore stock's
 # root password login (ADR 0031, docs/ssh-ftp-parity.md §1.4).
 PermitRootLogin prohibit-password
 #StrictModes yes

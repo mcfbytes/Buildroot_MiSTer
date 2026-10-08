@@ -189,12 +189,12 @@ jobs:
             fat-payload/Scripts/pair_logitech.sh
             fat-payload/Scripts/usb_full_speed_mode.sh
             fat-payload/Scripts/cpu_isolation.sh
-            fat-payload/Scripts/password_login.sh
+            fat-payload/Scripts/unharden.sh
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
             rootfs-overlay/usr/sbin/mister-usb-full-speed
             rootfs-overlay/usr/sbin/mister-cpu-isolation
-            rootfs-overlay/usr/sbin/mister-password-login
+            rootfs-overlay/usr/sbin/mister-unharden
           )
           sh_relpaths=(
             post-build.sh
@@ -264,7 +264,7 @@ jobs:
             fat-payload/Scripts/pair_logitech.sh
             fat-payload/Scripts/usb_full_speed_mode.sh
             fat-payload/Scripts/cpu_isolation.sh
-            fat-payload/Scripts/password_login.sh
+            fat-payload/Scripts/unharden.sh
             post-build.sh
             post-image.sh
             initramfs-post-build.sh
@@ -274,7 +274,7 @@ jobs:
             rootfs-overlay/usr/sbin/mister-pair-logitech
             rootfs-overlay/usr/sbin/mister-usb-full-speed
             rootfs-overlay/usr/sbin/mister-cpu-isolation
-            rootfs-overlay/usr/sbin/mister-password-login
+            rootfs-overlay/usr/sbin/mister-unharden
           )
 
           board_files=()

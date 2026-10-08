@@ -76,7 +76,7 @@ rows are newer: they were re-measured against Release 20260912 on 2026-10-01.
 | **OpenSSH / Samba / Python** | 8.6p1 / 4.14.6 / 3.9.6 | 10.5p1 / 4.24.6 / 3.14.7 |
 | **SSH host keys** | The same keys on every MiSTer, in the public download | Generated per device on first boot ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
-| **Remote root login** | Password `1` over SSH and cleartext FTP, for anyone on the network | SSH by key; password login only after **Scripts > password_login.sh** ([FAQ](docs/user/faq.md#remote-login)) |
+| **Remote root login** | Password `1` over SSH and cleartext FTP, for anyone on the network | SSH by key; root password login only after **Scripts > unharden.sh** ([FAQ](docs/user/faq.md#remote-login)) |
 | **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | 7-Zip 26.03, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **Wi-Fi** | Mainline drivers with firmware for most USB chips; no Broadcom, Redpine, `ath9k_htc` or Wi-Fi 6E | The same, plus those four families ([details](#wi-fi-and-bluetooth)) |
 | **Bluetooth firmware** | Broad; missing the Realtek Wi-Fi 6 combo chips' Bluetooth | Everything stock ships that a driver loads, plus those ([details](#wi-fi-and-bluetooth)) |
@@ -144,7 +144,7 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 | `linux/7za` | Replaced: 7-Zip 26.03 instead of the 2016 p7zip |
 | `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
 | `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
-| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/usb_full_speed_mode.sh`, `Scripts/cpu_isolation.sh`, `Scripts/password_login.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md), [USB full-speed mode](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu), [CPU isolation](docs/cpu-isolation.md) and [password login](docs/user/faq.md#remote-login) launchers |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/usb_full_speed_mode.sh`, `Scripts/cpu_isolation.sh`, `Scripts/unharden.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md), [USB full-speed mode](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu), [CPU isolation](docs/cpu-isolation.md) and [password login](docs/user/faq.md#remote-login) launchers |
 
 Everything else under `linux/` is rewritten with byte-identical content, because the release
 archive *is* stock's archive with those files swapped in; small files are backed up to
@@ -240,9 +240,9 @@ Write-ups: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
   proves each bump still builds and passes the parity suite.
 - **IPv6 is built in but off** until you opt in on the card (stock has none).
 
-**Root password login over SSH and FTP is off by default.** Stock accepts root with the
+**SSH and FTP are hardened by default.** Stock accepts root with the
 password `1` from anyone on the network. Here SSH takes a key from the card, and
-**Scripts > password_login.sh** turns stock's password login back on if you want it
+**Scripts > unharden.sh** restores stock's root password login if you want it
 ([FAQ](docs/user/faq.md#remote-login),
 [ADR 0031](docs/decisions/0031-secure-by-default-network-posture.md)). The console keeps
 the password `1`.

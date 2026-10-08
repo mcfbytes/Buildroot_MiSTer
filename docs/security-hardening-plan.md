@@ -31,7 +31,7 @@ Re-run its three login tests before starting; if any result differs, update the 
 
 Replaced by a stronger default (ADR 0031 amendment 2026-10-08, `ssh-ftp-parity.md` §1.4):
 password auth is off whether or not a key is present, and the card file
-`/media/fat/linux/password_login` (written by `Scripts/password_login.sh`) turns it on
+`/media/fat/linux/unharden` (written by `Scripts/unharden.sh`) turns it on
 for SSH and FTP together. There is no `sshd_allow_password`. The original task text
 follows.
 
@@ -182,7 +182,7 @@ you don't trust", covers S1, S2, and S10 together.
 
 Q1 was answered "gate it". Done as an explicit switch rather than a hash comparison, so it
 does not depend on S2: SSH key-only and no root FTP login unless
-`/media/fat/linux/password_login` exists; `Scripts/password_login.sh` writes or deletes it
+`/media/fat/linux/unharden` exists; `Scripts/unharden.sh` writes or deletes it
 (ADR 0031 amendment 2026-10-08). S2 remains open: with the switch on, the password is `1`
 again after every update. The original task text follows.
 

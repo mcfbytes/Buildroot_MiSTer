@@ -319,7 +319,7 @@ ensure_companion_scripts() {
 		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech" \
 		"usb_full_speed_mode.sh|MLM_USB_FULL_SPEED_URL|mister-usb-full-speed" \
 		"cpu_isolation.sh|MLM_CPU_ISOLATION_URL|mister-cpu-isolation" \
-		"password_login.sh|MLM_PASSWORD_LOGIN_URL|mister-password-login"
+		"unharden.sh|MLM_UNHARDEN_URL|mister-unharden"
 	do
 		name="${entry%%|*}"
 		override="${entry#*|}"; override="${override%%|*}"
@@ -329,7 +329,7 @@ ensure_companion_scripts() {
 
 		default_url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
 		# Indirect expansion, so each entry keeps its own documented override
-		# (MLM_CHECK_STORAGE_URL, ..., MLM_PASSWORD_LOGIN_URL) rather than one shared
+		# (MLM_CHECK_STORAGE_URL, ..., MLM_UNHARDEN_URL) rather than one shared
 		# variable that could only ever point at a single file.
 		url="${!override:-$default_url}"
 		tmp="/tmp/$name.$$"

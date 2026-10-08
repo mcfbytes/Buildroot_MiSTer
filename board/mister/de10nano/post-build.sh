@@ -18,7 +18,7 @@
 # The hash below is SHA-256 crypt of "1" with a fixed salt (openssl passwd -5
 # -salt MiSTer618 1). "1" is STOCK PARITY -- the stock MiSTer image ships root
 # password "1". It works on the console; SSH and FTP accept it only after the
-# card opts in (Scripts/password_login.sh, ADR 0031 amendment 2026-10-08).
+# card opts in (Scripts/unharden.sh, ADR 0031 amendment 2026-10-08).
 
 set -e
 

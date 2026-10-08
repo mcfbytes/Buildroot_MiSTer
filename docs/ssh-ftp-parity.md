@@ -37,7 +37,7 @@
 > *current* config remains true until that plan's tasks land; each task adds a
 > divergence row here.
 >
-> **2026-10-08:** root password login over SSH and FTP is now opt-in (§1.4), and SSH
+> **2026-10-08:** SSH and FTP are hardened by default; root password login is opt-in via `Scripts/unharden.sh` (§1.4), and SSH
 > forwarding is limited to Transmission's web UI.
 >
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
@@ -251,14 +251,14 @@ nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migratio
 behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
-### 1.4 Root password login is opt-in — SSH and FTP (ADR 0031, 2026-10-08)
+### 1.4 Hardened by default; `unharden` restores root login — SSH and FTP (ADR 0031, 2026-10-08)
 
 **Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), amendment
 2026-10-08 (the owner's answer to Q1). On a fresh card neither SSH nor FTP accepts
-root's password. One card file turns stock's behaviour back on for both:
-`/media/fat/linux/password_login`.
+root's password (the card is *hardened*). One card file *unhardens* it, turning stock's
+behaviour back on for both: `/media/fat/linux/unharden`.
 
-| | Default (no card file) | With `linux/password_login` |
+| | Hardened (default, no card file) | Unhardened (`linux/unharden`) |
 |---|---|---|
 | SSH, key in `config/authorized_keys` | works | works |
 | SSH, root password | refused: the server offers `publickey` only | works (stock) |
@@ -274,12 +274,12 @@ root's password. One card file turns stock's behaviour back on for both:
   exists. Command-line `-o` wins over the file. `UsePAM yes` stays: with both password
   methods off, PAM runs only its account and session stacks.
 - `proftpd.conf` has no ungated `RootLogin on`. It sits inside
-  `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>`, and `S50proftpd` passes
-  `-D MISTER_ROOT_PASSWORD_LOGIN` when the card file exists. Every later FTP option
+  `<IfDefine MISTER_UNHARDENED>`, and `S50proftpd` passes
+  `-D MISTER_UNHARDENED` when the card file exists. Every later FTP option
   (anonymous off, chroot, a non-root user) can be another define in the same place,
   without a second copy of the config.
-- `/usr/sbin/mister-password-login` writes or deletes the card file, `sync`s, and
-  restarts both services. `/media/fat/Scripts/password_login.sh` is its launcher,
+- `/usr/sbin/mister-unharden` writes or deletes the card file, `sync`s, and
+  restarts both services. `/media/fat/Scripts/unharden.sh` is its launcher,
   delivered the same way as the other Scripts (install.sh, the sdcard image, and
   `update_linux_modernization.sh`'s create-only repair). Restarting `sshd` kills only the
   listener: OpenSSH 10's sessions are `sshd-session` processes, which `killall sshd`
@@ -298,8 +298,8 @@ on exFAT does not matter: it holds no secret. The password hash stays out of it.
 **Boot log.** `S50sshd` prints which mode it started in. With no flag and no key line
 in `config/authorized_keys` or `/root/.ssh/authorized_keys`, sshd still starts (a key
 dropped on the card later works without a reboot), and the line reads
-`NO REMOTE LOGIN`, followed by the two ways in. `S50proftpd` prints `root login off` or
-`root password login ON`.
+`NO REMOTE LOGIN`, followed by the two ways in. `S50proftpd` prints `hardened: no root login` or
+`UNHARDENED: root login on`.
 
 **Forwarding (Tier 1 item 7).** `AllowTcpForwarding local` with `PermitOpen
 127.0.0.1:9091 localhost:9091`, not `no`: the documented way to reach Transmission's web
@@ -411,7 +411,7 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 **Byte-identical to stock** at the P3.7 audit (`diff` exit 0 against
 `work/imgroot/etc/proftpd.conf` and against the doc-captured copy in
 `docs/stock-inventory/20250402/etc-configs.md`). **One change since, 2026-10-08:**
-`RootLogin on` moved inside `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>` (§1.4). Notable
+`RootLogin on` moved inside `<IfDefine MISTER_UNHARDENED>` (§1.4). Notable
 content, otherwise stock-matching:
 
 - `<Global> RequireValidShell off </Global>`, with `RootLogin on` only under the

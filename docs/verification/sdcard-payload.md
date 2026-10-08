@@ -51,7 +51,7 @@ mister-payload/Scripts/
 mister-payload/Scripts/check_storage.sh
 mister-payload/Scripts/cpu_isolation.sh
 mister-payload/Scripts/pair_logitech.sh
-mister-payload/Scripts/password_login.sh
+mister-payload/Scripts/unharden.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
@@ -120,11 +120,11 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > existed get the menu entry).
 
 > **Changed 2026-10-08** — one entry **added**, taking the base inventory from 32 to 33:
-> `mister-payload/Scripts/password_login.sh`
+> `mister-payload/Scripts/unharden.sh`
 > ([ADR 0031](../decisions/0031-secure-by-default-network-posture.md), amendment
 > 2026-10-08), staged by `stage_update_channel()` with the other Scripts. Same shim shape:
-> the tool is `/usr/sbin/mister-password-login` in the rootfs. On a fresh card it is the
-> way to turn root password login over SSH and FTP back on.
+> the tool is `/usr/sbin/mister-unharden` in the rootfs. On a fresh card it is the
+> way to unharden: turn root password login over SSH and FTP back on.
 
 > **Changed 2026-10-05** — two entries **added**, taking the base inventory from 30 to 32:
 > `mister-payload/Scripts/cpu_isolation.sh` ([docs/cpu-isolation.md](../cpu-isolation.md)) and
@@ -182,7 +182,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/downloader.ini` | **Ours**, `board/mister/de10nano/fat-payload/downloader.ini` | In-tree, not fetched. Sets `[MiSTer] update_linux = false` so no normal Downloader run can apply *any* Linux image — which is what stops the official `distribution_mister` entry from overwriting ours. Also declares the core databases explicitly — `distribution_mister` (canonical URL from the Downloader's own `constants.py`), `jtcores` and `update_all_mister` — because shipping the file suppresses Update All's own default seeding. `distribution_mister` **must** be explicit here: `_add_default_database` only auto-adds it when the base ini declares *no* databases, and this file declares some. Deliberately comment-free beyond a two-line header pointing at the docs; the explanation lives in `docs/user/onboarding.md`, since tooling rewrites this file and comments on database sections do not survive |
 | `mister-payload/Scripts/pair_logitech.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-pair-logitech` in the rootfs, which in turn drives `/usr/bin/ltunify` (`BR2_PACKAGE_LTUNIFY`). Passes no arguments deliberately: the tool's no-argument default is "pair", and it completes without asking anything when exactly one usable receiver is present — which matters because the person running this may have no keyboard, the one being paired being the only one. See [docs/logitech-pairing.md](../logitech-pairing.md) |
 | `mister-payload/Scripts/cpu_isolation.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/cpu_isolation.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-cpu-isolation`, which keeps Linux work off CPU1, live or through `isolcpus=` in `u-boot.txt`. See [docs/cpu-isolation.md](../cpu-isolation.md) |
-| `mister-payload/Scripts/password_login.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/password_login.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-password-login`, which turns root password login over SSH and FTP on or off by writing or deleting `/media/fat/linux/password_login` and restarting `sshd` and `proftpd`. See [ADR 0031](../decisions/0031-secure-by-default-network-posture.md) and [docs/ssh-ftp-parity.md](../ssh-ftp-parity.md) §1.4 |
+| `mister-payload/Scripts/unharden.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/unharden.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-unharden`, which unhardens (root password login over SSH and FTP) or hardens again by writing or deleting `/media/fat/linux/unharden` and restarting `sshd` and `proftpd`. See [ADR 0031](../decisions/0031-secure-by-default-network-posture.md) and [docs/ssh-ftp-parity.md](../ssh-ftp-parity.md) §1.4 |
 | `mister-payload/Scripts/usb_full_speed_mode.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/usb_full_speed_mode.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-usb-full-speed`, which switches USB full-speed mode (`dwc2.fs_ddma`) until the next reboot, or at every boot on request. See [docs/dwc2-usb-irq.md](../dwc2-usb-irq.md) |
 | `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 

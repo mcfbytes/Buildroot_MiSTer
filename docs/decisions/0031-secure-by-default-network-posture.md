@@ -444,16 +444,18 @@ fit, maybe mandatory ssh key on the exfat partition and no login if it's not the
    `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key,
    sshd still runs and nobody can log in remotely; `S50sshd` prints `NO REMOTE LOGIN` and
    the two ways in. `proftpd.conf`'s `RootLogin on` moved inside
-   `<IfDefine MISTER_ROOT_PASSWORD_LOGIN>`, so FTP refuses root (`530`).
-2. **One card file brings stock back for both:** `/media/fat/linux/password_login`.
+   `<IfDefine MISTER_UNHARDENED>`, so FTP refuses root (`530`).
+2. **One card file brings stock back for both:** `/media/fat/linux/unharden`.
    `S50sshd` then adds `-o PermitRootLogin=yes -o PasswordAuthentication=yes -o
    KbdInteractiveAuthentication=yes`, and `S50proftpd` passes
-   `-D MISTER_ROOT_PASSWORD_LOGIN`. SSH and FTP are switched together, as this ADR's
+   `-D MISTER_UNHARDENED`. SSH and FTP are switched together, as this ADR's
    Context requires: FTP write access to the card is root at next boot.
-3. **The script.** `/usr/sbin/mister-password-login` (in the image, versioned with the
+3. **The script.** The owner calls the opt-in "the `unharden` script", so it is named
+   that way: a card is *hardened* by default and *unhardened* by the switch.
+   `/usr/sbin/mister-unharden` (in the image, versioned with the
    init scripts it drives) writes or deletes the file and restarts both services; it also
    reports how many keys the card holds and whether root's hash is still the default.
-   `Scripts/password_login.sh` is its launcher on the card, delivered like the other
+   `Scripts/unharden.sh` is its launcher on the card, delivered like the other
    Scripts (ADR 0026: install.sh, the sdcard image, and the updater's create-only repair,
    which is how an existing installation gets it on the update that brings this change).
 4. **The console keeps `root:1`.** Root's shadow entry is not locked. The serial console
@@ -479,7 +481,7 @@ S2.
 **Visible changes, stated for release notes.**
 
 - Anyone who logs in with root:`1` over SSH or FTP, including existing users on their
-  next update, must run **Scripts > password_login.sh** once, or put a key on the card.
+  next update, must run **Scripts > unharden.sh** once, or put a key on the card.
 - **FTP is unusable by default** until the owner picks one of the FTP options being
   prepared separately, or the user runs the script. SFTP with a key needs neither.
 - Anonymous FTP is **unchanged** (Tier 1 item 3 is part of those FTP options).
@@ -488,7 +490,7 @@ S2.
 
 - **A password that survives an update** (Tier 1 item 2, Q3). With the switch on, the
   password is `1` again after every update. The natural next step is for
-  `mister-password-login` to offer "set a new password" and store the hash on
+  `mister-unharden` to offer "set a new password" and store the hash on
   `ssh.ext4`, never on exFAT (`fmask=0022`), with the boot-time restore and the
   `rename()` constraint described in item 2.
 - Samba keeps its own password database and is untouched; `S91smb` is opt-in already.
@@ -496,7 +498,7 @@ S2.
 **Regression oracle.** On a fresh card the three tests in "What the image does today"
 give: `ssh root@rig` with password `1` — refused (`publickey` only); `ftp://root:1@rig/` —
 `530`; anonymous FTP — unchanged until the FTP options land. With
-`/media/fat/linux/password_login` present, the first two pass again. CI
-(`scripts/ci-tests.sh`, section "ADR 0031 — root password login is opt-in") asserts the
+`/media/fat/linux/unharden` present, the first two pass again. CI
+(`scripts/ci-tests.sh`, section "ADR 0031 — hardened by default") asserts the
 shipped `sshd_config`, both init scripts and `proftpd.conf`, and runs the target's own
 `sshd -T` under qemu-arm in both modes.

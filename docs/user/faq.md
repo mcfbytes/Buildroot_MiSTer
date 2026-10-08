@@ -49,15 +49,15 @@ have two ways in:
    card ([how](#ssh-key-persist)). SSH and SFTP then work with the key, and keep working
    after every update. Most "FTP" programs (WinSCP, FileZilla, Cyberduck) also speak
    SFTP, which uses the same key and encrypts everything.
-2. **Turn stock's password login back on.** Run **Scripts > password_login.sh** from the
-   MiSTer menu and choose *Turn ON*. SSH and FTP then accept root with the root
-   password, exactly as on stock. Run it again and choose *Turn OFF* to undo it. Over
-   SSH the same tool is `mister-password-login on` / `off` / `status`. All it does is
-   create or delete the file `linux/password_login` on the card and restart the two
+2. **Unharden: turn stock's password login back on.** Run **Scripts > unharden.sh** from the
+   MiSTer menu and choose *Unharden*. SSH and FTP then accept root with the root
+   password, exactly as on stock. Run it again and choose *Harden* to undo it. Over
+   SSH the same tool is `mister-unharden on` / `off` / `status`. All it does is
+   create or delete the file `linux/unharden` on the card and restart the two
    servers, so creating that file from a PC and rebooting does the same.
 
-**FTP needs option 2.** With password login off, the FTP server does not accept root.
-Use SFTP with your key instead, or turn password login on.
+**FTP needs option 2.** On a hardened card the FTP server does not accept root.
+Use SFTP with your key instead, or unharden.
 
 **Without a key and without option 2, sshd still runs but nobody can log in.** The boot
 messages say `NO REMOTE LOGIN` when that is the case. Adding a key to the card is
@@ -69,10 +69,10 @@ board can already pull the card, so a password there would protect nothing.
 
 **Updating from an earlier release?** This applies to you too, from the update that
 brings it. If you log in with a password over SSH or FTP, run
-**Scripts > password_login.sh** once after updating. `update_linux_modernization.sh`
+**Scripts > unharden.sh** once after updating. `update_linux_modernization.sh`
 puts that script in your Scripts folder if it is missing.
 
-**If you turn password login on, change the password** on any network you do not fully
+**If you unharden, change the password** on any network you do not fully
 control: log in and run `passwd`. **An image update puts it back to `1`**, because
 `/etc/shadow` lives inside `linux.img`, which an update replaces. Re-run `passwd` after
 every update until the persistence work in
@@ -162,8 +162,8 @@ an update lives on the data partition, not in the image.
 
 > **Note:** the key file is read by the SSH server as root, so treat the card as you would
 > any machine you can log into. Put only your **public** key there — never a private key.
-> SSH is key-only unless you turned password login on with
-> [Scripts > password_login.sh](#remote-login); with it on, both the key and the password
+> SSH is key-only unless you unhardened with
+> [Scripts > unharden.sh](#remote-login); with it on, both the key and the password
 > work.
 
 ---

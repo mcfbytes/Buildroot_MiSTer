@@ -52,7 +52,7 @@
 #   --remove-script    also delete this project's Scripts entries
 #                      (update_linux_modernization.sh, check_storage.sh,
 #                      pair_logitech.sh, usb_full_speed_mode.sh,
-#                      cpu_isolation.sh and password_login.sh)
+#                      cpu_isolation.sh and unharden.sh)
 #   --restore-backups  put the files in linux/.mlm-backup/ back (see below)
 #   --yes              skip the 10-second countdown
 #
@@ -88,7 +88,7 @@ CHECK_STORAGE="$FAT/Scripts/check_storage.sh"
 PAIR_LOGITECH="$FAT/Scripts/pair_logitech.sh"
 USB_FULL_SPEED="$FAT/Scripts/usb_full_speed_mode.sh"
 CPU_ISOLATION="$FAT/Scripts/cpu_isolation.sh"
-PASSWORD_LOGIN="$FAT/Scripts/password_login.sh"
+UNHARDEN="$FAT/Scripts/unharden.sh"
 PRIVATE_INI="/tmp/mister_linux_modernization.ini"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 BASE_INI_BACKUP="$BACKUP_DIR/downloader.ini.orig"
@@ -145,7 +145,7 @@ if [ "$REMOVE_SCRIPT" -eq 1 ]; then
 	say "                   $PAIR_LOGITECH,"
 	say "                   $USB_FULL_SPEED,"
 	say "                   $CPU_ISOLATION and"
-	say "                   $PASSWORD_LOGIN will also be deleted."
+	say "                   $UNHARDEN will also be deleted."
 fi
 say ""
 rule
@@ -284,7 +284,7 @@ fi
 # image anyway, so leaving them behind would just be menu entries that print
 # "this needs the MiSTer Linux Modernization image".
 if [ "$REMOVE_SCRIPT" -eq 1 ]; then
-	for _f in "$UPDATER" "$CHECK_STORAGE" "$PAIR_LOGITECH" "$USB_FULL_SPEED" "$CPU_ISOLATION" "$PASSWORD_LOGIN"; do
+	for _f in "$UPDATER" "$CHECK_STORAGE" "$PAIR_LOGITECH" "$USB_FULL_SPEED" "$CPU_ISOLATION" "$UNHARDEN"; do
 		[ -e "$_f" ] || continue
 		rm -f "$_f" && say "Removed $_f"
 	done

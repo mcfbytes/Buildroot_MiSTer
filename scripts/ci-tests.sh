@@ -1966,13 +1966,13 @@ if tar_has "etc/init.d/S50sshd"; then
 fi
 
 # =============================================================================
-section "ADR 0031 — root password login is opt-in (Scripts/password_login.sh)"
+section "ADR 0031 — hardened by default; Scripts/unharden.sh restores root login"
 # =============================================================================
-# Fresh card: SSH by key only, no root FTP login. /media/fat/linux/password_login
+# Fresh card: SSH by key only, no root FTP login. /media/fat/linux/unharden
 # brings stock's root:1 back over both (docs/ssh-ftp-parity.md §1.4).
 
-PWL_FLAG=/media/fat/linux/password_login
-require_present "usr/sbin/mister-password-login" "mister-password-login tool"
+UNHARDEN_FLAG=/media/fat/linux/unharden
+require_present "usr/sbin/mister-unharden" "mister-unharden tool"
 
 if tar_has "etc/ssh/sshd_config"; then
 	sshd_conf="$WORKDIR/sshd_config"
@@ -1991,33 +1991,33 @@ fi
 if tar_has "etc/init.d/S50sshd"; then
 	s50="$WORKDIR/S50sshd"
 	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50sshd > "$s50" 2>/dev/null
-	if grep -qxF "PASSWORD_LOGIN=$PWL_FLAG" "$s50" &&
+	if grep -qxF "UNHARDEN=$UNHARDEN_FLAG" "$s50" &&
 		grep -qF 'set -- "$@" -o PermitRootLogin=yes -o PasswordAuthentication=yes' "$s50"; then
-		pass "S50sshd: password_login card flag re-enables root password login"
+		pass "S50sshd: unharden card flag re-enables root password login"
 	else
-		fail "S50sshd: password_login card flag re-enables root password login" \
-			"the flag or the -o overrides are missing -- Scripts/password_login.sh would switch nothing on"
+		fail "S50sshd: unharden card flag re-enables root password login" \
+			"the flag or the -o overrides are missing -- Scripts/unharden.sh would switch nothing on"
 	fi
 fi
 
 # RootLogin may appear only inside the <IfDefine> that S50proftpd's flag turns on.
 if tar_has "etc/proftpd.conf"; then
 	ungated=$(tar xOf "$ROOTFS_TAR" ./etc/proftpd.conf | awk '
-		/^[[:space:]]*<IfDefine[[:space:]]+MISTER_ROOT_PASSWORD_LOGIN>/ { g++ }
+		/^[[:space:]]*<IfDefine[[:space:]]+MISTER_UNHARDENED>/ { g++ }
 		/^[[:space:]]*<\/IfDefine>/ && g { g--; next }
 		/^[[:space:]]*RootLogin[[:space:]]+on/ && !g { print NR": "$0 }')
 	if [ -z "$ungated" ]; then
-		pass "proftpd.conf: RootLogin on only under <IfDefine MISTER_ROOT_PASSWORD_LOGIN>"
+		pass "proftpd.conf: RootLogin on only under <IfDefine MISTER_UNHARDENED>"
 	else
-		fail "proftpd.conf: RootLogin on only under <IfDefine MISTER_ROOT_PASSWORD_LOGIN>" \
+		fail "proftpd.conf: RootLogin on only under <IfDefine MISTER_UNHARDENED>" \
 			"ungated: $ungated -- a fresh card would accept root:1 over cleartext FTP"
 	fi
 fi
-if tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd 2>/dev/null | grep -qxF "PASSWORD_LOGIN=$PWL_FLAG" &&
-	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd | grep -qF -- '-D MISTER_ROOT_PASSWORD_LOGIN'; then
-	pass "S50proftpd: password_login card flag passes -D MISTER_ROOT_PASSWORD_LOGIN"
+if tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd 2>/dev/null | grep -qxF "UNHARDEN=$UNHARDEN_FLAG" &&
+	tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd | grep -qF -- '-D MISTER_UNHARDENED'; then
+	pass "S50proftpd: unharden card flag passes -D MISTER_UNHARDENED"
 else
-	fail "S50proftpd: password_login card flag passes -D MISTER_ROOT_PASSWORD_LOGIN" \
+	fail "S50proftpd: unharden card flag passes -D MISTER_UNHARDENED" \
 		"missing -- the opt-in would leave FTP root login off"
 fi
 
@@ -2027,24 +2027,24 @@ if [ -z "$QEMU_ARM" ] || ! have ssh-keygen; then
 elif [ ! -x "$TARGET/usr/sbin/sshd" ] || [ ! -f "${sshd_conf:-}" ]; then
 	skip "sshd -T: key-only by default, password with the opt-in" "target sshd or shipped sshd_config not available"
 else
-	ssh-keygen -q -t ed25519 -N '' -f "$WORKDIR/pwl_hostkey" </dev/null
-	pwl_t() {
-		qemu_target "$TARGET/usr/sbin/sshd" -T -f "$sshd_conf" -o "HostKey=$WORKDIR/pwl_hostkey" "$@" 2>&1 |
+	ssh-keygen -q -t ed25519 -N '' -f "$WORKDIR/unh_hostkey" </dev/null
+	unh_t() {
+		qemu_target "$TARGET/usr/sbin/sshd" -T -f "$sshd_conf" -o "HostKey=$WORKDIR/unh_hostkey" "$@" 2>&1 |
 			grep -iE '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) ' | tr 'A-Z\n' 'a-z '
 	}
-	got_off=" $(pwl_t) "
-	got_on=" $(pwl_t -o PermitRootLogin=yes -o PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes) "
-	pwl_has() { # <got> <setting value>...
+	got_off=" $(unh_t) "
+	got_on=" $(unh_t -o PermitRootLogin=yes -o PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes) "
+	unh_has() { # <got> <setting value>...
 		local got=$1 w
 		shift
 		for w in "$@"; do case "$got" in *" $w "*) ;; *) return 1 ;; esac; done
 	}
-	if pwl_has "$got_off" "permitrootlogin prohibit-password" "passwordauthentication no" "kbdinteractiveauthentication no"; then
+	if unh_has "$got_off" "permitrootlogin prohibit-password" "passwordauthentication no" "kbdinteractiveauthentication no"; then
 		pass "sshd -T default is key-only:$got_off"
 	else
 		fail "sshd -T default is key-only" "got:$got_off"
 	fi
-	if pwl_has "$got_on" "permitrootlogin yes" "passwordauthentication yes" "kbdinteractiveauthentication yes"; then
+	if unh_has "$got_on" "permitrootlogin yes" "passwordauthentication yes" "kbdinteractiveauthentication yes"; then
 		pass "sshd -T with the opt-in allows root password login:$got_on"
 	else
 		fail "sshd -T with the opt-in allows root password login" "got:$got_on"

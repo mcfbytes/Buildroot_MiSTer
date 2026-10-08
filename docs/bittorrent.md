@@ -102,12 +102,12 @@ two ways that both cost data rather than convenience:
 
 - it runs the daemon as the `transmission` user. The card is mounted `fmask=0022,dmask=0022`
   with no `uid=`/`gid=`, so every file on `/media/fat` is root's and that user cannot write
-  a byte of it. Ours runs as root, for the same reason `proftpd` and `smbd` do here. The
-  user itself still gets created — `TRANSMISSION_USERS` in `transmission.mk` adds a
-  `transmission` line to `/etc/passwd`, `/etc/group` and an empty `/var/lib/transmission`
-  home inside the read-only root. Nothing on this image uses any of it; it is left alone
-  rather than patched out, because suppressing it means carrying a patch against an
-  upstream package for three unused lines.
+  a byte of it. Ours runs the daemon as that same user, but inside a minijail that gives it
+  `CAP_DAC_OVERRIDE` and nothing else, and a mount view in which only its own directories
+  exist (§8.1). The user comes from `TRANSMISSION_USERS` in `transmission.mk`, which asks for
+  an automatic uid; `board/mister/de10nano/users.table` pins it to **8422**, because the
+  init script checks that number against `/proc` and must not depend on the order
+  Buildroot happened to allocate ids in.
 - it puts `TRANSMISSION_HOME` at `/var/config/transmission-daemon`, i.e. **inside
   `linux.img`**. The root filesystem is read-only and is replaced wholesale by every OS
   update, so `settings.json`, `resume/` and `torrents/` would be destroyed on each update:
@@ -123,18 +123,35 @@ package-installed script for a similar reason (`docs/init-parity.md`).
 ## 3. The FAT-backed layout
 
 Everything the daemon owns lives under one directory on the exFAT partition, which no OS
-update touches:
+update touches. The opt-in directory itself holds one subdirectory, `jail/`, and that is
+what the daemon sees *as* `/media/fat/linux/transmission` inside its jail (§8.1):
 
 ```
-/media/fat/linux/transmission/
-├── settings.json        seeded on first start (§4), yours to edit afterwards
-├── downloads/           default download-dir; move it wherever you like
-├── resume/              per-torrent progress — losing this costs a full re-verify
-├── torrents/            the .torrent files the daemon was given
-├── blocklists/          empty unless you enable one
-├── dht.dat              the DHT routing table, so a restart does not start cold
-└── stats.json
+/media/fat/linux/transmission/       the opt-in gate (§2)
+└── jail/                            appears as /media/fat/linux/transmission in the jail
+    ├── settings.json    seeded on first start (§4), yours to edit afterwards
+    ├── downloads/       default download-dir; anywhere else needs a `rw=` line (§8.1)
+    ├── resume/          per-torrent progress — losing this costs a full re-verify
+    ├── torrents/        the .torrent files the daemon was given
+    ├── blocklists/      empty unless you enable one
+    ├── dht.dat          the DHT routing table, so a restart does not start cold
+    └── stats.json
 ```
+
+**Paths in `settings.json` and over RPC are jail paths.** `download-dir` says
+`/media/fat/linux/transmission/downloads`, and on the card that directory is
+`/media/fat/linux/transmission/jail/downloads`. A directory granted with a `rw=` line keeps
+its own path, so `-w /media/fat/games/NES` means the same thing on both sides.
+
+**Upgrading from a root-daemon image** is automatic: the first jailed start moves
+everything already in `/media/fat/linux/transmission/` into `jail/`, once, so torrents,
+progress and settings carry over. The move collects into `jail.new/` and renames it to
+`jail/` only when every entry is across, so a power cut part-way resumes on the next start
+instead of leaving half the state behind. A `download-dir` you had changed to somewhere outside
+that directory needs a `rw=` line, or those torrents report their data missing. Going back
+to an older image is safe rather than seamless: its root daemon sees only an empty-looking
+directory, seeds a fresh `settings.json` beside `jail/` and starts with no torrents, and the
+jailed state is untouched for when you come back.
 
 `/media/fat/linux` is deliberate rather than arbitrary. It is where this image already keeps
 the per-device state that must survive a reflash — `ssh.ext4`, `bluetooth`, `wpa_supplicant.conf`,
@@ -155,8 +172,10 @@ Two consequences of exFAT worth knowing before you point `download-dir` somewher
 
 ## 4. `settings.json` — what the init script seeds, and why
 
-On the first start where no `settings.json` exists, the script writes one. It never writes
-over a file that is already there: this is a seed, not a policy re-applied at every boot,
+On the first start where no `settings.json` exists, the script writes one, from inside the
+jail as uid 8422: `O_EXCL` to `settings.json.new`, then renamed into place, so a symlink
+planted in its place is never followed and a torn write is never mistaken for a seed (a
+failed write fails the start). It never writes over a file that is already there: this is a seed, not a policy re-applied at every boot,
 so anything you edit afterwards stands — including the daemon's own rewrite of the file
 when it shuts down.
 
@@ -177,6 +196,8 @@ when it shuts down.
     "rpc-port": 9091,
     "rpc-whitelist": "127.0.0.1,::1",
     "rpc-whitelist-enabled": true,
+    "script-torrent-added-enabled": false,
+    "script-torrent-done-enabled": false,
     "utp-enabled": true
 }
 ```
@@ -190,6 +211,11 @@ not**, and they are the reason the file is seeded at all:
 | `port-forwarding-enabled` | `true` (`session.h:429`) | `false` | Upstream asks the router for a WAN port mapping over UPnP/NAT-PMP on first run. A console should not open a hole in someone's router because it was switched on. |
 | `preallocation` | `Sparse` (`session.h:480`) | `0` (off) | exFAT has no sparse files; see §6 for the measurement. |
 | `peer-limit-global` / `-per-torrent` | 200 / 50 (`transmission.h:144`, `:146`) | 120 / 30 | The kernel is booted `mem=511M` (§7) — 488 MiB for all of Linux. 200 global peers is a desktop's budget, not this board's. |
+
+The two `script-torrent-*` keys are upstream's default too. They are written down because
+they are the daemon's only way to run a program, and an RPC client could otherwise turn them
+on; inside the jail such a script would run as uid 8422 with the same view, so this is
+visibility rather than a boundary.
 
 `rpc-enabled` stays `true` because RPC is the only control path — `transmission-remote`
 speaks nothing else — but it is now a loopback-only path. §8 is the security disposition.
@@ -207,10 +233,13 @@ Changing anything requires a restart (`/etc/init.d/S92transmission restart`) unl
 it through `transmission-remote`, which applies immediately and is written back to
 `settings.json` at shutdown.
 
-**Logging** goes to syslog, because the daemon is not in the foreground
-(`daemon/daemon.cc:322`). This image runs BusyBox `syslogd` (`S01syslogd`) with `/var/log`
-symlinked to `/tmp`, so the messages land in `/tmp/messages` on tmpfs and cost the card
-nothing.
+**Logging** goes to syslog, tagged `transmission-daemon`. The jailed daemon runs in the
+foreground (it is its PID namespace's init, §8.1) and writes to stderr, which the init
+script pipes into `logger`; the jail has no `/dev/log` of its own. Daemon and `logger` run
+in a session of their own (`setsid`), so a caller that signals its own process group — a
+`timeout`, a supervisor's kill on a slow start — does not reach them. This image runs BusyBox
+`syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages land in
+`/tmp/messages` on tmpfs and cost the card nothing.
 
 ---
 
@@ -272,9 +301,17 @@ transmission-remote --exit                  # shut the daemon down
 ### Make a torrent of your own
 
 ```sh
-transmission-create -o /media/fat/linux/transmission/mine.torrent \
-    -t udp://tracker.example/announce /media/fat/some-directory
+transmission-create -o /tmp/mine.torrent \
+    -t udp://tracker.example/announce /media/fat/downloads/my-set
+echo rw=/media/fat/downloads >>/media/fat/linux/transmission.jail
+/etc/init.d/S92transmission restart
+transmission-remote -a /tmp/mine.torrent -w /media/fat/downloads
 ```
+
+`transmission-create` runs outside the jail and can read anything; the daemon that seeds the
+result can read only its view, so the data's parent directory needs a `rw=` line (§8.1).
+`transmission-remote -a` sends the file's contents over RPC, so the `.torrent` itself can
+be anywhere.
 
 ---
 
@@ -380,6 +417,130 @@ The full disposition, and how it fits the rest of the image's posture, is the
 **2026-09-21 amendment** to
 [ADR 0031](decisions/0031-secure-by-default-network-posture.md).
 
+### 8.1 The jail
+
+Everything above limits who can *reach* the daemon. The jail limits what a daemon that has
+been compromised anyway — a parser bug in a hostile `.torrent`, a peer-protocol bug — can
+*do*. The design is mistarr's `docs/NONROOT-PLAN.md` §7; the tool is `package/minijail`
+(`docs/minijail.md`).
+
+File permissions cannot do this on the card: exFAT is mounted with no `uid=`, so every file
+is `root:root 0755` and a non-root user could write nothing. So the daemon runs as uid
+**8422** with `CAP_DAC_OVERRIDE` as its only capability — enough to write the card — and
+the boundary is what it can *see*. `minijail0 -T static -u 8422 -g 8422 -c 0x2 --ambient`
+with `no_new_privs` (`-n`) and new PID (`-I`, the daemon as its init), IPC, UTS and mount
+namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. Three kernel
+features added for it (D13 in `docs/kernel-config-deltas.md`) narrow that further: a seccomp
+filter, Landlock rules, and a cgroup with a process ceiling, each described below the
+table.
+
+| In the jail | From | Mode |
+|---|---|---|
+| `/usr` (and `/bin`, `/lib`, `/sbin` as links into it) | the read-only root | ro |
+| `/etc/passwd`, `group`, `hosts`, `nsswitch.conf`, `ssl/` | the read-only root | ro |
+| `/etc/resolv.conf` | `/run/resolv.conf`, so DHCP renewals are seen | ro |
+| `/etc/localtime` | `/media/fat/linux/timezone`, if it is a plain file | ro |
+| `/proc` | a new proc for the PID namespace: it lists only the jail | ro |
+| `/dev` | minijail's minimal set: `null`, `zero`, `full`, `urandom`, `tty` | — |
+| `/tmp` | a private 16 MiB tmpfs | rw |
+| `/media/fat/linux/transmission` | `/media/fat/linux/transmission/jail` | rw |
+| `/media/fat/mistarr/staging` | itself, if `/media/fat/mistarr` exists (created on demand) | rw |
+| each `rw=` / `staging=` line of `/media/fat/linux/transmission.jail` | itself | rw |
+
+Not in it: the rest of the card, `/media/fat/linux` (so not `ssh.ext4`, `samba.sh` or
+`wpa_supplicant.conf`), `/etc/shadow`, `/sys`, `/root`, and every other process. Core dumps
+are off (`RLIMIT_CORE` 0) and the daemon's `oom_score_adj` is 800, so on this 488 MiB box the
+kernel takes it before Main_MiSTer.
+
+**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` at every
+start from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
+that compiles it: every syscall is allowed except the `SECCOMP_DENY` list in the script,
+which return `EPERM`. That list is kernel attack surface the daemon never uses: io_uring,
+`perf_event_open`, `bpf`, the keyring calls, `ptrace` and the cross-process memory calls,
+every mount, namespace and module call, `reboot`/`kexec`, setting the clock or hostname, and
+`memfd_create`/`execveat` (running code from an anonymous file).
+It is a deny-list rather than an allow-list on purpose. minijail can only *kill* on a syscall
+outside an allow-list, and this kernel has no audit subsystem to log one, so a syscall
+nobody recorded — a rare error path, a libc upgrade — would kill the daemon mid-download with
+no trace. `EPERM` on a short list of calls it never makes cannot.
+
+**No execution from anything writable.** The state directory and every granted directory
+are bound and then re-mounted `noexec,nosuid,nodev` inside the jail, and so are `/tmp` and
+the jail's tmpfs root. `noexec` refuses both `execve` and an executable `mmap` of a file
+there, so a dropped binary cannot be started directly or through the dynamic loader
+(`ld.so ./payload`). The bind is per-mount: the same directories stay executable outside the
+jail, as the card always was.
+
+**Landlock** (`--fs-path-*`). Applied after the pivot, so the rules name jail paths:
+execute only under `/usr`; read-only `/etc` and `/proc`; read-write `/dev` and `/tmp`;
+full read-write (including cross-directory rename) on the state directory and each granted
+directory. It is a second layer under the mount view: `execve` outside `/usr` is refused even
+where a mount would allow it, and the jail's tmpfs root cannot be written, which
+`CAP_DAC_OVERRIDE` would otherwise allow. minijail skips Landlock silently when the kernel
+lacks it, so `start` first runs a probe jail that must fail to write `/etc`; if the write
+succeeds, the daemon is not started.
+
+None of this stops code that is already running inside the daemon's own address space; it
+limits what that code can reach and leave behind.
+
+**The pids cgroup.** `/etc/fstab` mounts cgroup2 at `/sys/fs/cgroup`; the script enables the
+pids controller there and runs the daemon in `/sys/fs/cgroup/transmission` with
+`pids.max` 64. That counts threads: the daemon uses 3 idle and a few more while resolving
+names and verifying, so 64 is headroom, not a squeeze, and a fork loop stops there instead
+of exhausting the board's pid space.
+
+**`/media/fat/linux/transmission.jail`** grants more, one directory per line:
+
+```
+rw=/media/fat/games/NES
+staging=/media/fat/downloads/incoming
+```
+
+`rw=` and `staging=` are the same thing today — a read-write bind at the directory's own
+path; `staging=` is mistarr's name for a directory it moves finished downloads out of. A
+line is honoured only for an existing, symlink-free directory under `/media/fat/games`,
+`/media/fat/mistarr/` or `/media/fat/downloads`, whose path uses only `A-Za-z0-9._/@+-`;
+anything else is logged to syslog and ignored. CRLF line endings and a last line with no
+newline are both accepted, since the file is usually written from Windows. The file lives
+*outside* `jail/`, so the daemon cannot grant itself more. A change takes effect on the next
+start.
+
+**USB drives are not grantable.** The jail's mount view is fixed when the daemon starts:
+a stick mounted later never appears in it, and one mounted earlier stays pinned inside the
+jail after `usbmount` unmounts it on the host, so pulling it would lose cached writes.
+Doing this safely needs mount propagation into the jail and an unmount hook that stops the
+daemon first; until then, download to the card and move files afterwards.
+
+**The script checks its own work.** After the start it reads `/proc/<pid>/status` and
+refuses to report success unless all four `Uid` and `Gid` fields are 8422, `Groups` holds
+nothing else, `NoNewPrivs` is 1, `Seccomp` is 2 (a filter is installed), the process is in
+the `transmission` cgroup and `CapEff` is exactly `0x2`; Landlock, which `/proc` does not
+show, is covered by the probe above. If minijail is missing, the policy
+cannot be built or the pids controller is absent, it refuses to start the daemon at all
+rather than fall back to something weaker. It also refuses if a `transmission-daemon` it did not start is already running, and a start
+that times out terminates whatever it launched rather than leave an unmanaged daemon.
+
+**mistarr** drives this daemon with nothing changed on its side: it opts in by creating
+the directory and running `S92transmission start`, talks RPC to `127.0.0.1:9091` (the jail
+shares the host network namespace), finds the daemon by its `/proc/<pid>/exe` name to
+freeze it with `SIGSTOP` while a core runs, and has it `--move` finished files into
+`/media/fat/mistarr/staging`, which is in the view at the same path. `stop` sends `SIGCONT`
+before `SIGTERM`, so a frozen daemon still shuts down cleanly.
+
+**Where this departs from `NONROOT-PLAN.md` §7**, deliberately:
+
+- RPC stays TCP on loopback rather than a unix socket in an anchor directory, because
+  mistarr's client has no unix-socket transport yet.
+- The gate stays `/media/fat/linux/transmission`, with the state moved into `jail/`, rather
+  than a new `transmission-jailed` directory: mistarr's opt-in creates exactly that path,
+  and an older image must not mistake the new state for its own.
+- A pids limit but no memory limit: the memory controller charges every page-cache page on
+  the box, Main_MiSTer's included, which is a system-wide cost for one daemon's limit (ADR
+  0031, 2026-10-04 amendment). `oom_score_adj` stands in.
+- Seccomp is a deny-list, not the allow-list the plan implies, for the reason given above.
+- mistarr's own uid (8420) and its jail, the sysctl hardening and the exFAT symlink behaviour
+  are separate work and not part of this change.
+
 ---
 
 ## 9. Size
@@ -461,9 +622,12 @@ Upstream's init script stops the daemon with `--retry=TERM/10/KILL/5`. BusyBox's
 `start-stop-daemon` **accepts and ignores** `-R`/`--retry`
 (`debianutils/start_stop_daemon.c`: *"We accept and ignore -R <param> / --retry <param>"*),
 so that would be a no-op here and the daemon would be left to race its own shutdown. Our
-`stop()` waits for the pidfile to disappear instead — the daemon removes it itself after
-flushing `resume/` (`daemon/daemon.cc:1040`) — for up to 20 seconds. Cutting that short
-costs a full re-verify of every torrent on the next start, which on a card is hours.
+`stop()` sends `SIGCONT` then `SIGTERM` and waits up to 20 seconds for the process to be
+gone, sending `SIGCONT` again every second in case mistarr's core gate re-freezes it, and
+never escalates to `SIGKILL`. It identifies the process by the host pid and start
+time that `start()` recorded in `/run/transmission/jail.pid`, so a recycled pid is never
+taken for the daemon. Cutting the wait short costs a full re-verify of every torrent on the
+next start, which on a card is hours.
 
 ### Two-board LPD is untested
 

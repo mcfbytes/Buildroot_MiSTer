@@ -17,7 +17,9 @@
 > binding and listening normally while its pre-auth privsep child died on **every**
 > connection, before any auth. Fixed by disabling `BR2_PACKAGE_OPENSSH_SANDBOX`
 > (Buildroot defaults it to `y`, so it had never appeared in our defconfig). Buildroot
-> classified the bump as `openssh: (no CVE assigned)`.
+> classified the bump as `openssh: (no CVE assigned)`. **Since 2026-10-04 both are on**
+> (kernel delta D13, ADR 0031 Tier 1.5): the pre-auth child runs seccomp-filtered for the
+> first time on this image — see the `sandbox` row in §1.2.
 >
 > **Two lessons this document should carry forward.** "Patch release, cannot cross a
 > boundary" is not a safe inference when the range contains a *skipped* release. And a
@@ -90,6 +92,7 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 | Directive | Stock | Ours | Verdict |
 |---|---|---|---|
 | `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
+| pre-auth sandbox (build-time, not a directive) | built `--with-sandbox` but never engaged: stock's kernel has no seccomp | `SANDBOX_SECCOMP_FILTER`, engaged: `sshd-auth` runs as `sshd` with `NoNewPrivs 1`, `Seccomp 2` | **intentional divergence, 2026-10-04** — ADR 0031 Tier 1.5, kernel delta D13; CI asserts the Buildroot symbol, the kernel symbols and the sandbox string in `sshd-auth` together |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
 | `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/config/authorized_keys`** | **intentional divergence, added 2026-09-05; the FAT path moved from `linux/` to `config/` on 2026-09-17 (issue #183)** — see §1.3 |
 | `PermitUserEnvironment` | `yes` | `yes` (comment added: MiSTer scripts rely on it) | identical |

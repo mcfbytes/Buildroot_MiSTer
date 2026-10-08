@@ -14,16 +14,18 @@ namespace with a bind-mount allow-list: the daemon runs as its own numeric uid w
 command line, with a PID namespace, `no_new_privs`, capability bounding and rlimits, and it
 needs none of the kernel features this image lacks.
 
-## What the kernels do not have, and what that means for callers
+## What the kernels have, and what that means for callers
 
 | Feature | DE10 6.18 / RT 7.2 | Consequence |
 |---|---|---|
-| seccomp (`CONFIG_SECCOMP`) | off | never pass `-S`; the build has no soft-fail, so a policy fails closed |
-| Landlock | off | `--fs-path-*` is silently ignored; the mount view is the boundary |
-| user namespaces | off | no `-U`/`-m`/`-M`; run as root and drop to a uid with `-u`/`-g` |
-| memory / pids cgroup controllers | off | use `-R` rlimits and `oom_score_adj` instead |
+| seccomp (`CONFIG_SECCOMP_FILTER`) | on since D13 (2026-10-04) | `-S` works; the build has no soft-fail, so a policy that does not compile fails closed. `-L` logs through the audit subsystem, which these kernels do not have, so prefer `return <errno>` rules to relying on kill |
+| Landlock | on since D13, the only LSM | `--fs-path-*` is enforced; rules are applied after `-P`, so they name paths inside the jail |
+| pids cgroup controller | on since D13; cgroup2 is mounted at `/sys/fs/cgroup` | put the caller's shell in a child cgroup before `exec minijail0` (minijail0 has no flag for it) |
+| memory cgroup controller | off, deliberately (ADR 0031 amendment 2026-10-04) | use `-R` rlimits and `oom_score_adj` instead |
+| user namespaces | off, deliberately | no `-U`/`-m`/`-M`; run as root and drop to a uid with `-u`/`-g` |
 
 Mount, PID, IPC and UTS namespaces, ambient capabilities and `no_new_privs` are all present.
+The DE25 kernel has the same set through the shared fragment.
 
 ## Build options
 

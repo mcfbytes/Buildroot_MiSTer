@@ -738,8 +738,9 @@ refused. An older version's single generation is left to LRU.
 
 **The trap this guards against:** a GitHub cache key is **immutable** —
 whoever writes it first owns it until the key itself changes. `dl/` is saved
-under `br-dl-<version>-<defconfig-hash>`, which only rotates when the
-defconfig does, i.e. possibly not for weeks. So a build that died in its
+under `br-dl-<version>-<hash>`, the hash covering the DE10 defconfig, the
+`mister-userspace` profile and every `package/*/*.hash`. It rotates only when one
+of those changes, i.e. possibly not for weeks. So a build that died in its
 first minutes, saving a nearly-empty `dl/`, would not merely be useless: it
 would **lock that stub in**. Every later run would exact-hit it, restore
 almost nothing, re-download the rest — and, because an exact hit suppresses
@@ -3147,9 +3148,10 @@ the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
 
 **`slint` is the third** (a `cmake-package` vendored like a `cargo-package`,
 refreshed by case 9 since 2026-10-06), with the same rules and the same
-fallback recipe. No image selects slint, corrosion or the Noto fonts, so
-`build.yml` never fetches them; `lint.yml`'s two pin-consistency steps are the
-only CI gate on their hashes.
+fallback recipe. The `mister-userspace` profile selects slint and font-noto-sans,
+so `build.yml` fetches and builds them (corrosion as slint's host dependency);
+font-noto-sans-jp is built by no image. `lint.yml`'s two pin-consistency steps
+remain the early gate on their hashes.
 
 ---
 

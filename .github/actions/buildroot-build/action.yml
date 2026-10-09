@@ -7,7 +7,9 @@
 # around it:
 #
 #   1. the pinned Buildroot tarball      key: buildroot-tarball-<version>
-#   2. dl/ (every package source)        key: br-dl-<version>-<sha of the defconfig>
+#   2. dl/ (every package source)        key: br-dl-<version>-<sha of the defconfig, the userspace
+#                                        profile and every package/*/*.hash>, so a package added by the
+#                                        profile or a bumped pin re-saves the cache
 #   3. output/host (the cross toolchain) key: br-host-<workspace>-<version>-<toolchain fingerprint>
 #   4. ccache                            key: <version>
 #
@@ -93,7 +95,7 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: dl/
-        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig') }}
+        key: br-dl-${{ env.BUILDROOT_VERSION }}-${{ hashFiles('configs/mister_de10nano_defconfig', 'package/mister-userspace/Config.in', 'package/*/*.hash') }}
         restore-keys: |
           br-dl-${{ env.BUILDROOT_VERSION }}-
 

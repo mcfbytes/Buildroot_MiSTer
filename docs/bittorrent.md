@@ -239,15 +239,15 @@ logs only to stderr; `board/mister/de10nano/patches/transmission/0001` adds `--l
 which keeps upstream's daemonized `syslog()` path in the foreground too, and the init script
 passes it with `/dev/log` bound into the jail. The ident carries no pid, since in the jail it
 is always 1. Both are added only when `/dev/log` is a socket at start: minijail refuses a
-bind whose source is missing, so with no syslogd the daemon still starts, logging to stderr.
-stderr is piped into `logger` either way, which catches what never goes through the log
-(crash and argument errors); those lines arrive at `user.notice`. If syslogd is restarted,
-the bound socket goes stale and the daemon's own messages are lost until
-`S92transmission restart`. Daemon and `logger` run in a session of their own (`setsid`), so
-a caller that signals its own process group — a `timeout`, a supervisor's kill on a slow
-start — does not reach them. This image runs BusyBox `syslogd` (`S01syslogd`) with
-`/var/log` symlinked to `/tmp`, so the messages land in `/tmp/messages` on tmpfs and cost
-the card nothing.
+bind whose source is missing, so with no syslogd the daemon still starts, unlogged. Its
+stdout and stderr go to `/dev/null`, so the little that bypasses the log (a crash message,
+an argument error) is not kept; there was a `logger` pipe for it until 2026-10-09, but it
+needs the same `/dev/log`, so it only added a process. If syslogd is restarted, the bound
+socket goes stale and the daemon's messages are lost until `S92transmission restart`. The
+daemon runs in a session of its own (`setsid`), so a caller that signals its own process
+group — a `timeout`, a supervisor's kill on a slow start — does not reach it. This image
+runs BusyBox `syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages
+land in `/tmp/messages` on tmpfs and cost the card nothing.
 
 ---
 

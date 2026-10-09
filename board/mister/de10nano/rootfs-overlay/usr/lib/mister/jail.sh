@@ -15,7 +15,6 @@
 #   JAIL_SECCOMP_RULES  "syscall: rule" lines that replace the generated ones
 #   JAIL_STOP_WAIT  seconds SIGTERM gets (default 10)
 #   JAIL_STOP_KILL  1 to SIGKILL after JAIL_STOP_WAIT (default: never)
-#   JAIL_LOG_TAG    pipe the daemon's stdout/stderr to syslog under this tag
 #   JAIL_OOM_SCORE_ADJ
 
 MINIJAIL=/usr/bin/minijail0
@@ -267,9 +266,5 @@ jail_run() {
 	echo $$ >"$JAIL_CGROUP/cgroup.procs" || exit 1
 	jail_close_fds
 	[ -n "$JAIL_OOM_SCORE_ADJ" ] && echo "$JAIL_OOM_SCORE_ADJ" >/proc/self/oom_score_adj
-	if [ -n "$JAIL_LOG_TAG" ]; then
-		jail_exec -i -f "$JAIL_PIDFILE.new" "$@" 2>&1 | logger -t "$JAIL_LOG_TAG"
-	else
-		jail_exec -i -f "$JAIL_PIDFILE.new" "$@"
-	fi
+	jail_exec -i -f "$JAIL_PIDFILE.new" "$@"
 }

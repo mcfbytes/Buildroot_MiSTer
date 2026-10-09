@@ -384,7 +384,8 @@ It also carries the DE10's `bluez5_utils` patch set, which is the reason the
 DE25 does NOT point at this directory (§6.3).
 
 It also carries `wpa_supplicant/0001`, which gives `wpa_cli`'s reply socket to group `wpa`
-so the jailed daemon can answer it (`docs/wifi-parity.md` §15).
+so the jailed daemon can answer it (`docs/wifi-parity.md` §15), and `gpm/0001`, which lets gpm
+run as a non-root user in the foreground (`docs/minijail.md` "gpm").
 
 ### 3.4 Kernel stanza
 

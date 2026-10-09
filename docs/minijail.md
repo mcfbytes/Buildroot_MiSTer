@@ -145,6 +145,39 @@ not configured, and `/etc/default/syslogd` is on the read-only root.
 Both fall back to the root start when the jail fails (`/media/fat/linux/syslogd.nojail`
 and `klogd.nojail` force it), logged at `syslog.err`.
 
+## gpm
+
+Stock starts gpm from `/etc/inittab` as root (`gpm -m /dev/input/mice -t imps2`); the line
+now runs `/usr/libexec/mister/gpm-jail start`, which runs the same command in a jail.
+Main_MiSTer does not use gpm (it reads `/dev/input/mouseN` itself); its users are `mc`
+and ncurses programs such as `dialog` on the console, which is where the OSD runs scripts.
+
+| | gpm (`gpm-jail`) |
+|---|---|
+| uid/gid | 8427 `gpm` |
+| Capabilities | `CAP_SYS_ADMIN` only: every `TIOCLINUX` call from a process whose controlling tty is not that console needs it (`drivers/tty/vt/vt.c` `tioclinux()`), even drawing the pointer. Measured: without it gpm logs "You should be root to run gpm!" |
+| Seccomp, beyond the shared list | `socket`/`socketpair`: `AF_UNIX` only; `ioctl` `TIOCSTI` refused, since the capability would otherwise let it type into the console's root shells (the OSD's script terminal logs in as root) |
+| Namespaces | mount, PID, IPC, **network** |
+| `/dev` | its own: `/dev/gpm` on the host, owned by the jail's uid, holding private `tty0`, `input/mice` and `null` nodes the start makes with `mknod`, the `gpmctl` socket gpm creates, and a `log` link; the host's `/dev/gpmctl` is a link to `gpm/gpmctl` |
+| Landlock | rx `/usr`, ro `/etc` and `/run/log`, full `/dev` and `/var/run` (its pidfile, in the jail's own tmpfs) |
+
+The shared deny list is what keeps `CAP_SYS_ADMIN` from being root in disguise: `mount`,
+`umount2`, `unshare`, `setns`, `pivot_root`, `bpf`, `perf_event_open`, `keyctl`, `swapon`,
+`quotactl`, `fanotify_init`, `open_by_handle_at` and the rest return `EPERM`, and the jail
+holds no device but its own three. Measured inside the jail: `mount` and `unshare` fail,
+`TIOCSTI` on `tty0` fails while `VT_GETSTATE` works, and there is no `/etc/shadow`, card or
+network. What remains is gpm's job: the selection ioctls, including pasting the current
+selection (screen text) into the console.
+
+`board/mister/de10nano/patches/gpm/0001` makes this possible: gpm refused any non-zero
+euid, and it always forked with `daemon()`, which in a PID namespace would end the
+namespace with its first process. With `GPM_FOREGROUND` set it stays in the foreground and
+logs to syslog as the daemon does; `-D` was no substitute, as it reports every mouse
+movement on stderr. Measured on the rig: a libgpm client on a VT (`disable-paste` under
+`openvt`) is served through `/dev/gpmctl`, and a `uinput` mouse's movement is read without
+errors. Like the other console and system daemons it falls back to stock's root start when
+the jail fails (`/media/fat/linux/gpm.nojail` forces it), logged at `daemon.err`.
+
 ## Shared /tmp
 
 `/tmp` is shared by root and, since the daemons left root, by other users. The kernel's

@@ -1,8 +1,10 @@
 # Fixed ids for jailed daemons (docs/minijail.md). S92transmission runs its
 # daemon as 8422 (pinning package/transmission's user), /usr/bin/bluetoothd as 8423,
-# S01syslogd as 8424, S02klogd as 8425 and wpa-jail (wpa_supplicant) as 8426.
+# S01syslogd as 8424, S02klogd as 8425, wpa-jail (wpa_supplicant) as 8426 and gpm-jail
+# (gpm) as 8427.
 transmission 8422 transmission 8422 * /var/lib/transmission - transmission Transmission Daemon
 bluetooth 8423 bluetooth 8423 * - - - BlueZ Daemon
 syslog 8424 syslog 8424 * - - - BusyBox syslogd
 klog 8425 klog 8425 * - - - BusyBox klogd
 wpa 8426 wpa 8426 * - - - wpa_supplicant
+gpm 8427 gpm 8427 * - - - gpm

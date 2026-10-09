@@ -83,7 +83,8 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 # boot (caught in acceptance, before it ever shipped). We are usr-merged now,
 # so /sbin/gpm would resolve -- but the real path is kept anyway so this line
 # survives an unmerge. Same history as the /etc/profile PATH note.
-::sysinit:/usr/sbin/gpm -m /dev/input/mice -t imps2
+# Since 2026-10-08 gpm-jail runs that same command in a minijail (docs/minijail.md "gpm").
+::sysinit:/usr/libexec/mister/gpm-jail start
 
 # Put a getty on the serial port (util-linux agetty, adapted from stock -- note 2)
 ttyS0::respawn:/sbin/agetty --nohostname -L ttyS0 115200 vt100

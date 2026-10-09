@@ -16,7 +16,7 @@ selects the profile ships them (`docs/buildroot-config.md` §5.5, §5.6). `font-
 
 All four are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
 bump branch: corrosion by hash-sync case 1, slint by case 9, both Noto fonts by case 10
-(`docs/renovate.md`). An image build now builds slint and font-noto-sans, so a green bump PR
+(`docs/renovate.md`). An image build builds slint and font-noto-sans, so a green bump PR
 proves they build; it still proves nothing about rendering, so test as described in
 [Building and testing a bump](#building-and-testing-a-bump) before merging one. font-noto-sans-jp
 is still built by no image.

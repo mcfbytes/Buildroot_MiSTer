@@ -230,7 +230,8 @@ case "$1" in
 			set -- "$@" -b /dev/log
 			log=--log-syslog
 		fi
-		jail_run "$@" -- "$DAEMON" --foreground $log --config-dir "$HOME_DIR"
+		# No pidfile, whatever settings.json says: the jail has no /var/run and minijail -f keeps the pid.
+		jail_run "$@" -- "$DAEMON" --foreground $log --pid-file '' --config-dir "$HOME_DIR"
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart}"

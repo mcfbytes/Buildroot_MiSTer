@@ -249,6 +249,12 @@ group — a `timeout`, a supervisor's kill on a slow start — does not reach it
 runs BusyBox `syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages
 land in `/tmp/messages` on tmpfs and cost the card nothing.
 
+**No pidfile.** The init script passes `--pid-file ''`, which overrides a `pidfile` in
+`settings.json`: the jail has no `/var/run`, so a card carrying one (from an older setup)
+logged `daemon.err ... Couldn't save '/var/run/transmission-daemon.pid'` at every start.
+The pid is minijail's to record (`-f`, §8.1). The daemon saves its settings at shutdown, so
+the entry becomes `""` on the card after one restart.
+
 ---
 
 ## 5. The headless recipe

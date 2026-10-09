@@ -3250,6 +3250,14 @@ else
 		fail "$TM_INIT binds /dev/log and passes --log-syslog" \
 			"the bind or the option is gone -- the daemon's log loses its levels"
 	fi
+	# No logger pipe (the daemon logs itself), and no pidfile: the jail has no /var/run.
+	if printf '%s' "$tm_init_body" | grep -qF -- "--pid-file ''" &&
+		! printf '%s' "$tm_init_body" | grep -q '^[^#]*JAIL_LOG_TAG'; then
+		pass "$TM_INIT passes --pid-file '' and pipes nothing through logger"
+	else
+		fail "$TM_INIT passes --pid-file '' and pipes nothing through logger" \
+			"a settings.json pidfile would fail in the jail, or JAIL_LOG_TAG is back"
+	fi
 	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
 	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then
 		pass "the transmission user is pinned to uid 8422 (board/mister/de10nano/users.table)"

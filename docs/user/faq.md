@@ -63,7 +63,27 @@ from a PC and reboot; deleting it gives you stock behaviour.
 |---|---|---|
 | `ssh_password` | `yes`: root can log in with the password | `no`: SSH and SFTP take only a key |
 | `ssh_forwarding` | `stock`: any SSH port forward | `limited`: only Transmission's web UI (port 9091) |
-| `ftp` | `stock`: root FTP with the password | `off`: no FTP server |
+| `ftp` | `stock`: root FTP with the password, anonymous FTP too | `off`: no FTP server |
+| `ftp_drop_caps` | `no` | `yes`: once FTP is on, a logged-in session loses root's powers beyond file transfer |
+
+**Turning FTP on.** Pick one of the two FTP modes:
+
+- `ftp=stock`: exactly what stock does, anonymous login included.
+- `ftp=lan`: root with the root password, from your home network only (addresses
+  starting `192.168.`, `10.`, `172.16.`-`172.31.`, `169.254.`), no anonymous login,
+  and passive ports 50000-50099. If you reach your
+  MiSTer from elsewhere (a VPN with other addresses, a port-forward), also set
+  `ftp_allow_any=yes`.
+
+Over SSH: `mister-security set ftp lan`. Both modes see the whole filesystem, as stock
+does, so copying a new `linux.img` or kernel into `/media/fat/linux` works as before.
+
+**`ftp_drop_caps`** is an option for either mode, and defence in depth only: the FTP
+server runs in a minijail and each session keeps just what file transfer needs (writing
+files anywhere, active mode). It cannot stop someone with the password from replacing
+`/media/fat/MiSTer`, which runs as root; the password and the network are what protect
+FTP. It does stop a break-in through the FTP server from loading kernel modules, touching
+raw devices or mounting things. Set it to `no` if something you rely on stops working.
 
 **With `ssh_password=no` you need a key.** Put your public key in
 `config/authorized_keys` on the card ([how](#ssh-key-persist)). SSH and SFTP then work

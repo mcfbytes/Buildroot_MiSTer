@@ -3,7 +3,8 @@
 **Status:** Provisionally accepted (2026-10-04, @mcfbytes; proposed 2026-09-11). Tier 1
 items 5 and 6 and the amendments below are implemented; the 2026-10-08 amendment answers
 Q1 ("gate it") with a card state file (absent is stock, a new SD card is hardened) and
-does Tier 1 items 1 and 7 in a changed form. The other Tier 1 items,
+does Tier 1 items 1 and 7 in a changed form; the second 2026-10-08 amendment adds FTP
+modes to that file (item 3 in `lan`/`off`, item 4 declined). The other Tier 1 items,
 Tier 2, Q2 and Q3 are paused, to be picked up later under this acceptance; each still
 needs its rig check before it is claimed. The plan that acts on it is
 [`docs/security-hardening-plan.md`](../security-hardening-plan.md).
@@ -475,9 +476,10 @@ stock. sdcard will ship with a hardened state."
    |---|---|---|
    | `ssh_password` | `yes` \| `no` | `S50sshd` adds `-o PermitRootLogin=prohibit-password -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no`. SSH takes a key from `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key sshd still runs and prints `NO REMOTE LOGIN`. |
    | `ssh_forwarding` | `stock` \| `limited` | `-o AllowTcpForwarding=local -o "PermitOpen=127.0.0.1:9091 localhost:9091" -o AllowStreamLocalForwarding=no -o X11Forwarding=no`: only Transmission's loopback web UI can be forwarded (Tier 1 item 7, changed; not `no`, because the 2026-09-21 amendment made `ssh -L 9091:…` the way to reach it). |
-   | `ftp` | `stock` \| `off` | `S50proftpd` does not start proftpd, so port 21 is closed. More FTP modes are added by the ProFTPD hardening change. |
+   | `ftp` | `stock` \| `off` | `S50proftpd` does not start proftpd, so port 21 is closed. `lan` and two more FTP keys: see the second amendment of this date. |
 
-   A new SD card ships `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`.
+   A new SD card ships `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off` (and, since
+   the second amendment, `ftp_drop_caps=yes`).
 5. **One tool.** `/usr/sbin/mister-security` (in the image, versioned with the init
    scripts it drives): `status`, `harden`, `stock`, `set KEY VALUE`, and a gamepad dialog
    with the two presets and each key on its own. It validates the value, rewrites the file
@@ -528,3 +530,78 @@ anonymous FTP — connection refused. CI (`scripts/ci-tests.sh`, section "ADR 00
 security.conf") asserts the stock `sshd_config`, both init scripts, the parser's results
 under the target's BusyBox for an absent, the shipped and a malformed file, and runs the
 target's own `sshd -T` under qemu-arm in both states.
+
+## Amendment, 2026-10-08 (second) — FTP modes in `security.conf` (Tier 1 items 3 and 4 decided; Tier 3 "ProFTPD unprivileged" in part)
+
+**Status of this amendment:** *implemented* (branch `feat/proftpd-hardening`, stacked on
+the amendment above). Verified with a throwaway proftpd built with `mod_cap` on the rig
+(details in `docs/ssh-ftp-parity.md` §1.5). **A rig boot of a built image is still owed.**
+
+**The owner's answers** (2026-10-08), on the FTP options prepared for this:
+
+1. No generated or default FTP password: FTP works only after the user allows it through
+   the security script.
+2. "Drop root after login; the user will have to opt-in via the unhardening script. I'd
+   still like to allow regular root FTP since this is how I'm transferring kernels and new
+   linux.img files to the rig." Then: "Anyone opening up FTP is choosing to do so -- and we
+   can add mod_cap, it's a good option for anyone who actually wants to use it." So the
+   capability drop is its own key, not part of stock.
+3. No write-deny list on boot-time paths (`linux/`, `Scripts/`, `MiSTer`, `menu.rbf`),
+   "not yet anyway".
+4. No FTPS / `mod_tls`: SCP and SFTP are the encrypted path.
+5. The password hash stays where it is.
+
+And on the chroot: "there is little point though in restricting FTP to /media/fat -- any
+attacker would still be able to overwrite the MiSTer binary, which is run as root by
+default ... So we might as well open the whole thing up." So there is **no chroot and no
+read-deny** on `*.ext4`.
+
+**Decision.** Two more keys and one more `ftp` value, all read by `S50proftpd` and turned
+into `-D` defines for the one `proftpd.conf`:
+
+| Key | Values (first is stock) | What it does |
+|---|---|---|
+| `ftp` | `stock` \| `lan` \| `off` | `stock`: stock's config, with two changes nobody can notice: `ServerIdent on "MiSTer FTP"` and an explicit `MaxLoginAttempts 3` (proftpd's default). `lan`: root with the system password, plus: no `<Anonymous>` block, `<Limit LOGIN>` allows only 127/8, 10/8, 172.16/12, 192.168/16 and 169.254/16 (others are dropped before the banner), `Umask 022`, `PassivePorts 50000 50099`, `TimeoutLogin 60`, `MaxClientsPerHost 10`, `AllowStoreRestart on`, `WtmpLog off`, `SITE CHMOD` denied. `off`: not started. |
+| `ftp_allow_any` | `no` \| `yes` | With `ftp=lan`, `yes` drops the `<Limit LOGIN>` address list, for a remote setup (VPN with a non-private range, a port-forward). |
+| `ftp_drop_caps` | `no` \| `yes` | Works with `ftp=stock` and `ftp=lan`. `S50proftpd` starts proftpd under `minijail0 -c 0x4cb -B 0x2c` (bounding set CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, NET_BIND_SERVICE; `SECBIT_NOROOT` locked), the pre-auth processes run as `nobody`, and `mod_cap` (`BR2_PACKAGE_PROFTPD_MOD_CAP=y`) cuts each logged-in session to CHOWN, DAC_OVERRIDE, FOWNER and NET_BIND_SERVICE. `no` sets `CapabilitiesEngine off`, so the server is stock. |
+
+The `harden` preset (and a new SD card) sets `ftp=off` and `ftp_drop_caps=yes`, so a user
+who later turns FTP on gets the reduced capabilities unless they also pick `stock`. The
+`stock` preset sets `ftp=stock` and `ftp_drop_caps=no`. With no file, all three keys are
+stock. There is still no "set a password" step: FTP uses root's system password.
+
+**What the boundaries are, honestly.** For FTP the real boundaries are the credential
+(root's password, sent in clear text) and the network scope (`lan`'s address list, the
+user's own network). The capability drop is defence in depth only. A logged-in session is
+still uid 0 and owns every file on the card, so it can replace `/media/fat/MiSTer`, which
+runs as root at the next start; nothing here prevents that, and nothing could while root
+FTP is allowed. What the drop removes from a hijacked session (a proftpd bug exploited
+after login, or a stolen password used for more than file transfer) is everything that
+needs a capability outside the six: loading modules, raw devices (`/dev/mem`, the FPGA
+bridge), mount, network administration, ptrace of processes holding more capabilities,
+and changing the clock. Because the bounding set is locked with `SECBIT_NOROOT`, a program the session
+manages to execute does not get those back either (minijail also sets
+`no_new_privs`). Measured on the rig: a uid-0 shell
+started inside the same jail has `CapEff 0` and `mount` fails.
+
+**Why not a chroot or a read-deny on `*.ext4`.** The research for this amendment showed a
+path-preserving chroot to `/media` works, but write access to the card is root at the
+next boot (`MiSTer`, `linux/user-startup.sh`, `Scripts/`), so a chroot keeps out only what
+a determined user can reach anyway. Same for the host keys in `ssh.ext4`: anyone who can
+write the card can replace the keys' consumer. Both were dropped at the owner's request.
+
+**Why `nobody` and minijail, not `RootRevoke`.** `RootRevoke on` breaks active mode for
+root sessions (the data connection comes from port 20). `mod_cap` keeps
+CAP_NET_BIND_SERVICE for it; active transfers were checked from a privileged test port.
+
+**Tier 1 items 3 and 4.** Item 3 (anonymous FTP) is gone in `lan` and in `off`; in `stock`
+it stays, because stock has it and an upgrader must see no change. Item 4 (chroot) is
+declined, for the reason above. Tier 3's "ProFTPD unprivileged" is done in the form above
+(pre-auth `nobody`, session capabilities cut), not by remounting the card with a `uid=`.
+
+**Regression oracle.** With no `security.conf`: anonymous login and root:`1` both work
+(stock). With the SD card's file: connection refused. With `ftp=lan`: root:`1` works from
+the LAN and is dropped from other addresses, anonymous gets `530`, `SITE CHMOD` gets `550`.
+CI (`scripts/ci-tests.sh`, section "ADR 0031 — proftpd per security.conf mode") checks the
+active directives for every define set, the init script's defines and jail line, that the
+target proftpd has `mod_cap.c`, and runs `proftpd -t` for each mode under qemu-arm.

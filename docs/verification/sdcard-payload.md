@@ -129,7 +129,8 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 >   SSH and FTP security settings.
 > - `mister-payload/linux/security.conf`, from
 >   `board/mister/de10nano/fat-payload/linux/security.conf`: the **hardened** state a new
->   card starts in (`ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`). This is the
+>   card starts in (`ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`,
+>   `ftp_drop_caps=yes`). This is the
 >   only place the file is shipped. `install.sh`, the updater, the Downloader database,
 >   the release archive and `linux.img` never carry it, so an updated card has no file
 >   and keeps stock behaviour.
@@ -180,7 +181,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
 | `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
 | `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |
-| `mister-payload/linux/security.conf` | **Ours**, `board/mister/de10nano/fat-payload/linux/security.conf` | In-tree, not fetched. The hardened state a new card starts in (ADR 0031): `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`. Shipped **only** here; an updated card has no file, which means stock behaviour |
+| `mister-payload/linux/security.conf` | **Ours**, `board/mister/de10nano/fat-payload/linux/security.conf` | In-tree, not fetched. The hardened state a new card starts in (ADR 0031): `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`, `ftp_drop_caps=yes`. Shipped **only** here; an updated card has no file, which means stock behaviour |
 | `mister-payload/linux/{uboot.img,updateboot,MidiLink.INI,ppp_options,u-boot.txt_example,_samba.sh,_user-startup.sh,_wpa_supplicant.conf}` and `{gamecontrollerdb,mt32-rom-data,soundfonts}/` (full subtrees) | `files/linux/*` inside the pinned stock archive | `STOCK_RELEASE_URL`/`STOCK_RELEASE_MD5`/`STOCK_RELEASE_SHA256`/`STOCK_RELEASE_SIZE` (`.github/workflows/release.yml`); `uboot.img`/`updateboot` additionally re-verified against `STOCK_UBOOT_SHA256`/`STOCK_UPDATEBOOT_SHA256` per `docs/reference-materials.md` |
 | `mister-payload/MiSTer` | `files/MiSTer` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin as above (member the Downloader itself never extracts — `docs/downloader-contract.md` §5 — but this image is not the Downloader path) |
 | `mister-payload/menu.rbf` | `files/menu.rbf` inside the same pinned stock archive | Same `STOCK_RELEASE_*` pin |

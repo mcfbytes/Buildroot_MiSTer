@@ -5,7 +5,7 @@
 MISTER_SECURITY_CONF="${MISTER_SECURITY_CONF:-/media/fat/linux/security.conf}"
 
 # Every key with its allowed values; the FIRST value is the stock default.
-MISTER_SECURITY_KEYS="ssh_password:yes,no ssh_forwarding:stock,limited ftp:stock,off"
+MISTER_SECURITY_KEYS="ssh_password:yes,no ssh_forwarding:stock,limited ftp:stock,lan,off ftp_allow_any:no,yes ftp_drop_caps:no,yes"
 
 # security_values KEY -- the allowed values, space-separated, default first.
 security_values() {

@@ -9,17 +9,37 @@ trap "" TERM
 # shellcheck source=board/mister/de10nano/rootfs-overlay/usr/lib/mister/security.sh
 . /usr/lib/mister/security.sh
 
+# ftp_drop_caps=yes bounding set: CHOWN DAC_OVERRIDE FOWNER SETGID SETUID NET_BIND_SERVICE.
+# -B 0x2c keeps setuid fixup and KEEPCAPS usable (docs/ssh-ftp-parity.md §1.5).
+FTP_CAPS=0x4cb
+
 start() {
-	if [ "$(security_get ftp)" = "off" ]; then
+	ftp="$(security_get ftp)"
+	if [ "$ftp" = "off" ]; then
 		echo "ProFTPD: not started (ftp=off in $MISTER_SECURITY_CONF; Scripts/security.sh turns it on)"
 		return 0
 	fi
+	set -- /usr/sbin/proftpd
+	mode="ftp=$ftp"
+	if [ "$ftp" = "lan" ]; then
+		set -- "$@" -D MISTER_FTP_LAN
+		if [ "$(security_get ftp_allow_any)" = "yes" ]; then
+			mode="$mode, any client"
+		else
+			set -- "$@" -D MISTER_FTP_LAN_ONLY
+			mode="$mode, LAN clients only"
+		fi
+	fi
+	if [ "$(security_get ftp_drop_caps)" = "yes" ]; then
+		set -- /usr/bin/minijail0 -c "$FTP_CAPS" -B 0x2c -- "$@" -D MISTER_FTP_DROP_CAPS
+		mode="$mode, capabilities dropped"
+	fi
 	printf "Starting ProFTPD: "
-	if ! /usr/sbin/proftpd; then
+	if ! "$@"; then
 		echo "FAILED"
 		exit 1
 	else
-		echo "done"
+		echo "done ($mode)"
 	fi
 }
 

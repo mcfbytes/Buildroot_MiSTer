@@ -437,10 +437,9 @@ pattern of keeping every daemon's actual boot script explicit in-tree even
 when a package would supply *a* default on its own: `S91smb` is an overlay
 file because it's a genuine functional customization over
 `package/samba4/S91smb` (extra `mkdir`s for tmpfs dirs, a `samba.sh` hook —
-confirmed by `diff`, not identical); `S49ntp` is an overlay file because its
-package template (`package/ntp/S49ntp.in`) is a `.in` needing build-time
-`@NTPD_EXTRA_ARGS@` substitution, so the overlay pins the resolved,
-reviewable text. `S50proftpd` fits neither reason — it's genuinely
+confirmed by `diff`, not identical); `S49ntp` was an overlay file until
+2026-10-08 and is now Buildroot's own, run as the `ntp` user
+(`docs/init-parity.md`). `S50proftpd` fits neither reason — it's genuinely
 byte-identical to the package default — but the same underlying motivation
 applies: a single, explicit, auditable source of truth in **this** repo for
 what starts each read-only-root-facing daemon, immune to a future Buildroot

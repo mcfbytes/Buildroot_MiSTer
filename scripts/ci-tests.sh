@@ -2630,9 +2630,25 @@ fi
 require_present "usr/lib/dhcpcd/dhcpcd-hooks/91-ntp-kick" "dhcpcd 91-ntp-kick hook"
 require_present "etc/init.d/S49ntp" "S49ntp (the hook restarts it; without it the kick is a no-op)"
 
+# ntpd drops to the ntp user and serves no one (docs/init-parity.md, S49ntp row).
+ntp_init_body=$(tar xOf "$ROOTFS_TAR" ./etc/init.d/S49ntp 2>/dev/null || true)
+ntp_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^ntp:' || true)
+if printf '%s' "$ntp_init_body" | grep -qE '^NTPD_ARGS="-u ntp:ntp ' && [ -n "$ntp_passwd" ]; then
+	pass "S49ntp runs ntpd -u ntp:ntp, and the ntp user exists"
+else
+	fail "S49ntp runs ntpd -u ntp:ntp, and the ntp user exists" \
+		"no '-u ntp:ntp' in S49ntp (an overlay replaced Buildroot's?) or no ntp line in etc/passwd -- ntpd runs as root, or fails to start"
+fi
+if tar xOf "$ROOTFS_TAR" ./etc/ntp.conf 2>/dev/null | grep -qxF 'restrict default ignore'; then
+	pass "/etc/ntp.conf: restrict default ignore (a client, not a time server)"
+else
+	fail "/etc/ntp.conf: restrict default ignore (a client, not a time server)" \
+		"the default restriction changed -- ntpd answers the network again"
+fi
+
 # `iburst` is what makes the kick worth making: without it ntpd falls back to
 # minpoll and takes minutes to select a source, so the restart would buy little.
-# It ships in the ntp package's own ntp.conf, which means a package bump could
+# It ships in our overlay's ntp.conf, a copy of the package's; a rewrite could
 # drop it with a green build.
 # EVERY server line, not merely one of them: a bump that drops iburst from some
 # of the pool lines would leave ntpd waiting at minpoll for those, which is the

@@ -85,7 +85,9 @@ Everything below was verified on 2026-09-11 against the HIL rig (beta `260904`, 
 
 - Userspace hardening: `BR2_PIC_PIE`, `BR2_RELRO_FULL`, `BR2_SSP_STRONG`,
   `BR2_FORTIFY_SOURCE_1`. `dhcpcd` runs with privsep. `ntpd` has `restrict default
-  nomodify nopeer noquery limited kod`, so it is not an amplifier.
+  nomodify nopeer noquery limited kod`, so it is not an amplifier. (Since 2026-10-08 it
+  runs as the `ntp` user and `restrict default ignore`s, so it serves no time at all;
+  `docs/init-parity.md`, `S49ntp` row.)
 - Per-device SSH host keys (ADR 0015). `PermitEmptyPasswords no`. OpenSSH 10.x
   `PerSourcePenalties` is on by default.
 - The updater fetches over HTTPS, checks MD5 and size (the Downloader's contract), and

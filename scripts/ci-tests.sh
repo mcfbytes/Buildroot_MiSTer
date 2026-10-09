@@ -2475,6 +2475,31 @@ else
 fi
 
 # =============================================================================
+section "Writeback age — replaces stock's /etc/resync (etc/sysctl.d/20-writeback.conf)"
+# =============================================================================
+# Stock's 5-second sync loop covered its old exFAT driver's lazy metadata. On mainline
+# exfat /media/fat is sync, so only the rw root's ext4 needs a short writeback age.
+
+WBA_SYSCTL="etc/sysctl.d/20-writeback.conf"
+if tar_has "$WBA_SYSCTL"; then
+	wba_conf=$(tar xOf "$ROOTFS_TAR" "./$WBA_SYSCTL" | sed 's/[[:space:]]//g')
+	for _l in vm.dirty_expire_centisecs=500 vm.dirty_writeback_centisecs=500; do
+		if printf '%s\n' "$wba_conf" | grep -qxF "$_l"; then
+			pass "$WBA_SYSCTL sets $_l"
+		else
+			fail "$WBA_SYSCTL sets $_l" "line missing -- root fs data could sit unwritten for 30 s"
+		fi
+	done
+else
+	fail "$WBA_SYSCTL present" "not in rootfs.tar -- root fs data could sit unwritten for 30 s"
+fi
+if tar_has etc/resync || tar xOf "$ROOTFS_TAR" ./etc/inittab 2>/dev/null | grep -q '^[^#]*resync'; then
+	fail "stock's /etc/resync is gone" "etc/resync or its inittab line is back; $WBA_SYSCTL replaces it"
+else
+	pass "stock's /etc/resync is gone (replaced by $WBA_SYSCTL)"
+fi
+
+# =============================================================================
 section "Writeback — kept off the RT CPU (etc/init.d/S02writeback-cpumask)"
 # =============================================================================
 # A sysfs knob, not a sysctl: the unbound writeback workers flushing to a network share

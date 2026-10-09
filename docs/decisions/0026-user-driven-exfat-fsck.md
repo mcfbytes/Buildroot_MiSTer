@@ -45,8 +45,10 @@ exfat has **no `.sync_fs`** operation (`exfat_sops`, `super.c:207-215`), so `syn
 `sync_fs_one_sb` passes are no-ops for it; `sync_bdevs()` only does
 `filemap_fdatawrite`/`fdatawait` and never issues a flush; and every `write()` under
 `SB_SYNCHRONOUS` already ends in `exfat_file_fsync()` (`file.c:581`) =
-`__generic_file_fsync` + `sync_blockdev` + `blkdev_issue_flush`. It is kept for stock
-parity (ABI contract I3) and is harmless, but it is not part of the answer here.
+`__generic_file_fsync` + `sync_blockdev` + `blkdev_issue_flush`. It was kept for stock
+parity (ABI contract I3) and is not part of the answer here. *Update 2026-10:* the loop
+existed for stock's old Samsung exfat, which left metadata dirty even under `sync,dirsync`;
+it is now replaced by `etc/sysctl.d/20-writeback.conf` (`docs/init-parity.md`).
 
 Net: damage is rare per power cut — `sync,dirsync` shrinks each inconsistency window to
 the gap between individual buffer writes — but nothing ever repairs it, so it accumulates

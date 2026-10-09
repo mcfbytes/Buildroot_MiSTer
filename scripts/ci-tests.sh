@@ -1525,6 +1525,26 @@ for d in syslogd:S01syslogd:8424:0x0 klogd:S02klogd:8425:0x400000000; do
 			"etc/init.d/$init no longer sources the helper or lost its fallback, etc/minijail/$name.conf lost u = $uid, c = $caps or 'e', or uid $uid is not in etc/passwd"
 	fi
 done
+# -- wpa_supplicant runs jailed per interface (docs/wifi-parity.md section 15), with the fallback.
+# wpa_cli must carry patch 0001, or the daemon cannot answer it without CAP_DAC_OVERRIDE.
+wpa_body=$(tar xOf "$ROOTFS_TAR" ./usr/libexec/mister/wpa-jail 2>/dev/null || true)
+wpa_conf=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/wpa_supplicant.conf 2>/dev/null || true)
+wpa_ifaces=$(tar xOf "$ROOTFS_TAR" ./etc/network/interfaces 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$wpa_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$wpa_body" | grep -qxF 'JAIL_ARGS_MATCH="-i $IFACE"' &&
+	printf '%s' "$wpa_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC" $WPA_ARGS' &&
+	printf '%s' "$wpa_conf" | grep -qxF 'u = 8426' &&
+	printf '%s' "$wpa_conf" | grep -qxF 'c = 0x3000' &&
+	tar xOf "$ROOTFS_TAR" ./usr/sbin/wpa_cli 2>/dev/null | grep -aqF getgrnam &&
+	[ "$(printf '%s' "$wpa_ifaces" | grep -cxF '    pre-up /usr/libexec/mister/wpa-jail start $IFACE')" = 2 ] &&
+	! printf '%s' "$wpa_ifaces" | grep -q '^ *pre-up wpa_supplicant' &&
+	tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^wpa:x:8426:'; then
+	pass "wpa_supplicant starts through wpa-jail as uid 8426, caps 0x3000, with the unjailed fallback"
+else
+	fail "wpa_supplicant starts through wpa-jail as uid 8426, caps 0x3000, with the unjailed fallback" \
+		"usr/libexec/mister/wpa-jail lost the helper, JAIL_ARGS_MATCH or its fallback, wpa_supplicant.conf lost u/c, wpa_cli lacks patches/wpa_supplicant/0001 (no getgrnam), a wlan stanza does not call wpa-jail, or wpa is not uid 8426"
+fi
 # The socket must stay out of the helper's root-only /run/syslogd.
 if tar xOf "$ROOTFS_TAR" ./etc/init.d/S01syslogd 2>/dev/null | grep -qxF 'SOCK_DIR=/run/log' &&
 	tar xOf "$ROOTFS_TAR" ./etc/minijail/bluetoothd.conf 2>/dev/null | grep -qxF 'bind-mount = /run/log'; then

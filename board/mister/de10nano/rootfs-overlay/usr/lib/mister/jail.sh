@@ -10,6 +10,8 @@
 # and optionally:
 #   JAIL_CONF       another config file (default /etc/minijail/$JAIL_NAME.conf)
 #   JAIL_COMM       the process name too, when JAIL_EXEC is shared (BusyBox applets)
+#   JAIL_ARGS_MATCH arguments its command line must contain, when one binary runs per
+#                   instance (wpa_supplicant's "-i wlan0")
 #   JAIL_SECCOMP_RULES  "syscall: rule" lines that replace the generated ones
 #   JAIL_STOP_WAIT  seconds SIGTERM gets (default 10)
 #   JAIL_STOP_KILL  1 to SIGKILL after JAIL_STOP_WAIT (default: never)
@@ -136,10 +138,12 @@ jail_starttime() {
 	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f20
 }
 
-# True if pid $1 runs JAIL_EXEC (and is named JAIL_COMM, when set).
+# True if pid $1 runs JAIL_EXEC (named JAIL_COMM and given JAIL_ARGS_MATCH, when set).
 jail_is_ours() {
 	[ "$(readlink "/proc/$1/exe" 2>/dev/null)" = "$JAIL_EXEC" ] || return 1
-	[ -z "$JAIL_COMM" ] || [ "$(cat "/proc/$1/comm" 2>/dev/null)" = "$JAIL_COMM" ]
+	[ -z "$JAIL_COMM" ] || [ "$(cat "/proc/$1/comm" 2>/dev/null)" = "$JAIL_COMM" ] || return 1
+	[ -z "$JAIL_ARGS_MATCH" ] ||
+		printf ' %s ' "$({ tr '\0' ' ' <"/proc/$1/cmdline"; } 2>/dev/null)" | grep -qF -- " $JAIL_ARGS_MATCH "
 }
 
 # Sets JAIL_PID to the jailed daemon's host pid when the pidfile still names it.
@@ -173,11 +177,11 @@ jail_check() {
 		grep -q "^CapEff:[[:space:]]*$(printf '%016x' "$JAIL_CAPS")$" "$s"
 }
 
-# Starts `"$0" run` in a session of its own, waits for the daemon and checks it.
+# Starts `"$0" run "$@"` in a session of its own, waits for the daemon and checks it.
 # On failure JAIL_ERR says why and nothing of it is left running.
 jail_launch() {
 	rm -f "$JAIL_PIDFILE.new"
-	setsid "$0" run </dev/null >/dev/null 2>&1 9>&- &
+	setsid "$0" run "$@" </dev/null >/dev/null 2>&1 9>&- &
 	leader=$!
 	i=0
 	pid=""

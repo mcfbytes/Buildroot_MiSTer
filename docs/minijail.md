@@ -34,7 +34,8 @@ The DE25 kernel has the same set through the shared fragment.
 An init script that jails a daemon declares the jail in
 `/etc/minijail/<name>.conf` and sources `/usr/lib/mister/jail.sh` for the rest.
 `/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11), `S92transmission`
-(`docs/bittorrent.md` §8.1), `S01syslogd` and `S02klogd` (below) are written this way.
+(`docs/bittorrent.md` §8.1), `S01syslogd` and `S02klogd` (below), and `/usr/libexec/mister/wpa-jail`
+(`docs/wifi-parity.md` §15) are written this way.
 
 **The config file** is minijail0's own `--config` format (`% minijail-config-file
 v0`, then one long or short option per line; `minijail0 --gen-config <file>
@@ -48,7 +49,8 @@ when it is a plain file (syslog takes each daemon's own timestamps).
 
 **The script** sets `JAIL_NAME`, `JAIL_EXEC`, `JAIL_PIDS_MAX` and
 `JAIL_PROBE`, optionally `JAIL_COMM` (the process name, for a BusyBox applet whose exe
-is `/usr/bin/busybox` like every other), `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
+is `/usr/bin/busybox` like every other), `JAIL_ARGS_MATCH` (a word sequence the command
+line must contain, for one binary run once per interface), `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
 `JAIL_STOP_KILL`, `JAIL_LOG_TAG` and `JAIL_OOM_SCORE_ADJ` (the header of
 `jail.sh` lists them), calls `jail_init`, and then:
 
@@ -80,7 +82,8 @@ inside the jail and fails if the write succeeds.
 **When the jail fails.** Each script decides, by what losing the daemon costs:
 
 - **A daemon the user depends on falls back.** `bluetoothd` is how most people reach the
-  OSD, and `syslogd`/`klogd` are how anyone diagnoses anything; a jail that cannot be built, a probe that fails or a self-check that does not match
+  OSD, `syslogd`/`klogd` are how anyone diagnoses anything, and `wpa_supplicant` is how a
+  Wi-Fi-only box stays reachable; a jail that cannot be built, a probe that fails or a self-check that does not match
   starts it with `jail_launch_unjailed`, as root and exactly as stock does, logs the reason
   at `daemon.err` and prints `OK (UNJAILED: <reason>)`. A file on the card
   (`/media/fat/linux/bluetooth.nojail`) does the same on purpose, for a jail that starts but

@@ -34,8 +34,6 @@ JAIL_PROBE=/etc/.landlock-probe
 # Waited out, never escalated: on SIGTERM the daemon flushes resume/, and a
 # kill before that costs a full re-verify of every torrent -- hours, on a card.
 JAIL_STOP_WAIT=20
-# The daemon logs to syslog itself (--log-syslog, below); this catches the rest of stderr.
-JAIL_LOG_TAG=transmission-daemon
 JAIL_OOM_SCORE_ADJ=800
 jail_init
 
@@ -232,7 +230,8 @@ case "$1" in
 			set -- "$@" -b /dev/log
 			log=--log-syslog
 		fi
-		jail_run "$@" -- "$DAEMON" --foreground $log --config-dir "$HOME_DIR"
+		# No pidfile, whatever settings.json says: the jail has no /var/run and minijail -f keeps the pid.
+		jail_run "$@" -- "$DAEMON" --foreground $log --pid-file '' --config-dir "$HOME_DIR"
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart}"

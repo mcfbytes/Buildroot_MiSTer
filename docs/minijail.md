@@ -51,7 +51,7 @@ when it is a plain file (syslog takes each daemon's own timestamps).
 `JAIL_PROBE`, optionally `JAIL_COMM` (the process name, for a BusyBox applet whose exe
 is `/usr/bin/busybox` like every other), `JAIL_ARGS_MATCH` (a word sequence the command
 line must contain, for one binary run once per interface), `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
-`JAIL_STOP_KILL`, `JAIL_LOG_TAG` and `JAIL_OOM_SCORE_ADJ` (the header of
+`JAIL_STOP_KILL` and `JAIL_OOM_SCORE_ADJ` (the header of
 `jail.sh` lists them), calls `jail_init`, and then:
 
 | Step | Helper | What it does |

@@ -27,7 +27,13 @@ Re-run its three login tests before starting; if any result differs, update the 
 
 ## Tier 1 — invisible to a stock-style user
 
-### S1 — Key present ⇒ password auth off — Size S — Depends: none
+### S1 — Key present ⇒ password auth off — Size S — Depends: none — **SUPERSEDED 2026-10-08**
+
+Replaced by the card state file (ADR 0031 amendment 2026-10-08, `ssh-ftp-parity.md`
+§1.4): `ssh_password=no` in `/media/fat/linux/security.conf` makes SSH key-only whether
+or not a key is present. A new SD card ships it; with no file (any updated card) SSH is
+stock. `Scripts/security.sh` changes it. There is no `sshd_allow_password`. The original
+task text follows.
 
 `S50sshd`: before starting sshd, if `/media/fat/config/authorized_keys` (the standard
 location since issue #183; `S50sshd` migrates the old `linux/` one) or
@@ -75,7 +81,12 @@ exactly like host keys.
 - `check-linux-img.sh` still asserts no private key material in the image.
 - FAQ: replace "log in and run `passwd`" with `mister-passwd` and say why.
 
-### S3 — Remove anonymous FTP — Size XS — Depends: none
+### S3 — Remove anonymous FTP — Size XS — Depends: none — **DONE 2026-10-08 in `ftp=lan` and `ftp=off`**
+
+As done (ADR 0031, second 2026-10-08 amendment; `ssh-ftp-parity.md` §1.5): the block is
+inside `<IfDefine !MISTER_FTP_LAN>`, so `ftp=lan` has no anonymous login and `ftp=off`
+has no server; `ftp=stock` (and a card with no `security.conf`) keeps it, as stock. CI
+checks the active directives per mode. The original task text follows.
 
 Delete the `<Anonymous ~ftp>` block from `proftpd.conf`. Leave the `ftp` system user
 (Buildroot creates it; removing it is a different diff with no benefit).
@@ -83,7 +94,13 @@ Delete the `<Anonymous ~ftp>` block from `proftpd.conf`. Leave the `ftp` system 
 **Done when:** `curl ftp://anonymous:x@rig/` returns `530`; CI asserts the shipped
 `proftpd.conf` contains no `<Anonymous`.
 
-### S4 — Chroot FTP to `/media` — Size XS — Depends: S3
+### S4 — Chroot FTP to `/media` — Size XS — Depends: S3 — **DECLINED 2026-10-08**
+
+The owner: write access to the card is root at the next start (`MiSTer`,
+`user-startup.sh`), so a chroot keeps out nothing that matters; FTP sees the whole
+filesystem in every mode. A path-preserving variant (`DefaultRoot /run/ftproot` over an
+`rbind` of `/media`) was tested under qemu and works, if it is ever wanted. The original
+task text follows.
 
 `DefaultRoot /media`. Verify that `/media/fat` and `/media/usb0` are both reachable and
 writable over FTP as root, and that `/etc` is not.
@@ -124,7 +141,14 @@ call it. Ship **no ruleset** in this task; a permissive `nft` install is the del
 `CONFIG_NF_TABLES=y` in both resolved kernel configs and `usr/sbin/nft` in `rootfs.tar`.
 `kernel-config-deltas.md` gains the rows. Note the RT-channel regression as fixed.
 
-### S7 — sshd: forwarding off — Size XS — Depends: none
+### S7 — sshd: forwarding off — Size XS — Depends: none — **DONE 2026-10-08, changed** (rig boot still owed)
+
+As done: behind `ssh_forwarding=limited` in the card's `security.conf` (a new SD card's
+default; stock without the file), `AllowTcpForwarding local` with `PermitOpen
+127.0.0.1:9091 localhost:9091`, `AllowStreamLocalForwarding no`, `X11Forwarding no`,
+because the Transmission web UI is reached by `ssh -L 9091:127.0.0.1:9091`. Checked with a throwaway sshd on the rig: `-W`
+to a LAN address is "administratively prohibited", `-R` is refused, `127.0.0.1:9091`
+works. CI asserts the lines. The original task text follows.
 
 `AllowTcpForwarding no`, `X11Forwarding no` explicit in `sshd_config`. Keep
 `PermitUserEnvironment yes` (MiSTer scripts rely on it, per the parity doc).
@@ -166,7 +190,13 @@ three ADR login tests all fail with the marker present; removing the marker and
 rebooting restores every service. One FAQ entry, "Locking down a MiSTer on a network
 you don't trust", covers S1, S2, and S10 together.
 
-### S11 — Gate password logins on a changed password (Q1, if accepted) — Size S — Depends: S2
+### S11 — Gate password logins on a changed password (Q1, if accepted) — Size S — Depends: S2 — **DONE 2026-10-08 as a card switch**
+
+Q1 was answered "gate it", on new SD cards only. Done as the card state file rather than
+a hash comparison, so it does not depend on S2: a new SD card ships `ssh_password=no` and
+`ftp=off` in `/media/fat/linux/security.conf`; an updated card has no file and stays
+stock; `Scripts/security.sh` changes it (ADR 0031 amendment 2026-10-08). S2 remains open:
+with password login on, the password is `1` again after every update. The original task text follows.
 
 At boot, if root's hash in the (restored) `/etc/shadow` equals the shipped
 `$5$MiSTer618$...` value and `sshd_allow_password` is absent: sshd key-only, and

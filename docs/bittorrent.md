@@ -233,13 +233,21 @@ Changing anything requires a restart (`/etc/init.d/S92transmission restart`) unl
 it through `transmission-remote`, which applies immediately and is written back to
 `settings.json` at shutdown.
 
-**Logging** goes to syslog, tagged `transmission-daemon`. The jailed daemon runs in the
-foreground (it is its PID namespace's init, §8.1) and writes to stderr, which the init
-script pipes into `logger`; the jail has no `/dev/log` of its own. Daemon and `logger` run
-in a session of their own (`setsid`), so a caller that signals its own process group — a
-`timeout`, a supervisor's kill on a slow start — does not reach them. This image runs BusyBox
-`syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages land in
-`/tmp/messages` on tmpfs and cost the card nothing.
+**Logging** goes to syslog, tagged `transmission-daemon`, at each message's own level. The
+jailed daemon runs in the foreground (it is its PID namespace's init, §8.1), where upstream
+logs only to stderr; `board/mister/de10nano/patches/transmission/0001` adds `--log-syslog`,
+which keeps upstream's daemonized `syslog()` path in the foreground too, and the init script
+passes it with `/dev/log` bound into the jail. The ident carries no pid, since in the jail it
+is always 1. Both are added only when `/dev/log` is a socket at start: minijail refuses a
+bind whose source is missing, so with no syslogd the daemon still starts, logging to stderr.
+stderr is piped into `logger` either way, which catches what never goes through the log
+(crash and argument errors); those lines arrive at `user.notice`. If syslogd is restarted,
+the bound socket goes stale and the daemon's own messages are lost until
+`S92transmission restart`. Daemon and `logger` run in a session of their own (`setsid`), so
+a caller that signals its own process group — a `timeout`, a supervisor's kill on a slow
+start — does not reach them. This image runs BusyBox `syslogd` (`S01syslogd`) with
+`/var/log` symlinked to `/tmp`, so the messages land in `/tmp/messages` on tmpfs and cost
+the card nothing.
 
 ---
 
@@ -296,7 +304,7 @@ transmission-remote --exit                  # shut the daemon down
 ```
 
 `--exit` is a clean shutdown and flushes `resume/`; so is
-`/etc/init.d/S92transmission stop`, which waits for it (§10).
+`/etc/init.d/S92transmission stop`, which waits for it (§11).
 
 ### Make a torrent of your own
 
@@ -347,7 +355,7 @@ a byte of it is downloaded.
 So the two kernels this image ships behave differently here, and neither behaves the way
 the setting's name suggests. `"preallocation": 0` is correct on both, and it is the only
 setting that spends nothing on the files selective download means you will never fetch.
-§11 has the measurements.
+§12 has the measurements.
 
 **One consequence survives turning it off**, and is worth knowing before you blame the
 daemon: `valid_size` zeroing is a property of *any* write past it, not of preallocation. A
@@ -376,7 +384,7 @@ half stays reserved for the FPGA to DMA into. Linux gets 488 MiB, full stop, and
 Main_MiSTer, the framebuffer and the page cache come out of that same 488 MiB. Treat a
 torrent client here as having a couple of hundred megabytes to play with, not a gigabyte.
 
-**Measured** (§11 has the transcript): the daemon idles at about **12 MiB** RSS, and an
+**Measured** (§12 has the transcript): the daemon idles at about **12 MiB** RSS, and an
 11,000-file / 200,000-piece torrent — the shape a multi-terabyte collection has, whose
 `.torrent` is 4.6 MB of which 4 MB is piece hashes — adds **≈ 6.2 MiB**. That is a steady
 state, not a parse-time spike: it is the same after a daemon restart, when the metadata
@@ -399,6 +407,9 @@ the RPC port is loopback-only and no router hole is opened.
 - `rpc-bind-address: 127.0.0.1`. Control the daemon over SSH (`ssh root@mister
   transmission-remote ...`) or forward the port for the web UI
   (`ssh -L 9091:127.0.0.1:9091 root@mister`, then open `http://127.0.0.1:9091/`).
+  With `ssh_forwarding=limited` in the card's `security.conf` (a new SD card's default,
+  ADR 0031 amendment 2026-10-08) `sshd` allows local forwards to `127.0.0.1:9091` and
+  nothing else, so a changed `rpc-port` also needs `S50sshd`'s `PermitOpen` changed.
 - `rpc-authentication-required: false` is safe *only* because of the line above, and the two
   must move together. If you ever set `rpc-bind-address` to `0.0.0.0` to reach the web UI
   from another machine, you must also set `rpc-authentication-required`, `rpc-username` and
@@ -429,7 +440,9 @@ is `root:root 0755` and a non-root user could write nothing. So the daemon runs 
 **8422** with `CAP_DAC_OVERRIDE` as its only capability — enough to write the card — and
 the boundary is what it can *see*. `minijail0 -T static -u 8422 -g 8422 -c 0x2 --ambient`
 with `no_new_privs` (`-n`) and new PID (`-I`, the daemon as its init), IPC, UTS and mount
-namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. Three kernel
+namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. The jail is
+declared in `/etc/minijail/transmission.conf` and run by the shared helper
+`/usr/lib/mister/jail.sh` (`docs/minijail.md`, "Jailing a daemon"). Three kernel
 features added for it (D13 in `docs/kernel-config-deltas.md`) narrow that further: a seccomp
 filter, Landlock rules, and a cgroup with a process ceiling, each described below the
 table.
@@ -442,6 +455,7 @@ table.
 | `/etc/localtime` | `/media/fat/linux/timezone`, if it is a plain file | ro |
 | `/proc` | a new proc for the PID namespace: it lists only the jail | ro |
 | `/dev` | minijail's minimal set: `null`, `zero`, `full`, `urandom`, `tty` | — |
+| `/dev/log` | the syslog socket, if there is one at start (§4, Logging) | — |
 | `/tmp` | a private 16 MiB tmpfs | rw |
 | `/media/fat/linux/transmission` | `/media/fat/linux/transmission/jail` | rw |
 | `/media/fat/mistarr/staging` | itself, if `/media/fat/mistarr` exists (created on demand) | rw |
@@ -452,9 +466,10 @@ Not in it: the rest of the card, `/media/fat/linux` (so not `ssh.ext4`, `samba.s
 are off (`RLIMIT_CORE` 0) and the daemon's `oom_score_adj` is 800, so on this 488 MiB box the
 kernel takes it before Main_MiSTer.
 
-**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` at every
-start from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
-that compiles it: every syscall is allowed except the `SECCOMP_DENY` list in the script,
+**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` once per
+boot from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
+that compiles it: every syscall is allowed except the deny list shared by every jail in
+`/usr/lib/mister/jail.sh`,
 which return `EPERM`. That list is kernel attack surface the daemon never uses: io_uring,
 `perf_event_open`, `bpf`, the keyring calls, `ptrace` and the cross-process memory calls,
 every mount, namespace and module call, `reboot`/`kexec`, setting the clock or hostname, and
@@ -518,7 +533,9 @@ the `transmission` cgroup and `CapEff` is exactly `0x2`; Landlock, which `/proc`
 show, is covered by the probe above. If minijail is missing, the policy
 cannot be built or the pids controller is absent, it refuses to start the daemon at all
 rather than fall back to something weaker. It also refuses if a `transmission-daemon` it did not start is already running, and a start
-that times out terminates whatever it launched rather than leave an unmanaged daemon.
+that times out or fails the check terminates whatever it launched rather than leave an
+unmanaged daemon. `start`, `stop` and `restart` are serialised with `flock`, and no file
+descriptor of the caller's reaches the daemon.
 
 **mistarr** drives this daemon with nothing changed on its side: it opts in by creating
 the directory and running `S92transmission start`, talks RPC to `127.0.0.1:9091` (the jail
@@ -573,7 +590,47 @@ another ~2.3 MiB, for the one tool in the set that cannot select files.
 
 ---
 
-## 10. Known limitations — accepted, not worked around
+## 10. Local Peer Discovery and a late IPv4 lease
+
+Transmission joins the LPD group, `239.192.152.143`, once, when the daemon starts
+(`libtransmission/tr-lpd.cc`), and never retries. With no IPv4 route at that moment the
+join fails with `ENODEV` and LPD stays off until the next restart, logged as
+`Couldn't initialize IPv4 LPD: No such device (19)`. It is not a corner case: it happened on
+an ordinary wired boot of the rig. Measured on the rig on 2026-10-08: the IPv6 default route at 18:36:42,
+`S92transmission`'s start and the failed join at 18:36:44, the IPv4 lease at 18:36:46.
+None of it involves the jail, which shares the host's network.
+
+`/usr/lib/dhcpcd/dhcpcd-hooks/92-transmission-kick` repairs it the way
+`91-ntp-kick` repairs ntpd (`docs/init-parity.md`). On an IPv4 lease being acquired
+(`BOUND`/`REBOOT`, not renewals) it restarts the daemon once per boot, and only if all of
+these hold:
+
+- the daemon is running: the pidfile's pid, with `/proc/<pid>/exe` and the start time
+  matching, so a stale or reused pid never causes a restart;
+- `lpd-enabled` is not `false` in the daemon's `settings.json`;
+- `/proc/net/igmp` does not list the group (`8F98C0EF`).
+
+It acts on the state rather than on timing: a wired box whose lease lands before `S92`
+finds the group joined, or no daemon yet, and does nothing; the stamp
+(`/run/transmission-kick`) is claimed only when it restarts. The body runs in the
+background, so dhcpcd's hook pass is not held up. `scripts/test-transmission-kick.sh`
+covers it in 33 sandboxed cases, run by `ci-tests.sh` on the host shell and on the target's
+BusyBox ash under qemu-arm; each gate was mutation-checked.
+
+**Measured on the rig**, with the daemon in the failed state above: sourcing the hook as
+dhcpcd does (`reason=BOUND if_up=true`) restarted it, the group was joined on `eth0` four
+seconds later, the restarted daemon was still uid 8422 with `CapEff 0x2`, and a second
+`BOUND` left it alone.
+
+**Not fixed: `Couldn't send to 255.255.255.255:<port>: 13 (Permission denied)`.** These are
+µTP connects to bogus peers at the broadcast address, from a tracker, DHT or PEX:
+Transmission 4.1.3's martian filter (`net.cc` `is_martian_addr()`) drops 0.0.0.0/8,
+loopback and multicast, but not 255.255.255.255, and the kernel refuses a broadcast
+`sendto()` without `SO_BROADCAST`, for root as well. Noise, not a jail effect.
+
+---
+
+## 11. Known limitations — accepted, not worked around
 
 ### No BitTorrent v2
 
@@ -635,7 +692,7 @@ LPD is the standard `239.192.152.143:6771` / `[ff15::efc0:988f]:6771` pair
 (`libtransmission/tr-lpd.cc:67`) and is on by default, so two boards on one LAN should find
 each other with no configuration. **This has not been tested with two boards**, because
 there is one rig. What *was* verified is one-sided — the announce leaves the board for the
-right group and port, captured with `tcpdump` (§11). The two-board test is owed.
+right group and port, captured with `tcpdump` (§12). The two-board test is owed.
 
 If you are checking it yourself: a **paused** torrent announces nothing at all
 (`tr-lpd.cc:545` requires `TR_STATUS_DOWNLOAD` or `TR_STATUS_SEED`), the announce timer is
@@ -645,7 +702,7 @@ against a paused torrent will show zero packets on a completely healthy daemon.
 
 ---
 
-## 11. What was measured on hardware
+## 12. What was measured on hardware
 
 Full transcript, with the commands and their output:
 [`docs/testlogs/2026-09-21-transmission-rig.md`](testlogs/2026-09-21-transmission-rig.md).
@@ -668,7 +725,7 @@ daemon.
 
 ---
 
-## 12. See also
+## 13. See also
 
 - `docs/buildroot-config.md` §5.10 — the two `select`s and their rationale
 - `docs/decisions/0031-secure-by-default-network-posture.md` — the 2026-09-21 amendment

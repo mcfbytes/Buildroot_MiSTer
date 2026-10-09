@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# wpa_supplicant for one interface, run in a minijail: /etc/minijail/wpa_supplicant.conf,
+# docs/wifi-parity.md §15. From /etc/network/interfaces: wpa-jail {start|stop} <ifname>.
+#
+
+IFACE=${2:-}
+case "$IFACE" in
+'' | *[!A-Za-z0-9_.-]*)
+	echo "Usage: $0 {start|stop} <interface>"
+	exit 1
+	;;
+esac
+WPA_CONF=/media/fat/linux/wpa_supplicant.conf
+CTRL_DIR=/run/wpa_supplicant
+# Its presence starts wpa_supplicant unjailed, as stock does.
+NOJAIL=/media/fat/linux/wpa_supplicant.nojail
+WPA_ARGS="-s -i $IFACE -D nl80211,wext -c $WPA_CONF"
+
+# shellcheck source=SCRIPTDIR/../../lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=wpa_supplicant-$IFACE
+JAIL_CONF=/etc/minijail/wpa_supplicant.conf
+JAIL_EXEC=/usr/sbin/wpa_supplicant
+JAIL_ARGS_MATCH="-i $IFACE"
+JAIL_PIDS_MAX=8
+JAIL_PROBE=/var/empty/.landlock-probe
+JAIL_STOP_WAIT=5
+JAIL_STOP_KILL=1
+# Sockets: AF_UNIX, AF_INET, AF_INET6, AF_NETLINK and AF_PACKET; else EAFNOSUPPORT.
+JAIL_SECCOMP_RULES="socket: arg0 == 1 || arg0 == 2 || arg0 == 10 || arg0 == 16 || arg0 == 17; return 97
+socketpair: arg0 == 1; return 97"
+jail_init
+
+# The shared control directory, owned by the jail's uid; /dev/log in the jail.
+prepare_root() {
+	mkdir -p "$CTRL_DIR" /run/log && chown -h "$JAIL_UID:$JAIL_GID" "$CTRL_DIR" &&
+		chmod 0750 "$CTRL_DIR" || return 1
+	jail_prepare_root || return 1
+	mkdir "$JAIL_ROOT/etc" "$JAIL_ROOT/dev" "$JAIL_ROOT/var" || return 1
+	ln -s /run/log/log "$JAIL_ROOT/dev/log"
+}
+
+start() {
+	if jail_running; then
+		return 0
+	fi
+	if jail_any_daemon; then
+		echo "wpa-jail: a wpa_supplicant for $IFACE that this script did not start is running" >&2
+		return 1
+	fi
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $JAIL_RUN_DIR"
+	elif jail_prepare && jail_launch "$IFACE"; then
+		return 0
+	fi
+	# Wi-Fi matters more than the jail: any failure costs the jail, never the connection.
+	logger -p daemon.err -t wpa-jail "starting wpa_supplicant for $IFACE UNJAILED, as root: $JAIL_ERR"
+	# shellcheck disable=SC2086 # we need the word splitting
+	jail_launch_unjailed "$JAIL_EXEC" $WPA_ARGS
+}
+
+case "$1" in
+	start | stop)
+		jail_lock || exit 1
+		if [ "$1" = start ]; then start; else jail_stop; fi
+		;;
+	run)
+		# Internal, from jail_launch.
+		# shellcheck disable=SC2086 # we need the word splitting
+		jail_run -- "$JAIL_EXEC" $WPA_ARGS
+		;;
+	*)
+		echo "Usage: $0 {start|stop} <interface>"
+		exit 1
+esac

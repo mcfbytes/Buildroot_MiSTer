@@ -37,6 +37,9 @@
 > *current* config remains true until that plan's tasks land; each task adds a
 > divergence row here.
 >
+> **2026-10-08:** a card state file, `linux/security.conf`, can make SSH key-only, limit
+> forwarding and turn FTP off; no file means stock, and only a new SD card ships it (§1.4).
+>
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`
 > expects. Nothing in CI asserts package versions, so this drift is caught by
@@ -91,7 +94,10 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 
 | Directive | Stock | Ours | Verdict |
 |---|---|---|---|
-| `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
+| `PermitRootLogin` | `yes` (uncommented) | `prohibit-password`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — ADR 0031, see §1.4 |
+| `PasswordAuthentication`, `KbdInteractiveAuthentication` | commented (compiled-in `yes`) | `no`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — see §1.4 |
+| `AllowTcpForwarding`, `PermitOpen`, `AllowStreamLocalForwarding` | commented (`yes`, `any`, `yes`) | `local`, `127.0.0.1:9091 localhost:9091`, `no` | **intentional divergence, 2026-10-08** — ADR 0031 Tier 1 item 7, see §1.4 |
+| `X11Forwarding` | commented (`no`) | `no`, explicit | same behaviour, stated |
 | pre-auth sandbox (build-time, not a directive) | built `--with-sandbox` but never engaged: stock's kernel has no seccomp | `SANDBOX_SECCOMP_FILTER`, engaged: `sshd-auth` runs as `sshd` with `NoNewPrivs 1`, `Seccomp 2` | **intentional divergence, 2026-10-04** — ADR 0031 Tier 1.5, kernel delta D13; CI asserts the Buildroot symbol, the kernel symbols and the sandbox string in `sshd-auth` together |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
 | `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/config/authorized_keys`** | **intentional divergence, added 2026-09-05; the FAT path moved from `linux/` to `config/` on 2026-09-17 (issue #183)** — see §1.3 |
@@ -101,7 +107,8 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 | `ChallengeResponseAuthentication` | present (commented, old OpenSSH 7.x directive name) | absent; `KbdInteractiveAuthentication` (commented) used instead | **not a gap** — `ChallengeResponseAuthentication` is a deprecated *alias* for `KbdInteractiveAuthentication` since OpenSSH 8.7, still accepted, not removed; both are commented (no override) in both configs, so there is no behavioral difference either way |
 | `UsePrivilegeSeparation` | present (commented) | absent | **not a gap** — the directive itself was made a compiled-in no-op in OpenSSH ≥7.5 and is fully **removed** in modern sshd (an *uncommented* `UsePrivilegeSeparation` line would be a fatal config-parse error on 10.x); stock's copy was already commented out (inert), so dropping the dead line entirely is strictly safer and changes nothing at runtime |
 
-**Bottom line: no directive stock relied on was silently changed, and nothing
+**Bottom line (P3.7 audit; the 2026-10-08 rows above are deliberate, see §1.4): no
+directive stock relied on was silently changed, and nothing
 in stock's config would hit a removed/renamed keyword if pasted as-is into
 10.2p1** (everything stock left *uncommented* — `PermitRootLogin`,
 `AuthorizedKeysFile`, `UsePAM`, `PermitUserEnvironment`, `Subsystem sftp` — is
@@ -244,6 +251,158 @@ nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migratio
 behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
+### 1.4 The card's security state: absent is stock, a new SD card is hardened (ADR 0031, 2026-10-08)
+
+**Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), amendment
+2026-10-08. `/media/fat/linux/security.conf` holds `key=value` lines that the init scripts
+read through `/usr/lib/mister/security.sh` (parsed, never sourced). **No file means
+stock**, so an updated card behaves exactly as before. The SD card image ships the
+hardened file (`board/mister/de10nano/fat-payload/linux/security.conf`); nothing on the
+update path creates or changes it.
+
+| | Stock (no file, or `stock` values) | Hardened (new SD card) |
+|---|---|---|
+| SSH, key in `config/authorized_keys` | works | works |
+| SSH, root password | works (stock) | refused: the server offers `publickey` only (`ssh_password=no`) |
+| SSH `-L`/`-D`, `-R` | anything | only `127.0.0.1:9091`; `-R` refused (`ssh_forwarding=limited`) |
+| FTP | root with the password (stock) | no server, port 21 closed (`ftp=off`) |
+| Serial console (`agetty` on `ttyS0`), F9 terminal, OSD Scripts | unchanged | unchanged |
+
+**How it is applied.**
+
+- `sshd_config` and `proftpd.conf` are stock. `S50sshd` adds command-line `-o` options
+  for each non-stock key (command-line `-o` wins over the file):
+  `ssh_password=no` → `PermitRootLogin=prohibit-password`, `PasswordAuthentication=no`,
+  `KbdInteractiveAuthentication=no`; `ssh_forwarding=limited` →
+  `AllowTcpForwarding=local`, `PermitOpen=127.0.0.1:9091 localhost:9091`,
+  `AllowStreamLocalForwarding=no`, `X11Forwarding=no`. `UsePAM yes` stays: with both
+  password methods off, PAM runs only its account and session stacks.
+- `S50proftpd` with `ftp=off` prints `ProFTPD: not started (ftp=off …)` and returns.
+- `security_get` returns the stock value for a missing file, a missing key, or a value
+  that is not allowed (with a `WARNING` on stderr, so it lands in the boot log). The last
+  line for a key wins; `#` comments, upper case and CRLF are accepted.
+- `/usr/sbin/mister-security` (`status`, `harden`, `stock`, `set KEY VALUE`, gamepad
+  dialog) validates, rewrites the file through a same-directory rename, `sync`s, and
+  restarts only the services whose keys changed. `/media/fat/Scripts/security.sh` is its
+  launcher, delivered the same way as the other Scripts (install.sh, the sdcard image, and
+  `update_linux_modernization.sh`'s create-only repair). Restarting `sshd` kills only the
+  listener: OpenSSH 10's sessions are `sshd-session` processes, which `killall sshd`
+  does not match, so a user who runs the tool over SSH keeps the session.
+
+**Why not lock root's shadow entry instead.** That would also close the console, and the
+console is the recovery path for someone who has a keyboard and no key. Physical access
+already wins on this board (the card is removable, and the OSD runs any script as
+root), so a console password protects nothing extra. The shadow entry stays as
+`post-build.sh` pins it.
+
+**Why the state is on the card.** Writing to the card already means root at next boot
+(`user-startup.sh`, `Scripts/`), so the file adds no new way in. Being world-readable on
+exFAT does not matter: it holds no secret. The password hash stays out of it. It also
+survives every image update, which is what keeps an upgrader's settings.
+
+**Boot log.** `S50sshd` prints its mode: `root password login on`, `key login only`, or
+`NO REMOTE LOGIN` (no key line in `config/authorized_keys` or
+`/root/.ssh/authorized_keys` and `ssh_password=no`), plus `forwarding limited` when set.
+With `NO REMOTE LOGIN` sshd still starts, so a key dropped on the card later works
+without a reboot.
+
+**Forwarding (Tier 1 item 7).** `limited` is `AllowTcpForwarding local` with `PermitOpen
+127.0.0.1:9091 localhost:9091`, not `no`: the documented way to reach Transmission's web
+UI is `ssh -L 9091:127.0.0.1:9091` ([bittorrent.md](bittorrent.md)), and `no` would break
+it. Any other `-L`/`-D` destination gets `administratively prohibited`; `-R` and Unix
+socket forwarding are refused. A logged-in root can still reconfigure the box, so this
+stops casual pivoting, not an attacker who already has root.
+
+**Not done here.** A password that survives an update (ADR 0031 Tier 1 item 2, Q3) is
+still open. The FTP modes are in §1.5.
+
+**Verified (2026-10-08):**
+
+- The shipped `S50sshd`, `S50proftpd` and `mister-security` were run on the image's own
+  ARM userland (`unshare` + `chroot` + qemu-arm): no file, `harden`, `set ftp stock`,
+  `stock`, a hand-edited invalid value, the no-tty menu path, and a "boot" with the SD
+  card's file. sshd's command line carried exactly the key-only and forwarding options in
+  the hardened states and none in the stock ones; proftpd was not started with `ftp=off`;
+  invalid keys and values were refused by the tool, and a bad hand-edit fell back to
+  stock with a warning.
+- CI runs the shipped parser under the target's BusyBox and the target's own `sshd -T`
+  under qemu-arm in both states.
+- On the rig (an earlier draft that used the same `-o` values the other way round): a
+  throwaway `sshd` on port 2222 refused password `1` with the key-only options and
+  accepted it without them; a `-W` to a LAN address was `administratively prohibited`,
+  `-R` was refused, `127.0.0.1:9091` worked.
+- **A rig boot of a built image is still owed.**
+
+
+### 1.5 FTP modes: `ftp`, `ftp_allow_any`, `ftp_drop_caps` (ADR 0031, second 2026-10-08 amendment)
+
+**Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), second
+amendment of 2026-10-08, which records the owner's answers. `S50proftpd` reads three keys
+from the card's `security.conf` (§1.4) and passes `-D` defines to the one shipped
+`proftpd.conf`; with none of them set, the config is stock.
+
+| Key = value | Define | Effect |
+|---|---|---|
+| `ftp=off` | (not started) | Port 21 closed. `S50proftpd` prints `ProFTPD: not started`. A new SD card ships this. |
+| `ftp=stock` (or no key) | none | Stock: `User root`, `Umask 000`, root and anonymous login, whole filesystem. Two invisible additions: `ServerIdent on "MiSTer FTP"`, `MaxLoginAttempts 3` (the default, made explicit). `CapabilitiesEngine off` unless `ftp_drop_caps=yes`. |
+| `ftp=lan` | `MISTER_FTP_LAN` | Root with the system password. No `<Anonymous>` block. `Umask 022`, `PassivePorts 50000 50099`, `TimeoutLogin 60`, `MaxClientsPerHost 10`, `AllowStoreRestart on`, `WtmpLog off`, `<Limit SITE_CHMOD> DenyAll`. Whole filesystem, as stock (no chroot, no read-deny). |
+| `ftp=lan`, `ftp_allow_any` not `yes` | `MISTER_FTP_LAN_ONLY` | `<Limit LOGIN>`: allow 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16; deny the rest. A refused address is disconnected before the banner. |
+| `ftp_drop_caps=yes` | `MISTER_FTP_DROP_CAPS` | Started as `minijail0 -c 0x4cb -B 0x2c -- proftpd …`; `User nobody`/`Group nobody`; `CapabilitiesEngine on`, `CapabilitiesSet +CAP_DAC_OVERRIDE +CAP_FOWNER -CAP_SETUID`. Works with `stock` and `lan`. |
+
+**The capability set, and why each one is there.** Measured on the rig with a throwaway
+instance (below), `/proc/<pid>/status`:
+
+| Process | Uid (r e s f) | CapEff | CapBnd | NoNewPrivs |
+|---|---|---|---|---|
+| Listener, and a connection before login | `0 65534 0 65534` | `0` | `0x4cb` | 1 |
+| Session after root login | `0 0 0 0` | `0x40b` (CHOWN, DAC_OVERRIDE, FOWNER, NET_BIND_SERVICE) | `0x4cb` | 1 |
+| Without `ftp_drop_caps` (stock) | `0 0 0 0` | `0x1ffffffffff` (all) | all | 0 |
+
+- **NET_BIND_SERVICE:** active mode. The data connection comes from the control port
+  minus one (20 on the real server); checked with the test server on port 991, so its
+  active data port 990 needed the capability too.
+- **DAC_OVERRIDE, FOWNER:** a USB stick with a Unix filesystem has files owned by other
+  uids. Without them, a root session could not create, overwrite, delete or `MFMT`
+  files in a directory owned by uid 1000 (`550 Permission denied`); with them it could,
+  as on stock. The exFAT card itself needs neither (every file is owned by uid 0).
+- **CHOWN:** mod_cap's default; kept.
+- **SETUID, SETGID:** only in the bounding set, for the listener's switches between root
+  and `nobody`; the session drops them (`-CAP_SETUID`), and nothing broke without them,
+  because a root session's uid never changes.
+- **`-B 0x2c`:** minijail by default also locks `KEEP_CAPS` and sets `NO_SETUID_FIXUP`.
+  The first made every login log `mod_cap: prctl(PR_SET_KEEPCAPS) failed`; the second
+  left the `nobody` listener with effective capabilities. Skipping those two bits keeps
+  `SECBIT_NOROOT` (and its lock), which is the one that stops an exec from regaining
+  root's capabilities.
+- **`CapabilitiesSet` is load-bearing.** Without it, mod_cap adds CAP_AUDIT_WRITE (because
+  `mod_auth_pam` is built in), that capability is outside the bounding set, `cap_set_proc`
+  fails, and the session silently keeps every capability it had (measured: `0x4cf`). CI
+  asserts the exact line.
+
+**What it does not buy.** The session is still uid 0 and owns everything on the card;
+`/media/fat/MiSTer` runs as root at the next start. The credential (root's password, in
+clear text) and the network scope are the real boundaries. The cap drop takes away module
+loading, raw device access, mount, network administration and the like from a hijacked
+session and from anything it executes.
+
+**Verified on the rig (2026-10-08)** with proftpd 1.3.9d cross-compiled with `mod_cap`
+from the build tree, the shipped `proftpd.conf` with the port changed to 991 and the passive
+range to 50100-50199, the shipped `S50proftpd` with paths pointed at `/run/ftptest`, and a
+test `security.conf`. The owner's proftpd on port 21 and sshd were not touched.
+
+- `ftp=stock`: root:`1` and anonymous log in; active and passive transfers; session has all
+  capabilities. 128 MiB upload 23.5 MiB/s, download 59.7 MiB/s (from a PC on the LAN).
+- `ftp=stock` + `ftp_drop_caps=yes`: the capability table above; active and passive
+  transfers; four wrong passwords on one connection: three `530`, then the server closed
+  it.
+- `ftp=lan` + `ftp_drop_caps=yes`: 128 MiB upload 28.8 MiB/s, download 59.2 MiB/s,
+  SHA-256 matched; anonymous `530`; `SITE CHMOD` `550`; active (from the rig's loopback,
+  since the PC's WSL network takes no inbound data connections) and passive transfers;
+  `PASV` ports 50154, 50118, 50198. From a second address on `lo` (`100.64.0.1`, not in the
+  list) the connection was closed before the banner; with `ftp_allow_any=yes` it logged in.
+- `ftp=lan` without `ftp_drop_caps`: 128 MiB upload 24.4 MiB/s.
+- Everything under `/run/ftptest`, `/media/fat/ftptest-tmp`, the test tmpfs and the `lo`
+  address was removed afterwards.
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
 
@@ -331,7 +490,10 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 
 **Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
 and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
-No changes made. Notable existing content, confirmed intentional/stock-matching:
+Since 2026-10-08 the file carries the `-D` blocks of §1.5; with no define set (no
+`security.conf`, or `ftp=stock` and `ftp_drop_caps=no`) the active directives are stock's
+plus `ServerIdent on "MiSTer FTP"`, `MaxLoginAttempts 3` and `CapabilitiesEngine off`.
+Notable stock content:
 
 - `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
   allowed, same as stock.
@@ -342,12 +504,11 @@ No changes made. Notable existing content, confirmed intentional/stock-matching:
   reachable; unchanged from stock either way).
 - No PAM-related directives (`AuthPAMConfig`, `AuthPAM off`, etc.) — see §3.2.
 
-Module set also matches stock: our defconfig sets only
-`BR2_PACKAGE_PROFTPD=y`, no `BR2_PACKAGE_PROFTPD_MOD_*` suboption (confirmed:
-`grep PROFTPD configs/mister_de10nano_defconfig` → exactly one line). Stock's
+Module set matches stock plus `mod_cap` (`BR2_PACKAGE_PROFTPD_MOD_CAP`, selected by the
+`mister-userspace` profile since 2026-10-08, §1.5), which links `libcap.so.2`. Stock's
 own `usr/sbin/proftpd` dependency list (`docs/stock-inventory/20250402/binaries-needed-full.txt`:
 `libc.so.6,libcrypt.so.1,libdl.so.2,libpam.so.0` — no libssl, no sqlite, no
-pcre2) is consistent with the same bare/no-submodule build.
+pcre2) is consistent with the same bare build.
 
 ### IPv6 (issue #188)
 
@@ -358,6 +519,9 @@ stock. proftpd does **not**: `UseIPv6 off` is kept on purpose, because anonymous
 writable. CI asserts that line.
 
 ## 3. Default-credential auth posture
+
+Since 2026-10-08 a card's `security.conf` can refuse the password below over SSH and turn
+FTP off; a new SD card ships that way, an updated card does not (§1.4).
 
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted
 

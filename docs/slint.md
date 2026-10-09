@@ -11,13 +11,15 @@ ghostscript-fonts, googlefontdirectory and similar; nothing named slint, noto or
 | `package/font-noto-sans-jp` (`BR2_PACKAGE_FONT_NOTO_SANS_JP`) | Noto Sans JP OTFs in `/usr/share/fonts/noto-sans-jp` |
 | `package/corrosion` (host only, no Kconfig symbol) | the Corrosion CMake modules slint's build needs |
 
-Neither image selects them yet. To use them, select `BR2_PACKAGE_SLINT` and one or both font symbols from a profile or defconfig.
+The `mister-userspace` profile selects `BR2_PACKAGE_SLINT` and `BR2_PACKAGE_FONT_NOTO_SANS`, so every image that
+selects the profile ships them (`docs/buildroot-config.md` §5.5, §5.6). `font-noto-sans-jp` is not selected.
 
 All four are tracked by Renovate (label `gui-pin`), and their hashes are refreshed on the
 bump branch: corrosion by hash-sync case 1, slint by case 9, both Noto fonts by case 10
-(`docs/renovate.md`). Because no image builds them, a green bump PR proves only that the
-hash moved; build them as described in [Building and testing a bump](#building-and-testing-a-bump)
-before merging one.
+(`docs/renovate.md`). An image build builds slint and font-noto-sans, so a green bump PR
+proves they build; it still proves nothing about rendering, so test as described in
+[Building and testing a bump](#building-and-testing-a-bump) before merging one. font-noto-sans-jp
+is still built by no image.
 
 ## Slint: what is built
 
@@ -123,7 +125,7 @@ kanji) and is also the natural `SLINT_FONT_PATH` fallback.
 
 ## Building and testing a bump
 
-No image selects these packages, so CI never builds them. Build them by hand in a small
+CI builds slint and font-noto-sans as part of the image; nothing renders there. For a bump, build them by hand in a small
 tree that reuses the toolchain of an existing DE10 build (`output/host`) as a
 pre-installed external toolchain. This takes a few minutes and about 9 GB, not a full
 image build.

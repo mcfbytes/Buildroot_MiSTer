@@ -1454,6 +1454,164 @@ else
 	fail "/var/lib/bluetooth ships in the image" "bluetoothd's mount point is missing on a read-only root"
 fi
 
+# -- bluetoothd runs jailed, never root (docs/bluetooth-parity.md §11). The
+# control script, the shared jail helper, its minijail config, its uid, the
+# D-Bus policy and the udev rule all have to land together.
+BT_INIT="usr/bin/bluetoothd"
+JAIL_LIB="usr/lib/mister/jail.sh"
+BT_CONF="etc/minijail/bluetoothd.conf"
+bt_init_body=$(tar xOf "$ROOTFS_TAR" "./$BT_INIT" 2>/dev/null || true)
+jail_lib_body=$(tar xOf "$ROOTFS_TAR" "./$JAIL_LIB" 2>/dev/null || true)
+bt_conf_body=$(tar xOf "$ROOTFS_TAR" "./$BT_CONF" 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$jail_lib_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-T static -n --ambient' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-S "$JAIL_POLICY"' &&
+	printf '%s' "$jail_lib_body" | grep -qF "^Seccomp:" &&
+	printf '%s' "$jail_lib_body" | grep -qF 'pids.max'; then
+	pass "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check"
+else
+	fail "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check" \
+		"$JAIL_LIB missing, or MINIJAIL, '-T static -n --ambient', -S \"\$JAIL_POLICY\", pids.max or the Seccomp self-check is gone"
+fi
+if printf '%s' "$bt_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$bt_init_body" | grep -qF 'socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'u = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'g = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'c = 0x1400' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'fs-path-rx = /usr'; then
+	pass "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock"
+else
+	fail "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock" \
+		"$BT_INIT no longer sources $JAIL_LIB or lost its socket rule, or $BT_CONF lost u/g = 8423, c = 0x1400 or its Landlock rules"
+fi
+# jail_lock serialises the verbs with util-linux's flock (BusyBox's is off).
+require_present "usr/bin/flock" "flock (util-linux; $JAIL_LIB's jail_lock)"
+# Controllers matter more than the jail: a jail failure must start bluetoothd unjailed
+# (docs/minijail.md, "When the jail fails"), loudly.
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$bt_init_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC"' &&
+	printf '%s' "$bt_init_body" | grep -qF 'logger -p daemon.err -t bluetoothd "starting UNJAILED'; then
+	pass "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails"
+else
+	fail "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails" \
+		"the fallback or its syslog line is gone -- a jail failure would leave users with no controllers"
+fi
+# Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
+if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew)' &&
+	printf '%s' "$bt_init_body" | grep -qE '^[[:space:]]+hcireset\)'; then
+	pass "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs"
+else
+	fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
+		"a verb is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
+fi
+# -- syslogd and klogd run jailed (docs/minijail.md, "syslogd and klogd"):
+# no capabilities / CAP_SYSLOG only, no network, and the unjailed fallback.
+for d in syslogd:S01syslogd:8424:0x0 klogd:S02klogd:8425:0x400000000; do
+	name=${d%%:*}; rest=${d#*:}; init=${rest%%:*}; rest=${rest#*:}; uid=${rest%%:*}; caps=${rest#*:}
+	init_body=$(tar xOf "$ROOTFS_TAR" "./etc/init.d/$init" 2>/dev/null || true)
+	conf_body=$(tar xOf "$ROOTFS_TAR" "./etc/minijail/$name.conf" 2>/dev/null || true)
+	# shellcheck disable=SC2016 # matched literally in the script text
+	if printf '%s' "$init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+		printf '%s' "$init_body" | grep -qxF "JAIL_COMM=\$DAEMON" &&
+		printf '%s' "$init_body" | grep -qF 'jail_launch_unjailed /sbin/$DAEMON' &&
+		printf '%s' "$conf_body" | grep -qxF "u = $uid" &&
+		printf '%s' "$conf_body" | grep -qxF "c = $caps" &&
+		printf '%s' "$conf_body" | grep -qxF 'e' &&
+		tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q "^[a-z]*:x:$uid:"; then
+		pass "$init runs $name jailed as uid $uid, caps $caps, no network, with the unjailed fallback"
+	else
+		fail "$init runs $name jailed as uid $uid, caps $caps, no network, with the unjailed fallback" \
+			"etc/init.d/$init no longer sources the helper or lost its fallback, etc/minijail/$name.conf lost u = $uid, c = $caps or 'e', or uid $uid is not in etc/passwd"
+	fi
+done
+# -- wpa_supplicant runs jailed per interface (docs/wifi-parity.md section 15), with the fallback.
+# wpa_cli must carry patch 0001, or the daemon cannot answer it without CAP_DAC_OVERRIDE.
+wpa_body=$(tar xOf "$ROOTFS_TAR" ./usr/libexec/mister/wpa-jail 2>/dev/null || true)
+wpa_conf=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/wpa_supplicant.conf 2>/dev/null || true)
+wpa_ifaces=$(tar xOf "$ROOTFS_TAR" ./etc/network/interfaces 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$wpa_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$wpa_body" | grep -qxF 'JAIL_ARGS_MATCH="-i $IFACE"' &&
+	printf '%s' "$wpa_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC" $WPA_ARGS' &&
+	printf '%s' "$wpa_conf" | grep -qxF 'u = 8426' &&
+	printf '%s' "$wpa_conf" | grep -qxF 'c = 0x3000' &&
+	tar xOf "$ROOTFS_TAR" ./usr/sbin/wpa_cli 2>/dev/null | grep -aqF getgrnam &&
+	[ "$(printf '%s' "$wpa_ifaces" | grep -cxF '    pre-up /usr/libexec/mister/wpa-jail start $IFACE')" = 2 ] &&
+	! printf '%s' "$wpa_ifaces" | grep -q '^ *pre-up wpa_supplicant' &&
+	tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^wpa:x:8426:'; then
+	pass "wpa_supplicant starts through wpa-jail as uid 8426, caps 0x3000, with the unjailed fallback"
+else
+	fail "wpa_supplicant starts through wpa-jail as uid 8426, caps 0x3000, with the unjailed fallback" \
+		"usr/libexec/mister/wpa-jail lost the helper, JAIL_ARGS_MATCH or its fallback, wpa_supplicant.conf lost u/c, wpa_cli lacks patches/wpa_supplicant/0001 (no getgrnam), a wlan stanza does not call wpa-jail, or wpa is not uid 8426"
+fi
+# The socket must stay out of the helper's root-only /run/syslogd.
+if tar xOf "$ROOTFS_TAR" ./etc/init.d/S01syslogd 2>/dev/null | grep -qxF 'SOCK_DIR=/run/log' &&
+	tar xOf "$ROOTFS_TAR" ./etc/minijail/bluetoothd.conf 2>/dev/null | grep -qxF 'bind-mount = /run/log'; then
+	pass "/dev/log points into /run/log, and bluetoothd's jail can reach it"
+else
+	fail "/dev/log points into /run/log, and bluetoothd's jail can reach it" \
+		"S01syslogd's SOCK_DIR or bluetoothd.conf's /run/log bind changed -- jailed daemons lose syslog"
+fi
+# syslogd keeps no /tmp in its jail (the logs live in /run/log, linked from /tmp), klogd
+# cannot clear the kernel log, and root ignores what another user plants in /tmp.
+sl_init=$(tar xOf "$ROOTFS_TAR" ./etc/init.d/S01syslogd 2>/dev/null || true)
+kl_init=$(tar xOf "$ROOTFS_TAR" ./etc/init.d/S02klogd 2>/dev/null || true)
+tmp_ctl=$(tar xOf "$ROOTFS_TAR" ./etc/sysctl.d/10-protected-tmp.conf 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$sl_init" | grep -qF -- '-n -O "$SOCK_DIR/messages"' &&
+	! tar xOf "$ROOTFS_TAR" ./etc/minijail/syslogd.conf 2>/dev/null | grep -q '^[^#]*/tmp' &&
+	printf '%s' "$kl_init" | grep -qxF 'JAIL_SECCOMP_RULES="syslog: arg0 == 0 || arg0 == 1 || arg0 == 2 || arg0 == 7 || arg0 == 8; return 1' &&
+	printf '%s' "$tmp_ctl" | grep -qxF 'fs.protected_regular = 2' &&
+	printf '%s' "$tmp_ctl" | grep -qxF 'fs.protected_symlinks = 1'; then
+	pass "syslogd's jail has no /tmp, klogd's syslog() is filtered, /tmp protections are on"
+else
+	fail "syslogd's jail has no /tmp, klogd's syslog() is filtered, /tmp protections are on" \
+		"S01syslogd lost -O \$SOCK_DIR/messages, syslogd.conf binds /tmp again, S02klogd's syslog rule changed, or etc/sysctl.d/10-protected-tmp.conf lost a value"
+fi
+# gpm runs jailed with CAP_SYS_ADMIN only, TIOCSTI refused (docs/minijail.md "gpm").
+gpm_body=$(tar xOf "$ROOTFS_TAR" ./usr/libexec/mister/gpm-jail 2>/dev/null || true)
+gpm_conf=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/gpm.conf 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if tar xOf "$ROOTFS_TAR" ./etc/inittab 2>/dev/null | grep -qxF '::sysinit:/usr/libexec/mister/gpm-jail start' &&
+	printf '%s' "$gpm_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$gpm_body" | grep -qxF 'ioctl: arg1 != 0x5412; return 1"' &&
+	printf '%s' "$gpm_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC" $GPM_ARGS' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'u = 8427' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'c = 0x200000' &&
+	printf '%s' "$gpm_conf" | grep -qxF 'e' &&
+	tar xOf "$ROOTFS_TAR" ./usr/sbin/gpm 2>/dev/null | grep -aqF GPM_FOREGROUND &&
+	tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^gpm:x:8427:'; then
+	pass "inittab starts gpm through gpm-jail as uid 8427, CAP_SYS_ADMIN only, TIOCSTI refused"
+else
+	fail "inittab starts gpm through gpm-jail as uid 8427, CAP_SYS_ADMIN only, TIOCSTI refused" \
+		"etc/inittab, usr/libexec/mister/gpm-jail, etc/minijail/gpm.conf or etc/passwd changed, or usr/sbin/gpm lacks patches/gpm/0001 (no GPM_FOREGROUND)"
+fi
+bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
+if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
+	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"
+else
+	fail "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)" \
+		"etc/passwd has '${bt_passwd:-no bluetooth line}'"
+fi
+bt_dbus=$(tar xOf "$ROOTFS_TAR" ./etc/dbus-1/system.d/bluetoothd-jail.conf 2>/dev/null || true)
+if printf '%s' "$bt_dbus" | grep -qF '<policy user="bluetooth">' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow own="org.bluez"/>' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow send_interface="org.bluez.Agent1"/>'; then
+	pass "D-Bus lets the bluetooth user own org.bluez (etc/dbus-1/system.d/bluetoothd-jail.conf)"
+else
+	fail "D-Bus lets the bluetooth user own org.bluez" \
+		"etc/dbus-1/system.d/bluetoothd-jail.conf missing or has no bluetooth policy -- the jailed daemon cannot get on the bus"
+fi
+bt_udev=$(tar xOf "$ROOTFS_TAR" ./etc/udev/rules.d/62-bluetoothd-jail.rules 2>/dev/null || true)
+if printf '%s' "$bt_udev" | grep -qxF 'KERNEL=="uhid", GROUP="bluetooth", MODE="0660"' &&
+	printf '%s' "$bt_udev" | grep -qF 'SUBSYSTEM=="hidraw", SUBSYSTEMS=="usb", ATTRS{idVendor}=="054c"'; then
+	pass "udev gives the bluetooth group /dev/uhid (BLE HID) and USB Sony hidraw (sixaxis cable pairing)"
+else
+	fail "udev gives the bluetooth group /dev/uhid and USB Sony hidraw" \
+		"etc/udev/rules.d/62-bluetoothd-jail.rules missing or changed -- BLE pads or DS3 cable pairing break under the jail"
+fi
+
 # =============================================================================
 section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c)"
 # =============================================================================
@@ -1966,6 +2124,196 @@ if tar_has "etc/init.d/S50sshd"; then
 fi
 
 # =============================================================================
+section "ADR 0031 — security.conf: absent is stock, a new card is hardened"
+# =============================================================================
+# /media/fat/linux/security.conf is parsed by /usr/lib/mister/security.sh. No
+# file means stock (upgraders); only the sdcard payload ships the hardened one.
+
+SEC_LIB=usr/lib/mister/security.sh
+SEC_CARD="$ROOT/board/mister/de10nano/fat-payload/linux/security.conf"
+require_present "usr/sbin/mister-security" "mister-security tool"
+require_present "$SEC_LIB" "security.conf parser"
+require_absent "media/fat/linux/security.conf" "security.conf in the rootfs" \
+	"the image must never carry the card's state: an update would change an upgrader's settings"
+
+# Nothing on the update path may write the state file.
+sec_writers=$(cd "$ROOT" && grep -l 'security\.conf' install.sh \
+	board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh \
+	board/mister/de10nano/post-build.sh scripts/mk-release.sh 2>/dev/null)
+if [ -z "$sec_writers" ]; then
+	pass "update path (install.sh, updater, post-build, mk-release) never touches security.conf"
+else
+	fail "update path never touches security.conf" "mentioned in: $sec_writers"
+fi
+
+if tar_has "etc/ssh/sshd_config"; then
+	sshd_conf="$WORKDIR/sshd_config"
+	tar xOf "$ROOTFS_TAR" ./etc/ssh/sshd_config > "$sshd_conf" 2>/dev/null
+	if grep -qE '^PermitRootLogin[[:space:]]+yes[[:space:]]*$' "$sshd_conf" &&
+		! grep -qiE '^(PasswordAuthentication|KbdInteractiveAuthentication|AllowTcpForwarding)[[:space:]]+no' "$sshd_conf"; then
+		pass "sshd_config: stock root password login when security.conf is absent"
+	else
+		fail "sshd_config: stock root password login when security.conf is absent" \
+			"an upgrader with no security.conf would lose root:1 over SSH"
+	fi
+fi
+
+for spec in "S50sshd:security_get ssh_password" "S50sshd:security_get ssh_forwarding" \
+	"S50sshd:-o PermitRootLogin=prohibit-password -o PasswordAuthentication=no" \
+	"S50sshd:-o AllowTcpForwarding=local -o \"PermitOpen=127.0.0.1:9091 localhost:9091\"" \
+	"S50proftpd:security_get ftp" "S50proftpd:. /usr/lib/mister/security.sh" \
+	"S50sshd:. /usr/lib/mister/security.sh"; do
+	if tar xOf "$ROOTFS_TAR" "./etc/init.d/${spec%%:*}" 2>/dev/null | grep -qF -- "${spec#*:}"; then
+		pass "${spec%%:*}: ${spec#*:}"
+	else
+		fail "${spec%%:*}: ${spec#*:}" "missing -- the card's security.conf would not take effect"
+	fi
+done
+
+# The shipped parser, under the target's own busybox sh.
+if [ -z "$QEMU_ARM" ] || [ ! -x "$TARGET/bin/busybox" ] || ! tar_has "$SEC_LIB"; then
+	skip "security.conf parser under the target shell" "qemu-arm, target busybox or the parser not available"
+else
+	tar xOf "$ROOTFS_TAR" "./$SEC_LIB" > "$WORKDIR/security.sh"
+	sec_get() { # <conf file> -- prints key=value for every key
+		# shellcheck disable=SC2016 # expanded by the target shell
+		MISTER_SECURITY_CONF="$1" qemu_target "$TARGET/bin/busybox" sh -c \
+			'. "$0"; for k in ssh_password ssh_forwarding ftp ftp_allow_any ftp_drop_caps; do printf "%s=%s " "$k" "$(security_get "$k" 2>/dev/null)"; done' \
+			"$WORKDIR/security.sh"
+	}
+	printf 'ssh_password = NO # comment\r\nftp=bogus\n' > "$WORKDIR/sec-odd.conf"
+	for spec in "/nonexistent|ssh_password=yes ssh_forwarding=stock ftp=stock ftp_allow_any=no ftp_drop_caps=no " \
+		"$SEC_CARD|ssh_password=no ssh_forwarding=limited ftp=off ftp_allow_any=no ftp_drop_caps=yes " \
+		"$WORKDIR/sec-odd.conf|ssh_password=no ssh_forwarding=stock ftp=stock ftp_allow_any=no ftp_drop_caps=no "; do
+		got=$(sec_get "${spec%%|*}")
+		if [ "$got" = "${spec#*|}" ]; then
+			pass "parser: ${spec%%|*} -> $got"
+		else
+			fail "parser: ${spec%%|*}" "want '${spec#*|}', got '$got'"
+		fi
+	done
+fi
+
+# The effective sshd config, from the target's own sshd: absent state and hardened.
+if [ -z "$QEMU_ARM" ] || ! have ssh-keygen; then
+	skip "sshd -T: stock when absent, key-only when hardened" "qemu-arm or ssh-keygen not found on PATH"
+elif [ ! -x "$TARGET/usr/sbin/sshd" ] || [ ! -f "${sshd_conf:-}" ]; then
+	skip "sshd -T: stock when absent, key-only when hardened" "target sshd or shipped sshd_config not available"
+else
+	ssh-keygen -q -t ed25519 -N '' -f "$WORKDIR/sec_hostkey" </dev/null
+	sec_t() {
+		qemu_target "$TARGET/usr/sbin/sshd" -T -f "$sshd_conf" -o "HostKey=$WORKDIR/sec_hostkey" "$@" 2>&1 |
+			grep -iE '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|allowtcpforwarding|permitopen) ' |
+			tr 'A-Z\n' 'a-z '
+	}
+	sec_has() { # <got> <setting value>...
+		local got=$1 w
+		shift
+		for w in "$@"; do case "$got" in *" $w "*) ;; *) return 1 ;; esac; done
+	}
+	got_stock=" $(sec_t) "
+	got_hard=" $(sec_t -o PermitRootLogin=prohibit-password -o PasswordAuthentication=no \
+		-o KbdInteractiveAuthentication=no -o AllowTcpForwarding=local \
+		-o "PermitOpen=127.0.0.1:9091 localhost:9091") "
+	if sec_has "$got_stock" "permitrootlogin yes" "passwordauthentication yes" "kbdinteractiveauthentication yes" "allowtcpforwarding yes" "permitopen any"; then
+		pass "sshd -T with no security.conf is stock:$got_stock"
+	else
+		fail "sshd -T with no security.conf is stock" "got:$got_stock"
+	fi
+	if sec_has "$got_hard" "permitrootlogin without-password" "passwordauthentication no" "kbdinteractiveauthentication no" "allowtcpforwarding local" "permitopen 127.0.0.1:9091 localhost:9091" ||
+		sec_has "$got_hard" "permitrootlogin prohibit-password" "passwordauthentication no" "kbdinteractiveauthentication no" "allowtcpforwarding local" "permitopen 127.0.0.1:9091 localhost:9091"; then
+		pass "sshd -T hardened is key-only, forwarding limited:$got_hard"
+	else
+		fail "sshd -T hardened is key-only, forwarding limited" "got:$got_hard"
+	fi
+fi
+
+section "ADR 0031 — proftpd per security.conf mode (ftp, ftp_allow_any, ftp_drop_caps)"
+# =============================================================================
+# S50proftpd turns the card's keys into -D defines; ftp_conf_for prints the
+# directives proftpd.conf leaves active for a define set (docs/ssh-ftp-parity.md §1.5).
+
+ftp_conf="$WORKDIR/proftpd.conf"
+tar xOf "$ROOTFS_TAR" ./etc/proftpd.conf > "$ftp_conf" 2>/dev/null
+ftp_conf_for() { # "<define> ..." -- active lines, whitespace squeezed
+	awk -v defs=" $* " '
+		/^[[:space:]]*<IfDefine[[:space:]]/ {
+			d = $0; sub(/^[[:space:]]*<IfDefine[[:space:]]+/, "", d); sub(/>.*/, "", d)
+			neg = sub(/^!/, "", d); on = (index(defs, " " d " ") > 0); if (neg) on = !on
+			stack[++n] = on; next
+		}
+		/^[[:space:]]*<\/IfDefine>/ { n--; next }
+		{ for (i = 1; i <= n; i++) if (!stack[i]) next; print }
+	' "$ftp_conf" | sed 's/#.*//; s/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//' | grep -v '^$'
+}
+ftp_mode_check() { # <label> <defines> <want|!unwanted>...
+	local label=$1 defs=$2 w active bad=""
+	shift 2
+	active=$(ftp_conf_for "$defs")
+	for w in "$@"; do
+		case "$w" in
+		!*) printf '%s\n' "$active" | grep -qxF -- "${w#!}" && bad="$bad [has: ${w#!}]" ;;
+		*) printf '%s\n' "$active" | grep -qxF -- "$w" || bad="$bad [lacks: $w]" ;;
+		esac
+	done
+	if [ -z "$bad" ]; then
+		pass "proftpd.conf, $label"
+	else
+		fail "proftpd.conf, $label" "$bad"
+	fi
+}
+if [ ! -s "$ftp_conf" ]; then
+	fail "proftpd.conf present" "etc/proftpd.conf not in rootfs.tar"
+else
+	ftp_mode_check "ftp=stock (no defines) is stock" "" \
+		"User root" "Umask 000" "RootLogin on" "<Anonymous ~ftp>" "CapabilitiesEngine off" \
+		"!PassivePorts 50000 50099" "!Deny from all" "!CapabilitiesEngine on"
+	ftp_mode_check "ftp=lan" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY" \
+		"RootLogin on" "Umask 022" "PassivePorts 50000 50099" "MaxLoginAttempts 3" \
+		"<Limit SITE_CHMOD>" "<Limit LOGIN>" \
+		"Allow from 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16" "Deny from all" \
+		"!<Anonymous ~ftp>" "!Umask 000"
+	ftp_mode_check "ftp=lan + ftp_allow_any=yes" "MISTER_FTP_LAN" "Umask 022" "!Deny from all" "!<Anonymous ~ftp>"
+	ftp_mode_check "ftp_drop_caps=yes" "MISTER_FTP_DROP_CAPS" \
+		"CapabilitiesEngine on" "CapabilitiesSet +CAP_DAC_OVERRIDE +CAP_FOWNER -CAP_SETUID" \
+		"User nobody" "!User root" "!CapabilitiesEngine off"
+fi
+
+s50ftp="$WORKDIR/S50proftpd"
+tar xOf "$ROOTFS_TAR" ./etc/init.d/S50proftpd > "$s50ftp" 2>/dev/null
+# shellcheck disable=SC2016 # literal init-script text
+for want in '-D MISTER_FTP_LAN' '-D MISTER_FTP_LAN_ONLY' '-D MISTER_FTP_DROP_CAPS' \
+	'security_get ftp_allow_any' 'security_get ftp_drop_caps' \
+	'/usr/bin/minijail0 -c "$FTP_CAPS" -B 0x2c --' 'FTP_CAPS=0x4cb'; do
+	if grep -qF -- "$want" "$s50ftp"; then
+		pass "S50proftpd: $want"
+	else
+		fail "S50proftpd: $want" "missing -- the card's ftp keys would not take effect as documented"
+	fi
+done
+require_present "usr/bin/minijail0" "minijail0 (ftp_drop_caps)"
+
+# The target's own proftpd: mod_cap built in, and every mode's config parses.
+if [ -z "$QEMU_ARM" ] || [ ! -x "$TARGET/usr/sbin/proftpd" ] || [ ! -s "$ftp_conf" ]; then
+	skip "proftpd -l / -t per mode" "qemu-arm, target proftpd or proftpd.conf not available"
+else
+	if qemu_target "$TARGET/usr/sbin/proftpd" -l 2>&1 | grep -qx '[[:space:]]*mod_cap.c'; then
+		pass "proftpd has mod_cap.c (BR2_PACKAGE_PROFTPD_MOD_CAP)"
+	else
+		fail "proftpd has mod_cap.c (BR2_PACKAGE_PROFTPD_MOD_CAP)" "ftp_drop_caps=yes would drop nothing"
+	fi
+	for defs in "" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY" "MISTER_FTP_LAN MISTER_FTP_LAN_ONLY MISTER_FTP_DROP_CAPS" "MISTER_FTP_DROP_CAPS"; do
+		set --
+		for d in $defs; do set -- "$@" -D "$d"; done
+		if out=$(qemu_target "$TARGET/usr/sbin/proftpd" -t -c "$ftp_conf" "$@" 2>&1); then
+			pass "proftpd -t ${defs:-(stock)}"
+		else
+			fail "proftpd -t ${defs:-(stock)}" "$(printf '%s' "$out" | tail -n 2)"
+		fi
+	done
+fi
+
+# =============================================================================
 section "P3.8 — MIDI / MT-32 parity"
 # =============================================================================
 
@@ -2004,6 +2352,9 @@ section "Main_MiSTer shared libraries"
 # library with no consumer has NO other way to fail visibly. If it silently
 # stopped being installed, every other check in this suite would still pass.
 #
+# libslint_cpp.so (the seventh) has one consumer outside this tree: SiSTer's optional HD OSD, which a stock
+# Main never loads. Same reasoning as rcheevos: nothing here would notice it missing. docs/slint.md.
+#
 # minizip and minizip-ng are ALTERNATIVES, not a pair: Main links the classic
 # libminizip.so.1 (zip.h/unzip.h API) today, while minizip-ng is staged for a
 # future native mz_zip.h port. Both are asserted because both are shipped --
@@ -2023,7 +2374,8 @@ for spec in \
 	"libminizip-ng\.so\.4:libminizip-ng.so.4* (minizip-ng)" \
 	"liblzma-sdk\.so\.:liblzma-sdk.so.* (lzma-sdk)" \
 	"libchdr\.so\.0:libchdr.so.0* (libchdr)" \
-	"librcheevos\.so\.:librcheevos.so.* (rcheevos)"; do
+	"librcheevos\.so\.:librcheevos.so.* (rcheevos)" \
+	"libslint_cpp\.so:libslint_cpp.so (slint)"; do
 	lib_re="^\\./usr/lib/${spec%%:*}"
 	lib_name="${spec#*:}"
 	if grep -qE "$lib_re" "$TAR_LIST"; then
@@ -2341,6 +2693,31 @@ else
 		pass "test-ntp-kick.sh under the target's own BusyBox ash"
 	else
 		fail "test-ntp-kick.sh under the target's own BusyBox ash" \
+			"passes on the host shell but not on BusyBox ash -- see output above"
+	fi
+fi
+
+# Transmission joins LPD's multicast group only at start; an IPv4 lease after S92 leaves
+# LPD off. 92-transmission-kick restarts it once (docs/bittorrent.md section 10).
+require_present "usr/lib/dhcpcd/dhcpcd-hooks/92-transmission-kick" "dhcpcd 92-transmission-kick hook"
+printf -- '--- test-transmission-kick.sh: transmission kick hook behaviour (33 cases) ---\n'
+if "$ROOT/scripts/test-transmission-kick.sh"; then
+	pass "test-transmission-kick.sh (transmission kick hook behaviour, 33 cases)"
+else
+	fail "test-transmission-kick.sh (transmission kick hook behaviour, 33 cases)" \
+		"one or more cases failed -- see output above"
+fi
+if [ -z "$QEMU_ARM" ]; then
+	skip "test-transmission-kick.sh under the target's own BusyBox ash" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/bin/busybox" ]; then
+	skip "test-transmission-kick.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
+else
+	printf -- '--- test-transmission-kick.sh: same cases, target BusyBox ash under qemu-arm ---\n'
+	if TM_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
+		"$ROOT/scripts/test-transmission-kick.sh"; then
+		pass "test-transmission-kick.sh under the target's own BusyBox ash"
+	else
+		fail "test-transmission-kick.sh under the target's own BusyBox ash" \
 			"passes on the host shell but not on BusyBox ash -- see output above"
 	fi
 fi
@@ -2804,26 +3181,49 @@ else
 		fail "$TM_INIT is off by default (opt-in directory gate)" \
 			"the '[ -d \$HOME_DIR ] || exit 0' guard is gone -- the daemon would auto-start and listen on every boot (ADR 0031 amendment, 2026-09-21)"
 	fi
-	# JAILED, never root (docs/bittorrent.md §8.1): minijail0, uid 8422, DAC override only.
-	if printf '%s' "$tm_init_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
-		printf '%s' "$tm_init_body" | grep -qxF 'TM_UID=8422' &&
-		printf '%s' "$tm_init_body" | grep -qF -- '-c 0x2 --ambient' &&
-		printf '%s' "$tm_init_body" | grep -qF 'refusing to run unjailed'; then
-		pass "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it"
+	# JAILED, never root (docs/bittorrent.md §8.1): the shared helper (checked
+	# with bluetoothd above), uid 8422 and DAC override only from its config file.
+	tm_conf_body=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/transmission.conf 2>/dev/null || true)
+	if printf '%s' "$tm_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+		printf '%s' "$tm_init_body" | grep -qxF 'JAIL_NAME=transmission' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'u = 8422' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'g = 8422' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'c = 0x2'; then
+		pass "$TM_INIT runs the daemon through $JAIL_LIB as uid 8422 with CAP_DAC_OVERRIDE only"
 	else
-		fail "$TM_INIT runs the daemon in minijail0 as uid 8422 and fails closed without it" \
-			"MINIJAIL=/usr/bin/minijail0, TM_UID=8422, '-c 0x2 --ambient' or the fail-closed branch is gone"
+		fail "$TM_INIT runs the daemon through $JAIL_LIB as uid 8422 with CAP_DAC_OVERRIDE only" \
+			"$TM_INIT no longer sources $JAIL_LIB, or etc/minijail/transmission.conf lost u/g = 8422 or c = 0x2"
 	fi
-	# Seccomp, Landlock and the pids cgroup on top (docs/bittorrent.md §8.1).
-	# shellcheck disable=SC2016 # matched literally in the script text
-	if printf '%s' "$tm_init_body" | grep -qF -- '-S "$POLICY"' &&
-		printf '%s' "$tm_init_body" | grep -qF -- '--fs-path-rx /usr' &&
-		printf '%s' "$tm_init_body" | grep -qF 'pids.max' &&
-		printf '%s' "$tm_init_body" | grep -qF "^Seccomp:"; then
-		pass "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them"
+	# Opt-in and network-facing, so it stays fail-closed: never the unjailed start.
+	if printf '%s' "$tm_init_body" | grep -qF 'jail_launch_unjailed'; then
+		fail "$TM_INIT never starts the daemon unjailed" \
+			"it calls jail_launch_unjailed -- transmission must fail closed (docs/minijail.md, \"When the jail fails\")"
 	else
-		fail "$TM_INIT adds a seccomp policy, Landlock rules and a pids cgroup, and checks them" \
-			"-S \"\$POLICY\", --fs-path-rx /usr, pids.max or the Seccomp self-check is gone"
+		pass "$TM_INIT never starts the daemon unjailed"
+	fi
+	# Landlock, and the writable state bound noexec (docs/bittorrent.md §8.1).
+	if printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-rx = /usr' &&
+		printf '%s' "$tm_conf_body" | grep -qxF 'fs-path-advanced-rw = /media/fat/linux/transmission' &&
+		printf '%s' "$tm_conf_body" | grep -qF 'MS_REMOUNT|MS_NOEXEC'; then
+		pass "etc/minijail/transmission.conf: Landlock rules and a noexec state mount"
+	else
+		fail "etc/minijail/transmission.conf: Landlock rules and a noexec state mount" \
+			"fs-path-rx = /usr, the state directory's Landlock rule or its noexec remount is gone"
+	fi
+	# Syslog with levels (patches/transmission/0001): the option is built in, and passed
+	# with the /dev/log bind it needs. A dropped patch makes the daemon reject its arguments.
+	if tar xOf "$ROOTFS_TAR" ./usr/bin/transmission-daemon 2>/dev/null | grep -aqF 'log-syslog'; then
+		pass "transmission-daemon has --log-syslog (patches/transmission/0001)"
+	else
+		fail "transmission-daemon has --log-syslog (patches/transmission/0001)" \
+			"the patch did not apply -- $TM_INIT passes --log-syslog, which the daemon would reject"
+	fi
+	if printf '%s' "$tm_init_body" | grep -qF -- '-b /dev/log' &&
+		printf '%s' "$tm_init_body" | grep -qF 'log=--log-syslog'; then
+		pass "$TM_INIT binds /dev/log and passes --log-syslog"
+	else
+		fail "$TM_INIT binds /dev/log and passes --log-syslog" \
+			"the bind or the option is gone -- the daemon's log loses its levels"
 	fi
 	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
 	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then

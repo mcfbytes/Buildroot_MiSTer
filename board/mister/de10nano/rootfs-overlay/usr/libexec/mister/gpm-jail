@@ -1,0 +1,110 @@
+#!/bin/sh
+#
+# gpm on /dev/input/mice, as stock's inittab starts it, run in a minijail:
+# /etc/minijail/gpm.conf, docs/minijail.md "gpm". Verbs: start, stop, restart.
+#
+
+GPM_ARGS="-m /dev/input/mice -t imps2"
+GPM_DEV=/dev/gpm
+# Its presence starts gpm unjailed, as root, as stock does.
+NOJAIL=/media/fat/linux/gpm.nojail
+
+# shellcheck source=SCRIPTDIR/../../lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=gpm
+JAIL_EXEC=/usr/sbin/gpm
+JAIL_PIDS_MAX=8
+JAIL_PROBE=/var/empty/.landlock-probe
+JAIL_STOP_WAIT=5
+JAIL_STOP_KILL=1
+# CAP_SYS_ADMIN would let TIOCSTI type into the console's root shells: refused.
+JAIL_SECCOMP_RULES="socket: arg0 == 1; return 97
+socketpair: arg0 == 1; return 97
+ioctl: arg1 != 0x5412; return 1"
+jail_init
+# Stay in the foreground for the helper (patches/gpm/0001); it logs to syslog as before.
+export GPM_FOREGROUND=1
+
+# A copy of node $1 at $GPM_DEV/$2, owned by the jail's uid with mode $3.
+copy_node() {
+	set -- "$1" "$2" "$3" "$(stat -c '%t %T' "$1" 2>/dev/null)"
+	[ -n "$4" ] || return 1
+	rm -f "$GPM_DEV/$2" &&
+		mknod -m "$3" "$GPM_DEV/$2" c "$((0x${4% *}))" "$((0x${4#* }))" &&
+		chown "$JAIL_UID:$JAIL_GID" "$GPM_DEV/$2"
+}
+
+# The jail's /dev, and /dev/gpmctl on the host as a link to the socket gpm makes there.
+prepare_root() {
+	rm -rf "$GPM_DEV" && mkdir -p "$GPM_DEV/input" || return 1
+	copy_node /dev/tty0 tty0 0600 && copy_node /dev/input/mice input/mice 0600 &&
+		copy_node /dev/null null 0666 || return 1
+	ln -s /run/log/log "$GPM_DEV/log" || return 1
+	chown "$JAIL_UID:$JAIL_GID" "$GPM_DEV" "$GPM_DEV/input" && chmod 0755 "$GPM_DEV" || return 1
+	ln -sfn gpm/gpmctl /dev/gpmctl || return 1
+	jail_prepare_root || return 1
+	mkdir -p "$JAIL_ROOT/dev" "$JAIL_ROOT/etc" "$JAIL_ROOT/run/log" "$JAIL_ROOT/var/run" || return 1
+	chown "$JAIL_UID:$JAIL_GID" "$JAIL_ROOT/var/run"
+}
+
+start() {
+	printf 'Starting gpm: '
+	if jail_running; then
+		echo "already running"
+		return 0
+	fi
+	if jail_any_daemon; then
+		echo "FAIL (a gpm this script did not start is running)"
+		return 1
+	fi
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $GPM_DEV or $JAIL_RUN_DIR"
+	elif jail_prepare && jail_launch; then
+		echo "OK"
+		return 0
+	fi
+	# The console mouse is worth more than the jail: any failure costs the jail, never gpm.
+	logger -p daemon.err -t gpm-jail "starting gpm UNJAILED, as root: $JAIL_ERR"
+	rm -f /dev/gpmctl
+	# shellcheck disable=SC2086 # we need the word splitting
+	if jail_launch_unjailed "$JAIL_EXEC" $GPM_ARGS; then
+		echo "OK (UNJAILED: $JAIL_ERR)"
+		return 0
+	fi
+	echo "FAIL ($JAIL_ERR; the unjailed start failed too)"
+	return 1
+}
+
+stop() {
+	printf 'Stopping gpm: '
+	if jail_stop; then
+		echo "OK"
+	else
+		echo "FAIL (still running after SIGKILL)"
+		return 1
+	fi
+}
+
+case "$1" in
+	start | stop)
+		jail_lock || exit 1
+		"$1"
+		;;
+	restart)
+		jail_lock || exit 1
+		stop
+		start
+		;;
+	run)
+		# Internal, from jail_launch.
+		# shellcheck disable=SC2086 # we need the word splitting
+		jail_run -- "$JAIL_EXEC" $GPM_ARGS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac

@@ -233,13 +233,21 @@ Changing anything requires a restart (`/etc/init.d/S92transmission restart`) unl
 it through `transmission-remote`, which applies immediately and is written back to
 `settings.json` at shutdown.
 
-**Logging** goes to syslog, tagged `transmission-daemon`. The jailed daemon runs in the
-foreground (it is its PID namespace's init, §8.1) and writes to stderr, which the init
-script pipes into `logger`; the jail has no `/dev/log` of its own. Daemon and `logger` run
-in a session of their own (`setsid`), so a caller that signals its own process group — a
-`timeout`, a supervisor's kill on a slow start — does not reach them. This image runs BusyBox
-`syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages land in
-`/tmp/messages` on tmpfs and cost the card nothing.
+**Logging** goes to syslog, tagged `transmission-daemon`, at each message's own level. The
+jailed daemon runs in the foreground (it is its PID namespace's init, §8.1), where upstream
+logs only to stderr; `board/mister/de10nano/patches/transmission/0001` adds `--log-syslog`,
+which keeps upstream's daemonized `syslog()` path in the foreground too, and the init script
+passes it with `/dev/log` bound into the jail. The ident carries no pid, since in the jail it
+is always 1. Both are added only when `/dev/log` is a socket at start: minijail refuses a
+bind whose source is missing, so with no syslogd the daemon still starts, logging to stderr.
+stderr is piped into `logger` either way, which catches what never goes through the log
+(crash and argument errors); those lines arrive at `user.notice`. If syslogd is restarted,
+the bound socket goes stale and the daemon's own messages are lost until
+`S92transmission restart`. Daemon and `logger` run in a session of their own (`setsid`), so
+a caller that signals its own process group — a `timeout`, a supervisor's kill on a slow
+start — does not reach them. This image runs BusyBox `syslogd` (`S01syslogd`) with
+`/var/log` symlinked to `/tmp`, so the messages land in `/tmp/messages` on tmpfs and cost
+the card nothing.
 
 ---
 
@@ -444,6 +452,7 @@ table.
 | `/etc/localtime` | `/media/fat/linux/timezone`, if it is a plain file | ro |
 | `/proc` | a new proc for the PID namespace: it lists only the jail | ro |
 | `/dev` | minijail's minimal set: `null`, `zero`, `full`, `urandom`, `tty` | — |
+| `/dev/log` | the syslog socket, if there is one at start (§4, Logging) | — |
 | `/tmp` | a private 16 MiB tmpfs | rw |
 | `/media/fat/linux/transmission` | `/media/fat/linux/transmission/jail` | rw |
 | `/media/fat/mistarr/staging` | itself, if `/media/fat/mistarr` exists (created on demand) | rw |

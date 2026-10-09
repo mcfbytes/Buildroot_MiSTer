@@ -2893,6 +2893,21 @@ else
 		fail "etc/minijail/transmission.conf: Landlock rules and a noexec state mount" \
 			"fs-path-rx = /usr, the state directory's Landlock rule or its noexec remount is gone"
 	fi
+	# Syslog with levels (patches/transmission/0001): the option is built in, and passed
+	# with the /dev/log bind it needs. A dropped patch makes the daemon reject its arguments.
+	if tar xOf "$ROOTFS_TAR" ./usr/bin/transmission-daemon 2>/dev/null | grep -aqF 'log-syslog'; then
+		pass "transmission-daemon has --log-syslog (patches/transmission/0001)"
+	else
+		fail "transmission-daemon has --log-syslog (patches/transmission/0001)" \
+			"the patch did not apply -- $TM_INIT passes --log-syslog, which the daemon would reject"
+	fi
+	if printf '%s' "$tm_init_body" | grep -qF -- '-b /dev/log' &&
+		printf '%s' "$tm_init_body" | grep -qF 'log=--log-syslog'; then
+		pass "$TM_INIT binds /dev/log and passes --log-syslog"
+	else
+		fail "$TM_INIT binds /dev/log and passes --log-syslog" \
+			"the bind or the option is gone -- the daemon's log loses its levels"
+	fi
 	tm_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^transmission:' || true)
 	if [ "$(printf '%s' "$tm_passwd" | cut -d: -f3)" = 8422 ]; then
 		pass "the transmission user is pinned to uid 8422 (board/mister/de10nano/users.table)"

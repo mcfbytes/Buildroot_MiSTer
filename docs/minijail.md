@@ -33,8 +33,8 @@ The DE25 kernel has the same set through the shared fragment.
 
 An init script that jails a daemon declares the jail in
 `/etc/minijail/<name>.conf` and sources `/usr/lib/mister/jail.sh` for the rest.
-`/usr/bin/bluetoothd` is the first script written this way
-(`docs/bluetooth-parity.md` §11).
+`/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11) and `S92transmission`
+(`docs/bittorrent.md` §8.1) are written this way.
 
 **The config file** is minijail0's own `--config` format (`% minijail-config-file
 v0`, then one long or short option per line; `minijail0 --gen-config <file>

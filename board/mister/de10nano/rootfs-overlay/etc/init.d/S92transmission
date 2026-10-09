@@ -1,47 +1,43 @@
 #!/bin/sh
 #
 # transmission-daemon -- OFF unless the user creates the FAT config directory,
-# and always run in a minijail: uid 8422, CAP_DAC_OVERRIDE only, an allow-list
-# mount view. Recipe, layout and the jail: docs/bittorrent.md. Security
-# disposition: docs/decisions/0031-secure-by-default-network-posture.md.
+# and always run in a minijail: /etc/minijail/transmission.conf. Recipe, layout
+# and the jail: docs/bittorrent.md. Security disposition:
+# docs/decisions/0031-secure-by-default-network-posture.md.
 #
 
 DAEMON=/usr/bin/transmission-daemon
-MINIJAIL=/usr/bin/minijail0
 HOME_DIR=/media/fat/linux/transmission
 # The daemon's state lives one level down and is bound back at $HOME_DIR inside
 # the jail, so an older image's root S92 never reads what the jailed daemon wrote.
 STATE_DIR="$HOME_DIR/jail"
 SETTINGS="$HOME_DIR/settings.json"
 DOWNLOAD_DIR="$HOME_DIR/downloads"
-JAIL_CONF=/media/fat/linux/transmission.jail
+JAIL_CONF_USER=/media/fat/linux/transmission.jail
 MISTARR_STAGING=/media/fat/mistarr/staging
-RUN_DIR=/run/transmission
-ROOT_DIR="$RUN_DIR/root"
-PIDFILE="$RUN_DIR/jail.pid"
-POLICY="$RUN_DIR/seccomp.policy"
 # Writable binds are re-mounted with these, so nothing on them can be executed or mapped executable.
 RW_FLAGS="MS_BIND|MS_REMOUNT|MS_NOEXEC|MS_NOSUID|MS_NODEV"
-CGROUP=/sys/fs/cgroup/transmission
-PIDS_MAX=64
-TM_UID=8422
-# Syscalls that return EPERM in the jail; every other one minijail0 knows is
-# allowed (docs/bittorrent.md §8.1).
-SECCOMP_DENY="io_uring_setup io_uring_enter io_uring_register perf_event_open bpf
-userfaultfd keyctl add_key request_key ptrace process_vm_readv process_vm_writev
-process_madvise kcmp pidfd_getfd mount umount2 pivot_root chroot mount_setattr
-move_mount open_tree open_tree_attr fsopen fsconfig fsmount fspick unshare setns
-swapon swapoff reboot kexec_load kexec_file_load init_module finit_module
-delete_module acct quotactl quotactl_fd syslog settimeofday clock_settime
-clock_settime64 adjtimex clock_adjtime clock_adjtime64 sethostname setdomainname
-personality vhangup name_to_handle_at open_by_handle_at fanotify_init memfd_create
-execveat"
 CR=$(printf '\r')
 
 # The opt-in gate, same shape as S91smb's `samba.sh`: no directory on the card,
 # no daemon. A fresh image has none, so nothing here runs and nothing listens.
 [ -d "$HOME_DIR" ] || exit 0
 [ -x "$DAEMON" ] || exit 0
+
+# shellcheck source=SCRIPTDIR/../../usr/lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=transmission
+JAIL_EXEC=$DAEMON
+JAIL_PIDS_MAX=64
+# Writable by DAC override, and in no Landlock rule.
+JAIL_PROBE=/etc/.landlock-probe
+# Waited out, never escalated: on SIGTERM the daemon flushes resume/, and a
+# kill before that costs a full re-verify of every torrent -- hours, on a card.
+JAIL_STOP_WAIT=20
+# The daemon logs to syslog itself (--log-syslog, below); this catches the rest of stderr.
+JAIL_LOG_TAG=transmission-daemon
+JAIL_OOM_SCORE_ADJ=800
+jail_init
 
 # True iff $1 is an absolute directory reached through no symlink at all.
 real_dir() {
@@ -82,7 +78,7 @@ collect_rw() {
 		real_dir "$MISTARR_STAGING"; then
 		RW_BINDS="$MISTARR_STAGING"
 	fi
-	if [ ! -f "$JAIL_CONF" ] || [ -L "$JAIL_CONF" ]; then
+	if [ ! -f "$JAIL_CONF_USER" ] || [ -L "$JAIL_CONF_USER" ]; then
 		return 0
 	fi
 	while IFS= read -r line || [ -n "$line" ]; do
@@ -94,80 +90,19 @@ collect_rw() {
 				RW_BINDS="$RW_BINDS
 $dir"
 			else
-				msg="ignoring '$line' in $JAIL_CONF (not an allowed directory)"
+				msg="ignoring '$line' in $JAIL_CONF_USER (not an allowed directory)"
 				echo "S92transmission: $msg" >&2
 				logger -t S92transmission "$msg"
 			fi
 			;;
 		esac
-	done <"$JAIL_CONF"
+	done <"$JAIL_CONF_USER"
 }
 
-# A fresh tmpfs root with the merged-usr links; minijail adds the other mount points.
+# minijail's -d does not create its own mount point; the resolver bind needs a source.
 prepare_root() {
-	mkdir -p "$RUN_DIR" && chmod 0700 "$RUN_DIR" && mkdir -p "$ROOT_DIR" || return 1
-	if mountpoint -q "$ROOT_DIR"; then umount "$ROOT_DIR" || return 1; fi
-	mount -t tmpfs -o mode=0755,size=256k,nosuid,nodev,noexec tmpfs "$ROOT_DIR" || return 1
-	for l in bin lib sbin; do ln -s "usr/$l" "$ROOT_DIR/$l" || return 1; done
-	mkdir "$ROOT_DIR/dev" || return 1 # -d does not create its own mount point
+	jail_prepare_root && mkdir "$JAIL_ROOT/dev" || return 1
 	[ -e /run/resolv.conf ] || : >/run/resolv.conf
-}
-
-# Writes $POLICY from minijail0's own syscall table: allow all, deny SECCOMP_DENY.
-write_policy() {
-	"$MINIJAIL" -H 2>/dev/null | DENY="$SECCOMP_DENY" awk '
-		BEGIN { n = split(ENVIRON["DENY"], d); for (i = 1; i <= n; i++) D[d[i]] = 1 }
-		$1 ~ /^[A-Za-z0-9_]+$/ && $2 ~ /^\[[0-9]+\]$/ {
-			print $1 (($1 in D) ? ": return 1" : ": 1"); c++
-		}
-		END { exit c < 300 }' >"$POLICY"
-}
-
-# Fails unless Landlock is enforced: without it the jail root is writable via DAC override.
-check_landlock() {
-	# Succeeds only if the jail ran and the write was refused; a jail that failed fails too.
-	JAIL_EXTRA="" jail /bin/sh -c '! printf "" >/etc/.landlock-probe' 2>/dev/null
-}
-
-# The daemon's own cgroup2 group, with a ceiling on processes plus threads.
-prepare_cgroup() {
-	c=/sys/fs/cgroup
-	grep -qw pids "$c/cgroup.controllers" 2>/dev/null || return 1
-	grep -qw pids "$c/cgroup.subtree_control" || echo +pids >"$c/cgroup.subtree_control" || return 1
-	mkdir -p "$CGROUP" && echo "$PIDS_MAX" >"$CGROUP/pids.max"
-}
-
-# Runs "$@" inside the jail view, with $JAIL_EXTRA as extra minijail0 options.
-jail() {
-	n=$#
-	# shellcheck disable=SC2086 # JAIL_EXTRA is fixed options and space-free paths
-	set -- "$@" $JAIL_EXTRA -T static -u "$TM_UID" -g "$TM_UID" -c 0x2 --ambient \
-		-n -I -l --uts -v -P "$ROOT_DIR" -b /usr \
-		-b /etc/passwd -b /etc/group -b /etc/hosts -b /etc/nsswitch.conf -b /etc/ssl \
-		-b /run/resolv.conf,/etc/resolv.conf \
-		-k 'proc,/proc,proc,MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC' -d \
-		-k 'tmpfs,/tmp,tmpfs,MS_NOSUID|MS_NODEV|MS_NOEXEC,size=16m' \
-		-k "$STATE_DIR,$HOME_DIR,none,MS_BIND" -k "$HOME_DIR,$HOME_DIR,none,$RW_FLAGS" \
-		-R RLIMIT_CORE,0,0 -S "$POLICY" \
-		--fs-path-rx /usr --fs-path-ro /etc --fs-path-ro /proc --fs-path-rw /dev \
-		--fs-path-rw /tmp --fs-path-advanced-rw "$HOME_DIR"
-	if [ -f /media/fat/linux/timezone ] && [ ! -L /media/fat/linux/timezone ]; then
-		set -- "$@" -b /media/fat/linux/timezone,/etc/localtime
-	fi
-	while IFS= read -r dir; do
-		[ -n "$dir" ] && set -- "$@" -k "$dir,$dir,none,MS_BIND" \
-			-k "$dir,$dir,none,$RW_FLAGS" --fs-path-advanced-rw "$dir"
-	done <<-EOF
-	$RW_BINDS
-	EOF
-	set -- "$@" --
-	# Rotate the caller's n arguments (the command) to after the `--`.
-	while [ "$n" -gt 0 ]; do
-		set -- "$@" "$1"
-		shift
-		n=$((n - 1))
-	done
-	"$MINIJAIL" "$@"
 }
 
 # Written ONCE, and never over a file that exists -- this is a seed, not a
@@ -191,7 +126,7 @@ jail() {
 seed_settings() {
 	[ -f "$STATE_DIR/settings.json" ] && return 0
 	# shellcheck disable=SC2016 # $1/$2 expand in the jailed sh, not here
-	JAIL_EXTRA="" jail /bin/sh -c \
+	jail_exec -- /bin/sh -c \
 		'mkdir -p "$1" && umask 022 && rm -f "$2.new" && set -C && cat >"$2.new" && mv -f "$2.new" "$2"' \
 		sh "$DOWNLOAD_DIR" "$SETTINGS" <<-EOF || return 1
 	{
@@ -218,46 +153,14 @@ seed_settings() {
 	[ -f "$STATE_DIR/settings.json" ] && sync
 }
 
-# The start time from /proc/<pid>/stat (field 22), so a recycled pid is never taken for ours.
-starttime() {
-	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f20
-}
-
-# Sets PID to the jailed daemon's host pid when the pidfile still names it.
-running() {
-	PID=""
-	[ -f "$PIDFILE" ] && read -r p s <"$PIDFILE" || return 1
-	[ -n "$p" ] && [ -n "$s" ] && [ "$(starttime "$p")" = "$s" ] || return 1
-	[ "$(readlink "/proc/$p/exe" 2>/dev/null)" = "$DAEMON" ] || return 1
-	PID=$p
-}
-
-# Reads the jail's claims back from the kernel: all four uids and gids, no
-# supplementary group but its own, no_new_privs, a seccomp filter, the cgroup, CapEff.
-check_jail() {
-	s="/proc/$1/status"
-	ids="[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]+${TM_UID}[[:space:]]*$"
-	grep -Eq "^Uid:$ids" "$s" && grep -Eq "^Gid:$ids" "$s" &&
-		grep -Eq "^Groups:[[:space:]]*(${TM_UID}[[:space:]]*)?$" "$s" &&
-		grep -q '^NoNewPrivs:[[:space:]]*1$' "$s" &&
-		grep -q '^Seccomp:[[:space:]]*2$' "$s" &&
-		grep -qx "0::/${CGROUP#/sys/fs/cgroup/}" "/proc/$1/cgroup" &&
-		grep -q '^CapEff:[[:space:]]*0000000000000002$' "$s"
-}
-
 start() {
-	if running; then
+	if jail_running; then
 		echo "transmission-daemon already running"
 		return 0
 	fi
 	printf "Starting transmission-daemon: "
-	if pidof transmission-daemon >/dev/null; then
+	if jail_any_daemon; then
 		echo "FAIL (a transmission-daemon this script did not start is running)"
-		return 1
-	fi
-	# Fail closed: never fall back to running the daemon as root.
-	if [ ! -x "$MINIJAIL" ]; then
-		echo "FAIL ($MINIJAIL missing; refusing to run unjailed)"
 		return 1
 	fi
 	if [ -L "$HOME_DIR" ] || ! migrate_state || ! real_dir "$STATE_DIR"; then
@@ -266,108 +169,70 @@ start() {
 	fi
 	collect_rw
 	if ! prepare_root; then
-		echo "FAIL (could not prepare $ROOT_DIR)"
+		echo "FAIL (could not prepare $JAIL_ROOT)"
 		return 1
 	fi
-	# /run is per boot and minijail0 only changes with the image, so once per boot is enough.
-	if [ ! -s "$POLICY" ] && ! write_policy; then
-		rm -f "$POLICY"
-		echo "FAIL (could not build the seccomp policy from $MINIJAIL -H)"
-		return 1
-	fi
-	if ! prepare_cgroup; then
-		echo "FAIL (no cgroup2 pids controller at /sys/fs/cgroup)"
-		return 1
-	fi
-	if ! check_landlock; then
-		echo "FAIL (Landlock is not enforced; see docs/bittorrent.md §8.1)"
+	if ! jail_prepare; then
+		echo "FAIL ($JAIL_ERR)"
 		return 1
 	fi
 	if ! seed_settings; then
 		echo "FAIL (could not write $STATE_DIR/settings.json)"
 		return 1
 	fi
-
-	# In a session of its own (`run` below), so nothing that signals the caller's
-	# process group reaches the daemon; and no fd of the caller's is kept.
-	rm -f "$PIDFILE.new"
-	RW_BINDS="$RW_BINDS" setsid "$0" run </dev/null >/dev/null 2>&1 &
-	leader=$!
-
-	i=0
-	pid=""
-	while [ "$i" -lt 50 ]; do
-		[ -s "$PIDFILE.new" ] && read -r pid <"$PIDFILE.new"
-		[ -n "$pid" ] && [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$DAEMON" ] && break
-		pid=""
-		sleep 0.2
-		i=$((i + 1))
-	done
-	if [ -z "$pid" ]; then
-		# A late start must not leave an unmanaged daemon behind.
-		kill -TERM "-$leader" 2>/dev/null
-		[ -s "$PIDFILE.new" ] && read -r pid <"$PIDFILE.new" && kill -TERM "$pid" 2>/dev/null
-		rm -f "$PIDFILE.new"
-		echo "FAIL (jailed daemon did not start; see syslog)"
+	export RW_BINDS
+	if ! jail_launch; then
+		echo "FAIL ($JAIL_ERR)"
 		return 1
 	fi
-	rm -f "$PIDFILE.new"
-	if ! check_jail "$pid"; then
-		kill -TERM "$pid"
-		echo "FAIL (jail self-check: uid/gid, groups, NoNewPrivs, seccomp, cgroup or CapEff not as configured)"
-		return 1
-	fi
-	echo "$pid $(starttime "$pid")" >"$PIDFILE"
 	echo "OK"
 }
 
 stop() {
 	printf "Stopping transmission-daemon: "
-	if ! running; then
-		rm -f "$PIDFILE"
+	if ! jail_running; then
+		rm -f "$JAIL_PIDFILE"
 		echo "not running"
 		return 0
 	fi
-	# A frozen daemon (mistarr's SIGSTOP core gate) cannot act on SIGTERM, so it
-	# is thawed again on every pass in case the gate re-freezes it.
-	kill -CONT "$PID" 2>/dev/null
-	kill -TERM "$PID"
-
-	# Waited out, never escalated: on SIGTERM the daemon flushes resume/, and a
-	# kill before that costs a full re-verify of every torrent -- hours, on a card.
-	i=0
-	while running && [ "$i" -lt 20 ]; do
-		sleep 1
-		kill -CONT "$PID" 2>/dev/null
-		i=$((i + 1))
-	done
-	if running; then
-		echo "STILL RUNNING after ${i}s"
+	# jail_stop keeps sending SIGCONT, so mistarr's SIGSTOP core gate cannot hold it frozen.
+	if ! jail_stop; then
+		echo "STILL RUNNING after ${JAIL_STOP_WAIT}s"
 		return 1
 	fi
-	rm -f "$PIDFILE"
 	echo "OK"
 }
 
 case "$1" in
-	start)
-		start
-		;;
-	stop)
-		stop
-		;;
-	restart|reload)
-		stop
-		start
+	start|stop|restart|reload)
+		if ! jail_lock; then
+			echo "S92transmission $1: another S92transmission command did not finish"
+			exit 1
+		fi
+		case "$1" in
+		start | stop) "$1" ;;
+		*)
+			stop
+			start
+			;;
+		esac
 		;;
 	run)
-		# Internal, from start(): with -I the daemon is its namespace's init and
-		# stays in the foreground; its output reaches syslog through logger.
-		echo $$ >"$CGROUP/cgroup.procs" || exit 1
-		(
-			echo 800 >/proc/self/oom_score_adj
-			JAIL_EXTRA="-i -f $PIDFILE.new" jail "$DAEMON" --foreground --config-dir "$HOME_DIR"
-		) 2>&1 | logger -t transmission-daemon
+		# Internal, from jail_launch: each granted directory bound read-write, noexec.
+		set --
+		while IFS= read -r dir; do
+			[ -n "$dir" ] && set -- "$@" -k "$dir,$dir,none,MS_BIND" \
+				-k "$dir,$dir,none,$RW_FLAGS" --fs-path-advanced-rw "$dir"
+		done <<-EOF
+		$RW_BINDS
+		EOF
+		# Its own syslog, levels kept (patches/transmission/0001), when a syslogd is there to reach.
+		log=""
+		if [ -S /dev/log ]; then
+			set -- "$@" -b /dev/log
+			log=--log-syslog
+		fi
+		jail_run "$@" -- "$DAEMON" --foreground $log --config-dir "$HOME_DIR"
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart}"

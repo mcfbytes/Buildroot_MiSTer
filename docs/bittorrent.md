@@ -233,13 +233,21 @@ Changing anything requires a restart (`/etc/init.d/S92transmission restart`) unl
 it through `transmission-remote`, which applies immediately and is written back to
 `settings.json` at shutdown.
 
-**Logging** goes to syslog, tagged `transmission-daemon`. The jailed daemon runs in the
-foreground (it is its PID namespace's init, §8.1) and writes to stderr, which the init
-script pipes into `logger`; the jail has no `/dev/log` of its own. Daemon and `logger` run
-in a session of their own (`setsid`), so a caller that signals its own process group — a
-`timeout`, a supervisor's kill on a slow start — does not reach them. This image runs BusyBox
-`syslogd` (`S01syslogd`) with `/var/log` symlinked to `/tmp`, so the messages land in
-`/tmp/messages` on tmpfs and cost the card nothing.
+**Logging** goes to syslog, tagged `transmission-daemon`, at each message's own level. The
+jailed daemon runs in the foreground (it is its PID namespace's init, §8.1), where upstream
+logs only to stderr; `board/mister/de10nano/patches/transmission/0001` adds `--log-syslog`,
+which keeps upstream's daemonized `syslog()` path in the foreground too, and the init script
+passes it with `/dev/log` bound into the jail. The ident carries no pid, since in the jail it
+is always 1. Both are added only when `/dev/log` is a socket at start: minijail refuses a
+bind whose source is missing, so with no syslogd the daemon still starts, logging to stderr.
+stderr is piped into `logger` either way, which catches what never goes through the log
+(crash and argument errors); those lines arrive at `user.notice`. If syslogd is restarted,
+the bound socket goes stale and the daemon's own messages are lost until
+`S92transmission restart`. Daemon and `logger` run in a session of their own (`setsid`), so
+a caller that signals its own process group — a `timeout`, a supervisor's kill on a slow
+start — does not reach them. This image runs BusyBox `syslogd` (`S01syslogd`) with
+`/var/log` symlinked to `/tmp`, so the messages land in `/tmp/messages` on tmpfs and cost
+the card nothing.
 
 ---
 
@@ -429,7 +437,9 @@ is `root:root 0755` and a non-root user could write nothing. So the daemon runs 
 **8422** with `CAP_DAC_OVERRIDE` as its only capability — enough to write the card — and
 the boundary is what it can *see*. `minijail0 -T static -u 8422 -g 8422 -c 0x2 --ambient`
 with `no_new_privs` (`-n`) and new PID (`-I`, the daemon as its init), IPC, UTS and mount
-namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. Three kernel
+namespaces, pivoted onto a fresh 256 KiB tmpfs at `/run/transmission/root`. The jail is
+declared in `/etc/minijail/transmission.conf` and run by the shared helper
+`/usr/lib/mister/jail.sh` (`docs/minijail.md`, "Jailing a daemon"). Three kernel
 features added for it (D13 in `docs/kernel-config-deltas.md`) narrow that further: a seccomp
 filter, Landlock rules, and a cgroup with a process ceiling, each described below the
 table.
@@ -442,6 +452,7 @@ table.
 | `/etc/localtime` | `/media/fat/linux/timezone`, if it is a plain file | ro |
 | `/proc` | a new proc for the PID namespace: it lists only the jail | ro |
 | `/dev` | minijail's minimal set: `null`, `zero`, `full`, `urandom`, `tty` | — |
+| `/dev/log` | the syslog socket, if there is one at start (§4, Logging) | — |
 | `/tmp` | a private 16 MiB tmpfs | rw |
 | `/media/fat/linux/transmission` | `/media/fat/linux/transmission/jail` | rw |
 | `/media/fat/mistarr/staging` | itself, if `/media/fat/mistarr` exists (created on demand) | rw |
@@ -452,9 +463,10 @@ Not in it: the rest of the card, `/media/fat/linux` (so not `ssh.ext4`, `samba.s
 are off (`RLIMIT_CORE` 0) and the daemon's `oom_score_adj` is 800, so on this 488 MiB box the
 kernel takes it before Main_MiSTer.
 
-**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` at every
-start from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
-that compiles it: every syscall is allowed except the `SECCOMP_DENY` list in the script,
+**Seccomp** (`-S`). The policy is written to `/run/transmission/seccomp.policy` once per
+boot from minijail0's own syscall table (`minijail0 -H`), so it always matches the binary
+that compiles it: every syscall is allowed except the deny list shared by every jail in
+`/usr/lib/mister/jail.sh`,
 which return `EPERM`. That list is kernel attack surface the daemon never uses: io_uring,
 `perf_event_open`, `bpf`, the keyring calls, `ptrace` and the cross-process memory calls,
 every mount, namespace and module call, `reboot`/`kexec`, setting the clock or hostname, and
@@ -518,7 +530,9 @@ the `transmission` cgroup and `CapEff` is exactly `0x2`; Landlock, which `/proc`
 show, is covered by the probe above. If minijail is missing, the policy
 cannot be built or the pids controller is absent, it refuses to start the daemon at all
 rather than fall back to something weaker. It also refuses if a `transmission-daemon` it did not start is already running, and a start
-that times out terminates whatever it launched rather than leave an unmanaged daemon.
+that times out or fails the check terminates whatever it launched rather than leave an
+unmanaged daemon. `start`, `stop` and `restart` are serialised with `flock`, and no file
+descriptor of the caller's reaches the daemon.
 
 **mistarr** drives this daemon with nothing changed on its side: it opts in by creating
 the directory and running `S92transmission start`, talks RPC to `127.0.0.1:9091` (the jail

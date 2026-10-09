@@ -1,3 +1,4 @@
-# Fixed ids for jailed daemons (docs/bittorrent.md §8.1). S92transmission runs the
-# daemon as uid 8422; this entry pins package/transmission's user to match.
+# Fixed ids for jailed daemons (docs/minijail.md). S92transmission runs its
+# daemon as 8422 (pinning package/transmission's user), /usr/bin/bluetoothd as 8423.
 transmission 8422 transmission 8422 * /var/lib/transmission - transmission Transmission Daemon
+bluetooth 8423 bluetooth 8423 * - - - BlueZ Daemon

@@ -1454,6 +1454,82 @@ else
 	fail "/var/lib/bluetooth ships in the image" "bluetoothd's mount point is missing on a read-only root"
 fi
 
+# -- bluetoothd runs jailed, never root (docs/bluetooth-parity.md §11). The
+# control script, the shared jail helper, its minijail config, its uid, the
+# D-Bus policy and the udev rule all have to land together.
+BT_INIT="usr/bin/bluetoothd"
+JAIL_LIB="usr/lib/mister/jail.sh"
+BT_CONF="etc/minijail/bluetoothd.conf"
+bt_init_body=$(tar xOf "$ROOTFS_TAR" "./$BT_INIT" 2>/dev/null || true)
+jail_lib_body=$(tar xOf "$ROOTFS_TAR" "./$JAIL_LIB" 2>/dev/null || true)
+bt_conf_body=$(tar xOf "$ROOTFS_TAR" "./$BT_CONF" 2>/dev/null || true)
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$jail_lib_body" | grep -qxF 'MINIJAIL=/usr/bin/minijail0' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-T static -n --ambient' &&
+	printf '%s' "$jail_lib_body" | grep -qF -- '-S "$JAIL_POLICY"' &&
+	printf '%s' "$jail_lib_body" | grep -qF "^Seccomp:" &&
+	printf '%s' "$jail_lib_body" | grep -qF 'pids.max'; then
+	pass "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check"
+else
+	fail "$JAIL_LIB: no_new_privs, seccomp, pids cgroup and the /proc self-check" \
+		"$JAIL_LIB missing, or MINIJAIL, '-T static -n --ambient', -S \"\$JAIL_POLICY\", pids.max or the Seccomp self-check is gone"
+fi
+if printf '%s' "$bt_init_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+	printf '%s' "$bt_init_body" | grep -qF 'socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'u = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'g = 8423' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'c = 0x1400' &&
+	printf '%s' "$bt_conf_body" | grep -qxF 'fs-path-rx = /usr'; then
+	pass "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock"
+else
+	fail "$BT_INIT jails bluetoothd as uid 8423 with NET_ADMIN+NET_BIND_SERVICE, a socket-family filter and Landlock" \
+		"$BT_INIT no longer sources $JAIL_LIB or lost its socket rule, or $BT_CONF lost u/g = 8423, c = 0x1400 or its Landlock rules"
+fi
+# jail_lock serialises the verbs with util-linux's flock (BusyBox's is off).
+require_present "usr/bin/flock" "flock (util-linux; $JAIL_LIB's jail_lock)"
+# Controllers matter more than the jail: a jail failure must start bluetoothd unjailed
+# (docs/minijail.md, "When the jail fails"), loudly.
+# shellcheck disable=SC2016 # matched literally in the script text
+if printf '%s' "$bt_init_body" | grep -qF 'jail_launch_unjailed "$JAIL_EXEC"' &&
+	printf '%s' "$bt_init_body" | grep -qF 'logger -p daemon.err -t bluetoothd "starting UNJAILED'; then
+	pass "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails"
+else
+	fail "$BT_INIT falls back to an unjailed bluetoothd, logged at daemon.err, when the jail fails" \
+		"the fallback or its syslog line is gone -- a jail failure would leave users with no controllers"
+fi
+# Main_MiSTer calls `/bin/bluetoothd renew` and `hcireset` (menu.cpp).
+if printf '%s' "$bt_init_body" | grep -qF 'start|stop|restart|reload|renew)' &&
+	printf '%s' "$bt_init_body" | grep -qE '^[[:space:]]+hcireset\)'; then
+	pass "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs"
+else
+	fail "$BT_INIT keeps stock's start/stop/restart/reload/renew/hcireset verbs" \
+		"a verb is gone -- Main_MiSTer's OSD pairing reset and hcireset call these"
+fi
+bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
+if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
+	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"
+else
+	fail "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)" \
+		"etc/passwd has '${bt_passwd:-no bluetooth line}'"
+fi
+bt_dbus=$(tar xOf "$ROOTFS_TAR" ./etc/dbus-1/system.d/bluetoothd-jail.conf 2>/dev/null || true)
+if printf '%s' "$bt_dbus" | grep -qF '<policy user="bluetooth">' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow own="org.bluez"/>' &&
+	printf '%s' "$bt_dbus" | grep -qF '<allow send_interface="org.bluez.Agent1"/>'; then
+	pass "D-Bus lets the bluetooth user own org.bluez (etc/dbus-1/system.d/bluetoothd-jail.conf)"
+else
+	fail "D-Bus lets the bluetooth user own org.bluez" \
+		"etc/dbus-1/system.d/bluetoothd-jail.conf missing or has no bluetooth policy -- the jailed daemon cannot get on the bus"
+fi
+bt_udev=$(tar xOf "$ROOTFS_TAR" ./etc/udev/rules.d/62-bluetoothd-jail.rules 2>/dev/null || true)
+if printf '%s' "$bt_udev" | grep -qxF 'KERNEL=="uhid", GROUP="bluetooth", MODE="0660"' &&
+	printf '%s' "$bt_udev" | grep -qF 'SUBSYSTEM=="hidraw", SUBSYSTEMS=="usb", ATTRS{idVendor}=="054c"'; then
+	pass "udev gives the bluetooth group /dev/uhid (BLE HID) and USB Sony hidraw (sixaxis cable pairing)"
+else
+	fail "udev gives the bluetooth group /dev/uhid and USB Sony hidraw" \
+		"etc/udev/rules.d/62-bluetoothd-jail.rules missing or changed -- BLE pads or DS3 cable pairing break under the jail"
+fi
+
 # =============================================================================
 section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c)"
 # =============================================================================

@@ -406,6 +406,11 @@ time, cyclictest on both CPUs, a core load) is owed with the rig boot above.
 `pids.max` 64 cgroup to its jail, and checks the filter and the cgroup in `/proc` before it
 reports success (`docs/bittorrent.md` §8.1).
 
+**Second user (2026-10-08).** `bluetoothd` leaves root: uid 8423 with `CAP_NET_ADMIN` and
+`CAP_NET_BIND_SERVICE` only (upstream's own unit's set), the same seccomp, Landlock and
+pids pieces. Unlike transmission it falls back to stock's root start when the jail fails,
+loudly, since losing it loses the controllers (`docs/bluetooth-parity.md` §11).
+
 **Tier 1 item 6, as written** (decided with the acceptance above, same branch; kernel
 delta D14). `NF_TABLES` with the `inet` family, conntrack, limit, log and reject in every
 kernel, and the `nftables` package, beside the legacy tables, which stay. No ruleset

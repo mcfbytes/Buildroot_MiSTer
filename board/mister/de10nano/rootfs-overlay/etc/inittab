@@ -13,8 +13,8 @@
 # action    == one of sysinit, respawn, askfirst, wait, and once
 # process   == program to run
 #
-# P2.3: reproduces stock's /etc/inittab (work/imgroot/etc/inittab) with two
-# adaptations from stock, both documented in docs/init-parity.md:
+# P2.3: reproduces stock's /etc/inittab (work/imgroot/etc/inittab) with four
+# adaptations from stock, all documented in docs/init-parity.md:
 #   1. The remount-rw line stays commented out, same as stock -- "/" is
 #      read-only at boot (ADR 0011) and only becomes rw via /etc/profile's
 #      own remount, on login. Buildroot's OWN skeleton default inittab has
@@ -47,6 +47,8 @@
 #      kbd's own data/consolefonts), which is why no font argument is given --
 #      matching stock's bare-setfont line exactly.
 #      gpm is kept (BR2_PACKAGE_GPM=y, binary present).
+#   4. Stock's /etc/resync (sync every 5 s) is dropped for
+#      /etc/sysctl.d/20-writeback.conf; why in docs/init-parity.md.
 
 # Startup the system
 ::sysinit:/bin/mount -t proc proc /proc
@@ -59,7 +61,6 @@
 # after `mount -a` has mounted the /run tmpfs.
 ::sysinit:/bin/mkdir -p /run/lock /run/lock/subsys
 ::sysinit:/media/fat/MiSTer &
-::sysinit:/etc/resync &
 ::sysinit:/sbin/swapon -a
 null::sysinit:/bin/ln -sf /proc/self/fd /dev/fd
 null::sysinit:/bin/ln -sf /proc/self/fd/0 /dev/stdin

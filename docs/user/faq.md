@@ -632,6 +632,20 @@ left alone. To go back to the default, add this line to `/media/fat/linux/user-s
 echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
 ```
 
+One more writeback setting replaces stock's `/etc/resync`, a script that ran `sync` every
+5 seconds. Your SD card's data partition is mounted so that every write goes straight to
+the card, so the script did nothing for it. It did matter for the Linux system image
+(`linux/linux.img`): files written there once you log in can sit in memory for up to 30
+seconds before reaching the card. `/etc/sysctl.d/20-writeback.conf` shortens that to 5:
+
+```
+vm.dirty_expire_centisecs = 500
+vm.dirty_writeback_centisecs = 500
+```
+
+To go back to the kernel default of 30 seconds, add `vm.dirty_expire_centisecs = 3000`
+to `/media/fat/linux/sysctl.conf` and reboot.
+
 ## What does Scripts > usb_full_speed_mode.sh do?
 
 It switches the MiSTer's USB port to *full speed* (12 Mbit/s). At that speed the USB

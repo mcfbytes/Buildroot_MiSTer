@@ -7,12 +7,13 @@
 # cpio that looks healthy and an /init that dies on its first `[`. Check the
 # artifact, not the intent.
 #
-# usage: verify.sh <root-dir> <cpio> [qemu-user binary]
+# usage: verify.sh <root-dir> <cpio> [qemu-user binary] [itsalive]
 set -eu
 
 root=$1
 cpio_file=$2
 qemu=${3:-}
+splash=${4:-}
 rc=0
 
 fail() { echo "mister-initramfs: FATAL: $*" >&2; rc=1; }
@@ -36,6 +37,23 @@ for b in dump.exfat exfat2img exfatlabel mkfs.exfat tune.exfat; do
 		[ -e "$root/$d/$b" ] && fail "$d/$b is in the tree and must not be (ADR 0026)"
 	done
 done
+
+# The repair's HDMI splash (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE). /init survives
+# any of these missing, so they are checked here or never.
+if [ "$splash" = itsalive ]; then
+	[ -x "$root/usr/bin/itsalive" ] || fail "/usr/bin/itsalive is missing or not executable"
+	file -b "$root/usr/bin/itsalive" | grep -q 'statically linked' ||
+		fail "/usr/bin/itsalive is not statically linked: $(file -b "$root/usr/bin/itsalive")"
+	for a in zcat timeout; do
+		[ -e "$root/bin/$a" ] || [ -e "$root/usr/bin/$a" ] ||
+			fail "the splash needs '$a' but it is not in the tree -- board/mister/common/initramfs-busybox.config"
+	done
+	for spec in 1280x720:3686400 640x480:1228800; do
+		f="$root/usr/share/mister-fsck/splash-${spec%%:*}.raw.gz"
+		got=$(gzip -dc "$f" 2>/dev/null | wc -c | tr -d ' ')
+		[ "$got" = "${spec#*:}" ] || fail "$f decompresses to ${got:-nothing} bytes, want ${spec#*:}"
+	done
+fi
 
 [ -f "$root/init" ] && [ -x "$root/init" ] || fail "/init is not a regular executable file (the overlay did not apply?)"
 

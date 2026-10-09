@@ -7,7 +7,9 @@
 # ItsAlive_MiSTer: bring up HDMI + /dev/fb0 on a MiSTer with no Main_MiSTer
 # running. Ships in the SD-card installer initramfs (configs/
 # mister_installer_defconfig) to draw the first-boot "installing, do not power
-# off" splash -- ADR 0020 section 9, issue #185. Upstream Buildroot 2026.08 has
+# off" splash -- ADR 0020 section 9, issue #185 -- and, built by the DE10
+# configuration, into the stage-1 cpio for the boot-time exFAT repair's splash
+# (ADR 0026 section 6; not into the rootfs). Upstream Buildroot 2026.08 has
 # no such package (checked: nothing under work/buildroot/package/its*).
 #
 # THE FIRST CARGO PACKAGE IN THIS TREE. Three things worth knowing:
@@ -19,9 +21,10 @@
 #      musleabihf, a Tier-2 platform whose std tarball package/rust-bin/
 #      rust-bin.hash already pins.
 #
-#   2. THE BINARY IS STATIC WITHOUT ANY FLAG FROM THIS FILE. rustc's
-#      *-linux-musl targets default to `+crt-static`, so under the installer's
-#      musl toolchain cargo links a fully static executable on its own. The
+#   2. THE BINARY IS STATIC. rustc's *-linux-musl targets default to
+#      `+crt-static`, so under the installer's musl toolchain cargo links a
+#      fully static executable on its own; on the main glibc toolchain
+#      ITSALIVE_CARGO_ENV below asks for it (2026-10-08). The
 #      crate's own .cargo/config.toml also asks for rust-lld and +crt-static so
 #      that upstream's CI can cross-link with nothing installed; Buildroot's
 #      cargo infrastructure hands cargo its linker and rustflags through
@@ -48,5 +51,18 @@ ITSALIVE_VERSION = 797378a7d06f9e1175151a18b98e64d17aa79a77
 ITSALIVE_SITE = $(call github,mcfbytes,ItsAlive_MiSTer,$(ITSALIVE_VERSION))
 ITSALIVE_LICENSE = GPL-3.0+
 ITSALIVE_LICENSE_FILES = LICENSE
+
+# Static on glibc too (on musl it already is): the main configuration's
+# stage-1 initramfs has no libc. Replaces pkg-cargo.mk's ARM RUSTFLAGS, so
+# its one flag is repeated here; the later assignment wins.
+ITSALIVE_CARGO_ENV = \
+	CARGO_TARGET_$(call UPPERCASE,$(RUSTC_TARGET_NAME))_RUSTFLAGS="-Clink-arg=-Wl,--allow-multiple-definition -Ctarget-feature=+crt-static"
+
+ITSALIVE_BIN = $(ITSALIVE_DIR)/target/$(RUSTC_TARGET_NAME)/$(if $(BR2_ENABLE_DEBUG),debug,release)/itsalive
+
+# Built for the stage-1 cpio only, which copies ITSALIVE_BIN.
+ifeq ($(BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE),y)
+ITSALIVE_INSTALL_TARGET = NO
+endif
 
 $(eval $(cargo-package))

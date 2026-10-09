@@ -34,6 +34,25 @@ MISTER_INITRAMFS_ROOT = $(@D)/root
 MISTER_INITRAMFS_IMAGE = $(@D)/mister-initramfs.cpio
 MISTER_INITRAMFS_QEMU = $(if $(BR2_arm),qemu-arm,$(if $(BR2_aarch64),qemu-aarch64,))
 
+# Optional: the repair's HDMI splash (package/itsalive, built static).
+# The frames are rendered from the committed PNGs at build time, as the
+# installer's are; /init shows nothing if either half is missing.
+ifeq ($(BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE),y)
+MISTER_INITRAMFS_DEPENDENCIES += itsalive
+MISTER_INITRAMFS_SPLASH_SRC = $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/fsck-splash
+define MISTER_INITRAMFS_INSTALL_ITSALIVE
+	$(INSTALL) -m 0755 -D $(ITSALIVE_BIN) \
+		$(MISTER_INITRAMFS_ROOT)/usr/bin/itsalive
+	$(TARGET_CROSS)strip $(MISTER_INITRAMFS_ROOT)/usr/bin/itsalive
+	mkdir -p $(MISTER_INITRAMFS_ROOT)/usr/share/mister-fsck
+	for s in 1280x720 640x480; do \
+		python3 $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-splash/png2raw.py \
+			$(MISTER_INITRAMFS_SPLASH_SRC)/splash-$$s.png \
+			$(MISTER_INITRAMFS_ROOT)/usr/share/mister-fsck/splash-$$s.raw.gz || exit 1; \
+	done
+endef
+endif
+
 # /init does its own `mkdir -p /proc /sys /dev /mnt/fat /newroot`; the
 # directories are created here anyway so the tree is complete without it.
 define MISTER_INITRAMFS_BUILD_CMDS
@@ -47,6 +66,7 @@ define MISTER_INITRAMFS_BUILD_CMDS
 	$(INSTALL) -m 0755 $(MISTER_INITRAMFS_EXFATPROGS_DIR)/fsck/fsck.exfat \
 		$(MISTER_INITRAMFS_ROOT)/usr/sbin/fsck.exfat
 	$(TARGET_CROSS)strip $(MISTER_INITRAMFS_ROOT)/usr/sbin/fsck.exfat
+	$(MISTER_INITRAMFS_INSTALL_ITSALIVE)
 	cp -a $(MISTER_INITRAMFS_OVERLAY)/. $(MISTER_INITRAMFS_ROOT)/
 	echo '#!/bin/sh' > $(@D)/fakeroot.sh
 	echo 'set -e' >> $(@D)/fakeroot.sh
@@ -57,7 +77,8 @@ define MISTER_INITRAMFS_BUILD_CMDS
 	chmod +x $(@D)/fakeroot.sh
 	PATH=$(BR_PATH) FAKEROOTDONTTRYCHOWN=1 $(HOST_DIR)/bin/fakeroot -- $(@D)/fakeroot.sh
 	PATH=$(BR_PATH) $(BR2_EXTERNAL_MISTER_PATH)/package/mister-initramfs/verify.sh \
-		$(MISTER_INITRAMFS_ROOT) $(MISTER_INITRAMFS_IMAGE) $(MISTER_INITRAMFS_QEMU)
+		$(MISTER_INITRAMFS_ROOT) $(MISTER_INITRAMFS_IMAGE) $(MISTER_INITRAMFS_QEMU) \
+		$(if $(BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE),itsalive)
 endef
 
 define MISTER_INITRAMFS_INSTALL_IMAGES_CMDS

@@ -173,9 +173,9 @@ do_schedule() {
 This file asks the MiSTer to check and repair its data partition during the
 next boot, before anything else starts. Delete it to cancel.
 
-The boot it runs on will take much longer than usual and the screen will stay
-black for the whole time. That is expected. Do not power the MiSTer off while
-it is happening.
+The boot it runs on will take much longer than usual, and the screen shows a
+"do not power off" picture (or stays black) for the whole time. That is
+expected. Do not power the MiSTer off while it is happening.
 
 Created by Scripts/check_storage.sh (/usr/sbin/mister-fsck-exfat).
 EOF
@@ -227,9 +227,9 @@ confirm_repair() {
 	local prompt="\
 A repair can be scheduled for the NEXT BOOT.
 
-  * THE SCREEN WILL STAY BLACK for the whole repair. No picture, no
-    progress bar. The MiSTer cannot display anything that early in
-    boot. This is normal, and it is why nothing does this by itself.
+  * The screen shows a 'DO NOT POWER OFF' picture for the whole
+    repair, with no progress bar. Some displays stay black instead.
+    Either is normal.
 
   * The check just now took about ${mins} minute(s). Expect the
     repair to take roughly that long again.
@@ -377,9 +377,9 @@ do_check() {
 	rule
 	say ""
 	say "  * It runs on the NEXT BOOT, right after you reboot."
-	say "  * THE SCREEN WILL STAY BLACK for the whole repair. There is no"
-	say "    progress bar and no picture -- the MiSTer cannot display"
-	say "    anything that early in boot. This is normal."
+	say "  * The screen shows a \"DO NOT POWER OFF\" picture for the whole"
+	say "    repair, with no progress bar. Some displays stay black instead."
+	say "    Either is normal."
 	say "  * The read-only check you just ran took about ${mins} minute(s)."
 	say "    Expect the repair to take roughly that long again."
 	say "  * DO NOT POWER OFF during the repair. Interrupting it is far more"
@@ -407,7 +407,7 @@ do_check() {
 	rule
 	say ""
 	say "  Rebooting in 10 seconds. DO NOT POWER OFF -- the next boot will"
-	say "  take a while with a black screen, and that is the repair running."
+	say "  take a while, and that is the repair running."
 	say ""
 	say "  (Keyboard or SSH: Ctrl-C now to stay up. The repair stays scheduled; cancel"
 	say "   it with:  mister-fsck-exfat --cancel)"

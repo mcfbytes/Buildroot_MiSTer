@@ -19,3 +19,20 @@ config BR2_PACKAGE_MISTER_INITRAMFS
 	  Nothing from this package is installed into the rootfs.
 
 	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/decisions/0002-initramfs.md
+
+config BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE
+	bool "HDMI splash during the boot-time exFAT repair"
+	depends on BR2_PACKAGE_MISTER_INITRAMFS
+	depends on BR2_arm # DE10-Nano register map
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_ITSALIVE
+	help
+	  Puts a full-screen "do not power off" picture on HDMI while
+	  /init runs the repair Scripts/check_storage.sh scheduled (ADR
+	  0026). Without it that boot is a black screen for as long as
+	  fsck.exfat takes.
+
+	  Copies package/itsalive's static binary and two gzipped raw
+	  frames from board/mister/de10nano/fsck-splash into the cpio.
+	  itsalive is then NOT installed into the rootfs: it must never
+	  run beside Main_MiSTer.

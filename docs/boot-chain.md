@@ -903,7 +903,9 @@ Also preserved by construction, and worth stating so P1.10 does not "improve" th
   boot — that is a single `test -f` and the sequence above is unchanged. With a marker it
   deletes it (exactly-once: an automatic retry loop here is indistinguishable from a brick),
   unmounts, runs `fsck.exfat -p`, and remounts with the *same* `$FAT_OPTS`, which is why the
-  mount is factored into `mount_data_partition()`. It fails open on everything except a
+  mount is factored into `mount_data_partition()`. On the DE10-Nano, `itsalive` shows a
+  "do not power off" picture on HDMI for the duration (ADR 0026 §6). It is best-effort and
+  bounded by `timeout`. It fails open on everything except a
   partition that will not remount, which drops to `rescue()`. The initramfs is the only place
   a repair can run at all: the rootfs is a file on the partition being checked, and a mount
   holds an exclusive bdev claim even when read-only, so `fsck`'s `O_RDWR|O_EXCL` can never

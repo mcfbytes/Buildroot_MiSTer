@@ -208,9 +208,9 @@ menu "SD-card installer (ADR 0020)"
 	# (configs/mister_installer_defconfig) and nothing else. itsalive draws
 	# the HDMI splash during the reformat (ADR 0020 section 9, issue #185).
 	# It is a plain userspace CLI and would work on the installed system as
-	# a rescue tool too, but no board defconfig selects it today: it must
-	# never run beside Main_MiSTer, and the installer is where Main is
-	# guaranteed absent.
+	# a rescue tool too, but it never goes into a rootfs: it must never run
+	# beside Main_MiSTer. The DE10 stage-1 initramfs also carries it (see
+	# BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE), where Main is equally absent.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/itsalive/Config.in"
 endmenu
 

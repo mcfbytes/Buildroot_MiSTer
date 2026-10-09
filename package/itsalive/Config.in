@@ -21,8 +21,9 @@ config BR2_PACKAGE_ITSALIVE
 
 	  About 400 KB static; it is the only Rust package in this tree
 	  and pulls host-rustc (a prebuilt download, not a compile) into
-	  whichever configuration selects it. Today that is
-	  configs/mister_installer_defconfig only. Never run it while
+	  whichever configuration selects it: the installer, and the
+	  DE10 stage-1 initramfs (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE,
+	  which keeps it out of the rootfs). Never run it while
 	  Main_MiSTer is up: two writers on the mailbox corrupt each
 	  other.
 

@@ -33,8 +33,8 @@ The DE25 kernel has the same set through the shared fragment.
 
 An init script that jails a daemon declares the jail in
 `/etc/minijail/<name>.conf` and sources `/usr/lib/mister/jail.sh` for the rest.
-`/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11) and `S92transmission`
-(`docs/bittorrent.md` §8.1) are written this way.
+`/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11), `S92transmission`
+(`docs/bittorrent.md` §8.1), `S01syslogd` and `S02klogd` (below) are written this way.
 
 **The config file** is minijail0's own `--config` format (`% minijail-config-file
 v0`, then one long or short option per line; `minijail0 --gen-config <file>
@@ -47,7 +47,8 @@ policy, `RLIMIT_CORE` 0, and `/media/fat/linux/timezone` at `/etc/localtime`
 when it is a plain file (syslog takes each daemon's own timestamps).
 
 **The script** sets `JAIL_NAME`, `JAIL_EXEC`, `JAIL_PIDS_MAX` and
-`JAIL_PROBE`, optionally `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
+`JAIL_PROBE`, optionally `JAIL_COMM` (the process name, for a BusyBox applet whose exe
+is `/usr/bin/busybox` like every other), `JAIL_SECCOMP_RULES`, `JAIL_STOP_WAIT`,
 `JAIL_STOP_KILL`, `JAIL_LOG_TAG` and `JAIL_OOM_SCORE_ADJ` (the header of
 `jail.sh` lists them), calls `jail_init`, and then:
 
@@ -79,7 +80,7 @@ inside the jail and fails if the write succeeds.
 **When the jail fails.** Each script decides, by what losing the daemon costs:
 
 - **A daemon the user depends on falls back.** `bluetoothd` is how most people reach the
-  OSD; a jail that cannot be built, a probe that fails or a self-check that does not match
+  OSD, and `syslogd`/`klogd` are how anyone diagnoses anything; a jail that cannot be built, a probe that fails or a self-check that does not match
   starts it with `jail_launch_unjailed`, as root and exactly as stock does, logs the reason
   at `daemon.err` and prints `OK (UNJAILED: <reason>)`. A file on the card
   (`/media/fat/linux/bluetooth.nojail`) does the same on purpose, for a jail that starts but
@@ -97,6 +98,70 @@ one would fail to start).
 **Umask.** `jail_init` sets `umask 022`: a root login's umask on this image is
 077, and the mount points the script and minijail create must be traversable
 by the jail's uid.
+
+## syslogd and klogd
+
+BusyBox's `syslogd` and `klogd` have no option to drop root, so both run through the
+helper. syslogd is the one worth it: it parses datagrams from every local process,
+including the jailed daemons, which reach `/dev/log` through the host `/dev`, so as root
+it was a way from a compromised jail back to root. klogd is cheap once syslogd's layout
+exists.
+
+| | syslogd (`S01syslogd`) | klogd (`S02klogd`) |
+|---|---|---|
+| uid/gid | 8424 `syslog` | 8425 `klog` |
+| Capabilities | none | `CAP_SYSLOG`, to read the kernel log with `klogctl()` |
+| Seccomp, beyond the shared list | `socket`/`socketpair`: `AF_UNIX` only | the same, and `syslog` only for actions 0, 1, 2, 7 and 8 (close, open, read, console on, console level: BusyBox's own calls), so it cannot read all of the buffer or clear it |
+| Namespaces | mount, PID, IPC, **network** | the same |
+| Writable | `/run/log` (noexec) | nothing |
+| Landlock | rx `/usr`, ro `/etc`, rw `/dev/null`, full `/run/log` | rx `/usr`, ro `/etc` and `/run/log`, rw `/dev/null` |
+
+**The socket.** syslogd binds `/dev/log` after following symlinks, so the scripts make
+`/dev/log` on the host a link to `/run/log/log`, in a directory the `syslog` user owns
+(0755, so every user can reach the socket); in the jails `/dev/log` is the same link.
+`/run/log` is deliberately not `/run/syslogd`, the helper's own root-only state directory,
+which holds the seccomp policy and pidfile and must never be writable from the jail.
+bluetoothd's jail binds `/run/log` too, since its `/dev/log` is the same link.
+
+**The log files** are `/run/log/messages` and `messages.0` (`syslogd -O`, created 0600
+under a 077 umask), and stock's paths, `/tmp/messages` and `/tmp/messages.0` (`/var/log`
+is a link to `/tmp`), are root-owned links to them. Reading `/var/log/messages` works as
+before; rotation renames inside `/run/log`, so the links stay valid. The jail has no `/tmp`
+at all. Before, it needed all of `/tmp` writable for two files, since Landlock grants
+directories, not names; a compromised syslogd could then create files under names a root
+process opens later (Main writes `/tmp/script` and has agetty run it). The start moves any
+regular `/tmp/messages{,.0}` a root syslogd left into `/run/log` (removing the destination
+first, so a link planted there is not followed) and re-owns them with `chown -h`. The root
+fallback writes through `-O /run/log/messages` too once the links exist, since its
+rotation would otherwise rename the links.
+
+**Network namespace.** `/dev/log` is a path, and a path socket works across network
+namespaces, so neither daemon needs the network. Remote logging (`syslogd -R`) would; it is
+not configured, and `/etc/default/syslogd` is on the read-only root.
+
+Both fall back to the root start when the jail fails (`/media/fat/linux/syslogd.nojail`
+and `klogd.nojail` force it), logged at `syslog.err`.
+
+## Shared /tmp
+
+`/tmp` is shared by root and, since the daemons left root, by other users. The kernel's
+protections against planting files there were all off (kernel defaults);
+`/etc/sysctl.d/10-protected-tmp.conf` turns them on, at the values systemd-based
+distributions ship:
+
+| Sysctl | Value | Effect |
+|---|---|---|
+| `fs.protected_symlinks` | 1 | a link in a sticky world-writable directory is followed only by its owner, or when the directory's owner owns it |
+| `fs.protected_hardlinks` | 1 | no hard links to files the caller cannot read and write |
+| `fs.protected_regular` | 2 | `O_CREAT` does not open an existing file another user owns in a sticky world- or group-writable directory |
+| `fs.protected_fifos` | 2 | the same for FIFOs |
+
+Nothing on the image is affected: every file in `/tmp` on the rig, and every `/tmp` path in
+Main_MiSTer's source (`CORENAME`, `FILESELECT`, `script`, ...), is root's, and the checks
+only fire on another user's file. Measured on the rig: with the values set, root's
+`open("/tmp/x", "w")` on a file uid 8424 created fails `EACCES`. `/dev/shm` is 0777 without
+the sticky bit and is not covered. `/media/fat/linux/sysctl.conf` is applied after
+`sysctl.d/` and can change them back.
 
 ## Build options
 

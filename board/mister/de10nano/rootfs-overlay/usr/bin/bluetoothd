@@ -55,7 +55,7 @@ mount_storage() {
 prepare_root() {
 	jail_prepare_root || return 1
 	mkdir "$JAIL_ROOT/var" && ln -s ../run "$JAIL_ROOT/var/run" || return 1
-	rm -rf "$JAIL_RUN" && mkdir -p "$JAIL_RUN/dbus" "$JAIL_RUN/udev" || return 1
+	rm -rf "$JAIL_RUN" && mkdir -p "$JAIL_RUN/dbus" "$JAIL_RUN/udev" "$JAIL_RUN/log" /run/log || return 1
 	chown "$JAIL_UID:$JAIL_GID" "$JAIL_RUN" && chmod 0755 "$JAIL_RUN" || return 1
 	ln -sfn bluetoothd/run/sdp /run/sdp
 }

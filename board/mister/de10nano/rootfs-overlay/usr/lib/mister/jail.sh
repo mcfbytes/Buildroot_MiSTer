@@ -9,6 +9,7 @@
 #   JAIL_PROBE      a path in the jail its uid could write but Landlock must refuse
 # and optionally:
 #   JAIL_CONF       another config file (default /etc/minijail/$JAIL_NAME.conf)
+#   JAIL_COMM       the process name too, when JAIL_EXEC is shared (BusyBox applets)
 #   JAIL_SECCOMP_RULES  "syscall: rule" lines that replace the generated ones
 #   JAIL_STOP_WAIT  seconds SIGTERM gets (default 10)
 #   JAIL_STOP_KILL  1 to SIGKILL after JAIL_STOP_WAIT (default: never)
@@ -62,7 +63,8 @@ jail_exec() {
 
 # A fresh tmpfs root with the merged-usr links; minijail adds the other mount points.
 jail_prepare_root() {
-	mkdir -p "$JAIL_RUN_DIR" && chmod 0700 "$JAIL_RUN_DIR" && mkdir -p "$JAIL_ROOT" || return 1
+	mkdir -p "$JAIL_RUN_DIR" && chown -h 0:0 "$JAIL_RUN_DIR" && chmod 0700 "$JAIL_RUN_DIR" &&
+		mkdir -p "$JAIL_ROOT" || return 1
 	if mountpoint -q "$JAIL_ROOT"; then umount "$JAIL_ROOT" || return 1; fi
 	mount -t tmpfs -o mode=0755,size=256k,nosuid,nodev,noexec tmpfs "$JAIL_ROOT" || return 1
 	for l in bin lib sbin; do ln -s "usr/$l" "$JAIL_ROOT/$l" || return 1; done
@@ -134,19 +136,25 @@ jail_starttime() {
 	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f20
 }
 
+# True if pid $1 runs JAIL_EXEC (and is named JAIL_COMM, when set).
+jail_is_ours() {
+	[ "$(readlink "/proc/$1/exe" 2>/dev/null)" = "$JAIL_EXEC" ] || return 1
+	[ -z "$JAIL_COMM" ] || [ "$(cat "/proc/$1/comm" 2>/dev/null)" = "$JAIL_COMM" ]
+}
+
 # Sets JAIL_PID to the jailed daemon's host pid when the pidfile still names it.
 jail_running() {
 	JAIL_PID=""
 	[ -f "$JAIL_PIDFILE" ] && read -r p s <"$JAIL_PIDFILE" || return 1
 	[ -n "$p" ] && [ -n "$s" ] && [ "$(jail_starttime "$p")" = "$s" ] || return 1
-	[ "$(readlink "/proc/$p/exe" 2>/dev/null)" = "$JAIL_EXEC" ] || return 1
+	jail_is_ours "$p" || return 1
 	JAIL_PID=$p
 }
 
-# True if any process runs JAIL_EXEC (pidof also matches a script of the same name).
+# True if any process is the daemon (pidof also matches a script of the same name).
 jail_any_daemon() {
-	for e in /proc/[0-9]*/exe; do
-		[ "$(readlink "$e" 2>/dev/null)" = "$JAIL_EXEC" ] && return 0
+	for d in /proc/[0-9]*; do
+		jail_is_ours "${d#/proc/}" && return 0
 	done
 	return 1
 }
@@ -175,7 +183,7 @@ jail_launch() {
 	pid=""
 	while [ "$i" -lt 50 ]; do
 		[ -s "$JAIL_PIDFILE.new" ] && read -r pid <"$JAIL_PIDFILE.new"
-		[ -n "$pid" ] && [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$JAIL_EXEC" ] && break
+		[ -n "$pid" ] && jail_is_ours "$pid" && break
 		pid=""
 		sleep 0.2
 		i=$((i + 1))

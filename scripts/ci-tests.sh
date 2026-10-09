@@ -2677,6 +2677,31 @@ else
 	fi
 fi
 
+# Transmission joins LPD's multicast group only at start; an IPv4 lease after S92 leaves
+# LPD off. 92-transmission-kick restarts it once (docs/bittorrent.md section 10).
+require_present "usr/lib/dhcpcd/dhcpcd-hooks/92-transmission-kick" "dhcpcd 92-transmission-kick hook"
+printf -- '--- test-transmission-kick.sh: transmission kick hook behaviour (33 cases) ---\n'
+if "$ROOT/scripts/test-transmission-kick.sh"; then
+	pass "test-transmission-kick.sh (transmission kick hook behaviour, 33 cases)"
+else
+	fail "test-transmission-kick.sh (transmission kick hook behaviour, 33 cases)" \
+		"one or more cases failed -- see output above"
+fi
+if [ -z "$QEMU_ARM" ]; then
+	skip "test-transmission-kick.sh under the target's own BusyBox ash" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/bin/busybox" ]; then
+	skip "test-transmission-kick.sh under the target's own BusyBox ash" "$TARGET/bin/busybox not present"
+else
+	printf -- '--- test-transmission-kick.sh: same cases, target BusyBox ash under qemu-arm ---\n'
+	if TM_TEST_SH="$QEMU_ARM -L $TARGET $TARGET/bin/busybox sh" \
+		"$ROOT/scripts/test-transmission-kick.sh"; then
+		pass "test-transmission-kick.sh under the target's own BusyBox ash"
+	else
+		fail "test-transmission-kick.sh under the target's own BusyBox ash" \
+			"passes on the host shell but not on BusyBox ash -- see output above"
+	fi
+fi
+
 # =============================================================================
 section "P3.10 — Network filesystem client parity (NFS half per ADR 0022)"
 # =============================================================================

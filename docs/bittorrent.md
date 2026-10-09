@@ -304,7 +304,7 @@ transmission-remote --exit                  # shut the daemon down
 ```
 
 `--exit` is a clean shutdown and flushes `resume/`; so is
-`/etc/init.d/S92transmission stop`, which waits for it (§10).
+`/etc/init.d/S92transmission stop`, which waits for it (§11).
 
 ### Make a torrent of your own
 
@@ -355,7 +355,7 @@ a byte of it is downloaded.
 So the two kernels this image ships behave differently here, and neither behaves the way
 the setting's name suggests. `"preallocation": 0` is correct on both, and it is the only
 setting that spends nothing on the files selective download means you will never fetch.
-§11 has the measurements.
+§12 has the measurements.
 
 **One consequence survives turning it off**, and is worth knowing before you blame the
 daemon: `valid_size` zeroing is a property of *any* write past it, not of preallocation. A
@@ -384,7 +384,7 @@ half stays reserved for the FPGA to DMA into. Linux gets 488 MiB, full stop, and
 Main_MiSTer, the framebuffer and the page cache come out of that same 488 MiB. Treat a
 torrent client here as having a couple of hundred megabytes to play with, not a gigabyte.
 
-**Measured** (§11 has the transcript): the daemon idles at about **12 MiB** RSS, and an
+**Measured** (§12 has the transcript): the daemon idles at about **12 MiB** RSS, and an
 11,000-file / 200,000-piece torrent — the shape a multi-terabyte collection has, whose
 `.torrent` is 4.6 MB of which 4 MB is piece hashes — adds **≈ 6.2 MiB**. That is a steady
 state, not a parse-time spike: it is the same after a daemon restart, when the metadata
@@ -590,7 +590,47 @@ another ~2.3 MiB, for the one tool in the set that cannot select files.
 
 ---
 
-## 10. Known limitations — accepted, not worked around
+## 10. Local Peer Discovery and a late IPv4 lease
+
+Transmission joins the LPD group, `239.192.152.143`, once, when the daemon starts
+(`libtransmission/tr-lpd.cc`), and never retries. With no IPv4 route at that moment the
+join fails with `ENODEV` and LPD stays off until the next restart, logged as
+`Couldn't initialize IPv4 LPD: No such device (19)`. It is not a corner case: it happened on
+an ordinary wired boot of the rig. Measured on the rig on 2026-10-08: the IPv6 default route at 18:36:42,
+`S92transmission`'s start and the failed join at 18:36:44, the IPv4 lease at 18:36:46.
+None of it involves the jail, which shares the host's network.
+
+`/usr/lib/dhcpcd/dhcpcd-hooks/92-transmission-kick` repairs it the way
+`91-ntp-kick` repairs ntpd (`docs/init-parity.md`). On an IPv4 lease being acquired
+(`BOUND`/`REBOOT`, not renewals) it restarts the daemon once per boot, and only if all of
+these hold:
+
+- the daemon is running: the pidfile's pid, with `/proc/<pid>/exe` and the start time
+  matching, so a stale or reused pid never causes a restart;
+- `lpd-enabled` is not `false` in the daemon's `settings.json`;
+- `/proc/net/igmp` does not list the group (`8F98C0EF`).
+
+It acts on the state rather than on timing: a wired box whose lease lands before `S92`
+finds the group joined, or no daemon yet, and does nothing; the stamp
+(`/run/transmission-kick`) is claimed only when it restarts. The body runs in the
+background, so dhcpcd's hook pass is not held up. `scripts/test-transmission-kick.sh`
+covers it in 33 sandboxed cases, run by `ci-tests.sh` on the host shell and on the target's
+BusyBox ash under qemu-arm; each gate was mutation-checked.
+
+**Measured on the rig**, with the daemon in the failed state above: sourcing the hook as
+dhcpcd does (`reason=BOUND if_up=true`) restarted it, the group was joined on `eth0` four
+seconds later, the restarted daemon was still uid 8422 with `CapEff 0x2`, and a second
+`BOUND` left it alone.
+
+**Not fixed: `Couldn't send to 255.255.255.255:<port>: 13 (Permission denied)`.** These are
+µTP connects to bogus peers at the broadcast address, from a tracker, DHT or PEX:
+Transmission 4.1.3's martian filter (`net.cc` `is_martian_addr()`) drops 0.0.0.0/8,
+loopback and multicast, but not 255.255.255.255, and the kernel refuses a broadcast
+`sendto()` without `SO_BROADCAST`, for root as well. Noise, not a jail effect.
+
+---
+
+## 11. Known limitations — accepted, not worked around
 
 ### No BitTorrent v2
 
@@ -652,7 +692,7 @@ LPD is the standard `239.192.152.143:6771` / `[ff15::efc0:988f]:6771` pair
 (`libtransmission/tr-lpd.cc:67`) and is on by default, so two boards on one LAN should find
 each other with no configuration. **This has not been tested with two boards**, because
 there is one rig. What *was* verified is one-sided — the announce leaves the board for the
-right group and port, captured with `tcpdump` (§11). The two-board test is owed.
+right group and port, captured with `tcpdump` (§12). The two-board test is owed.
 
 If you are checking it yourself: a **paused** torrent announces nothing at all
 (`tr-lpd.cc:545` requires `TR_STATUS_DOWNLOAD` or `TR_STATUS_SEED`), the announce timer is
@@ -662,7 +702,7 @@ against a paused torrent will show zero packets on a completely healthy daemon.
 
 ---
 
-## 11. What was measured on hardware
+## 12. What was measured on hardware
 
 Full transcript, with the commands and their output:
 [`docs/testlogs/2026-09-21-transmission-rig.md`](testlogs/2026-09-21-transmission-rig.md).
@@ -685,7 +725,7 @@ daemon.
 
 ---
 
-## 12. See also
+## 13. See also
 
 - `docs/buildroot-config.md` §5.10 — the two `select`s and their rationale
 - `docs/decisions/0031-secure-by-default-network-posture.md` — the 2026-09-21 amendment

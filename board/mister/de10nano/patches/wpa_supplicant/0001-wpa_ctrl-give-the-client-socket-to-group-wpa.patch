@@ -1,0 +1,87 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Thu, 8 Oct 2026 00:00:00 +0000
+Subject: [PATCH] wpa_ctrl: give the client socket to group wpa
+
+A wpa_supplicant running as an unprivileged user cannot reply to a root
+wpa_cli: the client socket in /tmp is created with the caller's umask
+(0077 on a root login here), so it is owned by root and not writable by
+the daemon's uid without CAP_DAC_OVERRIDE.
+
+Do what the ANDROID branch already does for AID_WIFI: create the socket
+with a umask of 0007 and hand it to the group named by
+CONFIG_CTRL_IFACE_CLIENT_GROUP ("wpa"). Without that group, or for a
+daemon running as root, nothing changes.
+
+Upstream: not sent; the group name is this image's (docs/wifi-parity.md
+section 15).
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/src/common/wpa_ctrl.c b/src/common/wpa_ctrl.c
+--- a/src/common/wpa_ctrl.c
++++ b/src/common/wpa_ctrl.c
+@@ -16,6 +16,9 @@
+ #include <sys/un.h>
+ #include <unistd.h>
+ #include <fcntl.h>
++#ifndef ANDROID
++#include <grp.h>
++#endif /* ANDROID */
+ #endif /* CONFIG_CTRL_IFACE_UNIX */
+ #ifdef CONFIG_CTRL_IFACE_UDP_REMOTE
+ #include <netdb.h>
+@@ -80,6 +83,9 @@
+ #ifndef CONFIG_CTRL_IFACE_CLIENT_DIR
+ #define CONFIG_CTRL_IFACE_CLIENT_DIR "/tmp"
+ #endif /* CONFIG_CTRL_IFACE_CLIENT_DIR */
++#ifndef CONFIG_CTRL_IFACE_CLIENT_GROUP
++#define CONFIG_CTRL_IFACE_CLIENT_GROUP "wpa"
++#endif /* CONFIG_CTRL_IFACE_CLIENT_GROUP */
+ #ifndef CONFIG_CTRL_IFACE_CLIENT_PREFIX
+ #define CONFIG_CTRL_IFACE_CLIENT_PREFIX "wpa_ctrl_"
+ #endif /* CONFIG_CTRL_IFACE_CLIENT_PREFIX */
+@@ -98,6 +104,10 @@
+ 	static int counter = 0;
+ 	int ret;
+ 	size_t res;
++#ifndef ANDROID
++	struct group *grp;
++	mode_t old_umask;
++#endif /* ANDROID */
+ 	int tries = 0;
+ 	int flags;
+ 
+@@ -147,9 +157,17 @@
+ 	 * operations to allow the response to go through. Those are using the
+ 	 * no-deference-symlinks version to avoid races. */
+ 	fchmod(ctrl->s, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
++#else /* ANDROID */
++	/* The same for a server running as a user in the client group: the
++	 * socket gets group write permission whatever the caller's umask. */
++	old_umask = umask(S_IRWXO);
++#endif /* ANDROID */
++	ret = bind(ctrl->s, (struct sockaddr *) &ctrl->local,
++		   sizeof(ctrl->local));
++#ifndef ANDROID
++	umask(old_umask);
+ #endif /* ANDROID */
+-	if (bind(ctrl->s, (struct sockaddr *) &ctrl->local,
+-		    sizeof(ctrl->local)) < 0) {
++	if (ret < 0) {
+ 		if (errno == EADDRINUSE && tries < 2) {
+ 			/*
+ 			 * getpid() returns unique identifier for this instance
+@@ -165,6 +183,13 @@
+ 		return NULL;
+ 	}
+ 
++#ifndef ANDROID
++	grp = getgrnam(CONFIG_CTRL_IFACE_CLIENT_GROUP);
++	if (grp && lchown(ctrl->local.sun_path, -1, grp->gr_gid) < 0) {
++		/* Not fatal: a server running as root needs no group access. */
++	}
++#endif /* ANDROID */
++
+ #ifdef ANDROID
+ 	/* Set group even if we do not have privileges to change owner */
+ 	lchown(ctrl->local.sun_path, -1, AID_WIFI);

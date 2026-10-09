@@ -1,0 +1,125 @@
+#!/bin/sh
+#
+# BusyBox syslogd, run in a minijail: /etc/minijail/syslogd.conf, docs/minijail.md
+# "syslogd and klogd". Same verbs and SYSLOGD_ARGS as Buildroot's S01syslogd.
+#
+
+DAEMON="syslogd"
+SYSLOGD_ARGS=""
+# Its presence starts the daemon unjailed, as Buildroot's script does.
+NOJAIL=/media/fat/linux/syslogd.nojail
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+# shellcheck source=SCRIPTDIR/../../usr/lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=$DAEMON
+JAIL_EXEC=/usr/bin/busybox
+JAIL_COMM=$DAEMON
+JAIL_PIDS_MAX=4
+JAIL_PROBE=/var/empty/.landlock-probe
+JAIL_STOP_WAIT=5
+JAIL_STOP_KILL=1
+# Sockets: AF_UNIX only (remote logging would need a network the jail does not have).
+JAIL_SECCOMP_RULES="socket: arg0 == 1; return 97
+socketpair: arg0 == 1; return 97"
+jail_init
+SOCK_DIR=/run/log
+
+# The socket's directory, and /dev/log as a link into it on the host and in the jail.
+prepare_root() {
+	mkdir -p "$SOCK_DIR" && chown "$JAIL_UID:$JAIL_GID" "$SOCK_DIR" && chmod 0755 "$SOCK_DIR" || return 1
+	if [ "$(readlink /dev/log)" != "$SOCK_DIR/log" ]; then
+		rm -f /dev/log && ln -s "$SOCK_DIR/log" /dev/log || return 1
+	fi
+	jail_prepare_root || return 1
+	mkdir "$JAIL_ROOT/etc" "$JAIL_ROOT/dev" "$JAIL_ROOT/var" || return 1
+	ln -s "$SOCK_DIR/log" "$JAIL_ROOT/dev/log"
+}
+
+# The logs move to $SOCK_DIR, linked from stock's /tmp; -h and the type tests, as both are shared.
+own_logs() {
+	for f in messages.0 messages; do
+		if [ -f "/tmp/$f" ] && [ ! -L "/tmp/$f" ]; then
+			rm -f "$SOCK_DIR/$f" && mv -f "/tmp/$f" "$SOCK_DIR/$f" || return 1
+		fi
+		if [ "$(readlink "/tmp/$f")" != "$SOCK_DIR/$f" ]; then
+			rm -f "/tmp/$f" && ln -s "$SOCK_DIR/$f" "/tmp/$f" || return 1
+		fi
+		if [ -f "$SOCK_DIR/$f" ] && [ ! -L "$SOCK_DIR/$f" ]; then
+			chown -h "$JAIL_UID:$JAIL_GID" "$SOCK_DIR/$f" && chmod 0600 "$SOCK_DIR/$f"
+		fi
+	done
+}
+
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	if jail_running; then
+		echo "already running"
+		return 0
+	fi
+	if jail_any_daemon; then
+		echo "FAIL (a $DAEMON this script did not start is running)"
+		return 1
+	fi
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $JAIL_RUN_DIR"
+	elif own_logs && jail_prepare && jail_launch; then
+		echo "OK"
+		return 0
+	fi
+	# Logs matter more than the jail: any failure costs the jail, never the daemon.
+	# Once /tmp/messages links into $SOCK_DIR, rotating there keeps the links intact.
+	[ "$(readlink /tmp/messages)" = "$SOCK_DIR/messages" ] && set -- -O "$SOCK_DIR/messages"
+	# shellcheck disable=SC2086 # we need the word splitting
+	if jail_launch_unjailed /sbin/$DAEMON -n "$@" $SYSLOGD_ARGS; then
+		echo "OK (UNJAILED: $JAIL_ERR)"
+		logger -p syslog.err -t S01syslogd "started UNJAILED, as root: $JAIL_ERR"
+		return 0
+	fi
+	echo "FAIL ($JAIL_ERR; the unjailed start failed too)"
+	return 1
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	if ! jail_running; then
+		echo "FAIL"
+		return 1
+	fi
+	if jail_stop; then
+		echo "OK"
+	else
+		echo "FAIL (still running after SIGKILL)"
+		return 1
+	fi
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		jail_lock || exit 1
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		jail_lock || exit 1
+		restart;;
+	run)
+		# Internal, from jail_launch. umask 077: the logs are the syslog user's alone.
+		umask 077
+		# shellcheck disable=SC2086 # we need the word splitting
+		jail_run -- /sbin/$DAEMON -n -O "$SOCK_DIR/messages" $SYSLOGD_ARGS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac

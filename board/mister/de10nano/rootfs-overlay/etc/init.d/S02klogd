@@ -1,0 +1,104 @@
+#!/bin/sh
+#
+# BusyBox klogd, run in a minijail: /etc/minijail/klogd.conf, docs/minijail.md
+# "syslogd and klogd". Same verbs and KLOGD_ARGS as Buildroot's S02klogd.
+#
+
+DAEMON="klogd"
+KLOGD_ARGS=""
+# Its presence starts the daemon unjailed, as Buildroot's script does.
+NOJAIL=/media/fat/linux/klogd.nojail
+
+# shellcheck source=/dev/null
+[ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
+
+# shellcheck source=SCRIPTDIR/../../usr/lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=$DAEMON
+JAIL_EXEC=/usr/bin/busybox
+JAIL_COMM=$DAEMON
+JAIL_PIDS_MAX=4
+JAIL_PROBE=/var/empty/.landlock-probe
+JAIL_STOP_WAIT=5
+JAIL_STOP_KILL=1
+# klogctl() is the syslog syscall: only BusyBox's close/open/read/console-level actions.
+JAIL_SECCOMP_RULES="syslog: arg0 == 0 || arg0 == 1 || arg0 == 2 || arg0 == 7 || arg0 == 8; return 1
+socket: arg0 == 1; return 97
+socketpair: arg0 == 1; return 97"
+jail_init
+
+# /dev/log in the jail, a link into syslogd's directory (S01syslogd makes the host's).
+prepare_root() {
+	[ -d /run/log ] || return 1
+	jail_prepare_root || return 1
+	mkdir "$JAIL_ROOT/etc" "$JAIL_ROOT/dev" "$JAIL_ROOT/var" || return 1
+	ln -s /run/log/log "$JAIL_ROOT/dev/log"
+}
+
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	if jail_running; then
+		echo "already running"
+		return 0
+	fi
+	if jail_any_daemon; then
+		echo "FAIL (a $DAEMON this script did not start is running)"
+		return 1
+	fi
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $JAIL_RUN_DIR (no /run/log?)"
+	elif jail_prepare && jail_launch; then
+		echo "OK"
+		return 0
+	fi
+	# Kernel messages matter more than the jail: any failure costs the jail, never the daemon.
+	logger -p syslog.err -t S02klogd "starting UNJAILED, as root: $JAIL_ERR"
+	# shellcheck disable=SC2086 # we need the word splitting
+	if jail_launch_unjailed /sbin/$DAEMON -n $KLOGD_ARGS; then
+		echo "OK (UNJAILED: $JAIL_ERR)"
+		return 0
+	fi
+	echo "FAIL ($JAIL_ERR; the unjailed start failed too)"
+	return 1
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	if ! jail_running; then
+		echo "FAIL"
+		return 1
+	fi
+	if jail_stop; then
+		echo "OK"
+	else
+		echo "FAIL (still running after SIGKILL)"
+		return 1
+	fi
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		jail_lock || exit 1
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		jail_lock || exit 1
+		restart;;
+	run)
+		# Internal, from jail_launch.
+		# shellcheck disable=SC2086 # we need the word splitting
+		jail_run -- /sbin/$DAEMON -n $KLOGD_ARGS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac

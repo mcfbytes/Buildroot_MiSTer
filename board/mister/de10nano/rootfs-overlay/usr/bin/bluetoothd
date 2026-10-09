@@ -1,47 +1,111 @@
 #!/bin/sh
+#
+# Stock's /bin/bluetoothd control script (S45bluetooth links here), with the
+# daemon run in a minijail: /etc/minijail/bluetoothd.conf, docs/bluetooth-parity.md §11.
+#
 
 DAEMON="bluetoothd"
-PIDFILE="/var/run/$DAEMON.pid"
-EXEC=/usr/libexec/bluetooth/$DAEMON
 
 BTIMG=/media/fat/linux/bluetooth
 MNTPATH=/var/lib/bluetooth
+# Its presence starts the daemon unjailed, as stock does (docs/bluetooth-parity.md §11).
+NOJAIL=/media/fat/linux/bluetooth.nojail
 
 BLUETOOTHD_ARGS="-n -E -C"
 
 # shellcheck source=/dev/null
 [ -r "/etc/default/$DAEMON" ] && . "/etc/default/$DAEMON"
 
-start() {
+# shellcheck source=SCRIPTDIR/../lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=$DAEMON
+JAIL_EXEC=/usr/libexec/bluetooth/$DAEMON
+JAIL_PIDS_MAX=8
+JAIL_PROBE=/tmp/.landlock-probe
+JAIL_STOP_WAIT=12
+JAIL_STOP_KILL=1
+# Sockets: AF_UNIX, AF_BLUETOOTH, and AF_NETLINK only for udev's uevents; else EAFNOSUPPORT.
+JAIL_SECCOMP_RULES="socket: arg0 == 1 || arg0 == 31 || arg0 == 16 && arg2 == 15; return 97
+socketpair: arg0 == 1; return 97"
+jail_init
+# Bound at /run in the jail, so -C's /var/run/sdp socket lands here; /run/sdp links to it.
+JAIL_RUN="$JAIL_RUN_DIR/run"
+
+# Stock's storage step, plus nosuid/nodev/noexec, and the tree handed to the daemon's uid.
+mount_storage() {
 	echo 'Checking for Bluetooth storage'
-	
+
 	if [ ! -f $BTIMG ]; then
 		dd if=/dev/zero of=$BTIMG bs=64k count=32
 		mkfs.ext4 $BTIMG
 	fi
 	mkdir -p $MNTPATH
-	mount -o sync,dirsync,nodiratime,noatime $BTIMG $MNTPATH
+	mountpoint -q $MNTPATH ||
+		mount -o sync,dirsync,nodiratime,noatime,nosuid,nodev,noexec $BTIMG $MNTPATH
+	if ! mountpoint -q $MNTPATH; then
+		logger -t bluetoothd "$BTIMG not mounted; pairings will not be saved"
+	elif [ -n "$JAIL_UID" ] && [ -n "$JAIL_GID" ]; then
+		# -h: a symlink the daemon planted is re-owned itself, never its target.
+		chown -hR "$JAIL_UID:$JAIL_GID" $MNTPATH
+	fi
+}
+
+
+# The jail's /var/run link and its own /run, with root-owned points for the read-only binds.
+prepare_root() {
+	jail_prepare_root || return 1
+	mkdir "$JAIL_ROOT/var" && ln -s ../run "$JAIL_ROOT/var/run" || return 1
+	rm -rf "$JAIL_RUN" && mkdir -p "$JAIL_RUN/dbus" "$JAIL_RUN/udev" "$JAIL_RUN/log" /run/log || return 1
+	chown "$JAIL_UID:$JAIL_GID" "$JAIL_RUN" && chmod 0755 "$JAIL_RUN" || return 1
+	ln -sfn bluetoothd/run/sdp /run/sdp
+}
+
+start() {
+	if jail_running; then
+		echo "$DAEMON already running"
+		return 0
+	fi
+	# Checked before the storage step, whose chown must not race a daemon writing the tree.
+	if jail_any_daemon; then
+		echo "Starting $DAEMON: FAIL (a $DAEMON this script did not start is running)"
+		return 1
+	fi
+	mount_storage
 
 	printf 'Starting %s: ' "$DAEMON"
-	# shellcheck disable=SC2086 # we need the word splitting
-	start-stop-daemon -S -q -m -b -p "$PIDFILE" -x "$EXEC" -- $BLUETOOTHD_ARGS
-	status=$?
-	if [ "$status" -eq 0 ]; then
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $JAIL_RUN_DIR"
+	elif jail_prepare && jail_launch; then
 		echo "OK"
-	else
-		echo "FAIL"
+		return 0
 	fi
-	return "$status"
+	# Controllers matter more than the jail: any failure costs the jail, never the daemon.
+	logger -p daemon.err -t bluetoothd "starting UNJAILED, as root: $JAIL_ERR"
+	# shellcheck disable=SC2086 # we need the word splitting
+	if jail_launch_unjailed "$JAIL_EXEC" $BLUETOOTHD_ARGS; then
+		echo "OK (UNJAILED: $JAIL_ERR)"
+		return 0
+	fi
+	echo "FAIL ($JAIL_ERR; the unjailed start failed too)"
+	return 1
 }
 
 stop() {
 	printf 'Stopping %s: ' "$DAEMON"
-	start-stop-daemon -K -q -p "$PIDFILE"
-	status=$?
-	if [ "$status" -eq 0 ]; then
-		echo "OK"
-	else
+	if ! jail_running; then
 		echo "FAIL"
+		status=1
+	elif jail_stop; then
+		echo "OK"
+		status=0
+	else
+		# Its jail still holds the storage mount; leave it.
+		echo "FAIL (still running after SIGKILL)"
+		return 1
 	fi
 	umount $MNTPATH
 	return "$status"
@@ -61,33 +125,38 @@ renew() {
 	start
 }
 
+# bluetoothd does not handle SIGHUP and is its PID namespace's init, which
+# drops the signal; re-reading the configuration means restarting it.
 reload() {
-	printf 'Reloading %s: ' "$DAEMON"
-	start-stop-daemon -K -s HUP -q -p "$PIDFILE"
-	status=$?
-	if [ "$status" -eq 0 ]; then
-		echo "OK"
-	else
-		echo "FAIL"
-	fi
-	return "$status"
+	restart
 }
 
 hcireset() {
-	for X in /sys/bus/usb/devices/*; do 
-		for Y in $X/*; do 
+	for X in /sys/bus/usb/devices/*; do
+		for Y in $X/*; do
 			if [ -d $Y/bluetooth/hci0 ]; then
 				echo resetting $X
 				echo 0 > $X/authorized
 				echo 1 > $X/authorized
 			fi
 		done
-	done 
+	done
 }
 
 case "$1" in
-	start|stop|restart|reload|renew|hcireset)
+	start|stop|restart|reload|renew)
+		if ! jail_lock; then
+			echo "$0 $1: another $DAEMON command did not finish"
+			exit 1
+		fi
 		"$1";;
+	hcireset)
+		"$1";;
+	run)
+		# Internal, from jail_launch.
+		# shellcheck disable=SC2086 # we need the word splitting
+		jail_run -- "$JAIL_EXEC" $BLUETOOTHD_ARGS
+		;;
 	*)
 		echo "Usage: $0 {start|stop|restart|reload|renew|hcireset}"
 		exit 1

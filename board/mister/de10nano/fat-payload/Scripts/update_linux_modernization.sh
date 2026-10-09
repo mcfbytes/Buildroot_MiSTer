@@ -286,7 +286,7 @@ EOF
 # ---------------------------------------------------------------------------
 # Companion Scripts
 # ---------------------------------------------------------------------------
-# This project ships five Scripts/ entries and they arrive by ONE route:
+# This project ships six Scripts/ entries and they arrive by ONE route:
 # install.sh puts them all on the card, and this function replaces any that
 # later go missing (ADR 0026). It is the same shape as ensure_kill_switch
 # above -- repair the card's configuration on every run, so a user who only ever
@@ -318,7 +318,8 @@ ensure_companion_scripts() {
 		"check_storage.sh|MLM_CHECK_STORAGE_URL|mister-fsck-exfat" \
 		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech" \
 		"usb_full_speed_mode.sh|MLM_USB_FULL_SPEED_URL|mister-usb-full-speed" \
-		"cpu_isolation.sh|MLM_CPU_ISOLATION_URL|mister-cpu-isolation"
+		"cpu_isolation.sh|MLM_CPU_ISOLATION_URL|mister-cpu-isolation" \
+		"security.sh|MLM_SECURITY_URL|mister-security"
 	do
 		name="${entry%%|*}"
 		override="${entry#*|}"; override="${override%%|*}"
@@ -328,7 +329,7 @@ ensure_companion_scripts() {
 
 		default_url="https://raw.githubusercontent.com/mcfbytes/Buildroot_MiSTer/master/board/mister/de10nano/fat-payload/Scripts/$name"
 		# Indirect expansion, so each entry keeps its own documented override
-		# (MLM_CHECK_STORAGE_URL, ..., MLM_CPU_ISOLATION_URL) rather than one shared
+		# (MLM_CHECK_STORAGE_URL, ..., MLM_SECURITY_URL) rather than one shared
 		# variable that could only ever point at a single file.
 		url="${!override:-$default_url}"
 		tmp="/tmp/$name.$$"

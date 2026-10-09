@@ -1,9 +1,12 @@
 # ADR 0031 — Secure-by-default network posture: capability parity, closed defaults
 
 **Status:** Provisionally accepted (2026-10-04, @mcfbytes; proposed 2026-09-11). Tier 1
-items 5 and 6 and the amendments below are implemented. The other Tier 1 items, Tier 2
-and Q1-Q3 are paused, to be picked up later under this acceptance; each still needs its
-rig check before it is claimed. The plan that acts on it is
+items 5 and 6 and the amendments below are implemented; the 2026-10-08 amendment answers
+Q1 ("gate it") with a card state file (absent is stock, a new SD card is hardened) and
+does Tier 1 items 1 and 7 in a changed form; the second 2026-10-08 amendment adds FTP
+modes to that file (item 3 in `lan`/`off`, item 4 declined). The other Tier 1 items,
+Tier 2, Q2 and Q3 are paused, to be picked up later under this acceptance; each still
+needs its rig check before it is claimed. The plan that acts on it is
 [`docs/security-hardening-plan.md`](../security-hardening-plan.md).
 **Supersedes:** the "keep parity, note the risk in the FAQ rather than silently hardening"
 posture recorded against P3.7 in `TASKS.md`, and the same sentiment in
@@ -183,7 +186,9 @@ still RFC1918; that is what the marker is for.
 
 ## Open questions for the owner
 
-- **Q1 — the one visible break.** With Tier 1 only, a fresh card still accepts
+- **Q1 — the one visible break. ANSWERED 2026-10-08: gate it** on new SD cards only, by a
+  card state file rather than by comparing hashes; see the amendment of that date. The original question follows.
+  With Tier 1 only, a fresh card still accepts
   root:`1` over FTP and SSH, because that is what a first-time user expects. The
   alternative is to also gate *password* logins on the password having been changed from
   the default (compare root's hash against the well-known `$5$MiSTer618$...` value at
@@ -406,6 +411,15 @@ time, cyclictest on both CPUs, a core load) is owed with the rig boot above.
 `pids.max` 64 cgroup to its jail, and checks the filter and the cgroup in `/proc` before it
 reports success (`docs/bittorrent.md` §8.1).
 
+**Second user (2026-10-08).** `bluetoothd` leaves root: uid 8423 with `CAP_NET_ADMIN` and
+`CAP_NET_BIND_SERVICE` only (upstream's own unit's set), the same seccomp, Landlock and
+pids pieces. Unlike transmission it falls back to stock's root start when the jail fails,
+loudly, since losing it loses the controllers (`docs/bluetooth-parity.md` §11).
+
+**wpa_supplicant (2026-10-08).** One jail per interface, uid 8426, `CAP_NET_ADMIN` and
+`CAP_NET_RAW` (a `wpa_cli` patch gives its reply socket to group `wpa`), no network
+namespace; falls back to the root start (`docs/wifi-parity.md` §15).
+
 **Tier 1 item 6, as written** (decided with the acceptance above, same branch; kernel
 delta D14). `NF_TABLES` with the `inet` family, conntrack, limit, log and reject in every
 kernel, and the `nftables` package, beside the legacy tables, which stay. No ruleset
@@ -419,3 +433,175 @@ upstream now gates the legacy tables behind `NETFILTER_XTABLES_LEGACY`.
 kernel retired, read "both kernels" in the Verification section and in the plan as the
 6.18 kernel plus whichever newer kernel line is built beside it. The IPv6 amendment's step
 2 now waits only on a default-deny ruleset and on the owner.
+
+---
+
+## Amendment, 2026-10-08 — one card state file; absent is stock, a new SD card is hardened (Q1 answered; Tier 1 items 1 and 7; Tier 2's marker, generalised)
+
+**Status of this amendment:** *implemented* (branch `feat/root-login-opt-in`). Verified on
+the image's own userland under qemu-arm and with throwaway `sshd`/`proftpd` instances on
+the rig (details in `docs/ssh-ftp-parity.md` §1.4). **A rig boot of a built image is
+still owed.**
+
+**The owner's answers** (2026-10-08). Q1: "make the default wide-open configuration (root
+login with password `1`) opt-in via script. root can default to ssh only auth or as you see
+fit, maybe mandatory ssh key on the exfat partition and no login if it's not there." Then,
+the same day, on how it reaches users: "this update needs to hit the sdcard only by
+default and regular users will have to keep their existing configuration if they upgrade
+to this Buildroot_MiSTer. Perhaps we need a generic security script which stores its
+state -- by default if state is absent it can be assumed to be unhardened and follow
+stock. sdcard will ship with a hardened state."
+
+**Decision.**
+
+1. **One state file on the card:** `/media/fat/linux/security.conf`, plain `key=value`
+   lines. It is **parsed, never sourced**, by one shared reader,
+   `/usr/lib/mister/security.sh` (`security_get KEY`), so any later daemon can use the
+   same file. The last line for a key wins; `#` starts a comment; values are
+   case-insensitive; CRLF is tolerated (the file is edited from Windows PCs).
+2. **Absent means stock, everywhere.** No file, no key, or a value that is not allowed
+   (with a `WARNING` in the boot log) gives the key's stock value. An existing user who
+   updates has no file, so nothing changes: root password login over SSH and FTP exactly
+   as before. The image's own `sshd_config` and `proftpd.conf` stay stock for the same
+   reason; every hardened behaviour is a command-line addition made by the init script.
+3. **The SD card image ships the hardened state.** `fetch-sdcard-payload.sh` stages
+   `board/mister/de10nano/fat-payload/linux/security.conf` into the card payload. That is
+   the only place it is shipped: `install.sh`, `update_linux_modernization.sh`, the
+   Downloader database, the release archive and `linux.img` never carry or write it, and
+   CI asserts that the rootfs does not contain it and that the update-path scripts do not
+   mention it.
+4. **Keys, first value stock:**
+
+   | Key | Values | Not stock means |
+   |---|---|---|
+   | `ssh_password` | `yes` \| `no` | `S50sshd` adds `-o PermitRootLogin=prohibit-password -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no`. SSH takes a key from `/media/fat/config/authorized_keys` (or `/root/.ssh/authorized_keys`). With no key sshd still runs and prints `NO REMOTE LOGIN`. |
+   | `ssh_forwarding` | `stock` \| `limited` | `-o AllowTcpForwarding=local -o "PermitOpen=127.0.0.1:9091 localhost:9091" -o AllowStreamLocalForwarding=no -o X11Forwarding=no`: only Transmission's loopback web UI can be forwarded (Tier 1 item 7, changed; not `no`, because the 2026-09-21 amendment made `ssh -L 9091:…` the way to reach it). |
+   | `ftp` | `stock` \| `off` | `S50proftpd` does not start proftpd, so port 21 is closed. `lan` and two more FTP keys: see the second amendment of this date. |
+
+   A new SD card ships `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off` (and, since
+   the second amendment, `ftp_drop_caps=yes`).
+5. **One tool.** `/usr/sbin/mister-security` (in the image, versioned with the init
+   scripts it drives): `status`, `harden`, `stock`, `set KEY VALUE`, and a gamepad dialog
+   with the two presets and each key on its own. It validates the value, rewrites the file
+   through a same-directory rename, `sync`s, and restarts only the services whose keys
+   changed. `Scripts/security.sh` is its launcher on the card, delivered like the other
+   Scripts (ADR 0026: install.sh, the sdcard image, and the updater's create-only repair).
+   The launcher only runs the tool; it never writes the state file by itself.
+6. **The console keeps `root:1`.** Root's shadow entry is not locked. The serial console
+   is the recovery path for someone with a keyboard and no key; physical access already
+   wins on this board, because the card is removable and the OSD runs any script as root.
+
+**Why a state file, not Q1's hash comparison or one marker.** Gating on "the hash is still
+the default" would turn password login back on for anyone who ran `passwd`, and `passwd` is
+undone by the next update (Tier 1 item 2 is not done). An earlier draft of this amendment
+used one marker file that turned stock *on*, with hardening as the image default; that
+changed every upgrader's login on the update that brought it, which the owner rejected.
+Keys in one file can grow (Tier 2's `hardened` marker becomes "the hardened preset") and
+make "absent" mean the same thing for every key.
+
+**Why invalid values fall back to stock.** Consistency with "absent is stock": the boot log
+and `mister-security status` show the warning. The other choice, falling back to the
+hardened value, could lock a user out of SSH over a typo. Recorded as an owner question.
+
+**What this supersedes.** Tier 1 item 1 ("key present ⇒ password off", with an
+`sshd_allow_password` opt-out) is replaced by `ssh_password`; there is no
+`sshd_allow_password` file. Plan task S11 is done in this form, without its dependency on
+S2. Tier 2's `/media/fat/linux/hardened` marker becomes the `harden` preset of this file.
+
+**Visible changes, stated for release notes.**
+
+- **Updating:** none. With no `security.conf` everything is stock.
+- **New SD card:** SSH is key-only, forwarding is limited and there is no FTP server until
+  the user runs **Scripts > security.sh** and picks *Stock* (or changes one key), or puts a
+  key on the card for SSH.
+
+**Follow-up, not done here.**
+
+- **A password that survives an update** (Tier 1 item 2, Q3). The natural next step is a
+  `mister-security` action that sets a new password and stores the hash on `ssh.ext4`,
+  never on exFAT (`fmask=0022`), with the boot-time restore and the `rename()` constraint
+  described in item 2.
+- Samba keeps its own password database and is untouched; `S91smb` is opt-in already.
+
+**Regression oracle.** With no `security.conf` the three tests in "What the image does
+today" all pass, as on stock. With the SD card's file: `ssh root@rig` with password `1` —
+refused (`publickey` only); `ftp://root:1@rig/` — connection refused (no server);
+anonymous FTP — connection refused. CI (`scripts/ci-tests.sh`, section "ADR 0031 —
+security.conf") asserts the stock `sshd_config`, both init scripts, the parser's results
+under the target's BusyBox for an absent, the shipped and a malformed file, and runs the
+target's own `sshd -T` under qemu-arm in both states.
+
+## Amendment, 2026-10-08 (second) — FTP modes in `security.conf` (Tier 1 items 3 and 4 decided; Tier 3 "ProFTPD unprivileged" in part)
+
+**Status of this amendment:** *implemented* (branch `feat/proftpd-hardening`, stacked on
+the amendment above). Verified with a throwaway proftpd built with `mod_cap` on the rig
+(details in `docs/ssh-ftp-parity.md` §1.5). **A rig boot of a built image is still owed.**
+
+**The owner's answers** (2026-10-08), on the FTP options prepared for this:
+
+1. No generated or default FTP password: FTP works only after the user allows it through
+   the security script.
+2. "Drop root after login; the user will have to opt-in via the unhardening script. I'd
+   still like to allow regular root FTP since this is how I'm transferring kernels and new
+   linux.img files to the rig." Then: "Anyone opening up FTP is choosing to do so -- and we
+   can add mod_cap, it's a good option for anyone who actually wants to use it." So the
+   capability drop is its own key, not part of stock.
+3. No write-deny list on boot-time paths (`linux/`, `Scripts/`, `MiSTer`, `menu.rbf`),
+   "not yet anyway".
+4. No FTPS / `mod_tls`: SCP and SFTP are the encrypted path.
+5. The password hash stays where it is.
+
+And on the chroot: "there is little point though in restricting FTP to /media/fat -- any
+attacker would still be able to overwrite the MiSTer binary, which is run as root by
+default ... So we might as well open the whole thing up." So there is **no chroot and no
+read-deny** on `*.ext4`.
+
+**Decision.** Two more keys and one more `ftp` value, all read by `S50proftpd` and turned
+into `-D` defines for the one `proftpd.conf`:
+
+| Key | Values (first is stock) | What it does |
+|---|---|---|
+| `ftp` | `stock` \| `lan` \| `off` | `stock`: stock's config, with two changes nobody can notice: `ServerIdent on "MiSTer FTP"` and an explicit `MaxLoginAttempts 3` (proftpd's default). `lan`: root with the system password, plus: no `<Anonymous>` block, `<Limit LOGIN>` allows only 127/8, 10/8, 172.16/12, 192.168/16 and 169.254/16 (others are dropped before the banner), `Umask 022`, `PassivePorts 50000 50099`, `TimeoutLogin 60`, `MaxClientsPerHost 10`, `AllowStoreRestart on`, `WtmpLog off`, `SITE CHMOD` denied. `off`: not started. |
+| `ftp_allow_any` | `no` \| `yes` | With `ftp=lan`, `yes` drops the `<Limit LOGIN>` address list, for a remote setup (VPN with a non-private range, a port-forward). |
+| `ftp_drop_caps` | `no` \| `yes` | Works with `ftp=stock` and `ftp=lan`. `S50proftpd` starts proftpd under `minijail0 -c 0x4cb -B 0x2c` (bounding set CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, NET_BIND_SERVICE; `SECBIT_NOROOT` locked), the pre-auth processes run as `nobody`, and `mod_cap` (`BR2_PACKAGE_PROFTPD_MOD_CAP=y`) cuts each logged-in session to CHOWN, DAC_OVERRIDE, FOWNER and NET_BIND_SERVICE. `no` sets `CapabilitiesEngine off`, so the server is stock. |
+
+The `harden` preset (and a new SD card) sets `ftp=off` and `ftp_drop_caps=yes`, so a user
+who later turns FTP on gets the reduced capabilities unless they also pick `stock`. The
+`stock` preset sets `ftp=stock` and `ftp_drop_caps=no`. With no file, all three keys are
+stock. There is still no "set a password" step: FTP uses root's system password.
+
+**What the boundaries are, honestly.** For FTP the real boundaries are the credential
+(root's password, sent in clear text) and the network scope (`lan`'s address list, the
+user's own network). The capability drop is defence in depth only. A logged-in session is
+still uid 0 and owns every file on the card, so it can replace `/media/fat/MiSTer`, which
+runs as root at the next start; nothing here prevents that, and nothing could while root
+FTP is allowed. What the drop removes from a hijacked session (a proftpd bug exploited
+after login, or a stolen password used for more than file transfer) is everything that
+needs a capability outside the six: loading modules, raw devices (`/dev/mem`, the FPGA
+bridge), mount, network administration, ptrace of processes holding more capabilities,
+and changing the clock. Because the bounding set is locked with `SECBIT_NOROOT`, a program the session
+manages to execute does not get those back either (minijail also sets
+`no_new_privs`). Measured on the rig: a uid-0 shell
+started inside the same jail has `CapEff 0` and `mount` fails.
+
+**Why not a chroot or a read-deny on `*.ext4`.** The research for this amendment showed a
+path-preserving chroot to `/media` works, but write access to the card is root at the
+next boot (`MiSTer`, `linux/user-startup.sh`, `Scripts/`), so a chroot keeps out only what
+a determined user can reach anyway. Same for the host keys in `ssh.ext4`: anyone who can
+write the card can replace the keys' consumer. Both were dropped at the owner's request.
+
+**Why `nobody` and minijail, not `RootRevoke`.** `RootRevoke on` breaks active mode for
+root sessions (the data connection comes from port 20). `mod_cap` keeps
+CAP_NET_BIND_SERVICE for it; active transfers were checked from a privileged test port.
+
+**Tier 1 items 3 and 4.** Item 3 (anonymous FTP) is gone in `lan` and in `off`; in `stock`
+it stays, because stock has it and an upgrader must see no change. Item 4 (chroot) is
+declined, for the reason above. Tier 3's "ProFTPD unprivileged" is done in the form above
+(pre-auth `nobody`, session capabilities cut), not by remounting the card with a `uid=`.
+
+**Regression oracle.** With no `security.conf`: anonymous login and root:`1` both work
+(stock). With the SD card's file: connection refused. With `ftp=lan`: root:`1` works from
+the LAN and is dropped from other addresses, anonymous gets `530`, `SITE CHMOD` gets `550`.
+CI (`scripts/ci-tests.sh`, section "ADR 0031 — proftpd per security.conf mode") checks the
+active directives for every define set, the init script's defines and jail line, that the
+target proftpd has `mod_cap.c`, and runs `proftpd -t` for each mode under qemu-arm.

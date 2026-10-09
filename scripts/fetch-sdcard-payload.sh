@@ -366,6 +366,15 @@ stage_stock_payload() {
 #       Keeps Linux work off CPU1 (docs/cpu-isolation.md). Same shim shape: the
 #       tool is /usr/sbin/mister-cpu-isolation.
 #
+#   Scripts/security.sh
+#       Shows and changes SSH and FTP security settings (ADR 0031). Same shim
+#       shape: the tool is /usr/sbin/mister-security.
+#
+#   linux/security.conf
+#       The hardened state a NEW card starts in (ADR 0031). The sdcard image is
+#       the only thing that ships it: on an updated card the file is absent,
+#       which means stock behaviour, so an upgrade changes nothing.
+#
 # Deliberately NOT staged here:
 #
 #   * a drop-in downloader_mister_linux_modernization.ini. The multi-db Linux
@@ -391,7 +400,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh Scripts/security.sh"
 
 	local f
 	for f in downloader.ini $scripts; do
@@ -411,7 +420,12 @@ stage_update_channel() {
 		chmod 0755 "$PAYLOAD_DIR/$f"
 	done
 
-	log "staged update-channel config (downloader.ini, $scripts)"
+	# A new card starts hardened; updates never ship this file (ADR 0031).
+	[ -f "$src/linux/security.conf" ] || die "missing payload file: $src/linux/security.conf"
+	cp -f "$src/linux/security.conf" "$PAYLOAD_DIR/linux/security.conf"
+	chmod 0644 "$PAYLOAD_DIR/linux/security.conf"
+
+	log "staged update-channel config (downloader.ini, $scripts, linux/security.conf)"
 }
 
 # ============================================================================

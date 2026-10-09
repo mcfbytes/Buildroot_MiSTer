@@ -36,25 +36,54 @@ deliberately short.
 
 ---
 
-## What's the default root password, and is that a problem?
+<a id="whats-the-default-root-password-and-is-that-a-problem"></a>
+<a id="remote-login"></a>
+## How do I log in over SSH or FTP? What's the root password?
 
-**The root password is stock parity: `1`.** This is not a bug and not something this
-project changed — it's the same fixed, publicly known default password stock MiSTer has
-always used, deliberately reproduced here (a hardcoded, fixed-salt password hash baked in
-at build time, the same value stock uses). Root login is permitted over SSH and FTP with
-this password, exactly as on stock. (Passwordless login is *not* permitted — an empty
-password is explicitly refused.)
+**It depends on how the card was set up.** Stock MiSTer lets anyone on your network log
+in as root over SSH and FTP with the password `1`, which is printed in every guide.
 
-**Say this plainly: anyone who knows this widely-published default password, and who can
-reach your MiSTer's SSH or FTP port, has root.** On a home network you trust, this is the
-same posture the entire MiSTer community has run under for years. **If your MiSTer is
-reachable from an untrusted network — a shared network, a network you don't control, or
-anything exposed to the internet — changing the root password is strongly advised.**
-Change it the same way you would on stock: log in and run `passwd`. **Be aware that an
-image update currently puts the default back**: `/etc/shadow` lives inside `linux.img`,
-which an update replaces wholesale, so re-run `passwd` after every update until the
-persistence work in [ADR 0031](../decisions/0031-secure-by-default-network-posture.md)
-lands. If you use an SSH key (next entries), the key survives updates already.
+- **Updated from stock or from an earlier release of this image:** nothing changes.
+  SSH and FTP accept root with the root password, as before.
+- **Flashed from this project's SD card image:** the card starts **hardened**. SSH
+  accepts only a key, SSH forwarding reaches only Transmission's web UI, and there is no
+  FTP server at all.
+
+The difference is one file on the card, `linux/security.conf`. The SD card image ships
+it; an update never creates or changes it, and **no file means stock behaviour**.
+
+**Change it with Scripts > security.sh** from the MiSTer menu. It shows the current
+settings and offers two presets, *Hardened* and *Stock*, plus each setting on its own.
+Over SSH the same tool is `mister-security status`, `mister-security harden`,
+`mister-security stock`, or `mister-security set <setting> <value>`. It rewrites the
+file and restarts SSH and FTP, so you do not need to reboot. You can also edit the file
+from a PC and reboot; deleting it gives you stock behaviour.
+
+| Setting | Stock (no file) | Hardened (new SD card) |
+|---|---|---|
+| `ssh_password` | `yes`: root can log in with the password | `no`: SSH and SFTP take only a key |
+| `ssh_forwarding` | `stock`: any SSH port forward | `limited`: only Transmission's web UI (port 9091) |
+| `ftp` | `stock`: root FTP with the password | `off`: no FTP server |
+
+**With `ssh_password=no` you need a key.** Put your public key in
+`config/authorized_keys` on the card ([how](#ssh-key-persist)). SSH and SFTP then work
+with the key, and keep working after every update. Most "FTP" programs (WinSCP,
+FileZilla, Cyberduck) also speak SFTP, which uses the same key and encrypts everything.
+Without a key, sshd still runs but nobody can log in; the boot messages say
+`NO REMOTE LOGIN`. Adding a key is enough; you do not need to reboot.
+
+**FTP sends the password unencrypted.** Use SFTP when you can.
+
+**The console is not affected.** The root password is still stock's `1` on the serial
+console, and the MiSTer menu and its Scripts work as always. Someone who can touch the
+board can already pull the card, so a password there would protect nothing.
+
+**If root can log in with a password, change it** on any network you do not fully
+control: log in and run `passwd`. **An image update puts it back to `1`**, because
+`/etc/shadow` lives inside `linux.img`, which an update replaces. Re-run `passwd` after
+every update until the persistence work in
+[ADR 0031](../decisions/0031-secure-by-default-network-posture.md) lands. A key on the
+card survives updates already. (An empty password is always refused.)
 
 ---
 
@@ -139,9 +168,9 @@ an update lives on the data partition, not in the image.
 
 > **Note:** the key file is read by the SSH server as root, so treat the card as you would
 > any machine you can log into. Put only your **public** key there — never a private key.
-> Adding a key does not disable password login; if you want key-only access, set
-> `PasswordAuthentication no` in `/etc/ssh/sshd_config` (that change lives in the image,
-> so it is undone by an update).
+> With `ssh_password=no` ([Scripts > security.sh](#remote-login)) SSH is key-only;
+> otherwise both the key and the password
+> work.
 
 ---
 
@@ -516,8 +545,8 @@ fresh card behaves exactly like stock.
 
 Why off? Your router's NAT is most likely what keeps your MiSTer unreachable from the
 internet today. IPv6 usually gives the box a public address, and no firewall ruleset
-ships by default (see the next question). SSH (root password `1` unless you changed it)
-would then be reachable from anywhere your router allows.
+ships by default (see the next question). SSH would then be reachable from anywhere your
+router allows.
 
 To turn it on, create `/media/fat/linux/sysctl.conf` with these two lines and reboot:
 

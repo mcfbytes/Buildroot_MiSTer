@@ -5,10 +5,17 @@ trap "" TERM
 [ ! -d /var/run/proftpd ] && mkdir /var/run/proftpd
 [ ! -f /var/log/wtmp ] && touch /var/log/wtmp
 
+# security_get reads /media/fat/linux/security.conf; absent means stock.
+# shellcheck source=board/mister/de10nano/rootfs-overlay/usr/lib/mister/security.sh
+. /usr/lib/mister/security.sh
+
 start() {
+	if [ "$(security_get ftp)" = "off" ]; then
+		echo "ProFTPD: not started (ftp=off in $MISTER_SECURITY_CONF; Scripts/security.sh turns it on)"
+		return 0
+	fi
 	printf "Starting ProFTPD: "
-	/usr/sbin/proftpd
-	if [ $? != 0 ]; then
+	if ! /usr/sbin/proftpd; then
 		echo "FAILED"
 		exit 1
 	else
@@ -18,7 +25,7 @@ start() {
 
 stop() {
 	printf "Stopping ProFTPD: "
-	killall proftpd
+	killall proftpd 2>/dev/null
         echo "done"
 }
 

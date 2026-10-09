@@ -37,6 +37,9 @@
 > *current* config remains true until that plan's tasks land; each task adds a
 > divergence row here.
 >
+> **2026-10-08:** a card state file, `linux/security.conf`, can make SSH key-only, limit
+> forwarding and turn FTP off; no file means stock, and only a new SD card ships it (§1.4).
+>
 > **Owner: P3.7.** Re-read the ProFTPD 1.3.9 release notes against §'s config claims,
 > and confirm the shipped default config still matches what stock's `S50proftpd`
 > expects. Nothing in CI asserts package versions, so this drift is caught by
@@ -91,7 +94,10 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 
 | Directive | Stock | Ours | Verdict |
 |---|---|---|---|
-| `PermitRootLogin` | `yes` (uncommented) | `yes` (uncommented, comment added explaining why) | **kept, parity preserved** |
+| `PermitRootLogin` | `yes` (uncommented) | `prohibit-password`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — ADR 0031, see §1.4 |
+| `PasswordAuthentication`, `KbdInteractiveAuthentication` | commented (compiled-in `yes`) | `no`; `yes` only with the card flag | **intentional divergence, 2026-10-08** — see §1.4 |
+| `AllowTcpForwarding`, `PermitOpen`, `AllowStreamLocalForwarding` | commented (`yes`, `any`, `yes`) | `local`, `127.0.0.1:9091 localhost:9091`, `no` | **intentional divergence, 2026-10-08** — ADR 0031 Tier 1 item 7, see §1.4 |
+| `X11Forwarding` | commented (`no`) | `no`, explicit | same behaviour, stated |
 | pre-auth sandbox (build-time, not a directive) | built `--with-sandbox` but never engaged: stock's kernel has no seccomp | `SANDBOX_SECCOMP_FILTER`, engaged: `sshd-auth` runs as `sshd` with `NoNewPrivs 1`, `Seccomp 2` | **intentional divergence, 2026-10-04** — ADR 0031 Tier 1.5, kernel delta D13; CI asserts the Buildroot symbol, the kernel symbols and the sandbox string in `sshd-auth` together |
 | `UsePAM` | `yes` | `yes` | **kept, parity preserved** |
 | `AuthorizedKeysFile` | `.ssh/authorized_keys` | `.ssh/authorized_keys` **+ `/media/fat/config/authorized_keys`** | **intentional divergence, added 2026-09-05; the FAT path moved from `linux/` to `config/` on 2026-09-17 (issue #183)** — see §1.3 |
@@ -101,7 +107,8 @@ version (`$OpenBSD: sshd_config,v 1.105` header, OpenSSH 10.2p1 per
 | `ChallengeResponseAuthentication` | present (commented, old OpenSSH 7.x directive name) | absent; `KbdInteractiveAuthentication` (commented) used instead | **not a gap** — `ChallengeResponseAuthentication` is a deprecated *alias* for `KbdInteractiveAuthentication` since OpenSSH 8.7, still accepted, not removed; both are commented (no override) in both configs, so there is no behavioral difference either way |
 | `UsePrivilegeSeparation` | present (commented) | absent | **not a gap** — the directive itself was made a compiled-in no-op in OpenSSH ≥7.5 and is fully **removed** in modern sshd (an *uncommented* `UsePrivilegeSeparation` line would be a fatal config-parse error on 10.x); stock's copy was already commented out (inert), so dropping the dead line entirely is strictly safer and changes nothing at runtime |
 
-**Bottom line: no directive stock relied on was silently changed, and nothing
+**Bottom line (P3.7 audit; the 2026-10-08 rows above are deliberate, see §1.4): no
+directive stock relied on was silently changed, and nothing
 in stock's config would hit a removed/renamed keyword if pasted as-is into
 10.2p1** (everything stock left *uncommented* — `PermitRootLogin`,
 `AuthorizedKeysFile`, `UsePAM`, `PermitUserEnvironment`, `Subsystem sftp` — is
@@ -244,6 +251,88 @@ nothing failing. `scripts/test-authorized-keys-migration.sh` covers the migratio
 behaviour and runs on every PR from `lint.yml`. User-facing instructions are in
 [the FAQ](user/faq.md#ssh-key-persist).
 
+### 1.4 The card's security state: absent is stock, a new SD card is hardened (ADR 0031, 2026-10-08)
+
+**Decision:** [ADR 0031](decisions/0031-secure-by-default-network-posture.md), amendment
+2026-10-08. `/media/fat/linux/security.conf` holds `key=value` lines that the init scripts
+read through `/usr/lib/mister/security.sh` (parsed, never sourced). **No file means
+stock**, so an updated card behaves exactly as before. The SD card image ships the
+hardened file (`board/mister/de10nano/fat-payload/linux/security.conf`); nothing on the
+update path creates or changes it.
+
+| | Stock (no file, or `stock` values) | Hardened (new SD card) |
+|---|---|---|
+| SSH, key in `config/authorized_keys` | works | works |
+| SSH, root password | works (stock) | refused: the server offers `publickey` only (`ssh_password=no`) |
+| SSH `-L`/`-D`, `-R` | anything | only `127.0.0.1:9091`; `-R` refused (`ssh_forwarding=limited`) |
+| FTP | root with the password (stock) | no server, port 21 closed (`ftp=off`) |
+| Serial console (`agetty` on `ttyS0`), F9 terminal, OSD Scripts | unchanged | unchanged |
+
+**How it is applied.**
+
+- `sshd_config` and `proftpd.conf` are stock. `S50sshd` adds command-line `-o` options
+  for each non-stock key (command-line `-o` wins over the file):
+  `ssh_password=no` → `PermitRootLogin=prohibit-password`, `PasswordAuthentication=no`,
+  `KbdInteractiveAuthentication=no`; `ssh_forwarding=limited` →
+  `AllowTcpForwarding=local`, `PermitOpen=127.0.0.1:9091 localhost:9091`,
+  `AllowStreamLocalForwarding=no`, `X11Forwarding=no`. `UsePAM yes` stays: with both
+  password methods off, PAM runs only its account and session stacks.
+- `S50proftpd` with `ftp=off` prints `ProFTPD: not started (ftp=off …)` and returns.
+- `security_get` returns the stock value for a missing file, a missing key, or a value
+  that is not allowed (with a `WARNING` on stderr, so it lands in the boot log). The last
+  line for a key wins; `#` comments, upper case and CRLF are accepted.
+- `/usr/sbin/mister-security` (`status`, `harden`, `stock`, `set KEY VALUE`, gamepad
+  dialog) validates, rewrites the file through a same-directory rename, `sync`s, and
+  restarts only the services whose keys changed. `/media/fat/Scripts/security.sh` is its
+  launcher, delivered the same way as the other Scripts (install.sh, the sdcard image, and
+  `update_linux_modernization.sh`'s create-only repair). Restarting `sshd` kills only the
+  listener: OpenSSH 10's sessions are `sshd-session` processes, which `killall sshd`
+  does not match, so a user who runs the tool over SSH keeps the session.
+
+**Why not lock root's shadow entry instead.** That would also close the console, and the
+console is the recovery path for someone who has a keyboard and no key. Physical access
+already wins on this board (the card is removable, and the OSD runs any script as
+root), so a console password protects nothing extra. The shadow entry stays as
+`post-build.sh` pins it.
+
+**Why the state is on the card.** Writing to the card already means root at next boot
+(`user-startup.sh`, `Scripts/`), so the file adds no new way in. Being world-readable on
+exFAT does not matter: it holds no secret. The password hash stays out of it. It also
+survives every image update, which is what keeps an upgrader's settings.
+
+**Boot log.** `S50sshd` prints its mode: `root password login on`, `key login only`, or
+`NO REMOTE LOGIN` (no key line in `config/authorized_keys` or
+`/root/.ssh/authorized_keys` and `ssh_password=no`), plus `forwarding limited` when set.
+With `NO REMOTE LOGIN` sshd still starts, so a key dropped on the card later works
+without a reboot.
+
+**Forwarding (Tier 1 item 7).** `limited` is `AllowTcpForwarding local` with `PermitOpen
+127.0.0.1:9091 localhost:9091`, not `no`: the documented way to reach Transmission's web
+UI is `ssh -L 9091:127.0.0.1:9091` ([bittorrent.md](bittorrent.md)), and `no` would break
+it. Any other `-L`/`-D` destination gets `administratively prohibited`; `-R` and Unix
+socket forwarding are refused. A logged-in root can still reconfigure the box, so this
+stops casual pivoting, not an attacker who already has root.
+
+**Not done here.** A password that survives an update (ADR 0031 Tier 1 item 2, Q3) is
+still open. FTP modes beyond `stock` and `off` come with the ProFTPD hardening change.
+
+**Verified (2026-10-08):**
+
+- The shipped `S50sshd`, `S50proftpd` and `mister-security` were run on the image's own
+  ARM userland (`unshare` + `chroot` + qemu-arm): no file, `harden`, `set ftp stock`,
+  `stock`, a hand-edited invalid value, the no-tty menu path, and a "boot" with the SD
+  card's file. sshd's command line carried exactly the key-only and forwarding options in
+  the hardened states and none in the stock ones; proftpd was not started with `ftp=off`;
+  invalid keys and values were refused by the tool, and a bad hand-edit fell back to
+  stock with a warning.
+- CI runs the shipped parser under the target's BusyBox and the target's own `sshd -T`
+  under qemu-arm in both states.
+- On the rig (an earlier draft that used the same `-o` values the other way round): a
+  throwaway `sshd` on port 2222 refused password `1` with the key-only options and
+  accepted it without them; a `-W` to a LAN address was `administratively prohibited`,
+  `-R` was refused, `127.0.0.1:9091` worked.
+- **A rig boot of a built image is still owed.**
+
 
 ## 2. FTP — the actual gap, and what turned out *not* to be one
 
@@ -332,7 +421,8 @@ completeness since it's the same failure class: `/etc/inittab` pre-creates
 
 **Byte-identical to stock** (`diff` exit 0 against `work/imgroot/etc/proftpd.conf`
 and against the doc-captured copy in `docs/stock-inventory/20250402/etc-configs.md`).
-No changes made. Notable existing content, confirmed intentional/stock-matching:
+No changes made; with `ftp=off` in the card's `security.conf` (§1.4) proftpd is simply
+not started. Notable existing content, confirmed intentional/stock-matching:
 
 - `<Global> RootLogin on RequireValidShell off </Global>` — root FTP login is
   allowed, same as stock.
@@ -359,6 +449,9 @@ stock. proftpd does **not**: `UseIPv6 off` is kept on purpose, because anonymous
 writable. CI asserts that line.
 
 ## 3. Default-credential auth posture
+
+Since 2026-10-08 a card's `security.conf` can refuse the password below over SSH and turn
+FTP off; a new SD card ships that way, an updated card does not (§1.4).
 
 ### 3.1 Root password — already correctly handled; initial "fix" here was wrong and has been reverted
 

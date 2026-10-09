@@ -172,8 +172,10 @@ Also expected on a fresh card:
 - **SSH host keys are generated per device on first boot** (unlike stock's shared
   keys), so your SSH client may warn about a changed key if it has talked to a MiSTer
   before. See [`faq.md`](faq.md#ssh-host-keys-changed) for the one-line fix.
-- The default root password is stock parity (`1`) — see
-  [`faq.md`](faq.md#whats-the-default-root-password-and-is-that-a-problem).
+- **The card starts hardened:** SSH does not accept root's password and there is no
+  FTP server. SSH works at once with a key in `config/authorized_keys`;
+  **Scripts > security.sh** → *Stock* gives you stock's root password login over SSH
+  and FTP instead. See [`faq.md`](faq.md#remote-login).
 
 ---
 

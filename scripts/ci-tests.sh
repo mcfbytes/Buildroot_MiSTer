@@ -2004,6 +2004,9 @@ section "Main_MiSTer shared libraries"
 # library with no consumer has NO other way to fail visibly. If it silently
 # stopped being installed, every other check in this suite would still pass.
 #
+# libslint_cpp.so (the seventh) has one consumer outside this tree: SiSTer's optional HD OSD, which a stock
+# Main never loads. Same reasoning as rcheevos: nothing here would notice it missing. docs/slint.md.
+#
 # minizip and minizip-ng are ALTERNATIVES, not a pair: Main links the classic
 # libminizip.so.1 (zip.h/unzip.h API) today, while minizip-ng is staged for a
 # future native mz_zip.h port. Both are asserted because both are shipped --
@@ -2023,7 +2026,8 @@ for spec in \
 	"libminizip-ng\.so\.4:libminizip-ng.so.4* (minizip-ng)" \
 	"liblzma-sdk\.so\.:liblzma-sdk.so.* (lzma-sdk)" \
 	"libchdr\.so\.0:libchdr.so.0* (libchdr)" \
-	"librcheevos\.so\.:librcheevos.so.* (rcheevos)"; do
+	"librcheevos\.so\.:librcheevos.so.* (rcheevos)" \
+	"libslint_cpp\.so:libslint_cpp.so (slint)"; do
 	lib_re="^\\./usr/lib/${spec%%:*}"
 	lib_name="${spec#*:}"
 	if grep -qE "$lib_re" "$TAR_LIST"; then

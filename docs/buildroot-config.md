@@ -788,6 +788,11 @@ refactor — it replaces no vendored code.
   must keep the `-DRC_CLIENT_SUPPORTS_HASH` that `rcheevos.pc` supplies: it
   gates public declarations in `rc_client.h`, not just implementation
   (`package/rcheevos/rcheevos.mk`).
+- `BR2_PACKAGE_SLINT=y` — Slint 1.18.1's C++ library, `libslint_cpp.so` (13.1 MB
+  stripped), software renderer only, with this tree's three patches. Its consumer is
+  SiSTer's optional HD OSD (a Main_MiSTer rewrite, built with `GF_WITH_HDOSD=ON`), which
+  links it shared rather than carrying a static copy. It pulls host-rustc, host-corrosion
+  and host-slint into every image build. See `docs/slint.md`.
 
 ### 5.6 graphics / fonts
 
@@ -798,7 +803,9 @@ refactor — it replaces no vendored code.
 `BR2_PACKAGE_IMLIB2_{JPEG,PNG,GIF,TIFF,ID3}` — loader plugins, dlopen'd, NOT
 in the manifest's paste list, added per `abi-contract.md`'s explicit warning
 (§5.3): without these `menu.png`/background images silently fail to load with
-no DT_NEEDED signal — `BR2_PACKAGE_LIBXKBCOMMON`, `BR2_PACKAGE_SDL2`.
+no DT_NEEDED signal — `BR2_PACKAGE_LIBXKBCOMMON`, `BR2_PACKAGE_SDL2`,
+`BR2_PACKAGE_FONT_NOTO_SANS` (four Noto Sans TTFs, 1.7 MB, in `/usr/share/fonts/noto-sans`; the
+fonts Slint programs build against, `docs/slint.md`).
 
 ### 5.7 audio
 

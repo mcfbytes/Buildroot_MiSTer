@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-# Unit test for the installer's first-boot splash (installer-overlay/init,
+# Unit test for the installer's first-boot splash (installer-overlay/usr/libexec/mister-installer/install,
 # ADR 0020 §6/§9). Why a separate test, and what it can't tell you: docs/installer-build.md.
 
 # Usage: scripts/test-installer-splash.sh [path/to/init]
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-INIT="${1:-$ROOT/board/mister/de10nano/installer-overlay/init}"
+INIT="${1:-$ROOT/board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install}"
 
 # BusyBox ash is the real target shell; dash is the stricter POSIX check most
 # CI runners have, with a plain sh fallback where dash is absent.
@@ -174,8 +174,6 @@ ck "double start / double stop are idempotent" "$splash_pulsing" "0"
 # --- terminal states -------------------------------------------------------
 splash_fail >/dev/null 2>&1
 ck "failure leaves the LED solid on"   "$(led)" "1"
-splash_halt_ok >/dev/null 2>&1
-ck "benign halt leaves the LED solid on" "$(led)" "1"
 splash_done > "$W/done.txt" 2>&1
 ck "completion banner drew" "$(grep -c 'INSTALL COMPLETE' "$W/done.txt")" "1"
 ck "completion bar reads 100%" "$(grep -c '] 100%' "$W/done.txt")" "1"
@@ -259,10 +257,6 @@ splash_fail >/dev/null 2>&1
 ck "fail: first line clears the picture"   "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup: FAILED"
 ck "fail: later lines do not clear again"  "$(grep -c -- '--clear' "$H/calls")" "1"
 ck "fail: tells the user what to do"       "$(grep -c 'Re-flash sdcard.img' "$H/calls")" "1"
-: > "$H/calls"
-splash_halt_ok >/dev/null 2>&1
-ck "already installed: clears then explains" "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup"
-ck "already installed: says to power-cycle" "$(grep -c 'Power the board off and on' "$H/calls")" "1"
 : > "$H/calls"
 splash_done >/dev/null 2>&1
 ck "done: clears then says rebooting"      "$(head -1 "$H/calls")" "say --clear MiSTer first-time setup: DONE"

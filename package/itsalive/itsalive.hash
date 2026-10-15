@@ -20,7 +20,7 @@
 # So the hash is "locally computed" in a stronger sense than usual -- it
 # certifies the vendored dependency set (Cargo.lock: libc) as much as the
 # itsalive sources, and it cannot be derived by fetching a URL.
-# BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in configs/mister_installer_defconfig is
+# BR2_DOWNLOAD_FORCE_CHECK_HASHES=y in configs/mister_de10nano_defconfig is
 # what makes it load-bearing rather than decorative: without it a filename
 # with no line here is only WARNED about.
 #
@@ -32,8 +32,8 @@
 # hash of the pre-vendoring archive -- a plausible-looking wrong value.
 #
 #     # 1. bump ITSALIVE_VERSION in itsalive.mk, then, from the repo root:
-#     make mister_installer_defconfig O=output-installer
-#     make O=output-installer itsalive-source
+#     make mister_de10nano_defconfig
+#     make itsalive-source
 #     #    On a warm tree this is a minute (host-rust-bin is a download, not a
 #     #    build; `cargo vendor` fetches one crate). On a cold tree it first
 #     #    builds the cross toolchain, because host-rustc depends on it.
@@ -55,7 +55,8 @@
 # First derived 2026-09-21 on the first build of the package, with Buildroot
 # 2026.08 and host-rust-bin 1.97.1. That build also measured what itsalive.mk's
 # point 2 claims: `file` on the installed binary reports "ELF 32-bit LSB
-# executable, ARM, EABI5 ... statically linked, stripped", 444,964 bytes.
+# executable, ARM, EABI5 ... statically linked, stripped", 444,964 bytes (musl,
+# the installer's old toolchain; on glibc since ADR 0033 it is 911,320 bytes).
 sha256  fb1396ba42926aa67fa57635f1cd5de2849c45e648da21d7660b0dbc63931ddf  itsalive-797378a7d06f9e1175151a18b98e64d17aa79a77-cargo6.tar.gz
 # LICENSE at the tree root: the GPL-3.0 text. Unaffected by the vendoring
 # above, so unlike the tarball this IS an ordinary `sha256sum` of a file you

@@ -665,6 +665,13 @@ but P1.11 must still assert it, because an accidental `BR2_TARGET_ROOTFS_INITRAM
 failure mode: ~300 MB embedded) would blow it by a factor of 20 and this check would catch it
 loudly at build time instead of as a mystery brick.
 
+*Update 2026-10-15 (ADR 0033).* The DE10's stage-1 cpio now also carries the first-boot
+installer (`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`): measured 3,237,888 bytes (1,649,943
+gzip -9), against 2,539,008 (1,296,953 gz) for the previous stage 1. That is the only
+embedded payload that moved; `zImage_dtb` went from 10,760,713 to **11,119,737** bytes
+(10.60 MiB, 66.3 % of the budget, 5.40 MiB headroom). `sdcard.img` ships the same kernel as the
+Downloader (there is no separate installer kernel), so this one budget covers both.
+
 ### 7.4 The scripted assertion → **`scripts/check-zimage-dtb.sh`**
 
 Written, shellcheck-clean, POSIX `sh`, no Python dependency (`od` + shell arithmetic). Run it

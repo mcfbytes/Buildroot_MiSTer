@@ -314,14 +314,16 @@ latency measurement has been taken yet, so it is for testing, not daily use
 ### The SD-card image
 
 `sdcard.img.xz` is a complete, `dd`-able card. It ships small and uses mr-fusion's own
-mechanism: a throwaway installer reformats the card to exFAT at its real size on first boot,
-because Linux cannot grow exFAT in place. Install time depends on the card's write speed, not
+mechanism: a first-boot installer reformats the card to exFAT at its real size,
+because Linux cannot grow exFAT in place. It runs from the same kernel and initramfs as every
+other boot, and only on a freshly flashed card. Install time depends on the card's write speed, not
 its size. The installer shows progress on HDMI (using
 [`itsalive`](https://github.com/mcfbytes/ItsAlive_MiSTer) to light the display without
 Main_MiSTer) and on the serial console. It is reordered so an interrupted install is
 recoverable rather than a brick. It is a separate release asset, never referenced by
 `db.json`, because it writes the bootloader
 ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md),
+[ADR 0033](docs/decisions/0033-one-initramfs-installer-in-stage-1.md),
 [payload inventory](docs/verification/sdcard-payload.md)).
 
 ### Deliberately identical to stock
@@ -481,8 +483,8 @@ the Makefile shims GNU `install` in for Buildroot only; no `sudo` is needed.
 
 ```
 Makefile                   thin wrapper: fetch + verify Buildroot, forward everything else
-configs/                   mister_de10nano_defconfig, mister_de25nano_defconfig,
-                           mister_installer_defconfig  (rationale: docs/buildroot-config.md)
+configs/                   mister_de10nano_defconfig, mister_de25nano_defconfig
+                           (rationale: docs/buildroot-config.md)
 package/mister-{userspace,firmware,drivers}/   Kconfig profiles shared by both boards (ADR 0030)
 package/                   drivers (Wi-Fi, xone…), libraries (libchdr, rcheevos…), linux-rt,
                            the stage-1 initramfs, itsalive, 7zip, munt, midilink…
@@ -493,7 +495,7 @@ board/mister/de10nano/
   linux-patches-beta/      the 7.2 (RT) series: symlinks into linux-patches/ plus re-anchored copies
   linux-patches-upstream/  what the exported tree needs but this image must not carry
   rootfs-overlay/          init scripts, sshd wiring, MiSTer-specific files
-  installer-*/             the SD-card installer's /init and HDMI splash
+  installer-*/             the SD-card installer script and HDMI splash (run from stage 1)
 board/mister/de25nano/     the DE25-Nano developer OS (aarch64)
 scripts/                   test suite, hash sync, SD-card builder, kernel export
 docs/                      ADRs, parity audits, kernel reconciliation, user docs

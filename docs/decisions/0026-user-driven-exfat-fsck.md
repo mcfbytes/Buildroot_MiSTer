@@ -1,6 +1,7 @@
 # ADR 0026 — exFAT repair is user-driven and runs once, in the initramfs; never automatic
 
 **Status:** Accepted (2026-08-13) — decided by @mcfbytes
+**Amended by:** [ADR 0033](0033-one-initramfs-installer-in-stage-1.md) (2026-10-15) — the rule that `mkfs.exfat` never ships in stage 1 is relaxed for the first-boot installer (see §7).
 **Impact:** `configs/mister_initramfs_defconfig` (adds `BR2_PACKAGE_EXFATPROGS`),
 `board/mister/common/initramfs-overlay/init`, `board/mister/common/initramfs-busybox.config`
 (adds `CONFIG_RM`), new files `board/mister/common/initramfs-post-build.sh`,
@@ -273,3 +274,17 @@ error with no MiSTer fabric, `/init` logs it, and the repair and switch_root com
 test now asserts that. **Not yet run on a DE10-Nano.** That run needs a card with
 `linux/.fsck-request`, and must confirm the picture, the verdict text, and a normal
 Main_MiSTer start after `fb disable`.
+
+## 7. Amendment 2026-10-15 — `mkfs.exfat` may ship, off PATH (ADR 0033)
+
+§3's "only `fsck.exfat` ships in stage 1 — `mkfs.exfat` one typo from the boot path" is relaxed
+by [ADR 0033](0033-one-initramfs-installer-in-stage-1.md), which merges the SD-card installer into
+the stage-1 cpio on the DE10-Nano. `mkfs.exfat` now ships there at
+`/usr/libexec/mister-installer/mkfs.exfat`: on no `PATH`, never named by `/init`, reachable only by
+absolute path from the installer after the flag probe answers `armed` (and re-checked three more
+times before anything destructive). `package/mister-initramfs/verify.sh` still forbids every
+exfatprogs tool but `fsck.exfat` in any `bin`/`sbin` directory, and
+`scripts/test-installer-recovery.sh` scenarios D, I and J prove on every run that a finished card,
+a payload-shaped card with no flag, and a forged flag all take the normal boot unchanged. The cost
+is named in ADR 0033 §6: the reformatter is now inside every DE10 kernel. The DE25 cpio still
+carries no installer and no `mkfs.exfat`.

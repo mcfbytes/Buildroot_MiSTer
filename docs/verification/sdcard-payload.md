@@ -8,15 +8,18 @@ addition, removal, or rename here as a breaking change to that script and to
 `scripts/mk-sdcard.sh`'s staging step, and update both together.
 
 This is **not** the final installed card's layout. `p1`'s `mister-payload/*` subtree is
-what the installer `/init` (`board/mister/de10nano/installer-overlay/init`) copies onto
-the freshly reformatted exFAT partition **with the `mister-payload/` prefix stripped** —
-see ADR 0020 §2/§8. `p1`'s own `linux/zImage_dtb` (the installer kernel) and the root
-`menu.rbf` are copied to RAM and written back onto the reformatted partition *first*, so
-that an install interrupted after that point boots back into the installer (ADR 0020 §8).
-Neither of those two copies survives: the payload's own `menu.rbf` is renamed over the
-root one (they are byte-identical), and the real `linux/zImage_dtb` is renamed over the
-installer's as the install's very last act — which is what makes that rename the commit
-point.
+what the installer (`board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install`,
+run from stage 1 only on a card carrying the installer flag) copies onto the freshly
+reformatted exFAT partition **with the `mister-payload/` prefix stripped** — see ADR 0020
+§2/§8 and ADR 0033. `p1`'s own `linux/zImage_dtb` (THE kernel: the same file the
+Downloader ships) and the root `menu.rbf` are copied to RAM and written back onto the
+reformatted partition *first*, so that an install interrupted after that point boots back
+into the installer. The payload's own `menu.rbf` is later renamed over the root one (they
+are byte-identical). The payload carries no second kernel any more: the install's commit
+point is removing the flag from the MBR, not a kernel rename (ADR 0033).
+
+The flag itself is not in `p1`: it is MBR entry 3 plus the 512-byte block at LBA 1024
+(`check-sdcard.sh` verifies both against `output/images/mister-install-flag.bin`).
 
 Directories are listed with a trailing `/`; everything else is a regular file. Paths are
 relative to `p1`'s root.
@@ -30,7 +33,6 @@ menu.rbf
 mister-payload/
 mister-payload/linux/
 mister-payload/linux/linux.img.gz
-mister-payload/linux/zImage_dtb
 mister-payload/linux/7za
 mister-payload/linux/uboot.img
 mister-payload/linux/updateboot
@@ -176,10 +178,9 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 
 | Path | Source | Pin |
 |---|---|---|
-| `linux/zImage_dtb` | Our kernel (`work/Linux-Kernel_MiSTer` build), relinked by `scripts/mk-sdcard.sh` with the installer initramfs (`configs/mister_installer_defconfig` + `board/mister/de10nano/installer-overlay/`) embedded via `MISTER_INITRAMFS_CPIO` | Built, not fetched — same kernel tree as `output/images/zImage_dtb`, different embedded cpio |
-| `menu.rbf` (FAT **root**) | A byte-identical copy of `mister-payload/menu.rbf`, placed by `scripts/mk-sdcard.sh` step 4c | Not a second download and **not committed to this repo** — it is the stock file the payload fetch already staged, so it inherits the same `STOCK_RELEASE_*` pin and needs no Renovate manager of its own. This is U-Boot's `$core`: `fpgaload` reads it from the partition **root**, so without this copy the FPGA is left unconfigured for the entire install (ADR 0020 §7) |
+| `linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — byte-identical to the Downloader's kernel; its embedded stage-1 initramfs carries the installer (`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`, ADR 0033). `mk-sdcard.sh` refuses to run unless the kernel build's `usr/initramfs_inc_data` is the current `mister-initramfs.cpio` | Built, not fetched |
+| `menu.rbf` (FAT **root**) | A byte-identical copy of `mister-payload/menu.rbf`, placed by `scripts/mk-sdcard.sh` step 2 | Not a second download and **not committed to this repo** — it is the stock file the payload fetch already staged, so it inherits the same `STOCK_RELEASE_*` pin and needs no Renovate manager of its own. This is U-Boot's `$core`: `fpgaload` reads it from the partition **root**, so without this copy the FPGA is left unconfigured for the entire install (ADR 0020 §7) |
 | `mister-payload/linux/linux.img.gz` | Our build, `output/images/linux.img`, shipped **gzip-compressed** | Built, not fetched — gzipped so the 512 MiB apparent-size image never has to transit the installer's `mem=511M` RAM tmpfs; the installer stream-decompresses it to `linux/linux.img` on the reformatted exFAT card (ADR 0020 §3) |
-| `mister-payload/linux/zImage_dtb` | Our build, `output/images/zImage_dtb` — the **real** boot kernel, distinct from `linux/zImage_dtb` above | Built, not fetched |
 | `mister-payload/linux/7za` | Our build, `output/images/7za` — 7-Zip 26.02 built by `package/7zip`, **statically linked** | Built, not fetched. Lands at `/media/fat/linux/7za`, the path the Downloader hardcodes (`constants.py` `FILE_7z_util`) and otherwise fills by downloading p7zip **16.02, 2016-05-21** from `SD-Installer-Win64_MiSTer/raw/master/7za.gz`. Seeding it here means a card flashed from `sdcard.img` never performs that fetch at all. Static because this file lives on the persistent exFAT partition and outlives the rootfs that placed it — see ADR 0023 and `docs/downloader-contract.md` §4 |
 | `mister-payload/linux/security.conf` | **Ours**, `board/mister/de10nano/fat-payload/linux/security.conf` | In-tree, not fetched. The hardened state a new card starts in (ADR 0031): `ssh_password=no`, `ssh_forwarding=limited`, `ftp=off`, `ftp_drop_caps=yes`. Shipped **only** here; an updated card has no file, which means stock behaviour |
 | `mister-payload/linux/{uboot.img,updateboot,MidiLink.INI,ppp_options,u-boot.txt_example,_samba.sh,_user-startup.sh,_wpa_supplicant.conf}` and `{gamecontrollerdb,mt32-rom-data,soundfonts}/` (full subtrees) | `files/linux/*` inside the pinned stock archive | `STOCK_RELEASE_URL`/`STOCK_RELEASE_MD5`/`STOCK_RELEASE_SHA256`/`STOCK_RELEASE_SIZE` (`.github/workflows/release.yml`); `uboot.img`/`updateboot` additionally re-verified against `STOCK_UBOOT_SHA256`/`STOCK_UPDATEBOOT_SHA256` per `docs/reference-materials.md` |

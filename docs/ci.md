@@ -281,6 +281,10 @@ stages**: the static-musl initramfs and the main glibc rootfs + kernel +
 so the musl toolchain gets ccache too — musl and glibc objects have distinct
 ccache keys, so they coexist safely in one cache.
 
+> Historical (pre-ADR 0030): stage 1 is a glibc package of the main build now (ADR 0030
+> Phase B) and carries the SD-card installer too (ADR 0033), so there is no musl stage and
+> no initramfs host-toolchain cache any more.
+
 `MISTER_VERSION`, if the caller exported it to `$GITHUB_ENV` (`release.yml`
 does, per ADR 0018), is inherited here and baked into `/MiSTer.version` by
 `post-build.sh`. Left unset everywhere else, which keeps ordinary builds
@@ -1533,17 +1537,30 @@ branch-named release — it just burns a full ~5h build for nothing.
 <a id="sdcard-timing-6h-cap"></a>
 ### sdcard build timing and the 6-hour runner cap
 
+> **Since ADR 0033 (2026-10-15)** `mk-sdcard.sh` is pure assembly of `make all`'s
+> outputs: the installer is part of the one stage-1 cpio, so there is no separate
+> installer build and no kernel relink (see
+> [`docs/installer-build.md`](installer-build.md#make-sdcard-scriptsmk-sdcardsh)). What it
+> replaced, measured on release runs, was step 1 (the static-musl installer build with its
+> own toolchain) at **19 min** (run 38261354093) and **29 min** (run 37182947808) of a
+> ~87–91 min release build job, plus two kernel relinks of about **1 min** each (the
+> "~15 min each way" and "~30 min" figures below were stale). Releases are tag-triggered
+> only; `build.yml` (PR/push) never built the installer. The new sdcard step's duration
+> will be measured on the first release run; no figure is claimed for it here. The
+> rest of this section is the history behind the original design.
+
 The measured cold main build is **3h19m** (~199 min; run **29300460591**),
 plus fetching+verifying the ~90 MB stock archive, assembling the 7z, the
-pinned-ARM-7za round trip, and hashing everything. The sdcard steps add
-`mk-sdcard.sh` step 1 (the installer initramfs — a small static-musl
-Buildroot build with its own toolchain, ~1 h) and step 2 (the kernel relink).
+pinned-ARM-7za round trip, and hashing everything. The sdcard steps, as first
+designed, added `mk-sdcard.sh` step 1 (the installer initramfs — a small
+static-musl Buildroot build with its own toolchain, estimated ~1 h; measured later
+at 19–29 min, see above) and step 2 (the kernel relink).
 
 **Crucially, step 2 does NOT do a second from-scratch Buildroot build**: it
 REUSES the completed main build in `output/` and only re-links the kernel
-with the installer initramfs (~15 min each way, snapshotting+restoring
-`output/` so the shipped kernel is untouched — see
-`scripts/mk-sdcard.sh`'s `build_installer_kernel`). That reuse is deliberate
+with the installer initramfs (estimated ~15 min each way, measured ~1 min;
+snapshotting+restoring `output/` so the shipped kernel is untouched — the
+`build_installer_kernel` function ADR 0033 deleted). That reuse is deliberate
 and is what keeps the whole job around ~5 h, comfortably inside
 GitHub-hosted runners' HARD ~6 h (360 min) wall-clock cap.
 
@@ -1653,8 +1670,9 @@ kernel-variant extras) nor the pinned-ARM-7za verification path; the sdcard
 steps run AFTER all of that so the already-fetched+verified `stock_release.7z`
 can be reused instead of re-downloading ~90 MB.
 
-`scripts/mk-sdcard.sh` does its own installer-initramfs build + kernel relink
-off the completed `make all`. It does **not** put any variant kernel on the
+`scripts/mk-sdcard.sh` assembles the card from the completed `make all` (before ADR
+0033 it also did its own installer-initramfs build + kernel relink; now the card's
+kernel is byte-identical to the release's `zImage_dtb`). It does **not** put any variant kernel on the
 card: `zImage_dtb-rt` was dropped from the FAT payload on 2026-07-27 (ADR 0021
 item 4, reversed) and `MISTER_RT_ZIMAGE` no longer exists, so these steps pass
 no RT artifact in. The card's `linux.img` still carries the RT module tree, so
@@ -1671,8 +1689,8 @@ The minimal sdcard build is skipped ONLY on an opt-in full-sdcard dispatch
 (see [`#manual-full-sdcard-dispatch`](#manual-full-sdcard-dispatch)): that run
 targets an already-released tag whose minimal `sdcard.img.xz` is already
 attached, so rebuilding it here is pure redundancy — and each
-`mk-sdcard.sh` run does a ~30 min kernel relink, so a needless second one
-risks the job's ~6 h cap.
+`mk-sdcard.sh` run was, when this was written, a build with a kernel relink (ADR 0033
+removed both), so a needless second one risked the job's ~6 h cap.
 
 <a id="disk-usage-double-sample"></a>
 ### Disk & cache usage: a second, differently-timed sample
@@ -2947,9 +2965,11 @@ sufficient:
 
 1. **It cannot be allowed to reach `linux.img`, and a step inside `build` could.**
    `make azcopy` installs into `$(TARGET_DIR)`. `scripts/mk-sdcard.sh` then
-   *regenerates* `linux.img` from that same `output/` — its own header says it
-   "snapshots that image BEFORE its own step-2 relink regenerates it". Anything
-   sitting in `output/target` at that moment ships, silently, in an image whose
+   *regenerated* `linux.img` from that same `output/` (its old header said it
+   "snapshots that image BEFORE its own step-2 relink regenerates it"; ADR 0033
+   removed the relink, and `mk-sdcard.sh` now only reads `output/images/`, so that
+   particular route is closed; the principle stands). Anything
+   sitting in `output/target` when an image is regenerated ships, silently, in an image whose
    whole point is not to contain it. A different runner with a different checkout
    cannot make that mistake regardless of what gets added to `build` later.
 2. **`build` has no wall-clock to spare.** It is budgeted `timeout-minutes: 355`

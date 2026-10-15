@@ -203,14 +203,9 @@ menu "GUI toolkit and fonts"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans-jp/Config.in"
 endmenu
 
-menu "SD-card installer (ADR 0020)"
-	# Packages that exist for the throwaway first-boot installer cpio
-	# (configs/mister_installer_defconfig) and nothing else. itsalive draws
-	# the HDMI splash during the reformat (ADR 0020 section 9, issue #185).
-	# It is a plain userspace CLI and would work on the installed system as
-	# a rescue tool too, but it never goes into a rootfs: it must never run
-	# beside Main_MiSTer. The DE10 stage-1 initramfs also carries it (see
-	# BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE), where Main is equally absent.
+menu "Stage-1 HDMI splash (ADR 0020, ADR 0026)"
+	# itsalive draws HDMI in the DE10 stage-1 cpio (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE)
+	# for the installer and the exFAT repair; never in a rootfs, never beside Main_MiSTer.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/itsalive/Config.in"
 endmenu
 

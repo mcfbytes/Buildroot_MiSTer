@@ -36,3 +36,24 @@ config BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE
 	  frames from board/mister/de10nano/fsck-splash into the cpio.
 	  itsalive is then NOT installed into the rootfs: it must never
 	  run beside Main_MiSTer.
+
+config BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER
+	bool "SD-card first-boot installer (sdcard.img)"
+	depends on BR2_PACKAGE_MISTER_INITRAMFS
+	depends on BR2_arm # writes the DE10-Nano's uboot.img
+	help
+	  Puts the first-boot installer (ADR 0020, as merged into stage
+	  1 by ADR 0033) into this cpio: the installer script, a static
+	  mkfs.exfat and, with the HDMI splash above, the installer's
+	  frames, under /usr/libexec/mister-installer and
+	  /usr/share/mister-installer.
+
+	  /init runs it ONLY when the card carries the installer flag
+	  that scripts/mk-sdcard.sh puts on sdcard.img (MBR entry 3 plus
+	  a magic block at LBA 1024), and the installer spends that flag
+	  (wipes the block) as its commit point. Every other boot never
+	  reaches it.
+
+	  DE10-Nano only: it writes the DE10's uboot.img.
+
+	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/installer-init.md

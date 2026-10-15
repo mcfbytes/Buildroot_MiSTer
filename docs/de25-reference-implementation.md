@@ -650,11 +650,11 @@ read any evaluative wording with that in mind.
 ### HPS Ethernet MAC address
 
 - **The port's approach:** A single fixed MAC (CE:24:6F:BD:E3:59) baked into a NetworkManager cloned-mac-address profile shipped inside the released rootfs image -- identical on every board flashed from that image.
-- **Our plan:** No DE25-specific mechanism designed yet; the DE10 precedent (ADR-adjacent, installer-overlay/init) generates one random locally-administered MAC per physical card at flash time and injects it via U-Boot's fdt_fixup_ethernet()/aliases mechanism, giving each card a distinct address; the project's stated philosophy (ADR 0015, per-device SSH host keys) explicitly rejects shipping identical per-device identifiers.
+- **Our plan:** No DE25-specific mechanism designed yet; the DE10 precedent (ADR-adjacent, the first-boot installer, `board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install`) generates one random locally-administered MAC per physical card at flash time and injects it via U-Boot's fdt_fixup_ethernet()/aliases mechanism, giving each card a distinct address; the project's stated philosophy (ADR 0015, per-device SSH host keys) explicitly rejects shipping identical per-device identifiers.
 - **What forced the port's choice:** The port's stated reason (comment in the .nmconnection file) is purely pragmatic: get a deterministic DHCP lease for a single development board without touching U-Boot env/QSPI at all, given the HPS has no fused MAC and CONFIG_NET_RANDOM_ETHADDR randomizes it every cold boot.
 - **Cost of the port's way:** Every board flashed from the port's released rootfs image collides on the same MAC and the same DHCP lease if two are ever on the same network -- fine for one dev unit, not viable as a multi-user distribution default.
 - **Cost of our way:** Requires either reusing the DE10's flash-time random-MAC-into-u-boot.txt mechanism (needs a persisted env location on the exFAT/loop-root layout, which is a different boot flow than DE10's) or a first-boot systemd/udev generator writing a per-device NetworkManager profile -- undesigned, not yet costed.
-- **Our doc:** board/mister/de10nano/installer-overlay/init:1197-1228; memory: ssh-host-keys-shared-across-all-misters (ADR 0015 philosophy)
+- **Our doc:** board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install (`gen_mac`, written to `linux/u-boot.txt`); memory: ssh-host-keys-shared-across-all-misters (ADR 0015 philosophy)
 
 ---
 

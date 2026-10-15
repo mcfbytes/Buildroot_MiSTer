@@ -64,18 +64,20 @@ hostshim:
 de25: $(BR_STAMP) hostshim
 	$(MAKE) O=$(ROOT_DIR)/output-de25 all
 
-# SD-card installer image (ADR 0020): a shell orchestrator, run after `make all`.
+# SD-card installer image (ADR 0020, ADR 0033): pure assembly of `make all`'s outputs.
 sdcard: hostshim
 	SDCARD_CORES=$(SDCARD_CORES) $(ROOT_DIR)/scripts/mk-sdcard.sh
 
 # Buildroot's own meanings: clean keeps .config, distclean removes the tree.
 # dl/ is a shared download cache and survives both; `git clean -xfd` takes it.
+# output-installer*/ are pre-ADR-0033 leftovers; distclean still removes them.
 clean: $(BR_STAMP)
-	@for o in $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer; do \
+	@for o in $(O) $(ROOT_DIR)/output-de25; do \
 		[ -f $$o/.config ] && $(MAKE) -C $(BR_DIR) O=$$o BR2_EXTERNAL=$(ROOT_DIR) clean; done; true
-	rm -rf $(ROOT_DIR)/output-installer-kernel $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
+	rm -rf $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
 distclean:
-	rm -rf $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer $(ROOT_DIR)/output-installer-kernel \
+	rm -rf $(O) $(ROOT_DIR)/output-de25 \
+	       $(ROOT_DIR)/output-installer $(ROOT_DIR)/output-installer-kernel \
 	       $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
 
 help: $(BR_STAMP) hostshim

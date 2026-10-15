@@ -6,6 +6,12 @@ Option G subject to its image-identity proof. **Landed:** Phases B and C (PR #16
 profiles + committed defconfigs + thin Makefile (branch `feat/vanilla-buildroot-defconfigs`);
 each verified resolved-config-identical and `ci-tests.sh` green. Open: rig boot of both kernels,
 Option G.
+**Since ADR 0033 (2026-10-15):** the `output-installer/` tree, `mister_installer_defconfig` and
+`mk-sdcard.sh`'s installer relink that this ADR keeps around (§1, the `make installer*` row, the
+"one installer tree" end state) no longer exist: the installer is part of the one stage-1 cpio
+([ADR 0033](0033-one-initramfs-installer-in-stage-1.md)), so the DE10 has one tree and `mk-sdcard.sh` is pure
+assembly. Because the DE10's stage-1 cpio grew, the "byte-for-byte" constraint below holds for the
+userspace and sdcard payload, not for `zImage_dtb`. The text below is the 2026-09-11 analysis, left as written.
 **Supersedes nothing.** Would amend [ADR 0002](0002-initramfs.md) (Phase B) and
 [ADR 0021](0021-rt-kernel-first-class-ci.md) (Phase C) if those phases are accepted.
 **Constraint:** the shipped artifacts stay byte-for-byte what they are today (`linux.img`,

@@ -43,6 +43,8 @@ FSCK_EXFAT="/usr/sbin/fsck.exfat"
 SPLASH_BIN="/usr/bin/itsalive"
 SPLASH_DIR="/usr/share/mister-fsck"   # splash-<WxH>.raw.gz, gzipped raw BGRX8888
 SPLASH_TIMEOUT=15                     # seconds per itsalive call
+INSTALL_FLAG="/usr/lib/mister/install-flag"             # read-only probe, every board
+INSTALLER="/usr/libexec/mister-installer/install"       # DE10 only; ADR 0033
 
 cmdline=""
 root_arg=""
@@ -146,6 +148,24 @@ while :; do
 	waited=$((waited + 1))
 done
 log "root device $rootdev ready (after ${waited}s)"
+
+# ------------------------------------------------- first-boot installer (ADR 0033)
+# Only the exact word "armed" leaves the normal boot; docs/installer-init.md#the-flag.
+install_probe="absent"
+[ -x "$INSTALL_FLAG" ] && install_probe="$("$INSTALL_FLAG" probe "$rootdev" 2>/dev/null)"
+install_state="${install_probe%% *}"   # "STATE DISK", or a bare "absent"
+install_disk="${install_probe#* }"
+case "$install_state" in
+armed)
+	log "first-boot installer flag found on $install_disk"
+	[ -f "$INSTALLER" ] && [ -r "$INSTALLER" ] ||
+		rescue "this is an SD-card installer, but this kernel has no installer ($INSTALLER)"
+	exec /bin/sh "$INSTALLER" "$rootdev"
+	;;
+spent)
+	log "installer flag on $install_disk is spent; booting normally"
+	;;
+esac
 
 # ------------------------------------------------- mount helper / on-demand repair
 # Factored out of the mount site below because the repair path has to take the

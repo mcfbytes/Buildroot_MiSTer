@@ -2982,6 +2982,14 @@ its `dl/` under it, and a cache is immutable once written — so if this job won
 race the image build would silently lose almost its whole download cache and
 re-fetch everything.
 
+**This job only restores it.** A release runs on a tag ref, and a cache saved from a
+tag is scoped to that tag: no later release (or build) can read it, yet it still
+counts against the repository's cache budget and pushes master's entries toward LRU
+eviction. The job used to use `actions/cache` (restore + save), so every release wrote
+one dead entry; it is now `actions/cache/restore`, the same rule `buildroot-build`
+applies to everything that is not master. The cost is a cold azcopy/Go-bootstrap
+download per release.
+
 <a id="renovate-hash-sync-outcomes-gate"></a>
 ### The per-pin outcomes ledger and the job-summary gate
 

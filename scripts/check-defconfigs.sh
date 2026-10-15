@@ -113,7 +113,6 @@ done
 first=""
 for name in "${names[@]}"; do
 	[ -f "$ROOT/configs/${name}_defconfig" ] || continue
-	case "$name" in mister_installer) continue ;; esac   # the installer cpio is not a board image
 	if [ -z "$first" ]; then first="$name"; continue; fi
 	for s in $SHARED_SYMBOLS; do
 		if [ "${BOARD_VALUES[$first:$s]:-}" != "${BOARD_VALUES[$name:$s]:-}" ]; then

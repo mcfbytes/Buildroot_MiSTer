@@ -27,18 +27,32 @@
 #         INTERRUPTED / re-flash sdcard.img" banner. No reboot loop, no silent
 #         panic, and emphatically no reformat of a card it cannot install to.
 #   C. Interrupted immediately after the card was made self-recovering
-#      -> the bootloader and the installer's own kernel are on the card, and the
-#         next boot stops cleanly rather than reformatting with no payload.
-#   D. The finished card from (A) still trips the "already provisioned" guard.
+#      -> the bootloader and the kernel are on the card, and the next boot stops
+#         cleanly rather than reformatting with no payload.
+#   D. The finished card from (A) boots stage 1's NORMAL path to /sbin/init: the
+#      flag is gone, so the installer never runs again (ADR 0033).
 #   E. Interrupted after linux/linux.img was expanded
-#      -> the card matches every condition the OLD re-run guard used while still
-#         booting the installer, so this is the case ADR 0020 §8.4 re-keyed that
-#         guard for. The next boot must finish the install, not declare the card
-#         installed. (A) cannot cover this: it stops before the expansion.
-#   F. Interrupted between sfdisk and mkfs.exfat
-#      -> fully recoverable, and worth pinning: sfdisk only rewrites the MBR and
+#      -> the payload is still complete, so the next boot re-installs ("resume").
+#   F. Interrupted between the MBR write and mkfs.exfat
+#      -> fully recoverable, and worth pinning: the MBR write only rewrites sector 0 and
 #         the new p1 still starts at LBA 2048, so the shipped FAT32 is still
 #         readable under the enlarged entry and the install just runs again.
+#   G. Interrupted after the payload moved into place, before the commit
+#      -> the next boot only finishes ("finish"): no reformat, MAC and pre-seed
+#         written, flag spent.
+#   H. Interrupted between the commit (flag block wiped) and removing MBR entry 3
+#      -> the probe says "spent"; the next boot is a normal one.
+#   I. A payload-shaped FAT32 card WITHOUT the flag, and
+#   J. one with entry 3 but a forged magic block
+#      -> stage 1 never hands either to the installer, and the MBR is untouched.
+#   K. Interrupted after uboot.img was staged at the end of the card, before the MBR
+#      -> the old table is intact and the install just runs again.
+#   L. An armed exFAT card with a complete payload that this installer did not make
+#      (here: the label changed), and
+#   N. an armed card whose p1 the user reformatted as their own exFAT
+#      -> "foreign": the flag is spent, p1 is byte-for-byte untouched, normal boot.
+#   M. An installed MiSTer card that is armed again (no install token)
+#      -> "finish" with nothing to move: only the flag goes; it then boots normally.
 #
 # It also runs a plain, uninterrupted install first (scenario 0), because that is
 # the only place the PRISTINE FAT32 first boot is exercised without a `make all`,
@@ -74,9 +88,9 @@
 # SPL) is P5.4's, on hardware.
 #
 # Prereqs: qemu-system-arm, sfdisk, mkfs.vfat+mcopy (dosfstools/mtools), cmp,
-# truncate, gzip, cpio; the installer cpio (output-installer/images/rootfs.cpio, from
-# `make sdcard`, or any Buildroot build of configs/mister_installer_defconfig); an
-# ARM cross gcc; and the pinned kernel tarball under dl/.
+# truncate, gzip, cpio, mke2fs; the stage-1 cpio with the installer in it
+# (output/images/mister-initramfs.cpio, from `make mister-initramfs`); an ARM cross
+# gcc; and the pinned kernel tarball under dl/.
 #
 # Usage:
 #   scripts/test-installer-recovery.sh          # -> PASS/FAIL
@@ -91,7 +105,7 @@ set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-INSTALLER_CPIO="${INSTALLER_CPIO:-$ROOT/output-installer/images/rootfs.cpio}"
+INSTALLER_CPIO="${INSTALLER_CPIO:-$ROOT/output/images/mister-initramfs.cpio}"
 CROSS_COMPILE="${CROSS_COMPILE:-$ROOT/output/host/bin/arm-buildroot-linux-gnueabihf-}"
 
 # The QEMU kernel recipe is shared with test-sdcard-install.sh on purpose -- same
@@ -113,7 +127,7 @@ INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"
 HALT_TIMEOUT="${HALT_TIMEOUT:-120}"     # backstop only; boot() stops on its marker (see boot())
 QEMU_MEM="${QEMU_MEM:-512}"
 
-# Must match board/mister/de10nano/installer-overlay/init and genimage-sdcard.cfg.
+# Must match the installer (initramfs-overlay/usr/libexec/mister-installer/install) and genimage-sdcard.cfg.
 RESERVED_SECTORS=8192
 P1_START_SECTORS=2048
 # The synthesised card's own FAT32 payload partition. Big enough that mkfs.vfat
@@ -156,7 +170,13 @@ need cmp             "install diffutils"
 need truncate        "install coreutils"
 need gzip            "install gzip"
 need cpio            "install cpio (the test-hook marker archive)"
-[ -f "$INSTALLER_CPIO" ] || die "no installer cpio at $INSTALLER_CPIO -- build configs/mister_installer_defconfig, or set INSTALLER_CPIO="
+need mke2fs          "install e2fsprogs (the synthetic linux.img)"
+need mkfs.exfat      "install exfatprogs (scenarios L and N)"
+need exfatlabel      "install exfatprogs (scenario L)"
+need sha256sum       "install coreutils"
+[ -f "$INSTALLER_CPIO" ] || die "no stage-1 cpio at $INSTALLER_CPIO -- run 'make mister-initramfs', or set INSTALLER_CPIO="
+cpio -t --quiet < "$INSTALLER_CPIO" | grep -qx 'usr/libexec/mister-installer/install' ||
+	die "$INSTALLER_CPIO has no installer (BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER is off)"
 [ -x "${CROSS_COMPILE}gcc" ] || die "ARM cross gcc not found at ${CROSS_COMPILE}gcc (set CROSS_COMPILE=)"
 
 # ===========================================================================
@@ -174,7 +194,18 @@ need cpio            "install cpio (the test-hook marker archive)"
 # already created for its own kernel.
 STAGE="$WORK/fatroot"
 UBOOT_REF="$WORK/uboot.img"
-INSTALLER_KERNEL_REF="$WORK/installer-zImage_dtb"
+KERNEL_REF="$WORK/zImage_dtb"
+FLAG_BLOCK="$WORK/install-flag.bin"
+MARKER_INIT="$WORK/marker-init"
+# Entry 3 exactly as genimage writes it for genimage-sdcard.cfg's flag partition.
+FLAG_ENTRY='\x00\x10\x11\x00\xda\x20\x20\x00\x00\x04\x00\x00\x00\x04\x00\x00'
+
+# add_flag IMG -- arm a card: MBR entry 3 + the cpio's own magic block at LBA 1024.
+add_flag() {
+	# shellcheck disable=SC2059  # the format IS the 16 bytes
+	printf "$FLAG_ENTRY" | dd of="$1" bs=1 seek=478 conv=notrunc status=none
+	dd if="$FLAG_BLOCK" of="$1" bs=512 seek=1024 conv=notrunc status=none
+}
 
 blob() { # blob PATH SIZE_KIB MARKER -- deterministic, distinguishable filler
 	local path=$1 kib=$2 marker=$3
@@ -190,18 +221,23 @@ build_synth_card() {
 	local p="$STAGE/mister-payload"
 	mkdir -p "$STAGE/linux" "$p/linux/soundfonts" "$p/Scripts"
 
-	# --- p1 root: what the installer boots from and recovers with ------------
-	blob "$INSTALLER_KERNEL_REF" 2048 "INSTALLER-KERNEL"
-	cp "$INSTALLER_KERNEL_REF" "$STAGE/linux/zImage_dtb"
+	# --- p1 root: THE kernel (the installer copies it back first) and menu.rbf ---
+	cpio -i --quiet --to-stdout usr/lib/mister/install-flag.bin < "$INSTALLER_CPIO" > "$FLAG_BLOCK"
+	[ "$(stat -c %s "$FLAG_BLOCK")" = 512 ] || die "no 512-byte install-flag.bin in $INSTALLER_CPIO"
+	blob "$KERNEL_REF" 2048 "THE-KERNEL"
+	cp "$KERNEL_REF" "$STAGE/linux/zImage_dtb"
 	blob "$STAGE/menu.rbf" 512 "MENU-RBF"
+	printf 'network={\n\tssid="preseed-test"\n}\n' > "$STAGE/wpa_supplicant.conf"
 
-	# --- the payload ---------------------------------------------------------
-	# The REAL kernel: must differ from the installer's, since the commit point is
-	# precisely the moment one replaces the other.
-	blob "$p/linux/zImage_dtb" 2048 "REAL-KERNEL"
+	# --- the payload (no kernel: there is only one, at the root) ---------------
 	blob "$UBOOT_REF" 503 "UBOOT-IMG"
 	cp "$UBOOT_REF" "$p/linux/uboot.img"
-	head -c $(( SYNTH_LINUX_IMG_MIB * 1024 * 1024 )) /dev/zero > "$WORK/linux.img"
+	# A real ext4 whose /sbin/init is the marker, so a finished card boots all the way.
+	"${CROSS_COMPILE}gcc" -O2 -static -o "$MARKER_INIT" "$ROOT/scripts/test-initramfs/marker-init.c" ||
+		die "marker-init compile failed"
+	mkdir -p "$WORK/rootfs/sbin" "$WORK/rootfs/dev" "$WORK/rootfs/proc" "$WORK/rootfs/sys" "$WORK/rootfs/media/fat"
+	cp "$MARKER_INIT" "$WORK/rootfs/sbin/init"
+	mke2fs -q -t ext4 -L rootfs -d "$WORK/rootfs" "$WORK/linux.img" "${SYNTH_LINUX_IMG_MIB}M"
 	gzip -1 -c "$WORK/linux.img" > "$p/linux/linux.img.gz"
 	rm -f "$WORK/linux.img"
 	blob "$p/linux/7za" 64 "SEVENZIP"
@@ -219,7 +255,8 @@ build_synth_card() {
 	local total_sectors=$(( P1_START_SECTORS + p1_sectors + RESERVED_SECTORS ))
 	truncate -s "$p1_bytes" "$WORK/p1.vfat"
 	mkfs.vfat -F 32 -n MISTER "$WORK/p1.vfat" >/dev/null
-	mcopy -s -i "$WORK/p1.vfat" "$STAGE/linux" "$STAGE/menu.rbf" "$STAGE/mister-payload" ::/
+	mcopy -s -i "$WORK/p1.vfat" "$STAGE/linux" "$STAGE/menu.rbf" "$STAGE/wpa_supplicant.conf" \
+		"$STAGE/mister-payload" ::/
 
 	truncate -s $(( total_sectors * 512 )) "$CARD"
 	sfdisk --quiet "$CARD" >/dev/null <<-EOF
@@ -229,6 +266,8 @@ build_synth_card() {
 	EOF
 	dd if="$WORK/p1.vfat" of="$CARD" bs=512 seek="$P1_START_SECTORS" conv=notrunc status=none
 	dd if="$UBOOT_REF" of="$CARD" bs=512 seek=$(( P1_START_SECTORS + p1_sectors )) conv=notrunc status=none
+	cp -f "$CARD" "$WORK/unflagged-card.img"
+	add_flag "$CARD"
 	rm -f "$WORK/p1.vfat"
 	log "synthetic card: $(stat -c %s "$CARD") bytes"
 }
@@ -255,7 +294,7 @@ boot() {
 		-kernel "$IQK_ZIMAGE" \
 		-drive file="$DISK",format=raw,if=none,id=sd0 \
 		-device virtio-blk-device,drive=sd0 \
-		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 $extra" \
+		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 loop=linux/linux.img ro rootwait $extra" \
 		>"$logf" 2>&1 &
 	qpid=$!
 	while kill -0 "$qpid" 2>/dev/null; do
@@ -308,6 +347,56 @@ assert_exfat_p1() {
 # fail, which fails the pipeline, which -- captured into a variable -- would abort
 # the whole harness under `set -e` instead of reporting the FAIL. An empty offset
 # is exactly the answer order_ok wants.
+# assert_flag_gone TAG -- entry 3 and the magic block are both gone after the commit.
+assert_flag_gone() {
+	local e3 blk
+	e3=$(dd if="$DISK" bs=1 skip=478 count=16 status=none | od -An -tx1 | tr -d ' \n')
+	eq "$e3" "00000000000000000000000000000000" "$1: MBR entry 3 (the flag) was removed"
+	blk=$(dd if="$DISK" bs=512 skip=1024 count=1 status=none | tr -d '\0' | wc -c)
+	eq "$blk" "0" "$1: the flag block at LBA 1024 was wiped"
+}
+
+# assert_normal_boot TAG LOG -- the card goes through stage 1's normal path to /sbin/init.
+assert_normal_boot() {
+	boot "$2" "$HALT_TIMEOUT"
+	has   "$2" 'MARKER: RESULT=PASS'      "$1: stage 1 switch_rooted into linux.img and every marker passed"
+	hasnt "$2" '\[installer\]'           "$1: the installer never ran"
+	hasnt "$2" 'installer flag found'     "$1: /init did not see an armed flag"
+	hasnt "$2" 'BOOT FAILED'              "$1: no stage-1 rescue"
+}
+
+# p1_geom -- "START SIZE" of partition 1, from the table on $DISK.
+p1_geom() {
+	sfdisk -d "$DISK" 2>/dev/null | sed -n '/img1 /s/.*start=[[:space:]]*\([0-9]*\).*size=[[:space:]]*\([0-9]*\).*/\1 \2/p'
+}
+p1_sha() { local s n; read -r s n <<<"$(p1_geom)"; dd if="$DISK" bs=512 skip="$s" count="$n" status=none | sha256sum; }
+
+# p1_exfat_edit CMD... -- run a host exfatprogs CMD on p1's first 64 MiB (all the metadata
+# mkfs.exfat and exfatlabel touch), over a sparse file of p1's full size; then write it back.
+p1_exfat_edit() {
+	local s n img="$WORK/p1edit.img"
+	read -r s n <<<"$(p1_geom)"
+	rm -f "$img"
+	dd if="$DISK" of="$img" bs=512 skip="$s" count=131072 status=none
+	truncate -s $(( n * 512 )) "$img"
+	"$@" "$img" >/dev/null 2>&1 || die "host '$*' failed on p1"
+	dd if="$img" of="$DISK" bs=512 seek="$s" count=131072 conv=notrunc status=none
+	rm -f "$img"
+}
+
+# assert_spent_untouched TAG MBR_BEFORE P1_SHA_BEFORE -- foreign card: flag spent, nothing else.
+assert_spent_untouched() {
+	local blk
+	if dd if="$DISK" bs=512 count=1 status=none | cmp -s - "$2"; then
+		pass "$1: the MBR is byte-for-byte unchanged (entry 3 left, spent)"
+	else
+		fail "$1: the MBR CHANGED on a card the installer must not install to"
+	fi
+	blk=$(dd if="$DISK" bs=512 skip=1024 count=1 status=none | tr -d '\0' | wc -c)
+	eq "$blk" "0" "$1: the flag block at LBA 1024 was wiped (spent)"
+	eq "$(p1_sha)" "$3" "$1: p1 is byte-for-byte unchanged"
+}
+
 at() { grep -abo -m1 "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1 || true; }
 order_ok() {
 	if [ -n "$1" ] && [ -n "$2" ] && [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (offsets '$1' vs '$2')"; fi
@@ -332,22 +421,25 @@ scenario_clean_install() {
 	hasnt "$WORK/z1.log" 'not found'              "0: no missing-applet noise on the console"
 	has   "$WORK/z1.log" 'removed linux/linux.img.gz'  "0: the compressed image was deleted, not truncated"
 	has   "$WORK/z1.log" "removed mister-payload/ from" "0: the staged payload dir was cleaned up"
+	has   "$WORK/z1.log" 'pre-seed applied: wpa_supplicant.conf' "0: the user's pre-seed was applied"
 
 	# The ORDER is the point of the change, so assert it rather than the mere
 	# presence of each step. These are the same markers scripts/test-sdcard-install.sh
 	# greps for against the shipped card; keep the two in step.
-	local o_part o_uboot o_mkfs o_recov o_payload o_commit
+	local o_staged o_part o_uboot o_mkfs o_recov o_payload o_commit
+	o_staged=$(at  "$WORK/z1.log" 'uboot.img staged at LBA')
 	o_part=$(at    "$WORK/z1.log" 'new partitions present')
 	o_uboot=$(at   "$WORK/z1.log" 'the card can reach U-Boot again')
 	o_mkfs=$(at    "$WORK/z1.log" 'formatting (exFAT)')
 	o_recov=$(at   "$WORK/z1.log" 'from here a power cut re-runs the installer')
 	o_payload=$(at "$WORK/z1.log" 'this card can now finish on its own')
 	o_commit=$(at  "$WORK/z1.log" 'this card is a MiSTer now')
-	order_ok "$o_part"    "$o_uboot"   "0: uboot.img lands right after the repartition, not at the end"
+	order_ok "$o_staged"  "$o_part"    "0: uboot.img is staged BEFORE the MBR points p2 at it"
+	order_ok "$o_part"    "$o_uboot"   "0: uboot.img is verified in p2 right after the repartition"
 	order_ok "$o_uboot"   "$o_mkfs"    "0: the bootloader is written BEFORE the filesystem is made"
-	order_ok "$o_mkfs"    "$o_recov"   "0: the installer kernel is restored right after the format"
+	order_ok "$o_mkfs"    "$o_recov"   "0: the kernel is restored right after the format"
 	order_ok "$o_recov"   "$o_payload" "0: the card is self-recovering before the payload copy-back"
-	order_ok "$o_payload" "$o_commit"  "0: the real kernel is the LAST thing installed (the commit point)"
+	order_ok "$o_payload" "$o_commit"  "0: spending the flag is the LAST thing done (the commit point)"
 
 	# And the finished geometry, host-side.
 	local dump p1_start p1_size p2_size p2_type
@@ -366,6 +458,7 @@ scenario_clean_install() {
 	fi
 	assert_exfat_p1 "0"
 	assert_bootloader_present "0: the finished card has uboot.img in its 0xA2 partition"
+	assert_flag_gone "0"
 }
 
 scenario_interrupted_after_payload() {
@@ -383,9 +476,9 @@ scenario_interrupted_after_payload() {
 	boot "$WORK/a2.log" "$INSTALL_TIMEOUT"
 	# It found ITS OWN kernel on the card -- i.e. a real board would have booted
 	# the installer here rather than nothing.
-	has   "$WORK/a2.log" 'installer kernel staged in RAM'   "A: the card still carried the installer kernel"
-	hasnt "$WORK/a2.log" 'no linux/zImage_dtb at the card root' "A: no missing-installer-kernel warning"
-	hasnt "$WORK/a2.log" 'already provisioned'              "A: the provisioned guard did NOT misfire"
+	has   "$WORK/a2.log" 'card state: resume'               "A: recognised as this installer's own half-done card"
+	has   "$WORK/a2.log" 'payload and kernel staged in RAM' "A: the card still carried its kernel"
+	hasnt "$WORK/a2.log" 'refusing to reformat'             "A: the ownership guard did NOT misfire"
 	hasnt "$WORK/a2.log" 'was INTERRUPTED'                  "A: not mistaken for a partial copy"
 	hasnt "$WORK/a2.log" 'INSTALLER: FAILED'                "A: no failure banner on the recovery run"
 	has   "$WORK/a2.log" 'this card is a MiSTer now'        "A: the recovery run reached the commit point"
@@ -393,11 +486,10 @@ scenario_interrupted_after_payload() {
 	has   "$WORK/a2.log" 'per-board MAC = '                 "A: the recovery run still wrote a per-board MAC"
 	assert_bootloader_present "A: the finished card has uboot.img in its 0xA2 partition"
 
-	log "--- D. the finished card still trips the provisioned guard -------------"
-	boot "$WORK/d1.log" "$HALT_TIMEOUT" "" 'already provisioned'
-	has   "$WORK/d1.log" 'already provisioned'  "D: re-run guard tripped on the finished card"
-	hasnt "$WORK/d1.log" 'INSTALLER: FAILED'    "D: the benign halt did not print the FAILED banner"
-	hasnt "$WORK/d1.log" 'INSTALL COMPLETE'     "D: the benign halt did not claim an install"
+	assert_flag_gone "A"
+
+	log "--- D. the finished card boots normally; the installer never runs again --"
+	assert_normal_boot "D" "$WORK/d1.log"
 }
 
 scenario_interrupted_after_expand() {
@@ -414,15 +506,15 @@ scenario_interrupted_after_expand() {
 	has   "$WORK/e1.log" 'TEST-STOP after "expanded"' "E: the run stopped after the expansion"
 	hasnt "$WORK/e1.log" 'INSTALL COMPLETE'           "E: the interrupted run did NOT finish"
 
-	log "    re-booting (the old guard would have called this card installed) ..."
+	log "    re-booting the expanded-but-uncommitted card ..."
 	boot "$WORK/e2.log" "$INSTALL_TIMEOUT"
-	hasnt "$WORK/e2.log" 'already provisioned' "E: the re-keyed guard did NOT misfire on a mid-commit card"
+	has   "$WORK/e2.log" 'card state: resume'  "E: an expanded-but-uncommitted card re-installs"
 	hasnt "$WORK/e2.log" 'INSTALLER: FAILED'   "E: no failure banner"
 	has   "$WORK/e2.log" 'INSTALL COMPLETE'    "E: it finished the install instead"
 }
 
 scenario_interrupted_after_bootloader() {
-	log "--- F. interrupted between sfdisk and mkfs.exfat -----------------------"
+	log "--- F. interrupted between the MBR write and mkfs.exfat ----------------"
 	# Worth its own scenario because the answer is better than it looks. sfdisk
 	# only rewrites the MBR, and the new p1 still starts at LBA 2048, so the
 	# SHIPPED FAT32 filesystem -- installer kernel, payload and all -- is still
@@ -456,7 +548,6 @@ scenario_interrupted_mid_copy() {
 	has   "$WORK/b2.log" 'mister-payload.part'     "B: the banner names the partial directory"
 	has   "$WORK/b2.log" 're-flash sdcard.img'     "B: the banner gives the recovery instruction"
 	hasnt "$WORK/b2.log" 'INSTALL COMPLETE'        "B: it did not claim to have installed anything"
-	hasnt "$WORK/b2.log" 'already provisioned'     "B: it did not call a half-copied card installed"
 	hasnt "$WORK/b2.log" 'repartitioning the card' "B: it did NOT reformat a card it cannot install to"
 }
 
@@ -465,7 +556,7 @@ scenario_interrupted_at_recoverable() {
 	flash_fresh_card
 	boot "$WORK/c1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=recoverable"
 	has "$WORK/c1.log" 'TEST-STOP after "recoverable"' "C: the run stopped just after the kernel restore"
-	has "$WORK/c1.log" 'from here a power cut re-runs the installer' "C: the installer kernel was written first"
+	has "$WORK/c1.log" 'from here a power cut re-runs the installer' "C: the kernel was written back first"
 	assert_bootloader_present "C: uboot.img was already written at that point"
 	assert_exfat_p1 "C"
 
@@ -478,6 +569,136 @@ scenario_interrupted_at_recoverable() {
 }
 
 # ============================================================================
+scenario_interrupted_after_moves() {
+	log "--- G. interrupted after the payload moved into place, before the commit -"
+	flash_fresh_card
+	boot "$WORK/g1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=moved"
+	has   "$WORK/g1.log" 'TEST-STOP after "moved"' "G: the run stopped after the moves"
+	hasnt "$WORK/g1.log" 'this card is a MiSTer now' "G: it stopped BEFORE the commit"
+
+	log "    re-booting (the flag is still armed: it must finish, not reinstall) ..."
+	boot "$WORK/g2.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/g2.log" 'card state: finish'        "G: recognised as finished-but-uncommitted"
+	hasnt "$WORK/g2.log" 'repartitioning the card'   "G: it did NOT reformat a card that only needed committing"
+	has   "$WORK/g2.log" 'per-board MAC = '          "G: the MAC the cut-short run never wrote was written"
+	has   "$WORK/g2.log" 'pre-seed applied: wpa_supplicant.conf' "G: the pre-seed survived the cut (kept on the card)"
+	has   "$WORK/g2.log" 'this card is a MiSTer now' "G: it committed"
+	has   "$WORK/g2.log" 'INSTALL COMPLETE'          "G: and finished"
+	assert_flag_gone "G"
+	assert_normal_boot "G" "$WORK/g3.log"
+}
+
+scenario_interrupted_after_commit() {
+	log "--- H. interrupted after the commit, before MBR entry 3 was removed ----"
+	flash_fresh_card
+	boot "$WORK/h1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=committed"
+	has   "$WORK/h1.log" 'TEST-STOP after "committed"' "H: the run stopped right after the commit"
+	has   "$WORK/h1.log" 'this card is a MiSTer now'   "H: the flag block was already wiped"
+	assert_normal_boot "H" "$WORK/h2.log"
+	has   "$WORK/h2.log" 'is spent'                    "H: /init read the leftover entry 3 as spent"
+}
+
+# A card the installer must NEVER touch: same bytes as the shipped one, minus the flag.
+scenario_no_flag() {
+	log "--- I. a payload-shaped FAT32 card WITHOUT the flag -----------------------"
+	cp -f "$WORK/unflagged-card.img" "$DISK"; truncate -s "$SDCARD_TEST_SIZE" "$DISK"
+	dd if="$DISK" of="$WORK/i.mbr" bs=512 count=1 status=none
+	boot "$WORK/i1.log" "$HALT_TIMEOUT" "" 'Dropping to a rescue shell'
+	hasnt "$WORK/i1.log" '\[installer\]'       "I: the installer never ran"
+	has   "$WORK/i1.log" 'BOOT FAILED'          "I: stage 1 took the normal path (and rescued: no linux.img)"
+	if dd if="$DISK" bs=512 count=1 status=none | cmp -s - "$WORK/i.mbr"; then
+		pass "I: the partition table is untouched"
+	else
+		fail "I: the partition table CHANGED on a card without the flag"
+	fi
+}
+
+scenario_forged_flag() {
+	log "--- J. entry 3 present but the magic block is wrong ----------------------"
+	flash_fresh_card
+	printf 'MiSTer first-boot installer flag v0 not-the-real-one\n' |
+		dd of="$DISK" bs=512 seek=1024 conv=notrunc,sync status=none
+	dd if="$DISK" of="$WORK/j.mbr" bs=512 count=1 status=none
+	boot "$WORK/j1.log" "$HALT_TIMEOUT" "" 'Dropping to a rescue shell'
+	has   "$WORK/j1.log" 'is spent'             "J: /init read the flag as spent, not armed"
+	hasnt "$WORK/j1.log" '\[installer\]'       "J: the installer never ran"
+	if dd if="$DISK" bs=512 count=1 status=none | cmp -s - "$WORK/j.mbr"; then
+		pass "J: the partition table is untouched"
+	else
+		fail "J: the partition table CHANGED on a card with a forged flag"
+	fi
+}
+
+scenario_interrupted_after_uboot_staged() {
+	log "--- K. interrupted after uboot.img was staged, before the MBR write -----"
+	flash_fresh_card
+	dd if="$DISK" of="$WORK/k.mbr" bs=512 count=1 status=none
+	boot "$WORK/k1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=uboot-staged"
+	has   "$WORK/k1.log" 'TEST-STOP after "uboot-staged"' "K: the run stopped after staging uboot.img"
+	if dd if="$DISK" bs=512 count=1 status=none | cmp -s - "$WORK/k.mbr"; then
+		pass "K: the partition table is still the shipped one"
+	else
+		fail "K: the MBR changed before the repartition step"
+	fi
+	log "    re-booting the staged-but-unpartitioned card ..."
+	boot "$WORK/k2.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/k2.log" 'card state: fresh'  "K: still a fresh card"
+	hasnt "$WORK/k2.log" 'INSTALLER: FAILED'  "K: no failure banner"
+	has   "$WORK/k2.log" 'INSTALL COMPLETE'   "K: the install simply ran again and finished"
+	assert_flag_gone "K"
+}
+
+# A card the installer made, then relabelled: payload complete, but not provably ours.
+scenario_foreign_payload() {
+	log "--- L. armed exFAT with a complete payload this installer did not make --"
+	flash_fresh_card
+	boot "$WORK/l1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=payload-copied"
+	has "$WORK/l1.log" 'TEST-STOP after "payload-copied"' "L: set-up stopped at payload-copied"
+	p1_exfat_edit exfatlabel_to NOT_MISTER
+	dd if="$DISK" of="$WORK/l.mbr" bs=512 count=1 status=none
+	local sha; sha=$(p1_sha)
+	boot "$WORK/l2.log" "$INSTALL_TIMEOUT" "" 'Dropping to a rescue shell'
+	has   "$WORK/l2.log" 'card state: foreign'        "L: classified foreign, not resume"
+	has   "$WORK/l2.log" 'installer flag spent'       "L: the flag was spent"
+	hasnt "$WORK/l2.log" 'formatting (exFAT)'         "L: it did NOT reformat"
+	hasnt "$WORK/l2.log" 'repartitioning the card'    "L: it did NOT repartition"
+	boot "$WORK/l3.log" "$HALT_TIMEOUT" "" 'Dropping to a rescue shell'
+	has   "$WORK/l3.log" 'is spent'                   "L: the next boot read the flag as spent"
+	hasnt "$WORK/l3.log" '\[installer\]'             "L: and never ran the installer again"
+	assert_spent_untouched "L" "$WORK/l.mbr" "$sha"
+}
+exfatlabel_to() { exfatlabel "$2" "$1"; }
+
+scenario_rearmed_installed() {
+	log "--- M. an installed MiSTer card, armed again -----------------------------"
+	cp -f --sparse=always "$WORK/installed-card.img" "$DISK"
+	add_flag "$DISK"
+	boot "$WORK/m1.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/m1.log" 'card state: finish'          "M: an installed card reads as finish"
+	has   "$WORK/m1.log" 'nothing to move'             "M: with no install token, nothing is moved"
+	hasnt "$WORK/m1.log" 'formatting (exFAT)'          "M: it did NOT reformat"
+	has   "$WORK/m1.log" 'this card is a MiSTer now'   "M: the flag was spent"
+	assert_flag_gone "M"
+	assert_normal_boot "M" "$WORK/m2.log"
+}
+
+scenario_foreign_exfat() {
+	log "--- N. an armed card whose p1 the user reformatted as exFAT --------------"
+	flash_fresh_card
+	p1_exfat_edit mkfs.exfat -L UserCard
+	dd if="$DISK" of="$WORK/n.mbr" bs=512 count=1 status=none
+	local sha; sha=$(p1_sha)
+	boot "$WORK/n1.log" "$INSTALL_TIMEOUT" "" 'Dropping to a rescue shell'
+	has   "$WORK/n1.log" 'card state: foreign'        "N: classified foreign"
+	hasnt "$WORK/n1.log" 'INSTALLER: FAILED'          "N: no installer failure (no rescue loop)"
+	hasnt "$WORK/n1.log" 'formatting (exFAT)'         "N: it did NOT reformat the user's exFAT"
+	has   "$WORK/n1.log" 'installer flag spent'       "N: the flag was spent"
+	boot "$WORK/n2.log" "$HALT_TIMEOUT" "" 'Dropping to a rescue shell'
+	has   "$WORK/n2.log" 'is spent'                   "N: the next boot took the normal path"
+	hasnt "$WORK/n2.log" '\[installer\]'             "N: and never ran the installer again"
+	assert_spent_untouched "N" "$WORK/n.mbr" "$sha"
+}
+
 main() {
 	# Kernel 1: NO test-hook marker. Scenario 0 runs on this one, which is what
 	# makes its "the cmdline alone does nothing" assertion mean anything.
@@ -485,6 +706,7 @@ main() {
 	iqk_ensure_kernel
 	build_synth_card
 	scenario_clean_install
+	cp -f --sparse=always "$DISK" "$WORK/installed-card.img"
 
 	# Kernel 2: same installer cpio with /.installer-test-hook appended as a
 	# second archive, so stop_after() will act. Rebuilding is ~a minute and it is
@@ -499,6 +721,14 @@ main() {
 	scenario_interrupted_after_bootloader
 	scenario_interrupted_mid_copy
 	scenario_interrupted_at_recoverable
+	scenario_interrupted_after_moves
+	scenario_interrupted_after_commit
+	scenario_no_flag
+	scenario_forged_flag
+	scenario_interrupted_after_uboot_staged
+	scenario_foreign_payload
+	scenario_rearmed_installed
+	scenario_foreign_exfat
 
 	echo
 	if [ "$FAILED" -eq 0 ]; then

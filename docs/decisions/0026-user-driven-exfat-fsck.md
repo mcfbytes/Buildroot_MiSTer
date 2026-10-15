@@ -1,6 +1,7 @@
 # ADR 0026 — exFAT repair is user-driven and runs once, in the initramfs; never automatic
 
 **Status:** Accepted (2026-08-13) — decided by @mcfbytes
+**Amended by:** [ADR 0033](0033-one-initramfs-installer-in-stage-1.md) (2026-10-15) — the rule that `mkfs.exfat` never ships in stage 1 is relaxed for the first-boot installer (see §7).
 **Impact:** `configs/mister_initramfs_defconfig` (adds `BR2_PACKAGE_EXFATPROGS`),
 `board/mister/common/initramfs-overlay/init`, `board/mister/common/initramfs-busybox.config`
 (adds `CONFIG_RM`), new files `board/mister/common/initramfs-post-build.sh`,
@@ -204,7 +205,7 @@ possible, but it costs the same wall-clock as the repair walk, contends for SD I
 play, and throws false positives because the filesystem moves underneath it. Worth
 revisiting as a rare, idle-time job.
 
-**An HDMI "please wait" screen during the repair.** Deferred, and tracked separately. It is
+**An HDMI "please wait" screen during the repair.** Done 2026-10-08, see §6. Originally deferred: It is
 feasible on the reboot path — the FPGA *is* configured by U-Boot, and what is missing is
 the sequence in `video_fb_enable()` (`Main:video.cpp:3557-3600`): `spi_uio_cmd_cont(UIO_SET_FBUF)`
 then ten `spi_w()` writes (enable+format, base address lo/hi, width, height, scaled
@@ -245,3 +246,45 @@ solving it.
   consistent — is a false generalization: the updater is image-independent and manages its
   own updates, while `check_storage.sh` is a version-locked launcher that never needs
   updating. Same destination, one mechanism, no new convention.
+
+## 6. Amendment 2026-10-08 — an HDMI splash during the repair
+
+The deferred "please wait" screen (§4) now exists. Its three unknowns were solved by
+[ItsAlive_MiSTer](https://github.com/mcfbytes/ItsAlive_MiSTer), which brings HDMI and
+`/dev/fb0` up with no Main_MiSTer, using the `menu.rbf` U-Boot loaded. The SD-card
+installer has used it since ADR 0020 §9. The repair path now does the same:
+
+- **`BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`** (DE10-Nano defconfig) selects `package/itsalive`
+  (now linked static on glibc too, and kept out of the rootfs) and copies it and two gzipped
+  raw frames from `board/mister/de10nano/fsck-splash/` into the stage-1 cpio. The stage-1 BusyBox gains `zcat` and `timeout`. `zImage_dtb` grows by
+  about 480 KB (10.27 → 10.76 MB, against the 16 MiB budget in `docs/boot-chain.md` §7.3).
+  The RT kernel embeds the same cpio, so it grows by the same amount.
+- **`/init`** runs `itsalive up`, then `image`, after the unmount and before `fsck.exfat`.
+  Afterwards it shows the verdict as console text for 3 s, then `fb disable`, which hands
+  the display back to the core in the state Main_MiSTer expects. Every call runs under
+  `timeout 15`, and every failure is logged and ignored. Without hardware the result is a
+  black screen, which is what this boot showed before. An ordinary boot never runs any of it.
+- `mister_fsck_video=480p` on the kernel command line (via `u-boot.txt`'s `$v`) picks the
+  480p mode for a display that rejects 720p, like the installer's `mister_installer_video`.
+- `mister-fsck-exfat` no longer promises a black screen. It says a "DO NOT POWER OFF"
+  picture is shown, and that some displays stay black instead.
+
+Verified in QEMU only (`scripts/test-initramfs.sh fsck-request`). There, itsalive takes a bus
+error with no MiSTer fabric, `/init` logs it, and the repair and switch_root complete. The
+test now asserts that. **Not yet run on a DE10-Nano.** That run needs a card with
+`linux/.fsck-request`, and must confirm the picture, the verdict text, and a normal
+Main_MiSTer start after `fb disable`.
+
+## 7. Amendment 2026-10-15 — `mkfs.exfat` may ship, off PATH (ADR 0033)
+
+§3's "only `fsck.exfat` ships in stage 1 — `mkfs.exfat` one typo from the boot path" is relaxed
+by [ADR 0033](0033-one-initramfs-installer-in-stage-1.md), which merges the SD-card installer into
+the stage-1 cpio on the DE10-Nano. `mkfs.exfat` now ships there at
+`/usr/libexec/mister-installer/mkfs.exfat`: on no `PATH`, never named by `/init`, reachable only by
+absolute path from the installer after the flag probe answers `armed` (and re-checked three more
+times before anything destructive). `package/mister-initramfs/verify.sh` still forbids every
+exfatprogs tool but `fsck.exfat` in any `bin`/`sbin` directory, and
+`scripts/test-installer-recovery.sh` scenarios D, I and J prove on every run that a finished card,
+a payload-shaped card with no flag, and a forged flag all take the normal boot unchanged. The cost
+is named in ADR 0033 §6: the reformatter is now inside every DE10 kernel. The DE25 cpio still
+carries no installer and no `mkfs.exfat`.

@@ -1,0 +1,52 @@
+#!/bin/sh
+# install-flag disk PART | state DISK | probe PART -- READ-ONLY probe for the first-boot
+# installer flag; prints armed|spent|absent and never writes. docs/installer-init.md#the-flag
+set -u
+# shellcheck source=board/mister/common/initramfs-overlay/usr/lib/mister/install-flag.conf
+. /usr/lib/mister/install-flag.conf || { echo absent; exit 2; }
+
+# The parent of /sys/block/<disk>/<part> is the disk; no dirname applet needed.
+cmd_disk() {
+	_part="${1#/dev/}"
+	case "$_part" in ''|*/*) return 1 ;; esac
+	for _c in /sys/block/*/"$_part"; do
+		[ -d "$_c" ] || continue
+		_d="${_c%/*}"
+		printf '/dev/%s' "${_d##*/}"
+		return 0
+	done
+	return 1
+}
+
+# Entry 3 is read from the MBR itself, not sysfs: partitions appear one at a time,
+# so p1's node can exist before the kernel has added p3.
+cmd_state() {
+	_disk="$1"
+	case "$_disk" in /dev/?*) ;; *) echo absent; return 0 ;; esac
+	[ -b "$_disk" ] || { echo absent; return 0; }
+	# 16 bytes of entry N at 446 + 16*(N-1): type at +4, LE32 start at +8, LE32 size at +12.
+	# shellcheck disable=SC2046  # sixteen decimal words is the point
+	set -- $(hexdump -s $(( 446 + 16 * (FLAG_SLOT - 1) )) -n 16 -e '16/1 "%u "' "$_disk" 2>/dev/null)
+	[ $# -eq 16 ] || { echo absent; return 0; }
+	_type=$5
+	_start=$(( ${9} | (${10} << 8) | (${11} << 16) | (${12} << 24) ))
+	_size=$(( ${13} | (${14} << 8) | (${15} << 16) | (${16} << 24) ))
+	{ [ "$_type" = "$FLAG_TYPE" ] && [ "$_start" = "$FLAG_LBA" ] && [ "$_size" = "$FLAG_SECTORS" ]; } ||
+		{ echo absent; return 0; }
+	[ -r "$FLAG_REF" ] || { echo absent; return 0; }
+	if dd if="$_disk" bs=512 skip="$FLAG_LBA" count=1 2>/dev/null | cmp -s - "$FLAG_REF"; then
+		echo armed
+	else
+		echo spent
+	fi
+}
+
+case "${1:-}" in
+disk)  [ $# -eq 2 ] || exit 2; cmd_disk "$2" ;;
+state) [ $# -eq 2 ] || { echo absent; exit 2; }; cmd_state "$2" ;;
+# One fork for /init: "STATE DISK" (DISK empty when PART has no parent in sysfs).
+probe) [ $# -eq 2 ] || { echo absent; exit 2; }
+       _disk="$(cmd_disk "$2")" || _disk=""
+       if [ -n "$_disk" ]; then printf '%s %s\n' "$(cmd_state "$_disk")" "$_disk"; else echo absent; fi ;;
+*)     echo "usage: install-flag disk PART | state DISK | probe PART" >&2; exit 2 ;;
+esac

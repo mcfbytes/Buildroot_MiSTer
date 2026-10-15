@@ -5,7 +5,7 @@ The SD-card installer's HDMI splash (ADR 0020 §9) is blitted by `itsalive
 image`, which takes raw pixels in MiSTer_fb's byte order -- B, G, R, then a
 padding byte -- and neither decodes nor scales. The frames are composed as
 PNGs (build.py, checked in); this turns one into what the tool eats, at
-build time, from installer-post-build.sh. It exists so that no derived
+build time, from package/mister-initramfs. It exists so that no derived
 binary has to live in git next to its source.
 
 Deliberately dependency-free: the standard library only (zlib, struct,

@@ -20,6 +20,14 @@ DP-2 depends on).
 > kernel-variant CI matrix, `scripts/list-kernel-variants.sh`, `check-kernel-defconfig-sync.sh`
 > and `scripts/lib/board-expectations.sh`. Read the paths here as of their date; the current
 > layout is README "Building it yourself" and `docs/ci.md` "The pipeline today".
+>
+> **Since ADR 0033 (2026-10-15)** the SD-card installer is not a separate configuration: `configs/mister_installer_defconfig`,
+> its BusyBox config and post-build script are deleted, the installer script moved to
+> `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install` inside the one stage-1
+> cpio, and `scripts/mk-sdcard.sh` no longer snapshots, relinks or restores a kernel. The rows below
+> that cite those files describe the layout of 2026-08-21; for a DE25 card flow they now read as "the DE10
+> installer is part of the DE10's stage 1 (`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`); a DE25 installer would
+> be another stage-1 option, not another defconfig".
 
 ## 1. Why this document exists, and what it is *not*
 

@@ -39,6 +39,12 @@ FSCK_RESULT="linux/.fsck-result"
 # other command here is an applet and resolves regardless; this is the one real
 # binary, and it is not worth making it depend on that default.
 FSCK_EXFAT="/usr/sbin/fsck.exfat"
+# The repair's HDMI splash, when BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE put it here.
+SPLASH_BIN="/usr/bin/itsalive"
+SPLASH_DIR="/usr/share/mister-fsck"   # splash-<WxH>.raw.gz, gzipped raw BGRX8888
+SPLASH_TIMEOUT=15                     # seconds per itsalive call
+INSTALL_FLAG="/usr/lib/mister/install-flag"             # read-only probe, every board
+INSTALLER="/usr/libexec/mister-installer/install"       # DE10 only; ADR 0033
 
 cmdline=""
 root_arg=""
@@ -50,6 +56,8 @@ loopdev=""
 fat_type=""
 fsck_rc=0
 fsck_msg=""
+splash_mode="720p"                  # mister_fsck_video=480p for a sink that refuses 720p
+splash_up=0
 
 log() { printf '[init] %s\n' "$*"; }
 
@@ -108,6 +116,7 @@ for tok in "$@"; do
 	rootwait=*) rootwait="${tok#rootwait=}" ;;
 	ro)         rootflags="ro" ;;
 	rw)         rootflags="rw" ;;
+	mister_fsck_video=*) splash_mode="${tok#mister_fsck_video=}" ;;
 	esac
 done
 [ -n "$root_arg" ] || rescue "no root= on the kernel command line"
@@ -140,6 +149,24 @@ while :; do
 done
 log "root device $rootdev ready (after ${waited}s)"
 
+# ------------------------------------------------- first-boot installer (ADR 0033)
+# Only the exact word "armed" leaves the normal boot; docs/installer-init.md#the-flag.
+install_probe="absent"
+[ -x "$INSTALL_FLAG" ] && install_probe="$("$INSTALL_FLAG" probe "$rootdev" 2>/dev/null)"
+install_state="${install_probe%% *}"   # "STATE DISK", or a bare "absent"
+install_disk="${install_probe#* }"
+case "$install_state" in
+armed)
+	log "first-boot installer flag found on $install_disk"
+	[ -f "$INSTALLER" ] && [ -r "$INSTALLER" ] ||
+		rescue "this is an SD-card installer, but this kernel has no installer ($INSTALLER)"
+	exec /bin/sh "$INSTALLER" "$rootdev"
+	;;
+spent)
+	log "installer flag on $install_disk is spent; booting normally"
+	;;
+esac
+
 # ------------------------------------------------- mount helper / on-demand repair
 # Factored out of the mount site below because the repair path has to take the
 # filesystem down and put it back up again with the SAME options. Two copies of
@@ -154,6 +181,37 @@ mount_data_partition() {
 		return 1
 	fi
 	return 0
+}
+
+# HDMI splash for the repair (ADR 0026 section 4). Every failure here means
+# a black screen, which is what this boot looked like without it.
+splash() { timeout "$SPLASH_TIMEOUT" "$SPLASH_BIN" "$@"; }
+
+fsck_splash_show() {
+	[ -x "$SPLASH_BIN" ] || return 0
+	case "$splash_mode" in
+	480p) _img="$SPLASH_DIR/splash-640x480.raw.gz" ;;
+	*)    splash_mode="720p"; _img="$SPLASH_DIR/splash-1280x720.raw.gz" ;;
+	esac
+	if ! splash up --mode "$splash_mode"; then
+		log "fsck: no HDMI splash this boot (itsalive up failed); the repair is unaffected"
+		return 0
+	fi
+	splash_up=1
+	# fbcon would blink its cursor over the picture.
+	printf '0' > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true
+	zcat "$_img" 2>/dev/null | splash image - ||
+		log "fsck: HDMI is up but the splash picture did not draw"
+}
+
+# Say how it went, then hand the display back to the core, as Main_MiSTer
+# expects to find it.
+fsck_splash_done() {
+	[ "$splash_up" = 1 ] || return 0
+	splash say --clear "Repair finished: $fsck_msg" > /dev/null 2>&1 || true
+	splash say "Root Kun is clocking out. Starting MiSTer..." > /dev/null 2>&1 || true
+	sleep 3
+	splash fb disable > /dev/null 2>&1 || true
 }
 
 # Repair the data partition, but ONLY when the user asked for it. See ADR 0026.
@@ -260,8 +318,9 @@ fsck_if_requested() {
 	printf '\n'
 	printf '########################################################\n'
 	printf '#  Repairing the MiSTer data partition. DO NOT POWER OFF.\n'
-	printf '#  There is no display output until this finishes.\n'
+	printf '#  HDMI shows a "do not power off" picture, if anything.\n'
 	printf '########################################################\n\n'
+	fsck_splash_show
 
 	# -p (preen) rather than -y: it repairs what is unambiguous and leaves the rest
 	# for a human, which is the right default for a filesystem full of someone
@@ -281,6 +340,7 @@ fsck_if_requested() {
 		*) fsck_msg="FAILED: fsck.exfat could not run (exit $fsck_rc)" ;;
 	esac
 	log "fsck: $fsck_msg"
+	fsck_splash_done
 
 	mount_data_partition ||
 		rescue "data partition would not remount after fsck (exit $fsck_rc) -- see the fsck output above"

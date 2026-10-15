@@ -44,7 +44,7 @@ jobs:
   build:
     name: Build image + assemble release_YYYYMMDD.7z
     runs-on: ubuntu-26.04
-    # Cold build ~3h20m plus packaging and the sdcard installer relink; the
+    # Cold build ~3h20m plus packaging and the sdcard.img assembly; the
     # runner's hard cap is 360. See docs/ci.md#sdcard-timing-6h-cap.
     timeout-minutes: 355
     outputs:

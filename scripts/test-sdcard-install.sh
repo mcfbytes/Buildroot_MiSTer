@@ -5,39 +5,22 @@
 # (TASKS.md P5.3; ADR 0020; sibling of scripts/test-initramfs.sh).
 #
 # WHAT THIS PROVES, without any real DE10-Nano hardware:
-#   The shipped sdcard.img (board/mister/de10nano/genimage-sdcard.cfg) is a small
-#   FAT32-payload + 0xA2-boot image. Its /linux/zImage_dtb is the INSTALLER kernel
-#   (our 6.18 kernel relinked with board/mister/de10nano/installer-overlay/init as
-#   its initramfs). On first boot that /init reformats the whole card to a
-#   full-size exFAT "MiSTer_Data" partition, dd's uboot.img to the new 0xA2
-#   partition, restores itself onto p1 so an interrupted card can boot again,
-#   installs the real payload, writes a per-board MAC and reboots. This harness
-#   exercises that end to end:
-#
-#     1. Flash the shipped sdcard.img onto a LARGER "card" (a sparse image
-#        truncated up to $SDCARD_TEST_SIZE) so there is room to auto-expand into.
-#     2. Boot the installer kernel under `qemu-system-arm -M virt`, the card on
-#        virtio-blk as /dev/vda (exactly scripts/test-initramfs.sh's approach; QEMU
-#        has no Cyclone V model). Assert the installer ran every stage and rebooted,
-#        AND that it ran them in the recoverable order ADR 0020 §8 requires --
-#        bootloader before format, installer kernel before payload.
-#     3. Verify the RESULT on the host (no privilege needed): partition table
-#        (p1 exFAT filling the card, p2 0xA2 == RESERVED_SECTORS at the tail), the
-#        0xA2 head is byte-for-byte uboot.img, and p1 carries the exFAT signature.
-#     4. Boot the installer AGAIN against the installed card and assert its re-run
-#        guard trips ("already provisioned") -- which is only possible if p1 is
-#        exFAT, labelled MiSTer_Data, AND contains linux/linux.img (so the payload
-#        landed and linux.img.gz expanded). Also asserts the benign-halt path does
-#        NOT print the "INSTALLER: FAILED" banner.
-#     5. Assert the FIRST-BOOT SPLASH drew on both boots: banner, every numbered
-#        step, the bar reaching 100%, and the completion banner on the install run
-#        -- and, on the re-run, the banner WITHOUT a completion claim. -M virt has
-#        no hps_led0, so these runs double as proof that the LED half of the splash
-#        degrades to a no-op on a board that has no such LED.
+#   The shipped sdcard.img is a FAT32 payload + 0xA2 boot + installer-flag image
+#   (genimage-sdcard.cfg). Its /linux/zImage_dtb is THE kernel; stage 1 sees the
+#   flag and hands the card to the installer (ADR 0033). This harness:
+#     1. flashes sdcard.img onto a larger sparse "card" ($SDCARD_TEST_SIZE);
+#     2. boots it under `qemu-system-arm -M virt` (virtio-blk as /dev/vda) and asserts
+#        every installer stage ran, in the recoverable order ADR 0020 §8 requires;
+#     3. checks the result on the host: p1 exFAT filling the card, p2 0xA2 holding
+#        uboot.img byte-for-byte, and the flag (entry 3 + LBA 1024) gone;
+#     4. boots the installed card again and asserts stage 1 took the NORMAL path
+#        (exFAT mount, switch_root) and the installer never ran;
+#     5. asserts the console splash drew; -M virt has no hps_led0, so it also proves
+#        the LED half degrades to a no-op.
 #
 # NOT the DE10-Nano product kernel and NOT a full boot chain (no BootROM/SPL/U-Boot
-# -- QEMU can't do socfpga). It tests the one new, brick-critical thing that has no
-# other automated coverage: the installer /init's reformat+install logic.
+# -- QEMU can't do socfpga). It tests the one brick-critical thing that has no
+# other automated coverage: the installer's reformat+install logic on the real payload.
 #
 # SIBLING: scripts/test-installer-recovery.sh proves the other half of ADR 0020 §8 --
 # that an install interrupted PART-WAY leaves a card that either re-installs itself
@@ -46,7 +29,7 @@
 # harness is what proves the SHIPPED article.
 #
 # Prereqs: qemu-system-arm, sfdisk, cmp, truncate, plus a completed `make sdcard`
-# (output/images/sdcard.img + output-installer/images/rootfs.cpio) and the pinned
+# (output/images/sdcard.img + output/images/mister-initramfs.cpio) and the pinned
 # kernel source (dl/linux/linux-<pinned version>.tar.xz, same tarball the main build
 # uses; scripts/lib/installer-qemu-kernel.sh also accepts the flat dl/ layout).
 # The ARM cross toolchain comes from output/host/bin (a completed `make all`).
@@ -65,7 +48,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # --- inputs (from make sdcard / make all) -----------------------------------
 SDCARD_IMG="${SDCARD_IMG:-$ROOT/output/images/sdcard.img}"
-INSTALLER_CPIO="${INSTALLER_CPIO:-$ROOT/output-installer/images/rootfs.cpio}"
+INSTALLER_CPIO="${INSTALLER_CPIO:-$ROOT/output/images/mister-initramfs.cpio}"
 UBOOT_REF="${UBOOT_REF:-$ROOT/output-sdcard-stage/mister-payload/linux/uboot.img}"
 CROSS_COMPILE="${CROSS_COMPILE:-$ROOT/output/host/bin/arm-buildroot-linux-gnueabihf-}"
 
@@ -88,13 +71,14 @@ IQK_ZIMAGE=""
 # --- knobs ------------------------------------------------------------------
 SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"   # simulated card size to auto-expand into
 INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"    # seconds for the install boot (TCG is slow)
-GUARD_TIMEOUT="${GUARD_TIMEOUT:-120}"        # seconds for the re-run-guard boot (halts to a shell)
+GUARD_TIMEOUT="${GUARD_TIMEOUT:-120}"        # seconds for the post-install normal boot
 QEMU_MEM="${QEMU_MEM:-512}"                  # MiB; ~the real mem=511M cap, to exercise the RAM budget
 
-# RESERVED_SECTORS the installer keeps for p2 (must match installer-overlay/init).
+# RESERVED_SECTORS the installer keeps for p2 (must match mister-installer/install).
 RESERVED_SECTORS=8192
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/sdcard-install-test.XXXXXX")"
+mkdir -p "${TMPDIR:-$ROOT/work}"
+WORK="$(mktemp -d "${TMPDIR:-$ROOT/work}/sdcard-install-test.XXXXXX")"
 DISK="$WORK/test-disk.img"
 INSTALL_LOG="$WORK/install.log"
 GUARD_LOG="$WORK/guard.log"
@@ -120,7 +104,7 @@ need sfdisk          "install util-linux"
 need cmp             "install diffutils"
 need truncate        "install coreutils"
 [ -f "$SDCARD_IMG" ]      || die "no sdcard image at $SDCARD_IMG -- run 'make sdcard' first"
-[ -f "$INSTALLER_CPIO" ]  || die "no installer cpio at $INSTALLER_CPIO -- run 'make sdcard' first"
+[ -f "$INSTALLER_CPIO" ]  || die "no stage-1 cpio at $INSTALLER_CPIO -- run 'make all' first"
 [ -f "$UBOOT_REF" ]       || die "no uboot.img reference at $UBOOT_REF (set UBOOT_REF=)"
 [ -x "${CROSS_COMPILE}gcc" ] || die "ARM cross gcc not found at ${CROSS_COMPILE}gcc -- run 'make all'"
 
@@ -136,7 +120,7 @@ boot_installer() {
 		-kernel "$IQK_ZIMAGE" \
 		-drive file="$DISK",format=raw,if=none,id=sd0 \
 		-device virtio-blk-device,drive=sd0 \
-		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1" \
+		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 loop=linux/linux.img ro rootwait" \
 		>"$logf" 2>&1 || true   # timeout/`-no-reboot` exit is expected; we assert on the log
 }
 
@@ -157,8 +141,9 @@ main() {
 	local stage
 	for stage in \
 		'source mounted' \
-		'payload staged in RAM OK' \
-		'installer kernel staged in RAM' \
+		'first-boot installer flag found' \
+		'payload and kernel staged in RAM OK' \
+		'uboot.img staged at LBA' \
 		'the card can reach U-Boot again' \
 		'from here a power cut re-runs the installer' \
 		'this card can now finish on its own' \
@@ -183,7 +168,8 @@ main() {
 	# result is captured into a variable -- `set -e` would abort the harness instead
 	# of reporting the FAIL. An empty offset is the answer we want here.
 	at() { grep -abo -m1 "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1 || true; }
-	local o_part o_uboot o_mkfs o_recov o_payload o_commit
+	local o_staged o_part o_uboot o_mkfs o_recov o_payload o_commit
+	o_staged=$(at  "$INSTALL_LOG" 'uboot.img staged at LBA')
 	o_part=$(at    "$INSTALL_LOG" 'new partitions present')
 	o_uboot=$(at   "$INSTALL_LOG" 'the card can reach U-Boot again')
 	o_mkfs=$(at    "$INSTALL_LOG" 'formatting (exFAT)')
@@ -193,11 +179,12 @@ main() {
 	order_ok() { # order_ok A B DESC -- assert offset A < offset B
 		if [ -n "$1" ] && [ -n "$2" ] && [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (offsets '$1' vs '$2')"; fi
 	}
-	order_ok "$o_part"    "$o_uboot"   "order: uboot.img lands right after the repartition, not at the end"
+	order_ok "$o_staged"  "$o_part"    "order: uboot.img is staged BEFORE the MBR points p2 at it"
+	order_ok "$o_part"    "$o_uboot"   "order: uboot.img is verified in p2 right after the repartition"
 	order_ok "$o_uboot"   "$o_mkfs"    "order: the bootloader is written BEFORE the filesystem is made"
-	order_ok "$o_mkfs"    "$o_recov"   "order: the installer kernel is restored right after the format"
+	order_ok "$o_mkfs"    "$o_recov"   "order: the kernel is restored right after the format"
 	order_ok "$o_recov"   "$o_payload" "order: the card is self-recovering before the payload copy-back"
-	order_ok "$o_payload" "$o_commit"  "order: the real kernel is the LAST thing installed (the commit point)"
+	order_ok "$o_payload" "$o_commit"  "order: spending the flag is the LAST thing done (the commit point)"
 
 	# --- 2b. the first-boot splash ------------------------------------------
 	# During the install there is no HDMI and no menu (the FPGA has no bitstream
@@ -216,8 +203,8 @@ main() {
 		'checking the card' \
 		'reading the payload' \
 		'copying to memory' \
-		'repartitioning the card' \
 		'writing the bootloader' \
+		'repartitioning the card' \
 		'formatting (exFAT)' \
 		'making the card recoverable' \
 		'writing files to the card' \
@@ -265,18 +252,20 @@ main() {
 	# p1 exFAT signature.
 	local sig; sig=$(dd if="$DISK" bs=1 skip=$(( p1_start*512 + 3 )) count=8 2>/dev/null | tr -d '\0 ')
 	eq "$sig" "EXFAT" "p1 has the exFAT signature"
+	local e3 blk
+	e3=$(dd if="$DISK" bs=1 skip=478 count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')
+	eq "$e3" "00000000000000000000000000000000" "MBR entry 3 (the installer flag) was removed"
+	blk=$(dd if="$DISK" bs=512 skip=1024 count=1 2>/dev/null | tr -d '\0' | wc -c)
+	eq "$blk" "0" "the flag block at LBA 1024 was wiped"
 
-	# --- 4. re-run guard against the installed card -------------------------
-	log "boot 2/2: re-running the installer against the installed card (guard must trip) ..."
+	# --- 4. the installed card boots normally -------------------------------
+	log "boot 2/2: the installed card must take stage 1's NORMAL path (no flag any more) ..."
 	boot_installer "$GUARD_LOG" "$GUARD_TIMEOUT"
-	has   "$GUARD_LOG" 'source mounted (exfat)' "installed card re-mounts as exFAT"
-	has   "$GUARD_LOG" 'already provisioned'    "re-run guard tripped (exFAT MiSTer_Data + linux/linux.img present)"
-	hasnt "$GUARD_LOG" 'INSTALLER: FAILED'      "benign halt did not print the FAILED banner"
-	# The splash must come up on this path too (the user still needs to see the
-	# board is alive) but must NOT claim an install happened -- a progress UI that
-	# lies about what it did is worse than no progress UI at all.
-	has   "$GUARD_LOG" 'F I R S T - B O O T   S E T U P' "splash: banner drew on the re-run"
-	hasnt "$GUARD_LOG" 'INSTALL COMPLETE'                "splash: benign halt did not claim a completed install"
+	has   "$GUARD_LOG" 'data partition mounted as exfat' "installed card mounts as exFAT on the normal path"
+	has   "$GUARD_LOG" 'switching root'                  "stage 1 switch_rooted into the installed linux.img"
+	hasnt "$GUARD_LOG" 'installer flag found'            "/init saw no armed flag"
+	hasnt "$GUARD_LOG" '\[installer\]'                  "the installer never ran again"
+	hasnt "$GUARD_LOG" 'BOOT FAILED'                     "no stage-1 rescue"
 
 	echo
 	if [ "$FAILED" -eq 0 ]; then

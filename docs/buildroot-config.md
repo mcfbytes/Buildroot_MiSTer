@@ -24,7 +24,7 @@ Contents:
 6. [`de25nano.fragment`](#6-de25nanofragment)
 7. [`mister_rt.fragment`](#7-mister_rtfragment)
 8. [The stage-1 initramfs stacks: `initramfs-common`, `initramfs-de10nano`, `initramfs-de25nano`](#8-the-stage-1-initramfs-stacks)
-9. [`mister_installer_defconfig`](#9-mister_installer_defconfig)
+9. [`mister_installer_defconfig` (removed by ADR 0033)](#9-mister_installer_defconfig-removed-by-adr-0033)
 10. [Placement decisions — what is common, what is board-only, and why](#10-placement-decisions)
 11. [Checks, golden hashes, and the identity proof](#11-checks-golden-hashes-and-the-identity-proof)
 12. [`image-common.fragment`](#12-image-commonfragment)
@@ -71,7 +71,7 @@ configs/
     initramfs-de25nano.fragment  stage-1 arch/ABI + headers series, DE25 (§8.1, §8.2)
     golden.sha256            sha256 of each stack's normalised resolved .config (§11)
   mister_rt.fragment         the RT / 7.2 kernel variant, layered on the kernel-only stack
-  mister_installer_defconfig SD-card installer cpio (standalone Buildroot config, §9)
+  (mister_installer_defconfig was removed by ADR 0033; see §9)
 ```
 
 `stacks.mk`, in merge order:
@@ -290,8 +290,9 @@ libstdc++, installed by the toolchain, not by package selection. The ten
 DT_NEEDED *packages* — zlib, bzip2, libpng, freetype, imlib2, bluez, L7-L12 —
 were P2.1's job, §5.)
 
-The stage-1 initramfs (§8) and the installer (§9) pin the same five lines —
-same silicon; not an ABI requirement there, it just has to run on a Cortex-A9.
+The stage-1 initramfs (§8, now a package of this build) pins the same five lines —
+same silicon; not an ABI requirement there, it just has to run on a Cortex-A9. (The
+installer's own configuration, §9, did too until ADR 0033 removed it.)
 
 ### 3.2 Kernel headers SERIES — `BR2_KERNEL_HEADERS_6_18=y`
 
@@ -3173,8 +3174,8 @@ It runs ONLY when `Scripts/check_storage.sh` has left a marker, never on a
 plain boot — see the `fsck_if_requested()` section of the initramfs `/init`
 for why the dirty flag alone is not a usable trigger.
 
-The only dependency is `BR2_USE_WCHAR`, which musl satisfies; the installer
-config (§9) already builds this package on the same musl+static toolchain.
+The only dependency is `BR2_USE_WCHAR`, which musl satisfies; the (since removed, §9)
+installer config built this package on the same musl+static toolchain.
 `board/mister/common/initramfs-post-build.sh` (`BR2_ROOTFS_POST_BUILD_SCRIPT`)
 then deletes the five binaries we do not use (dump.exfat, exfat2img,
 exfatlabel, mkfs.exfat, tune.exfat — 476 KB of zImage for tools stage 1
@@ -3203,142 +3204,37 @@ stage-1 stacks do not include `common`.
 
 ---
 
-## 9. `mister_installer_defconfig`
+## 9. `mister_installer_defconfig` (removed by ADR 0033)
 
-The THROWAWAY INSTALLER OS (TASKS.md P5.3,
-`docs/decisions/0020-sdcard-exfat-reformat-installer.md`, PLAN.md §8/§9). A
-standalone Buildroot config, built into `output-installer/` by
-`scripts/mk-sdcard.sh` (step 1/7) or the Makefile's `installer` escape hatch.
+**Removed 2026-10-15 ([ADR 0033](decisions/0033-one-initramfs-installer-in-stage-1.md)).**
+The SD-card installer (TASKS.md P5.3, [ADR 0020](decisions/0020-sdcard-exfat-reformat-installer.md))
+used to be a standalone static-musl Buildroot configuration built into `output-installer/`, with
+its own toolchain, BusyBox config (`installer-busybox.config`) and post-build script
+(`installer-post-build.sh`), whose cpio `scripts/mk-sdcard.sh` relinked into a second kernel.
+`configs/mister_installer_defconfig`, both board files, `output-installer/` and
+`output-installer-kernel/` are gone. Where its settings went:
 
-This config builds ONE artifact: `output-installer/images/rootfs.cpio`, a
-static BusyBox + exfatprogs + util-linux(sfdisk) + itsalive rootfs that
-`scripts/mk-sdcard.sh` embeds into a SECOND, dedicated kernel build to produce
-the installer's `zImage_dtb`. That image ships as `linux/zImage_dtb` on the
-shipped `sdcard.img`'s FAT32 partition — it is NEVER `output/images/zImage_dtb`
-(the real MiSTer kernel) and NEVER runs on a card that has already been
-installed (ADR 0020 §2.1: the reformat replaces this kernel with the real one,
-which is the primary re-run guard).
+- **The installer itself, `mkfs.exfat`, the splash frames and `itsalive`** -> the one stage-1 cpio,
+  via `BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER=y` in `configs/mister_de10nano_defconfig`
+  (`package/mister-initramfs`; ARM only, and the frames only with `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`).
+  The installer script lives at `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
+  in the DE10's stage-1 board overlay (`BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY`, the stage-1
+  analogue of `BR2_ROOTFS_OVERLAY`), which is copied over `board/mister/common/initramfs-overlay/`.
+- **Its BusyBox applets** (`cp dd cmp wc hexdump blockdev blkid mv du cut reboot`, `dd` with
+  `FEATURE_DD_IBS_OBS`, 64-bit shell maths) -> `board/mister/common/initramfs-busybox.config`,
+  the single BusyBox config for every stage-1 cpio. The per-applet reasons are in
+  `docs/installer-build.md`.
+- **`sfdisk` / util-linux** -> dropped: the installer writes the MBR from shell, byte-identical to
+  `sfdisk` (`scripts/test-installer-mbr.sh`).
+- **The musl toolchain and `BR2_TOOLCHAIN_BUILDROOT_CXX`** (which existed only for Rust's
+  target-arch gate on musl) -> dropped: `itsalive` is built static glibc by the main configuration.
+- **`BR2_DOWNLOAD_FORCE_CHECK_HASHES`** -> was already set in `configs/mister_de10nano_defconfig`
+  and `configs/mister_de25nano_defconfig`; nothing to move.
 
-WHY THIS EXISTS AT ALL (read ADR 0020 §1 first): mr-fusion's "auto-resize" is
-not a filesystem grow-in-place — MiSTer's data partition is exFAT, and Linux
-has no resize-in-place tool for exFAT. So a fresh card ships small (fast
-write, small download) and an on-device first-boot installer OS repartitions
-+ reformats it to fill whatever medium the user actually has, then hands off
-to the real MiSTer. This config is that installer OS's rootfs. Its `/init`
-(`board/mister/de10nano/installer-overlay/init`) does the
-sfdisk/dd-uboot.img/mkfs.exfat/copy-back/MAC-gen/reboot dance described in ADR
-0020 §2, in the recoverable order ADR 0020 §8 fixed it into.
-
-Relationship to the stage-1 stacks (§8): this is a SIBLING of stage 1, not
-a variant of the main target config: same static musl throwaway-cpio shape
-(`BR2_INIT_NONE`, `BR2_TARGET_ROOTFS_CPIO`, no shared libc), because the
-installer runs from RAM exactly like stage 1's `/init` does and is deleted the
-moment it reboots into the real system. It was BASED ON the old
-`mister_initramfs_defconfig` line-for-line
-(arch/toolchain/init/device-creation/output/reproducibility all copied
-verbatim — §8 has the reasoning behind each; it is DE10-only and stayed a
-standalone defconfig when stage 1 became a stack) and adds exactly what the
-installer's job needs on top:
-
-- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §8 step 6; `-n MiSTer_Data`).
-  Depends on `BR2_USE_WCHAR`, which the musl toolchain choice already selects.
-- `BR2_PACKAGE_UTIL_LINUX` + `_BINARIES` -> sfdisk (repartition to the real
-  medium size) and blkid (belt-and-suspenders re-run guard, ADR 0020 §2.1:
-  skip the reformat if the data partition is already exFAT labelled
-  MiSTer_Data and already holds `linux/linux.img`). Buildroot's util-linux
-  "basic set" is not further sub-selectable — enabling it for sfdisk also
-  pulls in blkid, blockdev, dmesg, findfs, hexdump, mkfs, wipefs etc. as a
-  bundle. That overlaps some BusyBox applets (dmesg, findfs) already in the
-  stage-1 BusyBox set; the overlap is harmless (both are real, separate
-  binaries; the installer's `/init` names whichever it wants) and is NOT a
-  reason to drop either side.
-- A few extra BusyBox applets stage 1 does not need: cp (for the payload ->
-  tmpfs -> exFAT copies), dd (uboot.img -> the 0xA2 partition), reboot (the
-  final handoff), blockdev and hexdump (MAC-address generation from
-  `/dev/urandom`). See `docs/installer-build.md` for exactly which `CONFIG_`
-  symbols that required and why (`board/mister/de10nano/installer-busybox.config`,
-  named by `BR2_PACKAGE_BUSYBOX_CONFIG`, carries only a short pointer there).
-  **`timeout` joined them on 2026-09-21** for the HDMI splash (next bullet):
-  every `itsalive` call in `/init` runs under it, so a wedged tool can never
-  hold the install.
-- `BR2_PACKAGE_ITSALIVE` (**2026-09-21**, ADR 0020 §9, issue #185) -> the HDMI
-  splash: `itsalive up` + `itsalive image` put "installing, do not power off"
-  on screen for the minute the card is being reformatted, on the `menu.rbf`
-  that ADR 0020 §7 already ships. `package/itsalive` is the first
-  `cargo-package` in this tree and the only Rust in it; it pulls
-  `host-rust-bin` (a prebuilt download, not a compile) into THIS configuration
-  only, and it is why two toolchain lines below exist. ~445 KB static in the
-  cpio. Its artwork is not in the package: `BR2_ROOTFS_POST_BUILD_SCRIPT` =
-  `board/mister/de10nano/installer-post-build.sh` renders the two frames into
-  `/usr/share/mister-installer/` from the PNGs in `installer-splash/` at build
-  time (pure-Python converter, no host dependency), so no derived binary is
-  committed. The DE10 image's `post-build.sh` is a different script for a
-  different rootfs; nothing in it applies to a throwaway cpio.
-- `BR2_TOOLCHAIN_BUILDROOT_CXX` (**2026-09-21**) -> ONLY because Rust's
-  target-arch gate needs libstdc++ on musl
-  (`BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS` depends on
-  `BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL`). With an internal
-  toolchain `BR2_INSTALL_LIBSTDCPP` is not user-settable — this symbol selects
-  it, and a defconfig line for the former is silently dropped (found the hard
-  way). Nothing in the cpio links C++; `BR2_STATIC_LIBS` keeps the `.a` out of
-  the rootfs. Toolchain build time, not image bytes.
-- `BR2_DOWNLOAD_FORCE_CHECK_HASHES` (**2026-09-21**) -> the same posture the
-  two board defconfigs have had all along, added with the first
-  externally-sourced package in this cpio. Without it a tarball whose
-  filename has no line in the package's `.hash` is only WARNED about, so a
-  bumped `ITSALIVE_VERSION` carrying a stale `.hash` would fetch unverified
-  and build green. `lint.yml`'s `cargo-vendored package version/hash pin consistency` step
-  is the cheap gate; this is the one that holds at download time.
-
-What it deliberately does NOT add: e2fsprogs. The installer only ever `cp`'s
-`linux/linux.img` as an opaque byte blob (never fscks or resizes its ext4
-contents; that partition's size is fixed at build time, only the exFAT data
-partition around it grows) and never builds one, so there is nothing for
-e2fsprogs to do here. Re-add it if a later `/init` revision needs to
-inspect/repair `linux.img`.
-
-**NOT `BR2_TARGET_ROOTFS_INITRAMFS`. NOT the main config with a flag.** Same
-trap A1 names for stage 1 (§8) applies here verbatim: a fourth Buildroot
-output dir (`output-installer/`), a fourth small cpio, never the ~300 MB
-target rootfs.
-
-Per-symbol notes beyond §8's:
-
-- Arch/ABI (§8.1): the installer runs on the same Cortex-A9 the production
-  system does, briefly, once, in RAM.
-- Toolchain (§8.2): everything in this cpio is deleted from RAM within
-  seconds of the reformat finishing, so there is no ABI surface to keep
-  glibc-compatible for. `BR2_TOOLCHAIN_USES_MUSL` auto-selects `BR2_USE_WCHAR`,
-  which is what `BR2_PACKAGE_EXFATPROGS`'s "depends on BR2_USE_WCHAR" needs —
-  nothing extra to set for that.
-- `BR2_INIT_NONE` (§8.3): unlike stage 1, this `/init` never switch_roots into
-  anything: it does its reformat dance and calls `reboot` directly (ADR 0020
-  §2, last step). PID 1 must still never exit without warning — see
-  `board/mister/de10nano/installer-overlay/init` for the rescue-shell
-  contract this config's BusyBox set exists to support
-  (CTTYHACK/SETSID/ASH_TEST/FEATURE_SH_MATH are all carried over from stage 1
-  for exactly that reason).
-- Device nodes (§8.4): same load-bearing reasoning — `/dev/console` must exist
-  before `/init` runs, or there is no stdin/stdout/stderr and a rescue shell
-  is unreachable. The defconfig carries no explicit
-  `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y` line for it — dynamic
-  devtmpfs is Buildroot's own default, so `savedefconfig` omits it, and
-  `scripts/check-defconfigs.sh` is what keeps that omission canonical rather
-  than a drift risk.
-- `BR2_ROOTFS_OVERLAY` = `board/mister/de10nano/installer-overlay`: `/init`
-  itself. A SEPARATE overlay from stage 1's — this is a different program
-  with a different job (reformat-and-handoff, not mount-and-switch_root).
-  This line is the fixed interface the rest of the sdcard-image plumbing
-  (`mk-sdcard.sh`, the installer kernel relink) targets.
-- Output (§8.7): this cpio is embedded inside the installer's own zImage
-  (itself LZ4-compressed, `CONFIG_KERNEL_LZ4`, stock parity), so compressing
-  it here would compress it twice and need a matching `CONFIG_RD_*`
-  decompressor for no benefit. `copy` is the kernel `usr/Makefile`'s default
-  for a plain .cpio — nothing extra needed on the kernel-config side of the
-  relink either.
-- Reproducibility (§8.8): the cpio ends up embedded in the installer
-  `zImage_dtb` that ships inside `sdcard.img(.xz)` release assets, so the same
-  double-build rationale P4.3 applies to the main build applies here too.
+What the installer deliberately does not carry (e2fsprogs: it treats `linux/linux.img` as an
+opaque blob and only the exFAT partition around it grows) is unchanged. The build and
+`make sdcard` are described in `docs/installer-build.md`; the script and its card states in
+`docs/installer-init.md`.
 
 ---
 
@@ -3392,7 +3288,7 @@ The judgement calls, each recorded here:
 | DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_CUSTOM_CONFIG`, `CUSTOM_CONFIG_FILE`, `CONFIG_FRAGMENT_FILES`, `# USE_ARCH_DEFAULT_CONFIG is not set`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). The kernel-config pair names DE25 files; the *fragment* file it names is shared with the DE10 by path, but that sharing is a file, not a symbol (§6.5). |
 | The whole DE25 bootloader stanza (`BR2_TARGET_ARM_TRUSTED_FIRMWARE*`, `BR2_TARGET_UBOOT*`) | `de25nano` | The DE10 has no bootloader in its Buildroot config at all — its boot chain is the stock/Terasic one, assembled outside Buildroot (`docs/boot-chain.md`). Nothing to share, so no `common` question arises. |
 | `BR2_PACKAGE_HOST_UBOOT_TOOLS`, `_FIT_SUPPORT`, `BR2_PACKAGE_HOST_GENIMAGE`, `BR2_PACKAGE_HOST_MTOOLS`, `BR2_PACKAGE_HOST_DOSFSTOOLS` | `de25nano` | Host tooling for the FIT and the card image (§6.10, §6.11), and DE25-only in fact: the DE10 stack sets none of these five. Note the near-miss — `de10nano-image` sets `BR2_PACKAGE_DOSFSTOOLS` (+ `_FATLABEL`, `_FSCK_FAT`, `_MKFS_FAT`), the TARGET package that ships `mkfs.fat` on the board, which is a different symbol from `BR2_PACKAGE_HOST_DOSFSTOOLS`. Not a `common` candidate on either count, and rule 4 says so twice over: `common` is in the kernel-only stack, so a `BR2_PACKAGE_HOST_*` line added there would move the kernel-variant toolchain fingerprint and bust every variant's host-toolchain cache, exactly as recorded for `BR2_TARGET_GENERIC_ROOT_PASSWD` above. |
-| ~~`mister_initramfs_defconfig`~~, `mister_installer_defconfig` | installer: left standalone. **Stage 1: a stack since 2026-09-06** (`initramfs-common` + `initramfs-<board>`, §8) | The 2026-09-02 call was "left standalone": they share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). **Reversed for stage 1 when the DE25 needed one** (ADR 0029 D11): a second board wants every line but the arch tuple, so the split is `initramfs-common` (everything) + a per-board arch fragment (restated, held to `<board>.fragment` by check (f)) rather than a shared arch micro-fragment — the arch lines are the part that DIFFERS per board, and what is shared is the rest. The cache-key cost was paid once. The installer is DE10-only (its `/init` runs `dd` of the DE10's `uboot.img`) and stays standalone. |
+| ~~`mister_initramfs_defconfig`~~, `mister_installer_defconfig` | installer: left standalone. **Stage 1: a stack since 2026-09-06** (`initramfs-common` + `initramfs-<board>`, §8) | The 2026-09-02 call was "left standalone": they share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). **Reversed for stage 1 when the DE25 needed one** (ADR 0029 D11): a second board wants every line but the arch tuple, so the split is `initramfs-common` (everything) + a per-board arch fragment (restated, held to `<board>.fragment` by check (f)) rather than a shared arch micro-fragment — the arch lines are the part that DIFFERS per board, and what is shared is the rest. The cache-key cost was paid once. The installer is DE10-only (it `dd`s the DE10's `uboot.img`) and stayed standalone until ADR 0033 (2026-10-15) merged it into stage 1 and deleted `mister_installer_defconfig` (§9). |
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
 Symbol counts (assignments + explicit not-set lines), re-measured 2026-09-03

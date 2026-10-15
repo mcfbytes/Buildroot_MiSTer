@@ -1,6 +1,6 @@
 #!/bin/sh
-# MiSTer first-boot SD-card installer /init (PID 1). THIS FILE CAN BRICK THE BOARD:
-# read docs/installer-init.md and ADR 0020 before touching a line.
+# MiSTer first-boot SD-card installer, exec'd by stage-1 /init as PID 1 on an armed flag.
+# THIS FILE CAN BRICK THE BOARD: read docs/installer-init.md and ADR 0033 first.
 set -u
 
 # --- Tunables ---------------------------------------------------------------
@@ -11,21 +11,31 @@ CORES_DIR="_Console"                   # payload top-level dir skipped first und
 DATA_LABEL="MiSTer_Data"               # exFAT volume label the final card must carry
 RESERVED_SECTORS=8192                  # 512-byte sectors for the 0xA2 p2: EXACTLY 4 MiB,
                                        # matching genimage-sdcard.cfg's `size = 4M`
-P1_START_SECTORS=2048                  # 1 MiB-aligned p1 start LBA, as genimage-sdcard.cfg;
-                                       # explicit so p2 is EXACTLY RESERVED_SECTORS
+P1_START_SECTORS=2048                  # 1 MiB-aligned p1 start LBA, as genimage-sdcard.cfg
+MBR_MAX_SECTORS=4294967295             # an MBR entry holds a 32-bit LBA and length
 RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel + our own
                                        # working set; the payload tmpfs may use the rest.
 DEV_WAIT=30                            # seconds to wait for a block device to enumerate
 
+# --- the installer flag (docs/installer-init.md#the-flag) --------------------
+# FLAG_* and partdev() come from FLAG_CONF, sourced once rescue() exists.
+FLAG_CONF="/usr/lib/mister/install-flag.conf"
+INSTALL_FLAG="/usr/lib/mister/install-flag"
+MKFS_EXFAT="/usr/libexec/mister-installer/mkfs.exfat"
+# Written right after mkfs: the only exFAT this installer will ever format a second time.
+INSTALL_TOKEN="linux/.mister-install-in-progress"
+# The user's pre-seed files, kept on the card so a "finish" or "resume" boot still has them.
+PRESEED_DIR="linux/.mister-preseed"
+
 # --- where the RAM copy lives ----------------------------------------------
-# Separate dirs, so the payload glob can never pick up the two recovery files.
+# Separate dirs, so the payload glob can never pick up the two boot files.
 RAM_DIR="/tmp/stage"
 RAM_PAYLOAD="$RAM_DIR/payload"
-RAM_INSTALLER="$RAM_DIR/installer"
+RAM_BOOT="$RAM_DIR/boot"
 
 # --- rescue-banner state (all pre-initialised so `set -u` is safe in rescue) --
-cmdline=""; root_arg=""; DATA_PART=""; DISK=""; P1=""; P2=""
-fat_type=""; stage="starting up"; cores_skipped="no"
+cmdline=""; DATA_PART="${1:-}"; DISK=""; P1=""; P2=""; P3=""
+fat_type=""; stage="starting up"; cores_skipped="no"; card_state=""
 
 # TEST-ONLY interruption knob; see stop_after().
 stop_after_stage=""
@@ -226,16 +236,6 @@ splash_fail() {
 		'Re-flash sdcard.img to this card and try again.' \
 		'Details are on the serial console.'
 }
-splash_halt_ok() {
-	splash_pulse_stop; splash_clear_line; splash_led_set 1
-	splash_hdmi_say --clear \
-		'MiSTer first-time setup' \
-		'' \
-		'This card is already set up.' \
-		'Power the board off and on again to start MiSTer.' \
-		'(Re-flash sdcard.img only if you want to reinstall.)'
-}
-
 # --- HDMI splash via itsalive (docs/installer-init.md#hdmi-splash) ---
 # Every path logs and returns 0; the binary is probed, every call is under timeout.
 SPLASH_HDMI_BIN=/usr/bin/itsalive
@@ -358,10 +358,10 @@ rescue() {
 	printf '#  (failed during: %s)\n' "$stage"
 	printf '################################################################\n'
 	printf '  cmdline    : %s\n' "$cmdline"
-	printf '  root=      : %s\n' "$root_arg"
 	printf '  disk       : %s\n' "$DISK"
 	printf '  data part  : %s  (as %s)\n' "$DATA_PART" "$fat_type"
-	printf '  new p1/p2  : %s / %s\n' "$P1" "$P2"
+	printf '  card state : %s\n' "$card_state"
+	printf '  p1/p2/flag : %s / %s / %s\n' "$P1" "$P2" "$P3"
 	printf '  cores kept : %s\n' "$([ "$cores_skipped" = yes ] && echo no || echo yes)"
 	printf -- '--- /proc/partitions ---\n';  cat /proc/partitions   2>/dev/null
 	printf -- '--- /proc/mounts ---\n';       cat /proc/mounts       2>/dev/null
@@ -389,12 +389,90 @@ stop_after() {
 	rescue "reboot returned after the test stop at $1"
 }
 
-# ------------------------------------------------------------- early mounts
-# devtmpfs is not auto-mounted for an initramfs; everything below needs /dev.
-mkdir -p /proc /sys /dev /mnt/src /mnt/dst "$RAM_DIR" /run/preseed
-mount -t proc     -o nosuid,nodev,noexec proc     /proc || rescue "cannot mount /proc"
-mount -t sysfs    -o nosuid,nodev,noexec sysfs    /sys  || rescue "cannot mount /sys"
-mount -t devtmpfs -o nosuid              devtmpfs /dev  || rescue "cannot mount /dev"
+# ------------------------------------------------------ the MBR, byte by byte
+# >>> MBR SECTION BEGIN -- scripts/test-installer-mbr.sh extracts this VERBATIM and
+# checks its bytes against sfdisk's; docs/installer-init.md#partition-layout.
+# oct N -- one byte as a printf octal escape; le32 N -- four of them, little-endian.
+oct() { printf '\\%03o' "$(( $1 & 255 ))"; }
+le32() {
+	printf '%s%s%s%s' "$(oct "$1")" "$(oct $(( $1 >> 8 )))" \
+		"$(oct $(( $1 >> 16 )))" "$(oct $(( $1 >> 24 )))"
+}
+
+# chs LBA -- the 3 CHS bytes libfdisk writes for 255 heads x 63 sectors (FE FF FF past cyl 1023).
+chs() {
+	_c=$(( $1 / (255 * 63) ))
+	if [ "$_c" -gt 1023 ]; then printf '%s' '\376\377\377'; return 0; fi
+	printf '%s%s%s' "$(oct $(( ($1 / 63) % 255 )))" \
+		"$(oct $(( ($1 % 63 + 1) | ((_c >> 2) & 192) )))" "$(oct "$_c")"
+}
+
+# mbr_entry TYPE START SIZE -- one 16-byte partition table entry (not bootable).
+mbr_entry() {
+	printf '%s%s%s%s%s%s' '\000' "$(chs "$2")" "$(oct "$1")" \
+		"$(chs $(( $2 + $3 - 1 )))" "$(le32 "$2")" "$(le32 "$3")"
+}
+
+MBR_EMPTY_ENTRY='\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
+
+# mbr_build OUT OLD ID E1 E2 E3 E4 -- OLD's boot code (0-439), disk id, 4 entries, 55aa.
+mbr_build() {
+	dd if="$2" of="$1" bs=440 count=1 2>/dev/null || return 1
+	# shellcheck disable=SC2059  # the format IS the bytes: octal escapes built above
+	printf "$3\\000\\000$4$5$6$7\\125\\252" >> "$1" || return 1
+	[ "$(wc -c < "$1")" -eq 512 ]
+}
+# >>> MBR SECTION END <<<
+
+# mbr_commit NEW -- write the 512-byte NEW over sector 0 and prove it landed on the card.
+mbr_commit() {
+	[ "$(wc -c < "$1")" -eq 512 ] || return 1
+	dd if="$1" of="$DISK" bs=512 count=1 conv=notrunc,fsync 2>/dev/null || return 1
+	sync
+	blockdev --flushbufs "$DISK" 2>/dev/null || true
+	dd if="$DISK" of=/run/mbr.check bs=512 count=1 2>/dev/null || return 1
+	cmp -s "$1" /run/mbr.check
+}
+
+# disk_id -- four random bytes as octal escapes (a fresh label gets a new id, as sfdisk does).
+disk_id() {
+	# shellcheck disable=SC2046  # four decimal words is the point
+	set -- $(hexdump -n4 -e '4/1 "%u "' /dev/urandom)
+	[ $# -eq 4 ] || return 1
+	printf '%s%s%s%s' "$(oct "$1")" "$(oct "$2")" "$(oct "$3")" "$(oct "$4")"
+}
+
+# sysfs_is PARTDEV START SIZE -- the kernel's view of one partition, after a re-read.
+sysfs_is() {
+	_s="/sys/block/$disk_name/${1#/dev/}"
+	[ -r "$_s/start" ] && [ -r "$_s/size" ] || return 1
+	read -r _a < "$_s/start"; read -r _b < "$_s/size"
+	[ "$_a" = "$2" ] && [ "$_b" = "$3" ]
+}
+
+flag_state() { "$INSTALL_FLAG" state "$DISK" 2>/dev/null; }
+
+# require_armed WHAT -- re-checked before every destructive step; never trusted from earlier.
+require_armed() {
+	[ "$(flag_state)" = armed ] || rescue "the installer flag on $DISK is not armed -- refusing to $1"
+}
+
+# volume_label PART -- the LABEL BusyBox blkid reports, or nothing.
+volume_label() {
+	_out="$(blkid "$1" 2>/dev/null)" || return 0
+	case "$_out" in *' LABEL="'*) _l="${_out#* LABEL=\"}"; printf '%s' "${_l%%\"*}" ;; esac
+}
+
+# ------------------------------------------------------- what /init handed us
+# /init mounted /proc, /sys and /dev and saw an armed flag; nothing is taken on trust.
+mkdir -p /mnt/src /mnt/dst "$RAM_DIR" /run/preseed
+[ -r /proc/cmdline ] && [ -d /sys/block ] && [ -c /dev/null ] ||
+	rescue "/init did not hand over /proc, /sys and /dev"
+# Everything the destructive steps run, checked before any of them (a partial cpio).
+[ -r "$FLAG_CONF" ] && [ -x "$INSTALL_FLAG" ] && [ -x "$MKFS_EXFAT" ] ||
+	rescue "this initramfs is missing $FLAG_CONF, $INSTALL_FLAG or $MKFS_EXFAT -- nothing was changed"
+# shellcheck source=board/mister/common/initramfs-overlay/usr/lib/mister/install-flag.conf
+. "$FLAG_CONF"
 
 # ------------------------------------------------------- parse /proc/cmdline
 # Before anything is drawn: the HDMI mode knob lives here. Pure shell, never globs.
@@ -405,7 +483,6 @@ set -f
 set -- $cmdline
 for tok in "$@"; do
 	case "$tok" in
-	root=*) root_arg="${tok#root=}" ;;
 	# Test hook: user-reachable via u-boot.txt's $v, so stop_after() also requires
 	# the initramfs marker file.
 	mister_installer_stop_after=*) stop_after_stage="${tok#mister_installer_stop_after=}" ;;
@@ -427,7 +504,6 @@ splash_hdmi_init
 # The console splash needs /proc, /sys and /run; until now drawing was a no-op.
 splash_init
 splash_step 1 "checking the card"
-[ -n "$root_arg" ] || rescue "no root= on the kernel command line"
 if [ -n "$stop_after_stage" ]; then
 	if [ -e /.installer-test-hook ]; then
 		log "TEST HOOK ACTIVE: will stop after \"$stop_after_stage\""
@@ -436,58 +512,24 @@ if [ -n "$stop_after_stage" ]; then
 	fi
 fi
 
-# --------------------------------------------------- resolve the data partition
-# root= is p1: a device path, or LABEL=/UUID= via findfs (as stage-1).
-resolve_data_part() {
-	case "$root_arg" in
-	UUID=*|LABEL=*) findfs "$root_arg" 2>/dev/null ;;
-	*)              [ -b "$root_arg" ] && printf '%s' "$root_arg" ;;
-	esac
-}
-stage="waiting for the data partition"
-waited=0
-while :; do
-	DATA_PART="$(resolve_data_part)"
-	[ -n "$DATA_PART" ] && [ -b "$DATA_PART" ] && break
-	[ "$waited" -ge "$DEV_WAIT" ] && rescue "data partition '$root_arg' never appeared"
-	[ "$waited" = 0 ] && log "waiting up to ${DEV_WAIT}s for $root_arg ..."
-	splash_tick   # this loop already sleeps 1, so it animates without a child
-	sleep 1; waited=$((waited + 1))
-done
-log "data partition = $DATA_PART (after ${waited}s)"
-
-# ------------------------------------------------- derive the WHOLE-DISK device
+# ---------------------------------------------- the disk, and its flag, again
 # NEVER repartition the wrong disk: the parent is the sysfs dir containing p1.
 stage="identifying the boot disk"
-partname="${DATA_PART#/dev/}"
-disk_name=""
-for cand in /sys/block/*/"$partname"; do
-	[ -d "$cand" ] || continue
-	# No basename/dirname applets: peel /sys/block/<disk>/<part> by expansion.
-	cand_disk="${cand%/*}"
-	disk_name="${cand_disk##*/}"
-	break
-done
-[ -n "$disk_name" ] || rescue "could not find the parent disk of $DATA_PART in sysfs"
-DISK="/dev/$disk_name"
-[ -b "$DISK" ] || rescue "derived disk $DISK is not a block device"
+[ -n "$DATA_PART" ] && [ -b "$DATA_PART" ] || rescue "/init handed over no data partition ('$DATA_PART')"
+DISK="$("$INSTALL_FLAG" disk "$DATA_PART" 2>/dev/null)" || DISK=""
+[ -n "$DISK" ] && [ -b "$DISK" ] || rescue "could not find the parent disk of $DATA_PART in sysfs"
+disk_name="${DISK#/dev/}"
 
-# Partition-node naming: kernel appends 'p<N>' when the disk name ends in a digit
-# (mmcblk0 -> mmcblk0p1, nvme0n1 -> nvme0n1p1), else '<N>' (sda -> sda1).
-partdev() {
-	case "$1" in
-	*[0-9]) printf '%sp%s' "$1" "$2" ;;
-	*)      printf '%s%s'  "$1" "$2" ;;
-	esac
-}
 P1="$(partdev "$DISK" 1)"
 P2="$(partdev "$DISK" 2)"
+P3="$(partdev "$DISK" 3)"
 # Stock U-Boot only boots partition 1: refuse any other layout rather than guess.
 [ "$DATA_PART" = "$P1" ] || rescue "data partition $DATA_PART is not p1 ($P1) of $DISK"
-log "disk=$DISK  p1(data)=$P1  p2(boot)=$P2"
+require_armed "install onto this card"
+log "disk=$DISK  p1(data)=$P1  p2(boot)=$P2  flag=$P3 (armed)"
 
 # --------------------------------------------------- mount the source read-only
-# Read-only; exfat first so the re-run guard can recognise an installed card.
+# Read-only; exfat first, so a card this installer already formatted is recognised.
 stage="mounting the source data partition"
 if mount -t exfat -o ro "$DATA_PART" /mnt/src 2>/dev/null; then
 	fat_type="exfat"
@@ -499,34 +541,22 @@ fi
 log "source mounted ($fat_type)"
 
 # ------------------------------------------------------ what is on this card?
-# One decision over the four card states (docs/installer-init.md#recoverability).
+# One decision over the card states (docs/installer-init.md#recoverability).
 stage="assessing the card"
 SRC_PAYLOAD="/mnt/src/$PAYLOAD_DIR"
 SRC_PAYLOAD_PART="/mnt/src/$PAYLOAD_PART_DIR"
-label="$(blkid -o value -s LABEL "$DATA_PART" 2>/dev/null || true)"
+SRC_KERNEL="/mnt/src/linux/zImage_dtb"
+SRC_MENU_RBF="/mnt/src/menu.rbf"
+label="$(volume_label "$DATA_PART")"
+payload_complete() {
+	[ -d "$SRC_PAYLOAD" ] && [ -s "$SRC_PAYLOAD/linux/linux.img.gz" ] &&
+		[ -s "$SRC_PAYLOAD/linux/uboot.img" ]
+}
+ours=0
+[ "$fat_type" = exfat ] && [ "$label" = "$DATA_LABEL" ] && [ -f "/mnt/src/$INSTALL_TOKEN" ] && ours=1
 
-# 1. ALREADY PROVISIONED: stop, never reformat. The no-payload-dir clause is
-#    load-bearing (docs/installer-init.md#the-re-run-guard).
-if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ] &&
-   [ ! -d "$SRC_PAYLOAD" ] && [ ! -d "$SRC_PAYLOAD_PART" ] && [ -f /mnt/src/linux/linux.img ]; then
-	umount /mnt/src 2>/dev/null || true
-	splash_halt_ok
-	printf '\n################################################################\n'
-	printf '#  MiSTer INSTALLER: card already provisioned -- NOT reformatting\n'
-	printf '################################################################\n'
-	printf '  %s is exFAT "%s" and already contains linux/linux.img,\n' "$DATA_PART" "$DATA_LABEL"
-	printf '  with no installer payload left on it.\n'
-	printf '  Refusing to reformat an installed card (your data is safe).\n'
-	printf '  If you meant to reinstall, re-flash sdcard.img first.\n\n'
-	# NOT rescue(): a correct halt, the card IS installed. A reboot would loop
-	# into this installer, so drop to a shell.
-	printf 'Dropping to a console shell. The card is fine -- power-cycle into it,\n'
-	printf 'or re-flash sdcard.img only if you actually want to reinstall.\n\n'
-	respawn_shell
-fi
-
-# 2. INTERRUPTED DURING THE COPY-BACK: its source was in RAM and is gone.
-#    Nothing to repair; halt (a reboot would loop forever).
+# INTERRUPTED DURING THE COPY-BACK: its source was in RAM and is gone. Halt; a
+# reboot would only come back here.
 if [ -d "$SRC_PAYLOAD_PART" ] && [ ! -d "$SRC_PAYLOAD" ]; then
 	umount /mnt/src 2>/dev/null || true
 	splash_fail
@@ -543,44 +573,215 @@ if [ -d "$SRC_PAYLOAD_PART" ] && [ ! -d "$SRC_PAYLOAD" ]; then
 	respawn_shell
 fi
 
-# --------------------------------------------- locate the payload on the source
-splash_step 2 "reading the payload"
-stage="locating the payload"
-if [ ! -d "$SRC_PAYLOAD" ]; then
-	# No payload under either name: three causes, three messages, most specific first.
-	if [ -f /mnt/src/linux/linux.img ]; then
-		rescue "no /$PAYLOAD_DIR on $DATA_PART but linux/linux.img is there -- an install was interrupted at its very last step; re-flash sdcard.img"
-	fi
-	if [ "$fat_type" = "exfat" ] && [ "$label" = "$DATA_LABEL" ]; then
-		rescue "no /$PAYLOAD_DIR on an already-reformatted $DATA_PART -- an install was interrupted before the payload was copied; re-flash sdcard.img"
-	fi
-	rescue "payload dir /$PAYLOAD_DIR not found on $DATA_PART (wrong card?)"
+if [ "$fat_type" = vfat ] && payload_complete; then
+	card_state="fresh"
+elif [ "$ours" = 1 ] && payload_complete; then
+	card_state="resume"
+elif [ "$fat_type" = exfat ] && ! payload_complete &&
+     [ -s /mnt/src/linux/linux.img ] && [ -s "$SRC_KERNEL" ]; then
+	card_state="finish"
+elif [ "$ours" = 1 ]; then
+	rescue "no complete /$PAYLOAD_DIR on an exFAT $DATA_PART -- an install was interrupted before the payload was copied; re-flash sdcard.img"
+else
+	card_state="foreign"
 fi
-# Files the reformatted card cannot boot without; linux.img ships gzipped.
-for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
-	[ -f "$SRC_PAYLOAD/$f" ] && continue
-	if [ -f /mnt/src/linux/linux.img ]; then
-		rescue "/$PAYLOAD_DIR is missing $f and linux/linux.img is already there -- an install was interrupted while finishing; re-flash sdcard.img"
-	fi
-	rescue "payload is missing $f -- refusing to reformat"
-done
+log "card state: $card_state"
 
-# ------------------------------------ the two files that make the card recover
-# Written back first in step 7. Absence is warned about, never fatal.
-stage="checking the installer's own kernel"
-SRC_INSTALLER_KERNEL="/mnt/src/linux/zImage_dtb"
-SRC_MENU_RBF="/mnt/src/menu.rbf"
-[ -f "$SRC_INSTALLER_KERNEL" ] ||
-	log "WARNING: no linux/zImage_dtb at the card root -- an interruption below will need a re-flash"
+# ------------------------------------------------- finish_install (step 10)
+# The tail every completed copy reaches, and the whole of a "finish" boot. Idempotent.
+commit_payload() {
+	[ -d "$DST_PAYLOAD" ] || return 0
+	for entry in "$DST_PAYLOAD"/* "$DST_PAYLOAD"/.[!.]*; do
+		[ -e "$entry" ] || continue
+		if [ "${entry##*/}" = "linux" ]; then
+			for sub in "$entry"/* "$entry"/.[!.]*; do
+				[ -e "$sub" ] || continue
+				mv -f "$sub" /mnt/dst/linux/ || return 1
+			done
+			continue
+		fi
+		mv -f "$entry" /mnt/dst/ || return 1
+	done
+	return 0
+}
+
+apply_preseed() {
+	# $1 = name under $PRESEED_DIR on the card ; $2 = destination path under /mnt/dst
+	[ -e "/mnt/dst/$PRESEED_DIR/$1" ] || return 0
+	dest="/mnt/dst/$2"
+	mkdir -p "${dest%/*}"
+	if cp -a "/mnt/dst/$PRESEED_DIR/$1" "$dest" 2>/dev/null; then
+		log "pre-seed applied: $1 -> $2"
+	else
+		log "pre-seed: WARNING failed to apply $1 (ignored)"
+	fi
+}
+
+# Random locally-administered unicast MAC; u-boot.txt must end in a newline.
+gen_mac() {
+	# shellcheck disable=SC2046  # hexdump's hex-only words into $1..$6 is the point
+	set -- $(hexdump -n6 -e '6/1 "%02x "' /dev/urandom)
+	[ $# -eq 6 ] || return 1
+	o1=$(( (0x$1 | 0x02) & 0xFE ))
+	printf '%02X:%02X:%02X:%02X:%02X:%02X' \
+		"$o1" "$((0x$2))" "$((0x$3))" "$((0x$4))" "$((0x$5))" "$((0x$6))"
+}
+
+# flag_spend -- THE COMMIT POINT: wipe the magic block, so the probe says "spent" (a normal
+# boot). One 512-byte write that never touches sector 0, read back before it counts.
+flag_spend() {
+	dd if=/dev/zero of="$DISK" bs=512 seek="$FLAG_LBA" count=1 conv=notrunc,fsync 2>/dev/null || return 1
+	sync
+	blockdev --flushbufs "$DISK" 2>/dev/null || true
+	[ "$(flag_state)" = spent ]
+}
+
+# flag_remove_entry -- cleanup after the commit: entry 3 leaves the MBR, all else kept.
+flag_remove_entry() {
+	dd if="$DISK" of=/run/mbr.old bs=512 count=1 2>/dev/null || return 1
+	{
+		dd if=/run/mbr.old bs=478 count=1 2>/dev/null
+		# shellcheck disable=SC2059  # sixteen octal NULs, built above
+		printf "$MBR_EMPTY_ENTRY"
+		dd if=/run/mbr.old bs=1 skip=494 count=18 2>/dev/null
+	} > /run/mbr.new || return 1
+	mbr_commit /run/mbr.new
+}
+
+finish_install() {
+	splash_step 10 "finishing the install"
+	DST_PAYLOAD="/mnt/dst/$PAYLOAD_DIR"
+	if [ -f "/mnt/dst/$INSTALL_TOKEN" ]; then
+		# Drop the redundant .gz, then VERIFY and fall back to truncating: an unchecked
+		# `rm` once silently no-opped for a release (docs/installer-init.md#commit-phase).
+		stage="removing the compressed system image"
+		if [ -e "$DST_PAYLOAD/linux/linux.img.gz" ]; then
+			rm -f "$DST_PAYLOAD/linux/linux.img.gz" 2>/dev/null
+			if [ -e "$DST_PAYLOAD/linux/linux.img.gz" ]; then
+				: > "$DST_PAYLOAD/linux/linux.img.gz"
+				log "WARNING: could not delete linux/linux.img.gz -- truncated it instead"
+			else
+				log "removed linux/linux.img.gz"
+			fi
+		fi
+
+		stage="moving the payload into place"
+		commit_payload || rescue "moving the payload into place on $P1 failed"
+		sync
+		for f in linux/linux.img linux/uboot.img linux/zImage_dtb; do
+			[ -s "/mnt/dst/$f" ] || rescue "$f missing on $P1 after the commit moves"
+		done
+		log "payload moved into place on $P1"
+		stop_after moved
+
+		stage="applying user pre-seed"
+		apply_preseed wpa_supplicant.conf  linux/wpa_supplicant.conf
+		apply_preseed _wpa_supplicant.conf linux/_wpa_supplicant.conf
+		apply_preseed samba.sh             linux/_samba.sh
+		apply_preseed _samba.sh            linux/_samba.sh
+		# Directory pre-seeds are merged (cp -a of the dir onto the existing tree).
+		for d in Scripts config; do
+			[ -d "/mnt/dst/$PRESEED_DIR/$d" ] || continue
+			if cp -a "/mnt/dst/$PRESEED_DIR/$d" /mnt/dst/; then log "pre-seed applied: $d/"; else log "pre-seed: WARNING $d/ failed (ignored)"; fi
+		done
+
+		# A resumed "finish" boot keeps the MAC its first attempt already wrote.
+		stage="writing per-board MAC"
+		if [ -s /mnt/dst/linux/u-boot.txt ]; then
+			log "linux/u-boot.txt already present -- keeping its MAC"
+		elif mac="$(gen_mac)" && [ -n "$mac" ]; then
+			printf 'ethaddr=%s\n' "$mac" > /mnt/dst/linux/u-boot.txt ||
+				rescue "cannot write /linux/u-boot.txt on $P1"
+			log "per-board MAC = $mac"
+		else
+			log "WARNING: could not generate a MAC; board will use the shared fallback"
+		fi
+
+		stage="removing the staged payload"
+		rm -rf "$DST_PAYLOAD" 2>/dev/null
+		if [ -e "$DST_PAYLOAD" ]; then
+			log "WARNING: could not remove $PAYLOAD_DIR/ from $P1 (harmless clutter)"
+		else
+			log "removed $PAYLOAD_DIR/ from $P1"
+		fi
+		rm -rf "/mnt/dst/$PRESEED_DIR" 2>/dev/null ||
+			log "WARNING: could not remove $PRESEED_DIR/ (harmless clutter)"
+		rm -f "/mnt/dst/$INSTALL_TOKEN" 2>/dev/null ||
+			log "WARNING: could not remove $INSTALL_TOKEN (harmless once the flag is gone)"
+	else
+		log "no $INSTALL_TOKEN on $P1 -- nothing to move; only the flag is left to remove"
+	fi
+
+	stage="flushing the data partition"
+	sync
+	umount /mnt/dst || rescue "cannot unmount $P1 (data not fully flushed)"
+	sync
+
+	# ====================== THE COMMIT POINT ===============================
+	# Before it the next boot finishes this install; after it, the card boots MiSTer.
+	stage="spending the installer flag (the commit point)"
+	require_armed "commit the install"
+	flag_spend || rescue "could not spend the installer flag on $DISK"
+	log "installer flag spent -- this card is a MiSTer now, not an installer"
+	stop_after committed
+
+	# Cleanup only: a spent entry 3 already boots normally, so a failure here is harmless.
+	stage="removing the spent flag's partition entry"
+	if flag_remove_entry && [ "$(flag_state)" = absent ]; then
+		log "flag partition entry removed from the MBR"
+	else
+		log "WARNING: could not remove MBR entry 3 (harmless: the flag is spent)"
+	fi
+	blockdev --rereadpt "$DISK" 2>/dev/null || true
+	[ "$(flag_state)" != armed ] || rescue "the installer flag still reads as armed after the commit"
+
+	stage="rebooting into the installed MiSTer"
+	# Draws the completion banner and puts the LED out: from here the next thing that
+	# lights it is the installed system's own mmc0 trigger, one boot from now.
+	splash_done
+	log "install complete -- rebooting into MiSTer"
+	sync
+	# `reboot -f`: direct reboot(2) syscall; we ARE pid 1 and nothing else would act on it.
+	reboot -f
+	rescue "reboot returned unexpectedly"
+}
+
+# FOREIGN: an armed flag on a card this installer did not make and cannot install from
+# (repartitioned, reformatted). Spend the flag and boot it normally; never rescue-loop.
+if [ "$card_state" = foreign ]; then
+	umount /mnt/src 2>/dev/null || true
+	stage="spending the installer flag on a card it will not install to"
+	log "$DATA_PART ($fat_type, label '$label') is not a card this installer can finish -- leaving it as it is"
+	require_armed "spend the flag"
+	flag_spend || rescue "could not spend the installer flag on $DISK"
+	log "installer flag spent; nothing else on $DISK was changed -- rebooting into a normal boot"
+	sync
+	reboot -f
+	rescue "reboot returned unexpectedly"
+fi
+
+if [ "$card_state" = finish ]; then
+	stage="remounting $P1 read-write"
+	umount /mnt/src || rescue "cannot unmount $DATA_PART"
+	mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount $P1 read-write"
+	finish_install
+fi
+
+# ------------------------------------------------- the payload and boot files
+splash_step 2 "reading the payload"
+stage="checking the kernel"
+[ -s "$SRC_KERNEL" ] || rescue "no linux/zImage_dtb at the card root -- refusing to reformat a card it could not boot again"
 [ -f "$SRC_MENU_RBF" ] ||
 	log "WARNING: no menu.rbf at the card root -- the fabric stays unconfigured on a re-run"
 
 # --------------------------------------------------- stash any user pre-seed (2)
 # Optional files at the FAT root (mr-fusion's hooks), stashed in RAM for step 10.
 stage="collecting user pre-seed"
+preseed_src="/mnt/src"
+[ "$card_state" = resume ] && preseed_src="/mnt/src/$PRESEED_DIR"
 for item in wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts config; do
-	if [ -e "/mnt/src/$item" ]; then
-		if cp -a "/mnt/src/$item" "/run/preseed/$item" 2>/dev/null; then
+	if [ -e "$preseed_src/$item" ]; then
+		if cp -a "$preseed_src/$item" "/run/preseed/$item" 2>/dev/null; then
 			log "pre-seed: captured $item"
 		else
 			log "pre-seed: WARNING could not capture $item (ignored)"
@@ -601,25 +802,24 @@ budget_kb=$((avail_kb - RAM_RESERVE_KB))
 
 mount -t tmpfs -o "size=${budget_kb}k" tmpfs "$RAM_DIR" ||
 	rescue "cannot mount the payload tmpfs (${budget_kb}KB)"
-mkdir -p "$RAM_PAYLOAD" "$RAM_INSTALLER" || rescue "cannot create the RAM staging dirs"
+mkdir -p "$RAM_PAYLOAD" "$RAM_BOOT" || rescue "cannot create the RAM staging dirs"
 
-# The recovery files live outside $SRC_PAYLOAD and are never dropped, so they
-# are budgeted into the base explicitly.
+# The boot files live outside $SRC_PAYLOAD and are never dropped, so they are
+# budgeted into the base explicitly.
 payload_kb="$(du -sk "$SRC_PAYLOAD" 2>/dev/null | cut -f1)"
 cores_kb=0
 [ -d "$SRC_PAYLOAD/$CORES_DIR" ] && cores_kb="$(du -sk "$SRC_PAYLOAD/$CORES_DIR" 2>/dev/null | cut -f1)"
-recover_kb=0
-[ -f "$SRC_INSTALLER_KERNEL" ] && recover_kb="$(du -sk "$SRC_INSTALLER_KERNEL" 2>/dev/null | cut -f1)"
+boot_kb="$(du -sk "$SRC_KERNEL" 2>/dev/null | cut -f1)"
 rbf_kb=0
 [ -f "$SRC_MENU_RBF" ] && rbf_kb="$(du -sk "$SRC_MENU_RBF" 2>/dev/null | cut -f1)"
 case "$payload_kb" in ''|*[!0-9]*) payload_kb=0 ;; esac
 case "$cores_kb"   in ''|*[!0-9]*) cores_kb=0 ;;   esac
-case "$recover_kb" in ''|*[!0-9]*) recover_kb=0 ;; esac
+case "$boot_kb"    in ''|*[!0-9]*) boot_kb=0 ;;    esac
 case "$rbf_kb"     in ''|*[!0-9]*) rbf_kb=0 ;;     esac
-recover_kb=$((recover_kb + rbf_kb))
-full_kb=$((payload_kb + recover_kb))
+boot_kb=$((boot_kb + rbf_kb))
+full_kb=$((payload_kb + boot_kb))
 base_kb=$((full_kb - cores_kb))
-log "payload: full=${full_kb}KB (cores=${cores_kb}KB, recovery=${recover_kb}KB, base=${base_kb}KB); RAM budget=${budget_kb}KB"
+log "payload: full=${full_kb}KB (cores=${cores_kb}KB, boot files=${boot_kb}KB, base=${base_kb}KB); RAM budget=${budget_kb}KB"
 
 skip_cores=0
 if [ "$full_kb" -gt "$budget_kb" ]; then
@@ -648,13 +848,10 @@ copy_payload_to_ram() {
 		fi
 		cp -a "$entry" "$RAM_PAYLOAD"/ || return 1
 	done
-	# The recovery pair, into their own directory so the copy-back glob above can
-	# never see them. Missing files were already warned about; not fatal.
-	if [ -f "$SRC_INSTALLER_KERNEL" ]; then
-		cp -a "$SRC_INSTALLER_KERNEL" "$RAM_INSTALLER/zImage_dtb" || return 1
-	fi
+	# The boot pair, into their own directory so the copy-back glob above never sees them.
+	cp -a "$SRC_KERNEL" "$RAM_BOOT/zImage_dtb" || return 1
 	if [ -f "$SRC_MENU_RBF" ]; then
-		cp -a "$SRC_MENU_RBF" "$RAM_INSTALLER/menu.rbf" || return 1
+		cp -a "$SRC_MENU_RBF" "$RAM_BOOT/menu.rbf" || return 1
 	fi
 	return 0
 }
@@ -665,15 +862,10 @@ copy_payload_to_ram || rescue "copying the payload into RAM failed (out of space
 splash_pulse_stop
 
 # Verify the RAM copy BEFORE destroying anything; the card is still an installer.
-for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
-	[ -f "$RAM_PAYLOAD/$f" ] || rescue "RAM payload is missing $f after copy -- aborting before reformat"
+for f in "$RAM_PAYLOAD/linux/linux.img.gz" "$RAM_PAYLOAD/linux/uboot.img" "$RAM_BOOT/zImage_dtb"; do
+	[ -s "$f" ] || rescue "the RAM copy is missing ${f#"$RAM_DIR"/} -- aborting before reformat"
 done
-log "payload staged in RAM OK"
-if [ -f "$RAM_INSTALLER/zImage_dtb" ]; then
-	log "installer kernel staged in RAM -- an interruption below re-runs this installer"
-else
-	log "WARNING: installer kernel NOT staged -- an interruption below will need a re-flash"
-fi
+log "payload and kernel staged in RAM OK"
 
 # We are done reading the card. Everything destructive is below this line.
 stage="unmounting the source"
@@ -682,72 +874,112 @@ sync
 
 # =========== POINT OF NO RETURN -- from here the card is being rewritten ===========
 
-# ------------------------------------------------- repartition to full size (4)
-# Explicit starts and sizes, unlike mr-fusion (docs/installer-init.md#partition-layout).
-splash_step 4 "repartitioning the card"
-stage="repartitioning $DISK"
+# -------------------------- uboot.img to where p2 is about to be (4)
+# BEFORE the MBR names it, so no instant exists where p2 points at a region without it.
+splash_step 4 "writing the bootloader"
+stage="sizing the new layout of $DISK"
 dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)"
 case "$dev_sectors" in ''|*[!0-9]*) rescue "cannot read /sys/block/$disk_name/size" ;; esac
+[ "$dev_sectors" -le "$MBR_MAX_SECTORS" ] ||
+	rescue "card has $dev_sectors sectors; an MBR cannot address past 2 TiB -- nothing was changed"
 data_sectors=$((dev_sectors - P1_START_SECTORS - RESERVED_SECTORS))
 p2_start=$((dev_sectors - RESERVED_SECTORS))
 [ "$data_sectors" -gt 0 ] || rescue "device too small: $dev_sectors sectors"
-log "card=$dev_sectors sectors; p1=[$P1_START_SECTORS,+$data_sectors) exfat; p2=[$p2_start,+$RESERVED_SECTORS) 0xA2"
+log "card=$dev_sectors sectors; p1=[$P1_START_SECTORS,+$data_sectors) exfat; p2=[$p2_start,+$RESERVED_SECTORS) 0xA2; flag=[$FLAG_LBA,+$FLAG_SECTORS)"
 
-# `label: dos` forces a fresh MBR; type=7 is exFAT, type=a2 the SPL partition.
-sfdisk --force "$DISK" <<EOF || rescue "sfdisk failed -- card partition table may be inconsistent"
-label: dos
-start=${P1_START_SECTORS}, size=${data_sectors}, type=7
-start=${p2_start}, size=${RESERVED_SECTORS}, type=a2
-EOF
+# The new p2 must lie outside every partition the card has now, or BE the current p2 (resume).
+for _sys in "/sys/block/$disk_name/$disk_name"*; do
+	[ -r "$_sys/start" ] && [ -r "$_sys/size" ] || continue
+	read -r _a < "$_sys/start"; read -r _b < "$_sys/size"
+	[ "$_a" = "$p2_start" ] && [ "$_b" = "$RESERVED_SECTORS" ] && continue
+	[ $((_a + _b)) -le "$p2_start" ] ||
+		rescue "the new boot partition would overlap ${_sys##*/} -- nothing was changed"
+done
+
+# Padded to whole sectors so the read-back below compares exactly what was written.
+uboot_pad=/run/uboot.pad
+dd if="$RAM_PAYLOAD/linux/uboot.img" of="$uboot_pad" bs=512 conv=sync 2>/dev/null ||
+	rescue "cannot stage uboot.img -- nothing was changed"
+uboot_sectors=$(( $(wc -c < "$uboot_pad") / 512 ))
+[ "$uboot_sectors" -gt 0 ] && [ "$uboot_sectors" -le "$RESERVED_SECTORS" ] ||
+	rescue "uboot.img does not fit the $RESERVED_SECTORS-sector boot partition -- nothing was changed"
+# uboot_matches DEV SKIP -- the sectors at DEV+SKIP equal the padded uboot.img.
+uboot_matches() {
+	dd if="$1" bs=512 skip="$2" count="$uboot_sectors" 2>/dev/null | cmp -s - "$uboot_pad"
+}
+
+stage="writing uboot.img ahead of the new boot partition"
+require_armed "write the bootloader"
+splash_pulse_start
+dd if="$uboot_pad" of="$DISK" bs=512 seek="$p2_start" conv=notrunc,fsync 2>/dev/null ||
+	rescue "writing uboot.img at LBA $p2_start failed -- the partition table is unchanged"
 sync
+blockdev --flushbufs "$DISK" 2>/dev/null || true
+splash_pulse_stop
+uboot_matches "$DISK" "$p2_start" ||
+	rescue "uboot.img at LBA $p2_start did not read back -- the partition table is unchanged"
+log "uboot.img staged at LBA $p2_start, where the new boot partition will start"
+stop_after uboot-staged
 
-# Make the kernel re-read the new table and wait for the nodes to appear.
-blockdev --rereadpt "$DISK" 2>/dev/null || true
-stage="waiting for new partition nodes"
+# ------------------------------------------------- repartition to full size (5)
+# Explicit starts and sizes; entry 3 (the flag) is rewritten unchanged, so a cut here re-runs.
+splash_step 5 "repartitioning the card"
+stage="repartitioning $DISK"
+id="$(disk_id)" || rescue "could not read /dev/urandom for a disk id -- nothing was changed"
+dd if="$DISK" of=/run/mbr.old bs=512 count=1 2>/dev/null || rescue "cannot read the MBR of $DISK"
+mbr_build /run/mbr.new /run/mbr.old "$id" \
+	"$(mbr_entry 7 "$P1_START_SECTORS" "$data_sectors")" \
+	"$(mbr_entry 0xa2 "$p2_start" "$RESERVED_SECTORS")" \
+	"$(mbr_entry "$FLAG_TYPE" "$FLAG_LBA" "$FLAG_SECTORS")" \
+	"$MBR_EMPTY_ENTRY" || rescue "could not assemble the new partition table -- nothing was changed"
+require_armed "repartition this card"
+mbr_commit /run/mbr.new || rescue "writing the new partition table to $DISK failed or did not verify"
+
+# Make the kernel re-read the new table and prove it sees exactly what we wrote.
+stage="re-reading the partition table"
 waited=0
 while :; do
-	[ -b "$P1" ] && [ -b "$P2" ] && break
-	[ "$waited" -ge "$DEV_WAIT" ] && rescue "new partitions $P1 / $P2 never appeared after sfdisk"
-	splash_tick   # ditto -- free animation, no heartbeat child needed here
+	blockdev --rereadpt "$DISK" 2>/dev/null &&
+		sysfs_is "$P1" "$P1_START_SECTORS" "$data_sectors" &&
+		sysfs_is "$P2" "$p2_start" "$RESERVED_SECTORS" &&
+		sysfs_is "$P3" "$FLAG_LBA" "$FLAG_SECTORS" &&
+		[ -b "$P1" ] && [ -b "$P2" ] && break
+	[ "$waited" -ge "$DEV_WAIT" ] && rescue "the kernel never showed the new partitions $P1 / $P2 / $P3"
+	splash_tick   # this loop already sleeps 1, so it animates without a child
 	sleep 1; waited=$((waited + 1))
 done
-log "new partitions present: $P1 (data), $P2 (boot)"
+require_armed "continue after repartitioning"
+log "new partitions present: $P1 (data), $P2 (boot), $P3 (flag, still armed)"
 
-# ------------------------------------- dd uboot.img to the new 0xA2 p2 (5)
-# THE most brick-critical step, deliberately FIRST after sfdisk. Keep it here.
-splash_step 5 "writing the bootloader"
-stage="writing uboot.img to the boot partition ($P2)"
-splash_pulse_start
-dd if="$RAM_PAYLOAD/linux/uboot.img" of="$P2" bs=64k 2>/dev/null ||
-	rescue "dd of uboot.img to $P2 FAILED -- card is NOT bootable; re-flash sdcard.img"
-sync; sync
-splash_pulse_stop
-log "uboot.img written to $P2 -- the card can reach U-Boot again"
+# Through the new partition node this time: the BootROM's view of p2.
+stage="checking uboot.img in the boot partition ($P2)"
+uboot_matches "$P2" 0 ||
+	rescue "$P2 does not hold uboot.img after the repartition -- card is NOT bootable; re-flash sdcard.img"
+log "uboot.img verified in $P2 -- the card can reach U-Boot again"
 stop_after bootloader
 
 # --------------------------------------------------- mkfs.exfat on new p1 (6)
 splash_step 6 "formatting (exFAT)"
 stage="formatting $P1 as exFAT"
-mkfs.exfat -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
+require_armed "format $P1"
+"$MKFS_EXFAT" -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
 sync
 
 stage="mounting the new data partition"
 mount -t exfat -o rw,noatime "$P1" /mnt/dst || rescue "cannot mount new exFAT $P1"
 
-# ------------------------------- put THIS installer back on the card first (7)
-# U-Boot loads menu.rbf and zImage_dtb off p1: from here a power cut re-runs us.
+# ------------------------------- put the boot files back on the card first (7)
+# U-Boot loads menu.rbf and zImage_dtb off p1, and the flag is still armed: a cut re-runs us.
 splash_step 7 "making the card recoverable"
-stage="writing the installer kernel onto $P1"
+stage="writing the kernel onto $P1"
 mkdir -p /mnt/dst/linux || rescue "cannot create linux/ on $P1"
-if [ -f "$RAM_INSTALLER/zImage_dtb" ]; then
-	cp -a "$RAM_INSTALLER/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
-		rescue "cannot write the installer kernel to linux/zImage_dtb on $P1"
-	log "installer kernel on $P1 -- from here a power cut re-runs the installer"
-else
-	log "WARNING: no installer kernel to write; a power cut from here needs a re-flash"
-fi
-if [ -f "$RAM_INSTALLER/menu.rbf" ]; then
-	if cp -a "$RAM_INSTALLER/menu.rbf" /mnt/dst/menu.rbf; then
+printf 'MiSTer first-boot install in progress; the installer removes this file.\n' \
+	> "/mnt/dst/$INSTALL_TOKEN" || rescue "cannot write $INSTALL_TOKEN on $P1"
+cp -a "$RAM_BOOT/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
+	rescue "cannot write the kernel to linux/zImage_dtb on $P1"
+log "kernel on $P1 -- from here a power cut re-runs the installer"
+if [ -f "$RAM_BOOT/menu.rbf" ]; then
+	if cp -a "$RAM_BOOT/menu.rbf" /mnt/dst/menu.rbf; then
 		log "menu.rbf on $P1 (the core U-Boot fpgaload puts in the fabric)"
 	else
 		log "WARNING: could not write menu.rbf (ignored -- it configures the fabric, nothing more)"
@@ -762,6 +994,10 @@ splash_step 8 "writing files to the card"
 stage="writing the payload to the card"
 DST_PAYLOAD="/mnt/dst/$PAYLOAD_DIR"
 DST_PAYLOAD_PART="/mnt/dst/$PAYLOAD_PART_DIR"
+# Before the payload, so any card that reaches "finish" or "resume" carries them too.
+if ! { mkdir -p "/mnt/dst/$PRESEED_DIR" && cp -a /run/preseed/. "/mnt/dst/$PRESEED_DIR/"; }; then
+	rescue "cannot stage the user pre-seed on $P1"
+fi
 mkdir -p "$DST_PAYLOAD_PART" || rescue "cannot create $PAYLOAD_PART_DIR on $P1"
 splash_pulse_start
 for entry in "$RAM_PAYLOAD"/* "$RAM_PAYLOAD"/.[!.]*; do
@@ -773,8 +1009,8 @@ sync
 splash_pulse_stop
 
 # Rename only once the boot-critical files are there: never a partial "complete".
-for f in linux/linux.img.gz linux/zImage_dtb linux/uboot.img; do
-	[ -f "$DST_PAYLOAD_PART/$f" ] || rescue "$f missing on $P1 after copy-back"
+for f in linux/linux.img.gz linux/uboot.img; do
+	[ -s "$DST_PAYLOAD_PART/$f" ] || rescue "$f missing on $P1 after copy-back"
 done
 stage="committing the payload directory"
 mv "$DST_PAYLOAD_PART" "$DST_PAYLOAD" ||
@@ -787,7 +1023,7 @@ stop_after payload-copied
 # To disk, never RAM; the payload stays intact, so a cut here re-installs.
 splash_step 9 "expanding the system image"
 stage="expanding linux.img onto the card"
-[ -f "$DST_PAYLOAD/linux/linux.img.gz" ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
+[ -s "$DST_PAYLOAD/linux/linux.img.gz" ] || rescue "linux/linux.img.gz missing on $P1 after copy-back"
 # The longest command of the install, with no progress of its own.
 splash_pulse_start
 zcat "$DST_PAYLOAD/linux/linux.img.gz" > /mnt/dst/linux/linux.img ||
@@ -796,138 +1032,4 @@ splash_pulse_stop
 sync
 stop_after expanded
 
-# =========== COMMIT PHASE (10) -- renames; the LAST one makes this a MiSTer ===========
-# Window opens at the `rm` below; nothing slow here (docs/installer-init.md#commit-phase).
-splash_step 10 "finishing the install"
-
-# Drop the redundant .gz, then VERIFY and fall back to truncating: an unchecked
-# `rm` once silently no-opped for a release (docs/installer-init.md#commit-phase).
-stage="removing the compressed system image"
-rm -f "$DST_PAYLOAD/linux/linux.img.gz" 2>/dev/null
-if [ -e "$DST_PAYLOAD/linux/linux.img.gz" ]; then
-	: > "$DST_PAYLOAD/linux/linux.img.gz"
-	log "WARNING: could not delete linux/linux.img.gz (no rm applet?) -- truncated it instead"
-else
-	log "removed linux/linux.img.gz"
-fi
-
-# ------------------------------- move the payload into its final places (10)
-# mv, never cp. linux/ is merged per child; zImage_dtb waits for the commit point.
-stage="moving the payload into place"
-commit_payload() {
-	for entry in "$DST_PAYLOAD"/* "$DST_PAYLOAD"/.[!.]*; do
-		[ -e "$entry" ] || continue
-		name="${entry##*/}"
-		if [ "$name" = "linux" ]; then
-			for sub in "$entry"/* "$entry"/.[!.]*; do
-				[ -e "$sub" ] || continue
-				[ "${sub##*/}" = "zImage_dtb" ] && continue
-				mv -f "$sub" /mnt/dst/linux/ || return 1
-			done
-			continue
-		fi
-		mv -f "$entry" /mnt/dst/ || return 1
-	done
-	return 0
-}
-commit_payload || rescue "moving the payload into place on $P1 failed"
-sync
-
-# Verify what has landed so far (linux.img is the expanded one above; the real
-# zImage_dtb is still in the payload dir and is checked at the commit point).
-for f in linux/linux.img linux/uboot.img; do
-	[ -f "/mnt/dst/$f" ] || rescue "$f missing on $P1 after the commit moves"
-done
-log "payload moved into place on $P1"
-
-# ------------------------------------------------- apply user pre-seed (10)
-stage="applying user pre-seed"
-apply_preseed() {
-	# $1 = name under /run/preseed ; $2 = destination path under /mnt/dst
-	[ -e "/run/preseed/$1" ] || return 0
-	# dirname is NOT built into the installer busybox: derive the parent dir with
-	# POSIX parameter expansion (strip the trailing /<basename>).
-	dest="/mnt/dst/$2"
-	mkdir -p "${dest%/*}"
-	if cp -a "/run/preseed/$1" "$dest" 2>/dev/null; then
-		log "pre-seed applied: $1 -> $2"
-	else
-		log "pre-seed: WARNING failed to apply $1 (ignored)"
-	fi
-}
-apply_preseed wpa_supplicant.conf  linux/wpa_supplicant.conf
-apply_preseed _wpa_supplicant.conf linux/_wpa_supplicant.conf
-apply_preseed samba.sh             linux/_samba.sh
-apply_preseed _samba.sh            linux/_samba.sh
-# Directory pre-seeds are merged (cp -a of the dir onto the existing tree).
-if [ -d /run/preseed/Scripts ]; then
-	if cp -a /run/preseed/Scripts /mnt/dst/; then log "pre-seed applied: Scripts/"; else log "pre-seed: WARNING Scripts/ failed (ignored)"; fi
-fi
-if [ -d /run/preseed/config ]; then
-	if cp -a /run/preseed/config /mnt/dst/; then log "pre-seed applied: config/"; else log "pre-seed: WARNING config/ failed (ignored)"; fi
-fi
-
-# -------------------------------------- per-board MAC into u-boot.txt (10)
-# Random locally-administered unicast MAC; u-boot.txt must end in a newline.
-stage="writing per-board MAC"
-gen_mac() {
-	# hexdump -e is the installer's random-bytes idiom (no od, no awk); splitting
-	# its hex-only output into $1..$6 is the point.
-	# shellcheck disable=SC2046
-	set -- $(hexdump -n6 -e '6/1 "%02x "' /dev/urandom)
-	[ $# -eq 6 ] || return 1
-	o1=$(( (0x$1 | 0x02) & 0xFE ))
-	printf '%02X:%02X:%02X:%02X:%02X:%02X' \
-		"$o1" "$((0x$2))" "$((0x$3))" "$((0x$4))" "$((0x$5))" "$((0x$6))"
-}
-mkdir -p /mnt/dst/linux
-if mac="$(gen_mac)" && [ -n "$mac" ]; then
-	printf 'ethaddr=%s\n' "$mac" > /mnt/dst/linux/u-boot.txt ||
-		rescue "cannot write /linux/u-boot.txt on $P1"
-	log "per-board MAC = $mac"
-else
-	# A missing MAC is not fatal (the board still boots with the shared fallback),
-	# but it IS worth shouting about so it can be fixed by hand.
-	log "WARNING: could not generate a MAC; board will use the shared fallback"
-fi
-
-# ====================== THE COMMIT POINT ===================================
-# One rename: before it the card boots this installer, after it MiSTer.
-stage="installing the real kernel"
-sync
-[ -f "$DST_PAYLOAD/linux/zImage_dtb" ] ||
-	rescue "the payload's linux/zImage_dtb is gone before the commit -- card is NOT installed"
-mv -f "$DST_PAYLOAD/linux/zImage_dtb" /mnt/dst/linux/zImage_dtb ||
-	rescue "cannot install the real kernel over linux/zImage_dtb on $P1"
-sync
-log "real kernel installed -- this card is a MiSTer now, not an installer"
-
-# Strictly AFTER the commit; a leftover dir on an installed card is clutter,
-# not a defect (docs/installer-init.md#commit-phase).
-stage="removing the staged payload"
-rm -rf "$DST_PAYLOAD" 2>/dev/null
-if [ -e "$DST_PAYLOAD" ]; then
-	log "WARNING: could not remove $PAYLOAD_DIR/ from $P1 (harmless -- the card is installed)"
-else
-	log "removed $PAYLOAD_DIR/ from $P1"
-fi
-
-# --------------------------------------------------- flush + unmount the data fs
-stage="flushing the data partition"
-sync
-umount /mnt/dst || rescue "cannot unmount $P1 (data not fully flushed)"
-sync
-
-# ------------------------------------------------------------------ reboot (10)
-stage="rebooting into the installed MiSTer"
-# Draws the completion banner and puts the LED out: from here the next thing that
-# lights it is the installed system's own mmc0 trigger, one boot from now.
-splash_done
-log "install complete -- rebooting into MiSTer"
-sync
-# `reboot -f`: direct reboot(2) syscall. Plain `reboot` would try to signal an init
-# process, but we ARE pid 1 and there is no init here -- it would just hang.
-reboot -f
-
-# If reboot ever returns, do not fall off the end of pid 1 (kernel panic).
-rescue "reboot returned unexpectedly"
+finish_install

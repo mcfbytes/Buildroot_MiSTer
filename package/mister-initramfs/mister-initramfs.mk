@@ -53,13 +53,23 @@ define MISTER_INITRAMFS_INSTALL_ITSALIVE
 endef
 endif
 
+# Board layers over the common overlay, in order, as BR2_ROOTFS_OVERLAY is for the rootfs.
+# The installer's subtree in them ships only with BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER.
+MISTER_INITRAMFS_BOARD_OVERLAYS = $(call qstrip,$(BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY))
+MISTER_INITRAMFS_BOARD_OVERLAY_EXCLUDES = \
+	$(if $(BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER),,--exclude=/usr/libexec/mister-installer/)
+define MISTER_INITRAMFS_INSTALL_BOARD_OVERLAYS
+	$(foreach d,$(MISTER_INITRAMFS_BOARD_OVERLAYS), \
+		test -d $(d) || { echo "mister-initramfs: board overlay $(d) does not exist" >&2; exit 1; }$(sep) \
+		rsync -a $(RSYNC_VCS_EXCLUSIONS) $(MISTER_INITRAMFS_BOARD_OVERLAY_EXCLUDES) \
+			$(d)/ $(MISTER_INITRAMFS_ROOT)/$(sep))
+endef
+
 # Optional: the first-boot installer (ADR 0033). mkfs.exfat lives OFF the PATH, beside
 # the only script that may run it; its splash frames come only with itsalive.
 ifeq ($(BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER),y)
-MISTER_INITRAMFS_INSTALLER_OVERLAY = $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-overlay
 MISTER_INITRAMFS_INSTALLER_SPLASH = $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/installer-splash
 define MISTER_INITRAMFS_INSTALL_INSTALLER
-	cp -a $(MISTER_INITRAMFS_INSTALLER_OVERLAY)/. $(MISTER_INITRAMFS_ROOT)/
 	$(INSTALL) -m 0755 -D $(MISTER_INITRAMFS_EXFATPROGS_DIR)/mkfs/mkfs.exfat \
 		$(MISTER_INITRAMFS_ROOT)/usr/libexec/mister-installer/mkfs.exfat
 	$(TARGET_CROSS)strip $(MISTER_INITRAMFS_ROOT)/usr/libexec/mister-installer/mkfs.exfat
@@ -95,6 +105,7 @@ define MISTER_INITRAMFS_BUILD_CMDS
 	$(TARGET_CROSS)strip $(MISTER_INITRAMFS_ROOT)/usr/sbin/fsck.exfat
 	$(MISTER_INITRAMFS_INSTALL_ITSALIVE)
 	cp -a $(MISTER_INITRAMFS_OVERLAY)/. $(MISTER_INITRAMFS_ROOT)/
+	$(MISTER_INITRAMFS_INSTALL_BOARD_OVERLAYS)
 	printf '%s\n' '$(MISTER_INITRAMFS_FLAG_MAGIC)' > $(MISTER_INITRAMFS_FLAG)
 	truncate -s 512 $(MISTER_INITRAMFS_FLAG)
 	$(INSTALL) -m 0644 -D $(MISTER_INITRAMFS_FLAG) $(MISTER_INITRAMFS_ROOT)/usr/lib/mister/install-flag.bin

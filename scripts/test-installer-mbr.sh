@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL="${1:-}"; INSTALL="${INSTALL:-$ROOT/board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install}"
+INSTALL="${1:-}"; INSTALL="${INSTALL:-$ROOT/board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install}"
 BUSYBOX="${2:-$ROOT/output/build/mister-initramfs/root/bin/busybox}"
 mkdir -p "${TMPDIR:-$ROOT/work}"
 WORK="$(mktemp -d "${TMPDIR:-$ROOT/work}/installer-mbr-test.XXXXXX")"

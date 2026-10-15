@@ -8,7 +8,7 @@ addition, removal, or rename here as a breaking change to that script and to
 `scripts/mk-sdcard.sh`'s staging step, and update both together.
 
 This is **not** the final installed card's layout. `p1`'s `mister-payload/*` subtree is
-what the installer (`board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install`,
+what the installer (`board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
 run from stage 1 only on a card carrying the installer flag) copies onto the freshly
 reformatted exFAT partition **with the `mister-payload/` prefix stripped** — see ADR 0020
 §2/§8 and ADR 0033. `p1`'s own `linux/zImage_dtb` (THE kernel: the same file the

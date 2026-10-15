@@ -18,13 +18,14 @@ relinked into a second kernel. All of that is deleted; `output-installer/` and
 ## How the installer gets into the image
 
 `BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER` (set in `configs/mister_de10nano_defconfig`;
-it depends on `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`, and the DE25 does not set it)
+ARM only, so the DE25 cannot set it; the splash frames come only with
+`BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`)
 makes `package/mister-initramfs/mister-initramfs.mk` add four things to the stage-1
 cpio, which the DE10 kernel embeds like any other stage 1 (ADR 0002):
 
 | In the cpio | From |
 |---|---|
-| `/usr/libexec/mister-installer/install` | `board/mister/de10nano/installer-overlay/` (copied as a tree) |
+| `/usr/libexec/mister-installer/install` | `board/mister/de10nano/initramfs-overlay/`, the DE10's `BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY` (its `usr/libexec/mister-installer/` only with the installer option) |
 | `/usr/libexec/mister-installer/mkfs.exfat` | the static glibc `mister-initramfs-exfatprogs` build, stripped; **off PATH** (ADR 0033 §6) |
 | `/usr/share/mister-installer/splash-<WxH>.raw.gz` | rendered from the PNGs in `board/mister/de10nano/installer-splash/` |
 | `/usr/bin/itsalive` | `package/itsalive` (static glibc), the same binary the exFAT repair's splash uses (ADR 0026 §6) |

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-# Unit test for the installer's first-boot splash (installer-overlay/usr/libexec/mister-installer/install,
+# Unit test for the installer's first-boot splash (initramfs-overlay/usr/libexec/mister-installer/install,
 # ADR 0020 §6/§9). Why a separate test, and what it can't tell you: docs/installer-build.md.
 
 # Usage: scripts/test-installer-splash.sh [path/to/init]
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-INIT="${1:-$ROOT/board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install}"
+INIT="${1:-$ROOT/board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install}"
 
 # BusyBox ash is the real target shell; dash is the stricter POSIX check most
 # CI runners have, with a plain sh fallback where dash is absent.

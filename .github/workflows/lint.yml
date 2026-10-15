@@ -205,7 +205,7 @@ jobs:
             initramfs-overlay/init
             initramfs-overlay/usr/lib/mister/install-flag
             initramfs-overlay/usr/lib/mister/install-flag.conf
-            installer-overlay/usr/libexec/mister-installer/install
+            initramfs-overlay/usr/libexec/mister-installer/install
           )
 
           bash_files=()
@@ -274,7 +274,7 @@ jobs:
             initramfs-post-build.sh
             initramfs-overlay/init
             initramfs-overlay/usr/lib/mister/install-flag
-            installer-overlay/usr/libexec/mister-installer/install
+            initramfs-overlay/usr/libexec/mister-installer/install
             rootfs-overlay/usr/sbin/mister-fsck-exfat
             rootfs-overlay/usr/sbin/mister-pair-logitech
             rootfs-overlay/usr/sbin/mister-usb-full-speed

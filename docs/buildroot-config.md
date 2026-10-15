@@ -3216,8 +3216,10 @@ its own toolchain, BusyBox config (`installer-busybox.config`) and post-build sc
 
 - **The installer itself, `mkfs.exfat`, the splash frames and `itsalive`** -> the one stage-1 cpio,
   via `BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER=y` in `configs/mister_de10nano_defconfig`
-  (`package/mister-initramfs`; it depends on `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`). The
-  installer script lives at `board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install`.
+  (`package/mister-initramfs`; ARM only, and the frames only with `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`).
+  The installer script lives at `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
+  in the DE10's stage-1 board overlay (`BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY`, the stage-1
+  analogue of `BR2_ROOTFS_OVERLAY`), which is copied over `board/mister/common/initramfs-overlay/`.
 - **Its BusyBox applets** (`cp dd cmp wc hexdump blockdev blkid mv du cut reboot`, `dd` with
   `FEATURE_DD_IBS_OBS`, 64-bit shell maths) -> `board/mister/common/initramfs-busybox.config`,
   the single BusyBox config for every stage-1 cpio. The per-applet reasons are in

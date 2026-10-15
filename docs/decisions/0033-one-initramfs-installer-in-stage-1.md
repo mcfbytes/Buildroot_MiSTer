@@ -37,7 +37,9 @@ reformatter must not live in the boot path.
 
 **One cpio, one kernel, one toolchain, one `itsalive`.** The installer script, a static
 `mkfs.exfat` and the installer's splash frames go into the DE10-Nano's stage-1 cpio
-(`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`), and `configs/mister_installer_defconfig`,
+(`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`; the script sits in the DE10's stage-1 board
+overlay, `board/mister/de10nano/initramfs-overlay/`, layered over the common one by
+`BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY`), and `configs/mister_installer_defconfig`,
 `installer-busybox.config` and `installer-post-build.sh` are deleted. The kernel that
 boots `sdcard.img` is byte-for-byte the kernel the Downloader ships, and `make sdcard`
 is pure assembly of `make all`'s outputs.

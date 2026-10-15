@@ -1,6 +1,6 @@
 # The SD-card installer
 
-`board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install` is the
+`board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install` is the
 first-boot installer that turns a freshly flashed `sdcard.img` into a full-size exFAT
 MiSTer card (TASKS P5.3, PLAN §8, ADR 0017 §4, [ADR 0020][adr]). Since [ADR 0033][adr33]
 it is not a separate initramfs or kernel: it lives inside the ONE stage-1 cpio every

@@ -127,7 +127,7 @@ INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"
 HALT_TIMEOUT="${HALT_TIMEOUT:-120}"     # backstop only; boot() stops on its marker (see boot())
 QEMU_MEM="${QEMU_MEM:-512}"
 
-# Must match the installer (installer-overlay/usr/libexec/mister-installer/install) and genimage-sdcard.cfg.
+# Must match the installer (initramfs-overlay/usr/libexec/mister-installer/install) and genimage-sdcard.cfg.
 RESERVED_SECTORS=8192
 P1_START_SECTORS=2048
 # The synthesised card's own FAT32 payload partition. Big enough that mkfs.vfat

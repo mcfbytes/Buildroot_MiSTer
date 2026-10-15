@@ -1,7 +1,7 @@
 # SD-card installer splash artwork
 
 The picture the first-boot installer puts on HDMI while it reformats the card
-(ADR 0020 §9, `board/mister/de10nano/installer-overlay/usr/libexec/mister-installer/install`,
+(ADR 0020 §9, `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
 "SPLASH SECTION").
 Drawn by `itsalive image` (package/itsalive), which blits raw pixels and neither
 decodes nor scales, so the artwork goes into the cpio **rendered per video mode**

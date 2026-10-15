@@ -237,8 +237,9 @@ jobs:
       # bootstrap, so if it won the race it would hand the image build a dl/
       # cache missing almost everything. Immutable-once-written caches make that
       # a silent slow rebuild, not an error.
-      - name: Cache dl/ (azcopy job only)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restore-only: a tag-scoped save is unreadable elsewhere and evicts master's caches. docs/ci.md#cache-prune
+      - name: Restore dl/ (azcopy job only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dl/
           key: br-dl-azcopy-${{ hashFiles('Makefile', 'package/azcopy/azcopy.mk', 'package/azcopy/azcopy.hash') }}

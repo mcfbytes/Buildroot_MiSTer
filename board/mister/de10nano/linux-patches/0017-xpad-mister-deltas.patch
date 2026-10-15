@@ -212,15 +212,13 @@ index 1b6f38f..5f2a572 100644
  	{ 0x046d, 0xc21d, "Logitech Gamepad F310", 0, XTYPE_XBOX360 },
  	{ 0x046d, 0xc21e, "Logitech Gamepad F510", 0, XTYPE_XBOX360 },
  	{ 0x046d, 0xc21f, "Logitech Gamepad F710", 0, XTYPE_XBOX360 },
-@@ -404,6 +421,8 @@ static const struct xpad_device {
- 	{ 0x294b, 0x3303, "Snakebyte GAMEPAD BASE X", 0, XTYPE_XBOXONE },
+@@ -405,4 +422,6 @@ static const struct xpad_device {
  	{ 0x294b, 0x3404, "Snakebyte GAMEPAD RGB X", 0, XTYPE_XBOXONE },
  	{ 0x2993, 0x2001, "TECNO Pocket Go", 0, XTYPE_XBOX360 },
 +	/* The left and right triggers share the same Z-axis on PC mode (XInput) = Xbox One */
 +	{ 0x2c22, 0x2303, "Qanba Obsidian Arcade Joystick", 0, XTYPE_XBOX360 },  /* Works better in XBOX360 */
  	{ 0x2dc8, 0x2000, "8BitDo Pro 2 Wired Controller fox Xbox", 0, XTYPE_XBOXONE },
  	{ 0x2dc8, 0x200f, "8BitDo Ultimate 3-mode Controller for Xbox", MAP_SHARE_BUTTON, XTYPE_XBOXONE },
- 	{ 0x2dc8, 0x3106, "8BitDo Ultimate Wireless / Pro 2 Wired Controller", 0, XTYPE_XBOX360 },
 @@ -435,6 +454,7 @@ static const struct xpad_device {
  	{ 0x3651, 0x1000, "CRKD SG", 0, XTYPE_XBOX360 },
  	{ 0x366c, 0x0005, "ByoWave Proteus Controller", MAP_SHARE_BUTTON, XTYPE_XBOXONE, FLAG_DELAY_INIT },

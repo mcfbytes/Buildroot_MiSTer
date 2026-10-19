@@ -1,4 +1,5 @@
-# series — the linux-patches/ subset applied to the 7.2 beta kernel.
+# series — the linux-patches/ subset applied to the 7.x beta kernel (7.3 since
+# 2026-10-19; 7.2.y before).
 # Buildroot's apply-patches.sh honors this file: only patches listed here
 # are applied, in order. Entries are symlinks to the shared
 # board/mister/de10nano/linux-patches/ files (single source of truth).
@@ -169,13 +170,13 @@
 # re-anchored copy — see the NOT-symlink exceptions list just below, which
 # they are not on).
 #
-# NOT-symlink exceptions: five of the shared-patch entries are REAL FILES
+# NOT-symlink exceptions: six of the shared-patch entries are REAL FILES
 # re-anchored for 7.x (0043-0046 above are real files too, but they are
 # beta-local originals, not re-anchors of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
-# Buildroot applies patches with `patch -F0` (fuzz zero), and these five
-# (0001, 0015, 0030, 0031, 0037 — 0031 rejoined the list on 2026-09-06, see
-# below) needed either re-anchored context or a real 7.x API/header delta. Keep
+# Buildroot applies patches with `patch -F0` (fuzz zero), and these six
+# (0001, 0013, 0015, 0030, 0031, 0037 — 0031 rejoined the list on 2026-09-06,
+# 0013 joined on 2026-10-19 with the move to 7.3, see below) needed either re-anchored context or a real 7.x API/header delta. Keep
 # each in lockstep with its ../linux-patches/ original (every copy carries
 # a bracketed re-anchor note).
 #
@@ -200,6 +201,11 @@
 #   0001-fbdev-add-MiSTer_fb-driver     — one-line delta: 7.x removed
 #     <linux/fbcon.h>; fbcon_update_vcs() now comes from the fbdev-core
 #     header ("core/fbcon.h").
+#   0013-hid-flydigi-vader              — 7.3 added hid-msi.o directly
+#     below hid-monterey.o in drivers/hid/Makefile, inside the Makefile
+#     hunk's trailing context, so it missed at -F0. Context-only: the
+#     shared patch cannot anchor elsewhere without reordering the 6.18
+#     Makefile, and every line around the insertion point moved.
 #   0015-hid-nintendo-nso-famicom       — an earlier port test called this
 #     "upstreamed in 7.2"; that was WRONG (7.2 has no FAML/FAMR 0x07/0x08 —
 #     its left/right nescon types are 0x09/0x0A, a different thing), so it

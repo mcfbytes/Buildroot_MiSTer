@@ -54,7 +54,7 @@
 #     board's own linux.config, NOT here — even when both boards happen to
 #     have the same IP.
 #  2. A symbol that does not exist in BOTH kernel trees must not be named here.
-#     Kernel versions differ between boards (DE10 is on 6.18.y, DE25 on 7.2.y).
+#     Kernel versions differ between boards (DE10 is on 6.18.y, DE25 on 7.3.y).
 #     `olddefconfig` DISCARDS an unknown symbol silently — never an error — so a
 #     version-skewed line is a silent no-op, not a build failure. Two symbols
 #     were excluded for exactly this reason; see docs/de25-kernel-config.md §9.

@@ -211,7 +211,7 @@ endmenu
 
 menu "Kernel variants (ADR 0021)"
 	# A second kernel built beside the main one in this same tree (ADR 0030
-	# Phase C): PREEMPT_RT on the 7.2.y line -> images/zImage_dtb-rt, with
+	# Phase C): PREEMPT_RT on the 7.3.y line -> images/zImage_dtb-rt, with
 	# its module tree in the ONE rootfs. Same shape as Buildroot's own
 	# barebox-aux. Requires the stage-1 extension below (it embeds the same
 	# cpio).

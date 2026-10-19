@@ -104,7 +104,7 @@ zero duplication, so the Buildroot merge emits no warnings by construction.
    stays in the board's own file even when both boards happen to have the same
    IP; **and**
 2. the **DE10's resolved `.config` has exactly that value**; **and**
-3. the symbol **exists in both kernel trees** (DE10 is on 6.18.y, DE25 on 7.2.y).
+3. the symbol **exists in both kernel trees** (DE10 is on 6.18.y, DE25 on 7.3.y).
 
 Rule 2 is what makes the fragment a provable no-op on the DE10 (§6). Rule 3 is
 what stops a version-skewed line from being a silent no-op on one board — see §9.
@@ -573,6 +573,21 @@ Nothing moved. Note the `Image` size is *coincidentally* unchanged — the
 the same length. The board device tree **is** byte-identical at 7.2.3, which
 says mainline's `socfpga_agilex5.dtsi` did not move in the point release.
 
+**RE-VERIFIED AT 7.3, 2026-10-19**, on the move off the 7.2.y line, from a fresh
+`output-de25/` (`output-de25/build/linux-7.3/.config`). The §8 survival check
+over `linux.config` + `linux-mister.fragment`: **481 asked-for symbols, 0
+dropped**, and no `merge_config.sh` warnings. The §10 list: §5.1's exclusions
+(`EFI`, `PCI`, `VIRTUALIZATION`, `COMPAT`, `DRM`/`FB`/`MEDIA_SUPPORT`) all still
+`not set` and no `CONFIG_ACPI*` line at all; `RESET_SIMPLE=y`; the sentinels
+resolve as asked (`SECCOMP=y` since D14). 100 `=m` symbols, 98 installed
+`.ko.xz` (3.4 MiB), `Image` 22,046,728 B. The module name set equals the
+DE10's 6.18 tree except the 7.x-only `rtw89` USB drivers, the DE10-only
+out-of-tree packages, and one new module: `ledtrig-timer`, which 7.3's new
+`RTW89_LEDS` pulls in (`imply LEDS_TRIGGER_TIMER`). Two upstream changes seen
+in the 32-bit RT config are not DE25 concerns: `PROC_SYSCTL` was folded into
+`SYSCTL`, and ARM `ATAGS` went behind `EXPERT` (the DE10 boots by device tree).
+Not run on hardware.
+
 Four candidates were removed during authoring because they did *not* survive,
 and each removal is a finding:
 
@@ -585,7 +600,7 @@ and each removal is a finding:
 
 ## 9. Version skew — the two symbols the fragment must not name
 
-The DE10 is on 6.18.y and the DE25 on 7.2.y, and the fragment must be valid in
+The DE10 is on 6.18.y and the DE25 on 7.3.y, and the fragment must be valid in
 both. Two symbols in the DE10's defconfig are 6.18-only and are therefore
 **absent from the fragment**, though the DE10's own file keeps them (which is
 still a no-op — the fragment simply does not mention them):

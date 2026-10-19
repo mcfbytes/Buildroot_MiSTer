@@ -47,7 +47,7 @@ jobs:
           echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
 
       # Restore only: whatever the DE10 build last saved. The DE25-only
-      # sources (aarch64 toolchain bits, 7.2 kernel, TF-A) are fetched fresh.
+      # sources (aarch64 toolchain bits, 7.3 kernel, TF-A) are fetched fresh.
       - name: Restore dl/ download cache (read-only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

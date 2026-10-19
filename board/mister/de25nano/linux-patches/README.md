@@ -1,6 +1,6 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.2.3**, aarch64 (Agilex 5). See
+**Base:** mainline Linux **7.3**, aarch64 (Agilex 5). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
 version pin.
 
@@ -17,9 +17,9 @@ without renumbering.
 
 **Where each symlink points.** Most shared patches are byte-identical between
 `linux-patches/` (the shipped 6.18 series) and `linux-patches-beta/` (the 7.x series), so they
-link to the canonical file in `linux-patches/`. **Four** — `0015`, `0030`, `0031`, `0037` — have a
-**7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because this
-board is on 7.2.x. (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
+link to the canonical file in `linux-patches/`. **Five** — `0013`, `0015`, `0030`, `0031`, `0037` —
+have a **7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because
+this board is on 7.x. (`0013` joined on 2026-10-19: 7.3 moved its Makefile context.) (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
 re-anchor — see its row below; this intro said "three" until the Wave-4 audit of 2026-09-11
 caught the omission. `0001` is the fifth divergent pair; it is DE10-only and excluded either way.)
 
@@ -45,7 +45,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | 5 | `0010-hid-guncon2` | portable-as-is / shared | **included** | Raw `usb_driver` on generic USB/input APIs. |
 | 6 | `0011-hid-guncon3` | portable-as-is / shared | **included** | Standalone USB interrupt-URB HID driver; USB-generic. |
 | 7 | `0012-hid-fanatec` | portable-as-is / shared | **included** | USB HID force-feedback; no MMIO/DMA/endianness/pointer-size exposure. |
-| 8 | `0013-hid-flydigi-vader` | portable-as-is / shared | **included** | Bluetooth HID remap driver; `BTN_GRIP*` are arch-independent UAPI. |
+| 8 | `0013-hid-flydigi-vader` | portable-as-is / shared | **included** | Bluetooth HID remap driver; `BTN_GRIP*` are arch-independent UAPI. Links to the 7.x-re-anchored beta copy since 7.3 (Makefile context only). |
 | 9 | `0014-hid-gamecube-adapter` | portable-as-is / shared | **included** | Generic USB-HID driver over `u8` buffers. |
 | 10 | `0015-hid-nintendo-nso-famicom` | portable-as-is / shared | **included (beta copy)** | Two enums, two helpers, two dispatch arms, one button table. The beta copy is re-anchored for 7.x; functional hunks are byte-identical. |
 | 11 | `0016-hid-microsoft-elite2-paddles` | portable-as-is / shared | **included** | HID usage mapping of an 8-bit paddle bitmask. |
@@ -192,3 +192,13 @@ extract: **37/37 applied, 0 hunks with fuzz, 0 rejects**. `drivers/usb/dwc2/` bu
 arm64 against this board's `linux.config` plus `common/linux-mister.fragment`; the only warning is
 the pre-existing `remotewakeup` kerneldoc one in `core_intr.c`. `scripts/lint-kernel-patches.sh`
 passes. Not run on hardware.
+
+RE-VERIFIED AT 7.3 (2026-10-19), on the move from the 7.2.y line to 7.3. `apply-patches.sh` and a
+strict per-patch `patch -F0 -N` pass on a pristine `linux-7.3` extract: **38/38 applied, 0 hunks
+with fuzz, 0 rejects** (the DE10 RT series likewise 55/55). One patch needed attention: `0013`'s
+`drivers/hid/Makefile` hunk missed because 7.3 added `hid-msi.o` inside its trailing context; it
+now links to a re-anchored copy in `linux-patches-beta/` whose added lines are byte-identical to
+the 6.18 original. `-N` found no patch already present in 7.3. `make de25` builds a bootable card
+image (98 modules, `modules.dep` populated); all 481 symbols asked for by `linux.config` plus
+`common/linux-mister.fragment` survive `olddefconfig`; `test-initramfs.sh --board de25nano` passes
+8/8. Not run on hardware.

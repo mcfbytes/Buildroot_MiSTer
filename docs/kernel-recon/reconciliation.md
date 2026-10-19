@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-10-04 21:09 UTC by `reduce.py` from 146 records (110 MiSTer-v5.15 + 20 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/146.
+Generated 2026-10-19 21:06 UTC by `reduce.py` from 150 records (110 MiSTer-v5.15 + 24 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/150.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/146
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/150
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 146 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 150 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -142,6 +142,7 @@ Of 146 rows, **3** describe a real difference a user could notice on this build 
 | `2ac0aa1e8` | v5.15 | **carried** | 0026-input-mousedev-eviocgrab.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | input: support for mouseX and mice in EVIOCGRAB mode. |
 | `2d39e76d1` | v5.15 | **carried** | 0020-mmc-no-led-on-send-status.patch | — | none (carried) | cosmetic/silent | Y | Y | ✓ | mmc: don't activate LED on status command. |
 | `333d49b95` | v5.15 | **carried** | 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Implement MiSTer audio driver. |
+| `3726e2eba` | v6.18 | **carried** | 0068-dwc2-host-ack-all-hcint-bits.patch | — | none (carried) | feature-loss/silent | — | ? |  | usb: dwc2: acknowledge all HCINT bits again (#114) |
 | `3d72b9db7` | v5.15 | **carried** | 0003-cpufreq-cyclone5-de10nano-overclock.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Add cpufreq/overclock driver (#34) |
 | `41c45f378` | v6.18 | **carried** | 0048-hid-google-stadiaff-classic2usb-retrozord.patch | — | none (carried) | feature-loss/silent | Y | ? |  | Adapt Classic2USB and RetroZord HID force feedback support … |
 | `45283785a` | v5.15 | **carried** | 0032-hid-nintendo-joycon-combo-led.patch | — | none (carried) | feature-loss/silent | Y | N | ✓ | hid-nintendo: add virtual combo led, don't warn by IMU comp… |
@@ -164,6 +165,7 @@ Of 146 rows, **3** describe a real difference a user could notice on this build 
 | `8179ac736` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Add driver for Namco Guncon 3 (#20) |
 | `817ace70b` | v5.15 | **carried** | 0027-mt76x2u-release-xbox-adapter-ids.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Remove XBox One Wireless Adapter USB IDs from mt76 driver t… |
 | `8908e0fe1` | v5.15 | **carried** | 0012-hid-fanatec.patch | — | none (carried) | feature-loss/loud | — | N | ✓ | Fix module compile for Fanatec driver (#25) |
+| `8ad2b5ad6` | v6.18 | **carried** | 0067-wifi-rtw88-8821c-support-rfe-type-7.patch | — | none (carried) | feature-loss/loud | — | ? |  | wifi: rtw88: 8821c: support RFE type 7 (#109) |
 | `912aa5608` | v6.18 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | cosmetic/loud | — | ? |  | hid-playstation: fix warning. |
 | `9854075c8` | v6.18 | **carried** | 0050-exfat-dir-readahead-plug.patch | — | none (carried) | cosmetic/silent | — | ? |  | exfat: speed-up dir read-ahead. |
 | `9b9aebfac` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid-guncon3: fix warnings. |
@@ -254,6 +256,7 @@ Of 146 rows, **3** describe a real difference a user could notice on this build 
 | `99a2c80d0` | v5.15 | **dropped-deliberate** | — | → 0031-exfat-samsung-symlinks.patch | none (replaced) | feature-loss/silent | Y | Y | ✓ | exfat: use ATTR_SYSTEM as symlink flag to preserve links wh… |
 | `9f59d13d5` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | Y | ✓ | Enable force feedback on PS adapter (#56) |
 | `a547c18d0` | v5.15 | **dropped-deliberate** | — | see record | none | none/silent | — | Y | ✓ | remove unused files. |
+| `aadd74ae4` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:50 CONFIG_KER…; board/mister/de10nano/linux.config:610-611 CONFI… | none (replaced) | performance/silent | — | ? |  | config: enable kernel-mode NEON and NEON AES/GHASH (#111) |
 | `ae9313e22` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | — | Y | ✓ | Enable the NFS filesystem in the kernel. (#45) |
 | `aec7dc3aa` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:175 (CONFIG_T… | **limitation — see record** | feature-loss/silent | Y | Y |  | config: enable CONFIG_TUN for tap device support (#76) |
 | `b033b3335` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:117 CONFIG_NE…; board/mister/de10nano/linux.config:127 CONFIG_IP…; … | none (replaced) | feature-loss/loud | Y | ? |  | config: restore IP_NF_FILTER for legacy iptables (#94) |
@@ -266,6 +269,7 @@ Of 146 rows, **3** describe a real difference a user could notice on this build 
 | `d5beb5aa6` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist fork f2aa9fe01...) | none (replaced) | feature-loss/silent | — | Y | ✓ | xone: sysfs for software pairing. |
 | `d776ddb4e` | v5.15 | **dropped-deliberate** | — | → package/xone (dlundqvist/xone fork, commit f2aa9… | none (replaced) | feature-loss/loud | — | Y | ✓ | xone: use firmware according to PID. |
 | `d788e7ab9` | v5.15 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config (CONFIG_LOGIG… | none (replaced) | feature-loss/silent | — | Y | ✓ | Update defconfig (enable logitech wheels). |
+| `e24da5873` | v6.18 | **dropped-deliberate** | — | → board/mister/de10nano/linux.config:267 CONFIG_AT…; board/mister/de10nano/linux.config:288-290 CONFI…; … | none (replaced) | feature-loss/silent | — | ? |  | config: enable Broadcom, Redpine and Atheros AR9271 USB Wi-… |
 | `e2eb39e6f` | v5.15 | **dropped-deliberate** | — | → BR2_PACKAGE_XONE (dlundqvist/xone@f2aa9fe01103d7… | none (replaced) | feature-loss/silent | — | Y | ✓ | xone: update driver. |
 | `e6f377e7d` | v6.18 | **dropped-deliberate** | — | → 33a0521fd4 (Q2, MiSTer-v6.18) — CONFIG_RTW88_882…; ea2212221a (Q3, MiSTer-v6.18) — CONFIG_FB_MISTER… | none (replaced) | none/none | — | ? |  | Update defconfig. |
 | `f0fb626ac` | v5.15 | **dropped-deliberate** | — | see record | none (decided; see record) | feature-loss/silent | Y | Y | ✓ | defconfig: enable macvlan support (#71) |

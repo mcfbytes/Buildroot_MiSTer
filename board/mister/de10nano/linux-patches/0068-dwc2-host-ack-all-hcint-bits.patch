@@ -1,0 +1,37 @@
+From 3726e2ebac45f7856892f418be01d821d1d72345 Mon Sep 17 00:00:00 2001
+From: synrais <78070154+synrais@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 18:01:36 +1100
+Subject: [PATCH] usb: dwc2: acknowledge all HCINT bits again (#114)
+
+Since 0583bc776ca5 ("USB: dwc2: write HCINT with INTMASK applied")
+dwc2_hc_n_intr() writes back only hcintraw & hcintmsk. In host DMA
+mode only CHHLTD is unmasked, so the status bits that are read later
+from chan->hcint (XFERCOMPL, ACK, NAK, NYET, XACTERR, DATATGLERR)
+stay set in HCINT and are taken as the result of the channel's next
+transaction.
+
+On a DE10-nano a low-speed HID device with a 14-byte report behind a
+hub then loses the second packet of a report under bulk load and the
+spliced report shows up as a phantom hat press. 5.15 is clean.
+
+Write the raw value back again, as 5.15 did.
+---
+ drivers/usb/dwc2/hcd_intr.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index e7d147510..c1e9715aa 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -2030,7 +2030,7 @@ static void dwc2_hc_n_intr(struct dwc2_hsotg *hsotg, int chnum)
+ 	hcintraw = dwc2_readl(hsotg, HCINT(chnum));
+ 	hcintmsk = dwc2_readl(hsotg, HCINTMSK(chnum));
+ 	hcint = hcintraw & hcintmsk;
+-	dwc2_writel(hsotg, hcint, HCINT(chnum));
++	dwc2_writel(hsotg, hcintraw, HCINT(chnum));
+ 
+ 	if (!chan) {
+ 		dev_err(hsotg->dev, "## hc_ptr_array for channel is NULL ##\n");
+-- 
+2.53.0
+

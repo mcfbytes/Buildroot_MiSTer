@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-10-04 21:09 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-10-19 21:06 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|
@@ -98,7 +98,7 @@ Generated 2026-10-04 21:09 UTC. VID:PID → commits and dispositions (how each d
 | `0bda:b82b` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
 | `0bda:b82c` | `143ce187e` (dropped-deliberate), `33ff5146a` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:c80c` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
-| `0bda:c811` | `794e6f002` (dropped-upstream), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
+| `0bda:c811` | `8ad2b5ad6` (carried), `794e6f002` (dropped-upstream), `33ff5146a` (dropped-deliberate), `3740d5b88` (dropped-deliberate), `c70a3fc27` (dropped-deliberate) |
 | `0bda:c820` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
 | `0bda:c821` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |
 | `0bda:c82a` | `794e6f002` (dropped-upstream), `3740d5b88` (dropped-deliberate) |

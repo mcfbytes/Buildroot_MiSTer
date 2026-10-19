@@ -972,11 +972,13 @@ else
 		"missing:$v101_missing -- a CONFIG_ symbol was dropped, or the module tree is stale"
 fi
 
-# rtw89 USB drivers that exist only on 7.x, enabled on both 7.2 kernels (docs/wifi-parity.md section 14).
+# rtw89 USB drivers that exist only on 7.x, enabled on both 7.x kernels (docs/wifi-parity.md section 14).
 # Asserted on the module trees because olddefconfig drops a fragment symbol silently.
 RTW89_7X_MODS="rtw89_8852au rtw89_8852cu rtw89_8922au"
-RT_KVER=$(sed -n 's/^BR2_PACKAGE_LINUX_RT_VERSION="\([^"]*\)".*$/\1/p' \
-	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)
+# A bare x.y pin (a .0 release, e.g. 7.3) installs its modules under x.y.0.
+kver_dir() { case "$1" in *.*.*|'') printf '%s' "$1" ;; *) printf '%s.0' "$1" ;; esac; }
+RT_KVER=$(kver_dir "$(sed -n 's/^BR2_PACKAGE_LINUX_RT_VERSION="\([^"]*\)".*$/\1/p' \
+	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)")
 rt89_missing=""
 for m in $RTW89_7X_MODS; do
 	tar_has "usr/lib/modules/$RT_KVER/kernel/drivers/net/wireless/realtek/rtw89/$m.ko.xz" \
@@ -990,8 +992,8 @@ else
 	fail "RT kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($RT_KVER)" \
 		"missing:$rt89_missing -- dropped from board/mister/de10nano/linux-rt.fragment, or linux-rt is stale"
 fi
-DE25_KVER=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
-	"$ROOT/configs/mister_de25nano_defconfig" | tail -1)
+DE25_KVER=$(kver_dir "$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
+	"$ROOT/configs/mister_de25nano_defconfig" | tail -1)")
 DE25_MODDIR="$ROOT/output-de25/target/lib/modules/$DE25_KVER/kernel/drivers/net/wireless/realtek/rtw89"
 if [ ! -d "$ROOT/output-de25/target/lib/modules/$DE25_KVER" ]; then
 	skip "DE25 kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present" "no output-de25 module tree for ${DE25_KVER:-?} -- the DE25 stack has not been built"

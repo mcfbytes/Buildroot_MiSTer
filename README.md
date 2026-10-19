@@ -278,9 +278,9 @@ rootfs (re-checked 2026-10-01). Background audits: [`docs/wifi-parity.md`](docs/
 | Chip family | Stock | This image | Verified |
 |---|---|---|---|
 | Realtek 802.11n/ac (`rtl8xxxu`, `rtw88`: RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | With firmware | Same | **Hardware** (RTL8822BU, WPA3 5 GHz) |
-| Realtek Wi-Fi 6 (RTL8851BU, 8852BU; RTL8852AU on the 7.2 kernels) | `rtw89` with firmware (no 8852AU) | Same, plus 8852AU | Build |
-| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr` on 6.18; mainline `rtw89` on the 7.2 kernels | Build |
-| Realtek Wi-Fi 7 (RTL8922AU) | None | Mainline `rtw89`, 7.2 kernels only | Build |
+| Realtek Wi-Fi 6 (RTL8851BU, 8852BU; RTL8852AU on the 7.x kernels) | `rtw89` with firmware (no 8852AU) | Same, plus 8852AU | Build |
+| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr` on 6.18; mainline `rtw89` on the 7.x kernels | Build |
+| Realtek Wi-Fi 7 (RTL8922AU) | None | Mainline `rtw89`, 7.x kernels only | Build |
 | AICSemi AIC8800 family (Tenda U2/U11, TX1U Nano…) | Driver and firmware | Same | Build |
 | MediaTek (MT7601U, MT76x0U/x2U, MT7663U, MT7921U, MT7925U) | `mt76` with firmware | Same | Build |
 | RTL8192DU | With firmware | Same | Build |
@@ -302,7 +302,7 @@ as on stock. Per-file detail: [`docs/firmware-parity.md`](docs/firmware-parity.m
 
 ### The real-time kernel
 
-`zImage_dtb-rt` is a `PREEMPT_RT` kernel on the 7.2.y line. 32-bit ARM RT is mainline since
+`zImage_dtb-rt` is a `PREEMPT_RT` kernel on the 7.3.y line. 32-bit ARM RT is mainline since
 7.1, so no out-of-tree RT patch is carried. It is built by the same `make` as the main
 kernel, from the same config plus a fragment, and its modules ride inside the same
 `linux.img`. Switching kernels is therefore a one-line `u-boot.txt` edit, with no rootfs
@@ -492,7 +492,7 @@ linux/                     kernel extension that embeds the stage-1 initramfs
 board/mister/de10nano/
   linux.config             minimal kernel defconfig (an absent CONFIG_X is not "off")
   linux-patches/           the carried 6.18 series
-  linux-patches-beta/      the 7.2 (RT) series: symlinks into linux-patches/ plus re-anchored copies
+  linux-patches-beta/      the 7.x (RT) series: symlinks into linux-patches/ plus re-anchored copies
   linux-patches-upstream/  what the exported tree needs but this image must not carry
   rootfs-overlay/          init scripts, sshd wiring, MiSTer-specific files
   installer-*/             the SD-card installer script and HDMI splash (run from stage 1)
@@ -513,7 +513,7 @@ one kernel patch fewer. It is also architecture-neutral: stock's patch calls `sy
 directly, which does not exist on arm64. Details:
 [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md), [`PLAN.md` §5](PLAN.md).
 
-**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.2 kernel) builds
+**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.3 kernel) builds
 from the same tree and shares the userspace profiles and most kernel patches. It has no
 MiSTer binaries yet and its own manual CI lane. Start at
 [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md).
@@ -569,7 +569,7 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 | [`docs/patch-provenance.md`](docs/patch-provenance.md) | Every carried patch: origin, upstream status, disposition |
 | [`docs/kernel-recon/`](docs/kernel-recon/) | The per-commit reconciliation and its pipeline |
 | [`docs/kernel-config-deltas.md`](docs/kernel-config-deltas.md) | Every kernel-config divergence from stock |
-| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.2 variant |
+| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.x variant |
 | [`docs/kernel-export.md`](docs/kernel-export.md) | Exporting to a `Linux-Kernel_MiSTer`-style tree |
 | [`docs/dwc2-usb-irq.md`](docs/dwc2-usb-irq.md) | USB host interrupt load and polling fixes |
 | [`docs/cpu-isolation.md`](docs/cpu-isolation.md) | Keeping Linux work off the main program's CPU |

@@ -2933,7 +2933,7 @@ COUPLED to `board/mister/de10nano/patches/linux/linux.hash`: the base stack's
 `BR_NO_CHECK_HASH_FOR` exemption, so the tarball MUST have a sha256 line there
 or the build fails closed at download. Bump the version here -> update that
 line in the same commit (its header says where the value must come from).
-`renovate.json`'s `kernel-rt-7.2` manager bumps this line and
+`renovate.json`'s `kernel-rt-7.3` manager (`kernel-rt-7.2` until 2026-10-19) bumps this line and
 `scripts/hash-sync-kernel.sh --pin=rt` refreshes the hash (it REFUSES any
 `-rc` value, by design).
 

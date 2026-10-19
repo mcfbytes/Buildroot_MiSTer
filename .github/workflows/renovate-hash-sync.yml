@@ -11,7 +11,7 @@
 #
 # Eight REFRESH cases: (1) the github-sourced package pins in HASH_SYNC_PACKAGES, (2) the kernel
 # tarball hashes -- TWO pins since 2026-08-17, the stable 6.18.y one and the
-# RT/beta 7.2 one, run as two steps over one shared linux.hash, (3) the
+# RT/beta 7.x one, run as two steps over one shared linux.hash, (3) the
 # bespoke ip7z/7zip release-asset AND license-file hashes (lzma-sdk AND
 # 7zip -- one step, two packages, same upstream asset), (4) the sdcard
 # payload single-file pins, (6) -- numbered after validate-only case 5,
@@ -116,9 +116,9 @@ on:
       - "Makefile"
       # BOTH kernel pins live in this one committed defconfig since ADR 0030
       # (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE for the stable 6.18.y kernel,
-      # BR2_PACKAGE_LINUX_RT_VERSION for the RT/beta 7.2 line), so it is the
+      # BR2_PACKAGE_LINUX_RT_VERSION for the RT/beta 7.x line), so it is the
       # only kernel path that has to let a Renovate kernel PR through. (An RT
-      # bump PR also touches configs/mister_de25nano_defconfig, whose 7.2 pin
+      # bump PR also touches configs/mister_de25nano_defconfig, whose 7.x pin
       # moves in the same PR; it needs no entry of its own because this file
       # is always in the same diff.) The RT pin's history matters for a
       # reader coming from an older commit: it was deliberately NOT triggering
@@ -597,7 +597,7 @@ jobs:
               archive tarball at the new pinned owner/repo/ref (same "locally
               computed" practice this tree's own .hash file headers already
               document)
-            - kernel pins (stable 6.18.y and the RT/beta 7.2 line): kernel.org's
+            - kernel pins (stable 6.18.y and the RT/beta 7.x line): kernel.org's
               signed sha256sums.asc for each pin's own vN.x series. An -rc is
               never refreshed here -- no signed manifest exists for one
             - ip7z/7zip pins (lzma-sdk, 7zip): sha256sum of the release

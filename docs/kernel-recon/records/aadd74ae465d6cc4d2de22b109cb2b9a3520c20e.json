@@ -1,0 +1,61 @@
+{
+  "sha": "aadd74ae465d6cc4d2de22b109cb2b9a3520c20e",
+  "subject": "config: enable kernel-mode NEON and NEON AES/GHASH (#111)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-10-05",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 8,
+  "removed": 2,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "arch/arm/Kconfig KERNEL_MODE_NEON; arch/arm/crypto/Kconfig CRYPTO_GHASH_ARM_CE, CRYPTO_AES_ARM_BS (linux-6.18.57)",
+    "vanilla_quote": null,
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- postdates docs/patch-provenance.md.",
+  "impact": {
+    "effect_if_absent": "On stock: no in-kernel NEON, so AES (dm-crypt, WPA CCMP fallbacks, IPsec) and GHASH (AES-GCM) run the generic C implementations on the Cortex-A9. On our image: none -- already set.",
+    "affected_hardware": [
+      "DE10-Nano Cortex-A9 (NEON)"
+    ],
+    "device_ids": [],
+    "severity": "performance",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- kconfig only, already in our linux.config"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:50 CONFIG_KERNEL_MODE_NEON=y",
+      "board/mister/de10nano/linux.config:610-611 CONFIG_CRYPTO_GHASH_ARM_CE=y, CONFIG_CRYPTO_AES_ARM_BS=y (CRYPTO_CRYPTD, CRC32_ARCH follow)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "OUTBOUND, like the 2026-09-14 increment: authored in this repo and sent upstream as fork PR #111 (head mcfbytes:config-kernel-mode-neon, merged 2026-10-05). scripts/check-fork-sync.sh cannot tell direction, so the record is the evidence that the upstreaming landed and that our image already has it.\n\nMEASURED on the resolved output/build/linux-6.18.57/.config: KERNEL_MODE_NEON=y, CRYPTO_CRYPTD=y, CRYPTO_GHASH_ARM_CE=y, CRYPTO_AES_ARM_BS=y, CRC32_ARCH=y, and NHPOLY1305_NEON / BLAKE2B_NEON / AES_ARM_CE unset -- all eight as the fork sets them. ARM32-only symbols; the DE25 (arm64) has KERNEL_MODE_NEON unconditionally and is out of scope."
+}

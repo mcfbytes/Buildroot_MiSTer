@@ -42,6 +42,7 @@ exists: 8,000 interrupts/s on the high-speed root port, whatever is plugged in.
 | `0064-dwc2-ddma-giveback-on-dequeue-halt` | yes (Fixes: dc4c76e7b22c) | a dequeue halt dropped descriptors the core had already completed, and the data toggle went stale, with more than one URB queued |
 | `0065-dwc2-ddma-halt-before-freeing-desc-list` | yes (Fixes: dc4c76e7b22c) | a QH's descriptor list was freed while its channel could still be enabled; now halted and waited for (bounded) first |
 | `0066-dwc2-ddma-keep-xfercompl-unmasked` | yes (Fixes: dc4c76e7b22c) | after a DDMA completion XferCompl was masked on a channel that may already belong to another QH (an isochronous one then stalls) |
+| `0068-dwc2-host-ack-all-hcint-bits` | fork-original (synrais, fork #114); partial revert of mainline 0583bc776ca5 | write the raw HCINT back again, as before v6.7: a low-speed HID report split across packets behind the hub lost its second packet under bulk load (phantom pad input). All three series, both DMA modes; `fs_ddma=1` not re-verified with it. Record: `docs/kernel-recon/records/3726e2eba….json` |
 
 All carried in both the 6.18 and the RT/beta series (beta entries are symlinks). The whole
 de10nano series replays at `-F0` on pristine 6.18.53 (53/53) and the beta series on 7.2.7

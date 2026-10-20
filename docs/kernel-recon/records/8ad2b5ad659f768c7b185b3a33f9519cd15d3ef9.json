@@ -1,0 +1,62 @@
+{
+  "sha": "8ad2b5ad659f768c7b185b3a33f9519cd15d3ef9",
+  "subject": "wifi: rtw88: 8821c: support RFE type 7 (#109)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-10-01",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "net-wireless",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/net/wireless/realtek/rtw88/rtw8821c.c"
+  ],
+  "added": 3,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0067-wifi-rtw88-8821c-support-rfe-type-7.patch",
+  "carried_mode": "already-carried",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/net/wireless/realtek/rtw88/rtw8821c.c rtw8821c_rfe_defs[] (linux-6.18.57, linux-7.3) -- entries 0, 2, 4, 6 only",
+    "vanilla_quote": null,
+    "equivalence": "byte-identical"
+  },
+  "verification": {
+    "method": "cherry-patch-id",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "docs/patch-provenance.md 0067 row (2026-09-30). The patch originated here; this fork commit is its upstreamed copy.",
+  "impact": {
+    "effect_if_absent": "RTL8811CU/8821CU dongles whose efuse reports RFE type 7 (0bda:c811 seen) fail to probe: 'rfe 7 isn't supported'. On our image: no effect, 0067 already carries the identical change.",
+    "affected_hardware": [
+      "RTL8811CU/RTL8821CU USB Wi-Fi with RFE type 7"
+    ],
+    "device_ids": [
+      "0bda:c811"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "loud"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- already carried in all three series"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": [
+      "board/mister/de10nano/linux-patches/0067-wifi-rtw88-8821c-support-rfe-type-7.patch"
+    ]
+  },
+  "license_provenance": "Ours (Michael C. Ferguson), Signed-off-by in 0067.",
+  "notes": "OUTBOUND, like the 2026-09-14 increment: authored in this repo and sent upstream as fork PR #109 (head mcfbytes:rtw88-8821c-rfe7, merged 2026-10-01). scripts/check-fork-sync.sh cannot tell direction, so the record is the evidence that the upstreaming landed and that our image already has it.\n\nMEASURED: `git patch-id --stable` of the fork commit and of 0067 are both a64c31a52ad37c6dac4619002ce2da90e2219f92 -- the diff is byte-identical. 0067 leaves reduce.py's NO_FORK_ORIGIN list in this increment: it now has an originating fork commit that maps it, so the exemption would be false."
+}

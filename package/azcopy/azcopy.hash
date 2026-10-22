@@ -93,7 +93,7 @@
 # AZCOPY_VERSION), case 7 refreshes these three lines on the bump branch, and
 # if it cannot, the PR fails closed on the stale hash at lint.yml's
 # consistency step -- the same deliberate posture the RT kernel pin takes.
-sha256  d2e3a9dac25d105db81aa2cc012b365bc9f7da1d8ecd43a9c9a5e02d86b6745f  azcopy-10.32.8-go2.tar.gz
+sha256  6943e227c79c824432b44a351fb13ec80f4d8da39337a51956f5ca3c9beeab79  azcopy-10.34.0-go2.tar.gz
 # LICENSE and NOTICE.txt, both at the tree root, both hashed from the pristine
 # v10.32.8 tag -- byte-identical to v10.32.7's, which is the expected outcome
 # and not a copy-paste. Case 7 re-derives these two from the tarball it just
@@ -105,4 +105,4 @@ sha256  d2e3a9dac25d105db81aa2cc012b365bc9f7da1d8ecd43a9c9a5e02d86b6745f  azcopy
 # Both are unaffected by the go-vendoring above, so unlike the tarball these
 # two ARE ordinary `sha256sum` values of files you can fetch and check.
 sha256  e9ca6f8518c969a4d3bb98030581771975a90730a27d294123855c90a31eddcc  LICENSE
-sha256  0554ab1ee35cc4d77b48353fc1e9b93069b3e29822ab4de4d9a34b4c5d5bc98f  NOTICE.txt
+sha256  61a32380d7ca2d7ba60c64e96287e24f1d881f6fb0606d3ebd3700f9ffc942b4  NOTICE.txt

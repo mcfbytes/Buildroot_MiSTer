@@ -6,7 +6,7 @@
 
 # AICSemi AIC8800 Wi-Fi 6 + BT USB driver and firmware, from the tree stock
 # vendored (MiSTer-v6.18 c129b0fac3). Provenance + licence: docs/wifi-parity.md §10.1.
-AIC8800_VERSION = 43db8006cb9b5fcd2b3191ecb7e3ea5962d39aaa
+AIC8800_VERSION = f9ab41822373efe70649d011edb587d1170364e7
 AIC8800_SITE = $(call github,shenmintao,aic8800d80,$(AIC8800_VERSION))
 # Upstream publishes no licence file; the only grant is MODULE_LICENSE("GPL").
 AIC8800_LICENSE = GPL-2.0 (driver, per MODULE_LICENSE; no licence file published), PROPRIETARY (AICSemi firmware blobs, redistributed)

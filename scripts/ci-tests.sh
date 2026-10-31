@@ -1864,6 +1864,45 @@ else
 	fi
 fi
 
+# -- The ninth collision, found by a user rather than by T5 (issue #279) ------
+# Stock ships GNU tar at usr/bin/tar; this image shipped only the BusyBox
+# applet, whose CONFIG_FEATURE_SEAMLESS_GZ was off, so `tar -zxvf foo.tgz` died
+# with "tar: invalid option -- 'z'". Stock's own BusyBox tar applet rejects -z
+# too -- the working stock command was the GNU binary. Two checks, because
+# each catches a different way of regressing:
+#   1. provider  -- BR2_PACKAGE_TAR off again (or CONFIG_TAR back on) would
+#      silently hand usr/bin/tar back to BusyBox.
+not_busybox_symlink "usr/bin/tar" "tar (GNU tar -- issue #279, gzip support)"
+#   2. behavior  -- provider alone is not enough: extract a real .tgz with the
+#      exact -zxvf shape the issue reports and compare the payload.
+if [ -z "$QEMU_ARM" ]; then
+	skip "GNU tar -z extracts a .tgz (issue #279)" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/tar" ]; then
+	skip "GNU tar -z extracts a .tgz (issue #279)" "$TARGET/usr/bin/tar not present in output/target"
+else
+	tar_ver="$WORKDIR/tar-version.txt"
+	tgz="$WORKDIR/mister-tar-gzip-probe.tgz"
+	tgz_name="mister-tar-gzip-probe.txt"
+	tgz_out="$WORKDIR/mister-tar-gzip-extract"
+	printf 'issue 279: tar -z probe\n' > "$WORKDIR/$tgz_name"
+	mkdir -p "$tgz_out"
+	tar czf "$tgz" -C "$WORKDIR" "$tgz_name"
+	if ! qemu_target "$TARGET/usr/bin/tar" --version >"$tar_ver" 2>/dev/null; then
+		fail "GNU tar --version runs under qemu-arm" \
+			"could not execute $TARGET/usr/bin/tar (loader/sysroot problem, not a gzip finding)"
+	elif ! grep -q 'GNU tar' "$tar_ver"; then
+		fail "usr/bin/tar is GNU tar (issue #279)" \
+			"provider is not GNU tar: $(head -1 "$tar_ver")"
+	elif ! qemu_target "$TARGET/usr/bin/tar" -zxvf "$tgz" -C "$tgz_out" >"$WORKDIR/tar-gzip.log" 2>&1; then
+		fail "GNU tar -z extracts a .tgz (issue #279)" \
+			"tar -zxvf failed: $(head -2 "$WORKDIR/tar-gzip.log" | tr '\n' ' ')"
+	elif ! cmp -s "$WORKDIR/$tgz_name" "$tgz_out/$tgz_name"; then
+		fail "GNU tar -z extracts a .tgz (issue #279)" "extracted payload differs from source"
+	else
+		pass "GNU tar -z extracts a .tgz (issue #279)"
+	fi
+fi
+
 # =============================================================================
 section "P3.5 — Bluetooth parity"
 # =============================================================================

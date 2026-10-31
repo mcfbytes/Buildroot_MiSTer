@@ -28,6 +28,24 @@ Image size is not a constraint: the image is 512 MiB with ~310 MiB free
 are already built and shipped — so the programs add only their own small binaries,
 no new libraries.
 
+> **Update 2026-10-31 (stock-binary Tier 1 pass, docs/package-manifest.md §4f).**
+> Corrections to the audit below.
+>
+> `BR2_PACKAGE_UTIL_LINUX_IPCMK` is now selected explicitly. `ipcmk` has its own
+> gate in `util-linux.mk` (`--enable-ipcmk`), it is **not** installed by
+> `UTIL_LINUX_BINARIES` — which is why it was missing even though the table below
+> used to list it in that row.
+>
+> The five lingering BusyBox applets that still competed with util-linux paths are
+> now disabled in `board/mister/de10nano/busybox.fragment`: `FSCK`, `LSBLK`,
+> `UUIDGEN`, `LINUX32`, `LINUX64`. These were the last applets where
+> "last install wins" could silently hand a path back to BusyBox.
+>
+> Also corrected here: stock's `/sbin/getty` (and `/usr/sbin/getty`) is a **BusyBox
+> symlink**. Stock *installs* util-linux's `agetty` at `/usr/sbin/agetty`, but its
+> inittab calls `/sbin/getty`, so it runs the BusyBox applet. `agetty` below is a
+> deliberate divergence, not a reproduction of stock's serial line.
+
 ## What is enabled
 
 In `configs/mister_de10nano_defconfig`, next to the existing util-linux library
@@ -35,7 +53,8 @@ selections:
 
 | Symbol | Programs |
 |--------|----------|
-| `BR2_PACKAGE_UTIL_LINUX_BINARIES` | basic set: `blkid`, `blockdev`, `blkdiscard`, `chcpu`, `choom`, `col*`, `column`, `ctrlaltdel`, `dmesg`, `fdisk`/`sfdisk`/`cfdisk`, `fincore`, `findfs`, `findmnt`, `flock`, `fsfreeze`, `fstrim`, `getopt`, `hexdump`, `ipcmk`, `isosize`, `ldattach`, `look`, `lsblk`, `lscpu`, `lsipc`, `lslocks`, `lsns`, `mcookie`, `mkfs`, `mkswap`, `namei`, `prlimit`, `readprofile`, `renice`, `rev`, `rtcwake`, `script*`, `setarch` (+`linux32`/`linux64`/`uname26`), `setsid`, `swaplabel`, `swapon`/`swapoff`, `uuidgen`, `uuidparse`, `whereis`, `wipefs` |
+| `BR2_PACKAGE_UTIL_LINUX_BINARIES` | basic set: `blkid`, `blockdev`, `blkdiscard`, `chcpu`, `choom`, `col*`, `column`, `ctrlaltdel`, `dmesg`, `fdisk`/`sfdisk`/`cfdisk`, `fincore`, `findfs`, `findmnt`, `flock`, `fsfreeze`, `fstrim`, `getopt`, `hexdump`, `isosize`, `ldattach`, `look`, `lsblk`, `lscpu`, `lsipc`, `lslocks`, `lsns`, `mcookie`, `mkfs`, `mkswap`, `namei`, `prlimit`, `readprofile`, `renice`, `rev`, `rtcwake`, `script*`, `setarch` (+`linux32`/`linux64`/`uname26`), `setsid`, `swaplabel`, `swapon`/`swapoff`, `uuidgen`, `uuidparse`, `whereis`, `wipefs` |
+| `BR2_PACKAGE_UTIL_LINUX_IPCMK` | `ipcmk` — its own symbol, not part of `_BINARIES` (`util-linux.mk` `--enable-ipcmk`); enabled 2026-10-31 |
 | `BR2_PACKAGE_UTIL_LINUX_MOUNT` | `mount`, `umount` — the functional core (helper dispatch to `mount.ntfs`) |
 | `BR2_PACKAGE_UTIL_LINUX_MOUNTPOINT` | `mountpoint` |
 | `BR2_PACKAGE_UTIL_LINUX_AGETTY` | `agetty` — the serial console (see below) |
@@ -52,9 +71,11 @@ selections:
 | `BR2_PACKAGE_UTIL_LINUX_SETTERM` | `setterm` |
 | `BR2_PACKAGE_UTIL_LINUX_SWITCH_ROOT` | `switch_root` |
 
-This reproduces stock's util-linux program set. `login`, `su`, and `sulogin` are
-**not** enabled from util-linux — stock's `login` is a BusyBox symlink
-(`bin/login -> ../bin/busybox`), so those stay BusyBox here too.
+This reproduces stock's installed util-linux program set. `login`, `su`, and
+`sulogin` are **not** enabled from util-linux — stock's `login` is a BusyBox
+symlink (`bin/login -> ../bin/busybox`), so those stay BusyBox here too. The one
+program-set difference is the serial line: stock installs `agetty` but invokes
+BusyBox's `getty`; this image invokes `agetty` (see below).
 
 ## BusyBox de-confliction
 
@@ -70,6 +91,12 @@ lands:
 # READPROFILE / RENICE / SETARCH / SETSID / SWAPON / SWAPOFF / SWITCH_ROOT /
 # UMOUNT / CHRT  ... is not set
 ```
+
+**Added 2026-10-31:** five applets that had been left on even though util-linux
+(already enabled above) owns their paths are now disabled too — `CONFIG_FSCK`,
+`CONFIG_LSBLK`, `CONFIG_UUIDGEN`, `CONFIG_LINUX32`, `CONFIG_LINUX64`. The last
+two are the `setarch` personality symlinks. Until this pass those five were the
+only paths where install order still decided the provider.
 
 **Collision audit.** The disable list was derived by intersecting the BusyBox applets
 actually installed in the built rootfs with the full set of programs util-linux
@@ -87,8 +114,16 @@ that look like they might collide but do **not**:
 
 ## The serial console: BusyBox `getty` → util-linux `agetty`
 
-Stock's inittab runs `agetty --nohostname`. With `agetty` now available, the inittab
-serial line changes from BusyBox `getty` to match:
+**Stock does not run util-linux `agetty`.** Stock's inittab line is
+`console::respawn:/sbin/getty -L console 115200 xterm`, and `/sbin/getty` is a
+symlink to `../bin/busybox` (`/usr/sbin/getty` is the same symlink). Stock
+*installs* util-linux's `/usr/sbin/agetty` but never calls it — so our switch to
+`agetty` is a deliberate divergence in favour of the real util-linux program,
+not a reproduction of the stock serial line (see
+[docs/init-parity.md](init-parity.md) deviation (2)).
+
+With `agetty` now available, the inittab serial line changes from BusyBox `getty`
+to:
 
 ```
 # was:  ttyS0::respawn:/sbin/getty  -L ttyS0 115200 vt100
@@ -120,12 +155,15 @@ binary used for manual/debug `hwclock` calls.
   (the `raw(8)` char-device interface was removed from the kernel in 5.14). It is
   unbuildable and obsolete; there is no BusyBox `raw` either, so nothing is lost.
 - **`login`/`su`/`sulogin`** — stock's are BusyBox; kept BusyBox here.
+- **`getty`** — stock's `/sbin/getty` is a BusyBox symlink; this image uses
+  util-linux `agetty` on the serial line instead. Corrected 2026-10-31: earlier
+  text in this file wrongly described stock as running `agetty`.
 
 ## Verification
 
 - **kconfig resolves cleanly.** `make mister_de10nano_defconfig && make olddefconfig`
-  (no compile) lands all 16 enabled util-linux program toggles in `output/.config`
-  with nothing silently dropped; the 25 BusyBox `# CONFIG_… is not set` fragment lines
+  (no compile) lands all 17 enabled util-linux program toggles in `output/.config`
+  with nothing silently dropped; the 30 BusyBox `# CONFIG_… is not set` fragment lines
   all target symbols confirmed present in the built BusyBox `.config` (so none is a
   silent no-op).
 - **Collision audit** performed as above — every disabled BusyBox applet has a

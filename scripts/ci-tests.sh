@@ -1615,7 +1615,7 @@ else
 fi
 
 # =============================================================================
-section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c)"
+section "T5 — utility binaries closing the stock gap (docs/package-manifest.md §4c + §4f)"
 # =============================================================================
 # Highest-value binaries from each of the three T5 groups, plus regression
 # guards for the BusyBox-applet collisions T5 found and fixed (board/mister/
@@ -1627,23 +1627,25 @@ section "T5 — utility binaries closing the stock gap (docs/package-manifest.md
 # that, so these checks additionally assert the shipped entry is NOT a
 # busybox symlink where a real package is supposed to own the path.
 
-# -- Group 1: BusyBox applets stock ships as GNU coreutils --------------------
-# `stat`/`timeout` matter most (task's own words) -- ordinary shell scripts
-# use both, and a MiSTer script that works on stock previously failed
-# outright on this image. Presence AND their sub-feature-gated flags (found
-# pinned off in the base busybox.config -- board/mister/de10nano/
-# busybox.fragment's own T5 comment) are both checked, since presence alone
-# would not have caught a crippled `stat` with no `-c` support.
+# -- Group 1: paths stock ships as GNU coreutils ------------------------------
+# History: T5 (§4c) first closed these by turning on eight BusyBox applets
+# (stat/timeout/tac/shuf/comm/split/expand/groups). That was a reproduction of
+# stock's GNU coreutils, not the stock binary. §4f now ships the real
+# BR2_PACKAGE_COREUTILS and disables those applets, so the presence checks
+# below are still valid but the provider is GNU coreutils -- asserted by the
+# `not_busybox_symlink` block further down. `stat -c` remains the behavioural
+# probe: it is the single most common scripted use, and it must keep working
+# now that BusyBox's FEATURE_STAT_FORMAT is no longer in the picture.
 require_present "usr/bin/stat" "stat"
 require_present "usr/bin/timeout" "timeout"
 if [ -z "$QEMU_ARM" ]; then
-	skip "stat -c (FEATURE_STAT_FORMAT) works" "qemu-arm not found on PATH"
+	skip "stat -c works (GNU coreutils)" "qemu-arm not found on PATH"
 elif [ ! -x "$TARGET/usr/bin/stat" ]; then
-	skip "stat -c (FEATURE_STAT_FORMAT) works" "$TARGET/usr/bin/stat not present in output/target"
+	skip "stat -c works (GNU coreutils)" "$TARGET/usr/bin/stat not present in output/target"
 elif qemu_target "$TARGET/usr/bin/stat" -c '%s' "$TARGET/usr/bin/stat" >/dev/null 2>&1; then
-	pass "stat -c (FEATURE_STAT_FORMAT) works"
+	pass "stat -c works (GNU coreutils)"
 else
-	fail "stat -c (FEATURE_STAT_FORMAT) works" "stat -c '%s' failed -- FEATURE_STAT_FORMAT may not be compiled in"
+	fail "stat -c works (GNU coreutils)" "stat -c '%s' failed -- the shipped stat does not accept GNU coreutils' -c"
 fi
 for spec in "usr/bin/tac:tac" "usr/bin/shuf:shuf" "usr/bin/comm:comm" "usr/bin/split:split" "usr/bin/expand:expand" "usr/bin/groups:groups" "usr/bin/nc:nc"; do
 	path="${spec%%:*}"; label="${spec##*:}"
@@ -1900,6 +1902,133 @@ else
 		fail "GNU tar -z extracts a .tgz (issue #279)" "extracted payload differs from source"
 	else
 		pass "GNU tar -z extracts a .tgz (issue #279)"
+	fi
+fi
+
+# -- Stock binary parity Tier 1 + BlueZ (docs/package-manifest.md §4f) --------
+# Same shape as the tar/wget checks above, at group scale: the Tier 1 packages
+# replace BusyBox symlinks with stock's real providers, so (a) the provider at
+# each path must not resolve back to busybox, (b) paths that were absent before
+# must actually be installed, and (c) the binaries must execute and identify
+# themselves as the expected implementation -- a stale or wrong build can own
+# the path without being the stock binary.
+
+# (a1) GNU coreutils samples. The 84 applets in the fragment's coreutils block
+# cover the names BusyBox used to own; these samples include multi-call-binary
+# paths, the 20 previously-absent names (pr/join/stdbuf/users/vdir) and the
+# relocated chroot.
+not_busybox_symlink "usr/bin/coreutils" "coreutils (multi-call GNU coreutils)"
+not_busybox_symlink "usr/bin/ls" "ls (GNU coreutils)"
+not_busybox_symlink "usr/bin/cat" "cat (GNU coreutils)"
+not_busybox_symlink "usr/bin/pr" "pr (GNU coreutils -- previously absent)"
+not_busybox_symlink "usr/bin/join" "join (GNU coreutils -- previously absent)"
+not_busybox_symlink "usr/bin/stdbuf" "stdbuf (GNU coreutils -- previously absent)"
+not_busybox_symlink "usr/bin/users" "users (GNU coreutils -- previously absent)"
+not_busybox_symlink "usr/bin/vdir" "vdir (GNU coreutils -- previously absent)"
+not_busybox_symlink "usr/sbin/chroot" "chroot (GNU coreutils)"
+not_busybox_symlink "usr/bin/uptime" "uptime (GNU coreutils)"
+
+# (a2) Restored provider groups: gzip, less, findutils, ncurses, OpenSSL,
+# util-linux ipcmk, unzip/dos2unix/whois, net-tools, iputils, BlueZ.
+not_busybox_symlink "usr/bin/less" "less"
+not_busybox_symlink "usr/bin/find" "find (GNU findutils)"
+not_busybox_symlink "usr/bin/xargs" "xargs (GNU findutils)"
+not_busybox_symlink "usr/bin/gzip" "gzip (GNU gzip)"
+not_busybox_symlink "usr/bin/zgrep" "zgrep (GNU gzip helper -- previously absent)"
+not_busybox_symlink "usr/bin/clear" "clear (ncurses)"
+not_busybox_symlink "usr/bin/reset" "reset (ncurses)"
+not_busybox_symlink "usr/bin/openssl" "openssl (OpenSSL CLI)"
+not_busybox_symlink "usr/bin/ipcmk" "ipcmk (util-linux, own IPCMK gate)"
+not_busybox_symlink "usr/bin/unzip" "unzip"
+not_busybox_symlink "usr/bin/dos2unix" "dos2unix"
+not_busybox_symlink "usr/bin/mkpasswd" "mkpasswd (whois)"
+not_busybox_symlink "usr/sbin/ifconfig" "ifconfig (net-tools)"
+not_busybox_symlink "usr/bin/netstat" "netstat (net-tools)"
+# net-tools upstream installs ifconfig/route to bin and arp to sbin; Buildroot's
+# install hook (active because BR2_ROOTFS_MERGED_BIN is unset) then moves
+# ifconfig/route from bin to sbin. With merged usr that lands all three under
+# /usr/sbin, which is also stock's location. iputils' hook likewise moves arping
+# to /usr/sbin. Do not "fix" these to a symmetric-looking list.
+not_busybox_symlink "usr/sbin/route" "route (net-tools)"
+not_busybox_symlink "usr/sbin/arp" "arp (net-tools)"
+not_busybox_symlink "usr/bin/ping" "ping (iputils)"
+not_busybox_symlink "usr/bin/ping6" "ping6 (iputils)"
+not_busybox_symlink "usr/sbin/arping" "arping (iputils)"
+not_busybox_symlink "usr/bin/btmon" "btmon (BlueZ monitor)"
+not_busybox_symlink "usr/lib/udev/hid2hci" "hid2hci (BlueZ, installed into udevdir)"
+
+# (a3) The five util-linux paths that were still BusyBox in the built tree, and
+# the two ifupdown scripts -- the same last-install-wins hazard.
+not_busybox_symlink "usr/sbin/fsck" "fsck (util-linux)"
+not_busybox_symlink "usr/bin/lsblk" "lsblk (util-linux)"
+not_busybox_symlink "usr/bin/uuidgen" "uuidgen (util-linux)"
+not_busybox_symlink "usr/bin/linux32" "linux32 (util-linux setarch symlink)"
+not_busybox_symlink "usr/bin/linux64" "linux64 (util-linux setarch symlink)"
+not_busybox_symlink "usr/sbin/ifup" "ifup (ifupdown)"
+not_busybox_symlink "usr/sbin/ifdown" "ifdown (ifupdown)"
+
+# (b) Paths that did not exist at all before this pass (not merely BusyBox).
+for spec in \
+	"usr/bin/pr:pr (GNU coreutils)" \
+	"usr/bin/stdbuf:stdbuf (GNU coreutils)" \
+	"usr/bin/zgrep:zgrep (GNU gzip helper)" \
+	"usr/bin/tic:tic (ncurses target progs)" \
+	"usr/bin/infocmp:infocmp (ncurses target progs)" \
+	"usr/bin/tput:tput (ncurses target progs)" \
+	"usr/bin/tset:tset (ncurses target progs)" \
+	"usr/bin/openssl:openssl (OpenSSL CLI)" \
+	"usr/bin/ipcmk:ipcmk (util-linux IPCMK)" \
+	"usr/bin/btmon:btmon (BlueZ monitor)" \
+	"usr/lib/udev/hid2hci:hid2hci (BlueZ hid2hci)"
+do
+	require_present "${spec%%:*}" "${spec#*:}"
+done
+
+# (c) Functional identity checks. Presence/provider alone cannot tell a stale
+# build from the expected upstream implementation, so each binary is executed
+# under qemu-arm and asked to identify itself.
+for spec in \
+	"usr/bin/coreutils:GNU coreutils:coreutils --version reports GNU coreutils" \
+	"usr/bin/ls:GNU coreutils:ls --version reports GNU coreutils" \
+	"usr/bin/less:less:less --version reports less" \
+	"usr/bin/find:GNU findutils:find --version reports GNU findutils" \
+	"usr/bin/gzip:gzip:gzip --version reports gzip"
+do
+	tier1_path=${spec%%:*}
+	tier1_rest=${spec#*:}
+	tier1_want=${tier1_rest%%:*}
+	tier1_label=${tier1_rest#*:}
+	if [ -z "$QEMU_ARM" ]; then
+		skip "$tier1_label" "qemu-arm not found on PATH"
+	elif [ ! -x "$TARGET/$tier1_path" ]; then
+		skip "$tier1_label" "$TARGET/$tier1_path not present in output/target"
+	else
+		tier1_out="$WORKDIR/tier1-$(basename "$tier1_path")-version.txt"
+		if ! qemu_target "$TARGET/$tier1_path" --version >"$tier1_out" 2>/dev/null; then
+			fail "$tier1_label" \
+				"could not execute $TARGET/$tier1_path (loader/sysroot problem, not a provider finding)"
+		elif grep -qF -- "$tier1_want" "$tier1_out"; then
+			pass "$tier1_label"
+		else
+			fail "$tier1_label" \
+				"--version does not mention '$tier1_want': $(head -1 "$tier1_out")"
+		fi
+	fi
+done
+if [ -z "$QEMU_ARM" ]; then
+	skip "openssl version runs (OpenSSL CLI)" "qemu-arm not found on PATH"
+elif [ ! -x "$TARGET/usr/bin/openssl" ]; then
+	skip "openssl version runs (OpenSSL CLI)" "$TARGET/usr/bin/openssl not present in output/target"
+else
+	tier1_out="$WORKDIR/tier1-openssl-version.txt"
+	if ! qemu_target "$TARGET/usr/bin/openssl" version >"$tier1_out" 2>&1; then
+		fail "openssl version runs (OpenSSL CLI)" \
+			"openssl version exited nonzero: $(head -1 "$tier1_out")"
+	elif grep -q 'OpenSSL' "$tier1_out"; then
+		pass "openssl version runs (OpenSSL CLI)"
+	else
+		fail "openssl version runs (OpenSSL CLI)" \
+			"unexpected output: $(head -1 "$tier1_out")"
 	fi
 fi
 

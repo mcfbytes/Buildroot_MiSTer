@@ -763,6 +763,12 @@ image's config. Eight of the nine are ones stock ships as GNU coreutils
 all symlinks → `coreutils`), so turning the applet on reproduces the command
 at the same path. `nc` is the exception — see its own row:**
 
+> **Superseded 2026-10-31 by §4f.** These eight applets were a *reproduction*
+> of stock's GNU coreutils, not the stock binary. `BR2_PACKAGE_COREUTILS=y`
+> now ships the real thing and all eight BusyBox applets are disabled; read the
+> rows below as the history of the T5 fix, not as the current provider. `nc`
+> is **not** superseded — it remains the one deliberate BusyBox substitution.
+
 | Applet | Binary(ies) it provides | Why a MiSTer user/script needs it |
 |---|---|---|
 | `stat` (+ `FEATURE_STAT_FORMAT`, `FEATURE_STAT_FILESYSTEM`) | `stat` | `-c FORMAT` and `-f` are both gated behind their own feature symbol, EXPLICITLY pinned off in the base `busybox.config` (not merely defaulted) — without them, `stat -c '%s' file`, the single most common scripted use of `stat`, fails outright |
@@ -950,6 +956,88 @@ invocation depends on changed.
 `tar --version` under qemu-arm prints `GNU tar`; `tar -zxvf` of a real `.tgz`
 extracts the payload byte-identically. Guarded by `scripts/ci-tests.sh` §"T5"
 (`not_busybox_symlink usr/bin/tar` plus a functional `-zxvf` extraction).
+
+---
+
+### 4f. Stock binary parity Tier 1 + BlueZ (issue #279 follow-up, 2026-10-31)
+
+§4e fixed one path; this pass applies the same finding at group scale. Stock's
+`/bin`, `/sbin`, `/usr/bin` and `/usr/sbin` are dominated by real GNU/upstream
+ELFs where this image had BusyBox symlinks. For the Tier 1 set the real package
+is now enabled **and** the colliding BusyBox applet disabled, so the stock
+provider — not install order — owns each path. All symbols live in
+`package/mister-userspace/Config.in` (the profile that owns package selection);
+the matching `# CONFIG_… is not set` lines live in
+`board/mister/de10nano/busybox.fragment`.
+
+**Symbols added**
+
+| Area | Symbols |
+|---|---|
+| compression | `BR2_PACKAGE_GZIP` |
+| crypto / TLS | `BR2_PACKAGE_LIBOPENSSL_BIN` (the CLI; `LIBOPENSSL` itself was already on) |
+| util-linux | `BR2_PACKAGE_UTIL_LINUX_IPCMK` — `ipcmk` has its own gate in `util-linux.mk`, it is not part of `_BINARIES` |
+| ncurses | `BR2_PACKAGE_NCURSES_TARGET_PROGS` |
+| Bluetooth | `BR2_PACKAGE_BLUEZ5_UTILS_MONITOR`, `BR2_PACKAGE_BLUEZ5_UTILS_TOOLS_HID2HCI` |
+| Tier 1 block | `BR2_PACKAGE_COREUTILS`, `BR2_PACKAGE_LESS`, `BR2_PACKAGE_FINDUTILS`, `BR2_PACKAGE_NET_TOOLS`, `BR2_PACKAGE_IPUTILS` (+ `_ARPING`, `_CLOCKDIFF`, `_PING`, `_TRACEPATH`), `BR2_PACKAGE_UNZIP`, `BR2_PACKAGE_DOS2UNIX`, `BR2_PACKAGE_WHOIS` |
+
+**Restored path groups** (versions are Buildroot 2026.08's; stock's are the
+20260907 rootfs)
+
+| Package | Paths now shipped |
+|---|---|
+| GNU coreutils 9.10 (stock 8.32) | **105 paths**: 84 names BusyBox previously supplied (the 84 applets now disabled), 20 that were absent outright — `b2sum`, `basenc`, `chcon`, `csplit`, `dir`, `dircolors`, `fmt`, `join`, `numfmt`, `pathchk`, `pinky`, `pr`, `ptx`, `runcon`, `sha224sum`, `stdbuf`, `sum`, `unexpand`, `users`, `vdir` — plus `[` (`-> test`). `/usr/bin/coreutils` is the multi-call ELF and each path is its symlink. Replaces the BusyBox applets for `ls`, `cat`, `cp`, `mv`, `rm`, `stat`, `timeout`, `sort`, `head`, `tail`, `chmod`, `chown`, `date`, `dd`, `df`, `du`, `echo`, `env`, `expr`, `install`, `ln`, `mkdir`, `mknod`, `mktemp`, `od`, `printf`, `readlink`, `realpath`, `seq`, `sha*sum`, `sleep`, `sync`, `tee`, `touch`, `tr`, `uname`, `uptime`, `wc`, `whoami`, `yes`, and the rest of the 84 |
+| gzip 1.14 | GNU `gzip`, `gunzip`, `zcat` plus the **11 helpers**: `gzexe`, `uncompress`, `zcmp`, `zdiff`, `zegrep`, `zfgrep`, `zforce`, `zgrep`, `zless`, `zmore`, `znew` (BusyBox's applet provided only the first three names) |
+| less 704 | `less` — stock has no `/usr/bin/lesskey`; lesskey support is the `LESSKEY` environment variable pointing at the existing `/media/fat/linux/lesskey` distribution data, not a restored stock binary |
+| findutils 4.10.0 | `find`, `xargs`, `locate`, `updatedb`; the package also installs `usr/libexec/frcode` (present in the built tree) |
+| net-tools 2.10 | `ifconfig`, `route`, `netstat`, `arp`, `ipmaddr`, `mii-tool`, `plipconfig`, `rarp`, `slattach`, `nameif` |
+| iputils 20250605 | `ping`, `ping6`, `arping`, `clockdiff`, `tracepath` (the four sub-options plus the `ping6 -> ping` symlink). iputils 20250605 has **no** `traceroute6`, so `CONFIG_TRACEROUTE6` stays BusyBox (see the fragment's issue #188 note) |
+| unzip 6.0 | `unzip` — stock 20260907 has no `zipinfo`/`funzip`, and Buildroot installs only this binary |
+| dos2unix 7.5.5 | `dos2unix`, `unix2dos`, `mac2unix`, `unix2mac` |
+| whois 5.6.5 | `whois`, `mkpasswd` |
+| OpenSSL 3.6.5 CLI | `usr/bin/openssl` — `LIBOPENSSL_BIN`, not a new library; the CLI was the missing half (`libssl`/`libcrypto` were already shipped) |
+| util-linux | `usr/bin/ipcmk`. Five applets that had been left to BusyBox despite util-linux owning the paths are now disabled: `FSCK`, `LSBLK`, `UUIDGEN`, `LINUX32`, `LINUX64` (the last two are `setarch` symlinks). This removes the last non-deterministic util-linux/BusyBox collisions, see [util-linux-parity.md](util-linux-parity.md) |
+| ncurses 6.6 | the eight stock target programs — `tic`, `toe`, `tput`, `tset`, `infocmp`, `tabs`, `captoinfo`, `infotocap` — plus ncurses' own `clear`/`reset` symlinks (`reset -> tset`), which the BusyBox `CLEAR`/`RESET` applets previously shadowed |
+| BlueZ 5.86 | `usr/bin/btmon` (`BLUEZ5_UTILS_MONITOR`) and `usr/lib/udev/hid2hci` (`BLUEZ5_UTILS_TOOLS_HID2HCI`, installed by upstream into `$(UDEV_DIR)` = `/usr/lib/udev`, which is also stock's path) |
+
+**`btmgmt` is deliberately not shipped.** BlueZ builds it (`tools/btmgmt` is in
+`noinst_PROGRAMS`, built when the CLI client is enabled), but Buildroot 5.86's
+install target does not install `noinst_PROGRAMS`. There is no
+`BR2_PACKAGE_BLUEZ5_UTILS_TOOLS_BTMGMT` symbol and this pass does not add a
+custom post-install hook for it, so stock's `usr/bin/btmgmt` remains unmatched.
+Do not expect it in `output/target`.
+
+**§4c's BusyBox coreutils reproductions are superseded.** §4c Group 1 turned
+on eight BusyBox applets (`stat`, `timeout`, `tac`, `shuf`, `comm`, `split`,
+`expand`, `groups`) because stock's providers were GNU coreutils; that was a
+reproduction, not the stock binary. With `BR2_PACKAGE_COREUTILS=y` all eight
+applets are disabled and GNU coreutils owns the paths, so the §4c rows for them
+are historical. `nc` is **not** affected: it was never a coreutils row, and it
+remains the one deliberate BusyBox substitution (stock's `netcat` is GNU
+Netcat 0.7.1; BusyBox's `nc` + `netcat` alias still ship).
+
+**Rejected / not in scope** (checked, deliberately not added):
+
+- `raw` — util-linux's option `depends on !BR2_TOOLCHAIN_HEADERS_AT_LEAST_5_14`;
+  our 6.18 headers make it unbuildable, and the `raw(8)` interface is gone.
+- `mlocate` — no Buildroot package in this tree; findutils already provides
+  `locate`/`updatedb` (same paths stock's mlocate occupies).
+- `xmlwf` — `package/expat/expat.mk` hardcodes `--without-xmlwf`.
+- `lshw` — pulls hwdata, whose size is not justified for a diagnostic no MiSTer
+  script uses.
+- `dash`, `mksh` — additional shells, no stock-parity requirement (stock's
+  `/bin/sh` is BusyBox ash).
+- `e2tools`, NTP sub-tools, `fping`, `ed`, `fbv`, `fbgrab`, `edid-decode`/
+  `read-edid`, xkb tools, libinput's python measure/replay tools, and the other
+  unapproved optional packages surfaced by the missing-path audit — none is
+  part of Tier 1; each stays a documented gap/rejection rather than an
+  accidental `select`.
+
+**Guards.** `scripts/ci-tests.sh` §"T5" asserts that coreutils samples, every
+restored provider group, the five util-linux paths and `ifup`/`ifdown` are not
+BusyBox symlinks; that the previously-absent paths are present; and that GNU
+coreutils/less/findutils/gzip/openssl execute under qemu-arm and report their
+GNU/upstream identity.
 
 ---
 

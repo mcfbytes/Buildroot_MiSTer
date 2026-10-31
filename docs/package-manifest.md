@@ -913,6 +913,46 @@ distinguishes the two providers).
 
 ---
 
+### 4e. GNU tar — gzip support regression (issue #279, 2026-10-31)
+
+The ninth BusyBox collision, and the same shape as §4d: stock ships a real GNU
+binary, this image dropped it, and BusyBox covered the name with a less capable
+applet.
+
+**What stock ships.** `usr/bin/tar` is a 479,180-byte GNU tar ELF linked against
+libc only (`docs/stock-inventory/20260907/binaries-needed-full.txt:322`);
+executed under qemu-arm it reports `tar (GNU tar) 1.32`. Stock's BusyBox 1.33.1
+*also* had the tar applet compiled in (the 20250402 audit lists it at
+`docs/stock-inventory/20250402/busybox-applets.md:240`; the 20260907 rootfs was
+re-checked under qemu-arm for this PR: 274 applets, `tar` included), but the
+GNU ELF owned the path, so the `tar` name never reached it.
+
+**What we shipped, and why it broke.** Only the BusyBox `CONFIG_TAR` applet, and
+Buildroot's base `busybox.config:143` pins `CONFIG_FEATURE_SEAMLESS_GZ` off.
+That symbol gates the `z` option letter itself (`archival/tar.c:998`), so
+`tar -zxvf tailscale_*.tgz` died with issue #279's verbatim
+`tar: invalid option -- 'z'`. Stock's own BusyBox tar applet rejects `-z` the
+same way — confirming the working stock command was GNU tar, not BusyBox.
+
+**The fix.** `BR2_PACKAGE_TAR=y` in the defconfig (Buildroot GNU tar 1.35) and
+`# CONFIG_TAR is not set` in `board/mister/de10nano/busybox.fragment`, so the
+GNU ELF owns `/usr/bin/tar` deterministically rather than by install order. The
+package's three `Config.in` dependencies — `BR2_PACKAGE_BUSYBOX_SHOW_OTHERS`,
+`BR2_USE_WCHAR`, `BR2_USE_MMU` — were already set. `BR2_PACKAGE_ACL` and
+`BR2_PACKAGE_ATTR` are both off, so `tar.mk` takes `--without-posix-acls` and
+`--without-xattrs` and the result links libc only, matching stock's NEEDED set.
+The version differs (stock 1.32, ours 1.35); nothing the issue's `-zxvf`
+invocation depends on changed.
+
+**Verified, not assumed** (2026-10-31, warm tree): the defconfig's resolved
+`.config` has `BR2_PACKAGE_TAR=y`; the busybox `.config` has
+`# CONFIG_TAR is not set`; `output/target/usr/bin/tar` is a GNU tar ELF and
+`tar --version` under qemu-arm prints `GNU tar`; `tar -zxvf` of a real `.tgz`
+extracts the payload byte-identically. Guarded by `scripts/ci-tests.sh` §"T5"
+(`not_busybox_symlink usr/bin/tar` plus a functional `-zxvf` extraction).
+
+---
+
 ## 5. Drop list — what stock ships that we should not
 
 The rootfs is **93% full** (297/347 MiB per PLAN §4.2, confirmed 13.6% free by

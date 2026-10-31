@@ -253,3 +253,17 @@ CONFIG_NC_110_COMPAT=y
 # FEATURE_IFUPDOWN_IPV6 stays off: BusyBox ifup is disabled above, the ifupdown package does inet6.
 CONFIG_PING6=y
 CONFIG_TRACEROUTE6=y
+
+# BusyBox tar gzip support (issue #279). Do NOT "fix" this by enabling
+# CONFIG_FEATURE_SEAMLESS_GZ: stock does not use BusyBox tar at all. Stock's
+# `tar` is GNU tar 1.32, a real ELF at usr/bin/tar
+# (docs/stock-inventory/20260907/binaries-needed-full.txt:322), and stock's own
+# BusyBox 1.33.1 tar applet rejects -z exactly like ours did -- the working
+# stock command was answered by the GNU binary, which owned the path. This
+# image shipped only the applet, with CONFIG_FEATURE_SEAMLESS_GZ off in
+# Buildroot's base busybox.config:143, so `tar -zxvf foo.tgz` died with
+# "tar: invalid option -- 'z'". BR2_PACKAGE_TAR is now enabled in the
+# defconfig; turn the applet off so the GNU ELF owns /usr/bin/tar
+# deterministically instead of by install order (same idiom as wget above and
+# every other collision in this file).
+# CONFIG_TAR is not set

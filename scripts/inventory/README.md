@@ -60,6 +60,7 @@ required only to re-lint the scripts themselves, not to run them.
 | (f) kernel config + DTS | `gen-kernel-config-dts.sh` | `zImage_dtb` file, `[output-dir]` | `kernel-config-dts.md` (+ regenerated files in `output-dir`, default a scratch temp dir) |
 | (g) disk usage | `gen-disk-usage.sh` | rootfs image/dir | `disk-usage.md` |
 | (h) kernel modules | `gen-modules.sh` | rootfs image/dir | `modules.md` |
+| (i) stock-vs-ours binary reconciliation | `binary_recon.py` | stock + ours extracted roots, `packages-file-list.txt`, `show-info` JSON, the curated files in `binary-recon/` | `binary-recon/binary-reconciliation.tsv` (see `docs/stock-binary-reconciliation.md` for the full command) |
 
 Every `rootfs image/dir` argument accepts either:
 - a raw **ext4 image file** (e.g. `work/extracted/files/linux/linux.img`)

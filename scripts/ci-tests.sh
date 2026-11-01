@@ -1915,7 +1915,7 @@ fi
 
 # (a1) GNU coreutils samples. The 84 applets in the fragment's coreutils block
 # cover the names BusyBox used to own; these samples include multi-call-binary
-# paths, the 20 previously-absent names (pr/join/stdbuf/users/vdir) and the
+# paths, the 18 previously-absent names (pr/join/stdbuf/users/vdir) and the
 # relocated chroot.
 not_busybox_symlink "usr/bin/coreutils" "coreutils (multi-call GNU coreutils)"
 not_busybox_symlink "usr/bin/ls" "ls (GNU coreutils)"
@@ -1966,6 +1966,23 @@ not_busybox_symlink "usr/bin/linux32" "linux32 (util-linux setarch symlink)"
 not_busybox_symlink "usr/bin/linux64" "linux64 (util-linux setarch symlink)"
 not_busybox_symlink "usr/sbin/ifup" "ifup (ifupdown)"
 not_busybox_symlink "usr/sbin/ifdown" "ifdown (ifupdown)"
+
+# (a4) kill: util-linux (stock's provider), not the coreutils symlink external.mk now suppresses.
+kill_line=$(tar tvf "$ROOTFS_TAR" -- ./usr/bin/kill 2>/dev/null | head -1)
+if [ "${kill_line#-}" != "$kill_line" ] && tar xOf "$ROOTFS_TAR" ./usr/bin/kill 2>/dev/null | grep -aqF 'util-linux'; then
+	pass "usr/bin/kill is util-linux's ELF (as on stock), not coreutils"
+else
+	fail "usr/bin/kill is util-linux's ELF (as on stock), not coreutils" "got: ${kill_line:-missing}"
+fi
+
+# (a5) gpm's version comes from its changelog, not `git describe` of the build checkout (patches/gpm/0002).
+gpm_strings=$(tar xOf "$ROOTFS_TAR" ./usr/sbin/gpm 2>/dev/null | strings -a)
+if printf '%s\n' "$gpm_strings" | grep -qxF 'gpm 1.20.7' && ! printf '%s\n' "$gpm_strings" | grep -qE '^gpm v[0-9]{4}\.'; then
+	pass "gpm reports its release version (1.20.7), not the build checkout's git tag"
+else
+	fail "gpm reports its release version (1.20.7), not the build checkout's git tag" \
+		"usr/sbin/gpm lacks 'gpm 1.20.7' or embeds a vYYYY. tag -- patches/gpm/0002 not applied, or gpm bumped"
+fi
 
 # (b) Paths that did not exist at all before this pass (not merely BusyBox).
 for spec in \

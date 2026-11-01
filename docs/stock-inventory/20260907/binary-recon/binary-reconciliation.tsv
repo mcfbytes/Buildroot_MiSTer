@@ -1,0 +1,1366 @@
+path	status	stock_kind	stock_target	stock_package	stock_version	stock_attribution	ours_kind	ours_target	ours_package	ours_version	ours_attribution	counterpart
+/libexec/rmt	same-provider	elf-exec		tar	1.32	same-path-in-ours	elf-pie		tar	1.35	packages-file-list	
+/linuxrc	both-busybox	symlink:elf-exec	bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/7za	ours-only	absent					symlink:elf-pie	7zz	7zip	26.05	packages-file-list	
+/usr/bin/7zr	provider-changed	elf-exec		p7zip	16.02	override: Stock banner '7-Zip (a) [32] 16.02' / 'p7zip Version 16.02'; BR 2021.02.4 package/p7zip installs only /usr/bin/7zr; no 7zip package exists in that tree.	symlink:elf-pie	7zz	7zip	26.05	packages-file-list	
+/usr/bin/7zz	ours-only	absent					elf-pie		7zip	26.05	packages-file-list	
+/usr/bin/VGMPlay.ini	stock-only	data		mister-custom:VGMPlay config for vgmplay addon	unknown (no version in file)	override: [medium] ini header '; VGMPlay Configuration File'; sits beside addon vgmplay; no BR package	absent					
+/usr/bin/[	same-provider	symlink:elf-exec	test	coreutils	8.32	same-path-in-ours	symlink:elf-pie	test	coreutils	9.10	packages-file-list	
+/usr/bin/[[	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/aconnect	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/adplay	stock-only	elf-exec		mister-custom:AdPlay/UNIX AdLib player addon	1.9	override: [high] strings 'AdPlay/UNIX 1.9'; built with Linaro GCC 6.2 (not BR toolchain)	absent					
+/usr/bin/alsabat	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/alsaloop	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/alsamixer	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/alsatplg	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/alsaucm	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/amidi	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/amixer	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/aplay	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/aplaymidi	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/ar	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/arch	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/archivemount	stock-only	elf-exec		mister-custom:archivemount (no BR 2021.02.4 package)	0.8.5	override: [medium] NEEDED libarchive/libfuse; 'archivemount version %s' usage strings; no package/archivemount in BR2021.02.4; 0.8.5 string from strings (not banner-confirmed)	absent					
+/usr/bin/arecord	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/arecordmidi	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/ascii	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/aseqdump	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/aseqnet	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/aserver	same-provider	elf-exec		alsa-lib	1.2.4	same-path-in-ours	elf-pie		alsa-lib	1.2.16.1	packages-file-list	
+/usr/bin/ash	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/asn1Coding	stock-only	elf-exec		libtasn1	4.17.0	override: [high] strings 'asn1Coding libtasn1 4.17.0'; libtasn1.mk 4.17.0	absent					
+/usr/bin/asn1Decoding	stock-only	elf-exec		libtasn1	4.17.0	override: [high] same libtasn1 4.17.0 tools; stock libtasn1.so.6.6.1; BR2021.02.4 libtasn1.mk	absent					
+/usr/bin/asn1Parser	stock-only	elf-exec		libtasn1	4.17.0	override: [high] same libtasn1 4.17.0 tools; BR2021.02.4 libtasn1.mk	absent					
+/usr/bin/awk	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/b2sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/base32	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/base64	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/basename	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/basenc	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/bash	same-provider	elf-exec		bash	5.0.18	same-path-in-ours	elf-pie		bash	5.2.37	packages-file-list	
+/usr/bin/bc	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/bits	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/bluemoon	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/bluetoothctl	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/bluetoothd	provider-changed	script		mister-custom:bluetoothd control script (S45bluetooth target; creates /media/fat/linux/bluetooth image, mounts it, starts /usr/libexec/bluetooth/bluetoothd)	unknown (unversioned MiSTer script)	override: Stock usr/bin/bluetoothd is a POSIX sh script (DAEMON=bluetoothd, BTIMG=/media/fat/linux/bluetooth, MNTPATH=/var/lib/bluetooth); bluez5_utils installs only the ELF at usr/libexec/bluetooth/bluetoothd, not a script at usr/bin.	script		mister-custom:bluetoothd control script (stock copy with minijail launch, /etc/minijail/bluetoothd.conf)	unknown (repo-local overlay script, no version)	override: Ours usr/bin/bluetoothd is a sh script whose header says it is 'Stock's /bin/bluetoothd control script ... with the daemon run in a minijail'; it is not a bluez5_utils file.	
+/usr/bin/bt-adapter	same-provider	elf-exec		bluez-tools	97efd293491a (git snapshot)	same-path-in-ours	elf-pie		bluez-tools	f65321736475429316f07ee94ec0deac8e46ec4a	packages-file-list	
+/usr/bin/bt-agent	same-provider	elf-exec		bluez-tools	97efd293491a (git snapshot)	same-path-in-ours	elf-pie		bluez-tools	f65321736475429316f07ee94ec0deac8e46ec4a	packages-file-list	
+/usr/bin/bt-device	same-provider	elf-exec		bluez-tools	97efd293491a (git snapshot)	same-path-in-ours	elf-pie		bluez-tools	f65321736475429316f07ee94ec0deac8e46ec4a	packages-file-list	
+/usr/bin/bt-network	same-provider	elf-exec		bluez-tools	97efd293491a (git snapshot)	same-path-in-ours	elf-pie		bluez-tools	f65321736475429316f07ee94ec0deac8e46ec4a	packages-file-list	
+/usr/bin/bt-obex	same-provider	elf-exec		bluez-tools	97efd293491a (git snapshot)	same-path-in-ours	elf-pie		bluez-tools	f65321736475429316f07ee94ec0deac8e46ec4a	packages-file-list	
+/usr/bin/btattach	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/btmgmt	stock-only	elf-exec		bluez5_utils	5.61	override: [low] btmgmt (needs BR2_PACKAGE_BLUEZ5_UTILS_EXPERIMENTAL / mgmt tools); NEEDED libreadline; strings shows 5.61 vs BR2021.02.4 mk 5.55 so likely MiSTer-bumped bluez; version string not fully attributed	absent					
+/usr/bin/btmon	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/bunzip2	same-provider	elf-exec		bzip2	1.0.8	same-path-in-ours	elf-pie		bzip2	1.0.8	packages-file-list	
+/usr/bin/busybox	both-busybox	elf-exec		busybox	1.33.1	symlink->busybox	elf-pie		busybox	1.38.0	symlink->busybox	
+/usr/bin/bzcat	same-provider	elf-exec		bzip2	1.0.8	same-path-in-ours	elf-pie		bzip2	1.0.8	packages-file-list	
+/usr/bin/bzcmp	same-provider	symlink:script	bzdiff	bzip2	1.0.8	same-path-in-ours	symlink:script	bzdiff	bzip2	1.0.8	packages-file-list	
+/usr/bin/bzdiff	same-provider	script		bzip2	1.0.8	same-path-in-ours	script		bzip2	1.0.8	packages-file-list	
+/usr/bin/bzegrep	same-provider	symlink:script	bzgrep	bzip2	1.0.8	same-path-in-ours	symlink:script	bzgrep	bzip2	1.0.8	packages-file-list	
+/usr/bin/bzfgrep	same-provider	symlink:script	bzgrep	bzip2	1.0.8	same-path-in-ours	symlink:script	bzgrep	bzip2	1.0.8	packages-file-list	
+/usr/bin/bzgrep	same-provider	script		bzip2	1.0.8	same-path-in-ours	script		bzip2	1.0.8	packages-file-list	
+/usr/bin/bzip2	same-provider	elf-exec		bzip2	1.0.8	same-path-in-ours	elf-pie		bzip2	1.0.8	packages-file-list	
+/usr/bin/bzip2recover	same-provider	elf-exec		bzip2	1.0.8	same-path-in-ours	elf-pie		bzip2	1.0.8	packages-file-list	
+/usr/bin/bzless	same-provider	symlink:script	bzmore	bzip2	1.0.8	same-path-in-ours	symlink:script	bzmore	bzip2	1.0.8	packages-file-list	
+/usr/bin/bzmore	same-provider	script		bzip2	1.0.8	same-path-in-ours	script		bzip2	1.0.8	packages-file-list	
+/usr/bin/captest	stock-only	elf-exec		libcap-ng	0.8.2	override: [high] NEEDED libcap-ng.so.0, usage 'captest [--ambient...]'; libcap-ng.mk 0.8.2 (BR .mk only)	absent					
+/usr/bin/captoinfo	same-provider	symlink:elf-exec	tic	ncurses	6.1	same-path-in-ours	symlink:elf-pie	tic	ncurses	6.6-20251231	packages-file-list	
+/usr/bin/cat	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/chardetect	stock-only	script		python-chardet	4.0.0	override: [high] script header __requires__ 'chardet==4.0.0'; chardet-4.0.0-py3.9.egg-info in stock site-packages	absent					
+/usr/bin/chattr	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/bin/chcon	stock-only	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	absent					
+/usr/bin/chgrp	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/chmod	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/choom	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/chown	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/chrt	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/chvt	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/cifscreds	ours-only	absent					elf-pie		cifs-utils	7.7	packages-file-list	
+/usr/bin/cifsdd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ciptool	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/cksum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/clear	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/clockdiff	same-provider	elf-exec		iputils	20210202	same-path-in-ours	elf-pie		iputils	20250605	packages-file-list	
+/usr/bin/cmp	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/col	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/colcrt	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/colrm	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/column	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/comm	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/compile_et	same-provider	script		e2fsprogs	1.45.6	same-path-in-ours	script		e2fsprogs	1.47.4	packages-file-list	
+/usr/bin/convert-dtsv0	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/corelist	stock-only	script		perl	5.32.1	override: [high] #!/usr/bin/perl core script; stock /usr/lib/perl5/5.32.1; perl.mk 5.32.1	absent					
+/usr/bin/coresched	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/coreutils	same-provider	elf-exec		coreutils	8.32	same-path-in-ours	elf-pie		coreutils	9.10	packages-file-list	
+/usr/bin/cp	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/cpan	stock-only	script		perl	5.32.1	override: [high] perl core script; stock lib/perl5/5.32.1; perl.mk	absent					
+/usr/bin/cpio	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/cpuload	stock-only	elf-exec		cpuload	0.3	override: [high] strings 'CPU Load Recorder 0.3 - Kelvin Cheung'; cpuload.mk 0.3	absent					
+/usr/bin/crc32	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/crontab	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/csplit	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ctdb	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ctdb_diagnostics	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/bin/curl	same-provider	elf-exec		libcurl	7.78.0	same-path-in-ours	elf-pie		libcurl	8.22.0	packages-file-list	
+/usr/bin/cut	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/cvtsudoers	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/bin/cyclicdeadline	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/cyclictest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/dash	stock-only	elf-exec		dash	0.5.11.3	override: [medium] dash builtin usage strings; BR2021.02.4 dash.mk 0.5.11.3 (no version banner in binary)	absent					
+/usr/bin/date	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/dbus-binding-tool	same-provider	elf-exec		dbus-glib	0.110	same-path-in-ours	elf-pie		dbus-glib	0.114	packages-file-list	
+/usr/bin/dbus-cleanup-sockets	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-daemon	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-launch	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-monitor	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-run-session	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-send	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-test-tool	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-triggerd	stock-only	elf-exec		dbus-triggerd	ba3dbec805cb707c94c54de21666bf18b79bcc09	override: [medium] NEEDED libdbus-1; BR2021.02.4 dbus-triggerd.mk git SHA	absent					
+/usr/bin/dbus-update-activation-environment	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbus-uuidgen	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/bin/dbusxx-introspect	same-provider	elf-exec		dbus-cpp	0.9.0	same-path-in-ours	elf-pie		dbus-cpp	0.9.0	packages-file-list	
+/usr/bin/dbusxx-xml2cpp	same-provider	elf-exec		dbus-cpp	0.9.0	same-path-in-ours	elf-pie		dbus-cpp	0.9.0	packages-file-list	
+/usr/bin/dbwrap_tool	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/dc	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/dd	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ddcmon	same-provider	script		i2c-tools	4.2	same-path-in-ours	script		i2c-tools	4.4	packages-file-list	
+/usr/bin/deadline_test	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/deallocvt	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/decode-dimms	same-provider	script		i2c-tools	4.2	same-path-in-ours	script		i2c-tools	4.4	packages-file-list	
+/usr/bin/decode-edid	same-provider	script		i2c-tools	4.2	same-path-in-ours	script		i2c-tools	4.4	packages-file-list	
+/usr/bin/decode-vaio	same-provider	script		i2c-tools	4.2	same-path-in-ours	script		i2c-tools	4.4	packages-file-list	
+/usr/bin/determine_maximum_mpps.sh	ours-only	absent					script		rt-tests	2.8	packages-file-list	
+/usr/bin/df	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/dialog	same-provider	elf-exec		dialog	1.3-20200327	same-path-in-ours	elf-pie		dialog	1.3-20251001	packages-file-list	
+/usr/bin/diff	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/dir	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/dircolors	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/dirname	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/disable-paste	same-provider	elf-exec		gpm	1.20.7	same-path-in-ours	elf-pie		gpm	1.20.7	packages-file-list	
+/usr/bin/dmesg	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/dnsdomainname	same-provider	symlink:elf-exec	hostname	net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	symlink:elf-pie	hostname	net-tools	2.10	packages-file-list	
+/usr/bin/domainname	same-provider	symlink:elf-exec	hostname	net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	symlink:elf-pie	hostname	net-tools	2.10	packages-file-list	
+/usr/bin/dos2unix	same-provider	elf-exec		dos2unix	7.4.1	same-path-in-ours	elf-pie		dos2unix	7.5.5	packages-file-list	
+/usr/bin/dotlockfile	ours-only	absent					elf-pie		liblockfile	1.17	packages-file-list	
+/usr/bin/dstat	stock-only	script		dstat	0.8.0	override: [medium] script contains VERSION = '0.8.0' and python shebang; BR2021.02.4 dstat.mk says 0.7.4 (mismatch, script text wins, package is dstat)	absent					
+/usr/bin/dtc	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/dtdiff	same-provider	script		dtc	1.6.0	same-path-in-ours	script		dtc	1.7.2	packages-file-list	
+/usr/bin/du	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/dualsensectl	ours-only	absent					elf-pie		dualsensectl	v0.7	packages-file-list	
+/usr/bin/dumpkeys	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/dumpkmap	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/dumpsexp	same-provider	elf-exec		libgcrypt	1.9.3	same-path-in-ours	elf-pie		libgcrypt	1.12.2	packages-file-list	
+/usr/bin/e2cp	stock-only	elf-exec		e2tools	0.0.16.4	override: [high] usage strings e2cp/e2ln/e2ls; NEEDED libext2fs; e2tools.mk 0.0.16.4 (BR .mk only)	absent					
+/usr/bin/e2ln	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp (e2tools multi-call)	absent					
+/usr/bin/e2ls	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp	absent					
+/usr/bin/e2mkdir	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp	absent					
+/usr/bin/e2mv	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp	absent					
+/usr/bin/e2rm	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp	absent					
+/usr/bin/e2tail	stock-only	symlink:elf-exec	e2cp	e2tools	0.0.16.4	override: [high] symlink to e2cp	absent					
+/usr/bin/easy_install	stock-only	script		python-setuptools	44.0.0	override: [high] entry script __requires__ 'setuptools==44.0.0'; setuptools-44.0.0-py3.9.egg-info	absent					
+/usr/bin/easy_install-3.9	stock-only	script		python-setuptools	44.0.0	override: [high] entry script setuptools==44.0.0	absent					
+/usr/bin/echo	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ed	stock-only	elf-exec		ed	1.16	override: [high] strings '1.16' with 'GNU ed is a line-oriented text editor'; ed.mk 1.16	absent					
+/usr/bin/edid-decode	stock-only	elf-exec		edid-decode	188950472c19492547e298b27f9da0d72cf826df	override: [medium] strings 'edid-decode SHA: %s' (SHA not embedded as text); edid-decode.mk git SHA (BR .mk only)	absent					
+/usr/bin/egrep	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/eject	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/em	stock-only	elf-exec		mister-custom:uEmacs/PK (em) editor addon	unknown (no version string)	override: [medium] strings uEmacs/Pk, emacs.hlp, .emacsrc; NEEDED libncursesw; 'em' not a BR 2021.02.4 package	absent					
+/usr/bin/enc2xs	stock-only	script		perl	5.32.1	override: [high] perl core (Encode) script; stock lib/perl5/5.32.1	absent					
+/usr/bin/encguess	stock-only	script		perl	5.32.1	override: [high] perl core (Encode) script; stock lib/perl5/5.32.1	absent					
+/usr/bin/enosys	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/env	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/evdev-joystick	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/event_rpcgen.py	same-provider	script		libevent	2.1.12	same-path-in-ours	script		libevent	2.1.13	packages-file-list	
+/usr/bin/evtest	ours-only	absent					elf-pie		evtest	1.36	packages-file-list	
+/usr/bin/ex	stock-only	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink to vim; vim binary banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; vim.mk 8.2.0000	absent					
+/usr/bin/exch	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/expand	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/expr	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/external-ip.sh	ours-only	absent					script		libminiupnpc	2.3.3	packages-file-list	
+/usr/bin/factor	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/fadvise	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/fallocate	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/false	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/fbgrab	stock-only	elf-exec		fbgrab	1.4	override: [medium] BR2021.02.4 fbgrab.mk FBGRAB_VERSION=1.4; binary banner 'fbgrab - takes screenshots using the framebuffer, v%s' (no embedded version string)	absent					
+/usr/bin/fbv	stock-only	elf-exec		fbv	1.0b	override: [medium] strings 'Copyright (C) 2000 - 2004 Mateusz Golicz, Tomasz Sterna'; BR2021.02.4 fbv.mk 1.0b	absent					
+/usr/bin/fdflush	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/fdtdump	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/fdtget	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/fdtoverlay	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/fdtput	same-provider	elf-exec		dtc	1.6.0	same-path-in-ours	elf-pie		dtc	1.7.2	packages-file-list	
+/usr/bin/ffcfstress	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/ffmvforce	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/ffset	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/fftest	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/fgconsole	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/fgrep	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/filan	same-provider	elf-exec		socat	1.7.4.1	same-path-in-ours	elf-pie		socat	1.8.1.3	packages-file-list	
+/usr/bin/file	same-provider	elf-exec		file	5.38	same-path-in-ours	elf-pie		file	5.47	packages-file-list	
+/usr/bin/filecap	same-provider	elf-exec		libcap-ng	0.8.2	same-path-in-ours	elf-pie		libcap-ng	0.9.3	packages-file-list	
+/usr/bin/fincore	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/find	same-provider	elf-exec		findutils	4.7.0	same-path-in-ours	elf-pie		findutils	4.10.0	packages-file-list	
+/usr/bin/findmnt	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/findsmb	stock-only	script		samba4	4.14.6	override: [high] Perl script shipped by samba; sibling mdfind reports SAMBA_4.14.6; BR2021 samba4.mk 4.14.6	absent					
+/usr/bin/flock	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/fluidsynth	relocated-from	absent					elf-pie		fluidsynth	2.5.7	packages-file-list	/usr/sbin/fluidsynth
+/usr/bin/fmt	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/fold	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/fpga	stock-only	elf-exec		mister-custom:fpga loader/peek-poke tool (usage: fpga {address}[data] | {rbf_file})	unknown	override: [high] No BR package; no version string; built with Linaro GCC 5.4-2017.01-rc2 (not the BR 2021.02.4 toolchain)	absent					
+/usr/bin/free	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/ftop	stock-only	elf-exec		ftop	1.0	override: [medium] strings 'Copyright (C) 2009 Jason Todd'; BR2021.02.4 ftop.mk 1.0	absent					
+/usr/bin/fuser	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/fusermount	ours-only	absent					elf-pie		libfuse	2.9.9	packages-file-list	
+/usr/bin/g-ir-annotation-tool	same-provider	script		gobject-introspection	1.64.1	same-path-in-ours	script		gobject-introspection	1.86.0	packages-file-list	
+/usr/bin/g-ir-compiler	same-provider	elf-exec		gobject-introspection	1.64.1	same-path-in-ours	elf-pie		gobject-introspection	1.86.0	packages-file-list	
+/usr/bin/g-ir-generate	same-provider	elf-exec		gobject-introspection	1.64.1	same-path-in-ours	elf-pie		gobject-introspection	1.86.0	packages-file-list	
+/usr/bin/g-ir-inspect	same-provider	elf-exec		gobject-introspection	1.64.1	same-path-in-ours	elf-pie		gobject-introspection	1.86.0	packages-file-list	
+/usr/bin/g-ir-scanner	same-provider	script		gobject-introspection	1.64.1	same-path-in-ours	script		gobject-introspection	1.86.0	packages-file-list	
+/usr/bin/gapplication	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gatttool	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/gcore	same-provider	script		gdb	9.2	same-path-in-ours	script		gdb	16.3	packages-file-list	
+/usr/bin/gdb	same-provider	elf-exec		gdb	9.2	same-path-in-ours	elf-pie		gdb	16.3	packages-file-list	
+/usr/bin/gdb-add-index	same-provider	script		gdb	9.2	same-path-in-ours	script		gdb	16.3	packages-file-list	
+/usr/bin/gdbserver	same-provider	elf-exec		gdb	9.2	same-path-in-ours	elf-pie		gdb	16.3	packages-file-list	
+/usr/bin/gdbus	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gentest	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/get-edid	stock-only	elf-exec		read-edid	3.0.2	override: [high] strings '3.0.2' + 'This is read-edid version %s'; BR2021 read-edid.mk 3.0.2	absent					
+/usr/bin/get_cyclictest_snapshot	ours-only	absent					symlink:dangling	/usr/lib/python3.14/site-packages//get_cyclictest_snapshot.py	rt-tests	2.8	packages-file-list	
+/usr/bin/getfattr	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/getkeycodes	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/getopt	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/gi-compile-repository	ours-only	absent					elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gi-decompile-typelib	ours-only	absent					elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gi-inspect-typelib	ours-only	absent					elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gio	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gio-querymodules	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gpg-error	same-provider	elf-exec		libgpg-error	1.41	same-path-in-ours	elf-pie		libgpg-error	1.61	packages-file-list	
+/usr/bin/gpgrt-config	same-provider	script		libgpg-error	1.41	same-path-in-ours	script		libgpg-error	1.61	packages-file-list	
+/usr/bin/gpm-root	same-provider	elf-exec		gpm	1.20.7	same-path-in-ours	elf-pie		gpm	1.20.7	packages-file-list	
+/usr/bin/grep	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/gresource	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/groups	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/gsettings	same-provider	elf-exec		libglib2	2.66.8	same-path-in-ours	elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/bin/gstack	ours-only	absent					script		gdb	16.3	packages-file-list	
+/usr/bin/gunzip	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/gzexe	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/gzip	same-provider	elf-exec		gzip	1.10	same-path-in-ours	elf-pie		gzip	1.14	packages-file-list	
+/usr/bin/h2ph	stock-only	script		perl	5.32.1	override: [high] Perl core script; stock /usr/lib/perl5/5.32.1; BR2021 perl.mk 5.32.1	absent					
+/usr/bin/h2xs	stock-only	script		perl	5.32.1	override: [high] Perl core script; stock /usr/lib/perl5/5.32.1; BR2021 perl.mk 5.32.1	absent					
+/usr/bin/hackbench	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/hciattach	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/hciconfig	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/hcidump	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/hcitool	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/head	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/hex2hcd	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/hexdump	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/hexedit	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/hmac256	same-provider	elf-exec		libgcrypt	1.9.3	same-path-in-ours	elf-pie		libgcrypt	1.12.2	packages-file-list	
+/usr/bin/hostid	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/hostname	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/bin/htop	same-provider	elf-exec		htop	3.0.5 (git ce6d60e7def146c13d0b8bca4642e7401a0a8995)	same-path-in-ours	elf-pie		htop	3.5.1	packages-file-list	
+/usr/bin/hwlatdetect	ours-only	absent					symlink:dangling	/usr/lib/python3.14/site-packages//hwlatdetect.py	rt-tests	2.8	packages-file-list	
+/usr/bin/id	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/iecset	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/imlib2_conv	same-provider	elf-exec		imlib2	1.6.1	same-path-in-ours	elf-pie		imlib2	1.12.5	packages-file-list	
+/usr/bin/imlib2_load	same-provider	elf-exec		imlib2	1.6.1	same-path-in-ours	elf-pie		imlib2	1.12.5	packages-file-list	
+/usr/bin/infocmp	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/infotocap	same-provider	symlink:elf-exec	tic	ncurses	6.1	same-path-in-ours	symlink:elf-pie	tic	ncurses	6.6-20251231	packages-file-list	
+/usr/bin/inotifywait	same-provider	elf-exec		inotify-tools	3.20.2.2	same-path-in-ours	elf-pie		inotify-tools	3.20.2.2	packages-file-list	
+/usr/bin/inotifywatch	same-provider	elf-exec		inotify-tools	3.20.2.2	same-path-in-ours	elf-pie		inotify-tools	3.20.2.2	packages-file-list	
+/usr/bin/inputattach	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/install	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/instmodsh	stock-only	script		perl	5.32.1	override: [high] Perl core script (ExtUtils::Installed); stock /usr/lib/perl5/5.32.1	absent					
+/usr/bin/ionice	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/iostat	stock-only	elf-exec		iostat	2.2	override: [high] strings 'iostat v2.2, (C) 1999-2005 by Greg Franks...'; BR2021 iostat.mk 2.2 (standalone, not sysstat)	absent					
+/usr/bin/ipcmk	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/ipcrm	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/ipcs	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/iperf3	ours-only	absent					elf-pie		iperf3	3.21	packages-file-list	
+/usr/bin/iptables-xml	same-provider	symlink:elf-exec	/usr/sbin/xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	/usr/sbin/xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/bin/irqtop	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/isosize	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/isotest	ours-only	absent					elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/jimsh	same-provider	elf-exec		jimtcl	0.79	same-path-in-ours	elf-pie		jimtcl	0.83	packages-file-list	
+/usr/bin/jmacs	same-provider	symlink:elf-exec	joe	joe	4.6	same-path-in-ours	symlink:elf-pie	joe	joe	4.6	packages-file-list	
+/usr/bin/joe	same-provider	elf-exec		joe	4.6	same-path-in-ours	elf-pie		joe	4.6	packages-file-list	
+/usr/bin/join	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/jpico	same-provider	symlink:elf-exec	joe	joe	4.6	same-path-in-ours	symlink:elf-pie	joe	joe	4.6	packages-file-list	
+/usr/bin/jq	same-provider	elf-exec		jq	a17dd3248a66 (git snapshot)	same-path-in-ours	elf-pie		jq	1.8.2	packages-file-list	
+/usr/bin/jscal	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/jscal-restore	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/jscal-store	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/json_pp	stock-only	script		perl	5.32.1	override: [high] Perl core script bundled with perl 5.32.1; uses JSON::PP 4.04 (stock JSON/PP.pm)	absent					
+/usr/bin/jstar	same-provider	symlink:elf-exec	joe	joe	4.6	same-path-in-ours	symlink:elf-pie	joe	joe	4.6	packages-file-list	
+/usr/bin/jstest	same-provider	elf-exec		linuxconsoletools	1.7.0	same-path-in-ours	elf-pie		linuxconsoletools	1.8.1	packages-file-list	
+/usr/bin/kbd_mode	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/kbdinfo	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/kbdrate	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/keyctl	ours-only	absent					elf-pie		keyutils	1.6.3	packages-file-list	
+/usr/bin/kill	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/killall	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/kmod	same-provider	elf-exec		kmod	28	same-path-in-ours	elf-pie		kmod	34.2	packages-file-list	
+/usr/bin/l2ping	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/l2test	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/last	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/lastlog2	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/ldbadd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldbdel	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldbedit	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldbmodify	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldbrename	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldbsearch	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ldd	stock-only	script		glibc	2.31	override: [high] GNU shell script 'Copyright (C) 1996-2020 Free Software Foundation'; stock lib/libc-2.31.so	absent					
+/usr/bin/less	same-provider	elf-exec		less	563	same-path-in-ours	elf-pie		less	704	packages-file-list	
+/usr/bin/lesskey	ours-only	absent					elf-pie		less	704	packages-file-list	
+/usr/bin/lftp	same-provider	elf-exec		lftp	4.9.2	same-path-in-ours	elf-pie		lftp	4.9.3	packages-file-list	
+/usr/bin/lftpget	same-provider	script		lftp	4.9.2	same-path-in-ours	script		lftp	4.9.3	packages-file-list	
+/usr/bin/libdeflate-gunzip	ours-only	absent					elf-pie		libdeflate	1.25	packages-file-list	
+/usr/bin/libdeflate-gzip	ours-only	absent					elf-pie		libdeflate	1.25	packages-file-list	
+/usr/bin/libevdev-tweak-device	same-provider	elf-exec		libevdev	1.11.0	same-path-in-ours	elf-pie		libevdev	1.13.5	packages-file-list	
+/usr/bin/libhid-detach-device	stock-only	elf-exec		libhid	0.2.16	override: [medium] usage '%s vendor_id:product_id' (libhid tool); BR2021 libhid.mk 0.2.16 (mk only)	absent					
+/usr/bin/libinput	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/bin/libnetcfg	stock-only	script		perl	5.32.1	override: [high] Perl core script (Jarkko Hietaniemi, 'inclusion into Perl 5.8'); stock perl 5.32.1	absent					
+/usr/bin/link	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/linux32	same-provider	symlink:elf-exec	setarch	util-linux	2.36.2	same-path-in-ours	symlink:elf-pie	setarch	util-linux	2.41.5	packages-file-list	
+/usr/bin/linux64	same-provider	symlink:elf-exec	setarch	util-linux	2.36.2	same-path-in-ours	symlink:elf-pie	setarch	util-linux	2.41.5	packages-file-list	
+/usr/bin/ln	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/loadkeys	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/loadunimap	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/locate	same-provider	elf-exec		findutils	4.7.0	same-path-in-ours	elf-pie		findutils	4.10.0	packages-file-list	
+/usr/bin/lockfile-check	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/lockfile-create	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/lockfile-remove	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/lockfile-touch	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/locktest	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/logger	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/login	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/logname	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/look	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lowntfs-3g	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/lrz	ours-only	absent					symlink:elf-pie	rz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/ls	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/lsattr	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/bin/lsblk	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lsclocks	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lscpu	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lsipc	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lsirq	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lslocks	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lsns	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/lsof	busybox->real	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	elf-pie		lsof	4.99.6	packages-file-list	
+/usr/bin/lspci	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/lsscsi	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/lsusb	same-provider	elf-exec		usbutils	013	same-path-in-ours	elf-pie		usbutils	019	packages-file-list	
+/usr/bin/lsusb.py	same-provider	script		usbutils	013	same-path-in-ours	script		usbutils	019	packages-file-list	
+/usr/bin/lsz	ours-only	absent					symlink:elf-pie	sz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/ltdbtool	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ltunify	ours-only	absent					elf-pie		ltunify	b68dc9af6db53de231d5ac71f9b6ba2ff3057a68	packages-file-list	
+/usr/bin/lzcat	same-provider	symlink:elf-exec	xz	xz	5.2.5	same-path-in-ours	symlink:elf-pie	xz	xz	5.8.4	packages-file-list	
+/usr/bin/lzcmp	same-provider	symlink:script	xzdiff	xz	5.2.5	same-path-in-ours	symlink:script	xzdiff	xz	5.8.4	packages-file-list	
+/usr/bin/lzdiff	same-provider	symlink:script	xzdiff	xz	5.2.5	same-path-in-ours	symlink:script	xzdiff	xz	5.8.4	packages-file-list	
+/usr/bin/lzegrep	same-provider	symlink:script	xzgrep	xz	5.2.5	same-path-in-ours	symlink:script	xzgrep	xz	5.8.4	packages-file-list	
+/usr/bin/lzfgrep	same-provider	symlink:script	xzgrep	xz	5.2.5	same-path-in-ours	symlink:script	xzgrep	xz	5.8.4	packages-file-list	
+/usr/bin/lzgrep	same-provider	symlink:script	xzgrep	xz	5.2.5	same-path-in-ours	symlink:script	xzgrep	xz	5.8.4	packages-file-list	
+/usr/bin/lzless	same-provider	symlink:script	xzless	xz	5.2.5	same-path-in-ours	symlink:script	xzless	xz	5.8.4	packages-file-list	
+/usr/bin/lzma	same-provider	symlink:elf-exec	xz	xz	5.2.5	same-path-in-ours	symlink:elf-pie	xz	xz	5.8.4	packages-file-list	
+/usr/bin/lzmadec	same-provider	elf-exec		xz	5.2.5	same-path-in-ours	elf-pie		xz	5.8.4	packages-file-list	
+/usr/bin/lzmainfo	same-provider	elf-exec		xz	5.2.5	same-path-in-ours	elf-pie		xz	5.8.4	packages-file-list	
+/usr/bin/lzmore	same-provider	symlink:script	xzmore	xz	5.2.5	same-path-in-ours	symlink:script	xzmore	xz	5.8.4	packages-file-list	
+/usr/bin/lzop	same-provider	elf-exec		lzop	1.03	same-path-in-ours	elf-pie		lzop	1.04	packages-file-list	
+/usr/bin/lzopcat	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/m3u_play	provider-changed	script		mister-custom:bash overlay script (m3u playlist player using nocaseglob)	unknown	override: [high] #!/bin/bash script, not in any BR package; no version marker	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/bin/mac2unix	same-provider	symlink:elf-exec	dos2unix	dos2unix	7.4.1	same-path-in-ours	symlink:elf-pie	dos2unix	dos2unix	7.5.5	packages-file-list	
+/usr/bin/mail-lock	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/mail-touchlock	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/mail-unlock	same-provider	elf-exec		lockfile-progs	0.1.18	same-path-in-ours	elf-pie		lockfile-progs	0.1.19	packages-file-list	
+/usr/bin/mapscrn	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/masktest	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/mc	same-provider	elf-exec		mc	4.8.25	same-path-in-ours	elf-pie		mc	4.8.33	packages-file-list	
+/usr/bin/mcdiff	same-provider	symlink:elf-exec	mc	mc	4.8.25	same-path-in-ours	symlink:elf-pie	mc	mc	4.8.33	packages-file-list	
+/usr/bin/mcedit	same-provider	symlink:elf-exec	mc	mc	4.8.25	same-path-in-ours	symlink:elf-pie	mc	mc	4.8.33	packages-file-list	
+/usr/bin/mcookie	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/mcview	same-provider	symlink:elf-exec	mc	mc	4.8.25	same-path-in-ours	symlink:elf-pie	mc	mc	4.8.33	packages-file-list	
+/usr/bin/md	same-provider	symlink:elf-exec	memtool	memtool	2018.03.0	same-path-in-ours	symlink:elf-pie	memtool	memtool	2018.03.0	packages-file-list	
+/usr/bin/md5sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/mdfind	relocated-to	elf-pie		samba4	4.14.6	override: [high] strings 'SAMBA_4.14.6' (Spotlight search client); BR2021 samba4.mk 4.14.6	absent					/usr/bin/mdsearch
+/usr/bin/mdsearch	relocated-from	absent					elf-pie		samba4	4.24.6	packages-file-list	/usr/bin/mdfind
+/usr/bin/memhog	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/memstat	stock-only	elf-exec		memstat	1.0	override: [medium] usage '%s [-n] [-v] [-w] [-p pid]'; BR2021 memstat.mk MEMSTAT_VERSION=1.0 (mk only)	absent					
+/usr/bin/memtool	same-provider	elf-exec		memtool	2018.03.0	same-path-in-ours	elf-pie		memtool	2018.03.0	packages-file-list	
+/usr/bin/mesg	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/microcom	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/migratepages	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/migspeed	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/mikmod	stock-only	symlink:elf-exec	modplug123	modplugtools	0.5.3	override: [high] symlink -> modplug123; modplug123 banner 0.5.3; BR2021 modplugtools.mk 0.5.3	absent					
+/usr/bin/minijail0	ours-only	absent					elf-pie		minijail	linux-v2026.05.18	packages-file-list	
+/usr/bin/mk_cmds	same-provider	script		e2fsprogs	1.45.6	same-path-in-ours	script		e2fsprogs	1.47.4	packages-file-list	
+/usr/bin/mkdir	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/mkfifo	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/mknod	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/mkpasswd	same-provider	elf-exec		whois	5.5.7	same-path-in-ours	elf-pie		whois	5.6.5	packages-file-list	
+/usr/bin/mksh	stock-only	elf-exec		mksh	59c	override: [high] strings 'KSH_VERSION=@(#)MIRBSD KSH R59 2020/10/31'; BR2021 mksh.mk 59c	absent					
+/usr/bin/mktemp	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/modplug123	stock-only	elf-exec		modplugtools	0.5.3	override: [high] strings '0.5.3', 'Based on modplugplay Copyright (C) 2003'; BR2021 modplugtools.mk 0.5.3	absent					
+/usr/bin/more	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/mount	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/mountpoint	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/mouse-dpi-tool	same-provider	elf-exec		libevdev	1.11.0	same-path-in-ours	elf-pie		libevdev	1.13.5	packages-file-list	
+/usr/bin/mpg123	same-provider	elf-exec		mpg123	1.25.15	same-path-in-ours	elf-pie		mpg123	1.33.7	packages-file-list	
+/usr/bin/mpg123-id3dump	same-provider	elf-exec		mpg123	1.25.15	same-path-in-ours	elf-pie		mpg123	1.33.7	packages-file-list	
+/usr/bin/mpg123-strip	same-provider	elf-exec		mpg123	1.25.15	same-path-in-ours	elf-pie		mpg123	1.33.7	packages-file-list	
+/usr/bin/mpicalc	same-provider	elf-exec		libgcrypt	1.9.3	same-path-in-ours	elf-pie		libgcrypt	1.12.2	packages-file-list	
+/usr/bin/mpris-proxy	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/mt	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/mtdev-test	same-provider	elf-exec		mtdev	1.1.6	same-path-in-ours	elf-pie		mtdev	1.1.7	packages-file-list	
+/usr/bin/mv	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/mvxattr	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/mw	same-provider	symlink:elf-exec	memtool	memtool	2018.03.0	same-path-in-ours	symlink:elf-pie	memtool	memtool	2018.03.0	packages-file-list	
+/usr/bin/namei	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/nano	same-provider	elf-exec		nano	5.5	same-path-in-ours	elf-pie		nano	9.0	packages-file-list	
+/usr/bin/natpmpc	ours-only	absent					elf-pie		libnatpmp	20230423	packages-file-list	
+/usr/bin/nc	real->busybox	symlink:elf-exec	netcat	netcat	0.7.1	override: [high] symlink -> netcat; GNU netcat banner 0.7.1	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/ndrdump	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/net	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/netcap	same-provider	elf-exec		libcap-ng	0.8.2	same-path-in-ours	elf-pie		libcap-ng	0.9.3	packages-file-list	
+/usr/bin/netcat	real->busybox	elf-exec		netcat	0.7.1	override: [high] strings '0.7.1', 'Copyright (C) 2002 - 2003 Giovanni Giacobbi' (GNU netcat); BR2021 netcat.mk 0.7.1	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/netstat	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/bin/netstat-nat	stock-only	elf-exec		netstat-nat	1.4.10	override: [high] strings '1.4.10'; BR2021 netstat-nat.mk 1.4.10	absent					
+/usr/bin/nettle-hash	same-provider	elf-exec		nettle	3.7.3	same-path-in-ours	elf-pie		nettle	3.10.2	packages-file-list	
+/usr/bin/nettle-lfib-stream	same-provider	elf-exec		nettle	3.7.3	same-path-in-ours	elf-pie		nettle	3.10.2	packages-file-list	
+/usr/bin/nettle-pbkdf2	same-provider	elf-exec		nettle	3.7.3	same-path-in-ours	elf-pie		nettle	3.10.2	packages-file-list	
+/usr/bin/newgrp	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/nice	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/nisdomainname	same-provider	symlink:elf-exec	hostname	net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	symlink:elf-pie	hostname	net-tools	2.10	packages-file-list	
+/usr/bin/nl	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/nmblookup	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/nohup	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/nproc	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/nslookup	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/ntfs-3g	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfs-3g.probe	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfscat	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfscluster	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfscmp	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfsfix	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfsinfo	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntfsls	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/bin/ntlm_auth	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/ntp-keygen	stock-only	elf-pie		ntp	4.2.8p15	override: [high] sibling ntpdate banner 'ntpdate 4.2.8p15@1.3728-o'; BR2021 ntp.mk 4.2.8p15 (built Jul 2026 per banner date; stock rebuilt)	absent					
+/usr/bin/ntpdate	stock-only	elf-pie		ntp	4.2.8p15	override: [high] strings 'ntpdate 4.2.8p15@1.3728-o Tue Jul 21 18:36:52 UTC 2026 (1)'	absent					
+/usr/bin/ntpdc	stock-only	elf-pie		ntp	4.2.8p15	override: [high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15	absent					
+/usr/bin/ntpq	stock-only	elf-pie		ntp	4.2.8p15	override: [high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15	absent					
+/usr/bin/ntptime	stock-only	elf-pie		ntp	4.2.8p15	override: [high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15	absent					
+/usr/bin/nuke	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/numactl	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/numademo	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/numastat	ours-only	absent					elf-pie		numactl	2.0.19	packages-file-list	
+/usr/bin/numfmt	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/oLschema2ldif	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/od	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ogg123	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings '1.4.2' + 'Usage: ogg123'; BR2021 vorbis-tools.mk 1.4.2	absent					
+/usr/bin/oggdec	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings '1.4.2' + 'Usage: oggdec'; BR2021 vorbis-tools.mk 1.4.2	absent					
+/usr/bin/oggenc	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings banner 1.4.2 + vorbis-tools; BR2021.02.4 vorbis-tools.mk 1.4.2	absent					
+/usr/bin/ogginfo	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings banner 1.4.2 + vorbis-tools; BR2021.02.4 vorbis-tools.mk 1.4.2	absent					
+/usr/bin/onnode	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/bin/openssl	same-provider	elf-exec		libopenssl	1.1.1k	same-path-in-ours	elf-pie		libopenssl	3.6.5	packages-file-list	
+/usr/bin/openvt	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/oslat	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/out123	same-provider	elf-exec		mpg123	1.25.15	same-path-in-ours	elf-pie		mpg123	1.33.7	packages-file-list	
+/usr/bin/parse-edid	stock-only	elf-exec		read-edid	3.0.2	override: [medium] strings 'Header incorrect. Probably not an edid'; BR2021.02.4 read-edid.mk 3.0.2 (only package shipping parse-edid; version from .mk)	absent					
+/usr/bin/passwd	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/paste	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/patch	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/pathchk	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/pcre2grep	ours-only	absent					elf-pie		pcre2	10.49	packages-file-list	
+/usr/bin/pcre2test	ours-only	absent					elf-pie		pcre2	10.49	packages-file-list	
+/usr/bin/pcregrep	stock-only	elf-exec		pcre	8.44	override: [high] libpcre.so.1 strings '8.44 2020-02-12'; BR2021.02.4 pcre.mk 8.44	absent					
+/usr/bin/pcretest	stock-only	elf-exec		pcre	8.44	override: [high] links libpcre 8.44 (strings '8.44 2020-02-12' in libpcre.so.1); pcre.mk 8.44	absent					
+/usr/bin/pdbedit	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/perf	ours-only	absent					elf-pie		linux-tools	6.18.60	packages-file-list	
+/usr/bin/perl	stock-only	elf-exec		perl	5.32.1	override: [high] strings v5.32.1 and /usr/lib/perl5/5.32.1/arm-linux; BR2021.02.4 perl.mk 5.32.1	absent					
+/usr/bin/perlbug	stock-only	script		perl	5.32.1	override: [high] perl core script (#!/usr/bin/perl); stock perl 5.32.1	absent					
+/usr/bin/perldoc	stock-only	script		perl	5.32.1	override: [high] perl core script; stock perl 5.32.1	absent					
+/usr/bin/perlivp	stock-only	script		perl	5.32.1	override: [high] perl core script; stock perl 5.32.1	absent					
+/usr/bin/perlthanks	stock-only	script		perl	5.32.1	override: [high] perl core script (same 45246-byte size as perlbug); stock perl 5.32.1	absent					
+/usr/bin/pi_stress	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/picocom	same-provider	elf-exec		picocom	3.1	same-path-in-ours	elf-pie		picocom	2024-07	packages-file-list	
+/usr/bin/piconv	stock-only	script		perl	5.32.1	override: [high] perl core Encode script; stock perl 5.32.1	absent					
+/usr/bin/pidof	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/ping	same-provider	elf-exec		iputils	20210202	same-path-in-ours	elf-pie		iputils	20250605	packages-file-list	
+/usr/bin/ping6	same-provider	symlink:elf-exec	ping	iputils	20210202	same-path-in-ours	symlink:elf-pie	ping	iputils	20250605	packages-file-list	
+/usr/bin/ping_pong	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/pinky	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/pip_stress	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/pipe_progress	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/pipesz	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/pkcs1-conv	same-provider	elf-exec		nettle	3.7.3	same-path-in-ours	elf-pie		nettle	3.10.2	packages-file-list	
+/usr/bin/pl2pm	stock-only	script		perl	5.32.1	override: [high] perl core script; stock perl 5.32.1	absent					
+/usr/bin/play	same-provider	symlink:elf-exec	aplay	alsa-utils	1.2.4	same-path-in-ours	symlink:elf-pie	aplay	alsa-utils	1.2.16	packages-file-list	
+/usr/bin/pmqtest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/pod2html	stock-only	script		perl	5.32.1	override: [high] perl core Pod::Html script; stock perl 5.32.1	absent					
+/usr/bin/pod2man	stock-only	script		perl	5.32.1	override: [high] perl core Pod::Man script; stock perl 5.32.1	absent					
+/usr/bin/pod2text	stock-only	script		perl	5.32.1	override: [high] perl core Pod::Text script; stock perl 5.32.1	absent					
+/usr/bin/pod2usage	stock-only	script		perl	5.32.1	override: [high] perl core Pod::Usage script; stock perl 5.32.1	absent					
+/usr/bin/podchecker	stock-only	script		perl	5.32.1	override: [high] perl core Pod::Checker script; stock perl 5.32.1	absent					
+/usr/bin/poff	stock-only	script		pppd	2.4.8	override: [high] #!/bin/sh poff script; BR2021.02.4 pppd.mk installs scripts/poff to /usr/bin; pppd.mk 2.4.8 (version from .mk)	absent					
+/usr/bin/pon	stock-only	script		pppd	2.4.8	override: [high] BR2021.02.4 pppd.mk installs scripts/pon to /usr/bin; pppd.mk 2.4.8 (version from .mk)	absent					
+/usr/bin/pr	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/printenv	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/printf	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/prlimit	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/procan	same-provider	elf-exec		socat	1.7.4.1	same-path-in-ours	elf-pie		socat	1.8.1.3	packages-file-list	
+/usr/bin/profiles	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/prove	stock-only	script		perl	5.32.1	override: [high] perl core Test::Harness script; stock perl 5.32.1	absent					
+/usr/bin/ps	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/pscap	same-provider	elf-exec		libcap-ng	0.8.2	same-path-in-ours	elf-pie		libcap-ng	0.9.3	packages-file-list	
+/usr/bin/psfaddtable	same-provider	symlink:elf-exec	psfxtable	kbd	2.3.0	same-path-in-ours	symlink:elf-pie	psfxtable	kbd	2.9.0	packages-file-list	
+/usr/bin/psfgettable	same-provider	symlink:elf-exec	psfxtable	kbd	2.3.0	same-path-in-ours	symlink:elf-pie	psfxtable	kbd	2.9.0	packages-file-list	
+/usr/bin/psfstriptable	same-provider	symlink:elf-exec	psfxtable	kbd	2.3.0	same-path-in-ours	symlink:elf-pie	psfxtable	kbd	2.9.0	packages-file-list	
+/usr/bin/psfxtable	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/psl	ours-only	absent					elf-pie		libpsl	0.21.5	packages-file-list	
+/usr/bin/psl-make-dafsa	ours-only	absent					script		libpsl	0.21.5	packages-file-list	
+/usr/bin/ptar	stock-only	script		perl	5.32.1	override: [high] perl core Archive::Tar script; stock perl 5.32.1	absent					
+/usr/bin/ptardiff	stock-only	script		perl	5.32.1	override: [high] perl core Archive::Tar script; stock perl 5.32.1	absent					
+/usr/bin/ptargrep	stock-only	script		perl	5.32.1	override: [high] perl core Archive::Tar script; stock perl 5.32.1	absent					
+/usr/bin/ptsematest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/ptx	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/pwd	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/python	same-provider	symlink:elf-exec	python3	python3	3.9.6	same-path-in-ours	symlink:elf-pie	python3	python3	3.14.8	packages-file-list	
+/usr/bin/python3	same-provider	symlink:elf-exec	python3.9	python3	3.9.6	same-path-in-ours	symlink:elf-pie	python3.14	python3	3.14.8	packages-file-list	
+/usr/bin/python3.14	ours-only	absent					elf-pie		python3	3.14.8	packages-file-list	
+/usr/bin/python3.9	stock-only	elf-exec		python3	3.9.6	override: [high] ELF launcher linked to libpython3.9.so; strings of libpython3.9.so '3.9.6'; python3.mk 3.9.6	absent					
+/usr/bin/queuelat	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/rb	ours-only	absent					symlink:elf-pie	rz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/rctest	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/readlink	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/realpath	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/red	stock-only	script		ed	1.16	override: [high] shell wrapper 'exec ed --restricted' shipped by GNU ed; stock /usr/bin/ed present; BR2021.02.4 ed.mk 1.16 (version from .mk)	absent					
+/usr/bin/regdiff	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/regpatch	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/regshell	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/regtree	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/rename	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/renice	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/reset	same-provider	symlink:elf-exec	tset	ncurses	6.1	same-path-in-ours	symlink:elf-pie	tset	ncurses	6.6-20251231	packages-file-list	
+/usr/bin/resize	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/resume	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/rev	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/rfcomm	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/rjoe	same-provider	symlink:elf-exec	joe	joe	4.6	same-path-in-ours	symlink:elf-pie	joe	joe	4.6	packages-file-list	
+/usr/bin/rm	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/rmdir	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/rpcclient	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/rst2html.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info; script header docutils tool	absent					
+/usr/bin/rst2html4.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2html5.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2latex.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2man.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2odt.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2odt_prepstyles.py	stock-only	script		python-docutils	0.15.2	override: [high] site-packages/docutils-0.15.2-py3.9.egg-info	absent					
+/usr/bin/rst2pseudoxml.py	stock-only	script		python-docutils	0.15.2	override: [high] stock site-packages docutils-0.15.2-py3.9.egg-info; BR2021 python-docutils.mk 0.15.2	absent					
+/usr/bin/rst2s5.py	stock-only	script		python-docutils	0.15.2	override: [high] docutils-0.15.2 egg-info in stock; docutils script header	absent					
+/usr/bin/rst2xetex.py	stock-only	script		python-docutils	0.15.2	override: [high] docutils-0.15.2 egg-info in stock	absent					
+/usr/bin/rst2xml.py	stock-only	script		python-docutils	0.15.2	override: [high] docutils-0.15.2 egg-info in stock	absent					
+/usr/bin/rstpep2html.py	stock-only	script		python-docutils	0.15.2	override: [high] docutils-0.15.2 egg-info in stock	absent					
+/usr/bin/rsync	same-provider	elf-exec		rsync	3.1.3	same-path-in-ours	elf-pie		rsync	3.5.0	packages-file-list	
+/usr/bin/rsync-ssl	ours-only	absent					script		rsync	3.5.0	packages-file-list	
+/usr/bin/rt-migrate-test	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/rtorrent	stock-only	elf-exec		rtorrent	0.9.8	override: [high] strings: 'rTorrent 0.9.8', 'rtorrent/0.9.8/'; BR2021 rtorrent.mk 0.9.8	absent					
+/usr/bin/run-parts	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/runcon	stock-only	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	absent					
+/usr/bin/rview	stock-only	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink to vim; vim banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; BR2021 vim.mk 8.2.0000	absent					
+/usr/bin/rvim	stock-only	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink to vim; vim banner 8.2 (2019 Dec 12); BR2021 vim.mk 8.2.0000	absent					
+/usr/bin/rx	ours-only	absent					symlink:elf-pie	rz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/rz	same-provider	elf-exec		lrzsz	0.12.21rc	same-path-in-ours	elf-pie		lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/samba-log-parser	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/bin/samba-regedit	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/sb	ours-only	absent					symlink:elf-pie	sz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/scp	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/screen	stock-only	elf-exec		screen	4.8.0	override: qemu-arm stock/usr/bin/screen -v: 'Screen version 4.08.00 (GNU) 05-Feb-20'; Buildroot 2021.02.4 has package/screen with SCREEN_VERSION=4.8.0; previously attributed to ncurses by basename match. Not present in ours.	absent					
+/usr/bin/script	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/scriptlive	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/scriptreplay	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/sdptool	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/bin/sed	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/seq	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/setarch	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/setfattr	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/setfont	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/setkeycodes	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/setleds	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/setmetamode	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/setpgid	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/setpriv	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/setserial	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/setsid	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/setterm	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/setvtrgb	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/sexp-conv	same-provider	elf-exec		nettle	3.7.3	same-path-in-ours	elf-pie		nettle	3.10.2	packages-file-list	
+/usr/bin/sftp	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/sh	same-provider	symlink:elf-exec	bash	bash	5.0.18	same-path-in-ours	symlink:elf-pie	bash	bash	5.2.37	packages-file-list	
+/usr/bin/sha1sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sha224sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sha256sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sha384sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sha3sum	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/sha512sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sharesec	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/shasum	stock-only	script		perl	5.32.1	override: [high] perl script (#!/usr/bin/perl, Digest::SHA util); BR2021 perl.mk 5.32.1	absent					
+/usr/bin/showconsolefont	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/showkey	same-provider	elf-exec		kbd	2.3.0	same-path-in-ours	elf-pie		kbd	2.9.0	packages-file-list	
+/usr/bin/shred	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/shuf	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/signaltest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/sigwaittest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/sleep	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/slsh	stock-only	elf-exec		slang	2.3.2	override: [medium] strings 'SLANG2.3.0' in slsh; BR2021 slang.mk 2.3.2 (strings shows 2.3.0 ABI tag only)	absent					
+/usr/bin/smbcacls	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbclient	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbcontrol	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbcquotas	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbget	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbpasswd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbspool	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbstatus	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smbtar	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/bin/smbtree	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/smtpd.py.9	stock-only	script		python3	3.9.6	override: [high] #!/usr/bin/python3.9 stdlib smtpd copy (Lib/smtpd.py); BR2021 python3.mk 3.9.6; stock has libpython3.9.so	absent					
+/usr/bin/socat	same-provider	elf-exec		socat	1.7.4.1	same-path-in-ours	symlink:elf-pie	socat1	socat	1.8.1.3	packages-file-list	
+/usr/bin/socat-broker.sh	ours-only	absent					script		socat	1.8.1.3	packages-file-list	
+/usr/bin/socat-chain.sh	ours-only	absent					script		socat	1.8.1.3	packages-file-list	
+/usr/bin/socat-mux.sh	ours-only	absent					script		socat	1.8.1.3	packages-file-list	
+/usr/bin/socat1	ours-only	absent					elf-pie		socat	1.8.1.3	packages-file-list	
+/usr/bin/sort	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/speaker-test	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/bin/spi-config	same-provider	elf-exec		spi-tools	0.8.4	same-path-in-ours	elf-pie		spi-tools	1.0.2	packages-file-list	
+/usr/bin/spi-pipe	same-provider	elf-exec		spi-tools	0.8.4	same-path-in-ours	elf-pie		spi-tools	1.0.2	packages-file-list	
+/usr/bin/splain	stock-only	script		perl	5.32.1	override: [high] perl script (diagnostics splain), #!/usr/bin/perl; perl 5.32.1 in BR2021 perl.mk and stock lib/perl5/5.32.1	absent					
+/usr/bin/split	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sqlite3	ours-only	absent					elf-pie		sqlite	3.53.4	packages-file-list	
+/usr/bin/ssdd	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/ssh	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/ssh-add	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/ssh-agent	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/ssh-copy-id	same-provider	script		openssh	8.6p1	same-path-in-ours	script		openssh	10.6p1	packages-file-list	
+/usr/bin/ssh-keygen	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/ssh-keyscan	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/bin/ssl_server	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/stat	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/stdbuf	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/strace	ours-only	absent					elf-pie		strace	7.1	packages-file-list	
+/usr/bin/strace-log-merge	ours-only	absent					script		strace	7.1	packages-file-list	
+/usr/bin/streamzip	stock-only	script		perl	5.32.1	override: [high] perl script (IO::Compress streamzip); BR2021 perl.mk 5.32.1	absent					
+/usr/bin/strings	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/stty	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/su	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/sudo	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/bin/sudoedit	same-provider	symlink:elf-exec	sudo	sudo	1.9.5p2	same-path-in-ours	symlink:elf-pie	sudo	sudo	1.9.17p2	packages-file-list	
+/usr/bin/sudoreplay	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/bin/sum	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/svc	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/svok	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/svsematest	ours-only	absent					elf-pie		rt-tests	2.8	packages-file-list	
+/usr/bin/sx	ours-only	absent					symlink:elf-pie	sz	lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/sync	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/sz	same-provider	elf-exec		lrzsz	0.12.21rc	same-path-in-ours	elf-pie		lrzsz	0.12.21rc	packages-file-list	
+/usr/bin/tabs	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/tac	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/tail	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/tar	same-provider	elf-exec		tar	1.32	same-path-in-ours	elf-pie		tar	1.35	packages-file-list	
+/usr/bin/taskset	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/tclsh	same-provider	symlink:elf-exec	jimsh	jimtcl	0.79	same-path-in-ours	symlink:elf-pie	jimsh	jimtcl	0.83	packages-file-list	
+/usr/bin/tcpdump	ours-only	absent					elf-pie		tcpdump	4.99.6	packages-file-list	
+/usr/bin/tdbbackup	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/tdbdump	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/tdbrestore	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/tdbtool	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/tee	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/telnet	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/test	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/testparm	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/tftp	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/tic	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/tickadj	stock-only	elf-pie		ntp	4.2.8p15	override: [medium] ntp utility (tickadj); BR2021 ntp.mk 4.2.8p15; no useful banner in strings	absent					
+/usr/bin/time	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/timeout	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/timidity	provider-changed	script		mister-custom:timidity wrapper shell script (launches fluidsynth)	unknown	override: [high] #!/bin/sh script with ctrl_c trap calling killall fluidsynth; dated 2019-06-20, not a Buildroot package; no version string	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/bin/tmux	same-provider	elf-exec		tmux	3.1c	same-path-in-ours	elf-pie		tmux	3.6b	packages-file-list	
+/usr/bin/toe	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/top	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/touch	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/touchpad-edge-detector	same-provider	elf-exec		libevdev	1.11.0	same-path-in-ours	elf-pie		libevdev	1.13.5	packages-file-list	
+/usr/bin/tput	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/tr	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/trace	ours-only	absent					elf-pie		linux-tools	6.18.60	packages-file-list	
+/usr/bin/tracepath	same-provider	elf-exec		iputils	20210202	same-path-in-ours	elf-pie		iputils	20250605	packages-file-list	
+/usr/bin/traceroute	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/traceroute6	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/transmission-create	ours-only	absent					elf-pie		transmission	4.1.3	packages-file-list	
+/usr/bin/transmission-daemon	ours-only	absent					elf-pie		transmission	4.1.3	packages-file-list	
+/usr/bin/transmission-edit	ours-only	absent					elf-pie		transmission	4.1.3	packages-file-list	
+/usr/bin/transmission-remote	ours-only	absent					elf-pie		transmission	4.1.3	packages-file-list	
+/usr/bin/transmission-show	ours-only	absent					elf-pie		transmission	4.1.3	packages-file-list	
+/usr/bin/tree	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/true	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/truncate	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ts	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/tset	same-provider	elf-exec		ncurses	6.1	same-path-in-ours	elf-pie		ncurses	6.6-20251231	packages-file-list	
+/usr/bin/tsort	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/tty	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ucat	ours-only	absent					elf-pie		libutp	c95738b1a6644b919e5b64d3ea9736cfc5894e0b	packages-file-list	
+/usr/bin/uclampset	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/udevadm	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/bin/umount	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/uname	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/uname26	same-provider	symlink:elf-exec	setarch	util-linux	2.36.2	same-path-in-ours	symlink:elf-pie	setarch	util-linux	2.41.5	packages-file-list	
+/usr/bin/uncompress	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/unexpand	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/unicode_start	same-provider	script		kbd	2.3.0	same-path-in-ours	script		kbd	2.9.0	packages-file-list	
+/usr/bin/unicode_stop	same-provider	script		kbd	2.3.0	same-path-in-ours	script		kbd	2.9.0	packages-file-list	
+/usr/bin/uniq	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/unix2dos	same-provider	elf-exec		dos2unix	7.4.1	same-path-in-ours	elf-pie		dos2unix	7.5.5	packages-file-list	
+/usr/bin/unix2mac	same-provider	symlink:elf-exec	unix2dos	dos2unix	7.4.1	same-path-in-ours	symlink:elf-pie	unix2dos	dos2unix	7.5.5	packages-file-list	
+/usr/bin/unlink	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/unlzma	same-provider	symlink:elf-exec	xz	xz	5.2.5	same-path-in-ours	symlink:elf-pie	xz	xz	5.8.4	packages-file-list	
+/usr/bin/unlzop	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/unrar	stock-only	elf-exec		unrar	5.9.4	override: [medium] BR2021 unrar.mk 5.9.4; strings show no version banner	absent					
+/usr/bin/unxz	same-provider	symlink:elf-exec	xz	xz	5.2.5	same-path-in-ours	symlink:elf-pie	xz	xz	5.8.4	packages-file-list	
+/usr/bin/unzip	same-provider	elf-exec		unzip	6.0	same-path-in-ours	elf-pie		unzip	6.0	packages-file-list	
+/usr/bin/unzstd	ours-only	absent					symlink:elf-pie	zstd	zstd	1.5.7	packages-file-list	
+/usr/bin/updatedb	same-provider	script		findutils	4.7.0	same-path-in-ours	script		findutils	4.10.0	packages-file-list	
+/usr/bin/uptime	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/usb-devices	same-provider	script		usbutils	013	same-path-in-ours	script		usbutils	019	packages-file-list	
+/usr/bin/usbhid-dump	provider-changed	elf-exec		mister-custom:usbhid-dump prebuilt binary	1.4	override: strings: 'usbhid-dump 1.4' linked against libusb-1.0; BR 2021.02.4 usbutils.mk (013) does not install it and no usbhid-dump package exists in that tree. Ours gets it from usbutils 019 (packages-file-list).	elf-pie		usbutils	019	packages-file-list	
+/usr/bin/users	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/usleep	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/uudecode	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/uuencode	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/uuidgen	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/uuidparse	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/vcut	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings 'vcut.c', usage 'vcut infile.ogg ...'; vorbiscomment sibling reports 'vorbis-tools 1.4.2'; BR2021 vorbis-tools.mk 1.4.2	absent					
+/usr/bin/vdir	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/vgmplay	stock-only	elf-exec		mister-custom:vgmplay (VGMPlay, prebuilt MiSTer addon, built 2019-06-12)	unknown	override: [high] strings 'VGMPlay %s, supports VGM %s', path 'C:/Work/Git/local/share/vgmplay/'; no version literal, not in Buildroot 2021.02.4	absent					
+/usr/bin/vhd_mount	provider-changed	script		mister-custom:vhd_mount shell script (losetup/umount helper)	unknown	override: [high] 209-byte #!/bin/sh script using /dev/loop1p1, losetup; dated 2019-06-08, not a Buildroot package	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/bin/vi	real->busybox	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink vi -> vim; vim banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; BR2021 vim.mk 8.2.0000	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/view	stock-only	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink view -> vim; vim 8.2 banner	absent					
+/usr/bin/vim	stock-only	elf-exec		vim	8.2.0000	override: [high] strings 'VIM - Vi IMproved 8.2 (2019 Dec 12)', built with buildroot-2021.02.4 gcc; BR2021 vim.mk 8.2.0000	absent					
+/usr/bin/vimdiff	stock-only	symlink:elf-exec	vim	vim	8.2.0000	override: [high] symlink vimdiff -> vim; vim 8.2 banner	absent					
+/usr/bin/vlock	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/vmstat	ours-only	absent					symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/vorbiscomment	stock-only	elf-exec		vorbis-tools	1.4.2	override: [high] strings 'vorbiscomment from vorbis-tools 1.4.2'	absent					
+/usr/bin/w	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/watch	both-busybox	symlink:elf-exec	busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/wbinfo	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/wc	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/wcurl	ours-only	absent					script		libcurl	8.22.0	packages-file-list	
+/usr/bin/wget	same-provider	elf-exec		wget	1.20.3	same-path-in-ours	elf-pie		wget	1.25.0	packages-file-list	
+/usr/bin/whereis	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/bin/which	real->busybox	elf-exec		which	2.21	override: [high] strings 'GNU which v2.21, Copyright (C) 1999 - 2015 Carlo Wood.'; BR2021 which.mk 2.21	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/whiptail	same-provider	elf-exec		newt	0.52.21	same-path-in-ours	elf-pie		newt	0.52.25	packages-file-list	
+/usr/bin/who	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/whoami	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/whois	same-provider	elf-exec		whois	5.5.7	same-path-in-ours	elf-pie		whois	5.6.5	packages-file-list	
+/usr/bin/wspsearch	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/bin/xargs	same-provider	elf-exec		findutils	4.7.0	same-path-in-ours	elf-pie		findutils	4.10.0	packages-file-list	
+/usr/bin/xkbcli	stock-only	elf-exec		libxkbcommon	1.0.3	override: [medium] links xkb_* API (libxkbcommon.so.0 in stock); BR2021 libxkbcommon.mk 1.0.3 (tool installed by that package)	absent					
+/usr/bin/xmlcatalog	same-provider	elf-exec		libxml2	2.9.12	same-path-in-ours	elf-pie		libxml2	2.15.4	packages-file-list	
+/usr/bin/xmllint	same-provider	elf-exec		libxml2	2.9.12	same-path-in-ours	elf-pie		libxml2	2.15.4	packages-file-list	
+/usr/bin/xmlwf	stock-only	elf-exec		expat	2.4.1	override: [high] expat xmlwf tool; stock libexpat.so.1.8.1; BR2021 expat.mk 2.4.1	absent					
+/usr/bin/xsubpp	stock-only	script		perl	5.32.1	override: [high] perl script (ExtUtils::ParseXS xsubpp), #!/usr/bin/perl; BR2021 perl.mk 5.32.1	absent					
+/usr/bin/xxd	real->busybox	elf-exec		vim	8.2.0000	override: [high] strings 'xxd V1.10 27oct98 by Juergen Weigert'; xxd is installed by Buildroot vim package (BR2021 vim.mk 8.2.0000)	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/bin/xz	same-provider	elf-exec		xz	5.2.5	same-path-in-ours	elf-pie		xz	5.8.4	packages-file-list	
+/usr/bin/xzcat	same-provider	symlink:elf-exec	xz	xz	5.2.5	same-path-in-ours	symlink:elf-pie	xz	xz	5.8.4	packages-file-list	
+/usr/bin/xzcmp	same-provider	symlink:script	xzdiff	xz	5.2.5	same-path-in-ours	symlink:script	xzdiff	xz	5.8.4	packages-file-list	
+/usr/bin/xzdec	same-provider	elf-exec		xz	5.2.5	same-path-in-ours	elf-pie		xz	5.8.4	packages-file-list	
+/usr/bin/xzdiff	same-provider	script		xz	5.2.5	same-path-in-ours	script		xz	5.8.4	packages-file-list	
+/usr/bin/xzegrep	same-provider	symlink:script	xzgrep	xz	5.2.5	same-path-in-ours	symlink:script	xzgrep	xz	5.8.4	packages-file-list	
+/usr/bin/xzfgrep	same-provider	symlink:script	xzgrep	xz	5.2.5	same-path-in-ours	symlink:script	xzgrep	xz	5.8.4	packages-file-list	
+/usr/bin/xzgrep	same-provider	script		xz	5.2.5	same-path-in-ours	script		xz	5.8.4	packages-file-list	
+/usr/bin/xzless	same-provider	script		xz	5.2.5	same-path-in-ours	script		xz	5.8.4	packages-file-list	
+/usr/bin/xzmore	same-provider	script		xz	5.2.5	same-path-in-ours	script		xz	5.8.4	packages-file-list	
+/usr/bin/yes	same-provider	symlink:elf-exec	coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	coreutils	coreutils	9.10	packages-file-list	
+/usr/bin/ypdomainname	same-provider	symlink:elf-exec	hostname	net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	symlink:elf-pie	hostname	net-tools	2.10	packages-file-list	
+/usr/bin/zcat	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zcmp	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zdiff	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zegrep	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zfgrep	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zforce	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zgrep	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zip	same-provider	elf-exec		zip	3.0	same-path-in-ours	elf-pie		zip	3.0	packages-file-list	
+/usr/bin/zipcloak	same-provider	elf-exec		zip	3.0	same-path-in-ours	elf-pie		zip	3.0	packages-file-list	
+/usr/bin/zipdetails	stock-only	script		perl	5.32.1	override: [high] perl script (#!/usr/bin/perl), own $VERSION 1.11; stock perl5 dir 5.32.1; BR2021 perl.mk 5.32.1 installs zipdetails	absent					
+/usr/bin/zipnote	same-provider	elf-exec		zip	3.0	same-path-in-ours	elf-pie		zip	3.0	packages-file-list	
+/usr/bin/zipsplit	same-provider	elf-exec		zip	3.0	same-path-in-ours	elf-pie		zip	3.0	packages-file-list	
+/usr/bin/zless	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zmore	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/znew	same-provider	script		gzip	1.10	same-path-in-ours	script		gzip	1.14	packages-file-list	
+/usr/bin/zsh	stock-only	elf-exec		zsh	5.8	override: [high] strings: zsh-5.8-0-g77d203f; BR2021 zsh.mk 5.8	absent					
+/usr/bin/zstd	ours-only	absent					elf-pie		zstd	1.5.7	packages-file-list	
+/usr/bin/zstdcat	ours-only	absent					symlink:elf-pie	zstd	zstd	1.5.7	packages-file-list	
+/usr/bin/zstdgrep	ours-only	absent					script		zstd	1.5.7	packages-file-list	
+/usr/bin/zstdless	ours-only	absent					script		zstd	1.5.7	packages-file-list	
+/usr/bin/zstdmt	ours-only	absent					symlink:elf-pie	zstd	zstd	1.5.7	packages-file-list	
+/usr/lib/bluez/test/agent.py	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/example-advertisement	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/example-gatt-client	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/example-gatt-server	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/ftp-client	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/list-devices	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/map-client	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/monitor-bluetooth	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/opp-client	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/pbap-client	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/simple-agent	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/simple-endpoint	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/simple-player	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-adapter	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-device	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-discovery	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-gatt-profile	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-health	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-health-sink	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-hfp	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-manager	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-mesh	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-nap	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-network	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-profile	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/bluez/test/test-sap-server	stock-only	script		bluez5_utils	5.61	path-prefix /usr/lib/bluez/test/	absent					
+/usr/lib/dhcpcd/dhcpcd-run-hooks	same-provider	script		dhcpcd	9.4.0	same-path-in-ours	script		dhcpcd	10.2.4	packages-file-list	
+/usr/lib/e2fsprogs/e2scrub_all_cron	stock-only	script		e2fsprogs	1.45.6	path-prefix /usr/lib/e2fsprogs/	absent					
+/usr/lib/ifupdown/settle-dad.sh	same-provider	script		ifupdown	0.8.16	same-path-in-ours	script		ifupdown	0.8.44	packages-file-list	
+/usr/lib/ifupdown/wait-for-ll6.sh	same-provider	script		ifupdown	0.8.16	same-path-in-ours	script		ifupdown	0.8.44	packages-file-list	
+/usr/lib/ifupdown/wait-online.sh	ours-only	absent					script		ifupdown	0.8.44	packages-file-list	
+/usr/lib/libc-2.31.so	relocated-to	elf-pie		glibc	2.31	override: [high] strings: GNU C Library stable release version 2.31; BR2021 glibc.mk pins git 7630ed2f (2.33-era bump differs, banner says 2.31)	absent					/usr/lib/libc.so.6
+/usr/lib/libc.so.6	relocated-from	absent					elf-pie		glibc	2.44-57-g34106fee698c83eb0af71d4d0381e66b399be746	packages-file-list	/usr/lib/libc-2.31.so
+/usr/lib/libcap.so.2.78	relocated-from	absent					elf-pie		libcap	2.78	packages-file-list	/usr/lib/libcap.so.2.48
+/usr/lib/libpsx.so.2.78	relocated-from	absent					elf-pie		libcap	2.78	packages-file-list	/usr/lib/libpsx.so.2.48
+/usr/lib/libpthread-2.31.so	relocated-to	elf-pie		glibc	2.31	override: [high] filename libpthread-2.31.so, glibc 2.31 companion of libc-2.31.so	absent					/usr/lib/libpthread.so.0
+/usr/lib/python3.14/ctypes/macholib/fetch_macholib	ours-only	absent					script		python3	3.14.8	packages-file-list	
+/usr/lib/python3.9/config-3.9-arm-linux-gnueabihf/install-sh	stock-only	script		python3	3.9.6	path-prefix /usr/lib/python3.9/	absent					
+/usr/lib/python3.9/config-3.9-arm-linux-gnueabihf/makesetup	stock-only	script		python3	3.9.6	path-prefix /usr/lib/python3.9/	absent					
+/usr/lib/python3.9/ctypes/macholib/fetch_macholib	stock-only	script		python3	3.9.6	basename-in-ours	absent					
+/usr/lib/security/pam_filter/upperLOWER	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/lib/udev/ata_id	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/cdrom_id	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/collect	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/dmi_memory_id	ours-only	absent					elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/fido_id	ours-only	absent					elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/hid2hci	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/lib/udev/js-set-enum-leds	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/lib/udev/libinput-device-group	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/lib/udev/libinput-fuzz-extract	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/lib/udev/libinput-fuzz-to-zero	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/lib/udev/mtd_probe	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/scsi_id	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/usb_modeswitch	same-provider	script		usb_modeswitch	2.6.1	same-path-in-ours	script		usb_modeswitch	2.6.2	packages-file-list	
+/usr/lib/udev/v4l_id	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/lib/udev/write_net_rules	stock-only	script		eudev	3.2.9	path-prefix /usr/lib/udev/write_net_rules	absent					
+/usr/libexec/bluetooth/bluetoothd	same-provider	elf-exec		bluez5_utils	5.61	same-path-in-ours	elf-pie		bluez5_utils	5.86	packages-file-list	
+/usr/libexec/coreutils/libstdbuf.so	same-provider	elf-lib		coreutils	8.32	same-path-in-ours	elf-lib		coreutils	9.10	packages-file-list	
+/usr/libexec/ctdb/ctdb-config	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb-event	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb-eventd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb-path	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_killtcp	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_lock_helper	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_lvs	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_mutex_fcntl_helper	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_natgw	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_recovery_helper	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/ctdb_smnotify_helper	relocated-from	absent					elf-pie		samba4	4.24.6	packages-file-list	/usr/libexec/ctdb/smnotify
+/usr/libexec/ctdb/ctdb_takeover_helper	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/smnotify	relocated-to	elf-pie		samba4	4.14.6	override: [medium] ctdb helper built by samba4; BR2021 samba4.mk 4.14.6; no banner string in binary	absent					/usr/libexec/ctdb/ctdb_smnotify_helper
+/usr/libexec/ctdb/statd_callout	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/statd_callout_helper	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/libexec/ctdb/tdb_mutex_check	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/dbus-daemon-launch-helper	same-provider	elf-exec		dbus	1.12.20	same-path-in-ours	elf-pie		dbus	1.16.2	packages-file-list	
+/usr/libexec/frcode	same-provider	elf-exec		findutils	4.7.0	same-path-in-ours	elf-pie		findutils	4.10.0	packages-file-list	
+/usr/libexec/gio-launch-desktop	ours-only	absent					elf-pie		libglib2	2.88.3	packages-file-list	
+/usr/libexec/less-osc8-open	ours-only	absent					script		less	704	packages-file-list	
+/usr/libexec/lessecho	ours-only	absent					elf-pie		less	704	packages-file-list	
+/usr/libexec/libinput/libinput-analyze	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-analyze-buttons	ours-only	absent					script		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-analyze-per-slot-delta	stock-only	script		libinput	1.16.4	override: [medium] python3 tool installed by libinput; BR2021 libinput.mk 1.16.4 (sibling ELFs in same dir)	absent					
+/usr/libexec/libinput/libinput-debug-events	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-debug-tablet	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-debug-tablet-pad	ours-only	absent					elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-list-devices	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-list-kernel-devices	ours-only	absent					script		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-measure	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-measure-fuzz	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-measure-touch-size	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-measure-touchpad-pressure	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-measure-touchpad-size	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-measure-touchpad-tap	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-quirks	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-record	same-provider	elf-exec		libinput	1.16.4	same-path-in-ours	elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/libinput/libinput-replay	stock-only	script		libinput	1.16.4	override: [medium] python3 tool in libinput libexec dir (mtime Nov 2020 = source date); BR2021 libinput.mk 1.16.4	absent					
+/usr/libexec/libinput/libinput-test	ours-only	absent					elf-pie		libinput	1.31.3	packages-file-list	
+/usr/libexec/lzo/examples/lzopack	same-provider	elf-exec		lzo	2.10	same-path-in-ours	elf-pie		lzo	2.10	packages-file-list	
+/usr/libexec/lzo/examples/lzotest	same-provider	elf-exec		lzo	2.10	same-path-in-ours	elf-pie		lzo	2.10	packages-file-list	
+/usr/libexec/lzo/examples/simple	same-provider	elf-exec		lzo	2.10	same-path-in-ours	elf-pie		lzo	2.10	packages-file-list	
+/usr/libexec/lzo/examples/testmini	same-provider	elf-exec		lzo	2.10	same-path-in-ours	elf-pie		lzo	2.10	packages-file-list	
+/usr/libexec/mc/cons.saver	same-provider	elf-exec		mc	4.8.25	same-path-in-ours	elf-pie		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/archive.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/doc.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/image.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/misc.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/package.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/sound.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/text.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/video.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/ext.d/web.sh	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/README	same-provider	data		mc	4.8.25	same-path-in-ours	data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/README.extfs	same-provider	data		mc	4.8.25	same-path-in-ours	data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/a+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/apt+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/audio	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/bpp	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/changesetfs	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/deb	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/deba	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/debd	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/dpkg+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/gitfs+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/hp48+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/iso9660	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/lslR	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/mailfs	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/patchfs	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/patchsetfs	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/rpm	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/rpms+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/s3+	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/torrent	ours-only	absent					script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/trpm	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/u7z	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uace	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/ualz	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uar	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uarc	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uarj	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uc1541	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/ucab	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uha	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/ulha	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/ulib	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/unar	ours-only	absent					script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/urar	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uwim	ours-only	absent					script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uzip	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/extfs.d/uzoo	same-provider	script		mc	4.8.25	same-path-in-ours	script		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/fish/README.fish	relocated-to	data		mc	4.8.25	override: [medium] Midnight Commander FISH helper docs (mentions 'Since version 4.7.3'); BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/README.shell
+/usr/libexec/mc/fish/append	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/append
+/usr/libexec/mc/fish/chmod	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/chmod
+/usr/libexec/mc/fish/chown	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/chown
+/usr/libexec/mc/fish/fexists	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/fexists
+/usr/libexec/mc/fish/get	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/get
+/usr/libexec/mc/fish/hardlink	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/hardlink
+/usr/libexec/mc/fish/info	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/info
+/usr/libexec/mc/fish/ln	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/ln
+/usr/libexec/mc/fish/ls	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/ls
+/usr/libexec/mc/fish/mkdir	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/mkdir
+/usr/libexec/mc/fish/mv	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/mv
+/usr/libexec/mc/fish/rmdir	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/rmdir
+/usr/libexec/mc/fish/send	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/send
+/usr/libexec/mc/fish/unlink	relocated-to	data		mc	4.8.25	override: [medium] mc FISH helper script; BR2021 mc.mk 4.8.25	absent					/usr/libexec/mc/shell/unlink
+/usr/libexec/mc/fish/utime	relocated-to	data		mc	4.8.25	basename-in-ours	absent					/usr/libexec/mc/shell/utime
+/usr/libexec/mc/mc-wrapper.csh	same-provider	exec-data		mc	4.8.25	same-path-in-ours	exec-data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/mc-wrapper.sh	same-provider	exec-data		mc	4.8.25	same-path-in-ours	exec-data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/mc.csh	same-provider	exec-data		mc	4.8.25	same-path-in-ours	exec-data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/mc.sh	same-provider	exec-data		mc	4.8.25	same-path-in-ours	exec-data		mc	4.8.33	packages-file-list	
+/usr/libexec/mc/shell/README.shell	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/README.fish
+/usr/libexec/mc/shell/append	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/append
+/usr/libexec/mc/shell/chmod	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/chmod
+/usr/libexec/mc/shell/chown	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/chown
+/usr/libexec/mc/shell/fexists	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/fexists
+/usr/libexec/mc/shell/get	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/get
+/usr/libexec/mc/shell/hardlink	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/hardlink
+/usr/libexec/mc/shell/info	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/info
+/usr/libexec/mc/shell/ln	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/ln
+/usr/libexec/mc/shell/ls	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/ls
+/usr/libexec/mc/shell/mkdir	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/mkdir
+/usr/libexec/mc/shell/mv	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/mv
+/usr/libexec/mc/shell/rmdir	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/rmdir
+/usr/libexec/mc/shell/send	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/send
+/usr/libexec/mc/shell/unlink	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/unlink
+/usr/libexec/mc/shell/utime	relocated-from	absent					data		mc	4.8.33	packages-file-list	/usr/libexec/mc/fish/utime
+/usr/libexec/mister/gpm-jail	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/libexec/mister/wpa-jail	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/libexec/nfsrahead	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/libexec/perf-core/dlfilters/dlfilter-show-cycles.so	ours-only	absent					elf-lib		linux-tools	6.18.60	packages-file-list	
+/usr/libexec/perf-core/dlfilters/dlfilter-test-api-v0.so	ours-only	absent					elf-lib		linux-tools	6.18.60	packages-file-list	
+/usr/libexec/perf-core/dlfilters/dlfilter-test-api-v2.so	ours-only	absent					elf-lib		linux-tools	6.18.60	packages-file-list	
+/usr/libexec/perf-core/perf-archive	ours-only	absent					script		linux-tools	6.18.60	packages-file-list	
+/usr/libexec/perf-core/perf-iostat	ours-only	absent					script		linux-tools	6.18.60	packages-file-list	
+/usr/libexec/samba/rpcd_classic	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_epmapper	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_fsrvp	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_lsad	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_mdssvc	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_spoolss	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_winreg	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/rpcd_witness	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/samba-bgqd	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/samba/samba-dcerpcd	ours-only	absent					elf-pie		samba4	4.24.6	packages-file-list	
+/usr/libexec/sftp-server	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/libexec/ssh-keysign	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/libexec/ssh-pkcs11-helper	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/libexec/sshd-auth	ours-only	absent					elf-pie		openssh	10.6p1	packages-file-list	
+/usr/libexec/sshd-session	ours-only	absent					elf-pie		openssh	10.6p1	packages-file-list	
+/usr/libexec/sudo/audit_json.so	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/group_file.so	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/libsudo_util.so	same-provider	symlink:elf-lib	libsudo_util.so.0.0.0	sudo	1.9.5p2	same-path-in-ours	symlink:elf-lib	libsudo_util.so.0.0.0	sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/libsudo_util.so.0	same-provider	symlink:elf-lib	libsudo_util.so.0.0.0	sudo	1.9.5p2	same-path-in-ours	symlink:elf-lib	libsudo_util.so.0.0.0	sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/libsudo_util.so.0.0.0	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/sample_approval.so	stock-only	elf-lib		sudo	1.9.5p2	override: [high] strings show 1.9.5p2; BR2021 sudo.mk 1.9.5p2	absent					
+/usr/libexec/sudo/sudo_intercept.so	ours-only	absent					elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/sudo_noexec.so	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/sudoers.so	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/sudo/system_group.so	same-provider	elf-lib		sudo	1.9.5p2	same-path-in-ours	elf-lib		sudo	1.9.17p2	packages-file-list	
+/usr/libexec/xkbcommon/xkbcli-compile-keymap	stock-only	elf-exec		libxkbcommon	1.0.3	override: [high] links xkb_keymap_new_from_file; BR2021 libxkbcommon.mk 1.0.3 (stock libxkbcommon.so.0.0.0)	absent					
+/usr/libexec/xkbcommon/xkbcli-how-to-type	stock-only	elf-exec		libxkbcommon	1.0.3	override: [high] same libexec/xkbcommon dir as compile-keymap; BR2021 libxkbcommon.mk 1.0.3	absent					
+/usr/libexec/xkbcommon/xkbcli-interactive-evdev	stock-only	elf-exec		libxkbcommon	1.0.3	override: [high] same libexec/xkbcommon dir; BR2021 libxkbcommon.mk 1.0.3	absent					
+/usr/sbin/addgroup	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/addpart	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/adduser	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/agetty	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/alsaconf	stock-only	script		alsa-utils	1.2.4	override: [high] bash script 'ALSA Configurator' (SuSE); BR2021 alsa-utils.mk 1.2.4 (.mk only)	absent					
+/usr/sbin/alsactl	same-provider	elf-exec		alsa-utils	1.2.4	same-path-in-ours	elf-pie		alsa-utils	1.2.16	packages-file-list	
+/usr/sbin/arp	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/arping	same-provider	elf-exec		iputils	20210202	same-path-in-ours	elf-pie		iputils	20250605	packages-file-list	
+/usr/sbin/badblocks	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/blkdeactivate	ours-only	absent					script		lvm2	2.03.31	packages-file-list	
+/usr/sbin/blkdiscard	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/blkid	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/blkmapd	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/blkpr	ours-only	absent					elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/blkzone	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/blockdev	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/bridge	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/btctl	provider-changed	script		mister-custom:btctl bluetooth pair/scan python script (Alexey Melnikov, 2021)	unknown	override: [high] header '(C) 2021 Alexey Melnikov', python dbus script; no version string	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/btpair	provider-changed	script		mister-custom:btpair wrapper script around btctl	unknown	override: [high] 252-byte bash script calling 'btctl pair'; no version	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/cfdisk	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/chat	stock-only	elf-exec		pppd	2.4.8	override: [high] ppp chat utility built with pppd; BR2021 pppd.mk 2.4.8 (stock /usr/lib/pppd/2.4.8 present)	absent					
+/usr/sbin/chcpu	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/chroot	same-provider	symlink:elf-exec	../bin/coreutils	coreutils	8.32	same-path-in-ours	symlink:elf-pie	../bin/coreutils	coreutils	9.10	packages-file-list	
+/usr/sbin/crond	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/ctdbd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/sbin/ctdbd_wrapper	stock-only	script		samba4	4.14.6	override: [medium] ctdb wrapper script installed by samba4 (ctdb enabled in samba4.mk); BR2021 samba4.mk 4.14.6 (.mk only)	absent					
+/usr/sbin/ctrlaltdel	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/ctstat	same-provider	symlink:elf-exec	lnstat	iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	symlink:elf-pie	lnstat	iproute2	7.1.0	packages-file-list	
+/usr/sbin/dcb	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/delgroup	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/delpart	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/deluser	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/depmod	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/devlink	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/devmem	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/dhcpcd	same-provider	elf-exec		dhcpcd	9.4.0	same-path-in-ours	elf-pie		dhcpcd	10.2.4	packages-file-list	
+/usr/sbin/dmeventd	ours-only	absent					elf-pie		lvm2	2.03.31	packages-file-list	
+/usr/sbin/dmsetup	ours-only	absent					elf-pie		lvm2	2.03.31	packages-file-list	
+/usr/sbin/dmstats	ours-only	absent					symlink:elf-pie	dmsetup	lvm2	2.03.31	packages-file-list	
+/usr/sbin/dnsd	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/dosfsck	same-provider	symlink:elf-exec	fsck.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	fsck.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/dosfslabel	same-provider	symlink:elf-exec	fatlabel	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	fatlabel	dosfstools	4.2	packages-file-list	
+/usr/sbin/dpll	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/dump.exfat	ours-only	absent					elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/dumpe2fs	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e2freefrag	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e2fsck	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e2label	same-provider	symlink:elf-exec	tune2fs	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	tune2fs	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e2mmpstatus	same-provider	symlink:elf-exec	dumpe2fs	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	dumpe2fs	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e2scrub	stock-only	script		e2fsprogs	1.45.6	override: [high] Oracle e2scrub script; BR2021 e2fsprogs 1.45.6; e4defrag banner shows 1.45.6	absent					
+/usr/sbin/e2scrub_all	stock-only	script		e2fsprogs	1.45.6	override: [high] e2fsprogs scrub script; e4defrag banner 1.45.6	absent					
+/usr/sbin/e2undo	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e4crypt	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/e4defrag	stock-only	elf-exec		e2fsprogs	1.45.6	override: [high] strings: 1.45.6	absent					
+/usr/sbin/eeprog	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/ether-wake	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/ethtool	same-provider	elf-exec		ethtool	5.10	same-path-in-ours	elf-pie		ethtool	7.1	packages-file-list	
+/usr/sbin/eventlogadm	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/sbin/exfat2img	ours-only	absent					elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/exfatlabel	ours-only	absent					elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/faillock	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/fatlabel	same-provider	elf-exec		dosfstools	4.1	same-path-in-ours	elf-pie		dosfstools	4.2	packages-file-list	
+/usr/sbin/fbset	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/fdformat	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/fdisk	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/filefrag	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/findfs	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/fluidsynth	same-provider	elf-exec		fluidsynth	2.1.6	basename-in-ours	symlink:elf-pie	/usr/bin/fluidsynth	fluidsynth	2.5.7	packages-file-list	/usr/bin/fluidsynth
+/usr/sbin/fping	stock-only	elf-exec		fping	5.0	override: [high] strings contain fping output formats; BR2021 fping.mk 5.0 (.mk only)	absent					
+/usr/sbin/freeramdisk	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/fsck	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/fsck.exfat	same-provider	elf-exec		exfatprogs	1.0.4	same-path-in-ours	elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/fsck.ext2	same-provider	symlink:elf-exec	e2fsck	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	e2fsck	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/fsck.ext3	same-provider	symlink:elf-exec	e2fsck	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	e2fsck	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/fsck.ext4	same-provider	symlink:elf-exec	e2fsck	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	e2fsck	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/fsck.fat	same-provider	elf-exec		dosfstools	4.1	same-path-in-ours	elf-pie		dosfstools	4.2	packages-file-list	
+/usr/sbin/fsck.msdos	same-provider	symlink:elf-exec	fsck.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	fsck.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/fsck.vfat	same-provider	symlink:elf-exec	fsck.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	fsck.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/fsfreeze	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/fstrim	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/ftpasswd	stock-only	script		proftpd	1.3.6e	override: [high] Perl script 'my $version = "1.3.0"' (ftpasswd tool version); shipped by proftpd; BR2021 proftpd.mk 1.3.6e	absent					
+/usr/sbin/genl	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/getty	stock-only	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	absent					
+/usr/sbin/gpm	same-provider	elf-exec		gpm	1.20.7	same-path-in-ours	elf-pie		gpm	1.20.7	packages-file-list	
+/usr/sbin/halt	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/hdparm	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/hwclock	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/i2c-stub-from-dump	same-provider	script		i2c-tools	4.2	same-path-in-ours	script		i2c-tools	4.4	packages-file-list	
+/usr/sbin/i2cdetect	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/i2cdump	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/i2cget	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/i2cset	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/i2ctransfer	same-provider	elf-exec		i2c-tools	4.2	same-path-in-ours	elf-pie		i2c-tools	4.4	packages-file-list	
+/usr/sbin/ifcfg	stock-only	script		iproute2	5.7.0	override: [high] iproute2 ifcfg shell script; BR2021 iproute2 5.7.0 (.mk only)	absent					
+/usr/sbin/ifconfig	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/ifdown	same-provider	symlink:elf-exec	/sbin/ifup	ifupdown	0.8.16	same-path-in-ours	symlink:elf-pie	/usr/sbin/ifup	ifupdown	0.8.44	packages-file-list	
+/usr/sbin/ifquery	same-provider	symlink:elf-exec	/sbin/ifup	ifupdown	0.8.16	same-path-in-ours	symlink:elf-pie	/usr/sbin/ifup	ifupdown	0.8.44	packages-file-list	
+/usr/sbin/ifstat	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/ifup	same-provider	elf-exec		ifupdown	0.8.16	same-path-in-ours	elf-pie		ifupdown	0.8.44	packages-file-list	
+/usr/sbin/inetd	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/init	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/insmod	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/iotop	stock-only	script		iotop	0.6	override: [high] python stub 'import iotop.ui'; stock site-packages iotop-0.6-py3.9.egg-info	absent					
+/usr/sbin/ip	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/ip6tables	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-apply	same-provider	symlink:script	iptables-apply	iptables	1.8.6	same-path-in-ours	symlink:script	iptables-apply	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-legacy	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-legacy-restore	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-legacy-save	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-restore	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ip6tables-save	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/ipaddr	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/iplink	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/ipmaddr	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/ipneigh	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/iproute	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/iprule	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/iptables	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-apply	same-provider	script		iptables	1.8.6	same-path-in-ours	script		iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-legacy	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-legacy-restore	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-legacy-save	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-restore	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptables-save	same-provider	symlink:elf-exec	xtables-legacy-multi	iptables	1.8.6	same-path-in-ours	symlink:elf-pie	xtables-legacy-multi	iptables	1.8.11	packages-file-list	
+/usr/sbin/iptunnel	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/iw	same-provider	elf-exec		iw	5.9	same-path-in-ours	elf-pie		iw	6.17	packages-file-list	
+/usr/sbin/iwconfig	same-provider	elf-exec		wireless_tools	30.pre9	same-path-in-ours	elf-pie		wireless_tools	30.pre9	packages-file-list	
+/usr/sbin/iwgetid	same-provider	symlink:elf-exec	iwconfig	wireless_tools	30.pre9	same-path-in-ours	symlink:elf-pie	iwconfig	wireless_tools	30.pre9	packages-file-list	
+/usr/sbin/iwlist	same-provider	symlink:elf-exec	iwconfig	wireless_tools	30.pre9	same-path-in-ours	symlink:elf-pie	iwconfig	wireless_tools	30.pre9	packages-file-list	
+/usr/sbin/iwpriv	same-provider	symlink:elf-exec	iwconfig	wireless_tools	30.pre9	same-path-in-ours	symlink:elf-pie	iwconfig	wireless_tools	30.pre9	packages-file-list	
+/usr/sbin/iwspy	same-provider	symlink:elf-exec	iwconfig	wireless_tools	30.pre9	same-path-in-ours	symlink:elf-pie	iwconfig	wireless_tools	30.pre9	packages-file-list	
+/usr/sbin/key.dns_resolver	ours-only	absent					elf-pie		keyutils	1.6.3	packages-file-list	
+/usr/sbin/killall5	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/klogd	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/ldattach	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/lnstat	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/loadfont	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/loadkmap	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/logsave	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/losetup	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/lshw	stock-only	elf-exec		lshw	02.19.2	override: [medium] BR2021 lshw.mk 02.19.2 (B.02.19.2); binary has no clean version banner	absent					
+/usr/sbin/lsmod	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/makedevs	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/mdev	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/midilink	provider-changed	elf-exec		mister-custom:MiSTer MidiLink addon binary (not a Buildroot package)	3.3 BB7	override: No midilink package in Buildroot 2021.02.4 package tree; stock binary built with Linaro GCC 7.5-2019.12 (MiSTer addon toolchain); banner 'MiSTer MidiLink 3.3 BB7'	elf-pie		midilink	d6b337383d10dc5048b22eb5d27baf61826f6bb1	packages-file-list	
+/usr/sbin/mii-tool	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/mim	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/mister-cpu-isolation	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/mister-fsck-exfat	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/mister-pair-logitech	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/mister-security	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/mister-usb-full-speed	ours-only	absent					script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/mkdosfs	same-provider	symlink:elf-exec	mkfs.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	mkfs.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/mke2fs	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/mkfs	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/mkfs.exfat	same-provider	elf-exec		exfatprogs	1.0.4	same-path-in-ours	elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/mkfs.ext2	same-provider	symlink:elf-exec	mke2fs	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	mke2fs	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/mkfs.ext3	same-provider	symlink:elf-exec	mke2fs	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	mke2fs	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/mkfs.ext4	same-provider	symlink:elf-exec	mke2fs	e2fsprogs	1.45.6	same-path-in-ours	symlink:elf-pie	mke2fs	e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/mkfs.fat	same-provider	elf-exec		dosfstools	4.1	same-path-in-ours	elf-pie		dosfstools	4.2	packages-file-list	
+/usr/sbin/mkfs.msdos	same-provider	symlink:elf-exec	mkfs.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	mkfs.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/mkfs.ntfs	same-provider	symlink:elf-exec	/usr/sbin/mkntfs	ntfs-3g	2017.3.23	same-path-in-ours	symlink:elf-pie	/usr/sbin/mkntfs	ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/mkfs.vfat	same-provider	symlink:elf-exec	mkfs.fat	dosfstools	4.1	same-path-in-ours	symlink:elf-pie	mkfs.fat	dosfstools	4.2	packages-file-list	
+/usr/sbin/mkhomedir_helper	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/mklost+found	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/mkntfs	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/mkswap	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/mlinkutil	provider-changed	elf-exec		mister-custom:MiSTer MidiLink addon binary (not a Buildroot package)	3.3 BB7 (companion to midilink; no separate banner proven)	override: Same as midilink: no 2021.02.4 package; MiSTer addon file, same toolchain	elf-pie		midilink	d6b337383d10dc5048b22eb5d27baf61826f6bb1	packages-file-list	
+/usr/sbin/modinfo	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/modprobe	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/mount.cifs	ours-only	absent					elf-pie		cifs-utils	7.7	packages-file-list	
+/usr/sbin/mount.lowntfs-3g	same-provider	symlink:elf-exec	/usr/bin/lowntfs-3g	ntfs-3g	2017.3.23	same-path-in-ours	symlink:elf-pie	/usr/bin/lowntfs-3g	ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/mount.nfs	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/mount.nfs4	ours-only	absent					symlink:elf-pie	mount.nfs	nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/mount.ntfs	same-provider	symlink:elf-exec	/usr/bin/ntfs-3g	ntfs-3g	2017.3.23	same-path-in-ours	symlink:elf-pie	/usr/bin/ntfs-3g	ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/mount.ntfs-3g	same-provider	symlink:elf-exec	/usr/bin/ntfs-3g	ntfs-3g	2017.3.23	same-path-in-ours	symlink:elf-pie	/usr/bin/ntfs-3g	ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/mount.smb3	ours-only	absent					symlink:elf-pie	mount.cifs	cifs-utils	7.7	packages-file-list	
+/usr/sbin/mountstats	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/mt32d	provider-changed	elf-exec		mister-custom:mt32d prebuilt (static munt mt32emu_alsadrv, GCC Ubuntu/Linaro 5.4.0 2019)	2.3.0	override: Buildroot 2021.02.4 package tree has no munt package; stock mt32d is a 108600-byte ELF with libmt32emu statically linked (no libmt32emu NEEDED), compiled with Ubuntu/Linaro GCC 5.4.0 (not the Buildroot toolchain), embedded version string 2.3.0.	elf-pie		munt	munt_2_8_2	packages-file-list	
+/usr/sbin/nameif	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/netshaper	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/nfsconf	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsdcld	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsdclddb	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsdclnts	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsidmap	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsiostat	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nfsstat	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/nft	ours-only	absent					elf-pie		nftables	1.1.4	packages-file-list	
+/usr/sbin/nmbd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/sbin/nologin	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/nstat	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/ntfsclone	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/ntfscp	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/ntfslabel	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/ntfsresize	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/ntfsundelete	same-provider	elf-exec		ntfs-3g	2017.3.23	same-path-in-ours	elf-pie		ntfs-3g	2026.7.7	packages-file-list	
+/usr/sbin/ntpd	same-provider	elf-pie		ntp	4.2.8p15	same-path-in-ours	elf-pie		ntp	4.2.8p18	packages-file-list	
+/usr/sbin/pam_namespace_helper	same-provider	script		linux-pam	1.5.1	same-path-in-ours	script		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/pam_timestamp_check	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/parted	same-provider	elf-exec		parted	3.3	same-path-in-ours	elf-pie		parted	3.6	packages-file-list	
+/usr/sbin/partprobe	same-provider	elf-exec		parted	3.3	same-path-in-ours	elf-pie		parted	3.6	packages-file-list	
+/usr/sbin/partx	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/pivot_root	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/plipconfig	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/poweroff	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/pppd	stock-only	elf-exec		pppd	2.4.8	override: [high] strings: 2.4.8 and /usr/lib/pppd/2.4.8	absent					
+/usr/sbin/pppdump	stock-only	elf-exec		pppd	2.4.8	override: [high] ppp tool; BR2021 pppd.mk 2.4.8	absent					
+/usr/sbin/pppoe-discovery	stock-only	elf-exec		pppd	2.4.8	override: [medium] strings 'Version 3.8p' = rp-pppoe plugin code bundled in ppp 2.4.8 pppd/plugins/rp-pppoe (not rp-pppoe 3.14 package)	absent					
+/usr/sbin/pppstats	stock-only	elf-exec		pppd	2.4.8	override: [high] ppp tool; BR2021 pppd.mk 2.4.8	absent					
+/usr/sbin/proftpd	same-provider	elf-exec		proftpd	1.3.6e	same-path-in-ours	elf-pie		proftpd	1.3.9d	packages-file-list	
+/usr/sbin/pwhistory_helper	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/rarp	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/raw	stock-only	elf-exec		util-linux	2.36.2	override: qemu-arm raw -V: 'raw from util-linux 2.36.2'. Currently stock-only/unattributed in recon0.tsv; ours has no raw (dropped upstream).	absent					
+/usr/sbin/rdate	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/rdisc	stock-only	elf-exec		iputils	20210202	override: strings: "iputils" + "20210202"; stock ping -V "ping from iputils 20210202"; rdisc was removed from iputils upstream	absent					
+/usr/sbin/rdma	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/readprofile	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/reboot	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/request-key	ours-only	absent					elf-pie		keyutils	1.6.3	packages-file-list	
+/usr/sbin/resizepart	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/rmmod	same-provider	symlink:elf-exec	../bin/kmod	kmod	28	same-path-in-ours	symlink:elf-pie	../bin/kmod	kmod	34.2	packages-file-list	
+/usr/sbin/route	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/routef	stock-only	script		iproute2	5.7.0	override: [high] SPDX GPL-2.0 script 'exec ip -4 ro flush'; iproute2 routef; BR2021 5.7.0	absent					
+/usr/sbin/routel	same-provider	script		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	script		iproute2	7.1.0	packages-file-list	
+/usr/sbin/rpc.idmapd	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/rpc.statd	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/rpcctl	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/rtacct	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/rtcwake	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/rtmon	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/rtpr	stock-only	script		iproute2	5.7.0	override: [high] 70-byte script 'exec tr' iproute2 rtpr; BR2021 5.7.0	absent					
+/usr/sbin/rtstat	same-provider	symlink:elf-exec	lnstat	iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	symlink:elf-pie	lnstat	iproute2	7.1.0	packages-file-list	
+/usr/sbin/run-init	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/runlevel	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/samba-gpupdate	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/sbin/seedrng	ours-only	absent					symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/setconsole	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/setlogcons	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/sfdisk	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/showmount	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/slattach	same-provider	elf-exec		net-tools	2.10-alpha (git 479bb4a7)	same-path-in-ours	elf-pie		net-tools	2.10	packages-file-list	
+/usr/sbin/sm-notify	ours-only	absent					elf-pie		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/smbd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/sbin/ss	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/sshd	same-provider	elf-pie		openssh	8.6p1	same-path-in-ours	elf-pie		openssh	10.6p1	packages-file-list	
+/usr/sbin/start-statd	ours-only	absent					script		nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/start-stop-daemon	real->busybox	elf-exec		start-stop-daemon	1.18.10	override: [high] strings 1.18.10; BR2021 start-stop-daemon.mk 1.18.10	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/sudo_logsrvd	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/sbin/sudo_sendlog	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/sbin/sulogin	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/swaplabel	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/swapoff	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/swapon	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/switch_root	same-provider	elf-exec		util-linux	2.36.2	same-path-in-ours	elf-pie		util-linux	2.41.5	packages-file-list	
+/usr/sbin/sysctl	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/syslogd	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/tc	same-provider	elf-exec		iproute2	5.7.0 (iproute2-ss200602)	same-path-in-ours	elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/tipc	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/tune.exfat	same-provider	elf-exec		exfatprogs	1.0.4	same-path-in-ours	elf-pie		exfatprogs	1.2.9	packages-file-list	
+/usr/sbin/tune2fs	same-provider	elf-exec		e2fsprogs	1.45.6	same-path-in-ours	elf-pie		e2fsprogs	1.47.4	packages-file-list	
+/usr/sbin/uartmode	provider-changed	script		mister-custom:uartmode MidiLink UART mode switch script	unknown	override: [high] bash script killing fluidsynth/mpg123/mt32d (midilink); no version string	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/ubirename	both-busybox	symlink:elf-exec	../../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/udevadm	same-provider	symlink:elf-exec	/usr/bin/udevadm	eudev	3.2.9	same-path-in-ours	symlink:elf-pie	/usr/bin/udevadm	eudev	3.2.14	packages-file-list	
+/usr/sbin/udevd	same-provider	elf-exec		eudev	3.2.9	same-path-in-ours	elf-pie		eudev	3.2.14	packages-file-list	
+/usr/sbin/udhcpc	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/uevent	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/umount.nfs	ours-only	absent					symlink:elf-pie	mount.nfs	nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/umount.nfs4	ours-only	absent					symlink:elf-pie	mount.nfs	nfs-utils	2.9.1	packages-file-list	
+/usr/sbin/unix_chkpwd	same-provider	elf-pie		linux-pam	1.5.1	same-path-in-ours	elf-pie		linux-pam	1.7.2	packages-file-list	
+/usr/sbin/unix_update	stock-only	elf-pie		linux-pam	1.5.1	override: [high] strings 'inappropriate use of Unix helper binary', unix_update; BR2021 linux-pam.mk 1.5.1 (.mk only)	absent					
+/usr/sbin/usb_modeswitch	same-provider	elf-exec		usb_modeswitch	2.6.1	same-path-in-ours	elf-pie		usb_modeswitch	2.6.2	packages-file-list	
+/usr/sbin/usb_modeswitch_dispatcher	same-provider	elf-exec		usb_modeswitch	2.6.1	same-path-in-ours	elf-pie		usb_modeswitch	2.6.2	packages-file-list	
+/usr/sbin/vconfig	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/vdpa	ours-only	absent					elf-pie		iproute2	7.1.0	packages-file-list	
+/usr/sbin/visudo	same-provider	elf-exec		sudo	1.9.5p2	same-path-in-ours	elf-pie		sudo	1.9.17p2	packages-file-list	
+/usr/sbin/vmode	provider-changed	script		mister-custom:vmode video mode switch script	unknown	override: [high] bash script (2019 mtime) parsing f/scale args; no version string	script		rootfs-overlay	(this repo)	overlay: /mnt/source/Buildroot_MiSTer/board/mister/de10nano/rootfs-overlay	
+/usr/sbin/watchdog	both-busybox	symlink:elf-exec	../bin/busybox	busybox	1.33.1	symlink->busybox	symlink:elf-pie	../bin/busybox	busybox	1.38.0	symlink->busybox	
+/usr/sbin/winbindd	same-provider	elf-pie		samba4	4.14.6	same-path-in-ours	elf-pie		samba4	4.24.6	packages-file-list	
+/usr/sbin/wpa_cli	same-provider	elf-exec		wpa_supplicant	2.9	same-path-in-ours	elf-pie		wpa_supplicant	2.12	packages-file-list	
+/usr/sbin/wpa_passphrase	same-provider	elf-exec		wpa_supplicant	2.9	same-path-in-ours	elf-pie		wpa_supplicant	2.12	packages-file-list	
+/usr/sbin/wpa_supplicant	same-provider	elf-exec		wpa_supplicant	2.9	same-path-in-ours	elf-pie		wpa_supplicant	2.12	packages-file-list	
+/usr/sbin/xtables-legacy-multi	same-provider	elf-exec		iptables	1.8.6	same-path-in-ours	elf-pie		iptables	1.8.11	packages-file-list	
+/usr/share/ctdb/events/legacy/00.ctdb.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/01.reclock.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/05.system.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/06.nfs.script	stock-only	script		samba4	4.14.6	path-prefix /usr/share/ctdb/	absent					
+/usr/share/ctdb/events/legacy/10.interface.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/11.natgw.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/11.routing.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/13.per_ip_routing.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/20.multipathd.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/31.clamd.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/40.vsftpd.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/41.httpd.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/46.update-keytabs.script	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/47.samba-dcerpcd.script	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/48.netbios.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/49.winbind.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/50.samba.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/60.nfs.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/70.iscsi.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/91.lvs.script	same-provider	script		samba4	4.14.6	same-path-in-ours	script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/events/legacy/95.database.script	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/share/ctdb/scripts/winbind_ctdb_updatekeytab.sh	ours-only	absent					script		samba4	4.24.6	packages-file-list	
+/usr/share/dstat/dstat.py	stock-only	script		dstat	0.7.4	path-prefix /usr/share/dstat/	absent					
+/usr/share/joystick/extract	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/share/joystick/filter	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/share/joystick/ident	same-provider	script		linuxconsoletools	1.7.0	same-path-in-ours	script		linuxconsoletools	1.8.1	packages-file-list	
+/usr/share/keyutils/request-key-debug.sh	ours-only	absent					script		keyutils	1.6.3	packages-file-list	
+/usr/share/pam/security/namespace.init	ours-only	absent					script		linux-pam	1.7.2	packages-file-list	
+/usr/share/slsh/scripts/jpegsize	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/slsh/scripts/lsrpm	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/slsh/scripts/sldb	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/slsh/scripts/slprof	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/slsh/scripts/slstkchk	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/slsh/scripts/svnsh	stock-only	script		slang	2.3.2	path-prefix /usr/share/slsh/	absent					
+/usr/share/udhcpc/default.script	both-busybox	script		busybox	1.33.1	override: Buildroot busybox package installs udhcpc default.script (a script, not an applet)	script		busybox	1.38.0	packages-file-list	
+/usr/share/usbmount/usbmount	same-provider	script		usbmount	0.0.22	same-path-in-ours	script		usbmount	0.0.22	packages-file-list	
+/usr/share/vim/vim82/macros/less.sh	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/demoserver.py	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/efm_filter.pl	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/efm_perl.pl	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/mve.awk	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/pltags.pl	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/ref	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/shtags.pl	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/vim132	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/vimm	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/vim/vim82/tools/vimspell.sh	stock-only	script		vim	8.2.0000	path-prefix /usr/share/vim/	absent					
+/usr/share/zsh/5.8/functions/calendar_add	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/checkmail	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/harden	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/run-help	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/run-help-ip	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/sticky-note	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/zcalc	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/zed	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					
+/usr/share/zsh/5.8/functions/zkbd	stock-only	script		zsh	5.8	path-prefix /usr/share/zsh/	absent					

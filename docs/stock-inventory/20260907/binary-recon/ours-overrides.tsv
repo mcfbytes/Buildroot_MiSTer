@@ -1,0 +1,2 @@
+# path	package	version	evidence (agent-verified against the binary; see ../../../stock-binary-reconciliation.md)
+usr/bin/bluetoothd	mister-custom:bluetoothd control script (stock copy with minijail launch, /etc/minijail/bluetoothd.conf)	unknown (repo-local overlay script, no version)	Ours usr/bin/bluetoothd is a sh script whose header says it is 'Stock's /bin/bluetoothd control script ... with the daemon run in a minijail'; it is not a bluez5_utils file.

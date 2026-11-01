@@ -1,0 +1,10 @@
+# path_prefix	package -- fallback stock attribution for helper scripts outside the exec dirs
+/usr/lib/bluez/test/	bluez5_utils
+/usr/share/vim/	vim
+/usr/share/zsh/	zsh
+/usr/share/slsh/	slang
+/usr/lib/python3.9/	python3
+/usr/lib/e2fsprogs/	e2fsprogs
+/usr/share/ctdb/	samba4
+/usr/share/dstat/	dstat
+/usr/lib/udev/write_net_rules	eudev

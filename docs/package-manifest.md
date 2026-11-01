@@ -986,7 +986,7 @@ the matching `# CONFIG_… is not set` lines live in
 
 | Package | Paths now shipped |
 |---|---|
-| GNU coreutils 9.10 (stock 8.32) | **105 paths**: 84 names BusyBox previously supplied (the 84 applets now disabled), 20 that were absent outright — `b2sum`, `basenc`, `chcon`, `csplit`, `dir`, `dircolors`, `fmt`, `join`, `numfmt`, `pathchk`, `pinky`, `pr`, `ptx`, `runcon`, `sha224sum`, `stdbuf`, `sum`, `unexpand`, `users`, `vdir` — plus `[` (`-> test`). `/usr/bin/coreutils` is the multi-call ELF and each path is its symlink. Replaces the BusyBox applets for `ls`, `cat`, `cp`, `mv`, `rm`, `stat`, `timeout`, `sort`, `head`, `tail`, `chmod`, `chown`, `date`, `dd`, `df`, `du`, `echo`, `env`, `expr`, `install`, `ln`, `mkdir`, `mknod`, `mktemp`, `od`, `printf`, `readlink`, `realpath`, `seq`, `sha*sum`, `sleep`, `sync`, `tee`, `touch`, `tr`, `uname`, `uptime`, `wc`, `whoami`, `yes`, and the rest of the 84 |
+| GNU coreutils 9.10 (stock 8.32) | **105 paths**: 84 names BusyBox previously supplied (the 84 applets now disabled), 18 that were absent outright — `b2sum`, `basenc`, `csplit`, `dir`, `dircolors`, `fmt`, `join`, `numfmt`, `pathchk`, `pinky`, `pr`, `ptx`, `sha224sum`, `stdbuf`, `sum`, `unexpand`, `users`, `vdir` — plus `[` (`-> test`), `kill` (also installed by util-linux, which wins the path as on stock) and `coreutils` itself. Stock's `chcon`/`runcon` are **not** shipped: Buildroot builds them only with `BR2_PACKAGE_LIBSELINUX`, which this image does not enable. `/usr/bin/coreutils` is the multi-call ELF and each path is its symlink. Replaces the BusyBox applets for `ls`, `cat`, `cp`, `mv`, `rm`, `stat`, `timeout`, `sort`, `head`, `tail`, `chmod`, `chown`, `date`, `dd`, `df`, `du`, `echo`, `env`, `expr`, `install`, `ln`, `mkdir`, `mknod`, `mktemp`, `od`, `printf`, `readlink`, `realpath`, `seq`, `sha*sum`, `sleep`, `sync`, `tee`, `touch`, `tr`, `uname`, `uptime`, `wc`, `whoami`, `yes`, and the rest of the 84 |
 | gzip 1.14 | GNU `gzip`, `gunzip`, `zcat` plus the **11 helpers**: `gzexe`, `uncompress`, `zcmp`, `zdiff`, `zegrep`, `zfgrep`, `zforce`, `zgrep`, `zless`, `zmore`, `znew` (BusyBox's applet provided only the first three names) |
 | less 704 | `less` — stock has no `/usr/bin/lesskey`; lesskey support is the `LESSKEY` environment variable pointing at the existing `/media/fat/linux/lesskey` distribution data, not a restored stock binary |
 | findutils 4.10.0 | `find`, `xargs`, `locate`, `updatedb`; the package also installs `usr/libexec/frcode` (present in the built tree) |
@@ -1033,11 +1033,25 @@ Netcat 0.7.1; BusyBox's `nc` + `netcat` alias still ship).
   part of Tier 1; each stays a documented gap/rejection rather than an
   accidental `select`.
 
+**`usr/bin/kill` and gpm's version (found by the per-path reconciliation).**
+Buildroot's `coreutils.mk` hardcodes `--enable-install-program=kill,uptime`, so
+coreutils and util-linux both installed `usr/bin/kill` and util-linux won only
+by install order. Adding `--enable-no-install-program=kill` is not an option,
+because coreutils' configure rejects a program that is both included and
+excluded. So `external.mk` rewrites the option to `=uptime` when
+`BR2_PACKAGE_UTIL_LINUX_KILL=y`, and errors out if `coreutils.mk` ever stops
+passing it verbatim. Separately, gpm's `autogen.sh` took its version from
+`git describe`, which, for a tarball unpacked inside this checkout, answered
+with *this repo's* tag (`gpm v2026.10.23-beta`).
+`board/mister/de10nano/patches/gpm/0002` makes it read the changelog
+(`gpm 1.20.7`). See [stock-binary-reconciliation.md](stock-binary-reconciliation.md).
+
 **Guards.** `scripts/ci-tests.sh` §"T5" asserts that coreutils samples, every
 restored provider group, the five util-linux paths and `ifup`/`ifdown` are not
 BusyBox symlinks; that the previously-absent paths are present; and that GNU
 coreutils/less/findutils/gzip/openssl execute under qemu-arm and report their
-GNU/upstream identity.
+GNU/upstream identity. It also asserts that `usr/bin/kill` is util-linux's ELF
+and that `usr/sbin/gpm` embeds `gpm 1.20.7`, not a `vYYYY.` tag.
 
 ---
 

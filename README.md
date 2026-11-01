@@ -585,6 +585,7 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 | [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md) | DE25-Nano entry point |
 
 **Parity audits:** [stock reconciliation](docs/stock-reconciliation.md) ·
+[stock binary reconciliation](docs/stock-binary-reconciliation.md) ·
 [wifi](docs/wifi-parity.md) · [bluetooth](docs/bluetooth-parity.md) ·
 [firmware](docs/firmware-parity.md) · [init](docs/init-parity.md) ·
 [usb-automount](docs/usb-automount-parity.md) · [netfs](docs/netfs-parity.md) ·

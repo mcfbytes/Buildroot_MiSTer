@@ -60,6 +60,15 @@ ifeq ($(BR2_PACKAGE_DHCPCD),y)
 DHCPCD_CONFIG_OPTS += --with-hooks=ntp.conf --with-eghooks=yp.conf
 endif
 
+# usr/bin/kill: util-linux owns it, as on stock; stop coreutils also installing it
+# (last-install-wins race). Rationale: docs/package-manifest.md §4f.
+ifeq ($(BR2_PACKAGE_COREUTILS)$(BR2_PACKAGE_UTIL_LINUX_KILL),yy)
+ifeq ($(filter --enable-install-program=kill$(comma)uptime,$(COREUTILS_CONF_OPTS)),)
+$(error coreutils.mk no longer passes --enable-install-program=kill,uptime; re-check the usr/bin/kill fix in external.mk)
+endif
+COREUTILS_CONF_OPTS := $(subst --enable-install-program=kill$(comma)uptime,--enable-install-program=uptime,$(COREUTILS_CONF_OPTS))
+endif
+
 ################################################################################
 #
 # U-Boot / DE25-Nano: the QSPI-write audit as a build assertion.

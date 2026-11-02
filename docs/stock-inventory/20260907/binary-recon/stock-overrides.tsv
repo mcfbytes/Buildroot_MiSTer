@@ -1,0 +1,181 @@
+# path	package	version	evidence (agent-verified against the binary; see ../../../stock-binary-reconciliation.md)
+usr/bin/7zr	p7zip	16.02	Stock banner '7-Zip (a) [32] 16.02' / 'p7zip Version 16.02'; BR 2021.02.4 package/p7zip installs only /usr/bin/7zr; no 7zip package exists in that tree.
+usr/bin/VGMPlay.ini	mister-custom:VGMPlay config for vgmplay addon	unknown (no version in file)	[medium] ini header '; VGMPlay Configuration File'; sits beside addon vgmplay; no BR package
+usr/bin/adplay	mister-custom:AdPlay/UNIX AdLib player addon	1.9	[high] strings 'AdPlay/UNIX 1.9'; built with Linaro GCC 6.2 (not BR toolchain)
+usr/bin/archivemount	mister-custom:archivemount (no BR 2021.02.4 package)	0.8.5	[medium] NEEDED libarchive/libfuse; 'archivemount version %s' usage strings; no package/archivemount in BR2021.02.4; 0.8.5 string from strings (not banner-confirmed)
+usr/bin/asn1Coding	libtasn1	4.17.0	[high] strings 'asn1Coding libtasn1 4.17.0'; libtasn1.mk 4.17.0
+usr/bin/asn1Decoding	libtasn1	4.17.0	[high] same libtasn1 4.17.0 tools; stock libtasn1.so.6.6.1; BR2021.02.4 libtasn1.mk
+usr/bin/asn1Parser	libtasn1	4.17.0	[high] same libtasn1 4.17.0 tools; BR2021.02.4 libtasn1.mk
+usr/bin/bluetoothd	mister-custom:bluetoothd control script (S45bluetooth target; creates /media/fat/linux/bluetooth image, mounts it, starts /usr/libexec/bluetooth/bluetoothd)	unknown (unversioned MiSTer script)	Stock usr/bin/bluetoothd is a POSIX sh script (DAEMON=bluetoothd, BTIMG=/media/fat/linux/bluetooth, MNTPATH=/var/lib/bluetooth); bluez5_utils installs only the ELF at usr/libexec/bluetooth/bluetoothd, not a script at usr/bin.
+usr/bin/btmgmt	bluez5_utils	5.61	[low] btmgmt (needs BR2_PACKAGE_BLUEZ5_UTILS_EXPERIMENTAL / mgmt tools); NEEDED libreadline; strings shows 5.61 vs BR2021.02.4 mk 5.55 so likely MiSTer-bumped bluez; version string not fully attributed
+usr/bin/captest	libcap-ng	0.8.2	[high] NEEDED libcap-ng.so.0, usage 'captest [--ambient...]'; libcap-ng.mk 0.8.2 (BR .mk only)
+usr/bin/chardetect	python-chardet	4.0.0	[high] script header __requires__ 'chardet==4.0.0'; chardet-4.0.0-py3.9.egg-info in stock site-packages
+usr/bin/corelist	perl	5.32.1	[high] #!/usr/bin/perl core script; stock /usr/lib/perl5/5.32.1; perl.mk 5.32.1
+usr/bin/cpan	perl	5.32.1	[high] perl core script; stock lib/perl5/5.32.1; perl.mk
+usr/bin/cpuload	cpuload	0.3	[high] strings 'CPU Load Recorder 0.3 - Kelvin Cheung'; cpuload.mk 0.3
+usr/bin/dash	dash	0.5.11.3	[medium] dash builtin usage strings; BR2021.02.4 dash.mk 0.5.11.3 (no version banner in binary)
+usr/bin/dbus-triggerd	dbus-triggerd	ba3dbec805cb707c94c54de21666bf18b79bcc09	[medium] NEEDED libdbus-1; BR2021.02.4 dbus-triggerd.mk git SHA
+usr/bin/dstat	dstat	0.8.0	[medium] script contains VERSION = '0.8.0' and python shebang; BR2021.02.4 dstat.mk says 0.7.4 (mismatch, script text wins, package is dstat)
+usr/bin/e2cp	e2tools	0.0.16.4	[high] usage strings e2cp/e2ln/e2ls; NEEDED libext2fs; e2tools.mk 0.0.16.4 (BR .mk only)
+usr/bin/e2ln	e2tools	0.0.16.4	[high] symlink to e2cp (e2tools multi-call)
+usr/bin/e2ls	e2tools	0.0.16.4	[high] symlink to e2cp
+usr/bin/e2mkdir	e2tools	0.0.16.4	[high] symlink to e2cp
+usr/bin/e2mv	e2tools	0.0.16.4	[high] symlink to e2cp
+usr/bin/e2rm	e2tools	0.0.16.4	[high] symlink to e2cp
+usr/bin/e2tail	e2tools	0.0.16.4	[high] symlink to e2cp
+usr/bin/easy_install	python-setuptools	44.0.0	[high] entry script __requires__ 'setuptools==44.0.0'; setuptools-44.0.0-py3.9.egg-info
+usr/bin/easy_install-3.9	python-setuptools	44.0.0	[high] entry script setuptools==44.0.0
+usr/bin/ed	ed	1.16	[high] strings '1.16' with 'GNU ed is a line-oriented text editor'; ed.mk 1.16
+usr/bin/edid-decode	edid-decode	188950472c19492547e298b27f9da0d72cf826df	[medium] strings 'edid-decode SHA: %s' (SHA not embedded as text); edid-decode.mk git SHA (BR .mk only)
+usr/bin/em	mister-custom:uEmacs/PK (em) editor addon	unknown (no version string)	[medium] strings uEmacs/Pk, emacs.hlp, .emacsrc; NEEDED libncursesw; 'em' not a BR 2021.02.4 package
+usr/bin/enc2xs	perl	5.32.1	[high] perl core (Encode) script; stock lib/perl5/5.32.1
+usr/bin/encguess	perl	5.32.1	[high] perl core (Encode) script; stock lib/perl5/5.32.1
+usr/bin/ex	vim	8.2.0000	[high] symlink to vim; vim binary banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; vim.mk 8.2.0000
+usr/bin/fbgrab	fbgrab	1.4	[medium] BR2021.02.4 fbgrab.mk FBGRAB_VERSION=1.4; binary banner 'fbgrab - takes screenshots using the framebuffer, v%s' (no embedded version string)
+usr/bin/fbv	fbv	1.0b	[medium] strings 'Copyright (C) 2000 - 2004 Mateusz Golicz, Tomasz Sterna'; BR2021.02.4 fbv.mk 1.0b
+usr/bin/findsmb	samba4	4.14.6	[high] Perl script shipped by samba; sibling mdfind reports SAMBA_4.14.6; BR2021 samba4.mk 4.14.6
+usr/bin/fpga	mister-custom:fpga loader/peek-poke tool (usage: fpga {address}[data] | {rbf_file})	unknown	[high] No BR package; no version string; built with Linaro GCC 5.4-2017.01-rc2 (not the BR 2021.02.4 toolchain)
+usr/bin/ftop	ftop	1.0	[medium] strings 'Copyright (C) 2009 Jason Todd'; BR2021.02.4 ftop.mk 1.0
+usr/bin/get-edid	read-edid	3.0.2	[high] strings '3.0.2' + 'This is read-edid version %s'; BR2021 read-edid.mk 3.0.2
+usr/bin/h2ph	perl	5.32.1	[high] Perl core script; stock /usr/lib/perl5/5.32.1; BR2021 perl.mk 5.32.1
+usr/bin/h2xs	perl	5.32.1	[high] Perl core script; stock /usr/lib/perl5/5.32.1; BR2021 perl.mk 5.32.1
+usr/bin/instmodsh	perl	5.32.1	[high] Perl core script (ExtUtils::Installed); stock /usr/lib/perl5/5.32.1
+usr/bin/iostat	iostat	2.2	[high] strings 'iostat v2.2, (C) 1999-2005 by Greg Franks...'; BR2021 iostat.mk 2.2 (standalone, not sysstat)
+usr/bin/json_pp	perl	5.32.1	[high] Perl core script bundled with perl 5.32.1; uses JSON::PP 4.04 (stock JSON/PP.pm)
+usr/bin/ldd	glibc	2.31	[high] GNU shell script 'Copyright (C) 1996-2020 Free Software Foundation'; stock lib/libc-2.31.so
+usr/bin/libhid-detach-device	libhid	0.2.16	[medium] usage '%s vendor_id:product_id' (libhid tool); BR2021 libhid.mk 0.2.16 (mk only)
+usr/bin/libnetcfg	perl	5.32.1	[high] Perl core script (Jarkko Hietaniemi, 'inclusion into Perl 5.8'); stock perl 5.32.1
+usr/bin/m3u_play	mister-custom:bash overlay script (m3u playlist player using nocaseglob)	unknown	[high] #!/bin/bash script, not in any BR package; no version marker
+usr/bin/mdfind	samba4	4.14.6	[high] strings 'SAMBA_4.14.6' (Spotlight search client); BR2021 samba4.mk 4.14.6
+usr/bin/memstat	memstat	1.0	[medium] usage '%s [-n] [-v] [-w] [-p pid]'; BR2021 memstat.mk MEMSTAT_VERSION=1.0 (mk only)
+usr/bin/mikmod	modplugtools	0.5.3	[high] symlink -> modplug123; modplug123 banner 0.5.3; BR2021 modplugtools.mk 0.5.3
+usr/bin/mksh	mksh	59c	[high] strings 'KSH_VERSION=@(#)MIRBSD KSH R59 2020/10/31'; BR2021 mksh.mk 59c
+usr/bin/modplug123	modplugtools	0.5.3	[high] strings '0.5.3', 'Based on modplugplay Copyright (C) 2003'; BR2021 modplugtools.mk 0.5.3
+usr/bin/nc	netcat	0.7.1	[high] symlink -> netcat; GNU netcat banner 0.7.1
+usr/bin/netcat	netcat	0.7.1	[high] strings '0.7.1', 'Copyright (C) 2002 - 2003 Giovanni Giacobbi' (GNU netcat); BR2021 netcat.mk 0.7.1
+usr/bin/netstat-nat	netstat-nat	1.4.10	[high] strings '1.4.10'; BR2021 netstat-nat.mk 1.4.10
+usr/bin/ntp-keygen	ntp	4.2.8p15	[high] sibling ntpdate banner 'ntpdate 4.2.8p15@1.3728-o'; BR2021 ntp.mk 4.2.8p15 (built Jul 2026 per banner date; stock rebuilt)
+usr/bin/ntpdate	ntp	4.2.8p15	[high] strings 'ntpdate 4.2.8p15@1.3728-o Tue Jul 21 18:36:52 UTC 2026 (1)'
+usr/bin/ntpdc	ntp	4.2.8p15	[high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15
+usr/bin/ntpq	ntp	4.2.8p15	[high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15
+usr/bin/ntptime	ntp	4.2.8p15	[high] ntp suite binary (same build as ntpdate banner 4.2.8p15); BR2021 ntp.mk 4.2.8p15
+usr/bin/ogg123	vorbis-tools	1.4.2	[high] strings '1.4.2' + 'Usage: ogg123'; BR2021 vorbis-tools.mk 1.4.2
+usr/bin/oggdec	vorbis-tools	1.4.2	[high] strings '1.4.2' + 'Usage: oggdec'; BR2021 vorbis-tools.mk 1.4.2
+usr/bin/oggenc	vorbis-tools	1.4.2	[high] strings banner 1.4.2 + vorbis-tools; BR2021.02.4 vorbis-tools.mk 1.4.2
+usr/bin/ogginfo	vorbis-tools	1.4.2	[high] strings banner 1.4.2 + vorbis-tools; BR2021.02.4 vorbis-tools.mk 1.4.2
+usr/bin/parse-edid	read-edid	3.0.2	[medium] strings 'Header incorrect. Probably not an edid'; BR2021.02.4 read-edid.mk 3.0.2 (only package shipping parse-edid; version from .mk)
+usr/bin/pcregrep	pcre	8.44	[high] libpcre.so.1 strings '8.44 2020-02-12'; BR2021.02.4 pcre.mk 8.44
+usr/bin/pcretest	pcre	8.44	[high] links libpcre 8.44 (strings '8.44 2020-02-12' in libpcre.so.1); pcre.mk 8.44
+usr/bin/perl	perl	5.32.1	[high] strings v5.32.1 and /usr/lib/perl5/5.32.1/arm-linux; BR2021.02.4 perl.mk 5.32.1
+usr/bin/perlbug	perl	5.32.1	[high] perl core script (#!/usr/bin/perl); stock perl 5.32.1
+usr/bin/perldoc	perl	5.32.1	[high] perl core script; stock perl 5.32.1
+usr/bin/perlivp	perl	5.32.1	[high] perl core script; stock perl 5.32.1
+usr/bin/perlthanks	perl	5.32.1	[high] perl core script (same 45246-byte size as perlbug); stock perl 5.32.1
+usr/bin/piconv	perl	5.32.1	[high] perl core Encode script; stock perl 5.32.1
+usr/bin/pl2pm	perl	5.32.1	[high] perl core script; stock perl 5.32.1
+usr/bin/pod2html	perl	5.32.1	[high] perl core Pod::Html script; stock perl 5.32.1
+usr/bin/pod2man	perl	5.32.1	[high] perl core Pod::Man script; stock perl 5.32.1
+usr/bin/pod2text	perl	5.32.1	[high] perl core Pod::Text script; stock perl 5.32.1
+usr/bin/pod2usage	perl	5.32.1	[high] perl core Pod::Usage script; stock perl 5.32.1
+usr/bin/podchecker	perl	5.32.1	[high] perl core Pod::Checker script; stock perl 5.32.1
+usr/bin/poff	pppd	2.4.8	[high] #!/bin/sh poff script; BR2021.02.4 pppd.mk installs scripts/poff to /usr/bin; pppd.mk 2.4.8 (version from .mk)
+usr/bin/pon	pppd	2.4.8	[high] BR2021.02.4 pppd.mk installs scripts/pon to /usr/bin; pppd.mk 2.4.8 (version from .mk)
+usr/bin/prove	perl	5.32.1	[high] perl core Test::Harness script; stock perl 5.32.1
+usr/bin/ptar	perl	5.32.1	[high] perl core Archive::Tar script; stock perl 5.32.1
+usr/bin/ptardiff	perl	5.32.1	[high] perl core Archive::Tar script; stock perl 5.32.1
+usr/bin/ptargrep	perl	5.32.1	[high] perl core Archive::Tar script; stock perl 5.32.1
+usr/bin/python3.9	python3	3.9.6	[high] ELF launcher linked to libpython3.9.so; strings of libpython3.9.so '3.9.6'; python3.mk 3.9.6
+usr/bin/red	ed	1.16	[high] shell wrapper 'exec ed --restricted' shipped by GNU ed; stock /usr/bin/ed present; BR2021.02.4 ed.mk 1.16 (version from .mk)
+usr/bin/rst2html.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info; script header docutils tool
+usr/bin/rst2html4.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2html5.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2latex.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2man.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2odt.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2odt_prepstyles.py	python-docutils	0.15.2	[high] site-packages/docutils-0.15.2-py3.9.egg-info
+usr/bin/rst2pseudoxml.py	python-docutils	0.15.2	[high] stock site-packages docutils-0.15.2-py3.9.egg-info; BR2021 python-docutils.mk 0.15.2
+usr/bin/rst2s5.py	python-docutils	0.15.2	[high] docutils-0.15.2 egg-info in stock; docutils script header
+usr/bin/rst2xetex.py	python-docutils	0.15.2	[high] docutils-0.15.2 egg-info in stock
+usr/bin/rst2xml.py	python-docutils	0.15.2	[high] docutils-0.15.2 egg-info in stock
+usr/bin/rstpep2html.py	python-docutils	0.15.2	[high] docutils-0.15.2 egg-info in stock
+usr/bin/rtorrent	rtorrent	0.9.8	[high] strings: 'rTorrent 0.9.8', 'rtorrent/0.9.8/'; BR2021 rtorrent.mk 0.9.8
+usr/bin/rview	vim	8.2.0000	[high] symlink to vim; vim banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; BR2021 vim.mk 8.2.0000
+usr/bin/rvim	vim	8.2.0000	[high] symlink to vim; vim banner 8.2 (2019 Dec 12); BR2021 vim.mk 8.2.0000
+usr/bin/screen	screen	4.8.0	qemu-arm stock/usr/bin/screen -v: 'Screen version 4.08.00 (GNU) 05-Feb-20'; Buildroot 2021.02.4 has package/screen with SCREEN_VERSION=4.8.0; previously attributed to ncurses by basename match. Not present in ours.
+usr/bin/shasum	perl	5.32.1	[high] perl script (#!/usr/bin/perl, Digest::SHA util); BR2021 perl.mk 5.32.1
+usr/bin/slsh	slang	2.3.2	[medium] strings 'SLANG2.3.0' in slsh; BR2021 slang.mk 2.3.2 (strings shows 2.3.0 ABI tag only)
+usr/bin/smtpd.py.9	python3	3.9.6	[high] #!/usr/bin/python3.9 stdlib smtpd copy (Lib/smtpd.py); BR2021 python3.mk 3.9.6; stock has libpython3.9.so
+usr/bin/splain	perl	5.32.1	[high] perl script (diagnostics splain), #!/usr/bin/perl; perl 5.32.1 in BR2021 perl.mk and stock lib/perl5/5.32.1
+usr/bin/streamzip	perl	5.32.1	[high] perl script (IO::Compress streamzip); BR2021 perl.mk 5.32.1
+usr/bin/tickadj	ntp	4.2.8p15	[medium] ntp utility (tickadj); BR2021 ntp.mk 4.2.8p15; no useful banner in strings
+usr/bin/timidity	mister-custom:timidity wrapper shell script (launches fluidsynth)	unknown	[high] #!/bin/sh script with ctrl_c trap calling killall fluidsynth; dated 2019-06-20, not a Buildroot package; no version string
+usr/bin/unrar	unrar	5.9.4	[medium] BR2021 unrar.mk 5.9.4; strings show no version banner
+usr/bin/usbhid-dump	mister-custom:usbhid-dump prebuilt binary	1.4	strings: 'usbhid-dump 1.4' linked against libusb-1.0; BR 2021.02.4 usbutils.mk (013) does not install it and no usbhid-dump package exists in that tree. Ours gets it from usbutils 019 (packages-file-list).
+usr/bin/vcut	vorbis-tools	1.4.2	[high] strings 'vcut.c', usage 'vcut infile.ogg ...'; vorbiscomment sibling reports 'vorbis-tools 1.4.2'; BR2021 vorbis-tools.mk 1.4.2
+usr/bin/vgmplay	mister-custom:vgmplay (VGMPlay, prebuilt MiSTer addon, built 2019-06-12)	unknown	[high] strings 'VGMPlay %s, supports VGM %s', path 'C:/Work/Git/local/share/vgmplay/'; no version literal, not in Buildroot 2021.02.4
+usr/bin/vhd_mount	mister-custom:vhd_mount shell script (losetup/umount helper)	unknown	[high] 209-byte #!/bin/sh script using /dev/loop1p1, losetup; dated 2019-06-08, not a Buildroot package
+usr/bin/vi	vim	8.2.0000	[high] symlink vi -> vim; vim banner 'VIM - Vi IMproved 8.2 (2019 Dec 12)'; BR2021 vim.mk 8.2.0000
+usr/bin/view	vim	8.2.0000	[high] symlink view -> vim; vim 8.2 banner
+usr/bin/vim	vim	8.2.0000	[high] strings 'VIM - Vi IMproved 8.2 (2019 Dec 12)', built with buildroot-2021.02.4 gcc; BR2021 vim.mk 8.2.0000
+usr/bin/vimdiff	vim	8.2.0000	[high] symlink vimdiff -> vim; vim 8.2 banner
+usr/bin/vorbiscomment	vorbis-tools	1.4.2	[high] strings 'vorbiscomment from vorbis-tools 1.4.2'
+usr/bin/which	which	2.21	[high] strings 'GNU which v2.21, Copyright (C) 1999 - 2015 Carlo Wood.'; BR2021 which.mk 2.21
+usr/bin/xkbcli	libxkbcommon	1.0.3	[medium] links xkb_* API (libxkbcommon.so.0 in stock); BR2021 libxkbcommon.mk 1.0.3 (tool installed by that package)
+usr/bin/xmlwf	expat	2.4.1	[high] expat xmlwf tool; stock libexpat.so.1.8.1; BR2021 expat.mk 2.4.1
+usr/bin/xsubpp	perl	5.32.1	[high] perl script (ExtUtils::ParseXS xsubpp), #!/usr/bin/perl; BR2021 perl.mk 5.32.1
+usr/bin/xxd	vim	8.2.0000	[high] strings 'xxd V1.10 27oct98 by Juergen Weigert'; xxd is installed by Buildroot vim package (BR2021 vim.mk 8.2.0000)
+usr/bin/zipdetails	perl	5.32.1	[high] perl script (#!/usr/bin/perl), own $VERSION 1.11; stock perl5 dir 5.32.1; BR2021 perl.mk 5.32.1 installs zipdetails
+usr/bin/zsh	zsh	5.8	[high] strings: zsh-5.8-0-g77d203f; BR2021 zsh.mk 5.8
+usr/lib/libc-2.31.so	glibc	2.31	[high] strings: GNU C Library stable release version 2.31; BR2021 glibc.mk pins git 7630ed2f (2.33-era bump differs, banner says 2.31)
+usr/lib/libpthread-2.31.so	glibc	2.31	[high] filename libpthread-2.31.so, glibc 2.31 companion of libc-2.31.so
+usr/libexec/ctdb/smnotify	samba4	4.14.6	[medium] ctdb helper built by samba4; BR2021 samba4.mk 4.14.6; no banner string in binary
+usr/libexec/libinput/libinput-analyze-per-slot-delta	libinput	1.16.4	[medium] python3 tool installed by libinput; BR2021 libinput.mk 1.16.4 (sibling ELFs in same dir)
+usr/libexec/libinput/libinput-measure-fuzz	libinput	1.16.4	[medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4
+usr/libexec/libinput/libinput-measure-touch-size	libinput	1.16.4	[medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4
+usr/libexec/libinput/libinput-measure-touchpad-pressure	libinput	1.16.4	[medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4
+usr/libexec/libinput/libinput-measure-touchpad-size	libinput	1.16.4	[medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4
+usr/libexec/libinput/libinput-measure-touchpad-tap	libinput	1.16.4	[medium] python3 tool in libinput libexec dir; BR2021 libinput.mk 1.16.4
+usr/libexec/libinput/libinput-replay	libinput	1.16.4	[medium] python3 tool in libinput libexec dir (mtime Nov 2020 = source date); BR2021 libinput.mk 1.16.4
+usr/libexec/mc/fish/README.fish	mc	4.8.25	[medium] Midnight Commander FISH helper docs (mentions 'Since version 4.7.3'); BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/chmod	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/chown	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/info	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/ln	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/ls	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/mkdir	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/mv	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/rmdir	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/mc/fish/unlink	mc	4.8.25	[medium] mc FISH helper script; BR2021 mc.mk 4.8.25
+usr/libexec/sudo/sample_approval.so	sudo	1.9.5p2	[high] strings show 1.9.5p2; BR2021 sudo.mk 1.9.5p2
+usr/libexec/xkbcommon/xkbcli-compile-keymap	libxkbcommon	1.0.3	[high] links xkb_keymap_new_from_file; BR2021 libxkbcommon.mk 1.0.3 (stock libxkbcommon.so.0.0.0)
+usr/libexec/xkbcommon/xkbcli-how-to-type	libxkbcommon	1.0.3	[high] same libexec/xkbcommon dir as compile-keymap; BR2021 libxkbcommon.mk 1.0.3
+usr/libexec/xkbcommon/xkbcli-interactive-evdev	libxkbcommon	1.0.3	[high] same libexec/xkbcommon dir; BR2021 libxkbcommon.mk 1.0.3
+usr/sbin/alsaconf	alsa-utils	1.2.4	[high] bash script 'ALSA Configurator' (SuSE); BR2021 alsa-utils.mk 1.2.4 (.mk only)
+usr/sbin/btctl	mister-custom:btctl bluetooth pair/scan python script (Alexey Melnikov, 2021)	unknown	[high] header '(C) 2021 Alexey Melnikov', python dbus script; no version string
+usr/sbin/btpair	mister-custom:btpair wrapper script around btctl	unknown	[high] 252-byte bash script calling 'btctl pair'; no version
+usr/sbin/chat	pppd	2.4.8	[high] ppp chat utility built with pppd; BR2021 pppd.mk 2.4.8 (stock /usr/lib/pppd/2.4.8 present)
+usr/sbin/ctdbd_wrapper	samba4	4.14.6	[medium] ctdb wrapper script installed by samba4 (ctdb enabled in samba4.mk); BR2021 samba4.mk 4.14.6 (.mk only)
+usr/sbin/e2scrub	e2fsprogs	1.45.6	[high] Oracle e2scrub script; BR2021 e2fsprogs 1.45.6; e4defrag banner shows 1.45.6
+usr/sbin/e2scrub_all	e2fsprogs	1.45.6	[high] e2fsprogs scrub script; e4defrag banner 1.45.6
+usr/sbin/e4defrag	e2fsprogs	1.45.6	[high] strings: 1.45.6
+usr/sbin/fping	fping	5.0	[high] strings contain fping output formats; BR2021 fping.mk 5.0 (.mk only)
+usr/sbin/ftpasswd	proftpd	1.3.6e	[high] Perl script 'my $version = "1.3.0"' (ftpasswd tool version); shipped by proftpd; BR2021 proftpd.mk 1.3.6e
+usr/sbin/ifcfg	iproute2	5.7.0	[high] iproute2 ifcfg shell script; BR2021 iproute2 5.7.0 (.mk only)
+usr/sbin/iotop	iotop	0.6	[high] python stub 'import iotop.ui'; stock site-packages iotop-0.6-py3.9.egg-info
+usr/sbin/lshw	lshw	02.19.2	[medium] BR2021 lshw.mk 02.19.2 (B.02.19.2); binary has no clean version banner
+usr/sbin/midilink	mister-custom:MiSTer MidiLink addon binary (not a Buildroot package)	3.3 BB7	No midilink package in Buildroot 2021.02.4 package tree; stock binary built with Linaro GCC 7.5-2019.12 (MiSTer addon toolchain); banner 'MiSTer MidiLink 3.3 BB7'
+usr/sbin/mlinkutil	mister-custom:MiSTer MidiLink addon binary (not a Buildroot package)	3.3 BB7 (companion to midilink; no separate banner proven)	Same as midilink: no 2021.02.4 package; MiSTer addon file, same toolchain
+usr/sbin/mt32d	mister-custom:mt32d prebuilt (static munt mt32emu_alsadrv, GCC Ubuntu/Linaro 5.4.0 2019)	2.3.0	Buildroot 2021.02.4 package tree has no munt package; stock mt32d is a 108600-byte ELF with libmt32emu statically linked (no libmt32emu NEEDED), compiled with Ubuntu/Linaro GCC 5.4.0 (not the Buildroot toolchain), embedded version string 2.3.0.
+usr/sbin/pppd	pppd	2.4.8	[high] strings: 2.4.8 and /usr/lib/pppd/2.4.8
+usr/sbin/pppdump	pppd	2.4.8	[high] ppp tool; BR2021 pppd.mk 2.4.8
+usr/sbin/pppoe-discovery	pppd	2.4.8	[medium] strings 'Version 3.8p' = rp-pppoe plugin code bundled in ppp 2.4.8 pppd/plugins/rp-pppoe (not rp-pppoe 3.14 package)
+usr/sbin/pppstats	pppd	2.4.8	[high] ppp tool; BR2021 pppd.mk 2.4.8
+usr/sbin/raw	util-linux	2.36.2	qemu-arm raw -V: 'raw from util-linux 2.36.2'. Currently stock-only/unattributed in recon0.tsv; ours has no raw (dropped upstream).
+usr/sbin/rdisc	iputils	20210202	strings: "iputils" + "20210202"; stock ping -V "ping from iputils 20210202"; rdisc was removed from iputils upstream
+usr/sbin/routef	iproute2	5.7.0	[high] SPDX GPL-2.0 script 'exec ip -4 ro flush'; iproute2 routef; BR2021 5.7.0
+usr/sbin/rtpr	iproute2	5.7.0	[high] 70-byte script 'exec tr' iproute2 rtpr; BR2021 5.7.0
+usr/sbin/start-stop-daemon	start-stop-daemon	1.18.10	[high] strings 1.18.10; BR2021 start-stop-daemon.mk 1.18.10
+usr/sbin/uartmode	mister-custom:uartmode MidiLink UART mode switch script	unknown	[high] bash script killing fluidsynth/mpg123/mt32d (midilink); no version string
+usr/sbin/unix_update	linux-pam	1.5.1	[high] strings 'inappropriate use of Unix helper binary', unix_update; BR2021 linux-pam.mk 1.5.1 (.mk only)
+usr/sbin/vmode	mister-custom:vmode video mode switch script	unknown	[high] bash script (2019 mtime) parsing f/scale args; no version string
+usr/share/udhcpc/default.script	busybox	1.33.1	Buildroot busybox package installs udhcpc default.script (a script, not an applet)

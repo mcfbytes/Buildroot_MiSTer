@@ -44,23 +44,20 @@
 # CONFIG_UMOUNT is not set
 # CONFIG_CHRT is not set
 
-# T5 -- nine coreutils-style applets BusyBox 1.38.0 offers but this image had
-# left off. Ten Kconfig symbols for nine commands: `netcat` is an alias name
-# for the ninth (`nc`) rather than a tenth applet -- see the nc paragraph
-# below. Verified, not assumed: output/build/busybox-1.38.0/.config had every
-# one of the ten as "# CONFIG_X is not set" before this fragment touched it
-# (re-checked 2026-07-27, including CONFIG_NETCAT). EIGHT of
-# the nine are a true 1:1 reproduction: stock ships them as GNU coreutils --
-# work/imgroot's usr/bin/{stat,timeout,tac,shuf,comm,split,expand,groups} are
-# all symlinks -> coreutils -- and BusyBox's applets take the same names at the
-# same paths, so a script that ran on stock runs here.
-# `stat` and `timeout` matter most in practice: `timeout N cmd` and
-# `stat -c '%s' file` are common in ordinary shell scripts, so a MiSTer script
-# that runs fine on stock currently fails outright on this image.
+# T5 -- `nc` (and its `netcat` alias) is a DELIBERATE SUBSTITUTION, not a
+# reproduction, and it is the only part of T5 that still stands. Do not let a
+# "stock ships these nine tools" shorthand elsewhere in this repo mislead:
+# the other eight names this block used to add -- stat, timeout, tac, shuf,
+# comm, split, expand, groups -- are NOT BusyBox applets here any more. GNU
+# coreutils now owns those paths on this image exactly as it does on stock,
+# and every coreutils applet, those eight included, is disabled in the "GNU
+# coreutils owns these paths" block below (see also
+# docs/package-manifest.md §4f). `timeout N cmd` and `stat -c '%s' file` are
+# answered by the real GNU binaries, so no feature-symbol tuning is needed or
+# wanted here.
 #
-# `nc` is the ONE exception and is a DELIBERATE SUBSTITUTION, not a
-# reproduction. Do not let the "stock ships all nine" shorthand elsewhere in
-# this repo mislead: stock's provider is a SEPARATE GNU TOOL, not BusyBox.
+# stock's provider for `nc` is a SEPARATE GNU TOOL, not BusyBox. Do not let the
+# "stock ships all nine" shorthand elsewhere in this repo mislead either.
 # work/imgroot/usr/bin/netcat is a 34376-byte ARM ELF whose strings include
 # "GNU netcat %s, a rewrite of the famous networking tool." and "netcat (The
 # GNU Netcat) %s" -- i.e. GNU Netcat, exactly what Buildroot's own
@@ -88,38 +85,199 @@
 # DEALLOCVT,OPENVT,SETKEYCODES} block below) -- confirmed by grepping this
 # file's own defconfig for both symbols, neither is present.
 #
-# Two of the nine gate real functionality behind their OWN sub-feature symbol,
-# and the base config (package/busybox/busybox.config) pins each of those
-# EXPLICITLY off -- not merely silent-by-default. An explicit "is not set" is
-# a recorded choice that Kconfig's oldconfig/olddefconfig NEVER overrides with
-# a symbol's own "default y" (it only fills in symbols that have no prior
-# state at all) -- so turning STAT/SPLIT/NC on by themselves, without also
-# turning these on, would silently ship crippled versions of all three:
-#   - stat: FEATURE_STAT_FORMAT gates `-c FORMAT` and FEATURE_STAT_FILESYSTEM
-#     gates `-f`. Without the first, `stat -c '%s' file` -- the single most
-#     common scripted use of stat -- fails with "invalid option -- c".
-#   - split: FEATURE_SPLIT_FANCY gates the 'k'/'m'/'g' suffixes on -b.
+# `nc` gates real functionality behind its OWN sub-feature symbols, and the
+# base config (package/busybox/busybox.config) pins each of them EXPLICITLY
+# off -- not merely silent-by-default. An explicit "is not set" is a recorded
+# choice that Kconfig's oldconfig/olddefconfig NEVER overrides with a symbol's
+# own "default y" (it only fills in symbols that have no prior state at all),
+# so turning NC on by itself, without also turning these on, would silently
+# ship a crippled netcat:
 #   - nc: NC_SERVER gates `-l` (listen/server mode), NC_EXTRA gates
 #     `-e`/`-i`/`-w`, and NC_110_COMPAT gates `-s`/`-n`/`-u`/`-v`/`-z` --
 #     i.e. UDP mode and verbose output. All THREE were off in the base
 #     config; a netcat that can neither listen nor speak UDP is not much of
 #     a netcat for on-device debugging, so all three are turned on below.
-CONFIG_STAT=y
-CONFIG_FEATURE_STAT_FORMAT=y
-CONFIG_FEATURE_STAT_FILESYSTEM=y
-CONFIG_TIMEOUT=y
-CONFIG_TAC=y
-CONFIG_SHUF=y
-CONFIG_COMM=y
-CONFIG_SPLIT=y
-CONFIG_FEATURE_SPLIT_FANCY=y
-CONFIG_EXPAND=y
-CONFIG_GROUPS=y
 CONFIG_NC=y
 CONFIG_NETCAT=y
 CONFIG_NC_SERVER=y
 CONFIG_NC_EXTRA=y
 CONFIG_NC_110_COMPAT=y
+
+# ---------------------------------------------------------------------------
+# GNU coreutils owns these paths (stock binary parity Tier 1 -- issue #279
+# follow-up, 2026-10-31). Stock ships GNU coreutils 8.32: in the extracted
+# 20260907 stock image (docs/stock-inventory/20260907), usr/bin/{stat,timeout,
+# tac,shuf,comm,split,expand,groups,...} are symlinks to the usr/bin/coreutils
+# multicall binary, and so are the other 76 names below.
+# package/mister-userspace/Config.in now selects BR2_PACKAGE_COREUTILS, which
+# installs that multicall binary plus one symlink per applet at the same
+# usr/bin paths BusyBox's applets claim. Two owners of one path is the
+# non-deterministic "last install wins" race this fragment exists to prevent,
+# so every BusyBox applet with a GNU coreutils counterpart is turned off here;
+# same idiom as the ifupdown, util-linux, wget and tar blocks.
+# 84 symbols for 85 applet names: CONFIG_TEST covers BOTH `test` and its `[`
+# alias applet (BusyBox declares `[` as an alias of test), so it is listed
+# once. pr, join, stdbuf, users and vdir have no BusyBox applet at all, so
+# there is nothing to disable -- they simply arrive with the package.
+# `kill` is deliberately absent from this list: GNU coreutils builds one too,
+# so ownership is not single-valued, and coreutils exposes no kill toggle to
+# turn off. Stock's provider is util-linux, which is why the util-linux block
+# above disables CONFIG_KILL. Also handled elsewhere: ping/ping6/arping
+# (iputils, below).
+# CONFIG_TEST is not set
+# CONFIG_BASE32 is not set
+# CONFIG_BASE64 is not set
+# CONFIG_BASENAME is not set
+# CONFIG_CAT is not set
+# CONFIG_CHGRP is not set
+# CONFIG_CHMOD is not set
+# CONFIG_CHOWN is not set
+# CONFIG_CKSUM is not set
+# CONFIG_COMM is not set
+# CONFIG_CP is not set
+# CONFIG_CUT is not set
+# CONFIG_DATE is not set
+# CONFIG_DD is not set
+# CONFIG_DF is not set
+# CONFIG_DIRNAME is not set
+# CONFIG_DU is not set
+# CONFIG_ECHO is not set
+# CONFIG_ENV is not set
+# CONFIG_EXPAND is not set
+# CONFIG_EXPR is not set
+# CONFIG_FACTOR is not set
+# CONFIG_FALSE is not set
+# CONFIG_FOLD is not set
+# CONFIG_GROUPS is not set
+# CONFIG_HEAD is not set
+# CONFIG_HOSTID is not set
+# CONFIG_ID is not set
+# CONFIG_INSTALL is not set
+# CONFIG_LINK is not set
+# CONFIG_LN is not set
+# CONFIG_LOGNAME is not set
+# CONFIG_LS is not set
+# CONFIG_MD5SUM is not set
+# CONFIG_MKDIR is not set
+# CONFIG_MKFIFO is not set
+# CONFIG_MKNOD is not set
+# CONFIG_MKTEMP is not set
+# CONFIG_MV is not set
+# CONFIG_NICE is not set
+# CONFIG_NL is not set
+# CONFIG_NOHUP is not set
+# CONFIG_NPROC is not set
+# CONFIG_OD is not set
+# CONFIG_PASTE is not set
+# CONFIG_PRINTENV is not set
+# CONFIG_PRINTF is not set
+# CONFIG_PWD is not set
+# CONFIG_READLINK is not set
+# CONFIG_REALPATH is not set
+# CONFIG_RM is not set
+# CONFIG_RMDIR is not set
+# CONFIG_SEQ is not set
+# CONFIG_SHA1SUM is not set
+# CONFIG_SHA256SUM is not set
+# CONFIG_SHA384SUM is not set
+# CONFIG_SHA512SUM is not set
+# CONFIG_SHRED is not set
+# CONFIG_SHUF is not set
+# CONFIG_SLEEP is not set
+# CONFIG_SORT is not set
+# CONFIG_SPLIT is not set
+# CONFIG_STAT is not set
+# CONFIG_STTY is not set
+# CONFIG_SYNC is not set
+# CONFIG_TAC is not set
+# CONFIG_TAIL is not set
+# CONFIG_TEE is not set
+# CONFIG_TIMEOUT is not set
+# CONFIG_TOUCH is not set
+# CONFIG_TR is not set
+# CONFIG_TRUE is not set
+# CONFIG_TRUNCATE is not set
+# CONFIG_TSORT is not set
+# CONFIG_TTY is not set
+# CONFIG_UNAME is not set
+# CONFIG_UNIQ is not set
+# CONFIG_UNLINK is not set
+# CONFIG_UPTIME is not set
+# CONFIG_WC is not set
+# CONFIG_WHO is not set
+# CONFIG_WHOAMI is not set
+# CONFIG_YES is not set
+# CONFIG_CHROOT is not set
+
+# ---------------------------------------------------------------------------
+# Remaining stock-binary collisions (Tier 1). Same "two packages install the
+# same path, last one wins" hazard as the coreutils block above; each group
+# names the package that now owns the path and the stock provider it matches,
+# verified against the extracted 20260907 stock image
+# (docs/stock-inventory/20260907).
+#
+# gzip 1.14 (BR2_PACKAGE_GZIP): stock usr/bin/gzip is gzip's own ELF, while
+# usr/bin/gunzip and usr/bin/zcat are /bin/sh wrapper scripts that exec it;
+# its 11 helper names (gzexe, zgrep, ...) come with the package. BusyBox's
+# three applets claim the same filenames.
+# CONFIG_GZIP is not set
+# CONFIG_GUNZIP is not set
+# CONFIG_ZCAT is not set
+#
+# less 704 (BR2_PACKAGE_LESS): stock usr/bin/less is the real less; BusyBox's
+# LESS applet is a different pager with a different option set (and ignores
+# lesskey), so it must not win the path.
+# CONFIG_LESS is not set
+#
+# findutils 4.10 (BR2_PACKAGE_FINDUTILS): stock usr/bin/{find,xargs} are GNU
+# findutils, whose -printf/-newerXY and xargs -0/-P behaviour scripts rely on;
+# BusyBox's FIND/XARGS are cut-down reimplementations.
+# CONFIG_FIND is not set
+# CONFIG_XARGS is not set
+#
+# net-tools 2.10 (BR2_PACKAGE_NET_TOOLS): stock's ifconfig, netstat, route,
+# arp and nameif are the real net-tools ELFs; BusyBox's IFCONFIG/NETSTAT/
+# ROUTE/ARP/NAMEIF applets would occupy the same names with fewer options.
+# CONFIG_IFCONFIG is not set
+# CONFIG_NETSTAT is not set
+# CONFIG_ROUTE is not set
+# CONFIG_ARP is not set
+# CONFIG_NAMEIF is not set
+#
+# iputils 20250605 (BR2_PACKAGE_IPUTILS + _PING/_ARPING): stock ships iputils'
+# ping and arping. CONFIG_PING6 is disabled in the IPv6 block below, beside
+# TRACEROUTE6, since the provider is the same package.
+# CONFIG_PING is not set
+# CONFIG_ARPING is not set
+#
+# unzip 6.0 (BR2_PACKAGE_UNZIP): stock usr/bin/unzip is Info-ZIP unzip;
+# BusyBox's UNZIP applet lacks its option set and zipfile coverage.
+# CONFIG_UNZIP is not set
+#
+# dos2unix 7.5.5 (BR2_PACKAGE_DOS2UNIX): stock usr/bin/{dos2unix,unix2dos} are
+# the real package; BusyBox's DOS2UNIX is a much smaller converter.
+# CONFIG_DOS2UNIX is not set
+#
+# mkpasswd from whois 5.6 (BR2_PACKAGE_WHOIS): stock usr/bin/mkpasswd is
+# whois' crypt(3) helper; BusyBox's applet has different flags and hashes.
+# CONFIG_MKPASSWD is not set
+#
+# ncurses 6.x (BR2_PACKAGE_NCURSES_TARGET_PROGS): stock usr/bin/{clear,reset}
+# are ncurses' (reset is its tset-side counterpart); BusyBox's CLEAR/RESET
+# only emit a terminfo-derived escape sequence.
+# CONFIG_CLEAR is not set
+# CONFIG_RESET is not set
+#
+# util-linux (BR2_PACKAGE_UTIL_LINUX_BINARIES + the matching toggles): these
+# five were left ON by the util-linux block above because they had no
+# util-linux equivalent in this Buildroot at the time; they do now, and stock
+# usr/sbin/fsck plus usr/bin/{lsblk,uuidgen,linux32,linux64} are util-linux
+# ELFs. Updated together with docs/util-linux-parity.md.
+# CONFIG_FSCK is not set
+# CONFIG_LSBLK is not set
+# CONFIG_UUIDGEN is not set
+# CONFIG_LINUX32 is not set
+# CONFIG_LINUX64 is not set
 
 # T5 -- turn OFF seven BusyBox applets that collide with real packages T5 adds
 # to the defconfig (docs/package-manifest.md §4c). Same non-deterministic
@@ -249,9 +407,16 @@ CONFIG_NC_110_COMPAT=y
 # scripts use, is answered by a strictly more capable binary.
 # CONFIG_WGET is not set
 
-# ping6/traceroute6 for IPv6 (issue #188); `ping -6` alone misses the names forum advice uses.
+# IPv6 names (issue #188). iputils 20250605 now provides `ping6` (selected as
+# BR2_PACKAGE_IPUTILS_PING in package/mister-userspace/Config.in, and iputils
+# installs usr/bin/ping6), so the BusyBox applet is off rather than winning the
+# path by install order; `ping` itself is off in the iputils block above.
+# TRACEROUTE6 stays BusyBox on purpose: iputils 20250605 ships no traceroute6
+# (its traceroute tools were removed years ago), so BusyBox is the only
+# provider here and `traceroute6` keeps working. `ping -6` alone would miss
+# the plain `ping6` name forum advice uses.
 # FEATURE_IFUPDOWN_IPV6 stays off: BusyBox ifup is disabled above, the ifupdown package does inet6.
-CONFIG_PING6=y
+# CONFIG_PING6 is not set
 CONFIG_TRACEROUTE6=y
 
 # BusyBox tar gzip support (issue #279). Do NOT "fix" this by enabling

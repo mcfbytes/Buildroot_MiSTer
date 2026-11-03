@@ -1,0 +1,33 @@
+From: David Timber <dxdt@dev.snart.me>
+Date: Fri, 24 Apr 2026 14:56:41 +0900
+Subject: [PATCH] mkfs: fix incorrect default cluster size selection due to
+ overflow
+
+An integer overflow condition in exfat_set_default_cluster_size()
+caused the default cluster size for the volume incorrectly selected on
+32-bit machines.
+
+Fixes: #347
+Signed-off-by: David Timber <dxdt@dev.snart.me>
+Signed-off-by: Namjae Jeon <linkinjeon@kernel.org>
+Upstream: https://github.com/exfatprogs/exfatprogs/commit/3dcda41f774ab69ba2f5ba81da2cc446c3dd5f79
+---
+ lib/libexfat.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/libexfat.c b/lib/libexfat.c
+index 5a69cb65..86edaff1 100644
+--- a/lib/libexfat.c
++++ b/lib/libexfat.c
+@@ -128,9 +128,9 @@ static inline unsigned int sector_size_bits(unsigned int size)
+ static void exfat_set_default_cluster_size(struct exfat_blk_dev *bd,
+ 		struct exfat_user_input *ui)
+ {
+-	if (256 * MB >= bd->size)
++	if (256ULL * MB >= bd->size)
+ 		ui->cluster_size = 4 * KB;
+-	else if (32 * GB >= bd->size)
++	else if (32ULL * GB >= bd->size)
+ 		ui->cluster_size = 32 * KB;
+ 	else
+ 		ui->cluster_size = 128 * KB;

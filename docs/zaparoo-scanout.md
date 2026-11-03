@@ -18,8 +18,18 @@ write-combined RGB565 framebuffer slots, each large enough for 1920x1080:
 Both slots sit above the `MiSTer_fb` device-tree aperture (`0x22000000`,
 8 MiB) and above the `mem=511M` boundary, so Linux never manages that memory.
 The ioctl `ZAPAROO_SCANOUT_GET_LAYOUT` (`_IOR('Z', 1, ...)`) returns a 64-byte
-layout struct (ABI v1); the header is `kernel/scanout-slots/zaparoo_scanout_uapi.h`
-in the source tree. The module sends no FPGA commands and owns no DMA or IRQ.
+layout struct; the header is `kernel/scanout-slots/zaparoo_scanout_uapi.h` in the
+source tree.
+
+Since upstream commit `a1fdb653` (layout v2) the owner can also map the Menu
+core's native video window at `0x3A000000` (3 MiB: one uncached control page,
+then write-combined pixels), reserved on first map rather than at open. The
+ioctl `ZAPAROO_SCANOUT_WAIT_NATIVE_VBLANK` waits up to 50 ms for the core's
+`video_sync` pulse on GIC SPI 41 (`f2h_irq1`, next to `MiSTer_fb`'s SPI 40).
+The interrupt is requested on the first wait and freed when the file is
+released. Nothing else in the regular kernel's device tree uses SPI 41, and the
+RT beta series keeps it free on purpose (`linux-patches-beta/0043`). The module
+sends no FPGA commands and owns no DMA.
 
 It is **not autoloaded**: there is no modalias, so the client loads it with
 `modprobe zaparoo_scanout`.
@@ -39,12 +49,26 @@ It is **not autoloaded**: there is no modalias, so the client loads it with
 
 ## 3. Local patch
 
-`0001-zaparoo_scanout-drop-the-hard-coded-kernel-release-check.patch` removes
+`0001-zaparoo_scanout-accept-any-6.18-point-release.patch` replaces
 `validate_platform()`'s comparison of `utsname()->release` against the literal
-`"6.18.38-MiSTer"`. Without it the module returns `-ENODEV` on every other
-kernel, including the one it was built for. Vermagic already binds the `.ko`
-to its kernel. The machine-compatible (`altr,socfpga-cyclone5`) and
-`MiSTer_fb` `reg` checks stay, and they are what keep the module DE10-only.
+`"6.18.38-MiSTer"` with a check for the `6.18.` series. Without it the module
+returns `-ENODEV` on every kernel except stock's, including the one it was
+built for. The machine-compatible (`altr,socfpga-cyclone5`) and `MiSTer_fb`
+`reg` checks stay, and they are what keep the module DE10-only.
+
+This deviates from upstream's own policy, which qualifies exactly one stock
+kernel build and asks that the module not be loaded on any other. The patch
+keeps a fail-closed gate at the series boundary rather than dropping it:
+
+- Vermagic already binds the `.ko` to the kernel it was compiled against, and
+  Buildroot rebuilds it on every kernel bump.
+- The one kernel-internal assumption the source documents is that the 6.18
+  `mmap` path calls the driver before inserting the new VMA. That is mm-core
+  behaviour; a longterm point release does not change it, but a series move
+  could. A 7.x kernel therefore gets `-ENODEV` until this patch is revisited.
+- The module is never autoloaded, so nothing loads it unless a client asks.
+
+A 6.18 point release has not been hardware-tested with the module.
 
 The `kernel_revision` modinfo field still names the upstream kernel commit
 the source was written against; it does not describe this image's kernel.
@@ -57,8 +81,11 @@ Hash-sync refreshes only the tarball line, so a bump that edits that header
 needs its hash line updated by hand (`make zaparoo-scanout-legal-info` fails
 on the stale line).
 
-The module declares `MODULE_LICENSE("Proprietary")`, so loading it sets the
-kernel's `P` taint flag and the module can link only non-GPL-only exports.
+Since `a1fdb653` the module declares `MODULE_LICENSE("GPL")` (it was
+`"Proprietary"` before), because the vertical-sync wait needs GPL-only IRQ
+exports. Loading it no longer sets the `P` taint flag; it still sets `O`
+(out-of-tree). The source licence is unchanged; GPL-3.0-or-later is not
+GPL-2.0-compatible, which is upstream's licensing question, not a build one.
 
 ## 5. Scope
 

@@ -5,12 +5,13 @@ config BR2_PACKAGE_ZAPAROO_SCANOUT
 	help
 	  Zaparoo's zaparoo_scanout kernel module: /dev/zaparoo-scanout
 	  hands one owner two write-combined 1080p RGB565 framebuffer
-	  slots above the MiSTer_fb aperture, for vblank-latched page
-	  flips. Cyclone V (DE10-Nano) only; the module refuses to load
-	  on any other machine. Not autoloaded.
+	  slots above the MiSTer_fb aperture, plus the Menu core's
+	  native video window and a wait on its vertical-sync interrupt.
+	  Cyclone V (DE10-Nano) with a 6.18 kernel only; the module
+	  refuses to load anywhere else. Not autoloaded.
 
-	  The module declares MODULE_LICENSE("Proprietary") because its
-	  source is GPL-3.0-or-later, so loading it taints the kernel.
+	  The source is GPL-3.0-or-later; the module declares
+	  MODULE_LICENSE("GPL").
 
 	  https://github.com/ZaparooProject/Menu_MiSTer/tree/master/kernel/scanout-slots
 

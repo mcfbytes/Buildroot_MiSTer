@@ -246,7 +246,8 @@ main() {
 
 	# p2 head == uboot.img byte-for-byte.
 	local ubsz; ubsz=$(stat -c %s "$UBOOT_REF")
-	dd if="$DISK" bs=512 skip="$p2_start" count=$(( ubsz / 512 + 1 )) 2>/dev/null | head -c "$ubsz" > "$WORK/p2head.bin"
+	# Exact length: a `| head -c` here SIGPIPEd dd and killed the run under pipefail.
+	dd if="$DISK" of="$WORK/p2head.bin" bs=512 skip="$p2_start" count="$ubsz" iflag=count_bytes 2>/dev/null
 	if cmp -s "$WORK/p2head.bin" "$UBOOT_REF"; then pass "p2 head == uboot.img ($ubsz bytes)"; else fail "p2 head != uboot.img"; fi
 
 	# p1 exFAT signature.

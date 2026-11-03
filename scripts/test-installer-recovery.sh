@@ -325,8 +325,8 @@ assert_bootloader_present() {
 	p2_start=$(printf '%s\n' "$dump" | sed -n '/img2 /s/.*start=[[:space:]]*\([0-9]*\).*/\1/p')
 	if [ -z "$p2_start" ]; then fail "$1 (no second partition in the table)"; return; fi
 	ubsz=$(stat -c %s "$UBOOT_REF")
-	dd if="$DISK" bs=512 skip="$p2_start" count=$(( ubsz / 512 + 1 )) 2>/dev/null |
-		head -c "$ubsz" > "$WORK/p2head.bin"
+	# Exact length: a `| head -c` here SIGPIPEd dd and killed the run under pipefail.
+	dd if="$DISK" of="$WORK/p2head.bin" bs=512 skip="$p2_start" count="$ubsz" iflag=count_bytes 2>/dev/null
 	if cmp -s "$WORK/p2head.bin" "$UBOOT_REF"; then pass "$1"; else fail "$1 (0xA2 head != uboot.img)"; fi
 }
 

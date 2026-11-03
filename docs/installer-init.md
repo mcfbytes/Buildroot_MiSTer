@@ -107,8 +107,9 @@ keep `SPLASH_TOTAL` equal to the highest `splash_step` call
    the flag, unchanged ([layout](#partition-layout)); re-read it, check the kernel sees
    exactly that, and compare `p2`'s head with `uboot.img` again through the new node.
    There is no instant at which the MBR points the BootROM at an empty `p2`.
-6. `mkfs.exfat -n MiSTer_Data` the new `p1` and mount it `-t exfat` (in-kernel driver,
-   ADR 0019 — no FUSE, unlike mr-fusion).
+6. `mkfs.exfat -n MiSTer_Data -b <AU> --pack-bitmap` the new `p1`
+   ([geometry](#exfat-geometry)) and mount it `-t exfat` (in-kernel driver, ADR 0019 —
+   no FUSE, unlike mr-fusion).
 7. Write the [install token](#card-states), the kernel and `menu.rbf` onto the fresh `p1`
    before any payload byte — from this instant a power cut boots straight back into the
    installer (the flag is still armed) rather than into nothing.
@@ -258,6 +259,33 @@ All three numbers are computed explicitly. mr-fusion's empty-field form
 (`; size; 07` / `; ; a2`) let `sfdisk` auto-place `p1` at LBA 2048 and gave `p2` "the
 rest" — `RESERVED_SECTORS` *minus* the 2048-sector start offset (6144 sectors), so the
 boot partition came out 3 MiB instead of 4 and drifted with `p1`'s alignment.
+
+### exFAT geometry
+
+An SD card erases and rewrites flash in allocation units (AUs, 4 MiB on most cards,
+up to 64 MiB on large SDXC), which it reports in its SD Status register; Linux exposes
+that as `/sys/block/<disk>/device/preferred_erase_size`. exfatprogs' `mkfs.exfat`
+reads `p1`'s start from sysfs and aligns the FAT and the cluster heap to *absolute*
+multiples of `-b` (default 1 MiB). The installer passes the card's AU as `-b`, so the FAT
+starts on an AU boundary and the cluster heap on the next one after it. `--pack-bitmap`
+moves the allocation bitmap into the slack at the end of the FAT's last AU. The
+metadata that every small write updates (FAT, bitmap) then never shares an AU with file
+data. On the test rig's 256 GB card (AU 4 MiB) that puts the FAT at 4–11.5 MiB, the
+bitmap at 11.75 MiB and the rest of the heap at 12 MiB; the 1 MiB default had the FAT at
+2 MiB and the heap at 10 MiB, half-way through an AU.
+
+The value is used only if it is a power of two from 1 MiB to 64 MiB (the SD spec's
+largest AU); alignment costs at most about two AUs of space, ~128 MiB on a card large
+enough to report 64 MiB. Anything else (no such file, as on QEMU's virtio disk, or a
+nonsense value) falls back to 4 MiB, the common SDHC/SDXC AU. `p1` itself stays at LBA 2048:
+`mkfs.exfat` aligns absolute offsets, so moving the partition start would gain
+nothing, and LBA 2048 is fixed by the [flag](#the-flag) gap and `genimage-sdcard.cfg`.
+The cluster size is left at exfatprogs' default (128 KiB above 32 GiB, 32 KiB up to
+it), which is what the SD Association's file-system spec prescribes for SDXC; measured on
+the rig's 42,788 files that costs 3.9 GiB of slack against 0.9 GiB at 32 KiB. exfatprogs
+1.2.9 computes `32 * GB` in a 32-bit `unsigned long` on ARM, which wraps to 0, so it gave
+*every* card over 256 MiB 128 KiB clusters; `board/mister/de10nano/patches/{exfatprogs,mister-initramfs-exfatprogs}/0001-*`
+backport the upstream fix (3dcda41f774a, first released after 1.2.9) until the pin moves past it.
 
 ### RAM budget
 

@@ -961,8 +961,15 @@ stop_after bootloader
 # --------------------------------------------------- mkfs.exfat on new p1 (6)
 splash_step 6 "formatting (exFAT)"
 stage="formatting $P1 as exFAT"
+# FAT and cluster heap on the card's AU boundaries (docs/installer-init.md#exfat-geometry).
+card_au="$(cat "/sys/block/$disk_name/device/preferred_erase_size" 2>/dev/null)" || card_au=""
+case "$card_au" in
+1048576|2097152|4194304|8388608|16777216|33554432|67108864) au="$card_au" ;;
+*) au=4194304 ;;
+esac
+log "exFAT aligned to $((au / 1048576)) MiB (card reports AU '${card_au:-none}')"
 require_armed "format $P1"
-"$MKFS_EXFAT" -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
+"$MKFS_EXFAT" -n "$DATA_LABEL" -b "$au" --pack-bitmap "$P1" || rescue "mkfs.exfat on $P1 failed"
 sync
 
 stage="mounting the new data partition"

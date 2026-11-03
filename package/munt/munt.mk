@@ -26,7 +26,7 @@
 # -lX11/-lXt/-lXpm, and this package deliberately never builds it: this is a
 # headless embedded image with no X11 stack, and MidiLink's "MUNT" uartmode
 # (see midilink.mk) only ever shells out to "mt32d", never "xmt32".
-MUNT_VERSION = munt_2_8_2
+MUNT_VERSION = munt_2_8_3
 # Tag munt_2_8_2 resolves to commit 3b05ec276f9e605af86b0eaef7f5eda43477a31f
 # (checked at pin time, 2026-07-13, via `gh api repos/munt/munt/git/refs/tags/munt_2_8_2`).
 MUNT_SITE = $(call github,munt,munt,$(MUNT_VERSION))

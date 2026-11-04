@@ -128,27 +128,31 @@ if something else ever needs mono.
   `mister-sinden-lightgun hotplug` when a gun's camera appears and on any v4l
   removal. That detaches at once (udev waits on `RUN`'s stdio) and, 2 s
   later, *reconciles*. The driver runs while at least one gun is present, and
-  restarts when the gun count changes, because it enumerates guns only at
-  startup. One instance handles two guns. Guns present at boot are covered by
+  restarts when the guns' device nodes change (a gun added, removed or
+  replugged), because it enumerates guns only at startup. One instance handles two guns. Guns present at boot are covered by
   the coldplug `add` events; `/media/fat` is mounted by the initramfs before
   udev starts.
-- **CPU0:** the driver runs under `taskset -c 0`. Main_MiSTer pins itself to
-  CPU1 (`main.cpp:42-48`, [abi-contract](abi-contract.md)), and the driver must
-  not compete with it.
+- **Jail:** the driver runs in a minijail as uid 8428 with no capabilities, no network
+  and only its own directory of the card in view, read-only. Its `/dev` holds just the
+  guns' camera and serial nodes. The design and the fallback are in
+  [docs/minijail.md](minijail.md) "Sinden Lightgun driver". If the jail cannot be built,
+  or `/media/fat/linux/sinden.nojail` exists, it starts unjailed, as root, and says so in
+  syslog and its log.
+- **CPU0:** the starting shell is pinned to CPU0 and the driver inherits it.
+  Main_MiSTer pins itself to CPU1 (`main.cpp:42-48`, [abi-contract](abi-contract.md)),
+  and the driver must not compete with it.
 - **Logs:** `/var/log/sinden-lightgun.log`, replaced on each start because
-  `/var/log` is RAM. `mister-sinden-lightgun status`
-  shows the install, gun count, PID and affinity.
-
+  `/var/log` is RAM. `mister-sinden-lightgun status` shows the install, gun count,
+  PID, whether it is jailed, and affinity.
 - **Uninstall:** `mister-sinden-lightgun uninstall` removes
   `/media/fat/linux/sinden/`. `uninstall.sh --remove-script` does the same
   when going back to stock.
-- **Locking:** every state change runs under `flock` on
-  `/run/sinden-lightgun.lock`. The driver is started with that fd closed. If
-  it inherited the lock, the next udev event would block until the driver
-  exited.
+- **Locking:** every state change runs under the jail helper's lock,
+  `/run/sinden-lightgun.lock`, which the driver never inherits. If it did, the next
+  udev event would block until the driver exited.
 
-The driver shells out to `sh -c "udevadm info ... | grep ..."` and `ls` to find
-guns. All of those are on the image.
+At startup the driver runs `lsusb` (twice) and `cat /proc/cpuinfo` to find guns
+(traced in qemu, 2026-11-04). All of those are on the image and in the jail's view.
 
 ## 6. What is verified, and what is not
 
@@ -169,7 +173,8 @@ Verified on the build host (qemu-arm, `unshare -r chroot` into `rootfs.tar`):
 
 **Not verified:** anything with a real gun. That includes the hotplug rule
 firing, `uvcvideo` streaming the gun's MJPEG, whether `mediumresource` keeps up
-on the Cortex-A9, and aim accuracy. No one on the project owns a gun.
+on the Cortex-A9, aim accuracy, and whether the jail gives the driver
+everything it needs once a camera is streaming. No one on the project owns a gun.
 
 ## 7. The border is a separate problem
 

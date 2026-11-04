@@ -1,6 +1,6 @@
 #!/bin/sh
-# Sinden Lightgun support: fetch Sinden's Linux driver onto the card and run it
-# while a gun is plugged in. See docs/sinden-lightgun.md.
+# Sinden Lightgun support: fetch Sinden's Linux driver onto the card and run it,
+# in a minijail, while a gun is plugged in. See docs/sinden-lightgun.md.
 
 ZIP_URL="https://www.sindenlightgun.com/software/SindenLightgunSoftwareReleaseV2.08b.zip"
 ZIP_SHA256="60261a5a913c80d7a409336a5bc591272ac64ed7351fc6a726e8bd35fd7a8db5"
@@ -10,10 +10,23 @@ ZIP_LICENSE="SindenLightgunSoftwareReleaseV2.08b/SindenLightgunLinuxSoftwareV2.0
 DIR="/media/fat/linux/sinden"
 ARGS_FILE="$DIR/args"
 DEFAULT_ARGS="joystick mediumresource"
-PIDFILE="/run/sinden-lightgun.pid"
 GUNSFILE="/run/sinden-lightgun.guns"
-LOCK="/run/sinden-lightgun.lock"
 LOG="/var/log/sinden-lightgun.log"
+DEVDIR=/dev/sinden-lightgun
+# Its presence starts the driver unjailed, as root, as before the jail.
+NOJAIL=/media/fat/linux/sinden.nojail
+
+# shellcheck source=SCRIPTDIR/../../board/mister/de10nano/rootfs-overlay/usr/lib/mister/jail.sh
+. /usr/lib/mister/jail.sh
+JAIL_NAME=sinden-lightgun
+JAIL_EXEC=/usr/bin/mono-sgen
+JAIL_ARGS_MATCH=LightgunMono.exe
+JAIL_PIDS_MAX=64
+JAIL_PROBE=/var/empty/.landlock-probe
+JAIL_STOP_WAIT=3
+JAIL_STOP_KILL=1
+JAIL_SECCOMP_RULES="socket: arg0 == 1 || arg0 == 16 && arg2 == 15; return 97"
+jail_init
 
 # Every VID:PID Main_MiSTer treats as a Sinden gun (input.cpp, "Sinden Lightgun").
 is_sinden_id() {
@@ -45,11 +58,27 @@ count_guns() {
 	echo "$n"
 }
 
-# A stale pidfile's PID may have been reused, so also require it to be the driver.
-running() {
-	[ -f "$PIDFILE" ] || return 1
-	pid=$(cat "$PIDFILE")
-	kill -0 "$pid" 2>/dev/null && grep -qa LightgunMono.exe "/proc/$pid/cmdline"
+# "name major:minor" for each camera and serial node of a plugged-in gun.
+gun_nodes() {
+	for v in /sys/class/video4linux/video* /sys/class/tty/ttyACM*; do
+		[ -e "$v/device" ] || continue
+		usb=$(readlink -f "$v/device/..")
+		is_sinden_id "$(cat "$usb/idVendor" 2>/dev/null)" "$(cat "$usb/idProduct" 2>/dev/null)" &&
+			echo "${v##*/} $(cat "$v/dev" 2>/dev/null)"
+	done
+}
+
+# Node $1 in the jail's /dev as device $2 (major:minor), owned by its uid, mode $3.
+make_node() {
+	mknod -m "$3" "$DEVDIR/$1" c "${2%:*}" "${2#*:}" && chown "$JAIL_UID:$JAIL_GID" "$DEVDIR/$1"
+}
+
+# The jail's /dev holds null, urandom and the guns' nodes as they are at this start.
+prepare_root() {
+	rm -rf "$DEVDIR" && mkdir -m 0755 "$DEVDIR" || return 1
+	make_node null 1:3 0666 && make_node urandom 1:9 0444 || return 1
+	gun_nodes | while read -r n d; do make_node "$n" "$d" 0600 || exit 1; done || return 1
+	jail_prepare_root
 }
 
 # Only the driver's own switches pass; anything else is logged, not mangled.
@@ -68,44 +97,52 @@ read_args() {
 }
 
 do_stop() {
-	running || { rm -f "$PIDFILE"; return 0; }
-	pid=$(cat "$PIDFILE")
-	kill "$pid" 2>/dev/null
-	for _ in 1 2 3; do
-		kill -0 "$pid" 2>/dev/null || break
-		sleep 1
-	done
-	running && kill -9 "$pid" 2>/dev/null
-	rm -f "$PIDFILE"
+	jail_stop || { logger -p daemon.err -t sinden-lightgun "the driver survived SIGKILL"; return 1; }
+	rm -rf "$DEVDIR"
 }
 
-# Pinned to CPU0: Main_MiSTer pins itself to CPU1 and must keep it to itself.
+# The fallback keeps the driver's output, which jail_launch_unjailed sends to /dev/null.
+launch_unjailed() {
+	mkdir -p "$JAIL_RUN_DIR" && chmod 0700 "$JAIL_RUN_DIR" && cd "$DIR" || return 1
+	env -i PATH=/usr/sbin:/usr/bin HOME=/root LD_LIBRARY_PATH="$DIR" \
+		setsid /usr/bin/mono LightgunMono.exe "$@" </dev/null >>"$LOG" 2>&1 9>&- &
+	echo "$! $(jail_starttime $!)" >"$JAIL_PIDFILE"
+}
+
+# Pinned to CPU0, which everything started from here inherits: Main_MiSTer has CPU1.
 # The log lives in RAM (/var/log is tmpfs), so each start replaces it.
 do_start() {
 	installed || { logger -t sinden-lightgun "driver not installed; run Scripts/sinden_lightgun.sh"; return 1; }
-	do_stop
-	args=$(read_args)
-	echo "=== $(date) starting: mono LightgunMono.exe $args" >"$LOG"
-	cd "$DIR" || return 1
-	# udev's RUN env has no PATH or HOME, and the driver runs sh, udevadm and ls.
-	# shellcheck disable=SC2086  # args is a word list by design
-	env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LD_LIBRARY_PATH="$DIR" \
-		setsid taskset -c 0 mono LightgunMono.exe $args \
-		</dev/null >>"$LOG" 2>&1 9>&- &
-	echo $! >"$PIDFILE"
+	do_stop || return 1
+	# shellcheck disable=SC2046  # read_args returns a word list by design
+	set -- $(read_args)
+	echo "=== $(date) starting: mono LightgunMono.exe $*" >"$LOG"
+	taskset -cp 0 $$ >/dev/null
+	if [ -e "$NOJAIL" ]; then
+		JAIL_ERR="$NOJAIL exists"
+	elif ! jail_ready; then
+		:
+	elif ! prepare_root; then
+		JAIL_ERR="could not prepare $DEVDIR or $JAIL_RUN_DIR"
+	elif jail_prepare && jail_launch "$@"; then
+		return 0
+	fi
+	# A gun that works unjailed is worth more than the jail: any failure costs the jail.
+	logger -p daemon.err -t sinden-lightgun "starting the driver UNJAILED, as root: $JAIL_ERR"
+	echo "=== UNJAILED, as root: $JAIL_ERR" >>"$LOG"
+	launch_unjailed "$@"
 }
 
-# Converge on "running iff a gun is plugged in"; restart when the gun count
-# changes, because the driver enumerates guns only at startup.
+# Converge on "running iff a gun is plugged in"; restart when the guns' nodes
+# change, because the driver enumerates them only at startup.
 reconcile() {
-	exec 9>"$LOCK"
-	flock 9
-	guns=$(count_guns)
-	if [ "$guns" -eq 0 ]; then
+	jail_lock || return 1
+	nodes=$(gun_nodes)
+	if [ "$(count_guns)" -eq 0 ]; then
 		do_stop
 		rm -f "$GUNSFILE"
-	elif ! running || [ "$(cat "$GUNSFILE" 2>/dev/null)" != "$guns" ]; then
-		do_start && echo "$guns" >"$GUNSFILE"
+	elif ! jail_running || [ "$(cat "$GUNSFILE" 2>/dev/null)" != "$nodes" ]; then
+		do_start && echo "$nodes" >"$GUNSFILE"
 	fi
 }
 
@@ -131,9 +168,8 @@ do_install() {
 	unzip -q -o "$zip" "$ZIP_APPDIR/*" "$ZIP_LICENSE" -d "$tmp" || { rm -rf "$tmp" "$zip"; die "unzip failed"; }
 	app="$tmp/$ZIP_APPDIR"
 	# A running driver has these files mapped; never rewrite them under it.
-	exec 9>"$LOCK"
-	flock 9
-	do_stop
+	jail_lock || die "another sinden-lightgun command holds the lock"
+	do_stop || die "could not stop the running driver"
 	rm -f "$GUNSFILE"
 	for f in LightgunMono.exe libCameraInterface.so libSdlInterface.so test.bmp; do
 		cp -f "$app/$f" "$DIR/$f" || { rm -rf "$tmp" "$zip"; die "missing $f in the zip"; }
@@ -158,7 +194,13 @@ do_install() {
 do_status() {
 	if installed; then say "Driver: installed in $DIR (args: $(read_args))"; else say "Driver: NOT installed"; fi
 	say "Guns plugged in: $(count_guns)"
-	if running; then say "Daemon: running, pid $(cat "$PIDFILE"), CPU affinity $(taskset -cp "$(cat "$PIDFILE")" 2>/dev/null | sed 's/.*: //')"; else say "Daemon: not running"; fi
+	if jail_running; then
+		jailed=UNJAILED
+		jail_check "$JAIL_PID" && jailed="jailed as uid $JAIL_UID"
+		say "Daemon: running, pid $JAIL_PID, $jailed, CPU affinity $(taskset -cp "$JAIL_PID" 2>/dev/null | sed 's/.*: //')"
+	else
+		say "Daemon: not running"
+	fi
 	say "Log: $LOG"
 }
 
@@ -166,9 +208,18 @@ case "$1" in
 	install)   do_install; do_status ;;
 	hotplug)   do_hotplug ;;
 	reconcile) reconcile ;;
-	start)     exec 9>"$LOCK"; flock 9; do_start ;;
-	stop)      exec 9>"$LOCK"; flock 9; do_stop; rm -f "$GUNSFILE" ;;
+	start)     jail_lock && do_start ;;
+	stop)      jail_lock && do_stop && rm -f "$GUNSFILE" ;;
 	status)    do_status ;;
-	uninstall) exec 9>"$LOCK"; flock 9; do_stop; rm -rf "$DIR"; say "Removed $DIR" ;;
+	uninstall) jail_lock && do_stop && rm -rf "$DIR" && say "Removed $DIR" ;;
+	run)
+		# Internal, from jail_launch: the jail gets exactly this environment.
+		shift
+		exec >>"$LOG" 2>&1
+		# shellcheck disable=SC2016  # $1 and $@ expand in the jailed sh
+		jail_run --env-reset --env-add PATH=/usr/sbin:/usr/bin --env-add HOME=/var/empty \
+			--env-add LD_LIBRARY_PATH="$DIR" --env-add MONO_DISABLE_SHARED_AREA=1 \
+			-- /bin/sh -c 'cd "$1" && shift && exec /usr/bin/mono LightgunMono.exe "$@"' sh "$DIR" "$@"
+		;;
 	*)         echo "Usage: $0 {install|status|start|stop|uninstall}" >&2; exit 1 ;;
 esac

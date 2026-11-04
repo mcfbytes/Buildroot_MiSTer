@@ -4,7 +4,7 @@
 `/usr/bin/minijail0` and `/usr/lib/libminijailpreload.so`. It is in
 the `mister-userspace` profile, so the DE10 image carries it. Its users are the jailed
 `S92transmission`, `/usr/bin/bluetoothd` (`docs/bluetooth-parity.md` §11) and mistarr, whose
-design is mistarr's `docs/NONROOT-PLAN.md`. Their fixed uids are in
+design is mistarr's `docs/NONROOT-PLAN.md`, and Sinden's light gun driver (below). Their fixed uids are in
 `board/mister/de10nano/users.table`.
 
 ## Why minijail
@@ -177,6 +177,37 @@ movement on stderr. Measured on the rig: a libgpm client on a VT (`disable-paste
 `openvt`) is served through `/dev/gpmctl`, and a `uinput` mouse's movement is read without
 errors. Like the other console and system daemons it falls back to stock's root start when
 the jail fails (`/media/fat/linux/gpm.nojail` forces it), logged at `daemon.err`.
+
+## Sinden Lightgun driver
+
+`/usr/sbin/mister-sinden-lightgun` (`docs/sinden-lightgun.md`) starts Sinden's driver,
+`mono LightgunMono.exe`, when a gun is plugged in. It is a closed-source program the user
+downloads from the internet, and it used to run as root with the whole card in view. The jail
+is built from what the driver was seen to do: in qemu-arm, with every syscall logged, at
+startup and with a stand-in `lsusb` reporting a gun. It reads its own directory and
+`/etc/mono`, runs `lsusb` (which reads `/sys` and udev's hwdb) and `cat /proc/cpuinfo`, and
+opens AF_UNIX sockets (glibc's nscd probe) and a netlink uevent socket (libudev, in `lsusb`).
+It uses no network. None of the shared deny list's syscalls appear in the trace. Past that
+point the driver needs a real camera, so its steady state with a gun is not traced.
+
+| | Sinden driver (`mister-sinden-lightgun`) |
+|---|---|
+| uid/gid | 8428 `sinden` |
+| Capabilities | none: the device nodes it needs are its own (below) |
+| Seccomp, beyond the shared list | `socket`: `AF_UNIX`, or `AF_NETLINK` with `NETLINK_KOBJECT_UEVENT` only |
+| Namespaces | mount, PID, IPC, **network** |
+| `/dev` | its own: `/dev/sinden-lightgun` on the host, made at each start, with `null`, `urandom` and every plugged-in gun's `video*` and `ttyACM*` nodes (found through sysfs), owned by its uid. The driver enumerates guns only at startup, and the script restarts it whenever those nodes change, so the copy is never stale |
+| Card | `/media/fat/linux/sinden` only, read-only. The rest of the card is not in its view |
+| Environment | exactly `PATH`, `HOME=/var/empty`, `LD_LIBRARY_PATH` and `MONO_DISABLE_SHARED_AREA=1` (`--env-reset`), so mono needs no `/dev/shm` |
+| Landlock | rx `/usr` and its directory, ro `/etc`, `/proc`, `/sys`, `/run/udev` and `/run/log`, full `/dev` and `/tmp` (a private 1 MiB tmpfs) |
+| CPU | 0, set on the starting shell and inherited (Main_MiSTer has CPU1) |
+
+It falls back like the console daemons: a jail that cannot be built, or
+`/media/fat/linux/sinden.nojail`, starts the driver as before, as root, logged at `daemon.err`
+and in its log. A light gun that works only unjailed is still worth more than the jail.
+`mister-sinden-lightgun status` says which way it is running. The jail is **unverified with a
+real gun**: if the driver needs a path the jail lacks, `sinden.nojail` is the workaround,
+and its log says what it failed to open.
 
 ## Shared /tmp
 

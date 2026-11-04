@@ -462,6 +462,19 @@ fetch_wifi_sh() {
 # 3. _Console cores (SDCARD_CORES=1 only) -- no hash pin, commit-pin only
 # ============================================================================
 
+# Removes every entry of $1 that is not named in manifest $2's first column, so a core
+# dropped or renamed at a newer pin does not survive from an earlier run.
+prune_stale_cores() {
+	local dir=$1 manifest=$2 f
+	for f in "$dir"/* "$dir"/.[!.]*; do
+		[ -e "$f" ] || [ -L "$f" ] || continue
+		if ! cut -f1 "$manifest" | grep -qxF -- "${f##*/}"; then
+			rm -rf -- "$f"
+			log "_Console: removed ${f##*/}, not in the pinned listing"
+		fi
+	done
+}
+
 fetch_cores() {
 	need_cmd jq
 
@@ -510,6 +523,7 @@ fetch_cores() {
 		fi
 		total_bytes=$((total_bytes + got_size))
 	done <"$manifest"
+	prune_stale_cores "$dest_dir" "$manifest"
 
 	# Traceability record goes to WORK_DIR (build scratch), NOT inside
 	# dest_dir: docs/verification/sdcard-payload.md §2 asserts every entry
@@ -531,6 +545,9 @@ main() {
 	need_cmd stat
 
 	mkdir -p "$STAGE_DIR" "$WORK_DIR" "$PAYLOAD_DIR"
+	# A STAGE_DIR is reused across runs: start the payload empty, so a file dropped from it
+	# cannot linger. _Console/ is kept for its per-core reuse; prune_stale_cores reconciles it.
+	find "$PAYLOAD_DIR" -mindepth 1 -maxdepth 1 ! -name _Console -exec rm -rf {} +
 
 	log "staging into $PAYLOAD_DIR (SDCARD_CORES=$SDCARD_CORES)"
 

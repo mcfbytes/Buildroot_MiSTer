@@ -11,15 +11,15 @@ Fixes: #347
 Signed-off-by: David Timber <dxdt@dev.snart.me>
 Signed-off-by: Namjae Jeon <linkinjeon@kernel.org>
 Upstream: https://github.com/exfatprogs/exfatprogs/commit/3dcda41f774ab69ba2f5ba81da2cc446c3dd5f79
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
  lib/libexfat.c | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/lib/libexfat.c b/lib/libexfat.c
-index 5a69cb65..86edaff1 100644
 --- a/lib/libexfat.c
 +++ b/lib/libexfat.c
-@@ -128,9 +128,9 @@ static inline unsigned int sector_size_bits(unsigned int size)
+@@ -121,9 +121,9 @@ static inline unsigned int sector_size_bits(unsigned int size)
  static void exfat_set_default_cluster_size(struct exfat_blk_dev *bd,
  		struct exfat_user_input *ui)
  {

@@ -40,6 +40,8 @@
 #   G. Interrupted after the payload moved into place, before the commit
 #      -> the next boot only finishes ("finish"): no reformat, MAC and pre-seed
 #         written, flag spent.
+#   T. Interrupted right after the free-space trim, before the commit
+#      -> the next boot only commits ("finish"); the trim cost no re-flash.
 #   H. Interrupted between the commit (flag block wiped) and removing MBR entry 3
 #      -> the probe says "spent"; the next boot is a normal one.
 #   I. A payload-shaped FAT32 card WITHOUT the flag, and
@@ -349,6 +351,23 @@ assert_exfat_p1() {
 	eq "$sig" "EXFAT" "$1: p1 carries the exFAT signature"
 }
 
+# assert_exfat_geometry TAG -- the boot sector of p1 as the installer's mkfs flags promise
+# (docs/installer-init.md#exfat-geometry): virtio has no AU, so the 4 MiB fallback applies.
+assert_exfat_geometry() {
+	local base fat heap count bps spc cs bitmap_clu first_data au=8192
+	base=$(( P1_START_SECTORS * 512 ))
+	u32() { od -An -tu4 -j $(( base + $1 )) -N4 "$DISK" | tr -d ' '; }
+	u8()  { od -An -tu1 -j $(( base + $1 )) -N1 "$DISK" | tr -d ' '; }
+	fat=$(u32 80); heap=$(u32 88); count=$(u32 92); bps=$(u8 108); spc=$(u8 109)
+	eq "$bps" 9 "$1: exFAT sectors are 512 bytes"
+	eq "$spc" 6 "$1: 32 KiB clusters on a card of 32 GiB or less (the 32-bit default-size fix)"
+	eq $(( (P1_START_SECTORS + fat) % au )) 0 "$1: the FAT starts on a 4 MiB boundary"
+	cs=$(( 1 << (bps + spc) ))
+	bitmap_clu=$(( ( (count + 7) / 8 + cs - 1 ) / cs ))
+	first_data=$(( P1_START_SECTORS + heap + (bitmap_clu << spc) ))
+	eq $(( first_data % au )) 0 "$1: the bitmap is packed below a 4 MiB boundary and data starts on it"
+}
+
 # order_ok A B DESC -- assert byte offset A comes before byte offset B.
 # Byte offsets, not line numbers: the guest console is a tty, the splash rewrites
 # its status line with \r, and several markers share a line.
@@ -427,9 +446,10 @@ scenario_clean_install() {
 	has   "$WORK/z1.log" 'source mounted (vfat)'  "0: the shipped FAT32 partition mounted as vfat"
 	has   "$WORK/z1.log" 'INSTALL COMPLETE'       "0: the install finished"
 	if [ "$TEST_DISCARD" = unmap ]; then
-		has "$WORK/z1.log" 'trim: done --'      "0: the free-space trim covered the whole heap"
+		has "$WORK/z1.log" 'trim: done -- walked \([0-9]*\) of \1 MiB, [1-9][0-9]* MiB discarded' \
+			"0: the free-space trim walked the whole heap and discarded free space"
 	else
-		has "$WORK/z1.log" 'trim: skipped --'   "0: the trim was skipped on a disk without discard"
+		has "$WORK/z1.log" 'trim: skipped -- .* does not support discard' "0: the trim was skipped on a disk without discard"
 	fi
 	hasnt "$WORK/z1.log" 'probably counterfeit' "0: nothing outside p1 changed during the trim"
 	hasnt "$WORK/z1.log" 'INSTALLER: FAILED'      "0: no failure banner"
@@ -475,6 +495,7 @@ scenario_clean_install() {
 		fail "0: partitions do not fill the card ($p1_start+$p1_size+$p2_size != $dev_sectors)"
 	fi
 	assert_exfat_p1 "0"
+	assert_exfat_geometry "0"
 	assert_bootloader_present "0: the finished card has uboot.img in its 0xA2 partition"
 	assert_flag_gone "0"
 }
@@ -604,6 +625,23 @@ scenario_interrupted_after_moves() {
 	has   "$WORK/g2.log" 'INSTALL COMPLETE'          "G: and finished"
 	assert_flag_gone "G"
 	assert_normal_boot "G" "$WORK/g3.log"
+}
+
+scenario_interrupted_after_trim() {
+	log "--- T. interrupted right after the free-space trim, before the commit --"
+	flash_fresh_card
+	boot "$WORK/t1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=trimmed"
+	has   "$WORK/t1.log" 'TEST-STOP after "trimmed"' "T: the run stopped after the trim"
+	hasnt "$WORK/t1.log" 'this card is a MiSTer now' "T: it stopped BEFORE the commit"
+
+	log "    re-booting (the flag is still armed: it must only commit) ..."
+	boot "$WORK/t2.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/t2.log" 'card state: finish'        "T: recognised as finished-but-uncommitted"
+	hasnt "$WORK/t2.log" 'repartitioning the card'   "T: it did NOT reformat"
+	has   "$WORK/t2.log" 'this card is a MiSTer now' "T: it committed"
+	has   "$WORK/t2.log" 'INSTALL COMPLETE'          "T: and finished"
+	assert_flag_gone "T"
+	assert_normal_boot "T" "$WORK/t3.log"
 }
 
 scenario_interrupted_after_commit() {
@@ -740,6 +778,7 @@ main() {
 	scenario_interrupted_mid_copy
 	scenario_interrupted_at_recoverable
 	scenario_interrupted_after_moves
+	scenario_interrupted_after_trim
 	scenario_interrupted_after_commit
 	scenario_no_flag
 	scenario_forged_flag

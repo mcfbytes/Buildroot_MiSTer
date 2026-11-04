@@ -36,25 +36,74 @@ deliberately short.
 
 ---
 
-## What's the default root password, and is that a problem?
+<a id="whats-the-default-root-password-and-is-that-a-problem"></a>
+<a id="remote-login"></a>
+## How do I log in over SSH or FTP? What's the root password?
 
-**The root password is stock parity: `1`.** This is not a bug and not something this
-project changed — it's the same fixed, publicly known default password stock MiSTer has
-always used, deliberately reproduced here (a hardcoded, fixed-salt password hash baked in
-at build time, the same value stock uses). Root login is permitted over SSH and FTP with
-this password, exactly as on stock. (Passwordless login is *not* permitted — an empty
-password is explicitly refused.)
+**It depends on how the card was set up.** Stock MiSTer lets anyone on your network log
+in as root over SSH and FTP with the password `1`, which is printed in every guide.
 
-**Say this plainly: anyone who knows this widely-published default password, and who can
-reach your MiSTer's SSH or FTP port, has root.** On a home network you trust, this is the
-same posture the entire MiSTer community has run under for years. **If your MiSTer is
-reachable from an untrusted network — a shared network, a network you don't control, or
-anything exposed to the internet — changing the root password is strongly advised.**
-Change it the same way you would on stock: log in and run `passwd`. **Be aware that an
-image update currently puts the default back**: `/etc/shadow` lives inside `linux.img`,
-which an update replaces wholesale, so re-run `passwd` after every update until the
-persistence work in [ADR 0031](../decisions/0031-secure-by-default-network-posture.md)
-lands. If you use an SSH key (next entries), the key survives updates already.
+- **Updated from stock or from an earlier release of this image:** nothing changes.
+  SSH and FTP accept root with the root password, as before.
+- **Flashed from this project's SD card image:** the card starts **hardened**. SSH
+  accepts only a key, SSH forwarding reaches only Transmission's web UI, and there is no
+  FTP server at all.
+
+The difference is one file on the card, `linux/security.conf`. The SD card image ships
+it; an update never creates or changes it, and **no file means stock behaviour**.
+
+**Change it with Scripts > security.sh** from the MiSTer menu. It shows the current
+settings and offers two presets, *Hardened* and *Stock*, plus each setting on its own.
+Over SSH the same tool is `mister-security status`, `mister-security harden`,
+`mister-security stock`, or `mister-security set <setting> <value>`. It rewrites the
+file and restarts SSH and FTP, so you do not need to reboot. You can also edit the file
+from a PC and reboot; deleting it gives you stock behaviour.
+
+| Setting | Stock (no file) | Hardened (new SD card) |
+|---|---|---|
+| `ssh_password` | `yes`: root can log in with the password | `no`: SSH and SFTP take only a key |
+| `ssh_forwarding` | `stock`: any SSH port forward | `limited`: only Transmission's web UI (port 9091) |
+| `ftp` | `stock`: root FTP with the password, anonymous FTP too | `off`: no FTP server |
+| `ftp_drop_caps` | `no` | `yes`: once FTP is on, a logged-in session loses root's powers beyond file transfer |
+
+**Turning FTP on.** Pick one of the two FTP modes:
+
+- `ftp=stock`: exactly what stock does, anonymous login included.
+- `ftp=lan`: root with the root password, from your home network only (addresses
+  starting `192.168.`, `10.`, `172.16.`-`172.31.`, `169.254.`), no anonymous login,
+  and passive ports 50000-50099. If you reach your
+  MiSTer from elsewhere (a VPN with other addresses, a port-forward), also set
+  `ftp_allow_any=yes`.
+
+Over SSH: `mister-security set ftp lan`. Both modes see the whole filesystem, as stock
+does, so copying a new `linux.img` or kernel into `/media/fat/linux` works as before.
+
+**`ftp_drop_caps`** is an option for either mode, and defence in depth only: the FTP
+server runs in a minijail and each session keeps just what file transfer needs (writing
+files anywhere, active mode). It cannot stop someone with the password from replacing
+`/media/fat/MiSTer`, which runs as root; the password and the network are what protect
+FTP. It does stop a break-in through the FTP server from loading kernel modules, touching
+raw devices or mounting things. Set it to `no` if something you rely on stops working.
+
+**With `ssh_password=no` you need a key.** Put your public key in
+`config/authorized_keys` on the card ([how](#ssh-key-persist)). SSH and SFTP then work
+with the key, and keep working after every update. Most "FTP" programs (WinSCP,
+FileZilla, Cyberduck) also speak SFTP, which uses the same key and encrypts everything.
+Without a key, sshd still runs but nobody can log in; the boot messages say
+`NO REMOTE LOGIN`. Adding a key is enough; you do not need to reboot.
+
+**FTP sends the password unencrypted.** Use SFTP when you can.
+
+**The console is not affected.** The root password is still stock's `1` on the serial
+console, and the MiSTer menu and its Scripts work as always. Someone who can touch the
+board can already pull the card, so a password there would protect nothing.
+
+**If root can log in with a password, change it** on any network you do not fully
+control: log in and run `passwd`. **An image update puts it back to `1`**, because
+`/etc/shadow` lives inside `linux.img`, which an update replaces. Re-run `passwd` after
+every update until the persistence work in
+[ADR 0031](../decisions/0031-secure-by-default-network-posture.md) lands. A key on the
+card survives updates already. (An empty password is always refused.)
 
 ---
 
@@ -139,9 +188,9 @@ an update lives on the data partition, not in the image.
 
 > **Note:** the key file is read by the SSH server as root, so treat the card as you would
 > any machine you can log into. Put only your **public** key there — never a private key.
-> Adding a key does not disable password login; if you want key-only access, set
-> `PasswordAuthentication no` in `/etc/ssh/sshd_config` (that change lives in the image,
-> so it is undone by an update).
+> With `ssh_password=no` ([Scripts > security.sh](#remote-login)) SSH is key-only;
+> otherwise both the key and the password
+> work.
 
 ---
 
@@ -515,9 +564,9 @@ builds it into the kernel, then disables it on every network interface at boot, 
 fresh card behaves exactly like stock.
 
 Why off? Your router's NAT is most likely what keeps your MiSTer unreachable from the
-internet today. IPv6 usually gives the box a public address, and there is no IPv6
-firewall yet. SSH (root password `1` unless you changed it) would then be reachable from
-anywhere your router allows.
+internet today. IPv6 usually gives the box a public address, and no firewall ruleset
+ships by default (see the next question). SSH would then be reachable from anywhere your
+router allows.
 
 To turn it on, create `/media/fat/linux/sysctl.conf` with these two lines and reboot:
 
@@ -582,6 +631,84 @@ left alone. To go back to the default, add this line to `/media/fat/linux/user-s
 ```
 echo 3 > /sys/bus/workqueue/devices/writeback/cpumask
 ```
+
+One more writeback setting replaces stock's `/etc/resync`, a script that ran `sync` every
+5 seconds. Your SD card's data partition is mounted so that every write goes straight to
+the card, so the script did nothing for it. It did matter for the Linux system image
+(`linux/linux.img`): files written there once you log in can sit in memory for up to 30
+seconds before reaching the card. `/etc/sysctl.d/20-writeback.conf` shortens that to 5:
+
+```
+vm.dirty_expire_centisecs = 500
+vm.dirty_writeback_centisecs = 500
+```
+
+To go back to the kernel default of 30 seconds, add `vm.dirty_expire_centisecs = 3000`
+to `/media/fat/linux/sysctl.conf` and reboot.
+
+## What does Scripts > usb_full_speed_mode.sh do?
+
+It switches the MiSTer's USB port to *full speed* (12 Mbit/s). At that speed the USB
+controller schedules transfers itself, and its interrupts drop from about 9,000 a second
+to about 100. That frees CPU 0, which loads files, streams CD images and runs the network.
+The MiSTer main program runs on CPU 1, so input lag does not change.
+
+The cost is that every USB device runs at 12 Mbit/s or less. USB drives get very slow,
+USB Wi-Fi and Ethernet adapters slow down or stop working, and 1000 Hz controllers and mice
+are read at 500 Hz. Pads, keyboards, mice and Bluetooth dongles otherwise work as before.
+
+Pick the entry with a gamepad. Switching disconnects all USB devices for a second or two.
+By default the change lasts until the next reboot. Choose "every boot" to keep it; that
+writes `/media/fat/linux/usb_full_speed`, and deleting the file turns it off again. The
+script will not switch while a USB drive is mounted. Details:
+[`dwc2-usb-irq.md`](../dwc2-usb-irq.md#switching-it-from-the-scripts-menu).
+
+## What does Scripts > cpu_isolation.sh do?
+
+The MiSTer main program runs on CPU 1. Linux can still put other work there, such as an
+update, unpacking, a file transfer or Samba, and while it does the main program gets only
+part of that CPU. This script keeps every other Linux program on CPU 0.
+
+That may stop occasional stutter while something runs in the background. The cost is that
+Linux work gets one CPU instead of two, so updates and file transfers can take longer.
+
+There are two ways to switch it on:
+
+- **Now**: moves the running programs to CPU 0. It lasts until the next reboot, or pick
+  "every boot", which writes `/media/fat/linux/cpu_isolation` (delete it to stop).
+- **Advanced**: adds `isolcpus=domain,managed_irq,1 irqaffinity=0` to the kernel command
+  line in `/media/fat/linux/u-boot.txt` and applies after a reboot. Only the `v=` line is
+  changed, and the old file is kept as `u-boot.txt.before-cpu-isolation`.
+
+Details, including why `irqaffinity=0` changes nothing on this board:
+[`cpu-isolation.md`](../cpu-isolation.md).
+
+## Can I run a firewall?
+
+Yes. The image ships `nft` (nftables) and the legacy `iptables`/`ip6tables`, but no rules:
+a fresh card accepts the same connections as stock. To load a ruleset at every boot, put
+it in `/media/fat/linux/nftables.conf`. This example accepts everything from your local
+network and drops unsolicited traffic from anywhere else, over IPv4 and IPv6 alike:
+
+```
+flush ruleset
+table inet filter {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif lo accept
+		meta l4proto { icmp, ipv6-icmp } accept
+		ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } accept
+		ip6 saddr { fe80::/10, fc00::/7 } accept
+	}
+}
+```
+
+Check it before you reboot with `nft -c -f /media/fat/linux/nftables.conf`, and apply it
+straight away with `/etc/init.d/S35nftables restart`. A mistake can lock you out of SSH
+and FTP. If it does, delete the file from the card on another computer, or log in on the
+serial console. Run `nft flush ruleset` to remove the rules until the next boot.
 
 ## See also
 

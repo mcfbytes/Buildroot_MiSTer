@@ -6,6 +6,8 @@ tmpfs		/dev/shm	tmpfs	mode=0777	0	0
 tmpfs		/tmp		tmpfs	mode=1777	0	0
 tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
 sysfs		/sys		sysfs	defaults	0	0
+# cgroup2 for S92transmission's pids limit (docs/bittorrent.md §8.1); nothing else uses it.
+cgroup2		/sys/fs/cgroup	cgroup2	nosuid,nodev,noexec	0	0
 tmpfs		/var/lib/samba	tmpfs	mode=1777	0	0
 tmpfs		/var/db/dhcpcd	tmpfs	mode=0750	0	0
 tmpfs		/var/cache/samba	tmpfs	mode=0755	0	0

@@ -69,6 +69,10 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
+menu "Display drivers (out-of-tree)"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/zaparoo-scanout/Config.in"
+endmenu
+
 menu "Input-device userspace tooling"
 	# Deliberately NOT folded into the "USB controller drivers" menu above:
 	# everything there is an out-of-tree KERNEL MODULE, and these are plain
@@ -200,20 +204,22 @@ menu "Process sandboxing"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/minijail/Config.in"
 endmenu
 
-menu "SD-card installer (ADR 0020)"
-	# Packages that exist for the throwaway first-boot installer cpio
-	# (configs/mister_installer_defconfig) and nothing else. itsalive draws
-	# the HDMI splash during the reformat (ADR 0020 section 9, issue #185).
-	# It is a plain userspace CLI and would work on the installed system as
-	# a rescue tool too, but no board defconfig selects it today: it must
-	# never run beside Main_MiSTer, and the installer is where Main is
-	# guaranteed absent.
+menu "GUI toolkit and fonts"
+	# Neither exists in upstream Buildroot 2026.08; see docs/slint.md.
+	source "$BR2_EXTERNAL_MISTER_PATH/package/slint/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans/Config.in"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/font-noto-sans-jp/Config.in"
+endmenu
+
+menu "Stage-1 HDMI splash (ADR 0020, ADR 0026)"
+	# itsalive draws HDMI in the DE10 stage-1 cpio (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE)
+	# for the installer and the exFAT repair; never in a rootfs, never beside Main_MiSTer.
 	source "$BR2_EXTERNAL_MISTER_PATH/package/itsalive/Config.in"
 endmenu
 
 menu "Kernel variants (ADR 0021)"
 	# A second kernel built beside the main one in this same tree (ADR 0030
-	# Phase C): PREEMPT_RT on the 7.2.y line -> images/zImage_dtb-rt, with
+	# Phase C): PREEMPT_RT on the 7.3.y line -> images/zImage_dtb-rt, with
 	# its module tree in the ONE rootfs. Same shape as Buildroot's own
 	# barebox-aux. Requires the stage-1 extension below (it embeds the same
 	# cpio).

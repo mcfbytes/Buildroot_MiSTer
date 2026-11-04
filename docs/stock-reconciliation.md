@@ -297,12 +297,12 @@ that we do not. No consumer, so no gap.
 
 ---
 
-## 3. `addon.tar` (20250402 baseline) — 34/56 at the stock path, every absence a decision
+## 3. `addon.tar` (20250402 baseline) — 33/56 at the stock path, every absence a decision
 
 `addon.tar` is a rootfs *overlay* of configs and MiSTer helper binaries.
 Present since before T3: `etc/network/interfaces`, `etc/samba/smb.conf`,
 `etc/proftpd.conf`, `etc/ssh/sshd_config`, `etc/bluetooth/main.conf`,
-`etc/usbmount/usbmount.conf`, `etc/ssl/certs/cacert.pem`, `etc/resync`,
+`etc/usbmount/usbmount.conf`, `etc/ssl/certs/cacert.pem`, `etc/resync` (removed 2026-10, §3a),
 `S91smb`, `S99user`, `bluetoothd`, `mt32d`, `midilink`, `mlinkutil`
 (+`.ssh/environment` at a different path). T2 closed the WiFi hotplug rule;
 **T3 closed the rest of §3c** — see the disposition table there.
@@ -313,6 +313,7 @@ Present since before T3: `etc/network/interfaces`, `etc/samba/smb.conf`,
 |---|---|
 | `etc/ssh/ssh_host_{dsa,ecdsa,ed25519,rsa}_key(.pub)` — 8 files | Stock ships **identical private host keys on every MiSTer**. We generate per-device keys on first boot ([ADR 0015](decisions/0015-per-device-ssh-host-keys.md)), and `check-linux-img.sh` asserts no `ssh_host_*` exists in the image. **Strictly better.** |
 | `etc/modprobe.d/rtw88-prefer.conf` | Works around a bind conflict we do not have (§2a). |
+| `etc/resync` | Stock's 5-second `sync` loop made up for its old Samsung exfat driver, which left metadata dirty under `sync,dirsync`. Mainline exfat writes it on every `write()`; the async rw root gets `etc/sysctl.d/20-writeback.conf` instead (`docs/init-parity.md`, 2026-10). |
 
 ### 3b. Absent — documented drops
 
@@ -496,14 +497,14 @@ and are dispositioned there.
   it does not reopen the bind-conflict class stock worked around with
   `rtw88-prefer.conf` (§2a's corroboration note, `docs/wifi-parity.md` §8).
   Sourced and defconfig-selected; **not yet built or hardware-tested.**
-- **`addon.tar`:** 34/56 at the stock path (14 pre-T3, +18 closed by T2/T3,
-  +2 closed by T5: `rz`/`sz`), 5 covered at a different path or mechanism
+- **`addon.tar`:** 33/56 at the stock path (14 pre-T3, +18 closed by T2/T3,
+  +2 closed by T5: `rz`/`sz`, −1: `etc/resync` dropped 2026-10), 5 covered at a different path or mechanism
   (`mc.ext`→`mc.ext.ini` format port, `libfluidsynth.so.3` newer revision,
   `var/lib/bluetooth/` shipped by bluez's own install, `.ssh/environment`,
   +1 by T5: the console font, filename not confirmed against a real build
-  but functionally covered either way — see §3c). The **17 permanent absences
-  are all decisions, individually documented**: 9× §3a (per-device SSH keys +
-  no OOT blacklist — we are better), 5× §3b drops, vgmplay+ini declined with
+  but functionally covered either way — see §3c). The **18 permanent absences
+  are all decisions, individually documented**: 10× §3a (per-device SSH keys +
+  no OOT blacklist + `etc/resync` — we are better), 5× §3b drops, vgmplay+ini declined with
   reasoning, and `usr/bin/fpga` — the one genuinely sourceless binary, its
   intent covered by `load_core` via `/dev/MiSTer_cmd` and memtool/devmem
   (§3c).

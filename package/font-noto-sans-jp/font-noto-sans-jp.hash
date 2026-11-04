@@ -1,0 +1,5 @@
+# Locally computed: noto-cjk publishes no checksums. The asset name carries no version,
+# so hash-sync case 10 and lint.yml key on the next line; keep it in step with the .mk.
+# hashed version: 2.004
+sha256  2bbdd2c20f30670b39ca735c96d75f1fdabdb348103e43b820cf17701fd22b18  16_NotoSansJP.zip
+sha256  6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2  LICENSE

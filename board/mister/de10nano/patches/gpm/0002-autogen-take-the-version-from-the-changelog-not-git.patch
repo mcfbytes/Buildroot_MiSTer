@@ -1,0 +1,31 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Sun, 1 Nov 2026 00:00:00 +0000
+Subject: [PATCH] autogen: take the version from the changelog, not git
+
+autogen.sh asks `git describe` for the version and only falls back to
+doc/changelog when that fails. Buildroot unpacks the release tarball,
+which has no .git, so git walks up the directory tree and answers for
+whatever repository the build directory happens to sit in. Built from a
+Buildroot_MiSTer checkout, `gpm -v` printed that repository's tag
+(v2026.10.23-beta) and the build depended on the host's git state.
+
+A release tarball's version is the changelog's, so always use it.
+
+Upstream: not sent (gpm is unmaintained upstream).
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ autogen.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/autogen.sh
++++ b/autogen.sh
+@@ -2,7 +2,7 @@
+ 
+ [ -d config ] || mkdir config
+ 
+-version=$(git describe 2>/dev/null)
++version=
+ 
+ # No git? use changelog information
+ if [ -z "$version" ]; then

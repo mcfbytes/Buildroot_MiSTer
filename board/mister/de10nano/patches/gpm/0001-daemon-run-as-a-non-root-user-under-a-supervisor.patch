@@ -1,0 +1,43 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Thu, 8 Oct 2026 00:00:00 +0000
+Subject: [PATCH] daemon: run as a non-root user under a supervisor
+
+gpm refuses to start unless its effective uid is 0. What it needs root
+for is the console's TIOCLINUX selection ioctls, which the kernel grants
+on CAP_SYS_ADMIN, plus the mouse device, /dev/gpmctl and its pidfile. A
+caller that provides those (here a minijail with CAP_SYS_ADMIN as its
+only capability) can run it as any uid; loadlut() already warns rather
+than fails when the ioctl is refused. Drop the check.
+
+Such a supervisor also tracks the process it started, so let it ask gpm
+not to fork: with GPM_FOREGROUND set in the environment, gpm skips
+daemon() and otherwise runs exactly as the daemon does. -D is no
+substitute: it reports every mouse event on stderr.
+
+Upstream: not sent (gpm is unmaintained upstream); the jail is
+docs/minijail.md "gpm".
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+diff --git a/src/daemon/startup.c b/src/daemon/startup.c
+--- a/src/daemon/startup.c
++++ b/src/daemon/startup.c
+@@ -68,8 +68,6 @@
+ 
+    cmdline(argc, argv);                         /* parse command line */
+ 
+-   if (geteuid() != 0) gpm_report(GPM_PR_OOPS,GPM_MESS_ROOT); /* root or exit */
+-
+    /* Planned for gpm-1.30, but only with devfs */
+    /* if(option.autodetect) autodetect(); */
+ 
+@@ -125,7 +123,8 @@
+    }
+ 
+    if (option.run_status == GPM_RUN_STARTUP ) { /* else is debugging */
+-      if (daemon(0,0))
++      /* A supervisor that tracks gpm itself asks it not to fork. */
++      if (!getenv("GPM_FOREGROUND") && daemon(0,0))
+          gpm_report(GPM_PR_OOPS,GPM_MESS_FORK_FAILED);   /* error  */
+ 
+       option.run_status = GPM_RUN_DAEMON; /* child  */

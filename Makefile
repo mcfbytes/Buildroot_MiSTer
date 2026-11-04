@@ -22,8 +22,8 @@
 # GPG-clearsigned release manifest (`make buildroot-showsig`) by
 # scripts/hash-sync-buildroot.sh -- never from a downloaded tarball. Keep both
 # lines exactly this shape: four scripts and renovate.json parse them.
-BUILDROOT_VERSION  ?= 2026.08
-BUILDROOT_SHA256   ?= d678e810abf877d04513e03ca2c99f992dd49118b9c2e18d6e25f5f58fa8c5cd
+BUILDROOT_VERSION  ?= 2026.08.1
+BUILDROOT_SHA256   ?= 38a6c152490096018720a9ade379ee1e571c9bf5f93a3657a166566945a98b0d
 
 ROOT_DIR   := $(CURDIR)
 O          ?= $(ROOT_DIR)/output
@@ -64,18 +64,20 @@ hostshim:
 de25: $(BR_STAMP) hostshim
 	$(MAKE) O=$(ROOT_DIR)/output-de25 all
 
-# SD-card installer image (ADR 0020): a shell orchestrator, run after `make all`.
+# SD-card installer image (ADR 0020, ADR 0033): pure assembly of `make all`'s outputs.
 sdcard: hostshim
 	SDCARD_CORES=$(SDCARD_CORES) $(ROOT_DIR)/scripts/mk-sdcard.sh
 
 # Buildroot's own meanings: clean keeps .config, distclean removes the tree.
 # dl/ is a shared download cache and survives both; `git clean -xfd` takes it.
+# output-installer*/ are pre-ADR-0033 leftovers; distclean still removes them.
 clean: $(BR_STAMP)
-	@for o in $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer; do \
+	@for o in $(O) $(ROOT_DIR)/output-de25; do \
 		[ -f $$o/.config ] && $(MAKE) -C $(BR_DIR) O=$$o BR2_EXTERNAL=$(ROOT_DIR) clean; done; true
-	rm -rf $(ROOT_DIR)/output-installer-kernel $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
+	rm -rf $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
 distclean:
-	rm -rf $(O) $(ROOT_DIR)/output-de25 $(ROOT_DIR)/output-installer $(ROOT_DIR)/output-installer-kernel \
+	rm -rf $(O) $(ROOT_DIR)/output-de25 \
+	       $(ROOT_DIR)/output-installer $(ROOT_DIR)/output-installer-kernel \
 	       $(ROOT_DIR)/output-sdcard-stage $(ROOT_DIR)/output-sdcard-build $(ROOT_DIR)/output-config-check
 
 help: $(BR_STAMP) hostshim

@@ -1,0 +1,2 @@
+# Sourced by S35nftables. No ruleset ships; a card file opts in (docs/user/faq.md).
+NFTABLES_CONFIG=/media/fat/linux/nftables.conf

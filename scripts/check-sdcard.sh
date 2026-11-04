@@ -90,6 +90,11 @@ DATA_PART_NUM=1
 UBOOT_PART_NUM=2
 DATA_PART_TYPE=c            # 0x0c, FAT32 LBA -- board/mister/de10nano/genimage-sdcard.cfg
 UBOOT_PART_TYPE=a2
+# The installer flag (ADR 0033): entry 3 at LBA 1024, 1024 sectors, type 0xda, and its magic block.
+FLAG_PART_NUM=3
+FLAG_PART_START=1024
+FLAG_PART_SIZE=1024
+FLAG_PART_TYPE=da
 MIN_UBOOT_PART_SECTORS=2048 # >= 1 MiB floor, TASKS.md P5.3 / boot-chain.md §2.1
 
 # --- pinned stock uboot.img reference (MUST track release.yml's / fetch-sdcard-payload.sh's
@@ -135,6 +140,7 @@ inventory_arg=${3:-}
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+FLAG_BLOCK=${FLAG_BLOCK:-$repo_root/output/images/mister-install-flag.bin}
 
 inventory_doc=${inventory_arg:-${PAYLOAD_INVENTORY:-}}
 [ -n "$inventory_doc" ] || inventory_doc="$repo_root/docs/verification/sdcard-payload.md"
@@ -294,6 +300,30 @@ if [ -n "$uboot_start" ]; then
 	fi
 else
 	note "skipping uboot.img head check -- partition $UBOOT_PART_NUM was not found above"
+fi
+
+# --- the installer flag: without it this card boots stage 1 normally and never installs ---
+flag_line=$(get_part "$FLAG_PART_NUM")
+if [ -z "$flag_line" ]; then
+	bad "MBR partition $FLAG_PART_NUM (the installer flag) not found -- this card would never install"
+else
+	flag_start=$(field "$flag_line" start); flag_size=$(field "$flag_line" size); flag_type=$(field "$flag_line" type)
+	if [ "$flag_start" = "$FLAG_PART_START" ] && [ "$flag_size" = "$FLAG_PART_SIZE" ] && [ "$flag_type" = "$FLAG_PART_TYPE" ]; then
+		ok "partition $FLAG_PART_NUM is the installer flag (start=$flag_start size=$flag_size type=0x$flag_type)"
+	else
+		bad "partition $FLAG_PART_NUM is start=$flag_start size=$flag_size type=$flag_type, expected $FLAG_PART_START/$FLAG_PART_SIZE/$FLAG_PART_TYPE"
+	fi
+	if [ -f "$FLAG_BLOCK" ]; then
+		if dd if="$img" bs=512 skip="$FLAG_PART_START" count=1 2>/dev/null | cmp -s - "$FLAG_BLOCK"; then
+			ok "LBA $FLAG_PART_START == $FLAG_BLOCK byte-for-byte (the block /init compares)"
+		else
+			bad "LBA $FLAG_PART_START differs from $FLAG_BLOCK -- /init would not see an armed flag"
+		fi
+	elif dd if="$img" bs=512 skip="$FLAG_PART_START" count=1 2>/dev/null | head -c 32 | grep -q '^MiSTer first-boot installer flag'; then
+		ok "LBA $FLAG_PART_START starts with the installer flag magic (no $FLAG_BLOCK to compare in full)"
+	else
+		bad "LBA $FLAG_PART_START does not carry the installer flag magic"
+	fi
 fi
 
 # =============================================================================

@@ -1,11 +1,12 @@
 # SD-card installer splash artwork
 
 The picture the first-boot installer puts on HDMI while it reformats the card
-(ADR 0020 §9, `board/mister/de10nano/installer-overlay/init`, "THE HDMI SPLASH").
+(ADR 0020 §9, `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
+"SPLASH SECTION").
 Drawn by `itsalive image` (package/itsalive), which blits raw pixels and neither
 decodes nor scales, so the artwork goes into the cpio **rendered per video mode**
 as gzipped raw BGRX8888 frames. Those frames are **not committed**: they are pure
-derivations of the PNGs here, and `../installer-post-build.sh` produces them at
+derivations of the PNGs here, and `package/mister-initramfs` produces them at
 build time with `png2raw.py` (below).
 
 | File in the cpio (`/usr/share/mister-installer/`) | Mode | Raw size | Source here |
@@ -31,8 +32,8 @@ choosing at build time.
 - `png2raw.py` — the build-time converter: 8-bit RGB/RGBA non-interlaced PNG →
   gzipped raw BGRX8888, Python standard library only. Its raw output is
   byte-identical to the ImageMagick pipeline below (checked 2026-09-21; the gzip
-  wrapper differs, zlib vs GNU gzip, and does not matter). `installer-post-build.sh`
-  runs it and asserts each frame's raw byte count.
+  wrapper differs, zlib vs GNU gzip, and does not matter). `package/mister-initramfs`
+  runs it, and its `verify.sh` asserts each frame's raw byte count.
 - `upstream/` — the MiSTer Kun sources and their licence, verbatim from
   [baxysquare/mister_kun](https://github.com/baxysquare/mister_kun) (the 8-bit
   SVG/PNG variants, `LICENSE`, `README.md`).

@@ -104,7 +104,7 @@ zero duplication, so the Buildroot merge emits no warnings by construction.
    stays in the board's own file even when both boards happen to have the same
    IP; **and**
 2. the **DE10's resolved `.config` has exactly that value**; **and**
-3. the symbol **exists in both kernel trees** (DE10 is on 6.18.y, DE25 on 7.2.y).
+3. the symbol **exists in both kernel trees** (DE10 is on 6.18.y, DE25 on 7.3.y).
 
 Rule 2 is what makes the fragment a provable no-op on the DE10 (§6). Rule 3 is
 what stops a version-skewed line from being a silent no-op on one board — see §9.
@@ -133,30 +133,29 @@ accounting set, `IKCONFIG` + `IKCONFIG_PROC`, `LOG_BUF_SHIFT=14`, `CGROUPS` +
 * `IKCONFIG_PROC` gives `/proc/config.gz`, the only way to answer "what is
   actually in the kernel on this board" from the board itself — this project
   leans on it repeatedly.
+* `IRQ_TIME_ACCOUNTING` is not stock and not a default; it is shared with the
+  DE10 and the RT kernel ([`kernel-config-deltas.md`](kernel-config-deltas.md) D15).
 * `HZ_1000` is a **MiSTer latency posture, not a default**: the generic
   `kernel/Kconfig.hz` choice defaults to `HZ_250`, so this is a real change on
   any base.
 * `# CONFIG_SUSPEND is not set` — `SUSPEND` is `default y` wherever
   `ARCH_SUSPEND_POSSIBLE`, so the explicit off is required, not decorative.
-* **`# CONFIG_SECCOMP is not set` is load-bearing, and it reaches into the
-  Buildroot configuration.** It is `default y` on arm64 (wave 1 had `SECCOMP=y`) and
-  matches stock on the DE10. The coupling: `BR2_PACKAGE_OPENSSH_SANDBOX` is
-  `default y` in Buildroot, and since openssh 10.4 a failed
-  `prctl(PR_SET_SECCOMP)` is `fatal()` rather than `debug()` — so an image with
-  SECCOMP off and the sandbox on gets an `sshd` that **binds and listens while
-  killing every connection preauth**, password and key alike. The DE10 fixes
-  that with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` in its own image
-  fragment (commit `9824cd6`; the line is now
-  `configs/mister_de10nano_defconfig` and the rationale
-  `docs/buildroot-config.md` §5.19).
-
-  **Action for `configs/mister_de25nano_defconfig`:** it ships no `openssh`
-  today (the DE25 is a bare BusyBox developer OS, ADR 0027), so nothing is
-  broken now — but the day `BR2_PACKAGE_OPENSSH=y` is added there,
-  `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added with it. The
-  fragment carries a WARNING at its package section saying exactly that
-  (`docs/buildroot-config.md` §6.8). It is a configure-time flag, so changing it later
-  also needs `make openssh-dirclean` or the stale stamp ships the broken sshd.
+* **Sandboxing: `SECCOMP`, `SECURITY` + `SECURITY_LANDLOCK`, `CGROUP_PIDS`, `JUMP_LABEL`
+  on; `INTEGRITY` off** (2026-10-04, the DE10's delta D13 in
+  `docs/kernel-config-deltas.md`). Until then the fragment carried
+  `# CONFIG_SECCOMP is not set` to match stock, which obliged any board that shipped
+  openssh to disable Buildroot's `default y` OpenSSH sandbox (openssh ≥ 10.4 kills
+  every pre-auth connection when seccomp is missing). With seccomp on, that obligation
+  is gone. On the DE25 `SECCOMP` and `JUMP_LABEL` are `default y` / already on from the
+  arm64 base, so only Landlock and the pids controller are real changes there;
+  `INTEGRITY` is `default y` under `SECURITY` and turned off because nothing uses it.
+  Verified with `merge_config.sh` + `olddefconfig` on 7.2.9 with the de25nano series:
+  the resolved config gains exactly these symbols plus the two LSM hook symbols Landlock
+  selects.
+* **nftables: `NF_TABLES`, `NF_TABLES_INET`, `NFT_CT`, `NFT_LIMIT`, `NFT_LOG`,
+  `NFT_REJECT`** (2026-10-04, the DE10's delta D14). The resolved 7.2.9 config gains these,
+  the `NF_TABLES_IPV4`/`IPV6` and `NFT_REJECT_*` helpers they bring, and `NET_CRC32C`, and
+  nothing else.
 
 ### 3.2 Modules and the `.ko.xz` layout (§2)
 `MODULES`, `MODULE_UNLOAD`, `MODULE_COMPRESS`, `MODULE_COMPRESS_XZ`.
@@ -574,6 +573,21 @@ Nothing moved. Note the `Image` size is *coincidentally* unchanged — the
 the same length. The board device tree **is** byte-identical at 7.2.3, which
 says mainline's `socfpga_agilex5.dtsi` did not move in the point release.
 
+**RE-VERIFIED AT 7.3, 2026-10-19**, on the move off the 7.2.y line, from a fresh
+`output-de25/` (`output-de25/build/linux-7.3/.config`). The §8 survival check
+over `linux.config` + `linux-mister.fragment`: **481 asked-for symbols, 0
+dropped**, and no `merge_config.sh` warnings. The §10 list: §5.1's exclusions
+(`EFI`, `PCI`, `VIRTUALIZATION`, `COMPAT`, `DRM`/`FB`/`MEDIA_SUPPORT`) all still
+`not set` and no `CONFIG_ACPI*` line at all; `RESET_SIMPLE=y`; the sentinels
+resolve as asked (`SECCOMP=y` since D14). 100 `=m` symbols, 98 installed
+`.ko.xz` (3.4 MiB), `Image` 22,046,728 B. The module name set equals the
+DE10's 6.18 tree except the 7.x-only `rtw89` USB drivers, the DE10-only
+out-of-tree packages, and one new module: `ledtrig-timer`, which 7.3's new
+`RTW89_LEDS` pulls in (`imply LEDS_TRIGGER_TIMER`). Two upstream changes seen
+in the 32-bit RT config are not DE25 concerns: `PROC_SYSCTL` was folded into
+`SYSCTL`, and ARM `ATAGS` went behind `EXPERT` (the DE10 boots by device tree).
+Not run on hardware.
+
 Four candidates were removed during authoring because they did *not* survive,
 and each removal is a finding:
 
@@ -586,7 +600,7 @@ and each removal is a finding:
 
 ## 9. Version skew — the two symbols the fragment must not name
 
-The DE10 is on 6.18.y and the DE25 on 7.2.y, and the fragment must be valid in
+The DE10 is on 6.18.y and the DE25 on 7.3.y, and the fragment must be valid in
 both. Two symbols in the DE10's defconfig are 6.18-only and are therefore
 **absent from the fragment**, though the DE10's own file keeps them (which is
 still a no-op — the fragment simply does not mention them):

@@ -1,0 +1,61 @@
+config BR2_PACKAGE_SLINT
+	bool "slint"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_11 # C++20
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS # cdylib
+	select BR2_PACKAGE_HOST_RUSTC
+	help
+	  Slint declarative GUI toolkit: the C++ library
+	  (libslint_cpp.so), its headers and CMake package for
+	  find_package(Slint), plus slint-compiler on the host to
+	  turn .slint files into C++ at build time.
+
+	  Software renderer only. Carries three patches: fontconfig
+	  is dlopened rather than linked, an ARGB8888 render target
+	  (slint_software_renderer_render_argb8888) and a caller-
+	  driven animation clock (slint_hdosd_set_scene_time).
+	  Without fontconfig, font fallback needs SLINT_FONT_PATH.
+	  See docs/slint.md.
+
+	  https://slint.dev/
+
+if BR2_PACKAGE_SLINT
+
+config BR2_PACKAGE_SLINT_LINUXKMS
+	bool "LinuxKMS backend"
+	help
+	  Slint's own full-screen backend, drawing to DRM dumb
+	  buffers or, without DRM, /dev/fb0. Not needed by a program
+	  that supplies its own slint::platform::Platform and renders
+	  into its own buffer.
+
+config BR2_PACKAGE_SLINT_LINUXKMS_LIBINPUT
+	bool "libinput support"
+	default y
+	depends on BR2_PACKAGE_SLINT_LINUXKMS
+	depends on BR2_PACKAGE_HAS_LIBUDEV # libinput
+	select BR2_PACKAGE_LIBINPUT
+	select BR2_PACKAGE_LIBXKBCOMMON
+	help
+	  Mouse, touch and keyboard input through libinput. Without
+	  it the LinuxKMS backend renders but receives no input.
+
+comment "libinput support needs libudev"
+	depends on BR2_PACKAGE_SLINT_LINUXKMS
+	depends on !BR2_PACKAGE_HAS_LIBUDEV
+
+config BR2_PACKAGE_SLINT_INTERPRETER
+	bool "interpreter"
+	help
+	  Load .slint files at run time (slint::interpreter) instead
+	  of only compiling them to C++ ahead of time. Adds several
+	  MB to libslint_cpp.so.
+
+endif
+
+comment "slint needs a Rust-supported toolchain w/ C++, threads, dynamic library, gcc >= 11"
+	depends on !BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS || \
+		!BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_GCC_AT_LEAST_11 || \
+		!BR2_TOOLCHAIN_HAS_THREADS || BR2_STATIC_LIBS

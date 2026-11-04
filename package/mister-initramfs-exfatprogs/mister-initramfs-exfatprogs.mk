@@ -10,9 +10,11 @@
 # fsck.exfat, can live inside the stage-1 initramfs with no shared libc next
 # to it. Nothing is installed to the rootfs; package/mister-initramfs copies
 # fsck.exfat out of this package's build directory. ADR 0026 is the reason
-# fsck.exfat is in stage 1 at all, and the reason mkfs/tune/label/dump are
-# deliberately NOT copied: a card reformatter must never sit one typo away
-# from the boot path.
+# fsck.exfat is in stage 1 at all, and the reason tune/label/dump are
+# deliberately NOT copied. mkfs.exfat is copied only for the first-boot
+# installer (ADR 0033), off the PATH in /usr/libexec/mister-installer, where
+# the only script that runs it reaches it by absolute path after proving the
+# card carries the installer flag.
 
 MISTER_INITRAMFS_EXFATPROGS_VERSION = 1.2.9
 MISTER_INITRAMFS_EXFATPROGS_SOURCE = exfatprogs-$(MISTER_INITRAMFS_EXFATPROGS_VERSION).tar.xz

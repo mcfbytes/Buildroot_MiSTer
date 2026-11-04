@@ -1,0 +1,46 @@
+From 4a409a014660a8227082f2c0942170ff07310b15 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Tue, 6 Oct 2026 18:02:29 -0500
+Subject: [PATCH] api/cpp: let the caller drive the animation clock
+
+Add slint_hdosd_set_scene_time(ms), which advances animations and timers
+to a caller-owned scene time (ms since the first call). In a std build
+the C++ Platform's duration_since_start() is compiled out, so animations
+otherwise follow the wall clock and cannot track the caller's tick rate.
+
+Upstream: not submitted
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ api/cpp/platform.rs | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/api/cpp/platform.rs b/api/cpp/platform.rs
+index 3f367f0..c9fa06e 100644
+--- a/api/cpp/platform.rs
++++ b/api/cpp/platform.rs
+@@ -330,6 +330,25 @@ pub extern "C" fn slint_platform_update_timers_and_animations() {
+     i_slint_core::platform::update_timers_and_animations()
+ }
+ 
++/// hdosd-bake: drive animations and timers from a caller-owned scene clock (ms since the first
++/// call), not the wall clock. A std build ignores the C++ Platform's duration_since_start().
++#[unsafe(no_mangle)]
++pub extern "C" fn slint_hdosd_set_scene_time(ms: u64) {
++    use i_slint_core::animations::{CURRENT_ANIMATION_DRIVER, Instant};
++    std::thread_local!(static BASE: core::cell::Cell<Option<u64>> = const { core::cell::Cell::new(None) });
++    let base = BASE.with(|b| {
++        b.get().unwrap_or_else(|| {
++            let now = CURRENT_ANIMATION_DRIVER.with(|d| d.current_tick().0);
++            b.set(Some(now));
++            now
++        })
++    });
++    let tick = Instant(base + ms);
++    CURRENT_ANIMATION_DRIVER.with(|d| d.update_animations(tick));
++    i_slint_core::timers::TimerList::maybe_activate_timers(tick);
++    i_slint_core::properties::ChangeTracker::run_change_handlers();
++}
++
+ /// Returns the duration in millisecond until the next timer or `u64::MAX` if there is no pending timers
+ #[unsafe(no_mangle)]
+ pub extern "C" fn slint_platform_duration_until_next_timer_update() -> u64 {

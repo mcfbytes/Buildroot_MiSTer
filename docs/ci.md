@@ -281,6 +281,10 @@ stages**: the static-musl initramfs and the main glibc rootfs + kernel +
 so the musl toolchain gets ccache too — musl and glibc objects have distinct
 ccache keys, so they coexist safely in one cache.
 
+> Historical (pre-ADR 0030): stage 1 is a glibc package of the main build now (ADR 0030
+> Phase B) and carries the SD-card installer too (ADR 0033), so there is no musl stage and
+> no initramfs host-toolchain cache any more.
+
 `MISTER_VERSION`, if the caller exported it to `$GITHUB_ENV` (`release.yml`
 does, per ADR 0018), is inherited here and baked into `/MiSTer.version` by
 `post-build.sh`. Left unset everywhere else, which keeps ordinary builds
@@ -738,8 +742,9 @@ refused. An older version's single generation is left to LRU.
 
 **The trap this guards against:** a GitHub cache key is **immutable** —
 whoever writes it first owns it until the key itself changes. `dl/` is saved
-under `br-dl-<version>-<defconfig-hash>`, which only rotates when the
-defconfig does, i.e. possibly not for weeks. So a build that died in its
+under `br-dl-<version>-<hash>`, the hash covering the DE10 defconfig, the
+`mister-userspace` profile and every `package/*/*.hash`. It rotates only when one
+of those changes, i.e. possibly not for weeks. So a build that died in its
 first minutes, saving a nearly-empty `dl/`, would not merely be useless: it
 would **lock that stub in**. Every later run would exact-hit it, restore
 almost nothing, re-download the rest — and, because an exact hit suppresses
@@ -1532,17 +1537,30 @@ branch-named release — it just burns a full ~5h build for nothing.
 <a id="sdcard-timing-6h-cap"></a>
 ### sdcard build timing and the 6-hour runner cap
 
+> **Since ADR 0033 (2026-10-15)** `mk-sdcard.sh` is pure assembly of `make all`'s
+> outputs: the installer is part of the one stage-1 cpio, so there is no separate
+> installer build and no kernel relink (see
+> [`docs/installer-build.md`](installer-build.md#make-sdcard-scriptsmk-sdcardsh)). What it
+> replaced, measured on release runs, was step 1 (the static-musl installer build with its
+> own toolchain) at **19 min** (run 38261354093) and **29 min** (run 37182947808) of a
+> ~87–91 min release build job, plus two kernel relinks of about **1 min** each (the
+> "~15 min each way" and "~30 min" figures below were stale). Releases are tag-triggered
+> only; `build.yml` (PR/push) never built the installer. The new sdcard step's duration
+> will be measured on the first release run; no figure is claimed for it here. The
+> rest of this section is the history behind the original design.
+
 The measured cold main build is **3h19m** (~199 min; run **29300460591**),
 plus fetching+verifying the ~90 MB stock archive, assembling the 7z, the
-pinned-ARM-7za round trip, and hashing everything. The sdcard steps add
-`mk-sdcard.sh` step 1 (the installer initramfs — a small static-musl
-Buildroot build with its own toolchain, ~1 h) and step 2 (the kernel relink).
+pinned-ARM-7za round trip, and hashing everything. The sdcard steps, as first
+designed, added `mk-sdcard.sh` step 1 (the installer initramfs — a small
+static-musl Buildroot build with its own toolchain, estimated ~1 h; measured later
+at 19–29 min, see above) and step 2 (the kernel relink).
 
 **Crucially, step 2 does NOT do a second from-scratch Buildroot build**: it
 REUSES the completed main build in `output/` and only re-links the kernel
-with the installer initramfs (~15 min each way, snapshotting+restoring
-`output/` so the shipped kernel is untouched — see
-`scripts/mk-sdcard.sh`'s `build_installer_kernel`). That reuse is deliberate
+with the installer initramfs (estimated ~15 min each way, measured ~1 min;
+snapshotting+restoring `output/` so the shipped kernel is untouched — the
+`build_installer_kernel` function ADR 0033 deleted). That reuse is deliberate
 and is what keeps the whole job around ~5 h, comfortably inside
 GitHub-hosted runners' HARD ~6 h (360 min) wall-clock cap.
 
@@ -1652,8 +1670,9 @@ kernel-variant extras) nor the pinned-ARM-7za verification path; the sdcard
 steps run AFTER all of that so the already-fetched+verified `stock_release.7z`
 can be reused instead of re-downloading ~90 MB.
 
-`scripts/mk-sdcard.sh` does its own installer-initramfs build + kernel relink
-off the completed `make all`. It does **not** put any variant kernel on the
+`scripts/mk-sdcard.sh` assembles the card from the completed `make all` (before ADR
+0033 it also did its own installer-initramfs build + kernel relink; now the card's
+kernel is byte-identical to the release's `zImage_dtb`). It does **not** put any variant kernel on the
 card: `zImage_dtb-rt` was dropped from the FAT payload on 2026-07-27 (ADR 0021
 item 4, reversed) and `MISTER_RT_ZIMAGE` no longer exists, so these steps pass
 no RT artifact in. The card's `linux.img` still carries the RT module tree, so
@@ -1670,8 +1689,8 @@ The minimal sdcard build is skipped ONLY on an opt-in full-sdcard dispatch
 (see [`#manual-full-sdcard-dispatch`](#manual-full-sdcard-dispatch)): that run
 targets an already-released tag whose minimal `sdcard.img.xz` is already
 attached, so rebuilding it here is pure redundancy — and each
-`mk-sdcard.sh` run does a ~30 min kernel relink, so a needless second one
-risks the job's ~6 h cap.
+`mk-sdcard.sh` run was, when this was written, a build with a kernel relink (ADR 0033
+removed both), so a needless second one risked the job's ~6 h cap.
 
 <a id="disk-usage-double-sample"></a>
 ### Disk & cache usage: a second, differently-timed sample
@@ -2525,8 +2544,8 @@ idiom** and should get the same treatment when next touched.
    bespoke step.
 
    **This case also refreshes license-file hashes** (since 2026-09-04), which
-   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy) and 9
-   (itsalive) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
+   cases 1, 2 and 4 have no equivalent of — only cases 7 (azcopy), 9
+   (itsalive, slint) and 10 (Noto Sans) do the same. Each package's `*_LICENSE_FILES` is read from its `.mk` and those
    files are hashed out of the tarball the step just fetched. The reason is a
    real incident: on the 26.03 bump (PR #149) the tarball hash refreshed
    perfectly, but 26.03 had rewrapped `DOC/readme.txt` — which `lzma-sdk`
@@ -2598,27 +2617,65 @@ idiom** and should get the same treatment when next touched.
    made the override necessary.
 
 <a id="renovate-hash-sync-itsalive"></a>
-9. **The itsalive vendored-tarball hash** (`package/itsalive/itsalive.hash`),
-   refreshed by `scripts/hash-sync-itsalive.sh` (**added 2026-10-04**; 8 is
-   the retired golden-config case). Case 7's kind of source, for a
-   `cargo-package`: the hashed file is `itsalive-<sha>-cargoN.tar.gz`, the
-   GitHub archive with `cargo vendor --locked` run inside it and repacked by
-   Buildroot's helpers, so again no URL serves it. The script runs **Buildroot's
+9. **The cargo-vendored tarball hashes** (`package/itsalive/itsalive.hash`
+   since **2026-10-04**, `package/slint/slint.hash` since **2026-10-06**),
+   refreshed by `scripts/hash-sync-cargo.sh` (named `hash-sync-itsalive.sh`
+   until slint joined; 8 is the retired golden-config case). Case 7's kind of
+   source, for cargo vendoring: the hashed file is `<pkg>-<ver>-cargoN.tar.gz`,
+   the GitHub archive with `cargo vendor --locked` run inside it and repacked by
+   Buildroot's helpers, so again no URL serves it. (itsalive is a
+   `cargo-package`; slint is a `cmake-package` that sets
+   `DOWNLOAD_POST_PROCESS = cargo` itself, which produces the same kind of
+   file.) The script is table-driven over `CARGO_PINS` and runs **Buildroot's
    own `support/download/cargo-post-process`** from the pinned tree, with the
    `cargo` component of the `rust-<ver>-x86_64-unknown-linux-gnu.tar.xz` that
    tree's `package/rust-bin` pins, verified against that tree's
    `rust-bin.hash` (a verified copy already in `dl/rust-bin/` is reused). The
+   toolchain is prepared once and shared by every pin that moved. The
    `-cargoN` suffix is read from that tree's `BR_FMT_VERSION_cargo`, so a
-   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor` never
-   runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
-   checksums are verified as usual. `LICENSE` is re-hashed from the result,
-   with a `::warning::` if it changed.
+   Buildroot bump moves it too. Only `cargo` is extracted: `cargo vendor`
+   never runs `rustc`. `Cargo.lock` is authoritative (`--locked`), and crates.io
+   checksums are verified as usual. Every other `sha256` line in the `.hash`
+   names a licence file, and each one is re-hashed from the result, with a
+   `::warning::` if it changed. One outcome row per package, one
+   `CARGO_HASH_CHANGED` flag.
 
    Verified at authoring time by re-deriving master's existing value for
-   `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a deliberately
-   stale filename, then used to produce the hash for PR #230's bump to
-   `797378a7`. Cost: a ~200 MB toolchain download plus one crate on a real
-   bump; seconds (`already-current`) on every other pin's PR.
+   itsalive `1aa4d830` byte-for-byte (`cc31af9d…`) from a hash file with a
+   deliberately stale filename, then used to produce the hash for PR #230's
+   bump to `797378a7`. Re-verified on 2026-10-06 after the table-driven rewrite:
+   from stale filenames (and a corrupted `LICENSE.md` line) it re-derived
+   itsalive `797378a7` (`fb1396ba…`) and slint 1.18.1 (`d444ebc9…`, 188 MB)
+   byte-for-byte, and the re-run returned `already-current` for both in
+   milliseconds. Cost on a real bump: a ~200 MB toolchain download, plus one
+   crate for itsalive or ~180 MB of crates for slint; seconds
+   (`already-current`) on every other pin's PR.
+
+<a id="renovate-hash-sync-font-noto-sans"></a>
+10. **The Noto font release-asset zips** (`package/font-noto-sans/font-noto-sans.hash`
+    and `package/font-noto-sans-jp/font-noto-sans-jp.hash`), refreshed by
+    `scripts/hash-sync-noto-fonts.sh` (**added 2026-10-06**), table-driven over
+    `FONT_PINS`. The sources are release **assets**: `NotoSans-v<ver>.zip` under a
+    `NotoSans-v<ver>` tag of `notofonts/latin-greek-cyrillic`, and
+    `16_NotoSansJP.zip` under a `Sans<ver>` tag of `notofonts/noto-cjk`. Case
+    1's `$(call github,...)` archive URL cannot reach either. The trust model is
+    case 1's and case 3's: upstream publishes no checksums, so a locally computed
+    `sha256sum` of the freshly fetched asset is the source. Each licence file
+    (`OFL.txt`, `LICENSE`) is re-hashed from the same zip, with a `::warning::`
+    if it changed; a zip without one is `failed`.
+
+    `16_NotoSansJP.zip` has the same name in every release, so the filename
+    cannot say which version a hash belongs to. That `.hash` carries a
+    `# hashed version: <ver>` line instead. The script keys its
+    `already-current` check on that line and rewrites it, and `lint.yml`
+    compares it with `FONT_NOTO_SANS_JP_VERSION`. A `.hash` that lost the line
+    is `failed`, not silently re-hashed.
+
+    Verified at authoring time with fixtures: all-current (`already-current`
+    ×2); a stale Noto Sans filename plus a stale JP version line and a corrupted
+    JP `LICENSE` line (both refreshed, files restored byte-for-byte:
+    `0c34df07…` for 2.015, `2bbdd2c2…` for 2.004); and a JP `.hash` with no
+    version line (`failed`, file untouched).
 
 <a id="renovate-hash-sync-not-automated"></a>
 ### Deliberately not automated
@@ -2908,9 +2965,11 @@ sufficient:
 
 1. **It cannot be allowed to reach `linux.img`, and a step inside `build` could.**
    `make azcopy` installs into `$(TARGET_DIR)`. `scripts/mk-sdcard.sh` then
-   *regenerates* `linux.img` from that same `output/` — its own header says it
-   "snapshots that image BEFORE its own step-2 relink regenerates it". Anything
-   sitting in `output/target` at that moment ships, silently, in an image whose
+   *regenerated* `linux.img` from that same `output/` (its old header said it
+   "snapshots that image BEFORE its own step-2 relink regenerates it"; ADR 0033
+   removed the relink, and `mk-sdcard.sh` now only reads `output/images/`, so that
+   particular route is closed; the principle stands). Anything
+   sitting in `output/target` when an image is regenerated ships, silently, in an image whose
    whole point is not to contain it. A different runner with a different checkout
    cannot make that mistake regardless of what gets added to `build` later.
 2. **`build` has no wall-clock to spare.** It is budgeted `timeout-minutes: 355`
@@ -2942,6 +3001,14 @@ bootstrap and azcopy; sharing the key would let whichever job wrote first publis
 its `dl/` under it, and a cache is immutable once written — so if this job won the
 race the image build would silently lose almost its whole download cache and
 re-fetch everything.
+
+**This job only restores it.** A release runs on a tag ref, and a cache saved from a
+tag is scoped to that tag: no later release (or build) can read it, yet it still
+counts against the repository's cache budget and pushes master's entries toward LRU
+eviction. The job used to use `actions/cache` (restore + save), so every release wrote
+one dead entry; it is now `actions/cache/restore`, the same rule `buildroot-build`
+applies to everything that is not master. The cost is a cold azcopy/Go-bootstrap
+download per release.
 
 <a id="renovate-hash-sync-outcomes-gate"></a>
 ### The per-pin outcomes ledger and the job-summary gate
@@ -3106,6 +3173,13 @@ fallback whenever case 7 skips.
 since 2026-10-04 refreshed by case 9): `paths:` yes, `HASH_SYNC_PACKAGES`
 never. Its `lint.yml` consistency step is the gate behind a case-9 skip, and
 the recipe in `package/itsalive/itsalive.hash` is the manual fallback.
+
+**`slint` is the third** (a `cmake-package` vendored like a `cargo-package`,
+refreshed by case 9 since 2026-10-06), with the same rules and the same
+fallback recipe. The `mister-userspace` profile selects slint and font-noto-sans,
+so `build.yml` fetches and builds them (corrosion as slint's host dependency);
+font-noto-sans-jp is built by no image. `lint.yml`'s two pin-consistency steps
+remain the early gate on their hashes.
 
 ---
 

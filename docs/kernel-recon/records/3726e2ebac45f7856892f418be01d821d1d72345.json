@@ -1,0 +1,58 @@
+{
+  "sha": "3726e2ebac45f7856892f418be01d821d1d72345",
+  "subject": "usb: dwc2: acknowledge all HCINT bits again (#114)",
+  "author": "synrais",
+  "author_is_pr_contributor": true,
+  "date": "2026-10-14",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "usb",
+  "change_type": "revert",
+  "files": [
+    "drivers/usb/dwc2/hcd_intr.c"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0068-dwc2-host-ack-all-hcint-bits.patch",
+  "carried_mode": "clean-apply",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/usb/dwc2/hcd_intr.c:2024-2025 (linux-6.18.57), :2026-2027 (linux-7.3) -- dwc2_hc_n_intr()",
+    "vanilla_quote": "\thcint = hcintraw & hcintmsk;\n\tdwc2_writel(hsotg, hcint, HCINT(chnum));",
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Not a provenance-doc row: new fork work. It partially reverts mainline 0583bc776ca5 ('USB: dwc2: write HCINT with INTMASK applied', Oliver Neukum, v6.7, Cc: stable), which MiSTer's 5.15.1 predates.",
+  "impact": {
+    "effect_if_absent": "Per the PR's DE10 measurement: a low-speed HID device behind the hub occasionally loses the second packet of a multi-packet report under bulk USB load (USB HDD reads at ~22 MB/s); the spliced report is a phantom input (menu 'Up' for ~24 ms), about 0.01-0.02 per MB read. Nothing in dmesg.",
+    "affected_hardware": [
+      "low-speed USB HID with reports longer than 8 bytes, behind a hub (split transactions), during bulk transfers -- the PR's case is a 14-byte-report gamepad adapter"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "evdev reports Main_MiSTer reads; no interface change",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- applied as authored in all three series. Measured with each full series in order at patch -p1 -F0 on pristine tarballs: de10nano 54/54 on linux-6.18.57, beta 56/56 and de25nano 39/39 on linux-7.3; zero fuzz, zero rejects. drivers/usb/dwc2/ builds W=1 on both (arm, arm64) with no new warnings."
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (the file's SPDX tag). Author synrais <78070154+synrais@users.noreply.github.com>, who opened PR #114 (head synrais:MiSTer-v6.18 bb84757a8, patch-id 38d81af909... identical to the merge). The commit carries NO Signed-off-by; 0068 reproduces it as committed and does not add one on the author's behalf. Fine for this repo and the fork; a mainline submission would need the author's own sign-off.",
+  "notes": "NOT A 7.3 BACKPORT, and not in mainline at all. linux-7.3 (dl/linux/linux-7.3.tar.xz), linux-7.2.11 and linux-6.18.57 all still write `hcint` (masked) back. The mainline and linux-next logs for drivers/usb/dwc2/hcd_intr.c (git.kernel.org, 2026-10-19) end at 'usb: dwc2: remove WARN in dwc2_hcd_save_data_toggle' (2026-05-22), with 0583bc776ca5 the only HCINT change since 2021. This is fork-original code that partially reverts a stable-tagged mainline fix -- the same 'restore 5.15 behaviour' shape as 7a65ca02c (0052). 5.15 is clean only because MiSTer's 5.15 is 5.15.1: 0583bc776ca5 is v6.7 and reached stable later.\n\nTHE FIX IS MEASURED; THE MECHANISM IS NOT. The PR's table (6.18.38, USB HDD at 22-23 MB/s): ~55 phantom inputs in 129 s unfixed, 0 in 2700 MB with this change, 0 in 2700 MB with its alternative (clear HCINT in dwc2_hc_start_transfer()). The author says the mechanism is 'read from the code, not captured on the bus', and as written it does not quite match the code. In host-DMA mode every halt path ends in dwc2_release_channel() -> dwc2_hc_cleanup(), which writes 0x3fff to HCINT (6.18.57 hcd.c:942-945), and dwc2_hc_init() clears the same bits on every assignment (hcd.c:661-664). So a masked-off bit cannot carry into the channel's next ASSIGNMENT. What is left is the window between dwc2_hc_init() (at select time) and dwc2_hc_start_transfer() (at queue time), which is exactly where the PR's alternative clears; the raw acknowledge closes it differently by never leaving bits behind. Treat the cause as unproven; the effect is shown.\n\nRISK, which is what 0583bc776ca5 was for: Raspberry Pi stress tests logged 'dwc2_hc_chhltd_intr_dma: Channel N - ChHltd set, but reason is unknown' with the raw acknowledge. The PR saw none on the DE10 in 5400 MB with this change. If those lines appear in dmesg on our image, look here first.\n\nAGAINST OUR dwc2 SERIES (0054-0066): no overlap. None of them touches the HCINT write-back; 0061 counts halts from the masked `hcint` and is unaffected; 0062's SOF hold-off clears only GINTSTS.SOF; 0066 changes HCINTMSK, not HCINT. In the default buffer-DMA mode (fs_ddma=0, what both boards run) 0068 is the only change to this path. With fs_ddma=1, descriptor DMA goes back to the pre-6.7 acknowledge it was written against (dc4c76e7b22c), but the 0063-0066 rig verification of 2026-09-28 ran with the masked one; fs_ddma=1 is not re-verified with 0068.\n\nDE25 INCLUDED, the same reasoning as 0056/0060: generic dwc2 host logic on the buffer-DMA path that board runs ('snps,dwc2', board/mister/de25nano/linux.config:295-296).\n\nNOT TESTED on this project's rig or on a DE25. Author's hardware: DE10-Nano on 6.18.38."
+}

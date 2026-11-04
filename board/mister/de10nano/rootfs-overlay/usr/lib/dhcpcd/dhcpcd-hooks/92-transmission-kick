@@ -1,0 +1,32 @@
+# Restarts transmission-daemon once when an IPv4 lease arrives after its Local Peer
+# Discovery failed to join 239.192.152.143 for want of a route (docs/bittorrent.md §10).
+
+case "$reason" in
+BOUND|REBOOT)
+	# Compared as data, never run: this file is sourced into dhcpcd's shell.
+	if [ "${if_up:-false}" = true ]; then
+	(
+		TM_INIT=/etc/init.d/S92transmission
+		TM_PID=/run/transmission/jail.pid
+		TM_EXEC=/usr/bin/transmission-daemon
+		TM_SETTINGS=/media/fat/linux/transmission/jail/settings.json
+		IGMP=/proc/net/igmp
+		STAMPDIR=/run/transmission-kick
+		[ -x "$TM_INIT" ] && [ -r "$TM_PID" ] || exit 0
+		read -r tm_pid tm_start <"$TM_PID" || exit 0
+		case "$tm_pid" in
+			''|0|*[!0-9]*) exit 0 ;;
+		esac
+		# The pidfile's process, by exe and start time, so a reused pid is never restarted.
+		[ "$(readlink "/proc/$tm_pid/exe" 2>/dev/null)" = "$TM_EXEC" ] || exit 0
+		[ "$(sed 's/^.*) //' "/proc/$tm_pid/stat" 2>/dev/null | cut -d' ' -f20)" = "$tm_start" ] || exit 0
+		grep -q '"lpd-enabled": *false' "$TM_SETTINGS" 2>/dev/null && exit 0
+		# 239.192.152.143 as /proc/net/igmp prints it: already joined, nothing to fix.
+		grep -q '8F98C0EF' "$IGMP" 2>/dev/null && exit 0
+		mkdir "$STAMPDIR" 2>/dev/null || exit 0
+		echo "transmission: IPv4 address after its start, restarting for Local Peer Discovery"
+		"$TM_INIT" restart >/dev/null 2>&1
+	) &   # TM-KICK-BACKGROUND -- scripts/test-transmission-kick.sh keys on this marker.
+	fi
+	;;
+esac

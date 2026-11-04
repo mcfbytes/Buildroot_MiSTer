@@ -58,9 +58,7 @@ NO_FORK_ORIGIN = {
            "0065-dwc2-ddma-halt-before-freeing-desc-list",
            "0066-dwc2-ddma-keep-xfercompl-unmasked",
        )},
-    "0067-wifi-rtw88-8821c-support-rfe-type-7.patch":
-        "Original rtw88 fix for a forum user's 0bda:c811 dongle, not a fork commit. Reason and "
-        "provenance live in docs/patch-provenance.md. Added 2026-09-30.",
+    # 0067 (rtw88 RFE 7) left 2026-10-19: upstreamed as fork 8ad2b5ad6, whose record maps it.
 }
 
 # "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the

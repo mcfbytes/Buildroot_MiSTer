@@ -20,9 +20,12 @@
 #    update overwrites (see BACKUP_FILES below) into /media/fat/linux/.mlm-backup/.
 # 3. Installs this project's Scripts onto the card:
 #    update_linux_modernization.sh (updates the image from now on),
-#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026)
-#    pair_logitech.sh (pairs a Logitech device to a Unifying receiver)
-#    and sinden_lightgun.sh (downloads and enables the Sinden Lightgun driver).
+#    check_storage.sh (checks the exFAT data partition for damage, ADR 0026),
+#    pair_logitech.sh (pairs a Logitech device to a Unifying receiver),
+#    usb_full_speed_mode.sh (switches USB full-speed mode, docs/dwc2-usb-irq.md),
+#    cpu_isolation.sh (keeps Linux work off CPU1, docs/cpu-isolation.md),
+#    security.sh (stock-style root login over SSH/FTP, ADR 0031) and
+#    sinden_lightgun.sh (downloads and enables the Sinden Lightgun driver).
 # 4. Runs it, which sets the `update_linux = false` kill switch, fetches this
 #    project's image through the stock on-device Downloader, and reboots.
 #
@@ -42,6 +45,9 @@
 #   MLM_UPDATER_URL        override where the updater script is fetched from
 #   MLM_CHECK_STORAGE_URL  override where check_storage.sh is fetched from
 #   MLM_PAIR_LOGITECH_URL  override where pair_logitech.sh is fetched from
+#   MLM_USB_FULL_SPEED_URL override where usb_full_speed_mode.sh is fetched from
+#   MLM_CPU_ISOLATION_URL  override where cpu_isolation.sh is fetched from
+#   MLM_SECURITY_URL override where security.sh is fetched from
 #   MLM_SINDEN_URL         override where sinden_lightgun.sh is fetched from
 #
 # ---------------------------------------------------------------------------
@@ -74,6 +80,9 @@ UPDATER_URL="${MLM_UPDATER_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Sc
 CHECK_STORAGE_URL="${MLM_CHECK_STORAGE_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/check_storage.sh}"
 # Same override shape again, same two reasons.
 PAIR_LOGITECH_URL="${MLM_PAIR_LOGITECH_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh}"
+USB_FULL_SPEED_URL="${MLM_USB_FULL_SPEED_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/usb_full_speed_mode.sh}"
+CPU_ISOLATION_URL="${MLM_CPU_ISOLATION_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/cpu_isolation.sh}"
+SECURITY_URL="${MLM_SECURITY_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/security.sh}"
 SINDEN_URL="${MLM_SINDEN_URL:-${RAW_BASE}/board/mister/de10nano/fat-payload/Scripts/sinden_lightgun.sh}"
 DB_URL="https://mcfbytes.github.io/Buildroot_MiSTer/db.json"
 
@@ -82,6 +91,9 @@ SCRIPTS_DIR="$FAT/Scripts"
 UPDATER="$SCRIPTS_DIR/update_linux_modernization.sh"
 CHECK_STORAGE="$SCRIPTS_DIR/check_storage.sh"
 PAIR_LOGITECH="$SCRIPTS_DIR/pair_logitech.sh"
+USB_FULL_SPEED="$SCRIPTS_DIR/usb_full_speed_mode.sh"
+CPU_ISOLATION="$SCRIPTS_DIR/cpu_isolation.sh"
+SECURITY="$SCRIPTS_DIR/security.sh"
 SINDEN="$SCRIPTS_DIR/sinden_lightgun.sh"
 BACKUP_DIR="$FAT/linux/.mlm-backup"
 
@@ -394,6 +406,9 @@ show_plan() {
 	say "  /media/fat/Scripts/update_linux_modernization.sh   <- installed"
 	say "  /media/fat/Scripts/check_storage.sh                <- installed"
 	say "  /media/fat/Scripts/pair_logitech.sh                <- installed"
+	say "  /media/fat/Scripts/usb_full_speed_mode.sh          <- installed"
+	say "  /media/fat/Scripts/cpu_isolation.sh                <- installed"
+	say "  /media/fat/Scripts/security.sh                     <- installed"
 	say "  /media/fat/Scripts/sinden_lightgun.sh              <- installed"
 	say ""
 	say "  That is the whole of it. Our release archive IS the stock archive with"
@@ -510,6 +525,9 @@ install_scripts() {
 	install_one_script "$UPDATER_URL"       "$UPDATER"       'mister_linux_modernization'
 	install_one_script "$CHECK_STORAGE_URL" "$CHECK_STORAGE" 'mister-fsck-exfat'
 	install_one_script "$PAIR_LOGITECH_URL" "$PAIR_LOGITECH" 'mister-pair-logitech'
+	install_one_script "$USB_FULL_SPEED_URL" "$USB_FULL_SPEED" 'mister-usb-full-speed'
+	install_one_script "$CPU_ISOLATION_URL" "$CPU_ISOLATION" 'mister-cpu-isolation'
+	install_one_script "$SECURITY_URL" "$SECURITY" 'mister-security'
 	install_one_script "$SINDEN_URL"        "$SINDEN"        'mister-sinden-lightgun'
 }
 

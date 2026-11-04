@@ -1,0 +1,3 @@
+# Locally computed: upstream publishes no checksums for its release tags.
+sha256  e9e95b1ee2bad52681f347993fb1a5af5cce458c5ce8a2636c9e476e4babf8e3  corrosion-v0.6.1.tar.gz
+sha256  c6e324629de10a776e32323be52c33581ad3eb5efdcfa2d7024edf3c463ce71d  LICENSE

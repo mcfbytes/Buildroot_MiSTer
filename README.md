@@ -76,6 +76,7 @@ rows are newer: they were re-measured against Release 20260912 on 2026-10-01.
 | **OpenSSH / Samba / Python** | 8.6p1 / 4.14.6 / 3.9.6 | 10.5p1 / 4.24.6 / 3.14.7 |
 | **SSH host keys** | The same keys on every MiSTer, in the public download | Generated per device on first boot ([ADR 0015](docs/decisions/0015-per-device-ssh-host-keys.md)) |
 | **SSH key login** | `authorized_keys` is lost on every Linux update | Read from the FAT card, so it survives updates |
+| **Remote root login** | Password `1` over SSH and cleartext FTP, for anyone on the network | Updated cards: unchanged. A new SD card starts hardened (SSH by key, no FTP); **Scripts > security.sh** switches ([FAQ](docs/user/faq.md#remote-login)) |
 | **`.7z` extractor for updates** | p7zip 16.02 (2016), fetched off the internet as `linux/7za` | 7-Zip 26.03, built from source and shipped ([ADR 0023](docs/decisions/0023-ship-7zip-instead-of-fetching-p7zip-16.md)) |
 | **Wi-Fi** | Mainline drivers with firmware for most USB chips; no Broadcom, Redpine, `ath9k_htc` or Wi-Fi 6E | The same, plus those four families ([details](#wi-fi-and-bluetooth)) |
 | **Bluetooth firmware** | Broad; missing the Realtek Wi-Fi 6 combo chips' Bluetooth | Everything stock ships that a driver loads, plus those ([details](#wi-fi-and-bluetooth)) |
@@ -143,7 +144,7 @@ sh mlm.sh --dry-run     # prints exactly what it would change, touches nothing
 | `linux/7za` | Replaced: 7-Zip 26.03 instead of the 2016 p7zip |
 | `downloader.ini` | One key: `[MiSTer] update_linux = false`. Original saved to `linux/.mlm-backup/` |
 | `Scripts/update_linux_modernization.sh` | Installed: updates this image from now on |
-| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/sinden_lightgun.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md) and [Sinden Lightgun](docs/sinden-lightgun.md) launchers |
+| `Scripts/check_storage.sh`, `Scripts/pair_logitech.sh`, `Scripts/usb_full_speed_mode.sh`, `Scripts/cpu_isolation.sh`, `Scripts/security.sh`, `Scripts/sinden_lightgun.sh` | Installed: [exFAT check](docs/decisions/0026-user-driven-exfat-fsck.md), [Logitech pairing](docs/logitech-pairing.md), [USB full-speed mode](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu), [CPU isolation](docs/cpu-isolation.md), [password login](docs/user/faq.md#remote-login) and [Sinden Lightgun](docs/sinden-lightgun.md) launchers |
 
 Everything else under `linux/` is rewritten with byte-identical content, because the release
 archive *is* stock's archive with those files swapped in; small files are backed up to
@@ -239,10 +240,13 @@ Write-ups: [`docs/patch-provenance.md` §10](docs/patch-provenance.md).
   proves each bump still builds and passes the parity suite.
 - **IPv6 is built in but off** until you opt in on the card (stock has none).
 
-Deliberately unchanged: **the root password is still `1`**, for stock parity
-([FAQ](docs/user/faq.md#whats-the-default-root-password-and-is-that-a-problem)). A
-secure-by-default network posture is proposed in
-[ADR 0031](docs/decisions/0031-secure-by-default-network-posture.md) and not yet adopted.
+**A new SD card starts hardened; an updated card keeps stock behaviour.** Stock accepts
+root with the password `1` over SSH and FTP from anyone on the network. A card flashed
+from this project's SD card image instead takes SSH keys only and runs no FTP server.
+**Scripts > security.sh** switches between the two, or changes one setting, either way
+([FAQ](docs/user/faq.md#remote-login),
+[ADR 0031](docs/decisions/0031-secure-by-default-network-posture.md)). The console keeps
+the password `1`.
 
 ### Storage and everyday features
 
@@ -256,6 +260,8 @@ secure-by-default network posture is proposed in
 | BitTorrent | `rtorrent`, foreground TUI, no local peer discovery | `transmission-daemon`, off until you opt in on the card, state kept on the card ([doc](docs/bittorrent.md)) |
 | ZeroCD Wi-Fi dongles | No `usb_modeswitch`, so they stay in CD mode | `usb_modeswitch` with the configs these dongles need |
 | USB controller polling | A 1 kHz full-speed device is polled every 2 ms | Fixed in the dwc2 host driver: 500 → 984 reports/s measured ([doc](docs/dwc2-usb-irq.md)) |
+| USB interrupt load | About 9,000 interrupts/s on CPU0 with a pad plugged in | Same by default; **Scripts > usb_full_speed_mode.sh** caps USB at 12 Mbit/s and drops it to about 100/s ([doc](docs/dwc2-usb-irq.md#switching-it-from-the-scripts-menu)) |
+| CPU1 for the main program | Linux work can land on the main program's CPU | **Scripts > cpu_isolation.sh** keeps it on CPU0, live or via `isolcpus=` ([doc](docs/cpu-isolation.md)) |
 | Off-device backup | None | `azcopy` packaged, not enabled by default ([doc](docs/azcopy.md)) |
 
 <a id="wi-fi-and-bluetooth"></a>
@@ -273,9 +279,9 @@ rootfs (re-checked 2026-10-01). Background audits: [`docs/wifi-parity.md`](docs/
 | Chip family | Stock | This image | Verified |
 |---|---|---|---|
 | Realtek 802.11n/ac (`rtl8xxxu`, `rtw88`: RTL8188, 8710, 8811/8821, 8812, 8814, 8822, 8723DU) | With firmware | Same | **Hardware** (RTL8822BU, WPA3 5 GHz) |
-| Realtek Wi-Fi 6 (RTL8851BU, 8852BU; RTL8852AU on the 7.2 kernels) | `rtw89` with firmware (no 8852AU) | Same, plus 8852AU | Build |
-| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr` on 6.18; mainline `rtw89` on the 7.2 kernels | Build |
-| Realtek Wi-Fi 7 (RTL8922AU) | None | Mainline `rtw89`, 7.2 kernels only | Build |
+| Realtek Wi-Fi 6 (RTL8851BU, 8852BU; RTL8852AU on the 7.x kernels) | `rtw89` with firmware (no 8852AU) | Same, plus 8852AU | Build |
+| Realtek Wi-Fi 6E (RTL8852CU/8832CU) | None | Out-of-tree `rtl8852cu-morrownr` on 6.18; mainline `rtw89` on the 7.x kernels | Build |
+| Realtek Wi-Fi 7 (RTL8922AU) | None | Mainline `rtw89`, 7.x kernels only | Build |
 | AICSemi AIC8800 family (Tenda U2/U11, TX1U Nano…) | Driver and firmware | Same | Build |
 | MediaTek (MT7601U, MT76x0U/x2U, MT7663U, MT7921U, MT7925U) | `mt76` with firmware | Same | Build |
 | RTL8192DU | With firmware | Same | Build |
@@ -297,7 +303,7 @@ as on stock. Per-file detail: [`docs/firmware-parity.md`](docs/firmware-parity.m
 
 ### The real-time kernel
 
-`zImage_dtb-rt` is a `PREEMPT_RT` kernel on the 7.2.y line. 32-bit ARM RT is mainline since
+`zImage_dtb-rt` is a `PREEMPT_RT` kernel on the 7.3.y line. 32-bit ARM RT is mainline since
 7.1, so no out-of-tree RT patch is carried. It is built by the same `make` as the main
 kernel, from the same config plus a fragment, and its modules ride inside the same
 `linux.img`. Switching kernels is therefore a one-line `u-boot.txt` edit, with no rootfs
@@ -309,14 +315,16 @@ latency measurement has been taken yet, so it is for testing, not daily use
 ### The SD-card image
 
 `sdcard.img.xz` is a complete, `dd`-able card. It ships small and uses mr-fusion's own
-mechanism: a throwaway installer reformats the card to exFAT at its real size on first boot,
-because Linux cannot grow exFAT in place. Install time depends on the card's write speed, not
+mechanism: a first-boot installer reformats the card to exFAT at its real size,
+because Linux cannot grow exFAT in place. It runs from the same kernel and initramfs as every
+other boot, and only on a freshly flashed card. Install time depends on the card's write speed, not
 its size. The installer shows progress on HDMI (using
 [`itsalive`](https://github.com/mcfbytes/ItsAlive_MiSTer) to light the display without
 Main_MiSTer) and on the serial console. It is reordered so an interrupted install is
 recoverable rather than a brick. It is a separate release asset, never referenced by
 `db.json`, because it writes the bootloader
 ([ADR 0020](docs/decisions/0020-sdcard-exfat-reformat-installer.md),
+[ADR 0033](docs/decisions/0033-one-initramfs-installer-in-stage-1.md),
 [payload inventory](docs/verification/sdcard-payload.md)).
 
 ### Deliberately identical to stock
@@ -476,8 +484,8 @@ the Makefile shims GNU `install` in for Buildroot only; no `sudo` is needed.
 
 ```
 Makefile                   thin wrapper: fetch + verify Buildroot, forward everything else
-configs/                   mister_de10nano_defconfig, mister_de25nano_defconfig,
-                           mister_installer_defconfig  (rationale: docs/buildroot-config.md)
+configs/                   mister_de10nano_defconfig, mister_de25nano_defconfig
+                           (rationale: docs/buildroot-config.md)
 package/mister-{userspace,firmware,drivers}/   Kconfig profiles shared by both boards (ADR 0030)
 package/                   drivers (Wi-Fi, xone…), libraries (libchdr, rcheevos…), linux-rt,
                            the stage-1 initramfs, itsalive, 7zip, munt, midilink…
@@ -485,10 +493,10 @@ linux/                     kernel extension that embeds the stage-1 initramfs
 board/mister/de10nano/
   linux.config             minimal kernel defconfig (an absent CONFIG_X is not "off")
   linux-patches/           the carried 6.18 series
-  linux-patches-beta/      the 7.2 (RT) series: symlinks into linux-patches/ plus re-anchored copies
+  linux-patches-beta/      the 7.x (RT) series: symlinks into linux-patches/ plus re-anchored copies
   linux-patches-upstream/  what the exported tree needs but this image must not carry
   rootfs-overlay/          init scripts, sshd wiring, MiSTer-specific files
-  installer-*/             the SD-card installer's /init and HDMI splash
+  installer-*/             the SD-card installer script and HDMI splash (run from stage 1)
 board/mister/de25nano/     the DE25-Nano developer OS (aarch64)
 scripts/                   test suite, hash sync, SD-card builder, kernel export
 docs/                      ADRs, parity audits, kernel reconciliation, user docs
@@ -506,7 +514,7 @@ one kernel patch fewer. It is also architecture-neutral: stock's patch calls `sy
 directly, which does not exist on arm64. Details:
 [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md), [`PLAN.md` §5](PLAN.md).
 
-**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.2 kernel) builds
+**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.3 kernel) builds
 from the same tree and shares the userspace profiles and most kernel patches. It has no
 MiSTer binaries yet and its own manual CI lane. Start at
 [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md).
@@ -562,9 +570,10 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 | [`docs/patch-provenance.md`](docs/patch-provenance.md) | Every carried patch: origin, upstream status, disposition |
 | [`docs/kernel-recon/`](docs/kernel-recon/) | The per-commit reconciliation and its pipeline |
 | [`docs/kernel-config-deltas.md`](docs/kernel-config-deltas.md) | Every kernel-config divergence from stock |
-| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.2 variant |
+| [`docs/rt-beta-kernel.md`](docs/rt-beta-kernel.md) | The `PREEMPT_RT` 7.x variant |
 | [`docs/kernel-export.md`](docs/kernel-export.md) | Exporting to a `Linux-Kernel_MiSTer`-style tree |
 | [`docs/dwc2-usb-irq.md`](docs/dwc2-usb-irq.md) | USB host interrupt load and polling fixes |
+| [`docs/cpu-isolation.md`](docs/cpu-isolation.md) | Keeping Linux work off the main program's CPU |
 
 | Contracts | |
 |---|---|
@@ -577,6 +586,7 @@ Rationale and incident history: [`docs/ci.md`](docs/ci.md). Reproducibility:
 | [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md) | DE25-Nano entry point |
 
 **Parity audits:** [stock reconciliation](docs/stock-reconciliation.md) ·
+[stock binary reconciliation](docs/stock-binary-reconciliation.md) ·
 [wifi](docs/wifi-parity.md) · [bluetooth](docs/bluetooth-parity.md) ·
 [firmware](docs/firmware-parity.md) · [init](docs/init-parity.md) ·
 [usb-automount](docs/usb-automount-parity.md) · [netfs](docs/netfs-parity.md) ·

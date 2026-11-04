@@ -19,3 +19,54 @@ config BR2_PACKAGE_MISTER_INITRAMFS
 	  Nothing from this package is installed into the rootfs.
 
 	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/decisions/0002-initramfs.md
+
+config BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY
+	string "Board stage-1 overlay directories"
+	depends on BR2_PACKAGE_MISTER_INITRAMFS
+	help
+	  Space-separated directories copied, in order, over
+	  board/mister/common/initramfs-overlay -- the stage-1 analogue
+	  of BR2_ROOTFS_OVERLAY. The DE10-Nano sets
+	  board/mister/de10nano/initramfs-overlay; files only one board's
+	  stage 1 needs go there.
+
+	  usr/libexec/mister-installer/ in an overlay is copied only with
+	  BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER.
+
+config BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE
+	bool "HDMI splash during the boot-time exFAT repair"
+	depends on BR2_PACKAGE_MISTER_INITRAMFS
+	depends on BR2_arm # DE10-Nano register map
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_ITSALIVE
+	help
+	  Puts a full-screen "do not power off" picture on HDMI while
+	  /init runs the repair Scripts/check_storage.sh scheduled (ADR
+	  0026). Without it that boot is a black screen for as long as
+	  fsck.exfat takes.
+
+	  Copies package/itsalive's static binary and two gzipped raw
+	  frames from board/mister/de10nano/fsck-splash into the cpio.
+	  itsalive is then NOT installed into the rootfs: it must never
+	  run beside Main_MiSTer.
+
+config BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER
+	bool "SD-card first-boot installer (sdcard.img)"
+	depends on BR2_PACKAGE_MISTER_INITRAMFS
+	depends on BR2_arm # writes the DE10-Nano's uboot.img
+	help
+	  Puts the first-boot installer (ADR 0020, as merged into stage
+	  1 by ADR 0033) into this cpio: the installer script (from the
+	  board overlay above), a static mkfs.exfat and, with the HDMI
+	  splash above, the installer's frames, under
+	  /usr/libexec/mister-installer and /usr/share/mister-installer.
+
+	  /init runs it ONLY when the card carries the installer flag
+	  that scripts/mk-sdcard.sh puts on sdcard.img (MBR entry 3 plus
+	  a magic block at LBA 1024), and the installer spends that flag
+	  (wipes the block) as its commit point. Every other boot never
+	  reaches it.
+
+	  DE10-Nano only: it writes the DE10's uboot.img.
+
+	  https://github.com/mcfbytes/Buildroot_MiSTer/blob/master/docs/installer-init.md

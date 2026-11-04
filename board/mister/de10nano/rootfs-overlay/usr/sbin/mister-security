@@ -1,0 +1,317 @@
+#!/bin/bash
+# mister-security -- show or change the card's security state, the
+# key=value lines in /media/fat/linux/security.conf. No file means stock.
+#
+# Part of MiSTer Linux Modernization.
+# https://github.com/mcfbytes/Buildroot_MiSTer
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY; see <https://www.gnu.org/licenses/>.
+#
+# Scripts/security.sh is its launcher; S50sshd and S50proftpd read the state.
+# Design: ADR 0031 (amendment 2026-10-08), docs/ssh-ftp-parity.md §1.4.
+
+set -uo pipefail
+
+# shellcheck source=board/mister/de10nano/rootfs-overlay/usr/lib/mister/security.sh
+. /usr/lib/mister/security.sh
+
+readonly CONF="$MISTER_SECURITY_CONF"
+readonly AUTHKEYS="/media/fat/config/authorized_keys"
+# The well-known stock hash of "1" that post-build.sh pins.
+# shellcheck disable=SC2016 # a literal crypt hash
+readonly DEFAULT_HASH='$5$MiSTer618$yiHxlAfaTCausfxfpep3MtaVqiqNTwl/tYeg3FF8rb1'
+readonly DIALOG="/usr/bin/dialog"
+readonly PROMPT_TIMEOUT=120
+
+# The two presets. Hardened is what a fresh SD card ships.
+readonly PRESET_HARDENED="ssh_password=no ssh_forwarding=limited ftp=off ftp_drop_caps=yes"
+readonly PRESET_STOCK="ssh_password=yes ssh_forwarding=stock ftp=stock ftp_drop_caps=no"
+
+say()  { echo "$*"; }
+warn() { echo "$*" >&2; }
+die()  { echo "" >&2; echo "ERROR: $*" >&2; exit 1; }
+rule() { echo "======================================================================"; }
+
+usage() {
+	cat <<'EOF'
+mister-security -- SSH and FTP security settings (stock unless the card says otherwise)
+
+  mister-security                  explain, show the state, offer a choice
+  mister-security status           show the state and change nothing
+  mister-security harden           the hardened preset (what a new SD card ships)
+  mister-security stock            the stock preset (what stock MiSTer does)
+  mister-security set KEY VALUE    change one setting
+
+Settings (the first value is stock):
+EOF
+	local k
+	for k in $(keys); do printf '  %-15s %s\n' "$k" "$(security_values "$k" | sed 's/ / | /g')"; done
+	echo ""
+	echo "Details: docs/user/faq.md#remote-login"
+}
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+keys() { local k; for k in $MISTER_SECURITY_KEYS; do echo "${k%%:*}"; done; }
+
+# card_value KEY -- the raw value on the card, empty when unset.
+card_value() {
+	[ -r "$CONF" ] || return 0
+	tr -d '\r' <"$CONF" | sed -n \
+		"s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\([^#[:space:]]*\)[[:space:]]*\(#.*\)\{0,1\}\$/\1/p" | tail -n 1
+}
+
+key_count() {
+	local n=0 f
+	for f in "$AUTHKEYS" /root/.ssh/authorized_keys; do
+		[ -f "$f" ] || continue
+		n=$((n + $(grep -c '^[[:space:]]*[^#[:space:]]' "$f" 2>/dev/null)))
+	done
+	echo "$n"
+}
+
+password_state() {
+	local h
+	h="$(awk -F: '$1 == "root" { print $2 }' /etc/shadow 2>/dev/null)"
+	if [ -z "$h" ]; then echo unknown
+	elif [ "$h" = "$DEFAULT_HASH" ]; then echo default
+	else echo changed
+	fi
+}
+
+# preset_name -- hardened, stock or custom, from the effective values.
+preset_name() {
+	local p kv list
+	for p in hardened stock; do
+		list="$PRESET_HARDENED"
+		[ "$p" = "stock" ] && list="$PRESET_STOCK"
+		for kv in $list; do
+			[ "$(security_get "${kv%%=*}" 2>/dev/null)" = "${kv#*=}" ] || continue 2
+		done
+		echo "$p"
+		return 0
+	done
+	echo custom
+}
+
+state_text() {
+	local k v src n
+	if [ -e "$CONF" ]; then
+		echo "Security: $(preset_name)  ($CONF)"
+	else
+		echo "Security: stock  (no $CONF)"
+	fi
+	for k in $(keys); do
+		v="$(security_get "$k" 2>/dev/null)"
+		src="card"
+		[ -n "$(card_value "$k")" ] || src="default"
+		printf '  %-15s %-8s (%s)\n' "$k" "$v" "$src"
+	done
+	n="$(key_count)"
+	if [ "$n" -gt 0 ]; then
+		echo "SSH keys: $n in $AUTHKEYS"
+	else
+		echo "SSH keys: none in $AUTHKEYS"
+	fi
+	case "$(password_state)" in
+		default) echo "Root password: the public default \"1\"" ;;
+		changed) echo "Root password: changed (an image update resets it to \"1\")" ;;
+		*)       echo "Root password: could not be read" ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# Change
+# ---------------------------------------------------------------------------
+validate() {
+	local allowed v
+	allowed="$(security_values "$1")" || die "unknown setting: $1 (see mister-security --help)"
+	for v in $allowed; do [ "$v" = "$2" ] && return 0; done
+	die "$1 must be one of: $allowed"
+}
+
+# write_conf KEY=VALUE... -- replace or append each key; same-directory rename.
+write_conf() {
+	local dir tmp
+	[ "$(id -u)" -eq 0 ] || die "must run as root."
+	dir="${CONF%/*}"
+	[ -d "$dir" ] || die "$dir is not there; is the data partition mounted?"
+	tmp="$dir/.security.conf.$$"
+	{
+		if [ -f "$CONF" ]; then
+			tr -d '\r' <"$CONF"
+		else
+			echo "# MiSTer Linux Modernization security settings (ADR 0031)."
+			echo "# Change with Scripts/security.sh. A missing key or file means stock."
+		fi
+	} | awk -v sets="$*" '
+		BEGIN {
+			n = split(sets, a, " ")
+			for (i = 1; i <= n; i++) { split(a[i], kv, "="); want[kv[1]] = kv[2]; order[i] = kv[1] }
+		}
+		{
+			line = $0; sub(/^[ \t]+/, "", line); key = line; sub(/[ \t]*=.*/, "", key)
+			if (line !~ /^#/ && index(line, "=") && (key in want)) {
+				if (!(key in done)) print key "=" want[key]
+				done[key] = 1
+				next
+			}
+			print
+		}
+		END { for (i = 1; i <= n; i++) if (!(order[i] in done)) print order[i] "=" want[order[i]] }
+	' >"$tmp" || { rm -f "$tmp"; die "could not write $tmp"; }
+	mv -f "$tmp" "$CONF" || { rm -f "$tmp"; die "could not replace $CONF"; }
+	sync
+}
+
+# Stop, wait for the old listener to let go of its port, start. sshd's open
+# sessions are sshd-session processes, so an SSH login survives this.
+restart_service() {
+	local svc="/etc/init.d/$1" pidfile="$2" pid tries=10
+	[ -x "$svc" ] || return 0
+	pid="$(cat "$pidfile" 2>/dev/null)"
+	"$svc" stop >/dev/null 2>&1
+	while [ -n "$pid" ] && [ "$tries" -gt 0 ] && kill -0 "$pid" 2>/dev/null; do
+		sleep 1
+		tries=$((tries - 1))
+	done
+	"$svc" start || warn "WARNING: $svc did not start; reboot to retry."
+}
+
+# apply KEY=VALUE... -- write, check, restart what changed, warn about lockout.
+apply() {
+	local kv ssh=0 ftp=0
+	for kv in "$@"; do validate "${kv%%=*}" "${kv#*=}"; done
+	for kv in "$@"; do
+		[ "$(security_get "${kv%%=*}" 2>/dev/null)" = "${kv#*=}" ] && continue
+		case "$kv" in ssh_*) ssh=1 ;; ftp*) ftp=1 ;; esac
+	done
+	write_conf "$@"
+	for kv in "$@"; do
+		[ "$(card_value "${kv%%=*}")" = "${kv#*=}" ] || die "$CONF did not take $kv."
+	done
+	[ "$ssh" -eq 1 ] && restart_service S50sshd /var/run/sshd.pid
+	[ "$ftp" -eq 1 ] && restart_service S50proftpd /var/run/proftpd.pid
+	say ""
+	state_text
+	if [ "$(security_get ssh_password)" = "no" ] && [ "$(key_count)" -eq 0 ]; then
+		say ""
+		say "SSH takes only a key and there is none in $AUTHKEYS:"
+		say "nobody can log in over SSH until you add one."
+	fi
+	if [ "$(security_get ssh_password)" = "yes" ] && [ "$(password_state)" = "default" ]; then
+		say ""
+		say "Root's password is the public default \"1\": anyone on your network can log in as root."
+	fi
+	return 0
+}
+
+# ---------------------------------------------------------------------------
+# Text and menu
+# ---------------------------------------------------------------------------
+explain() {
+	cat <<EOF
+Stock MiSTer lets anyone on your network log in as root over
+SSH and FTP with the password "1". A new SD card of this image
+ships hardened; an updated card keeps stock behaviour until
+you change it here.
+
+Hardened:
+  * SSH accepts only a key: put your public key in
+    config/authorized_keys on the card.
+  * SSH forwarding reaches only Transmission's web UI.
+  * No FTP server. Use SFTP with your key instead.
+
+Stock:
+  * SSH and FTP accept root with the root password.
+  * FTP sends that password unencrypted.
+
+FTP can also be set to "lan": root with the password, from
+home-network addresses only, no anonymous login.
+
+The console and the Scripts menu work as always.
+EOF
+}
+
+do_status() {
+	rule
+	say " SSH and FTP security"
+	rule
+	say ""
+	state_text
+	say ""
+	explain
+}
+
+dialog_menu() { # <title> <text> <tag> <item>...
+	local title="$1" text="$2"
+	shift 2
+	"$DIALOG" --clear --title " $title " --timeout "$PROMPT_TIMEOUT" \
+		--cr-wrap --no-collapse --no-tags --cancel-label "Cancel" \
+		--menu "$text" 0 0 0 "$@" 3>&1 1>&2 2>&3
+}
+
+do_menu() {
+	local choice rc=0 k v
+	local -a items
+
+	# Without a tty and dialog (no fb_terminal, or a pipe) a gamepad cannot answer.
+	if [ ! -x "$DIALOG" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+		do_status
+		say ""
+		say "Nothing changed. Over SSH: mister-security harden | stock | set KEY VALUE"
+		return 0
+	fi
+
+	"$DIALOG" --clear --title " Security " --timeout "$PROMPT_TIMEOUT" \
+		--cr-wrap --no-collapse --msgbox "$(explain)" 0 0 || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		clear 2>/dev/null || printf '\033[2J\033[H'
+		say "Nothing changed."
+		return 0
+	fi
+
+	items=(harden "Hardened: SSH by key, no FTP"
+		stock "Stock: root password over SSH and FTP")
+	for k in $(keys); do
+		items+=("key:$k" "Change $k (now $(security_get "$k" 2>/dev/null))")
+	done
+	choice="$(dialog_menu Security "$(state_text)" "${items[@]}")" || rc=$?
+	if [ "$rc" -eq 0 ] && [ "${choice#key:}" != "$choice" ]; then
+		k="${choice#key:}"
+		items=()
+		for v in $(security_values "$k"); do items+=("$v" "$k=$v"); done
+		v="$(dialog_menu "$k" "$k is now $(security_get "$k" 2>/dev/null)" "${items[@]}")" || rc=$?
+		choice="set:$k=$v"
+	fi
+	clear 2>/dev/null || printf '\033[2J\033[H'
+
+	if [ "$rc" -ne 0 ] || [ -z "$choice" ]; then
+		say "Nothing changed."
+		return 0
+	fi
+	case "$choice" in
+		harden) preset "$PRESET_HARDENED" ;;
+		stock)  preset "$PRESET_STOCK" ;;
+		set:*)  apply "${choice#set:}" ;;
+	esac
+}
+
+# preset "<k=v k=v ...>" -- apply a space-separated list.
+preset() { local -a kvs; read -r -a kvs <<<"$1"; apply "${kvs[@]}"; }
+
+nargs() { [ "$1" -eq "$2" ] || { usage >&2; exit 2; }; }
+
+case "${1:-menu}" in
+	-h|--help) usage ;;
+	status)    nargs "$#" 1; do_status ;;
+	harden)    nargs "$#" 1; preset "$PRESET_HARDENED" ;;
+	stock)     nargs "$#" 1; preset "$PRESET_STOCK" ;;
+	set)       nargs "$#" 3; apply "$2=$3" ;;
+	menu)      do_menu ;;
+	*)         warn "mister-security: unknown argument: $1"; usage >&2; exit 2 ;;
+esac

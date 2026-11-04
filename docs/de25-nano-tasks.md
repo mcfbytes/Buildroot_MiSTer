@@ -358,7 +358,7 @@ header UART, so its banner is now expected — `de25-uboot.md` §11); capture th
   `docs/de25-kernel-config.md` §8). ~~Still needs its own Renovate manager, or a hash-sync rule that
   keeps every line a fragment still pins, so the next bump is not manual.~~ **Done 2026-09-14:**
   the DE25 pin (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE`, now **7.2.5**) is matched by the same
-  Renovate manager as the DE10's RT pin (`renovate.json`, depName `kernel-rt-7.2`), and
+  Renovate manager as the DE10's RT pin (`renovate.json`, depName `kernel-rt-7.2`, `kernel-rt-7.3` since the 2026-10-19 move to 7.3), and
   `board/mister/de25nano/patches/linux/linux.hash` is a symlink to `package/linux-rt/linux-rt.hash`,
   so one PR moves both and the `rt` hash-sync case covers both. Found because `make de25` had been
   failing closed since the RT bump to 7.2.5 (no 7.2.3 hash line) and, separately, since ADR 0030

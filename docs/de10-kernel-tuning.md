@@ -68,8 +68,8 @@ default build is byte-different from `cortex-a9`, `cortex-a8` and `generic-armv7
 
 `KCFLAGS` comes after the kernel's own flags. Buildroot passes it through
 `LINUX_MAKE_FLAGS`, which `pkg-kernel-module.mk` (out-of-tree modules) and
-`package/linux-rt` reuse, so all of them get the same tuning. The installer kernel
-(`mister_installer_defconfig`, also `BR2_cortex_a9`) does too. The DE25 (`aarch64`) is
+`package/linux-rt` reuse, so all of them get the same tuning. The SD-card
+installer no longer has a kernel of its own (ADR 0033), so there is nothing extra to tune. The DE25 (`aarch64`) is
 unaffected.
 
 **Guarded in CI.** The "DE10 kernel tuning" section of `scripts/ci-tests.sh` asserts the three

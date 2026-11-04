@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-07-17) — decided by @mcfbytes
 **Amends:** ADR 0017 §Decision item 4 (which stands otherwise — see §4)
+**Amended by:** [ADR 0033](0033-one-initramfs-installer-in-stage-1.md) (2026-10-15) — the installer now runs inside the one stage-1 initramfs and kernel; re-run guard and commit point changed (see the end of this ADR). The sections below are kept as written and describe the original design.
 **Impact:** PLAN §8/§9 (Phase 5 `sdcard.img` deliverable); TASKS P5.3 (payload/mechanism
 narrative superseded, "done when" criteria stand); new files
 `configs/mister_installer_defconfig`, `board/mister/de10nano/installer-overlay/`,
@@ -730,3 +731,35 @@ confirm.
   the installer-*generated* `linux/u-boot.txt` (per-board MAC) the reformat step writes onto
   the final exFAT card. `docs/verification/sdcard-payload.md` §1 is the canonical `p1`
   inventory and lists neither a `p1` `u-boot.txt` nor an uncompressed `linux.img`.
+
+## Amendment 2026-10-15 — the installer moves into stage 1 (ADR 0033)
+
+[ADR 0033](0033-one-initramfs-installer-in-stage-1.md) changes how this ADR's installer is
+built and guarded; what it does to the card (repartition, `mkfs.exfat`, copy-back, MAC, the
+recoverable order of §8) is unchanged. Read the sections above with these substitutions:
+
+- **One kernel, one initramfs.** There is no installer kernel and no
+  `configs/mister_installer_defconfig` / `output-installer/` / kernel relink (§2, §6, §9). The
+  installer script is part of the DE10-Nano's single stage-1 cpio (`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`),
+  and the card's `linux/zImage_dtb` is byte-identical to the Downloader's.
+- **The re-run guard is a flag, not "which kernel is on `p1`" (§2.1).** The installer runs only
+  when stage 1 finds MBR entry 3 (type `0xda`, LBA 1024) plus a magic block at LBA 1024. The
+  "already provisioned" halt is gone; an installed card has a spent flag (or none) and never
+  reaches the installer.
+- **The commit point is wiping the flag's magic block**, after the data partition is
+  unmounted, not renaming the real kernel over the installer kernel (§8); entry 3 is removed
+  from the MBR afterwards as cleanup.
+- **`uboot.img` is written before the MBR that points at it**, to the end of the card, so the
+  MBR-to-bootloader window of §8 is gone.
+- **The commit phase is resumable.** A cut anywhere in step 10 lands in the new `finish` state,
+  which completes the install without reformatting. An armed card the installer did not make
+  (`foreign`: an exFAT without its token, a FAT32 without a payload) has its flag spent and
+  boots normally; it is never reformatted.
+- **`sfdisk` is replaced by a shell MBR writer**, byte-identical to `sfdisk`'s output
+  (`scripts/test-installer-mbr.sh`), so the cpio carries no util-linux. The installer's BusyBox
+  config merged into `board/mister/common/initramfs-busybox.config`.
+- **The installer runs inside stage 1** (`exec`'d by `/init`), so it is no longer a separate
+  PID 1; `mkfs.exfat` ships off PATH at `/usr/libexec/mister-installer/`.
+
+The old two-window recoverability analysis of §8 otherwise stands. Mechanics:
+[`docs/installer-init.md`](../installer-init.md) and [`docs/installer-build.md`](../installer-build.md).

@@ -51,8 +51,9 @@ iface wlan0 inet manual
     pre-up [ -f /media/fat/linux/wpa_supplicant.conf ]
     pre-up [ -e /sys/class/net/$IFACE ]
     pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
-    pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf
+    pre-up /usr/libexec/mister/wpa-jail start $IFACE
     post_up sleep 2
+    post-down /usr/libexec/mister/wpa-jail stop $IFACE
     post-down killall -q wpa_supplicant
 
 auto wlan1
@@ -60,6 +61,7 @@ iface wlan1 inet manual
     pre-up [ -f /media/fat/linux/wpa_supplicant.conf ]
     pre-up [ -e /sys/class/net/$IFACE ]
     pre-up i=0; while [ $i -lt 20 ] && ! iw dev $IFACE info >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
-    pre-up wpa_supplicant -s -B -P /run/wpa_supplicant.$IFACE.pid -i $IFACE -D nl80211,wext -c /media/fat/linux/wpa_supplicant.conf
+    pre-up /usr/libexec/mister/wpa-jail start $IFACE
     post_up sleep 2
+    post-down /usr/libexec/mister/wpa-jail stop $IFACE
     post-down killall -q wpa_supplicant

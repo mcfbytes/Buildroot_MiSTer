@@ -1,0 +1,7 @@
+# Locally computed over the post-`cargo vendor` tarball, not GitHub's archive. Refreshed
+# by renovate-hash-sync case 9; by hand, follow package/itsalive/itsalive.hash's recipe.
+sha256  d444ebc916c83114835999676572fd7660bfd6630c474ac52d6c44b37f7b1324  slint-1.18.1-cargo6.tar.gz
+sha256  d767912198851eaeaabb8390515ae4eb7e2954f8b39e9cbc4711a5b057b26be0  LICENSE.md
+sha256  b6a8bf63ae2c95b0aa256ee774680d7bd18f21f457da75466f7610b3b16acc4e  LICENSES/GPL-3.0-only.txt
+sha256  5167f5056e850419106ab6265efbdca7cba4d99c849d1445ca0bbf6a1e2315fe  LICENSES/LicenseRef-Slint-Royalty-free-2.0.md
+sha256  a235744b92f4453fe18e081e54f29468a6a9db6a44e9a8f6364a48001ba4f10f  LICENSES/LicenseRef-Slint-Software-3.0.md

@@ -1,0 +1,21 @@
+config BR2_PACKAGE_FONT_NOTO_SANS
+	bool "font-noto-sans"
+	help
+	  Google's Noto Sans typeface (Latin, Greek and Cyrillic),
+	  installed as unhinted TrueType files under
+	  /usr/share/fonts/noto-sans for fontconfig to find.
+
+	  By default only Regular, Italic, Bold and Bold Italic
+	  (about 1.7 MB).
+
+	  https://notofonts.github.io/
+
+if BR2_PACKAGE_FONT_NOTO_SANS
+
+config BR2_PACKAGE_FONT_NOTO_SANS_ALL_WEIGHTS
+	bool "all weights and widths"
+	help
+	  Install all 72 static styles (Thin to Black, Condensed to
+	  normal width, upright and italic), about 31 MB.
+
+endif

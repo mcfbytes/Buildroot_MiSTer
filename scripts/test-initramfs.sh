@@ -826,6 +826,14 @@ case_fsck_request() {
 		fail_case "$name" "no usable .fsck-result recorded on the card -- got: $(grep -o 'MARKER: FSCK-RESULT=.*' "$log" || echo '(nothing)')"
 		return
 	}
+	# The HDMI splash, when the cpio carries it: QEMU has no MiSTer fabric, so
+	# itsalive must fail, be logged, and leave the repair above untouched.
+	if cpio -t --quiet < "$CPIO" | grep -qx 'usr/bin/itsalive'; then
+		grep -q 'fsck: no HDMI splash this boot' "$log" || {
+			fail_case "$name" "the cpio ships itsalive but /init never reported its (expected) failure under QEMU"
+			return
+		}
+	fi
 	pass_case "$name (exFAT: marker -> delete -> umount -> fsck.exfat -p -> remount -> switch_root)"
 }
 

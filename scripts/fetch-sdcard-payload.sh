@@ -51,8 +51,8 @@
 #   SDCARD_CORES=1 scripts/fetch-sdcard-payload.sh
 #
 # STAGE_DIR precedence: $1 wins over $STAGE_DIR wins over the default
-# "<repo-root>/output-sdcard-stage" (mirrors the output-installer
-# naming the top-level Makefile already uses for per-stage build dirs).
+# "<repo-root>/output-sdcard-stage" (the top-level Makefile's
+# per-stage output-* naming).
 #
 # Result: <STAGE_DIR>/mister-payload/ populated per docs/verification/
 # sdcard-payload.md's contract:
@@ -133,7 +133,7 @@ readonly PINNED_UPDATE_ALL_SIZE="8628"
 # MiSTer-devel/Scripts_MiSTer, path other_authors/wifi.sh (docs/wifi-parity.md
 # confirms this exact path). Same automated bump path as update_all.sh above
 # (Renovate dep "MiSTer-devel/Scripts_MiSTer" + renovate-hash-sync.yml case 4).
-readonly PINNED_WIFI_SH_COMMIT="c26a3c1c7fb123a956089523a97aaa0e5aaaedfa"
+readonly PINNED_WIFI_SH_COMMIT="5005d03c43758b1a2cce61ae1a8c1d38b1fe34fa"
 readonly PINNED_WIFI_SH_URL="https://raw.githubusercontent.com/MiSTer-devel/Scripts_MiSTer/${PINNED_WIFI_SH_COMMIT}/other_authors/wifi.sh"
 readonly PINNED_WIFI_SH_SHA256="9d1e3165c44b25529fd71b4781ab848a2b0ce2b08815e9c6ffbc12ba9285e4f9"
 readonly PINNED_WIFI_SH_SIZE="96637"
@@ -158,7 +158,7 @@ readonly PINNED_WIFI_SH_SIZE="96637"
 # Any "as of <date>" note is deliberately absent -- Renovate cannot update a
 # comment, so it would start lying on the first automatic bump. `git log --
 # scripts/fetch-sdcard-payload.sh` is the bump record.
-readonly PINNED_CORES_COMMIT="15afafc1f9fd78d9b399cdf73acc2a99a835a78e"
+readonly PINNED_CORES_COMMIT="1e107a5a375c86b288b50c7d041f8683d7d824f9"
 readonly CORES_API_URL="https://api.github.com/repos/MiSTer-devel/Distribution_MiSTer/contents/_Console?ref=${PINNED_CORES_COMMIT}"
 
 # --- small helpers ---------------------------------------------------------
@@ -308,7 +308,7 @@ stage_stock_payload() {
 # Staged AFTER stage_stock_payload() on purpose: that function does a
 # `cp -a "$extract_dir/linux/."` and writes MiSTer.ini/Scripts/update.sh from
 # the stock archive, and these files must survive that rather than be
-# overwritten by it. No stock payload member carries these three names today,
+# overwritten by it. No stock payload member carries these names today,
 # but ordering it this way means a future stock release that does cannot
 # silently win.
 #
@@ -357,10 +357,28 @@ stage_stock_payload() {
 #       because the user reaching for it may have no working keyboard to type a
 #       command with.
 #
+#   Scripts/usb_full_speed_mode.sh
+#       Switches USB full-speed mode (dwc2.fs_ddma, docs/dwc2-usb-irq.md). Same
+#       shim shape: the tool is /usr/sbin/mister-usb-full-speed, shipped with the
+#       kernel option it drives.
+#
+#   Scripts/cpu_isolation.sh
+#       Keeps Linux work off CPU1 (docs/cpu-isolation.md). Same shim shape: the
+#       tool is /usr/sbin/mister-cpu-isolation.
+#
+#   Scripts/security.sh
+#       Shows and changes SSH and FTP security settings (ADR 0031). Same shim
+#       shape: the tool is /usr/sbin/mister-security.
+#
 #   Scripts/sinden_lightgun.sh
 #       Downloads Sinden's Lightgun driver onto this partition and enables it
 #       (docs/sinden-lightgun.md). Same shim shape: the tool is
 #       /usr/sbin/mister-sinden-lightgun in the rootfs.
+#
+#   linux/security.conf
+#       The hardened state a NEW card starts in (ADR 0031). The sdcard image is
+#       the only thing that ships it: on an updated card the file is absent,
+#       which means stock behaviour, so an upgrade changes nothing.
 #
 # Deliberately NOT staged here:
 #
@@ -387,8 +405,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/sinden_lightgun.sh"
-
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh Scripts/security.sh Scripts/sinden_lightgun.sh"
 	local f
 	for f in downloader.ini $scripts; do
 		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
@@ -407,7 +424,12 @@ stage_update_channel() {
 		chmod 0755 "$PAYLOAD_DIR/$f"
 	done
 
-	log "staged update-channel config (downloader.ini, $scripts)"
+	# A new card starts hardened; updates never ship this file (ADR 0031).
+	[ -f "$src/linux/security.conf" ] || die "missing payload file: $src/linux/security.conf"
+	cp -f "$src/linux/security.conf" "$PAYLOAD_DIR/linux/security.conf"
+	chmod 0644 "$PAYLOAD_DIR/linux/security.conf"
+
+	log "staged update-channel config (downloader.ini, $scripts, linux/security.conf)"
 }
 
 # ============================================================================

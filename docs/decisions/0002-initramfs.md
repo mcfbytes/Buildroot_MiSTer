@@ -6,6 +6,7 @@ reviewed by a human, and not yet booted on hardware.** It *has* been booted unde
 with how it was established. The ones still marked *unverified* are the ones that can
 brick a board, and they are listed together in §8 so P1.13 can be pointed straight at
 them.
+**Amended by:** §8b (aarch64), §8c (ADR 0030, stage 1 becomes a package) and §8d (ADR 0033, 2026-10-15: stage 1 also dispatches to the DE10's first-boot installer).
 **Implements:** TASKS.md **P1.10**; constraints **A1**, **A2**, **A13**, **A15**;
 PLAN.md **§5**; `docs/boot-chain.md` §8 (I1–I3, L1–L2) and §9.
 **Depends on:** **ADR 0010** (drop the out-of-tree exfat driver) — that decision is
@@ -411,7 +412,8 @@ longer a second Buildroot configuration in `output-initramfs/` with its own musl
   extension** (`BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS`). It is included by `linux/linux.mk`
   before the kernel package is evaluated, which is the only hook early enough to make the kernel
   *depend* on the package; the `CONFIG_INITRAMFS_SOURCE` fixup moved there from `external.mk`
-  unchanged. `MISTER_INITRAMFS_CPIO` stays overridable for `mk-sdcard.sh`'s installer relink.
+  unchanged. (`MISTER_INITRAMFS_CPIO` was overridable for `mk-sdcard.sh`'s installer relink until
+  ADR 0033 removed that relink.)
 
 **Measured cost (2026-09-11):** static glibc BusyBox 942,660 B against the musl 263,308 B
 (§7's numbers); the static `fsck.exfat` adds a similar delta. Against the 16 MiB `zImage_dtb`
@@ -467,3 +469,15 @@ build from scratch on Buildroot 2026.08):**
 | A separate initrd loaded by U-Boot | U-Boot passes `-` for the initrd argument of `bootz` and we are not changing U-Boot in v1 (§8/A3). The cpio must be *inside* the zImage. |
 | glibc + `CONFIG_STATIC` for stage 1 | `BR2_STATIC_LIBS` is unavailable with glibc, and Buildroot would still copy the shared glibc into the cpio. musl is the mechanism Buildroot actually supports here. |
 | A C `/init` | Nothing here is hot, and the failure mode we most need is *legibility on a serial console at 3am*. Shell wins. |
+
+## 8d. Amendment 2026-10-15 — stage 1 also dispatches to the first-boot installer (ADR 0033)
+
+[ADR 0033](0033-one-initramfs-installer-in-stage-1.md) gives stage 1 a second job on the DE10-Nano. Right
+after `root=` appears, `/init` runs a read-only probe (`/usr/lib/mister/install-flag`) and, only on the
+exact answer `armed` (MBR entry 3 plus a magic block at LBA 1024, present only on a freshly flashed
+`sdcard.img`), `exec`s the SD-card installer instead of mounting and switching root. Every other
+answer, including a failed probe, is the normal boot described above; the probe is on every board's
+stage 1, the installer only on the DE10's (`BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER`). The four
+kernel-side requirements (I1–I4) and the rest of `/init` are unchanged. The installer needed a
+larger BusyBox set (one shared config, `board/mister/common/initramfs-busybox.config`, with
+64-bit shell arithmetic); the merged cpio is 3,237,888 B (1,649,943 B gzip -9).

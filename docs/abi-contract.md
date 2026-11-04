@@ -1322,14 +1322,16 @@ which will be blamed on the kernel, correctly.
 `ro` — only the *root* is read-only). This is `docs/patch-provenance.md` **N3/Q3**.
 
 > **What `/etc/resync` actually buys, on mainline exfat — see
-> [ADR 0026](decisions/0026-user-driven-exfat-fsck.md) §1(c).** The requirement above stands
-> and `/etc/resync` is kept verbatim for parity (I3), but the "belt and braces" framing
-> overstates the loop's effect on *this* kernel: mainline `fs/exfat` has **no `.sync_fs`**
-> operation (`exfat_sops`, `super.c:207-215`), so `sync(2)`'s two `sync_fs_one_sb` passes are
+> [ADR 0026](decisions/0026-user-driven-exfat-fsck.md) §1(c).** The requirement above stands.
+> `/etc/resync` was kept verbatim for parity (I3) until 2026-10, when it was replaced by
+> `etc/sysctl.d/20-writeback.conf` (`docs/init-parity.md`, `/etc/resync` row): it was belt and
+> braces for stock's *old* Samsung exFAT driver, which left metadata dirty under `sync,dirsync`
+> and wrote it only on `sync(2)`, but it does nothing for `/media/fat` on *this* kernel:
+> mainline `fs/exfat` has **no `.sync_fs`** operation (`exfat_sops`, `super.c:207-215`), so `sync(2)`'s two `sync_fs_one_sb` passes are
 > no-ops for `/media/fat`; `sync_bdevs()` only writes back page cache and never issues a
 > device flush; and under `SB_SYNCHRONOUS` every `write()` has *already* ended in
 > `exfat_file_fsync()` (`file.c:581`) = `__generic_file_fsync` + `sync_blockdev` +
-> `blkdev_issue_flush`. The mount options are doing all of the work; the 5-second loop is
+> `blkdev_issue_flush`. The mount options are doing all of the work; the 5-second loop was
 > parity, not protection. What the options cannot do — because exFAT has no journal — is make
 > a multi-step metadata update *atomic*, and nothing on the box ever repairs what an unlucky
 > power cut leaves behind. That gap is what ADR 0026 addresses, out of band and on request.
@@ -1439,7 +1441,7 @@ console::respawn:/sbin/agetty --nohostname -L tty1 linux
 |---|---|---|
 | **I1** | **`/media/fat/MiSTer` is launched from `::sysinit`, backgrounded (`&`)** — *not* from an init script, *not* as `respawn` | **MUST** |
 | **I2** | It starts **before** `rcS` — i.e. before syslog, udev, network, dbus. The menu comes up while the services are still starting. **This is why boot-to-menu is fast, and P2.9 measures exactly this.** | **MUST** |
-| **I3** | `/etc/resync` runs (the 5-second global `sync` loop) | **MUST** |
+| **I3** | ~~`/etc/resync` runs (the 5-second global `sync` loop)~~ — **dropped 2026-10**: it covered stock's old exFAT driver; the async root now gets `vm.dirty_expire_centisecs = 500` instead (`docs/init-parity.md`) | was **MUST** |
 | **I4** | Serial getty on `console` **and** a getty on `tty1` — `tty2` is left free for Main_MiSTer (§7.4) | **MUST** |
 | **I5** | `gpm` on `/dev/input/mice`, ImPS/2 protocol | SHOULD |
 | **I6** | BusyBox init (not systemd, not sysvinit) — the `::sysinit` / `respawn` / `shutdown` action set above is BusyBox's | **MUST** |

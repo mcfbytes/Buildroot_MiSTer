@@ -24,7 +24,7 @@ Contents:
 6. [`de25nano.fragment`](#6-de25nanofragment)
 7. [`mister_rt.fragment`](#7-mister_rtfragment)
 8. [The stage-1 initramfs stacks: `initramfs-common`, `initramfs-de10nano`, `initramfs-de25nano`](#8-the-stage-1-initramfs-stacks)
-9. [`mister_installer_defconfig`](#9-mister_installer_defconfig)
+9. [`mister_installer_defconfig` (removed by ADR 0033)](#9-mister_installer_defconfig-removed-by-adr-0033)
 10. [Placement decisions — what is common, what is board-only, and why](#10-placement-decisions)
 11. [Checks, golden hashes, and the identity proof](#11-checks-golden-hashes-and-the-identity-proof)
 12. [`image-common.fragment`](#12-image-commonfragment)
@@ -71,7 +71,7 @@ configs/
     initramfs-de25nano.fragment  stage-1 arch/ABI + headers series, DE25 (§8.1, §8.2)
     golden.sha256            sha256 of each stack's normalised resolved .config (§11)
   mister_rt.fragment         the RT / 7.2 kernel variant, layered on the kernel-only stack
-  mister_installer_defconfig SD-card installer cpio (standalone Buildroot config, §9)
+  (mister_installer_defconfig was removed by ADR 0033; see §9)
 ```
 
 `stacks.mk`, in merge order:
@@ -290,8 +290,9 @@ libstdc++, installed by the toolchain, not by package selection. The ten
 DT_NEEDED *packages* — zlib, bzip2, libpng, freetype, imlib2, bluez, L7-L12 —
 were P2.1's job, §5.)
 
-The stage-1 initramfs (§8) and the installer (§9) pin the same five lines —
-same silicon; not an ABI requirement there, it just has to run on a Cortex-A9.
+The stage-1 initramfs (§8, now a package of this build) pins the same five lines —
+same silicon; not an ABI requirement there, it just has to run on a Cortex-A9. (The
+installer's own configuration, §9, did too until ADR 0033 removed it.)
 
 ### 3.2 Kernel headers SERIES — `BR2_KERNEL_HEADERS_6_18=y`
 
@@ -382,6 +383,10 @@ DE25's patch dir reaches it by symlink (§6.3).
 
 It also carries the DE10's `bluez5_utils` patch set, which is the reason the
 DE25 does NOT point at this directory (§6.3).
+
+It also carries `wpa_supplicant/0001`, which gives `wpa_cli`'s reply socket to group `wpa`
+so the jailed daemon can answer it (`docs/wifi-parity.md` §15), and `gpm/0001`, which lets gpm
+run as a non-root user in the foreground (`docs/minijail.md` "gpm").
 
 ### 3.4 Kernel stanza
 
@@ -788,6 +793,11 @@ refactor — it replaces no vendored code.
   must keep the `-DRC_CLIENT_SUPPORTS_HASH` that `rcheevos.pc` supplies: it
   gates public declarations in `rc_client.h`, not just implementation
   (`package/rcheevos/rcheevos.mk`).
+- `BR2_PACKAGE_SLINT=y` — Slint 1.18.1's C++ library, `libslint_cpp.so` (13.1 MB
+  stripped), software renderer only, with this tree's three patches. Its consumer is
+  SiSTer's optional HD OSD (a Main_MiSTer rewrite, built with `GF_WITH_HDOSD=ON`), which
+  links it shared rather than carrying a static copy. It pulls host-rustc, host-corrosion
+  and host-slint into every image build. See `docs/slint.md`.
 
 ### 5.6 graphics / fonts
 
@@ -798,7 +808,9 @@ refactor — it replaces no vendored code.
 `BR2_PACKAGE_IMLIB2_{JPEG,PNG,GIF,TIFF,ID3}` — loader plugins, dlopen'd, NOT
 in the manifest's paste list, added per `abi-contract.md`'s explicit warning
 (§5.3): without these `menu.png`/background images silently fail to load with
-no DT_NEEDED signal — `BR2_PACKAGE_LIBXKBCOMMON`, `BR2_PACKAGE_SDL2`.
+no DT_NEEDED signal — `BR2_PACKAGE_LIBXKBCOMMON`, `BR2_PACKAGE_SDL2`,
+`BR2_PACKAGE_FONT_NOTO_SANS` (four Noto Sans TTFs, 1.7 MB, in `/usr/share/fonts/noto-sans`; the
+fonts Slint programs build against, `docs/slint.md`).
 
 ### 5.7 audio
 
@@ -907,6 +919,14 @@ zero-cost parity), `BR2_PACKAGE_DBUS_GLIB`, `BR2_PACKAGE_LIBEVENT`,
 `BR2_PACKAGE_LIBNL`, `BR2_PACKAGE_IPTABLES`, `BR2_PACKAGE_LIBGLIB2`,
 `BR2_PACKAGE_GOBJECT_INTROSPECTION`.
 
+`BR2_PACKAGE_NFTABLES` (2026-10-04, ADR 0031 Tier 1 item 6; kernel delta D14) — `nft` and
+Buildroot's `S35nftables`, beside legacy `iptables`, which stays for scripts that call it.
+No ruleset ships. `/etc/default/nftables` points `S35nftables` at
+`/media/fat/linux/nftables.conf`, so a user can opt in with a card file
+(`docs/user/faq.md`, "Can I run a firewall?"); without that file the script prints
+"does not exist, nothing to do" and exits 0. Not taken: `NFTABLES_JSON` (jansson, no user)
+and `IPTABLES_NFTABLES` (the `iptables-nft` shim; the legacy tables are still built in).
+
 `BR2_PACKAGE_TRANSMISSION=y` + `BR2_PACKAGE_TRANSMISSION_DAEMON=y` — a
 BitTorrent client (issue #186, 2026-09-21). **A STOCK CAPABILITY RESTORED, by a
 different package** — worth stating precisely, because the obvious assumption is
@@ -998,7 +1018,9 @@ overlays the one `package/transmission` installs and exits 0 unless
 listens on nothing. The package's own script is wrong here twice over — it runs
 as a `transmission` user that cannot write the card (mounted with no `uid=`),
 and it puts the config dir inside `linux.img`, which every OS update replaces
-wholesale, taking `resume/` and `torrents/` with it. The security disposition
+wholesale, taking `resume/` and `torrents/` with it. Ours runs that user, pinned
+to uid 8422 by `board/mister/de10nano/users.table`, inside a minijail with
+`CAP_DAC_OVERRIDE` only and an allow-list mount view (`docs/bittorrent.md` §8.1). The security disposition
 (RPC bound to loopback rather than upstream's `0.0.0.0`, port forwarding off)
 is the 2026-09-21 amendment to
 [ADR 0031](decisions/0031-secure-by-default-network-posture.md).
@@ -1251,31 +1273,32 @@ controller/member): `BR2_PACKAGE_SAMBA4_AD_DC`, `BR2_PACKAGE_SAMBA4_ADS`,
 
 ### 5.19 daemons / user-facing binaries (manifest §2)
 
-`BR2_PACKAGE_OPENSSH=y`. **`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`** —
-deliberately NOT set (Buildroot defaults it to y, i.e. `--with-sandbox`). Our
-kernel carries `# CONFIG_SECCOMP is not set` (`linux.config:48`), matching
-stock (`docs/stock-inventory/20250402/stock-linux.config:592`), so
-`prctl(PR_SET_SECCOMP)` returns EINVAL. Through openssh 10.3 that was only a
-`debug()` and sshd ran the pre-auth child unsandboxed — which is what this
-image has silently done for its entire life; the seccomp sandbox was never
-once active here. openssh 10.4 (upstream 7ab700f, "Make failure to set SECCOMP
-or NO_NEW_PRIVS fatal") turned it into `fatal()`. The LISTENER still binds and
-listens normally, but the pre-auth privsep child of sshd-session then dies
-status 255 on every single connection, before any auth — so the box looks
-like it is serving SSH while refusing every client, password and key alike.
-That regression reached us via Buildroot 2026.05.1 -> 2026.05.2, which bumped
-openssh 10.3p1 -> 10.5p1 and so crossed the 10.4 boundary. `--without-sandbox`
-selects `SANDBOX_NULL` — verified on the rebuild: `config.h` gets
-`#define SANDBOX_NULL 1` and none of sshd, sshd-session or sshd-auth carries a
-seccomp string any more. That restores the posture the image actually had all
-along (the sandbox never engaged). Setting `CONFIG_SECCOMP=y` instead is the
-beyond-parity fix (`post-build.sh:22` already lists it as such), but it would
-arm that armhf/glibc syscall allowlist for the first time ever and needs a
-real build-and-SSH test, not a hotfix. NB: configure-time flag — changing it
-requires `make openssh-dirclean` before the rebuild, or the stale
-`--with-sandbox` stamp ships the same broken sshd. See `docs/ssh-ftp-parity.md`.
+`BR2_PACKAGE_OPENSSH=y`, with `BR2_PACKAGE_OPENSSH_SANDBOX` at Buildroot's default `y`
+(so it has no line). **The sandbox is only as good as the kernel's seccomp, and the two must
+move together.** From 2026-08-24 to 2026-10-04 this defconfig carried
+`# BR2_PACKAGE_OPENSSH_SANDBOX is not set`: the kernel had `# CONFIG_SECCOMP is not set`
+(stock parity), and openssh 10.4 (upstream 7ab700f, "Make failure to set SECCOMP or
+NO_NEW_PRIVS fatal") turned the failed `prctl(PR_SET_SECCOMP)` from a `debug()` into a
+`fatal()`. The listener still bound and listened, but the pre-auth child died on every
+connection before any auth, password and key alike. That reached us with Buildroot
+2026.05.2 (openssh 10.3p1 -> 10.5p1). Before 10.4 the sandbox had silently never engaged.
+Kernel delta D13 (`docs/kernel-config-deltas.md`) turned seccomp on in both DE10 kernels and
+the line was deleted in the same commit; `sshd-auth` now runs as `sshd` with
+`NoNewPrivs 1` and `Seccomp 2`, verified in a QEMU boot of the image's own `linux.img`.
+`scripts/ci-tests.sh` asserts the Buildroot symbol, the kernel symbols and the sandbox
+string in `sshd-auth` together, so neither half can move alone again. No compatibility
+patch: the kernel and the rootfs ship together in every release and every SD card, so an
+image booting a seccomp-less kernel is not a supported state (owner decision, 2026-10-04).
+NB: configure-time
+flag — changing it requires `make openssh-dirclean`, or the stale stamp ships the old sshd.
+See `docs/ssh-ftp-parity.md`.
 
-`BR2_PACKAGE_PROFTPD=y`.
+`BR2_PACKAGE_PROFTPD=y`; `_MOD_CAP=y` (since 2026-10-08, selects libcap, which the image
+already has) — builds `mod_cap`, used only when the card's `security.conf` says
+`ftp_drop_caps=yes`: the session keeps CHOWN, DAC_OVERRIDE, FOWNER and NET_BIND_SERVICE.
+**Once compiled in, mod_cap is on by default**, so `proftpd.conf` sets
+`CapabilitiesEngine off` for every other mode to stay stock. Configure-time flag: changing
+it needs `make proftpd-dirclean`. See `docs/ssh-ftp-parity.md` §1.5.
 
 `BR2_PACKAGE_WPA_SUPPLICANT=y`; `_NL80211=y` (default y already, listed for
 clarity); `_WEXT=y` (stock's interfaces file passes "-D nl80211,wext" — both
@@ -2249,6 +2272,13 @@ first time the box gets an address, from a geo-IP lookup (ADR 0025). It needs
 the full zonelist to have a zone to copy, and the `posix/` subtree
 specifically — the same path the community `timezone.sh` copies from.
 
+### 5.46 zaparoo-scanout (out-of-tree display module)
+
+`BR2_PACKAGE_ZAPAROO_SCANOUT=y`, in the DE10-Nano defconfig directly rather
+than in the `mister-drivers` profile: the module validates the Cyclone V
+machine compatible and the DE10's `MiSTer_fb` aperture, so it is DE10-only by
+construction. See [`docs/zaparoo-scanout.md`](zaparoo-scanout.md).
+
 ---
 
 ## 6. `de25nano.fragment`
@@ -2633,21 +2663,12 @@ is not a repeal of the bare-developer-OS scope — no binary a user invokes was
 added — and the rootfs measurement §6.6 records is what keeps that claim
 honest.
 
-ONE STANDING OBLIGATION IS ALREADY BOOKED AGAINST THAT EMPTY LIST, and the
-fragment carries it as a WARNING so it cannot be missed at the moment it
-matters. `board/mister/de25nano/linux.config` carries
-`# CONFIG_SECCOMP is not set` (a MiSTer posture, matching stock and the DE10 —
-`docs/de25-kernel-config.md` §3.1; `SECCOMP` is `default y` on arm64, so wave 1
-had it on). `BR2_PACKAGE_OPENSSH_SANDBOX` is `default y` in Buildroot, and
-since openssh 10.4 a failed `prctl(PR_SET_SECCOMP)` is `fatal()` rather than
-`debug()`. The combination is an `sshd` that binds and listens while killing
-every connection preauth, password and key alike — the DE10 hit exactly this
-and fixes it with `# BR2_PACKAGE_OPENSSH_SANDBOX is not set` (§5.19 has the
-full write-up). Nothing is broken on the DE25 today, because it ships no
-openssh; but the day `BR2_PACKAGE_OPENSSH=y` is added to `de25nano.fragment`,
-`# BR2_PACKAGE_OPENSSH_SANDBOX is not set` must be added in the same commit.
-It is a configure-time flag, so flipping it later also needs
-`make openssh-dirclean` or the stale stamp ships the broken sshd.
+THE SECCOMP OBLIGATION THIS LIST USED TO CARRY IS GONE (2026-10-04). The shared
+kernel fragment turned `SECCOMP` off and the DE25 had to remember to disable the
+OpenSSH sandbox the day it shipped openssh (§5.19 has why). The fragment now turns
+seccomp **on** (D13, `docs/de25-kernel-config.md` §3.1), so Buildroot's default
+`BR2_PACKAGE_OPENSSH_SANDBOX=y` is correct on both boards and adding openssh to the
+DE25 needs no companion line.
 
 ### 6.9 Bootloader — ATF BL31 + mainline U-Boot, packaged as `u-boot.itb`
 
@@ -2919,7 +2940,7 @@ COUPLED to `board/mister/de10nano/patches/linux/linux.hash`: the base stack's
 `BR_NO_CHECK_HASH_FOR` exemption, so the tarball MUST have a sha256 line there
 or the build fails closed at download. Bump the version here -> update that
 line in the same commit (its header says where the value must come from).
-`renovate.json`'s `kernel-rt-7.2` manager bumps this line and
+`renovate.json`'s `kernel-rt-7.3` manager (`kernel-rt-7.2` until 2026-10-19) bumps this line and
 `scripts/hash-sync-kernel.sh --pin=rt` refreshes the hash (it REFUSES any
 `-rc` value, by design).
 
@@ -3160,8 +3181,8 @@ It runs ONLY when `Scripts/check_storage.sh` has left a marker, never on a
 plain boot — see the `fsck_if_requested()` section of the initramfs `/init`
 for why the dirty flag alone is not a usable trigger.
 
-The only dependency is `BR2_USE_WCHAR`, which musl satisfies; the installer
-config (§9) already builds this package on the same musl+static toolchain.
+The only dependency is `BR2_USE_WCHAR`, which musl satisfies; the (since removed, §9)
+installer config built this package on the same musl+static toolchain.
 `board/mister/common/initramfs-post-build.sh` (`BR2_ROOTFS_POST_BUILD_SCRIPT`)
 then deletes the five binaries we do not use (dump.exfat, exfat2img,
 exfatlabel, mkfs.exfat, tune.exfat — 476 KB of zImage for tools stage 1
@@ -3190,142 +3211,37 @@ stage-1 stacks do not include `common`.
 
 ---
 
-## 9. `mister_installer_defconfig`
+## 9. `mister_installer_defconfig` (removed by ADR 0033)
 
-The THROWAWAY INSTALLER OS (TASKS.md P5.3,
-`docs/decisions/0020-sdcard-exfat-reformat-installer.md`, PLAN.md §8/§9). A
-standalone Buildroot config, built into `output-installer/` by
-`scripts/mk-sdcard.sh` (step 1/7) or the Makefile's `installer` escape hatch.
+**Removed 2026-10-15 ([ADR 0033](decisions/0033-one-initramfs-installer-in-stage-1.md)).**
+The SD-card installer (TASKS.md P5.3, [ADR 0020](decisions/0020-sdcard-exfat-reformat-installer.md))
+used to be a standalone static-musl Buildroot configuration built into `output-installer/`, with
+its own toolchain, BusyBox config (`installer-busybox.config`) and post-build script
+(`installer-post-build.sh`), whose cpio `scripts/mk-sdcard.sh` relinked into a second kernel.
+`configs/mister_installer_defconfig`, both board files, `output-installer/` and
+`output-installer-kernel/` are gone. Where its settings went:
 
-This config builds ONE artifact: `output-installer/images/rootfs.cpio`, a
-static BusyBox + exfatprogs + util-linux(sfdisk) + itsalive rootfs that
-`scripts/mk-sdcard.sh` embeds into a SECOND, dedicated kernel build to produce
-the installer's `zImage_dtb`. That image ships as `linux/zImage_dtb` on the
-shipped `sdcard.img`'s FAT32 partition — it is NEVER `output/images/zImage_dtb`
-(the real MiSTer kernel) and NEVER runs on a card that has already been
-installed (ADR 0020 §2.1: the reformat replaces this kernel with the real one,
-which is the primary re-run guard).
+- **The installer itself, `mkfs.exfat`, the splash frames and `itsalive`** -> the one stage-1 cpio,
+  via `BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER=y` in `configs/mister_de10nano_defconfig`
+  (`package/mister-initramfs`; ARM only, and the frames only with `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`).
+  The installer script lives at `board/mister/de10nano/initramfs-overlay/usr/libexec/mister-installer/install`,
+  in the DE10's stage-1 board overlay (`BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY`, the stage-1
+  analogue of `BR2_ROOTFS_OVERLAY`), which is copied over `board/mister/common/initramfs-overlay/`.
+- **Its BusyBox applets** (`cp dd cmp wc hexdump blockdev blkid mv du cut reboot`, `dd` with
+  `FEATURE_DD_IBS_OBS`, 64-bit shell maths) -> `board/mister/common/initramfs-busybox.config`,
+  the single BusyBox config for every stage-1 cpio. The per-applet reasons are in
+  `docs/installer-build.md`.
+- **`sfdisk` / util-linux** -> dropped: the installer writes the MBR from shell, byte-identical to
+  `sfdisk` (`scripts/test-installer-mbr.sh`).
+- **The musl toolchain and `BR2_TOOLCHAIN_BUILDROOT_CXX`** (which existed only for Rust's
+  target-arch gate on musl) -> dropped: `itsalive` is built static glibc by the main configuration.
+- **`BR2_DOWNLOAD_FORCE_CHECK_HASHES`** -> was already set in `configs/mister_de10nano_defconfig`
+  and `configs/mister_de25nano_defconfig`; nothing to move.
 
-WHY THIS EXISTS AT ALL (read ADR 0020 §1 first): mr-fusion's "auto-resize" is
-not a filesystem grow-in-place — MiSTer's data partition is exFAT, and Linux
-has no resize-in-place tool for exFAT. So a fresh card ships small (fast
-write, small download) and an on-device first-boot installer OS repartitions
-+ reformats it to fill whatever medium the user actually has, then hands off
-to the real MiSTer. This config is that installer OS's rootfs. Its `/init`
-(`board/mister/de10nano/installer-overlay/init`) does the
-sfdisk/dd-uboot.img/mkfs.exfat/copy-back/MAC-gen/reboot dance described in ADR
-0020 §2, in the recoverable order ADR 0020 §8 fixed it into.
-
-Relationship to the stage-1 stacks (§8): this is a SIBLING of stage 1, not
-a variant of the main target config: same static musl throwaway-cpio shape
-(`BR2_INIT_NONE`, `BR2_TARGET_ROOTFS_CPIO`, no shared libc), because the
-installer runs from RAM exactly like stage 1's `/init` does and is deleted the
-moment it reboots into the real system. It was BASED ON the old
-`mister_initramfs_defconfig` line-for-line
-(arch/toolchain/init/device-creation/output/reproducibility all copied
-verbatim — §8 has the reasoning behind each; it is DE10-only and stayed a
-standalone defconfig when stage 1 became a stack) and adds exactly what the
-installer's job needs on top:
-
-- `BR2_PACKAGE_EXFATPROGS` -> mkfs.exfat (ADR 0020 §8 step 6; `-n MiSTer_Data`).
-  Depends on `BR2_USE_WCHAR`, which the musl toolchain choice already selects.
-- `BR2_PACKAGE_UTIL_LINUX` + `_BINARIES` -> sfdisk (repartition to the real
-  medium size) and blkid (belt-and-suspenders re-run guard, ADR 0020 §2.1:
-  skip the reformat if the data partition is already exFAT labelled
-  MiSTer_Data and already holds `linux/linux.img`). Buildroot's util-linux
-  "basic set" is not further sub-selectable — enabling it for sfdisk also
-  pulls in blkid, blockdev, dmesg, findfs, hexdump, mkfs, wipefs etc. as a
-  bundle. That overlaps some BusyBox applets (dmesg, findfs) already in the
-  stage-1 BusyBox set; the overlap is harmless (both are real, separate
-  binaries; the installer's `/init` names whichever it wants) and is NOT a
-  reason to drop either side.
-- A few extra BusyBox applets stage 1 does not need: cp (for the payload ->
-  tmpfs -> exFAT copies), dd (uboot.img -> the 0xA2 partition), reboot (the
-  final handoff), blockdev and hexdump (MAC-address generation from
-  `/dev/urandom`). See `docs/installer-build.md` for exactly which `CONFIG_`
-  symbols that required and why (`board/mister/de10nano/installer-busybox.config`,
-  named by `BR2_PACKAGE_BUSYBOX_CONFIG`, carries only a short pointer there).
-  **`timeout` joined them on 2026-09-21** for the HDMI splash (next bullet):
-  every `itsalive` call in `/init` runs under it, so a wedged tool can never
-  hold the install.
-- `BR2_PACKAGE_ITSALIVE` (**2026-09-21**, ADR 0020 §9, issue #185) -> the HDMI
-  splash: `itsalive up` + `itsalive image` put "installing, do not power off"
-  on screen for the minute the card is being reformatted, on the `menu.rbf`
-  that ADR 0020 §7 already ships. `package/itsalive` is the first
-  `cargo-package` in this tree and the only Rust in it; it pulls
-  `host-rust-bin` (a prebuilt download, not a compile) into THIS configuration
-  only, and it is why two toolchain lines below exist. ~445 KB static in the
-  cpio. Its artwork is not in the package: `BR2_ROOTFS_POST_BUILD_SCRIPT` =
-  `board/mister/de10nano/installer-post-build.sh` renders the two frames into
-  `/usr/share/mister-installer/` from the PNGs in `installer-splash/` at build
-  time (pure-Python converter, no host dependency), so no derived binary is
-  committed. The DE10 image's `post-build.sh` is a different script for a
-  different rootfs; nothing in it applies to a throwaway cpio.
-- `BR2_TOOLCHAIN_BUILDROOT_CXX` (**2026-09-21**) -> ONLY because Rust's
-  target-arch gate needs libstdc++ on musl
-  (`BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS` depends on
-  `BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_USES_MUSL`). With an internal
-  toolchain `BR2_INSTALL_LIBSTDCPP` is not user-settable — this symbol selects
-  it, and a defconfig line for the former is silently dropped (found the hard
-  way). Nothing in the cpio links C++; `BR2_STATIC_LIBS` keeps the `.a` out of
-  the rootfs. Toolchain build time, not image bytes.
-- `BR2_DOWNLOAD_FORCE_CHECK_HASHES` (**2026-09-21**) -> the same posture the
-  two board defconfigs have had all along, added with the first
-  externally-sourced package in this cpio. Without it a tarball whose
-  filename has no line in the package's `.hash` is only WARNED about, so a
-  bumped `ITSALIVE_VERSION` carrying a stale `.hash` would fetch unverified
-  and build green. `lint.yml`'s `itsalive version/hash pin consistency` step
-  is the cheap gate; this is the one that holds at download time.
-
-What it deliberately does NOT add: e2fsprogs. The installer only ever `cp`'s
-`linux/linux.img` as an opaque byte blob (never fscks or resizes its ext4
-contents; that partition's size is fixed at build time, only the exFAT data
-partition around it grows) and never builds one, so there is nothing for
-e2fsprogs to do here. Re-add it if a later `/init` revision needs to
-inspect/repair `linux.img`.
-
-**NOT `BR2_TARGET_ROOTFS_INITRAMFS`. NOT the main config with a flag.** Same
-trap A1 names for stage 1 (§8) applies here verbatim: a fourth Buildroot
-output dir (`output-installer/`), a fourth small cpio, never the ~300 MB
-target rootfs.
-
-Per-symbol notes beyond §8's:
-
-- Arch/ABI (§8.1): the installer runs on the same Cortex-A9 the production
-  system does, briefly, once, in RAM.
-- Toolchain (§8.2): everything in this cpio is deleted from RAM within
-  seconds of the reformat finishing, so there is no ABI surface to keep
-  glibc-compatible for. `BR2_TOOLCHAIN_USES_MUSL` auto-selects `BR2_USE_WCHAR`,
-  which is what `BR2_PACKAGE_EXFATPROGS`'s "depends on BR2_USE_WCHAR" needs —
-  nothing extra to set for that.
-- `BR2_INIT_NONE` (§8.3): unlike stage 1, this `/init` never switch_roots into
-  anything: it does its reformat dance and calls `reboot` directly (ADR 0020
-  §2, last step). PID 1 must still never exit without warning — see
-  `board/mister/de10nano/installer-overlay/init` for the rescue-shell
-  contract this config's BusyBox set exists to support
-  (CTTYHACK/SETSID/ASH_TEST/FEATURE_SH_MATH are all carried over from stage 1
-  for exactly that reason).
-- Device nodes (§8.4): same load-bearing reasoning — `/dev/console` must exist
-  before `/init` runs, or there is no stdin/stdout/stderr and a rescue shell
-  is unreachable. The defconfig carries no explicit
-  `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y` line for it — dynamic
-  devtmpfs is Buildroot's own default, so `savedefconfig` omits it, and
-  `scripts/check-defconfigs.sh` is what keeps that omission canonical rather
-  than a drift risk.
-- `BR2_ROOTFS_OVERLAY` = `board/mister/de10nano/installer-overlay`: `/init`
-  itself. A SEPARATE overlay from stage 1's — this is a different program
-  with a different job (reformat-and-handoff, not mount-and-switch_root).
-  This line is the fixed interface the rest of the sdcard-image plumbing
-  (`mk-sdcard.sh`, the installer kernel relink) targets.
-- Output (§8.7): this cpio is embedded inside the installer's own zImage
-  (itself LZ4-compressed, `CONFIG_KERNEL_LZ4`, stock parity), so compressing
-  it here would compress it twice and need a matching `CONFIG_RD_*`
-  decompressor for no benefit. `copy` is the kernel `usr/Makefile`'s default
-  for a plain .cpio — nothing extra needed on the kernel-config side of the
-  relink either.
-- Reproducibility (§8.8): the cpio ends up embedded in the installer
-  `zImage_dtb` that ships inside `sdcard.img(.xz)` release assets, so the same
-  double-build rationale P4.3 applies to the main build applies here too.
+What the installer deliberately does not carry (e2fsprogs: it treats `linux/linux.img` as an
+opaque blob and only the exFAT partition around it grows) is unchanged. The build and
+`make sdcard` are described in `docs/installer-build.md`; the script and its card states in
+`docs/installer-init.md`.
 
 ---
 
@@ -3379,7 +3295,7 @@ The judgement calls, each recorded here:
 | DE25 getty/hostname/issue, `BR2_KERNEL_HEADERS_7_0`, `USE_CUSTOM_CONFIG`, `CUSTOM_CONFIG_FILE`, `CONFIG_FRAGMENT_FILES`, `# USE_ARCH_DEFAULT_CONFIG is not set`, `IMAGE`, `CUSTOM_DTS_PATH` | `de25nano` | Board-specific by nature (§6). The kernel-config pair names DE25 files; the *fragment* file it names is shared with the DE10 by path, but that sharing is a file, not a symbol (§6.5). |
 | The whole DE25 bootloader stanza (`BR2_TARGET_ARM_TRUSTED_FIRMWARE*`, `BR2_TARGET_UBOOT*`) | `de25nano` | The DE10 has no bootloader in its Buildroot config at all — its boot chain is the stock/Terasic one, assembled outside Buildroot (`docs/boot-chain.md`). Nothing to share, so no `common` question arises. |
 | `BR2_PACKAGE_HOST_UBOOT_TOOLS`, `_FIT_SUPPORT`, `BR2_PACKAGE_HOST_GENIMAGE`, `BR2_PACKAGE_HOST_MTOOLS`, `BR2_PACKAGE_HOST_DOSFSTOOLS` | `de25nano` | Host tooling for the FIT and the card image (§6.10, §6.11), and DE25-only in fact: the DE10 stack sets none of these five. Note the near-miss — `de10nano-image` sets `BR2_PACKAGE_DOSFSTOOLS` (+ `_FATLABEL`, `_FSCK_FAT`, `_MKFS_FAT`), the TARGET package that ships `mkfs.fat` on the board, which is a different symbol from `BR2_PACKAGE_HOST_DOSFSTOOLS`. Not a `common` candidate on either count, and rule 4 says so twice over: `common` is in the kernel-only stack, so a `BR2_PACKAGE_HOST_*` line added there would move the kernel-variant toolchain fingerprint and bust every variant's host-toolchain cache, exactly as recorded for `BR2_TARGET_GENERIC_ROOT_PASSWD` above. |
-| ~~`mister_initramfs_defconfig`~~, `mister_installer_defconfig` | installer: left standalone. **Stage 1: a stack since 2026-09-06** (`initramfs-common` + `initramfs-<board>`, §8) | The 2026-09-02 call was "left standalone": they share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). **Reversed for stage 1 when the DE25 needed one** (ADR 0029 D11): a second board wants every line but the arch tuple, so the split is `initramfs-common` (everything) + a per-board arch fragment (restated, held to `<board>.fragment` by check (f)) rather than a shared arch micro-fragment — the arch lines are the part that DIFFERS per board, and what is shared is the rest. The cache-key cost was paid once. The installer is DE10-only (its `/init` runs `dd` of the DE10's `uboot.img`) and stays standalone. |
+| ~~`mister_initramfs_defconfig`~~, `mister_installer_defconfig` | installer: left standalone. **Stage 1: a stack since 2026-09-06** (`initramfs-common` + `initramfs-<board>`, §8) | The 2026-09-02 call was "left standalone": they share five arch lines and `BR2_KERNEL_HEADERS_6_18` with `de10nano.fragment` but differ on the toolchain (musl, static) and everything else; a "de10nano-arch" micro-fragment would save six lines at the price of a fourth stack shape and a toolchain-fingerprint change for the initramfs host cache (`BR_INITRAMFS_HOST_KEY` hashes that file). **Reversed for stage 1 when the DE25 needed one** (ADR 0029 D11): a second board wants every line but the arch tuple, so the split is `initramfs-common` (everything) + a per-board arch fragment (restated, held to `<board>.fragment` by check (f)) rather than a shared arch micro-fragment — the arch lines are the part that DIFFERS per board, and what is shared is the rest. The cache-key cost was paid once. The installer is DE10-only (it `dd`s the DE10's `uboot.img`) and stayed standalone until ADR 0033 (2026-10-15) merged it into stage 1 and deleted `mister_installer_defconfig` (§9). |
 | `BR2_PACKAGE_STRACE=y` twice in the old DE10 file | once, in the T5 section of `de10nano-image` | A duplicate within one fragment is a redefinition the check rejects and a kconfig "override: reassigning" warning; T5 had already made strace permanent (§5.32, §5.42). Resolved config unchanged. |
 
 Symbol counts (assignments + explicit not-set lines), re-measured 2026-09-03

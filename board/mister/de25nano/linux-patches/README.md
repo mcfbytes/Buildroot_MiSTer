@@ -1,6 +1,6 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.2.3**, aarch64 (Agilex 5). See
+**Base:** mainline Linux **7.3**, aarch64 (Agilex 5). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
 version pin.
 
@@ -17,9 +17,9 @@ without renumbering.
 
 **Where each symlink points.** Most shared patches are byte-identical between
 `linux-patches/` (the shipped 6.18 series) and `linux-patches-beta/` (the 7.x series), so they
-link to the canonical file in `linux-patches/`. **Four** — `0015`, `0030`, `0031`, `0037` — have a
-**7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because this
-board is on 7.2.x. (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
+link to the canonical file in `linux-patches/`. **Five** — `0013`, `0015`, `0030`, `0031`, `0037` —
+have a **7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because
+this board is on 7.x. (`0013` joined on 2026-10-19: 7.3 moved its Makefile context.) (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
 re-anchor — see its row below; this intro said "three" until the Wave-4 audit of 2026-09-11
 caught the omission. `0001` is the fifth divergent pair; it is DE10-only and excluded either way.)
 
@@ -45,7 +45,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | 5 | `0010-hid-guncon2` | portable-as-is / shared | **included** | Raw `usb_driver` on generic USB/input APIs. |
 | 6 | `0011-hid-guncon3` | portable-as-is / shared | **included** | Standalone USB interrupt-URB HID driver; USB-generic. |
 | 7 | `0012-hid-fanatec` | portable-as-is / shared | **included** | USB HID force-feedback; no MMIO/DMA/endianness/pointer-size exposure. |
-| 8 | `0013-hid-flydigi-vader` | portable-as-is / shared | **included** | Bluetooth HID remap driver; `BTN_GRIP*` are arch-independent UAPI. |
+| 8 | `0013-hid-flydigi-vader` | portable-as-is / shared | **included** | Bluetooth HID remap driver; `BTN_GRIP*` are arch-independent UAPI. Links to the 7.x-re-anchored beta copy since 7.3 (Makefile context only). |
 | 9 | `0014-hid-gamecube-adapter` | portable-as-is / shared | **included** | Generic USB-HID driver over `u8` buffers. |
 | 10 | `0015-hid-nintendo-nso-famicom` | portable-as-is / shared | **included (beta copy)** | Two enums, two helpers, two dispatch arms, one button table. The beta copy is re-anchored for 7.x; functional hunks are byte-identical. |
 | 11 | `0016-hid-microsoft-elite2-paddles` | portable-as-is / shared | **included** | HID usage mapping of an 8-bit paddle bitmask. |
@@ -100,6 +100,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0065-dwc2-ddma-halt-before-freeing-desc-list` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0066-dwc2-ddma-keep-xfercompl-unmasked` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0067-wifi-rtw88-8821c-support-rfe-type-7` | *post-audit (added 2026-09-30)* | **included** | Adds the missing RFE type 7 definition to rtw88's RTL8821C driver; USB-generic, no architecture exposure. |
+| — | `0068-dwc2-host-ack-all-hcint-bits` | *post-audit (added 2026-10-19, fork 3726e2eba)* | **included** | Writes the raw HCINT value back in `dwc2_hc_n_intr()`, as before v6.7; fixes lost low-speed HID packets behind a hub under bulk load on the DE10. Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
 
 ### DE25-local patches (not in the audit — new work)
 
@@ -118,8 +119,9 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | Post-audit patches considered | 6 (`0047` excluded — already upstream at 7.2, and retired 2026-09-21 when 6.18.53 took it too; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11; `0051` excluded — a revert of a 6.18.y-only backport defect 7.x never had, 2026-09-14; `0052` excluded — DesignWare MMC hook, this board is Cadence SDHCI, 2026-09-21; `0053` excluded — 7.x has no `exfat_dir_readahead()` to bound, 2026-09-21) |
 | dwc2 series `0054`–`0066` (#205) | 13 considered, **3** included (`0056`, `0060`, `0061`); 10 held: the descriptor-DMA set and `0058`/`0059`/`0062` wait for hardware qualification (`docs/dwc2-usb-irq.md`) |
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
+| dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **38** |
+| **Total applied here** | **39** |
 
 ## Note for the DE25 DTS
 
@@ -192,3 +194,13 @@ extract: **37/37 applied, 0 hunks with fuzz, 0 rejects**. `drivers/usb/dwc2/` bu
 arm64 against this board's `linux.config` plus `common/linux-mister.fragment`; the only warning is
 the pre-existing `remotewakeup` kerneldoc one in `core_intr.c`. `scripts/lint-kernel-patches.sh`
 passes. Not run on hardware.
+
+RE-VERIFIED AT 7.3 (2026-10-19), on the move from the 7.2.y line to 7.3. `apply-patches.sh` and a
+strict per-patch `patch -F0 -N` pass on a pristine `linux-7.3` extract: **38/38 applied, 0 hunks
+with fuzz, 0 rejects** (the DE10 RT series likewise 55/55). One patch needed attention: `0013`'s
+`drivers/hid/Makefile` hunk missed because 7.3 added `hid-msi.o` inside its trailing context; it
+now links to a re-anchored copy in `linux-patches-beta/` whose added lines are byte-identical to
+the 6.18 original. `-N` found no patch already present in 7.3. `make de25` builds a bootable card
+image (98 modules, `modules.dep` populated); all 481 symbols asked for by `linux.config` plus
+`common/linux-mister.fragment` survive `olddefconfig`; `test-initramfs.sh --board de25nano` passes
+8/8. Not run on hardware.

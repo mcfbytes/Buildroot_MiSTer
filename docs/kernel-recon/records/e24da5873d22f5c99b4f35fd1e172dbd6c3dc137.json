@@ -1,0 +1,64 @@
+{
+  "sha": "e24da5873d22f5c99b4f35fd1e172dbd6c3dc137",
+  "subject": "config: enable Broadcom, Redpine and Atheros AR9271 USB Wi-Fi (#110)",
+  "author": "Michael Ferguson",
+  "author_is_pr_contributor": true,
+  "date": "2026-10-02",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "kconfig",
+  "change_type": "kconfig",
+  "files": [
+    "arch/arm/configs/MiSTer_defconfig"
+  ],
+  "added": 23,
+  "removed": 3,
+  "is_backport_of_vanilla": false,
+  "disposition": "dropped-deliberate",
+  "carried_patch": null,
+  "carried_mode": null,
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/net/wireless/rsi/Kconfig:47-51 (linux-6.18.57) -- RSI_COEX, `default y`; BT_HCIRSI is a bare tristate selected through it",
+    "vanilla_quote": "config RSI_COEX\n\tbool \"Redpine Signals WLAN BT Coexistence support\"\n\tdepends on BT && RSI_91X\n\tdepends on !(BT=m && RSI_91X=y)\n\tdefault y",
+    "equivalence": "equivalent"
+  },
+  "verification": {
+    "method": "config-grep",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "none -- postdates docs/patch-provenance.md. Our side is PR #216 (Wi-Fi/BT parity vs stock 20260912).",
+  "impact": {
+    "effect_if_absent": "On stock: brcmfmac USB, Redpine RS9113/RS9116 USB (Wi-Fi + BT) and ath9k_htc (AR9271/AR7010) dongles have no driver. On our image: none -- every symbol already resolves the same.",
+    "affected_hardware": [
+      "Broadcom FullMAC USB Wi-Fi (brcmfmac)",
+      "Redpine RS9113/RS9116 USB",
+      "Atheros AR9271 / AR7010 USB (ath9k_htc)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": null,
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": null,
+    "effort": "none -- kconfig only, already in our linux.config"
+  },
+  "dependencies": {
+    "depends_on": [],
+    "superseded_by": [
+      "board/mister/de10nano/linux.config:267 CONFIG_ATH9K_HTC=m (ATH9K_HW/ATH9K_COMMON/ATH9K_BTCOEX_SUPPORT follow)",
+      "board/mister/de10nano/linux.config:288-290 CONFIG_WLAN_VENDOR_BROADCOM=y, CONFIG_BRCMFMAC=m, CONFIG_BRCMFMAC_USB=y (BRCMUTIL, BRCMFMAC_PROTO_BCDC follow)",
+      "board/mister/de10nano/linux.config:356-358 CONFIG_WLAN_VENDOR_RSI=y, CONFIG_RSI_91X=m, CONFIG_RSI_USB=m (RSI_COEX, RSI_DEBUGFS, BT_HCIRSI follow)"
+    ],
+    "duplicate_of": []
+  },
+  "license_provenance": null,
+  "notes": "OUTBOUND, like the 2026-09-14 increment: authored in this repo and sent upstream as fork PR #110 (head mcfbytes:config-brcmfmac-rsi, merged 2026-10-02). scripts/check-fork-sync.sh cannot tell direction, so the record is the evidence that the upstreaming landed and that our image already has it.\n\nMEASURED on the resolved output/build/linux-6.18.57/.config (DE10, full series): all 18 symbols the fork commit sets or unsets (BT_HCIRSI, ATH9K_HW, ATH9K_COMMON, ATH9K_BTCOEX_SUPPORT, ATH9K off, ATH9K_HTC, WLAN_VENDOR_BROADCOM, BRCMUTIL, BRCMFMAC, BRCMFMAC_PROTO_BCDC, BRCMFMAC_SDIO off, BRCMFMAC_USB, WLAN_VENDOR_RSI, RSI_91X, RSI_DEBUGFS, RSI_SDIO off, RSI_USB, RSI_COEX) resolve to the fork's values. DE25 (output-de25/build/linux-7.3/.config) has the four user-facing ones (ATH9K_HTC, BRCMFMAC_USB, RSI_USB, BT_HCIRSI) too.\n\nDISPOSITION: dropped-deliberate/superseded_by, the 697bfee03 shape -- 'carried' strictly means a 00xx patch exists."
+}

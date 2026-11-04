@@ -1,0 +1,19 @@
+#!/bin/sh
+# Keep Linux work off CPU1 from early boot, only if the user chose "every boot" in
+# Scripts/cpu_isolation.sh; the tool owns the flag file (docs/cpu-isolation.md).
+
+TOOL=/usr/sbin/mister-cpu-isolation
+
+case "$1" in
+	start|restart)
+		if [ -x "$TOOL" ]; then
+			"$TOOL" boot
+		fi
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+exit 0

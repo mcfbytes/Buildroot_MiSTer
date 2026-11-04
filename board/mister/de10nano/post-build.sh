@@ -19,7 +19,7 @@
 # -salt MiSTer618 1). "1" is STOCK PARITY -- the stock MiSTer image ships root
 # password "1" -- so nothing changes for existing users, and SSH/console login
 # is root:1 exactly as on stock. This is deliberately weak, matching stock;
-# hardening it (and proftpd, and CONFIG_SECCOMP) is the beyond-parity security
+# hardening it (and proftpd) is the beyond-parity security
 # pass tracked separately, to be done AFTER parity is proven, not during it.
 
 set -e

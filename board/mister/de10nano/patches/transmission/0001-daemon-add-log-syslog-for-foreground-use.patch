@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 9 Oct 2026 10:01:52 -0500
+Subject: [PATCH] daemon: add --log-syslog for foreground use
+
+transmission-daemon logs to syslog only when it daemonizes. With
+--foreground it logs to stderr, so a daemon that a supervisor or a
+sandbox keeps in the foreground can only reach syslog through a pipe,
+which loses each message's level.
+
+--log-syslog leaves the log stream unset in the foreground too, so
+messages take the existing syslog() path with their own priorities. The
+pid is left out of the ident in the foreground: it is the supervisor's
+to report, and in a PID namespace it is always 1. --logfile still wins
+over it, as it does over syslog when daemonized.
+
+Upstream: not submitted (MiSTer-local; docs/bittorrent.md)
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ daemon/daemon.cc | 16 +++++++++++-----
+ daemon/daemon.h  |  1 +
+ 2 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/daemon/daemon.cc b/daemon/daemon.cc
+index 28977f0..8fb30d9 100644
+--- a/daemon/daemon.cc
++++ b/daemon/daemon.cc
+@@ -80,7 +80,7 @@ char constexpr Usage[] = "Transmission " LONG_VERSION_STRING
+                          "Usage: transmission-daemon [options]";
+ 
+ using Arg = tr_option::Arg;
+-auto constexpr Options = std::array<tr_option, 48>{ {
++auto constexpr Options = std::array<tr_option, 49>{ {
+     { 'a', "allowed", "Allowed IP addresses. (Default: " TR_DEFAULT_RPC_WHITELIST ")", "a", Arg::Required, "<list>" },
+     { 'b', "blocklist", "Enable peer blocklists", "b", Arg::None, nullptr },
+     { 'B', "no-blocklist", "Disable peer blocklists", "B", Arg::None, nullptr },
+@@ -108,6 +108,7 @@ auto constexpr Options = std::array<tr_option, 48>{ {
+     { 811, "log-error", "Deprecated. Use --log-level=error", nullptr, Arg::None, nullptr },
+     { 812, "log-info", "Deprecated. Use --log-level=info", nullptr, Arg::None, nullptr },
+     { 813, "log-debug", "Deprecated. Use --log-level=debug", nullptr, Arg::None, nullptr },
++    { 814, "log-syslog", "Log to syslog, also with --foreground", nullptr, Arg::None, nullptr },
+     { 'w', "download-dir", "Where to save downloaded data", "w", Arg::Required, "<path>" },
+     { 800, "paused", "Pause all torrents on startup", nullptr, Arg::None, nullptr },
+     { 'o', "dht", "Enable distributed hash tables (DHT)", "o", Arg::None, nullptr },
+@@ -758,6 +759,10 @@ bool tr_daemon::parse_args(int argc, char const* const* argv, bool* dump_setting
+             map->insert_or_assign(TR_KEY_message_level, TR_LOG_DEBUG);
+             break;
+ 
++        case 814:
++            log_syslog_ = true;
++            break;
++
+         case 830:
+             set_preferred_transports(*map, optstr);
+             break;
+@@ -952,9 +957,10 @@ int tr_daemon::start([[maybe_unused]] bool foreground)
+ 
+ #ifdef HAVE_SYSLOG
+ 
+-    if (!foreground)
++    if (!foreground || log_syslog_)
+     {
+-        openlog(MyName, LOG_CONS | LOG_PID, LOG_DAEMON);
++        // In the foreground, the pid is the supervisor's to report (and in a PID namespace, it is 1).
++        openlog(MyName, foreground ? LOG_CONS : LOG_CONS | LOG_PID, LOG_DAEMON);
+     }
+ 
+ #endif
+@@ -1026,7 +1032,7 @@ CLEANUP:
+     /* shutdown */
+ #ifdef HAVE_SYSLOG
+ 
+-    if (!foreground)
++    if (!foreground || log_syslog_)
+     {
+         syslog(LOG_INFO, "%s", "Closing session");
+         closelog();
+@@ -1062,7 +1068,7 @@ bool tr_daemon::init(int argc, char const* const argv[], bool* foreground, int*
+         return false;
+     }
+ 
+-    if (*foreground && log_stream_ == nullptr)
++    if (*foreground && log_stream_ == nullptr && !log_syslog_)
+     {
+         log_stream_ = stderr;
+     }
+diff --git a/daemon/daemon.h b/daemon/daemon.h
+index b679cc6..5d63f6e 100644
+--- a/daemon/daemon.h
++++ b/daemon/daemon.h
+@@ -53,6 +53,7 @@ private:
+     char const* log_file_name_ = nullptr;
+     struct event_base* ev_base_ = nullptr;
+     FILE* log_stream_ = nullptr;
++    bool log_syslog_ = false;
+ 
+     bool parse_args(int argc, char const* const* argv, bool* dump_settings, bool* foreground, int* exit_code);
+     bool reopen_log_file(char const* filename);

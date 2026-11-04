@@ -40,8 +40,9 @@ MEDIA_SUBDRV_AUTOSELECT is not set        (else: I2C mux core + sensor framework
 USB_VIDEO_CLASS_INPUT_EVDEV is not set    (else: an extra input device with the gun's VID:PID)
 ```
 
-`olddefconfig` resolves this to the same 20-symbol delta on 6.18.55 (DE10),
-7.2.9 (RT, which inherits the DE10 config) and the DE25's arm64 7.2 config.
+`olddefconfig` resolves this to the same 20-symbol delta on 6.18.60 (DE10),
+7.3.1 (RT, which inherits the DE10 config) and the DE25's arm64 7.3.1 config
+(re-checked 2026-11-04).
 The only built-in addition is `DMA_SHARED_BUFFER` (and the `NET_DEVMEM`
 def_bool it unlocks). Everything else is modules (`videodev`, `videobuf2-*`,
 `uvc`, `uvcvideo`), loaded by udev's modalias handling when a camera appears.
@@ -153,10 +154,12 @@ guns. All of those are on the image.
 
 Verified on the build host (qemu-arm, `unshare -r chroot` into `rootfs.tar`):
 
-- `mister-sinden-lightgun install` downloads, verifies and unpacks with BusyBox
-  `unzip`/`sha256sum`.
+- `mister-sinden-lightgun install` downloads, verifies and unpacks with the
+  image's `unzip` (Info-ZIP) and `sha256sum` (coreutils).
 - `mono LightgunMono.exe joystick mediumresource` on the **trimmed** mono
   starts and reaches `Number of Sinden Lightguns Found 0` (its gun search ran).
+  Also when started the way udev starts it, with an empty environment: without
+  the explicit `PATH`, the driver exits before its gun search.
 - A probe assembly on the same runtime reads `CameraRes` through
   `ConfigurationManager`, resolves `libCameraInterface.so` and
   `libSdlInterface.so` via P/Invoke (`Marshal.Prelink`), and opens a

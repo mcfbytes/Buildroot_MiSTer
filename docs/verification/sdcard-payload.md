@@ -55,6 +55,7 @@ mister-payload/Scripts/check_storage.sh
 mister-payload/Scripts/cpu_isolation.sh
 mister-payload/Scripts/pair_logitech.sh
 mister-payload/Scripts/security.sh
+mister-payload/Scripts/sinden_lightgun.sh
 mister-payload/Scripts/update.sh
 mister-payload/Scripts/update_all.sh
 mister-payload/Scripts/update_linux_modernization.sh
@@ -121,6 +122,13 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 > `stage_update_channel()` stages both here, and `update_linux_modernization.sh` replaces
 > either if it later goes missing (which is how users who onboarded before this feature
 > existed get the menu entry).
+
+> **Changed 2026-11-04** — one entry **added**, taking the base inventory to 34 (the
+> count above had drifted one high: the block listed 33, which `check-sdcard.sh` counts):
+> `mister-payload/Scripts/sinden_lightgun.sh` ([docs/sinden-lightgun.md](../sinden-lightgun.md)),
+> staged by `stage_update_channel()` with the other Scripts. Same shim shape: the tool is
+> `/usr/sbin/mister-sinden-lightgun` in the rootfs. The card carries none of Sinden's driver;
+> the tool downloads it when the user runs the script.
 
 > **Changed 2026-10-08** — two entries **added**, taking the base inventory from 32 to 34
 > ([ADR 0031](../decisions/0031-secure-by-default-network-posture.md), amendment
@@ -194,6 +202,7 @@ asserts this exact set for any image built with `SDCARD_CORES=0` (or unset).
 | `mister-payload/Scripts/pair_logitech.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/pair_logitech.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-pair-logitech` in the rootfs, which in turn drives `/usr/bin/ltunify` (`BR2_PACKAGE_LTUNIFY`). Passes no arguments deliberately: the tool's no-argument default is "pair", and it completes without asking anything when exactly one usable receiver is present — which matters because the person running this may have no keyboard, the one being paired being the only one. See [docs/logitech-pairing.md](../logitech-pairing.md) |
 | `mister-payload/Scripts/cpu_isolation.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/cpu_isolation.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-cpu-isolation`, which keeps Linux work off CPU1, live or through `isolcpus=` in `u-boot.txt`. See [docs/cpu-isolation.md](../cpu-isolation.md) |
 | `mister-payload/Scripts/security.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/security.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-security`, which shows and changes the SSH and FTP settings in `/media/fat/linux/security.conf` and restarts `sshd`/`proftpd` as needed. See [ADR 0031](../decisions/0031-secure-by-default-network-posture.md) and [docs/ssh-ftp-parity.md](../ssh-ftp-parity.md) §1.4 |
+| `mister-payload/Scripts/sinden_lightgun.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/sinden_lightgun.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-sinden-lightgun install`, which downloads Sinden's official driver zip (pinned sha256) to `linux/sinden/` and enables the hotplug rule. Sinden's licence forbids redistribution, so neither the card nor `linux.img` carries the driver. See [docs/sinden-lightgun.md](../sinden-lightgun.md) |
 | `mister-payload/Scripts/usb_full_speed_mode.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/usb_full_speed_mode.sh` | In-tree, not fetched. A shim that `exec`s `/usr/sbin/mister-usb-full-speed`, which switches USB full-speed mode (`dwc2.fs_ddma`) until the next reboot, or at every boot on request. See [docs/dwc2-usb-irq.md](../dwc2-usb-irq.md) |
 | `mister-payload/Scripts/update_linux_modernization.sh` | **Ours**, `board/mister/de10nano/fat-payload/Scripts/update_linux_modernization.sh` | In-tree, not fetched. The only thing that updates *our* Linux image. Runs the Downloader against its **own private ini**, generated at runtime under `Scripts/.config/mister_linux_modernization/` — in a directory of its own, because drop-in discovery globs the directory the resolved ini sits in, so an ini in `/media/fat` would pull the user's whole database list into a Linux-only run. One database, `update_linux = true`, plus `--run-only` as a fail-closed assertion. It does **not** install or depend on a drop-in database ini, and keeps no state on the card: the private ini is generated in `/tmp` per run. Separately, it repairs `[MiSTer] update_linux = false` in the user's `downloader.ini` on every run |
 

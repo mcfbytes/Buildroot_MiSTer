@@ -87,8 +87,10 @@ do_start() {
 	args=$(read_args)
 	echo "=== $(date) starting: mono LightgunMono.exe $args" >"$LOG"
 	cd "$DIR" || return 1
+	# udev's RUN env has no PATH or HOME, and the driver runs sh, udevadm and ls.
 	# shellcheck disable=SC2086  # args is a word list by design
-	LD_LIBRARY_PATH="$DIR" setsid taskset -c 0 mono LightgunMono.exe $args \
+	env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LD_LIBRARY_PATH="$DIR" \
+		setsid taskset -c 0 mono LightgunMono.exe $args \
 		</dev/null >>"$LOG" 2>&1 9>&- &
 	echo $! >"$PIDFILE"
 }
@@ -119,7 +121,9 @@ do_install() {
 	say "Downloading Sinden Lightgun software V2.08b from sindenlightgun.com ..."
 	curl -fL --retry 2 --connect-timeout 20 -o "$zip" "$ZIP_URL" || { rm -f "$zip"; die "download failed"; }
 	say "Verifying ..."
-	echo "$ZIP_SHA256  $zip" | sha256sum -c -s || { rm -f "$zip"; die "checksum mismatch: $ZIP_URL changed"; }
+	# Compared directly: -c's quiet flag differs between coreutils and BusyBox.
+	got=$(sha256sum "$zip" | cut -d' ' -f1)
+	[ "$got" = "$ZIP_SHA256" ] || { rm -f "$zip"; die "checksum mismatch: $ZIP_URL changed"; }
 
 	tmp="$DIR/.unpack"
 	rm -rf "$tmp"

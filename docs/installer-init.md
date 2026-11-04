@@ -123,7 +123,7 @@ keep `SPLASH_TOTAL` equal to the highest `splash_step` call
 10. [Commit](#commit-phase): drop the redundant `.gz`, move the payload's entries into
     their final places, apply the pre-seed, write a unique per-board [MAC](#per-board-mac)
     into `linux/u-boot.txt`, remove the payload directory, the pre-seed copy and the
-    token, unmount, and **spend** the flag (wipe the magic block) as the very last act;
+    token, [trim](#free-space-trim) the free space, unmount, and **spend** the flag (wipe the magic block) as the very last act;
     then remove entry 3 from the MBR as cleanup and `reboot -f`.
 
 Because step 10 spends the flag, the next boot is stage 1's normal one. Nothing about
@@ -286,6 +286,45 @@ the rig's 42,788 files that costs 3.9 GiB of slack against 0.9 GiB at 32 KiB. ex
 1.2.9 computes `32 * GB` in a 32-bit `unsigned long` on ARM, which wraps to 0, so it gave
 *every* card over 256 MiB 128 KiB clusters; `board/mister/de10nano/patches/{exfatprogs,mister-initramfs-exfatprogs}/0001-*`
 backport the upstream fix (3dcda41f774a, first released after 1.2.9) until the pin moves past it.
+
+### Free-space trim
+
+An SD card's controller keeps every sector it has ever been written as live data until
+it is told otherwise, so a reused card (and every card after Etcher has written the
+shipped image) starts the install with flash it believes is full. Just before the
+commit point, `finish_install` discards the new exFAT's free clusters with BusyBox
+`fstrim`, the exFAT driver's `FITRIM`. The kernel turns that into SD DISCARD on cards
+that support it (SD 5.1+, a fixed 250 ms per command) and ERASE on the rest, with the
+time limit the card states in its SD Status register; `mmc_core`'s quirk table already
+sends ERASE to the SanDisk cards that claim DISCARD and lack it. What a discarded sector
+reads back as is undefined, which nothing cares about: it is free space.
+
+**Where it runs.** Not before `mkfs`: a cut between the MBR write and `mkfs` re-runs
+from the intact shipped FAT32 under the enlarged `p1` ([recoverability](#recoverability)),
+and a raw discard there would destroy it, stretching the one window that costs a
+re-flash by however long the card takes. After the staged payload and the token are gone,
+a cut lands in `finish`, which only commits, so the trim is outside every window. A
+`finish` boot trims again; that is harmless.
+
+**Chunked and budgeted.** `exfat_trim_fs` checks for a fatal signal only between free
+runs, and each run goes to `blkdev_issue_discard`, which waits for all of it without
+checking at all. A fresh volume is one free run, so a single `fstrim` could not be
+interrupted, and PID 1 cannot afford an unbounded wait. The
+installer walks the cluster heap (`ClusterCount` and the cluster shift from the boot
+sector) in `TRIM_CHUNK_BYTES` (256 MiB) calls and stops between them once `TRIM_BUDGET`
+(60 s) has passed. A device without discard (`queue/discard_max_bytes` = 0), an
+unreadable boot sector or an `fstrim` error each end the trim with a log line and the
+install carries on: a partial trim is still a valid card.
+
+**Nothing outside `p1` may change.** A counterfeit "fake capacity" card maps high
+addresses back onto low ones, so a discard near its end could wipe the MBR, the flag or
+the bootloader. The installer reads LBA 0–2047 and all of `p2` past the buffer cache
+(`blockdev --flushbufs` on the whole disk) before the trim and again after it, and
+`rescue`s if a byte differs. On a genuine card the block layer bounds the discard to
+`p1`, so the check never fires.
+
+The trim never runs on the live system: an erase holds the card's one command queue
+for up to seconds, which would land in the middle of a core load or a save.
 
 ### RAM budget
 
@@ -519,7 +558,7 @@ though `CONFIG_TRUE` is off — that symbol governs only `/bin/true`.
 The budget is real but not fixed. ADR 0033 added `dd` (with `CONFIG_FEATURE_DD_IBS_OBS`
 for `conv=notrunc,fsync`), `cmp`, `wc`, `hexdump`, `blockdev`, `blkid`, `cp`, `mv`, `du`,
 `cut`, `reboot` and 64-bit shell maths — every one of them a few KB, and now on every
-board's cpio. If a future revision needs another, turn its `CONFIG_` symbol on in that
+board's cpio; `fstrim` (4.6 KB) followed for the [free-space trim](#free-space-trim). If a future revision needs another, turn its `CONFIG_` symbol on in that
 file, list it in its header, and add it to `package/mister-initramfs/verify.sh`'s
 installer applet list; do not contort the shell around its absence. Check the symbol
 exists in the BusyBox being built: kconfig silently discards unknown symbols, so a typo

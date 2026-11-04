@@ -97,7 +97,8 @@
 # Env knobs: INSTALLER_CPIO, CROSS_COMPILE, TEST_SDCARD_KBUILD (shared with
 #   test-sdcard-install.sh, so running one makes the other cheap),
 #   TEST_SDCARD_KERNEL_TARBALL, SDCARD_TEST_SIZE (default 2G),
-#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 120), QEMU_MEM (default 512).
+#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 120), QEMU_MEM (default 512),
+#   TEST_DISCARD (unmap or off, default unmap).
 
 set -o errexit
 set -o nounset
@@ -126,6 +127,14 @@ SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"
 INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"
 HALT_TIMEOUT="${HALT_TIMEOUT:-120}"     # backstop only; boot() stops on its marker (see boot())
 QEMU_MEM="${QEMU_MEM:-512}"
+# TEST_DISCARD=unmap (default): guest discards punch holes in the image; off: the
+# virtio disk advertises no discard, so the installer's trim takes its "skipped" path.
+TEST_DISCARD="${TEST_DISCARD:-unmap}"
+case "$TEST_DISCARD" in
+unmap) QEMU_DRIVE_DISCARD=unmap;  QEMU_DEV_DISCARD=on ;;
+off)   QEMU_DRIVE_DISCARD=ignore; QEMU_DEV_DISCARD=off ;;
+*) echo "TEST_DISCARD must be unmap or off" >&2; exit 2 ;;
+esac
 
 # Must match the installer (initramfs-overlay/usr/libexec/mister-installer/install) and genimage-sdcard.cfg.
 RESERVED_SECTORS=8192
@@ -292,8 +301,8 @@ boot() {
 	: > "$logf"
 	qemu-system-arm -M virt -m "$QEMU_MEM" -nographic -no-reboot \
 		-kernel "$IQK_ZIMAGE" \
-		-drive file="$DISK",format=raw,if=none,id=sd0 \
-		-device virtio-blk-device,drive=sd0 \
+		-drive file="$DISK",format=raw,if=none,id=sd0,discard="$QEMU_DRIVE_DISCARD" \
+		-device virtio-blk-device,drive=sd0,discard="$QEMU_DEV_DISCARD" \
 		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 loop=linux/linux.img ro rootwait $extra" \
 		>"$logf" 2>&1 &
 	qpid=$!
@@ -417,6 +426,12 @@ scenario_clean_install() {
 	hasnt "$WORK/z1.log" 'TEST-STOP'                "0: and it did not stop"
 	has   "$WORK/z1.log" 'source mounted (vfat)'  "0: the shipped FAT32 partition mounted as vfat"
 	has   "$WORK/z1.log" 'INSTALL COMPLETE'       "0: the install finished"
+	if [ "$TEST_DISCARD" = unmap ]; then
+		has "$WORK/z1.log" 'trim: done --'      "0: the free-space trim covered the whole heap"
+	else
+		has "$WORK/z1.log" 'trim: skipped --'   "0: the trim was skipped on a disk without discard"
+	fi
+	hasnt "$WORK/z1.log" 'probably counterfeit' "0: nothing outside p1 changed during the trim"
 	hasnt "$WORK/z1.log" 'INSTALLER: FAILED'      "0: no failure banner"
 	hasnt "$WORK/z1.log" 'not found'              "0: no missing-applet noise on the console"
 	has   "$WORK/z1.log" 'removed linux/linux.img.gz'  "0: the compressed image was deleted, not truncated"
@@ -434,11 +449,14 @@ scenario_clean_install() {
 	o_recov=$(at   "$WORK/z1.log" 'from here a power cut re-runs the installer')
 	o_payload=$(at "$WORK/z1.log" 'this card can now finish on its own')
 	o_commit=$(at  "$WORK/z1.log" 'this card is a MiSTer now')
+	o_trim=$(at    "$WORK/z1.log" 'trim: ')
 	order_ok "$o_staged"  "$o_part"    "0: uboot.img is staged BEFORE the MBR points p2 at it"
 	order_ok "$o_part"    "$o_uboot"   "0: uboot.img is verified in p2 right after the repartition"
 	order_ok "$o_uboot"   "$o_mkfs"    "0: the bootloader is written BEFORE the filesystem is made"
 	order_ok "$o_mkfs"    "$o_recov"   "0: the kernel is restored right after the format"
 	order_ok "$o_recov"   "$o_payload" "0: the card is self-recovering before the payload copy-back"
+	order_ok "$o_payload" "$o_trim"    "0: the trim runs only once the payload is safe on the card"
+	order_ok "$o_trim"    "$o_commit"  "0: and before the commit point"
 	order_ok "$o_payload" "$o_commit"  "0: spending the flag is the LAST thing done (the commit point)"
 
 	# And the finished geometry, host-side.

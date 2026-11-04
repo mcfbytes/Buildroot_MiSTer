@@ -38,7 +38,8 @@
 #   make all && make sdcard          # produce the inputs
 #   scripts/test-sdcard-install.sh   # -> PASS/FAIL
 # Env knobs: SDCARD_IMG, SDCARD_TEST_SIZE (default 2G), TEST_SDCARD_KBUILD,
-#   INSTALL_TIMEOUT (default 600), GUARD_TIMEOUT (default 120), QEMU_MEM (default 512).
+#   INSTALL_TIMEOUT (default 600), GUARD_TIMEOUT (default 120), QEMU_MEM (default 512),
+#   TEST_DISCARD (unmap or off, default unmap).
 
 set -o errexit
 set -o nounset
@@ -73,6 +74,14 @@ SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"   # simulated card size to auto-expan
 INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"    # seconds for the install boot (TCG is slow)
 GUARD_TIMEOUT="${GUARD_TIMEOUT:-120}"        # seconds for the post-install normal boot
 QEMU_MEM="${QEMU_MEM:-512}"                  # MiB; ~the real mem=511M cap, to exercise the RAM budget
+# TEST_DISCARD=unmap (default): guest discards punch holes in the image; off: the
+# virtio disk advertises no discard, so the installer's trim takes its "skipped" path.
+TEST_DISCARD="${TEST_DISCARD:-unmap}"
+case "$TEST_DISCARD" in
+unmap) QEMU_DRIVE_DISCARD=unmap;  QEMU_DEV_DISCARD=on ;;
+off)   QEMU_DRIVE_DISCARD=ignore; QEMU_DEV_DISCARD=off ;;
+*) echo "TEST_DISCARD must be unmap or off" >&2; exit 2 ;;
+esac
 
 # RESERVED_SECTORS the installer keeps for p2 (must match mister-installer/install).
 RESERVED_SECTORS=8192
@@ -118,8 +127,8 @@ boot_installer() {
 	local logf=$1 tmo=$2
 	timeout "$tmo" qemu-system-arm -M virt -m "$QEMU_MEM" -nographic -no-reboot \
 		-kernel "$IQK_ZIMAGE" \
-		-drive file="$DISK",format=raw,if=none,id=sd0 \
-		-device virtio-blk-device,drive=sd0 \
+		-drive file="$DISK",format=raw,if=none,id=sd0,discard="$QEMU_DRIVE_DISCARD" \
+		-device virtio-blk-device,drive=sd0,discard="$QEMU_DEV_DISCARD" \
 		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 loop=linux/linux.img ro rootwait" \
 		>"$logf" 2>&1 || true   # timeout/`-no-reboot` exit is expected; we assert on the log
 }

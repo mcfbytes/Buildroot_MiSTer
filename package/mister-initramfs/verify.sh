@@ -74,7 +74,7 @@ if [ "$installer" = installer ]; then
 	[ -x "$inst/mkfs.exfat" ] || fail "$inst/mkfs.exfat is missing or not executable"
 	file -b "$inst/mkfs.exfat" | grep -q 'statically linked' ||
 		fail "$inst/mkfs.exfat is not statically linked"
-	for a in dd cmp wc hexdump blockdev blkid cp mv du cut rm sync zcat timeout reboot \
+	for a in dd cmp wc hexdump blockdev blkid cp mv du cut rm sync zcat timeout reboot fstrim \
 		mkdir mount umount cat sleep setsid cttyhack dmesg tail; do
 		[ -e "$root/bin/$a" ] || [ -e "$root/sbin/$a" ] || [ -e "$root/usr/bin/$a" ] ||
 			[ -e "$root/usr/sbin/$a" ] || fail "the installer needs '$a' but it is not in the tree"
